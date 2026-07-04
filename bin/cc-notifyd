@@ -380,6 +380,22 @@ def make_popup(title, body, session, kind, project, options_str="", full=""):
         bl = build_full_widget(head_txt)
         content.pack_start(bl, False, False, 0)
 
+    # Fila de herramientas del texto: Copiar (respuesta completa al clipboard)
+    # y "Ver TODO" cuando hay mas texto
+    tools = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=14)
+    if src:
+        cp = Gtk.Button(label="Copiar")
+        cp.get_style_context().add_class("vermas")
+        cp.set_relief(Gtk.ReliefStyle.NONE)
+
+        def do_copy(_b):
+            Gtk.Clipboard.get(Gdk.SELECTION_CLIPBOARD).set_text(full or src, -1)
+            cp.set_label("Copiado ✓")
+            GLib.timeout_add_seconds(2, lambda: (cp.set_label("Copiar"), False)[1])
+
+        cp.connect("clicked", do_copy)
+        tools.pack_start(cp, False, False, 0)
+
     # "Ver TODO": el texto COMPLETO, expandible aqui mismo, con scroll.
     # Nunca respondas a ciegas por un preview cortado.
     win._expanded = False
@@ -419,7 +435,10 @@ def make_popup(title, body, session, kind, project, options_str="", full=""):
             GLib.timeout_add(80, reposition)
 
         vt.connect("clicked", toggle)
-        content.pack_start(vt, False, False, 0)
+        tools.pack_start(vt, False, False, 0)
+    if tools.get_children():
+        content.pack_start(tools, False, False, 0)
+    if sw is not None:
         content.pack_start(sw, True, True, 0)
 
     def mk_btn(label, cb, cls=None):

@@ -461,6 +461,19 @@ function mdHtml(s){
   return out.join("");
 }
 function mdStrip(s){ return (s||"").replace(/\*\*|`|^#{1,6} /g, ""); }
+// Copiar con fallback: el WebKit viejo de la app no siempre tiene
+// navigator.clipboard; execCommand cubre ese caso
+async function copyText(t){
+  try{ await navigator.clipboard.writeText(t); return true; }
+  catch(e){
+    const ta = document.createElement("textarea");
+    ta.value = t; ta.style.position = "fixed"; ta.style.opacity = "0";
+    document.body.appendChild(ta); ta.select();
+    let ok = false;
+    try{ ok = document.execCommand("copy"); }catch(_){}
+    ta.remove(); return ok;
+  }
+}
 function favBtn(it, el){
   const b = el.querySelector(".fav");
   b.classList.toggle("on", S.favs.has(it.session));
@@ -498,6 +511,7 @@ function cardEl(it){
         <button type="button" data-key="Escape">Esc</button>
       </div>
       <div class="ops">
+        <button type="button" class="cp" title="Copiar la respuesta completa de Claude">Copiar</button>
         <button type="button" class="go">Abrir</button>
         <button type="button" class="up hidden">Revivir</button>
       </div>
@@ -512,6 +526,14 @@ function cardEl(it){
 
 function wireActions(el, it){
   favBtn(it, el);
+  const cp = el.querySelector(".cp");
+  if(cp) cp.addEventListener("click", async e=>{
+    e.stopPropagation();
+    const t = el._detail || "";
+    if(!t) return toast("Esta sesion no tiene respuesta guardada", true);
+    (await copyText(t)) ? toast(`Respuesta de ${it.project} copiada`)
+                        : toast("No pude copiar", true);
+  });
   // el.dataset.pane se refresca en cada render: si claude corre en un pane
   // concreto (pestana term-*, split), las teclas van exactamente ahi
   const pane = () => el.dataset.pane || undefined;
@@ -556,6 +578,7 @@ function rowEl(it){
     <span class="rprev"></span>
     <span class="ago"></span>
     <span class="acts">
+      <button type="button" class="cp" title="Copiar la respuesta completa de Claude">⧉</button>
       <button type="button" class="go">Abrir</button>
       <button type="button" class="up hidden">Revivir</button>
       <button type="button" class="kill" title="Matar la sesion tmux (y lo que corra dentro)">✕</button>
@@ -596,6 +619,7 @@ function render(list){
     if(!el){ el = kind === "card" ? cardEl(it) : rowEl(it); container.appendChild(el); }
     const ext = !!it.external;
     el.dataset.pane = it.pane || "";
+    el._detail = it.detail || "";
     el.dataset.search = `${it.project} ${it.cwd||""}`.toLowerCase();
     el.querySelector(".fav").classList.toggle("on", S.favs.has(it.session));
     el.querySelector(".ago").textContent = agoTxt(it.ts);

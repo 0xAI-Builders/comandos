@@ -266,6 +266,23 @@ def pane_at(term, event):
     return None, len(panes)
 
 
+def copy_claude_reply(term):
+    """Copia al clipboard la ULTIMA respuesta de Claude de esta sesion (el
+    texto completo que guardan los hooks), sin andar seleccionando a mano."""
+    sess = term_session(term)
+    if not sess:
+        return
+    try:
+        with urllib.request.urlopen("http://127.0.0.1:4777/state", timeout=3) as r:
+            items = json.loads(r.read().decode())
+    except Exception:
+        return
+    for it in items:
+        if it.get("session") == sess and it.get("detail"):
+            Gtk.Clipboard.get(Gdk.SELECTION_CLIPBOARD).set_text(it["detail"], -1)
+            return
+
+
 def exit_copy_mode(term):
     """Si el pane activo esta en modo copia (highlight de tmux), salir para que
     el paste entre como TEXTO y no como teclas del modo copia."""
@@ -336,6 +353,7 @@ def on_term_button(term, event):
          sensitive=term.get_has_selection() or in_copy)
     item("Pegar                    Ctrl+V",
          lambda: (exit_copy_mode(term), term.paste_clipboard()))
+    item("Copiar respuesta de Claude", lambda: copy_claude_reply(term))
     menu.append(Gtk.SeparatorMenuItem())
     if is_ssh:
         host = cur_sess[4:]
