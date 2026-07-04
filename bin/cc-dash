@@ -629,6 +629,8 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             prefs = read_prefs()
             if "favorites" in data and isinstance(data["favorites"], list):
                 prefs["favorites"] = [str(x)[:80] for x in data["favorites"]][:200]
+            if data.get("theme") in ("noche", "dia", "calido"):
+                prefs["theme"] = data["theme"]
             with open(PREFS_PATH, "w") as f:
                 json.dump(prefs, f)
             return self._json(200, {"ok": True})

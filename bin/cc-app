@@ -15,7 +15,7 @@ Teclas:
   Ctrl+Shift + / - / 0   zoom de letra (pestana actual)
   Ctrl+Q                 salir
 """
-import json, os, re, subprocess, urllib.request
+import json, os, re, subprocess, threading, time, urllib.request
 import gi
 gi.require_version("Gtk", "3.0")
 gi.require_version("WebKit2", "4.0")
@@ -57,6 +57,15 @@ scrollbar slider { background: #2E3852; border-radius: 8px; min-width: 7px; }
 scrollbar slider:hover { background: #8B7CFF; }
 paned separator { background: #222A3A; min-width: 2px; }
 .helpwin { background: #0D1119; }
+.switcher { background: #0D1119; border: 1px solid #2E3852; border-radius: 10px; }
+.switcher entry { background: #0A0D13; color: #EAF0FB; border: 1px solid #2E3852;
+  border-radius: 8px; padding: 8px 12px; caret-color: #FFAE1A;
+  font-family: 'JetBrainsMono Nerd Font', monospace; font-size: 13px; }
+.switcher list { background: transparent; }
+.switcher row { border-radius: 7px; color: #C4CCDD; }
+.switcher row:selected { background: #222A3A; color: #EAF0FB; }
+.sw-meta { color: #5E6980; font-size: 10.5px;
+  font-family: 'JetBrainsMono Nerd Font', monospace; }
 .help-h { color: #EAF0FB; }
 .help-sec { color: #8B7CFF; font-family: 'JetBrainsMono Nerd Font', monospace; font-size: 11px; }
 .help-key { color: #FFAE1A; font-family: 'JetBrainsMono Nerd Font', monospace; font-size: 12px; }
@@ -385,9 +394,23 @@ def restore_tabs():
     return False
 
 
+# Punto de estado por pestana: el color se procesa ANTES de leer el nombre
+# (ambar: espera tu respuesta / azul: trabajando / verde: listo)
+DOT_COLORS = {"waiting": "#FFAE1A", "working": "#7AA5FF",
+              "done": "#2EE59D", "dead": "#FF6B6B"}
+DOT_IDLE = "#39445C"
+STATE_CACHE = {}   # session -> status (lo alimenta el poller de /state)
+
+
 def tab_label(text, key=None, closable=True):
     hb = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
-    hb.pack_start(Gtk.Label(label=text), False, False, 0)
+    dot = Gtk.Label()
+    dot.set_markup(f'<span size="8500" foreground="{DOT_IDLE}">●</span>')
+    hb.pack_start(dot, False, False, 0)
+    lbl = Gtk.Label(label=text)
+    hb.pack_start(lbl, False, False, 0)
+    hb._dot = dot
+    hb._text = lbl
     if closable:
         b = Gtk.Button(label="×")
         b.set_relief(Gtk.ReliefStyle.NONE)
@@ -395,6 +418,32 @@ def tab_label(text, key=None, closable=True):
         hb.pack_start(b, False, False, 0)
     hb.show_all()
     return hb
+
+
+def update_dots(states):
+    STATE_CACHE.clear()
+    STATE_CACHE.update(states)
+    for key, box in tabs.items():
+        hb = nb.get_tab_label(box)
+        dot = getattr(hb, "_dot", None)
+        if dot is None:
+            continue
+        c = DOT_COLORS.get(states.get(key, ""), DOT_IDLE)
+        dot.set_markup(f'<span size="8500" foreground="{c}">●</span>')
+    return False
+
+
+def poll_state_loop():
+    while True:
+        try:
+            with urllib.request.urlopen("http://127.0.0.1:4777/state", timeout=3) as r:
+                items = json.loads(r.read().decode())
+            states = {it["session"]: it.get("status", "idle")
+                      for it in items if it.get("session")}
+            GLib.idle_add(update_dots, states)
+        except Exception:
+            pass
+        time.sleep(3)
 
 
 def close_tab(key):
@@ -481,11 +530,134 @@ def open_tab(sess, winname, label=None):
 def set_tab_label(box, text):
     box._label = text
     hb = nb.get_tab_label(box)
-    for ch in (hb.get_children() if hb else []):
-        if isinstance(ch, Gtk.Label):
-            ch.set_text(text)
-            break
+    if hb is not None and getattr(hb, "_text", None) is not None:
+        hb._text.set_text(text)
     save_tabs()
+
+
+def fuzzy_score(q, s):
+    """None si no matchea; menor = mejor (subsecuencia con saltos penalizados)."""
+    q, s = q.lower(), s.lower()
+    score, pos = 0, 0
+    for ch in q:
+        i = s.find(ch, pos)
+        if i < 0:
+            return None
+        score += i - pos
+        pos = i + 1
+    return score + len(s) * 0.01
+
+
+SW_ORDER = {"waiting": 0, "done": 1, "working": 2}
+SW_HINT = {"waiting": "espera TU respuesta", "working": "trabajando", "done": "listo"}
+
+
+def open_switcher(*_):
+    """Ctrl+K: saltar a cualquier pestana/sesion escribiendo 2-3 letras.
+    Las que ESPERAN tu respuesta salen arriba; Enter va a la primera."""
+    if getattr(open_switcher, "_win", None):
+        open_switcher._win.present()
+        return
+    w = Gtk.Window(type=Gtk.WindowType.TOPLEVEL)
+    w.set_transient_for(win)
+    w.set_modal(True)
+    w.set_decorated(False)
+    w.set_position(Gtk.WindowPosition.CENTER_ON_PARENT)
+    w.set_default_size(560, -1)
+    w.get_style_context().add_class("switcher")
+    v = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
+    v.set_property("margin", 12)
+    entry = Gtk.Entry()
+    entry.set_placeholder_text("Salta a...  (parte del nombre, Enter va a la primera)")
+    v.pack_start(entry, False, False, 0)
+    lb = Gtk.ListBox()
+    lb.set_activate_on_single_click(True)
+    v.pack_start(lb, True, True, 0)
+    w.add(v)
+    rows = []
+
+    def candidates():
+        out, seen = [], set()
+        for key, box in tabs.items():
+            out.append((getattr(box, "_label", key), key, True))
+            seen.add(key)
+        r = tmuxc("list-sessions", "-F", "#{session_name}")
+        for s in (r.stdout.split() if r.returncode == 0 else []):
+            if s not in seen and s != "local":
+                out.append((s, s, False))
+        return out
+
+    def refill(*_):
+        for ch in lb.get_children():
+            lb.remove(ch)
+        rows.clear()
+        q = entry.get_text().strip()
+        scored = []
+        for label, key, is_open in candidates():
+            sc = fuzzy_score(q, f"{label} {key}") if q else 0
+            if sc is None:
+                continue
+            st = STATE_CACHE.get(key, "")
+            scored.append((SW_ORDER.get(st, 3), sc, label.lower(), label, key, st, is_open))
+        scored.sort()
+        for _, _, _, label, key, st, is_open in scored[:12]:
+            r = Gtk.ListBoxRow()
+            h = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=9)
+            h.set_property("margin", 7)
+            d = Gtk.Label()
+            d.set_markup(f'<span size="9000" foreground="{DOT_COLORS.get(st, DOT_IDLE)}">●</span>')
+            h.pack_start(d, False, False, 0)
+            h.pack_start(Gtk.Label(label=label, xalign=0), True, True, 0)
+            hint = SW_HINT.get(st, "") + ("" if is_open else "   [abrir]")
+            m = Gtk.Label(label=hint.strip(), xalign=1)
+            m.get_style_context().add_class("sw-meta")
+            h.pack_end(m, False, False, 0)
+            r.add(h)
+            lb.add(r)
+            rows.append((r, key))
+        lb.show_all()
+        if rows:
+            lb.select_row(rows[0][0])
+
+    def go(row):
+        for r, key in rows:
+            if r is row:
+                w.destroy()
+                open_tab(key, "claude")
+                return
+
+    def move_sel(delta):
+        sel = lb.get_selected_row()
+        idx = next((i for i, (r, _) in enumerate(rows) if r is sel), 0)
+        idx = max(0, min(len(rows) - 1, idx + delta))
+        if rows:
+            lb.select_row(rows[idx][0])
+
+    def on_sw_key(_w, ev):
+        if ev.keyval == Gdk.KEY_Escape:
+            w.destroy()
+            return True
+        if ev.keyval in (Gdk.KEY_Return, Gdk.KEY_KP_Enter):
+            sel = lb.get_selected_row()
+            if sel:
+                go(sel)
+            return True
+        if ev.keyval == Gdk.KEY_Down:
+            move_sel(1)
+            return True
+        if ev.keyval == Gdk.KEY_Up:
+            move_sel(-1)
+            return True
+        return False
+
+    lb.connect("row-activated", lambda _l, row: go(row))
+    entry.connect("changed", refill)
+    w.connect("key-press-event", on_sw_key)
+    w.connect("destroy", lambda *_: setattr(open_switcher, "_win", None))
+    open_switcher._win = w
+    refill()
+    w.show_all()
+    entry.grab_focus()
 
 
 def rename_tab(key):
@@ -524,6 +696,12 @@ nb.append_page(hub, tab_label("⌂ local", closable=False))
 
 # Barra de pestanas: boton "+" (nueva terminal) y "?" (atajos)
 _actions = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=2)
+_find = Gtk.Button(label="⌕")
+_find.get_style_context().add_class("tabplus")
+_find.set_relief(Gtk.ReliefStyle.NONE)
+_find.set_tooltip_text("Saltar a una pestana/sesion (Ctrl+K)")
+_find.connect("clicked", open_switcher)
+_actions.pack_start(_find, False, False, 0)
 _plus = Gtk.Button(label="+")
 _plus.get_style_context().add_class("tabplus")
 _plus.set_relief(Gtk.ReliefStyle.NONE)
@@ -588,6 +766,7 @@ def cur_term():
 SHORTCUTS = [
     ("Ventana ComandOS", [
         ("? / F1", "Esta ayuda"),
+        ("Ctrl+K", "Saltar a cualquier pestana/sesion (escribe y Enter)"),
         ("Ctrl+T", "Nueva terminal en el directorio actual"),
         ("Ctrl+Shift+W", "Cerrar la pestana actual"),
         ("Ctrl+PgUp / PgDn", "Cambiar de pestana"),
@@ -713,6 +892,8 @@ def on_key(w, e):
         t.set_font_scale(max(0.5, t.get_font_scale() - 0.1)); return True
     if t and ctrl and shift and e.keyval in (Gdk.KEY_0, Gdk.KEY_parenright):
         t.set_font_scale(1.0); return True
+    if ctrl and not shift and e.keyval in (Gdk.KEY_k, Gdk.KEY_K):
+        open_switcher(); return True
     if ctrl and not shift and e.keyval in (Gdk.KEY_t, Gdk.KEY_T):
         new_local_tab(); return True
     if ctrl and shift and e.keyval in (Gdk.KEY_w, Gdk.KEY_W):
@@ -752,4 +933,5 @@ win.connect("destroy", Gtk.main_quit)
 win.show_all()
 hub._term.grab_focus()
 GLib.timeout_add(600, restore_tabs)
+threading.Thread(target=poll_state_loop, daemon=True).start()
 Gtk.main()
