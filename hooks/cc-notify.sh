@@ -56,9 +56,9 @@ proj=$(basename "${cwd:-$PWD}")
 proj_file=$(printf '%s' "$proj" | tr -c 'A-Za-z0-9._-' '-' | head -c 80)
 now=$(date +%s)
 
-write_state() { # $1=status $2=detalle
-  jq -n --arg p "$proj" --arg s "$1" --arg d "$2" --arg c "$cwd" --argjson t "$now" \
-    '{project:$p,status:$s,detail:$d,cwd:$c,ts:$t}' > "$STATE_DIR/$proj_file.json" 2>/dev/null
+write_state() { # $1=status $2=detalle $3=opciones (labels separados por \x1f)
+  jq -n --arg p "$proj" --arg s "$1" --arg d "$2" --arg c "$cwd" --arg o "${3:-}" --argjson t "$now" \
+    '{project:$p,status:$s,detail:$d,cwd:$c,ts:$t,options:$o}' > "$STATE_DIR/$proj_file.json" 2>/dev/null
   jq -cn --arg p "$proj" --arg s "$1" --arg d "$2" --argjson t "$now" \
     '{project:$p,status:$s,detail:$d,ts:$t}' >> "$EVENTS" 2>/dev/null
   # Mantener el timeline acotado
@@ -122,7 +122,7 @@ $preview"
     fi
     urgency="critical"
     sound="$SOUND_ATTENTION"
-    write_state "waiting" "$(printf '%s' "${full:-$body}" | head -c 4000)"
+    write_state "waiting" "$(printf '%s' "${full:-$body}" | head -c 4000)" "$options"
     if [ "$prev_s" = "waiting" ] && [ $(( now - ${prev_t:-0} )) -lt 600 ]; then
       exit 0
     fi

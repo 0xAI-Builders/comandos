@@ -135,6 +135,11 @@
     padding:9px 12px;font-family:var(--mono);font-size:12.5px}
   .send input::placeholder{color:var(--faint)}
   .send input:focus{outline:none;border-color:var(--brand)}
+  .opts{display:flex;flex-direction:column;gap:6px}
+  .opts button{text-align:left;font-family:var(--mono);font-size:12px;
+    color:var(--waiting);background:var(--bg);border-radius:8px;padding:8px 12px;
+    border:1px solid color-mix(in srgb,var(--waiting) 40%,var(--line))}
+  .opts button:hover{border-color:var(--waiting);background:var(--panel2)}
   .send button{padding:8px 16px;border-radius:9px;background:var(--brand);color:#0A0D13;
     font-weight:700;font-size:12.5px;flex:none}
   .send button:hover{filter:brightness(1.12)}
@@ -464,6 +469,7 @@ function cardEl(it){
     </div>
     <div class="path"></div>
     <p class="preview"></p>
+    <div class="opts hidden"></div>
     <form class="send">
       <input type="text" autocomplete="off" spellcheck="false" placeholder="Responde aqui y Enter">
       <button type="submit">Enviar</button>
@@ -567,13 +573,42 @@ function render(list){
     el.querySelector(".ago").textContent = agoTxt(it.ts);
     if(kind === "card"){
       el.classList.toggle("ext", ext);
-      el.querySelector(".tag").textContent = ext ? "Suelta" : "Necesita respuesta";
+      // canSend: hay un claude VIVO esperando; si murio, la card queda con la
+      // pregunta visible y el camino de Revivir/Abrir (nunca respondas al vacio)
+      const canSend = it.alive && !ext && !it.zombie;
+      el.querySelector(".tag").textContent = ext ? "Suelta"
+        : !canSend ? "Pregunta pendiente · claude apagado" : "Necesita respuesta";
       const pe = el.querySelector(".path");
       pe.textContent = it.cwd ? shortPath(it.cwd) : "carpeta no encontrada";
       pe.title = it.cwd || ""; pe.classList.toggle("missing", !it.cwd);
       el.querySelector(".preview").innerHTML = mdHtml(it.detail || "Esperando input o permiso");
-      el.querySelector(".send").classList.toggle("hidden", ext);
-      el.querySelector(".keys").classList.toggle("hidden", ext);
+      // Opciones REALES (las mismas de los popups): 1 boton por opcion
+      const opts = el.querySelector(".opts");
+      const optsStr = (canSend && it.options) ? it.options : "";
+      if(el.dataset.opts !== optsStr){
+        el.dataset.opts = optsStr;
+        opts.innerHTML = "";
+        optsStr.split("\u001f").filter(Boolean).slice(0, 4).forEach((lab, i)=>{
+          const b = document.createElement("button");
+          b.type = "button";
+          b.textContent = `${i + 1} · ${lab}`;
+          b.addEventListener("click", async e=>{
+            e.stopPropagation();
+            try{
+              await api("/key", {session: el.dataset.session, key: String(i + 1),
+                                 pane: el.dataset.pane || undefined});
+              setTimeout(()=> api("/key", {session: el.dataset.session, key: "Enter",
+                                           pane: el.dataset.pane || undefined}).catch(()=>{}), 300);
+              toast(`${lab} → ${it.project}`);
+            }catch(err){ toast(err.message, true); }
+          });
+          opts.appendChild(b);
+        });
+      }
+      opts.classList.toggle("hidden", !optsStr);
+      el.querySelector(".send").classList.toggle("hidden", !canSend);
+      el.querySelector(".keys").classList.toggle("hidden", !canSend || !!optsStr);
+      el.querySelector(".up").classList.toggle("hidden", it.alive || ext);
       el.style.order = (S.favs.has(it.session) ? -1000 : 0) + Math.floor((it.ts||0)/60)%1000;
     } else {
       el.className = `row s-${it.status}` + (ext ? " ext" : "");

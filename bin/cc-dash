@@ -287,17 +287,23 @@ def read_states():
         # Claude corriendo FUERA de tmux (una pestana suelta de Tilix/Tabby):
         # el estado es real (los hooks reportan) pero no es operable desde aqui.
         external = (not alive) and cwd in externals
-        if not alive and not external:
+        # Una PREGUNTA pendiente (waiting) JAMAS se esconde: aunque el claude
+        # haya muerto, la card se muestra (con Revivir). Solo 'working' viejo
+        # de un claude muerto se degrada a idle.
+        if not alive and not external and status != "waiting":
             status = "dead"
         detail = d.get("detail", "")
-        # Sesion viva pero SU claude ya murio: el estado del hook es viejo
-        # (un "waiting" eterno). Degradar a idle para no mentir en el tablero.
-        if alive and pane is None and cwd and cwd not in externals \
-                and status in ("waiting", "working"):
-            status, detail = "idle", ""
+        zombie = False
+        if alive and pane is None and cwd and cwd not in externals:
+            if status == "working":
+                status, detail = "idle", ""
+            elif status == "waiting":
+                zombie = True    # sesion viva pero el claude que pregunto murio
         item = {"project": d.get("project"), "session": sess, "status": status,
-                "detail": detail, "cwd": cwd,
+                "detail": detail, "cwd": cwd, "options": d.get("options", ""),
                 "ts": d.get("ts", 0), "alive": alive, "external": external}
+        if zombie:
+            item["zombie"] = True
         if pane:
             item["pane"] = pane
         items.append(item)
