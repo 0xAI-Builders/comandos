@@ -491,6 +491,14 @@ def close_tab(key):
         box._term._respawn = False
         nb.remove_page(nb.page_num(box))
     save_tabs()
+    # Scratch (term-*) con puro shell ocioso: cerrar la pestana MATA la sesion
+    # (adios sesiones fantasma). Si algo corre adentro (vite, claude, ssh...),
+    # la sesion sobrevive como siempre.
+    if key and key.startswith("term-"):
+        r = tmuxc("list-panes", "-s", "-t", "=" + key, "-F", "#{pane_current_command}")
+        cmds = set(r.stdout.split())
+        if r.returncode == 0 and cmds and cmds <= {"zsh", "bash", "sh", "fish"}:
+            tmuxc("kill-session", "-t", "=" + key)
 
 
 def current_cwd():

@@ -253,6 +253,19 @@ def resolve_project_session(sess):
 HIDDEN_SESSIONS = {"hub", "local", "control"}
 
 
+def tab_labels():
+    """Etiquetas de las pestanas de la app (app-tabs.json): el tablero muestra
+    el nombre que el usuario le puso a la pestana, no el term-XXXX crudo."""
+    try:
+        with open(os.path.join(HOOKS, "app-tabs.json")) as f:
+            d = json.load(f)
+        if isinstance(d, dict):
+            return {k: v for k, v in d.items() if isinstance(v, str) and v}
+    except Exception:
+        pass
+    return {}
+
+
 def read_states():
     live = tmux_sessions()
     procs = claude_procs()
@@ -308,15 +321,18 @@ def read_states():
             item["pane"] = pane
         items.append(item)
         seen.add(sess)
-    # sesiones tmux sin estado registrado (p. ej. recien creadas con ccx)
+    # sesiones tmux vivas sin estado (recien creadas con ccx, scratch term-*
+    # de la app...): TODAS visibles — nada de sesiones fantasma que solo
+    # aparecen en el conmutador. Nombre = etiqueta de su pestana si existe.
+    labels = tab_labels()
     for sess in sorted(live - seen):
-        if sess in HIDDEN_SESSIONS or sess.startswith("term-"):
+        if sess in HIDDEN_SESSIONS:
             continue
         r = tmux("display-message", "-p", "-t", "=" + sess + ":", "#{pane_current_path}")
         cwd = r.stdout.strip() if r.returncode == 0 else ""
         if not cwd:
             cwd = find_project_dir(sess) or ""
-        item = {"project": sess, "session": sess, "status": "idle",
+        item = {"project": labels.get(sess, sess), "session": sess, "status": "idle",
                 "detail": "", "cwd": cwd, "ts": 0, "alive": True, "external": False}
         if sess.startswith("ssh-"):
             item["sshConnected"] = pane_cmd(sess) == "ssh"
@@ -698,6 +714,18 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             if tmux("has-session", "-t", target).returncode != 0:
                 return self._json(404, {"error": f"No hay sesion tmux '{sess}'"})
             r = tmux("send-keys", "-t", pane, key)
+            if r.returncode != 0:
+                return self._json(500, {"error": r.stderr.strip() or "tmux fallo"})
+            return self._json(200, {"ok": True})
+
+        if self.path == "/kill":
+            # Matar DE VERDAD una sesion (el boton ✕ del tablero). Nunca las
+            # internas de la app.
+            if sess in HIDDEN_SESSIONS:
+                return self._json(400, {"error": "Esa sesion es interna de la app"})
+            if tmux("has-session", "-t", target).returncode != 0:
+                return self._json(404, {"error": f"No hay sesion tmux '{sess}'"})
+            r = tmux("kill-session", "-t", target)
             if r.returncode != 0:
                 return self._json(500, {"error": r.stderr.strip() or "tmux fallo"})
             return self._json(200, {"ok": True})
