@@ -216,6 +216,16 @@ def pane_at(term, event):
     return None, len(panes)
 
 
+def exit_copy_mode(term):
+    """Si el pane activo esta en modo copia (highlight de tmux), salir para que
+    el paste entre como TEXTO y no como teclas del modo copia."""
+    sess = term_session(term)
+    if sess:
+        r = tmuxc("display-message", "-p", "-t", f"={sess}:", "#{pane_in_mode}")
+        if r.stdout.strip() == "1":
+            tmuxc("send-keys", "-t", f"={sess}:", "-X", "cancel")
+
+
 def on_term_button(term, event):
     # Ctrl+click en una URL: abrirla
     if event.button == 1 and (event.state & Gdk.ModifierType.CONTROL_MASK):
@@ -274,7 +284,8 @@ def on_term_button(term, event):
 
     item("Copiar                   Ctrl+C", do_copy,
          sensitive=term.get_has_selection() or in_copy)
-    item("Pegar                    Ctrl+V", lambda: term.paste_clipboard())
+    item("Pegar                    Ctrl+V",
+         lambda: (exit_copy_mode(term), term.paste_clipboard()))
     menu.append(Gtk.SeparatorMenuItem())
     if is_ssh:
         host = cur_sess[4:]
@@ -613,6 +624,7 @@ def on_key(w, e):
     fw = win.get_focus()
     if ctrl and isinstance(fw, Vte.Terminal):
         if e.keyval in (Gdk.KEY_v, Gdk.KEY_V):
+            exit_copy_mode(fw)     # si habia highlight de tmux, salir antes de pegar
             fw.paste_clipboard()
             return True
         if e.keyval in (Gdk.KEY_c, Gdk.KEY_C) and fw.get_has_selection():
