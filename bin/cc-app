@@ -266,6 +266,14 @@ def pane_at(term, event):
     return None, len(panes)
 
 
+def export_claude_reply(term, fmt):
+    """Guarda la ultima respuesta de Claude de esta sesion como .txt o PDF
+    (lo genera cc-dash en ~/Descargas y lo abre)."""
+    sess = term_session(term)
+    if sess:
+        http_post("/export", {"session": sess, "format": fmt}, timeout=45)
+
+
 def copy_claude_reply(term):
     """Copia al clipboard la ULTIMA respuesta de Claude de esta sesion (el
     texto completo que guardan los hooks), sin andar seleccionando a mano."""
@@ -278,8 +286,9 @@ def copy_claude_reply(term):
     except Exception:
         return
     for it in items:
-        if it.get("session") == sess and it.get("detail"):
-            Gtk.Clipboard.get(Gdk.SELECTION_CLIPBOARD).set_text(it["detail"], -1)
+        if it.get("session") == sess and (it.get("detail") or it.get("last")):
+            Gtk.Clipboard.get(Gdk.SELECTION_CLIPBOARD).set_text(
+                it.get("detail") or it["last"], -1)
             return
 
 
@@ -354,6 +363,8 @@ def on_term_button(term, event):
     item("Pegar                    Ctrl+V",
          lambda: (exit_copy_mode(term), term.paste_clipboard()))
     item("Copiar respuesta de Claude", lambda: copy_claude_reply(term))
+    item("Guardar respuesta como .txt", lambda: export_claude_reply(term, "txt"))
+    item("Guardar respuesta como PDF", lambda: export_claude_reply(term, "pdf"))
     menu.append(Gtk.SeparatorMenuItem())
     if is_ssh:
         host = cur_sess[4:]
@@ -775,6 +786,12 @@ nb.append_page(hub, tab_label("⌂ local", closable=False))
 
 # Barra de pestanas: boton "+" (nueva terminal) y "?" (atajos)
 _actions = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=2)
+_copy = Gtk.Button(label="⧉")
+_copy.get_style_context().add_class("tabplus")
+_copy.set_relief(Gtk.ReliefStyle.NONE)
+_copy.set_tooltip_text("Copiar la ultima respuesta de Claude de ESTA pestana")
+_copy.connect("clicked", lambda *_: cur_term() and copy_claude_reply(cur_term()))
+_actions.pack_start(_copy, False, False, 0)
 _find = Gtk.Button(label="⌕")
 _find.get_style_context().add_class("tabplus")
 _find.set_relief(Gtk.ReliefStyle.NONE)

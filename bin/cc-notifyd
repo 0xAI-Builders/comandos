@@ -409,7 +409,7 @@ def make_popup(title, body, session, kind, project, options_str="", full=""):
             sw.set_propagate_natural_height(True)
         except Exception:
             sw.set_size_request(-1, 380)   # GTK < 3.22
-        sw.add(build_full_widget(full[:6000]))
+        sw.add(build_full_widget(full[:16000]))
         sw.set_no_show_all(True)
         # "… Ver TODO" pegado al texto, como un link discreto
         vt = Gtk.Button(label="… Ver TODO")
@@ -524,7 +524,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
                       str(d.get("kind", "done")),
                       str(d.get("project", ""))[:80],
                       str(d.get("options", ""))[:600],
-                      str(d.get("full", ""))[:6000])
+                      str(d.get("full", ""))[:16000])
         out = b'{"ok": true}'
         self.send_response(200)
         self.send_header("Content-Type", "application/json")

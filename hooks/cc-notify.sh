@@ -56,10 +56,12 @@ proj=$(basename "${cwd:-$PWD}")
 proj_file=$(printf '%s' "$proj" | tr -c 'A-Za-z0-9._-' '-' | head -c 80)
 now=$(date +%s)
 
-write_state() { # $1=status $2=detalle $3=opciones (labels separados por \x1f)
-  jq -n --arg p "$proj" --arg s "$1" --arg d "$2" --arg c "$cwd" --arg o "${3:-}" --argjson t "$now" \
-    '{project:$p,status:$s,detail:$d,cwd:$c,ts:$t,options:$o}' > "$STATE_DIR/$proj_file.json" 2>/dev/null
-  jq -cn --arg p "$proj" --arg s "$1" --arg d "$2" --argjson t "$now" \
+write_state() { # $1=status $2=detalle $3=opciones (labels \x1f). LAST=respuesta previa
+  jq -n --arg p "$proj" --arg s "$1" --arg d "$2" --arg c "$cwd" --arg o "${3:-}" \
+    --arg L "${LAST:-}" --argjson t "$now" \
+    '{project:$p,status:$s,detail:$d,cwd:$c,ts:$t,options:$o,last:$L}' > "$STATE_DIR/$proj_file.json" 2>/dev/null
+  # el timeline solo necesita una probadita, no la respuesta entera
+  jq -cn --arg p "$proj" --arg s "$1" --arg d "$(printf '%s' "$2" | head -c 280)" --argjson t "$now" \
     '{project:$p,status:$s,detail:$d,ts:$t}' >> "$EVENTS" 2>/dev/null
   # Mantener el timeline acotado
   if [ "$(wc -l < "$EVENTS" 2>/dev/null || echo 0)" -gt 2000 ]; then
@@ -69,6 +71,10 @@ write_state() { # $1=status $2=detalle $3=opciones (labels separados por \x1f)
 
 case "$event" in
   UserPromptSubmit)
+    # Conservar la ULTIMA respuesta (para Copiar/TXT/PDF mientras trabaja)
+    LAST=$(jq -r 'if ((.status=="done" or .status=="waiting") and ((.detail//"")!=""))
+                  then .detail else (.last//"") end' \
+           "$STATE_DIR/$proj_file.json" 2>/dev/null)
     write_state "working" ""
     exit 0
     ;;
@@ -106,14 +112,16 @@ case "$event" in
 Opciones:
 $optlist"
       else
-        # Ultimo mensaje de Claude: preview corto para el popup colapsado y
-        # texto COMPLETO (con saltos de linea) para "Ver TODO"
-        raw=$(tail -80 "$transcript" 2>/dev/null \
-          | jq -rs '[.[] | select(.type=="assistant") | .message.content[]? | select(.type=="text") | .text] | last // ""' 2>/dev/null)
+        # Ultimo mensaje de Claude COMPLETO: TODOS sus bloques de texto (no
+        # solo el ultimo), preview corto para el popup colapsado
+        raw=$(tail -200 "$transcript" 2>/dev/null \
+          | jq -rs '[.[] | select(.type=="assistant")
+                     | [.message.content[]? | select(.type=="text") | .text] | join("\n\n")
+                     | select(. != "")] | last // ""' 2>/dev/null)
         preview=$(printf '%s' "$raw" | tr '\n' ' ' | head -c 260)
         [ -n "$preview" ] && body="$body
 $preview"
-        [ -n "$raw" ] && full=$(printf '%s' "$raw" | head -c 6000)
+        [ -n "$raw" ] && full=$(printf '%s' "$raw" | head -c 16000)
       fi
     fi
     # Prompt de permiso estandar: etiquetas con texto (mapean a 1/2/3)
@@ -122,7 +130,7 @@ $preview"
     fi
     urgency="critical"
     sound="$SOUND_ATTENTION"
-    write_state "waiting" "$(printf '%s' "${full:-$body}" | head -c 4000)" "$options"
+    write_state "waiting" "$(printf '%s' "${full:-$body}" | head -c 16000)" "$options"
     if [ "$prev_s" = "waiting" ] && [ $(( now - ${prev_t:-0} )) -lt 600 ]; then
       exit 0
     fi
@@ -133,15 +141,17 @@ $preview"
     preview=""
     full=""
     if [ -n "$transcript" ] && [ -f "$transcript" ]; then
-      raw=$(tail -80 "$transcript" 2>/dev/null \
-        | jq -rs '[.[] | select(.type=="assistant") | .message.content[]? | select(.type=="text") | .text] | last // ""' 2>/dev/null)
+      raw=$(tail -200 "$transcript" 2>/dev/null \
+        | jq -rs '[.[] | select(.type=="assistant")
+                   | [.message.content[]? | select(.type=="text") | .text] | join("\n\n")
+                   | select(. != "")] | last // ""' 2>/dev/null)
       preview=$(printf '%s' "$raw" | tr '\n' ' ' | head -c 180)
-      [ -n "$raw" ] && full=$(printf '%s' "$raw" | head -c 6000)
+      [ -n "$raw" ] && full=$(printf '%s' "$raw" | head -c 16000)
     fi
     body="${preview:-Iteracion completada, listo para tu siguiente instruccion}"
     urgency="normal"
     sound="$SOUND_DONE"
-    write_state "done" "$(printf '%s' "${full:-$body}" | head -c 4000)"
+    write_state "done" "$(printf '%s' "${full:-$body}" | head -c 16000)"
     ;;
 esac
 

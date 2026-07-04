@@ -16,6 +16,7 @@ Endpoints:
 
 Solo escucha en 127.0.0.1. Todas las llamadas a tmux van sin shell (sin inyeccion).
 """
+import html as html_mod
 import json, os, glob, re, shlex, shutil, sys, subprocess, time, webbrowser
 import http.server, socketserver
 
@@ -314,6 +315,7 @@ def read_states():
                 zombie = True    # sesion viva pero el claude que pregunto murio
         item = {"project": d.get("project"), "session": sess, "status": status,
                 "detail": detail, "cwd": cwd, "options": d.get("options", ""),
+                "last": d.get("last", ""),
                 "ts": d.get("ts", 0), "alive": alive, "external": external}
         if zombie:
             item["zombie"] = True
@@ -571,6 +573,122 @@ def ssh_connect(host):
     return sess, False, f"{host} no responde (red caida o host apagado); la pestana quedo reintentando"
 
 
+def _md_inline(l):
+    l = re.sub(r"\*\*(.+?)\*\*", r"<b>\1</b>", l)
+    l = re.sub(r"(^|[\s(])\*([^*\n]+)\*(?=$|[\s).,;:!?])", r"\1<i>\2</i>", l)
+    l = re.sub(r"`([^`]+)`", r"<code>\1</code>", l)
+    l = re.sub(r"\[([^\]]+)\]\([^)\s]*\)", r"\1", l)
+    return l
+
+
+def md_to_html(s):
+    """Markdown -> HTML (mismo dialecto que el tablero) para exportar a PDF."""
+    out, tbl = [], []
+    in_code = False
+
+    def flush_tbl():
+        if not tbl:
+            return
+        rows = [r for r in tbl if not re.match(r"^\s*\|[\s\-:|]+\|\s*$", r)]
+        h = ["<table>"]
+        for i, r in enumerate(rows):
+            cells = [c.strip() for c in r.strip().strip("|").split("|")]
+            tag = "th" if i == 0 else "td"
+            h.append("<tr>" + "".join(
+                f"<{tag}>{_md_inline(html_mod.escape(c))}</{tag}>" for c in cells) + "</tr>")
+        h.append("</table>")
+        out.append("".join(h))
+        tbl.clear()
+
+    for l in s.splitlines():
+        if l.strip().startswith("```"):
+            flush_tbl()
+            in_code = not in_code
+            out.append("<pre>" if in_code else "</pre>")
+            continue
+        if in_code:
+            out.append(html_mod.escape(l) + "\n")
+            continue
+        if re.match(r"^\s*\|.*\|\s*$", l):
+            tbl.append(l)
+            continue
+        flush_tbl()
+        esc = html_mod.escape(l)
+        m = re.match(r"^#{1,6} (.*)", esc)
+        if m:
+            out.append(f"<h3>{_md_inline(m.group(1))}</h3>")
+            continue
+        if re.match(r"^\s*---+\s*$", esc):
+            out.append("<hr>")
+            continue
+        out.append(_md_inline(re.sub(r"^(\s*)[-*] ", "\\1• ", esc)) + "<br>")
+    flush_tbl()
+    return "".join(out)
+
+
+PDF_CSS = """
+body{font-family:'Inter',system-ui,sans-serif;font-size:12.5px;color:#1B2130;
+  line-height:1.55;max-width:760px;margin:24px auto}
+h1{font-size:17px;border-bottom:2px solid #5B4BD6;padding-bottom:6px}
+h3{font-size:13.5px;color:#5B4BD6;margin:14px 0 4px}
+.meta{color:#8892A6;font-size:10.5px;margin-bottom:14px}
+code,pre{font-family:'JetBrains Mono',monospace;font-size:11px;background:#F2F4F8;
+  border-radius:4px;padding:1px 4px}
+pre{display:block;padding:9px 11px;margin:8px 0;white-space:pre-wrap;
+  border:1px solid #D9DEE8}
+table{border-collapse:collapse;margin:8px 0;font-size:11.5px}
+th,td{border:1px solid #C3CAD8;padding:4px 9px;text-align:left}
+th{background:#EDF0F6;color:#5B4BD6}
+hr{border:none;border-top:1px solid #D9DEE8;margin:10px 0}
+"""
+
+
+def export_dir():
+    for d in ("~/Descargas", "~/Downloads"):
+        p = os.path.expanduser(d)
+        if os.path.isdir(p):
+            return p
+    return os.path.expanduser("~")
+
+
+def export_response(item, fmt):
+    """Guarda la respuesta como .txt plano o .pdf con markdown renderizado
+    (Chrome headless). Devuelve (ruta, error)."""
+    ts = time.strftime("%Y-%m-%d_%H%M")
+    name = re.sub(r"[^A-Za-z0-9._-]", "-", item.get("project") or item["session"])[:60]
+    base = os.path.join(export_dir(), f"claude-{name}-{ts}")
+    if fmt == "txt":
+        p = base + ".txt"
+        with open(p, "w") as f:
+            f.write(item["detail"])
+        return p, None
+    chrome = next((c for c in ("google-chrome", "google-chrome-stable",
+                               "chromium", "chromium-browser") if shutil.which(c)), None)
+    if not chrome:
+        return None, "Para PDF instala Chrome o Chromium"
+    when = time.strftime("%Y-%m-%d %H:%M")
+    doc = (f"<!doctype html><meta charset='utf-8'><style>{PDF_CSS}</style>"
+           f"<h1>{html_mod.escape(item.get('project') or item['session'])}</h1>"
+           f"<div class='meta'>Respuesta de Claude · {when} · ComandOS</div>"
+           f"{md_to_html(item['detail'])}")
+    tmp = base + ".html"
+    with open(tmp, "w") as f:
+        f.write(doc)
+    p = base + ".pdf"
+    try:
+        r = subprocess.run([chrome, "--headless", "--disable-gpu",
+                            f"--print-to-pdf={p}", "--no-pdf-header-footer", tmp],
+                           capture_output=True, text=True, timeout=40)
+    finally:
+        try:
+            os.remove(tmp)
+        except OSError:
+            pass
+    if not os.path.exists(p):
+        return None, (r.stderr.strip()[:200] or "Chrome no pudo generar el PDF")
+    return p, None
+
+
 class Handler(http.server.SimpleHTTPRequestHandler):
     def __init__(self, *a, **kw):
         super().__init__(*a, directory=DASH, **kw)
@@ -717,6 +835,22 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             if r.returncode != 0:
                 return self._json(500, {"error": r.stderr.strip() or "tmux fallo"})
             return self._json(200, {"ok": True})
+
+        if self.path == "/export":
+            fmt = data.get("format", "txt")
+            if fmt not in ("txt", "pdf"):
+                return self._json(400, {"error": "format debe ser txt o pdf"})
+            item = next((i for i in read_states() if i["session"] == sess
+                         and (i.get("detail") or i.get("last"))), None)
+            if not item:
+                return self._json(404, {"error": "Esa sesion no tiene respuesta guardada"})
+            item = dict(item, detail=item.get("detail") or item.get("last"))
+            path, err = export_response(item, fmt)
+            if err:
+                return self._json(500, {"error": err})
+            subprocess.Popen(["xdg-open", path], env=gui_env(), start_new_session=True,
+                             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            return self._json(200, {"ok": True, "path": path})
 
         if self.path == "/kill":
             # Matar DE VERDAD una sesion (el boton ✕ del tablero). Nunca las

@@ -512,6 +512,8 @@ function cardEl(it){
       </div>
       <div class="ops">
         <button type="button" class="cp" title="Copiar la respuesta completa de Claude">Copiar</button>
+        <button type="button" class="xtxt" title="Guardar la respuesta como .txt en Descargas">TXT</button>
+        <button type="button" class="xpdf" title="Guardar la respuesta como PDF (markdown renderizado) en Descargas">PDF</button>
         <button type="button" class="go">Abrir</button>
         <button type="button" class="up hidden">Revivir</button>
       </div>
@@ -534,6 +536,17 @@ function wireActions(el, it){
     (await copyText(t)) ? toast(`Respuesta de ${it.project} copiada`)
                         : toast("No pude copiar", true);
   });
+  const wireExport = (sel, fmt) => {
+    const b = el.querySelector(sel);
+    if(b) b.addEventListener("click", async e=>{
+      e.stopPropagation();
+      try{
+        const r = await api("/export", {session: el.dataset.session, format: fmt});
+        toast(`Guardado: ${r.path}`);
+      }catch(err){ toast(err.message, true); }
+    });
+  };
+  wireExport(".xtxt", "txt"); wireExport(".xpdf", "pdf");
   // el.dataset.pane se refresca en cada render: si claude corre en un pane
   // concreto (pestana term-*, split), las teclas van exactamente ahi
   const pane = () => el.dataset.pane || undefined;
@@ -619,7 +632,7 @@ function render(list){
     if(!el){ el = kind === "card" ? cardEl(it) : rowEl(it); container.appendChild(el); }
     const ext = !!it.external;
     el.dataset.pane = it.pane || "";
-    el._detail = it.detail || "";
+    el._detail = it.detail || it.last || "";
     el.dataset.search = `${it.project} ${it.cwd||""}`.toLowerCase();
     el.querySelector(".fav").classList.toggle("on", S.favs.has(it.session));
     el.querySelector(".ago").textContent = agoTxt(it.ts);
