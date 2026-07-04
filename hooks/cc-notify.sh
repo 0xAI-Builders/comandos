@@ -198,6 +198,12 @@ if [ "$TELEGRAM_ENABLED" = "1" ] && [ -f "$tg" ]; then
   if [ -n "$TG_TOKEN" ] && [ -n "${TELEGRAM_CHAT_ID:-}" ]; then
     sess=$(printf '%s' "$proj" | tr '.:' '--' | head -c 60)
     tg_title=$(sed 's/[&<>]/ /g' <<<"$title")
+    # Texto COMPLETO con markdown renderizado (HTML de Telegram: negritas,
+    # codigo, tablas alineadas en <pre>). Fallback: preview plano.
+    if [ -n "${full:-}" ] && [ -x "$HOOKS_DIR/md2tg.py" ]; then
+      tg_body=$(printf '%s' "$full" | "$HOOKS_DIR/md2tg.py" 2>/dev/null)
+      [ -n "$tg_body" ] && body="$tg_body"
+    fi
     if [ -n "${CC_TELEGRAM_BOT_TOKEN:-}" ] && [ "$event" = "Notification" ]; then
       kb='{"inline_keyboard":[[{"text":"1","callback_data":"k|'"$sess"'|1"},{"text":"2","callback_data":"k|'"$sess"'|2"},{"text":"3","callback_data":"k|'"$sess"'|3"}],[{"text":"Enter","callback_data":"k|'"$sess"'|Enter"},{"text":"Esc","callback_data":"k|'"$sess"'|Escape"}]]}'
       curl -s -m 5 "https://api.telegram.org/bot${TG_TOKEN}/sendMessage" \

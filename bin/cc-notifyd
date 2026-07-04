@@ -354,21 +354,29 @@ def make_popup(title, body, session, kind, project, options_str="", full=""):
     pev.connect("button-press-event", lambda *_: (open_session(session), close_popup(win)))
     content.pack_start(pev, False, False, 0)
 
+    # Preview colapsado RENDERIZADO (markdown y tablas alineadas desde el
+    # primer vistazo, sin tener que dar 'Ver TODO')
     bl = None
-    if body:
-        bl = Gtk.Label(label=body[:400], xalign=0)
-        bl.get_style_context().add_class("body")
-        bl.set_line_wrap(True)
-        bl.set_max_width_chars(54)
-        bl.set_selectable(True)      # se puede copiar
-        bl.set_can_focus(False)      # sin robar el foco al aparecer
+    head_txt = ""
+    src = (full or body or "").strip()
+    if src:
+        head, chars, shown = [], 0, 0
+        for ln in src.splitlines():
+            head.append(ln)
+            chars += len(ln)
+            if ln.strip():
+                shown += 1
+            if shown >= 8 or chars > 520:
+                break
+        head_txt = "\n".join(head)
+        bl = build_full_widget(head_txt)
         content.pack_start(bl, False, False, 0)
 
     # "Ver TODO": el texto COMPLETO, expandible aqui mismo, con scroll.
     # Nunca respondas a ciegas por un preview cortado.
     win._expanded = False
     sw = None
-    if full and len(full) > len((body or "")):
+    if full and full.strip() and full.strip() != head_txt.strip():
         sw = Gtk.ScrolledWindow()
         sw.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
         sw.set_min_content_height(140)

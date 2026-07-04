@@ -18,7 +18,7 @@ for f in "$REPO"/bin/*; do ln -sf "$f" "$BIN/$(basename "$f")"; done
 chmod +x "$REPO"/bin/* "$REPO"/hooks/cc-notify.sh "$REPO"/hooks/cc-status.sh
 
 # Hooks + dashboard
-for f in cc-notify.sh cc-status.sh; do ln -sf "$REPO/hooks/$f" "$HOOKS/$f"; done
+for f in cc-notify.sh cc-status.sh md2tg.py; do ln -sf "$REPO/hooks/$f" "$HOOKS/$f"; done
 ln -sf "$REPO/dash/index.html" "$HOOKS/dash/index.html"
 [ -f "$HOOKS/cc-notify.conf" ] || cp "$REPO/hooks/cc-notify.conf.example" "$HOOKS/cc-notify.conf"
 [ -f "$HOOKS/telegram.env" ]   || cp "$REPO/hooks/telegram.env.example"   "$HOOKS/telegram.env"
