@@ -266,12 +266,30 @@ def pane_at(term, event):
     return None, len(panes)
 
 
+def notify_popup(title, body):
+    """Feedback visible via el demonio de popups (se autocierra en 12s)."""
+    try:
+        req = urllib.request.Request(
+            "http://127.0.0.1:4778/notify",
+            data=json.dumps({"title": title, "body": body, "kind": "done",
+                             "project": title, "session": "local"}).encode(),
+            headers={"Content-Type": "application/json"})
+        urllib.request.urlopen(req, timeout=3)
+    except Exception:
+        pass
+
+
 def export_claude_reply(term, fmt):
     """Guarda la ultima respuesta de Claude de esta sesion como .txt o PDF
-    (lo genera cc-dash en ~/Descargas y lo abre)."""
+    (lo genera cc-dash en ~/Descargas, lo abre, y AVISA donde quedo)."""
     sess = term_session(term)
-    if sess:
-        http_post("/export", {"session": sess, "format": fmt}, timeout=45)
+    if not sess:
+        return
+    res, err = http_post("/export", {"session": sess, "format": fmt}, timeout=45)
+    if err:
+        notify_popup("No se pudo guardar", err)
+    else:
+        notify_popup("Respuesta guardada", (res or {}).get("path", ""))
 
 
 def copy_claude_reply(term):
@@ -287,9 +305,13 @@ def copy_claude_reply(term):
         return
     for it in items:
         if it.get("session") == sess and (it.get("detail") or it.get("last")):
-            Gtk.Clipboard.get(Gdk.SELECTION_CLIPBOARD).set_text(
-                it.get("detail") or it["last"], -1)
+            txt = it.get("detail") or it["last"]
+            Gtk.Clipboard.get(Gdk.SELECTION_CLIPBOARD).set_text(txt, -1)
+            notify_popup("Respuesta copiada",
+                         f"{len(txt)} caracteres al portapapeles ({it.get('project')})")
             return
+    notify_popup("Sin respuesta guardada",
+                 "Esta sesion aun no tiene una respuesta capturada por los hooks")
 
 
 def exit_copy_mode(term):

@@ -524,7 +524,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
                       str(d.get("kind", "done")),
                       str(d.get("project", ""))[:80],
                       str(d.get("options", ""))[:600],
-                      str(d.get("full", ""))[:16000])
+                      str(d.get("full", ""))[:60000])
         out = b'{"ok": true}'
         self.send_response(200)
         self.send_header("Content-Type", "application/json")

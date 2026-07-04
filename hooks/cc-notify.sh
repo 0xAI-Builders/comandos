@@ -48,6 +48,22 @@ play_snd() { # $1 = archivo
 }
 
 input=$(cat)
+
+# La respuesta COMPLETA del turno: TODO el texto de Claude desde el ultimo
+# prompt real del usuario (los tool_result son entradas 'user' falsas y se
+# ignoran). No solo el ultimo mensaje: tambien los avances intermedios.
+turn_text() {
+  tail -800 "$transcript" 2>/dev/null | jq -rs '
+    def is_prompt: .type == "user"
+      and ((.message.content | type) == "string"
+           or ([.message.content[]? | select(.type == "tool_result")] | length) == 0);
+    . as $a
+    | ([range(0; ($a | length)) | select($a[.] | is_prompt)] | max // -1) as $u
+    | [$a[($u + 1):][] | select(.type == "assistant")
+       | .message.content[]? | select(.type == "text") | .text | select(length > 0)]
+    | join("\n\n")' 2>/dev/null
+}
+
 event=$(jq -r '.hook_event_name // "Stop"' <<<"$input" 2>/dev/null)
 cwd=$(jq -r '.cwd // ""' <<<"$input" 2>/dev/null)
 msg=$(jq -r '.message // ""' <<<"$input" 2>/dev/null)
@@ -112,16 +128,11 @@ case "$event" in
 Opciones:
 $optlist"
       else
-        # Ultimo mensaje de Claude COMPLETO: TODOS sus bloques de texto (no
-        # solo el ultimo), preview corto para el popup colapsado
-        raw=$(tail -200 "$transcript" 2>/dev/null \
-          | jq -rs '[.[] | select(.type=="assistant")
-                     | [.message.content[]? | select(.type=="text") | .text] | join("\n\n")
-                     | select(. != "")] | last // ""' 2>/dev/null)
+        raw=$(turn_text)
         preview=$(printf '%s' "$raw" | tr '\n' ' ' | head -c 260)
         [ -n "$preview" ] && body="$body
 $preview"
-        [ -n "$raw" ] && full=$(printf '%s' "$raw" | head -c 16000)
+        [ -n "$raw" ] && full=$(printf '%s' "$raw" | head -c 60000)
       fi
     fi
     # Prompt de permiso estandar: etiquetas con texto (mapean a 1/2/3)
@@ -130,7 +141,7 @@ $preview"
     fi
     urgency="critical"
     sound="$SOUND_ATTENTION"
-    write_state "waiting" "$(printf '%s' "${full:-$body}" | head -c 16000)" "$options"
+    write_state "waiting" "$(printf '%s' "${full:-$body}" | head -c 60000)" "$options"
     if [ "$prev_s" = "waiting" ] && [ $(( now - ${prev_t:-0} )) -lt 600 ]; then
       exit 0
     fi
@@ -141,17 +152,14 @@ $preview"
     preview=""
     full=""
     if [ -n "$transcript" ] && [ -f "$transcript" ]; then
-      raw=$(tail -200 "$transcript" 2>/dev/null \
-        | jq -rs '[.[] | select(.type=="assistant")
-                   | [.message.content[]? | select(.type=="text") | .text] | join("\n\n")
-                   | select(. != "")] | last // ""' 2>/dev/null)
+      raw=$(turn_text)
       preview=$(printf '%s' "$raw" | tr '\n' ' ' | head -c 180)
-      [ -n "$raw" ] && full=$(printf '%s' "$raw" | head -c 16000)
+      [ -n "$raw" ] && full=$(printf '%s' "$raw" | head -c 60000)
     fi
     body="${preview:-Iteracion completada, listo para tu siguiente instruccion}"
     urgency="normal"
     sound="$SOUND_DONE"
-    write_state "done" "$(printf '%s' "${full:-$body}" | head -c 16000)"
+    write_state "done" "$(printf '%s' "${full:-$body}" | head -c 60000)"
     ;;
 esac
 
