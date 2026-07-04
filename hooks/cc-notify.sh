@@ -18,7 +18,7 @@ EVENTS="$HOOKS_DIR/events.jsonl"
 mkdir -p "$STATE_DIR"
 
 # ---- Config editable (valores por defecto si no existe el archivo) ----
-SOUND_DONE="/usr/share/sounds/freedesktop/stereo/complete.oga"
+SOUND_DONE="/usr/share/sounds/freedesktop/stereo/message.oga"
 # window-attention: un toquecito discreto (dialog-warning=campanazo y
 # message-new-instant=ding le resultaron molestos al oido con muchos claudes)
 SOUND_ATTENTION="/usr/share/sounds/freedesktop/stereo/window-attention.oga"
@@ -36,6 +36,16 @@ VOLUME=60
 case "$VOLUME" in ''|*[!0-9]*) VOLUME=60;; esac
 [ "$VOLUME" -gt 100 ] && VOLUME=100
 PAVOL=$(( VOLUME * 655 ))   # escala de paplay: 0..65536
+
+# OJO: pipewire-pulse (medido en 0.3.48) IGNORA el --volume de paplay; el
+# stream sale al 100%. pw-play con volumen flotante SI atenua las muestras.
+play_snd() { # $1 = archivo
+  if command -v pw-play >/dev/null 2>&1; then
+    pw-play --volume="$(awk "BEGIN{printf \"%.2f\", $VOLUME/100}")" "$1" >/dev/null 2>&1
+  else
+    paplay --volume="$PAVOL" "$1" >/dev/null 2>&1
+  fi
+}
 
 input=$(cat)
 event=$(jq -r '.hook_event_name // "Stop"' <<<"$input" 2>/dev/null)
@@ -167,14 +177,14 @@ if [ -n "$speak" ]; then
     PV="$HOME/.local/share/piper-voices/${PIPER_VOICE}.onnx"
     if command -v piper >/dev/null 2>&1 && [ -f "$PV" ]; then
       w=$(mktemp --suffix=.wav)
-      printf '%s' "$speak" | piper -m "$PV" -f "$w" >/dev/null 2>&1 && paplay --volume="$PAVOL" "$w" 2>/dev/null
+      printf '%s' "$speak" | piper -m "$PV" -f "$w" >/dev/null 2>&1 && play_snd "$w"
       rm -f "$w"
     elif command -v spd-say >/dev/null 2>&1; then
       spd-say -l es -i $(( VOLUME * 2 - 100 )) "$speak" 2>/dev/null
     fi
   ) &
 elif [ "$SOUND_ENABLED" = "1" ]; then
-  paplay --volume="$PAVOL" "$sound" >/dev/null 2>&1 &
+  play_snd "$sound" &
 fi
 
 # Telegram opcional. Con CC_TELEGRAM_BOT_TOKEN (bot dedicado) las notificaciones

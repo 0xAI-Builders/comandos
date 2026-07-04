@@ -108,6 +108,11 @@
   .preview pre{display:block;padding:8px 10px;margin:6px 0;overflow-x:auto;
     white-space:pre-wrap}
   .preview u{text-decoration-color:var(--brand)}
+  .preview table{border-collapse:collapse;margin:6px 0;font-size:12px;display:block;
+    overflow-x:auto;max-width:100%}
+  .preview th,.preview td{border:1px solid var(--line2);padding:4px 9px;text-align:left;
+    white-space:nowrap}
+  .preview th{color:var(--brand);font-weight:700;background:var(--bg)}
   .send{display:flex;gap:8px;margin-top:2px}
   .send input{flex:1;background:var(--bg);border:1px solid var(--line);border-radius:9px;
     padding:9px 12px;font-family:var(--mono);font-size:12.5px}
@@ -280,12 +285,14 @@
   <div class="set switch"><label>Chime (suena si la voz esta apagada)</label><button class="cfg" data-key="SOUND_ENABLED" role="switch"></button></div>
   <div class="set switch"><label>Popups de escritorio</label><button class="cfg" data-key="DESKTOP_NOTIFY" role="switch"></button></div>
   <div class="set switch"><label>Telegram</label><button class="cfg" data-key="TELEGRAM_ENABLED" role="switch"></button></div>
-  <div class="set" style="display:flex;gap:8px">
+  <div class="set" style="display:flex;gap:8px;flex-wrap:wrap">
+    <button class="test" id="test-chime">Probar atencion</button>
+    <button class="test" id="test-done">Probar terminado</button>
     <button class="test" id="test-voice">Probar voz</button>
-    <button class="test" id="test-chime">Probar chime</button>
   </div>
-  <div class="set"><div class="desc">UN solo volumen para todo ComandOS. Cambios al instante;
-    "Probar" suena exactamente como una notificacion real.</div></div>
+  <div class="set"><div class="desc">UN solo volumen para todo ComandOS. Estos botones suenan
+    EXACTAMENTE igual que las notificaciones reales (mismo reproductor y volumen) — si algo
+    suena distinto a esto, NO viene de ComandOS.</div></div>
   <h3 style="margin-top:24px">Tablero</h3>
   <div class="set switch"><label>Notificaciones del navegador</label>
     <button id="sw-notif" role="switch"></button></div>
@@ -384,18 +391,34 @@ function shortPath(cwd){
 // Mini-markdown seguro: escapa TODO y luego aplica negritas, codigo, headers,
 // bullets y links (solo el texto). Suficiente para previews de Claude.
 function mdEsc(s){return (s||"").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");}
+function mdInline(l){
+  return l.replace(/\*\*(.+?)\*\*/g, "<b>$1</b>")
+          .replace(/`([^`]+)`/g, "<code>$1</code>")
+          .replace(/\[([^\]]+)\]\([^)\s]*\)/g, "<u>$1</u>");
+}
 function mdHtml(s){
-  const out = []; let code = false;
+  const out = []; let code = false, tbl = [];
+  const flushTbl = ()=>{
+    if(!tbl.length) return;
+    const rows = tbl.filter(r => !/^\s*\|[\s\-:|]+\|\s*$/.test(r));   // sin la fila |---|
+    out.push("<table>" + rows.map((r, i)=>{
+      const cells = r.trim().replace(/^\|/, "").replace(/\|$/, "").split("|");
+      const tag = i === 0 ? "th" : "td";
+      return "<tr>" + cells.map(c => `<${tag}>${mdInline(c.trim())}</${tag}>`).join("") + "</tr>";
+    }).join("") + "</table>");
+    tbl = [];
+  };
   for(let l of mdEsc(s).split("\n")){
-    if(l.trim().startsWith("```")){ code = !code; out.push(code ? "<pre>" : "</pre>"); continue; }
+    if(l.trim().startsWith("```")){ flushTbl(); code = !code; out.push(code ? "<pre>" : "</pre>"); continue; }
     if(code){ out.push(l); continue; }
-    l = l.replace(/\*\*(.+?)\*\*/g, "<b>$1</b>")
-         .replace(/`([^`]+)`/g, "<code>$1</code>")
-         .replace(/\[([^\]]+)\]\([^)\s]*\)/g, "<u>$1</u>")
+    if(/^\s*\|.*\|\s*$/.test(l)){ tbl.push(l); continue; }
+    flushTbl();
+    l = mdInline(l)
          .replace(/^#{1,6} (.*)$/, "<b>$1</b>")
          .replace(/^(\s*)[-*] /, "$1• ");
     out.push(l);
   }
+  flushTbl();
   return out.join("\n");
 }
 function mdStrip(s){ return (s||"").replace(/\*\*|`|^#{1,6} /g, ""); }
@@ -824,6 +847,9 @@ $("#test-voice").addEventListener("click", async ()=>{
 });
 $("#test-chime").addEventListener("click", async ()=>{
   try{ await api("/test", {kind:"chime"}); }catch(err){ toast(err.message, true); }
+});
+$("#test-done").addEventListener("click", async ()=>{
+  try{ await api("/test", {kind:"done"}); }catch(err){ toast(err.message, true); }
 });
 function bindSwitch(id, key, cb){
   const b = $(id);

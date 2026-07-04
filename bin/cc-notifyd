@@ -90,18 +90,50 @@ def dash_get(path, timeout=1.5):
         return json.loads(r.read().decode())
 
 
+def _fmt_table(rows):
+    """Tabla markdown -> lineas <tt> alineadas por columna (Pango no tiene tablas)."""
+    parsed = []
+    for r in rows:
+        cells = [re.sub(r"\*\*(.+?)\*\*", r"\1", c.strip()).replace("`", "")
+                 for c in r.strip().strip("|").split("|")]
+        if all(re.match(r"^[\s\-:]*$", c) for c in cells):
+            continue   # la fila separadora |---|---|
+        parsed.append(cells)
+    if not parsed:
+        return []
+    ncol = max(len(p) for p in parsed)
+    widths = [max((len(p[i]) if i < len(p) else 0) for p in parsed) for i in range(ncol)]
+    out = []
+    for p in parsed:
+        line = "  ".join((p[i] if i < len(p) else "").ljust(widths[i])
+                         for i in range(ncol)).rstrip()
+        out.append("<tt>" + GLib.markup_escape_text(line) + "</tt>")
+    return out
+
+
 def md_to_pango(text):
     """Markdown basico -> markup Pango legible: negritas, codigo, headers,
-    bullets, links (solo el texto). Todo lo demas va escapado."""
-    out, in_code = [], False
+    bullets, links (solo el texto) y tablas alineadas. Lo demas va escapado."""
+    out, in_code, tbl = [], False, []
+
+    def flush_tbl():
+        if tbl:
+            out.extend(_fmt_table(tbl))
+            tbl.clear()
+
     for line in text.splitlines():
         if line.strip().startswith("```"):
+            flush_tbl()
             in_code = not in_code
+            continue
+        if not in_code and re.match(r"^\s*\|.*\|\s*$", line):
+            tbl.append(line)
             continue
         esc = GLib.markup_escape_text(line)
         if in_code:
             out.append(f"<tt>{esc}</tt>")
             continue
+        flush_tbl()
         esc = re.sub(r"\*\*(.+?)\*\*", r"<b>\1</b>", esc)
         esc = re.sub(r"`([^`]+)`", r"<tt>\1</tt>", esc)
         esc = re.sub(r"\[([^\]]+)\]\([^)\s]+\)", r"<u>\1</u>", esc)
@@ -110,6 +142,7 @@ def md_to_pango(text):
             esc = f"<b>{m.group(1)}</b>"
         esc = re.sub(r"^(\s*)[-*] ", "\\1• ", esc)
         out.append(esc)
+    flush_tbl()
     return "\n".join(out)
 
 
