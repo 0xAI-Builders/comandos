@@ -100,9 +100,11 @@
   .preview{font-size:13px;line-height:1.5;color:var(--text);
     display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden;
     cursor:pointer}
-  .preview.open{display:block;-webkit-line-clamp:unset;white-space:pre-wrap;
-    max-height:420px;overflow-y:auto}
+  .preview.open{display:block;-webkit-line-clamp:unset;max-height:440px;overflow-y:auto}
   .preview:hover{color:#fff}
+  .preview .mdh{display:block;color:var(--brand);margin:7px 0 3px}
+  .preview hr{border:none;border-top:1px solid var(--line);margin:7px 0}
+  .preview i{color:var(--dim)}
   .preview code,.preview pre{font-family:var(--mono);font-size:12px;
     background:var(--bg);border-radius:4px;padding:0 4px;color:#A3C0FF}
   .preview pre{display:block;padding:8px 10px;margin:6px 0;overflow-x:auto;
@@ -393,6 +395,7 @@ function shortPath(cwd){
 function mdEsc(s){return (s||"").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");}
 function mdInline(l){
   return l.replace(/\*\*(.+?)\*\*/g, "<b>$1</b>")
+          .replace(/(^|[\s(])\*([^*\n]+)\*(?=$|[\s).,;:!?])/g, "$1<i>$2</i>")
           .replace(/`([^`]+)`/g, "<code>$1</code>")
           .replace(/\[([^\]]+)\]\([^)\s]*\)/g, "<u>$1</u>");
 }
@@ -410,16 +413,16 @@ function mdHtml(s){
   };
   for(let l of mdEsc(s).split("\n")){
     if(l.trim().startsWith("```")){ flushTbl(); code = !code; out.push(code ? "<pre>" : "</pre>"); continue; }
-    if(code){ out.push(l); continue; }
+    if(code){ out.push(l + "\n"); continue; }
     if(/^\s*\|.*\|\s*$/.test(l)){ tbl.push(l); continue; }
     flushTbl();
-    l = mdInline(l)
-         .replace(/^#{1,6} (.*)$/, "<b>$1</b>")
-         .replace(/^(\s*)[-*] /, "$1• ");
-    out.push(l);
+    if(/^#{1,6} /.test(l)){ out.push(`<b class="mdh">${mdInline(l.replace(/^#{1,6} /, ""))}</b>`); continue; }
+    if(/^\s*---+\s*$/.test(l)){ out.push("<hr>"); continue; }
+    l = mdInline(l).replace(/^(\s*)[-*] /, "$1• ");
+    out.push(l + "<br>");
   }
   flushTbl();
-  return out.join("\n");
+  return out.join("");
 }
 function mdStrip(s){ return (s||"").replace(/\*\*|`|^#{1,6} /g, ""); }
 function favBtn(it, el){
