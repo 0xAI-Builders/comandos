@@ -436,19 +436,37 @@ def new_local_tab(*_):
 WIN_RE = re.compile(r"^[A-Za-z0-9_-]{1,32}$")
 
 
+def select_win(sess, winname):
+    """Selecciona la ventana pedida. Si 'claude' ya no se llama asi (claude
+    murio o relanzado y tmux renombro la ventana), busca donde corre claude
+    de verdad; si en ninguna, la primera ventana — nunca el shell perdido."""
+    if tmuxc("select-window", "-t", f"={sess}:{winname}").returncode == 0:
+        return
+    if winname != "claude":
+        return
+    r = tmuxc("list-panes", "-s", "-t", "=" + sess,
+              "-F", "#{window_index}|#{pane_current_command}")
+    for l in r.stdout.splitlines():
+        idx, _, cmd = l.partition("|")
+        if cmd == "claude":
+            tmuxc("select-window", "-t", f"={sess}:{idx}")
+            return
+    tmuxc("select-window", "-t", f"={sess}:^")
+
+
 def open_tab(sess, winname, label=None):
     """Abre (o enfoca) LA pestana de una sesion tmux; winname elige que ventana
-    (claude/shell/ssh) se muestra. Si la ventana no existe, se queda como esta."""
+    (claude/shell/ssh) se muestra."""
     if not WIN_RE.match(winname or ""):
         winname = "claude"
     key = sess
     if key in tabs:
-        tmuxc("select-window", "-t", f"={sess}:{winname}")
+        select_win(sess, winname)
         nb.set_current_page(nb.page_num(tabs[key]))
         tabs[key]._term.grab_focus()
         return
-    cmd = (f"tmux select-window -t '={sess}:{winname}' 2>/dev/null; "
-           f"tmux attach -t '={sess}' || {{ echo '[sesion terminada — cierra esta pestana con la x]'; exec cat; }}")
+    select_win(sess, winname)
+    cmd = (f"tmux attach -t '={sess}' || {{ echo '[sesion terminada — cierra esta pestana con la x]'; exec cat; }}")
     box = make_term(cmd)
     box._key = key
     box._label = label or sess

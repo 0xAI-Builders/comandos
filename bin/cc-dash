@@ -309,8 +309,48 @@ def read_states():
 
 # Claves de cc-notify.conf editables desde la interfaz
 CONF_KEYS = {"DESKTOP_NOTIFY", "SOUND_ENABLED", "TELEGRAM_ENABLED",
-             "NOTIFY_ON_DONE", "NOTIFY_ON_ATTENTION", "SPEAK_ATTENTION", "SPEAK_DONE"}
+             "NOTIFY_ON_DONE", "NOTIFY_ON_ATTENTION", "SPEAK_ATTENTION", "SPEAK_DONE",
+             "VOLUME"}
+CONF_DEFAULTS = {"VOLUME": "60"}
 CONF_PATH = os.path.join(HOOKS, "cc-notify.conf")
+
+
+def conf_volume(conf):
+    try:
+        return max(0, min(100, int(conf.get("VOLUME", "60"))))
+    except ValueError:
+        return 60
+
+
+def play_test(kind):
+    """Suena la voz o el chime EXACTAMENTE como lo haria una notificacion real
+    (mismo piper/paplay, mismo volumen de cc-notify.conf). Devuelve error o None."""
+    conf = read_conf()
+    vol = conf_volume(conf)
+    pavol = str(vol * 655)   # paplay: 0..65536
+    if kind == "voice":
+        voice = conf.get("PIPER_VOICE", "es_MX-ald-medium")
+        model = os.path.expanduser(f"~/.local/share/piper-voices/{voice}.onnx")
+        if shutil.which("piper") and os.path.exists(model):
+            script = ("w=$(mktemp --suffix=.wav); "
+                      f"printf %s 'Asi suena ComandOS' | piper -m {shlex.quote(model)} "
+                      f"-f \"$w\" >/dev/null 2>&1 && paplay --volume={pavol} \"$w\"; rm -f \"$w\"")
+            subprocess.Popen(["/bin/sh", "-c", script], start_new_session=True,
+                             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            return None
+        if shutil.which("spd-say"):
+            subprocess.Popen(["spd-say", "-l", "es", "-i", str(vol * 2 - 100),
+                              "Asi suena ComandOS"], start_new_session=True,
+                             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            return None
+        return "Sin voz instalada (piper + una voz, o spd-say)"
+    snd = conf.get("SOUND_ATTENTION",
+                   "/usr/share/sounds/freedesktop/stereo/dialog-warning.oga")
+    if not os.path.exists(snd):
+        return f"No existe el sonido {snd}"
+    subprocess.Popen(["paplay", f"--volume={pavol}", snd], start_new_session=True,
+                     stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    return None
 
 
 def write_conf_key(key, val):
@@ -435,6 +475,21 @@ def pane_cmd(sess):
     return r.stdout.strip() if r.returncode == 0 else ""
 
 
+def select_claude_window(sess):
+    """Ventana 'claude'; si tmux la renombro (claude murio/relanzado), la que
+    corre claude de verdad; si ninguna, la primera. Nunca el shell perdido."""
+    if tmux("select-window", "-t", "=" + sess + ":claude").returncode == 0:
+        return
+    r = tmux("list-panes", "-s", "-t", "=" + sess,
+             "-F", "#{window_index}|#{pane_current_command}")
+    for l in r.stdout.splitlines():
+        idx, _, cmd = l.partition("|")
+        if cmd == "claude":
+            tmux("select-window", "-t", f"={sess}:{idx}")
+            return
+    tmux("select-window", "-t", "=" + sess + ":^")
+
+
 def ssh_connect(host):
     """Conexion = sesion tmux 'ssh-<host>'. VERIFICA la autenticacion de verdad:
     devuelve (sess, connected, note). connected=False => hara falta password."""
@@ -494,7 +549,8 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             return self._json(200, parse_ssh_config())
         if self.path.startswith("/conf"):
             conf = read_conf()
-            return self._json(200, {k: conf.get(k, "1") for k in sorted(CONF_KEYS)})
+            return self._json(200, {k: conf.get(k, CONF_DEFAULTS.get(k, "1"))
+                                    for k in sorted(CONF_KEYS)})
         if self.path.startswith("/prefs"):
             return self._json(200, read_prefs())
         if self.path.startswith("/events"):
@@ -520,9 +576,20 @@ class Handler(http.server.SimpleHTTPRequestHandler):
 
         if self.path == "/conf-set":
             key, val = data.get("key", ""), str(data.get("value", ""))
-            if key not in CONF_KEYS or val not in ("0", "1"):
+            ok = (key == "VOLUME" and val.isdigit() and 0 <= int(val) <= 100) or \
+                 (key in CONF_KEYS and key != "VOLUME" and val in ("0", "1"))
+            if not ok:
                 return self._json(400, {"error": "Clave o valor invalido"})
             write_conf_key(key, val)
+            return self._json(200, {"ok": True})
+
+        if self.path == "/test":
+            kind = data.get("kind", "")
+            if kind not in ("voice", "chime"):
+                return self._json(400, {"error": "kind debe ser voice o chime"})
+            err = play_test(kind)
+            if err:
+                return self._json(400, {"error": err})
             return self._json(200, {"ok": True})
 
         if self.path == "/ssh-add":
@@ -608,7 +675,7 @@ class Handler(http.server.SimpleHTTPRequestHandler):
 
         if self.path == "/focus":
             if tmux("has-session", "-t", target).returncode == 0:
-                tmux("select-window", "-t", "=" + sess + ":claude")
+                select_claude_window(sess)
             err = focus_session(sess)
             if err:
                 return self._json(404, {"error": err})

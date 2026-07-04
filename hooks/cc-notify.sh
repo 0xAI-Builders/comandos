@@ -28,7 +28,12 @@ NOTIFY_ON_ATTENTION=1
 SPEAK_ATTENTION=1
 SPEAK_DONE=1
 PIPER_VOICE=es_MX-ald-medium
+VOLUME=60
 [ -f "$HOOKS_DIR/cc-notify.conf" ] && . "$HOOKS_DIR/cc-notify.conf"
+# Volumen GLOBAL (0-100, editable desde Ajustes del tablero): voz y chime lo respetan
+case "$VOLUME" in ''|*[!0-9]*) VOLUME=60;; esac
+[ "$VOLUME" -gt 100 ] && VOLUME=100
+PAVOL=$(( VOLUME * 655 ))   # escala de paplay: 0..65536
 
 input=$(cat)
 event=$(jq -r '.hook_event_name // "Stop"' <<<"$input" 2>/dev/null)
@@ -139,14 +144,14 @@ if [ -n "$speak" ]; then
     PV="$HOME/.local/share/piper-voices/${PIPER_VOICE}.onnx"
     if command -v piper >/dev/null 2>&1 && [ -f "$PV" ]; then
       w=$(mktemp --suffix=.wav)
-      printf '%s' "$speak" | piper -m "$PV" -f "$w" >/dev/null 2>&1 && paplay "$w" 2>/dev/null
+      printf '%s' "$speak" | piper -m "$PV" -f "$w" >/dev/null 2>&1 && paplay --volume="$PAVOL" "$w" 2>/dev/null
       rm -f "$w"
     elif command -v spd-say >/dev/null 2>&1; then
-      spd-say -l es "$speak" 2>/dev/null
+      spd-say -l es -i $(( VOLUME * 2 - 100 )) "$speak" 2>/dev/null
     fi
   ) &
 elif [ "$SOUND_ENABLED" = "1" ]; then
-  paplay "$sound" >/dev/null 2>&1 &
+  paplay --volume="$PAVOL" "$sound" >/dev/null 2>&1 &
 fi
 
 # Telegram opcional. Con CC_TELEGRAM_BOT_TOKEN (bot dedicado) las notificaciones

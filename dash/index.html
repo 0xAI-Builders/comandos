@@ -228,7 +228,6 @@
     <form id="new-form" title="Nombre de un proyecto de ~/codebase y Enter: crea/abre su sesion">
       <input id="new-name" placeholder="abrir proyecto" autocomplete="off" spellcheck="false">
     </form>
-    <button class="hdr-btn" id="btn-audio" title="El navegador exige un click antes de poder sonar">Sonido</button>
     <button class="hdr-btn" id="btn-settings">Ajustes</button>
     <span id="clock">--:--</span>
   </div>
@@ -256,32 +255,28 @@
 </div>
 
 <aside id="settings" class="drawer" aria-label="Ajustes">
-  <h3>Sonido de la interfaz</h3>
-  <div class="set"><label for="vol">Volumen</label>
+  <h3>Notificaciones (todo el sistema)</h3>
+  <div class="set"><label for="vol">Volumen (voz y chime)</label>
     <input type="range" id="vol" min="0" max="100" value="60"></div>
-  <div class="set switch"><label>Al terminar</label>
-    <button id="sw-done" class="on" role="switch"></button></div>
-  <div class="set switch"><label>Al pedir atencion</label>
-    <button id="sw-wait" class="on" role="switch"></button></div>
+  <div class="set switch"><label>Avisar al terminar</label><button class="cfg" data-key="NOTIFY_ON_DONE" role="switch"></button></div>
+  <div class="set switch"><label>Avisar al pedir atencion</label><button class="cfg" data-key="NOTIFY_ON_ATTENTION" role="switch"></button></div>
+  <div class="set switch"><label>Voz (anuncia el proyecto)</label><button id="sw-voice" role="switch"></button></div>
+  <div class="set switch"><label>Chime (suena si la voz esta apagada)</label><button class="cfg" data-key="SOUND_ENABLED" role="switch"></button></div>
+  <div class="set switch"><label>Popups de escritorio</label><button class="cfg" data-key="DESKTOP_NOTIFY" role="switch"></button></div>
+  <div class="set switch"><label>Telegram</label><button class="cfg" data-key="TELEGRAM_ENABLED" role="switch"></button></div>
   <div class="set" style="display:flex;gap:8px">
-    <button class="test" data-test="done">Probar terminado</button>
-    <button class="test" data-test="waiting">Probar atencion</button>
+    <button class="test" id="test-voice">Probar voz</button>
+    <button class="test" id="test-chime">Probar chime</button>
   </div>
+  <div class="set"><div class="desc">UN solo volumen para todo ComandOS. Cambios al instante;
+    "Probar" suena exactamente como una notificacion real.</div></div>
+  <h3 style="margin-top:24px">Tablero</h3>
   <div class="set switch"><label>Notificaciones del navegador</label>
     <button id="sw-notif" role="switch"></button></div>
   <div class="set">
     <label for="poll">Refresco: <span id="poll-v">2</span> s</label>
     <input type="range" id="poll" min="1" max="10" value="2">
   </div>
-  <h3 style="margin-top:24px">Notificaciones del sistema</h3>
-  <div class="set switch"><label>Popups de escritorio</label><button class="cfg" data-key="DESKTOP_NOTIFY" role="switch"></button></div>
-  <div class="set switch"><label>Telegram</label><button class="cfg" data-key="TELEGRAM_ENABLED" role="switch"></button></div>
-  <div class="set switch"><label>Avisar al terminar</label><button class="cfg" data-key="NOTIFY_ON_DONE" role="switch"></button></div>
-  <div class="set switch"><label>Avisar al pedir atencion</label><button class="cfg" data-key="NOTIFY_ON_ATTENTION" role="switch"></button></div>
-  <div class="set switch"><label>Voz al terminar</label><button class="cfg" data-key="SPEAK_DONE" role="switch"></button></div>
-  <div class="set switch"><label>Voz al pedir atencion</label><button class="cfg" data-key="SPEAK_ATTENTION" role="switch"></button></div>
-  <div class="set switch"><label>Chime (cuando no hay voz)</label><button class="cfg" data-key="SOUND_ENABLED" role="switch"></button></div>
-  <div class="set"><div class="desc">Aplican a TODO el sistema al instante.</div></div>
 </aside>
 
 <aside id="servers" class="drawer" aria-label="Servidores SSH">
@@ -314,9 +309,8 @@
 "use strict";
 const S = {
   prev: new Map(),
-  cfg: Object.assign({vol:60, sndDone:true, sndWait:true, notif:false, poll:2},
+  cfg: Object.assign({notif:false, poll:2},
         JSON.parse(localStorage.getItem("cc-cfg")||"{}")),
-  audioOn: false,
   favs: new Set(),
   q: "",
   liveSess: new Set(),
@@ -325,34 +319,6 @@ const $ = s => document.querySelector(s);
 const urgent = $("#urgent"), rows = $("#rows");
 
 function saveCfg(){ localStorage.setItem("cc-cfg", JSON.stringify(S.cfg)); }
-
-// ---------- sonido ----------
-let actx = null;
-function ensureAudio(){
-  if(!actx){ actx = new (window.AudioContext||window.webkitAudioContext)(); }
-  if(actx.state === "suspended") actx.resume();
-  S.audioOn = true;
-  $("#btn-audio").classList.add("on");
-  $("#btn-audio").textContent = "Sonido activo";
-}
-function tone(freq, t0, dur, type, gainMax){
-  const o = actx.createOscillator(), g = actx.createGain();
-  o.type = type; o.frequency.value = freq;
-  g.gain.setValueAtTime(0, t0);
-  g.gain.linearRampToValueAtTime(gainMax, t0+0.015);
-  g.gain.exponentialRampToValueAtTime(0.0001, t0+dur);
-  o.connect(g); g.connect(actx.destination);
-  o.start(t0); o.stop(t0+dur+0.05);
-}
-function play(kind){
-  if(!S.audioOn || !actx) return;
-  const v = (S.cfg.vol/100) * 0.5;
-  if(v <= 0) return;
-  const t = actx.currentTime;
-  if(kind === "done"){ tone(660,t,0.18,"sine",v); tone(880,t+0.14,0.30,"sine",v); }
-  else { tone(880,t,0.14,"triangle",v); tone(660,t+0.16,0.14,"triangle",v);
-         tone(880,t+0.32,0.26,"triangle",v); }
-}
 
 // ---------- app nativa ----------
 function inApp(){
@@ -436,7 +402,6 @@ function cardEl(it){
       </div>
       <div class="ops">
         <button type="button" class="go">Abrir</button>
-        <button type="button" class="sh">Consola</button>
         <button type="button" class="up hidden">Revivir</button>
       </div>
     </div>`;
@@ -474,7 +439,7 @@ function wireActions(el, it){
       try{ toast(await openSession(it, win)); }catch(err){ toast(err.message, true); }
     });
   };
-  wire(".go", "claude"); wire(".sh", "shell"); wire(".up", "claude");
+  wire(".go", "claude"); wire(".up", "claude");
 }
 
 // ---------- fila compacta ----------
@@ -492,7 +457,6 @@ function rowEl(it){
     <span class="ago"></span>
     <span class="acts">
       <button type="button" class="go">Abrir</button>
-      <button type="button" class="sh">Consola</button>
       <button type="button" class="up hidden">Revivir</button>
     </span>`;
   el.querySelector(".name").textContent = it.project;
@@ -547,15 +511,15 @@ function render(list){
       }
       el.querySelector(".up").classList.toggle("hidden", it.alive || ext);
       el.querySelector(".go").classList.toggle("hidden", ext || (!it.alive && !inApp()));
-      el.querySelector(".sh").classList.toggle("hidden", ext);
       el.style.order = (S.favs.has(it.session) ? -100000 : 0) +
         (ROW_ORDER[it.status] ?? 9) * 1000 - Math.min(999, Math.floor((it.ts||0)/60)%1000);
     }
-    // transiciones -> sonido + notificacion navegador
+    // transiciones -> notificacion del navegador (el sonido lo pone el
+    // sistema: voz/chime de cc-notify.sh, con el volumen de Ajustes)
     const prev = S.prev.get(it.session);
     if(prev && prev !== it.status){
-      if(it.status === "waiting" && S.cfg.sndWait){ play("waiting"); notify(it, "necesita tu respuesta"); }
-      if(it.status === "done"    && S.cfg.sndDone){ play("done");    notify(it, "termino"); }
+      if(it.status === "waiting") notify(it, "necesita tu respuesta");
+      if(it.status === "done") notify(it, "termino");
     }
     S.prev.set(it.session, it.status);
   }
@@ -735,6 +699,10 @@ async function loadConf(){
       b.classList.toggle("on", on);
       b.setAttribute("aria-checked", String(on));
     });
+    $("#vol").value = +conf.VOLUME || 60;
+    const voice = conf.SPEAK_DONE !== "0" || conf.SPEAK_ATTENTION !== "0";
+    $("#sw-voice").classList.toggle("on", voice);
+    $("#sw-voice").setAttribute("aria-checked", String(voice));
   }catch(e){}
 }
 document.querySelectorAll(".cfg").forEach(b=>{
@@ -774,23 +742,30 @@ document.addEventListener("click", e=>{
       s.classList.remove("open");
   }
 });
-$("#btn-audio").addEventListener("click", ()=>{
-  if(S.audioOn){
-    S.audioOn = false;
-    $("#btn-audio").classList.remove("on");
-    $("#btn-audio").textContent = "Sonido";
-    toast("Sonido de la interfaz silenciado");
-  } else {
-    ensureAudio(); play("done");
-    toast("Sonido de la interfaz activo");
-  }
+// Volumen GLOBAL: vive en cc-notify.conf; voz, chime y "Probar" lo respetan
+const vol = $("#vol");
+vol.addEventListener("change", async ()=>{
+  try{ await api("/conf-set", {key:"VOLUME", value:String(vol.value)});
+       toast(`Volumen ${vol.value}% (todo el sistema)`); }
+  catch(err){ toast(err.message, true); }
 });
-document.addEventListener("pointerdown", e=>{
-  if(!S.audioOn && !e.target.closest("#btn-audio")) ensureAudio();
-}, {once:true});
-
-const vol = $("#vol"); vol.value = S.cfg.vol;
-vol.addEventListener("input", ()=>{ S.cfg.vol = +vol.value; saveCfg(); });
+// Voz: UN switch que controla ambos eventos (terminar y pedir atencion)
+$("#sw-voice").addEventListener("click", async ()=>{
+  const b = $("#sw-voice"), on = !b.classList.contains("on");
+  try{
+    await api("/conf-set", {key:"SPEAK_DONE", value:on?"1":"0"});
+    await api("/conf-set", {key:"SPEAK_ATTENTION", value:on?"1":"0"});
+    b.classList.toggle("on", on);
+    b.setAttribute("aria-checked", String(on));
+    toast(`Voz: ${on ? "activada" : "apagada"}`);
+  }catch(err){ toast(err.message, true); }
+});
+$("#test-voice").addEventListener("click", async ()=>{
+  try{ await api("/test", {kind:"voice"}); }catch(err){ toast(err.message, true); }
+});
+$("#test-chime").addEventListener("click", async ()=>{
+  try{ await api("/test", {kind:"chime"}); }catch(err){ toast(err.message, true); }
+});
 function bindSwitch(id, key, cb){
   const b = $(id);
   b.classList.toggle("on", S.cfg[key]);
@@ -804,18 +779,12 @@ function bindSwitch(id, key, cb){
     if(cb) cb(S.cfg[key]);
   });
 }
-bindSwitch("#sw-done", "sndDone");
-bindSwitch("#sw-wait", "sndWait");
 bindSwitch("#sw-notif", "notif", async on=>{
   if(on && Notification.permission !== "granted"){
     const p = await Notification.requestPermission();
     if(p !== "granted"){ S.cfg.notif = false; saveCfg();
       $("#sw-notif").classList.remove("on"); toast("El navegador nego el permiso", true); }
   }
-});
-document.querySelectorAll(".test").forEach(b=>{
-  if(!b.dataset.test) return;
-  b.addEventListener("click", ()=>{ ensureAudio(); play(b.dataset.test); });
 });
 const poll = $("#poll"); poll.value = S.cfg.poll;
 poll.addEventListener("input", ()=>{
