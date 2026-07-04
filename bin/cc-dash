@@ -337,7 +337,9 @@ def read_states():
         item = {"project": labels.get(sess, sess), "session": sess, "status": "idle",
                 "detail": "", "cwd": cwd, "ts": 0, "alive": True, "external": False}
         if sess.startswith("ssh-"):
-            item["sshConnected"] = pane_cmd(sess) == "ssh"
+            st = ssh_state(sess)
+            item["sshConnected"] = st != ""
+            item["sshMux"] = st == "mux"
         items.append(item)
     return items
 
@@ -522,6 +524,27 @@ def pane_cmd(sess):
     return r.stdout.strip() if r.returncode == 0 else ""
 
 
+def ssh_state(sess):
+    """Estado REAL de una sesion ssh-*:
+      'ssh' = hay un ssh interactivo vivo en ALGUN pane (no solo el activo);
+      'mux' = el ssh del pane murio pero el master multiplexado (ControlMaster)
+              sigue vivo: reconexion instantanea SIN password;
+      ''    = sin conexion de verdad."""
+    r = tmux("list-panes", "-s", "-t", "=" + sess, "-F", "#{pane_current_command}")
+    if r.returncode == 0 and "ssh" in r.stdout.split():
+        return "ssh"
+    host = sess[4:]
+    if SSH_HOST_RE.match(host):
+        try:
+            c = subprocess.run(["ssh", "-O", "check", host],
+                               capture_output=True, timeout=3)
+            if c.returncode == 0:
+                return "mux"
+        except Exception:
+            pass
+    return ""
+
+
 def select_claude_window(sess):
     """Ventana 'claude'; si tmux la renombro (claude murio/relanzado), la que
     corre claude de verdad; si ninguna, la primera. Nunca el shell perdido."""
@@ -544,11 +567,14 @@ def ssh_connect(host):
         return None, False, "Host desconocido; agregalo primero"
     sess = ("ssh-" + host)[:60]
     if tmux("has-session", "-t", "=" + sess).returncode == 0:
-        if pane_cmd(sess) == "ssh":
+        st = ssh_state(sess)
+        if st == "ssh":
             return sess, True, None
-        # la sesion existe pero el ssh murio: relanzar la conexion en su pane
+        # la sesion existe pero el ssh del pane murio: relanzar la conexion
         tmux("send-keys", "-t", "=" + sess + ":", "-l", "--", f"ssh {host}")
         tmux("send-keys", "-t", "=" + sess + ":", "Enter")
+        if st == "mux":
+            return sess, True, f"Reconectado a {host} por el tunel vivo (sin password)"
         return sess, False, "Reintentando conexion en su pestana; si pide password, tecleala ahi"
     # Probar la llave ANTES de prometer nada
     try:

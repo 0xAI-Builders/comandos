@@ -256,6 +256,21 @@
   #srv-form .frow .set{flex:1}
   #srv-form label{font-size:11.5px;color:var(--dim)}
 
+  /* ---------- conmutador Ctrl+K ---------- */
+  #sw-ov{position:fixed;inset:0;z-index:40;background:rgba(4,6,10,.55);
+    display:flex;align-items:flex-start;justify-content:center;padding-top:12vh}
+  #sw-box{width:min(560px,92vw);background:var(--panel2);border:1px solid var(--line2);
+    border-radius:12px;padding:12px;box-shadow:0 18px 60px rgba(0,0,0,.5)}
+  #sw-in{width:100%;background:var(--bg);border:1px solid var(--line2);border-radius:8px;
+    padding:9px 12px;font-family:var(--mono);font-size:13px;color:var(--text)}
+  #sw-in:focus{outline:none;border-color:var(--brand)}
+  #sw-list{margin-top:8px;display:flex;flex-direction:column}
+  .sw-row{display:flex;align-items:center;gap:9px;padding:8px 10px;border-radius:7px;
+    cursor:pointer;font-family:var(--mono);font-size:12.5px;color:var(--dim)}
+  .sw-row.sel,.sw-row:hover{background:var(--line);color:var(--text)}
+  .sw-row .dot{flex:none;width:8px;height:8px;border-radius:50%}
+  .sw-row .hint{margin-left:auto;color:var(--faint);font-size:10.5px}
+
   /* ---------- toasts ---------- */
   #toasts{position:fixed;right:16px;bottom:16px;z-index:30;display:flex;
     flex-direction:column;gap:8px}
@@ -283,6 +298,7 @@
       <button class="hdr-btn" id="btn-mute">🔊</button>
       <input type="range" id="vol-top" min="0" max="100" value="60">
     </span>
+    <button class="hdr-btn" id="btn-switch" title="Saltar a cualquier sesión (Ctrl+K)">⌕</button>
     <button class="hdr-btn" id="btn-theme" title="Tema: Noche → Día → Cálido (aplica a tablero, pestañas y terminales)">🌙</button>
     <button class="hdr-btn" id="btn-settings">Ajustes</button>
     <span id="clock">--:--</span>
@@ -363,6 +379,14 @@
   <div class="set"><div class="desc">Viven en ~/.ssh/config: estandar y tuyo. Conectar abre una
     sesion tmux reconectable. Para dejar de teclear passwords: corre <b>cc-keys</b> una vez.</div></div>
 </aside>
+
+<div id="sw-ov" class="hidden">
+  <div id="sw-box">
+    <input id="sw-in" placeholder="Salta a...  (Enter va a la primera, ↑↓ navega, Esc cierra)"
+      autocomplete="off" spellcheck="false">
+    <div id="sw-list"></div>
+  </div>
+</div>
 
 <div id="toasts"></div>
 
@@ -620,6 +644,7 @@ function rowEl(it){
 
 // ---------- render ----------
 function render(list){
+  S.list = list;
   const seen = new Set();
   const counts = {waiting:0, done:0, working:0};
   for(const it of list){
@@ -682,8 +707,10 @@ function render(list){
       el.querySelector(".rpath").title = it.cwd || "";
       if(it.session.startsWith("ssh-") && it.alive){
         el.classList.toggle("sshoff", it.sshConnected === false);
-        el.querySelector(".rprev").textContent = it.sshConnected
-          ? "Conectado" : "SIN conexion: abre la pestana y teclea el password (o corre cc-keys)";
+        el.querySelector(".rprev").textContent = !it.sshConnected
+          ? "SIN conexion: abre la pestana y teclea el password (o corre cc-keys)"
+          : it.sshMux ? "Tunel vivo (sin password) — Abrir reconecta al instante"
+          : "Conectado";
       } else {
         el.querySelector(".rprev").textContent = mdStrip(it.detail) ||
           (it.status==="working" ? "Trabajando..." : it.status==="dead" ? "Revivir para retomar" : "");
@@ -784,6 +811,63 @@ async function tickEvents(){
 }
 let timer = null;
 function arm(){ clearInterval(timer); timer = setInterval(tick, S.cfg.poll*1000); }
+
+// ---------- conmutador Ctrl+K (salta a cualquier sesion) ----------
+let swItems = [], swSel = 0;
+function swScore(q, s){
+  q = q.toLowerCase(); s = s.toLowerCase();
+  let sc = 0, p = 0;
+  for(const ch of q){ const i = s.indexOf(ch, p); if(i < 0) return null; sc += i - p; p = i + 1; }
+  return sc + s.length * 0.01;
+}
+const SW_ORD = {waiting:0, done:1, working:2};
+function swOpen(){ $("#sw-ov").classList.remove("hidden"); $("#sw-in").value = ""; swFill(); $("#sw-in").focus(); }
+function swClose(){ $("#sw-ov").classList.add("hidden"); }
+function swFill(){
+  const q = $("#sw-in").value.trim();
+  const seen = new Set();
+  swItems = (S.list || [])
+    .filter(it => it.alive !== false && !seen.has(it.session) && seen.add(it.session) !== null)
+    .map(it => ({it, sc: q ? swScore(q, it.project + " " + it.session) : 0,
+                 pr: SW_ORD[it.status] ?? 3}))
+    .filter(x => x.sc !== null)
+    .sort((a, b) => a.pr - b.pr || a.sc - b.sc).slice(0, 12);
+  swSel = 0;
+  const L = $("#sw-list"); L.innerHTML = "";
+  const C = {waiting:"var(--waiting)", working:"var(--working)", done:"var(--done)"};
+  swItems.forEach((x, i)=>{
+    const d = document.createElement("div");
+    d.className = "sw-row" + (i === 0 ? " sel" : "");
+    d.innerHTML = `<span class="dot"></span><span></span><span class="hint"></span>`;
+    d.children[0].style.background = C[x.it.status] || "var(--faint)";
+    d.children[1].textContent = x.it.project;
+    d.children[2].textContent = x.it.status === "waiting" ? "espera TU respuesta" : (x.it.status || "");
+    d.addEventListener("click", ()=> swGo(i));
+    L.appendChild(d);
+  });
+}
+async function swGo(i){
+  const x = swItems[i];
+  if(!x) return;
+  swClose();
+  try{ toast(await openSession(x.it, "claude")); }catch(err){ toast(err.message, true); }
+}
+document.addEventListener("keydown", e=>{
+  if(e.ctrlKey && !e.shiftKey && (e.key === "k" || e.key === "K")){
+    e.preventDefault(); swOpen(); return;
+  }
+  if($("#sw-ov").classList.contains("hidden")) return;
+  if(e.key === "Escape"){ swClose(); return; }
+  if(e.key === "Enter"){ e.preventDefault(); swGo(swSel); return; }
+  if(e.key === "ArrowDown" || e.key === "ArrowUp"){
+    e.preventDefault();
+    swSel = Math.max(0, Math.min(swItems.length - 1, swSel + (e.key === "ArrowDown" ? 1 : -1)));
+    document.querySelectorAll(".sw-row").forEach((r, i)=> r.classList.toggle("sel", i === swSel));
+  }
+});
+$("#sw-in").addEventListener("input", swFill);
+$("#sw-ov").addEventListener("click", e=>{ if(e.target.id === "sw-ov") swClose(); });
+$("#btn-switch").addEventListener("click", swOpen);
 
 // ---------- buscador ----------
 function applyQ(){
