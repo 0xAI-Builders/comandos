@@ -1,0 +1,4 @@
+#!/usr/bin/env bash
+# Super+C: trae ComandOS al frente; si no esta abierta, la lanza.
+wmctrl -x -a comandos 2>/dev/null && exit 0
+setsid -f "$HOME/.local/bin/cc-app" >/dev/null 2>&1

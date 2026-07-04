@@ -1,0 +1,640 @@
+#!/usr/bin/env python3
+"""Centro Claude: tablero + MULTIPLES terminales embebidas en pestanas.
+
+Izquierda: el tablero. Derecha: pestanas de terminal (VTE, motor de Tilix):
+  - Pestana "hub": cliente tmux libre (lo mueven Super+N y los popups).
+  - Al tocar "Claude" o "Consola" en una tarjeta, se abre/enfoca una pestana
+    DEDICADA a esa sesion — puedes tener LifeOS, Merauto y las que quieras
+    abiertas a la vez, cada una en su pestana, sin ventanas externas.
+
+Teclas:
+  F12                    mostrar/ocultar terminales
+  F5                     recargar tablero
+  Ctrl+PgUp / Ctrl+PgDn  cambiar de pestana
+  Ctrl+Shift + / - / 0   zoom de letra (pestana actual)
+  Ctrl+Q                 salir
+"""
+import json, os, subprocess, urllib.request
+import gi
+gi.require_version("Gtk", "3.0")
+gi.require_version("WebKit2", "4.0")
+gi.require_version("Vte", "2.91")
+from gi.repository import Gtk, WebKit2, Vte, GLib, Gdk, Pango
+
+URL = "http://127.0.0.1:4777"
+PALETTE = ["#232B3E", "#FF6B6B", "#2EE59D", "#FFAE1A", "#7AA5FF", "#B49CFF",
+           "#4DD0E1", "#EAF0FB", "#5E6980", "#FF8F8F", "#6FF0BC", "#FFC55C",
+           "#A3C0FF", "#CDBBFF", "#86E3F0", "#FFFFFF"]
+FONT = "JetBrainsMono Nerd Font 13"
+
+GLib.set_prgname("comandos")
+Gtk.Settings.get_default().set_property("gtk-application-prefer-dark-theme", True)
+
+APP_CSS = b"""
+notebook > header { background: #0D1119; border: none; box-shadow: none; }
+notebook > header > tabs > tab {
+  background: transparent; color: #9AA6BF; padding: 5px 12px; margin: 0;
+  font-family: 'JetBrainsMono Nerd Font', monospace; font-size: 11px;
+  border: none; box-shadow: none;
+}
+notebook > header > tabs > tab:checked {
+  color: #EAF0FB; box-shadow: inset 0 -2px 0 0 #8B7CFF;
+}
+notebook > header > tabs > tab button {
+  color: #5E6980; padding: 0; margin: 0; min-height: 14px; min-width: 14px;
+  border: none; background: none;
+}
+notebook > header > tabs > tab button:hover { color: #EAF0FB; }
+notebook stack { background: #0A0D13; }
+.termwrap { background: #0A0D13; }
+.tabplus { color: #5E6980; padding: 2px 10px; border: none; background: none;
+  font-family: monospace; font-size: 14px; }
+.tabplus:hover { color: #8B7CFF; }
+scrollbar { background: transparent; }
+scrollbar trough { background: transparent; }
+scrollbar slider { background: #2E3852; border-radius: 8px; min-width: 7px; }
+scrollbar slider:hover { background: #8B7CFF; }
+paned separator { background: #222A3A; min-width: 2px; }
+.helpwin { background: #0D1119; }
+.help-h { color: #EAF0FB; }
+.help-sec { color: #8B7CFF; font-family: 'JetBrainsMono Nerd Font', monospace; font-size: 11px; }
+.help-key { color: #FFAE1A; font-family: 'JetBrainsMono Nerd Font', monospace; font-size: 12px; }
+.help-desc { color: #C4CCDD; font-size: 12.5px; }
+.help-hint { color: #5E6980; }
+"""
+
+
+def rgba(h):
+    c = Gdk.RGBA()
+    c.parse(h)
+    return c
+
+
+def tmuxc(*args):
+    try:
+        return subprocess.run(["tmux", *args], capture_output=True, text=True, timeout=5)
+    except Exception:
+        return subprocess.CompletedProcess(args, 1, "", "")
+
+
+def http_post(path, payload, timeout=15):
+    req = urllib.request.Request(
+        "http://127.0.0.1:4777" + path,
+        data=json.dumps(payload).encode(),
+        headers={"Content-Type": "application/json"})
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as r:
+            return json.loads(r.read().decode()), None
+    except urllib.error.HTTPError as e:
+        try:
+            return None, json.loads(e.read().decode()).get("error", str(e))
+        except Exception:
+            return None, str(e)
+    except Exception as e:
+        return None, str(e)
+
+
+def http_ensure(sess, win_name="claude"):
+    http_post("/ensure", {"session": sess, "win": win_name})
+
+
+URL_RE = r"https?://[^\s'\"<>\]\)]+"
+
+
+def make_term(argv_sh):
+    term = Vte.Terminal()
+    term.set_font(Pango.FontDescription(FONT))
+    term.set_colors(rgba("#EAF0FB"), rgba("#0A0D13"), [rgba(p) for p in PALETTE])
+    term.set_color_cursor(rgba("#FFAE1A"))
+    term.set_scrollback_lines(10000)
+    term.set_audible_bell(False)
+    term.connect("button-press-event", on_term_button)
+    # Seleccionar = copiar al clipboard del sistema (portapapeles compartido)
+    term.connect("selection-changed", lambda t: t.get_has_selection()
+                 and t.copy_clipboard_format(Vte.Format.TEXT))
+    # URLs clickeables con Ctrl+click
+    try:
+        rx = Vte.Regex.new_for_match(URL_RE, -1, 0x00000400)  # PCRE2_MULTILINE
+        term.match_add_regex(rx, 0)
+    except Exception:
+        pass
+    # Padding comodo alrededor del texto
+    term.set_margin_start(10); term.set_margin_end(4)
+    term.set_margin_top(8); term.set_margin_bottom(6)
+
+    def spawn(*_):
+        try:
+            res = term.spawn_sync(Vte.PtyFlags.DEFAULT, os.path.expanduser("~"),
+                                  ["/bin/sh", "-c", argv_sh], [],
+                                  GLib.SpawnFlags.DEFAULT, None, None, None)
+            # tty del hijo: nos dice que cliente tmux es esta pestana
+            pid = res[1] if isinstance(res, (tuple, list)) and len(res) > 1 else None
+            if pid:
+                try:
+                    term._tty = os.readlink(f"/proc/{pid}/fd/0")
+                except Exception:
+                    pass
+        except Exception as e:
+            print(f"terminal fallo: {e}")
+        return False
+
+    term._respawn = True
+    term.connect("child-exited", lambda *_: term._respawn and GLib.timeout_add(800, spawn))
+    spawn()
+    box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL)
+    box.get_style_context().add_class("termwrap")
+    sb = Gtk.Scrollbar(orientation=Gtk.Orientation.VERTICAL,
+                       adjustment=term.get_vadjustment())
+    box.pack_start(term, True, True, 0)
+    box.pack_start(sb, False, False, 0)
+    box._term = term
+    return box
+
+
+def feed(term, seq):
+    try:
+        term.feed_child(seq)
+    except TypeError:
+        term.feed_child(seq.decode("latin1"), len(seq))
+
+
+def new_session_dialog(*_):
+    dlg = Gtk.Dialog(title="Nueva sesion", transient_for=win)
+    dlg.add_buttons("Cancelar", Gtk.ResponseType.CANCEL, "Abrir", Gtk.ResponseType.OK)
+    box = dlg.get_content_area()
+    box.set_property("margin", 14); box.set_spacing(8)
+    lbl = Gtk.Label(label="Proyecto de ~/codebase (abre su Claude),\n"
+                          "o cualquier nombre (terminal en blanco):", xalign=0)
+    box.add(lbl)
+    entry = Gtk.Entry()
+    entry.set_placeholder_text("nombre...")
+    entry.set_activates_default(True)
+    dlg.set_default_response(Gtk.ResponseType.OK)
+    box.add(entry)
+    err = Gtk.Label(xalign=0); err.get_style_context().add_class("dim-error")
+    box.add(err)
+    dlg.show_all()
+    while dlg.run() == Gtk.ResponseType.OK:
+        name = entry.get_text().strip().replace(".", "-").replace(":", "-")
+        if not name:
+            continue
+        res, e = http_post("/new", {"session": name})
+        if e:
+            err.set_text("⚠ " + e)   # ahora el error se VE, no falla en silencio
+            continue
+        open_tab(name, "claude")
+        break
+    dlg.destroy()
+
+
+def term_session(term):
+    """Sesion tmux que muestra esta pestana (por el tty de su cliente)."""
+    tty = getattr(term, "_tty", None)
+    if not tty:
+        return None
+    r = tmuxc("list-clients", "-F", "#{client_tty}|#{client_session}")
+    for l in r.stdout.splitlines():
+        t, _, s = l.partition("|")
+        if t == tty:
+            return s
+    return None
+
+
+def pane_at(term, event):
+    """(pane_id, total_panes) del pane bajo el cursor del mouse."""
+    sess = term_session(term)
+    if not sess:
+        return None, 0
+    col = int((event.x - 10) // max(1, term.get_char_width()))
+    row = int((event.y - 8) // max(1, term.get_char_height()))
+    r = tmuxc("list-panes", "-t", "=" + sess + ":",
+              "-F", "#{pane_id}|#{pane_left}|#{pane_top}|#{pane_right}|#{pane_bottom}")
+    panes = [l.split("|") for l in r.stdout.splitlines() if l and l.count("|") == 4]
+    for pid, l, t, rr, b in panes:
+        if int(l) <= col <= int(rr) and int(t) <= row <= int(b):
+            return pid, len(panes)
+    return None, len(panes)
+
+
+def on_term_button(term, event):
+    # Ctrl+click en una URL: abrirla
+    if event.button == 1 and (event.state & Gdk.ModifierType.CONTROL_MASK):
+        try:
+            match, _tag = term.match_check_event(event)
+            if match:
+                subprocess.Popen(["xdg-open", match], start_new_session=True,
+                                 stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                return True
+        except Exception:
+            pass
+        return False
+    if event.button != 3:
+        return False
+    box = term.get_parent()
+    menu = Gtk.Menu()
+
+    def item(label, cb, sensitive=True):
+        it = Gtk.MenuItem(label=label)
+        it.connect("activate", lambda *_: cb())
+        it.set_sensitive(sensitive)
+        menu.append(it)
+
+    key = getattr(box, "_key", None)
+    cur_sess = term_session(term)          # sesion realmente mostrada (hub incluido)
+    pane_id, npanes = pane_at(term, event)  # pane bajo el cursor
+    is_ssh = bool(cur_sess and cur_sess.startswith("ssh-"))
+
+    def split(flags, cmd=None):
+        target = pane_id or (("=" + cur_sess + ":") if cur_sess else None)
+        if not target:
+            return
+        args = ["split-window"] + flags + ["-t", target]
+        if cmd:
+            args.append(cmd)
+        else:
+            r = tmuxc("display-message", "-p", "-t", target, "#{pane_current_path}")
+            cwd = r.stdout.strip()
+            if cwd:
+                args += ["-c", cwd]
+        tmuxc(*args)
+
+    item("Copiar                   Ctrl+C", lambda: term.copy_clipboard_format(Vte.Format.TEXT),
+         sensitive=term.get_has_selection())
+    item("Pegar                    Ctrl+V", lambda: term.paste_clipboard())
+    menu.append(Gtk.SeparatorMenuItem())
+    if is_ssh:
+        host = cur_sess[4:]
+        sshcmd = f"ssh {host}"
+        item("Split derecha    (otra conexion al server)", lambda: split(["-h"], sshcmd))
+        item("Split izquierda  (otra conexion al server)", lambda: split(["-h", "-b"], sshcmd))
+        item("Split abajo      (otra conexion al server)", lambda: split(["-v"], sshcmd))
+        item("Split arriba     (otra conexion al server)", lambda: split(["-v", "-b"], sshcmd))
+        item("Split local (tu maquina, derecha)", lambda: split(["-h"]))
+    else:
+        item("Split derecha", lambda: split(["-h"]))
+        item("Split izquierda", lambda: split(["-h", "-b"]))
+        item("Split abajo", lambda: split(["-v"]))
+        item("Split arriba", lambda: split(["-v", "-b"]))
+    item("Alternar ventana 1/2     Ctrl-b l", lambda: feed(term, b"\x02l"))
+    item("Cerrar ESTE split",
+         lambda: tmuxc("kill-pane", "-t", pane_id),
+         sensitive=bool(pane_id) and npanes > 1)
+    menu.append(Gtk.SeparatorMenuItem())
+    item("Nueva terminal aqui       Ctrl+T", new_local_tab)
+    item("Abrir proyecto...", new_session_dialog)
+    sub = Gtk.Menu()
+    r = tmuxc("list-sessions", "-F", "#{session_name}")
+    for s in (r.stdout.split() if r.returncode == 0 else []):
+        si = Gtk.MenuItem(label=s)
+        si.connect("activate", lambda _w, s=s: open_tab(s, "claude"))
+        sub.append(si)
+    mi = Gtk.MenuItem(label="Abrir sesion existente")
+    mi.set_submenu(sub)
+    menu.append(mi)
+    menu.append(Gtk.SeparatorMenuItem())
+    key = getattr(box, "_key", None)
+    item("Cerrar pestana", lambda: close_tab(key), sensitive=key is not None)
+    menu.show_all()
+    menu.popup_at_pointer(event)
+    term._menu = menu
+    return True
+
+
+win = Gtk.Window(title="ComandOS")
+win.set_default_size(1600, 880)
+win.set_icon_name("centro-claude")
+
+nb = Gtk.Notebook()
+nb.set_scrollable(True)
+tabs = {}   # clave ("sess" o "sess:shell") -> box
+TABS_FILE = os.path.expanduser("~/.claude/hooks/app-tabs.json")
+
+
+def save_tabs():
+    try:
+        with open(TABS_FILE, "w") as f:
+            json.dump(list(tabs.keys()), f)
+    except Exception:
+        pass
+
+
+def restore_tabs():
+    """Al abrir la app, reabre las pestanas de la vez pasada; si una sesion
+    murio (p.ej. reinicio), la revive (claude --continue / reconexion ssh)."""
+    try:
+        with open(TABS_FILE) as f:
+            keys = json.load(f)
+    except Exception:
+        return False
+    for key in keys:
+        if not isinstance(key, str) or not key:
+            continue
+        sess, _, win = key.partition(":")
+        win = win or "claude"
+        try:
+            if subprocess.run(["tmux", "has-session", "-t", "=" + sess],
+                              capture_output=True, timeout=5).returncode != 0:
+                if sess.startswith("term-"):
+                    # terminal scratch: recrear shell simple en HOME
+                    subprocess.run(
+                        ["systemd-run", "--user", "--scope", "--collect", "--quiet",
+                         "tmux", "new-session", "-d", "-s", sess, "-c", os.path.expanduser("~")],
+                        capture_output=True, timeout=12)
+                elif sess.startswith("ssh-"):
+                    http_post("/ssh-connect", {"host": sess[4:]}, timeout=20)
+                else:
+                    http_post("/new", {"session": sess})
+            open_tab(sess, win)
+        except Exception as e:
+            print(f"no pude restaurar {key}: {e}")
+    return False
+
+
+def tab_label(text, key=None, closable=True):
+    hb = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
+    hb.pack_start(Gtk.Label(label=text), False, False, 0)
+    if closable:
+        b = Gtk.Button(label="×")
+        b.set_relief(Gtk.ReliefStyle.NONE)
+        b.connect("clicked", lambda *_: close_tab(key))
+        hb.pack_start(b, False, False, 0)
+    hb.show_all()
+    return hb
+
+
+def close_tab(key):
+    box = tabs.pop(key, None)
+    if box is not None:
+        box._term._respawn = False
+        nb.remove_page(nb.page_num(box))
+    save_tabs()
+
+
+def current_cwd():
+    """Directorio del pane activo de la pestana actual (para 'nueva terminal aqui')."""
+    page = nb.get_nth_page(nb.get_current_page())
+    term = getattr(page, "_term", None)
+    if term:
+        sess = term_session(term)
+        if sess:
+            r = tmuxc("display-message", "-p", "-t", f"={sess}:", "#{pane_current_path}")
+            if r.returncode == 0 and r.stdout.strip():
+                return r.stdout.strip()
+    return os.path.expanduser("~")
+
+
+TERM_N = [0]
+
+
+def new_local_tab(*_):
+    """Nueva pestana de terminal en el MISMO directorio donde esta el cursor."""
+    cwd = current_cwd()
+    TERM_N[0] += 1
+    sess = f"term-{os.getpid() % 10000}-{TERM_N[0]}"
+    subprocess.run(
+        ["systemd-run", "--user", "--scope", "--collect", "--quiet",
+         "tmux", "new-session", "-d", "-s", sess, "-c", cwd],
+        capture_output=True, timeout=12)
+    open_tab(sess, "claude", label=os.path.basename(cwd) or "term")
+
+
+def open_tab(sess, winname, label=None):
+    """Abre (o enfoca) la pestana dedicada a una sesion/ventana tmux."""
+    key = sess if winname == "claude" else f"{sess}:{winname}"
+    if key in tabs:
+        nb.set_current_page(nb.page_num(tabs[key]))
+        tabs[key]._term.grab_focus()
+        return
+    cmd = (f"tmux select-window -t '={sess}:{winname}' 2>/dev/null; "
+           f"tmux attach -t '={sess}' || {{ echo '[sesion terminada — cierra esta pestana con la x]'; exec cat; }}")
+    box = make_term(cmd)
+    box._key = key
+    if label is None:
+        label = sess if winname in ("claude", "ssh") else f"{sess} [sh]"
+    idx = nb.append_page(box, tab_label(label, key))
+    box.show_all()
+    nb.set_current_page(idx)
+    box._term.grab_focus()
+    tabs[key] = box
+    save_tabs()
+
+
+# Estilo propio de la app (pestanas, scrollbars, separadores)
+_prov = Gtk.CssProvider()
+_prov.load_from_data(APP_CSS)
+Gtk.StyleContext.add_provider_for_screen(
+    Gdk.Screen.get_default(), _prov, Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION)
+
+# Pestana "local": tu terminal de control (scratch en HOME). Es el cliente que
+# mueven Super+N y los popups. No aparece como tarjeta en el tablero.
+hub = make_term("tmux new-session -A -s local -c ~")
+nb.append_page(hub, tab_label("⌂ local", closable=False))
+
+# Barra de pestanas: boton "+" (nueva terminal) y "?" (atajos)
+_actions = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=2)
+_plus = Gtk.Button(label="+")
+_plus.get_style_context().add_class("tabplus")
+_plus.set_relief(Gtk.ReliefStyle.NONE)
+_plus.set_tooltip_text("Nueva terminal en el directorio actual (Ctrl+T)")
+_plus.connect("clicked", new_local_tab)
+_help = Gtk.Button(label="?")
+_help.get_style_context().add_class("tabplus")
+_help.set_relief(Gtk.ReliefStyle.NONE)
+_help.set_tooltip_text("Ver todos los atajos (? o F1)")
+_help.connect("clicked", lambda *_: show_help())
+_actions.pack_start(_plus, False, False, 0)
+_actions.pack_start(_help, False, False, 0)
+_actions.show_all()
+nb.set_action_widget(_actions, Gtk.PackType.END)
+
+# Puente tablero -> app: las tarjetas piden abrir pestanas aqui
+ucm = WebKit2.UserContentManager()
+
+
+def on_msg(mgr, res):
+    try:
+        d = json.loads(res.get_js_value().to_string())
+        open_tab(d.get("session", ""), d.get("win", "claude"))
+    except Exception as e:
+        print(f"mensaje invalido del tablero: {e}")
+
+
+ucm.register_script_message_handler("centro")
+ucm.connect("script-message-received::centro", on_msg)
+
+wv = WebKit2.WebView.new_with_user_content_manager(ucm)
+wv.get_settings().set_property("enable-developer-extras", True)
+wv.get_settings().set_property("enable-webaudio", True)
+
+
+def on_perm(view, request):
+    # Sin esto, WebKit niega Notification.requestPermission y el switch
+    # de "Notificaciones del navegador" fallaba siempre dentro de la app
+    if isinstance(request, WebKit2.NotificationPermissionRequest):
+        request.allow()
+        return True
+    return False
+
+
+wv.connect("permission-request", on_perm)
+wv.load_uri(URL)
+wv.connect("load-failed", lambda v, e, u, err:
+           (GLib.timeout_add_seconds(2, lambda: (wv.load_uri(URL), False)[1]), True)[1])
+
+paned = Gtk.Paned(orientation=Gtk.Orientation.HORIZONTAL)
+paned.pack1(wv, True, False)
+paned.pack2(nb, True, False)
+paned.set_position(700)
+win.add(paned)
+
+
+def cur_term():
+    page = nb.get_nth_page(nb.get_current_page())
+    return getattr(page, "_term", None)
+
+
+SHORTCUTS = [
+    ("Ventana ComandOS", [
+        ("? / F1", "Esta ayuda"),
+        ("Ctrl+T", "Nueva terminal en el directorio actual"),
+        ("Ctrl+Shift+W", "Cerrar la pestana actual"),
+        ("Ctrl+PgUp / PgDn", "Cambiar de pestana"),
+        ("F12", "Mostrar / ocultar terminales"),
+        ("F5", "Recargar el tablero"),
+        ("Ctrl+Shift + / - / 0", "Zoom de letra de la terminal"),
+        ("Ctrl+Q", "Salir"),
+    ]),
+    ("Terminal (portapapeles)", [
+        ("Ctrl+V", "Pegar del sistema"),
+        ("Ctrl+C", "Copiar (si hay seleccion) / interrumpir"),
+        ("Seleccionar con mouse", "Copia al portapapeles automaticamente"),
+        ("Ctrl+click en URL", "Abrir el enlace en el navegador"),
+        ("Click derecho", "Copiar, pegar, splits, nueva terminal, cerrar"),
+    ]),
+    ("Splits y ventanas (tmux)", [
+        ("Click derecho -> Split", "Derecha / izquierda / abajo / arriba"),
+        ("Alt+flechas", "Moverse entre splits"),
+        ("Ctrl-b l", "Alternar ventana claude / shell"),
+        ("Ctrl-b z", "Zoom del split (pantalla completa)"),
+        ("Ctrl-b [", "Modo scroll (q para salir)"),
+        ("Ctrl-b ]", "Pegar del portapapeles del sistema"),
+    ]),
+    ("Global (todo el escritorio)", [
+        ("Super+N", "Saltar a la sesion mas urgente"),
+        ("Super+T", "Traer la terminal al frente"),
+        ("Super+C", "Traer / abrir ComandOS"),
+    ]),
+    ("Telegram (@ncriptado)", [
+        ("Botones [1][2][3]", "Responder prompts de permiso"),
+        ("Reply a notificacion", "Instruccion a ese proyecto"),
+        ("/ls  /out  /run  /servers", "Estado, pantalla, ejecutar, conectar"),
+    ]),
+]
+
+
+def show_help(*_):
+    if getattr(show_help, "_win", None):
+        show_help._win.present()
+        return
+    w = Gtk.Window(title="Atajos de ComandOS")
+    w.set_transient_for(win)
+    w.set_default_size(640, 720)
+    w.set_position(Gtk.WindowPosition.CENTER_ON_PARENT)
+    w.get_style_context().add_class("helpwin")
+    scroll = Gtk.ScrolledWindow()
+    scroll.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
+    outer = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=4)
+    outer.set_property("margin", 22)
+    title = Gtk.Label(xalign=0)
+    title.set_markup("<span size='16000' weight='bold'>Atajos de teclado</span>")
+    title.get_style_context().add_class("help-h")
+    outer.pack_start(title, False, False, 0)
+    for section, rows in SHORTCUTS:
+        sl = Gtk.Label(xalign=0)
+        sl.set_markup(f"<span weight='bold'>{section.upper()}</span>")
+        sl.get_style_context().add_class("help-sec")
+        sl.set_margin_top(16)
+        outer.pack_start(sl, False, False, 0)
+        grid = Gtk.Grid()
+        grid.set_column_spacing(18); grid.set_row_spacing(7)
+        grid.set_margin_top(6)
+        for i, (keys, desc) in enumerate(rows):
+            k = Gtk.Label(label=keys, xalign=0)
+            k.get_style_context().add_class("help-key")
+            d = Gtk.Label(label=desc, xalign=0)
+            d.get_style_context().add_class("help-desc")
+            grid.attach(k, 0, i, 1, 1)
+            grid.attach(d, 1, i, 1, 1)
+        outer.pack_start(grid, False, False, 0)
+    hint = Gtk.Label(xalign=0)
+    hint.set_markup("<span size='9000'>Ctrl-b es el 'prefix' de tmux: sueltas y "
+                    "luego tecleas la letra.  Esc o ? cierra esta ventana.</span>")
+    hint.get_style_context().add_class("help-hint")
+    hint.set_margin_top(20)
+    outer.pack_start(hint, False, False, 0)
+    scroll.add(outer)
+    w.add(scroll)
+
+    def on_help_key(_w, ev):
+        if ev.keyval in (Gdk.KEY_Escape, Gdk.KEY_question, Gdk.KEY_F1):
+            w.destroy(); return True
+        return False
+    w.connect("key-press-event", on_help_key)
+    w.connect("destroy", lambda *_: setattr(show_help, "_win", None))
+    show_help._win = w
+    w.show_all()
+
+
+def on_key(w, e):
+    ctrl = e.state & Gdk.ModifierType.CONTROL_MASK
+    shift = e.state & Gdk.ModifierType.SHIFT_MASK
+    # Ayuda: F1 siempre; '?' solo si el foco NO esta en una terminal
+    fw0 = win.get_focus()
+    if e.keyval == Gdk.KEY_F1:
+        show_help(); return True
+    if e.keyval == Gdk.KEY_question and not isinstance(fw0, Vte.Terminal):
+        show_help(); return True
+    # Clipboard natural cuando el foco esta en una terminal:
+    #   Ctrl+V pega; Ctrl+C copia si hay seleccion (si no, interrumpe como siempre)
+    fw = win.get_focus()
+    if ctrl and isinstance(fw, Vte.Terminal):
+        if e.keyval in (Gdk.KEY_v, Gdk.KEY_V):
+            fw.paste_clipboard()
+            return True
+        if e.keyval in (Gdk.KEY_c, Gdk.KEY_C) and fw.get_has_selection():
+            fw.copy_clipboard_format(Vte.Format.TEXT)
+            fw.unselect_all()
+            return True
+    if e.keyval == Gdk.KEY_F12:
+        nb.set_visible(not nb.get_visible())
+        if nb.get_visible() and cur_term():
+            cur_term().grab_focus()
+        return True
+    if e.keyval == Gdk.KEY_F5:
+        wv.load_uri(URL)
+        return True
+    t = cur_term()
+    if t and ctrl and shift and e.keyval in (Gdk.KEY_plus, Gdk.KEY_equal, Gdk.KEY_KP_Add):
+        t.set_font_scale(min(2.5, t.get_font_scale() + 0.1)); return True
+    if t and ctrl and shift and e.keyval in (Gdk.KEY_minus, Gdk.KEY_underscore, Gdk.KEY_KP_Subtract):
+        t.set_font_scale(max(0.5, t.get_font_scale() - 0.1)); return True
+    if t and ctrl and shift and e.keyval in (Gdk.KEY_0, Gdk.KEY_parenright):
+        t.set_font_scale(1.0); return True
+    if ctrl and not shift and e.keyval in (Gdk.KEY_t, Gdk.KEY_T):
+        new_local_tab(); return True
+    if ctrl and shift and e.keyval in (Gdk.KEY_w, Gdk.KEY_W):
+        page = nb.get_nth_page(nb.get_current_page())
+        if page is not None and getattr(page, "_key", None):
+            close_tab(page._key)
+        return True
+    if ctrl and not shift and e.keyval in (Gdk.KEY_q, Gdk.KEY_Q):
+        Gtk.main_quit(); return True
+    return False
+
+
+win.connect("key-press-event", on_key)
+win.connect("destroy", Gtk.main_quit)
+win.show_all()
+hub._term.grab_focus()
+GLib.timeout_add(600, restore_tabs)
+Gtk.main()

@@ -1,0 +1,30 @@
+# Configuracion editable de las notificaciones de Claude Code.
+# Cambia lo que quieras y guarda; aplica al instante (el hook lo lee en cada evento).
+
+# Sonidos (cualquier .oga/.wav; ve opciones en /usr/share/sounds/freedesktop/stereo/)
+SOUND_DONE=/usr/share/sounds/freedesktop/stereo/complete.oga
+SOUND_ATTENTION=/usr/share/sounds/freedesktop/stereo/dialog-warning.oga
+
+# Canales: 1 = activo, 0 = apagado
+DESKTOP_NOTIFY=1
+SOUND_ENABLED=1
+TELEGRAM_ENABLED=1
+
+# Que eventos notifican (1 = si): "termino" y/o "necesita atencion"
+NOTIFY_ON_DONE=1
+NOTIFY_ON_ATTENTION=1
+
+# Terminal que abren los botones "Abrir terminal" / "Revivir" / popups
+# (kitty | tilix | gnome-terminal). Si no existe, se auto-detecta en ese orden.
+TERMINAL_CMD=kitty
+
+# Voz local (piper, 100% offline): las notificaciones te HABLAN.
+# "LifeOS necesita tu respuesta" / "Merauto terminó". 1 = habla, 0 = solo chime.
+SPEAK_ATTENTION=1
+SPEAK_DONE=1
+# Voces disponibles en ~/.local/share/piper-voices/ (es_MX-ald-medium, es_ES-davefx-medium...)
+PIPER_VOICE=es_MX-ald-medium
+
+# Sonidos extra para notify.sh (niveles error/money)
+SOUND_ERROR=/usr/share/sounds/freedesktop/stereo/dialog-error.oga
+SOUND_MONEY=/usr/share/sounds/freedesktop/stereo/message.oga

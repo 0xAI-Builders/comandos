@@ -1,0 +1,11 @@
+[Unit]
+Description=Puente Telegram para operar sesiones de Claude Code
+After=network-online.target
+
+[Service]
+ExecStart=%h/.local/bin/cc-telegram
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=default.target

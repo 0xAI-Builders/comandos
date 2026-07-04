@@ -1,0 +1,7 @@
+#!/usr/bin/env bash
+# Super+T: trae la terminal al frente (kitty > Centro Claude embebida > tilix);
+# si no hay ninguna, abre la sesion mas urgente.
+wmctrl -x -a kitty 2>/dev/null && exit 0
+wmctrl -x -a comandos 2>/dev/null && exit 0
+wmctrl -x -a tilix 2>/dev/null && exit 0
+exec "$HOME/.local/bin/cc-next"

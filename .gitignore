@@ -1,0 +1,21 @@
+# Secretos y datos personales — NUNCA commitear
+telegram.env
+*.env
+!*.env.example
+cc-notify.conf
+sockets/
+ssh_config
+config/ssh_config
+
+# Runtime / estado
+state/
+*.jsonl
+prefs.json
+app-tabs.json
+hooks/state/
+hooks/events.jsonl
+
+# Sistema
+*.pyc
+__pycache__/
+.DS_Store

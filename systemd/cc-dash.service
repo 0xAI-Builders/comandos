@@ -1,0 +1,11 @@
+[Unit]
+Description=Centro Claude (dashboard de sesiones Claude Code)
+After=default.target
+
+[Service]
+ExecStart=%h/.local/bin/cc-dash 4777 --no-open
+Restart=on-failure
+RestartSec=3
+
+[Install]
+WantedBy=default.target

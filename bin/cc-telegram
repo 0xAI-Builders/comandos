@@ -1,0 +1,282 @@
+#!/usr/bin/env python3
+"""ComandOS por Telegram: opera tus sesiones y servidores desde el celular.
+
+SEGURIDAD: solo responde a TELEGRAM_ALLOWED_USER (@ncriptado) Y al chat
+TELEGRAM_CHAT_ID. Cualquier otro usuario es ignorado por completo.
+
+Que puedes hacer desde Telegram:
+  - Botones [1][2][3][Enter][Esc] en las notificaciones -> responden el prompt
+  - RESPONDER (reply) a una notificacion con texto -> instruccion a ese proyecto
+  - sesion: texto            -> igual, sin reply
+  - /ls                      -> sesiones y estados
+  - /out sesion [lineas]     -> ver la pantalla de esa sesion (que esta pasando)
+  - /run sesion comando      -> ejecuta el comando en la consola del proyecto
+                                (o EN EL SERVIDOR si es ssh-*) y regresa el output
+  - /servers                 -> tus servidores con boton para conectar
+
+Config: ~/.claude/hooks/telegram.env
+Servicio: systemctl --user status cc-telegram
+"""
+import glob, html, json, os, re, subprocess, sys, time, urllib.request, urllib.parse
+
+ENV_FILE = os.path.expanduser("~/.claude/hooks/telegram.env")
+STATE = os.path.expanduser("~/.claude/hooks/state")
+ALLOWED_KEYS = {"Enter", "Escape", "Up", "Down", "Tab", "y", "n",
+                "1", "2", "3", "4", "5", "6", "7", "8", "9"}
+SESSION_RE = re.compile(r"^[A-Za-z0-9._-]{1,80}$")
+HOST_RE = re.compile(r"^[A-Za-z0-9._-]{1,60}$")
+PROJ_IN_MSG = re.compile(r"\[([^\]]{1,80})\]")
+
+
+def load_env():
+    env = {}
+    try:
+        with open(ENV_FILE) as f:
+            for line in f:
+                line = line.strip()
+                if line and not line.startswith("#") and "=" in line:
+                    k, _, v = line.partition("=")
+                    env[k.strip()] = v.strip().strip('"').strip("'")
+    except FileNotFoundError:
+        pass
+    return env
+
+
+def api(token, method, params=None, timeout=60):
+    url = f"https://api.telegram.org/bot{token}/{method}"
+    data = urllib.parse.urlencode(params or {}).encode()
+    req = urllib.request.Request(url, data=data)
+    with urllib.request.urlopen(req, timeout=timeout) as r:
+        return json.loads(r.read().decode())
+
+
+def dash(path, payload, timeout=25):
+    req = urllib.request.Request(
+        f"http://127.0.0.1:4777{path}", data=json.dumps(payload).encode(),
+        headers={"Content-Type": "application/json"})
+    with urllib.request.urlopen(req, timeout=timeout) as r:
+        return json.loads(r.read().decode())
+
+
+def tmux(*args):
+    return subprocess.run(["tmux", *args], capture_output=True, text=True, timeout=8)
+
+
+def session_name(project):
+    return re.sub(r"[.:]", "-", project)[:80]
+
+
+def live_sessions():
+    r = tmux("list-sessions", "-F", "#{session_name}")
+    return {l for l in r.stdout.splitlines() if l} if r.returncode == 0 else set()
+
+
+def send_text_to_session(sess, text, window=""):
+    if not SESSION_RE.match(sess):
+        return "Nombre de sesion invalido"
+    if tmux("has-session", "-t", f"={sess}").returncode != 0:
+        return f"No hay sesion '{sess}'. Usa /ls para ver las vivas"
+    pane = f"={sess}:{window}" if window else f"={sess}:"
+    r = tmux("send-keys", "-t", pane, "-l", "--", text)
+    if r.returncode != 0:
+        return r.stderr.strip() or "tmux fallo"
+    tmux("send-keys", "-t", pane, "Enter")
+    return None
+
+
+def send_key_to_session(sess, key):
+    if key not in ALLOWED_KEYS or not SESSION_RE.match(sess):
+        return "Tecla o sesion invalida"
+    if tmux("has-session", "-t", f"={sess}").returncode != 0:
+        return f"No hay sesion '{sess}'"
+    r = tmux("send-keys", "-t", f"={sess}:", key)
+    return None if r.returncode == 0 else (r.stderr.strip() or "tmux fallo")
+
+
+def capture(sess, window="", lines=30):
+    if not SESSION_RE.match(sess) or tmux("has-session", "-t", f"={sess}").returncode != 0:
+        return None
+    tgt = f"={sess}:{window}" if window else f"={sess}:"
+    r = tmux("capture-pane", "-p", "-t", tgt)
+    if r.returncode != 0:
+        return None
+    out = [l.rstrip() for l in r.stdout.splitlines()]
+    while out and not out[-1]:
+        out.pop()
+    return "\n".join(out[-lines:]) or "(pantalla vacia)"
+
+
+def list_status():
+    live = live_sessions()
+    lines = []
+    for f in glob.glob(os.path.join(STATE, "*.json")):
+        try:
+            d = json.load(open(f))
+        except Exception:
+            continue
+        sess = session_name(d.get("project", ""))
+        mark = "viva" if sess in live else "apagada"
+        lines.append(f"{d.get('project')}: {d.get('status')} ({mark})")
+        live.discard(sess)
+    for s in sorted(live):
+        lines.append(f"{s}: sesion viva")
+    return "\n".join(sorted(lines)) or "Sin sesiones registradas"
+
+
+HELP = ("ComandOS por Telegram:\n"
+        "- Responde (reply) a una notificacion con texto = instruccion a ese proyecto\n"
+        "- sesion: texto = igual, sin reply\n"
+        "- /ls = sesiones y estados\n"
+        "- /out sesion [lineas] = ver su pantalla\n"
+        "- /run sesion comando = ejecutar en su consola (en el SERVIDOR si es ssh-*)\n"
+        "- /servers = conectar servidores")
+
+
+def handle_update(token, chat_id, allowed_user, u):
+    # ---- Candado de identidad: SOLO @ncriptado ----
+    frm = (u.get("callback_query") or u.get("message") or {}).get("from", {})
+    if (frm.get("username") or "").lower() != allowed_user:
+        return
+
+    if "callback_query" in u:
+        cq = u["callback_query"]
+        parts = (cq.get("data") or "").split("|")
+        note = "?"
+        if len(parts) == 3 and parts[0] == "k":
+            err = send_key_to_session(parts[1], parts[2])
+            note = err or f"{parts[2]} enviado a {parts[1]}"
+        elif len(parts) == 2 and parts[0] == "c" and HOST_RE.match(parts[1]):
+            try:
+                r = dash("/ssh-connect", {"host": parts[1]})
+                note = f"Conectado a {parts[1]}" if r.get("connected") else (r.get("note") or "Sin conexion aun")
+            except Exception as e:
+                note = f"Error: {e}"
+        try:
+            api(token, "answerCallbackQuery",
+                {"callback_query_id": cq["id"], "text": note[:190]}, timeout=10)
+        except Exception:
+            pass
+        return
+
+    msg = u.get("message")
+    if not msg or str(msg.get("chat", {}).get("id")) != str(chat_id):
+        return
+    text = (msg.get("text") or "").strip()
+    if not text:
+        return
+
+    def reply(t, pre=False, markup=None):
+        p = {"chat_id": chat_id, "reply_to_message_id": msg.get("message_id")}
+        if pre:
+            p["text"] = f"<pre>{html.escape(t[:3500])}</pre>"
+            p["parse_mode"] = "HTML"
+        else:
+            p["text"] = t[:3900]
+        if markup:
+            p["reply_markup"] = markup
+        try:
+            api(token, "sendMessage", p, timeout=15)
+        except Exception:
+            pass
+
+    low = text.lower()
+    if low.startswith("/start") or low.startswith("/help"):
+        return reply(HELP)
+
+    if low.startswith("/ls"):
+        return reply(list_status())
+
+    if low.startswith("/servers"):
+        try:
+            with urllib.request.urlopen("http://127.0.0.1:4777/ssh", timeout=8) as r:
+                hosts = json.loads(r.read().decode())
+        except Exception:
+            hosts = []
+        if not hosts:
+            return reply("Sin servidores en ~/.ssh/config")
+        kb = {"inline_keyboard": [[{"text": h["host"], "callback_data": f"c|{h['host']}"}]
+                                  for h in hosts[:20]]}
+        return reply("Toca para conectar:", markup=json.dumps(kb))
+
+    if low.startswith("/out"):
+        parts = text.split()
+        if len(parts) < 2:
+            return reply("Uso: /out sesion [lineas]")
+        sess = session_name(parts[1])
+        n = int(parts[2]) if len(parts) > 2 and parts[2].isdigit() else 30
+        out = capture(sess, lines=min(n, 80))
+        return reply(out if out is not None else f"No hay sesion '{sess}'", pre=out is not None)
+
+    if low.startswith("/run"):
+        parts = text.split(None, 2)
+        if len(parts) < 3:
+            return reply("Uso: /run sesion comando")
+        sess, cmd = session_name(parts[1]), parts[2]
+        try:
+            dash("/ensure", {"session": sess, "win": "shell"})
+        except Exception as e:
+            return reply(f"No pude preparar '{sess}': {e}")
+        err = send_text_to_session(sess, cmd, window="shell")
+        if err:
+            return reply(err)
+        time.sleep(2.5)
+        out = capture(sess, window="shell", lines=30)
+        return reply(out or "(sin salida)", pre=True)
+
+    # Reply a una notificacion -> rutear al proyecto citado
+    quoted = (msg.get("reply_to_message") or {}).get("text") or ""
+    m = PROJ_IN_MSG.search(quoted)
+    if m:
+        sess = session_name(m.group(1))
+        err = send_text_to_session(sess, text)
+        return reply(err or f"Enviado a {m.group(1)}")
+
+    # "proyecto: texto" directo
+    if ":" in text:
+        maybe, _, rest = text.partition(":")
+        sess = session_name(maybe.strip())
+        if rest.strip() and SESSION_RE.match(sess) and sess in live_sessions():
+            err = send_text_to_session(sess, rest.strip())
+            return reply(err or f"Enviado a {maybe.strip()}")
+
+    reply(HELP)
+
+
+def main():
+    env = load_env()
+    token = env.get("CC_TELEGRAM_BOT_TOKEN", "")
+    chat_id = env.get("TELEGRAM_CHAT_ID", "")
+    allowed_user = (env.get("TELEGRAM_ALLOWED_USER", "ncriptado") or "").lstrip("@").lower()
+    if not token or not chat_id:
+        print("Falta CC_TELEGRAM_BOT_TOKEN o TELEGRAM_CHAT_ID en telegram.env")
+        return 0
+    try:
+        info = api(token, "getWebhookInfo", timeout=15)
+        if info.get("result", {}).get("url"):
+            print("El bot tiene webhook activo; quitalo o usa otro bot")
+            return 1
+    except Exception as e:
+        print(f"Telegram no responde: {e}")
+        return 1
+    print(f"cc-telegram activo: botones y comandos SOLO para @{allowed_user}")
+    offset = 0
+    while True:
+        try:
+            res = api(token, "getUpdates",
+                      {"offset": offset, "timeout": 50,
+                       "allowed_updates": '["message","callback_query"]'}, timeout=70)
+            for u in res.get("result", []):
+                offset = max(offset, u["update_id"] + 1)
+                try:
+                    handle_update(token, chat_id, allowed_user, u)
+                except Exception as e:
+                    print(f"error en update: {e}", file=sys.stderr)
+        except KeyboardInterrupt:
+            return 0
+        except Exception as e:
+            print(f"reintento en 5s: {e}", file=sys.stderr)
+            time.sleep(5)
+
+
+if __name__ == "__main__":
+    sys.exit(main())

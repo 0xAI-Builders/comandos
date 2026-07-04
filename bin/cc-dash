@@ -1,0 +1,611 @@
+#!/usr/bin/env python3
+"""Centro Claude: dashboard local para monitorear y operar sesiones de Claude Code.
+
+Uso:
+  cc-dash            arranca en http://127.0.0.1:4777 y abre el navegador
+  cc-dash --no-open  no abre el navegador
+  cc-dash 5000       otro puerto
+
+Endpoints:
+  GET  /state   estados por proyecto (de ~/.claude/hooks/state/) + sesiones tmux vivas
+  GET  /events  ultimos eventos (~/.claude/hooks/events.jsonl)
+  POST /send    {session, text}  escribe el texto en el prompt de esa sesion y da Enter
+  POST /key     {session, key}   manda una tecla (1-9, Enter, Escape, y, n, Up, Down, Tab)
+  POST /focus   {session}        cambia el cliente tmux a esa sesion (+ wmctrl si existe)
+  POST /up      {session, cwd}   levanta la sesion con claude --continue
+
+Solo escucha en 127.0.0.1. Todas las llamadas a tmux van sin shell (sin inyeccion).
+"""
+import json, os, glob, re, shlex, shutil, sys, subprocess, webbrowser
+import http.server, socketserver
+
+HOOKS = os.path.expanduser("~/.claude/hooks")
+STATE = os.path.join(HOOKS, "state")
+EVENTS = os.path.join(HOOKS, "events.jsonl")
+DASH = os.path.join(HOOKS, "dash")
+
+# Terminales soportadas para abrir sesiones, en orden de preferencia.
+# Se puede forzar una con TERMINAL_CMD=kitty|tilix|gnome-terminal en cc-notify.conf
+TERMINALS = [
+    ("kitty", lambda s: ["kitty", "tmux", "attach", "-t", "=" + s], "kitty"),
+    ("tilix", lambda s: ["tilix", "-e", f"tmux attach -t ={s}"], "tilix"),
+    ("gnome-terminal", lambda s: ["gnome-terminal", "--", "tmux", "attach", "-t", "=" + s],
+     "gnome-terminal"),
+]
+
+
+def read_conf():
+    conf = {}
+    try:
+        with open(os.path.join(HOOKS, "cc-notify.conf")) as f:
+            for line in f:
+                line = line.strip()
+                if line and not line.startswith("#") and "=" in line:
+                    k, _, v = line.partition("=")
+                    conf[k.strip()] = v.strip().strip('"').strip("'")
+    except FileNotFoundError:
+        pass
+    return conf
+
+
+def gui_env():
+    env = dict(os.environ)
+    env.setdefault("DISPLAY", ":1")
+    return env
+
+
+def pick_terminal():
+    want = read_conf().get("TERMINAL_CMD", "")
+    for name, argf, cls in TERMINALS:
+        if name == want and shutil.which(name):
+            return name, argf, cls
+    for name, argf, cls in TERMINALS:
+        if shutil.which(name):
+            return name, argf, cls
+    return None
+
+
+def spawn_terminal(sess):
+    t = pick_terminal()
+    if not t:
+        return "No encontre terminal (instala kitty: sudo apt install kitty)"
+    _, argf, _ = t
+    # systemd-run: la terminal vive en su propia unidad, independiente de cc-dash
+    subprocess.Popen(["systemd-run", "--user", "--collect", "--quiet"] + argf(sess),
+                     env=gui_env(), start_new_session=True,
+                     stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    return None
+
+
+def find_project_dir(sess):
+    """Busca el directorio del proyecto en ~/codebase (2 niveles), como ccx."""
+    base = os.path.expanduser("~/codebase")
+    want = sess.lower()
+    for pattern in ("*", "*/*"):
+        for d in glob.glob(os.path.join(base, pattern)):
+            if os.path.isdir(d) and session_name(os.path.basename(d)).lower() == want:
+                return d
+    return None
+
+
+def tmux_new_session(sess, cwd):
+    """Crea la sesion en un scope propio (sobrevive a reinicios de cc-dash) con
+    DOS ventanas: 'claude' (la conversacion) y 'shell' (consola manual, mismo dir)."""
+    r = subprocess.run(
+        ["systemd-run", "--user", "--scope", "--collect", "--quiet",
+         "tmux", "new-session", "-d", "-s", sess, "-n", "claude", "-c", cwd,
+         "claude --continue 2>/dev/null || claude; exec $SHELL"],
+        capture_output=True, text=True, timeout=15)
+    if r.returncode == 0:
+        tmux("new-window", "-d", "-t", "=" + sess, "-n", "shell", "-c", cwd)
+    return r
+
+
+def ensure_shell_window(sess, cwd):
+    wins = tmux("list-windows", "-t", "=" + sess, "-F", "#{window_name}").stdout.split()
+    if "shell" in wins:
+        return
+    if sess.startswith("ssh-"):
+        # En sesiones de servidor, la "consola" extra es OTRA conexion ssh al mismo host
+        host = sess[4:]
+        if SSH_HOST_RE.match(host):
+            tmux("new-window", "-d", "-t", "=" + sess, "-n", "shell",
+                 f"ssh {shlex.quote(host)}; exec $SHELL")
+        return
+    wcwd = cwd if cwd and os.path.isdir(cwd) else (find_project_dir(sess) or os.path.expanduser("~"))
+    tmux("new-window", "-d", "-t", "=" + sess, "-n", "shell", "-c", wcwd)
+
+
+def focus_session(sess):
+    """Lleva al usuario a la sesion: cambia el cliente tmux (el mas activo) y trae
+    su ventana al frente; si NINGUN terminal esta conectado, abre uno attacheado."""
+    target = "=" + sess
+    if tmux("has-session", "-t", target).returncode != 0:
+        return f"No hay sesion tmux '{sess}'"
+    lines = [l.split(None, 1) for l in
+             tmux("list-clients", "-F", "#{client_activity} #{client_name}").stdout.splitlines() if l]
+    clients = [name for _, name in sorted(lines, key=lambda x: int(x[0]), reverse=True)]
+    if not clients:
+        return spawn_terminal(sess)
+    tmux("switch-client", "-c", clients[0], "-t", target)
+
+    def wm(*args):
+        try:
+            return subprocess.run(["wmctrl", *args], capture_output=True,
+                                  timeout=2, env=gui_env()).returncode == 0
+        except Exception:
+            return False
+
+    # Traer la ventana correcta: terminal externa (titulo = sesion) >
+    # ComandOS (terminal embebida) > cualquier terminal conocida
+    if not wm("-a", sess):
+        if not wm("-x", "-a", "comandos"):
+            t = pick_terminal()
+            if t:
+                wm("-x", "-a", t[2])
+    return None
+
+ALLOWED_KEYS = {"Enter", "Escape", "Up", "Down", "Tab", "y", "n",
+                "1", "2", "3", "4", "5", "6", "7", "8", "9"}
+SESSION_RE = re.compile(r"^[A-Za-z0-9._-]{1,80}$")
+
+
+def tmux(*args, timeout=5):
+    return subprocess.run(["tmux", *args], capture_output=True, text=True, timeout=timeout)
+
+
+def tmux_sessions():
+    r = tmux("list-sessions", "-F", "#{session_name}")
+    if r.returncode != 0:
+        return set()
+    return {l for l in r.stdout.splitlines() if l}
+
+
+def session_name(project):
+    # misma regla que ccx: basename con '.' y ':' -> '-'
+    return re.sub(r"[.:]", "-", project)[:80]
+
+
+def claude_cwds():
+    """Directorios donde hay un proceso 'claude' corriendo (aunque sea fuera de tmux)."""
+    out = set()
+    for p in glob.glob("/proc/[0-9]*/comm"):
+        try:
+            with open(p) as f:
+                if f.read().strip() == "claude":
+                    out.add(os.readlink(os.path.dirname(p) + "/cwd"))
+        except Exception:
+            pass
+    return out
+
+
+# Sesiones internas de la app (terminal de control): no son tarjetas
+HIDDEN_SESSIONS = {"hub", "local", "control"}
+
+
+def read_states():
+    live = tmux_sessions()
+    externals = claude_cwds()
+    items, seen = [], set()
+    for f in glob.glob(os.path.join(STATE, "*.json")):
+        try:
+            with open(f) as fh:
+                d = json.load(fh)
+        except Exception:
+            continue
+        sess = session_name(d.get("project", ""))
+        if not SESSION_RE.match(sess or ""):
+            continue
+        alive = sess in live
+        status = d.get("status", "idle")
+        cwd = d.get("cwd", "")
+        if not cwd:
+            cwd = find_project_dir(sess) or ""
+        # Claude corriendo FUERA de tmux (una pestana suelta de Tilix/Tabby):
+        # el estado es real (los hooks reportan) pero no es operable desde aqui.
+        external = (not alive) and cwd in externals
+        if not alive and not external:
+            status = "dead"
+        items.append({"project": d.get("project"), "session": sess, "status": status,
+                      "detail": d.get("detail", ""), "cwd": cwd,
+                      "ts": d.get("ts", 0), "alive": alive, "external": external})
+        seen.add(sess)
+    # sesiones tmux sin estado registrado (p. ej. recien creadas con ccx)
+    for sess in sorted(live - seen):
+        if sess in HIDDEN_SESSIONS or sess.startswith("term-"):
+            continue
+        r = tmux("display-message", "-p", "-t", "=" + sess + ":", "#{pane_current_path}")
+        cwd = r.stdout.strip() if r.returncode == 0 else ""
+        if not cwd:
+            cwd = find_project_dir(sess) or ""
+        item = {"project": sess, "session": sess, "status": "idle",
+                "detail": "", "cwd": cwd, "ts": 0, "alive": True, "external": False}
+        if sess.startswith("ssh-"):
+            item["sshConnected"] = pane_cmd(sess) == "ssh"
+        items.append(item)
+    return items
+
+
+# Claves de cc-notify.conf editables desde la interfaz
+CONF_KEYS = {"DESKTOP_NOTIFY", "SOUND_ENABLED", "TELEGRAM_ENABLED",
+             "NOTIFY_ON_DONE", "NOTIFY_ON_ATTENTION", "SPEAK_ATTENTION", "SPEAK_DONE"}
+CONF_PATH = os.path.join(HOOKS, "cc-notify.conf")
+
+
+def write_conf_key(key, val):
+    lines = []
+    try:
+        with open(CONF_PATH) as f:
+            lines = f.read().splitlines()
+    except FileNotFoundError:
+        pass
+    hit = False
+    for i, l in enumerate(lines):
+        s = l.strip()
+        if not s.startswith("#") and "=" in s and s.split("=")[0].strip() == key:
+            lines[i] = f"{key}={val}"
+            hit = True
+    if not hit:
+        lines.append(f"{key}={val}")
+    with open(CONF_PATH, "w") as f:
+        f.write("\n".join(lines) + "\n")
+
+
+SSH_HOST_RE = re.compile(r"^[A-Za-z0-9._-]{1,60}$")
+
+
+def parse_ssh_config():
+    """Hosts de ~/.ssh/config (la fuente de verdad estandar de SSH)."""
+    path = os.path.expanduser("~/.ssh/config")
+    hosts, cur = [], None
+    try:
+        with open(path) as f:
+            for raw in f:
+                line = raw.strip()
+                if not line or line.startswith("#"):
+                    continue
+                parts = line.split(None, 1)
+                if len(parts) < 2:
+                    continue
+                k, v = parts[0].lower(), parts[1].strip()
+                if k == "host":
+                    cur = None
+                    for name in v.split():
+                        if "*" not in name and "?" not in name:
+                            cur = {"host": name}
+                            hosts.append(cur)
+                elif cur is not None and k in ("hostname", "user", "port"):
+                    cur[k] = v
+    except FileNotFoundError:
+        pass
+    return hosts
+
+
+def ssh_add(d):
+    host = d.get("host", "").strip()
+    hostname = d.get("hostname", "").strip()
+    if not SSH_HOST_RE.match(host):
+        return "Alias invalido (letras, numeros, . _ -)"
+    if not hostname:
+        return "Falta el hostname/IP"
+    if any(h["host"] == host for h in parse_ssh_config()):
+        return f"'{host}' ya existe en ~/.ssh/config"
+    sshdir = os.path.expanduser("~/.ssh")
+    os.makedirs(sshdir, mode=0o700, exist_ok=True)
+    path = os.path.join(sshdir, "config")
+    block = [f"\nHost {host}", f"    HostName {hostname}"]
+    if d.get("user", "").strip():
+        block.append(f"    User {d['user'].strip()}")
+    if str(d.get("port", "")).strip():
+        block.append(f"    Port {str(d['port']).strip()}")
+    if d.get("identity", "").strip():
+        block.append(f"    IdentityFile {d['identity'].strip()}")
+    existed = os.path.exists(path)
+    with open(path, "a") as f:
+        f.write("\n".join(block) + "\n")
+    if not existed:
+        os.chmod(path, 0o600)
+    return None
+
+
+def ssh_remove(host):
+    """Quita el bloque 'Host <host>' de ~/.ssh/config (solo bloques de un nombre)."""
+    path = os.path.expanduser("~/.ssh/config")
+    try:
+        with open(path) as f:
+            lines = f.read().splitlines()
+    except FileNotFoundError:
+        return "No hay ~/.ssh/config"
+    out, skip, found = [], False, False
+    for l in lines:
+        s = l.strip()
+        if s.lower().startswith("host "):
+            names = s.split()[1:]
+            if host in names:
+                found = True
+                if len(names) > 1:
+                    return "Ese host comparte linea con otros; editalo a mano"
+                skip = True
+                continue
+            skip = False
+        if not skip:
+            out.append(l)
+    if not found:
+        return "No existe"
+    with open(path, "w") as f:
+        f.write("\n".join(out).rstrip() + "\n")
+    return None
+
+
+PREFS_PATH = os.path.join(HOOKS, "prefs.json")
+
+
+def read_prefs():
+    try:
+        with open(PREFS_PATH) as f:
+            return json.load(f)
+    except Exception:
+        return {}
+
+
+def pane_cmd(sess):
+    """Comando en primer plano del pane activo (p.ej. 'ssh' si la conexion vive)."""
+    r = tmux("display-message", "-p", "-t", "=" + sess + ":", "#{pane_current_command}")
+    return r.stdout.strip() if r.returncode == 0 else ""
+
+
+def ssh_connect(host):
+    """Conexion = sesion tmux 'ssh-<host>'. VERIFICA la autenticacion de verdad:
+    devuelve (sess, connected, note). connected=False => hara falta password."""
+    if not SSH_HOST_RE.match(host) or not any(h["host"] == host for h in parse_ssh_config()):
+        return None, False, "Host desconocido; agregalo primero"
+    sess = ("ssh-" + host)[:60]
+    if tmux("has-session", "-t", "=" + sess).returncode == 0:
+        if pane_cmd(sess) == "ssh":
+            return sess, True, None
+        # la sesion existe pero el ssh murio: relanzar la conexion en su pane
+        tmux("send-keys", "-t", "=" + sess + ":", "-l", "--", f"ssh {host}")
+        tmux("send-keys", "-t", "=" + sess + ":", "Enter")
+        return sess, False, "Reintentando conexion en su pestana; si pide password, tecleala ahi"
+    # Probar la llave ANTES de prometer nada
+    try:
+        auth = subprocess.run(
+            ["ssh", "-o", "BatchMode=yes", "-o", "ConnectTimeout=6", host, "true"],
+            capture_output=True, text=True, timeout=14)
+        keyok = auth.returncode == 0
+        stderr = auth.stderr.lower()
+    except Exception:
+        keyok, stderr = False, "timeout"
+    r = subprocess.run(
+        ["systemd-run", "--user", "--scope", "--collect", "--quiet",
+         "tmux", "new-session", "-d", "-s", sess, "-n", "ssh",
+         f"ssh {shlex.quote(host)}; exec $SHELL"],
+        capture_output=True, text=True, timeout=15)
+    if r.returncode != 0:
+        return None, False, r.stderr.strip() or "No se pudo crear la sesion"
+    if keyok:
+        return sess, True, None
+    if "denied" in stderr or "authentication" in stderr:
+        return sess, False, f"{host} pide password: tecleala en su pestana (o corre cc-keys para no volver a hacerlo)"
+    return sess, False, f"{host} no responde (red caida o host apagado); la pestana quedo reintentando"
+
+
+class Handler(http.server.SimpleHTTPRequestHandler):
+    def __init__(self, *a, **kw):
+        super().__init__(*a, directory=DASH, **kw)
+
+    def log_message(self, *a):
+        pass
+
+    def _json(self, code, obj):
+        body = json.dumps(obj).encode()
+        self.send_response(code)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Cache-Control", "no-store")
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
+    def do_GET(self):
+        if self.path.startswith("/state"):
+            return self._json(200, read_states())
+        if self.path.startswith("/ssh"):
+            return self._json(200, parse_ssh_config())
+        if self.path.startswith("/conf"):
+            conf = read_conf()
+            return self._json(200, {k: conf.get(k, "1") for k in sorted(CONF_KEYS)})
+        if self.path.startswith("/prefs"):
+            return self._json(200, read_prefs())
+        if self.path.startswith("/events"):
+            evs = []
+            try:
+                with open(EVENTS) as fh:
+                    for line in fh.readlines()[-80:]:
+                        try:
+                            evs.append(json.loads(line))
+                        except Exception:
+                            pass
+            except FileNotFoundError:
+                pass
+            return self._json(200, evs)
+        return super().do_GET()
+
+    def do_POST(self):
+        try:
+            n = int(self.headers.get("Content-Length", 0))
+            data = json.loads(self.rfile.read(n) or b"{}")
+        except Exception:
+            return self._json(400, {"error": "JSON invalido"})
+
+        if self.path == "/conf-set":
+            key, val = data.get("key", ""), str(data.get("value", ""))
+            if key not in CONF_KEYS or val not in ("0", "1"):
+                return self._json(400, {"error": "Clave o valor invalido"})
+            write_conf_key(key, val)
+            return self._json(200, {"ok": True})
+
+        if self.path == "/ssh-add":
+            err = ssh_add(data)
+            if err:
+                return self._json(400, {"error": err})
+            return self._json(200, {"ok": True})
+
+        if self.path == "/ssh-del":
+            err = ssh_remove(data.get("host", ""))
+            if err:
+                return self._json(400, {"error": err})
+            return self._json(200, {"ok": True})
+
+        if self.path == "/ssh-update":
+            orig = data.get("orig", "")
+            err = ssh_remove(orig)
+            if err:
+                return self._json(400, {"error": err})
+            err = ssh_add(data)
+            if err:
+                return self._json(400, {"error": f"Se quito '{orig}' pero fallo el alta: {err}"})
+            return self._json(200, {"ok": True})
+
+        if self.path == "/prefs-set":
+            prefs = read_prefs()
+            if "favorites" in data and isinstance(data["favorites"], list):
+                prefs["favorites"] = [str(x)[:80] for x in data["favorites"]][:200]
+            with open(PREFS_PATH, "w") as f:
+                json.dump(prefs, f)
+            return self._json(200, {"ok": True})
+
+        if self.path == "/ssh-connect":
+            sess, connected, note = ssh_connect(data.get("host", ""))
+            if sess is None:
+                return self._json(400, {"error": note})
+            return self._json(200, {"ok": True, "session": sess,
+                                    "connected": connected, "note": note})
+
+        sess = data.get("session", "")
+        if not SESSION_RE.match(sess):
+            return self._json(400, {"error": "Nombre de sesion invalido"})
+        target = "=" + sess          # target-session (has-session, switch-client)
+        pane = "=" + sess + ":"      # target-pane; tmux 3.2a exige el ':' final
+
+        if self.path == "/send":
+            text = str(data.get("text", ""))[:4000]
+            if not text.strip():
+                return self._json(400, {"error": "Texto vacio"})
+            if tmux("has-session", "-t", target).returncode != 0:
+                return self._json(404, {"error": f"No hay sesion tmux '{sess}'. Levantala primero."})
+            r = tmux("send-keys", "-t", pane, "-l", "--", text)
+            if r.returncode != 0:
+                return self._json(500, {"error": r.stderr.strip() or "tmux fallo"})
+            tmux("send-keys", "-t", pane, "Enter")
+            return self._json(200, {"ok": True})
+
+        if self.path == "/key":
+            key = data.get("key", "")
+            if key not in ALLOWED_KEYS:
+                return self._json(400, {"error": "Tecla no permitida"})
+            if tmux("has-session", "-t", target).returncode != 0:
+                return self._json(404, {"error": f"No hay sesion tmux '{sess}'"})
+            r = tmux("send-keys", "-t", pane, key)
+            if r.returncode != 0:
+                return self._json(500, {"error": r.stderr.strip() or "tmux fallo"})
+            return self._json(200, {"ok": True})
+
+        if self.path == "/focus":
+            if tmux("has-session", "-t", target).returncode == 0:
+                tmux("select-window", "-t", "=" + sess + ":claude")
+            err = focus_session(sess)
+            if err:
+                return self._json(404, {"error": err})
+            return self._json(200, {"ok": True})
+
+        if self.path == "/ensure":
+            # Garantiza sesion viva (revive si hace falta) y ventana pedida, SIN
+            # mover clientes ni ventanas de nadie. Lo usa la app para sus tabs.
+            cwd = data.get("cwd", "")
+            win = data.get("win", "claude")
+            if tmux("has-session", "-t", target).returncode != 0:
+                if not cwd or not os.path.isdir(cwd):
+                    cwd = find_project_dir(sess) or ""
+                if not cwd:
+                    return self._json(400, {"error": f"No encontre el directorio de '{sess}' en ~/codebase"})
+                r = tmux_new_session(sess, cwd)
+                if r.returncode != 0:
+                    return self._json(500, {"error": r.stderr.strip() or "No se pudo crear la sesion"})
+            if win == "shell":
+                ensure_shell_window(sess, cwd)
+            return self._json(200, {"ok": True})
+
+        if self.path == "/new":
+            # Nueva sesion que SIEMPRE funciona: si el nombre es un proyecto de
+            # ~/codebase abre su Claude; si no, una terminal en blanco en HOME.
+            proj = find_project_dir(sess)
+            if proj:
+                if tmux("has-session", "-t", target).returncode != 0:
+                    r = tmux_new_session(sess, proj)
+                    if r.returncode != 0:
+                        return self._json(500, {"error": r.stderr.strip() or "No se pudo crear"})
+                return self._json(200, {"ok": True, "kind": "project"})
+            if tmux("has-session", "-t", target).returncode != 0:
+                r = subprocess.run(
+                    ["systemd-run", "--user", "--scope", "--collect", "--quiet",
+                     "tmux", "new-session", "-d", "-s", sess, "-c", os.path.expanduser("~")],
+                    capture_output=True, text=True, timeout=15)
+                if r.returncode != 0:
+                    return self._json(500, {"error": r.stderr.strip() or "No se pudo crear"})
+            return self._json(200, {"ok": True, "kind": "shell"})
+
+        if self.path == "/shell":
+            # Consola manual del proyecto: ventana 'shell' de la misma sesion
+            cwd = data.get("cwd", "")
+            if tmux("has-session", "-t", target).returncode != 0:
+                if not cwd or not os.path.isdir(cwd):
+                    cwd = find_project_dir(sess) or ""
+                if not cwd:
+                    return self._json(400, {"error": f"No encontre el directorio de '{sess}' en ~/codebase"})
+                r = tmux_new_session(sess, cwd)
+                if r.returncode != 0:
+                    return self._json(500, {"error": r.stderr.strip() or "No se pudo crear la sesion"})
+            ensure_shell_window(sess, cwd)
+            tmux("select-window", "-t", "=" + sess + ":shell")
+            focus_session(sess)
+            return self._json(200, {"ok": True})
+
+        if self.path == "/up":
+            cwd = data.get("cwd", "")
+            if not cwd or not os.path.isdir(cwd):
+                cwd = find_project_dir(sess) or ""
+            if not cwd:
+                return self._json(400, {"error": f"No encontre el directorio de '{sess}' en ~/codebase"})
+            if tmux("has-session", "-t", target).returncode != 0:
+                r = tmux_new_session(sess, cwd)
+                if r.returncode != 0:
+                    return self._json(500, {"error": r.stderr.strip() or "No se pudo crear la sesion"})
+            # abrir/traer la ventana del terminal de inmediato
+            focus_session(sess)
+            return self._json(200, {"ok": True})
+
+        return self._json(404, {"error": "Ruta desconocida"})
+
+
+def main():
+    args = [a for a in sys.argv[1:]]
+    open_browser = "--no-open" not in args
+    ports = [int(a) for a in args if a.isdigit()] or [4777]
+    port = ports[0]
+    socketserver.TCPServer.allow_reuse_address = True
+    with socketserver.ThreadingTCPServer(("127.0.0.1", port), Handler) as srv:
+        url = f"http://127.0.0.1:{port}"
+        print(f"Centro Claude corriendo en {url}  (Ctrl+C para salir)")
+        if open_browser:
+            try:
+                webbrowser.open(url)
+            except Exception:
+                pass
+        try:
+            srv.serve_forever()
+        except KeyboardInterrupt:
+            print("\nAdios")
+
+
+if __name__ == "__main__":
+    main()

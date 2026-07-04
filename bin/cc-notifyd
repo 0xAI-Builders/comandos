@@ -1,0 +1,301 @@
+#!/usr/bin/env python3
+"""Popups accionables de Claude Code con diseno propio (sin GNOME notifications).
+
+Ventanas flotantes arriba a la derecha con el design system del Centro Claude.
+No roban el foco al aparecer; click en el input para escribir.
+
+Anatomia del popup:
+  - Etiqueta de estado (NECESITA RESPUESTA ambar / TERMINO verde)
+  - NOMBRE DEL PROYECTO en grande
+  - Preview de lo que Claude dijo/pregunta
+  - Input de texto: escribe y Enter -> llega al Claude de esa sesion tmux
+  - Botones [1][2][3] SOLO si es un prompt de permiso/pregunta numerada;
+    [Enter][Esc] en esperas; [Abrir] siempre (tmux + ventana al frente)
+  - Click en el nombre del proyecto = Abrir
+
+Recibe eventos de cc-notify.sh:  POST 127.0.0.1:4778/notify
+Corre como servicio:             systemctl --user status cc-notifyd
+"""
+import json, re, subprocess, threading
+import http.server, socketserver
+import gi
+gi.require_version("Gtk", "3.0")
+from gi.repository import Gtk, Gdk, GLib
+
+PORT = 4778
+WIDTH = 420
+MARGIN = 14
+TOP = 48
+ALLOWED_KEYS = {"Enter", "Escape", "1", "2", "3"}
+SESSION_RE = re.compile(r"^[A-Za-z0-9._-]{1,80}$")
+PERM_RE = re.compile(r"permi|pregunta|question|asking", re.IGNORECASE)
+
+CSS = b"""
+window.ccpop { background-color: rgba(0,0,0,0); }
+.card { background-color: #121722; border: 1px solid #222A3A; border-radius: 12px; }
+.card.waiting { border-color: #6b4c12; }
+.edge { border-radius: 11px 0px 0px 11px; background-color: #2EE59D; }
+.edge.waiting { background-color: #FFAE1A; }
+.tag { color: #FFAE1A; font-family: 'JetBrainsMono Nerd Font', monospace; font-size: 9.5px; font-weight: 700; }
+.tag.done { color: #2EE59D; }
+.proj { color: #EAF0FB; font-family: 'JetBrainsMono Nerd Font', monospace; font-weight: 700; font-size: 19px; }
+.body { color: #9AA6BF; font-size: 12px; }
+.entry {
+  background-color: #0A0D13; color: #EAF0FB; border: 1px solid #222A3A;
+  border-radius: 7px; padding: 6px 10px; font-family: 'JetBrainsMono Nerd Font', monospace;
+  font-size: 12px; caret-color: #7AA5FF;
+}
+.entry:focus { border-color: #7AA5FF; }
+.btn {
+  background-color: #0A0D13; color: #9AA6BF; border: 1px solid #222A3A;
+  border-radius: 6px; padding: 3px 10px; font-family: 'JetBrainsMono Nerd Font', monospace;
+  font-size: 11.5px; min-height: 24px;
+}
+.btn:hover { color: #EAF0FB; border-color: #5E6980; background-color: #161C29; }
+.btn.primary { color: #FFAE1A; border-color: #6b4c12; }
+.btn.primary:hover { border-color: #FFAE1A; }
+.btn.open { color: #7AA5FF; }
+.close { background: none; border: none; color: #5E6980; padding: 0px 4px; font-size: 13px; }
+.close:hover { color: #EAF0FB; }
+"""
+
+popups = []
+by_session = {}
+
+
+def tmux(*args):
+    try:
+        return subprocess.run(["tmux", *args], capture_output=True, text=True, timeout=5)
+    except Exception:
+        return subprocess.CompletedProcess(args, 1, "", "")
+
+
+def alive(sess):
+    return SESSION_RE.match(sess) and tmux("has-session", "-t", f"={sess}").returncode == 0
+
+
+def send_key(sess, key):
+    if key in ALLOWED_KEYS and alive(sess):
+        tmux("send-keys", "-t", f"={sess}:", key)
+
+
+def choose(sess, digit):
+    """Elige la opcion N de un prompt numerado: digito y Enter de confirmacion."""
+    if not alive(sess):
+        return
+    tmux("send-keys", "-t", f"={sess}:", digit)
+    GLib.timeout_add(250, lambda: (tmux("send-keys", "-t", f"={sess}:", "Enter"), False)[1])
+
+
+def send_text(sess, text):
+    text = text.strip()
+    if text and alive(sess):
+        tmux("send-keys", "-t", f"={sess}:", "-l", "--", text)
+        tmux("send-keys", "-t", f"={sess}:", "Enter")
+
+
+def open_session(sess):
+    if not SESSION_RE.match(sess):
+        return
+    # Delegar en cc-dash: cambia el cliente tmux, trae la ventana al frente,
+    # o abre una terminal nueva (kitty/tilix) si ninguna esta conectada.
+    try:
+        import urllib.request
+        req = urllib.request.Request(
+            "http://127.0.0.1:4777/focus",
+            data=json.dumps({"session": sess}).encode(),
+            headers={"Content-Type": "application/json"})
+        urllib.request.urlopen(req, timeout=5)
+        return
+    except Exception:
+        pass
+    tmux("switch-client", "-t", f"={sess}")
+    try:
+        subprocess.run(["wmctrl", "-a", sess], capture_output=True, timeout=2)
+    except Exception:
+        pass
+
+
+def reposition():
+    disp = Gdk.Display.get_default()
+    mon = disp.get_primary_monitor() or disp.get_monitor(0)
+    geo = mon.get_geometry()
+    y = geo.y + TOP
+    for w in popups:
+        w.move(geo.x + geo.width - WIDTH - MARGIN, y)
+        y += w.get_allocated_height() + 10
+    return False
+
+
+def close_popup(win):
+    if win in popups:
+        popups.remove(win)
+    for s, w in list(by_session.items()):
+        if w is win:
+            by_session.pop(s, None)
+    win.destroy()
+    reposition()
+
+
+def make_popup(title, body, session, kind, project, options_str=""):
+    labels = [o.strip() for o in (options_str or "").split("\x1f") if o.strip()][:4]
+    old = by_session.get(session)
+    if old:
+        close_popup(old)
+
+    win = Gtk.Window(type=Gtk.WindowType.TOPLEVEL)
+    win.get_style_context().add_class("ccpop")
+    win.set_decorated(False)
+    win.set_keep_above(True)
+    win.set_focus_on_map(False)      # no roba el foco al aparecer
+    win.set_skip_taskbar_hint(True)
+    win.set_skip_pager_hint(True)
+    win.set_type_hint(Gdk.WindowTypeHint.NOTIFICATION)
+    win.set_default_size(WIDTH, -1)
+    visual = win.get_screen().get_rgba_visual()
+    if visual:
+        win.set_visual(visual)
+    win.set_app_paintable(True)
+
+    card = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL)
+    card.get_style_context().add_class("card")
+    edge = Gtk.Box(); edge.set_size_request(6, -1)
+    edge.get_style_context().add_class("edge")
+    if kind == "waiting":
+        card.get_style_context().add_class("waiting")
+        edge.get_style_context().add_class("waiting")
+    card.pack_start(edge, False, False, 0)
+
+    content = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=7)
+    content.set_margin_top(10); content.set_margin_bottom(11)
+    content.set_margin_start(13); content.set_margin_end(11)
+
+    header = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
+    tag = Gtk.Label(label="NECESITA RESPUESTA" if kind == "waiting" else "TERMINO")
+    tag.get_style_context().add_class("tag")
+    if kind == "done":
+        tag.get_style_context().add_class("done")
+    header.pack_start(tag, False, False, 0)
+    close = Gtk.Button(label="×")
+    close.get_style_context().add_class("close")
+    close.set_relief(Gtk.ReliefStyle.NONE)
+    close.connect("clicked", lambda *_: close_popup(win))
+    header.pack_end(close, False, False, 0)
+    content.pack_start(header, False, False, 0)
+
+    # Proyecto en GRANDE; click = abrir la sesion
+    pl = Gtk.Label(label=project or session, xalign=0)
+    pl.get_style_context().add_class("proj")
+    pl.set_ellipsize(3)  # END
+    pev = Gtk.EventBox(); pev.add(pl)
+    pev.connect("button-press-event", lambda *_: (open_session(session), close_popup(win)))
+    content.pack_start(pev, False, False, 0)
+
+    if body:
+        bl = Gtk.Label(label=body[:320], xalign=0)
+        bl.get_style_context().add_class("body")
+        bl.set_line_wrap(True)
+        bl.set_max_width_chars(52)
+        content.pack_start(bl, False, False, 0)
+
+    # Input directo: escribe y Enter
+    entry = Gtk.Entry()
+    entry.get_style_context().add_class("entry")
+    entry.set_placeholder_text(
+        "Responde aqui y Enter..." if kind == "waiting" else "Siguiente instruccion...")
+    def on_activate(e):
+        send_text(session, e.get_text())
+        close_popup(win)
+    entry.connect("activate", on_activate)
+    content.pack_start(entry, False, False, 0)
+
+    def mk_btn(label, cb, cls=None):
+        b = Gtk.Button(label=label)
+        b.get_style_context().add_class("btn")
+        if cls:
+            b.get_style_context().add_class(cls)
+        b.connect("clicked", lambda *_: (cb(), close_popup(win)))
+        return b
+
+    long_opts = any(len(l) > 14 for l in labels)
+    if labels and long_opts:
+        # Opciones largas (pregunta): una por renglon, ancho completo
+        for i, lab in enumerate(labels):
+            b = mk_btn(f"{lab[:60]}", lambda i=i: choose(session, str(i + 1)), "primary")
+            b.get_child().set_xalign(0)
+            content.pack_start(b, False, False, 0)
+
+    btns = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
+    if labels and not long_opts:
+        for i, lab in enumerate(labels):
+            btns.pack_start(mk_btn(lab[:16], lambda i=i: choose(session, str(i + 1)), "primary"),
+                            False, False, 0)
+    if kind == "waiting":
+        if not labels:
+            btns.pack_start(mk_btn("Enter", lambda: send_key(session, "Enter"), "primary"),
+                            False, False, 0)
+        btns.pack_start(mk_btn("Esc", lambda: send_key(session, "Escape")), False, False, 0)
+    btns.pack_end(mk_btn("Abrir", lambda: open_session(session), "open"), False, False, 0)
+    content.pack_start(btns, False, False, 1)
+
+    card.pack_start(content, True, True, 0)
+    win.add(card)
+    win.show_all()
+    popups.append(win)
+    by_session[session] = win
+    reposition()
+    GLib.timeout_add(80, reposition)
+
+    if kind != "waiting":
+        def auto():
+            # no cerrar si el usuario esta escribiendo en el input
+            if win in popups and not entry.has_focus():
+                close_popup(win)
+                return False
+            return win in popups
+        GLib.timeout_add_seconds(12, auto)
+    return False
+
+
+class Handler(http.server.BaseHTTPRequestHandler):
+    def log_message(self, *a):
+        pass
+
+    def do_POST(self):
+        if self.path != "/notify":
+            self.send_response(404); self.end_headers(); return
+        try:
+            n = int(self.headers.get("Content-Length", 0))
+            d = json.loads(self.rfile.read(n) or b"{}")
+        except Exception:
+            self.send_response(400); self.end_headers(); return
+        GLib.idle_add(make_popup,
+                      str(d.get("title", "Claude Code"))[:200],
+                      str(d.get("body", ""))[:400],
+                      str(d.get("session", "")),
+                      str(d.get("kind", "done")),
+                      str(d.get("project", ""))[:80],
+                      str(d.get("options", ""))[:600])
+        out = b'{"ok": true}'
+        self.send_response(200)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Length", str(len(out)))
+        self.end_headers()
+        self.wfile.write(out)
+
+
+def main():
+    provider = Gtk.CssProvider()
+    provider.load_from_data(CSS)
+    Gtk.StyleContext.add_provider_for_screen(
+        Gdk.Screen.get_default(), provider,
+        Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION)
+    socketserver.TCPServer.allow_reuse_address = True
+    srv = socketserver.ThreadingTCPServer(("127.0.0.1", PORT), Handler)
+    threading.Thread(target=srv.serve_forever, daemon=True).start()
+    print(f"cc-notifyd listo en 127.0.0.1:{PORT} (popups propios v3)")
+    Gtk.main()
+
+
+if __name__ == "__main__":
+    main()

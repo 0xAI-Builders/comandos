@@ -1,0 +1,60 @@
+#!/usr/bin/env python3
+"""Saltar a la sesion MAS urgente con una tecla (Super+N).
+
+Prioridad: la que lleva MAS tiempo esperando tu respuesta > la terminada mas
+reciente > la de ultima actividad. Enfoca la terminal (o la abre) via cc-dash;
+si la sesion esta muerta, la revive con claude --continue.
+
+Uso: cc-next [--dry]  (--dry solo imprime la eleccion)
+"""
+import glob, json, os, re, sys, urllib.request
+
+STATE = os.path.expanduser("~/.claude/hooks/state")
+
+
+def api(path, payload):
+    req = urllib.request.Request(
+        f"http://127.0.0.1:4777{path}", data=json.dumps(payload).encode(),
+        headers={"Content-Type": "application/json"})
+    return urllib.request.urlopen(req, timeout=8)
+
+
+def main():
+    items = []
+    for f in glob.glob(os.path.join(STATE, "*.json")):
+        try:
+            items.append(json.load(open(f)))
+        except Exception:
+            pass
+    waiting = [d for d in items if d.get("status") == "waiting"]
+    done = [d for d in items if d.get("status") == "done"]
+    if waiting:
+        pick = min(waiting, key=lambda d: d.get("ts", 0))   # la que lleva mas esperando
+    elif done:
+        pick = max(done, key=lambda d: d.get("ts", 0))      # lo recien terminado
+    elif items:
+        pick = max(items, key=lambda d: d.get("ts", 0))
+    else:
+        print("Sin sesiones registradas")
+        return 0
+    proj = pick.get("project", "")
+    sess = re.sub(r"[.:]", "-", proj)[:80]
+    if "--dry" in sys.argv:
+        print(f"eleccion: {proj} ({pick.get('status')})")
+        return 0
+    try:
+        api("/focus", {"session": sess})
+    except urllib.error.HTTPError:
+        try:
+            api("/up", {"session": sess, "cwd": pick.get("cwd", "")})
+        except Exception as e:
+            print(f"no pude revivir {proj}: {e}")
+            return 1
+    except Exception as e:
+        print(f"cc-dash no responde: {e}")
+        return 1
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

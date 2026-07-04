@@ -1,0 +1,65 @@
+#!/usr/bin/env bash
+# ccx — una sesion tmux por proyecto, con Claude Code adentro.
+#
+# Uso:
+#   ccx                  lista las sesiones activas
+#   ccx <nombre|ruta>    abre (o retoma) la sesion del proyecto y lanza
+#                        claude --continue (retoma la conversacion anterior)
+#   ccx kill <nombre>    mata la sesion de ese proyecto
+#
+# El nombre se busca en ~/codebase (2 niveles), no importa mayusculas.
+set -uo pipefail
+
+CODEBASE="$HOME/codebase"
+
+if [ $# -eq 0 ]; then
+  echo "Sesiones activas:"
+  tmux list-sessions -F "  #{session_name}#{?session_attached,  [conectada],}" 2>/dev/null || echo "  (ninguna)"
+  echo ""
+  echo "Uso: ccx <nombre-de-proyecto>   (busca en ~/codebase)"
+  exit 0
+fi
+
+if [ "$1" = "kill" ] && [ $# -ge 2 ]; then
+  tmux kill-session -t "=$2" && echo "Sesion '$2' eliminada"
+  exit $?
+fi
+
+target="$1"
+
+# Resolver directorio: ruta directa o busqueda en ~/codebase
+if [ -d "$target" ]; then
+  dir=$(cd "$target" && pwd)
+else
+  dir=$(find "$CODEBASE" -mindepth 1 -maxdepth 2 -type d -iname "$target" -not -path "*/node_modules/*" 2>/dev/null | head -1)
+  if [ -z "$dir" ]; then
+    matches=$(find "$CODEBASE" -mindepth 1 -maxdepth 2 -type d -iname "*$target*" -not -path "*/node_modules/*" 2>/dev/null)
+    count=$(grep -c . <<<"$matches" 2>/dev/null || echo 0)
+    if [ "$count" -eq 0 ] || [ -z "$matches" ]; then
+      echo "No encontre '$target' en $CODEBASE"
+      exit 1
+    elif [ "$count" -gt 1 ]; then
+      echo "Varios candidatos, se mas especifico:"
+      sed 's/^/  /' <<<"$matches"
+      exit 1
+    fi
+    dir="$matches"
+  fi
+fi
+
+# Nombre de sesion valido para tmux (sin puntos ni dos puntos)
+name=$(basename "$dir" | tr '.:' '--')
+
+if ! tmux has-session -t "=$name" 2>/dev/null; then
+  # Ventana 'claude': la conversacion (retoma con --continue; al salir queda shell).
+  # Ventana 'shell': consola manual en el mismo directorio (Ctrl-b l para alternar).
+  tmux new-session -d -s "$name" -n claude -c "$dir" "claude --continue 2>/dev/null || claude; exec \$SHELL"
+  tmux new-window -d -t "=$name" -n shell -c "$dir"
+  echo "Sesion '$name' creada en $dir (ventanas: claude + shell)"
+fi
+
+if [ -n "${TMUX:-}" ]; then
+  exec tmux switch-client -t "=$name"
+else
+  exec tmux attach -t "=$name"
+fi

@@ -1,0 +1,839 @@
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ComandOS</title>
+<style>
+  :root{
+    --bg:#0A0D13; --panel:#121722; --panel2:#161C29; --line:#222A3A; --line2:#2E3852;
+    --text:#EAF0FB; --dim:#9AA6BF; --faint:#5E6980;
+    --brand:#8B7CFF; --waiting:#FFAE1A; --done:#2EE59D; --working:#7AA5FF;
+    --mono:'JetBrainsMono Nerd Font','JetBrains Mono',ui-monospace,Menlo,Consolas,monospace;
+    --sans:system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{max-width:100vw;overflow-x:hidden}
+  body{
+    color:var(--text);font-family:var(--sans);
+    background:radial-gradient(1100px 500px at 75% -120px, #141B2E 0%, var(--bg) 60%) fixed var(--bg);
+    min-height:100vh;
+  }
+  button{font:inherit;color:inherit;background:none;border:0;cursor:pointer}
+  input{font:inherit;color:inherit;min-width:0}
+  :focus-visible{outline:2px solid var(--brand);outline-offset:2px}
+  .hidden{display:none !important}
+
+  /* ---------- barra superior ---------- */
+  header{
+    position:sticky;top:0;z-index:10;display:flex;align-items:center;gap:8px 14px;
+    flex-wrap:wrap;padding:11px 18px;background:color-mix(in srgb,var(--bg) 82%,transparent);
+    backdrop-filter:blur(10px);border-bottom:1px solid var(--line);
+    font-family:var(--mono);font-size:12.5px;
+  }
+  .brand{font-weight:800;letter-spacing:.16em;font-size:13px}
+  .brand b{color:var(--brand)}
+  .counts{display:flex;gap:6px;flex-wrap:wrap}
+  .pill{white-space:nowrap;padding:3px 10px;border-radius:20px;font-size:11.5px;
+    color:var(--dim);border:1px solid var(--line)}
+  .pill b{font-weight:700}
+  .pill.hot{color:var(--waiting);border-color:color-mix(in srgb,var(--waiting) 40%,var(--line))}
+  .pill.ok b{color:var(--done)} .pill.run b{color:var(--working)}
+  .hdr-right{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-left:auto}
+  #q,#new-name{background:var(--panel);border:1px solid var(--line);border-radius:8px;
+    padding:5px 11px;font-family:var(--mono);font-size:12px;color:var(--text)}
+  #q{width:140px} #new-name{width:150px}
+  #q::placeholder,#new-name::placeholder{color:var(--faint)}
+  #q:focus,#new-name:focus{outline:none;border-color:var(--brand)}
+  .hdr-btn{padding:5px 11px;border:1px solid var(--line);border-radius:8px;color:var(--dim);
+    font-size:12px}
+  .hdr-btn:hover{color:var(--text);border-color:var(--line2)}
+  .hdr-btn.on{color:var(--done);border-color:color-mix(in srgb,var(--done) 45%,var(--line))}
+  #clock{font-variant-numeric:tabular-nums;color:var(--dim)}
+
+  /* ---------- servidores ---------- */
+  #ssh-bar{max-width:1360px;margin:0 auto;padding:14px 18px 0;display:flex;
+    align-items:center;gap:8px;flex-wrap:wrap;font-family:var(--mono)}
+  #ssh-bar .lbl{font-size:10px;letter-spacing:.18em;color:var(--faint);
+    text-transform:uppercase;font-weight:700}
+  #ssh-chips{display:contents}
+  .ssh-chip{display:inline-flex;align-items:center;gap:7px;padding:4px 12px;
+    background:var(--panel);border:1px solid var(--line);border-radius:16px;
+    font-size:12px;color:var(--dim)}
+  .ssh-chip:hover{color:var(--text);border-color:var(--brand)}
+  .ssh-chip::before{content:"";width:6px;height:6px;border-radius:50%;background:var(--faint)}
+  .ssh-chip.live{color:var(--text);border-color:color-mix(in srgb,var(--done) 40%,var(--line))}
+  .ssh-chip.live::before{background:var(--done)}
+  #ssh-manage{padding:4px 12px;border:1px dashed var(--line);border-radius:16px;
+    font-size:12px;color:var(--faint)}
+  #ssh-manage:hover{color:var(--text);border-color:var(--brand)}
+
+  /* ---------- secciones ---------- */
+  .sec{max-width:1360px;margin:0 auto;padding:18px 18px 0}
+  .sec-label{font-family:var(--mono);font-size:10px;letter-spacing:.18em;
+    text-transform:uppercase;font-weight:700;color:var(--faint);margin-bottom:10px;
+    display:flex;align-items:center;gap:8px}
+  .sec-label::after{content:"";flex:1;height:1px;background:var(--line)}
+
+  /* Urgentes: tarjetas grandes */
+  #urgent{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(380px,100%),1fr));gap:14px}
+  .card{
+    min-width:0;border-radius:14px;padding:15px 16px 13px;
+    background:linear-gradient(140deg, rgba(255,174,26,.09), rgba(255,174,26,.02) 45%), var(--panel);
+    border:1px solid color-mix(in srgb,var(--waiting) 35%,var(--line));
+    box-shadow:0 8px 28px rgba(0,0,0,.35), 0 0 0 1px rgba(255,174,26,.04);
+    display:flex;flex-direction:column;gap:9px;
+  }
+  .card .top{display:flex;align-items:center;gap:8px;min-width:0}
+  .fav{font-size:15px;color:var(--faint);line-height:1;padding:0 2px;flex:none}
+  .fav:hover{color:var(--dim)} .fav.on{color:var(--waiting)}
+  .card h2{font-family:var(--mono);font-size:17px;font-weight:800;min-width:0;
+    overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .tag{flex:none;font-family:var(--mono);font-size:9.5px;font-weight:700;letter-spacing:.12em;
+    text-transform:uppercase;padding:3px 8px;border-radius:5px;
+    color:var(--waiting);background:rgba(255,174,26,.13)}
+  .ago{margin-left:auto;flex:none;font-family:var(--mono);font-size:11px;color:var(--faint);
+    font-variant-numeric:tabular-nums}
+  .path{font-family:var(--mono);font-size:10.5px;color:var(--faint);
+    overflow:hidden;text-overflow:ellipsis;white-space:nowrap;margin-top:-5px}
+  .path.missing{color:var(--waiting)}
+  .preview{font-size:13px;line-height:1.5;color:var(--text);
+    display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}
+  .send{display:flex;gap:8px;margin-top:2px}
+  .send input{flex:1;background:var(--bg);border:1px solid var(--line);border-radius:9px;
+    padding:9px 12px;font-family:var(--mono);font-size:12.5px}
+  .send input::placeholder{color:var(--faint)}
+  .send input:focus{outline:none;border-color:var(--brand)}
+  .send button{padding:8px 16px;border-radius:9px;background:var(--brand);color:#0A0D13;
+    font-weight:700;font-size:12.5px;flex:none}
+  .send button:hover{filter:brightness(1.12)}
+  .row2{display:flex;gap:6px 8px;align-items:center;flex-wrap:wrap}
+  .keys{display:flex;gap:5px;flex-wrap:wrap}
+  .keys button{min-width:30px;padding:4px 9px;border:1px solid var(--line);border-radius:7px;
+    font-family:var(--mono);font-size:11.5px;color:var(--waiting);background:var(--bg)}
+  .keys button:hover{border-color:var(--waiting)}
+  .ops{margin-left:auto;display:flex;gap:6px;flex-wrap:wrap}
+  .ops button{font-family:var(--mono);font-size:11.5px;color:var(--dim);
+    padding:4px 10px;border:1px solid transparent;border-radius:7px}
+  .ops button:hover{color:var(--text);border-color:var(--line2)}
+  .card.ext{background:var(--panel);border-color:var(--line);box-shadow:none}
+  .card.ext .tag{color:var(--working);background:rgba(122,165,255,.12)}
+
+  /* Sesiones: filas compactas */
+  #rows{display:flex;flex-direction:column;border:1px solid var(--line);border-radius:14px;
+    background:var(--panel);overflow:hidden}
+  .row{display:flex;align-items:center;gap:10px;padding:11px 14px;min-width:0;
+    border-bottom:1px solid var(--line);cursor:pointer}
+  .row:last-child{border-bottom:none}
+  .row:hover{background:var(--panel2)}
+  .dot{flex:none;width:8px;height:8px;border-radius:50%;background:var(--faint)}
+  .row.s-done .dot{background:var(--done);box-shadow:0 0 8px rgba(46,229,157,.5)}
+  .row.s-working .dot{background:var(--working)}
+  .row.s-working .dot{animation:blink 2s ease-in-out infinite}
+  @keyframes blink{0%,100%{opacity:1}50%{opacity:.35}}
+  @media (prefers-reduced-motion:reduce){.row.s-working .dot{animation:none}}
+  .row .name{font-family:var(--mono);font-size:13.5px;font-weight:700;flex:none;
+    max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .row .rpath{font-family:var(--mono);font-size:10.5px;color:var(--faint);flex:none;
+    max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .row .rprev{font-size:12px;color:var(--dim);flex:1;min-width:60px;
+    overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .row .ago{margin-left:0}
+  .row .acts{display:flex;gap:5px;flex:none;opacity:0;transition:opacity .12s}
+  .row:hover .acts,.row:focus-within .acts{opacity:1}
+  .row .acts button{font-family:var(--mono);font-size:11px;color:var(--dim);
+    padding:3px 9px;border:1px solid var(--line);border-radius:6px;background:var(--bg)}
+  .row .acts button:hover{color:var(--text);border-color:var(--brand)}
+  .row .acts .up{color:var(--waiting)}
+  .row .fav{font-size:13px}
+  .row.ext{opacity:.75}
+  .row.sshoff .dot{background:var(--waiting);box-shadow:0 0 8px rgba(255,174,26,.4)}
+  .row.sshoff .rprev{color:var(--waiting)}
+  .row .exttag{flex:none;font-family:var(--mono);font-size:9px;letter-spacing:.1em;
+    color:var(--working);border:1px solid color-mix(in srgb,var(--working) 40%,var(--line));
+    border-radius:4px;padding:1px 6px;text-transform:uppercase}
+  .row-send{padding:0 14px 12px 32px;background:var(--panel2);border-bottom:1px solid var(--line)}
+  .row-send .send{margin:0}
+
+  .empty{padding:34px 20px;text-align:center;color:var(--faint);
+    font-family:var(--mono);font-size:12.5px;line-height:2}
+  .empty code{color:var(--done)}
+
+  /* ---------- timeline ---------- */
+  #tl-wrap{max-width:1360px;margin:0 auto;padding:10px 18px 50px}
+  #tl-toggle{font-family:var(--mono);font-size:10.5px;color:var(--faint);
+    letter-spacing:.14em;text-transform:uppercase;padding:8px 0}
+  #tl-toggle:hover{color:var(--dim)}
+  #timeline{border-left:1px solid var(--line);margin:6px 0 0 4px;padding-left:14px;
+    display:flex;flex-direction:column;gap:5px}
+  .ev{font-family:var(--mono);font-size:11.5px;color:var(--dim);display:flex;gap:10px;min-width:0}
+  .ev time{color:var(--faint);font-variant-numeric:tabular-nums;flex:none}
+  .ev .evdot{flex:none;align-self:center;width:6px;height:6px;border-radius:50%}
+  .ev .txt{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+
+  /* ---------- drawers ---------- */
+  .drawer{position:fixed;top:0;right:0;bottom:0;width:380px;max-width:94vw;z-index:20;
+    background:var(--panel2);border-left:1px solid var(--line);padding:22px;
+    transform:translateX(100%);transition:transform .18s ease;overflow-y:auto}
+  .drawer.open{transform:none}
+  .drawer h3{font-family:var(--mono);font-size:11px;letter-spacing:.16em;
+    text-transform:uppercase;color:var(--dim);margin-bottom:15px}
+  .set{margin-bottom:15px}
+  .set label{display:block;font-size:13px;margin-bottom:6px}
+  .set input[type=range]{width:100%}
+  .desc{font-size:11.5px;color:var(--faint);line-height:1.5}
+  .test{font-family:var(--mono);font-size:11.5px;color:var(--dim);
+    border:1px solid var(--line);border-radius:7px;padding:5px 12px}
+  .test:hover{color:var(--text);border-color:var(--brand)}
+  .switch{display:flex;align-items:center;justify-content:space-between;gap:10px}
+  .switch button{width:40px;height:22px;border-radius:11px;background:var(--line);
+    position:relative;flex:none}
+  .switch button::after{content:"";position:absolute;top:3px;left:3px;width:16px;height:16px;
+    border-radius:50%;background:var(--dim);transition:transform .15s}
+  .switch button.on{background:var(--done)}
+  .switch button.on::after{transform:translateX(18px);background:var(--bg)}
+  .srv-row{display:flex;align-items:center;gap:8px;padding:9px 0;border-bottom:1px solid var(--line)}
+  .srv-info{flex:1;min-width:0}
+  .srv-name{font-family:var(--mono);font-size:13px;font-weight:700}
+  .srv-tgt{font-family:var(--mono);font-size:10.5px;color:var(--faint);
+    overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .srv-row button{font-family:var(--mono);font-size:11px;color:var(--dim);
+    border:1px solid var(--line);border-radius:6px;padding:3px 8px;flex:none}
+  .srv-row button:hover{color:var(--text);border-color:var(--brand)}
+  .srv-row .con{color:var(--done)}
+  .srv-row .del.arm{color:#FF6B6B;border-color:#FF6B6B}
+  #srv-form input{width:100%;background:var(--bg);border:1px solid var(--line);
+    border-radius:8px;padding:8px 11px;font-family:var(--mono);font-size:12.5px}
+  #srv-form input:focus{outline:none;border-color:var(--brand)}
+  #srv-form .frow{display:flex;gap:10px}
+  #srv-form .frow .set{flex:1}
+  #srv-form label{font-size:11.5px;color:var(--dim)}
+
+  /* ---------- toasts ---------- */
+  #toasts{position:fixed;right:16px;bottom:16px;z-index:30;display:flex;
+    flex-direction:column;gap:8px}
+  .toast{background:var(--panel2);border:1px solid var(--line);
+    border-left:3px solid var(--brand);border-radius:9px;padding:10px 14px;
+    font-family:var(--mono);font-size:12px;max-width:min(380px,90vw)}
+  .toast.err{border-left-color:var(--waiting)}
+</style>
+
+<header>
+  <div class="brand"><b>●</b> COMANDOS</div>
+  <div class="counts">
+    <span class="pill hot"><b id="n-waiting">0</b> esperan</span>
+    <span class="pill ok"><b id="n-done">0</b> listos</span>
+    <span class="pill run"><b id="n-working">0</b> trabajando</span>
+  </div>
+  <div class="hdr-right">
+    <input id="q" placeholder="buscar" autocomplete="off" spellcheck="false"
+      title="Filtra por nombre o ruta">
+    <form id="new-form" title="Nombre de un proyecto de ~/codebase y Enter: crea/abre su sesion">
+      <input id="new-name" placeholder="abrir proyecto" autocomplete="off" spellcheck="false">
+    </form>
+    <button class="hdr-btn" id="btn-audio" title="El navegador exige un click antes de poder sonar">Sonido</button>
+    <button class="hdr-btn" id="btn-settings">Ajustes</button>
+    <span id="clock">--:--</span>
+  </div>
+</header>
+
+<div id="ssh-bar">
+  <span class="lbl">Servidores</span>
+  <span id="ssh-chips"></span>
+  <button id="ssh-manage" title="Agregar, editar o borrar (viven en ~/.ssh/config)">gestionar</button>
+</div>
+
+<section class="sec" id="urgent-wrap">
+  <div class="sec-label">Esperan tu respuesta</div>
+  <div id="urgent"></div>
+</section>
+
+<section class="sec">
+  <div class="sec-label">Sesiones</div>
+  <div id="rows"></div>
+</section>
+
+<div id="tl-wrap">
+  <button id="tl-toggle">Ver actividad reciente</button>
+  <div id="timeline" class="hidden"></div>
+</div>
+
+<aside id="settings" class="drawer" aria-label="Ajustes">
+  <h3>Sonido de la interfaz</h3>
+  <div class="set"><label for="vol">Volumen</label>
+    <input type="range" id="vol" min="0" max="100" value="60"></div>
+  <div class="set switch"><label>Al terminar</label>
+    <button id="sw-done" class="on" role="switch"></button></div>
+  <div class="set switch"><label>Al pedir atencion</label>
+    <button id="sw-wait" class="on" role="switch"></button></div>
+  <div class="set" style="display:flex;gap:8px">
+    <button class="test" data-test="done">Probar terminado</button>
+    <button class="test" data-test="waiting">Probar atencion</button>
+  </div>
+  <div class="set switch"><label>Notificaciones del navegador</label>
+    <button id="sw-notif" role="switch"></button></div>
+  <div class="set">
+    <label for="poll">Refresco: <span id="poll-v">2</span> s</label>
+    <input type="range" id="poll" min="1" max="10" value="2">
+  </div>
+  <h3 style="margin-top:24px">Notificaciones del sistema</h3>
+  <div class="set switch"><label>Popups de escritorio</label><button class="cfg" data-key="DESKTOP_NOTIFY" role="switch"></button></div>
+  <div class="set switch"><label>Telegram</label><button class="cfg" data-key="TELEGRAM_ENABLED" role="switch"></button></div>
+  <div class="set switch"><label>Avisar al terminar</label><button class="cfg" data-key="NOTIFY_ON_DONE" role="switch"></button></div>
+  <div class="set switch"><label>Avisar al pedir atencion</label><button class="cfg" data-key="NOTIFY_ON_ATTENTION" role="switch"></button></div>
+  <div class="set switch"><label>Voz al terminar</label><button class="cfg" data-key="SPEAK_DONE" role="switch"></button></div>
+  <div class="set switch"><label>Voz al pedir atencion</label><button class="cfg" data-key="SPEAK_ATTENTION" role="switch"></button></div>
+  <div class="set switch"><label>Chime (cuando no hay voz)</label><button class="cfg" data-key="SOUND_ENABLED" role="switch"></button></div>
+  <div class="set"><div class="desc">Aplican a TODO el sistema al instante.</div></div>
+</aside>
+
+<aside id="servers" class="drawer" aria-label="Servidores SSH">
+  <h3>Servidores SSH</h3>
+  <div id="srv-list"></div>
+  <h3 style="margin-top:22px" id="srv-form-title">Agregar servidor</h3>
+  <form id="srv-form">
+    <div class="frow">
+      <div class="set"><label>Alias</label><input name="host" required placeholder="web-1"></div>
+      <div class="set"><label>Usuario</label><input name="user" placeholder="root"></div>
+    </div>
+    <div class="set"><label>Host / IP</label><input name="hostname" required placeholder="203.0.113.7"></div>
+    <div class="frow">
+      <div class="set"><label>Puerto</label><input name="port" placeholder="22"></div>
+      <div class="set"><label>Llave (opcional)</label><input name="identity" placeholder="~/.ssh/id_ed25519"></div>
+    </div>
+    <input type="hidden" name="orig">
+    <div class="set" style="display:flex;gap:8px;margin-top:4px">
+      <button type="submit" class="test">Guardar</button>
+      <button type="button" id="srv-cancel" class="test hidden">Cancelar edicion</button>
+    </div>
+  </form>
+  <div class="set"><div class="desc">Viven en ~/.ssh/config: estandar y tuyo. Conectar abre una
+    sesion tmux reconectable. Para dejar de teclear passwords: corre <b>cc-keys</b> una vez.</div></div>
+</aside>
+
+<div id="toasts"></div>
+
+<script>
+"use strict";
+const S = {
+  prev: new Map(),
+  cfg: Object.assign({vol:60, sndDone:true, sndWait:true, notif:false, poll:2},
+        JSON.parse(localStorage.getItem("cc-cfg")||"{}")),
+  audioOn: false,
+  favs: new Set(),
+  q: "",
+  liveSess: new Set(),
+};
+const $ = s => document.querySelector(s);
+const urgent = $("#urgent"), rows = $("#rows");
+
+function saveCfg(){ localStorage.setItem("cc-cfg", JSON.stringify(S.cfg)); }
+
+// ---------- sonido ----------
+let actx = null;
+function ensureAudio(){
+  if(!actx){ actx = new (window.AudioContext||window.webkitAudioContext)(); }
+  if(actx.state === "suspended") actx.resume();
+  S.audioOn = true;
+  $("#btn-audio").classList.add("on");
+  $("#btn-audio").textContent = "Sonido activo";
+}
+function tone(freq, t0, dur, type, gainMax){
+  const o = actx.createOscillator(), g = actx.createGain();
+  o.type = type; o.frequency.value = freq;
+  g.gain.setValueAtTime(0, t0);
+  g.gain.linearRampToValueAtTime(gainMax, t0+0.015);
+  g.gain.exponentialRampToValueAtTime(0.0001, t0+dur);
+  o.connect(g); g.connect(actx.destination);
+  o.start(t0); o.stop(t0+dur+0.05);
+}
+function play(kind){
+  if(!S.audioOn || !actx) return;
+  const v = (S.cfg.vol/100) * 0.5;
+  if(v <= 0) return;
+  const t = actx.currentTime;
+  if(kind === "done"){ tone(660,t,0.18,"sine",v); tone(880,t+0.14,0.30,"sine",v); }
+  else { tone(880,t,0.14,"triangle",v); tone(660,t+0.16,0.14,"triangle",v);
+         tone(880,t+0.32,0.26,"triangle",v); }
+}
+
+// ---------- app nativa ----------
+function inApp(){
+  return !!(window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.centro);
+}
+function openInApp(sess, win){
+  window.webkit.messageHandlers.centro.postMessage(JSON.stringify({session: sess, win}));
+}
+async function openSession(it, win){
+  if(inApp()){
+    await api("/ensure", {session: it.session, cwd: it.cwd, win});
+    openInApp(it.session, win);
+    return `${it.project} en su pestana`;
+  }
+  try{
+    await api(win === "shell" ? "/shell" : "/focus", {session: it.session, cwd: it.cwd});
+  }catch(e){
+    await api("/up", {session: it.session, cwd: it.cwd});
+  }
+  return `Tu terminal esta en ${it.project}`;
+}
+
+// ---------- red ----------
+async function api(path, body){
+  const r = await fetch(path, body ? {method:"POST", headers:{"Content-Type":"application/json"},
+    body: JSON.stringify(body)} : undefined);
+  const j = await r.json().catch(()=>({}));
+  if(!r.ok) throw new Error(j.error || r.statusText);
+  return j;
+}
+
+// ---------- helpers ----------
+const ROW_ORDER = {done:0, working:1, idle:2, dead:4};
+const LABEL = {waiting:"Esperando respuesta", done:"Termino", working:"Trabajando",
+               idle:"Viva, sin actividad", dead:"Apagada"};
+function agoTxt(ts){
+  if(!ts) return "";
+  const s = Math.max(0, Math.floor(Date.now()/1000 - ts));
+  if(s < 60)    return `hace ${s} s`;
+  if(s < 3600)  return `hace ${Math.floor(s/60)} min`;
+  if(s < 86400) return `hace ${Math.floor(s/3600)} h`;
+  return `hace ${Math.floor(s/86400)} d`;
+}
+function shortPath(cwd){
+  return (cwd||"").replace(/^\/home\/[^/]+\/codebase\//, "").replace(/^\/home\/[^/]+/, "~");
+}
+function favBtn(it, el){
+  const b = el.querySelector(".fav");
+  b.classList.toggle("on", S.favs.has(it.session));
+  b.onclick = async e=>{
+    e.stopPropagation();
+    if(S.favs.has(it.session)) S.favs.delete(it.session); else S.favs.add(it.session);
+    b.classList.toggle("on", S.favs.has(it.session));
+    try{ await api("/prefs-set", {favorites: [...S.favs]}); }catch(e){}
+    tick();
+  };
+}
+
+// ---------- tarjeta urgente ----------
+function cardEl(it){
+  const el = document.createElement("article");
+  el.className = "card"; el.dataset.session = it.session; el.dataset.kind = "card";
+  el.innerHTML = `
+    <div class="top">
+      <button type="button" class="fav" title="Favorito">★</button>
+      <h2></h2><span class="tag"></span><span class="ago"></span>
+    </div>
+    <div class="path"></div>
+    <p class="preview"></p>
+    <form class="send">
+      <input type="text" autocomplete="off" spellcheck="false" placeholder="Responde aqui y Enter">
+      <button type="submit">Enviar</button>
+    </form>
+    <div class="row2">
+      <div class="keys">
+        <button type="button" data-key="1">1</button>
+        <button type="button" data-key="2">2</button>
+        <button type="button" data-key="3">3</button>
+        <button type="button" data-key="Enter">Enter</button>
+        <button type="button" data-key="Escape">Esc</button>
+      </div>
+      <div class="ops">
+        <button type="button" class="go">Abrir</button>
+        <button type="button" class="sh">Consola</button>
+        <button type="button" class="up hidden">Revivir</button>
+      </div>
+    </div>`;
+  el.querySelector("h2").textContent = it.project;
+  wireActions(el, it);
+  return el;
+}
+
+function wireActions(el, it){
+  favBtn(it, el);
+  const form = el.querySelector(".send");
+  if(form) form.addEventListener("submit", async e=>{
+    e.preventDefault();
+    const inp = form.querySelector("input"); const text = inp.value.trim();
+    if(!text) return;
+    try{ await api("/send", {session: it.session, text}); inp.value="";
+         toast(`Enviado a ${it.project}`); }
+    catch(err){ toast(err.message, true); }
+  });
+  el.querySelectorAll(".keys button").forEach(b=>{
+    b.addEventListener("click", async e=>{
+      e.stopPropagation();
+      try{ await api("/key", {session: it.session, key: b.dataset.key});
+           toast(`${b.dataset.key} a ${it.project}`); }
+      catch(err){ toast(err.message, true); }
+    });
+  });
+  const wire = (sel, win) => {
+    const b = el.querySelector(sel);
+    if(b) b.addEventListener("click", async e=>{
+      e.stopPropagation();
+      try{ toast(await openSession(it, win)); }catch(err){ toast(err.message, true); }
+    });
+  };
+  wire(".go", "claude"); wire(".sh", "shell"); wire(".up", "claude");
+}
+
+// ---------- fila compacta ----------
+function rowEl(it){
+  const el = document.createElement("div");
+  el.className = "row"; el.dataset.session = it.session; el.dataset.kind = "row";
+  el.setAttribute("tabindex", "0");
+  el.innerHTML = `
+    <button type="button" class="fav" title="Favorito">★</button>
+    <span class="dot"></span>
+    <span class="name"></span>
+    <span class="exttag hidden">suelta</span>
+    <span class="rpath"></span>
+    <span class="rprev"></span>
+    <span class="ago"></span>
+    <span class="acts">
+      <button type="button" class="go">Abrir</button>
+      <button type="button" class="sh">Consola</button>
+      <button type="button" class="up hidden">Revivir</button>
+    </span>`;
+  el.querySelector(".name").textContent = it.project;
+  wireActions(el, it);
+  el.addEventListener("click", async e=>{
+    if(e.target.closest("button")) return;
+    if(el.classList.contains("ext")) return toast("Corre en una pestana suelta: cierrala alla y usa Revivir", true);
+    try{ toast(await openSession(it, "claude")); }catch(err){ toast(err.message, true); }
+  });
+  return el;
+}
+
+// ---------- render ----------
+function render(list){
+  const seen = new Set();
+  const counts = {waiting:0, done:0, working:0};
+  for(const it of list){
+    seen.add(it.session);
+    if(counts[it.status] !== undefined) counts[it.status]++;
+    const kind = it.status === "waiting" ? "card" : "row";
+    const container = kind === "card" ? urgent : rows;
+    let el = document.querySelector(`[data-session="${CSS.escape(it.session)}"]`);
+    if(el && el.dataset.kind !== kind){ el.remove(); el = null; }
+    if(!el){ el = kind === "card" ? cardEl(it) : rowEl(it); container.appendChild(el); }
+    const ext = !!it.external;
+    el.dataset.search = `${it.project} ${it.cwd||""}`.toLowerCase();
+    el.querySelector(".fav").classList.toggle("on", S.favs.has(it.session));
+    el.querySelector(".ago").textContent = agoTxt(it.ts);
+    if(kind === "card"){
+      el.classList.toggle("ext", ext);
+      el.querySelector(".tag").textContent = ext ? "Suelta" : "Necesita respuesta";
+      const pe = el.querySelector(".path");
+      pe.textContent = it.cwd ? shortPath(it.cwd) : "carpeta no encontrada";
+      pe.title = it.cwd || ""; pe.classList.toggle("missing", !it.cwd);
+      el.querySelector(".preview").textContent = it.detail || "Esperando input o permiso";
+      el.querySelector(".send").classList.toggle("hidden", ext);
+      el.querySelector(".keys").classList.toggle("hidden", ext);
+      el.style.order = (S.favs.has(it.session) ? -1000 : 0) + Math.floor((it.ts||0)/60)%1000;
+    } else {
+      el.className = `row s-${it.status}` + (ext ? " ext" : "");
+      el.querySelector(".exttag").classList.toggle("hidden", !ext);
+      el.querySelector(".rpath").textContent = shortPath(it.cwd);
+      el.querySelector(".rpath").title = it.cwd || "";
+      if(it.session.startsWith("ssh-") && it.alive){
+        el.classList.toggle("sshoff", it.sshConnected === false);
+        el.querySelector(".rprev").textContent = it.sshConnected
+          ? "Conectado" : "SIN conexion: abre la pestana y teclea el password (o corre cc-keys)";
+      } else {
+        el.querySelector(".rprev").textContent = it.detail ||
+          (it.status==="working" ? "Trabajando..." : it.status==="dead" ? "Revivir para retomar" : "");
+      }
+      el.querySelector(".up").classList.toggle("hidden", it.alive || ext);
+      el.querySelector(".go").classList.toggle("hidden", ext || (!it.alive && !inApp()));
+      el.querySelector(".sh").classList.toggle("hidden", ext);
+      el.style.order = (S.favs.has(it.session) ? -100000 : 0) +
+        (ROW_ORDER[it.status] ?? 9) * 1000 - Math.min(999, Math.floor((it.ts||0)/60)%1000);
+    }
+    // transiciones -> sonido + notificacion navegador
+    const prev = S.prev.get(it.session);
+    if(prev && prev !== it.status){
+      if(it.status === "waiting" && S.cfg.sndWait){ play("waiting"); notify(it, "necesita tu respuesta"); }
+      if(it.status === "done"    && S.cfg.sndDone){ play("done");    notify(it, "termino"); }
+    }
+    S.prev.set(it.session, it.status);
+  }
+  document.querySelectorAll("[data-session]").forEach(el=>{
+    if(!seen.has(el.dataset.session)) el.remove();
+  });
+  $("#urgent-wrap").classList.toggle("hidden", counts.waiting === 0);
+  if(!rows.querySelector(".row") && !rows.querySelector(".empty")){
+    rows.innerHTML = `<div class="empty">Sin sesiones. Abre una arriba con
+      <code>abrir proyecto</code>, o en cualquier terminal: <code>ccx nombre</code></div>`;
+  } else if(rows.querySelector(".row")) {
+    rows.querySelector(".empty")?.remove();
+  }
+  $("#n-waiting").textContent = counts.waiting;
+  $("#n-done").textContent = counts.done;
+  $("#n-working").textContent = counts.working;
+  document.title = counts.waiting > 0 ? `(${counts.waiting}) ComandOS` : "ComandOS";
+  favicon(counts.waiting > 0 ? "#FFAE1A" : counts.working > 0 ? "#7AA5FF" : "#2EE59D");
+  S.liveSess = new Set(list.filter(i => i.alive).map(i => i.session));
+  const sshConn = new Set(list.filter(i => i.sshConnected === true).map(i => i.session));
+  document.querySelectorAll(".ssh-chip").forEach(ch =>
+    ch.classList.toggle("live", sshConn.has("ssh-" + ch.textContent)));
+  applyQ();
+}
+
+function notify(it, verb){
+  if(!S.cfg.notif || Notification.permission !== "granted" || !document.hidden) return;
+  const n = new Notification(`${it.project} ${verb}`, {body: it.detail || "", tag: it.session});
+  n.onclick = () => {
+    window.focus();
+    const el = document.querySelector(`[data-session="${CSS.escape(it.session)}"]`);
+    if(el){ el.scrollIntoView({block:"center"}); el.querySelector("input")?.focus(); }
+    n.close();
+  };
+}
+
+let favColor = "";
+function favicon(color){
+  if(color === favColor) return; favColor = color;
+  const c = document.createElement("canvas"); c.width = c.height = 32;
+  const x = c.getContext("2d");
+  x.fillStyle = "#0A0D13"; x.fillRect(0,0,32,32);
+  x.fillStyle = color; x.beginPath(); x.arc(16,16,9,0,7); x.fill();
+  let l = document.querySelector("link[rel=icon]");
+  if(!l){ l = document.createElement("link"); l.rel = "icon"; document.head.appendChild(l); }
+  l.href = c.toDataURL();
+}
+
+// ---------- timeline ----------
+function renderEvents(evs){
+  const tl = $("#timeline");
+  tl.innerHTML = "";
+  const C = {waiting:"var(--waiting)", done:"var(--done)", working:"var(--working)"};
+  for(const e of evs.slice().reverse().slice(0, 40)){
+    const d = new Date(e.ts*1000);
+    const hh = String(d.getHours()).padStart(2,"0"), mm = String(d.getMinutes()).padStart(2,"0");
+    const div = document.createElement("div"); div.className = "ev";
+    div.innerHTML = `<time>${hh}:${mm}</time><span class="evdot"></span><span class="txt"></span>`;
+    div.querySelector(".evdot").style.background = C[e.status] || "var(--faint)";
+    div.querySelector(".txt").textContent =
+      `${e.project} — ${LABEL[e.status]?.toLowerCase() || e.status}${e.detail ? ": " + e.detail : ""}`;
+    tl.appendChild(div);
+  }
+}
+
+// ---------- toasts ----------
+function toast(msg, err){
+  const t = document.createElement("div");
+  t.className = "toast" + (err ? " err" : "");
+  t.textContent = msg;
+  $("#toasts").appendChild(t);
+  setTimeout(()=> t.remove(), 3500);
+}
+
+// ---------- loop ----------
+async function tick(){
+  try{ render(await api("/state")); }catch(e){}
+}
+async function tickEvents(){
+  try{ renderEvents(await api("/events")); }catch(e){}
+}
+let timer = null;
+function arm(){ clearInterval(timer); timer = setInterval(tick, S.cfg.poll*1000); }
+
+// ---------- buscador ----------
+function applyQ(){
+  const q = S.q.trim().toLowerCase();
+  document.querySelectorAll("[data-session]").forEach(c=>{
+    c.classList.toggle("hidden", !!q && !(c.dataset.search||"").includes(q));
+  });
+}
+$("#q").addEventListener("input", e=>{ S.q = e.target.value; applyQ(); });
+
+// ---------- favoritos ----------
+async function loadPrefs(){
+  try{ S.favs = new Set((await api("/prefs")).favorites || []); }catch(e){}
+}
+
+// ---------- servidores ----------
+async function connectHost(host){
+  const r = await api("/ssh-connect", {host});
+  if(inApp()) openInApp(r.session, "ssh");
+  else await api("/focus", {session: r.session});
+  if(r.connected) toast(`Conectado a ${host}`);
+  else toast(r.note || `${host} sin conexion todavia`, true);
+}
+function fillSrvForm(h){
+  const f = $("#srv-form");
+  f.host.value = h.host || ""; f.hostname.value = h.hostname || "";
+  f.user.value = h.user || ""; f.port.value = h.port || "";
+  f.identity.value = h.identity || ""; f.orig.value = h.host || "";
+  $("#srv-form-title").textContent = h.host ? `Editar ${h.host}` : "Agregar servidor";
+  $("#srv-cancel").classList.toggle("hidden", !h.host);
+}
+async function loadSsh(){
+  try{
+    const hosts = await api("/ssh");
+    const c = $("#ssh-chips"); c.innerHTML = "";
+    for(const h of hosts){
+      const b = document.createElement("button");
+      b.className = "ssh-chip"; b.textContent = h.host;
+      b.title = `${h.user ? h.user + "@" : ""}${h.hostname || ""}${h.port ? ":" + h.port : ""}`;
+      b.addEventListener("click", ()=> connectHost(h.host).catch(err=>toast(err.message,true)));
+      c.appendChild(b);
+    }
+    const list = $("#srv-list"); list.innerHTML = "";
+    for(const h of hosts){
+      const row = document.createElement("div");
+      row.className = "srv-row";
+      row.innerHTML = `<div class="srv-info"><div class="srv-name"></div><div class="srv-tgt"></div></div>
+        <button class="con">Conectar</button><button class="ed">Editar</button><button class="del">Borrar</button>`;
+      row.querySelector(".srv-name").textContent = h.host;
+      row.querySelector(".srv-tgt").textContent =
+        `${h.user ? h.user + "@" : ""}${h.hostname || ""}${h.port ? ":" + h.port : ""}`;
+      row.querySelector(".con").addEventListener("click", ()=> connectHost(h.host).catch(err=>toast(err.message,true)));
+      row.querySelector(".ed").addEventListener("click", ()=> fillSrvForm(h));
+      const del = row.querySelector(".del");
+      del.addEventListener("click", async ()=>{
+        if(!del.classList.contains("arm")){
+          del.classList.add("arm"); del.textContent = "Seguro?";
+          setTimeout(()=>{ del.classList.remove("arm"); del.textContent = "Borrar"; }, 3000);
+          return;
+        }
+        try{ await api("/ssh-del", {host: h.host}); toast(`${h.host} borrado`); loadSsh(); }
+        catch(err){ toast(err.message, true); }
+      });
+      list.appendChild(row);
+    }
+    if(!hosts.length) list.innerHTML = '<div class="desc">Sin servidores. Agrega el primero abajo.</div>';
+  }catch(e){}
+}
+$("#ssh-manage").addEventListener("click", ()=>{
+  $("#servers").classList.toggle("open");
+  $("#settings").classList.remove("open");
+});
+$("#srv-cancel").addEventListener("click", ()=>{ $("#srv-form").reset(); fillSrvForm({}); });
+$("#srv-form").addEventListener("submit", async e=>{
+  e.preventDefault();
+  const f = e.target;
+  const d = {host: f.host.value.trim(), hostname: f.hostname.value.trim(),
+             user: f.user.value.trim(), port: f.port.value.trim(),
+             identity: f.identity.value.trim()};
+  try{
+    if(f.orig.value){ await api("/ssh-update", {...d, orig: f.orig.value}); toast(`${d.host} actualizado`); }
+    else { await api("/ssh-add", d); toast(`${d.host} guardado`); }
+    f.reset(); fillSrvForm({});
+    loadSsh();
+  }catch(err){ toast(err.message, true); }
+});
+
+// ---------- notificaciones del sistema ----------
+async function loadConf(){
+  try{
+    const conf = await api("/conf");
+    document.querySelectorAll(".cfg").forEach(b=>{
+      const on = conf[b.dataset.key] !== "0";
+      b.classList.toggle("on", on);
+      b.setAttribute("aria-checked", String(on));
+    });
+  }catch(e){}
+}
+document.querySelectorAll(".cfg").forEach(b=>{
+  b.addEventListener("click", async ()=>{
+    const on = !b.classList.contains("on");
+    const name = b.closest(".switch")?.querySelector("label")?.textContent || b.dataset.key;
+    try{
+      await api("/conf-set", {key: b.dataset.key, value: on ? "1" : "0"});
+      b.classList.toggle("on", on);
+      b.setAttribute("aria-checked", String(on));
+      toast(`${name}: ${on ? "activado" : "apagado"} (todo el sistema)`);
+    }catch(err){ toast(err.message, true); }
+  });
+});
+
+// ---------- UI general ----------
+$("#new-form").addEventListener("submit", async e=>{
+  e.preventDefault();
+  const name = $("#new-name").value.trim().replace(/[.:]/g, "-");
+  if(!name) return;
+  try{
+    if(inApp()){ await api("/ensure", {session: name, win: "claude"}); openInApp(name, "claude"); }
+    else { await api("/up", {session: name}); }
+    $("#new-name").value = "";
+    toast(`${name} abierto`);
+  }catch(err){ toast(err.message, true); }
+});
+$("#btn-settings").addEventListener("click", ()=>{
+  $("#settings").classList.toggle("open");
+  $("#servers").classList.remove("open");
+});
+document.addEventListener("click", e=>{
+  for(const [id, trg] of [["#settings","btn-settings"],["#servers","ssh-manage"]]){
+    const s = $(id);
+    if(s.classList.contains("open") && !s.contains(e.target) && e.target.id !== trg)
+      s.classList.remove("open");
+  }
+});
+$("#btn-audio").addEventListener("click", ()=>{
+  if(S.audioOn){
+    S.audioOn = false;
+    $("#btn-audio").classList.remove("on");
+    $("#btn-audio").textContent = "Sonido";
+    toast("Sonido de la interfaz silenciado");
+  } else {
+    ensureAudio(); play("done");
+    toast("Sonido de la interfaz activo");
+  }
+});
+document.addEventListener("pointerdown", e=>{
+  if(!S.audioOn && !e.target.closest("#btn-audio")) ensureAudio();
+}, {once:true});
+
+const vol = $("#vol"); vol.value = S.cfg.vol;
+vol.addEventListener("input", ()=>{ S.cfg.vol = +vol.value; saveCfg(); });
+function bindSwitch(id, key, cb){
+  const b = $(id);
+  b.classList.toggle("on", S.cfg[key]);
+  b.setAttribute("aria-checked", String(!!S.cfg[key]));
+  b.addEventListener("click", async ()=>{
+    S.cfg[key] = !S.cfg[key]; saveCfg();
+    b.classList.toggle("on", S.cfg[key]);
+    b.setAttribute("aria-checked", String(!!S.cfg[key]));
+    const name = b.closest(".switch")?.querySelector("label")?.textContent || key;
+    toast(`${name}: ${S.cfg[key] ? "activado" : "apagado"}`);
+    if(cb) cb(S.cfg[key]);
+  });
+}
+bindSwitch("#sw-done", "sndDone");
+bindSwitch("#sw-wait", "sndWait");
+bindSwitch("#sw-notif", "notif", async on=>{
+  if(on && Notification.permission !== "granted"){
+    const p = await Notification.requestPermission();
+    if(p !== "granted"){ S.cfg.notif = false; saveCfg();
+      $("#sw-notif").classList.remove("on"); toast("El navegador nego el permiso", true); }
+  }
+});
+document.querySelectorAll(".test").forEach(b=>{
+  if(!b.dataset.test) return;
+  b.addEventListener("click", ()=>{ ensureAudio(); play(b.dataset.test); });
+});
+const poll = $("#poll"); poll.value = S.cfg.poll;
+poll.addEventListener("input", ()=>{
+  S.cfg.poll = +poll.value; $("#poll-v").textContent = poll.value; saveCfg(); arm();
+});
+$("#poll-v").textContent = S.cfg.poll;
+$("#tl-toggle").addEventListener("click", ()=>{
+  const tl = $("#timeline");
+  tl.classList.toggle("hidden");
+  $("#tl-toggle").textContent = tl.classList.contains("hidden")
+    ? "Ver actividad reciente" : "Ocultar actividad";
+  if(!tl.classList.contains("hidden")) tickEvents();
+});
+setInterval(()=>{
+  const d = new Date();
+  $("#clock").textContent =
+    `${String(d.getHours()).padStart(2,"0")}:${String(d.getMinutes()).padStart(2,"0")}`;
+}, 1000);
+setInterval(tickEvents, 15000);
+
+loadPrefs().then(tick);
+loadSsh();
+loadConf();
+tickEvents();
+arm();
+</script>

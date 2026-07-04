@@ -1,0 +1,11 @@
+[Unit]
+Description=Notificaciones nativas accionables de Claude Code
+After=graphical-session.target
+
+[Service]
+ExecStart=%h/.local/bin/cc-notifyd
+Restart=on-failure
+RestartSec=3
+
+[Install]
+WantedBy=default.target
