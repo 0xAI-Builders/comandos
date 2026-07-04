@@ -46,6 +46,9 @@
     font-size:12px}
   .hdr-btn:hover{color:var(--text);border-color:var(--line2)}
   .hdr-btn.on{color:var(--done);border-color:color-mix(in srgb,var(--done) 45%,var(--line))}
+  #snd-ctl{display:flex;align-items:center;gap:7px}
+  #btn-mute{padding:4px 9px;font-size:13px}
+  #vol-top{width:92px;accent-color:var(--brand);cursor:pointer}
   #clock{font-variant-numeric:tabular-nums;color:var(--dim)}
 
   /* ---------- servidores ---------- */
@@ -100,6 +103,11 @@
   .preview.open{display:block;-webkit-line-clamp:unset;white-space:pre-wrap;
     max-height:420px;overflow-y:auto}
   .preview:hover{color:#fff}
+  .preview code,.preview pre{font-family:var(--mono);font-size:12px;
+    background:var(--bg);border-radius:4px;padding:0 4px;color:#A3C0FF}
+  .preview pre{display:block;padding:8px 10px;margin:6px 0;overflow-x:auto;
+    white-space:pre-wrap}
+  .preview u{text-decoration-color:var(--brand)}
   .send{display:flex;gap:8px;margin-top:2px}
   .send input{flex:1;background:var(--bg);border:1px solid var(--line);border-radius:9px;
     padding:9px 12px;font-family:var(--mono);font-size:12.5px}
@@ -232,6 +240,10 @@
     <form id="new-form" title="Nombre de un proyecto de ~/codebase y Enter: crea/abre su sesion">
       <input id="new-name" placeholder="abrir proyecto" autocomplete="off" spellcheck="false">
     </form>
+    <span id="snd-ctl" title="Volumen global (voz y chime). El icono silencia o activa el sonido.">
+      <button class="hdr-btn" id="btn-mute">🔊</button>
+      <input type="range" id="vol-top" min="0" max="100" value="60">
+    </span>
     <button class="hdr-btn" id="btn-settings">Ajustes</button>
     <span id="clock">--:--</span>
   </div>
@@ -369,6 +381,24 @@ function agoTxt(ts){
 function shortPath(cwd){
   return (cwd||"").replace(/^\/home\/[^/]+\/codebase\//, "").replace(/^\/home\/[^/]+/, "~");
 }
+// Mini-markdown seguro: escapa TODO y luego aplica negritas, codigo, headers,
+// bullets y links (solo el texto). Suficiente para previews de Claude.
+function mdEsc(s){return (s||"").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");}
+function mdHtml(s){
+  const out = []; let code = false;
+  for(let l of mdEsc(s).split("\n")){
+    if(l.trim().startsWith("```")){ code = !code; out.push(code ? "<pre>" : "</pre>"); continue; }
+    if(code){ out.push(l); continue; }
+    l = l.replace(/\*\*(.+?)\*\*/g, "<b>$1</b>")
+         .replace(/`([^`]+)`/g, "<code>$1</code>")
+         .replace(/\[([^\]]+)\]\([^)\s]*\)/g, "<u>$1</u>")
+         .replace(/^#{1,6} (.*)$/, "<b>$1</b>")
+         .replace(/^(\s*)[-*] /, "$1• ");
+    out.push(l);
+  }
+  return out.join("\n");
+}
+function mdStrip(s){ return (s||"").replace(/\*\*|`|^#{1,6} /g, ""); }
 function favBtn(it, el){
   const b = el.querySelector(".fav");
   b.classList.toggle("on", S.favs.has(it.session));
@@ -499,7 +529,7 @@ function render(list){
       const pe = el.querySelector(".path");
       pe.textContent = it.cwd ? shortPath(it.cwd) : "carpeta no encontrada";
       pe.title = it.cwd || ""; pe.classList.toggle("missing", !it.cwd);
-      el.querySelector(".preview").textContent = it.detail || "Esperando input o permiso";
+      el.querySelector(".preview").innerHTML = mdHtml(it.detail || "Esperando input o permiso");
       el.querySelector(".send").classList.toggle("hidden", ext);
       el.querySelector(".keys").classList.toggle("hidden", ext);
       el.style.order = (S.favs.has(it.session) ? -1000 : 0) + Math.floor((it.ts||0)/60)%1000;
@@ -513,9 +543,9 @@ function render(list){
         el.querySelector(".rprev").textContent = it.sshConnected
           ? "Conectado" : "SIN conexion: abre la pestana y teclea el password (o corre cc-keys)";
       } else {
-        el.querySelector(".rprev").textContent = it.detail ||
+        el.querySelector(".rprev").textContent = mdStrip(it.detail) ||
           (it.status==="working" ? "Trabajando..." : it.status==="dead" ? "Revivir para retomar" : "");
-        el.querySelector(".rprev").title = it.detail || "";
+        el.querySelector(".rprev").title = mdStrip(it.detail);
       }
       el.querySelector(".up").classList.toggle("hidden", it.alive || ext);
       el.querySelector(".go").classList.toggle("hidden", ext || (!it.alive && !inApp()));
@@ -588,7 +618,7 @@ function renderEvents(evs){
     div.innerHTML = `<time>${hh}:${mm}</time><span class="evdot"></span><span class="txt"></span>`;
     div.querySelector(".evdot").style.background = C[e.status] || "var(--faint)";
     div.querySelector(".txt").textContent =
-      `${e.project} — ${LABEL[e.status]?.toLowerCase() || e.status}${e.detail ? ": " + e.detail : ""}`;
+      `${e.project} — ${LABEL[e.status]?.toLowerCase() || e.status}${e.detail ? ": " + mdStrip(e.detail) : ""}`;
     tl.appendChild(div);
   }
 }
@@ -708,11 +738,32 @@ async function loadConf(){
       b.setAttribute("aria-checked", String(on));
     });
     $("#vol").value = +conf.VOLUME || 60;
+    $("#vol-top").value = +conf.VOLUME || 60;
+    const sndOn = conf.SOUND_ENABLED !== "0";
+    $("#btn-mute").textContent = sndOn ? "🔊" : "🔇";
+    $("#btn-mute").classList.toggle("on", sndOn);
     const voice = conf.SPEAK_DONE !== "0" || conf.SPEAK_ATTENTION !== "0";
     $("#sw-voice").classList.toggle("on", voice);
     $("#sw-voice").setAttribute("aria-checked", String(voice));
   }catch(e){}
 }
+// Control de sonido SIEMPRE visible en la barra: icono = silenciar/activar,
+// slider = volumen global (el mismo de Ajustes; ambos viven en cc-notify.conf)
+$("#btn-mute").addEventListener("click", async ()=>{
+  const on = $("#btn-mute").textContent === "🔊";
+  try{
+    await api("/conf-set", {key:"SOUND_ENABLED", value: on ? "0" : "1"});
+    toast(on ? "Sonido silenciado" : "Sonido activado");
+    loadConf();
+  }catch(err){ toast(err.message, true); }
+});
+$("#vol-top").addEventListener("change", async ()=>{
+  try{
+    await api("/conf-set", {key:"VOLUME", value:String($("#vol-top").value)});
+    toast(`Volumen ${$("#vol-top").value}% (todo el sistema)`);
+    loadConf();
+  }catch(err){ toast(err.message, true); }
+});
 document.querySelectorAll(".cfg").forEach(b=>{
   b.addEventListener("click", async ()=>{
     const on = !b.classList.contains("on");
@@ -754,7 +805,7 @@ document.addEventListener("click", e=>{
 const vol = $("#vol");
 vol.addEventListener("change", async ()=>{
   try{ await api("/conf-set", {key:"VOLUME", value:String(vol.value)});
-       toast(`Volumen ${vol.value}% (todo el sistema)`); }
+       toast(`Volumen ${vol.value}% (todo el sistema)`); loadConf(); }
   catch(err){ toast(err.message, true); }
 });
 // Voz: UN switch que controla ambos eventos (terminar y pedir atencion)

@@ -85,6 +85,34 @@ def dash(path, payload):
     urllib.request.urlopen(req, timeout=5)
 
 
+def dash_get(path, timeout=1.5):
+    with urllib.request.urlopen("http://127.0.0.1:4777" + path, timeout=timeout) as r:
+        return json.loads(r.read().decode())
+
+
+def md_to_pango(text):
+    """Markdown basico -> markup Pango legible: negritas, codigo, headers,
+    bullets, links (solo el texto). Todo lo demas va escapado."""
+    out, in_code = [], False
+    for line in text.splitlines():
+        if line.strip().startswith("```"):
+            in_code = not in_code
+            continue
+        esc = GLib.markup_escape_text(line)
+        if in_code:
+            out.append(f"<tt>{esc}</tt>")
+            continue
+        esc = re.sub(r"\*\*(.+?)\*\*", r"<b>\1</b>", esc)
+        esc = re.sub(r"`([^`]+)`", r"<tt>\1</tt>", esc)
+        esc = re.sub(r"\[([^\]]+)\]\([^)\s]+\)", r"<u>\1</u>", esc)
+        m = re.match(r"^#{1,6} (.*)", esc)
+        if m:
+            esc = f"<b>{m.group(1)}</b>"
+        esc = re.sub(r"^(\s*)[-*] ", "\\1• ", esc)
+        out.append(esc)
+    return "\n".join(out)
+
+
 def send_key(sess, key):
     if key not in ALLOWED_KEYS or not SESSION_RE.match(sess):
         return
@@ -196,6 +224,31 @@ def make_popup(title, body, session, kind, project, options_str="", full=""):
     close.set_relief(Gtk.ReliefStyle.NONE)
     close.connect("clicked", lambda *_: close_popup(win))
     header.pack_end(close, False, False, 0)
+    # Silenciar el chime desde el popup mismo (donde molesta): toggle de
+    # SOUND_ENABLED via cc-dash; el volumen esta en la barra del tablero
+    mute = Gtk.Button(label="🔊")
+    mute.get_style_context().add_class("close")
+    mute.set_relief(Gtk.ReliefStyle.NONE)
+    mute.set_tooltip_text("Silenciar / activar el sonido de las notificaciones")
+
+    def sync_mute():
+        try:
+            on = dash_get("/conf").get("SOUND_ENABLED", "1") != "0"
+            mute.set_label("🔊" if on else "🔇")
+        except Exception:
+            pass
+
+    def toggle_mute(_b):
+        on = mute.get_label() == "🔊"
+        try:
+            dash("/conf-set", {"key": "SOUND_ENABLED", "value": "0" if on else "1"})
+            mute.set_label("🔇" if on else "🔊")
+        except Exception:
+            pass
+
+    mute.connect("clicked", toggle_mute)
+    header.pack_end(mute, False, False, 0)
+    GLib.idle_add(lambda: (sync_mute(), False)[1])
     content.pack_start(header, False, False, 0)
 
     # Proyecto en GRANDE; click = abrir la sesion
@@ -229,7 +282,11 @@ def make_popup(title, body, session, kind, project, options_str="", full=""):
             sw.set_propagate_natural_height(True)
         except Exception:
             sw.set_size_request(-1, 380)   # GTK < 3.22
-        fl = Gtk.Label(label=full[:6000], xalign=0, yalign=0)
+        fl = Gtk.Label(xalign=0, yalign=0)
+        try:
+            fl.set_markup(md_to_pango(full[:6000]))
+        except Exception:
+            fl.set_text(full[:6000])
         fl.get_style_context().add_class("body")
         fl.set_line_wrap(True)
         fl.set_max_width_chars(54)

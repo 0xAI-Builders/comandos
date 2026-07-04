@@ -135,11 +135,12 @@ $preview"
     ;;
 esac
 
-# Limpiar markdown crudo (negritas, backticks, headers, links) y markup peligroso
+# El preview corto (popup colapsado, telegram) va SIN markdown ni markup
+# peligroso. El texto COMPLETO ($full) viaja CRUDO: el popup lo renderiza con
+# Pango y el tablero con su mini-markdown (cada uno escapa lo suyo).
 mdclean() { sed -e 's/\*\*//g' -e 's/`//g' -e 's/^#\{1,6\} //g' \
   -e 's/\[\([^]]*\)\]([^)]*)/\1/g' -e 's/[&<>]/ /g'; }
 body=$(mdclean <<<"$body")
-full=$(mdclean <<<"${full:-}")
 
 # Filtro por tipo de evento (editable en cc-notify.conf)
 kind="done"; [ "$event" = "Notification" ] && kind="waiting"
