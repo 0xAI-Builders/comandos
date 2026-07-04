@@ -25,22 +25,25 @@
     --glow:#241A0F; --code:#E5C68F; --shadow:rgba(0,0,0,.45);
   }
   *{box-sizing:border-box;margin:0;padding:0}
-  html,body{max-width:100vw;overflow-x:hidden}
+  html,body{height:100%}
+  /* La pagina NO scrollea: scrollea #content. Asi las barras de arriba quedan
+     fijas en CUALQUIER motor (el sticky se rompia en el WebKit de la app). */
   body{
     color:var(--text);font-family:var(--sans);
     background:radial-gradient(1100px 500px at 75% -120px, var(--glow) 0%, var(--bg) 60%) fixed var(--bg);
-    min-height:100vh;
+    display:flex;flex-direction:column;overflow:hidden;
   }
+  #content{flex:1;min-height:0;overflow-y:auto;overflow-x:hidden}
   button{font:inherit;color:inherit;background:none;border:0;cursor:pointer}
   input{font:inherit;color:inherit;min-width:0}
   :focus-visible{outline:2px solid var(--brand);outline-offset:2px}
   .hidden{display:none !important}
 
-  /* ---------- barras superiores (appbar + servidores): FIJAS al scrollear ---------- */
+  /* ---------- barras superiores (appbar + servidores): FIJAS siempre ---------- */
   #topbar{
-    position:sticky;top:0;z-index:10;
+    flex:none;z-index:10;
     background:color-mix(in srgb,var(--bg) 88%,transparent);
-    backdrop-filter:blur(10px);border-bottom:1px solid var(--line);
+    border-bottom:1px solid var(--line);
   }
   header{
     display:flex;align-items:center;gap:8px 14px;
@@ -293,6 +296,7 @@
 </div>
 </div>
 
+<div id="content">
 <section class="sec" id="urgent-wrap">
   <div class="sec-label">Esperan tu respuesta</div>
   <div id="urgent"></div>
@@ -306,6 +310,7 @@
 <div id="tl-wrap">
   <button id="tl-toggle">Ver actividad reciente</button>
   <div id="timeline" class="hidden"></div>
+</div>
 </div>
 
 <aside id="settings" class="drawer" aria-label="Ajustes">
