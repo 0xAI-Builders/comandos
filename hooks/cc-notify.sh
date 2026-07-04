@@ -19,7 +19,8 @@ mkdir -p "$STATE_DIR"
 
 # ---- Config editable (valores por defecto si no existe el archivo) ----
 SOUND_DONE="/usr/share/sounds/freedesktop/stereo/complete.oga"
-SOUND_ATTENTION="/usr/share/sounds/freedesktop/stereo/dialog-warning.oga"
+# message-new-instant: un "ding" suave. (dialog-warning suena a campanazo agresivo)
+SOUND_ATTENTION="/usr/share/sounds/freedesktop/stereo/message-new-instant.oga"
 DESKTOP_NOTIFY=1
 SOUND_ENABLED=1
 TELEGRAM_ENABLED=1
@@ -71,22 +72,37 @@ case "$event" in
     title="🟡 [$proj] Claude necesita tu atencion"
     body="${msg:-Esperando input o permiso}"
     options=""
+    full=""
     if [ -n "$transcript" ] && [ -f "$transcript" ]; then
       # Ultimo bloque del ultimo mensaje del asistente: si es una pregunta con
       # opciones (AskUserQuestion), usar la pregunta y los TEXTOS de las opciones
       lastblock=$(tail -80 "$transcript" 2>/dev/null \
         | jq -cs '[.[] | select(.type=="assistant")] | last | .message.content | last // empty' 2>/dev/null)
       if [ -n "$lastblock" ] && [ "$(jq -r '.name // ""' <<<"$lastblock")" = "AskUserQuestion" ]; then
-        qtext=$(jq -r '.input.questions[0].question // ""' <<<"$lastblock" | head -c 260)
+        qfull=$(jq -r '.input.questions[0].question // ""' <<<"$lastblock")
+        qtext=$(printf '%s' "$qfull" | head -c 260)
         options=$(jq -r '[.input.questions[0].options[]?.label] | join("")' <<<"$lastblock" 2>/dev/null)
         [ -n "$qtext" ] && body="$qtext"
+        # Texto COMPLETO para "Ver TODO": pregunta entera + opciones numeradas
+        # con su descripcion (para responder 1/2/3 con confianza)
+        optlist=$(jq -r '[.input.questions[0].options[]?] | to_entries
+          | map("\(.key+1). \(.value.label)"
+                + (if (.value.description // "") != "" then "\n   " + .value.description else "" end))
+          | join("\n")' <<<"$lastblock" 2>/dev/null)
+        full="$qfull"
+        [ -n "$optlist" ] && full="$qfull
+
+Opciones:
+$optlist"
       else
-        # Preview de lo ultimo que dijo Claude = contexto de lo que pregunta
-        preview=$(tail -80 "$transcript" 2>/dev/null \
-          | jq -rs '[.[] | select(.type=="assistant") | .message.content[]? | select(.type=="text") | .text] | last // ""' 2>/dev/null \
-          | tr '\n' ' ' | head -c 260)
+        # Ultimo mensaje de Claude: preview corto para el popup colapsado y
+        # texto COMPLETO (con saltos de linea) para "Ver TODO"
+        raw=$(tail -80 "$transcript" 2>/dev/null \
+          | jq -rs '[.[] | select(.type=="assistant") | .message.content[]? | select(.type=="text") | .text] | last // ""' 2>/dev/null)
+        preview=$(printf '%s' "$raw" | tr '\n' ' ' | head -c 260)
         [ -n "$preview" ] && body="$body
 $preview"
+        [ -n "$raw" ] && full=$(printf '%s' "$raw" | head -c 6000)
       fi
     fi
     # Prompt de permiso estandar: etiquetas con texto (mapean a 1/2/3)
@@ -95,7 +111,7 @@ $preview"
     fi
     urgency="critical"
     sound="$SOUND_ATTENTION"
-    write_state "waiting" "$body"
+    write_state "waiting" "$(printf '%s' "${full:-$body}" | head -c 4000)"
     if [ "$prev_s" = "waiting" ] && [ $(( now - ${prev_t:-0} )) -lt 600 ]; then
       exit 0
     fi
@@ -104,21 +120,25 @@ $preview"
     title="✅ [$proj] Claude termino"
     # Preview de la ultima respuesta para saber QUE termino sin abrir la terminal
     preview=""
+    full=""
     if [ -n "$transcript" ] && [ -f "$transcript" ]; then
-      preview=$(tail -80 "$transcript" 2>/dev/null \
-        | jq -rs '[.[] | select(.type=="assistant") | .message.content[]? | select(.type=="text") | .text] | last // ""' 2>/dev/null \
-        | tr '\n' ' ' | head -c 180)
+      raw=$(tail -80 "$transcript" 2>/dev/null \
+        | jq -rs '[.[] | select(.type=="assistant") | .message.content[]? | select(.type=="text") | .text] | last // ""' 2>/dev/null)
+      preview=$(printf '%s' "$raw" | tr '\n' ' ' | head -c 180)
+      [ -n "$raw" ] && full=$(printf '%s' "$raw" | head -c 6000)
     fi
     body="${preview:-Iteracion completada, listo para tu siguiente instruccion}"
     urgency="normal"
     sound="$SOUND_DONE"
-    write_state "done" "$body"
+    write_state "done" "$(printf '%s' "${full:-$body}" | head -c 4000)"
     ;;
 esac
 
 # Limpiar markdown crudo (negritas, backticks, headers, links) y markup peligroso
-body=$(sed -e 's/\*\*//g' -e 's/`//g' -e 's/^#\{1,6\} //g' \
-  -e 's/\[\([^]]*\)\]([^)]*)/\1/g' -e 's/[&<>]/ /g' <<<"$body")
+mdclean() { sed -e 's/\*\*//g' -e 's/`//g' -e 's/^#\{1,6\} //g' \
+  -e 's/\[\([^]]*\)\]([^)]*)/\1/g' -e 's/[&<>]/ /g'; }
+body=$(mdclean <<<"$body")
+full=$(mdclean <<<"${full:-}")
 
 # Filtro por tipo de evento (editable en cc-notify.conf)
 kind="done"; [ "$event" = "Notification" ] && kind="waiting"
@@ -130,7 +150,8 @@ if [ "$DESKTOP_NOTIFY" = "1" ]; then
   # si el demonio no responde, cae a notify-send plano.
   sess=$(printf '%s' "$proj" | tr '.:' '--' | head -c 60)
   payload=$(jq -cn --arg t "$title" --arg b "$body" --arg s "$sess" --arg k "$kind" --arg p "$proj" \
-    --arg o "${options:-}" '{title:$t,body:$b,session:$s,kind:$k,project:$p,options:$o}')
+    --arg o "${options:-}" --arg f "${full:-}" \
+    '{title:$t,body:$b,session:$s,kind:$k,project:$p,options:$o,full:$f}')
   # Solo popups propios (cc-notifyd). Nada de notificaciones GNOME, nunca.
   curl -s -m 2 -X POST http://127.0.0.1:4778/notify \
     -H 'Content-Type: application/json' -d "$payload" >/dev/null 2>&1

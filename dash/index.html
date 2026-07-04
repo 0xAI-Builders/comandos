@@ -95,7 +95,11 @@
     overflow:hidden;text-overflow:ellipsis;white-space:nowrap;margin-top:-5px}
   .path.missing{color:var(--waiting)}
   .preview{font-size:13px;line-height:1.5;color:var(--text);
-    display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}
+    display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden;
+    cursor:pointer}
+  .preview.open{display:block;-webkit-line-clamp:unset;white-space:pre-wrap;
+    max-height:420px;overflow-y:auto}
+  .preview:hover{color:#fff}
   .send{display:flex;gap:8px;margin-top:2px}
   .send input{flex:1;background:var(--bg);border:1px solid var(--line);border-radius:9px;
     padding:9px 12px;font-family:var(--mono);font-size:12.5px}
@@ -406,6 +410,9 @@ function cardEl(it){
       </div>
     </div>`;
   el.querySelector("h2").textContent = it.project;
+  const pv = el.querySelector(".preview");
+  pv.title = "Click: ver TODO el texto / colapsar";
+  pv.addEventListener("click", e=>{ e.stopPropagation(); pv.classList.toggle("open"); });
   wireActions(el, it);
   return el;
 }
@@ -508,6 +515,7 @@ function render(list){
       } else {
         el.querySelector(".rprev").textContent = it.detail ||
           (it.status==="working" ? "Trabajando..." : it.status==="dead" ? "Revivir para retomar" : "");
+        el.querySelector(".rprev").title = it.detail || "";
       }
       el.querySelector(".up").classList.toggle("hidden", it.alive || ext);
       el.querySelector(".go").classList.toggle("hidden", ext || (!it.alive && !inApp()));
