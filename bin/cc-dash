@@ -16,7 +16,7 @@ Endpoints:
 
 Solo escucha en 127.0.0.1. Todas las llamadas a tmux van sin shell (sin inyeccion).
 """
-import json, os, glob, re, shlex, shutil, sys, subprocess, webbrowser
+import json, os, glob, re, shlex, shutil, sys, subprocess, time, webbrowser
 import http.server, socketserver
 
 HOOKS = os.path.expanduser("~/.claude/hooks")
@@ -116,18 +116,29 @@ def ensure_shell_window(sess, cwd):
     tmux("new-window", "-d", "-t", "=" + sess, "-n", "shell", "-c", wcwd)
 
 
-def focus_session(sess):
-    """Lleva al usuario a la sesion: cambia el cliente tmux (el mas activo) y trae
-    su ventana al frente; si NINGUN terminal esta conectado, abre uno attacheado."""
+def focus_session(sess, win="claude"):
+    """Lleva al usuario a la sesion. Si la app ComandOS esta abierta, le avisa
+    (app-focus.json) para que enfoque/abra LA pestana de esa sesion — sin mover
+    el cliente tmux de ninguna otra pestana. Sin app: cambia el cliente mas
+    activo y trae su ventana al frente; sin ningun cliente, abre una terminal."""
     target = "=" + sess
     if tmux("has-session", "-t", target).returncode != 0:
         return f"No hay sesion tmux '{sess}'"
-    lines = [l.split(None, 1) for l in
-             tmux("list-clients", "-F", "#{client_activity} #{client_name}").stdout.splitlines() if l]
-    clients = [name for _, name in sorted(lines, key=lambda x: int(x[0]), reverse=True)]
-    if not clients:
-        return spawn_terminal(sess)
-    tmux("switch-client", "-c", clients[0], "-t", target)
+    # La app esta abierta si su pestana hub (sesion 'local') tiene cliente
+    app_open = bool(tmux("list-clients", "-t", "=local", "-F", "#{client_name}").stdout.strip())
+    if app_open:
+        try:
+            with open(os.path.join(HOOKS, "app-focus.json"), "w") as f:
+                json.dump({"session": sess, "win": win, "ts": time.time()}, f)
+        except Exception:
+            pass
+    elif not tmux("list-clients", "-t", target, "-F", "#{client_name}").stdout.strip():
+        lines = [l.split(None, 1) for l in
+                 tmux("list-clients", "-F", "#{client_activity} #{client_name}").stdout.splitlines() if l]
+        clients = [name for _, name in sorted(lines, key=lambda x: int(x[0]), reverse=True)]
+        if not clients:
+            return spawn_terminal(sess)
+        tmux("switch-client", "-c", clients[0], "-t", target)
 
     def wm(*args):
         try:
@@ -136,9 +147,11 @@ def focus_session(sess):
         except Exception:
             return False
 
-    # Traer la ventana correcta: terminal externa (titulo = sesion) >
-    # ComandOS (terminal embebida) > cualquier terminal conocida
-    if not wm("-a", sess):
+    # Traer la ventana correcta: la app si esta abierta; si no, terminal
+    # externa (titulo = sesion) > ComandOS > cualquier terminal conocida
+    if app_open:
+        wm("-x", "-a", "comandos")
+    elif not wm("-a", sess):
         if not wm("-x", "-a", "comandos"):
             t = pick_terminal()
             if t:
@@ -148,6 +161,7 @@ def focus_session(sess):
 ALLOWED_KEYS = {"Enter", "Escape", "Up", "Down", "Tab", "y", "n",
                 "1", "2", "3", "4", "5", "6", "7", "8", "9"}
 SESSION_RE = re.compile(r"^[A-Za-z0-9._-]{1,80}$")
+PANE_RE = re.compile(r"^%\d{1,7}$")
 
 
 def tmux(*args, timeout=5):
@@ -166,17 +180,73 @@ def session_name(project):
     return re.sub(r"[.:]", "-", project)[:80]
 
 
-def claude_cwds():
-    """Directorios donde hay un proceso 'claude' corriendo (aunque sea fuera de tmux)."""
-    out = set()
+def claude_procs():
+    """Procesos 'claude' corriendo: [(pid, cwd)], esten o no dentro de tmux."""
+    out = []
     for p in glob.glob("/proc/[0-9]*/comm"):
         try:
             with open(p) as f:
                 if f.read().strip() == "claude":
-                    out.add(os.readlink(os.path.dirname(p) + "/cwd"))
+                    d = os.path.dirname(p)
+                    out.append((int(os.path.basename(d)), os.readlink(d + "/cwd")))
         except Exception:
             pass
     return out
+
+
+def parent_pid(pid):
+    try:
+        with open(f"/proc/{pid}/stat") as f:
+            # formato: pid (comm) estado ppid ...; comm puede traer espacios
+            return int(f.read().rsplit(")", 1)[1].split()[1])
+    except Exception:
+        return 0
+
+
+def claude_panes(procs):
+    """cwd -> (sesion, pane) de cada claude que vive DENTRO de un pane tmux,
+    aunque la sesion se llame distinto al proyecto (pestanas term-* de la app,
+    hub, splits). Se camina la cadena de ppids hasta un pane_pid conocido."""
+    r = tmux("list-panes", "-a", "-F", "#{session_name}|#{pane_id}|#{pane_pid}")
+    if r.returncode != 0:
+        return {}
+    by_pid = {}
+    for l in r.stdout.splitlines():
+        sess, _, rest = l.partition("|")
+        pane, _, ppid = rest.partition("|")
+        if ppid.isdigit():
+            by_pid[int(ppid)] = (sess, pane)
+    out = {}
+    for pid, cwd in procs:
+        p = pid
+        for _ in range(25):
+            if p in by_pid:
+                out[cwd] = by_pid[p]
+                break
+            p = parent_pid(p)
+            if p <= 1:
+                break
+    return out
+
+
+def resolve_project_session(sess):
+    """Nombre derivado del proyecto SIN sesion tmux propia: busca el pane real
+    donde corre su claude (pestana term-* de la app, hub, un split).
+    Devuelve (sesion, pane) o None."""
+    for f in glob.glob(os.path.join(STATE, "*.json")):
+        try:
+            with open(f) as fh:
+                d = json.load(fh)
+        except Exception:
+            continue
+        if session_name(d.get("project", "")) != sess:
+            continue
+        cwd = d.get("cwd", "") or find_project_dir(sess) or ""
+        if cwd:
+            procs = [pc for pc in claude_procs() if pc[1] == cwd]
+            return claude_panes(procs).get(cwd)
+        return None
+    return None
 
 
 # Sesiones internas de la app (terminal de control): no son tarjetas
@@ -185,7 +255,9 @@ HIDDEN_SESSIONS = {"hub", "local", "control"}
 
 def read_states():
     live = tmux_sessions()
-    externals = claude_cwds()
+    procs = claude_procs()
+    externals = {cwd for _, cwd in procs}
+    in_tmux = claude_panes(procs)
     items, seen = [], set()
     for f in glob.glob(os.path.join(STATE, "*.json")):
         try:
@@ -201,14 +273,23 @@ def read_states():
         cwd = d.get("cwd", "")
         if not cwd:
             cwd = find_project_dir(sess) or ""
+        # El claude vive en OTRA sesion tmux (pestana term-* de la app, hub,
+        # un split): NO es una suelta. La card opera esa sesion y pane reales.
+        pane = None
+        if not alive and cwd in in_tmux:
+            sess, pane = in_tmux[cwd]
+            alive = True
         # Claude corriendo FUERA de tmux (una pestana suelta de Tilix/Tabby):
         # el estado es real (los hooks reportan) pero no es operable desde aqui.
         external = (not alive) and cwd in externals
         if not alive and not external:
             status = "dead"
-        items.append({"project": d.get("project"), "session": sess, "status": status,
-                      "detail": d.get("detail", ""), "cwd": cwd,
-                      "ts": d.get("ts", 0), "alive": alive, "external": external})
+        item = {"project": d.get("project"), "session": sess, "status": status,
+                "detail": d.get("detail", ""), "cwd": cwd,
+                "ts": d.get("ts", 0), "alive": alive, "external": external}
+        if pane:
+            item["pane"] = pane
+        items.append(item)
         seen.add(sess)
     # sesiones tmux sin estado registrado (p. ej. recien creadas con ccx)
     for sess in sorted(live - seen):
@@ -484,8 +565,23 @@ class Handler(http.server.SimpleHTTPRequestHandler):
         sess = data.get("session", "")
         if not SESSION_RE.match(sess):
             return self._json(400, {"error": "Nombre de sesion invalido"})
+        # Nombre derivado del proyecto pero su claude vive en OTRA sesion tmux
+        # (pestana term-* de la app, hub, un split): operar ESA. Asi cc-next,
+        # los popups y el tablero no duplican sesiones ni fallan con 'no hay'.
+        resolved = None
+        if tmux("has-session", "-t", "=" + sess).returncode != 0:
+            resolved = resolve_project_session(sess)
+            if resolved:
+                sess = resolved[0]
         target = "=" + sess          # target-session (has-session, switch-client)
         pane = "=" + sess + ":"      # target-pane; tmux 3.2a exige el ':' final
+        # Pane exacto opcional (claude corriendo en un pane concreto). Si ese
+        # pane ya murio, cae al de la sesion. tmux 3.2a devuelve rc=0 con
+        # targets muertos: hay que comparar stdout.
+        want = str(data.get("pane", "") or (resolved[1] if resolved else ""))
+        if PANE_RE.match(want) and \
+                tmux("display-message", "-p", "-t", want, "#{pane_id}").stdout.strip() == want:
+            pane = want
 
         if self.path == "/send":
             text = str(data.get("text", ""))[:4000]
@@ -533,7 +629,7 @@ class Handler(http.server.SimpleHTTPRequestHandler):
                     return self._json(500, {"error": r.stderr.strip() or "No se pudo crear la sesion"})
             if win == "shell":
                 ensure_shell_window(sess, cwd)
-            return self._json(200, {"ok": True})
+            return self._json(200, {"ok": True, "session": sess})
 
         if self.path == "/new":
             # Nueva sesion que SIEMPRE funciona: si el nombre es un proyecto de
@@ -544,7 +640,7 @@ class Handler(http.server.SimpleHTTPRequestHandler):
                     r = tmux_new_session(sess, proj)
                     if r.returncode != 0:
                         return self._json(500, {"error": r.stderr.strip() or "No se pudo crear"})
-                return self._json(200, {"ok": True, "kind": "project"})
+                return self._json(200, {"ok": True, "kind": "project", "session": sess})
             if tmux("has-session", "-t", target).returncode != 0:
                 r = subprocess.run(
                     ["systemd-run", "--user", "--scope", "--collect", "--quiet",
@@ -552,7 +648,7 @@ class Handler(http.server.SimpleHTTPRequestHandler):
                     capture_output=True, text=True, timeout=15)
                 if r.returncode != 0:
                     return self._json(500, {"error": r.stderr.strip() or "No se pudo crear"})
-            return self._json(200, {"ok": True, "kind": "shell"})
+            return self._json(200, {"ok": True, "kind": "shell", "session": sess})
 
         if self.path == "/shell":
             # Consola manual del proyecto: ventana 'shell' de la misma sesion
@@ -567,16 +663,17 @@ class Handler(http.server.SimpleHTTPRequestHandler):
                     return self._json(500, {"error": r.stderr.strip() or "No se pudo crear la sesion"})
             ensure_shell_window(sess, cwd)
             tmux("select-window", "-t", "=" + sess + ":shell")
-            focus_session(sess)
+            focus_session(sess, win="shell")
             return self._json(200, {"ok": True})
 
         if self.path == "/up":
-            cwd = data.get("cwd", "")
-            if not cwd or not os.path.isdir(cwd):
-                cwd = find_project_dir(sess) or ""
-            if not cwd:
-                return self._json(400, {"error": f"No encontre el directorio de '{sess}' en ~/codebase"})
+            # Si la sesion ya vive (o se resolvio a la pestana real), solo enfocar
             if tmux("has-session", "-t", target).returncode != 0:
+                cwd = data.get("cwd", "")
+                if not cwd or not os.path.isdir(cwd):
+                    cwd = find_project_dir(sess) or ""
+                if not cwd:
+                    return self._json(400, {"error": f"No encontre el directorio de '{sess}' en ~/codebase"})
                 r = tmux_new_session(sess, cwd)
                 if r.returncode != 0:
                     return self._json(500, {"error": r.stderr.strip() or "No se pudo crear la sesion"})

@@ -25,9 +25,9 @@ con una tecla o una línea, y sigues. No escaneas — te interrumpe solo lo urge
 - **Popups accionables** de escritorio (diseño propio, no los del sistema): botones
   con el texto real de cada opción, input para responder, y "abrir".
 - **Voz local** (piper, 100% offline): "LifeOS necesita tu respuesta".
-- **App nativa** (GTK + VTE) con **pestañas de terminal**: cada proyecto/servidor
-  en su pestaña, splits en las 4 direcciones por click derecho, clipboard
-  compartido, se restauran al reabrir.
+- **App nativa** (GTK + VTE) con **pestañas de terminal**: una pestaña por
+  proyecto/servidor, renombrables por click derecho, splits en las 4 direcciones,
+  clipboard compartido, se restauran al reabrir con su nombre.
 - **Gestor de servidores SSH**: CRUD sobre `~/.ssh/config`, conectar de un click,
   multiplexing (un password y ya), estado de conexión honesto.
 - **Telegram**: opera todo desde el celular — botones en las notificaciones,

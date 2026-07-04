@@ -16,7 +16,7 @@ Anatomia del popup:
 Recibe eventos de cc-notify.sh:  POST 127.0.0.1:4778/notify
 Corre como servicio:             systemctl --user status cc-notifyd
 """
-import json, re, subprocess, threading
+import json, re, subprocess, threading, urllib.request
 import http.server, socketserver
 import gi
 gi.require_version("Gtk", "3.0")
@@ -74,38 +74,51 @@ def alive(sess):
     return SESSION_RE.match(sess) and tmux("has-session", "-t", f"={sess}").returncode == 0
 
 
+def dash(path, payload):
+    """cc-dash sabe resolver donde vive el claude de un proyecto (aunque este
+    en una pestana term-* de la app) — por eso las teclas van via el, no
+    directo a tmux. Lanza excepcion si cc-dash no responde."""
+    req = urllib.request.Request(
+        "http://127.0.0.1:4777" + path, data=json.dumps(payload).encode(),
+        headers={"Content-Type": "application/json"})
+    urllib.request.urlopen(req, timeout=5)
+
+
 def send_key(sess, key):
-    if key in ALLOWED_KEYS and alive(sess):
-        tmux("send-keys", "-t", f"={sess}:", key)
+    if key not in ALLOWED_KEYS or not SESSION_RE.match(sess):
+        return
+    try:
+        dash("/key", {"session": sess, "key": key})
+    except Exception:
+        if alive(sess):
+            tmux("send-keys", "-t", f"={sess}:", key)
 
 
 def choose(sess, digit):
     """Elige la opcion N de un prompt numerado: digito y Enter de confirmacion."""
-    if not alive(sess):
-        return
-    tmux("send-keys", "-t", f"={sess}:", digit)
-    GLib.timeout_add(250, lambda: (tmux("send-keys", "-t", f"={sess}:", "Enter"), False)[1])
+    send_key(sess, digit)
+    GLib.timeout_add(250, lambda: (send_key(sess, "Enter"), False)[1])
 
 
 def send_text(sess, text):
     text = text.strip()
-    if text and alive(sess):
-        tmux("send-keys", "-t", f"={sess}:", "-l", "--", text)
-        tmux("send-keys", "-t", f"={sess}:", "Enter")
+    if not text or not SESSION_RE.match(sess):
+        return
+    try:
+        dash("/send", {"session": sess, "text": text})
+    except Exception:
+        if alive(sess):
+            tmux("send-keys", "-t", f"={sess}:", "-l", "--", text)
+            tmux("send-keys", "-t", f"={sess}:", "Enter")
 
 
 def open_session(sess):
     if not SESSION_RE.match(sess):
         return
-    # Delegar en cc-dash: cambia el cliente tmux, trae la ventana al frente,
-    # o abre una terminal nueva (kitty/tilix) si ninguna esta conectada.
+    # Delegar en cc-dash: enfoca la pestana correcta de la app (o cambia el
+    # cliente tmux / abre una terminal si la app no esta abierta).
     try:
-        import urllib.request
-        req = urllib.request.Request(
-            "http://127.0.0.1:4777/focus",
-            data=json.dumps({"session": sess}).encode(),
-            headers={"Content-Type": "application/json"})
-        urllib.request.urlopen(req, timeout=5)
+        dash("/focus", {"session": sess})
         return
     except Exception:
         pass

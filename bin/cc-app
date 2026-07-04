@@ -3,9 +3,10 @@
 
 Izquierda: el tablero. Derecha: pestanas de terminal (VTE, motor de Tilix):
   - Pestana "hub": cliente tmux libre (lo mueven Super+N y los popups).
-  - Al tocar "Claude" o "Consola" en una tarjeta, se abre/enfoca una pestana
-    DEDICADA a esa sesion — puedes tener LifeOS, Merauto y las que quieras
-    abiertas a la vez, cada una en su pestana, sin ventanas externas.
+  - UNA pestana por sesion tmux: "Abrir" la enfoca (ventana claude) y
+    "Consola" enfoca la MISMA pestana cambiando a la ventana shell — puedes
+    tener LifeOS, Merauto y las que quieras a la vez, sin duplicados.
+  - Click derecho -> "Renombrar pestana...": el nombre persiste al reiniciar.
 
 Teclas:
   F12                    mostrar/ocultar terminales
@@ -14,12 +15,12 @@ Teclas:
   Ctrl+Shift + / - / 0   zoom de letra (pestana actual)
   Ctrl+Q                 salir
 """
-import json, os, subprocess, urllib.request
+import json, os, re, subprocess, urllib.request
 import gi
 gi.require_version("Gtk", "3.0")
 gi.require_version("WebKit2", "4.0")
 gi.require_version("Vte", "2.91")
-from gi.repository import Gtk, WebKit2, Vte, GLib, Gdk, Pango
+from gi.repository import Gtk, WebKit2, Vte, GLib, Gdk, Gio, Pango
 
 URL = "http://127.0.0.1:4777"
 PALETTE = ["#232B3E", "#FF6B6B", "#2EE59D", "#FFAE1A", "#7AA5FF", "#B49CFF",
@@ -182,7 +183,8 @@ def new_session_dialog(*_):
         if e:
             err.set_text("⚠ " + e)   # ahora el error se VE, no falla en silencio
             continue
-        open_tab(name, "claude")
+        # el server pudo resolver a la sesion real (claude en pestana term-*)
+        open_tab((res or {}).get("session") or name, "claude")
         break
     dlg.destroy()
 
@@ -318,6 +320,7 @@ def on_term_button(term, event):
     menu.append(mi)
     menu.append(Gtk.SeparatorMenuItem())
     key = getattr(box, "_key", None)
+    item("Renombrar pestana...", lambda: rename_tab(key), sensitive=key is not None)
     item("Cerrar pestana", lambda: close_tab(key), sensitive=key is not None)
     menu.show_all()
     menu.popup_at_pointer(event)
@@ -338,24 +341,31 @@ TABS_FILE = os.path.expanduser("~/.claude/hooks/app-tabs.json")
 def save_tabs():
     try:
         with open(TABS_FILE, "w") as f:
-            json.dump(list(tabs.keys()), f)
+            json.dump({k: getattr(b, "_label", None) for k, b in tabs.items()}, f)
     except Exception:
         pass
 
 
 def restore_tabs():
-    """Al abrir la app, reabre las pestanas de la vez pasada; si una sesion
-    murio (p.ej. reinicio), la revive (claude --continue / reconexion ssh)."""
+    """Al abrir la app, reabre las pestanas de la vez pasada (con su nombre);
+    si una sesion murio (p.ej. reinicio), la revive (claude --continue /
+    reconexion ssh)."""
     try:
         with open(TABS_FILE) as f:
-            keys = json.load(f)
+            data = json.load(f)
     except Exception:
         return False
-    for key in keys:
+    if isinstance(data, list):    # formato viejo: lista de claves sin etiqueta
+        data = {k: None for k in data if isinstance(k, str)}
+    if not isinstance(data, dict):
+        return False
+    for key, label in data.items():
         if not isinstance(key, str) or not key:
             continue
-        sess, _, win = key.partition(":")
-        win = win or "claude"
+        # claves viejas "sesion:ventana" colapsan a la sesion (una pestana por sesion)
+        sess = key.partition(":")[0]
+        if sess in tabs:
+            continue
         try:
             if subprocess.run(["tmux", "has-session", "-t", "=" + sess],
                               capture_output=True, timeout=5).returncode != 0:
@@ -369,7 +379,7 @@ def restore_tabs():
                     http_post("/ssh-connect", {"host": sess[4:]}, timeout=20)
                 else:
                     http_post("/new", {"session": sess})
-            open_tab(sess, win)
+            open_tab(sess, "claude", label=label if isinstance(label, str) and label else None)
         except Exception as e:
             print(f"no pude restaurar {key}: {e}")
     return False
@@ -423,10 +433,17 @@ def new_local_tab(*_):
     open_tab(sess, "claude", label=os.path.basename(cwd) or "term")
 
 
+WIN_RE = re.compile(r"^[A-Za-z0-9_-]{1,32}$")
+
+
 def open_tab(sess, winname, label=None):
-    """Abre (o enfoca) la pestana dedicada a una sesion/ventana tmux."""
-    key = sess if winname == "claude" else f"{sess}:{winname}"
+    """Abre (o enfoca) LA pestana de una sesion tmux; winname elige que ventana
+    (claude/shell/ssh) se muestra. Si la ventana no existe, se queda como esta."""
+    if not WIN_RE.match(winname or ""):
+        winname = "claude"
+    key = sess
     if key in tabs:
+        tmuxc("select-window", "-t", f"={sess}:{winname}")
         nb.set_current_page(nb.page_num(tabs[key]))
         tabs[key]._term.grab_focus()
         return
@@ -434,14 +451,46 @@ def open_tab(sess, winname, label=None):
            f"tmux attach -t '={sess}' || {{ echo '[sesion terminada — cierra esta pestana con la x]'; exec cat; }}")
     box = make_term(cmd)
     box._key = key
-    if label is None:
-        label = sess if winname in ("claude", "ssh") else f"{sess} [sh]"
-    idx = nb.append_page(box, tab_label(label, key))
+    box._label = label or sess
+    idx = nb.append_page(box, tab_label(box._label, key))
     box.show_all()
     nb.set_current_page(idx)
     box._term.grab_focus()
     tabs[key] = box
     save_tabs()
+
+
+def set_tab_label(box, text):
+    box._label = text
+    hb = nb.get_tab_label(box)
+    for ch in (hb.get_children() if hb else []):
+        if isinstance(ch, Gtk.Label):
+            ch.set_text(text)
+            break
+    save_tabs()
+
+
+def rename_tab(key):
+    box = tabs.get(key)
+    if box is None:
+        return
+    dlg = Gtk.Dialog(title="Renombrar pestana", transient_for=win)
+    dlg.add_buttons("Cancelar", Gtk.ResponseType.CANCEL, "Renombrar", Gtk.ResponseType.OK)
+    area = dlg.get_content_area()
+    area.set_property("margin", 14); area.set_spacing(8)
+    area.add(Gtk.Label(label="Nombre de la pestana:", xalign=0))
+    entry = Gtk.Entry()
+    entry.set_text(getattr(box, "_label", key))
+    entry.set_activates_default(True)
+    area.add(entry)
+    dlg.set_default_response(Gtk.ResponseType.OK)
+    dlg.show_all()
+    entry.grab_focus()
+    if dlg.run() == Gtk.ResponseType.OK:
+        name = entry.get_text().strip()
+        if name:
+            set_tab_label(box, name)
+    dlg.destroy()
 
 
 # Estilo propio de la app (pestanas, scrollbars, separadores)
@@ -534,7 +583,7 @@ SHORTCUTS = [
         ("Ctrl+C", "Copiar (si hay seleccion) / interrumpir"),
         ("Seleccionar con mouse", "Copia al portapapeles automaticamente"),
         ("Ctrl+click en URL", "Abrir el enlace en el navegador"),
-        ("Click derecho", "Copiar, pegar, splits, nueva terminal, cerrar"),
+        ("Click derecho", "Copiar, pegar, splits, renombrar pestana, cerrar"),
     ]),
     ("Splits y ventanas (tmux)", [
         ("Click derecho -> Split", "Derecha / izquierda / abajo / arriba"),
@@ -657,6 +706,28 @@ def on_key(w, e):
         Gtk.main_quit(); return True
     return False
 
+
+# Super+N y los popups piden foco via cc-dash: escribe app-focus.json y aqui
+# enfocamos (o abrimos) la pestana de esa sesion, sin mover clientes de nadie
+FOCUS_FILE = os.path.expanduser("~/.claude/hooks/app-focus.json")
+
+
+def on_focus_request(_mon, _f, _other, event):
+    if event != Gio.FileMonitorEvent.CHANGES_DONE_HINT:
+        return
+    try:
+        with open(FOCUS_FILE) as fh:
+            d = json.load(fh)
+        sess, winname = d.get("session", ""), d.get("win", "claude")
+    except Exception:
+        return
+    if sess and sess not in ("local", "hub", "control"):
+        open_tab(sess, winname)
+        win.present()
+
+
+_focus_mon = Gio.File.new_for_path(FOCUS_FILE).monitor_file(Gio.FileMonitorFlags.NONE, None)
+_focus_mon.connect("changed", on_focus_request)
 
 win.connect("key-press-event", on_key)
 win.connect("destroy", Gtk.main_quit)

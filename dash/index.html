@@ -363,8 +363,8 @@ function openInApp(sess, win){
 }
 async function openSession(it, win){
   if(inApp()){
-    await api("/ensure", {session: it.session, cwd: it.cwd, win});
-    openInApp(it.session, win);
+    const r = await api("/ensure", {session: it.session, cwd: it.cwd, win});
+    openInApp(r.session || it.session, win);
     return `${it.project} en su pestana`;
   }
   try{
@@ -447,19 +447,22 @@ function cardEl(it){
 
 function wireActions(el, it){
   favBtn(it, el);
+  // el.dataset.pane se refresca en cada render: si claude corre en un pane
+  // concreto (pestana term-*, split), las teclas van exactamente ahi
+  const pane = () => el.dataset.pane || undefined;
   const form = el.querySelector(".send");
   if(form) form.addEventListener("submit", async e=>{
     e.preventDefault();
     const inp = form.querySelector("input"); const text = inp.value.trim();
     if(!text) return;
-    try{ await api("/send", {session: it.session, text}); inp.value="";
+    try{ await api("/send", {session: el.dataset.session, text, pane: pane()}); inp.value="";
          toast(`Enviado a ${it.project}`); }
     catch(err){ toast(err.message, true); }
   });
   el.querySelectorAll(".keys button").forEach(b=>{
     b.addEventListener("click", async e=>{
       e.stopPropagation();
-      try{ await api("/key", {session: it.session, key: b.dataset.key});
+      try{ await api("/key", {session: el.dataset.session, key: b.dataset.key, pane: pane()});
            toast(`${b.dataset.key} a ${it.project}`); }
       catch(err){ toast(err.message, true); }
     });
@@ -515,6 +518,7 @@ function render(list){
     if(el && el.dataset.kind !== kind){ el.remove(); el = null; }
     if(!el){ el = kind === "card" ? cardEl(it) : rowEl(it); container.appendChild(el); }
     const ext = !!it.external;
+    el.dataset.pane = it.pane || "";
     el.dataset.search = `${it.project} ${it.cwd||""}`.toLowerCase();
     el.querySelector(".fav").classList.toggle("on", S.favs.has(it.session));
     el.querySelector(".ago").textContent = agoTxt(it.ts);
@@ -752,7 +756,8 @@ $("#new-form").addEventListener("submit", async e=>{
   const name = $("#new-name").value.trim().replace(/[.:]/g, "-");
   if(!name) return;
   try{
-    if(inApp()){ await api("/ensure", {session: name, win: "claude"}); openInApp(name, "claude"); }
+    if(inApp()){ const r = await api("/ensure", {session: name, win: "claude"});
+                 openInApp(r.session || name, "claude"); }
     else { await api("/up", {session: name}); }
     $("#new-name").value = "";
     toast(`${name} abierto`);
