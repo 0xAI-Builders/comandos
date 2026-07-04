@@ -36,11 +36,15 @@
   :focus-visible{outline:2px solid var(--brand);outline-offset:2px}
   .hidden{display:none !important}
 
-  /* ---------- barra superior ---------- */
-  header{
-    position:sticky;top:0;z-index:10;display:flex;align-items:center;gap:8px 14px;
-    flex-wrap:wrap;padding:11px 18px;background:color-mix(in srgb,var(--bg) 82%,transparent);
+  /* ---------- barras superiores (appbar + servidores): FIJAS al scrollear ---------- */
+  #topbar{
+    position:sticky;top:0;z-index:10;
+    background:color-mix(in srgb,var(--bg) 88%,transparent);
     backdrop-filter:blur(10px);border-bottom:1px solid var(--line);
+  }
+  header{
+    display:flex;align-items:center;gap:8px 14px;
+    flex-wrap:wrap;padding:11px 18px;
     font-family:var(--mono);font-size:12.5px;
   }
   .brand{font-weight:800;letter-spacing:.16em;font-size:13px}
@@ -67,7 +71,7 @@
   #clock{font-variant-numeric:tabular-nums;color:var(--dim)}
 
   /* ---------- servidores ---------- */
-  #ssh-bar{max-width:1360px;margin:0 auto;padding:14px 18px 0;display:flex;
+  #ssh-bar{max-width:1360px;margin:0 auto;padding:4px 18px 11px;display:flex;
     align-items:center;gap:8px;flex-wrap:wrap;font-family:var(--mono)}
   #ssh-bar .lbl{font-size:10px;letter-spacing:.18em;color:var(--faint);
     text-transform:uppercase;font-weight:700}
@@ -254,6 +258,7 @@
   .toast.err{border-left-color:var(--waiting)}
 </style>
 
+<div id="topbar">
 <header>
   <div class="brand"><b>●</b> COMANDOS</div>
   <div class="counts">
@@ -281,6 +286,7 @@
   <span class="lbl">Servidores</span>
   <span id="ssh-chips"></span>
   <button id="ssh-manage" title="Agregar, editar o borrar (viven en ~/.ssh/config)">gestionar</button>
+</div>
 </div>
 
 <section class="sec" id="urgent-wrap">
