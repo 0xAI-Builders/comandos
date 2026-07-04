@@ -19,8 +19,9 @@ mkdir -p "$STATE_DIR"
 
 # ---- Config editable (valores por defecto si no existe el archivo) ----
 SOUND_DONE="/usr/share/sounds/freedesktop/stereo/complete.oga"
-# message-new-instant: un "ding" suave. (dialog-warning suena a campanazo agresivo)
-SOUND_ATTENTION="/usr/share/sounds/freedesktop/stereo/message-new-instant.oga"
+# window-attention: un toquecito discreto (dialog-warning=campanazo y
+# message-new-instant=ding le resultaron molestos al oido con muchos claudes)
+SOUND_ATTENTION="/usr/share/sounds/freedesktop/stereo/window-attention.oga"
 DESKTOP_NOTIFY=1
 SOUND_ENABLED=1
 TELEGRAM_ENABLED=1

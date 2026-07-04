@@ -3,7 +3,7 @@
 
 # Sonidos (cualquier .oga/.wav; ve opciones en /usr/share/sounds/freedesktop/stereo/)
 SOUND_DONE=/usr/share/sounds/freedesktop/stereo/complete.oga
-SOUND_ATTENTION=/usr/share/sounds/freedesktop/stereo/message-new-instant.oga
+SOUND_ATTENTION=/usr/share/sounds/freedesktop/stereo/window-attention.oga
 
 # Volumen GLOBAL de voz y chime, 0-100 (editable desde Ajustes del tablero)
 VOLUME=60
