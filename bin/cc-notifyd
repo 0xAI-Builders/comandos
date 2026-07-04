@@ -38,9 +38,12 @@ window.ccpop { background-color: rgba(0,0,0,0); }
 .edge.waiting { background-color: #FFAE1A; }
 .tag { color: #FFAE1A; font-family: 'JetBrainsMono Nerd Font', monospace; font-size: 9.5px; font-weight: 700; }
 .tag.done { color: #2EE59D; }
-.proj { color: #EAF0FB; font-family: 'JetBrainsMono Nerd Font', monospace; font-weight: 700; font-size: 19px; }
-.body { color: #C4CCDD; font-size: 13px; }
+.proj { color: #EAF0FB; font-family: 'JetBrainsMono Nerd Font', monospace; font-weight: 700; font-size: 14px; }
+.body { color: #D6DEED; font-size: 13.5px; }
 .body selection { background-color: #8B7CFF; color: #0A0D13; }
+.vermas { color: #7AA5FF; font-size: 11.5px; padding: 0; background: none; border: none;
+  font-family: 'JetBrainsMono Nerd Font', monospace; }
+.vermas:hover { color: #EAF0FB; }
 .entry {
   background-color: #0A0D13; color: #EAF0FB; border: 1px solid #222A3A;
   border-radius: 7px; padding: 6px 10px; font-family: 'JetBrainsMono Nerd Font', monospace;
@@ -308,8 +311,21 @@ def make_popup(title, body, session, kind, project, options_str="", full=""):
     content.set_margin_top(10); content.set_margin_bottom(11)
     content.set_margin_start(13); content.set_margin_end(11)
 
+    # Linea de contexto COMPACTA: ● proyecto · estado    [🔊][×]
+    # (el texto es el protagonista; el contexto es una sola linea discreta)
     header = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
-    tag = Gtk.Label(label="NECESITA RESPUESTA" if kind == "waiting" else "TERMINO")
+    d = Gtk.Label()
+    d.set_markup('<span size="10000" foreground="%s">●</span>'
+                 % ("#FFAE1A" if kind == "waiting" else "#2EE59D"))
+    header.pack_start(d, False, False, 0)
+    pl = Gtk.Label(label=project or session, xalign=0)
+    pl.get_style_context().add_class("proj")
+    pl.set_ellipsize(3)  # END
+    pev = Gtk.EventBox()
+    pev.add(pl)
+    pev.connect("button-press-event", lambda *_: (open_session(session), close_popup(win)))
+    header.pack_start(pev, False, False, 0)
+    tag = Gtk.Label(label="espera tu respuesta" if kind == "waiting" else "listo")
     tag.get_style_context().add_class("tag")
     if kind == "done":
         tag.get_style_context().add_class("done")
@@ -346,14 +362,6 @@ def make_popup(title, body, session, kind, project, options_str="", full=""):
     GLib.idle_add(lambda: (sync_mute(), False)[1])
     content.pack_start(header, False, False, 0)
 
-    # Proyecto en GRANDE; click = abrir la sesion
-    pl = Gtk.Label(label=project or session, xalign=0)
-    pl.get_style_context().add_class("proj")
-    pl.set_ellipsize(3)  # END
-    pev = Gtk.EventBox(); pev.add(pl)
-    pev.connect("button-press-event", lambda *_: (open_session(session), close_popup(win)))
-    content.pack_start(pev, False, False, 0)
-
     # Preview colapsado RENDERIZADO (markdown y tablas alineadas desde el
     # primer vistazo, sin tener que dar 'Ver TODO')
     bl = None
@@ -387,18 +395,32 @@ def make_popup(title, body, session, kind, project, options_str="", full=""):
             sw.set_size_request(-1, 380)   # GTK < 3.22
         sw.add(build_full_widget(full[:6000]))
         sw.set_no_show_all(True)
-        content.pack_start(sw, True, True, 0)
+        # "… Ver TODO" pegado al texto, como un link discreto
+        vt = Gtk.Button(label="… Ver TODO")
+        vt.get_style_context().add_class("vermas")
+        vt.set_relief(Gtk.ReliefStyle.NONE)
+        vt.set_halign(Gtk.Align.START)
 
-    # Input directo: escribe y Enter
-    entry = Gtk.Entry()
-    entry.get_style_context().add_class("entry")
-    entry.set_placeholder_text(
-        "Responde aqui y Enter..." if kind == "waiting" else "Siguiente instruccion...")
-    def on_activate(e):
-        send_text(session, e.get_text())
-        close_popup(win)
-    entry.connect("activate", on_activate)
-    content.pack_start(entry, False, False, 0)
+        def toggle(_b):
+            win._expanded = not win._expanded
+            if win._expanded:
+                sw.set_no_show_all(False)
+                sw.show_all()
+                if bl:
+                    bl.hide()
+                vt.set_label("… Ver menos")
+            else:
+                sw.hide()
+                if bl:
+                    bl.show()
+                vt.set_label("… Ver TODO")
+                win.resize(WIDTH, 1)
+            reposition()
+            GLib.timeout_add(80, reposition)
+
+        vt.connect("clicked", toggle)
+        content.pack_start(vt, False, False, 0)
+        content.pack_start(sw, True, True, 0)
 
     def mk_btn(label, cb, cls=None):
         b = Gtk.Button(label=label)
@@ -417,30 +439,6 @@ def make_popup(title, body, session, kind, project, options_str="", full=""):
             content.pack_start(b, False, False, 0)
 
     btns = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
-    if sw is not None:
-        vt = Gtk.Button(label="Ver TODO")
-        vt.get_style_context().add_class("btn")
-        vt.get_style_context().add_class("open")
-
-        def toggle(_b):
-            win._expanded = not win._expanded
-            if win._expanded:
-                sw.set_no_show_all(False)
-                sw.show_all()
-                if bl:
-                    bl.hide()
-                vt.set_label("Ver menos")
-            else:
-                sw.hide()
-                if bl:
-                    bl.show()
-                vt.set_label("Ver TODO")
-                win.resize(WIDTH, 1)
-            reposition()
-            GLib.timeout_add(80, reposition)
-
-        vt.connect("clicked", toggle)
-        btns.pack_start(vt, False, False, 0)
     if labels and not long_opts:
         for i, lab in enumerate(labels):
             btns.pack_start(mk_btn(lab[:16], lambda i=i: choose(session, str(i + 1)), "primary"),
@@ -450,8 +448,24 @@ def make_popup(title, body, session, kind, project, options_str="", full=""):
             btns.pack_start(mk_btn("Enter", lambda: send_key(session, "Enter"), "primary"),
                             False, False, 0)
         btns.pack_start(mk_btn("Esc", lambda: send_key(session, "Escape")), False, False, 0)
-    btns.pack_end(mk_btn("Abrir", lambda: open_session(session), "open"), False, False, 0)
-    content.pack_start(btns, False, False, 1)
+    if btns.get_children():
+        content.pack_start(btns, False, False, 0)
+
+    # Fila final: input que se estira + Abrir (una sola linea de accion)
+    entry = Gtk.Entry()
+    entry.get_style_context().add_class("entry")
+    entry.set_placeholder_text(
+        "Responde aqui y Enter..." if kind == "waiting" else "Siguiente instruccion...")
+
+    def on_activate(e):
+        send_text(session, e.get_text())
+        close_popup(win)
+
+    entry.connect("activate", on_activate)
+    row_send = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
+    row_send.pack_start(entry, True, True, 0)
+    row_send.pack_end(mk_btn("Abrir", lambda: open_session(session), "open"), False, False, 0)
+    content.pack_start(row_send, False, False, 1)
 
     card.pack_start(content, True, True, 0)
     win.add(card)
