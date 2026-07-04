@@ -258,8 +258,22 @@ def on_term_button(term, event):
                 args += ["-c", cwd]
         tmuxc(*args)
 
-    item("Copiar                   Ctrl+C", lambda: term.copy_clipboard_format(Vte.Format.TEXT),
-         sensitive=term.get_has_selection())
+    # Hay DOS tipos de seleccion: la de la terminal (VTE, con Shift+arrastrar)
+    # y la de tmux (arrastrar normal, es la que persiste). Copiar cubre ambas.
+    in_copy = False
+    if pane_id:
+        rm = tmuxc("display-message", "-p", "-t", pane_id, "#{pane_in_mode}")
+        in_copy = rm.stdout.strip() == "1"
+
+    def do_copy():
+        if term.get_has_selection():
+            term.copy_clipboard_format(Vte.Format.TEXT)
+        elif in_copy and pane_id:
+            tmuxc("send-keys", "-t", pane_id, "-X", "copy-pipe-no-clear",
+                  "xclip -in -selection clipboard 2>/dev/null")
+
+    item("Copiar                   Ctrl+C", do_copy,
+         sensitive=term.get_has_selection() or in_copy)
     item("Pegar                    Ctrl+V", lambda: term.paste_clipboard())
     menu.append(Gtk.SeparatorMenuItem())
     if is_ssh:
