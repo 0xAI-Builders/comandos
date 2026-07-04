@@ -26,52 +26,91 @@ URL = "http://127.0.0.1:4777"
 PALETTE = ["#232B3E", "#FF6B6B", "#2EE59D", "#FFAE1A", "#7AA5FF", "#B49CFF",
            "#4DD0E1", "#EAF0FB", "#5E6980", "#FF8F8F", "#6FF0BC", "#FFC55C",
            "#A3C0FF", "#CDBBFF", "#86E3F0", "#FFFFFF"]
+# Dia: ANSI legibles sobre fondo claro (nada de amarillos palidos)
+PAL_DIA = ["#20242E", "#C7392B", "#177A44", "#9A6700", "#2059C8", "#7A3FD1",
+           "#0F7B8A", "#8B94A5", "#5A6474", "#E05548", "#1F9457", "#B47F00",
+           "#3C74E0", "#9A63E8", "#1897A8", "#333C4E"]
+# Calido: sepia con azul reducido (noche); acentos corridos a tonos tibios
+PAL_CALIDO = ["#2A2015", "#E06C4B", "#9DC76F", "#E5B567", "#7E9CC0", "#C795C0",
+              "#8FBFAE", "#E8D9BE", "#6E5F49", "#F08A63", "#B5DB8A", "#FFCB7D",
+              "#9AB4D6", "#DBA9D4", "#A6D4C2", "#FFF4E0"]
+THEMES = {
+    "noche": dict(fg="#EAF0FB", bg="#0A0D13", cursor="#FFAE1A", pal=PALETTE,
+                  bar="#0D1119", dim="#9AA6BF", text="#EAF0FB", brand="#8B7CFF",
+                  line="#222A3A", line2="#2E3852", faint="#5E6980"),
+    "dia": dict(fg="#1B2130", bg="#F7F8FB", cursor="#B26A00", pal=PAL_DIA,
+                bar="#E7EBF3", dim="#4E5A70", text="#1B2130", brand="#5B4BD6",
+                line="#D9DEE8", line2="#C3CAD8", faint="#8892A6"),
+    "calido": dict(fg="#F2E5D0", bg="#161009", cursor="#FFB454", pal=PAL_CALIDO,
+                   bar="#1D150D", dim="#BCA98C", text="#F2E5D0", brand="#E0A458",
+                   line="#36291A", line2="#4A3823", faint="#8A7A5F"),
+}
 FONT = "JetBrainsMono Nerd Font 13"
 
 GLib.set_prgname("comandos")
 Gtk.Settings.get_default().set_property("gtk-application-prefer-dark-theme", True)
 
-APP_CSS = b"""
-notebook > header { background: #0D1119; border: none; box-shadow: none; }
+APP_CSS = """
+notebook > header { background: @BAR@; border: none; box-shadow: none; }
 notebook > header > tabs > tab {
-  background: transparent; color: #9AA6BF; padding: 5px 12px; margin: 0;
+  background: transparent; color: @DIM@; padding: 5px 12px; margin: 0;
   font-family: 'JetBrainsMono Nerd Font', monospace; font-size: 11px;
   border: none; box-shadow: none;
 }
 notebook > header > tabs > tab:checked {
-  color: #EAF0FB; box-shadow: inset 0 -2px 0 0 #8B7CFF;
+  color: @TEXT@; box-shadow: inset 0 -2px 0 0 @BRAND@;
 }
 notebook > header > tabs > tab button {
-  color: #5E6980; padding: 0; margin: 0; min-height: 14px; min-width: 14px;
+  color: @FAINT@; padding: 0; margin: 0; min-height: 14px; min-width: 14px;
   border: none; background: none;
 }
-notebook > header > tabs > tab button:hover { color: #EAF0FB; }
-notebook stack { background: #0A0D13; }
-.termwrap { background: #0A0D13; }
-.tabplus { color: #5E6980; padding: 2px 10px; border: none; background: none;
+notebook > header > tabs > tab button:hover { color: @TEXT@; }
+notebook stack { background: @BG@; }
+.termwrap { background: @BG@; }
+.tabplus { color: @FAINT@; padding: 2px 10px; border: none; background: none;
   font-family: monospace; font-size: 14px; }
-.tabplus:hover { color: #8B7CFF; }
+.tabplus:hover { color: @BRAND@; }
 scrollbar { background: transparent; }
 scrollbar trough { background: transparent; }
-scrollbar slider { background: #2E3852; border-radius: 8px; min-width: 7px; }
-scrollbar slider:hover { background: #8B7CFF; }
-paned separator { background: #222A3A; min-width: 2px; }
-.helpwin { background: #0D1119; }
-.switcher { background: #0D1119; border: 1px solid #2E3852; border-radius: 10px; }
-.switcher entry { background: #0A0D13; color: #EAF0FB; border: 1px solid #2E3852;
+scrollbar slider { background: @LINE2@; border-radius: 8px; min-width: 7px; }
+scrollbar slider:hover { background: @BRAND@; }
+paned separator { background: @LINE@; min-width: 2px; }
+.helpwin { background: @BAR@; }
+.switcher { background: @BAR@; border: 1px solid @LINE2@; border-radius: 10px; }
+.switcher entry { background: @BG@; color: @TEXT@; border: 1px solid @LINE2@;
   border-radius: 8px; padding: 8px 12px; caret-color: #FFAE1A;
   font-family: 'JetBrainsMono Nerd Font', monospace; font-size: 13px; }
 .switcher list { background: transparent; }
-.switcher row { border-radius: 7px; color: #C4CCDD; }
-.switcher row:selected { background: #222A3A; color: #EAF0FB; }
-.sw-meta { color: #5E6980; font-size: 10.5px;
+.switcher row { border-radius: 7px; color: @DIM@; }
+.switcher row:selected { background: @LINE@; color: @TEXT@; }
+.sw-meta { color: @FAINT@; font-size: 10.5px;
   font-family: 'JetBrainsMono Nerd Font', monospace; }
-.help-h { color: #EAF0FB; }
-.help-sec { color: #8B7CFF; font-family: 'JetBrainsMono Nerd Font', monospace; font-size: 11px; }
+.help-h { color: @TEXT@; }
+.help-sec { color: @BRAND@; font-family: 'JetBrainsMono Nerd Font', monospace; font-size: 11px; }
 .help-key { color: #FFAE1A; font-family: 'JetBrainsMono Nerd Font', monospace; font-size: 12px; }
-.help-desc { color: #C4CCDD; font-size: 12.5px; }
-.help-hint { color: #5E6980; }
+.help-desc { color: @DIM@; font-size: 12.5px; }
+.help-hint { color: @FAINT@; }
 """
+
+
+def theme_css(t):
+    s = APP_CSS
+    for k, v in (("@BAR@", t["bar"]), ("@BG@", t["bg"]), ("@TEXT@", t["text"]),
+                 ("@DIM@", t["dim"]), ("@FAINT@", t["faint"]), ("@BRAND@", t["brand"]),
+                 ("@LINE@", t["line"]), ("@LINE2@", t["line2"])):
+        s = s.replace(k, v)
+    return s
+
+
+def fetch_pref_theme():
+    try:
+        with urllib.request.urlopen("http://127.0.0.1:4777/prefs", timeout=2) as r:
+            return json.loads(r.read().decode()).get("theme", "noche")
+    except Exception:
+        return "noche"
+
+
+THEME = THEMES.get(fetch_pref_theme(), THEMES["noche"])
 
 
 def rgba(h):
@@ -114,8 +153,8 @@ URL_RE = r"https?://[^\s'\"<>\]\)]+"
 def make_term(argv_sh):
     term = Vte.Terminal()
     term.set_font(Pango.FontDescription(FONT))
-    term.set_colors(rgba("#EAF0FB"), rgba("#0A0D13"), [rgba(p) for p in PALETTE])
-    term.set_color_cursor(rgba("#FFAE1A"))
+    term.set_colors(rgba(THEME["fg"]), rgba(THEME["bg"]), [rgba(p) for p in THEME["pal"]])
+    term.set_color_cursor(rgba(THEME["cursor"]))
     term.set_scrollback_lines(10000)
     term.set_audible_bell(False)
     term.connect("button-press-event", on_term_button)
@@ -683,11 +722,25 @@ def rename_tab(key):
     dlg.destroy()
 
 
-# Estilo propio de la app (pestanas, scrollbars, separadores)
+# Estilo propio de la app (pestanas, scrollbars, separadores), tematizable
 _prov = Gtk.CssProvider()
-_prov.load_from_data(APP_CSS)
+_prov.load_from_data(theme_css(THEME).encode())
 Gtk.StyleContext.add_provider_for_screen(
     Gdk.Screen.get_default(), _prov, Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION)
+
+
+def apply_theme(name):
+    """Cambia el tema EN CALIENTE: chrome GTK + colores de TODAS las
+    terminales abiertas (lo dispara el boton de tema del tablero)."""
+    global THEME
+    THEME = THEMES.get(name, THEMES["noche"])
+    _prov.load_from_data(theme_css(THEME).encode())
+    for i in range(nb.get_n_pages()):
+        t = getattr(nb.get_nth_page(i), "_term", None)
+        if t:
+            t.set_colors(rgba(THEME["fg"]), rgba(THEME["bg"]),
+                         [rgba(p) for p in THEME["pal"]])
+            t.set_color_cursor(rgba(THEME["cursor"]))
 
 # Pestana "local": tu terminal de control (scratch en HOME). Es el cliente que
 # mueven Super+N y los popups. No aparece como tarjeta en el tablero.
@@ -724,6 +777,9 @@ ucm = WebKit2.UserContentManager()
 def on_msg(mgr, res):
     try:
         d = json.loads(res.get_js_value().to_string())
+        if d.get("theme"):
+            apply_theme(d["theme"])
+            return
         open_tab(d.get("session", ""), d.get("win", "claude"))
     except Exception as e:
         print(f"mensaje invalido del tablero: {e}")

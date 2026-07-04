@@ -6,14 +6,29 @@
     --bg:#0A0D13; --panel:#121722; --panel2:#161C29; --line:#222A3A; --line2:#2E3852;
     --text:#EAF0FB; --dim:#9AA6BF; --faint:#5E6980;
     --brand:#8B7CFF; --waiting:#FFAE1A; --done:#2EE59D; --working:#7AA5FF;
+    --glow:#141B2E; --code:#A3C0FF; --shadow:rgba(0,0,0,.35);
     --mono:'JetBrainsMono Nerd Font','JetBrains Mono',ui-monospace,Menlo,Consolas,monospace;
-    --sans:system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;
+    --sans:'Inter',system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;
+  }
+  /* Dia: claro sin blanco/negro puros (evita halacion); texto ~13:1 */
+  :root[data-theme="dia"]{
+    --bg:#F2F4F8; --panel:#FBFCFE; --panel2:#EDF0F6; --line:#D9DEE8; --line2:#C3CAD8;
+    --text:#1B2130; --dim:#4E5A70; --faint:#8892A6;
+    --brand:#5B4BD6; --waiting:#9A6700; --done:#0E7A55; --working:#2059C8;
+    --glow:#E4E9F4; --code:#2059C8; --shadow:rgba(30,40,70,.14);
+  }
+  /* Calido: oscuro sepia, poco azul (sesiones nocturnas) */
+  :root[data-theme="calido"]{
+    --bg:#161009; --panel:#1F1811; --panel2:#261D14; --line:#36291A; --line2:#4A3823;
+    --text:#F2E5D0; --dim:#BCA98C; --faint:#8A7A5F;
+    --brand:#E0A458; --waiting:#FFB454; --done:#8FD48A; --working:#89A7E0;
+    --glow:#241A0F; --code:#E5C68F; --shadow:rgba(0,0,0,.45);
   }
   *{box-sizing:border-box;margin:0;padding:0}
   html,body{max-width:100vw;overflow-x:hidden}
   body{
     color:var(--text);font-family:var(--sans);
-    background:radial-gradient(1100px 500px at 75% -120px, #141B2E 0%, var(--bg) 60%) fixed var(--bg);
+    background:radial-gradient(1100px 500px at 75% -120px, var(--glow) 0%, var(--bg) 60%) fixed var(--bg);
     min-height:100vh;
   }
   button{font:inherit;color:inherit;background:none;border:0;cursor:pointer}
@@ -81,7 +96,7 @@
     min-width:0;border-radius:14px;padding:15px 16px 13px;
     background:linear-gradient(140deg, rgba(255,174,26,.09), rgba(255,174,26,.02) 45%), var(--panel);
     border:1px solid color-mix(in srgb,var(--waiting) 35%,var(--line));
-    box-shadow:0 8px 28px rgba(0,0,0,.35), 0 0 0 1px rgba(255,174,26,.04);
+    box-shadow:0 8px 28px var(--shadow), 0 0 0 1px rgba(255,174,26,.04);
     display:flex;flex-direction:column;gap:9px;
   }
   .card .top{display:flex;align-items:center;gap:8px;min-width:0}
@@ -101,12 +116,12 @@
     display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden;
     cursor:pointer}
   .preview.open{display:block;-webkit-line-clamp:unset;max-height:440px;overflow-y:auto}
-  .preview:hover{color:#fff}
+  .preview:hover{color:var(--text)}
   .preview .mdh{display:block;color:var(--brand);margin:7px 0 3px}
   .preview hr{border:none;border-top:1px solid var(--line);margin:7px 0}
   .preview i{color:var(--dim)}
   .preview code,.preview pre{font-family:var(--mono);font-size:12px;
-    background:var(--bg);border-radius:4px;padding:0 4px;color:#A3C0FF}
+    background:var(--bg);border-radius:4px;padding:0 4px;color:var(--code)}
   .preview pre{display:block;padding:8px 10px;margin:6px 0;overflow-x:auto;
     white-space:pre-wrap}
   .preview u{text-decoration-color:var(--brand)}
@@ -251,6 +266,7 @@
       <button class="hdr-btn" id="btn-mute">🔊</button>
       <input type="range" id="vol-top" min="0" max="100" value="60">
     </span>
+    <button class="hdr-btn" id="btn-theme" title="Tema: Noche → Día → Cálido (aplica a tablero, pestañas y terminales)">🌙</button>
     <button class="hdr-btn" id="btn-settings">Ajustes</button>
     <span id="clock">--:--</span>
   </div>
@@ -677,9 +693,33 @@ function applyQ(){
 }
 $("#q").addEventListener("input", e=>{ S.q = e.target.value; applyQ(); });
 
+// ---------- tema ----------
+const THEME_SEQ = ["noche", "dia", "calido"];
+const THEME_ICON = {noche:"🌙", dia:"☀️", calido:"🕯️"};
+let curTheme = "noche";
+function applyTheme(name, tellApp){
+  if(!THEME_SEQ.includes(name)) name = "noche";
+  curTheme = name;
+  if(name === "noche") delete document.documentElement.dataset.theme;
+  else document.documentElement.dataset.theme = name;
+  $("#btn-theme").textContent = THEME_ICON[name];
+  if(tellApp && inApp())
+    window.webkit.messageHandlers.centro.postMessage(JSON.stringify({theme: name}));
+}
+$("#btn-theme").addEventListener("click", async ()=>{
+  const next = THEME_SEQ[(THEME_SEQ.indexOf(curTheme) + 1) % THEME_SEQ.length];
+  applyTheme(next, true);
+  try{ await api("/prefs-set", {theme: next}); }catch(e){}
+  toast(`Tema: ${next === "dia" ? "Día" : next === "calido" ? "Cálido" : "Noche"}`);
+});
+
 // ---------- favoritos ----------
 async function loadPrefs(){
-  try{ S.favs = new Set((await api("/prefs")).favorites || []); }catch(e){}
+  try{
+    const p = await api("/prefs");
+    S.favs = new Set(p.favorites || []);
+    applyTheme(p.theme || "noche", true);   // sincroniza tambien la app al abrir
+  }catch(e){}
 }
 
 // ---------- servidores ----------
