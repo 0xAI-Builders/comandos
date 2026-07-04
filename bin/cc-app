@@ -158,13 +158,18 @@ def make_term(argv_sh):
     term.set_scrollback_lines(10000)
     term.set_audible_bell(False)
     term.connect("button-press-event", on_term_button)
+    term.connect("button-release-event", on_term_release)
     # Seleccionar = copiar al clipboard del sistema (portapapeles compartido)
     term.connect("selection-changed", lambda t: t.get_has_selection()
                  and t.copy_clipboard_format(Vte.Format.TEXT))
-    # URLs clickeables con Ctrl+click
+    # URLs clickeables: click simple (sin arrastre) o Ctrl+click, con manita
     try:
         rx = Vte.Regex.new_for_match(URL_RE, -1, 0x00000400)  # PCRE2_MULTILINE
-        term.match_add_regex(rx, 0)
+        tag = term.match_add_regex(rx, 0)
+        try:
+            term.match_set_cursor_name(tag, "pointer")
+        except Exception:
+            pass
     except Exception:
         pass
     # Padding comodo alrededor del texto
@@ -324,17 +329,44 @@ def exit_copy_mode(term):
             tmuxc("send-keys", "-t", f"={sess}:", "-X", "cancel")
 
 
+def open_url(url):
+    subprocess.Popen(["xdg-open", url], start_new_session=True,
+                     stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+
+
+def on_term_release(term, event):
+    """Al soltar el mouse: 1) si fue un CLICK limpio sobre una URL, abrirla;
+    2) marcar que pudo quedar seleccion tmux (el primer keypress la limpia)."""
+    press = getattr(term, "_url_press", None)
+    term._url_press = None
+    term._sel_flag = True
+    if press and event.button == 1:
+        x, y, url = press
+        if url and abs(event.x - x) < 5 and abs(event.y - y) < 5 \
+                and not term.get_has_selection():
+            open_url(url)
+    return False
+
+
 def on_term_button(term, event):
-    # Ctrl+click en una URL: abrirla
+    # Ctrl+click en una URL: abrirla directo
     if event.button == 1 and (event.state & Gdk.ModifierType.CONTROL_MASK):
         try:
             match, _tag = term.match_check_event(event)
             if match:
-                subprocess.Popen(["xdg-open", match], start_new_session=True,
-                                 stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                open_url(match)
                 return True
         except Exception:
             pass
+        return False
+    # Click simple: recordar si cayo sobre una URL; se abre al SOLTAR solo si
+    # no hubo arrastre (para no interferir con seleccionar texto)
+    if event.button == 1:
+        try:
+            match, _tag = term.match_check_event(event)
+        except Exception:
+            match = None
+        term._url_press = (event.x, event.y, match) if match else None
         return False
     if event.button != 3:
         return False
@@ -989,6 +1021,15 @@ def on_key(w, e):
     # Clipboard natural cuando el foco esta en una terminal:
     #   Ctrl+V pega; Ctrl+C copia si hay seleccion (si no, interrumpe como siempre)
     fw = win.get_focus()
+    # La seleccion con mouse deja el pane en copy-mode (highlight visible).
+    # El PRIMER keypress real despues de soltar lo saca: el teclado nunca se
+    # atora y la tecla llega a la shell como si nada.
+    MODS = (Gdk.KEY_Control_L, Gdk.KEY_Control_R, Gdk.KEY_Shift_L, Gdk.KEY_Shift_R,
+            Gdk.KEY_Alt_L, Gdk.KEY_Alt_R, Gdk.KEY_Super_L, Gdk.KEY_Super_R)
+    if isinstance(fw, Vte.Terminal) and getattr(fw, "_sel_flag", False) \
+            and e.keyval not in MODS:
+        fw._sel_flag = False
+        exit_copy_mode(fw)
     if ctrl and isinstance(fw, Vte.Terminal):
         if e.keyval in (Gdk.KEY_v, Gdk.KEY_V):
             exit_copy_mode(fw)     # si habia highlight de tmux, salir antes de pegar
