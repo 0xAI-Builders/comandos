@@ -273,19 +273,30 @@ def read_states():
         cwd = d.get("cwd", "")
         if not cwd:
             cwd = find_project_dir(sess) or ""
-        # El claude vive en OTRA sesion tmux (pestana term-* de la app, hub,
-        # un split): NO es una suelta. La card opera esa sesion y pane reales.
+        # Donde corre el claude MANDA (pestana term-* de la app, hub, un
+        # split), aunque exista una sesion tmux con el nombre del proyecto
+        # (zombie sin claude adentro): la card opera la sesion y pane REALES.
         pane = None
-        if not alive and cwd in in_tmux:
-            sess, pane = in_tmux[cwd]
+        if cwd in in_tmux:
+            real, pane = in_tmux[cwd]
+            if real != sess:
+                if alive:
+                    seen.add(sess)  # la homonima vacia no sale como card duplicada
+                sess = real
             alive = True
         # Claude corriendo FUERA de tmux (una pestana suelta de Tilix/Tabby):
         # el estado es real (los hooks reportan) pero no es operable desde aqui.
         external = (not alive) and cwd in externals
         if not alive and not external:
             status = "dead"
+        detail = d.get("detail", "")
+        # Sesion viva pero SU claude ya murio: el estado del hook es viejo
+        # (un "waiting" eterno). Degradar a idle para no mentir en el tablero.
+        if alive and pane is None and cwd and cwd not in externals \
+                and status in ("waiting", "working"):
+            status, detail = "idle", ""
         item = {"project": d.get("project"), "session": sess, "status": status,
-                "detail": d.get("detail", ""), "cwd": cwd,
+                "detail": detail, "cwd": cwd,
                 "ts": d.get("ts", 0), "alive": alive, "external": external}
         if pane:
             item["pane"] = pane
@@ -632,14 +643,12 @@ class Handler(http.server.SimpleHTTPRequestHandler):
         sess = data.get("session", "")
         if not SESSION_RE.match(sess):
             return self._json(400, {"error": "Nombre de sesion invalido"})
-        # Nombre derivado del proyecto pero su claude vive en OTRA sesion tmux
-        # (pestana term-* de la app, hub, un split): operar ESA. Asi cc-next,
-        # los popups y el tablero no duplican sesiones ni fallan con 'no hay'.
-        resolved = None
-        if tmux("has-session", "-t", "=" + sess).returncode != 0:
-            resolved = resolve_project_session(sess)
-            if resolved:
-                sess = resolved[0]
+        # Donde corre el claude del proyecto MANDA: aunque exista una sesion
+        # homonima (zombie sin claude), las teclas y el foco van a la sesion y
+        # pane reales. Tambien evita que cc-next/popups dupliquen sesiones.
+        resolved = resolve_project_session(sess)
+        if resolved:
+            sess = resolved[0]
         target = "=" + sess          # target-session (has-session, switch-client)
         pane = "=" + sess + ":"      # target-pane; tmux 3.2a exige el ':' final
         # Pane exacto opcional (claude corriendo en un pane concreto). Si ese
