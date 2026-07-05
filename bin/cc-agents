@@ -57,16 +57,19 @@ setup_gemini_like() { # $1=nombre $2=binario $3=settings.json $4=CC_AGENT
 }
 
 setup_agy() {
-  # agy NO usa el formato de gemini: hooks globales propios con eventos
-  # PreInvocation/Stop y contrato stdout-JSON (ver adapters/agy-hooks.sh)
+  # Esquema REAL de agy (doc embebida en el binario): eventos no-tool van en
+  # formato PLANO (sin wrapper {hooks:[]}), el payload NO trae el nombre del
+  # evento (se pasa como argumento) y el config canonico es ~/.gemini/config/.
   command -v agy >/dev/null || { no "antigravity (agy): no instalado"; return; }
-  local hj="$HOME/.gemini/antigravity-cli/hooks.json"
+  local hj="$HOME/.gemini/config/hooks.json"
   mkdir -p "$(dirname "$hj")"; [ -f "$hj" ] || echo '{}' > "$hj"
-  if grep -q "agy-hooks.sh" "$hj" 2>/dev/null; then ok "antigravity (agy): hooks ya configurados"; return; fi
+  if grep -q "agy-hooks.sh" "$hj" 2>/dev/null && ! grep -q '"hooks"' "$hj"; then
+    ok "antigravity (agy): hooks ya configurados"; return
+  fi
   jq --arg c "$AD/agy-hooks.sh" '
     .comandos = {
-      "PreInvocation": [{"hooks": [{"type": "command", "command": $c, "timeout": 10}]}],
-      "Stop":          [{"hooks": [{"type": "command", "command": $c, "timeout": 10}]}]
+      "PreInvocation": [{"type": "command", "command": ($c + " working"), "timeout": 10}],
+      "Stop":          [{"type": "command", "command": ($c + " done"),    "timeout": 10}]
     }' "$hj" > "$hj.tmp" && mv "$hj.tmp" "$hj"
   ok "antigravity (agy): hooks globales en $hj (working/done)"
 }
