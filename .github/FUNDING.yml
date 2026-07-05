@@ -1,6 +1,4 @@
-# GitHub muestra un boton "Sponsor" con estos enlaces.
-# Rellena tus usuarios; borra las lineas que no uses.
-github: [0xJesus]
-buy_me_a_coffee: # tu-usuario-de-buymeacoffee
-ko_fi: # tu-usuario-de-kofi
-custom: # ["https://www.paypal.me/tuusuario"]
+# GitHub Sponsors — 0xAI Builders
+github: [0xAI-Builders]
+buy_me_a_coffee: 0xjesus
+custom: ['https://github.com/sponsors/0xAI-Builders']

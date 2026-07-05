@@ -948,7 +948,7 @@ SHORTCUTS = [
         ("Super+T", "Traer la terminal al frente"),
         ("Super+C", "Traer / abrir ComandOS"),
     ]),
-    ("Telegram (@ncriptado)", [
+    ("Telegram", [
         ("Botones [1][2][3]", "Responder prompts de permiso"),
         ("Reply a notificacion", "Instruccion a ese proyecto"),
         ("/ls  /out  /run  /servers", "Estado, pantalla, ejecutar, conectar"),

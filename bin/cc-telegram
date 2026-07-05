@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """ComandOS por Telegram: opera tus sesiones y servidores desde el celular.
 
-SEGURIDAD: solo responde a TELEGRAM_ALLOWED_USER (@ncriptado) Y al chat
+SEGURIDAD: solo responde a TELEGRAM_ALLOWED_USER Y al chat
 TELEGRAM_CHAT_ID. Cualquier otro usuario es ignorado por completo.
 
 Que puedes hacer desde Telegram:
@@ -133,7 +133,7 @@ HELP = ("ComandOS por Telegram:\n"
 
 
 def handle_update(token, chat_id, allowed_user, u):
-    # ---- Candado de identidad: SOLO @ncriptado ----
+    # ---- Candado de identidad: SOLO TELEGRAM_ALLOWED_USER ----
     frm = (u.get("callback_query") or u.get("message") or {}).get("from", {})
     if (frm.get("username") or "").lower() != allowed_user:
         return
@@ -246,7 +246,7 @@ def main():
     env = load_env()
     token = env.get("CC_TELEGRAM_BOT_TOKEN", "")
     chat_id = env.get("TELEGRAM_CHAT_ID", "")
-    allowed_user = (env.get("TELEGRAM_ALLOWED_USER", "ncriptado") or "").lstrip("@").lower()
+    allowed_user = (env.get("TELEGRAM_ALLOWED_USER", "") or "").lstrip("@").lower()
     if not token or not chat_id:
         print("Falta CC_TELEGRAM_BOT_TOKEN o TELEGRAM_CHAT_ID en telegram.env")
         return 0
