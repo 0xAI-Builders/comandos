@@ -56,6 +56,21 @@ setup_gemini_like() { # $1=nombre $2=binario $3=settings.json $4=CC_AGENT
   ok "$1: hooks conectados en $st"
 }
 
+setup_agy() {
+  # agy NO usa el formato de gemini: hooks globales propios con eventos
+  # PreInvocation/Stop y contrato stdout-JSON (ver adapters/agy-hooks.sh)
+  command -v agy >/dev/null || { no "antigravity (agy): no instalado"; return; }
+  local hj="$HOME/.gemini/antigravity-cli/hooks.json"
+  mkdir -p "$(dirname "$hj")"; [ -f "$hj" ] || echo '{}' > "$hj"
+  if grep -q "agy-hooks.sh" "$hj" 2>/dev/null; then ok "antigravity (agy): hooks ya configurados"; return; fi
+  jq --arg c "$AD/agy-hooks.sh" '
+    .comandos = {
+      "PreInvocation": [{"hooks": [{"type": "command", "command": $c, "timeout": 10}]}],
+      "Stop":          [{"hooks": [{"type": "command", "command": $c, "timeout": 10}]}]
+    }' "$hj" > "$hj.tmp" && mv "$hj.tmp" "$hj"
+  ok "antigravity (agy): hooks globales en $hj (working/done)"
+}
+
 status_one() { # $1=nombre $2=binario $3=indicador $4=archivo
   if ! command -v "$2" >/dev/null; then no "$1: no instalado"; return; fi
   if [ -e "$4" ] && grep -q "$3" "$4" 2>/dev/null; then ok "$1: conectado"
@@ -69,7 +84,7 @@ case "${1:-status}" in
     setup_codex
     setup_opencode
     setup_gemini_like "gemini" gemini "$HOME/.gemini/settings.json" gemini
-    setup_gemini_like "antigravity (agy)" agy "$HOME/.antigravity/settings.json" agy
+    setup_agy
     echo
     echo "Los eventos aparecen en el tablero con el badge de su agente."
     ;;
@@ -79,7 +94,7 @@ case "${1:-status}" in
     status_one codex codex "codex-notify.sh" "$HOME/.codex/config.toml"
     status_one opencode opencode "comandos" "$HOME/.config/opencode/plugin/comandos.js"
     status_one gemini gemini "gemini-hooks.sh" "$HOME/.gemini/settings.json"
-    status_one "antigravity (agy)" agy "gemini-hooks.sh" "$HOME/.antigravity/settings.json"
+    status_one "antigravity (agy)" agy "agy-hooks.sh" "$HOME/.gemini/antigravity-cli/hooks.json"
     echo
     echo "Para conectar las que falten:  cc-agents setup"
     ;;
