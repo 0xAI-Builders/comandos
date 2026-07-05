@@ -18,7 +18,7 @@ case "$AGENT" in
   codex)    LAUNCH='codex resume --last 2>/dev/null || codex' ;;
   opencode) LAUNCH='opencode --continue 2>/dev/null || opencode' ;;
   gemini)   LAUNCH='gemini' ;;
-  agy)      LAUNCH='agy' ;;
+  agy)      LAUNCH='agy --continue 2>/dev/null || agy' ;;
   *)        LAUNCH="$AGENT" ;;
 esac
 

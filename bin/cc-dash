@@ -210,7 +210,7 @@ AGENT_LAUNCH = {
     "codex":    "codex resume --last 2>/dev/null || codex",
     "opencode": "opencode --continue 2>/dev/null || opencode",
     "gemini":   "gemini",
-    "agy":      "agy",
+    "agy":      "agy --continue 2>/dev/null || agy",
     "aider":    "aider",
 }
 
