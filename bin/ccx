@@ -8,7 +8,19 @@
 #   ccx kill <nombre>    mata la sesion de ese proyecto
 #
 # El nombre se busca en ~/codebase (2 niveles), no importa mayusculas.
+#   ccx -a codex <nombre>   usa OTRO agente (codex|opencode|gemini|agy|claude)
 set -uo pipefail
+
+AGENT=claude
+if [ "${1:-}" = "-a" ]; then AGENT="${2:-claude}"; shift 2; fi
+case "$AGENT" in
+  claude)   LAUNCH='claude --continue 2>/dev/null || claude' ;;
+  codex)    LAUNCH='codex resume --last 2>/dev/null || codex' ;;
+  opencode) LAUNCH='opencode --continue 2>/dev/null || opencode' ;;
+  gemini)   LAUNCH='gemini' ;;
+  agy)      LAUNCH='agy' ;;
+  *)        LAUNCH="$AGENT" ;;
+esac
 
 CODEBASE="$HOME/codebase"
 
@@ -53,9 +65,9 @@ name=$(basename "$dir" | tr '.:' '--')
 if ! tmux has-session -t "=$name" 2>/dev/null; then
   # Ventana 'claude': la conversacion (retoma con --continue; al salir queda shell).
   # Ventana 'shell': consola manual en el mismo directorio (Ctrl-b l para alternar).
-  tmux new-session -d -s "$name" -n claude -c "$dir" "claude --continue 2>/dev/null || claude; exec \$SHELL"
+  tmux new-session -d -s "$name" -n claude -c "$dir" "$LAUNCH; exec \$SHELL"
   tmux new-window -d -t "=$name" -n shell -c "$dir"
-  echo "Sesion '$name' creada en $dir (ventanas: claude + shell)"
+  echo "Sesion '$name' creada en $dir con $AGENT (ventanas: agente + shell)"
 fi
 
 if [ -n "${TMUX:-}" ]; then

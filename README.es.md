@@ -48,6 +48,28 @@ Requisitos: Linux con GNOME/X11, `python3-gi`, `tmux`, `jq`.
 Recomendados: `xclip`, `wmctrl`, `piper` (voz), `kitty`.
 Abre **ComandOS** desde el menú de apps o el tablero en <http://127.0.0.1:4777>.
 
+## Agentes
+
+| Agente | Integración | Qué obtienes |
+|---|---|---|
+| **Claude Code** | hooks nativos (auto vía `install.sh`) | working · waiting **con opciones reales** · done · respuesta completa |
+| **Codex CLI** | hook `notify` (`cc-agents setup`) | turno terminado + último mensaje |
+| **OpenCode** | plugin (`cc-agents setup`) | working · waiting · errores · done |
+| **Gemini CLI** | hooks (`cc-agents setup`) | working · waiting · done · respuesta completa |
+| **Antigravity CLI** | hooks (`cc-agents setup`) — experimental | igual que Gemini |
+
+Un comando conecta todo lo que tengas instalado: **`cc-agents setup`**.
+Cualquier otro agente entra con una llamada HTTP:
+`POST 127.0.0.1:4777/event {"agent","event","cwd","msg?","full?"}`.
+
+## Plataformas
+
+| Plataforma | Estado |
+|---|---|
+| **Linux** (GNOME/X11) | Todo — es el daily driver ✓ |
+| **Windows 11** | Vía **WSL2 + WSLg** (app GUI, audio y todo) — beta |
+| **macOS** | Motor + tablero web + notificaciones/voz nativas (`osascript`, `say`, `afplay`); app/popups GTK pendientes — beta, [se buscan testers](https://github.com/0xAI-Builders/comandos/issues) |
+
 ## Piezas
 
 | Pieza | Qué es |
@@ -57,7 +79,8 @@ Abre **ComandOS** desde el menú de apps o el tablero en <http://127.0.0.1:4777>
 | `bin/cc-notifyd` | Demonio de popups accionables |
 | `bin/cc-telegram` | Puente Telegram |
 | `hooks/cc-notify.sh` | Hook de Claude Code: estado + notificaciones |
-| `bin/ccx` | Una sesión tmux por proyecto (`ccx nombre`) |
+| `bin/ccx` | Una sesión tmux por proyecto (`ccx nombre`, `ccx -a codex nombre`) |
+| `bin/cc-agents` | Conecta Codex / OpenCode / Gemini / Antigravity |
 
 ## Apóyalo
 

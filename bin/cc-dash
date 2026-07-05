@@ -72,8 +72,8 @@ def spawn_terminal(sess):
         return "No encontre terminal (instala kitty: sudo apt install kitty)"
     _, argf, _ = t
     # systemd-run: la terminal vive en su propia unidad, independiente de cc-dash
-    subprocess.Popen(["systemd-run", "--user", "--collect", "--quiet"] + argf(sess),
-                     env=gui_env(), start_new_session=True,
+    pre = ["systemd-run", "--user", "--collect", "--quiet"] if shutil.which("systemd-run") else []
+    subprocess.Popen(pre + argf(sess), env=gui_env(), start_new_session=True,
                      stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     return None
 
@@ -89,13 +89,34 @@ def find_project_dir(sess):
     return None
 
 
-def tmux_new_session(sess, cwd):
-    """Crea la sesion en un scope propio (sobrevive a reinicios de cc-dash) con
-    DOS ventanas: 'claude' (la conversacion) y 'shell' (consola manual, mismo dir)."""
+def scope_cmd(argv):
+    """En Linux con systemd la sesion vive en su propio scope (sobrevive a
+    reinicios de cc-dash); en macOS/otros va directo (tmux ya es un demonio)."""
+    if shutil.which("systemd-run"):
+        return ["systemd-run", "--user", "--scope", "--collect", "--quiet"] + argv
+    return argv
+
+
+def state_agent(sess):
+    """Agente registrado en el estado de un proyecto (claude por defecto)."""
+    for f in glob.glob(os.path.join(STATE, "*.json")):
+        try:
+            with open(f) as fh:
+                d = json.load(fh)
+        except Exception:
+            continue
+        if session_name(d.get("project", "")) == sess:
+            return d.get("agent") or "claude"
+    return "claude"
+
+
+def tmux_new_session(sess, cwd, agent="claude"):
+    """Crea la sesion en un scope propio con DOS ventanas: la del AGENTE
+    (claude/codex/opencode/gemini...) y 'shell' (consola manual, mismo dir)."""
+    launch = AGENT_LAUNCH.get(agent, AGENT_LAUNCH["claude"])
     r = subprocess.run(
-        ["systemd-run", "--user", "--scope", "--collect", "--quiet",
-         "tmux", "new-session", "-d", "-s", sess, "-n", "claude", "-c", cwd,
-         "claude --continue 2>/dev/null || claude; exec $SHELL"],
+        scope_cmd(["tmux", "new-session", "-d", "-s", sess, "-n", "claude",
+                   "-c", cwd, f"{launch}; exec $SHELL"]),
         capture_output=True, text=True, timeout=15)
     if r.returncode == 0:
         tmux("new-window", "-d", "-t", "=" + sess, "-n", "shell", "-c", cwd)
@@ -181,17 +202,72 @@ def session_name(project):
     return re.sub(r"[.:]", "-", project)[:80]
 
 
-def claude_procs():
-    """Procesos 'claude' corriendo: [(pid, cwd)], esten o no dentro de tmux."""
+# Agentes soportados (binarios a detectar); ampliable en cc-notify.conf: AGENTS="..."
+DEFAULT_AGENTS = "claude codex opencode gemini agy aider"
+# Como LANZAR cada agente al crear/revivir una sesion
+AGENT_LAUNCH = {
+    "claude":   "claude --continue 2>/dev/null || claude",
+    "codex":    "codex resume --last 2>/dev/null || codex",
+    "opencode": "opencode --continue 2>/dev/null || opencode",
+    "gemini":   "gemini",
+    "agy":      "agy",
+    "aider":    "aider",
+}
+
+
+def agent_set():
+    return set((read_conf().get("AGENTS") or DEFAULT_AGENTS).split())
+
+
+def agent_procs():
+    """Procesos de CUALQUIER agente corriendo: [(pid, cwd, agent)].
+    Linux: /proc (cmdline, porque gemini/npm corren como 'node script.js').
+    macOS (sin /proc): ps + lsof."""
+    agents = agent_set()
     out = []
-    for p in glob.glob("/proc/[0-9]*/comm"):
-        try:
-            with open(p) as f:
-                if f.read().strip() == "claude":
+    if os.path.isdir("/proc"):
+        for p in glob.glob("/proc/[0-9]*/cmdline"):
+            try:
+                with open(p, "rb") as f:
+                    argv = f.read().split(b"\0")
+                names = {os.path.basename(a.decode("utf-8", "replace")) for a in argv[:2] if a}
+                hit = names & agents
+                if hit:
                     d = os.path.dirname(p)
-                    out.append((int(os.path.basename(d)), os.readlink(d + "/cwd")))
-        except Exception:
-            pass
+                    out.append((int(os.path.basename(d)), os.readlink(d + "/cwd"),
+                                sorted(hit)[0]))
+            except Exception:
+                pass
+        return out
+    # macOS / BSD
+    try:
+        r = subprocess.run(["ps", "-axo", "pid=,command="], capture_output=True,
+                           text=True, timeout=5)
+        cands = []
+        for line in r.stdout.splitlines():
+            parts = line.split(None, 1)
+            if len(parts) != 2:
+                continue
+            pid, cmd = parts
+            names = {os.path.basename(tok) for tok in cmd.split()[:2]}
+            hit = names & agents
+            if hit:
+                cands.append((int(pid), sorted(hit)[0]))
+        if cands:
+            pids = ",".join(str(p) for p, _ in cands)
+            lr = subprocess.run(["lsof", "-a", "-d", "cwd", "-p", pids, "-Fn"],
+                                capture_output=True, text=True, timeout=8)
+            cwds, cur = {}, None
+            for l in lr.stdout.splitlines():
+                if l.startswith("p"):
+                    cur = int(l[1:])
+                elif l.startswith("n") and cur is not None:
+                    cwds[cur] = l[1:]
+            for pid, ag in cands:
+                if pid in cwds:
+                    out.append((pid, cwds[pid], ag))
+    except Exception:
+        pass
     return out
 
 
@@ -201,11 +277,16 @@ def parent_pid(pid):
             # formato: pid (comm) estado ppid ...; comm puede traer espacios
             return int(f.read().rsplit(")", 1)[1].split()[1])
     except Exception:
-        return 0
+        try:
+            r = subprocess.run(["ps", "-o", "ppid=", "-p", str(pid)],
+                               capture_output=True, text=True, timeout=3)
+            return int(r.stdout.strip() or 0)
+        except Exception:
+            return 0
 
 
 def claude_panes(procs):
-    """cwd -> (sesion, pane) de cada claude que vive DENTRO de un pane tmux,
+    """cwd -> (sesion, pane) de cada AGENTE que vive DENTRO de un pane tmux,
     aunque la sesion se llame distinto al proyecto (pestanas term-* de la app,
     hub, splits). Se camina la cadena de ppids hasta un pane_pid conocido."""
     r = tmux("list-panes", "-a", "-F", "#{session_name}|#{pane_id}|#{pane_pid}")
@@ -218,7 +299,7 @@ def claude_panes(procs):
         if ppid.isdigit():
             by_pid[int(ppid)] = (sess, pane)
     out = {}
-    for pid, cwd in procs:
+    for pid, cwd, _agent in procs:
         p = pid
         for _ in range(25):
             if p in by_pid:
@@ -244,7 +325,7 @@ def resolve_project_session(sess):
             continue
         cwd = d.get("cwd", "") or find_project_dir(sess) or ""
         if cwd:
-            procs = [pc for pc in claude_procs() if pc[1] == cwd]
+            procs = [pc for pc in agent_procs() if pc[1] == cwd]
             return claude_panes(procs).get(cwd)
         return None
     return None
@@ -269,8 +350,8 @@ def tab_labels():
 
 def read_states():
     live = tmux_sessions()
-    procs = claude_procs()
-    externals = {cwd for _, cwd in procs}
+    procs = agent_procs()
+    externals = {cwd for _, cwd, _a in procs}
     in_tmux = claude_panes(procs)
     items, seen = [], set()
     for f in glob.glob(os.path.join(STATE, "*.json")):
@@ -315,7 +396,7 @@ def read_states():
                 zombie = True    # sesion viva pero el claude que pregunto murio
         item = {"project": d.get("project"), "session": sess, "status": status,
                 "detail": detail, "cwd": cwd, "options": d.get("options", ""),
-                "last": d.get("last", ""),
+                "last": d.get("last", ""), "agent": d.get("agent", "claude"),
                 "ts": d.get("ts", 0), "alive": alive, "external": external}
         if zombie:
             item["zombie"] = True
@@ -782,6 +863,29 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             write_conf_key(key, val)
             return self._json(200, {"ok": True})
 
+        if self.path == "/event":
+            # Puerta universal de agentes: cualquier CLI/plugin (opencode,
+            # scripts propios...) reporta eventos y dispara el MISMO pipeline
+            # (estado + popup + voz + telegram) via cc-notify.sh --agent.
+            agent = str(data.get("agent", ""))[:16]
+            ev = str(data.get("event", ""))
+            cwd = str(data.get("cwd", ""))[:300]
+            if not re.match(r"^[a-z][a-z0-9_-]{1,15}$", agent):
+                return self._json(400, {"error": "agent invalido"})
+            if ev not in ("working", "waiting", "done", "end"):
+                return self._json(400, {"error": "event debe ser working|waiting|done|end"})
+            if not cwd.startswith("/"):
+                return self._json(400, {"error": "cwd debe ser ruta absoluta"})
+            args = [os.path.join(HOOKS, "cc-notify.sh"), "--agent", agent,
+                    "--event", ev, "--cwd", cwd]
+            for k in ("msg", "full", "options"):
+                v = str(data.get(k, "") or "")[:60000]
+                if v:
+                    args += ["--" + k, v]
+            subprocess.Popen(args, start_new_session=True,
+                             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            return self._json(200, {"ok": True})
+
         if self.path == "/test":
             kind = data.get("kind", "")
             if kind not in ("voice", "chime", "done"):
@@ -884,7 +988,8 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             path, err = export_response(item, fmt)
             if err:
                 return self._json(500, {"error": err})
-            subprocess.Popen(["xdg-open", path], env=gui_env(), start_new_session=True,
+            opener = "open" if sys.platform == "darwin" else "xdg-open"
+            subprocess.Popen([opener, path], env=gui_env(), start_new_session=True,
                              stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
             return self._json(200, {"ok": True, "path": path})
 
@@ -918,7 +1023,7 @@ class Handler(http.server.SimpleHTTPRequestHandler):
                     cwd = find_project_dir(sess) or ""
                 if not cwd:
                     return self._json(400, {"error": f"No encontre el directorio de '{sess}' en ~/codebase"})
-                r = tmux_new_session(sess, cwd)
+                r = tmux_new_session(sess, cwd, data.get("agent") or state_agent(sess))
                 if r.returncode != 0:
                     return self._json(500, {"error": r.stderr.strip() or "No se pudo crear la sesion"})
             if win == "shell":
@@ -931,14 +1036,14 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             proj = find_project_dir(sess)
             if proj:
                 if tmux("has-session", "-t", target).returncode != 0:
-                    r = tmux_new_session(sess, proj)
+                    r = tmux_new_session(sess, proj, data.get("agent") or state_agent(sess))
                     if r.returncode != 0:
                         return self._json(500, {"error": r.stderr.strip() or "No se pudo crear"})
                 return self._json(200, {"ok": True, "kind": "project", "session": sess})
             if tmux("has-session", "-t", target).returncode != 0:
                 r = subprocess.run(
-                    ["systemd-run", "--user", "--scope", "--collect", "--quiet",
-                     "tmux", "new-session", "-d", "-s", sess, "-c", os.path.expanduser("~")],
+                    scope_cmd(["tmux", "new-session", "-d", "-s", sess,
+                               "-c", os.path.expanduser("~")]),
                     capture_output=True, text=True, timeout=15)
                 if r.returncode != 0:
                     return self._json(500, {"error": r.stderr.strip() or "No se pudo crear"})
@@ -952,7 +1057,7 @@ class Handler(http.server.SimpleHTTPRequestHandler):
                     cwd = find_project_dir(sess) or ""
                 if not cwd:
                     return self._json(400, {"error": f"No encontre el directorio de '{sess}' en ~/codebase"})
-                r = tmux_new_session(sess, cwd)
+                r = tmux_new_session(sess, cwd, data.get("agent") or state_agent(sess))
                 if r.returncode != 0:
                     return self._json(500, {"error": r.stderr.strip() or "No se pudo crear la sesion"})
             ensure_shell_window(sess, cwd)
@@ -968,7 +1073,7 @@ class Handler(http.server.SimpleHTTPRequestHandler):
                     cwd = find_project_dir(sess) or ""
                 if not cwd:
                     return self._json(400, {"error": f"No encontre el directorio de '{sess}' en ~/codebase"})
-                r = tmux_new_session(sess, cwd)
+                r = tmux_new_session(sess, cwd, data.get("agent") or state_agent(sess))
                 if r.returncode != 0:
                     return self._json(500, {"error": r.stderr.strip() or "No se pudo crear la sesion"})
             # abrir/traer la ventana del terminal de inmediato

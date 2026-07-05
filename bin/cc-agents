@@ -1,0 +1,86 @@
+#!/usr/bin/env bash
+# cc-agents — conecta otros agentes de IA a ComandOS (codex, opencode, gemini, agy).
+#
+# Uso:
+#   cc-agents          estado de las integraciones
+#   cc-agents setup    configura TODAS las que esten instaladas (idempotente)
+set -uo pipefail
+REPO="$(cd "$(dirname "$(readlink -f "$0")")/.." && pwd)"
+AD="$REPO/adapters"
+ok()  { printf '  \033[32m✓\033[0m %s\n' "$1"; }
+no()  { printf '  \033[90m·\033[0m %s\n' "$1"; }
+warn(){ printf '  \033[33m!\033[0m %s\n' "$1"; }
+
+setup_codex() {
+  command -v codex >/dev/null || { no "codex: no instalado"; return; }
+  local cfg="$HOME/.codex/config.toml"
+  mkdir -p "$HOME/.codex"; touch "$cfg"
+  if grep -q "codex-notify.sh" "$cfg" 2>/dev/null; then ok "codex: notify ya configurado"; return; fi
+  if grep -q "^notify" "$cfg" 2>/dev/null; then
+    warn "codex: ya tienes OTRO notify en $cfg — agrega a mano: $AD/codex-notify.sh"; return
+  fi
+  # notify es clave top-level: debe ir ANTES de la primera [seccion]
+  python3 - "$cfg" "$AD/codex-notify.sh" <<'PY'
+import sys
+cfg, script = sys.argv[1], sys.argv[2]
+s = open(cfg).read()
+line = f'notify = ["{script}"]\n'
+i = s.find("\n[")
+s = (s[:i+1] + line + s[i+1:]) if i >= 0 else (s + ("" if s.endswith("\n") or not s else "\n") + line)
+open(cfg, "w").write(s)
+PY
+  ok "codex: notify -> adapters/codex-notify.sh (turnos terminados llegan a ComandOS)"
+}
+
+setup_opencode() {
+  command -v opencode >/dev/null || { no "opencode: no instalado"; return; }
+  mkdir -p "$HOME/.config/opencode/plugin"
+  ln -sf "$AD/opencode-comandos.js" "$HOME/.config/opencode/plugin/comandos.js"
+  ok "opencode: plugin enlazado (idle/permisos/errores llegan a ComandOS)"
+}
+
+setup_gemini_like() { # $1=nombre $2=binario $3=settings.json $4=CC_AGENT
+  command -v "$2" >/dev/null || { no "$1: no instalado"; return; }
+  local st="$3"
+  mkdir -p "$(dirname "$st")"; [ -f "$st" ] || echo '{}' > "$st"
+  if grep -q "gemini-hooks.sh" "$st" 2>/dev/null; then ok "$1: hooks ya configurados"; return; fi
+  local cmd="CC_AGENT=$4 $AD/gemini-hooks.sh"
+  jq --arg c "$cmd" '
+    def h: [{"hooks": [{"type": "command", "command": $c, "name": "comandos"}]}];
+    .hooks = ((.hooks // {})
+      | .BeforeAgent  = ((.BeforeAgent  // []) + h)
+      | .AfterAgent   = ((.AfterAgent   // []) + h)
+      | .Notification = ((.Notification // []) + h)
+      | .SessionEnd   = ((.SessionEnd   // []) + h))
+  ' "$st" > "$st.tmp" && mv "$st.tmp" "$st"
+  ok "$1: hooks conectados en $st"
+}
+
+status_one() { # $1=nombre $2=binario $3=indicador $4=archivo
+  if ! command -v "$2" >/dev/null; then no "$1: no instalado"; return; fi
+  if [ -e "$4" ] && grep -q "$3" "$4" 2>/dev/null; then ok "$1: conectado"
+  else warn "$1: instalado pero SIN conectar (corre: cc-agents setup)"; fi
+}
+
+case "${1:-status}" in
+  setup)
+    echo "Conectando agentes a ComandOS:"
+    ok "claude: hooks nativos (los instala install.sh)"
+    setup_codex
+    setup_opencode
+    setup_gemini_like "gemini" gemini "$HOME/.gemini/settings.json" gemini
+    setup_gemini_like "antigravity (agy)" agy "$HOME/.antigravity/settings.json" agy
+    echo
+    echo "Los eventos aparecen en el tablero con el badge de su agente."
+    ;;
+  *)
+    echo "Integraciones de agentes:"
+    ok "claude: hooks nativos"
+    status_one codex codex "codex-notify.sh" "$HOME/.codex/config.toml"
+    status_one opencode opencode "comandos" "$HOME/.config/opencode/plugin/comandos.js"
+    status_one gemini gemini "gemini-hooks.sh" "$HOME/.gemini/settings.json"
+    status_one "antigravity (agy)" agy "gemini-hooks.sh" "$HOME/.antigravity/settings.json"
+    echo
+    echo "Para conectar las que falten:  cc-agents setup"
+    ;;
+esac

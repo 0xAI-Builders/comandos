@@ -117,6 +117,13 @@
     color:var(--waiting);background:rgba(255,174,26,.13)}
   .ago{margin-left:auto;flex:none;font-family:var(--mono);font-size:11px;color:var(--faint);
     font-variant-numeric:tabular-nums}
+  .abadge{flex:none;font-family:var(--mono);font-size:9px;font-weight:700;
+    letter-spacing:.08em;text-transform:uppercase;padding:2px 7px;border-radius:4px;
+    color:var(--dim);border:1px solid var(--line2)}
+  .abadge[data-a="codex"]{color:#19C39C;border-color:#19C39C55}
+  .abadge[data-a="opencode"]{color:#FAB283;border-color:#FAB28355}
+  .abadge[data-a="gemini"]{color:#7AA5FF;border-color:#7AA5FF55}
+  .abadge[data-a="agy"]{color:#B49CFF;border-color:#B49CFF55}
   .path{font-family:var(--mono);font-size:10.5px;color:var(--faint);
     overflow:hidden;text-overflow:ellipsis;white-space:nowrap;margin-top:-5px}
   .path.missing{color:var(--waiting)}
@@ -592,7 +599,7 @@ function cardEl(it){
   el.innerHTML = `
     <div class="top">
       <button type="button" class="fav" title="${t('Favorito')}">★</button>
-      <h2></h2><span class="tag"></span><span class="ago"></span>
+      <h2></h2><span class="abadge hidden"></span><span class="tag"></span><span class="ago"></span>
     </div>
     <div class="path"></div>
     <p class="preview"></p>
@@ -685,6 +692,7 @@ function rowEl(it){
     <button type="button" class="fav" title="${t('Favorito')}">★</button>
     <span class="dot"></span>
     <span class="name"></span>
+    <span class="abadge hidden"></span>
     <span class="exttag hidden">${t("suelta")}</span>
     <span class="rpath"></span>
     <span class="rprev"></span>
@@ -731,6 +739,12 @@ function render(list){
     if(el && el.dataset.kind !== kind){ el.remove(); el = null; }
     if(!el){ el = kind === "card" ? cardEl(it) : rowEl(it); container.appendChild(el); }
     const ext = !!it.external;
+    const ab = el.querySelector(".abadge");
+    if(ab){
+      ab.textContent = it.agent || "";
+      ab.dataset.a = it.agent || "";
+      ab.classList.toggle("hidden", !it.agent || it.agent === "claude");
+    }
     el.dataset.pane = it.pane || "";
     el._detail = it.detail || it.last || "";
     el.dataset.search = `${it.project} ${it.cwd||""}`.toLowerCase();
