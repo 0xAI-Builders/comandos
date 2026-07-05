@@ -875,12 +875,23 @@ class Handler(http.server.SimpleHTTPRequestHandler):
                 out[k] = v
         return out
 
+    def _query_token(self):
+        if "?" not in self.path:
+            return ""
+        import urllib.parse
+        qs = urllib.parse.parse_qs(self.path.partition("?")[2])
+        return (qs.get("token", [""])[0] or "").strip()
+
     def _presented_token(self):
+        # A prueba de balas para moviles/PWA: header, cookie O query param.
+        # (El webview de un escaner de QR a veces no guarda cookies; el query
+        # param y el header desde localStorage cubren ese caso.)
         h = self.headers.get("Authorization", "")
         if h.startswith("Bearer "):
             return h[7:].strip()
         return (self.headers.get("X-Comandos-Token", "").strip()
-                or self._cookies().get("cc_token", ""))
+                or self._cookies().get("cc_token", "")
+                or self._query_token())
 
     def _peer_is_loopback(self):
         ip = (self.client_address[0] if self.client_address else "")
@@ -913,30 +924,19 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             return None
         return 401, {"error": "No autorizado (token requerido para acceso remoto)"}
 
-    def _maybe_set_cookie(self):
-        """Primera visita del celular con ?token=... : valida, guarda cookie
-        HttpOnly y redirige a / para sacar el token de la URL/historial."""
-        if "?" not in self.path:
-            return False
-        base, _, qs = self.path.partition("?")
-        params = dict(p.partition("=")[::2] for p in qs.split("&") if p)
-        import urllib.parse
-        tok = urllib.parse.unquote(params.get("token", ""))
-        if tok and hmac.compare_digest(tok, access_token()):
-            self.send_response(302)
-            self.send_header("Location", base or "/")
-            self.send_header("Set-Cookie",
-                             "cc_token=%s; Path=/; HttpOnly; SameSite=Strict; Secure; Max-Age=31536000" % tok)
-            self.end_headers()
-            return True
-        return False
+    # Endpoints con DATOS o ACCIONES: exigen token. El shell estatico (HTML,
+    # sw.js, manifest, iconos) NO — no revela nada (es codigo open-source) y
+    # asi la PWA instala y carga sin depender de cookies en el webview movil.
+    API_GET = ("/state", "/events", "/conf", "/prefs", "/ssh")
 
     def do_GET(self):
-        if self._maybe_set_cookie():
-            return
-        gate = self._security_gate()
-        if gate:
-            return self._json(*gate)
+        host = self.headers.get("Host", "")
+        if host and not HOST_OK_RE.match(host):
+            return self._json(403, {"error": "Host no permitido"})
+        if any(self.path.startswith(p) for p in self.API_GET):
+            gate = self._security_gate()
+            if gate:
+                return self._json(*gate)
         return self._do_GET()
 
     def _do_GET(self):

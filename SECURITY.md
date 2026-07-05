@@ -17,7 +17,7 @@ Layered protections, all on by default:
 |---|---|
 | A malicious website `fetch()`-ing `http://127.0.0.1:4777` (drive-by CSRF → RCE) | **Origin allowlist**: any request with a cross-site `Origin` is rejected (403). Browsers always send `Origin` on cross-origin requests. |
 | DNS-rebinding a domain to `127.0.0.1` | **Host header allowlist** (loopback + `*.ts.net` only). |
-| A tailnet peer (or anyone reaching the port) operating the dashboard | **Access token** (`~/.claude/hooks/dash-token`, `0600`, compared with `hmac.compare_digest`). Local *direct* clients don't need it; remote/proxied requests do. Delivered via `Authorization: Bearer`, `X-Comandos-Token`, or an `HttpOnly; SameSite=Strict; Secure` cookie. |
+| A tailnet peer (or anyone reaching the port) operating the dashboard | **Access token** (`~/.claude/hooks/dash-token`, `0600`, compared with `hmac.compare_digest`). Local *direct* clients don't need it; remote/proxied requests do. Delivered via `X-Comandos-Token` header (from localStorage), `Authorization: Bearer`, or `?token=` query. The static shell (HTML/JS/icons/manifest) is served without a token — it holds no secrets; only data (`/state`) and actions are gated. Cookie-independent so it works in mobile/PWA webviews. |
 | `~/.ssh/config` injection (`ProxyCommand` → RCE on connect) | `hostname`/`user`/`port`/`identity` are validated; newlines and control chars are rejected. |
 | Popup spoofing / approval social-engineering (`cc-notifyd`) | Loopback-only + Origin-gated; concurrent popups capped. |
 | Telegram takeover | Identity is checked by **numeric user id** (`TELEGRAM_ALLOWED_USER_ID`, immutable) and chat id — on messages **and** button callbacks. Fails **closed** if unconfigured. |

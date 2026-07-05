@@ -531,9 +531,27 @@ async function openSession(it, win){
 }
 
 // ---------- red ----------
+// Token de acceso (celular/tailnet): lo recibimos por ?token= al escanear el
+// QR, lo guardamos en localStorage y lo mandamos como header en CADA llamada.
+// Asi NO dependemos de cookies (el webview de un escaner de QR no las guarda).
+(function(){
+  try{
+    const u = new URL(location.href);
+    const t = u.searchParams.get("token");
+    if(t){ localStorage.setItem("cc_token", t);
+           u.searchParams.delete("token");
+           history.replaceState(null, "", u.pathname + u.search + u.hash); }
+  }catch(e){}
+})();
+function authToken(){ try{ return localStorage.getItem("cc_token") || ""; }catch(e){ return ""; } }
 async function api(path, body){
-  const r = await fetch(path, body ? {method:"POST", headers:{"Content-Type":"application/json"},
-    body: JSON.stringify(body)} : undefined);
+  const headers = {};
+  const tok = authToken();
+  if(tok) headers["X-Comandos-Token"] = tok;
+  const opt = body
+    ? {method:"POST", headers:{...headers, "Content-Type":"application/json"}, body: JSON.stringify(body)}
+    : (tok ? {headers} : undefined);
+  const r = await fetch(path, opt);
   const j = await r.json().catch(()=>({}));
   if(!r.ok) throw new Error(j.error || r.statusText);
   return j;
