@@ -53,10 +53,23 @@ fi
 chmod 600 "$TOKEN_FILE"
 TOKEN=$(cat "$TOKEN_FILE")
 
-# 4) Tailscale Serve: https del tailnet -> localhost:PORT (TLS automatico)
-tailscale serve --bg --https=443 "http://127.0.0.1:$PORT" >/dev/null 2>&1 \
-  || tailscale serve --https=443 "http://127.0.0.1:$PORT" >/dev/null 2>&1 \
-  || die "No pude configurar Tailscale Serve. Revisa: tailscale serve status"
+# 4) Terminal web REAL (interactiva) de las sesiones, si ttyd esta instalado
+WEBTERM_PORT="${CC_WEBTERM_PORT:-4779}"
+if command -v ttyd >/dev/null 2>&1; then
+  cc-webterm >/dev/null 2>&1 || true
+fi
+
+# 5) Tailscale Serve: https del tailnet -> localhost (TLS automatico).
+#    Ruta / = tablero; ruta /term = terminal web (misma sesion, en vivo).
+serve_path() { # $1=ruta $2=puerto
+  tailscale serve --bg --https=443 --set-path="$1" "http://127.0.0.1:$2" >/dev/null 2>&1 \
+    || tailscale serve --bg --set-path="$1" "http://127.0.0.1:$2" >/dev/null 2>&1 \
+    || tailscale serve --https=443 "$1" "http://127.0.0.1:$2" >/dev/null 2>&1
+}
+serve_path / "$PORT" || die "No pude configurar Tailscale Serve. Revisa: tailscale serve status"
+if pgrep -f "ttyd.*cc-webterm-attach" >/dev/null 2>&1; then
+  serve_path /term "$WEBTERM_PORT" || true
+fi
 
 # URL del tailnet (dns name del nodo)
 HOST=$(tailscale status --json 2>/dev/null | grep -oE '"DNSName":\s*"[^"]+"' | head -1 | sed 's/.*"\([^"]*\)"$/\1/' | sed 's/\.$//')
@@ -67,6 +80,11 @@ URL="https://$HOST/?token=$TOKEN"
 
 echo
 ok "Tablero expuesto a TU tailnet (cifrado, privado, con TLS)."
+if pgrep -f "ttyd.*cc-webterm-attach" >/dev/null 2>&1; then
+  ok "Terminal web REAL activo: https://$HOST/term (usuario 'comandos', pass = tu token)"
+else
+  echo "  (Terminal web interactiva: instala 'ttyd' y corre cc-webterm para tenerla)"
+fi
 echo
 echo "  Abre esto en tu celular (o escanea el QR):"
 echo -e "  \033[36m$URL\033[0m"

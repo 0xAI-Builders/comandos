@@ -73,6 +73,12 @@ cc-mobile          # connects over your tailnet and shows a QR to pair
 Scan the QR, open the dashboard, "Add to Home Screen" — it installs as an app
 (PWA), no App Store. Answer prompts, reply to agents, run sessions from bed.
 
+**Want the FULL interactive terminal on your phone?** Install `ttyd` and run
+`cc-webterm` — every session gets a **Terminal** button that opens the real,
+live, interactive terminal (xterm.js attached to the same tmux session). Type,
+scroll, run `vim` — exactly like sitting at your desk, shared in real time.
+Routed under `/term` by the same Tailscale Serve, behind the same token.
+
 **Security is layered, on by default:**
 - **Tailscale** (WireGuard): only *your* devices, end-to-end encrypted. Never on the public internet — Serve only, never Funnel.
 - **Automatic TLS** via `tailscale serve` (https on your tailnet).
@@ -102,6 +108,7 @@ Scan the QR, open the dashboard, "Add to Home Screen" — it installs as an app
 | `bin/ccx` | One tmux session per project (`ccx name`, `ccx -a codex name`) |
 | `bin/cc-agents` | Connect Codex / OpenCode / Gemini / Antigravity |
 | `bin/cc-mobile` | Expose the dashboard to your phone over Tailscale (secure) |
+| `bin/cc-webterm` | Full interactive web terminal (ttyd) for your sessions |
 
 ## Roadmap
 

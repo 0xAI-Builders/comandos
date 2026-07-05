@@ -1,0 +1,35 @@
+#!/usr/bin/env bash
+# Se ejecuta DENTRO del terminal web (ttyd) para cada conexion. Con un nombre
+# de sesion valido, se attachea a ESA sesion tmux (la misma que ves aqui —
+# compartida). Sin argumento, muestra un selector de sesiones.
+#
+# ttyd pasa el ?arg=... de la URL como $1; lo validamos estrictamente (nada de
+# shell injection: solo [A-Za-z0-9._-], y siempre con comillas).
+set -uo pipefail
+
+pick() {
+  local sels s i=0
+  mapfile -t sels < <(tmux list-sessions -F "#{session_name}" 2>/dev/null \
+    | grep -vE '^(local|hub|control)$')
+  if [ "${#sels[@]}" -eq 0 ]; then
+    echo "No hay sesiones. Crea una:  ccx nombre"; echo; exec "$SHELL"
+  fi
+  echo "Sesiones de ComandOS:"
+  for s in "${sels[@]}"; do i=$((i+1)); printf "  %2d) %s\n" "$i" "$s"; done
+  echo
+  printf "Numero (o Enter para shell libre): "
+  read -r n
+  if [[ "$n" =~ ^[0-9]+$ ]] && [ "$n" -ge 1 ] && [ "$n" -le "${#sels[@]}" ]; then
+    exec tmux attach -t "=${sels[$((n-1))]}"
+  fi
+  exec "$SHELL"
+}
+
+sess="${1:-}"
+if [ -n "$sess" ] && [[ "$sess" =~ ^[A-Za-z0-9._-]{1,80}$ ]]; then
+  if tmux has-session -t "=$sess" 2>/dev/null; then
+    exec tmux attach -t "=$sess"
+  fi
+  echo "La sesion '$sess' ya no existe."; echo
+fi
+pick

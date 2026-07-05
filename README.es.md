@@ -74,6 +74,12 @@ Escanea el QR, abre el tablero, "Agregar a inicio" — se instala como app
 (PWA), sin App Store. Responde prompts, contesta agentes, corre sesiones
 desde la cama.
 
+**¿Quieres la terminal COMPLETA e interactiva en el celular?** Instala `ttyd`
+y corre `cc-webterm` — cada sesión tiene un botón **Terminal** que abre la
+terminal real, viva (xterm.js attacheado a la misma sesión tmux). Tecleas,
+scrolleas, corres `vim` — igual que sentado en tu escritorio, en vivo y
+compartido. Se enruta en `/term` por el mismo Tailscale Serve, con el mismo token.
+
 **Seguridad por capas, activa por defecto:**
 - **Tailscale** (WireGuard): solo TUS dispositivos, cifrado extremo a extremo. Nunca en la internet pública — solo Serve, jamás Funnel.
 - **TLS automático** vía `tailscale serve` (https en tu tailnet).
@@ -103,6 +109,7 @@ desde la cama.
 | `bin/ccx` | Una sesión tmux por proyecto (`ccx nombre`, `ccx -a codex nombre`) |
 | `bin/cc-agents` | Conecta Codex / OpenCode / Gemini / Antigravity |
 | `bin/cc-mobile` | Expone el tablero a tu celular por Tailscale (seguro) |
+| `bin/cc-webterm` | Terminal web completa e interactiva (ttyd) de tus sesiones |
 
 ## Apóyalo
 

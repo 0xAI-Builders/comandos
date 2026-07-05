@@ -216,6 +216,9 @@
     padding:3px 9px;border:1px solid var(--line);border-radius:6px;background:var(--bg)}
   .row .acts button:hover{color:var(--text);border-color:var(--brand)}
   .row .acts .up{color:var(--waiting)}
+  .row .acts .term:hover{color:var(--brand);border-color:var(--brand)}
+  .ops .term{color:var(--brand)}
+  .ops .term:hover{border-color:var(--brand)}
   .row .acts .kill:hover{color:#FF6B6B;border-color:#FF6B6B}
   .row .acts .kill.arm{color:#FF6B6B;border-color:#FF6B6B;font-weight:700}
   .row .fav{font-size:13px}
@@ -480,6 +483,7 @@ const T_EN = {
   "Viven en ~/.ssh/config: estandar y tuyo. Conectar abre una\n    sesion tmux reconectable. Para dejar de teclear passwords: corre cc-keys una vez.":
     "They live in ~/.ssh/config: standard and yours. Connect opens a reconnectable tmux session. To stop typing passwords: run cc-keys once.",
   "espera TU respuesta": "waiting for YOU", "working": "working", "idle": "idle", "done": "done",
+  "Terminal": "Terminal", "Abrir la terminal REAL de esta sesion": "Open this session's REAL terminal",
 };
 const t = s => L === "en" ? (T_EN[s] ?? s) : s;
 const tf = (es, en) => L === "en" ? en : es;
@@ -643,6 +647,7 @@ function cardEl(it){
         <button type="button" class="cp" title="${t('Copiar la respuesta completa de Claude')}">${t("Copiar")}</button>
         <button type="button" class="xtxt" title="${t('Guardar la respuesta como .txt en Descargas')}">TXT</button>
         <button type="button" class="xpdf" title="${t('Guardar la respuesta como PDF (markdown renderizado) en Descargas')}">PDF</button>
+        <button type="button" class="term hidden" title="${t('Abrir la terminal REAL de esta sesion')}">${t("Terminal")}</button>
         <button type="button" class="go">${t("Abrir")}</button>
         <button type="button" class="up hidden">${t("Revivir")}</button>
       </div>
@@ -704,7 +709,19 @@ function wireActions(el, it){
     });
   };
   wire(".go", "claude"); wire(".up", "claude");
+  // Terminal REAL (ttyd por /term): solo tiene sentido por el tailnet (https).
+  const term = el.querySelector(".term");
+  if(term){
+    term.classList.toggle("hidden", !WEBTERM);
+    term.addEventListener("click", e=>{
+      e.stopPropagation();
+      window.open(`/term/?arg=${encodeURIComponent(el.dataset.session)}`, "_blank");
+    });
+  }
 }
+// El terminal web solo esta enrutado cuando entras por el tailnet (https +
+// no es localhost). En la app nativa y en el navegador local se usa la de aqui.
+const WEBTERM = location.protocol === "https:" && !/^(127\.|localhost|::1)/.test(location.hostname);
 
 // ---------- fila compacta ----------
 function rowEl(it){
@@ -722,6 +739,7 @@ function rowEl(it){
     <span class="ago"></span>
     <span class="acts">
       <button type="button" class="cp" title="${t('Copiar la respuesta completa de Claude')}">⧉</button>
+      <button type="button" class="term hidden" title="${t('Abrir la terminal REAL de esta sesion')}">⌨</button>
       <button type="button" class="go">${t("Abrir")}</button>
       <button type="button" class="up hidden">${t("Revivir")}</button>
       <button type="button" class="kill" title="${t('Matar la sesion tmux (y lo que corra dentro)')}">✕</button>
