@@ -1,6 +1,13 @@
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>ComandOS</title>
+<link rel="manifest" href="/manifest.webmanifest">
+<meta name="theme-color" content="#0A0D13">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="ComandOS">
+<link rel="apple-touch-icon" href="/icon-192.png">
 <style>
   :root{
     --bg:#0A0D13; --panel:#121722; --panel2:#161C29; --line:#222A3A; --line2:#2E3852;
@@ -41,7 +48,7 @@
 
   /* ---------- barras superiores (appbar + servidores): FIJAS siempre ---------- */
   #topbar{
-    flex:none;z-index:10;
+    flex:none;z-index:10;padding-top:env(safe-area-inset-top);
     background:color-mix(in srgb,var(--bg) 88%,transparent);
     border-bottom:1px solid var(--line);
   }
@@ -49,6 +56,18 @@
     display:flex;align-items:center;gap:8px 14px;
     flex-wrap:wrap;padding:11px 18px;
     font-family:var(--mono);font-size:12.5px;
+  }
+  /* Movil/tablet: barra apilada y tarjetas a una columna, toques comodos */
+  @media (max-width:640px){
+    header{padding:9px 12px;gap:6px 10px}
+    .brand{font-size:12px;letter-spacing:.1em}
+    #q,#new-name{width:100%}
+    .hdr-right{width:100%;gap:6px}
+    #urgent{grid-template-columns:1fr}
+    .sec,#ssh-bar,#tl-wrap{padding-left:12px;padding-right:12px}
+    .row .rpath{display:none}
+    .send button,.opts button,.keys button,.ops button{min-height:40px}
+    #content{padding-bottom:env(safe-area-inset-bottom)}
   }
   .brand{font-weight:800;letter-spacing:.16em;font-size:13px}
   .brand b{color:var(--brand)}
@@ -1231,4 +1250,8 @@ document.querySelectorAll(".lang-btn").forEach(b=>{
   tickEvents();
   arm();
 })();
+
+// PWA: registrar el service worker (instalable en celular/tablet)
+if("serviceWorker" in navigator)
+  navigator.serviceWorker.register("/sw.js").catch(()=>{});
 </script>

@@ -56,11 +56,31 @@ Open **ComandOS** from your app menu, or the dashboard at <http://127.0.0.1:4777
 | **Codex CLI** | `notify` hook (`cc-agents setup`) | turn done + last message |
 | **OpenCode** | plugin (`cc-agents setup`) | working · waiting · errors · done |
 | **Gemini CLI** | hooks (`cc-agents setup`) | working · waiting · done · full reply |
-| **Antigravity CLI** | hooks (`cc-agents setup`) — experimental | same as Gemini |
+| **Antigravity CLI** (`agy`) | hooks (`cc-agents setup`) | working · done — verified on a real session |
 
 One command connects everything you have installed: **`cc-agents setup`**.
 Any other agent can join with a single HTTP call:
 `POST 127.0.0.1:4777/event {"agent","event","cwd","msg?","full?"}`.
+
+## Phone & tablet (secure)
+
+Keep prompting from your phone — securely, in one command:
+
+```bash
+cc-mobile          # connects over your tailnet and shows a QR to pair
+```
+
+Scan the QR, open the dashboard, "Add to Home Screen" — it installs as an app
+(PWA), no App Store. Answer prompts, reply to agents, run sessions from bed.
+
+**Security is layered, on by default:**
+- **Tailscale** (WireGuard): only *your* devices, end-to-end encrypted. Never on the public internet — Serve only, never Funnel.
+- **Automatic TLS** via `tailscale serve` (https on your tailnet).
+- **Access token**: even inside your tailnet, no token → no access. `cc-dash` still binds only to `127.0.0.1`; Serve bridges it.
+- **Anti-DNS-rebinding**: Host-header allowlist (loopback + `*.ts.net`).
+- Local desktop app/browser needs no token; only remote/proxied requests do.
+
+`cc-mobile off` stops exposing it.
 
 ## Platforms
 
@@ -81,6 +101,7 @@ Any other agent can join with a single HTTP call:
 | `hooks/cc-notify.sh` | Claude Code hook: state + notifications |
 | `bin/ccx` | One tmux session per project (`ccx name`, `ccx -a codex name`) |
 | `bin/cc-agents` | Connect Codex / OpenCode / Gemini / Antigravity |
+| `bin/cc-mobile` | Expose the dashboard to your phone over Tailscale (secure) |
 
 ## Roadmap
 

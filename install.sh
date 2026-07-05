@@ -19,7 +19,9 @@ chmod +x "$REPO"/bin/* "$REPO"/hooks/cc-notify.sh "$REPO"/hooks/cc-status.sh
 
 # Hooks + dashboard
 for f in cc-notify.sh cc-status.sh md2tg.py; do ln -sf "$REPO/hooks/$f" "$HOOKS/$f"; done
-ln -sf "$REPO/dash/index.html" "$HOOKS/dash/index.html"
+for f in index.html sw.js manifest.webmanifest icon-192.png icon-512.png; do
+  ln -sf "$REPO/dash/$f" "$HOOKS/dash/$f"
+done
 [ -f "$HOOKS/cc-notify.conf" ] || cp "$REPO/hooks/cc-notify.conf.example" "$HOOKS/cc-notify.conf"
 [ -f "$HOOKS/telegram.env" ]   || cp "$REPO/hooks/telegram.env.example"   "$HOOKS/telegram.env"
 
@@ -73,4 +75,5 @@ echo ""
 echo "Listo. Abre el tablero en http://127.0.0.1:4777 o la app 'ComandOS'."
 echo "Agentes conectados: corre 'cc-agents' para ver el estado."
 echo "Dependencias sugeridas: tmux jq xclip wmctrl piper (voz) kitty (terminal)."
+echo "Para el celular (seguro): tailscale + qrencode, y corre cc-mobile."
 echo "Para operar por Telegram: llena ~/.claude/hooks/telegram.env y reinicia cc-telegram."

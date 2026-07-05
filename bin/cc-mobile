@@ -1,0 +1,84 @@
+#!/usr/bin/env bash
+# cc-mobile — expone el tablero de ComandOS a tu CELULAR de forma SEGURA.
+#
+# Seguridad por capas:
+#   1) Tailscale (WireGuard): solo TUS dispositivos, cifrado extremo a extremo.
+#   2) Tailscale Serve: TLS automatico (https) y NUNCA sale a la internet
+#      publica — solo a tu tailnet. (Funnel/publico: JAMAS, a proposito.)
+#   3) Token de acceso: aunque alguien llegue al puerto, sin el token no opera.
+#   4) cc-dash sigue escuchando SOLO en 127.0.0.1; Serve hace de puente.
+#
+# Uso:
+#   cc-mobile           conecta y muestra el QR para emparejar el celular
+#   cc-mobile off       deja de exponer el tablero
+#   cc-mobile status    estado actual
+set -uo pipefail
+HOOKS="$HOME/.claude/hooks"
+PORT="${CC_PORT:-4777}"
+TOKEN_FILE="$HOOKS/dash-token"
+
+die(){ printf '\033[31m✗\033[0m %s\n' "$1" >&2; exit 1; }
+ok(){ printf '\033[32m✓\033[0m %s\n' "$1"; }
+
+command -v tailscale >/dev/null || die "Tailscale no esta instalado. Instalalo desde https://tailscale.com/download y vuelve a correr cc-mobile."
+
+case "${1:-on}" in
+  off)
+    tailscale serve --https=443 off 2>/dev/null \
+      || tailscale serve reset 2>/dev/null || true
+    ok "Tablero ya NO esta expuesto. Tu celular no puede alcanzarlo."
+    exit 0 ;;
+  status)
+    echo "Tailscale:"; tailscale status 2>&1 | head -3
+    echo; echo "Serve:"; tailscale serve status 2>&1 | head -8
+    exit 0 ;;
+esac
+
+# 1) Tailscale conectado?
+if ! tailscale status >/dev/null 2>&1; then
+  echo "Tailscale no ha iniciado sesion. Corre esto una vez (abre tu navegador):"
+  echo "    sudo tailscale up"
+  die "Inicia sesion en Tailscale y vuelve a correr cc-mobile."
+fi
+
+# 2) cc-dash vivo?
+curl -s -m 2 "http://127.0.0.1:$PORT/prefs" >/dev/null 2>&1 \
+  || die "cc-dash no responde en el puerto $PORT. Arrancalo (systemctl --user start cc-dash)."
+
+# 3) Token de acceso (lo crea cc-dash; si no existe aun, lo generamos igual)
+if [ ! -s "$TOKEN_FILE" ]; then
+  umask 077; (command -v openssl >/dev/null && openssl rand -base64 24 | tr '+/' '-_' | tr -d '=\n' \
+    || head -c 32 /dev/urandom | base64 | tr '+/' '-_' | tr -d '=\n') > "$TOKEN_FILE"
+fi
+chmod 600 "$TOKEN_FILE"
+TOKEN=$(cat "$TOKEN_FILE")
+
+# 4) Tailscale Serve: https del tailnet -> localhost:PORT (TLS automatico)
+tailscale serve --bg --https=443 "http://127.0.0.1:$PORT" >/dev/null 2>&1 \
+  || tailscale serve --https=443 "http://127.0.0.1:$PORT" >/dev/null 2>&1 \
+  || die "No pude configurar Tailscale Serve. Revisa: tailscale serve status"
+
+# URL del tailnet (dns name del nodo)
+HOST=$(tailscale status --json 2>/dev/null | grep -oE '"DNSName":\s*"[^"]+"' | head -1 | sed 's/.*"\([^"]*\)"$/\1/' | sed 's/\.$//')
+[ -n "$HOST" ] || HOST=$(tailscale status --self --json 2>/dev/null | grep -oE '[a-z0-9-]+\.[a-z0-9-]+\.ts\.net' | head -1)
+[ -n "$HOST" ] || die "No pude leer tu nombre de tailnet. Revisa: tailscale status"
+
+URL="https://$HOST/?token=$TOKEN"
+
+echo
+ok "Tablero expuesto a TU tailnet (cifrado, privado, con TLS)."
+echo
+echo "  Abre esto en tu celular (o escanea el QR):"
+echo -e "  \033[36m$URL\033[0m"
+echo
+# QR en la terminal si hay qrencode; si no, un enlace claro
+if command -v qrencode >/dev/null 2>&1; then
+  qrencode -t ANSIUTF8 "$URL"
+else
+  echo "  (Instala 'qrencode' para ver un QR aqui: sudo apt install qrencode)"
+fi
+echo
+echo "  En el celular: abrelo en Safari/Chrome -> menu -> 'Agregar a inicio'"
+echo "  para instalarlo como app. El token queda guardado; no lo compartas."
+echo
+echo "  Para dejar de exponerlo:  cc-mobile off"

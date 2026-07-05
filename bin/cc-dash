@@ -17,6 +17,7 @@ Endpoints:
 Solo escucha en 127.0.0.1. Todas las llamadas a tmux van sin shell (sin inyeccion).
 """
 import html as html_mod
+import hmac, secrets
 import json, os, glob, re, shlex, shutil, sys, subprocess, time, webbrowser
 import http.server, socketserver
 
@@ -24,6 +25,30 @@ HOOKS = os.path.expanduser("~/.claude/hooks")
 STATE = os.path.join(HOOKS, "state")
 EVENTS = os.path.join(HOOKS, "events.jsonl")
 DASH = os.path.join(HOOKS, "dash")
+TOKEN_FILE = os.path.join(HOOKS, "dash-token")
+
+
+def access_token():
+    """Token de acceso para el celular (tailnet). Se genera una vez, 0600.
+    Localhost directo NO lo necesita; las peticiones remotas/proxeadas si."""
+    try:
+        with open(TOKEN_FILE) as f:
+            t = f.read().strip()
+        if t:
+            return t
+    except FileNotFoundError:
+        pass
+    t = secrets.token_urlsafe(32)
+    fd = os.open(TOKEN_FILE, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    with os.fdopen(fd, "w") as f:
+        f.write(t)
+    return t
+
+
+# Hosts aceptados en la cabecera Host (anti DNS-rebinding): loopback y tailnet.
+HOST_OK_RE = re.compile(
+    r"^(localhost|127\.0\.0\.1|\[::1\]|\[::ffff:127\.0\.0\.1\])(:\d+)?$"
+    r"|^[a-z0-9-]+(\.[a-z0-9-]+)*\.ts\.net(:\d+)?$", re.IGNORECASE)
 
 # Terminales soportadas para abrir sesiones, en orden de preferencia.
 # Se puede forzar una con TERMINAL_CMD=kitty|tilix|gnome-terminal en cc-notify.conf
@@ -540,25 +565,41 @@ def parse_ssh_config():
     return hosts
 
 
+# Valores de una entrada ssh: SIN saltos de linea ni control chars (evita que
+# un hostname/identity inyecte directivas arbitrarias como ProxyCommand = RCE).
+SSH_HOSTNAME_RE = re.compile(r"^[A-Za-z0-9._:\-\[\]]{1,255}$")
+SSH_USER_RE = re.compile(r"^[A-Za-z0-9._@\-]{1,64}$")
+SSH_PATH_RE = re.compile(r"^[A-Za-z0-9._/~\-]{1,255}$")
+
+
 def ssh_add(d):
     host = d.get("host", "").strip()
     hostname = d.get("hostname", "").strip()
+    user = d.get("user", "").strip()
+    port = str(d.get("port", "")).strip()
+    identity = d.get("identity", "").strip()
     if not SSH_HOST_RE.match(host):
         return "Alias invalido (letras, numeros, . _ -)"
-    if not hostname:
-        return "Falta el hostname/IP"
+    if not SSH_HOSTNAME_RE.match(hostname):
+        return "Hostname/IP invalido"
+    if user and not SSH_USER_RE.match(user):
+        return "Usuario invalido"
+    if port and not (port.isdigit() and 1 <= int(port) <= 65535):
+        return "Puerto invalido"
+    if identity and not SSH_PATH_RE.match(identity):
+        return "Ruta de llave invalida"
     if any(h["host"] == host for h in parse_ssh_config()):
         return f"'{host}' ya existe en ~/.ssh/config"
     sshdir = os.path.expanduser("~/.ssh")
     os.makedirs(sshdir, mode=0o700, exist_ok=True)
     path = os.path.join(sshdir, "config")
     block = [f"\nHost {host}", f"    HostName {hostname}"]
-    if d.get("user", "").strip():
-        block.append(f"    User {d['user'].strip()}")
-    if str(d.get("port", "")).strip():
-        block.append(f"    Port {str(d['port']).strip()}")
-    if d.get("identity", "").strip():
-        block.append(f"    IdentityFile {d['identity'].strip()}")
+    if user:
+        block.append(f"    User {user}")
+    if port:
+        block.append(f"    Port {port}")
+    if identity:
+        block.append(f"    IdentityFile {identity}")
     existed = os.path.exists(path)
     with open(path, "a") as f:
         f.write("\n".join(block) + "\n")
@@ -820,7 +861,71 @@ class Handler(http.server.SimpleHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(body)
 
+    # ---- Seguridad (importa: el tablero esta por exponerse al celular) ----
+    def _cookies(self):
+        out = {}
+        for part in (self.headers.get("Cookie", "") or "").split(";"):
+            k, _, v = part.strip().partition("=")
+            if k:
+                out[k] = v
+        return out
+
+    def _presented_token(self):
+        h = self.headers.get("Authorization", "")
+        if h.startswith("Bearer "):
+            return h[7:].strip()
+        return (self.headers.get("X-Comandos-Token", "").strip()
+                or self._cookies().get("cc_token", ""))
+
+    def _peer_is_loopback(self):
+        ip = (self.client_address[0] if self.client_address else "")
+        return ip in ("127.0.0.1", "::1", "::ffff:127.0.0.1")
+
+    def _security_gate(self):
+        """Devuelve None si la peticion puede continuar, o (code, obj) si se
+        rechaza. Capas: (1) Host allowlist anti DNS-rebinding; (2) token
+        obligatorio para peticiones remotas o proxeadas por tailscale serve.
+        Localhost DIRECTO (app y navegador local) no necesita token."""
+        # (1) Host header: bloquea que un sitio web haga DNS-rebinding a 127.0.0.1
+        host = self.headers.get("Host", "")
+        if host and not HOST_OK_RE.match(host):
+            return 403, {"error": "Host no permitido"}
+        # (2) Local directo = de confianza. Proxeado (tailscale serve pone
+        # X-Forwarded-For) o remoto = exige token de acceso.
+        proxied = bool(self.headers.get("X-Forwarded-For"))
+        if self._peer_is_loopback() and not proxied:
+            return None
+        if hmac.compare_digest(self._presented_token(), access_token()):
+            return None
+        return 401, {"error": "No autorizado (token requerido para acceso remoto)"}
+
+    def _maybe_set_cookie(self):
+        """Primera visita del celular con ?token=... : valida, guarda cookie
+        HttpOnly y redirige a / para sacar el token de la URL/historial."""
+        if "?" not in self.path:
+            return False
+        base, _, qs = self.path.partition("?")
+        params = dict(p.partition("=")[::2] for p in qs.split("&") if p)
+        import urllib.parse
+        tok = urllib.parse.unquote(params.get("token", ""))
+        if tok and hmac.compare_digest(tok, access_token()):
+            self.send_response(302)
+            self.send_header("Location", base or "/")
+            self.send_header("Set-Cookie",
+                             "cc_token=%s; Path=/; HttpOnly; SameSite=Strict; Secure; Max-Age=31536000" % tok)
+            self.end_headers()
+            return True
+        return False
+
     def do_GET(self):
+        if self._maybe_set_cookie():
+            return
+        gate = self._security_gate()
+        if gate:
+            return self._json(*gate)
+        return self._do_GET()
+
+    def _do_GET(self):
         if self.path.startswith("/state"):
             return self._json(200, read_states())
         if self.path.startswith("/ssh"):
@@ -847,8 +952,13 @@ class Handler(http.server.SimpleHTTPRequestHandler):
         return super().do_GET()
 
     def do_POST(self):
+        gate = self._security_gate()
+        if gate:
+            return self._json(*gate)
         try:
             n = int(self.headers.get("Content-Length", 0))
+            if n > 20_000_000:
+                return self._json(413, {"error": "Payload demasiado grande"})
             data = json.loads(self.rfile.read(n) or b"{}")
         except Exception:
             return self._json(400, {"error": "JSON invalido"})

@@ -56,11 +56,32 @@ Abre **ComandOS** desde el menú de apps o el tablero en <http://127.0.0.1:4777>
 | **Codex CLI** | hook `notify` (`cc-agents setup`) | turno terminado + último mensaje |
 | **OpenCode** | plugin (`cc-agents setup`) | working · waiting · errores · done |
 | **Gemini CLI** | hooks (`cc-agents setup`) | working · waiting · done · respuesta completa |
-| **Antigravity CLI** | hooks (`cc-agents setup`) — experimental | igual que Gemini |
+| **Antigravity CLI** (`agy`) | hooks (`cc-agents setup`) | working · done — verificado con sesión real |
 
 Un comando conecta todo lo que tengas instalado: **`cc-agents setup`**.
 Cualquier otro agente entra con una llamada HTTP:
 `POST 127.0.0.1:4777/event {"agent","event","cwd","msg?","full?"}`.
+
+## Celular y tablet (seguro)
+
+Sigue prompteando desde el celular — de forma segura, con un comando:
+
+```bash
+cc-mobile          # conecta por tu tailnet y muestra un QR para emparejar
+```
+
+Escanea el QR, abre el tablero, "Agregar a inicio" — se instala como app
+(PWA), sin App Store. Responde prompts, contesta agentes, corre sesiones
+desde la cama.
+
+**Seguridad por capas, activa por defecto:**
+- **Tailscale** (WireGuard): solo TUS dispositivos, cifrado extremo a extremo. Nunca en la internet pública — solo Serve, jamás Funnel.
+- **TLS automático** vía `tailscale serve` (https en tu tailnet).
+- **Token de acceso**: aunque alguien llegue por tu tailnet, sin token no opera. `cc-dash` sigue escuchando solo en `127.0.0.1`; Serve hace de puente.
+- **Anti DNS-rebinding**: allowlist de cabecera Host (loopback + `*.ts.net`).
+- El escritorio (app/navegador local) no necesita token; solo lo remoto.
+
+`cc-mobile off` deja de exponerlo.
 
 ## Plataformas
 
@@ -81,6 +102,7 @@ Cualquier otro agente entra con una llamada HTTP:
 | `hooks/cc-notify.sh` | Hook de Claude Code: estado + notificaciones |
 | `bin/ccx` | Una sesión tmux por proyecto (`ccx nombre`, `ccx -a codex nombre`) |
 | `bin/cc-agents` | Conecta Codex / OpenCode / Gemini / Antigravity |
+| `bin/cc-mobile` | Expone el tablero a tu celular por Tailscale (seguro) |
 
 ## Apóyalo
 
