@@ -31,7 +31,24 @@ SPEAK_ATTENTION=1
 SPEAK_DONE=1
 PIPER_VOICE=es_MX-ald-medium
 VOLUME=60
+CC_LANG=auto
 [ -f "$HOOKS_DIR/cc-notify.conf" ] && . "$HOOKS_DIR/cc-notify.conf"
+# Idioma de la UI: CC_LANG=es|en explicito, o auto por $LANG del sistema
+case "$CC_LANG" in
+  es|en) UI_LANG="$CC_LANG" ;;
+  *) case "${LANG:-}" in es*|ES*) UI_LANG=es ;; *) UI_LANG=en ;; esac ;;
+esac
+if [ "$UI_LANG" = "es" ]; then
+  T_ATTN="Claude necesita tu atencion";  T_WAITBODY="Esperando input o permiso"
+  T_DONE="Claude termino";               T_DONEBODY="Iteracion completada, listo para tu siguiente instruccion"
+  T_OPTS="Opciones:";                    T_YESALW=$(printf 'Si\x1fSi, siempre\x1fNo')
+  T_SPKWAIT="necesita tu respuesta";     T_SPKDONE="terminó";  SPD_LANG=es
+else
+  T_ATTN="Claude needs your attention";  T_WAITBODY="Waiting for input or permission"
+  T_DONE="Claude finished";              T_DONEBODY="Turn complete — ready for your next instruction"
+  T_OPTS="Options:";                     T_YESALW=$(printf 'Yes\x1fYes, always\x1fNo')
+  T_SPKWAIT="needs your answer";         T_SPKDONE="finished";  SPD_LANG=en
+fi
 # Volumen GLOBAL (0-100, editable desde Ajustes del tablero): voz y chime lo respetan
 case "$VOLUME" in ''|*[!0-9]*) VOLUME=60;; esac
 [ "$VOLUME" -gt 100 ] && VOLUME=100
@@ -102,8 +119,8 @@ case "$event" in
     # Anti-spam: si ya estaba "waiting" hace poco, refresca estado pero no re-notifica
     prev=$(jq -r '[.status,(.ts|tostring)]|join(" ")' "$STATE_DIR/$proj_file.json" 2>/dev/null)
     prev_s=${prev%% *}; prev_t=${prev##* }
-    title="🟡 [$proj] Claude necesita tu atencion"
-    body="${msg:-Esperando input o permiso}"
+    title="🟡 [$proj] $T_ATTN"
+    body="${msg:-$T_WAITBODY}"
     options=""
     full=""
     if [ -n "$transcript" ] && [ -f "$transcript" ]; then
@@ -125,7 +142,7 @@ case "$event" in
         full="$qfull"
         [ -n "$optlist" ] && full="$qfull
 
-Opciones:
+$T_OPTS
 $optlist"
       else
         raw=$(turn_text)
@@ -137,7 +154,7 @@ $preview"
     fi
     # Prompt de permiso estandar: etiquetas con texto (mapean a 1/2/3)
     if [ -z "$options" ] && printf '%s' "$msg" | grep -qi "permi"; then
-      options=$(printf 'Si\x1fSi, siempre\x1fNo')
+      options="$T_YESALW"
     fi
     urgency="critical"
     sound="$SOUND_ATTENTION"
@@ -147,7 +164,7 @@ $preview"
     fi
     ;;
   *)
-    title="✅ [$proj] Claude termino"
+    title="✅ [$proj] $T_DONE"
     # Preview de la ultima respuesta para saber QUE termino sin abrir la terminal
     preview=""
     full=""
@@ -156,7 +173,7 @@ $preview"
       preview=$(printf '%s' "$raw" | tr '\n' ' ' | head -c 180)
       [ -n "$raw" ] && full=$(printf '%s' "$raw" | head -c 60000)
     fi
-    body="${preview:-Iteracion completada, listo para tu siguiente instruccion}"
+    body="${preview:-$T_DONEBODY}"
     urgency="normal"
     sound="$SOUND_DONE"
     write_state "done" "$(printf '%s' "${full:-$body}" | head -c 60000)"
@@ -188,8 +205,8 @@ if [ "$DESKTOP_NOTIFY" = "1" ]; then
 fi
 # Voz local (piper con voz es_MX; fallback spd-say). Si habla, no suena el chime.
 speak=""
-[ "$kind" = "waiting" ] && [ "$SPEAK_ATTENTION" = "1" ] && speak="$proj necesita tu respuesta"
-[ "$kind" = "done" ] && [ "$SPEAK_DONE" = "1" ] && speak="$proj terminó"
+[ "$kind" = "waiting" ] && [ "$SPEAK_ATTENTION" = "1" ] && speak="$proj $T_SPKWAIT"
+[ "$kind" = "done" ] && [ "$SPEAK_DONE" = "1" ] && speak="$proj $T_SPKDONE"
 if [ -n "$speak" ]; then
   (
     PV="$HOME/.local/share/piper-voices/${PIPER_VOICE}.onnx"
@@ -198,7 +215,7 @@ if [ -n "$speak" ]; then
       printf '%s' "$speak" | piper -m "$PV" -f "$w" >/dev/null 2>&1 && play_snd "$w"
       rm -f "$w"
     elif command -v spd-say >/dev/null 2>&1; then
-      spd-say -l es -i $(( VOLUME * 2 - 100 )) "$speak" 2>/dev/null
+      spd-say -l "$SPD_LANG" -i $(( VOLUME * 2 - 100 )) "$speak" 2>/dev/null
     fi
   ) &
 elif [ "$SOUND_ENABLED" = "1" ]; then

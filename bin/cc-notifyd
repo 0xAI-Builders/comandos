@@ -16,7 +16,7 @@ Anatomia del popup:
 Recibe eventos de cc-notify.sh:  POST 127.0.0.1:4778/notify
 Corre como servicio:             systemctl --user status cc-notifyd
 """
-import json, re, subprocess, threading, urllib.request
+import json, os, re, subprocess, threading, urllib.request
 import http.server, socketserver
 import gi
 gi.require_version("Gtk", "3.0")
@@ -28,6 +28,41 @@ MARGIN = 14
 TOP = 48
 ALLOWED_KEYS = {"Enter", "Escape", "1", "2", "3"}
 SESSION_RE = re.compile(r"^[A-Za-z0-9._-]{1,80}$")
+
+
+def _ui_lang():
+    v = "auto"
+    try:
+        with open(os.path.expanduser("~/.claude/hooks/cc-notify.conf")) as f:
+            for line in f:
+                line = line.strip()
+                if line.startswith("CC_LANG="):
+                    v = line.split("=", 1)[1].strip().strip('"\'')
+    except Exception:
+        pass
+    if v in ("es", "en"):
+        return v
+    return "es" if os.environ.get("LANG", "").lower().startswith("es") else "en"
+
+
+UI_LANG = _ui_lang()
+TR = {  # (es, en)
+    "waiting_tag": ("espera tu respuesta", "waiting for your answer"),
+    "done_tag": ("listo", "done"),
+    "see_all": ("… Ver TODO", "… View ALL"),
+    "see_less": ("… Ver menos", "… View less"),
+    "copy": ("Copiar", "Copy"),
+    "copied": ("Copiado ✓", "Copied ✓"),
+    "reply_wait": ("Responde aqui y Enter...", "Reply here and press Enter..."),
+    "reply_next": ("Siguiente instruccion...", "Next instruction..."),
+    "open": ("Abrir", "Open"),
+    "mute_tip": ("Silenciar / activar el sonido de las notificaciones",
+                 "Mute / unmute notification sounds"),
+}
+
+
+def tr(k):
+    return TR[k][0 if UI_LANG == "es" else 1]
 PERM_RE = re.compile(r"permi|pregunta|question|asking", re.IGNORECASE)
 
 CSS = b"""
@@ -325,7 +360,7 @@ def make_popup(title, body, session, kind, project, options_str="", full=""):
     pev.add(pl)
     pev.connect("button-press-event", lambda *_: (open_session(session), close_popup(win)))
     header.pack_start(pev, False, False, 0)
-    tag = Gtk.Label(label="espera tu respuesta" if kind == "waiting" else "listo")
+    tag = Gtk.Label(label=tr("waiting_tag") if kind == "waiting" else tr("done_tag"))
     tag.get_style_context().add_class("tag")
     if kind == "done":
         tag.get_style_context().add_class("done")
@@ -340,7 +375,7 @@ def make_popup(title, body, session, kind, project, options_str="", full=""):
     mute = Gtk.Button(label="🔊")
     mute.get_style_context().add_class("close")
     mute.set_relief(Gtk.ReliefStyle.NONE)
-    mute.set_tooltip_text("Silenciar / activar el sonido de las notificaciones")
+    mute.set_tooltip_text(tr("mute_tip"))
 
     def sync_mute():
         try:
@@ -384,14 +419,14 @@ def make_popup(title, body, session, kind, project, options_str="", full=""):
     # y "Ver TODO" cuando hay mas texto
     tools = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=14)
     if src:
-        cp = Gtk.Button(label="Copiar")
+        cp = Gtk.Button(label=tr("copy"))
         cp.get_style_context().add_class("vermas")
         cp.set_relief(Gtk.ReliefStyle.NONE)
 
         def do_copy(_b):
             Gtk.Clipboard.get(Gdk.SELECTION_CLIPBOARD).set_text(full or src, -1)
-            cp.set_label("Copiado ✓")
-            GLib.timeout_add_seconds(2, lambda: (cp.set_label("Copiar"), False)[1])
+            cp.set_label(tr("copied"))
+            GLib.timeout_add_seconds(2, lambda: (cp.set_label(tr("copy")), False)[1])
 
         cp.connect("clicked", do_copy)
         tools.pack_start(cp, False, False, 0)
@@ -412,7 +447,7 @@ def make_popup(title, body, session, kind, project, options_str="", full=""):
         sw.add(build_full_widget(full[:16000]))
         sw.set_no_show_all(True)
         # "… Ver TODO" pegado al texto, como un link discreto
-        vt = Gtk.Button(label="… Ver TODO")
+        vt = Gtk.Button(label=tr("see_all"))
         vt.get_style_context().add_class("vermas")
         vt.set_relief(Gtk.ReliefStyle.NONE)
         vt.set_halign(Gtk.Align.START)
@@ -424,12 +459,12 @@ def make_popup(title, body, session, kind, project, options_str="", full=""):
                 sw.show_all()
                 if bl:
                     bl.hide()
-                vt.set_label("… Ver menos")
+                vt.set_label(tr("see_less"))
             else:
                 sw.hide()
                 if bl:
                     bl.show()
-                vt.set_label("… Ver TODO")
+                vt.set_label(tr("see_all"))
                 win.resize(WIDTH, 1)
             reposition()
             GLib.timeout_add(80, reposition)
@@ -474,7 +509,7 @@ def make_popup(title, body, session, kind, project, options_str="", full=""):
     entry = Gtk.Entry()
     entry.get_style_context().add_class("entry")
     entry.set_placeholder_text(
-        "Responde aqui y Enter..." if kind == "waiting" else "Siguiente instruccion...")
+        tr("reply_wait") if kind == "waiting" else tr("reply_next"))
 
     def on_activate(e):
         send_text(session, e.get_text())
@@ -483,7 +518,7 @@ def make_popup(title, body, session, kind, project, options_str="", full=""):
     entry.connect("activate", on_activate)
     row_send = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
     row_send.pack_start(entry, True, True, 0)
-    row_send.pack_end(mk_btn("Abrir", lambda: open_session(session), "open"), False, False, 0)
+    row_send.pack_end(mk_btn(tr("open"), lambda: open_session(session), "open"), False, False, 0)
     content.pack_start(row_send, False, False, 1)
 
     card.pack_start(content, True, True, 0)

@@ -1,59 +1,74 @@
 # ComandOS
 
-**Centro de comando para correr muchos Claude Code en paralelo sin perder el hilo.**
-El sistema te avisa cuál sesión te necesita (voz + popup accionable), tú respondes
-con una tecla — desde el tablero, el popup o Telegram — y sigues.
+**Mission control for running many Claude Code agents in parallel — it tells you who needs you.**
+Offline voice alerts, actionable popups with full rendered markdown, tabbed terminals,
+and Telegram remote control. You answer with one keystroke and move on.
 
-[![licencia](https://img.shields.io/badge/licencia-PolyForm%20Noncommercial-8B7CFF?style=flat-square)](./LICENSE.md)
+[![license](https://img.shields.io/badge/license-MIT-2EE59D?style=flat-square)](./LICENSE)
 [![GitHub Sponsors](https://img.shields.io/badge/sponsor-0xAI--Builders-f38ba8.svg?style=flat-square&logo=github-sponsors)](https://github.com/sponsors/0xAI-Builders)
 [![Buy Me a Coffee](https://img.shields.io/badge/buy%20me%20a%20coffee-0xjesus-yellow.svg?style=flat-square&logo=buymeacoffee)](https://buymeacoffee.com/0xjesus)
 
-## Qué hace
+**[Léeme en español →](./README.es.md)**
 
-- **Tablero** (`127.0.0.1:4777`): lo que espera TU respuesta arriba y grande, con las
-  opciones reales de cada pregunta como botones. Responde sin cambiar de ventana.
-- **Popups accionables** propios: texto completo con markdown renderizado (tablas
-  incluidas), botones 1/2/3, input, Copiar y "Ver TODO". Nada de recortes.
-- **App nativa** (GTK + VTE): una pestaña por sesión con punto de estado
-  (ámbar espera · azul trabaja · verde listo), Ctrl+K salta a cualquier sesión,
-  pestañas renombrables, splits, temas Noche/Día/Cálido.
-- **Copia y exporta** cualquier respuesta: portapapeles, `.txt` o PDF con markdown
-  renderizado, desde la terminal, el popup o el tablero.
-- **Voz local** (piper, 100% offline) y chime, con UN volumen global.
-- **Servidores SSH**: CRUD sobre `~/.ssh/config`, conexión de un click, detecta
-  túneles multiplexados vivos (reconexión sin password).
-- **Telegram**: botones en las notificaciones, responder por reply, `/ls /out /run`.
-- Todo es **archivos** (tmux, JSON, ssh config). Sin nube, sin DB. Sobrevive reinicios.
+## Why
 
-## Instalar
+When you run 10 Claude Codes at once, the problem isn't terminals — it's **knowing
+which one needs you and getting back to it without friction**. ComandOS turns that
+into an event-driven flow: the system interrupts you (voice + actionable popup),
+you answer with a key or a line, and you keep going. No tab-scanning.
+
+## What you get
+
+- **Live dashboard** (`127.0.0.1:4777`): whatever waits for YOUR answer shows up big,
+  with the question's real options as buttons. Respond without switching windows.
+- **Actionable popups**: full text with rendered markdown (tables included),
+  1/2/3 buttons, inline reply, Copy, and "View ALL". Never answer blind.
+- **Native app** (GTK + VTE): one tab per session with a status dot
+  (amber = waiting · blue = working · green = done), **Ctrl+K** jumps to any session,
+  renameable tabs, splits, and Night/Day/Warm themes.
+- **Copy & export** any response: clipboard, `.txt`, or PDF with rendered markdown —
+  from the terminal, the popup, or the dashboard.
+- **Local voice** (piper, 100% offline) + chime, one global volume that everything respects.
+- **SSH manager**: CRUD over `~/.ssh/config`, one-click connect, detects live
+  multiplexed tunnels (no-password reconnect).
+- **Telegram**: buttons on notifications, reply to answer, `/ls /out /run`.
+- Everything is **files** (tmux, JSON, ssh config). No cloud, no DB. Survives reboots.
+- UI in **English and Spanish** (auto-detected from `$LANG`, switchable in Settings).
+
+## Install
 
 ```bash
 git clone https://github.com/0xAI-Builders/comandos.git
 cd comandos && ./install.sh
 ```
 
-Requisitos: Linux con GNOME/X11, `python3-gi`, `tmux`, `jq`.
-Recomendados: `xclip`, `wmctrl`, `piper` (voz), `kitty`.
-Abre **ComandOS** desde el menú de apps o el tablero en <http://127.0.0.1:4777>.
+Requires Linux with GNOME/X11, `python3-gi`, `tmux`, `jq`.
+Recommended: `xclip`, `wmctrl`, `piper` (voice), `kitty`.
+Open **ComandOS** from your app menu, or the dashboard at <http://127.0.0.1:4777>.
 
-## Piezas
+## Pieces
 
-| Pieza | Qué es |
+| Piece | What it is |
 |---|---|
-| `bin/cc-dash` | Motor: tablero + acciones sobre tmux/ssh (127.0.0.1:4777) |
-| `bin/cc-app` | App nativa: tablero + pestañas de terminal |
-| `bin/cc-notifyd` | Demonio de popups accionables |
-| `bin/cc-telegram` | Puente Telegram |
-| `hooks/cc-notify.sh` | Hook de Claude Code: estado + notificaciones |
-| `bin/ccx` | Una sesión tmux por proyecto (`ccx nombre`) |
+| `bin/cc-dash` | Engine: dashboard + tmux/ssh actions (127.0.0.1:4777) |
+| `bin/cc-app` | Native app: dashboard + terminal tabs |
+| `bin/cc-notifyd` | Actionable popup daemon |
+| `bin/cc-telegram` | Telegram bridge |
+| `hooks/cc-notify.sh` | Claude Code hook: state + notifications |
+| `bin/ccx` | One tmux session per project (`ccx name`) |
 
-## Apóyalo
+## Roadmap
 
-Si te ahorra tiempo, invítame un café — mantiene el proyecto vivo:
+Support for more agents is planned — see
+[Codex CLI](https://github.com/0xAI-Builders/comandos/issues/1) and
+[Antigravity](https://github.com/0xAI-Builders/comandos/issues/2). PRs welcome.
+
+## Support
+
+If it saves you time, buy me a coffee — it keeps the project alive:
 [Buy Me a Coffee](https://buymeacoffee.com/0xjesus) ·
 [GitHub Sponsors](https://github.com/sponsors/0xAI-Builders)
 
-## Licencia
+## License
 
-**PolyForm Noncommercial 1.0.0** — úsalo, fórkealo y modifícalo libremente para
-fines no comerciales. Uso comercial reservado al titular. Ver [LICENSE](LICENSE.md).
+[MIT](./LICENSE)

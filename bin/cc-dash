@@ -347,8 +347,16 @@ def read_states():
 # Claves de cc-notify.conf editables desde la interfaz
 CONF_KEYS = {"DESKTOP_NOTIFY", "SOUND_ENABLED", "TELEGRAM_ENABLED",
              "NOTIFY_ON_DONE", "NOTIFY_ON_ATTENTION", "SPEAK_ATTENTION", "SPEAK_DONE",
-             "VOLUME"}
-CONF_DEFAULTS = {"VOLUME": "60"}
+             "VOLUME", "CC_LANG"}
+CONF_DEFAULTS = {"VOLUME": "60", "CC_LANG": "auto"}
+
+
+def ui_lang(conf=None):
+    """Idioma de la UI: CC_LANG=es|en explicito, o auto por $LANG."""
+    v = (conf or read_conf()).get("CC_LANG", "auto")
+    if v in ("es", "en"):
+        return v
+    return "es" if os.environ.get("LANG", "").lower().startswith("es") else "en"
 CONF_PATH = os.path.join(HOOKS, "cc-notify.conf")
 
 
@@ -738,8 +746,9 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             return self._json(200, parse_ssh_config())
         if self.path.startswith("/conf"):
             conf = read_conf()
-            return self._json(200, {k: conf.get(k, CONF_DEFAULTS.get(k, "1"))
-                                    for k in sorted(CONF_KEYS)})
+            out = {k: conf.get(k, CONF_DEFAULTS.get(k, "1")) for k in sorted(CONF_KEYS)}
+            out["_lang"] = ui_lang(conf)   # idioma RESUELTO para las UIs
+            return self._json(200, out)
         if self.path.startswith("/prefs"):
             return self._json(200, read_prefs())
         if self.path.startswith("/events"):
@@ -766,7 +775,8 @@ class Handler(http.server.SimpleHTTPRequestHandler):
         if self.path == "/conf-set":
             key, val = data.get("key", ""), str(data.get("value", ""))
             ok = (key == "VOLUME" and val.isdigit() and 0 <= int(val) <= 100) or \
-                 (key in CONF_KEYS and key != "VOLUME" and val in ("0", "1"))
+                 (key == "CC_LANG" and val in ("auto", "es", "en")) or \
+                 (key in CONF_KEYS and key not in ("VOLUME", "CC_LANG") and val in ("0", "1"))
             if not ok:
                 return self._json(400, {"error": "Clave o valor invalido"})
             write_conf_key(key, val)

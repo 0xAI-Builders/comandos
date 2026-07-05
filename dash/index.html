@@ -232,6 +232,7 @@
   .test{font-family:var(--mono);font-size:11.5px;color:var(--dim);
     border:1px solid var(--line);border-radius:7px;padding:5px 12px}
   .test:hover{color:var(--text);border-color:var(--brand)}
+  .test.on{color:var(--done);border-color:color-mix(in srgb,var(--done) 45%,var(--line))}
   .switch{display:flex;align-items:center;justify-content:space-between;gap:10px}
   .switch button{width:40px;height:22px;border-radius:11px;background:var(--line);
     position:relative;flex:none}
@@ -284,9 +285,9 @@
 <header>
   <div class="brand"><b>●</b> COMANDOS</div>
   <div class="counts">
-    <span class="pill hot"><b id="n-waiting">0</b> esperan</span>
-    <span class="pill ok"><b id="n-done">0</b> listos</span>
-    <span class="pill run"><b id="n-working">0</b> trabajando</span>
+    <span class="pill hot"><b id="n-waiting">0</b> <span>esperan</span></span>
+    <span class="pill ok"><b id="n-done">0</b> <span>listos</span></span>
+    <span class="pill run"><b id="n-working">0</b> <span>trabajando</span></span>
   </div>
   <div class="hdr-right">
     <input id="q" placeholder="buscar" autocomplete="off" spellcheck="false"
@@ -347,6 +348,12 @@
   <div class="set"><div class="desc">UN solo volumen para todo ComandOS. Estos botones suenan
     EXACTAMENTE igual que las notificaciones reales (mismo reproductor y volumen) — si algo
     suena distinto a esto, NO viene de ComandOS.</div></div>
+  <div class="set"><label>Idioma / Language</label></div>
+  <div class="set" style="display:flex;gap:8px">
+    <button class="test lang-btn" data-lang="auto">Auto</button>
+    <button class="test lang-btn" data-lang="es">Español</button>
+    <button class="test lang-btn" data-lang="en">English</button>
+  </div>
   <h3 style="margin-top:24px">Tablero</h3>
   <div class="set switch"><label>Notificaciones del navegador</label>
     <button id="sw-notif" role="switch"></button></div>
@@ -403,6 +410,73 @@ const S = {
 const $ = s => document.querySelector(s);
 const urgent = $("#urgent"), rows = $("#rows");
 
+// ---------- i18n ----------
+// El markup y los literales viven en espanol; T_EN los traduce cuando L==="en".
+let L = "es";
+const T_EN = {
+  "esperan": "waiting", "listos": "done", "trabajando": "working",
+  "Esperan tu respuesta": "Waiting for your answer", "Sesiones": "Sessions",
+  "Servidores": "Servers", "gestionar": "manage", "Ajustes": "Settings",
+  "Ver actividad reciente": "Show recent activity", "Ocultar actividad": "Hide activity",
+  "Necesita respuesta": "Needs your answer", "Suelta": "Detached",
+  "Pregunta pendiente · claude apagado": "Pending question · claude is off",
+  "Esperando input o permiso": "Waiting for input or permission",
+  "Trabajando...": "Working...", "Revivir para retomar": "Revive to resume",
+  "Conectado": "Connected",
+  "SIN conexion: abre la pestana y teclea el password (o corre cc-keys)":
+    "NO connection: open the tab and type the password (or run cc-keys)",
+  "Tunel vivo (sin password) — Abrir reconecta al instante":
+    "Live tunnel (no password) — Open reconnects instantly",
+  "carpeta no encontrada": "folder not found",
+  "Copiar": "Copy", "Abrir": "Open", "Revivir": "Revive", "Enviar": "Send",
+  "Favorito": "Favorite", "suelta": "detached",
+  "Responde aqui y Enter": "Reply here and press Enter",
+  "Click: ver TODO el texto / colapsar": "Click: view ALL the text / collapse",
+  "Copiar la respuesta completa de Claude": "Copy Claude's full reply",
+  "Guardar la respuesta como .txt en Descargas": "Save the reply as .txt in Downloads",
+  "Guardar la respuesta como PDF (markdown renderizado) en Descargas":
+    "Save the reply as PDF (rendered markdown) in Downloads",
+  "Matar la sesion tmux (y lo que corra dentro)": "Kill the tmux session (and whatever runs inside)",
+  "Notificaciones (todo el sistema)": "Notifications (system-wide)",
+  "Volumen (voz y chime)": "Volume (voice and chime)",
+  "Avisar al terminar": "Notify when done", "Avisar al pedir atencion": "Notify on attention",
+  "Voz (anuncia el proyecto)": "Voice (announces the project)",
+  "Chime (suena si la voz esta apagada)": "Chime (plays if voice is off)",
+  "Popups de escritorio": "Desktop popups", "Telegram": "Telegram",
+  "Probar atencion": "Test attention", "Probar terminado": "Test done", "Probar voz": "Test voice",
+  "Tablero": "Dashboard", "Notificaciones del navegador": "Browser notifications",
+  "UN solo volumen para todo ComandOS. Estos botones suenan EXACTAMENTE igual que las notificaciones reales (mismo reproductor y volumen) — si algo suena distinto a esto, NO viene de ComandOS.":
+    "ONE volume for all of ComandOS. These buttons sound EXACTLY like real notifications (same player, same volume) — if something sounds different, it is NOT ComandOS.",
+  "Servidores SSH": "SSH servers", "Agregar servidor": "Add server",
+  "Alias": "Alias", "Usuario": "User", "Host / IP": "Host / IP", "Puerto": "Port",
+  "Llave (opcional)": "Key (optional)", "Guardar": "Save", "Cancelar edicion": "Cancel edit",
+  "Conectar": "Connect", "Editar": "Edit", "Borrar": "Delete", "Seguro?": "Sure?",
+  "Viven en ~/.ssh/config: estandar y tuyo. Conectar abre una\n    sesion tmux reconectable. Para dejar de teclear passwords: corre cc-keys una vez.":
+    "They live in ~/.ssh/config: standard and yours. Connect opens a reconnectable tmux session. To stop typing passwords: run cc-keys once.",
+  "espera TU respuesta": "waiting for YOU", "working": "working", "idle": "idle", "done": "done",
+};
+const t = s => L === "en" ? (T_EN[s] ?? s) : s;
+const tf = (es, en) => L === "en" ? en : es;
+
+function applyI18n(){
+  if(L !== "en") return;
+  document.querySelectorAll(
+    "#settings label, #settings h3, #settings .desc, #settings .test, " +
+    "#servers label, #servers h3, #servers .desc, #servers .test, #srv-cancel, " +
+    ".sec-label, #ssh-bar .lbl, #ssh-manage, #btn-settings, #tl-toggle, .pill span")
+    .forEach(e => { const k = e.textContent.trim(); if(T_EN[k]) e.textContent = T_EN[k]; });
+  const ph = (sel, v) => { const e = $(sel); if(e) e.placeholder = v; };
+  ph("#q", "search"); ph("#new-name", "open project");
+  ph("#sw-in", "Jump to...  (Enter opens the first, ↑↓ navigate, Esc closes)");
+  const ti = (sel, v) => { const e = $(sel); if(e) e.title = v; };
+  ti("#q", "Filter by name or path");
+  ti("#new-form", "Type a ~/codebase project name and Enter: creates/opens its session");
+  ti("#snd-ctl", "Global volume (voice and chime). The icon mutes/unmutes.");
+  ti("#btn-switch", "Jump to any session (Ctrl+K)");
+  ti("#btn-theme", "Theme: Night → Day → Warm (dashboard, tabs and terminals)");
+  ti("#ssh-manage", "Add, edit or delete (they live in ~/.ssh/config)");
+}
+
 function saveCfg(){ localStorage.setItem("cc-cfg", JSON.stringify(S.cfg)); }
 
 // ---------- app nativa ----------
@@ -416,14 +490,14 @@ async function openSession(it, win){
   if(inApp()){
     const r = await api("/ensure", {session: it.session, cwd: it.cwd, win});
     openInApp(r.session || it.session, win);
-    return `${it.project} en su pestana`;
+    return tf(`${it.project} en su pestana`, `${it.project} is in its tab`);
   }
   try{
     await api(win === "shell" ? "/shell" : "/focus", {session: it.session, cwd: it.cwd});
   }catch(e){
     await api("/up", {session: it.session, cwd: it.cwd});
   }
-  return `Tu terminal esta en ${it.project}`;
+  return tf(`Tu terminal esta en ${it.project}`, `Your terminal is now on ${it.project}`);
 }
 
 // ---------- red ----------
@@ -437,15 +511,16 @@ async function api(path, body){
 
 // ---------- helpers ----------
 const ROW_ORDER = {done:0, working:1, idle:2, dead:4};
-const LABEL = {waiting:"Esperando respuesta", done:"Termino", working:"Trabajando",
+let LABEL = {waiting:"Esperando respuesta", done:"Termino", working:"Trabajando",
                idle:"Viva, sin actividad", dead:"Apagada"};
 function agoTxt(ts){
   if(!ts) return "";
   const s = Math.max(0, Math.floor(Date.now()/1000 - ts));
-  if(s < 60)    return `hace ${s} s`;
-  if(s < 3600)  return `hace ${Math.floor(s/60)} min`;
-  if(s < 86400) return `hace ${Math.floor(s/3600)} h`;
-  return `hace ${Math.floor(s/86400)} d`;
+  const f = (n, u) => tf(`hace ${n} ${u}`, `${n}${u[0]} ago`);
+  if(s < 60)    return f(s, "s");
+  if(s < 3600)  return f(Math.floor(s/60), "min");
+  if(s < 86400) return f(Math.floor(s/3600), "h");
+  return f(Math.floor(s/86400), "d");
 }
 function shortPath(cwd){
   return (cwd||"").replace(/^\/home\/[^/]+\/codebase\//, "").replace(/^\/home\/[^/]+/, "~");
@@ -516,15 +591,15 @@ function cardEl(it){
   el.className = "card"; el.dataset.session = it.session; el.dataset.kind = "card";
   el.innerHTML = `
     <div class="top">
-      <button type="button" class="fav" title="Favorito">★</button>
+      <button type="button" class="fav" title="${t('Favorito')}">★</button>
       <h2></h2><span class="tag"></span><span class="ago"></span>
     </div>
     <div class="path"></div>
     <p class="preview"></p>
     <div class="opts hidden"></div>
     <form class="send">
-      <input type="text" autocomplete="off" spellcheck="false" placeholder="Responde aqui y Enter">
-      <button type="submit">Enviar</button>
+      <input type="text" autocomplete="off" spellcheck="false" placeholder="${t('Responde aqui y Enter')}">
+      <button type="submit">${t("Enviar")}</button>
     </form>
     <div class="row2">
       <div class="keys">
@@ -535,16 +610,16 @@ function cardEl(it){
         <button type="button" data-key="Escape">Esc</button>
       </div>
       <div class="ops">
-        <button type="button" class="cp" title="Copiar la respuesta completa de Claude">Copiar</button>
-        <button type="button" class="xtxt" title="Guardar la respuesta como .txt en Descargas">TXT</button>
-        <button type="button" class="xpdf" title="Guardar la respuesta como PDF (markdown renderizado) en Descargas">PDF</button>
-        <button type="button" class="go">Abrir</button>
-        <button type="button" class="up hidden">Revivir</button>
+        <button type="button" class="cp" title="${t('Copiar la respuesta completa de Claude')}">${t("Copiar")}</button>
+        <button type="button" class="xtxt" title="${t('Guardar la respuesta como .txt en Descargas')}">TXT</button>
+        <button type="button" class="xpdf" title="${t('Guardar la respuesta como PDF (markdown renderizado) en Descargas')}">PDF</button>
+        <button type="button" class="go">${t("Abrir")}</button>
+        <button type="button" class="up hidden">${t("Revivir")}</button>
       </div>
     </div>`;
   el.querySelector("h2").textContent = it.project;
   const pv = el.querySelector(".preview");
-  pv.title = "Click: ver TODO el texto / colapsar";
+  pv.title = t("Click: ver TODO el texto / colapsar");
   pv.addEventListener("click", e=>{ e.stopPropagation(); pv.classList.toggle("open"); });
   wireActions(el, it);
   return el;
@@ -556,9 +631,9 @@ function wireActions(el, it){
   if(cp) cp.addEventListener("click", async e=>{
     e.stopPropagation();
     const t = el._detail || "";
-    if(!t) return toast("Esta sesion no tiene respuesta guardada", true);
-    (await copyText(t)) ? toast(`Respuesta de ${it.project} copiada`)
-                        : toast("No pude copiar", true);
+    if(!t) return toast(tf("Esta sesion no tiene respuesta guardada", "This session has no saved reply"), true);
+    (await copyText(t)) ? toast(tf(`Respuesta de ${it.project} copiada`, `${it.project}\u0027s reply copied`))
+                        : toast(tf("No pude copiar", "Could not copy"), true);
   });
   const wireExport = (sel, fmt) => {
     const b = el.querySelector(sel);
@@ -566,7 +641,7 @@ function wireActions(el, it){
       e.stopPropagation();
       try{
         const r = await api("/export", {session: el.dataset.session, format: fmt});
-        toast(`Guardado: ${r.path}`);
+        toast(tf(`Guardado: ${r.path}`, `Saved: ${r.path}`));
       }catch(err){ toast(err.message, true); }
     });
   };
@@ -580,14 +655,14 @@ function wireActions(el, it){
     const inp = form.querySelector("input"); const text = inp.value.trim();
     if(!text) return;
     try{ await api("/send", {session: el.dataset.session, text, pane: pane()}); inp.value="";
-         toast(`Enviado a ${it.project}`); }
+         toast(tf(`Enviado a ${it.project}`, `Sent to ${it.project}`)); }
     catch(err){ toast(err.message, true); }
   });
   el.querySelectorAll(".keys button").forEach(b=>{
     b.addEventListener("click", async e=>{
       e.stopPropagation();
       try{ await api("/key", {session: el.dataset.session, key: b.dataset.key, pane: pane()});
-           toast(`${b.dataset.key} a ${it.project}`); }
+           toast(`${b.dataset.key} → ${it.project}`); }
       catch(err){ toast(err.message, true); }
     });
   });
@@ -607,36 +682,36 @@ function rowEl(it){
   el.className = "row"; el.dataset.session = it.session; el.dataset.kind = "row";
   el.setAttribute("tabindex", "0");
   el.innerHTML = `
-    <button type="button" class="fav" title="Favorito">★</button>
+    <button type="button" class="fav" title="${t('Favorito')}">★</button>
     <span class="dot"></span>
     <span class="name"></span>
-    <span class="exttag hidden">suelta</span>
+    <span class="exttag hidden">${t("suelta")}</span>
     <span class="rpath"></span>
     <span class="rprev"></span>
     <span class="ago"></span>
     <span class="acts">
-      <button type="button" class="cp" title="Copiar la respuesta completa de Claude">⧉</button>
-      <button type="button" class="go">Abrir</button>
-      <button type="button" class="up hidden">Revivir</button>
-      <button type="button" class="kill" title="Matar la sesion tmux (y lo que corra dentro)">✕</button>
+      <button type="button" class="cp" title="${t('Copiar la respuesta completa de Claude')}">⧉</button>
+      <button type="button" class="go">${t("Abrir")}</button>
+      <button type="button" class="up hidden">${t("Revivir")}</button>
+      <button type="button" class="kill" title="${t('Matar la sesion tmux (y lo que corra dentro)')}">✕</button>
     </span>`;
   el.querySelector(".name").textContent = it.project;
   const kill = el.querySelector(".kill");
   kill.addEventListener("click", async e=>{
     e.stopPropagation();
     if(!kill.classList.contains("arm")){
-      kill.classList.add("arm"); kill.textContent = "¿Matar?";
+      kill.classList.add("arm"); kill.textContent = tf("¿Matar?", "Kill?");
       setTimeout(()=>{ kill.classList.remove("arm"); kill.textContent = "✕"; }, 3000);
       return;
     }
     try{ await api("/kill", {session: el.dataset.session});
-         toast(`${it.project} eliminada`); tick(); }
+         toast(tf(`${it.project} eliminada`, `${it.project} killed`)); tick(); }
     catch(err){ toast(err.message, true); }
   });
   wireActions(el, it);
   el.addEventListener("click", async e=>{
     if(e.target.closest("button")) return;
-    if(el.classList.contains("ext")) return toast("Corre en una pestana suelta: cierrala alla y usa Revivir", true);
+    if(el.classList.contains("ext")) return toast(tf("Corre en una pestana suelta: cierrala alla y usa Revivir", "Runs in a detached tab: close it there and use Revive"), true);
     try{ toast(await openSession(it, "claude")); }catch(err){ toast(err.message, true); }
   });
   return el;
@@ -666,12 +741,12 @@ function render(list){
       // canSend: hay un claude VIVO esperando; si murio, la card queda con la
       // pregunta visible y el camino de Revivir/Abrir (nunca respondas al vacio)
       const canSend = it.alive && !ext && !it.zombie;
-      el.querySelector(".tag").textContent = ext ? "Suelta"
-        : !canSend ? "Pregunta pendiente · claude apagado" : "Necesita respuesta";
+      el.querySelector(".tag").textContent = ext ? t("Suelta")
+        : !canSend ? t("Pregunta pendiente · claude apagado") : t("Necesita respuesta");
       const pe = el.querySelector(".path");
-      pe.textContent = it.cwd ? shortPath(it.cwd) : "carpeta no encontrada";
+      pe.textContent = it.cwd ? shortPath(it.cwd) : t("carpeta no encontrada");
       pe.title = it.cwd || ""; pe.classList.toggle("missing", !it.cwd);
-      el.querySelector(".preview").innerHTML = mdHtml(it.detail || "Esperando input o permiso");
+      el.querySelector(".preview").innerHTML = mdHtml(it.detail || t("Esperando input o permiso"));
       // Opciones REALES (las mismas de los popups): 1 boton por opcion
       const opts = el.querySelector(".opts");
       const optsStr = (canSend && it.options) ? it.options : "";
@@ -708,12 +783,12 @@ function render(list){
       if(it.session.startsWith("ssh-") && it.alive){
         el.classList.toggle("sshoff", it.sshConnected === false);
         el.querySelector(".rprev").textContent = !it.sshConnected
-          ? "SIN conexion: abre la pestana y teclea el password (o corre cc-keys)"
-          : it.sshMux ? "Tunel vivo (sin password) — Abrir reconecta al instante"
-          : "Conectado";
+          ? t("SIN conexion: abre la pestana y teclea el password (o corre cc-keys)")
+          : it.sshMux ? t("Tunel vivo (sin password) — Abrir reconecta al instante")
+          : t("Conectado");
       } else {
         el.querySelector(".rprev").textContent = mdStrip(it.detail) ||
-          (it.status==="working" ? "Trabajando..." : it.status==="dead" ? "Revivir para retomar" : "");
+          (it.status==="working" ? t("Trabajando...") : it.status==="dead" ? t("Revivir para retomar") : "");
         el.querySelector(".rprev").title = mdStrip(it.detail);
       }
       el.querySelector(".up").classList.toggle("hidden", it.alive || ext);
@@ -726,8 +801,8 @@ function render(list){
     // sistema: voz/chime de cc-notify.sh, con el volumen de Ajustes)
     const prev = S.prev.get(it.session);
     if(prev && prev !== it.status){
-      if(it.status === "waiting") notify(it, "necesita tu respuesta");
-      if(it.status === "done") notify(it, "termino");
+      if(it.status === "waiting") notify(it, tf("necesita tu respuesta", "needs your answer"));
+      if(it.status === "done") notify(it, tf("termino", "finished"));
     }
     S.prev.set(it.session, it.status);
   }
@@ -736,8 +811,8 @@ function render(list){
   });
   $("#urgent-wrap").classList.toggle("hidden", counts.waiting === 0);
   if(!rows.querySelector(".row") && !rows.querySelector(".empty")){
-    rows.innerHTML = `<div class="empty">Sin sesiones. Abre una arriba con
-      <code>abrir proyecto</code>, o en cualquier terminal: <code>ccx nombre</code></div>`;
+    rows.innerHTML = `<div class="empty">${tf("Sin sesiones. Abre una arriba con", "No sessions. Open one above with")}
+      <code>${tf("abrir proyecto", "open project")}</code>${tf(", o en cualquier terminal:", ", or in any terminal:")} <code>ccx ${tf("nombre", "name")}</code></div>`;
   } else if(rows.querySelector(".row")) {
     rows.querySelector(".empty")?.remove();
   }
@@ -841,7 +916,7 @@ function swFill(){
     d.innerHTML = `<span class="dot"></span><span></span><span class="hint"></span>`;
     d.children[0].style.background = C[x.it.status] || "var(--faint)";
     d.children[1].textContent = x.it.project;
-    d.children[2].textContent = x.it.status === "waiting" ? "espera TU respuesta" : (x.it.status || "");
+    d.children[2].textContent = x.it.status === "waiting" ? t("espera TU respuesta") : t(x.it.status || "");
     d.addEventListener("click", ()=> swGo(i));
     L.appendChild(d);
   });
@@ -895,7 +970,8 @@ $("#btn-theme").addEventListener("click", async ()=>{
   const next = THEME_SEQ[(THEME_SEQ.indexOf(curTheme) + 1) % THEME_SEQ.length];
   applyTheme(next, true);
   try{ await api("/prefs-set", {theme: next}); }catch(e){}
-  toast(`Tema: ${next === "dia" ? "Día" : next === "calido" ? "Cálido" : "Noche"}`);
+  toast(tf(`Tema: ${next === "dia" ? "Día" : next === "calido" ? "Cálido" : "Noche"}`,
+           `Theme: ${next === "dia" ? "Day" : next === "calido" ? "Warm" : "Night"}`));
 });
 
 // ---------- favoritos ----------
@@ -912,15 +988,15 @@ async function connectHost(host){
   const r = await api("/ssh-connect", {host});
   if(inApp()) openInApp(r.session, "ssh");
   else await api("/focus", {session: r.session});
-  if(r.connected) toast(`Conectado a ${host}`);
-  else toast(r.note || `${host} sin conexion todavia`, true);
+  if(r.connected) toast(tf(`Conectado a ${host}`, `Connected to ${host}`));
+  else toast(r.note || tf(`${host} sin conexion todavia`, `${host} not connected yet`), true);
 }
 function fillSrvForm(h){
   const f = $("#srv-form");
   f.host.value = h.host || ""; f.hostname.value = h.hostname || "";
   f.user.value = h.user || ""; f.port.value = h.port || "";
   f.identity.value = h.identity || ""; f.orig.value = h.host || "";
-  $("#srv-form-title").textContent = h.host ? `Editar ${h.host}` : "Agregar servidor";
+  $("#srv-form-title").textContent = h.host ? tf(`Editar ${h.host}`, `Edit ${h.host}`) : t("Agregar servidor");
   $("#srv-cancel").classList.toggle("hidden", !h.host);
 }
 async function loadSsh(){
@@ -948,11 +1024,11 @@ async function loadSsh(){
       const del = row.querySelector(".del");
       del.addEventListener("click", async ()=>{
         if(!del.classList.contains("arm")){
-          del.classList.add("arm"); del.textContent = "Seguro?";
-          setTimeout(()=>{ del.classList.remove("arm"); del.textContent = "Borrar"; }, 3000);
+          del.classList.add("arm"); del.textContent = t("Seguro?");
+          setTimeout(()=>{ del.classList.remove("arm"); del.textContent = t("Borrar"); }, 3000);
           return;
         }
-        try{ await api("/ssh-del", {host: h.host}); toast(`${h.host} borrado`); loadSsh(); }
+        try{ await api("/ssh-del", {host: h.host}); toast(tf(`${h.host} borrado`, `${h.host} deleted`)); loadSsh(); }
         catch(err){ toast(err.message, true); }
       });
       list.appendChild(row);
@@ -972,8 +1048,8 @@ $("#srv-form").addEventListener("submit", async e=>{
              user: f.user.value.trim(), port: f.port.value.trim(),
              identity: f.identity.value.trim()};
   try{
-    if(f.orig.value){ await api("/ssh-update", {...d, orig: f.orig.value}); toast(`${d.host} actualizado`); }
-    else { await api("/ssh-add", d); toast(`${d.host} guardado`); }
+    if(f.orig.value){ await api("/ssh-update", {...d, orig: f.orig.value}); toast(tf(`${d.host} actualizado`, `${d.host} updated`)); }
+    else { await api("/ssh-add", d); toast(tf(`${d.host} guardado`, `${d.host} saved`)); }
     f.reset(); fillSrvForm({});
     loadSsh();
   }catch(err){ toast(err.message, true); }
@@ -993,6 +1069,8 @@ async function loadConf(){
     const sndOn = conf.SOUND_ENABLED !== "0";
     $("#btn-mute").textContent = sndOn ? "🔊" : "🔇";
     $("#btn-mute").classList.toggle("on", sndOn);
+    document.querySelectorAll(".lang-btn").forEach(b=>
+      b.classList.toggle("on", (conf.CC_LANG || "auto") === b.dataset.lang));
     const voice = conf.SPEAK_DONE !== "0" || conf.SPEAK_ATTENTION !== "0";
     $("#sw-voice").classList.toggle("on", voice);
     $("#sw-voice").setAttribute("aria-checked", String(voice));
@@ -1004,14 +1082,14 @@ $("#btn-mute").addEventListener("click", async ()=>{
   const on = $("#btn-mute").textContent === "🔊";
   try{
     await api("/conf-set", {key:"SOUND_ENABLED", value: on ? "0" : "1"});
-    toast(on ? "Sonido silenciado" : "Sonido activado");
+    toast(tf(on ? "Sonido silenciado" : "Sonido activado", on ? "Sound muted" : "Sound on"));
     loadConf();
   }catch(err){ toast(err.message, true); }
 });
 $("#vol-top").addEventListener("change", async ()=>{
   try{
     await api("/conf-set", {key:"VOLUME", value:String($("#vol-top").value)});
-    toast(`Volumen ${$("#vol-top").value}% (todo el sistema)`);
+    toast(tf(`Volumen ${$("#vol-top").value}% (todo el sistema)`, `Volume ${$("#vol-top").value}% (system-wide)`));
     loadConf();
   }catch(err){ toast(err.message, true); }
 });
@@ -1023,7 +1101,7 @@ document.querySelectorAll(".cfg").forEach(b=>{
       await api("/conf-set", {key: b.dataset.key, value: on ? "1" : "0"});
       b.classList.toggle("on", on);
       b.setAttribute("aria-checked", String(on));
-      toast(`${name}: ${on ? "activado" : "apagado"} (todo el sistema)`);
+      toast(`${name}: ${tf(on ? "activado" : "apagado", on ? "on" : "off")}`);
     }catch(err){ toast(err.message, true); }
   });
 });
@@ -1038,7 +1116,7 @@ $("#new-form").addEventListener("submit", async e=>{
                  openInApp(r.session || name, "claude"); }
     else { await api("/up", {session: name}); }
     $("#new-name").value = "";
-    toast(`${name} abierto`);
+    toast(tf(`${name} abierto`, `${name} opened`));
   }catch(err){ toast(err.message, true); }
 });
 $("#btn-settings").addEventListener("click", ()=>{
@@ -1056,7 +1134,7 @@ document.addEventListener("click", e=>{
 const vol = $("#vol");
 vol.addEventListener("change", async ()=>{
   try{ await api("/conf-set", {key:"VOLUME", value:String(vol.value)});
-       toast(`Volumen ${vol.value}% (todo el sistema)`); loadConf(); }
+       toast(tf(`Volumen ${vol.value}% (todo el sistema)`, `Volume ${vol.value}% (system-wide)`)); loadConf(); }
   catch(err){ toast(err.message, true); }
 });
 // Voz: UN switch que controla ambos eventos (terminar y pedir atencion)
@@ -1067,7 +1145,7 @@ $("#sw-voice").addEventListener("click", async ()=>{
     await api("/conf-set", {key:"SPEAK_ATTENTION", value:on?"1":"0"});
     b.classList.toggle("on", on);
     b.setAttribute("aria-checked", String(on));
-    toast(`Voz: ${on ? "activada" : "apagada"}`);
+    toast(tf(`Voz: ${on ? "activada" : "apagada"}`, `Voice: ${on ? "on" : "off"}`));
   }catch(err){ toast(err.message, true); }
 });
 $("#test-voice").addEventListener("click", async ()=>{
@@ -1088,7 +1166,7 @@ function bindSwitch(id, key, cb){
     b.classList.toggle("on", S.cfg[key]);
     b.setAttribute("aria-checked", String(!!S.cfg[key]));
     const name = b.closest(".switch")?.querySelector("label")?.textContent || key;
-    toast(`${name}: ${S.cfg[key] ? "activado" : "apagado"}`);
+    toast(`${name}: ${tf(S.cfg[key] ? "activado" : "apagado", S.cfg[key] ? "on" : "off")}`);
     if(cb) cb(S.cfg[key]);
   });
 }
@@ -1108,7 +1186,7 @@ $("#tl-toggle").addEventListener("click", ()=>{
   const tl = $("#timeline");
   tl.classList.toggle("hidden");
   $("#tl-toggle").textContent = tl.classList.contains("hidden")
-    ? "Ver actividad reciente" : "Ocultar actividad";
+    ? t("Ver actividad reciente") : t("Ocultar actividad");
   if(!tl.classList.contains("hidden")) tickEvents();
 });
 setInterval(()=>{
@@ -1118,9 +1196,25 @@ setInterval(()=>{
 }, 1000);
 setInterval(tickEvents, 15000);
 
-loadPrefs().then(tick);
-loadSsh();
-loadConf();
-tickEvents();
-arm();
+document.querySelectorAll(".lang-btn").forEach(b=>{
+  b.addEventListener("click", async ()=>{
+    try{ await api("/conf-set", {key: "CC_LANG", value: b.dataset.lang}); location.reload(); }
+    catch(err){ toast(err.message, true); }
+  });
+});
+(async () => {
+  try{
+    const c = await api("/conf");
+    if(c._lang === "en") L = "en";
+  }catch(e){}
+  applyI18n();
+  if(L === "en")
+    LABEL = {waiting: "waiting for you", done: "finished", working: "working",
+             idle: "alive, idle", dead: "off"};
+  loadPrefs().then(tick);
+  loadSsh();
+  loadConf();
+  tickEvents();
+  arm();
+})();
 </script>

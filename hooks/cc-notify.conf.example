@@ -31,3 +31,6 @@ PIPER_VOICE=es_MX-ald-medium
 # Sonidos extra para notify.sh (niveles error/money)
 SOUND_ERROR=/usr/share/sounds/freedesktop/stereo/dialog-error.oga
 SOUND_MONEY=/usr/share/sounds/freedesktop/stereo/message.oga
+
+# Idioma de la UI: auto (por $LANG del sistema), es, en
+CC_LANG=auto

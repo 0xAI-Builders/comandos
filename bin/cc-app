@@ -47,6 +47,22 @@ THEMES = {
 }
 FONT = "JetBrainsMono Nerd Font 13"
 
+
+def _ui_lang():
+    """Idioma resuelto por cc-dash (CC_LANG en cc-notify.conf, o auto por $LANG)."""
+    try:
+        with urllib.request.urlopen("http://127.0.0.1:4777/conf", timeout=2) as r:
+            l = json.loads(r.read().decode()).get("_lang")
+            if l in ("es", "en"):
+                return l
+    except Exception:
+        pass
+    return "es" if os.environ.get("LANG", "").lower().startswith("es") else "en"
+
+
+UI_LANG = _ui_lang()
+ES = UI_LANG == "es"
+
 GLib.set_prgname("comandos")
 Gtk.Settings.get_default().set_property("gtk-application-prefer-dark-theme", True)
 
@@ -213,15 +229,16 @@ def feed(term, seq):
 
 
 def new_session_dialog(*_):
-    dlg = Gtk.Dialog(title="Nueva sesion", transient_for=win)
-    dlg.add_buttons("Cancelar", Gtk.ResponseType.CANCEL, "Abrir", Gtk.ResponseType.OK)
+    dlg = Gtk.Dialog(title="Nueva sesion" if ES else "New session", transient_for=win)
+    dlg.add_buttons("Cancelar" if ES else "Cancel", Gtk.ResponseType.CANCEL,
+                    "Abrir" if ES else "Open", Gtk.ResponseType.OK)
     box = dlg.get_content_area()
     box.set_property("margin", 14); box.set_spacing(8)
-    lbl = Gtk.Label(label="Proyecto de ~/codebase (abre su Claude),\n"
-                          "o cualquier nombre (terminal en blanco):", xalign=0)
+    lbl = Gtk.Label(label=("Proyecto de ~/codebase (abre su Claude),\no cualquier nombre (terminal en blanco):" if ES else
+                           "A ~/codebase project (opens its Claude),\nor any name (blank terminal):"), xalign=0)
     box.add(lbl)
     entry = Gtk.Entry()
-    entry.set_placeholder_text("nombre...")
+    entry.set_placeholder_text("nombre..." if ES else "name...")
     entry.set_activates_default(True)
     dlg.set_default_response(Gtk.ResponseType.OK)
     box.add(entry)
@@ -292,9 +309,9 @@ def export_claude_reply(term, fmt):
         return
     res, err = http_post("/export", {"session": sess, "format": fmt}, timeout=45)
     if err:
-        notify_popup("No se pudo guardar", err)
+        notify_popup("No se pudo guardar" if ES else "Could not save", err)
     else:
-        notify_popup("Respuesta guardada", (res or {}).get("path", ""))
+        notify_popup("Respuesta guardada" if ES else "Reply saved", (res or {}).get("path", ""))
 
 
 def copy_claude_reply(term):
@@ -312,11 +329,13 @@ def copy_claude_reply(term):
         if it.get("session") == sess and (it.get("detail") or it.get("last")):
             txt = it.get("detail") or it["last"]
             Gtk.Clipboard.get(Gdk.SELECTION_CLIPBOARD).set_text(txt, -1)
-            notify_popup("Respuesta copiada",
-                         f"{len(txt)} caracteres al portapapeles ({it.get('project')})")
+            notify_popup("Respuesta copiada" if ES else "Reply copied",
+                         (f"{len(txt)} caracteres al portapapeles ({it.get('project')})" if ES else
+                          f"{len(txt)} characters copied ({it.get('project')})"))
             return
-    notify_popup("Sin respuesta guardada",
-                 "Esta sesion aun no tiene una respuesta capturada por los hooks")
+    notify_popup("Sin respuesta guardada" if ES else "No reply captured",
+                 "Esta sesion aun no tiene una respuesta capturada por los hooks" if ES else
+                 "This session has no hook-captured reply yet")
 
 
 def exit_copy_mode(term):
@@ -412,47 +431,47 @@ def on_term_button(term, event):
             tmuxc("send-keys", "-t", pane_id, "-X", "copy-pipe-no-clear",
                   "xclip -in -selection clipboard 2>/dev/null")
 
-    item("Copiar                   Ctrl+C", do_copy,
+    item(("Copiar                   Ctrl+C" if ES else "Copy                     Ctrl+C"), do_copy,
          sensitive=term.get_has_selection() or in_copy)
-    item("Pegar                    Ctrl+V",
+    item(("Pegar                    Ctrl+V" if ES else "Paste                    Ctrl+V"),
          lambda: (exit_copy_mode(term), term.paste_clipboard()))
-    item("Copiar respuesta de Claude", lambda: copy_claude_reply(term))
-    item("Guardar respuesta como .txt", lambda: export_claude_reply(term, "txt"))
-    item("Guardar respuesta como PDF", lambda: export_claude_reply(term, "pdf"))
+    item("Copiar respuesta de Claude" if ES else "Copy Claude's reply", lambda: copy_claude_reply(term))
+    item("Guardar respuesta como .txt" if ES else "Save reply as .txt", lambda: export_claude_reply(term, "txt"))
+    item("Guardar respuesta como PDF" if ES else "Save reply as PDF", lambda: export_claude_reply(term, "pdf"))
     menu.append(Gtk.SeparatorMenuItem())
     if is_ssh:
         host = cur_sess[4:]
         sshcmd = f"ssh {host}"
-        item("Split derecha    (otra conexion al server)", lambda: split(["-h"], sshcmd))
-        item("Split izquierda  (otra conexion al server)", lambda: split(["-h", "-b"], sshcmd))
-        item("Split abajo      (otra conexion al server)", lambda: split(["-v"], sshcmd))
-        item("Split arriba     (otra conexion al server)", lambda: split(["-v", "-b"], sshcmd))
-        item("Split local (tu maquina, derecha)", lambda: split(["-h"]))
+        item("Split derecha    (otra conexion al server)" if ES else "Split right    (new connection to server)", lambda: split(["-h"], sshcmd))
+        item("Split izquierda  (otra conexion al server)" if ES else "Split left     (new connection to server)", lambda: split(["-h", "-b"], sshcmd))
+        item("Split abajo      (otra conexion al server)" if ES else "Split down     (new connection to server)", lambda: split(["-v"], sshcmd))
+        item("Split arriba     (otra conexion al server)" if ES else "Split up       (new connection to server)", lambda: split(["-v", "-b"], sshcmd))
+        item("Split local (tu maquina, derecha)" if ES else "Local split (your machine, right)", lambda: split(["-h"]))
     else:
-        item("Split derecha", lambda: split(["-h"]))
-        item("Split izquierda", lambda: split(["-h", "-b"]))
-        item("Split abajo", lambda: split(["-v"]))
-        item("Split arriba", lambda: split(["-v", "-b"]))
-    item("Alternar ventana 1/2     Ctrl-b l", lambda: feed(term, b"\x02l"))
-    item("Cerrar ESTE split",
+        item("Split derecha" if ES else "Split right", lambda: split(["-h"]))
+        item("Split izquierda" if ES else "Split left", lambda: split(["-h", "-b"]))
+        item("Split abajo" if ES else "Split down", lambda: split(["-v"]))
+        item("Split arriba" if ES else "Split up", lambda: split(["-v", "-b"]))
+    item("Alternar ventana 1/2     Ctrl-b l" if ES else "Toggle window 1/2        Ctrl-b l", lambda: feed(term, b"\x02l"))
+    item("Cerrar ESTE split" if ES else "Close THIS split",
          lambda: tmuxc("kill-pane", "-t", pane_id),
          sensitive=bool(pane_id) and npanes > 1)
     menu.append(Gtk.SeparatorMenuItem())
-    item("Nueva terminal aqui       Ctrl+T", new_local_tab)
-    item("Abrir proyecto...", new_session_dialog)
+    item("Nueva terminal aqui       Ctrl+T" if ES else "New terminal here         Ctrl+T", new_local_tab)
+    item("Abrir proyecto..." if ES else "Open project...", new_session_dialog)
     sub = Gtk.Menu()
     r = tmuxc("list-sessions", "-F", "#{session_name}")
     for s in (r.stdout.split() if r.returncode == 0 else []):
         si = Gtk.MenuItem(label=s)
         si.connect("activate", lambda _w, s=s: open_tab(s, "claude"))
         sub.append(si)
-    mi = Gtk.MenuItem(label="Abrir sesion existente")
+    mi = Gtk.MenuItem(label="Abrir sesion existente" if ES else "Open existing session")
     mi.set_submenu(sub)
     menu.append(mi)
     menu.append(Gtk.SeparatorMenuItem())
     key = getattr(box, "_key", None)
-    item("Renombrar pestana...", lambda: rename_tab(key), sensitive=key is not None)
-    item("Cerrar pestana", lambda: close_tab(key), sensitive=key is not None)
+    item("Renombrar pestana..." if ES else "Rename tab...", lambda: rename_tab(key), sensitive=key is not None)
+    item("Cerrar pestana" if ES else "Close tab", lambda: close_tab(key), sensitive=key is not None)
     menu.show_all()
     menu.popup_at_pointer(event)
     term._menu = menu
@@ -679,7 +698,8 @@ def fuzzy_score(q, s):
 
 
 SW_ORDER = {"waiting": 0, "done": 1, "working": 2}
-SW_HINT = {"waiting": "espera TU respuesta", "working": "trabajando", "done": "listo"}
+SW_HINT = ({"waiting": "espera TU respuesta", "working": "trabajando", "done": "listo"} if ES else
+           {"waiting": "waiting for YOU", "working": "working", "done": "done"})
 
 
 def open_switcher(*_):
@@ -698,7 +718,8 @@ def open_switcher(*_):
     v = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
     v.set_property("margin", 12)
     entry = Gtk.Entry()
-    entry.set_placeholder_text("Salta a...  (parte del nombre, Enter va a la primera)")
+    entry.set_placeholder_text("Salta a...  (parte del nombre, Enter va a la primera)" if ES else
+                                "Jump to...  (type part of a name, Enter opens the first)")
     v.pack_start(entry, False, False, 0)
     lb = Gtk.ListBox()
     lb.set_activate_on_single_click(True)
@@ -738,7 +759,7 @@ def open_switcher(*_):
             d.set_markup(f'<span size="9000" foreground="{DOT_COLORS.get(st, DOT_IDLE)}">●</span>')
             h.pack_start(d, False, False, 0)
             h.pack_start(Gtk.Label(label=label, xalign=0), True, True, 0)
-            hint = SW_HINT.get(st, "") + ("" if is_open else "   [abrir]")
+            hint = SW_HINT.get(st, "") + ("" if is_open else ("   [abrir]" if ES else "   [open]"))
             m = Gtk.Label(label=hint.strip(), xalign=1)
             m.get_style_context().add_class("sw-meta")
             h.pack_end(m, False, False, 0)
@@ -794,11 +815,12 @@ def rename_tab(key):
     box = tabs.get(key)
     if box is None:
         return
-    dlg = Gtk.Dialog(title="Renombrar pestana", transient_for=win)
-    dlg.add_buttons("Cancelar", Gtk.ResponseType.CANCEL, "Renombrar", Gtk.ResponseType.OK)
+    dlg = Gtk.Dialog(title="Renombrar pestana" if ES else "Rename tab", transient_for=win)
+    dlg.add_buttons("Cancelar" if ES else "Cancel", Gtk.ResponseType.CANCEL,
+                    "Renombrar" if ES else "Rename", Gtk.ResponseType.OK)
     area = dlg.get_content_area()
     area.set_property("margin", 14); area.set_spacing(8)
-    area.add(Gtk.Label(label="Nombre de la pestana:", xalign=0))
+    area.add(Gtk.Label(label="Nombre de la pestana:" if ES else "Tab name:", xalign=0))
     entry = Gtk.Entry()
     entry.set_text(getattr(box, "_label", key))
     entry.set_activates_default(True)
@@ -843,24 +865,24 @@ _actions = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=2)
 _copy = Gtk.Button(label="⧉")
 _copy.get_style_context().add_class("tabplus")
 _copy.set_relief(Gtk.ReliefStyle.NONE)
-_copy.set_tooltip_text("Copiar la ultima respuesta de Claude de ESTA pestana")
+_copy.set_tooltip_text("Copiar la ultima respuesta de Claude de ESTA pestana" if ES else "Copy Claude's latest reply from THIS tab")
 _copy.connect("clicked", lambda *_: cur_term() and copy_claude_reply(cur_term()))
 _actions.pack_start(_copy, False, False, 0)
 _find = Gtk.Button(label="⌕")
 _find.get_style_context().add_class("tabplus")
 _find.set_relief(Gtk.ReliefStyle.NONE)
-_find.set_tooltip_text("Saltar a una pestana/sesion (Ctrl+K)")
+_find.set_tooltip_text("Saltar a una pestana/sesion (Ctrl+K)" if ES else "Jump to a tab/session (Ctrl+K)")
 _find.connect("clicked", open_switcher)
 _actions.pack_start(_find, False, False, 0)
 _plus = Gtk.Button(label="+")
 _plus.get_style_context().add_class("tabplus")
 _plus.set_relief(Gtk.ReliefStyle.NONE)
-_plus.set_tooltip_text("Nueva terminal en el directorio actual (Ctrl+T)")
+_plus.set_tooltip_text("Nueva terminal en el directorio actual (Ctrl+T)" if ES else "New terminal in the current directory (Ctrl+T)")
 _plus.connect("clicked", new_local_tab)
 _help = Gtk.Button(label="?")
 _help.get_style_context().add_class("tabplus")
 _help.set_relief(Gtk.ReliefStyle.NONE)
-_help.set_tooltip_text("Ver todos los atajos (? o F1)")
+_help.set_tooltip_text("Ver todos los atajos (? o F1)" if ES else "All shortcuts (? or F1)")
 _help.connect("clicked", lambda *_: show_help())
 _actions.pack_start(_plus, False, False, 0)
 _actions.pack_start(_help, False, False, 0)
@@ -916,7 +938,7 @@ def cur_term():
     return getattr(page, "_term", None)
 
 
-SHORTCUTS = [
+SHORTCUTS_ES = [
     ("Ventana ComandOS", [
         ("? / F1", "Esta ayuda"),
         ("Ctrl+K", "Saltar a cualquier pestana/sesion (escribe y Enter)"),
@@ -932,7 +954,7 @@ SHORTCUTS = [
         ("Ctrl+V", "Pegar del sistema"),
         ("Ctrl+C", "Copiar (si hay seleccion) / interrumpir"),
         ("Seleccionar con mouse", "Copia al portapapeles automaticamente"),
-        ("Ctrl+click en URL", "Abrir el enlace en el navegador"),
+        ("Click en URL", "Abrir el enlace en el navegador"),
         ("Click derecho", "Copiar, pegar, splits, renombrar pestana, cerrar"),
     ]),
     ("Splits y ventanas (tmux)", [
@@ -954,13 +976,52 @@ SHORTCUTS = [
         ("/ls  /out  /run  /servers", "Estado, pantalla, ejecutar, conectar"),
     ]),
 ]
+SHORTCUTS_EN = [
+    ("ComandOS window", [
+        ("? / F1", "This help"),
+        ("Ctrl+K", "Jump to any tab/session (type and Enter)"),
+        ("Ctrl+T", "New terminal in the current directory"),
+        ("Ctrl+Shift+W", "Close the current tab"),
+        ("Ctrl+PgUp / PgDn", "Switch tabs"),
+        ("F12", "Show / hide terminals"),
+        ("F5", "Reload the dashboard"),
+        ("Ctrl+Shift + / - / 0", "Terminal font zoom"),
+        ("Ctrl+Q", "Quit"),
+    ]),
+    ("Terminal (clipboard)", [
+        ("Ctrl+V", "Paste from system clipboard"),
+        ("Ctrl+C", "Copy (if selected) / interrupt"),
+        ("Mouse selection", "Copies to clipboard automatically"),
+        ("Click a URL", "Open the link in your browser"),
+        ("Right click", "Copy, paste, splits, rename tab, close"),
+    ]),
+    ("Splits and windows (tmux)", [
+        ("Right click -> Split", "Right / left / down / up"),
+        ("Alt+arrows", "Move between splits"),
+        ("Ctrl-b l", "Toggle claude / shell window"),
+        ("Ctrl-b z", "Zoom split (full screen)"),
+        ("Ctrl-b [", "Scroll mode (q to exit)"),
+        ("Ctrl-b ]", "Paste from system clipboard"),
+    ]),
+    ("Global (whole desktop)", [
+        ("Super+N", "Jump to the most urgent session"),
+        ("Super+T", "Bring the terminal to front"),
+        ("Super+C", "Bring / open ComandOS"),
+    ]),
+    ("Telegram", [
+        ("[1][2][3] buttons", "Answer permission prompts"),
+        ("Reply to a notification", "Send an instruction to that project"),
+        ("/ls  /out  /run  /servers", "Status, screen, run, connect"),
+    ]),
+]
+SHORTCUTS = SHORTCUTS_ES if ES else SHORTCUTS_EN
 
 
 def show_help(*_):
     if getattr(show_help, "_win", None):
         show_help._win.present()
         return
-    w = Gtk.Window(title="Atajos de ComandOS")
+    w = Gtk.Window(title="Atajos de ComandOS" if ES else "ComandOS shortcuts")
     w.set_transient_for(win)
     w.set_default_size(640, 720)
     w.set_position(Gtk.WindowPosition.CENTER_ON_PARENT)
@@ -970,7 +1031,7 @@ def show_help(*_):
     outer = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=4)
     outer.set_property("margin", 22)
     title = Gtk.Label(xalign=0)
-    title.set_markup("<span size='16000' weight='bold'>Atajos de teclado</span>")
+    title.set_markup("<span size='16000' weight='bold'>" + ("Atajos de teclado" if ES else "Keyboard shortcuts") + "</span>")
     title.get_style_context().add_class("help-h")
     outer.pack_start(title, False, False, 0)
     for section, rows in SHORTCUTS:
@@ -991,8 +1052,11 @@ def show_help(*_):
             grid.attach(d, 1, i, 1, 1)
         outer.pack_start(grid, False, False, 0)
     hint = Gtk.Label(xalign=0)
-    hint.set_markup("<span size='9000'>Ctrl-b es el 'prefix' de tmux: sueltas y "
-                    "luego tecleas la letra.  Esc o ? cierra esta ventana.</span>")
+    hint.set_markup("<span size='9000'>" + (
+        "Ctrl-b es el 'prefix' de tmux: sueltas y luego tecleas la letra.  "
+        "Esc o ? cierra esta ventana." if ES else
+        "Ctrl-b is the tmux 'prefix': release it, then type the letter.  "
+        "Esc or ? closes this window.") + "</span>")
     hint.get_style_context().add_class("help-hint")
     hint.set_margin_top(20)
     outer.pack_start(hint, False, False, 0)
