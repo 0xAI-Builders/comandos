@@ -24,6 +24,8 @@ for f in index.html sw.js manifest.webmanifest icon-192.png icon-512.png; do
 done
 [ -f "$HOOKS/cc-notify.conf" ] || cp "$REPO/hooks/cc-notify.conf.example" "$HOOKS/cc-notify.conf"
 [ -f "$HOOKS/telegram.env" ]   || cp "$REPO/hooks/telegram.env.example"   "$HOOKS/telegram.env"
+# Secretos (token de bot, config): solo el dueno (0600)
+chmod 600 "$HOOKS/telegram.env" "$HOOKS/cc-notify.conf" 2>/dev/null || true
 
 # Config de terminal
 ln -sf "$REPO/config/kitty.conf" "$HOME/.config/kitty/kitty.conf"

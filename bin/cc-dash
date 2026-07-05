@@ -580,13 +580,18 @@ def ssh_add(d):
     identity = d.get("identity", "").strip()
     if not SSH_HOST_RE.match(host):
         return "Alias invalido (letras, numeros, . _ -)"
-    if not SSH_HOSTNAME_RE.match(hostname):
+    # Rechazo explicito de saltos de linea y control chars (defensa extra
+    # ante el '$' de re que tolera un \n final): ni una directiva inyectada.
+    for v in (hostname, user, port, identity):
+        if any(c in v for c in "\r\n\x00") or any(ord(c) < 32 for c in v):
+            return "Caracteres no permitidos"
+    if not SSH_HOSTNAME_RE.fullmatch(hostname):
         return "Hostname/IP invalido"
-    if user and not SSH_USER_RE.match(user):
+    if user and not SSH_USER_RE.fullmatch(user):
         return "Usuario invalido"
     if port and not (port.isdigit() and 1 <= int(port) <= 65535):
         return "Puerto invalido"
-    if identity and not SSH_PATH_RE.match(identity):
+    if identity and not SSH_PATH_RE.fullmatch(identity):
         return "Ruta de llave invalida"
     if any(h["host"] == host for h in parse_ssh_config()):
         return f"'{host}' ya existe en ~/.ssh/config"
@@ -883,15 +888,24 @@ class Handler(http.server.SimpleHTTPRequestHandler):
 
     def _security_gate(self):
         """Devuelve None si la peticion puede continuar, o (code, obj) si se
-        rechaza. Capas: (1) Host allowlist anti DNS-rebinding; (2) token
-        obligatorio para peticiones remotas o proxeadas por tailscale serve.
-        Localhost DIRECTO (app y navegador local) no necesita token."""
-        # (1) Host header: bloquea que un sitio web haga DNS-rebinding a 127.0.0.1
+        rechaza. Capas:
+          (1) Host allowlist -> bloquea DNS-rebinding a 127.0.0.1.
+          (2) Origin allowlist -> bloquea CSRF drive-by: un sitio web puede
+              hacer fetch a 127.0.0.1 (peticion 'simple', sin preflight) y
+              llegaria como loopback; pero el navegador SIEMPRE manda Origin
+              en cross-origin, y ahi lo rechazamos.
+          (3) Token para remoto/proxeado (tailscale serve pone X-Forwarded-For).
+        Localhost DIRECTO de un cliente NO-navegador (sin Origin) no necesita
+        token: la app GTK y el propio navegador local (Origin propio) pasan."""
         host = self.headers.get("Host", "")
         if host and not HOST_OK_RE.match(host):
             return 403, {"error": "Host no permitido"}
-        # (2) Local directo = de confianza. Proxeado (tailscale serve pone
-        # X-Forwarded-For) o remoto = exige token de acceso.
+        origin = self.headers.get("Origin", "")
+        if origin:
+            import urllib.parse
+            oh = urllib.parse.urlparse(origin).netloc
+            if not oh or not HOST_OK_RE.match(oh):
+                return 403, {"error": "Origen no permitido"}
         proxied = bool(self.headers.get("X-Forwarded-For"))
         if self._peer_is_loopback() and not proxied:
             return None

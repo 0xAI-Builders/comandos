@@ -553,6 +553,10 @@ function shortPath(cwd){
 }
 // Mini-markdown seguro: escapa TODO y luego aplica negritas, codigo, headers,
 // bullets y links (solo el texto). Suficiente para previews de Claude.
+// SEGURIDAD: escapamos &<> ANTES de aplicar markup, y NUNCA metemos texto del
+// agente en un atributo ni en un href (los links solo conservan su texto). No
+// romper esta invariante: si algun dia se emite <a href> con la URL, se vuelve
+// inyectable. Por eso mdHtml es XSS-safe.
 function mdEsc(s){return (s||"").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");}
 function mdInline(l){
   return l.replace(/\*\*(.+?)\*\*/g, "<b>$1</b>")

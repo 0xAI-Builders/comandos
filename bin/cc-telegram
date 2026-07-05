@@ -132,11 +132,24 @@ HELP = ("ComandOS por Telegram:\n"
         "- /servers = conectar servidores")
 
 
-def handle_update(token, chat_id, allowed_user, u):
-    # ---- Candado de identidad: SOLO TELEGRAM_ALLOWED_USER ----
-    frm = (u.get("callback_query") or u.get("message") or {}).get("from", {})
-    if (frm.get("username") or "").lower() != allowed_user:
+def handle_update(token, chat_id, allowed_user, allowed_id, u):
+    # ---- Candado de identidad (aplica a mensajes Y callbacks por igual) ----
+    # Preferimos el ID numerico (inmutable); el username es cambiable/reclamable.
+    # El chat_id (el chat privado del dueno con el bot) es un segundo candado
+    # que TAMBIEN se exige a los botones. Sin config valida: fail-closed.
+    src = u.get("callback_query") or u.get("message") or {}
+    frm = src.get("from", {})
+    chat = (src.get("message", {}) if "callback_query" in u else src).get("chat", {})
+    if str(chat.get("id")) != str(chat_id):
         return
+    if allowed_id:
+        if str(frm.get("id")) != str(allowed_id):
+            return
+    elif allowed_user:
+        if (frm.get("username") or "").lower() != allowed_user:
+            return
+    else:
+        return   # sin identidad configurada: no operar (fail-closed)
 
     if "callback_query" in u:
         cq = u["callback_query"]
@@ -159,7 +172,7 @@ def handle_update(token, chat_id, allowed_user, u):
         return
 
     msg = u.get("message")
-    if not msg or str(msg.get("chat", {}).get("id")) != str(chat_id):
+    if not msg:
         return
     text = (msg.get("text") or "").strip()
     if not text:
@@ -247,8 +260,13 @@ def main():
     token = env.get("CC_TELEGRAM_BOT_TOKEN", "")
     chat_id = env.get("TELEGRAM_CHAT_ID", "")
     allowed_user = (env.get("TELEGRAM_ALLOWED_USER", "") or "").lstrip("@").lower()
+    allowed_id = (env.get("TELEGRAM_ALLOWED_USER_ID", "") or "").strip()
     if not token or not chat_id:
         print("Falta CC_TELEGRAM_BOT_TOKEN o TELEGRAM_CHAT_ID en telegram.env")
+        return 0
+    if not allowed_id and not allowed_user:
+        print("Falta TELEGRAM_ALLOWED_USER_ID (recomendado) o TELEGRAM_ALLOWED_USER;\n"
+              "sin identidad configurada NO se opera nada (fail-closed).")
         return 0
     try:
         info = api(token, "getWebhookInfo", timeout=15)
@@ -258,7 +276,8 @@ def main():
     except Exception as e:
         print(f"Telegram no responde: {e}")
         return 1
-    print(f"cc-telegram activo: botones y comandos SOLO para @{allowed_user}")
+    who = f"id {allowed_id}" if allowed_id else f"@{allowed_user}"
+    print(f"cc-telegram activo: botones y comandos SOLO para {who}")
     offset = 0
     while True:
         try:
@@ -268,7 +287,7 @@ def main():
             for u in res.get("result", []):
                 offset = max(offset, u["update_id"] + 1)
                 try:
-                    handle_update(token, chat_id, allowed_user, u)
+                    handle_update(token, chat_id, allowed_user, allowed_id, u)
                 except Exception as e:
                     print(f"error en update: {e}", file=sys.stderr)
         except KeyboardInterrupt:
