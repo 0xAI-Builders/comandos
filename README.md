@@ -10,6 +10,8 @@ and Telegram remote control. You answer with one keystroke and move on.
 
 **[Léeme en español →](./README.es.md)**
 
+![ComandOS — mission control for parallel Claude Code agents](.github/media/dashboard.png)
+
 ## Why
 
 When you run 10 Claude Codes at once, the problem isn't terminals — it's **knowing

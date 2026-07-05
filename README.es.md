@@ -10,6 +10,8 @@ control remoto desde Telegram. Respondes con una tecla y sigues.
 
 **[Read it in English →](./README.md)**
 
+![ComandOS — mission control for parallel Claude Code agents](.github/media/dashboard.png)
+
 ## Por qué
 
 Cuando corres 10 Claude Codes a la vez, el problema no son las terminales: es
