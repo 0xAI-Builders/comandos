@@ -53,12 +53,14 @@ Abre **ComandOS** desde el menú de apps o el tablero en <http://127.0.0.1:4777>
 | Agente | Integración | Qué obtienes |
 |---|---|---|
 | **Claude Code** | hooks nativos (auto vía `install.sh`) | working · waiting **con opciones reales** · done · respuesta completa |
-| **Codex CLI** | hook `notify` (`cc-agents setup`) | turno terminado + último mensaje |
+| **Codex CLI** | hooks lifecycle + fallback `notify` (`cc-agents setup`) | working · waiting por permisos · done + ultimo mensaje |
 | **OpenCode** | plugin (`cc-agents setup`) | working · waiting · errores · done |
 | **Gemini CLI** | hooks (`cc-agents setup`) | working · waiting · done · respuesta completa |
 | **Antigravity CLI** (`agy`) | hooks (`cc-agents setup`) | working · done — verificado con sesión real |
 
 Un comando conecta todo lo que tengas instalado: **`cc-agents setup`**.
+Si Codex te pide revisar hooks nuevos, abre `/hooks` en Codex y confia una vez
+en el hook de ComandOS.
 Cualquier otro agente entra con una llamada HTTP:
 `POST 127.0.0.1:4777/event {"agent","event","cwd","msg?","full?"}`.
 

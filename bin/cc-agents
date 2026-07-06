@@ -14,13 +14,15 @@ warn(){ printf '  \033[33m!\033[0m %s\n' "$1"; }
 setup_codex() {
   command -v codex >/dev/null || { no "codex: no instalado"; return; }
   local cfg="$HOME/.codex/config.toml"
+  local hj="$HOME/.codex/hooks.json"
   mkdir -p "$HOME/.codex"; touch "$cfg"
-  if grep -q "codex-notify.sh" "$cfg" 2>/dev/null; then ok "codex: notify ya configurado"; return; fi
-  if grep -q "^notify" "$cfg" 2>/dev/null; then
-    warn "codex: ya tienes OTRO notify en $cfg — agrega a mano: $AD/codex-notify.sh"; return
-  fi
-  # notify es clave top-level: debe ir ANTES de la primera [seccion]
-  python3 - "$cfg" "$AD/codex-notify.sh" <<'PY'
+  if grep -q "codex-notify.sh" "$cfg" 2>/dev/null; then
+    ok "codex: notify fallback ya configurado"
+  elif grep -q "^notify" "$cfg" 2>/dev/null; then
+    warn "codex: ya tienes OTRO notify en $cfg — dejo solo hooks lifecycle"
+  else
+    # notify es clave top-level: debe ir ANTES de la primera [seccion]
+    python3 - "$cfg" "$AD/codex-notify.sh" <<'PY'
 import sys
 cfg, script = sys.argv[1], sys.argv[2]
 s = open(cfg).read()
@@ -29,7 +31,64 @@ i = s.find("\n[")
 s = (s[:i+1] + line + s[i+1:]) if i >= 0 else (s + ("" if s.endswith("\n") or not s else "\n") + line)
 open(cfg, "w").write(s)
 PY
-  ok "codex: notify -> adapters/codex-notify.sh (turnos terminados llegan a ComandOS)"
+    ok "codex: notify fallback -> adapters/codex-notify.sh"
+  fi
+
+  [ -f "$hj" ] || printf '{"hooks":{}}\n' > "$hj"
+  python3 - "$hj" "$AD/codex-hooks.sh" <<'PY'
+import json
+import sys
+
+path, script = sys.argv[1], sys.argv[2]
+try:
+    with open(path) as f:
+        data = json.load(f)
+except Exception:
+    data = {}
+if not isinstance(data, dict):
+    data = {}
+hooks = data.setdefault("hooks", {})
+if not isinstance(hooks, dict):
+    hooks = {}
+    data["hooks"] = hooks
+
+changed = False
+
+def add(event, matcher=None):
+    global changed
+    groups = hooks.setdefault(event, [])
+    if not isinstance(groups, list):
+        groups = []
+        hooks[event] = groups
+    for group in groups:
+        if not isinstance(group, dict):
+            continue
+        for hook in group.get("hooks", []):
+            if isinstance(hook, dict) and hook.get("type") == "command" and hook.get("command") == script:
+                return
+    group = {
+        "hooks": [{
+            "type": "command",
+            "command": script,
+            "timeout": 30,
+            "statusMessage": "ComandOS"
+        }]
+    }
+    if matcher is not None:
+        group["matcher"] = matcher
+    groups.append(group)
+    changed = True
+
+add("UserPromptSubmit")
+add("PermissionRequest", "*")
+add("Stop")
+
+if changed:
+    with open(path, "w") as f:
+        json.dump(data, f, indent=2)
+        f.write("\n")
+PY
+  ok "codex: lifecycle hooks -> adapters/codex-hooks.sh (working/waiting/done)"
 }
 
 setup_opencode() {
@@ -80,6 +139,24 @@ status_one() { # $1=nombre $2=binario $3=indicador $4=archivo
   else warn "$1: instalado pero SIN conectar (corre: cc-agents setup)"; fi
 }
 
+status_codex() {
+  if ! command -v codex >/dev/null; then no "codex: no instalado"; return; fi
+  local cfg="$HOME/.codex/config.toml"
+  local hj="$HOME/.codex/hooks.json"
+  local has_notify=0 has_hooks=0
+  [ -e "$cfg" ] && grep -q "codex-notify.sh" "$cfg" 2>/dev/null && has_notify=1
+  [ -e "$hj" ] && grep -q "codex-hooks.sh" "$hj" 2>/dev/null && has_hooks=1
+  if [ "$has_hooks" -eq 1 ]; then
+    if [ "$has_notify" -eq 1 ]; then ok "codex: conectado (hooks lifecycle + notify fallback)"
+    else ok "codex: conectado (hooks lifecycle)"
+    fi
+  elif [ "$has_notify" -eq 1 ]; then
+    warn "codex: solo notify legacy (corre: cc-agents setup para cards)"
+  else
+    warn "codex: instalado pero SIN conectar (corre: cc-agents setup)"
+  fi
+}
+
 case "${1:-status}" in
   setup)
     echo "Conectando agentes a ComandOS:"
@@ -94,7 +171,7 @@ case "${1:-status}" in
   *)
     echo "Integraciones de agentes:"
     ok "claude: hooks nativos"
-    status_one codex codex "codex-notify.sh" "$HOME/.codex/config.toml"
+    status_codex
     status_one opencode opencode "comandos" "$HOME/.config/opencode/plugin/comandos.js"
     status_one gemini gemini "gemini-hooks.sh" "$HOME/.gemini/settings.json"
     status_one "antigravity (agy)" agy "agy-hooks.sh" "$HOME/.gemini/antigravity-cli/hooks.json"
