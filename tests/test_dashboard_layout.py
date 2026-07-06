@@ -24,5 +24,17 @@ def test_split_left_panel_is_the_scroll_container():
     assert "flex:none" in content
 
 
+def test_desktop_panel_has_a_real_content_scroller():
+    panes = rule("#panes")
+    assert "display:flex" in panes
+    assert "flex-direction:column" in panes
+
+    panel = rule("#view-panel")
+    assert "display:flex" in panel
+    assert "flex-direction:column" in panel
+    assert "min-height:0" in panel
+
+
 if __name__ == "__main__":
     test_split_left_panel_is_the_scroll_container()
+    test_desktop_panel_has_a_real_content_scroller()
