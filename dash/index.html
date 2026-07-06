@@ -733,7 +733,8 @@ function wireActions(el, it){
     term.classList.toggle("hidden", !WEBTERM);
     term.addEventListener("click", e=>{
       e.stopPropagation();
-      window.open(`/term/?arg=${encodeURIComponent(el.dataset.session)}`, "_blank");
+      // Terminal web en su propio puerto https (8443), raiz — sin subpath.
+      window.open(`https://${location.hostname}:8443/?arg=${encodeURIComponent(el.dataset.session)}`, "_blank");
     });
   }
 }

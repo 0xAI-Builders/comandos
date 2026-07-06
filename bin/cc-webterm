@@ -32,7 +32,7 @@ case "${1:-on}" in
   off) stop; ok "Terminal web detenido."; exit 0 ;;
   status)
     if pgrep -f "ttyd.*cc-webterm-attach" >/dev/null; then
-      ok "Terminal web corriendo en 127.0.0.1:$PORT (ruta /term)"
+      ok "Terminal web corriendo en 127.0.0.1:$PORT (puerto https 8443)"
     else echo "Terminal web apagado."; fi
     exit 0 ;;
 esac
@@ -59,9 +59,10 @@ stop; sleep 0.3
 # -i 127.0.0.1  solo loopback (tailscale serve hace de puente hacia el tailnet)
 # -c            credencial basic-auth = el token de ComandOS
 # -W            writable (interactivo); --url-arg deja elegir sesion por ?arg=
-# -b /term      base path para que los assets carguen detras del proxy
+# SIN base-path: ttyd sirve en raiz; cc-mobile lo expone en su PROPIO puerto
+# https (8443), asi los assets cargan sin lios de prefijo detras del proxy.
 # -t ...        tema oscuro + fuente comoda en el celular
-ttyd -i 127.0.0.1 -p "$PORT" -b /term -W --url-arg \
+ttyd -i 127.0.0.1 -p "$PORT" -W --url-arg \
   -c "comandos:$TOKEN" \
   -t 'theme={"background":"#0A0D13","foreground":"#EAF0FB","cursor":"#FFAE1A"}' \
   -t fontSize=15 -t 'fontFamily=JetBrainsMono Nerd Font, monospace' \
@@ -69,7 +70,7 @@ ttyd -i 127.0.0.1 -p "$PORT" -b /term -W --url-arg \
 echo $! > "$PIDF"
 sleep 0.4
 if pgrep -f "ttyd.*cc-webterm-attach" >/dev/null; then
-  ok "Terminal web listo en 127.0.0.1:$PORT (ruta /term)."
+  ok "Terminal web listo en 127.0.0.1:$PORT (puerto https 8443)."
   echo "  Exponlo al celular con:  cc-mobile   (lo enruta por https del tailnet)"
   echo "  Usuario: comandos   ·   Password: tu token de acceso"
 else
