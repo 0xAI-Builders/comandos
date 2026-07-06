@@ -368,7 +368,10 @@
       grid-template-areas:"panel split tabs" "panel split term"}
     body.app.split #tabbar{grid-area:tabs;position:relative;inset:auto;top:auto}
     body.app.split #view-panel{grid-area:panel;position:relative;inset:auto;top:auto;
-      display:flex;min-width:0;border-right:1px solid var(--line);overflow:hidden}
+      display:flex;min-width:0;min-height:0;border-right:1px solid var(--line);
+      overflow-y:auto;overflow-x:hidden;-webkit-overflow-scrolling:touch;
+      overscroll-behavior:contain}
+    body.app.split #view-panel #content{flex:none;min-height:auto;overflow:visible}
     body.app.split #term-area{grid-area:term;position:relative;inset:auto;top:auto;
       display:block;min-width:0;overflow:hidden;
       scrollbar-width:thin;scrollbar-color:var(--line2) var(--bg)}
