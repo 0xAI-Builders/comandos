@@ -30,7 +30,7 @@ case "${1:-on}" in
     exit 0 ;;
   status)
     echo "Tailscale:"; tailscale status 2>&1 | head -3
-    echo; echo "Serve:"; tailscale serve status 2>&1 | head -8
+    echo; echo "Serve:"; tailscale serve status 2>&1 | head -16
     exit 0 ;;
 esac
 
@@ -55,6 +55,7 @@ TOKEN=$(cat "$TOKEN_FILE")
 
 # 4) Terminal web REAL (interactiva) de las sesiones, si ttyd esta instalado
 WEBTERM_PORT="${CC_WEBTERM_PORT:-4779}"
+WEBTERM_PATH_PORT="${CC_WEBTERM_PATH_PORT:-4780}"
 if command -v ttyd >/dev/null 2>&1; then
   cc-webterm >/dev/null 2>&1 || true
 fi
@@ -66,8 +67,20 @@ serve_path() { # $1=ruta $2=puerto
     || tailscale serve --bg --set-path="$1" "http://127.0.0.1:$2" >/dev/null 2>&1 \
     || tailscale serve --https=443 "$1" "http://127.0.0.1:$2" >/dev/null 2>&1
 }
+serve_url() { # $1=ruta $2=url
+  tailscale serve --bg --https=443 --set-path="$1" "$2" >/dev/null 2>&1 \
+    || tailscale serve --bg --set-path="$1" "$2" >/dev/null 2>&1 \
+    || tailscale serve --https=443 "$1" "$2" >/dev/null 2>&1
+}
 serve_path / "$PORT" || die "No pude configurar Tailscale Serve. Revisa: tailscale serve status"
-# Terminal web en su PROPIO puerto https (8443, raiz) — sin lios de subpath.
+# Terminal web same-origin para el dashboard remoto: https://host/term.
+# El backend ttyd escucha con base path /term, asi sus assets/websocket resuelven bien.
+if curl -s -m 2 "http://127.0.0.1:$WEBTERM_PATH_PORT/term/token" >/dev/null 2>&1; then
+  # Tailscale Serve quita el prefijo externo /term; por eso el target tambien
+  # incluye /term, para que ttyd reciba la ruta que espera.
+  serve_url /term "http://127.0.0.1:$WEBTERM_PATH_PORT/term" || true
+fi
+# Fallback historico: terminal web en su PROPIO puerto https (8443, raiz).
 if pgrep -f "ttyd.*cc-webterm-attach" >/dev/null 2>&1; then
   tailscale serve --bg --https=8443 "http://127.0.0.1:$WEBTERM_PORT" >/dev/null 2>&1 \
     || tailscale serve --https=8443 "http://127.0.0.1:$WEBTERM_PORT" >/dev/null 2>&1 || true
@@ -83,7 +96,7 @@ URL="https://$HOST/?token=$TOKEN"
 echo
 ok "Tablero expuesto a TU tailnet (cifrado, privado, con TLS)."
 if pgrep -f "ttyd.*cc-webterm-attach" >/dev/null 2>&1; then
-  ok "Terminal web REAL activo: https://$HOST:8443 (solo tu tailnet)"
+  ok "Terminal web REAL activo: https://$HOST/term (fallback: https://$HOST:8443)"
 else
   echo "  (Terminal web interactiva: instala 'ttyd' y corre cc-webterm para tenerla)"
 fi

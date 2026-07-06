@@ -319,8 +319,13 @@
     background:linear-gradient(180deg,var(--panel) 0%,var(--bg) 100%);
     border-bottom:1px solid var(--line);box-shadow:0 2px 10px rgba(0,0,0,.25);
     padding:env(safe-area-inset-top) 8px 0;overflow-x:auto;overflow-y:hidden;
-    -webkit-overflow-scrolling:touch;scrollbar-width:none}
-  body.app #tabbar::-webkit-scrollbar{display:none}
+    -webkit-overflow-scrolling:touch;scrollbar-width:thin;scrollbar-color:var(--line2) transparent}
+  body.app #tabbar::-webkit-scrollbar{height:8px}
+  body.app #tabbar::-webkit-scrollbar-track{background:transparent}
+  body.app #tabbar::-webkit-scrollbar-thumb{background:var(--line2);border-radius:8px;
+    border:2px solid transparent;background-clip:padding-box}
+  body.app #tabbar::-webkit-scrollbar-thumb:hover{background:var(--brand);background-clip:padding-box}
+  body.app.dragging{user-select:none;cursor:col-resize}
   .apptab{position:relative;display:flex;align-items:center;gap:8px;white-space:nowrap;
     padding:11px 14px 10px;font-family:var(--mono);font-size:12px;color:var(--dim);
     cursor:pointer;flex:none;max-width:200px;letter-spacing:.02em;
@@ -339,6 +344,7 @@
   .apptab.plus:hover{color:var(--brand)}
   #panes{flex:1;min-height:0;position:relative}
   #term-area{display:none}
+  #splitter{display:none}
   /* --- ANGOSTO (celular): tabs arriba a todo lo ancho; panel O terminal a
          pantalla completa, se cambia con las tabs --- */
   body.app #panes{display:block}
@@ -348,7 +354,7 @@
   body.app #view-panel.on{display:flex}
   body.app #view-panel #topbar{flex:none}
   body.app #view-panel #content{flex:1;min-height:0;overflow-y:auto}
-  body.app #term-area{display:none}
+  body.app #term-area{display:none;overflow:hidden;background:var(--bg)}
   body.app #term-area.on{display:block}
   .termpane{position:absolute;inset:0;display:none;border:0;width:100%;height:100%;
     background:var(--bg)}
@@ -358,13 +364,28 @@
          abajo a la derecha. --- */
   @media (min-width:900px){
     body.app.split #panes{display:grid;
-      grid-template-columns:380px 1fr;grid-template-rows:auto 1fr;
-      grid-template-areas:"panel tabs" "panel term"}
+      grid-template-columns:var(--split-left,380px) 8px minmax(0,1fr);grid-template-rows:auto 1fr;
+      grid-template-areas:"panel split tabs" "panel split term"}
     body.app.split #tabbar{grid-area:tabs;position:relative;inset:auto;top:auto}
     body.app.split #view-panel{grid-area:panel;position:relative;inset:auto;top:auto;
-      display:flex;min-width:0;border-right:1px solid var(--line)}
+      display:flex;min-width:0;border-right:1px solid var(--line);overflow:hidden}
     body.app.split #term-area{grid-area:term;position:relative;inset:auto;top:auto;
-      display:block;min-width:0}
+      display:block;min-width:0;overflow:hidden;
+      scrollbar-width:thin;scrollbar-color:var(--line2) var(--bg)}
+    body.app.split #term-area::-webkit-scrollbar{width:10px;height:10px}
+    body.app.split #term-area::-webkit-scrollbar-track{background:var(--bg)}
+    body.app.split #term-area::-webkit-scrollbar-thumb{background:var(--line2);border-radius:10px;
+      border:3px solid var(--bg);background-clip:padding-box}
+    body.app.split #term-area::-webkit-scrollbar-thumb:hover{background:var(--brand);background-clip:padding-box}
+    body.app.split #splitter{grid-area:split;display:block;position:relative;z-index:8;
+      cursor:col-resize;background:linear-gradient(90deg,transparent,var(--line),transparent);
+      touch-action:none}
+    body.app.split #splitter::before{content:"";position:absolute;inset:0 -5px}
+    body.app.split #splitter::after{content:"";position:absolute;left:3px;top:50%;
+      width:2px;height:42px;border-radius:2px;background:var(--line2);
+      transform:translateY(-50%);box-shadow:0 -10px 0 var(--line2),0 10px 0 var(--line2)}
+    body.app.split #splitter:hover::after,body.app.dragging #splitter::after{background:var(--brand);
+      box-shadow:0 -10px 0 var(--brand),0 10px 0 var(--brand)}
     body.app.split #view-panel #urgent{grid-template-columns:1fr}
     body.app.split #view-panel .sec,body.app.split #view-panel #ssh-bar,
     body.app.split #view-panel #tl-wrap{max-width:none;padding-left:14px;padding-right:14px}
@@ -432,6 +453,7 @@
 </div>
 </div>
 </div><!-- /#view-panel -->
+<div id="splitter" role="separator" aria-orientation="vertical" aria-label="Ajustar panel"></div>
 <div id="term-area"></div>
 </div><!-- /#panes -->
 
@@ -511,6 +533,7 @@ const S = {
   favs: new Set(),
   q: "",
   liveSess: new Set(),
+  recover: [],
 };
 const $ = s => document.querySelector(s);
 const urgent = $("#urgent"), rows = $("#rows");
@@ -560,6 +583,7 @@ const T_EN = {
     "They live in ~/.ssh/config: standard and yours. Connect opens a reconnectable tmux session. To stop typing passwords: run cc-keys once.",
   "espera TU respuesta": "waiting for YOU", "working": "working", "idle": "idle", "done": "done",
   "Terminal": "Terminal", "Abrir la terminal REAL de esta sesion": "Open this session's REAL terminal",
+  "recuperar": "recover", "cerrada": "closed",
 };
 const t = s => L === "en" ? (T_EN[s] ?? s) : s;
 const tf = (es, en) => L === "en" ? en : es;
@@ -829,15 +853,137 @@ function wireActions(el, it){
 // El terminal web solo esta enrutado cuando entras por el tailnet (https +
 // no es localhost). En la app nativa y en el navegador local se usa la de aqui.
 const WEBTERM = location.protocol === "https:" && !/^(127\.|localhost|::1)/.test(location.hostname);
-const TERM_BASE = WEBTERM ? `https://${location.hostname}:8443` : "";
+const TERM_BASE = WEBTERM ? `${location.origin}/term` : "";
+const TERM_FALLBACK_BASE = WEBTERM ? `https://${location.hostname}:8443` : "";
+let termBasePromise = null;
 
 // ---------- App combinada: panel + pestanas de terminal (como el escritorio) ----------
 // Cada terminal es un iframe a ttyd attacheado a esa sesion tmux (misma sesion,
 // en vivo). En tablet ancha se ve panel + terminal lado a lado.
 const openTerms = new Map();   // session -> {tab, frame}
 let activeView = "panel";
+const SPLIT_KEY = "cc-split-left";
 
 function appEnabled(){ return WEBTERM; }
+
+function splitBounds(){
+  const panes = document.getElementById("panes");
+  const w = panes?.clientWidth || window.innerWidth || 1200;
+  const min = 300;
+  const max = Math.max(min, Math.min(760, w - 360));
+  return {min, max};
+}
+function setSplitLeft(px, save){
+  const panes = document.getElementById("panes");
+  if(!panes) return;
+  const {min, max} = splitBounds();
+  const v = Math.max(min, Math.min(max, Math.round(px)));
+  panes.style.setProperty("--split-left", `${v}px`);
+  if(save) localStorage.setItem(SPLIT_KEY, String(v));
+}
+function restoreSplitLeft(){
+  const raw = parseInt(localStorage.getItem(SPLIT_KEY) || "", 10);
+  setSplitLeft(Number.isFinite(raw) ? raw : 380, false);
+}
+function initSplitDrag(){
+  const splitter = document.getElementById("splitter");
+  const panes = document.getElementById("panes");
+  if(!splitter || !panes || splitter._wired) return;
+  splitter._wired = true;
+  let dragging = false;
+  const frames = () => document.querySelectorAll(".termpane");
+  const move = e => {
+    if(!dragging) return;
+    const r = panes.getBoundingClientRect();
+    setSplitLeft(e.clientX - r.left, true);
+  };
+  const stop = e => {
+    if(!dragging) return;
+    dragging = false;
+    document.body.classList.remove("dragging");
+    frames().forEach(f => f.style.pointerEvents = "");
+    try{ splitter.releasePointerCapture(e.pointerId); }catch(_){}
+    window.removeEventListener("pointermove", move);
+    window.removeEventListener("pointerup", stop);
+    window.removeEventListener("pointercancel", stop);
+  };
+  splitter.addEventListener("pointerdown", e => {
+    if(!document.body.classList.contains("split")) return;
+    dragging = true;
+    document.body.classList.add("dragging");
+    frames().forEach(f => f.style.pointerEvents = "none");
+    try{ splitter.setPointerCapture(e.pointerId); }catch(_){}
+    move(e);
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", stop);
+    window.addEventListener("pointercancel", stop);
+    e.preventDefault();
+  });
+  window.addEventListener("resize", restoreSplitLeft);
+}
+
+function resolveTermBase(){
+  if(!WEBTERM) return Promise.resolve("");
+  if(!termBasePromise){
+    termBasePromise = fetch(`${TERM_BASE}/token`, {cache:"no-store"})
+      .then(r => r.ok ? TERM_BASE : TERM_FALLBACK_BASE)
+      .catch(() => TERM_FALLBACK_BASE);
+  }
+  return termBasePromise;
+}
+
+function styleTermFrame(frame){
+  try{
+    const doc = frame.contentDocument || frame.contentWindow?.document;
+    if(!doc || !doc.head || doc.getElementById("comandos-term-style")) return;
+    const root = getComputedStyle(document.documentElement);
+    const bg = (root.getPropertyValue("--bg") || "#0A0D13").trim();
+    const line2 = (root.getPropertyValue("--line2") || "#2E3852").trim();
+    const brand = (root.getPropertyValue("--brand") || "#8B7CFF").trim();
+    const style = doc.createElement("style");
+    style.id = "comandos-term-style";
+    style.textContent = `
+      html,body{background:${bg}!important;color-scheme:dark}
+      *{scrollbar-width:thin;scrollbar-color:${line2} ${bg}}
+      *::-webkit-scrollbar{width:10px;height:10px}
+      *::-webkit-scrollbar-track{background:${bg}}
+      *::-webkit-scrollbar-thumb{background:${line2};border-radius:10px;border:3px solid ${bg};background-clip:padding-box}
+      *::-webkit-scrollbar-thumb:hover{background:${brand};background-clip:padding-box}
+      .xterm .xterm-viewport{scrollbar-width:thin;scrollbar-color:${line2} ${bg}}
+    `;
+    doc.head.appendChild(style);
+  }catch(_){}
+}
+
+function isSwitchShortcut(e){
+  return (e.ctrlKey || e.metaKey) && !e.shiftKey && !e.altKey &&
+    (e.key || "").toLowerCase() === "k";
+}
+
+function openSwitcherFromKey(e){
+  if(!isSwitchShortcut(e)) return false;
+  e.preventDefault();
+  e.stopPropagation();
+  if(e.stopImmediatePropagation) e.stopImmediatePropagation();
+  swOpen();
+  return true;
+}
+
+function wireTermFrameShortcuts(frame){
+  try{
+    const win = frame.contentWindow;
+    const doc = frame.contentDocument || win?.document;
+    if(!win || !doc || win.__comandosSwitchWired) return;
+    win.__comandosSwitchWired = true;
+    const onKey = e => {
+      if(openSwitcherFromKey(e)){
+        try{ window.focus(); }catch(_){}
+      }
+    };
+    win.addEventListener("keydown", onKey, true);
+    doc.addEventListener("keydown", onKey, true);
+  }catch(_){}
+}
 
 function renderTabbar(){
   const bar = document.getElementById("tabbar");
@@ -877,9 +1023,20 @@ function ensureFrame(sess){
   if(o && !o.frame){
     const frame = document.createElement("iframe");
     frame.className = "termpane";
-    frame.src = `${TERM_BASE}/?arg=${encodeURIComponent(sess)}`;
+    frame.addEventListener("load", () => {
+      styleTermFrame(frame);
+      wireTermFrameShortcuts(frame);
+      setTimeout(() => styleTermFrame(frame), 250);
+      setTimeout(() => wireTermFrameShortcuts(frame), 250);
+      setTimeout(() => styleTermFrame(frame), 1000);
+      setTimeout(() => wireTermFrameShortcuts(frame), 1000);
+    });
     document.getElementById("term-area").appendChild(frame);
     o.frame = frame;
+    resolveTermBase().then(base => {
+      if(openTerms.get(sess)?.frame !== frame) return;
+      frame.src = `${base}/?arg=${encodeURIComponent(sess)}`;
+    });
   }
 }
 let activeTerm = null;   // terminal visible en el area de terminal
@@ -916,14 +1073,25 @@ async function loadDesktopTabs(){
   try{
     const tabs = await api("/tabs");
     for(const t of tabs) addTermTab(t.session, t.label);
-    renderTabbar();
+    if(document.body.classList.contains("split") && !activeTerm && tabs[0])
+      activeTerm = tabs[0].session;
+    showView(activeView);
   }catch(e){}
+}
+let tabsPollTs = 0;
+function refreshDesktopTabs(){
+  const now = Date.now();
+  if(now - tabsPollTs < 5000) return;
+  tabsPollTs = now;
+  loadDesktopTabs();
 }
 function initApp(){
   if(!appEnabled()) return;   // navegador local / app nativa: sin cambios
   document.body.classList.add("app");
+  restoreSplitLeft();
+  initSplitDrag();
   const wide = window.matchMedia("(min-width:900px)");
-  const applyWide = () => { document.body.classList.toggle("split", wide.matches); showView(activeView); };
+  const applyWide = () => { document.body.classList.toggle("split", wide.matches); restoreSplitLeft(); showView(activeView); };
   wide.addEventListener("change", applyWide);
   applyWide();
   renderTabbar();
@@ -1088,7 +1256,10 @@ function render(list){
   document.querySelectorAll(".ssh-chip").forEach(ch =>
     ch.classList.toggle("live", sshConn.has("ssh-" + ch.textContent)));
   applyQ();
-  if(document.body.classList.contains("app")) renderTabbar();  // refresca dots/labels
+  if(document.body.classList.contains("app")){
+    refreshDesktopTabs();
+    renderTabbar();  // refresca dots/labels
+  }
 }
 
 function notify(it, verb){
@@ -1159,17 +1330,36 @@ function swScore(q, s){
   return sc + s.length * 0.01;
 }
 const SW_ORD = {waiting:0, done:1, working:2};
-function swOpen(){ $("#sw-ov").classList.remove("hidden"); $("#sw-in").value = ""; swFill(); $("#sw-in").focus(); }
+async function loadRecover(){
+  try{ S.recover = await api("/tab-history"); }
+  catch(_){ S.recover = []; }
+}
+function swOpen(){
+  $("#sw-ov").classList.remove("hidden");
+  $("#sw-in").value = "";
+  swFill();
+  loadRecover().then(swFill);
+  $("#sw-in").focus();
+}
 function swClose(){ $("#sw-ov").classList.add("hidden"); }
+function quickVisible(it){
+  if(!it || it.alive === false || it.zombie) return false;
+  const orphanTerm = /^term-/.test(it.session || "") && !it.tabbed && !it.agent && (it.status || "idle") === "idle";
+  return !orphanTerm;
+}
 function swFill(){
   const q = $("#sw-in").value.trim();
   const seen = new Set();
-  swItems = (S.list || [])
-    .filter(it => it.alive !== false && !seen.has(it.session) && seen.add(it.session) !== null)
+  const live = (S.list || [])
+    .filter(it => quickVisible(it) && !seen.has(it.session) && seen.add(it.session) !== null)
     .map(it => ({it, sc: q ? swScore(q, it.project + " " + it.session) : 0,
                  pr: SW_ORD[it.status] ?? 3}))
-    .filter(x => x.sc !== null)
-    .sort((a, b) => a.pr - b.pr || a.sc - b.sc).slice(0, 12);
+    .filter(x => x.sc !== null);
+  const recover = (S.recover || [])
+    .filter(r => r && r.session && !seen.has(r.session))
+    .map(r => ({rec:r, sc: q ? swScore(q, `${r.label} ${r.session} ${r.cwd||""}`) : 0, pr:4}))
+    .filter(x => x.sc !== null);
+  swItems = live.concat(recover).sort((a, b) => a.pr - b.pr || a.sc - b.sc).slice(0, 12);
   swSel = 0;
   const L = $("#sw-list"); L.innerHTML = "";
   const C = {waiting:"var(--waiting)", working:"var(--working)", done:"var(--done)"};
@@ -1177,9 +1367,15 @@ function swFill(){
     const d = document.createElement("div");
     d.className = "sw-row" + (i === 0 ? " sel" : "");
     d.innerHTML = `<span class="dot"></span><span></span><span class="hint"></span>`;
-    d.children[0].style.background = C[x.it.status] || "var(--faint)";
-    d.children[1].textContent = x.it.project;
-    d.children[2].textContent = x.it.status === "waiting" ? t("espera TU respuesta") : t(x.it.status || "");
+    if(x.rec){
+      d.children[0].style.background = "var(--faint)";
+      d.children[1].textContent = `↺ ${x.rec.label || x.rec.session}`;
+      d.children[2].textContent = t("recuperar");
+    }else{
+      d.children[0].style.background = C[x.it.status] || "var(--faint)";
+      d.children[1].textContent = x.it.project;
+      d.children[2].textContent = x.it.status === "waiting" ? t("espera TU respuesta") : t(x.it.status || "");
+    }
     d.addEventListener("click", ()=> swGo(i));
     L.appendChild(d);
   });
@@ -1188,12 +1384,19 @@ async function swGo(i){
   const x = swItems[i];
   if(!x) return;
   swClose();
-  try{ toast(await openSession(x.it, "claude")); }catch(err){ toast(err.message, true); }
+  try{
+    if(x.rec){
+      const r = await api("/recover-tab", x.rec);
+      addTermTab(r.session, r.label);
+      showView("term:" + r.session);
+      toast(tf(`${r.label} recuperada`, `${r.label} recovered`));
+      return;
+    }
+    toast(await openSession(x.it, "claude"));
+  }catch(err){ toast(err.message, true); }
 }
 document.addEventListener("keydown", e=>{
-  if(e.ctrlKey && !e.shiftKey && (e.key === "k" || e.key === "K")){
-    e.preventDefault(); swOpen(); return;
-  }
+  if(openSwitcherFromKey(e)) return;
   if($("#sw-ov").classList.contains("hidden")) return;
   if(e.key === "Escape"){ swClose(); return; }
   if(e.key === "Enter"){ e.preventDefault(); swGo(swSel); return; }

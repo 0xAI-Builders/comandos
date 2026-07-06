@@ -486,6 +486,7 @@ nb = Gtk.Notebook()
 nb.set_scrollable(True)
 tabs = {}   # clave ("sess" o "sess:shell") -> box
 TABS_FILE = os.path.expanduser("~/.claude/hooks/app-tabs.json")
+TAB_HISTORY_FILE = os.path.expanduser("~/.claude/hooks/app-tabs-history.json")
 
 
 def save_tabs():
@@ -494,6 +495,49 @@ def save_tabs():
             json.dump({k: getattr(b, "_label", None) for k, b in tabs.items()}, f)
     except Exception:
         pass
+
+
+def saved_tab_label(key):
+    try:
+        with open(TABS_FILE) as f:
+            data = json.load(f)
+        if isinstance(data, dict) and isinstance(data.get(key), str) and data.get(key):
+            return data[key]
+    except Exception:
+        pass
+    return None
+
+
+def archive_tab(key, reason="closed"):
+    if not key:
+        return
+    box = tabs.get(key)
+    label = getattr(box, "_label", key) if box is not None else key
+    it = STATE_ITEMS.get(key, {})
+    cwd = it.get("cwd", "")
+    agent = it.get("agent", "")
+    if not cwd:
+        r = tmuxc("display-message", "-p", "-t", "=" + key + ":", "#{pane_current_path}")
+        if r.returncode == 0:
+            cwd = r.stdout.strip()
+    if not agent:
+        r = tmuxc("display-message", "-p", "-t", "=" + key + ":", "#{pane_current_command}")
+        cmd = r.stdout.strip() if r.returncode == 0 else ""
+        agent = "codex" if cmd == "node" else cmd if cmd in {"claude", "opencode", "gemini", "agy", "aider"} else "claude"
+    item = {"session": key, "label": label, "cwd": cwd, "agent": agent,
+            "reason": reason, "ts": int(time.time())}
+    try:
+        with open(TAB_HISTORY_FILE) as f:
+            hist = json.load(f)
+        if not isinstance(hist, list):
+            hist = []
+    except Exception:
+        hist = []
+    hist = [h for h in hist if not isinstance(h, dict) or h.get("session") != key]
+    tmp = TAB_HISTORY_FILE + ".tmp"
+    with open(tmp, "w") as f:
+        json.dump([item] + hist[:79], f)
+    os.replace(tmp, TAB_HISTORY_FILE)
 
 
 def restore_tabs():
@@ -541,6 +585,7 @@ DOT_COLORS = {"waiting": "#FFAE1A", "working": "#7AA5FF",
               "done": "#2EE59D", "dead": "#FF6B6B"}
 DOT_IDLE = "#39445C"
 STATE_CACHE = {}   # session -> status (lo alimenta el poller de /state)
+STATE_ITEMS = {}   # session -> item completo de /state para el switcher
 
 
 def tab_label(text, key=None, closable=True):
@@ -561,9 +606,12 @@ def tab_label(text, key=None, closable=True):
     return hb
 
 
-def update_dots(states):
+def update_dots(states, items=None):
     STATE_CACHE.clear()
     STATE_CACHE.update(states)
+    if items is not None:
+        STATE_ITEMS.clear()
+        STATE_ITEMS.update({it.get("session"): it for it in items if it.get("session")})
     for key, box in tabs.items():
         hb = nb.get_tab_label(box)
         dot = getattr(hb, "_dot", None)
@@ -581,13 +629,14 @@ def poll_state_loop():
                 items = json.loads(r.read().decode())
             states = {it["session"]: it.get("status", "idle")
                       for it in items if it.get("session")}
-            GLib.idle_add(update_dots, states)
+            GLib.idle_add(update_dots, states, items)
         except Exception:
             pass
         time.sleep(3)
 
 
 def close_tab(key):
+    archive_tab(key, reason="closed")
     box = tabs.pop(key, None)
     if box is not None:
         box._term._respawn = False
@@ -667,7 +716,7 @@ def open_tab(sess, winname, label=None):
     cmd = (f"tmux attach -t '={sess}' || {{ echo '[sesion terminada — cierra esta pestana con la x]'; exec cat; }}")
     box = make_term(cmd)
     box._key = key
-    box._label = label or sess
+    box._label = label or saved_tab_label(sess) or sess
     idx = nb.append_page(box, tab_label(box._label, key))
     box.show_all()
     nb.set_current_page(idx)
@@ -732,10 +781,14 @@ def open_switcher(*_):
         for key, box in tabs.items():
             out.append((getattr(box, "_label", key), key, True))
             seen.add(key)
-        r = tmuxc("list-sessions", "-F", "#{session_name}")
-        for s in (r.stdout.split() if r.returncode == 0 else []):
-            if s not in seen and s != "local":
-                out.append((s, s, False))
+        for s, it in STATE_ITEMS.items():
+            if s in seen or s == "local" or it.get("alive") is False or it.get("zombie"):
+                continue
+            orphan_term = s.startswith("term-") and not it.get("tabbed") and \
+                not it.get("agent") and it.get("status", "idle") == "idle"
+            if orphan_term:
+                continue
+            out.append((it.get("project") or s, s, False))
         return out
 
     def refill(*_):
@@ -1144,10 +1197,11 @@ def on_focus_request(_mon, _f, _other, event):
         with open(FOCUS_FILE) as fh:
             d = json.load(fh)
         sess, winname = d.get("session", ""), d.get("win", "claude")
+        label = d.get("label", None)
     except Exception:
         return
     if sess and sess not in ("local", "hub", "control"):
-        open_tab(sess, winname)
+        open_tab(sess, winname, label=label if isinstance(label, str) and label else None)
         win.present()
 
 

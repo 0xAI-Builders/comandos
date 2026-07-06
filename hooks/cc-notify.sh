@@ -124,11 +124,22 @@ turn_text() {
 proj=$(basename "${cwd:-$PWD}")
 proj_file=$(printf '%s' "$proj" | tr -c 'A-Za-z0-9._-' '-' | head -c 80)
 now=$(date +%s)
+PANE_HINT=""
+SESSION_HINT=""
+if printf '%s' "${TMUX_PANE:-}" | grep -Eq '^%[0-9]+$' && command -v tmux >/dev/null 2>&1; then
+  PANE_HINT="$TMUX_PANE"
+  SESSION_HINT=$(tmux display-message -p -t "$PANE_HINT" '#S' 2>/dev/null || true)
+fi
+if ! printf '%s' "$SESSION_HINT" | grep -Eq '^[A-Za-z0-9._-]{1,80}$'; then
+  SESSION_HINT=$(printf '%s' "$proj" | tr '.:' '--' | head -c 60)
+fi
 
 write_state() { # $1=status $2=detalle $3=opciones (labels \x1f). LAST=respuesta previa
   jq -n --arg p "$proj" --arg s "$1" --arg d "$2" --arg c "$cwd" --arg o "${3:-}" \
-    --arg L "${LAST:-}" --arg a "$AGENT" --argjson t "$now" \
-    '{project:$p,status:$s,detail:$d,cwd:$c,ts:$t,options:$o,last:$L,agent:$a}' > "$STATE_DIR/$proj_file.json" 2>/dev/null
+    --arg L "${LAST:-}" --arg a "$AGENT" --arg sess "$SESSION_HINT" --arg pane "$PANE_HINT" \
+    --argjson t "$now" \
+    '{project:$p,status:$s,detail:$d,cwd:$c,ts:$t,options:$o,last:$L,agent:$a,session:$sess}
+     + (if $pane != "" then {pane:$pane} else {} end)' > "$STATE_DIR/$proj_file.json" 2>/dev/null
   # el timeline solo necesita una probadita, no la respuesta entera
   jq -cn --arg p "$proj" --arg s "$1" --arg d "$(printf '%s' "$2" | head -c 280)" --argjson t "$now" \
     '{project:$p,status:$s,detail:$d,ts:$t}' >> "$EVENTS" 2>/dev/null
@@ -232,7 +243,7 @@ if [ "$kind" = "waiting" ] && [ "$NOTIFY_ON_ATTENTION" != "1" ]; then exit 0; fi
 if [ "$DESKTOP_NOTIFY" = "1" ]; then
   # Notificacion nativa ACCIONABLE via cc-notifyd (botones 1/2/3/Enter/Esc y Abrir);
   # si el demonio no responde, cae a notify-send plano.
-  sess=$(printf '%s' "$proj" | tr '.:' '--' | head -c 60)
+  sess="$SESSION_HINT"
   payload=$(jq -cn --arg t "$title" --arg b "$body" --arg s "$sess" --arg k "$kind" --arg p "$proj" \
     --arg o "${options:-}" --arg f "${full:-}" \
     '{title:$t,body:$b,session:$s,kind:$k,project:$p,options:$o,full:$f}')
@@ -275,7 +286,7 @@ if [ "$TELEGRAM_ENABLED" = "1" ] && [ -f "$tg" ]; then
   . "$tg"
   TG_TOKEN="${CC_TELEGRAM_BOT_TOKEN:-${TELEGRAM_BOT_TOKEN:-}}"
   if [ -n "$TG_TOKEN" ] && [ -n "${TELEGRAM_CHAT_ID:-}" ]; then
-    sess=$(printf '%s' "$proj" | tr '.:' '--' | head -c 60)
+    sess="$SESSION_HINT"
     tg_title=$(sed 's/[&<>]/ /g' <<<"$title")
     # Texto COMPLETO con markdown renderizado (HTML de Telegram: negritas,
     # codigo, tablas alineadas en <pre>). Fallback: preview plano.

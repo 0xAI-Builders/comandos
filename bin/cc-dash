@@ -26,6 +26,8 @@ STATE = os.path.join(HOOKS, "state")
 EVENTS = os.path.join(HOOKS, "events.jsonl")
 DASH = os.path.join(HOOKS, "dash")
 TOKEN_FILE = os.path.join(HOOKS, "dash-token")
+TABS_FILE = os.path.join(HOOKS, "app-tabs.json")
+TAB_HISTORY_FILE = os.path.join(HOOKS, "app-tabs-history.json")
 
 
 def access_token():
@@ -78,6 +80,68 @@ def gui_env():
     env = dict(os.environ)
     env.setdefault("DISPLAY", ":1")
     return env
+
+
+def load_json_file(path, default):
+    try:
+        with open(path) as f:
+            data = json.load(f)
+        return data if data is not None else default
+    except Exception:
+        return default
+
+
+def write_json_file(path, data):
+    tmp = path + ".tmp"
+    with open(tmp, "w") as f:
+        json.dump(data, f)
+    os.replace(tmp, path)
+
+
+def read_tab_history():
+    data = load_json_file(TAB_HISTORY_FILE, [])
+    if not isinstance(data, list):
+        return []
+    out = []
+    for it in data[:80]:
+        if not isinstance(it, dict):
+            continue
+        sess = str(it.get("session", ""))
+        if not SESSION_RE.match(sess):
+            continue
+        cwd = str(it.get("cwd", ""))
+        out.append({
+            "session": sess,
+            "label": str(it.get("label") or sess)[:80],
+            "cwd": cwd if cwd.startswith("/") else "",
+            "agent": str(it.get("agent") or "claude")[:16],
+            "ts": int(it.get("ts") or 0),
+            "reason": str(it.get("reason") or "closed")[:32],
+        })
+    return out
+
+
+def remember_tab(sess, label=None, cwd="", agent="", reason="closed"):
+    if not SESSION_RE.match(sess or ""):
+        return
+    item = {
+        "session": sess,
+        "label": (label or sess)[:80],
+        "cwd": cwd if cwd and cwd.startswith("/") else "",
+        "agent": (agent or "claude")[:16],
+        "reason": reason[:32],
+        "ts": int(time.time()),
+    }
+    hist = [h for h in read_tab_history() if h.get("session") != sess]
+    write_json_file(TAB_HISTORY_FILE, [item] + hist[:79])
+
+
+def write_app_tab(sess, label):
+    tabs = load_json_file(TABS_FILE, {})
+    if not isinstance(tabs, dict):
+        tabs = {}
+    tabs[sess] = label or sess
+    write_json_file(TABS_FILE, tabs)
 
 
 def pick_terminal():
@@ -175,8 +239,9 @@ def focus_session(sess, win="claude"):
     app_open = bool(tmux("list-clients", "-t", "=local", "-F", "#{client_name}").stdout.strip())
     if app_open:
         try:
+            label = tab_labels().get(sess, sess)
             with open(os.path.join(HOOKS, "app-focus.json"), "w") as f:
-                json.dump({"session": sess, "win": win, "ts": time.time()}, f)
+                json.dump({"session": sess, "win": win, "label": label, "ts": time.time()}, f)
         except Exception:
             pass
     elif not tmux("list-clients", "-t", target, "-F", "#{client_name}").stdout.strip():
@@ -229,6 +294,13 @@ def session_name(project):
 
 # Agentes soportados (binarios a detectar); ampliable en cc-notify.conf: AGENTS="..."
 DEFAULT_AGENTS = "claude codex opencode gemini agy aider"
+# Turnos no interactivos (codex exec, jobs de agentes) terminan el proceso antes
+# del siguiente poll del dashboard. Conserva "done" brevemente para que el UI
+# muestre el cierre real antes de degradarlo a "dead".
+DONE_GRACE_SECS = 10 * 60
+# Preguntas de agentes muertos se conservan un rato para poder revivirlas, pero
+# si llevan dias sin pane real dejan de ser "urgentes": son estado historico.
+ZOMBIE_WAITING_GRACE_SECS = 24 * 60 * 60
 # Como LANZAR cada agente al crear/revivir una sesion
 AGENT_LAUNCH = {
     "claude":   "claude --continue 2>/dev/null || claude",
@@ -310,36 +382,82 @@ def parent_pid(pid):
             return 0
 
 
-def claude_panes(procs):
-    """cwd -> (sesion, pane) de cada AGENTE que vive DENTRO de un pane tmux,
-    aunque la sesion se llame distinto al proyecto (pestanas term-* de la app,
-    hub, splits). Se camina la cadena de ppids hasta un pane_pid conocido."""
+def agent_pane_maps(procs):
+    """Mapea procesos de agentes vivos a panes tmux reales.
+
+    Devuelve (by_session, by_cwd). by_cwd conserva listas porque el usuario
+    puede tener varias tabs Codex en el mismo repo/cwd.
+    """
     r = tmux("list-panes", "-a", "-F", "#{session_name}|#{pane_id}|#{pane_pid}")
     if r.returncode != 0:
-        return {}
+        return {}, {}
     by_pid = {}
     for l in r.stdout.splitlines():
         sess, _, rest = l.partition("|")
         pane, _, ppid = rest.partition("|")
         if ppid.isdigit():
             by_pid[int(ppid)] = (sess, pane)
-    out = {}
-    for pid, cwd, _agent in procs:
+    by_session, by_cwd, seen = {}, {}, set()
+    for pid, cwd, agent in procs:
         p = pid
         for _ in range(25):
             if p in by_pid:
-                out[cwd] = by_pid[p]
+                sess, pane = by_pid[p]
+                key = (sess, pane, agent)
+                if key not in seen:
+                    seen.add(key)
+                    info = {"session": sess, "pane": pane, "cwd": cwd, "agent": agent}
+                    by_session.setdefault(sess, info)
+                    by_cwd.setdefault(cwd, []).append(info)
                 break
             p = parent_pid(p)
             if p <= 1:
                 break
+    return by_session, by_cwd
+
+
+def choose_agent_pane(project, sess, candidates, labels=None):
+    """Elige el pane correcto cuando varios agentes comparten cwd.
+
+    Prioridad: misma sesion, label de tab igual al proyecto, fallback estable.
+    """
+    if not candidates:
+        return None
+    labels = labels or {}
+    for info in candidates:
+        if info["session"] == sess:
+            return info
+    for info in candidates:
+        label = labels.get(info["session"], "")
+        if label and (label == project or session_name(label) == sess):
+            return info
+    return candidates[0]
+
+
+def claude_panes(procs):
+    """Compat: cwd -> (sesion, pane) de un agente vivo."""
+    _by_session, by_cwd = agent_pane_maps(procs)
+    out = {}
+    for cwd, infos in by_cwd.items():
+        if infos:
+            out[cwd] = (infos[0]["session"], infos[0]["pane"])
     return out
+
+
+def pane_status_hint(pane, agent):
+    if not pane or agent != "codex":
+        return ""
+    r = tmux("capture-pane", "-p", "-t", pane, "-S", "-80", timeout=2)
+    if r.returncode == 0 and re.search(r"\bWorking\s*\(", r.stdout):
+        return "working"
+    return ""
 
 
 def resolve_project_session(sess):
     """Nombre derivado del proyecto SIN sesion tmux propia: busca el pane real
     donde corre su claude (pestana term-* de la app, hub, un split).
     Devuelve (sesion, pane) o None."""
+    live = tmux_sessions()
     for f in glob.glob(os.path.join(STATE, "*.json")):
         try:
             with open(f) as fh:
@@ -348,10 +466,22 @@ def resolve_project_session(sess):
             continue
         if session_name(d.get("project", "")) != sess:
             continue
+        state_sess = str(d.get("session") or "")
+        state_pane = str(d.get("pane") or "")
+        if SESSION_RE.match(state_sess) and state_sess in live:
+            pane = ""
+            if PANE_RE.match(state_pane) and \
+                    tmux("display-message", "-p", "-t", state_pane, "#{pane_id}").stdout.strip() == state_pane:
+                pane = state_pane
+            return state_sess, pane
         cwd = d.get("cwd", "") or find_project_dir(sess) or ""
         if cwd:
             procs = [pc for pc in agent_procs() if pc[1] == cwd]
-            return claude_panes(procs).get(cwd)
+            _by_session, by_cwd = agent_pane_maps(procs)
+            info = choose_agent_pane(d.get("project", ""), sess,
+                                     by_cwd.get(cwd, []), tab_labels())
+            if info:
+                return info["session"], info["pane"]
         return None
     return None
 
@@ -363,21 +493,33 @@ HIDDEN_SESSIONS = {"hub", "local", "control"}
 def tab_labels():
     """Etiquetas de las pestanas de la app (app-tabs.json): el tablero muestra
     el nombre que el usuario le puso a la pestana, no el term-XXXX crudo."""
+    out = {}
     try:
-        with open(os.path.join(HOOKS, "app-tabs.json")) as f:
+        with open(TABS_FILE) as f:
             d = json.load(f)
         if isinstance(d, dict):
-            return {k: v for k, v in d.items() if isinstance(v, str) and v}
+            out.update({k: v for k, v in d.items() if isinstance(v, str) and v})
     except Exception:
         pass
-    return {}
+    # La app GTK viva puede ser vieja y reescribir app-tabs.json sin tabs
+    # recuperadas. Si la sesion sigue viva, el historial tambien cuenta como tab.
+    live = tmux_sessions()
+    for it in read_tab_history():
+        if it["session"] not in live:
+            continue
+        cur = out.get(it["session"], "")
+        if not cur or cur == it["session"]:
+            out[it["session"]] = it["label"] or it["session"]
+    return out
 
 
 def read_states():
+    now_ts = int(time.time())
     live = tmux_sessions()
     procs = agent_procs()
     externals = {cwd for _, cwd, _a in procs}
-    in_tmux = claude_panes(procs)
+    by_session, by_cwd = agent_pane_maps(procs)
+    labels = tab_labels()
     items, seen = [], set()
     for f in glob.glob(os.path.join(STATE, "*.json")):
         try:
@@ -385,11 +527,16 @@ def read_states():
                 d = json.load(fh)
         except Exception:
             continue
-        sess = session_name(d.get("project", ""))
+        state_sess = str(d.get("session") or "")
+        sess = state_sess if SESSION_RE.match(state_sess) else session_name(d.get("project", ""))
         if not SESSION_RE.match(sess or ""):
             continue
         alive = sess in live
         status = d.get("status", "idle")
+        try:
+            ts = int(d.get("ts") or 0)
+        except Exception:
+            ts = 0
         cwd = d.get("cwd", "")
         if not cwd:
             cwd = find_project_dir(sess) or ""
@@ -397,8 +544,20 @@ def read_states():
         # split), aunque exista una sesion tmux con el nombre del proyecto
         # (zombie sin claude adentro): la card opera la sesion y pane REALES.
         pane = None
-        if cwd in in_tmux:
-            real, pane = in_tmux[cwd]
+        live_agent = ""
+        state_pane = str(d.get("pane") or "")
+        pane_info = by_session.get(sess)
+        if not pane_info and PANE_RE.match(state_pane):
+            for info in by_cwd.get(cwd, []):
+                if info.get("pane") == state_pane:
+                    pane_info = info
+                    break
+        if not pane_info:
+            pane_info = choose_agent_pane(d.get("project", ""), sess,
+                                          by_cwd.get(cwd, []), labels)
+        if pane_info:
+            real, pane = pane_info["session"], pane_info["pane"]
+            live_agent = pane_info.get("agent", "")
             if real != sess:
                 if alive:
                     seen.add(sess)  # la homonima vacia no sale como card duplicada
@@ -408,11 +567,20 @@ def read_states():
         # el estado es real (los hooks reportan) pero no es operable desde aqui.
         external = (not alive) and cwd in externals
         # Una PREGUNTA pendiente (waiting) JAMAS se esconde: aunque el claude
-        # haya muerto, la card se muestra (con Revivir). Solo 'working' viejo
-        # de un claude muerto se degrada a idle.
-        if not alive and not external and status != "waiting":
+        # haya muerto, la card se muestra (con Revivir). Un "done" reciente de
+        # agentes one-shot (Codex exec, jobs) tambien debe verse como terminado:
+        # esos procesos salen inmediatamente despues de notificar.
+        recent_done = status == "done" and (now_ts - ts) <= DONE_GRACE_SECS
+        stale_waiting = status == "waiting" and not alive and not external \
+            and sess not in labels and (now_ts - ts) > ZOMBIE_WAITING_GRACE_SECS
+        if stale_waiting:
+            status = "dead"
+        if not alive and not external and status != "waiting" and not recent_done:
             status = "dead"
         detail = d.get("detail", "")
+        hint = pane_status_hint(pane, live_agent)
+        if hint == "working" and status != "waiting":
+            status, detail = "working", ""
         zombie = False
         if alive and pane is None and cwd and cwd not in externals:
             if status == "working":
@@ -421,8 +589,10 @@ def read_states():
                 zombie = True    # sesion viva pero el claude que pregunto murio
         item = {"project": d.get("project"), "session": sess, "status": status,
                 "detail": detail, "cwd": cwd, "options": d.get("options", ""),
-                "last": d.get("last", ""), "agent": d.get("agent", "claude"),
-                "ts": d.get("ts", 0), "alive": alive, "external": external}
+                "last": d.get("last", ""),
+                "agent": d.get("agent") or live_agent or "claude",
+                "ts": ts, "alive": alive, "external": external,
+                "tabbed": sess in labels}
         if zombie:
             item["zombie"] = True
         if pane:
@@ -432,7 +602,6 @@ def read_states():
     # sesiones tmux vivas sin estado (recien creadas con ccx, scratch term-*
     # de la app...): TODAS visibles — nada de sesiones fantasma que solo
     # aparecen en el conmutador. Nombre = etiqueta de su pestana si existe.
-    labels = tab_labels()
     for sess in sorted(live - seen):
         if sess in HIDDEN_SESSIONS:
             continue
@@ -440,8 +609,17 @@ def read_states():
         cwd = r.stdout.strip() if r.returncode == 0 else ""
         if not cwd:
             cwd = find_project_dir(sess) or ""
-        item = {"project": labels.get(sess, sess), "session": sess, "status": "idle",
-                "detail": "", "cwd": cwd, "ts": 0, "alive": True, "external": False}
+        info = by_session.get(sess)
+        agent = info.get("agent") if info else None
+        pane = info.get("pane") if info else None
+        status = pane_status_hint(pane, agent) or "idle"
+        if sess.startswith("term-") and sess not in labels and not agent and status == "idle":
+            continue
+        item = {"project": labels.get(sess, sess), "session": sess, "status": status,
+                "detail": "", "cwd": cwd, "ts": 0, "alive": True,
+                "external": False, "agent": agent, "tabbed": sess in labels}
+        if pane:
+            item["pane"] = pane
         if sess.startswith("ssh-"):
             st = ssh_state(sess)
             item["sshConnected"] = st != ""
@@ -956,17 +1134,20 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             # para que el movil muestre exactamente lo mismo. Solo sesiones vivas.
             live = tmux_sessions()
             out = []
-            try:
-                with open(os.path.join(HOOKS, "app-tabs.json")) as f:
-                    d = json.load(f)
-                if isinstance(d, dict):
-                    for sess, label in d.items():
-                        if sess in live and sess not in HIDDEN_SESSIONS:
-                            out.append({"session": sess,
-                                        "label": label if isinstance(label, str) and label else sess})
-            except Exception:
-                pass
+            for sess, label in tab_labels().items():
+                if sess in live and sess not in HIDDEN_SESSIONS:
+                    out.append({"session": sess, "label": label or sess})
             return self._json(200, out)
+        if self.path.startswith("/tab-history"):
+            labels = tab_labels()
+            live = tmux_sessions()
+            out = []
+            for it in read_tab_history():
+                if it["session"] in labels:
+                    continue
+                it["alive"] = it["session"] in live
+                out.append(it)
+            return self._json(200, out[:40])
         if self.path.startswith("/events"):
             evs = []
             try:
@@ -1077,6 +1258,25 @@ class Handler(http.server.SimpleHTTPRequestHandler):
         sess = data.get("session", "")
         if not SESSION_RE.match(sess):
             return self._json(400, {"error": "Nombre de sesion invalido"})
+
+        if self.path == "/recover-tab":
+            label = str(data.get("label") or sess)[:80]
+            cwd = str(data.get("cwd") or "")
+            agent = str(data.get("agent") or state_agent(sess))[:16]
+            if agent not in agent_set():
+                agent = "claude"
+            if not cwd or not os.path.isdir(cwd):
+                cwd = find_project_dir(session_name(label)) or find_project_dir(sess) or ""
+            if not cwd:
+                return self._json(400, {"error": f"No encontre cwd para recuperar '{label}'"})
+            if tmux("has-session", "-t", "=" + sess).returncode != 0:
+                r = tmux_new_session(sess, cwd, agent)
+                if r.returncode != 0:
+                    return self._json(500, {"error": r.stderr.strip() or "No se pudo recuperar la sesion"})
+            write_app_tab(sess, label)
+            remember_tab(sess, label, cwd, agent, reason="recovered")
+            return self._json(200, {"ok": True, "session": sess, "label": label, "cwd": cwd})
+
         # Donde corre el claude del proyecto MANDA: aunque exista una sesion
         # homonima (zombie sin claude), las teclas y el foco van a la sesion y
         # pane reales. Tambien evita que cc-next/popups dupliquen sesiones.
