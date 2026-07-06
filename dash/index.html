@@ -306,34 +306,53 @@
      app: barra de pestanas arriba, y debajo el panel o una terminal. */
   body.app{height:100vh;overflow:hidden;display:flex;flex-direction:column}
   #tabbar{display:none}
-  body.app #tabbar{display:flex;align-items:stretch;gap:2px;flex:none;
-    background:var(--panel);border-bottom:1px solid var(--line);
-    padding:env(safe-area-inset-top) 6px 0;overflow-x:auto;-webkit-overflow-scrolling:touch}
-  .apptab{display:flex;align-items:center;gap:7px;white-space:nowrap;
-    padding:10px 13px;font-family:var(--mono);font-size:12.5px;color:var(--dim);
-    border-bottom:2px solid transparent;cursor:pointer;flex:none;max-width:190px}
-  .apptab .lbl{overflow:hidden;text-overflow:ellipsis}
-  .apptab.on{color:var(--text);border-bottom-color:var(--brand)}
-  .apptab .x{color:var(--faint);font-size:15px;line-height:1;padding:0 2px}
-  .apptab .x:hover{color:#FF6B6B}
-  .apptab .dot{width:7px;height:7px;border-radius:50%;flex:none}
+  body.app #tabbar{display:flex;align-items:stretch;gap:0;flex:none;
+    background:linear-gradient(180deg,var(--panel) 0%,var(--bg) 100%);
+    border-bottom:1px solid var(--line);box-shadow:0 2px 10px rgba(0,0,0,.25);
+    padding:env(safe-area-inset-top) 8px 0;overflow-x:auto;overflow-y:hidden;
+    -webkit-overflow-scrolling:touch;scrollbar-width:none}
+  body.app #tabbar::-webkit-scrollbar{display:none}
+  .apptab{position:relative;display:flex;align-items:center;gap:8px;white-space:nowrap;
+    padding:11px 14px 10px;font-family:var(--mono);font-size:12px;color:var(--dim);
+    cursor:pointer;flex:none;max-width:200px;letter-spacing:.02em;
+    border-bottom:2px solid transparent;transition:color .15s,background .15s}
+  .apptab:hover{color:var(--text);background:color-mix(in srgb,var(--brand) 6%,transparent)}
+  .apptab .lbl{overflow:hidden;text-overflow:ellipsis;font-weight:600}
+  .apptab.on{color:var(--text);border-bottom-color:var(--brand);
+    background:color-mix(in srgb,var(--brand) 9%,transparent)}
+  .apptab.on::after{content:"";position:absolute;left:8px;right:8px;bottom:-1px;height:2px;
+    background:var(--brand);border-radius:2px 2px 0 0;box-shadow:0 0 8px var(--brand)}
+  .apptab .x{color:var(--faint);font-size:16px;line-height:1;padding:2px 3px;border-radius:5px;
+    margin-left:2px;transition:color .12s,background .12s}
+  .apptab .x:hover{color:#fff;background:#FF6B6B}
+  .apptab .dot{width:7px;height:7px;border-radius:50%;flex:none;box-shadow:0 0 6px currentColor}
   #panes{flex:1;min-height:0;position:relative;display:flex}
   #term-area{display:none}
   body.app #term-area{display:block}
   /* Angosto (celular): panel O terminal a pantalla completa, se cambia por tabs */
   body.app #view-panel,body.app #term-area{position:absolute;inset:0}
-  body.app #view-panel{display:none;flex-direction:column;overflow-y:auto}
+  body.app #view-panel{display:none;flex-direction:column}
   body.app #view-panel.on{display:flex}
+  /* dentro del panel: barra fija arriba, contenido scrollea (como escritorio) */
+  body.app #view-panel #topbar{flex:none}
+  body.app #view-panel #content{flex:1;min-height:0;overflow-y:auto}
   body.app #term-area{display:none}
   body.app #term-area.on{display:block}
   .termpane{position:absolute;inset:0;display:none;border:0;width:100%;height:100%;
     background:var(--bg)}
   .termpane.on{display:block}
-  /* Tablet ancha (landscape): panel + terminal LADO A LADO, como el escritorio */
+  /* Tablet ancha (landscape): panel + terminal LADO A LADO, como el escritorio.
+     La terminal es el pane GRANDE; el panel angosto a la izquierda. */
   @media (min-width:900px){
     body.app.split #view-panel,body.app.split #term-area{position:relative;inset:auto}
-    body.app.split #view-panel{display:flex;flex:0 0 400px;border-right:1px solid var(--line)}
-    body.app.split #term-area{display:block;flex:1;min-width:0;position:relative}
+    body.app.split #view-panel{display:flex;flex:0 0 400px;min-width:0;
+      border-right:1px solid var(--line)}
+    body.app.split #term-area{display:block;flex:1 1 0;min-width:0;position:relative}
+    /* el contenido del panel se adapta al ancho angosto: 1 columna, sin max-width */
+    body.app.split #view-panel #urgent{grid-template-columns:1fr}
+    body.app.split #view-panel .sec,body.app.split #view-panel #ssh-bar,
+    body.app.split #view-panel #tl-wrap{max-width:none;padding-left:14px;padding-right:14px}
+    body.app.split #view-panel .row .rpath{display:none}
   }
 
   /* ---------- toasts ---------- */
@@ -798,8 +817,9 @@ function renderTabbar(){
     const t = document.createElement("div");
     t.className = "apptab" + (activeView === key ? " on" : "");
     const C = {waiting:"var(--waiting)", working:"var(--working)", done:"var(--done)"};
-    const dot = status ? `<span class="dot" style="background:${C[status]||"var(--faint)"}"></span>` : "";
-    t.innerHTML = `${dot}<span class="lbl">${label}</span>${closable ? '<span class="x">×</span>' : ""}`;
+    const c = C[status] || "var(--faint)";
+    const dot = status ? `<span class="dot" style="background:${c};color:${c}"></span>` : "";
+    t.innerHTML = `${dot}<span class="lbl">${mdEsc(label)}</span>${closable ? '<span class="x">×</span>' : ""}`;
     t.querySelector(".lbl").onclick = () => showView(key);
     if(!closable) t.onclick = () => showView(key);
     const x = t.querySelector(".x");
