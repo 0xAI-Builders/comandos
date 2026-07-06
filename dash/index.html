@@ -337,14 +337,15 @@
   .apptab .dot{width:7px;height:7px;border-radius:50%;flex:none;box-shadow:0 0 6px currentColor}
   .apptab.plus{font-size:18px;color:var(--faint);padding:8px 15px}
   .apptab.plus:hover{color:var(--brand)}
-  #panes{flex:1;min-height:0;position:relative;display:flex}
+  #panes{flex:1;min-height:0;position:relative}
   #term-area{display:none}
-  body.app #term-area{display:block}
-  /* Angosto (celular): panel O terminal a pantalla completa, se cambia por tabs */
-  body.app #view-panel,body.app #term-area{position:absolute;inset:0}
+  /* --- ANGOSTO (celular): tabs arriba a todo lo ancho; panel O terminal a
+         pantalla completa, se cambia con las tabs --- */
+  body.app #panes{display:block}
+  body.app #tabbar{position:absolute;top:0;left:0;right:0;z-index:5}
+  body.app #view-panel,body.app #term-area{position:absolute;left:0;right:0;bottom:0;top:44px}
   body.app #view-panel{display:none;flex-direction:column}
   body.app #view-panel.on{display:flex}
-  /* dentro del panel: barra fija arriba, contenido scrollea (como escritorio) */
   body.app #view-panel #topbar{flex:none}
   body.app #view-panel #content{flex:1;min-height:0;overflow-y:auto}
   body.app #term-area{display:none}
@@ -352,14 +353,18 @@
   .termpane{position:absolute;inset:0;display:none;border:0;width:100%;height:100%;
     background:var(--bg)}
   .termpane.on{display:block}
-  /* Tablet ancha (landscape): panel + terminal LADO A LADO, como el escritorio.
-     La terminal es el pane GRANDE; el panel angosto a la izquierda. */
+  /* --- ANCHO (tablet/desktop): IGUAL que la app de escritorio: panel angosto
+         a la IZQUIERDA (altura completa), tabs arriba a la DERECHA, terminal
+         abajo a la derecha. --- */
   @media (min-width:900px){
-    body.app.split #view-panel,body.app.split #term-area{position:relative;inset:auto}
-    body.app.split #view-panel{display:flex;flex:0 0 400px;min-width:0;
-      border-right:1px solid var(--line)}
-    body.app.split #term-area{display:block;flex:1 1 0;min-width:0;position:relative}
-    /* el contenido del panel se adapta al ancho angosto: 1 columna, sin max-width */
+    body.app.split #panes{display:grid;
+      grid-template-columns:380px 1fr;grid-template-rows:auto 1fr;
+      grid-template-areas:"panel tabs" "panel term"}
+    body.app.split #tabbar{grid-area:tabs;position:relative;inset:auto;top:auto}
+    body.app.split #view-panel{grid-area:panel;position:relative;inset:auto;top:auto;
+      display:flex;min-width:0;border-right:1px solid var(--line)}
+    body.app.split #term-area{grid-area:term;position:relative;inset:auto;top:auto;
+      display:block;min-width:0}
     body.app.split #view-panel #urgent{grid-template-columns:1fr}
     body.app.split #view-panel .sec,body.app.split #view-panel #ssh-bar,
     body.app.split #view-panel #tl-wrap{max-width:none;padding-left:14px;padding-right:14px}
@@ -375,8 +380,8 @@
   .toast.err{border-left-color:var(--waiting)}
 </style>
 
-<div id="tabbar"></div>
 <div id="panes">
+<div id="tabbar"></div>
 <div id="view-panel" class="on">
 <div id="topbar">
 <header>
@@ -850,10 +855,13 @@ function renderTabbar(){
     if(x) x.onclick = (e) => { e.stopPropagation(); closeTerm(key); };
     bar.appendChild(t);
   };
-  mk("⌂ Panel", "panel", false, null);
+  const split = document.body.classList.contains("split");
+  // En ANGOSTO hay tab "Panel" para volver al tablero; en ANCHO (split) el
+  // panel esta siempre a la izquierda, asi que NO se pone tab de Panel.
+  if(!split) mk("⌂ Panel", "panel", false, null);
   for(const [sess, o] of openTerms){
     const it = (S.list||[]).find(i => i.session === sess);
-    mk(it?.project || o.label || sess, "term:"+sess, true, it?.status);
+    mk(o.label || it?.project || sess, "term:"+sess, true, it?.status);
   }
   // Boton + : abrir cualquier sesion como terminal (usa el conmutador)
   const plus = document.createElement("div");
@@ -862,33 +870,54 @@ function renderTabbar(){
   plus.onclick = swOpen;
   bar.appendChild(plus);
 }
-function showView(key){
-  activeView = key;
-  const split = document.body.classList.contains("split");
-  // En split el panel SIEMPRE se ve; el area de terminal se ve si hay una activa
-  const termActive = key.startsWith("term:");
-  document.getElementById("view-panel").classList.toggle("on", key === "panel" || split);
-  document.getElementById("term-area").classList.toggle("on", termActive || (split && openTerms.size > 0));
-  for(const [sess, o] of openTerms)
-    o.frame.classList.toggle("on", key === "term:"+sess || (split && !termActive && [...openTerms.keys()][0] === sess));
-  renderTabbar();
-}
-function openTerm(sess, label){
-  if(!appEnabled() || !sess) return;
-  if(!openTerms.has(sess)){
+// Attachea el iframe de una terminal solo cuando de verdad se abre (lazy):
+// asi mostramos las MISMAS tabs del escritorio sin attachear 11 clientes tmux.
+function ensureFrame(sess){
+  const o = openTerms.get(sess);
+  if(o && !o.frame){
     const frame = document.createElement("iframe");
     frame.className = "termpane";
     frame.src = `${TERM_BASE}/?arg=${encodeURIComponent(sess)}`;
     document.getElementById("term-area").appendChild(frame);
-    openTerms.set(sess, {frame, label: label || sess});
+    o.frame = frame;
   }
+}
+let activeTerm = null;   // terminal visible en el area de terminal
+function showView(key){
+  activeView = key;
+  const split = document.body.classList.contains("split");
+  if(key.startsWith("term:")) activeTerm = key.slice(5);
+  // en split la terminal visible por defecto es la ultima activa (o la 1a)
+  let shown = key.startsWith("term:") ? key.slice(5)
+            : (split ? (activeTerm && openTerms.has(activeTerm) ? activeTerm : [...openTerms.keys()][0]) : null);
+  if(shown) ensureFrame(shown);
+  document.getElementById("view-panel").classList.toggle("on", split || key === "panel");
+  document.getElementById("term-area").classList.toggle("on", split ? !!shown : key.startsWith("term:"));
+  for(const [sess, o] of openTerms)
+    if(o.frame) o.frame.classList.toggle("on", sess === shown);
+  renderTabbar();
+}
+function addTermTab(sess, label){   // registra la tab SIN attachear (lazy)
+  if(!openTerms.has(sess)) openTerms.set(sess, {frame: null, label: label || sess});
+}
+function openTerm(sess, label){
+  if(!appEnabled() || !sess) return;
+  addTermTab(sess, label);
   showView("term:"+sess);
 }
 function closeTerm(sess){
   const o = openTerms.get(sess);
-  if(o){ o.frame.remove(); openTerms.delete(sess); }
-  if(activeView === "term:"+sess) showView("panel");
-  else renderTabbar();
+  if(o){ if(o.frame) o.frame.remove(); openTerms.delete(sess); }
+  if(activeTerm === sess) activeTerm = [...openTerms.keys()][0] || null;
+  showView(activeView === "term:"+sess ? "panel" : activeView);
+}
+async function loadDesktopTabs(){
+  // Las MISMAS pestanas abiertas en la app de escritorio (lazy).
+  try{
+    const tabs = await api("/tabs");
+    for(const t of tabs) addTermTab(t.session, t.label);
+    renderTabbar();
+  }catch(e){}
 }
 function initApp(){
   if(!appEnabled()) return;   // navegador local / app nativa: sin cambios
@@ -898,6 +927,7 @@ function initApp(){
   wide.addEventListener("change", applyWide);
   applyWide();
   renderTabbar();
+  loadDesktopTabs();
 }
 
 // ---------- fila compacta ----------

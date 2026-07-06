@@ -927,7 +927,7 @@ class Handler(http.server.SimpleHTTPRequestHandler):
     # Endpoints con DATOS o ACCIONES: exigen token. El shell estatico (HTML,
     # sw.js, manifest, iconos) NO — no revela nada (es codigo open-source) y
     # asi la PWA instala y carga sin depender de cookies en el webview movil.
-    API_GET = ("/state", "/events", "/conf", "/prefs", "/ssh")
+    API_GET = ("/state", "/events", "/conf", "/prefs", "/ssh", "/tabs")
 
     def do_GET(self):
         host = self.headers.get("Host", "")
@@ -951,6 +951,22 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             return self._json(200, out)
         if self.path.startswith("/prefs"):
             return self._json(200, read_prefs())
+        if self.path.startswith("/tabs"):
+            # Las MISMAS pestanas abiertas en la app de escritorio (app-tabs.json)
+            # para que el movil muestre exactamente lo mismo. Solo sesiones vivas.
+            live = tmux_sessions()
+            out = []
+            try:
+                with open(os.path.join(HOOKS, "app-tabs.json")) as f:
+                    d = json.load(f)
+                if isinstance(d, dict):
+                    for sess, label in d.items():
+                        if sess in live and sess not in HIDDEN_SESSIONS:
+                            out.append({"session": sess,
+                                        "label": label if isinstance(label, str) and label else sess})
+            except Exception:
+                pass
+            return self._json(200, out)
         if self.path.startswith("/events"):
             evs = []
             try:
