@@ -46,6 +46,15 @@
   :focus-visible{outline:2px solid var(--brand);outline-offset:2px}
   .hidden{display:none !important}
 
+  /* ---------- scrollbars premium (finos, redondeados, color de marca) ---------- */
+  *{scrollbar-width:thin;scrollbar-color:var(--line2) transparent}
+  *::-webkit-scrollbar{width:10px;height:10px}
+  *::-webkit-scrollbar-track{background:transparent}
+  *::-webkit-scrollbar-thumb{background:var(--line2);border-radius:10px;
+    border:3px solid transparent;background-clip:padding-box;min-height:40px}
+  *::-webkit-scrollbar-thumb:hover{background:var(--brand);background-clip:padding-box}
+  *::-webkit-scrollbar-corner{background:transparent}
+
   /* ---------- barras superiores (appbar + servidores): FIJAS siempre ---------- */
   #topbar{
     flex:none;z-index:10;padding-top:env(safe-area-inset-top);
@@ -326,6 +335,8 @@
     margin-left:2px;transition:color .12s,background .12s}
   .apptab .x:hover{color:#fff;background:#FF6B6B}
   .apptab .dot{width:7px;height:7px;border-radius:50%;flex:none;box-shadow:0 0 6px currentColor}
+  .apptab.plus{font-size:18px;color:var(--faint);padding:8px 15px}
+  .apptab.plus:hover{color:var(--brand)}
   #panes{flex:1;min-height:0;position:relative;display:flex}
   #term-area{display:none}
   body.app #term-area{display:block}
@@ -582,6 +593,19 @@ async function openSession(it, win){
     openInApp(r.session || it.session, win);
     return tf(`${it.project} en su pestana`, `${it.project} is in its tab`);
   }
+  if(WEBTERM){
+    // App remota: asegura la sesion viva (la crea si hace falta) y abre SU
+    // terminal aqui mismo, en su pestana.
+    let sess = it.session;
+    try{
+      const r = await api("/ensure", {session: it.session, cwd: it.cwd, win});
+      sess = r.session || it.session;
+    }catch(e){
+      try{ const r = await api("/up", {session: it.session, cwd: it.cwd}); sess = (r&&r.session)||sess; }catch(_){}
+    }
+    openTerm(sess, it.project);
+    return tf(`${it.project} abierto`, `${it.project} opened`);
+  }
   try{
     await api(win === "shell" ? "/shell" : "/focus", {session: it.session, cwd: it.cwd});
   }catch(e){
@@ -827,10 +851,16 @@ function renderTabbar(){
     bar.appendChild(t);
   };
   mk("⌂ Panel", "panel", false, null);
-  for(const [sess] of openTerms){
+  for(const [sess, o] of openTerms){
     const it = (S.list||[]).find(i => i.session === sess);
-    mk(it?.project || sess, "term:"+sess, true, it?.status);
+    mk(it?.project || o.label || sess, "term:"+sess, true, it?.status);
   }
+  // Boton + : abrir cualquier sesion como terminal (usa el conmutador)
+  const plus = document.createElement("div");
+  plus.className = "apptab plus"; plus.textContent = "+";
+  plus.title = tf("Abrir una sesion como terminal", "Open a session as a terminal");
+  plus.onclick = swOpen;
+  bar.appendChild(plus);
 }
 function showView(key){
   activeView = key;
@@ -843,14 +873,14 @@ function showView(key){
     o.frame.classList.toggle("on", key === "term:"+sess || (split && !termActive && [...openTerms.keys()][0] === sess));
   renderTabbar();
 }
-function openTerm(sess){
-  if(!appEnabled()) return;
+function openTerm(sess, label){
+  if(!appEnabled() || !sess) return;
   if(!openTerms.has(sess)){
     const frame = document.createElement("iframe");
     frame.className = "termpane";
     frame.src = `${TERM_BASE}/?arg=${encodeURIComponent(sess)}`;
     document.getElementById("term-area").appendChild(frame);
-    openTerms.set(sess, {frame});
+    openTerms.set(sess, {frame, label: label || sess});
   }
   showView("term:"+sess);
 }
@@ -1317,6 +1347,12 @@ $("#new-form").addEventListener("submit", async e=>{
   try{
     if(inApp()){ const r = await api("/ensure", {session: name, win: "claude"});
                  openInApp(r.session || name, "claude"); }
+    else if(WEBTERM){
+      // App remota: crea/abre la sesion (proyecto de ~/codebase o shell en
+      // blanco) y abre su terminal aqui mismo.
+      const r = await api("/new", {session: name});
+      openTerm((r && r.session) || name, name);
+    }
     else { await api("/up", {session: name}); }
     $("#new-name").value = "";
     toast(tf(`${name} abierto`, `${name} opened`));
