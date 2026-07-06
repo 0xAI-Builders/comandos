@@ -21,6 +21,7 @@ Layered protections, all on by default:
 | `~/.ssh/config` injection (`ProxyCommand` → RCE on connect) | `hostname`/`user`/`port`/`identity` are validated; newlines and control chars are rejected. |
 | Popup spoofing / approval social-engineering (`cc-notifyd`) | Loopback-only + Origin-gated; concurrent popups capped. |
 | Telegram takeover | Identity is checked by **numeric user id** (`TELEGRAM_ALLOWED_USER_ID`, immutable) and chat id — on messages **and** button callbacks. Fails **closed** if unconfigured. |
+| Web terminal (embedded) | The terminal (`ttyd`, port 8443) is **tailnet-only** — no separate password, so it embeds in the dashboard without a per-frame prompt. Same boundary as SSH-over-Tailscale (WireGuard + device auth). The control token still gates the dashboard. |
 | Secrets on disk | `telegram.env`, `cc-notify.conf`, `dash-token` are `chmod 600`. |
 
 The dashboard renderer (`mdHtml`) is XSS-safe: agent/hook text is HTML-escaped

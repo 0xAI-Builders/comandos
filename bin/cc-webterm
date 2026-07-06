@@ -57,22 +57,23 @@ TOKEN=$(cat "$TOKEN_FILE")
 
 stop; sleep 0.3
 # -i 127.0.0.1  solo loopback (tailscale serve hace de puente hacia el tailnet)
-# -c            credencial basic-auth = el token de ComandOS
 # -W            writable (interactivo); --url-arg deja elegir sesion por ?arg=
 # SIN base-path: ttyd sirve en raiz; cc-mobile lo expone en su PROPIO puerto
 # https (8443), asi los assets cargan sin lios de prefijo detras del proxy.
+# SIN basic-auth: para que la terminal se embeba en el tablero (iframe) sin
+# pedir contrasena en cada panel. La frontera de seguridad es el TAILNET
+# (solo tus dispositivos, cifrado WireGuard) — igual que SSH sobre Tailscale.
 # -t ...        tema oscuro + fuente comoda en el celular
 ttyd -i 127.0.0.1 -p "$PORT" -W --url-arg \
-  -c "comandos:$TOKEN" \
   -t 'theme={"background":"#0A0D13","foreground":"#EAF0FB","cursor":"#FFAE1A"}' \
-  -t fontSize=15 -t 'fontFamily=JetBrainsMono Nerd Font, monospace' \
+  -t fontSize=14 -t 'fontFamily=JetBrainsMono Nerd Font, monospace' \
   "$SELF_DIR/cc-webterm-attach" >/dev/null 2>&1 &
 echo $! > "$PIDF"
 sleep 0.4
 if pgrep -f "ttyd.*cc-webterm-attach" >/dev/null; then
   ok "Terminal web listo en 127.0.0.1:$PORT (puerto https 8443)."
   echo "  Exponlo al celular con:  cc-mobile   (lo enruta por https del tailnet)"
-  echo "  Usuario: comandos   ·   Password: tu token de acceso"
+  echo "  (Solo tu tailnet lo alcanza — como SSH sobre Tailscale)"
 else
   die "ttyd no arranco. Revisa: ttyd --version"
 fi

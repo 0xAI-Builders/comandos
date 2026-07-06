@@ -301,6 +301,41 @@
   .sw-row .dot{flex:none;width:8px;height:8px;border-radius:50%}
   .sw-row .hint{margin-left:auto;color:var(--faint);font-size:10.5px}
 
+  /* ---------- app combinada (panel + terminales, como el escritorio) ---------- */
+  /* Solo activa cuando entras por el tailnet (WEBTERM). El body se vuelve la
+     app: barra de pestanas arriba, y debajo el panel o una terminal. */
+  body.app{height:100vh;overflow:hidden;display:flex;flex-direction:column}
+  #tabbar{display:none}
+  body.app #tabbar{display:flex;align-items:stretch;gap:2px;flex:none;
+    background:var(--panel);border-bottom:1px solid var(--line);
+    padding:env(safe-area-inset-top) 6px 0;overflow-x:auto;-webkit-overflow-scrolling:touch}
+  .apptab{display:flex;align-items:center;gap:7px;white-space:nowrap;
+    padding:10px 13px;font-family:var(--mono);font-size:12.5px;color:var(--dim);
+    border-bottom:2px solid transparent;cursor:pointer;flex:none;max-width:190px}
+  .apptab .lbl{overflow:hidden;text-overflow:ellipsis}
+  .apptab.on{color:var(--text);border-bottom-color:var(--brand)}
+  .apptab .x{color:var(--faint);font-size:15px;line-height:1;padding:0 2px}
+  .apptab .x:hover{color:#FF6B6B}
+  .apptab .dot{width:7px;height:7px;border-radius:50%;flex:none}
+  #panes{flex:1;min-height:0;position:relative;display:flex}
+  #term-area{display:none}
+  body.app #term-area{display:block}
+  /* Angosto (celular): panel O terminal a pantalla completa, se cambia por tabs */
+  body.app #view-panel,body.app #term-area{position:absolute;inset:0}
+  body.app #view-panel{display:none;flex-direction:column;overflow-y:auto}
+  body.app #view-panel.on{display:flex}
+  body.app #term-area{display:none}
+  body.app #term-area.on{display:block}
+  .termpane{position:absolute;inset:0;display:none;border:0;width:100%;height:100%;
+    background:var(--bg)}
+  .termpane.on{display:block}
+  /* Tablet ancha (landscape): panel + terminal LADO A LADO, como el escritorio */
+  @media (min-width:900px){
+    body.app.split #view-panel,body.app.split #term-area{position:relative;inset:auto}
+    body.app.split #view-panel{display:flex;flex:0 0 400px;border-right:1px solid var(--line)}
+    body.app.split #term-area{display:block;flex:1;min-width:0;position:relative}
+  }
+
   /* ---------- toasts ---------- */
   #toasts{position:fixed;right:16px;bottom:16px;z-index:30;display:flex;
     flex-direction:column;gap:8px}
@@ -310,6 +345,9 @@
   .toast.err{border-left-color:var(--waiting)}
 </style>
 
+<div id="tabbar"></div>
+<div id="panes">
+<div id="view-panel" class="on">
 <div id="topbar">
 <header>
   <div class="brand"><b>●</b> COMANDOS</div>
@@ -358,6 +396,9 @@
   <div id="timeline" class="hidden"></div>
 </div>
 </div>
+</div><!-- /#view-panel -->
+<div id="term-area"></div>
+</div><!-- /#panes -->
 
 <aside id="settings" class="drawer" aria-label="Ajustes">
   <h3>Notificaciones (todo el sistema)</h3>
@@ -733,14 +774,81 @@ function wireActions(el, it){
     term.classList.toggle("hidden", !WEBTERM);
     term.addEventListener("click", e=>{
       e.stopPropagation();
-      // Terminal web en su propio puerto https (8443), raiz — sin subpath.
-      window.open(`https://${location.hostname}:8443/?arg=${encodeURIComponent(el.dataset.session)}`, "_blank");
+      openTerm(el.dataset.session);   // abre/enfoca su pestana de terminal
     });
   }
 }
 // El terminal web solo esta enrutado cuando entras por el tailnet (https +
 // no es localhost). En la app nativa y en el navegador local se usa la de aqui.
 const WEBTERM = location.protocol === "https:" && !/^(127\.|localhost|::1)/.test(location.hostname);
+const TERM_BASE = WEBTERM ? `https://${location.hostname}:8443` : "";
+
+// ---------- App combinada: panel + pestanas de terminal (como el escritorio) ----------
+// Cada terminal es un iframe a ttyd attacheado a esa sesion tmux (misma sesion,
+// en vivo). En tablet ancha se ve panel + terminal lado a lado.
+const openTerms = new Map();   // session -> {tab, frame}
+let activeView = "panel";
+
+function appEnabled(){ return WEBTERM; }
+
+function renderTabbar(){
+  const bar = document.getElementById("tabbar");
+  bar.innerHTML = "";
+  const mk = (label, key, closable, status) => {
+    const t = document.createElement("div");
+    t.className = "apptab" + (activeView === key ? " on" : "");
+    const C = {waiting:"var(--waiting)", working:"var(--working)", done:"var(--done)"};
+    const dot = status ? `<span class="dot" style="background:${C[status]||"var(--faint)"}"></span>` : "";
+    t.innerHTML = `${dot}<span class="lbl">${label}</span>${closable ? '<span class="x">×</span>' : ""}`;
+    t.querySelector(".lbl").onclick = () => showView(key);
+    if(!closable) t.onclick = () => showView(key);
+    const x = t.querySelector(".x");
+    if(x) x.onclick = (e) => { e.stopPropagation(); closeTerm(key); };
+    bar.appendChild(t);
+  };
+  mk("⌂ Panel", "panel", false, null);
+  for(const [sess] of openTerms){
+    const it = (S.list||[]).find(i => i.session === sess);
+    mk(it?.project || sess, "term:"+sess, true, it?.status);
+  }
+}
+function showView(key){
+  activeView = key;
+  const split = document.body.classList.contains("split");
+  // En split el panel SIEMPRE se ve; el area de terminal se ve si hay una activa
+  const termActive = key.startsWith("term:");
+  document.getElementById("view-panel").classList.toggle("on", key === "panel" || split);
+  document.getElementById("term-area").classList.toggle("on", termActive || (split && openTerms.size > 0));
+  for(const [sess, o] of openTerms)
+    o.frame.classList.toggle("on", key === "term:"+sess || (split && !termActive && [...openTerms.keys()][0] === sess));
+  renderTabbar();
+}
+function openTerm(sess){
+  if(!appEnabled()) return;
+  if(!openTerms.has(sess)){
+    const frame = document.createElement("iframe");
+    frame.className = "termpane";
+    frame.src = `${TERM_BASE}/?arg=${encodeURIComponent(sess)}`;
+    document.getElementById("term-area").appendChild(frame);
+    openTerms.set(sess, {frame});
+  }
+  showView("term:"+sess);
+}
+function closeTerm(sess){
+  const o = openTerms.get(sess);
+  if(o){ o.frame.remove(); openTerms.delete(sess); }
+  if(activeView === "term:"+sess) showView("panel");
+  else renderTabbar();
+}
+function initApp(){
+  if(!appEnabled()) return;   // navegador local / app nativa: sin cambios
+  document.body.classList.add("app");
+  const wide = window.matchMedia("(min-width:900px)");
+  const applyWide = () => { document.body.classList.toggle("split", wide.matches); showView(activeView); };
+  wide.addEventListener("change", applyWide);
+  applyWide();
+  renderTabbar();
+}
 
 // ---------- fila compacta ----------
 function rowEl(it){
@@ -900,6 +1008,7 @@ function render(list){
   document.querySelectorAll(".ssh-chip").forEach(ch =>
     ch.classList.toggle("live", sshConn.has("ssh-" + ch.textContent)));
   applyQ();
+  if(document.body.classList.contains("app")) renderTabbar();  // refresca dots/labels
 }
 
 function notify(it, verb){
@@ -1285,6 +1394,7 @@ document.querySelectorAll(".lang-btn").forEach(b=>{
   if(L === "en")
     LABEL = {waiting: "waiting for you", done: "finished", working: "working",
              idle: "alive, idle", dead: "off"};
+  initApp();   // barra de pestanas + terminales embebidas (si es tailnet)
   loadPrefs().then(tick);
   loadSsh();
   loadConf();

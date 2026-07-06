@@ -83,7 +83,7 @@ URL="https://$HOST/?token=$TOKEN"
 echo
 ok "Tablero expuesto a TU tailnet (cifrado, privado, con TLS)."
 if pgrep -f "ttyd.*cc-webterm-attach" >/dev/null 2>&1; then
-  ok "Terminal web REAL activo: https://$HOST:8443 (usuario 'comandos', pass = tu token)"
+  ok "Terminal web REAL activo: https://$HOST:8443 (solo tu tailnet)"
 else
   echo "  (Terminal web interactiva: instala 'ttyd' y corre cc-webterm para tenerla)"
 fi
