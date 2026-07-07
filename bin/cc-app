@@ -166,6 +166,59 @@ def http_ensure(sess, win_name="claude"):
 URL_RE = r"https?://[^\s'\"<>\]\)]+"
 
 
+def normalize_wrapped_url_text(text):
+    """Join visual terminal wraps that split a URL across rows."""
+    pat = r"https?://(?:[^\s'\"<>\]\)]+|[ \t]*\r?\n[ \t]*[^\s'\"<>\]\)]+)+"
+    return re.sub(pat, lambda m: re.sub(r"[ \t]*\r?\n[ \t]*", "", m.group(0)), text or "")
+
+
+def url_from_wrapped_text(text, fragment="", row=None, col=None):
+    pat = r"https?://(?:[^\s'\"<>\]\)]+|[ \t]*\r?\n[ \t]*[^\s'\"<>\]\)]+)+"
+    point = None
+    if row is not None and col is not None:
+        lines = (text or "").splitlines(True)
+        if 0 <= row < len(lines):
+            point = sum(len(lines[i]) for i in range(row)) + min(max(col, 0), len(lines[row]))
+    frag = normalize_wrapped_url_text(fragment or "").strip()
+    matches = list(re.finditer(pat, text or ""))
+    for m in matches:
+        url = re.sub(r"[ \t]*\r?\n[ \t]*", "", m.group(0))
+        if frag and (frag in url or url in frag):
+            return url
+        if point is not None and m.start() <= point < m.end():
+            return url
+    if not frag and point is None and len(matches) == 1:
+        return re.sub(r"[ \t]*\r?\n[ \t]*", "", matches[0].group(0))
+    return frag
+
+
+def cell_at_event(term, event):
+    cw = max(1, int(term.get_char_width() or 1))
+    ch = max(1, int(term.get_char_height() or 1))
+    x = max(0, int(event.x) - int(term.get_margin_start()))
+    y = max(0, int(event.y) - int(term.get_margin_top()))
+    col = min(max(0, x // cw), max(0, int(term.get_column_count() or 1) - 1))
+    top = 0
+    adj = term.get_vadjustment()
+    if adj:
+        top = int((adj.get_value() or 0) // ch) if term.get_scroll_unit_is_pixels() else int(adj.get_value() or 0)
+    return top + (y // ch), col
+
+
+def url_at_event(term, event, match=""):
+    try:
+        row, col = cell_at_event(term, event)
+        cols = max(1, int(term.get_column_count() or 1))
+        start = max(0, row - 2)
+        text, _attrs = term.get_text_range(start, 0, row + 3, cols, None, None)
+        url = url_from_wrapped_text(text or "", match or "", row - start, col)
+        if url:
+            return url
+    except Exception:
+        pass
+    return normalize_wrapped_url_text(match or "")
+
+
 def make_term(argv_sh):
     term = Vte.Terminal()
     term.set_font(Pango.FontDescription(FONT))
@@ -372,8 +425,9 @@ def on_term_button(term, event):
     if event.button == 1 and (event.state & Gdk.ModifierType.CONTROL_MASK):
         try:
             match, _tag = term.match_check_event(event)
-            if match:
-                open_url(match)
+            url = url_at_event(term, event, match or "")
+            if url:
+                open_url(url)
                 return True
         except Exception:
             pass
@@ -383,9 +437,10 @@ def on_term_button(term, event):
     if event.button == 1:
         try:
             match, _tag = term.match_check_event(event)
+            url = url_at_event(term, event, match or "")
         except Exception:
-            match = None
-        term._url_press = (event.x, event.y, match) if match else None
+            url = None
+        term._url_press = (event.x, event.y, url) if url else None
         return False
     if event.button != 3:
         return False

@@ -551,6 +551,7 @@ const T_EN = {
   "Servidores": "Servers", "gestionar": "manage", "Ajustes": "Settings",
   "Ver actividad reciente": "Show recent activity", "Ocultar actividad": "Hide activity",
   "Necesita respuesta": "Needs your answer", "Suelta": "Detached",
+  "Listo para responder": "Ready for your reply",
   "Pregunta pendiente · claude apagado": "Pending question · claude is off",
   "Esperando input o permiso": "Waiting for input or permission",
   "Trabajando...": "Working...", "Revivir para retomar": "Revive to resume",
@@ -1146,14 +1147,22 @@ function rowEl(it){
 }
 
 // ---------- render ----------
+function itemKind(it){
+  if(it.status === "waiting") return "card";
+  if((it.agent || "") === "codex" && it.status === "done" && ((it.detail || it.last || "").trim())) return "card";
+  return "row";
+}
+
 function render(list){
   S.list = list;
   const seen = new Set();
   const counts = {waiting:0, done:0, working:0};
+  let cardCount = 0;
   for(const it of list){
     seen.add(it.session);
     if(counts[it.status] !== undefined) counts[it.status]++;
-    const kind = it.status === "waiting" ? "card" : "row";
+    const kind = itemKind(it);
+    if(kind === "card") cardCount++;
     const container = kind === "card" ? urgent : rows;
     let el = document.querySelector(`[data-session="${CSS.escape(it.session)}"]`);
     if(el && el.dataset.kind !== kind){ el.remove(); el = null; }
@@ -1176,11 +1185,12 @@ function render(list){
       // pregunta visible y el camino de Revivir/Abrir (nunca respondas al vacio)
       const canSend = it.alive && !ext && !it.zombie;
       el.querySelector(".tag").textContent = ext ? t("Suelta")
-        : !canSend ? t("Pregunta pendiente · claude apagado") : t("Necesita respuesta");
+        : !canSend ? t("Pregunta pendiente · claude apagado")
+        : it.status === "done" ? t("Listo para responder") : t("Necesita respuesta");
       const pe = el.querySelector(".path");
       pe.textContent = it.cwd ? shortPath(it.cwd) : t("carpeta no encontrada");
       pe.title = it.cwd || ""; pe.classList.toggle("missing", !it.cwd);
-      el.querySelector(".preview").innerHTML = mdHtml(it.detail || t("Esperando input o permiso"));
+      el.querySelector(".preview").innerHTML = mdHtml(it.detail || it.last || t("Esperando input o permiso"));
       // Opciones REALES (las mismas de los popups): 1 boton por opcion
       const opts = el.querySelector(".opts");
       const optsStr = (canSend && it.options) ? it.options : "";
@@ -1243,7 +1253,7 @@ function render(list){
   document.querySelectorAll("[data-session]").forEach(el=>{
     if(!seen.has(el.dataset.session)) el.remove();
   });
-  $("#urgent-wrap").classList.toggle("hidden", counts.waiting === 0);
+  $("#urgent-wrap").classList.toggle("hidden", cardCount === 0);
   if(!rows.querySelector(".row") && !rows.querySelector(".empty")){
     rows.innerHTML = `<div class="empty">${tf("Sin sesiones. Abre una arriba con", "No sessions. Open one above with")}
       <code>${tf("abrir proyecto", "open project")}</code>${tf(", o en cualquier terminal:", ", or in any terminal:")} <code>ccx ${tf("nombre", "name")}</code></div>`;
