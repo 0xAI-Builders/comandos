@@ -117,6 +117,7 @@ Routed under `/term` by the same Tailscale Serve, behind the same token.
 | `hooks/cc-notify.sh` | Claude Code hook: state + notifications |
 | `bin/ccx` | One tmux session per project (`ccx name`, `ccx -a codex name`) |
 | `bin/cc-agents` | Connect Codex / OpenCode / Gemini / Antigravity |
+| `bin/cc-doctor` | Diagnostics: checks platform, deps, services (`--fix` offers batched fixes) |
 | `bin/cc-mobile` | Expose the dashboard to your phone over Tailscale (secure) |
 | `bin/cc-webterm` | Full interactive web terminal (ttyd) for your sessions |
 

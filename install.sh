@@ -146,6 +146,9 @@ echo "Para el celular (seguro): tailscale + qrencode + ttyd, y corre cc-mobile."
 echo "Terminal REAL en el celular: instala ttyd y corre cc-webterm (lo enruta cc-mobile)."
 echo "Para operar por Telegram: llena ~/.claude/hooks/telegram.env y reinicia cc-telegram."
 
+echo ""
+echo "Diagnóstico:  cc-doctor      (o cc-doctor --fix para arreglos)"
+
 if [ "$CC_PLAT" = "linux-wsl-ubuntu" ]; then
   echo ""
   echo "WSL: busca 'ComandOS' en el menú Inicio de Windows,"

@@ -118,6 +118,7 @@ compartido. Se enruta en `/term` por el mismo Tailscale Serve, con el mismo toke
 | `hooks/cc-notify.sh` | Hook de Claude Code: estado + notificaciones |
 | `bin/ccx` | Una sesión tmux por proyecto (`ccx nombre`, `ccx -a codex nombre`) |
 | `bin/cc-agents` | Conecta Codex / OpenCode / Gemini / Antigravity |
+| `bin/cc-doctor` | Diagnóstico: chequea plataforma, deps, servicios (`--fix` para arreglos batched) |
 | `bin/cc-mobile` | Expone el tablero a tu celular por Tailscale (seguro) |
 | `bin/cc-webterm` | Terminal web completa e interactiva (ttyd) de tus sesiones |
 
