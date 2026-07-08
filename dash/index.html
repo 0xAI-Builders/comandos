@@ -401,6 +401,15 @@
     body.app.split #view-panel #tl-wrap{max-width:none;padding-left:14px;padding-right:14px}
     body.app.split #view-panel .row .rpath{display:none}
   }
+  #term-select-toggle{display:none;position:absolute;right:12px;top:10px;z-index:4;
+    align-items:center;justify-content:center;min-height:30px;padding:5px 10px;
+    border:1px solid var(--line2);border-radius:7px;background:rgba(10,13,19,.88);
+    color:var(--dim);font-family:var(--mono);font-size:11.5px;font-weight:700;
+    box-shadow:0 8px 24px rgba(0,0,0,.32);backdrop-filter:blur(8px)}
+  body.app #term-area.on #term-select-toggle{display:inline-flex}
+  #term-select-toggle:hover{color:var(--text);border-color:var(--brand)}
+  #term-select-toggle.on{color:var(--bg);background:var(--brand);border-color:var(--brand)}
+  #term-select-toggle:disabled{opacity:.55;cursor:wait}
 
   /* ---------- toasts ---------- */
   #toasts{position:fixed;right:16px;bottom:16px;z-index:30;display:flex;
@@ -475,7 +484,9 @@
 </div>
 </div><!-- /#view-panel -->
 <div id="splitter" role="separator" aria-orientation="vertical" aria-label="Ajustar panel"></div>
-<div id="term-area"></div>
+<div id="term-area">
+  <button type="button" id="term-select-toggle" aria-pressed="false" title="Seleccionar texto">Seleccionar</button>
+</div>
 </div><!-- /#panes -->
 
 <aside id="settings" class="drawer" aria-label="Ajustes">
@@ -927,7 +938,10 @@ let termBasePromise = null;
 // Cada terminal es un iframe a ttyd attacheado a esa sesion tmux (misma sesion,
 // en vivo). En tablet ancha se ve panel + terminal lado a lado.
 const openTerms = new Map();   // session -> {tab, frame}
+let activeTerm = null;   // terminal visible en el area de terminal
 let activeView = "panel";
+const selectingTerms = new Set();
+let termSelectBusy = false;
 const SPLIT_KEY = "cc-split-left";
 
 function appEnabled(){ return WEBTERM; }
@@ -1051,9 +1065,11 @@ function wireTermFrameScroll(frame){
       return true;
     };
     doc.addEventListener("touchstart", e => {
+      if(frame.dataset.selecting === "1"){ touchY = null; return; }
       touchY = e.touches && e.touches.length === 1 ? e.touches[0].clientY : null;
     }, {capture:true, passive:true});
     doc.addEventListener("touchmove", e => {
+      if(frame.dataset.selecting === "1") return;
       if(touchY === null || !e.touches || e.touches.length !== 1) return;
       const touch = e.touches[0];
       const dy = touchY - touch.clientY;
@@ -1096,6 +1112,70 @@ function wireTermFrameShortcuts(frame){
     win.addEventListener("keydown", onKey, true);
     doc.addEventListener("keydown", onKey, true);
   }catch(_){}
+}
+
+function updateTermSelectButton(){
+  const b = document.getElementById("term-select-toggle");
+  const sess = activeTerm && openTerms.has(activeTerm) ? activeTerm : "";
+  if(!b) return;
+  const selecting = !!(sess && selectingTerms.has(sess));
+  b.disabled = termSelectBusy || !sess;
+  b.classList.toggle("on", selecting);
+  b.setAttribute("aria-pressed", String(selecting));
+  b.textContent = selecting ? tf("Interactuar", "Interact") : tf("Seleccionar", "Select");
+  b.title = selecting
+    ? tf("Restaurar mouse de tmux para interactuar", "Restore tmux mouse for interaction")
+    : tf("Apagar mouse de tmux para seleccionar texto", "Disable tmux mouse to select text");
+}
+
+async function setTermSelectionMode(sess, selecting, quiet=false){
+  if(!sess || termSelectBusy) return;
+  termSelectBusy = true;
+  updateTermSelectButton();
+  try{
+    await api("/tmux-mouse", {session: sess, enabled: !selecting});
+    if(selecting) selectingTerms.add(sess); else selectingTerms.delete(sess);
+    const frame = openTerms.get(sess)?.frame;
+    if(frame) frame.dataset.selecting = selecting ? "1" : "";
+    if(!quiet) toast(selecting
+      ? tf("Seleccion de texto activa", "Text selection enabled")
+      : tf("Interaccion tmux restaurada", "tmux interaction restored"));
+  }catch(err){
+    toast(err.message, true);
+  }finally{
+    termSelectBusy = false;
+    updateTermSelectButton();
+  }
+}
+
+function restoreTermInteraction(sess){
+  if(!sess || !selectingTerms.has(sess)) return;
+  setTermSelectionMode(sess, false, true);
+}
+
+function restoreInactiveTermInteractions(keep){
+  for(const sess of [...selectingTerms])
+    if(sess !== keep) restoreTermInteraction(sess);
+}
+
+function restoreAllTermInteractions(){
+  for(const sess of [...selectingTerms]){
+    selectingTerms.delete(sess);
+    const frame = openTerms.get(sess)?.frame;
+    if(frame) frame.dataset.selecting = "";
+    try{
+      const tok = authToken();
+      const headers = {"Content-Type":"application/json"};
+      if(tok) headers["X-Comandos-Token"] = tok;
+      fetch("/tmux-mouse", {
+        method:"POST",
+        headers,
+        body:JSON.stringify({session:sess, enabled:true}),
+        keepalive:true
+      }).catch(()=>{});
+    }catch(_){}
+  }
+  updateTermSelectButton();
 }
 
 function renderTabbar(){
@@ -1155,7 +1235,6 @@ function ensureFrame(sess){
     });
   }
 }
-let activeTerm = null;   // terminal visible en el area de terminal
 function showView(key){
   activeView = key;
   const split = document.body.classList.contains("split");
@@ -1164,10 +1243,12 @@ function showView(key){
   let shown = key.startsWith("term:") ? key.slice(5)
             : (split ? (activeTerm && openTerms.has(activeTerm) ? activeTerm : [...openTerms.keys()][0]) : null);
   if(shown) ensureFrame(shown);
+  restoreInactiveTermInteractions(shown);
   document.getElementById("view-panel").classList.toggle("on", split || key === "panel");
   document.getElementById("term-area").classList.toggle("on", split ? !!shown : key.startsWith("term:"));
   for(const [sess, o] of openTerms)
     if(o.frame) o.frame.classList.toggle("on", sess === shown);
+  updateTermSelectButton();
   renderTabbar();
 }
 function addTermTab(sess, label){   // registra la tab SIN attachear (lazy)
@@ -1179,6 +1260,7 @@ function openTerm(sess, label){
   showView("term:"+sess);
 }
 function closeTerm(sess){
+  restoreTermInteraction(sess);
   const o = openTerms.get(sess);
   if(o){ if(o.frame) o.frame.remove(); openTerms.delete(sess); }
   if(activeTerm === sess) activeTerm = [...openTerms.keys()][0] || null;
@@ -1920,6 +2002,11 @@ $("#tl-toggle").addEventListener("click", ()=>{
     ? t("Ver actividad reciente") : t("Ocultar actividad");
   if(!tl.classList.contains("hidden")) tickEvents();
 });
+$("#term-select-toggle").addEventListener("click", ()=>{
+  if(!activeTerm || !openTerms.has(activeTerm)) return;
+  setTermSelectionMode(activeTerm, !selectingTerms.has(activeTerm));
+});
+window.addEventListener("pagehide", restoreAllTermInteractions);
 setInterval(()=>{
   const d = new Date();
   $("#clock").textContent =

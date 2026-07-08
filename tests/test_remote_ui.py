@@ -94,11 +94,28 @@ def test_remote_terminal_iframe_does_not_hijack_tmux_wheel_events():
     assert "clientY" in fn
     assert "touchstart" in fn
     assert "touchmove" in fn
+    assert "frame.dataset.selecting" in fn
     assert "passive:false" in fn
     style_fn = extract_js_function(HTML, "styleTermFrame")
     assert "touch-action:pan-y" in style_fn
     assert "-webkit-overflow-scrolling:touch" in style_fn
     assert "wireTermFrameScroll(frame)" in HTML
+
+
+def test_remote_terminal_has_explicit_text_selection_mode():
+    assert 'id="term-select-toggle"' in HTML
+    assert "/tmux-mouse" in HTML
+    assert "setTermSelectionMode" in HTML
+    assert "restoreTermInteraction" in HTML
+    fn = extract_js_function(HTML, "setTermSelectionMode")
+    assert 'api("/tmux-mouse"' in fn
+    assert "enabled: !selecting" in fn
+    assert "selectingTerms.add(sess)" in fn
+    assert "selectingTerms.delete(sess)" in fn
+    assert 'frame.dataset.selecting = selecting ? "1" : ""' in fn
+    assert "updateTermSelectButton()" in fn
+    assert "updateTermSelectButton();" in extract_js_function(HTML, "showView")
+    assert "restoreTermInteraction(sess)" in extract_js_function(HTML, "closeTerm")
 
 
 def test_remote_buttons_reflect_actual_backend_state():
@@ -143,6 +160,7 @@ if __name__ == "__main__":
     test_remote_terminal_can_be_opened_from_remote_drawer()
     test_open_terminal_button_dismisses_remote_drawer()
     test_remote_terminal_iframe_does_not_hijack_tmux_wheel_events()
+    test_remote_terminal_has_explicit_text_selection_mode()
     test_remote_buttons_reflect_actual_backend_state()
     test_remote_routes_are_never_served_from_stale_shell_cache()
     test_dashboard_declares_standard_favicon_to_avoid_remote_404_noise()

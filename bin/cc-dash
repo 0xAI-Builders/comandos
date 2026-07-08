@@ -405,6 +405,18 @@ def tmux_sessions():
     return {l for l in r.stdout.splitlines() if l}
 
 
+def set_tmux_mouse(sess, enabled):
+    target = "=" + sess
+    if tmux("has-session", "-t", target).returncode != 0:
+        return f"No hay sesion tmux '{sess}'"
+    # set-option en tmux 3.2a no acepta el target exacto '=name' para opciones
+    # de sesion, pero el nombre viene validado por SESSION_RE y no pasa por shell.
+    r = tmux("set-option", "-t", sess, "mouse", "on" if enabled else "off")
+    if r.returncode != 0:
+        return r.stderr.strip() or "tmux fallo"
+    return None
+
+
 def session_name(project):
     # misma regla que ccx: basename con '.' y ':' -> '-'
     return re.sub(r"[.:]", "-", project)[:80]
@@ -1442,6 +1454,14 @@ class Handler(http.server.SimpleHTTPRequestHandler):
         sess = data.get("session", "")
         if not SESSION_RE.match(sess):
             return self._json(400, {"error": "Nombre de sesion invalido"})
+
+        if self.path == "/tmux-mouse":
+            enabled = bool(data.get("enabled", True))
+            err = set_tmux_mouse(sess, enabled)
+            if err:
+                code = 404 if err.startswith("No hay sesion") else 500
+                return self._json(code, {"error": err})
+            return self._json(200, {"ok": True, "mouse": "on" if enabled else "off"})
 
         if self.path == "/recover-tab":
             label = str(data.get("label") or sess)[:80]

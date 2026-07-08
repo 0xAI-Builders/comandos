@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 import ast
 import re
+import types
 from pathlib import Path
 
 
@@ -21,6 +22,26 @@ def load_remote_helpers():
     ns = {"re": re}
     exec("\n\n".join(funcs[name] for name in needed), ns)
     return ns
+
+
+def load_tmux_mouse_helper():
+    tree = ast.parse(SRC)
+    funcs = {
+        node.name: ast.get_source_segment(SRC, node)
+        for node in tree.body
+        if isinstance(node, ast.FunctionDef)
+    }
+    assert "set_tmux_mouse" in funcs
+
+    calls = []
+
+    def fake_tmux(*args, timeout=5):
+        calls.append(args)
+        return types.SimpleNamespace(returncode=0, stdout="", stderr="")
+
+    ns = {"tmux": fake_tmux}
+    exec(funcs["set_tmux_mouse"], ns)
+    return ns, calls
 
 
 def test_remote_urls_include_existing_access_token():
@@ -64,8 +85,26 @@ def test_static_shell_also_uses_no_store_headers():
     assert "no-store" in SRC
 
 
+def test_tmux_mouse_helper_changes_only_the_target_session():
+    ns, calls = load_tmux_mouse_helper()
+
+    err = ns["set_tmux_mouse"]("term-6629-3", False)
+
+    assert err is None
+    assert calls == [
+        ("has-session", "-t", "=term-6629-3"),
+        ("set-option", "-t", "term-6629-3", "mouse", "off"),
+    ]
+
+
+def test_tmux_mouse_endpoint_is_available_to_remote_terminal_ui():
+    assert 'self.path == "/tmux-mouse"' in SRC
+
+
 if __name__ == "__main__":
     test_remote_urls_include_existing_access_token()
     test_remote_status_detects_dashboard_and_terminal_routes()
     test_tab_history_is_treated_as_authenticated_live_api()
     test_static_shell_also_uses_no_store_headers()
+    test_tmux_mouse_helper_changes_only_the_target_session()
+    test_tmux_mouse_endpoint_is_available_to_remote_terminal_ui()
