@@ -205,7 +205,43 @@ _section_desktop() {
     _check "$sec" "wmctrl" warn "missing" "apt_install_confirmed wmctrl"
   fi
 }
-_section_audio()   { :; }
+_section_audio() {
+  local sec="Audio y voz"
+  local plat; plat=$(cc_platform)
+  if [ "$plat" = "linux-wsl-ubuntu" ]; then
+    if [ -S /mnt/wslg/PulseServer ]; then
+      _check "$sec" "WSLg PulseServer" pass "/mnt/wslg/PulseServer alive"
+    else
+      _check "$sec" "WSLg PulseServer" warn "/mnt/wslg/PulseServer missing — audio no funcionará"
+    fi
+  fi
+  if command -v pw-play >/dev/null; then
+    _check "$sec" "pw-play" pass "installed"
+  elif command -v paplay >/dev/null; then
+    _check "$sec" "paplay" pass "installed"
+  else
+    _check "$sec" "paplay" fail "sin reproductor" "apt_install_confirmed pulseaudio-utils"
+  fi
+  # piper
+  if command -v piper >/dev/null; then
+    _check "$sec" "piper" pass "installed"
+    local voice="es_MX-ald-medium"
+    if [ -f "$HOME/.claude/hooks/cc-notify.conf" ]; then
+      local v
+      v=$(awk -F= '/^PIPER_VOICE=/ { gsub(/["'"'"']/,"",$2); print $2; exit }' \
+            "$HOME/.claude/hooks/cc-notify.conf")
+      [ -n "$v" ] && voice="$v"
+    fi
+    local model="$HOME/.local/share/piper-voices/${voice}.onnx"
+    if [ -f "$model" ]; then
+      _check "$sec" "voz $voice" pass "descargada"
+    else
+      _check "$sec" "voz $voice" warn "no descargada — cc-doctor --fix la baja" "_fix_piper_voice $voice"
+    fi
+  else
+    _check "$sec" "piper" warn "no instalado — voz deshabilitada (opcional)"
+  fi
+}
 _section_remote()  { :; }
 
 _ubu_codename_hint() {
