@@ -106,6 +106,48 @@ _run_fix() {
   [ $any = 0 ] && echo "" && echo "Nada que arreglar automáticamente."
 }
 
+# URLs y sha256 hardcodeados para las voces soportadas. Rotar cuando se
+# actualicen upstream (huggingface.co/rhasspy/piper-voices). Para agregar
+# una voz: descarga con curl, corre `sha256sum`, pega ambos aquí.
+_piper_voice_url() {
+  case "$1" in
+    es_MX-ald-medium)
+      echo "https://huggingface.co/rhasspy/piper-voices/resolve/main/es/es_MX/ald/medium/es_MX-ald-medium.onnx"
+      ;;
+    *) return 1 ;;
+  esac
+}
+_piper_voice_sha256() {
+  case "$1" in
+    es_MX-ald-medium) echo "019b3803293c93e34a206dd2e53a3889209a514e786fd7144f7b70196c579b63" ;;
+    *) return 1 ;;
+  esac
+}
+_fix_piper_voice() {
+  local voice="$1"
+  local url expected dest tmp
+  url=$(_piper_voice_url "$voice") || { echo "  voz '$voice' desconocida — descarga manual"; return 1; }
+  expected=$(_piper_voice_sha256 "$voice")
+  dest="$HOME/.local/share/piper-voices/${voice}.onnx"
+  mkdir -p "$(dirname "$dest")"
+  tmp="$(mktemp)"
+  echo "  Descargando $voice desde HuggingFace (~60MB)..."
+  if ! curl -fL --progress-bar "$url" -o "$tmp"; then
+    rm -f "$tmp"; echo "  Descarga falló."; return 1
+  fi
+  local got
+  got=$(sha256sum "$tmp" | awk '{print $1}')
+  if [ "$got" != "$expected" ]; then
+    rm -f "$tmp"
+    echo "  ✗ Checksum mismatch (got $got, expected $expected). Abortado."
+    echo "  Descarga manual: $url"
+    return 1
+  fi
+  mv "$tmp" "$dest"
+  chmod 0644 "$dest"
+  echo "  ✓ Voz $voice instalada en $dest"
+}
+
 # Section runners (implemented in Tasks 13–16)
 _section_core() {
   local sec="Núcleo"
