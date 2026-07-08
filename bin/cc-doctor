@@ -1,0 +1,137 @@
+#!/usr/bin/env bash
+# cc-doctor — diagnóstico de ComandOS. Chequea plataforma, deps, servicios y
+# fixes con confirmación. Reemplaza al .wslg-check.sh artesanal.
+#
+# Uso:
+#   cc-doctor            chequea, imprime tabla; exit != 0 si algo FAIL
+#   cc-doctor --fix      ofrece arreglar cada FAIL con confirmación
+#   cc-doctor --json     una línea JSON por check
+#   cc-doctor <sección>  solo esa sección: core | desktop | audio | remote
+set -uo pipefail
+
+REPO="$(cd "$(dirname "$(readlink -f "$0")")/.." && pwd)"
+# shellcheck source=../lib/platform.sh
+. "$REPO/lib/platform.sh"
+
+# Modes
+MODE_FIX=0
+MODE_JSON=0
+SECTIONS=(core desktop audio remote)
+
+_valid_section() {
+  case "$1" in core|desktop|audio|remote) return 0 ;; *) return 1 ;; esac
+}
+
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --fix)  MODE_FIX=1; shift ;;
+    --json) MODE_JSON=1; shift ;;
+    -h|--help)
+      sed -n '2,10p' "$0" | sed 's/^# \?//'; exit 0 ;;
+    *)
+      _valid_section "$1" || { echo "sección desconocida: $1" >&2; exit 2; }
+      SECTIONS=("$1"); shift ;;
+  esac
+done
+
+# Result storage: parallel arrays.
+_R_SEC=(); _R_NAME=(); _R_STATUS=(); _R_DETAIL=(); _R_FIX=()
+
+_check() {
+  # $1 section  $2 name  $3 status(pass|warn|fail|skip)  $4 detail  $5 fix_hint(optional)
+  _R_SEC+=("$1"); _R_NAME+=("$2"); _R_STATUS+=("$3")
+  _R_DETAIL+=("${4:-}"); _R_FIX+=("${5:-}")
+}
+
+_symbol() {
+  case "$1" in
+    pass) printf '\033[32m✓\033[0m' ;;
+    warn) printf '\033[33m!\033[0m' ;;
+    fail) printf '\033[31m✗\033[0m' ;;
+    skip) printf '\033[90m·\033[0m' ;;
+  esac
+}
+
+_render_human() {
+  local last_sec=""
+  local n=${#_R_SEC[@]}
+  [ "$n" -eq 0 ] && return
+  for i in $(seq 0 $((n - 1))); do
+    if [ "${_R_SEC[$i]}" != "$last_sec" ]; then
+      printf '\n%s\n' "${_R_SEC[$i]}"
+      last_sec="${_R_SEC[$i]}"
+    fi
+    printf '  %b %-36s %s\n' "$(_symbol "${_R_STATUS[$i]}")" "${_R_NAME[$i]}" "${_R_DETAIL[$i]}"
+  done
+}
+
+_render_json() {
+  local n=${#_R_SEC[@]}
+  [ "$n" -eq 0 ] && return
+  for i in $(seq 0 $((n - 1))); do
+    printf '{"section":"%s","check":"%s","status":"%s","detail":"%s"}\n' \
+      "${_R_SEC[$i]}" "${_R_NAME[$i]}" "${_R_STATUS[$i]}" "${_R_DETAIL[$i]}"
+  done
+}
+
+_summary() {
+  local ok=0 warn=0 fail=0 n=${#_R_STATUS[@]}
+  [ "$n" -eq 0 ] && return
+  for i in $(seq 0 $((n - 1))); do
+    case "${_R_STATUS[$i]}" in
+      pass) ok=$((ok + 1)) ;;
+      warn) warn=$((warn + 1)) ;;
+      fail) fail=$((fail + 1)) ;;
+    esac
+  done
+  echo ""
+  echo "Resumen: $ok OK · $warn WARN · $fail FAIL"
+  [ $fail -gt 0 ] && echo "Corre \`cc-doctor --fix\` para arreglar lo bloqueante."
+  return $fail
+}
+
+_run_fix() {
+  local n=${#_R_STATUS[@]}
+  local any=0
+  [ "$n" -eq 0 ] && { echo ""; echo "Nada que chequear."; return 0; }
+  for i in $(seq 0 $((n - 1))); do
+    case "${_R_STATUS[$i]}" in fail|warn) ;; *) continue ;; esac
+    [ -n "${_R_FIX[$i]}" ] || continue
+    any=1
+    echo ""
+    echo "→ ${_R_NAME[$i]}: ${_R_DETAIL[$i]}"
+    ask_yn "  ¿Arreglo con: ${_R_FIX[$i]}?" || { echo "  skip"; continue; }
+    eval "${_R_FIX[$i]}"
+  done
+  [ $any = 0 ] && echo "" && echo "Nada que arreglar automáticamente."
+}
+
+# Section runners (implemented in Tasks 13–16)
+_section_core()    { :; }
+_section_desktop() { :; }
+_section_audio()   { :; }
+_section_remote()  { :; }
+
+_ubu_codename_hint() {
+  local c
+  c=$(cc_ubuntu_codename 2>/dev/null)
+  [ -n "$c" ] && printf ' (%s)' "$c"
+}
+echo "ComandOS doctor · plataforma: $(cc_platform)$(_ubu_codename_hint)"
+
+for s in "${SECTIONS[@]}"; do
+  "_section_$s"
+done
+
+if [ "$MODE_JSON" = "1" ]; then
+  _render_json
+else
+  _render_human
+  _summary
+fi
+
+if [ "$MODE_FIX" = "1" ]; then
+  _run_fix
+  echo ""
+  echo "Vuelve a correr cc-doctor para verificar."
+fi
