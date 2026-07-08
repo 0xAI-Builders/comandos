@@ -403,6 +403,16 @@
     border-left:3px solid var(--brand);border-radius:9px;padding:10px 14px;
     font-family:var(--mono);font-size:12px;max-width:min(380px,90vw)}
   .toast.err{border-left-color:var(--waiting)}
+  .remote-state{display:flex;align-items:center;gap:8px;font-family:var(--mono);
+    color:var(--dim);font-size:12px}
+  .remote-dot{width:8px;height:8px;border-radius:50%;background:var(--faint);
+    box-shadow:0 0 0 1px var(--line)}
+  .remote-state.on .remote-dot{background:var(--done);box-shadow:0 0 10px rgba(46,229,157,.35)}
+  .remote-actions{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+  .urlrow{display:grid;grid-template-columns:1fr auto;gap:8px;align-items:center}
+  .urlrow input{min-width:0}
+  #remote-qr{display:block;width:min(260px,100%);height:auto;margin:6px auto 10px;
+    background:white;border-radius:8px;padding:8px}
 </style>
 
 <div id="panes">
@@ -428,6 +438,7 @@
     </span>
     <button class="hdr-btn" id="btn-switch" title="Saltar a cualquier sesión (Ctrl+K)">⌕</button>
     <button class="hdr-btn" id="btn-theme" title="Tema: Noche → Día → Cálido (aplica a tablero, pestañas y terminales)">🌙</button>
+    <button class="hdr-btn" id="btn-remote" title="Continuar desde celular/tablet">Remoto</button>
     <button class="hdr-btn" id="btn-settings">Ajustes</button>
     <span id="clock">--:--</span>
   </div>
@@ -492,6 +503,36 @@
     <label for="poll">Refresco: <span id="poll-v">2</span> s</label>
     <input type="range" id="poll" min="1" max="10" value="2">
   </div>
+</aside>
+
+<aside id="remote" class="drawer" aria-label="Remoto">
+  <h3>Continuar remoto</h3>
+  <div class="set">
+    <div id="remote-status" class="remote-state"><span class="remote-dot"></span><span>Consultando...</span></div>
+  </div>
+  <div class="set remote-actions">
+    <button type="button" class="test" id="remote-on">Prender remoto</button>
+    <button type="button" class="test" id="remote-off">Apagar remoto</button>
+    <button type="button" class="test" id="remote-webterm-on">Terminal ON</button>
+    <button type="button" class="test" id="remote-webterm-off">Terminal OFF</button>
+  </div>
+  <div class="set">
+    <img id="remote-qr" class="hidden" alt="QR remoto">
+    <div id="remote-no-qr" class="desc hidden">Instala qrencode para generar QR.</div>
+  </div>
+  <div class="set">
+    <label>Dashboard</label>
+    <div class="urlrow"><input id="remote-dashboard-url" readonly><button class="test" id="remote-copy-dashboard">Copiar</button></div>
+  </div>
+  <div class="set">
+    <label>Terminal web</label>
+    <div class="urlrow"><input id="remote-term-url" readonly><button class="test" id="remote-copy-term">Copiar</button></div>
+  </div>
+  <div class="set">
+    <label>Fallback terminal</label>
+    <div class="urlrow"><input id="remote-fallback-url" readonly><button class="test" id="remote-copy-fallback">Copiar</button></div>
+  </div>
+  <div class="set"><div class="desc">Apagar remoto no apaga Tailscale; sólo deja de exponer ComandOS y detiene la terminal web.</div></div>
 </aside>
 
 <aside id="servers" class="drawer" aria-label="Servidores SSH">
@@ -570,6 +611,15 @@ const T_EN = {
   "Guardar la respuesta como PDF (markdown renderizado) en Descargas":
     "Save the reply as PDF (rendered markdown) in Downloads",
   "Matar la sesion tmux (y lo que corra dentro)": "Kill the tmux session (and whatever runs inside)",
+  "Remoto": "Remote", "Continuar remoto": "Continue remotely",
+  "Prender remoto": "Remote on", "Apagar remoto": "Remote off",
+  "Terminal ON": "Terminal ON", "Terminal OFF": "Terminal OFF",
+  "Dashboard": "Dashboard", "Terminal web": "Web terminal",
+  "Fallback terminal": "Fallback terminal", "Copiar": "Copy",
+  "Consultando...": "Checking...",
+  "Instala qrencode para generar QR.": "Install qrencode to generate QR.",
+  "Apagar remoto no apaga Tailscale; sólo deja de exponer ComandOS y detiene la terminal web.":
+    "Remote off does not turn off Tailscale; it only stops exposing ComandOS and stops the web terminal.",
   "Notificaciones (todo el sistema)": "Notifications (system-wide)",
   "Volumen (voz y chime)": "Volume (voice and chime)",
   "Avisar al terminar": "Notify when done", "Avisar al pedir atencion": "Notify on attention",
@@ -598,7 +648,8 @@ function applyI18n(){
   document.querySelectorAll(
     "#settings label, #settings h3, #settings .desc, #settings .test, " +
     "#servers label, #servers h3, #servers .desc, #servers .test, #srv-cancel, " +
-    ".sec-label, #ssh-bar .lbl, #ssh-manage, #btn-settings, #tl-toggle, .pill span")
+    "#remote label, #remote h3, #remote .desc, #remote .test, #remote-no-qr, " +
+    ".sec-label, #ssh-bar .lbl, #ssh-manage, #btn-remote, #btn-settings, #tl-toggle, .pill span")
     .forEach(e => { const k = e.textContent.trim(); if(T_EN[k]) e.textContent = T_EN[k]; });
   const ph = (sel, v) => { const e = $(sel); if(e) e.placeholder = v; };
   ph("#q", "search"); ph("#new-name", "open project");
@@ -1333,7 +1384,14 @@ async function tickEvents(){
   try{ renderEvents(await api("/events")); }catch(e){}
 }
 let timer = null;
-function arm(){ clearInterval(timer); timer = setInterval(tick, S.cfg.poll*1000); }
+function remotePollSeconds(){
+  let s = +S.cfg.poll || 2;
+  if(WEBTERM || REMOTE?.remoteOn) s = Math.max(s, 5);
+  if(document.hidden) s = Math.max(s, 15);
+  return s;
+}
+function arm(){ clearInterval(timer); timer = setInterval(tick, remotePollSeconds()*1000); }
+document.addEventListener("visibilitychange", arm);
 
 // ---------- conmutador Ctrl+K (salta a cualquier sesion) ----------
 let swItems = [], swSel = 0;
@@ -1463,6 +1521,67 @@ async function loadPrefs(){
   }catch(e){}
 }
 
+// ---------- remoto ----------
+let REMOTE = null;
+function remoteQrPath(){
+  const qs = new URLSearchParams({ts: String(Date.now())});
+  const tok = authToken();
+  if(tok) qs.set("token", tok);
+  return `/remote-qr.png?${qs.toString()}`;
+}
+function setRemoteBusy(on){
+  document.querySelectorAll("#remote .test").forEach(b => b.disabled = !!on);
+}
+function renderRemote(st){
+  REMOTE = st || {};
+  const status = $("#remote-status");
+  const on = !!REMOTE.remoteOn;
+  const termOn = !!REMOTE.webtermOn;
+  status.classList.toggle("on", on);
+  status.querySelector("span:last-child").textContent = on
+    ? tf(`Remoto activo${termOn ? " · terminal activa" : ""}`, `Remote on${termOn ? " · terminal on" : ""}`)
+    : tf("Remoto apagado", "Remote off");
+  const urls = REMOTE.urls || {};
+  $("#remote-dashboard-url").value = urls.dashboard || "";
+  $("#remote-term-url").value = urls.terminal || "";
+  $("#remote-fallback-url").value = urls.terminalFallback || "";
+  const hasQr = !!(urls.dashboard && REMOTE.qrAvailable);
+  $("#remote-qr").classList.toggle("hidden", !hasQr);
+  $("#remote-no-qr").classList.toggle("hidden", hasQr || !urls.dashboard);
+  if(hasQr) $("#remote-qr").src = remoteQrPath();
+}
+async function loadRemote(){
+  try{ renderRemote(await api("/remote-state")); }
+  catch(err){ toast(err.message, true); }
+}
+async function remoteAction(path, okMsg){
+  setRemoteBusy(true);
+  try{
+    renderRemote(await api(path, {}));
+    toast(okMsg);
+    arm();
+  }catch(err){ toast(err.message, true); }
+  finally{ setRemoteBusy(false); }
+}
+function copyRemote(sel){
+  const v = $(sel).value.trim();
+  if(!v) return toast(tf("No hay URL todavia", "No URL yet"), true);
+  copyText(v).then(ok => toast(ok ? tf("URL copiada", "URL copied") : tf("No pude copiar", "Could not copy"), !ok));
+}
+$("#btn-remote").addEventListener("click", ()=>{
+  $("#remote").classList.toggle("open");
+  $("#settings").classList.remove("open");
+  $("#servers").classList.remove("open");
+  if($("#remote").classList.contains("open")) loadRemote();
+});
+$("#remote-on").addEventListener("click", ()=> remoteAction("/remote-on", tf("Remoto prendido", "Remote on")));
+$("#remote-off").addEventListener("click", ()=> remoteAction("/remote-off", tf("Remoto apagado", "Remote off")));
+$("#remote-webterm-on").addEventListener("click", ()=> remoteAction("/remote-webterm-on", tf("Terminal web prendida", "Web terminal on")));
+$("#remote-webterm-off").addEventListener("click", ()=> remoteAction("/remote-webterm-off", tf("Terminal web apagada", "Web terminal off")));
+$("#remote-copy-dashboard").addEventListener("click", ()=> copyRemote("#remote-dashboard-url"));
+$("#remote-copy-term").addEventListener("click", ()=> copyRemote("#remote-term-url"));
+$("#remote-copy-fallback").addEventListener("click", ()=> copyRemote("#remote-fallback-url"));
+
 // ---------- servidores ----------
 async function connectHost(host){
   const r = await api("/ssh-connect", {host});
@@ -1519,6 +1638,7 @@ async function loadSsh(){
 $("#ssh-manage").addEventListener("click", ()=>{
   $("#servers").classList.toggle("open");
   $("#settings").classList.remove("open");
+  $("#remote").classList.remove("open");
 });
 $("#srv-cancel").addEventListener("click", ()=>{ $("#srv-form").reset(); fillSrvForm({}); });
 $("#srv-form").addEventListener("submit", async e=>{
@@ -1608,9 +1728,10 @@ $("#new-form").addEventListener("submit", async e=>{
 $("#btn-settings").addEventListener("click", ()=>{
   $("#settings").classList.toggle("open");
   $("#servers").classList.remove("open");
+  $("#remote").classList.remove("open");
 });
 document.addEventListener("click", e=>{
-  for(const [id, trg] of [["#settings","btn-settings"],["#servers","ssh-manage"]]){
+  for(const [id, trg] of [["#settings","btn-settings"],["#servers","ssh-manage"],["#remote","btn-remote"]]){
     const s = $(id);
     if(s.classList.contains("open") && !s.contains(e.target) && e.target.id !== trg)
       s.classList.remove("open");
@@ -1680,7 +1801,9 @@ setInterval(()=>{
   $("#clock").textContent =
     `${String(d.getHours()).padStart(2,"0")}:${String(d.getMinutes()).padStart(2,"0")}`;
 }, 1000);
-setInterval(tickEvents, 15000);
+setInterval(()=>{
+  if(!document.hidden && !$("#timeline").classList.contains("hidden")) tickEvents();
+}, 15000);
 
 document.querySelectorAll(".lang-btn").forEach(b=>{
   b.addEventListener("click", async ()=>{
@@ -1698,6 +1821,7 @@ document.querySelectorAll(".lang-btn").forEach(b=>{
     LABEL = {waiting: "waiting for you", done: "finished", working: "working",
              idle: "alive, idle", dead: "off"};
   initApp();   // barra de pestanas + terminales embebidas (si es tailnet)
+  await loadRemote();
   loadPrefs().then(tick);
   loadSsh();
   loadConf();

@@ -20,6 +20,7 @@ import html as html_mod
 import hmac, secrets
 import json, os, glob, re, shlex, shutil, sys, subprocess, time, webbrowser
 import http.server, socketserver
+import tempfile
 
 HOOKS = os.path.expanduser("~/.claude/hooks")
 STATE = os.path.join(HOOKS, "state")
@@ -80,6 +81,123 @@ def gui_env():
     env = dict(os.environ)
     env.setdefault("DISPLAY", ":1")
     return env
+
+
+def remote_urls(host, token):
+    base = f"https://{host}"
+    return {
+        "dashboard": f"{base}/?token={token}",
+        "terminal": f"{base}/term?token={token}",
+        "terminalFallback": f"{base}:8443/?token={token}",
+    }
+
+
+def remote_status_from_text(serve_text, webterm_running):
+    return {
+        "remoteOn": "proxy http://127.0.0.1:4777" in serve_text,
+        "webtermOn": bool(webterm_running),
+        "termRouteOn": "proxy http://127.0.0.1:4780/term" in serve_text,
+        "fallbackRouteOn": "proxy http://127.0.0.1:4779" in serve_text,
+    }
+
+
+def run_quiet(args, timeout=10):
+    try:
+        return subprocess.run(args, capture_output=True, text=True, timeout=timeout)
+    except Exception as e:
+        return subprocess.CompletedProcess(args, 1, "", str(e))
+
+
+def tailscale_host():
+    r = run_quiet(["tailscale", "status", "--json"], timeout=8)
+    if r.returncode == 0:
+        try:
+            host = json.loads(r.stdout).get("Self", {}).get("DNSName", "").rstrip(".")
+            if host:
+                return host
+        except Exception:
+            pass
+    r = run_quiet(["tailscale", "status", "--self", "--json"], timeout=8)
+    m = re.search(r"[a-z0-9-]+(?:\.[a-z0-9-]+)*\.ts\.net", r.stdout)
+    return m.group(0) if m else ""
+
+
+def tailscale_serve_status_text():
+    r = run_quiet(["tailscale", "serve", "status"], timeout=8)
+    return r.stdout if r.returncode == 0 else ""
+
+
+def webterm_running():
+    r = run_quiet(["pgrep", "-af", "cc-webterm-attach"], timeout=4)
+    return any("ttyd" in line and "cc-webterm-attach" in line for line in r.stdout.splitlines())
+
+
+def remote_state():
+    host = tailscale_host()
+    token = access_token()
+    serve = tailscale_serve_status_text()
+    status = remote_status_from_text(serve, webterm_running())
+    urls = remote_urls(host, token) if host else {"dashboard": "", "terminal": "", "terminalFallback": ""}
+    status.update({
+        "host": host,
+        "urls": urls,
+        "qrAvailable": shutil.which("qrencode") is not None,
+        "serveStatus": serve,
+    })
+    return status
+
+
+def serve_path(path, target, https_port="443"):
+    attempts = [
+        ["tailscale", "serve", "--bg", f"--https={https_port}", f"--set-path={path}", target],
+        ["tailscale", "serve", "--bg", f"--set-path={path}", target],
+        ["tailscale", "serve", f"--https={https_port}", path, target],
+    ]
+    last = None
+    for args in attempts:
+        last = run_quiet(args, timeout=12)
+        if last.returncode == 0:
+            return None
+    return (last.stderr or last.stdout or "tailscale serve fallo").strip()
+
+
+def remote_dashboard_on():
+    if not shutil.which("tailscale"):
+        return "Tailscale no esta instalado"
+    if run_quiet(["tailscale", "status"], timeout=8).returncode != 0:
+        return "Tailscale no ha iniciado sesion"
+    return serve_path("/", "http://127.0.0.1:4777")
+
+
+def remote_dashboard_off():
+    run_quiet(["tailscale", "serve", "--https=443", "off"], timeout=12)
+    run_quiet(["tailscale", "serve", "reset"], timeout=12)
+    webterm_off()
+    return None
+
+
+def webterm_on():
+    script = os.path.expanduser("~/.local/bin/cc-webterm")
+    if not os.path.exists(script):
+        script = shutil.which("cc-webterm") or script
+    r = run_quiet([script], timeout=20)
+    if r.returncode != 0:
+        return (r.stderr or r.stdout or "cc-webterm no arranco").strip()
+    if webterm_running():
+        serve_path("/term", "http://127.0.0.1:4780/term")
+        serve_path("/", "http://127.0.0.1:4779", https_port="8443")
+    return None
+
+
+def webterm_off():
+    script = os.path.expanduser("~/.local/bin/cc-webterm")
+    if not os.path.exists(script):
+        script = shutil.which("cc-webterm") or script
+    if os.path.exists(script):
+        run_quiet([script, "off"], timeout=12)
+    else:
+        run_quiet(["pkill", "-f", "ttyd.*cc-webterm-attach"], timeout=6)
+    return None
 
 
 def load_json_file(path, default):
@@ -1044,6 +1162,14 @@ class Handler(http.server.SimpleHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(body)
 
+    def _bytes(self, code, content_type, body):
+        self.send_response(code)
+        self.send_header("Content-Type", content_type)
+        self.send_header("Cache-Control", "no-store")
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
     # ---- Seguridad (importa: el tablero esta por exponerse al celular) ----
     def _cookies(self):
         out = {}
@@ -1105,7 +1231,8 @@ class Handler(http.server.SimpleHTTPRequestHandler):
     # Endpoints con DATOS o ACCIONES: exigen token. El shell estatico (HTML,
     # sw.js, manifest, iconos) NO — no revela nada (es codigo open-source) y
     # asi la PWA instala y carga sin depender de cookies en el webview movil.
-    API_GET = ("/state", "/events", "/conf", "/prefs", "/ssh", "/tabs")
+    API_GET = ("/state", "/events", "/conf", "/prefs", "/ssh", "/tabs",
+               "/remote-state", "/remote-qr.png")
 
     def do_GET(self):
         host = self.headers.get("Host", "")
@@ -1148,6 +1275,24 @@ class Handler(http.server.SimpleHTTPRequestHandler):
                 it["alive"] = it["session"] in live
                 out.append(it)
             return self._json(200, out[:40])
+        if self.path.startswith("/remote-state"):
+            return self._json(200, remote_state())
+        if self.path.startswith("/remote-qr.png"):
+            st = remote_state()
+            url = st.get("urls", {}).get("dashboard", "")
+            if not url:
+                return self._json(400, {"error": "No pude leer el host de Tailscale"})
+            if not shutil.which("qrencode"):
+                return self._json(404, {"error": "qrencode no esta instalado"})
+            try:
+                with tempfile.NamedTemporaryFile(suffix=".png") as f:
+                    r = run_quiet(["qrencode", "-o", f.name, "-s", "8", "-m", "2", url], timeout=5)
+                    if r.returncode != 0:
+                        return self._json(500, {"error": r.stderr.strip() or "qrencode fallo"})
+                    f.seek(0)
+                    return self._bytes(200, "image/png", f.read())
+            except Exception as e:
+                return self._json(500, {"error": str(e)})
         if self.path.startswith("/events"):
             evs = []
             try:
@@ -1215,6 +1360,36 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             if err:
                 return self._json(400, {"error": err})
             return self._json(200, {"ok": True})
+
+        if self.path == "/remote-on":
+            err = remote_dashboard_on()
+            if err:
+                return self._json(400, {"error": err})
+            if webterm_running():
+                serve_path("/term", "http://127.0.0.1:4780/term")
+                serve_path("/", "http://127.0.0.1:4779", https_port="8443")
+            return self._json(200, remote_state())
+
+        if self.path == "/remote-off":
+            err = remote_dashboard_off()
+            if err:
+                return self._json(400, {"error": err})
+            return self._json(200, remote_state())
+
+        if self.path == "/remote-webterm-on":
+            err = remote_dashboard_on()
+            if err:
+                return self._json(400, {"error": err})
+            err = webterm_on()
+            if err:
+                return self._json(400, {"error": err})
+            return self._json(200, remote_state())
+
+        if self.path == "/remote-webterm-off":
+            err = webterm_off()
+            if err:
+                return self._json(400, {"error": err})
+            return self._json(200, remote_state())
 
         if self.path == "/ssh-add":
             err = ssh_add(data)
