@@ -84,10 +84,14 @@ def test_open_terminal_button_dismisses_remote_drawer():
     assert '$("#remote").classList.remove("open")' in fn
 
 
-def test_remote_terminal_iframe_wires_wheel_and_touch_to_xterm_scrollback():
+def test_remote_terminal_iframe_does_not_hijack_tmux_wheel_events():
     fn = extract_js_function(HTML, "wireTermFrameScroll")
-    assert "scrollLines" in fn
-    assert "wheel" in fn
+    assert "scrollLines" not in fn
+    assert 'addEventListener("wheel"' not in fn
+    assert "WheelEvent" in fn
+    assert "elementFromPoint" in fn
+    assert "clientX" in fn
+    assert "clientY" in fn
     assert "touchstart" in fn
     assert "touchmove" in fn
     assert "passive:false" in fn
@@ -138,7 +142,7 @@ if __name__ == "__main__":
     test_remote_polling_slows_down_when_remote_webterm_is_enabled()
     test_remote_terminal_can_be_opened_from_remote_drawer()
     test_open_terminal_button_dismisses_remote_drawer()
-    test_remote_terminal_iframe_wires_wheel_and_touch_to_xterm_scrollback()
+    test_remote_terminal_iframe_does_not_hijack_tmux_wheel_events()
     test_remote_buttons_reflect_actual_backend_state()
     test_remote_routes_are_never_served_from_stale_shell_cache()
     test_dashboard_declares_standard_favicon_to_avoid_remote_404_noise()
