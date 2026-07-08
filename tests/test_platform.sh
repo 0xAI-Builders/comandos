@@ -43,4 +43,29 @@ result=$(CC_MOCK_UNAME=Linux \
          cc_platform)
 [ "$result" = "linux-other" ] || { echo "expected linux-other, got $result"; exit 1; }
 
+# cc_ubuntu_codename
+cat > "$TMP/os-release" <<'EOF'
+ID=ubuntu
+VERSION_CODENAME=jammy
+EOF
+result=$(CC_MOCK_OS_RELEASE_FILE="$TMP/os-release" cc_ubuntu_codename)
+[ "$result" = "jammy" ] || { echo "expected jammy, got $result"; exit 1; }
+
+cat > "$TMP/os-release" <<'EOF'
+ID=ubuntu
+VERSION_CODENAME=noble
+EOF
+result=$(CC_MOCK_OS_RELEASE_FILE="$TMP/os-release" cc_ubuntu_codename)
+[ "$result" = "noble" ] || { echo "expected noble, got $result"; exit 1; }
+
+# Missing os-release → empty
+result=$(CC_MOCK_OS_RELEASE_FILE="$TMP/nonexistent" cc_ubuntu_codename || true)
+[ -z "$result" ] || { echo "expected empty, got $result"; exit 1; }
+
+# cc_systemd_ok
+CC_MOCK_SYSTEMD_STATE=running   cc_systemd_ok || { echo "running should be ok"; exit 1; }
+CC_MOCK_SYSTEMD_STATE=degraded  cc_systemd_ok || { echo "degraded should be ok"; exit 1; }
+CC_MOCK_SYSTEMD_STATE=offline   cc_systemd_ok && { echo "offline should NOT be ok"; exit 1; } || true
+CC_MOCK_SYSTEMD_STATE=""        cc_systemd_ok && { echo "empty should NOT be ok"; exit 1; } || true
+
 echo "ok"

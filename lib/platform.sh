@@ -43,3 +43,23 @@ cc_platform() {
   fi
   echo "linux-native"
 }
+
+cc_ubuntu_codename() {
+  local f
+  f=$(_cc_os_release_file)
+  [ -f "$f" ] || return 0
+  awk -F= '/^VERSION_CODENAME=/ { gsub(/"/, "", $2); print $2; exit }' "$f"
+}
+
+cc_systemd_ok() {
+  local state
+  if [ "${CC_MOCK_SYSTEMD_STATE+set}" = "set" ]; then
+    state="${CC_MOCK_SYSTEMD_STATE}"
+  else
+    state=$(systemctl is-system-running 2>/dev/null || true)
+  fi
+  case "$state" in
+    running|degraded) return 0 ;;
+    *) return 1 ;;
+  esac
+}
