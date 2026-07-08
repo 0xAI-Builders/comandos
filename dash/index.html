@@ -1015,9 +1015,64 @@ function styleTermFrame(frame){
       *::-webkit-scrollbar-track{background:${bg}}
       *::-webkit-scrollbar-thumb{background:${line2};border-radius:10px;border:3px solid ${bg};background-clip:padding-box}
       *::-webkit-scrollbar-thumb:hover{background:${brand};background-clip:padding-box}
-      .xterm .xterm-viewport{scrollbar-width:thin;scrollbar-color:${line2} ${bg}}
+      .xterm,.xterm .xterm-screen,.xterm .xterm-viewport{touch-action:pan-y}
+      .xterm .xterm-viewport{scrollbar-width:thin;scrollbar-color:${line2} ${bg};
+        -webkit-overflow-scrolling:touch;overscroll-behavior:contain}
     `;
     doc.head.appendChild(style);
+  }catch(_){}
+}
+
+function wireTermFrameScroll(frame){
+  try{
+    const win = frame.contentWindow;
+    const doc = frame.contentDocument || win?.document;
+    if(!win || !doc || win.__comandosScrollWired) return;
+    win.__comandosScrollWired = true;
+    let touchY = null;
+    const viewport = () => doc.querySelector(".xterm-viewport");
+    const buffer = () => win.term?.buffer?.active;
+    const canScroll = () => {
+      const b = buffer();
+      if(b && b.baseY > 0) return true;
+      const vp = viewport();
+      return !!vp && vp.scrollHeight > vp.clientHeight;
+    };
+    const scrollByPixels = dy => {
+      if(!dy || !canScroll()) return false;
+      const term = win.term;
+      const vp = viewport();
+      const before = buffer()?.viewportY ?? vp?.scrollTop ?? 0;
+      if(term && typeof term.scrollLines === "function"){
+        const lines = Math.sign(dy) * Math.max(1, Math.round(Math.abs(dy) / 28));
+        term.scrollLines(lines);
+      }else if(vp){
+        vp.scrollTop += dy;
+      }
+      const after = buffer()?.viewportY ?? vp?.scrollTop ?? 0;
+      return before !== after;
+    };
+    doc.addEventListener("wheel", e => {
+      if(scrollByPixels(e.deltaY)){
+        e.preventDefault();
+        e.stopPropagation();
+      }
+    }, {capture:true, passive:false});
+    doc.addEventListener("touchstart", e => {
+      touchY = e.touches && e.touches.length === 1 ? e.touches[0].clientY : null;
+    }, {capture:true, passive:true});
+    doc.addEventListener("touchmove", e => {
+      if(touchY === null || !e.touches || e.touches.length !== 1) return;
+      const nextY = e.touches[0].clientY;
+      const dy = touchY - nextY;
+      touchY = nextY;
+      if(scrollByPixels(dy)){
+        e.preventDefault();
+        e.stopPropagation();
+      }
+    }, {capture:true, passive:false});
+    doc.addEventListener("touchend", () => { touchY = null; }, {capture:true, passive:true});
+    doc.addEventListener("touchcancel", () => { touchY = null; }, {capture:true, passive:true});
   }catch(_){}
 }
 
@@ -1091,10 +1146,13 @@ function ensureFrame(sess){
     frame.className = "termpane";
     frame.addEventListener("load", () => {
       styleTermFrame(frame);
+      wireTermFrameScroll(frame);
       wireTermFrameShortcuts(frame);
       setTimeout(() => styleTermFrame(frame), 250);
+      setTimeout(() => wireTermFrameScroll(frame), 250);
       setTimeout(() => wireTermFrameShortcuts(frame), 250);
       setTimeout(() => styleTermFrame(frame), 1000);
+      setTimeout(() => wireTermFrameScroll(frame), 1000);
       setTimeout(() => wireTermFrameShortcuts(frame), 1000);
     });
     document.getElementById("term-area").appendChild(frame);
