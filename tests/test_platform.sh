@@ -68,4 +68,27 @@ CC_MOCK_SYSTEMD_STATE=degraded  cc_systemd_ok || { echo "degraded should be ok";
 CC_MOCK_SYSTEMD_STATE=offline   cc_systemd_ok && { echo "offline should NOT be ok"; exit 1; } || true
 CC_MOCK_SYSTEMD_STATE=""        cc_systemd_ok && { echo "empty should NOT be ok"; exit 1; } || true
 
+# ask_yn — CC_ASSUME_YES bypass
+CC_ASSUME_YES=1 ask_yn "test?" || { echo "ASSUME_YES should return 0"; exit 1; }
+
+# ask_yn — piped input
+echo "y" | ask_yn "test?" || { echo "y should return 0"; exit 1; }
+echo ""  | ask_yn "test?" || { echo "empty (default Y) should return 0"; exit 1; }
+echo "n" | ask_yn "test?" && { echo "n should return 1"; exit 1; } || true
+
+# apt_install_confirmed — mock mode: prints intended install, no real apt
+out=$(CC_MOCK_APT=1 CC_ASSUME_YES=1 CC_MOCK_DPKG_MISSING="foo bar" \
+      apt_install_confirmed foo bar baz 2>&1)
+echo "$out" | grep -q "\[mock apt install foo bar\]" \
+  || { echo "expected mock install of foo bar, got: $out"; exit 1; }
+
+# apt_install_confirmed — nothing missing → returns 0 without prompt
+out=$(CC_MOCK_APT=1 CC_MOCK_DPKG_MISSING="" apt_install_confirmed foo bar 2>&1)
+echo "$out" | grep -q "\[mock apt install" \
+  && { echo "should not have run apt when nothing missing"; exit 1; } || true
+
+# apt_install_confirmed — declined
+out=$(CC_MOCK_APT=1 CC_MOCK_DPKG_MISSING="foo" apt_install_confirmed foo <<< "n" 2>&1) && \
+  { echo "declined install should return 1"; exit 1; } || true
+
 echo "ok"

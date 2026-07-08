@@ -63,3 +63,46 @@ cc_systemd_ok() {
     *) return 1 ;;
   esac
 }
+
+ask_yn() {
+  local prompt="${1:-¿Continuar?}"
+  if [ "${CC_ASSUME_YES:-0}" = "1" ]; then return 0; fi
+  local reply
+  printf '%s [Y/n] ' "$prompt" >&2
+  IFS= read -r reply || reply=""
+  case "$reply" in
+    ""|y|Y|yes|Yes|YES|si|Si|SI|sí|Sí) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
+# Which of the given packages are NOT installed. Test-mockable.
+_cc_dpkg_missing() {
+  if [ "${CC_MOCK_DPKG_MISSING+set}" = "set" ]; then
+    local wanted="$*"
+    for m in $CC_MOCK_DPKG_MISSING; do
+      case " $wanted " in *" $m "*) echo "$m" ;; esac
+    done
+    return 0
+  fi
+  local pkg
+  for pkg in "$@"; do
+    dpkg -s "$pkg" >/dev/null 2>&1 || echo "$pkg"
+  done
+}
+
+apt_install_confirmed() {
+  local missing
+  missing=$(_cc_dpkg_missing "$@" | tr '\n' ' ' | sed 's/[[:space:]]*$//')
+  if [ -z "$missing" ]; then return 0; fi
+  echo "Faltan paquetes: $missing" >&2
+  ask_yn "¿Instalo ahora con sudo apt install?" || {
+    echo "  Cancelado. Instala a mano:  sudo apt install $missing" >&2
+    return 1
+  }
+  if [ "${CC_MOCK_APT:-0}" = "1" ]; then
+    echo "[mock apt install $missing]"
+    return 0
+  fi
+  sudo apt update && sudo apt install -y $missing
+}
