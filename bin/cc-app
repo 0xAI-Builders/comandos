@@ -15,7 +15,7 @@ Teclas:
   Ctrl+Shift + / - / 0   zoom de letra (pestana actual)
   Ctrl+Q                 salir
 """
-import json, os, re, subprocess, threading, time, urllib.request
+import json, os, re, shutil, subprocess, sys, threading, time, urllib.request
 import gi
 gi.require_version("Gtk", "3.0")
 gi.require_version("WebKit2", "4.0")
@@ -402,8 +402,26 @@ def exit_copy_mode(term):
 
 
 def open_url(url):
-    subprocess.Popen(["xdg-open", url], start_new_session=True,
-                     stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    """Abre una URL en el navegador default del usuario.
+    En WSL prefiere `wslview` (rutea al navegador de Windows via wslu);
+    en macOS usa `open`; en Linux nativo usa `xdg-open`."""
+    is_wsl = False
+    try:
+        with open("/proc/sys/kernel/osrelease") as f:
+            is_wsl = "microsoft" in f.read().lower()
+    except Exception:
+        pass
+    if sys.platform == "darwin":
+        opener = "open"
+    elif is_wsl and shutil.which("wslview"):
+        opener = "wslview"
+    else:
+        opener = "xdg-open"
+    try:
+        subprocess.Popen([opener, url], start_new_session=True,
+                         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    except Exception:
+        pass
 
 
 def on_term_release(term, event):
