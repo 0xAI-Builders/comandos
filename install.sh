@@ -9,6 +9,37 @@ HOOKS="$HOME/.claude/hooks"
 # shellcheck source=lib/platform.sh
 . "$REPO/lib/platform.sh"
 
+# Habilita systemd en WSL editando /etc/wsl.conf (con confirmación).
+# Sale con exit 0 después de escribir — el usuario debe correr `wsl --shutdown`.
+_cc_wsl_enable_systemd() {
+  echo "⚠  systemd no está corriendo en tu WSL."
+  echo "   Sin systemd, cc-dash y cc-notifyd no pueden autoarrancar."
+  ask_yn "¿Habilito systemd editando /etc/wsl.conf?" || {
+    echo "Ok, hazlo a mano y vuelve a correr ./install.sh"
+    exit 1
+  }
+  if [ -f /etc/wsl.conf ] && grep -q '^\s*systemd\s*=\s*true' /etc/wsl.conf; then
+    echo "  /etc/wsl.conf ya tiene systemd=true — algo más está mal."
+    echo "  Verifica con: sudo systemctl is-system-running"
+    exit 1
+  fi
+  if [ -f /etc/wsl.conf ] && grep -q '^\[boot\]' /etc/wsl.conf; then
+    echo "  Ya tienes una sección [boot] en /etc/wsl.conf sin systemd=true."
+    echo "  Diff propuesto:"
+    echo "    + systemd=true   (dentro de [boot])"
+    ask_yn "  ¿Aplico?" || { echo "Cancelado."; exit 1; }
+    sudo sed -i '/^\[boot\]/a systemd=true' /etc/wsl.conf
+  else
+    printf '\n[boot]\nsystemd=true\n' | sudo tee -a /etc/wsl.conf >/dev/null
+  fi
+  echo "✓ /etc/wsl.conf actualizado."
+  echo ""
+  echo "Ahora, desde PowerShell en Windows corre:"
+  echo "    wsl --shutdown"
+  echo "Reabre esta terminal y vuelve a correr ./install.sh"
+  exit 0
+}
+
 CC_PLAT="$(cc_platform)"
 echo "ComandOS -> instalando desde $REPO (plataforma: $CC_PLAT)"
 mkdir -p "$BIN" "$HOOKS/dash" "$HOOKS/state" \
@@ -67,8 +98,17 @@ PLIST
     echo "  usa el tablero en el navegador (las notificaciones van por 'osascript'/'say')."
     ;;
   linux-wsl-ubuntu)
-    # Rellenado por Tasks 5–6.
-    :
+    # 1) systemd disponible?
+    cc_systemd_ok || _cc_wsl_enable_systemd
+    # 2) deps WSL (rellenado en Task 6)
+    # 3) systemd user services (mismo que linux-native)
+    for s in cc-dash cc-notifyd cc-telegram; do
+      ln -sf "$REPO/systemd/$s.service" "$HOME/.config/systemd/user/$s.service"
+    done
+    systemctl --user daemon-reload
+    systemctl --user enable --now cc-dash.service cc-notifyd.service 2>/dev/null || true
+    grep -q "^CC_TELEGRAM_BOT_TOKEN=." "$HOOKS/telegram.env" 2>/dev/null \
+      && systemctl --user enable --now cc-telegram.service 2>/dev/null || true
     ;;
   linux-native|linux-other)
     [ "$CC_PLAT" = "linux-other" ] && echo "  (distro Linux no probada; sigo con el flujo Linux estándar)"
