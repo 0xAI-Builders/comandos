@@ -11,21 +11,9 @@ HOOKS="$HOME/.claude/hooks"
 
 # Instala los paquetes que ComandOS necesita en Ubuntu WSL (auto-fix con confirmación).
 _cc_wsl_install_deps() {
-  local codename webkit_pkg
-  codename=$(cc_ubuntu_codename)
-  case "$codename" in
-    jammy) webkit_pkg="gir1.2-webkit2-4.0" ;;
-    noble) webkit_pkg="gir1.2-webkit2-4.1" ;;
-    *)
-      echo "  (Ubuntu '$codename' no probado; skip WebKit, cc-app puede no arrancar)"
-      webkit_pkg=""
-      ;;
-  esac
-  # Warm sudo cache una sola vez.
   sudo -v || { echo "sudo requerido para instalar dependencias."; exit 1; }
-  local pkgs=(tmux jq xclip wmctrl python3-gi gir1.2-gtk-3.0 gir1.2-vte-2.91
-              pulseaudio-utils wslu)
-  [ -n "$webkit_pkg" ] && pkgs+=("$webkit_pkg")
+  local pkgs
+  read -ra pkgs <<< "$(cc_wsl_ubuntu_packages)"
   apt_install_confirmed "${pkgs[@]}" || {
     echo "Instala manualmente y vuelve a correr ./install.sh"
     exit 1

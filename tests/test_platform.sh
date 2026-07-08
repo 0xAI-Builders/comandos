@@ -91,4 +91,21 @@ echo "$out" | grep -q "\[mock apt install" \
 out=$(CC_MOCK_APT=1 CC_MOCK_DPKG_MISSING="foo" apt_install_confirmed foo <<< "n" 2>&1) && \
   { echo "declined install should return 1"; exit 1; } || true
 
+# cc_wsl_ubuntu_packages — jammy
+cat > "$TMP/os-release" <<'EOF'
+ID=ubuntu
+VERSION_CODENAME=jammy
+EOF
+result=$(CC_MOCK_OS_RELEASE_FILE="$TMP/os-release" cc_wsl_ubuntu_packages)
+echo "$result" | grep -q "gir1.2-webkit2-4.0" || { echo "jammy should have webkit2-4.0"; exit 1; }
+echo "$result" | grep -q "gir1.2-webkit2-4.1" && { echo "jammy should NOT have webkit2-4.1"; exit 1; } || true
+
+# noble
+cat > "$TMP/os-release" <<'EOF'
+ID=ubuntu
+VERSION_CODENAME=noble
+EOF
+result=$(CC_MOCK_OS_RELEASE_FILE="$TMP/os-release" cc_wsl_ubuntu_packages)
+echo "$result" | grep -q "gir1.2-webkit2-4.1" || { echo "noble should have webkit2-4.1"; exit 1; }
+
 echo "ok"

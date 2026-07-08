@@ -91,6 +91,27 @@ _cc_dpkg_missing() {
   done
 }
 
+# Lista de paquetes apt que ComandOS necesita en Ubuntu WSL (por codename).
+# Emite una advertencia a stderr si el codename no está probado.
+cc_wsl_ubuntu_packages() {
+  local codename webkit_pkg
+  codename=$(cc_ubuntu_codename)
+  case "$codename" in
+    jammy) webkit_pkg="gir1.2-webkit2-4.0" ;;
+    noble) webkit_pkg="gir1.2-webkit2-4.1" ;;
+    *)
+      echo "  (Ubuntu '$codename' no probado; skip WebKit)" >&2
+      webkit_pkg=""
+      ;;
+  esac
+  local base="tmux jq xclip wmctrl python3-gi gir1.2-gtk-3.0 gir1.2-vte-2.91 pulseaudio-utils wslu"
+  if [ -n "$webkit_pkg" ]; then
+    echo "$base $webkit_pkg"
+  else
+    echo "$base"
+  fi
+}
+
 apt_install_confirmed() {
   local missing
   missing=$(_cc_dpkg_missing "$@" | tr '\n' ' ' | sed 's/[[:space:]]*$//')
