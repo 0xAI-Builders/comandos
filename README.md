@@ -95,8 +95,16 @@ Routed under `/term` by the same Tailscale Serve, behind the same token.
 | Platform | Status |
 |---|---|
 | **Linux** (GNOME/X11) | Everything — this is the daily driver ✓ |
-| **Windows 11** | Via **WSL2 + WSLg** (GUI app, audio and all) — beta |
+| **Windows 11** | Via **WSL2 + WSLg** (GUI app, audio and all) ✓ |
 | **macOS** | Engine + web dashboard + native notifications/voice (`osascript`, `say`, `afplay`); GTK app/popups pending — beta, [testers welcome](https://github.com/0xAI-Builders/comandos/issues) |
+
+### Windows setup (WSL2 + WSLg)
+
+1. In PowerShell (as Administrator): `wsl --install -d Ubuntu-24.04` and reboot when asked.
+2. Open Ubuntu from Start Menu and set your Linux username/password.
+3. Inside Ubuntu: `git clone https://github.com/0xAI-Builders/comandos.git && cd comandos && ./install.sh`
+4. If the installer tells you to enable systemd, follow its instructions: from PowerShell run `wsl --shutdown`, reopen Ubuntu, and run `./install.sh` again.
+5. Find **ComandOS** in your Windows Start Menu (WSLg publishes it automatically) or open Edge at `http://127.0.0.1:4777`.
 
 ## Pieces
 

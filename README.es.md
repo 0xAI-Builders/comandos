@@ -96,8 +96,16 @@ compartido. Se enruta en `/term` por el mismo Tailscale Serve, con el mismo toke
 | Plataforma | Estado |
 |---|---|
 | **Linux** (GNOME/X11) | Todo — es el daily driver ✓ |
-| **Windows 11** | Vía **WSL2 + WSLg** (app GUI, audio y todo) — beta |
+| **Windows 11** | Vía **WSL2 + WSLg** (app GUI, audio y todo) ✓ |
 | **macOS** | Motor + tablero web + notificaciones/voz nativas (`osascript`, `say`, `afplay`); app/popups GTK pendientes — beta, [se buscan testers](https://github.com/0xAI-Builders/comandos/issues) |
+
+### Setup Windows (WSL2 + WSLg)
+
+1. En PowerShell (como Administrador): `wsl --install -d Ubuntu-24.04` y reinicia cuando te lo pida.
+2. Abre Ubuntu desde el menú Inicio y define tu usuario/contraseña Linux.
+3. Dentro de Ubuntu: `git clone https://github.com/0xAI-Builders/comandos.git && cd comandos && ./install.sh`
+4. Si el instalador te pide habilitar systemd, sigue sus instrucciones: desde PowerShell corre `wsl --shutdown`, reabre Ubuntu y vuelve a correr `./install.sh`.
+5. Busca **ComandOS** en el menú Inicio de Windows (WSLg lo publica automáticamente) o abre Edge en `http://127.0.0.1:4777`.
 
 ## Piezas
 
