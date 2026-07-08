@@ -242,7 +242,28 @@ _section_audio() {
     _check "$sec" "piper" warn "no instalado — voz deshabilitada (opcional)"
   fi
 }
-_section_remote()  { :; }
+_section_remote() {
+  local sec="Móvil y remoto (opcional)"
+  if command -v tailscale >/dev/null; then
+    if tailscale status >/dev/null 2>&1; then
+      _check "$sec" "tailscale" pass "conectado"
+    else
+      _check "$sec" "tailscale" warn "instalado pero sin sesión — corre sudo tailscale up"
+    fi
+  else
+    _check "$sec" "tailscale" skip "no instalado"
+  fi
+  if command -v ttyd >/dev/null; then
+    _check "$sec" "ttyd" pass "installed"
+    if pgrep -f "ttyd.*cc-webterm-attach" >/dev/null 2>&1; then
+      _check "$sec" "cc-webterm" pass "corriendo"
+    else
+      _check "$sec" "cc-webterm" warn "apagado — cc-webterm para arrancar"
+    fi
+  else
+    _check "$sec" "ttyd" skip "no instalado"
+  fi
+}
 
 _ubu_codename_hint() {
   local c
