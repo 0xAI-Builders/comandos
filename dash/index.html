@@ -7,6 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="ComandOS">
+<link rel="icon" href="/icon-192.png">
 <link rel="apple-touch-icon" href="/icon-192.png">
 <style>
   :root{
@@ -271,6 +272,11 @@
     border:1px solid var(--line);border-radius:7px;padding:5px 12px}
   .test:hover{color:var(--text);border-color:var(--brand)}
   .test.on{color:var(--done);border-color:color-mix(in srgb,var(--done) 45%,var(--line))}
+  .test.warn{color:var(--waiting);border-color:color-mix(in srgb,var(--waiting) 40%,var(--line))}
+  .test:disabled{cursor:not-allowed;opacity:.48;color:var(--faint);border-color:var(--line)}
+  .test:disabled:hover{color:var(--faint);border-color:var(--line)}
+  .test.on:disabled{opacity:1;color:var(--done);
+    border-color:color-mix(in srgb,var(--done) 55%,var(--line))}
   .switch{display:flex;align-items:center;justify-content:space-between;gap:10px}
   .switch button{width:40px;height:22px;border-radius:11px;background:var(--line);
     position:relative;flex:none}
@@ -1527,14 +1533,46 @@ async function loadPrefs(){
 
 // ---------- remoto ----------
 let REMOTE = null;
+let REMOTE_BUSY = false;
 function remoteQrPath(){
   const qs = new URLSearchParams({ts: String(Date.now())});
   const tok = authToken();
   if(tok) qs.set("token", tok);
   return `/remote-qr.png?${qs.toString()}`;
 }
+function remoteButtonState(st, busy){
+  const remoteOn = !!(st && st.remoteOn);
+  const webtermOn = !!(st && st.webtermOn);
+  return {
+    remoteOnDisabled: !!busy || remoteOn,
+    remoteOffDisabled: !!busy || !remoteOn,
+    webtermOnDisabled: !!busy || webtermOn,
+    webtermOffDisabled: !!busy || !webtermOn,
+    openTerminalDisabled: !!busy || !webtermOn,
+    remoteOnActive: remoteOn,
+    remoteOffActive: false,
+    webtermOnActive: webtermOn,
+    webtermOffActive: false,
+    openTerminalActive: webtermOn
+  };
+}
+function setRemoteButton(sel, disabled, active, warn){
+  const b = $(sel);
+  b.disabled = !!disabled;
+  b.classList.toggle("on", !!active);
+  b.classList.toggle("warn", !!warn && !disabled);
+}
+function applyRemoteButtonState(){
+  const st = remoteButtonState(REMOTE, REMOTE_BUSY);
+  setRemoteButton("#remote-on", st.remoteOnDisabled, st.remoteOnActive, false);
+  setRemoteButton("#remote-off", st.remoteOffDisabled, st.remoteOffActive, true);
+  setRemoteButton("#remote-webterm-on", st.webtermOnDisabled, st.webtermOnActive, false);
+  setRemoteButton("#remote-webterm-off", st.webtermOffDisabled, st.webtermOffActive, true);
+  setRemoteButton("#remote-open-terminal", st.openTerminalDisabled, st.openTerminalActive, false);
+}
 function setRemoteBusy(on){
-  document.querySelectorAll("#remote .test").forEach(b => b.disabled = !!on);
+  REMOTE_BUSY = !!on;
+  applyRemoteButtonState();
 }
 function renderRemote(st){
   REMOTE = st || {};
@@ -1542,6 +1580,7 @@ function renderRemote(st){
   const on = !!REMOTE.remoteOn;
   const termOn = !!REMOTE.webtermOn;
   status.classList.toggle("on", on);
+  $("#btn-remote").classList.toggle("on", on);
   status.querySelector("span:last-child").textContent = on
     ? tf(`Remoto activo${termOn ? " · terminal activa" : ""}`, `Remote on${termOn ? " · terminal on" : ""}`)
     : tf("Remoto apagado", "Remote off");
@@ -1553,12 +1592,16 @@ function renderRemote(st){
   $("#remote-qr").classList.toggle("hidden", !hasQr);
   $("#remote-no-qr").classList.toggle("hidden", hasQr || !urls.dashboard);
   if(hasQr) $("#remote-qr").src = remoteQrPath();
+  applyRemoteButtonState();
 }
 async function loadRemote(){
   try{ renderRemote(await api("/remote-state")); }
   catch(err){ toast(err.message, true); }
 }
 async function ensureRemoteTerminalVisible(){
+  $("#remote").classList.remove("open");
+  $("#settings").classList.remove("open");
+  $("#servers").classList.remove("open");
   if(!WEBTERM){
     const u = $("#remote-term-url").value.trim();
     if(u) window.open(u, "_blank", "noopener");
@@ -1606,9 +1649,9 @@ $("#btn-remote").addEventListener("click", ()=>{
 });
 $("#remote-on").addEventListener("click", ()=> remoteAction("/remote-on", tf("Remoto prendido", "Remote on")));
 $("#remote-off").addEventListener("click", ()=> remoteAction("/remote-off", tf("Remoto apagado", "Remote off")));
-$("#remote-webterm-on").addEventListener("click", ()=> remoteAction("/remote-webterm-on", tf("Terminal web prendida", "Web terminal on"), async()=>{ ensureRemoteTerminalVisible(); }));
+$("#remote-webterm-on").addEventListener("click", ()=> remoteAction("/remote-webterm-on", tf("Terminal web prendida", "Web terminal on"), async()=>{ await ensureRemoteTerminalVisible(); }));
 $("#remote-webterm-off").addEventListener("click", ()=> remoteAction("/remote-webterm-off", tf("Terminal web apagada", "Web terminal off")));
-$("#remote-open-terminal").addEventListener("click", ()=> ensureRemoteTerminalVisible());
+$("#remote-open-terminal").addEventListener("click", ()=> ensureRemoteTerminalVisible().catch(err => toast(err.message, true)));
 $("#remote-copy-dashboard").addEventListener("click", ()=> copyRemote("#remote-dashboard-url"));
 $("#remote-copy-term").addEventListener("click", ()=> copyRemote("#remote-term-url"));
 $("#remote-copy-fallback").addEventListener("click", ()=> copyRemote("#remote-fallback-url"));

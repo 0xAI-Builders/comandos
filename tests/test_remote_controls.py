@@ -52,6 +52,20 @@ https://zion.tail63a117.ts.net:8443 (tailnet only)
     assert status["fallbackRouteOn"] is True
 
 
+def test_tab_history_is_treated_as_authenticated_live_api():
+    assert '"/tab-history"' in SRC
+    api_get = SRC.split("API_GET = ", 1)[1].split("def do_GET", 1)[0]
+    assert '"/tab-history"' in api_get
+
+
+def test_static_shell_also_uses_no_store_headers():
+    assert "def end_headers(self):" in SRC
+    assert "Cache-Control" in SRC
+    assert "no-store" in SRC
+
+
 if __name__ == "__main__":
     test_remote_urls_include_existing_access_token()
     test_remote_status_detects_dashboard_and_terminal_routes()
+    test_tab_history_is_treated_as_authenticated_live_api()
+    test_static_shell_also_uses_no_store_headers()
