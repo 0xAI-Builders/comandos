@@ -152,7 +152,59 @@ _section_core() {
     _check "$sec" "hooks" fail "no instalados" "cd $REPO && ./install.sh"
   fi
 }
-_section_desktop() { :; }
+_section_desktop() {
+  local sec="App de escritorio (cc-app)"
+  local plat; plat=$(cc_platform)
+  if [ "$plat" = "darwin" ]; then
+    _check "$sec" "cc-app GTK" skip "no aplica en macOS"
+    return
+  fi
+  # GTK 3
+  if python3 -c "import gi; gi.require_version('Gtk','3.0'); from gi.repository import Gtk" 2>/dev/null; then
+    _check "$sec" "GTK 3" pass "import OK"
+  else
+    _check "$sec" "GTK 3" fail "import falla" "apt_install_confirmed python3-gi gir1.2-gtk-3.0"
+  fi
+  # VTE 2.91
+  if python3 -c "import gi; gi.require_version('Vte','2.91'); from gi.repository import Vte" 2>/dev/null; then
+    _check "$sec" "VTE 2.91" pass "import OK"
+  else
+    _check "$sec" "VTE 2.91" fail "import falla" "apt_install_confirmed gir1.2-vte-2.91"
+  fi
+  # WebKit2 — try 4.1 (noble) then 4.0 (jammy). Ambos son el mismo módulo, distinta versión.
+  if python3 -c "import gi; gi.require_version('WebKit2','4.1'); from gi.repository import WebKit2" 2>/dev/null; then
+    _check "$sec" "WebKit2" pass "4.1"
+  elif python3 -c "import gi; gi.require_version('WebKit2','4.0'); from gi.repository import WebKit2" 2>/dev/null; then
+    _check "$sec" "WebKit2" pass "4.0"
+  else
+    local wk_pkg codename; codename=$(cc_ubuntu_codename)
+    case "$codename" in
+      jammy) wk_pkg="gir1.2-webkit2-4.0" ;;
+      noble) wk_pkg="gir1.2-webkit2-4.1" ;;
+      *)     wk_pkg="gir1.2-webkit2-4.0" ;;
+    esac
+    _check "$sec" "WebKit2" fail "import falla" "apt_install_confirmed $wk_pkg"
+  fi
+  # WSLg display (solo en WSL)
+  if [ "$plat" = "linux-wsl-ubuntu" ]; then
+    if [ -n "${DISPLAY:-}" ] && [ -n "${WAYLAND_DISPLAY:-}" ]; then
+      _check "$sec" "WSLg display" pass "DISPLAY=$DISPLAY · WAYLAND_DISPLAY=$WAYLAND_DISPLAY"
+    else
+      _check "$sec" "WSLg display" fail "\$DISPLAY o \$WAYLAND_DISPLAY vacíos" ""
+    fi
+    if command -v wslview >/dev/null; then
+      _check "$sec" "wslview" pass "installed"
+    else
+      _check "$sec" "wslview" fail "missing" "apt_install_confirmed wslu"
+    fi
+  fi
+  # wmctrl
+  if command -v wmctrl >/dev/null; then
+    _check "$sec" "wmctrl" pass "installed"
+  else
+    _check "$sec" "wmctrl" warn "missing" "apt_install_confirmed wmctrl"
+  fi
+}
 _section_audio()   { :; }
 _section_remote()  { :; }
 
