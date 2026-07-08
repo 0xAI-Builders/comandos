@@ -16,6 +16,7 @@ def test_remote_drawer_controls_are_present():
     assert 'id="remote-off"' in HTML
     assert 'id="remote-webterm-on"' in HTML
     assert 'id="remote-webterm-off"' in HTML
+    assert 'id="remote-open-terminal"' in HTML
 
 
 def test_remote_ui_calls_backend_endpoints():
@@ -33,6 +34,12 @@ def test_remote_ui_calls_backend_endpoints():
 def test_remote_polling_slows_down_when_remote_webterm_is_enabled():
     assert "remotePollSeconds()" in HTML
     assert "document.hidden" in HTML
+
+
+def test_remote_terminal_can_be_opened_from_remote_drawer():
+    assert "ensureRemoteTerminalVisible" in HTML
+    assert 'remoteAction("/remote-webterm-on"' in HTML
+    assert 'ensureRemoteTerminalVisible();' in HTML
 
 
 if __name__ == "__main__":

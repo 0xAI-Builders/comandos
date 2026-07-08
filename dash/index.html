@@ -517,6 +517,9 @@
     <button type="button" class="test" id="remote-webterm-off">Terminal OFF</button>
   </div>
   <div class="set">
+    <button type="button" class="test" id="remote-open-terminal" style="width:100%">Abrir terminal ahora</button>
+  </div>
+  <div class="set">
     <img id="remote-qr" class="hidden" alt="QR remoto">
     <div id="remote-no-qr" class="desc hidden">Instala qrencode para generar QR.</div>
   </div>
@@ -614,6 +617,7 @@ const T_EN = {
   "Remoto": "Remote", "Continuar remoto": "Continue remotely",
   "Prender remoto": "Remote on", "Apagar remoto": "Remote off",
   "Terminal ON": "Terminal ON", "Terminal OFF": "Terminal OFF",
+  "Abrir terminal ahora": "Open terminal now",
   "Dashboard": "Dashboard", "Terminal web": "Web terminal",
   "Fallback terminal": "Fallback terminal", "Copiar": "Copy",
   "Consultando...": "Checking...",
@@ -1554,12 +1558,38 @@ async function loadRemote(){
   try{ renderRemote(await api("/remote-state")); }
   catch(err){ toast(err.message, true); }
 }
-async function remoteAction(path, okMsg){
+async function ensureRemoteTerminalVisible(){
+  if(!WEBTERM){
+    const u = $("#remote-term-url").value.trim();
+    if(u) window.open(u, "_blank", "noopener");
+    return;
+  }
+  await loadDesktopTabs();
+  let sess = activeTerm || [...openTerms.keys()][0];
+  if(!sess){
+    try{
+      const list = await api("/state");
+      const it = list.find(x => x.alive && x.session && !["local", "hub", "control"].includes(x.session));
+      if(it){
+        addTermTab(it.session, it.project || it.session);
+        sess = it.session;
+      }
+    }catch(_){}
+  }
+  if(sess){
+    openTerm(sess, openTerms.get(sess)?.label || sess);
+  }else{
+    const u = $("#remote-term-url").value.trim();
+    if(u) location.href = u;
+  }
+}
+async function remoteAction(path, okMsg, after){
   setRemoteBusy(true);
   try{
     renderRemote(await api(path, {}));
     toast(okMsg);
     arm();
+    if(after) await after();
   }catch(err){ toast(err.message, true); }
   finally{ setRemoteBusy(false); }
 }
@@ -1576,8 +1606,9 @@ $("#btn-remote").addEventListener("click", ()=>{
 });
 $("#remote-on").addEventListener("click", ()=> remoteAction("/remote-on", tf("Remoto prendido", "Remote on")));
 $("#remote-off").addEventListener("click", ()=> remoteAction("/remote-off", tf("Remoto apagado", "Remote off")));
-$("#remote-webterm-on").addEventListener("click", ()=> remoteAction("/remote-webterm-on", tf("Terminal web prendida", "Web terminal on")));
+$("#remote-webterm-on").addEventListener("click", ()=> remoteAction("/remote-webterm-on", tf("Terminal web prendida", "Web terminal on"), async()=>{ ensureRemoteTerminalVisible(); }));
 $("#remote-webterm-off").addEventListener("click", ()=> remoteAction("/remote-webterm-off", tf("Terminal web apagada", "Web terminal off")));
+$("#remote-open-terminal").addEventListener("click", ()=> ensureRemoteTerminalVisible());
 $("#remote-copy-dashboard").addEventListener("click", ()=> copyRemote("#remote-dashboard-url"));
 $("#remote-copy-term").addEventListener("click", ()=> copyRemote("#remote-term-url"));
 $("#remote-copy-fallback").addEventListener("click", ()=> copyRemote("#remote-fallback-url"));
