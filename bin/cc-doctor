@@ -107,7 +107,51 @@ _run_fix() {
 }
 
 # Section runners (implemented in Tasks 13–16)
-_section_core()    { :; }
+_section_core() {
+  local sec="Núcleo"
+  # tmux
+  if command -v tmux >/dev/null; then
+    _check "$sec" "tmux" pass "$(tmux -V 2>/dev/null)"
+  else
+    _check "$sec" "tmux" fail "no instalado" "apt_install_confirmed tmux"
+  fi
+  # jq
+  if command -v jq >/dev/null; then
+    _check "$sec" "jq" pass "$(jq --version 2>/dev/null)"
+  else
+    _check "$sec" "jq" fail "no instalado" "apt_install_confirmed jq"
+  fi
+  # python3
+  if command -v python3 >/dev/null; then
+    _check "$sec" "python3" pass "$(python3 --version 2>/dev/null)"
+  else
+    _check "$sec" "python3" fail "no instalado" "apt_install_confirmed python3"
+  fi
+  # systemd --user
+  if cc_systemd_ok; then
+    _check "$sec" "systemd --user" pass "running"
+  else
+    _check "$sec" "systemd --user" fail "no responde" ""
+  fi
+  # cc-dash
+  if curl -s -m 2 http://127.0.0.1:4777/prefs >/dev/null 2>&1; then
+    _check "$sec" "cc-dash" pass "responde en 127.0.0.1:4777"
+  else
+    _check "$sec" "cc-dash" fail "no responde" "systemctl --user start cc-dash"
+  fi
+  # cc-notifyd
+  if ss -ltn 2>/dev/null | grep -q ':4778 '; then
+    _check "$sec" "cc-notifyd" pass "escucha en 127.0.0.1:4778"
+  else
+    _check "$sec" "cc-notifyd" warn "no está escuchando" "systemctl --user start cc-notifyd"
+  fi
+  # hooks
+  if [ -x "$HOME/.claude/hooks/cc-notify.sh" ]; then
+    _check "$sec" "hooks" pass "instalados en ~/.claude/hooks"
+  else
+    _check "$sec" "hooks" fail "no instalados" "cd $REPO && ./install.sh"
+  fi
+}
 _section_desktop() { :; }
 _section_audio()   { :; }
 _section_remote()  { :; }
