@@ -6,7 +6,11 @@ REPO="$(cd "$(dirname "$0")" && pwd)"
 BIN="$HOME/.local/bin"
 HOOKS="$HOME/.claude/hooks"
 
-echo "ComandOS -> instalando desde $REPO"
+# shellcheck source=lib/platform.sh
+. "$REPO/lib/platform.sh"
+
+CC_PLAT="$(cc_platform)"
+echo "ComandOS -> instalando desde $REPO (plataforma: $CC_PLAT)"
 mkdir -p "$BIN" "$HOOKS/dash" "$HOOKS/state" \
          "$HOME/.config/systemd/user" \
          "$HOME/.config/kitty" \
@@ -40,10 +44,12 @@ sed "s|__HOME__|$HOME|g" "$REPO/dash/comandos.desktop.in" \
   > "$HOME/.local/share/applications/comandos.desktop" 2>/dev/null || true
 cp "$REPO/dash/comandos.svg" "$HOME/.local/share/icons/hicolor/scalable/apps/centro-claude.svg" 2>/dev/null || true
 
-# Servicios: systemd (Linux) o launchd (macOS)
-if [ "$(uname -s)" = "Darwin" ]; then
-  mkdir -p "$HOME/Library/LaunchAgents"
-  cat > "$HOME/Library/LaunchAgents/com.0xai.cc-dash.plist" <<PLIST
+# Servicios: dispatch por plataforma. macOS/Linux nativo mantienen el
+# comportamiento anterior byte-a-byte; linux-wsl-ubuntu se rellena en Tasks 5–6.
+case "$CC_PLAT" in
+  darwin)
+    mkdir -p "$HOME/Library/LaunchAgents"
+    cat > "$HOME/Library/LaunchAgents/com.0xai.cc-dash.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0"><dict>
@@ -55,20 +61,27 @@ if [ "$(uname -s)" = "Darwin" ]; then
   <key>KeepAlive</key><true/>
 </dict></plist>
 PLIST
-  launchctl unload "$HOME/Library/LaunchAgents/com.0xai.cc-dash.plist" 2>/dev/null || true
-  launchctl load "$HOME/Library/LaunchAgents/com.0xai.cc-dash.plist" 2>/dev/null || true
-  echo "  macOS: cc-dash como LaunchAgent. App nativa y popups GTK: por ahora solo Linux;"
-  echo "  usa el tablero en el navegador (las notificaciones van por 'osascript'/'say')."
-else
-  for s in cc-dash cc-notifyd cc-telegram; do
-    ln -sf "$REPO/systemd/$s.service" "$HOME/.config/systemd/user/$s.service"
-  done
-  systemctl --user daemon-reload
-  systemctl --user enable --now cc-dash.service cc-notifyd.service 2>/dev/null || true
-  # cc-telegram solo si hay token configurado
-  grep -q "^CC_TELEGRAM_BOT_TOKEN=." "$HOOKS/telegram.env" 2>/dev/null \
-    && systemctl --user enable --now cc-telegram.service 2>/dev/null || true
-fi
+    launchctl unload "$HOME/Library/LaunchAgents/com.0xai.cc-dash.plist" 2>/dev/null || true
+    launchctl load "$HOME/Library/LaunchAgents/com.0xai.cc-dash.plist" 2>/dev/null || true
+    echo "  macOS: cc-dash como LaunchAgent. App nativa y popups GTK: por ahora solo Linux;"
+    echo "  usa el tablero en el navegador (las notificaciones van por 'osascript'/'say')."
+    ;;
+  linux-wsl-ubuntu)
+    # Rellenado por Tasks 5–6.
+    :
+    ;;
+  linux-native|linux-other)
+    [ "$CC_PLAT" = "linux-other" ] && echo "  (distro Linux no probada; sigo con el flujo Linux estándar)"
+    for s in cc-dash cc-notifyd cc-telegram; do
+      ln -sf "$REPO/systemd/$s.service" "$HOME/.config/systemd/user/$s.service"
+    done
+    systemctl --user daemon-reload
+    systemctl --user enable --now cc-dash.service cc-notifyd.service 2>/dev/null || true
+    # cc-telegram solo si hay token configurado
+    grep -q "^CC_TELEGRAM_BOT_TOKEN=." "$HOOKS/telegram.env" 2>/dev/null \
+      && systemctl --user enable --now cc-telegram.service 2>/dev/null || true
+    ;;
+esac
 
 # Conectar otros agentes instalados (codex, opencode, gemini, agy)
 "$BIN/cc-agents" setup || true
