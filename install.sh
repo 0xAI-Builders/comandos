@@ -9,6 +9,29 @@ HOOKS="$HOME/.claude/hooks"
 # shellcheck source=lib/platform.sh
 . "$REPO/lib/platform.sh"
 
+# Instala los paquetes que ComandOS necesita en Ubuntu WSL (auto-fix con confirmación).
+_cc_wsl_install_deps() {
+  local codename webkit_pkg
+  codename=$(cc_ubuntu_codename)
+  case "$codename" in
+    jammy) webkit_pkg="gir1.2-webkit2-4.0" ;;
+    noble) webkit_pkg="gir1.2-webkit-4.1" ;;
+    *)
+      echo "  (Ubuntu '$codename' no probado; skip WebKit, cc-app puede no arrancar)"
+      webkit_pkg=""
+      ;;
+  esac
+  # Warm sudo cache una sola vez.
+  sudo -v || { echo "sudo requerido para instalar dependencias."; exit 1; }
+  local pkgs=(tmux jq xclip wmctrl python3-gi gir1.2-gtk-3.0 gir1.2-vte-2.91
+              pulseaudio-utils wslu)
+  [ -n "$webkit_pkg" ] && pkgs+=("$webkit_pkg")
+  apt_install_confirmed "${pkgs[@]}" || {
+    echo "Instala manualmente y vuelve a correr ./install.sh"
+    exit 1
+  }
+}
+
 # Habilita systemd en WSL editando /etc/wsl.conf (con confirmación).
 # Sale con exit 0 después de escribir — el usuario debe correr `wsl --shutdown`.
 _cc_wsl_enable_systemd() {
@@ -100,7 +123,8 @@ PLIST
   linux-wsl-ubuntu)
     # 1) systemd disponible?
     cc_systemd_ok || _cc_wsl_enable_systemd
-    # 2) deps WSL (rellenado en Task 6)
+    # 2) deps WSL Ubuntu
+    _cc_wsl_install_deps
     # 3) systemd user services (mismo que linux-native)
     for s in cc-dash cc-notifyd cc-telegram; do
       ln -sf "$REPO/systemd/$s.service" "$HOME/.config/systemd/user/$s.service"
@@ -133,3 +157,9 @@ echo "Dependencias sugeridas: tmux jq xclip wmctrl piper (voz) kitty (terminal).
 echo "Para el celular (seguro): tailscale + qrencode + ttyd, y corre cc-mobile."
 echo "Terminal REAL en el celular: instala ttyd y corre cc-webterm (lo enruta cc-mobile)."
 echo "Para operar por Telegram: llena ~/.claude/hooks/telegram.env y reinicia cc-telegram."
+
+if [ "$CC_PLAT" = "linux-wsl-ubuntu" ]; then
+  echo ""
+  echo "WSL: busca 'ComandOS' en el menú Inicio de Windows,"
+  echo "     o abre Edge en http://127.0.0.1:4777"
+fi
