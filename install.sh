@@ -15,7 +15,7 @@ _cc_wsl_install_deps() {
   codename=$(cc_ubuntu_codename)
   case "$codename" in
     jammy) webkit_pkg="gir1.2-webkit2-4.0" ;;
-    noble) webkit_pkg="gir1.2-webkit-4.1" ;;
+    noble) webkit_pkg="gir1.2-webkit2-4.1" ;;
     *)
       echo "  (Ubuntu '$codename' no probado; skip WebKit, cc-app puede no arrancar)"
       webkit_pkg=""

@@ -18,7 +18,11 @@ Teclas:
 import json, os, re, shutil, subprocess, sys, threading, time, urllib.request
 import gi
 gi.require_version("Gtk", "3.0")
-gi.require_version("WebKit2", "4.0")
+# WebKit2 4.1 en Ubuntu 24.04 (noble), 4.0 en 22.04 (jammy). Intenta 4.1 primero.
+try:
+    gi.require_version("WebKit2", "4.1")
+except ValueError:
+    gi.require_version("WebKit2", "4.0")
 gi.require_version("Vte", "2.91")
 from gi.repository import Gtk, WebKit2, Vte, GLib, Gdk, Gio, Pango
 
