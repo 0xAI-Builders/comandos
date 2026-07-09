@@ -618,6 +618,7 @@ def on_term_button(term, event):
 
 
 win = Gtk.Window(title="ComandOS")
+win.set_wmclass("comandos", "comandos")
 win.set_default_size(1600, 880)
 win.set_icon_name("centro-claude")
 

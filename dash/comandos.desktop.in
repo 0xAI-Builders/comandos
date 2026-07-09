@@ -7,3 +7,4 @@ Icon=centro-claude
 Terminal=false
 Categories=Development;Utility;
 StartupWMClass=comandos
+StartupNotify=true
