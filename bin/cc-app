@@ -241,8 +241,7 @@ def make_term(argv_sh):
     term.connect("button-press-event", on_term_button)
     term.connect("button-release-event", on_term_release)
     # Seleccionar = copiar al clipboard del sistema (portapapeles compartido)
-    term.connect("selection-changed", lambda t: t.get_has_selection()
-                 and t.copy_clipboard_format(Vte.Format.TEXT))
+    term.connect("selection-changed", lambda t: copy_vte_selection(t))
     # URLs clickeables: click simple (sin arrastre) o Ctrl+click, con manita
     try:
         rx = Vte.Regex.new_for_match(URL_RE, -1, 0x00000400)  # PCRE2_MULTILINE
@@ -371,6 +370,52 @@ def copy_mode_pane(sess, preferred=None):
     return None
 
 
+def select_pane_at_event(term, event):
+    pane_id, _npanes = pane_at(term, event)
+    if pane_id:
+        tmuxc("select-pane", "-t", pane_id)
+        return pane_id
+    return None
+
+
+def copy_text_to_clipboard(text):
+    if not text:
+        return False
+    cb = Gtk.Clipboard.get(Gdk.SELECTION_CLIPBOARD)
+    cb.set_text(text, -1)
+    try:
+        cb.store()
+    except Exception:
+        pass
+    return True
+
+
+def copy_vte_selection(term):
+    if not term.get_has_selection():
+        return False
+    term.copy_clipboard_format(Vte.Format.TEXT)
+    term._last_selection_copy = time.monotonic()
+    try:
+        Gtk.Clipboard.get(Gdk.SELECTION_CLIPBOARD).store()
+    except Exception:
+        pass
+    return True
+
+
+def copy_tmux_selection_to_clipboard(pane):
+    if not pane:
+        return False
+    r = tmuxc("send-keys", "-t", pane, "-X", "copy-selection-no-clear")
+    if r.returncode != 0:
+        r = tmuxc("send-keys", "-t", pane, "-X", "copy-selection")
+    if r.returncode != 0:
+        return False
+    r = tmuxc("save-buffer", "-")
+    if r.returncode != 0:
+        return False
+    return copy_text_to_clipboard(r.stdout)
+
+
 def notify_popup(title, body):
     """Feedback visible via el demonio de popups (se autocierra en 12s)."""
     try:
@@ -442,6 +487,8 @@ def on_term_release(term, event):
     press = getattr(term, "_url_press", None)
     term._url_press = None
     term._sel_flag = True
+    if term.get_has_selection():
+        copy_vte_selection(term)
     if press and event.button == 1:
         x, y, url = press
         if url and abs(event.x - x) < 5 and abs(event.y - y) < 5 \
@@ -465,6 +512,7 @@ def on_term_button(term, event):
     # Click simple: recordar si cayo sobre una URL; se abre al SOLTAR solo si
     # no hubo arrastre (para no interferir con seleccionar texto)
     if event.button == 1:
+        select_pane_at_event(term, event)
         try:
             match, _tag = term.match_check_event(event)
             url = url_at_event(term, event, match or "")
@@ -486,6 +534,8 @@ def on_term_button(term, event):
     key = getattr(box, "_key", None)
     cur_sess = term_session(term)          # sesion realmente mostrada (hub incluido)
     pane_id, npanes = pane_at(term, event)  # pane bajo el cursor
+    if pane_id:
+        tmuxc("select-pane", "-t", pane_id)
     ssh_host = ssh_host_from_session(cur_sess)
     is_ssh = bool(ssh_host)
 
@@ -508,13 +558,17 @@ def on_term_button(term, event):
     copy_pane = copy_mode_pane(cur_sess, pane_id)
 
     def do_copy():
-        if term.get_has_selection():
-            term.copy_clipboard_format(Vte.Format.TEXT)
+        if copy_vte_selection(term):
             return
         target = copy_mode_pane(term_session(term), pane_id) or copy_pane
-        if target:
-            tmuxc("send-keys", "-t", target, "-X", "copy-pipe-no-clear",
-                  "xclip -in -selection clipboard 2>/dev/null")
+        if target and copy_tmux_selection_to_clipboard(target):
+            return
+        if time.monotonic() - getattr(term, "_last_selection_copy", 0) < 15:
+            notify_popup("Seleccion copiada" if ES else "Selection copied",
+                         "Ya estaba en el portapapeles" if ES else "Already on the clipboard")
+            return
+        notify_popup("No se pudo copiar" if ES else "Could not copy",
+                     "No encontre una seleccion activa" if ES else "No active selection found")
 
     item(("Copiar                   Ctrl+C" if ES else "Copy                     Ctrl+C"), do_copy,
          sensitive=True)
