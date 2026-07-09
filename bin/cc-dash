@@ -18,7 +18,7 @@ Solo escucha en 127.0.0.1. Todas las llamadas a tmux van sin shell (sin inyeccio
 """
 import html as html_mod
 import hmac, secrets
-import json, os, glob, re, shlex, shutil, sys, subprocess, time, webbrowser
+import json, os, glob, re, shlex, shutil, sys, subprocess, threading, time, webbrowser
 import http.server, socketserver
 import tempfile
 import cc_usage
@@ -83,6 +83,48 @@ def refresh_local_usage(force=False):
         ),
     }
     return counts
+
+
+# Limites exactos del plan (porcentaje 5h/semana): OAuth local de Claude Code
+# y snapshots de rate limits de los rollouts de Codex. La parte con red corre
+# en un hilo aparte para que /usage/state responda siempre al instante.
+LIMITS_TTL = 60
+_limits_lock = threading.Lock()
+_limits_cache = {"at": 0, "limits": [], "health": {}}
+_limits_refreshing = False
+
+
+def _refresh_provider_limits():
+    global _limits_refreshing
+    try:
+        codex_rows = cc_usage.read_codex_rate_limits()
+        claude_rows, claude_health = cc_usage.fetch_claude_oauth_limits()
+        with _limits_lock:
+            _limits_cache["at"] = int(time.time())
+            _limits_cache["limits"] = claude_rows + codex_rows
+            _limits_cache["health"] = {"claude_oauth": claude_health}
+    finally:
+        with _limits_lock:
+            _limits_refreshing = False
+
+
+def usage_provider_limits(force=False):
+    global _limits_refreshing
+    if force:
+        with _limits_lock:
+            _limits_refreshing = True
+        _refresh_provider_limits()
+    else:
+        with _limits_lock:
+            stale = time.time() - _limits_cache["at"] > LIMITS_TTL
+            start = stale and not _limits_refreshing
+            if start:
+                _limits_refreshing = True
+        if start:
+            threading.Thread(target=_refresh_provider_limits, daemon=True).start()
+    with _limits_lock:
+        return {"limits": list(_limits_cache["limits"]),
+                "health": dict(_limits_cache["health"])}
 
 
 def access_token():
@@ -1461,8 +1503,11 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             refresh_local_usage(False)
             panes = usage_live_panes()
             env = usage_runtime_env()
-            state = cc_usage.build_usage_state(USAGE_DB, panes, settings=env)
+            prov = usage_provider_limits()
+            state = cc_usage.build_usage_state(USAGE_DB, panes, settings=env,
+                                               limits=prov["limits"])
             state["credential_health"] = usage_credential_health(env)
+            state["credential_health"].update(prov["health"])
             return self._json(200, state)
         if self.path.startswith("/ssh"):
             return self._json(200, parse_ssh_config())
@@ -1663,8 +1708,11 @@ class Handler(http.server.SimpleHTTPRequestHandler):
                 if cost_rows:
                     cc_usage.record_provider_costs(USAGE_DB, provider, cost_rows)
             panes = usage_live_panes()
-            state = cc_usage.build_usage_state(USAGE_DB, panes, settings=env)
+            prov = usage_provider_limits(force=True)
+            state = cc_usage.build_usage_state(USAGE_DB, panes, settings=env,
+                                               limits=prov["limits"])
             state["credential_health"] = {h["provider"]: h for h in health}
+            state["credential_health"].update(prov["health"])
             return self._json(200, {"ok": True, "counts": counts, "state": state})
 
         if self.path == "/usage/settings":
@@ -1744,7 +1792,8 @@ class Handler(http.server.SimpleHTTPRequestHandler):
         if self.path == "/model/switch":
             provider = str(data.get("provider") or data.get("agent") or state_agent(sess))[:32]
             preset = str(data.get("preset") or "diario")[:32]
-            switch_text = cc_usage.model_switch_text(provider, preset)
+            model = str(data.get("model") or "")[:40]
+            switch_text = cc_usage.model_switch_text(provider, preset, model)
             if tmux("has-session", "-t", target).returncode != 0:
                 return self._json(404, {"error": f"No hay sesion tmux '{sess}'"})
             r = tmux("send-keys", "-t", pane, "-l", "--", switch_text)

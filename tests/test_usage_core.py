@@ -500,6 +500,129 @@ def test_capture_hook_payload_records_when_usage_numbers_exist():
     assert state["totals"]["cost_usd"] == 0.01
 
 
+CLAUDE_OAUTH_PAYLOAD = {
+    "five_hour": {"utilization": 5.0, "resets_at": "2026-07-10T01:00:00+00:00"},
+    "seven_day": {"utilization": 1.0, "resets_at": "2026-07-11T08:00:00+00:00"},
+    "limits": [
+        {"kind": "session", "group": "session", "percent": 5, "severity": "normal",
+         "resets_at": "2026-07-10T01:00:00+00:00", "scope": None, "is_active": True},
+        {"kind": "weekly_all", "group": "weekly", "percent": 1, "severity": "normal",
+         "resets_at": "2026-07-11T08:00:00+00:00", "scope": None, "is_active": False},
+        {"kind": "weekly_scoped", "group": "weekly", "percent": 0, "severity": "normal",
+         "resets_at": "2026-07-11T08:00:00+00:00",
+         "scope": {"model": {"id": None, "display_name": "Fable"}, "surface": None},
+         "is_active": False},
+    ],
+}
+
+
+def _epoch(iso):
+    from datetime import datetime
+    return int(datetime.fromisoformat(iso).timestamp())
+
+
+def test_parse_claude_oauth_limits_normalizes_percent_and_reset():
+    rows = cc_usage.parse_claude_oauth_limits(CLAUDE_OAUTH_PAYLOAD, now=100)
+    by_id = {r["id"]: r for r in rows}
+
+    assert by_id["claude_session"]["percent"] == 5.0
+    assert by_id["claude_session"]["resets_at"] == _epoch("2026-07-10T01:00:00+00:00")
+    assert by_id["claude_session"]["confidence"] == "exact"
+    assert by_id["claude_session"]["provider"] == "claude"
+    assert by_id["claude_session"]["captured_at"] == 100
+    assert by_id["claude_weekly"]["percent"] == 1.0
+    assert by_id["claude_weekly_fable"]["scope"] == "Fable"
+    assert by_id["claude_weekly_fable"]["percent"] == 0.0
+
+
+def test_fetch_claude_oauth_limits_uses_local_token_and_hides_it():
+    with tempfile.TemporaryDirectory() as d:
+        creds = os.path.join(d, "credentials.json")
+        with open(creds, "w") as f:
+            json.dump({"claudeAiOauth": {"accessToken": "tok-123"}}, f)
+        captured = {}
+
+        def fake_http(url, headers, timeout=8):
+            captured["url"] = url
+            captured["auth"] = headers.get("Authorization")
+            return CLAUDE_OAUTH_PAYLOAD
+
+        rows, health = cc_usage.fetch_claude_oauth_limits(
+            creds_path=creds, now=100, http=fake_http)
+
+    assert "oauth/usage" in captured["url"]
+    assert captured["auth"] == "Bearer tok-123"
+    assert health["status"] == "ok"
+    assert health["provider"] == "claude"
+    assert rows and "tok-123" not in json.dumps(rows)
+    assert "tok-123" not in json.dumps(health)
+
+
+def test_fetch_claude_oauth_limits_reports_missing_credentials():
+    rows, health = cc_usage.fetch_claude_oauth_limits(
+        creds_path="/nonexistent/creds.json", now=100,
+        http=lambda *a, **k: (_ for _ in ()).throw(AssertionError("no llamar")))
+
+    assert rows == []
+    assert health["status"] == "missing"
+
+
+def test_read_codex_rate_limits_reads_latest_rollout_snapshot():
+    with tempfile.TemporaryDirectory() as d:
+        day = Path(d) / "2026" / "07" / "09"
+        day.mkdir(parents=True)
+        lines = [
+            json.dumps({"timestamp": "2026-07-09T10:00:00.000Z", "type": "session_meta",
+                        "payload": {"type": "session_meta"}}),
+            json.dumps({"timestamp": "2026-07-09T11:00:00.000Z", "type": "event_msg",
+                        "payload": {"type": "token_count", "info": {},
+                                    "rate_limits": {
+                                        "limit_id": "codex",
+                                        "primary": {"used_percent": 42.5, "window_minutes": 300,
+                                                    "resets_at": 5000},
+                                        "secondary": {"used_percent": 7.0, "window_minutes": 10080,
+                                                      "resets_at": 9000},
+                                        "plan_type": "pro"}}}),
+        ]
+        (day / "rollout-2026-07-09T11-00-00-abc.jsonl").write_text("\n".join(lines) + "\n")
+
+        rows = cc_usage.read_codex_rate_limits(sessions_root=d, now=6000)
+
+    by_id = {r["id"]: r for r in rows}
+    assert by_id["codex_session"]["percent"] == 42.5
+    assert by_id["codex_session"]["resets_at"] == 5000
+    assert by_id["codex_session"]["confidence"] == "exact"
+    assert by_id["codex_session"]["provider"] == "codex"
+    assert by_id["codex_weekly"]["percent"] == 7.0
+    assert by_id["codex_weekly"]["resets_at"] == 9000
+
+
+def test_read_codex_rate_limits_empty_without_sessions():
+    with tempfile.TemporaryDirectory() as d:
+        assert cc_usage.read_codex_rate_limits(sessions_root=d, now=100) == []
+    assert cc_usage.read_codex_rate_limits(sessions_root="/nonexistent", now=100) == []
+
+
+def test_build_usage_state_exposes_provider_limits():
+    with tempfile.TemporaryDirectory() as d:
+        db = os.path.join(d, "usage.sqlite")
+        cc_usage.init_db(db)
+        state = cc_usage.build_usage_state(db, [], now=100, limits=[
+            {"id": "claude_session", "provider": "claude", "percent": 5.0},
+        ])
+
+    assert state["limits"][0]["id"] == "claude_session"
+    assert state["limits"][0]["percent"] == 5.0
+
+
+def test_model_switch_text_accepts_direct_model():
+    assert cc_usage.model_switch_text("claude", "", model="opus") == "/model opus"
+    assert cc_usage.model_switch_text("claude", "", model="fable") == "/model fable"
+    # Modelos fuera de la lista blanca no se inyectan al pane
+    assert cc_usage.model_switch_text("claude", "", model="rm -rf /") == "/model sonnet"
+    assert cc_usage.model_switch_text("codex", "", model="gpt-x") == "/model"
+
+
 if __name__ == "__main__":
     test_usage_db_path_lives_under_hooks_dir()
     test_init_db_creates_required_tables()
@@ -523,3 +646,10 @@ if __name__ == "__main__":
     test_model_switch_text_opens_provider_model_picker()
     test_capture_hook_payload_noops_without_usage_numbers()
     test_capture_hook_payload_records_when_usage_numbers_exist()
+    test_parse_claude_oauth_limits_normalizes_percent_and_reset()
+    test_fetch_claude_oauth_limits_uses_local_token_and_hides_it()
+    test_fetch_claude_oauth_limits_reports_missing_credentials()
+    test_read_codex_rate_limits_reads_latest_rollout_snapshot()
+    test_read_codex_rate_limits_empty_without_sessions()
+    test_build_usage_state_exposes_provider_limits()
+    test_model_switch_text_accepts_direct_model()

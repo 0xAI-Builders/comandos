@@ -447,8 +447,20 @@
 	  .usage-row span{font-size:10.5px;color:var(--faint);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 	  .usage-row code{font-size:10px;color:var(--code)}
 	  .usage-pane-main{min-width:0}
-	  .pane-model-controls{display:grid;grid-template-columns:1fr 1fr;gap:5px;width:156px}
-	  .pane-model-controls .test{min-width:0;padding:5px 6px;font-size:10px;line-height:1.15}
+	  .pane-model-controls{display:flex;align-items:center;width:150px}
+	  /* Un solo control de modelo por sesion/pane (select nativo: funciona igual
+	     en Chrome y en el WebKitGTK viejo de la app) */
+	  select.mdl, select.pane-model{font-family:var(--mono);font-size:10.5px;color:var(--dim);
+	    background:var(--panel);border:1px solid var(--line);border-radius:7px;
+	    padding:5px 6px;max-width:150px;min-height:0}
+	  select.mdl:hover, select.pane-model:hover{color:var(--text);border-color:var(--brand)}
+	  .ops select.mdl{min-height:40px;max-width:118px}
+	  .usage-window.ok .usage-bar span{background:var(--done)}
+	  .usage-window.warn{border-left-color:var(--waiting)}
+	  .usage-window.warn .usage-bar span{background:var(--waiting)}
+	  .usage-window.danger{border-left-color:#FF5C68}
+	  .usage-window.danger .usage-bar span{background:#FF5C68}
+	  .usage-window .usage-title small{font-size:9px}
 	  .usage-alert{border-left:3px solid var(--waiting);padding:7px 9px;background:var(--panel);
 	    border-radius:6px;font-size:11.5px;color:var(--dim);margin-bottom:7px}
 	  .usage-chip{flex:none;font-family:var(--mono);font-size:9.5px;color:var(--code);
@@ -590,15 +602,8 @@
 	    <button type="button" class="test" id="usage-close">Cerrar</button>
 	  </div>
 	  <div class="set"><div class="desc" id="usage-summary">Sin datos todavia.</div></div>
-	  <div class="set" style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
-	    <input id="limit-codex-daily" inputmode="numeric" placeholder="Codex diario tok">
-	    <input id="limit-codex-weekly" inputmode="numeric" placeholder="Codex semanal tok">
-	    <input id="limit-claude-daily" inputmode="numeric" placeholder="Claude diario tok">
-	    <input id="limit-claude-weekly" inputmode="numeric" placeholder="Claude semanal tok">
-	    <button type="button" class="test" id="usage-limits-save" style="grid-column:1 / -1">Guardar limites</button>
-	  </div>
-	  <h3>Limites</h3>
-	  <div id="usage-windows" class="usage-grid"></div>
+	  <h3>Limites del plan</h3>
+	  <div id="usage-limits" class="usage-grid"></div>
 	  <h3>Proveedores</h3>
 	  <div id="usage-providers" class="usage-grid"></div>
 	  <h3 style="margin-top:22px">Proyectos y panes</h3>
@@ -880,6 +885,7 @@ function mdStrip(s){ return (s||"").replace(/\*\*|`|^#{1,6} /g, ""); }
 	}
 	function fmtTokens(n){
 	  n = Number(n || 0);
+	  if(n >= 1000000000) return `${(n/1000000000).toFixed(2)}B tok`;
 	  if(n >= 1000000) return `${(n/1000000).toFixed(1)}M tok`;
 	  if(n >= 1000) return `${Math.round(n/1000)}k tok`;
 	  return `${Math.round(n)} tok`;
@@ -919,36 +925,96 @@ function mdStrip(s){ return (s||"").replace(/\*\*|`|^#{1,6} /g, ""); }
 	function fmtPercent(n){
 	  return n === null || n === undefined ? "--" : `${Number(n).toFixed(Number(n) % 1 ? 1 : 0)}%`;
 	}
-	function renderUsageWindows(state){
-	  const items = state?.windows?.items || [];
-	  const byId = Object.fromEntries(items.map(w => [w.id, w]));
-	  const setLimit = (id, val) => { const el = $(id); if(el && document.activeElement !== el) el.value = val || ""; };
-	  setLimit("#limit-codex-daily", byId.codex_daily_tokens?.limit || "");
-	  setLimit("#limit-codex-weekly", byId.codex_weekly_tokens?.limit || "");
-	  setLimit("#limit-claude-daily", byId.claude_daily_tokens?.limit || "");
-	  setLimit("#limit-claude-weekly", byId.claude_weekly_tokens?.limit || "");
-	  $("#usage-windows").innerHTML = items.length ? items.map(w=>{
-	    const hasLimit = Number(w.limit || 0) > 0;
-	    const pct = hasLimit ? Math.min(100, Number(w.percent || 0)) : 0;
-	    const remaining = hasLimit ? fmtTokens(w.remaining || 0) : "--";
-	    const status = hasLimit ? `${fmtPercent(w.percent)} usado` : "Sin limite configurado";
-	    return `<div class="usage-card usage-window">
-	      <div class="usage-title">${mdEsc(w.label || w.id || "limite")}<small>${mdEsc(status)}</small></div>
-	      <div class="usage-metric">${fmtTokens(w.used || 0)}</div>
-	      <div class="usage-sub">Restante ${mdEsc(remaining)} · ${hasLimit ? fmtTokens(w.limit || 0) : "limite no disponible"}</div>
+	function limitSeverity(l){
+	  const p = Number(l?.percent || 0);
+	  if(p >= 90 || l?.severity === "danger" || l?.severity === "error") return "danger";
+	  if(p >= 70 || l?.severity === "warning") return "warn";
+	  return "ok";
+	}
+	function fmtReset(ts){
+	  if(!ts) return "";
+	  const d = new Date(ts * 1000), now = new Date();
+	  const hm = d.toLocaleTimeString([], {hour: "2-digit", minute: "2-digit"});
+	  if(d.toDateString() === now.toDateString()) return hm;
+	  return `${d.toLocaleDateString([], {weekday: "short"})} ${hm}`;
+	}
+	function limitAge(l){
+	  if(l?.source !== "rollout" || !l?.captured_at) return "";
+	  const min = Math.round((Date.now()/1000 - Number(l.captured_at)) / 60);
+	  if(min < 3) return "";
+	  return min < 120 ? tf(`hace ${min} min`, `${min} min ago`) : tf(`hace ${Math.round(min/60)} h`, `${Math.round(min/60)} h ago`);
+	}
+	// Porcentajes EXACTOS del plan: OAuth de Claude Code y rollouts de Codex.
+	function renderUsageLimits(state){
+	  const items = state?.limits || [];
+	  $("#usage-limits").innerHTML = items.length ? items.map(l=>{
+	    const pct = Math.max(0, Math.min(100, Number(l.percent || 0)));
+	    const sub = [
+	      l.resets_at ? `${tf("resetea", "resets")} ${fmtReset(l.resets_at)}` : "",
+	      l.plan_type ? `plan ${l.plan_type}` : "",
+	      limitAge(l),
+	    ].filter(Boolean).join(" · ");
+	    return `<div class="usage-card usage-window ${limitSeverity(l)}">
+	      <div class="usage-title">${mdEsc(l.provider || "")} · ${mdEsc(l.label || "")}<small>${mdEsc(confidenceLabel(l.confidence))}</small></div>
+	      <div class="usage-metric">${fmtPercent(l.percent)}</div>
+	      <div class="usage-sub">${mdEsc(sub || tf("sin ventana de reset", "no reset window"))}</div>
 	      <div class="usage-bar"><span style="width:${pct}%"></span></div>
 	    </div>`;
-	  }).join("") : `<div class="desc">Sin limites configurados</div>`;
+	  }).join("") : `<div class="desc">${tf("Sin datos todavia — se actualizan solos en unos segundos", "No data yet — auto-refreshes in a few seconds")}</div>`;
+	}
+	function usageBadgeText(state){
+	  const pcts = (state?.limits || [])
+	    .filter(l => l.is_active !== false || Number(l.percent || 0) > 0)
+	    .map(l => Number(l.percent || 0)).filter(Number.isFinite);
+	  if(!pcts.length) return "";
+	  return `${Math.round(Math.max(...pcts))}%`;
+	}
+	// UN control por concepto: un select de modelo (la intencion es la etiqueta).
+	const MODEL_CHOICES = {
+	  claude: [
+	    {model: "haiku",  label: "Haiku · Ahorro"},
+	    {model: "sonnet", label: "Sonnet · Diario"},
+	    {model: "opus",   label: "Opus · Difícil"},
+	    {model: "fable",  label: "Fable · Máximo"},
+	  ],
+	  codex: [
+	    {model: "picker", label: "Abrir selector (/model)"},
+	  ],
+	};
+	function modelOptions(provider){
+	  const list = MODEL_CHOICES[provider] || MODEL_CHOICES.claude;
+	  return `<option value="">${tf("Modelo…", "Model…")}</option>` +
+	    list.map(m => `<option value="${attrEsc(m.model)}">${mdEsc(m.label)}</option>`).join("");
+	}
+	function modelSelectEl(session, pane, provider, cls){
+	  return `<select class="${cls}" data-session="${attrEsc(session)}" data-pane="${attrEsc(pane)}" data-provider="${attrEsc(provider)}"
+	    title="${tf("Cambiar el modelo de esta sesion", "Switch this session's model")}">${modelOptions(provider)}</select>`;
+	}
+	function wireModelSelect(sel){
+	  sel.addEventListener("change", async ()=>{
+	    const value = sel.value;
+	    sel.value = "";
+	    if(!value) return;
+	    const card = sel.closest("article[data-session]");
+	    if(card && card.dataset.pane) sel.dataset.pane = card.dataset.pane;
+	    try{
+	      await api("/model/switch", {
+	        session: sel.dataset.session,
+	        pane: sel.dataset.pane || undefined,
+	        provider: sel.dataset.provider || "claude",
+	        model: value,
+	      });
+	      toast(value === "picker"
+	        ? tf(`Selector de modelo abierto en ${sel.dataset.session}`, `Model picker opened in ${sel.dataset.session}`)
+	        : tf(`Modelo ${value} → ${sel.dataset.session}`, `Model ${value} → ${sel.dataset.session}`));
+	    }catch(err){ toast(err.message, true); }
+	  });
 	}
 	function panePresetButtons(p){
-	  const session = attrEsc(p.tmux_session || "");
-	  const pane = attrEsc(p.tmux_pane || "");
-	  const provider = attrEsc(p.provider || p.agent || "claude");
+	  if(!String(p.tmux_pane || "").startsWith("%")) return "";
+	  const provider = (p.provider || p.agent || "claude") === "codex" ? "codex" : "claude";
 	  return `<div class="pane-model-controls">
-	    <button type="button" class="test pane-preset" data-preset="ahorro" data-session="${session}" data-pane="${pane}" data-provider="${provider}" title="Ahorro">Ahorro</button>
-	    <button type="button" class="test pane-preset" data-preset="diario" data-session="${session}" data-pane="${pane}" data-provider="${provider}" title="Diario">Diario</button>
-	    <button type="button" class="test pane-preset" data-preset="dificil" data-session="${session}" data-pane="${pane}" data-provider="${provider}" title="Difícil">Difícil</button>
-	    <button type="button" class="test pane-preset" data-preset="maximo" data-session="${session}" data-pane="${pane}" data-provider="${provider}" title="Máximo">Máximo</button>
+	    ${modelSelectEl(p.tmux_session || "", p.tmux_pane || "", provider, "pane-model")}
 	  </div>`;
 	}
 	function usageStatusLabel(h){
@@ -957,11 +1023,26 @@ function mdStrip(s){ return (s||"").replace(/\*\*|`|^#{1,6} /g, ""); }
 	  if(h.status === "missing") return "sin llave";
 	  return h.status || "error";
 	}
+	function usageSummaryText(state){
+	  const limits = state?.limits || [];
+	  const parts = [];
+	  for(const prov of ["claude", "codex"]){
+	    const ses = limits.find(l => l.provider === prov && l.window === "5h");
+	    const wk = limits.find(l => l.provider === prov && l.window === "7d" && !l.scope);
+	    if(!ses && !wk) continue;
+	    parts.push(`${prov}: ${fmtPercent(ses?.percent)} ${tf("sesion", "session")} · ${fmtPercent(wk?.percent)} ${tf("semana", "week")}`);
+	  }
+	  return parts.join("  —  ");
+	}
 	function renderUsage(state){
 	  indexUsage(state);
 	  const total = state?.totals || {};
-	  $("#usage-summary").textContent = `${fmtMoney(total.cost_usd)} · ${fmtTokens(total.total_tokens)} · ${state?.panes?.length || 0} panes`;
-	  renderUsageWindows(state);
+	  const summary = usageSummaryText(state);
+	  $("#usage-summary").textContent = summary ||
+	    `${fmtMoney(total.cost_usd)} · ${fmtTokens(total.total_tokens)} · ${state?.panes?.length || 0} panes`;
+	  const badge = usageBadgeText(state);
+	  $("#btn-usage").textContent = badge ? `${tf("Uso", "Usage")} ${badge}` : tf("Uso", "Usage");
+	  renderUsageLimits(state);
 	  const hp = state?.credential_health || {};
 	  const providerRows = [...(state?.providers || [])];
 	  for(const id of ["openai", "anthropic"])
@@ -991,19 +1072,7 @@ function mdStrip(s){ return (s||"").replace(/\*\*|`|^#{1,6} /g, ""); }
 	        ${panePresetButtons(p)}
 	      </div>`).join("")}
 	    </div>`).join("") : `<div class="empty">${tf("Sin panes de uso todavia", "No usage panes yet")}</div>`;
-	  document.querySelectorAll(".pane-preset").forEach(b=>{
-	    b.addEventListener("click", async ()=>{
-	      try{
-	        await api("/model/switch", {
-	          session: b.dataset.session,
-	          pane: b.dataset.pane || undefined,
-	          provider: b.dataset.provider || "claude",
-	          preset: b.dataset.preset,
-	        });
-	        toast(tf(`Modelo enviado a ${b.dataset.session} ${b.dataset.pane}`, `Model sent to ${b.dataset.session} ${b.dataset.pane}`));
-	      }catch(err){ toast(err.message, true); }
-	    });
-	  });
+	  document.querySelectorAll("#usage .pane-model").forEach(wireModelSelect);
 	  const alerts = state?.alerts || [];
 	  $("#usage-alerts").innerHTML = alerts.length ? alerts.map(a =>
 	    `<div class="usage-alert">${mdEsc(a.message || a.kind || "alerta")}</div>`).join("")
@@ -1054,6 +1123,7 @@ function cardEl(it){
         <button type="button" data-key="Escape">Esc</button>
       </div>
       <div class="ops">
+        ${["", "claude", "codex"].includes(it.agent || "") ? modelSelectEl(it.session, it.pane || "", it.agent === "codex" ? "codex" : "claude", "mdl") : ""}
         <button type="button" class="cp" title="${t('Copiar la respuesta completa de Claude')}">${t("Copiar")}</button>
         <button type="button" class="xtxt" title="${t('Guardar la respuesta como .txt en Descargas')}">TXT</button>
         <button type="button" class="xpdf" title="${t('Guardar la respuesta como PDF (markdown renderizado) en Descargas')}">PDF</button>
@@ -1063,6 +1133,7 @@ function cardEl(it){
       </div>
     </div>`;
   el.querySelector("h2").textContent = it.project;
+  el.querySelectorAll("select.mdl").forEach(wireModelSelect);
   const pv = el.querySelector(".preview");
   pv.title = t("Click: ver TODO el texto / colapsar");
   pv.addEventListener("click", e=>{ e.stopPropagation(); pv.classList.toggle("open"); });
@@ -2191,19 +2262,6 @@ $("#new-form").addEventListener("submit", async e=>{
 	    const r = await api("/usage/refresh", {});
 	    renderUsage(r.state || {});
 	    toast(tf("Uso actualizado", "Usage refreshed"));
-	  }catch(err){ toast(err.message, true); }
-	});
-	$("#usage-limits-save").addEventListener("click", async ()=>{
-	  const settings = {
-	    COMANDOS_CODEX_DAILY_TOKEN_LIMIT: $("#limit-codex-daily").value.trim(),
-	    COMANDOS_CODEX_WEEKLY_TOKEN_LIMIT: $("#limit-codex-weekly").value.trim(),
-	    COMANDOS_CLAUDE_DAILY_TOKEN_LIMIT: $("#limit-claude-daily").value.trim(),
-	    COMANDOS_CLAUDE_WEEKLY_TOKEN_LIMIT: $("#limit-claude-weekly").value.trim(),
-	  };
-	  try{
-	    const r = await api("/usage/settings", {settings});
-	    renderUsage(r.state || {});
-	    toast(tf("Limites guardados", "Limits saved"));
 	  }catch(err){ toast(err.message, true); }
 	});
 	document.addEventListener("click", e=>{

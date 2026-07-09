@@ -507,7 +507,7 @@ def _usage_windows(turns, settings, now):
     }
 
 
-def build_usage_state(db_path, live_panes=None, now=None, settings=None):
+def build_usage_state(db_path, live_panes=None, now=None, settings=None, limits=None):
     init_db(db_path)
     live_panes = live_panes or []
     ts = int(now if now is not None else time.time())
@@ -586,6 +586,7 @@ def build_usage_state(db_path, live_panes=None, now=None, settings=None):
         "panes": panes,
         "unattributed": unattributed,
         "alerts": [],
+        "limits": list(limits or []),
         "windows": _usage_windows(turns, settings or {}, ts),
         "series": series,
         "credential_health": {},
@@ -626,6 +627,186 @@ def calculate_alerts(state, settings=None):
     return alerts
 
 
+CLAUDE_OAUTH_CREDS = os.path.expanduser("~/.claude/.credentials.json")
+CLAUDE_OAUTH_USAGE_URL = "https://api.anthropic.com/api/oauth/usage"
+# Aliases documentados del /model de Claude Code; nada fuera de esta lista
+# se inyecta a un pane.
+CLAUDE_MODEL_ALIASES = ("haiku", "sonnet", "opus", "fable")
+
+
+def parse_claude_oauth_limits(payload, now=None):
+    """Normaliza la respuesta del endpoint OAuth de uso (la misma fuente que
+    el /usage del CLI de Claude Code) a ventanas con porcentaje exacto."""
+    ts = int(now if now is not None else time.time())
+    rows = []
+
+    def add(lid, kind, label, percent, resets_at, severity="normal",
+            scope="", is_active=True, window=""):
+        rows.append({
+            "id": lid,
+            "provider": "claude",
+            "kind": kind,
+            "label": label,
+            "scope": scope,
+            "percent": round(_as_float(percent), 1),
+            "resets_at": _as_epoch(resets_at),
+            "severity": _text(severity or "normal"),
+            "is_active": bool(is_active),
+            "window": window,
+            "source": "oauth",
+            "confidence": "exact",
+            "captured_at": ts,
+        })
+
+    for item in _as_list(payload.get("limits")):
+        if not isinstance(item, dict) or item.get("percent") is None:
+            continue
+        kind = _text(item.get("kind"))
+        scope = item.get("scope") if isinstance(item.get("scope"), dict) else {}
+        model = scope.get("model") if isinstance(scope.get("model"), dict) else {}
+        scope_name = _text(model.get("display_name"))
+        if kind == "session":
+            lid, label, window = "claude_session", "Sesion 5h", "5h"
+        elif kind == "weekly_all":
+            lid, label, window = "claude_weekly", "Semana", "7d"
+        elif kind == "weekly_scoped":
+            slug = "".join(c for c in scope_name.lower() if c.isalnum()) or "modelo"
+            lid, label, window = f"claude_weekly_{slug}", f"Semana {scope_name}".strip(), "7d"
+        else:
+            slug = "".join(c for c in kind.lower() if c.isalnum()) or "otro"
+            lid, label, window = f"claude_{slug}", kind or "Limite", ""
+        add(lid, kind, label, item.get("percent"), item.get("resets_at"),
+            item.get("severity"), scope_name, item.get("is_active", True), window)
+
+    if not rows:
+        five = payload.get("five_hour") if isinstance(payload.get("five_hour"), dict) else {}
+        seven = payload.get("seven_day") if isinstance(payload.get("seven_day"), dict) else {}
+        if five.get("utilization") is not None:
+            add("claude_session", "session", "Sesion 5h",
+                five.get("utilization"), five.get("resets_at"), window="5h")
+        if seven.get("utilization") is not None:
+            add("claude_weekly", "weekly_all", "Semana",
+                seven.get("utilization"), seven.get("resets_at"), window="7d")
+    return rows
+
+
+def fetch_claude_oauth_limits(creds_path=None, now=None, http=None):
+    """Lee el token OAuth local de Claude Code y consulta el porcentaje de uso.
+    El token nunca sale de este proceso: no se guarda ni se devuelve."""
+    creds_path = creds_path or CLAUDE_OAUTH_CREDS
+    ts = int(now if now is not None else time.time())
+    health = {"provider": "claude", "source": "oauth",
+              "configured": False, "status": "missing"}
+    token = ""
+    try:
+        with open(creds_path) as f:
+            token = _text((json.load(f).get("claudeAiOauth") or {}).get("accessToken"))
+    except (OSError, ValueError):
+        token = ""
+    if not token:
+        return [], health
+    health["configured"] = True
+    fetch = http or _http_json
+    try:
+        payload = fetch(CLAUDE_OAUTH_USAGE_URL, {
+            "Authorization": f"Bearer {token}",
+            "anthropic-beta": "oauth-2025-04-20",
+            "Content-Type": "application/json",
+        }, timeout=8)
+        health.update({"status": "ok", "last_success_at": ts})
+        return parse_claude_oauth_limits(payload, now=ts), health
+    except Exception as e:
+        health.update({"status": "error", "error": str(e)[:240]})
+        return [], health
+
+
+def _codex_window_label(minutes, default):
+    if minutes == 300:
+        return "Sesion 5h"
+    if minutes == 10080:
+        return "Semana"
+    return default if not minutes else f"Ventana {minutes} min"
+
+
+def _last_codex_rate_limit_snapshot(path, tail_bytes=262144):
+    try:
+        size = os.path.getsize(path)
+        with open(path, "rb") as fh:
+            fh.seek(max(0, size - tail_bytes))
+            chunk = fh.read().decode("utf-8", "replace")
+    except OSError:
+        return None
+    for line in reversed(chunk.splitlines()):
+        if '"rate_limits"' not in line:
+            continue
+        try:
+            data = json.loads(line)
+        except ValueError:
+            continue
+        payload = data.get("payload") if isinstance(data, dict) else None
+        limits = payload.get("rate_limits") if isinstance(payload, dict) else None
+        if isinstance(limits, dict) and limits:
+            return limits, _as_epoch(data.get("timestamp"))
+    return None
+
+
+def read_codex_rate_limits(sessions_root=None, now=None, max_files=8):
+    """Ultimo snapshot de rate limits que Codex CLI escribio en sus rollouts.
+    Es dato del proveedor (viene con cada turno), posiblemente desfasado:
+    captured_at dice de cuando es."""
+    sessions_root = os.fspath(sessions_root or os.path.expanduser("~/.codex/sessions"))
+    if not os.path.isdir(sessions_root):
+        return []
+    files = []
+    for root, _dirs, names in os.walk(sessions_root):
+        for name in names:
+            if not name.endswith(".jsonl"):
+                continue
+            path = os.path.join(root, name)
+            try:
+                files.append((os.path.getmtime(path), path))
+            except OSError:
+                continue
+    files.sort(reverse=True)
+    for _mtime, path in files[:max_files]:
+        snapshot = _last_codex_rate_limit_snapshot(path)
+        if not snapshot:
+            continue
+        limits, captured_at = snapshot
+        rows = []
+        for key, lid, kind, window in (
+            ("primary", "codex_session", "session", "5h"),
+            ("secondary", "codex_weekly", "weekly_all", "7d"),
+        ):
+            item = limits.get(key) if isinstance(limits.get(key), dict) else {}
+            if item.get("used_percent") is None:
+                continue
+            minutes = _as_int(item.get("window_minutes"))
+            rows.append({
+                "id": lid,
+                "provider": "codex",
+                "kind": kind,
+                "label": _codex_window_label(minutes, "Sesion 5h" if key == "primary" else "Semana"),
+                "scope": "",
+                "percent": round(_as_float(item.get("used_percent")), 1),
+                "resets_at": _as_epoch(item.get("resets_at")),
+                "severity": "normal",
+                "is_active": True,
+                "window": window,
+                "plan_type": _text(limits.get("plan_type")),
+                "source": "rollout",
+                "confidence": "exact",
+                "captured_at": captured_at,
+            })
+        if rows:
+            return rows
+    return []
+
+
+def _as_list(value):
+    return value if isinstance(value, list) else []
+
+
 def model_presets():
     return [
         {
@@ -659,15 +840,18 @@ def model_presets():
     ]
 
 
-def model_switch_text(provider, preset):
+def model_switch_text(provider, preset, model=None):
     provider = (provider or "").lower()
     preset = (preset or "diario").lower()
+    model = (model or "").strip().lower()
+    if provider not in ("claude", "anthropic"):
+        return "/model"
+    if model in CLAUDE_MODEL_ALIASES:
+        return f"/model {model}"
     item = next((p for p in model_presets() if p["id"] == preset), None)
     if not item:
         item = next(p for p in model_presets() if p["id"] == "diario")
-    if provider in ("claude", "anthropic"):
-        return item["claude"]["command"]
-    return item["codex"]["command"]
+    return item["claude"]["command"]
 
 
 def record_local_codex_threads(db_path, state_db=None, now=None, max_age_days=14):

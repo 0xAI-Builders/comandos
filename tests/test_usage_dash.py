@@ -54,6 +54,20 @@ def test_model_switch_endpoint_targets_requested_pane():
     assert 'tmux("send-keys", "-t", pane, "-l", "--", switch_text)' in SRC
 
 
+def test_model_switch_accepts_direct_model():
+    assert 'data.get("model")' in SRC
+    assert "cc_usage.model_switch_text(provider, preset, model)" in SRC
+
+
+def test_usage_state_wires_exact_provider_limits():
+    assert "def usage_provider_limits" in SRC
+    assert "cc_usage.fetch_claude_oauth_limits" in SRC
+    assert "cc_usage.read_codex_rate_limits" in SRC
+    # El fetch OAuth corre en hilo aparte: /usage/state nunca se bloquea por red
+    assert "threading.Thread" in SRC
+    assert "limits=" in SRC
+
+
 def test_agent_pane_maps_keeps_one_agent_per_tmux_pane():
     dash = load_dash_module()
 
@@ -81,4 +95,6 @@ if __name__ == "__main__":
     test_usage_live_panes_records_pane_pwd_and_git_root()
     test_usage_capture_and_refresh_endpoints_exist()
     test_model_switch_endpoint_targets_requested_pane()
+    test_model_switch_accepts_direct_model()
+    test_usage_state_wires_exact_provider_limits()
     test_agent_pane_maps_keeps_one_agent_per_tmux_pane()
