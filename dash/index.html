@@ -424,11 +424,34 @@
     box-shadow:0 0 0 1px var(--line)}
   .remote-state.on .remote-dot{background:var(--done);box-shadow:0 0 10px rgba(46,229,157,.35)}
   .remote-actions{display:grid;grid-template-columns:1fr 1fr;gap:8px}
-  .urlrow{display:grid;grid-template-columns:1fr auto;gap:8px;align-items:center}
-  .urlrow input{min-width:0}
-  #remote-qr{display:block;width:min(260px,100%);height:auto;margin:6px auto 10px;
-    background:white;border-radius:8px;padding:8px}
-</style>
+	  .urlrow{display:grid;grid-template-columns:1fr auto;gap:8px;align-items:center}
+	  .urlrow input{min-width:0}
+	  #remote-qr{display:block;width:min(260px,100%);height:auto;margin:6px auto 10px;
+	    background:white;border-radius:8px;padding:8px}
+	  .usage-grid{display:grid;grid-template-columns:1fr;gap:8px}
+	  .usage-card{border:1px solid var(--line);border-radius:8px;background:var(--panel);
+	    padding:10px;min-width:0}
+	  .usage-title{display:flex;align-items:center;gap:8px;font-family:var(--mono);
+	    font-size:12px;font-weight:800;text-transform:uppercase}
+	  .usage-title small{margin-left:auto;color:var(--faint);font-size:10px;font-weight:700}
+	  .usage-metric{font-family:var(--mono);font-size:20px;font-weight:800;margin-top:7px}
+	  .usage-sub{font-family:var(--mono);font-size:10.5px;color:var(--faint);margin-top:3px;
+	    overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+	  .usage-bar{height:6px;border-radius:6px;background:var(--line);overflow:hidden;margin-top:8px}
+	  .usage-bar span{display:block;height:100%;background:var(--brand);width:0}
+	  .usage-row{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px;
+	    padding:8px 0;border-bottom:1px solid var(--line);font-family:var(--mono)}
+	  .usage-row:last-child{border-bottom:0}
+	  .usage-row b{font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+	  .usage-row span{font-size:10.5px;color:var(--faint);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+	  .usage-row code{font-size:10px;color:var(--code)}
+	  .usage-alert{border-left:3px solid var(--waiting);padding:7px 9px;background:var(--panel);
+	    border-radius:6px;font-size:11.5px;color:var(--dim);margin-bottom:7px}
+	  .usage-chip{flex:none;font-family:var(--mono);font-size:9.5px;color:var(--code);
+	    border:1px solid color-mix(in srgb,var(--code) 35%,var(--line));border-radius:5px;
+	    padding:2px 6px;max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+	  .row .usage-chip{font-size:9px}
+	</style>
 
 <div id="panes">
 <div id="tabbar"></div>
@@ -451,10 +474,11 @@
       <button class="hdr-btn" id="btn-mute">🔊</button>
       <input type="range" id="vol-top" min="0" max="100" value="60">
     </span>
-    <button class="hdr-btn" id="btn-switch" title="Saltar a cualquier sesión (Ctrl+K)">⌕</button>
-    <button class="hdr-btn" id="btn-theme" title="Tema: Noche → Día → Cálido (aplica a tablero, pestañas y terminales)">🌙</button>
-    <button class="hdr-btn" id="btn-remote" title="Continuar desde celular/tablet">Remoto</button>
-    <button class="hdr-btn" id="btn-settings">Ajustes</button>
+	    <button class="hdr-btn" id="btn-switch" title="Saltar a cualquier sesión (Ctrl+K)">⌕</button>
+	    <button class="hdr-btn" id="btn-theme" title="Tema: Noche → Día → Cálido (aplica a tablero, pestañas y terminales)">🌙</button>
+	    <button class="hdr-btn" id="btn-usage" title="Uso, límites y gasto por pane">Uso</button>
+	    <button class="hdr-btn" id="btn-remote" title="Continuar desde celular/tablet">Remoto</button>
+	    <button class="hdr-btn" id="btn-settings">Ajustes</button>
     <span id="clock">--:--</span>
   </div>
 </header>
@@ -553,9 +577,24 @@
     <div class="urlrow"><input id="remote-fallback-url" readonly><button class="test" id="remote-copy-fallback">Copiar</button></div>
   </div>
   <div class="set"><div class="desc">Apagar remoto no apaga Tailscale; sólo deja de exponer ComandOS y detiene la terminal web.</div></div>
-</aside>
+	</aside>
 
-<aside id="servers" class="drawer" aria-label="Servidores SSH">
+	<aside id="usage" class="drawer" aria-label="Uso">
+	  <h3>Uso</h3>
+	  <div class="set" style="display:flex;gap:8px;flex-wrap:wrap">
+	    <button type="button" class="test" id="usage-refresh">Actualizar</button>
+	    <button type="button" class="test" id="usage-close">Cerrar</button>
+	  </div>
+	  <div class="set"><div class="desc" id="usage-summary">Sin datos todavia.</div></div>
+	  <h3>Proveedores</h3>
+	  <div id="usage-providers" class="usage-grid"></div>
+	  <h3 style="margin-top:22px">Proyectos y panes</h3>
+	  <div id="usage-projects"></div>
+	  <h3 style="margin-top:22px">Alertas</h3>
+	  <div id="usage-alerts"></div>
+	</aside>
+
+	<aside id="servers" class="drawer" aria-label="Servidores SSH">
   <h3>Servidores SSH</h3>
   <div id="srv-list"></div>
   <h3 style="margin-top:22px" id="srv-form-title">Agregar servidor</h3>
@@ -596,10 +635,12 @@ const S = {
   cfg: Object.assign({notif:false, poll:2},
         JSON.parse(localStorage.getItem("cc-cfg")||"{}")),
   favs: new Set(),
-  q: "",
-  liveSess: new Set(),
-  recover: [],
-};
+	  q: "",
+	  liveSess: new Set(),
+	  recover: [],
+	  usage: null,
+	  usageByPane: new Map(),
+	};
 const $ = s => document.querySelector(s);
 const urgent = $("#urgent"), rows = $("#rows");
 
@@ -609,7 +650,8 @@ let L = "es";
 const T_EN = {
   "esperan": "waiting", "listos": "done", "trabajando": "working",
   "Esperan tu respuesta": "Waiting for your answer", "Sesiones": "Sessions",
-  "Servidores": "Servers", "gestionar": "manage", "Ajustes": "Settings",
+	  "Servidores": "Servers", "gestionar": "manage", "Ajustes": "Settings",
+	  "Uso": "Usage",
   "Ver actividad reciente": "Show recent activity", "Ocultar actividad": "Hide activity",
   "Necesita respuesta": "Needs your answer", "Suelta": "Detached",
   "Listo para responder": "Ready for your reply",
@@ -669,8 +711,9 @@ function applyI18n(){
   document.querySelectorAll(
     "#settings label, #settings h3, #settings .desc, #settings .test, " +
     "#servers label, #servers h3, #servers .desc, #servers .test, #srv-cancel, " +
-    "#remote label, #remote h3, #remote .desc, #remote .test, #remote-no-qr, " +
-    ".sec-label, #ssh-bar .lbl, #ssh-manage, #btn-remote, #btn-settings, #tl-toggle, .pill span")
+	    "#remote label, #remote h3, #remote .desc, #remote .test, #remote-no-qr, " +
+	    "#usage label, #usage h3, #usage .desc, #usage .test, " +
+	    ".sec-label, #ssh-bar .lbl, #ssh-manage, #btn-usage, #btn-remote, #btn-settings, #tl-toggle, .pill span")
     .forEach(e => { const k = e.textContent.trim(); if(T_EN[k]) e.textContent = T_EN[k]; });
   const ph = (sel, v) => { const e = $(sel); if(e) e.placeholder = v; };
   ph("#q", "search"); ph("#new-name", "open project");
@@ -804,19 +847,106 @@ function mdHtml(s){
 function mdStrip(s){ return (s||"").replace(/\*\*|`|^#{1,6} /g, ""); }
 // Copiar con fallback: el WebKit viejo de la app no siempre tiene
 // navigator.clipboard; execCommand cubre ese caso
-async function copyText(t){
-  try{ await navigator.clipboard.writeText(t); return true; }
-  catch(e){
-    const ta = document.createElement("textarea");
-    ta.value = t; ta.style.position = "fixed"; ta.style.opacity = "0";
+	async function copyText(t){
+	  try{ await navigator.clipboard.writeText(t); return true; }
+	  catch(e){
+	    const ta = document.createElement("textarea");
+	    ta.value = t; ta.style.position = "fixed"; ta.style.opacity = "0";
     document.body.appendChild(ta); ta.select();
     let ok = false;
     try{ ok = document.execCommand("copy"); }catch(_){}
-    ta.remove(); return ok;
-  }
-}
-function favBtn(it, el){
-  const b = el.querySelector(".fav");
+	    ta.remove(); return ok;
+	  }
+	}
+	function fmtMoney(n){
+	  n = Number(n || 0);
+	  if(!n) return "$0.00";
+	  return n < 0.01 ? `$${n.toFixed(4)}` : `$${n.toFixed(2)}`;
+	}
+	function fmtTokens(n){
+	  n = Number(n || 0);
+	  if(n >= 1000000) return `${(n/1000000).toFixed(1)}M tok`;
+	  if(n >= 1000) return `${Math.round(n/1000)}k tok`;
+	  return `${Math.round(n)} tok`;
+	}
+	function usagePaneKey(session, pane){ return `${session || ""}\u001f${pane || ""}`; }
+	function indexUsage(state){
+	  S.usage = state || null;
+	  S.usageByPane = new Map();
+	  for(const p of (state?.panes || []))
+	    S.usageByPane.set(usagePaneKey(p.tmux_session, p.tmux_pane), p);
+	  for(const pr of (state?.projects || []))
+	    for(const p of (pr.panes || [])){
+	      S.usageByPane.set(usagePaneKey(p.tmux_session, p.tmux_pane), p);
+	      if(!S.usageByPane.has(usagePaneKey(p.tmux_session, "")))
+	        S.usageByPane.set(usagePaneKey(p.tmux_session, ""), p);
+	    }
+	}
+	function usageForItem(it){
+	  if(!it) return null;
+	  return S.usageByPane.get(usagePaneKey(it.session, it.pane || "")) ||
+	         S.usageByPane.get(usagePaneKey(it.session, "")) || null;
+	}
+	function usageChipText(u){
+	  if(!u) return "";
+	  const bits = [];
+	  if(u.provider || u.agent) bits.push(u.provider || u.agent);
+	  if(u.model) bits.push(u.model);
+	  if(Number(u.cost_usd || 0) > 0) bits.push(fmtMoney(u.cost_usd));
+	  else if(Number(u.total_tokens || 0) > 0) bits.push(fmtTokens(u.total_tokens));
+	  if(u.confidence) bits.push(u.confidence);
+	  return bits.slice(0, 4).join(" · ");
+	}
+	function usageStatusLabel(h){
+	  if(!h) return "sin datos";
+	  if(h.status === "ok") return "ok";
+	  if(h.status === "missing") return "sin llave";
+	  return h.status || "error";
+	}
+	function renderUsage(state){
+	  indexUsage(state);
+	  const total = state?.totals || {};
+	  $("#usage-summary").textContent = `${fmtMoney(total.cost_usd)} · ${fmtTokens(total.total_tokens)} · ${state?.panes?.length || 0} panes`;
+	  const hp = state?.credential_health || {};
+	  const providerRows = [...(state?.providers || [])];
+	  for(const id of ["openai", "anthropic"])
+	    if(!providerRows.some(p => p.provider === id)) providerRows.push({provider:id, cost_usd:0, total_tokens:0});
+	  $("#usage-providers").innerHTML = providerRows.map(p=>{
+	    const h = hp[p.provider] || {};
+	    const pct = Math.min(100, Number(p.cost_usd || 0) * 10);
+	    return `<div class="usage-card">
+	      <div class="usage-title">${mdEsc(p.provider || "provider")}<small>${mdEsc(usageStatusLabel(h))}</small></div>
+	      <div class="usage-metric">${fmtMoney(p.cost_usd)}</div>
+	      <div class="usage-sub">${fmtTokens(p.total_tokens || 0)}</div>
+	      <div class="usage-bar"><span style="width:${pct}%"></span></div>
+	    </div>`;
+	  }).join("");
+	  const projects = state?.projects || [];
+	  $("#usage-projects").innerHTML = projects.length ? projects.map(pr => `
+	    <div class="usage-card">
+	      <div class="usage-title">${mdEsc(shortPath(pr.git_root || ""))}<small>${mdEsc(pr.confidence || "")}</small></div>
+	      <div class="usage-sub">${fmtMoney(pr.cost_usd)} · ${fmtTokens(pr.total_tokens || 0)}</div>
+	      ${(pr.panes || []).map(p => `<div class="usage-row">
+	        <div><b>${mdEsc(p.tmux_session || "")} ${mdEsc(p.tmux_pane || "")}</b><br>
+	          <span>${mdEsc(shortPath(p.pane_pwd || ""))}</span></div>
+	        <code>${mdEsc(usageChipText(p) || p.confidence || "")}</code>
+	      </div>`).join("")}
+	    </div>`).join("") : `<div class="empty">${tf("Sin panes de uso todavia", "No usage panes yet")}</div>`;
+	  const alerts = state?.alerts || [];
+	  $("#usage-alerts").innerHTML = alerts.length ? alerts.map(a =>
+	    `<div class="usage-alert">${mdEsc(a.message || a.kind || "alerta")}</div>`).join("")
+	    : `<div class="desc">${tf("Sin alertas", "No alerts")}</div>`;
+	  render(S.list || []);
+	}
+	let usagePollTs = 0;
+	async function tickUsage(force=false){
+	  const now = Date.now();
+	  if(!force && now - usagePollTs < 10000) return;
+	  usagePollTs = now;
+	  try{ renderUsage(await api("/usage/state")); }catch(e){}
+	}
+	function favBtn(it, el){
+	  const b = el.querySelector(".fav");
   b.classList.toggle("on", S.favs.has(it.session));
   b.onclick = async e=>{
     e.stopPropagation();
@@ -831,11 +961,11 @@ function favBtn(it, el){
 function cardEl(it){
   const el = document.createElement("article");
   el.className = "card"; el.dataset.session = it.session; el.dataset.kind = "card";
-  el.innerHTML = `
-    <div class="top">
-      <button type="button" class="fav" title="${t('Favorito')}">★</button>
-      <h2></h2><span class="abadge hidden"></span><span class="tag"></span><span class="ago"></span>
-    </div>
+	  el.innerHTML = `
+	    <div class="top">
+	      <button type="button" class="fav" title="${t('Favorito')}">★</button>
+	      <h2></h2><span class="abadge hidden"></span><span class="usage-chip hidden"></span><span class="tag"></span><span class="ago"></span>
+	    </div>
     <div class="path"></div>
     <p class="preview"></p>
     <div class="opts hidden"></div>
@@ -1315,9 +1445,10 @@ function rowEl(it){
   el.innerHTML = `
     <button type="button" class="fav" title="${t('Favorito')}">★</button>
     <span class="dot"></span>
-    <span class="name"></span>
-    <span class="abadge hidden"></span>
-    <span class="exttag hidden">${t("suelta")}</span>
+	    <span class="name"></span>
+	    <span class="abadge hidden"></span>
+	    <span class="usage-chip hidden"></span>
+	    <span class="exttag hidden">${t("suelta")}</span>
     <span class="rpath"></span>
     <span class="rprev"></span>
     <span class="ago"></span>
@@ -1378,10 +1509,17 @@ function render(list){
       ab.dataset.a = it.agent || "";
       ab.classList.toggle("hidden", !it.agent || it.agent === "claude");
     }
-    el.dataset.pane = it.pane || "";
-    el._detail = it.detail || it.last || "";
-    el.dataset.search = `${it.project} ${it.cwd||""}`.toLowerCase();
-    el.querySelector(".fav").classList.toggle("on", S.favs.has(it.session));
+	    el.dataset.pane = it.pane || "";
+	    el._detail = it.detail || it.last || "";
+	    el.dataset.search = `${it.project} ${it.cwd||""}`.toLowerCase();
+	    const uchip = el.querySelector(".usage-chip");
+	    if(uchip){
+	      const utxt = usageChipText(usageForItem(it));
+	      uchip.textContent = utxt;
+	      uchip.classList.toggle("hidden", !utxt);
+	      uchip.title = utxt;
+	    }
+	    el.querySelector(".fav").classList.toggle("on", S.favs.has(it.session));
     el.querySelector(".ago").textContent = agoTxt(it.ts);
     if(kind === "card"){
       el.classList.toggle("ext", ext);
@@ -1530,9 +1668,10 @@ function toast(msg, err){
 }
 
 // ---------- loop ----------
-async function tick(){
-  try{ render(await api("/state")); }catch(e){}
-}
+	async function tick(){
+	  try{ render(await api("/state")); }catch(e){}
+	  tickUsage();
+	}
 async function tickEvents(){
   try{ renderEvents(await api("/events")); }catch(e){}
 }
@@ -1784,12 +1923,13 @@ function copyRemote(sel){
   if(!v) return toast(tf("No hay URL todavia", "No URL yet"), true);
   copyText(v).then(ok => toast(ok ? tf("URL copiada", "URL copied") : tf("No pude copiar", "Could not copy"), !ok));
 }
-$("#btn-remote").addEventListener("click", ()=>{
-  $("#remote").classList.toggle("open");
-  $("#settings").classList.remove("open");
-  $("#servers").classList.remove("open");
-  if($("#remote").classList.contains("open")) loadRemote();
-});
+	$("#btn-remote").addEventListener("click", ()=>{
+	  $("#remote").classList.toggle("open");
+	  $("#settings").classList.remove("open");
+	  $("#servers").classList.remove("open");
+	  $("#usage").classList.remove("open");
+	  if($("#remote").classList.contains("open")) loadRemote();
+	});
 $("#remote-on").addEventListener("click", ()=> remoteAction("/remote-on", tf("Remoto prendido", "Remote on")));
 $("#remote-off").addEventListener("click", ()=> remoteAction("/remote-off", tf("Remoto apagado", "Remote off")));
 $("#remote-webterm-on").addEventListener("click", ()=> remoteAction("/remote-webterm-on", tf("Terminal web prendida", "Web terminal on"), async()=>{ await ensureRemoteTerminalVisible(); }));
@@ -1869,11 +2009,12 @@ async function loadSsh(){
     if(!hosts.length) list.innerHTML = '<div class="desc">Sin servidores. Agrega el primero abajo.</div>';
   }catch(e){}
 }
-$("#ssh-manage").addEventListener("click", ()=>{
-  $("#servers").classList.toggle("open");
-  $("#settings").classList.remove("open");
-  $("#remote").classList.remove("open");
-});
+	$("#ssh-manage").addEventListener("click", ()=>{
+	  $("#servers").classList.toggle("open");
+	  $("#settings").classList.remove("open");
+	  $("#remote").classList.remove("open");
+	  $("#usage").classList.remove("open");
+	});
 $("#srv-cancel").addEventListener("click", ()=>{ $("#srv-form").reset(); fillSrvForm({}); });
 $("#srv-form").addEventListener("submit", async e=>{
   e.preventDefault();
@@ -1959,18 +2100,34 @@ $("#new-form").addEventListener("submit", async e=>{
     toast(tf(`${name} abierto`, `${name} opened`));
   }catch(err){ toast(err.message, true); }
 });
-$("#btn-settings").addEventListener("click", ()=>{
-  $("#settings").classList.toggle("open");
-  $("#servers").classList.remove("open");
-  $("#remote").classList.remove("open");
-});
-document.addEventListener("click", e=>{
-  for(const [id, trg] of [["#settings","btn-settings"],["#servers","ssh-manage"],["#remote","btn-remote"]]){
-    const s = $(id);
-    if(s.classList.contains("open") && !s.contains(e.target) && e.target.id !== trg)
-      s.classList.remove("open");
-  }
-});
+	$("#btn-settings").addEventListener("click", ()=>{
+	  $("#settings").classList.toggle("open");
+	  $("#servers").classList.remove("open");
+	  $("#remote").classList.remove("open");
+	  $("#usage").classList.remove("open");
+	});
+	$("#btn-usage").addEventListener("click", ()=>{
+	  $("#usage").classList.toggle("open");
+	  $("#settings").classList.remove("open");
+	  $("#servers").classList.remove("open");
+	  $("#remote").classList.remove("open");
+	  tickUsage(true);
+	});
+	$("#usage-close").addEventListener("click", ()=> $("#usage").classList.remove("open"));
+	$("#usage-refresh").addEventListener("click", async ()=>{
+	  try{
+	    const r = await api("/usage/refresh", {});
+	    renderUsage(r.state || {});
+	    toast(tf("Uso actualizado", "Usage refreshed"));
+	  }catch(err){ toast(err.message, true); }
+	});
+	document.addEventListener("click", e=>{
+	  for(const [id, trg] of [["#settings","btn-settings"],["#servers","ssh-manage"],["#remote","btn-remote"],["#usage","btn-usage"]]){
+	    const s = $(id);
+	    if(s.classList.contains("open") && !s.contains(e.target) && e.target.id !== trg)
+	      s.classList.remove("open");
+	  }
+	});
 // Volumen GLOBAL: vive en cc-notify.conf; voz, chime y "Probar" lo respetan
 const vol = $("#vol");
 vol.addEventListener("change", async ()=>{
