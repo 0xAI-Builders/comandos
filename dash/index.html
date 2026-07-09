@@ -431,6 +431,7 @@
 	  .usage-grid{display:grid;grid-template-columns:1fr;gap:8px}
 	  .usage-card{border:1px solid var(--line);border-radius:8px;background:var(--panel);
 	    padding:10px;min-width:0}
+	  .usage-window{border-left:3px solid var(--brand)}
 	  .usage-title{display:flex;align-items:center;gap:8px;font-family:var(--mono);
 	    font-size:12px;font-weight:800;text-transform:uppercase}
 	  .usage-title small{margin-left:auto;color:var(--faint);font-size:10px;font-weight:700}
@@ -589,6 +590,15 @@
 	    <button type="button" class="test" id="usage-close">Cerrar</button>
 	  </div>
 	  <div class="set"><div class="desc" id="usage-summary">Sin datos todavia.</div></div>
+	  <div class="set" style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+	    <input id="limit-codex-daily" inputmode="numeric" placeholder="Codex diario tok">
+	    <input id="limit-codex-weekly" inputmode="numeric" placeholder="Codex semanal tok">
+	    <input id="limit-claude-daily" inputmode="numeric" placeholder="Claude diario tok">
+	    <input id="limit-claude-weekly" inputmode="numeric" placeholder="Claude semanal tok">
+	    <button type="button" class="test" id="usage-limits-save" style="grid-column:1 / -1">Guardar limites</button>
+	  </div>
+	  <h3>Limites</h3>
+	  <div id="usage-windows" class="usage-grid"></div>
 	  <h3>Proveedores</h3>
 	  <div id="usage-providers" class="usage-grid"></div>
 	  <h3 style="margin-top:22px">Proyectos y panes</h3>
@@ -906,6 +916,30 @@ function mdStrip(s){ return (s||"").replace(/\*\*|`|^#{1,6} /g, ""); }
 	  if(confidenceLabel(u.confidence)) bits.push(confidenceLabel(u.confidence));
 	  return bits.slice(0, 4).join(" · ");
 	}
+	function fmtPercent(n){
+	  return n === null || n === undefined ? "--" : `${Number(n).toFixed(Number(n) % 1 ? 1 : 0)}%`;
+	}
+	function renderUsageWindows(state){
+	  const items = state?.windows?.items || [];
+	  const byId = Object.fromEntries(items.map(w => [w.id, w]));
+	  const setLimit = (id, val) => { const el = $(id); if(el && document.activeElement !== el) el.value = val || ""; };
+	  setLimit("#limit-codex-daily", byId.codex_daily_tokens?.limit || "");
+	  setLimit("#limit-codex-weekly", byId.codex_weekly_tokens?.limit || "");
+	  setLimit("#limit-claude-daily", byId.claude_daily_tokens?.limit || "");
+	  setLimit("#limit-claude-weekly", byId.claude_weekly_tokens?.limit || "");
+	  $("#usage-windows").innerHTML = items.length ? items.map(w=>{
+	    const hasLimit = Number(w.limit || 0) > 0;
+	    const pct = hasLimit ? Math.min(100, Number(w.percent || 0)) : 0;
+	    const remaining = hasLimit ? fmtTokens(w.remaining || 0) : "--";
+	    const status = hasLimit ? `${fmtPercent(w.percent)} usado` : "Sin limite configurado";
+	    return `<div class="usage-card usage-window">
+	      <div class="usage-title">${mdEsc(w.label || w.id || "limite")}<small>${mdEsc(status)}</small></div>
+	      <div class="usage-metric">${fmtTokens(w.used || 0)}</div>
+	      <div class="usage-sub">Restante ${mdEsc(remaining)} · ${hasLimit ? fmtTokens(w.limit || 0) : "limite no disponible"}</div>
+	      <div class="usage-bar"><span style="width:${pct}%"></span></div>
+	    </div>`;
+	  }).join("") : `<div class="desc">Sin limites configurados</div>`;
+	}
 	function panePresetButtons(p){
 	  const session = attrEsc(p.tmux_session || "");
 	  const pane = attrEsc(p.tmux_pane || "");
@@ -927,6 +961,7 @@ function mdStrip(s){ return (s||"").replace(/\*\*|`|^#{1,6} /g, ""); }
 	  indexUsage(state);
 	  const total = state?.totals || {};
 	  $("#usage-summary").textContent = `${fmtMoney(total.cost_usd)} · ${fmtTokens(total.total_tokens)} · ${state?.panes?.length || 0} panes`;
+	  renderUsageWindows(state);
 	  const hp = state?.credential_health || {};
 	  const providerRows = [...(state?.providers || [])];
 	  for(const id of ["openai", "anthropic"])
@@ -2156,6 +2191,19 @@ $("#new-form").addEventListener("submit", async e=>{
 	    const r = await api("/usage/refresh", {});
 	    renderUsage(r.state || {});
 	    toast(tf("Uso actualizado", "Usage refreshed"));
+	  }catch(err){ toast(err.message, true); }
+	});
+	$("#usage-limits-save").addEventListener("click", async ()=>{
+	  const settings = {
+	    COMANDOS_CODEX_DAILY_TOKEN_LIMIT: $("#limit-codex-daily").value.trim(),
+	    COMANDOS_CODEX_WEEKLY_TOKEN_LIMIT: $("#limit-codex-weekly").value.trim(),
+	    COMANDOS_CLAUDE_DAILY_TOKEN_LIMIT: $("#limit-claude-daily").value.trim(),
+	    COMANDOS_CLAUDE_WEEKLY_TOKEN_LIMIT: $("#limit-claude-weekly").value.trim(),
+	  };
+	  try{
+	    const r = await api("/usage/settings", {settings});
+	    renderUsage(r.state || {});
+	    toast(tf("Limites guardados", "Limits saved"));
 	  }catch(err){ toast(err.message, true); }
 	});
 	document.addEventListener("click", e=>{

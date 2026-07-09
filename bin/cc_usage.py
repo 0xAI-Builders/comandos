@@ -17,9 +17,18 @@ from hashlib import sha256
 
 DEFAULT_HOOKS_DIR = os.path.expanduser("~/.claude/hooks")
 DB_FILENAME = "comandos-usage.sqlite"
+USAGE_LIMIT_KEYS = {
+    "COMANDOS_CODEX_DAILY_TOKEN_LIMIT",
+    "COMANDOS_CODEX_WEEKLY_TOKEN_LIMIT",
+    "COMANDOS_CLAUDE_DAILY_TOKEN_LIMIT",
+    "COMANDOS_CLAUDE_WEEKLY_TOKEN_LIMIT",
+    "COMANDOS_DAILY_BUDGET_USD",
+}
 
 
 def usage_db_path(hooks_dir=None):
+    if hooks_dir is None and os.environ.get("COMANDOS_USAGE_DB"):
+        return os.environ["COMANDOS_USAGE_DB"]
     return os.path.join(hooks_dir or DEFAULT_HOOKS_DIR, DB_FILENAME)
 
 
@@ -257,8 +266,60 @@ def list_panes(db_path):
         ))
 
 
-def record_turn(db_path, event):
+def read_usage_settings(db_path):
     init_db(db_path)
+    with connect(db_path) as con:
+        rows = _rows(con.execute("select key, value from usage_settings"))
+    return {r["key"]: r["value"] for r in rows if r["key"] in USAGE_LIMIT_KEYS}
+
+
+def write_usage_settings(db_path, values):
+    init_db(db_path)
+    clean = {}
+    for key, value in (values or {}).items():
+        if key not in USAGE_LIMIT_KEYS:
+            continue
+        text = str(value or "").strip()
+        if text:
+            clean[key] = text
+    with connect(db_path) as con:
+        for key in USAGE_LIMIT_KEYS:
+            if key in clean:
+                con.execute(
+                    "insert or replace into usage_settings(key, value) values(?, ?)",
+                    (key, clean[key]),
+                )
+            elif key in (values or {}):
+                con.execute("delete from usage_settings where key=?", (key,))
+    return read_usage_settings(db_path)
+
+
+TURN_FIELDS = [
+    "id", "provider", "agent", "tmux_session", "tmux_pane", "pane_pwd",
+    "git_root", "model", "reasoning_effort", "turn_started_at",
+    "turn_finished_at", "input_tokens", "output_tokens", "cache_read_tokens",
+    "cache_write_tokens", "total_tokens", "cost_usd", "source",
+    "confidence", "raw",
+]
+
+TURN_INSERT_SQL = """
+insert or replace into usage_turns (
+  id, provider, agent, tmux_session, tmux_pane, pane_pwd,
+  git_root, model, reasoning_effort, turn_started_at,
+  turn_finished_at, input_tokens, output_tokens, cache_read_tokens,
+  cache_write_tokens, total_tokens, cost_usd, source,
+  confidence, raw
+) values (
+  :id, :provider, :agent, :tmux_session, :tmux_pane, :pane_pwd,
+  :git_root, :model, :reasoning_effort, :turn_started_at,
+  :turn_finished_at, :input_tokens, :output_tokens, :cache_read_tokens,
+  :cache_write_tokens, :total_tokens, :cost_usd, :source,
+  :confidence, :raw
+)
+"""
+
+
+def _turn_values(event):
     data = dict(event)
     data.setdefault("provider", _provider_for_agent(data.get("agent", "")))
     data.setdefault("agent", data.get("provider") or "")
@@ -284,34 +345,25 @@ def record_turn(db_path, event):
         data.get("turn_started_at"), data.get("turn_finished_at"), data.get("model"),
         data.get("input_tokens"), data.get("output_tokens"), data.get("cost_usd"),
     ])
-    fields = [
-        "id", "provider", "agent", "tmux_session", "tmux_pane", "pane_pwd",
-        "git_root", "model", "reasoning_effort", "turn_started_at",
-        "turn_finished_at", "input_tokens", "output_tokens", "cache_read_tokens",
-        "cache_write_tokens", "total_tokens", "cost_usd", "source",
-        "confidence", "raw",
-    ]
-    values = {k: data.get(k, "") for k in fields}
+    return {k: data.get(k, "") for k in TURN_FIELDS}
+
+
+def record_turn(db_path, event):
+    init_db(db_path)
+    values = _turn_values(event)
     with connect(db_path) as con:
-        con.execute(
-            """
-            insert or replace into usage_turns (
-              id, provider, agent, tmux_session, tmux_pane, pane_pwd,
-              git_root, model, reasoning_effort, turn_started_at,
-              turn_finished_at, input_tokens, output_tokens, cache_read_tokens,
-              cache_write_tokens, total_tokens, cost_usd, source,
-              confidence, raw
-            ) values (
-              :id, :provider, :agent, :tmux_session, :tmux_pane, :pane_pwd,
-              :git_root, :model, :reasoning_effort, :turn_started_at,
-              :turn_finished_at, :input_tokens, :output_tokens, :cache_read_tokens,
-              :cache_write_tokens, :total_tokens, :cost_usd, :source,
-              :confidence, :raw
-            )
-            """,
-            values,
-        )
-    return {k: data.get(k) for k in fields}
+        con.execute(TURN_INSERT_SQL, values)
+    return dict(values)
+
+
+def record_turns(db_path, events):
+    init_db(db_path)
+    count = 0
+    with connect(db_path) as con:
+        for event in events:
+            con.execute(TURN_INSERT_SQL, _turn_values(event))
+            count += 1
+    return count
 
 
 def _project_rollups(turns, panes):
@@ -373,7 +425,89 @@ def _project_rollups(turns, panes):
     return list(projects.values())
 
 
-def build_usage_state(db_path, live_panes=None, now=None):
+def _setting_float(settings, *keys):
+    settings = settings or {}
+    for key in keys:
+        val = settings.get(key)
+        if val not in (None, ""):
+            return _as_float(val)
+    return 0.0
+
+
+def _setting_int(settings, *keys):
+    settings = settings or {}
+    for key in keys:
+        val = settings.get(key)
+        if val not in (None, ""):
+            return _as_int(val)
+    return 0
+
+
+def _token_window(turns, provider, label, window, start_ts, limit):
+    aliases = {
+        "codex": {"codex", "openai"},
+        "claude": {"claude", "anthropic"},
+    }.get(provider, {provider})
+    used = sum(
+        _as_int(t.get("total_tokens"))
+        for t in turns
+        if (t.get("provider") or t.get("agent")) in aliases
+        and _as_int(t.get("turn_finished_at")) >= start_ts
+    )
+    item = {
+        "id": f"{provider}_{window}_tokens",
+        "provider": provider,
+        "label": label,
+        "window": window,
+        "metric": "tokens",
+        "used": used,
+        "limit": limit,
+        "source": "local_usage",
+    }
+    if limit > 0:
+        item.update({
+            "status": "configured",
+            "remaining": max(0, limit - used),
+            "percent": min(100, round((used / limit) * 100, 1)),
+        })
+    else:
+        item.update({
+            "status": "missing_limit",
+            "remaining": None,
+            "percent": None,
+        })
+    return item
+
+
+def _usage_windows(turns, settings, now):
+    day_start = now - 24 * 3600
+    week_start = now - 7 * 24 * 3600
+    daily_budget = _setting_float(settings, "COMANDOS_DAILY_BUDGET_USD", "COMANDOS_USAGE_DAILY_BUDGET_USD")
+    items = [
+        _token_window(
+            turns, "codex", "Codex diario", "daily", day_start,
+            _setting_int(settings, "COMANDOS_CODEX_DAILY_TOKEN_LIMIT", "CODEX_DAILY_TOKEN_LIMIT"),
+        ),
+        _token_window(
+            turns, "codex", "Codex semanal", "weekly", week_start,
+            _setting_int(settings, "COMANDOS_CODEX_WEEKLY_TOKEN_LIMIT", "CODEX_WEEKLY_TOKEN_LIMIT"),
+        ),
+        _token_window(
+            turns, "claude", "Claude diario", "daily", day_start,
+            _setting_int(settings, "COMANDOS_CLAUDE_DAILY_TOKEN_LIMIT", "CLAUDE_DAILY_TOKEN_LIMIT"),
+        ),
+        _token_window(
+            turns, "claude", "Claude semanal", "weekly", week_start,
+            _setting_int(settings, "COMANDOS_CLAUDE_WEEKLY_TOKEN_LIMIT", "CLAUDE_WEEKLY_TOKEN_LIMIT"),
+        ),
+    ]
+    return {
+        "daily_budget_usd": daily_budget,
+        "items": items,
+    }
+
+
+def build_usage_state(db_path, live_panes=None, now=None, settings=None):
     init_db(db_path)
     live_panes = live_panes or []
     ts = int(now if now is not None else time.time())
@@ -419,6 +553,16 @@ def build_usage_state(db_path, live_panes=None, now=None):
             "active_panes": 0,
         })
         p["total_tokens"] += _as_int(row.get("total_tokens"))
+    if not provider_usage:
+        for turn in turns:
+            provider = turn.get("provider") or turn.get("agent") or "unknown"
+            p = providers.setdefault(provider, {
+                "provider": provider,
+                "cost_usd": 0.0,
+                "total_tokens": 0,
+                "active_panes": 0,
+            })
+            p["total_tokens"] += _as_int(turn.get("total_tokens"))
     for pane in panes:
         provider = pane.get("provider") or pane.get("agent") or "unknown"
         p = providers.setdefault(provider, {
@@ -442,7 +586,7 @@ def build_usage_state(db_path, live_panes=None, now=None):
         "panes": panes,
         "unattributed": unattributed,
         "alerts": [],
-        "windows": {},
+        "windows": _usage_windows(turns, settings or {}, ts),
         "series": series,
         "credential_health": {},
     }
@@ -524,6 +668,178 @@ def model_switch_text(provider, preset):
     if provider in ("claude", "anthropic"):
         return item["claude"]["command"]
     return item["codex"]["command"]
+
+
+def record_local_codex_threads(db_path, state_db=None, now=None, max_age_days=14):
+    state_db = state_db or os.path.expanduser("~/.codex/state_5.sqlite")
+    if not os.path.exists(state_db):
+        return 0
+    ts = int(now if now is not None else time.time())
+    cutoff = ts - int(max_age_days) * 24 * 3600
+    try:
+        con = sqlite3.connect(state_db)
+        con.row_factory = sqlite3.Row
+        rows = con.execute(
+            """
+            select id, created_at, updated_at, source, model_provider, cwd, title,
+                   tokens_used, model, reasoning_effort
+            from threads
+            where tokens_used > 0 and updated_at >= ?
+            """,
+            (cutoff,),
+        ).fetchall()
+    except Exception:
+        return 0
+    finally:
+        try:
+            con.close()
+        except Exception:
+            pass
+    events = []
+    roots = {}
+    for row in rows:
+        cwd = row["cwd"] or ""
+        if cwd not in roots:
+            roots[cwd] = git_root_for_path(cwd)
+        event = {
+            "id": "codex-state-" + _text(row["id"]),
+            "provider": "codex",
+            "agent": "codex",
+            "tmux_session": _text(row["id"]),
+            "tmux_pane": "",
+            "pane_pwd": cwd,
+            "git_root": roots[cwd],
+            "model": _text(row["model"]),
+            "reasoning_effort": _text(row["reasoning_effort"]),
+            "turn_started_at": _as_int(row["created_at"]),
+            "turn_finished_at": _as_int(row["updated_at"]),
+            "total_tokens": _as_int(row["tokens_used"]),
+            "source": "codex_state_db",
+            "confidence": "local",
+            "raw": json.dumps(dict(row), sort_keys=True),
+        }
+        events.append(event)
+    return record_turns(db_path, events)
+
+
+def record_local_claude_jsonl(db_path, projects_root=None, now=None, max_age_days=14, max_files=400):
+    projects_root = os.fspath(projects_root or os.path.expanduser("~/.claude/projects"))
+    if not os.path.isdir(projects_root):
+        return 0
+    ts = int(now if now is not None else time.time())
+    cutoff = ts - int(max_age_days) * 24 * 3600
+    files = []
+    for root, dirs, names in os.walk(projects_root):
+        dirs[:] = [d for d in dirs if d not in {"tool-results", "memory"}]
+        for name in names:
+            if not name.endswith(".jsonl"):
+                continue
+            path = os.path.join(root, name)
+            try:
+                mtime = os.path.getmtime(path)
+            except OSError:
+                continue
+            if mtime >= cutoff:
+                files.append((mtime, path))
+    files.sort(reverse=True)
+    events = []
+    roots = {}
+    for _mtime, path in files[:max_files]:
+        try:
+            with open(path, errors="replace") as fh:
+                for line_no, line in enumerate(fh, 1):
+                    try:
+                        data = json.loads(line)
+                    except Exception:
+                        continue
+                    msg = data.get("message") if isinstance(data, dict) else None
+                    usage = msg.get("usage") if isinstance(msg, dict) else None
+                    if data.get("type") != "assistant" or not isinstance(usage, dict):
+                        continue
+                    finished = _as_epoch(data.get("timestamp")) or int(_mtime)
+                    if finished < cutoff:
+                        continue
+                    input_tokens = _as_int(usage.get("input_tokens"))
+                    output_tokens = _as_int(usage.get("output_tokens"))
+                    cache_read = _as_int(usage.get("cache_read_input_tokens"))
+                    cache_write = _as_int(usage.get("cache_creation_input_tokens"))
+                    total = input_tokens + output_tokens + cache_read + cache_write
+                    if total <= 0:
+                        continue
+                    cwd = _text(data.get("cwd"))
+                    if cwd not in roots:
+                        roots[cwd] = git_root_for_path(cwd)
+                    stable = _text(data.get("uuid") or data.get("requestId") or f"{path}:{line_no}")
+                    event = {
+                        "id": "claude-jsonl-" + stable,
+                        "provider": "claude",
+                        "agent": "claude",
+                        "tmux_session": _text(data.get("sessionId")),
+                        "tmux_pane": "",
+                        "pane_pwd": cwd,
+                        "git_root": roots[cwd],
+                        "model": _text(msg.get("model")),
+                        "turn_started_at": finished,
+                        "turn_finished_at": finished,
+                        "input_tokens": input_tokens,
+                        "output_tokens": output_tokens,
+                        "cache_read_tokens": cache_read,
+                        "cache_write_tokens": cache_write,
+                        "total_tokens": total,
+                        "source": "claude_jsonl",
+                        "confidence": "local",
+                        "raw": json.dumps({
+                            "path": path,
+                            "line": line_no,
+                            "uuid": stable,
+                            "usage": usage,
+                        }, sort_keys=True),
+                    }
+                    events.append(event)
+        except OSError:
+            continue
+    return record_turns(db_path, events)
+
+
+def _parse_env_file(path):
+    values = {}
+    try:
+        lines = open(path).read().splitlines()
+    except OSError:
+        return values
+    for line in lines:
+        s = line.strip()
+        if not s or s.startswith("#"):
+            continue
+        if s.startswith("export "):
+            s = s[7:].strip()
+        if "=" not in s:
+            continue
+        key, val = s.split("=", 1)
+        key = key.strip()
+        val = val.strip()
+        if not key or not re_env_key(key):
+            continue
+        if len(val) >= 2 and val[0] == val[-1] and val[0] in ("'", '"'):
+            val = val[1:-1]
+        values[key] = val
+    return values
+
+
+def re_env_key(key):
+    return all(c.isalnum() or c == "_" for c in key)
+
+
+def load_usage_config(paths=None, base=None):
+    paths = paths or [
+        os.path.expanduser("~/.claude/hooks/cc-notify.conf"),
+        os.path.expanduser("~/.claude/hooks/usage.env"),
+    ]
+    data = {}
+    for path in paths:
+        data.update(_parse_env_file(path))
+    data.update(base or {})
+    return data
 
 
 def capture_hook_payload(payload, db_path=None):
@@ -640,10 +956,6 @@ def fetch_anthropic_usage(env, now=None):
     except Exception as e:
         health.update({"status": "error", "error": str(e)[:240]})
         return [], [], health
-
-
-if __name__ == "__main__":
-    raise SystemExit(main())
 
 
 def _as_int(value, default=0):
@@ -878,3 +1190,7 @@ def record_provider_costs(db_path, provider, rows):
                 """,
                 values,
             )
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

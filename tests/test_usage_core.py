@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
+import json
 import os
 import sqlite3
+import subprocess
 import tempfile
 from pathlib import Path
 
@@ -299,6 +301,136 @@ def test_aggregate_provider_bucket_is_unattributed_without_matching_pane():
     assert state["unattributed"][0]["confidence"] == "unattributed"
 
 
+def test_build_usage_state_includes_token_windows_from_settings():
+    with tempfile.TemporaryDirectory() as d:
+        db = os.path.join(d, "usage.sqlite")
+        cc_usage.init_db(db)
+        cc_usage.record_turn(db, {
+            "id": "codex-1",
+            "provider": "codex",
+            "agent": "codex",
+            "tmux_session": "term-1",
+            "tmux_pane": "%1",
+            "pane_pwd": "/repo",
+            "git_root": "/repo",
+            "model": "gpt-test",
+            "turn_started_at": 200,
+            "turn_finished_at": 250,
+            "total_tokens": 70,
+            "source": "codex_state_db",
+            "confidence": "local",
+        })
+        state = cc_usage.build_usage_state(db, [], now=300, settings={
+            "COMANDOS_CODEX_DAILY_TOKEN_LIMIT": "100",
+            "COMANDOS_CLAUDE_DAILY_TOKEN_LIMIT": "50",
+        })
+
+    windows = {w["id"]: w for w in state["windows"]["items"]}
+    assert windows["codex_daily_tokens"]["used"] == 70
+    assert windows["codex_daily_tokens"]["limit"] == 100
+    assert windows["codex_daily_tokens"]["remaining"] == 30
+    assert windows["codex_daily_tokens"]["percent"] == 70
+    assert windows["claude_daily_tokens"]["status"] == "missing_limit" or windows["claude_daily_tokens"]["used"] == 0
+
+
+def test_record_local_codex_threads_imports_sqlite_tokens():
+    with tempfile.TemporaryDirectory() as d:
+        db = os.path.join(d, "usage.sqlite")
+        state_db = os.path.join(d, "state.sqlite")
+        con = sqlite3.connect(state_db)
+        con.execute("""
+            create table threads (
+              id text primary key, created_at integer, updated_at integer,
+              source text, model_provider text, cwd text, title text,
+              tokens_used integer, model text, reasoning_effort text
+            )
+        """)
+        con.execute(
+            "insert into threads values (?,?,?,?,?,?,?,?,?,?)",
+            ("thread-1", 100, 200, "cli", "openai", "/repo", "Work", 1234, "gpt-test", "medium"),
+        )
+        con.commit()
+        con.close()
+
+        count = cc_usage.record_local_codex_threads(db, state_db, now=300)
+        state = cc_usage.build_usage_state(db, [], now=300)
+
+    assert count == 1
+    assert state["totals"]["total_tokens"] == 1234
+    assert state["projects"][0]["git_root"] == "/repo"
+    assert state["projects"][0]["panes"][0]["provider"] == "codex"
+    assert state["projects"][0]["panes"][0]["confidence"] == "local"
+
+
+def test_record_local_claude_jsonl_imports_message_usage():
+    with tempfile.TemporaryDirectory() as d:
+        db = os.path.join(d, "usage.sqlite")
+        root = Path(d) / "projects"
+        root.mkdir()
+        item = {
+            "type": "assistant",
+            "uuid": "msg-1",
+            "timestamp": "2026-07-09T20:00:00Z",
+            "cwd": "/repo",
+            "sessionId": "session-1",
+            "message": {
+                "model": "claude-test",
+                "usage": {
+                    "input_tokens": 10,
+                    "output_tokens": 5,
+                    "cache_read_input_tokens": 7,
+                    "cache_creation_input_tokens": 3,
+                },
+            },
+        }
+        (root / "session.jsonl").write_text(json.dumps(item) + "\n")
+
+        count = cc_usage.record_local_claude_jsonl(db, root, now=1783632000, max_age_days=30)
+        state = cc_usage.build_usage_state(db, [], now=1783632000)
+
+    assert count == 1
+    assert state["totals"]["total_tokens"] == 25
+    assert state["projects"][0]["panes"][0]["provider"] == "claude"
+    assert state["projects"][0]["panes"][0]["confidence"] == "local"
+
+
+def test_usage_settings_round_trip_filters_to_limit_keys():
+    with tempfile.TemporaryDirectory() as d:
+        db = os.path.join(d, "usage.sqlite")
+        cc_usage.write_usage_settings(db, {
+            "COMANDOS_CODEX_DAILY_TOKEN_LIMIT": "100",
+            "OPENAI_ADMIN_KEY": "secret",
+            "bad": "ignored",
+        })
+        settings = cc_usage.read_usage_settings(db)
+
+    assert settings == {"COMANDOS_CODEX_DAILY_TOKEN_LIMIT": "100"}
+
+
+def test_cc_usage_capture_hook_cli_runs_after_helpers_are_defined():
+    payload = {
+        "agent": "claude",
+        "input_tokens": 1,
+        "output_tokens": 2,
+        "turn_started_at": 100,
+        "turn_finished_at": 101,
+    }
+    env = os.environ.copy()
+    with tempfile.TemporaryDirectory() as d:
+        env["COMANDOS_USAGE_DB"] = os.path.join(d, "usage.sqlite")
+        result = subprocess.run(
+            ["python3", str(ROOT / "bin" / "cc_usage.py"), "capture-hook"],
+            input=json.dumps(payload),
+            capture_output=True,
+            text=True,
+            env=env,
+            timeout=5,
+        )
+
+    assert result.returncode == 0, result.stderr
+    assert json.loads(result.stdout)["captured"] is True
+
+
 def test_alerts_fire_on_cost_threshold_and_spike():
     state = {
         "totals": {"cost_usd": 9.5},
@@ -381,6 +513,11 @@ if __name__ == "__main__":
     test_record_provider_usage_and_costs_round_trip()
     test_record_turn_rolls_up_by_project_session_and_pane()
     test_aggregate_provider_bucket_is_unattributed_without_matching_pane()
+    test_build_usage_state_includes_token_windows_from_settings()
+    test_record_local_codex_threads_imports_sqlite_tokens()
+    test_record_local_claude_jsonl_imports_message_usage()
+    test_usage_settings_round_trip_filters_to_limit_keys()
+    test_cc_usage_capture_hook_cli_runs_after_helpers_are_defined()
     test_alerts_fire_on_cost_threshold_and_spike()
     test_model_presets_include_savings_daily_hard_maximum()
     test_model_switch_text_opens_provider_model_picker()

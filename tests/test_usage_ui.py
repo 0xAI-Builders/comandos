@@ -8,6 +8,7 @@ HTML = Path("dash/index.html").read_text()
 def test_usage_drawer_markup_exists():
     assert 'id="btn-usage"' in HTML
     assert 'id="usage"' in HTML
+    assert 'id="usage-windows"' in HTML
     assert 'id="usage-providers"' in HTML
     assert 'id="usage-projects"' in HTML
     assert 'id="usage-alerts"' in HTML
@@ -46,6 +47,16 @@ def test_usage_ui_switches_models_inline_per_pane():
     assert "pane: b.dataset.pane || undefined" in HTML
 
 
+def test_usage_ui_renders_limit_windows_and_missing_limits():
+    assert "renderUsageWindows" in HTML
+    assert "Sin limite configurado" in HTML
+    assert "Restante" in HTML
+    assert "usage-window" in HTML
+    assert 'id="limit-codex-daily"' in HTML
+    assert 'id="usage-limits-save"' in HTML
+    assert 'api("/usage/settings"' in HTML
+
+
 if __name__ == "__main__":
     test_usage_drawer_markup_exists()
     test_usage_state_is_fetched_without_secret_rendering()
@@ -53,3 +64,4 @@ if __name__ == "__main__":
     test_usage_ui_exposes_model_preset_buttons()
     test_usage_ui_labels_detected_panes_without_unattributed_noise()
     test_usage_ui_switches_models_inline_per_pane()
+    test_usage_ui_renders_limit_windows_and_missing_limits()

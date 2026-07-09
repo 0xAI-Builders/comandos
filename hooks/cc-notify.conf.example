@@ -34,3 +34,17 @@ SOUND_MONEY=/usr/share/sounds/freedesktop/stereo/message.oga
 
 # Idioma de la UI: auto (por $LANG del sistema), es, en
 CC_LANG=auto
+
+# Uso y limites locales de ComandOS.
+# OPENAI_ADMIN_KEY / ANTHROPIC_ADMIN_KEY habilitan APIs admin de uso/costo si tu cuenta las tiene.
+# Los limites de plan de Codex/Claude Code no siempre son expuestos por API; configura estos
+# valores locales para ver porcentaje/restante sin inventar datos.
+# OPENAI_ADMIN_KEY=
+# ANTHROPIC_ADMIN_KEY=
+COMANDOS_USAGE_LOCAL_DAYS=14
+COMANDOS_USAGE_CLAUDE_MAX_FILES=120
+# COMANDOS_CODEX_DAILY_TOKEN_LIMIT=
+# COMANDOS_CODEX_WEEKLY_TOKEN_LIMIT=
+# COMANDOS_CLAUDE_DAILY_TOKEN_LIMIT=
+# COMANDOS_CLAUDE_WEEKLY_TOKEN_LIMIT=
+# COMANDOS_DAILY_BUDGET_USD=

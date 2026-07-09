@@ -39,6 +39,13 @@ def test_usage_live_panes_records_pane_pwd_and_git_root():
 def test_usage_capture_and_refresh_endpoints_exist():
     assert 'self.path == "/usage/capture"' in SRC
     assert 'self.path == "/usage/refresh"' in SRC
+    assert 'self.path == "/usage/settings"' in SRC
+    assert "write_usage_settings" in SRC
+    assert "usage_runtime_env" in SRC
+    assert "record_local_codex_threads" in SRC
+    assert "record_local_claude_jsonl" in SRC
+    assert "usage_credential_health" in SRC
+    assert 'state["credential_health"] = usage_credential_health(env)' in SRC
 
 
 def test_model_switch_endpoint_targets_requested_pane():

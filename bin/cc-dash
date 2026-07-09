@@ -30,7 +30,59 @@ DASH = os.path.join(HOOKS, "dash")
 TOKEN_FILE = os.path.join(HOOKS, "dash-token")
 TABS_FILE = os.path.join(HOOKS, "app-tabs.json")
 TAB_HISTORY_FILE = os.path.join(HOOKS, "app-tabs-history.json")
+CONF_PATH = os.path.join(HOOKS, "cc-notify.conf")
 USAGE_DB = cc_usage.usage_db_path(HOOKS)
+USAGE_ENV_FILE = os.path.join(HOOKS, "usage.env")
+LOCAL_USAGE_REFRESH_AT = 0
+
+
+def usage_runtime_env():
+    env = cc_usage.load_usage_config([CONF_PATH, USAGE_ENV_FILE], os.environ)
+    env.update(cc_usage.read_usage_settings(USAGE_DB))
+    return env
+
+
+def usage_credential_health(env):
+    env = env or {}
+    return {
+        "openai": {
+            "provider": "openai",
+            "configured": bool(env.get("OPENAI_ADMIN_KEY")),
+            "status": "configured" if env.get("OPENAI_ADMIN_KEY") else "missing",
+        },
+        "anthropic": {
+            "provider": "anthropic",
+            "configured": bool(env.get("ANTHROPIC_ADMIN_KEY")),
+            "status": "configured" if env.get("ANTHROPIC_ADMIN_KEY") else "missing",
+        },
+    }
+
+
+def refresh_local_usage(force=False):
+    global LOCAL_USAGE_REFRESH_AT
+    now = int(time.time())
+    if not force and now - LOCAL_USAGE_REFRESH_AT < 60:
+        return {}
+    env = usage_runtime_env()
+    LOCAL_USAGE_REFRESH_AT = now
+    max_age = int(env.get("COMANDOS_USAGE_LOCAL_DAYS") or 14)
+    max_claude_files = int(env.get("COMANDOS_USAGE_CLAUDE_MAX_FILES") or 120)
+    counts = {
+        "codex_local": cc_usage.record_local_codex_threads(
+            USAGE_DB,
+            env.get("COMANDOS_CODEX_STATE_DB") or os.path.expanduser("~/.codex/state_5.sqlite"),
+            now=now,
+            max_age_days=max_age,
+        ),
+        "claude_local": cc_usage.record_local_claude_jsonl(
+            USAGE_DB,
+            env.get("COMANDOS_CLAUDE_PROJECTS_DIR") or os.path.expanduser("~/.claude/projects"),
+            now=now,
+            max_age_days=max_age,
+            max_files=max_claude_files,
+        ),
+    }
+    return counts
 
 
 def access_token():
@@ -810,9 +862,6 @@ def ui_lang(conf=None):
     if v in ("es", "en"):
         return v
     return "es" if os.environ.get("LANG", "").lower().startswith("es") else "en"
-CONF_PATH = os.path.join(HOOKS, "cc-notify.conf")
-
-
 def conf_volume(conf):
     try:
         return max(0, min(100, int(conf.get("VOLUME", "60"))))
@@ -1409,8 +1458,12 @@ class Handler(http.server.SimpleHTTPRequestHandler):
         if self.path.startswith("/state"):
             return self._json(200, read_states())
         if self.path.startswith("/usage/state"):
+            refresh_local_usage(False)
             panes = usage_live_panes()
-            return self._json(200, cc_usage.build_usage_state(USAGE_DB, panes))
+            env = usage_runtime_env()
+            state = cc_usage.build_usage_state(USAGE_DB, panes, settings=env)
+            state["credential_health"] = usage_credential_health(env)
+            return self._json(200, state)
         if self.path.startswith("/ssh"):
             return self._json(200, parse_ssh_config())
         if self.path.startswith("/conf"):
@@ -1596,11 +1649,13 @@ class Handler(http.server.SimpleHTTPRequestHandler):
 
         if self.path == "/usage/refresh":
             health, counts = [], {}
+            counts.update(refresh_local_usage(True))
+            env = usage_runtime_env()
             for provider, fetcher in (
                 ("openai", cc_usage.fetch_openai_usage),
                 ("anthropic", cc_usage.fetch_anthropic_usage),
             ):
-                usage_rows, cost_rows, h = fetcher(os.environ)
+                usage_rows, cost_rows, h = fetcher(env)
                 health.append(h)
                 counts[provider] = {"usage": len(usage_rows), "costs": len(cost_rows)}
                 if usage_rows:
@@ -1608,9 +1663,17 @@ class Handler(http.server.SimpleHTTPRequestHandler):
                 if cost_rows:
                     cc_usage.record_provider_costs(USAGE_DB, provider, cost_rows)
             panes = usage_live_panes()
-            state = cc_usage.build_usage_state(USAGE_DB, panes)
+            state = cc_usage.build_usage_state(USAGE_DB, panes, settings=env)
             state["credential_health"] = {h["provider"]: h for h in health}
             return self._json(200, {"ok": True, "counts": counts, "state": state})
+
+        if self.path == "/usage/settings":
+            settings = cc_usage.write_usage_settings(USAGE_DB, data.get("settings") or data)
+            panes = usage_live_panes()
+            env = usage_runtime_env()
+            state = cc_usage.build_usage_state(USAGE_DB, panes, settings=env)
+            state["credential_health"] = usage_credential_health(env)
+            return self._json(200, {"ok": True, "settings": settings, "state": state})
 
         if self.path == "/ssh-connect":
             sess, connected, note = ssh_connect(data.get("host", ""))
