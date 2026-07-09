@@ -254,6 +254,36 @@ def list_panes(db_path):
         ))
 
 
+def build_usage_state(db_path, live_panes=None, now=None):
+    init_db(db_path)
+    live_panes = live_panes or []
+    ts = int(now if now is not None else time.time())
+    panes = live_panes if live_panes else list_panes(db_path)
+    projects = {}
+    for pane in panes:
+        root = pane.get("git_root") or pane.get("pane_pwd") or ""
+        item = projects.setdefault(root, {
+            "git_root": root,
+            "cost_usd": 0.0,
+            "total_tokens": 0,
+            "confidence": "unattributed",
+            "panes": [],
+        })
+        item["panes"].append(pane)
+    return {
+        "generated_at": ts,
+        "totals": {"cost_usd": 0.0, "total_tokens": 0},
+        "providers": [],
+        "projects": list(projects.values()),
+        "panes": panes,
+        "unattributed": [],
+        "alerts": [],
+        "windows": {},
+        "series": [],
+        "credential_health": {},
+    }
+
+
 def _as_int(value, default=0):
     try:
         if value is None or value == "":

@@ -21,6 +21,7 @@ import hmac, secrets
 import json, os, glob, re, shlex, shutil, sys, subprocess, time, webbrowser
 import http.server, socketserver
 import tempfile
+import cc_usage
 
 HOOKS = os.path.expanduser("~/.claude/hooks")
 STATE = os.path.join(HOOKS, "state")
@@ -29,6 +30,7 @@ DASH = os.path.join(HOOKS, "dash")
 TOKEN_FILE = os.path.join(HOOKS, "dash-token")
 TABS_FILE = os.path.join(HOOKS, "app-tabs.json")
 TAB_HISTORY_FILE = os.path.join(HOOKS, "app-tabs-history.json")
+USAGE_DB = cc_usage.usage_db_path(HOOKS)
 
 
 def access_token():
@@ -536,7 +538,7 @@ def agent_pane_maps(procs):
                 key = (sess, pane, agent)
                 if key not in seen:
                     seen.add(key)
-                    info = {"session": sess, "pane": pane, "cwd": cwd, "agent": agent}
+                    info = {"session": sess, "pane": pane, "cwd": cwd, "agent": agent, "pid": pid}
                     by_session.setdefault(sess, info)
                     by_cwd.setdefault(cwd, []).append(info)
                 break
@@ -756,6 +758,35 @@ def read_states():
             item["sshMux"] = st == "mux"
         items.append(item)
     return items
+
+
+def usage_live_panes():
+    """Persist and return active agent panes with pane-level cwd/git identity."""
+    labels = tab_labels()
+    now_ts = int(time.time())
+    _by_session, by_cwd = agent_pane_maps(agent_procs())
+    seen, panes = set(), []
+    for infos in by_cwd.values():
+        for info in infos:
+            key = (info.get("session"), info.get("pane"), info.get("agent"))
+            if key in seen:
+                continue
+            seen.add(key)
+            cwd = info.get("cwd") or ""
+            pane = cc_usage.normalize_pane_identity({
+                "session": info.get("session", ""),
+                "pane": info.get("pane", ""),
+                "cwd": cwd,
+                "git_root": cc_usage.git_root_for_path(cwd),
+                "agent": info.get("agent") or "claude",
+                "pid": info.get("pid") or 0,
+            }, labels=labels, now=now_ts)
+            panes.append(pane)
+            try:
+                cc_usage.record_pane(USAGE_DB, pane)
+            except Exception:
+                pass
+    return panes
 
 
 # Claves de cc-notify.conf editables desde la interfaz
@@ -1353,8 +1384,8 @@ class Handler(http.server.SimpleHTTPRequestHandler):
     # Endpoints con DATOS o ACCIONES: exigen token. El shell estatico (HTML,
     # sw.js, manifest, iconos) NO — no revela nada (es codigo open-source) y
     # asi la PWA instala y carga sin depender de cookies en el webview movil.
-    API_GET = ("/state", "/events", "/conf", "/prefs", "/ssh", "/tabs", "/tab-history",
-               "/remote-state", "/remote-qr.png")
+    API_GET = ("/state", "/usage/state", "/events", "/conf", "/prefs", "/ssh", "/tabs",
+               "/tab-history", "/remote-state", "/remote-qr.png")
 
     def do_GET(self):
         host = self.headers.get("Host", "")
@@ -1369,6 +1400,9 @@ class Handler(http.server.SimpleHTTPRequestHandler):
     def _do_GET(self):
         if self.path.startswith("/state"):
             return self._json(200, read_states())
+        if self.path.startswith("/usage/state"):
+            panes = usage_live_panes()
+            return self._json(200, cc_usage.build_usage_state(USAGE_DB, panes))
         if self.path.startswith("/ssh"):
             return self._json(200, parse_ssh_config())
         if self.path.startswith("/conf"):
