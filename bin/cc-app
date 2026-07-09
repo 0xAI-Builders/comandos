@@ -219,6 +219,18 @@ def url_at_event(term, event, match=""):
     return normalize_wrapped_url_text(match or "")
 
 
+def ssh_host_from_session(sess):
+    if not isinstance(sess, str):
+        return None
+    if sess.startswith("ssh-"):
+        return sess[4:] or None
+    if sess.startswith("sshtab-"):
+        host, sep, idx = sess[len("sshtab-"):].rpartition("-")
+        if sep and idx.isdigit() and host:
+            return host
+    return None
+
+
 def make_term(argv_sh):
     term = Vte.Terminal()
     term.set_font(Pango.FontDescription(FONT))
@@ -456,7 +468,8 @@ def on_term_button(term, event):
     key = getattr(box, "_key", None)
     cur_sess = term_session(term)          # sesion realmente mostrada (hub incluido)
     pane_id, npanes = pane_at(term, event)  # pane bajo el cursor
-    is_ssh = bool(cur_sess and cur_sess.startswith("ssh-"))
+    ssh_host = ssh_host_from_session(cur_sess)
+    is_ssh = bool(ssh_host)
 
     def split(flags, cmd=None):
         target = pane_id or (("=" + cur_sess + ":") if cur_sess else None)
@@ -495,7 +508,7 @@ def on_term_button(term, event):
     item("Guardar respuesta como PDF" if ES else "Save reply as PDF", lambda: export_claude_reply(term, "pdf"))
     menu.append(Gtk.SeparatorMenuItem())
     if is_ssh:
-        host = cur_sess[4:]
+        host = ssh_host
         sshcmd = f"ssh {host}"
         item("Split derecha    (otra conexion al server)" if ES else "Split right    (new connection to server)", lambda: split(["-h"], sshcmd))
         item("Split izquierda  (otra conexion al server)" if ES else "Split left     (new connection to server)", lambda: split(["-h", "-b"], sshcmd))
@@ -618,14 +631,22 @@ def restore_tabs():
         try:
             if subprocess.run(["tmux", "has-session", "-t", "=" + sess],
                               capture_output=True, timeout=5).returncode != 0:
+                ssh_host = ssh_host_from_session(sess)
                 if sess.startswith("term-"):
                     # terminal scratch: recrear shell simple en HOME
                     subprocess.run(
                         ["systemd-run", "--user", "--scope", "--collect", "--quiet",
                          "tmux", "new-session", "-d", "-s", sess, "-c", os.path.expanduser("~")],
                         capture_output=True, timeout=12)
-                elif sess.startswith("ssh-"):
-                    http_post("/ssh-connect", {"host": sess[4:]}, timeout=20)
+                elif ssh_host and sess.startswith("ssh-"):
+                    http_post("/ssh-connect", {"host": ssh_host}, timeout=20)
+                elif ssh_host:
+                    res, e = http_post("/ssh-new-tab", {"host": ssh_host}, timeout=20)
+                    if e:
+                        raise RuntimeError(e)
+                    if isinstance(res, dict) and res.get("session"):
+                        sess = res["session"]
+                        label = res.get("label") or label
                 else:
                     http_post("/new", {"session": sess})
             open_tab(sess, "claude", label=label if isinstance(label, str) and label else None)
@@ -762,6 +783,8 @@ def open_tab(sess, winname, label=None):
     if not WIN_RE.match(winname or ""):
         winname = "claude"
     key = sess
+    if ssh_host_from_session(sess):
+        tmuxc("set-option", "-t", sess, "mouse", "off")
     if key in tabs:
         select_win(sess, winname)
         nb.set_current_page(nb.page_num(tabs[key]))

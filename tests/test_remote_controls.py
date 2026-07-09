@@ -206,6 +206,43 @@ def test_ssh_key_setup_endpoint_is_available_from_existing_server_ui():
     assert 'self.path == "/ssh-key-setup"' in SRC
 
 
+def test_ssh_connect_disables_tmux_mouse_for_native_text_selection():
+    calls = []
+
+    def fake_tmux(*args, timeout=5):
+        calls.append(("tmux", args))
+        if args == ("has-session", "-t", "=ssh-prod"):
+            return types.SimpleNamespace(returncode=1, stdout="", stderr="")
+        return types.SimpleNamespace(returncode=0, stdout="", stderr="")
+
+    def fake_run(args, capture_output=True, text=True, timeout=15):
+        calls.append(("run", tuple(args)))
+        return types.SimpleNamespace(returncode=0, stdout="", stderr="")
+
+    extra = {
+        "os": os,
+        "shlex": __import__("shlex"),
+        "subprocess": types.SimpleNamespace(run=fake_run),
+        "tmux": fake_tmux,
+        "SSH_HOST_RE": re.compile(r"^[A-Za-z0-9._-]{1,80}$"),
+    }
+    ns = load_functions("parse_ssh_config", "ssh_connect", extra=extra)
+    old_home = os.environ.get("HOME", "")
+    with tempfile.TemporaryDirectory() as home:
+        os.environ["HOME"] = home
+        ssh_dir = Path(home) / ".ssh"
+        ssh_dir.mkdir()
+        (ssh_dir / "config").write_text("Host prod\n    HostName 203.0.113.10\n    User root\n")
+
+        sess, connected, note = ns["ssh_connect"]("prod")
+
+    os.environ["HOME"] = old_home
+    assert sess == "ssh-prod"
+    assert connected is True
+    assert note is None
+    assert ("tmux", ("set-option", "-t", "ssh-prod", "mouse", "off")) in calls
+
+
 def test_ssh_new_tab_creates_unique_tmux_session_for_saved_host():
     calls = []
 
@@ -257,6 +294,7 @@ def test_ssh_new_tab_creates_unique_tmux_session_for_saved_host():
     assert run_args[:5] == ("scope", "tmux", "new-session", "-d", "-s")
     assert run_args[5] == "sshtab-prod-2"
     assert "ssh prod" in run_args[-1]
+    assert ("tmux", ("set-option", "-t", "sshtab-prod-2", "mouse", "off")) in calls
 
 
 def test_ssh_new_tab_endpoint_is_available_for_left_click_chips():
@@ -273,5 +311,6 @@ if __name__ == "__main__":
     test_parse_ssh_config_preserves_identity_file_for_existing_ui()
     test_ssh_key_setup_starts_copy_id_tmux_session_for_saved_host()
     test_ssh_key_setup_endpoint_is_available_from_existing_server_ui()
+    test_ssh_connect_disables_tmux_mouse_for_native_text_selection()
     test_ssh_new_tab_creates_unique_tmux_session_for_saved_host()
     test_ssh_new_tab_endpoint_is_available_for_left_click_chips()

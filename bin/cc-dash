@@ -1069,6 +1069,7 @@ def ssh_connect(host):
         return None, False, "Host desconocido; agregalo primero"
     sess = ("ssh-" + host)[:60]
     if tmux("has-session", "-t", "=" + sess).returncode == 0:
+        tmux("set-option", "-t", sess, "mouse", "off")
         st = ssh_state(sess)
         if st == "ssh":
             return sess, True, None
@@ -1094,6 +1095,7 @@ def ssh_connect(host):
         capture_output=True, text=True, timeout=15)
     if r.returncode != 0:
         return None, False, r.stderr.strip() or "No se pudo crear la sesion"
+    tmux("set-option", "-t", sess, "mouse", "off")
     if keyok:
         return sess, True, None
     if "denied" in stderr or "authentication" in stderr:
@@ -1132,6 +1134,7 @@ def ssh_open_new_tab(host):
         capture_output=True, text=True, timeout=15)
     if r.returncode != 0:
         return None, False, r.stderr.strip() or "No se pudo crear la sesion"
+    tmux("set-option", "-t", sess, "mouse", "off")
     write_app_tab(sess, host)
     if keyok:
         return sess, True, None

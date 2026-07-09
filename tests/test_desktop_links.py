@@ -25,6 +25,30 @@ def load_url_helpers():
     return ns
 
 
+def load_ssh_session_helpers():
+    tree = ast.parse(SRC)
+    funcs = {
+        node.name: ast.get_source_segment(SRC, node)
+        for node in tree.body
+        if isinstance(node, ast.FunctionDef)
+    }
+    needed = ("ssh_host_from_session",)
+    missing = [name for name in needed if name not in funcs]
+    assert not missing, f"missing helper(s): {', '.join(missing)}"
+
+    ns = {}
+    exec("\n\n".join(funcs[name] for name in needed), ns)
+    return ns
+
+
+def function_source(name):
+    tree = ast.parse(SRC)
+    for node in tree.body:
+        if isinstance(node, ast.FunctionDef) and node.name == name:
+            return ast.get_source_segment(SRC, node)
+    raise AssertionError(f"missing helper: {name}")
+
+
 def test_wrapped_url_text_is_joined_before_opening():
     ns = load_url_helpers()
     text = "abre https://example.com/a/very/\nlong/path?x=1&y=2 ahora"
@@ -44,6 +68,24 @@ def test_wrapped_url_can_be_selected_from_first_or_second_visual_line():
     assert ns["url_from_wrapped_text"](text, "") == full
 
 
+def test_fresh_ssh_tab_sessions_are_recognized_as_ssh():
+    ns = load_ssh_session_helpers()
+
+    assert ns["ssh_host_from_session"]("ssh-prod") == "prod"
+    assert ns["ssh_host_from_session"]("sshtab-prod-2") == "prod"
+    assert ns["ssh_host_from_session"]("sshtab-prod-east-12") == "prod-east"
+    assert ns["ssh_host_from_session"]("term-123") is None
+
+
+def test_opening_ssh_tabs_disables_tmux_mouse_for_text_selection():
+    src = function_source("open_tab")
+
+    assert "ssh_host_from_session(sess)" in src
+    assert '"set-option", "-t", sess, "mouse", "off"' in src
+
+
 if __name__ == "__main__":
     test_wrapped_url_text_is_joined_before_opening()
     test_wrapped_url_can_be_selected_from_first_or_second_visual_line()
+    test_fresh_ssh_tab_sessions_are_recognized_as_ssh()
+    test_opening_ssh_tabs_disables_tmux_mouse_for_text_selection()
