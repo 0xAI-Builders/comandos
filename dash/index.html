@@ -1807,6 +1807,13 @@ async function connectHost(host){
   if(r.connected) toast(tf(`Conectado a ${host}`, `Connected to ${host}`));
   else toast(r.note || tf(`${host} sin conexion todavia`, `${host} not connected yet`), true);
 }
+async function setupSshKey(host){
+  const r = await api("/ssh-key-setup", {host});
+  if(inApp()) openInApp(r.session, "ssh");
+  else if(WEBTERM) openTerm(r.session, `setup ${host}`);
+  else await api("/focus", {session: r.session});
+  toast(tf(`Teclea el password de ${host} una sola vez`, `Type ${host} password once`));
+}
 function fillSrvForm(h){
   const f = $("#srv-form");
   f.host.value = h.host || ""; f.hostname.value = h.hostname || "";
@@ -1831,11 +1838,13 @@ async function loadSsh(){
       const row = document.createElement("div");
       row.className = "srv-row";
       row.innerHTML = `<div class="srv-info"><div class="srv-name"></div><div class="srv-tgt"></div></div>
-        <button class="con">Conectar</button><button class="ed">Editar</button><button class="del">Borrar</button>`;
+        <button class="con">Conectar</button><button class="key">Llave</button><button class="ed">Editar</button><button class="del">Borrar</button>`;
       row.querySelector(".srv-name").textContent = h.host;
       row.querySelector(".srv-tgt").textContent =
         `${h.user ? h.user + "@" : ""}${h.hostname || ""}${h.port ? ":" + h.port : ""}`;
       row.querySelector(".con").addEventListener("click", ()=> connectHost(h.host).catch(err=>toast(err.message,true)));
+      row.querySelector(".key").title = tf("Instalar llave para entrar sin password", "Install key for passwordless login");
+      row.querySelector(".key").addEventListener("click", ()=> setupSshKey(h.host).catch(err=>toast(err.message,true)));
       row.querySelector(".ed").addEventListener("click", ()=> fillSrvForm(h));
       const del = row.querySelector(".del");
       del.addEventListener("click", async ()=>{

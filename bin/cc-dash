@@ -868,6 +868,8 @@ def parse_ssh_config():
                             hosts.append(cur)
                 elif cur is not None and k in ("hostname", "user", "port"):
                     cur[k] = v
+                elif cur is not None and k == "identityfile":
+                    cur["identity"] = v
     except FileNotFoundError:
         pass
     return hosts
@@ -919,6 +921,63 @@ def ssh_add(d):
     if not existed:
         os.chmod(path, 0o600)
     return None
+
+
+def ssh_host_entry(host):
+    return next((h for h in parse_ssh_config() if h.get("host") == host), None)
+
+
+def ssh_public_key_for_host(host):
+    entry = ssh_host_entry(host)
+    if not entry:
+        return None, "Host desconocido; agregalo primero"
+    candidates = []
+    identity = (entry.get("identity") or "").strip()
+    if identity:
+        identity_path = os.path.expanduser(identity)
+        candidates.append(identity_path if identity_path.endswith(".pub") else identity_path + ".pub")
+    candidates += [
+        os.path.expanduser("~/.ssh/id_ed25519.pub"),
+        os.path.expanduser("~/.ssh/id_rsa.pub"),
+    ]
+    for key in candidates:
+        if key and os.path.isfile(key):
+            return key, None
+    return None, "No encontre llave publica (~/.ssh/id_ed25519.pub o IdentityFile.pub)"
+
+
+def ssh_key_setup(host):
+    """Abre una sesion tmux interactiva que corre ssh-copy-id para este host.
+    El password se teclea ahi una sola vez; ComandOS nunca lo guarda."""
+    if not SSH_HOST_RE.match(host) or not ssh_host_entry(host):
+        return None, "Host desconocido; agregalo primero"
+    if not shutil.which("ssh-copy-id"):
+        return None, "ssh-copy-id no esta instalado"
+    key, err = ssh_public_key_for_host(host)
+    if err:
+        return None, err
+    sess = ("ssh-key-" + host)[:60]
+    if tmux("has-session", "-t", "=" + sess).returncode == 0:
+        return sess, None
+    cmd = (
+        f"printf '%s\\n\\n' {shlex.quote('Instalando llave publica para ' + host)}; "
+        f"ssh-copy-id -o ConnectTimeout=8 -i {shlex.quote(key)} {shlex.quote(host)}; "
+        "rc=$?; echo; "
+        "if [ \"$rc\" -eq 0 ]; then "
+        f"  echo {shlex.quote('Llave instalada. Conectando...')}; "
+        f"  exec ssh {shlex.quote(host)}; "
+        "else "
+        f"  echo {shlex.quote('No se pudo instalar la llave. Revisa password/red y reintenta.')}; "
+        "  exec $SHELL; "
+        "fi"
+    )
+    args = ["tmux", "new-session", "-d", "-s", sess, "-n", "setup", cmd]
+    if shutil.which("systemd-run"):
+        args = ["systemd-run", "--user", "--scope", "--collect", "--quiet", *args]
+    r = subprocess.run(args, capture_output=True, text=True, timeout=15)
+    if r.returncode != 0:
+        return None, r.stderr.strip() or "No se pudo crear la sesion"
+    return sess, None
 
 
 def ssh_remove(host):
@@ -1450,6 +1509,12 @@ class Handler(http.server.SimpleHTTPRequestHandler):
                 return self._json(400, {"error": note})
             return self._json(200, {"ok": True, "session": sess,
                                     "connected": connected, "note": note})
+
+        if self.path == "/ssh-key-setup":
+            sess, err = ssh_key_setup(data.get("host", ""))
+            if err:
+                return self._json(400, {"error": err})
+            return self._json(200, {"ok": True, "session": sess})
 
         sess = data.get("session", "")
         if not SESSION_RE.match(sess):

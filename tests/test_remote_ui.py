@@ -176,6 +176,17 @@ def test_remote_terminal_has_explicit_text_selection_mode():
     assert "restoreTermInteraction(sess)" in extract_js_function(HTML, "closeTerm")
 
 
+def test_existing_ssh_manager_can_setup_passwordless_key_access():
+    assert "/ssh-key-setup" in HTML
+    assert "setupSshKey" in HTML
+    assert 'button class="key"' in HTML
+    assert "row.querySelector(\".key\")" in HTML
+    fn = extract_js_function(HTML, "setupSshKey")
+    assert 'api("/ssh-key-setup"' in fn
+    assert "openInApp(r.session" in fn
+    assert "openTerm(r.session" in fn
+
+
 def test_remote_buttons_reflect_actual_backend_state():
     off = remote_button_state({"remoteOn": False, "webtermOn": False})
     assert off["remoteOnDisabled"] is False
@@ -220,6 +231,7 @@ if __name__ == "__main__":
     test_remote_terminal_iframe_does_not_hijack_tmux_wheel_events()
     test_remote_touch_scroll_is_throttled_for_tmux_wheel_ticks()
     test_remote_terminal_has_explicit_text_selection_mode()
+    test_existing_ssh_manager_can_setup_passwordless_key_access()
     test_remote_buttons_reflect_actual_backend_state()
     test_remote_routes_are_never_served_from_stale_shell_cache()
     test_dashboard_declares_standard_favicon_to_avoid_remote_404_noise()
