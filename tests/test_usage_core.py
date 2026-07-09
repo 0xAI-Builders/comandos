@@ -101,9 +101,139 @@ def test_record_and_list_panes_round_trip():
     assert rows[0]["agent"] == "codex"
 
 
+def test_parse_openai_usage_buckets_preserves_grouping_dimensions():
+    payload = {
+        "data": [{
+            "start_time": 100,
+            "end_time": 160,
+            "results": [{
+                "input_tokens": 1000,
+                "output_tokens": 500,
+                "input_cached_tokens": 250,
+                "num_model_requests": 3,
+                "project_id": "proj_1",
+                "user_id": "user_1",
+                "api_key_id": "key_1",
+                "model": "gpt-test",
+                "service_tier": "default",
+            }]
+        }],
+        "has_more": False,
+    }
+
+    rows = cc_usage.parse_openai_usage_buckets(payload)
+
+    assert rows == [{
+        "provider": "openai",
+        "start_time": 100,
+        "end_time": 160,
+        "input_tokens": 1000,
+        "output_tokens": 500,
+        "cache_read_tokens": 250,
+        "cache_write_tokens": 0,
+        "total_tokens": 1500,
+        "request_count": 3,
+        "project_id": "proj_1",
+        "workspace_id": "",
+        "user_id": "user_1",
+        "api_key_id": "key_1",
+        "model": "gpt-test",
+        "service_tier": "default",
+        "confidence": "exact",
+    }]
+
+
+def test_parse_openai_cost_buckets_preserves_amount_currency():
+    payload = {"data": [{"start_time": 100, "end_time": 200, "results": [{
+        "amount": {"value": 1.25, "currency": "usd"},
+        "line_item": "Completions",
+        "project_id": "proj_1",
+        "api_key_id": "key_1",
+    }]}]}
+
+    rows = cc_usage.parse_openai_cost_buckets(payload)
+
+    assert rows[0]["cost_usd"] == 1.25
+    assert rows[0]["currency"] == "usd"
+    assert rows[0]["project_id"] == "proj_1"
+    assert rows[0]["api_key_id"] == "key_1"
+    assert rows[0]["confidence"] == "exact"
+
+
+def test_parse_anthropic_rows_accepts_current_and_generic_shapes():
+    payload = {"data": [{
+        "starting_at": "2026-07-09T00:00:00Z",
+        "ending_at": "2026-07-10T00:00:00Z",
+        "workspace_id": "wrk_1",
+        "model": "claude-sonnet",
+        "input_tokens": 10,
+        "output_tokens": 5,
+        "cache_read_input_tokens": 3,
+        "cache_creation_input_tokens": 2,
+    }]}
+
+    rows = cc_usage.parse_anthropic_usage_rows(payload)
+
+    assert rows[0]["provider"] == "anthropic"
+    assert rows[0]["workspace_id"] == "wrk_1"
+    assert rows[0]["model"] == "claude-sonnet"
+    assert rows[0]["input_tokens"] == 10
+    assert rows[0]["output_tokens"] == 5
+    assert rows[0]["cache_read_tokens"] == 3
+    assert rows[0]["cache_write_tokens"] == 2
+    assert rows[0]["confidence"] == "exact"
+
+
+def test_record_provider_usage_and_costs_round_trip():
+    with tempfile.TemporaryDirectory() as d:
+        db = os.path.join(d, "usage.sqlite")
+        cc_usage.init_db(db)
+        cc_usage.record_provider_usage(db, "openai", [{
+            "provider": "openai",
+            "start_time": 100,
+            "end_time": 160,
+            "input_tokens": 10,
+            "output_tokens": 5,
+            "cache_read_tokens": 2,
+            "cache_write_tokens": 0,
+            "total_tokens": 15,
+            "request_count": 1,
+            "project_id": "proj_1",
+            "workspace_id": "",
+            "user_id": "user_1",
+            "api_key_id": "key_1",
+            "model": "gpt-test",
+            "service_tier": "default",
+            "confidence": "exact",
+        }])
+        cc_usage.record_provider_costs(db, "openai", [{
+            "provider": "openai",
+            "start_time": 100,
+            "end_time": 160,
+            "cost_usd": 0.25,
+            "currency": "usd",
+            "project_id": "proj_1",
+            "workspace_id": "",
+            "api_key_id": "key_1",
+            "line_item": "Completions",
+            "model": "gpt-test",
+            "confidence": "exact",
+        }])
+        con = sqlite3.connect(db)
+        usage_count = con.execute("select count(*) from provider_usage_buckets").fetchone()[0]
+        cost_count = con.execute("select count(*) from provider_cost_buckets").fetchone()[0]
+
+    assert usage_count == 1
+    assert cost_count == 1
+
+
 if __name__ == "__main__":
     test_usage_db_path_lives_under_hooks_dir()
     test_init_db_creates_required_tables()
     test_git_root_for_path_uses_git_when_available_and_falls_back()
     test_normalize_pane_identity_requires_pane_pwd_not_session_pwd()
     test_record_and_list_panes_round_trip()
+    test_parse_openai_usage_buckets_preserves_grouping_dimensions()
+    test_parse_openai_cost_buckets_preserves_amount_currency()
+    test_parse_anthropic_rows_accepts_current_and_generic_shapes()
+    test_record_provider_usage_and_costs_round_trip()

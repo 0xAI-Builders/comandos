@@ -8,6 +8,8 @@ import os
 import sqlite3
 import subprocess
 import time
+from datetime import datetime, timezone
+from hashlib import sha256
 
 
 DEFAULT_HOOKS_DIR = os.path.expanduser("~/.claude/hooks")
@@ -250,3 +252,237 @@ def list_panes(db_path):
         return _rows(con.execute(
             "select * from usage_panes order by git_root, tmux_session, tmux_pane"
         ))
+
+
+def _as_int(value, default=0):
+    try:
+        if value is None or value == "":
+            return default
+        return int(value)
+    except (TypeError, ValueError):
+        return default
+
+
+def _as_float(value, default=0.0):
+    try:
+        if value is None or value == "":
+            return default
+        return float(value)
+    except (TypeError, ValueError):
+        return default
+
+
+def _as_epoch(value):
+    if isinstance(value, (int, float)):
+        return int(value)
+    if not value:
+        return 0
+    s = str(value)
+    try:
+        return int(float(s))
+    except ValueError:
+        pass
+    try:
+        if s.endswith("Z"):
+            s = s[:-1] + "+00:00"
+        return int(datetime.fromisoformat(s).timestamp())
+    except ValueError:
+        return 0
+
+
+def _items(payload):
+    if isinstance(payload, list):
+        return payload
+    for key in ("data", "results", "rows", "items"):
+        val = payload.get(key) if isinstance(payload, dict) else None
+        if isinstance(val, list):
+            return val
+    return []
+
+
+def _text(value):
+    return "" if value is None else str(value)
+
+
+def parse_openai_usage_buckets(payload):
+    rows = []
+    for bucket in _items(payload):
+        start = _as_epoch(bucket.get("start_time"))
+        end = _as_epoch(bucket.get("end_time"))
+        for result in bucket.get("results") or []:
+            input_tokens = _as_int(result.get("input_tokens"))
+            output_tokens = _as_int(result.get("output_tokens"))
+            rows.append({
+                "provider": "openai",
+                "start_time": start,
+                "end_time": end,
+                "input_tokens": input_tokens,
+                "output_tokens": output_tokens,
+                "cache_read_tokens": _as_int(result.get("input_cached_tokens")),
+                "cache_write_tokens": 0,
+                "total_tokens": input_tokens + output_tokens,
+                "request_count": _as_int(result.get("num_model_requests")),
+                "project_id": _text(result.get("project_id")),
+                "workspace_id": "",
+                "user_id": _text(result.get("user_id")),
+                "api_key_id": _text(result.get("api_key_id")),
+                "model": _text(result.get("model")),
+                "service_tier": _text(result.get("service_tier")),
+                "confidence": "exact",
+            })
+    return rows
+
+
+def parse_openai_cost_buckets(payload):
+    rows = []
+    for bucket in _items(payload):
+        start = _as_epoch(bucket.get("start_time"))
+        end = _as_epoch(bucket.get("end_time"))
+        for result in bucket.get("results") or []:
+            amount = result.get("amount") or {}
+            rows.append({
+                "provider": "openai",
+                "start_time": start,
+                "end_time": end,
+                "cost_usd": _as_float(amount.get("value")),
+                "currency": _text(amount.get("currency") or "usd").lower(),
+                "project_id": _text(result.get("project_id")),
+                "workspace_id": "",
+                "api_key_id": _text(result.get("api_key_id")),
+                "line_item": _text(result.get("line_item")),
+                "model": _text(result.get("model")),
+                "confidence": "exact",
+            })
+    return rows
+
+
+def parse_anthropic_usage_rows(payload):
+    rows = []
+    for item in _items(payload):
+        input_tokens = _as_int(item.get("input_tokens") or item.get("input_token_count"))
+        output_tokens = _as_int(item.get("output_tokens") or item.get("output_token_count"))
+        rows.append({
+            "provider": "anthropic",
+            "start_time": _as_epoch(item.get("starting_at") or item.get("start_time")),
+            "end_time": _as_epoch(item.get("ending_at") or item.get("end_time")),
+            "input_tokens": input_tokens,
+            "output_tokens": output_tokens,
+            "cache_read_tokens": _as_int(
+                item.get("cache_read_input_tokens") or item.get("cache_read_tokens")
+            ),
+            "cache_write_tokens": _as_int(
+                item.get("cache_creation_input_tokens") or item.get("cache_write_tokens")
+            ),
+            "total_tokens": input_tokens + output_tokens,
+            "request_count": _as_int(item.get("requests") or item.get("request_count")),
+            "project_id": "",
+            "workspace_id": _text(item.get("workspace_id")),
+            "user_id": _text(item.get("user_id") or item.get("actor_id")),
+            "api_key_id": _text(item.get("api_key_id")),
+            "model": _text(item.get("model")),
+            "service_tier": _text(item.get("service_tier")),
+            "confidence": "exact",
+        })
+    return rows
+
+
+def parse_anthropic_cost_rows(payload):
+    rows = []
+    for item in _items(payload):
+        amount = item.get("amount") if isinstance(item.get("amount"), dict) else {}
+        cost = item.get("cost_usd")
+        if cost is None:
+            cost = item.get("cost")
+        if cost is None:
+            cost = amount.get("value")
+        rows.append({
+            "provider": "anthropic",
+            "start_time": _as_epoch(item.get("starting_at") or item.get("start_time")),
+            "end_time": _as_epoch(item.get("ending_at") or item.get("end_time")),
+            "cost_usd": _as_float(cost),
+            "currency": _text(item.get("currency") or amount.get("currency") or "usd").lower(),
+            "project_id": "",
+            "workspace_id": _text(item.get("workspace_id")),
+            "api_key_id": _text(item.get("api_key_id")),
+            "line_item": _text(item.get("service") or item.get("line_item")),
+            "model": _text(item.get("model")),
+            "confidence": "exact",
+        })
+    return rows
+
+
+def _stable_id(parts):
+    joined = "\x1f".join(_text(p) for p in parts)
+    return sha256(joined.encode()).hexdigest()[:32]
+
+
+def record_provider_usage(db_path, provider, rows):
+    init_db(db_path)
+    fields = [
+        "id", "provider", "start_time", "end_time", "input_tokens", "output_tokens",
+        "cache_read_tokens", "cache_write_tokens", "total_tokens", "request_count",
+        "project_id", "workspace_id", "user_id", "api_key_id", "model",
+        "service_tier", "confidence", "raw",
+    ]
+    with connect(db_path) as con:
+        for row in rows:
+            data = dict(row)
+            data["provider"] = provider or data.get("provider") or ""
+            data.setdefault("raw", json.dumps(row, sort_keys=True))
+            data["id"] = _stable_id([
+                data.get("provider"), data.get("start_time"), data.get("end_time"),
+                data.get("project_id"), data.get("workspace_id"), data.get("user_id"),
+                data.get("api_key_id"), data.get("model"), data.get("service_tier"),
+            ])
+            values = {k: data.get(k, 0 if k.endswith("_tokens") or k in ("start_time", "end_time", "request_count") else "") for k in fields}
+            con.execute(
+                """
+                insert or replace into provider_usage_buckets (
+                  id, provider, start_time, end_time, input_tokens, output_tokens,
+                  cache_read_tokens, cache_write_tokens, total_tokens, request_count,
+                  project_id, workspace_id, user_id, api_key_id, model,
+                  service_tier, confidence, raw
+                ) values (
+                  :id, :provider, :start_time, :end_time, :input_tokens, :output_tokens,
+                  :cache_read_tokens, :cache_write_tokens, :total_tokens, :request_count,
+                  :project_id, :workspace_id, :user_id, :api_key_id, :model,
+                  :service_tier, :confidence, :raw
+                )
+                """,
+                values,
+            )
+
+
+def record_provider_costs(db_path, provider, rows):
+    init_db(db_path)
+    fields = [
+        "id", "provider", "start_time", "end_time", "cost_usd", "currency",
+        "project_id", "workspace_id", "api_key_id", "line_item", "model",
+        "confidence", "raw",
+    ]
+    with connect(db_path) as con:
+        for row in rows:
+            data = dict(row)
+            data["provider"] = provider or data.get("provider") or ""
+            data.setdefault("currency", "usd")
+            data.setdefault("raw", json.dumps(row, sort_keys=True))
+            data["id"] = _stable_id([
+                data.get("provider"), data.get("start_time"), data.get("end_time"),
+                data.get("project_id"), data.get("workspace_id"), data.get("api_key_id"),
+                data.get("line_item"), data.get("model"),
+            ])
+            values = {k: data.get(k, 0 if k in ("start_time", "end_time", "cost_usd") else "") for k in fields}
+            con.execute(
+                """
+                insert or replace into provider_cost_buckets (
+                  id, provider, start_time, end_time, cost_usd, currency,
+                  project_id, workspace_id, api_key_id, line_item, model,
+                  confidence, raw
+                ) values (
+                  :id, :provider, :start_time, :end_time, :cost_usd, :currency,
+                  :project_id, :workspace_id, :api_key_id, :line_item, :model,
+                  :confidence, :raw
+                )
+                """,
+                values,
+            )
