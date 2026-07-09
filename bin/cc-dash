@@ -1670,6 +1670,18 @@ class Handler(http.server.SimpleHTTPRequestHandler):
                 tmux("display-message", "-p", "-t", want, "#{pane_id}").stdout.strip() == want:
             pane = want
 
+        if self.path == "/model/switch":
+            provider = str(data.get("provider") or data.get("agent") or state_agent(sess))[:32]
+            preset = str(data.get("preset") or "diario")[:32]
+            switch_text = cc_usage.model_switch_text(provider, preset)
+            if tmux("has-session", "-t", target).returncode != 0:
+                return self._json(404, {"error": f"No hay sesion tmux '{sess}'"})
+            r = tmux("send-keys", "-t", pane, "-l", "--", switch_text)
+            if r.returncode != 0:
+                return self._json(500, {"error": r.stderr.strip() or "tmux fallo"})
+            tmux("send-keys", "-t", pane, "Enter")
+            return self._json(200, {"ok": True, "command": switch_text})
+
         if self.path == "/send":
             text = str(data.get("text", ""))[:4000]
             if not text.strip():

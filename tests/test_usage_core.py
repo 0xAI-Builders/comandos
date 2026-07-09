@@ -294,6 +294,16 @@ def test_alerts_fire_on_cost_threshold_and_spike():
     assert any(a["kind"] == "spike" for a in alerts)
 
 
+def test_model_presets_include_savings_daily_hard_maximum():
+    names = {p["id"] for p in cc_usage.model_presets()}
+    assert {"ahorro", "diario", "dificil", "maximo"}.issubset(names)
+
+
+def test_model_switch_text_opens_provider_model_picker():
+    assert cc_usage.model_switch_text("claude", "diario") == "/model sonnet"
+    assert cc_usage.model_switch_text("codex", "diario") == "/model"
+
+
 if __name__ == "__main__":
     test_usage_db_path_lives_under_hooks_dir()
     test_init_db_creates_required_tables()
@@ -307,3 +317,5 @@ if __name__ == "__main__":
     test_record_turn_rolls_up_by_project_session_and_pane()
     test_aggregate_provider_bucket_is_unattributed_without_matching_pane()
     test_alerts_fire_on_cost_threshold_and_spike()
+    test_model_presets_include_savings_daily_hard_maximum()
+    test_model_switch_text_opens_provider_model_picker()

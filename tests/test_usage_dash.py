@@ -27,8 +27,15 @@ def test_usage_capture_and_refresh_endpoints_exist():
     assert 'self.path == "/usage/refresh"' in SRC
 
 
+def test_model_switch_endpoint_targets_requested_pane():
+    assert 'self.path == "/model/switch"' in SRC
+    assert "cc_usage.model_switch_text" in SRC
+    assert 'tmux("send-keys", "-t", pane, "-l", "--", switch_text)' in SRC
+
+
 if __name__ == "__main__":
     test_cc_dash_imports_usage_module()
     test_usage_state_endpoint_exists_and_is_authenticated()
     test_usage_live_panes_records_pane_pwd_and_git_root()
     test_usage_capture_and_refresh_endpoints_exist()
+    test_model_switch_endpoint_targets_requested_pane()

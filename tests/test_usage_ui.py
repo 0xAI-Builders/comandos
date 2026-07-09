@@ -26,7 +26,14 @@ def test_session_cards_have_usage_chip_container():
     assert "usageChipText" in HTML
 
 
+def test_usage_ui_exposes_model_preset_buttons():
+    for preset in ("Ahorro", "Diario", "Difícil", "Máximo"):
+        assert preset in HTML
+    assert 'api("/model/switch"' in HTML
+
+
 if __name__ == "__main__":
     test_usage_drawer_markup_exists()
     test_usage_state_is_fetched_without_secret_rendering()
     test_session_cards_have_usage_chip_container()
+    test_usage_ui_exposes_model_preset_buttons()

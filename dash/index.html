@@ -586,6 +586,14 @@
 	    <button type="button" class="test" id="usage-close">Cerrar</button>
 	  </div>
 	  <div class="set"><div class="desc" id="usage-summary">Sin datos todavia.</div></div>
+	  <h3>Modelo por pane</h3>
+	  <div class="set" style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+	    <button type="button" class="test model-preset" data-preset="ahorro">Ahorro</button>
+	    <button type="button" class="test model-preset" data-preset="diario">Diario</button>
+	    <button type="button" class="test model-preset" data-preset="dificil">Difícil</button>
+	    <button type="button" class="test model-preset" data-preset="maximo">Máximo</button>
+	  </div>
+	  <div class="set"><div class="desc">Selecciona una sesion en la lista de panes y luego aplica un preset.</div></div>
 	  <h3>Proveedores</h3>
 	  <div id="usage-providers" class="usage-grid"></div>
 	  <h3 style="margin-top:22px">Proyectos y panes</h3>
@@ -640,6 +648,7 @@ const S = {
 	  recover: [],
 	  usage: null,
 	  usageByPane: new Map(),
+	  usageSelected: null,
 	};
 const $ = s => document.querySelector(s);
 const urgent = $("#urgent"), rows = $("#rows");
@@ -929,9 +938,20 @@ function mdStrip(s){ return (s||"").replace(/\*\*|`|^#{1,6} /g, ""); }
 	      ${(pr.panes || []).map(p => `<div class="usage-row">
 	        <div><b>${mdEsc(p.tmux_session || "")} ${mdEsc(p.tmux_pane || "")}</b><br>
 	          <span>${mdEsc(shortPath(p.pane_pwd || ""))}</span></div>
-	        <code>${mdEsc(usageChipText(p) || p.confidence || "")}</code>
+	        <button type="button" class="test usage-pick"
+	          data-session="${mdEsc(p.tmux_session || "")}"
+	          data-pane="${mdEsc(p.tmux_pane || "")}"
+	          data-provider="${mdEsc(p.provider || p.agent || "")}">${mdEsc(usageChipText(p) || p.confidence || "elegir")}</button>
 	      </div>`).join("")}
 	    </div>`).join("") : `<div class="empty">${tf("Sin panes de uso todavia", "No usage panes yet")}</div>`;
+	  document.querySelectorAll(".usage-pick").forEach(b=>{
+	    b.addEventListener("click", ()=>{
+	      S.usageSelected = {session:b.dataset.session, pane:b.dataset.pane, provider:b.dataset.provider};
+	      document.querySelectorAll(".usage-pick").forEach(x=>x.classList.remove("on"));
+	      b.classList.add("on");
+	      toast(tf(`Pane seleccionado ${b.dataset.session} ${b.dataset.pane}`, `Selected pane ${b.dataset.session} ${b.dataset.pane}`));
+	    });
+	  });
 	  const alerts = state?.alerts || [];
 	  $("#usage-alerts").innerHTML = alerts.length ? alerts.map(a =>
 	    `<div class="usage-alert">${mdEsc(a.message || a.kind || "alerta")}</div>`).join("")
@@ -2120,6 +2140,21 @@ $("#new-form").addEventListener("submit", async e=>{
 	    renderUsage(r.state || {});
 	    toast(tf("Uso actualizado", "Usage refreshed"));
 	  }catch(err){ toast(err.message, true); }
+	});
+	document.querySelectorAll(".model-preset").forEach(b=>{
+	  b.addEventListener("click", async ()=>{
+	    const sel = S.usageSelected;
+	    if(!sel || !sel.session) return toast(tf("Selecciona un pane primero", "Select a pane first"), true);
+	    try{
+	      await api("/model/switch", {
+	        session: sel.session,
+	        pane: sel.pane || undefined,
+	        provider: sel.provider || "claude",
+	        preset: b.dataset.preset,
+	      });
+	      toast(tf(`Preset enviado: ${b.textContent}`, `Preset sent: ${b.textContent}`));
+	    }catch(err){ toast(err.message, true); }
+	  });
 	});
 	document.addEventListener("click", e=>{
 	  for(const [id, trg] of [["#settings","btn-settings"],["#servers","ssh-manage"],["#remote","btn-remote"],["#usage","btn-usage"]]){

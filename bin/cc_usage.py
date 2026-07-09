@@ -461,6 +461,50 @@ def calculate_alerts(state, settings=None):
     return alerts
 
 
+def model_presets():
+    return [
+        {
+            "id": "ahorro",
+            "label": "Ahorro",
+            "description": "Tareas simples, lectura y cambios mecanicos",
+            "claude": {"model": "haiku", "command": "/model haiku"},
+            "codex": {"model": "", "command": "/model"},
+        },
+        {
+            "id": "diario",
+            "label": "Diario",
+            "description": "Programacion diaria balanceada",
+            "claude": {"model": "sonnet", "command": "/model sonnet"},
+            "codex": {"model": "", "command": "/model"},
+        },
+        {
+            "id": "dificil",
+            "label": "Dificil",
+            "description": "Debug complejo, arquitectura y refactors grandes",
+            "claude": {"model": "opus", "command": "/model opus"},
+            "codex": {"model": "", "command": "/model"},
+        },
+        {
+            "id": "maximo",
+            "label": "Maximo",
+            "description": "Problemas ambiguos, largos o de alto riesgo",
+            "claude": {"model": "fable", "command": "/model fable"},
+            "codex": {"model": "", "command": "/model"},
+        },
+    ]
+
+
+def model_switch_text(provider, preset):
+    provider = (provider or "").lower()
+    preset = (preset or "diario").lower()
+    item = next((p for p in model_presets() if p["id"] == preset), None)
+    if not item:
+        item = next(p for p in model_presets() if p["id"] == "diario")
+    if provider in ("claude", "anthropic"):
+        return item["claude"]["command"]
+    return item["codex"]["command"]
+
+
 def _http_json(url, headers, timeout=8):
     req = urllib.request.Request(url, headers=headers)
     with urllib.request.urlopen(req, timeout=timeout) as res:
