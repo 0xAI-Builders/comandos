@@ -1007,7 +1007,9 @@ def on_msg(mgr, res):
         if d.get("theme"):
             apply_theme(d["theme"])
             return
-        open_tab(d.get("session", ""), d.get("win", "claude"))
+        label = d.get("label", None)
+        open_tab(d.get("session", ""), d.get("win", "claude"),
+                 label=label if isinstance(label, str) and label else None)
     except Exception as e:
         print(f"mensaje invalido del tablero: {e}")
 

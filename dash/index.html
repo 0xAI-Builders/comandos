@@ -690,8 +690,8 @@ function saveCfg(){ localStorage.setItem("cc-cfg", JSON.stringify(S.cfg)); }
 function inApp(){
   return !!(window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.centro);
 }
-function openInApp(sess, win){
-  window.webkit.messageHandlers.centro.postMessage(JSON.stringify({session: sess, win}));
+function openInApp(sess, win, label){
+  window.webkit.messageHandlers.centro.postMessage(JSON.stringify({session: sess, win, label}));
 }
 async function openSession(it, win){
   if(inApp()){
@@ -1807,6 +1807,14 @@ async function connectHost(host){
   if(r.connected) toast(tf(`Conectado a ${host}`, `Connected to ${host}`));
   else toast(r.note || tf(`${host} sin conexion todavia`, `${host} not connected yet`), true);
 }
+async function openSshTab(host){
+  const r = await api("/ssh-new-tab", {host});
+  if(inApp()) openInApp(r.session, "ssh", r.label || host);
+  else if(WEBTERM) openTerm(r.session, r.label || host);
+  else await api("/focus", {session: r.session});
+  if(r.connected) toast(tf(`Nueva pestana SSH: ${host}`, `New SSH tab: ${host}`));
+  else toast(r.note || tf(`${host} abierto en nueva pestana`, `${host} opened in a new tab`), true);
+}
 async function setupSshKey(host){
   const r = await api("/ssh-key-setup", {host});
   if(inApp()) openInApp(r.session, "ssh");
@@ -1830,7 +1838,7 @@ async function loadSsh(){
       const b = document.createElement("button");
       b.className = "ssh-chip"; b.textContent = h.host;
       b.title = `${h.user ? h.user + "@" : ""}${h.hostname || ""}${h.port ? ":" + h.port : ""}`;
-      b.addEventListener("click", ()=> connectHost(h.host).catch(err=>toast(err.message,true)));
+      b.addEventListener("click", ()=> openSshTab(h.host).catch(err=>toast(err.message,true)));
       c.appendChild(b);
     }
     const list = $("#srv-list"); list.innerHTML = "";

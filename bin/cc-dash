@@ -1101,6 +1101,45 @@ def ssh_connect(host):
     return sess, False, f"{host} no responde (red caida o host apagado); la pestana quedo reintentando"
 
 
+def ssh_new_tab_session(host):
+    prefix = "sshtab-" + host
+    for i in range(1, 1000):
+        suffix = f"-{i}"
+        sess = prefix[:80 - len(suffix)] + suffix
+        if tmux("has-session", "-t", "=" + sess).returncode != 0:
+            return sess
+    return ""
+
+
+def ssh_open_new_tab(host):
+    """Crea SIEMPRE una sesion/pestana nueva para un host SSH guardado."""
+    if not SSH_HOST_RE.match(host) or not ssh_host_entry(host):
+        return None, False, "Host desconocido; agregalo primero"
+    sess = ssh_new_tab_session(host)
+    if not sess:
+        return None, False, "No pude generar nombre de sesion SSH"
+    try:
+        auth = subprocess.run(
+            ["ssh", "-o", "BatchMode=yes", "-o", "ConnectTimeout=6", host, "true"],
+            capture_output=True, text=True, timeout=14)
+        keyok = auth.returncode == 0
+        stderr = auth.stderr.lower()
+    except Exception:
+        keyok, stderr = False, "timeout"
+    r = subprocess.run(
+        scope_cmd(["tmux", "new-session", "-d", "-s", sess, "-n", "ssh",
+                   f"ssh {shlex.quote(host)}; exec $SHELL"]),
+        capture_output=True, text=True, timeout=15)
+    if r.returncode != 0:
+        return None, False, r.stderr.strip() or "No se pudo crear la sesion"
+    write_app_tab(sess, host)
+    if keyok:
+        return sess, True, None
+    if "denied" in stderr or "authentication" in stderr:
+        return sess, False, f"{host} pide password en su nueva pestana"
+    return sess, False, f"{host} no responde o pide intervencion en su nueva pestana"
+
+
 def _md_inline(l):
     l = re.sub(r"\*\*(.+?)\*\*", r"<b>\1</b>", l)
     l = re.sub(r"(^|[\s(])\*([^*\n]+)\*(?=$|[\s).,;:!?])", r"\1<i>\2</i>", l)
@@ -1508,6 +1547,13 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             if sess is None:
                 return self._json(400, {"error": note})
             return self._json(200, {"ok": True, "session": sess,
+                                    "connected": connected, "note": note})
+
+        if self.path == "/ssh-new-tab":
+            sess, connected, note = ssh_open_new_tab(data.get("host", ""))
+            if sess is None:
+                return self._json(400, {"error": note})
+            return self._json(200, {"ok": True, "session": sess, "label": data.get("host", ""),
                                     "connected": connected, "note": note})
 
         if self.path == "/ssh-key-setup":
