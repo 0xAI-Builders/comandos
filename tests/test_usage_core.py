@@ -304,6 +304,49 @@ def test_model_switch_text_opens_provider_model_picker():
     assert cc_usage.model_switch_text("codex", "diario") == "/model"
 
 
+def test_capture_hook_payload_noops_without_usage_numbers():
+    with tempfile.TemporaryDirectory() as d:
+        db = os.path.join(d, "usage.sqlite")
+        cc_usage.init_db(db)
+        result = cc_usage.capture_hook_payload({
+            "agent": "claude",
+            "tmux_session": "term-1",
+            "tmux_pane": "%1",
+            "pane_pwd": "/repo",
+            "git_root": "/repo",
+        }, db)
+        con = sqlite3.connect(db)
+        count = con.execute("select count(*) from usage_turns").fetchone()[0]
+
+    assert result["captured"] is False
+    assert count == 0
+
+
+def test_capture_hook_payload_records_when_usage_numbers_exist():
+    with tempfile.TemporaryDirectory() as d:
+        db = os.path.join(d, "usage.sqlite")
+        cc_usage.init_db(db)
+        result = cc_usage.capture_hook_payload({
+            "agent": "claude",
+            "provider": "claude",
+            "tmux_session": "term-1",
+            "tmux_pane": "%1",
+            "pane_pwd": "/repo",
+            "git_root": "/repo",
+            "model": "sonnet",
+            "input_tokens": 10,
+            "output_tokens": 5,
+            "cost_usd": 0.01,
+            "turn_started_at": 100,
+            "turn_finished_at": 110,
+        }, db)
+        state = cc_usage.build_usage_state(db, [], now=120)
+
+    assert result["captured"] is True
+    assert state["totals"]["total_tokens"] == 15
+    assert state["totals"]["cost_usd"] == 0.01
+
+
 if __name__ == "__main__":
     test_usage_db_path_lives_under_hooks_dir()
     test_init_db_creates_required_tables()
@@ -319,3 +362,5 @@ if __name__ == "__main__":
     test_alerts_fire_on_cost_threshold_and_spike()
     test_model_presets_include_savings_daily_hard_maximum()
     test_model_switch_text_opens_provider_model_picker()
+    test_capture_hook_payload_noops_without_usage_numbers()
+    test_capture_hook_payload_records_when_usage_numbers_exist()

@@ -147,6 +147,49 @@ write_state() { # $1=status $2=detalle $3=opciones (labels \x1f). LAST=respuesta
   if [ "$(wc -l < "$EVENTS" 2>/dev/null || echo 0)" -gt 2000 ]; then
     tail -n 500 "$EVENTS" > "$EVENTS.tmp" && mv "$EVENTS.tmp" "$EVENTS"
   fi
+  usage_capture "$1" >/dev/null 2>&1 || true
+}
+
+usage_num() {
+  local v="${!1:-0}"
+  case "$v" in ''|*[!0-9.]* ) printf 0 ;; *) printf '%s' "$v" ;; esac
+}
+
+usage_capture() {
+  local status="${1:-}"
+  local script="$HOME/.local/bin/cc_usage.py"
+  [ -r "$script" ] || return 0
+  local input_tok output_tok cache_read cache_write cost started
+  input_tok=$(usage_num COMANDOS_USAGE_INPUT_TOKENS)
+  output_tok=$(usage_num COMANDOS_USAGE_OUTPUT_TOKENS)
+  cache_read=$(usage_num COMANDOS_USAGE_CACHE_READ_TOKENS)
+  cache_write=$(usage_num COMANDOS_USAGE_CACHE_WRITE_TOKENS)
+  cost=$(usage_num COMANDOS_USAGE_COST_USD)
+  started=$(usage_num COMANDOS_USAGE_TURN_STARTED_AT)
+  [ "$started" = "0" ] && started="$now"
+  [ "$input_tok$output_tok$cache_read$cache_write$cost" = "00000" ] && return 0
+  jq -cn \
+    --arg provider "$AGENT" \
+    --arg agent "$AGENT" \
+    --arg session "$SESSION_HINT" \
+    --arg pane "$PANE_HINT" \
+    --arg cwd "$cwd" \
+    --arg model "${COMANDOS_USAGE_MODEL:-}" \
+    --arg effort "${COMANDOS_USAGE_REASONING_EFFORT:-}" \
+    --arg source "hook:$status" \
+    --argjson input "$input_tok" \
+    --argjson output "$output_tok" \
+    --argjson cache_read "$cache_read" \
+    --argjson cache_write "$cache_write" \
+    --argjson cost "$cost" \
+    --argjson started "$started" \
+    --argjson finished "$now" \
+    '{provider:$provider,agent:$agent,tmux_session:$session,tmux_pane:$pane,
+      pane_pwd:$cwd,git_root:$cwd,model:$model,reasoning_effort:$effort,
+      input_tokens:$input,output_tokens:$output,cache_read_tokens:$cache_read,
+      cache_write_tokens:$cache_write,cost_usd:$cost,turn_started_at:$started,
+      turn_finished_at:$finished,source:$source,confidence:"exact"}' \
+    | python3 "$script" capture-hook >/dev/null 2>&1 &
 }
 
 case "$event" in

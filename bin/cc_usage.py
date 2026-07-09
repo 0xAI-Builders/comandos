@@ -7,6 +7,7 @@ import json
 import os
 import sqlite3
 import subprocess
+import sys
 import time
 import urllib.parse
 import urllib.request
@@ -505,6 +506,51 @@ def model_switch_text(provider, preset):
     return item["codex"]["command"]
 
 
+def capture_hook_payload(payload, db_path=None):
+    db_path = db_path or usage_db_path()
+    input_tokens = _as_int(payload.get("input_tokens"))
+    output_tokens = _as_int(payload.get("output_tokens"))
+    cache_read = _as_int(payload.get("cache_read_tokens"))
+    cache_write = _as_int(payload.get("cache_write_tokens"))
+    cost_usd = _as_float(payload.get("cost_usd"))
+    total_tokens = _as_int(payload.get("total_tokens")) or input_tokens + output_tokens
+    if not any((input_tokens, output_tokens, cache_read, cache_write, total_tokens, cost_usd)):
+        return {"ok": True, "captured": False, "reason": "no_usage_numbers"}
+    now_ts = int(time.time())
+    event = {
+        "provider": payload.get("provider") or _provider_for_agent(payload.get("agent", "")),
+        "agent": payload.get("agent") or "",
+        "tmux_session": payload.get("tmux_session") or payload.get("session") or "",
+        "tmux_pane": payload.get("tmux_pane") or payload.get("pane") or "",
+        "pane_pwd": payload.get("pane_pwd") or payload.get("cwd") or "",
+        "git_root": payload.get("git_root") or payload.get("pane_pwd") or payload.get("cwd") or "",
+        "model": payload.get("model") or "",
+        "reasoning_effort": payload.get("reasoning_effort") or "",
+        "turn_started_at": _as_int(payload.get("turn_started_at"), now_ts),
+        "turn_finished_at": _as_int(payload.get("turn_finished_at"), now_ts),
+        "input_tokens": input_tokens,
+        "output_tokens": output_tokens,
+        "cache_read_tokens": cache_read,
+        "cache_write_tokens": cache_write,
+        "total_tokens": total_tokens,
+        "cost_usd": cost_usd,
+        "source": payload.get("source") or "hook",
+        "confidence": payload.get("confidence") or "exact",
+    }
+    record_turn(db_path, event)
+    return {"ok": True, "captured": True}
+
+
+def main(argv=None):
+    argv = argv or sys.argv[1:]
+    if argv and argv[0] == "capture-hook":
+        payload = json.load(sys.stdin)
+        print(json.dumps(capture_hook_payload(payload)))
+        return 0
+    print("usage: cc_usage.py capture-hook", file=sys.stderr)
+    return 2
+
+
 def _http_json(url, headers, timeout=8):
     req = urllib.request.Request(url, headers=headers)
     with urllib.request.urlopen(req, timeout=timeout) as res:
@@ -574,6 +620,10 @@ def fetch_anthropic_usage(env, now=None):
     except Exception as e:
         health.update({"status": "error", "error": str(e)[:240]})
         return [], [], health
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
 
 
 def _as_int(value, default=0):
