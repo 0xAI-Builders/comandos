@@ -629,12 +629,42 @@ TABS_FILE = os.path.expanduser("~/.claude/hooks/app-tabs.json")
 TAB_HISTORY_FILE = os.path.expanduser("~/.claude/hooks/app-tabs-history.json")
 
 
+def notebook_pages():
+    for i in range(nb.get_n_pages()):
+        yield nb.get_nth_page(i)
+
+
+def current_tab_order():
+    out = []
+    for page in notebook_pages():
+        key = getattr(page, "_key", None)
+        if key in tabs:
+            out.append(key)
+    return out
+
+
+def ordered_tab_labels(page_keys, labels):
+    out = {}
+    for key in page_keys:
+        if isinstance(key, str) and key in labels:
+            out[key] = labels[key]
+    for key, label in labels.items():
+        if key not in out:
+            out[key] = label
+    return out
+
+
 def save_tabs():
     try:
+        labels = {k: getattr(b, "_label", None) for k, b in tabs.items()}
         with open(TABS_FILE, "w") as f:
-            json.dump({k: getattr(b, "_label", None) for k, b in tabs.items()}, f)
+            json.dump(ordered_tab_labels(current_tab_order(), labels), f)
     except Exception:
         pass
+
+
+def on_tab_reordered(_nb, _child, _page_num):
+    save_tabs()
 
 
 def saved_tab_label(key):
@@ -868,6 +898,7 @@ def open_tab(sess, winname, label=None):
     box._key = key
     box._label = label or saved_tab_label(sess) or sess
     idx = nb.append_page(box, tab_label(box._label, key))
+    nb.set_tab_reorderable(box, True)
     box.show_all()
     nb.set_current_page(idx)
     box._term.grab_focus()
@@ -928,9 +959,11 @@ def open_switcher(*_):
 
     def candidates():
         out, seen = [], set()
-        for key, box in tabs.items():
-            out.append((getattr(box, "_label", key), key, True))
-            seen.add(key)
+        for page in notebook_pages():
+            key = getattr(page, "_key", None)
+            if key in tabs:
+                out.append((tab_page_label(page), key, True))
+                seen.add(key)
         for s, it in STATE_ITEMS.items():
             if s in seen or s == "local" or it.get("alive") is False or it.get("zombie"):
                 continue
@@ -968,21 +1001,30 @@ def open_switcher(*_):
             h.pack_end(m, False, False, 0)
             r.add(h)
             lb.add(r)
-            rows.append((r, key))
+            rows.append((r, key, is_open))
         lb.show_all()
         if rows:
             lb.select_row(rows[0][0])
 
     def go(row):
-        for r, key in rows:
+        for r, key, _is_open in rows:
             if r is row:
                 w.destroy()
                 open_tab(key, "claude")
                 return
 
+    def close_selected():
+        sel = lb.get_selected_row()
+        for r, key, is_open in rows:
+            if r is sel and is_open and key in tabs:
+                close_tab(key)
+                refill()
+                return True
+        return True
+
     def move_sel(delta):
         sel = lb.get_selected_row()
-        idx = next((i for i, (r, _) in enumerate(rows) if r is sel), 0)
+        idx = next((i for i, (r, _key, _is_open) in enumerate(rows) if r is sel), 0)
         idx = max(0, min(len(rows) - 1, idx + delta))
         if rows:
             lb.select_row(rows[idx][0])
@@ -1002,6 +1044,10 @@ def open_switcher(*_):
         if ev.keyval == Gdk.KEY_Up:
             move_sel(-1)
             return True
+        if ev.keyval in (Gdk.KEY_Delete, Gdk.KEY_BackSpace):
+            return close_selected()
+        if ev.state & Gdk.ModifierType.CONTROL_MASK and ev.keyval in (Gdk.KEY_w, Gdk.KEY_W):
+            return close_selected()
         return False
 
     lb.connect("row-activated", lambda _l, row: go(row))
@@ -1012,6 +1058,107 @@ def open_switcher(*_):
     refill()
     w.show_all()
     entry.grab_focus()
+
+
+def tab_page_label(page):
+    if getattr(page, "_label", None):
+        return page._label
+    hb = nb.get_tab_label(page)
+    txt = getattr(hb, "_text", None)
+    if txt is not None:
+        return txt.get_text()
+    return getattr(page, "_key", "tab") or "tab"
+
+
+def open_tabs_overview(*_):
+    if getattr(open_tabs_overview, "_win", None):
+        open_tabs_overview._win.present()
+        return
+    w = Gtk.Window(type=Gtk.WindowType.TOPLEVEL)
+    w.set_transient_for(win)
+    w.set_modal(False)
+    w.set_decorated(False)
+    w.set_position(Gtk.WindowPosition.CENTER_ON_PARENT)
+    w.set_default_size(500, 480)
+    w.get_style_context().add_class("switcher")
+    v = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
+    v.set_property("margin", 12)
+    title = Gtk.Label(label="Tabs abiertas" if ES else "Open tabs", xalign=0)
+    title.get_style_context().add_class("help-sec")
+    v.pack_start(title, False, False, 0)
+    sc = Gtk.ScrolledWindow()
+    sc.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
+    sc.set_min_content_height(320)
+    lb = Gtk.ListBox()
+    lb.set_activate_on_single_click(True)
+    sc.add(lb)
+    v.pack_start(sc, True, True, 0)
+    w.add(v)
+    rows = []
+
+    def focus_page(page):
+        w.destroy()
+        idx = nb.page_num(page)
+        if idx >= 0:
+            nb.set_current_page(nb.page_num(page))
+            term = getattr(page, "_term", None)
+            if term:
+                term.grab_focus()
+
+    def refill():
+        for ch in lb.get_children():
+            lb.remove(ch)
+        rows.clear()
+        for page in notebook_pages():
+            key = getattr(page, "_key", None)
+            label = tab_page_label(page)
+            st = STATE_CACHE.get(key, "") if key else ""
+            row = Gtk.ListBoxRow()
+            h = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=9)
+            h.set_property("margin", 8)
+            dot = Gtk.Label()
+            dot.set_markup(f'<span size="9500" foreground="{DOT_COLORS.get(st, DOT_IDLE)}">●</span>')
+            h.pack_start(dot, False, False, 0)
+            texts = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=1)
+            texts.pack_start(Gtk.Label(label=label, xalign=0), False, False, 0)
+            meta = Gtk.Label(label=(key or "local"), xalign=0)
+            meta.get_style_context().add_class("sw-meta")
+            texts.pack_start(meta, False, False, 0)
+            h.pack_start(texts, True, True, 0)
+            if key:
+                close = Gtk.Button(label="×")
+                close.set_relief(Gtk.ReliefStyle.NONE)
+                close.get_style_context().add_class("tabplus")
+
+                def on_close(_b, key=key):
+                    close_tab(key)
+                    refill()
+
+                close.connect("clicked", on_close)
+                h.pack_end(close, False, False, 0)
+            row.add(h)
+            lb.add(row)
+            rows.append((row, page))
+        lb.show_all()
+
+    def go(_lb, row):
+        for r, page in rows:
+            if r is row:
+                focus_page(page)
+                return
+
+    def on_key(_w, ev):
+        if ev.keyval == Gdk.KEY_Escape:
+            w.destroy()
+            return True
+        return False
+
+    lb.connect("row-activated", go)
+    w.connect("key-press-event", on_key)
+    w.connect("destroy", lambda *_: setattr(open_tabs_overview, "_win", None))
+    open_tabs_overview._win = w
+    refill()
+    w.show_all()
 
 
 def rename_tab(key):
@@ -1062,6 +1209,8 @@ def apply_theme(name):
 # mueven Super+N y los popups. No aparece como tarjeta en el tablero.
 hub = make_term("tmux new-session -A -s local -c ~")
 nb.append_page(hub, tab_label("⌂ local", closable=False))
+nb.set_tab_reorderable(hub, False)
+nb.connect("page-reordered", on_tab_reordered)
 
 # Barra de pestanas: boton "+" (nueva terminal) y "?" (atajos)
 _actions = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=2)
@@ -1071,6 +1220,12 @@ _copy.set_relief(Gtk.ReliefStyle.NONE)
 _copy.set_tooltip_text("Copiar la ultima respuesta de Claude de ESTA pestana" if ES else "Copy Claude's latest reply from THIS tab")
 _copy.connect("clicked", lambda *_: cur_term() and copy_claude_reply(cur_term()))
 _actions.pack_start(_copy, False, False, 0)
+_tabs = Gtk.Button(label="▦")
+_tabs.get_style_context().add_class("tabplus")
+_tabs.set_relief(Gtk.ReliefStyle.NONE)
+_tabs.set_tooltip_text("Ver, saltar y cerrar tabs abiertas" if ES else "View, jump and close open tabs")
+_tabs.connect("clicked", open_tabs_overview)
+_actions.pack_start(_tabs, False, False, 0)
 _find = Gtk.Button(label="⌕")
 _find.get_style_context().add_class("tabplus")
 _find.set_relief(Gtk.ReliefStyle.NONE)
