@@ -227,6 +227,73 @@ def test_record_provider_usage_and_costs_round_trip():
     assert cost_count == 1
 
 
+def test_record_turn_rolls_up_by_project_session_and_pane():
+    with tempfile.TemporaryDirectory() as d:
+        db = os.path.join(d, "usage.sqlite")
+        cc_usage.init_db(db)
+        event = {
+            "provider": "claude",
+            "agent": "claude",
+            "tmux_session": "term-1",
+            "tmux_pane": "%1",
+            "pane_pwd": "/repo/frontend",
+            "git_root": "/repo",
+            "model": "sonnet",
+            "turn_started_at": 100,
+            "turn_finished_at": 120,
+            "input_tokens": 10,
+            "output_tokens": 5,
+            "cost_usd": 0.01,
+            "source": "cli_turn",
+            "confidence": "exact",
+        }
+        cc_usage.record_turn(db, event)
+        state = cc_usage.build_usage_state(db, [], now=130)
+
+    assert state["totals"]["cost_usd"] == 0.01
+    assert state["projects"][0]["git_root"] == "/repo"
+    assert state["projects"][0]["panes"][0]["tmux_pane"] == "%1"
+    assert state["projects"][0]["panes"][0]["confidence"] == "exact"
+
+
+def test_aggregate_provider_bucket_is_unattributed_without_matching_pane():
+    with tempfile.TemporaryDirectory() as d:
+        db = os.path.join(d, "usage.sqlite")
+        cc_usage.init_db(db)
+        cc_usage.record_provider_costs(db, "openai", [{
+            "provider": "openai",
+            "start_time": 100,
+            "end_time": 200,
+            "cost_usd": 0.25,
+            "currency": "usd",
+            "project_id": "",
+            "api_key_id": "",
+            "line_item": "Completions",
+            "confidence": "exact",
+        }])
+        state = cc_usage.build_usage_state(db, [], now=210)
+
+    assert state["totals"]["cost_usd"] == 0.25
+    assert state["unattributed"][0]["cost_usd"] == 0.25
+    assert state["unattributed"][0]["confidence"] == "unattributed"
+
+
+def test_alerts_fire_on_cost_threshold_and_spike():
+    state = {
+        "totals": {"cost_usd": 9.5},
+        "windows": {"daily_budget_usd": 10.0},
+        "series": [{"ts": 100, "cost_usd": 1.0}, {"ts": 200, "cost_usd": 9.5}],
+    }
+
+    alerts = cc_usage.calculate_alerts(
+        state,
+        {"cost_thresholds": [0.7, 0.85, 0.95], "spike_usd": 5.0},
+    )
+
+    assert any(a["kind"] == "budget" and a["level"] == "danger" for a in alerts)
+    assert any(a["kind"] == "spike" for a in alerts)
+
+
 if __name__ == "__main__":
     test_usage_db_path_lives_under_hooks_dir()
     test_init_db_creates_required_tables()
@@ -237,3 +304,6 @@ if __name__ == "__main__":
     test_parse_openai_cost_buckets_preserves_amount_currency()
     test_parse_anthropic_rows_accepts_current_and_generic_shapes()
     test_record_provider_usage_and_costs_round_trip()
+    test_record_turn_rolls_up_by_project_session_and_pane()
+    test_aggregate_provider_bucket_is_unattributed_without_matching_pane()
+    test_alerts_fire_on_cost_threshold_and_spike()

@@ -1579,6 +1579,31 @@ class Handler(http.server.SimpleHTTPRequestHandler):
                 json.dump(prefs, f)
             return self._json(200, {"ok": True})
 
+        if self.path == "/usage/capture":
+            try:
+                event = cc_usage.record_turn(USAGE_DB, data)
+            except Exception as e:
+                return self._json(500, {"error": str(e)})
+            return self._json(200, {"ok": True, "event": event})
+
+        if self.path == "/usage/refresh":
+            health, counts = [], {}
+            for provider, fetcher in (
+                ("openai", cc_usage.fetch_openai_usage),
+                ("anthropic", cc_usage.fetch_anthropic_usage),
+            ):
+                usage_rows, cost_rows, h = fetcher(os.environ)
+                health.append(h)
+                counts[provider] = {"usage": len(usage_rows), "costs": len(cost_rows)}
+                if usage_rows:
+                    cc_usage.record_provider_usage(USAGE_DB, provider, usage_rows)
+                if cost_rows:
+                    cc_usage.record_provider_costs(USAGE_DB, provider, cost_rows)
+            panes = usage_live_panes()
+            state = cc_usage.build_usage_state(USAGE_DB, panes)
+            state["credential_health"] = {h["provider"]: h for h in health}
+            return self._json(200, {"ok": True, "counts": counts, "state": state})
+
         if self.path == "/ssh-connect":
             sess, connected, note = ssh_connect(data.get("host", ""))
             if sess is None:
