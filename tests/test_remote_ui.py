@@ -42,6 +42,11 @@ console.log(JSON.stringify(remoteButtonState({json.dumps(state)}, {str(busy).low
     return json.loads(out)
 
 
+def run_node_json(script):
+    out = subprocess.check_output(["node", "-e", script], text=True)
+    return json.loads(out)
+
+
 def test_remote_drawer_controls_are_present():
     assert 'id="btn-remote"' in HTML
     assert 'id="remote"' in HTML
@@ -102,6 +107,59 @@ def test_remote_terminal_iframe_does_not_hijack_tmux_wheel_events():
     assert "wireTermFrameScroll(frame)" in HTML
 
 
+def test_remote_touch_scroll_is_throttled_for_tmux_wheel_ticks():
+    fn = extract_js_function(HTML, "wireTermFrameScroll")
+    script = f"""
+{fn}
+const listeners = {{}};
+let wheels = [];
+const target = {{
+  dispatchEvent(ev){{
+    if(ev.type === "wheel") wheels.push({{deltaY: ev.deltaY, clientY: ev.clientY}});
+    return true;
+  }}
+}};
+class FakeWheelEvent {{
+  constructor(type, init){{ this.type = type; Object.assign(this, init); }}
+}}
+const doc = {{
+  body: target,
+  addEventListener(type, cb){{ listeners[type] = cb; }},
+  elementFromPoint(){{ return target; }},
+  querySelector(){{ return target; }}
+}};
+const frame = {{ dataset: {{}}, contentWindow: {{ WheelEvent: FakeWheelEvent }}, contentDocument: doc }};
+wireTermFrameScroll(frame);
+const ev = y => ({{
+  touches: [{{clientX: 10, clientY: y, screenX: 10, screenY: y}}],
+  target,
+  preventDefault(){{ this.prevented = true; }},
+  stopPropagation(){{ this.stopped = true; }}
+}});
+listeners.touchstart(ev(100));
+listeners.touchmove(ev(80));
+const afterSmallMove = wheels.length;
+listeners.touchmove(ev(60));
+const afterSecondSmallMove = wheels.length;
+listeners.touchmove(ev(40));
+const afterThreshold = wheels.length;
+listeners.touchmove(ev(-90));
+console.log(JSON.stringify({{
+  afterSmallMove,
+  afterSecondSmallMove,
+  afterThreshold,
+  finalCount: wheels.length,
+  deltas: wheels.map(w => w.deltaY)
+}}));
+"""
+    result = run_node_json(script)
+
+    assert result["afterSmallMove"] == 0
+    assert result["afterSecondSmallMove"] == 0
+    assert result["afterThreshold"] == 1
+    assert result["finalCount"] <= 4
+
+
 def test_remote_terminal_has_explicit_text_selection_mode():
     assert 'id="term-select-toggle"' in HTML
     assert "/tmux-mouse" in HTML
@@ -160,6 +218,7 @@ if __name__ == "__main__":
     test_remote_terminal_can_be_opened_from_remote_drawer()
     test_open_terminal_button_dismisses_remote_drawer()
     test_remote_terminal_iframe_does_not_hijack_tmux_wheel_events()
+    test_remote_touch_scroll_is_throttled_for_tmux_wheel_ticks()
     test_remote_terminal_has_explicit_text_selection_mode()
     test_remote_buttons_reflect_actual_backend_state()
     test_remote_routes_are_never_served_from_stale_shell_cache()

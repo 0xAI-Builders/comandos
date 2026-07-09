@@ -1044,6 +1044,9 @@ function wireTermFrameScroll(frame){
     if(!win || !doc || win.__comandosScrollWired) return;
     win.__comandosScrollWired = true;
     let touchY = null;
+    let touchWheelAccum = 0;
+    const TOUCH_WHEEL_STEP = 56;
+    const TOUCH_WHEEL_MAX_TICKS = 3;
     const termTargetAt = (touch, fallback) =>
       doc.elementFromPoint?.(touch.clientX, touch.clientY) ||
       fallback ||
@@ -1065,6 +1068,7 @@ function wireTermFrameScroll(frame){
       return true;
     };
     doc.addEventListener("touchstart", e => {
+      touchWheelAccum = 0;
       if(frame.dataset.selecting === "1"){ touchY = null; return; }
       touchY = e.touches && e.touches.length === 1 ? e.touches[0].clientY : null;
     }, {capture:true, passive:true});
@@ -1074,13 +1078,20 @@ function wireTermFrameScroll(frame){
       const touch = e.touches[0];
       const dy = touchY - touch.clientY;
       touchY = touch.clientY;
-      if(emitWheel(termTargetAt(touch, e.target), dy, touch)){
+      touchWheelAccum += dy;
+      const ticks = Math.trunc(touchWheelAccum / TOUCH_WHEEL_STEP);
+      const cappedTicks = Math.max(-TOUCH_WHEEL_MAX_TICKS, Math.min(TOUCH_WHEEL_MAX_TICKS, ticks));
+      if(cappedTicks && emitWheel(termTargetAt(touch, e.target), cappedTicks * TOUCH_WHEEL_STEP, touch)){
+        touchWheelAccum -= cappedTicks * TOUCH_WHEEL_STEP;
+        e.preventDefault();
+        e.stopPropagation();
+      }else if(dy){
         e.preventDefault();
         e.stopPropagation();
       }
     }, {capture:true, passive:false});
-    doc.addEventListener("touchend", () => { touchY = null; }, {capture:true, passive:true});
-    doc.addEventListener("touchcancel", () => { touchY = null; }, {capture:true, passive:true});
+    doc.addEventListener("touchend", () => { touchY = null; touchWheelAccum = 0; }, {capture:true, passive:true});
+    doc.addEventListener("touchcancel", () => { touchY = null; touchWheelAccum = 0; }, {capture:true, passive:true});
   }catch(_){}
 }
 
