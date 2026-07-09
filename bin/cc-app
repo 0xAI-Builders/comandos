@@ -353,6 +353,24 @@ def pane_at(term, event):
     return None, len(panes)
 
 
+def copy_mode_pane(sess, preferred=None):
+    """Pane que esta en copy-mode, priorizando el pane bajo el cursor."""
+    if preferred:
+        r = tmuxc("display-message", "-p", "-t", preferred, "#{pane_in_mode}")
+        if r.stdout.strip() == "1":
+            return preferred
+    if not sess:
+        return None
+    r = tmuxc("list-panes", "-t", "=" + sess + ":", "-F", "#{pane_id}|#{pane_in_mode}")
+    if r.returncode != 0:
+        return None
+    for line in r.stdout.splitlines():
+        pane, _, mode = line.partition("|")
+        if pane and mode == "1":
+            return pane
+    return None
+
+
 def notify_popup(title, body):
     """Feedback visible via el demonio de popups (se autocierra en 12s)."""
     try:
@@ -487,20 +505,19 @@ def on_term_button(term, event):
 
     # Hay DOS tipos de seleccion: la de la terminal (VTE, con Shift+arrastrar)
     # y la de tmux (arrastrar normal, es la que persiste). Copiar cubre ambas.
-    in_copy = False
-    if pane_id:
-        rm = tmuxc("display-message", "-p", "-t", pane_id, "#{pane_in_mode}")
-        in_copy = rm.stdout.strip() == "1"
+    copy_pane = copy_mode_pane(cur_sess, pane_id)
 
     def do_copy():
         if term.get_has_selection():
             term.copy_clipboard_format(Vte.Format.TEXT)
-        elif in_copy and pane_id:
-            tmuxc("send-keys", "-t", pane_id, "-X", "copy-pipe-no-clear",
+            return
+        target = copy_mode_pane(term_session(term), pane_id) or copy_pane
+        if target:
+            tmuxc("send-keys", "-t", target, "-X", "copy-pipe-no-clear",
                   "xclip -in -selection clipboard 2>/dev/null")
 
     item(("Copiar                   Ctrl+C" if ES else "Copy                     Ctrl+C"), do_copy,
-         sensitive=term.get_has_selection() or in_copy)
+         sensitive=True)
     item(("Pegar                    Ctrl+V" if ES else "Paste                    Ctrl+V"),
          lambda: (exit_copy_mode(term), term.paste_clipboard()))
     item("Copiar respuesta de Claude" if ES else "Copy Claude's reply", lambda: copy_claude_reply(term))
