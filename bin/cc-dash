@@ -529,22 +529,30 @@ def agent_pane_maps(procs):
         pane, _, ppid = rest.partition("|")
         if ppid.isdigit():
             by_pid[int(ppid)] = (sess, pane)
-    by_session, by_cwd, seen = {}, {}, set()
+    best_by_pane = {}
     for pid, cwd, agent in procs:
         p = pid
-        for _ in range(25):
+        for depth in range(25):
             if p in by_pid:
                 sess, pane = by_pid[p]
-                key = (sess, pane, agent)
-                if key not in seen:
-                    seen.add(key)
-                    info = {"session": sess, "pane": pane, "cwd": cwd, "agent": agent, "pid": pid}
-                    by_session.setdefault(sess, info)
-                    by_cwd.setdefault(cwd, []).append(info)
+                key = (sess, pane)
+                info = {
+                    "session": sess, "pane": pane, "cwd": cwd,
+                    "agent": agent, "pid": pid, "_depth": depth,
+                }
+                prev = best_by_pane.get(key)
+                if not prev or depth < prev["_depth"] or (depth == prev["_depth"] and pid > prev["pid"]):
+                    best_by_pane[key] = info
                 break
             p = parent_pid(p)
             if p <= 1:
                 break
+    by_session, by_cwd = {}, {}
+    for info in best_by_pane.values():
+        info = dict(info)
+        info.pop("_depth", None)
+        by_session.setdefault(info["session"], info)
+        by_cwd.setdefault(info["cwd"], []).append(info)
     return by_session, by_cwd
 
 

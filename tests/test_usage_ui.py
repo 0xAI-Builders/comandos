@@ -32,8 +32,24 @@ def test_usage_ui_exposes_model_preset_buttons():
     assert 'api("/model/switch"' in HTML
 
 
+def test_usage_ui_labels_detected_panes_without_unattributed_noise():
+    assert "function confidenceLabel" in HTML
+    assert '"detected": "detectado"' in HTML
+    assert "confidenceLabel(u.confidence)" in HTML
+
+
+def test_usage_ui_switches_models_inline_per_pane():
+    assert 'class="pane-model-controls"' in HTML
+    assert 'class="test pane-preset"' in HTML
+    assert 'document.querySelectorAll(".pane-preset")' in HTML
+    assert "session: b.dataset.session" in HTML
+    assert "pane: b.dataset.pane || undefined" in HTML
+
+
 if __name__ == "__main__":
     test_usage_drawer_markup_exists()
     test_usage_state_is_fetched_without_secret_rendering()
     test_session_cards_have_usage_chip_container()
     test_usage_ui_exposes_model_preset_buttons()
+    test_usage_ui_labels_detected_panes_without_unattributed_noise()
+    test_usage_ui_switches_models_inline_per_pane()

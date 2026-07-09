@@ -318,17 +318,18 @@ def _project_rollups(turns, panes):
     projects = {}
     for pane in panes:
         root = pane.get("git_root") or pane.get("pane_pwd") or ""
+        confidence = pane.get("confidence") or "detected"
         item = projects.setdefault(root, {
             "git_root": root,
             "cost_usd": 0.0,
             "total_tokens": 0,
-            "confidence": "unattributed",
+            "confidence": confidence,
             "panes": [],
         })
         pane_copy = dict(pane)
         pane_copy.setdefault("cost_usd", 0.0)
         pane_copy.setdefault("total_tokens", 0)
-        pane_copy.setdefault("confidence", "unattributed")
+        pane_copy.setdefault("confidence", confidence)
         item["panes"].append(pane_copy)
     pane_index = {
         (p.get("tmux_session"), p.get("tmux_pane")): p
@@ -403,11 +404,30 @@ def build_usage_state(db_path, live_panes=None, now=None):
         })
     providers = {}
     for row in provider_costs:
-        p = providers.setdefault(row.get("provider", ""), {"provider": row.get("provider", ""), "cost_usd": 0.0, "total_tokens": 0})
+        p = providers.setdefault(row.get("provider", ""), {
+            "provider": row.get("provider", ""),
+            "cost_usd": 0.0,
+            "total_tokens": 0,
+            "active_panes": 0,
+        })
         p["cost_usd"] = round(p["cost_usd"] + _as_float(row.get("cost_usd")), 6)
     for row in provider_usage:
-        p = providers.setdefault(row.get("provider", ""), {"provider": row.get("provider", ""), "cost_usd": 0.0, "total_tokens": 0})
+        p = providers.setdefault(row.get("provider", ""), {
+            "provider": row.get("provider", ""),
+            "cost_usd": 0.0,
+            "total_tokens": 0,
+            "active_panes": 0,
+        })
         p["total_tokens"] += _as_int(row.get("total_tokens"))
+    for pane in panes:
+        provider = pane.get("provider") or pane.get("agent") or "unknown"
+        p = providers.setdefault(provider, {
+            "provider": provider,
+            "cost_usd": 0.0,
+            "total_tokens": 0,
+            "active_panes": 0,
+        })
+        p["active_panes"] = _as_int(p.get("active_panes")) + 1
     cost_total = provider_cost if provider_cost > 0 else turn_cost
     token_total = provider_tokens if provider_tokens > 0 else turn_tokens
     series = [

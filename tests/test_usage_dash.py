@@ -1,8 +1,22 @@
 #!/usr/bin/env python3
+import importlib.machinery
+import importlib.util
+import sys
 from pathlib import Path
 
 
 SRC = Path("bin/cc-dash").read_text()
+
+
+def load_dash_module():
+    bin_dir = str(Path("bin").resolve())
+    if bin_dir not in sys.path:
+        sys.path.insert(0, bin_dir)
+    loader = importlib.machinery.SourceFileLoader("cc_dash_under_test", str(Path("bin/cc-dash").resolve()))
+    spec = importlib.util.spec_from_loader(loader.name, loader)
+    mod = importlib.util.module_from_spec(spec)
+    loader.exec_module(mod)
+    return mod
 
 
 def test_cc_dash_imports_usage_module():
@@ -33,9 +47,31 @@ def test_model_switch_endpoint_targets_requested_pane():
     assert 'tmux("send-keys", "-t", pane, "-l", "--", switch_text)' in SRC
 
 
+def test_agent_pane_maps_keeps_one_agent_per_tmux_pane():
+    dash = load_dash_module()
+
+    class R:
+        returncode = 0
+        stdout = "term-1|%1|100\n"
+
+    dash.tmux = lambda *args, **kwargs: R()
+    parents = {300: 200, 200: 100, 400: 100}
+    dash.parent_pid = lambda pid: parents.get(pid, 0)
+
+    _by_session, by_cwd = dash.agent_pane_maps([
+        (300, "/repo", "claude"),
+        (400, "/repo", "codex"),
+    ])
+
+    assert len(by_cwd["/repo"]) == 1
+    assert by_cwd["/repo"][0]["agent"] == "codex"
+    assert by_cwd["/repo"][0]["pane"] == "%1"
+
+
 if __name__ == "__main__":
     test_cc_dash_imports_usage_module()
     test_usage_state_endpoint_exists_and_is_authenticated()
     test_usage_live_panes_records_pane_pwd_and_git_root()
     test_usage_capture_and_refresh_endpoints_exist()
     test_model_switch_endpoint_targets_requested_pane()
+    test_agent_pane_maps_keeps_one_agent_per_tmux_pane()

@@ -440,11 +440,14 @@
 	  .usage-bar{height:6px;border-radius:6px;background:var(--line);overflow:hidden;margin-top:8px}
 	  .usage-bar span{display:block;height:100%;background:var(--brand);width:0}
 	  .usage-row{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px;
-	    padding:8px 0;border-bottom:1px solid var(--line);font-family:var(--mono)}
+	    align-items:start;padding:8px 0;border-bottom:1px solid var(--line);font-family:var(--mono)}
 	  .usage-row:last-child{border-bottom:0}
 	  .usage-row b{font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 	  .usage-row span{font-size:10.5px;color:var(--faint);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 	  .usage-row code{font-size:10px;color:var(--code)}
+	  .usage-pane-main{min-width:0}
+	  .pane-model-controls{display:grid;grid-template-columns:1fr 1fr;gap:5px;width:156px}
+	  .pane-model-controls .test{min-width:0;padding:5px 6px;font-size:10px;line-height:1.15}
 	  .usage-alert{border-left:3px solid var(--waiting);padding:7px 9px;background:var(--panel);
 	    border-radius:6px;font-size:11.5px;color:var(--dim);margin-bottom:7px}
 	  .usage-chip{flex:none;font-family:var(--mono);font-size:9.5px;color:var(--code);
@@ -586,14 +589,6 @@
 	    <button type="button" class="test" id="usage-close">Cerrar</button>
 	  </div>
 	  <div class="set"><div class="desc" id="usage-summary">Sin datos todavia.</div></div>
-	  <h3>Modelo por pane</h3>
-	  <div class="set" style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
-	    <button type="button" class="test model-preset" data-preset="ahorro">Ahorro</button>
-	    <button type="button" class="test model-preset" data-preset="diario">Diario</button>
-	    <button type="button" class="test model-preset" data-preset="dificil">Difícil</button>
-	    <button type="button" class="test model-preset" data-preset="maximo">Máximo</button>
-	  </div>
-	  <div class="set"><div class="desc">Selecciona una sesion en la lista de panes y luego aplica un preset.</div></div>
 	  <h3>Proveedores</h3>
 	  <div id="usage-providers" class="usage-grid"></div>
 	  <h3 style="margin-top:22px">Proyectos y panes</h3>
@@ -822,6 +817,7 @@ function shortPath(cwd){
 // romper esta invariante: si algun dia se emite <a href> con la URL, se vuelve
 // inyectable. Por eso mdHtml es XSS-safe.
 function mdEsc(s){return (s||"").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");}
+function attrEsc(s){return mdEsc(String(s||"")).replace(/"/g,"&quot;");}
 function mdInline(l){
   return l.replace(/\*\*(.+?)\*\*/g, "<b>$1</b>")
           .replace(/(^|[\s(])\*([^*\n]+)\*(?=$|[\s).,;:!?])/g, "$1<i>$2</i>")
@@ -896,6 +892,10 @@ function mdStrip(s){ return (s||"").replace(/\*\*|`|^#{1,6} /g, ""); }
 	  return S.usageByPane.get(usagePaneKey(it.session, it.pane || "")) ||
 	         S.usageByPane.get(usagePaneKey(it.session, "")) || null;
 	}
+	function confidenceLabel(c){
+	  const labels = {"detected": "detectado", "exact": "exacto", "reconciled": "reconciliado", "unattributed": "sin asignar"};
+	  return labels[c] || c || "";
+	}
 	function usageChipText(u){
 	  if(!u) return "";
 	  const bits = [];
@@ -903,8 +903,19 @@ function mdStrip(s){ return (s||"").replace(/\*\*|`|^#{1,6} /g, ""); }
 	  if(u.model) bits.push(u.model);
 	  if(Number(u.cost_usd || 0) > 0) bits.push(fmtMoney(u.cost_usd));
 	  else if(Number(u.total_tokens || 0) > 0) bits.push(fmtTokens(u.total_tokens));
-	  if(u.confidence) bits.push(u.confidence);
+	  if(confidenceLabel(u.confidence)) bits.push(confidenceLabel(u.confidence));
 	  return bits.slice(0, 4).join(" · ");
+	}
+	function panePresetButtons(p){
+	  const session = attrEsc(p.tmux_session || "");
+	  const pane = attrEsc(p.tmux_pane || "");
+	  const provider = attrEsc(p.provider || p.agent || "claude");
+	  return `<div class="pane-model-controls">
+	    <button type="button" class="test pane-preset" data-preset="ahorro" data-session="${session}" data-pane="${pane}" data-provider="${provider}" title="Ahorro">Ahorro</button>
+	    <button type="button" class="test pane-preset" data-preset="diario" data-session="${session}" data-pane="${pane}" data-provider="${provider}" title="Diario">Diario</button>
+	    <button type="button" class="test pane-preset" data-preset="dificil" data-session="${session}" data-pane="${pane}" data-provider="${provider}" title="Difícil">Difícil</button>
+	    <button type="button" class="test pane-preset" data-preset="maximo" data-session="${session}" data-pane="${pane}" data-provider="${provider}" title="Máximo">Máximo</button>
+	  </div>`;
 	}
 	function usageStatusLabel(h){
 	  if(!h) return "sin datos";
@@ -919,37 +930,43 @@ function mdStrip(s){ return (s||"").replace(/\*\*|`|^#{1,6} /g, ""); }
 	  const hp = state?.credential_health || {};
 	  const providerRows = [...(state?.providers || [])];
 	  for(const id of ["openai", "anthropic"])
-	    if(!providerRows.some(p => p.provider === id)) providerRows.push({provider:id, cost_usd:0, total_tokens:0});
+	    if(!providerRows.some(p => p.provider === id)) providerRows.push({provider:id, cost_usd:0, total_tokens:0, active_panes:0});
 	  $("#usage-providers").innerHTML = providerRows.map(p=>{
 	    const h = hp[p.provider] || {};
 	    const pct = Math.min(100, Number(p.cost_usd || 0) * 10);
+	    const active = Number(p.active_panes || 0);
+	    const status = active ? "activo" : usageStatusLabel(h);
+	    const sub = [fmtTokens(p.total_tokens || 0), active ? `${active} panes activos` : ""].filter(Boolean).join(" · ");
 	    return `<div class="usage-card">
-	      <div class="usage-title">${mdEsc(p.provider || "provider")}<small>${mdEsc(usageStatusLabel(h))}</small></div>
+	      <div class="usage-title">${mdEsc(p.provider || "provider")}<small>${mdEsc(status)}</small></div>
 	      <div class="usage-metric">${fmtMoney(p.cost_usd)}</div>
-	      <div class="usage-sub">${fmtTokens(p.total_tokens || 0)}</div>
+	      <div class="usage-sub">${mdEsc(sub)}</div>
 	      <div class="usage-bar"><span style="width:${pct}%"></span></div>
 	    </div>`;
 	  }).join("");
 	  const projects = state?.projects || [];
 	  $("#usage-projects").innerHTML = projects.length ? projects.map(pr => `
 	    <div class="usage-card">
-	      <div class="usage-title">${mdEsc(shortPath(pr.git_root || ""))}<small>${mdEsc(pr.confidence || "")}</small></div>
+	      <div class="usage-title">${mdEsc(shortPath(pr.git_root || ""))}<small>${mdEsc(confidenceLabel(pr.confidence))}</small></div>
 	      <div class="usage-sub">${fmtMoney(pr.cost_usd)} · ${fmtTokens(pr.total_tokens || 0)}</div>
 	      ${(pr.panes || []).map(p => `<div class="usage-row">
-	        <div><b>${mdEsc(p.tmux_session || "")} ${mdEsc(p.tmux_pane || "")}</b><br>
-	          <span>${mdEsc(shortPath(p.pane_pwd || ""))}</span></div>
-	        <button type="button" class="test usage-pick"
-	          data-session="${mdEsc(p.tmux_session || "")}"
-	          data-pane="${mdEsc(p.tmux_pane || "")}"
-	          data-provider="${mdEsc(p.provider || p.agent || "")}">${mdEsc(usageChipText(p) || p.confidence || "elegir")}</button>
+	        <div class="usage-pane-main"><b>${mdEsc(p.tmux_session || "")} ${mdEsc(p.tmux_pane || "")}</b><br>
+	          <span>${mdEsc(shortPath(p.pane_pwd || ""))}</span><br>
+	          <span>${mdEsc(usageChipText(p) || confidenceLabel(p.confidence) || "detectado")}</span></div>
+	        ${panePresetButtons(p)}
 	      </div>`).join("")}
 	    </div>`).join("") : `<div class="empty">${tf("Sin panes de uso todavia", "No usage panes yet")}</div>`;
-	  document.querySelectorAll(".usage-pick").forEach(b=>{
-	    b.addEventListener("click", ()=>{
-	      S.usageSelected = {session:b.dataset.session, pane:b.dataset.pane, provider:b.dataset.provider};
-	      document.querySelectorAll(".usage-pick").forEach(x=>x.classList.remove("on"));
-	      b.classList.add("on");
-	      toast(tf(`Pane seleccionado ${b.dataset.session} ${b.dataset.pane}`, `Selected pane ${b.dataset.session} ${b.dataset.pane}`));
+	  document.querySelectorAll(".pane-preset").forEach(b=>{
+	    b.addEventListener("click", async ()=>{
+	      try{
+	        await api("/model/switch", {
+	          session: b.dataset.session,
+	          pane: b.dataset.pane || undefined,
+	          provider: b.dataset.provider || "claude",
+	          preset: b.dataset.preset,
+	        });
+	        toast(tf(`Modelo enviado a ${b.dataset.session} ${b.dataset.pane}`, `Model sent to ${b.dataset.session} ${b.dataset.pane}`));
+	      }catch(err){ toast(err.message, true); }
 	    });
 	  });
 	  const alerts = state?.alerts || [];
@@ -2140,21 +2157,6 @@ $("#new-form").addEventListener("submit", async e=>{
 	    renderUsage(r.state || {});
 	    toast(tf("Uso actualizado", "Usage refreshed"));
 	  }catch(err){ toast(err.message, true); }
-	});
-	document.querySelectorAll(".model-preset").forEach(b=>{
-	  b.addEventListener("click", async ()=>{
-	    const sel = S.usageSelected;
-	    if(!sel || !sel.session) return toast(tf("Selecciona un pane primero", "Select a pane first"), true);
-	    try{
-	      await api("/model/switch", {
-	        session: sel.session,
-	        pane: sel.pane || undefined,
-	        provider: sel.provider || "claude",
-	        preset: b.dataset.preset,
-	      });
-	      toast(tf(`Preset enviado: ${b.textContent}`, `Preset sent: ${b.textContent}`));
-	    }catch(err){ toast(err.message, true); }
-	  });
 	});
 	document.addEventListener("click", e=>{
 	  for(const [id, trg] of [["#settings","btn-settings"],["#servers","ssh-manage"],["#remote","btn-remote"],["#usage","btn-usage"]]){

@@ -101,6 +101,27 @@ def test_record_and_list_panes_round_trip():
     assert rows[0]["agent"] == "codex"
 
 
+def test_live_panes_are_detected_not_unattributed():
+    with tempfile.TemporaryDirectory() as d:
+        db = os.path.join(d, "usage.sqlite")
+        cc_usage.init_db(db)
+        pane = cc_usage.normalize_pane_identity({
+            "session": "term-123",
+            "pane": "%18",
+            "cwd": "/repo/frontend",
+            "agent": "codex",
+            "provider": "codex",
+            "pid": 111,
+        }, now=123)
+        state = cc_usage.build_usage_state(db, [pane], now=130)
+
+    assert state["unattributed"] == []
+    assert state["projects"][0]["confidence"] == "detected"
+    assert state["projects"][0]["panes"][0]["confidence"] == "detected"
+    assert state["providers"][0]["provider"] == "codex"
+    assert state["providers"][0]["active_panes"] == 1
+
+
 def test_parse_openai_usage_buckets_preserves_grouping_dimensions():
     payload = {
         "data": [{
@@ -353,6 +374,7 @@ if __name__ == "__main__":
     test_git_root_for_path_uses_git_when_available_and_falls_back()
     test_normalize_pane_identity_requires_pane_pwd_not_session_pwd()
     test_record_and_list_panes_round_trip()
+    test_live_panes_are_detected_not_unattributed()
     test_parse_openai_usage_buckets_preserves_grouping_dimensions()
     test_parse_openai_cost_buckets_preserves_amount_currency()
     test_parse_anthropic_rows_accepts_current_and_generic_shapes()
