@@ -54,8 +54,8 @@ DASH = os.path.join(HOOKS, "dash")
 TOKEN_FILE = os.path.join(HOOKS, "dash-token")
 TABS_FILE = os.path.join(HOOKS, "app-tabs.json")
 TAB_HISTORY_FILE = os.path.join(HOOKS, "app-tabs-history.json")
-SNIPPET_ID_RE = re.compile(r"^[0-9a-f]{16}$")
 SNIPPETS_FILE = os.path.join(HOOKS, "snippets.json")
+SNIPPET_ID_RE = re.compile(r"^[a-f0-9]{16}$")
 CONF_PATH = os.path.join(HOOKS, "cc-notify.conf")
 USAGE_DB = cc_usage.usage_db_path(HOOKS)
 USAGE_ENV_FILE = os.path.join(HOOKS, "usage.env")
@@ -464,24 +464,24 @@ def write_json_file(path, data):
 
 
 def snippet_validate(name, body, tags):
-    """Validate snippet parameters. Returns None on success, error string on failure."""
+    """Returns error string or None. Client-supplied fields only."""
     if not isinstance(name, str) or not name.strip():
-        return "name must be a non-empty string"
+        return "name vacio"
     if len(name) > 80:
-        return "name must be 80 characters or less"
+        return "name demasiado largo (max 80)"
     if not isinstance(body, str) or not body.strip():
-        return "body must be a non-empty string"
+        return "body vacio"
     if len(body) > 20000:
-        return "body must be 20000 characters or less"
+        return "body demasiado largo (max 20000)"
     if not isinstance(tags, list):
-        return "tags must be a list"
+        return "tags debe ser lista"
     if len(tags) > 10:
-        return "tags must have 10 items or fewer"
-    for tag in tags:
-        if not isinstance(tag, str) or not tag.strip():
-            return "each tag must be a non-empty string"
-        if len(tag) > 32:
-            return "each tag must be 32 characters or less"
+        return "demasiados tags (max 10)"
+    for t in tags:
+        if not isinstance(t, str) or not t.strip():
+            return "tag vacio"
+        if len(t) > 32:
+            return "tag demasiado largo (max 32)"
     return None
 
 
