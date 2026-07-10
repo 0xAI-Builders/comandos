@@ -364,6 +364,37 @@
   .modal-panel > .modal-close{position:absolute;top:10px;right:10px}
   .modal-hdr .modal-close{position:static}
 
+  /* Snippets modal — <dialog> con layout split. Estilo standalone porque
+     usa la API nativa <dialog>.showModal() (ESC + backdrop gratis). */
+  dialog.snip-modal{width:720px;max-width:92vw;height:520px;max-height:82vh;
+    padding:0;overflow:hidden;background:var(--panel2);color:var(--text);
+    border:1px solid var(--line);border-radius:12px;
+    box-shadow:0 20px 60px rgba(0,0,0,.4);font-family:var(--mono)}
+  dialog.snip-modal::backdrop{background:rgba(0,0,0,.55)}
+  .snip-modal .modal-hd{display:flex;align-items:center;justify-content:space-between;
+    padding:12px 16px;border-bottom:1px solid var(--line)}
+  .snip-modal .modal-title{font-size:12.5px;letter-spacing:.16em;
+    color:var(--dim);text-transform:uppercase}
+  .snip-grid{display:grid;grid-template-columns:260px 1fr;height:calc(100% - 46px)}
+  .snip-list{display:flex;flex-direction:column;border-right:1px solid var(--line)}
+  .snip-list input{margin:10px 12px;padding:6px 10px;background:var(--bg);
+    color:var(--text);border:1px solid var(--line);border-radius:6px;font:inherit}
+  .snip-list ul{list-style:none;margin:0;padding:0 6px;overflow-y:auto;flex:1}
+  .snip-list li{padding:6px 10px;border-radius:6px;cursor:pointer}
+  .snip-list li:hover{background:var(--panel)}
+  .snip-list li.active{background:var(--panel);border-left:2px solid var(--brand);padding-left:8px}
+  .snip-list li .n{color:var(--text);font-size:12.5px}
+  .snip-list li .t{color:var(--faint);font-size:11px;margin-top:2px}
+  .snip-list-ft{padding:8px 10px;border-top:1px solid var(--line)}
+  .snip-pane{padding:16px 18px;overflow-y:auto;display:flex;flex-direction:column;gap:10px}
+  .snip-empty{color:var(--faint);font-style:italic;margin:auto}
+  .snip-pane pre{background:var(--bg);border:1px solid var(--line);border-radius:6px;
+    padding:10px 12px;margin:0;white-space:pre-wrap;user-select:text;
+    font-size:12.5px;color:var(--text)}
+  .snip-actions{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+  .snip-actions select{background:var(--bg);color:var(--text);border:1px solid var(--line);
+    border-radius:6px;padding:5px 8px;font:inherit}
+
   /* Tabs dentro de un modal — nav vertical/horizontal según ancho.
      Termius/VSCode look: activa con underline brand + fondo panel2 sutil. */
   .mtabs{display:flex;gap:2px;flex-wrap:wrap;margin:0 -6px 20px;padding:0 0 12px;
@@ -756,6 +787,7 @@
       <input type="range" id="vol-top" min="0" max="100" value="60">
     </span>
 	    <button class="hdr-btn" id="btn-switch" aria-label="switch" title="Saltar a cualquier sesión (Ctrl+K)"><span data-icon="search" data-size="16"></span></button>
+	    <button class="hdr-btn" id="btn-snippets" aria-label="snippets" title="Snippets (Ctrl+Shift+K)"><span data-icon="snippet" data-size="16"></span></button>
 	    <button class="hdr-btn" id="btn-theme" aria-label="theme" title="Tema: Noche → Día → Cálido (aplica a tablero, pestañas y terminales)"></button>
 	    <button class="hdr-btn" id="btn-usage" title="Uso, límites y gasto por pane">Uso</button>
 	    <button class="hdr-btn" id="btn-remote" title="Continuar desde celular/tablet">Remoto</button>
@@ -1010,6 +1042,25 @@
 
 <div id="toasts"></div>
 <div id="mdl-menu" class="hidden" role="listbox" aria-label="Modelos"></div>
+
+<dialog id="dlg-snippets" class="modal snip-modal">
+  <div class="modal-hd">
+    <span class="modal-title">Snippets</span>
+    <button class="hdr-btn" data-close-snippets aria-label="close"><span data-icon="close" data-size="14"></span></button>
+  </div>
+  <div class="snip-grid">
+    <div class="snip-list">
+      <input id="snip-q" placeholder="buscar..." autocomplete="off" spellcheck="false">
+      <ul id="snip-items"></ul>
+      <div class="snip-list-ft">
+        <button id="snip-new" class="hdr-btn" title="Nuevo snippet"><span data-icon="plus" data-size="14"></span> nuevo</button>
+      </div>
+    </div>
+    <div class="snip-pane" id="snip-pane">
+      <div class="snip-empty" data-en="Select a snippet or create a new one." data-es="Elegí un snippet o creá uno nuevo.">Elegí un snippet o creá uno nuevo.</div>
+    </div>
+  </div>
+</dialog>
 
 <script>
 "use strict";
@@ -2689,6 +2740,7 @@ const ICON = {
   pencil:    '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.85 2.85 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/><path d="m15 5 4 4"/></svg>',
   copySmall: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>',
   terminal:  '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m4 7 5 5-5 5"/><path d="M12 19h8"/></svg>',
+  snippet:   '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>',
   x:         '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18M6 6l12 12"/></svg>',
 };
 const svg = (name, sz=14) =>
@@ -3272,6 +3324,26 @@ document.querySelectorAll(".lang-btn").forEach(b=>{
   tickEvents();
   arm();
 })();
+
+// ---------- snippets (v0: shell modal + shortcut) ----------
+const snipDlg = document.getElementById("dlg-snippets");
+function openSnippets(){
+  snipDlg.showModal();
+  const q = document.getElementById("snip-q");
+  if (q) { q.value = ""; q.focus(); }
+}
+function closeSnippets(){ if (snipDlg.open) snipDlg.close(); }
+document.getElementById("btn-snippets").addEventListener("click", openSnippets);
+snipDlg.querySelector("[data-close-snippets]").addEventListener("click", closeSnippets);
+// Click on backdrop closes (native <dialog> doesn't do this by default)
+snipDlg.addEventListener("click", (e) => { if (e.target === snipDlg) closeSnippets(); });
+// Ctrl+Shift+K opens
+document.addEventListener("keydown", (e) => {
+  if (e.ctrlKey && e.shiftKey && (e.key === "K" || e.key === "k")) {
+    e.preventDefault();
+    if (snipDlg.open) closeSnippets(); else openSnippets();
+  }
+});
 
 // PWA: registrar el service worker (instalable en celular/tablet)
 if("serviceWorker" in navigator)
