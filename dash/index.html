@@ -3325,19 +3325,109 @@ document.querySelectorAll(".lang-btn").forEach(b=>{
   arm();
 })();
 
-// ---------- snippets (v0: shell modal + shortcut) ----------
+// ---------- snippets (v0) ----------
 const snipDlg = document.getElementById("dlg-snippets");
-function openSnippets(){
+const snipState = { items: [], selectedId: null, query: "" };
+
+function filterSnippets(items, query){
+  const q = (query || "").trim().toLowerCase();
+  if (!q) return items.slice().sort((a,b) => (b.updated_at||0) - (a.updated_at||0));
+  const scored = [];
+  for (const it of items){
+    const name = (it.name || "").toLowerCase();
+    const tags = (it.tags || []).map(t => t.toLowerCase()).join(" ");
+    const body = (it.body || "").toLowerCase();
+    let score = 0;
+    if (name.includes(q))      score = 3;
+    else if (tags.includes(q)) score = 2;
+    else if (body.includes(q)) score = 1;
+    if (score) scored.push({it, score});
+  }
+  scored.sort((a,b) => b.score - a.score || (b.it.updated_at||0) - (a.it.updated_at||0));
+  return scored.map(s => s.it);
+}
+
+function renderSnipList(){
+  const ul = document.getElementById("snip-items");
+  const filtered = filterSnippets(snipState.items, snipState.query);
+  ul.innerHTML = "";
+  for (const it of filtered){
+    const li = document.createElement("li");
+    li.dataset.id = it.id;
+    if (it.id === snipState.selectedId) li.classList.add("active");
+    const n = document.createElement("div"); n.className = "n"; n.textContent = it.name;
+    li.appendChild(n);
+    if ((it.tags || []).length){
+      const t = document.createElement("div"); t.className = "t";
+      t.textContent = it.tags.join(" · ");
+      li.appendChild(t);
+    }
+    li.addEventListener("click", () => {
+      snipState.selectedId = it.id;
+      renderSnipList();
+      renderSnipPane();
+    });
+    ul.appendChild(li);
+  }
+  if (!snipState.selectedId && filtered.length){
+    snipState.selectedId = filtered[0].id;
+    renderSnipPane();
+  }
+}
+
+function renderSnipPane(){
+  const pane = document.getElementById("snip-pane");
+  const it = snipState.items.find(x => x.id === snipState.selectedId);
+  if (!it){
+    pane.innerHTML = '<div class="snip-empty">Elegí un snippet o creá uno nuevo.</div>';
+    return;
+  }
+  pane.innerHTML = "";
+  const h = document.createElement("div");
+  h.style.cssText = "font-size:13px;color:var(--text);font-weight:600";
+  h.textContent = it.name;
+  pane.appendChild(h);
+  if ((it.tags || []).length){
+    const tags = document.createElement("div");
+    tags.style.cssText = "display:flex;gap:6px;flex-wrap:wrap";
+    for (const t of it.tags){
+      const chip = document.createElement("span");
+      chip.className = "pill";
+      chip.textContent = t;
+      tags.appendChild(chip);
+    }
+    pane.appendChild(tags);
+  }
+  const pre = document.createElement("pre");
+  pre.textContent = it.body;
+  pane.appendChild(pre);
+  // Actions row is added in Task 6 (Send/Copy/Edit/Delete + session dropdown).
+}
+
+async function openSnippets(){
   snipDlg.showModal();
   const q = document.getElementById("snip-q");
   if (q) { q.value = ""; q.focus(); }
+  snipState.query = "";
+  try {
+    snipState.items = await api('/snippets');
+  } catch (e) {
+    snipState.items = [];
+    toast("No pude cargar snippets: " + e.message, true);
+  }
+  snipState.selectedId = null;
+  renderSnipList();
+  renderSnipPane();
 }
 function closeSnippets(){ if (snipDlg.open) snipDlg.close(); }
+
 document.getElementById("btn-snippets").addEventListener("click", openSnippets);
 snipDlg.querySelector("[data-close-snippets]").addEventListener("click", closeSnippets);
-// Click on backdrop closes (native <dialog> doesn't do this by default)
 snipDlg.addEventListener("click", (e) => { if (e.target === snipDlg) closeSnippets(); });
-// Ctrl+Shift+K opens
+document.getElementById("snip-q").addEventListener("input", (e) => {
+  snipState.query = e.target.value;
+  renderSnipList();
+});
 document.addEventListener("keydown", (e) => {
   if (e.ctrlKey && e.shiftKey && (e.key === "K" || e.key === "k")) {
     e.preventDefault();
