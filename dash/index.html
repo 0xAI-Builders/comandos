@@ -527,10 +527,15 @@
 	  .uv-info{font-family:var(--mono);font-size:10px;color:var(--faint);
 	    overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 	  #alert-config{display:flex;gap:6px;align-items:center;flex-wrap:wrap}
-	  .uv-bell{flex:none;border:0;background:none;font-size:11px;cursor:pointer;
-	    opacity:.35;padding:2px 4px;border-radius:6px;filter:grayscale(1)}
-	  .uv-bell:hover{opacity:1;filter:none;background:var(--panel2)}
-	  .uv-bell.on{opacity:1;filter:none}
+	  /* Boton de alerta EXPLICITO: "🔔 alerta" configura, "🔔 100M"/"🔔 80%"
+	     muestra la regla activa */
+	  .uv-bell{flex:none;display:inline-flex;align-items:center;gap:3px;cursor:pointer;
+	    font-family:var(--mono);font-size:9.5px;font-weight:700;color:var(--faint);
+	    border:1px solid var(--line);border-radius:12px;padding:2px 8px;background:none;
+	    white-space:nowrap}
+	  .uv-bell:hover{color:var(--text);border-color:var(--brand)}
+	  .uv-bell.on{color:var(--waiting);border-color:color-mix(in srgb,var(--waiting) 45%,var(--line))}
+	  .usage-metric .uv-bell{float:right;margin-top:4px}
 	  .rule-row{display:grid;grid-template-columns:auto 1fr auto;gap:4px 10px;align-items:center;
 	    padding:7px 10px;border:1px solid var(--line);border-radius:8px;background:var(--panel);
 	    margin-bottom:6px}
@@ -1048,10 +1053,13 @@ function mdStrip(s){ return (s||"").replace(/\*\*|`|^#{1,6} /g, ""); }
 	  return min < 120 ? tf(`hace ${min} min`, `${min} min ago`) : tf(`hace ${Math.round(min/60)} h`, `${Math.round(min/60)} h ago`);
 	}
 	// Porcentajes EXACTOS del plan: OAuth de Claude Code y rollouts de Codex.
+	// Cada ventana lleva su boton de alerta (ej. "codex sesion 5h al 60%").
 	function renderUsageLimits(state){
 	  const items = state?.limits || [];
+	  const rules = state?.alert_rules || [];
 	  $("#usage-limits").innerHTML = items.length ? items.map(l=>{
 	    const pct = Math.max(0, Math.min(100, Number(l.percent || 0)));
+	    const rule = rules.find(r => r.id === `limit:${l.id}`);
 	    const sub = [
 	      l.resets_at ? `${tf("resetea", "resets")} ${fmtReset(l.resets_at)}` : "",
 	      l.plan_type ? `plan ${l.plan_type}` : "",
@@ -1059,7 +1067,11 @@ function mdStrip(s){ return (s||"").replace(/\*\*|`|^#{1,6} /g, ""); }
 	    ].filter(Boolean).join(" · ");
 	    return `<div class="usage-card usage-window ${limitSeverity(l)}">
 	      <div class="usage-title">${mdEsc(l.provider || "")} · ${mdEsc(l.label || "")}<small>${mdEsc(confidenceLabel(l.confidence))}</small></div>
-	      <div class="usage-metric">${fmtPercent(l.percent)}</div>
+	      <div class="usage-metric">${fmtPercent(l.percent)}
+	        <button type="button" class="uv-bell ${rule ? "on" : ""}" data-scope="limit"
+	          data-target="${attrEsc(l.id)}" data-label="${attrEsc(`${l.provider} ${l.label}`)}"
+	          title="${tf("Configurar alerta para esta ventana", "Configure an alert for this window")}">
+	          🔔 ${rule ? `${Number(rule.threshold)}%` : tf("alerta", "alert")}</button></div>
 	      <div class="usage-sub">${mdEsc(sub || tf("sin ventana de reset", "no reset window"))}</div>
 	      <div class="usage-bar"><span style="width:${pct}%"></span></div>
 	    </div>`;
@@ -1273,11 +1285,15 @@ function mdStrip(s){ return (s||"").replace(/\*\*|`|^#{1,6} /g, ""); }
 	  const top = projects.slice(0, 8);
 	  const rest = projects.slice(8);
 	  const restTok = rest.reduce((a, p) => a + Number(p.total_tokens || 0), 0);
-	  const ruleIds = new Set((state?.alert_rules || []).map(r => r.id));
-	  const bell = (scope, target, label) => `<button type="button"
-	    class="uv-bell ${ruleIds.has(`${scope}:${target}`) ? "on" : ""}" data-scope="${attrEsc(scope)}"
+	  const allRules = state?.alert_rules || [];
+	  const bell = (scope, target, label) => {
+	    const rule = allRules.find(r => r.id === `${scope}:${target}`);
+	    return `<button type="button"
+	    class="uv-bell ${rule ? "on" : ""}" data-scope="${attrEsc(scope)}"
 	    data-target="${attrEsc(target)}" data-label="${attrEsc(label)}"
-	    title="${tf("Alerta de presupuesto de tokens por día", "Daily token budget alert")}">🔔</button>`;
+	    title="${tf("Configurar alerta de presupuesto de tokens por día", "Configure a daily token budget alert")}">
+	    🔔 ${rule ? fmtTokens(rule.threshold).replace(" tok", "") : tf("alerta", "alert")}</button>`;
+	  };
 	  $("#usage-projects").innerHTML = top.length ? top.map(pr => {
 	    const live = (pr.panes || []).filter(p => String(p.tmux_pane || "").startsWith("%"));
 	    const hist = (pr.panes || []).filter(p => !String(p.tmux_pane || "").startsWith("%"));
@@ -1343,17 +1359,26 @@ function mdStrip(s){ return (s||"").replace(/\*\*|`|^#{1,6} /g, ""); }
 	  {v: 50000000, t: "50M"}, {v: 100000000, t: "100M"}, {v: 250000000, t: "250M"},
 	  {v: 500000000, t: "500M"}, {v: 1000000000, t: "1B"},
 	];
+	const RULE_PERCENTS = [50, 60, 70, 80, 90, 95];
 	function openRuleMenu(btn){
 	  const menu = $("#mdl-menu");
 	  const rid = `${btn.dataset.scope}:${btn.dataset.target}`;
+	  const isLimit = btn.dataset.scope === "limit";
 	  const existing = (S.usage?.alert_rules || []).find(r => r.id === rid);
-	  menu.innerHTML = `<div class="mdl-head">${tf("Avisar si HOY pasa de", "Alert if TODAY exceeds")} — ${mdEsc(btn.dataset.label)}</div>` +
-	    RULE_BUDGETS.map(b => `<button type="button" class="mdl-opt" role="option" data-thr="${b.v}">
-	      <i style="background:${existing && Number(existing.threshold) === b.v ? "var(--done)" : "var(--line2)"}"></i>
-	      <b>${b.t} tok</b><span>${tf("en 24 horas", "in 24 hours")}</span></button>`).join("") +
+	  const head = isLimit
+	    ? `${tf("Avisar si", "Alert if")} ${mdEsc(btn.dataset.label)} ${tf("pasa de", "exceeds")}`
+	    : `${tf("Avisar si HOY pasa de", "Alert if TODAY exceeds")} — ${mdEsc(btn.dataset.label)}`;
+	  const opts = isLimit
+	    ? RULE_PERCENTS.map(p => `<button type="button" class="mdl-opt" role="option" data-thr="${p}">
+	        <i style="background:${existing && Number(existing.threshold) === p ? "var(--done)" : "var(--line2)"}"></i>
+	        <b>${p}%</b><span>${tf("de la ventana", "of the window")}</span></button>`).join("")
+	    : RULE_BUDGETS.map(b => `<button type="button" class="mdl-opt" role="option" data-thr="${b.v}">
+	        <i style="background:${existing && Number(existing.threshold) === b.v ? "var(--done)" : "var(--line2)"}"></i>
+	        <b>${b.t} tok</b><span>${tf("en 24 horas", "in 24 hours")}</span></button>`).join("");
+	  menu.innerHTML = `<div class="mdl-head">${head}</div>` + opts +
 	    (existing ? `<button type="button" class="mdl-opt" role="option" data-del="1">
 	      <i style="background:#FF5C68"></i><b>${tf("Quitar alerta", "Remove alert")}</b>
-	      <span>${tf("actual", "current")}: ${fmtTokens(existing.threshold)}</span></button>` : "");
+	      <span>${tf("actual", "current")}: ${isLimit ? `${Number(existing.threshold)}%` : fmtTokens(existing.threshold)}</span></button>` : "");
 	  menu.classList.remove("hidden");
 	  positionModelMenu(btn);
 	  mdlMenuBtn = btn;
@@ -1367,8 +1392,9 @@ function mdStrip(s){ return (s||"").replace(/\*\*|`|^#{1,6} /g, ""); }
 	          : {action: "set", scope: btn.dataset.scope, target: btn.dataset.target,
 	             label: btn.dataset.label, threshold: Number(o.dataset.thr)};
 	        await api("/usage/alert-rule", payload);
+	        const thrTxt = isLimit ? `${o.dataset.thr}%` : `${fmtTokens(o.dataset.thr)}/${tf("día", "day")}`;
 	        toast(o.dataset.del ? tf(`Alerta de ${btn.dataset.label} quitada`, `${btn.dataset.label} alert removed`)
-	                            : tf(`Alerta: ${btn.dataset.label} > ${fmtTokens(o.dataset.thr)}/día`, `Alert: ${btn.dataset.label} > ${fmtTokens(o.dataset.thr)}/day`));
+	                            : tf(`Alerta: ${btn.dataset.label} > ${thrTxt}`, `Alert: ${btn.dataset.label} > ${thrTxt}`));
 	        tickUsage(true);
 	      }catch(err){ toast(err.message, true); }
 	    });
@@ -1380,10 +1406,14 @@ function mdStrip(s){ return (s||"").replace(/\*\*|`|^#{1,6} /g, ""); }
 	  const rules = state?.alert_rules || [];
 	  host.innerHTML = rules.map(r => {
 	    const pct = Math.max(0, Math.min(100, Number(r.percent || 0)));
-	    const scopeTxt = {session: tf("sesión", "session"), project: tf("proyecto", "project"), provider: tf("proveedor", "provider")}[r.scope] || r.scope;
+	    const scopeTxt = {session: tf("sesión", "session"), project: tf("proyecto", "project"),
+	                      provider: tf("proveedor", "provider"), limit: tf("límite del plan", "plan limit")}[r.scope] || r.scope;
+	    const valTxt = r.unit === "percent"
+	      ? `${Number(r.value).toFixed(0)}% / ${Number(r.threshold)}%`
+	      : `${fmtTokens(r.value)} / ${fmtTokens(r.threshold)} ${tf("hoy", "today")}`;
 	    return `<div class="rule-row ${pct >= 100 ? "over" : ""}">
 	      <b>🔔 ${mdEsc(r.label || r.target)}</b>
-	      <span>${mdEsc(scopeTxt)} · ${fmtTokens(r.value)} / ${fmtTokens(r.threshold)} ${tf("hoy", "today")}</span>
+	      <span>${mdEsc(scopeTxt)} · ${valTxt}</span>
 	      <div class="usage-bar"><span style="width:${pct}%"></span></div>
 	      <button type="button" class="rule-del" data-id="${attrEsc(r.id)}" title="${tf("Quitar", "Remove")}">×</button>
 	    </div>`;

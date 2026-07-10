@@ -656,7 +656,7 @@ def build_usage_state(db_path, live_panes=None, now=None, settings=None, limits=
     }
 
 
-RULE_SCOPES = ("session", "project", "provider")
+RULE_SCOPES = ("session", "project", "provider", "limit")
 
 
 def set_alert_rule(db_path, scope, target, label, threshold):
@@ -687,10 +687,11 @@ def list_alert_rules(db_path):
             "select * from usage_alert_rules order by created_at desc"))
 
 
-def rule_current_values(db_path, rules, panes, now=None):
-    """Consumo actual (tokens de las ultimas 24h) por regla. Proyecto y
-    proveedor van directo a los turnos; sesion suma los grupos unicos
-    (provider+carpeta) de sus panes vivos para no contar doble."""
+def rule_current_values(db_path, rules, panes, limits=None, now=None):
+    """Consumo actual por regla. Proyecto y proveedor van directo a los
+    turnos (tokens 24h); sesion suma los grupos unicos (provider+carpeta)
+    de sus panes vivos; limit compara contra el % exacto de esa ventana
+    del plan (ej. codex sesion 5h)."""
     ts = int(now if now is not None else time.time())
     day_start = ts - 24 * 3600
     out = []
@@ -698,6 +699,14 @@ def rule_current_values(db_path, rules, panes, now=None):
         for rule in rules or []:
             scope, target = rule.get("scope"), rule.get("target")
             value = 0
+            if scope == "limit":
+                item = next((l for l in limits or [] if l.get("id") == target), None)
+                value = _as_float(item.get("percent")) if item else 0.0
+                out.append(dict(rule, value=value, unit="percent",
+                                window_resets_at=_as_int(item.get("resets_at")) if item else 0,
+                                percent=round(value / rule["threshold"] * 100, 1)
+                                if _as_int(rule.get("threshold")) else 0))
+                continue
             if scope == "project":
                 value = _as_int(con.execute(
                     "select sum(total_tokens) from usage_turns "
@@ -718,7 +727,7 @@ def rule_current_values(db_path, rules, panes, now=None):
                         continue
                     seen.add(key)
                     value += _as_int(p.get("total_tokens"))
-            out.append(dict(rule, value=value,
+            out.append(dict(rule, value=value, unit="tokens",
                             percent=round(value / rule["threshold"] * 100, 1)
                             if _as_int(rule.get("threshold")) else 0))
     return out
@@ -736,22 +745,30 @@ def _fmt_tok(n):
 
 
 def rule_alerts(rules_with_values, now=None):
-    """Una alerta por regla por dia calendario cuando el consumo cruza
-    el presupuesto."""
+    """Una alerta por regla: por dia calendario (presupuestos de tokens) o
+    por ventana de reset (reglas de % sobre limites del plan)."""
     ts = int(now if now is not None else time.time())
     day = time.strftime("%Y-%m-%d", time.localtime(ts))
     alerts = []
     for rule in rules_with_values or []:
-        if _as_int(rule.get("value")) < _as_int(rule.get("threshold")):
+        if _as_float(rule.get("value")) < _as_float(rule.get("threshold")):
             continue
+        label = rule.get("label") or rule.get("target")
+        if rule.get("scope") == "limit":
+            window = rule.get("window_resets_at") or day
+            message = (f"{label}: {_as_float(rule.get('value')):.0f}% "
+                       f"(umbral {_as_int(rule.get('threshold'))}%)")
+            suffix = window
+        else:
+            message = (f"{label}: {_fmt_tok(rule.get('value'))} tok hoy "
+                       f"(presupuesto {_fmt_tok(rule.get('threshold'))})")
+            suffix = day
         alerts.append({
-            "id": f"rule-{rule.get('id')}-{day}",
-            "kind": "budget",
+            "id": f"rule-{rule.get('id')}-{suffix}",
+            "kind": "limit" if rule.get("scope") == "limit" else "budget",
             "level": "warning",
             "provider": rule.get("target") if rule.get("scope") == "provider" else "",
-            "message": f"{rule.get('label') or rule.get('target')}: "
-                       f"{_fmt_tok(rule.get('value'))} tok hoy "
-                       f"(presupuesto {_fmt_tok(rule.get('threshold'))})",
+            "message": message,
             "created_at": ts,
         })
     return alerts

@@ -819,6 +819,37 @@ def test_alert_rules_crud_and_evaluation_by_scope():
         assert len(cc_usage.list_alert_rules(db)) == 2
 
 
+def test_limit_scope_rules_watch_provider_window_percent():
+    with tempfile.TemporaryDirectory() as d:
+        db = os.path.join(d, "usage.sqlite")
+        cc_usage.init_db(db)
+        cc_usage.set_alert_rule(db, "limit", "codex_session", "codex Sesion 5h", 50)
+        limits = [{"id": "codex_session", "provider": "codex",
+                   "label": "Sesion 5h", "percent": 62.0, "resets_at": 9000}]
+        rules = cc_usage.rule_current_values(
+            db, cc_usage.list_alert_rules(db), [], limits=limits, now=100)
+
+    assert rules[0]["value"] == 62.0
+    assert rules[0]["unit"] == "percent"
+    assert rules[0]["window_resets_at"] == 9000
+
+    alerts = cc_usage.rule_alerts(rules, now=100)
+    assert len(alerts) == 1
+    assert "62%" in alerts[0]["message"] and "umbral 50%" in alerts[0]["message"]
+    # cooldown por ventana de reset, no por dia
+    assert alerts[0]["id"].endswith("-9000")
+
+    # bajo el umbral: silencio
+    limits[0]["percent"] = 30.0
+    with tempfile.TemporaryDirectory() as d2:
+        db2 = os.path.join(d2, "u.sqlite")
+        cc_usage.init_db(db2)
+        cc_usage.set_alert_rule(db2, "limit", "codex_session", "x", 50)
+        quiet = cc_usage.rule_alerts(cc_usage.rule_current_values(
+            db2, cc_usage.list_alert_rules(db2), [], limits=limits, now=100), now=100)
+    assert quiet == []
+
+
 def test_limit_threshold_alerts_fire_once_per_reset_window():
     limits = [
         {"id": "claude_session", "provider": "claude", "label": "Sesion 5h",
@@ -853,6 +884,7 @@ def test_model_switch_text_accepts_direct_model():
 
 
 if __name__ == "__main__":
+    test_limit_scope_rules_watch_provider_window_percent()
     test_alert_rules_crud_and_evaluation_by_scope()
     test_parse_alert_thresholds_defaults_custom_and_off()
     test_limit_threshold_alerts_fire_once_per_reset_window()

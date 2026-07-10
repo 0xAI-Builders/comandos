@@ -1641,7 +1641,8 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             state["credential_health"].update(prov["health"])
             state["alert_thresholds"] = list(alert_thresholds())
             rules = cc_usage.rule_current_values(
-                USAGE_DB, cc_usage.list_alert_rules(USAGE_DB), state.get("panes") or [])
+                USAGE_DB, cc_usage.list_alert_rules(USAGE_DB),
+                state.get("panes") or [], limits=prov["limits"])
             state["alert_rules"] = rules
             for alert in cc_usage.rule_alerts(rules):
                 try:
@@ -1874,7 +1875,8 @@ class Handler(http.server.SimpleHTTPRequestHandler):
                 if not rid:
                     return self._json(400, {"error": "Regla invalida"})
             rules = cc_usage.rule_current_values(
-                USAGE_DB, cc_usage.list_alert_rules(USAGE_DB), usage_live_panes())
+                USAGE_DB, cc_usage.list_alert_rules(USAGE_DB), usage_live_panes(),
+                limits=usage_provider_limits()["limits"])
             return self._json(200, {"ok": True, "alert_rules": rules})
 
         if self.path == "/usage/settings":

@@ -91,6 +91,14 @@ def test_per_target_alert_rules_with_bells():
     assert "RULE_BUDGETS" in HTML
 
 
+def test_alert_button_is_explicit_and_limit_windows_configurable():
+    # El boton dice "🔔 alerta" (no un icono mudo) y muestra la regla activa
+    assert 'tf("alerta", "alert")' in HTML
+    # Reglas por proveedor+lapso: cada ventana del plan tiene su boton con %
+    assert "RULE_PERCENTS" in HTML
+    assert 'data-scope="limit"' in HTML
+
+
 def test_alert_thresholds_are_configurable_from_drawer():
     assert 'id="alert-config"' in HTML
     assert 'data-th="85"' in HTML
@@ -150,6 +158,7 @@ def test_header_shows_global_limit_percentages():
 
 
 if __name__ == "__main__":
+    test_alert_button_is_explicit_and_limit_windows_configurable()
     test_per_target_alert_rules_with_bells()
     test_project_panes_are_clickable_to_open_session()
     test_alert_thresholds_are_configurable_from_drawer()
