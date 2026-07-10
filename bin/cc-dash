@@ -135,8 +135,13 @@ def usage_alert_send(message):
                 pass
 
 
+def alert_thresholds():
+    return cc_usage.parse_alert_thresholds(
+        usage_runtime_env().get("COMANDOS_ALERT_THRESHOLDS"))
+
+
 def _check_limit_alerts(limits):
-    for alert in cc_usage.limit_threshold_alerts(limits):
+    for alert in cc_usage.limit_threshold_alerts(limits, thresholds=alert_thresholds()):
         try:
             if cc_usage.record_alert_once(USAGE_DB, alert):
                 usage_alert_send(alert["message"])
@@ -1635,6 +1640,7 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             state["credential_health"] = usage_credential_health(env)
             state["credential_health"].update(prov["health"])
             state["alerts"] = cc_usage.list_alerts(USAGE_DB)
+            state["alert_thresholds"] = list(alert_thresholds())
             write_pane_models(state.get("panes") or [])
             return self._json(200, state)
         if self.path.startswith("/ssh"):
@@ -1847,8 +1853,13 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             settings = cc_usage.write_usage_settings(USAGE_DB, data.get("settings") or data)
             panes = usage_live_panes()
             env = usage_runtime_env()
-            state = cc_usage.build_usage_state(USAGE_DB, panes, settings=env)
+            prov = usage_provider_limits()
+            state = cc_usage.build_usage_state(USAGE_DB, panes, settings=env,
+                                               limits=prov["limits"])
             state["credential_health"] = usage_credential_health(env)
+            state["credential_health"].update(prov["health"])
+            state["alerts"] = cc_usage.list_alerts(USAGE_DB)
+            state["alert_thresholds"] = list(alert_thresholds())
             return self._json(200, {"ok": True, "settings": settings, "state": state})
 
         if self.path == "/ssh-connect":

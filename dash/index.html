@@ -508,6 +508,28 @@
 	  .usage-window.danger{border-left-color:#FF5C68}
 	  .usage-window.danger .usage-bar span{background:#FF5C68}
 	  .usage-window .usage-title small{font-size:9px}
+	  /* Barras proporcionales de proveedores/proyectos + panes operables */
+	  .usage-viz{padding:9px 10px;border:1px solid var(--line);border-radius:8px;
+	    background:var(--panel);margin-bottom:7px}
+	  .uv-top{display:flex;align-items:baseline;gap:8px;margin-bottom:5px}
+	  .uv-top b{font-size:12.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+	  .uv-top span{margin-left:auto;flex:none;font-family:var(--mono);font-size:10px;color:var(--faint)}
+	  .uv-pane{display:flex;align-items:center;gap:8px;margin-top:6px;padding:6px 7px;
+	    border-radius:7px;cursor:pointer;border:1px solid transparent}
+	  .uv-pane:hover{background:var(--panel2);border-color:var(--line)}
+	  .uv-dot{flex:none;width:8px;height:8px;border-radius:50%;background:var(--brand)}
+	  .uv-dot[data-a="codex"]{background:#19C39C}
+	  .uv-dot[data-a="opencode"]{background:#FAB283}
+	  .uv-dot[data-a="gemini"]{background:#7AA5FF}
+	  .uv-dot[data-a="agy"]{background:#B49CFF}
+	  .uv-main{flex:1;min-width:0;display:flex;flex-direction:column;gap:1px}
+	  .uv-main b{font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+	  .uv-info{font-family:var(--mono);font-size:10px;color:var(--faint);
+	    overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+	  #alert-config{display:flex;gap:6px;align-items:center;flex-wrap:wrap}
+	  .alert-th.on{color:var(--done);border-color:color-mix(in srgb,var(--done) 45%,var(--line))}
+	  .usage-alert small{margin-left:8px;color:var(--faint);font-family:var(--mono);font-size:9.5px}
+	  .usage-alert.danger{border-left-color:#FF5C68}
 	  .usage-alert{border-left:3px solid var(--waiting);padding:7px 9px;background:var(--panel);
 	    border-radius:6px;font-size:11.5px;color:var(--dim);margin-bottom:7px}
 	  .usage-chip{flex:none;font-family:var(--mono);font-size:9.5px;color:var(--code);
@@ -664,6 +686,13 @@
 	  <h3 style="margin-top:22px">Proyectos y panes</h3>
 	  <div id="usage-projects"></div>
 	  <h3 style="margin-top:22px">Alertas</h3>
+	  <div class="set" id="alert-config">
+	    <span class="desc">Avisar al cruzar</span>
+	    <button type="button" class="test alert-th" data-th="70">70%</button>
+	    <button type="button" class="test alert-th" data-th="85">85%</button>
+	    <button type="button" class="test alert-th" data-th="95">95%</button>
+	  </div>
+	  <div class="desc" style="margin:-4px 0 8px">Llegan por popup propio y/o Telegram, según Ajustes. Una vez por ventana de reset.</div>
 	  <div id="usage-alerts"></div>
 	</aside>
 
@@ -1237,21 +1266,59 @@ function mdStrip(s){ return (s||"").replace(/\*\*|`|^#{1,6} /g, ""); }
 	      <div class="uv-top"><b>${mdEsc(name)}</b>
 	        <span>${fmtTokens(tok)}${Number(pr.cost_usd || 0) > 0 ? ` · ${fmtMoney(pr.cost_usd)}` : ""}${hist.length ? ` · ${hist.length} ${tf("ses.", "past")}` : ""}</span></div>
 	      <div class="usage-bar"><span style="width:${Math.max(2, Math.round(tok / projMax * 100))}%"></span></div>
-	      ${live.map(p => `<div class="uv-pane">
+	      ${live.map(p => `<div class="uv-pane" data-session="${attrEsc(p.tmux_session || "")}"
+	        data-pane="${attrEsc(p.tmux_pane || "")}" title="${tf("Click: abrir esta sesion", "Click: open this session")}">
 	        <span class="uv-dot" data-a="${attrEsc(p.agent || "claude")}"></span>
-	        <b>${mdEsc(p.tab_label || p.tmux_session || "")}</b>
-	        <span class="uv-info">${mdEsc(usageChipText(p) || tf("sin uso hoy", "no usage today"))}</span>
+	        <div class="uv-main">
+	          <b>${mdEsc(p.tab_label || p.tmux_session || "")}</b>
+	          <span class="uv-info">${mdEsc(usageChipText(p) || tf("sin uso hoy", "no usage today"))}</span>
+	        </div>
 	        ${panePresetButtons(p)}
 	      </div>`).join("")}
 	    </div>`;
 	  }).join("") + (rest.length ? `<div class="desc" style="margin-top:2px">+${rest.length} ${tf("proyectos más", "more projects")} · ${fmtTokens(restTok)}</div>` : "")
 	    : `<div class="empty">${tf("Sin uso todavia", "No usage yet")}</div>`;
 	  document.querySelectorAll("#usage .mdl-wrap").forEach(wireModelMenu);
+	  renderAlertConfig(state);
 	  const alerts = state?.alerts || [];
 	  $("#usage-alerts").innerHTML = alerts.length ? alerts.map(a =>
-	    `<div class="usage-alert">${mdEsc(a.message || a.kind || "alerta")}</div>`).join("")
+	    `<div class="usage-alert ${a.level === "danger" ? "danger" : ""}">${mdEsc(a.message || a.kind || "alerta")}
+	       <small>${agoTxt(a.created_at)}</small></div>`).join("")
 	    : `<div class="desc">${tf("Sin alertas", "No alerts")}</div>`;
+	  document.querySelectorAll("#usage .uv-pane[data-session]").forEach(el=>{
+	    el.addEventListener("click", ()=> openPane(el.dataset.session));
+	  });
 	  render(S.list || []);
+	}
+	// Config de alertas: umbrales toggleables, persistidos en el backend
+	function renderAlertConfig(state){
+	  const ths = state?.alert_thresholds;
+	  if(!Array.isArray(ths)) return;
+	  document.querySelectorAll("#alert-config .alert-th").forEach(b=>{
+	    b.classList.toggle("on", ths.includes(Number(b.dataset.th)));
+	  });
+	}
+	document.querySelectorAll("#alert-config .alert-th").forEach(b=>{
+	  b.addEventListener("click", async ()=>{
+	    const active = new Set([...document.querySelectorAll("#alert-config .alert-th.on")].map(x => x.dataset.th));
+	    active.has(b.dataset.th) ? active.delete(b.dataset.th) : active.add(b.dataset.th);
+	    const value = [...active].sort((a, b2) => a - b2).join(",") || "off";
+	    try{
+	      const r = await api("/usage/settings", {settings: {COMANDOS_ALERT_THRESHOLDS: value}});
+	      renderUsage(r.state || {});
+	      toast(value === "off" ? tf("Alertas de límite apagadas", "Limit alerts off")
+	                            : tf(`Alertas al cruzar ${value}%`, `Alerts at ${value}%`));
+	    }catch(err){ toast(err.message, true); }
+	  });
+	});
+	// Abrir/enfocar una sesion desde su fila en Proyectos y panes
+	async function openPane(session){
+	  if(!session) return;
+	  try{
+	    if(inApp()){ openInApp(session, "claude"); }
+	    else{ await api("/focus", {session}); }
+	    toast(tf(`Abriendo ${session}`, `Opening ${session}`));
+	  }catch(err){ toast(err.message, true); }
 	}
 	let usagePollTs = 0;
 	async function tickUsage(force=false){

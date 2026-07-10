@@ -771,6 +771,15 @@ def test_opencode_picker_query_uses_display_name_tokens():
     assert q == "nemotron 3 ultra free openrouter"
 
 
+def test_parse_alert_thresholds_defaults_custom_and_off():
+    assert cc_usage.parse_alert_thresholds(None) == (70, 85, 95)
+    assert cc_usage.parse_alert_thresholds("") == (70, 85, 95)
+    assert cc_usage.parse_alert_thresholds("85, 95%") == (85, 95)
+    assert cc_usage.parse_alert_thresholds("off") == ()
+    assert cc_usage.parse_alert_thresholds("999,abc,50") == (50,)
+    assert "COMANDOS_ALERT_THRESHOLDS" in cc_usage.USAGE_LIMIT_KEYS
+
+
 def test_limit_threshold_alerts_fire_once_per_reset_window():
     limits = [
         {"id": "claude_session", "provider": "claude", "label": "Sesion 5h",
@@ -805,6 +814,7 @@ def test_model_switch_text_accepts_direct_model():
 
 
 if __name__ == "__main__":
+    test_parse_alert_thresholds_defaults_custom_and_off()
     test_limit_threshold_alerts_fire_once_per_reset_window()
     test_usage_db_path_lives_under_hooks_dir()
     test_init_db_creates_required_tables()

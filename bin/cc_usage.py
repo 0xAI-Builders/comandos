@@ -23,7 +23,23 @@ USAGE_LIMIT_KEYS = {
     "COMANDOS_CLAUDE_DAILY_TOKEN_LIMIT",
     "COMANDOS_CLAUDE_WEEKLY_TOKEN_LIMIT",
     "COMANDOS_DAILY_BUDGET_USD",
+    "COMANDOS_ALERT_THRESHOLDS",
 }
+
+
+def parse_alert_thresholds(text, default=(70, 85, 95)):
+    """Umbrales de alerta configurables: '70,85,95'. 'off' = apagadas
+    (write_usage_settings borra claves vacias, asi que off necesita valor)."""
+    if text is None or str(text).strip() == "":
+        return tuple(default)
+    if str(text).strip().lower() in ("off", "0", "none"):
+        return ()
+    vals = set()
+    for part in str(text).replace(";", ",").split(","):
+        v = _as_int(part.strip().rstrip("%"))
+        if 1 <= v <= 100:
+            vals.add(v)
+    return tuple(sorted(vals))
 
 
 def usage_db_path(hooks_dir=None):
