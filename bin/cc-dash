@@ -100,6 +100,12 @@ def _refresh_provider_limits():
         codex_rows = cc_usage.read_codex_rate_limits()
         claude_rows, claude_health = cc_usage.fetch_claude_oauth_limits()
         with _limits_lock:
+            if not claude_rows and claude_health.get("status") == "error":
+                # Fetch fallido (p.ej. 429): conservar el ultimo dato bueno.
+                # captured_at delata su edad y la UI la muestra.
+                claude_rows = [r for r in _limits_cache["limits"]
+                               if r.get("provider") == "claude"]
+                claude_health["stale"] = bool(claude_rows)
             _limits_cache["at"] = int(time.time())
             _limits_cache["limits"] = claude_rows + codex_rows
             _limits_cache["health"] = {"claude_oauth": claude_health}
@@ -116,7 +122,9 @@ def usage_provider_limits(force=False):
         _refresh_provider_limits()
     else:
         with _limits_lock:
-            stale = time.time() - _limits_cache["at"] > LIMITS_TTL
+            health = _limits_cache["health"].get("claude_oauth") or {}
+            ttl = LIMITS_TTL * 3 if health.get("status") == "error" else LIMITS_TTL
+            stale = time.time() - _limits_cache["at"] > ttl
             start = stale and not _limits_refreshing
             if start:
                 _limits_refreshing = True

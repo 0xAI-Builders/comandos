@@ -65,9 +65,11 @@ def test_usage_ui_renders_exact_limit_bars():
     assert 'id="usage-limits-save"' not in HTML
 
 
-def test_usage_button_shows_worst_percent_badge():
-    assert 'id="btn-usage"' in HTML
-    assert "usageBadgeText" in HTML
+def test_header_shows_global_limit_percentages():
+    # Los porcentajes globales viven SIEMPRE visibles en el header,
+    # no solo dentro del drawer
+    assert 'id="limits-strip"' in HTML
+    assert "renderLimitsStrip" in HTML
 
 
 if __name__ == "__main__":
@@ -79,4 +81,4 @@ if __name__ == "__main__":
     test_usage_ui_switches_models_inline_per_pane()
     test_session_cards_have_model_selector()
     test_usage_ui_renders_exact_limit_bars()
-    test_usage_button_shows_worst_percent_badge()
+    test_header_shows_global_limit_percentages()

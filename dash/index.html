@@ -87,6 +87,16 @@
   .pill b{font-weight:700}
   .pill.hot{color:var(--waiting);border-color:color-mix(in srgb,var(--waiting) 40%,var(--line))}
   .pill.ok b{color:var(--done)} .pill.run b{color:var(--working)}
+  /* Porcentaje global de limites SIEMPRE a la vista (click abre el drawer Uso) */
+  #limits-strip{display:contents}
+  .pill.lim{font-family:var(--mono);font-size:10.5px;cursor:pointer}
+  .pill.lim:hover{border-color:var(--brand)}
+  .pill.lim b{font-weight:800}
+  .pill.lim-ok b{color:var(--done)}
+  .pill.lim-warn{color:var(--waiting);border-color:color-mix(in srgb,var(--waiting) 40%,var(--line))}
+  .pill.lim-warn b{color:var(--waiting)}
+  .pill.lim-danger{color:#FF5C68;border-color:#FF5C6855}
+  .pill.lim-danger b{color:#FF5C68}
   .hdr-right{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-left:auto}
   #q,#new-name{background:var(--panel);border:1px solid var(--line);border-radius:8px;
     padding:5px 11px;font-family:var(--mono);font-size:12px;color:var(--text)}
@@ -479,6 +489,7 @@
     <span class="pill hot"><b id="n-waiting">0</b> <span>esperan</span></span>
     <span class="pill ok"><b id="n-done">0</b> <span>listos</span></span>
     <span class="pill run"><b id="n-working">0</b> <span>trabajando</span></span>
+    <span id="limits-strip" class="hidden" title="Límites del plan — click para el detalle"></span>
   </div>
   <div class="hdr-right">
     <input id="q" placeholder="buscar" autocomplete="off" spellcheck="false"
@@ -916,9 +927,10 @@ function mdStrip(s){ return (s||"").replace(/\*\*|`|^#{1,6} /g, ""); }
 	  if(!u) return "";
 	  const bits = [];
 	  if(u.provider || u.agent) bits.push(u.provider || u.agent);
-	  if(u.model) bits.push(u.model);
+	  if(u.model) bits.push(String(u.model).replace(/^claude-/, ""));
 	  if(Number(u.cost_usd || 0) > 0) bits.push(fmtMoney(u.cost_usd));
-	  else if(Number(u.total_tokens || 0) > 0) bits.push(fmtTokens(u.total_tokens));
+	  else if(Number(u.total_tokens || 0) > 0)
+	    bits.push(`${fmtTokens(u.total_tokens)}${u.usage_window === "24h" ? tf(" hoy", " today") : ""}`);
 	  if(confidenceLabel(u.confidence)) bits.push(confidenceLabel(u.confidence));
 	  return bits.slice(0, 4).join(" · ");
 	}
@@ -939,7 +951,7 @@ function mdStrip(s){ return (s||"").replace(/\*\*|`|^#{1,6} /g, ""); }
 	  return `${d.toLocaleDateString([], {weekday: "short"})} ${hm}`;
 	}
 	function limitAge(l){
-	  if(l?.source !== "rollout" || !l?.captured_at) return "";
+	  if(!l?.captured_at) return "";
 	  const min = Math.round((Date.now()/1000 - Number(l.captured_at)) / 60);
 	  if(min < 3) return "";
 	  return min < 120 ? tf(`hace ${min} min`, `${min} min ago`) : tf(`hace ${Math.round(min/60)} h`, `${Math.round(min/60)} h ago`);
@@ -962,12 +974,28 @@ function mdStrip(s){ return (s||"").replace(/\*\*|`|^#{1,6} /g, ""); }
 	    </div>`;
 	  }).join("") : `<div class="desc">${tf("Sin datos todavia — se actualizan solos en unos segundos", "No data yet — auto-refreshes in a few seconds")}</div>`;
 	}
-	function usageBadgeText(state){
-	  const pcts = (state?.limits || [])
-	    .filter(l => l.is_active !== false || Number(l.percent || 0) > 0)
-	    .map(l => Number(l.percent || 0)).filter(Number.isFinite);
-	  if(!pcts.length) return "";
-	  return `${Math.round(Math.max(...pcts))}%`;
+	// Porcentajes globales del plan, siempre visibles junto a los contadores.
+	function renderLimitsStrip(state){
+	  const strip = $("#limits-strip");
+	  if(!strip) return;
+	  const limits = state?.limits || [];
+	  const pills = [];
+	  for(const prov of ["claude", "codex"]){
+	    const ses = limits.find(l => l.provider === prov && l.window === "5h");
+	    const wk = limits.find(l => l.provider === prov && l.window === "7d" && !l.scope);
+	    if(!ses && !wk) continue;
+	    const worst = Math.max(Number(ses?.percent ?? 0), Number(wk?.percent ?? 0));
+	    const cls = worst >= 90 ? "lim-danger" : worst >= 70 ? "lim-warn" : "lim-ok";
+	    const tip = [
+	      ses ? `${tf("Sesion 5h", "5h session")}: ${fmtPercent(ses.percent)} (${tf("resetea", "resets")} ${fmtReset(ses.resets_at)})` : "",
+	      wk ? `${tf("Semana", "Week")}: ${fmtPercent(wk.percent)} (${tf("resetea", "resets")} ${fmtReset(wk.resets_at)})` : "",
+	    ].filter(Boolean).join(" · ");
+	    pills.push(`<span class="pill lim ${cls}" title="${attrEsc(prov)} — ${attrEsc(tip)}">` +
+	      `${mdEsc(prov)} <b>${fmtPercent(ses?.percent)}</b> · sem <b>${fmtPercent(wk?.percent)}</b></span>`);
+	  }
+	  strip.innerHTML = pills.join("");
+	  strip.classList.toggle("hidden", !pills.length);
+	  strip.querySelectorAll(".pill").forEach(p => p.addEventListener("click", ()=> $("#btn-usage").click()));
 	}
 	// UN control por concepto: un select de modelo (la intencion es la etiqueta).
 	const MODEL_CHOICES = {
@@ -1040,8 +1068,7 @@ function mdStrip(s){ return (s||"").replace(/\*\*|`|^#{1,6} /g, ""); }
 	  const summary = usageSummaryText(state);
 	  $("#usage-summary").textContent = summary ||
 	    `${fmtMoney(total.cost_usd)} · ${fmtTokens(total.total_tokens)} · ${state?.panes?.length || 0} panes`;
-	  const badge = usageBadgeText(state);
-	  $("#btn-usage").textContent = badge ? `${tf("Uso", "Usage")} ${badge}` : tf("Uso", "Usage");
+	  renderLimitsStrip(state);
 	  renderUsageLimits(state);
 	  const hp = state?.credential_health || {};
 	  const providerRows = [...(state?.providers || [])];

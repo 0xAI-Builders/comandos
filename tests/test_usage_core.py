@@ -615,6 +615,74 @@ def test_build_usage_state_exposes_provider_limits():
     assert state["limits"][0]["percent"] == 5.0
 
 
+def _live_pane(session, pane, pwd, agent="claude"):
+    return cc_usage.normalize_pane_identity({
+        "session": session, "pane": pane, "cwd": pwd,
+        "git_root": pwd, "agent": agent, "pid": 1,
+    }, now=200000)
+
+
+def test_build_usage_state_attaches_today_usage_to_live_panes():
+    with tempfile.TemporaryDirectory() as d:
+        db = os.path.join(d, "usage.sqlite")
+        cc_usage.init_db(db)
+        now = 200000
+        cc_usage.record_turn(db, {
+            "id": "t1", "provider": "claude", "agent": "claude",
+            "tmux_session": "uuid-abc", "tmux_pane": "",
+            "pane_pwd": "/repo/front", "git_root": "/repo/front",
+            "model": "claude-fable-5",
+            "turn_started_at": now - 100, "turn_finished_at": now - 100,
+            "total_tokens": 100, "source": "claude_jsonl", "confidence": "local",
+        })
+        cc_usage.record_turn(db, {
+            "id": "t-old", "provider": "claude", "agent": "claude",
+            "tmux_session": "uuid-old", "tmux_pane": "",
+            "pane_pwd": "/repo/front", "git_root": "/repo/front",
+            "model": "claude-old",
+            "turn_started_at": now - 100000, "turn_finished_at": now - 100000,
+            "total_tokens": 900, "source": "claude_jsonl", "confidence": "local",
+        })
+        panes = [
+            _live_pane("term-1", "%1", "/repo/front"),
+            _live_pane("term-2", "%2", "/otro"),
+        ]
+        state = cc_usage.build_usage_state(db, panes, now=now)
+
+    by_pane = {p["tmux_pane"]: p for p in state["panes"]}
+    # El pane vivo hereda el uso de HOY de su proveedor+carpeta y el modelo real
+    assert by_pane["%1"]["total_tokens"] == 100
+    assert by_pane["%1"]["model"] == "claude-fable-5"
+    assert by_pane["%1"]["confidence"] == "local"
+    assert by_pane["%2"].get("total_tokens", 0) == 0
+
+
+def test_pane_usage_marked_shared_when_folder_has_twin_panes():
+    with tempfile.TemporaryDirectory() as d:
+        db = os.path.join(d, "usage.sqlite")
+        cc_usage.init_db(db)
+        now = 200000
+        cc_usage.record_turn(db, {
+            "id": "t1", "provider": "codex", "agent": "codex",
+            "tmux_session": "thread-1", "tmux_pane": "",
+            "pane_pwd": "/repo", "git_root": "/repo", "model": "gpt-5.5",
+            "turn_started_at": now - 50, "turn_finished_at": now - 50,
+            "total_tokens": 40, "source": "codex_state_db", "confidence": "local",
+        })
+        panes = [
+            _live_pane("term-1", "%1", "/repo", agent="codex"),
+            _live_pane("term-1", "%2", "/repo", agent="codex"),
+        ]
+        state = cc_usage.build_usage_state(db, panes, now=now)
+
+    by_pane = {p["tmux_pane"]: p for p in state["panes"]}
+    # Dos panes vivos comparten proveedor+carpeta: el numero es del folder,
+    # nunca se presenta como exacto por pane
+    assert by_pane["%1"]["confidence"] == "compartido"
+    assert by_pane["%2"]["confidence"] == "compartido"
+    assert by_pane["%1"]["total_tokens"] == 40
+
+
 def test_model_switch_text_accepts_direct_model():
     assert cc_usage.model_switch_text("claude", "", model="opus") == "/model opus"
     assert cc_usage.model_switch_text("claude", "", model="fable") == "/model fable"
@@ -652,4 +720,6 @@ if __name__ == "__main__":
     test_read_codex_rate_limits_reads_latest_rollout_snapshot()
     test_read_codex_rate_limits_empty_without_sessions()
     test_build_usage_state_exposes_provider_limits()
+    test_build_usage_state_attaches_today_usage_to_live_panes()
+    test_pane_usage_marked_shared_when_folder_has_twin_panes()
     test_model_switch_text_accepts_direct_model()

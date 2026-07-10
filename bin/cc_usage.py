@@ -507,6 +507,43 @@ def _usage_windows(turns, settings, now):
     }
 
 
+def _attach_pane_turn_usage(turns, panes, now):
+    """Suma a cada pane vivo el uso local de las ultimas 24h de su proveedor
+    en su carpeta, y hereda el modelo del turno mas reciente. Si dos panes
+    vivos comparten proveedor+carpeta, el numero es del folder, no del pane:
+    se marca 'compartido' y nunca se presenta como exacto por pane."""
+    day_start = now - 24 * 3600
+    groups = {}
+    for pane in panes:
+        provider = pane.get("provider") or pane.get("agent") or ""
+        groups.setdefault((provider, pane.get("pane_pwd") or ""), []).append(pane)
+    sums, latest_model = {}, {}
+    for turn in turns:  # vienen ordenados por turn_finished_at desc
+        provider = turn.get("provider") or turn.get("agent") or ""
+        key = (provider, turn.get("pane_pwd") or "")
+        if key not in groups:
+            continue
+        if turn.get("model") and key not in latest_model:
+            latest_model[key] = turn["model"]
+        if _as_int(turn.get("turn_finished_at")) < day_start:
+            continue
+        item = sums.setdefault(key, {"tokens": 0, "cost": 0.0})
+        item["tokens"] += _as_int(turn.get("total_tokens"))
+        item["cost"] += _as_float(turn.get("cost_usd"))
+    for key, group in groups.items():
+        item = sums.get(key)
+        model = latest_model.get(key, "")
+        for pane in group:
+            if model and not pane.get("model"):
+                pane["model"] = model
+            if not item:
+                continue
+            pane["total_tokens"] = item["tokens"]
+            pane["cost_usd"] = round(item["cost"], 6)
+            pane["usage_window"] = "24h"
+            pane["confidence"] = "compartido" if len(group) > 1 else "local"
+
+
 def build_usage_state(db_path, live_panes=None, now=None, settings=None, limits=None):
     init_db(db_path)
     live_panes = live_panes or []
@@ -516,6 +553,7 @@ def build_usage_state(db_path, live_panes=None, now=None, settings=None, limits=
         turns = _rows(con.execute("select * from usage_turns order by turn_finished_at desc"))
         provider_usage = _rows(con.execute("select * from provider_usage_buckets order by end_time desc"))
         provider_costs = _rows(con.execute("select * from provider_cost_buckets order by end_time desc"))
+    _attach_pane_turn_usage(turns, panes, ts)
     projects = _project_rollups(turns, panes)
     turn_cost = sum(_as_float(t.get("cost_usd")) for t in turns)
     provider_cost = sum(_as_float(c.get("cost_usd")) for c in provider_costs)
