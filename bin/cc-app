@@ -85,6 +85,13 @@ notebook > header > tabs > tab button {
   border: none; background: none;
 }
 notebook > header > tabs > tab button:hover { color: @TEXT@; }
+/* Flechas de scroll de tabs: sin esto quedan pegadas a la primera pestana */
+notebook > header > tabs > arrow {
+  color: @FAINT@; min-width: 18px; padding: 0 7px; margin: 0 4px;
+  background: none; border: none;
+}
+notebook > header > tabs > arrow:hover { color: @BRAND@; }
+notebook > header > tabs > arrow:disabled { color: @LINE@; }
 notebook stack { background: @BG@; }
 .termwrap { background: @BG@; }
 .tabplus { color: @FAINT@; padding: 2px 10px; border: none; background: none;
@@ -223,6 +230,18 @@ def url_at_event(term, event, match=""):
     return normalize_wrapped_url_text(match or "")
 
 
+def ssh_host_from_session(sess):
+    if not isinstance(sess, str):
+        return None
+    if sess.startswith("ssh-"):
+        return sess[4:] or None
+    if sess.startswith("sshtab-"):
+        host, sep, idx = sess[len("sshtab-"):].rpartition("-")
+        if sep and idx.isdigit() and host:
+            return host
+    return None
+
+
 def make_term(argv_sh):
     term = Vte.Terminal()
     term.set_font(Pango.FontDescription(FONT))
@@ -233,8 +252,7 @@ def make_term(argv_sh):
     term.connect("button-press-event", on_term_button)
     term.connect("button-release-event", on_term_release)
     # Seleccionar = copiar al clipboard del sistema (portapapeles compartido)
-    term.connect("selection-changed", lambda t: t.get_has_selection()
-                 and t.copy_clipboard_format(Vte.Format.TEXT))
+    term.connect("selection-changed", lambda t: copy_vte_selection(t))
     # URLs clickeables: click simple (sin arrastre) o Ctrl+click, con manita
     try:
         rx = Vte.Regex.new_for_match(URL_RE, -1, 0x00000400)  # PCRE2_MULTILINE
@@ -345,6 +363,70 @@ def pane_at(term, event):
     return None, len(panes)
 
 
+def copy_mode_pane(sess, preferred=None):
+    """Pane que esta en copy-mode, priorizando el pane bajo el cursor."""
+    if preferred:
+        r = tmuxc("display-message", "-p", "-t", preferred, "#{pane_in_mode}")
+        if r.stdout.strip() == "1":
+            return preferred
+    if not sess:
+        return None
+    r = tmuxc("list-panes", "-t", "=" + sess + ":", "-F", "#{pane_id}|#{pane_in_mode}")
+    if r.returncode != 0:
+        return None
+    for line in r.stdout.splitlines():
+        pane, _, mode = line.partition("|")
+        if pane and mode == "1":
+            return pane
+    return None
+
+
+def select_pane_at_event(term, event):
+    pane_id, _npanes = pane_at(term, event)
+    if pane_id:
+        tmuxc("select-pane", "-t", pane_id)
+        return pane_id
+    return None
+
+
+def copy_text_to_clipboard(text):
+    if not text:
+        return False
+    cb = Gtk.Clipboard.get(Gdk.SELECTION_CLIPBOARD)
+    cb.set_text(text, -1)
+    try:
+        cb.store()
+    except Exception:
+        pass
+    return True
+
+
+def copy_vte_selection(term):
+    if not term.get_has_selection():
+        return False
+    term.copy_clipboard_format(Vte.Format.TEXT)
+    term._last_selection_copy = time.monotonic()
+    try:
+        Gtk.Clipboard.get(Gdk.SELECTION_CLIPBOARD).store()
+    except Exception:
+        pass
+    return True
+
+
+def copy_tmux_selection_to_clipboard(pane):
+    if not pane:
+        return False
+    r = tmuxc("send-keys", "-t", pane, "-X", "copy-selection-no-clear")
+    if r.returncode != 0:
+        r = tmuxc("send-keys", "-t", pane, "-X", "copy-selection")
+    if r.returncode != 0:
+        return False
+    r = tmuxc("save-buffer", "-")
+    if r.returncode != 0:
+        return False
+    return copy_text_to_clipboard(r.stdout)
+
+
 def notify_popup(title, body):
     """Feedback visible via el demonio de popups (se autocierra en 12s)."""
     try:
@@ -434,6 +516,8 @@ def on_term_release(term, event):
     press = getattr(term, "_url_press", None)
     term._url_press = None
     term._sel_flag = True
+    if term.get_has_selection():
+        copy_vte_selection(term)
     if press and event.button == 1:
         x, y, url = press
         if url and abs(event.x - x) < 5 and abs(event.y - y) < 5 \
@@ -457,6 +541,7 @@ def on_term_button(term, event):
     # Click simple: recordar si cayo sobre una URL; se abre al SOLTAR solo si
     # no hubo arrastre (para no interferir con seleccionar texto)
     if event.button == 1:
+        select_pane_at_event(term, event)
         try:
             match, _tag = term.match_check_event(event)
             url = url_at_event(term, event, match or "")
@@ -478,7 +563,10 @@ def on_term_button(term, event):
     key = getattr(box, "_key", None)
     cur_sess = term_session(term)          # sesion realmente mostrada (hub incluido)
     pane_id, npanes = pane_at(term, event)  # pane bajo el cursor
-    is_ssh = bool(cur_sess and cur_sess.startswith("ssh-"))
+    if pane_id:
+        tmuxc("select-pane", "-t", pane_id)
+    ssh_host = ssh_host_from_session(cur_sess)
+    is_ssh = bool(ssh_host)
 
     def split(flags, cmd=None):
         target = pane_id or (("=" + cur_sess + ":") if cur_sess else None)
@@ -496,20 +584,23 @@ def on_term_button(term, event):
 
     # Hay DOS tipos de seleccion: la de la terminal (VTE, con Shift+arrastrar)
     # y la de tmux (arrastrar normal, es la que persiste). Copiar cubre ambas.
-    in_copy = False
-    if pane_id:
-        rm = tmuxc("display-message", "-p", "-t", pane_id, "#{pane_in_mode}")
-        in_copy = rm.stdout.strip() == "1"
+    copy_pane = copy_mode_pane(cur_sess, pane_id)
 
     def do_copy():
-        if term.get_has_selection():
-            term.copy_clipboard_format(Vte.Format.TEXT)
-        elif in_copy and pane_id:
-            tmuxc("send-keys", "-t", pane_id, "-X", "copy-pipe-no-clear",
-                  "xclip -in -selection clipboard 2>/dev/null")
+        if copy_vte_selection(term):
+            return
+        target = copy_mode_pane(term_session(term), pane_id) or copy_pane
+        if target and copy_tmux_selection_to_clipboard(target):
+            return
+        if time.monotonic() - getattr(term, "_last_selection_copy", 0) < 15:
+            notify_popup("Seleccion copiada" if ES else "Selection copied",
+                         "Ya estaba en el portapapeles" if ES else "Already on the clipboard")
+            return
+        notify_popup("No se pudo copiar" if ES else "Could not copy",
+                     "No encontre una seleccion activa" if ES else "No active selection found")
 
     item(("Copiar                   Ctrl+C" if ES else "Copy                     Ctrl+C"), do_copy,
-         sensitive=term.get_has_selection() or in_copy)
+         sensitive=True)
     item(("Pegar                    Ctrl+V" if ES else "Paste                    Ctrl+V"),
          lambda: (exit_copy_mode(term), term.paste_clipboard()))
     item("Copiar respuesta de Claude" if ES else "Copy Claude's reply", lambda: copy_claude_reply(term))
@@ -517,7 +608,7 @@ def on_term_button(term, event):
     item("Guardar respuesta como PDF" if ES else "Save reply as PDF", lambda: export_claude_reply(term, "pdf"))
     menu.append(Gtk.SeparatorMenuItem())
     if is_ssh:
-        host = cur_sess[4:]
+        host = ssh_host
         sshcmd = f"ssh {host}"
         item("Split derecha    (otra conexion al server)" if ES else "Split right    (new connection to server)", lambda: split(["-h"], sshcmd))
         item("Split izquierda  (otra conexion al server)" if ES else "Split left     (new connection to server)", lambda: split(["-h", "-b"], sshcmd))
@@ -556,6 +647,7 @@ def on_term_button(term, event):
 
 
 win = Gtk.Window(title="ComandOS")
+win.set_wmclass("comandos", "comandos")
 win.set_default_size(1600, 880)
 win.set_icon_name("centro-claude")
 
@@ -566,12 +658,42 @@ TABS_FILE = os.path.expanduser("~/.claude/hooks/app-tabs.json")
 TAB_HISTORY_FILE = os.path.expanduser("~/.claude/hooks/app-tabs-history.json")
 
 
+def notebook_pages():
+    for i in range(nb.get_n_pages()):
+        yield nb.get_nth_page(i)
+
+
+def current_tab_order():
+    out = []
+    for page in notebook_pages():
+        key = getattr(page, "_key", None)
+        if key in tabs:
+            out.append(key)
+    return out
+
+
+def ordered_tab_labels(page_keys, labels):
+    out = {}
+    for key in page_keys:
+        if isinstance(key, str) and key in labels:
+            out[key] = labels[key]
+    for key, label in labels.items():
+        if key not in out:
+            out[key] = label
+    return out
+
+
 def save_tabs():
     try:
+        labels = {k: getattr(b, "_label", None) for k, b in tabs.items()}
         with open(TABS_FILE, "w") as f:
-            json.dump({k: getattr(b, "_label", None) for k, b in tabs.items()}, f)
+            json.dump(ordered_tab_labels(current_tab_order(), labels), f)
     except Exception:
         pass
+
+
+def on_tab_reordered(_nb, _child, _page_num):
+    save_tabs()
 
 
 def saved_tab_label(key):
@@ -640,14 +762,22 @@ def restore_tabs():
         try:
             if subprocess.run(["tmux", "has-session", "-t", "=" + sess],
                               capture_output=True, timeout=5).returncode != 0:
+                ssh_host = ssh_host_from_session(sess)
                 if sess.startswith("term-"):
                     # terminal scratch: recrear shell simple en HOME
                     subprocess.run(
                         ["systemd-run", "--user", "--scope", "--collect", "--quiet",
                          "tmux", "new-session", "-d", "-s", sess, "-c", os.path.expanduser("~")],
                         capture_output=True, timeout=12)
-                elif sess.startswith("ssh-"):
-                    http_post("/ssh-connect", {"host": sess[4:]}, timeout=20)
+                elif ssh_host and sess.startswith("ssh-"):
+                    http_post("/ssh-connect", {"host": ssh_host}, timeout=20)
+                elif ssh_host:
+                    res, e = http_post("/ssh-new-tab", {"host": ssh_host}, timeout=20)
+                    if e:
+                        raise RuntimeError(e)
+                    if isinstance(res, dict) and res.get("session"):
+                        sess = res["session"]
+                        label = res.get("label") or label
                 else:
                     http_post("/new", {"session": sess})
             open_tab(sess, "claude", label=label if isinstance(label, str) and label else None)
@@ -713,6 +843,23 @@ def poll_state_loop():
 
 
 def close_tab(key):
+    # Confirmar SIEMPRE: cerrar sin querer era demasiado facil. La sesion tmux
+    # sigue viva y ademas queda en "Recientes (cerradas)" del tablero.
+    box = tabs.get(key)
+    label = getattr(box, "_label", key) if box is not None else key
+    d = Gtk.MessageDialog(transient_for=win, modal=True,
+                          message_type=Gtk.MessageType.QUESTION,
+                          buttons=Gtk.ButtonsType.YES_NO,
+                          text=(f"¿Cerrar la pestaña «{label}»?" if ES
+                                else f"Close tab “{label}”?"))
+    d.format_secondary_text(
+        "La sesión tmux sigue viva; puedes recuperarla en Recientes del tablero."
+        if ES else
+        "The tmux session stays alive; recover it from the dashboard's Recents.")
+    resp = d.run()
+    d.destroy()
+    if resp != Gtk.ResponseType.YES:
+        return
     archive_tab(key, reason="closed")
     box = tabs.pop(key, None)
     if box is not None:
@@ -784,6 +931,8 @@ def open_tab(sess, winname, label=None):
     if not WIN_RE.match(winname or ""):
         winname = "claude"
     key = sess
+    if ssh_host_from_session(sess):
+        tmuxc("set-option", "-t", sess, "mouse", "off")
     if key in tabs:
         select_win(sess, winname)
         nb.set_current_page(nb.page_num(tabs[key]))
@@ -795,6 +944,7 @@ def open_tab(sess, winname, label=None):
     box._key = key
     box._label = label or saved_tab_label(sess) or sess
     idx = nb.append_page(box, tab_label(box._label, key))
+    nb.set_tab_reorderable(box, True)
     box.show_all()
     nb.set_current_page(idx)
     box._term.grab_focus()
@@ -828,6 +978,25 @@ SW_HINT = ({"waiting": "espera TU respuesta", "working": "trabajando", "done": "
            {"waiting": "waiting for YOU", "working": "working", "done": "done"})
 
 
+def close_on_click_outside(w):
+    """Cierra un modal cuando el usuario hace click fuera (pierde el foco).
+    Guard: solo cierra DESPUES de haber tenido foco al menos una vez, para
+    no autodestruirse durante el show inicial (GNOME puede tardar en darlo)."""
+    w._had_focus = False
+
+    def on_in(*_):
+        w._had_focus = True
+        return False
+
+    def on_out(*_):
+        if w._had_focus:
+            w.destroy()
+        return False
+
+    w.connect("focus-in-event", on_in)
+    w.connect("focus-out-event", on_out)
+
+
 def open_switcher(*_):
     """Ctrl+K: saltar a cualquier pestana/sesion escribiendo 2-3 letras.
     Las que ESPERAN tu respuesta salen arriba; Enter va a la primera."""
@@ -836,7 +1005,9 @@ def open_switcher(*_):
         return
     w = Gtk.Window(type=Gtk.WindowType.TOPLEVEL)
     w.set_transient_for(win)
-    w.set_modal(True)
+    # NO modal: modal traga los clicks de afuera y nunca llega focus-out,
+    # asi que no podria cerrarse al hacer click fuera.
+    w.set_modal(False)
     w.set_decorated(False)
     w.set_position(Gtk.WindowPosition.CENTER_ON_PARENT)
     w.set_default_size(560, -1)
@@ -855,9 +1026,11 @@ def open_switcher(*_):
 
     def candidates():
         out, seen = [], set()
-        for key, box in tabs.items():
-            out.append((getattr(box, "_label", key), key, True))
-            seen.add(key)
+        for page in notebook_pages():
+            key = getattr(page, "_key", None)
+            if key in tabs:
+                out.append((tab_page_label(page), key, True))
+                seen.add(key)
         for s, it in STATE_ITEMS.items():
             if s in seen or s == "local" or it.get("alive") is False or it.get("zombie"):
                 continue
@@ -895,21 +1068,30 @@ def open_switcher(*_):
             h.pack_end(m, False, False, 0)
             r.add(h)
             lb.add(r)
-            rows.append((r, key))
+            rows.append((r, key, is_open))
         lb.show_all()
         if rows:
             lb.select_row(rows[0][0])
 
     def go(row):
-        for r, key in rows:
+        for r, key, _is_open in rows:
             if r is row:
                 w.destroy()
                 open_tab(key, "claude")
                 return
 
+    def close_selected():
+        sel = lb.get_selected_row()
+        for r, key, is_open in rows:
+            if r is sel and is_open and key in tabs:
+                close_tab(key)
+                refill()
+                return True
+        return True
+
     def move_sel(delta):
         sel = lb.get_selected_row()
-        idx = next((i for i, (r, _) in enumerate(rows) if r is sel), 0)
+        idx = next((i for i, (r, _key, _is_open) in enumerate(rows) if r is sel), 0)
         idx = max(0, min(len(rows) - 1, idx + delta))
         if rows:
             lb.select_row(rows[idx][0])
@@ -929,16 +1111,123 @@ def open_switcher(*_):
         if ev.keyval == Gdk.KEY_Up:
             move_sel(-1)
             return True
+        if ev.keyval in (Gdk.KEY_Delete, Gdk.KEY_BackSpace):
+            return close_selected()
+        if ev.state & Gdk.ModifierType.CONTROL_MASK and ev.keyval in (Gdk.KEY_w, Gdk.KEY_W):
+            return close_selected()
         return False
 
     lb.connect("row-activated", lambda _l, row: go(row))
     entry.connect("changed", refill)
     w.connect("key-press-event", on_sw_key)
+    close_on_click_outside(w)
     w.connect("destroy", lambda *_: setattr(open_switcher, "_win", None))
     open_switcher._win = w
     refill()
     w.show_all()
     entry.grab_focus()
+
+
+def tab_page_label(page):
+    if getattr(page, "_label", None):
+        return page._label
+    hb = nb.get_tab_label(page)
+    txt = getattr(hb, "_text", None)
+    if txt is not None:
+        return txt.get_text()
+    return getattr(page, "_key", "tab") or "tab"
+
+
+def open_tabs_overview(*_):
+    if getattr(open_tabs_overview, "_win", None):
+        open_tabs_overview._win.present()
+        return
+    w = Gtk.Window(type=Gtk.WindowType.TOPLEVEL)
+    w.set_transient_for(win)
+    w.set_modal(False)
+    w.set_decorated(False)
+    w.set_position(Gtk.WindowPosition.CENTER_ON_PARENT)
+    w.set_default_size(500, 480)
+    w.get_style_context().add_class("switcher")
+    v = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
+    v.set_property("margin", 12)
+    title = Gtk.Label(label="Tabs abiertas" if ES else "Open tabs", xalign=0)
+    title.get_style_context().add_class("help-sec")
+    v.pack_start(title, False, False, 0)
+    sc = Gtk.ScrolledWindow()
+    sc.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
+    sc.set_min_content_height(320)
+    lb = Gtk.ListBox()
+    lb.set_activate_on_single_click(True)
+    sc.add(lb)
+    v.pack_start(sc, True, True, 0)
+    w.add(v)
+    rows = []
+
+    def focus_page(page):
+        w.destroy()
+        idx = nb.page_num(page)
+        if idx >= 0:
+            nb.set_current_page(nb.page_num(page))
+            term = getattr(page, "_term", None)
+            if term:
+                term.grab_focus()
+
+    def refill():
+        for ch in lb.get_children():
+            lb.remove(ch)
+        rows.clear()
+        for page in notebook_pages():
+            key = getattr(page, "_key", None)
+            label = tab_page_label(page)
+            st = STATE_CACHE.get(key, "") if key else ""
+            row = Gtk.ListBoxRow()
+            h = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=9)
+            h.set_property("margin", 8)
+            dot = Gtk.Label()
+            dot.set_markup(f'<span size="9500" foreground="{DOT_COLORS.get(st, DOT_IDLE)}">●</span>')
+            h.pack_start(dot, False, False, 0)
+            texts = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=1)
+            texts.pack_start(Gtk.Label(label=label, xalign=0), False, False, 0)
+            meta = Gtk.Label(label=(key or "local"), xalign=0)
+            meta.get_style_context().add_class("sw-meta")
+            texts.pack_start(meta, False, False, 0)
+            h.pack_start(texts, True, True, 0)
+            if key:
+                close = Gtk.Button(label="×")
+                close.set_relief(Gtk.ReliefStyle.NONE)
+                close.get_style_context().add_class("tabplus")
+
+                def on_close(_b, key=key):
+                    close_tab(key)
+                    refill()
+
+                close.connect("clicked", on_close)
+                h.pack_end(close, False, False, 0)
+            row.add(h)
+            lb.add(row)
+            rows.append((row, page))
+        lb.show_all()
+
+    def go(_lb, row):
+        for r, page in rows:
+            if r is row:
+                focus_page(page)
+                return
+
+    def on_key(_w, ev):
+        if ev.keyval == Gdk.KEY_Escape:
+            w.destroy()
+            return True
+        return False
+
+    lb.connect("row-activated", go)
+    w.connect("key-press-event", on_key)
+    close_on_click_outside(w)
+    w.connect("destroy", lambda *_: setattr(open_tabs_overview, "_win", None))
+    open_tabs_overview._win = w
+    refill()
+    w.show_all()
 
 
 def rename_tab(key):
@@ -989,6 +1278,8 @@ def apply_theme(name):
 # mueven Super+N y los popups. No aparece como tarjeta en el tablero.
 hub = make_term("tmux new-session -A -s local -c ~")
 nb.append_page(hub, tab_label("⌂ local", closable=False))
+nb.set_tab_reorderable(hub, False)
+nb.connect("page-reordered", on_tab_reordered)
 
 # Barra de pestanas: boton "+" (nueva terminal) y "?" (atajos)
 _actions = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=2)
@@ -998,6 +1289,12 @@ _copy.set_relief(Gtk.ReliefStyle.NONE)
 _copy.set_tooltip_text("Copiar la ultima respuesta de Claude de ESTA pestana" if ES else "Copy Claude's latest reply from THIS tab")
 _copy.connect("clicked", lambda *_: cur_term() and copy_claude_reply(cur_term()))
 _actions.pack_start(_copy, False, False, 0)
+_tabs = Gtk.Button(label="▦")
+_tabs.get_style_context().add_class("tabplus")
+_tabs.set_relief(Gtk.ReliefStyle.NONE)
+_tabs.set_tooltip_text("Ver, saltar y cerrar tabs abiertas" if ES else "View, jump and close open tabs")
+_tabs.connect("clicked", open_tabs_overview)
+_actions.pack_start(_tabs, False, False, 0)
 _find = Gtk.Button(label="⌕")
 _find.get_style_context().add_class("tabplus")
 _find.set_relief(Gtk.ReliefStyle.NONE)
@@ -1029,7 +1326,9 @@ def on_msg(mgr, res):
         if d.get("theme"):
             apply_theme(d["theme"])
             return
-        open_tab(d.get("session", ""), d.get("win", "claude"))
+        label = d.get("label", None)
+        open_tab(d.get("session", ""), d.get("win", "claude"),
+                 label=label if isinstance(label, str) and label else None)
     except Exception as e:
         print(f"mensaje invalido del tablero: {e}")
 
@@ -1279,7 +1578,21 @@ def on_focus_request(_mon, _f, _other, event):
         return
     if sess and sess not in ("local", "hub", "control"):
         open_tab(sess, winname, label=label if isinstance(label, str) and label else None)
-        win.present()
+        raise_main_window()
+
+
+def raise_main_window():
+    """Trae ComandOS al frente de forma CONFIABLE en GNOME/Mutter, que rechaza
+    que una app se enfoque sola (por eso "a veces" no subia). Un pulso de
+    keep-above fuerza la ventana ARRIBA aunque Mutter no le de el teclado;
+    luego se suelta para no dejarla pineada."""
+    win.deiconify()
+    win.set_keep_above(True)
+    win.present_with_time(Gtk.get_current_event_time() or 0)
+    def _drop():
+        win.set_keep_above(False)
+        return False
+    GLib.timeout_add(500, _drop)
 
 
 _focus_mon = Gio.File.new_for_path(FOCUS_FILE).monitor_file(Gio.FileMonitorFlags.NONE, None)

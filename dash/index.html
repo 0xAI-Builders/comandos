@@ -7,6 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="ComandOS">
+<link rel="icon" href="/icon-192.png">
 <link rel="apple-touch-icon" href="/icon-192.png">
 <style>
   :root{
@@ -70,12 +71,12 @@
   @media (max-width:640px){
     header{padding:9px 12px;gap:6px 10px}
     .brand{font-size:12px;letter-spacing:.1em}
-    #q,#new-name{width:100%}
+    #q{width:100%}
     .hdr-right{width:100%;gap:6px}
     #urgent{grid-template-columns:1fr}
     .sec,#ssh-bar,#tl-wrap{padding-left:12px;padding-right:12px}
     .row .rpath{display:none}
-    .send button,.opts button,.keys button,.ops button{min-height:40px}
+    .send button,.opts button,.keys button,.ops button,.ops .mdl-btn{min-height:40px}
     #content{padding-bottom:env(safe-area-inset-bottom)}
   }
   .brand{font-weight:800;letter-spacing:.16em;font-size:13px}
@@ -86,12 +87,34 @@
   .pill b{font-weight:700}
   .pill.hot{color:var(--waiting);border-color:color-mix(in srgb,var(--waiting) 40%,var(--line))}
   .pill.ok b{color:var(--done)} .pill.run b{color:var(--working)}
+  /* Porcentaje global de limites SIEMPRE a la vista (click abre el drawer Uso) */
+  #limits-strip{display:contents}
+  .pill.lim{font-family:var(--mono);font-size:10.5px;cursor:pointer}
+  .pill.lim:hover{border-color:var(--brand)}
+  .pill.lim b{font-weight:800}
+  .pill.lim-ok b{color:var(--done)}
+  .pill.lim-warn{color:var(--waiting);border-color:color-mix(in srgb,var(--waiting) 40%,var(--line))}
+  .pill.lim-warn b{color:var(--waiting)}
+  .pill.lim-danger{color:#FF5C68;border-color:#FF5C6855}
+  .pill.lim-danger b{color:#FF5C68}
   .hdr-right{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-left:auto}
-  #q,#new-name{background:var(--panel);border:1px solid var(--line);border-radius:8px;
+  /* Buscador DE SESIONES: vive junto al titulo de la seccion, no en el header */
+  .sec-label #q{letter-spacing:normal;text-transform:none;font-weight:400}
+  /* Recientes cerradas: recuperables con un click */
+  .rrow{display:flex;gap:10px;align-items:center;padding:7px 10px;border:1px solid var(--line);
+    border-radius:8px;background:var(--panel);margin-bottom:6px}
+  /* El label NUNCA empuja el boton fuera: se encoge el, no la accion */
+  .rrow b{font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+    flex:0 1 auto;min-width:0}
+  .rrow .rec-open{flex:none}
+  .rrow .rpath{font-family:var(--mono);font-size:10px;color:var(--faint);
+    overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0;flex:1}
+  .rrow .ago{flex:none;font-family:var(--mono);font-size:10px;color:var(--faint)}
+  #q{background:var(--panel);border:1px solid var(--line);border-radius:8px;
     padding:5px 11px;font-family:var(--mono);font-size:12px;color:var(--text)}
-  #q{width:140px} #new-name{width:150px}
-  #q::placeholder,#new-name::placeholder{color:var(--faint)}
-  #q:focus,#new-name:focus{outline:none;border-color:var(--brand)}
+  #q{width:170px}
+  #q::placeholder{color:var(--faint)}
+  #q:focus{outline:none;border-color:var(--brand)}
   .hdr-btn{padding:5px 11px;border:1px solid var(--line);border-radius:8px;color:var(--dim);
     font-size:12px}
   .hdr-btn:hover{color:var(--text);border-color:var(--line2)}
@@ -271,6 +294,11 @@
     border:1px solid var(--line);border-radius:7px;padding:5px 12px}
   .test:hover{color:var(--text);border-color:var(--brand)}
   .test.on{color:var(--done);border-color:color-mix(in srgb,var(--done) 45%,var(--line))}
+  .test.warn{color:var(--waiting);border-color:color-mix(in srgb,var(--waiting) 40%,var(--line))}
+  .test:disabled{cursor:not-allowed;opacity:.48;color:var(--faint);border-color:var(--line)}
+  .test:disabled:hover{color:var(--faint);border-color:var(--line)}
+  .test.on:disabled{opacity:1;color:var(--done);
+    border-color:color-mix(in srgb,var(--done) 55%,var(--line))}
   .switch{display:flex;align-items:center;justify-content:space-between;gap:10px}
   .switch button{width:40px;height:22px;border-radius:11px;background:var(--line);
     position:relative;flex:none}
@@ -339,6 +367,7 @@
   .apptab .x{color:var(--faint);font-size:16px;line-height:1;padding:2px 3px;border-radius:5px;
     margin-left:2px;transition:color .12s,background .12s}
   .apptab .x:hover{color:#fff;background:#FF6B6B}
+  .apptab .x.arm{color:#fff;background:var(--done);font-weight:800}
   .apptab .dot{width:7px;height:7px;border-radius:50%;flex:none;box-shadow:0 0 6px currentColor}
   .apptab.plus{font-size:18px;color:var(--faint);padding:8px 15px}
   .apptab.plus:hover{color:var(--brand)}
@@ -395,6 +424,15 @@
     body.app.split #view-panel #tl-wrap{max-width:none;padding-left:14px;padding-right:14px}
     body.app.split #view-panel .row .rpath{display:none}
   }
+  #term-select-toggle{display:none;position:absolute;right:12px;top:10px;z-index:4;
+    align-items:center;justify-content:center;min-height:30px;padding:5px 10px;
+    border:1px solid var(--line2);border-radius:7px;background:rgba(10,13,19,.88);
+    color:var(--dim);font-family:var(--mono);font-size:11.5px;font-weight:700;
+    box-shadow:0 8px 24px rgba(0,0,0,.32);backdrop-filter:blur(8px)}
+  body.app #term-area.on #term-select-toggle{display:inline-flex}
+  #term-select-toggle:hover{color:var(--text);border-color:var(--brand)}
+  #term-select-toggle.on{color:var(--bg);background:var(--brand);border-color:var(--brand)}
+  #term-select-toggle:disabled{opacity:.55;cursor:wait}
 
   /* ---------- toasts ---------- */
   #toasts{position:fixed;right:16px;bottom:16px;z-index:30;display:flex;
@@ -403,7 +441,127 @@
     border-left:3px solid var(--brand);border-radius:9px;padding:10px 14px;
     font-family:var(--mono);font-size:12px;max-width:min(380px,90vw)}
   .toast.err{border-left-color:var(--waiting)}
-</style>
+  .remote-state{display:flex;align-items:center;gap:8px;font-family:var(--mono);
+    color:var(--dim);font-size:12px}
+  .remote-dot{width:8px;height:8px;border-radius:50%;background:var(--faint);
+    box-shadow:0 0 0 1px var(--line)}
+  .remote-state.on .remote-dot{background:var(--done);box-shadow:0 0 10px rgba(46,229,157,.35)}
+  .remote-actions{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+	  .urlrow{display:grid;grid-template-columns:1fr auto;gap:8px;align-items:center}
+	  .urlrow input{min-width:0}
+	  #remote-qr{display:block;width:min(260px,100%);height:auto;margin:6px auto 10px;
+	    background:white;border-radius:8px;padding:8px}
+	  .usage-grid{display:grid;grid-template-columns:1fr;gap:8px}
+	  .usage-card{border:1px solid var(--line);border-radius:8px;background:var(--panel);
+	    padding:10px;min-width:0}
+	  .usage-window{border-left:3px solid var(--brand)}
+	  .usage-title{display:flex;align-items:center;gap:8px;font-family:var(--mono);
+	    font-size:12px;font-weight:800;text-transform:uppercase}
+	  .usage-title small{margin-left:auto;color:var(--faint);font-size:10px;font-weight:700}
+	  .usage-metric{font-family:var(--mono);font-size:20px;font-weight:800;margin-top:7px}
+	  .usage-sub{font-family:var(--mono);font-size:10.5px;color:var(--faint);margin-top:3px;
+	    overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+	  .usage-bar{height:6px;border-radius:6px;background:var(--line);overflow:hidden;margin-top:8px}
+	  .usage-bar span{display:block;height:100%;background:var(--brand);width:0}
+	  .usage-row{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px;
+	    align-items:start;padding:8px 0;border-bottom:1px solid var(--line);font-family:var(--mono)}
+	  .usage-row:last-child{border-bottom:0}
+	  .usage-row b{font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+	  .usage-row span{font-size:10.5px;color:var(--faint);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+	  .usage-row code{font-size:10px;color:var(--code)}
+	  .usage-pane-main{min-width:0}
+	  .pane-model-controls{display:flex;align-items:center}
+	  /* Menu de modelo propio: el <select> nativo no abre en el WebKitGTK viejo
+	     de la app. Un boton con el modelo ACTUAL + menu con nombre e intencion. */
+	  .mdl-wrap{position:relative;display:inline-flex}
+	  .mdl-wrap .mdl-btn{display:inline-flex;align-items:center;gap:5px;font-family:var(--mono);
+	    font-size:10.5px;color:var(--dim);background:var(--panel);border:1px solid var(--line);
+	    border-radius:7px;padding:5px 8px;max-width:138px;cursor:pointer}
+	  .mdl-wrap .mdl-btn:hover{color:var(--text);border-color:var(--brand)}
+	  .mdl-wrap .mdl-cur{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+	  .mdl-wrap .mdl-cur.pending{color:var(--brand);font-style:italic}
+	  .mdl-wrap .mdl-caret{color:var(--faint);font-size:9px;flex:none}
+	  /* En la fila de acciones de la card el boton de modelo se viste IGUAL que
+	     sus vecinos (Copiar/TXT/PDF: texto, borde transparente, misma altura) */
+	  .ops .mdl-btn{background:none;border-color:transparent;padding:4px 10px;
+	    font-size:11.5px;min-height:0;max-width:150px}
+	  .ops .mdl-btn:hover{border-color:var(--line2)}
+	  .ops .mdl-btn .mdl-cur{color:var(--code)}
+	  /* El menu vive en <body> y se posiciona con getBoundingClientRect:
+	     las cards tienen overflow:hidden y lo recortarian si fuera hijo */
+	  #mdl-menu{position:fixed;z-index:60;min-width:236px;max-width:320px;
+	    max-height:min(420px,70vh);overflow-y:auto;
+	    background:var(--panel2);border:1px solid var(--line2);border-radius:10px;padding:5px;
+	    box-shadow:0 10px 28px rgba(0,0,0,.45)}
+	  #mdl-menu .mdl-head{font-family:var(--mono);font-size:9px;font-weight:700;letter-spacing:.14em;
+	    text-transform:uppercase;color:var(--faint);padding:7px 9px 3px}
+	  #mdl-menu .mdl-opt{display:grid;grid-template-columns:8px auto 1fr;gap:8px;align-items:center;
+	    width:100%;min-height:0;text-align:left;padding:8px 9px;border:0;border-radius:7px;
+	    background:none;cursor:pointer}
+	  #mdl-menu .mdl-opt:hover,#mdl-menu .mdl-opt:focus-visible{background:var(--panel)}
+	  #mdl-menu .mdl-opt i{width:8px;height:8px;border-radius:50%}
+	  #mdl-menu .mdl-opt b{font-family:var(--mono);font-size:11px;color:var(--text)}
+	  #mdl-menu .mdl-opt span{font-size:10px;color:var(--faint);white-space:nowrap;
+	    overflow:hidden;text-overflow:ellipsis}
+	  .usage-window.ok .usage-bar span{background:var(--done)}
+	  .usage-window.warn{border-left-color:var(--waiting)}
+	  .usage-window.warn .usage-bar span{background:var(--waiting)}
+	  .usage-window.danger{border-left-color:#FF5C68}
+	  .usage-window.danger .usage-bar span{background:#FF5C68}
+	  .usage-window .usage-title small{font-size:9px}
+	  /* Barras proporcionales de proveedores/proyectos + panes operables */
+	  .usage-viz{padding:9px 10px;border:1px solid var(--line);border-radius:8px;
+	    background:var(--panel);margin-bottom:7px}
+	  .uv-top{display:flex;align-items:baseline;gap:8px;margin-bottom:5px}
+	  .uv-top b{font-size:12.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+	  .uv-top span{margin-left:auto;flex:none;font-family:var(--mono);font-size:10px;color:var(--faint)}
+	  .uv-pane{display:flex;align-items:center;gap:8px;margin-top:6px;padding:6px 7px;
+	    border-radius:7px;cursor:pointer;border:1px solid transparent}
+	  .uv-pane:hover{background:var(--panel2);border-color:var(--line)}
+	  .uv-dot{flex:none;width:8px;height:8px;border-radius:50%;background:var(--brand)}
+	  .uv-dot[data-a="codex"]{background:#19C39C}
+	  .uv-dot[data-a="opencode"]{background:#FAB283}
+	  .uv-dot[data-a="gemini"]{background:#7AA5FF}
+	  .uv-dot[data-a="agy"]{background:#B49CFF}
+	  .uv-main{flex:1;min-width:0;display:flex;flex-direction:column;gap:1px}
+	  .uv-main b{font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+	  .uv-info{font-family:var(--mono);font-size:10px;color:var(--faint);
+	    overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+	  #alert-config{display:flex;gap:6px;align-items:center;flex-wrap:wrap}
+	  /* Boton de alerta EXPLICITO: "🔔 alerta" configura, "🔔 100M"/"🔔 80%"
+	     muestra la regla activa */
+	  .uv-bell{flex:none;display:inline-flex;align-items:center;gap:3px;cursor:pointer;
+	    font-family:var(--mono);font-size:9.5px;font-weight:700;color:var(--faint);
+	    border:1px solid var(--line);border-radius:12px;padding:2px 8px;background:none;
+	    white-space:nowrap}
+	  .uv-bell:hover{color:var(--text);border-color:var(--brand)}
+	  .uv-bell.on{color:var(--waiting);border-color:color-mix(in srgb,var(--waiting) 45%,var(--line))}
+	  .usage-metric .uv-bell{float:right;margin-top:4px}
+	  .rule-row{display:grid;grid-template-columns:auto 1fr auto;gap:4px 10px;align-items:center;
+	    padding:7px 10px;border:1px solid var(--line);border-radius:8px;background:var(--panel);
+	    margin-bottom:6px}
+	  .rule-row b{font-size:11.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+	  .rule-row > span{font-family:var(--mono);font-size:10px;color:var(--faint);text-align:right}
+	  .rule-row .usage-bar{grid-column:1 / 3;margin-top:0}
+	  .rule-row.over{border-left:3px solid var(--waiting)}
+	  .rule-row.over .usage-bar span{background:var(--waiting)}
+	  .rule-del{border:0;background:none;color:var(--faint);font-size:14px;cursor:pointer;
+	    grid-row:1 / 3;align-self:center}
+	  .rule-del:hover{color:#FF5C68}
+	  .alert-th.on{color:var(--done);border-color:color-mix(in srgb,var(--done) 45%,var(--line))}
+	  .usage-alert small{margin-left:8px;color:var(--faint);font-family:var(--mono);font-size:9.5px}
+	  .usage-alert.danger{border-left-color:#FF5C68}
+	  .usage-alert{border-left:3px solid var(--waiting);padding:7px 9px;background:var(--panel);
+	    border-radius:6px;font-size:11.5px;color:var(--dim);margin-bottom:7px}
+	  .usage-chip{flex:none;font-family:var(--mono);font-size:9.5px;color:var(--code);
+	    border:1px solid color-mix(in srgb,var(--code) 35%,var(--line));border-radius:5px;
+	    padding:2px 6px;max-width:240px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+	  /* En cards el chip vive en su PROPIA linea con el texto COMPLETO:
+	     nada de "19.4M t…" ilegible (texto completo siempre) */
+	  .card .usage-chip{align-self:flex-start;max-width:100%;white-space:normal;
+	    overflow:visible;text-overflow:clip;line-height:1.5;margin-top:-2px}
+	  .row .usage-chip{font-size:9px}
+	</style>
 
 <div id="panes">
 <div id="tabbar"></div>
@@ -415,20 +573,18 @@
     <span class="pill hot"><b id="n-waiting">0</b> <span>esperan</span></span>
     <span class="pill ok"><b id="n-done">0</b> <span>listos</span></span>
     <span class="pill run"><b id="n-working">0</b> <span>trabajando</span></span>
+    <span id="limits-strip" class="hidden" title="Límites del plan — click para el detalle"></span>
   </div>
   <div class="hdr-right">
-    <input id="q" placeholder="buscar" autocomplete="off" spellcheck="false"
-      title="Filtra por nombre o ruta">
-    <form id="new-form" title="Nombre de un proyecto de ~/codebase y Enter: crea/abre su sesion">
-      <input id="new-name" placeholder="abrir proyecto" autocomplete="off" spellcheck="false">
-    </form>
     <span id="snd-ctl" title="Volumen global (voz y chime). El icono silencia o activa el sonido.">
       <button class="hdr-btn" id="btn-mute">🔊</button>
       <input type="range" id="vol-top" min="0" max="100" value="60">
     </span>
-    <button class="hdr-btn" id="btn-switch" title="Saltar a cualquier sesión (Ctrl+K)">⌕</button>
-    <button class="hdr-btn" id="btn-theme" title="Tema: Noche → Día → Cálido (aplica a tablero, pestañas y terminales)">🌙</button>
-    <button class="hdr-btn" id="btn-settings">Ajustes</button>
+	    <button class="hdr-btn" id="btn-switch" title="Saltar a cualquier sesión (Ctrl+K)">⌕</button>
+	    <button class="hdr-btn" id="btn-theme" title="Tema: Noche → Día → Cálido (aplica a tablero, pestañas y terminales)">🌙</button>
+	    <button class="hdr-btn" id="btn-usage" title="Uso, límites y gasto por pane">Uso</button>
+	    <button class="hdr-btn" id="btn-remote" title="Continuar desde celular/tablet">Remoto</button>
+	    <button class="hdr-btn" id="btn-settings">Ajustes</button>
     <span id="clock">--:--</span>
   </div>
 </header>
@@ -447,8 +603,16 @@
 </section>
 
 <section class="sec">
-  <div class="sec-label">Sesiones</div>
+  <div class="sec-label">Sesiones
+    <input id="q" placeholder="buscar sesión" autocomplete="off" spellcheck="false"
+      title="Filtra por nombre o ruta">
+  </div>
   <div id="rows"></div>
+</section>
+
+<section class="sec hidden" id="recent-wrap">
+  <div class="sec-label">Recientes (cerradas)</div>
+  <div id="recent"></div>
 </section>
 
 <div id="tl-wrap">
@@ -458,7 +622,9 @@
 </div>
 </div><!-- /#view-panel -->
 <div id="splitter" role="separator" aria-orientation="vertical" aria-label="Ajustar panel"></div>
-<div id="term-area"></div>
+<div id="term-area">
+  <button type="button" id="term-select-toggle" aria-pressed="false" title="Seleccionar texto">Seleccionar</button>
+</div>
 </div><!-- /#panes -->
 
 <aside id="settings" class="drawer" aria-label="Ajustes">
@@ -494,7 +660,65 @@
   </div>
 </aside>
 
-<aside id="servers" class="drawer" aria-label="Servidores SSH">
+<aside id="remote" class="drawer" aria-label="Remoto">
+  <h3>Continuar remoto</h3>
+  <div class="set">
+    <div id="remote-status" class="remote-state"><span class="remote-dot"></span><span>Consultando...</span></div>
+  </div>
+  <div class="set remote-actions">
+    <button type="button" class="test" id="remote-on">Prender remoto</button>
+    <button type="button" class="test" id="remote-off">Apagar remoto</button>
+    <button type="button" class="test" id="remote-webterm-on">Terminal ON</button>
+    <button type="button" class="test" id="remote-webterm-off">Terminal OFF</button>
+  </div>
+  <div class="set">
+    <button type="button" class="test" id="remote-open-terminal" style="width:100%">Abrir terminal ahora</button>
+  </div>
+  <div class="set">
+    <img id="remote-qr" class="hidden" alt="QR remoto">
+    <div id="remote-no-qr" class="desc hidden">Instala qrencode para generar QR.</div>
+  </div>
+  <div class="set">
+    <label>Dashboard</label>
+    <div class="urlrow"><input id="remote-dashboard-url" readonly><button class="test" id="remote-copy-dashboard">Copiar</button></div>
+  </div>
+  <div class="set">
+    <label>Terminal web</label>
+    <div class="urlrow"><input id="remote-term-url" readonly><button class="test" id="remote-copy-term">Copiar</button></div>
+  </div>
+  <div class="set">
+    <label>Fallback terminal</label>
+    <div class="urlrow"><input id="remote-fallback-url" readonly><button class="test" id="remote-copy-fallback">Copiar</button></div>
+  </div>
+  <div class="set"><div class="desc">Apagar remoto no apaga Tailscale; sólo deja de exponer ComandOS y detiene la terminal web.</div></div>
+	</aside>
+
+	<aside id="usage" class="drawer" aria-label="Uso">
+	  <h3>Uso</h3>
+	  <div class="set" style="display:flex;gap:8px;flex-wrap:wrap">
+	    <button type="button" class="test" id="usage-refresh">Actualizar</button>
+	    <button type="button" class="test" id="usage-close">Cerrar</button>
+	  </div>
+	  <div class="set"><div class="desc" id="usage-summary">Sin datos todavia.</div></div>
+	  <h3>Limites del plan</h3>
+	  <div id="usage-limits" class="usage-grid"></div>
+	  <h3>Proveedores</h3>
+	  <div id="usage-providers" class="usage-grid"></div>
+	  <h3 style="margin-top:22px">Proyectos y panes</h3>
+	  <div id="usage-projects"></div>
+	  <h3 style="margin-top:22px">Alertas</h3>
+	  <div class="set" id="alert-config">
+	    <span class="desc">Límites del plan: avisar al cruzar</span>
+	    <button type="button" class="test alert-th" data-th="70">70%</button>
+	    <button type="button" class="test alert-th" data-th="85">85%</button>
+	    <button type="button" class="test alert-th" data-th="95">95%</button>
+	  </div>
+	  <div class="desc" style="margin:-4px 0 8px">Llegan por popup propio y/o Telegram, según Ajustes. La 🔔 de cada proyecto/pane agrega presupuestos de tokens por día.</div>
+	  <div id="alert-rules"></div>
+	  <div id="usage-alerts"></div>
+	</aside>
+
+	<aside id="servers" class="drawer" aria-label="Servidores SSH">
   <h3>Servidores SSH</h3>
   <div id="srv-list"></div>
   <h3 style="margin-top:22px" id="srv-form-title">Agregar servidor</h3>
@@ -527,6 +751,7 @@
 </div>
 
 <div id="toasts"></div>
+<div id="mdl-menu" class="hidden" role="listbox" aria-label="Modelos"></div>
 
 <script>
 "use strict";
@@ -535,10 +760,13 @@ const S = {
   cfg: Object.assign({notif:false, poll:2},
         JSON.parse(localStorage.getItem("cc-cfg")||"{}")),
   favs: new Set(),
-  q: "",
-  liveSess: new Set(),
-  recover: [],
-};
+	  q: "",
+	  liveSess: new Set(),
+	  recover: [],
+	  usage: null,
+	  usageByPane: new Map(),
+	  usageSelected: null,
+	};
 const $ = s => document.querySelector(s);
 const urgent = $("#urgent"), rows = $("#rows");
 
@@ -548,7 +776,8 @@ let L = "es";
 const T_EN = {
   "esperan": "waiting", "listos": "done", "trabajando": "working",
   "Esperan tu respuesta": "Waiting for your answer", "Sesiones": "Sessions",
-  "Servidores": "Servers", "gestionar": "manage", "Ajustes": "Settings",
+	  "Servidores": "Servers", "gestionar": "manage", "Ajustes": "Settings",
+	  "Uso": "Usage",
   "Ver actividad reciente": "Show recent activity", "Ocultar actividad": "Hide activity",
   "Necesita respuesta": "Needs your answer", "Suelta": "Detached",
   "Listo para responder": "Ready for your reply",
@@ -570,6 +799,16 @@ const T_EN = {
   "Guardar la respuesta como PDF (markdown renderizado) en Descargas":
     "Save the reply as PDF (rendered markdown) in Downloads",
   "Matar la sesion tmux (y lo que corra dentro)": "Kill the tmux session (and whatever runs inside)",
+  "Remoto": "Remote", "Continuar remoto": "Continue remotely",
+  "Prender remoto": "Remote on", "Apagar remoto": "Remote off",
+  "Terminal ON": "Terminal ON", "Terminal OFF": "Terminal OFF",
+  "Abrir terminal ahora": "Open terminal now",
+  "Dashboard": "Dashboard", "Terminal web": "Web terminal",
+  "Fallback terminal": "Fallback terminal", "Copiar": "Copy",
+  "Consultando...": "Checking...",
+  "Instala qrencode para generar QR.": "Install qrencode to generate QR.",
+  "Apagar remoto no apaga Tailscale; sólo deja de exponer ComandOS y detiene la terminal web.":
+    "Remote off does not turn off Tailscale; it only stops exposing ComandOS and stops the web terminal.",
   "Notificaciones (todo el sistema)": "Notifications (system-wide)",
   "Volumen (voz y chime)": "Volume (voice and chime)",
   "Avisar al terminar": "Notify when done", "Avisar al pedir atencion": "Notify on attention",
@@ -598,14 +837,15 @@ function applyI18n(){
   document.querySelectorAll(
     "#settings label, #settings h3, #settings .desc, #settings .test, " +
     "#servers label, #servers h3, #servers .desc, #servers .test, #srv-cancel, " +
-    ".sec-label, #ssh-bar .lbl, #ssh-manage, #btn-settings, #tl-toggle, .pill span")
+	    "#remote label, #remote h3, #remote .desc, #remote .test, #remote-no-qr, " +
+	    "#usage label, #usage h3, #usage .desc, #usage .test, " +
+	    ".sec-label, #ssh-bar .lbl, #ssh-manage, #btn-usage, #btn-remote, #btn-settings, #tl-toggle, .pill span")
     .forEach(e => { const k = e.textContent.trim(); if(T_EN[k]) e.textContent = T_EN[k]; });
   const ph = (sel, v) => { const e = $(sel); if(e) e.placeholder = v; };
-  ph("#q", "search"); ph("#new-name", "open project");
+  ph("#q", "search session");
   ph("#sw-in", "Jump to...  (Enter opens the first, ↑↓ navigate, Esc closes)");
   const ti = (sel, v) => { const e = $(sel); if(e) e.title = v; };
   ti("#q", "Filter by name or path");
-  ti("#new-form", "Type a ~/codebase project name and Enter: creates/opens its session");
   ti("#snd-ctl", "Global volume (voice and chime). The icon mutes/unmutes.");
   ti("#btn-switch", "Jump to any session (Ctrl+K)");
   ti("#btn-theme", "Theme: Night → Day → Warm (dashboard, tabs and terminals)");
@@ -618,8 +858,8 @@ function saveCfg(){ localStorage.setItem("cc-cfg", JSON.stringify(S.cfg)); }
 function inApp(){
   return !!(window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.centro);
 }
-function openInApp(sess, win){
-  window.webkit.messageHandlers.centro.postMessage(JSON.stringify({session: sess, win}));
+function openInApp(sess, win, label){
+  window.webkit.messageHandlers.centro.postMessage(JSON.stringify({session: sess, win, label}));
 }
 async function openSession(it, win){
   if(inApp()){
@@ -698,6 +938,7 @@ function shortPath(cwd){
 // romper esta invariante: si algun dia se emite <a href> con la URL, se vuelve
 // inyectable. Por eso mdHtml es XSS-safe.
 function mdEsc(s){return (s||"").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");}
+function attrEsc(s){return mdEsc(String(s||"")).replace(/"/g,"&quot;");}
 function mdInline(l){
   return l.replace(/\*\*(.+?)\*\*/g, "<b>$1</b>")
           .replace(/(^|[\s(])\*([^*\n]+)\*(?=$|[\s).,;:!?])/g, "$1<i>$2</i>")
@@ -732,19 +973,477 @@ function mdHtml(s){
 function mdStrip(s){ return (s||"").replace(/\*\*|`|^#{1,6} /g, ""); }
 // Copiar con fallback: el WebKit viejo de la app no siempre tiene
 // navigator.clipboard; execCommand cubre ese caso
-async function copyText(t){
-  try{ await navigator.clipboard.writeText(t); return true; }
-  catch(e){
-    const ta = document.createElement("textarea");
-    ta.value = t; ta.style.position = "fixed"; ta.style.opacity = "0";
+	async function copyText(t){
+	  try{ await navigator.clipboard.writeText(t); return true; }
+	  catch(e){
+	    const ta = document.createElement("textarea");
+	    ta.value = t; ta.style.position = "fixed"; ta.style.opacity = "0";
     document.body.appendChild(ta); ta.select();
     let ok = false;
     try{ ok = document.execCommand("copy"); }catch(_){}
-    ta.remove(); return ok;
-  }
-}
-function favBtn(it, el){
-  const b = el.querySelector(".fav");
+	    ta.remove(); return ok;
+	  }
+	}
+	function fmtMoney(n){
+	  n = Number(n || 0);
+	  if(!n) return "$0.00";
+	  return n < 0.01 ? `$${n.toFixed(4)}` : `$${n.toFixed(2)}`;
+	}
+	function fmtTokens(n){
+	  n = Number(n || 0);
+	  if(n >= 1000000000) return `${(n/1000000000).toFixed(2)}B tok`;
+	  if(n >= 1000000) return `${(n/1000000).toFixed(1)}M tok`;
+	  if(n >= 1000) return `${Math.round(n/1000)}k tok`;
+	  return `${Math.round(n)} tok`;
+	}
+	function usagePaneKey(session, pane){ return `${session || ""}\u001f${pane || ""}`; }
+	function indexUsage(state){
+	  S.usage = state || null;
+	  S.usageByPane = new Map();
+	  for(const p of (state?.panes || []))
+	    S.usageByPane.set(usagePaneKey(p.tmux_session, p.tmux_pane), p);
+	  for(const pr of (state?.projects || []))
+	    for(const p of (pr.panes || [])){
+	      S.usageByPane.set(usagePaneKey(p.tmux_session, p.tmux_pane), p);
+	      if(!S.usageByPane.has(usagePaneKey(p.tmux_session, "")))
+	        S.usageByPane.set(usagePaneKey(p.tmux_session, ""), p);
+	    }
+	}
+	function usageForItem(it){
+	  if(!it) return null;
+	  return S.usageByPane.get(usagePaneKey(it.session, it.pane || "")) ||
+	         S.usageByPane.get(usagePaneKey(it.session, "")) || null;
+	}
+	function confidenceLabel(c){
+	  const labels = {"detected": "detectado", "exact": "exacto", "reconciled": "reconciliado", "unattributed": "sin asignar"};
+	  return labels[c] || c || "";
+	}
+	function usageChipText(u){
+	  if(!u) return "";
+	  const bits = [];
+	  if(u.provider || u.agent) bits.push(u.provider || u.agent);
+	  if(u.model) bits.push(String(u.model).replace(/^claude-/, ""));
+	  if(Number(u.cost_usd || 0) > 0) bits.push(fmtMoney(u.cost_usd));
+	  else if(Number(u.total_tokens || 0) > 0)
+	    bits.push(`${fmtTokens(u.total_tokens)}${u.usage_window === "24h" ? tf(" hoy", " today") : ""}`);
+	  if(confidenceLabel(u.confidence)) bits.push(confidenceLabel(u.confidence));
+	  return bits.slice(0, 4).join(" · ");
+	}
+	function fmtPercent(n){
+	  return n === null || n === undefined ? "--" : `${Number(n).toFixed(Number(n) % 1 ? 1 : 0)}%`;
+	}
+	function limitSeverity(l){
+	  const p = Number(l?.percent || 0);
+	  if(p >= 90 || l?.severity === "danger" || l?.severity === "error") return "danger";
+	  if(p >= 70 || l?.severity === "warning") return "warn";
+	  return "ok";
+	}
+	function fmtReset(ts){
+	  if(!ts) return "";
+	  const d = new Date(ts * 1000), now = new Date();
+	  const hm = d.toLocaleTimeString([], {hour: "2-digit", minute: "2-digit"});
+	  if(d.toDateString() === now.toDateString()) return `${tf("hoy", "today")} ${hm}`;
+	  const days = (d - now) / 86400000;
+	  if(days < 6) return `${d.toLocaleDateString([], {weekday: "short"})} ${hm}`;
+	  return `${d.toLocaleDateString([], {day: "numeric", month: "short"})} ${hm}`;
+	}
+	function limitAge(l){
+	  if(!l?.captured_at) return "";
+	  const min = Math.round((Date.now()/1000 - Number(l.captured_at)) / 60);
+	  if(min < 3) return "";
+	  return min < 120 ? tf(`hace ${min} min`, `${min} min ago`) : tf(`hace ${Math.round(min/60)} h`, `${Math.round(min/60)} h ago`);
+	}
+	// Porcentajes EXACTOS del plan: OAuth de Claude Code y rollouts de Codex.
+	// Cada ventana lleva su boton de alerta (ej. "codex sesion 5h al 60%").
+	function renderUsageLimits(state){
+	  const items = state?.limits || [];
+	  const rules = state?.alert_rules || [];
+	  $("#usage-limits").innerHTML = items.length ? items.map(l=>{
+	    const pct = Math.max(0, Math.min(100, Number(l.percent || 0)));
+	    const rule = rules.find(r => r.id === `limit:${l.id}`);
+	    const sub = [
+	      l.resets_at ? `${tf("resetea", "resets")} ${fmtReset(l.resets_at)}` : "",
+	      l.plan_type ? `plan ${l.plan_type}` : "",
+	      limitAge(l),
+	    ].filter(Boolean).join(" · ");
+	    return `<div class="usage-card usage-window ${limitSeverity(l)}">
+	      <div class="usage-title">${mdEsc(l.provider || "")} · ${mdEsc(l.label || "")}<small>${mdEsc(confidenceLabel(l.confidence))}</small></div>
+	      <div class="usage-metric">${fmtPercent(l.percent)}
+	        <button type="button" class="uv-bell ${rule ? "on" : ""}" data-scope="limit"
+	          data-target="${attrEsc(l.id)}" data-label="${attrEsc(`${l.provider} ${l.label}`)}"
+	          title="${tf("Configurar alerta para esta ventana", "Configure an alert for this window")}">
+	          🔔 ${rule ? `${Number(rule.threshold)}%` : tf("alerta", "alert")}</button></div>
+	      <div class="usage-sub">${mdEsc(sub || tf("sin ventana de reset", "no reset window"))}</div>
+	      <div class="usage-bar"><span style="width:${pct}%"></span></div>
+	    </div>`;
+	  }).join("") : `<div class="desc">${tf("Sin datos todavia — se actualizan solos en unos segundos", "No data yet — auto-refreshes in a few seconds")}</div>`;
+	}
+	// Porcentajes globales del plan, siempre visibles junto a los contadores.
+	function renderLimitsStrip(state){
+	  const strip = $("#limits-strip");
+	  if(!strip) return;
+	  const limits = state?.limits || [];
+	  const pills = [];
+	  for(const prov of ["claude", "codex"]){
+	    const ses = limits.find(l => l.provider === prov && l.window === "5h");
+	    const wk = limits.find(l => l.provider === prov && l.window === "7d" && !l.scope);
+	    if(!ses && !wk) continue;
+	    const worst = Math.max(Number(ses?.percent ?? 0), Number(wk?.percent ?? 0));
+	    const cls = worst >= 90 ? "lim-danger" : worst >= 70 ? "lim-warn" : "lim-ok";
+	    const tip = [
+	      ses ? `${tf("Sesion 5h", "5h session")}: ${fmtPercent(ses.percent)} (${tf("resetea", "resets")} ${fmtReset(ses.resets_at)})` : "",
+	      wk ? `${tf("Semana", "Week")}: ${fmtPercent(wk.percent)} (${tf("resetea", "resets")} ${fmtReset(wk.resets_at)})` : "",
+	    ].filter(Boolean).join(" · ");
+	    pills.push(`<span class="pill lim ${cls}" title="${attrEsc(prov)} — ${attrEsc(tip)}">` +
+	      `${mdEsc(prov)} <b>${fmtPercent(ses?.percent)}</b> · sem <b>${fmtPercent(wk?.percent)}</b></span>`);
+	  }
+	  strip.innerHTML = pills.join("");
+	  strip.classList.toggle("hidden", !pills.length);
+	  strip.querySelectorAll(".pill").forEach(p => p.addEventListener("click", ()=> $("#btn-usage").click()));
+	}
+	// UN control por concepto: un menu de modelo con la intencion como etiqueta.
+	// El punto de color codifica el costo (verde barato → morado maximo).
+	const MODEL_CHOICES = {
+	  claude: [
+	    {model: "haiku",  name: "Haiku",  intent: "Ahorro — tareas simples",        dot: "var(--done)"},
+	    {model: "sonnet", name: "Sonnet", intent: "Diario — trabajo normal",        dot: "var(--working)"},
+	    {model: "opus",   name: "Opus",   intent: "Difícil — debug y refactors",    dot: "var(--waiting)"},
+	    {model: "fable",  name: "Fable",  intent: "Máximo — lo más ambiguo",        dot: "var(--brand)"},
+	  ],
+	  codex: [
+	    {model: "gpt-5.3-codex-spark", effort: "medium", name: "codex-spark",       intent: "Turbo — ultra rápido",        dot: "var(--done)"},
+	    {model: "gpt-5.4-mini",        effort: "medium", name: "gpt-5.4-mini",      intent: "Ahorro — tareas simples",     dot: "var(--done)"},
+	    {model: "gpt-5.4",             effort: "medium", name: "gpt-5.4",           intent: "Diario — trabajo normal",     dot: "var(--working)"},
+	    {model: "gpt-5.5",             effort: "high",   name: "gpt-5.5 · high",    intent: "Difícil — razona hondo",      dot: "var(--waiting)"},
+	    {model: "gpt-5.5",             effort: "xhigh",  name: "gpt-5.5 · xhigh",   intent: "Máximo — lo más duro",        dot: "var(--brand)"},
+	  ],
+	};
+	function shortModel(m){
+	  return String(m || "").replace(/^claude-/, "");
+	}
+	function modelMenuEl(session, pane, provider, current){
+	  const cur = shortModel(current) || tf("modelo", "model");
+	  const ds = `data-session="${attrEsc(session)}" data-pane="${attrEsc(pane)}" data-provider="${attrEsc(provider)}"`;
+	  // Dropdown para TODOS: claude (aliases), codex (modelo+reasoning por su
+	  // picker numerado), opencode (providers + modelos del catalogo real)
+	  return `<span class="mdl-wrap"><button type="button" class="mdl-btn" ${ds}
+	    aria-haspopup="listbox" aria-expanded="false"
+	    title="${tf("Cambiar el modelo de esta sesion", "Switch this session's model")}">
+	    <span class="mdl-cur">${mdEsc(cur)}</span><span class="mdl-caret">▾</span></button></span>`;
+	}
+	// Menu flotante UNICO en <body>: nada lo recorta (cards y drawer tienen
+	// overflow:hidden) y funciona igual en Chrome y en el WebKitGTK de la app.
+	let mdlMenuBtn = null;
+	function closeModelMenus(){
+	  $("#mdl-menu").classList.add("hidden");
+	  if(mdlMenuBtn) mdlMenuBtn.setAttribute("aria-expanded", "false");
+	  mdlMenuBtn = null;
+	}
+	let ocModels = null, ocModelsLoading = false;
+	async function loadOpencodeModels(){
+	  if(ocModels || ocModelsLoading) return;
+	  ocModelsLoading = true;
+	  try{ ocModels = (await api("/opencode/models")).providers || []; }
+	  catch(e){ ocModels = null; }
+	  ocModelsLoading = false;
+	}
+	function choicesMenuHtml(provider){
+	  return (MODEL_CHOICES[provider] || MODEL_CHOICES.claude).map(m =>
+	    `<button type="button" class="mdl-opt" role="option" data-model="${attrEsc(m.model)}"${m.effort ? ` data-effort="${attrEsc(m.effort)}"` : ""}>
+	      <i style="background:${m.dot}"></i><b>${mdEsc(m.name)}</b><span>${mdEsc(m.intent)}</span></button>`).join("");
+	}
+	function opencodeMenuHtml(){
+	  if(!ocModels) return `<div class="mdl-head">${tf("Cargando modelos…", "Loading models…")}</div>`;
+	  if(!ocModels.length) return `<div class="mdl-head">${tf("Sin modelos — revisa las keys en providers.env", "No models — check keys in providers.env")}</div>`;
+	  return ocModels.map(p => `<div class="mdl-head">${mdEsc(p.provider)}</div>` +
+	    p.models.map(m =>
+	      `<button type="button" class="mdl-opt" role="option" data-model="${attrEsc(m.id)}" data-name="${attrEsc(m.name)}">
+	        <i style="background:${m.free ? "var(--done)" : "var(--waiting)"}"></i>
+	        <b>${mdEsc(m.name)}</b><span>${m.free ? "gratis" : "de pago"}</span></button>`).join("")
+	  ).join("");
+	}
+	function positionModelMenu(btn){
+	  const menu = $("#mdl-menu");
+	  const r = btn.getBoundingClientRect(), mw = menu.offsetWidth, mh = menu.offsetHeight;
+	  let left = Math.min(r.right - mw, window.innerWidth - mw - 8);
+	  let top = r.bottom + 6;
+	  if(top + mh > window.innerHeight - 8) top = Math.max(8, r.top - mh - 6);
+	  menu.style.left = `${Math.max(8, left)}px`;
+	  menu.style.top = `${top}px`;
+	}
+	function openModelMenu(btn){
+	  const menu = $("#mdl-menu");
+	  const provider = btn.dataset.provider || "claude";
+	  const isOpencode = provider === "opencode";
+	  menu.innerHTML = isOpencode ? opencodeMenuHtml() : choicesMenuHtml(provider);
+	  menu.classList.remove("hidden");
+	  positionModelMenu(btn);
+	  mdlMenuBtn = btn;
+	  btn.setAttribute("aria-expanded", "true");
+	  menu.querySelectorAll(".mdl-opt").forEach(o=>{
+	    o.addEventListener("click", e=>{
+	      e.stopPropagation();
+	      const target = mdlMenuBtn;
+	      closeModelMenus();
+	      if(target) switchModel(target, o.dataset.model, o.dataset.name, o.dataset.effort);
+	    });
+	  });
+	  if(isOpencode && !ocModels){
+	    loadOpencodeModels().then(()=>{
+	      if(mdlMenuBtn === btn && !menu.classList.contains("hidden")) openModelMenu(btn);
+	    });
+	  }
+	}
+	async function switchModel(btn, model, modelName, effort){
+	  const card = btn.closest("article[data-session]");
+	  if(card && card.dataset.pane) btn.dataset.pane = card.dataset.pane;
+	  try{
+	    await api("/model/switch", {
+	      session: btn.dataset.session,
+	      pane: btn.dataset.pane || undefined,
+	      provider: btn.dataset.provider || "claude",
+	      model: model,
+	      model_name: modelName || undefined,
+	      effort: effort || undefined,
+	    });
+	    const shown = modelName || model;
+	    const cur = btn.querySelector(".mdl-cur");
+	    if(cur){ cur.textContent = shown; cur.classList.add("pending"); }
+	    toast(tf(`Modelo ${shown} → ${btn.dataset.session}`, `Model ${shown} → ${btn.dataset.session}`));
+	  }catch(err){ toast(err.message, true); }
+	}
+	function wireModelMenu(wrap){
+	  const btn = wrap.querySelector(".mdl-btn");
+	  if(!btn || btn._wired) return;
+	  btn._wired = true;
+	  btn.addEventListener("click", e=>{
+	    e.stopPropagation();
+	    if(!btn.hasAttribute("aria-haspopup")){ switchModel(btn, "picker"); return; }
+	    const reopen = mdlMenuBtn !== btn;
+	    closeModelMenus();
+	    if(reopen) openModelMenu(btn);
+	  });
+	}
+	document.addEventListener("click", closeModelMenus);
+	document.addEventListener("keydown", e=>{ if(e.key === "Escape") closeModelMenus(); });
+	document.addEventListener("scroll", closeModelMenus, true);
+	function panePresetButtons(p){
+	  if(!String(p.tmux_pane || "").startsWith("%")) return "";
+	  const raw = p.provider || p.agent || "claude";
+	  const provider = ["codex", "opencode"].includes(raw) ? raw : "claude";
+	  return `<div class="pane-model-controls">
+	    ${modelMenuEl(p.tmux_session || "", p.tmux_pane || "", provider, p.model)}
+	  </div>`;
+	}
+	function usageStatusLabel(h){
+	  if(!h) return "sin datos";
+	  if(h.status === "ok") return "ok";
+	  if(h.status === "missing") return "sin llave";
+	  return h.status || "error";
+	}
+	function usageSummaryText(state){
+	  const limits = state?.limits || [];
+	  const parts = [];
+	  for(const prov of ["claude", "codex"]){
+	    const ses = limits.find(l => l.provider === prov && l.window === "5h");
+	    const wk = limits.find(l => l.provider === prov && l.window === "7d" && !l.scope);
+	    if(!ses && !wk) continue;
+	    parts.push(`${prov}: ${fmtPercent(ses?.percent)} ${tf("sesion", "session")} · ${fmtPercent(wk?.percent)} ${tf("semana", "week")}`);
+	  }
+	  return parts.join("  —  ");
+	}
+	function renderUsage(state){
+	  indexUsage(state);
+	  const total = state?.totals || {};
+	  const summary = usageSummaryText(state);
+	  $("#usage-summary").textContent = summary ||
+	    `${fmtMoney(total.cost_usd)} · ${fmtTokens(total.total_tokens)} · ${state?.panes?.length || 0} panes`;
+	  renderLimitsStrip(state);
+	  renderUsageLimits(state);
+	  // PROVEEDORES: barras proporcionales de tokens (nada de $0.00 muertos:
+	  // el costo solo aparece si existe; sin datos = no hay tarjeta)
+	  const hp = state?.credential_health || {};
+	  const provRows = (state?.providers || [])
+	    .filter(p => Number(p.total_tokens || 0) > 0 || Number(p.active_panes || 0) > 0)
+	    .sort((a, b) => Number(b.total_tokens || 0) - Number(a.total_tokens || 0));
+	  const provMax = Math.max(...provRows.map(p => Number(p.total_tokens || 0)), 1);
+	  const adminMissing = ["openai", "anthropic"].filter(id => (hp[id] || {}).status !== "ok");
+	  $("#usage-providers").innerHTML = provRows.map(p => {
+	    const tok = Number(p.total_tokens || 0);
+	    const active = Number(p.active_panes || 0);
+	    const cost = Number(p.cost_usd || 0);
+	    return `<div class="usage-viz">
+	      <div class="uv-top"><b>${mdEsc(p.provider)}</b>
+	        <span>${active ? `${active} ${tf("panes", "panes")} · ` : ""}${fmtTokens(tok)}${cost > 0 ? ` · ${fmtMoney(cost)}` : ""}</span></div>
+	      <div class="usage-bar"><span style="width:${Math.max(2, Math.round(tok / provMax * 100))}%"></span></div>
+	    </div>`;
+	  }).join("") + (adminMissing.length ? `<div class="desc" style="margin-top:6px">${
+	    tf("Costos exactos en $ (opcional): faltan llaves admin de ", "Exact $ costs (optional): missing admin keys for ")}${adminMissing.join(", ")}</div>` : "");
+	  // PROYECTOS: barra proporcional por proyecto (14 dias), panes vivos dentro
+	  const projects = [...(state?.projects || [])]
+	    .sort((a, b) => Number(b.total_tokens || 0) - Number(a.total_tokens || 0));
+	  const projMax = Math.max(...projects.map(p => Number(p.total_tokens || 0)), 1);
+	  const top = projects.slice(0, 8);
+	  const rest = projects.slice(8);
+	  const restTok = rest.reduce((a, p) => a + Number(p.total_tokens || 0), 0);
+	  const allRules = state?.alert_rules || [];
+	  const bell = (scope, target, label) => {
+	    const rule = allRules.find(r => r.id === `${scope}:${target}`);
+	    return `<button type="button"
+	    class="uv-bell ${rule ? "on" : ""}" data-scope="${attrEsc(scope)}"
+	    data-target="${attrEsc(target)}" data-label="${attrEsc(label)}"
+	    title="${tf("Configurar alerta de presupuesto de tokens por día", "Configure a daily token budget alert")}">
+	    🔔 ${rule ? fmtTokens(rule.threshold).replace(" tok", "") : tf("alerta", "alert")}</button>`;
+	  };
+	  $("#usage-projects").innerHTML = top.length ? top.map(pr => {
+	    const live = (pr.panes || []).filter(p => String(p.tmux_pane || "").startsWith("%"));
+	    const hist = (pr.panes || []).filter(p => !String(p.tmux_pane || "").startsWith("%"));
+	    const tok = Number(pr.total_tokens || 0);
+	    const name = (pr.git_root || "").split("/").pop() || shortPath(pr.git_root || "");
+	    return `<div class="usage-viz">
+	      <div class="uv-top"><b>${mdEsc(name)}</b>${bell("project", pr.git_root || "", name)}
+	        <span>${fmtTokens(tok)}${Number(pr.cost_usd || 0) > 0 ? ` · ${fmtMoney(pr.cost_usd)}` : ""}${hist.length ? ` · ${hist.length} ${tf("ses.", "past")}` : ""}</span></div>
+	      <div class="usage-bar"><span style="width:${Math.max(2, Math.round(tok / projMax * 100))}%"></span></div>
+	      ${live.map(p => `<div class="uv-pane" data-session="${attrEsc(p.tmux_session || "")}"
+	        data-pane="${attrEsc(p.tmux_pane || "")}" title="${tf("Click: abrir esta sesion", "Click: open this session")}">
+	        <span class="uv-dot" data-a="${attrEsc(p.agent || "claude")}"></span>
+	        <div class="uv-main">
+	          <b>${mdEsc(p.tab_label || p.tmux_session || "")}</b>
+	          <span class="uv-info">${mdEsc(usageChipText(p) || tf("sin uso hoy", "no usage today"))}</span>
+	        </div>
+	        ${bell("session", p.tmux_session || "", p.tab_label || p.tmux_session || "")}
+	        ${panePresetButtons(p)}
+	      </div>`).join("")}
+	    </div>`;
+	  }).join("") + (rest.length ? `<div class="desc" style="margin-top:2px">+${rest.length} ${tf("proyectos más", "more projects")} · ${fmtTokens(restTok)}</div>` : "")
+	    : `<div class="empty">${tf("Sin uso todavia", "No usage yet")}</div>`;
+	  document.querySelectorAll("#usage .mdl-wrap").forEach(wireModelMenu);
+	  renderAlertConfig(state);
+	  renderAlertRules(state);
+	  document.querySelectorAll("#usage .uv-bell").forEach(b=>{
+	    b.addEventListener("click", e=>{ e.stopPropagation(); closeModelMenus(); openRuleMenu(b); });
+	  });
+	  const alerts = state?.alerts || [];
+	  $("#usage-alerts").innerHTML = alerts.length ? alerts.map(a =>
+	    `<div class="usage-alert ${a.level === "danger" ? "danger" : ""}">${mdEsc(a.message || a.kind || "alerta")}
+	       <small>${agoTxt(a.created_at)}</small></div>`).join("")
+	    : `<div class="desc">${tf("Sin alertas", "No alerts")}</div>`;
+	  document.querySelectorAll("#usage .uv-pane[data-session]").forEach(el=>{
+	    el.addEventListener("click", ()=> openPane(el.dataset.session));
+	  });
+	  render(S.list || []);
+	}
+	// Config de alertas: umbrales toggleables, persistidos en el backend
+	function renderAlertConfig(state){
+	  const ths = state?.alert_thresholds;
+	  if(!Array.isArray(ths)) return;
+	  document.querySelectorAll("#alert-config .alert-th").forEach(b=>{
+	    b.classList.toggle("on", ths.includes(Number(b.dataset.th)));
+	  });
+	}
+	document.querySelectorAll("#alert-config .alert-th").forEach(b=>{
+	  b.addEventListener("click", async ()=>{
+	    const active = new Set([...document.querySelectorAll("#alert-config .alert-th.on")].map(x => x.dataset.th));
+	    active.has(b.dataset.th) ? active.delete(b.dataset.th) : active.add(b.dataset.th);
+	    const value = [...active].sort((a, b2) => a - b2).join(",") || "off";
+	    try{
+	      const r = await api("/usage/settings", {settings: {COMANDOS_ALERT_THRESHOLDS: value}});
+	      renderUsage(r.state || {});
+	      toast(value === "off" ? tf("Alertas de límite apagadas", "Limit alerts off")
+	                            : tf(`Alertas al cruzar ${value}%`, `Alerts at ${value}%`));
+	    }catch(err){ toast(err.message, true); }
+	  });
+	});
+	// Reglas de alerta por objetivo (sesion/proyecto/proveedor): 🔔 abre un
+	// menu de presupuestos de tokens por dia; se evaluan en cada poll.
+	const RULE_BUDGETS = [
+	  {v: 50000000, t: "50M"}, {v: 100000000, t: "100M"}, {v: 250000000, t: "250M"},
+	  {v: 500000000, t: "500M"}, {v: 1000000000, t: "1B"},
+	];
+	const RULE_PERCENTS = [50, 60, 70, 80, 90, 95];
+	function openRuleMenu(btn){
+	  const menu = $("#mdl-menu");
+	  const rid = `${btn.dataset.scope}:${btn.dataset.target}`;
+	  const isLimit = btn.dataset.scope === "limit";
+	  const existing = (S.usage?.alert_rules || []).find(r => r.id === rid);
+	  const head = isLimit
+	    ? `${tf("Avisar si", "Alert if")} ${mdEsc(btn.dataset.label)} ${tf("pasa de", "exceeds")}`
+	    : `${tf("Avisar si HOY pasa de", "Alert if TODAY exceeds")} — ${mdEsc(btn.dataset.label)}`;
+	  const opts = isLimit
+	    ? RULE_PERCENTS.map(p => `<button type="button" class="mdl-opt" role="option" data-thr="${p}">
+	        <i style="background:${existing && Number(existing.threshold) === p ? "var(--done)" : "var(--line2)"}"></i>
+	        <b>${p}%</b><span>${tf("de la ventana", "of the window")}</span></button>`).join("")
+	    : RULE_BUDGETS.map(b => `<button type="button" class="mdl-opt" role="option" data-thr="${b.v}">
+	        <i style="background:${existing && Number(existing.threshold) === b.v ? "var(--done)" : "var(--line2)"}"></i>
+	        <b>${b.t} tok</b><span>${tf("en 24 horas", "in 24 hours")}</span></button>`).join("");
+	  menu.innerHTML = `<div class="mdl-head">${head}</div>` + opts +
+	    (existing ? `<button type="button" class="mdl-opt" role="option" data-del="1">
+	      <i style="background:#FF5C68"></i><b>${tf("Quitar alerta", "Remove alert")}</b>
+	      <span>${tf("actual", "current")}: ${isLimit ? `${Number(existing.threshold)}%` : fmtTokens(existing.threshold)}</span></button>` : "");
+	  menu.classList.remove("hidden");
+	  positionModelMenu(btn);
+	  mdlMenuBtn = btn;
+	  menu.querySelectorAll(".mdl-opt").forEach(o=>{
+	    o.addEventListener("click", async e=>{
+	      e.stopPropagation();
+	      closeModelMenus();
+	      try{
+	        const payload = o.dataset.del
+	          ? {action: "delete", id: rid}
+	          : {action: "set", scope: btn.dataset.scope, target: btn.dataset.target,
+	             label: btn.dataset.label, threshold: Number(o.dataset.thr)};
+	        await api("/usage/alert-rule", payload);
+	        const thrTxt = isLimit ? `${o.dataset.thr}%` : `${fmtTokens(o.dataset.thr)}/${tf("día", "day")}`;
+	        toast(o.dataset.del ? tf(`Alerta de ${btn.dataset.label} quitada`, `${btn.dataset.label} alert removed`)
+	                            : tf(`Alerta: ${btn.dataset.label} > ${thrTxt}`, `Alert: ${btn.dataset.label} > ${thrTxt}`));
+	        tickUsage(true);
+	      }catch(err){ toast(err.message, true); }
+	    });
+	  });
+	}
+	function renderAlertRules(state){
+	  const host = $("#alert-rules");
+	  if(!host) return;
+	  const rules = state?.alert_rules || [];
+	  host.innerHTML = rules.map(r => {
+	    const pct = Math.max(0, Math.min(100, Number(r.percent || 0)));
+	    const scopeTxt = {session: tf("sesión", "session"), project: tf("proyecto", "project"),
+	                      provider: tf("proveedor", "provider"), limit: tf("límite del plan", "plan limit")}[r.scope] || r.scope;
+	    const valTxt = r.unit === "percent"
+	      ? `${Number(r.value).toFixed(0)}% / ${Number(r.threshold)}%`
+	      : `${fmtTokens(r.value)} / ${fmtTokens(r.threshold)} ${tf("hoy", "today")}`;
+	    return `<div class="rule-row ${pct >= 100 ? "over" : ""}">
+	      <b>🔔 ${mdEsc(r.label || r.target)}</b>
+	      <span>${mdEsc(scopeTxt)} · ${valTxt}</span>
+	      <div class="usage-bar"><span style="width:${pct}%"></span></div>
+	      <button type="button" class="rule-del" data-id="${attrEsc(r.id)}" title="${tf("Quitar", "Remove")}">×</button>
+	    </div>`;
+	  }).join("");
+	  host.querySelectorAll(".rule-del").forEach(b=>{
+	    b.addEventListener("click", async ()=>{
+	      try{ await api("/usage/alert-rule", {action: "delete", id: b.dataset.id}); tickUsage(true); }
+	      catch(err){ toast(err.message, true); }
+	    });
+	  });
+	}
+	// Abrir/enfocar una sesion desde su fila en Proyectos y panes
+	async function openPane(session){
+	  if(!session) return;
+	  try{
+	    if(inApp()){ openInApp(session, "claude"); }
+	    else{ await api("/focus", {session}); }
+	    toast(tf(`Abriendo ${session}`, `Opening ${session}`));
+	  }catch(err){ toast(err.message, true); }
+	}
+	let usagePollTs = 0;
+	async function tickUsage(force=false){
+	  const now = Date.now();
+	  if(!force && now - usagePollTs < 10000) return;
+	  usagePollTs = now;
+	  try{ renderUsage(await api("/usage/state")); }catch(e){}
+	}
+	function favBtn(it, el){
+	  const b = el.querySelector(".fav");
   b.classList.toggle("on", S.favs.has(it.session));
   b.onclick = async e=>{
     e.stopPropagation();
@@ -759,12 +1458,13 @@ function favBtn(it, el){
 function cardEl(it){
   const el = document.createElement("article");
   el.className = "card"; el.dataset.session = it.session; el.dataset.kind = "card";
-  el.innerHTML = `
-    <div class="top">
-      <button type="button" class="fav" title="${t('Favorito')}">★</button>
-      <h2></h2><span class="abadge hidden"></span><span class="tag"></span><span class="ago"></span>
-    </div>
+	  el.innerHTML = `
+	    <div class="top">
+	      <button type="button" class="fav" title="${t('Favorito')}">★</button>
+	      <h2></h2><span class="abadge hidden"></span><span class="tag"></span><span class="ago"></span>
+	    </div>
     <div class="path"></div>
+    <span class="usage-chip hidden"></span>
     <p class="preview"></p>
     <div class="opts hidden"></div>
     <form class="send">
@@ -780,6 +1480,7 @@ function cardEl(it){
         <button type="button" data-key="Escape">Esc</button>
       </div>
       <div class="ops">
+        ${["", "claude", "codex", "opencode"].includes(it.agent || "") ? modelMenuEl(it.session, it.pane || "", it.agent || "claude", "") : ""}
         <button type="button" class="cp" title="${t('Copiar la respuesta completa de Claude')}">${t("Copiar")}</button>
         <button type="button" class="xtxt" title="${t('Guardar la respuesta como .txt en Descargas')}">TXT</button>
         <button type="button" class="xpdf" title="${t('Guardar la respuesta como PDF (markdown renderizado) en Descargas')}">PDF</button>
@@ -789,6 +1490,7 @@ function cardEl(it){
       </div>
     </div>`;
   el.querySelector("h2").textContent = it.project;
+  el.querySelectorAll(".mdl-wrap").forEach(wireModelMenu);
   const pv = el.querySelector(".preview");
   pv.title = t("Click: ver TODO el texto / colapsar");
   pv.addEventListener("click", e=>{ e.stopPropagation(); pv.classList.toggle("open"); });
@@ -866,7 +1568,10 @@ let termBasePromise = null;
 // Cada terminal es un iframe a ttyd attacheado a esa sesion tmux (misma sesion,
 // en vivo). En tablet ancha se ve panel + terminal lado a lado.
 const openTerms = new Map();   // session -> {tab, frame}
+let activeTerm = null;   // terminal visible en el area de terminal
 let activeView = "panel";
+const selectingTerms = new Set();
+let termSelectBusy = false;
 const SPLIT_KEY = "cc-split-left";
 
 function appEnabled(){ return WEBTERM; }
@@ -954,9 +1659,69 @@ function styleTermFrame(frame){
       *::-webkit-scrollbar-track{background:${bg}}
       *::-webkit-scrollbar-thumb{background:${line2};border-radius:10px;border:3px solid ${bg};background-clip:padding-box}
       *::-webkit-scrollbar-thumb:hover{background:${brand};background-clip:padding-box}
-      .xterm .xterm-viewport{scrollbar-width:thin;scrollbar-color:${line2} ${bg}}
+      .xterm,.xterm .xterm-screen,.xterm .xterm-viewport{touch-action:pan-y}
+      .xterm .xterm-viewport{scrollbar-width:thin;scrollbar-color:${line2} ${bg};
+        -webkit-overflow-scrolling:touch;overscroll-behavior:contain}
     `;
     doc.head.appendChild(style);
+  }catch(_){}
+}
+
+function wireTermFrameScroll(frame){
+  try{
+    const win = frame.contentWindow;
+    const doc = frame.contentDocument || win?.document;
+    if(!win || !doc || win.__comandosScrollWired) return;
+    win.__comandosScrollWired = true;
+    let touchY = null;
+    let touchWheelAccum = 0;
+    const TOUCH_WHEEL_STEP = 56;
+    const TOUCH_WHEEL_MAX_TICKS = 3;
+    const termTargetAt = (touch, fallback) =>
+      doc.elementFromPoint?.(touch.clientX, touch.clientY) ||
+      fallback ||
+      doc.querySelector(".xterm-screen") ||
+      doc.querySelector(".xterm-viewport") ||
+      doc.body;
+    const emitWheel = (target, dy, touch) => {
+      if(!target || !dy || typeof win.WheelEvent !== "function") return false;
+      target.dispatchEvent(new win.WheelEvent("wheel", {
+        deltaY: dy,
+        deltaMode: 0,
+        bubbles: true,
+        cancelable: true,
+        clientX: touch.clientX,
+        clientY: touch.clientY,
+        screenX: touch.screenX,
+        screenY: touch.screenY
+      }));
+      return true;
+    };
+    doc.addEventListener("touchstart", e => {
+      touchWheelAccum = 0;
+      if(frame.dataset.selecting === "1"){ touchY = null; return; }
+      touchY = e.touches && e.touches.length === 1 ? e.touches[0].clientY : null;
+    }, {capture:true, passive:true});
+    doc.addEventListener("touchmove", e => {
+      if(frame.dataset.selecting === "1") return;
+      if(touchY === null || !e.touches || e.touches.length !== 1) return;
+      const touch = e.touches[0];
+      const dy = touchY - touch.clientY;
+      touchY = touch.clientY;
+      touchWheelAccum += dy;
+      const ticks = Math.trunc(touchWheelAccum / TOUCH_WHEEL_STEP);
+      const cappedTicks = Math.max(-TOUCH_WHEEL_MAX_TICKS, Math.min(TOUCH_WHEEL_MAX_TICKS, ticks));
+      if(cappedTicks && emitWheel(termTargetAt(touch, e.target), cappedTicks * TOUCH_WHEEL_STEP, touch)){
+        touchWheelAccum -= cappedTicks * TOUCH_WHEEL_STEP;
+        e.preventDefault();
+        e.stopPropagation();
+      }else if(dy){
+        e.preventDefault();
+        e.stopPropagation();
+      }
+    }, {capture:true, passive:false});
+    doc.addEventListener("touchend", () => { touchY = null; touchWheelAccum = 0; }, {capture:true, passive:true});
+    doc.addEventListener("touchcancel", () => { touchY = null; touchWheelAccum = 0; }, {capture:true, passive:true});
   }catch(_){}
 }
 
@@ -990,6 +1755,70 @@ function wireTermFrameShortcuts(frame){
   }catch(_){}
 }
 
+function updateTermSelectButton(){
+  const b = document.getElementById("term-select-toggle");
+  const sess = activeTerm && openTerms.has(activeTerm) ? activeTerm : "";
+  if(!b) return;
+  const selecting = !!(sess && selectingTerms.has(sess));
+  b.disabled = termSelectBusy || !sess;
+  b.classList.toggle("on", selecting);
+  b.setAttribute("aria-pressed", String(selecting));
+  b.textContent = selecting ? tf("Interactuar", "Interact") : tf("Seleccionar", "Select");
+  b.title = selecting
+    ? tf("Restaurar mouse de tmux para interactuar", "Restore tmux mouse for interaction")
+    : tf("Apagar mouse de tmux para seleccionar texto", "Disable tmux mouse to select text");
+}
+
+async function setTermSelectionMode(sess, selecting, quiet=false){
+  if(!sess || termSelectBusy) return;
+  termSelectBusy = true;
+  updateTermSelectButton();
+  try{
+    await api("/tmux-mouse", {session: sess, enabled: !selecting});
+    if(selecting) selectingTerms.add(sess); else selectingTerms.delete(sess);
+    const frame = openTerms.get(sess)?.frame;
+    if(frame) frame.dataset.selecting = selecting ? "1" : "";
+    if(!quiet) toast(selecting
+      ? tf("Seleccion de texto activa", "Text selection enabled")
+      : tf("Interaccion tmux restaurada", "tmux interaction restored"));
+  }catch(err){
+    toast(err.message, true);
+  }finally{
+    termSelectBusy = false;
+    updateTermSelectButton();
+  }
+}
+
+function restoreTermInteraction(sess){
+  if(!sess || !selectingTerms.has(sess)) return;
+  setTermSelectionMode(sess, false, true);
+}
+
+function restoreInactiveTermInteractions(keep){
+  for(const sess of [...selectingTerms])
+    if(sess !== keep) restoreTermInteraction(sess);
+}
+
+function restoreAllTermInteractions(){
+  for(const sess of [...selectingTerms]){
+    selectingTerms.delete(sess);
+    const frame = openTerms.get(sess)?.frame;
+    if(frame) frame.dataset.selecting = "";
+    try{
+      const tok = authToken();
+      const headers = {"Content-Type":"application/json"};
+      if(tok) headers["X-Comandos-Token"] = tok;
+      fetch("/tmux-mouse", {
+        method:"POST",
+        headers,
+        body:JSON.stringify({session:sess, enabled:true}),
+        keepalive:true
+      }).catch(()=>{});
+    }catch(_){}
+  }
+  updateTermSelectButton();
+}
+
 function renderTabbar(){
   const bar = document.getElementById("tabbar");
   bar.innerHTML = "";
@@ -1003,7 +1832,23 @@ function renderTabbar(){
     t.querySelector(".lbl").onclick = () => showView(key);
     if(!closable) t.onclick = () => showView(key);
     const x = t.querySelector(".x");
-    if(x) x.onclick = (e) => { e.stopPropagation(); closeTerm(key); };
+    if(x){
+      x.title = tf("Cerrar pestaña", "Close tab");
+      x.onclick = (e) => {
+        e.stopPropagation();
+        // Confirmar en dos toques (mismo patrón que "Matar sesión"): un
+        // click arma, el segundo cierra. Evita cierres sin querer.
+        if(!x.classList.contains("arm")){
+          x.classList.add("arm"); x.textContent = "✓";
+          x.title = tf("Click otra vez para cerrar", "Click again to close");
+          clearTimeout(x._t);
+          x._t = setTimeout(()=>{ x.classList.remove("arm"); x.textContent = "×";
+            x.title = tf("Cerrar pestaña", "Close tab"); }, 3000);
+          return;
+        }
+        closeTerm(key);
+      };
+    }
     bar.appendChild(t);
   };
   const split = document.body.classList.contains("split");
@@ -1030,10 +1875,13 @@ function ensureFrame(sess){
     frame.className = "termpane";
     frame.addEventListener("load", () => {
       styleTermFrame(frame);
+      wireTermFrameScroll(frame);
       wireTermFrameShortcuts(frame);
       setTimeout(() => styleTermFrame(frame), 250);
+      setTimeout(() => wireTermFrameScroll(frame), 250);
       setTimeout(() => wireTermFrameShortcuts(frame), 250);
       setTimeout(() => styleTermFrame(frame), 1000);
+      setTimeout(() => wireTermFrameScroll(frame), 1000);
       setTimeout(() => wireTermFrameShortcuts(frame), 1000);
     });
     document.getElementById("term-area").appendChild(frame);
@@ -1044,7 +1892,6 @@ function ensureFrame(sess){
     });
   }
 }
-let activeTerm = null;   // terminal visible en el area de terminal
 function showView(key){
   activeView = key;
   const split = document.body.classList.contains("split");
@@ -1053,10 +1900,12 @@ function showView(key){
   let shown = key.startsWith("term:") ? key.slice(5)
             : (split ? (activeTerm && openTerms.has(activeTerm) ? activeTerm : [...openTerms.keys()][0]) : null);
   if(shown) ensureFrame(shown);
+  restoreInactiveTermInteractions(shown);
   document.getElementById("view-panel").classList.toggle("on", split || key === "panel");
   document.getElementById("term-area").classList.toggle("on", split ? !!shown : key.startsWith("term:"));
   for(const [sess, o] of openTerms)
     if(o.frame) o.frame.classList.toggle("on", sess === shown);
+  updateTermSelectButton();
   renderTabbar();
 }
 function addTermTab(sess, label){   // registra la tab SIN attachear (lazy)
@@ -1068,6 +1917,7 @@ function openTerm(sess, label){
   showView("term:"+sess);
 }
 function closeTerm(sess){
+  restoreTermInteraction(sess);
   const o = openTerms.get(sess);
   if(o){ if(o.frame) o.frame.remove(); openTerms.delete(sess); }
   if(activeTerm === sess) activeTerm = [...openTerms.keys()][0] || null;
@@ -1111,9 +1961,10 @@ function rowEl(it){
   el.innerHTML = `
     <button type="button" class="fav" title="${t('Favorito')}">★</button>
     <span class="dot"></span>
-    <span class="name"></span>
-    <span class="abadge hidden"></span>
-    <span class="exttag hidden">${t("suelta")}</span>
+	    <span class="name"></span>
+	    <span class="abadge hidden"></span>
+	    <span class="usage-chip hidden"></span>
+	    <span class="exttag hidden">${t("suelta")}</span>
     <span class="rpath"></span>
     <span class="rprev"></span>
     <span class="ago"></span>
@@ -1174,10 +2025,30 @@ function render(list){
       ab.dataset.a = it.agent || "";
       ab.classList.toggle("hidden", !it.agent || it.agent === "claude");
     }
-    el.dataset.pane = it.pane || "";
-    el._detail = it.detail || it.last || "";
-    el.dataset.search = `${it.project} ${it.cwd||""}`.toLowerCase();
-    el.querySelector(".fav").classList.toggle("on", S.favs.has(it.session));
+	    el.dataset.pane = it.pane || "";
+	    el._detail = it.detail || it.last || "";
+	    el.dataset.search = `${it.project} ${it.cwd||""}`.toLowerCase();
+	    const uchip = el.querySelector(".usage-chip");
+	    if(uchip){
+	      const utxt = usageChipText(usageForItem(it));
+	      uchip.textContent = utxt;
+	      uchip.classList.toggle("hidden", !utxt);
+	      uchip.title = utxt;
+	    }
+	    const mcur = el.querySelector(".mdl-cur");
+	    if(mcur){
+	      const um = shortModel(usageForItem(it)?.model || "");
+	      if(um && mcur.classList.contains("pending")){
+	        // El cambio pedido ya se refleja en un turno real: dejar de marcarlo
+	        if(um.toLowerCase().includes(mcur.textContent.trim().toLowerCase())){
+	          mcur.textContent = um;
+	          mcur.classList.remove("pending");
+	        }
+	      } else if(um){
+	        mcur.textContent = um;
+	      }
+	    }
+	    el.querySelector(".fav").classList.toggle("on", S.favs.has(it.session));
     el.querySelector(".ago").textContent = agoTxt(it.ts);
     if(kind === "card"){
       el.classList.toggle("ext", ext);
@@ -1326,14 +2197,59 @@ function toast(msg, err){
 }
 
 // ---------- loop ----------
-async function tick(){
-  try{ render(await api("/state")); }catch(e){}
-}
+	// Recientes (cerradas): historial de pestañas recuperable con un click
+	let recentTs = 0;
+	async function tickRecent(force=false){
+	  const now = Date.now();
+	  if(!force && now - recentTs < 30000) return;
+	  recentTs = now;
+	  try{ renderRecent(await api("/tab-history")); }catch(e){}
+	}
+	function renderRecent(items){
+	  const host = $("#recent");
+	  if(!host) return;
+	  // SOLO sesiones realmente muertas: las vivas ya salen en Sesiones
+	  // (cerrar una tab de la app deja la sesion tmux viva → no va aqui)
+	  items = (items || [])
+	    .filter(i => i.reason !== "recovered" && !i.alive)
+	    .slice(0, 8);
+	  $("#recent-wrap").classList.toggle("hidden", !items.length);
+	  host.innerHTML = items.map(i => `
+	    <div class="rrow">
+	      <b>${mdEsc(i.label || i.session)}</b>
+	      <span class="rpath">${mdEsc(shortPath(i.cwd || ""))}</span>
+	      <span class="ago">${agoTxt(i.ts)}</span>
+	      <button type="button" class="test rec-open" data-session="${attrEsc(i.session)}"
+	        data-label="${attrEsc(i.label || i.session)}" data-cwd="${attrEsc(i.cwd || "")}"
+	        data-agent="${attrEsc(i.agent || "claude")}">${tf("Recuperar", "Recover")}</button>
+	    </div>`).join("");
+	  host.querySelectorAll(".rec-open").forEach(b => b.addEventListener("click", async ()=>{
+	    try{
+	      const r = await api("/recover-tab", {session: b.dataset.session, label: b.dataset.label,
+	                                           cwd: b.dataset.cwd, agent: b.dataset.agent});
+	      toast(tf(`${b.dataset.label} recuperada`, `${b.dataset.label} recovered`));
+	      if(inApp()) openInApp((r && r.session) || b.dataset.session, "claude");
+	      tickRecent(true);
+	    }catch(err){ toast(err.message, true); }
+	  }));
+	}
+	async function tick(){
+	  try{ render(await api("/state")); }catch(e){}
+	  tickUsage();
+	  tickRecent();
+	}
 async function tickEvents(){
   try{ renderEvents(await api("/events")); }catch(e){}
 }
 let timer = null;
-function arm(){ clearInterval(timer); timer = setInterval(tick, S.cfg.poll*1000); }
+function remotePollSeconds(){
+  let s = +S.cfg.poll || 2;
+  if(WEBTERM || REMOTE?.remoteOn) s = Math.max(s, 5);
+  if(document.hidden) s = Math.max(s, 15);
+  return s;
+}
+function arm(){ clearInterval(timer); timer = setInterval(tick, remotePollSeconds()*1000); }
+document.addEventListener("visibilitychange", arm);
 
 // ---------- conmutador Ctrl+K (salta a cualquier sesion) ----------
 let swItems = [], swSel = 0;
@@ -1356,6 +2272,8 @@ function swOpen(){
   $("#sw-in").focus();
 }
 function swClose(){ $("#sw-ov").classList.add("hidden"); }
+// Click FUERA de la caja cierra el switcher (el overlay es el fondo)
+$("#sw-ov").addEventListener("click", e=>{ if(e.target === $("#sw-ov")) swClose(); });
 function quickVisible(it){
   if(!it || it.alive === false || it.zombie) return false;
   const orphanTerm = /^term-/.test(it.session || "") && !it.tabbed && !it.agent && (it.status || "idle") === "idle";
@@ -1463,6 +2381,132 @@ async function loadPrefs(){
   }catch(e){}
 }
 
+// ---------- remoto ----------
+let REMOTE = null;
+let REMOTE_BUSY = false;
+function remoteQrPath(){
+  const qs = new URLSearchParams({ts: String(Date.now())});
+  const tok = authToken();
+  if(tok) qs.set("token", tok);
+  return `/remote-qr.png?${qs.toString()}`;
+}
+function remoteButtonState(st, busy){
+  const remoteOn = !!(st && st.remoteOn);
+  const webtermOn = !!(st && st.webtermOn);
+  return {
+    remoteOnDisabled: !!busy || remoteOn,
+    remoteOffDisabled: !!busy || !remoteOn,
+    webtermOnDisabled: !!busy || webtermOn,
+    webtermOffDisabled: !!busy || !webtermOn,
+    openTerminalDisabled: !!busy || !webtermOn,
+    remoteOnActive: remoteOn,
+    remoteOffActive: false,
+    webtermOnActive: webtermOn,
+    webtermOffActive: false,
+    openTerminalActive: webtermOn
+  };
+}
+function setRemoteButton(sel, disabled, active, warn){
+  const b = $(sel);
+  b.disabled = !!disabled;
+  b.classList.toggle("on", !!active);
+  b.classList.toggle("warn", !!warn && !disabled);
+}
+function applyRemoteButtonState(){
+  const st = remoteButtonState(REMOTE, REMOTE_BUSY);
+  setRemoteButton("#remote-on", st.remoteOnDisabled, st.remoteOnActive, false);
+  setRemoteButton("#remote-off", st.remoteOffDisabled, st.remoteOffActive, true);
+  setRemoteButton("#remote-webterm-on", st.webtermOnDisabled, st.webtermOnActive, false);
+  setRemoteButton("#remote-webterm-off", st.webtermOffDisabled, st.webtermOffActive, true);
+  setRemoteButton("#remote-open-terminal", st.openTerminalDisabled, st.openTerminalActive, false);
+}
+function setRemoteBusy(on){
+  REMOTE_BUSY = !!on;
+  applyRemoteButtonState();
+}
+function renderRemote(st){
+  REMOTE = st || {};
+  const status = $("#remote-status");
+  const on = !!REMOTE.remoteOn;
+  const termOn = !!REMOTE.webtermOn;
+  status.classList.toggle("on", on);
+  $("#btn-remote").classList.toggle("on", on);
+  status.querySelector("span:last-child").textContent = on
+    ? tf(`Remoto activo${termOn ? " · terminal activa" : ""}`, `Remote on${termOn ? " · terminal on" : ""}`)
+    : tf("Remoto apagado", "Remote off");
+  const urls = REMOTE.urls || {};
+  $("#remote-dashboard-url").value = urls.dashboard || "";
+  $("#remote-term-url").value = urls.terminal || "";
+  $("#remote-fallback-url").value = urls.terminalFallback || "";
+  const hasQr = !!(urls.dashboard && REMOTE.qrAvailable);
+  $("#remote-qr").classList.toggle("hidden", !hasQr);
+  $("#remote-no-qr").classList.toggle("hidden", hasQr || !urls.dashboard);
+  if(hasQr) $("#remote-qr").src = remoteQrPath();
+  applyRemoteButtonState();
+}
+async function loadRemote(){
+  try{ renderRemote(await api("/remote-state")); }
+  catch(err){ toast(err.message, true); }
+}
+async function ensureRemoteTerminalVisible(){
+  $("#remote").classList.remove("open");
+  $("#settings").classList.remove("open");
+  $("#servers").classList.remove("open");
+  if(!WEBTERM){
+    const u = $("#remote-term-url").value.trim();
+    if(u) window.open(u, "_blank", "noopener");
+    return;
+  }
+  await loadDesktopTabs();
+  let sess = activeTerm || [...openTerms.keys()][0];
+  if(!sess){
+    try{
+      const list = await api("/state");
+      const it = list.find(x => x.alive && x.session && !["local", "hub", "control"].includes(x.session));
+      if(it){
+        addTermTab(it.session, it.project || it.session);
+        sess = it.session;
+      }
+    }catch(_){}
+  }
+  if(sess){
+    openTerm(sess, openTerms.get(sess)?.label || sess);
+  }else{
+    const u = $("#remote-term-url").value.trim();
+    if(u) location.href = u;
+  }
+}
+async function remoteAction(path, okMsg, after){
+  setRemoteBusy(true);
+  try{
+    renderRemote(await api(path, {}));
+    toast(okMsg);
+    arm();
+    if(after) await after();
+  }catch(err){ toast(err.message, true); }
+  finally{ setRemoteBusy(false); }
+}
+function copyRemote(sel){
+  const v = $(sel).value.trim();
+  if(!v) return toast(tf("No hay URL todavia", "No URL yet"), true);
+  copyText(v).then(ok => toast(ok ? tf("URL copiada", "URL copied") : tf("No pude copiar", "Could not copy"), !ok));
+}
+	$("#btn-remote").addEventListener("click", ()=>{
+	  $("#remote").classList.toggle("open");
+	  $("#settings").classList.remove("open");
+	  $("#servers").classList.remove("open");
+	  $("#usage").classList.remove("open");
+	  if($("#remote").classList.contains("open")) loadRemote();
+	});
+$("#remote-on").addEventListener("click", ()=> remoteAction("/remote-on", tf("Remoto prendido", "Remote on")));
+$("#remote-off").addEventListener("click", ()=> remoteAction("/remote-off", tf("Remoto apagado", "Remote off")));
+$("#remote-webterm-on").addEventListener("click", ()=> remoteAction("/remote-webterm-on", tf("Terminal web prendida", "Web terminal on"), async()=>{ await ensureRemoteTerminalVisible(); }));
+$("#remote-webterm-off").addEventListener("click", ()=> remoteAction("/remote-webterm-off", tf("Terminal web apagada", "Web terminal off")));
+$("#remote-open-terminal").addEventListener("click", ()=> ensureRemoteTerminalVisible().catch(err => toast(err.message, true)));
+$("#remote-copy-dashboard").addEventListener("click", ()=> copyRemote("#remote-dashboard-url"));
+$("#remote-copy-term").addEventListener("click", ()=> copyRemote("#remote-term-url"));
+$("#remote-copy-fallback").addEventListener("click", ()=> copyRemote("#remote-fallback-url"));
+
 // ---------- servidores ----------
 async function connectHost(host){
   const r = await api("/ssh-connect", {host});
@@ -1470,6 +2514,21 @@ async function connectHost(host){
   else await api("/focus", {session: r.session});
   if(r.connected) toast(tf(`Conectado a ${host}`, `Connected to ${host}`));
   else toast(r.note || tf(`${host} sin conexion todavia`, `${host} not connected yet`), true);
+}
+async function openSshTab(host){
+  const r = await api("/ssh-new-tab", {host});
+  if(inApp()) openInApp(r.session, "ssh", r.label || host);
+  else if(WEBTERM) openTerm(r.session, r.label || host);
+  else await api("/focus", {session: r.session});
+  if(r.connected) toast(tf(`Nueva pestana SSH: ${host}`, `New SSH tab: ${host}`));
+  else toast(r.note || tf(`${host} abierto en nueva pestana`, `${host} opened in a new tab`), true);
+}
+async function setupSshKey(host){
+  const r = await api("/ssh-key-setup", {host});
+  if(inApp()) openInApp(r.session, "ssh");
+  else if(WEBTERM) openTerm(r.session, `setup ${host}`);
+  else await api("/focus", {session: r.session});
+  toast(tf(`Teclea el password de ${host} una sola vez`, `Type ${host} password once`));
 }
 function fillSrvForm(h){
   const f = $("#srv-form");
@@ -1487,7 +2546,7 @@ async function loadSsh(){
       const b = document.createElement("button");
       b.className = "ssh-chip"; b.textContent = h.host;
       b.title = `${h.user ? h.user + "@" : ""}${h.hostname || ""}${h.port ? ":" + h.port : ""}`;
-      b.addEventListener("click", ()=> connectHost(h.host).catch(err=>toast(err.message,true)));
+      b.addEventListener("click", ()=> openSshTab(h.host).catch(err=>toast(err.message,true)));
       c.appendChild(b);
     }
     const list = $("#srv-list"); list.innerHTML = "";
@@ -1495,11 +2554,13 @@ async function loadSsh(){
       const row = document.createElement("div");
       row.className = "srv-row";
       row.innerHTML = `<div class="srv-info"><div class="srv-name"></div><div class="srv-tgt"></div></div>
-        <button class="con">Conectar</button><button class="ed">Editar</button><button class="del">Borrar</button>`;
+        <button class="con">Conectar</button><button class="key">Llave</button><button class="ed">Editar</button><button class="del">Borrar</button>`;
       row.querySelector(".srv-name").textContent = h.host;
       row.querySelector(".srv-tgt").textContent =
         `${h.user ? h.user + "@" : ""}${h.hostname || ""}${h.port ? ":" + h.port : ""}`;
       row.querySelector(".con").addEventListener("click", ()=> connectHost(h.host).catch(err=>toast(err.message,true)));
+      row.querySelector(".key").title = tf("Instalar llave para entrar sin password", "Install key for passwordless login");
+      row.querySelector(".key").addEventListener("click", ()=> setupSshKey(h.host).catch(err=>toast(err.message,true)));
       row.querySelector(".ed").addEventListener("click", ()=> fillSrvForm(h));
       const del = row.querySelector(".del");
       del.addEventListener("click", async ()=>{
@@ -1516,10 +2577,12 @@ async function loadSsh(){
     if(!hosts.length) list.innerHTML = '<div class="desc">Sin servidores. Agrega el primero abajo.</div>';
   }catch(e){}
 }
-$("#ssh-manage").addEventListener("click", ()=>{
-  $("#servers").classList.toggle("open");
-  $("#settings").classList.remove("open");
-});
+	$("#ssh-manage").addEventListener("click", ()=>{
+	  $("#servers").classList.toggle("open");
+	  $("#settings").classList.remove("open");
+	  $("#remote").classList.remove("open");
+	  $("#usage").classList.remove("open");
+	});
 $("#srv-cancel").addEventListener("click", ()=>{ $("#srv-form").reset(); fillSrvForm({}); });
 $("#srv-form").addEventListener("submit", async e=>{
   e.preventDefault();
@@ -1587,35 +2650,34 @@ document.querySelectorAll(".cfg").forEach(b=>{
 });
 
 // ---------- UI general ----------
-$("#new-form").addEventListener("submit", async e=>{
-  e.preventDefault();
-  const name = $("#new-name").value.trim().replace(/[.:]/g, "-");
-  if(!name) return;
-  try{
-    if(inApp()){ const r = await api("/ensure", {session: name, win: "claude"});
-                 openInApp(r.session || name, "claude"); }
-    else if(WEBTERM){
-      // App remota: crea/abre la sesion (proyecto de ~/codebase o shell en
-      // blanco) y abre su terminal aqui mismo.
-      const r = await api("/new", {session: name});
-      openTerm((r && r.session) || name, name);
-    }
-    else { await api("/up", {session: name}); }
-    $("#new-name").value = "";
-    toast(tf(`${name} abierto`, `${name} opened`));
-  }catch(err){ toast(err.message, true); }
-});
-$("#btn-settings").addEventListener("click", ()=>{
-  $("#settings").classList.toggle("open");
-  $("#servers").classList.remove("open");
-});
-document.addEventListener("click", e=>{
-  for(const [id, trg] of [["#settings","btn-settings"],["#servers","ssh-manage"]]){
-    const s = $(id);
-    if(s.classList.contains("open") && !s.contains(e.target) && e.target.id !== trg)
-      s.classList.remove("open");
-  }
-});
+	$("#btn-settings").addEventListener("click", ()=>{
+	  $("#settings").classList.toggle("open");
+	  $("#servers").classList.remove("open");
+	  $("#remote").classList.remove("open");
+	  $("#usage").classList.remove("open");
+	});
+	$("#btn-usage").addEventListener("click", ()=>{
+	  $("#usage").classList.toggle("open");
+	  $("#settings").classList.remove("open");
+	  $("#servers").classList.remove("open");
+	  $("#remote").classList.remove("open");
+	  tickUsage(true);
+	});
+	$("#usage-close").addEventListener("click", ()=> $("#usage").classList.remove("open"));
+	$("#usage-refresh").addEventListener("click", async ()=>{
+	  try{
+	    const r = await api("/usage/refresh", {});
+	    renderUsage(r.state || {});
+	    toast(tf("Uso actualizado", "Usage refreshed"));
+	  }catch(err){ toast(err.message, true); }
+	});
+	document.addEventListener("click", e=>{
+	  for(const [id, trg] of [["#settings","btn-settings"],["#servers","ssh-manage"],["#remote","btn-remote"],["#usage","btn-usage"]]){
+	    const s = $(id);
+	    if(s.classList.contains("open") && !s.contains(e.target) && e.target.id !== trg)
+	      s.classList.remove("open");
+	  }
+	});
 // Volumen GLOBAL: vive en cc-notify.conf; voz, chime y "Probar" lo respetan
 const vol = $("#vol");
 vol.addEventListener("change", async ()=>{
@@ -1675,12 +2737,19 @@ $("#tl-toggle").addEventListener("click", ()=>{
     ? t("Ver actividad reciente") : t("Ocultar actividad");
   if(!tl.classList.contains("hidden")) tickEvents();
 });
+$("#term-select-toggle").addEventListener("click", ()=>{
+  if(!activeTerm || !openTerms.has(activeTerm)) return;
+  setTermSelectionMode(activeTerm, !selectingTerms.has(activeTerm));
+});
+window.addEventListener("pagehide", restoreAllTermInteractions);
 setInterval(()=>{
   const d = new Date();
   $("#clock").textContent =
     `${String(d.getHours()).padStart(2,"0")}:${String(d.getMinutes()).padStart(2,"0")}`;
 }, 1000);
-setInterval(tickEvents, 15000);
+setInterval(()=>{
+  if(!document.hidden && !$("#timeline").classList.contains("hidden")) tickEvents();
+}, 15000);
 
 document.querySelectorAll(".lang-btn").forEach(b=>{
   b.addEventListener("click", async ()=>{
@@ -1698,6 +2767,7 @@ document.querySelectorAll(".lang-btn").forEach(b=>{
     LABEL = {waiting: "waiting for you", done: "finished", working: "working",
              idle: "alive, idle", dead: "off"};
   initApp();   // barra de pestanas + terminales embebidas (si es tailnet)
+  await loadRemote();
   loadPrefs().then(tick);
   loadSsh();
   loadConf();

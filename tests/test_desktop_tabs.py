@@ -1,0 +1,124 @@
+#!/usr/bin/env python3
+import ast
+from pathlib import Path
+
+
+SRC = Path("bin/cc-app").read_text()
+
+
+def functions():
+    tree = ast.parse(SRC)
+    return {
+        node.name: ast.get_source_segment(SRC, node)
+        for node in tree.body
+        if isinstance(node, ast.FunctionDef)
+    }
+
+
+def function_source(name):
+    funcs = functions()
+    assert name in funcs, f"missing helper: {name}"
+    return funcs[name]
+
+
+def load_order_helper():
+    src = function_source("ordered_tab_labels")
+    ns = {}
+    exec(src, ns)
+    return ns
+
+
+def test_tab_labels_are_saved_in_visual_notebook_order():
+    ns = load_order_helper()
+
+    labels = {"alpha": "Alpha", "beta": "Beta", "gamma": "Gamma"}
+
+    assert ns["ordered_tab_labels"](["gamma", "alpha"], labels) == {
+        "gamma": "Gamma",
+        "alpha": "Alpha",
+        "beta": "Beta",
+    }
+
+
+def test_notebook_tabs_are_reorderable_and_saved_after_drag():
+    src = SRC
+
+    assert "nb.set_tab_reorderable(box, True)" in src
+    assert "nb.set_tab_reorderable(hub, False)" in src
+    assert 'nb.connect("page-reordered", on_tab_reordered)' in src
+    assert "def current_tab_order()" in src
+    assert "ordered_tab_labels(current_tab_order(), labels)" in function_source("save_tabs")
+
+
+def test_visual_tabs_overview_button_is_present():
+    src = SRC
+
+    assert "def open_tabs_overview" in src
+    assert '_tabs = Gtk.Button(label="▦")' in src
+    assert '_tabs.connect("clicked", open_tabs_overview)' in src
+    assert "_actions.pack_start(_tabs" in src
+
+
+def test_visual_tabs_overview_can_focus_and_close_tabs():
+    src = function_source("open_tabs_overview")
+
+    assert "for page in notebook_pages()" in src
+    assert "nb.set_current_page(nb.page_num(page))" in src
+    assert "close_tab(key)" in src
+    assert "Gtk.ScrolledWindow()" in src
+
+
+def test_ctrl_k_can_close_selected_open_tab():
+    src = function_source("open_switcher")
+
+    assert "def close_selected()" in src
+    assert "close_tab(key)" in src
+    assert "Gdk.KEY_Delete" in src
+    assert "Gdk.KEY_w" in src
+
+
+def test_close_tab_confirms_before_closing():
+    src = function_source("close_tab")
+    assert "Gtk.MessageDialog" in src
+    assert "ButtonsType.YES_NO" in src
+    # No cierra si el usuario no confirma
+    assert "if resp != Gtk.ResponseType.YES:" in src
+    assert "return" in src
+
+
+def test_modals_close_on_click_outside():
+    # switcher y overview usan el helper que cierra al perder el foco
+    helper = function_source("close_on_click_outside")
+    assert "focus-out-event" in helper
+    assert "_had_focus" in helper          # guard anti-autodestruccion
+    assert "close_on_click_outside(w)" in function_source("open_switcher")
+    assert "close_on_click_outside(w)" in function_source("open_tabs_overview")
+    # el switcher ya NO es modal (modal tragaria el click de afuera)
+    assert "w.set_modal(True)" not in function_source("open_switcher")
+
+
+def test_tab_scroll_arrows_have_padding():
+    # Las flechas de scroll del notebook no deben quedar pegadas a la 1a tab
+    assert "notebook > header > tabs > arrow" in SRC
+    css = SRC.split('APP_CSS = """', 1)[1].split('"""', 1)[0]
+    arrow_rule = css.split("> tabs > arrow {", 1)[1].split("}", 1)[0]
+    assert "padding" in arrow_rule and "margin" in arrow_rule
+
+
+def test_raise_main_window_uses_keep_above_pulse_for_gnome():
+    src = function_source("raise_main_window")
+    assert "set_keep_above(True)" in src
+    assert "set_keep_above(False)" in src   # se suelta, no queda pineada
+    assert "deiconify" in src
+
+
+if __name__ == "__main__":
+    test_tab_labels_are_saved_in_visual_notebook_order()
+    test_notebook_tabs_are_reorderable_and_saved_after_drag()
+    test_visual_tabs_overview_button_is_present()
+    test_visual_tabs_overview_can_focus_and_close_tabs()
+    test_ctrl_k_can_close_selected_open_tab()
+    test_close_tab_confirms_before_closing()
+    test_modals_close_on_click_outside()
+    test_tab_scroll_arrows_have_padding()
+    test_raise_main_window_uses_keep_above_pulse_for_gnome()

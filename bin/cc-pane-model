@@ -1,0 +1,17 @@
+#!/usr/bin/env bash
+# Modelo de IA del pane para pane-border-format de tmux, a COLOR por agente:
+# claude=violeta, codex=verde, opencode=naranja, gemini=azul, agy=lila.
+# cc-dash escribe ~/.claude/hooks/pane-models.txt ("%id agente · modelo").
+f="$HOME/.claude/hooks/pane-models.txt"
+[ -n "$1" ] && [ -f "$f" ] || exit 0
+line=$(grep -m1 "^$1 " "$f" 2>/dev/null) || exit 0
+rest="${line#* }"
+case "$rest" in
+  claude*)   c=141 ;;
+  codex*)    c=43  ;;
+  opencode*) c=215 ;;
+  gemini*)   c=111 ;;
+  agy*)      c=183 ;;
+  *)         c=244 ;;
+esac
+printf '#[fg=colour%s,bold]▸ %s#[default]' "$c" "$rest"

@@ -18,8 +18,11 @@ Solo escucha en 127.0.0.1. Todas las llamadas a tmux van sin shell (sin inyeccio
 """
 import html as html_mod
 import hmac, secrets
-import json, os, glob, re, shlex, shutil, sys, subprocess, time, webbrowser
+import json, os, glob, re, shlex, shutil, sys, subprocess, threading, time, webbrowser
+import urllib.parse, urllib.request
 import http.server, socketserver
+import tempfile
+import cc_usage
 
 
 def _open_url(url, env=None):
@@ -51,6 +54,226 @@ DASH = os.path.join(HOOKS, "dash")
 TOKEN_FILE = os.path.join(HOOKS, "dash-token")
 TABS_FILE = os.path.join(HOOKS, "app-tabs.json")
 TAB_HISTORY_FILE = os.path.join(HOOKS, "app-tabs-history.json")
+CONF_PATH = os.path.join(HOOKS, "cc-notify.conf")
+USAGE_DB = cc_usage.usage_db_path(HOOKS)
+USAGE_ENV_FILE = os.path.join(HOOKS, "usage.env")
+LOCAL_USAGE_REFRESH_AT = 0
+
+
+def usage_runtime_env():
+    env = cc_usage.load_usage_config([CONF_PATH, USAGE_ENV_FILE], os.environ)
+    env.update(cc_usage.read_usage_settings(USAGE_DB))
+    return env
+
+
+def usage_credential_health(env):
+    env = env or {}
+    return {
+        "openai": {
+            "provider": "openai",
+            "configured": bool(env.get("OPENAI_ADMIN_KEY")),
+            "status": "configured" if env.get("OPENAI_ADMIN_KEY") else "missing",
+        },
+        "anthropic": {
+            "provider": "anthropic",
+            "configured": bool(env.get("ANTHROPIC_ADMIN_KEY")),
+            "status": "configured" if env.get("ANTHROPIC_ADMIN_KEY") else "missing",
+        },
+    }
+
+
+def refresh_local_usage(force=False):
+    global LOCAL_USAGE_REFRESH_AT
+    now = int(time.time())
+    if not force and now - LOCAL_USAGE_REFRESH_AT < 60:
+        return {}
+    env = usage_runtime_env()
+    LOCAL_USAGE_REFRESH_AT = now
+    max_age = int(env.get("COMANDOS_USAGE_LOCAL_DAYS") or 14)
+    max_claude_files = int(env.get("COMANDOS_USAGE_CLAUDE_MAX_FILES") or 120)
+    counts = {
+        "codex_local": cc_usage.record_local_codex_threads(
+            USAGE_DB,
+            env.get("COMANDOS_CODEX_STATE_DB") or os.path.expanduser("~/.codex/state_5.sqlite"),
+            now=now,
+            max_age_days=max_age,
+        ),
+        "claude_local": cc_usage.record_local_claude_jsonl(
+            USAGE_DB,
+            env.get("COMANDOS_CLAUDE_PROJECTS_DIR") or os.path.expanduser("~/.claude/projects"),
+            now=now,
+            max_age_days=max_age,
+            max_files=max_claude_files,
+        ),
+        "opencode_local": cc_usage.record_local_opencode_db(
+            USAGE_DB,
+            env.get("COMANDOS_OPENCODE_DB") or os.path.expanduser("~/.local/share/opencode/opencode.db"),
+            now=now,
+            max_age_days=max_age,
+        ),
+    }
+    return counts
+
+
+# Limites exactos del plan (porcentaje 5h/semana): OAuth local de Claude Code
+# y snapshots de rate limits de los rollouts de Codex. La parte con red corre
+# en un hilo aparte para que /usage/state responda siempre al instante.
+LIMITS_TTL = 60
+_limits_lock = threading.Lock()
+_limits_cache = {"at": 0, "limits": [], "health": {}}
+_limits_refreshing = False
+
+
+def usage_alert_send(message):
+    """Entrega una alerta de uso por los MISMOS canales que las notificaciones
+    normales: el popup PROPIO de ComandOS (cc-notifyd; jamas el popup plano
+    de GNOME) y/o Telegram, segun lo que este prendido."""
+    conf = read_conf()
+    if conf.get("DESKTOP_NOTIFY", "1") == "1":
+        try:
+            payload = json.dumps({
+                "title": "Límite de uso", "body": message, "session": "",
+                "kind": "waiting", "project": "Uso", "options": "",
+                "full": message,
+            }).encode()
+            urllib.request.urlopen(urllib.request.Request(
+                "http://127.0.0.1:4778/notify", data=payload,
+                headers={"Content-Type": "application/json"}), timeout=2)
+        except Exception:
+            pass
+    if conf.get("TELEGRAM_ENABLED") == "1":
+        tg = cc_usage.load_usage_config([os.path.join(HOOKS, "telegram.env")])
+        token = tg.get("CC_TELEGRAM_BOT_TOKEN") or tg.get("TELEGRAM_BOT_TOKEN")
+        chat = tg.get("TELEGRAM_CHAT_ID")
+        if token and chat:
+            try:
+                body = urllib.parse.urlencode({
+                    "chat_id": chat, "parse_mode": "HTML",
+                    "text": f"<b>ComandOS — Límite de uso</b>\n{message}",
+                }).encode()
+                urllib.request.urlopen(urllib.request.Request(
+                    f"https://api.telegram.org/bot{token}/sendMessage",
+                    data=body), timeout=5)
+            except Exception:
+                pass
+
+
+def alert_thresholds():
+    return cc_usage.parse_alert_thresholds(
+        usage_runtime_env().get("COMANDOS_ALERT_THRESHOLDS"))
+
+
+def _check_limit_alerts(limits):
+    for alert in cc_usage.limit_threshold_alerts(limits, thresholds=alert_thresholds()):
+        try:
+            if cc_usage.record_alert_once(USAGE_DB, alert):
+                usage_alert_send(alert["message"])
+        except Exception:
+            pass
+
+
+def _refresh_provider_limits():
+    global _limits_refreshing
+    try:
+        codex_rows = cc_usage.read_codex_rate_limits()
+        claude_rows, claude_health = cc_usage.fetch_claude_oauth_limits()
+        _check_limit_alerts(claude_rows + codex_rows)
+        with _limits_lock:
+            if not claude_rows and claude_health.get("status") == "error":
+                # Fetch fallido (p.ej. 429): conservar el ultimo dato bueno.
+                # captured_at delata su edad y la UI la muestra.
+                claude_rows = [r for r in _limits_cache["limits"]
+                               if r.get("provider") == "claude"]
+                claude_health["stale"] = bool(claude_rows)
+            _limits_cache["at"] = int(time.time())
+            _limits_cache["limits"] = claude_rows + codex_rows
+            _limits_cache["health"] = {"claude_oauth": claude_health}
+    finally:
+        with _limits_lock:
+            _limits_refreshing = False
+
+
+def usage_provider_limits(force=False):
+    global _limits_refreshing
+    if force:
+        with _limits_lock:
+            _limits_refreshing = True
+        _refresh_provider_limits()
+    else:
+        with _limits_lock:
+            health = _limits_cache["health"].get("claude_oauth") or {}
+            ttl = LIMITS_TTL * 3 if health.get("status") == "error" else LIMITS_TTL
+            stale = time.time() - _limits_cache["at"] > ttl
+            start = stale and not _limits_refreshing
+            if start:
+                _limits_refreshing = True
+        if start:
+            threading.Thread(target=_refresh_provider_limits, daemon=True).start()
+    with _limits_lock:
+        return {"limits": list(_limits_cache["limits"]),
+                "health": dict(_limits_cache["health"])}
+
+
+# Posiciones del picker /model de codex (dos pasos numerados). Si codex
+# reordena su picker en una version nueva, actualizar aqui.
+CODEX_MODEL_DIGITS = {
+    "gpt-5.5": "1",
+    "gpt-5.4": "2",
+    "gpt-5.4-mini": "3",
+    "gpt-5.3-codex-spark": "4",
+}
+CODEX_EFFORT_DIGITS = {"low": "1", "medium": "2", "high": "3", "xhigh": "4"}
+
+PANE_MODELS_FILE = os.path.join(HOOKS, "pane-models.txt")
+
+
+def write_pane_models(panes):
+    """Archivo plano '%pane agente · modelo' que consume cc-pane-model para
+    mostrar el modelo de IA en el borde de CADA pane de tmux."""
+    lines = []
+    for p in panes:
+        pane_id = p.get("tmux_pane") or ""
+        if not pane_id.startswith("%"):
+            continue
+        agent = p.get("agent") or p.get("provider") or ""
+        model = (p.get("model") or "").replace("claude-", "")
+        model = model.rsplit("/", 1)[-1] if "/" in model else model
+        label = f"{agent} · {model}" if model else agent
+        if label:
+            lines.append(f"{pane_id} {label}")
+    try:
+        tmp = PANE_MODELS_FILE + ".tmp"
+        with open(tmp, "w") as f:
+            f.write("\n".join(lines) + "\n")
+        os.replace(tmp, PANE_MODELS_FILE)
+    except OSError:
+        pass
+
+
+# Catalogo de modelos de OpenCode (unico agente con seleccion de PROVIDER
+# desde la UI). `opencode models --verbose` es lento: cache generoso.
+_oc_models_cache = {"at": 0, "data": []}
+
+
+def opencode_models(force=False):
+    now = time.time()
+    if not force and _oc_models_cache["data"] and now - _oc_models_cache["at"] < 900:
+        return _oc_models_cache["data"]
+    binary = shutil.which("opencode") or os.path.expanduser("~/.opencode/bin/opencode")
+    # --refresh: opencode CACHEA la lista de providers; sin esto, las keys
+    # recien pegadas en providers.env no aparecen hasta reiniciar el CLI.
+    try:
+        r = subprocess.run(
+            ["sh", "-c",
+             'set -a; . "$HOME/.claude/hooks/providers.env" 2>/dev/null; set +a; '
+             f'"{binary}" models --verbose --refresh'],
+            capture_output=True, text=True, timeout=60)
+        data = cc_usage.parse_opencode_models(r.stdout)
+    except Exception:
+        data = []
+    if data:
+        _oc_models_cache.update({"at": now, "data": data})
+    return _oc_models_cache["data"]
 
 
 def access_token():
@@ -103,6 +326,123 @@ def gui_env():
     env = dict(os.environ)
     env.setdefault("DISPLAY", ":1")
     return env
+
+
+def remote_urls(host, token):
+    base = f"https://{host}"
+    return {
+        "dashboard": f"{base}/?token={token}",
+        "terminal": f"{base}/term?token={token}",
+        "terminalFallback": f"{base}:8443/?token={token}",
+    }
+
+
+def remote_status_from_text(serve_text, webterm_running):
+    return {
+        "remoteOn": "proxy http://127.0.0.1:4777" in serve_text,
+        "webtermOn": bool(webterm_running),
+        "termRouteOn": "proxy http://127.0.0.1:4780/term" in serve_text,
+        "fallbackRouteOn": "proxy http://127.0.0.1:4779" in serve_text,
+    }
+
+
+def run_quiet(args, timeout=10):
+    try:
+        return subprocess.run(args, capture_output=True, text=True, timeout=timeout)
+    except Exception as e:
+        return subprocess.CompletedProcess(args, 1, "", str(e))
+
+
+def tailscale_host():
+    r = run_quiet(["tailscale", "status", "--json"], timeout=8)
+    if r.returncode == 0:
+        try:
+            host = json.loads(r.stdout).get("Self", {}).get("DNSName", "").rstrip(".")
+            if host:
+                return host
+        except Exception:
+            pass
+    r = run_quiet(["tailscale", "status", "--self", "--json"], timeout=8)
+    m = re.search(r"[a-z0-9-]+(?:\.[a-z0-9-]+)*\.ts\.net", r.stdout)
+    return m.group(0) if m else ""
+
+
+def tailscale_serve_status_text():
+    r = run_quiet(["tailscale", "serve", "status"], timeout=8)
+    return r.stdout if r.returncode == 0 else ""
+
+
+def webterm_running():
+    r = run_quiet(["pgrep", "-af", "cc-webterm-attach"], timeout=4)
+    return any("ttyd" in line and "cc-webterm-attach" in line for line in r.stdout.splitlines())
+
+
+def remote_state():
+    host = tailscale_host()
+    token = access_token()
+    serve = tailscale_serve_status_text()
+    status = remote_status_from_text(serve, webterm_running())
+    urls = remote_urls(host, token) if host else {"dashboard": "", "terminal": "", "terminalFallback": ""}
+    status.update({
+        "host": host,
+        "urls": urls,
+        "qrAvailable": shutil.which("qrencode") is not None,
+        "serveStatus": serve,
+    })
+    return status
+
+
+def serve_path(path, target, https_port="443"):
+    attempts = [
+        ["tailscale", "serve", "--bg", f"--https={https_port}", f"--set-path={path}", target],
+        ["tailscale", "serve", "--bg", f"--set-path={path}", target],
+        ["tailscale", "serve", f"--https={https_port}", path, target],
+    ]
+    last = None
+    for args in attempts:
+        last = run_quiet(args, timeout=12)
+        if last.returncode == 0:
+            return None
+    return (last.stderr or last.stdout or "tailscale serve fallo").strip()
+
+
+def remote_dashboard_on():
+    if not shutil.which("tailscale"):
+        return "Tailscale no esta instalado"
+    if run_quiet(["tailscale", "status"], timeout=8).returncode != 0:
+        return "Tailscale no ha iniciado sesion"
+    return serve_path("/", "http://127.0.0.1:4777")
+
+
+def remote_dashboard_off():
+    run_quiet(["tailscale", "serve", "--https=443", "off"], timeout=12)
+    run_quiet(["tailscale", "serve", "reset"], timeout=12)
+    webterm_off()
+    return None
+
+
+def webterm_on():
+    script = os.path.expanduser("~/.local/bin/cc-webterm")
+    if not os.path.exists(script):
+        script = shutil.which("cc-webterm") or script
+    r = run_quiet([script], timeout=20)
+    if r.returncode != 0:
+        return (r.stderr or r.stdout or "cc-webterm no arranco").strip()
+    if webterm_running():
+        serve_path("/term", "http://127.0.0.1:4780/term")
+        serve_path("/", "http://127.0.0.1:4779", https_port="8443")
+    return None
+
+
+def webterm_off():
+    script = os.path.expanduser("~/.local/bin/cc-webterm")
+    if not os.path.exists(script):
+        script = shutil.which("cc-webterm") or script
+    if os.path.exists(script):
+        run_quiet([script, "off"], timeout=12)
+    else:
+        run_quiet(["pkill", "-f", "ttyd.*cc-webterm-attach"], timeout=6)
+    return None
 
 
 def load_json_file(path, default):
@@ -224,8 +564,12 @@ def state_agent(sess):
 
 def tmux_new_session(sess, cwd, agent="claude"):
     """Crea la sesion en un scope propio con DOS ventanas: la del AGENTE
-    (claude/codex/opencode/gemini...) y 'shell' (consola manual, mismo dir)."""
+    (claude/codex/opencode/gemini...) y 'shell' (consola manual, mismo dir).
+    Antes de lanzar carga ~/.claude/hooks/providers.env: UN solo archivo donde
+    viven las API keys de proveedores (groq/cerebras/sambanova/cloudflare...)
+    que opencode y otros agentes leen del ambiente."""
     launch = AGENT_LAUNCH.get(agent, AGENT_LAUNCH["claude"])
+    launch = 'set -a; . "$HOME/.claude/hooks/providers.env" 2>/dev/null; set +a; ' + launch
     r = subprocess.run(
         scope_cmd(["tmux", "new-session", "-d", "-s", sess, "-n", "claude",
                    "-c", cwd, f"{launch}; exec $SHELL"]),
@@ -282,15 +626,27 @@ def focus_session(sess, win="claude"):
         except Exception:
             return False
 
-    # Traer la ventana correcta: la app si esta abierta; si no, terminal
-    # externa (titulo = sesion) > ComandOS > cualquier terminal conocida
+    # Traer la ventana al frente. GNOME/Mutter RECHAZA que una app se enfoque
+    # sola, asi que ademas de activar damos un pulso keep-above (cambia el
+    # apilamiento, no el foco: Mutter si lo respeta) para que suba de verdad.
+    def raise_win(match_flag, name):
+        ok = wm(*(([match_flag] if match_flag else []) + ["-a", name]))
+        if ok:
+            wm(*(([match_flag] if match_flag else []) + ["-r", name, "-b", "add,above"]))
+            def drop():
+                wm(*(([match_flag] if match_flag else []) + ["-r", name, "-b", "remove,above"]))
+            threading.Timer(0.6, drop).start()
+        return ok
+
     if app_open:
-        wm("-x", "-a", "comandos")
-    elif not wm("-a", sess):
-        if not wm("-x", "-a", "comandos"):
+        # La app ya sube su ventana via app-focus.json (keep-above pulse);
+        # esto es respaldo por si el file-monitor no dispara.
+        raise_win("-x", "comandos")
+    elif not raise_win("", sess):
+        if not raise_win("-x", "comandos"):
             t = pick_terminal()
             if t:
-                wm("-x", "-a", t[2])
+                raise_win("-x", t[2])
     return None
 
 ALLOWED_KEYS = {"Enter", "Escape", "Up", "Down", "Tab", "y", "n",
@@ -308,6 +664,18 @@ def tmux_sessions():
     if r.returncode != 0:
         return set()
     return {l for l in r.stdout.splitlines() if l}
+
+
+def set_tmux_mouse(sess, enabled):
+    target = "=" + sess
+    if tmux("has-session", "-t", target).returncode != 0:
+        return f"No hay sesion tmux '{sess}'"
+    # set-option en tmux 3.2a no acepta el target exacto '=name' para opciones
+    # de sesion, pero el nombre viene validado por SESSION_RE y no pasa por shell.
+    r = tmux("set-option", "-t", sess, "mouse", "on" if enabled else "off")
+    if r.returncode != 0:
+        return r.stderr.strip() or "tmux fallo"
+    return None
 
 
 def session_name(project):
@@ -420,22 +788,30 @@ def agent_pane_maps(procs):
         pane, _, ppid = rest.partition("|")
         if ppid.isdigit():
             by_pid[int(ppid)] = (sess, pane)
-    by_session, by_cwd, seen = {}, {}, set()
+    best_by_pane = {}
     for pid, cwd, agent in procs:
         p = pid
-        for _ in range(25):
+        for depth in range(25):
             if p in by_pid:
                 sess, pane = by_pid[p]
-                key = (sess, pane, agent)
-                if key not in seen:
-                    seen.add(key)
-                    info = {"session": sess, "pane": pane, "cwd": cwd, "agent": agent}
-                    by_session.setdefault(sess, info)
-                    by_cwd.setdefault(cwd, []).append(info)
+                key = (sess, pane)
+                info = {
+                    "session": sess, "pane": pane, "cwd": cwd,
+                    "agent": agent, "pid": pid, "_depth": depth,
+                }
+                prev = best_by_pane.get(key)
+                if not prev or depth < prev["_depth"] or (depth == prev["_depth"] and pid > prev["pid"]):
+                    best_by_pane[key] = info
                 break
             p = parent_pid(p)
             if p <= 1:
                 break
+    by_session, by_cwd = {}, {}
+    for info in best_by_pane.values():
+        info = dict(info)
+        info.pop("_depth", None)
+        by_session.setdefault(info["session"], info)
+        by_cwd.setdefault(info["cwd"], []).append(info)
     return by_session, by_cwd
 
 
@@ -651,6 +1027,35 @@ def read_states():
     return items
 
 
+def usage_live_panes():
+    """Persist and return active agent panes with pane-level cwd/git identity."""
+    labels = tab_labels()
+    now_ts = int(time.time())
+    _by_session, by_cwd = agent_pane_maps(agent_procs())
+    seen, panes = set(), []
+    for infos in by_cwd.values():
+        for info in infos:
+            key = (info.get("session"), info.get("pane"), info.get("agent"))
+            if key in seen:
+                continue
+            seen.add(key)
+            cwd = info.get("cwd") or ""
+            pane = cc_usage.normalize_pane_identity({
+                "session": info.get("session", ""),
+                "pane": info.get("pane", ""),
+                "cwd": cwd,
+                "git_root": cc_usage.git_root_for_path(cwd),
+                "agent": info.get("agent") or "claude",
+                "pid": info.get("pid") or 0,
+            }, labels=labels, now=now_ts)
+            panes.append(pane)
+            try:
+                cc_usage.record_pane(USAGE_DB, pane)
+            except Exception:
+                pass
+    return panes
+
+
 # Claves de cc-notify.conf editables desde la interfaz
 CONF_KEYS = {"DESKTOP_NOTIFY", "SOUND_ENABLED", "TELEGRAM_ENABLED",
              "NOTIFY_ON_DONE", "NOTIFY_ON_ATTENTION", "SPEAK_ATTENTION", "SPEAK_DONE",
@@ -664,9 +1069,6 @@ def ui_lang(conf=None):
     if v in ("es", "en"):
         return v
     return "es" if os.environ.get("LANG", "").lower().startswith("es") else "en"
-CONF_PATH = os.path.join(HOOKS, "cc-notify.conf")
-
-
 def conf_volume(conf):
     try:
         return max(0, min(100, int(conf.get("VOLUME", "60"))))
@@ -761,6 +1163,8 @@ def parse_ssh_config():
                             hosts.append(cur)
                 elif cur is not None and k in ("hostname", "user", "port"):
                     cur[k] = v
+                elif cur is not None and k == "identityfile":
+                    cur["identity"] = v
     except FileNotFoundError:
         pass
     return hosts
@@ -812,6 +1216,63 @@ def ssh_add(d):
     if not existed:
         os.chmod(path, 0o600)
     return None
+
+
+def ssh_host_entry(host):
+    return next((h for h in parse_ssh_config() if h.get("host") == host), None)
+
+
+def ssh_public_key_for_host(host):
+    entry = ssh_host_entry(host)
+    if not entry:
+        return None, "Host desconocido; agregalo primero"
+    candidates = []
+    identity = (entry.get("identity") or "").strip()
+    if identity:
+        identity_path = os.path.expanduser(identity)
+        candidates.append(identity_path if identity_path.endswith(".pub") else identity_path + ".pub")
+    candidates += [
+        os.path.expanduser("~/.ssh/id_ed25519.pub"),
+        os.path.expanduser("~/.ssh/id_rsa.pub"),
+    ]
+    for key in candidates:
+        if key and os.path.isfile(key):
+            return key, None
+    return None, "No encontre llave publica (~/.ssh/id_ed25519.pub o IdentityFile.pub)"
+
+
+def ssh_key_setup(host):
+    """Abre una sesion tmux interactiva que corre ssh-copy-id para este host.
+    El password se teclea ahi una sola vez; ComandOS nunca lo guarda."""
+    if not SSH_HOST_RE.match(host) or not ssh_host_entry(host):
+        return None, "Host desconocido; agregalo primero"
+    if not shutil.which("ssh-copy-id"):
+        return None, "ssh-copy-id no esta instalado"
+    key, err = ssh_public_key_for_host(host)
+    if err:
+        return None, err
+    sess = ("ssh-key-" + host)[:60]
+    if tmux("has-session", "-t", "=" + sess).returncode == 0:
+        return sess, None
+    cmd = (
+        f"printf '%s\\n\\n' {shlex.quote('Instalando llave publica para ' + host)}; "
+        f"ssh-copy-id -o ConnectTimeout=8 -i {shlex.quote(key)} {shlex.quote(host)}; "
+        "rc=$?; echo; "
+        "if [ \"$rc\" -eq 0 ]; then "
+        f"  echo {shlex.quote('Llave instalada. Conectando...')}; "
+        f"  exec ssh {shlex.quote(host)}; "
+        "else "
+        f"  echo {shlex.quote('No se pudo instalar la llave. Revisa password/red y reintenta.')}; "
+        "  exec $SHELL; "
+        "fi"
+    )
+    args = ["tmux", "new-session", "-d", "-s", sess, "-n", "setup", cmd]
+    if shutil.which("systemd-run"):
+        args = ["systemd-run", "--user", "--scope", "--collect", "--quiet", *args]
+    r = subprocess.run(args, capture_output=True, text=True, timeout=15)
+    if r.returncode != 0:
+        return None, r.stderr.strip() or "No se pudo crear la sesion"
+    return sess, None
 
 
 def ssh_remove(host):
@@ -903,6 +1364,7 @@ def ssh_connect(host):
         return None, False, "Host desconocido; agregalo primero"
     sess = ("ssh-" + host)[:60]
     if tmux("has-session", "-t", "=" + sess).returncode == 0:
+        tmux("set-option", "-t", sess, "mouse", "off")
         st = ssh_state(sess)
         if st == "ssh":
             return sess, True, None
@@ -928,11 +1390,52 @@ def ssh_connect(host):
         capture_output=True, text=True, timeout=15)
     if r.returncode != 0:
         return None, False, r.stderr.strip() or "No se pudo crear la sesion"
+    tmux("set-option", "-t", sess, "mouse", "off")
     if keyok:
         return sess, True, None
     if "denied" in stderr or "authentication" in stderr:
         return sess, False, f"{host} pide password: tecleala en su pestana (o corre cc-keys para no volver a hacerlo)"
     return sess, False, f"{host} no responde (red caida o host apagado); la pestana quedo reintentando"
+
+
+def ssh_new_tab_session(host):
+    prefix = "sshtab-" + host
+    for i in range(1, 1000):
+        suffix = f"-{i}"
+        sess = prefix[:80 - len(suffix)] + suffix
+        if tmux("has-session", "-t", "=" + sess).returncode != 0:
+            return sess
+    return ""
+
+
+def ssh_open_new_tab(host):
+    """Crea SIEMPRE una sesion/pestana nueva para un host SSH guardado."""
+    if not SSH_HOST_RE.match(host) or not ssh_host_entry(host):
+        return None, False, "Host desconocido; agregalo primero"
+    sess = ssh_new_tab_session(host)
+    if not sess:
+        return None, False, "No pude generar nombre de sesion SSH"
+    try:
+        auth = subprocess.run(
+            ["ssh", "-o", "BatchMode=yes", "-o", "ConnectTimeout=6", host, "true"],
+            capture_output=True, text=True, timeout=14)
+        keyok = auth.returncode == 0
+        stderr = auth.stderr.lower()
+    except Exception:
+        keyok, stderr = False, "timeout"
+    r = subprocess.run(
+        scope_cmd(["tmux", "new-session", "-d", "-s", sess, "-n", "ssh",
+                   f"ssh {shlex.quote(host)}; exec $SHELL"]),
+        capture_output=True, text=True, timeout=15)
+    if r.returncode != 0:
+        return None, False, r.stderr.strip() or "No se pudo crear la sesion"
+    tmux("set-option", "-t", sess, "mouse", "off")
+    write_app_tab(sess, host)
+    if keyok:
+        return sess, True, None
+    if "denied" in stderr or "authentication" in stderr:
+        return sess, False, f"{host} pide password en su nueva pestana"
+    return sess, False, f"{host} no responde o pide intervencion en su nueva pestana"
 
 
 def _md_inline(l):
@@ -1058,11 +1561,28 @@ class Handler(http.server.SimpleHTTPRequestHandler):
     def log_message(self, *a):
         pass
 
+    def _no_store(self):
+        self.send_header("Cache-Control", "no-store")
+        self._sent_cache_control = True
+
+    def end_headers(self):
+        if not getattr(self, "_sent_cache_control", False):
+            self._no_store()
+        super().end_headers()
+
     def _json(self, code, obj):
         body = json.dumps(obj).encode()
         self.send_response(code)
         self.send_header("Content-Type", "application/json")
-        self.send_header("Cache-Control", "no-store")
+        self._no_store()
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
+    def _bytes(self, code, content_type, body):
+        self.send_response(code)
+        self.send_header("Content-Type", content_type)
+        self._no_store()
         self.send_header("Content-Length", str(len(body)))
         self.end_headers()
         self.wfile.write(body)
@@ -1128,7 +1648,8 @@ class Handler(http.server.SimpleHTTPRequestHandler):
     # Endpoints con DATOS o ACCIONES: exigen token. El shell estatico (HTML,
     # sw.js, manifest, iconos) NO — no revela nada (es codigo open-source) y
     # asi la PWA instala y carga sin depender de cookies en el webview movil.
-    API_GET = ("/state", "/events", "/conf", "/prefs", "/ssh", "/tabs")
+    API_GET = ("/state", "/usage/state", "/opencode/models", "/events", "/conf", "/prefs", "/ssh", "/tabs",
+               "/tab-history", "/remote-state", "/remote-qr.png")
 
     def do_GET(self):
         host = self.headers.get("Host", "")
@@ -1143,6 +1664,32 @@ class Handler(http.server.SimpleHTTPRequestHandler):
     def _do_GET(self):
         if self.path.startswith("/state"):
             return self._json(200, read_states())
+        if self.path.startswith("/opencode/models"):
+            return self._json(200, {"providers": opencode_models()})
+
+        if self.path.startswith("/usage/state"):
+            refresh_local_usage(False)
+            panes = usage_live_panes()
+            env = usage_runtime_env()
+            prov = usage_provider_limits()
+            state = cc_usage.build_usage_state(USAGE_DB, panes, settings=env,
+                                               limits=prov["limits"])
+            state["credential_health"] = usage_credential_health(env)
+            state["credential_health"].update(prov["health"])
+            state["alert_thresholds"] = list(alert_thresholds())
+            rules = cc_usage.rule_current_values(
+                USAGE_DB, cc_usage.list_alert_rules(USAGE_DB),
+                state.get("panes") or [], limits=prov["limits"])
+            state["alert_rules"] = rules
+            for alert in cc_usage.rule_alerts(rules):
+                try:
+                    if cc_usage.record_alert_once(USAGE_DB, alert):
+                        usage_alert_send(alert["message"])
+                except Exception:
+                    pass
+            state["alerts"] = cc_usage.list_alerts(USAGE_DB)
+            write_pane_models(state.get("panes") or [])
+            return self._json(200, state)
         if self.path.startswith("/ssh"):
             return self._json(200, parse_ssh_config())
         if self.path.startswith("/conf"):
@@ -1171,6 +1718,24 @@ class Handler(http.server.SimpleHTTPRequestHandler):
                 it["alive"] = it["session"] in live
                 out.append(it)
             return self._json(200, out[:40])
+        if self.path.startswith("/remote-state"):
+            return self._json(200, remote_state())
+        if self.path.startswith("/remote-qr.png"):
+            st = remote_state()
+            url = st.get("urls", {}).get("dashboard", "")
+            if not url:
+                return self._json(400, {"error": "No pude leer el host de Tailscale"})
+            if not shutil.which("qrencode"):
+                return self._json(404, {"error": "qrencode no esta instalado"})
+            try:
+                with tempfile.NamedTemporaryFile(suffix=".png") as f:
+                    r = run_quiet(["qrencode", "-o", f.name, "-s", "8", "-m", "2", url], timeout=5)
+                    if r.returncode != 0:
+                        return self._json(500, {"error": r.stderr.strip() or "qrencode fallo"})
+                    f.seek(0)
+                    return self._bytes(200, "image/png", f.read())
+            except Exception as e:
+                return self._json(500, {"error": str(e)})
         if self.path.startswith("/events"):
             evs = []
             try:
@@ -1239,6 +1804,36 @@ class Handler(http.server.SimpleHTTPRequestHandler):
                 return self._json(400, {"error": err})
             return self._json(200, {"ok": True})
 
+        if self.path == "/remote-on":
+            err = remote_dashboard_on()
+            if err:
+                return self._json(400, {"error": err})
+            if webterm_running():
+                serve_path("/term", "http://127.0.0.1:4780/term")
+                serve_path("/", "http://127.0.0.1:4779", https_port="8443")
+            return self._json(200, remote_state())
+
+        if self.path == "/remote-off":
+            err = remote_dashboard_off()
+            if err:
+                return self._json(400, {"error": err})
+            return self._json(200, remote_state())
+
+        if self.path == "/remote-webterm-on":
+            err = remote_dashboard_on()
+            if err:
+                return self._json(400, {"error": err})
+            err = webterm_on()
+            if err:
+                return self._json(400, {"error": err})
+            return self._json(200, remote_state())
+
+        if self.path == "/remote-webterm-off":
+            err = webterm_off()
+            if err:
+                return self._json(400, {"error": err})
+            return self._json(200, remote_state())
+
         if self.path == "/ssh-add":
             err = ssh_add(data)
             if err:
@@ -1271,6 +1866,69 @@ class Handler(http.server.SimpleHTTPRequestHandler):
                 json.dump(prefs, f)
             return self._json(200, {"ok": True})
 
+        if self.path == "/usage/capture":
+            try:
+                event = cc_usage.record_turn(USAGE_DB, data)
+            except Exception as e:
+                return self._json(500, {"error": str(e)})
+            return self._json(200, {"ok": True, "event": event})
+
+        if self.path == "/usage/refresh":
+            health, counts = [], {}
+            counts.update(refresh_local_usage(True))
+            env = usage_runtime_env()
+            for provider, fetcher in (
+                ("openai", cc_usage.fetch_openai_usage),
+                ("anthropic", cc_usage.fetch_anthropic_usage),
+            ):
+                usage_rows, cost_rows, h = fetcher(env)
+                health.append(h)
+                counts[provider] = {"usage": len(usage_rows), "costs": len(cost_rows)}
+                if usage_rows:
+                    cc_usage.record_provider_usage(USAGE_DB, provider, usage_rows)
+                if cost_rows:
+                    cc_usage.record_provider_costs(USAGE_DB, provider, cost_rows)
+            panes = usage_live_panes()
+            prov = usage_provider_limits(force=True)
+            state = cc_usage.build_usage_state(USAGE_DB, panes, settings=env,
+                                               limits=prov["limits"])
+            state["credential_health"] = {h["provider"]: h for h in health}
+            state["credential_health"].update(prov["health"])
+            return self._json(200, {"ok": True, "counts": counts, "state": state})
+
+        if self.path == "/usage/alert-rule":
+            # Reglas por objetivo: sesion / proyecto / proveedor, presupuesto
+            # de tokens en 24h. action: set | delete
+            action = str(data.get("action") or "set")[:16]
+            if action == "delete":
+                cc_usage.delete_alert_rule(USAGE_DB, str(data.get("id") or "")[:340])
+            else:
+                rid = cc_usage.set_alert_rule(
+                    USAGE_DB,
+                    str(data.get("scope") or "")[:16],
+                    str(data.get("target") or "")[:300],
+                    str(data.get("label") or "")[:120],
+                    data.get("threshold"))
+                if not rid:
+                    return self._json(400, {"error": "Regla invalida"})
+            rules = cc_usage.rule_current_values(
+                USAGE_DB, cc_usage.list_alert_rules(USAGE_DB), usage_live_panes(),
+                limits=usage_provider_limits()["limits"])
+            return self._json(200, {"ok": True, "alert_rules": rules})
+
+        if self.path == "/usage/settings":
+            settings = cc_usage.write_usage_settings(USAGE_DB, data.get("settings") or data)
+            panes = usage_live_panes()
+            env = usage_runtime_env()
+            prov = usage_provider_limits()
+            state = cc_usage.build_usage_state(USAGE_DB, panes, settings=env,
+                                               limits=prov["limits"])
+            state["credential_health"] = usage_credential_health(env)
+            state["credential_health"].update(prov["health"])
+            state["alerts"] = cc_usage.list_alerts(USAGE_DB)
+            state["alert_thresholds"] = list(alert_thresholds())
+            return self._json(200, {"ok": True, "settings": settings, "state": state})
+
         if self.path == "/ssh-connect":
             sess, connected, note = ssh_connect(data.get("host", ""))
             if sess is None:
@@ -1278,9 +1936,30 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             return self._json(200, {"ok": True, "session": sess,
                                     "connected": connected, "note": note})
 
+        if self.path == "/ssh-new-tab":
+            sess, connected, note = ssh_open_new_tab(data.get("host", ""))
+            if sess is None:
+                return self._json(400, {"error": note})
+            return self._json(200, {"ok": True, "session": sess, "label": data.get("host", ""),
+                                    "connected": connected, "note": note})
+
+        if self.path == "/ssh-key-setup":
+            sess, err = ssh_key_setup(data.get("host", ""))
+            if err:
+                return self._json(400, {"error": err})
+            return self._json(200, {"ok": True, "session": sess})
+
         sess = data.get("session", "")
         if not SESSION_RE.match(sess):
             return self._json(400, {"error": "Nombre de sesion invalido"})
+
+        if self.path == "/tmux-mouse":
+            enabled = bool(data.get("enabled", True))
+            err = set_tmux_mouse(sess, enabled)
+            if err:
+                code = 404 if err.startswith("No hay sesion") else 500
+                return self._json(code, {"error": err})
+            return self._json(200, {"ok": True, "mouse": "on" if enabled else "off"})
 
         if self.path == "/recover-tab":
             label = str(data.get("label") or sess)[:80]
@@ -1315,6 +1994,55 @@ class Handler(http.server.SimpleHTTPRequestHandler):
         if PANE_RE.match(want) and \
                 tmux("display-message", "-p", "-t", want, "#{pane_id}").stdout.strip() == want:
             pane = want
+
+        if self.path == "/model/switch":
+            provider = str(data.get("provider") or data.get("agent") or state_agent(sess))[:32]
+            preset = str(data.get("preset") or "diario")[:32]
+            model = str(data.get("model") or "")[:120]
+            effort = str(data.get("effort") or "")[:16]
+            if tmux("has-session", "-t", target).returncode != 0:
+                return self._json(404, {"error": f"No hay sesion tmux '{sess}'"})
+            if provider == "codex" and model in CODEX_MODEL_DIGITS:
+                # El picker de codex es de DOS pasos numerados (modelo →
+                # reasoning): un digito selecciona y avanza solo.
+                seq = (
+                    (("Escape",), 0.35), (("C-u",), 0.25),
+                    (("-l", "--", "/model"), 0.5), (("Enter",), 1.2),
+                    (("-l", "--", CODEX_MODEL_DIGITS[model]), 0.9),
+                    (("-l", "--", CODEX_EFFORT_DIGITS.get(effort, "2")), 0.4),
+                    (("C-u",), 0),
+                )
+                for keys, pause in seq:
+                    r = tmux("send-keys", "-t", pane, *keys)
+                    if r.returncode != 0:
+                        return self._json(500, {"error": r.stderr.strip() or "tmux fallo"})
+                    if pause:
+                        time.sleep(pause)
+                return self._json(200, {"ok": True, "command": f"/model → {model} {effort or 'medium'}"})
+            if provider == "opencode":
+                # OpenCode: su picker /models busca por NOMBRE mostrado. La
+                # secuencia limpia estado (Escape+C-u) y teclea la busqueda.
+                model_provider = model.split("/", 1)[0] if "/" in model else ""
+                query = cc_usage.opencode_picker_query(
+                    str(data.get("model_name") or model.rsplit("/", 1)[-1]),
+                    model_provider)
+                for keys, pause in (
+                    (("Escape",), 0.35), (("C-u",), 0.25),
+                    (("-l", "--", "/models"), 0.5), (("Enter",), 1.0),
+                    (("-l", "--", query), 0.8), (("Enter",), 0),
+                ):
+                    r = tmux("send-keys", "-t", pane, *keys)
+                    if r.returncode != 0:
+                        return self._json(500, {"error": r.stderr.strip() or "tmux fallo"})
+                    if pause:
+                        time.sleep(pause)
+                return self._json(200, {"ok": True, "command": f"/models → {query}"})
+            switch_text = cc_usage.model_switch_text(provider, preset, model)
+            r = tmux("send-keys", "-t", pane, "-l", "--", switch_text)
+            if r.returncode != 0:
+                return self._json(500, {"error": r.stderr.strip() or "tmux fallo"})
+            tmux("send-keys", "-t", pane, "Enter")
+            return self._json(200, {"ok": True, "command": switch_text})
 
         if self.path == "/send":
             text = str(data.get("text", ""))[:4000]
