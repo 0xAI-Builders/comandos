@@ -186,6 +186,16 @@ def usage_provider_limits(force=False):
                 "health": dict(_limits_cache["health"])}
 
 
+# Posiciones del picker /model de codex (dos pasos numerados). Si codex
+# reordena su picker en una version nueva, actualizar aqui.
+CODEX_MODEL_DIGITS = {
+    "gpt-5.5": "1",
+    "gpt-5.4": "2",
+    "gpt-5.4-mini": "3",
+    "gpt-5.3-codex-spark": "4",
+}
+CODEX_EFFORT_DIGITS = {"low": "1", "medium": "2", "high": "3", "xhigh": "4"}
+
 PANE_MODELS_FILE = os.path.join(HOOKS, "pane-models.txt")
 
 
@@ -1911,8 +1921,26 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             provider = str(data.get("provider") or data.get("agent") or state_agent(sess))[:32]
             preset = str(data.get("preset") or "diario")[:32]
             model = str(data.get("model") or "")[:120]
+            effort = str(data.get("effort") or "")[:16]
             if tmux("has-session", "-t", target).returncode != 0:
                 return self._json(404, {"error": f"No hay sesion tmux '{sess}'"})
+            if provider == "codex" and model in CODEX_MODEL_DIGITS:
+                # El picker de codex es de DOS pasos numerados (modelo →
+                # reasoning): un digito selecciona y avanza solo.
+                seq = (
+                    (("Escape",), 0.35), (("C-u",), 0.25),
+                    (("-l", "--", "/model"), 0.5), (("Enter",), 1.2),
+                    (("-l", "--", CODEX_MODEL_DIGITS[model]), 0.9),
+                    (("-l", "--", CODEX_EFFORT_DIGITS.get(effort, "2")), 0.4),
+                    (("C-u",), 0),
+                )
+                for keys, pause in seq:
+                    r = tmux("send-keys", "-t", pane, *keys)
+                    if r.returncode != 0:
+                        return self._json(500, {"error": r.stderr.strip() or "tmux fallo"})
+                    if pause:
+                        time.sleep(pause)
+                return self._json(200, {"ok": True, "command": f"/model → {model} {effort or 'medium'}"})
             if provider == "opencode":
                 # OpenCode: su picker /models busca por NOMBRE mostrado. La
                 # secuencia limpia estado (Escape+C-u) y teclea la busqueda.

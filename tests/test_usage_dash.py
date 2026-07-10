@@ -68,6 +68,15 @@ def test_usage_state_wires_exact_provider_limits():
     assert "limits=" in SRC
 
 
+def test_codex_dropdown_drives_numbered_picker():
+    # El picker /model de codex es de dos pasos numerados: modelo → reasoning
+    assert "CODEX_MODEL_DIGITS" in SRC
+    assert "CODEX_EFFORT_DIGITS" in SRC
+    assert '"gpt-5.5": "1"' in SRC
+    assert '"xhigh": "4"' in SRC
+    assert 'data.get("effort")' in SRC
+
+
 def test_opencode_models_endpoint_and_picker_automation():
     assert '"/opencode/models"' in SRC
     assert "def opencode_models" in SRC
@@ -121,6 +130,7 @@ def test_agent_pane_maps_keeps_one_agent_per_tmux_pane():
 
 
 if __name__ == "__main__":
+    test_codex_dropdown_drives_numbered_picker()
     test_limit_alerts_notify_by_desktop_and_telegram()
     test_cc_dash_imports_usage_module()
     test_usage_state_endpoint_exists_and_is_authenticated()

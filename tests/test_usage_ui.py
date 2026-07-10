@@ -82,6 +82,13 @@ def test_switcher_closes_on_outside_click():
     assert 'if(e.target === $("#sw-ov")) swClose();' in HTML
 
 
+def test_codex_dropdown_offers_models_with_reasoning():
+    assert "gpt-5.4-mini" in HTML
+    assert "gpt-5.3-codex-spark" in HTML
+    assert "data-effort" in HTML
+    assert "effort: effort || undefined" in HTML
+
+
 def test_opencode_menu_offers_providers_and_models():
     # OpenCode es el UNICO agente con seleccion de provider desde la UI
     assert 'api("/opencode/models")' in HTML
@@ -121,6 +128,7 @@ def test_header_shows_global_limit_percentages():
 
 
 if __name__ == "__main__":
+    test_codex_dropdown_offers_models_with_reasoning()
     test_usage_drawer_markup_exists()
     test_usage_state_is_fetched_without_secret_rendering()
     test_session_cards_have_usage_chip_container()
