@@ -949,6 +949,25 @@ SW_HINT = ({"waiting": "espera TU respuesta", "working": "trabajando", "done": "
            {"waiting": "waiting for YOU", "working": "working", "done": "done"})
 
 
+def close_on_click_outside(w):
+    """Cierra un modal cuando el usuario hace click fuera (pierde el foco).
+    Guard: solo cierra DESPUES de haber tenido foco al menos una vez, para
+    no autodestruirse durante el show inicial (GNOME puede tardar en darlo)."""
+    w._had_focus = False
+
+    def on_in(*_):
+        w._had_focus = True
+        return False
+
+    def on_out(*_):
+        if w._had_focus:
+            w.destroy()
+        return False
+
+    w.connect("focus-in-event", on_in)
+    w.connect("focus-out-event", on_out)
+
+
 def open_switcher(*_):
     """Ctrl+K: saltar a cualquier pestana/sesion escribiendo 2-3 letras.
     Las que ESPERAN tu respuesta salen arriba; Enter va a la primera."""
@@ -957,7 +976,9 @@ def open_switcher(*_):
         return
     w = Gtk.Window(type=Gtk.WindowType.TOPLEVEL)
     w.set_transient_for(win)
-    w.set_modal(True)
+    # NO modal: modal traga los clicks de afuera y nunca llega focus-out,
+    # asi que no podria cerrarse al hacer click fuera.
+    w.set_modal(False)
     w.set_decorated(False)
     w.set_position(Gtk.WindowPosition.CENTER_ON_PARENT)
     w.set_default_size(560, -1)
@@ -1070,6 +1091,7 @@ def open_switcher(*_):
     lb.connect("row-activated", lambda _l, row: go(row))
     entry.connect("changed", refill)
     w.connect("key-press-event", on_sw_key)
+    close_on_click_outside(w)
     w.connect("destroy", lambda *_: setattr(open_switcher, "_win", None))
     open_switcher._win = w
     refill()
@@ -1172,6 +1194,7 @@ def open_tabs_overview(*_):
 
     lb.connect("row-activated", go)
     w.connect("key-press-event", on_key)
+    close_on_click_outside(w)
     w.connect("destroy", lambda *_: setattr(open_tabs_overview, "_win", None))
     open_tabs_overview._win = w
     refill()
@@ -1526,7 +1549,21 @@ def on_focus_request(_mon, _f, _other, event):
         return
     if sess and sess not in ("local", "hub", "control"):
         open_tab(sess, winname, label=label if isinstance(label, str) and label else None)
-        win.present()
+        raise_main_window()
+
+
+def raise_main_window():
+    """Trae ComandOS al frente de forma CONFIABLE en GNOME/Mutter, que rechaza
+    que una app se enfoque sola (por eso "a veces" no subia). Un pulso de
+    keep-above fuerza la ventana ARRIBA aunque Mutter no le de el teclado;
+    luego se suelta para no dejarla pineada."""
+    win.deiconify()
+    win.set_keep_above(True)
+    win.present_with_time(Gtk.get_current_event_time() or 0)
+    def _drop():
+        win.set_keep_above(False)
+        return False
+    GLib.timeout_add(500, _drop)
 
 
 _focus_mon = Gio.File.new_for_path(FOCUS_FILE).monitor_file(Gio.FileMonitorFlags.NONE, None)

@@ -86,6 +86,24 @@ def test_close_tab_confirms_before_closing():
     assert "return" in src
 
 
+def test_modals_close_on_click_outside():
+    # switcher y overview usan el helper que cierra al perder el foco
+    helper = function_source("close_on_click_outside")
+    assert "focus-out-event" in helper
+    assert "_had_focus" in helper          # guard anti-autodestruccion
+    assert "close_on_click_outside(w)" in function_source("open_switcher")
+    assert "close_on_click_outside(w)" in function_source("open_tabs_overview")
+    # el switcher ya NO es modal (modal tragaria el click de afuera)
+    assert "w.set_modal(True)" not in function_source("open_switcher")
+
+
+def test_raise_main_window_uses_keep_above_pulse_for_gnome():
+    src = function_source("raise_main_window")
+    assert "set_keep_above(True)" in src
+    assert "set_keep_above(False)" in src   # se suelta, no queda pineada
+    assert "deiconify" in src
+
+
 if __name__ == "__main__":
     test_tab_labels_are_saved_in_visual_notebook_order()
     test_notebook_tabs_are_reorderable_and_saved_after_drag()
@@ -93,3 +111,5 @@ if __name__ == "__main__":
     test_visual_tabs_overview_can_focus_and_close_tabs()
     test_ctrl_k_can_close_selected_open_tab()
     test_close_tab_confirms_before_closing()
+    test_modals_close_on_click_outside()
+    test_raise_main_window_uses_keep_above_pulse_for_gnome()

@@ -603,15 +603,27 @@ def focus_session(sess, win="claude"):
         except Exception:
             return False
 
-    # Traer la ventana correcta: la app si esta abierta; si no, terminal
-    # externa (titulo = sesion) > ComandOS > cualquier terminal conocida
+    # Traer la ventana al frente. GNOME/Mutter RECHAZA que una app se enfoque
+    # sola, asi que ademas de activar damos un pulso keep-above (cambia el
+    # apilamiento, no el foco: Mutter si lo respeta) para que suba de verdad.
+    def raise_win(match_flag, name):
+        ok = wm(*(([match_flag] if match_flag else []) + ["-a", name]))
+        if ok:
+            wm(*(([match_flag] if match_flag else []) + ["-r", name, "-b", "add,above"]))
+            def drop():
+                wm(*(([match_flag] if match_flag else []) + ["-r", name, "-b", "remove,above"]))
+            threading.Timer(0.6, drop).start()
+        return ok
+
     if app_open:
-        wm("-x", "-a", "comandos")
-    elif not wm("-a", sess):
-        if not wm("-x", "-a", "comandos"):
+        # La app ya sube su ventana via app-focus.json (keep-above pulse);
+        # esto es respaldo por si el file-monitor no dispara.
+        raise_win("-x", "comandos")
+    elif not raise_win("", sess):
+        if not raise_win("-x", "comandos"):
             t = pick_terminal()
             if t:
-                wm("-x", "-a", t[2])
+                raise_win("-x", t[2])
     return None
 
 ALLOWED_KEYS = {"Enter", "Escape", "Up", "Down", "Tab", "y", "n",
