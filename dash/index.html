@@ -103,7 +103,10 @@
   /* Recientes cerradas: recuperables con un click */
   .rrow{display:flex;gap:10px;align-items:center;padding:7px 10px;border:1px solid var(--line);
     border-radius:8px;background:var(--panel);margin-bottom:6px}
-  .rrow b{font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  /* El label NUNCA empuja el boton fuera: se encoge el, no la accion */
+  .rrow b{font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+    flex:0 1 auto;min-width:0}
+  .rrow .rec-open{flex:none}
   .rrow .rpath{font-family:var(--mono);font-size:10px;color:var(--faint);
     overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0;flex:1}
   .rrow .ago{flex:none;font-family:var(--mono);font-size:10px;color:var(--faint)}
@@ -2007,7 +2010,11 @@ function toast(msg, err){
 	function renderRecent(items){
 	  const host = $("#recent");
 	  if(!host) return;
-	  items = (items || []).filter(i => i.reason !== "recovered").slice(0, 8);
+	  // SOLO sesiones realmente muertas: las vivas ya salen en Sesiones
+	  // (cerrar una tab de la app deja la sesion tmux viva → no va aqui)
+	  items = (items || [])
+	    .filter(i => i.reason !== "recovered" && !i.alive)
+	    .slice(0, 8);
 	  $("#recent-wrap").classList.toggle("hidden", !items.length);
 	  host.innerHTML = items.map(i => `
 	    <div class="rrow">
@@ -2016,8 +2023,7 @@ function toast(msg, err){
 	      <span class="ago">${agoTxt(i.ts)}</span>
 	      <button type="button" class="test rec-open" data-session="${attrEsc(i.session)}"
 	        data-label="${attrEsc(i.label || i.session)}" data-cwd="${attrEsc(i.cwd || "")}"
-	        data-agent="${attrEsc(i.agent || "claude")}">
-	        ${i.alive ? tf("Reabrir", "Reopen") : tf("Recuperar", "Recover")}</button>
+	        data-agent="${attrEsc(i.agent || "claude")}">${tf("Recuperar", "Recover")}</button>
 	    </div>`).join("");
 	  host.querySelectorAll(".rec-open").forEach(b => b.addEventListener("click", async ()=>{
 	    try{
