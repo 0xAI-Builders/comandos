@@ -743,6 +743,34 @@ def test_pane_usage_marked_shared_when_folder_has_twin_panes():
     assert by_pane["%1"]["total_tokens"] == 40
 
 
+def test_parse_opencode_models_groups_and_filters():
+    blob = ""
+    # provider chico: entra todo; provider grande: solo gratis; ~alias fuera
+    for i in range(3):
+        blob += json.dumps({"id": f"m-{i}", "providerID": "groq",
+                            "name": f"Modelo {i}", "status": "active"}) + "\n"
+    for i in range(50):
+        free = ":free" if i < 4 else ""
+        blob += json.dumps({"id": f"big-{i}{free}", "providerID": "openrouter",
+                            "name": f"Big {i}{' (free)' if free else ''}",
+                            "status": "active"}) + "\n"
+    blob += json.dumps({"id": "~alias/x", "providerID": "openrouter",
+                        "name": "Alias", "status": "active"}) + "\n"
+
+    result = cc_usage.parse_opencode_models(blob)
+    by = {p["provider"]: p["models"] for p in result}
+
+    assert len(by["groq"]) == 3
+    assert len(by["openrouter"]) == 4
+    assert all(m["free"] for m in by["openrouter"])
+    assert all(not m["id"].startswith("openrouter/~") for m in by["openrouter"])
+
+
+def test_opencode_picker_query_uses_display_name_tokens():
+    q = cc_usage.opencode_picker_query("Nemotron 3 Ultra (free)", "openrouter")
+    assert q == "nemotron 3 ultra free openrouter"
+
+
 def test_model_switch_text_accepts_direct_model():
     assert cc_usage.model_switch_text("claude", "", model="opus") == "/model opus"
     assert cc_usage.model_switch_text("claude", "", model="fable") == "/model fable"
@@ -784,4 +812,6 @@ if __name__ == "__main__":
     test_build_usage_state_exposes_provider_limits()
     test_build_usage_state_attaches_today_usage_to_live_panes()
     test_pane_usage_marked_shared_when_folder_has_twin_panes()
+    test_parse_opencode_models_groups_and_filters()
+    test_opencode_picker_query_uses_display_name_tokens()
     test_model_switch_text_accepts_direct_model()

@@ -59,12 +59,17 @@ def test_session_cards_have_model_selector():
     assert "mdl-cur" in HTML
 
 
-def test_header_has_agent_toggle_for_new_sessions():
-    assert 'id="agent-pick"' in HTML
-    for agent in ("claude", "codex", "opencode", "gemini", "agy"):
-        assert f'data-a="{agent}"' in HTML
-    assert "pickedAgent" in HTML
-    assert "cc-new-agent" in HTML
+def test_no_agent_badges_in_header():
+    # Los badges de agente se eliminaron a peticion del usuario
+    assert 'id="agent-pick"' not in HTML
+
+
+def test_opencode_menu_offers_providers_and_models():
+    # OpenCode es el UNICO agente con seleccion de provider desde la UI
+    assert 'api("/opencode/models")' in HTML
+    assert "opencodeMenuHtml" in HTML
+    assert "mdl-head" in HTML
+    assert "model_name" in HTML
 
 
 def test_card_usage_chip_is_full_width_line():
@@ -107,6 +112,7 @@ if __name__ == "__main__":
     test_session_cards_have_model_selector()
     test_usage_ui_renders_exact_limit_bars()
     test_header_shows_global_limit_percentages()
-    test_header_has_agent_toggle_for_new_sessions()
+    test_no_agent_badges_in_header()
+    test_opencode_menu_offers_providers_and_models()
     test_card_usage_chip_is_full_width_line()
     test_usage_drawer_collapses_historic_sessions()

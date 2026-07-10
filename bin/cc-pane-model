@@ -1,0 +1,8 @@
+#!/usr/bin/env bash
+# Modelo de IA del pane, para pane-border-format de tmux.
+# cc-dash escribe ~/.claude/hooks/pane-models.txt ("%id agente · modelo");
+# aqui solo se lee: tmux llama esto por pane cada status-interval.
+f="$HOME/.claude/hooks/pane-models.txt"
+[ -n "$1" ] && [ -f "$f" ] || exit 0
+line=$(grep -m1 "^$1 " "$f" 2>/dev/null) || exit 0
+printf '%s' "${line#* }"

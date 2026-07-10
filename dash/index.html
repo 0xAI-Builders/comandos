@@ -98,17 +98,6 @@
   .pill.lim-danger{color:#FF5C68;border-color:#FF5C6855}
   .pill.lim-danger b{color:#FF5C68}
   .hdr-right{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-left:auto}
-  /* Toggle de agente para sesiones nuevas: un click y la sesion abre con ese
-     CLI (colores = los del badge de agente) */
-  #agent-pick{display:inline-flex;gap:4px;align-items:center}
-  #agent-pick button{font-family:var(--mono);font-size:9.5px;font-weight:700;color:var(--faint);
-    border:1px solid var(--line);border-radius:12px;padding:3px 8px;cursor:pointer;background:none}
-  #agent-pick button:hover{color:var(--text);border-color:var(--line2)}
-  #agent-pick button.on{color:var(--text);border-color:var(--brand);background:color-mix(in srgb,var(--brand) 14%,transparent)}
-  #agent-pick button.on[data-a="codex"]{border-color:#19C39C;background:#19C39C22;color:#19C39C}
-  #agent-pick button.on[data-a="opencode"]{border-color:#FAB283;background:#FAB28322;color:#FAB283}
-  #agent-pick button.on[data-a="gemini"]{border-color:#7AA5FF;background:#7AA5FF22;color:#7AA5FF}
-  #agent-pick button.on[data-a="agy"]{border-color:#B49CFF;background:#B49CFF22;color:#B49CFF}
   #q,#new-name{background:var(--panel);border:1px solid var(--line);border-radius:8px;
     padding:5px 11px;font-family:var(--mono);font-size:12px;color:var(--text)}
   #q{width:140px} #new-name{width:150px}
@@ -487,9 +476,12 @@
 	  .ops .mdl-btn .mdl-cur{color:var(--code)}
 	  /* El menu vive en <body> y se posiciona con getBoundingClientRect:
 	     las cards tienen overflow:hidden y lo recortarian si fuera hijo */
-	  #mdl-menu{position:fixed;z-index:60;min-width:236px;
+	  #mdl-menu{position:fixed;z-index:60;min-width:236px;max-width:320px;
+	    max-height:min(420px,70vh);overflow-y:auto;
 	    background:var(--panel2);border:1px solid var(--line2);border-radius:10px;padding:5px;
 	    box-shadow:0 10px 28px rgba(0,0,0,.45)}
+	  #mdl-menu .mdl-head{font-family:var(--mono);font-size:9px;font-weight:700;letter-spacing:.14em;
+	    text-transform:uppercase;color:var(--faint);padding:7px 9px 3px}
 	  #mdl-menu .mdl-opt{display:grid;grid-template-columns:8px auto 1fr;gap:8px;align-items:center;
 	    width:100%;min-height:0;text-align:left;padding:8px 9px;border:0;border-radius:7px;
 	    background:none;cursor:pointer}
@@ -533,13 +525,6 @@
       title="Filtra por nombre o ruta">
     <form id="new-form" title="Nombre de un proyecto de ~/codebase y Enter: crea/abre su sesion">
       <input id="new-name" placeholder="abrir proyecto" autocomplete="off" spellcheck="false">
-      <span id="agent-pick" title="Con qué agente abrir la sesión (los gratis viven en opencode)">
-        <button type="button" data-a="claude" class="on">claude</button>
-        <button type="button" data-a="codex">codex</button>
-        <button type="button" data-a="opencode">opencode</button>
-        <button type="button" data-a="gemini">gemini</button>
-        <button type="button" data-a="agy">agy</button>
-      </span>
     </form>
     <span id="snd-ctl" title="Volumen global (voz y chime). El icono silencia o activa el sonido.">
       <button class="hdr-btn" id="btn-mute">🔊</button>
@@ -1066,6 +1051,7 @@ function mdStrip(s){ return (s||"").replace(/\*\*|`|^#{1,6} /g, ""); }
 	      title="${tf("Abre el selector de modelo en la terminal de esta sesion", "Opens the model picker in this session's terminal")}">
 	      <span class="mdl-cur">${mdEsc(cur)}</span><span class="mdl-caret">⧉</span></button></span>`;
 	  }
+	  // claude: 4 modelos · opencode: providers + modelos (unico con providers)
 	  return `<span class="mdl-wrap"><button type="button" class="mdl-btn" ${ds}
 	    aria-haspopup="listbox" aria-expanded="false"
 	    title="${tf("Cambiar el modelo de esta sesion", "Switch this session's model")}">
@@ -1079,18 +1065,44 @@ function mdStrip(s){ return (s||"").replace(/\*\*|`|^#{1,6} /g, ""); }
 	  if(mdlMenuBtn) mdlMenuBtn.setAttribute("aria-expanded", "false");
 	  mdlMenuBtn = null;
 	}
-	function openModelMenu(btn){
-	  const menu = $("#mdl-menu");
-	  menu.innerHTML = MODEL_CHOICES.claude.map(m =>
+	let ocModels = null, ocModelsLoading = false;
+	async function loadOpencodeModels(){
+	  if(ocModels || ocModelsLoading) return;
+	  ocModelsLoading = true;
+	  try{ ocModels = (await api("/opencode/models")).providers || []; }
+	  catch(e){ ocModels = null; }
+	  ocModelsLoading = false;
+	}
+	function claudeMenuHtml(){
+	  return MODEL_CHOICES.claude.map(m =>
 	    `<button type="button" class="mdl-opt" role="option" data-model="${m.model}">
 	      <i style="background:${m.dot}"></i><b>${m.name}</b><span>${m.intent}</span></button>`).join("");
-	  menu.classList.remove("hidden");
+	}
+	function opencodeMenuHtml(){
+	  if(!ocModels) return `<div class="mdl-head">${tf("Cargando modelos…", "Loading models…")}</div>`;
+	  if(!ocModels.length) return `<div class="mdl-head">${tf("Sin modelos — revisa las keys en providers.env", "No models — check keys in providers.env")}</div>`;
+	  return ocModels.map(p => `<div class="mdl-head">${mdEsc(p.provider)}</div>` +
+	    p.models.map(m =>
+	      `<button type="button" class="mdl-opt" role="option" data-model="${attrEsc(m.id)}" data-name="${attrEsc(m.name)}">
+	        <i style="background:${m.free ? "var(--done)" : "var(--waiting)"}"></i>
+	        <b>${mdEsc(m.name)}</b><span>${m.free ? "gratis" : "de pago"}</span></button>`).join("")
+	  ).join("");
+	}
+	function positionModelMenu(btn){
+	  const menu = $("#mdl-menu");
 	  const r = btn.getBoundingClientRect(), mw = menu.offsetWidth, mh = menu.offsetHeight;
 	  let left = Math.min(r.right - mw, window.innerWidth - mw - 8);
 	  let top = r.bottom + 6;
 	  if(top + mh > window.innerHeight - 8) top = Math.max(8, r.top - mh - 6);
 	  menu.style.left = `${Math.max(8, left)}px`;
 	  menu.style.top = `${top}px`;
+	}
+	function openModelMenu(btn){
+	  const menu = $("#mdl-menu");
+	  const isOpencode = btn.dataset.provider === "opencode";
+	  menu.innerHTML = isOpencode ? opencodeMenuHtml() : claudeMenuHtml();
+	  menu.classList.remove("hidden");
+	  positionModelMenu(btn);
 	  mdlMenuBtn = btn;
 	  btn.setAttribute("aria-expanded", "true");
 	  menu.querySelectorAll(".mdl-opt").forEach(o=>{
@@ -1098,11 +1110,16 @@ function mdStrip(s){ return (s||"").replace(/\*\*|`|^#{1,6} /g, ""); }
 	      e.stopPropagation();
 	      const target = mdlMenuBtn;
 	      closeModelMenus();
-	      if(target) switchModel(target, o.dataset.model);
+	      if(target) switchModel(target, o.dataset.model, o.dataset.name);
 	    });
 	  });
+	  if(isOpencode && !ocModels){
+	    loadOpencodeModels().then(()=>{
+	      if(mdlMenuBtn === btn && !menu.classList.contains("hidden")) openModelMenu(btn);
+	    });
+	  }
 	}
-	async function switchModel(btn, model){
+	async function switchModel(btn, model, modelName){
 	  const card = btn.closest("article[data-session]");
 	  if(card && card.dataset.pane) btn.dataset.pane = card.dataset.pane;
 	  try{
@@ -1111,13 +1128,15 @@ function mdStrip(s){ return (s||"").replace(/\*\*|`|^#{1,6} /g, ""); }
 	      pane: btn.dataset.pane || undefined,
 	      provider: btn.dataset.provider || "claude",
 	      model: model,
+	      model_name: modelName || undefined,
 	    });
 	    if(model === "picker"){
 	      toast(tf(`Elige el modelo en la terminal de ${btn.dataset.session}`, `Pick the model in ${btn.dataset.session}'s terminal`));
 	    } else {
+	      const shown = modelName || model;
 	      const cur = btn.querySelector(".mdl-cur");
-	      if(cur){ cur.textContent = model; cur.classList.add("pending"); }
-	      toast(tf(`Modelo ${model} → ${btn.dataset.session}`, `Model ${model} → ${btn.dataset.session}`));
+	      if(cur){ cur.textContent = shown; cur.classList.add("pending"); }
+	      toast(tf(`Modelo ${shown} → ${btn.dataset.session}`, `Model ${shown} → ${btn.dataset.session}`));
 	    }
 	  }catch(err){ toast(err.message, true); }
 	}
@@ -1138,7 +1157,8 @@ function mdStrip(s){ return (s||"").replace(/\*\*|`|^#{1,6} /g, ""); }
 	document.addEventListener("scroll", closeModelMenus, true);
 	function panePresetButtons(p){
 	  if(!String(p.tmux_pane || "").startsWith("%")) return "";
-	  const provider = (p.provider || p.agent || "claude") === "codex" ? "codex" : "claude";
+	  const raw = p.provider || p.agent || "claude";
+	  const provider = ["codex", "opencode"].includes(raw) ? raw : "claude";
 	  return `<div class="pane-model-controls">
 	    ${modelMenuEl(p.tmux_session || "", p.tmux_pane || "", provider, p.model)}
 	  </div>`;
@@ -1259,7 +1279,7 @@ function cardEl(it){
         <button type="button" data-key="Escape">Esc</button>
       </div>
       <div class="ops">
-        ${["", "claude", "codex"].includes(it.agent || "") ? modelMenuEl(it.session, it.pane || "", it.agent === "codex" ? "codex" : "claude", "") : ""}
+        ${["", "claude", "codex", "opencode"].includes(it.agent || "") ? modelMenuEl(it.session, it.pane || "", it.agent || "claude", "") : ""}
         <button type="button" class="cp" title="${t('Copiar la respuesta completa de Claude')}">${t("Copiar")}</button>
         <button type="button" class="xtxt" title="${t('Guardar la respuesta como .txt en Descargas')}">TXT</button>
         <button type="button" class="xpdf" title="${t('Guardar la respuesta como PDF (markdown renderizado) en Descargas')}">PDF</button>
@@ -2374,41 +2394,22 @@ document.querySelectorAll(".cfg").forEach(b=>{
 });
 
 // ---------- UI general ----------
-// Agente con el que abren las sesiones nuevas (persistido; opencode = gratis)
-function pickedAgent(){
-  return document.querySelector("#agent-pick button.on")?.dataset.a || "claude";
-}
-document.querySelectorAll("#agent-pick button").forEach(b=>{
-  b.addEventListener("click", ()=>{
-    document.querySelectorAll("#agent-pick button").forEach(x => x.classList.toggle("on", x === b));
-    try{ localStorage.setItem("cc-new-agent", b.dataset.a); }catch(e){}
-    toast(tf(`Escribe un proyecto y Enter: abre con ${b.dataset.a}`,
-             `Type a project and Enter: opens with ${b.dataset.a}`));
-    $("#new-name").focus();
-  });
-});
-try{
-  const saved = localStorage.getItem("cc-new-agent");
-  const btn = saved && document.querySelector(`#agent-pick button[data-a="${saved}"]`);
-  if(btn){ document.querySelectorAll("#agent-pick button").forEach(x => x.classList.toggle("on", x === btn)); }
-}catch(e){}
 $("#new-form").addEventListener("submit", async e=>{
   e.preventDefault();
   const name = $("#new-name").value.trim().replace(/[.:]/g, "-");
   if(!name) return;
-  const agent = pickedAgent();
   try{
-    if(inApp()){ const r = await api("/ensure", {session: name, win: "claude", agent});
+    if(inApp()){ const r = await api("/ensure", {session: name, win: "claude"});
                  openInApp(r.session || name, "claude"); }
     else if(WEBTERM){
       // App remota: crea/abre la sesion (proyecto de ~/codebase o shell en
       // blanco) y abre su terminal aqui mismo.
-      const r = await api("/new", {session: name, agent});
+      const r = await api("/new", {session: name});
       openTerm((r && r.session) || name, name);
     }
-    else { await api("/up", {session: name, agent}); }
+    else { await api("/up", {session: name}); }
     $("#new-name").value = "";
-    toast(tf(`${name} abierto con ${agent}`, `${name} opened with ${agent}`));
+    toast(tf(`${name} abierto`, `${name} opened`));
   }catch(err){ toast(err.message, true); }
 });
 	$("#btn-settings").addEventListener("click", ()=>{

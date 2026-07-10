@@ -141,6 +141,56 @@ def usage_provider_limits(force=False):
                 "health": dict(_limits_cache["health"])}
 
 
+PANE_MODELS_FILE = os.path.join(HOOKS, "pane-models.txt")
+
+
+def write_pane_models(panes):
+    """Archivo plano '%pane agente · modelo' que consume cc-pane-model para
+    mostrar el modelo de IA en el borde de CADA pane de tmux."""
+    lines = []
+    for p in panes:
+        pane_id = p.get("tmux_pane") or ""
+        if not pane_id.startswith("%"):
+            continue
+        agent = p.get("agent") or p.get("provider") or ""
+        model = (p.get("model") or "").replace("claude-", "")
+        model = model.rsplit("/", 1)[-1] if "/" in model else model
+        label = f"{agent} · {model}" if model else agent
+        if label:
+            lines.append(f"{pane_id} {label}")
+    try:
+        tmp = PANE_MODELS_FILE + ".tmp"
+        with open(tmp, "w") as f:
+            f.write("\n".join(lines) + "\n")
+        os.replace(tmp, PANE_MODELS_FILE)
+    except OSError:
+        pass
+
+
+# Catalogo de modelos de OpenCode (unico agente con seleccion de PROVIDER
+# desde la UI). `opencode models --verbose` es lento: cache generoso.
+_oc_models_cache = {"at": 0, "data": []}
+
+
+def opencode_models(force=False):
+    now = time.time()
+    if not force and _oc_models_cache["data"] and now - _oc_models_cache["at"] < 900:
+        return _oc_models_cache["data"]
+    binary = shutil.which("opencode") or os.path.expanduser("~/.opencode/bin/opencode")
+    try:
+        r = subprocess.run(
+            ["sh", "-c",
+             'set -a; . "$HOME/.claude/hooks/providers.env" 2>/dev/null; set +a; '
+             f'"{binary}" models --verbose'],
+            capture_output=True, text=True, timeout=45)
+        data = cc_usage.parse_opencode_models(r.stdout)
+    except Exception:
+        data = []
+    if data:
+        _oc_models_cache.update({"at": now, "data": data})
+    return _oc_models_cache["data"]
+
+
 def access_token():
     """Token de acceso para el celular (tailnet). Se genera una vez, 0600.
     Localhost directo NO lo necesita; las peticiones remotas/proxeadas si."""
@@ -1501,7 +1551,7 @@ class Handler(http.server.SimpleHTTPRequestHandler):
     # Endpoints con DATOS o ACCIONES: exigen token. El shell estatico (HTML,
     # sw.js, manifest, iconos) NO — no revela nada (es codigo open-source) y
     # asi la PWA instala y carga sin depender de cookies en el webview movil.
-    API_GET = ("/state", "/usage/state", "/events", "/conf", "/prefs", "/ssh", "/tabs",
+    API_GET = ("/state", "/usage/state", "/opencode/models", "/events", "/conf", "/prefs", "/ssh", "/tabs",
                "/tab-history", "/remote-state", "/remote-qr.png")
 
     def do_GET(self):
@@ -1517,6 +1567,9 @@ class Handler(http.server.SimpleHTTPRequestHandler):
     def _do_GET(self):
         if self.path.startswith("/state"):
             return self._json(200, read_states())
+        if self.path.startswith("/opencode/models"):
+            return self._json(200, {"providers": opencode_models()})
+
         if self.path.startswith("/usage/state"):
             refresh_local_usage(False)
             panes = usage_live_panes()
@@ -1526,6 +1579,7 @@ class Handler(http.server.SimpleHTTPRequestHandler):
                                                limits=prov["limits"])
             state["credential_health"] = usage_credential_health(env)
             state["credential_health"].update(prov["health"])
+            write_pane_models(state.get("panes") or [])
             return self._json(200, state)
         if self.path.startswith("/ssh"):
             return self._json(200, parse_ssh_config())
@@ -1810,10 +1864,28 @@ class Handler(http.server.SimpleHTTPRequestHandler):
         if self.path == "/model/switch":
             provider = str(data.get("provider") or data.get("agent") or state_agent(sess))[:32]
             preset = str(data.get("preset") or "diario")[:32]
-            model = str(data.get("model") or "")[:40]
-            switch_text = cc_usage.model_switch_text(provider, preset, model)
+            model = str(data.get("model") or "")[:120]
             if tmux("has-session", "-t", target).returncode != 0:
                 return self._json(404, {"error": f"No hay sesion tmux '{sess}'"})
+            if provider == "opencode":
+                # OpenCode: su picker /models busca por NOMBRE mostrado. La
+                # secuencia limpia estado (Escape+C-u) y teclea la busqueda.
+                model_provider = model.split("/", 1)[0] if "/" in model else ""
+                query = cc_usage.opencode_picker_query(
+                    str(data.get("model_name") or model.rsplit("/", 1)[-1]),
+                    model_provider)
+                for keys, pause in (
+                    (("Escape",), 0.35), (("C-u",), 0.25),
+                    (("-l", "--", "/models"), 0.5), (("Enter",), 1.0),
+                    (("-l", "--", query), 0.8), (("Enter",), 0),
+                ):
+                    r = tmux("send-keys", "-t", pane, *keys)
+                    if r.returncode != 0:
+                        return self._json(500, {"error": r.stderr.strip() or "tmux fallo"})
+                    if pause:
+                        time.sleep(pause)
+                return self._json(200, {"ok": True, "command": f"/models → {query}"})
+            switch_text = cc_usage.model_switch_text(provider, preset, model)
             r = tmux("send-keys", "-t", pane, "-l", "--", switch_text)
             if r.returncode != 0:
                 return self._json(500, {"error": r.stderr.strip() or "tmux fallo"})

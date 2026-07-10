@@ -68,6 +68,19 @@ def test_usage_state_wires_exact_provider_limits():
     assert "limits=" in SRC
 
 
+def test_opencode_models_endpoint_and_picker_automation():
+    assert '"/opencode/models"' in SRC
+    assert "def opencode_models" in SRC
+    assert "cc_usage.parse_opencode_models" in SRC
+    assert 'provider == "opencode"' in SRC
+    assert "cc_usage.opencode_picker_query" in SRC
+
+
+def test_pane_models_file_for_tmux_borders():
+    assert "def write_pane_models" in SRC
+    assert "pane-models.txt" in SRC
+
+
 def test_new_sessions_load_provider_keys_env():
     # Las sesiones nuevas cargan ~/.claude/hooks/providers.env (keys de
     # groq/cerebras/sambanova/cloudflare para opencode y amigos)
@@ -104,5 +117,7 @@ if __name__ == "__main__":
     test_model_switch_endpoint_targets_requested_pane()
     test_model_switch_accepts_direct_model()
     test_usage_state_wires_exact_provider_limits()
+    test_opencode_models_endpoint_and_picker_automation()
+    test_pane_models_file_for_tmux_borders()
     test_new_sessions_load_provider_keys_env()
     test_agent_pane_maps_keeps_one_agent_per_tmux_pane()

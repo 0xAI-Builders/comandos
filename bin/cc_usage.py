@@ -850,6 +850,56 @@ def _as_list(value):
     return value if isinstance(value, list) else []
 
 
+def parse_opencode_models(verbose_output, max_per_provider=40):
+    """Parsea `opencode models --verbose` (linea id + bloque JSON por modelo).
+    Filtra: solo activos, sin aliases `~`, y si un provider trae demasiados
+    (openrouter: cientos) se queda solo con los gratis."""
+    models, decoder = [], json.JSONDecoder()
+    text = verbose_output or ""
+    i = 0
+    while True:
+        start = text.find("{", i)
+        if start < 0:
+            break
+        try:
+            obj, end = decoder.raw_decode(text[start:])
+        except ValueError:
+            i = start + 1
+            continue
+        i = start + end
+        if not isinstance(obj, dict) or not obj.get("id") or not obj.get("providerID"):
+            continue
+        if obj.get("status") not in (None, "active"):
+            continue
+        mid = _text(obj["id"])
+        if mid.startswith("~"):
+            continue
+        models.append({
+            "provider": _text(obj["providerID"]),
+            "id": f'{_text(obj["providerID"])}/{mid}',
+            "name": _text(obj.get("name") or mid),
+            "free": "free" in mid.lower() or "free" in _text(obj.get("name")).lower(),
+        })
+    by_provider = {}
+    for m in models:
+        by_provider.setdefault(m["provider"], []).append(m)
+    result = []
+    for provider, items in by_provider.items():
+        if len(items) > max_per_provider:
+            items = [m for m in items if m["free"]]
+        if items:
+            result.append({"provider": provider, "models": items})
+    result.sort(key=lambda p: p["provider"])
+    return result
+
+
+def opencode_picker_query(model_name, provider):
+    """Texto para el buscador fuzzy del picker de opencode: el picker matchea
+    por NOMBRE mostrado (no por id), asi que va nombre limpio + provider."""
+    clean = "".join(c if c.isalnum() else " " for c in f"{model_name} {provider}")
+    return " ".join(clean.split()).lower()
+
+
 def model_presets():
     return [
         {
