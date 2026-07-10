@@ -423,8 +423,12 @@ def state_agent(sess):
 
 def tmux_new_session(sess, cwd, agent="claude"):
     """Crea la sesion en un scope propio con DOS ventanas: la del AGENTE
-    (claude/codex/opencode/gemini...) y 'shell' (consola manual, mismo dir)."""
+    (claude/codex/opencode/gemini...) y 'shell' (consola manual, mismo dir).
+    Antes de lanzar carga ~/.claude/hooks/providers.env: UN solo archivo donde
+    viven las API keys de proveedores (groq/cerebras/sambanova/cloudflare...)
+    que opencode y otros agentes leen del ambiente."""
     launch = AGENT_LAUNCH.get(agent, AGENT_LAUNCH["claude"])
+    launch = 'set -a; . "$HOME/.claude/hooks/providers.env" 2>/dev/null; set +a; ' + launch
     r = subprocess.run(
         scope_cmd(["tmux", "new-session", "-d", "-s", sess, "-n", "claude",
                    "-c", cwd, f"{launch}; exec $SHELL"]),

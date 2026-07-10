@@ -59,6 +59,20 @@ def test_session_cards_have_model_selector():
     assert "mdl-cur" in HTML
 
 
+def test_header_has_agent_toggle_for_new_sessions():
+    assert 'id="agent-pick"' in HTML
+    for agent in ("claude", "codex", "opencode", "gemini", "agy"):
+        assert f'data-a="{agent}"' in HTML
+    assert "pickedAgent" in HTML
+    assert "cc-new-agent" in HTML
+
+
+def test_card_usage_chip_is_full_width_line():
+    # Texto COMPLETO siempre: el chip vive en su propia linea, sin ellipsis
+    assert ".card .usage-chip" in HTML
+    assert 'white-space:normal' in HTML
+
+
 def test_usage_drawer_collapses_historic_sessions():
     # Las sesiones historicas (transcripts) no se listan una por una:
     # se ven los panes vivos + una linea de historial (adios duplicados)
@@ -93,4 +107,6 @@ if __name__ == "__main__":
     test_session_cards_have_model_selector()
     test_usage_ui_renders_exact_limit_bars()
     test_header_shows_global_limit_percentages()
+    test_header_has_agent_toggle_for_new_sessions()
+    test_card_usage_chip_is_full_width_line()
     test_usage_drawer_collapses_historic_sessions()

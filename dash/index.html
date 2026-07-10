@@ -98,6 +98,17 @@
   .pill.lim-danger{color:#FF5C68;border-color:#FF5C6855}
   .pill.lim-danger b{color:#FF5C68}
   .hdr-right{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-left:auto}
+  /* Toggle de agente para sesiones nuevas: un click y la sesion abre con ese
+     CLI (colores = los del badge de agente) */
+  #agent-pick{display:inline-flex;gap:4px;align-items:center}
+  #agent-pick button{font-family:var(--mono);font-size:9.5px;font-weight:700;color:var(--faint);
+    border:1px solid var(--line);border-radius:12px;padding:3px 8px;cursor:pointer;background:none}
+  #agent-pick button:hover{color:var(--text);border-color:var(--line2)}
+  #agent-pick button.on{color:var(--text);border-color:var(--brand);background:color-mix(in srgb,var(--brand) 14%,transparent)}
+  #agent-pick button.on[data-a="codex"]{border-color:#19C39C;background:#19C39C22;color:#19C39C}
+  #agent-pick button.on[data-a="opencode"]{border-color:#FAB283;background:#FAB28322;color:#FAB283}
+  #agent-pick button.on[data-a="gemini"]{border-color:#7AA5FF;background:#7AA5FF22;color:#7AA5FF}
+  #agent-pick button.on[data-a="agy"]{border-color:#B49CFF;background:#B49CFF22;color:#B49CFF}
   #q,#new-name{background:var(--panel);border:1px solid var(--line);border-radius:8px;
     padding:5px 11px;font-family:var(--mono);font-size:12px;color:var(--text)}
   #q{width:140px} #new-name{width:150px}
@@ -492,7 +503,11 @@
 	    border-radius:6px;font-size:11.5px;color:var(--dim);margin-bottom:7px}
 	  .usage-chip{flex:none;font-family:var(--mono);font-size:9.5px;color:var(--code);
 	    border:1px solid color-mix(in srgb,var(--code) 35%,var(--line));border-radius:5px;
-	    padding:2px 6px;max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+	    padding:2px 6px;max-width:240px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+	  /* En cards el chip vive en su PROPIA linea con el texto COMPLETO:
+	     nada de "19.4M t…" ilegible (texto completo siempre) */
+	  .card .usage-chip{align-self:flex-start;max-width:100%;white-space:normal;
+	    overflow:visible;text-overflow:clip;line-height:1.5;margin-top:-2px}
 	  .row .usage-chip{font-size:9px}
 	</style>
 
@@ -513,6 +528,13 @@
       title="Filtra por nombre o ruta">
     <form id="new-form" title="Nombre de un proyecto de ~/codebase y Enter: crea/abre su sesion">
       <input id="new-name" placeholder="abrir proyecto" autocomplete="off" spellcheck="false">
+      <span id="agent-pick" title="Con qué agente abrir la sesión (los gratis viven en opencode)">
+        <button type="button" data-a="claude" class="on">claude</button>
+        <button type="button" data-a="codex">codex</button>
+        <button type="button" data-a="opencode">opencode</button>
+        <button type="button" data-a="gemini">gemini</button>
+        <button type="button" data-a="agy">agy</button>
+      </span>
     </form>
     <span id="snd-ctl" title="Volumen global (voz y chime). El icono silencia o activa el sonido.">
       <button class="hdr-btn" id="btn-mute">🔊</button>
@@ -1213,9 +1235,10 @@ function cardEl(it){
 	  el.innerHTML = `
 	    <div class="top">
 	      <button type="button" class="fav" title="${t('Favorito')}">★</button>
-	      <h2></h2><span class="abadge hidden"></span><span class="usage-chip hidden"></span><span class="tag"></span><span class="ago"></span>
+	      <h2></h2><span class="abadge hidden"></span><span class="tag"></span><span class="ago"></span>
 	    </div>
     <div class="path"></div>
+    <span class="usage-chip hidden"></span>
     <p class="preview"></p>
     <div class="opts hidden"></div>
     <form class="send">
@@ -2346,22 +2369,39 @@ document.querySelectorAll(".cfg").forEach(b=>{
 });
 
 // ---------- UI general ----------
+// Agente con el que abren las sesiones nuevas (persistido; opencode = gratis)
+function pickedAgent(){
+  return document.querySelector("#agent-pick button.on")?.dataset.a || "claude";
+}
+document.querySelectorAll("#agent-pick button").forEach(b=>{
+  b.addEventListener("click", ()=>{
+    document.querySelectorAll("#agent-pick button").forEach(x => x.classList.toggle("on", x === b));
+    try{ localStorage.setItem("cc-new-agent", b.dataset.a); }catch(e){}
+    $("#new-name").focus();
+  });
+});
+try{
+  const saved = localStorage.getItem("cc-new-agent");
+  const btn = saved && document.querySelector(`#agent-pick button[data-a="${saved}"]`);
+  if(btn){ document.querySelectorAll("#agent-pick button").forEach(x => x.classList.toggle("on", x === btn)); }
+}catch(e){}
 $("#new-form").addEventListener("submit", async e=>{
   e.preventDefault();
   const name = $("#new-name").value.trim().replace(/[.:]/g, "-");
   if(!name) return;
+  const agent = pickedAgent();
   try{
-    if(inApp()){ const r = await api("/ensure", {session: name, win: "claude"});
+    if(inApp()){ const r = await api("/ensure", {session: name, win: "claude", agent});
                  openInApp(r.session || name, "claude"); }
     else if(WEBTERM){
       // App remota: crea/abre la sesion (proyecto de ~/codebase o shell en
       // blanco) y abre su terminal aqui mismo.
-      const r = await api("/new", {session: name});
+      const r = await api("/new", {session: name, agent});
       openTerm((r && r.session) || name, name);
     }
-    else { await api("/up", {session: name}); }
+    else { await api("/up", {session: name, agent}); }
     $("#new-name").value = "";
-    toast(tf(`${name} abierto`, `${name} opened`));
+    toast(tf(`${name} abierto con ${agent}`, `${name} opened with ${agent}`));
   }catch(err){ toast(err.message, true); }
 });
 	$("#btn-settings").addEventListener("click", ()=>{

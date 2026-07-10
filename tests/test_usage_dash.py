@@ -68,6 +68,13 @@ def test_usage_state_wires_exact_provider_limits():
     assert "limits=" in SRC
 
 
+def test_new_sessions_load_provider_keys_env():
+    # Las sesiones nuevas cargan ~/.claude/hooks/providers.env (keys de
+    # groq/cerebras/sambanova/cloudflare para opencode y amigos)
+    assert "providers.env" in SRC
+    assert 'data.get("agent")' in SRC
+
+
 def test_agent_pane_maps_keeps_one_agent_per_tmux_pane():
     dash = load_dash_module()
 
@@ -97,4 +104,5 @@ if __name__ == "__main__":
     test_model_switch_endpoint_targets_requested_pane()
     test_model_switch_accepts_direct_model()
     test_usage_state_wires_exact_provider_limits()
+    test_new_sessions_load_provider_keys_env()
     test_agent_pane_maps_keeps_one_agent_per_tmux_pane()
