@@ -170,6 +170,15 @@ def init_db(db_path):
           key text primary key,
           value text not null
         );
+
+        create table if not exists usage_alert_rules (
+          id text primary key,
+          scope text not null,
+          target text not null,
+          label text not null default '',
+          threshold integer not null,
+          created_at integer not null
+        );
         """)
 
 
@@ -645,6 +654,107 @@ def build_usage_state(db_path, live_panes=None, now=None, settings=None, limits=
         "series": series,
         "credential_health": {},
     }
+
+
+RULE_SCOPES = ("session", "project", "provider")
+
+
+def set_alert_rule(db_path, scope, target, label, threshold):
+    """Regla de alerta por objetivo: sesion tmux, proyecto (git_root) o
+    proveedor, con presupuesto de tokens por dia (24h moviles)."""
+    if scope not in RULE_SCOPES or not target or _as_int(threshold) <= 0:
+        return None
+    init_db(db_path)
+    rule_id = f"{scope}:{target}"
+    with connect(db_path) as con:
+        con.execute(
+            "insert or replace into usage_alert_rules values (?,?,?,?,?,?)",
+            (rule_id, scope, _clean_str(target, 300), _clean_str(label, 120),
+             _as_int(threshold), int(time.time())))
+    return rule_id
+
+
+def delete_alert_rule(db_path, rule_id):
+    init_db(db_path)
+    with connect(db_path) as con:
+        con.execute("delete from usage_alert_rules where id=?", (rule_id,))
+
+
+def list_alert_rules(db_path):
+    init_db(db_path)
+    with connect(db_path) as con:
+        return _rows(con.execute(
+            "select * from usage_alert_rules order by created_at desc"))
+
+
+def rule_current_values(db_path, rules, panes, now=None):
+    """Consumo actual (tokens de las ultimas 24h) por regla. Proyecto y
+    proveedor van directo a los turnos; sesion suma los grupos unicos
+    (provider+carpeta) de sus panes vivos para no contar doble."""
+    ts = int(now if now is not None else time.time())
+    day_start = ts - 24 * 3600
+    out = []
+    with connect(db_path) as con:
+        for rule in rules or []:
+            scope, target = rule.get("scope"), rule.get("target")
+            value = 0
+            if scope == "project":
+                value = _as_int(con.execute(
+                    "select sum(total_tokens) from usage_turns "
+                    "where git_root=? and turn_finished_at>=?",
+                    (target, day_start)).fetchone()[0])
+            elif scope == "provider":
+                value = _as_int(con.execute(
+                    "select sum(total_tokens) from usage_turns "
+                    "where provider=? and turn_finished_at>=?",
+                    (target, day_start)).fetchone()[0])
+            elif scope == "session":
+                seen = set()
+                for p in panes or []:
+                    if p.get("tmux_session") != target:
+                        continue
+                    key = (p.get("provider") or p.get("agent"), p.get("pane_pwd"))
+                    if key in seen:
+                        continue
+                    seen.add(key)
+                    value += _as_int(p.get("total_tokens"))
+            out.append(dict(rule, value=value,
+                            percent=round(value / rule["threshold"] * 100, 1)
+                            if _as_int(rule.get("threshold")) else 0))
+    return out
+
+
+def _fmt_tok(n):
+    n = _as_int(n)
+    if n >= 1_000_000_000:
+        return f"{n / 1_000_000_000:.2f}B"
+    if n >= 1_000_000:
+        return f"{n / 1_000_000:.1f}M"
+    if n >= 1000:
+        return f"{n // 1000}k"
+    return str(n)
+
+
+def rule_alerts(rules_with_values, now=None):
+    """Una alerta por regla por dia calendario cuando el consumo cruza
+    el presupuesto."""
+    ts = int(now if now is not None else time.time())
+    day = time.strftime("%Y-%m-%d", time.localtime(ts))
+    alerts = []
+    for rule in rules_with_values or []:
+        if _as_int(rule.get("value")) < _as_int(rule.get("threshold")):
+            continue
+        alerts.append({
+            "id": f"rule-{rule.get('id')}-{day}",
+            "kind": "budget",
+            "level": "warning",
+            "provider": rule.get("target") if rule.get("scope") == "provider" else "",
+            "message": f"{rule.get('label') or rule.get('target')}: "
+                       f"{_fmt_tok(rule.get('value'))} tok hoy "
+                       f"(presupuesto {_fmt_tok(rule.get('threshold'))})",
+            "created_at": ts,
+        })
+    return alerts
 
 
 def record_alert_once(db_path, alert):

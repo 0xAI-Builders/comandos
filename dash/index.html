@@ -527,6 +527,21 @@
 	  .uv-info{font-family:var(--mono);font-size:10px;color:var(--faint);
 	    overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 	  #alert-config{display:flex;gap:6px;align-items:center;flex-wrap:wrap}
+	  .uv-bell{flex:none;border:0;background:none;font-size:11px;cursor:pointer;
+	    opacity:.35;padding:2px 4px;border-radius:6px;filter:grayscale(1)}
+	  .uv-bell:hover{opacity:1;filter:none;background:var(--panel2)}
+	  .uv-bell.on{opacity:1;filter:none}
+	  .rule-row{display:grid;grid-template-columns:auto 1fr auto;gap:4px 10px;align-items:center;
+	    padding:7px 10px;border:1px solid var(--line);border-radius:8px;background:var(--panel);
+	    margin-bottom:6px}
+	  .rule-row b{font-size:11.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+	  .rule-row > span{font-family:var(--mono);font-size:10px;color:var(--faint);text-align:right}
+	  .rule-row .usage-bar{grid-column:1 / 3;margin-top:0}
+	  .rule-row.over{border-left:3px solid var(--waiting)}
+	  .rule-row.over .usage-bar span{background:var(--waiting)}
+	  .rule-del{border:0;background:none;color:var(--faint);font-size:14px;cursor:pointer;
+	    grid-row:1 / 3;align-self:center}
+	  .rule-del:hover{color:#FF5C68}
 	  .alert-th.on{color:var(--done);border-color:color-mix(in srgb,var(--done) 45%,var(--line))}
 	  .usage-alert small{margin-left:8px;color:var(--faint);font-family:var(--mono);font-size:9.5px}
 	  .usage-alert.danger{border-left-color:#FF5C68}
@@ -687,12 +702,13 @@
 	  <div id="usage-projects"></div>
 	  <h3 style="margin-top:22px">Alertas</h3>
 	  <div class="set" id="alert-config">
-	    <span class="desc">Avisar al cruzar</span>
+	    <span class="desc">Límites del plan: avisar al cruzar</span>
 	    <button type="button" class="test alert-th" data-th="70">70%</button>
 	    <button type="button" class="test alert-th" data-th="85">85%</button>
 	    <button type="button" class="test alert-th" data-th="95">95%</button>
 	  </div>
-	  <div class="desc" style="margin:-4px 0 8px">Llegan por popup propio y/o Telegram, según Ajustes. Una vez por ventana de reset.</div>
+	  <div class="desc" style="margin:-4px 0 8px">Llegan por popup propio y/o Telegram, según Ajustes. La 🔔 de cada proyecto/pane agrega presupuestos de tokens por día.</div>
+	  <div id="alert-rules"></div>
 	  <div id="usage-alerts"></div>
 	</aside>
 
@@ -1257,13 +1273,18 @@ function mdStrip(s){ return (s||"").replace(/\*\*|`|^#{1,6} /g, ""); }
 	  const top = projects.slice(0, 8);
 	  const rest = projects.slice(8);
 	  const restTok = rest.reduce((a, p) => a + Number(p.total_tokens || 0), 0);
+	  const ruleIds = new Set((state?.alert_rules || []).map(r => r.id));
+	  const bell = (scope, target, label) => `<button type="button"
+	    class="uv-bell ${ruleIds.has(`${scope}:${target}`) ? "on" : ""}" data-scope="${attrEsc(scope)}"
+	    data-target="${attrEsc(target)}" data-label="${attrEsc(label)}"
+	    title="${tf("Alerta de presupuesto de tokens por día", "Daily token budget alert")}">🔔</button>`;
 	  $("#usage-projects").innerHTML = top.length ? top.map(pr => {
 	    const live = (pr.panes || []).filter(p => String(p.tmux_pane || "").startsWith("%"));
 	    const hist = (pr.panes || []).filter(p => !String(p.tmux_pane || "").startsWith("%"));
 	    const tok = Number(pr.total_tokens || 0);
 	    const name = (pr.git_root || "").split("/").pop() || shortPath(pr.git_root || "");
 	    return `<div class="usage-viz">
-	      <div class="uv-top"><b>${mdEsc(name)}</b>
+	      <div class="uv-top"><b>${mdEsc(name)}</b>${bell("project", pr.git_root || "", name)}
 	        <span>${fmtTokens(tok)}${Number(pr.cost_usd || 0) > 0 ? ` · ${fmtMoney(pr.cost_usd)}` : ""}${hist.length ? ` · ${hist.length} ${tf("ses.", "past")}` : ""}</span></div>
 	      <div class="usage-bar"><span style="width:${Math.max(2, Math.round(tok / projMax * 100))}%"></span></div>
 	      ${live.map(p => `<div class="uv-pane" data-session="${attrEsc(p.tmux_session || "")}"
@@ -1273,6 +1294,7 @@ function mdStrip(s){ return (s||"").replace(/\*\*|`|^#{1,6} /g, ""); }
 	          <b>${mdEsc(p.tab_label || p.tmux_session || "")}</b>
 	          <span class="uv-info">${mdEsc(usageChipText(p) || tf("sin uso hoy", "no usage today"))}</span>
 	        </div>
+	        ${bell("session", p.tmux_session || "", p.tab_label || p.tmux_session || "")}
 	        ${panePresetButtons(p)}
 	      </div>`).join("")}
 	    </div>`;
@@ -1280,6 +1302,10 @@ function mdStrip(s){ return (s||"").replace(/\*\*|`|^#{1,6} /g, ""); }
 	    : `<div class="empty">${tf("Sin uso todavia", "No usage yet")}</div>`;
 	  document.querySelectorAll("#usage .mdl-wrap").forEach(wireModelMenu);
 	  renderAlertConfig(state);
+	  renderAlertRules(state);
+	  document.querySelectorAll("#usage .uv-bell").forEach(b=>{
+	    b.addEventListener("click", e=>{ e.stopPropagation(); closeModelMenus(); openRuleMenu(b); });
+	  });
 	  const alerts = state?.alerts || [];
 	  $("#usage-alerts").innerHTML = alerts.length ? alerts.map(a =>
 	    `<div class="usage-alert ${a.level === "danger" ? "danger" : ""}">${mdEsc(a.message || a.kind || "alerta")}
@@ -1311,6 +1337,64 @@ function mdStrip(s){ return (s||"").replace(/\*\*|`|^#{1,6} /g, ""); }
 	    }catch(err){ toast(err.message, true); }
 	  });
 	});
+	// Reglas de alerta por objetivo (sesion/proyecto/proveedor): 🔔 abre un
+	// menu de presupuestos de tokens por dia; se evaluan en cada poll.
+	const RULE_BUDGETS = [
+	  {v: 50000000, t: "50M"}, {v: 100000000, t: "100M"}, {v: 250000000, t: "250M"},
+	  {v: 500000000, t: "500M"}, {v: 1000000000, t: "1B"},
+	];
+	function openRuleMenu(btn){
+	  const menu = $("#mdl-menu");
+	  const rid = `${btn.dataset.scope}:${btn.dataset.target}`;
+	  const existing = (S.usage?.alert_rules || []).find(r => r.id === rid);
+	  menu.innerHTML = `<div class="mdl-head">${tf("Avisar si HOY pasa de", "Alert if TODAY exceeds")} — ${mdEsc(btn.dataset.label)}</div>` +
+	    RULE_BUDGETS.map(b => `<button type="button" class="mdl-opt" role="option" data-thr="${b.v}">
+	      <i style="background:${existing && Number(existing.threshold) === b.v ? "var(--done)" : "var(--line2)"}"></i>
+	      <b>${b.t} tok</b><span>${tf("en 24 horas", "in 24 hours")}</span></button>`).join("") +
+	    (existing ? `<button type="button" class="mdl-opt" role="option" data-del="1">
+	      <i style="background:#FF5C68"></i><b>${tf("Quitar alerta", "Remove alert")}</b>
+	      <span>${tf("actual", "current")}: ${fmtTokens(existing.threshold)}</span></button>` : "");
+	  menu.classList.remove("hidden");
+	  positionModelMenu(btn);
+	  mdlMenuBtn = btn;
+	  menu.querySelectorAll(".mdl-opt").forEach(o=>{
+	    o.addEventListener("click", async e=>{
+	      e.stopPropagation();
+	      closeModelMenus();
+	      try{
+	        const payload = o.dataset.del
+	          ? {action: "delete", id: rid}
+	          : {action: "set", scope: btn.dataset.scope, target: btn.dataset.target,
+	             label: btn.dataset.label, threshold: Number(o.dataset.thr)};
+	        await api("/usage/alert-rule", payload);
+	        toast(o.dataset.del ? tf(`Alerta de ${btn.dataset.label} quitada`, `${btn.dataset.label} alert removed`)
+	                            : tf(`Alerta: ${btn.dataset.label} > ${fmtTokens(o.dataset.thr)}/día`, `Alert: ${btn.dataset.label} > ${fmtTokens(o.dataset.thr)}/day`));
+	        tickUsage(true);
+	      }catch(err){ toast(err.message, true); }
+	    });
+	  });
+	}
+	function renderAlertRules(state){
+	  const host = $("#alert-rules");
+	  if(!host) return;
+	  const rules = state?.alert_rules || [];
+	  host.innerHTML = rules.map(r => {
+	    const pct = Math.max(0, Math.min(100, Number(r.percent || 0)));
+	    const scopeTxt = {session: tf("sesión", "session"), project: tf("proyecto", "project"), provider: tf("proveedor", "provider")}[r.scope] || r.scope;
+	    return `<div class="rule-row ${pct >= 100 ? "over" : ""}">
+	      <b>🔔 ${mdEsc(r.label || r.target)}</b>
+	      <span>${mdEsc(scopeTxt)} · ${fmtTokens(r.value)} / ${fmtTokens(r.threshold)} ${tf("hoy", "today")}</span>
+	      <div class="usage-bar"><span style="width:${pct}%"></span></div>
+	      <button type="button" class="rule-del" data-id="${attrEsc(r.id)}" title="${tf("Quitar", "Remove")}">×</button>
+	    </div>`;
+	  }).join("");
+	  host.querySelectorAll(".rule-del").forEach(b=>{
+	    b.addEventListener("click", async ()=>{
+	      try{ await api("/usage/alert-rule", {action: "delete", id: b.dataset.id}); tickUsage(true); }
+	      catch(err){ toast(err.message, true); }
+	    });
+	  });
+	}
 	// Abrir/enfocar una sesion desde su fila en Proyectos y panes
 	async function openPane(session){
 	  if(!session) return;

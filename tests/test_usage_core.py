@@ -780,6 +780,45 @@ def test_parse_alert_thresholds_defaults_custom_and_off():
     assert "COMANDOS_ALERT_THRESHOLDS" in cc_usage.USAGE_LIMIT_KEYS
 
 
+def test_alert_rules_crud_and_evaluation_by_scope():
+    with tempfile.TemporaryDirectory() as d:
+        db = os.path.join(d, "usage.sqlite")
+        cc_usage.init_db(db)
+        now = 200000
+        cc_usage.record_turn(db, {
+            "id": "t1", "provider": "codex", "agent": "codex",
+            "tmux_session": "thread-1", "tmux_pane": "",
+            "pane_pwd": "/repo", "git_root": "/repo", "model": "gpt-5.5",
+            "turn_started_at": now - 50, "turn_finished_at": now - 50,
+            "total_tokens": 120, "source": "codex_state_db", "confidence": "local",
+        })
+        assert cc_usage.set_alert_rule(db, "project", "/repo", "Repo", 100) == "project:/repo"
+        assert cc_usage.set_alert_rule(db, "provider", "codex", "Codex", 500) == "provider:codex"
+        assert cc_usage.set_alert_rule(db, "malo", "/x", "X", 10) is None
+        panes = [_live_pane("term-1", "%1", "/repo", agent="codex")]
+        # el pane hereda los 120 tok del folder para la regla de sesion
+        cc_usage.set_alert_rule(db, "session", "term-1", "Tab Repo", 100)
+        state = cc_usage.build_usage_state(db, panes, now=now)
+        rules = cc_usage.rule_current_values(
+            db, cc_usage.list_alert_rules(db), state["panes"], now=now)
+        by = {r["id"]: r for r in rules}
+
+        assert by["project:/repo"]["value"] == 120
+        assert by["provider:codex"]["value"] == 120
+        assert by["session:term-1"]["value"] == 120
+
+        alerts = cc_usage.rule_alerts(rules, now=now)
+        # project (120>=100) y session (120>=100) cruzan; provider (500) no
+        assert len(alerts) == 2
+        assert all(a["kind"] == "budget" for a in alerts)
+        # una vez por dia: el id repite y record_alert_once lo bloquea
+        assert cc_usage.record_alert_once(db, alerts[0]) is True
+        assert cc_usage.record_alert_once(db, alerts[0]) is False
+
+        cc_usage.delete_alert_rule(db, "project:/repo")
+        assert len(cc_usage.list_alert_rules(db)) == 2
+
+
 def test_limit_threshold_alerts_fire_once_per_reset_window():
     limits = [
         {"id": "claude_session", "provider": "claude", "label": "Sesion 5h",
@@ -814,6 +853,7 @@ def test_model_switch_text_accepts_direct_model():
 
 
 if __name__ == "__main__":
+    test_alert_rules_crud_and_evaluation_by_scope()
     test_parse_alert_thresholds_defaults_custom_and_off()
     test_limit_threshold_alerts_fire_once_per_reset_window()
     test_usage_db_path_lives_under_hooks_dir()

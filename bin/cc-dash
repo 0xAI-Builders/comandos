@@ -1639,8 +1639,17 @@ class Handler(http.server.SimpleHTTPRequestHandler):
                                                limits=prov["limits"])
             state["credential_health"] = usage_credential_health(env)
             state["credential_health"].update(prov["health"])
-            state["alerts"] = cc_usage.list_alerts(USAGE_DB)
             state["alert_thresholds"] = list(alert_thresholds())
+            rules = cc_usage.rule_current_values(
+                USAGE_DB, cc_usage.list_alert_rules(USAGE_DB), state.get("panes") or [])
+            state["alert_rules"] = rules
+            for alert in cc_usage.rule_alerts(rules):
+                try:
+                    if cc_usage.record_alert_once(USAGE_DB, alert):
+                        usage_alert_send(alert["message"])
+                except Exception:
+                    pass
+            state["alerts"] = cc_usage.list_alerts(USAGE_DB)
             write_pane_models(state.get("panes") or [])
             return self._json(200, state)
         if self.path.startswith("/ssh"):
@@ -1848,6 +1857,25 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             state["credential_health"] = {h["provider"]: h for h in health}
             state["credential_health"].update(prov["health"])
             return self._json(200, {"ok": True, "counts": counts, "state": state})
+
+        if self.path == "/usage/alert-rule":
+            # Reglas por objetivo: sesion / proyecto / proveedor, presupuesto
+            # de tokens en 24h. action: set | delete
+            action = str(data.get("action") or "set")[:16]
+            if action == "delete":
+                cc_usage.delete_alert_rule(USAGE_DB, str(data.get("id") or "")[:340])
+            else:
+                rid = cc_usage.set_alert_rule(
+                    USAGE_DB,
+                    str(data.get("scope") or "")[:16],
+                    str(data.get("target") or "")[:300],
+                    str(data.get("label") or "")[:120],
+                    data.get("threshold"))
+                if not rid:
+                    return self._json(400, {"error": "Regla invalida"})
+            rules = cc_usage.rule_current_values(
+                USAGE_DB, cc_usage.list_alert_rules(USAGE_DB), usage_live_panes())
+            return self._json(200, {"ok": True, "alert_rules": rules})
 
         if self.path == "/usage/settings":
             settings = cc_usage.write_usage_settings(USAGE_DB, data.get("settings") or data)

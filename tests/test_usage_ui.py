@@ -82,6 +82,15 @@ def test_switcher_closes_on_outside_click():
     assert 'if(e.target === $("#sw-ov")) swClose();' in HTML
 
 
+def test_per_target_alert_rules_with_bells():
+    assert "uv-bell" in HTML
+    assert "openRuleMenu" in HTML
+    assert "renderAlertRules" in HTML
+    assert 'api("/usage/alert-rule"' in HTML
+    assert 'id="alert-rules"' in HTML
+    assert "RULE_BUDGETS" in HTML
+
+
 def test_alert_thresholds_are_configurable_from_drawer():
     assert 'id="alert-config"' in HTML
     assert 'data-th="85"' in HTML
@@ -141,6 +150,7 @@ def test_header_shows_global_limit_percentages():
 
 
 if __name__ == "__main__":
+    test_per_target_alert_rules_with_bells()
     test_project_panes_are_clickable_to_open_session()
     test_alert_thresholds_are_configurable_from_drawer()
     test_codex_dropdown_offers_models_with_reasoning()

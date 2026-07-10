@@ -90,6 +90,15 @@ def test_pane_models_file_for_tmux_borders():
     assert "pane-models.txt" in SRC
 
 
+def test_alert_rules_endpoint_and_evaluation():
+    assert '"/usage/alert-rule"' in SRC
+    assert "cc_usage.set_alert_rule" in SRC
+    assert "cc_usage.delete_alert_rule" in SRC
+    assert "cc_usage.rule_current_values" in SRC
+    assert "cc_usage.rule_alerts" in SRC
+    assert 'state["alert_rules"]' in SRC
+
+
 def test_limit_alerts_notify_by_desktop_and_telegram():
     assert "def usage_alert_send" in SRC
     # Popups PROPIOS de ComandOS (cc-notifyd), jamas notify-send
@@ -130,6 +139,7 @@ def test_agent_pane_maps_keeps_one_agent_per_tmux_pane():
 
 
 if __name__ == "__main__":
+    test_alert_rules_endpoint_and_evaluation()
     test_codex_dropdown_drives_numbered_picker()
     test_limit_alerts_notify_by_desktop_and_telegram()
     test_cc_dash_imports_usage_module()
