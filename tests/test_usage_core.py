@@ -743,6 +743,26 @@ def test_pane_usage_marked_shared_when_folder_has_twin_panes():
     assert by_pane["%1"]["total_tokens"] == 40
 
 
+def test_parse_opencode_models_excludes_non_coding_models():
+    def m(mid, prov, toolcall, in_text=True, out_text=True):
+        return json.dumps({
+            "id": mid, "providerID": prov, "name": mid, "status": "active",
+            "limit": {"context": 131072},
+            "capabilities": {"toolcall": toolcall,
+                             "input": {"text": in_text}, "output": {"text": out_text}},
+        })
+    blob = "\n".join([
+        m("gpt-oss-120b", "groq", True),                    # ✓ chat + tools
+        m("whisper-large-v3", "groq", False, in_text=False),  # ✗ voz (audio in)
+        m("orpheus-v1-english", "groq", False, out_text=False),  # ✗ voz (audio out)
+        m("compound", "groq", False),                        # ✗ sin tool-call
+    ])
+    result = cc_usage.parse_opencode_models(blob)
+    ids = [x["id"] for p in result for x in p["models"]]
+    assert ids == ["groq/gpt-oss-120b"]
+    assert result[0]["models"][0]["context"] == 131072
+
+
 def test_parse_opencode_models_groups_and_filters():
     blob = ""
     # provider chico: entra todo; provider grande: solo gratis; ~alias fuera
@@ -884,6 +904,7 @@ def test_model_switch_text_accepts_direct_model():
 
 
 if __name__ == "__main__":
+    test_parse_opencode_models_excludes_non_coding_models()
     test_limit_scope_rules_watch_provider_window_percent()
     test_alert_rules_crud_and_evaluation_by_scope()
     test_parse_alert_thresholds_defaults_custom_and_off()

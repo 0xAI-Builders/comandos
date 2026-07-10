@@ -1047,10 +1047,23 @@ def _as_list(value):
     return value if isinstance(value, list) else []
 
 
+def _usable_for_coding(obj):
+    """Solo modelos que sirven para OpenCode agentico: entienden texto,
+    responden texto, y hacen tool-calling. Deja fuera voz (whisper/orpheus),
+    clasificadores (prompt-guard) y routers sin tools (compound) — que si se
+    eligen dan APIError o 'se comporta raro'."""
+    caps = obj.get("capabilities") or {}
+    if not caps:
+        return True  # opencode viejo sin capabilities: no filtrar de mas
+    cin = caps.get("input") or {}
+    cout = caps.get("output") or {}
+    return bool(caps.get("toolcall")) and cin.get("text", True) and cout.get("text", True)
+
+
 def parse_opencode_models(verbose_output, max_per_provider=40):
     """Parsea `opencode models --verbose` (linea id + bloque JSON por modelo).
-    Filtra: solo activos, sin aliases `~`, y si un provider trae demasiados
-    (openrouter: cientos) se queda solo con los gratis."""
+    Filtra: solo activos, usables para codigo (tool-call + texto), sin aliases
+    `~`, y si un provider trae demasiados (openrouter) se queda con los gratis."""
     models, decoder = [], json.JSONDecoder()
     text = verbose_output or ""
     i = 0
@@ -1068,13 +1081,17 @@ def parse_opencode_models(verbose_output, max_per_provider=40):
             continue
         if obj.get("status") not in (None, "active"):
             continue
+        if not _usable_for_coding(obj):
+            continue
         mid = _text(obj["id"])
         if mid.startswith("~"):
             continue
+        ctx = ((obj.get("limit") or {}).get("context")) or 0
         models.append({
             "provider": _text(obj["providerID"]),
             "id": f'{_text(obj["providerID"])}/{mid}',
             "name": _text(obj.get("name") or mid),
+            "context": _as_int(ctx),
             "free": "free" in mid.lower() or "free" in _text(obj.get("name")).lower(),
         })
     by_provider = {}
