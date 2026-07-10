@@ -11,3 +11,10 @@ hooks/*.sh text eol=lf
 *.py    text eol=lf
 *.service text eol=lf
 *.desktop.in text eol=lf
+
+# Binary assets — never touch line endings.
+*.ttf   binary
+*.otf   binary
+*.ico   binary
+*.png   binary
+*.svg   text eol=lf
