@@ -1757,7 +1757,7 @@ class Handler(http.server.SimpleHTTPRequestHandler):
     # sw.js, manifest, iconos) NO — no revela nada (es codigo open-source) y
     # asi la PWA instala y carga sin depender de cookies en el webview movil.
     API_GET = ("/state", "/usage/state", "/opencode/models", "/events", "/conf", "/prefs", "/ssh", "/tabs",
-               "/tab-history", "/remote-state", "/remote-qr.png")
+               "/tab-history", "/remote-state", "/remote-qr.png", "/snippets")
 
     def do_GET(self):
         host = self.headers.get("Host", "")
@@ -1856,6 +1856,8 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             except FileNotFoundError:
                 pass
             return self._json(200, evs)
+        if self.path == "/snippets":
+            return self._json(200, read_snippets())
         return super().do_GET()
 
     def do_POST(self):
@@ -2071,6 +2073,47 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             if err:
                 return self._json(400, {"error": err})
             return self._json(200, {"ok": True, "session": sess})
+
+        if self.path == "/snippets":
+            name = str(data.get("name", ""))
+            body = str(data.get("body", ""))
+            tags = data.get("tags") or []
+            err = snippet_validate(name, body, tags)
+            if err:
+                return self._json(400, {"error": err})
+            items = read_snippets()
+            item = snippet_new(name, body, tags)
+            items.insert(0, item)
+            write_snippets(items)
+            return self._json(200, {"item": item})
+
+        if self.path == "/snippets/update":
+            id_ = str(data.get("id", ""))
+            if not SNIPPET_ID_RE.match(id_):
+                return self._json(400, {"error": "id invalido"})
+            name = str(data.get("name", ""))
+            body = str(data.get("body", ""))
+            tags = data.get("tags") or []
+            err = snippet_validate(name, body, tags)
+            if err:
+                return self._json(400, {"error": err})
+            items = read_snippets()
+            new_items, updated = snippet_update(items, id_, name, body, tags)
+            if updated is None:
+                return self._json(404, {"error": "snippet no encontrado"})
+            write_snippets(new_items)
+            return self._json(200, {"item": updated})
+
+        if self.path == "/snippets/delete":
+            id_ = str(data.get("id", ""))
+            if not SNIPPET_ID_RE.match(id_):
+                return self._json(400, {"error": "id invalido"})
+            items = read_snippets()
+            new_items, removed = snippet_delete(items, id_)
+            if not removed:
+                return self._json(404, {"error": "snippet no encontrado"})
+            write_snippets(new_items)
+            return self._json(200, {"ok": True})
 
         sess = data.get("session", "")
         if not SESSION_RE.match(sess):
