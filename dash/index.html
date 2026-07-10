@@ -367,6 +367,7 @@
   .apptab .x{color:var(--faint);font-size:16px;line-height:1;padding:2px 3px;border-radius:5px;
     margin-left:2px;transition:color .12s,background .12s}
   .apptab .x:hover{color:#fff;background:#FF6B6B}
+  .apptab .x.arm{color:#fff;background:var(--done);font-weight:800}
   .apptab .dot{width:7px;height:7px;border-radius:50%;flex:none;box-shadow:0 0 6px currentColor}
   .apptab.plus{font-size:18px;color:var(--faint);padding:8px 15px}
   .apptab.plus:hover{color:var(--brand)}
@@ -1831,7 +1832,23 @@ function renderTabbar(){
     t.querySelector(".lbl").onclick = () => showView(key);
     if(!closable) t.onclick = () => showView(key);
     const x = t.querySelector(".x");
-    if(x) x.onclick = (e) => { e.stopPropagation(); closeTerm(key); };
+    if(x){
+      x.title = tf("Cerrar pestaña", "Close tab");
+      x.onclick = (e) => {
+        e.stopPropagation();
+        // Confirmar en dos toques (mismo patrón que "Matar sesión"): un
+        // click arma, el segundo cierra. Evita cierres sin querer.
+        if(!x.classList.contains("arm")){
+          x.classList.add("arm"); x.textContent = "✓";
+          x.title = tf("Click otra vez para cerrar", "Click again to close");
+          clearTimeout(x._t);
+          x._t = setTimeout(()=>{ x.classList.remove("arm"); x.textContent = "×";
+            x.title = tf("Cerrar pestaña", "Close tab"); }, 3000);
+          return;
+        }
+        closeTerm(key);
+      };
+    }
     bar.appendChild(t);
   };
   const split = document.body.classList.contains("split");

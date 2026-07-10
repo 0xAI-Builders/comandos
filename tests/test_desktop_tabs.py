@@ -77,9 +77,19 @@ def test_ctrl_k_can_close_selected_open_tab():
     assert "Gdk.KEY_w" in src
 
 
+def test_close_tab_confirms_before_closing():
+    src = function_source("close_tab")
+    assert "Gtk.MessageDialog" in src
+    assert "ButtonsType.YES_NO" in src
+    # No cierra si el usuario no confirma
+    assert "if resp != Gtk.ResponseType.YES:" in src
+    assert "return" in src
+
+
 if __name__ == "__main__":
     test_tab_labels_are_saved_in_visual_notebook_order()
     test_notebook_tabs_are_reorderable_and_saved_after_drag()
     test_visual_tabs_overview_button_is_present()
     test_visual_tabs_overview_can_focus_and_close_tabs()
     test_ctrl_k_can_close_selected_open_tab()
+    test_close_tab_confirms_before_closing()
