@@ -362,6 +362,40 @@ def test_record_local_codex_threads_imports_sqlite_tokens():
     assert state["projects"][0]["panes"][0]["confidence"] == "local"
 
 
+def test_record_local_opencode_db_imports_assistant_tokens():
+    with tempfile.TemporaryDirectory() as d:
+        db = os.path.join(d, "usage.sqlite")
+        oc = os.path.join(d, "opencode.db")
+        con = sqlite3.connect(oc)
+        con.executescript("""
+            create table session (id text primary key, directory text);
+            create table message (id text primary key, session_id text,
+                                  time_created integer, data text);
+        """)
+        con.execute("insert into session values ('ses_1', '/repo')")
+        con.execute("insert into message values ('msg_1', 'ses_1', ?, ?)", (
+            190000000,  # opencode guarda milisegundos
+            json.dumps({"role": "assistant", "modelID": "qwen/qwen3-coder:free",
+                        "providerID": "openrouter", "cost": 0.5,
+                        "tokens": {"input": 10, "output": 5, "reasoning": 2,
+                                   "cache": {"read": 3, "write": 1}}}),
+        ))
+        con.execute("insert into message values ('msg_user', 'ses_1', ?, ?)", (
+            190000001, json.dumps({"role": "user"})))
+        con.commit()
+        con.close()
+
+        count = cc_usage.record_local_opencode_db(db, oc, now=200000)
+        state = cc_usage.build_usage_state(db, [], now=200000)
+
+    assert count == 1
+    assert state["totals"]["total_tokens"] == 21
+    pane = state["projects"][0]["panes"][0]
+    assert pane["provider"] == "opencode"
+    assert pane["confidence"] == "local"
+    assert state["totals"]["cost_usd"] == 0.5
+
+
 def test_record_local_claude_jsonl_imports_message_usage():
     with tempfile.TemporaryDirectory() as d:
         db = os.path.join(d, "usage.sqlite")
@@ -732,6 +766,7 @@ if __name__ == "__main__":
     test_aggregate_provider_bucket_is_unattributed_without_matching_pane()
     test_build_usage_state_includes_token_windows_from_settings()
     test_record_local_codex_threads_imports_sqlite_tokens()
+    test_record_local_opencode_db_imports_assistant_tokens()
     test_record_local_claude_jsonl_imports_message_usage()
     test_usage_settings_round_trip_filters_to_limit_keys()
     test_cc_usage_capture_hook_cli_runs_after_helpers_are_defined()

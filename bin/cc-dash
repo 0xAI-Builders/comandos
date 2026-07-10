@@ -81,6 +81,12 @@ def refresh_local_usage(force=False):
             max_age_days=max_age,
             max_files=max_claude_files,
         ),
+        "opencode_local": cc_usage.record_local_opencode_db(
+            USAGE_DB,
+            env.get("COMANDOS_OPENCODE_DB") or os.path.expanduser("~/.local/share/opencode/opencode.db"),
+            now=now,
+            max_age_days=max_age,
+        ),
     }
     return counts
 

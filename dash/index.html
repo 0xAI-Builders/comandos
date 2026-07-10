@@ -76,7 +76,7 @@
     #urgent{grid-template-columns:1fr}
     .sec,#ssh-bar,#tl-wrap{padding-left:12px;padding-right:12px}
     .row .rpath{display:none}
-    .send button,.opts button,.keys button,.ops button{min-height:40px}
+    .send button,.opts button,.keys button,.ops button,.ops .mdl-btn{min-height:40px}
     #content{padding-bottom:env(safe-area-inset-bottom)}
   }
   .brand{font-weight:800;letter-spacing:.16em;font-size:13px}
@@ -479,7 +479,12 @@
 	  .mdl-wrap .mdl-cur{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 	  .mdl-wrap .mdl-cur.pending{color:var(--brand);font-style:italic}
 	  .mdl-wrap .mdl-caret{color:var(--faint);font-size:9px;flex:none}
-	  .ops .mdl-btn{min-height:40px}
+	  /* En la fila de acciones de la card el boton de modelo se viste IGUAL que
+	     sus vecinos (Copiar/TXT/PDF: texto, borde transparente, misma altura) */
+	  .ops .mdl-btn{background:none;border-color:transparent;padding:4px 10px;
+	    font-size:11.5px;min-height:0;max-width:150px}
+	  .ops .mdl-btn:hover{border-color:var(--line2)}
+	  .ops .mdl-btn .mdl-cur{color:var(--code)}
 	  /* El menu vive en <body> y se posiciona con getBoundingClientRect:
 	     las cards tienen overflow:hidden y lo recortarian si fuera hijo */
 	  #mdl-menu{position:fixed;z-index:60;min-width:236px;
@@ -2377,6 +2382,8 @@ document.querySelectorAll("#agent-pick button").forEach(b=>{
   b.addEventListener("click", ()=>{
     document.querySelectorAll("#agent-pick button").forEach(x => x.classList.toggle("on", x === b));
     try{ localStorage.setItem("cc-new-agent", b.dataset.a); }catch(e){}
+    toast(tf(`Escribe un proyecto y Enter: abre con ${b.dataset.a}`,
+             `Type a project and Enter: opens with ${b.dataset.a}`));
     $("#new-name").focus();
   });
 });

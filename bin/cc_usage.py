@@ -949,6 +949,77 @@ def record_local_codex_threads(db_path, state_db=None, now=None, max_age_days=14
     return record_turns(db_path, events)
 
 
+def record_local_opencode_db(db_path, oc_db=None, now=None, max_age_days=14):
+    """Importa turnos de OpenCode desde su SQLite local (mensajes assistant
+    con tokens/costo/modelo). Lectura solo-lectura para no molestar al CLI."""
+    oc_db = os.fspath(oc_db or os.path.expanduser("~/.local/share/opencode/opencode.db"))
+    if not os.path.exists(oc_db):
+        return 0
+    ts = int(now if now is not None else time.time())
+    cutoff_ms = (ts - int(max_age_days) * 24 * 3600) * 1000
+    try:
+        con = sqlite3.connect(f"file:{oc_db}?mode=ro", uri=True)
+        rows = con.execute(
+            """
+            select m.id, m.session_id, m.time_created, m.data, s.directory
+            from message m left join session s on s.id = m.session_id
+            where m.time_created >= ?
+            """,
+            (cutoff_ms,),
+        ).fetchall()
+    except Exception:
+        return 0
+    finally:
+        try:
+            con.close()
+        except Exception:
+            pass
+    events, roots = [], {}
+    for mid, session_id, created_ms, data, directory in rows:
+        try:
+            msg = json.loads(data)
+        except (TypeError, ValueError):
+            continue
+        if not isinstance(msg, dict) or msg.get("role") != "assistant":
+            continue
+        tokens = msg.get("tokens") if isinstance(msg.get("tokens"), dict) else {}
+        cache = tokens.get("cache") if isinstance(tokens.get("cache"), dict) else {}
+        input_tokens = _as_int(tokens.get("input"))
+        output_tokens = _as_int(tokens.get("output")) + _as_int(tokens.get("reasoning"))
+        cache_read = _as_int(cache.get("read"))
+        cache_write = _as_int(cache.get("write"))
+        cost = _as_float(msg.get("cost"))
+        total = input_tokens + output_tokens + cache_read + cache_write
+        if total <= 0 and cost <= 0:
+            continue
+        cwd = _text(directory)
+        if cwd not in roots:
+            roots[cwd] = git_root_for_path(cwd)
+        provider_id = _text(msg.get("providerID"))
+        model_id = _text(msg.get("modelID"))
+        events.append({
+            "id": "opencode-db-" + _text(mid),
+            "provider": "opencode",
+            "agent": "opencode",
+            "tmux_session": _text(session_id),
+            "tmux_pane": "",
+            "pane_pwd": cwd,
+            "git_root": roots[cwd],
+            "model": f"{provider_id}/{model_id}" if provider_id and model_id else model_id,
+            "turn_started_at": _as_int(created_ms) // 1000,
+            "turn_finished_at": _as_int(created_ms) // 1000,
+            "input_tokens": input_tokens,
+            "output_tokens": output_tokens,
+            "cache_read_tokens": cache_read,
+            "cache_write_tokens": cache_write,
+            "total_tokens": total,
+            "cost_usd": cost,
+            "source": "opencode_db",
+            "confidence": "local",
+        })
+    return record_turns(db_path, events)
+
+
 def record_local_claude_jsonl(db_path, projects_root=None, now=None, max_age_days=14, max_files=400):
     projects_root = os.fspath(projects_root or os.path.expanduser("~/.claude/projects"))
     if not os.path.isdir(projects_root):
