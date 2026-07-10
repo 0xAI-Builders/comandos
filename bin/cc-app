@@ -81,6 +81,13 @@ notebook > header > tabs > tab button {
   border: none; background: none;
 }
 notebook > header > tabs > tab button:hover { color: @TEXT@; }
+/* Flechas de scroll de tabs: sin esto quedan pegadas a la primera pestana */
+notebook > header > tabs > arrow {
+  color: @FAINT@; min-width: 18px; padding: 0 7px; margin: 0 4px;
+  background: none; border: none;
+}
+notebook > header > tabs > arrow:hover { color: @BRAND@; }
+notebook > header > tabs > arrow:disabled { color: @LINE@; }
 notebook stack { background: @BG@; }
 .termwrap { background: @BG@; }
 .tabplus { color: @FAINT@; padding: 2px 10px; border: none; background: none;

@@ -97,6 +97,14 @@ def test_modals_close_on_click_outside():
     assert "w.set_modal(True)" not in function_source("open_switcher")
 
 
+def test_tab_scroll_arrows_have_padding():
+    # Las flechas de scroll del notebook no deben quedar pegadas a la 1a tab
+    assert "notebook > header > tabs > arrow" in SRC
+    css = SRC.split('APP_CSS = """', 1)[1].split('"""', 1)[0]
+    arrow_rule = css.split("> tabs > arrow {", 1)[1].split("}", 1)[0]
+    assert "padding" in arrow_rule and "margin" in arrow_rule
+
+
 def test_raise_main_window_uses_keep_above_pulse_for_gnome():
     src = function_source("raise_main_window")
     assert "set_keep_above(True)" in src
@@ -112,4 +120,5 @@ if __name__ == "__main__":
     test_ctrl_k_can_close_selected_open_tab()
     test_close_tab_confirms_before_closing()
     test_modals_close_on_click_outside()
+    test_tab_scroll_arrows_have_padding()
     test_raise_main_window_uses_keep_above_pulse_for_gnome()
