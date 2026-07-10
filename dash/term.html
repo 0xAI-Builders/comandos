@@ -1,0 +1,210 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<title>ComandOS · terminal</title>
+<link rel="stylesheet" href="../assets/xterm/xterm.css">
+<!-- Cargamos la fuente bundleada por @font-face para que WebKit la use aun si
+     fontconfig del sistema no la conoce. -->
+<style>
+  @font-face {
+    font-family: 'JetBrainsMono Nerd Font Mono';
+    font-weight: 400; font-style: normal;
+    src: url('../assets/fonts/JetBrainsMono/JetBrainsMonoNerdFontMono-Regular.ttf') format('truetype');
+  }
+  @font-face {
+    font-family: 'JetBrainsMono Nerd Font Mono';
+    font-weight: 400; font-style: italic;
+    src: url('../assets/fonts/JetBrainsMono/JetBrainsMonoNerdFontMono-Italic.ttf') format('truetype');
+  }
+  @font-face {
+    font-family: 'JetBrainsMono Nerd Font Mono';
+    font-weight: 700; font-style: normal;
+    src: url('../assets/fonts/JetBrainsMono/JetBrainsMonoNerdFontMono-Bold.ttf') format('truetype');
+  }
+  @font-face {
+    font-family: 'JetBrainsMono Nerd Font Mono';
+    font-weight: 700; font-style: italic;
+    src: url('../assets/fonts/JetBrainsMono/JetBrainsMonoNerdFontMono-BoldItalic.ttf') format('truetype');
+  }
+  html, body { margin: 0; padding: 0; height: 100%; background: #0A0D13; overflow: hidden; }
+  #term {
+    position: absolute; inset: 0;
+    padding: 8px 6px 6px 10px;
+    box-sizing: border-box;
+  }
+  #err {
+    position: absolute; inset: 0; display: none;
+    color: #FF7B72; font-family: 'JetBrainsMono Nerd Font Mono', monospace;
+    padding: 16px; white-space: pre-wrap;
+  }
+  #dbg {
+    position: fixed; right: 8px; top: 8px; z-index: 9; display: none;
+    color: #FFAE1A; font-family: 'JetBrainsMono Nerd Font Mono', monospace;
+    font-size: 11px; background: rgba(0,0,0,.5); padding: 4px 8px;
+    border-radius: 4px; max-width: 60vw; white-space: pre-wrap;
+  }
+  #dbg.on { display: block; }
+</style>
+</head>
+<body>
+<div id="term"></div>
+<div id="err"></div>
+<div id="dbg">iniciando…</div>
+
+<script src="../assets/xterm/xterm.js"></script>
+<script src="../assets/xterm/addon-fit.js"></script>
+<script src="../assets/xterm/addon-web-links.js"></script>
+<script src="../assets/xterm/addon-canvas.js"></script>
+<script src="../assets/opentype/opentype.min.js"></script>
+<script src="../assets/xterm/addon-ligatures-web.js"></script>
+<script>
+(function () {
+  const params = new URLSearchParams(location.search);
+  const arg    = params.get('arg') || '';
+  const theme  = (params.get('theme') || 'noche').toLowerCase();
+  const debug  = params.get('debug') === '1';
+
+  const dbgEl = document.getElementById('dbg');
+  if (debug) dbgEl.classList.add('on');
+  const dbg = (m) => { if (debug) dbgEl.textContent = m; };
+  window.addEventListener('error', (e) => dbg('JS error: ' + (e.message || e.error)));
+  window.addEventListener('unhandledrejection', (e) => dbg('rej: ' + (e.reason && e.reason.message || e.reason)));
+  // ttyd toma la sesión del querystring del WS (por --url-arg).
+  const wsBase = params.get('ws') || `ws://${location.hostname || '127.0.0.1'}:4779/ws`;
+  const ws_url = arg ? `${wsBase}?arg=${encodeURIComponent(arg)}` : wsBase;
+
+  const THEMES = {
+    noche:  { background:'#0A0D13', foreground:'#EAF0FB', cursor:'#FFAE1A',
+              cursorAccent:'#0A0D13', selectionBackground:'#2E3852' },
+    dia:    { background:'#F7F8FB', foreground:'#1B2130', cursor:'#B26A00',
+              cursorAccent:'#F7F8FB', selectionBackground:'#D9DEE8' },
+    calido: { background:'#161009', foreground:'#F2E5D0', cursor:'#FFB454',
+              cursorAccent:'#161009', selectionBackground:'#36291A' },
+  };
+
+  const showErr = (msg) => {
+    const e = document.getElementById('err');
+    e.textContent = msg;
+    e.style.display = 'block';
+  };
+
+  const term = new Terminal({
+    fontFamily: "'JetBrainsMono Nerd Font Mono', 'JetBrainsMono Nerd Font', 'JetBrains Mono', 'DejaVu Sans Mono', monospace",
+    fontSize: 14,
+    lineHeight: 1.15,
+    letterSpacing: 0,
+    cursorBlink: true,
+    cursorStyle: 'block',
+    scrollback: 10000,
+    allowProposedApi: true,   // requerido por CanvasAddon para exponer ligas
+    theme: THEMES[theme] || THEMES.noche,
+    windowsMode: false,
+  });
+
+  const fit    = new FitAddon.FitAddon();
+  const links  = new WebLinksAddon.WebLinksAddon();
+  const canvas = new CanvasAddon.CanvasAddon();
+  term.loadAddon(fit);
+  term.loadAddon(links);
+  term.open(document.getElementById('term'));
+  // Canvas addon debe cargarse DESPUES de open() y antes de escribir.
+  try { term.loadAddon(canvas); } catch (e) { console.warn('CanvasAddon failed', e); }
+
+  // Ligaduras via opentype.js overlay (browser puro).
+  const themeCfg = THEMES[theme] || THEMES.noche;
+  const liga = new LigaturesWebAddon({
+    fontUrl: '../assets/fonts/JetBrainsMono/JetBrainsMonoNerdFontMono-Regular.ttf',
+    fontSize: 14,
+    foreground: themeCfg.foreground,
+    background: themeCfg.background,
+    debug: debug,
+  });
+  try { term.loadAddon(liga); } catch (e) { dbg('LigaturesWebAddon failed: ' + e.message); }
+
+  const doFit = () => { try { fit.fit(); } catch (_) {} };
+  doFit();
+  window.addEventListener('resize', doFit);
+
+  // ttyd protocol (ver ttyd/src/protocol.c y client/xterm/index.ts):
+  //   auth  : primer mensaje = JSON crudo {AuthToken, columns, rows} (sin prefix)
+  //   client -> server:  '0'+bytes = INPUT  '1'+JSON = RESIZE
+  //                      '2' = PAUSE  '3' = RESUME
+  //   server -> client:  '0'+bytes = OUTPUT '1'+txt  = TITLE  '2'+JSON = PREFS
+  const ws = new WebSocket(ws_url, ['tty']);
+  ws.binaryType = 'arraybuffer';
+  const enc = new TextEncoder();
+  const dec = new TextDecoder();
+
+  const sendInput = (data) => {
+    if (ws.readyState !== 1) return;
+    const buf = enc.encode(data);
+    const out = new Uint8Array(buf.length + 1);
+    out[0] = 0x30; // '0' = INPUT (client→server)
+    out.set(buf, 1);
+    ws.send(out);
+  };
+  const sendResize = () => {
+    if (ws.readyState !== 1) return;
+    ws.send('1' + JSON.stringify({ columns: term.cols, rows: term.rows }));
+  };
+
+  ws.addEventListener('open', () => {
+    dbg(`WS open (proto=${ws.protocol||'-'}), auth cols=${term.cols} rows=${term.rows}`);
+    // ttyd espera el primer mensaje como JSON crudo (SIN prefijo de comando).
+    ws.send(JSON.stringify({
+      AuthToken: '',
+      columns: term.cols,
+      rows: term.rows,
+    }));
+    setTimeout(doFit, 30);
+  });
+
+  ws.addEventListener('message', (ev) => {
+    const data = ev.data;
+    // Puede llegar como ArrayBuffer o string según el frame de ttyd.
+    if (typeof data === 'string') {
+      const cmd = data[0];
+      const rest = data.slice(1);
+      if (cmd === '0') term.write(rest);
+      else if (cmd === '1') document.title = rest;
+      else if (cmd === '2') {
+        try {
+          const prefs = JSON.parse(rest);
+          if (prefs.fontFamily) term.options.fontFamily = prefs.fontFamily;
+          if (prefs.fontSize)   term.options.fontSize   = +prefs.fontSize;
+          doFit(); sendResize();
+        } catch (_) {}
+      }
+    } else {
+      const bytes = new Uint8Array(data);
+      const cmd = String.fromCharCode(bytes[0]);
+      const rest = bytes.subarray(1);
+      if (cmd === '0') term.write(rest);
+      else if (cmd === '1') document.title = dec.decode(rest);
+      else if (cmd === '2') {
+        try {
+          const prefs = JSON.parse(dec.decode(rest));
+          if (prefs.fontFamily) term.options.fontFamily = prefs.fontFamily;
+          if (prefs.fontSize)   term.options.fontSize   = +prefs.fontSize;
+          doFit(); sendResize();
+        } catch (_) {}
+      }
+    }
+  });
+
+  ws.addEventListener('close', (ev) => {
+    dbg(`WS close code=${ev.code} reason="${ev.reason||''}" clean=${ev.wasClean}`);
+    term.write(`\r\n\x1b[90m[conexión cerrada${ev.code ? ' · '+ev.code : ''}]\x1b[0m\r\n`);
+  });
+  ws.addEventListener('error', (e) => {
+    dbg(`WS error a ${ws_url}`);
+    showErr(`No pude conectar a ${ws_url}\n\nAsegurate de que cc-webterm esté corriendo:\n  cc-webterm status`);
+  });
+
+  term.onData(sendInput);
+  term.onResize(sendResize);
+})();
+</script>
+</body>
+</html>
