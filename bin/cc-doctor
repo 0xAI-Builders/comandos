@@ -246,6 +246,45 @@ _section_desktop() {
   else
     _check "$sec" "wmctrl" warn "missing" "apt_install_confirmed wmctrl"
   fi
+  # Fuente JetBrainsMono Nerd Font Mono (bundleada — install.sh la copia a
+  # ~/.local/share/fonts/comandos/ y corre fc-cache).
+  if command -v fc-list >/dev/null 2>&1; then
+    if fc-list 2>/dev/null | grep -qi "JetBrainsMono Nerd Font Mono"; then
+      _check "$sec" "JetBrainsMono NF Mono" pass "cacheada por fontconfig"
+    else
+      _check "$sec" "JetBrainsMono NF Mono" warn \
+        "no cacheada — usará el fallback (Monospace del sistema)" \
+        "cd $REPO && ./install.sh"
+    fi
+  fi
+  # Assets bundleados que la app espera (xterm.js + opentype para ligas web).
+  if [ -f "$REPO/assets/xterm/xterm.js" ] && [ -f "$REPO/assets/xterm/addon-canvas.js" ]; then
+    _check "$sec" "xterm.js bundle" pass "assets/xterm/"
+  else
+    _check "$sec" "xterm.js bundle" fail \
+      "assets/xterm/ incompleto" "cd $REPO && git checkout -- assets/xterm/"
+  fi
+  if [ -f "$REPO/assets/opentype/opentype.min.js" ]; then
+    _check "$sec" "opentype.js (ligas)" pass "assets/opentype/"
+  else
+    _check "$sec" "opentype.js (ligas)" warn "assets/opentype/ falta — ligs solo funcionarán sin shaper"
+  fi
+  # Wrapper de Start Menu (solo WSL Ubuntu).
+  if [ "$plat" = "linux-wsl-ubuntu" ]; then
+    local sm_lnk
+    if command -v powershell.exe >/dev/null 2>&1; then
+      local appdata
+      appdata=$(powershell.exe -NoProfile -Command '[Console]::Write($env:APPDATA)' 2>/dev/null | tr -d '\r')
+      if [ -n "$appdata" ]; then
+        sm_lnk=$(wslpath "$appdata")"/Microsoft/Windows/Start Menu/Programs/${WSL_DISTRO_NAME:-Ubuntu}/ComandOS (${WSL_DISTRO_NAME:-Ubuntu}).lnk"
+        if [ -f "$sm_lnk" ]; then
+          _check "$sec" "Start Menu (Windows)" pass "ComandOS aparece en Inicio"
+        else
+          _check "$sec" "Start Menu (Windows)" warn "shortcut ausente" "\$HOME/.local/bin/cc-winstart"
+        fi
+      fi
+    fi
+  fi
 }
 _section_audio() {
   local sec="Audio y voz"

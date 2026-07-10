@@ -54,8 +54,10 @@ def test_visual_tabs_overview_button_is_present():
     src = SRC
 
     assert "def open_tabs_overview" in src
-    assert '_tabs = Gtk.Button(label="▦")' in src
-    assert '_tabs.connect("clicked", open_tabs_overview)' in src
+    # El botón ahora usa un symbolic icon de Adwaita en vez del glifo Unicode ▦
+    # (ver DESIGN.md §3). El helper _icon_btn lo cablea con open_tabs_overview.
+    assert '"view-grid-symbolic"' in src
+    assert "open_tabs_overview" in src
     assert "_actions.pack_start(_tabs" in src
 
 
