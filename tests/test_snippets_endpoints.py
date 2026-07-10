@@ -126,3 +126,15 @@ def test_post_snippets_delete_removes(dash):
 def test_post_snippets_delete_missing_id(dash):
     status, _ = _req(f"{dash}/snippets/delete", "POST", {"id": "0" * 16})
     assert status == 404
+
+
+def test_paste_requires_live_session(dash):
+    # No tmux session named "nope" exists in the sandbox
+    status, body = _req(f"{dash}/paste", "POST", {"session": "nope", "text": "ls"})
+    assert status == 404
+    assert "nope" in body["error"]
+
+
+def test_paste_rejects_empty_text(dash):
+    status, body = _req(f"{dash}/paste", "POST", {"session": "nope", "text": "   "})
+    assert status == 400

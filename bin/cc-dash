@@ -747,6 +747,29 @@ def tmux(*args, timeout=5):
     return subprocess.run(["tmux", *args], capture_output=True, text=True, timeout=timeout)
 
 
+def tmux_stdin(*args, stdin=None, timeout=5):
+    return subprocess.run(["tmux", *args], input=stdin, capture_output=True,
+                          text=True, timeout=timeout)
+
+
+def snippet_paste_to_pane(pane, text, tmux_fn):
+    """Pega texto en `pane` usando bracketed paste. NUNCA envia Enter.
+
+    Secuencia: load-buffer (via stdin) → paste-buffer -p (bracketed) → delete-buffer.
+    El shell moderno (bash 4+, zsh) recibe el texto como un bloque unico y
+    espera al Enter del usuario para ejecutar."""
+    buf = "comandos-snip"
+    r = tmux_fn("load-buffer", "-b", buf, "-", stdin=text)
+    if r.returncode != 0:
+        return r.stderr.strip() or "load-buffer fallo"
+    err = None
+    r = tmux_fn("paste-buffer", "-p", "-b", buf, "-t", pane)
+    if r.returncode != 0:
+        err = r.stderr.strip() or "paste-buffer fallo"
+    tmux_fn("delete-buffer", "-b", buf)
+    return err
+
+
 def tmux_sessions():
     r = tmux("list-sessions", "-F", "#{session_name}")
     if r.returncode != 0:
@@ -2220,6 +2243,17 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             if r.returncode != 0:
                 return self._json(500, {"error": r.stderr.strip() or "tmux fallo"})
             tmux("send-keys", "-t", pane, "Enter")
+            return self._json(200, {"ok": True})
+
+        if self.path == "/paste":
+            text = str(data.get("text", ""))[:20000]
+            if not text.strip():
+                return self._json(400, {"error": "Texto vacio"})
+            if tmux("has-session", "-t", target).returncode != 0:
+                return self._json(404, {"error": f"No hay sesion tmux '{sess}'. Levantala primero."})
+            err = snippet_paste_to_pane(pane, text, tmux_stdin)
+            if err:
+                return self._json(500, {"error": err})
             return self._json(200, {"ok": True})
 
         if self.path == "/key":
