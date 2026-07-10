@@ -86,6 +86,32 @@ sed "s|__HOME__|$HOME|g" "$REPO/dash/comandos.desktop.in" \
   > "$HOME/.local/share/applications/comandos.desktop" 2>/dev/null || true
 cp "$REPO/dash/comandos.svg" "$HOME/.local/share/icons/hicolor/scalable/apps/centro-claude.svg" 2>/dev/null || true
 
+# Fuente JetBrainsMono Nerd Font (bundleada en assets/fonts/JetBrainsMono).
+# Se instala en la carpeta de usuario y se refresca el caché de fuentes.
+# Idempotente: cp -u solo copia si el archivo cambió.
+_cc_install_fonts() {
+  local src="$REPO/assets/fonts/JetBrainsMono" dest
+  [ -d "$src" ] || return 0
+  case "$CC_PLAT" in
+    darwin)   dest="$HOME/Library/Fonts/ComandOS" ;;
+    *)        dest="$HOME/.local/share/fonts/comandos" ;;
+  esac
+  mkdir -p "$dest"
+  local changed=0
+  for f in "$src"/*.ttf; do
+    [ -f "$f" ] || continue
+    if ! cmp -s "$f" "$dest/$(basename "$f")" 2>/dev/null; then
+      cp "$f" "$dest/"; changed=1
+    fi
+  done
+  # OFL/README junto a los TTF para atribución local (opcional, no bloqueante).
+  cp -u "$src/OFL.txt" "$dest/OFL.txt" 2>/dev/null || true
+  if [ "$changed" = "1" ] && command -v fc-cache >/dev/null 2>&1; then
+    fc-cache -f "$dest" >/dev/null 2>&1 || true
+  fi
+}
+_cc_install_fonts
+
 # Servicios: dispatch por plataforma. macOS/Linux nativo mantienen el
 # comportamiento anterior byte-a-byte; linux-wsl-ubuntu se rellena en Tasks 5–6.
 case "$CC_PLAT" in
@@ -121,6 +147,9 @@ PLIST
     systemctl --user enable --now cc-dash.service cc-notifyd.service 2>/dev/null || true
     grep -q "^CC_TELEGRAM_BOT_TOKEN=." "$HOOKS/telegram.env" 2>/dev/null \
       && systemctl --user enable --now cc-telegram.service 2>/dev/null || true
+    # 4) Shortcut en el menú Inicio de Windows (native .lnk + .ico).
+    "$BIN/cc-winstart" 2>&1 | sed 's/^/  /' || \
+      echo "  (no pude publicar en Start Menu; correlo a mano: cc-winstart)"
     ;;
   linux-native|linux-other)
     [ "$CC_PLAT" = "linux-other" ] && echo "  (distro Linux no probada; sigo con el flujo Linux estándar)"
