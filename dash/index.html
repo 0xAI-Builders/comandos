@@ -3328,6 +3328,12 @@ document.querySelectorAll(".lang-btn").forEach(b=>{
 // ---------- snippets (v0) ----------
 const snipDlg = document.getElementById("dlg-snippets");
 const snipState = { items: [], selectedId: null, query: "" };
+let snipSessions = [];  // live sessions from /state
+
+function pickDefaultSession(sessions, lastSaved){
+  if (lastSaved && sessions.some(s => s.session === lastSaved)) return lastSaved;
+  return (sessions[0] && sessions[0].session) || "";
+}
 
 function filterSnippets(items, query){
   const q = (query || "").trim().toLowerCase();
@@ -3383,10 +3389,12 @@ function renderSnipPane(){
     return;
   }
   pane.innerHTML = "";
+
   const h = document.createElement("div");
   h.style.cssText = "font-size:13px;color:var(--text);font-weight:600";
   h.textContent = it.name;
   pane.appendChild(h);
+
   if ((it.tags || []).length){
     const tags = document.createElement("div");
     tags.style.cssText = "display:flex;gap:6px;flex-wrap:wrap";
@@ -3398,11 +3406,76 @@ function renderSnipPane(){
     }
     pane.appendChild(tags);
   }
+
   const pre = document.createElement("pre");
   pre.textContent = it.body;
   pane.appendChild(pre);
-  // Actions row is added in Task 6 (Send/Copy/Edit/Delete + session dropdown).
+
+  const actions = document.createElement("div");
+  actions.className = "snip-actions";
+  const sel = document.createElement("select");
+  sel.id = "snip-dest";
+  const last = localStorage.getItem("snippet-last-session") || "";
+  const def = pickDefaultSession(snipSessions, last);
+  if (!snipSessions.length){
+    const opt = document.createElement("option");
+    opt.value = ""; opt.textContent = "sin sesiones vivas"; opt.disabled = true;
+    sel.appendChild(opt);
+  } else {
+    for (const s of snipSessions){
+      const opt = document.createElement("option");
+      opt.value = s.session;
+      opt.textContent = s.project || s.session;
+      if (s.session === def) opt.selected = true;
+      sel.appendChild(opt);
+    }
+  }
+  actions.appendChild(sel);
+
+  const send = document.createElement("button");
+  send.className = "hdr-btn"; send.textContent = "Send";
+  send.addEventListener("click", async () => {
+    if (!sel.value) { toast("No hay sesión destino", true); return; }
+    try {
+      await api('/paste', {session: sel.value, text: it.body});
+      localStorage.setItem("snippet-last-session", sel.value);
+      toast(`Pegado en ${sel.value}`);
+    } catch (e) { toast(e.message, true); }
+  });
+  actions.appendChild(send);
+
+  const copy = document.createElement("button");
+  copy.className = "hdr-btn"; copy.textContent = "Copy";
+  copy.addEventListener("click", async () => {
+    try { await navigator.clipboard.writeText(it.body); toast("Copiado"); }
+    catch (e) { toast("No pude copiar: " + e.message, true); }
+  });
+  actions.appendChild(copy);
+
+  const edit = document.createElement("button");
+  edit.className = "hdr-btn"; edit.textContent = "Edit";
+  edit.addEventListener("click", () => openSnipEditor(it));  // wired in Task 7
+  actions.appendChild(edit);
+
+  const del = document.createElement("button");
+  del.className = "hdr-btn"; del.textContent = "Delete";
+  del.addEventListener("click", async () => {
+    if (!confirm(`¿Borrar "${it.name}"?`)) return;
+    try {
+      await api('/snippets/delete', {id: it.id});
+      snipState.items = snipState.items.filter(x => x.id !== it.id);
+      snipState.selectedId = null;
+      renderSnipList(); renderSnipPane();
+      toast("Borrado");
+    } catch (e) { toast(e.message, true); }
+  });
+  actions.appendChild(del);
+
+  pane.appendChild(actions);
 }
+
+// Stub for Task 7 — prevents a ReferenceError if the user clicks Edit before Task 7 ships.
+function openSnipEditor(_it){ toast("Editor: pendiente Task 7", true); }
 
 async function openSnippets(){
   snipDlg.showModal();
@@ -3415,6 +3488,10 @@ async function openSnippets(){
     snipState.items = [];
     toast("No pude cargar snippets: " + e.message, true);
   }
+  try {
+    const st = await api('/state');
+    snipSessions = (st || []).map(s => ({session: s.session, project: s.project || s.session}));
+  } catch { snipSessions = []; }
   snipState.selectedId = null;
   renderSnipList();
   renderSnipPane();

@@ -67,3 +67,26 @@ def test_search_input_wired_to_render():
     # snip-q input must have an input listener that updates snipState.query
     assert re.search(r"snip-q[\s\S]{0,600}addEventListener\([\"']input[\"']", HTML)
     assert "snipState.query" in HTML
+
+
+def test_pick_default_session_function_present():
+    assert re.search(r"function\s+pickDefaultSession\s*\(", HTML)
+
+
+def test_snip_dest_dropdown_present_in_render():
+    # #snip-dest select must be built inside renderSnipPane
+    assert "snip-dest" in HTML
+    # Must be inside the snippets JS block (near renderSnipPane)
+    assert re.search(r"renderSnipPane[\s\S]{0,5000}snip-dest", HTML)
+
+
+def test_send_button_calls_paste_endpoint():
+    # Send button must call the /paste endpoint
+    assert "api('/paste'" in HTML or 'api("/paste"' in HTML
+    # And it must live in renderSnipPane (not somewhere unrelated)
+    assert re.search(r"renderSnipPane[\s\S]{0,5000}api\(['\"]\/paste['\"]", HTML)
+
+
+def test_last_session_persisted_in_localstorage():
+    assert "snippet-last-session" in HTML
+    assert "localStorage" in HTML
