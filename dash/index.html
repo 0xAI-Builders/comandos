@@ -32,6 +32,14 @@
     --brand:#E0A458; --waiting:#FFB454; --done:#8FD48A; --working:#89A7E0;
     --glow:#241A0F; --code:#E5C68F; --shadow:rgba(0,0,0,.45);
   }
+  /* Termius: dark blue profundo con acento verde y cyan — inspirado en la app
+     Termius. Chrome ligeramente más oscuro que el terminal para dar profundidad. */
+  :root[data-theme="termius"]{
+    --bg:#0E1620; --panel:#141E2A; --panel2:#182432; --line:#1C2733; --line2:#25384F;
+    --text:#D6E0EA; --dim:#8FA0B4; --faint:#5C6B80;
+    --brand:#4CE07A; --waiting:#FFAE1A; --done:#4CE07A; --working:#7DB4E6;
+    --glow:#0B131C; --code:#7DB4E6; --shadow:rgba(0,0,0,.55);
+  }
   *{box-sizing:border-box;margin:0;padding:0}
   html,body{height:100%}
   /* La pagina NO scrollea: scrollea #content. Asi las barras de arriba quedan
@@ -40,6 +48,39 @@
     color:var(--text);font-family:var(--sans);
     background:radial-gradient(1100px 500px at 75% -120px, var(--glow) 0%, var(--bg) 60%) fixed var(--bg);
     display:flex;flex-direction:column;overflow:hidden;
+    /* La UI del chrome (headers, chips, botones, labels) NO es seleccionable,
+       para que la app no se sienta "web-based". Los contenidos legítimamente
+       seleccionables (session names, snippets, código en preview) rehabilitan
+       .selectable / .code / textarea + inputs abajo. */
+    -webkit-user-select:none;user-select:none;
+  }
+  /* Rehabilitar selección donde tiene sentido copiar */
+  input,textarea,.code,pre,code,.selectable,
+  .row-title,.rpath,.preview,.send input,.log,.msg-body{
+    -webkit-user-select:text;user-select:text;
+  }
+  /* Silenciar el highlight azul del tap en WebKit (móvil/desktop) */
+  *{-webkit-tap-highlight-color:transparent}
+  /* Iconos SVG monolínea inline. Sistema unificado — ver DESIGN.md.
+     Tamaño default: 16px. Stroke: currentColor 1.7. Heredan color. */
+  .ico{flex:none;display:inline-flex;align-items:center;justify-content:center}
+  .ico svg,[data-icon] svg{width:100%;height:100%;display:block}
+  /* Muestra de ligaduras en Settings — con calt+liga forzadas para que
+     '==' '!=' '->' '=>' se vean COMO LIGADAS, no como chars sueltos. */
+  code.lig-sample{
+    font-family:'JetBrainsMono Nerd Font Mono','JetBrains Mono',var(--mono);
+    font-size:12.5px;color:var(--brand);letter-spacing:0;
+    font-feature-settings:"calt" 1,"liga" 1,"rlig" 1;
+    -webkit-font-feature-settings:"calt" 1,"liga" 1,"rlig" 1;
+    font-variant-ligatures:contextual common-ligatures;
+    background:var(--panel);border:1px solid var(--line);
+    border-radius:5px;padding:1px 8px;margin-left:8px;
+  }
+  /* Botones del header: cuadrados 28×28 con icono 17×17 centrado. */
+  .hdr-btn[aria-label] .ico,.hdr-btn[aria-label] [data-icon]{width:17px;height:17px}
+  .hdr-btn[aria-label]{
+    display:inline-flex;align-items:center;justify-content:center;
+    width:28px;height:28px;padding:0;
   }
   #content{flex:1;min-height:0;overflow-y:auto;overflow-x:hidden}
   button{font:inherit;color:inherit;background:none;border:0;cursor:pointer}
@@ -48,12 +89,12 @@
   .hidden{display:none !important}
 
   /* ---------- scrollbars premium (finos, redondeados, color de marca) ---------- */
-  *{scrollbar-width:thin;scrollbar-color:var(--line2) transparent}
-  *::-webkit-scrollbar{width:10px;height:10px}
+  *{scrollbar-width:thin;scrollbar-color:var(--line) transparent}
+  *::-webkit-scrollbar{width:5px;height:5px}
   *::-webkit-scrollbar-track{background:transparent}
-  *::-webkit-scrollbar-thumb{background:var(--line2);border-radius:10px;
-    border:3px solid transparent;background-clip:padding-box;min-height:40px}
-  *::-webkit-scrollbar-thumb:hover{background:var(--brand);background-clip:padding-box}
+  *::-webkit-scrollbar-thumb{background:var(--line);border-radius:6px;
+    background-clip:padding-box;min-height:32px}
+  *::-webkit-scrollbar-thumb:hover{background:var(--line2)}
   *::-webkit-scrollbar-corner{background:transparent}
 
   /* ---------- barras superiores (appbar + servidores): FIJAS siempre ---------- */
@@ -82,9 +123,11 @@
   .brand{font-weight:800;letter-spacing:.16em;font-size:13px}
   .brand b{color:var(--brand)}
   .counts{display:flex;gap:6px;flex-wrap:wrap}
-  .pill{white-space:nowrap;padding:3px 10px;border-radius:20px;font-size:11.5px;
-    color:var(--dim);border:1px solid var(--line)}
+  .pill{white-space:nowrap;padding:2px 9px;border-radius:12px;font-size:11px;
+    color:var(--dim);border:1px solid var(--line);background:var(--panel);
+    transition:border-color .12s ease, color .12s ease}
   .pill b{font-weight:700}
+  .pill:hover{border-color:var(--line2);color:var(--text)}
   .pill.hot{color:var(--waiting);border-color:color-mix(in srgb,var(--waiting) 40%,var(--line))}
   .pill.ok b{color:var(--done)} .pill.run b{color:var(--working)}
   /* Porcentaje global de limites SIEMPRE a la vista (click abre el drawer Uso) */
@@ -142,8 +185,8 @@
   #ssh-manage:hover{color:var(--text);border-color:var(--brand)}
 
   /* ---------- secciones ---------- */
-  .sec{max-width:1360px;margin:0 auto;padding:18px 18px 0}
-  .sec-label{font-family:var(--mono);font-size:10px;letter-spacing:.18em;
+  .sec{max-width:1360px;margin:0 auto;padding:22px 18px 0}
+  .sec-label{font-family:var(--mono);font-size:10px;letter-spacing:.22em;
     text-transform:uppercase;font-weight:700;color:var(--faint);margin-bottom:10px;
     display:flex;align-items:center;gap:8px}
   .sec-label::after{content:"";flex:1;height:1px;background:var(--line)}
@@ -225,10 +268,13 @@
   /* Sesiones: filas compactas */
   #rows{display:flex;flex-direction:column;border:1px solid var(--line);border-radius:14px;
     background:var(--panel);overflow:hidden}
-  .row{display:flex;align-items:center;gap:10px;padding:11px 14px;min-width:0;
-    border-bottom:1px solid var(--line);cursor:pointer}
-  .row:last-child{border-bottom:none}
-  .row:hover{background:var(--panel2)}
+  .row{display:flex;align-items:center;gap:10px;padding:10px 14px;min-width:0;
+    background:var(--panel);border:1px solid transparent;border-radius:8px;
+    margin-bottom:4px;cursor:pointer;
+    transition:border-color .12s ease, background .12s ease, transform .08s ease}
+  .row:hover{background:var(--panel2);border-color:var(--line2)}
+  .row:active{transform:translateY(1px)}
+  .row.s-waiting{border-color:color-mix(in srgb,var(--waiting) 30%,transparent)}
   .dot{flex:none;width:8px;height:8px;border-radius:50%;background:var(--faint)}
   .row.s-done .dot{background:var(--done);box-shadow:0 0 8px rgba(46,229,157,.5)}
   .row.s-working .dot{background:var(--working)}
@@ -242,10 +288,15 @@
   .row .rprev{font-size:12px;color:var(--dim);flex:1;min-width:60px;
     overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
   .row .ago{margin-left:0}
-  .row .acts{display:flex;gap:5px;flex:none;opacity:0;transition:opacity .12s}
+  .row .acts{display:flex;gap:5px;flex:none;opacity:.55;transition:opacity .12s}
   .row:hover .acts,.row:focus-within .acts{opacity:1}
   .row .acts button{font-family:var(--mono);font-size:11px;color:var(--dim);
-    padding:3px 9px;border:1px solid var(--line);border-radius:6px;background:var(--bg)}
+    padding:3px 9px;border:1px solid var(--line);border-radius:6px;background:var(--bg);
+    display:inline-flex;align-items:center;justify-content:center;min-height:26px}
+  /* Botones icon-only en .acts (los que solo contienen un .ico SVG): cuadrados. */
+  .row .acts button.cp,.row .acts button.ren,.row .acts button.term,.row .acts button.kill{
+    width:26px;padding:0}
+  .row .acts button .ico{width:14px;height:14px}
   .row .acts button:hover{color:var(--text);border-color:var(--brand)}
   .row .acts .up{color:var(--waiting)}
   .row .acts .term:hover{color:var(--brand);border-color:var(--brand)}
@@ -284,28 +335,149 @@
     background:var(--panel2);border-left:1px solid var(--line);padding:22px;
     transform:translateX(100%);transition:transform .18s ease;overflow-y:auto}
   .drawer.open{transform:none}
-  .drawer h3{font-family:var(--mono);font-size:11px;letter-spacing:.16em;
-    text-transform:uppercase;color:var(--dim);margin-bottom:15px}
-  .set{margin-bottom:15px}
-  .set label{display:block;font-size:13px;margin-bottom:6px}
-  .set input[type=range]{width:100%}
-  .desc{font-size:11.5px;color:var(--faint);line-height:1.5}
+
+  /* ---------- modales (ver DESIGN.md §6) ---------- */
+  .modal{position:fixed;inset:0;z-index:30;background:rgba(0,0,0,.55);
+    display:none;align-items:flex-start;justify-content:center;
+    padding:6vh 16px;overflow-y:auto;-webkit-user-select:none;user-select:none}
+  .modal.open{display:flex}
+  .modal-panel{position:relative;width:100%;max-width:640px;
+    background:var(--panel2);border:1px solid var(--line);border-radius:12px;
+    padding:28px 30px 26px;box-shadow:0 20px 60px rgba(0,0,0,.4);
+    animation:modalIn .16s ease-out}
+  .modal-panel h3{margin-top:22px}
+  .modal-panel h3:first-child{margin-top:0}
+  @keyframes modalIn{from{opacity:0;transform:translateY(-6px) scale(.985)}to{opacity:1;transform:none}}
+  /* Botones icon-only del header de modal — mismo look que .modal-close.
+     Se usan para acciones rápidas (refresh, etc.) sin bajar al cuerpo. */
+  .modal-hdr{position:absolute;top:10px;right:10px;display:flex;gap:2px;z-index:1}
+  .modal-hdr button,.modal-close{width:28px;height:28px;
+    display:inline-flex;align-items:center;justify-content:center;
+    border:0;background:none;color:var(--dim);cursor:pointer;border-radius:6px;
+    transition:color .12s ease, background .12s ease}
+  .modal-hdr button:hover,.modal-close:hover{
+    color:var(--text);background:color-mix(in srgb,var(--bg) 60%,transparent)}
+  .modal-hdr [data-icon],.modal-hdr .ico,
+  .modal-close [data-icon],.modal-close .ico{width:16px;height:16px}
+  /* Cuando el .modal-close está suelto (sin .modal-hdr), pisamos el layout:
+     absolute arriba a la derecha. Dentro de .modal-hdr fluye normalmente. */
+  .modal-panel > .modal-close{position:absolute;top:10px;right:10px}
+  .modal-hdr .modal-close{position:static}
+
+  /* Tabs dentro de un modal — nav vertical/horizontal según ancho.
+     Termius/VSCode look: activa con underline brand + fondo panel2 sutil. */
+  .mtabs{display:flex;gap:2px;flex-wrap:wrap;margin:0 -6px 20px;padding:0 0 12px;
+    border-bottom:1px solid var(--line)}
+  .mtab{font-family:var(--mono);font-size:11px;letter-spacing:.14em;
+    text-transform:uppercase;color:var(--faint);
+    background:none;border:0;padding:6px 12px;border-radius:6px;cursor:pointer;
+    transition:color .12s ease, background .12s ease}
+  .mtab:hover{color:var(--dim)}
+  .mtab.active{color:var(--text);background:var(--panel)}
+  .mtab-pane{display:none}
+  .mtab-pane.active{display:block}
+
+  /* Sliders "solid fill" — la parte antes del thumb va en brand, después
+     en line. Requiere JS que actualice --fill al change.
+     IMPORTANTE: en WebKit el gradient tiene que ir en el TRACK, no en el
+     input; si va en el input, se dibuja "bajo" el track default y se ven
+     dos rayas verdes stacked (bug clásico). */
+  /* Track de 4px + thumb de 14px. Para que WebKit centre el thumb sin
+     desalineación, el input mismo mide EXACTAMENTE 14px (mismo que el thumb),
+     y el track se centra automáticamente en su vertical middle. */
+  input[type=range].solid{
+    -webkit-appearance:none;appearance:none;box-sizing:content-box;
+    width:100%;height:14px;background:transparent;outline:none;
+    padding:0;margin:0;border:0;display:block;vertical-align:middle;
+  }
+  input[type=range].solid::-webkit-slider-runnable-track{
+    height:4px;border-radius:2px;border:0;
+    background:linear-gradient(to right,
+      var(--brand) 0%, var(--brand) var(--fill,50%),
+      var(--line) var(--fill,50%), var(--line) 100%);
+  }
+  input[type=range].solid::-webkit-slider-thumb{
+    -webkit-appearance:none;appearance:none;
+    width:14px;height:14px;border-radius:50%;background:var(--brand);
+    border:0;margin-top:-5px;cursor:pointer;
+    box-shadow:0 0 0 3px color-mix(in srgb,var(--brand) 25%,transparent);
+  }
+  input[type=range].solid::-moz-range-track{
+    height:4px;border-radius:2px;background:var(--line);border:0;
+  }
+  input[type=range].solid::-moz-range-progress{
+    height:4px;border-radius:2px;background:var(--brand);
+  }
+  input[type=range].solid::-moz-range-thumb{
+    width:14px;height:14px;border-radius:50%;background:var(--brand);border:0;
+    box-shadow:0 0 0 3px color-mix(in srgb,var(--brand) 25%,transparent);
+  }
+  input[type=range].solid:focus{outline:none}
+
+  /* Preview de tipografía (sección Terminal / Ajustes) */
+  .font-preview{
+    margin-top:8px;padding:12px 14px;border-radius:8px;
+    background:var(--bg);border:1px solid var(--line);
+    color:var(--text);
+    font-family:'JetBrainsMono Nerd Font Mono','JetBrains Mono',monospace;
+    font-feature-settings:"calt" 1,"liga" 1,"rlig" 1;
+    line-height:1.55;
+  }
+  .font-preview .fp-line{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .font-preview .fp-hi{color:var(--brand)}
+  .font-preview .fp-dim{color:var(--dim)}
+  .drawer h3,.modal-panel h3{
+    font-family:var(--mono);font-size:10px;letter-spacing:.24em;
+    text-transform:uppercase;color:var(--faint);font-weight:600;
+    margin:0 0 18px;padding-bottom:10px;
+    border-bottom:1px solid var(--line);
+    display:flex;align-items:center;gap:8px}
+  /* En modales cada sección respira: 28px arriba del h3, 18px abajo. */
+  .modal-panel h3{margin-top:28px}
+  .modal-panel h3:first-child,.drawer h3:first-child{margin-top:0}
+  .set{margin-bottom:12px}
+  .set label{display:block;font-size:12.5px;color:var(--dim);margin-bottom:6px;
+    font-family:var(--mono);letter-spacing:.02em}
+  .set input[type=range]{width:100%;accent-color:var(--brand)}
+  /* Selects nativos — forzamos el theme oscuro (por default heredan del OS). */
+  .set select{
+    width:100%;background:var(--bg);color:var(--text);
+    border:1px solid var(--line);border-radius:6px;padding:6px 10px;
+    font-family:var(--mono);font-size:12.5px;
+    appearance:none;-webkit-appearance:none;-moz-appearance:none;
+    background-image:linear-gradient(45deg,transparent 50%,var(--dim) 50%),
+                     linear-gradient(135deg,var(--dim) 50%,transparent 50%);
+    background-position:calc(100% - 15px) 50%,calc(100% - 10px) 50%;
+    background-size:5px 5px,5px 5px;background-repeat:no-repeat;
+    padding-right:28px;
+  }
+  .set select:focus{border-color:var(--brand);outline:none}
+  .set select option{background:var(--bg);color:var(--text)}
+  .desc{font-size:11.5px;color:var(--faint);line-height:1.55}
   .test{font-family:var(--mono);font-size:11.5px;color:var(--dim);
-    border:1px solid var(--line);border-radius:7px;padding:5px 12px}
-  .test:hover{color:var(--text);border-color:var(--brand)}
-  .test.on{color:var(--done);border-color:color-mix(in srgb,var(--done) 45%,var(--line))}
+    background:var(--panel);border:1px solid var(--line);
+    border-radius:6px;padding:5px 12px;
+    transition:border-color .12s ease, color .12s ease, background .12s ease}
+  .test:hover{color:var(--text);border-color:var(--line2);background:var(--panel2)}
+  .test.on{color:var(--done);border-color:color-mix(in srgb,var(--done) 45%,var(--line));
+    background:color-mix(in srgb,var(--done) 10%,var(--panel))}
   .test.warn{color:var(--waiting);border-color:color-mix(in srgb,var(--waiting) 40%,var(--line))}
-  .test:disabled{cursor:not-allowed;opacity:.48;color:var(--faint);border-color:var(--line)}
-  .test:disabled:hover{color:var(--faint);border-color:var(--line)}
+  .test:disabled{cursor:not-allowed;opacity:.45;color:var(--faint);border-color:var(--line)}
+  .test:disabled:hover{color:var(--faint);border-color:var(--line);background:var(--panel)}
   .test.on:disabled{opacity:1;color:var(--done);
     border-color:color-mix(in srgb,var(--done) 55%,var(--line))}
-  .switch{display:flex;align-items:center;justify-content:space-between;gap:10px}
-  .switch button{width:40px;height:22px;border-radius:11px;background:var(--line);
-    position:relative;flex:none}
-  .switch button::after{content:"";position:absolute;top:3px;left:3px;width:16px;height:16px;
-    border-radius:50%;background:var(--dim);transition:transform .15s}
-  .switch button.on{background:var(--done)}
-  .switch button.on::after{transform:translateX(18px);background:var(--bg)}
+  /* Switch: track y knob más compactos y con transición suave. */
+  .switch{display:flex;align-items:center;justify-content:space-between;gap:10px;
+    padding:2px 0}
+  .switch label{margin-bottom:0}
+  .switch button{width:36px;height:20px;border-radius:11px;background:var(--line);
+    position:relative;flex:none;
+    transition:background .15s ease}
+  .switch button::after{content:"";position:absolute;top:2px;left:2px;width:16px;height:16px;
+    border-radius:50%;background:var(--dim);
+    transition:transform .18s cubic-bezier(.4,0,.2,1), background .15s ease}
+  .switch button.on{background:color-mix(in srgb,var(--brand) 75%,var(--line))}
+  .switch button.on::after{transform:translateX(16px);background:var(--text)}
   .srv-row{display:flex;align-items:center;gap:8px;padding:9px 0;border-bottom:1px solid var(--line)}
   .srv-info{flex:1;min-width:0}
   .srv-name{font-family:var(--mono);font-size:13px;font-weight:700}
@@ -348,9 +520,9 @@
     border-bottom:1px solid var(--line);box-shadow:0 2px 10px rgba(0,0,0,.25);
     padding:env(safe-area-inset-top) 8px 0;overflow-x:auto;overflow-y:hidden;
     -webkit-overflow-scrolling:touch;scrollbar-width:thin;scrollbar-color:var(--line2) transparent}
-  body.app #tabbar::-webkit-scrollbar{height:8px}
+  body.app #tabbar::-webkit-scrollbar{height:5px}
   body.app #tabbar::-webkit-scrollbar-track{background:transparent}
-  body.app #tabbar::-webkit-scrollbar-thumb{background:var(--line2);border-radius:8px;
+  body.app #tabbar::-webkit-scrollbar-thumb{background:var(--line);border-radius:6px;
     border:2px solid transparent;background-clip:padding-box}
   body.app #tabbar::-webkit-scrollbar-thumb:hover{background:var(--brand);background-clip:padding-box}
   body.app.dragging{user-select:none;cursor:col-resize}
@@ -405,9 +577,9 @@
     body.app.split #term-area{grid-area:term;position:relative;inset:auto;top:auto;
       display:block;min-width:0;overflow:hidden;
       scrollbar-width:thin;scrollbar-color:var(--line2) var(--bg)}
-    body.app.split #term-area::-webkit-scrollbar{width:10px;height:10px}
+    body.app.split #term-area::-webkit-scrollbar{width:5px;height:5px}
     body.app.split #term-area::-webkit-scrollbar-track{background:var(--bg)}
-    body.app.split #term-area::-webkit-scrollbar-thumb{background:var(--line2);border-radius:10px;
+    body.app.split #term-area::-webkit-scrollbar-thumb{background:var(--line);border-radius:6px;
       border:3px solid var(--bg);background-clip:padding-box}
     body.app.split #term-area::-webkit-scrollbar-thumb:hover{background:var(--brand);background-clip:padding-box}
     body.app.split #splitter{grid-area:split;display:block;position:relative;z-index:8;
@@ -568,7 +740,10 @@
 <div id="view-panel" class="on">
 <div id="topbar">
 <header>
-  <div class="brand"><b>●</b> COMANDOS</div>
+  <!-- Brand vive en el HeaderBar de cc-app (arriba a la izquierda). Fuera de
+       la app (browser mobile) puede hacer falta — si algún día se necesita,
+       reponer este div. -->
+
   <div class="counts">
     <span class="pill hot"><b id="n-waiting">0</b> <span>esperan</span></span>
     <span class="pill ok"><b id="n-done">0</b> <span>listos</span></span>
@@ -577,11 +752,11 @@
   </div>
   <div class="hdr-right">
     <span id="snd-ctl" title="Volumen global (voz y chime). El icono silencia o activa el sonido.">
-      <button class="hdr-btn" id="btn-mute">🔊</button>
+      <button class="hdr-btn" id="btn-mute" aria-label="mute"></button>
       <input type="range" id="vol-top" min="0" max="100" value="60">
     </span>
-	    <button class="hdr-btn" id="btn-switch" title="Saltar a cualquier sesión (Ctrl+K)">⌕</button>
-	    <button class="hdr-btn" id="btn-theme" title="Tema: Noche → Día → Cálido (aplica a tablero, pestañas y terminales)">🌙</button>
+	    <button class="hdr-btn" id="btn-switch" aria-label="switch" title="Saltar a cualquier sesión (Ctrl+K)"><span data-icon="search" data-size="16"></span></button>
+	    <button class="hdr-btn" id="btn-theme" aria-label="theme" title="Tema: Noche → Día → Cálido (aplica a tablero, pestañas y terminales)"></button>
 	    <button class="hdr-btn" id="btn-usage" title="Uso, límites y gasto por pane">Uso</button>
 	    <button class="hdr-btn" id="btn-remote" title="Continuar desde celular/tablet">Remoto</button>
 	    <button class="hdr-btn" id="btn-settings">Ajustes</button>
@@ -627,40 +802,111 @@
 </div>
 </div><!-- /#panes -->
 
-<aside id="settings" class="drawer" aria-label="Ajustes">
-  <h3>Notificaciones (todo el sistema)</h3>
-  <div class="set"><label for="vol">Volumen (voz y chime)</label>
-    <input type="range" id="vol" min="0" max="100" value="60"></div>
-  <div class="set switch"><label>Avisar al terminar</label><button class="cfg" data-key="NOTIFY_ON_DONE" role="switch"></button></div>
-  <div class="set switch"><label>Avisar al pedir atencion</label><button class="cfg" data-key="NOTIFY_ON_ATTENTION" role="switch"></button></div>
-  <div class="set switch"><label>Voz (anuncia el proyecto)</label><button id="sw-voice" role="switch"></button></div>
-  <div class="set switch"><label>Chime (suena si la voz esta apagada)</label><button class="cfg" data-key="SOUND_ENABLED" role="switch"></button></div>
-  <div class="set switch"><label>Popups de escritorio</label><button class="cfg" data-key="DESKTOP_NOTIFY" role="switch"></button></div>
-  <div class="set switch"><label>Telegram</label><button class="cfg" data-key="TELEGRAM_ENABLED" role="switch"></button></div>
-  <div class="set" style="display:flex;gap:8px;flex-wrap:wrap">
-    <button class="test" id="test-chime">Probar atencion</button>
-    <button class="test" id="test-done">Probar terminado</button>
-    <button class="test" id="test-voice">Probar voz</button>
+<div id="settings" class="modal" aria-label="Ajustes" role="dialog" aria-modal="true">
+ <div class="modal-panel">
+  <button type="button" class="modal-close" data-close="settings" aria-label="cerrar">
+    <span data-icon="close"></span>
+  </button>
+  <nav class="mtabs" role="tablist">
+    <button class="mtab active" data-mtab="notif">Notificaciones</button>
+    <button class="mtab" data-mtab="term">Terminal</button>
+    <button class="mtab" data-mtab="dash">Tablero</button>
+  </nav>
+
+  <!-- ========= Notificaciones + Idioma ========= -->
+  <div class="mtab-pane active" data-mpane="notif">
+    <div class="set"><label for="vol">Volumen (voz y chime)</label>
+      <input type="range" id="vol" class="solid" min="0" max="100" value="60"></div>
+    <div class="set switch"><label>Avisar al terminar</label><button class="cfg" data-key="NOTIFY_ON_DONE" role="switch"></button></div>
+    <div class="set switch"><label>Avisar al pedir atencion</label><button class="cfg" data-key="NOTIFY_ON_ATTENTION" role="switch"></button></div>
+    <div class="set switch"><label>Voz (anuncia el proyecto)</label><button id="sw-voice" role="switch"></button></div>
+    <div class="set switch"><label>Chime (suena si la voz esta apagada)</label><button class="cfg" data-key="SOUND_ENABLED" role="switch"></button></div>
+    <div class="set switch"><label>Popups de escritorio</label><button class="cfg" data-key="DESKTOP_NOTIFY" role="switch"></button></div>
+    <div class="set switch"><label>Telegram</label><button class="cfg" data-key="TELEGRAM_ENABLED" role="switch"></button></div>
+    <div class="set" style="display:flex;gap:8px;flex-wrap:wrap">
+      <button class="test" id="test-chime">Probar atencion</button>
+      <button class="test" id="test-done">Probar terminado</button>
+      <button class="test" id="test-voice">Probar voz</button>
+    </div>
+    <div class="set"><div class="desc">UN solo volumen para todo ComandOS. Estos botones suenan
+      EXACTAMENTE igual que las notificaciones reales (mismo reproductor y volumen) — si algo
+      suena distinto a esto, NO viene de ComandOS.</div></div>
+
+    <h3 style="margin-top:24px">Idioma / Language</h3>
+    <div class="set" style="display:flex;gap:8px">
+      <button class="test lang-btn" data-lang="auto">Auto</button>
+      <button class="test lang-btn" data-lang="es">Español</button>
+      <button class="test lang-btn" data-lang="en">English</button>
+    </div>
   </div>
-  <div class="set"><div class="desc">UN solo volumen para todo ComandOS. Estos botones suenan
-    EXACTAMENTE igual que las notificaciones reales (mismo reproductor y volumen) — si algo
-    suena distinto a esto, NO viene de ComandOS.</div></div>
-  <div class="set"><label>Idioma / Language</label></div>
-  <div class="set" style="display:flex;gap:8px">
-    <button class="test lang-btn" data-lang="auto">Auto</button>
-    <button class="test lang-btn" data-lang="es">Español</button>
-    <button class="test lang-btn" data-lang="en">English</button>
+
+  <!-- ========= Terminal ========= -->
+  <div class="mtab-pane" data-mpane="term">
+    <div class="set">
+      <label for="pf-font-family">Tipografía</label>
+      <select id="pf-font-family">
+        <option value="JetBrainsMono Nerd Font Mono">JetBrains Mono (bundle)</option>
+        <option value="JetBrains Mono">JetBrains Mono</option>
+        <option value="Cascadia Code">Cascadia Code</option>
+        <option value="Fira Code">Fira Code</option>
+        <option value="Iosevka">Iosevka</option>
+        <option value="Hack">Hack</option>
+        <option value="Source Code Pro">Source Code Pro</option>
+        <option value="DejaVu Sans Mono">DejaVu Sans Mono</option>
+        <option value="Monospace">Monospace del sistema</option>
+      </select>
+      <div id="font-preview" class="font-preview">
+        <div class="fp-line"><span class="fp-dim">$</span> <span class="fp-hi">chimp@ComandOS</span>:~ (main) <span class="fp-dim">↑ 2</span></div>
+        <div class="fp-line">const arr = [1, 2, 3].map(x =&gt; x * 2);</div>
+        <div class="fp-line">if (i !== 0 &amp;&amp; a &gt;= b) return -&gt; null;</div>
+        <div class="fp-line fp-dim">// == != === !== -&gt; =&gt; &lt;= &gt;= &lt;=&gt; ::</div>
+      </div>
+    </div>
+    <div class="set">
+      <label for="pf-font-size">Tamaño: <span id="pf-font-size-v">13</span> px</label>
+      <input type="range" id="pf-font-size" class="solid" min="8" max="28" value="13">
+    </div>
+    <div class="set">
+      <label>Cursor</label>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        <button class="test cur-shape" data-shape="block">Bloque</button>
+        <button class="test cur-shape" data-shape="ibeam">Barra</button>
+        <button class="test cur-shape" data-shape="underline">Subrayado</button>
+      </div>
+    </div>
+    <div class="set switch"><label>Parpadeo del cursor</label>
+      <button id="sw-cursor-blink" role="switch"></button></div>
+    <div class="set switch"><label>Ligaduras <code class="lig-sample">== != -&gt; =&gt;</code></label>
+      <button id="sw-ligatures" role="switch"></button></div>
+    <div class="set">
+      <label for="pf-padding">Margen interno: <span id="pf-padding-v">8</span> px</label>
+      <input type="range" id="pf-padding" class="solid" min="0" max="40" value="8">
+    </div>
+    <div class="set">
+      <label for="pf-opacity">Opacidad del fondo: <span id="pf-opacity-v">100</span>%</label>
+      <input type="range" id="pf-opacity" class="solid" min="30" max="100" value="100">
+    </div>
+    <div class="desc" style="margin-top:-4px">Cambios se aplican al abrir una pestaña nueva. Reabrí las existentes para verlos.</div>
   </div>
-  <h3 style="margin-top:24px">Tablero</h3>
+
+  <!-- ========= Tablero ========= -->
+  <div class="mtab-pane" data-mpane="dash">
   <div class="set switch"><label>Notificaciones del navegador</label>
     <button id="sw-notif" role="switch"></button></div>
   <div class="set">
     <label for="poll">Refresco: <span id="poll-v">2</span> s</label>
-    <input type="range" id="poll" min="1" max="10" value="2">
+    <input type="range" id="poll" class="solid" min="1" max="10" value="2">
   </div>
-</aside>
+  </div><!-- /mtab-pane dash -->
+ </div><!-- /modal-panel -->
+</div><!-- /#settings -->
 
-<aside id="remote" class="drawer" aria-label="Remoto">
+
+<div id="remote" class="modal" aria-label="Remoto" role="dialog" aria-modal="true">
+ <div class="modal-panel">
+  <button type="button" class="modal-close" data-close="remote" aria-label="cerrar">
+    <span data-icon="close"></span>
+  </button>
   <h3>Continuar remoto</h3>
   <div class="set">
     <div id="remote-status" class="remote-state"><span class="remote-dot"></span><span>Consultando...</span></div>
@@ -691,14 +937,20 @@
     <div class="urlrow"><input id="remote-fallback-url" readonly><button class="test" id="remote-copy-fallback">Copiar</button></div>
   </div>
   <div class="set"><div class="desc">Apagar remoto no apaga Tailscale; sólo deja de exponer ComandOS y detiene la terminal web.</div></div>
-	</aside>
+ </div>
+</div>
 
-	<aside id="usage" class="drawer" aria-label="Uso">
-	  <h3>Uso</h3>
-	  <div class="set" style="display:flex;gap:8px;flex-wrap:wrap">
-	    <button type="button" class="test" id="usage-refresh">Actualizar</button>
-	    <button type="button" class="test" id="usage-close">Cerrar</button>
-	  </div>
+<div id="usage" class="modal" aria-label="Uso" role="dialog" aria-modal="true">
+ <div class="modal-panel" style="max-width:760px">
+  <div class="modal-hdr">
+    <button type="button" id="usage-refresh" aria-label="actualizar" title="Actualizar uso">
+      <span data-icon="refresh"></span>
+    </button>
+    <button type="button" class="modal-close" data-close="usage" aria-label="cerrar">
+      <span data-icon="close"></span>
+    </button>
+  </div>
+  <h3>Uso</h3>
 	  <div class="set"><div class="desc" id="usage-summary">Sin datos todavia.</div></div>
 	  <h3>Limites del plan</h3>
 	  <div id="usage-limits" class="usage-grid"></div>
@@ -713,12 +965,17 @@
 	    <button type="button" class="test alert-th" data-th="85">85%</button>
 	    <button type="button" class="test alert-th" data-th="95">95%</button>
 	  </div>
-	  <div class="desc" style="margin:-4px 0 8px">Llegan por popup propio y/o Telegram, según Ajustes. La 🔔 de cada proyecto/pane agrega presupuestos de tokens por día.</div>
+	  <div class="desc" style="margin:-4px 0 8px">Llegan por popup propio y/o Telegram, según Ajustes. La <span data-icon="bell" style="display:inline-flex;vertical-align:-2px"></span> de cada proyecto/pane agrega presupuestos de tokens por día.</div>
 	  <div id="alert-rules"></div>
 	  <div id="usage-alerts"></div>
-	</aside>
+ </div>
+</div>
 
-	<aside id="servers" class="drawer" aria-label="Servidores SSH">
+<div id="servers" class="modal" aria-label="Servidores SSH" role="dialog" aria-modal="true">
+ <div class="modal-panel">
+  <button type="button" class="modal-close" data-close="servers" aria-label="cerrar">
+    <span data-icon="close"></span>
+  </button>
   <h3>Servidores SSH</h3>
   <div id="srv-list"></div>
   <h3 style="margin-top:22px" id="srv-form-title">Agregar servidor</h3>
@@ -740,7 +997,8 @@
   </form>
   <div class="set"><div class="desc">Viven en ~/.ssh/config: estandar y tuyo. Conectar abre una
     sesion tmux reconectable. Para dejar de teclear passwords: corre <b>cc-keys</b> una vez.</div></div>
-</aside>
+ </div>
+</div>
 
 <div id="sw-ov" class="hidden">
   <div id="sw-box">
@@ -1072,7 +1330,7 @@ function mdStrip(s){ return (s||"").replace(/\*\*|`|^#{1,6} /g, ""); }
 	        <button type="button" class="uv-bell ${rule ? "on" : ""}" data-scope="limit"
 	          data-target="${attrEsc(l.id)}" data-label="${attrEsc(`${l.provider} ${l.label}`)}"
 	          title="${tf("Configurar alerta para esta ventana", "Configure an alert for this window")}">
-	          🔔 ${rule ? `${Number(rule.threshold)}%` : tf("alerta", "alert")}</button></div>
+	          ${svg("bell",12)} ${rule ? `${Number(rule.threshold)}%` : tf("alerta", "alert")}</button></div>
 	      <div class="usage-sub">${mdEsc(sub || tf("sin ventana de reset", "no reset window"))}</div>
 	      <div class="usage-bar"><span style="width:${pct}%"></span></div>
 	    </div>`;
@@ -1293,7 +1551,7 @@ function mdStrip(s){ return (s||"").replace(/\*\*|`|^#{1,6} /g, ""); }
 	    class="uv-bell ${rule ? "on" : ""}" data-scope="${attrEsc(scope)}"
 	    data-target="${attrEsc(target)}" data-label="${attrEsc(label)}"
 	    title="${tf("Configurar alerta de presupuesto de tokens por día", "Configure a daily token budget alert")}">
-	    🔔 ${rule ? fmtTokens(rule.threshold).replace(" tok", "") : tf("alerta", "alert")}</button>`;
+	    ${svg("bell",12)} ${rule ? fmtTokens(rule.threshold).replace(" tok", "") : tf("alerta", "alert")}</button>`;
 	  };
 	  $("#usage-projects").innerHTML = top.length ? top.map(pr => {
 	    const live = (pr.panes || []).filter(p => String(p.tmux_pane || "").startsWith("%"));
@@ -1413,7 +1671,7 @@ function mdStrip(s){ return (s||"").replace(/\*\*|`|^#{1,6} /g, ""); }
 	      ? `${Number(r.value).toFixed(0)}% / ${Number(r.threshold)}%`
 	      : `${fmtTokens(r.value)} / ${fmtTokens(r.threshold)} ${tf("hoy", "today")}`;
 	    return `<div class="rule-row ${pct >= 100 ? "over" : ""}">
-	      <b>🔔 ${mdEsc(r.label || r.target)}</b>
+	      <b>${svg("bell",12)} ${mdEsc(r.label || r.target)}</b>
 	      <span>${mdEsc(scopeTxt)} · ${valTxt}</span>
 	      <div class="usage-bar"><span style="width:${pct}%"></span></div>
 	      <button type="button" class="rule-del" data-id="${attrEsc(r.id)}" title="${tf("Quitar", "Remove")}">×</button>
@@ -1481,6 +1739,7 @@ function cardEl(it){
       </div>
       <div class="ops">
         ${["", "claude", "codex", "opencode"].includes(it.agent || "") ? modelMenuEl(it.session, it.pane || "", it.agent || "claude", "") : ""}
+        <button type="button" class="ren" title="${t('Renombrar pestaña')}">${svg("pencil",14)}</button>
         <button type="button" class="cp" title="${t('Copiar la respuesta completa de Claude')}">${t("Copiar")}</button>
         <button type="button" class="xtxt" title="${t('Guardar la respuesta como .txt en Descargas')}">TXT</button>
         <button type="button" class="xpdf" title="${t('Guardar la respuesta como PDF (markdown renderizado) en Descargas')}">PDF</button>
@@ -1498,8 +1757,65 @@ function cardEl(it){
   return el;
 }
 
+// Persistencia de labels custom: sobrevive reload del tablero. cc-app los
+// guarda aparte en TABS_FILE (para su propia UI de pestañas).
+const LABEL_KEY = "cc-dash-labels";
+function loadLabels(){ try{ return JSON.parse(localStorage.getItem(LABEL_KEY) || "{}"); }catch(_){ return {}; } }
+function saveLabel(sess, label){
+  const all = loadLabels();
+  if(label) all[sess] = label; else delete all[sess];
+  try{ localStorage.setItem(LABEL_KEY, JSON.stringify(all)); }catch(_){}
+}
+function applyCustomLabel(el, it){
+  const saved = loadLabels()[it.session];
+  if(!saved) return;
+  const t = el.querySelector("h2, .name");
+  if(t) t.textContent = saved;
+}
+function wireRename(el, it){
+  const btn = el.querySelector(".ren");
+  if(!btn) return;
+  const target = el.querySelector("h2, .name");
+  if(!target) return;
+  btn.addEventListener("click", e=>{
+    e.stopPropagation();
+    if(target.querySelector("input")) return;   // ya editando
+    const cur = target.textContent || it.project || "";
+    const input = document.createElement("input");
+    input.type = "text"; input.value = cur;
+    input.className = "ren-input";
+    input.style.cssText = "font:inherit;color:var(--text);background:var(--bg);border:1px solid var(--brand);border-radius:5px;padding:1px 6px;min-width:120px;max-width:100%";
+    target.textContent = "";
+    target.appendChild(input);
+    input.select();
+    input.focus();
+    const finish = (save)=>{
+      const v = input.value.trim();
+      if(save && v && v !== cur){
+        target.textContent = v;
+        saveLabel(it.session, v);
+        if(inApp()){
+          try{ window.webkit.messageHandlers.centro.postMessage(
+            JSON.stringify({type:"rename", session: it.session, label: v})); }catch(_){}
+        }
+        toast(tf(`Renombrada a "${v}"`, `Renamed to "${v}"`));
+      } else {
+        target.textContent = cur;
+      }
+    };
+    input.addEventListener("keydown", ev=>{
+      if(ev.key === "Enter"){ ev.preventDefault(); finish(true); }
+      else if(ev.key === "Escape"){ ev.preventDefault(); finish(false); }
+    });
+    input.addEventListener("blur", ()=> finish(true));
+    input.addEventListener("click", ev=> ev.stopPropagation());
+  });
+}
+
 function wireActions(el, it){
   favBtn(it, el);
+  applyCustomLabel(el, it);
+  wireRename(el, it);
   const cp = el.querySelector(".cp");
   if(cp) cp.addEventListener("click", async e=>{
     e.stopPropagation();
@@ -1969,19 +2285,21 @@ function rowEl(it){
     <span class="rprev"></span>
     <span class="ago"></span>
     <span class="acts">
-      <button type="button" class="cp" title="${t('Copiar la respuesta completa de Claude')}">⧉</button>
-      <button type="button" class="term hidden" title="${t('Abrir la terminal REAL de esta sesion')}">⌨</button>
+      <button type="button" class="cp" title="${t('Copiar la respuesta completa de Claude')}">${svg("copySmall",14)}</button>
+      <button type="button" class="ren" title="${t('Renombrar pestaña')}">${svg("pencil",14)}</button>
+      <button type="button" class="term hidden" title="${t('Abrir la terminal REAL de esta sesion')}">${svg("terminal",14)}</button>
       <button type="button" class="go">${t("Abrir")}</button>
       <button type="button" class="up hidden">${t("Revivir")}</button>
-      <button type="button" class="kill" title="${t('Matar la sesion tmux (y lo que corra dentro)')}">✕</button>
+      <button type="button" class="kill" title="${t('Matar la sesion tmux (y lo que corra dentro)')}">${svg("x",14)}</button>
     </span>`;
   el.querySelector(".name").textContent = it.project;
   const kill = el.querySelector(".kill");
+  const killIcon = kill.innerHTML;   // guardamos el SVG del ícono
   kill.addEventListener("click", async e=>{
     e.stopPropagation();
     if(!kill.classList.contains("arm")){
       kill.classList.add("arm"); kill.textContent = tf("¿Matar?", "Kill?");
-      setTimeout(()=>{ kill.classList.remove("arm"); kill.textContent = "✕"; }, 3000);
+      setTimeout(()=>{ kill.classList.remove("arm"); kill.innerHTML = killIcon; }, 3000);
       return;
     }
     try{ await api("/kill", {session: el.dataset.session});
@@ -2351,16 +2669,54 @@ function applyQ(){
 }
 $("#q").addEventListener("input", e=>{ S.q = e.target.value; applyQ(); });
 
+// ---------- iconos ----------
+// SVG monolínea estilo Lucide/Termius, hereda color con currentColor.
+const ICON = {
+  bell:      '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></svg>',
+  volumeOn:  '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M15.5 8.5a5 5 0 0 1 0 7"/><path d="M19 5a10 10 0 0 1 0 14"/></svg>',
+  volumeOff: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><line x1="22" y1="9" x2="16" y2="15"/><line x1="16" y1="9" x2="22" y2="15"/></svg>',
+  moon:      '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg>',
+  sun:       '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>',
+  flame:     '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.4-.8-2-1.5-3-1.6-2.5.3-6 1.5-6.5 0 3 2 4 3 5.5s2.5 3 2.5 5.5a7 7 0 1 1-14 0c0-2.6 1.5-4.5 3-5.5"/></svg>',
+  sprout:    '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 20h10"/><path d="M10 20c5.5-2.5 5.5-6.5 3-10-1-1.4-2-2.6-3-4 2 .5 3 1.5 4 3 3 4 3 8-1 10"/><path d="M8 14c-.5-3.4 0-6.7 1.5-10"/></svg>',
+  search:    '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>',
+  copy:      '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>',
+  layers:    '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2 2 7l10 5 10-5-10-5z"/><path d="m2 17 10 5 10-5"/><path d="m2 12 10 5 10-5"/></svg>',
+  plus:      '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg>',
+  help:      '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><path d="M12 17h.01"/></svg>',
+  close:     '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18M6 6l12 12"/></svg>',
+  refresh:   '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 0 1 15.7-6.1L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-15.7 6.1L3 16"/><path d="M3 21v-5h5"/></svg>',
+  pencil:    '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.85 2.85 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/><path d="m15 5 4 4"/></svg>',
+  copySmall: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>',
+  terminal:  '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m4 7 5 5-5 5"/><path d="M12 19h8"/></svg>',
+  x:         '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18M6 6l12 12"/></svg>',
+};
+const svg = (name, sz=14) =>
+  ICON[name] ? `<span class="ico" style="width:${sz}px;height:${sz}px;display:inline-flex;align-items:center;justify-content:center;vertical-align:-2px">${ICON[name]}</span>` : "";
+
+// Resuelve elementos declarados en HTML con `data-icon="name"` insertando el SVG.
+function hydrateIcons(root=document){
+  root.querySelectorAll("[data-icon]").forEach(el=>{
+    const name = el.dataset.icon;
+    if(!ICON[name]) return;
+    const sz = parseInt(el.dataset.size || "14", 10);
+    el.innerHTML = ICON[name];
+    if(!el.style.width)  el.style.width  = sz + "px";
+    if(!el.style.height) el.style.height = sz + "px";
+  });
+}
+document.addEventListener("DOMContentLoaded", ()=>hydrateIcons());
+
 // ---------- tema ----------
-const THEME_SEQ = ["noche", "dia", "calido"];
-const THEME_ICON = {noche:"🌙", dia:"☀️", calido:"🕯️"};
+const THEME_SEQ = ["noche", "dia", "calido", "termius"];
+const THEME_ICON = {noche:"moon", dia:"sun", calido:"flame", termius:"sprout"};
 let curTheme = "noche";
 function applyTheme(name, tellApp){
   if(!THEME_SEQ.includes(name)) name = "noche";
   curTheme = name;
   if(name === "noche") delete document.documentElement.dataset.theme;
   else document.documentElement.dataset.theme = name;
-  $("#btn-theme").textContent = THEME_ICON[name];
+  $("#btn-theme").innerHTML = svg(THEME_ICON[name], 15);
   if(tellApp && inApp())
     window.webkit.messageHandlers.centro.postMessage(JSON.stringify({theme: name}));
 }
@@ -2368,8 +2724,9 @@ $("#btn-theme").addEventListener("click", async ()=>{
   const next = THEME_SEQ[(THEME_SEQ.indexOf(curTheme) + 1) % THEME_SEQ.length];
   applyTheme(next, true);
   try{ await api("/prefs-set", {theme: next}); }catch(e){}
-  toast(tf(`Tema: ${next === "dia" ? "Día" : next === "calido" ? "Cálido" : "Noche"}`,
-           `Theme: ${next === "dia" ? "Day" : next === "calido" ? "Warm" : "Night"}`));
+  const label = ({noche:"Noche",dia:"Día",calido:"Cálido",termius:"Termius"}[next]||next);
+  const labelEn = ({noche:"Night",dia:"Day",calido:"Warm",termius:"Termius"}[next]||next);
+  toast(tf(`Tema: ${label}`, `Theme: ${labelEn}`));
 });
 
 // ---------- favoritos ----------
@@ -2378,8 +2735,128 @@ async function loadPrefs(){
     const p = await api("/prefs");
     S.favs = new Set(p.favorites || []);
     applyTheme(p.theme || "noche", true);   // sincroniza tambien la app al abrir
+    hydrateTerminalPrefs(p);
   }catch(e){}
 }
+
+// ---------- prefs de terminal (fuente/cursor/padding/opacity/ligas) ----------
+function hydrateTerminalPrefs(p){
+  const ff = $("#pf-font-family"); if(ff) ff.value = p.font_family || "JetBrainsMono Nerd Font Mono";
+  const fs = $("#pf-font-size"), fsv = $("#pf-font-size-v");
+  if(fs){ fs.value = p.font_size || 13; if(fsv) fsv.textContent = fs.value; }
+  const pd = $("#pf-padding"), pdv = $("#pf-padding-v");
+  if(pd){ pd.value = p.terminal_padding ?? 8; if(pdv) pdv.textContent = pd.value; }
+  const op = $("#pf-opacity"), opv = $("#pf-opacity-v");
+  if(op){ op.value = p.terminal_opacity ?? 100; if(opv) opv.textContent = op.value; }
+  document.querySelectorAll(".cur-shape").forEach(b=>{
+    b.classList.toggle("on", (p.cursor_shape || "block") === b.dataset.shape);
+  });
+  const cb = $("#sw-cursor-blink");
+  if(cb) cb.classList.toggle("on", p.cursor_blink !== false);
+  const lg = $("#sw-ligatures");
+  if(lg) lg.classList.toggle("on", p.ligatures !== false);
+}
+async function setPref(patch, ok){
+  try{ await api("/prefs-set", patch); if(ok) toast(ok); }
+  catch(e){ toast(e.message, true); }
+}
+// ---------- tabs internos de modales ----------
+function activateMtab(scope, name){
+  scope.querySelectorAll(".mtab").forEach(b=>b.classList.toggle("active", b.dataset.mtab === name));
+  scope.querySelectorAll(".mtab-pane").forEach(p=>p.classList.toggle("active", p.dataset.mpane === name));
+}
+function wireMtabs(root=document){
+  root.querySelectorAll(".mtab").forEach(b=>{
+    if(b._wired) return;
+    b._wired = true;
+    b.addEventListener("click", e=>{
+      e.stopPropagation();
+      const scope = b.closest(".modal-panel") || document;
+      activateMtab(scope, b.dataset.mtab);
+    });
+  });
+}
+document.addEventListener("DOMContentLoaded", ()=>wireMtabs());
+// Por si el DOM ya se cargó (script embebido tarde), engancha inmediato.
+if(document.readyState !== "loading") wireMtabs();
+
+// ---------- solid range fill (color hasta el thumb) ----------
+function updateRangeFill(input){
+  const min = +input.min || 0, max = +input.max || 100;
+  const pct = ((+input.value - min) / (max - min)) * 100;
+  input.style.setProperty("--fill", pct + "%");
+}
+function refreshAllRangeFills(){
+  document.querySelectorAll('input[type=range].solid').forEach(updateRangeFill);
+}
+function wireRangeFills(){
+  document.querySelectorAll('input[type=range].solid').forEach(r=>{
+    if(r._wired) return;
+    r._wired = true;
+    updateRangeFill(r);
+    r.addEventListener("input", ()=>updateRangeFill(r));
+    r.addEventListener("change", ()=>updateRangeFill(r));
+  });
+}
+// Cada 250ms re-sincronizamos por si algún JS cambia .value programáticamente
+// (loadConf, hydrateTerminalPrefs, etc.) sin disparar 'input'/'change'.
+document.addEventListener("DOMContentLoaded", ()=>{
+  wireRangeFills();
+  setInterval(refreshAllRangeFills, 250);
+});
+if(document.readyState !== "loading"){ wireRangeFills(); setInterval(refreshAllRangeFills, 250); }
+
+// ---------- preview de tipografía (Settings > Terminal) ----------
+function updateFontPreview(){
+  const fam = $("#pf-font-family")?.value || "JetBrainsMono Nerd Font Mono";
+  const size = $("#pf-font-size")?.value || 13;
+  const p = $("#font-preview");
+  if(p){
+    p.style.fontFamily = `"${fam}", "JetBrains Mono", monospace`;
+    p.style.fontSize = size + "px";
+  }
+}
+
+document.addEventListener("DOMContentLoaded", ()=>{
+  updateFontPreview();
+  $("#pf-font-family")?.addEventListener("change", e=>{
+    setPref({font_family: e.target.value}, tf("Tipografía guardada", "Font saved"));
+    updateFontPreview();
+  });
+  $("#pf-font-size")?.addEventListener("input", e=>{
+    $("#pf-font-size-v").textContent = e.target.value;
+    updateFontPreview();
+  });
+  $("#pf-font-size")?.addEventListener("change", e=>
+    setPref({font_size: +e.target.value}));
+  $("#pf-padding")?.addEventListener("input", e=>{
+    $("#pf-padding-v").textContent = e.target.value;
+  });
+  $("#pf-padding")?.addEventListener("change", e=>
+    setPref({terminal_padding: +e.target.value}));
+  $("#pf-opacity")?.addEventListener("input", e=>{
+    $("#pf-opacity-v").textContent = e.target.value;
+  });
+  $("#pf-opacity")?.addEventListener("change", e=>
+    setPref({terminal_opacity: +e.target.value}));
+  document.querySelectorAll(".cur-shape").forEach(b=>{
+    b.addEventListener("click", ()=>{
+      document.querySelectorAll(".cur-shape").forEach(x=>x.classList.remove("on"));
+      b.classList.add("on");
+      setPref({cursor_shape: b.dataset.shape});
+    });
+  });
+  $("#sw-cursor-blink")?.addEventListener("click", e=>{
+    const on = !e.currentTarget.classList.contains("on");
+    e.currentTarget.classList.toggle("on", on);
+    setPref({cursor_blink: on});
+  });
+  $("#sw-ligatures")?.addEventListener("click", e=>{
+    const on = !e.currentTarget.classList.contains("on");
+    e.currentTarget.classList.toggle("on", on);
+    setPref({ligatures: on});
+  });
+});
 
 // ---------- remoto ----------
 let REMOTE = null;
@@ -2610,7 +3087,8 @@ async function loadConf(){
     $("#vol").value = +conf.VOLUME || 60;
     $("#vol-top").value = +conf.VOLUME || 60;
     const sndOn = conf.SOUND_ENABLED !== "0";
-    $("#btn-mute").textContent = sndOn ? "🔊" : "🔇";
+    $("#btn-mute").innerHTML = svg(sndOn ? "volumeOn" : "volumeOff", 15);
+    $("#btn-mute").dataset.on = sndOn ? "1" : "0";
     $("#btn-mute").classList.toggle("on", sndOn);
     document.querySelectorAll(".lang-btn").forEach(b=>
       b.classList.toggle("on", (conf.CC_LANG || "auto") === b.dataset.lang));
@@ -2622,7 +3100,7 @@ async function loadConf(){
 // Control de sonido SIEMPRE visible en la barra: icono = silenciar/activar,
 // slider = volumen global (el mismo de Ajustes; ambos viven en cc-notify.conf)
 $("#btn-mute").addEventListener("click", async ()=>{
-  const on = $("#btn-mute").textContent === "🔊";
+  const on = $("#btn-mute").dataset.on === "1";
   try{
     await api("/conf-set", {key:"SOUND_ENABLED", value: on ? "0" : "1"});
     toast(tf(on ? "Sonido silenciado" : "Sonido activado", on ? "Sound muted" : "Sound on"));
@@ -2663,7 +3141,7 @@ document.querySelectorAll(".cfg").forEach(b=>{
 	  $("#remote").classList.remove("open");
 	  tickUsage(true);
 	});
-	$("#usage-close").addEventListener("click", ()=> $("#usage").classList.remove("open"));
+	// (usage-close removido: el modal ya trae su X)
 	$("#usage-refresh").addEventListener("click", async ()=>{
 	  try{
 	    const r = await api("/usage/refresh", {});
@@ -2674,8 +3152,28 @@ document.querySelectorAll(".cfg").forEach(b=>{
 	document.addEventListener("click", e=>{
 	  for(const [id, trg] of [["#settings","btn-settings"],["#servers","ssh-manage"],["#remote","btn-remote"],["#usage","btn-usage"]]){
 	    const s = $(id);
-	    if(s.classList.contains("open") && !s.contains(e.target) && e.target.id !== trg)
+	    // Para .drawer: click fuera cierra. Para .modal el fondo (overlay) es
+	    // el propio elemento — se maneja abajo en su listener directo.
+	    if(!s.classList.contains("modal") && s.classList.contains("open")
+	       && !s.contains(e.target) && e.target.id !== trg)
 	      s.classList.remove("open");
+	  }
+	});
+	// Modales: click en el overlay (el propio .modal, no dentro del panel) o en
+	// botones con [data-close] cierran el modal correspondiente. ESC también.
+	document.querySelectorAll(".modal").forEach(m=>{
+	  m.addEventListener("click", e=>{ if(e.target === m) m.classList.remove("open"); });
+	});
+	document.addEventListener("click", e=>{
+	  const btn = e.target.closest("[data-close]");
+	  if(btn){
+	    const t = document.getElementById(btn.dataset.close);
+	    if(t) t.classList.remove("open");
+	  }
+	});
+	document.addEventListener("keydown", e=>{
+	  if(e.key === "Escape"){
+	    document.querySelectorAll(".modal.open").forEach(m=>m.classList.remove("open"));
 	  }
 	});
 // Volumen GLOBAL: vive en cc-notify.conf; voz, chime y "Probar" lo respetan

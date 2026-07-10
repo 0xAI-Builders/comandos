@@ -24,9 +24,15 @@ try:
 except ValueError:
     gi.require_version("WebKit2", "4.0")
 gi.require_version("Vte", "2.91")
-from gi.repository import Gtk, WebKit2, Vte, GLib, Gdk, Gio, Pango
+from gi.repository import Gtk, WebKit2, Vte, GLib, Gdk, GdkPixbuf, Gio, Pango
 
 URL = "http://127.0.0.1:4777"
+# Raíz del repo desde este binario. Cuando cc-app se instala como symlink en
+# ~/.local/bin, os.path.realpath resuelve al archivo real dentro del repo.
+CC_REPO = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
+TERM_HTML = os.path.join(CC_REPO, "dash", "term.html")
+# Familia unificada de iconos — los mismos SVG Lucide que usa el dashboard.
+_ICONS_DIR = os.path.join(CC_REPO, "dash", "icons")
 PALETTE = ["#232B3E", "#FF6B6B", "#2EE59D", "#FFAE1A", "#7AA5FF", "#B49CFF",
            "#4DD0E1", "#EAF0FB", "#5E6980", "#FF8F8F", "#6FF0BC", "#FFC55C",
            "#A3C0FF", "#CDBBFF", "#86E3F0", "#FFFFFF"]
@@ -48,8 +54,15 @@ THEMES = {
     "calido": dict(fg="#F2E5D0", bg="#161009", cursor="#FFB454", pal=PAL_CALIDO,
                    bar="#1D150D", dim="#BCA98C", text="#F2E5D0", brand="#E0A458",
                    line="#36291A", line2="#4A3823", faint="#8A7A5F"),
+    # Termius: dark blue con acento verde. Chrome ligeramente más oscuro que
+    # el bg del terminal para dar profundidad al layout de paneles.
+    "termius": dict(fg="#D6E0EA", bg="#0E1620", cursor="#FFAE1A", pal=PALETTE,
+                    bar="#0A121B", dim="#8FA0B4", text="#D6E0EA", brand="#4CE07A",
+                    line="#1C2733", line2="#25384F", faint="#5C6B80"),
 }
-FONT = "JetBrainsMono Nerd Font 13"
+FONT_FAMILY = "JetBrainsMono Nerd Font Mono,JetBrainsMono Nerd Font,JetBrainsMono NF,JetBrains Mono,Cascadia Code,Fira Code,DejaVu Sans Mono,Monospace"
+FONT_SIZE = 13
+FONT = f"{FONT_FAMILY} {FONT_SIZE}"
 
 
 def _ui_lang():
@@ -74,7 +87,7 @@ APP_CSS = """
 notebook > header { background: @BAR@; border: none; box-shadow: none; }
 notebook > header > tabs > tab {
   background: transparent; color: @DIM@; padding: 5px 12px; margin: 0;
-  font-family: 'JetBrainsMono Nerd Font', monospace; font-size: 11px;
+  font-family: 'JetBrainsMono Nerd Font Mono', 'JetBrainsMono Nerd Font', 'JetBrainsMono NF', 'JetBrains Mono', 'Cascadia Code', 'Fira Code', 'DejaVu Sans Mono', monospace; font-size: 11px;
   border: none; box-shadow: none;
 }
 notebook > header > tabs > tab:checked {
@@ -97,24 +110,26 @@ notebook stack { background: @BG@; }
 .tabplus { color: @FAINT@; padding: 2px 10px; border: none; background: none;
   font-family: monospace; font-size: 14px; }
 .tabplus:hover { color: @BRAND@; }
-scrollbar { background: transparent; }
-scrollbar trough { background: transparent; }
-scrollbar slider { background: @LINE2@; border-radius: 8px; min-width: 7px; }
-scrollbar slider:hover { background: @BRAND@; }
+scrollbar { background: transparent; border: 0; box-shadow: none; }
+scrollbar trough { background: transparent; border: 0; min-width: 5px; min-height: 5px; }
+scrollbar slider { background: @LINE@; border: 0; border-radius: 6px;
+  min-width: 4px; min-height: 32px; margin: 0; }
+scrollbar slider:hover { background: @LINE2@; }
+scrollbar button { min-width: 0; min-height: 0; background: transparent; border: 0; }
 paned separator { background: @LINE@; min-width: 2px; }
 .helpwin { background: @BAR@; }
 .switcher { background: @BAR@; border: 1px solid @LINE2@; border-radius: 10px; }
 .switcher entry { background: @BG@; color: @TEXT@; border: 1px solid @LINE2@;
   border-radius: 8px; padding: 8px 12px; caret-color: #FFAE1A;
-  font-family: 'JetBrainsMono Nerd Font', monospace; font-size: 13px; }
+  font-family: 'JetBrainsMono Nerd Font Mono', 'JetBrainsMono Nerd Font', 'JetBrainsMono NF', 'JetBrains Mono', 'Cascadia Code', 'Fira Code', 'DejaVu Sans Mono', monospace; font-size: 13px; }
 .switcher list { background: transparent; }
 .switcher row { border-radius: 7px; color: @DIM@; }
 .switcher row:selected { background: @LINE@; color: @TEXT@; }
 .sw-meta { color: @FAINT@; font-size: 10.5px;
-  font-family: 'JetBrainsMono Nerd Font', monospace; }
+  font-family: 'JetBrainsMono Nerd Font Mono', 'JetBrainsMono Nerd Font', 'JetBrainsMono NF', 'JetBrains Mono', 'Cascadia Code', 'Fira Code', 'DejaVu Sans Mono', monospace; }
 .help-h { color: @TEXT@; }
-.help-sec { color: @BRAND@; font-family: 'JetBrainsMono Nerd Font', monospace; font-size: 11px; }
-.help-key { color: #FFAE1A; font-family: 'JetBrainsMono Nerd Font', monospace; font-size: 12px; }
+.help-sec { color: @BRAND@; font-family: 'JetBrainsMono Nerd Font Mono', 'JetBrainsMono Nerd Font', 'JetBrainsMono NF', 'JetBrains Mono', 'Cascadia Code', 'Fira Code', 'DejaVu Sans Mono', monospace; font-size: 11px; }
+.help-key { color: #FFAE1A; font-family: 'JetBrainsMono Nerd Font Mono', 'JetBrainsMono Nerd Font', 'JetBrainsMono NF', 'JetBrains Mono', 'Cascadia Code', 'Fira Code', 'DejaVu Sans Mono', monospace; font-size: 12px; }
 .help-desc { color: @DIM@; font-size: 12.5px; }
 .help-hint { color: @FAINT@; }
 """
@@ -129,15 +144,34 @@ def theme_css(t):
     return s
 
 
-def fetch_pref_theme():
+def fetch_prefs():
+    """Lee TODAS las prefs de cc-dash. Blocking pero con timeout corto — solo
+    se usa al arrancar. Fallback a defaults si cc-dash aún no responde."""
     try:
         with urllib.request.urlopen("http://127.0.0.1:4777/prefs", timeout=2) as r:
-            return json.loads(r.read().decode()).get("theme", "noche")
+            return json.loads(r.read().decode())
     except Exception:
-        return "noche"
+        return {}
 
 
-THEME = THEMES.get(fetch_pref_theme(), THEMES["noche"])
+def fetch_pref_theme():
+    return (fetch_prefs().get("theme") or "noche")
+
+
+PREFS = fetch_prefs()
+THEME = THEMES.get(PREFS.get("theme", "noche"), THEMES["noche"])
+
+# Overrides de terminal desde /prefs — con defaults sensatos si cc-dash aún no
+# guardó el schema nuevo. Ver DESIGN.md §7.
+_PF_FAMILY = (PREFS.get("font_family") or "").strip() or "JetBrainsMono Nerd Font Mono"
+_PF_SIZE = int(PREFS.get("font_size") or FONT_SIZE)
+FONT_FAMILY = f"{_PF_FAMILY},JetBrainsMono Nerd Font,JetBrains Mono,DejaVu Sans Mono,Monospace"
+FONT_SIZE = _PF_SIZE
+FONT = f"{FONT_FAMILY} {FONT_SIZE}"
+TERM_PADDING = max(0, min(40, int(PREFS.get("terminal_padding", 8))))
+TERM_OPACITY = max(30, min(100, int(PREFS.get("terminal_opacity", 100)))) / 100.0
+_CURSOR_SHAPE = (PREFS.get("cursor_shape") or "block")
+_CURSOR_BLINK = bool(PREFS.get("cursor_blink", True))
 
 
 def rgba(h):
@@ -242,11 +276,30 @@ def ssh_host_from_session(sess):
     return None
 
 
+_CURSOR_SHAPE_MAP = {
+    "block":     Vte.CursorShape.BLOCK,
+    "ibeam":     Vte.CursorShape.IBEAM,
+    "underline": Vte.CursorShape.UNDERLINE,
+}
+
+
+def _bg_rgba():
+    """Background del theme actual con la opacidad configurada. Requiere que
+    la ventana tenga visual RGBA (se setea en el bootstrap con set_visual)."""
+    c = Gdk.RGBA()
+    c.parse(THEME["bg"])
+    c.alpha = TERM_OPACITY
+    return c
+
+
 def make_term(argv_sh):
     term = Vte.Terminal()
     term.set_font(Pango.FontDescription(FONT))
-    term.set_colors(rgba(THEME["fg"]), rgba(THEME["bg"]), [rgba(p) for p in THEME["pal"]])
+    term.set_colors(rgba(THEME["fg"]), _bg_rgba(), [rgba(p) for p in THEME["pal"]])
     term.set_color_cursor(rgba(THEME["cursor"]))
+    term.set_cursor_shape(_CURSOR_SHAPE_MAP.get(_CURSOR_SHAPE, Vte.CursorShape.BLOCK))
+    term.set_cursor_blink_mode(
+        Vte.CursorBlinkMode.ON if _CURSOR_BLINK else Vte.CursorBlinkMode.OFF)
     term.set_scrollback_lines(10000)
     term.set_audible_bell(False)
     term.connect("button-press-event", on_term_button)
@@ -263,9 +316,9 @@ def make_term(argv_sh):
             pass
     except Exception:
         pass
-    # Padding comodo alrededor del texto
-    term.set_margin_start(10); term.set_margin_end(4)
-    term.set_margin_top(8); term.set_margin_bottom(6)
+    # Padding alrededor del texto (configurable en Ajustes > Terminal).
+    term.set_margin_start(TERM_PADDING + 2); term.set_margin_end(max(0, TERM_PADDING - 4))
+    term.set_margin_top(TERM_PADDING); term.set_margin_bottom(max(0, TERM_PADDING - 2))
 
     def spawn(*_):
         try:
@@ -305,6 +358,7 @@ def feed(term, seq):
 
 def new_session_dialog(*_):
     dlg = Gtk.Dialog(title="Nueva sesion" if ES else "New session", transient_for=win)
+    dlg.set_decorated(False)   # sin min/max/close del WM; los botones están adentro
     dlg.add_buttons("Cancelar" if ES else "Cancel", Gtk.ResponseType.CANCEL,
                     "Abrir" if ES else "Open", Gtk.ResponseType.OK)
     box = dlg.get_content_area()
@@ -626,6 +680,9 @@ def on_term_button(term, event):
          sensitive=bool(pane_id) and npanes > 1)
     menu.append(Gtk.SeparatorMenuItem())
     item("Nueva terminal aqui       Ctrl+T" if ES else "New terminal here         Ctrl+T", new_local_tab)
+    item("Terminal experimental (xterm.js)  Ctrl+Shift+T"
+         if ES else "Experimental terminal (xterm.js)  Ctrl+Shift+T",
+         lambda: open_xterm_tab("local"))
     item("Abrir proyecto..." if ES else "Open project...", new_session_dialog)
     sub = Gtk.Menu()
     r = tmuxc("list-sessions", "-F", "#{session_name}")
@@ -650,6 +707,155 @@ win = Gtk.Window(title="ComandOS")
 win.set_wmclass("comandos", "comandos")
 win.set_default_size(1600, 880)
 win.set_icon_name("centro-claude")
+
+# HeaderBar custom — reemplaza el titlebar del WM. Los botones min/max/close
+# los dibujamos NOSOTROS con el mismo helper de icon-button que el resto de
+# los controles, así todo el header comparte tamaño/padding/hover (lo del WM
+# se ve inconsistente porque usa un widget aparte, `titlebutton`).
+_headerbar = Gtk.HeaderBar()
+_headerbar.set_show_close_button(False)
+_headerbar.get_style_context().add_class("cc-headerbar")
+# Marca ComandOS a la izquierda del headerbar.
+_hb_brand = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
+_hb_dot = Gtk.Label()
+_hb_dot.set_markup(f'<span size="10500" foreground="{THEME["brand"]}">●</span>')
+_hb_brandlbl = Gtk.Label(label="COMANDOS")
+_hb_brandlbl.get_style_context().add_class("cc-brand")
+_hb_brand.pack_start(_hb_dot, False, False, 0)
+_hb_brand.pack_start(_hb_brandlbl, False, False, 0)
+_headerbar.pack_start(_hb_brand)
+# set_decorated(False) = sin decoration del WM = Windows DWM no dibuja sombra
+# externa. Trade-off: perdemos el drag del headerbar automático, así que lo
+# cablamos a mano abajo (button-press → begin_move_drag).
+win.set_decorated(False)
+# Ya NO hacemos set_titlebar — el headerbar se agrega como widget del layout
+# principal en el bootstrap del content (junto con `paned`).
+
+# CSS del headerbar — mono tracked wordmark + fondo del theme para que empate
+# con el resto de la app (evita el gradient default del theme del sistema).
+_HB_CSS = Gtk.CssProvider()
+
+def _build_hb_css():
+    """Genera el CSS de la app usando el theme actual. Se llama al arrancar y
+    de nuevo desde apply_theme() cuando el user cambia noche/dia/calido/termius,
+    así el headerbar, menús, paned separator, etc. cambian con el tema."""
+    return (
+    b"window,window.background,window.solid-csd,window.csd{"
+    b" background:" + THEME["bg"].encode() + b";"
+    b" border-radius:10px;"
+    b" border:0;box-shadow:none;outline:none;"
+    b" margin:0;padding:0;"
+    b"}"
+    b"window:backdrop,window.background:backdrop{"
+    b" box-shadow:none;border:0;"
+    b"}"
+    b"window decoration,decoration{"
+    b" background:transparent;background-image:none;"
+    b" box-shadow:none;border:0;outline:none;"
+    b" margin:0;padding:0;border-radius:10px;"
+    b"}"
+    # El content root (el hijo directo de la window bajo la headerbar) también
+    # necesita radius abajo, si no las esquinas inferiores quedan cuadradas.
+    b"window.background > box,window.background > paned,"
+    b"window.background > notebook{"
+    b" border-bottom-left-radius:10px;border-bottom-right-radius:10px;"
+    b"}"
+    b"paned{background:" + THEME["bg"].encode() + b";}"
+    # Separator del Paned: mismo color de línea del theme y bien delgado.
+    # Reglas específicas para vertical/horizontal + backdrop porque el default
+    # de Adwaita lo dibuja en gris claro con margen (por eso se veía blanco).
+    b"paned separator,paned > separator,"
+    b"paned separator:backdrop,paned > separator:backdrop{"
+    b" background-color:" + THEME["line"].encode() + b";"
+    b" background-image:none;"
+    b" border:0;box-shadow:none;"
+    b" min-width:1px;min-height:1px;"
+    b" margin:0;padding:0;"
+    b"}"
+    b"headerbar.cc-headerbar{"
+    b" background:" + THEME["bar"].encode() + b";"
+    b" border-bottom:1px solid " + THEME["line"].encode() + b";"
+    b" border-top-left-radius:10px;border-top-right-radius:10px;"
+    b" min-height:34px;padding:0 8px;box-shadow:none;"
+    b"}"
+    b"headerbar.cc-headerbar label.cc-brand{"
+    b" font-family:'JetBrainsMono Nerd Font Mono',monospace;"
+    b" font-weight:800;font-size:11.5px;letter-spacing:.18em;"
+    b" color:" + THEME["text"].encode() + b";"
+    b"}"
+    # Botón base — SIN border, SIN box-shadow (Adwaita mete un halo en focus
+    # que se veía como contorno raro alrededor del ícono).
+    b"headerbar.cc-headerbar button,"
+    b"headerbar.cc-headerbar button.image-button{"
+    b" background:none;background-image:none;border:0;box-shadow:none;"
+    b" outline:none;text-shadow:none;-gtk-icon-shadow:none;"
+    b" color:" + THEME["dim"].encode() + b";"
+    b" min-height:24px;min-width:24px;padding:3px 7px;margin:0 1px;"
+    b" border-radius:5px;"
+    b" transition:background-color 90ms ease, color 90ms ease;"
+    b"}"
+    b"headerbar.cc-headerbar button:hover{"
+    b" color:" + THEME["text"].encode() + b";"
+    b" background:alpha(currentColor, 0.10);"
+    b"}"
+    b"headerbar.cc-headerbar button:active,"
+    b"headerbar.cc-headerbar button:checked{"
+    b" background:alpha(currentColor, 0.18);"
+    b" box-shadow:none;"
+    b"}"
+    b"headerbar.cc-headerbar button:focus,"
+    b"headerbar.cc-headerbar button:focus:hover{"
+    b" outline:none;box-shadow:none;"
+    b"}"
+    # Cerrar: tono rojo suave en hover; nunca halo.
+    b"headerbar.cc-headerbar button.cc-close-btn:hover{"
+    b" color:#FFFFFF;"
+    b" background:alpha(#E82D3C, 0.75);"
+    b"}"
+    b"headerbar.cc-headerbar button.cc-close-btn:active{"
+    b" background:#C42030;"
+    b"}"
+    # ---- Popups (Gtk.Menu) ----
+    # Por default Adwaita los pinta blanco; los llevamos al look del tema.
+    b"menu,menu.background,.menu,.context-menu{"
+    b" background:" + THEME["bar"].encode() + b";"
+    b" background-image:none;"
+    b" border:1px solid " + THEME["line"].encode() + b";"
+    b" border-radius:8px;"
+    b" padding:5px;"
+    b" box-shadow:0 8px 24px rgba(0,0,0,.35);"
+    b" color:" + THEME["text"].encode() + b";"
+    b" font-family:'JetBrainsMono Nerd Font Mono',monospace;"
+    b" font-size:12px;"
+    b"}"
+    b"menu menuitem,.menu menuitem,.context-menu menuitem{"
+    b" background:transparent;background-image:none;"
+    b" color:" + THEME["dim"].encode() + b";"
+    b" padding:6px 12px;border-radius:5px;"
+    b" text-shadow:none;-gtk-icon-shadow:none;"
+    b"}"
+    b"menu menuitem:hover,menu menuitem:selected,"
+    b".menu menuitem:hover,.context-menu menuitem:hover{"
+    b" background:" + THEME["line"].encode() + b";"
+    b" color:" + THEME["text"].encode() + b";"
+    b"}"
+    b"menu separator,.menu separator{"
+    b" background:" + THEME["line"].encode() + b";"
+    b" min-height:1px;margin:4px 2px;"
+    b"}"
+)
+
+_HB_CSS.load_from_data(_build_hb_css())
+Gtk.StyleContext.add_provider_for_screen(
+    Gdk.Screen.get_default(), _HB_CSS, Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION)
+
+# Visual RGBA — habilita transparencia del fondo de VTE. Si el compositor no
+# soporta, VTE cae elegantemente a fondo opaco (nada rompe).
+if TERM_OPACITY < 1.0:
+    scr = win.get_screen()
+    vis = scr.get_rgba_visual() if scr else None
+    if vis is not None:
+        win.set_visual(vis)
 
 nb = Gtk.Notebook()
 nb.set_scrollable(True)
@@ -755,6 +961,16 @@ def restore_tabs():
     for key, label in data.items():
         if not isinstance(key, str) or not key:
             continue
+        # Pestana experimental xterm.js — no es sesion tmux, no revive nada,
+        # solo remonta la WebView contra cc-webterm.
+        if key.startswith("xterm-"):
+            if key in tabs:
+                continue
+            try:
+                open_xterm_tab(key[len("xterm-"):] or "local")
+            except Exception as e:
+                print(f"no pude restaurar {key}: {e}")
+            continue
         # claves viejas "sesion:ventana" colapsan a la sesion (una pestana por sesion)
         sess = key.partition(":")[0]
         if sess in tabs:
@@ -795,18 +1011,117 @@ STATE_CACHE = {}   # session -> status (lo alimenta el poller de /state)
 STATE_ITEMS = {}   # session -> item completo de /state para el switcher
 
 
+_TAB_RENAME_CSS = None
+def _apply_tab_rename_css(entry):
+    """Estilo oscuro compacto para el Entry inline de renombre de pestaña.
+    Provee color/bg del tema noche + border sutil. Aplicado por widget para no
+    afectar Entries de otros lados de la app."""
+    global _TAB_RENAME_CSS
+    if _TAB_RENAME_CSS is None:
+        _TAB_RENAME_CSS = Gtk.CssProvider()
+        _TAB_RENAME_CSS.load_from_data((
+            b"entry.tab-rename{"
+            b" background:" + THEME["bg"].encode() + b";"
+            b" color:" + THEME["text"].encode() + b";"
+            b" border:1px solid " + THEME["brand"].encode() + b";"
+            b" border-radius:4px;"
+            b" padding:1px 6px;"
+            b" min-height:20px;"
+            b" font-family:'JetBrainsMono Nerd Font Mono',monospace;"
+            b" font-size:11px;"
+            b" caret-color:" + THEME["cursor"].encode() + b";"
+            b"}"
+            b"entry.tab-rename selection{"
+            b" background:" + THEME["line2"].encode() + b";"
+            b"}"
+        ))
+    entry.get_style_context().add_provider(
+        _TAB_RENAME_CSS, Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION)
+
+
 def tab_label(text, key=None, closable=True):
     hb = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
     dot = Gtk.Label()
     dot.set_markup(f'<span size="8500" foreground="{DOT_IDLE}">●</span>')
     hb.pack_start(dot, False, False, 0)
     lbl = Gtk.Label(label=text)
-    hb.pack_start(lbl, False, False, 0)
+    # EventBox permite recibir clicks (Label no los captura por default).
+    # Doble-click = renombrar inline; sin bloquear el single-click que
+    # GtkNotebook usa para cambiar de pestaña.
+    lbl_box = Gtk.EventBox()
+    lbl_box.set_visible_window(False)
+    lbl_box.add(lbl)
+    hb.pack_start(lbl_box, False, False, 0)
     hb._dot = dot
     hb._text = lbl
+    hb._text_box = lbl_box
+
+    def begin_rename(*_):
+        if getattr(hb, "_editing", False) or key is None:
+            return
+        box = tabs.get(key)
+        if box is None:
+            return
+        hb._editing = True
+        cur = lbl.get_text()
+        entry = Gtk.Entry()
+        entry.set_text(cur)
+        # Ancho ajustado al contenido — no "brinca" la barra de pestañas.
+        n = max(6, min(28, len(cur) + 1))
+        entry.set_width_chars(n)
+        entry.set_max_width_chars(n)
+        entry.set_has_frame(False)
+        entry.set_alignment(0.0)
+        entry.get_style_context().add_class("tab-rename")
+        _apply_tab_rename_css(entry)
+        lbl_box.hide()
+        hb.pack_start(entry, False, False, 0)
+        hb.reorder_child(entry, 1)
+        entry.show()
+        entry.grab_focus()
+        entry.select_region(0, -1)
+
+        def finish(save):
+            if not getattr(hb, "_editing", False):
+                return
+            hb._editing = False
+            val = entry.get_text().strip()
+            try:
+                hb.remove(entry)
+            except Exception:
+                pass
+            entry.destroy()
+            lbl_box.show()
+            if save and val and val != cur:
+                set_tab_label(box, val)
+
+        def on_key(_w, ev):
+            if ev.keyval == Gdk.KEY_Return:
+                finish(True); return True
+            if ev.keyval == Gdk.KEY_Escape:
+                finish(False); return True
+            return False
+
+        entry.connect("activate", lambda *_: finish(True))
+        entry.connect("focus-out-event", lambda *_: (finish(True), False)[1])
+        entry.connect("key-press-event", on_key)
+
+    def on_click(_w, ev):
+        if ev.type == Gdk.EventType._2BUTTON_PRESS and ev.button == 1:
+            begin_rename()
+            return True
+        return False
+
+    lbl_box.connect("button-press-event", on_click)
+
     if closable:
-        b = Gtk.Button(label="×")
+        b = Gtk.Button()
+        pb = GdkPixbuf.Pixbuf.new_from_file_at_size(
+            os.path.join(_ICONS_DIR, "close.svg"), 12, 12)
+        b.set_image(Gtk.Image.new_from_pixbuf(pb))
+        b.set_always_show_image(True)
         b.set_relief(Gtk.ReliefStyle.NONE)
+        b.get_style_context().add_class("tabclose")
         b.connect("clicked", lambda *_: close_tab(key))
         hb.pack_start(b, False, False, 0)
     hb.show_all()
@@ -863,7 +1178,8 @@ def close_tab(key):
     archive_tab(key, reason="closed")
     box = tabs.pop(key, None)
     if box is not None:
-        box._term._respawn = False
+        if getattr(box, "_term", None) is not None:
+            box._term._respawn = False
         nb.remove_page(nb.page_num(box))
     save_tabs()
     # Scratch (term-*) con puro shell ocioso: cerrar la pestana MATA la sesion
@@ -902,6 +1218,55 @@ def new_local_tab(*_):
          "tmux", "new-session", "-d", "-s", sess, "-c", cwd],
         capture_output=True, timeout=12)
     open_tab(sess, "claude", label=os.path.basename(cwd) or "term")
+
+
+def _ensure_cc_webterm():
+    """Arranca cc-webterm si no responde en 127.0.0.1:4779. Idempotente."""
+    try:
+        urllib.request.urlopen("http://127.0.0.1:4779/token", timeout=0.4)
+        return
+    except Exception:
+        pass
+    bin_path = shutil.which("cc-webterm") or os.path.join(CC_REPO, "bin", "cc-webterm")
+    subprocess.Popen([bin_path], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+
+
+def open_xterm_tab(sess="local"):
+    """Pestana EXPERIMENTAL con xterm.js dentro de WebKit2WebView, que shape las
+    ligaduras de JetBrainsMono (VTE no las shape). Reusa cc-webterm (ttyd en
+    127.0.0.1:4779) como backend PTY vía WebSocket."""
+    if not WIN_RE.match(sess or ""):
+        sess = "local"
+    key = f"xterm-{sess}"
+    if key in tabs:
+        nb.set_current_page(nb.page_num(tabs[key]))
+        return
+    _ensure_cc_webterm()
+    theme_name = next((k for k, v in THEMES.items() if v is THEME), "noche")
+    uri = f"file://{TERM_HTML}?arg={sess}&theme={theme_name}"
+
+    wv = WebKit2.WebView()
+    st = wv.get_settings()
+    # file:// necesita permiso explícito para leer TTF y .js del mismo repo.
+    try: st.set_property("allow-file-access-from-file-urls", True)
+    except Exception: pass
+    try: st.set_property("allow-universal-access-from-file-urls", True)
+    except Exception: pass
+    st.set_property("enable-write-console-messages-to-stdout", True)
+    wv.load_uri(uri)
+
+    box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
+    box.pack_start(wv, True, True, 0)
+    box._term = None          # no es VTE — los handlers que lo usan lo ignoran
+    box._webview = wv
+    box._key = key
+    box._label = f"xterm · {sess}"
+    idx = nb.append_page(box, tab_label(box._label, key))
+    nb.set_tab_reorderable(box, True)
+    box.show_all()
+    nb.set_current_page(idx)
+    tabs[key] = box
+    save_tabs()
 
 
 WIN_RE = re.compile(r"^[A-Za-z0-9_-]{1,32}$")
@@ -979,22 +1344,92 @@ SW_HINT = ({"waiting": "espera TU respuesta", "working": "trabajando", "done": "
 
 
 def close_on_click_outside(w):
-    """Cierra un modal cuando el usuario hace click fuera (pierde el foco).
-    Guard: solo cierra DESPUES de haber tenido foco al menos una vez, para
-    no autodestruirse durante el show inicial (GNOME puede tardar en darlo)."""
-    w._had_focus = False
+    """Cierra un popup al hacer click fuera / Alt+Tab / ESC.
+    En WSLg ni focus-out ni el bubbling de button-press son confiables cuando
+    hay `transient_for + modal=False`. La forma robusta es un POINTER GRAB
+    (Gdk.Seat.grab): mientras el popup vive, TODOS los clicks del display
+    llegan primero a `w` — chequeamos si el punto cae dentro del bbox del
+    popup y, si no, cerramos y propagamos el click a la app."""
+    w._armed = False
+    w._seat = None
 
-    def on_in(*_):
-        w._had_focus = True
+    def _arm():
+        w._armed = True
+        try:
+            seat = w.get_display().get_default_seat()
+            gdkwin = w.get_window()
+            if gdkwin is not None:
+                seat.grab(gdkwin,
+                          Gdk.SeatCapabilities.POINTER,
+                          True, None, None, None)
+                w._seat = seat
+        except Exception:
+            pass
         return False
 
-    def on_out(*_):
-        if w._had_focus:
+    def _release_grab():
+        try:
+            if w._seat is not None:
+                w._seat.ungrab()
+                w._seat = None
+        except Exception:
+            pass
+
+    def _kill():
+        _release_grab()
+        w.destroy()
+        return False
+
+    def _dismiss():
+        if not getattr(w, "_armed", False):
+            return
+        w._armed = False
+        _release_grab()
+        # DESTROY sync — hide+idle nunca completaba porque WSLg emitía un
+        # enter-notify sobre la ventana hidden y la reactivaba antes de que
+        # el idle callback disparara.
+        try:
             w.destroy()
+        except Exception:
+            pass
+
+    def on_press(_w, ev):
+        if not getattr(w, "_armed", False):
+            return False
+        wx, wy = w.get_position()
+        ww, wh = w.get_size()
+        px, py = int(ev.x_root), int(ev.y_root)
+        inside = wx <= px < wx + ww and wy <= py < wy + wh
+        if inside:
+            return False   # dejar que el widget hijo maneje el click
+        _dismiss()
+        return True
+
+    def on_key(_w, ev):
+        if ev.keyval == Gdk.KEY_Escape:
+            _dismiss()
+            return True
         return False
 
-    w.connect("focus-in-event", on_in)
-    w.connect("focus-out-event", on_out)
+    def _tick():
+        # Polling — la única señal confiable en WSLg de "perdió foco".
+        # Cuando is_active() == False después de estar armado, cerramos.
+        if not getattr(w, "_armed", False):
+            return False   # stop
+        try:
+            if not w.is_active():
+                _dismiss()
+                return False
+        except Exception:
+            return False
+        return True
+
+    w.add_events(Gdk.EventMask.BUTTON_PRESS_MASK)
+    w.connect("button-press-event", on_press)
+    w.connect("key-press-event", on_key)
+    w.connect("destroy", lambda *_: _release_grab())
+    GLib.timeout_add(200, _arm)
+    GLib.timeout_add(300, _tick)   # empieza a poll después de armado
 
 
 def open_switcher(*_):
@@ -1235,6 +1670,7 @@ def rename_tab(key):
     if box is None:
         return
     dlg = Gtk.Dialog(title="Renombrar pestana" if ES else "Rename tab", transient_for=win)
+    dlg.set_decorated(False)
     dlg.add_buttons("Cancelar" if ES else "Cancel", Gtk.ResponseType.CANCEL,
                     "Renombrar" if ES else "Rename", Gtk.ResponseType.OK)
     area = dlg.get_content_area()
@@ -1267,54 +1703,162 @@ def apply_theme(name):
     global THEME
     THEME = THEMES.get(name, THEMES["noche"])
     _prov.load_from_data(theme_css(THEME).encode())
+    # Regenerar el CSS de headerbar, menús, paned separator, notebook border
+    # con los colores del NUEVO tema — sin esto queda "oscuro" en modo día.
+    try:
+        _HB_CSS.load_from_data(_build_hb_css())
+        _PANED_CSS.load_from_data((
+            b"paned.cc-paned > separator,paned.cc-paned separator{"
+            b" background:transparent;background-image:none;"
+            b" background-color:transparent;"
+            b" border:0;box-shadow:none;"
+            b" min-width:0;min-height:0;margin:0;padding:0;"
+            b"}"
+            b"notebook.cc-notebook,notebook.cc-notebook > header,"
+            b"notebook.cc-notebook > stack,notebook.cc-notebook > stack > *,"
+            b"notebook.cc-notebook scrolledwindow,notebook.cc-notebook frame,"
+            b"notebook.cc-notebook viewport{"
+            b" border-top:0;border-right:0;border-bottom:0;"
+            b" box-shadow:none;outline:none;"
+            b"}"
+            b"notebook.cc-notebook{"
+            b" border-left:1px solid " + THEME["line"].encode() + b";"
+            b" border-radius:0;"
+            b"}"
+        ))
+    except Exception as e:
+        print(f"apply_theme CSS reload err: {e}")
     for i in range(nb.get_n_pages()):
         t = getattr(nb.get_nth_page(i), "_term", None)
         if t:
             t.set_colors(rgba(THEME["fg"]), rgba(THEME["bg"]),
                          [rgba(p) for p in THEME["pal"]])
             t.set_color_cursor(rgba(THEME["cursor"]))
+    # Tmux status bar — respetá el tema también. Sin esto la barra inferior
+    # se veía oscura en modo día.
+    _apply_tmux_theme()
+
+
+def _apply_tmux_theme():
+    bg    = THEME["bar"]
+    fg    = THEME["dim"]
+    brand = THEME["brand"]
+    text  = THEME["text"]
+    line  = THEME["line"]
+    for opts in (
+        ("status-style",                 f"bg={bg},fg={fg}"),
+        ("window-status-style",          f"bg={bg},fg={fg}"),
+        ("window-status-current-style",  f"bg={bg},fg={text},bold"),
+        ("window-status-activity-style", f"bg={bg},fg={THEME['cursor']},bold"),
+        ("pane-active-border-style",     f"fg={brand}"),
+        ("pane-border-style",            f"fg={line}"),
+        ("message-style",                f"bg={brand},fg={bg}"),
+    ):
+        tmuxc("set-option", "-g", opts[0], opts[1])
 
 # Pestana "local": tu terminal de control (scratch en HOME). Es el cliente que
 # mueven Super+N y los popups. No aparece como tarjeta en el tablero.
 hub = make_term("tmux new-session -A -s local -c ~")
+# Aplica el tema al tmux status ya en el arranque (idempotente).
+GLib.timeout_add(500, lambda: (_apply_tmux_theme(), False)[1])
 nb.append_page(hub, tab_label("⌂ local", closable=False))
 nb.set_tab_reorderable(hub, False)
 nb.connect("page-reordered", on_tab_reordered)
 
 # Barra de pestanas: boton "+" (nueva terminal) y "?" (atajos)
-_actions = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=2)
-_copy = Gtk.Button(label="⧉")
-_copy.get_style_context().add_class("tabplus")
-_copy.set_relief(Gtk.ReliefStyle.NONE)
-_copy.set_tooltip_text("Copiar la ultima respuesta de Claude de ESTA pestana" if ES else "Copy Claude's latest reply from THIS tab")
-_copy.connect("clicked", lambda *_: cur_term() and copy_claude_reply(cur_term()))
-_actions.pack_start(_copy, False, False, 0)
-_tabs = Gtk.Button(label="▦")
-_tabs.get_style_context().add_class("tabplus")
-_tabs.set_relief(Gtk.ReliefStyle.NONE)
-_tabs.set_tooltip_text("Ver, saltar y cerrar tabs abiertas" if ES else "View, jump and close open tabs")
-_tabs.connect("clicked", open_tabs_overview)
-_actions.pack_start(_tabs, False, False, 0)
-_find = Gtk.Button(label="⌕")
-_find.get_style_context().add_class("tabplus")
-_find.set_relief(Gtk.ReliefStyle.NONE)
-_find.set_tooltip_text("Saltar a una pestana/sesion (Ctrl+K)" if ES else "Jump to a tab/session (Ctrl+K)")
-_find.connect("clicked", open_switcher)
-_actions.pack_start(_find, False, False, 0)
-_plus = Gtk.Button(label="+")
-_plus.get_style_context().add_class("tabplus")
-_plus.set_relief(Gtk.ReliefStyle.NONE)
-_plus.set_tooltip_text("Nueva terminal en el directorio actual (Ctrl+T)" if ES else "New terminal in the current directory (Ctrl+T)")
-_plus.connect("clicked", new_local_tab)
-_help = Gtk.Button(label="?")
-_help.get_style_context().add_class("tabplus")
-_help.set_relief(Gtk.ReliefStyle.NONE)
-_help.set_tooltip_text("Ver todos los atajos (? o F1)" if ES else "All shortcuts (? or F1)")
-_help.connect("clicked", lambda *_: show_help())
-_actions.pack_start(_plus, False, False, 0)
-_actions.pack_start(_help, False, False, 0)
-_actions.show_all()
-nb.set_action_widget(_actions, Gtk.PackType.END)
+def _icon_btn(name, tooltip, on_click, size=16):
+    """Botón chico con SVG Lucide de dash/icons/. Es LA MISMA familia que usa
+    el dashboard HTML — así la app tiene un solo set de iconos consistente
+    (antes mezclabamos Adwaita en GTK + Lucide en HTML, se veían distintos)."""
+    b = Gtk.Button()
+    svg_path = os.path.join(_ICONS_DIR, f"{name}.svg")
+    if os.path.isfile(svg_path):
+        pb = GdkPixbuf.Pixbuf.new_from_file_at_size(svg_path, size, size)
+        img = Gtk.Image.new_from_pixbuf(pb)
+    else:
+        img = Gtk.Image.new_from_icon_name(name, Gtk.IconSize.SMALL_TOOLBAR)
+    b.set_image(img)
+    b.set_always_show_image(True)
+    b.get_style_context().add_class("tabplus")
+    b.set_relief(Gtk.ReliefStyle.NONE)
+    b.set_tooltip_text(tooltip)
+    b.connect("clicked", on_click)
+    return b
+
+
+_copy = _icon_btn(
+    "copy",
+    "Copiar la ultima respuesta de Claude de ESTA pestana" if ES else "Copy Claude's latest reply from THIS tab",
+    lambda *_: cur_term() and copy_claude_reply(cur_term()))
+_tabs = _icon_btn(
+    "layers",
+    "Ver, saltar y cerrar tabs abiertas" if ES else "View, jump and close open tabs",
+    open_tabs_overview)
+_find = _icon_btn(
+    "search",
+    "Saltar a una pestana/sesion (Ctrl+K)" if ES else "Jump to a tab/session (Ctrl+K)",
+    open_switcher)
+def show_new_tab_menu(btn):
+    """Menú del botón '+': elegir motor de terminal.
+    VTE (por defecto) es el estable; xterm.js es el experimental con ligas."""
+    menu = Gtk.Menu()
+
+    def add(label, cb):
+        it = Gtk.MenuItem(label=label)
+        it.connect("activate", lambda *_: cb())
+        menu.append(it)
+
+    if ES:
+        add("Nueva terminal aquí (VTE)  ·  Ctrl+T", new_local_tab)
+        add("Terminal experimental (xterm.js, con ligaduras)  ·  Ctrl+Shift+T",
+            lambda: open_xterm_tab("local"))
+    else:
+        add("New terminal here (VTE)  ·  Ctrl+T", new_local_tab)
+        add("Experimental terminal (xterm.js, with ligatures)  ·  Ctrl+Shift+T",
+            lambda: open_xterm_tab("local"))
+    menu.show_all()
+    menu.popup_at_widget(btn, Gdk.Gravity.SOUTH_WEST, Gdk.Gravity.NORTH_WEST, None)
+
+
+_plus = _icon_btn(
+    "plus",
+    "Nueva terminal — elegí motor (VTE o xterm.js)" if ES else "New terminal — pick engine (VTE or xterm.js)",
+    show_new_tab_menu)
+_help = _icon_btn(
+    "help",
+    "Ver todos los atajos (? o F1)" if ES else "All shortcuts (? or F1)",
+    lambda *_: show_help())
+# Botones min/max/close CUSTOM — mismo helper que los demás para look uniforme.
+# Se packean ANTES (así quedan más a la derecha) y con separador visual entre
+# los actions de app y los controles de ventana.
+def _toggle_max(*_):
+    if win.is_maximized():
+        win.unmaximize()
+    else:
+        win.maximize()
+
+_minimize = _icon_btn("minimize", "Minimizar" if ES else "Minimize",
+                      lambda *_: win.iconify())
+_maximize = _icon_btn("maximize", "Maximizar" if ES else "Maximize",
+                      _toggle_max)
+_close = _icon_btn("close", "Cerrar" if ES else "Close",
+                   lambda *_: Gtk.main_quit())
+_close.get_style_context().add_class("cc-close-btn")
+
+# pack_end packs right-to-left — el primero queda más a la derecha.
+_headerbar.pack_end(_close)
+_headerbar.pack_end(_maximize)
+_headerbar.pack_end(_minimize)
+# Separador sutil entre controles de ventana y actions de app.
+_hb_sep = Gtk.Box(); _hb_sep.set_size_request(8, 1)
+_headerbar.pack_end(_hb_sep)
+# Los 5 action buttons (más a la izquierda).
+_headerbar.pack_end(_help)
+_headerbar.pack_end(_plus)
+_headerbar.pack_end(_find)
+_headerbar.pack_end(_tabs)
+_headerbar.pack_end(_copy)
+_headerbar.show_all()
 
 # Puente tablero -> app: las tarjetas piden abrir pestanas aqui
 ucm = WebKit2.UserContentManager()
@@ -1325,6 +1869,13 @@ def on_msg(mgr, res):
         d = json.loads(res.get_js_value().to_string())
         if d.get("theme"):
             apply_theme(d["theme"])
+            return
+        if d.get("type") == "rename":
+            sess = d.get("session", "")
+            label = d.get("label", "")
+            box = tabs.get(sess)
+            if box is not None and isinstance(label, str) and label.strip():
+                set_tab_label(box, label.strip())
             return
         label = d.get("label", None)
         open_tab(d.get("session", ""), d.get("win", "claude"),
@@ -1356,10 +1907,87 @@ wv.connect("load-failed", lambda v, e, u, err:
            (GLib.timeout_add_seconds(2, lambda: (wv.load_uri(URL), False)[1]), True)[1])
 
 paned = Gtk.Paned(orientation=Gtk.Orientation.HORIZONTAL)
+paned.get_style_context().add_class("cc-paned")
+paned.set_wide_handle(False)
 paned.pack1(wv, True, False)
 paned.pack2(nb, True, False)
+nb.get_style_context().add_class("cc-notebook")
+# El separator del Paned de Adwaita se pinta con un gradiente hardcoded que
+# ignora todos nuestros overrides. Aproximación funcional: hacerlo INVISIBLE
+# (transparent + min-width 0) y dibujar la línea divisoria como border-left
+# del Notebook, que sí acepta CSS custom.
+_PANED_CSS = Gtk.CssProvider()
+_PANED_CSS.load_from_data((
+    b"paned.cc-paned > separator,paned.cc-paned separator{"
+    b" background:transparent;"
+    b" background-image:none;"
+    b" background-color:transparent;"
+    b" border:0;box-shadow:none;"
+    b" min-width:0;min-height:0;margin:0;padding:0;"
+    b"}"
+    # Scrollbars slim en TODA la app (incluye scrolledwindow del VTE y
+    # scrollbars de popups/help). Termius/VSCode style — 5px, casi invisible
+    # cuando no se hover.
+    b"scrollbar,scrollbar.horizontal,scrollbar.vertical{"
+    b" background:transparent;border:0;box-shadow:none;"
+    b" -GtkScrollbar-has-backward-stepper:0;-GtkScrollbar-has-forward-stepper:0;"
+    b" min-width:6px;min-height:6px;"
+    b"}"
+    b"scrollbar trough{background:transparent;border:0;min-width:6px;min-height:6px;}"
+    b"scrollbar slider{"
+    b" background:" + THEME["line"].encode() + b";"
+    b" border:0;border-radius:6px;"
+    b" min-width:4px;min-height:32px;"
+    b" margin:0;"
+    b"}"
+    b"scrollbar slider:hover{background:" + THEME["line2"].encode() + b";}"
+    b"scrollbar button{min-width:0;min-height:0;background:transparent;border:0;}"
+    # Notebook: SOLO la línea izquierda (divisoria dashboard/terminal). El
+    # theme del sistema mete borders en top/right/bottom + un frame en el
+    # header/stack — los aniquilamos.
+    b"notebook.cc-notebook,notebook.cc-notebook > header,"
+    b"notebook.cc-notebook > stack,notebook.cc-notebook > stack > *,"
+    b"notebook.cc-notebook scrolledwindow,notebook.cc-notebook frame,"
+    b"notebook.cc-notebook viewport{"
+    b" border-top:0;border-right:0;border-bottom:0;"
+    b" box-shadow:none;outline:none;"
+    b"}"
+    b"notebook.cc-notebook{"
+    b" border-left:1px solid " + THEME["line"].encode() + b";"
+    b" border-radius:0;"
+    b"}"
+))
+Gtk.StyleContext.add_provider_for_screen(
+    Gdk.Screen.get_default(), _PANED_CSS, Gtk.STYLE_PROVIDER_PRIORITY_USER)
 paned.set_position(700)
-win.add(paned)
+
+# Layout root: headerbar arriba (envuelto en EventBox para drag) + paned.
+# El EventBox necesita set_above_child(False) para que los botones sigan
+# recibiendo sus clicks — el drag solo se dispara sobre el área vacía.
+_hb_evbox = Gtk.EventBox()
+_hb_evbox.set_above_child(False)
+_hb_evbox.set_visible_window(False)
+_hb_evbox.add(_headerbar)
+
+def _hb_press(_w, ev):
+    if ev.button != 1:
+        return False
+    if ev.type == Gdk.EventType._2BUTTON_PRESS:
+        if win.is_maximized(): win.unmaximize()
+        else: win.maximize()
+        return True
+    if ev.type == Gdk.EventType.BUTTON_PRESS:
+        win.begin_move_drag(ev.button, int(ev.x_root), int(ev.y_root), ev.time)
+        return True
+    return False
+
+_hb_evbox.add_events(Gdk.EventMask.BUTTON_PRESS_MASK)
+_hb_evbox.connect("button-press-event", _hb_press)
+
+_root = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
+_root.pack_start(_hb_evbox, False, False, 0)
+_root.pack_start(paned, True, True, 0)
+win.add(_root)
 
 
 def cur_term():
@@ -1372,6 +2000,7 @@ SHORTCUTS_ES = [
         ("? / F1", "Esta ayuda"),
         ("Ctrl+K", "Saltar a cualquier pestana/sesion (escribe y Enter)"),
         ("Ctrl+T", "Nueva terminal en el directorio actual"),
+        ("Ctrl+Shift+T", "Terminal experimental (xterm.js, con ligaduras)"),
         ("Ctrl+Shift+W", "Cerrar la pestana actual"),
         ("Ctrl+PgUp / PgDn", "Cambiar de pestana"),
         ("F12", "Mostrar / ocultar terminales"),
@@ -1410,6 +2039,7 @@ SHORTCUTS_EN = [
         ("? / F1", "This help"),
         ("Ctrl+K", "Jump to any tab/session (type and Enter)"),
         ("Ctrl+T", "New terminal in the current directory"),
+        ("Ctrl+Shift+T", "Experimental terminal (xterm.js, with ligatures)"),
         ("Ctrl+Shift+W", "Close the current tab"),
         ("Ctrl+PgUp / PgDn", "Switch tabs"),
         ("F12", "Show / hide terminals"),
@@ -1452,6 +2082,8 @@ def show_help(*_):
         return
     w = Gtk.Window(title="Atajos de ComandOS" if ES else "ComandOS shortcuts")
     w.set_transient_for(win)
+    w.set_modal(False)
+    w.set_decorated(False)
     w.set_default_size(640, 720)
     w.set_position(Gtk.WindowPosition.CENTER_ON_PARENT)
     w.get_style_context().add_class("helpwin")
@@ -1551,6 +2183,8 @@ def on_key(w, e):
         open_switcher(); return True
     if ctrl and not shift and e.keyval in (Gdk.KEY_t, Gdk.KEY_T):
         new_local_tab(); return True
+    if ctrl and shift and e.keyval in (Gdk.KEY_t, Gdk.KEY_T):
+        open_xterm_tab("local"); return True
     if ctrl and shift and e.keyval in (Gdk.KEY_w, Gdk.KEY_W):
         page = nb.get_nth_page(nb.get_current_page())
         if page is not None and getattr(page, "_key", None):
