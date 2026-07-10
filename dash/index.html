@@ -71,7 +71,7 @@
   @media (max-width:640px){
     header{padding:9px 12px;gap:6px 10px}
     .brand{font-size:12px;letter-spacing:.1em}
-    #q,#new-name{width:100%}
+    #q{width:100%}
     .hdr-right{width:100%;gap:6px}
     #urgent{grid-template-columns:1fr}
     .sec,#ssh-bar,#tl-wrap{padding-left:12px;padding-right:12px}
@@ -98,11 +98,20 @@
   .pill.lim-danger{color:#FF5C68;border-color:#FF5C6855}
   .pill.lim-danger b{color:#FF5C68}
   .hdr-right{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-left:auto}
-  #q,#new-name{background:var(--panel);border:1px solid var(--line);border-radius:8px;
+  /* Buscador DE SESIONES: vive junto al titulo de la seccion, no en el header */
+  .sec-label #q{letter-spacing:normal;text-transform:none;font-weight:400}
+  /* Recientes cerradas: recuperables con un click */
+  .rrow{display:flex;gap:10px;align-items:center;padding:7px 10px;border:1px solid var(--line);
+    border-radius:8px;background:var(--panel);margin-bottom:6px}
+  .rrow b{font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .rrow .rpath{font-family:var(--mono);font-size:10px;color:var(--faint);
+    overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0;flex:1}
+  .rrow .ago{flex:none;font-family:var(--mono);font-size:10px;color:var(--faint)}
+  #q{background:var(--panel);border:1px solid var(--line);border-radius:8px;
     padding:5px 11px;font-family:var(--mono);font-size:12px;color:var(--text)}
-  #q{width:140px} #new-name{width:150px}
-  #q::placeholder,#new-name::placeholder{color:var(--faint)}
-  #q:focus,#new-name:focus{outline:none;border-color:var(--brand)}
+  #q{width:170px}
+  #q::placeholder{color:var(--faint)}
+  #q:focus{outline:none;border-color:var(--brand)}
   .hdr-btn{padding:5px 11px;border:1px solid var(--line);border-radius:8px;color:var(--dim);
     font-size:12px}
   .hdr-btn:hover{color:var(--text);border-color:var(--line2)}
@@ -521,11 +530,6 @@
     <span id="limits-strip" class="hidden" title="Límites del plan — click para el detalle"></span>
   </div>
   <div class="hdr-right">
-    <input id="q" placeholder="buscar" autocomplete="off" spellcheck="false"
-      title="Filtra por nombre o ruta">
-    <form id="new-form" title="Nombre de un proyecto de ~/codebase y Enter: crea/abre su sesion">
-      <input id="new-name" placeholder="abrir proyecto" autocomplete="off" spellcheck="false">
-    </form>
     <span id="snd-ctl" title="Volumen global (voz y chime). El icono silencia o activa el sonido.">
       <button class="hdr-btn" id="btn-mute">🔊</button>
       <input type="range" id="vol-top" min="0" max="100" value="60">
@@ -553,8 +557,16 @@
 </section>
 
 <section class="sec">
-  <div class="sec-label">Sesiones</div>
+  <div class="sec-label">Sesiones
+    <input id="q" placeholder="buscar sesión" autocomplete="off" spellcheck="false"
+      title="Filtra por nombre o ruta">
+  </div>
   <div id="rows"></div>
+</section>
+
+<section class="sec hidden" id="recent-wrap">
+  <div class="sec-label">Recientes (cerradas)</div>
+  <div id="recent"></div>
 </section>
 
 <div id="tl-wrap">
@@ -776,11 +788,10 @@ function applyI18n(){
 	    ".sec-label, #ssh-bar .lbl, #ssh-manage, #btn-usage, #btn-remote, #btn-settings, #tl-toggle, .pill span")
     .forEach(e => { const k = e.textContent.trim(); if(T_EN[k]) e.textContent = T_EN[k]; });
   const ph = (sel, v) => { const e = $(sel); if(e) e.placeholder = v; };
-  ph("#q", "search"); ph("#new-name", "open project");
+  ph("#q", "search session");
   ph("#sw-in", "Jump to...  (Enter opens the first, ↑↓ navigate, Esc closes)");
   const ti = (sel, v) => { const e = $(sel); if(e) e.title = v; };
   ti("#q", "Filter by name or path");
-  ti("#new-form", "Type a ~/codebase project name and Enter: creates/opens its session");
   ti("#snd-ctl", "Global volume (voice and chime). The icon mutes/unmutes.");
   ti("#btn-switch", "Jump to any session (Ctrl+K)");
   ti("#btn-theme", "Theme: Night → Day → Warm (dashboard, tabs and terminals)");
@@ -1188,45 +1199,50 @@ function mdStrip(s){ return (s||"").replace(/\*\*|`|^#{1,6} /g, ""); }
 	    `${fmtMoney(total.cost_usd)} · ${fmtTokens(total.total_tokens)} · ${state?.panes?.length || 0} panes`;
 	  renderLimitsStrip(state);
 	  renderUsageLimits(state);
+	  // PROVEEDORES: barras proporcionales de tokens (nada de $0.00 muertos:
+	  // el costo solo aparece si existe; sin datos = no hay tarjeta)
 	  const hp = state?.credential_health || {};
-	  const providerRows = [...(state?.providers || [])];
-	  for(const id of ["openai", "anthropic"])
-	    if(!providerRows.some(p => p.provider === id)) providerRows.push({provider:id, cost_usd:0, total_tokens:0, active_panes:0});
-	  $("#usage-providers").innerHTML = providerRows.map(p=>{
-	    const h = hp[p.provider] || {};
-	    const pct = Math.min(100, Number(p.cost_usd || 0) * 10);
+	  const provRows = (state?.providers || [])
+	    .filter(p => Number(p.total_tokens || 0) > 0 || Number(p.active_panes || 0) > 0)
+	    .sort((a, b) => Number(b.total_tokens || 0) - Number(a.total_tokens || 0));
+	  const provMax = Math.max(...provRows.map(p => Number(p.total_tokens || 0)), 1);
+	  const adminMissing = ["openai", "anthropic"].filter(id => (hp[id] || {}).status !== "ok");
+	  $("#usage-providers").innerHTML = provRows.map(p => {
+	    const tok = Number(p.total_tokens || 0);
 	    const active = Number(p.active_panes || 0);
-	    const status = active ? "activo" : usageStatusLabel(h);
-	    const sub = [fmtTokens(p.total_tokens || 0), active ? `${active} panes activos` : ""].filter(Boolean).join(" · ");
-	    return `<div class="usage-card">
-	      <div class="usage-title">${mdEsc(p.provider || "provider")}<small>${mdEsc(status)}</small></div>
-	      <div class="usage-metric">${fmtMoney(p.cost_usd)}</div>
-	      <div class="usage-sub">${mdEsc(sub)}</div>
-	      <div class="usage-bar"><span style="width:${pct}%"></span></div>
+	    const cost = Number(p.cost_usd || 0);
+	    return `<div class="usage-viz">
+	      <div class="uv-top"><b>${mdEsc(p.provider)}</b>
+	        <span>${active ? `${active} ${tf("panes", "panes")} · ` : ""}${fmtTokens(tok)}${cost > 0 ? ` · ${fmtMoney(cost)}` : ""}</span></div>
+	      <div class="usage-bar"><span style="width:${Math.max(2, Math.round(tok / provMax * 100))}%"></span></div>
 	    </div>`;
-	  }).join("");
-	  const projects = state?.projects || [];
-	  $("#usage-projects").innerHTML = projects.length ? projects.map(pr => {
-	    // Panes VIVOS con controles; el historial de transcripts se colapsa a una
-	    // linea (una sesion por archivo se veia como sesiones repetidas)
+	  }).join("") + (adminMissing.length ? `<div class="desc" style="margin-top:6px">${
+	    tf("Costos exactos en $ (opcional): faltan llaves admin de ", "Exact $ costs (optional): missing admin keys for ")}${adminMissing.join(", ")}</div>` : "");
+	  // PROYECTOS: barra proporcional por proyecto (14 dias), panes vivos dentro
+	  const projects = [...(state?.projects || [])]
+	    .sort((a, b) => Number(b.total_tokens || 0) - Number(a.total_tokens || 0));
+	  const projMax = Math.max(...projects.map(p => Number(p.total_tokens || 0)), 1);
+	  const top = projects.slice(0, 8);
+	  const rest = projects.slice(8);
+	  const restTok = rest.reduce((a, p) => a + Number(p.total_tokens || 0), 0);
+	  $("#usage-projects").innerHTML = top.length ? top.map(pr => {
 	    const live = (pr.panes || []).filter(p => String(p.tmux_pane || "").startsWith("%"));
 	    const hist = (pr.panes || []).filter(p => !String(p.tmux_pane || "").startsWith("%"));
-	    const histTok = hist.reduce((a, p) => a + Number(p.total_tokens || 0), 0);
-	    return `<div class="usage-card">
-	      <div class="usage-title">${mdEsc(shortPath(pr.git_root || ""))}<small>${mdEsc(confidenceLabel(pr.confidence))}</small></div>
-	      <div class="usage-sub">${fmtMoney(pr.cost_usd)} · ${fmtTokens(pr.total_tokens || 0)} ${tf("en 14 dias", "in 14 days")}</div>
-	      ${live.map(p => `<div class="usage-row">
-	        <div class="usage-pane-main"><b>${mdEsc(p.tab_label || p.tmux_session || "")} ${mdEsc(p.tmux_pane || "")}</b><br>
-	          <span>${mdEsc(shortPath(p.pane_pwd || ""))}</span><br>
-	          <span>${mdEsc(usageChipText(p) || confidenceLabel(p.confidence) || "detectado")}</span></div>
+	    const tok = Number(pr.total_tokens || 0);
+	    const name = (pr.git_root || "").split("/").pop() || shortPath(pr.git_root || "");
+	    return `<div class="usage-viz">
+	      <div class="uv-top"><b>${mdEsc(name)}</b>
+	        <span>${fmtTokens(tok)}${Number(pr.cost_usd || 0) > 0 ? ` · ${fmtMoney(pr.cost_usd)}` : ""}${hist.length ? ` · ${hist.length} ${tf("ses.", "past")}` : ""}</span></div>
+	      <div class="usage-bar"><span style="width:${Math.max(2, Math.round(tok / projMax * 100))}%"></span></div>
+	      ${live.map(p => `<div class="uv-pane">
+	        <span class="uv-dot" data-a="${attrEsc(p.agent || "claude")}"></span>
+	        <b>${mdEsc(p.tab_label || p.tmux_session || "")}</b>
+	        <span class="uv-info">${mdEsc(usageChipText(p) || tf("sin uso hoy", "no usage today"))}</span>
 	        ${panePresetButtons(p)}
 	      </div>`).join("")}
-	      ${hist.length ? `<div class="usage-row">
-	        <div class="usage-pane-main"><b>${tf("historial", "history")}</b><br>
-	          <span>${hist.length} ${tf("sesiones previas", "past sessions")} · ${fmtTokens(histTok)}</span></div>
-	      </div>` : ""}
 	    </div>`;
-	  }).join("") : `<div class="empty">${tf("Sin panes de uso todavia", "No usage panes yet")}</div>`;
+	  }).join("") + (rest.length ? `<div class="desc" style="margin-top:2px">+${rest.length} ${tf("proyectos más", "more projects")} · ${fmtTokens(restTok)}</div>` : "")
+	    : `<div class="empty">${tf("Sin uso todavia", "No usage yet")}</div>`;
 	  document.querySelectorAll("#usage .mdl-wrap").forEach(wireModelMenu);
 	  const alerts = state?.alerts || [];
 	  $("#usage-alerts").innerHTML = alerts.length ? alerts.map(a =>
@@ -1980,9 +1996,43 @@ function toast(msg, err){
 }
 
 // ---------- loop ----------
+	// Recientes (cerradas): historial de pestañas recuperable con un click
+	let recentTs = 0;
+	async function tickRecent(force=false){
+	  const now = Date.now();
+	  if(!force && now - recentTs < 30000) return;
+	  recentTs = now;
+	  try{ renderRecent(await api("/tab-history")); }catch(e){}
+	}
+	function renderRecent(items){
+	  const host = $("#recent");
+	  if(!host) return;
+	  items = (items || []).filter(i => i.reason !== "recovered").slice(0, 8);
+	  $("#recent-wrap").classList.toggle("hidden", !items.length);
+	  host.innerHTML = items.map(i => `
+	    <div class="rrow">
+	      <b>${mdEsc(i.label || i.session)}</b>
+	      <span class="rpath">${mdEsc(shortPath(i.cwd || ""))}</span>
+	      <span class="ago">${agoTxt(i.ts)}</span>
+	      <button type="button" class="test rec-open" data-session="${attrEsc(i.session)}"
+	        data-label="${attrEsc(i.label || i.session)}" data-cwd="${attrEsc(i.cwd || "")}"
+	        data-agent="${attrEsc(i.agent || "claude")}">
+	        ${i.alive ? tf("Reabrir", "Reopen") : tf("Recuperar", "Recover")}</button>
+	    </div>`).join("");
+	  host.querySelectorAll(".rec-open").forEach(b => b.addEventListener("click", async ()=>{
+	    try{
+	      const r = await api("/recover-tab", {session: b.dataset.session, label: b.dataset.label,
+	                                           cwd: b.dataset.cwd, agent: b.dataset.agent});
+	      toast(tf(`${b.dataset.label} recuperada`, `${b.dataset.label} recovered`));
+	      if(inApp()) openInApp((r && r.session) || b.dataset.session, "claude");
+	      tickRecent(true);
+	    }catch(err){ toast(err.message, true); }
+	  }));
+	}
 	async function tick(){
 	  try{ render(await api("/state")); }catch(e){}
 	  tickUsage();
+	  tickRecent();
 	}
 async function tickEvents(){
   try{ renderEvents(await api("/events")); }catch(e){}
@@ -2018,6 +2068,8 @@ function swOpen(){
   $("#sw-in").focus();
 }
 function swClose(){ $("#sw-ov").classList.add("hidden"); }
+// Click FUERA de la caja cierra el switcher (el overlay es el fondo)
+$("#sw-ov").addEventListener("click", e=>{ if(e.target === $("#sw-ov")) swClose(); });
 function quickVisible(it){
   if(!it || it.alive === false || it.zombie) return false;
   const orphanTerm = /^term-/.test(it.session || "") && !it.tabbed && !it.agent && (it.status || "idle") === "idle";
@@ -2394,24 +2446,6 @@ document.querySelectorAll(".cfg").forEach(b=>{
 });
 
 // ---------- UI general ----------
-$("#new-form").addEventListener("submit", async e=>{
-  e.preventDefault();
-  const name = $("#new-name").value.trim().replace(/[.:]/g, "-");
-  if(!name) return;
-  try{
-    if(inApp()){ const r = await api("/ensure", {session: name, win: "claude"});
-                 openInApp(r.session || name, "claude"); }
-    else if(WEBTERM){
-      // App remota: crea/abre la sesion (proyecto de ~/codebase o shell en
-      // blanco) y abre su terminal aqui mismo.
-      const r = await api("/new", {session: name});
-      openTerm((r && r.session) || name, name);
-    }
-    else { await api("/up", {session: name}); }
-    $("#new-name").value = "";
-    toast(tf(`${name} abierto`, `${name} opened`));
-  }catch(err){ toast(err.message, true); }
-});
 	$("#btn-settings").addEventListener("click", ()=>{
 	  $("#settings").classList.toggle("open");
 	  $("#servers").classList.remove("open");

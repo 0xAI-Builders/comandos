@@ -81,6 +81,17 @@ def test_pane_models_file_for_tmux_borders():
     assert "pane-models.txt" in SRC
 
 
+def test_limit_alerts_notify_by_desktop_and_telegram():
+    assert "def usage_alert_send" in SRC
+    # Popups PROPIOS de ComandOS (cc-notifyd), jamas notify-send
+    assert "127.0.0.1:4778/notify" in SRC
+    assert "notify-send" not in SRC
+    assert "TELEGRAM_ENABLED" in SRC
+    assert "cc_usage.limit_threshold_alerts" in SRC
+    assert "cc_usage.record_alert_once" in SRC
+    assert 'state["alerts"] = cc_usage.list_alerts(USAGE_DB)' in SRC
+
+
 def test_new_sessions_load_provider_keys_env():
     # Las sesiones nuevas cargan ~/.claude/hooks/providers.env (keys de
     # groq/cerebras/sambanova/cloudflare para opencode y amigos)
@@ -110,6 +121,7 @@ def test_agent_pane_maps_keeps_one_agent_per_tmux_pane():
 
 
 if __name__ == "__main__":
+    test_limit_alerts_notify_by_desktop_and_telegram()
     test_cc_dash_imports_usage_module()
     test_usage_state_endpoint_exists_and_is_authenticated()
     test_usage_live_panes_records_pane_pwd_and_git_root()

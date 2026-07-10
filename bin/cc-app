@@ -814,6 +814,23 @@ def poll_state_loop():
 
 
 def close_tab(key):
+    # Confirmar SIEMPRE: cerrar sin querer era demasiado facil. La sesion tmux
+    # sigue viva y ademas queda en "Recientes (cerradas)" del tablero.
+    box = tabs.get(key)
+    label = getattr(box, "_label", key) if box is not None else key
+    d = Gtk.MessageDialog(transient_for=win, modal=True,
+                          message_type=Gtk.MessageType.QUESTION,
+                          buttons=Gtk.ButtonsType.YES_NO,
+                          text=(f"¿Cerrar la pestaña «{label}»?" if ES
+                                else f"Close tab “{label}”?"))
+    d.format_secondary_text(
+        "La sesión tmux sigue viva; puedes recuperarla en Recientes del tablero."
+        if ES else
+        "The tmux session stays alive; recover it from the dashboard's Recents.")
+    resp = d.run()
+    d.destroy()
+    if resp != Gtk.ResponseType.YES:
+        return
     archive_tab(key, reason="closed")
     box = tabs.pop(key, None)
     if box is not None:

@@ -64,6 +64,24 @@ def test_no_agent_badges_in_header():
     assert 'id="agent-pick"' not in HTML
 
 
+def test_header_has_no_search_nor_open_project():
+    # "abrir proyecto" fuera; el buscador vive junto al titulo de Sesiones
+    assert 'id="new-form"' not in HTML
+    assert 'id="new-name"' not in HTML
+    assert 'Sesiones\n    <input id="q"' in HTML
+
+
+def test_recent_closed_sessions_are_recoverable():
+    assert 'id="recent-wrap"' in HTML
+    assert 'api("/tab-history")' in HTML
+    assert '"/recover-tab"' in HTML.replace("'", '"')
+    assert "renderRecent" in HTML
+
+
+def test_switcher_closes_on_outside_click():
+    assert 'if(e.target === $("#sw-ov")) swClose();' in HTML
+
+
 def test_opencode_menu_offers_providers_and_models():
     # OpenCode es el UNICO agente con seleccion de provider desde la UI
     assert 'api("/opencode/models")' in HTML
@@ -113,6 +131,9 @@ if __name__ == "__main__":
     test_usage_ui_renders_exact_limit_bars()
     test_header_shows_global_limit_percentages()
     test_no_agent_badges_in_header()
+    test_header_has_no_search_nor_open_project()
+    test_recent_closed_sessions_are_recoverable()
+    test_switcher_closes_on_outside_click()
     test_opencode_menu_offers_providers_and_models()
     test_card_usage_chip_is_full_width_line()
     test_usage_drawer_collapses_historic_sessions()

@@ -19,6 +19,7 @@ Solo escucha en 127.0.0.1. Todas las llamadas a tmux van sin shell (sin inyeccio
 import html as html_mod
 import hmac, secrets
 import json, os, glob, re, shlex, shutil, sys, subprocess, threading, time, webbrowser
+import urllib.parse, urllib.request
 import http.server, socketserver
 import tempfile
 import cc_usage
@@ -100,11 +101,55 @@ _limits_cache = {"at": 0, "limits": [], "health": {}}
 _limits_refreshing = False
 
 
+def usage_alert_send(message):
+    """Entrega una alerta de uso por los MISMOS canales que las notificaciones
+    normales: el popup PROPIO de ComandOS (cc-notifyd; jamas el popup plano
+    de GNOME) y/o Telegram, segun lo que este prendido."""
+    conf = read_conf()
+    if conf.get("DESKTOP_NOTIFY", "1") == "1":
+        try:
+            payload = json.dumps({
+                "title": "Límite de uso", "body": message, "session": "",
+                "kind": "waiting", "project": "Uso", "options": "",
+                "full": message,
+            }).encode()
+            urllib.request.urlopen(urllib.request.Request(
+                "http://127.0.0.1:4778/notify", data=payload,
+                headers={"Content-Type": "application/json"}), timeout=2)
+        except Exception:
+            pass
+    if conf.get("TELEGRAM_ENABLED") == "1":
+        tg = cc_usage.load_usage_config([os.path.join(HOOKS, "telegram.env")])
+        token = tg.get("CC_TELEGRAM_BOT_TOKEN") or tg.get("TELEGRAM_BOT_TOKEN")
+        chat = tg.get("TELEGRAM_CHAT_ID")
+        if token and chat:
+            try:
+                body = urllib.parse.urlencode({
+                    "chat_id": chat, "parse_mode": "HTML",
+                    "text": f"<b>ComandOS — Límite de uso</b>\n{message}",
+                }).encode()
+                urllib.request.urlopen(urllib.request.Request(
+                    f"https://api.telegram.org/bot{token}/sendMessage",
+                    data=body), timeout=5)
+            except Exception:
+                pass
+
+
+def _check_limit_alerts(limits):
+    for alert in cc_usage.limit_threshold_alerts(limits):
+        try:
+            if cc_usage.record_alert_once(USAGE_DB, alert):
+                usage_alert_send(alert["message"])
+        except Exception:
+            pass
+
+
 def _refresh_provider_limits():
     global _limits_refreshing
     try:
         codex_rows = cc_usage.read_codex_rate_limits()
         claude_rows, claude_health = cc_usage.fetch_claude_oauth_limits()
+        _check_limit_alerts(claude_rows + codex_rows)
         with _limits_lock:
             if not claude_rows and claude_health.get("status") == "error":
                 # Fetch fallido (p.ej. 429): conservar el ultimo dato bueno.
@@ -1579,6 +1624,7 @@ class Handler(http.server.SimpleHTTPRequestHandler):
                                                limits=prov["limits"])
             state["credential_health"] = usage_credential_health(env)
             state["credential_health"].update(prov["health"])
+            state["alerts"] = cc_usage.list_alerts(USAGE_DB)
             write_pane_models(state.get("panes") or [])
             return self._json(200, state)
         if self.path.startswith("/ssh"):

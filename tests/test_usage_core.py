@@ -771,6 +771,31 @@ def test_opencode_picker_query_uses_display_name_tokens():
     assert q == "nemotron 3 ultra free openrouter"
 
 
+def test_limit_threshold_alerts_fire_once_per_reset_window():
+    limits = [
+        {"id": "claude_session", "provider": "claude", "label": "Sesion 5h",
+         "percent": 88.0, "resets_at": 5000},
+        {"id": "codex_weekly", "provider": "codex", "label": "Semana",
+         "percent": 12.0, "resets_at": 6000},
+    ]
+    alerts = cc_usage.limit_threshold_alerts(limits, now=100)
+
+    assert len(alerts) == 1
+    assert alerts[0]["threshold"] == 85
+    assert alerts[0]["level"] == "warning"
+    assert "88%" in alerts[0]["message"]
+
+    with tempfile.TemporaryDirectory() as d:
+        db = os.path.join(d, "usage.sqlite")
+        cc_usage.init_db(db)
+        assert cc_usage.record_alert_once(db, alerts[0]) is True
+        # Misma ventana: NO se repite (cooldown por resets_at en el id)
+        assert cc_usage.record_alert_once(db, alerts[0]) is False
+        rows = cc_usage.list_alerts(db)
+    assert len(rows) == 1
+    assert rows[0]["provider"] == "claude"
+
+
 def test_model_switch_text_accepts_direct_model():
     assert cc_usage.model_switch_text("claude", "", model="opus") == "/model opus"
     assert cc_usage.model_switch_text("claude", "", model="fable") == "/model fable"
@@ -780,6 +805,7 @@ def test_model_switch_text_accepts_direct_model():
 
 
 if __name__ == "__main__":
+    test_limit_threshold_alerts_fire_once_per_reset_window()
     test_usage_db_path_lives_under_hooks_dir()
     test_init_db_creates_required_tables()
     test_git_root_for_path_uses_git_when_available_and_falls_back()

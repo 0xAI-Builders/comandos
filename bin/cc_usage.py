@@ -631,6 +631,60 @@ def build_usage_state(db_path, live_panes=None, now=None, settings=None, limits=
     }
 
 
+def record_alert_once(db_path, alert):
+    """Inserta la alerta solo si su id no existe (cooldown natural: el id
+    lleva el resets_at de la ventana). Devuelve True si es nueva."""
+    init_db(db_path)
+    with connect(db_path) as con:
+        ts = int(alert.get("created_at") or time.time())
+        try:
+            con.execute(
+                """insert into usage_alerts
+                   (id, kind, level, message, provider, tmux_session, tmux_pane,
+                    created_at, last_seen_at, raw)
+                   values (?,?,?,?,?,?,?,?,?,?)""",
+                (alert["id"], alert.get("kind", "limit"), alert.get("level", "warning"),
+                 alert.get("message", ""), alert.get("provider", ""), "", "",
+                 ts, ts, json.dumps(alert, sort_keys=True)))
+            return True
+        except sqlite3.IntegrityError:
+            con.execute("update usage_alerts set last_seen_at=? where id=?",
+                        (ts, alert["id"]))
+            return False
+
+
+def list_alerts(db_path, limit=12):
+    init_db(db_path)
+    with connect(db_path) as con:
+        return _rows(con.execute(
+            "select * from usage_alerts order by created_at desc limit ?", (limit,)))
+
+
+def limit_threshold_alerts(limits, thresholds=(70, 85, 95), now=None):
+    """Alertas por porcentaje de limite (la config que importa con suscripcion:
+    no hay costos por request, hay ventanas con %). Una por ventana de reset."""
+    ts = int(now if now is not None else time.time())
+    alerts = []
+    for item in limits or []:
+        pct = _as_float(item.get("percent"))
+        crossed = max((t for t in thresholds if pct >= t), default=None)
+        if crossed is None:
+            continue
+        alerts.append({
+            "id": f"{item.get('id')}-{crossed}-{item.get('resets_at')}",
+            "kind": "limit",
+            "level": "danger" if crossed >= 95 else "warning",
+            "provider": _text(item.get("provider")),
+            "message": f"{item.get('provider')} {item.get('label')}: "
+                       f"{pct:.0f}% usado (umbral {crossed}%)",
+            "percent": pct,
+            "threshold": crossed,
+            "resets_at": _as_int(item.get("resets_at")),
+            "created_at": ts,
+        })
+    return alerts
+
+
 def calculate_alerts(state, settings=None):
     settings = settings or {}
     alerts = []
