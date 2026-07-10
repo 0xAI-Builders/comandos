@@ -457,14 +457,31 @@
 	  .usage-row span{font-size:10.5px;color:var(--faint);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 	  .usage-row code{font-size:10px;color:var(--code)}
 	  .usage-pane-main{min-width:0}
-	  .pane-model-controls{display:flex;align-items:center;width:150px}
-	  /* Un solo control de modelo por sesion/pane (select nativo: funciona igual
-	     en Chrome y en el WebKitGTK viejo de la app) */
-	  select.mdl, select.pane-model{font-family:var(--mono);font-size:10.5px;color:var(--dim);
-	    background:var(--panel);border:1px solid var(--line);border-radius:7px;
-	    padding:5px 6px;max-width:150px;min-height:0}
-	  select.mdl:hover, select.pane-model:hover{color:var(--text);border-color:var(--brand)}
-	  .ops select.mdl{min-height:40px;max-width:118px}
+	  .pane-model-controls{display:flex;align-items:center}
+	  /* Menu de modelo propio: el <select> nativo no abre en el WebKitGTK viejo
+	     de la app. Un boton con el modelo ACTUAL + menu con nombre e intencion. */
+	  .mdl-wrap{position:relative;display:inline-flex}
+	  .mdl-wrap .mdl-btn{display:inline-flex;align-items:center;gap:5px;font-family:var(--mono);
+	    font-size:10.5px;color:var(--dim);background:var(--panel);border:1px solid var(--line);
+	    border-radius:7px;padding:5px 8px;max-width:138px;cursor:pointer}
+	  .mdl-wrap .mdl-btn:hover{color:var(--text);border-color:var(--brand)}
+	  .mdl-wrap .mdl-cur{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+	  .mdl-wrap .mdl-cur.pending{color:var(--brand);font-style:italic}
+	  .mdl-wrap .mdl-caret{color:var(--faint);font-size:9px;flex:none}
+	  .ops .mdl-btn{min-height:40px}
+	  /* El menu vive en <body> y se posiciona con getBoundingClientRect:
+	     las cards tienen overflow:hidden y lo recortarian si fuera hijo */
+	  #mdl-menu{position:fixed;z-index:60;min-width:236px;
+	    background:var(--panel2);border:1px solid var(--line2);border-radius:10px;padding:5px;
+	    box-shadow:0 10px 28px rgba(0,0,0,.45)}
+	  #mdl-menu .mdl-opt{display:grid;grid-template-columns:8px auto 1fr;gap:8px;align-items:center;
+	    width:100%;min-height:0;text-align:left;padding:8px 9px;border:0;border-radius:7px;
+	    background:none;cursor:pointer}
+	  #mdl-menu .mdl-opt:hover,#mdl-menu .mdl-opt:focus-visible{background:var(--panel)}
+	  #mdl-menu .mdl-opt i{width:8px;height:8px;border-radius:50%}
+	  #mdl-menu .mdl-opt b{font-family:var(--mono);font-size:11px;color:var(--text)}
+	  #mdl-menu .mdl-opt span{font-size:10px;color:var(--faint);white-space:nowrap;
+	    overflow:hidden;text-overflow:ellipsis}
 	  .usage-window.ok .usage-bar span{background:var(--done)}
 	  .usage-window.warn{border-left-color:var(--waiting)}
 	  .usage-window.warn .usage-bar span{background:var(--waiting)}
@@ -656,6 +673,7 @@
 </div>
 
 <div id="toasts"></div>
+<div id="mdl-menu" class="hidden" role="listbox" aria-label="Modelos"></div>
 
 <script>
 "use strict";
@@ -947,8 +965,10 @@ function mdStrip(s){ return (s||"").replace(/\*\*|`|^#{1,6} /g, ""); }
 	  if(!ts) return "";
 	  const d = new Date(ts * 1000), now = new Date();
 	  const hm = d.toLocaleTimeString([], {hour: "2-digit", minute: "2-digit"});
-	  if(d.toDateString() === now.toDateString()) return hm;
-	  return `${d.toLocaleDateString([], {weekday: "short"})} ${hm}`;
+	  if(d.toDateString() === now.toDateString()) return `${tf("hoy", "today")} ${hm}`;
+	  const days = (d - now) / 86400000;
+	  if(days < 6) return `${d.toLocaleDateString([], {weekday: "short"})} ${hm}`;
+	  return `${d.toLocaleDateString([], {day: "numeric", month: "short"})} ${hm}`;
 	}
 	function limitAge(l){
 	  if(!l?.captured_at) return "";
@@ -997,52 +1017,103 @@ function mdStrip(s){ return (s||"").replace(/\*\*|`|^#{1,6} /g, ""); }
 	  strip.classList.toggle("hidden", !pills.length);
 	  strip.querySelectorAll(".pill").forEach(p => p.addEventListener("click", ()=> $("#btn-usage").click()));
 	}
-	// UN control por concepto: un select de modelo (la intencion es la etiqueta).
+	// UN control por concepto: un menu de modelo con la intencion como etiqueta.
+	// El punto de color codifica el costo (verde barato → morado maximo).
 	const MODEL_CHOICES = {
 	  claude: [
-	    {model: "haiku",  label: "Haiku · Ahorro"},
-	    {model: "sonnet", label: "Sonnet · Diario"},
-	    {model: "opus",   label: "Opus · Difícil"},
-	    {model: "fable",  label: "Fable · Máximo"},
-	  ],
-	  codex: [
-	    {model: "picker", label: "Abrir selector (/model)"},
+	    {model: "haiku",  name: "Haiku",  intent: "Ahorro — tareas simples",        dot: "var(--done)"},
+	    {model: "sonnet", name: "Sonnet", intent: "Diario — trabajo normal",        dot: "var(--working)"},
+	    {model: "opus",   name: "Opus",   intent: "Difícil — debug y refactors",    dot: "var(--waiting)"},
+	    {model: "fable",  name: "Fable",  intent: "Máximo — lo más ambiguo",        dot: "var(--brand)"},
 	  ],
 	};
-	function modelOptions(provider){
-	  const list = MODEL_CHOICES[provider] || MODEL_CHOICES.claude;
-	  return `<option value="">${tf("Modelo…", "Model…")}</option>` +
-	    list.map(m => `<option value="${attrEsc(m.model)}">${mdEsc(m.label)}</option>`).join("");
+	function shortModel(m){
+	  return String(m || "").replace(/^claude-/, "");
 	}
-	function modelSelectEl(session, pane, provider, cls){
-	  return `<select class="${cls}" data-session="${attrEsc(session)}" data-pane="${attrEsc(pane)}" data-provider="${attrEsc(provider)}"
-	    title="${tf("Cambiar el modelo de esta sesion", "Switch this session's model")}">${modelOptions(provider)}</select>`;
+	function modelMenuEl(session, pane, provider, current){
+	  const cur = shortModel(current) || tf("modelo", "model");
+	  const ds = `data-session="${attrEsc(session)}" data-pane="${attrEsc(pane)}" data-provider="${attrEsc(provider)}"`;
+	  if(provider === "codex"){
+	    // Codex solo cambia modelo desde su picker: el boton lo abre en SU terminal.
+	    return `<span class="mdl-wrap"><button type="button" class="mdl-btn" ${ds}
+	      title="${tf("Abre el selector de modelo en la terminal de esta sesion", "Opens the model picker in this session's terminal")}">
+	      <span class="mdl-cur">${mdEsc(cur)}</span><span class="mdl-caret">⧉</span></button></span>`;
+	  }
+	  return `<span class="mdl-wrap"><button type="button" class="mdl-btn" ${ds}
+	    aria-haspopup="listbox" aria-expanded="false"
+	    title="${tf("Cambiar el modelo de esta sesion", "Switch this session's model")}">
+	    <span class="mdl-cur">${mdEsc(cur)}</span><span class="mdl-caret">▾</span></button></span>`;
 	}
-	function wireModelSelect(sel){
-	  sel.addEventListener("change", async ()=>{
-	    const value = sel.value;
-	    sel.value = "";
-	    if(!value) return;
-	    const card = sel.closest("article[data-session]");
-	    if(card && card.dataset.pane) sel.dataset.pane = card.dataset.pane;
-	    try{
-	      await api("/model/switch", {
-	        session: sel.dataset.session,
-	        pane: sel.dataset.pane || undefined,
-	        provider: sel.dataset.provider || "claude",
-	        model: value,
-	      });
-	      toast(value === "picker"
-	        ? tf(`Selector de modelo abierto en ${sel.dataset.session}`, `Model picker opened in ${sel.dataset.session}`)
-	        : tf(`Modelo ${value} → ${sel.dataset.session}`, `Model ${value} → ${sel.dataset.session}`));
-	    }catch(err){ toast(err.message, true); }
+	// Menu flotante UNICO en <body>: nada lo recorta (cards y drawer tienen
+	// overflow:hidden) y funciona igual en Chrome y en el WebKitGTK de la app.
+	let mdlMenuBtn = null;
+	function closeModelMenus(){
+	  $("#mdl-menu").classList.add("hidden");
+	  if(mdlMenuBtn) mdlMenuBtn.setAttribute("aria-expanded", "false");
+	  mdlMenuBtn = null;
+	}
+	function openModelMenu(btn){
+	  const menu = $("#mdl-menu");
+	  menu.innerHTML = MODEL_CHOICES.claude.map(m =>
+	    `<button type="button" class="mdl-opt" role="option" data-model="${m.model}">
+	      <i style="background:${m.dot}"></i><b>${m.name}</b><span>${m.intent}</span></button>`).join("");
+	  menu.classList.remove("hidden");
+	  const r = btn.getBoundingClientRect(), mw = menu.offsetWidth, mh = menu.offsetHeight;
+	  let left = Math.min(r.right - mw, window.innerWidth - mw - 8);
+	  let top = r.bottom + 6;
+	  if(top + mh > window.innerHeight - 8) top = Math.max(8, r.top - mh - 6);
+	  menu.style.left = `${Math.max(8, left)}px`;
+	  menu.style.top = `${top}px`;
+	  mdlMenuBtn = btn;
+	  btn.setAttribute("aria-expanded", "true");
+	  menu.querySelectorAll(".mdl-opt").forEach(o=>{
+	    o.addEventListener("click", e=>{
+	      e.stopPropagation();
+	      const target = mdlMenuBtn;
+	      closeModelMenus();
+	      if(target) switchModel(target, o.dataset.model);
+	    });
 	  });
 	}
+	async function switchModel(btn, model){
+	  const card = btn.closest("article[data-session]");
+	  if(card && card.dataset.pane) btn.dataset.pane = card.dataset.pane;
+	  try{
+	    await api("/model/switch", {
+	      session: btn.dataset.session,
+	      pane: btn.dataset.pane || undefined,
+	      provider: btn.dataset.provider || "claude",
+	      model: model,
+	    });
+	    if(model === "picker"){
+	      toast(tf(`Elige el modelo en la terminal de ${btn.dataset.session}`, `Pick the model in ${btn.dataset.session}'s terminal`));
+	    } else {
+	      const cur = btn.querySelector(".mdl-cur");
+	      if(cur){ cur.textContent = model; cur.classList.add("pending"); }
+	      toast(tf(`Modelo ${model} → ${btn.dataset.session}`, `Model ${model} → ${btn.dataset.session}`));
+	    }
+	  }catch(err){ toast(err.message, true); }
+	}
+	function wireModelMenu(wrap){
+	  const btn = wrap.querySelector(".mdl-btn");
+	  if(!btn || btn._wired) return;
+	  btn._wired = true;
+	  btn.addEventListener("click", e=>{
+	    e.stopPropagation();
+	    if(!btn.hasAttribute("aria-haspopup")){ switchModel(btn, "picker"); return; }
+	    const reopen = mdlMenuBtn !== btn;
+	    closeModelMenus();
+	    if(reopen) openModelMenu(btn);
+	  });
+	}
+	document.addEventListener("click", closeModelMenus);
+	document.addEventListener("keydown", e=>{ if(e.key === "Escape") closeModelMenus(); });
+	document.addEventListener("scroll", closeModelMenus, true);
 	function panePresetButtons(p){
 	  if(!String(p.tmux_pane || "").startsWith("%")) return "";
 	  const provider = (p.provider || p.agent || "claude") === "codex" ? "codex" : "claude";
 	  return `<div class="pane-model-controls">
-	    ${modelSelectEl(p.tmux_session || "", p.tmux_pane || "", provider, "pane-model")}
+	    ${modelMenuEl(p.tmux_session || "", p.tmux_pane || "", provider, p.model)}
 	  </div>`;
 	}
 	function usageStatusLabel(h){
@@ -1088,18 +1159,28 @@ function mdStrip(s){ return (s||"").replace(/\*\*|`|^#{1,6} /g, ""); }
 	    </div>`;
 	  }).join("");
 	  const projects = state?.projects || [];
-	  $("#usage-projects").innerHTML = projects.length ? projects.map(pr => `
-	    <div class="usage-card">
+	  $("#usage-projects").innerHTML = projects.length ? projects.map(pr => {
+	    // Panes VIVOS con controles; el historial de transcripts se colapsa a una
+	    // linea (una sesion por archivo se veia como sesiones repetidas)
+	    const live = (pr.panes || []).filter(p => String(p.tmux_pane || "").startsWith("%"));
+	    const hist = (pr.panes || []).filter(p => !String(p.tmux_pane || "").startsWith("%"));
+	    const histTok = hist.reduce((a, p) => a + Number(p.total_tokens || 0), 0);
+	    return `<div class="usage-card">
 	      <div class="usage-title">${mdEsc(shortPath(pr.git_root || ""))}<small>${mdEsc(confidenceLabel(pr.confidence))}</small></div>
-	      <div class="usage-sub">${fmtMoney(pr.cost_usd)} · ${fmtTokens(pr.total_tokens || 0)}</div>
-	      ${(pr.panes || []).map(p => `<div class="usage-row">
-	        <div class="usage-pane-main"><b>${mdEsc(p.tmux_session || "")} ${mdEsc(p.tmux_pane || "")}</b><br>
+	      <div class="usage-sub">${fmtMoney(pr.cost_usd)} · ${fmtTokens(pr.total_tokens || 0)} ${tf("en 14 dias", "in 14 days")}</div>
+	      ${live.map(p => `<div class="usage-row">
+	        <div class="usage-pane-main"><b>${mdEsc(p.tab_label || p.tmux_session || "")} ${mdEsc(p.tmux_pane || "")}</b><br>
 	          <span>${mdEsc(shortPath(p.pane_pwd || ""))}</span><br>
 	          <span>${mdEsc(usageChipText(p) || confidenceLabel(p.confidence) || "detectado")}</span></div>
 	        ${panePresetButtons(p)}
 	      </div>`).join("")}
-	    </div>`).join("") : `<div class="empty">${tf("Sin panes de uso todavia", "No usage panes yet")}</div>`;
-	  document.querySelectorAll("#usage .pane-model").forEach(wireModelSelect);
+	      ${hist.length ? `<div class="usage-row">
+	        <div class="usage-pane-main"><b>${tf("historial", "history")}</b><br>
+	          <span>${hist.length} ${tf("sesiones previas", "past sessions")} · ${fmtTokens(histTok)}</span></div>
+	      </div>` : ""}
+	    </div>`;
+	  }).join("") : `<div class="empty">${tf("Sin panes de uso todavia", "No usage panes yet")}</div>`;
+	  document.querySelectorAll("#usage .mdl-wrap").forEach(wireModelMenu);
 	  const alerts = state?.alerts || [];
 	  $("#usage-alerts").innerHTML = alerts.length ? alerts.map(a =>
 	    `<div class="usage-alert">${mdEsc(a.message || a.kind || "alerta")}</div>`).join("")
@@ -1150,7 +1231,7 @@ function cardEl(it){
         <button type="button" data-key="Escape">Esc</button>
       </div>
       <div class="ops">
-        ${["", "claude", "codex"].includes(it.agent || "") ? modelSelectEl(it.session, it.pane || "", it.agent === "codex" ? "codex" : "claude", "mdl") : ""}
+        ${["", "claude", "codex"].includes(it.agent || "") ? modelMenuEl(it.session, it.pane || "", it.agent === "codex" ? "codex" : "claude", "") : ""}
         <button type="button" class="cp" title="${t('Copiar la respuesta completa de Claude')}">${t("Copiar")}</button>
         <button type="button" class="xtxt" title="${t('Guardar la respuesta como .txt en Descargas')}">TXT</button>
         <button type="button" class="xpdf" title="${t('Guardar la respuesta como PDF (markdown renderizado) en Descargas')}">PDF</button>
@@ -1160,7 +1241,7 @@ function cardEl(it){
       </div>
     </div>`;
   el.querySelector("h2").textContent = it.project;
-  el.querySelectorAll("select.mdl").forEach(wireModelSelect);
+  el.querySelectorAll(".mdl-wrap").forEach(wireModelMenu);
   const pv = el.querySelector(".preview");
   pv.title = t("Click: ver TODO el texto / colapsar");
   pv.addEventListener("click", e=>{ e.stopPropagation(); pv.classList.toggle("open"); });
@@ -1688,6 +1769,19 @@ function render(list){
 	      uchip.textContent = utxt;
 	      uchip.classList.toggle("hidden", !utxt);
 	      uchip.title = utxt;
+	    }
+	    const mcur = el.querySelector(".mdl-cur");
+	    if(mcur){
+	      const um = shortModel(usageForItem(it)?.model || "");
+	      if(um && mcur.classList.contains("pending")){
+	        // El cambio pedido ya se refleja en un turno real: dejar de marcarlo
+	        if(um.toLowerCase().includes(mcur.textContent.trim().toLowerCase())){
+	          mcur.textContent = um;
+	          mcur.classList.remove("pending");
+	        }
+	      } else if(um){
+	        mcur.textContent = um;
+	      }
 	    }
 	    el.querySelector(".fav").classList.toggle("on", S.favs.has(it.session));
     el.querySelector(".ago").textContent = agoTxt(it.ts);

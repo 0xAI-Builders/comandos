@@ -806,39 +806,44 @@ def read_codex_rate_limits(sessions_root=None, now=None, max_files=8):
             except OSError:
                 continue
     files.sort(reverse=True)
+    # Cada sesion de Codex escribe su propio snapshot y pueden convivir varios
+    # con edades distintas: gana el timestamp mas reciente, no el mtime.
+    best, best_at = None, -1
     for _mtime, path in files[:max_files]:
         snapshot = _last_codex_rate_limit_snapshot(path)
         if not snapshot:
             continue
         limits, captured_at = snapshot
-        rows = []
-        for key, lid, kind, window in (
-            ("primary", "codex_session", "session", "5h"),
-            ("secondary", "codex_weekly", "weekly_all", "7d"),
-        ):
-            item = limits.get(key) if isinstance(limits.get(key), dict) else {}
-            if item.get("used_percent") is None:
-                continue
-            minutes = _as_int(item.get("window_minutes"))
-            rows.append({
-                "id": lid,
-                "provider": "codex",
-                "kind": kind,
-                "label": _codex_window_label(minutes, "Sesion 5h" if key == "primary" else "Semana"),
-                "scope": "",
-                "percent": round(_as_float(item.get("used_percent")), 1),
-                "resets_at": _as_epoch(item.get("resets_at")),
-                "severity": "normal",
-                "is_active": True,
-                "window": window,
-                "plan_type": _text(limits.get("plan_type")),
-                "source": "rollout",
-                "confidence": "exact",
-                "captured_at": captured_at,
-            })
-        if rows:
-            return rows
-    return []
+        if captured_at > best_at:
+            best, best_at = limits, captured_at
+    if not best:
+        return []
+    rows = []
+    for key, lid, kind, window in (
+        ("primary", "codex_session", "session", "5h"),
+        ("secondary", "codex_weekly", "weekly_all", "7d"),
+    ):
+        item = best.get(key) if isinstance(best.get(key), dict) else {}
+        if item.get("used_percent") is None:
+            continue
+        minutes = _as_int(item.get("window_minutes"))
+        rows.append({
+            "id": lid,
+            "provider": "codex",
+            "kind": kind,
+            "label": _codex_window_label(minutes, "Sesion 5h" if key == "primary" else "Semana"),
+            "scope": "",
+            "percent": round(_as_float(item.get("used_percent")), 1),
+            "resets_at": _as_epoch(item.get("resets_at")),
+            "severity": "normal",
+            "is_active": True,
+            "window": window,
+            "plan_type": _text(best.get("plan_type")),
+            "source": "rollout",
+            "confidence": "exact",
+            "captured_at": best_at,
+        })
+    return rows
 
 
 def _as_list(value):

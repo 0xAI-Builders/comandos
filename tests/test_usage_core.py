@@ -597,6 +597,32 @@ def test_read_codex_rate_limits_reads_latest_rollout_snapshot():
     assert by_id["codex_weekly"]["resets_at"] == 9000
 
 
+def test_read_codex_rate_limits_prefers_freshest_snapshot_across_files():
+    with tempfile.TemporaryDirectory() as d:
+        day = Path(d) / "2026" / "07" / "09"
+        day.mkdir(parents=True)
+
+        def rollout(name, ts, pct):
+            line = json.dumps({"timestamp": ts, "type": "event_msg",
+                               "payload": {"type": "token_count", "info": {},
+                                           "rate_limits": {
+                                               "primary": {"used_percent": pct,
+                                                           "window_minutes": 300,
+                                                           "resets_at": 9999},
+                                               "plan_type": "pro"}}})
+            (day / name).write_text(line + "\n")
+
+        # El archivo con mtime mas nuevo trae un snapshot VIEJO; otro archivo
+        # tiene el snapshot mas reciente. Gana el timestamp, no el mtime.
+        rollout("rollout-old-snap.jsonl", "2026-07-09T10:00:00.000Z", 3.0)
+        rollout("rollout-new-snap.jsonl", "2026-07-09T18:00:00.000Z", 16.0)
+        os.utime(day / "rollout-new-snap.jsonl", (1000, 1000))
+
+        rows = cc_usage.read_codex_rate_limits(sessions_root=d, now=6000)
+
+    assert rows[0]["percent"] == 16.0
+
+
 def test_read_codex_rate_limits_empty_without_sessions():
     with tempfile.TemporaryDirectory() as d:
         assert cc_usage.read_codex_rate_limits(sessions_root=d, now=100) == []
@@ -718,6 +744,7 @@ if __name__ == "__main__":
     test_fetch_claude_oauth_limits_uses_local_token_and_hides_it()
     test_fetch_claude_oauth_limits_reports_missing_credentials()
     test_read_codex_rate_limits_reads_latest_rollout_snapshot()
+    test_read_codex_rate_limits_prefers_freshest_snapshot_across_files()
     test_read_codex_rate_limits_empty_without_sessions()
     test_build_usage_state_exposes_provider_limits()
     test_build_usage_state_attaches_today_usage_to_live_panes()

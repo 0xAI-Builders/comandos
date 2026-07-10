@@ -28,10 +28,10 @@ def test_session_cards_have_usage_chip_container():
 
 
 def test_usage_ui_exposes_model_selector_with_preset_names():
-    # Un solo control por concepto: select de modelo con la intencion como etiqueta
+    # Un solo control por concepto: menu de modelo con la intencion como etiqueta
     for preset in ("Ahorro", "Diario", "Difícil", "Máximo"):
         assert preset in HTML
-    assert "function modelOptions" in HTML
+    assert "MODEL_CHOICES" in HTML
     assert 'api("/model/switch"' in HTML
     assert "model: " in HTML
 
@@ -43,16 +43,27 @@ def test_usage_ui_labels_detected_panes_without_unattributed_noise():
 
 
 def test_usage_ui_switches_models_inline_per_pane():
-    assert 'class="pane-model-controls"' in HTML
-    assert "pane-model" in HTML
-    assert "session: sel.dataset.session" in HTML
-    assert "pane: sel.dataset.pane || undefined" in HTML
+    # Menu propio (no <select> nativo: el WebKitGTK viejo de la app no lo abre)
+    assert "mdl-menu" in HTML
+    assert "mdl-btn" in HTML
+    assert "modelSelectEl" not in HTML
+    assert "session: btn.dataset.session" in HTML
+    assert "pane: btn.dataset.pane || undefined" in HTML
+    assert 'role="listbox"' in HTML
+    assert 'role="option"' in HTML
 
 
 def test_session_cards_have_model_selector():
-    assert '"mdl")' in HTML          # cardEl inyecta modelSelectEl(..., "mdl")
-    assert 'el.querySelectorAll("select.mdl").forEach(wireModelSelect)' in HTML
-    assert "function wireModelSelect" in HTML
+    assert "modelMenuEl" in HTML
+    assert "function wireModelMenu" in HTML
+    assert "mdl-cur" in HTML
+
+
+def test_usage_drawer_collapses_historic_sessions():
+    # Las sesiones historicas (transcripts) no se listan una por una:
+    # se ven los panes vivos + una linea de historial (adios duplicados)
+    assert "historial" in HTML
+    assert 'startsWith("%")' in HTML
 
 
 def test_usage_ui_renders_exact_limit_bars():
@@ -82,3 +93,4 @@ if __name__ == "__main__":
     test_session_cards_have_model_selector()
     test_usage_ui_renders_exact_limit_bars()
     test_header_shows_global_limit_percentages()
+    test_usage_drawer_collapses_historic_sessions()
