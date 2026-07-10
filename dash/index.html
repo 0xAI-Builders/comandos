@@ -3474,8 +3474,69 @@ function renderSnipPane(){
   pane.appendChild(actions);
 }
 
-// Stub for Task 7 — prevents a ReferenceError if the user clicks Edit before Task 7 ships.
-function openSnipEditor(_it){ toast("Editor: pendiente Task 7", true); }
+function openSnipEditor(item){
+  const pane = document.getElementById("snip-pane");
+  pane.innerHTML = "";
+
+  const nameLbl = document.createElement("label");
+  nameLbl.textContent = "Nombre";
+  nameLbl.style.cssText = "font-size:11px;color:var(--dim);text-transform:uppercase;letter-spacing:.12em";
+  const nameIn = document.createElement("input");
+  nameIn.value = item ? item.name : "";
+  nameIn.placeholder = "docker-ps";
+  nameIn.style.cssText = "background:var(--bg);color:var(--text);border:1px solid var(--line);border-radius:6px;padding:6px 10px;font:inherit";
+
+  const tagsLbl = document.createElement("label");
+  tagsLbl.textContent = "Tags (coma-separados)";
+  tagsLbl.style.cssText = nameLbl.style.cssText;
+  const tagsIn = document.createElement("input");
+  tagsIn.value = item ? (item.tags || []).join(", ") : "";
+  tagsIn.placeholder = "docker, prod";
+  tagsIn.style.cssText = nameIn.style.cssText;
+
+  const bodyLbl = document.createElement("label");
+  bodyLbl.textContent = "Body";
+  bodyLbl.style.cssText = nameLbl.style.cssText;
+  const bodyIn = document.createElement("textarea");
+  bodyIn.value = item ? item.body : "";
+  bodyIn.rows = 10;
+  bodyIn.style.cssText = "background:var(--bg);color:var(--text);border:1px solid var(--line);border-radius:6px;padding:8px 10px;font:inherit;resize:vertical;flex:1;min-height:140px";
+
+  const actions = document.createElement("div");
+  actions.className = "snip-actions";
+  const save = document.createElement("button");
+  save.className = "hdr-btn"; save.textContent = "Save";
+  const cancel = document.createElement("button");
+  cancel.className = "hdr-btn"; cancel.textContent = "Cancel";
+  actions.appendChild(save); actions.appendChild(cancel);
+
+  for (const el of [nameLbl, nameIn, tagsLbl, tagsIn, bodyLbl, bodyIn, actions]) pane.appendChild(el);
+  nameIn.focus();
+
+  cancel.addEventListener("click", () => renderSnipPane());
+
+  save.addEventListener("click", async () => {
+    const name = nameIn.value.trim();
+    const body = bodyIn.value;
+    const tags = tagsIn.value.split(",").map(t => t.trim()).filter(Boolean);
+    if (!name) { toast("Nombre vacío", true); return; }
+    if (!body.trim()) { toast("Body vacío", true); return; }
+    try {
+      let saved;
+      if (item){
+        saved = await api('/snippets/update', {id: item.id, name, body, tags});
+        snipState.items = snipState.items.map(x => x.id === item.id ? saved.item : x);
+      } else {
+        saved = await api('/snippets', {name, body, tags});
+        snipState.items = [saved.item, ...snipState.items];
+      }
+      snipState.selectedId = saved.item.id;
+      renderSnipList();
+      renderSnipPane();
+      toast(item ? "Actualizado" : "Guardado");
+    } catch (e) { toast(e.message, true); }
+  });
+}
 
 async function openSnippets(){
   snipDlg.showModal();
@@ -3505,6 +3566,7 @@ document.getElementById("snip-q").addEventListener("input", (e) => {
   snipState.query = e.target.value;
   renderSnipList();
 });
+document.getElementById("snip-new").addEventListener("click", () => openSnipEditor(null));
 document.addEventListener("keydown", (e) => {
   if (e.ctrlKey && e.shiftKey && (e.key === "K" || e.key === "k")) {
     e.preventDefault();

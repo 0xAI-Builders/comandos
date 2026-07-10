@@ -90,3 +90,29 @@ def test_send_button_calls_paste_endpoint():
 def test_last_session_persisted_in_localstorage():
     assert "snippet-last-session" in HTML
     assert "localStorage" in HTML
+
+
+def test_open_snip_editor_real_implementation():
+    # openSnipEditor must actually build inputs, not just toast a stub
+    m = re.search(r"function\s+openSnipEditor\s*\([\s\S]{0,3500}?\n\}\n", HTML)
+    assert m
+    body = m.group(0)
+    assert "pendiente Task 7" not in body, "still using Task 6 stub"
+    assert "createElement" in body
+    assert "textarea" in body.lower()
+
+
+def test_snip_new_button_wired():
+    # #snip-new must call openSnipEditor(null)
+    assert re.search(
+        r"snip-new[\s\S]{0,600}addEventListener\([\"']click[\"'][\s\S]{0,150}openSnipEditor\s*\(\s*null\s*\)",
+        HTML,
+    )
+
+
+def test_editor_posts_to_snippets_or_update():
+    m = re.search(r"function\s+openSnipEditor\s*\([\s\S]{0,4500}", HTML)
+    assert m
+    body = m.group(0)
+    assert "api('/snippets'" in body or 'api("/snippets"' in body
+    assert "api('/snippets/update'" in body or 'api("/snippets/update"' in body
