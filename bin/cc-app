@@ -2110,40 +2110,46 @@ def cur_term():
     return getattr(page, "_term", None)
 
 
-class SnippetsDialog(Gtk.Dialog):
+class SnippetsDialog(Gtk.Window):
     """List + preview + Send/Edit/Delete/New. Lee y escribe
-    ~/.claude/hooks/snippets.json directamente (mismo store que cc-dash)."""
+    ~/.claude/hooks/snippets.json directamente (mismo store que cc-dash).
+
+    Hereda de Gtk.Window (no Gtk.Dialog) a proposito. Gtk.Dialog tiene
+    handlers default para las signals `close` y `delete-event` que llaman
+    hide() en vez de destroy() — en WSLg eso se manifiesta como "click
+    afuera oculta, hover reactiva". Con Gtk.Window ese comportamiento no
+    existe y podemos gobernar la destruccion desde close_on_click_outside."""
 
     def __init__(self, parent, get_active_session):
-        # modal=False a proposito: en WSLg un dialog modal traga los clicks
-        # de afuera y no cierra al click externo (solo "oculta" y reactiva al
-        # hover). close_on_click_outside(self) resuelve esto con pointer grab.
-        # Mismo patron que open_switcher y open_tabs_overview.
-        super().__init__(title="Snippets", transient_for=parent, modal=False)
-        self.set_default_size(720, 520)
-        # Sin chrome del WM — la app entera es chromeless (ver win.set_decorated(False)).
+        # Mismo patron exacto que open_switcher / open_tabs_overview.
+        super().__init__(type=Gtk.WindowType.TOPLEVEL)
+        self.set_title("Snippets")
+        self.set_transient_for(parent)
+        self.set_modal(False)  # modal=True traga clicks externos en WSLg
         self.set_decorated(False)
         self.set_position(Gtk.WindowPosition.CENTER_ON_PARENT)
-        # CSS scope: sin esta class los child widgets heredan Adwaita default
-        # (entry/button blancos, listbox con hover claro, borde de window claro).
+        self.set_default_size(720, 520)
+        self.set_type_hint(Gdk.WindowTypeHint.DIALOG)
+        self.set_skip_taskbar_hint(True)
         self.get_style_context().add_class("cc-snip-dialog")
         self._get_session = get_active_session
         self._items = snip_load()
         self._selected = None
 
-        box = self.get_content_area()
+        # Root box (equivalente al get_content_area de Gtk.Dialog).
+        root = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=0)
+        self.add(root)
+
         paned = Gtk.Paned(orientation=Gtk.Orientation.HORIZONTAL)
         paned.set_position(260)
-        box.pack_start(paned, True, True, 0)
+        root.pack_start(paned, True, True, 0)
 
-        # Barra de status ephemeral abajo del dialog — inline feedback de Send
-        # (evita depender del popup daemon actionable de cc-notifyd, que es
-        # heavyweight para un "pegado ok").
+        # Barra de status ephemeral abajo — inline feedback de Send.
         self._status = Gtk.Label(label="", xalign=0)
         self._status.set_margin_top(4); self._status.set_margin_bottom(6)
         self._status.set_margin_start(12); self._status.set_margin_end(12)
         self._status.get_style_context().add_class("cc-snip-status")
-        box.pack_start(self._status, False, False, 0)
+        root.pack_start(self._status, False, False, 0)
         self._status_timer = None
 
         # Left column: search + list + new
@@ -2353,20 +2359,22 @@ def _active_snippets_session():
 
 
 def open_snippets_dialog(*_):
-    # Singleton — si ya hay uno abierto, lo trae al frente en vez de duplicar.
-    existing = getattr(open_snippets_dialog, "_dlg", None)
-    if existing is not None:
+    # Singleton: si Ctrl+Shift+K se aprieta con el modal ya vivo, lo trae al
+    # frente en vez de duplicar. La cleanup del destroy nulea el ref.
+    if getattr(open_snippets_dialog, "_win", None) is not None:
         try:
-            existing.present()
+            open_snippets_dialog._win.present()
             return
         except Exception:
-            pass
+            open_snippets_dialog._win = None
     dlg = SnippetsDialog(win, _active_snippets_session)
-    open_snippets_dialog._dlg = dlg
-    dlg.connect("destroy", lambda *_: setattr(open_snippets_dialog, "_dlg", None))
-    dlg.show_all()
-    # WSLg: modal=False + pointer grab para que click fuera cierre de verdad.
+    # ORDEN CRITICO (matchea open_switcher): connects + close_on_click_outside
+    # ANTES del show_all, para que _arm/_tick queden armados desde el primer
+    # frame renderizado y el pointer grab no pierda clicks iniciales.
+    dlg.connect("destroy", lambda *_: setattr(open_snippets_dialog, "_win", None))
+    open_snippets_dialog._win = dlg
     close_on_click_outside(dlg)
+    dlg.show_all()
 
 
 SHORTCUTS_ES = [
