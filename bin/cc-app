@@ -236,21 +236,23 @@ def snip_paste(sess, text):
 
     Secuencia: load-buffer (via stdin) -> paste-buffer -p -> delete-buffer.
     El shell moderno buffea el texto y espera al usuario para ejecutar."""
-    target = "=" + sess
-    r = subprocess.run(["tmux", "has-session", "-t", target],
+    # has-session usa `=<sess>` (session-target). paste-buffer usa `=<sess>:`
+    # (pane-target: sesion + ventana/pane activos) — tmux 3.2a exige el `:`
+    # final si no aparece un window index, como en cc-dash.
+    session_target = "=" + sess
+    pane_target = "=" + sess + ":"
+    r = subprocess.run(["tmux", "has-session", "-t", session_target],
                        capture_output=True, text=True, timeout=5)
     if r.returncode != 0:
         return f"No hay sesion tmux '{sess}'"
     r = subprocess.run(["tmux", "load-buffer", "-b", "comandos-snip", "-"],
                        input=text, capture_output=True, text=True, timeout=5)
     if r.returncode != 0:
-        # Cleanup por si load-buffer escribio parcialmente antes de fallar
-        # (paridad con snippet_paste_to_pane en cc-dash).
         subprocess.run(["tmux", "delete-buffer", "-b", "comandos-snip"],
                        capture_output=True, text=True, timeout=5)
         return r.stderr.strip() or "load-buffer fallo"
     err = None
-    r = subprocess.run(["tmux", "paste-buffer", "-p", "-b", "comandos-snip", "-t", target],
+    r = subprocess.run(["tmux", "paste-buffer", "-p", "-b", "comandos-snip", "-t", pane_target],
                        capture_output=True, text=True, timeout=5)
     if r.returncode != 0:
         err = r.stderr.strip() or "paste-buffer fallo"
@@ -893,6 +895,60 @@ def _build_hb_css():
     b"menu separator,.menu separator{"
     b" background:" + THEME["line"].encode() + b";"
     b" min-height:1px;margin:4px 2px;"
+    b"}"
+    # ---- SnippetsDialog ----
+    # Adwaita default pinta entry/button/list en blanco; forzamos el tema.
+    b".cc-snip-dialog,.cc-snip-dialog window,.cc-snip-dialog .background,"
+    b".cc-snip-dialog dialog{"
+    b" background:" + THEME["bg"].encode() + b";"
+    b" color:" + THEME["text"].encode() + b";"
+    b" border:1px solid " + THEME["line"].encode() + b";"
+    b" border-radius:10px;"
+    b"}"
+    b".cc-snip-dialog box,.cc-snip-dialog paned,"
+    b".cc-snip-dialog scrolledwindow,.cc-snip-dialog viewport{"
+    b" background:transparent;color:" + THEME["text"].encode() + b";"
+    b"}"
+    b".cc-snip-dialog label{color:" + THEME["text"].encode() + b";}"
+    b".cc-snip-dialog label.dim-label{color:" + THEME["dim"].encode() + b";}"
+    b".cc-snip-dialog entry{"
+    b" background:" + THEME["bar"].encode() + b";"
+    b" color:" + THEME["text"].encode() + b";"
+    b" border:1px solid " + THEME["line"].encode() + b";"
+    b" border-radius:6px;padding:6px 10px;"
+    b" caret-color:" + THEME["brand"].encode() + b";"
+    b"}"
+    b".cc-snip-dialog entry:focus{border-color:" + THEME["brand"].encode() + b";box-shadow:none;outline:none;}"
+    b".cc-snip-dialog entry selection{background:" + THEME["line"].encode() + b";color:" + THEME["text"].encode() + b";}"
+    b".cc-snip-dialog button{"
+    b" background:" + THEME["bar"].encode() + b";background-image:none;"
+    b" color:" + THEME["text"].encode() + b";"
+    b" border:1px solid " + THEME["line"].encode() + b";"
+    b" border-radius:6px;padding:5px 10px;box-shadow:none;text-shadow:none;"
+    b"}"
+    b".cc-snip-dialog button:hover{border-color:" + THEME["brand"].encode() + b";color:" + THEME["text"].encode() + b";}"
+    b".cc-snip-dialog button:focus{outline:none;box-shadow:none;}"
+    b".cc-snip-dialog list,.cc-snip-dialog list row,"
+    b".cc-snip-dialog list row:not(:selected){"
+    b" background:transparent;color:" + THEME["text"].encode() + b";"
+    b" border:0;"
+    b"}"
+    b".cc-snip-dialog list row:hover{background:" + THEME["bar"].encode() + b";}"
+    b".cc-snip-dialog list row:selected{"
+    b" background:" + THEME["bar"].encode() + b";"
+    b" color:" + THEME["text"].encode() + b";"
+    b" border-left:2px solid " + THEME["brand"].encode() + b";"
+    b"}"
+    b".cc-snip-dialog textview,.cc-snip-dialog textview text{"
+    b" background:" + THEME["bar"].encode() + b";"
+    b" color:" + THEME["text"].encode() + b";"
+    b"}"
+    b".cc-snip-dialog textview text selection{"
+    b" background:" + THEME["line"].encode() + b";color:" + THEME["text"].encode() + b";"
+    b"}"
+    b".cc-snip-dialog scrollbar{background:transparent;}"
+    b".cc-snip-dialog scrollbar slider{"
+    b" background:" + THEME["line"].encode() + b";border-radius:6px;min-width:6px;min-height:6px;"
     b"}"
 )
 
@@ -2060,6 +2116,9 @@ class SnippetsDialog(Gtk.Dialog):
         self.set_default_size(720, 520)
         # Sin chrome del WM — la app entera es chromeless (ver win.set_decorated(False)).
         self.set_decorated(False)
+        # CSS scope: sin esta class los child widgets heredan Adwaita default
+        # (entry/button blancos, listbox con hover claro, borde de window claro).
+        self.get_style_context().add_class("cc-snip-dialog")
         # ESC cierra el dialog (mismo patron que showModal() en el dashboard).
         self.connect("key-press-event", lambda _w, ev: (
             ev.keyval == Gdk.KEY_Escape and (self.destroy() or True)))
