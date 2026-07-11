@@ -2911,26 +2911,41 @@ def open_snippets_dialog(*_):
     dlg._install_click_outside_close()
 
     # WSLg fallback: Gdk.Seat.grab NO siempre entrega clicks al grabber en
-    # Wayland (Weston decide). Enganchamos button-press en la main window para
-    # cerrar el modal cuando el user clickea en la app principal — inmediato,
-    # sin depender del grab. Para clicks en OTRAS apps de Windows, focus-out
-    # se encarga (ver _on_focus_out).
+    # Wayland (Weston decide, y widgets como VTE consumen antes). Fallback
+    # #1: button-press en la main window (fires si el click sube hasta win).
     def _on_main_press(_w, ev):
-        snip_log(f"MAIN button-press while snippets open — closing")
+        snip_log("MAIN button-press while snippets open — closing")
         try:
             dlg._close("main-window-press")
         except Exception:
             pass
-        return False  # dejar que la main window siga manejando el click
+        return False
     main_handler = win.connect("button-press-event", _on_main_press)
-    # Aseguramos disconnect al destruir el dialog para no acumular handlers.
-    dlg.connect("destroy", lambda *_: win.disconnect(main_handler)
-                if main_handler else None)
 
     dlg.show_all()
     dlg._q.grab_focus()
     dlg.present()
-    snip_log("  show_all + grab_focus + present done")
+
+    # Fallback #2 (CRITICO): Gtk.grab_add(dlg). Grab a nivel Gtk (app-internal,
+    # NO Wayland). Cualquier click en cualquier widget de la app que NO sea
+    # descendiente del dialog es routeado al dialog. Esto captura clicks en
+    # VTE terminal, header, tabs — todos los widgets que antes consumian el
+    # evento antes de que llegara al grab o al win.button-press.
+    # Gtk.grab_add es reliable en Wayland porque es de nivel Gtk, no Weston.
+    Gtk.grab_add(dlg)
+    snip_log(f"Gtk.grab_add(dlg) done id={id(dlg)}")
+
+    def _cleanup():
+        try: win.disconnect(main_handler)
+        except Exception: pass
+        try:
+            Gtk.grab_remove(dlg)
+            snip_log(f"Gtk.grab_remove(dlg) done id={id(dlg)}")
+        except Exception as e:
+            snip_log(f"Gtk.grab_remove FAIL: {e}")
+    dlg.connect("destroy", lambda *_: _cleanup())
+
+    snip_log("  show_all + grab_focus + present + grab_add done")
 
 
 SHORTCUTS_ES = [
