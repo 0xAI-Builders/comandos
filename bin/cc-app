@@ -235,13 +235,12 @@ SNIP_LOG_FILE = "/tmp/cc-app-snip.log"
 
 
 def snip_log(msg):
-    """Log de debugging del SnippetsDialog. Escribe a /tmp/cc-app-snip.log con
-    timestamp preciso para diagnosticar el bug de "click afuera reaparece con
-    hover" en WSLg. Se puede desactivar borrando el archivo — si no existe,
-    no loguea nada (silencioso por default cuando el usuario no lo pidio)."""
+    """Log opt-in del SnippetsDialog para diagnostico. Escribe a
+    /tmp/cc-app-snip.log si el archivo existe; touch para activar, borrar
+    para desactivar. Silencioso por default en uso normal."""
     try:
-        # El log solo esta activo si el archivo ya existe (touch para activar).
-        # Asi el modo debug es opt-in y no ensucia disco en uso normal.
+        if not os.path.exists(SNIP_LOG_FILE):
+            return
         with open(SNIP_LOG_FILE, "a") as f:
             ts = time.strftime("%H:%M:%S") + f".{int((time.time()%1)*1000):03d}"
             f.write(f"[{ts}] {msg}\n")
@@ -430,6 +429,7 @@ def feed(term, seq):
 def new_session_dialog(*_):
     dlg = Gtk.Dialog(title="Nueva sesion" if ES else "New session", transient_for=win)
     dlg.set_decorated(False)   # sin min/max/close del WM; los botones están adentro
+    dlg.get_style_context().add_class("cc-dialog")
     dlg.add_buttons("Cancelar" if ES else "Cancel", Gtk.ResponseType.CANCEL,
                     "Abrir" if ES else "Open", Gtk.ResponseType.OK)
     box = dlg.get_content_area()
@@ -985,6 +985,58 @@ def _build_hb_css():
     b".cc-snip-dialog .cc-snip-close:hover{"
     b" color:#FFFFFF;background:alpha(#E82D3C, 0.65);"
     b"}"
+    # ---- Dialogos genericos (.cc-dialog) — MessageDialog + Gtk.Dialog ----
+    # Todo lo que muestre new_session_dialog, rename_tab, close_tab confirm.
+    # Sin esto salen con Adwaita default (fondo claro, boton "Yes/No" gris).
+    b".cc-dialog,.cc-dialog window,.cc-dialog messagedialog,"
+    b".cc-dialog .background,.cc-dialog .dialog-vbox{"
+    b" background:" + THEME["bg"].encode() + b";"
+    b" color:" + THEME["text"].encode() + b";"
+    b"}"
+    b".cc-dialog,.cc-dialog decoration{"
+    b" border:1px solid " + THEME["line"].encode() + b";"
+    b" border-radius:10px;"
+    b" box-shadow:0 20px 60px rgba(0,0,0,.45);"
+    b"}"
+    b".cc-dialog box,.cc-dialog .horizontal,.cc-dialog .vertical,"
+    b".cc-dialog .dialog-action-box,.cc-dialog .action-area,"
+    b".cc-dialog headerbar,.cc-dialog scrolledwindow,.cc-dialog viewport{"
+    b" background:transparent;color:" + THEME["text"].encode() + b";"
+    b"}"
+    b".cc-dialog label{color:" + THEME["text"].encode() + b";}"
+    b".cc-dialog label.dim-error{color:" + THEME["cursor"].encode() + b";font-size:11px;}"
+    b".cc-dialog entry{"
+    b" background:" + THEME["bar"].encode() + b";"
+    b" color:" + THEME["text"].encode() + b";"
+    b" border:1px solid " + THEME["line"].encode() + b";"
+    b" border-radius:6px;padding:6px 10px;"
+    b" caret-color:" + THEME["brand"].encode() + b";"
+    b"}"
+    b".cc-dialog entry:focus{border-color:" + THEME["brand"].encode() + b";outline:none;box-shadow:none;}"
+    b".cc-dialog entry selection{background:" + THEME["line"].encode() + b";color:" + THEME["text"].encode() + b";}"
+    b".cc-dialog button{"
+    b" background:" + THEME["bar"].encode() + b";background-image:none;"
+    b" color:" + THEME["text"].encode() + b";"
+    b" border:1px solid " + THEME["line"].encode() + b";"
+    b" border-radius:6px;padding:6px 14px;box-shadow:none;text-shadow:none;"
+    b" font-family:'JetBrainsMono Nerd Font Mono',monospace;font-size:12px;"
+    b"}"
+    b".cc-dialog button:hover{border-color:" + THEME["brand"].encode() + b";}"
+    b".cc-dialog button:focus{outline:none;box-shadow:none;}"
+    b".cc-dialog button.suggested-action,.cc-dialog button.default{"
+    b" background:" + THEME["brand"].encode() + b";"
+    b" color:" + THEME["bg"].encode() + b";"
+    b" border-color:" + THEME["brand"].encode() + b";"
+    b"}"
+    # MessageDialog: iconito y textos primarios/secundarios
+    b".cc-dialog .message-area,.cc-dialog .dialog-vbox > box{"
+    b" background:transparent;padding:14px 18px;"
+    b"}"
+    b".cc-dialog .dialog-action-box,.cc-dialog .action-area{"
+    b" border-top:1px solid " + THEME["line"].encode() + b";"
+    b" padding:8px 12px;"
+    b"}"
+    b".cc-dialog image{color:" + THEME["dim"].encode() + b";-gtk-icon-transform:scale(0.85);}"
 )
 
 _HB_CSS.load_from_data(_build_hb_css())
@@ -1309,6 +1361,8 @@ def close_tab(key):
                           buttons=Gtk.ButtonsType.YES_NO,
                           text=(f"¿Cerrar la pestaña «{label}»?" if ES
                                 else f"Close tab “{label}”?"))
+    d.get_style_context().add_class("cc-dialog")
+    d.set_decorated(False)  # sin titlebar del WM — se ve dentro del theme
     d.format_secondary_text(
         "La sesión tmux sigue viva; puedes recuperarla en Recientes del tablero."
         if ES else
@@ -1813,6 +1867,7 @@ def rename_tab(key):
         return
     dlg = Gtk.Dialog(title="Renombrar pestana" if ES else "Rename tab", transient_for=win)
     dlg.set_decorated(False)
+    dlg.get_style_context().add_class("cc-dialog")
     dlg.add_buttons("Cancelar" if ES else "Cancel", Gtk.ResponseType.CANCEL,
                     "Renombrar" if ES else "Rename", Gtk.ResponseType.OK)
     area = dlg.get_content_area()
