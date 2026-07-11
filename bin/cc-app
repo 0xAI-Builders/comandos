@@ -2115,16 +2115,18 @@ class SnippetsDialog(Gtk.Dialog):
     ~/.claude/hooks/snippets.json directamente (mismo store que cc-dash)."""
 
     def __init__(self, parent, get_active_session):
-        super().__init__(title="Snippets", transient_for=parent, modal=True)
+        # modal=False a proposito: en WSLg un dialog modal traga los clicks
+        # de afuera y no cierra al click externo (solo "oculta" y reactiva al
+        # hover). close_on_click_outside(self) resuelve esto con pointer grab.
+        # Mismo patron que open_switcher y open_tabs_overview.
+        super().__init__(title="Snippets", transient_for=parent, modal=False)
         self.set_default_size(720, 520)
         # Sin chrome del WM — la app entera es chromeless (ver win.set_decorated(False)).
         self.set_decorated(False)
+        self.set_position(Gtk.WindowPosition.CENTER_ON_PARENT)
         # CSS scope: sin esta class los child widgets heredan Adwaita default
         # (entry/button blancos, listbox con hover claro, borde de window claro).
         self.get_style_context().add_class("cc-snip-dialog")
-        # ESC cierra el dialog (mismo patron que showModal() en el dashboard).
-        self.connect("key-press-event", lambda _w, ev: (
-            ev.keyval == Gdk.KEY_Escape and (self.destroy() or True)))
         self._get_session = get_active_session
         self._items = snip_load()
         self._selected = None
@@ -2351,9 +2353,20 @@ def _active_snippets_session():
 
 
 def open_snippets_dialog(*_):
+    # Singleton — si ya hay uno abierto, lo trae al frente en vez de duplicar.
+    existing = getattr(open_snippets_dialog, "_dlg", None)
+    if existing is not None:
+        try:
+            existing.present()
+            return
+        except Exception:
+            pass
     dlg = SnippetsDialog(win, _active_snippets_session)
-    dlg.run()
-    dlg.destroy()
+    open_snippets_dialog._dlg = dlg
+    dlg.connect("destroy", lambda *_: setattr(open_snippets_dialog, "_dlg", None))
+    dlg.show_all()
+    # WSLg: modal=False + pointer grab para que click fuera cierre de verdad.
+    close_on_click_outside(dlg)
 
 
 SHORTCUTS_ES = [
