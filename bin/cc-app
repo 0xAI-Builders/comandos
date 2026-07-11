@@ -1361,38 +1361,107 @@ def poll_state_loop():
         time.sleep(3)
 
 
+def _confirm_must_answer(primary, secondary, yes_label, no_label):
+    """Confirm dialog blocking-hasta-que-el-user-elija-Yes-o-No. NO cierra con
+    click afuera, ESC, delete-event ni ningun truco del WM/WSLg.
+
+    Implementacion: Gtk.Window custom + GLib.MainLoop propio. Cero dependencia
+    de Gtk.Dialog.run() ni de Gtk.MessageDialog (que en WSLg se dejan cerrar
+    por el compositor cuando decorated=False). Todos los eventos de cierre
+    NO-YES/NO estan comidos por conectores que retornan True."""
+    result = {"value": None}
+    loop = GLib.MainLoop()
+
+    dlg = Gtk.Window(type=Gtk.WindowType.TOPLEVEL)
+    dlg.set_transient_for(win)
+    dlg.set_modal(True)
+    dlg.set_decorated(False)
+    dlg.set_deletable(False)
+    dlg.set_position(Gtk.WindowPosition.CENTER_ON_PARENT)
+    dlg.set_default_size(480, -1)
+    dlg.set_type_hint(Gdk.WindowTypeHint.DIALOG)
+    dlg.set_skip_taskbar_hint(True)
+    dlg.get_style_context().add_class("cc-dialog")
+
+    # Bloquea toda tecla que suela cerrar dialogs (ESC, Enter va a boton default).
+    def on_key(_w, ev):
+        if ev.keyval == Gdk.KEY_Escape:
+            snip_log("_confirm_must_answer: ESC comida")
+            return True
+        return False
+    dlg.connect("key-press-event", on_key)
+    dlg.connect("delete-event", lambda *_: (snip_log("_confirm_must_answer: delete-event comido"), True)[1])
+
+    root = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=0)
+    dlg.add(root)
+
+    body = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=14)
+    body.set_margin_top(18); body.set_margin_bottom(14)
+    body.set_margin_start(20); body.set_margin_end(20)
+    body.get_style_context().add_class("message-area")
+    icon = Gtk.Image.new_from_icon_name("dialog-question-symbolic", Gtk.IconSize.DIALOG)
+    body.pack_start(icon, False, False, 0)
+
+    txt = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6)
+    l1 = Gtk.Label(label=primary, xalign=0); l1.set_line_wrap(True)
+    l1.get_style_context().add_class("primary")
+    l2 = Gtk.Label(label=secondary, xalign=0); l2.set_line_wrap(True)
+    l2.get_style_context().add_class("dim-label")
+    txt.pack_start(l1, False, False, 0)
+    txt.pack_start(l2, False, False, 0)
+    body.pack_start(txt, True, True, 0)
+    root.pack_start(body, True, True, 0)
+
+    actions = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=0)
+    actions.set_homogeneous(True)
+    actions.get_style_context().add_class("action-area")
+    no_btn = Gtk.Button(label=no_label)
+    yes_btn = Gtk.Button(label=yes_label)
+
+    def _finish(value):
+        result["value"] = value
+        snip_log(f"_confirm_must_answer: finish value={value}")
+        try:
+            dlg.destroy()
+        except Exception:
+            pass
+        loop.quit()
+
+    no_btn.connect("clicked", lambda *_: _finish(False))
+    yes_btn.connect("clicked", lambda *_: _finish(True))
+    actions.pack_start(no_btn, True, True, 0)
+    actions.pack_start(yes_btn, True, True, 0)
+    root.pack_start(actions, False, False, 0)
+
+    dlg.show_all()
+    yes_btn.grab_focus()
+    snip_log("_confirm_must_answer: entering loop")
+    loop.run()
+    snip_log(f"_confirm_must_answer: loop exited, returning {result['value']}")
+    return bool(result["value"])
+
+
 def close_tab(key):
     # Confirmar SIEMPRE: cerrar sin querer era demasiado facil. La sesion tmux
     # sigue viva y ademas queda en "Recientes (cerradas)" del tablero.
     box = tabs.get(key)
     label = getattr(box, "_label", key) if box is not None else key
-    d = Gtk.MessageDialog(transient_for=win, modal=True,
-                          message_type=Gtk.MessageType.QUESTION,
-                          buttons=Gtk.ButtonsType.YES_NO,
-                          text=(f"¿Cerrar la pestaña «{label}»?" if ES
-                                else f"Close tab “{label}”?"))
-    d.get_style_context().add_class("cc-dialog")
-    d.set_decorated(False)  # sin titlebar del WM — se ve dentro del theme
-    # Este dialog es "must answer" — accion destructiva (cierra la tab). En
-    # WSLg + decorated=False el compositor lo trataba como popup y lo cerraba
-    # con click afuera. Blindamos: no deletable, delete-event comido, ESC
-    # comida. Solo los botones Yes/No emiten response.
-    d.set_deletable(False)
-    d.connect("delete-event", lambda *_: True)
-    d.connect("key-press-event",
-              lambda _w, ev: True if ev.keyval == Gdk.KEY_Escape else False)
-    d.format_secondary_text(
-        "La sesión tmux sigue viva; puedes recuperarla en Recientes del tablero."
-        if ES else
-        "The tmux session stays alive; recover it from the dashboard's Recents.")
-    while True:
-        resp = d.run()
-        if resp in (Gtk.ResponseType.YES, Gtk.ResponseType.NO):
-            break
-        # Cualquier otra respuesta (DELETE_EVENT, CLOSE, CANCEL de WM/WSLg)
-        # NO cierra el dialog — obligamos a elegir Yes o No.
-    d.destroy()
-    if resp != Gtk.ResponseType.YES:
+    # NO usamos Gtk.MessageDialog + d.run() — en WSLg el compositor destruia
+    # la ventana con click afuera (bypassing modal+deletable+delete-event) y
+    # d.run() retornaba NONE dejando la logica en estado indefinido.
+    # Alternativa: Gtk.Window custom + GLib.MainLoop propio + boton YES/NO.
+    # Al no ser Gtk.Dialog, no hay response signal ni handling default del WM.
+    snip_log(f"close_tab confirm for key={key} label={label}")
+    resp = _confirm_must_answer(
+        primary=(f"¿Cerrar la pestaña «{label}»?" if ES else f"Close tab “{label}”?"),
+        secondary=("La sesión tmux sigue viva; puedes recuperarla en Recientes del tablero."
+                   if ES else
+                   "The tmux session stays alive; recover it from the dashboard's Recents."),
+        yes_label=("Sí" if ES else "Yes"),
+        no_label=("No" if ES else "No"),
+    )
+    snip_log(f"close_tab confirm resp={resp}")
+    if not resp:
         return
     archive_tab(key, reason="closed")
     box = tabs.pop(key, None)
