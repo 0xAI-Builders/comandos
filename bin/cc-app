@@ -939,6 +939,66 @@ def _build_hb_css():
     b".cc-modal-backdrop{"
     b" background:rgba(0,0,0,0.55);"
     b"}"
+    # Todos los paneles (Frame widget) comparten este look base — bg del tema,
+    # borde de linea, esquinas redondeadas, sombra profunda.
+    b".cc-modal-panel{"
+    b" background:" + THEME["bg"].encode() + b";"
+    b" color:" + THEME["text"].encode() + b";"
+    b" border:1px solid " + THEME["line"].encode() + b";"
+    b" border-radius:12px;"
+    b" box-shadow:0 24px 70px rgba(0,0,0,.55);"
+    b"}"
+    b".cc-modal-panel > border{"
+    b" border:0;"
+    b"}"
+    # Estilo unificado para entry y button DENTRO de cualquier modal panel.
+    b".cc-modal-panel entry{"
+    b" background:" + THEME["bar"].encode() + b";"
+    b" color:" + THEME["text"].encode() + b";"
+    b" border:1px solid " + THEME["line"].encode() + b";"
+    b" border-radius:6px;padding:6px 10px;"
+    b" caret-color:" + THEME["brand"].encode() + b";"
+    b"}"
+    b".cc-modal-panel entry:focus{"
+    b" border-color:" + THEME["brand"].encode() + b";"
+    b" outline:none;box-shadow:none;"
+    b"}"
+    b".cc-modal-panel entry selection{"
+    b" background:" + THEME["line"].encode() + b";color:" + THEME["text"].encode() + b";"
+    b"}"
+    b".cc-modal-panel button{"
+    b" background:" + THEME["bar"].encode() + b";background-image:none;"
+    b" color:" + THEME["text"].encode() + b";"
+    b" border:1px solid " + THEME["line"].encode() + b";"
+    b" border-radius:6px;padding:7px 18px;box-shadow:none;text-shadow:none;"
+    b" font-family:'JetBrainsMono Nerd Font Mono',monospace;font-size:12px;"
+    b" margin:0 4px;"
+    b"}"
+    b".cc-modal-panel button:hover{"
+    b" border-color:" + THEME["brand"].encode() + b";"
+    b"}"
+    b".cc-modal-panel button:focus{"
+    b" outline:none;box-shadow:none;border-color:" + THEME["brand"].encode() + b";"
+    b"}"
+    b".cc-modal-panel list,.cc-modal-panel list row{"
+    b" background:transparent;border:0;"
+    b"}"
+    b".cc-modal-panel list row:hover{"
+    b" background:" + THEME["bar"].encode() + b";border-radius:6px;"
+    b"}"
+    b".cc-modal-panel list row:selected{"
+    b" background:" + THEME["bar"].encode() + b";"
+    b" color:" + THEME["text"].encode() + b";"
+    b" border-radius:6px;"
+    b"}"
+    b".cc-modal-panel label{color:" + THEME["text"].encode() + b";}"
+    b".cc-modal-panel label.dim-label{color:" + THEME["dim"].encode() + b";}"
+    b".cc-modal-panel label.primary{font-size:14px;font-weight:600;}"
+    b".cc-modal-panel scrollbar{background:transparent;}"
+    b".cc-modal-panel scrollbar slider{"
+    b" background:" + THEME["line"].encode() + b";"
+    b" border-radius:6px;min-width:6px;min-height:6px;"
+    b"}"
     # El panel es un Gtk.Frame; adwaita lo pinta blanco por default.
     b".cc-snip-dialog,.cc-snip-dialog frame,.cc-snip-dialog .background,"
     b".cc-snip-dialog dialog{"
@@ -1387,89 +1447,26 @@ def poll_state_loop():
 
 
 def _confirm_must_answer(primary, secondary, yes_label, no_label):
-    """Confirm dialog blocking-hasta-que-el-user-elija-Yes-o-No. NO cierra con
-    click afuera, ESC, delete-event ni ningun truco del WM/WSLg.
-
-    Implementacion: Gtk.Window custom + GLib.MainLoop propio. Cero dependencia
-    de Gtk.Dialog.run() ni de Gtk.MessageDialog (que en WSLg se dejan cerrar
-    por el compositor cuando decorated=False). Todos los eventos de cierre
-    NO-YES/NO estan comidos por conectores que retornan True."""
-    result = {"value": None, "finished": False}
+    """Confirm dialog bloqueante — solo cierra con Yes o No. Embebido en
+    modal_overlay con dismissable=False: backdrop y ESC son no-op. GLib.MainLoop
+    interno para retornar sincronicamente."""
+    result = {"value": False, "finished": False}
     loop = GLib.MainLoop()
 
-    dlg = Gtk.Window(type=Gtk.WindowType.TOPLEVEL)
-    dlg.set_transient_for(win)
-    dlg.set_modal(True)
-    dlg.set_decorated(False)
-    dlg.set_deletable(False)
-    dlg.set_position(Gtk.WindowPosition.CENTER_ON_PARENT)
-    dlg.set_default_size(480, -1)
-    dlg.set_type_hint(Gdk.WindowTypeHint.DIALOG)
-    dlg.set_skip_taskbar_hint(True)
-    # SIEMPRE encima. WSLg/Weston pone la ventana atras si el user clickea en
-    # otra app de Windows — user lo interpreta como "desaparecio". Con
-    # keep_above forzamos que siga arriba de todo hasta que el user elija.
-    dlg.set_keep_above(True)
-    dlg.get_style_context().add_class("cc-dialog")
-    snip_log(f"CONFIRM __init__ dlg_id={id(dlg)}")
-
-    # Loguea TODOS los eventos posibles.
-    def on_key(_w, ev):
-        kn = Gdk.keyval_name(ev.keyval) or "?"
-        snip_log(f"CONFIRM key-press keyval={kn} (0x{ev.keyval:x})")
-        if ev.keyval == Gdk.KEY_Escape:
-            snip_log("CONFIRM ESC comida")
-            return True
-        return False
-    dlg.connect("key-press-event", on_key)
-    def on_delete(*_):
-        snip_log("CONFIRM delete-event comido")
-        return True
-    dlg.connect("delete-event", on_delete)
-    def on_destroy(*_):
-        snip_log(f"CONFIRM DESTROY fired finished={result['finished']} value={result['value']}")
-        # Si nos destruyen SIN que un boton haya finished, el loop se queda
-        # colgado. Marcamos como cancelado y salimos.
-        if not result["finished"]:
-            result["value"] = None
-            result["finished"] = True
-            try: loop.quit()
-            except Exception: pass
-    dlg.connect("destroy", on_destroy)
-    dlg.connect("map-event", lambda *_: (snip_log(f"CONFIRM map-event id={id(dlg)}"), False)[1])
-    dlg.connect("unmap-event", lambda *_: (snip_log(f"CONFIRM UNMAP-event id={id(dlg)}"), False)[1])
-    dlg.connect("hide", lambda *_: snip_log(f"CONFIRM HIDE signal id={id(dlg)}"))
-    dlg.connect("focus-in-event", lambda *_: (snip_log(f"CONFIRM focus-in"), False)[1])
-    # focus-out -> se lo devolvemos. Si el user clickea en otra app, el dialog
-    # perderia foco y quedaria atras — con present() lo traemos al frente.
-    def on_focus_out(*_):
-        snip_log("CONFIRM focus-out -> present() para traer al frente")
-        if not result["finished"]:
-            try: dlg.present()
-            except Exception: pass
-        return False
-    dlg.connect("focus-out-event", on_focus_out)
-    dlg.add_events(Gdk.EventMask.ENTER_NOTIFY_MASK | Gdk.EventMask.LEAVE_NOTIFY_MASK
-                   | Gdk.EventMask.BUTTON_PRESS_MASK | Gdk.EventMask.BUTTON_RELEASE_MASK)
-    dlg.connect("enter-notify-event", lambda *_: (snip_log("CONFIRM enter-notify"), False)[1])
-    dlg.connect("leave-notify-event", lambda *_: (snip_log("CONFIRM leave-notify"), False)[1])
-    dlg.connect("button-press-event",
-                lambda _w, ev: (snip_log(f"CONFIRM button-press btn={ev.button} x={ev.x} y={ev.y}"), False)[1])
-    dlg.connect("window-state-event",
-                lambda _w, ev: (snip_log(f"CONFIRM window-state-event new_state={ev.new_state}"), False)[1])
-    dlg.connect("configure-event",
-                lambda _w, ev: (snip_log(f"CONFIRM configure-event x={ev.x} y={ev.y} w={ev.width} h={ev.height}"), False)[1])
+    # Panel como Frame widget (no toplevel).
+    panel = Gtk.Frame()
+    panel.set_size_request(480, -1)
+    panel.set_halign(Gtk.Align.CENTER); panel.set_valign(Gtk.Align.CENTER)
+    panel.get_style_context().add_class("cc-snip-dialog")  # mismo look que snippets
 
     root = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=0)
-    dlg.add(root)
+    panel.add(root)
 
     body = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=14)
-    body.set_margin_top(18); body.set_margin_bottom(14)
-    body.set_margin_start(20); body.set_margin_end(20)
-    body.get_style_context().add_class("message-area")
+    body.set_margin_top(20); body.set_margin_bottom(16)
+    body.set_margin_start(22); body.set_margin_end(22)
     icon = Gtk.Image.new_from_icon_name("dialog-question-symbolic", Gtk.IconSize.DIALOG)
     body.pack_start(icon, False, False, 0)
-
     txt = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6)
     l1 = Gtk.Label(label=primary, xalign=0); l1.set_line_wrap(True)
     l1.get_style_context().add_class("primary")
@@ -1480,40 +1477,41 @@ def _confirm_must_answer(primary, secondary, yes_label, no_label):
     body.pack_start(txt, True, True, 0)
     root.pack_start(body, True, True, 0)
 
-    actions = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=0)
+    actions = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
+    actions.set_margin_top(6); actions.set_margin_bottom(14)
+    actions.set_margin_start(16); actions.set_margin_end(16)
     actions.set_homogeneous(True)
-    actions.get_style_context().add_class("action-area")
     no_btn = Gtk.Button(label=no_label)
     yes_btn = Gtk.Button(label=yes_label)
-
-    def _finish(value):
-        snip_log(f"CONFIRM _finish called value={value} already_finished={result['finished']}")
-        if result["finished"]:
-            return
-        result["value"] = value
-        result["finished"] = True
-        try:
-            dlg.destroy()
-        except Exception as e:
-            snip_log(f"CONFIRM destroy in _finish FAIL: {e}")
-        try:
-            loop.quit()
-        except Exception as e:
-            snip_log(f"CONFIRM loop.quit FAIL: {e}")
-
-    no_btn.connect("clicked", lambda *_: _finish(False))
-    yes_btn.connect("clicked", lambda *_: _finish(True))
     actions.pack_start(no_btn, True, True, 0)
     actions.pack_start(yes_btn, True, True, 0)
     root.pack_start(actions, False, False, 0)
 
-    snip_log("CONFIRM about to show_all")
-    dlg.show_all()
-    snip_log("CONFIRM show_all done")
+    close_ref = [None]
+    def _finish(value):
+        if result["finished"]:
+            return
+        result["value"] = value
+        result["finished"] = True
+        if close_ref[0]:
+            close_ref[0]()
+        try: loop.quit()
+        except Exception: pass
+
+    no_btn.connect("clicked", lambda *_: _finish(False))
+    yes_btn.connect("clicked", lambda *_: _finish(True))
+
+    # Y/N keyboard shortcuts (must-answer no permite ESC).
+    def on_key(ev):
+        if ev.keyval in (Gdk.KEY_y, Gdk.KEY_Y, Gdk.KEY_Return, Gdk.KEY_KP_Enter):
+            _finish(True); return True
+        if ev.keyval in (Gdk.KEY_n, Gdk.KEY_N):
+            _finish(False); return True
+        return False
+
+    close_ref[0] = show_modal_panel(panel, on_key=on_key, dismissable=False)
     yes_btn.grab_focus()
-    snip_log("CONFIRM entering loop.run()")
     loop.run()
-    snip_log(f"CONFIRM loop exited value={result['value']}")
     return bool(result["value"])
 
 
@@ -2348,17 +2346,23 @@ modal_overlay.add(_root)
 win.add(modal_overlay)
 
 
-def show_modal_panel(panel, on_key=None, on_close=None):
+def show_modal_panel(panel, on_key=None, on_close=None, dismissable=True):
     """Muestra `panel` como widget overlay con backdrop transparente. Retorna
     el callback de close. Solo un modal a la vez — si ya hay uno, lo cierra.
 
-    - Click en backdrop -> close.
-    - ESC -> close (a menos que on_key lo consuma antes).
-    - on_key(ev): callback opcional, retorna True para consumir la tecla.
-    - on_close(): callback opcional que corre AL cerrar (post-cleanup).
+    - dismissable=True (default): click en backdrop cierra, ESC cierra.
+    - dismissable=False (must-answer): backdrop y ESC NO cierran. Solo se
+      cierra via el callback retornado.
+    - on_key(ev): callback opcional, retorna True para consumir la tecla
+      (aunque no sea dismissable, on_key sigue funcionando).
+    - on_close(): callback opcional post-cleanup.
     """
     if getattr(show_modal_panel, "_current", None) is not None:
         show_modal_panel._current["close"]()
+
+    # Todos los paneles reciben la class base para el look unificado
+    # (bg, border, radius, shadow del tema).
+    panel.get_style_context().add_class("cc-modal-panel")
 
     def _close():
         cur = getattr(show_modal_panel, "_current", None)
@@ -2385,12 +2389,18 @@ def show_modal_panel(panel, on_key=None, on_close=None):
     backdrop.set_hexpand(True); backdrop.set_vexpand(True)
     backdrop.get_style_context().add_class("cc-modal-backdrop")
     backdrop.add_events(Gdk.EventMask.BUTTON_PRESS_MASK)
-    backdrop.connect("button-press-event", lambda *_: (_close(), True)[1])
+    # Backdrop siempre "come" el click (impide que llegue al contenido detras)
+    # pero solo cierra si el modal es dismissable.
+    def _on_backdrop_press(*_):
+        if dismissable:
+            _close()
+        return True
+    backdrop.connect("button-press-event", _on_backdrop_press)
 
     def _key_handler(_w, ev):
         if on_key and on_key(ev):
             return True
-        if ev.keyval == Gdk.KEY_Escape:
+        if dismissable and ev.keyval == Gdk.KEY_Escape:
             _close()
             return True
         return False
