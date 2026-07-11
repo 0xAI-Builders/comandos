@@ -244,6 +244,10 @@ def snip_paste(sess, text):
     r = subprocess.run(["tmux", "load-buffer", "-b", "comandos-snip", "-"],
                        input=text, capture_output=True, text=True, timeout=5)
     if r.returncode != 0:
+        # Cleanup por si load-buffer escribio parcialmente antes de fallar
+        # (paridad con snippet_paste_to_pane en cc-dash).
+        subprocess.run(["tmux", "delete-buffer", "-b", "comandos-snip"],
+                       capture_output=True, text=True, timeout=5)
         return r.stderr.strip() or "load-buffer fallo"
     err = None
     r = subprocess.run(["tmux", "paste-buffer", "-p", "-b", "comandos-snip", "-t", target],

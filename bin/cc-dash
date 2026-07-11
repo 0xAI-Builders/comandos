@@ -2246,9 +2246,11 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             return self._json(200, {"ok": True})
 
         if self.path == "/paste":
-            text = str(data.get("text", ""))[:20000]
+            text = str(data.get("text", ""))
             if not text.strip():
                 return self._json(400, {"error": "Texto vacio"})
+            if len(text) > 20000:
+                return self._json(400, {"error": "body demasiado largo (max 20000)"})
             if tmux("has-session", "-t", target).returncode != 0:
                 return self._json(404, {"error": f"No hay sesion tmux '{sess}'. Levantala primero."})
             err = snippet_paste_to_pane(pane, text, tmux_stdin)
