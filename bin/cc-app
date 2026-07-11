@@ -2401,7 +2401,7 @@ class SnippetsDialog(Gtk.Window):
         self.connect("visibility-notify-event",
                      lambda _w, ev: (snip_log(f"SNIP visibility state={ev.state}"), False)[1])
         self.connect("window-state-event",
-                     lambda _w, ev: (snip_log(f"SNIP window-state new={ev.new_state} changed={ev.changed_mask}"), False)[1])
+                     lambda _w, ev: (snip_log(f"SNIP window-state new={ev.get_state()} changed={ev.get_changed_mask() if hasattr(ev, 'get_changed_mask') else '?'}"), False)[1])
         self.connect("configure-event",
                      lambda _w, ev: (snip_log(f"SNIP configure x={ev.x} y={ev.y} w={ev.width} h={ev.height}"), False)[1])
         self.connect("grab-broken-event",
@@ -2926,23 +2926,24 @@ def open_snippets_dialog(*_):
     dlg._q.grab_focus()
     dlg.present()
 
-    # Fallback #2 (CRITICO): Gtk.grab_add(dlg). Grab a nivel Gtk (app-internal,
+    # Fallback #2 (CRITICO): widget.grab_add(). Grab a nivel Gtk (app-internal,
     # NO Wayland). Cualquier click en cualquier widget de la app que NO sea
-    # descendiente del dialog es routeado al dialog. Esto captura clicks en
-    # VTE terminal, header, tabs — todos los widgets que antes consumian el
-    # evento antes de que llegara al grab o al win.button-press.
-    # Gtk.grab_add es reliable en Wayland porque es de nivel Gtk, no Weston.
-    Gtk.grab_add(dlg)
-    snip_log(f"Gtk.grab_add(dlg) done id={id(dlg)}")
+    # descendiente del dialog es routeado al dialog. En PyGObject es metodo
+    # de instancia (widget.grab_add), no funcion de modulo Gtk.grab_add.
+    try:
+        dlg.grab_add()
+        snip_log(f"dlg.grab_add() done id={id(dlg)}")
+    except Exception as e:
+        snip_log(f"dlg.grab_add() FAIL: {e}")
 
     def _cleanup():
         try: win.disconnect(main_handler)
         except Exception: pass
         try:
-            Gtk.grab_remove(dlg)
-            snip_log(f"Gtk.grab_remove(dlg) done id={id(dlg)}")
+            dlg.grab_remove()
+            snip_log(f"dlg.grab_remove() done id={id(dlg)}")
         except Exception as e:
-            snip_log(f"Gtk.grab_remove FAIL: {e}")
+            snip_log(f"dlg.grab_remove() FAIL: {e}")
     dlg.connect("destroy", lambda *_: _cleanup())
 
     snip_log("  show_all + grab_focus + present + grab_add done")
