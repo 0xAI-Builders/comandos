@@ -950,6 +950,9 @@ def _build_hb_css():
     b".cc-snip-dialog scrollbar slider{"
     b" background:" + THEME["line"].encode() + b";border-radius:6px;min-width:6px;min-height:6px;"
     b"}"
+    b".cc-snip-dialog .cc-snip-status{font-size:11px;letter-spacing:.06em;}"
+    b".cc-snip-dialog .cc-snip-status.cc-snip-status-ok{color:" + THEME["dim"].encode() + b";}"
+    b".cc-snip-dialog .cc-snip-status.cc-snip-status-err{color:" + THEME["cursor"].encode() + b";}"
 )
 
 _HB_CSS.load_from_data(_build_hb_css())
@@ -2131,6 +2134,16 @@ class SnippetsDialog(Gtk.Dialog):
         paned.set_position(260)
         box.pack_start(paned, True, True, 0)
 
+        # Barra de status ephemeral abajo del dialog — inline feedback de Send
+        # (evita depender del popup daemon actionable de cc-notifyd, que es
+        # heavyweight para un "pegado ok").
+        self._status = Gtk.Label(label="", xalign=0)
+        self._status.set_margin_top(4); self._status.set_margin_bottom(6)
+        self._status.set_margin_start(12); self._status.set_margin_end(12)
+        self._status.get_style_context().add_class("cc-snip-status")
+        box.pack_start(self._status, False, False, 0)
+        self._status_timer = None
+
         # Left column: search + list + new
         left = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6)
         left.set_margin_top(8); left.set_margin_bottom(8)
@@ -2296,17 +2309,32 @@ class SnippetsDialog(Gtk.Dialog):
         self._render_list()
         self._render_preview()
 
+    def _flash(self, msg, error=False):
+        """Muestra `msg` en la barra inline del dialog por 2.5s."""
+        self._status.set_text(msg)
+        ctx = self._status.get_style_context()
+        ctx.remove_class("cc-snip-status-err")
+        ctx.remove_class("cc-snip-status-ok")
+        ctx.add_class("cc-snip-status-err" if error else "cc-snip-status-ok")
+        if self._status_timer:
+            GLib.source_remove(self._status_timer)
+        def _clear():
+            self._status.set_text("")
+            self._status_timer = None
+            return False
+        self._status_timer = GLib.timeout_add(2500, _clear)
+
     def _send(self, it):
         sess = self._get_session()
         if not sess:
-            notify_popup("Snippets", "No hay sesion tmux en la pestana activa" if ES
-                         else "No tmux session in the active tab")
+            self._flash("No hay sesion tmux en la pestana activa" if ES
+                        else "No tmux session in the active tab", error=True)
             return
         err = snip_paste(sess, it["body"])
         if err:
-            notify_popup("Snippets", err)
+            self._flash(err, error=True)
         else:
-            notify_popup("Snippets", f"Pegado en {sess}" if ES else f"Pasted into {sess}")
+            self._flash(f"Pegado en {sess}" if ES else f"Pasted into {sess}")
 
 
 def _active_snippets_session():
