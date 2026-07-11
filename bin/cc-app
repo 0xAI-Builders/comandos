@@ -934,9 +934,9 @@ def _build_hb_css():
     b" background:" + THEME["line"].encode() + b";"
     b" min-height:1px;margin:4px 2px;"
     b"}"
-    # ---- SnippetsDialog (panel embebido en Gtk.Overlay) ----
+    # ---- Modales embebidos en Gtk.Overlay (snippets, switcher, help, etc) ----
     # Backdrop transparente que oscurece la app detras del panel.
-    b".cc-snip-backdrop{"
+    b".cc-modal-backdrop{"
     b" background:rgba(0,0,0,0.55);"
     b"}"
     # El panel es un Gtk.Frame; adwaita lo pinta blanco por default.
@@ -1798,19 +1798,17 @@ def close_on_click_outside(w):
 
 def open_switcher(*_):
     """Ctrl+K: saltar a cualquier pestana/sesion escribiendo 2-3 letras.
-    Las que ESPERAN tu respuesta salen arriba; Enter va a la primera."""
-    if getattr(open_switcher, "_win", None):
-        open_switcher._win.present()
-        return
-    w = Gtk.Window(type=Gtk.WindowType.TOPLEVEL)
-    w.set_transient_for(win)
-    # NO modal: modal traga los clicks de afuera y nunca llega focus-out,
-    # asi que no podria cerrarse al hacer click fuera.
-    w.set_modal(False)
-    w.set_decorated(False)
-    w.set_position(Gtk.WindowPosition.CENTER_ON_PARENT)
-    w.set_default_size(560, -1)
+    Las que ESPERAN tu respuesta salen arriba; Enter va a la primera.
+    Panel embebido en modal_overlay."""
+    # Panel como Frame widget (no toplevel).
+    w = Gtk.Frame()
+    w.set_size_request(560, -1)
+    w.set_halign(Gtk.Align.CENTER); w.set_valign(Gtk.Align.CENTER)
     w.get_style_context().add_class("switcher")
+    close_ref = [None]
+    def _close():
+        if close_ref[0]:
+            close_ref[0]()
     v = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
     v.set_property("margin", 12)
     entry = Gtk.Entry()
@@ -1875,7 +1873,7 @@ def open_switcher(*_):
     def go(row):
         for r, key, _is_open in rows:
             if r is row:
-                w.destroy()
+                _close()
                 open_tab(key, "claude")
                 return
 
@@ -1895,35 +1893,30 @@ def open_switcher(*_):
         if rows:
             lb.select_row(rows[idx][0])
 
-    def on_sw_key(_w, ev):
-        if ev.keyval == Gdk.KEY_Escape:
-            w.destroy()
-            return True
+    # on_key handler para el switcher — retorna True si consume la tecla.
+    # ESC ya lo maneja show_modal_panel; los demas son navegacion propia.
+    def on_sw_key(ev):
         if ev.keyval in (Gdk.KEY_Return, Gdk.KEY_KP_Enter):
             sel = lb.get_selected_row()
             if sel:
                 go(sel)
             return True
         if ev.keyval == Gdk.KEY_Down:
-            move_sel(1)
-            return True
+            move_sel(1); return True
         if ev.keyval == Gdk.KEY_Up:
-            move_sel(-1)
-            return True
-        if ev.keyval in (Gdk.KEY_Delete, Gdk.KEY_BackSpace):
+            move_sel(-1); return True
+        if ev.keyval in (Gdk.KEY_Delete, Gdk.KEY_BackSpace) and entry.get_text() == "":
             return close_selected()
         if ev.state & Gdk.ModifierType.CONTROL_MASK and ev.keyval in (Gdk.KEY_w, Gdk.KEY_W):
             return close_selected()
+        # Cuando el usuario tipea texto normal, redirigimos al entry si no
+        # tiene foco todavia (por si el key llega al win antes que al entry).
         return False
 
     lb.connect("row-activated", lambda _l, row: go(row))
     entry.connect("changed", refill)
-    w.connect("key-press-event", on_sw_key)
-    close_on_click_outside(w)
-    w.connect("destroy", lambda *_: setattr(open_switcher, "_win", None))
-    open_switcher._win = w
     refill()
-    w.show_all()
+    close_ref[0] = show_modal_panel(w, on_key=on_sw_key)
     entry.grab_focus()
 
 
@@ -1938,16 +1931,14 @@ def tab_page_label(page):
 
 
 def open_tabs_overview(*_):
-    if getattr(open_tabs_overview, "_win", None):
-        open_tabs_overview._win.present()
-        return
-    w = Gtk.Window(type=Gtk.WindowType.TOPLEVEL)
-    w.set_transient_for(win)
-    w.set_modal(False)
-    w.set_decorated(False)
-    w.set_position(Gtk.WindowPosition.CENTER_ON_PARENT)
-    w.set_default_size(500, 480)
+    w = Gtk.Frame()
+    w.set_size_request(500, 480)
+    w.set_halign(Gtk.Align.CENTER); w.set_valign(Gtk.Align.CENTER)
     w.get_style_context().add_class("switcher")
+    close_ref = [None]
+    def _close():
+        if close_ref[0]:
+            close_ref[0]()
     v = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
     v.set_property("margin", 12)
     title = Gtk.Label(label="Tabs abiertas" if ES else "Open tabs", xalign=0)
@@ -1964,7 +1955,7 @@ def open_tabs_overview(*_):
     rows = []
 
     def focus_page(page):
-        w.destroy()
+        _close()
         idx = nb.page_num(page)
         if idx >= 0:
             nb.set_current_page(nb.page_num(page))
@@ -2014,19 +2005,9 @@ def open_tabs_overview(*_):
                 focus_page(page)
                 return
 
-    def on_key(_w, ev):
-        if ev.keyval == Gdk.KEY_Escape:
-            w.destroy()
-            return True
-        return False
-
     lb.connect("row-activated", go)
-    w.connect("key-press-event", on_key)
-    close_on_click_outside(w)
-    w.connect("destroy", lambda *_: setattr(open_tabs_overview, "_win", None))
-    open_tabs_overview._win = w
     refill()
-    w.show_all()
+    close_ref[0] = show_modal_panel(w)
 
 
 def rename_tab(key):
@@ -2358,13 +2339,72 @@ _root = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
 _root.pack_start(_hb_evbox, False, False, 0)
 _root.pack_start(paned, True, True, 0)
 
-# Overlay wrapper — permite superponer widgets encima del contenido principal
-# (ej: el panel de snippets). Es la solucion correcta para modales en
-# Wayland/WSLg: en vez de un top-level Gtk.Window separado con pointer grabs
-# y modal hackery, el modal es un widget hijo con backdrop transparente.
-snippets_overlay = Gtk.Overlay()
-snippets_overlay.add(_root)
-win.add(snippets_overlay)
+# Overlay wrapper — permite superponer modales encima del contenido principal.
+# Todos los modales (snippets, switcher, tabs overview, help) usan este overlay
+# via show_modal_panel(). Sin top-level Gtk.Window separados = sin pointer
+# grabs, sin quirks del compositor Wayland/WSLg.
+modal_overlay = Gtk.Overlay()
+modal_overlay.add(_root)
+win.add(modal_overlay)
+
+
+def show_modal_panel(panel, on_key=None, on_close=None):
+    """Muestra `panel` como widget overlay con backdrop transparente. Retorna
+    el callback de close. Solo un modal a la vez — si ya hay uno, lo cierra.
+
+    - Click en backdrop -> close.
+    - ESC -> close (a menos que on_key lo consuma antes).
+    - on_key(ev): callback opcional, retorna True para consumir la tecla.
+    - on_close(): callback opcional que corre AL cerrar (post-cleanup).
+    """
+    if getattr(show_modal_panel, "_current", None) is not None:
+        show_modal_panel._current["close"]()
+
+    def _close():
+        cur = getattr(show_modal_panel, "_current", None)
+        if cur is None:
+            return
+        show_modal_panel._current = None
+        try: modal_overlay.remove(cur["backdrop"])
+        except Exception: pass
+        try: modal_overlay.remove(cur["panel"])
+        except Exception: pass
+        try: win.disconnect(cur["key_handler"])
+        except Exception: pass
+        if cur["on_close"]:
+            try: cur["on_close"]()
+            except Exception: pass
+        t = cur_term()
+        if t is not None:
+            try: t.grab_focus()
+            except Exception: pass
+
+    backdrop = Gtk.EventBox()
+    backdrop.set_visible_window(True)
+    backdrop.set_halign(Gtk.Align.FILL); backdrop.set_valign(Gtk.Align.FILL)
+    backdrop.set_hexpand(True); backdrop.set_vexpand(True)
+    backdrop.get_style_context().add_class("cc-modal-backdrop")
+    backdrop.add_events(Gdk.EventMask.BUTTON_PRESS_MASK)
+    backdrop.connect("button-press-event", lambda *_: (_close(), True)[1])
+
+    def _key_handler(_w, ev):
+        if on_key and on_key(ev):
+            return True
+        if ev.keyval == Gdk.KEY_Escape:
+            _close()
+            return True
+        return False
+    kh = win.connect("key-press-event", _key_handler)
+
+    modal_overlay.add_overlay(backdrop)
+    modal_overlay.add_overlay(panel)
+    modal_overlay.show_all()
+
+    show_modal_panel._current = {
+        "panel": panel, "backdrop": backdrop, "key_handler": kh,
+        "on_close": on_close, "close": _close,
+    }
+    return _close
 
 
 def cur_term():
@@ -2652,84 +2692,17 @@ def _active_snippets_session():
 
 
 def open_snippets_dialog(*_):
-    """Muestra el panel de snippets como widget overlay dentro de la main
-    window. Backdrop transparente hermano captura clicks fuera del panel.
-    Sin toplevel window, sin pointer grabs, sin Wayland tricks — todo
-    resuelto por Gtk como widget routing normal."""
-    snip_log("open_snippets_dialog OVERLAY CALLED")
-    # Singleton — si ya esta abierto, focus al search y retorna.
-    existing_panel = getattr(open_snippets_dialog, "_panel", None)
-    if existing_panel is not None:
-        snip_log("  existing panel found, focusing search")
-        try:
-            existing_panel._q.grab_focus()
-        except Exception:
-            pass
-        return
-
-    def _close_panel():
-        snip_log("_close_panel called (overlay teardown)")
-        panel = getattr(open_snippets_dialog, "_panel", None)
-        backdrop = getattr(open_snippets_dialog, "_backdrop", None)
-        key_handler = getattr(open_snippets_dialog, "_key_handler", None)
-        if panel is not None:
-            try: snippets_overlay.remove(panel)
-            except Exception as e: snip_log(f"  remove panel FAIL: {e}")
-        if backdrop is not None:
-            try: snippets_overlay.remove(backdrop)
-            except Exception as e: snip_log(f"  remove backdrop FAIL: {e}")
-        if key_handler:
-            try: win.disconnect(key_handler)
-            except Exception: pass
-        open_snippets_dialog._panel = None
-        open_snippets_dialog._backdrop = None
-        open_snippets_dialog._key_handler = None
-        snip_log("  overlay children removed")
-        # Foco de vuelta a la terminal activa.
-        t = cur_term()
-        if t is not None:
-            try: t.grab_focus()
-            except Exception: pass
-
-    # Backdrop: EventBox que ocupa todo el overlay area, captura clicks fuera
-    # del panel. Semi-transparente para efecto visual de modal.
-    backdrop = Gtk.EventBox()
-    backdrop.set_visible_window(True)
-    backdrop.set_halign(Gtk.Align.FILL)
-    backdrop.set_valign(Gtk.Align.FILL)
-    backdrop.set_hexpand(True); backdrop.set_vexpand(True)
-    backdrop.get_style_context().add_class("cc-snip-backdrop")
-    backdrop.add_events(Gdk.EventMask.BUTTON_PRESS_MASK)
-    def _on_backdrop_press(_w, ev):
-        snip_log(f"BACKDROP button-press btn={ev.button} x={ev.x} y={ev.y}")
-        _close_panel()
-        return True
-    backdrop.connect("button-press-event", _on_backdrop_press)
-
-    # Panel — el widget con el contenido del modal.
-    panel = SnippetsDialog(_active_snippets_session, _close_panel)
-    snip_log(f"  panel created id={id(panel)}")
-
-    open_snippets_dialog._panel = panel
-    open_snippets_dialog._backdrop = backdrop
-
-    # Overlay children: backdrop primero (abajo), panel arriba.
-    snippets_overlay.add_overlay(backdrop)
-    snippets_overlay.add_overlay(panel)
-    snippets_overlay.show_all()
-    snip_log("  overlay.add_overlay(backdrop) + add_overlay(panel) + show_all done")
-
-    # ESC a nivel de main window mientras el panel esta vivo.
-    def _on_key(_w, ev):
-        if ev.keyval == Gdk.KEY_Escape:
-            snip_log("MAIN ESC -> close panel")
-            _close_panel()
-            return True
-        return False
-    open_snippets_dialog._key_handler = win.connect("key-press-event", _on_key)
-
+    """Muestra el panel de snippets via show_modal_panel."""
+    # Necesitamos cerrar el panel desde adentro (X button, save action).
+    # Uso una lista mutable como closure para poder actualizar close_cb
+    # despues de que show_modal_panel retorne.
+    close_ref = [None]
+    def _do_close():
+        if close_ref[0]:
+            close_ref[0]()
+    panel = SnippetsDialog(_active_snippets_session, _do_close)
+    close_ref[0] = show_modal_panel(panel)
     panel._q.grab_focus()
-    snip_log("  panel._q.grab_focus done")
 
 
 SHORTCUTS_ES = [
@@ -2814,16 +2787,14 @@ SHORTCUTS = SHORTCUTS_ES if ES else SHORTCUTS_EN
 
 
 def show_help(*_):
-    if getattr(show_help, "_win", None):
-        show_help._win.present()
-        return
-    w = Gtk.Window(title="Atajos de ComandOS" if ES else "ComandOS shortcuts")
-    w.set_transient_for(win)
-    w.set_modal(False)
-    w.set_decorated(False)
-    w.set_default_size(640, 720)
-    w.set_position(Gtk.WindowPosition.CENTER_ON_PARENT)
+    w = Gtk.Frame()
+    w.set_size_request(640, 720)
+    w.set_halign(Gtk.Align.CENTER); w.set_valign(Gtk.Align.CENTER)
     w.get_style_context().add_class("helpwin")
+    close_ref = [None]
+    def _close():
+        if close_ref[0]:
+            close_ref[0]()
     scroll = Gtk.ScrolledWindow()
     scroll.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
     outer = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=4)
@@ -2861,14 +2832,11 @@ def show_help(*_):
     scroll.add(outer)
     w.add(scroll)
 
-    def on_help_key(_w, ev):
-        if ev.keyval in (Gdk.KEY_Escape, Gdk.KEY_question, Gdk.KEY_F1):
-            w.destroy(); return True
+    def on_help_key(ev):
+        if ev.keyval in (Gdk.KEY_question, Gdk.KEY_F1):
+            _close(); return True
         return False
-    w.connect("key-press-event", on_help_key)
-    w.connect("destroy", lambda *_: setattr(show_help, "_win", None))
-    show_help._win = w
-    w.show_all()
+    close_ref[0] = show_modal_panel(w, on_key=on_help_key)
 
 
 def on_key(w, e):
