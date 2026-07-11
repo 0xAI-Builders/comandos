@@ -2156,8 +2156,12 @@ class SnippetsDialog(Gtk.Window):
         #  (1) focus-out con delay + has_toplevel_focus check
         #  (2) botón X visible en el header del dialog
         #  (3) key ESC en cualquier lado
+        #  (4) signal "destroy" hookeado: gdkwin.withdraw()+destroy() para que
+        #      TODOS los paths de cierre (incluido close_on_click_outside que
+        #      llama self.destroy() directo) hagan el teardown WSLg-safe.
         self.connect("focus-out-event", self._on_focus_out)
         self.connect("key-press-event", self._on_dialog_key)
+        self.connect("destroy", self._on_destroy)
         # Todos los eventos de mouse llegan por default a Gtk.Window; no hace
         # falta add_events extra.
 
@@ -2367,12 +2371,46 @@ class SnippetsDialog(Gtk.Window):
         self._render_preview()
 
     def _close(self):
-        """Punto unico de cierre. Idempotente — si ya estamos cerrando, noop."""
+        """Punto unico de cierre. Idempotente. Robusto contra el bug WSLg de
+        "ventana destruida pero re-mapeada al enter-notify del mouse":
+
+          1. Suelto el grab del pointer (por si `close_on_click_outside` lo tenia).
+          2. Desconecto el transient_for (Mutter/Weston no arrastra parent-child).
+          3. `gdkwin.withdraw()` — protocolo X11/Wayland de "esta ventana se
+             va, WM olvidala" (unmap + WithdrawnState). Sin esto, WSLg mantiene
+             la surface viva en memoria y la re-mapea con enter-notify.
+          4. `hide()` seguido de `destroy()`.
+          5. Limpio el ref del singleton YA (no esperar al signal destroy,
+             que en WSLg a veces llega tarde o no llega).
+          6. `win.present()` para devolver foco al main y romper cualquier
+             estado de "modal-still-active" que el compositor tenga cacheado."""
         if self._closing:
             return
         self._closing = True
         try:
+            open_snippets_dialog._win = None
+        except Exception:
+            pass
+        try:
+            self.set_transient_for(None)
+        except Exception:
+            pass
+        try:
+            gdkwin = self.get_window()
+            if gdkwin is not None:
+                gdkwin.withdraw()
+        except Exception:
+            pass
+        try:
+            self.hide()
+        except Exception:
+            pass
+        try:
             self.destroy()
+        except Exception:
+            pass
+        try:
+            win.present()
         except Exception:
             pass
 
@@ -2381,6 +2419,27 @@ class SnippetsDialog(Gtk.Window):
             self._close()
             return True
         return False
+
+    def _on_destroy(self, *_):
+        """Corre para CUALQUIER destroy() del dialog (incluido close_on_click_outside
+        que lo llama directo). Fuerza el teardown a nivel Gdk para que Weston
+        (WSLg) no re-mapee la ventana en enter-notify del mouse."""
+        try:
+            if getattr(open_snippets_dialog, "_win", None) is self:
+                open_snippets_dialog._win = None
+        except Exception:
+            pass
+        try:
+            gdkwin = self.get_window()
+            if gdkwin is not None:
+                gdkwin.withdraw()
+                gdkwin.destroy()
+        except Exception:
+            pass
+        try:
+            win.present()
+        except Exception:
+            pass
 
     def _on_focus_out(self, _w, _ev):
         """WSLg-safe: focus-out del toplevel dispara cierre, pero con 150ms de
@@ -2450,14 +2509,13 @@ def open_snippets_dialog(*_):
         except Exception:
             open_snippets_dialog._win = None
     dlg = SnippetsDialog(win, _active_snippets_session)
-    dlg.connect("destroy", lambda *_: setattr(open_snippets_dialog, "_win", None))
+    # El singleton ref se limpia dentro de _on_destroy — no duplicar connect aca.
     open_snippets_dialog._win = dlg
-    # Doble cinturon: close_on_click_outside (pointer grab + is_active poll) para
-    # X11 nativo, y el focus-out handler del propio dialog para WSLg.
+    # close_on_click_outside (pointer grab + is_active poll) para X11 nativo.
+    # focus-out + _on_destroy del propio dialog son la red WSLg.
     close_on_click_outside(dlg)
     dlg.show_all()
-    # Foco al search — sin foco INICIAL dentro, focus-out nunca dispararia.
-    dlg._q.grab_focus()
+    dlg._q.grab_focus()  # Sin foco INICIAL dentro, focus-out nunca dispararia.
     dlg.present()
 
 
