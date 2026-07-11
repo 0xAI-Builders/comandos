@@ -231,6 +231,24 @@ def snip_save(items):
     os.replace(tmp, SNIPPETS_FILE)
 
 
+SNIP_LOG_FILE = "/tmp/cc-app-snip.log"
+
+
+def snip_log(msg):
+    """Log de debugging del SnippetsDialog. Escribe a /tmp/cc-app-snip.log con
+    timestamp preciso para diagnosticar el bug de "click afuera reaparece con
+    hover" en WSLg. Se puede desactivar borrando el archivo — si no existe,
+    no loguea nada (silencioso por default cuando el usuario no lo pidio)."""
+    try:
+        # El log solo esta activo si el archivo ya existe (touch para activar).
+        # Asi el modo debug es opt-in y no ensucia disco en uso normal.
+        with open(SNIP_LOG_FILE, "a") as f:
+            ts = time.strftime("%H:%M:%S") + f".{int((time.time()%1)*1000):03d}"
+            f.write(f"[{ts}] {msg}\n")
+    except Exception:
+        pass
+
+
 def snip_paste(sess, text):
     """Pega `text` en la sesion tmux `sess` usando bracketed paste. NUNCA ejecuta.
 
@@ -2149,6 +2167,14 @@ class SnippetsDialog(Gtk.Window):
         self._items = snip_load()
         self._selected = None
         self._closing = False
+        snip_log(f"__init__ id={id(self)}")
+        # Extra: log map/unmap/enter/leave para ver si Weston re-mapea el widget.
+        self.connect("map-event", lambda *_: (snip_log(f"map-event id={id(self)}"), False)[1])
+        self.connect("unmap-event", lambda *_: (snip_log(f"unmap-event id={id(self)}"), False)[1])
+        self.add_events(Gdk.EventMask.ENTER_NOTIFY_MASK | Gdk.EventMask.LEAVE_NOTIFY_MASK)
+        self.connect("enter-notify-event", lambda *_: (snip_log(f"ENTER id={id(self)} closing={self._closing}"), False)[1])
+        self.connect("leave-notify-event", lambda *_: (snip_log(f"LEAVE id={id(self)} closing={self._closing}"), False)[1])
+        self.connect("delete-event", lambda *_: (snip_log(f"delete-event id={id(self)}"), False)[1])
 
         # -------- Cierre robusto en WSLg --------
         # close_on_click_outside solito no alcanza porque Gdk.Seat.grab y
@@ -2370,7 +2396,8 @@ class SnippetsDialog(Gtk.Window):
         self._render_list()
         self._render_preview()
 
-    def _close(self):
+    def _close(self, caller="?"):
+        snip_log(f"_close called by={caller} id={id(self)} already_closing={self._closing}")
         """Punto unico de cierre. Idempotente. Robusto contra el bug WSLg de
         "ventana destruida pero re-mapeada al enter-notify del mouse":
 
@@ -2416,7 +2443,7 @@ class SnippetsDialog(Gtk.Window):
 
     def _on_dialog_key(self, _w, ev):
         if ev.keyval == Gdk.KEY_Escape:
-            self._close()
+            self._close("ESC")
             return True
         return False
 
@@ -2424,38 +2451,49 @@ class SnippetsDialog(Gtk.Window):
         """Corre para CUALQUIER destroy() del dialog (incluido close_on_click_outside
         que lo llama directo). Fuerza el teardown a nivel Gdk para que Weston
         (WSLg) no re-mapee la ventana en enter-notify del mouse."""
+        snip_log(f"_on_destroy fired id={id(self)}")
         try:
             if getattr(open_snippets_dialog, "_win", None) is self:
                 open_snippets_dialog._win = None
-        except Exception:
-            pass
+                snip_log("  singleton _win cleared")
+        except Exception as e:
+            snip_log(f"  singleton clear FAIL: {e}")
         try:
             gdkwin = self.get_window()
+            snip_log(f"  get_window() -> {gdkwin}")
             if gdkwin is not None:
                 gdkwin.withdraw()
+                snip_log("  gdkwin.withdraw() ran")
                 gdkwin.destroy()
-        except Exception:
-            pass
+                snip_log("  gdkwin.destroy() ran")
+        except Exception as e:
+            snip_log(f"  gdkwin teardown FAIL: {e}")
         try:
             win.present()
-        except Exception:
-            pass
+            snip_log("  win.present() ran")
+        except Exception as e:
+            snip_log(f"  win.present() FAIL: {e}")
 
     def _on_focus_out(self, _w, _ev):
         """WSLg-safe: focus-out del toplevel dispara cierre, pero con 150ms de
         gracia. Si el foco vuelve a un widget hijo (ej: click en textview
         interno), `has_toplevel_focus()` sera True y NO cerramos."""
+        snip_log(f"focus-out fired id={id(self)} closing={self._closing}")
         if self._closing:
             return False
         def _check():
             if self._closing:
+                snip_log("  _check skip (already closing)")
                 return False
             try:
-                if self.has_toplevel_focus():
+                htf = self.has_toplevel_focus()
+                snip_log(f"  _check has_toplevel_focus={htf}")
+                if htf:
                     return False  # foco volvio adentro -> era switch interno
-            except Exception:
+            except Exception as e:
+                snip_log(f"  _check has_toplevel_focus FAIL: {e}")
                 return False
-            self._close()
+            self._close("focus-out")
             return False
         GLib.timeout_add(150, _check)
         return False
@@ -2502,21 +2540,25 @@ def _active_snippets_session():
 
 
 def open_snippets_dialog(*_):
-    if getattr(open_snippets_dialog, "_win", None) is not None:
+    snip_log("open_snippets_dialog CALLED")
+    existing = getattr(open_snippets_dialog, "_win", None)
+    snip_log(f"  existing _win={existing}")
+    if existing is not None:
         try:
             open_snippets_dialog._win.present()
+            snip_log("  present()d existing")
             return
-        except Exception:
+        except Exception as e:
+            snip_log(f"  present() FAIL, clearing: {e}")
             open_snippets_dialog._win = None
     dlg = SnippetsDialog(win, _active_snippets_session)
-    # El singleton ref se limpia dentro de _on_destroy — no duplicar connect aca.
     open_snippets_dialog._win = dlg
-    # close_on_click_outside (pointer grab + is_active poll) para X11 nativo.
-    # focus-out + _on_destroy del propio dialog son la red WSLg.
+    snip_log(f"  new dialog created id={id(dlg)}")
     close_on_click_outside(dlg)
     dlg.show_all()
-    dlg._q.grab_focus()  # Sin foco INICIAL dentro, focus-out nunca dispararia.
+    dlg._q.grab_focus()
     dlg.present()
+    snip_log("  show_all + grab_focus + present done")
 
 
 SHORTCUTS_ES = [
