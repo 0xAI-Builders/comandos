@@ -2661,6 +2661,15 @@ class SnippetsDialog(Gtk.Window):
         self._cached_gdkwin = self.get_window()
         snip_log(f"_on_realize cached gdkwin={self._cached_gdkwin}")
 
+    def _log_button_press(self, _w, ev):
+        wx, wy = self.get_position()
+        ww, wh = self.get_size()
+        px, py = int(ev.x_root), int(ev.y_root)
+        inside = wx <= px < wx + ww and wy <= py < wy + wh
+        snip_log(f"SNIP button-press btn={ev.button} px={px} py={py} "
+                 f"win_bbox=({wx},{wy},{ww},{wh}) inside={inside} armed={self._armed}")
+        return False
+
     def _install_click_outside_close(self):
         """Version snippets-specific de close_on_click_outside. Diferencia
         crucial: en vez de llamar self.destroy() en dismiss (que salta el
@@ -2668,17 +2677,21 @@ class SnippetsDialog(Gtk.Window):
         que hace withdraw + hide ANTES del destroy."""
         self._armed = False
         self._seat = None
+        # Loguea TODOS los button-press que lleguen al dialog para diagnostico.
+        self.add_events(Gdk.EventMask.BUTTON_PRESS_MASK)
+        self.connect("button-press-event", self._log_button_press)
 
         def _arm():
             self._armed = True
             try:
                 seat = self.get_display().get_default_seat()
                 gdkwin = self.get_window()
+                snip_log(f"click-outside _arm: seat={seat} gdkwin={gdkwin}")
                 if gdkwin is not None:
-                    seat.grab(gdkwin, Gdk.SeatCapabilities.POINTER,
-                              True, None, None, None)
+                    status = seat.grab(gdkwin, Gdk.SeatCapabilities.POINTER,
+                                       True, None, None, None)
                     self._seat = seat
-                    snip_log("click-outside grab armed")
+                    snip_log(f"click-outside grab STATUS={status} (SUCCESS={Gdk.GrabStatus.SUCCESS})")
             except Exception as e:
                 snip_log(f"click-outside grab FAIL: {e}")
             return False
