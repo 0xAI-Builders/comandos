@@ -1020,7 +1020,7 @@ def _build_hb_css():
     b" border:1px solid " + THEME["line"].encode() + b";"
     b" border-radius:6px;padding:7px 18px;box-shadow:none;text-shadow:none;"
     b" font-family:'JetBrainsMono Nerd Font Mono',monospace;font-size:12px;"
-    b" margin:0 4px;"
+    b" margin:0 8px;"
     b"}"
     b".cc-dialog button:hover{border-color:" + THEME["brand"].encode() + b";}"
     b".cc-dialog button:focus{outline:none;box-shadow:none;border-color:" + THEME["brand"].encode() + b";}"
@@ -1029,21 +1029,22 @@ def _build_hb_css():
     b" color:" + THEME["bg"].encode() + b";"
     b" border-color:" + THEME["brand"].encode() + b";"
     b"}"
-    # NO usamos .default como suggested — el default de MessageDialog en GTK3
-    # marca al primer boton, y visualmente confunde ("No" en brand es raro).
-    # Solo un border-color mas fuerte para senalar que es el default.
-    b".cc-dialog button:default{"
+    # `.default` es CSS class en GTK3 (no pseudo-class). Sutil border-color
+    # para senalar el default sin repintar todo con brand ("No" en naranja
+    # confunde visualmente).
+    b".cc-dialog button.default{"
     b" border-color:" + THEME["brand"].encode() + b";"
     b"}"
     # MessageDialog: iconito y textos primarios/secundarios
     b".cc-dialog .message-area,.cc-dialog .dialog-vbox > box{"
     b" background:transparent;padding:14px 18px;"
     b"}"
-    # `border-spacing` en action-area = spacing entre botones del GtkBox.
+    # Spacing entre botones va como margin lateral de cada boton (arriba).
+    # GTK3 CSS no soporta `border-spacing` en GtkBox, y `-GtkBox-spacing` es
+    # deprecated. margin:0 8px por boton = 16px de gap efectivo entre pares.
     b".cc-dialog .dialog-action-box,.cc-dialog .action-area{"
     b" border-top:1px solid " + THEME["line"].encode() + b";"
     b" padding:10px 12px;"
-    b" border-spacing:10px;"
     b"}"
     b".cc-dialog image{color:" + THEME["dim"].encode() + b";-gtk-icon-transform:scale(0.85);}"
 )
