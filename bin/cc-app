@@ -934,14 +934,19 @@ def _build_hb_css():
     b" background:" + THEME["line"].encode() + b";"
     b" min-height:1px;margin:4px 2px;"
     b"}"
-    # ---- SnippetsDialog ----
-    # Adwaita default pinta entry/button/list en blanco; forzamos el tema.
-    b".cc-snip-dialog,.cc-snip-dialog window,.cc-snip-dialog .background,"
+    # ---- SnippetsDialog (panel embebido en Gtk.Overlay) ----
+    # Backdrop transparente que oscurece la app detras del panel.
+    b".cc-snip-backdrop{"
+    b" background:rgba(0,0,0,0.55);"
+    b"}"
+    # El panel es un Gtk.Frame; adwaita lo pinta blanco por default.
+    b".cc-snip-dialog,.cc-snip-dialog frame,.cc-snip-dialog .background,"
     b".cc-snip-dialog dialog{"
     b" background:" + THEME["bg"].encode() + b";"
     b" color:" + THEME["text"].encode() + b";"
     b" border:1px solid " + THEME["line"].encode() + b";"
     b" border-radius:10px;"
+    b" box-shadow:0 20px 60px rgba(0,0,0,.45);"
     b"}"
     b".cc-snip-dialog box,.cc-snip-dialog paned,"
     b".cc-snip-dialog scrolledwindow,.cc-snip-dialog viewport{"
@@ -2352,7 +2357,14 @@ _hb_evbox.connect("button-press-event", _hb_press)
 _root = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
 _root.pack_start(_hb_evbox, False, False, 0)
 _root.pack_start(paned, True, True, 0)
-win.add(_root)
+
+# Overlay wrapper — permite superponer widgets encima del contenido principal
+# (ej: el panel de snippets). Es la solucion correcta para modales en
+# Wayland/WSLg: en vez de un top-level Gtk.Window separado con pointer grabs
+# y modal hackery, el modal es un widget hijo con backdrop transparente.
+snippets_overlay = Gtk.Overlay()
+snippets_overlay.add(_root)
+win.add(snippets_overlay)
 
 
 def cur_term():
@@ -2360,85 +2372,29 @@ def cur_term():
     return getattr(page, "_term", None)
 
 
-class SnippetsDialog(Gtk.Window):
-    """List + preview + Send/Edit/Delete/New. Lee y escribe
-    ~/.claude/hooks/snippets.json directamente (mismo store que cc-dash).
+class SnippetsDialog(Gtk.Frame):
+    """List + preview + Send/Edit/Delete/New. Panel embebido en el Gtk.Overlay
+    de la main window — NO es un top-level Window separado.
 
-    Hereda de Gtk.Window (no Gtk.Dialog) a proposito. Gtk.Dialog tiene
-    handlers default para las signals `close` y `delete-event` que llaman
-    hide() en vez de destroy() — en WSLg eso se manifiesta como "click
-    afuera oculta, hover reactiva". Con Gtk.Window ese comportamiento no
-    existe y podemos gobernar la destruccion desde close_on_click_outside."""
+    Esto elimina toda la complejidad Wayland/WSLg que traia el enfoque anterior:
+    pointer grabs no confiables, coord lies del compositor, WSLg zombies,
+    VTE/WebKit consumiendo eventos, focus routing weird. Como widget hijo del
+    Overlay, el click-outside es trivial: un backdrop transparente hermano
+    captura los clicks. Gtk se encarga de todo el routing correctamente."""
 
-    def __init__(self, parent, get_active_session):
-        super().__init__(type=Gtk.WindowType.TOPLEVEL)
-        self.set_title("Snippets")
-        self.set_transient_for(parent)
-        self.set_modal(False)  # modal=True traga clicks externos en WSLg
-        self.set_decorated(False)
-        self.set_position(Gtk.WindowPosition.CENTER_ON_PARENT)
-        self.set_default_size(720, 520)
-        self.set_type_hint(Gdk.WindowTypeHint.DIALOG)
-        self.set_skip_taskbar_hint(True)
+    def __init__(self, get_active_session, on_close):
+        super().__init__()
+        self.set_size_request(720, 520)
+        self.set_halign(Gtk.Align.CENTER)
+        self.set_valign(Gtk.Align.CENTER)
         self.get_style_context().add_class("cc-snip-dialog")
         self._get_session = get_active_session
+        self._on_close_cb = on_close  # callback del owner para destruir el overlay
         self._items = snip_load()
         self._selected = None
         self._closing = False
-        snip_log(f"__init__ id={id(self)}")
-        # === Instrumentacion completa para diagnostico del click-afuera ===
-        self.connect("map-event", lambda *_: (snip_log(f"SNIP map-event id={id(self)}"), False)[1])
-        self.connect("unmap-event", lambda *_: (snip_log(f"SNIP UNMAP-event id={id(self)}"), False)[1])
-        self.connect("hide", lambda *_: snip_log(f"SNIP HIDE signal id={id(self)}"))
-        self.connect("show", lambda *_: snip_log(f"SNIP SHOW signal id={id(self)}"))
-        self.add_events(Gdk.EventMask.ENTER_NOTIFY_MASK | Gdk.EventMask.LEAVE_NOTIFY_MASK
-                        | Gdk.EventMask.FOCUS_CHANGE_MASK | Gdk.EventMask.VISIBILITY_NOTIFY_MASK
-                        | Gdk.EventMask.STRUCTURE_MASK)
-        self.connect("enter-notify-event", lambda *_: (snip_log(f"SNIP ENTER"), False)[1])
-        self.connect("leave-notify-event", lambda *_: (snip_log(f"SNIP LEAVE"), False)[1])
-        self.connect("delete-event", lambda *_: (snip_log(f"SNIP delete-event"), False)[1])
-        self.connect("focus-in-event", lambda *_: (snip_log(f"SNIP focus-IN"), False)[1])
-        self.connect("visibility-notify-event",
-                     lambda _w, ev: (snip_log(f"SNIP visibility state={ev.state}"), False)[1])
-        self.connect("window-state-event",
-                     lambda _w, ev: (snip_log(f"SNIP window-state new={ev.get_state()} changed={ev.get_changed_mask() if hasattr(ev, 'get_changed_mask') else '?'}"), False)[1])
-        self.connect("configure-event",
-                     lambda _w, ev: (snip_log(f"SNIP configure x={ev.x} y={ev.y} w={ev.width} h={ev.height}"), False)[1])
-        self.connect("grab-broken-event",
-                     lambda _w, ev: (snip_log(f"SNIP grab-BROKEN grab_window={ev.grab_window} keyboard={ev.keyboard} implicit={ev.implicit}"), False)[1])
-        # Poll de estado cada 500ms para ver que ve GTK de la ventana.
-        def _state_poll():
-            if self._closing:
-                return False
-            try:
-                snip_log(f"SNIP poll active={self.is_active()} tfocus={self.has_toplevel_focus()} "
-                         f"visible={self.get_visible()} realized={self.get_realized()}")
-            except Exception as e:
-                snip_log(f"SNIP poll FAIL: {e}")
-                return False
-            return True
-        GLib.timeout_add(500, _state_poll)
 
-        # -------- Cierre robusto en WSLg --------
-        # close_on_click_outside solito no alcanza porque Gdk.Seat.grab y
-        # is_active() no son confiables en WSLg. Agregamos capas redundantes:
-        #  (1) focus-out con delay + has_toplevel_focus check
-        #  (2) botón X visible en el header del dialog
-        #  (3) key ESC en cualquier lado
-        #  (4) signal "destroy" hookeado: gdkwin.withdraw()+destroy() para que
-        #      TODOS los paths de cierre (incluido close_on_click_outside que
-        #      llama self.destroy() directo) hagan el teardown WSLg-safe.
-        self.connect("focus-out-event", self._on_focus_out)
-        self.connect("key-press-event", self._on_dialog_key)
-        self.connect("destroy", self._on_destroy)
-        # Cache el GdkWindow apenas se realiza — cuando destroy fire, get_window()
-        # ya devuelve None, asi que sin cachear ANTES no podemos hacer withdraw.
-        self._cached_gdkwin = None
-        self.connect("realize", self._on_realize)
-        # Todos los eventos de mouse llegan por default a Gtk.Window; no hace
-        # falta add_events extra.
-
-        # Root box.
+        # Root box del contenido interno del panel.
         root = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=0)
         self.add(root)
 
@@ -2643,205 +2599,16 @@ class SnippetsDialog(Gtk.Window):
         self._render_list()
         self._render_preview()
 
-    def _close(self, caller="?"):
-        snip_log(f"_close called by={caller} id={id(self)} already_closing={self._closing}")
-        """Punto unico de cierre. Idempotente. Robusto contra el bug WSLg de
-        "ventana destruida pero re-mapeada al enter-notify del mouse":
-
-          1. Suelto el grab del pointer (por si `close_on_click_outside` lo tenia).
-          2. Desconecto el transient_for (Mutter/Weston no arrastra parent-child).
-          3. `gdkwin.withdraw()` — protocolo X11/Wayland de "esta ventana se
-             va, WM olvidala" (unmap + WithdrawnState). Sin esto, WSLg mantiene
-             la surface viva en memoria y la re-mapea con enter-notify.
-          4. `hide()` seguido de `destroy()`.
-          5. Limpio el ref del singleton YA (no esperar al signal destroy,
-             que en WSLg a veces llega tarde o no llega).
-          6. `win.present()` para devolver foco al main y romper cualquier
-             estado de "modal-still-active" que el compositor tenga cacheado."""
+    def _close(self, *_):
+        """Cierre idempotente. Delega al callback del owner que remueve el
+        panel + backdrop del Overlay. Sin GdkWindow tricks — es solo un widget."""
         if self._closing:
             return
         self._closing = True
         try:
-            open_snippets_dialog._win = None
+            self._on_close_cb()
         except Exception:
             pass
-        try:
-            self.set_transient_for(None)
-        except Exception:
-            pass
-        try:
-            gdkwin = self._cached_gdkwin or self.get_window()
-            snip_log(f"  _close gdkwin={gdkwin}")
-            if gdkwin is not None:
-                gdkwin.withdraw()
-                snip_log("  _close withdraw done")
-        except Exception as e:
-            snip_log(f"  _close withdraw FAIL: {e}")
-        try:
-            # Mover offscreen ANTES de hide/destroy — si Weston cachea la ultima
-            # frame para mostrar en hover, que sea offscreen.
-            self.move(-30000, -30000)
-        except Exception:
-            pass
-        try:
-            self.hide()
-        except Exception:
-            pass
-        try:
-            self.destroy()
-        except Exception:
-            pass
-        try:
-            win.present()
-        except Exception:
-            pass
-
-    def _on_dialog_key(self, _w, ev):
-        if ev.keyval == Gdk.KEY_Escape:
-            self._close("ESC")
-            return True
-        return False
-
-    def _on_realize(self, *_):
-        self._cached_gdkwin = self.get_window()
-        snip_log(f"_on_realize cached gdkwin={self._cached_gdkwin}")
-
-    def _log_button_press(self, _w, ev):
-        wx, wy = self.get_position()
-        ww, wh = self.get_size()
-        px, py = int(ev.x_root), int(ev.y_root)
-        inside = wx <= px < wx + ww and wy <= py < wy + wh
-        snip_log(f"SNIP button-press btn={ev.button} px={px} py={py} "
-                 f"win_bbox=({wx},{wy},{ww},{wh}) inside={inside} armed={self._armed}")
-        return False
-
-    def _install_click_outside_close(self):
-        """Version snippets-specific de close_on_click_outside. Diferencia
-        crucial: en vez de llamar self.destroy() en dismiss (que salta el
-        withdraw path y deja frame cacheado en Weston), llama self._close()
-        que hace withdraw + hide ANTES del destroy."""
-        self._armed = False
-        self._seat = None
-        # Loguea TODOS los button-press que lleguen al dialog para diagnostico.
-        self.add_events(Gdk.EventMask.BUTTON_PRESS_MASK)
-        self.connect("button-press-event", self._log_button_press)
-
-        def _arm():
-            self._armed = True
-            try:
-                seat = self.get_display().get_default_seat()
-                gdkwin = self.get_window()
-                snip_log(f"click-outside _arm: seat={seat} gdkwin={gdkwin}")
-                if gdkwin is not None:
-                    status = seat.grab(gdkwin, Gdk.SeatCapabilities.POINTER,
-                                       True, None, None, None)
-                    self._seat = seat
-                    snip_log(f"click-outside grab STATUS={status} (SUCCESS={Gdk.GrabStatus.SUCCESS})")
-            except Exception as e:
-                snip_log(f"click-outside grab FAIL: {e}")
-            return False
-
-        def _release_grab():
-            try:
-                if self._seat is not None:
-                    self._seat.ungrab()
-                    self._seat = None
-            except Exception:
-                pass
-
-        def on_press(_w, ev):
-            if not self._armed:
-                return False
-            # === Solo el widget-tree check ===
-            # ev.x/ev.y widget-relative NO son confiables en Wayland — el
-            # compositor reporta la posicion de la ventana como (0,0) por
-            # diseno de privacidad, entonces ev.x=Rx-0=Rx (root absoluto)
-            # y cualquier click en x<720, y<520 daba falso "inside".
-            # El widget-tree check ES confiable: si target es un widget hijo
-            # del dialog, fue click adentro. Si target=self (toplevel), la
-            # unica razon es que el grab capturo un click fuera del modal.
-            target = Gtk.get_event_widget(ev)
-            inside = False
-            if target is not None and target is not self:
-                w = target
-                while w is not None:
-                    if w is self:
-                        inside = True
-                        break
-                    w = w.get_parent()
-            snip_log(f"on_press: target={target} target_is_self={target is self} "
-                     f"root=({ev.x_root},{ev.y_root}) inside={inside}")
-            if inside:
-                return False
-            self._armed = False
-            _release_grab()
-            self._close("click-outside-grab")
-            return True
-
-        def _tick():
-            if not self._armed or self._closing:
-                return False
-            try:
-                if not self.is_active():
-                    self._armed = False
-                    _release_grab()
-                    self._close("is_active-false")
-                    return False
-            except Exception:
-                return False
-            return True
-
-        self.add_events(Gdk.EventMask.BUTTON_PRESS_MASK)
-        self.connect("button-press-event", on_press)
-        self.connect("destroy", lambda *_: _release_grab())
-        GLib.timeout_add(200, _arm)
-        GLib.timeout_add(300, _tick)
-
-    def _on_destroy(self, *_):
-        """Corre para CUALQUIER destroy() del dialog (incluido close_on_click_outside
-        que lo llama directo). Fuerza el teardown a nivel Gdk para que Weston
-        (WSLg) no re-mapee la ventana en enter-notify del mouse."""
-        snip_log(f"_on_destroy fired id={id(self)}")
-        try:
-            if getattr(open_snippets_dialog, "_win", None) is self:
-                open_snippets_dialog._win = None
-                snip_log("  singleton _win cleared")
-        except Exception as e:
-            snip_log(f"  singleton clear FAIL: {e}")
-        try:
-            # get_window() ya es None cuando destroy fire — usa cache de realize.
-            gdkwin = self._cached_gdkwin or self.get_window()
-            snip_log(f"  gdkwin resolved={gdkwin} (cached={self._cached_gdkwin})")
-            if gdkwin is not None:
-                gdkwin.withdraw()
-                snip_log("  gdkwin.withdraw() ran")
-                gdkwin.destroy()
-                snip_log("  gdkwin.destroy() ran")
-        except Exception as e:
-            snip_log(f"  gdkwin teardown FAIL: {e}")
-        try:
-            win.present()
-            snip_log("  win.present() ran")
-        except Exception as e:
-            snip_log(f"  win.present() FAIL: {e}")
-
-    def _on_focus_out(self, _w, _ev):
-        """WSLg-safe: focus-out del toplevel dispara cierre INMEDIATO.
-        Antes usabamos 150ms de gracia por si el foco volvia adentro (child
-        widget), pero en Wayland eso agregaba latencia visible sin resolver
-        el caso interno (child focus NO dispara toplevel focus-out)."""
-        snip_log(f"SNIP focus-OUT closing={self._closing}")
-        if self._closing:
-            return False
-        try:
-            htf = self.has_toplevel_focus()
-            snip_log(f"SNIP focus-out has_toplevel_focus={htf} (chequeo inmediato)")
-            if htf:
-                return False
-        except Exception as e:
-            snip_log(f"SNIP focus-out htf check FAIL: {e}")
-        self._close("focus-out-immediate")
-        return False
 
     def _flash(self, msg, error=False):
         """Muestra `msg` en la barra inline del dialog por 2.5s."""
@@ -2885,59 +2652,72 @@ def _active_snippets_session():
 
 
 def open_snippets_dialog(*_):
-    snip_log("open_snippets_dialog CALLED")
-    existing = getattr(open_snippets_dialog, "_win", None)
-    snip_log(f"  existing _win={existing}")
-    if existing is not None:
+    """Muestra el panel de snippets como widget overlay dentro de la main
+    window. Backdrop transparente hermano captura clicks fuera del panel.
+    Sin toplevel window, sin pointer grabs, sin Wayland tricks — todo
+    resuelto por Gtk como widget routing normal."""
+    # Singleton — si ya esta abierto, focus al search y retorna.
+    existing_panel = getattr(open_snippets_dialog, "_panel", None)
+    if existing_panel is not None:
         try:
-            open_snippets_dialog._win.present()
-            snip_log("  present()d existing")
-            return
-        except Exception as e:
-            snip_log(f"  present() FAIL, clearing: {e}")
-            open_snippets_dialog._win = None
-    dlg = SnippetsDialog(win, _active_snippets_session)
-    open_snippets_dialog._win = dlg
-    snip_log(f"  new dialog created id={id(dlg)}")
-    dlg._install_click_outside_close()
-
-    # WSLg fallback: Gdk.Seat.grab NO siempre entrega clicks al grabber en
-    # Wayland (Weston decide, y widgets como VTE consumen antes). Fallback
-    # #1: button-press en la main window (fires si el click sube hasta win).
-    def _on_main_press(_w, ev):
-        snip_log("MAIN button-press while snippets open — closing")
-        try:
-            dlg._close("main-window-press")
+            existing_panel._q.grab_focus()
         except Exception:
             pass
+        return
+
+    def _close_panel():
+        panel = getattr(open_snippets_dialog, "_panel", None)
+        backdrop = getattr(open_snippets_dialog, "_backdrop", None)
+        key_handler = getattr(open_snippets_dialog, "_key_handler", None)
+        if panel is not None:
+            try: snippets_overlay.remove(panel)
+            except Exception: pass
+        if backdrop is not None:
+            try: snippets_overlay.remove(backdrop)
+            except Exception: pass
+        if key_handler:
+            try: win.disconnect(key_handler)
+            except Exception: pass
+        open_snippets_dialog._panel = None
+        open_snippets_dialog._backdrop = None
+        open_snippets_dialog._key_handler = None
+        # Foco de vuelta a la terminal activa.
+        t = cur_term()
+        if t is not None:
+            try: t.grab_focus()
+            except Exception: pass
+
+    # Backdrop: EventBox que ocupa todo el overlay area, captura clicks fuera
+    # del panel. Semi-transparente para efecto visual de modal.
+    backdrop = Gtk.EventBox()
+    backdrop.set_visible_window(True)
+    backdrop.set_halign(Gtk.Align.FILL)
+    backdrop.set_valign(Gtk.Align.FILL)
+    backdrop.set_hexpand(True); backdrop.set_vexpand(True)
+    backdrop.get_style_context().add_class("cc-snip-backdrop")
+    backdrop.add_events(Gdk.EventMask.BUTTON_PRESS_MASK)
+    backdrop.connect("button-press-event", lambda *_: (_close_panel(), True)[1])
+
+    # Panel — el widget con el contenido del modal.
+    panel = SnippetsDialog(_active_snippets_session, _close_panel)
+
+    open_snippets_dialog._panel = panel
+    open_snippets_dialog._backdrop = backdrop
+
+    # Overlay children: backdrop primero (abajo), panel arriba.
+    snippets_overlay.add_overlay(backdrop)
+    snippets_overlay.add_overlay(panel)
+    snippets_overlay.show_all()
+
+    # ESC a nivel de main window mientras el panel esta vivo.
+    def _on_key(_w, ev):
+        if ev.keyval == Gdk.KEY_Escape:
+            _close_panel()
+            return True
         return False
-    main_handler = win.connect("button-press-event", _on_main_press)
+    open_snippets_dialog._key_handler = win.connect("key-press-event", _on_key)
 
-    dlg.show_all()
-    dlg._q.grab_focus()
-    dlg.present()
-
-    # Fallback #2 (CRITICO): widget.grab_add(). Grab a nivel Gtk (app-internal,
-    # NO Wayland). Cualquier click en cualquier widget de la app que NO sea
-    # descendiente del dialog es routeado al dialog. En PyGObject es metodo
-    # de instancia (widget.grab_add), no funcion de modulo Gtk.grab_add.
-    try:
-        dlg.grab_add()
-        snip_log(f"dlg.grab_add() done id={id(dlg)}")
-    except Exception as e:
-        snip_log(f"dlg.grab_add() FAIL: {e}")
-
-    def _cleanup():
-        try: win.disconnect(main_handler)
-        except Exception: pass
-        try:
-            dlg.grab_remove()
-            snip_log(f"dlg.grab_remove() done id={id(dlg)}")
-        except Exception as e:
-            snip_log(f"dlg.grab_remove() FAIL: {e}")
-    dlg.connect("destroy", lambda *_: _cleanup())
-
-    snip_log("  show_all + grab_focus + present + grab_add done")
+    panel._q.grab_focus()
 
 
 SHORTCUTS_ES = [
