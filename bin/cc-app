@@ -2752,34 +2752,25 @@ class SnippetsDialog(Gtk.Window):
         def on_press(_w, ev):
             if not self._armed:
                 return False
-            # === Diagnostico exhaustivo del ev ===
+            # === Solo el widget-tree check ===
+            # ev.x/ev.y widget-relative NO son confiables en Wayland — el
+            # compositor reporta la posicion de la ventana como (0,0) por
+            # diseno de privacidad, entonces ev.x=Rx-0=Rx (root absoluto)
+            # y cualquier click en x<720, y<520 daba falso "inside".
+            # El widget-tree check ES confiable: si target es un widget hijo
+            # del dialog, fue click adentro. Si target=self (toplevel), la
+            # unica razon es que el grab capturo un click fuera del modal.
             target = Gtk.get_event_widget(ev)
-            # ev.x, ev.y son relativos a ev.window (widget-relativas)
-            # ev.x_root, ev.y_root son screen-absolute
-            alloc = self.get_allocation()
-            # Metodo 1: widget-relative coords vs allocation
-            # Cuando un click viene del pointer grab desde AFUERA del toplevel,
-            # ev.x/ev.y pueden ser negativos o mayor que el size de la ventana.
-            wx, wy = ev.x, ev.y
-            inside_by_coords = 0 <= wx < alloc.width and 0 <= wy < alloc.height
-            # Metodo 2: widget tree — inside si target es descendiente PROPIO
-            # (no self mismo; self como target puede ocurrir en grab-captured).
-            inside_by_tree = False
+            inside = False
             if target is not None and target is not self:
                 w = target
                 while w is not None:
                     if w is self:
-                        inside_by_tree = True
+                        inside = True
                         break
                     w = w.get_parent()
-            # Decision: si CUALQUIERA dice inside, es inside (conservador).
-            # Si AMBOS dicen outside, cerramos.
-            inside = inside_by_coords or inside_by_tree
             snip_log(f"on_press: target={target} target_is_self={target is self} "
-                     f"ev.x={wx} ev.y={wy} alloc=({alloc.width},{alloc.height}) "
-                     f"root=({ev.x_root},{ev.y_root}) "
-                     f"inside_coords={inside_by_coords} inside_tree={inside_by_tree} "
-                     f"FINAL_inside={inside}")
+                     f"root=({ev.x_root},{ev.y_root}) inside={inside}")
             if inside:
                 return False
             self._armed = False
