@@ -1372,11 +1372,24 @@ def close_tab(key):
                                 else f"Close tab “{label}”?"))
     d.get_style_context().add_class("cc-dialog")
     d.set_decorated(False)  # sin titlebar del WM — se ve dentro del theme
+    # Este dialog es "must answer" — accion destructiva (cierra la tab). En
+    # WSLg + decorated=False el compositor lo trataba como popup y lo cerraba
+    # con click afuera. Blindamos: no deletable, delete-event comido, ESC
+    # comida. Solo los botones Yes/No emiten response.
+    d.set_deletable(False)
+    d.connect("delete-event", lambda *_: True)
+    d.connect("key-press-event",
+              lambda _w, ev: True if ev.keyval == Gdk.KEY_Escape else False)
     d.format_secondary_text(
         "La sesión tmux sigue viva; puedes recuperarla en Recientes del tablero."
         if ES else
         "The tmux session stays alive; recover it from the dashboard's Recents.")
-    resp = d.run()
+    while True:
+        resp = d.run()
+        if resp in (Gtk.ResponseType.YES, Gtk.ResponseType.NO):
+            break
+        # Cualquier otra respuesta (DELETE_EVENT, CLOSE, CANCEL de WM/WSLg)
+        # NO cierra el dialog — obligamos a elegir Yes o No.
     d.destroy()
     if resp != Gtk.ResponseType.YES:
         return
