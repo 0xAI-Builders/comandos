@@ -1369,7 +1369,7 @@ def _confirm_must_answer(primary, secondary, yes_label, no_label):
     de Gtk.Dialog.run() ni de Gtk.MessageDialog (que en WSLg se dejan cerrar
     por el compositor cuando decorated=False). Todos los eventos de cierre
     NO-YES/NO estan comidos por conectores que retornan True."""
-    result = {"value": None}
+    result = {"value": None, "finished": False}
     loop = GLib.MainLoop()
 
     dlg = Gtk.Window(type=Gtk.WindowType.TOPLEVEL)
@@ -1381,16 +1381,59 @@ def _confirm_must_answer(primary, secondary, yes_label, no_label):
     dlg.set_default_size(480, -1)
     dlg.set_type_hint(Gdk.WindowTypeHint.DIALOG)
     dlg.set_skip_taskbar_hint(True)
+    # SIEMPRE encima. WSLg/Weston pone la ventana atras si el user clickea en
+    # otra app de Windows — user lo interpreta como "desaparecio". Con
+    # keep_above forzamos que siga arriba de todo hasta que el user elija.
+    dlg.set_keep_above(True)
     dlg.get_style_context().add_class("cc-dialog")
+    snip_log(f"CONFIRM __init__ dlg_id={id(dlg)}")
 
-    # Bloquea toda tecla que suela cerrar dialogs (ESC, Enter va a boton default).
+    # Loguea TODOS los eventos posibles.
     def on_key(_w, ev):
+        kn = Gdk.keyval_name(ev.keyval) or "?"
+        snip_log(f"CONFIRM key-press keyval={kn} (0x{ev.keyval:x})")
         if ev.keyval == Gdk.KEY_Escape:
-            snip_log("_confirm_must_answer: ESC comida")
+            snip_log("CONFIRM ESC comida")
             return True
         return False
     dlg.connect("key-press-event", on_key)
-    dlg.connect("delete-event", lambda *_: (snip_log("_confirm_must_answer: delete-event comido"), True)[1])
+    def on_delete(*_):
+        snip_log("CONFIRM delete-event comido")
+        return True
+    dlg.connect("delete-event", on_delete)
+    def on_destroy(*_):
+        snip_log(f"CONFIRM DESTROY fired finished={result['finished']} value={result['value']}")
+        # Si nos destruyen SIN que un boton haya finished, el loop se queda
+        # colgado. Marcamos como cancelado y salimos.
+        if not result["finished"]:
+            result["value"] = None
+            result["finished"] = True
+            try: loop.quit()
+            except Exception: pass
+    dlg.connect("destroy", on_destroy)
+    dlg.connect("map-event", lambda *_: (snip_log(f"CONFIRM map-event id={id(dlg)}"), False)[1])
+    dlg.connect("unmap-event", lambda *_: (snip_log(f"CONFIRM UNMAP-event id={id(dlg)}"), False)[1])
+    dlg.connect("hide", lambda *_: snip_log(f"CONFIRM HIDE signal id={id(dlg)}"))
+    dlg.connect("focus-in-event", lambda *_: (snip_log(f"CONFIRM focus-in"), False)[1])
+    # focus-out -> se lo devolvemos. Si el user clickea en otra app, el dialog
+    # perderia foco y quedaria atras — con present() lo traemos al frente.
+    def on_focus_out(*_):
+        snip_log("CONFIRM focus-out -> present() para traer al frente")
+        if not result["finished"]:
+            try: dlg.present()
+            except Exception: pass
+        return False
+    dlg.connect("focus-out-event", on_focus_out)
+    dlg.add_events(Gdk.EventMask.ENTER_NOTIFY_MASK | Gdk.EventMask.LEAVE_NOTIFY_MASK
+                   | Gdk.EventMask.BUTTON_PRESS_MASK | Gdk.EventMask.BUTTON_RELEASE_MASK)
+    dlg.connect("enter-notify-event", lambda *_: (snip_log("CONFIRM enter-notify"), False)[1])
+    dlg.connect("leave-notify-event", lambda *_: (snip_log("CONFIRM leave-notify"), False)[1])
+    dlg.connect("button-press-event",
+                lambda _w, ev: (snip_log(f"CONFIRM button-press btn={ev.button} x={ev.x} y={ev.y}"), False)[1])
+    dlg.connect("window-state-event",
+                lambda _w, ev: (snip_log(f"CONFIRM window-state-event new_state={ev.new_state}"), False)[1])
+    dlg.connect("configure-event",
+                lambda _w, ev: (snip_log(f"CONFIRM configure-event x={ev.x} y={ev.y} w={ev.width} h={ev.height}"), False)[1])
 
     root = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=0)
     dlg.add(root)
@@ -1419,13 +1462,19 @@ def _confirm_must_answer(primary, secondary, yes_label, no_label):
     yes_btn = Gtk.Button(label=yes_label)
 
     def _finish(value):
+        snip_log(f"CONFIRM _finish called value={value} already_finished={result['finished']}")
+        if result["finished"]:
+            return
         result["value"] = value
-        snip_log(f"_confirm_must_answer: finish value={value}")
+        result["finished"] = True
         try:
             dlg.destroy()
-        except Exception:
-            pass
-        loop.quit()
+        except Exception as e:
+            snip_log(f"CONFIRM destroy in _finish FAIL: {e}")
+        try:
+            loop.quit()
+        except Exception as e:
+            snip_log(f"CONFIRM loop.quit FAIL: {e}")
 
     no_btn.connect("clicked", lambda *_: _finish(False))
     yes_btn.connect("clicked", lambda *_: _finish(True))
@@ -1433,11 +1482,13 @@ def _confirm_must_answer(primary, secondary, yes_label, no_label):
     actions.pack_start(yes_btn, True, True, 0)
     root.pack_start(actions, False, False, 0)
 
+    snip_log("CONFIRM about to show_all")
     dlg.show_all()
+    snip_log("CONFIRM show_all done")
     yes_btn.grab_focus()
-    snip_log("_confirm_must_answer: entering loop")
+    snip_log("CONFIRM entering loop.run()")
     loop.run()
-    snip_log(f"_confirm_must_answer: loop exited, returning {result['value']}")
+    snip_log(f"CONFIRM loop exited value={result['value']}")
     return bool(result["value"])
 
 
