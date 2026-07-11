@@ -2058,6 +2058,11 @@ class SnippetsDialog(Gtk.Dialog):
     def __init__(self, parent, get_active_session):
         super().__init__(title="Snippets", transient_for=parent, modal=True)
         self.set_default_size(720, 520)
+        # Sin chrome del WM — la app entera es chromeless (ver win.set_decorated(False)).
+        self.set_decorated(False)
+        # ESC cierra el dialog (mismo patron que showModal() en el dashboard).
+        self.connect("key-press-event", lambda _w, ev: (
+            ev.keyval == Gdk.KEY_Escape and (self.destroy() or True)))
         self._get_session = get_active_session
         self._items = snip_load()
         self._selected = None
@@ -2235,20 +2240,25 @@ class SnippetsDialog(Gtk.Dialog):
     def _send(self, it):
         sess = self._get_session()
         if not sess:
-            print("snippets: no hay sesion activa", file=sys.stderr)
+            notify_popup("Snippets", "No hay sesion tmux en la pestana activa" if ES
+                         else "No tmux session in the active tab")
             return
         err = snip_paste(sess, it["body"])
         if err:
-            print(f"snippets: {err}", file=sys.stderr)
+            notify_popup("Snippets", err)
         else:
-            print(f"snippets: pegado en {sess}", file=sys.stderr)
+            notify_popup("Snippets", f"Pegado en {sess}" if ES else f"Pasted into {sess}")
 
 
 def _active_snippets_session():
-    """Retorna la sesion tmux de la pestaña activa (o cadena vacía)."""
+    """Retorna la sesion tmux del tab activo, resolviendo por el tty del cliente
+    tmux (misma logica que copy/export). Si el tab activo es el hub o no tiene
+    session viva, devuelve cadena vacia."""
     try:
-        page = nb.get_nth_page(nb.get_current_page())
-        return getattr(page, "session", "") or getattr(page, "sess", "")
+        term = cur_term()
+        if not term:
+            return ""
+        return term_session(term) or ""
     except Exception:
         return ""
 
