@@ -234,6 +234,26 @@ def snip_save(items):
 SNIP_LOG_FILE = "/tmp/cc-app-snip.log"
 
 
+def _snip_env_snapshot():
+    """Escribe estado del display server al inicio para el debug."""
+    try:
+        if not os.path.exists(SNIP_LOG_FILE):
+            return
+        with open(SNIP_LOG_FILE, "a") as f:
+            f.write("=" * 60 + "\n")
+            f.write(f"cc-app startup {time.strftime('%Y-%m-%d %H:%M:%S')}\n")
+            for k in ("DISPLAY", "WAYLAND_DISPLAY", "XDG_SESSION_TYPE",
+                     "GDK_BACKEND", "XDG_CURRENT_DESKTOP", "WSL_DISTRO_NAME",
+                     "PULSE_SERVER"):
+                f.write(f"  {k}={os.environ.get(k, '<unset>')}\n")
+            f.write("=" * 60 + "\n")
+    except Exception:
+        pass
+
+
+_snip_env_snapshot()
+
+
 def snip_log(msg):
     """Log opt-in del SnippetsDialog para diagnostico. Escribe a
     /tmp/cc-app-snip.log si el archivo existe; touch para activar, borrar
@@ -2366,13 +2386,38 @@ class SnippetsDialog(Gtk.Window):
         self._selected = None
         self._closing = False
         snip_log(f"__init__ id={id(self)}")
-        # Extra: log map/unmap/enter/leave para ver si Weston re-mapea el widget.
-        self.connect("map-event", lambda *_: (snip_log(f"map-event id={id(self)}"), False)[1])
-        self.connect("unmap-event", lambda *_: (snip_log(f"unmap-event id={id(self)}"), False)[1])
-        self.add_events(Gdk.EventMask.ENTER_NOTIFY_MASK | Gdk.EventMask.LEAVE_NOTIFY_MASK)
-        self.connect("enter-notify-event", lambda *_: (snip_log(f"ENTER id={id(self)} closing={self._closing}"), False)[1])
-        self.connect("leave-notify-event", lambda *_: (snip_log(f"LEAVE id={id(self)} closing={self._closing}"), False)[1])
-        self.connect("delete-event", lambda *_: (snip_log(f"delete-event id={id(self)}"), False)[1])
+        # === Instrumentacion completa para diagnostico del click-afuera ===
+        self.connect("map-event", lambda *_: (snip_log(f"SNIP map-event id={id(self)}"), False)[1])
+        self.connect("unmap-event", lambda *_: (snip_log(f"SNIP UNMAP-event id={id(self)}"), False)[1])
+        self.connect("hide", lambda *_: snip_log(f"SNIP HIDE signal id={id(self)}"))
+        self.connect("show", lambda *_: snip_log(f"SNIP SHOW signal id={id(self)}"))
+        self.add_events(Gdk.EventMask.ENTER_NOTIFY_MASK | Gdk.EventMask.LEAVE_NOTIFY_MASK
+                        | Gdk.EventMask.FOCUS_CHANGE_MASK | Gdk.EventMask.VISIBILITY_NOTIFY_MASK
+                        | Gdk.EventMask.STRUCTURE_MASK)
+        self.connect("enter-notify-event", lambda *_: (snip_log(f"SNIP ENTER"), False)[1])
+        self.connect("leave-notify-event", lambda *_: (snip_log(f"SNIP LEAVE"), False)[1])
+        self.connect("delete-event", lambda *_: (snip_log(f"SNIP delete-event"), False)[1])
+        self.connect("focus-in-event", lambda *_: (snip_log(f"SNIP focus-IN"), False)[1])
+        self.connect("visibility-notify-event",
+                     lambda _w, ev: (snip_log(f"SNIP visibility state={ev.state}"), False)[1])
+        self.connect("window-state-event",
+                     lambda _w, ev: (snip_log(f"SNIP window-state new={ev.new_state} changed={ev.changed_mask}"), False)[1])
+        self.connect("configure-event",
+                     lambda _w, ev: (snip_log(f"SNIP configure x={ev.x} y={ev.y} w={ev.width} h={ev.height}"), False)[1])
+        self.connect("grab-broken-event",
+                     lambda _w, ev: (snip_log(f"SNIP grab-BROKEN grab_window={ev.grab_window} keyboard={ev.keyboard} implicit={ev.implicit}"), False)[1])
+        # Poll de estado cada 500ms para ver que ve GTK de la ventana.
+        def _state_poll():
+            if self._closing:
+                return False
+            try:
+                snip_log(f"SNIP poll active={self.is_active()} tfocus={self.has_toplevel_focus()} "
+                         f"visible={self.get_visible()} realized={self.get_realized()}")
+            except Exception as e:
+                snip_log(f"SNIP poll FAIL: {e}")
+                return False
+            return True
+        GLib.timeout_add(500, _state_poll)
 
         # -------- Cierre robusto en WSLg --------
         # close_on_click_outside solito no alcanza porque Gdk.Seat.grab y
@@ -2770,20 +2815,20 @@ class SnippetsDialog(Gtk.Window):
         """WSLg-safe: focus-out del toplevel dispara cierre, pero con 150ms de
         gracia. Si el foco vuelve a un widget hijo (ej: click en textview
         interno), `has_toplevel_focus()` sera True y NO cerramos."""
-        snip_log(f"focus-out fired id={id(self)} closing={self._closing}")
+        snip_log(f"SNIP focus-OUT closing={self._closing}")
         if self._closing:
             return False
         def _check():
             if self._closing:
-                snip_log("  _check skip (already closing)")
+                snip_log("SNIP focus-out _check skip (already closing)")
                 return False
             try:
                 htf = self.has_toplevel_focus()
-                snip_log(f"  _check has_toplevel_focus={htf}")
+                snip_log(f"SNIP focus-out _check has_toplevel_focus={htf}")
                 if htf:
                     return False  # foco volvio adentro -> era switch interno
             except Exception as e:
-                snip_log(f"  _check has_toplevel_focus FAIL: {e}")
+                snip_log(f"SNIP focus-out _check FAIL: {e}")
                 return False
             self._close("focus-out")
             return False
