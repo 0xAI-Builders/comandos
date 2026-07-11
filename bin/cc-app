@@ -2656,9 +2656,11 @@ def open_snippets_dialog(*_):
     window. Backdrop transparente hermano captura clicks fuera del panel.
     Sin toplevel window, sin pointer grabs, sin Wayland tricks — todo
     resuelto por Gtk como widget routing normal."""
+    snip_log("open_snippets_dialog OVERLAY CALLED")
     # Singleton — si ya esta abierto, focus al search y retorna.
     existing_panel = getattr(open_snippets_dialog, "_panel", None)
     if existing_panel is not None:
+        snip_log("  existing panel found, focusing search")
         try:
             existing_panel._q.grab_focus()
         except Exception:
@@ -2666,21 +2668,23 @@ def open_snippets_dialog(*_):
         return
 
     def _close_panel():
+        snip_log("_close_panel called (overlay teardown)")
         panel = getattr(open_snippets_dialog, "_panel", None)
         backdrop = getattr(open_snippets_dialog, "_backdrop", None)
         key_handler = getattr(open_snippets_dialog, "_key_handler", None)
         if panel is not None:
             try: snippets_overlay.remove(panel)
-            except Exception: pass
+            except Exception as e: snip_log(f"  remove panel FAIL: {e}")
         if backdrop is not None:
             try: snippets_overlay.remove(backdrop)
-            except Exception: pass
+            except Exception as e: snip_log(f"  remove backdrop FAIL: {e}")
         if key_handler:
             try: win.disconnect(key_handler)
             except Exception: pass
         open_snippets_dialog._panel = None
         open_snippets_dialog._backdrop = None
         open_snippets_dialog._key_handler = None
+        snip_log("  overlay children removed")
         # Foco de vuelta a la terminal activa.
         t = cur_term()
         if t is not None:
@@ -2696,10 +2700,15 @@ def open_snippets_dialog(*_):
     backdrop.set_hexpand(True); backdrop.set_vexpand(True)
     backdrop.get_style_context().add_class("cc-snip-backdrop")
     backdrop.add_events(Gdk.EventMask.BUTTON_PRESS_MASK)
-    backdrop.connect("button-press-event", lambda *_: (_close_panel(), True)[1])
+    def _on_backdrop_press(_w, ev):
+        snip_log(f"BACKDROP button-press btn={ev.button} x={ev.x} y={ev.y}")
+        _close_panel()
+        return True
+    backdrop.connect("button-press-event", _on_backdrop_press)
 
     # Panel — el widget con el contenido del modal.
     panel = SnippetsDialog(_active_snippets_session, _close_panel)
+    snip_log(f"  panel created id={id(panel)}")
 
     open_snippets_dialog._panel = panel
     open_snippets_dialog._backdrop = backdrop
@@ -2708,16 +2717,19 @@ def open_snippets_dialog(*_):
     snippets_overlay.add_overlay(backdrop)
     snippets_overlay.add_overlay(panel)
     snippets_overlay.show_all()
+    snip_log("  overlay.add_overlay(backdrop) + add_overlay(panel) + show_all done")
 
     # ESC a nivel de main window mientras el panel esta vivo.
     def _on_key(_w, ev):
         if ev.keyval == Gdk.KEY_Escape:
+            snip_log("MAIN ESC -> close panel")
             _close_panel()
             return True
         return False
     open_snippets_dialog._key_handler = win.connect("key-press-event", _on_key)
 
     panel._q.grab_focus()
+    snip_log("  panel._q.grab_focus done")
 
 
 SHORTCUTS_ES = [
