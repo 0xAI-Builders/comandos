@@ -252,6 +252,17 @@ def test_remote_term_page_fixes_mobile_keys_and_ws():
     assert "location.host" in term and "/ws" in term
 
 
+def test_remote_term_touch_longpress_resizes_panes():
+    # Gesto tactil: dejar el dedo (~300ms) y arrastrar = drag de mouse SGR
+    # (solo cuando tmux pidio tracking). Verificado E2E: panes 50/50 -> 37/63.
+    term = open("dash/term.html").read()
+    assert "touchstart" in term and "touchmove" in term and "touchend" in term
+    assert "mouseTrackingMode" in term        # sin tracking → scroll normal
+    assert "\\x1b[<" in term                  # protocolo SGR press/motion/release
+    assert "redimensionando" in term          # indicador visible durante el drag
+    assert "navigator.vibrate" in term        # feedback haptico al enganchar
+
+
 def test_webterm_serves_our_index_when_supported():
     src = open("bin/cc-webterm").read()
     assert '--index' in src and 'term.html' in src
@@ -261,6 +272,7 @@ def test_webterm_serves_our_index_when_supported():
 if __name__ == "__main__":
     test_remote_term_has_pane_mouse_toggle()
     test_remote_term_page_fixes_mobile_keys_and_ws()
+    test_remote_term_touch_longpress_resizes_panes()
     test_webterm_serves_our_index_when_supported()
     test_remote_drawer_controls_are_present()
     test_remote_ui_calls_backend_endpoints()

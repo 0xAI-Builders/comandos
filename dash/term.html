@@ -215,6 +215,67 @@
   // beforeinput sin keydown — xterm.js los pierde con el buffer de
   // composicion vacio y "borrar no borra". Los interceptamos y mandamos
   // la tecla real; preventDefault evita el doble envio.
+  // --- GESTO TÁCTIL: dejar el dedo (~300ms) sobre la separación de panes y
+  // arrastrar = resize. xterm.js no traduce touch al protocolo de mouse, así
+  // que aquí convertimos long-press+drag en press/motion/release SGR — solo
+  // cuando la app (tmux con mouse on) pidió tracking; si no, scroll normal.
+  const screenEl = () => document.querySelector('.xterm-screen');
+  const mouseOn = () => { try { return term.modes.mouseTrackingMode !== 'none'; } catch (_) { return false; } };
+  const cellFromTouch = (t) => {
+    const el = screenEl(); if (!el) return null;
+    const r = el.getBoundingClientRect();
+    const col = Math.max(1, Math.min(term.cols, Math.floor((t.clientX - r.left) / (r.width / term.cols)) + 1));
+    const row = Math.max(1, Math.min(term.rows, Math.floor((t.clientY - r.top) / (r.height / term.rows)) + 1));
+    return { col, row };
+  };
+  const sgr = (btn, c, release) => `\x1b[<${btn};${c.col};${c.row}${release ? 'm' : 'M'}`;
+  const IND = document.createElement('div');
+  IND.style.cssText = 'position:fixed;top:10px;left:50%;transform:translateX(-50%);z-index:9;' +
+    'display:none;background:rgba(0,0,0,.7);color:#4CE07A;font:12px monospace;' +
+    'padding:5px 12px;border-radius:8px;pointer-events:none';
+  IND.textContent = '⇕ redimensionando';
+  document.body.appendChild(IND);
+  let lp = null;
+  document.addEventListener('touchstart', (e) => {
+    if (e.touches.length !== 1 || !mouseOn()) return;
+    const t = e.touches[0];
+    const startX = t.clientX, startY = t.clientY;
+    lp = { engaged: false, sx: startX, sy: startY, lastCell: null,
+      timer: setTimeout(() => {
+        if (!lp) return;
+        lp.engaged = true;
+        const c = cellFromTouch({ clientX: startX, clientY: startY });
+        lp.lastCell = c;
+        if (c) sendInput(sgr(0, c, false));           // press botón izq
+        IND.style.display = 'block';
+        if (navigator.vibrate) navigator.vibrate(25); // feedback háptico
+      }, 300) };
+  }, { passive: true });
+  document.addEventListener('touchmove', (e) => {
+    if (!lp) return;
+    const t = e.touches[0];
+    if (!lp.engaged) {
+      // se movió antes del long-press → es scroll normal: soltar
+      if (Math.hypot(t.clientX - lp.sx, t.clientY - lp.sy) > 12) { clearTimeout(lp.timer); lp = null; }
+      return;
+    }
+    e.preventDefault();                                // en drag: no scroll
+    const c = cellFromTouch(t);
+    if (c && (!lp.lastCell || c.col !== lp.lastCell.col || c.row !== lp.lastCell.row)) {
+      lp.lastCell = c;
+      sendInput(sgr(32, c, false));                    // motion con botón
+    }
+  }, { passive: false });
+  const endTouch = () => {
+    if (!lp) return;
+    clearTimeout(lp.timer);
+    if (lp.engaged && lp.lastCell) sendInput(sgr(0, lp.lastCell, true));  // release
+    IND.style.display = 'none';
+    lp = null;
+  };
+  document.addEventListener('touchend', endTouch);
+  document.addEventListener('touchcancel', endTouch);
+
   const ta = term.textarea;
   if (ta) ta.addEventListener('beforeinput', (e) => {
     if (e.isComposing) return;
