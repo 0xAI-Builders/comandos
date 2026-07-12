@@ -2094,7 +2094,9 @@ def _apply_tmux_theme():
         ("window-status-style",          f"bg={bg},fg={fg}"),
         ("window-status-current-style",  f"bg={bg},fg={text},bold"),
         ("window-status-activity-style", f"bg={bg},fg={THEME['cursor']},bold"),
-        ("pane-active-border-style",     f"fg={brand}"),
+        # Conserva el condicional default de tmux: copy-mode se señala en
+        # AMARILLO (senal que el usuario usa); fuera de copy-mode, color de marca.
+        ("pane-active-border-style",     f"#{{?pane_in_mode,fg=yellow,fg={brand}}}"),
         ("pane-border-style",            f"fg={line}"),
         ("message-style",                f"bg={brand},fg={bg}"),
     ):
