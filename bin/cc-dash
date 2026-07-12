@@ -287,10 +287,20 @@ CODEX_EFFORT_DIGITS = {"low": "1", "medium": "2", "high": "3", "xhigh": "4"}
 PANE_MODELS_FILE = os.path.join(HOOKS, "pane-models.txt")
 
 
+PANE_MODEL_COLORS = {  # color del borde por agente
+    "claude": "141", "codex": "43", "opencode": "215",
+    "gemini": "111", "agy": "183",
+}
+
+
 def write_pane_models(panes):
-    """Archivo plano '%pane agente · modelo' que consume cc-pane-model para
-    mostrar el modelo de IA en el borde de CADA pane de tmux."""
-    lines = []
+    """Muestra el modelo de IA en el borde de cada pane, SIN que tmux tenga
+    que spawnear un subproceso por pane cada status-interval (con 50 panes eso
+    causaba micro-lag al teclear). Lo escribimos como una OPCION de pane
+    (@ccmodel) que el pane-border-format lee con #{E:@ccmodel} — cero spawns.
+    Las set-option corren en un HILO para no frenar /usage/state.
+    Tambien mantenemos pane-models.txt para compat con cc-pane-model."""
+    entries = []   # (pane_id, styled_value, plain_line)
     for p in panes:
         pane_id = p.get("tmux_pane") or ""
         if not pane_id.startswith("%"):
@@ -299,15 +309,26 @@ def write_pane_models(panes):
         model = (p.get("model") or "").replace("claude-", "")
         model = model.rsplit("/", 1)[-1] if "/" in model else model
         label = f"{agent} · {model}" if model else agent
-        if label:
-            lines.append(f"{pane_id} {label}")
+        if not label:
+            continue
+        color = PANE_MODEL_COLORS.get(agent, "244")
+        styled = f"#[fg=colour{color},bold]▸ {label}#[default]"
+        entries.append((pane_id, styled, f"{pane_id} {label}"))
     try:
         tmp = PANE_MODELS_FILE + ".tmp"
         with open(tmp, "w") as f:
-            f.write("\n".join(lines) + "\n")
+            f.write("\n".join(e[2] for e in entries) + "\n")
         os.replace(tmp, PANE_MODELS_FILE)
     except OSError:
         pass
+
+    def _set_opts():
+        for pane_id, styled, _ in entries:
+            try:
+                tmux("set-option", "-p", "-t", pane_id, "@ccmodel", styled, timeout=2)
+            except Exception:
+                pass
+    threading.Thread(target=_set_opts, daemon=True).start()
 
 
 # Catalogo de modelos de OpenCode (unico agente con seleccion de PROVIDER

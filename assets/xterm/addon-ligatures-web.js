@@ -167,13 +167,16 @@
   };
 
   LigaturesWebAddon.prototype._scheduleRedraw = function () {
-    if (this._scheduled) return;
-    this._scheduled = true;
+    // DEBOUNCE en vez de un redraw por frame: al teclear (o durante salida
+    // en rafaga), cada render dispara esto; re-escanear TODA la pantalla en
+    // cada tecla causaba lag. Esperamos a que la salida se calme (~90ms) y
+    // recien ahi redibujamos las ligaduras una sola vez.
     var self = this;
-    global.requestAnimationFrame(function () {
-      self._scheduled = false;
-      self._redraw();
-    });
+    if (this._redrawTimer) global.clearTimeout(this._redrawTimer);
+    this._redrawTimer = global.setTimeout(function () {
+      self._redrawTimer = null;
+      global.requestAnimationFrame(function () { self._redraw(); });
+    }, 90);
   };
 
   LigaturesWebAddon.prototype._baselineOffset = function (cell) {

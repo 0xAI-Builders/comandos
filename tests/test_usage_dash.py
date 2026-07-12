@@ -91,6 +91,19 @@ def test_pane_models_file_for_tmux_borders():
     assert "pane-models.txt" in SRC
 
 
+def test_pane_border_uses_tmux_option_not_per_pane_subprocess():
+    # Con 50 panes, un #(cc-pane-model) por pane cada status-interval causaba
+    # lag al teclear. Ahora cc-dash setea la opcion @ccmodel (en un hilo) y el
+    # borde la lee con #{E:@ccmodel} — cero spawns por pane.
+    assert '"@ccmodel"' in SRC
+    assert '"set-option", "-p"' in SRC
+    body = SRC.split("def write_pane_models", 1)[1].split("\ndef ", 1)[0]
+    assert "threading.Thread" in body
+    conf = Path("config/tmux.conf").read_text()
+    assert "#{E:@ccmodel}" in conf
+    assert "cc-pane-model" not in conf
+
+
 def test_alert_rules_endpoint_and_evaluation():
     assert '"/usage/alert-rule"' in SRC
     assert "cc_usage.set_alert_rule" in SRC
@@ -155,6 +168,7 @@ def test_agent_pane_maps_keeps_one_agent_per_tmux_pane():
 
 
 if __name__ == "__main__":
+    test_pane_border_uses_tmux_option_not_per_pane_subprocess()
     test_usage_state_is_cached_and_refresh_is_backgrounded()
     test_tab_close_endpoint_syncs_mirror_and_history()
     test_alert_rules_endpoint_and_evaluation()
