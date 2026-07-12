@@ -85,6 +85,18 @@
   #content{flex:1;min-height:0;overflow-y:auto;overflow-x:hidden}
   button{font:inherit;color:inherit;background:none;border:0;cursor:pointer}
   input{font:inherit;color:inherit;min-width:0}
+  /* Controles nativos legibles SIEMPRE: sin color-scheme el UA pinta selects
+     e inputs con fondo BLANCO en tema oscuro (texto claro heredado = ilegible,
+     peor en WebKitGTK que ignora backgrounds de <select> sin appearance:none). */
+  :root{color-scheme:dark}
+  :root[data-theme="dia"]{color-scheme:light}
+  select{appearance:none;-webkit-appearance:none;
+    background:var(--bg) url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="10" height="6" viewBox="0 0 10 6"><path d="M1 1l4 4 4-4" fill="none" stroke="%238FA0B4" stroke-width="1.6" stroke-linecap="round"/></svg>') no-repeat right 8px center;
+    color:var(--text);border:1px solid var(--line);border-radius:6px;
+    padding:5px 24px 5px 8px;font:inherit}
+  option{background:var(--panel2);color:var(--text)}
+  input:not([type=range]):not([type=checkbox]):not([type=radio]){
+    background:var(--bg);color:var(--text)}
   :focus-visible{outline:2px solid var(--brand);outline-offset:2px}
   .hidden{display:none !important}
 
@@ -144,6 +156,10 @@
   /* Buscador DE SESIONES: vive junto al titulo de la seccion, no en el header */
   .sec-label #q{letter-spacing:normal;text-transform:none;font-weight:400}
   /* Recientes cerradas: recuperables con un click */
+  .urlrow{display:flex;gap:8px;align-items:center;margin:4px 0 10px}
+  .urlrow input{flex:1;min-width:0;background:var(--bg);color:var(--code);
+    border:1px solid var(--line);border-radius:6px;padding:6px 10px;
+    font-family:var(--mono);font-size:11px}
   .rrow{display:flex;gap:10px;align-items:center;padding:7px 10px;border:1px solid var(--line);
     border-radius:8px;background:var(--panel);margin-bottom:6px}
   /* El label NUNCA empuja el boton fuera: se encoge el, no la accion */
@@ -3494,8 +3510,16 @@ function renderSnipPane(){
 
   const actions = document.createElement("div");
   actions.className = "snip-actions";
+  // Etiqueta explicita: el dropdown es LA SESION DESTINO — el snippet
+  // aterriza en el prompt del pane activo de esa pestana (sin ejecutarse).
+  const selLbl = document.createElement("label");
+  selLbl.textContent = "Enviar a:";
+  selLbl.htmlFor = "snip-dest";
+  selLbl.style.cssText = "color:var(--faint);font-size:11px";
+  actions.appendChild(selLbl);
   const sel = document.createElement("select");
   sel.id = "snip-dest";
+  sel.title = "Sesión destino: el comando aparecerá en el prompt de esa pestaña, esperando tu Enter";
   const last = localStorage.getItem("snippet-last-session") || "";
   const def = pickDefaultSession(snipSessions, last);
   if (!snipSessions.length){

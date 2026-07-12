@@ -125,3 +125,15 @@ def test_snip_grid_never_overflows_narrow_widths():
     assert "overflow-wrap:anywhere" in html
     assert "@media (max-width:560px)" in html
 
+def test_native_controls_are_readable_in_dark_theme():
+    # Sin color-scheme el UA pintaba selects/inputs BLANCOS con texto claro
+    # (ilegible): destino de snippets y URLs del modal Remoto.
+    html = open("dash/index.html").read()
+    assert ":root{color-scheme:dark}" in html
+    assert ':root[data-theme="dia"]{color-scheme:light}' in html
+    assert "-webkit-appearance:none" in html      # WebKitGTK ignora bg sin esto
+    assert "option{background:var(--panel2)" in html
+    assert ".urlrow input{" in html
+    # el dropdown de destino se explica solo
+    assert '"Enviar a:"' in html
+
