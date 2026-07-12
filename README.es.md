@@ -33,6 +33,7 @@ una tecla o una línea, y sigues. No escaneas pestañas.
 - **Voz local** (piper, 100% offline) y chime, con UN volumen global.
 - **Servidores SSH**: CRUD sobre `~/.ssh/config`, conexión de un click, detecta
   túneles multiplexados vivos (reconexión sin password).
+- **Snippets**: guardá comandos shell reutilizables (una línea o scripts multilínea) y pegalos en la sesión activa con **Ctrl+Shift+K**. Bracketed paste — nada se ejecuta hasta que aprietes Enter.
 - **Telegram**: botones en las notificaciones, responder por reply, `/ls /out /run`.
 - Todo es **archivos** (tmux, JSON, ssh config). Sin nube, sin DB. Sobrevive reinicios.
 - UI en **inglés y español** (auto-detectado por `$LANG`, cambiable en Ajustes).
