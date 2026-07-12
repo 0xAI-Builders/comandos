@@ -15,7 +15,8 @@ Teclas:
   Ctrl+Shift + / - / 0   zoom de letra (pestana actual)
   Ctrl+Q                 salir
 """
-import json, os, re, secrets, shutil, subprocess, sys, threading, time, urllib.request
+import json, os, re, secrets, shlex, shutil, subprocess, sys, threading, time, urllib.request
+from urllib.parse import unquote, urlparse
 import gi
 gi.require_version("Gtk", "3.0")
 # WebKit2 4.1 en Ubuntu 24.04 (noble), 4.0 en 22.04 (jammy). Intenta 4.1 primero.
@@ -409,6 +410,35 @@ def make_term(argv_sh):
     # Padding alrededor del texto (configurable en Ajustes > Terminal).
     term.set_margin_start(TERM_PADDING + 2); term.set_margin_end(max(0, TERM_PADDING - 4))
     term.set_margin_top(TERM_PADDING); term.set_margin_bottom(max(0, TERM_PADDING - 2))
+
+    # Drag & drop: soltar archivos/carpetas desde Files o el escritorio pega
+    # sus RUTAS (shell-quoted) en el prompt — como GNOME Terminal. Nunca
+    # ejecuta nada: el texto queda esperando tu Enter.
+    _tl = Gtk.TargetList.new([])
+    _tl.add_uri_targets(0)
+    _tl.add_text_targets(1)
+    term.drag_dest_set(Gtk.DestDefaults.ALL, [], Gdk.DragAction.COPY)
+    term.drag_dest_set_target_list(_tl)
+
+    def _on_drop(widget, ctx, _x, _y, data, _info, t):
+        try:
+            uris = data.get_uris()
+            if uris:
+                paths = []
+                for u in uris:
+                    pu = urlparse(u)
+                    paths.append(shlex.quote(unquote(pu.path)) if pu.scheme == "file"
+                                 else shlex.quote(u))
+                widget.feed_child((" ".join(paths) + " ").encode())
+            else:
+                txt = data.get_text()
+                if txt:
+                    widget.feed_child(txt.encode())
+        except Exception:
+            pass
+        ctx.finish(True, False, t)
+        return True
+    term.connect("drag-data-received", _on_drop)
 
     def spawn(*_):
         try:

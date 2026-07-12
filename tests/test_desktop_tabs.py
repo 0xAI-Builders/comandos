@@ -129,6 +129,16 @@ def test_tab_scroll_arrows_have_padding():
     assert "padding" in arrow_rule and "margin" in arrow_rule
 
 
+def test_terminals_paste_file_paths_on_drop():
+    # Soltar archivos en una terminal pega sus rutas shell-quoted (nunca ejecuta)
+    src = SRC
+    assert "add_uri_targets" in src
+    assert "drag-data-received" in src
+    assert "shlex.quote" in src
+    assert 'pu.scheme == "file"' in src
+    assert "feed_child" in src
+
+
 def test_raise_main_window_uses_keep_above_pulse_for_gnome():
     src = function_source("raise_main_window")
     assert "set_keep_above(True)" in src
@@ -137,6 +147,7 @@ def test_raise_main_window_uses_keep_above_pulse_for_gnome():
 
 
 if __name__ == "__main__":
+    test_terminals_paste_file_paths_on_drop()
     test_remote_close_requests_skip_confirm()
     test_tab_labels_are_saved_in_visual_notebook_order()
     test_notebook_tabs_are_reorderable_and_saved_after_drag()
