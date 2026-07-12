@@ -71,7 +71,13 @@
   window.addEventListener('error', (e) => dbg('JS error: ' + (e.message || e.error)));
   window.addEventListener('unhandledrejection', (e) => dbg('rej: ' + (e.reason && e.reason.message || e.reason)));
   // ttyd toma la sesión del querystring del WS (por --url-arg).
-  const wsBase = params.get('ws') || `ws://${location.hostname || '127.0.0.1'}:4779/ws`;
+  // Remoto (servida por ttyd bajo /term via tailscale): ws same-origin
+  // wss://host/term/ws. La app pasa ?ws= explicito (file:// no tiene origen).
+  const proto = location.protocol === 'https:' ? 'wss' : 'ws';
+  const basePath = location.pathname.replace(/\/[^/]*$/, '');
+  const wsBase = params.get('ws')
+    || (location.host ? `${proto}://${location.host}${basePath}/ws`
+                      : `ws://127.0.0.1:4779/ws`);
   const ws_url = arg ? `${wsBase}?arg=${encodeURIComponent(arg)}` : wsBase;
 
   const THEMES = {
@@ -204,6 +210,20 @@
 
   term.onData(sendInput);
   term.onResize(sendResize);
+
+  // Teclado MOVIL (GBoard/Android): borrar y Enter llegan como eventos
+  // beforeinput sin keydown — xterm.js los pierde con el buffer de
+  // composicion vacio y "borrar no borra". Los interceptamos y mandamos
+  // la tecla real; preventDefault evita el doble envio.
+  const ta = term.textarea;
+  if (ta) ta.addEventListener('beforeinput', (e) => {
+    if (e.isComposing) return;
+    if (e.inputType === 'deleteContentBackward') {
+      e.preventDefault(); sendInput('\x7f');
+    } else if (e.inputType === 'insertLineBreak') {
+      e.preventDefault(); sendInput('\r');
+    }
+  });
 })();
 </script>
 </body>

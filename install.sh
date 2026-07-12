@@ -65,9 +65,13 @@ chmod +x "$REPO"/bin/* "$REPO"/hooks/cc-notify.sh "$REPO"/hooks/cc-status.sh
 
 # Hooks + dashboard
 for f in cc-notify.sh cc-status.sh md2tg.py; do ln -sf "$REPO/hooks/$f" "$HOOKS/$f"; done
-for f in index.html sw.js manifest.webmanifest icon-192.png icon-512.png; do
+for f in index.html sw.js manifest.webmanifest icon-192.png icon-512.png term.html; do
   ln -sf "$REPO/dash/$f" "$HOOKS/dash/$f"
 done
+# Iconos Lucide y assets bundleados (xterm.js, fuentes): el terminal web
+# remoto los carga via cc-dash en /icons y /assets.
+ln -sfn "$REPO/dash/icons" "$HOOKS/dash/icons"
+ln -sfn "$REPO/assets" "$HOOKS/dash/assets"
 [ -f "$HOOKS/cc-notify.conf" ] || cp "$REPO/hooks/cc-notify.conf.example" "$HOOKS/cc-notify.conf"
 [ -f "$HOOKS/telegram.env" ]   || cp "$REPO/hooks/telegram.env.example"   "$HOOKS/telegram.env"
 # Secretos (token de bot, config): solo el dueno (0600)

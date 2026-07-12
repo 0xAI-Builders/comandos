@@ -234,7 +234,34 @@ def test_dashboard_declares_standard_favicon_to_avoid_remote_404_noise():
     assert '<link rel="icon" href="/icon-192.png">' in HTML
 
 
+
+
+def test_remote_term_has_pane_mouse_toggle():
+    # Resize de panes en remoto: toggle de tmux mouse en la barra de tabs
+    assert "termMouse" in HTML
+    assert 'api("/tmux-mouse"' in HTML
+    assert "mousetgl" in HTML
+
+
+def test_remote_term_page_fixes_mobile_keys_and_ws():
+    term = open("dash/term.html").read()
+    # backspace/enter de teclado movil (GBoard no manda keydown)
+    assert "beforeinput" in term
+    assert "deleteContentBackward" in term
+    # ws same-origin cuando se sirve bajo /term
+    assert "location.host" in term and "/ws" in term
+
+
+def test_webterm_serves_our_index_when_supported():
+    src = open("bin/cc-webterm").read()
+    assert '--index' in src and 'term.html' in src
+    assert '-b /term "${IFLAG[@]}"' in src
+
+
 if __name__ == "__main__":
+    test_remote_term_has_pane_mouse_toggle()
+    test_remote_term_page_fixes_mobile_keys_and_ws()
+    test_webterm_serves_our_index_when_supported()
     test_remote_drawer_controls_are_present()
     test_remote_ui_calls_backend_endpoints()
     test_remote_polling_slows_down_when_remote_webterm_is_enabled()

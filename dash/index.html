@@ -578,6 +578,8 @@
   .apptab .dot{width:7px;height:7px;border-radius:50%;flex:none;box-shadow:0 0 6px currentColor}
   .apptab.plus{font-size:18px;color:var(--faint);padding:8px 15px}
   .apptab.plus:hover{color:var(--brand)}
+  .apptab.mousetgl{font-size:13px}
+  .apptab.mousetgl.on{color:var(--done)}
   #panes{flex:1;min-height:0;position:relative;display:flex;flex-direction:column}
   #view-panel{flex:1;min-height:0;display:flex;flex-direction:column}
   #term-area{display:none}
@@ -1969,6 +1971,7 @@ let termBasePromise = null;
 // Cada terminal es un iframe a ttyd attacheado a esa sesion tmux (misma sesion,
 // en vivo). En tablet ancha se ve panel + terminal lado a lado.
 const openTerms = new Map();   // session -> {tab, frame}
+const termMouse = new Map();   // session -> mouse tmux activo (resize de panes)
 let activeTerm = null;   // terminal visible en el area de terminal
 let activeView = "panel";
 const selectingTerms = new Set();
@@ -2248,6 +2251,29 @@ function renderTabbar(){
   for(const [sess, o] of openTerms){
     const it = (S.list||[]).find(i => i.session === sess);
     mk(o.label || it?.project || sess, "term:"+sess, true, it?.status);
+  }
+  // 🖱 panes: prende el mouse de tmux en la sesion ACTIVA para poder
+  // ARRASTRAR los bordes de panes desde el terminal remoto (tactil o mouse).
+  if(activeTerm){
+    const ms = document.createElement("div");
+    ms.className = "apptab plus mousetgl" + (termMouse.get(activeTerm) ? " on" : "");
+    ms.textContent = "🖱";
+    ms.title = termMouse.get(activeTerm)
+      ? tf("Mouse tmux ACTIVO: arrastra los bordes para redimensionar panes. Click para apagar.",
+           "tmux mouse ON: drag pane borders to resize. Click to turn off.")
+      : tf("Activar mouse tmux: permite redimensionar panes arrastrando sus bordes",
+           "Enable tmux mouse: resize panes by dragging their borders");
+    ms.onclick = async () => {
+      const want = !termMouse.get(activeTerm);
+      try{
+        await api("/tmux-mouse", {session: activeTerm, enabled: want});
+        termMouse.set(activeTerm, want);
+        toast(want ? tf("Mouse tmux activo: arrastra bordes para redimensionar", "tmux mouse on: drag borders to resize")
+                   : tf("Mouse tmux apagado", "tmux mouse off"));
+        renderTabbar();
+      }catch(err){ toast(err.message, true); }
+    };
+    bar.appendChild(ms);
   }
   // Boton + : abrir cualquier sesion como terminal (usa el conmutador)
   const plus = document.createElement("div");
