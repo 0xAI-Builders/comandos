@@ -1058,7 +1058,11 @@
 <div id="toasts"></div>
 <div id="mdl-menu" class="hidden" role="listbox" aria-label="Modelos"></div>
 
-<dialog id="dlg-snippets" class="modal snip-modal">
+<!-- OJO: SIN class="modal" — este es un <dialog> nativo (showModal + su
+     propio ::backdrop). La clase .modal de los modales-div le heredaba
+     display:none: quedaba INVISIBLE mientras showModal() volvia inerte toda
+     la pagina = tablero "congelado". -->
+<dialog id="dlg-snippets" class="snip-modal">
   <div class="modal-hd">
     <span class="modal-title">Snippets</span>
     <button class="hdr-btn" data-close-snippets aria-label="close"><span data-icon="close" data-size="14"></span></button>
