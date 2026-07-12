@@ -2,7 +2,7 @@
 Type=Application
 Name=ComandOS
 Comment=Comando central de tus sesiones Claude Code, terminales y servidores
-Exec=__HOME__/.local/bin/cc-app
+Exec=env GDK_BACKEND=x11 __HOME__/.local/bin/cc-app
 Icon=centro-claude
 Terminal=false
 Categories=Development;Utility;

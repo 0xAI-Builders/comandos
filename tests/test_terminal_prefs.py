@@ -1,0 +1,81 @@
+#!/usr/bin/env python3
+"""Tests para el schema de preferencias de terminal (fuente, cursor, padding,
+opacidad, ligaduras) — extendido en cc-dash /prefs y aplicado en cc-app.
+No requiere runtime; parsea el código fuente."""
+from pathlib import Path
+
+REPO = Path(__file__).resolve().parent.parent
+CC_DASH = (REPO / "bin" / "cc-dash").read_text()
+CC_APP  = (REPO / "bin" / "cc-app").read_text()
+INDEX   = (REPO / "dash" / "index.html").read_text()
+
+
+def test_cc_dash_defines_terminal_prefs_defaults():
+    for key in ("font_family", "font_size", "cursor_shape", "cursor_blink",
+                "terminal_padding", "terminal_opacity", "ligatures"):
+        assert f'"{key}"' in CC_DASH, f"cc-dash no expone {key} en PREFS_DEFAULTS"
+    # El default de cursor_shape debe ser uno de los 3 válidos.
+    assert '"block"' in CC_DASH and '"ibeam"' in CC_DASH and '"underline"' in CC_DASH
+
+
+def test_cc_dash_prefs_set_validates_new_fields():
+    # /prefs-set debe validar tipos y clamear rangos para no aceptar basura.
+    handler = CC_DASH.split('if self.path == "/prefs-set":')[1].split("return")[0]
+    assert 'data.get("font_family")' in handler
+    assert 'data.get("font_size")' in handler
+    assert 'data.get("cursor_shape")' in handler
+    assert 'data.get("cursor_blink")' in handler
+    assert 'data.get("terminal_padding")' in handler
+    assert 'data.get("terminal_opacity")' in handler
+    assert 'data.get("ligatures")' in handler
+
+
+def test_cc_app_reads_and_maps_terminal_prefs():
+    # cc-app usa fetch_prefs (no solo fetch_pref_theme) y expone las constantes.
+    assert "def fetch_prefs" in CC_APP
+    for c in ("TERM_PADDING", "TERM_OPACITY", "_CURSOR_SHAPE", "_CURSOR_BLINK",
+              "_CURSOR_SHAPE_MAP", "FONT_FAMILY", "FONT_SIZE"):
+        assert c in CC_APP, f"cc-app no expone {c}"
+    # Los shapes de VTE deben estar mapeados.
+    assert "Vte.CursorShape.BLOCK" in CC_APP
+    assert "Vte.CursorShape.IBEAM" in CC_APP
+    assert "Vte.CursorShape.UNDERLINE" in CC_APP
+
+
+def test_cc_app_applies_prefs_to_vte():
+    # make_term aplica los prefs — cursor shape, blink, y padding configurable.
+    make_term = CC_APP.split("def make_term")[1].split("def ")[0]
+    assert "set_cursor_shape" in make_term
+    assert "set_cursor_blink_mode" in make_term
+    assert "TERM_PADDING" in make_term
+    assert "_bg_rgba()" in make_term  # background con opacity
+
+
+def test_dashboard_settings_has_terminal_section():
+    # El modal de Ajustes trae los controles nuevos con ids estables.
+    for i in ("pf-font-family", "pf-font-size", "pf-padding", "pf-opacity",
+              "sw-cursor-blink", "sw-ligatures"):
+        assert f'id="{i}"' in INDEX, f"dash/index.html no tiene el control {i}"
+    # Los 3 shapes de cursor son elegibles con botones .cur-shape.
+    assert 'class="test cur-shape" data-shape="block"' in INDEX
+    assert 'class="test cur-shape" data-shape="ibeam"' in INDEX
+    assert 'class="test cur-shape" data-shape="underline"' in INDEX
+
+
+def test_dashboard_wires_prefs_change_to_setPref():
+    # El JS debe postear /prefs-set con el patch correspondiente al cambiar.
+    assert "setPref({font_family:" in INDEX
+    assert "setPref({font_size:" in INDEX
+    assert "setPref({cursor_shape:" in INDEX
+    assert "setPref({cursor_blink:" in INDEX
+    assert "setPref({terminal_padding:" in INDEX
+    assert "setPref({terminal_opacity:" in INDEX
+    assert "setPref({ligatures:" in INDEX
+
+
+if __name__ == "__main__":
+    for name, fn in list(globals().items()):
+        if name.startswith("test_") and callable(fn):
+            fn()
+            print(f"ok  {name}")
+    print("terminal prefs tests pass")

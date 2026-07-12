@@ -24,6 +24,29 @@ import http.server, socketserver
 import tempfile
 import cc_usage
 
+
+def _open_url(url, env=None):
+    """Abre una URL/archivo en el navegador o handler default.
+    En WSL prefiere `wslview` (rutea al navegador de Windows via wslu);
+    en macOS usa `open`; en Linux nativo usa `xdg-open`."""
+    is_wsl = False
+    try:
+        with open("/proc/sys/kernel/osrelease") as f:
+            is_wsl = "microsoft" in f.read().lower()
+    except Exception:
+        pass
+    if sys.platform == "darwin":
+        opener = "open"
+    elif is_wsl and shutil.which("wslview"):
+        opener = "wslview"
+    else:
+        opener = "xdg-open"
+    try:
+        subprocess.Popen([opener, url], env=env, start_new_session=True,
+                         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    except Exception:
+        pass
+
 HOOKS = os.path.expanduser("~/.claude/hooks")
 STATE = os.path.join(HOOKS, "state")
 EVENTS = os.path.join(HOOKS, "events.jsonl")
@@ -1283,13 +1306,33 @@ def ssh_remove(host):
 
 PREFS_PATH = os.path.join(HOOKS, "prefs.json")
 
+# Defaults del tema visual y de las terminales. Sirven a cc-app (VTE y xterm.js)
+# y a dash/term.html. Ver DESIGN.md §3 y §7 para las decisiones.
+PREFS_DEFAULTS = {
+    "theme": "noche",
+    "font_family": "JetBrainsMono Nerd Font Mono",
+    "font_size": 13,
+    "cursor_shape": "block",       # block | ibeam | underline
+    "cursor_blink": True,
+    "terminal_padding": 8,         # px
+    "terminal_opacity": 100,       # 0..100 — 100 = opaco
+    "ligatures": True,
+}
+_CURSOR_SHAPES = ("block", "ibeam", "underline")
+
 
 def read_prefs():
     try:
         with open(PREFS_PATH) as f:
-            return json.load(f)
+            p = json.load(f)
+            if not isinstance(p, dict):
+                p = {}
     except Exception:
-        return {}
+        p = {}
+    # Rellena con defaults sin escribir el archivo (idempotente en lectura).
+    for k, v in PREFS_DEFAULTS.items():
+        p.setdefault(k, v)
+    return p
 
 
 def pane_cmd(sess):
@@ -1837,8 +1880,23 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             prefs = read_prefs()
             if "favorites" in data and isinstance(data["favorites"], list):
                 prefs["favorites"] = [str(x)[:80] for x in data["favorites"]][:200]
-            if data.get("theme") in ("noche", "dia", "calido"):
+            if data.get("theme") in ("noche", "dia", "calido", "termius"):
                 prefs["theme"] = data["theme"]
+            # Tipografía y estilo de terminal — cada campo se valida por su tipo.
+            if isinstance(data.get("font_family"), str):
+                prefs["font_family"] = data["font_family"][:120].strip() or PREFS_DEFAULTS["font_family"]
+            if isinstance(data.get("font_size"), (int, float)):
+                prefs["font_size"] = max(8, min(28, int(data["font_size"])))
+            if data.get("cursor_shape") in _CURSOR_SHAPES:
+                prefs["cursor_shape"] = data["cursor_shape"]
+            if isinstance(data.get("cursor_blink"), bool):
+                prefs["cursor_blink"] = data["cursor_blink"]
+            if isinstance(data.get("terminal_padding"), (int, float)):
+                prefs["terminal_padding"] = max(0, min(40, int(data["terminal_padding"])))
+            if isinstance(data.get("terminal_opacity"), (int, float)):
+                prefs["terminal_opacity"] = max(30, min(100, int(data["terminal_opacity"])))
+            if isinstance(data.get("ligatures"), bool):
+                prefs["ligatures"] = data["ligatures"]
             with open(PREFS_PATH, "w") as f:
                 json.dump(prefs, f)
             return self._json(200, {"ok": True})
@@ -2056,9 +2114,7 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             path, err = export_response(item, fmt)
             if err:
                 return self._json(500, {"error": err})
-            opener = "open" if sys.platform == "darwin" else "xdg-open"
-            subprocess.Popen([opener, path], env=gui_env(), start_new_session=True,
-                             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            _open_url(path, env=gui_env())
             return self._json(200, {"ok": True, "path": path})
 
         if self.path == "/kill":

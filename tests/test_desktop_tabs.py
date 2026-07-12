@@ -54,9 +54,11 @@ def test_visual_tabs_overview_button_is_present():
     src = SRC
 
     assert "def open_tabs_overview" in src
-    assert '_tabs = Gtk.Button(label="▦")' in src
-    assert '_tabs.connect("clicked", open_tabs_overview)' in src
-    assert "_actions.pack_start(_tabs" in src
+    # El botón usa el ícono Lucide "layers" via _icon_btn (set unificado con
+    # el dashboard HTML — ver DESIGN.md §3), cableado a open_tabs_overview.
+    assert '"layers"' in src
+    assert "open_tabs_overview" in src
+    assert "_headerbar.pack_end(_tabs" in src   # ahora vive en el headerbar custom
 
 
 def test_visual_tabs_overview_can_focus_and_close_tabs():
@@ -87,10 +89,15 @@ def test_close_tab_confirms_before_closing():
 
 
 def test_modals_close_on_click_outside():
-    # switcher y overview usan el helper que cierra al perder el foco
+    # switcher y overview cierran con click fuera. El mecanismo es un pointer
+    # grab (Gdk.Seat.grab): en WSLg focus-out no es confiable con
+    # transient_for + modal=False. Se valida el COMPORTAMIENTO:
+    # grab al armar, bbox-check del click, dismiss suelta el grab y destruye.
     helper = function_source("close_on_click_outside")
-    assert "focus-out-event" in helper
-    assert "_had_focus" in helper          # guard anti-autodestruccion
+    assert "seat.grab(" in helper
+    assert "ungrab()" in helper
+    assert "_dismiss()" in helper and "w.destroy()" in helper
+    assert "ev.x_root" in helper           # click fuera del bbox = cerrar
     assert "close_on_click_outside(w)" in function_source("open_switcher")
     assert "close_on_click_outside(w)" in function_source("open_tabs_overview")
     # el switcher ya NO es modal (modal tragaria el click de afuera)

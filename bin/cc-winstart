@@ -1,0 +1,83 @@
+#!/usr/bin/env bash
+# cc-winstart — publica ComandOS en el menú Inicio de Windows (solo WSL2).
+#
+# Genera un shortcut nativo Windows (.lnk) que llama a `wsl.exe -d <distro> --
+# env GDK_BACKEND=x11 ~/.local/bin/cc-app`. Con eso ComandOS aparece en el
+# menú Inicio junto a las demás apps, con ícono propio y sin consola visible.
+#
+# Es idempotente — si el .lnk ya existe, lo reescribe con los valores actuales.
+#
+# Uso:
+#   cc-winstart              instala / actualiza el shortcut
+#   cc-winstart --uninstall  lo remueve
+set -euo pipefail
+
+grep -qi microsoft /proc/sys/kernel/osrelease 2>/dev/null || {
+  echo "cc-winstart: este script solo aplica en WSL2." >&2
+  exit 1
+}
+
+command -v powershell.exe >/dev/null 2>&1 || {
+  echo "cc-winstart: no encuentro powershell.exe en PATH." >&2
+  exit 1
+}
+
+REPO="$(cd "$(dirname "$(readlink -f "$0")")/.." && pwd)"
+ICO_SRC="$REPO/dash/comandos.ico"
+[ -f "$ICO_SRC" ] || {
+  echo "cc-winstart: falta $ICO_SRC — regenera con:" >&2
+  echo "  python3 -c \"from PIL import Image; Image.open('dash/icon-512.png').save('dash/comandos.ico', format='ICO', sizes=[(16,16),(24,24),(32,32),(48,48),(64,64),(128,128),(256,256)])\"" >&2
+  exit 1
+}
+
+# Distro actual — sale del env WSL_DISTRO_NAME que Windows setea al invocar wsl.
+DISTRO="${WSL_DISTRO_NAME:-Ubuntu}"
+
+# Rutas Windows via powershell (más confiables que wslvar en distros vacías).
+APPDATA_WIN=$(powershell.exe -NoProfile -Command '[Console]::Write($env:APPDATA)' | tr -d '\r')
+LOCALAPPDATA_WIN=$(powershell.exe -NoProfile -Command '[Console]::Write($env:LOCALAPPDATA)' | tr -d '\r')
+[ -n "$APPDATA_WIN" ] && [ -n "$LOCALAPPDATA_WIN" ] || {
+  echo "cc-winstart: no pude leer %APPDATA% / %LOCALAPPDATA%." >&2
+  exit 1
+}
+
+APPDATA_WSL=$(wslpath "$APPDATA_WIN")
+LOCALAPPDATA_WSL=$(wslpath "$LOCALAPPDATA_WIN")
+
+SM_DIR="$APPDATA_WSL/Microsoft/Windows/Start Menu/Programs/$DISTRO"
+LNK_WIN="$APPDATA_WIN\\Microsoft\\Windows\\Start Menu\\Programs\\$DISTRO\\ComandOS ($DISTRO).lnk"
+LNK_WSL="$SM_DIR/ComandOS ($DISTRO).lnk"
+ICO_DIR="$LOCALAPPDATA_WSL/ComandOS"
+ICO_WIN="$LOCALAPPDATA_WIN\\ComandOS\\comandos.ico"
+
+if [ "${1:-}" = "--uninstall" ]; then
+  rm -f "$LNK_WSL"
+  echo "cc-winstart: shortcut removido ($DISTRO)."
+  exit 0
+fi
+
+# Copiar el .ico a %LOCALAPPDATA%\ComandOS\ para que Windows lo vea aunque el
+# repo se mueva o esté en /mnt/ (donde a veces el resolver de iconos falla).
+mkdir -p "$ICO_DIR" "$SM_DIR"
+cp -f "$ICO_SRC" "$ICO_DIR/comandos.ico"
+
+CC_APP="/home/$USER/.local/bin/cc-app"
+
+# Crear el .lnk con WScript.Shell (COM). WindowStyle=7 = Minimized: evita el
+# flash de consola de wsl.exe (WSLg redirige la ventana GTK igual).
+powershell.exe -NoProfile -Command "
+\$s = (New-Object -ComObject WScript.Shell).CreateShortcut('$LNK_WIN')
+\$s.TargetPath  = [System.IO.Path]::Combine(\$env:SystemRoot, 'System32', 'wsl.exe')
+\$s.Arguments   = '-d $DISTRO -- env GDK_BACKEND=x11 $CC_APP'
+\$s.Description = 'ComandOS — comando central de sesiones Claude Code'
+\$s.IconLocation = '$ICO_WIN'
+\$s.WindowStyle  = 7
+\$s.Save()
+" || {
+  echo "cc-winstart: PowerShell falló al crear el shortcut." >&2
+  exit 1
+}
+
+echo "cc-winstart: instalado — busca 'ComandOS' en el menú Inicio."
+echo "  shortcut : $LNK_WSL"
+echo "  ícono    : $ICO_WIN"

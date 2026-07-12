@@ -6,7 +6,53 @@ REPO="$(cd "$(dirname "$0")" && pwd)"
 BIN="$HOME/.local/bin"
 HOOKS="$HOME/.claude/hooks"
 
-echo "ComandOS -> instalando desde $REPO"
+# shellcheck source=lib/platform.sh
+. "$REPO/lib/platform.sh"
+
+# Instala los paquetes que ComandOS necesita en Ubuntu WSL (auto-fix con confirmación).
+_cc_wsl_install_deps() {
+  sudo -v || { echo "sudo requerido para instalar dependencias."; exit 1; }
+  local pkgs
+  read -ra pkgs <<< "$(cc_wsl_ubuntu_packages)"
+  apt_install_confirmed "${pkgs[@]}" || {
+    echo "Instala manualmente y vuelve a correr ./install.sh"
+    exit 1
+  }
+}
+
+# Habilita systemd en WSL editando /etc/wsl.conf (con confirmación).
+# Sale con exit 0 después de escribir — el usuario debe correr `wsl --shutdown`.
+_cc_wsl_enable_systemd() {
+  echo "⚠  systemd no está corriendo en tu WSL."
+  echo "   Sin systemd, cc-dash y cc-notifyd no pueden autoarrancar."
+  ask_yn "¿Habilito systemd editando /etc/wsl.conf?" || {
+    echo "Ok, hazlo a mano y vuelve a correr ./install.sh"
+    exit 1
+  }
+  if [ -f /etc/wsl.conf ] && grep -q '^\s*systemd\s*=\s*true' /etc/wsl.conf; then
+    echo "  /etc/wsl.conf ya tiene systemd=true — algo más está mal."
+    echo "  Verifica con: sudo systemctl is-system-running"
+    exit 1
+  fi
+  if [ -f /etc/wsl.conf ] && grep -q '^\[boot\]' /etc/wsl.conf; then
+    echo "  Ya tienes una sección [boot] en /etc/wsl.conf sin systemd=true."
+    echo "  Diff propuesto:"
+    echo "    + systemd=true   (dentro de [boot])"
+    ask_yn "  ¿Aplico?" || { echo "Cancelado."; exit 1; }
+    sudo sed -i '/^\[boot\]/a systemd=true' /etc/wsl.conf
+  else
+    printf '\n[boot]\nsystemd=true\n' | sudo tee -a /etc/wsl.conf >/dev/null
+  fi
+  echo "✓ /etc/wsl.conf actualizado."
+  echo ""
+  echo "Ahora, desde PowerShell en Windows corre:"
+  echo "    wsl --shutdown"
+  echo "Reabre esta terminal y vuelve a correr ./install.sh"
+  exit 0
+}
+
+CC_PLAT="$(cc_platform)"
+echo "ComandOS -> instalando desde $REPO (plataforma: $CC_PLAT)"
 mkdir -p "$BIN" "$HOOKS/dash" "$HOOKS/state" \
          "$HOME/.config/systemd/user" \
          "$HOME/.config/kitty" \
@@ -40,10 +86,38 @@ sed "s|__HOME__|$HOME|g" "$REPO/dash/comandos.desktop.in" \
   > "$HOME/.local/share/applications/comandos.desktop" 2>/dev/null || true
 cp "$REPO/dash/comandos.svg" "$HOME/.local/share/icons/hicolor/scalable/apps/centro-claude.svg" 2>/dev/null || true
 
-# Servicios: systemd (Linux) o launchd (macOS)
-if [ "$(uname -s)" = "Darwin" ]; then
-  mkdir -p "$HOME/Library/LaunchAgents"
-  cat > "$HOME/Library/LaunchAgents/com.0xai.cc-dash.plist" <<PLIST
+# Fuente JetBrainsMono Nerd Font (bundleada en assets/fonts/JetBrainsMono).
+# Se instala en la carpeta de usuario y se refresca el caché de fuentes.
+# Idempotente: cp -u solo copia si el archivo cambió.
+_cc_install_fonts() {
+  local src="$REPO/assets/fonts/JetBrainsMono" dest
+  [ -d "$src" ] || return 0
+  case "$CC_PLAT" in
+    darwin)   dest="$HOME/Library/Fonts/ComandOS" ;;
+    *)        dest="$HOME/.local/share/fonts/comandos" ;;
+  esac
+  mkdir -p "$dest"
+  local changed=0
+  for f in "$src"/*.ttf; do
+    [ -f "$f" ] || continue
+    if ! cmp -s "$f" "$dest/$(basename "$f")" 2>/dev/null; then
+      cp "$f" "$dest/"; changed=1
+    fi
+  done
+  # OFL/README junto a los TTF para atribución local (opcional, no bloqueante).
+  cp -u "$src/OFL.txt" "$dest/OFL.txt" 2>/dev/null || true
+  if [ "$changed" = "1" ] && command -v fc-cache >/dev/null 2>&1; then
+    fc-cache -f "$dest" >/dev/null 2>&1 || true
+  fi
+}
+_cc_install_fonts
+
+# Servicios: dispatch por plataforma. macOS/Linux nativo mantienen el
+# comportamiento anterior byte-a-byte; linux-wsl-ubuntu se rellena en Tasks 5–6.
+case "$CC_PLAT" in
+  darwin)
+    mkdir -p "$HOME/Library/LaunchAgents"
+    cat > "$HOME/Library/LaunchAgents/com.0xai.cc-dash.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0"><dict>
@@ -55,20 +129,40 @@ if [ "$(uname -s)" = "Darwin" ]; then
   <key>KeepAlive</key><true/>
 </dict></plist>
 PLIST
-  launchctl unload "$HOME/Library/LaunchAgents/com.0xai.cc-dash.plist" 2>/dev/null || true
-  launchctl load "$HOME/Library/LaunchAgents/com.0xai.cc-dash.plist" 2>/dev/null || true
-  echo "  macOS: cc-dash como LaunchAgent. App nativa y popups GTK: por ahora solo Linux;"
-  echo "  usa el tablero en el navegador (las notificaciones van por 'osascript'/'say')."
-else
-  for s in cc-dash cc-notifyd cc-telegram; do
-    ln -sf "$REPO/systemd/$s.service" "$HOME/.config/systemd/user/$s.service"
-  done
-  systemctl --user daemon-reload
-  systemctl --user enable --now cc-dash.service cc-notifyd.service 2>/dev/null || true
-  # cc-telegram solo si hay token configurado
-  grep -q "^CC_TELEGRAM_BOT_TOKEN=." "$HOOKS/telegram.env" 2>/dev/null \
-    && systemctl --user enable --now cc-telegram.service 2>/dev/null || true
-fi
+    launchctl unload "$HOME/Library/LaunchAgents/com.0xai.cc-dash.plist" 2>/dev/null || true
+    launchctl load "$HOME/Library/LaunchAgents/com.0xai.cc-dash.plist" 2>/dev/null || true
+    echo "  macOS: cc-dash como LaunchAgent. App nativa y popups GTK: por ahora solo Linux;"
+    echo "  usa el tablero en el navegador (las notificaciones van por 'osascript'/'say')."
+    ;;
+  linux-wsl-ubuntu)
+    # 1) systemd disponible?
+    cc_systemd_ok || _cc_wsl_enable_systemd
+    # 2) deps WSL Ubuntu
+    _cc_wsl_install_deps
+    # 3) systemd user services (mismo que linux-native)
+    for s in cc-dash cc-notifyd cc-telegram; do
+      ln -sf "$REPO/systemd/$s.service" "$HOME/.config/systemd/user/$s.service"
+    done
+    systemctl --user daemon-reload
+    systemctl --user enable --now cc-dash.service cc-notifyd.service 2>/dev/null || true
+    grep -q "^CC_TELEGRAM_BOT_TOKEN=." "$HOOKS/telegram.env" 2>/dev/null \
+      && systemctl --user enable --now cc-telegram.service 2>/dev/null || true
+    # 4) Shortcut en el menú Inicio de Windows (native .lnk + .ico).
+    "$BIN/cc-winstart" 2>&1 | sed 's/^/  /' || \
+      echo "  (no pude publicar en Start Menu; correlo a mano: cc-winstart)"
+    ;;
+  linux-native|linux-other)
+    [ "$CC_PLAT" = "linux-other" ] && echo "  (distro Linux no probada; sigo con el flujo Linux estándar)"
+    for s in cc-dash cc-notifyd cc-telegram; do
+      ln -sf "$REPO/systemd/$s.service" "$HOME/.config/systemd/user/$s.service"
+    done
+    systemctl --user daemon-reload
+    systemctl --user enable --now cc-dash.service cc-notifyd.service 2>/dev/null || true
+    # cc-telegram solo si hay token configurado
+    grep -q "^CC_TELEGRAM_BOT_TOKEN=." "$HOOKS/telegram.env" 2>/dev/null \
+      && systemctl --user enable --now cc-telegram.service 2>/dev/null || true
+    ;;
+esac
 
 # Conectar otros agentes instalados (codex, opencode, gemini, agy)
 "$BIN/cc-agents" setup || true
@@ -80,3 +174,12 @@ echo "Dependencias sugeridas: tmux jq xclip wmctrl piper (voz) kitty (terminal).
 echo "Para el celular (seguro): tailscale + qrencode + ttyd, y corre cc-mobile."
 echo "Terminal REAL en el celular: instala ttyd y corre cc-webterm (lo enruta cc-mobile)."
 echo "Para operar por Telegram: llena ~/.claude/hooks/telegram.env y reinicia cc-telegram."
+
+echo ""
+echo "Diagnóstico:  cc-doctor      (o cc-doctor --fix para arreglos)"
+
+if [ "$CC_PLAT" = "linux-wsl-ubuntu" ]; then
+  echo ""
+  echo "WSL: busca 'ComandOS' en el menú Inicio de Windows,"
+  echo "     o abre Edge en http://127.0.0.1:4777"
+fi
