@@ -81,27 +81,29 @@ def test_ctrl_k_can_close_selected_open_tab():
 
 def test_close_tab_confirms_before_closing():
     src = function_source("close_tab")
-    assert "Gtk.MessageDialog" in src
-    assert "ButtonsType.YES_NO" in src
+    # El confirm es custom (_confirm_must_answer): en WSLg, MessageDialog+run()
+    # retornaba NONE si el compositor destruia la ventana. Se valida el
+    # COMPORTAMIENTO: pregunta antes y NO cierra sin confirmacion.
+    assert "_confirm_must_answer(" in src
+    assert "¿Cerrar la pestaña" in src
     # No cierra si el usuario no confirma
-    assert "if resp != Gtk.ResponseType.YES:" in src
+    assert "if not resp:" in src
     assert "return" in src
 
 
 def test_modals_close_on_click_outside():
-    # switcher y overview cierran con click fuera. El mecanismo es un pointer
-    # grab (Gdk.Seat.grab): en WSLg focus-out no es confiable con
-    # transient_for + modal=False. Se valida el COMPORTAMIENTO:
-    # grab al armar, bbox-check del click, dismiss suelta el grab y destruye.
-    helper = function_source("close_on_click_outside")
-    assert "seat.grab(" in helper
-    assert "ungrab()" in helper
-    assert "_dismiss()" in helper and "w.destroy()" in helper
-    assert "ev.x_root" in helper           # click fuera del bbox = cerrar
-    assert "close_on_click_outside(w)" in function_source("open_switcher")
-    assert "close_on_click_outside(w)" in function_source("open_tabs_overview")
-    # el switcher ya NO es modal (modal tragaria el click de afuera)
-    assert "w.set_modal(True)" not in function_source("open_switcher")
+    # Arquitectura de modales embebidos (Gtk.Overlay + backdrop): click en el
+    # backdrop cierra cuando dismissable=True (default). switcher y overview
+    # usan show_modal_panel sin dismissable=False; el confirm de cerrar tab
+    # SI es must-answer (dismissable=False).
+    src_all = SRC
+    helper = function_source("show_modal_panel")
+    assert "cc-modal-backdrop" in helper
+    assert "BUTTON_PRESS_MASK" in helper
+    assert "dismissable" in helper
+    assert "show_modal_panel(w, on_key=on_sw_key)" in function_source("open_switcher")
+    assert "show_modal_panel(w)" in function_source("open_tabs_overview")
+    assert "dismissable=False" in function_source("_confirm_must_answer")
 
 
 def test_tab_scroll_arrows_have_padding():

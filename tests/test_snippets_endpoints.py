@@ -14,7 +14,11 @@ import urllib.request
 import urllib.error
 from pathlib import Path
 
-import pytest
+try:
+    import pytest
+except ImportError:  # el repo corre tests con stdlib; este es pytest-only
+    print("pytest no instalado; test de snippets saltado (correr: pytest tests/test_snippets_endpoints.py)")
+    sys.exit(0)
 
 ROOT = Path(__file__).resolve().parents[1]
 
