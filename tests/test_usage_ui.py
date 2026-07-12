@@ -130,7 +130,9 @@ def test_project_panes_are_clickable_to_open_session():
 
 
 def test_codex_dropdown_offers_models_with_reasoning():
-    assert "gpt-5.4-mini" in HTML
+    # Modelos vigentes de codex-cli 0.144.x (gpt-5.6 sol/terra/luna)
+    assert "gpt-5.6-sol" in HTML
+    assert "gpt-5.6-luna" in HTML
     assert "gpt-5.3-codex-spark" in HTML
     assert "data-effort" in HTML
     assert "effort: effort || undefined" in HTML

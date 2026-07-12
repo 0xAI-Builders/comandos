@@ -1482,11 +1482,12 @@ function mdStrip(s){ return (s||"").replace(/\*\*|`|^#{1,6} /g, ""); }
 	    {model: "fable",  name: "Fable",  intent: "Máximo — lo más ambiguo",        dot: "var(--brand)"},
 	  ],
 	  codex: [
-	    {model: "gpt-5.3-codex-spark", effort: "medium", name: "codex-spark",       intent: "Turbo — ultra rápido",        dot: "var(--done)"},
-	    {model: "gpt-5.4-mini",        effort: "medium", name: "gpt-5.4-mini",      intent: "Ahorro — tareas simples",     dot: "var(--done)"},
-	    {model: "gpt-5.4",             effort: "medium", name: "gpt-5.4",           intent: "Diario — trabajo normal",     dot: "var(--working)"},
-	    {model: "gpt-5.5",             effort: "high",   name: "gpt-5.5 · high",    intent: "Difícil — razona hondo",      dot: "var(--waiting)"},
-	    {model: "gpt-5.5",             effort: "xhigh",  name: "gpt-5.5 · xhigh",   intent: "Máximo — lo más duro",        dot: "var(--brand)"},
+	    {model: "gpt-5.3-codex-spark", effort: "medium", name: "codex-spark",       intent: "Turbo — ultra rápido",           dot: "var(--done)"},
+	    {model: "gpt-5.6-luna",        effort: "medium", name: "5.6-luna",          intent: "Ahorro — ágil y económico",      dot: "var(--done)"},
+	    {model: "gpt-5.6-terra",       effort: "medium", name: "5.6-terra",         intent: "Diario — agéntico balanceado",   dot: "var(--working)"},
+	    {model: "gpt-5.6-sol",         effort: "high",   name: "5.6-sol · high",    intent: "Difícil — frontier agéntico",    dot: "var(--waiting)"},
+	    {model: "gpt-5.6-sol",         effort: "xhigh",  name: "5.6-sol · xhigh",   intent: "Máximo — lo más duro",           dot: "var(--brand)"},
+	    {model: "gpt-5.5",             effort: "high",   name: "gpt-5.5 · high",    intent: "Frontier clásico",               dot: "var(--faint)"},
 	  ],
 	};
 	function shortModel(m){

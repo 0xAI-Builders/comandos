@@ -1028,9 +1028,15 @@ def read_codex_rate_limits(sessions_root=None, now=None, max_files=16):
                 continue
             if wm not in freshest or captured_at > freshest[wm][0]:
                 freshest[wm] = (captured_at, item, _text(limits.get("plan_type")))
+    ts = int(now if now is not None else time.time())
     rows = []
     for wm, (captured_at, item, plan_type) in freshest.items():
         lid, kind, window, label = WINDOWS[wm]
+        # Si el dato es MAS viejo que la propia ventana, ya reseteo desde
+        # entonces y el % es basura (una 5h de hace 50h no dice nada). Se
+        # oculta hasta que Codex reporte de nuevo — con 1.5x de margen.
+        if captured_at and ts - captured_at > wm * 60 * 1.5:
+            continue
         rows.append({
             "id": lid,
             "provider": "codex",

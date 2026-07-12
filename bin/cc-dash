@@ -270,11 +270,17 @@ def usage_provider_limits(force=False):
 
 # Posiciones del picker /model de codex (dos pasos numerados). Si codex
 # reordena su picker en una version nueva, actualizar aqui.
+# Orden del picker /model de codex-cli 0.144.x (numerado, NO filtra por texto
+# ni acepta /model <arg>). Si codex reordena en una version nueva, re-correr
+# el picker y actualizar estas posiciones — es lo unico que hay que tocar.
 CODEX_MODEL_DIGITS = {
     "gpt-5.5": "1",
-    "gpt-5.4": "2",
-    "gpt-5.4-mini": "3",
-    "gpt-5.3-codex-spark": "4",
+    "gpt-5.6-sol": "2",
+    "gpt-5.6-terra": "3",
+    "gpt-5.6-luna": "4",
+    "gpt-5.4": "5",
+    "gpt-5.4-mini": "6",
+    "gpt-5.3-codex-spark": "7",
 }
 CODEX_EFFORT_DIGITS = {"low": "1", "medium": "2", "high": "3", "xhigh": "4"}
 

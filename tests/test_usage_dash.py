@@ -73,6 +73,7 @@ def test_codex_dropdown_drives_numbered_picker():
     assert "CODEX_MODEL_DIGITS" in SRC
     assert "CODEX_EFFORT_DIGITS" in SRC
     assert '"gpt-5.5": "1"' in SRC
+    assert '"gpt-5.6-sol": "2"' in SRC   # picker 0.144.x reordenado
     assert '"xhigh": "4"' in SRC
     assert 'data.get("effort")' in SRC
 
