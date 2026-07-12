@@ -261,6 +261,13 @@ def test_remote_term_touch_longpress_resizes_panes():
     assert "\\x1b[<" in term                  # protocolo SGR press/motion/release
     assert "redimensionando" in term          # indicador visible durante el drag
     assert "navigator.vibrate" in term        # feedback haptico al enganchar
+    # v2 smooth: snap al borde leyendo el buffer (│/─ hasta ±2 celdas, eje
+    # bloqueado) y motions coalescidos a 1 por frame — verificado E2E en
+    # ambos ejes (50/50→40/60 horizontal; 21/21→13/29 vertical)
+    assert "snapToBorder" in term
+    assert "requestAnimationFrame" in term
+    # ligaduras solo desktop: el overlay hacia lag en el resize movil
+    assert "IS_TOUCH" in term
 
 
 def test_webterm_serves_our_index_when_supported():

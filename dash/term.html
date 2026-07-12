@@ -117,16 +117,20 @@
   // Canvas addon debe cargarse DESPUES de open() y antes de escribir.
   try { term.loadAddon(canvas); } catch (e) { console.warn('CanvasAddon failed', e); }
 
-  // Ligaduras via opentype.js overlay (browser puro).
+  // Ligaduras via opentype.js overlay (browser puro) — SOLO desktop: en
+  // tactil el overlay redibuja carisimo y hace lento el resize de panes.
+  const IS_TOUCH = ('ontouchstart' in window) || navigator.maxTouchPoints > 0;
   const themeCfg = THEMES[theme] || THEMES.noche;
-  const liga = new LigaturesWebAddon({
-    fontUrl: '../assets/fonts/JetBrainsMono/JetBrainsMonoNerdFontMono-Regular.ttf',
-    fontSize: 14,
-    foreground: themeCfg.foreground,
-    background: themeCfg.background,
-    debug: debug,
-  });
-  try { term.loadAddon(liga); } catch (e) { dbg('LigaturesWebAddon failed: ' + e.message); }
+  if (!IS_TOUCH) {
+    const liga = new LigaturesWebAddon({
+      fontUrl: '../assets/fonts/JetBrainsMono/JetBrainsMonoNerdFontMono-Regular.ttf',
+      fontSize: 14,
+      foreground: themeCfg.foreground,
+      background: themeCfg.background,
+      debug: debug,
+    });
+    try { term.loadAddon(liga); } catch (e) { dbg('LigaturesWebAddon failed: ' + e.message); }
+  }
 
   const doFit = () => { try { fit.fit(); } catch (_) {} };
   doFit();
@@ -215,10 +219,13 @@
   // beforeinput sin keydown — xterm.js los pierde con el buffer de
   // composicion vacio y "borrar no borra". Los interceptamos y mandamos
   // la tecla real; preventDefault evita el doble envio.
-  // --- GESTO TÁCTIL: dejar el dedo (~300ms) sobre la separación de panes y
-  // arrastrar = resize. xterm.js no traduce touch al protocolo de mouse, así
-  // que aquí convertimos long-press+drag en press/motion/release SGR — solo
-  // cuando la app (tmux con mouse on) pidió tracking; si no, scroll normal.
+  // --- GESTO TÁCTIL: dejar el dedo (~220ms) CERCA de una separación de
+  // panes y arrastrar = resize. Mejoras de fluidez y precisión:
+  //  · SNAP al borde: lee el buffer y busca │ o ─ hasta ±2 celdas del dedo;
+  //    ancla el press al borde exacto y BLOQUEA el eje (│=horizontal,
+  //    ─=vertical). Ya no hay que atinarle al pixel.
+  //  · Motions coalescidos a 1 por frame (rAF): tmux no se atraganta.
+  //  · Solo cuando la app pidió mouse tracking; si no, scroll normal.
   const screenEl = () => document.querySelector('.xterm-screen');
   const mouseOn = () => { try { return term.modes.mouseTrackingMode !== 'none'; } catch (_) { return false; } };
   const cellFromTouch = (t) => {
@@ -228,48 +235,88 @@
     const row = Math.max(1, Math.min(term.rows, Math.floor((t.clientY - r.top) / (r.height / term.rows)) + 1));
     return { col, row };
   };
+  const cellChar = (col, row) => {
+    try {
+      const line = term.buffer.active.getLine(row - 1);
+      return line ? (line.getCell(col - 1)?.getChars() || '') : '';
+    } catch (_) { return ''; }
+  };
+  const VBORDER = '│┃|';   // borde vertical  → se arrastra en X
+  const HBORDER = '─━-';   // borde horizontal → se arrastra en Y
+  // Busca un borde hasta a ±2 celdas del dedo. Devuelve celda anclada + eje.
+  const snapToBorder = (c) => {
+    for (const d of [0, -1, 1, -2, 2]) {
+      const ch = cellChar(c.col + d, c.row);
+      if (ch && VBORDER.includes(ch)) return { col: c.col + d, row: c.row, axis: 'x' };
+    }
+    for (const d of [0, -1, 1, -2, 2]) {
+      const ch = cellChar(c.col, c.row + d);
+      if (ch && HBORDER.includes(ch)) return { col: c.col, row: c.row + d, axis: 'y' };
+    }
+    return null;
+  };
   const sgr = (btn, c, release) => `\x1b[<${btn};${c.col};${c.row}${release ? 'm' : 'M'}`;
   const IND = document.createElement('div');
   IND.style.cssText = 'position:fixed;top:10px;left:50%;transform:translateX(-50%);z-index:9;' +
     'display:none;background:rgba(0,0,0,.7);color:#4CE07A;font:12px monospace;' +
     'padding:5px 12px;border-radius:8px;pointer-events:none';
-  IND.textContent = '⇕ redimensionando';
   document.body.appendChild(IND);
-  let lp = null;
+  let lp = null;          // gesto en curso
+  let rafPending = false; // coalescer motions a 1 por frame
+  const sendMotion = () => {
+    rafPending = false;
+    if (!lp || !lp.engaged || !lp.pendCell) return;
+    const c = lp.pendCell; lp.pendCell = null;
+    if (!lp.lastCell || c.col !== lp.lastCell.col || c.row !== lp.lastCell.row) {
+      lp.lastCell = c;
+      sendInput(sgr(32, c, false));
+    }
+  };
   document.addEventListener('touchstart', (e) => {
     if (e.touches.length !== 1 || !mouseOn()) return;
     const t = e.touches[0];
     const startX = t.clientX, startY = t.clientY;
-    lp = { engaged: false, sx: startX, sy: startY, lastCell: null,
+    lp = { engaged: false, sx: startX, sy: startY, lastCell: null, pendCell: null, anchor: null,
       timer: setTimeout(() => {
         if (!lp) return;
+        const raw = cellFromTouch({ clientX: startX, clientY: startY });
+        const snap = raw && snapToBorder(raw);
+        if (!snap) {           // sin borde cerca: no es resize, no estorbar
+          lp = null;
+          return;
+        }
         lp.engaged = true;
-        const c = cellFromTouch({ clientX: startX, clientY: startY });
-        lp.lastCell = c;
-        if (c) sendInput(sgr(0, c, false));           // press botón izq
+        lp.anchor = snap;      // eje bloqueado + celda exacta del borde
+        lp.lastCell = { col: snap.col, row: snap.row };
+        sendInput(sgr(0, lp.lastCell, false));   // press EN el borde
+        IND.textContent = snap.axis === 'x' ? '⇔ redimensionando' : '⇕ redimensionando';
         IND.style.display = 'block';
-        if (navigator.vibrate) navigator.vibrate(25); // feedback háptico
-      }, 300) };
+        if (navigator.vibrate) navigator.vibrate(25);
+      }, 220) };
   }, { passive: true });
   document.addEventListener('touchmove', (e) => {
     if (!lp) return;
     const t = e.touches[0];
     if (!lp.engaged) {
-      // se movió antes del long-press → es scroll normal: soltar
       if (Math.hypot(t.clientX - lp.sx, t.clientY - lp.sy) > 12) { clearTimeout(lp.timer); lp = null; }
       return;
     }
-    e.preventDefault();                                // en drag: no scroll
+    e.preventDefault();
     const c = cellFromTouch(t);
-    if (c && (!lp.lastCell || c.col !== lp.lastCell.col || c.row !== lp.lastCell.row)) {
-      lp.lastCell = c;
-      sendInput(sgr(32, c, false));                    // motion con botón
-    }
+    if (!c) return;
+    // eje bloqueado: solo se mueve la coordenada del borde agarrado
+    lp.pendCell = lp.anchor.axis === 'x'
+      ? { col: c.col, row: lp.anchor.row }
+      : { col: lp.anchor.col, row: c.row };
+    if (!rafPending) { rafPending = true; requestAnimationFrame(sendMotion); }
   }, { passive: false });
   const endTouch = () => {
     if (!lp) return;
     clearTimeout(lp.timer);
-    if (lp.engaged && lp.lastCell) sendInput(sgr(0, lp.lastCell, true));  // release
+    if (lp.engaged && lp.lastCell) {
+      if (lp.pendCell) { lp.lastCell = lp.pendCell; sendInput(sgr(32, lp.lastCell, false)); }
+      sendInput(sgr(0, lp.lastCell, true));      // release
+    }
     IND.style.display = 'none';
     lp = null;
   };
