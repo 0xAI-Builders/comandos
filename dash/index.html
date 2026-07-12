@@ -1022,6 +1022,17 @@
  </div>
 </div>
 
+<div id="tabclose" class="modal" role="dialog" aria-modal="true" aria-label="Cerrar pestaña">
+ <div class="modal-panel" style="max-width:430px">
+  <h3 style="margin:0 0 6px">¿Cerrar la pestaña «<span id="tabclose-name"></span>»?</h3>
+  <div class="desc" style="margin-bottom:14px">La sesión tmux sigue viva; puedes recuperarla en Recientes. Se cierra aquí y en el escritorio.</div>
+  <div style="display:flex;gap:8px;justify-content:flex-end">
+    <button type="button" class="test" data-close="tabclose">Cancelar</button>
+    <button type="button" class="test warn" id="tabclose-yes">Cerrar pestaña</button>
+  </div>
+ </div>
+</div>
+
 <div id="servers" class="modal" aria-label="Servidores SSH" role="dialog" aria-modal="true">
  <div class="modal-panel">
   <button type="button" class="modal-close" data-close="servers" aria-label="cerrar">
@@ -2224,20 +2235,9 @@ function renderTabbar(){
     const x = t.querySelector(".x");
     if(x){
       x.title = tf("Cerrar pestaña", "Close tab");
-      x.onclick = (e) => {
-        e.stopPropagation();
-        // Confirmar en dos toques (mismo patrón que "Matar sesión"): un
-        // click arma, el segundo cierra. Evita cierres sin querer.
-        if(!x.classList.contains("arm")){
-          x.classList.add("arm"); x.textContent = "✓";
-          x.title = tf("Click otra vez para cerrar", "Click again to close");
-          clearTimeout(x._t);
-          x._t = setTimeout(()=>{ x.classList.remove("arm"); x.textContent = "×";
-            x.title = tf("Cerrar pestaña", "Close tab"); }, 3000);
-          return;
-        }
-        closeTerm(key);
-      };
+      // key llega como "term:<sesion>"; closeTerm espera la sesion pelona
+      // (este prefijo sin recortar era la razon de que la × no cerrara nada)
+      x.onclick = (e) => { e.stopPropagation(); askCloseTab(key.replace(/^term:/, "")); };
     }
     bar.appendChild(t);
   };
@@ -2298,8 +2298,25 @@ function showView(key){
   updateTermSelectButton();
   renderTabbar();
 }
-function addTermTab(sess, label){   // registra la tab SIN attachear (lazy)
-  if(!openTerms.has(sess)) openTerms.set(sess, {frame: null, label: label || sess});
+function addTermTab(sess, label, mirrored){   // registra la tab SIN attachear (lazy)
+  const o = openTerms.get(sess);
+  if(o){ if(label) o.label = label; if(mirrored) o.mirrored = true; return; }
+  openTerms.set(sess, {frame: null, label: label || sess, mirrored: !!mirrored});
+}
+// Confirmación REAL (modal) antes de cerrar una pestaña de terminal. Al
+// aceptar cierra aquí Y en el escritorio (/tab-close saca la sesión del
+// espejo app-tabs.json — sin esto el poll de /tabs la resucitaba en 5s).
+function askCloseTab(sess){
+  const o = openTerms.get(sess);
+  $("#tabclose-name").textContent = (o && o.label) || sess;
+  const m = $("#tabclose");
+  m.classList.add("open");
+  $("#tabclose-yes").onclick = async ()=>{
+    m.classList.remove("open");
+    try{ await api("/tab-close", {session: sess}); }catch(e){}
+    closeTerm(sess);
+    tabsPollTs = 0;  // refrescar el espejo ya
+  };
 }
 function openTerm(sess, label){
   if(!appEnabled() || !sess) return;
@@ -2317,7 +2334,12 @@ async function loadDesktopTabs(){
   // Las MISMAS pestanas abiertas en la app de escritorio (lazy).
   try{
     const tabs = await api("/tabs");
-    for(const t of tabs) addTermTab(t.session, t.label);
+    for(const t of tabs) addTermTab(t.session, t.label, true);
+    // PODA: tabs espejadas del escritorio que ya no existen alla se van de
+    // aqui tambien (antes quedaban huerfanas "solo en remoto")
+    const want = new Set(tabs.map(t => t.session));
+    for(const [s, o] of [...openTerms])
+      if(o.mirrored && !want.has(s)) closeTerm(s);
     if(document.body.classList.contains("split") && !activeTerm && tabs[0])
       activeTerm = tabs[0].session;
     showView(activeView);

@@ -79,6 +79,15 @@ def test_ctrl_k_can_close_selected_open_tab():
     assert "Gdk.KEY_w" in src
 
 
+def test_remote_close_requests_skip_confirm():
+    # cc-dash escribe app-tab-close.json tras confirmar en el tablero;
+    # la app cierra esa tab sin re-preguntar
+    assert "def close_tab(key, confirm=True):" in SRC
+    assert "close_tab(sess, confirm=False)" in SRC
+    assert "app-tab-close.json" in SRC
+    assert "on_tab_close_request" in SRC
+
+
 def test_close_tab_confirms_before_closing():
     src = function_source("close_tab")
     # El confirm es custom (_confirm_must_answer): en WSLg, MessageDialog+run()
@@ -122,6 +131,7 @@ def test_raise_main_window_uses_keep_above_pulse_for_gnome():
 
 
 if __name__ == "__main__":
+    test_remote_close_requests_skip_confirm()
     test_tab_labels_are_saved_in_visual_notebook_order()
     test_notebook_tabs_are_reorderable_and_saved_after_drag()
     test_visual_tabs_overview_button_is_present()

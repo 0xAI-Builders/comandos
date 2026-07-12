@@ -117,6 +117,13 @@ def test_new_sessions_load_provider_keys_env():
     assert 'data.get("agent")' in SRC
 
 
+def test_tab_close_endpoint_syncs_mirror_and_history():
+    assert '"/tab-close"' in SRC
+    assert "app-tab-close.json" in SRC
+    body = SRC.split('"/tab-close"', 1)[1].split('self.path ==', 1)[0]
+    assert "remember_tab" in body and "TABS_FILE" in body
+
+
 def test_agent_pane_maps_keeps_one_agent_per_tmux_pane():
     dash = load_dash_module()
 
@@ -139,6 +146,7 @@ def test_agent_pane_maps_keeps_one_agent_per_tmux_pane():
 
 
 if __name__ == "__main__":
+    test_tab_close_endpoint_syncs_mirror_and_history()
     test_alert_rules_endpoint_and_evaluation()
     test_codex_dropdown_drives_numbered_picker()
     test_limit_alerts_notify_by_desktop_and_telegram()

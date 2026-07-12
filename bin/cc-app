@@ -1578,9 +1578,9 @@ def _confirm_must_answer(primary, secondary, yes_label, no_label):
     return bool(result["value"])
 
 
-def close_tab(key):
-    # Confirmar SIEMPRE: cerrar sin querer era demasiado facil. La sesion tmux
-    # sigue viva y ademas queda en "Recientes (cerradas)" del tablero.
+def close_tab(key, confirm=True):
+    # Confirmar SIEMPRE (salvo cierres ya confirmados en el tablero remoto).
+    # La sesion tmux sigue viva y queda en "Recientes (cerradas)" del tablero.
     box = tabs.get(key)
     label = getattr(box, "_label", key) if box is not None else key
     # NO usamos Gtk.MessageDialog + d.run() — en WSLg el compositor destruia
@@ -1588,8 +1588,8 @@ def close_tab(key):
     # d.run() retornaba NONE dejando la logica en estado indefinido.
     # Alternativa: Gtk.Window custom + GLib.MainLoop propio + boton YES/NO.
     # Al no ser Gtk.Dialog, no hay response signal ni handling default del WM.
-    snip_log(f"close_tab confirm for key={key} label={label}")
-    resp = _confirm_must_answer(
+    snip_log(f"close_tab confirm for key={key} label={label} confirm={confirm}")
+    resp = True if not confirm else _confirm_must_answer(
         primary=(f"¿Cerrar la pestaña «{label}»?" if ES else f"Close tab “{label}”?"),
         secondary=("La sesión tmux sigue viva; puedes recuperarla en Recientes del tablero."
                    if ES else
@@ -3011,6 +3011,27 @@ def raise_main_window():
         return False
     GLib.timeout_add(500, _drop)
 
+
+# Cierres pedidos desde el tablero (remoto o local): cc-dash escribe
+# app-tab-close.json tras la confirmacion del usuario; aqui cerramos la tab
+# GTK sin re-preguntar. Asi remoto y escritorio quedan en sync.
+CLOSE_FILE = os.path.expanduser("~/.claude/hooks/app-tab-close.json")
+
+
+def on_tab_close_request(_mon, _f, _other, event):
+    if event != Gio.FileMonitorEvent.CHANGES_DONE_HINT:
+        return
+    try:
+        with open(CLOSE_FILE) as fh:
+            sess = json.load(fh).get("session", "")
+    except Exception:
+        return
+    if sess and sess in tabs:
+        close_tab(sess, confirm=False)
+
+
+_close_mon = Gio.File.new_for_path(CLOSE_FILE).monitor_file(Gio.FileMonitorFlags.NONE, None)
+_close_mon.connect("changed", on_tab_close_request)
 
 _focus_mon = Gio.File.new_for_path(FOCUS_FILE).monitor_file(Gio.FileMonitorFlags.NONE, None)
 _focus_mon.connect("changed", on_focus_request)

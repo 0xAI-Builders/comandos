@@ -2150,6 +2150,28 @@ class Handler(http.server.SimpleHTTPRequestHandler):
                 return self._json(code, {"error": err})
             return self._json(200, {"ok": True, "mouse": "on" if enabled else "off"})
 
+        if self.path == "/tab-close":
+            # Cierra la PESTANA en todas las superficies (la sesion tmux sigue
+            # viva): la saca del espejo app-tabs.json (si no, el poll /tabs la
+            # resucitaba en remoto), la guarda en Recientes, y si la app de
+            # escritorio esta abierta le pide cerrar su tab GTK.
+            label = tab_labels().get(sess, sess)
+            cwd = ""
+            r = tmux("display-message", "-p", "-t", "=" + sess + ":", "#{pane_current_path}")
+            if r.returncode == 0:
+                cwd = r.stdout.strip()
+            remember_tab(sess, label, cwd, state_agent(sess), reason="closed")
+            tabs_map = load_json_file(TABS_FILE, {})
+            if isinstance(tabs_map, dict) and sess in tabs_map:
+                tabs_map.pop(sess, None)
+                write_json_file(TABS_FILE, tabs_map)
+            try:
+                with open(os.path.join(HOOKS, "app-tab-close.json"), "w") as f:
+                    json.dump({"session": sess, "ts": time.time()}, f)
+            except Exception:
+                pass
+            return self._json(200, {"ok": True})
+
         if self.path == "/recover-tab":
             label = str(data.get("label") or sess)[:80]
             cwd = str(data.get("cwd") or "")

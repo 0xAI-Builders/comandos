@@ -82,12 +82,21 @@ def test_switcher_closes_on_outside_click():
     assert 'if(e.target === $("#sw-ov")) swClose();' in HTML
 
 
-def test_terminal_tab_close_confirms_in_two_clicks():
-    # La × de las pestañas de terminal arma con el primer click y cierra
-    # con el segundo (mismo patrón que "¿Matar?"), para no cerrar sin querer
-    assert 'x.classList.contains("arm")' in HTML
-    assert 'Click otra vez para cerrar' in HTML
-    assert ".apptab .x.arm" in HTML
+def test_terminal_tab_close_asks_with_modal_and_syncs_desktop():
+    # La × abre un modal de confirmación; al aceptar cierra local Y en el
+    # escritorio via /tab-close (sin esto el poll /tabs resucitaba la tab)
+    assert 'id="tabclose"' in HTML
+    assert "function askCloseTab" in HTML
+    assert 'api("/tab-close"' in HTML
+    # el prefijo "term:" se recorta antes de cerrar (bug: closeTerm no matcheaba)
+    assert 'key.replace(/^term:/, "")' in HTML
+
+
+def test_remote_tab_mirror_prunes_closed_desktop_tabs():
+    # Tabs espejadas que ya no están en /tabs se PODAN (antes quedaban
+    # huérfanas "solo en remoto")
+    assert "o.mirrored && !want.has(s)" in HTML
+    assert "addTermTab(t.session, t.label, true)" in HTML
 
 
 def test_per_target_alert_rules_with_bells():
@@ -166,7 +175,8 @@ def test_header_shows_global_limit_percentages():
 
 
 if __name__ == "__main__":
-    test_terminal_tab_close_confirms_in_two_clicks()
+    test_terminal_tab_close_asks_with_modal_and_syncs_desktop()
+    test_remote_tab_mirror_prunes_closed_desktop_tabs()
     test_alert_button_is_explicit_and_limit_windows_configurable()
     test_per_target_alert_rules_with_bells()
     test_project_panes_are_clickable_to_open_session()
