@@ -33,6 +33,7 @@ you answer with a key or a line, and you keep going. No tab-scanning.
 - **Local voice** (piper, 100% offline) + chime, one global volume that everything respects.
 - **SSH manager**: CRUD over `~/.ssh/config`, one-click connect, detects live
   multiplexed tunnels (no-password reconnect).
+- **Snippets**: save reusable shell commands (one-liners or multi-line scripts) and paste them into the active session with **Ctrl+Shift+K**. Bracketed paste — nothing runs until you press Enter.
 - **Telegram**: buttons on notifications, reply to answer, `/ls /out /run`.
 - Everything is **files** (tmux, JSON, ssh config). No cloud, no DB. Survives reboots.
 - UI in **English and Spanish** (auto-detected from `$LANG`, switchable in Settings).

@@ -364,6 +364,37 @@
   .modal-panel > .modal-close{position:absolute;top:10px;right:10px}
   .modal-hdr .modal-close{position:static}
 
+  /* Snippets modal — <dialog> con layout split. Estilo standalone porque
+     usa la API nativa <dialog>.showModal() (ESC + backdrop gratis). */
+  dialog.snip-modal{width:720px;max-width:92vw;height:520px;max-height:82vh;
+    padding:0;overflow:hidden;background:var(--panel2);color:var(--text);
+    border:1px solid var(--line);border-radius:12px;
+    box-shadow:0 20px 60px rgba(0,0,0,.4);font-family:var(--mono)}
+  dialog.snip-modal::backdrop{background:rgba(0,0,0,.55)}
+  .snip-modal .modal-hd{display:flex;align-items:center;justify-content:space-between;
+    padding:12px 16px;border-bottom:1px solid var(--line)}
+  .snip-modal .modal-title{font-size:12.5px;letter-spacing:.16em;
+    color:var(--dim);text-transform:uppercase}
+  .snip-grid{display:grid;grid-template-columns:260px 1fr;height:calc(100% - 46px)}
+  .snip-list{display:flex;flex-direction:column;border-right:1px solid var(--line)}
+  .snip-list input{margin:10px 12px;padding:6px 10px;background:var(--bg);
+    color:var(--text);border:1px solid var(--line);border-radius:6px;font:inherit}
+  .snip-list ul{list-style:none;margin:0;padding:0 6px;overflow-y:auto;flex:1}
+  .snip-list li{padding:6px 10px;border-radius:6px;cursor:pointer}
+  .snip-list li:hover{background:var(--panel)}
+  .snip-list li.active{background:var(--panel);border-left:2px solid var(--brand);padding-left:8px}
+  .snip-list li .n{color:var(--text);font-size:12.5px}
+  .snip-list li .t{color:var(--faint);font-size:11px;margin-top:2px}
+  .snip-list-ft{padding:8px 10px;border-top:1px solid var(--line)}
+  .snip-pane{padding:16px 18px;overflow-y:auto;display:flex;flex-direction:column;gap:10px}
+  .snip-empty{color:var(--faint);font-style:italic;margin:auto}
+  .snip-pane pre{background:var(--bg);border:1px solid var(--line);border-radius:6px;
+    padding:10px 12px;margin:0;white-space:pre-wrap;user-select:text;
+    font-size:12.5px;color:var(--text)}
+  .snip-actions{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+  .snip-actions select{background:var(--bg);color:var(--text);border:1px solid var(--line);
+    border-radius:6px;padding:5px 8px;font:inherit}
+
   /* Tabs dentro de un modal — nav vertical/horizontal según ancho.
      Termius/VSCode look: activa con underline brand + fondo panel2 sutil. */
   .mtabs{display:flex;gap:2px;flex-wrap:wrap;margin:0 -6px 20px;padding:0 0 12px;
@@ -756,6 +787,7 @@
       <input type="range" id="vol-top" min="0" max="100" value="60">
     </span>
 	    <button class="hdr-btn" id="btn-switch" aria-label="switch" title="Saltar a cualquier sesión (Ctrl+K)"><span data-icon="search" data-size="16"></span></button>
+	    <button class="hdr-btn" id="btn-snippets" aria-label="snippets" title="Snippets (Ctrl+Shift+K)"><span data-icon="snippet" data-size="16"></span></button>
 	    <button class="hdr-btn" id="btn-theme" aria-label="theme" title="Tema: Noche → Día → Cálido (aplica a tablero, pestañas y terminales)"></button>
 	    <button class="hdr-btn" id="btn-usage" title="Uso, límites y gasto por pane">Uso</button>
 	    <button class="hdr-btn" id="btn-remote" title="Continuar desde celular/tablet">Remoto</button>
@@ -951,23 +983,38 @@
     </button>
   </div>
   <h3>Uso</h3>
-	  <div class="set"><div class="desc" id="usage-summary">Sin datos todavia.</div></div>
-	  <h3>Limites del plan</h3>
-	  <div id="usage-limits" class="usage-grid"></div>
-	  <h3>Proveedores</h3>
-	  <div id="usage-providers" class="usage-grid"></div>
-	  <h3 style="margin-top:22px">Proyectos y panes</h3>
-	  <div id="usage-projects"></div>
-	  <h3 style="margin-top:22px">Alertas</h3>
-	  <div class="set" id="alert-config">
-	    <span class="desc">Límites del plan: avisar al cruzar</span>
-	    <button type="button" class="test alert-th" data-th="70">70%</button>
-	    <button type="button" class="test alert-th" data-th="85">85%</button>
-	    <button type="button" class="test alert-th" data-th="95">95%</button>
-	  </div>
-	  <div class="desc" style="margin:-4px 0 8px">Llegan por popup propio y/o Telegram, según Ajustes. La <span data-icon="bell" style="display:inline-flex;vertical-align:-2px"></span> de cada proyecto/pane agrega presupuestos de tokens por día.</div>
-	  <div id="alert-rules"></div>
-	  <div id="usage-alerts"></div>
+  <nav class="mtabs" role="tablist" aria-label="Secciones de uso">
+    <button class="mtab active" data-mtab="resumen" role="tab">Resumen</button>
+    <button class="mtab" data-mtab="proveedores" role="tab">Proveedores</button>
+    <button class="mtab" data-mtab="proyectos" role="tab">Proyectos</button>
+    <button class="mtab" data-mtab="alertas" role="tab">Alertas</button>
+  </nav>
+
+  <div class="mtab-pane active" data-mpane="resumen">
+    <div class="set"><div class="desc" id="usage-summary">Sin datos todavia.</div></div>
+    <h3>Limites del plan</h3>
+    <div id="usage-limits" class="usage-grid"></div>
+  </div>
+
+  <div class="mtab-pane" data-mpane="proveedores">
+    <div id="usage-providers" class="usage-grid"></div>
+  </div>
+
+  <div class="mtab-pane" data-mpane="proyectos">
+    <div id="usage-projects"></div>
+  </div>
+
+  <div class="mtab-pane" data-mpane="alertas">
+    <div class="set" id="alert-config">
+      <span class="desc">Límites del plan: avisar al cruzar</span>
+      <button type="button" class="test alert-th" data-th="70">70%</button>
+      <button type="button" class="test alert-th" data-th="85">85%</button>
+      <button type="button" class="test alert-th" data-th="95">95%</button>
+    </div>
+    <div class="desc" style="margin:-4px 0 8px">Llegan por popup propio y/o Telegram, según Ajustes. La <span data-icon="bell" style="display:inline-flex;vertical-align:-2px"></span> de cada proyecto/pane agrega presupuestos de tokens por día.</div>
+    <div id="alert-rules"></div>
+    <div id="usage-alerts"></div>
+  </div>
  </div>
 </div>
 
@@ -1010,6 +1057,25 @@
 
 <div id="toasts"></div>
 <div id="mdl-menu" class="hidden" role="listbox" aria-label="Modelos"></div>
+
+<dialog id="dlg-snippets" class="modal snip-modal">
+  <div class="modal-hd">
+    <span class="modal-title">Snippets</span>
+    <button class="hdr-btn" data-close-snippets aria-label="close"><span data-icon="close" data-size="14"></span></button>
+  </div>
+  <div class="snip-grid">
+    <div class="snip-list">
+      <input id="snip-q" placeholder="buscar..." autocomplete="off" spellcheck="false">
+      <ul id="snip-items"></ul>
+      <div class="snip-list-ft">
+        <button id="snip-new" class="hdr-btn" title="Nuevo snippet"><span data-icon="plus" data-size="14"></span> nuevo</button>
+      </div>
+    </div>
+    <div class="snip-pane" id="snip-pane">
+      <div class="snip-empty" data-en="Select a snippet or create a new one." data-es="Elegí un snippet o creá uno nuevo.">Elegí un snippet o creá uno nuevo.</div>
+    </div>
+  </div>
+</dialog>
 
 <script>
 "use strict";
@@ -2689,6 +2755,7 @@ const ICON = {
   pencil:    '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.85 2.85 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/><path d="m15 5 4 4"/></svg>',
   copySmall: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>',
   terminal:  '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m4 7 5 5-5 5"/><path d="M12 19h8"/></svg>',
+  snippet:   '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>',
   x:         '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18M6 6l12 12"/></svg>',
 };
 const svg = (name, sz=14) =>
@@ -3272,6 +3339,255 @@ document.querySelectorAll(".lang-btn").forEach(b=>{
   tickEvents();
   arm();
 })();
+
+// ---------- snippets (v0) ----------
+const snipDlg = document.getElementById("dlg-snippets");
+const snipState = { items: [], selectedId: null, query: "" };
+let snipSessions = [];  // live sessions from /state
+
+function pickDefaultSession(sessions, lastSaved){
+  if (lastSaved && sessions.some(s => s.session === lastSaved)) return lastSaved;
+  return (sessions[0] && sessions[0].session) || "";
+}
+
+function filterSnippets(items, query){
+  const q = (query || "").trim().toLowerCase();
+  if (!q) return items.slice().sort((a,b) => (b.updated_at||0) - (a.updated_at||0));
+  const scored = [];
+  for (const it of items){
+    const name = (it.name || "").toLowerCase();
+    const tags = (it.tags || []).map(t => t.toLowerCase()).join(" ");
+    const body = (it.body || "").toLowerCase();
+    let score = 0;
+    if (name.includes(q))      score = 3;
+    else if (tags.includes(q)) score = 2;
+    else if (body.includes(q)) score = 1;
+    if (score) scored.push({it, score});
+  }
+  scored.sort((a,b) => b.score - a.score || (b.it.updated_at||0) - (a.it.updated_at||0));
+  return scored.map(s => s.it);
+}
+
+function renderSnipList(){
+  const ul = document.getElementById("snip-items");
+  const filtered = filterSnippets(snipState.items, snipState.query);
+  ul.innerHTML = "";
+  for (const it of filtered){
+    const li = document.createElement("li");
+    li.dataset.id = it.id;
+    if (it.id === snipState.selectedId) li.classList.add("active");
+    const n = document.createElement("div"); n.className = "n"; n.textContent = it.name;
+    li.appendChild(n);
+    if ((it.tags || []).length){
+      const t = document.createElement("div"); t.className = "t";
+      t.textContent = it.tags.join(" · ");
+      li.appendChild(t);
+    }
+    li.addEventListener("click", () => {
+      snipState.selectedId = it.id;
+      renderSnipList();
+      renderSnipPane();
+    });
+    ul.appendChild(li);
+  }
+  if (!snipState.selectedId && filtered.length){
+    snipState.selectedId = filtered[0].id;
+    renderSnipPane();
+  }
+}
+
+function renderSnipPane(){
+  const pane = document.getElementById("snip-pane");
+  const it = snipState.items.find(x => x.id === snipState.selectedId);
+  if (!it){
+    pane.innerHTML = '<div class="snip-empty">Elegí un snippet o creá uno nuevo.</div>';
+    return;
+  }
+  pane.innerHTML = "";
+
+  const h = document.createElement("div");
+  h.style.cssText = "font-size:13px;color:var(--text);font-weight:600";
+  h.textContent = it.name;
+  pane.appendChild(h);
+
+  if ((it.tags || []).length){
+    const tags = document.createElement("div");
+    tags.style.cssText = "display:flex;gap:6px;flex-wrap:wrap";
+    for (const t of it.tags){
+      const chip = document.createElement("span");
+      chip.className = "pill";
+      chip.textContent = t;
+      tags.appendChild(chip);
+    }
+    pane.appendChild(tags);
+  }
+
+  const pre = document.createElement("pre");
+  pre.textContent = it.body;
+  pane.appendChild(pre);
+
+  const actions = document.createElement("div");
+  actions.className = "snip-actions";
+  const sel = document.createElement("select");
+  sel.id = "snip-dest";
+  const last = localStorage.getItem("snippet-last-session") || "";
+  const def = pickDefaultSession(snipSessions, last);
+  if (!snipSessions.length){
+    const opt = document.createElement("option");
+    opt.value = ""; opt.textContent = "sin sesiones vivas"; opt.disabled = true;
+    sel.appendChild(opt);
+  } else {
+    for (const s of snipSessions){
+      const opt = document.createElement("option");
+      opt.value = s.session;
+      opt.textContent = s.project || s.session;
+      if (s.session === def) opt.selected = true;
+      sel.appendChild(opt);
+    }
+  }
+  actions.appendChild(sel);
+
+  const send = document.createElement("button");
+  send.className = "hdr-btn"; send.textContent = "Send";
+  send.addEventListener("click", async () => {
+    if (!sel.value) { toast("No hay sesión destino", true); return; }
+    try {
+      await api('/paste', {session: sel.value, text: it.body});
+      localStorage.setItem("snippet-last-session", sel.value);
+      toast(`Pegado en ${sel.value}`);
+    } catch (e) { toast(e.message, true); }
+  });
+  actions.appendChild(send);
+
+  const copy = document.createElement("button");
+  copy.className = "hdr-btn"; copy.textContent = "Copy";
+  copy.addEventListener("click", async () => {
+    try { await navigator.clipboard.writeText(it.body); toast("Copiado"); }
+    catch (e) { toast("No pude copiar: " + e.message, true); }
+  });
+  actions.appendChild(copy);
+
+  const edit = document.createElement("button");
+  edit.className = "hdr-btn"; edit.textContent = "Edit";
+  edit.addEventListener("click", () => openSnipEditor(it));  // wired in Task 7
+  actions.appendChild(edit);
+
+  const del = document.createElement("button");
+  del.className = "hdr-btn"; del.textContent = "Delete";
+  del.addEventListener("click", async () => {
+    if (!confirm(`¿Borrar "${it.name}"?`)) return;
+    try {
+      await api('/snippets/delete', {id: it.id});
+      snipState.items = snipState.items.filter(x => x.id !== it.id);
+      snipState.selectedId = null;
+      renderSnipList(); renderSnipPane();
+      toast("Borrado");
+    } catch (e) { toast(e.message, true); }
+  });
+  actions.appendChild(del);
+
+  pane.appendChild(actions);
+}
+
+function openSnipEditor(item){
+  const pane = document.getElementById("snip-pane");
+  pane.innerHTML = "";
+
+  const nameLbl = document.createElement("label");
+  nameLbl.textContent = "Nombre";
+  nameLbl.style.cssText = "font-size:11px;color:var(--dim);text-transform:uppercase;letter-spacing:.12em";
+  const nameIn = document.createElement("input");
+  nameIn.value = item ? item.name : "";
+  nameIn.placeholder = "docker-ps";
+  nameIn.style.cssText = "background:var(--bg);color:var(--text);border:1px solid var(--line);border-radius:6px;padding:6px 10px;font:inherit";
+
+  const tagsLbl = document.createElement("label");
+  tagsLbl.textContent = "Tags (coma-separados)";
+  tagsLbl.style.cssText = nameLbl.style.cssText;
+  const tagsIn = document.createElement("input");
+  tagsIn.value = item ? (item.tags || []).join(", ") : "";
+  tagsIn.placeholder = "docker, prod";
+  tagsIn.style.cssText = nameIn.style.cssText;
+
+  const bodyLbl = document.createElement("label");
+  bodyLbl.textContent = "Body";
+  bodyLbl.style.cssText = nameLbl.style.cssText;
+  const bodyIn = document.createElement("textarea");
+  bodyIn.value = item ? item.body : "";
+  bodyIn.rows = 10;
+  bodyIn.style.cssText = "background:var(--bg);color:var(--text);border:1px solid var(--line);border-radius:6px;padding:8px 10px;font:inherit;resize:vertical;flex:1;min-height:140px";
+
+  const actions = document.createElement("div");
+  actions.className = "snip-actions";
+  const save = document.createElement("button");
+  save.className = "hdr-btn"; save.textContent = "Save";
+  const cancel = document.createElement("button");
+  cancel.className = "hdr-btn"; cancel.textContent = "Cancel";
+  actions.appendChild(save); actions.appendChild(cancel);
+
+  for (const el of [nameLbl, nameIn, tagsLbl, tagsIn, bodyLbl, bodyIn, actions]) pane.appendChild(el);
+  nameIn.focus();
+
+  cancel.addEventListener("click", () => renderSnipPane());
+
+  save.addEventListener("click", async () => {
+    const name = nameIn.value.trim();
+    const body = bodyIn.value;
+    const tags = tagsIn.value.split(",").map(t => t.trim()).filter(Boolean);
+    if (!name) { toast("Nombre vacío", true); return; }
+    if (!body.trim()) { toast("Body vacío", true); return; }
+    try {
+      let saved;
+      if (item){
+        saved = await api('/snippets/update', {id: item.id, name, body, tags});
+        snipState.items = snipState.items.map(x => x.id === item.id ? saved.item : x);
+      } else {
+        saved = await api('/snippets', {name, body, tags});
+        snipState.items = [saved.item, ...snipState.items];
+      }
+      snipState.selectedId = saved.item.id;
+      renderSnipList();
+      renderSnipPane();
+      toast(item ? "Actualizado" : "Guardado");
+    } catch (e) { toast(e.message, true); }
+  });
+}
+
+async function openSnippets(){
+  snipDlg.showModal();
+  const q = document.getElementById("snip-q");
+  if (q) { q.value = ""; q.focus(); }
+  snipState.query = "";
+  try {
+    snipState.items = await api('/snippets');
+  } catch (e) {
+    snipState.items = [];
+    toast("No pude cargar snippets: " + e.message, true);
+  }
+  try {
+    const st = await api('/state');
+    snipSessions = (st || []).map(s => ({session: s.session, project: s.project || s.session}));
+  } catch { snipSessions = []; }
+  snipState.selectedId = null;
+  renderSnipList();
+  renderSnipPane();
+}
+function closeSnippets(){ if (snipDlg.open) snipDlg.close(); }
+
+document.getElementById("btn-snippets").addEventListener("click", openSnippets);
+snipDlg.querySelector("[data-close-snippets]").addEventListener("click", closeSnippets);
+snipDlg.addEventListener("click", (e) => { if (e.target === snipDlg) closeSnippets(); });
+document.getElementById("snip-q").addEventListener("input", (e) => {
+  snipState.query = e.target.value;
+  renderSnipList();
+});
+document.getElementById("snip-new").addEventListener("click", () => openSnipEditor(null));
+document.addEventListener("keydown", (e) => {
+  if (e.ctrlKey && e.shiftKey && (e.key === "K" || e.key === "k")) {
+    e.preventDefault();
+    if (snipDlg.open) closeSnippets(); else openSnippets();
+  }
+});
 
 // PWA: registrar el service worker (instalable en celular/tablet)
 if("serviceWorker" in navigator)

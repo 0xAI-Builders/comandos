@@ -15,7 +15,7 @@ Teclas:
   Ctrl+Shift + / - / 0   zoom de letra (pestana actual)
   Ctrl+Q                 salir
 """
-import json, os, re, shutil, subprocess, sys, threading, time, urllib.request
+import json, os, re, secrets, shutil, subprocess, sys, threading, time, urllib.request
 import gi
 gi.require_version("Gtk", "3.0")
 # WebKit2 4.1 en Ubuntu 24.04 (noble), 4.0 en 22.04 (jammy). Intenta 4.1 primero.
@@ -208,6 +208,96 @@ def http_ensure(sess, win_name="claude"):
     http_post("/ensure", {"session": sess, "win": win_name})
 
 
+# ---------- snippets store (spejo del cc-dash) ----------
+SNIPPETS_FILE = os.path.expanduser("~/.claude/hooks/snippets.json")
+
+
+def snip_load():
+    try:
+        with open(SNIPPETS_FILE) as f:
+            data = json.load(f)
+        return data if isinstance(data, list) else []
+    except FileNotFoundError:
+        return []
+    except Exception:
+        return []
+
+
+def snip_save(items):
+    tmp = SNIPPETS_FILE + ".tmp"
+    os.makedirs(os.path.dirname(SNIPPETS_FILE), exist_ok=True)
+    with open(tmp, "w") as f:
+        json.dump(items, f)
+    os.replace(tmp, SNIPPETS_FILE)
+
+
+SNIP_LOG_FILE = "/tmp/cc-app-snip.log"
+
+
+def _snip_env_snapshot():
+    """Escribe estado del display server al inicio para el debug."""
+    try:
+        if not os.path.exists(SNIP_LOG_FILE):
+            return
+        with open(SNIP_LOG_FILE, "a") as f:
+            f.write("=" * 60 + "\n")
+            f.write(f"cc-app startup {time.strftime('%Y-%m-%d %H:%M:%S')}\n")
+            for k in ("DISPLAY", "WAYLAND_DISPLAY", "XDG_SESSION_TYPE",
+                     "GDK_BACKEND", "XDG_CURRENT_DESKTOP", "WSL_DISTRO_NAME",
+                     "PULSE_SERVER"):
+                f.write(f"  {k}={os.environ.get(k, '<unset>')}\n")
+            f.write("=" * 60 + "\n")
+    except Exception:
+        pass
+
+
+_snip_env_snapshot()
+
+
+def snip_log(msg):
+    """Log opt-in del SnippetsDialog para diagnostico. Escribe a
+    /tmp/cc-app-snip.log si el archivo existe; touch para activar, borrar
+    para desactivar. Silencioso por default en uso normal."""
+    try:
+        if not os.path.exists(SNIP_LOG_FILE):
+            return
+        with open(SNIP_LOG_FILE, "a") as f:
+            ts = time.strftime("%H:%M:%S") + f".{int((time.time()%1)*1000):03d}"
+            f.write(f"[{ts}] {msg}\n")
+    except Exception:
+        pass
+
+
+def snip_paste(sess, text):
+    """Pega `text` en la sesion tmux `sess` usando bracketed paste. NUNCA ejecuta.
+
+    Secuencia: load-buffer (via stdin) -> paste-buffer -p -> delete-buffer.
+    El shell moderno buffea el texto y espera al usuario para ejecutar."""
+    # has-session usa `=<sess>` (session-target). paste-buffer usa `=<sess>:`
+    # (pane-target: sesion + ventana/pane activos) — tmux 3.2a exige el `:`
+    # final si no aparece un window index, como en cc-dash.
+    session_target = "=" + sess
+    pane_target = "=" + sess + ":"
+    r = subprocess.run(["tmux", "has-session", "-t", session_target],
+                       capture_output=True, text=True, timeout=5)
+    if r.returncode != 0:
+        return f"No hay sesion tmux '{sess}'"
+    r = subprocess.run(["tmux", "load-buffer", "-b", "comandos-snip", "-"],
+                       input=text, capture_output=True, text=True, timeout=5)
+    if r.returncode != 0:
+        subprocess.run(["tmux", "delete-buffer", "-b", "comandos-snip"],
+                       capture_output=True, text=True, timeout=5)
+        return r.stderr.strip() or "load-buffer fallo"
+    err = None
+    r = subprocess.run(["tmux", "paste-buffer", "-p", "-b", "comandos-snip", "-t", pane_target],
+                       capture_output=True, text=True, timeout=5)
+    if r.returncode != 0:
+        err = r.stderr.strip() or "paste-buffer fallo"
+    subprocess.run(["tmux", "delete-buffer", "-b", "comandos-snip"],
+                   capture_output=True, text=True, timeout=5)
+    return err
+
+
 URL_RE = r"https?://[^\s'\"<>\]\)]+"
 
 
@@ -359,6 +449,7 @@ def feed(term, seq):
 def new_session_dialog(*_):
     dlg = Gtk.Dialog(title="Nueva sesion" if ES else "New session", transient_for=win)
     dlg.set_decorated(False)   # sin min/max/close del WM; los botones están adentro
+    dlg.get_style_context().add_class("cc-dialog")
     dlg.add_buttons("Cancelar" if ES else "Cancel", Gtk.ResponseType.CANCEL,
                     "Abrir" if ES else "Open", Gtk.ResponseType.OK)
     box = dlg.get_content_area()
@@ -843,6 +934,204 @@ def _build_hb_css():
     b" background:" + THEME["line"].encode() + b";"
     b" min-height:1px;margin:4px 2px;"
     b"}"
+    # ---- Modales embebidos en Gtk.Overlay (snippets, switcher, help, etc) ----
+    # Backdrop transparente que oscurece la app detras del panel.
+    b".cc-modal-backdrop{"
+    b" background:rgba(0,0,0,0.55);"
+    b"}"
+    # Todos los paneles (Frame widget) comparten este look base — bg del tema,
+    # borde de linea, esquinas redondeadas, sombra profunda.
+    b".cc-modal-panel{"
+    b" background:" + THEME["bg"].encode() + b";"
+    b" color:" + THEME["text"].encode() + b";"
+    b" border:1px solid " + THEME["line"].encode() + b";"
+    b" border-radius:12px;"
+    b" box-shadow:0 24px 70px rgba(0,0,0,.55);"
+    b"}"
+    b".cc-modal-panel > border{"
+    b" border:0;"
+    b"}"
+    # Estilo unificado para entry y button DENTRO de cualquier modal panel.
+    b".cc-modal-panel entry{"
+    b" background:" + THEME["bar"].encode() + b";"
+    b" color:" + THEME["text"].encode() + b";"
+    b" border:1px solid " + THEME["line"].encode() + b";"
+    b" border-radius:6px;padding:6px 10px;"
+    b" caret-color:" + THEME["brand"].encode() + b";"
+    b"}"
+    b".cc-modal-panel entry:focus{"
+    b" border-color:" + THEME["brand"].encode() + b";"
+    b" outline:none;box-shadow:none;"
+    b"}"
+    b".cc-modal-panel entry selection{"
+    b" background:" + THEME["line"].encode() + b";color:" + THEME["text"].encode() + b";"
+    b"}"
+    b".cc-modal-panel button{"
+    b" background:" + THEME["bar"].encode() + b";background-image:none;"
+    b" color:" + THEME["text"].encode() + b";"
+    b" border:1px solid " + THEME["line"].encode() + b";"
+    b" border-radius:6px;padding:7px 18px;box-shadow:none;text-shadow:none;"
+    b" font-family:'JetBrainsMono Nerd Font Mono',monospace;font-size:12px;"
+    b" margin:0 4px;"
+    b"}"
+    b".cc-modal-panel button:hover{"
+    b" border-color:" + THEME["brand"].encode() + b";"
+    b"}"
+    b".cc-modal-panel button:focus{"
+    b" outline:none;box-shadow:none;border-color:" + THEME["brand"].encode() + b";"
+    b"}"
+    b".cc-modal-panel list,.cc-modal-panel list row{"
+    b" background:transparent;border:0;"
+    b"}"
+    b".cc-modal-panel list row:hover{"
+    b" background:" + THEME["bar"].encode() + b";border-radius:6px;"
+    b"}"
+    b".cc-modal-panel list row:selected{"
+    b" background:" + THEME["bar"].encode() + b";"
+    b" color:" + THEME["text"].encode() + b";"
+    b" border-radius:6px;"
+    b"}"
+    b".cc-modal-panel label{color:" + THEME["text"].encode() + b";}"
+    b".cc-modal-panel label.dim-label{color:" + THEME["dim"].encode() + b";}"
+    b".cc-modal-panel label.primary{font-size:14px;font-weight:600;}"
+    b".cc-modal-panel scrollbar{background:transparent;}"
+    b".cc-modal-panel scrollbar slider{"
+    b" background:" + THEME["line"].encode() + b";"
+    b" border-radius:6px;min-width:6px;min-height:6px;"
+    b"}"
+    # El panel es un Gtk.Frame; adwaita lo pinta blanco por default.
+    b".cc-snip-dialog,.cc-snip-dialog frame,.cc-snip-dialog .background,"
+    b".cc-snip-dialog dialog{"
+    b" background:" + THEME["bg"].encode() + b";"
+    b" color:" + THEME["text"].encode() + b";"
+    b" border:1px solid " + THEME["line"].encode() + b";"
+    b" border-radius:10px;"
+    b" box-shadow:0 20px 60px rgba(0,0,0,.45);"
+    b"}"
+    b".cc-snip-dialog box,.cc-snip-dialog paned,"
+    b".cc-snip-dialog scrolledwindow,.cc-snip-dialog viewport{"
+    b" background:transparent;color:" + THEME["text"].encode() + b";"
+    b"}"
+    b".cc-snip-dialog label{color:" + THEME["text"].encode() + b";}"
+    b".cc-snip-dialog label.dim-label{color:" + THEME["dim"].encode() + b";}"
+    b".cc-snip-dialog entry{"
+    b" background:" + THEME["bar"].encode() + b";"
+    b" color:" + THEME["text"].encode() + b";"
+    b" border:1px solid " + THEME["line"].encode() + b";"
+    b" border-radius:6px;padding:6px 10px;"
+    b" caret-color:" + THEME["brand"].encode() + b";"
+    b"}"
+    b".cc-snip-dialog entry:focus{border-color:" + THEME["brand"].encode() + b";box-shadow:none;outline:none;}"
+    b".cc-snip-dialog entry selection{background:" + THEME["line"].encode() + b";color:" + THEME["text"].encode() + b";}"
+    b".cc-snip-dialog button{"
+    b" background:" + THEME["bar"].encode() + b";background-image:none;"
+    b" color:" + THEME["text"].encode() + b";"
+    b" border:1px solid " + THEME["line"].encode() + b";"
+    b" border-radius:6px;padding:5px 10px;box-shadow:none;text-shadow:none;"
+    b"}"
+    b".cc-snip-dialog button:hover{border-color:" + THEME["brand"].encode() + b";color:" + THEME["text"].encode() + b";}"
+    b".cc-snip-dialog button:focus{outline:none;box-shadow:none;}"
+    b".cc-snip-dialog list,.cc-snip-dialog list row,"
+    b".cc-snip-dialog list row:not(:selected){"
+    b" background:transparent;color:" + THEME["text"].encode() + b";"
+    b" border:0;"
+    b"}"
+    b".cc-snip-dialog list row:hover{background:" + THEME["bar"].encode() + b";}"
+    b".cc-snip-dialog list row:selected{"
+    b" background:" + THEME["bar"].encode() + b";"
+    b" color:" + THEME["text"].encode() + b";"
+    b" border-left:2px solid " + THEME["brand"].encode() + b";"
+    b"}"
+    b".cc-snip-dialog textview,.cc-snip-dialog textview text{"
+    b" background:" + THEME["bar"].encode() + b";"
+    b" color:" + THEME["text"].encode() + b";"
+    b"}"
+    b".cc-snip-dialog textview text selection{"
+    b" background:" + THEME["line"].encode() + b";color:" + THEME["text"].encode() + b";"
+    b"}"
+    b".cc-snip-dialog scrollbar{background:transparent;}"
+    b".cc-snip-dialog scrollbar slider{"
+    b" background:" + THEME["line"].encode() + b";border-radius:6px;min-width:6px;min-height:6px;"
+    b"}"
+    b".cc-snip-dialog .cc-snip-status{font-size:11px;letter-spacing:.06em;}"
+    b".cc-snip-dialog .cc-snip-status.cc-snip-status-ok{color:" + THEME["dim"].encode() + b";}"
+    b".cc-snip-dialog .cc-snip-status.cc-snip-status-err{color:" + THEME["cursor"].encode() + b";}"
+    b".cc-snip-dialog .cc-snip-hdr{border-bottom:1px solid " + THEME["line"].encode() + b";}"
+    b".cc-snip-dialog .cc-snip-title{"
+    b" font-family:'JetBrainsMono Nerd Font Mono',monospace;"
+    b" font-weight:800;font-size:11.5px;letter-spacing:.18em;"
+    b" color:" + THEME["dim"].encode() + b";"
+    b"}"
+    b".cc-snip-dialog .cc-snip-close{"
+    b" background:none;background-image:none;border:0;box-shadow:none;"
+    b" color:" + THEME["dim"].encode() + b";"
+    b" min-height:24px;min-width:24px;padding:2px 6px;border-radius:5px;"
+    b"}"
+    b".cc-snip-dialog .cc-snip-close:hover{"
+    b" color:#FFFFFF;background:alpha(#E82D3C, 0.65);"
+    b"}"
+    # ---- Dialogos genericos (.cc-dialog) — MessageDialog + Gtk.Dialog ----
+    # Todo lo que muestre new_session_dialog, rename_tab, close_tab confirm.
+    # Sin esto salen con Adwaita default (fondo claro, boton "Yes/No" gris).
+    b".cc-dialog,.cc-dialog window,.cc-dialog messagedialog,"
+    b".cc-dialog .background,.cc-dialog .dialog-vbox{"
+    b" background:" + THEME["bg"].encode() + b";"
+    b" color:" + THEME["text"].encode() + b";"
+    b"}"
+    b".cc-dialog,.cc-dialog decoration{"
+    b" border:1px solid " + THEME["line"].encode() + b";"
+    b" border-radius:10px;"
+    b" box-shadow:0 20px 60px rgba(0,0,0,.45);"
+    b"}"
+    b".cc-dialog box,.cc-dialog .horizontal,.cc-dialog .vertical,"
+    b".cc-dialog .dialog-action-box,.cc-dialog .action-area,"
+    b".cc-dialog headerbar,.cc-dialog scrolledwindow,.cc-dialog viewport{"
+    b" background:transparent;color:" + THEME["text"].encode() + b";"
+    b"}"
+    b".cc-dialog label{color:" + THEME["text"].encode() + b";}"
+    b".cc-dialog label.dim-error{color:" + THEME["cursor"].encode() + b";font-size:11px;}"
+    b".cc-dialog entry{"
+    b" background:" + THEME["bar"].encode() + b";"
+    b" color:" + THEME["text"].encode() + b";"
+    b" border:1px solid " + THEME["line"].encode() + b";"
+    b" border-radius:6px;padding:6px 10px;"
+    b" caret-color:" + THEME["brand"].encode() + b";"
+    b"}"
+    b".cc-dialog entry:focus{border-color:" + THEME["brand"].encode() + b";outline:none;box-shadow:none;}"
+    b".cc-dialog entry selection{background:" + THEME["line"].encode() + b";color:" + THEME["text"].encode() + b";}"
+    b".cc-dialog button{"
+    b" background:" + THEME["bar"].encode() + b";background-image:none;"
+    b" color:" + THEME["text"].encode() + b";"
+    b" border:1px solid " + THEME["line"].encode() + b";"
+    b" border-radius:6px;padding:7px 18px;box-shadow:none;text-shadow:none;"
+    b" font-family:'JetBrainsMono Nerd Font Mono',monospace;font-size:12px;"
+    b" margin:0 8px;"
+    b"}"
+    b".cc-dialog button:hover{border-color:" + THEME["brand"].encode() + b";}"
+    b".cc-dialog button:focus{outline:none;box-shadow:none;border-color:" + THEME["brand"].encode() + b";}"
+    b".cc-dialog button.suggested-action{"
+    b" background:" + THEME["brand"].encode() + b";"
+    b" color:" + THEME["bg"].encode() + b";"
+    b" border-color:" + THEME["brand"].encode() + b";"
+    b"}"
+    # `.default` es CSS class en GTK3 (no pseudo-class). Sutil border-color
+    # para senalar el default sin repintar todo con brand ("No" en naranja
+    # confunde visualmente).
+    b".cc-dialog button.default{"
+    b" border-color:" + THEME["brand"].encode() + b";"
+    b"}"
+    # MessageDialog: iconito y textos primarios/secundarios
+    b".cc-dialog .message-area,.cc-dialog .dialog-vbox > box{"
+    b" background:transparent;padding:14px 18px;"
+    b"}"
+    # Spacing entre botones va como margin lateral de cada boton (arriba).
+    # GTK3 CSS no soporta `border-spacing` en GtkBox, y `-GtkBox-spacing` es
+    # deprecated. margin:0 8px por boton = 16px de gap efectivo entre pares.
+    b".cc-dialog .dialog-action-box,.cc-dialog .action-area{"
+    b" border-top:1px solid " + THEME["line"].encode() + b";"
+    b" padding:10px 12px;"
+    b"}"
+    b".cc-dialog image{color:" + THEME["dim"].encode() + b";-gtk-icon-transform:scale(0.85);}"
 )
 
 _HB_CSS.load_from_data(_build_hb_css())
@@ -1157,23 +1446,96 @@ def poll_state_loop():
         time.sleep(3)
 
 
+def _confirm_must_answer(primary, secondary, yes_label, no_label):
+    """Confirm dialog bloqueante — solo cierra con Yes o No. Embebido en
+    modal_overlay con dismissable=False: backdrop y ESC son no-op. GLib.MainLoop
+    interno para retornar sincronicamente."""
+    result = {"value": False, "finished": False}
+    loop = GLib.MainLoop()
+
+    # Panel como Frame widget (no toplevel).
+    panel = Gtk.Frame()
+    panel.set_size_request(480, -1)
+    panel.set_halign(Gtk.Align.CENTER); panel.set_valign(Gtk.Align.CENTER)
+    panel.get_style_context().add_class("cc-snip-dialog")  # mismo look que snippets
+
+    root = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=0)
+    panel.add(root)
+
+    body = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=14)
+    body.set_margin_top(20); body.set_margin_bottom(16)
+    body.set_margin_start(22); body.set_margin_end(22)
+    icon = Gtk.Image.new_from_icon_name("dialog-question-symbolic", Gtk.IconSize.DIALOG)
+    body.pack_start(icon, False, False, 0)
+    txt = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6)
+    l1 = Gtk.Label(label=primary, xalign=0); l1.set_line_wrap(True)
+    l1.get_style_context().add_class("primary")
+    l2 = Gtk.Label(label=secondary, xalign=0); l2.set_line_wrap(True)
+    l2.get_style_context().add_class("dim-label")
+    txt.pack_start(l1, False, False, 0)
+    txt.pack_start(l2, False, False, 0)
+    body.pack_start(txt, True, True, 0)
+    root.pack_start(body, True, True, 0)
+
+    actions = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
+    actions.set_margin_top(6); actions.set_margin_bottom(14)
+    actions.set_margin_start(16); actions.set_margin_end(16)
+    actions.set_homogeneous(True)
+    no_btn = Gtk.Button(label=no_label)
+    yes_btn = Gtk.Button(label=yes_label)
+    actions.pack_start(no_btn, True, True, 0)
+    actions.pack_start(yes_btn, True, True, 0)
+    root.pack_start(actions, False, False, 0)
+
+    close_ref = [None]
+    def _finish(value):
+        if result["finished"]:
+            return
+        result["value"] = value
+        result["finished"] = True
+        if close_ref[0]:
+            close_ref[0]()
+        try: loop.quit()
+        except Exception: pass
+
+    no_btn.connect("clicked", lambda *_: _finish(False))
+    yes_btn.connect("clicked", lambda *_: _finish(True))
+
+    # Y/N keyboard shortcuts (must-answer no permite ESC).
+    def on_key(ev):
+        if ev.keyval in (Gdk.KEY_y, Gdk.KEY_Y, Gdk.KEY_Return, Gdk.KEY_KP_Enter):
+            _finish(True); return True
+        if ev.keyval in (Gdk.KEY_n, Gdk.KEY_N):
+            _finish(False); return True
+        return False
+
+    close_ref[0] = show_modal_panel(panel, on_key=on_key, dismissable=False)
+    yes_btn.grab_focus()
+    loop.run()
+    return bool(result["value"])
+
+
 def close_tab(key):
     # Confirmar SIEMPRE: cerrar sin querer era demasiado facil. La sesion tmux
     # sigue viva y ademas queda en "Recientes (cerradas)" del tablero.
     box = tabs.get(key)
     label = getattr(box, "_label", key) if box is not None else key
-    d = Gtk.MessageDialog(transient_for=win, modal=True,
-                          message_type=Gtk.MessageType.QUESTION,
-                          buttons=Gtk.ButtonsType.YES_NO,
-                          text=(f"¿Cerrar la pestaña «{label}»?" if ES
-                                else f"Close tab “{label}”?"))
-    d.format_secondary_text(
-        "La sesión tmux sigue viva; puedes recuperarla en Recientes del tablero."
-        if ES else
-        "The tmux session stays alive; recover it from the dashboard's Recents.")
-    resp = d.run()
-    d.destroy()
-    if resp != Gtk.ResponseType.YES:
+    # NO usamos Gtk.MessageDialog + d.run() — en WSLg el compositor destruia
+    # la ventana con click afuera (bypassing modal+deletable+delete-event) y
+    # d.run() retornaba NONE dejando la logica en estado indefinido.
+    # Alternativa: Gtk.Window custom + GLib.MainLoop propio + boton YES/NO.
+    # Al no ser Gtk.Dialog, no hay response signal ni handling default del WM.
+    snip_log(f"close_tab confirm for key={key} label={label}")
+    resp = _confirm_must_answer(
+        primary=(f"¿Cerrar la pestaña «{label}»?" if ES else f"Close tab “{label}”?"),
+        secondary=("La sesión tmux sigue viva; puedes recuperarla en Recientes del tablero."
+                   if ES else
+                   "The tmux session stays alive; recover it from the dashboard's Recents."),
+        yes_label=("Sí" if ES else "Yes"),
+        no_label=("No" if ES else "No"),
+    )
+    snip_log(f"close_tab confirm resp={resp}")
+    if not resp:
         return
     archive_tab(key, reason="closed")
     box = tabs.pop(key, None)
@@ -1434,19 +1796,17 @@ def close_on_click_outside(w):
 
 def open_switcher(*_):
     """Ctrl+K: saltar a cualquier pestana/sesion escribiendo 2-3 letras.
-    Las que ESPERAN tu respuesta salen arriba; Enter va a la primera."""
-    if getattr(open_switcher, "_win", None):
-        open_switcher._win.present()
-        return
-    w = Gtk.Window(type=Gtk.WindowType.TOPLEVEL)
-    w.set_transient_for(win)
-    # NO modal: modal traga los clicks de afuera y nunca llega focus-out,
-    # asi que no podria cerrarse al hacer click fuera.
-    w.set_modal(False)
-    w.set_decorated(False)
-    w.set_position(Gtk.WindowPosition.CENTER_ON_PARENT)
-    w.set_default_size(560, -1)
+    Las que ESPERAN tu respuesta salen arriba; Enter va a la primera.
+    Panel embebido en modal_overlay."""
+    # Panel como Frame widget (no toplevel).
+    w = Gtk.Frame()
+    w.set_size_request(560, -1)
+    w.set_halign(Gtk.Align.CENTER); w.set_valign(Gtk.Align.CENTER)
     w.get_style_context().add_class("switcher")
+    close_ref = [None]
+    def _close():
+        if close_ref[0]:
+            close_ref[0]()
     v = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
     v.set_property("margin", 12)
     entry = Gtk.Entry()
@@ -1511,7 +1871,7 @@ def open_switcher(*_):
     def go(row):
         for r, key, _is_open in rows:
             if r is row:
-                w.destroy()
+                _close()
                 open_tab(key, "claude")
                 return
 
@@ -1531,35 +1891,30 @@ def open_switcher(*_):
         if rows:
             lb.select_row(rows[idx][0])
 
-    def on_sw_key(_w, ev):
-        if ev.keyval == Gdk.KEY_Escape:
-            w.destroy()
-            return True
+    # on_key handler para el switcher — retorna True si consume la tecla.
+    # ESC ya lo maneja show_modal_panel; los demas son navegacion propia.
+    def on_sw_key(ev):
         if ev.keyval in (Gdk.KEY_Return, Gdk.KEY_KP_Enter):
             sel = lb.get_selected_row()
             if sel:
                 go(sel)
             return True
         if ev.keyval == Gdk.KEY_Down:
-            move_sel(1)
-            return True
+            move_sel(1); return True
         if ev.keyval == Gdk.KEY_Up:
-            move_sel(-1)
-            return True
-        if ev.keyval in (Gdk.KEY_Delete, Gdk.KEY_BackSpace):
+            move_sel(-1); return True
+        if ev.keyval in (Gdk.KEY_Delete, Gdk.KEY_BackSpace) and entry.get_text() == "":
             return close_selected()
         if ev.state & Gdk.ModifierType.CONTROL_MASK and ev.keyval in (Gdk.KEY_w, Gdk.KEY_W):
             return close_selected()
+        # Cuando el usuario tipea texto normal, redirigimos al entry si no
+        # tiene foco todavia (por si el key llega al win antes que al entry).
         return False
 
     lb.connect("row-activated", lambda _l, row: go(row))
     entry.connect("changed", refill)
-    w.connect("key-press-event", on_sw_key)
-    close_on_click_outside(w)
-    w.connect("destroy", lambda *_: setattr(open_switcher, "_win", None))
-    open_switcher._win = w
     refill()
-    w.show_all()
+    close_ref[0] = show_modal_panel(w, on_key=on_sw_key)
     entry.grab_focus()
 
 
@@ -1574,16 +1929,14 @@ def tab_page_label(page):
 
 
 def open_tabs_overview(*_):
-    if getattr(open_tabs_overview, "_win", None):
-        open_tabs_overview._win.present()
-        return
-    w = Gtk.Window(type=Gtk.WindowType.TOPLEVEL)
-    w.set_transient_for(win)
-    w.set_modal(False)
-    w.set_decorated(False)
-    w.set_position(Gtk.WindowPosition.CENTER_ON_PARENT)
-    w.set_default_size(500, 480)
+    w = Gtk.Frame()
+    w.set_size_request(500, 480)
+    w.set_halign(Gtk.Align.CENTER); w.set_valign(Gtk.Align.CENTER)
     w.get_style_context().add_class("switcher")
+    close_ref = [None]
+    def _close():
+        if close_ref[0]:
+            close_ref[0]()
     v = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
     v.set_property("margin", 12)
     title = Gtk.Label(label="Tabs abiertas" if ES else "Open tabs", xalign=0)
@@ -1600,7 +1953,7 @@ def open_tabs_overview(*_):
     rows = []
 
     def focus_page(page):
-        w.destroy()
+        _close()
         idx = nb.page_num(page)
         if idx >= 0:
             nb.set_current_page(nb.page_num(page))
@@ -1650,19 +2003,9 @@ def open_tabs_overview(*_):
                 focus_page(page)
                 return
 
-    def on_key(_w, ev):
-        if ev.keyval == Gdk.KEY_Escape:
-            w.destroy()
-            return True
-        return False
-
     lb.connect("row-activated", go)
-    w.connect("key-press-event", on_key)
-    close_on_click_outside(w)
-    w.connect("destroy", lambda *_: setattr(open_tabs_overview, "_win", None))
-    open_tabs_overview._win = w
     refill()
-    w.show_all()
+    close_ref[0] = show_modal_panel(w)
 
 
 def rename_tab(key):
@@ -1671,6 +2014,7 @@ def rename_tab(key):
         return
     dlg = Gtk.Dialog(title="Renombrar pestana" if ES else "Rename tab", transient_for=win)
     dlg.set_decorated(False)
+    dlg.get_style_context().add_class("cc-dialog")
     dlg.add_buttons("Cancelar" if ES else "Cancel", Gtk.ResponseType.CANCEL,
                     "Renombrar" if ES else "Rename", Gtk.ResponseType.OK)
     area = dlg.get_content_area()
@@ -1800,6 +2144,10 @@ _find = _icon_btn(
     "search",
     "Saltar a una pestana/sesion (Ctrl+K)" if ES else "Jump to a tab/session (Ctrl+K)",
     open_switcher)
+_snippets = _icon_btn(
+    "snippet",
+    "Snippets guardados (Ctrl+Shift+K)" if ES else "Saved Snippets (Ctrl+Shift+K)",
+    lambda *_: open_snippets_dialog())
 def show_new_tab_menu(btn):
     """Menú del botón '+': elegir motor de terminal.
     VTE (por defecto) es el estable; xterm.js es el experimental con ligas."""
@@ -1857,6 +2205,7 @@ _headerbar.pack_end(_hb_sep)
 # Los 5 action buttons (más a la izquierda).
 _headerbar.pack_end(_help)
 _headerbar.pack_end(_plus)
+_headerbar.pack_end(_snippets)
 _headerbar.pack_end(_find)
 _headerbar.pack_end(_tabs)
 _headerbar.pack_end(_copy)
@@ -1989,12 +2338,383 @@ _hb_evbox.connect("button-press-event", _hb_press)
 _root = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
 _root.pack_start(_hb_evbox, False, False, 0)
 _root.pack_start(paned, True, True, 0)
-win.add(_root)
+
+# Overlay wrapper — permite superponer modales encima del contenido principal.
+# Todos los modales (snippets, switcher, tabs overview, help) usan este overlay
+# via show_modal_panel(). Sin top-level Gtk.Window separados = sin pointer
+# grabs, sin quirks del compositor Wayland/WSLg.
+modal_overlay = Gtk.Overlay()
+modal_overlay.add(_root)
+win.add(modal_overlay)
+
+
+def show_modal_panel(panel, on_key=None, on_close=None, dismissable=True):
+    """Muestra `panel` como widget overlay con backdrop transparente. Retorna
+    el callback de close. Solo un modal a la vez — si ya hay uno, lo cierra.
+
+    - dismissable=True (default): click en backdrop cierra, ESC cierra.
+    - dismissable=False (must-answer): backdrop y ESC NO cierran. Solo se
+      cierra via el callback retornado.
+    - on_key(ev): callback opcional, retorna True para consumir la tecla
+      (aunque no sea dismissable, on_key sigue funcionando).
+    - on_close(): callback opcional post-cleanup.
+    """
+    if getattr(show_modal_panel, "_current", None) is not None:
+        show_modal_panel._current["close"]()
+
+    # Todos los paneles reciben la class base para el look unificado
+    # (bg, border, radius, shadow del tema).
+    panel.get_style_context().add_class("cc-modal-panel")
+
+    def _close():
+        cur = getattr(show_modal_panel, "_current", None)
+        if cur is None:
+            return
+        show_modal_panel._current = None
+        try: modal_overlay.remove(cur["backdrop"])
+        except Exception: pass
+        try: modal_overlay.remove(cur["panel"])
+        except Exception: pass
+        try: win.disconnect(cur["key_handler"])
+        except Exception: pass
+        if cur["on_close"]:
+            try: cur["on_close"]()
+            except Exception: pass
+        t = cur_term()
+        if t is not None:
+            try: t.grab_focus()
+            except Exception: pass
+
+    backdrop = Gtk.EventBox()
+    backdrop.set_visible_window(True)
+    backdrop.set_halign(Gtk.Align.FILL); backdrop.set_valign(Gtk.Align.FILL)
+    backdrop.set_hexpand(True); backdrop.set_vexpand(True)
+    backdrop.get_style_context().add_class("cc-modal-backdrop")
+    backdrop.add_events(Gdk.EventMask.BUTTON_PRESS_MASK)
+    # Backdrop siempre "come" el click (impide que llegue al contenido detras)
+    # pero solo cierra si el modal es dismissable.
+    def _on_backdrop_press(*_):
+        if dismissable:
+            _close()
+        return True
+    backdrop.connect("button-press-event", _on_backdrop_press)
+
+    def _key_handler(_w, ev):
+        if on_key and on_key(ev):
+            return True
+        if dismissable and ev.keyval == Gdk.KEY_Escape:
+            _close()
+            return True
+        return False
+    kh = win.connect("key-press-event", _key_handler)
+
+    modal_overlay.add_overlay(backdrop)
+    modal_overlay.add_overlay(panel)
+    modal_overlay.show_all()
+
+    show_modal_panel._current = {
+        "panel": panel, "backdrop": backdrop, "key_handler": kh,
+        "on_close": on_close, "close": _close,
+    }
+    return _close
 
 
 def cur_term():
     page = nb.get_nth_page(nb.get_current_page())
     return getattr(page, "_term", None)
+
+
+class SnippetsDialog(Gtk.Frame):
+    """List + preview + Send/Edit/Delete/New. Panel embebido en el Gtk.Overlay
+    de la main window — NO es un top-level Window separado.
+
+    Esto elimina toda la complejidad Wayland/WSLg que traia el enfoque anterior:
+    pointer grabs no confiables, coord lies del compositor, WSLg zombies,
+    VTE/WebKit consumiendo eventos, focus routing weird. Como widget hijo del
+    Overlay, el click-outside es trivial: un backdrop transparente hermano
+    captura los clicks. Gtk se encarga de todo el routing correctamente."""
+
+    def __init__(self, get_active_session, on_close):
+        super().__init__()
+        self.set_size_request(720, 520)
+        self.set_halign(Gtk.Align.CENTER)
+        self.set_valign(Gtk.Align.CENTER)
+        self.get_style_context().add_class("cc-snip-dialog")
+        self._get_session = get_active_session
+        self._on_close_cb = on_close  # callback del owner para destruir el overlay
+        self._items = snip_load()
+        self._selected = None
+        self._closing = False
+
+        # Root box del contenido interno del panel.
+        root = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=0)
+        self.add(root)
+
+        # Header con título + botón X. La X es el escape hatch bulletproof
+        # cuando cualquier otro mecanismo de cierre falla en WSLg raro.
+        hdr = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
+        hdr.set_margin_top(8); hdr.set_margin_bottom(6)
+        hdr.set_margin_start(12); hdr.set_margin_end(6)
+        hdr.get_style_context().add_class("cc-snip-hdr")
+        title = Gtk.Label(label="SNIPPETS", xalign=0)
+        title.get_style_context().add_class("cc-snip-title")
+        hdr.pack_start(title, True, True, 0)
+        close_btn = Gtk.Button()
+        close_x = os.path.join(_ICONS_DIR, "close.svg")
+        if os.path.isfile(close_x):
+            close_btn.set_image(Gtk.Image.new_from_pixbuf(
+                GdkPixbuf.Pixbuf.new_from_file_at_size(close_x, 14, 14)))
+            close_btn.set_always_show_image(True)
+        else:
+            close_btn.set_label("×")
+        close_btn.set_relief(Gtk.ReliefStyle.NONE)
+        close_btn.get_style_context().add_class("cc-snip-close")
+        close_btn.set_tooltip_text("Cerrar (ESC)" if ES else "Close (ESC)")
+        close_btn.connect("clicked", lambda *_: self._close())
+        hdr.pack_end(close_btn, False, False, 0)
+        root.pack_start(hdr, False, False, 0)
+
+        paned = Gtk.Paned(orientation=Gtk.Orientation.HORIZONTAL)
+        paned.set_position(260)
+        root.pack_start(paned, True, True, 0)
+
+        # Barra de status ephemeral abajo — inline feedback de Send.
+        self._status = Gtk.Label(label="", xalign=0)
+        self._status.set_margin_top(4); self._status.set_margin_bottom(6)
+        self._status.set_margin_start(12); self._status.set_margin_end(12)
+        self._status.get_style_context().add_class("cc-snip-status")
+        root.pack_start(self._status, False, False, 0)
+        self._status_timer = None
+
+        # Left column: search + list + new
+        left = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6)
+        left.set_margin_top(8); left.set_margin_bottom(8)
+        left.set_margin_start(8); left.set_margin_end(8)
+        self._q = Gtk.Entry()
+        self._q.set_placeholder_text("buscar...")
+        self._q.connect("changed", lambda *_: self._render_list())
+        left.pack_start(self._q, False, False, 0)
+        self._list = Gtk.ListBox()
+        self._list.set_selection_mode(Gtk.SelectionMode.SINGLE)
+        self._list.connect("row-selected", self._on_row)
+        scroll = Gtk.ScrolledWindow()
+        scroll.set_vexpand(True)
+        scroll.add(self._list)
+        left.pack_start(scroll, True, True, 0)
+        new_btn = Gtk.Button(label="+ nuevo")
+        new_btn.connect("clicked", lambda *_: self._edit(None))
+        left.pack_start(new_btn, False, False, 0)
+        paned.pack1(left, resize=False, shrink=False)
+
+        # Right column: preview / editor
+        self._right = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
+        self._right.set_margin_top(8); self._right.set_margin_bottom(8)
+        self._right.set_margin_start(8); self._right.set_margin_end(8)
+        paned.pack2(self._right, resize=True, shrink=False)
+
+        self._render_list()
+        self._render_preview()
+        self.show_all()
+
+    def _filter(self, items, q):
+        q = (q or "").strip().lower()
+        if not q:
+            return sorted(items, key=lambda i: -int(i.get("updated_at") or 0))
+        scored = []
+        for it in items:
+            name = (it.get("name") or "").lower()
+            tags = " ".join(it.get("tags") or []).lower()
+            body = (it.get("body") or "").lower()
+            score = 3 if q in name else 2 if q in tags else 1 if q in body else 0
+            if score:
+                scored.append((score, int(it.get("updated_at") or 0), it))
+        scored.sort(key=lambda x: (-x[0], -x[1]))
+        return [x[2] for x in scored]
+
+    def _render_list(self):
+        for child in self._list.get_children():
+            self._list.remove(child)
+        for it in self._filter(self._items, self._q.get_text()):
+            row = Gtk.ListBoxRow()
+            row.snippet = it
+            row_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=2)
+            row_box.set_margin_top(4); row_box.set_margin_bottom(4)
+            row_box.set_margin_start(6); row_box.set_margin_end(6)
+            name = Gtk.Label(label=it["name"], xalign=0)
+            row_box.pack_start(name, False, False, 0)
+            if it.get("tags"):
+                tags = Gtk.Label(label=" · ".join(it["tags"]), xalign=0)
+                tags.get_style_context().add_class("dim-label")
+                row_box.pack_start(tags, False, False, 0)
+            row.add(row_box)
+            self._list.add(row)
+        self._list.show_all()
+
+    def _on_row(self, _lb, row):
+        self._selected = row.snippet if row is not None else None
+        self._render_preview()
+
+    def _clear_right(self):
+        for child in self._right.get_children():
+            self._right.remove(child)
+
+    def _render_preview(self):
+        self._clear_right()
+        it = self._selected
+        if not it:
+            self._right.pack_start(Gtk.Label(label="Elegí un snippet o creá uno nuevo.", xalign=0),
+                                   False, False, 0)
+            self._right.show_all()
+            return
+        title = Gtk.Label(label=it["name"], xalign=0)
+        title.get_style_context().add_class("title-4")
+        self._right.pack_start(title, False, False, 0)
+        if it.get("tags"):
+            self._right.pack_start(Gtk.Label(label=" · ".join(it["tags"]), xalign=0),
+                                   False, False, 0)
+        tv = Gtk.TextView()
+        tv.set_editable(False)
+        tv.set_monospace(True)
+        tv.set_wrap_mode(Gtk.WrapMode.WORD_CHAR)
+        tv.get_buffer().set_text(it["body"])
+        scroll = Gtk.ScrolledWindow()
+        scroll.set_vexpand(True)
+        scroll.add(tv)
+        self._right.pack_start(scroll, True, True, 0)
+
+        actions = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
+        send = Gtk.Button(label="Send"); send.connect("clicked", lambda *_: self._send(it))
+        edit = Gtk.Button(label="Edit"); edit.connect("clicked", lambda *_: self._edit(it))
+        delete = Gtk.Button(label="Delete"); delete.connect("clicked", lambda *_: self._delete(it))
+        for b in (send, edit, delete):
+            actions.pack_start(b, False, False, 0)
+        self._right.pack_start(actions, False, False, 0)
+        self._right.show_all()
+
+    def _edit(self, it):
+        self._clear_right()
+        name = Gtk.Entry()
+        name.set_text(it["name"] if it else "")
+        name.set_placeholder_text("nombre")
+        tags = Gtk.Entry()
+        tags.set_text(", ".join(it["tags"]) if it and it.get("tags") else "")
+        tags.set_placeholder_text("tags coma-separados")
+        body = Gtk.TextView()
+        body.set_monospace(True)
+        body.set_wrap_mode(Gtk.WrapMode.WORD_CHAR)
+        body.get_buffer().set_text(it["body"] if it else "")
+        scroll = Gtk.ScrolledWindow()
+        scroll.set_vexpand(True)
+        scroll.add(body)
+
+        actions = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
+        save = Gtk.Button(label="Save")
+        cancel = Gtk.Button(label="Cancel")
+        actions.pack_start(save, False, False, 0)
+        actions.pack_start(cancel, False, False, 0)
+
+        for w in (name, tags, scroll, actions):
+            self._right.pack_start(w, w is scroll, w is scroll, 0)
+        self._right.show_all()
+        name.grab_focus()
+
+        cancel.connect("clicked", lambda *_: self._render_preview())
+        save.connect("clicked", lambda *_: self._save_from_editor(it, name, tags, body))
+
+    def _save_from_editor(self, it, name_w, tags_w, body_w):
+        name = name_w.get_text().strip()
+        tags = [t.strip() for t in tags_w.get_text().split(",") if t.strip()]
+        buf = body_w.get_buffer()
+        body = buf.get_text(buf.get_start_iter(), buf.get_end_iter(), False)
+        if not name or not body.strip():
+            return
+        now = int(time.time())
+        if it:
+            for i, x in enumerate(self._items):
+                if x.get("id") == it["id"]:
+                    self._items[i] = {**x, "name": name, "body": body, "tags": tags, "updated_at": now}
+                    self._selected = self._items[i]
+                    break
+        else:
+            new_item = {"id": secrets.token_hex(8), "name": name, "body": body,
+                        "tags": tags, "updated_at": now}
+            self._items.insert(0, new_item)
+            self._selected = new_item
+        snip_save(self._items)
+        self._render_list()
+        self._render_preview()
+
+    def _delete(self, it):
+        self._items = [x for x in self._items if x.get("id") != it.get("id")]
+        snip_save(self._items)
+        self._selected = None
+        self._render_list()
+        self._render_preview()
+
+    def _close(self, *_):
+        """Cierre idempotente. Delega al callback del owner que remueve el
+        panel + backdrop del Overlay. Sin GdkWindow tricks — es solo un widget."""
+        if self._closing:
+            return
+        self._closing = True
+        try:
+            self._on_close_cb()
+        except Exception:
+            pass
+
+    def _flash(self, msg, error=False):
+        """Muestra `msg` en la barra inline del dialog por 2.5s."""
+        self._status.set_text(msg)
+        ctx = self._status.get_style_context()
+        ctx.remove_class("cc-snip-status-err")
+        ctx.remove_class("cc-snip-status-ok")
+        ctx.add_class("cc-snip-status-err" if error else "cc-snip-status-ok")
+        if self._status_timer:
+            GLib.source_remove(self._status_timer)
+        def _clear():
+            self._status.set_text("")
+            self._status_timer = None
+            return False
+        self._status_timer = GLib.timeout_add(2500, _clear)
+
+    def _send(self, it):
+        sess = self._get_session()
+        if not sess:
+            self._flash("No hay sesion tmux en la pestana activa" if ES
+                        else "No tmux session in the active tab", error=True)
+            return
+        err = snip_paste(sess, it["body"])
+        if err:
+            self._flash(err, error=True)
+        else:
+            self._flash(f"Pegado en {sess}" if ES else f"Pasted into {sess}")
+
+
+def _active_snippets_session():
+    """Retorna la sesion tmux del tab activo, resolviendo por el tty del cliente
+    tmux (misma logica que copy/export). Si el tab activo es el hub o no tiene
+    session viva, devuelve cadena vacia."""
+    try:
+        term = cur_term()
+        if not term:
+            return ""
+        return term_session(term) or ""
+    except Exception:
+        return ""
+
+
+def open_snippets_dialog(*_):
+    """Muestra el panel de snippets via show_modal_panel."""
+    # Necesitamos cerrar el panel desde adentro (X button, save action).
+    # Uso una lista mutable como closure para poder actualizar close_cb
+    # despues de que show_modal_panel retorne.
+    close_ref = [None]
+    def _do_close():
+        if close_ref[0]:
+            close_ref[0]()
+    panel = SnippetsDialog(_active_snippets_session, _do_close)
+    close_ref[0] = show_modal_panel(panel)
+    panel._q.grab_focus()
 
 
 SHORTCUTS_ES = [
@@ -2079,16 +2799,14 @@ SHORTCUTS = SHORTCUTS_ES if ES else SHORTCUTS_EN
 
 
 def show_help(*_):
-    if getattr(show_help, "_win", None):
-        show_help._win.present()
-        return
-    w = Gtk.Window(title="Atajos de ComandOS" if ES else "ComandOS shortcuts")
-    w.set_transient_for(win)
-    w.set_modal(False)
-    w.set_decorated(False)
-    w.set_default_size(640, 720)
-    w.set_position(Gtk.WindowPosition.CENTER_ON_PARENT)
+    w = Gtk.Frame()
+    w.set_size_request(640, 720)
+    w.set_halign(Gtk.Align.CENTER); w.set_valign(Gtk.Align.CENTER)
     w.get_style_context().add_class("helpwin")
+    close_ref = [None]
+    def _close():
+        if close_ref[0]:
+            close_ref[0]()
     scroll = Gtk.ScrolledWindow()
     scroll.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
     outer = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=4)
@@ -2126,14 +2844,11 @@ def show_help(*_):
     scroll.add(outer)
     w.add(scroll)
 
-    def on_help_key(_w, ev):
-        if ev.keyval in (Gdk.KEY_Escape, Gdk.KEY_question, Gdk.KEY_F1):
-            w.destroy(); return True
+    def on_help_key(ev):
+        if ev.keyval in (Gdk.KEY_question, Gdk.KEY_F1):
+            _close(); return True
         return False
-    w.connect("key-press-event", on_help_key)
-    w.connect("destroy", lambda *_: setattr(show_help, "_win", None))
-    show_help._win = w
-    w.show_all()
+    close_ref[0] = show_modal_panel(w, on_key=on_help_key)
 
 
 def on_key(w, e):
@@ -2183,6 +2898,9 @@ def on_key(w, e):
         t.set_font_scale(1.0); return True
     if ctrl and not shift and e.keyval in (Gdk.KEY_k, Gdk.KEY_K):
         open_switcher(); return True
+    # CONTROL_MASK + SHIFT_MASK + Gdk.KEY_K → snippets modal
+    if ctrl and shift and e.keyval in (Gdk.KEY_k, Gdk.KEY_K):
+        open_snippets_dialog(); return True
     if ctrl and not shift and e.keyval in (Gdk.KEY_t, Gdk.KEY_T):
         new_local_tab(); return True
     if ctrl and shift and e.keyval in (Gdk.KEY_t, Gdk.KEY_T):

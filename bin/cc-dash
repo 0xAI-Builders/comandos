@@ -54,6 +54,8 @@ DASH = os.path.join(HOOKS, "dash")
 TOKEN_FILE = os.path.join(HOOKS, "dash-token")
 TABS_FILE = os.path.join(HOOKS, "app-tabs.json")
 TAB_HISTORY_FILE = os.path.join(HOOKS, "app-tabs-history.json")
+SNIPPETS_FILE = os.path.join(HOOKS, "snippets.json")
+SNIPPET_ID_RE = re.compile(r"^[a-f0-9]{16}$")
 CONF_PATH = os.path.join(HOOKS, "cc-notify.conf")
 USAGE_DB = cc_usage.usage_db_path(HOOKS)
 USAGE_ENV_FILE = os.path.join(HOOKS, "usage.env")
@@ -461,6 +463,92 @@ def write_json_file(path, data):
     os.replace(tmp, path)
 
 
+def snippet_validate(name, body, tags):
+    """Returns error string or None. Client-supplied fields only."""
+    if not isinstance(name, str) or not name.strip():
+        return "name vacio"
+    if len(name) > 80:
+        return "name demasiado largo (max 80)"
+    if not isinstance(body, str) or not body.strip():
+        return "body vacio"
+    if len(body) > 20000:
+        return "body demasiado largo (max 20000)"
+    if not isinstance(tags, list):
+        return "tags debe ser lista"
+    if len(tags) > 10:
+        return "demasiados tags (max 10)"
+    for t in tags:
+        if not isinstance(t, str) or not t.strip():
+            return "tag vacio"
+        if len(t) > 32:
+            return "tag demasiado largo (max 32)"
+    return None
+
+
+def snippet_new(name, body, tags):
+    return {
+        "id": secrets.token_hex(8),
+        "name": name.strip(),
+        "body": body,
+        "tags": [t.strip() for t in tags],
+        "updated_at": int(time.time()),
+    }
+
+
+def read_snippets():
+    raw = load_json_file(SNIPPETS_FILE, [])
+    if not isinstance(raw, list):
+        return []
+    out = []
+    for it in raw:
+        if not isinstance(it, dict):
+            continue
+        id_ = str(it.get("id", ""))
+        if not SNIPPET_ID_RE.match(id_):
+            continue
+        name = str(it.get("name", ""))
+        body = str(it.get("body", ""))
+        tags = it.get("tags") or []
+        if snippet_validate(name, body, tags if isinstance(tags, list) else []):
+            continue
+        out.append({
+            "id": id_,
+            "name": name,
+            "body": body,
+            "tags": [str(t) for t in tags],
+            "updated_at": int(it.get("updated_at") or 0),
+        })
+    return out
+
+
+def write_snippets(items):
+    write_json_file(SNIPPETS_FILE, items)
+
+
+def snippet_update(items, id_, name, body, tags):
+    now = int(time.time())
+    updated = None
+    out = []
+    for it in items:
+        if it.get("id") == id_:
+            updated = {
+                "id": id_,
+                "name": name.strip(),
+                "body": body,
+                "tags": [t.strip() for t in tags],
+                "updated_at": now,
+            }
+            out.append(updated)
+        else:
+            out.append(it)
+    return out, updated
+
+
+def snippet_delete(items, id_):
+    out = [it for it in items if it.get("id") != id_]
+    return out, len(out) != len(items)
+
+
 def read_tab_history():
     data = load_json_file(TAB_HISTORY_FILE, [])
     if not isinstance(data, list):
@@ -657,6 +745,29 @@ PANE_RE = re.compile(r"^%\d{1,7}$")
 
 def tmux(*args, timeout=5):
     return subprocess.run(["tmux", *args], capture_output=True, text=True, timeout=timeout)
+
+
+def tmux_stdin(*args, stdin=None, timeout=5):
+    return subprocess.run(["tmux", *args], input=stdin, capture_output=True,
+                          text=True, timeout=timeout)
+
+
+def snippet_paste_to_pane(pane, text, tmux_fn):
+    """Pega texto en `pane` usando bracketed paste. NUNCA envia Enter.
+
+    Secuencia: load-buffer (via stdin) → paste-buffer -p (bracketed) → delete-buffer.
+    El shell moderno (bash 4+, zsh) recibe el texto como un bloque unico y
+    espera al Enter del usuario para ejecutar."""
+    buf = "comandos-snip"
+    r = tmux_fn("load-buffer", "-b", buf, "-", stdin=text)
+    if r.returncode != 0:
+        return r.stderr.strip() or "load-buffer fallo"
+    err = None
+    r = tmux_fn("paste-buffer", "-p", "-b", buf, "-t", pane)
+    if r.returncode != 0:
+        err = r.stderr.strip() or "paste-buffer fallo"
+    tmux_fn("delete-buffer", "-b", buf)
+    return err
 
 
 def tmux_sessions():
@@ -1669,7 +1780,7 @@ class Handler(http.server.SimpleHTTPRequestHandler):
     # sw.js, manifest, iconos) NO — no revela nada (es codigo open-source) y
     # asi la PWA instala y carga sin depender de cookies en el webview movil.
     API_GET = ("/state", "/usage/state", "/opencode/models", "/events", "/conf", "/prefs", "/ssh", "/tabs",
-               "/tab-history", "/remote-state", "/remote-qr.png")
+               "/tab-history", "/remote-state", "/remote-qr.png", "/snippets")
 
     def do_GET(self):
         host = self.headers.get("Host", "")
@@ -1768,6 +1879,8 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             except FileNotFoundError:
                 pass
             return self._json(200, evs)
+        if self.path == "/snippets":
+            return self._json(200, read_snippets())
         return super().do_GET()
 
     def do_POST(self):
@@ -1984,6 +2097,47 @@ class Handler(http.server.SimpleHTTPRequestHandler):
                 return self._json(400, {"error": err})
             return self._json(200, {"ok": True, "session": sess})
 
+        if self.path == "/snippets":
+            name = str(data.get("name", ""))
+            body = str(data.get("body", ""))
+            tags = data.get("tags") or []
+            err = snippet_validate(name, body, tags)
+            if err:
+                return self._json(400, {"error": err})
+            items = read_snippets()
+            item = snippet_new(name, body, tags)
+            items.insert(0, item)
+            write_snippets(items)
+            return self._json(200, {"item": item})
+
+        if self.path == "/snippets/update":
+            id_ = str(data.get("id", ""))
+            if not SNIPPET_ID_RE.match(id_):
+                return self._json(400, {"error": "id invalido"})
+            name = str(data.get("name", ""))
+            body = str(data.get("body", ""))
+            tags = data.get("tags") or []
+            err = snippet_validate(name, body, tags)
+            if err:
+                return self._json(400, {"error": err})
+            items = read_snippets()
+            new_items, updated = snippet_update(items, id_, name, body, tags)
+            if updated is None:
+                return self._json(404, {"error": "snippet no encontrado"})
+            write_snippets(new_items)
+            return self._json(200, {"item": updated})
+
+        if self.path == "/snippets/delete":
+            id_ = str(data.get("id", ""))
+            if not SNIPPET_ID_RE.match(id_):
+                return self._json(400, {"error": "id invalido"})
+            items = read_snippets()
+            new_items, removed = snippet_delete(items, id_)
+            if not removed:
+                return self._json(404, {"error": "snippet no encontrado"})
+            write_snippets(new_items)
+            return self._json(200, {"ok": True})
+
         sess = data.get("session", "")
         if not SESSION_RE.match(sess):
             return self._json(400, {"error": "Nombre de sesion invalido"})
@@ -2089,6 +2243,19 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             if r.returncode != 0:
                 return self._json(500, {"error": r.stderr.strip() or "tmux fallo"})
             tmux("send-keys", "-t", pane, "Enter")
+            return self._json(200, {"ok": True})
+
+        if self.path == "/paste":
+            text = str(data.get("text", ""))
+            if not text.strip():
+                return self._json(400, {"error": "Texto vacio"})
+            if len(text) > 20000:
+                return self._json(400, {"error": "body demasiado largo (max 20000)"})
+            if tmux("has-session", "-t", target).returncode != 0:
+                return self._json(404, {"error": f"No hay sesion tmux '{sess}'. Levantala primero."})
+            err = snippet_paste_to_pane(pane, text, tmux_stdin)
+            if err:
+                return self._json(500, {"error": err})
             return self._json(200, {"ok": True})
 
         if self.path == "/key":

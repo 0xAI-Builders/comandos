@@ -192,3 +192,53 @@ Antes de agregar un componente nuevo:
    contenido es copiable, agregar `.selectable` o listarlo en el CSS del
    `<body>`.
 5. **Diagnóstico** — probar con los 3 temas antes de mergear.
+
+---
+
+## 9. Snippets
+
+Snippets guardan comandos shell reutilizables (one-liners y scripts multilínea)
+que se pegan en la terminal activa sin ejecutar hasta que el usuario aprieta
+Enter. Nunca corren automáticamente — esa promesa es load-bearing.
+
+### Store
+
+- Archivo: `~/.claude/hooks/snippets.json`
+- Formato: array de `{"id","name","body","tags","updated_at"}`.
+- `id`: hex de 16 caracteres, generado por el servidor (`secrets.token_hex(8)`).
+- Escritura atómica: `write_json_file` (tmp + `os.replace`).
+
+### API (cc-dash)
+
+- `GET  /snippets`               → lista completa
+- `POST /snippets`               `{name, body, tags?}` → crea, devuelve `{item}`
+- `POST /snippets/update`        `{id, name, body, tags?}` → actualiza
+- `POST /snippets/delete`        `{id}` → borra
+- `POST /paste`                  `{session, text, pane?}` → bracketed paste, **sin ejecución**
+
+### Send-vs-Paste
+
+- `POST /send` (existente): `tmux send-keys ... Enter` — ejecuta.
+- `POST /paste` (nuevo, para snippets): `tmux load-buffer` + `paste-buffer -p`
+  + `delete-buffer`. El shell buffea la entrada; el usuario decide cuándo
+  ejecutar. Es la única forma de mantener la promesa de "no auto-run" con
+  bodies multilínea.
+
+### UI
+
+- **Dashboard**: botón `snippet` en el header → modal `#dlg-snippets`
+  (720×520). Layout split: lista izq (search + items + "nuevo"), pane der
+  (preview con tags + `<pre>` selectable + acciones Send/Copy/Edit/Delete
+  + dropdown de sesión destino). `Ctrl+Shift+K` abre/cierra. Última sesión
+  destino persistida en `localStorage["snippet-last-session"]`.
+
+- **cc-app GTK**: botón `snippet` en el header (mismo SVG que dash) →
+  `SnippetsDialog` (`Gtk.Dialog` con `Gtk.Paned` de 260 + resto). Mismo
+  shortcut, misma paridad funcional. `snip_load`/`snip_save`/`snip_paste`
+  leen y escriben el mismo `snippets.json`.
+
+### Búsqueda
+
+Contains case-insensitive sobre `name + tags + body`. Ordenamiento: matches en
+`name` primero (score 3), luego `tags` (2), luego `body` (1), luego por
+`updated_at` desc.
