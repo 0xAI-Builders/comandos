@@ -113,6 +113,12 @@ def test_modals_close_on_click_outside():
     assert "show_modal_panel(w, on_key=on_sw_key)" in function_source("open_switcher")
     assert "show_modal_panel(w)" in function_source("open_tabs_overview")
     assert "dismissable=False" in function_source("_confirm_must_answer")
+    # WebKit/VTE tienen ventana nativa y se comian el click "afuera": el grab
+    # de toolkit redirige todo al panel y el press fuera del bounds cierra
+    helper = function_source("show_modal_panel")
+    assert "Gtk.grab_add(panel)" in helper
+    assert "Gtk.grab_remove" in helper
+    assert "_panel_press" in helper
 
 
 def test_tab_scroll_arrows_have_padding():

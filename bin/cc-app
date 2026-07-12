@@ -2434,6 +2434,10 @@ def show_modal_panel(panel, on_key=None, on_close=None, dismissable=True):
         if cur is None:
             return
         show_modal_panel._current = None
+        try:
+            Gtk.grab_remove(cur["panel"])
+        except Exception:
+            pass
         try: modal_overlay.remove(cur["backdrop"])
         except Exception: pass
         try: modal_overlay.remove(cur["panel"])
@@ -2471,9 +2475,28 @@ def show_modal_panel(panel, on_key=None, on_close=None, dismissable=True):
         return False
     kh = win.connect("key-press-event", _key_handler)
 
+    # Click FUERA del panel = cerrar, TAMBIEN sobre el webview/terminales:
+    # WebKit y VTE tienen ventana nativa propia y se comen el click antes de
+    # que llegue al backdrop (por eso "no se cierra con click afuera" cuando
+    # picas el tablero). Gtk.grab_add redirige TODOS los eventos del toolkit
+    # al panel; si el press cae fuera de su area, cerramos aqui mismo.
+    panel.add_events(Gdk.EventMask.BUTTON_PRESS_MASK)
+
+    def _panel_press(_w, ev):
+        alloc = panel.get_allocation()
+        outside = ev.x < 0 or ev.y < 0 or ev.x >= alloc.width or ev.y >= alloc.height
+        if outside and dismissable:
+            _close()
+            return True
+        return False
+    panel.connect("button-press-event", _panel_press)
+    # las teclas tambien se redirigen al grab: duplicar el handler en el panel
+    panel.connect("key-press-event", _key_handler)
+
     modal_overlay.add_overlay(backdrop)
     modal_overlay.add_overlay(panel)
     modal_overlay.show_all()
+    Gtk.grab_add(panel)
 
     show_modal_panel._current = {
         "panel": panel, "backdrop": backdrop, "key_handler": kh,

@@ -116,3 +116,12 @@ def test_editor_posts_to_snippets_or_update():
     body = m.group(0)
     assert "api('/snippets'" in body or 'api("/snippets"' in body
     assert "api('/snippets/update'" in body or 'api("/snippets/update"' in body
+
+def test_snip_grid_never_overflows_narrow_widths():
+    # minmax(0,1fr): sin el 0, la columna derecha se recorta en el webview
+    # de la app (~585px). Verificado a 538px: grid 536/536, pre y botones dentro.
+    html = open("dash/index.html").read()
+    assert "minmax(0,1fr)" in html.split(".snip-grid{", 1)[1].split("}", 1)[0]
+    assert "overflow-wrap:anywhere" in html
+    assert "@media (max-width:560px)" in html
+
