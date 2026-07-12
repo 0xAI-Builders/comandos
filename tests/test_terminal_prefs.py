@@ -73,6 +73,27 @@ def test_dashboard_wires_prefs_change_to_setPref():
     assert "setPref({ligatures:" in INDEX
 
 
+def test_cc_app_applies_prefs_live_to_open_terminals():
+    # Los cambios de Ajustes deben verse EN TIEMPO REAL en las terminales
+    # abiertas: apply_terminal_prefs recorre las paginas del notebook y
+    # re-aplica fuente/cursor/padding/opacidad a cada VTE.
+    assert "def apply_terminal_prefs" in CC_APP
+    body = CC_APP.split("def apply_terminal_prefs", 1)[1].split("\ndef ", 1)[0]
+    for marker in ("notebook_pages()", "set_font(", "set_cursor_shape(",
+                   "set_margin_start(", "_bg_rgba()"):
+        assert marker in body, f"apply_terminal_prefs no re-aplica: {marker}"
+
+
+def test_cc_app_watches_prefs_for_changes():
+    # El poll de estado tambien vigila /prefs: cambiar Ajustes desde la app,
+    # Chrome o el celular aplica en <=3s sin reiniciar la app.
+    body = CC_APP.split("def poll_state_loop", 1)[1].split("\ndef ", 1)[0]
+    assert "/prefs" in body
+    assert "apply_terminal_prefs" in body
+    assert "apply_theme" in body
+    assert "_LIVE_PREF_KEYS" in CC_APP
+
+
 if __name__ == "__main__":
     for name, fn in list(globals().items()):
         if name.startswith("test_") and callable(fn):

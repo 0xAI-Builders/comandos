@@ -1433,7 +1433,52 @@ def update_dots(states, items=None):
     return False
 
 
+def apply_terminal_prefs(p=None):
+    """Re-aplica las prefs de terminal EN VIVO a TODAS las terminales
+    abiertas (fuente, cursor, padding, opacidad). Con p=None re-aplica las
+    globals actuales (util tras un cambio de tema, que resetea colores sin
+    la opacidad). make_term usa estas mismas globals: las tabs nuevas nacen
+    ya con los valores nuevos."""
+    global _PF_FAMILY, _PF_SIZE, FONT_FAMILY, FONT_SIZE, FONT
+    global TERM_PADDING, TERM_OPACITY, _CURSOR_SHAPE, _CURSOR_BLINK
+    if p is not None:
+        _PF_FAMILY = (p.get("font_family") or "").strip() or "JetBrainsMono Nerd Font Mono"
+        _PF_SIZE = int(p.get("font_size") or FONT_SIZE)
+        FONT_FAMILY = f"{_PF_FAMILY},JetBrainsMono Nerd Font,JetBrains Mono,DejaVu Sans Mono,Monospace"
+        FONT_SIZE = _PF_SIZE
+        FONT = f"{FONT_FAMILY} {FONT_SIZE}"
+        TERM_PADDING = max(0, min(40, int(p.get("terminal_padding", 8))))
+        TERM_OPACITY = max(30, min(100, int(p.get("terminal_opacity", 100)))) / 100.0
+        _CURSOR_SHAPE = (p.get("cursor_shape") or "block")
+        _CURSOR_BLINK = bool(p.get("cursor_blink", True))
+    for page in notebook_pages():
+        term = getattr(page, "_term", None)
+        if term is None:
+            continue
+        try:
+            term.set_font(Pango.FontDescription(FONT))
+            term.set_colors(rgba(THEME["fg"]), _bg_rgba(), [rgba(c) for c in THEME["pal"]])
+            term.set_color_cursor(rgba(THEME["cursor"]))
+            term.set_cursor_shape(_CURSOR_SHAPE_MAP.get(_CURSOR_SHAPE, Vte.CursorShape.BLOCK))
+            term.set_cursor_blink_mode(
+                Vte.CursorBlinkMode.ON if _CURSOR_BLINK else Vte.CursorBlinkMode.OFF)
+            term.set_margin_start(TERM_PADDING + 2)
+            term.set_margin_end(max(0, TERM_PADDING - 4))
+            term.set_margin_top(TERM_PADDING)
+            term.set_margin_bottom(max(0, TERM_PADDING - 2))
+        except Exception:
+            pass
+    return False
+
+
+# Prefs que, al cambiar en Ajustes (desde la app, Chrome O el celular),
+# deben reflejarse EN TIEMPO REAL en las terminales abiertas.
+_LIVE_PREF_KEYS = ("font_family", "font_size", "cursor_shape", "cursor_blink",
+                   "terminal_padding", "terminal_opacity", "theme")
+
+
 def poll_state_loop():
+    last_prefs = None
     while True:
         try:
             with urllib.request.urlopen("http://127.0.0.1:4777/state", timeout=3) as r:
@@ -1441,6 +1486,24 @@ def poll_state_loop():
             states = {it["session"]: it.get("status", "idle")
                       for it in items if it.get("session")}
             GLib.idle_add(update_dots, states, items)
+        except Exception:
+            pass
+        # Watcher de prefs: Ajustes cambiado en CUALQUIER superficie se aplica
+        # aqui en <=3s a todas las terminales (fuente/cursor/padding/opacidad
+        # y tema). Antes solo se leian al arrancar la app.
+        try:
+            with urllib.request.urlopen("http://127.0.0.1:4777/prefs", timeout=3) as r:
+                p = json.loads(r.read().decode())
+            snap = {k: p.get(k) for k in _LIVE_PREF_KEYS}
+            if last_prefs is None:
+                last_prefs = snap
+            elif snap != last_prefs:
+                theme_changed = snap.get("theme") != last_prefs.get("theme")
+                last_prefs = snap
+                if theme_changed and snap.get("theme"):
+                    GLib.idle_add(apply_theme, snap["theme"])
+                # tras el tema tambien: recolorea con la OPACIDAD correcta
+                GLib.idle_add(apply_terminal_prefs, p)
         except Exception:
             pass
         time.sleep(3)
