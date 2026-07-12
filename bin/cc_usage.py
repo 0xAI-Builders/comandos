@@ -985,7 +985,7 @@ def _last_codex_rate_limit_snapshot(path, tail_bytes=262144):
     return None
 
 
-def read_codex_rate_limits(sessions_root=None, now=None, max_files=8):
+def read_codex_rate_limits(sessions_root=None, now=None, max_files=16):
     """Ultimo snapshot de rate limits que Codex CLI escribio en sus rollouts.
     Es dato del proveedor (viene con cada turno), posiblemente desfasado:
     captured_at dice de cuando es."""
@@ -1003,43 +1003,51 @@ def read_codex_rate_limits(sessions_root=None, now=None, max_files=8):
             except OSError:
                 continue
     files.sort(reverse=True)
-    # Cada sesion de Codex escribe su propio snapshot y pueden convivir varios
-    # con edades distintas: gana el timestamp mas reciente, no el mtime.
-    best, best_at = None, -1
+    # Codex reporta rate_limits en primary/secondary, pero la POSICION no es
+    # fija: primary puede ser la ventana de 5h O la semanal (segun turno), y a
+    # veces secondary viene null. Clasificamos por window_minutes (300=5h,
+    # 10080=semana) y nos quedamos con el valor MAS FRESCO de CADA ventana
+    # entre los snapshots recientes — asi nunca se "pierde" la de 5h porque el
+    # ultimo turno solo trajo la semanal.
+    WINDOWS = {  # window_minutes -> (id, kind, window, label)
+        300:   ("codex_session", "session",    "5h", "Sesion 5h"),
+        10080: ("codex_weekly",  "weekly_all", "7d", "Semana"),
+    }
+    freshest = {}  # window_minutes -> (captured_at, item, plan_type)
     for _mtime, path in files[:max_files]:
         snapshot = _last_codex_rate_limit_snapshot(path)
         if not snapshot:
             continue
         limits, captured_at = snapshot
-        if captured_at > best_at:
-            best, best_at = limits, captured_at
-    if not best:
-        return []
+        for key in ("primary", "secondary"):
+            item = limits.get(key) if isinstance(limits.get(key), dict) else None
+            if not item or item.get("used_percent") is None:
+                continue
+            wm = _as_int(item.get("window_minutes"))
+            if wm not in WINDOWS:
+                continue
+            if wm not in freshest or captured_at > freshest[wm][0]:
+                freshest[wm] = (captured_at, item, _text(limits.get("plan_type")))
     rows = []
-    for key, lid, kind, window in (
-        ("primary", "codex_session", "session", "5h"),
-        ("secondary", "codex_weekly", "weekly_all", "7d"),
-    ):
-        item = best.get(key) if isinstance(best.get(key), dict) else {}
-        if item.get("used_percent") is None:
-            continue
-        minutes = _as_int(item.get("window_minutes"))
+    for wm, (captured_at, item, plan_type) in freshest.items():
+        lid, kind, window, label = WINDOWS[wm]
         rows.append({
             "id": lid,
             "provider": "codex",
             "kind": kind,
-            "label": _codex_window_label(minutes, "Sesion 5h" if key == "primary" else "Semana"),
+            "label": label,
             "scope": "",
             "percent": round(_as_float(item.get("used_percent")), 1),
             "resets_at": _as_epoch(item.get("resets_at")),
             "severity": "normal",
             "is_active": True,
             "window": window,
-            "plan_type": _text(best.get("plan_type")),
+            "plan_type": plan_type,
             "source": "rollout",
             "confidence": "exact",
-            "captured_at": best_at,
+            "captured_at": captured_at,
         })
+    rows.sort(key=lambda r: r["window"])  # 5h antes que 7d
     return rows
 
 
@@ -1211,6 +1219,17 @@ def record_local_codex_threads(db_path, state_db=None, now=None, max_age_days=14
         }
         events.append(event)
     return record_turns(db_path, events)
+
+
+def prune_old_turns(db_path, max_age_days=14, now=None):
+    """Borra turnos fuera de la ventana de retencion. El import local es
+    insert-or-replace (nunca borra), asi que sin esto la tabla crece sin fin
+    y build_usage_state paga por procesar filas viejas que ni se muestran."""
+    ts = int(now if now is not None else time.time())
+    cutoff = ts - int(max_age_days) * 24 * 3600
+    with connect(db_path) as con:
+        cur = con.execute("delete from usage_turns where turn_finished_at < ?", (cutoff,))
+        return cur.rowcount
 
 
 def record_local_opencode_db(db_path, oc_db=None, now=None, max_age_days=14):

@@ -84,14 +84,66 @@ def usage_credential_health(env):
     }
 
 
+_local_usage_refreshing = False
+
+
 def refresh_local_usage(force=False):
-    global LOCAL_USAGE_REFRESH_AT
+    """Reimporta turnos locales (jsonl de Claude, sqlite de Codex/OpenCode).
+    Es CARO (~3s: camina cientos de archivos), asi que corre en un HILO y
+    NUNCA bloquea /usage/state. La UI ve los datos del ciclo anterior hasta
+    que el hilo termina (a lo sumo ~60s de rezago, imperceptible)."""
+    global LOCAL_USAGE_REFRESH_AT, _local_usage_refreshing
     now = int(time.time())
-    if not force and now - LOCAL_USAGE_REFRESH_AT < 60:
+    if not force and (now - LOCAL_USAGE_REFRESH_AT < 60 or _local_usage_refreshing):
         return {}
-    env = usage_runtime_env()
+    if not force:
+        _local_usage_refreshing = True
+        LOCAL_USAGE_REFRESH_AT = now
+        def _bg():
+            global _local_usage_refreshing
+            try:
+                _do_refresh_local_usage()
+            finally:
+                _local_usage_refreshing = False
+        threading.Thread(target=_bg, daemon=True).start()
+        return {}
     LOCAL_USAGE_REFRESH_AT = now
+    return _do_refresh_local_usage()
+
+
+# Memo de build_usage_state: procesa decenas de miles de turnos (~1.5s). Su
+# salida solo cambia cuando (a) el import de turnos corre (cada 60s) o (b)
+# cambian los panes vivos. Reusamos el resultado mientras la firma no cambie,
+# asi la mayoria de los polls devuelven al instante. Los limites del plan
+# (que si cambian aparte) se adjuntan DESPUES: son baratos.
+_usage_state_cache = {"key": None, "state": None}
+
+
+def cached_usage_state(panes, env, limits):
+    pane_sig = tuple(sorted(
+        (p.get("tmux_session"), p.get("tmux_pane"), p.get("pane_pwd"), p.get("agent"))
+        for p in panes))
+    key = (LOCAL_USAGE_REFRESH_AT, pane_sig)
+    if _usage_state_cache["key"] != key:
+        _usage_state_cache["state"] = cc_usage.build_usage_state(
+            USAGE_DB, panes, settings=env)
+        _usage_state_cache["key"] = key
+    state = dict(_usage_state_cache["state"])   # copia superficial: no mutar el memo
+    state["limits"] = list(limits or [])
+    return state
+
+
+def _do_refresh_local_usage():
+    now = int(time.time())
+    env = usage_runtime_env()
+    # Poda: turnos fuera de la ventana de retencion (14d) — sin esto la tabla
+    # crece sin fin (import es insert-or-replace, nunca borra) y ademas los
+    # totales "en 14 dias" quedaban inflados con datos viejos.
     max_age = int(env.get("COMANDOS_USAGE_LOCAL_DAYS") or 14)
+    try:
+        cc_usage.prune_old_turns(USAGE_DB, max_age_days=max_age, now=now)
+    except Exception:
+        pass
     max_claude_files = int(env.get("COMANDOS_USAGE_CLAUDE_MAX_FILES") or 120)
     counts = {
         "codex_local": cc_usage.record_local_codex_threads(
@@ -957,7 +1009,10 @@ def claude_panes(procs):
 def pane_status_hint(pane, agent):
     if not pane or agent != "codex":
         return ""
-    r = tmux("capture-pane", "-p", "-t", pane, "-S", "-80", timeout=2)
+    # El indicador "Working (Xs)" de Codex vive en las ULTIMAS lineas; -S -12
+    # basta (antes -80: capturaba 80 lineas por pane codex en CADA poll de
+    # /state — con 10 panes era el grueso de la lentitud).
+    r = tmux("capture-pane", "-p", "-t", pane, "-S", "-12", timeout=2)
     if r.returncode == 0 and re.search(r"\bWorking\s*\(", r.stdout):
         return "working"
     return ""
@@ -1135,6 +1190,26 @@ def read_states():
             item["sshConnected"] = st != ""
             item["sshMux"] = st == "mux"
         items.append(item)
+    return items
+
+
+_state_cache = {"at": 0.0, "items": None}
+_state_lock = threading.Lock()
+
+
+def read_states_cached(ttl=1.2):
+    """read_states hace ~0.6s de llamadas tmux. El tablero (cada ~pocos seg) y
+    la app de escritorio (cada 3s) lo piden en paralelo; un cache muy corto
+    hace que polls casi-simultaneos compartan un solo computo, sin que el
+    estado (waiting/working) se sienta rezagado."""
+    now = time.time()
+    with _state_lock:
+        if _state_cache["items"] is not None and now - _state_cache["at"] < ttl:
+            return _state_cache["items"]
+    items = read_states()
+    with _state_lock:
+        _state_cache["at"] = time.time()
+        _state_cache["items"] = items
     return items
 
 
@@ -1794,7 +1869,7 @@ class Handler(http.server.SimpleHTTPRequestHandler):
 
     def _do_GET(self):
         if self.path.startswith("/state"):
-            return self._json(200, read_states())
+            return self._json(200, read_states_cached())
         if self.path.startswith("/opencode/models"):
             return self._json(200, {"providers": opencode_models()})
 
@@ -1803,8 +1878,7 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             panes = usage_live_panes()
             env = usage_runtime_env()
             prov = usage_provider_limits()
-            state = cc_usage.build_usage_state(USAGE_DB, panes, settings=env,
-                                               limits=prov["limits"])
+            state = cached_usage_state(panes, env, prov["limits"])
             state["credential_health"] = usage_credential_health(env)
             state["credential_health"].update(prov["health"])
             state["alert_thresholds"] = list(alert_thresholds())

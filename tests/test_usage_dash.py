@@ -124,6 +124,14 @@ def test_tab_close_endpoint_syncs_mirror_and_history():
     assert "remember_tab" in body and "TABS_FILE" in body
 
 
+def test_usage_state_is_cached_and_refresh_is_backgrounded():
+    assert "def cached_usage_state" in SRC
+    assert "def read_states_cached" in SRC
+    assert "_usage_state_cache" in SRC
+    assert "threading.Thread(target=_bg" in SRC   # refresh local no bloquea
+    assert "prune_old_turns" in SRC
+
+
 def test_agent_pane_maps_keeps_one_agent_per_tmux_pane():
     dash = load_dash_module()
 
@@ -146,6 +154,7 @@ def test_agent_pane_maps_keeps_one_agent_per_tmux_pane():
 
 
 if __name__ == "__main__":
+    test_usage_state_is_cached_and_refresh_is_backgrounded()
     test_tab_close_endpoint_syncs_mirror_and_history()
     test_alert_rules_endpoint_and_evaluation()
     test_codex_dropdown_drives_numbered_picker()

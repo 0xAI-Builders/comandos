@@ -944,3 +944,44 @@ if __name__ == "__main__":
     test_parse_opencode_models_groups_and_filters()
     test_opencode_picker_query_uses_display_name_tokens()
     test_model_switch_text_accepts_direct_model()
+
+
+def test_prune_old_turns_removes_beyond_retention():
+    with tempfile.TemporaryDirectory() as d:
+        db = os.path.join(d, "u.sqlite")
+        cc_usage.init_db(db)
+        now = 2_000_000
+        for tid, fin in (("viejo", now - 20*86400), ("nuevo", now - 1*86400)):
+            cc_usage.record_turn(db, {"id": tid, "provider": "claude", "agent": "claude",
+                "tmux_session": "s", "tmux_pane": "", "pane_pwd": "/r", "git_root": "/r",
+                "turn_started_at": fin, "turn_finished_at": fin, "total_tokens": 10,
+                "source": "x", "confidence": "local"})
+        removed = cc_usage.prune_old_turns(db, max_age_days=14, now=now)
+        con = sqlite3.connect(db)
+        ids = [r[0] for r in con.execute("select id from usage_turns")]
+    assert removed == 1
+    assert ids == ["nuevo"]
+
+
+def test_read_codex_rate_limits_classifies_by_window_minutes():
+    # primary NO siempre es 5h: aqui primary=semanal (10080) y el 5h (300)
+    # viene en OTRO snapshot. Deben salir AMBAS ventanas, la mas fresca de c/u.
+    with tempfile.TemporaryDirectory() as d:
+        day = Path(d) / "2026" / "07" / "10"
+        day.mkdir(parents=True)
+        def roll(name, ts, prim_min, prim_pct, sec=None):
+            payload = {"type": "token_count", "info": {},
+                       "rate_limits": {"primary": {"used_percent": prim_pct,
+                                       "window_minutes": prim_min, "resets_at": 9000},
+                                       "secondary": sec, "plan_type": "pro"}}
+            (day / name).write_text(json.dumps(
+                {"timestamp": ts, "type": "event_msg", "payload": payload}) + "\n")
+        # snapshot mas nuevo: solo la semanal en primary, secondary null
+        roll("rollout-new.jsonl", "2026-07-10T18:00:00.000Z", 10080, 42.0)
+        # snapshot mas viejo: la de 5h en primary
+        roll("rollout-old.jsonl", "2026-07-10T09:00:00.000Z", 300, 15.0)
+        rows = cc_usage.read_codex_rate_limits(sessions_root=d, now=9999)
+    by = {r["id"]: r for r in rows}
+    assert by["codex_session"]["percent"] == 15.0 and by["codex_session"]["window"] == "5h"
+    assert by["codex_weekly"]["percent"] == 42.0 and by["codex_weekly"]["window"] == "7d"
+
