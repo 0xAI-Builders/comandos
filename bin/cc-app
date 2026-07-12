@@ -2464,13 +2464,9 @@ def show_modal_panel(panel, on_key=None, on_close=None, dismissable=True):
         if cur is None:
             return
         show_modal_panel._current = None
-        try:
-            Gtk.grab_remove(cur["panel"])
-        except Exception:
-            pass
         try: modal_overlay.remove(cur["backdrop"])
         except Exception: pass
-        try: modal_overlay.remove(cur["panel"])
+        try: modal_overlay.remove(cur["wrapper"])
         except Exception: pass
         try: win.disconnect(cur["key_handler"])
         except Exception: pass
@@ -2505,31 +2501,37 @@ def show_modal_panel(panel, on_key=None, on_close=None, dismissable=True):
         return False
     kh = win.connect("key-press-event", _key_handler)
 
-    # Click FUERA del panel = cerrar, TAMBIEN sobre el webview/terminales:
-    # WebKit y VTE tienen ventana nativa propia y se comen el click antes de
-    # que llegue al backdrop (por eso "no se cierra con click afuera" cuando
-    # picas el tablero). Gtk.grab_add redirige TODOS los eventos del toolkit
-    # al panel; si el press cae fuera de su area, cerramos aqui mismo.
-    panel.add_events(Gdk.EventMask.BUTTON_PRESS_MASK)
-
-    def _panel_press(_w, ev):
-        alloc = panel.get_allocation()
-        outside = ev.x < 0 or ev.y < 0 or ev.x >= alloc.width or ev.y >= alloc.height
-        if outside and dismissable:
-            _close()
-            return True
-        return False
-    panel.connect("button-press-event", _panel_press)
-    # las teclas tambien se redirigen al grab: duplicar el handler en el panel
-    panel.connect("key-press-event", _key_handler)
+    # El panel va DENTRO de un EventBox con ventana propia. Clave: WebKit y
+    # VTE tienen ventana NATIVA que se dibuja encima de los overlays no-nativos
+    # y se comia el click "afuera" (por eso no cerraba). Con ventanas propias
+    # elevamos el stacking X a mano: contenido < backdrop < panel. Asi el
+    # backdrop capta los clicks de afuera (aunque sea sobre el webview) y el
+    # panel + sus hijos (input, lista) reciben los suyos con NORMALIDAD — sin
+    # grab de toolkit, que rompia la seleccion del ListBox y el foco del Entry.
+    wrapper = Gtk.EventBox()
+    wrapper.set_visible_window(True)
+    wrapper.set_halign(panel.get_halign() if panel.get_halign() != Gtk.Align.FILL else Gtk.Align.CENTER)
+    wrapper.set_valign(panel.get_valign() if panel.get_valign() != Gtk.Align.FILL else Gtk.Align.CENTER)
+    wrapper.add(panel)
 
     modal_overlay.add_overlay(backdrop)
-    modal_overlay.add_overlay(panel)
+    modal_overlay.add_overlay(wrapper)
     modal_overlay.show_all()
-    Gtk.grab_add(panel)
+
+    def _restack():
+        try:
+            bw = backdrop.get_window()
+            ww = wrapper.get_window()
+            if bw: bw.raise_()      # backdrop sobre el contenido nativo
+            if ww: ww.raise_()      # panel sobre el backdrop (topmost)
+        except Exception:
+            pass
+        return False
+    _restack()
+    GLib.idle_add(_restack)         # de nuevo tras el primer layout (WebKit realiza tarde)
 
     show_modal_panel._current = {
-        "panel": panel, "backdrop": backdrop, "key_handler": kh,
+        "panel": panel, "wrapper": wrapper, "backdrop": backdrop, "key_handler": kh,
         "on_close": on_close, "close": _close,
     }
     return _close

@@ -113,12 +113,16 @@ def test_modals_close_on_click_outside():
     assert "show_modal_panel(w, on_key=on_sw_key)" in function_source("open_switcher")
     assert "show_modal_panel(w)" in function_source("open_tabs_overview")
     assert "dismissable=False" in function_source("_confirm_must_answer")
-    # WebKit/VTE tienen ventana nativa y se comian el click "afuera": el grab
-    # de toolkit redirige todo al panel y el press fuera del bounds cierra
+    # WebKit/VTE tienen ventana nativa que se comia el click "afuera". El fix
+    # NO usa grab de toolkit (rompia seleccion del ListBox y foco del Entry):
+    # panel envuelto en EventBox con ventana propia, stacking X elevado a mano
+    # (contenido < backdrop < panel) para que el backdrop capte los clicks de
+    # afuera aun sobre el webview y los hijos reciban los suyos normal.
     helper = function_source("show_modal_panel")
-    assert "Gtk.grab_add(panel)" in helper
-    assert "Gtk.grab_remove" in helper
-    assert "_panel_press" in helper
+    assert "grab_add" not in helper          # NUNCA mas: rompia los modales
+    assert "set_visible_window(True)" in helper
+    assert ".raise_()" in helper
+    assert "wrapper" in helper
 
 
 def test_tab_scroll_arrows_have_padding():
