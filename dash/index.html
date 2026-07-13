@@ -2287,19 +2287,19 @@ function renderTabbar(){
   }
   // + nueva terminal: crea la sesion en el servidor y la pestana aparece
   // en AMBOS lados (remoto y escritorio) — misma experiencia que la app.
-  const plus = document.createElement("div");
-  plus.className = "apptab plus";
-  plus.textContent = "+";
-  plus.title = tf("Nueva terminal (se abre también en el escritorio)",
+  const newBtn = document.createElement("div");
+  newBtn.className = "apptab plus";
+  newBtn.textContent = "+";
+  newBtn.title = tf("Nueva terminal (se abre también en el escritorio)",
                   "New terminal (also opens on desktop)");
-  plus.onclick = async () => {
+  newBtn.onclick = async () => {
     try{
       const r = await api("/tab-new", {});
       openTerm(r.session, r.label);
       tabsPollTs = 0;
     }catch(err){ toast(err.message, true); }
   };
-  bar.appendChild(plus);
+  bar.appendChild(newBtn);
   // 🖱 panes: prende el mouse de tmux en la sesion ACTIVA para poder
   // ARRASTRAR los bordes de panes desde el terminal remoto (tactil o mouse).
   if(activeTerm){
