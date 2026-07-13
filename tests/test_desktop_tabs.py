@@ -79,6 +79,16 @@ def test_ctrl_k_can_close_selected_open_tab():
     assert "Gdk.KEY_w" in src
 
 
+def test_remote_open_requests_open_background_tab():
+    # cc-dash escribe app-tab-open.json cuando el remoto abre/crea una tab;
+    # la app la abre SIN robar el foco de la pestana activa
+    assert "app-tab-open.json" in SRC
+    assert "on_tab_open_request" in SRC
+    src = function_source("on_tab_open_request")
+    assert "sess in tabs" in src          # no re-abre ni roba foco si ya existe
+    assert "set_current_page(cur)" in src  # abre en segundo plano
+
+
 def test_remote_close_requests_skip_confirm():
     # cc-dash escribe app-tab-close.json tras confirmar en el tablero;
     # la app cierra esa tab sin re-preguntar
@@ -151,6 +161,7 @@ def test_raise_main_window_uses_keep_above_pulse_for_gnome():
 
 
 if __name__ == "__main__":
+    test_remote_open_requests_open_background_tab()
     test_terminals_paste_file_paths_on_drop()
     test_remote_close_requests_skip_confirm()
     test_tab_labels_are_saved_in_visual_notebook_order()

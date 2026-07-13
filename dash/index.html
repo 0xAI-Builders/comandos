@@ -199,6 +199,8 @@
   #ssh-manage{padding:4px 12px;border:1px dashed var(--line);border-radius:16px;
     font-size:12px;color:var(--faint)}
   #ssh-manage:hover{color:var(--text);border-color:var(--brand)}
+  .srv-privacy{color:var(--faint);font-size:11.5px;line-height:1.5;margin:2px 0 12px}
+  .srv-privacy code{color:var(--code)}
 
   /* ---------- secciones ---------- */
   .sec{max-width:1360px;margin:0 auto;padding:22px 18px 0}
@@ -1067,6 +1069,10 @@
     <span data-icon="close"></span>
   </button>
   <h3>Servidores SSH</h3>
+  <p class="srv-privacy">🔒 Todo queda en TU máquina: los servidores viven en
+  <code>~/.ssh/config</code> y las llaves en <code>~/.ssh/</code> (el estándar
+  de SSH, permisos 0600). ComandOS <b>nunca guarda passwords</b> ni sube nada
+  a ningún lado — si tecleas un password, va directo a tu servidor.</p>
   <div id="srv-list"></div>
   <h3 style="margin-top:22px" id="srv-form-title">Agregar servidor</h3>
   <form id="srv-form">
@@ -2279,6 +2285,21 @@ function renderTabbar(){
     const it = (S.list||[]).find(i => i.session === sess);
     mk(o.label || it?.project || sess, "term:"+sess, true, it?.status);
   }
+  // + nueva terminal: crea la sesion en el servidor y la pestana aparece
+  // en AMBOS lados (remoto y escritorio) — misma experiencia que la app.
+  const plus = document.createElement("div");
+  plus.className = "apptab plus";
+  plus.textContent = "+";
+  plus.title = tf("Nueva terminal (se abre también en el escritorio)",
+                  "New terminal (also opens on desktop)");
+  plus.onclick = async () => {
+    try{
+      const r = await api("/tab-new", {});
+      openTerm(r.session, r.label);
+      tabsPollTs = 0;
+    }catch(err){ toast(err.message, true); }
+  };
+  bar.appendChild(plus);
   // 🖱 panes: prende el mouse de tmux en la sesion ACTIVA para poder
   // ARRASTRAR los bordes de panes desde el terminal remoto (tactil o mouse).
   if(activeTerm){
@@ -2373,7 +2394,10 @@ function askCloseTab(sess){
 }
 function openTerm(sess, label){
   if(!appEnabled() || !sess) return;
-  addTermTab(sess, label);
+  // mirrored=true + registro server-side: /tabs es LA fuente de verdad, asi
+  // remoto y escritorio muestran EXACTAMENTE las mismas pestanas
+  addTermTab(sess, label, true);
+  api("/tab-register", {session: sess, label: label || sess}).catch(()=>{});
   showView("term:"+sess);
 }
 function closeTerm(sess){
@@ -2786,8 +2810,7 @@ async function swGo(i){
   try{
     if(x.rec){
       const r = await api("/recover-tab", x.rec);
-      addTermTab(r.session, r.label);
-      showView("term:" + r.session);
+      openTerm(r.session, r.label);
       toast(tf(`${r.label} recuperada`, `${r.label} recovered`));
       return;
     }

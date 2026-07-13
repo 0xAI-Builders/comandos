@@ -276,7 +276,45 @@ def test_webterm_serves_our_index_when_supported():
     assert '-b /term "${IFLAG[@]}"' in src
 
 
+def test_tabs_endpoint_is_exact_mirror_no_history_resurrection():
+    # tab_labels() mezclaba el HISTORIAL: cualquier sesion viva cuya tab
+    # cerraste reaparecia en /tabs (por eso el remoto tenia MAS tabs que el
+    # escritorio y las cerradas "no se podian cerrar"). /tabs y /tab-history
+    # usan tab_labels (archivo puro); las etiquetas bonitas van aparte.
+    src = open("bin/cc-dash").read()
+    body = src.split("def tab_labels():", 1)[1].split("def session_labels", 1)[0]
+    assert "read_tab_history" not in body        # JAMAS historial en el espejo
+    assert "def session_labels" in src           # display separado
+    tabs_handler = src.split('self.path.startswith("/tabs")', 1)[1].split("self.path.startswith", 1)[0]
+    assert "tab_labels()" in tabs_handler and "session_labels" not in tabs_handler
+
+
+def test_remote_tabs_have_full_desktop_parity():
+    # TODA tab abierta en remoto se registra en el escritorio (openTerm ->
+    # /tab-register, mirrored=true) y el + crea terminal en AMBOS lados.
+    # Sin esto el remoto acumulaba tabs locales que el escritorio no veia.
+    html = open("dash/index.html").read()
+    assert 'api("/tab-register", {session: sess, label: label || sess})' in html
+    assert 'addTermTab(sess, label, true);' in html
+    assert 'api("/tab-new", {})' in html
+    assert '"Nueva terminal (se abre también en el escritorio)"' in html
+    src = open("bin/cc-dash").read()
+    assert '"/tab-register"' in src and '"/tab-new"' in src
+    assert "def register_app_tab" in src
+    assert "app-tab-open.json" in src
+
+
+def test_ssh_privacy_note_states_local_only_storage():
+    html = open("dash/index.html").read()
+    assert "srv-privacy" in html
+    assert "~/.ssh/config" in html
+    assert "nunca guarda passwords" in html
+
+
 if __name__ == "__main__":
+    test_tabs_endpoint_is_exact_mirror_no_history_resurrection()
+    test_ssh_privacy_note_states_local_only_storage()
+    test_remote_tabs_have_full_desktop_parity()
     test_remote_term_has_pane_mouse_toggle()
     test_remote_term_page_fixes_mobile_keys_and_ws()
     test_remote_term_touch_longpress_resizes_panes()

@@ -3088,6 +3088,35 @@ def on_tab_close_request(_mon, _f, _other, event):
 _close_mon = Gio.File.new_for_path(CLOSE_FILE).monitor_file(Gio.FileMonitorFlags.NONE, None)
 _close_mon.connect("changed", on_tab_close_request)
 
+# El remoto abrio una tab (boton +, abrir sesion, recuperar): cc-dash escribe
+# app-tab-open.json y aqui abrimos la MISMA pestana — en segundo plano, sin
+# robarle el foco a la tab en la que el usuario esta trabajando.
+OPEN_FILE = os.path.expanduser("~/.claude/hooks/app-tab-open.json")
+
+
+def on_tab_open_request(_mon, _f, _other, event):
+    if event != Gio.FileMonitorEvent.CHANGES_DONE_HINT:
+        return
+    try:
+        with open(OPEN_FILE) as fh:
+            d = json.load(fh)
+        sess, label = d.get("session", ""), d.get("label") or None
+    except Exception:
+        return
+    if not sess or sess in tabs:
+        return
+    cur = nb.get_current_page()
+    try:
+        open_tab(sess, "claude", label=label)
+    except Exception:
+        return
+    if cur >= 0:
+        nb.set_current_page(cur)
+
+
+_open_mon = Gio.File.new_for_path(OPEN_FILE).monitor_file(Gio.FileMonitorFlags.NONE, None)
+_open_mon.connect("changed", on_tab_open_request)
+
 _focus_mon = Gio.File.new_for_path(FOCUS_FILE).monitor_file(Gio.FileMonitorFlags.NONE, None)
 _focus_mon.connect("changed", on_focus_request)
 

@@ -674,6 +674,28 @@ def write_app_tab(sess, label):
     write_json_file(TABS_FILE, tabs)
 
 
+TAB_OPEN_FILE = os.path.join(HOOKS, "app-tab-open.json")
+
+
+def register_app_tab(sess, label=None):
+    """Paridad remoto=escritorio: toda tab abierta en remoto entra al espejo
+    (app-tabs.json) y se avisa a la app viva (app-tab-open.json) para que abra
+    la MISMA pestana. Si ya existe en el espejo no se toca (el escritorio es
+    dueno de sus etiquetas)."""
+    tabs = load_json_file(TABS_FILE, {})
+    if not isinstance(tabs, dict):
+        tabs = {}
+    if sess not in tabs:
+        tabs[sess] = (label or sess)[:80]
+        write_json_file(TABS_FILE, tabs)
+    try:
+        with open(TAB_OPEN_FILE, "w") as f:
+            json.dump({"session": sess, "label": (label or sess)[:80],
+                       "ts": time.time()}, f)
+    except OSError:
+        pass
+
+
 def pick_terminal():
     want = read_conf().get("TERMINAL_CMD", "")
     for name, argf, cls in TERMINALS:
@@ -773,7 +795,7 @@ def focus_session(sess, win="claude"):
     app_open = bool(tmux("list-clients", "-t", "=local", "-F", "#{client_name}").stdout.strip())
     if app_open:
         try:
-            label = tab_labels().get(sess, sess)
+            label = session_labels().get(sess, sess)
             with open(os.path.join(HOOKS, "app-focus.json"), "w") as f:
                 json.dump({"session": sess, "win": win, "label": label, "ts": time.time()}, f)
         except Exception:
@@ -1071,7 +1093,7 @@ def resolve_project_session(sess):
             procs = [pc for pc in agent_procs() if pc[1] == cwd]
             _by_session, by_cwd = agent_pane_maps(procs)
             info = choose_agent_pane(d.get("project", ""), sess,
-                                     by_cwd.get(cwd, []), tab_labels())
+                                     by_cwd.get(cwd, []), session_labels())
             if info:
                 return info["session"], info["pane"]
         return None
@@ -1083,8 +1105,10 @@ HIDDEN_SESSIONS = {"hub", "local", "control"}
 
 
 def tab_labels():
-    """Etiquetas de las pestanas de la app (app-tabs.json): el tablero muestra
-    el nombre que el usuario le puso a la pestana, no el term-XXXX crudo."""
+    """Pestanas REALES de la app (app-tabs.json), sin adornos. Es la fuente de
+    verdad del espejo remoto<->escritorio: aqui NUNCA se mezcla el historial —
+    hacerlo resucitaba tabs que el usuario cerro a proposito (la sesion tmux
+    sigue viva tras cerrar su pestana) y el remoto mostraba mas tabs que la app."""
     out = {}
     try:
         with open(TABS_FILE) as f:
@@ -1093,8 +1117,13 @@ def tab_labels():
             out.update({k: v for k, v in d.items() if isinstance(v, str) and v})
     except Exception:
         pass
-    # La app GTK viva puede ser vieja y reescribir app-tabs.json sin tabs
-    # recuperadas. Si la sesion sigue viva, el historial tambien cuenta como tab.
+    return out
+
+
+def session_labels():
+    """Etiquetas para DISPLAY (cards, switcher): pestanas + historial de
+    sesiones vivas. Solo aporta nombres bonitos; jamas decide que es una tab."""
+    out = tab_labels()
     live = tmux_sessions()
     for it in read_tab_history():
         if it["session"] not in live:
@@ -1111,7 +1140,7 @@ def read_states():
     procs = agent_procs()
     externals = {cwd for _, cwd, _a in procs}
     by_session, by_cwd = agent_pane_maps(procs)
-    labels = tab_labels()
+    labels = session_labels()
     items, seen = [], set()
     for f in glob.glob(os.path.join(STATE, "*.json")):
         try:
@@ -1242,7 +1271,7 @@ def read_states_cached(ttl=1.2):
 
 def usage_live_panes():
     """Persist and return active agent panes with pane-level cwd/git identity."""
-    labels = tab_labels()
+    labels = session_labels()
     now_ts = int(time.time())
     _by_session, by_cwd = agent_pane_maps(agent_procs())
     seen, panes = set(), []
@@ -2239,6 +2268,20 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             write_snippets(new_items)
             return self._json(200, {"ok": True})
 
+        if self.path == "/tab-new":
+            # Boton + del remoto: terminal scratch nueva, visible en AMBOS lados
+            label = str(data.get("label") or "terminal")[:80]
+            n = int(time.time()) % 100000
+            new_sess = f"term-r{n}"
+            while tmux("has-session", "-t", "=" + new_sess).returncode == 0:
+                n += 1
+                new_sess = f"term-r{n}"
+            r = tmux("new-session", "-d", "-s", new_sess, "-c", os.path.expanduser("~"))
+            if r.returncode != 0:
+                return self._json(500, {"error": (r.stderr or "tmux fallo").strip()})
+            register_app_tab(new_sess, label)
+            return self._json(200, {"session": new_sess, "label": label})
+
         sess = data.get("session", "")
         if not SESSION_RE.match(sess):
             return self._json(400, {"error": "Nombre de sesion invalido"})
@@ -2251,12 +2294,21 @@ class Handler(http.server.SimpleHTTPRequestHandler):
                 return self._json(code, {"error": err})
             return self._json(200, {"ok": True, "mouse": "on" if enabled else "off"})
 
+        if self.path == "/tab-register":
+            # El remoto abrio una tab: reflejarla en el escritorio
+            if not SESSION_RE.match(sess or ""):
+                return self._json(400, {"error": "session invalida"})
+            if tmux("has-session", "-t", "=" + sess).returncode != 0:
+                return self._json(404, {"error": f"'{sess}' no existe"})
+            register_app_tab(sess, str(data.get("label") or sess)[:80])
+            return self._json(200, {"ok": True})
+
         if self.path == "/tab-close":
             # Cierra la PESTANA en todas las superficies (la sesion tmux sigue
             # viva): la saca del espejo app-tabs.json (si no, el poll /tabs la
             # resucitaba en remoto), la guarda en Recientes, y si la app de
             # escritorio esta abierta le pide cerrar su tab GTK.
-            label = tab_labels().get(sess, sess)
+            label = session_labels().get(sess, sess)
             cwd = ""
             r = tmux("display-message", "-p", "-t", "=" + sess + ":", "#{pane_current_path}")
             if r.returncode == 0:
