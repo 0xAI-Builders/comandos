@@ -5,9 +5,9 @@ STATE="$HOME/.claude/hooks/state"
 now=$(date +%s)
 waiting=""
 done_=""
-for f in "$STATE"/*.json; do
-  [ -e "$f" ] || continue
-  line=$(jq -r '[.project,.status,(.ts|tostring)]|join("|")' "$f" 2>/dev/null)
+files=("$STATE"/*.json)
+[ -e "${files[0]}" ] || { printf ''; exit 0; }
+while IFS= read -r -d '' line; do
   p=${line%%|*}; rest=${line#*|}; s=${rest%%|*}; t=${rest##*|}
   [ -z "$p" ] && continue
   age=$(( now - ${t:-0} ))
@@ -17,7 +17,20 @@ for f in "$STATE"/*.json; do
     waiting) waiting="$waiting$p ";;
     done)    done_="$done_$p ";;
   esac
-done
+done < <(
+  for f in "${files[@]}"; do
+    [ -f "$f" ] || continue
+    json=$(<"$f") 2>/dev/null || continue
+    printf '%s\0' "$json"
+  done |
+    jq -Rrjs '
+      split("\u0000")[]
+      | fromjson?
+      | select(type == "object")
+      | [.project, .status, (.ts | tostring)]
+      | join("|") + "\u0000"
+    ' 2>/dev/null
+)
 out=""
 [ -n "$waiting" ] && out="#[fg=colour214,bold]ATENCION: ${waiting}#[default]"
 [ -n "$done_" ]   && out="$out#[fg=colour84]LISTO: ${done_}#[default]"

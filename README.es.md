@@ -1,8 +1,11 @@
-# ComandOS
+# ComandOS — Centro de comando local-first para agentes de programación con IA
 
-**Centro de comando para correr muchos Claude Code en paralelo — te dice quién te necesita.**
-Voz local, popups accionables con markdown renderizado, terminales en pestañas y
-control remoto desde Telegram. Respondes con una tecla y sigues.
+Corre Claude Code, OpenAI Codex CLI, Gemini CLI, OpenCode y otros agentes en
+paralelo dentro de terminales tmux persistentes. Recibe notificaciones
+accionables, administra conexiones SSH directas, monitorea el uso de tus planes
+y continúa de forma segura desde tu escritorio, celular o tablet mediante la
+PWA de terminal remota sobre Tailscale, sin un backend alojado de ComandOS, una
+base de datos externa de ComandOS, telemetría ni un proxy SSH de ComandOS.
 
 [![licencia](https://img.shields.io/badge/licencia-MIT-2EE59D?style=flat-square)](./LICENSE)
 [![GitHub Sponsors](https://img.shields.io/badge/sponsor-0xAI--Builders-f38ba8.svg?style=flat-square&logo=github-sponsors)](https://github.com/sponsors/0xAI-Builders)
@@ -14,10 +17,38 @@ control remoto desde Telegram. Respondes con una tecla y sigues.
 
 ## Por qué
 
-Cuando corres 10 Claude Codes a la vez, el problema no son las terminales: es
-**saber cuál te necesita y volver a él sin fricción**. ComandOS lo convierte en un
-flujo por eventos: el sistema te interrumpe (voz + popup accionable), respondes con
-una tecla o una línea, y sigues. No escaneas pestañas.
+Cuando corres muchos agentes a la vez, el problema no son las terminales: es
+**saber cuál te necesita y volver a él sin fricción**. ComandOS convierte Claude
+Code, Codex CLI, Gemini CLI, OpenCode y sesiones shell normales en un flujo por
+eventos: el sistema te interrumpe (voz + popup accionable), respondes con una
+tecla o una línea y sigues. No escaneas pestañas.
+
+## Local-first por diseño
+
+ComandOS corre en tu computadora. Su estado operativo vive en sesiones tmux,
+archivos JSON y de configuración locales, y SQLite local en
+`~/.claude/hooks/comandos-usage.sqlite`. No requiere un backend alojado de
+ComandOS, una base de datos externa de ComandOS, un servicio de telemetría ni
+un proxy SSH de ComandOS.
+
+Los hosts SSH se leen desde `~/.ssh/config` y el cliente OpenSSH instalado se
+conecta directamente desde tu computadora al servidor elegido. ComandOS no
+sube tu configuración SSH ni tus llaves privadas a un servicio de ComandOS. Si
+pides explícitamente configurar el acceso sin contraseña, `ssh-copy-id` copia
+únicamente la llave pública seleccionada a ese servidor.
+
+Algunas funciones usan la red solo cuando las utilizas o configuras:
+
+- Los CLI de agentes se comunican con sus propios proveedores de IA según la
+  configuración y los términos de cada proveedor.
+- El monitoreo de uso puede consultar directamente los endpoints de Anthropic
+  u OpenAI cuando existen las credenciales correspondientes.
+- El acceso remoto mediante Tailscale Serve es opcional y permanece dentro de
+  la configuración de tailnet que tú controlas.
+- El control por Telegram es opcional; al activarlo, el contenido de las
+  notificaciones, respuestas y comandos pasa por la API de bots de Telegram.
+- La voz se reproduce localmente una vez instalada; `cc-doctor --fix` puede
+  descargar un modelo de voz opcional de Piper cuando le pides reparar la voz.
 
 ## Qué hace
 
@@ -34,8 +65,9 @@ una tecla o una línea, y sigues. No escaneas pestañas.
 - **Servidores SSH**: CRUD sobre `~/.ssh/config`, conexión de un click, detecta
   túneles multiplexados vivos (reconexión sin password).
 - **Snippets**: guardá comandos shell reutilizables (una línea o scripts multilínea) y pegalos en la sesión activa con **Ctrl+Shift+K**. Bracketed paste — nada se ejecuta hasta que aprietes Enter.
-- **Telegram**: botones en las notificaciones, responder por reply, `/ls /out /run`.
-- Todo es **archivos** (tmux, JSON, ssh config). Sin nube, sin DB. Sobrevive reinicios.
+- **Telegram**: botones opcionales en las notificaciones, responder por reply, `/ls /out /run`.
+- **Estado local-first**: tmux, archivos JSON/de configuración y SQLite local
+  sobreviven reinicios sin un servicio alojado de ComandOS.
 - UI en **inglés y español** (auto-detectado por `$LANG`, cambiable en Ajustes).
 
 ## Instalar
@@ -81,14 +113,22 @@ desde la cama.
 y corre `cc-webterm` — cada sesión tiene un botón **Terminal** que abre la
 terminal real, viva (xterm.js attacheado a la misma sesión tmux). Tecleas,
 scrolleas, corres `vim` — igual que sentado en tu escritorio, en vivo y
-compartido. Se enruta en `/term` por el mismo Tailscale Serve, con el mismo token.
+compartido. Se enruta en `/term` por el mismo Tailscale Serve. La terminal
+interactiva ttyd depende de la política de acceso de tu tailnet y no agrega
+autenticación separada de ComandOS.
 
-**Seguridad por capas, activa por defecto:**
-- **Tailscale** (WireGuard): solo TUS dispositivos, cifrado extremo a extremo. Nunca en la internet pública — solo Serve, jamás Funnel.
+**Cuando activas el acceso remoto, la seguridad usa varias capas:**
+- **Tailscale** (WireGuard): el acceso sigue la política de tu tailnet para usuarios y dispositivos autorizados, con cifrado extremo a extremo. ComandOS usa Serve, jamás Funnel público.
 - **TLS automático** vía `tailscale serve` (https en tu tailnet).
-- **Token de acceso**: aunque alguien llegue por tu tailnet, sin token no opera. `cc-dash` sigue escuchando solo en `127.0.0.1`; Serve hace de puente.
+- **Token de acceso**: protege el tablero remoto y la API de cc-dash, incluidos
+  los datos de sesiones y las acciones. `cc-dash` sigue escuchando solo en
+  `127.0.0.1`; Serve hace de puente.
+- **Frontera de la terminal interactiva**: ttyd también escucha únicamente en
+  loopback, pero no agrega otro login de ComandOS. Sus rutas `/term` y `:8443`
+  dependen de la política de acceso de Tailscale, como SSH sobre Tailscale.
 - **Anti DNS-rebinding**: allowlist de cabecera Host (loopback + `*.ts.net`).
-- El escritorio (app/navegador local) no necesita token; solo lo remoto.
+- El escritorio (app/navegador local) no necesita token; las peticiones
+  remotas/proxeadas del tablero y la API sí.
 
 `cc-mobile off` deja de exponerlo.
 

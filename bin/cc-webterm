@@ -5,8 +5,8 @@
 #
 # Seguridad:
 #   - Escucha SOLO en 127.0.0.1 (nunca directo a la red).
-#   - Credencial = el token de acceso de ComandOS (aunque estes en el tailnet,
-#     sin token no entra). cc-mobile lo expone por https del tailnet en /term.
+#   - El token del dashboard/API no autentica ttyd. cc-mobile lo expone por
+#     HTTPS en /term, limitado por la politica de acceso del tailnet.
 #
 # Uso:
 #   cc-webterm            arranca el terminal web (127.0.0.1:4779)
@@ -16,7 +16,6 @@ set -uo pipefail
 HOOKS="$HOME/.claude/hooks"
 PORT="${CC_WEBTERM_PORT:-4779}"
 PATH_PORT="${CC_WEBTERM_PATH_PORT:-4780}"
-TOKEN_FILE="$HOOKS/dash-token"
 PIDF="$HOOKS/cc-webterm.pid"
 SELF_DIR="$(cd "$(dirname "$(readlink -f "$0")")" && pwd)"
 
@@ -49,15 +48,6 @@ if ! command -v ttyd >/dev/null 2>&1; then
   die "Instala ttyd y vuelve a correr cc-webterm."
 fi
 
-# Token: lo crea cc-dash; si aun no existe, lo generamos con permisos 0600.
-if [ ! -s "$TOKEN_FILE" ]; then
-  umask 077
-  (command -v openssl >/dev/null && openssl rand -base64 24 | tr '+/' '-_' | tr -d '=\n' \
-    || head -c 32 /dev/urandom | base64 | tr '+/' '-_' | tr -d '=\n') > "$TOKEN_FILE"
-fi
-chmod 600 "$TOKEN_FILE"
-TOKEN=$(cat "$TOKEN_FILE")
-
 stop; sleep 0.3
 # -i 127.0.0.1  solo loopback (tailscale serve hace de puente hacia el tailnet)
 # -W            writable (interactivo); --url-arg deja elegir sesion por ?arg=
@@ -67,7 +57,8 @@ stop; sleep 0.3
 #     estilizar scrollbars sin romper el terminal actual).
 # SIN basic-auth: para que la terminal se embeba en el tablero (iframe) sin
 # pedir contrasena en cada panel. La frontera de seguridad es el TAILNET
-# (solo tus dispositivos, cifrado WireGuard) — igual que SSH sobre Tailscale.
+# (peers autorizados por tu politica, cifrado WireGuard), igual que SSH sobre
+# Tailscale.
 # -t ...        tema oscuro + fuente comoda en el celular
 # Compatibilidad de versiones: ttyd 1.7+ es READ-ONLY por defecto y necesita
 # -W/--writable; ttyd 1.6.x es escribible por defecto y NO tiene -W. Detectamos.

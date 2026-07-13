@@ -133,6 +133,18 @@ def cached_usage_state(panes, env, limits):
     return state
 
 
+def _pane_models_for_live_state(live_panes, state):
+    """Keep cached model enrichment, but never reconcile historical panes."""
+    live_ids = {
+        pane.get("tmux_pane") for pane in live_panes
+        if (pane.get("tmux_pane") or "").startswith("%")
+    }
+    return [
+        pane for pane in (state.get("panes") or [])
+        if pane.get("tmux_pane") in live_ids
+    ]
+
+
 def _do_refresh_local_usage():
     now = int(time.time())
     env = usage_runtime_env()
@@ -291,44 +303,190 @@ PANE_MODEL_COLORS = {  # color del borde por agente
     "claude": "141", "codex": "43", "opencode": "215",
     "gemini": "111", "agy": "183",
 }
+PANE_MODEL_RETRY_SECONDS = 5.0
+
+
+_pane_model_lock = threading.Lock()
+_pane_model_state = {
+    "desired": {},
+    "applied": {},
+    "file_text": None,
+    "generation": 0,
+    "worker_running": False,
+    "discovered": False,
+    "retry_after": 0.0,
+}
+
+
+def _pane_model_values(panes):
+    values = {}
+    plain = {}
+    for pane in panes:
+        pane_id = pane.get("tmux_pane") or ""
+        if not pane_id.startswith("%"):
+            continue
+        agent = pane.get("agent") or pane.get("provider") or ""
+        model = (pane.get("model") or "").replace("claude-", "")
+        model = model.rsplit("/", 1)[-1] if "/" in model else model
+        label = f"{agent} · {model}" if model else agent
+        if label:
+            color = PANE_MODEL_COLORS.get(agent, "244")
+            values[pane_id] = (
+                f"#[fg=colour{color},bold]▸ {label}#[default]"
+            )
+            plain[pane_id] = f"{pane_id} {label}"
+        else:
+            values[pane_id] = None
+    lines = [plain[pane_id] for pane_id in sorted(plain)]
+    return values, "\n".join(lines) + ("\n" if lines else "")
+
+
+def _pane_models_need_reconcile(desired, applied):
+    for pane_id, value in desired.items():
+        if pane_id not in applied or applied[pane_id] != value:
+            return True
+    return any(pane_id not in desired for pane_id in applied)
+
+
+def _pane_model_snapshot():
+    """Read physical pane options once so a cc-dash restart can clear stale UI."""
+    try:
+        result = tmux("list-panes", "-a", "-F",
+                      "#{pane_id}\t#{@ccmodel}", timeout=2)
+    except Exception:
+        return None
+    if getattr(result, "returncode", 0) != 0:
+        return None
+    applied = {}
+    for line in result.stdout.splitlines():
+        pane_id, sep, value = line.partition("\t")
+        if sep and pane_id.startswith("%") and value:
+            applied[pane_id] = value
+    return applied
+
+
+def _pane_model_live_ids():
+    try:
+        result = tmux("list-panes", "-a", "-F", "#{pane_id}", timeout=2)
+    except Exception:
+        return None
+    if getattr(result, "returncode", 0) != 0:
+        return None
+    return {line for line in result.stdout.splitlines() if line.startswith("%")}
+
+
+def _reconcile_pane_models():
+    while True:
+        with _pane_model_lock:
+            generation = _pane_model_state["generation"]
+            desired = dict(_pane_model_state["desired"])
+            applied = dict(_pane_model_state["applied"])
+            discovered = _pane_model_state["discovered"]
+
+        if not discovered:
+            physical = _pane_model_snapshot()
+            with _pane_model_lock:
+                if physical is None:
+                    _pane_model_state["retry_after"] = (
+                        time.monotonic() + PANE_MODEL_RETRY_SECONDS
+                    )
+                    _pane_model_state["worker_running"] = False
+                    return
+                _pane_model_state["applied"] = physical
+                _pane_model_state["discovered"] = True
+                _pane_model_state["retry_after"] = 0.0
+            continue
+
+        pane_ids = sorted(set(desired) | set(applied))
+        live_ids = None
+        retry_failed = False
+        for pane_id in pane_ids:
+            if pane_id in desired:
+                value = desired[pane_id]
+                if pane_id in applied and applied[pane_id] == value:
+                    continue
+            else:
+                value = None
+                if applied[pane_id] is None:
+                    continue
+            if value is None:
+                args = ("set-option", "-p", "-u", "-t", pane_id,
+                        "@ccmodel")
+            else:
+                args = ("set-option", "-p", "-t", pane_id, "@ccmodel",
+                        value)
+            try:
+                result = tmux(*args, timeout=2)
+                if getattr(result, "returncode", 0) != 0:
+                    raise RuntimeError(getattr(result, "stderr", "") or "tmux fallo")
+            except Exception:
+                failure_needs_retry = True
+                if value is None:
+                    if live_ids is None:
+                        live_ids = _pane_model_live_ids()
+                    if live_ids is not None and pane_id not in live_ids:
+                        with _pane_model_lock:
+                            _pane_model_state["applied"][pane_id] = None
+                        failure_needs_retry = False
+                if failure_needs_retry:
+                    retry_failed = True
+                continue
+            with _pane_model_lock:
+                _pane_model_state["applied"][pane_id] = value
+
+        with _pane_model_lock:
+            if generation != _pane_model_state["generation"]:
+                continue
+            for pane_id in list(_pane_model_state["applied"]):
+                if (pane_id not in _pane_model_state["desired"]
+                        and _pane_model_state["applied"][pane_id] is None):
+                    del _pane_model_state["applied"][pane_id]
+            _pane_model_state["retry_after"] = (
+                time.monotonic() + PANE_MODEL_RETRY_SECONDS
+                if retry_failed else 0.0
+            )
+            _pane_model_state["worker_running"] = False
+            return
 
 
 def write_pane_models(panes):
-    """Muestra el modelo de IA en el borde de cada pane, SIN que tmux tenga
-    que spawnear un subproceso por pane cada status-interval (con 50 panes eso
-    causaba micro-lag al teclear). Lo escribimos como una OPCION de pane
-    (@ccmodel) que el pane-border-format lee con #{E:@ccmodel} — cero spawns.
-    Las set-option corren en un HILO para no frenar /usage/state.
-    Tambien mantenemos pane-models.txt para compat con cc-pane-model."""
-    entries = []   # (pane_id, styled_value, plain_line)
-    for p in panes:
-        pane_id = p.get("tmux_pane") or ""
-        if not pane_id.startswith("%"):
-            continue
-        agent = p.get("agent") or p.get("provider") or ""
-        model = (p.get("model") or "").replace("claude-", "")
-        model = model.rsplit("/", 1)[-1] if "/" in model else model
-        label = f"{agent} · {model}" if model else agent
-        if not label:
-            continue
-        color = PANE_MODEL_COLORS.get(agent, "244")
-        styled = f"#[fg=colour{color},bold]▸ {label}#[default]"
-        entries.append((pane_id, styled, f"{pane_id} {label}"))
-    try:
-        tmp = PANE_MODELS_FILE + ".tmp"
-        with open(tmp, "w") as f:
-            f.write("\n".join(e[2] for e in entries) + "\n")
-        os.replace(tmp, PANE_MODELS_FILE)
-    except OSError:
-        pass
-
-    def _set_opts():
-        for pane_id, styled, _ in entries:
+    """Reconcile pane border models without blocking /usage/state on tmux."""
+    values, file_text = _pane_model_values(panes)
+    worker = None
+    with _pane_model_lock:
+        if file_text != _pane_model_state["file_text"]:
             try:
-                tmux("set-option", "-p", "-t", pane_id, "@ccmodel", styled, timeout=2)
-            except Exception:
+                tmp = PANE_MODELS_FILE + ".tmp"
+                with open(tmp, "w") as f:
+                    f.write(file_text)
+                os.replace(tmp, PANE_MODELS_FILE)
+            except OSError:
                 pass
-    threading.Thread(target=_set_opts, daemon=True).start()
+            else:
+                _pane_model_state["file_text"] = file_text
+
+        if values != _pane_model_state["desired"]:
+            _pane_model_state["desired"] = values
+            _pane_model_state["generation"] += 1
+            _pane_model_state["retry_after"] = 0.0
+        if (not _pane_model_state["worker_running"]
+                and time.monotonic() >= _pane_model_state["retry_after"]
+                and (not _pane_model_state["discovered"]
+                     or _pane_models_need_reconcile(
+                         values, _pane_model_state["applied"]))):
+            _pane_model_state["worker_running"] = True
+            try:
+                worker = threading.Thread(target=_reconcile_pane_models,
+                                          daemon=True)
+            except Exception:
+                _pane_model_state["worker_running"] = False
+
+    if worker is not None:
+        try:
+            worker.start()
+        except Exception:
+            with _pane_model_lock:
+                _pane_model_state["worker_running"] = False
 
 
 # Catalogo de modelos de OpenCode (unico agente con seleccion de PROVIDER
@@ -413,8 +571,8 @@ def remote_urls(host, token):
     base = f"https://{host}"
     return {
         "dashboard": f"{base}/?token={token}",
-        "terminal": f"{base}/term?token={token}",
-        "terminalFallback": f"{base}:8443/?token={token}",
+        "terminal": f"{base}/term",
+        "terminalFallback": f"{base}:8443/",
     }
 
 
@@ -878,13 +1036,43 @@ def tmux_sessions():
     return {l for l in r.stdout.splitlines() if l}
 
 
+def get_tmux_mouse(sess):
+    target = "=" + sess
+    try:
+        exists = tmux("has-session", "-t", target)
+    except Exception as exc:
+        return None, str(exc).strip() or "tmux fallo"
+    if exists.returncode != 0:
+        return None, f"No hay sesion tmux '{sess}'"
+    # Igual que set_tmux_mouse: tmux 3.2a espera el nombre sin '=' para las
+    # opciones de sesion. `sess` se valida con SESSION_RE antes de esta ruta.
+    # -A resuelve el valor global heredado. Sin esto tmux devuelve rc=0 pero
+    # stdout vacio cuando la sesion no tiene override, y la UI lo confundia
+    # con mouse=off.
+    try:
+        r = tmux("show-options", "-A", "-v", "-t", sess, "mouse")
+    except Exception as exc:
+        return None, str(exc).strip() or "tmux fallo"
+    if r.returncode != 0:
+        return None, r.stderr.strip() or "tmux fallo"
+    return r.stdout.strip() == "on", None
+
+
 def set_tmux_mouse(sess, enabled):
     target = "=" + sess
-    if tmux("has-session", "-t", target).returncode != 0:
+    try:
+        exists = tmux("has-session", "-t", target)
+    except Exception as exc:
+        return str(exc).strip() or "tmux fallo"
+    if exists.returncode != 0:
         return f"No hay sesion tmux '{sess}'"
     # set-option en tmux 3.2a no acepta el target exacto '=name' para opciones
     # de sesion, pero el nombre viene validado por SESSION_RE y no pasa por shell.
-    r = tmux("set-option", "-t", sess, "mouse", "on" if enabled else "off")
+    try:
+        r = tmux("set-option", "-t", sess, "mouse",
+                 "on" if enabled else "off")
+    except Exception as exc:
+        return str(exc).strip() or "tmux fallo"
     if r.returncode != 0:
         return r.stderr.strip() or "tmux fallo"
     return None
@@ -1249,7 +1437,14 @@ def read_states():
     return items
 
 
-_state_cache = {"at": 0.0, "items": None}
+class _StateFlight:
+    def __init__(self):
+        self.done = threading.Event()
+        self.items = None
+        self.error = None
+
+
+_state_cache = {"at": 0.0, "items": None, "flight": None}
 _state_lock = threading.Lock()
 
 
@@ -1260,12 +1455,35 @@ def read_states_cached(ttl=1.2):
     estado (waiting/working) se sienta rezagado."""
     now = time.time()
     with _state_lock:
-        if _state_cache["items"] is not None and now - _state_cache["at"] < ttl:
+        if (_state_cache["items"] is not None
+                and now - _state_cache["at"] < ttl):
             return _state_cache["items"]
-    items = read_states()
+        flight = _state_cache["flight"]
+        leader = flight is None
+        if leader:
+            flight = _StateFlight()
+            _state_cache["flight"] = flight
+    if not leader:
+        flight.done.wait()
+        if flight.error is not None:
+            raise flight.error
+        return flight.items
+    try:
+        items = read_states()
+    except BaseException as exc:
+        with _state_lock:
+            flight.error = exc
+            if _state_cache["flight"] is flight:
+                _state_cache["flight"] = None
+            flight.done.set()
+        raise
     with _state_lock:
         _state_cache["at"] = time.time()
         _state_cache["items"] = items
+        flight.items = items
+        if _state_cache["flight"] is flight:
+            _state_cache["flight"] = None
+        flight.done.set()
     return items
 
 
@@ -1911,7 +2129,7 @@ class Handler(http.server.SimpleHTTPRequestHandler):
     # sw.js, manifest, iconos) NO — no revela nada (es codigo open-source) y
     # asi la PWA instala y carga sin depender de cookies en el webview movil.
     API_GET = ("/state", "/usage/state", "/opencode/models", "/events", "/conf", "/prefs", "/ssh", "/tabs",
-               "/tab-history", "/remote-state", "/remote-qr.png", "/snippets")
+               "/tab-history", "/remote-state", "/remote-qr.png", "/snippets", "/tmux-mouse")
 
     def do_GET(self):
         host = self.headers.get("Host", "")
@@ -1949,7 +2167,10 @@ class Handler(http.server.SimpleHTTPRequestHandler):
                 except Exception:
                     pass
             state["alerts"] = cc_usage.list_alerts(USAGE_DB)
-            write_pane_models(state.get("panes") or [])
+            # Conserva el modelo enriquecido del memo en cache hits, filtrando
+            # por IDs vivos para que el fallback historico SQLite nunca vuelva
+            # a conducir opciones fisicas de tmux.
+            write_pane_models(_pane_models_for_live_state(panes, state))
             return self._json(200, state)
         if self.path.startswith("/ssh"):
             return self._json(200, parse_ssh_config())
@@ -1960,6 +2181,17 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             return self._json(200, out)
         if self.path.startswith("/prefs"):
             return self._json(200, read_prefs())
+        if self.path == "/tmux-mouse" or self.path.startswith("/tmux-mouse?"):
+            import urllib.parse
+            query = urllib.parse.parse_qs(urllib.parse.urlsplit(self.path).query)
+            sess = (query.get("session") or [""])[0]
+            if not SESSION_RE.fullmatch(sess):
+                return self._json(400, {"error": "Nombre de sesion invalido"})
+            enabled, err = get_tmux_mouse(sess)
+            if err:
+                code = 404 if err.startswith("No hay sesion") else 500
+                return self._json(code, {"error": err})
+            return self._json(200, {"mouse": "on" if enabled else "off"})
         if self.path.startswith("/tabs"):
             # Las MISMAS pestanas abiertas en la app de escritorio (app-tabs.json)
             # para que el movil muestre exactamente lo mismo. Solo sesiones vivas.

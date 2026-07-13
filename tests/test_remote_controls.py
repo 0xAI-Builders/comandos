@@ -2,12 +2,15 @@
 import ast
 import os
 import re
+import subprocess
 import tempfile
+import textwrap
 import types
 from pathlib import Path
 
 
 SRC = Path("bin/cc-dash").read_text()
+CC_MOBILE = Path("bin/cc-mobile").resolve()
 
 
 def load_remote_helpers():
@@ -26,23 +29,33 @@ def load_remote_helpers():
     return ns
 
 
-def load_tmux_mouse_helper():
+def load_tmux_mouse_helpers(responses=None):
     tree = ast.parse(SRC)
     funcs = {
         node.name: ast.get_source_segment(SRC, node)
         for node in tree.body
         if isinstance(node, ast.FunctionDef)
     }
-    assert "set_tmux_mouse" in funcs
+    needed = ("get_tmux_mouse", "set_tmux_mouse")
+    missing = [name for name in needed if name not in funcs]
+    assert not missing, f"missing helper(s): {', '.join(missing)}"
 
     calls = []
+    replies = iter(responses or [])
 
     def fake_tmux(*args, timeout=5):
         calls.append(args)
+        try:
+            reply = next(replies)
+            if isinstance(reply, BaseException):
+                raise reply
+            return reply
+        except StopIteration:
+            pass
         return types.SimpleNamespace(returncode=0, stdout="", stderr="")
 
     ns = {"tmux": fake_tmux}
-    exec(funcs["set_tmux_mouse"], ns)
+    exec("\n\n".join(funcs[name] for name in needed), ns)
     return ns, calls
 
 
@@ -60,14 +73,29 @@ def load_functions(*names, extra=None):
     return ns
 
 
-def test_remote_urls_include_existing_access_token():
+def load_handler_method(name, extra=None):
+    tree = ast.parse(SRC)
+    handler = next(
+        node for node in tree.body
+        if isinstance(node, ast.ClassDef) and node.name == "Handler"
+    )
+    method = next(
+        node for node in handler.body
+        if isinstance(node, ast.FunctionDef) and node.name == name
+    )
+    ns = dict(extra or {})
+    exec(textwrap.dedent(ast.get_source_segment(SRC, method)), ns)
+    return ns[name]
+
+
+def test_remote_urls_keep_dashboard_token_out_of_ttyd_urls():
     ns = load_remote_helpers()
 
     urls = ns["remote_urls"]("zion.tail63a117.ts.net", "abc123")
 
     assert urls["dashboard"] == "https://zion.tail63a117.ts.net/?token=abc123"
-    assert urls["terminal"] == "https://zion.tail63a117.ts.net/term?token=abc123"
-    assert urls["terminalFallback"] == "https://zion.tail63a117.ts.net:8443/?token=abc123"
+    assert urls["terminal"] == "https://zion.tail63a117.ts.net/term"
+    assert urls["terminalFallback"] == "https://zion.tail63a117.ts.net:8443/"
 
 
 def test_remote_status_detects_dashboard_and_terminal_routes():
@@ -89,6 +117,119 @@ https://zion.tail63a117.ts.net:8443 (tailnet only)
     assert status["fallbackRouteOn"] is True
 
 
+def test_cc_mobile_off_disables_both_dashboard_and_terminal_https_routes(
+        tmp_path):
+    fake_bin = tmp_path / "bin"
+    fake_bin.mkdir()
+    calls = tmp_path / "tailscale-calls"
+    tailscale = fake_bin / "tailscale"
+    tailscale.write_text(
+        "#!/bin/sh\n"
+        "if [ \"$*\" = \"serve status\" ]; then\n"
+        "  printf '%b' \"$SERVE_STATUS\"\n"
+        "  exit \"$STATUS_RC\"\n"
+        "fi\n"
+        "printf '%s\\n' \"$*\" >> \"$TAILSCALE_CALLS\"\n"
+        "case \"$*\" in\n"
+        "  *\"--https=$FAIL_HTTPS\"*) exit 1 ;;\n"
+        "esac\n"
+    )
+    tailscale.chmod(0o755)
+    env = {
+        **os.environ,
+        "PATH": f"{fake_bin}:{os.environ['PATH']}",
+        "TAILSCALE_CALLS": str(calls),
+        "FAIL_HTTPS": "never",
+        "SERVE_STATUS": "",
+        "STATUS_RC": "0",
+    }
+
+    subprocess.run(
+        [str(CC_MOBILE), "off"], env=env, check=True,
+        text=True, capture_output=True,
+    )
+
+    assert calls.read_text().splitlines() == [
+        "serve --https=443 off",
+        "serve --https=8443 off",
+    ]
+
+
+def test_cc_mobile_off_fails_closed_without_resetting_unrelated_serve_config(
+        tmp_path):
+    fake_bin = tmp_path / "bin"
+    fake_bin.mkdir()
+    calls = tmp_path / "tailscale-calls"
+    tailscale = fake_bin / "tailscale"
+    tailscale.write_text(
+        "#!/bin/sh\n"
+        "if [ \"$*\" = \"serve status\" ]; then\n"
+        "  printf '%b' \"$SERVE_STATUS\"\n"
+        "  exit \"$STATUS_RC\"\n"
+        "fi\n"
+        "printf '%s\\n' \"$*\" >> \"$TAILSCALE_CALLS\"\n"
+        "case \"$*\" in\n"
+        "  *\"--https=$FAIL_HTTPS\"*) exit 1 ;;\n"
+        "esac\n"
+    )
+    tailscale.chmod(0o755)
+    env = {
+        **os.environ,
+        "PATH": f"{fake_bin}:{os.environ['PATH']}",
+        "TAILSCALE_CALLS": str(calls),
+        "FAIL_HTTPS": "8443",
+        "SERVE_STATUS": (
+            "https://node.example.ts.net:8443\\n"
+            "|-- / proxy http://127.0.0.1:4779\\n"
+        ),
+        "STATUS_RC": "0",
+    }
+
+    result = subprocess.run(
+        [str(CC_MOBILE), "off"], env=env, check=False,
+        text=True, capture_output=True,
+    )
+
+    assert result.returncode != 0
+    assert "No pude deshabilitar" in result.stderr
+    assert calls.read_text().splitlines() == [
+        "serve --https=443 off",
+        "serve --https=8443 off",
+    ]
+
+
+def test_cc_mobile_off_accepts_an_already_absent_terminal_handler(tmp_path):
+    fake_bin = tmp_path / "bin"
+    fake_bin.mkdir()
+    calls = tmp_path / "tailscale-calls"
+    tailscale = fake_bin / "tailscale"
+    tailscale.write_text(
+        "#!/bin/sh\n"
+        "if [ \"$*\" = \"serve status\" ]; then exit 0; fi\n"
+        "printf '%s\\n' \"$*\" >> \"$TAILSCALE_CALLS\"\n"
+        "case \"$*\" in\n"
+        "  *\"--https=8443\"*) exit 1 ;;\n"
+        "esac\n"
+    )
+    tailscale.chmod(0o755)
+    env = {
+        **os.environ,
+        "PATH": f"{fake_bin}:{os.environ['PATH']}",
+        "TAILSCALE_CALLS": str(calls),
+    }
+
+    result = subprocess.run(
+        [str(CC_MOBILE), "off"], env=env, check=False,
+        text=True, capture_output=True,
+    )
+
+    assert result.returncode == 0
+    assert calls.read_text().splitlines() == [
+        "serve --https=443 off",
+        "serve --https=8443 off",
+    ]
+
+
 def test_tab_history_is_treated_as_authenticated_live_api():
     assert '"/tab-history"' in SRC
     api_get = SRC.split("API_GET = ", 1)[1].split("def do_GET", 1)[0]
@@ -102,7 +243,7 @@ def test_static_shell_also_uses_no_store_headers():
 
 
 def test_tmux_mouse_helper_changes_only_the_target_session():
-    ns, calls = load_tmux_mouse_helper()
+    ns, calls = load_tmux_mouse_helpers()
 
     err = ns["set_tmux_mouse"]("term-6629-3", False)
 
@@ -113,8 +254,94 @@ def test_tmux_mouse_helper_changes_only_the_target_session():
     ]
 
 
-def test_tmux_mouse_endpoint_is_available_to_remote_terminal_ui():
+def test_get_tmux_mouse_helper_reads_target_session():
+    ns, calls = load_tmux_mouse_helpers([
+        types.SimpleNamespace(returncode=0, stdout="", stderr=""),
+        types.SimpleNamespace(returncode=0, stdout="off\n", stderr=""),
+    ])
+
+    enabled, err = ns["get_tmux_mouse"]("ssh-prod")
+
+    assert err is None
+    assert enabled is False
+    assert calls == [
+        ("has-session", "-t", "=ssh-prod"),
+        ("show-options", "-A", "-v", "-t", "ssh-prod", "mouse"),
+    ]
+
+
+def test_get_tmux_mouse_helper_parses_on_and_reports_tmux_errors():
+    ok_ns, _ = load_tmux_mouse_helpers([
+        types.SimpleNamespace(returncode=0, stdout="", stderr=""),
+        types.SimpleNamespace(returncode=0, stdout="on\n", stderr=""),
+    ])
+    assert ok_ns["get_tmux_mouse"]("dev") == (True, None)
+
+    missing_ns, missing_calls = load_tmux_mouse_helpers([
+        types.SimpleNamespace(returncode=1, stdout="", stderr="missing"),
+    ])
+    assert missing_ns["get_tmux_mouse"]("gone") == (
+        None, "No hay sesion tmux 'gone'"
+    )
+    assert missing_calls == [("has-session", "-t", "=gone")]
+
+    failed_ns, _ = load_tmux_mouse_helpers([
+        types.SimpleNamespace(returncode=0, stdout="", stderr=""),
+        types.SimpleNamespace(returncode=1, stdout="", stderr="show failed\n"),
+    ])
+    assert failed_ns["get_tmux_mouse"]("dev") == (None, "show failed")
+
+
+def test_tmux_mouse_helpers_convert_process_exceptions_to_api_errors():
+    get_ns, _ = load_tmux_mouse_helpers([TimeoutError("tmux timed out")])
+    enabled, get_error = get_ns["get_tmux_mouse"]("dev")
+    assert enabled is None
+    assert "tmux timed out" in get_error
+
+    set_ns, _ = load_tmux_mouse_helpers([TimeoutError("tmux timed out")])
+    set_error = set_ns["set_tmux_mouse"]("dev", True)
+    assert "tmux timed out" in set_error
+
+
+def test_tmux_mouse_get_is_authenticated_and_post_stays_available():
     assert 'self.path == "/tmux-mouse"' in SRC
+    api_get = SRC.split("API_GET = ", 1)[1].split("def do_GET", 1)[0]
+    assert '"/tmux-mouse"' in api_get
+    get_route = SRC.split("def _do_GET(self):", 1)[1].split("def do_POST(self):", 1)[0]
+    assert 'self.path.startswith("/tmux-mouse?")' in get_route
+    assert "get_tmux_mouse(sess)" in get_route
+    assert '"mouse": "on" if enabled else "off"' in get_route
+
+
+def test_tmux_mouse_get_route_validates_session_and_maps_failures():
+    session_re = re.compile(r"^[A-Za-z0-9._-]{1,80}$")
+    replies = {
+        "missing": (None, "No hay sesion tmux 'missing'"),
+        "broken": (None, "show failed"),
+        "enabled": (True, None),
+        "disabled": (False, None),
+    }
+    route = load_handler_method(
+        "_do_GET",
+        extra={"SESSION_RE": session_re, "get_tmux_mouse": replies.__getitem__},
+    )
+
+    class Request:
+        def __init__(self, path):
+            self.path = path
+
+        @staticmethod
+        def _json(code, body):
+            return code, body
+
+    assert route(Request("/tmux-mouse")) == (
+        400, {"error": "Nombre de sesion invalido"}
+    )
+    assert route(Request("/tmux-mouse?session=bad%2Fname"))[0] == 400
+    assert route(Request("/tmux-mouse?session=missing"))[0] == 404
+    assert route(Request("/tmux-mouse?session=broken"))[0] == 500
+    assert route(Request("/tmux-mouse?session=enabled")) == (200, {"mouse": "on"})
+    assert route(Request("/tmux-mouse?session=disabled")) == (200, {"mouse": "off"})
 
 
 def test_parse_ssh_config_preserves_identity_file_for_existing_ui():
@@ -302,12 +529,16 @@ def test_ssh_new_tab_endpoint_is_available_for_left_click_chips():
 
 
 if __name__ == "__main__":
-    test_remote_urls_include_existing_access_token()
+    test_remote_urls_keep_dashboard_token_out_of_ttyd_urls()
     test_remote_status_detects_dashboard_and_terminal_routes()
     test_tab_history_is_treated_as_authenticated_live_api()
     test_static_shell_also_uses_no_store_headers()
     test_tmux_mouse_helper_changes_only_the_target_session()
-    test_tmux_mouse_endpoint_is_available_to_remote_terminal_ui()
+    test_get_tmux_mouse_helper_reads_target_session()
+    test_get_tmux_mouse_helper_parses_on_and_reports_tmux_errors()
+    test_tmux_mouse_helpers_convert_process_exceptions_to_api_errors()
+    test_tmux_mouse_get_is_authenticated_and_post_stays_available()
+    test_tmux_mouse_get_route_validates_session_and_maps_failures()
     test_parse_ssh_config_preserves_identity_file_for_existing_ui()
     test_ssh_key_setup_starts_copy_id_tmux_session_for_saved_host()
     test_ssh_key_setup_endpoint_is_available_from_existing_server_ui()

@@ -23,7 +23,7 @@ def test_header_button_snippets_present():
 
 
 def test_dialog_snippets_shell_present():
-    assert re.search(r'<dialog\s+id="dlg-snippets"\s+class="modal', HTML)
+    assert re.search(r'<dialog\s+id="dlg-snippets"\s+class="snip-modal', HTML)
     assert 'class="snip-list"' in HTML
     assert 'class="snip-pane"' in HTML
 

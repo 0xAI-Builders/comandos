@@ -2,15 +2,17 @@
 # cc-mobile — expone el tablero de ComandOS a tu CELULAR de forma SEGURA.
 #
 # Seguridad por capas:
-#   1) Tailscale (WireGuard): solo TUS dispositivos, cifrado extremo a extremo.
+#   1) Tailscale (WireGuard): peers autorizados por tu politica de tailnet,
+#      con cifrado extremo a extremo.
 #   2) Tailscale Serve: TLS automatico (https) y NUNCA sale a la internet
 #      publica — solo a tu tailnet. (Funnel/publico: JAMAS, a proposito.)
-#   3) Token de acceso: aunque alguien llegue al puerto, sin el token no opera.
-#   4) cc-dash sigue escuchando SOLO en 127.0.0.1; Serve hace de puente.
+#   3) Token de acceso: protege el dashboard/API remoto de cc-dash.
+#   4) ttyd depende de la política de acceso de Tailscale; no agrega otro login.
+#   5) cc-dash y ttyd escuchan SOLO en 127.0.0.1; Serve hace de puente.
 #
 # Uso:
 #   cc-mobile           conecta y muestra el QR para emparejar el celular
-#   cc-mobile off       deja de exponer el tablero
+#   cc-mobile off       deja de exponer el tablero y la terminal
 #   cc-mobile status    estado actual
 set -uo pipefail
 HOOKS="$HOME/.claude/hooks"
@@ -24,9 +26,19 @@ command -v tailscale >/dev/null || die "Tailscale no esta instalado. Instalalo d
 
 case "${1:-on}" in
   off)
-    tailscale serve --https=443 off 2>/dev/null \
-      || tailscale serve reset 2>/dev/null || true
-    ok "Tablero ya NO esta expuesto. Tu celular no puede alcanzarlo."
+    off_failed=0
+    tailscale serve --https=443 off 2>/dev/null || off_failed=1
+    tailscale serve --https=8443 off 2>/dev/null || off_failed=1
+    serve_status=$(tailscale serve status 2>/dev/null)
+    status_rc=$?
+    if printf '%s\n' "$serve_status" | \
+        grep -Eq 'http://127\.0\.0\.1:(4777|4779|4780)(/|[[:space:]]|$)'; then
+      die "No pude deshabilitar toda la exposicion remota de ComandOS. Revisa: tailscale serve status"
+    fi
+    if [ "$off_failed" -ne 0 ] && [ "$status_rc" -ne 0 ]; then
+      die "No pude deshabilitar ni verificar toda la exposicion remota. Revisa: tailscale serve status"
+    fi
+    ok "Tablero y terminal ya NO estan expuestos. Tu celular no puede alcanzarlos."
     exit 0 ;;
   status)
     echo "Tailscale:"; tailscale status 2>&1 | head -3

@@ -606,8 +606,6 @@
   .apptab .dot{width:7px;height:7px;border-radius:50%;flex:none;box-shadow:0 0 6px currentColor}
   .apptab.plus{font-size:18px;color:var(--faint);padding:8px 15px}
   .apptab.plus:hover{color:var(--brand)}
-  .apptab.mousetgl{font-size:13px}
-  .apptab.mousetgl.on{color:var(--done)}
   #panes{flex:1;min-height:0;position:relative;display:flex;flex-direction:column}
   #view-panel{flex:1;min-height:0;display:flex;flex-direction:column}
   #term-area{display:none}
@@ -650,7 +648,7 @@
     body.app.split #splitter{grid-area:split;display:block;position:relative;z-index:8;
       cursor:col-resize;background:linear-gradient(90deg,transparent,var(--line),transparent);
       touch-action:none}
-    body.app.split #splitter::before{content:"";position:absolute;inset:0 -5px}
+    body.app.split #splitter::before{content:"";position:absolute;inset:0 -12px}
     body.app.split #splitter::after{content:"";position:absolute;left:3px;top:50%;
       width:2px;height:42px;border-radius:2px;background:var(--line2);
       transform:translateY(-50%);box-shadow:0 -10px 0 var(--line2),0 10px 0 var(--line2)}
@@ -2004,11 +2002,11 @@ let termBasePromise = null;
 // Cada terminal es un iframe a ttyd attacheado a esa sesion tmux (misma sesion,
 // en vivo). En tablet ancha se ve panel + terminal lado a lado.
 const openTerms = new Map();   // session -> {tab, frame}
-const termMouse = new Map();   // session -> mouse tmux activo (resize de panes)
 let activeTerm = null;   // terminal visible en el area de terminal
 let activeView = "panel";
-const selectingTerms = new Set();
-let termSelectBusy = false;
+const termInteraction = new Map(); // session -> actual tmux mouse + temporary selection
+let termInteractionSeq = 0;
+let termPageHidden = false;
 const SPLIT_KEY = "cc-split-left";
 
 function appEnabled(){ return WEBTERM; }
@@ -2020,13 +2018,14 @@ function splitBounds(){
   const max = Math.max(min, Math.min(760, w - 360));
   return {min, max};
 }
-function setSplitLeft(px, save){
+function setSplitLeft(px, save, bounds){
   const panes = document.getElementById("panes");
   if(!panes) return;
-  const {min, max} = splitBounds();
+  const {min, max} = bounds || splitBounds();
   const v = Math.max(min, Math.min(max, Math.round(px)));
   panes.style.setProperty("--split-left", `${v}px`);
   if(save) localStorage.setItem(SPLIT_KEY, String(v));
+  return v;
 }
 function restoreSplitLeft(){
   const raw = parseInt(localStorage.getItem(SPLIT_KEY) || "", 10);
@@ -2037,30 +2036,62 @@ function initSplitDrag(){
   const panes = document.getElementById("panes");
   if(!splitter || !panes || splitter._wired) return;
   splitter._wired = true;
-  let dragging = false;
+  let pointerId = null;
+  let dragRect = null;
+  let dragBounds = null;
+  let pendingX = null;
+  let frameId = 0;
+  let finalValue = null;
   const frames = () => document.querySelectorAll(".termpane");
+  const applyPending = () => {
+    frameId = 0;
+    if(pointerId === null || pendingX === null) return;
+    const clientX = pendingX;
+    pendingX = null;
+    finalValue = setSplitLeft(clientX - dragRect.left, false, dragBounds);
+  };
+  const schedule = () => {
+    if(!frameId) frameId = requestAnimationFrame(applyPending);
+  };
   const move = e => {
-    if(!dragging) return;
-    const r = panes.getBoundingClientRect();
-    setSplitLeft(e.clientX - r.left, true);
+    if(pointerId === null || e.pointerId !== pointerId) return;
+    pendingX = e.clientX;
+    schedule();
   };
   const stop = e => {
-    if(!dragging) return;
-    dragging = false;
+    if(pointerId === null || e.pointerId !== pointerId) return;
+    const endedPointer = pointerId;
+    if(e.type === "pointerup" && Number.isFinite(e.clientX)) pendingX = e.clientX;
+    if(frameId){ cancelAnimationFrame(frameId); frameId = 0; }
+    applyPending();
+    const value = finalValue;
+    pointerId = null;
+    dragRect = null;
+    dragBounds = null;
+    pendingX = null;
+    finalValue = null;
     document.body.classList.remove("dragging");
     frames().forEach(f => f.style.pointerEvents = "");
-    try{ splitter.releasePointerCapture(e.pointerId); }catch(_){}
     window.removeEventListener("pointermove", move);
     window.removeEventListener("pointerup", stop);
     window.removeEventListener("pointercancel", stop);
+    try{ splitter.releasePointerCapture(endedPointer); }catch(_){}
+    if(value !== null){
+      try{ localStorage.setItem(SPLIT_KEY, String(value)); }catch(_){}
+    }
   };
   splitter.addEventListener("pointerdown", e => {
-    if(!document.body.classList.contains("split")) return;
-    dragging = true;
+    if(!document.body.classList.contains("split") || pointerId !== null) return;
+    if(e.button !== undefined && e.button !== 0) return;
+    pointerId = e.pointerId;
+    dragRect = panes.getBoundingClientRect();
+    dragBounds = splitBounds();
+    pendingX = e.clientX;
+    finalValue = null;
     document.body.classList.add("dragging");
     frames().forEach(f => f.style.pointerEvents = "none");
     try{ splitter.setPointerCapture(e.pointerId); }catch(_){}
-    move(e);
+    schedule();
     window.addEventListener("pointermove", move);
     window.addEventListener("pointerup", stop);
     window.addEventListener("pointercancel", stop);
@@ -2108,7 +2139,7 @@ function wireTermFrameScroll(frame){
   try{
     const win = frame.contentWindow;
     const doc = frame.contentDocument || win?.document;
-    if(!win || !doc || win.__comandosScrollWired) return;
+    if(!win || !doc || win.__comandosOwnsTouchGestures || win.__comandosScrollWired) return;
     win.__comandosScrollWired = true;
     let touchY = null;
     let touchWheelAccum = 0;
@@ -2192,68 +2223,240 @@ function wireTermFrameShortcuts(frame){
   }catch(_){}
 }
 
+function termInteractionState(sess){
+  let state = termInteraction.get(sess);
+  if(!state){
+    state = {mouse:null, temporary:false, seq:0, busy:false, pending:"",
+             pendingSelecting:false, restorePending:false, resyncPending:false};
+    termInteraction.set(sess, state);
+  }
+  return state;
+}
+
+function applyTermInteraction(sess){
+  const state = termInteraction.get(sess);
+  const frame = openTerms.get(sess)?.frame;
+  if(frame) frame.dataset.selecting = state?.mouse === false ? "1" : "";
+  if(sess === activeTerm) updateTermSelectButton();
+}
+
+function cleanupTermInteraction(sess){
+  const state = termInteraction.get(sess);
+  if(!state || openTerms.has(sess) || state.busy || state.temporary ||
+      state.restorePending) return false;
+  termInteraction.delete(sess);
+  return true;
+}
+
 function updateTermSelectButton(){
   const b = document.getElementById("term-select-toggle");
   const sess = activeTerm && openTerms.has(activeTerm) ? activeTerm : "";
   if(!b) return;
-  const selecting = !!(sess && selectingTerms.has(sess));
-  b.disabled = termSelectBusy || !sess;
+  const state = sess ? termInteraction.get(sess) : null;
+  const known = typeof state?.mouse === "boolean";
+  const selecting = known && state.mouse === false;
+  b.disabled = !sess || !known || !!state?.busy;
   b.classList.toggle("on", selecting);
-  b.setAttribute("aria-pressed", String(selecting));
-  b.textContent = selecting ? tf("Interactuar", "Interact") : tf("Seleccionar", "Select");
-  b.title = selecting
+  b.setAttribute("aria-pressed", known ? String(selecting) : "mixed");
+  b.textContent = !known ? tf("Comprobando…", "Checking…")
+    : selecting ? tf("Interactuar", "Interact") : tf("Seleccionar", "Select");
+  b.title = !known
+    ? tf("Consultando el estado real de tmux", "Checking actual tmux state")
+    : selecting
     ? tf("Restaurar mouse de tmux para interactuar", "Restore tmux mouse for interaction")
     : tf("Apagar mouse de tmux para seleccionar texto", "Disable tmux mouse to select text");
 }
 
+async function syncTermInteraction(sess){
+  if(!sess) return false;
+  const state = termInteractionState(sess);
+  if(state.busy) return false;
+  const seq = ++termInteractionSeq;
+  state.seq = seq;
+  state.busy = true;
+  state.pending = "get";
+  applyTermInteraction(sess);
+  try{
+    const result = await api(`/tmux-mouse?session=${encodeURIComponent(sess)}`);
+    if(state.seq !== seq) return false;
+    const mouse = result.mouse === "on" ? true : result.mouse === "off" ? false : null;
+    if(mouse === null) throw new Error(tf("Estado tmux invalido", "Invalid tmux state"));
+    state.mouse = mouse;
+    if(mouse) state.temporary = false;
+    applyTermInteraction(sess);
+    return true;
+  }catch(err){
+    if(state.seq === seq) toast(err.message, true);
+    return false;
+  }finally{
+    if(state.seq === seq){
+      state.busy = false;
+      state.pending = "";
+      applyTermInteraction(sess);
+      let launchedRestore = false;
+      if(state.restorePending && state.temporary){
+        if(termPageHidden){
+          sendTermInteractionKeepalive(sess);
+        }else{
+          state.restorePending = false;
+          restoreTermInteraction(sess);
+          launchedRestore = true;
+        }
+      }else if(!state.temporary){
+        state.restorePending = false;
+      }
+      if(!launchedRestore && state.resyncPending && !termPageHidden){
+        state.resyncPending = false;
+        if(openTerms.has(sess)) syncTermInteraction(sess);
+      }
+      cleanupTermInteraction(sess);
+    }
+  }
+}
+
 async function setTermSelectionMode(sess, selecting, quiet=false){
-  if(!sess || termSelectBusy) return;
-  termSelectBusy = true;
-  updateTermSelectButton();
+  if(!sess) return false;
+  const state = termInteractionState(sess);
+  if(state.busy){
+    if(!selecting) state.restorePending = true;
+    return false;
+  }
+  const seq = ++termInteractionSeq;
+  state.seq = seq;
+  state.busy = true;
+  state.pending = "post";
+  state.pendingSelecting = selecting;
+  applyTermInteraction(sess);
   try{
     await api("/tmux-mouse", {session: sess, enabled: !selecting});
-    if(selecting) selectingTerms.add(sess); else selectingTerms.delete(sess);
-    const frame = openTerms.get(sess)?.frame;
-    if(frame) frame.dataset.selecting = selecting ? "1" : "";
+    if(state.seq !== seq) return false;
+    state.mouse = !selecting;
+    state.temporary = selecting;
+    if(!selecting) state.restorePending = false;
+    applyTermInteraction(sess);
     if(!quiet) toast(selecting
       ? tf("Seleccion de texto activa", "Text selection enabled")
       : tf("Interaccion tmux restaurada", "tmux interaction restored"));
+    return true;
   }catch(err){
-    toast(err.message, true);
+    if(state.seq === seq) toast(err.message, true);
+    return false;
   }finally{
-    termSelectBusy = false;
-    updateTermSelectButton();
+    if(state.seq === seq){
+      state.busy = false;
+      state.pending = "";
+      state.pendingSelecting = false;
+      applyTermInteraction(sess);
+      let launchedRestore = false;
+      if(state.restorePending && state.temporary){
+        if(termPageHidden){
+          sendTermInteractionKeepalive(sess);
+        }else{
+          state.restorePending = false;
+          restoreTermInteraction(sess);
+          launchedRestore = true;
+        }
+      }else if(!state.temporary){
+        state.restorePending = false;
+      }
+      if(!launchedRestore && state.resyncPending && !termPageHidden){
+        state.resyncPending = false;
+        if(openTerms.has(sess)) syncTermInteraction(sess);
+      }
+      cleanupTermInteraction(sess);
+    }
   }
 }
 
-function restoreTermInteraction(sess){
-  if(!sess || !selectingTerms.has(sess)) return;
-  setTermSelectionMode(sess, false, true);
+async function restoreTermInteraction(sess){
+  const state = sess ? termInteraction.get(sess) : null;
+  if(!state) return false;
+  if(state.busy && state.pending === "post" && state.pendingSelecting){
+    state.restorePending = true;
+    return false;
+  }
+  if(!state.temporary) return false;
+  if(state.busy){
+    state.restorePending = true;
+    return false;
+  }
+  return setTermSelectionMode(sess, false, true);
 }
 
 function restoreInactiveTermInteractions(keep){
-  for(const sess of [...selectingTerms])
-    if(sess !== keep) restoreTermInteraction(sess);
+  for(const [sess, state] of termInteraction){
+    if(sess === keep) continue;
+    if(state.pending === "get"){
+      state.seq = ++termInteractionSeq;
+      state.busy = false;
+      state.pending = "";
+      applyTermInteraction(sess);
+    }
+    if(state.pending === "post" && state.pendingSelecting)
+      state.restorePending = true;
+    if(state.temporary) restoreTermInteraction(sess);
+  }
+}
+
+function sendTermInteractionKeepalive(sess){
+  try{
+    const tok = authToken();
+    const headers = {"Content-Type":"application/json"};
+    if(tok) headers["X-Comandos-Token"] = tok;
+    fetch("/tmux-mouse", {
+      method:"POST",
+      headers,
+      body:JSON.stringify({session:sess, enabled:true}),
+      keepalive:true
+    }).catch(()=>{});
+    return true;
+  }catch(_){
+    return false;
+  }
 }
 
 function restoreAllTermInteractions(){
-  for(const sess of [...selectingTerms]){
-    selectingTerms.delete(sess);
-    const frame = openTerms.get(sess)?.frame;
-    if(frame) frame.dataset.selecting = "";
-    try{
-      const tok = authToken();
-      const headers = {"Content-Type":"application/json"};
-      if(tok) headers["X-Comandos-Token"] = tok;
-      fetch("/tmux-mouse", {
-        method:"POST",
-        headers,
-        body:JSON.stringify({session:sess, enabled:true}),
-        keepalive:true
-      }).catch(()=>{});
-    }catch(_){}
+  termPageHidden = true;
+  for(const [sess, state] of termInteraction){
+    const pendingSelection = state.pending === "post" &&
+      state.pendingSelecting && state.mouse === true;
+    if(state.pending === "get"){
+      state.seq = ++termInteractionSeq;
+      state.busy = false;
+      state.pending = "";
+      state.pendingSelecting = false;
+    }
+    if(!state.temporary && !pendingSelection) continue;
+    state.restorePending = true;
+    sendTermInteractionKeepalive(sess);
   }
   updateTermSelectButton();
+}
+
+async function handleTermInteractionsPageShow(){
+  if(!termPageHidden) return false;
+  termPageHidden = false;
+  const current = activeTerm && openTerms.has(activeTerm) ? activeTerm : "";
+  for(const [sess, state] of termInteraction){
+    if(state.busy){
+      if(sess === current) state.resyncPending = true;
+      continue;
+    }
+    state.seq = ++termInteractionSeq;
+    state.pending = "";
+    state.pendingSelecting = false;
+    state.resyncPending = false;
+    state.mouse = null;
+    if(!state.temporary) state.restorePending = false;
+    applyTermInteraction(sess);
+  }
+  if(!current) return false;
+  const state = termInteraction.get(current);
+  if(state?.busy){
+    state.resyncPending = true;
+    return false;
+  }
+  return syncTermInteraction(current);
 }
 
 function renderTabbar(){
@@ -2300,29 +2503,6 @@ function renderTabbar(){
     }catch(err){ toast(err.message, true); }
   };
   bar.appendChild(newBtn);
-  // 🖱 panes: prende el mouse de tmux en la sesion ACTIVA para poder
-  // ARRASTRAR los bordes de panes desde el terminal remoto (tactil o mouse).
-  if(activeTerm){
-    const ms = document.createElement("div");
-    ms.className = "apptab plus mousetgl" + (termMouse.get(activeTerm) ? " on" : "");
-    ms.textContent = "🖱";
-    ms.title = termMouse.get(activeTerm)
-      ? tf("Mouse tmux ACTIVO: arrastra los bordes para redimensionar panes. Click para apagar.",
-           "tmux mouse ON: drag pane borders to resize. Click to turn off.")
-      : tf("Activar mouse tmux: permite redimensionar panes arrastrando sus bordes",
-           "Enable tmux mouse: resize panes by dragging their borders");
-    ms.onclick = async () => {
-      const want = !termMouse.get(activeTerm);
-      try{
-        await api("/tmux-mouse", {session: activeTerm, enabled: want});
-        termMouse.set(activeTerm, want);
-        toast(want ? tf("Mouse tmux activo: arrastra bordes para redimensionar", "tmux mouse on: drag borders to resize")
-                   : tf("Mouse tmux apagado", "tmux mouse off"));
-        renderTabbar();
-      }catch(err){ toast(err.message, true); }
-    };
-    bar.appendChild(ms);
-  }
   // Boton + : abrir cualquier sesion como terminal (usa el conmutador)
   const plus = document.createElement("div");
   plus.className = "apptab plus"; plus.textContent = "+";
@@ -2350,6 +2530,7 @@ function ensureFrame(sess){
     });
     document.getElementById("term-area").appendChild(frame);
     o.frame = frame;
+    applyTermInteraction(sess);
     resolveTermBase().then(base => {
       if(openTerms.get(sess)?.frame !== frame) return;
       frame.src = `${base}/?arg=${encodeURIComponent(sess)}`;
@@ -2357,6 +2538,7 @@ function ensureFrame(sess){
   }
 }
 function showView(key){
+  const previousTerm = activeTerm;
   activeView = key;
   const split = document.body.classList.contains("split");
   if(key.startsWith("term:")) activeTerm = key.slice(5);
@@ -2369,6 +2551,8 @@ function showView(key){
   document.getElementById("term-area").classList.toggle("on", split ? !!shown : key.startsWith("term:"));
   for(const [sess, o] of openTerms)
     if(o.frame) o.frame.classList.toggle("on", sess === shown);
+  if(shown && (shown !== previousTerm || termInteraction.get(shown)?.mouse == null))
+    syncTermInteraction(shown);
   updateTermSelectButton();
   renderTabbar();
 }
@@ -2401,9 +2585,10 @@ function openTerm(sess, label){
   showView("term:"+sess);
 }
 function closeTerm(sess){
-  restoreTermInteraction(sess);
   const o = openTerms.get(sess);
   if(o){ if(o.frame) o.frame.remove(); openTerms.delete(sess); }
+  restoreTermInteraction(sess).finally(() => cleanupTermInteraction(sess));
+  cleanupTermInteraction(sess);
   if(activeTerm === sess) activeTerm = [...openTerms.keys()][0] || null;
   showView(activeView === "term:"+sess ? "panel" : activeView);
 }
@@ -3410,9 +3595,12 @@ $("#tl-toggle").addEventListener("click", ()=>{
 });
 $("#term-select-toggle").addEventListener("click", ()=>{
   if(!activeTerm || !openTerms.has(activeTerm)) return;
-  setTermSelectionMode(activeTerm, !selectingTerms.has(activeTerm));
+  const state = termInteraction.get(activeTerm);
+  if(typeof state?.mouse !== "boolean" || state.busy) return;
+  setTermSelectionMode(activeTerm, state.mouse);
 });
 window.addEventListener("pagehide", restoreAllTermInteractions);
+window.addEventListener("pageshow", handleTermInteractionsPageShow);
 setInterval(()=>{
   const d = new Date();
   $("#clock").textContent =

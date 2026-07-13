@@ -97,11 +97,30 @@ def test_pane_border_uses_tmux_option_not_per_pane_subprocess():
     # borde la lee con #{E:@ccmodel} — cero spawns por pane.
     assert '"@ccmodel"' in SRC
     assert '"set-option", "-p"' in SRC
-    body = SRC.split("def write_pane_models", 1)[1].split("\ndef ", 1)[0]
-    assert "threading.Thread" in body
+    assert "def _pane_model_values" in SRC
+    assert "_pane_model_state" in SRC
+    assert "threading.Thread" in SRC
     conf = Path("config/tmux.conf").read_text()
     assert "#{E:@ccmodel}" in conf
     assert "cc-pane-model" not in conf
+
+
+def test_pane_model_values_normalize_labels_and_preserve_clears():
+    dash = load_dash_module()
+
+    values, plain = dash._pane_model_values([
+        {"tmux_pane": "%1", "agent": "claude", "model": "claude-sonnet"},
+        {"tmux_pane": "%2", "provider": "codex", "model": "openai/gpt-5.6"},
+        {"tmux_pane": "%3", "agent": "", "model": ""},
+        {"tmux_pane": "not-a-pane", "agent": "codex", "model": "ignored"},
+    ])
+
+    assert values == {
+        "%1": "#[fg=colour141,bold]▸ claude · sonnet#[default]",
+        "%2": "#[fg=colour43,bold]▸ codex · gpt-5.6#[default]",
+        "%3": None,
+    }
+    assert plain == "%1 claude · sonnet\n%2 codex · gpt-5.6\n"
 
 
 def test_alert_rules_endpoint_and_evaluation():

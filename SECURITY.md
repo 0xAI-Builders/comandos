@@ -21,7 +21,7 @@ Layered protections, all on by default:
 | `~/.ssh/config` injection (`ProxyCommand` → RCE on connect) | `hostname`/`user`/`port`/`identity` are validated; newlines and control chars are rejected. |
 | Popup spoofing / approval social-engineering (`cc-notifyd`) | Loopback-only + Origin-gated; concurrent popups capped. |
 | Telegram takeover | Identity is checked by **numeric user id** (`TELEGRAM_ALLOWED_USER_ID`, immutable) and chat id — on messages **and** button callbacks. Fails **closed** if unconfigured. |
-| Web terminal (embedded) | The terminal (`ttyd`, port 8443) is **tailnet-only** — no separate password, so it embeds in the dashboard without a per-frame prompt. Same boundary as SSH-over-Tailscale (WireGuard + device auth). The control token still gates the dashboard. |
+| Web terminal (embedded) | `ttyd` binds to loopback and is exposed tailnet-only as `/term`, with `:8443` as a fallback — no separate password, so it embeds without a per-frame prompt. Same boundary as SSH-over-Tailscale (WireGuard + tailnet policy). The control token still gates the dashboard/API. |
 | Secrets on disk | `telegram.env`, `cc-notify.conf`, `dash-token` are `chmod 600`. |
 
 The dashboard renderer (`mdHtml`) is XSS-safe: agent/hook text is HTML-escaped
@@ -32,8 +32,11 @@ first and only ever placed into element *content* (never an attribute or an
 
 `/send`, `/key`, and Telegram `/run` are **designed** to type into your agents
 and run commands — that is the product. They are all behind the auth gate.
-Anyone with your access token (or your tailnet + a valid token) can drive your
-agents. Treat the token like a password; `cc-mobile off` revokes remote access.
+Anyone with your access token can drive agents through the dashboard/API.
+Peers allowed by your Tailscale policy can operate ttyd when the optional web
+terminal is enabled, because ttyd has no separate ComandOS login. Treat the
+token like a password and keep the terminal limited to trusted tailnet peers;
+`cc-mobile off` disables both ComandOS Serve endpoints.
 
 ## Reporting
 

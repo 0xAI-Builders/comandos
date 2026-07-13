@@ -1,8 +1,11 @@
-# ComandOS
+# ComandOS — Local-First Mission Control for AI Coding Agents
 
-**Mission control for running many Claude Code agents in parallel — it tells you who needs you.**
-Offline voice alerts, actionable popups with full rendered markdown, tabbed terminals,
-and Telegram remote control. You answer with one keystroke and move on.
+Run Claude Code, OpenAI Codex CLI, Gemini CLI, OpenCode, and other coding
+agents side by side in persistent tmux terminals. Get actionable
+notifications, manage direct SSH sessions, monitor plan usage, and continue
+securely from your desktop, phone, or tablet through the remote terminal
+PWA over Tailscale — without a hosted ComandOS backend, external ComandOS
+database, telemetry, or SSH proxy.
 
 [![license](https://img.shields.io/badge/license-MIT-2EE59D?style=flat-square)](./LICENSE)
 [![GitHub Sponsors](https://img.shields.io/badge/sponsor-0xAI--Builders-f38ba8.svg?style=flat-square&logo=github-sponsors)](https://github.com/sponsors/0xAI-Builders)
@@ -14,10 +17,38 @@ and Telegram remote control. You answer with one keystroke and move on.
 
 ## Why
 
-When you run 10 Claude Codes at once, the problem isn't terminals — it's **knowing
-which one needs you and getting back to it without friction**. ComandOS turns that
-into an event-driven flow: the system interrupts you (voice + actionable popup),
-you answer with a key or a line, and you keep going. No tab-scanning.
+When you run many coding agents at once, the problem isn't terminals — it's
+**knowing which one needs you and getting back to it without friction**.
+ComandOS turns Claude Code, Codex CLI, Gemini CLI, OpenCode, and regular shell
+sessions into an event-driven flow: the system interrupts you (voice +
+actionable popup), you answer with a key or a line, and you keep going. No
+tab-scanning.
+
+## Local-first by design
+
+ComandOS runs on your computer. Runtime state lives in local tmux sessions,
+JSON and configuration files, and local SQLite at
+`~/.claude/hooks/comandos-usage.sqlite`. There is no hosted ComandOS backend,
+external ComandOS database, telemetry service, or ComandOS SSH proxy.
+
+SSH hosts are read from `~/.ssh/config`, and the installed OpenSSH client
+connects directly from your computer to the selected server. ComandOS does not
+upload your SSH configuration or private keys to a ComandOS service. If you
+explicitly request passwordless setup, `ssh-copy-id` copies only the selected
+public key to that server.
+
+Some features cross the network only when you use or configure them:
+
+- Agent CLIs communicate with their own AI providers under those providers'
+  terms and settings.
+- Plan-usage monitoring may query Anthropic or OpenAI usage endpoints directly
+  when matching credentials are configured.
+- Remote access through Tailscale Serve is optional and stays inside the
+  tailnet configuration you control.
+- Telegram control is optional; when enabled, notification content, replies,
+  and commands pass through the Telegram Bot API.
+- Voice playback is local after installation; `cc-doctor --fix` may download
+  an optional Piper voice model when you ask it to repair voice support.
 
 ## What you get
 
@@ -34,8 +65,9 @@ you answer with a key or a line, and you keep going. No tab-scanning.
 - **SSH manager**: CRUD over `~/.ssh/config`, one-click connect, detects live
   multiplexed tunnels (no-password reconnect).
 - **Snippets**: save reusable shell commands (one-liners or multi-line scripts) and paste them into the active session with **Ctrl+Shift+K**. Bracketed paste — nothing runs until you press Enter.
-- **Telegram**: buttons on notifications, reply to answer, `/ls /out /run`.
-- Everything is **files** (tmux, JSON, ssh config). No cloud, no DB. Survives reboots.
+- **Telegram**: optional buttons on notifications, reply to answer, `/ls /out /run`.
+- **Local-first state**: tmux, JSON/configuration files, and local SQLite survive
+  restarts without a hosted ComandOS service.
 - UI in **English and Spanish** (auto-detected from `$LANG`, switchable in Settings).
 
 ## Install
@@ -80,14 +112,22 @@ Scan the QR, open the dashboard, "Add to Home Screen" — it installs as an app
 `cc-webterm` — every session gets a **Terminal** button that opens the real,
 live, interactive terminal (xterm.js attached to the same tmux session). Type,
 scroll, run `vim` — exactly like sitting at your desk, shared in real time.
-Routed under `/term` by the same Tailscale Serve, behind the same token.
+It is routed under `/term` by the same Tailscale Serve. The interactive ttyd
+terminal relies on your tailnet access policy and does not add separate
+ComandOS authentication.
 
-**Security is layered, on by default:**
-- **Tailscale** (WireGuard): only *your* devices, end-to-end encrypted. Never on the public internet — Serve only, never Funnel.
+**When you enable remote access, security is layered:**
+- **Tailscale** (WireGuard): access follows your tailnet policy for authorized users and devices, with end-to-end encryption. ComandOS uses Serve, never public Funnel.
 - **Automatic TLS** via `tailscale serve` (https on your tailnet).
-- **Access token**: even inside your tailnet, no token → no access. `cc-dash` still binds only to `127.0.0.1`; Serve bridges it.
+- **Access token**: protects the remote dashboard and cc-dash API, including
+  session data and actions. `cc-dash` still binds only to `127.0.0.1`; Serve
+  bridges it.
+- **Interactive terminal boundary**: ttyd also binds only to loopback, but it
+  has no additional ComandOS login. Its `/term` and `:8443` routes rely on your
+  Tailscale access policy, like SSH over Tailscale.
 - **Anti-DNS-rebinding**: Host-header allowlist (loopback + `*.ts.net`).
-- Local desktop app/browser needs no token; only remote/proxied requests do.
+- The local desktop app/browser needs no token; remote/proxied dashboard and
+  API requests do.
 
 `cc-mobile off` stops exposing it.
 
@@ -121,12 +161,6 @@ Routed under `/term` by the same Tailscale Serve, behind the same token.
 | `bin/cc-doctor` | Diagnostics: checks platform, deps, services (`--fix` offers batched fixes) |
 | `bin/cc-mobile` | Expose the dashboard to your phone over Tailscale (secure) |
 | `bin/cc-webterm` | Full interactive web terminal (ttyd) for your sessions |
-
-## Roadmap
-
-Support for more agents is planned — see
-[Codex CLI](https://github.com/0xAI-Builders/comandos/issues/1) and
-[Antigravity](https://github.com/0xAI-Builders/comandos/issues/2). PRs welcome.
 
 ## Support
 

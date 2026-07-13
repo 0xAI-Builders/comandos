@@ -2,6 +2,7 @@
 <html lang="es">
 <head>
 <meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>ComandOS · terminal</title>
 <link rel="stylesheet" href="../assets/xterm/xterm.css">
 <!-- Cargamos la fuente bundleada por @font-face para que WebKit la use aun si
@@ -95,6 +96,17 @@
     e.style.display = 'block';
   };
 
+  function openWebLink(_event, url) {
+    const link = document.createElement('a');
+    link.href = url;
+    link.target = '_blank';
+    link.rel = 'noopener noreferrer';
+    link.referrerPolicy = 'no-referrer';
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+  }
+
   const term = new Terminal({
     fontFamily: "'JetBrainsMono Nerd Font Mono', 'JetBrainsMono Nerd Font', 'JetBrains Mono', 'DejaVu Sans Mono', monospace",
     fontSize: 14,
@@ -109,7 +121,7 @@
   });
 
   const fit    = new FitAddon.FitAddon();
-  const links  = new WebLinksAddon.WebLinksAddon();
+  const links  = new WebLinksAddon.WebLinksAddon(openWebLink);
   const canvas = new CanvasAddon.CanvasAddon();
   term.loadAddon(fit);
   term.loadAddon(links);
@@ -132,9 +144,18 @@
     try { term.loadAddon(liga); } catch (e) { dbg('LigaturesWebAddon failed: ' + e.message); }
   }
 
-  const doFit = () => { try { fit.fit(); } catch (_) {} };
-  doFit();
-  window.addEventListener('resize', doFit);
+  let fitFrame = 0;
+  function scheduleFit() {
+    if (fitFrame) return;
+    fitFrame = requestAnimationFrame(() => {
+      fitFrame = 0;
+      try { fit.fit(); } catch (_) {}
+    });
+  }
+  // El primer fit es sincrono: el payload de autenticacion debe llevar la
+  // geometria real aun si el WebSocket abre antes del siguiente frame.
+  try { fit.fit(); } catch (_) {}
+  window.addEventListener('resize', scheduleFit);
 
   // ttyd protocol (ver ttyd/src/protocol.c y client/xterm/index.ts):
   //   auth  : primer mensaje = JSON crudo {AuthToken, columns, rows} (sin prefix)
@@ -154,20 +175,27 @@
     out.set(buf, 1);
     ws.send(out);
   };
-  const sendResize = () => {
+  let lastResize = '';
+  function sendResize(size) {
     if (ws.readyState !== 1) return;
-    ws.send('1' + JSON.stringify({ columns: term.cols, rows: term.rows }));
-  };
+    const cols = size && size.cols !== undefined ? size.cols : term.cols;
+    const rows = size && size.rows !== undefined ? size.rows : term.rows;
+    const key = `${cols}x${rows}`;
+    if (key === lastResize) return;
+    lastResize = key;
+    ws.send('1' + JSON.stringify({columns: cols, rows}));
+  }
 
   ws.addEventListener('open', () => {
     dbg(`WS open (proto=${ws.protocol||'-'}), auth cols=${term.cols} rows=${term.rows}`);
     // ttyd espera el primer mensaje como JSON crudo (SIN prefijo de comando).
+    lastResize = `${term.cols}x${term.rows}`;
     ws.send(JSON.stringify({
       AuthToken: '',
       columns: term.cols,
       rows: term.rows,
     }));
-    setTimeout(doFit, 30);
+    setTimeout(scheduleFit, 30);
   });
 
   ws.addEventListener('message', (ev) => {
@@ -183,7 +211,7 @@
           const prefs = JSON.parse(rest);
           if (prefs.fontFamily) term.options.fontFamily = prefs.fontFamily;
           if (prefs.fontSize)   term.options.fontSize   = +prefs.fontSize;
-          doFit(); sendResize();
+          scheduleFit();
         } catch (_) {}
       }
     } else {
@@ -197,7 +225,7 @@
           const prefs = JSON.parse(dec.decode(rest));
           if (prefs.fontFamily) term.options.fontFamily = prefs.fontFamily;
           if (prefs.fontSize)   term.options.fontSize   = +prefs.fontSize;
-          doFit(); sendResize();
+          scheduleFit();
         } catch (_) {}
       }
     }
@@ -226,32 +254,66 @@
   //    ─=vertical). Ya no hay que atinarle al pixel.
   //  · Motions coalescidos a 1 por frame (rAF): tmux no se atraganta.
   //  · Solo cuando la app pidió mouse tracking; si no, scroll normal.
+  window.__comandosOwnsTouchGestures = true;
   const screenEl = () => document.querySelector('.xterm-screen');
   const mouseOn = () => { try { return term.modes.mouseTrackingMode !== 'none'; } catch (_) { return false; } };
+  const selectingText = () => {
+    try {
+      return typeof frameElement !== 'undefined' &&
+        frameElement && frameElement.dataset.selecting === '1';
+    } catch (_) { return false; }
+  };
   const cellFromTouch = (t) => {
-    const el = screenEl(); if (!el) return null;
+    const el = screenEl(); if (!el || !t) return null;
     const r = el.getBoundingClientRect();
+    if (!r.width || !r.height || !term.cols || !term.rows) return null;
     const col = Math.max(1, Math.min(term.cols, Math.floor((t.clientX - r.left) / (r.width / term.cols)) + 1));
     const row = Math.max(1, Math.min(term.rows, Math.floor((t.clientY - r.top) / (r.height / term.rows)) + 1));
     return { col, row };
   };
   const cellChar = (col, row) => {
+    if (!Number.isInteger(col) || !Number.isInteger(row) ||
+        col < 1 || col > term.cols || row < 1 || row > term.rows) return '';
     try {
-      const line = term.buffer.active.getLine(row - 1);
+      const y = term.buffer.active.viewportY + row - 1;
+      const line = term.buffer.active.getLine(y);
       return line ? (line.getCell(col - 1)?.getChars() || '') : '';
     } catch (_) { return ''; }
   };
-  const VBORDER = '│┃|';   // borde vertical  → se arrastra en X
-  const HBORDER = '─━-';   // borde horizontal → se arrastra en Y
-  // Busca un borde hasta a ±2 celdas del dedo. Devuelve celda anclada + eje.
+  const JUNCTIONS = '┌┐└┘├┤┬┴┼╭╮╯╰╔╗╚╝╠╣╦╩╬';
+  const VBORDER = `│┃|║╎┆┊╏┇┋${JUNCTIONS}`; // borde vertical → se arrastra en X
+  const HBORDER = `─━-═╌┄┈╍┅┉${JUNCTIONS}`; // borde horizontal → se arrastra en Y
+  const hasVerticalContinuity = (col, row) => {
+    let count = 0;
+    for (let r = row - 2; r <= row + 2; r++) {
+      const ch = cellChar(col, r);
+      if (ch && VBORDER.includes(ch) && ++count >= 2) return true;
+    }
+    return false;
+  };
+  const hasHorizontalContinuity = (col, row) => {
+    let count = 0;
+    for (let c = col - 2; c <= col + 2; c++) {
+      const ch = cellChar(c, row);
+      if (ch && HBORDER.includes(ch) && ++count >= 2) return true;
+    }
+    return false;
+  };
+  // Busca un borde continuo hasta ±2 celdas del dedo y bloquea su eje.
   const snapToBorder = (c) => {
     for (const d of [0, -1, 1, -2, 2]) {
-      const ch = cellChar(c.col + d, c.row);
-      if (ch && VBORDER.includes(ch)) return { col: c.col + d, row: c.row, axis: 'x' };
+      const col = c.col + d;
+      const ch = cellChar(col, c.row);
+      if (ch && VBORDER.includes(ch) && hasVerticalContinuity(col, c.row)) {
+        return { col, row: c.row, axis: 'x' };
+      }
     }
     for (const d of [0, -1, 1, -2, 2]) {
-      const ch = cellChar(c.col, c.row + d);
-      if (ch && HBORDER.includes(ch)) return { col: c.col, row: c.row + d, axis: 'y' };
+      const row = c.row + d;
+      const ch = cellChar(c.col, row);
+      if (ch && HBORDER.includes(ch) && hasHorizontalContinuity(c.col, row)) {
+        return { col: c.col, row, axis: 'y' };
+      }
     }
     return null;
   };
@@ -261,67 +323,158 @@
     'display:none;background:rgba(0,0,0,.7);color:#4CE07A;font:12px monospace;' +
     'padding:5px 12px;border-radius:8px;pointer-events:none';
   document.body.appendChild(IND);
-  let lp = null;          // gesto en curso
-  let rafPending = false; // coalescer motions a 1 por frame
+
+  const TOUCH_WHEEL_STEP = 56;
+  const TOUCH_WHEEL_MAX_TICKS = 3;
+  const gesture = {
+    phase: 'idle', touchId: null, sx: 0, sy: 0, lastY: 0,
+    wheelAccum: 0, timer: 0, frame: 0,
+    anchor: null, lastCell: null, pendingCell: null, pressSent: false,
+  };
+  const sameCell = (a, b) => !!a && !!b && a.col === b.col && a.row === b.row;
+  const touchById = (list) => {
+    if (!list || !list.length) return null;
+    if (gesture.touchId === undefined) return list[0];
+    for (let i = 0; i < list.length; i++) {
+      const touch = list[i] || (typeof list.item === 'function' ? list.item(i) : null);
+      if (touch && touch.identifier === gesture.touchId) return touch;
+    }
+    return null;
+  };
+  const termTargetAt = (touch, fallback) =>
+    document.elementFromPoint?.(touch.clientX, touch.clientY) ||
+    fallback || screenEl() || document.body;
+  const emitWheel = (target, dy, touch) => {
+    if (!target || !dy || typeof window.WheelEvent !== 'function') return false;
+    target.dispatchEvent(new window.WheelEvent('wheel', {
+      deltaY: dy, deltaMode: 0, bubbles: true, cancelable: true,
+      clientX: touch.clientX, clientY: touch.clientY,
+      screenX: touch.screenX, screenY: touch.screenY,
+    }));
+    return true;
+  };
+  const cellOnLockedAxis = (touch) => {
+    const c = cellFromTouch(touch);
+    if (!c || !gesture.anchor) return null;
+    return gesture.anchor.axis === 'x'
+      ? { col: c.col, row: gesture.anchor.row }
+      : { col: gesture.anchor.col, row: c.row };
+  };
   const sendMotion = () => {
-    rafPending = false;
-    if (!lp || !lp.engaged || !lp.pendCell) return;
-    const c = lp.pendCell; lp.pendCell = null;
-    if (!lp.lastCell || c.col !== lp.lastCell.col || c.row !== lp.lastCell.row) {
-      lp.lastCell = c;
+    gesture.frame = 0;
+    if (gesture.phase !== 'resizing' || !gesture.pressSent ||
+        ws.readyState !== 1 || !gesture.pendingCell) return;
+    const c = gesture.pendingCell;
+    gesture.pendingCell = null;
+    if (!sameCell(c, gesture.lastCell)) {
       sendInput(sgr(32, c, false));
+      gesture.lastCell = c;
     }
   };
-  document.addEventListener('touchstart', (e) => {
-    if (e.touches.length !== 1 || !mouseOn()) return;
-    const t = e.touches[0];
-    const startX = t.clientX, startY = t.clientY;
-    lp = { engaged: false, sx: startX, sy: startY, lastCell: null, pendCell: null, anchor: null,
-      timer: setTimeout(() => {
-        if (!lp) return;
-        const raw = cellFromTouch({ clientX: startX, clientY: startY });
-        const snap = raw && snapToBorder(raw);
-        if (!snap) {           // sin borde cerca: no es resize, no estorbar
-          lp = null;
-          return;
-        }
-        lp.engaged = true;
-        lp.anchor = snap;      // eje bloqueado + celda exacta del borde
-        lp.lastCell = { col: snap.col, row: snap.row };
-        sendInput(sgr(0, lp.lastCell, false));   // press EN el borde
-        IND.textContent = snap.axis === 'x' ? '⇔ redimensionando' : '⇕ redimensionando';
-        IND.style.display = 'block';
-        if (navigator.vibrate) navigator.vibrate(25);
-      }, 220) };
-  }, { passive: true });
-  document.addEventListener('touchmove', (e) => {
-    if (!lp) return;
-    const t = e.touches[0];
-    if (!lp.engaged) {
-      if (Math.hypot(t.clientX - lp.sx, t.clientY - lp.sy) > 12) { clearTimeout(lp.timer); lp = null; }
-      return;
+  const resetGesture = () => {
+    gesture.phase = 'idle';
+    gesture.touchId = null;
+    gesture.sx = gesture.sy = gesture.lastY = 0;
+    gesture.wheelAccum = 0;
+    gesture.timer = gesture.frame = 0;
+    gesture.anchor = gesture.lastCell = gesture.pendingCell = null;
+    gesture.pressSent = false;
+    IND.style.display = 'none';
+  };
+  const finishGesture = () => {
+    if (gesture.timer) clearTimeout(gesture.timer);
+    gesture.timer = 0;
+    if (gesture.frame) cancelAnimationFrame(gesture.frame);
+    gesture.frame = 0;
+    if (gesture.phase === 'resizing' && gesture.pressSent && ws.readyState === 1) {
+      sendMotion();
+      if (gesture.lastCell) sendInput(sgr(0, gesture.lastCell, true));
+    }
+    resetGesture();
+  };
+  const beginScroll = (e, touch) => {
+    gesture.phase = 'scrolling';
+    const dy = gesture.lastY - touch.clientY;
+    gesture.lastY = touch.clientY;
+    gesture.wheelAccum += dy;
+    const ticks = Math.trunc(gesture.wheelAccum / TOUCH_WHEEL_STEP);
+    const capped = Math.max(-TOUCH_WHEEL_MAX_TICKS, Math.min(TOUCH_WHEEL_MAX_TICKS, ticks));
+    if (capped && emitWheel(termTargetAt(touch, e.target), capped * TOUCH_WHEEL_STEP, touch)) {
+      gesture.wheelAccum -= capped * TOUCH_WHEEL_STEP;
     }
     e.preventDefault();
-    const c = cellFromTouch(t);
-    if (!c) return;
-    // eje bloqueado: solo se mueve la coordenada del borde agarrado
-    lp.pendCell = lp.anchor.axis === 'x'
-      ? { col: c.col, row: lp.anchor.row }
-      : { col: lp.anchor.col, row: c.row };
-    if (!rafPending) { rafPending = true; requestAnimationFrame(sendMotion); }
-  }, { passive: false });
-  const endTouch = () => {
-    if (!lp) return;
-    clearTimeout(lp.timer);
-    if (lp.engaged && lp.lastCell) {
-      if (lp.pendCell) { lp.lastCell = lp.pendCell; sendInput(sgr(32, lp.lastCell, false)); }
-      sendInput(sgr(0, lp.lastCell, true));      // release
-    }
-    IND.style.display = 'none';
-    lp = null;
+    e.stopPropagation();
   };
-  document.addEventListener('touchend', endTouch);
-  document.addEventListener('touchcancel', endTouch);
+  const tryEngageResize = () => {
+    gesture.timer = 0;
+    if (gesture.phase !== 'pending' || selectingText() || !mouseOn() || ws.readyState !== 1) return;
+    const raw = cellFromTouch({clientX: gesture.sx, clientY: gesture.sy});
+    const snap = raw && snapToBorder(raw);
+    if (!snap) return; // sigue pending: si luego se mueve, se convierte en scroll
+    gesture.phase = 'resizing';
+    gesture.anchor = snap;
+    gesture.lastCell = {col: snap.col, row: snap.row};
+    sendInput(sgr(0, gesture.lastCell, false));
+    gesture.pressSent = true;
+    IND.textContent = snap.axis === 'x' ? '⇔ redimensionando' : '⇕ redimensionando';
+    IND.style.display = 'block';
+    if (navigator.vibrate) navigator.vibrate(25);
+  };
+
+  document.addEventListener('touchstart', (e) => {
+    if (selectingText()) { finishGesture(); return; }
+    if (!e.touches || e.touches.length !== 1) { finishGesture(); return; }
+    if (gesture.phase !== 'idle') finishGesture();
+    const touch = e.touches[0];
+    gesture.phase = 'pending';
+    gesture.touchId = touch.identifier;
+    gesture.sx = touch.clientX;
+    gesture.sy = gesture.lastY = touch.clientY;
+    if (mouseOn()) gesture.timer = setTimeout(tryEngageResize, 220);
+  }, {passive: true});
+  document.addEventListener('touchmove', (e) => {
+    if (gesture.phase === 'idle') return;
+    if (selectingText() || !e.touches || e.touches.length !== 1) {
+      finishGesture();
+      return;
+    }
+    const touch = touchById(e.touches);
+    if (!touch) { finishGesture(); return; }
+    if (gesture.phase === 'pending') {
+      if (Math.hypot(touch.clientX - gesture.sx, touch.clientY - gesture.sy) <= 12) {
+        e.preventDefault();
+        e.stopPropagation();
+        return;
+      }
+      if (gesture.timer) clearTimeout(gesture.timer);
+      gesture.timer = 0;
+      beginScroll(e, touch);
+      return;
+    }
+    if (gesture.phase === 'scrolling') {
+      beginScroll(e, touch);
+      return;
+    }
+    if (gesture.phase === 'resizing') {
+      e.preventDefault();
+      e.stopPropagation();
+      const c = cellOnLockedAxis(touch);
+      if (!c) return;
+      gesture.pendingCell = c;
+      if (!gesture.frame) gesture.frame = requestAnimationFrame(sendMotion);
+    }
+  }, {passive: false});
+  document.addEventListener('touchend', (e) => {
+    if (gesture.phase === 'resizing') {
+      const touch = touchById(e.changedTouches);
+      const c = touch && cellOnLockedAxis(touch);
+      if (c) gesture.pendingCell = c;
+    }
+    finishGesture();
+  });
+  document.addEventListener('touchcancel', finishGesture);
+  window.addEventListener('pagehide', finishGesture);
+  ws.addEventListener('close', finishGesture);
 
   const ta = term.textarea;
   if (ta) ta.addEventListener('beforeinput', (e) => {
