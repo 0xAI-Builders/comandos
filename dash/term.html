@@ -146,6 +146,7 @@
 
   let fitFrame = 0;
   let columnReloadTimer = 0;
+  let fitDeferredForSelection = false;
   function scheduleFit() {
     if (fitFrame) return;
     fitFrame = requestAnimationFrame(() => {
@@ -156,13 +157,27 @@
         // interleave their wrapped-row redraws. Reattach once at the stable
         // width instead; tmux keeps the session and sends one clean screen.
         if (next && ws.readyState === 1 && next.cols !== term.cols) {
+          if (term.hasSelection()) {
+            fitDeferredForSelection = true;
+            if (columnReloadTimer) {
+              clearTimeout(columnReloadTimer);
+              columnReloadTimer = 0;
+            }
+            return;
+          }
+          fitDeferredForSelection = false;
           if (columnReloadTimer) clearTimeout(columnReloadTimer);
           columnReloadTimer = setTimeout(() => {
             columnReloadTimer = 0;
+            if (term.hasSelection()) {
+              fitDeferredForSelection = true;
+              return;
+            }
             location.reload();
           }, 180);
           return;
         }
+        fitDeferredForSelection = false;
         if (columnReloadTimer) {
           clearTimeout(columnReloadTimer);
           columnReloadTimer = 0;
@@ -175,6 +190,10 @@
   // geometria real aun si el WebSocket abre antes del siguiente frame.
   try { fit.fit(); } catch (_) {}
   window.addEventListener('resize', scheduleFit);
+  function resumeDeferredFitAfterSelection() {
+    if (fitDeferredForSelection && !term.hasSelection()) scheduleFit();
+  }
+  term.onSelectionChange(resumeDeferredFitAfterSelection);
 
   // ttyd protocol (ver ttyd/src/protocol.c y client/xterm/index.ts):
   //   auth  : primer mensaje = JSON crudo {AuthToken, columns, rows} (sin prefix)

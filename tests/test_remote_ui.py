@@ -471,12 +471,16 @@ globalThis.requestAnimationFrame = cb => {
 };
 globalThis.setTimeout = cb => { timerQueue.push(cb); return timerQueue.length; };
 globalThis.Terminal = class {
-  constructor(options){ this.options = {...options}; this.cols = 80; this.rows = 20; }
+  constructor(options){
+    this.options = {...options}; this.cols = 80; this.rows = 20; this.selected = false;
+  }
   loadAddon(addon){ addon.term = this; }
   open(){}
   write(){}
+  hasSelection(){ return this.selected; }
   onData(cb){ this.dataHandler = cb; }
   onResize(cb){ this.resizeHandler = cb; }
+  onSelectionChange(cb){ this.selectionHandler = cb; }
 };
 class FakeFit {
   proposeDimensions(){
@@ -575,7 +579,7 @@ let reloads = 0;
 const frames = new Map();
 const timers = new Map();
 const cleared = [];
-const term = {{cols:46, rows:35}};
+const term = {{cols:46, rows:35, hasSelection(){{ return false; }}}};
 let proposed = {{cols:51, rows:35}};
 const ws = {{readyState:1}};
 const fit = {{
@@ -647,6 +651,139 @@ console.log(JSON.stringify({{
         "termCols": 46,
         "termRows": 40,
         "timers": 0,
+    }
+
+
+def test_remote_column_resize_waits_for_active_selection_to_clear():
+    assert "function resumeDeferredFitAfterSelection()" in TERM_HTML
+    assert "term.onSelectionChange(resumeDeferredFitAfterSelection)" in TERM_HTML
+    schedule_fit = extract_js_function(TERM_HTML, "scheduleFit")
+    resume_fit = extract_js_function(TERM_HTML, "resumeDeferredFitAfterSelection")
+    script = f"""
+let fitFrame = 0;
+let columnReloadTimer = 0;
+let fitDeferredForSelection = false;
+let nextFrame = 1;
+let nextTimer = 1;
+let fitCalls = 0;
+let reloads = 0;
+let selected = true;
+const frames = new Map();
+const timers = new Map();
+const term = {{
+  cols:46,
+  rows:35,
+  hasSelection(){{ return selected; }},
+}};
+let proposed = {{cols:51, rows:35}};
+const ws = {{readyState:1}};
+const fit = {{
+  proposeDimensions(){{ return {{...proposed}}; }},
+  fit(){{
+    fitCalls += 1;
+    term.cols = proposed.cols;
+    term.rows = proposed.rows;
+  }},
+}};
+const location = {{reload(){{ reloads += 1; }}}};
+const requestAnimationFrame = cb => {{
+  const id = nextFrame++; frames.set(id, cb); return id;
+}};
+const setTimeout = (cb, delay) => {{
+  const id = nextTimer++; timers.set(id, {{cb, delay}}); return id;
+}};
+const clearTimeout = id => timers.delete(id);
+const flushFrames = () => {{
+  for (const cb of [...frames.values()]) cb();
+  frames.clear();
+}};
+const flushTimers = () => {{
+  for (const timer of [...timers.values()]) timer.cb();
+  timers.clear();
+}};
+{schedule_fit}
+{resume_fit}
+
+scheduleFit();
+flushFrames();
+const whileSelected = {{
+  timers:timers.size,
+  reloads,
+  deferred:fitDeferredForSelection,
+  fitCalls,
+}};
+
+selected = false;
+for(let i = 0; i < 20; i++) resumeDeferredFitAfterSelection();
+const framesAfterClear = frames.size;
+flushFrames();
+const afterClear = {{
+  timers:timers.size,
+  delay:[...timers.values()][0]?.delay,
+  deferred:fitDeferredForSelection,
+  fitCalls,
+}};
+selected = true;
+flushTimers();
+const selectedDuringDebounce = {{reloads, deferred:fitDeferredForSelection}};
+selected = false;
+resumeDeferredFitAfterSelection();
+flushFrames();
+flushTimers();
+
+term.cols = 46;
+term.rows = 35;
+proposed = {{cols:51, rows:35}};
+selected = true;
+scheduleFit();
+flushFrames();
+proposed = {{cols:46, rows:40}};
+selected = false;
+resumeDeferredFitAfterSelection();
+flushFrames();
+const returnedToOriginalWidth = {{
+  timers:timers.size,
+  reloads,
+  deferred:fitDeferredForSelection,
+  fitCalls,
+  rows:term.rows,
+}};
+
+console.log(JSON.stringify({{
+  whileSelected,
+  framesAfterClear,
+  afterClear,
+  selectedDuringDebounce,
+  reloadsAfterDeferred:reloads,
+  returnedToOriginalWidth,
+}}));
+"""
+    result = run_node_json(script)
+
+    assert result["whileSelected"] == {
+        "timers": 0,
+        "reloads": 0,
+        "deferred": True,
+        "fitCalls": 0,
+    }
+    assert result["framesAfterClear"] == 1
+    assert result["afterClear"] == {
+        "timers": 1,
+        "delay": 180,
+        "deferred": False,
+        "fitCalls": 0,
+    }
+    assert result["selectedDuringDebounce"] == {
+        "reloads": 0,
+        "deferred": True,
+    }
+    assert result["reloadsAfterDeferred"] == 1
+    assert result["returnedToOriginalWidth"] == {
+        "timers": 0,
+        "reloads": 1,
+        "deferred": False,
+        "fitCalls": 1,
+        "rows": 40,
     }
 
 
