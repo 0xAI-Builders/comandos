@@ -2386,15 +2386,14 @@ async function restoreTermInteraction(sess){
 function restoreInactiveTermInteractions(keep){
   for(const [sess, state] of termInteraction){
     if(sess === keep) continue;
+    // A tab switch only invalidates stale reads. Selection mode belongs to
+    // the open session until Interact, close, or pagehide restores tmux mouse.
     if(state.pending === "get"){
       state.seq = ++termInteractionSeq;
       state.busy = false;
       state.pending = "";
       applyTermInteraction(sess);
     }
-    if(state.pending === "post" && state.pendingSelecting)
-      state.restorePending = true;
-    if(state.temporary) restoreTermInteraction(sess);
   }
 }
 

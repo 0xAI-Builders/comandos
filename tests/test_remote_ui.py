@@ -1338,7 +1338,7 @@ console.log(JSON.stringify({
     assert result["keepaliveFlags"] == [True]
 
 
-def test_remote_terminal_selection_finishing_after_tab_switch_is_restored():
+def test_remote_terminal_selection_persists_across_tab_switches():
     result = run_term_interaction("""
 const posts = [];
 let finishSelection;
@@ -1358,15 +1358,19 @@ finishSelection({mouse: "off"});
 await selecting;
 await Promise.resolve();
 await Promise.resolve();
+restoreInactiveTermInteractions("beta");
+await Promise.resolve();
+await Promise.resolve();
 console.log(JSON.stringify({
   state: {...termInteraction.get("ssh-prod")},
   enabled: posts.map(post => post.enabled),
 }));
 """)
 
-    assert result["enabled"] == [False, True]
-    assert result["state"]["mouse"] is True
-    assert result["state"]["temporary"] is False
+    assert result["enabled"] == [False]
+    assert result["state"]["mouse"] is False
+    assert result["state"]["temporary"] is True
+    assert result["state"]["restorePending"] is False
 
 
 def test_remote_terminal_pagehide_compensates_pending_select_and_pageshow_resyncs():
