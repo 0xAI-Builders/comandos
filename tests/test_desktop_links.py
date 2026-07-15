@@ -1,6 +1,9 @@
 #!/usr/bin/env python3
 import ast
 import re
+import shutil
+import subprocess
+import sys
 import types
 from pathlib import Path
 
@@ -90,6 +93,62 @@ def load_tmux_copy_helpers(fake_tmuxc, fake_gtk, fake_gdk):
     return ns
 
 
+def load_mouse_helpers(fake_pane_at, fake_tmuxc, fake_open_url,
+                       fake_select_pane_at_event):
+    ns = {
+        "Gdk": types.SimpleNamespace(
+            ModifierType=types.SimpleNamespace(CONTROL_MASK=1)
+        ),
+        "copy_vte_selection": lambda _term: True,
+        "open_url": fake_open_url,
+        "pane_at": fake_pane_at,
+        "select_pane_at_event": fake_select_pane_at_event,
+        "tmuxc": fake_tmuxc,
+        "url_at_event": lambda _term, _event, match: match or None,
+    }
+    exec("\n\n".join((function_source("on_term_release"),
+                       function_source("on_term_button"))), ns)
+    return ns
+
+
+def load_open_url_helper(gio_launcher, popen):
+    fake_gio = types.SimpleNamespace(
+        AppInfo=types.SimpleNamespace(launch_default_for_uri=gio_launcher)
+    )
+    fake_subprocess = types.SimpleNamespace(
+        DEVNULL=subprocess.DEVNULL,
+        Popen=popen,
+    )
+    ns = {
+        "Gio": fake_gio,
+        "shutil": shutil,
+        "subprocess": fake_subprocess,
+        "sys": types.SimpleNamespace(platform="linux"),
+    }
+    exec(function_source("open_url"), ns)
+    return ns
+
+
+class FakeTerm:
+    def __init__(self, url=None, selected=False):
+        self.url = url
+        self.selected = selected
+
+    def match_check_event(self, _event):
+        return self.url, 1
+
+    def get_has_selection(self):
+        return self.selected
+
+
+class MouseEvent:
+    def __init__(self, button, x, y, state=0):
+        self.button = button
+        self.x = x
+        self.y = y
+        self.state = state
+
+
 def function_source(name):
     tree = ast.parse(SRC)
     for node in tree.body:
@@ -173,7 +232,120 @@ def test_clicking_split_pane_selects_it_without_stealing_terminal_mouse_event():
     assert calls == [("select-pane", "-t", "%2")]
 
     src = function_source("on_term_button")
-    assert "select_pane_at_event(term, event)" in src
+    assert "pane_at(term, event)" in src
+    assert "select_pane_at_event(term, event)" not in src
+
+
+def test_clean_url_click_opens_despite_preexisting_selection():
+    opened = []
+    selected_on_press = []
+    tmux_calls = []
+
+    ns = load_mouse_helpers(
+        lambda _term, _event: ("%2", 2),
+        lambda *args: tmux_calls.append(args),
+        lambda url: opened.append(url),
+        lambda term, event: selected_on_press.append((term, event)),
+    )
+    term = FakeTerm("https://example.com/path", selected=True)
+    press = MouseEvent(1, 10, 20)
+    release = MouseEvent(1, 11, 21)
+
+    assert ns["on_term_button"](term, press) is False
+    assert selected_on_press == []
+    assert tmux_calls == []
+    assert ns["on_term_release"](term, release) is False
+
+    assert tmux_calls == [("select-pane", "-t", "%2")]
+    assert opened == ["https://example.com/path"]
+
+
+def test_primary_drag_neither_opens_url_nor_selects_pane():
+    opened = []
+    selected_on_press = []
+    tmux_calls = []
+    ns = load_mouse_helpers(
+        lambda _term, _event: ("%2", 2),
+        lambda *args: tmux_calls.append(args),
+        lambda url: opened.append(url),
+        lambda term, event: selected_on_press.append((term, event)),
+    )
+    term = FakeTerm("https://example.com/path")
+
+    ns["on_term_button"](term, MouseEvent(1, 10, 20))
+    ns["on_term_release"](term, MouseEvent(1, 30, 20))
+
+    assert selected_on_press == []
+    assert tmux_calls == []
+    assert opened == []
+
+
+def test_clean_non_link_click_selects_recorded_split_only_on_release():
+    selected_on_press = []
+    tmux_calls = []
+    ns = load_mouse_helpers(
+        lambda _term, _event: ("%7", 2),
+        lambda *args: tmux_calls.append(args),
+        lambda _url: None,
+        lambda term, event: selected_on_press.append((term, event)),
+    )
+    term = FakeTerm()
+
+    ns["on_term_button"](term, MouseEvent(1, 8, 9))
+    assert selected_on_press == []
+    assert tmux_calls == []
+    ns["on_term_release"](term, MouseEvent(1, 8, 9))
+
+    assert tmux_calls == [("select-pane", "-t", "%7")]
+
+
+def test_ctrl_click_remains_an_immediate_link_command():
+    opened = []
+    ns = load_mouse_helpers(
+        lambda _term, _event: ("%2", 2),
+        lambda *_args: None,
+        lambda url: opened.append(url),
+        lambda _term, _event: None,
+    )
+    term = FakeTerm("https://example.com/ctrl")
+
+    handled = ns["on_term_button"](term, MouseEvent(1, 5, 6, state=1))
+
+    assert handled is True
+    assert opened == ["https://example.com/ctrl"]
+
+
+def test_linux_open_url_prefers_gio_without_spawning_xdg_open():
+    gio_calls = []
+    popen_calls = []
+    ns = load_open_url_helper(
+        lambda url, context: gio_calls.append((url, context)),
+        lambda argv, **kwargs: popen_calls.append((argv, kwargs)),
+    )
+
+    assert ns["open_url"]("https://example.com/gio") is True
+    assert gio_calls == [("https://example.com/gio", None)]
+    assert popen_calls == []
+
+
+def test_linux_open_url_falls_back_to_xdg_open_exactly_once():
+    gio_calls = []
+    popen_calls = []
+
+    def fail_gio(url, context):
+        gio_calls.append((url, context))
+        raise RuntimeError("no default GIO handler")
+
+    ns = load_open_url_helper(
+        fail_gio,
+        lambda argv, **kwargs: popen_calls.append((argv, kwargs)),
+    )
+
+    assert ns["open_url"]("https://example.com/fallback") is True
+    assert gio_calls == [("https://example.com/fallback", None)]
+    assert [call[0] for call in popen_calls] == [
+        ["xdg-open", "https://example.com/fallback"]
+    ]
 
 
 def test_tmux_copy_selection_goes_through_gtk_clipboard_not_xclip_only():
@@ -220,5 +392,11 @@ if __name__ == "__main__":
     test_copy_mode_pane_scans_split_panes_for_selection()
     test_terminal_copy_menu_remains_clickable_when_selection_detection_is_flaky()
     test_clicking_split_pane_selects_it_without_stealing_terminal_mouse_event()
+    test_clean_url_click_opens_despite_preexisting_selection()
+    test_primary_drag_neither_opens_url_nor_selects_pane()
+    test_clean_non_link_click_selects_recorded_split_only_on_release()
+    test_ctrl_click_remains_an_immediate_link_command()
+    test_linux_open_url_prefers_gio_without_spawning_xdg_open()
+    test_linux_open_url_falls_back_to_xdg_open_exactly_once()
     test_tmux_copy_selection_goes_through_gtk_clipboard_not_xclip_only()
     test_vte_selection_copy_is_remembered_for_context_menu_fallback()

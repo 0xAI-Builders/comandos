@@ -665,7 +665,7 @@ def exit_copy_mode(term):
 def open_url(url):
     """Abre una URL en el navegador default del usuario.
     En WSL prefiere `wslview` (rutea al navegador de Windows via wslu);
-    en macOS usa `open`; en Linux nativo usa `xdg-open`."""
+    en macOS usa `open`; en Linux nativo usa GIO con fallback a `xdg-open`."""
     is_wsl = False
     try:
         with open("/proc/sys/kernel/osrelease") as f:
@@ -677,27 +677,35 @@ def open_url(url):
     elif is_wsl and shutil.which("wslview"):
         opener = "wslview"
     else:
-        opener = "xdg-open"
+        try:
+            Gio.AppInfo.launch_default_for_uri(url, None)
+            return True
+        except Exception:
+            opener = "xdg-open"
     try:
         subprocess.Popen([opener, url], start_new_session=True,
                          stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        return True
     except Exception:
-        pass
+        return False
 
 
 def on_term_release(term, event):
     """Al soltar el mouse: 1) si fue un CLICK limpio sobre una URL, abrirla;
     2) marcar que pudo quedar seleccion tmux (el primer keypress la limpia)."""
-    press = getattr(term, "_url_press", None)
-    term._url_press = None
+    press = getattr(term, "_primary_press", None)
+    term._primary_press = None
     term._sel_flag = True
     if term.get_has_selection():
         copy_vte_selection(term)
     if press and event.button == 1:
-        x, y, url = press
-        if url and abs(event.x - x) < 5 and abs(event.y - y) < 5 \
-                and not term.get_has_selection():
-            open_url(url)
+        x, y, url, pane_id = press
+        clean_click = abs(event.x - x) < 5 and abs(event.y - y) < 5
+        if clean_click:
+            if pane_id:
+                tmuxc("select-pane", "-t", pane_id)
+            if url:
+                open_url(url)
     return False
 
 
@@ -713,16 +721,16 @@ def on_term_button(term, event):
         except Exception:
             pass
         return False
-    # Click simple: recordar si cayo sobre una URL; se abre al SOLTAR solo si
-    # no hubo arrastre (para no interferir con seleccionar texto)
+    # Click simple: recordar URL y pane. Se actua al SOLTAR solo si no hubo
+    # arrastre, para que seleccionar texto no provoque un redraw de tmux.
     if event.button == 1:
-        select_pane_at_event(term, event)
+        pane_id, _npanes = pane_at(term, event)
         try:
             match, _tag = term.match_check_event(event)
             url = url_at_event(term, event, match or "")
         except Exception:
             url = None
-        term._url_press = (event.x, event.y, url) if url else None
+        term._primary_press = (event.x, event.y, url, pane_id)
         return False
     if event.button != 3:
         return False
