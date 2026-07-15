@@ -137,6 +137,7 @@ const frames = new Map();
 const lineReads = [];
 const sent = [];
 const wheels = [];
+const refreshCalls = [];
 let nextTimer = 1;
 let nextFrame = 1;
 let indicator = null;
@@ -184,6 +185,8 @@ const term = {{
   cols: 80,
   rows: 24,
   modes: {{mouseTrackingMode: {json.dumps('sgr' if mouse_on else 'none')}}},
+  refresh(first, last) {{ refreshCalls.push([first, last]); }},
+  onWriteParsed(cb) {{ this.writeParsedHandler = cb; }},
   buffer: {{active: {{
     viewportY: {viewport_y},
     getLine(index) {{
@@ -976,6 +979,59 @@ console.log(JSON.stringify({
     ]
     assert result["remainingFrames"] == 0
     assert result["indicator"] == "none"
+
+
+def test_pane_resize_repaints_reflowed_text_after_tmux_redraw():
+    assert "let paneRefreshPending = false" in TERM_HTML
+    assert "term.onWriteParsed(refreshPaneAfterWrite)" in TERM_HTML
+    touch = run_touch_controller(
+        r"""
+const start = point(40, 10);
+listeners.touchstart(event([start]));
+runTimers();
+const finalTouch = point(45, 10);
+listeners.touchmove(event([finalTouch]));
+flushFrames();
+listeners.touchend(event([], [finalTouch]));
+const touchBeforeWrite = {pending: paneRefreshPending, refreshCalls: [...refreshCalls]};
+term.writeParsedHandler();
+console.log(JSON.stringify({
+  touchBeforeWrite,
+  touchAfterWrite: {pending: paneRefreshPending, refreshCalls},
+}));
+""",
+        cells=valid_vertical_cells(),
+    )
+
+    assert touch["touchBeforeWrite"] == {"pending": True, "refreshCalls": []}
+    assert touch["touchAfterWrite"] == {
+        "pending": False,
+        "refreshCalls": [[0, 23]],
+    }
+
+    mouse = run_touch_controller(
+        r"""
+const down = event([]); down.button = 0; down.clientX = 400; down.clientY = 200;
+listeners.mousedown(down);
+const move = event([]); move.button = 0; move.clientX = 450; move.clientY = 200;
+listeners.mousemove(move);
+const up = event([]); up.button = 0; up.clientX = 450; up.clientY = 200;
+listeners.mouseup(up);
+const mouseBeforeWrite = {pending: paneRefreshPending, refreshCalls: [...refreshCalls]};
+term.writeParsedHandler();
+console.log(JSON.stringify({
+  mouseBeforeWrite,
+  mouseAfterWrite: {pending: paneRefreshPending, refreshCalls},
+}));
+""",
+        cells=valid_vertical_cells(),
+    )
+
+    assert mouse["mouseBeforeWrite"] == {"pending": True, "refreshCalls": []}
+    assert mouse["mouseAfterWrite"] == {
+        "pending": False,
+        "refreshCalls": [[0, 23]],
+    }
 
 
 def test_touch_accepts_non_iterable_touchlist():

@@ -301,6 +301,31 @@
         frameElement && frameElement.dataset.selecting === '1';
     } catch (_) { return false; }
   };
+  let paneRefreshPending = false;
+  function requestPaneRefreshAfterResize() {
+    paneRefreshPending = true;
+  }
+  function refreshPaneAfterWrite() {
+    if (!paneRefreshPending) return;
+    paneRefreshPending = false;
+    try { term.refresh(0, Math.max(0, term.rows - 1)); } catch (_) {}
+  }
+  term.onWriteParsed(refreshPaneAfterWrite);
+
+  let paneMouseDrag = null;
+  document.addEventListener('mousedown', (e) => {
+    if (e.button !== 0 || selectingText() || !mouseOn()) return;
+    paneMouseDrag = {x: e.clientX, y: e.clientY, moved: false};
+  }, true);
+  document.addEventListener('mousemove', (e) => {
+    if (!paneMouseDrag || paneMouseDrag.moved) return;
+    paneMouseDrag.moved = Math.hypot(
+      e.clientX - paneMouseDrag.x, e.clientY - paneMouseDrag.y) > 4;
+  }, true);
+  document.addEventListener('mouseup', () => {
+    if (paneMouseDrag?.moved) requestPaneRefreshAfterResize();
+    paneMouseDrag = null;
+  }, true);
   const cellFromTouch = (t) => {
     const el = screenEl(); if (!el || !t) return null;
     const r = el.getBoundingClientRect();
@@ -427,6 +452,7 @@
     if (gesture.phase === 'resizing' && gesture.pressSent && ws.readyState === 1) {
       sendMotion();
       if (gesture.lastCell) sendInput(sgr(0, gesture.lastCell, true));
+      requestPaneRefreshAfterResize();
     }
     resetGesture();
   };
