@@ -381,10 +381,14 @@ def test_webterm_fit_is_coalesced_per_animation_frame():
     schedule_fit = extract_js_function(TERM_HTML, "scheduleFit")
     script = f"""
 let fitFrame = 0;
+let columnReloadTimer = 0;
 let fitCalls = 0;
 let nextFrame = 1;
 const queued = new Map();
-const fit = {{fit(){{ fitCalls += 1; }}}};
+const fit = {{
+  proposeDimensions(){{ return null; }},
+  fit(){{ fitCalls += 1; }},
+}};
 function requestAnimationFrame(cb){{ const id = nextFrame++; queued.set(id, cb); return id; }}
 {schedule_fit}
 for(let i = 0; i < 100; i++) scheduleFit();
@@ -475,6 +479,9 @@ globalThis.Terminal = class {
   onResize(cb){ this.resizeHandler = cb; }
 };
 class FakeFit {
+  proposeDimensions(){
+    return {cols:this.term.cols, rows:this.term.rows};
+  }
   fit(){
     fitCalls += 1;
     this.term.cols = this.term.cols === 80 ? 95 : this.term.cols;
@@ -554,6 +561,93 @@ console.log(JSON.stringify({
     assert result["fitCalls"] == 3
     assert result["fontFamily"] == "Test Mono"
     assert result["fontSize"] == 18
+
+
+def test_remote_column_resize_reloads_once_after_geometry_stabilizes():
+    fn = extract_js_function(TERM_HTML, "scheduleFit")
+    script = f"""
+let fitFrame = 0;
+let columnReloadTimer = 0;
+let nextFrame = 1;
+let nextTimer = 1;
+let fitCalls = 0;
+let reloads = 0;
+const frames = new Map();
+const timers = new Map();
+const cleared = [];
+const term = {{cols:46, rows:35}};
+let proposed = {{cols:51, rows:35}};
+const ws = {{readyState:1}};
+const fit = {{
+  proposeDimensions(){{ return {{...proposed}}; }},
+  fit(){{
+    fitCalls += 1;
+    term.cols = proposed.cols;
+    term.rows = proposed.rows;
+  }},
+}};
+const location = {{reload(){{ reloads += 1; }}}};
+const requestAnimationFrame = cb => {{
+  const id = nextFrame++; frames.set(id, cb); return id;
+}};
+const setTimeout = (cb, delay) => {{
+  const id = nextTimer++; timers.set(id, {{cb, delay}}); return id;
+}};
+const clearTimeout = id => {{ cleared.push(id); timers.delete(id); }};
+const flushFrames = () => {{
+  for (const cb of [...frames.values()]) cb();
+  frames.clear();
+}};
+{fn}
+
+scheduleFit();
+flushFrames();
+const firstColumnChange = {{fitCalls, timers:timers.size, termCols:term.cols}};
+
+proposed = {{cols:52, rows:35}};
+scheduleFit();
+flushFrames();
+const secondColumnChange = {{
+  fitCalls,
+  timers:timers.size,
+  cleared:[...cleared],
+  delay:[...timers.values()][0]?.delay,
+  termCols:term.cols,
+}};
+for (const timer of [...timers.values()]) timer.cb();
+timers.clear();
+
+proposed = {{cols:46, rows:40}};
+scheduleFit();
+flushFrames();
+console.log(JSON.stringify({{
+  firstColumnChange,
+  secondColumnChange,
+  reloads,
+  rowOnly:{{fitCalls, termCols:term.cols, termRows:term.rows, timers:timers.size}},
+}}));
+"""
+    result = run_node_json(script)
+
+    assert result["firstColumnChange"] == {
+        "fitCalls": 0,
+        "timers": 1,
+        "termCols": 46,
+    }
+    assert result["secondColumnChange"] == {
+        "fitCalls": 0,
+        "timers": 1,
+        "cleared": [1],
+        "delay": 180,
+        "termCols": 46,
+    }
+    assert result["reloads"] == 1
+    assert result["rowOnly"] == {
+        "fitCalls": 1,
+        "termCols": 46,
+        "termRows": 40,
+        "timers": 0,
+    }
 
 
 def test_remote_drawer_controls_are_present():

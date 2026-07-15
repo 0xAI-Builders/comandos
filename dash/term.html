@@ -145,11 +145,30 @@
   }
 
   let fitFrame = 0;
+  let columnReloadTimer = 0;
   function scheduleFit() {
     if (fitFrame) return;
     fitFrame = requestAnimationFrame(() => {
       fitFrame = 0;
-      try { fit.fit(); } catch (_) {}
+      try {
+        const next = fit.proposeDimensions();
+        // Resizing xterm and tmux to a new column count at the same time can
+        // interleave their wrapped-row redraws. Reattach once at the stable
+        // width instead; tmux keeps the session and sends one clean screen.
+        if (next && ws.readyState === 1 && next.cols !== term.cols) {
+          if (columnReloadTimer) clearTimeout(columnReloadTimer);
+          columnReloadTimer = setTimeout(() => {
+            columnReloadTimer = 0;
+            location.reload();
+          }, 180);
+          return;
+        }
+        if (columnReloadTimer) {
+          clearTimeout(columnReloadTimer);
+          columnReloadTimer = 0;
+        }
+        fit.fit();
+      } catch (_) {}
     });
   }
   // El primer fit es sincrono: el payload de autenticacion debe llevar la
