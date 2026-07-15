@@ -319,7 +319,7 @@ def test_linux_open_url_prefers_gio_without_spawning_xdg_open():
     gio_calls = []
     popen_calls = []
     ns = load_open_url_helper(
-        lambda url, context: gio_calls.append((url, context)),
+        lambda url, context: gio_calls.append((url, context)) or True,
         lambda argv, **kwargs: popen_calls.append((argv, kwargs)),
     )
 
@@ -346,6 +346,31 @@ def test_linux_open_url_falls_back_to_xdg_open_exactly_once():
     assert [call[0] for call in popen_calls] == [
         ["xdg-open", "https://example.com/fallback"]
     ]
+
+
+def test_linux_open_url_falls_back_when_gio_returns_false():
+    popen_calls = []
+    ns = load_open_url_helper(
+        lambda _url, _context: False,
+        lambda argv, **kwargs: popen_calls.append((argv, kwargs)),
+    )
+
+    assert ns["open_url"]("https://example.com/gio-false") is True
+    assert [call[0] for call in popen_calls] == [
+        ["xdg-open", "https://example.com/gio-false"]
+    ]
+
+
+def test_linux_open_url_reports_total_dispatch_failure():
+    def fail_gio(_url, _context):
+        raise RuntimeError("gio failed")
+
+    def fail_xdg(_argv, **_kwargs):
+        raise OSError("xdg-open missing")
+
+    ns = load_open_url_helper(fail_gio, fail_xdg)
+
+    assert ns["open_url"]("https://example.com/unavailable") is False
 
 
 def test_tmux_copy_selection_goes_through_gtk_clipboard_not_xclip_only():
@@ -398,5 +423,7 @@ if __name__ == "__main__":
     test_ctrl_click_remains_an_immediate_link_command()
     test_linux_open_url_prefers_gio_without_spawning_xdg_open()
     test_linux_open_url_falls_back_to_xdg_open_exactly_once()
+    test_linux_open_url_falls_back_when_gio_returns_false()
+    test_linux_open_url_reports_total_dispatch_failure()
     test_tmux_copy_selection_goes_through_gtk_clipboard_not_xclip_only()
     test_vte_selection_copy_is_remembered_for_context_menu_fallback()

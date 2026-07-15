@@ -678,10 +678,11 @@ def open_url(url):
         opener = "wslview"
     else:
         try:
-            Gio.AppInfo.launch_default_for_uri(url, None)
-            return True
+            if Gio.AppInfo.launch_default_for_uri(url, None):
+                return True
         except Exception:
-            opener = "xdg-open"
+            pass
+        opener = "xdg-open"
     try:
         subprocess.Popen([opener, url], start_new_session=True,
                          stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)

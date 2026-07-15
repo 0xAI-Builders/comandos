@@ -302,19 +302,31 @@
     } catch (_) { return false; }
   };
   let paneRefreshPending = false;
+  let paneRefreshTimer = 0;
   function requestPaneRefreshAfterResize() {
     paneRefreshPending = true;
+    if (paneRefreshTimer) {
+      clearTimeout(paneRefreshTimer);
+      paneRefreshTimer = 0;
+    }
   }
   function refreshPaneAfterWrite() {
     if (!paneRefreshPending) return;
-    paneRefreshPending = false;
-    try { term.refresh(0, Math.max(0, term.rows - 1)); } catch (_) {}
+    if (paneRefreshTimer) clearTimeout(paneRefreshTimer);
+    paneRefreshTimer = setTimeout(() => {
+      paneRefreshTimer = 0;
+      if (!paneRefreshPending) return;
+      paneRefreshPending = false;
+      try { term.refresh(0, Math.max(0, term.rows - 1)); } catch (_) {}
+    }, 180);
   }
   term.onWriteParsed(refreshPaneAfterWrite);
 
   let paneMouseDrag = null;
   document.addEventListener('mousedown', (e) => {
     if (e.button !== 0 || selectingText() || !mouseOn()) return;
+    const cell = cellFromTouch(e);
+    if (!cell || !snapToBorder(cell)) return;
     paneMouseDrag = {x: e.clientX, y: e.clientY, moved: false};
   }, true);
   document.addEventListener('mousemove', (e) => {

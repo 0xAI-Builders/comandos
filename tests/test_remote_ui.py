@@ -138,12 +138,15 @@ const lineReads = [];
 const sent = [];
 const wheels = [];
 const refreshCalls = [];
+const scheduledDelays = [];
 let nextTimer = 1;
 let nextFrame = 1;
 let indicator = null;
 const cells = {json.dumps(cells or {})};
 
-function setTimeout(cb) {{ const id = nextTimer++; timers.set(id, cb); return id; }}
+function setTimeout(cb, delay) {{
+  const id = nextTimer++; timers.set(id, cb); scheduledDelays.push(delay); return id;
+}}
 function clearTimeout(id) {{ timers.delete(id); }}
 function runTimers() {{
   const queued = [...timers.values()];
@@ -995,8 +998,23 @@ flushFrames();
 listeners.touchend(event([], [finalTouch]));
 const touchBeforeWrite = {pending: paneRefreshPending, refreshCalls: [...refreshCalls]};
 term.writeParsedHandler();
+const afterIntermediateWrite = {
+  pending: paneRefreshPending,
+  refreshCalls: [...refreshCalls],
+  timers: timers.size,
+};
+term.writeParsedHandler();
+const afterFinalWrite = {
+  pending: paneRefreshPending,
+  refreshCalls: [...refreshCalls],
+  timers: timers.size,
+  delay: scheduledDelays.at(-1),
+};
+runTimers();
 console.log(JSON.stringify({
   touchBeforeWrite,
+  afterIntermediateWrite,
+  afterFinalWrite,
   touchAfterWrite: {pending: paneRefreshPending, refreshCalls},
 }));
 """,
@@ -1004,6 +1022,17 @@ console.log(JSON.stringify({
     )
 
     assert touch["touchBeforeWrite"] == {"pending": True, "refreshCalls": []}
+    assert touch["afterIntermediateWrite"] == {
+        "pending": True,
+        "refreshCalls": [],
+        "timers": 1,
+    }
+    assert touch["afterFinalWrite"] == {
+        "pending": True,
+        "refreshCalls": [],
+        "timers": 1,
+        "delay": 180,
+    }
     assert touch["touchAfterWrite"] == {
         "pending": False,
         "refreshCalls": [[0, 23]],
@@ -1019,6 +1048,7 @@ const up = event([]); up.button = 0; up.clientX = 450; up.clientY = 200;
 listeners.mouseup(up);
 const mouseBeforeWrite = {pending: paneRefreshPending, refreshCalls: [...refreshCalls]};
 term.writeParsedHandler();
+runTimers();
 console.log(JSON.stringify({
   mouseBeforeWrite,
   mouseAfterWrite: {pending: paneRefreshPending, refreshCalls},
@@ -1032,6 +1062,21 @@ console.log(JSON.stringify({
         "pending": False,
         "refreshCalls": [[0, 23]],
     }
+
+    non_border = run_touch_controller(
+        r"""
+const down = event([]); down.button = 0; down.clientX = 100; down.clientY = 200;
+listeners.mousedown(down);
+const move = event([]); move.button = 0; move.clientX = 180; move.clientY = 200;
+listeners.mousemove(move);
+const up = event([]); up.button = 0; up.clientX = 180; up.clientY = 200;
+listeners.mouseup(up);
+console.log(JSON.stringify({pending: paneRefreshPending, timers: timers.size}));
+""",
+        cells={},
+    )
+
+    assert non_border == {"pending": False, "timers": 0}
 
 
 def test_touch_accepts_non_iterable_touchlist():
