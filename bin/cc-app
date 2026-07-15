@@ -662,10 +662,11 @@ def exit_copy_mode(term):
             tmuxc("send-keys", "-t", f"={sess}:", "-X", "cancel")
 
 
-def open_url(url):
+def open_url(url, parent=None, timestamp=0):
     """Abre una URL en el navegador default del usuario.
     En WSL prefiere `wslview` (rutea al navegador de Windows via wslu);
-    en macOS usa `open`; en Linux nativo usa GIO con fallback a `xdg-open`."""
+    en macOS usa `open`; en Linux nativo usa el contexto del click para
+    activar el navegador, con fallbacks a GIO y `xdg-open`."""
     is_wsl = False
     try:
         with open("/proc/sys/kernel/osrelease") as f:
@@ -677,6 +678,12 @@ def open_url(url):
     elif is_wsl and shutil.which("wslview"):
         opener = "wslview"
     else:
+        if parent is not None:
+            try:
+                if Gtk.show_uri_on_window(parent, url, timestamp):
+                    return True
+            except Exception:
+                pass
         try:
             if Gio.AppInfo.launch_default_for_uri(url, None):
                 return True
@@ -706,7 +713,7 @@ def on_term_release(term, event):
             if pane_id:
                 tmuxc("select-pane", "-t", pane_id)
             if url:
-                open_url(url)
+                open_url(url, term.get_toplevel(), getattr(event, "time", 0))
     return False
 
 
@@ -717,7 +724,7 @@ def on_term_button(term, event):
             match, _tag = term.match_check_event(event)
             url = url_at_event(term, event, match or "")
             if url:
-                open_url(url)
+                open_url(url, term.get_toplevel(), getattr(event, "time", 0))
                 return True
         except Exception:
             pass

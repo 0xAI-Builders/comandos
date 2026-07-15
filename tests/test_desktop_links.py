@@ -111,7 +111,7 @@ def load_mouse_helpers(fake_pane_at, fake_tmuxc, fake_open_url,
     return ns
 
 
-def load_open_url_helper(gio_launcher, popen):
+def load_open_url_helper(gio_launcher, popen, gtk_show_uri=None):
     fake_gio = types.SimpleNamespace(
         AppInfo=types.SimpleNamespace(launch_default_for_uri=gio_launcher)
     )
@@ -121,6 +121,11 @@ def load_open_url_helper(gio_launcher, popen):
     )
     ns = {
         "Gio": fake_gio,
+        "Gtk": types.SimpleNamespace(
+            show_uri_on_window=gtk_show_uri or (
+                lambda _parent, _url, _timestamp: False
+            )
+        ),
         "shutil": shutil,
         "subprocess": fake_subprocess,
         "sys": types.SimpleNamespace(platform="linux"),
@@ -140,13 +145,17 @@ class FakeTerm:
     def get_has_selection(self):
         return self.selected
 
+    def get_toplevel(self):
+        return self
+
 
 class MouseEvent:
-    def __init__(self, button, x, y, state=0):
+    def __init__(self, button, x, y, state=0, timestamp=4242):
         self.button = button
         self.x = x
         self.y = y
         self.state = state
+        self.time = timestamp
 
 
 def function_source(name):
@@ -244,7 +253,7 @@ def test_clean_url_click_opens_despite_preexisting_selection():
     ns = load_mouse_helpers(
         lambda _term, _event: ("%2", 2),
         lambda *args: tmux_calls.append(args),
-        lambda url: opened.append(url),
+        lambda url, *_context: opened.append(url),
         lambda term, event: selected_on_press.append((term, event)),
     )
     term = FakeTerm("https://example.com/path", selected=True)
@@ -267,7 +276,7 @@ def test_primary_drag_neither_opens_url_nor_selects_pane():
     ns = load_mouse_helpers(
         lambda _term, _event: ("%2", 2),
         lambda *args: tmux_calls.append(args),
-        lambda url: opened.append(url),
+        lambda url, *_context: opened.append(url),
         lambda term, event: selected_on_press.append((term, event)),
     )
     term = FakeTerm("https://example.com/path")
@@ -286,7 +295,7 @@ def test_clean_non_link_click_selects_recorded_split_only_on_release():
     ns = load_mouse_helpers(
         lambda _term, _event: ("%7", 2),
         lambda *args: tmux_calls.append(args),
-        lambda _url: None,
+        lambda _url, *_context: None,
         lambda term, event: selected_on_press.append((term, event)),
     )
     term = FakeTerm()
@@ -304,7 +313,7 @@ def test_ctrl_click_remains_an_immediate_link_command():
     ns = load_mouse_helpers(
         lambda _term, _event: ("%2", 2),
         lambda *_args: None,
-        lambda url: opened.append(url),
+        lambda url, *_context: opened.append(url),
         lambda _term, _event: None,
     )
     term = FakeTerm("https://example.com/ctrl")
@@ -313,6 +322,41 @@ def test_ctrl_click_remains_an_immediate_link_command():
 
     assert handled is True
     assert opened == ["https://example.com/ctrl"]
+
+
+def test_clean_link_click_passes_window_and_event_timestamp():
+    opened = []
+    ns = load_mouse_helpers(
+        lambda _term, _event: ("%2", 2),
+        lambda *_args: None,
+        lambda *args: opened.append(args),
+        lambda _term, _event: None,
+    )
+    term = FakeTerm("https://example.com/focus")
+
+    ns["on_term_button"](term, MouseEvent(1, 5, 6, timestamp=7001))
+    ns["on_term_release"](term, MouseEvent(1, 5, 6, timestamp=7002))
+
+    assert opened == [("https://example.com/focus", term, 7002)]
+
+
+def test_linux_open_url_prefers_gtk_click_context_for_focus():
+    gtk_calls = []
+    gio_calls = []
+    popen_calls = []
+    ns = load_open_url_helper(
+        lambda url, context: gio_calls.append((url, context)) or True,
+        lambda argv, **kwargs: popen_calls.append((argv, kwargs)),
+        lambda parent, url, timestamp: (
+            gtk_calls.append((parent, url, timestamp)) or True
+        ),
+    )
+    parent = object()
+
+    assert ns["open_url"]("https://example.com/focus", parent, 7002) is True
+    assert gtk_calls == [(parent, "https://example.com/focus", 7002)]
+    assert gio_calls == []
+    assert popen_calls == []
 
 
 def test_linux_open_url_prefers_gio_without_spawning_xdg_open():
@@ -421,6 +465,8 @@ if __name__ == "__main__":
     test_primary_drag_neither_opens_url_nor_selects_pane()
     test_clean_non_link_click_selects_recorded_split_only_on_release()
     test_ctrl_click_remains_an_immediate_link_command()
+    test_clean_link_click_passes_window_and_event_timestamp()
+    test_linux_open_url_prefers_gtk_click_context_for_focus()
     test_linux_open_url_prefers_gio_without_spawning_xdg_open()
     test_linux_open_url_falls_back_to_xdg_open_exactly_once()
     test_linux_open_url_falls_back_when_gio_returns_false()
