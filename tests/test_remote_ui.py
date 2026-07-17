@@ -45,6 +45,20 @@ def resize_coordinator_js():
     return "\n\n".join(extract_js_function(TERM_HTML, name) for name in names)
 
 
+def resize_lifecycle_wiring_js():
+    statements = (
+        "window.addEventListener('pagehide', disposeResizeCoordinator);",
+        "ws.addEventListener('close', disposeResizeCoordinator);",
+    )
+    extracted = []
+    for statement in statements:
+        matches = [line.strip() for line in TERM_HTML.splitlines()
+                   if line.strip() == statement]
+        assert matches == [statement]
+        extracted.extend(matches)
+    return "\n".join(extracted)
+
+
 def remote_button_state(state, busy=False):
     fn = extract_js_function(HTML, "remoteButtonState")
     script = f"""
@@ -557,6 +571,7 @@ console.log(JSON.stringify({{queuedBeforeFlush, appViewportFrame, writes}}));
 
 def test_webterm_keyboard_resize_settles_once_without_delaying_input():
     coordinator = resize_coordinator_js()
+    send_terminal_data = extract_js_function(TERM_HTML, "sendTerminalData")
     script = f"""
 let fitFrame = 0;
 let heightFitTimer = 0;
@@ -572,6 +587,9 @@ const frames = new Map();
 const timers = new Map();
 const scheduledDelays = [];
 const sent = [];
+const inputAfterEach = [];
+const pendingDelaysAtInput = [];
+const queuedWorkByInput = [];
 const term = {{
   cols: 95,
   rows: 34,
@@ -598,13 +616,22 @@ const resizeObserver = {{disconnect(){{}}}};
 function sendResize(size){{
   ws.send('1' + JSON.stringify({{columns: size.cols, rows: size.rows}}));
 }}
-function sendTerminalData(data){{ input += data; }}
+function sendInput(data){{ input += data; }}
+{send_terminal_data}
 {coordinator}
 for(let i = 0; i < 15; i++) {{
   proposed = {{cols: 95, rows: 33 - i}};
   scheduleFit();
   const callbacks = [...frames.values()]; frames.clear(); callbacks.forEach(cb => cb());
+  pendingDelaysAtInput.push([...timers.values()].map(timer => timer.delay));
+  const framesBeforeInput = frames.size;
+  const timersBeforeInput = timers.size;
   sendTerminalData(String.fromCharCode(97 + i));
+  inputAfterEach.push(input);
+  queuedWorkByInput.push({{
+    frames: frames.size - framesBeforeInput,
+    timers: timers.size - timersBeforeInput,
+  }});
 }}
 for(const timer of [...timers.values()]) timer.cb();
 console.log(JSON.stringify({{
@@ -612,6 +639,9 @@ console.log(JSON.stringify({{
   reloads,
   resizeMessages: sent,
   input,
+  inputAfterEach,
+  pendingDelaysAtInput,
+  queuedWorkByInput,
   scheduledDelays,
 }}));
 """
@@ -621,6 +651,11 @@ console.log(JSON.stringify({{
     assert result["reloads"] == 0
     assert result["resizeMessages"] == ['1{"columns":95,"rows":19}']
     assert result["input"] == "abcdefghijklmno"
+    assert result["inputAfterEach"] == [
+        "abcdefghijklmno"[:index] for index in range(1, 16)
+    ]
+    assert result["pendingDelaysAtInput"] == [[120]] * 15
+    assert result["queuedWorkByInput"] == [{"frames": 0, "timers": 0}] * 15
     assert result["scheduledDelays"].count(120) == 15
 
 
@@ -930,22 +965,48 @@ selected = false;
 for(let i = 0; i < 20; i++) resumeDeferredFitAfterSelection();
 const framesAfterClear = frames.size;
 flushFrames();
-const afterClear = {{
+const timerScheduledBeforeSelection = {{
   timers:timers.size,
   delay:[...timers.values()][0]?.delay,
   deferred:fitDeferredForSelection,
   fitCalls,
 }};
+selected = true;
+flushTimers();
+const selectionActivatedBeforeExpiry = {{
+  timers:timers.size,
+  reloads,
+  deferred:fitDeferredForSelection,
+}};
+
 proposed = {{cols:52, rows:35}};
 scheduleFit();
 flushFrames();
-const latestPending = {{timers:timers.size, delay:[...timers.values()][0]?.delay}};
+proposed = {{cols:53, rows:35}};
+scheduleFit();
+flushFrames();
+const latestGeometryWhileSelected = {{
+  timers:timers.size,
+  reloads,
+  deferred:fitDeferredForSelection,
+}};
+
+selected = false;
+resumeDeferredFitAfterSelection();
+flushFrames();
+const latestPending = {{
+  timers:timers.size,
+  delay:[...timers.values()][0]?.delay,
+  deferred:fitDeferredForSelection,
+}};
 flushTimers();
 
 console.log(JSON.stringify({{
   whileSelected,
   framesAfterClear,
-  afterClear,
+  timerScheduledBeforeSelection,
+  selectionActivatedBeforeExpiry,
+  latestGeometryWhileSelected,
   latestPending,
   reloads,
   reloadedCols,
@@ -962,85 +1023,128 @@ console.log(JSON.stringify({{
         "fitCalls": 0,
     }
     assert result["framesAfterClear"] == 1
-    assert result["afterClear"] == {
+    assert result["timerScheduledBeforeSelection"] == {
         "timers": 1,
         "delay": 180,
         "deferred": False,
         "fitCalls": 0,
     }
+    assert result["selectionActivatedBeforeExpiry"] == {
+        "timers": 0,
+        "reloads": 0,
+        "deferred": True,
+    }
+    assert result["latestGeometryWhileSelected"] == {
+        "timers": 0,
+        "reloads": 0,
+        "deferred": True,
+    }
     assert result["latestPending"] == {
         "timers": 1,
         "delay": 180,
+        "deferred": False,
     }
     assert result["reloads"] == 1
-    assert result["reloadedCols"] == [52]
+    assert result["reloadedCols"] == [53]
     assert result["fitCalls"] == 0
     assert result["scheduledDelays"] == [180, 180]
 
 
 def test_remote_resize_cleanup_cancels_frame_and_settle_timers():
     coordinator = resize_coordinator_js()
-    assert "window.addEventListener('pagehide', disposeResizeCoordinator)" in TERM_HTML
-    assert "ws.addEventListener('close', disposeResizeCoordinator)" in TERM_HTML
+    lifecycle_wiring = resize_lifecycle_wiring_js()
     assert "resizeObserver?.observe(document.getElementById('term'))" in TERM_HTML
     script = f"""
-let fitFrame = 0;
-let heightFitTimer = 0;
-let columnReloadTimer = 0;
-let fitDeferredForSelection = false;
-let resizeDisposed = false;
-let nextFrame = 1;
-let nextTimer = 1;
-let disconnected = 0;
-const frames = new Map();
-const timers = new Map();
-const term = {{cols:95, rows:24, hasSelection(){{ return false; }}}};
-let proposed = {{cols:95, rows:23}};
-const fit = {{proposeDimensions(){{ return {{...proposed}}; }}, fit(){{}}}};
-const location = {{reload(){{}}}};
-const requestAnimationFrame = cb => {{ const id = nextFrame++; frames.set(id, cb); return id; }};
-const cancelAnimationFrame = id => frames.delete(id);
-const setTimeout = (cb, delay) => {{ const id = nextTimer++; timers.set(id, {{cb, delay}}); return id; }};
-const clearTimeout = id => timers.delete(id);
-const resizeObserver = {{disconnect(){{ disconnected += 1; }}}};
-const flushFrames = () => {{ const callbacks = [...frames.values()]; frames.clear(); callbacks.forEach(cb => cb()); }};
-{coordinator}
-scheduleFit();
-const frameQueued = frames.size;
-disposeResizeCoordinator();
-const afterFrameDispose = {{frames:frames.size, timers:timers.size}};
+function runLifecycleScenario(signal, pending) {{
+  let fitFrame = 0;
+  let heightFitTimer = 0;
+  let columnReloadTimer = 0;
+  let fitDeferredForSelection = false;
+  let resizeDisposed = false;
+  let nextFrame = 1;
+  let nextTimer = 1;
+  let disconnected = 0;
+  const frames = new Map();
+  const timers = new Map();
+  const eventTarget = () => {{
+    const listeners = {{}};
+    return {{
+      addEventListener(type, callback) {{
+        if (!listeners[type]) listeners[type] = [];
+        listeners[type].push(callback);
+      }},
+      dispatchEvent(event) {{
+        for (const callback of listeners[event.type] || []) callback(event);
+      }},
+    }};
+  }};
+  const window = eventTarget();
+  const ws = eventTarget();
+  const term = {{cols:95, rows:24, hasSelection(){{ return false; }}}};
+  let proposed = {{cols:95, rows:24}};
+  const fit = {{proposeDimensions(){{ return {{...proposed}}; }}, fit(){{}}}};
+  const location = {{reload(){{}}}};
+  const requestAnimationFrame = callback => {{
+    const id = nextFrame++; frames.set(id, callback); return id;
+  }};
+  const cancelAnimationFrame = id => frames.delete(id);
+  const setTimeout = (callback, delay) => {{
+    const id = nextTimer++; timers.set(id, {{callback, delay}}); return id;
+  }};
+  const clearTimeout = id => timers.delete(id);
+  const resizeObserver = {{disconnect(){{ disconnected += 1; }}}};
+  const flushFrames = () => {{
+    const callbacks = [...frames.values()]; frames.clear(); callbacks.forEach(callback => callback());
+  }};
+  {coordinator}
+  {lifecycle_wiring}
 
-resizeDisposed = false;
-scheduleFit();
-flushFrames();
-const heightTimerQueued = [...timers.values()][0]?.delay;
-clearResizeTimers();
-proposed = {{cols:96, rows:23}};
-scheduleFit();
-flushFrames();
-const columnTimerQueued = [...timers.values()][0]?.delay;
-clearResizeTimers();
-console.log(JSON.stringify({{
-  frameQueued,
-  afterFrameDispose,
-  heightTimerQueued,
-  columnTimerQueued,
-  frames:frames.size,
-  timers:timers.size,
-  disconnected,
-}}));
+  if (pending === 'height') {{
+    proposed = {{cols:95, rows:23}};
+    scheduleFit();
+    flushFrames();
+    scheduleFit();
+  }} else if (pending === 'column') {{
+    proposed = {{cols:96, rows:24}};
+    scheduleFit();
+    flushFrames();
+    scheduleFit();
+  }} else {{
+    scheduleFit();
+  }}
+  const before = {{
+    frames: frames.size,
+    delays: [...timers.values()].map(timer => timer.delay),
+  }};
+  const target = signal === 'pagehide' ? window : ws;
+  target.dispatchEvent({{type: signal}});
+  return {{
+    before,
+    after: {{frames: frames.size, timers: timers.size}},
+    disposed: resizeDisposed,
+    disconnected,
+  }};
+}}
+
+const results = {{}};
+for (const signal of ['pagehide', 'close']) {{
+  results[signal] = {{}};
+  for (const pending of ['frame', 'height', 'column']) {{
+    results[signal][pending] = runLifecycleScenario(signal, pending);
+  }}
+}}
+console.log(JSON.stringify(results));
 """
     result = run_node_json(script)
 
-    assert result == {
-        "frameQueued": 1,
-        "afterFrameDispose": {"frames": 0, "timers": 0},
-        "heightTimerQueued": 120,
-        "columnTimerQueued": 180,
-        "frames": 0,
-        "timers": 0,
-        "disconnected": 1,
-    }
+    for signal in ("pagehide", "close"):
+        assert result[signal]["frame"]["before"] == {"frames": 1, "delays": []}
+        assert result[signal]["height"]["before"] == {"frames": 1, "delays": [120]}
+        assert result[signal]["column"]["before"] == {"frames": 1, "delays": [180]}
+        for pending in ("frame", "height", "column"):
+            assert result[signal][pending]["after"] == {"frames": 0, "timers": 0}
+            assert result[signal][pending]["disposed"] is True
+            assert result[signal][pending]["disconnected"] == 1
 
 
 def test_webterm_data_handler_sends_input_without_resize_work():
