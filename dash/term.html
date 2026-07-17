@@ -233,9 +233,16 @@
   function handleTerminalMessage(event) {
     const data = event.data;
     if (event.origin !== location.origin || event.source !== parent ||
-        !data || data.source !== 'comandos' || data.type !== 'theme' ||
-        !THEMES[data.theme]) return false;
-    return applyTerminalTheme(data.theme);
+        !data || data.source !== 'comandos') return false;
+    if (data.type === 'theme') {
+      if (!THEMES[data.theme]) return false;
+      return applyTerminalTheme(data.theme);
+    }
+    if (data.type === 'interaction-state') {
+      applyInteractionState(data);
+      return true;
+    }
+    return false;
   }
 
   applyTerminalTheme(activeTheme);
@@ -543,13 +550,7 @@
     text.value = '';
   });
   pasteDialog.addEventListener('close', focusTerminal);
-  window.addEventListener('message', e => { handleTerminalMessage(e); });
-  window.addEventListener('message', e => {
-    const data = e.data;
-    if (e.origin !== location.origin || e.source !== parent ||
-        !data || data.source !== 'comandos' || data.type !== 'interaction-state') return;
-    applyInteractionState(data);
-  });
+  window.addEventListener('message', handleTerminalMessage);
   if (parent !== window) parent.postMessage({source:'comandos-term', type:'ready'}, location.origin);
 
   // Teclado MOVIL (GBoard/Android): borrar y Enter llegan como eventos

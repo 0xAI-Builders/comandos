@@ -36,6 +36,35 @@ def extract_js_function(source, name):
     raise AssertionError(f"Could not extract {name}")
 
 
+def extract_js_initializer(source, name):
+    marker = f"const {name} = "
+    start = source.index(marker) + len(marker)
+    opener = source[start]
+    closer = {"{": "}", "[": "]"}[opener]
+    depth = 0
+    quote = None
+    escaped = False
+    for index in range(start, len(source)):
+        char = source[index]
+        if quote:
+            if escaped:
+                escaped = False
+            elif char == "\\":
+                escaped = True
+            elif char == quote:
+                quote = None
+            continue
+        if char in "'\"`":
+            quote = char
+        elif char == opener:
+            depth += 1
+        elif char == closer:
+            depth -= 1
+            if depth == 0:
+                return source[start:index + 1]
+    raise AssertionError(f"Could not extract {name}")
+
+
 def resize_coordinator_js():
     names = (
         "clearResizeTimers",
@@ -139,7 +168,7 @@ function sendInput(data) {{ sent.push(data); }}
 def terminal_toolbar_controller_js():
     start = TERM_HTML.index("  const TOOLBAR_KEYS")
     end = TERM_HTML.index("  // Teclado MOVIL", start)
-    return TERM_HTML[start:end]
+    return extract_js_function(TERM_HTML, "handleTerminalMessage") + "\n" + TERM_HTML[start:end]
 
 
 def run_terminal_toolbar_lifecycle(simulation):
@@ -2349,11 +2378,112 @@ console.log(JSON.stringify({
     assert result["compatAfterRequest"]["mouse"] is True
 
 
-def test_theme_bridge_keeps_task_five_interaction_messages_independent():
-    assert "function handleTerminalMessage" in TERM_HTML
-    listener = extract_js_function(TERM_HTML, "handleTerminalMessage")
-    assert "interaction-state" not in listener
-    assert "type !== 'theme'" in listener
+def test_named_terminal_message_bridge_executes_theme_and_interaction_paths_independently():
+    handler = extract_js_function(TERM_HTML, "handleTerminalMessage")
+    apply_theme = extract_js_function(TERM_HTML, "applyTerminalTheme")
+    apply_interaction = extract_js_function(TERM_HTML, "applyInteractionState")
+    themes = extract_js_initializer(TERM_HTML, "THEMES")
+    registration = "window.addEventListener('message', handleTerminalMessage);"
+    assert TERM_HTML.count(registration) == 1
+    result = run_node_json(f"""
+const THEMES = {themes};
+let activeTheme = "noche";
+let interactionState = {{known:false, busy:false, selecting:false}};
+const styles = {{}};
+const shell = {{style:{{}}}};
+const modeButton = {{
+  disabled:false, textContent:"", attributes:{{}}, selected:false,
+  classList:{{toggle(_name, value) {{ modeButton.selected = value; }}}},
+  setAttribute(name, value) {{ this.attributes[name] = value; }},
+}};
+const document = {{
+  documentElement:{{style:{{setProperty(name, value) {{ styles[name] = value; }}}}}},
+  body:{{style:{{}}}},
+  getElementById(id) {{ return id === "term-shell" ? shell : null; }},
+  querySelector(selector) {{ return selector === '[data-action="mode"]' ? modeButton : null; }},
+}};
+const parent = {{id:"parent"}};
+const location = {{origin:"https://dash.test"}};
+const listeners = {{}};
+let messageRegistrations = 0;
+const window = {{addEventListener(type, callback) {{
+  if(type === "message") {{ messageRegistrations += 1; listeners.message = callback; }}
+}}}};
+let connectionCount = 0;
+class WebSocket {{ constructor() {{ connectionCount += 1; this.id = "same-socket"; }} }}
+const ws = new WebSocket();
+const originalSocket = ws;
+const term = {{options:{{theme:THEMES.noche}}}};
+function refreshLigatures() {{}}
+{apply_interaction}
+{apply_theme}
+{handler}
+{registration}
+const interactionAccepted = listeners.message({{
+  origin:location.origin, source:parent,
+  data:{{source:"comandos", type:"interaction-state", known:true, busy:false, selecting:true}},
+}});
+const interactionAfterState = {{...interactionState}};
+const themeAccepted = listeners.message({{
+  origin:location.origin, source:parent,
+  data:{{source:"comandos", type:"theme", theme:"bruno"}},
+}});
+const interactionAfterTheme = {{...interactionState}};
+const beforeInvalid = {{theme:activeTheme, interaction:{{...interactionState}}}};
+const badOrigin = listeners.message({{
+  origin:"https://evil.test", source:parent,
+  data:{{source:"comandos", type:"theme", theme:"noche"}},
+}});
+const badSource = listeners.message({{
+  origin:location.origin, source:{{}},
+  data:{{source:"comandos", type:"interaction-state", known:true, selecting:false}},
+}});
+const unknownType = listeners.message({{
+  origin:location.origin, source:parent,
+  data:{{source:"comandos", type:"unknown", theme:"noche"}},
+}});
+const unknownTheme = listeners.message({{
+  origin:location.origin, source:parent,
+  data:{{source:"comandos", type:"theme", theme:"unknown"}},
+}});
+console.log(JSON.stringify({{
+  messageRegistrations, interactionAccepted, themeAccepted,
+  interactionAfterState, interactionAfterTheme,
+  modeLabel:modeButton.textContent, modeSelected:modeButton.selected,
+  termBackground:term.options.theme.background,
+  rootBackground:document.documentElement.style.background,
+  bodyBackground:document.body.style.background,
+  shellBackground:shell.style.background,
+  roleBackground:styles["--term-bg"],
+  badOrigin, badSource, unknownType, unknownTheme,
+  invalidUnchanged:beforeInvalid.theme === activeTheme &&
+    JSON.stringify(beforeInvalid.interaction) === JSON.stringify(interactionState),
+  socketSame:ws === originalSocket, socketId:ws.id, connectionCount,
+}}));
+""")
+
+    assert result == {
+        "messageRegistrations": 1,
+        "interactionAccepted": True,
+        "themeAccepted": True,
+        "interactionAfterState": {"known": True, "busy": False, "selecting": True},
+        "interactionAfterTheme": {"known": True, "busy": False, "selecting": True},
+        "modeLabel": "Interactuar",
+        "modeSelected": True,
+        "termBackground": "#1A1A1A",
+        "rootBackground": "#1A1A1A",
+        "bodyBackground": "#1A1A1A",
+        "shellBackground": "#1A1A1A",
+        "roleBackground": "#1A1A1A",
+        "badOrigin": False,
+        "badSource": False,
+        "unknownType": False,
+        "unknownTheme": False,
+        "invalidUnchanged": True,
+        "socketSame": True,
+        "socketId": "same-socket",
+        "connectionCount": 1,
+    }
 
 
 def test_remote_terminal_selection_ignores_stale_get_and_keepalive_is_temporary_only():
