@@ -35,6 +35,28 @@ def test_desktop_panel_has_a_real_content_scroller():
     assert "min-height:0" in panel
 
 
+def test_remote_shell_uses_dynamic_viewport_grid_without_fixed_tab_offset():
+    assert "interactive-widget=resizes-content" in CSS
+    app = rule("body.app")
+    assert "var(--app-height,100dvh)" in app
+    panes = rule("body.app #panes")
+    assert "grid-template-rows:auto minmax(0,1fr)" in panes
+    assert "safe-area-inset-top" in panes
+    assert "safe-area-inset-bottom" in panes
+    narrow = rule("body.app #view-panel,body.app #term-area")
+    assert "top:44px" not in narrow
+    assert "position:absolute" not in narrow
+
+
+def test_remote_touch_targets_have_stable_minimums():
+    tab = rule(".apptab")
+    assert "min-height:44px" in tab
+    splitter = rule("body.app.split #splitter::before")
+    assert "inset:0 -12px" in splitter
+
+
 if __name__ == "__main__":
     test_split_left_panel_is_the_scroll_container()
     test_desktop_panel_has_a_real_content_scroller()
+    test_remote_shell_uses_dynamic_viewport_grid_without_fixed_tab_offset()
+    test_remote_touch_targets_have_stable_minimums()

@@ -383,6 +383,111 @@ def test_splitter_hit_target_is_wider_than_visible_column():
     assert "body.app.split #splitter::before{content:\"\";position:absolute;inset:0 -12px}" in HTML
 
 
+def test_split_policy_uses_pointer_class_and_stable_coarse_orientation():
+    should_split = extract_js_function(HTML, "shouldSplitLayout")
+    result = run_node_json(f"""
+{should_split}
+const cases = {json.dumps([
+    [390, 844, True, False],
+    [834, 1112, True, False],
+    [1194, 834, True, True],
+    [899, 700, False, False],
+    [900, 700, False, True],
+    [747, 500, True, False],
+    [748, 500, True, True],
+])};
+console.log(JSON.stringify(cases.map(([width, height, coarse, expected]) =>
+  shouldSplitLayout(width, height, coarse) === expected)));
+""")
+    assert result == [True] * 7
+
+
+def test_portrait_tablet_keyboard_does_not_enable_split_layout():
+    functions = "\n\n".join(
+        extract_js_function(HTML, name)
+        for name in ("currentViewportHeight", "shouldSplitLayout", "applyAppLayout")
+    )
+    result = run_node_json(f"""
+let split = false;
+const classList = {{
+  toggle(name, enabled) {{ if(name === "split") split = enabled; }},
+}};
+const document = {{
+  documentElement: {{clientHeight: 420}},
+  body: {{classList}},
+}};
+const window = {{
+  visualViewport: {{width: 834, height: 420}},
+  innerWidth: 834,
+  innerHeight: 420,
+  screen: {{width: 834, height: 1112, orientation: {{type: "portrait-primary"}}}},
+  matchMedia() {{ return {{matches: true}}; }},
+}};
+const navigator = {{maxTouchPoints: 5}};
+function restoreSplitLeft() {{}}
+function showView() {{}}
+let activeView = "panel";
+{functions}
+applyAppLayout();
+console.log(JSON.stringify({{split}}));
+""")
+    assert result == {"split": False}
+
+
+def test_active_tab_reveal_is_nearest_and_only_runs_for_new_view():
+    reveal = extract_js_function(HTML, "revealActiveTab")
+    result = run_node_json(f"""
+let activeView = "panel";
+const scheduled = [];
+const calls = [];
+function requestAnimationFrame(callback) {{ scheduled.push(callback); }}
+const tab = {{scrollIntoView(options) {{ calls.push(options); }}}};
+const bar = {{querySelector(selector) {{ return selector === ".apptab.on" ? tab : null; }}}};
+{reveal}
+revealActiveTab(bar);
+revealActiveTab(bar);
+activeView = "term:prod";
+revealActiveTab(bar);
+scheduled.forEach(callback => callback());
+console.log(JSON.stringify(calls));
+""")
+    assert result == [
+        {"block": "nearest", "inline": "nearest"},
+        {"block": "nearest", "inline": "nearest"},
+    ]
+
+
+def test_app_viewport_updates_are_coalesced_per_animation_frame():
+    functions = "\n\n".join(
+        extract_js_function(HTML, name)
+        for name in ("currentViewportHeight", "updateAppViewport", "scheduleAppViewport")
+    )
+    result = run_node_json(f"""
+let appViewportFrame = 0;
+let nextFrame = 1;
+const frames = new Map();
+const writes = [];
+const style = {{
+  setProperty(name, value) {{ writes.push([name, value]); }},
+}};
+const document = {{
+  documentElement: {{clientHeight: 844, style}},
+}};
+const window = {{visualViewport: {{height: 420}}, innerHeight: 844}};
+function requestAnimationFrame(callback) {{ const id = nextFrame++; frames.set(id, callback); return id; }}
+{functions}
+for(let i = 0; i < 50; i++) scheduleAppViewport();
+const queuedBeforeFlush = frames.size;
+[...frames.values()].forEach(callback => callback());
+console.log(JSON.stringify({{queuedBeforeFlush, appViewportFrame, writes}}));
+""")
+    assert result == {
+        "queuedBeforeFlush": 1,
+        "appViewportFrame": 0,
+        "writes": [["--app-height", "420px"]],
+    }
+
+
 def test_webterm_fit_is_coalesced_per_animation_frame():
     schedule_fit = extract_js_function(TERM_HTML, "scheduleFit")
     script = f"""
@@ -1771,7 +1876,7 @@ def test_remote_term_has_no_duplicate_mouse_emoji_toggle():
 
 def test_remote_term_page_fixes_mobile_keys_and_ws():
     term = open("dash/term.html").read()
-    assert '<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">' in term
+    assert '<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content">' in term
     # backspace/enter de teclado movil (GBoard no manda keydown)
     assert "beforeinput" in term
     assert "deleteContentBackward" in term

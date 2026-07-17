@@ -1,5 +1,5 @@
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content">
 <title>ComandOS</title>
 <link rel="manifest" href="/manifest.webmanifest">
 <meta name="theme-color" content="#0A0D13">
@@ -576,12 +576,12 @@
   /* ---------- app combinada (panel + terminales, como el escritorio) ---------- */
   /* Solo activa cuando entras por el tailnet (WEBTERM). El body se vuelve la
      app: barra de pestanas arriba, y debajo el panel o una terminal. */
-  body.app{height:100vh;overflow:hidden;display:flex;flex-direction:column}
+  body.app{height:var(--app-height,100dvh);overflow:hidden;display:block}
   #tabbar{display:none}
   body.app #tabbar{display:flex;align-items:stretch;gap:0;flex:none;
     background:linear-gradient(180deg,var(--panel) 0%,var(--bg) 100%);
     border-bottom:1px solid var(--line);box-shadow:0 2px 10px rgba(0,0,0,.25);
-    padding:env(safe-area-inset-top) 8px 0;overflow-x:auto;overflow-y:hidden;
+    padding:0 8px;overflow-x:auto;overflow-y:hidden;
     -webkit-overflow-scrolling:touch;scrollbar-width:thin;scrollbar-color:var(--line2) transparent}
   body.app #tabbar::-webkit-scrollbar{height:5px}
   body.app #tabbar::-webkit-scrollbar-track{background:transparent}
@@ -590,7 +590,7 @@
   body.app #tabbar::-webkit-scrollbar-thumb:hover{background:var(--brand);background-clip:padding-box}
   body.app.dragging{user-select:none;cursor:col-resize}
   .apptab{position:relative;display:flex;align-items:center;gap:8px;white-space:nowrap;
-    padding:11px 14px 10px;font-family:var(--mono);font-size:12px;color:var(--dim);
+    min-height:44px;padding:11px 14px 10px;font-family:var(--mono);font-size:12px;color:var(--dim);
     cursor:pointer;flex:none;max-width:200px;letter-spacing:.02em;
     border-bottom:2px solid transparent;transition:color .15s,background .15s}
   .apptab:hover{color:var(--text);background:color-mix(in srgb,var(--brand) 6%,transparent)}
@@ -612,12 +612,17 @@
   #splitter{display:none}
   /* --- ANGOSTO (celular): tabs arriba a todo lo ancho; panel O terminal a
          pantalla completa, se cambia con las tabs --- */
-  body.app #panes{display:block}
-  body.app #tabbar{position:absolute;top:0;left:0;right:0;z-index:5}
-  body.app #view-panel,body.app #term-area{position:absolute;left:0;right:0;bottom:0;top:44px}
+  body.app #panes{height:100%;min-height:0;display:grid;
+    grid-template-columns:minmax(0,1fr);grid-template-rows:auto minmax(0,1fr);
+    padding-top:env(safe-area-inset-top);padding-bottom:env(safe-area-inset-bottom)}
+  body.app #tabbar{grid-column:1;grid-row:1;position:relative;inset:auto;z-index:5;padding:0 8px}
+  body.app #view-panel,body.app #term-area{
+    grid-column:1;grid-row:2;position:relative;inset:auto;min-width:0;min-height:0}
   body.app #view-panel{display:none;flex-direction:column}
   body.app #view-panel.on{display:flex}
+  body.app #topbar{padding-top:0}
   body.app #view-panel #topbar{flex:none}
+  body.app #content{padding-bottom:0}
   body.app #view-panel #content{flex:1;min-height:0;overflow-y:auto}
   body.app #term-area{display:none;overflow:hidden;background:var(--bg)}
   body.app #term-area.on{display:block}
@@ -627,7 +632,7 @@
   /* --- ANCHO (tablet/desktop): IGUAL que la app de escritorio: panel angosto
          a la IZQUIERDA (altura completa), tabs arriba a la DERECHA, terminal
          abajo a la derecha. --- */
-  @media (min-width:900px){
+  @media (min-width:748px){
     body.app.split #panes{display:grid;
       grid-template-columns:var(--split-left,380px) 8px minmax(0,1fr);grid-template-rows:auto 1fr;
       grid-template-areas:"panel split tabs" "panel split term"}
@@ -2012,8 +2017,40 @@ const termInteraction = new Map(); // session -> actual tmux mouse + temporary s
 let termInteractionSeq = 0;
 let termPageHidden = false;
 const SPLIT_KEY = "cc-split-left";
+let appViewportFrame = 0;
 
 function appEnabled(){ return WEBTERM; }
+
+function currentViewportHeight(){
+  return Math.round(window.visualViewport?.height || window.innerHeight || document.documentElement.clientHeight);
+}
+function updateAppViewport(){
+  appViewportFrame = 0;
+  document.documentElement.style.setProperty("--app-height", `${currentViewportHeight()}px`);
+}
+function scheduleAppViewport(){
+  if(!appViewportFrame) appViewportFrame = requestAnimationFrame(updateAppViewport);
+}
+function shouldSplitLayout(width, height, coarse){
+  if(coarse) return width > height && width >= 748;
+  return width >= 900;
+}
+function applyAppLayout(){
+  const width = Math.round(window.visualViewport?.width || window.innerWidth);
+  const height = currentViewportHeight();
+  const coarse = window.matchMedia("(pointer:coarse)").matches || navigator.maxTouchPoints > 0;
+  const screen = window.screen;
+  const screenWidth = Math.round(screen?.width || width);
+  const screenHeight = Math.round(screen?.height || height);
+  const orientation = screen?.orientation?.type || "";
+  // Keyboard resizing changes visualViewport.height, not device orientation.
+  const coarseHeight = orientation.startsWith("portrait") ? Math.max(screenWidth, screenHeight)
+    : orientation.startsWith("landscape") ? Math.min(screenWidth, screenHeight)
+    : screenHeight;
+  document.body.classList.toggle("split", shouldSplitLayout(width, coarse ? coarseHeight : height, coarse));
+  restoreSplitLeft();
+  showView(activeView);
+}
 
 function splitBounds(){
   const panes = document.getElementById("panes");
@@ -2548,6 +2585,14 @@ function renderTabbar(){
   plus.title = tf("Abrir una sesion como terminal", "Open a session as a terminal");
   plus.onclick = swOpen;
   bar.appendChild(plus);
+  revealActiveTab(bar);
+}
+function revealActiveTab(bar){
+  if(revealActiveTab.lastView === activeView) return;
+  revealActiveTab.lastView = activeView;
+  requestAnimationFrame(() => {
+    bar.querySelector(".apptab.on")?.scrollIntoView({block:"nearest", inline:"nearest"});
+  });
 }
 // Attachea el iframe de una terminal solo cuando de verdad se abre (lazy):
 // asi mostramos las MISMAS tabs del escritorio sin attachear 11 clientes tmux.
@@ -2664,11 +2709,14 @@ function initApp(){
   document.body.classList.add("app");
   restoreSplitLeft();
   initSplitDrag();
-  const wide = window.matchMedia("(min-width:900px)");
-  const applyWide = () => { document.body.classList.toggle("split", wide.matches); restoreSplitLeft(); showView(activeView); };
-  wide.addEventListener("change", applyWide);
-  applyWide();
-  renderTabbar();
+  const updateLayout = () => {
+    scheduleAppViewport();
+    applyAppLayout();
+  };
+  window.visualViewport?.addEventListener("resize", updateLayout);
+  window.addEventListener("resize", updateLayout);
+  window.addEventListener("orientationchange", updateLayout);
+  updateLayout();
   loadDesktopTabs();
 }
 
