@@ -1649,6 +1649,7 @@ const TERM_BASE = "https://zion.tail63a117.ts.net/term";
 const TERM_FALLBACK_BASE = "https://zion.tail63a117.ts.net:8443";
 const TERM_PRIMARY_ATTEMPTS = 3;
 const TERM_PRIMARY_RETRY_MS = 400;
+const TERM_PRIMARY_PROBE_TIMEOUT_MS = 800;
 let primaryProbes = 0;
 let fallbackLookups = 0;
 const fetch = async () => ({{ok: ++primaryProbes === 4}});
@@ -1660,6 +1661,11 @@ const tf = (_es, en) => en;
 const toast = () => {{}};
 function showTermDegraded() {{}}
 function setTimeout(callback) {{ callback(); }}
+function clearTimeout() {{}}
+class AbortController {{
+  constructor() {{ this.signal = {{}}; }}
+  abort() {{}}
+}}
 
 {functions}
 
@@ -1675,6 +1681,66 @@ function setTimeout(callback) {{ callback(); }}
         ],
         "primaryProbes": 4,
         "fallbackLookups": 1,
+    }
+
+
+def test_primary_terminal_probe_aborts_stalled_fetch_and_clears_timeout():
+    probe = extract_js_function(HTML, "probePrimaryTerm")
+    result = run_node_json(f"""
+const TERM_BASE = "https://zion.tail63a117.ts.net/term";
+const TERM_PRIMARY_PROBE_TIMEOUT_MS = 800;
+const timers = new Map();
+const cleared = [];
+let nextTimer = 1;
+let fetchMode = "stall";
+function setTimeout(callback, delay) {{
+  const id = nextTimer++;
+  timers.set(id, {{callback, delay}});
+  return id;
+}}
+function clearTimeout(id) {{ cleared.push(id); timers.delete(id); }}
+class AbortController {{
+  constructor() {{
+    this.signal = {{aborted: false, listeners: []}};
+  }}
+  abort() {{
+    this.signal.aborted = true;
+    this.signal.listeners.forEach(listener => listener());
+  }}
+}}
+function fetch(_url, options) {{
+  if(fetchMode === "success") return Promise.resolve({{ok: true}});
+  return new Promise((_resolve, reject) => {{
+    options.signal.listeners.push(() => reject(new Error("aborted")));
+  }});
+}}
+
+{probe}
+
+(async () => {{
+  const stalled = probePrimaryTerm();
+  const [timeoutId, timeout] = [...timers.entries()][0];
+  timeout.callback();
+  const stalledResult = await stalled;
+  fetchMode = "success";
+  const successfulResult = await probePrimaryTerm();
+  console.log(JSON.stringify({{
+    stalledResult,
+    successfulResult,
+    timeoutDelay: timeout.delay,
+    timeoutCleared: cleared.includes(timeoutId),
+    activeTimers: timers.size,
+    clearCount: cleared.length,
+  }}));
+}})().catch(error => {{ console.error(error); process.exit(1); }});
+""")
+    assert result == {
+        "stalledResult": False,
+        "successfulResult": True,
+        "timeoutDelay": 800,
+        "timeoutCleared": True,
+        "activeTimers": 0,
+        "clearCount": 2,
     }
 
 

@@ -1999,6 +1999,7 @@ const TERM_BASE = WEBTERM ? `${location.origin}/term` : "";
 const TERM_FALLBACK_BASE = WEBTERM ? `https://${location.hostname}:8443` : "";
 const TERM_PRIMARY_ATTEMPTS = 3;
 const TERM_PRIMARY_RETRY_MS = 400;
+const TERM_PRIMARY_PROBE_TIMEOUT_MS = 800;
 let termFallbackNotified = false;
 
 // ---------- App combinada: panel + pestanas de terminal (como el escritorio) ----------
@@ -2107,11 +2108,17 @@ function delay(ms){
   return new Promise(resolve => setTimeout(resolve, ms));
 }
 async function probePrimaryTerm(){
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), TERM_PRIMARY_PROBE_TIMEOUT_MS);
   try{
-    const response = await fetch(`${TERM_BASE}/token`, {cache:"no-store"});
+    const response = await fetch(`${TERM_BASE}/token`, {
+      cache:"no-store", signal:controller.signal
+    });
     return response.ok;
   }catch(_){
     return false;
+  }finally{
+    clearTimeout(timeout);
   }
 }
 async function fallbackTermAvailable(){
