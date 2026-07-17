@@ -434,27 +434,82 @@ console.log(JSON.stringify({{split}}));
     assert result == {"split": False}
 
 
-def test_active_tab_reveal_is_nearest_and_only_runs_for_new_view():
+def test_active_tab_reveal_does_not_schedule_for_unchanged_visible_tab():
     reveal = extract_js_function(HTML, "revealActiveTab")
     result = run_node_json(f"""
-let activeView = "panel";
+let activeView = "term:prod";
 const scheduled = [];
 const calls = [];
 function requestAnimationFrame(callback) {{ scheduled.push(callback); }}
-const tab = {{scrollIntoView(options) {{ calls.push(options); }}}};
-const bar = {{querySelector(selector) {{ return selector === ".apptab.on" ? tab : null; }}}};
+const tab = {{
+  getBoundingClientRect() {{ return {{left: 20, right: 80}}; }},
+  scrollIntoView(options) {{ calls.push(options); }},
+}};
+const bar = {{
+  getBoundingClientRect() {{ return {{left: 0, right: 100}}; }},
+  querySelector(selector) {{ return selector === ".apptab.on" ? tab : null; }},
+}};
 {reveal}
-revealActiveTab(bar);
-revealActiveTab(bar);
-activeView = "term:prod";
+revealActiveTab.lastView = activeView;
 revealActiveTab(bar);
 scheduled.forEach(callback => callback());
-console.log(JSON.stringify(calls));
+console.log(JSON.stringify({{scheduled: scheduled.length, calls}}));
 """)
-    assert result == [
-        {"block": "nearest", "inline": "nearest"},
-        {"block": "nearest", "inline": "nearest"},
-    ]
+    assert result == {"scheduled": 0, "calls": []}
+
+
+def test_active_tab_reveal_schedules_for_unchanged_rebuilt_out_of_bounds_tab():
+    reveal = extract_js_function(HTML, "revealActiveTab")
+    result = run_node_json(f"""
+let activeView = "term:prod";
+const scheduled = [];
+const calls = [];
+function requestAnimationFrame(callback) {{ scheduled.push(callback); }}
+const tab = {{
+  getBoundingClientRect() {{ return {{left: 120, right: 180}}; }},
+  scrollIntoView(options) {{ calls.push(options); }},
+}};
+const bar = {{
+  getBoundingClientRect() {{ return {{left: 0, right: 100}}; }},
+  querySelector(selector) {{ return selector === ".apptab.on" ? tab : null; }},
+}};
+{reveal}
+revealActiveTab.lastView = activeView;
+revealActiveTab(bar);
+scheduled.forEach(callback => callback());
+console.log(JSON.stringify({{scheduled: scheduled.length, calls}}));
+""")
+    assert result == {
+        "scheduled": 1,
+        "calls": [{"block": "nearest", "inline": "nearest"}],
+    }
+
+
+def test_active_tab_reveal_schedules_for_changed_view():
+    reveal = extract_js_function(HTML, "revealActiveTab")
+    result = run_node_json(f"""
+let activeView = "term:prod";
+const scheduled = [];
+const calls = [];
+function requestAnimationFrame(callback) {{ scheduled.push(callback); }}
+const tab = {{
+  getBoundingClientRect() {{ return {{left: 120, right: 180}}; }},
+  scrollIntoView(options) {{ calls.push(options); }},
+}};
+const bar = {{
+  getBoundingClientRect() {{ return {{left: 0, right: 100}}; }},
+  querySelector(selector) {{ return selector === ".apptab.on" ? tab : null; }},
+}};
+{reveal}
+revealActiveTab.lastView = "panel";
+revealActiveTab(bar);
+scheduled.forEach(callback => callback());
+console.log(JSON.stringify({{scheduled: scheduled.length, calls}}));
+""")
+    assert result == {
+        "scheduled": 1,
+        "calls": [{"block": "nearest", "inline": "nearest"}],
+    }
 
 
 def test_app_viewport_updates_are_coalesced_per_animation_frame():

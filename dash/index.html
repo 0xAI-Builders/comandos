@@ -2588,10 +2588,18 @@ function renderTabbar(){
   revealActiveTab(bar);
 }
 function revealActiveTab(bar){
-  if(revealActiveTab.lastView === activeView) return;
+  const isFullyVisible = tab => {
+    const tabBounds = tab.getBoundingClientRect();
+    const barBounds = bar.getBoundingClientRect();
+    return tabBounds.left >= barBounds.left && tabBounds.right <= barBounds.right;
+  };
+  const activeTab = bar.querySelector(".apptab.on");
+  if(revealActiveTab.lastView === activeView && activeTab && isFullyVisible(activeTab)) return;
   revealActiveTab.lastView = activeView;
   requestAnimationFrame(() => {
-    bar.querySelector(".apptab.on")?.scrollIntoView({block:"nearest", inline:"nearest"});
+    const currentTab = bar.querySelector(".apptab.on");
+    if(currentTab && !isFullyVisible(currentTab))
+      currentTab.scrollIntoView({block:"nearest", inline:"nearest"});
   });
 }
 // Attachea el iframe de una terminal solo cuando de verdad se abre (lazy):
