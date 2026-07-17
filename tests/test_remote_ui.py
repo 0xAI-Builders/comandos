@@ -2429,7 +2429,19 @@ const themeAccepted = listeners.message({{
   data:{{source:"comandos", type:"theme", theme:"bruno"}},
 }});
 const interactionAfterTheme = {{...interactionState}};
-const beforeInvalid = {{theme:activeTheme, interaction:{{...interactionState}}}};
+const beforeInvalid = {{
+  theme:activeTheme, termTheme:term.options.theme, styles:JSON.stringify(styles),
+  interaction:{{...interactionState}}, socket:ws, connectionCount,
+}};
+const badDataSource = listeners.message({{
+  origin:location.origin, source:parent,
+  data:{{source:"not-comandos", type:"theme", theme:"noche"}},
+}});
+const badDataSourceUnchanged = beforeInvalid.theme === activeTheme &&
+  beforeInvalid.termTheme === term.options.theme &&
+  beforeInvalid.styles === JSON.stringify(styles) &&
+  JSON.stringify(beforeInvalid.interaction) === JSON.stringify(interactionState) &&
+  beforeInvalid.socket === ws && beforeInvalid.connectionCount === connectionCount;
 const badOrigin = listeners.message({{
   origin:"https://evil.test", source:parent,
   data:{{source:"comandos", type:"theme", theme:"noche"}},
@@ -2450,14 +2462,19 @@ console.log(JSON.stringify({{
   messageRegistrations, interactionAccepted, themeAccepted,
   interactionAfterState, interactionAfterTheme,
   modeLabel:modeButton.textContent, modeSelected:modeButton.selected,
-  termBackground:term.options.theme.background,
+  themeIdentity:term.options.theme === THEMES.bruno,
+  termTheme:term.options.theme,
   rootBackground:document.documentElement.style.background,
   bodyBackground:document.body.style.background,
   shellBackground:shell.style.background,
-  roleBackground:styles["--term-bg"],
+  styles,
+  badDataSource, badDataSourceUnchanged,
   badOrigin, badSource, unknownType, unknownTheme,
   invalidUnchanged:beforeInvalid.theme === activeTheme &&
-    JSON.stringify(beforeInvalid.interaction) === JSON.stringify(interactionState),
+    beforeInvalid.termTheme === term.options.theme &&
+    beforeInvalid.styles === JSON.stringify(styles) &&
+    JSON.stringify(beforeInvalid.interaction) === JSON.stringify(interactionState) &&
+    beforeInvalid.socket === ws && beforeInvalid.connectionCount === connectionCount,
   socketSame:ws === originalSocket, socketId:ws.id, connectionCount,
 }}));
 """)
@@ -2470,11 +2487,33 @@ console.log(JSON.stringify({{
         "interactionAfterTheme": {"known": True, "busy": False, "selecting": True},
         "modeLabel": "Interactuar",
         "modeSelected": True,
-        "termBackground": "#1A1A1A",
+        "themeIdentity": True,
+        "termTheme": {
+            "background": "#1A1A1A", "foreground": "#CCCCCC",
+            "cursor": "#E4AE49", "cursorAccent": "#1A1A1A",
+            "selectionBackground": "#444444", "panel": "#222224",
+            "panel2": "#26292B", "line": "#333333", "line2": "#444444",
+            "dim": "#AAAAAA", "faint": "#999999", "brand": "#E4AE49",
+            "black": "#1A1A1A", "red": "#DA462F", "green": "#73E89A",
+            "yellow": "#FAD075", "blue": "#8BC2F9", "magenta": "#D691ED",
+            "cyan": "#7DDFF2", "white": "#CCCCCC", "brightBlack": "#666666",
+            "brightRed": "#F38172", "brightGreen": "#73E89A",
+            "brightYellow": "#FAD075", "brightBlue": "#8BC2F9",
+            "brightMagenta": "#D691ED", "brightCyan": "#7DDFF2",
+            "brightWhite": "#FFFFFF",
+        },
         "rootBackground": "#1A1A1A",
         "bodyBackground": "#1A1A1A",
         "shellBackground": "#1A1A1A",
-        "roleBackground": "#1A1A1A",
+        "styles": {
+            "--term-bg": "#1A1A1A", "--term-panel": "#222224",
+            "--term-panel2": "#26292B", "--term-line": "#333333",
+            "--term-line2": "#444444", "--term-text": "#CCCCCC",
+            "--term-dim": "#AAAAAA", "--term-faint": "#999999",
+            "--term-brand": "#E4AE49",
+        },
+        "badDataSource": False,
+        "badDataSourceUnchanged": True,
         "badOrigin": False,
         "badSource": False,
         "unknownType": False,

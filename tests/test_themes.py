@@ -24,11 +24,12 @@ ANSI_KEYS = [
     "brightMagenta", "brightCyan", "brightWhite",
 ]
 THEME_IDS = {"noche", "dia", "calido", "termius", "bruno"}
-BRUNO_ROLES = {
-    "bg": "#1A1A1A", "panel": "#222224", "panel2": "#26292B",
-    "line": "#333333", "line2": "#444444", "text": "#CCCCCC",
-    "dim": "#AAAAAA", "faint": "#999999", "brand": "#E4AE49",
-    "waiting": "#F6AB79", "done": "#73E89A", "working": "#8BC2F9",
+BRUNO_DASHBOARD_DECLARATIONS = {
+    "--bg": "#1A1A1A", "--panel": "#222224", "--panel2": "#26292B",
+    "--line": "#333333", "--line2": "#444444", "--text": "#CCCCCC",
+    "--dim": "#AAAAAA", "--faint": "#999999", "--brand": "#E4AE49",
+    "--waiting": "#F6AB79", "--done": "#73E89A", "--working": "#8BC2F9",
+    "--glow": "#1A1A1A", "--code": "#8BC2F9", "--shadow": "rgba(0,0,0,.5)",
 }
 
 
@@ -90,6 +91,35 @@ def eval_js_initializer(source, name):
     return run_node_json(
         f"const value = {initializer}; console.log(JSON.stringify(value));"
     )
+
+
+def extract_css_declarations(source, selector):
+    matches = list(re.finditer(rf"{re.escape(selector)}\s*\{{", source))
+    assert len(matches) == 1, f"expected one {selector} block, found {len(matches)}"
+    start = matches[0].end()
+    depth = 1
+    for index in range(start, len(source)):
+        if source[index] == "{":
+            depth += 1
+        elif source[index] == "}":
+            depth -= 1
+            if depth == 0:
+                body = source[start:index]
+                break
+    else:
+        raise AssertionError(f"unterminated {selector} block")
+
+    declarations = {}
+    for declaration in body.split(";"):
+        declaration = declaration.strip()
+        if not declaration:
+            continue
+        name, separator, value = declaration.partition(":")
+        assert separator and name.strip() and value.strip(), declaration
+        name = name.strip()
+        assert name not in declarations, f"duplicate declaration {name}"
+        declarations[name] = value.strip()
+    return declarations
 
 
 def exec_python_assignments(source, names):
@@ -175,9 +205,10 @@ def test_bruno_xterm_ansi_associations_and_native_palette_are_exact():
     }
 
 
-def test_bruno_dashboard_roles_are_exact_and_all_ids_are_documented():
-    for role, color in BRUNO_ROLES.items():
-        assert f"--{role}:{color}" in INDEX
+def test_bruno_dashboard_css_block_is_exact_and_all_ids_are_documented():
+    declarations = extract_css_declarations(INDEX, ':root[data-theme="bruno"]')
+
+    assert declarations == BRUNO_DASHBOARD_DECLARATIONS
     for theme in THEME_IDS:
         assert theme in DESIGN.lower()
 
@@ -517,56 +548,3 @@ def test_paste_dialog_action_buttons_use_terminal_theme_roles():
     assert "background:var(--term-panel2)" in rule.group(1)
     assert "border:1px solid var(--term-line2)" in rule.group(1)
     assert "color:var(--term-text)" in rule.group(1)
-
-
-def test_real_iframe_theme_application_and_validation_preserve_connection_state():
-    apply = extract_js_function(TERM, "applyTerminalTheme")
-    handle = extract_js_function(TERM, "handleTerminalMessage")
-    result = run_node_json(f"""
-const THEMES = {{
-  noche: {{background:"#0A0D13", foreground:"#EAF0FB", cursor:"#FFAE1A", panel:"#111720", panel2:"#182130", line:"#222A3A", line2:"#2E3852", dim:"#9AA6BF", faint:"#5E6980", brand:"#8B7CFF"}},
-  bruno: {{background:"#1A1A1A", foreground:"#CCCCCC", cursor:"#E4AE49", panel:"#222224", panel2:"#26292B", line:"#333333", line2:"#444444", dim:"#AAAAAA", faint:"#999999", brand:"#E4AE49"}},
-}};
-let activeTheme = "noche";
-const styles = {{}};
-const shell = {{style:{{}}}};
-const document = {{
-  documentElement: {{style:{{setProperty(name, value){{styles[name] = value;}}}}}},
-  body: {{style:{{}}}},
-  getElementById(id) {{ return id === "term-shell" ? shell : null; }},
-}};
-const term = {{options:{{theme:THEMES.noche}}}};
-const parent = {{}};
-const location = {{origin:"https://dash.test"}};
-const ws = {{id:"same-socket"}};
-let connectionCount = 1;
-let interactionState = {{known:true, busy:false, selecting:true}};
-function refreshLigatures() {{}}
-{apply}
-{handle}
-const before = {{ws, connectionCount, interactionState:{{...interactionState}}}};
-const accepted = handleTerminalMessage({{origin:location.origin, source:parent, data:{{source:"comandos", type:"theme", theme:"bruno"}}}});
-const after = {{ws, connectionCount, interactionState:{{...interactionState}}, theme:term.options.theme, styles, body:document.body.style.background, shell:shell.style.background}};
-const badOrigin = handleTerminalMessage({{origin:"https://evil.test", source:parent, data:{{source:"comandos", type:"theme", theme:"noche"}}}});
-const badSource = handleTerminalMessage({{origin:location.origin, source:{{}}, data:{{source:"comandos", type:"theme", theme:"noche"}}}});
-const unknown = handleTerminalMessage({{origin:location.origin, source:parent, data:{{source:"comandos", type:"theme", theme:"unknown"}}}});
-console.log(JSON.stringify({{accepted, beforeSocket:before.ws.id, afterSocket:after.ws.id, beforeCount:before.connectionCount, afterCount:after.connectionCount, beforeInteraction:before.interactionState, afterInteraction:after.interactionState, theme:after.theme, styles:after.styles, body:after.body, shell:after.shell, badOrigin, badSource, unknown, activeTheme}}));
-""")
-    assert result["accepted"] is True
-    assert result["beforeSocket"] == result["afterSocket"] == "same-socket"
-    assert result["beforeCount"] == result["afterCount"] == 1
-    assert result["beforeInteraction"] == result["afterInteraction"] == {
-        "known": True, "busy": False, "selecting": True,
-    }
-    assert result["theme"]["background"] == "#1A1A1A"
-    assert result["styles"] == {
-        "--term-bg": "#1A1A1A", "--term-panel": "#222224",
-        "--term-panel2": "#26292B", "--term-line": "#333333",
-        "--term-line2": "#444444", "--term-text": "#CCCCCC",
-        "--term-dim": "#AAAAAA", "--term-faint": "#999999",
-        "--term-brand": "#E4AE49",
-    }
-    assert result["body"] == result["shell"] == "#1A1A1A"
-    assert result["badOrigin"] is result["badSource"] is result["unknown"] is False
-    assert result["activeTheme"] == "bruno"
-    assert "location.reload()" not in extract_js_function(TERM, "applyTerminalTheme")
