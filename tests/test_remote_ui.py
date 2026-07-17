@@ -1595,22 +1595,87 @@ def test_left_clicking_ssh_chip_opens_a_fresh_ssh_tab():
 
 
 def test_remote_buttons_reflect_actual_backend_state():
-    off = remote_button_state({"remoteOn": False, "webtermOn": False})
+    off = remote_button_state({
+        "remoteOn": False,
+        "primaryHealthy": False,
+        "fallbackHealthy": False,
+        "webtermReachable": False,
+    })
     assert off["remoteOnDisabled"] is False
     assert off["remoteOffDisabled"] is True
     assert off["webtermOnDisabled"] is False
     assert off["webtermOffDisabled"] is True
     assert off["openTerminalDisabled"] is True
 
-    on = remote_button_state({"remoteOn": True, "webtermOn": True})
+    on = remote_button_state({
+        "remoteOn": True,
+        "primaryHealthy": True,
+        "fallbackHealthy": True,
+        "webtermReachable": True,
+    })
     assert on["remoteOnDisabled"] is True
     assert on["remoteOffDisabled"] is False
     assert on["webtermOnDisabled"] is True
     assert on["webtermOffDisabled"] is False
     assert on["openTerminalDisabled"] is False
 
-    busy = remote_button_state({"remoteOn": True, "webtermOn": False}, busy=True)
+    busy = remote_button_state({"remoteOn": True}, busy=True)
     assert all(v is True for k, v in busy.items() if k.endswith("Disabled"))
+
+
+def test_degraded_remote_can_restart_primary_and_open_fallback():
+    state = remote_button_state({
+        "primaryHealthy": False,
+        "fallbackHealthy": True,
+        "webtermOn": False,
+        "webtermReachable": True,
+        "terminalState": "degraded",
+    })
+    assert state["webtermOnDisabled"] is False
+    assert state["webtermOffDisabled"] is False
+    assert state["openTerminalDisabled"] is False
+
+
+def test_terminal_attach_retries_primary_without_memoizing_fallback():
+    functions = "\n\n".join(extract_js_function(HTML, name) for name in (
+        "delay",
+        "probePrimaryTerm",
+        "fallbackTermAvailable",
+        "resolveTermBase",
+    ))
+    result = run_node_json(f"""
+const WEBTERM = true;
+const TERM_BASE = "https://zion.tail63a117.ts.net/term";
+const TERM_FALLBACK_BASE = "https://zion.tail63a117.ts.net:8443";
+const TERM_PRIMARY_ATTEMPTS = 3;
+const TERM_PRIMARY_RETRY_MS = 400;
+let primaryProbes = 0;
+let fallbackLookups = 0;
+const fetch = async () => ({{ok: ++primaryProbes === 4}});
+const api = async () => {{
+  fallbackLookups += 1;
+  return {{fallbackTerminalOn: true}};
+}};
+const tf = (_es, en) => en;
+const toast = () => {{}};
+function showTermDegraded() {{}}
+function setTimeout(callback) {{ callback(); }}
+
+{functions}
+
+(async () => {{
+  const results = [await resolveTermBase(), await resolveTermBase()];
+  console.log(JSON.stringify({{results, primaryProbes, fallbackLookups}}));
+}})().catch(error => {{ console.error(error); process.exit(1); }});
+""")
+    assert result == {
+        "results": [
+            "https://zion.tail63a117.ts.net:8443",
+            "https://zion.tail63a117.ts.net/term",
+        ],
+        "primaryProbes": 4,
+        "fallbackLookups": 1,
+    }
 
 
 def test_remote_routes_are_never_served_from_stale_shell_cache():

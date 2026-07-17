@@ -6,6 +6,7 @@ import subprocess
 import tempfile
 import textwrap
 import types
+import urllib.request
 from pathlib import Path
 
 
@@ -20,11 +21,11 @@ def load_remote_helpers():
         for node in tree.body
         if isinstance(node, ast.FunctionDef)
     }
-    needed = ("remote_urls", "remote_status_from_text")
+    needed = ("remote_urls", "remote_status_from_text", "webterm_health")
     missing = [name for name in needed if name not in funcs]
     assert not missing, f"missing helper(s): {', '.join(missing)}"
 
-    ns = {"re": re}
+    ns = {"re": re, "urllib": urllib}
     exec("\n\n".join(funcs[name] for name in needed), ns)
     return ns
 
@@ -98,23 +99,46 @@ def test_remote_urls_keep_dashboard_token_out_of_ttyd_urls():
     assert urls["terminalFallback"] == "https://zion.tail63a117.ts.net:8443/"
 
 
-def test_remote_status_detects_dashboard_and_terminal_routes():
+def test_remote_status_separates_routes_from_endpoint_health():
     ns = load_remote_helpers()
     serve = """
-https://zion.tail63a117.ts.net (tailnet only)
+https://zion.tail63a117.ts.net
 |-- /     proxy http://127.0.0.1:4777
 |-- /term proxy http://127.0.0.1:4780/term
-
-https://zion.tail63a117.ts.net:8443 (tailnet only)
+https://zion.tail63a117.ts.net:8443
 |-- / proxy http://127.0.0.1:4779
 """
+    active = ns["remote_status_from_text"](
+        serve, {"primaryHealthy": True, "fallbackHealthy": True})
+    degraded = ns["remote_status_from_text"](
+        serve, {"primaryHealthy": False, "fallbackHealthy": True})
+    off = ns["remote_status_from_text"](
+        serve, {"primaryHealthy": False, "fallbackHealthy": False})
 
-    status = ns["remote_status_from_text"](serve, True)
+    assert active["terminalState"] == "active"
+    assert active["primaryTerminalOn"] is True
+    assert active["fallbackTerminalOn"] is True
+    assert degraded["terminalState"] == "degraded"
+    assert degraded["webtermOn"] is False
+    assert degraded["webtermReachable"] is True
+    assert off["terminalState"] == "off"
+    assert off["webtermReachable"] is False
 
-    assert status["remoteOn"] is True
-    assert status["webtermOn"] is True
-    assert status["termRouteOn"] is True
-    assert status["fallbackRouteOn"] is True
+
+def test_webterm_health_probes_primary_and_fallback_independently():
+    ns = load_remote_helpers()
+    calls = []
+
+    def probe(url, timeout=0.4):
+        calls.append((url, timeout))
+        return "4780/term/token" in url
+
+    health = ns["webterm_health"](probe)
+    assert health == {"primaryHealthy": True, "fallbackHealthy": False}
+    assert [url for url, _timeout in calls] == [
+        "http://127.0.0.1:4780/term/token",
+        "http://127.0.0.1:4779/token",
+    ]
 
 
 def test_cc_mobile_off_disables_both_dashboard_and_terminal_https_routes(
@@ -530,7 +554,8 @@ def test_ssh_new_tab_endpoint_is_available_for_left_click_chips():
 
 if __name__ == "__main__":
     test_remote_urls_keep_dashboard_token_out_of_ttyd_urls()
-    test_remote_status_detects_dashboard_and_terminal_routes()
+    test_remote_status_separates_routes_from_endpoint_health()
+    test_webterm_health_probes_primary_and_fallback_independently()
     test_tab_history_is_treated_as_authenticated_live_api()
     test_static_shell_also_uses_no_store_headers()
     test_tmux_mouse_helper_changes_only_the_target_session()

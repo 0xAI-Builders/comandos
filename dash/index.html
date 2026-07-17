@@ -681,6 +681,7 @@
   .remote-dot{width:8px;height:8px;border-radius:50%;background:var(--faint);
     box-shadow:0 0 0 1px var(--line)}
   .remote-state.on .remote-dot{background:var(--done);box-shadow:0 0 10px rgba(46,229,157,.35)}
+  .remote-state.degraded .remote-dot{background:var(--waiting);box-shadow:0 0 10px rgba(255,184,77,.35)}
   .remote-actions{display:grid;grid-template-columns:1fr 1fr;gap:8px}
 	  .urlrow{display:grid;grid-template-columns:1fr auto;gap:8px;align-items:center}
 	  .urlrow input{min-width:0}
@@ -1996,7 +1997,9 @@ function wireActions(el, it){
 const WEBTERM = location.protocol === "https:" && !/^(127\.|localhost|::1)/.test(location.hostname);
 const TERM_BASE = WEBTERM ? `${location.origin}/term` : "";
 const TERM_FALLBACK_BASE = WEBTERM ? `https://${location.hostname}:8443` : "";
-let termBasePromise = null;
+const TERM_PRIMARY_ATTEMPTS = 3;
+const TERM_PRIMARY_RETRY_MS = 400;
+let termFallbackNotified = false;
 
 // ---------- App combinada: panel + pestanas de terminal (como el escritorio) ----------
 // Cada terminal es un iframe a ttyd attacheado a esa sesion tmux (misma sesion,
@@ -2100,17 +2103,45 @@ function initSplitDrag(){
   window.addEventListener("resize", restoreSplitLeft);
 }
 
-function resolveTermBase(){
-  if(!WEBTERM) return Promise.resolve("");
-  if(!termBasePromise){
-    termBasePromise = fetch(`${TERM_BASE}/token`, {cache:"no-store"})
-      .then(r => r.ok ? TERM_BASE : TERM_FALLBACK_BASE)
-      .catch(() => TERM_FALLBACK_BASE);
+function delay(ms){
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+async function probePrimaryTerm(){
+  try{
+    const response = await fetch(`${TERM_BASE}/token`, {cache:"no-store"});
+    return response.ok;
+  }catch(_){
+    return false;
   }
-  return termBasePromise;
+}
+async function fallbackTermAvailable(){
+  try{
+    const state = await api("/remote-state");
+    return !!state.fallbackTerminalOn;
+  }catch(_){
+    return false;
+  }
+}
+function showTermDegraded(){
+  if(termFallbackNotified) return;
+  termFallbackNotified = true;
+  toast(tf("Terminal en modo degradado", "Terminal running in degraded mode"), true);
+}
+async function resolveTermBase(){
+  if(!WEBTERM) return "";
+  for(let attempt = 0; attempt < TERM_PRIMARY_ATTEMPTS; attempt++){
+    if(await probePrimaryTerm()) return TERM_BASE;
+    if(attempt + 1 < TERM_PRIMARY_ATTEMPTS) await delay(TERM_PRIMARY_RETRY_MS);
+  }
+  if(await fallbackTermAvailable()){
+    showTermDegraded();
+    return TERM_FALLBACK_BASE;
+  }
+  throw new Error(tf("Ninguna terminal remota responde", "No remote terminal endpoint is responding"));
 }
 
 function styleTermFrame(frame){
+  if(frame.dataset.compat === "1") return;
   try{
     const doc = frame.contentDocument || frame.contentWindow?.document;
     if(!doc || !doc.head || doc.getElementById("comandos-term-style")) return;
@@ -2136,6 +2167,7 @@ function styleTermFrame(frame){
 }
 
 function wireTermFrameScroll(frame){
+  if(frame.dataset.compat === "1") return;
   try{
     const win = frame.contentWindow;
     const doc = frame.contentDocument || win?.document;
@@ -2208,6 +2240,7 @@ function openSwitcherFromKey(e){
 }
 
 function wireTermFrameShortcuts(frame){
+  if(frame.dataset.compat === "1") return;
   try{
     const win = frame.contentWindow;
     const doc = frame.contentDocument || win?.document;
@@ -2532,7 +2565,13 @@ function ensureFrame(sess){
     applyTermInteraction(sess);
     resolveTermBase().then(base => {
       if(openTerms.get(sess)?.frame !== frame) return;
+      frame.dataset.compat = base === TERM_BASE ? "0" : "1";
       frame.src = `${base}/?arg=${encodeURIComponent(sess)}`;
+    }).catch(err => {
+      if(openTerms.get(sess)?.frame !== frame) return;
+      frame.remove();
+      o.frame = null;
+      toast(err.message, true);
     });
   }
 }
@@ -3225,19 +3264,21 @@ function remoteQrPath(){
   return `/remote-qr.png?${qs.toString()}`;
 }
 function remoteButtonState(st, busy){
-  const remoteOn = !!(st && st.remoteOn);
-  const webtermOn = !!(st && st.webtermOn);
+  const primary = !!st?.primaryHealthy;
+  const fallback = !!st?.fallbackHealthy;
+  const anyLocal = primary || fallback;
+  const reachable = !!st?.webtermReachable;
   return {
-    remoteOnDisabled: !!busy || remoteOn,
-    remoteOffDisabled: !!busy || !remoteOn,
-    webtermOnDisabled: !!busy || webtermOn,
-    webtermOffDisabled: !!busy || !webtermOn,
-    openTerminalDisabled: !!busy || !webtermOn,
-    remoteOnActive: remoteOn,
+    remoteOnDisabled: !!busy || !!st?.remoteOn,
+    remoteOffDisabled: !!busy || !st?.remoteOn,
+    webtermOnDisabled: !!busy || (primary && fallback),
+    webtermOffDisabled: !!busy || !anyLocal,
+    openTerminalDisabled: !!busy || !reachable,
+    remoteOnActive: !!st?.remoteOn,
     remoteOffActive: false,
-    webtermOnActive: webtermOn,
+    webtermOnActive: primary && fallback,
     webtermOffActive: false,
-    openTerminalActive: webtermOn
+    openTerminalActive: reachable,
   };
 }
 function setRemoteButton(sel, disabled, active, warn){
@@ -3262,12 +3303,15 @@ function renderRemote(st){
   REMOTE = st || {};
   const status = $("#remote-status");
   const on = !!REMOTE.remoteOn;
-  const termOn = !!REMOTE.webtermOn;
-  status.classList.toggle("on", on);
+  const terminalState = REMOTE.terminalState || "off";
+  status.classList.toggle("on", terminalState === "active");
+  status.classList.toggle("degraded", terminalState === "degraded");
   $("#btn-remote").classList.toggle("on", on);
-  status.querySelector("span:last-child").textContent = on
-    ? tf(`Remoto activo${termOn ? " · terminal activa" : ""}`, `Remote on${termOn ? " · terminal on" : ""}`)
-    : tf("Remoto apagado", "Remote off");
+  status.querySelector("span:last-child").textContent = terminalState === "active"
+    ? tf("Terminal: Activo", "Terminal: Active")
+    : terminalState === "degraded"
+      ? tf("Terminal: Degradado", "Terminal: Degraded")
+      : tf("Terminal: Apagado", "Terminal: Off");
   const urls = REMOTE.urls || {};
   $("#remote-dashboard-url").value = urls.dashboard || "";
   $("#remote-term-url").value = urls.terminal || "";

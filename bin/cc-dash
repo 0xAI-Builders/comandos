@@ -576,12 +576,46 @@ def remote_urls(host, token):
     }
 
 
-def remote_status_from_text(serve_text, webterm_running):
+def http_healthy(url, timeout=0.4):
+    try:
+        request = urllib.request.Request(
+            url, headers={"Cache-Control": "no-store", "User-Agent": "ComandOS-health"})
+        with urllib.request.urlopen(request, timeout=timeout) as response:
+            return 200 <= response.status < 400
+    except Exception:
+        return False
+
+
+def webterm_health(probe=None):
+    check = probe or http_healthy
     return {
-        "remoteOn": "proxy http://127.0.0.1:4777" in serve_text,
-        "webtermOn": bool(webterm_running),
-        "termRouteOn": "proxy http://127.0.0.1:4780/term" in serve_text,
-        "fallbackRouteOn": "proxy http://127.0.0.1:4779" in serve_text,
+        "primaryHealthy": bool(check("http://127.0.0.1:4780/term/token", timeout=0.4)),
+        "fallbackHealthy": bool(check("http://127.0.0.1:4779/token", timeout=0.4)),
+    }
+
+
+def remote_status_from_text(serve_text, health):
+    remote_on = "proxy http://127.0.0.1:4777" in serve_text
+    term_route = "proxy http://127.0.0.1:4780/term" in serve_text
+    fallback_route = "proxy http://127.0.0.1:4779" in serve_text
+    primary = bool(health.get("primaryHealthy"))
+    fallback = bool(health.get("fallbackHealthy"))
+    primary_on = primary and term_route
+    fallback_on = fallback and fallback_route
+    state = "active" if remote_on and primary_on else (
+        "degraded" if remote_on and fallback_on else "off")
+    return {
+        "remoteOn": remote_on,
+        "primaryHealthy": primary,
+        "fallbackHealthy": fallback,
+        "termRouteOn": term_route,
+        "fallbackRouteOn": fallback_route,
+        "primaryTerminalOn": primary_on,
+        "fallbackTerminalOn": fallback_on,
+        "webtermOn": primary_on,
+        "webtermReachable": primary_on or fallback_on,
+        "webtermDegraded": state == "degraded",
+        "terminalState": state,
     }
 
 
@@ -611,16 +645,11 @@ def tailscale_serve_status_text():
     return r.stdout if r.returncode == 0 else ""
 
 
-def webterm_running():
-    r = run_quiet(["pgrep", "-af", "cc-webterm-attach"], timeout=4)
-    return any("ttyd" in line and "cc-webterm-attach" in line for line in r.stdout.splitlines())
-
-
 def remote_state():
     host = tailscale_host()
     token = access_token()
     serve = tailscale_serve_status_text()
-    status = remote_status_from_text(serve, webterm_running())
+    status = remote_status_from_text(serve, webterm_health())
     urls = remote_urls(host, token) if host else {"dashboard": "", "terminal": "", "terminalFallback": ""}
     status.update({
         "host": host,
@@ -667,9 +696,8 @@ def webterm_on():
     r = run_quiet([script], timeout=20)
     if r.returncode != 0:
         return (r.stderr or r.stdout or "cc-webterm no arranco").strip()
-    if webterm_running():
-        serve_path("/term", "http://127.0.0.1:4780/term")
-        serve_path("/", "http://127.0.0.1:4779", https_port="8443")
+    serve_path("/term", "http://127.0.0.1:4780/term")
+    serve_path("/", "http://127.0.0.1:4779", https_port="8443")
     return None
 
 
@@ -2303,7 +2331,8 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             err = remote_dashboard_on()
             if err:
                 return self._json(400, {"error": err})
-            if webterm_running():
+            health = webterm_health()
+            if health["primaryHealthy"] or health["fallbackHealthy"]:
                 serve_path("/term", "http://127.0.0.1:4780/term")
                 serve_path("/", "http://127.0.0.1:4779", https_port="8443")
             return self._json(200, remote_state())
