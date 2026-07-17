@@ -122,6 +122,9 @@ If the primary endpoint fails while the page is open, terminal resolution may
 use the fallback for emergency access, but the page must show one degraded
 notification and must not present the compatibility client as fully healthy.
 Systemd supervision is responsible for restoring the primary endpoint.
+The degraded fallback result must not remain memoized for later terminal tabs:
+each new attach probes the primary route again after a bounded restart grace
+period.
 
 ## Responsive App Shell
 
@@ -145,9 +148,11 @@ For narrow mode:
 
 For tablet mode:
 
-- Portrait remains single-view when a panel plus terminal cannot preserve a
-  300 px panel and a 440 px terminal.
-- Landscape may use the existing split composition when both minima fit.
+- A coarse-pointer tablet in portrait remains single-view even when its CSS
+  width exceeds the desktop split breakpoint.
+- Landscape may use the existing split composition when it preserves a 300 px
+  panel and a 440 px terminal.
+- Fine-pointer desktop windows retain the existing width-based split behavior.
 - The visual splitter remains narrow, but its touch hit target remains at least
   32 px.
 - Rotation must retain the active terminal and session.
