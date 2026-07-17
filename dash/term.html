@@ -145,53 +145,104 @@
   }
 
   let fitFrame = 0;
+  let heightFitTimer = 0;
   let columnReloadTimer = 0;
   let fitDeferredForSelection = false;
-  function scheduleFit() {
-    if (fitFrame) return;
-    fitFrame = requestAnimationFrame(() => {
-      fitFrame = 0;
-      try {
-        const next = fit.proposeDimensions();
-        // Resizing xterm and tmux to a new column count at the same time can
-        // interleave their wrapped-row redraws. Reattach once at the stable
-        // width instead; tmux keeps the session and sends one clean screen.
-        if (next && ws.readyState === 1 && next.cols !== term.cols) {
-          if (term.hasSelection()) {
-            fitDeferredForSelection = true;
-            if (columnReloadTimer) {
-              clearTimeout(columnReloadTimer);
-              columnReloadTimer = 0;
-            }
-            return;
-          }
-          fitDeferredForSelection = false;
+  let resizeDisposed = false;
+
+  function clearResizeTimers() {
+    if (fitFrame) cancelAnimationFrame(fitFrame);
+    if (heightFitTimer) clearTimeout(heightFitTimer);
+    if (columnReloadTimer) clearTimeout(columnReloadTimer);
+    fitFrame = heightFitTimer = columnReloadTimer = 0;
+  }
+
+  function commitColumnReload() {
+    columnReloadTimer = 0;
+    if (resizeDisposed) return;
+    if (term.hasSelection()) {
+      fitDeferredForSelection = true;
+      return;
+    }
+    location.reload();
+  }
+
+  function commitHeightFit() {
+    heightFitTimer = 0;
+    if (resizeDisposed) return;
+    try {
+      const finalSize = fit.proposeDimensions();
+      if (!finalSize) return;
+      if (finalSize.cols !== term.cols) {
+        scheduleFit();
+        return;
+      }
+      if (finalSize.rows !== term.rows) fit.fit();
+    } catch (_) {
+      heightFitTimer = 0;
+    }
+  }
+
+  function coordinateResize() {
+    fitFrame = 0;
+    if (resizeDisposed) return;
+    try {
+      const next = fit.proposeDimensions();
+      if (!next) return;
+      if (next.cols === term.cols && next.rows === term.rows) {
+        if (heightFitTimer) clearTimeout(heightFitTimer);
+        if (columnReloadTimer) clearTimeout(columnReloadTimer);
+        heightFitTimer = columnReloadTimer = 0;
+        return;
+      }
+      if (next.cols !== term.cols) {
+        if (heightFitTimer) clearTimeout(heightFitTimer);
+        heightFitTimer = 0;
+        if (term.hasSelection()) {
+          fitDeferredForSelection = true;
           if (columnReloadTimer) clearTimeout(columnReloadTimer);
-          columnReloadTimer = setTimeout(() => {
-            columnReloadTimer = 0;
-            if (term.hasSelection()) {
-              fitDeferredForSelection = true;
-              return;
-            }
-            location.reload();
-          }, 180);
+          columnReloadTimer = 0;
           return;
         }
         fitDeferredForSelection = false;
-        if (columnReloadTimer) {
-          clearTimeout(columnReloadTimer);
-          columnReloadTimer = 0;
-        }
-        fit.fit();
-      } catch (_) {}
-    });
+        if (columnReloadTimer) clearTimeout(columnReloadTimer);
+        columnReloadTimer = setTimeout(commitColumnReload, 180);
+        return;
+      }
+      if (columnReloadTimer) clearTimeout(columnReloadTimer);
+      columnReloadTimer = 0;
+      if (heightFitTimer) clearTimeout(heightFitTimer);
+      heightFitTimer = setTimeout(commitHeightFit, 120);
+    } catch (_) {
+      clearResizeTimers();
+    }
   }
+
+  function scheduleFit() {
+    if (!resizeDisposed && !fitFrame) fitFrame = requestAnimationFrame(coordinateResize);
+  }
+
+  const resizeObserver = typeof ResizeObserver === 'function'
+    ? new ResizeObserver(scheduleFit) : null;
+  resizeObserver?.observe(document.getElementById('term'));
+
+  function disposeResizeCoordinator() {
+    resizeDisposed = true;
+    clearResizeTimers();
+    resizeObserver?.disconnect();
+  }
+
   // El primer fit es sincrono: el payload de autenticacion debe llevar la
   // geometria real aun si el WebSocket abre antes del siguiente frame.
   try { fit.fit(); } catch (_) {}
   window.addEventListener('resize', scheduleFit);
+  window.visualViewport?.addEventListener('resize', scheduleFit);
+  window.addEventListener('pagehide', disposeResizeCoordinator);
   function resumeDeferredFitAfterSelection() {
-    if (fitDeferredForSelection && !term.hasSelection()) scheduleFit();
+    if (fitDeferredForSelection && !term.hasSelection()) {
+      fitDeferredForSelection = false;
+      scheduleFit();
+    }
   }
   term.onSelectionChange(resumeDeferredFitAfterSelection);
 
@@ -273,12 +324,16 @@
     dbg(`WS close code=${ev.code} reason="${ev.reason||''}" clean=${ev.wasClean}`);
     term.write(`\r\n\x1b[90m[conexión cerrada${ev.code ? ' · '+ev.code : ''}]\x1b[0m\r\n`);
   });
+  ws.addEventListener('close', disposeResizeCoordinator);
   ws.addEventListener('error', (e) => {
     dbg(`WS error a ${ws_url}`);
     showErr(`No pude conectar a ${ws_url}\n\nAsegurate de que cc-webterm esté corriendo:\n  cc-webterm status`);
   });
 
-  term.onData(sendInput);
+  function sendTerminalData(data) {
+    sendInput(data);
+  }
+  term.onData(sendTerminalData);
   term.onResize(sendResize);
 
   // Teclado MOVIL (GBoard/Android): borrar y Enter llegan como eventos

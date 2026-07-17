@@ -33,6 +33,18 @@ def extract_js_function(source, name):
     raise AssertionError(f"Could not extract {name}")
 
 
+def resize_coordinator_js():
+    names = (
+        "clearResizeTimers",
+        "commitColumnReload",
+        "commitHeightFit",
+        "coordinateResize",
+        "scheduleFit",
+        "disposeResizeCoordinator",
+    )
+    return "\n\n".join(extract_js_function(TERM_HTML, name) for name in names)
+
+
 def remote_button_state(state, busy=False):
     fn = extract_js_function(HTML, "remoteButtonState")
     script = f"""
@@ -543,35 +555,73 @@ console.log(JSON.stringify({{queuedBeforeFlush, appViewportFrame, writes}}));
     }
 
 
-def test_webterm_fit_is_coalesced_per_animation_frame():
-    schedule_fit = extract_js_function(TERM_HTML, "scheduleFit")
+def test_webterm_keyboard_resize_settles_once_without_delaying_input():
+    coordinator = resize_coordinator_js()
     script = f"""
 let fitFrame = 0;
+let heightFitTimer = 0;
 let columnReloadTimer = 0;
+let fitDeferredForSelection = false;
+let resizeDisposed = false;
 let fitCalls = 0;
 let nextFrame = 1;
-const queued = new Map();
-const fit = {{
-  proposeDimensions(){{ return null; }},
-  fit(){{ fitCalls += 1; }},
+let nextTimer = 1;
+let reloads = 0;
+let input = "";
+const frames = new Map();
+const timers = new Map();
+const scheduledDelays = [];
+const sent = [];
+const term = {{
+  cols: 95,
+  rows: 34,
+  hasSelection(){{ return false; }},
 }};
-function requestAnimationFrame(cb){{ const id = nextFrame++; queued.set(id, cb); return id; }}
-{schedule_fit}
-for(let i = 0; i < 100; i++) scheduleFit();
-const beforeFlush = fitCalls;
-const queuedBeforeFlush = queued.size;
-const callbacks = [...queued.values()]; queued.clear(); callbacks.forEach(cb => cb());
-console.log(JSON.stringify({{beforeFlush, queuedBeforeFlush, fitCalls, fitFrame}}));
+const ws = {{readyState: 1, send(message){{ sent.push(message); }}}};
+let proposed = {{cols: 95, rows: 24}};
+const fit = {{
+  proposeDimensions(){{ return {{...proposed}}; }},
+  fit(){{
+    fitCalls += 1;
+    term.rows = proposed.rows;
+    sendResize({{cols: term.cols, rows: term.rows}});
+  }},
+}};
+const location = {{reload(){{ reloads += 1; }}}};
+function requestAnimationFrame(cb){{ const id = nextFrame++; frames.set(id, cb); return id; }}
+function cancelAnimationFrame(id){{ frames.delete(id); }}
+function setTimeout(cb, delay){{
+  const id = nextTimer++; timers.set(id, {{cb, delay}}); scheduledDelays.push(delay); return id;
+}}
+function clearTimeout(id){{ timers.delete(id); }}
+const resizeObserver = {{disconnect(){{}}}};
+function sendResize(size){{
+  ws.send('1' + JSON.stringify({{columns: size.cols, rows: size.rows}}));
+}}
+function sendTerminalData(data){{ input += data; }}
+{coordinator}
+for(let i = 0; i < 15; i++) {{
+  proposed = {{cols: 95, rows: 33 - i}};
+  scheduleFit();
+  const callbacks = [...frames.values()]; frames.clear(); callbacks.forEach(cb => cb());
+  sendTerminalData(String.fromCharCode(97 + i));
+}}
+for(const timer of [...timers.values()]) timer.cb();
+console.log(JSON.stringify({{
+  fitCalls,
+  reloads,
+  resizeMessages: sent,
+  input,
+  scheduledDelays,
+}}));
 """
     result = run_node_json(script)
 
-    assert result == {
-        "beforeFlush": 0,
-        "queuedBeforeFlush": 1,
-        "fitCalls": 1,
-        "fitFrame": 0,
-    }
-    assert "window.addEventListener('resize', scheduleFit)" in TERM_HTML
+    assert result["fitCalls"] == 1
+    assert result["reloads"] == 0
+    assert result["resizeMessages"] == ['1{"columns":95,"rows":19}']
+    assert result["input"] == "abcdefghijklmno"
+    assert result["scheduledDelays"].count(120) == 15
 
 
 def test_webterm_pty_resize_deduplicates_dimensions_and_seeds_auth():
@@ -728,114 +778,113 @@ console.log(JSON.stringify({
     assert result["queuedBeforeFrame"] == 1
     assert result["queuedAfterBinaryPreference"] == 1
     assert result["beforeBinaryPreference"] == result["afterBinaryPreference"]
-    assert result["fitCalls"] == 3
+    assert result["fitCalls"] == 1
     assert result["fontFamily"] == "Test Mono"
     assert result["fontSize"] == 18
 
 
 def test_remote_column_resize_reloads_once_after_geometry_stabilizes():
-    fn = extract_js_function(TERM_HTML, "scheduleFit")
+    coordinator = resize_coordinator_js()
     script = f"""
 let fitFrame = 0;
+let heightFitTimer = 0;
 let columnReloadTimer = 0;
+let fitDeferredForSelection = false;
+let resizeDisposed = false;
 let nextFrame = 1;
 let nextTimer = 1;
 let fitCalls = 0;
 let reloads = 0;
 const frames = new Map();
 const timers = new Map();
-const cleared = [];
-const term = {{cols:46, rows:35, hasSelection(){{ return false; }}}};
-let proposed = {{cols:51, rows:35}};
-const ws = {{readyState:1}};
+const scheduledDelays = [];
+const term = {{cols:42, rows:35, hasSelection(){{ return false; }}}};
+let width = 390;
+const sizes = {{390: {{cols:46, rows:35}}, 430: {{cols:51, rows:35}}}};
 const fit = {{
-  proposeDimensions(){{ return {{...proposed}}; }},
-  fit(){{
-    fitCalls += 1;
-    term.cols = proposed.cols;
-    term.rows = proposed.rows;
-  }},
+  proposeDimensions(){{ return {{...sizes[width]}}; }},
+  fit(){{ fitCalls += 1; }},
 }};
 const location = {{reload(){{ reloads += 1; }}}};
 const requestAnimationFrame = cb => {{
   const id = nextFrame++; frames.set(id, cb); return id;
 }};
+const cancelAnimationFrame = id => frames.delete(id);
 const setTimeout = (cb, delay) => {{
-  const id = nextTimer++; timers.set(id, {{cb, delay}}); return id;
+  const id = nextTimer++; timers.set(id, {{cb, delay}}); scheduledDelays.push(delay); return id;
 }};
-const clearTimeout = id => {{ cleared.push(id); timers.delete(id); }};
+const clearTimeout = id => timers.delete(id);
+const resizeObserver = {{disconnect(){{}}}};
 const flushFrames = () => {{
-  for (const cb of [...frames.values()]) cb();
-  frames.clear();
+  const callbacks = [...frames.values()]; frames.clear(); callbacks.forEach(cb => cb());
 }};
-{fn}
-
-scheduleFit();
-flushFrames();
-const firstColumnChange = {{fitCalls, timers:timers.size, termCols:term.cols}};
-
-proposed = {{cols:52, rows:35}};
-scheduleFit();
-flushFrames();
-const secondColumnChange = {{
-  fitCalls,
-  timers:timers.size,
-  cleared:[...cleared],
-  delay:[...timers.values()][0]?.delay,
-  termCols:term.cols,
+const flushTimers = () => {{
+  const callbacks = [...timers.values()]; timers.clear(); callbacks.forEach(timer => timer.cb());
 }};
-for (const timer of [...timers.values()]) timer.cb();
-timers.clear();
+{coordinator}
 
-proposed = {{cols:46, rows:40}};
 scheduleFit();
 flushFrames();
+const firstWidth = {{fitCalls, delay:[...timers.values()][0]?.delay, timers:timers.size}};
+flushTimers();
+term.cols = 46;
+
+width = 430;
+scheduleFit();
+flushFrames();
+flushTimers();
+term.cols = 51;
+
+width = 390;
+scheduleFit();
+flushFrames();
+const returnedWidth = {{fitCalls, delay:[...timers.values()][0]?.delay, timers:timers.size}};
+flushTimers();
 console.log(JSON.stringify({{
-  firstColumnChange,
-  secondColumnChange,
+  firstWidth,
+  returnedWidth,
   reloads,
-  rowOnly:{{fitCalls, termCols:term.cols, termRows:term.rows, timers:timers.size}},
+  fitCalls,
+  scheduledDelays,
 }}));
 """
     result = run_node_json(script)
 
-    assert result["firstColumnChange"] == {
+    assert result["firstWidth"] == {
         "fitCalls": 0,
-        "timers": 1,
-        "termCols": 46,
-    }
-    assert result["secondColumnChange"] == {
-        "fitCalls": 0,
-        "timers": 1,
-        "cleared": [1],
         "delay": 180,
-        "termCols": 46,
+        "timers": 1,
     }
-    assert result["reloads"] == 1
-    assert result["rowOnly"] == {
-        "fitCalls": 1,
-        "termCols": 46,
-        "termRows": 40,
-        "timers": 0,
+    assert result["returnedWidth"] == {
+        "fitCalls": 0,
+        "delay": 180,
+        "timers": 1,
     }
+    assert result["reloads"] == 3
+    assert result["fitCalls"] == 0
+    assert result["scheduledDelays"] == [180, 180, 180]
 
 
 def test_remote_column_resize_waits_for_active_selection_to_clear():
     assert "function resumeDeferredFitAfterSelection()" in TERM_HTML
     assert "term.onSelectionChange(resumeDeferredFitAfterSelection)" in TERM_HTML
-    schedule_fit = extract_js_function(TERM_HTML, "scheduleFit")
+    coordinator = resize_coordinator_js()
     resume_fit = extract_js_function(TERM_HTML, "resumeDeferredFitAfterSelection")
     script = f"""
 let fitFrame = 0;
+let heightFitTimer = 0;
 let columnReloadTimer = 0;
 let fitDeferredForSelection = false;
+let resizeDisposed = false;
 let nextFrame = 1;
 let nextTimer = 1;
 let fitCalls = 0;
 let reloads = 0;
+const reloadedCols = [];
 let selected = true;
 const frames = new Map();
 const timers = new Map();
+const scheduledDelays = [];
 const term = {{
   cols:46,
   rows:35,
@@ -847,27 +896,25 @@ const fit = {{
   proposeDimensions(){{ return {{...proposed}}; }},
   fit(){{
     fitCalls += 1;
-    term.cols = proposed.cols;
-    term.rows = proposed.rows;
   }},
 }};
-const location = {{reload(){{ reloads += 1; }}}};
+const location = {{reload(){{ reloads += 1; reloadedCols.push(proposed.cols); }}}};
 const requestAnimationFrame = cb => {{
   const id = nextFrame++; frames.set(id, cb); return id;
 }};
+const cancelAnimationFrame = id => frames.delete(id);
 const setTimeout = (cb, delay) => {{
-  const id = nextTimer++; timers.set(id, {{cb, delay}}); return id;
+  const id = nextTimer++; timers.set(id, {{cb, delay}}); scheduledDelays.push(delay); return id;
 }};
 const clearTimeout = id => timers.delete(id);
+const resizeObserver = {{disconnect(){{}}}};
 const flushFrames = () => {{
-  for (const cb of [...frames.values()]) cb();
-  frames.clear();
+  const callbacks = [...frames.values()]; frames.clear(); callbacks.forEach(cb => cb());
 }};
 const flushTimers = () => {{
-  for (const timer of [...timers.values()]) timer.cb();
-  timers.clear();
+  const callbacks = [...timers.values()]; timers.clear(); callbacks.forEach(timer => timer.cb());
 }};
-{schedule_fit}
+{coordinator}
 {resume_fit}
 
 scheduleFit();
@@ -889,39 +936,21 @@ const afterClear = {{
   deferred:fitDeferredForSelection,
   fitCalls,
 }};
-selected = true;
-flushTimers();
-const selectedDuringDebounce = {{reloads, deferred:fitDeferredForSelection}};
-selected = false;
-resumeDeferredFitAfterSelection();
-flushFrames();
-flushTimers();
-
-term.cols = 46;
-term.rows = 35;
-proposed = {{cols:51, rows:35}};
-selected = true;
+proposed = {{cols:52, rows:35}};
 scheduleFit();
 flushFrames();
-proposed = {{cols:46, rows:40}};
-selected = false;
-resumeDeferredFitAfterSelection();
-flushFrames();
-const returnedToOriginalWidth = {{
-  timers:timers.size,
-  reloads,
-  deferred:fitDeferredForSelection,
-  fitCalls,
-  rows:term.rows,
-}};
+const latestPending = {{timers:timers.size, delay:[...timers.values()][0]?.delay}};
+flushTimers();
 
 console.log(JSON.stringify({{
   whileSelected,
   framesAfterClear,
   afterClear,
-  selectedDuringDebounce,
-  reloadsAfterDeferred:reloads,
-  returnedToOriginalWidth,
+  latestPending,
+  reloads,
+  reloadedCols,
+  fitCalls,
+  scheduledDelays,
 }}));
 """
     result = run_node_json(script)
@@ -939,18 +968,93 @@ console.log(JSON.stringify({{
         "deferred": False,
         "fitCalls": 0,
     }
-    assert result["selectedDuringDebounce"] == {
-        "reloads": 0,
-        "deferred": True,
+    assert result["latestPending"] == {
+        "timers": 1,
+        "delay": 180,
     }
-    assert result["reloadsAfterDeferred"] == 1
-    assert result["returnedToOriginalWidth"] == {
+    assert result["reloads"] == 1
+    assert result["reloadedCols"] == [52]
+    assert result["fitCalls"] == 0
+    assert result["scheduledDelays"] == [180, 180]
+
+
+def test_remote_resize_cleanup_cancels_frame_and_settle_timers():
+    coordinator = resize_coordinator_js()
+    assert "window.addEventListener('pagehide', disposeResizeCoordinator)" in TERM_HTML
+    assert "ws.addEventListener('close', disposeResizeCoordinator)" in TERM_HTML
+    assert "resizeObserver?.observe(document.getElementById('term'))" in TERM_HTML
+    script = f"""
+let fitFrame = 0;
+let heightFitTimer = 0;
+let columnReloadTimer = 0;
+let fitDeferredForSelection = false;
+let resizeDisposed = false;
+let nextFrame = 1;
+let nextTimer = 1;
+let disconnected = 0;
+const frames = new Map();
+const timers = new Map();
+const term = {{cols:95, rows:24, hasSelection(){{ return false; }}}};
+let proposed = {{cols:95, rows:23}};
+const fit = {{proposeDimensions(){{ return {{...proposed}}; }}, fit(){{}}}};
+const location = {{reload(){{}}}};
+const requestAnimationFrame = cb => {{ const id = nextFrame++; frames.set(id, cb); return id; }};
+const cancelAnimationFrame = id => frames.delete(id);
+const setTimeout = (cb, delay) => {{ const id = nextTimer++; timers.set(id, {{cb, delay}}); return id; }};
+const clearTimeout = id => timers.delete(id);
+const resizeObserver = {{disconnect(){{ disconnected += 1; }}}};
+const flushFrames = () => {{ const callbacks = [...frames.values()]; frames.clear(); callbacks.forEach(cb => cb()); }};
+{coordinator}
+scheduleFit();
+const frameQueued = frames.size;
+disposeResizeCoordinator();
+const afterFrameDispose = {{frames:frames.size, timers:timers.size}};
+
+resizeDisposed = false;
+scheduleFit();
+flushFrames();
+const heightTimerQueued = [...timers.values()][0]?.delay;
+clearResizeTimers();
+proposed = {{cols:96, rows:23}};
+scheduleFit();
+flushFrames();
+const columnTimerQueued = [...timers.values()][0]?.delay;
+clearResizeTimers();
+console.log(JSON.stringify({{
+  frameQueued,
+  afterFrameDispose,
+  heightTimerQueued,
+  columnTimerQueued,
+  frames:frames.size,
+  timers:timers.size,
+  disconnected,
+}}));
+"""
+    result = run_node_json(script)
+
+    assert result == {
+        "frameQueued": 1,
+        "afterFrameDispose": {"frames": 0, "timers": 0},
+        "heightTimerQueued": 120,
+        "columnTimerQueued": 180,
+        "frames": 0,
         "timers": 0,
-        "reloads": 1,
-        "deferred": False,
-        "fitCalls": 1,
-        "rows": 40,
+        "disconnected": 1,
     }
+
+
+def test_webterm_data_handler_sends_input_without_resize_work():
+    send_terminal_data = extract_js_function(TERM_HTML, "sendTerminalData")
+    result = run_node_json(f"""
+const sent = [];
+function sendInput(data) {{ sent.push(data); }}
+{send_terminal_data}
+sendTerminalData('a');
+console.log(JSON.stringify({{sent}}));
+""")
+
+    assert result == {"sent": ["a"]}
+    assert "term.onData(sendTerminalData)" in TERM_HTML
 
 
 def test_remote_drawer_controls_are_present():
