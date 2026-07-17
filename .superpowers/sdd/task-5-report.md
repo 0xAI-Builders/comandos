@@ -45,3 +45,61 @@ GREEN:
   Its feel alongside tap focus should be checked on Android and iOS browsers.
 - Paste contents are never logged by the toolbar implementation; live verification
   should confirm no surrounding browser or service diagnostics expose pasted text.
+
+## Review Follow-Up
+
+Implementation and regression-test commit:
+`e7ab0b0854843290f14a2c7eba811ac00a22f6a3`
+
+Changed files in the follow-up:
+
+- `dash/term.html`
+- `tests/test_remote_ui.py`
+- `.superpowers/sdd/task-5-report.md`
+
+The document-level gesture controller now treats `#term-toolbar` and
+`#paste-dialog` as explicit interaction boundaries by checking the event target
+and composed path. Their touch gestures never enter terminal scroll or resize
+state and are not canceled by the controller, so toolbar pan remains native.
+Paste focus restoration now follows the dialog `close` event for manual submit,
+cancel button, and Escape; successful empty clipboard reads also restore terminal
+focus. The bridge harness now covers two valid sessions and a compat iframe,
+confirming exact-session routing and compat rejection without changing bridge
+semantics.
+
+### Follow-Up TDD Evidence
+
+RED:
+
+- `pytest -q tests/test_remote_ui.py -k 'paste_focus_follows or ignores_toolbar_and_dialog or chrome_touch_drag or bridge_validates_source'`
+  produced `3 failed, 1 passed, 60 deselected`. The lifecycle harness observed
+  opener focus after an empty clipboard read, the gesture harness entered
+  `scrolling` and canceled toolbar movement, and the Chrome regression observed
+  `scrollLeft=0`. The expanded bridge case already passed, locking in the existing
+  exact-session behavior before production changes.
+
+GREEN:
+
+- Focused toolbar/Ctrl/clipboard/interaction/selection/touch tests:
+  `22 passed, 42 deselected in 1.68s`.
+- Owned suites, `pytest -q tests/test_remote_ui.py tests/test_remote_controls.py`:
+  `84 passed in 13.55s`.
+- Full suite, `pytest -q`: `298 passed in 41.94s`.
+- JavaScript parser, `bash tests/test_js_parses.sh`: `OK`.
+- `git diff --check` completed with no output before the implementation commit.
+- The raw-CDP headless Chrome regression passed three consecutive runs after its
+  final dialog coverage was added. A recorded run moved the real toolbar from
+  `scrollLeft=0` to `167` (`clientWidth=360`, `scrollWidth=527`), delivered eight
+  uncanceled touch moves, recorded zero `preventDefault` calls, retained terminal
+  focus after a toolbar tap, and closed/refocused correctly after real submit,
+  cancel-button, and Escape dialog lifecycles.
+
+### Follow-Up Live Risks
+
+- Headless Chrome covers native touch dispatch, horizontal panning, and real
+  `<dialog>` lifecycle behavior, but physical iOS Safari and Android browser touch
+  behavior still requires live verification.
+- OS clipboard permission prompts, secure-context policy, and mobile virtual
+  keyboard behavior cannot be exercised by the deterministic harness. Clipboard
+  success and denial paths are covered without logging clipboard or manual paste
+  contents.
