@@ -29,11 +29,29 @@
     src: url('../assets/fonts/JetBrainsMono/JetBrainsMonoNerdFontMono-BoldItalic.ttf') format('truetype');
   }
   html, body { margin: 0; padding: 0; height: 100%; background: #0A0D13; overflow: hidden; }
+  #term-shell { height: 100%; display: grid; grid-template-rows: minmax(0, 1fr) auto; }
   #term {
-    position: absolute; inset: 0;
     padding: 8px 6px 6px 10px;
     box-sizing: border-box;
+    min-height: 0;
   }
+  #term-toolbar { display: flex; gap: 6px; min-width: 0; overflow-x: auto;
+    padding: 6px; border-top: 1px solid #2E3852; background: #111720;
+    overscroll-behavior-x: contain; -webkit-overflow-scrolling: touch; touch-action: pan-x; }
+  #term-toolbar button { box-sizing: border-box; flex: 0 0 auto; min-width: 44px; height: 44px; padding: 0 10px;
+    border: 1px solid #3B4968; border-radius: 4px; background: #182130; color: #EAF0FB;
+    font: 700 12px 'JetBrainsMono Nerd Font Mono', monospace; }
+  #term-toolbar button.on { background: #FFAE1A; border-color: #FFAE1A; color: #0A0D13; }
+  #term-toolbar button:disabled { opacity: .55; }
+  #term-toolbar svg { width: 20px; height: 20px; fill: none; stroke: currentColor;
+    stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; vertical-align: middle; }
+  #paste-dialog { width: min(420px, calc(100vw - 32px)); color: #EAF0FB; background: #111720;
+    border: 1px solid #3B4968; border-radius: 6px; padding: 14px; }
+  #paste-dialog::backdrop { background: rgba(0, 0, 0, .55); }
+  #paste-dialog form { display: grid; gap: 10px; }
+  #paste-text { min-height: 132px; box-sizing: border-box; resize: vertical; color: inherit;
+    background: #0A0D13; border: 1px solid #3B4968; font: 13px 'JetBrainsMono Nerd Font Mono', monospace; }
+  #paste-dialog form > div { display: flex; justify-content: flex-end; gap: 8px; }
   #err {
     position: absolute; inset: 0; display: none;
     color: #FF7B72; font-family: 'JetBrainsMono Nerd Font Mono', monospace;
@@ -49,9 +67,28 @@
 </style>
 </head>
 <body>
-<div id="term"></div>
+<div id="term-shell">
+  <div id="term"></div>
+  <div id="term-toolbar" role="toolbar" aria-label="Controles de terminal" hidden>
+    <button type="button" data-action="mode" aria-pressed="false">Seleccionar</button>
+    <button type="button" data-key="escape">Esc</button>
+    <button type="button" data-action="ctrl" aria-pressed="false">Ctrl</button>
+    <button type="button" data-key="tab">Tab</button>
+    <button type="button" data-key="left" aria-label="Izquierda" title="Izquierda"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="m15 18-6-6 6-6"/></svg></button>
+    <button type="button" data-key="up" aria-label="Arriba" title="Arriba"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="m18 15-6-6-6 6"/></svg></button>
+    <button type="button" data-key="down" aria-label="Abajo" title="Abajo"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></svg></button>
+    <button type="button" data-key="right" aria-label="Derecha" title="Derecha"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="m9 18 6-6-6-6"/></svg></button>
+    <button type="button" data-action="paste" aria-label="Pegar" title="Pegar"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M15 4h2a2 2 0 0 1 2 2v14H5V6a2 2 0 0 1 2-2h2"/><rect width="6" height="4" x="9" y="2" rx="1"/><path d="m9 14 2 2 4-4"/></svg></button>
+  </div>
+</div>
 <div id="err"></div>
 <div id="dbg">iniciando…</div>
+<dialog id="paste-dialog">
+  <form method="dialog">
+    <textarea id="paste-text" aria-label="Texto para pegar"></textarea>
+    <div><button value="cancel">Cancelar</button><button id="paste-submit" value="default">Pegar</button></div>
+  </form>
+</dialog>
 
 <script src="../assets/xterm/xterm.js"></script>
 <script src="../assets/xterm/addon-fit.js"></script>
@@ -132,6 +169,8 @@
   // Ligaduras via opentype.js overlay (browser puro) — SOLO desktop: en
   // tactil el overlay redibuja carisimo y hace lento el resize de panes.
   const IS_TOUCH = ('ontouchstart' in window) || navigator.maxTouchPoints > 0;
+  const toolbar = document.getElementById('term-toolbar');
+  toolbar.hidden = !IS_TOUCH;
   const themeCfg = THEMES[theme] || THEMES.noche;
   if (!IS_TOUCH) {
     const liga = new LigaturesWebAddon({
@@ -330,11 +369,128 @@
     showErr(`No pude conectar a ${ws_url}\n\nAsegurate de que cc-webterm esté corriendo:\n  cc-webterm status`);
   });
 
-  function sendTerminalData(data) {
-    sendInput(data);
-  }
   term.onData(sendTerminalData);
   term.onResize(sendResize);
+
+  const TOOLBAR_KEYS = Object.freeze({
+    escape: '\x1b', tab: '\t', left: '\x1b[D', up: '\x1b[A',
+    down: '\x1b[B', right: '\x1b[C',
+  });
+  let ctrlArmed = false;
+  let pasting = false;
+  let interactionState = {known:false, busy:false, selecting:false};
+
+  function controlByte(data) {
+    if (typeof data !== 'string' || data.length !== 1) return null;
+    const code = data.charCodeAt(0);
+    if (code === 32) return '\x00';
+    if ((code >= 64 && code <= 95) || (code >= 97 && code <= 122))
+      return String.fromCharCode(code & 31);
+    return null;
+  }
+
+  function setCtrlArmed(on) {
+    ctrlArmed = !!on;
+    const button = document.querySelector('[data-action="ctrl"]');
+    button?.classList.toggle('on', ctrlArmed);
+    button?.setAttribute('aria-pressed', String(ctrlArmed));
+  }
+
+  function focusTerminal() {
+    try { term.textarea?.focus({preventScroll:true}); } catch (_) { term.focus(); }
+  }
+
+  function sendTerminalData(data) {
+    if (ctrlArmed && !pasting) {
+      const converted = controlByte(data);
+      if (converted !== null) {
+        setCtrlArmed(false);
+        sendInput(converted);
+        return;
+      }
+    }
+    sendInput(data);
+  }
+
+  function sendToolbarKey(name) {
+    const data = TOOLBAR_KEYS[name];
+    if (data) sendInput(data);
+    focusTerminal();
+  }
+
+  function pasteTerminalText(text) {
+    if (!text) return false;
+    pasting = true;
+    try { term.paste(text); } finally { pasting = false; }
+    focusTerminal();
+    return true;
+  }
+
+  async function requestClipboardPaste() {
+    try {
+      const text = await navigator.clipboard.readText();
+      pasteTerminalText(text);
+    } catch (_) {
+      document.getElementById('paste-dialog').showModal();
+    }
+  }
+
+  function applyInteractionState(next) {
+    interactionState = {
+      known: !!next?.known,
+      busy: !!next?.busy,
+      selecting: !!next?.selecting,
+    };
+    const button = document.querySelector('[data-action="mode"]');
+    if (!button) return;
+    button.disabled = !interactionState.known || interactionState.busy;
+    button.classList.toggle('on', interactionState.known && interactionState.selecting);
+    button.setAttribute('aria-pressed', interactionState.known
+      ? String(interactionState.selecting) : 'mixed');
+    if (!interactionState.known) button.textContent = 'Comprobando…';
+    else button.textContent = interactionState.selecting ? 'Interactuar' : 'Seleccionar';
+  }
+
+  function requestInteractionMode() {
+    if (!interactionState.known || interactionState.busy) return false;
+    parent.postMessage({
+      source:'comandos-term', type:'interaction-request',
+      selecting:!interactionState.selecting,
+    }, location.origin);
+    return true;
+  }
+
+  applyInteractionState(interactionState);
+  toolbar.addEventListener('pointerdown', e => {
+    if (e.pointerType !== 'touch') e.preventDefault();
+  });
+  toolbar.addEventListener('click', e => {
+    const button = e.target.closest('button');
+    if (!button) return;
+    if (button.dataset.key) sendToolbarKey(button.dataset.key);
+    else if (button.dataset.action === 'ctrl') {
+      setCtrlArmed(!ctrlArmed);
+      focusTerminal();
+    }
+    else if (button.dataset.action === 'paste') requestClipboardPaste();
+    else if (button.dataset.action === 'mode') {
+      requestInteractionMode();
+      focusTerminal();
+    }
+  });
+  document.getElementById('paste-dialog').querySelector('form').addEventListener('submit', e => {
+    if (e.submitter?.id !== 'paste-submit') return;
+    const text = document.getElementById('paste-text');
+    pasteTerminalText(text.value);
+    text.value = '';
+  });
+  window.addEventListener('message', e => {
+    const data = e.data;
+    if (e.origin !== location.origin || e.source !== parent ||
+        !data || data.source !== 'comandos' || data.type !== 'interaction-state') return;
+    applyInteractionState(data);
+  });
+  if (parent !== window) parent.postMessage({source:'comandos-term', type:'ready'}, location.origin);
 
   // Teclado MOVIL (GBoard/Android): borrar y Enter llegan como eventos
   // beforeinput sin keydown — xterm.js los pierde con el buffer de
@@ -350,12 +506,7 @@
   window.__comandosOwnsTouchGestures = true;
   const screenEl = () => document.querySelector('.xterm-screen');
   const mouseOn = () => { try { return term.modes.mouseTrackingMode !== 'none'; } catch (_) { return false; } };
-  const selectingText = () => {
-    try {
-      return typeof frameElement !== 'undefined' &&
-        frameElement && frameElement.dataset.selecting === '1';
-    } catch (_) { return false; }
-  };
+  const selectingText = () => interactionState.known && interactionState.selecting;
   let paneRefreshPending = false;
   let paneRefreshTimer = 0;
   function requestPaneRefreshAfterResize() {

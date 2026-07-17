@@ -664,16 +664,6 @@
     body.app.split #view-panel #tl-wrap{max-width:none;padding-left:14px;padding-right:14px}
     body.app.split #view-panel .row .rpath{display:none}
   }
-  #term-select-toggle{display:none;position:absolute;right:12px;top:10px;z-index:4;
-    align-items:center;justify-content:center;min-height:30px;padding:5px 10px;
-    border:1px solid var(--line2);border-radius:7px;background:rgba(10,13,19,.88);
-    color:var(--dim);font-family:var(--mono);font-size:11.5px;font-weight:700;
-    box-shadow:0 8px 24px rgba(0,0,0,.32);backdrop-filter:blur(8px)}
-  body.app #term-area.on #term-select-toggle{display:inline-flex}
-  #term-select-toggle:hover{color:var(--text);border-color:var(--brand)}
-  #term-select-toggle.on{color:var(--bg);background:var(--brand);border-color:var(--brand)}
-  #term-select-toggle:disabled{opacity:.55;cursor:wait}
-
   /* ---------- toasts ---------- */
   #toasts{position:fixed;right:16px;bottom:16px;z-index:30;display:flex;
     flex-direction:column;gap:8px}
@@ -867,9 +857,7 @@
 </div>
 </div><!-- /#view-panel -->
 <div id="splitter" role="separator" aria-orientation="vertical" aria-label="Ajustar panel"></div>
-<div id="term-area">
-  <button type="button" id="term-select-toggle" aria-pressed="false" title="Seleccionar texto">Seleccionar</button>
-</div>
+<div id="term-area"></div>
 </div><!-- /#panes -->
 
 <div id="settings" class="modal" aria-label="Ajustes" role="dialog" aria-modal="true">
@@ -2243,11 +2231,9 @@ function wireTermFrameScroll(frame){
     };
     doc.addEventListener("touchstart", e => {
       touchWheelAccum = 0;
-      if(frame.dataset.selecting === "1"){ touchY = null; return; }
       touchY = e.touches && e.touches.length === 1 ? e.touches[0].clientY : null;
     }, {capture:true, passive:true});
     doc.addEventListener("touchmove", e => {
-      if(frame.dataset.selecting === "1") return;
       if(touchY === null || !e.touches || e.touches.length !== 1) return;
       const touch = e.touches[0];
       const dy = touchY - touch.clientY;
@@ -2310,11 +2296,41 @@ function termInteractionState(sess){
   return state;
 }
 
-function applyTermInteraction(sess){
-  const state = termInteraction.get(sess);
+function postTermState(sess){
   const frame = openTerms.get(sess)?.frame;
-  if(frame) frame.dataset.selecting = state?.mouse === false ? "1" : "";
-  if(sess === activeTerm) updateTermSelectButton();
+  const state = termInteraction.get(sess);
+  if(!frame || frame.dataset.compat === "1") return false;
+  frame.contentWindow?.postMessage({
+    source:"comandos", type:"interaction-state",
+    known:typeof state?.mouse === "boolean",
+    busy:!!state?.busy,
+    selecting:state?.mouse === false,
+  }, location.origin);
+  return true;
+}
+
+function applyTermInteraction(sess){
+  postTermState(sess);
+}
+
+function handleTermFrameMessage(event){
+  if(event.origin !== location.origin) return false;
+  const data = event.data;
+  if(!data || data.source !== "comandos-term") return false;
+  let sess = "";
+  for(const [candidate, open] of openTerms){
+    if(open.frame?.dataset.compat !== "1" && open.frame?.contentWindow === event.source){
+      sess = candidate;
+      break;
+    }
+  }
+  if(!sess) return false;
+  if(data.type === "ready") return postTermState(sess);
+  if(data.type === "interaction-request"){
+    setTermSelectionMode(sess, !!data.selecting);
+    return true;
+  }
+  return false;
 }
 
 function cleanupTermInteraction(sess){
@@ -2323,25 +2339,6 @@ function cleanupTermInteraction(sess){
       state.restorePending) return false;
   termInteraction.delete(sess);
   return true;
-}
-
-function updateTermSelectButton(){
-  const b = document.getElementById("term-select-toggle");
-  const sess = activeTerm && openTerms.has(activeTerm) ? activeTerm : "";
-  if(!b) return;
-  const state = sess ? termInteraction.get(sess) : null;
-  const known = typeof state?.mouse === "boolean";
-  const selecting = known && state.mouse === false;
-  b.disabled = !sess || !known || !!state?.busy;
-  b.classList.toggle("on", selecting);
-  b.setAttribute("aria-pressed", known ? String(selecting) : "mixed");
-  b.textContent = !known ? tf("Comprobando…", "Checking…")
-    : selecting ? tf("Interactuar", "Interact") : tf("Seleccionar", "Select");
-  b.title = !known
-    ? tf("Consultando el estado real de tmux", "Checking actual tmux state")
-    : selecting
-    ? tf("Restaurar mouse de tmux para interactuar", "Restore tmux mouse for interaction")
-    : tf("Apagar mouse de tmux para seleccionar texto", "Disable tmux mouse to select text");
 }
 
 async function syncTermInteraction(sess){
@@ -2506,7 +2503,6 @@ function restoreAllTermInteractions(){
     state.restorePending = true;
     sendTermInteractionKeepalive(sess);
   }
-  updateTermSelectButton();
 }
 
 async function handleTermInteractionsPageShow(){
@@ -2651,7 +2647,6 @@ function showView(key){
     if(o.frame) o.frame.classList.toggle("on", sess === shown);
   if(shown && (shown !== previousTerm || termInteraction.get(shown)?.mouse == null))
     syncTermInteraction(shown);
-  updateTermSelectButton();
   renderTabbar();
 }
 function addTermTab(sess, label, mirrored){   // registra la tab SIN attachear (lazy)
@@ -3699,12 +3694,7 @@ $("#tl-toggle").addEventListener("click", ()=>{
     ? t("Ver actividad reciente") : t("Ocultar actividad");
   if(!tl.classList.contains("hidden")) tickEvents();
 });
-$("#term-select-toggle").addEventListener("click", ()=>{
-  if(!activeTerm || !openTerms.has(activeTerm)) return;
-  const state = termInteraction.get(activeTerm);
-  if(typeof state?.mouse !== "boolean" || state.busy) return;
-  setTermSelectionMode(activeTerm, state.mouse);
-});
+window.addEventListener("message", handleTermFrameMessage);
 window.addEventListener("pagehide", restoreAllTermInteractions);
 window.addEventListener("pageshow", handleTermInteractionsPageShow);
 setInterval(()=>{

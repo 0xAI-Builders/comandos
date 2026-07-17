@@ -74,6 +74,124 @@ def run_node_json(script):
     return json.loads(out)
 
 
+def terminal_toolbar_js():
+    names = (
+        "controlByte",
+        "setCtrlArmed",
+        "focusTerminal",
+        "sendTerminalData",
+        "sendToolbarKey",
+        "pasteTerminalText",
+        "requestClipboardPaste",
+        "applyInteractionState",
+        "requestInteractionMode",
+    )
+    return "\n\n".join(extract_js_function(TERM_HTML, name) for name in names)
+
+
+def run_terminal_toolbar(simulation):
+    controller = terminal_toolbar_js()
+    return run_node_json(f"""
+const sent = [];
+const pasted = [];
+const posted = [];
+let focusCalls = 0;
+let ctrlArmed = false;
+let pasting = false;
+let interactionState = {{known:false, busy:false, selecting:false}};
+const TOOLBAR_KEYS = Object.freeze({{
+  escape: "\x1b", tab: "\t", left: "\x1b[D", up: "\x1b[A",
+  down: "\x1b[B", right: "\x1b[C",
+}});
+const modeButton = {{
+  textContent: "Seleccionar", disabled: false, attrs: {{}},
+  classList: {{toggle() {{}}}},
+  setAttribute(name, value) {{ this.attrs[name] = value; }},
+}};
+const ctrlButton = {{classList: {{toggle() {{}}}}, setAttribute() {{}}}};
+const dialog = {{shown: 0, showModal() {{ this.shown += 1; }}}};
+const pasteText = {{value: ""}};
+const document = {{
+  querySelector(sel) {{ return sel === '[data-action="ctrl"]' ? ctrlButton : sel === '[data-action="mode"]' ? modeButton : null; }},
+  getElementById(id) {{ return id === "paste-dialog" ? dialog : id === "paste-text" ? pasteText : null; }},
+}};
+const term = {{
+  textarea: {{focus() {{ focusCalls += 1; }} }},
+  focus() {{ focusCalls += 1; }},
+  paste(text) {{ pasted.push(text); }},
+}};
+const navigator = {{clipboard: {{readText: async () => "line one\\nline two"}}}};
+const parent = {{postMessage(message, origin) {{ posted.push({{message, origin}}); }}}};
+const location = {{origin: "https://dash.test"}};
+function sendInput(data) {{ sent.push(data); }}
+
+{controller}
+
+(async () => {{
+{simulation}
+}})().catch(error => {{ console.error(error); process.exit(1); }});
+""")
+
+
+def test_terminal_touch_toolbar_ctrl_clipboard_focus_and_confirmed_mode():
+    result = run_terminal_toolbar("""
+const keys = ["escape", "tab", "left", "up", "down", "right"].map(name => {
+  sendToolbarKey(name);
+  return sent.at(-1);
+});
+setCtrlArmed(true);
+sendTerminalData("a");
+const ctrlA = sent.at(-1);
+setCtrlArmed(true);
+sendTerminalData("[");
+const ctrlBracket = sent.at(-1);
+setCtrlArmed(true);
+sendTerminalData("á");
+const composition = sent.at(-1);
+const ctrlStillArmedAfterComposition = ctrlArmed;
+sendTerminalData("hello");
+const multiCharacter = sent.at(-1);
+await requestClipboardPaste();
+navigator.clipboard.readText = async () => { throw new Error("denied"); };
+await requestClipboardPaste();
+pasteText.value = "manual text";
+pasteTerminalText(pasteText.value);
+applyInteractionState({known:true, busy:true, selecting:false});
+const pendingLabel = modeButton.textContent;
+applyInteractionState({known:true, busy:false, selecting:true});
+const confirmedLabel = modeButton.textContent;
+requestInteractionMode();
+console.log(JSON.stringify({
+  keys, ctrlA, ctrlBracket, composition, ctrlStillArmedAfterComposition,
+  multiCharacter, pasted, sent, focusCalls, dialogShown: dialog.shown,
+  pendingLabel, confirmedLabel, posted,
+}));
+""")
+
+    assert result["keys"] == ["\x1b", "\t", "\x1b[D", "\x1b[A", "\x1b[B", "\x1b[C"]
+    assert result["ctrlA"] == "\x01"
+    assert result["ctrlBracket"] == "\x1b"
+    assert result["composition"] == "á"
+    assert result["ctrlStillArmedAfterComposition"] is True
+    assert result["multiCharacter"] == "hello"
+    assert result["pasted"] == ["line one\nline two", "manual text"]
+    assert "line one\nline two" not in result["sent"]
+    assert result["dialogShown"] == 1
+    assert result["focusCalls"] >= 8
+    assert result["pendingLabel"] == "Seleccionar"
+    assert result["confirmedLabel"] == "Interactuar"
+    assert result["posted"] == [{
+        "message": {"source": "comandos-term", "type": "interaction-request", "selecting": False},
+        "origin": "https://dash.test",
+    }]
+
+
+def test_terminal_toolbar_starts_unknown_and_keeps_touch_panning_native():
+    assert "applyInteractionState(interactionState);" in TERM_HTML
+    assert "touch-action: pan-x" in TERM_HTML
+    assert "if (e.pointerType !== 'touch') e.preventDefault();" in TERM_HTML
+
+
 def touch_controller_js():
     start = TERM_HTML.index("  const screenEl = () =>")
     end = TERM_HTML.index("  const ta = term.textarea;", start)
@@ -83,8 +201,9 @@ def touch_controller_js():
 def term_interaction_js():
     names = (
         "termInteractionState",
+        "postTermState",
         "applyTermInteraction",
-        "updateTermSelectButton",
+        "handleTermFrameMessage",
         "syncTermInteraction",
         "setTermSelectionMode",
         "restoreTermInteraction",
@@ -105,22 +224,15 @@ let termInteractionSeq = 0;
 let activeTerm = "ssh-prod";
 let termPageHidden = false;
 const classNames = new Set();
-const button = {{
-  disabled: false,
-  textContent: "",
-  title: "",
-  attrs: {{}},
-  classList: {{toggle(name, on) {{ if(on) classNames.add(name); else classNames.delete(name); }}}},
-  setAttribute(name, value) {{ this.attrs[name] = value; }},
-}};
+const postedStates = [];
 const frames = {{
-  "ssh-prod": {{dataset: {{}}}},
-  "dev": {{dataset: {{}}}},
-  "alpha": {{dataset: {{}}}},
-  "beta": {{dataset: {{}}}},
+  "ssh-prod": {{dataset: {{}}, contentWindow: {{postMessage(message, origin) {{ postedStates.push({{sess:"ssh-prod", message, origin}}); }}}}}},
+  "dev": {{dataset: {{}}, contentWindow: {{postMessage(message, origin) {{ postedStates.push({{sess:"dev", message, origin}}); }}}}}},
+  "alpha": {{dataset: {{}}, contentWindow: {{postMessage(message, origin) {{ postedStates.push({{sess:"alpha", message, origin}}); }}}}}},
+  "beta": {{dataset: {{}}, contentWindow: {{postMessage(message, origin) {{ postedStates.push({{sess:"beta", message, origin}}); }}}}}},
 }};
 const openTerms = new Map(Object.entries(frames).map(([sess, frame]) => [sess, {{frame}}]));
-const document = {{getElementById(id) {{ return id === "term-select-toggle" ? button : null; }}}};
+const location = {{origin:"https://dash.test"}};
 const toasts = [];
 const keepalives = [];
 const tf = (_es, en) => en;
@@ -209,7 +321,7 @@ const window = {{
   addEventListener(type, cb) {{ windowListeners[type] = cb; }},
 }};
 const navigator = {{vibrate() {{}}}};
-const frameElement = {{dataset: {json.dumps({'selecting': '1'} if selecting else {})}}};
+const interactionState = {{known: {str(selecting).lower()}, busy: false, selecting: {str(selecting).lower()}}};
 const term = {{
   cols: 80,
   rows: 24,
@@ -581,8 +693,10 @@ let resizeDisposed = false;
 let fitCalls = 0;
 let nextFrame = 1;
 let nextTimer = 1;
-let reloads = 0;
-let input = "";
+    let reloads = 0;
+    let input = "";
+    let ctrlArmed = false;
+    let pasting = false;
 const frames = new Map();
 const timers = new Map();
 const scheduledDelays = [];
@@ -689,7 +803,7 @@ console.log(JSON.stringify({{afterSame, sent, lastResize}}));
 
 def test_webterm_pty_resize_geometry_wiring_auth_and_preferences_integrate():
     geometry_js = TERM_HTML.split("(function () {", 1)[1].split(
-        "// Teclado MOVIL", 1
+        "  const TOOLBAR_KEYS", 1
     )[0]
     prelude = r"""
 let fitCalls = 0;
@@ -698,7 +812,7 @@ const frameQueue = new Map();
 const timerQueue = [];
 const windowListeners = {};
 const elements = new Map();
-for (const id of ['dbg', 'err', 'term']) {
+for (const id of ['dbg', 'err', 'term', 'term-toolbar']) {
   elements.set(id, {
     classList: {add(){}}, style: {}, textContent: '',
   });
@@ -721,6 +835,7 @@ globalThis.requestAnimationFrame = cb => {
   const id = nextFrame++; frameQueue.set(id, cb); return id;
 };
 globalThis.setTimeout = cb => { timerQueue.push(cb); return timerQueue.length; };
+function sendTerminalData() {}
 globalThis.Terminal = class {
   constructor(options){
     this.options = {...options}; this.cols = 80; this.rows = 20; this.selected = false;
@@ -1151,6 +1266,8 @@ def test_webterm_data_handler_sends_input_without_resize_work():
     send_terminal_data = extract_js_function(TERM_HTML, "sendTerminalData")
     result = run_node_json(f"""
 const sent = [];
+let ctrlArmed = false;
+let pasting = false;
 function sendInput(data) {{ sent.push(data); }}
 {send_terminal_data}
 sendTerminalData('a');
@@ -1213,7 +1330,7 @@ def test_remote_terminal_iframe_does_not_hijack_tmux_wheel_events():
     assert "clientY" in fn
     assert "touchstart" in fn
     assert "touchmove" in fn
-    assert "frame.dataset.selecting" in fn
+    assert "frame.dataset.selecting" not in fn
     assert "passive:false" in fn
     style_fn = extract_js_function(HTML, "styleTermFrame")
     assert "touch-action:pan-y" in style_fn
@@ -1701,12 +1818,15 @@ console.log(JSON.stringify({{added, wired: !!win.__comandosScrollWired}}));
 
 
 def test_remote_terminal_selection_uses_backend_state_not_local_guess():
-    assert 'id="term-select-toggle"' in HTML
+    assert 'id="term-select-toggle"' not in HTML
+    assert "frame.dataset.selecting" not in HTML
     assert "/tmux-mouse" in HTML
     assert "const termInteraction = new Map()" in HTML
     assert "syncTermInteraction" in HTML
     assert "setTermSelectionMode" in HTML
     assert "restoreTermInteraction" in HTML
+    assert "postTermState" in HTML
+    assert "handleTermFrameMessage" in HTML
     fn = extract_js_function(HTML, "setTermSelectionMode")
     assert 'api("/tmux-mouse"' in fn
     assert "enabled: !selecting" in fn
@@ -1715,7 +1835,6 @@ def test_remote_terminal_selection_uses_backend_state_not_local_guess():
     assert "applyTermInteraction(sess)" in fn
     show = extract_js_function(HTML, "showView")
     assert "syncTermInteraction(shown)" in show
-    assert "updateTermSelectButton();" in show
     assert "restoreTermInteraction(sess)" in extract_js_function(HTML, "closeTerm")
 
 
@@ -1731,42 +1850,91 @@ api = async function(path, body) {
 };
 await syncTermInteraction("ssh-prod");
 const genuineOff = {...termInteraction.get("ssh-prod")};
-const genuineLabel = button.textContent;
 await setTermSelectionMode("ssh-prod", false);
 const interacting = {...termInteraction.get("ssh-prod")};
-const interactLabel = button.textContent;
 await setTermSelectionMode("ssh-prod", true);
 const temporary = {...termInteraction.get("ssh-prod")};
-const temporaryLabel = button.textContent;
 await restoreTermInteraction("ssh-prod");
 const restored = {...termInteraction.get("ssh-prod")};
 failNext = true;
 await setTermSelectionMode("ssh-prod", true);
 const afterFailure = {...termInteraction.get("ssh-prod")};
 console.log(JSON.stringify({
-  posts, genuineOff, genuineLabel, interacting, interactLabel,
-  temporary, temporaryLabel, restored, afterFailure,
-  selecting: frames["ssh-prod"].dataset.selecting || "",
-  disabled: button.disabled,
+  posts, genuineOff, interacting, temporary, restored, afterFailure,
+  postedStates,
 }));
 """)
 
     assert result["genuineOff"]["mouse"] is False
     assert result["genuineOff"]["temporary"] is False
-    assert result["genuineLabel"] == "Interact"
     assert result["interacting"]["mouse"] is True
     assert result["interacting"]["temporary"] is False
-    assert result["interactLabel"] == "Select"
     assert result["temporary"]["mouse"] is False
     assert result["temporary"]["temporary"] is True
-    assert result["temporaryLabel"] == "Interact"
     assert result["restored"]["mouse"] is True
     assert result["restored"]["temporary"] is False
     assert result["afterFailure"]["mouse"] is True
     assert result["afterFailure"]["temporary"] is False
-    assert result["selecting"] == ""
-    assert result["disabled"] is False
     assert [post["enabled"] for post in result["posts"]] == [True, False, True, False]
+    assert result["postedStates"][-1]["message"] == {
+        "source": "comandos", "type": "interaction-state",
+        "known": True, "busy": False, "selecting": False,
+    }
+
+
+def test_terminal_interaction_bridge_validates_source_and_posts_confirmed_state():
+    result = run_term_interaction("""
+const calls = [];
+let finishRequest;
+api = async function(_path, body) {
+  calls.push(body || null);
+  if(body && body.enabled === false)
+    return new Promise(resolve => { finishRequest = () => resolve({mouse:"off"}); });
+  return {mouse:"on"};
+};
+const state = termInteractionState("ssh-prod");
+state.mouse = true;
+const source = frames["ssh-prod"].contentWindow;
+const rejectedOrigin = handleTermFrameMessage({
+  origin:"https://evil.test", source,
+  data:{source:"comandos-term", type:"interaction-request", selecting:true},
+});
+const rejectedSource = handleTermFrameMessage({
+  origin:location.origin, source:{},
+  data:{source:"comandos-term", type:"interaction-request", selecting:true},
+});
+const ready = handleTermFrameMessage({
+  origin:location.origin, source,
+  data:{source:"comandos-term", type:"ready"},
+});
+const requested = handleTermFrameMessage({
+  origin:location.origin, source,
+  data:{source:"comandos-term", type:"interaction-request", selecting:true},
+});
+await Promise.resolve();
+const pending = postedStates.at(-1).message;
+finishRequest();
+await Promise.resolve();
+await Promise.resolve();
+console.log(JSON.stringify({
+  rejectedOrigin, rejectedSource, ready, requested, calls, pending,
+  confirmed: postedStates.at(-1).message,
+}));
+""")
+
+    assert result["rejectedOrigin"] is False
+    assert result["rejectedSource"] is False
+    assert result["ready"] is True
+    assert result["requested"] is True
+    assert result["calls"] == [{"session": "ssh-prod", "enabled": False}]
+    assert result["pending"] == {
+        "source": "comandos", "type": "interaction-state",
+        "known": True, "busy": True, "selecting": False,
+    }
+    assert result["confirmed"] == {
+        "source": "comandos", "type": "interaction-state",
+        "known": True, "busy": False, "selecting": True,
+    }
 
 
 def test_remote_terminal_selection_ignores_stale_get_and_keepalive_is_temporary_only():
@@ -1873,8 +2041,7 @@ console.log(JSON.stringify({
   afterResolutionKeepalives,
   payloads: keepalives.map(item => JSON.parse(item.options.body)),
   state: {...termInteraction.get("ssh-prod")},
-  selecting: frames["ssh-prod"].dataset.selecting || "",
-  label: button.textContent,
+  postedStates,
 }));
 """)
 
@@ -1885,8 +2052,7 @@ console.log(JSON.stringify({
     assert result["state"]["mouse"] is True
     assert result["state"]["temporary"] is False
     assert result["state"]["busy"] is False
-    assert result["selecting"] == ""
-    assert result["label"] == "Select"
+    assert result["postedStates"][-1]["message"]["selecting"] is False
 
 
 def test_remote_terminal_initial_pageshow_does_not_resync():
