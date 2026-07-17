@@ -6,6 +6,8 @@
 - Task 6 implementation: `d88e6fe Add Bruno theme across ComandOS`
 - Initial verification report: `4ce8f9a Document Bruno theme verification`
 - Reviewer follow-up: `842198a Strengthen Bruno theme integration coverage`
+- Reviewer evidence report: `b1220f2 Document Task 6 review follow-up`
+- Coverage closure: `b0619e2 Close Bruno theme coverage gaps`
 - Branch: `feature/v1.6.0-mobile-bruno`
 
 No services were restarted, no tmux sessions were touched, and no release or
@@ -44,6 +46,20 @@ injected important background and scrollbar colors on every live change,
 uses `color-scheme:light` for Day and dark for the other themes, and themes the
 paste dialog container, textarea, and both action buttons through roles.
 
+The final coverage closure is test-only. It parses the exact
+`:root[data-theme="bruno"]` block into a declaration map and compares the full
+15-property set and values, including `--glow:#1A1A1A`, `--code:#8BC2F9`, and
+`--shadow:rgba(0,0,0,.5)`. This replaces the previous global substring checks,
+so missing, extra, duplicate, or wrong declarations fail.
+
+The production-backed named listener test now evaluates the real custom xterm
+`THEMES` object, asserts the complete Bruno xterm object and all nine terminal
+role properties, and rejects `data.source != "comandos"`. The rejection is
+asserted to leave the active theme, xterm theme object, role map, Task 5
+interaction state, WebSocket identity, and constructor count unchanged. The
+copied two-theme direct-handler test was removed after these assertions passed
+against production unchanged.
+
 ## TDD Evidence
 
 ### RED
@@ -57,19 +73,28 @@ paste dialog container, textarea, and both action buttons through roles.
    `pytest -q tests/test_themes.py tests/test_remote_ui.py -k 'theme or ligature or ensure_frame or named_terminal_message_bridge'`
    reported `1 failed, 10 passed, 64 deselected`. The failure proved the real
    page did not yet register exactly one named unified bridge listener.
+4. Coverage-closure contract:
+   `pytest -q tests/test_themes.py::test_bruno_dashboard_css_block_is_exact_and_all_ids_are_documented`
+   reported `1 failed` because the selector-scoped declaration parser did not
+   exist. After adding the parser, the same test reported `1 passed in 0.03s`.
 
 ### GREEN
 
 1. The same reviewer-focused command reported
    `11 passed, 64 deselected in 0.35s` after the listener consolidation.
-2. Fresh focused verification:
+2. The expanded production-backed named-listener test reported
+   `1 passed in 0.16s` without a production change.
+3. Fresh focused verification:
    `pytest -q tests/test_themes.py tests/test_terminal_prefs.py tests/test_remote_ui.py`
-   reported `83 passed in 3.29s`.
-3. Fresh full verification: `pytest -q` reported
-   `309 passed in 43.27s`.
-4. `python3 -m py_compile bin/cc-app bin/cc-dash` exited `0`.
-5. `bash tests/test_js_parses.sh` exited `0` with `OK`.
-6. `git diff --check` exited `0`.
+   reported `82 passed in 3.67s`.
+4. Fresh full verification: `pytest -q` reported
+   `308 passed in 43.08s`.
+5. `python3 -m py_compile bin/cc-app bin/cc-dash` exited `0`.
+6. `bash tests/test_js_parses.sh` exited `0` with `OK`.
+7. `git diff --check` exited `0`.
+
+The focused and full totals each decreased by one because the copied duplicate
+test was removed; no behavioral coverage was dropped.
 
 The tests evaluate the real JavaScript theme objects, parse the real Python
 registries and backend whitelist, execute the real parent/iframe helpers, load
@@ -94,6 +119,11 @@ Task 6 as a whole owns and changed:
 Reviewer follow-up `842198a` changed only:
 
 - `dash/term.html`
+- `tests/test_themes.py`
+- `tests/test_remote_ui.py`
+
+Coverage closure `b0619e2` changed only:
+
 - `tests/test_themes.py`
 - `tests/test_remote_ui.py`
 
