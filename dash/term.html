@@ -422,7 +422,6 @@
     if (!text) return false;
     pasting = true;
     try { term.paste(text); } finally { pasting = false; }
-    focusTerminal();
     return true;
   }
 
@@ -430,6 +429,7 @@
     try {
       const text = await navigator.clipboard.readText();
       pasteTerminalText(text);
+      focusTerminal();
     } catch (_) {
       document.getElementById('paste-dialog').showModal();
     }
@@ -478,12 +478,14 @@
       focusTerminal();
     }
   });
-  document.getElementById('paste-dialog').querySelector('form').addEventListener('submit', e => {
+  const pasteDialog = document.getElementById('paste-dialog');
+  pasteDialog.querySelector('form').addEventListener('submit', e => {
     if (e.submitter?.id !== 'paste-submit') return;
     const text = document.getElementById('paste-text');
     pasteTerminalText(text.value);
     text.value = '';
   });
+  pasteDialog.addEventListener('close', focusTerminal);
   window.addEventListener('message', e => {
     const data = e.data;
     if (e.origin !== location.origin || e.source !== parent ||
@@ -507,6 +509,12 @@
   const screenEl = () => document.querySelector('.xterm-screen');
   const mouseOn = () => { try { return term.modes.mouseTrackingMode !== 'none'; } catch (_) { return false; } };
   const selectingText = () => interactionState.known && interactionState.selecting;
+  function terminalUiOwnsEvent(event) {
+    const insideUi = node => node && typeof node.closest === 'function' &&
+      node.closest('#term-toolbar, #paste-dialog');
+    const path = typeof event?.composedPath === 'function' ? event.composedPath() : [];
+    return path.some(insideUi) || !!insideUi(event?.target);
+  }
   let paneRefreshPending = false;
   let paneRefreshTimer = 0;
   function requestPaneRefreshAfterResize() {
@@ -530,7 +538,7 @@
 
   let paneMouseDrag = null;
   document.addEventListener('mousedown', (e) => {
-    if (e.button !== 0 || selectingText() || !mouseOn()) return;
+    if (terminalUiOwnsEvent(e) || e.button !== 0 || selectingText() || !mouseOn()) return;
     const cell = cellFromTouch(e);
     if (!cell || !snapToBorder(cell)) return;
     paneMouseDrag = {x: e.clientX, y: e.clientY, moved: false};
@@ -704,6 +712,7 @@
   };
 
   document.addEventListener('touchstart', (e) => {
+    if (terminalUiOwnsEvent(e)) { finishGesture(); return; }
     if (selectingText()) { finishGesture(); return; }
     if (!e.touches || e.touches.length !== 1) { finishGesture(); return; }
     if (gesture.phase !== 'idle') finishGesture();
@@ -715,6 +724,7 @@
     if (mouseOn()) gesture.timer = setTimeout(tryEngageResize, 220);
   }, {passive: true});
   document.addEventListener('touchmove', (e) => {
+    if (terminalUiOwnsEvent(e)) { finishGesture(); return; }
     if (gesture.phase === 'idle') return;
     if (selectingText() || !e.touches || e.touches.length !== 1) {
       finishGesture();
@@ -747,6 +757,7 @@
     }
   }, {passive: false});
   document.addEventListener('touchend', (e) => {
+    if (terminalUiOwnsEvent(e)) { finishGesture(); return; }
     if (gesture.phase === 'resizing') {
       const touch = touchById(e.changedTouches);
       const c = touch && cellOnLockedAxis(touch);

@@ -1,7 +1,10 @@
 #!/usr/bin/env python3
 import json
+import shutil
 import subprocess
 from pathlib import Path
+
+import pytest
 
 
 HTML = Path("dash/index.html").read_text()
@@ -133,6 +136,87 @@ function sendInput(data) {{ sent.push(data); }}
 """)
 
 
+def terminal_toolbar_controller_js():
+    start = TERM_HTML.index("  const TOOLBAR_KEYS")
+    end = TERM_HTML.index("  // Teclado MOVIL", start)
+    return TERM_HTML[start:end]
+
+
+def run_terminal_toolbar_lifecycle(simulation):
+    controller = terminal_toolbar_controller_js()
+    return run_node_json(f"""
+const listeners = new Map();
+const pasted = [];
+const sent = [];
+const focusHistory = [];
+let active = "opener";
+
+function on(target, type, cb) {{
+  const key = `${{target.id}}:${{type}}`;
+  const entries = listeners.get(key) || [];
+  entries.push(cb); listeners.set(key, entries);
+}}
+function emit(target, type, event = {{}}) {{
+  for (const cb of listeners.get(`${{target.id}}:${{type}}`) || []) cb(event);
+}}
+function element(id) {{
+  return {{
+    id, dataset: {{}}, value: "", open: false, disabled: false,
+    classList: {{toggle() {{}}, add() {{}}}},
+    setAttribute() {{}},
+    addEventListener(type, cb) {{ on(this, type, cb); }},
+    closest() {{ return this; }},
+  }};
+}}
+
+const toolbar = element("term-toolbar");
+const form = element("paste-form");
+const dialogElement = element("paste-dialog");
+const pasteText = element("paste-text");
+const pasteSubmit = element("paste-submit");
+const pasteCancel = element("paste-cancel");
+const modeButton = element("mode"); modeButton.dataset.action = "mode";
+const ctrlButton = element("ctrl"); ctrlButton.dataset.action = "ctrl";
+dialogElement.querySelector = selector => selector === "form" ? form : null;
+dialogElement.showModal = () => {{ dialogElement.open = true; active = "paste-text"; }};
+
+const document = {{
+  querySelector(selector) {{
+    if (selector === '[data-action="mode"]') return modeButton;
+    if (selector === '[data-action="ctrl"]') return ctrlButton;
+    return null;
+  }},
+  getElementById(id) {{
+    return {{"term-toolbar":toolbar, "paste-dialog":dialogElement,
+             "paste-text":pasteText}}[id] || null;
+  }},
+}};
+const window = {{addEventListener(type, cb) {{ on({{id:"window"}}, type, cb); }}}};
+const parent = window;
+const location = {{origin:"https://dash.test"}};
+const term = {{
+  textarea: {{focus() {{ active = "terminal"; focusHistory.push(active); }}}},
+  focus() {{ active = "terminal"; focusHistory.push(active); }},
+  paste(text) {{ pasted.push(text); }},
+}};
+const navigator = {{clipboard: {{readText: async () => ""}}}};
+function sendInput(data) {{ sent.push(data); }}
+function finishDialog(submitter, canceled = false) {{
+  if (submitter) emit(form, "submit", {{submitter}});
+  if (canceled) emit(dialogElement, "cancel", {{}});
+  active = "opener";
+  dialogElement.open = false;
+  emit(dialogElement, "close", {{}});
+}}
+
+{controller}
+
+(async () => {{
+{simulation}
+}})().catch(error => {{ console.error(error); process.exit(1); }});
+""")
+
+
 def test_terminal_touch_toolbar_ctrl_clipboard_focus_and_confirmed_mode():
     result = run_terminal_toolbar("""
 const keys = ["escape", "tab", "left", "up", "down", "right"].map(name => {
@@ -177,7 +261,7 @@ console.log(JSON.stringify({
     assert result["pasted"] == ["line one\nline two", "manual text"]
     assert "line one\nline two" not in result["sent"]
     assert result["dialogShown"] == 1
-    assert result["focusCalls"] >= 8
+    assert result["focusCalls"] == 7
     assert result["pendingLabel"] == "Seleccionar"
     assert result["confirmedLabel"] == "Interactuar"
     assert result["posted"] == [{
@@ -190,6 +274,42 @@ def test_terminal_toolbar_starts_unknown_and_keeps_touch_panning_native():
     assert "applyInteractionState(interactionState);" in TERM_HTML
     assert "touch-action: pan-x" in TERM_HTML
     assert "if (e.pointerType !== 'touch') e.preventDefault();" in TERM_HTML
+
+
+def test_terminal_paste_focus_follows_actual_dialog_close_lifecycle():
+    result = run_terminal_toolbar_lifecycle("""
+await requestClipboardPaste();
+const emptyClipboard = {active, focusCalls: focusHistory.length, pasted:[...pasted]};
+
+navigator.clipboard.readText = async () => { throw new Error("denied"); };
+await requestClipboardPaste();
+pasteText.value = "manual text";
+finishDialog(pasteSubmit);
+const manualSubmit = {active, focusCalls: focusHistory.length, pasted:[...pasted]};
+
+pasteDialog.showModal();
+finishDialog(pasteCancel);
+const cancelButton = {active, focusCalls: focusHistory.length, pasted:[...pasted]};
+
+pasteDialog.showModal();
+finishDialog(null, true);
+const escapeCancel = {active, focusCalls: focusHistory.length, pasted:[...pasted]};
+console.log(JSON.stringify({emptyClipboard, manualSubmit, cancelButton, escapeCancel, sent}));
+""")
+
+    assert result["emptyClipboard"] == {
+        "active": "terminal", "focusCalls": 1, "pasted": []
+    }
+    assert result["manualSubmit"] == {
+        "active": "terminal", "focusCalls": 2, "pasted": ["manual text"]
+    }
+    assert result["cancelButton"] == {
+        "active": "terminal", "focusCalls": 3, "pasted": ["manual text"]
+    }
+    assert result["escapeCancel"] == {
+        "active": "terminal", "focusCalls": 4, "pasted": ["manual text"]
+    }
+    assert result["sent"] == []
 
 
 def touch_controller_js():
@@ -230,6 +350,7 @@ const frames = {{
   "dev": {{dataset: {{}}, contentWindow: {{postMessage(message, origin) {{ postedStates.push({{sess:"dev", message, origin}}); }}}}}},
   "alpha": {{dataset: {{}}, contentWindow: {{postMessage(message, origin) {{ postedStates.push({{sess:"alpha", message, origin}}); }}}}}},
   "beta": {{dataset: {{}}, contentWindow: {{postMessage(message, origin) {{ postedStates.push({{sess:"beta", message, origin}}); }}}}}},
+  "compat": {{dataset: {{compat:"1"}}, contentWindow: {{postMessage(message, origin) {{ postedStates.push({{sess:"compat", message, origin}}); }}}}}},
 }};
 const openTerms = new Map(Object.entries(frames).map(([sess, frame]) => [sess, {{frame}}]));
 const location = {{origin:"https://dash.test"}};
@@ -377,6 +498,202 @@ function touchList(...touches) {{
 {simulation}
 """
     return run_node_json(script)
+
+
+def run_chrome_toolbar_touch_drag():
+    chrome = shutil.which("google-chrome") or shutil.which("chromium")
+    if not chrome:
+        pytest.skip("Chrome/Chromium is not installed")
+    term_url = (Path.cwd() / "dash" / "term.html").resolve().as_uri()
+    script = f"""
+const {{spawn}} = require("child_process");
+const fs = require("fs");
+const os = require("os");
+const path = require("path");
+const chrome = {json.dumps(chrome)};
+const termUrl = {json.dumps(term_url)};
+const port = 9300 + Math.floor(Math.random() * 500);
+const profile = fs.mkdtempSync(path.join(os.tmpdir(), "comandos-toolbar-"));
+const browser = spawn(chrome, [
+  "--headless=new", "--no-sandbox", "--disable-gpu", "--disable-dev-shm-usage",
+  "--no-first-run", "--no-default-browser-check", "--allow-file-access-from-files",
+  `--remote-debugging-port=${{port}}`, `--user-data-dir=${{profile}}`, "about:blank",
+], {{stdio:"ignore"}});
+const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
+
+async function jsonAt(route) {{
+  const response = await fetch(`http://127.0.0.1:${{port}}${{route}}`);
+  if (!response.ok) throw new Error(`CDP HTTP ${{response.status}}`);
+  return response.json();
+}}
+
+async function connect() {{
+  let pages;
+  for (let attempt = 0; attempt < 100; attempt++) {{
+    try {{ pages = await jsonAt("/json/list"); if (pages.length) break; }} catch (_) {{}}
+    await delay(50);
+  }}
+  if (!pages?.length) throw new Error("Chrome CDP did not start");
+  const page = pages.find(target => target.type === "page" && target.url === "about:blank") ||
+    pages.find(target => target.type === "page");
+  if (!page) throw new Error("Chrome page target was not found");
+  const ws = new WebSocket(page.webSocketDebuggerUrl);
+  await new Promise((resolve, reject) => {{
+    ws.addEventListener("open", resolve, {{once:true}});
+    ws.addEventListener("error", reject, {{once:true}});
+  }});
+  let nextId = 1;
+  const pending = new Map();
+  ws.addEventListener("message", event => {{
+    const message = JSON.parse(event.data);
+    if (!message.id) return;
+    const request = pending.get(message.id);
+    if (!request) return;
+    pending.delete(message.id);
+    if (message.error) request.reject(new Error(message.error.message));
+    else request.resolve(message.result || {{}});
+  }});
+  const send = (method, params = {{}}) => new Promise((resolve, reject) => {{
+    const id = nextId++;
+    pending.set(id, {{resolve, reject}});
+    ws.send(JSON.stringify({{id, method, params}}));
+  }});
+  return {{ws, send}};
+}}
+
+(async () => {{
+  let connection;
+  try {{
+    connection = await connect();
+    const {{send}} = connection;
+    await send("Page.enable");
+    await send("Runtime.enable");
+    await send("Emulation.setDeviceMetricsOverride", {{
+      width:360, height:640, deviceScaleFactor:1, mobile:true,
+    }});
+    await send("Emulation.setTouchEmulationEnabled", {{enabled:true, maxTouchPoints:1}});
+    await send("Page.navigate", {{url:termUrl}});
+    let geometry;
+    let lastProbe;
+    for (let attempt = 0; attempt < 100; attempt++) {{
+      try {{
+        const evaluated = await send("Runtime.evaluate", {{
+          expression:`(() => {{
+            const toolbar = document.getElementById("term-toolbar");
+            if (toolbar) {{
+              toolbar.style.position = "fixed";
+              toolbar.style.left = "0";
+              toolbar.style.right = "0";
+              toolbar.style.bottom = "0";
+              toolbar.style.width = "auto";
+              toolbar.style.zIndex = "100";
+              toolbar.style.pointerEvents = "auto";
+            }}
+            const probe = {{url:location.href, ready:document.readyState,
+                           exists:!!toolbar, hidden:toolbar?.hidden,
+                           clientWidth:toolbar?.clientWidth || 0,
+                           scrollWidth:toolbar?.scrollWidth || 0,
+                           innerWidth:window.innerWidth}};
+            if (!toolbar || toolbar.hidden || toolbar.scrollWidth <= toolbar.clientWidth)
+              return {{probe}};
+            toolbar.scrollLeft = 0;
+            window.__toolbarTouchMoves = [];
+            window.__toolbarPreventCalls = [];
+            const nativePreventDefault = Event.prototype.preventDefault;
+            Event.prototype.preventDefault = function() {{
+              window.__toolbarPreventCalls.push({{
+                type:this.type, target:this.target?.id || this.target?.tagName || "",
+                pointerType:this.pointerType || "", stack:new Error().stack,
+              }});
+              return nativePreventDefault.call(this);
+            }};
+            document.addEventListener("touchmove", event => {{
+              window.__toolbarTouchMoves.push(event.defaultPrevented);
+            }}, {{passive:true}});
+            const rect = toolbar.getBoundingClientRect();
+            const keyRect = toolbar.querySelector('[data-key="escape"]').getBoundingClientRect();
+            return {{geometry:{{left:rect.left, right:rect.right, top:rect.top, height:rect.height,
+                     clientWidth:toolbar.clientWidth, scrollWidth:toolbar.scrollWidth,
+                     tapX:keyRect.left + keyRect.width / 2,
+                     tapY:keyRect.top + keyRect.height / 2}}, probe}};
+          }})()`, returnByValue:true,
+        }});
+        lastProbe = evaluated.result?.value?.probe;
+        geometry = evaluated.result?.value?.geometry;
+        if (geometry) break;
+      }} catch (_) {{}}
+      await delay(50);
+    }}
+    if (!geometry) throw new Error(`touch toolbar did not become scrollable: ${{JSON.stringify(lastProbe)}}`);
+    await send("Input.dispatchTouchEvent", {{
+      type:"touchStart", touchPoints:[{{x:geometry.tapX,y:geometry.tapY,id:2}}],
+    }});
+    await send("Input.dispatchTouchEvent", {{type:"touchEnd", touchPoints:[]}});
+    await delay(100);
+    const y = geometry.top + geometry.height / 2;
+    const startX = geometry.right - 12;
+    const endX = geometry.left + 20;
+    await send("Input.dispatchTouchEvent", {{type:"touchStart", touchPoints:[{{x:startX,y,id:1}}]}});
+    for (let step = 1; step <= 8; step++) {{
+      const x = startX + (endX - startX) * step / 8;
+      await send("Input.dispatchTouchEvent", {{type:"touchMove", touchPoints:[{{x,y,id:1}}]}});
+      await delay(20);
+    }}
+    await send("Input.dispatchTouchEvent", {{type:"touchEnd", touchPoints:[]}});
+    await delay(150);
+    const evaluated = await send("Runtime.evaluate", {{
+      expression:`(() => {{
+        const toolbar = document.getElementById("term-toolbar");
+        return {{scrollLeft:toolbar.scrollLeft,
+                 prevented:window.__toolbarTouchMoves,
+                 preventCalls:window.__toolbarPreventCalls,
+                 activeTag:document.activeElement?.tagName || ""}};
+      }})()`, returnByValue:true,
+    }});
+    const dragResult = evaluated.result.value;
+    await send("Runtime.evaluate", {{expression:`(() => {{
+      const dialog = document.getElementById("paste-dialog");
+      dialog.showModal();
+      document.getElementById("paste-text").value = "browser manual";
+      dialog.querySelector("form").requestSubmit(document.getElementById("paste-submit"));
+    }})()`}});
+    await delay(100);
+    const manual = (await send("Runtime.evaluate", {{
+      expression:`({{activeTag:document.activeElement?.tagName || "",
+                    open:document.getElementById("paste-dialog").open}})`, returnByValue:true,
+    }})).result.value;
+    await send("Runtime.evaluate", {{expression:`(() => {{
+      const dialog = document.getElementById("paste-dialog");
+      dialog.showModal();
+      dialog.querySelector('button[value="cancel"]').click();
+    }})()`}});
+    await delay(100);
+    const cancel = (await send("Runtime.evaluate", {{
+      expression:`({{activeTag:document.activeElement?.tagName || "",
+                    open:document.getElementById("paste-dialog").open}})`, returnByValue:true,
+    }})).result.value;
+    await send("Runtime.evaluate", {{expression:`document.getElementById("paste-dialog").showModal()`}});
+    await send("Input.dispatchKeyEvent", {{type:"keyDown", key:"Escape", code:"Escape",
+      windowsVirtualKeyCode:27, nativeVirtualKeyCode:27}});
+    await send("Input.dispatchKeyEvent", {{type:"keyUp", key:"Escape", code:"Escape",
+      windowsVirtualKeyCode:27, nativeVirtualKeyCode:27}});
+    await delay(100);
+    const escape = (await send("Runtime.evaluate", {{
+      expression:`({{activeTag:document.activeElement?.tagName || "",
+                    open:document.getElementById("paste-dialog").open}})`, returnByValue:true,
+    }})).result.value;
+    console.log(JSON.stringify({{...geometry, ...dragResult,
+      dialogFocus:{{manual, cancel, escape}}}}));
+  }} finally {{
+    try {{ connection?.ws.close(); }} catch (_) {{}}
+    browser.kill("SIGTERM");
+    await delay(100);
+    fs.rmSync(profile, {{recursive:true, force:true}});
+  }}
+}})().catch(error => {{ console.error(error); process.exit(1); }});
+"""
+    output = subprocess.check_output(["node", "-e", script], text=True, timeout=30)
+    return json.loads(output)
 
 
 def valid_vertical_cells(viewport_y=0, col=40, row=10):
@@ -1391,6 +1708,74 @@ console.log(JSON.stringify({{
     assert result["finalCount"] <= 4
 
 
+def test_terminal_touch_controller_ignores_toolbar_and_dialog_boundaries():
+    result = run_touch_controller(
+        r"""
+function uiTarget(id) {
+  return {
+    id,
+    matches(selector) { return selector.includes(`#${id}`); },
+    closest(selector) { return this.matches(selector) ? this : null; },
+  };
+}
+const results = {};
+for (const id of ["term-toolbar", "paste-dialog"]) {
+  const target = uiTarget(id);
+  const start = point(40, 10);
+  const startEvent = event([start]);
+  startEvent.target = target;
+  startEvent.composedPath = () => [target, document.body];
+  listeners.touchstart(startEvent);
+  const move = point(20, 10);
+  const moveEvent = event([move]);
+  moveEvent.target = target;
+  moveEvent.composedPath = () => [target, document.body];
+  listeners.touchmove(moveEvent);
+  results[id] = {
+    phase: gesture.phase,
+    prevented: startEvent.prevented || moveEvent.prevented,
+    stopped: startEvent.stopped || moveEvent.stopped,
+    timers: timers.size,
+    frames: frames.size,
+    sent: [...sent],
+    wheels: [...wheels],
+  };
+  listeners.touchend(event([], [move]));
+}
+const mouseTarget = uiTarget("term-toolbar");
+const down = event([]); down.button = 0; down.clientX = 400; down.clientY = 200;
+down.target = mouseTarget; down.composedPath = () => [mouseTarget, document.body];
+listeners.mousedown(down);
+console.log(JSON.stringify({results, paneMouseDrag, mousePrevented:down.prevented}));
+""",
+        cells=valid_vertical_cells(),
+    )
+
+    for boundary in ("term-toolbar", "paste-dialog"):
+        assert result["results"][boundary] == {
+            "phase": "idle", "prevented": False, "stopped": False,
+            "timers": 0, "frames": 0, "sent": [], "wheels": [],
+        }
+    assert result["paneMouseDrag"] is None
+    assert result["mousePrevented"] is False
+
+
+def test_chrome_touch_drag_scrolls_toolbar_without_terminal_prevent_default():
+    result = run_chrome_toolbar_touch_drag()
+
+    assert result["scrollWidth"] > result["clientWidth"]
+    assert result["scrollLeft"] > 100, json.dumps(result, sort_keys=True)
+    assert result["prevented"]
+    assert not any(result["prevented"])
+    assert result["preventCalls"] == []
+    assert result["activeTag"] == "TEXTAREA"
+    assert result["dialogFocus"] == {
+        "manual": {"activeTag": "TEXTAREA", "open": False},
+        "cancel": {"activeTag": "TEXTAREA", "open": False},
+        "escape": {"activeTag": "TEXTAREA", "open": False},
+    }
+
+
 def test_touch_move_scrolls_when_long_press_does_not_engage():
     def scroll_after(run_timer_first, *, mouse_on=True):
         simulation = f"""
@@ -1916,9 +2301,28 @@ const pending = postedStates.at(-1).message;
 finishRequest();
 await Promise.resolve();
 await Promise.resolve();
+const sshAfterOwnRequest = {...termInteraction.get("ssh-prod")};
+const devState = termInteractionState("dev");
+devState.mouse = true;
+const compatState = termInteractionState("compat");
+compatState.mouse = true;
+api = async function(_path, body) { calls.push(body || null); return {mouse:"off"}; };
+const devRequested = handleTermFrameMessage({
+  origin:location.origin, source:frames.dev.contentWindow,
+  data:{source:"comandos-term", type:"interaction-request", selecting:true},
+});
+await Promise.resolve();
+await Promise.resolve();
+const compatRejected = handleTermFrameMessage({
+  origin:location.origin, source:frames.compat.contentWindow,
+  data:{source:"comandos-term", type:"interaction-request", selecting:true},
+});
 console.log(JSON.stringify({
   rejectedOrigin, rejectedSource, ready, requested, calls, pending,
   confirmed: postedStates.at(-1).message,
+  devRequested, compatRejected, sshAfterOwnRequest,
+  devAfterRequest:{...termInteraction.get("dev")},
+  compatAfterRequest:{...termInteraction.get("compat")},
 }));
 """)
 
@@ -1926,7 +2330,10 @@ console.log(JSON.stringify({
     assert result["rejectedSource"] is False
     assert result["ready"] is True
     assert result["requested"] is True
-    assert result["calls"] == [{"session": "ssh-prod", "enabled": False}]
+    assert result["calls"] == [
+        {"session": "ssh-prod", "enabled": False},
+        {"session": "dev", "enabled": False},
+    ]
     assert result["pending"] == {
         "source": "comandos", "type": "interaction-state",
         "known": True, "busy": True, "selecting": False,
@@ -1935,6 +2342,11 @@ console.log(JSON.stringify({
         "source": "comandos", "type": "interaction-state",
         "known": True, "busy": False, "selecting": True,
     }
+    assert result["devRequested"] is True
+    assert result["compatRejected"] is False
+    assert result["sshAfterOwnRequest"]["mouse"] is False
+    assert result["devAfterRequest"]["mouse"] is False
+    assert result["compatAfterRequest"]["mouse"] is True
 
 
 def test_remote_terminal_selection_ignores_stale_get_and_keepalive_is_temporary_only():
