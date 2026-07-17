@@ -281,9 +281,16 @@ class TmuxController {
     if (!this.creationAttempted || !this.exists(this.targets.session)) {
       return {owned: false, exists: false};
     }
-    const sessionId = this.run([
-      "display-message", "-p", "-t", this.targets.session, "#{session_id}",
-    ], {allowFailure: true}).stdout.trim();
+    const sessions = this.run([
+      "list-sessions", "-F", "#{session_name}|#{session_id}",
+    ], {allowFailure: true});
+    const namedSessionIds = sessions.status === 0
+      ? sessions.stdout.split("\n")
+        .map(line => line.split("|"))
+        .filter(([name, id]) => name === this.session && /^\$\d+$/.test(id || ""))
+        .map(([, id]) => id)
+      : [];
+    const sessionId = namedSessionIds.length === 1 ? namedSessionIds[0] : "";
     const environment = this.run([
       "show-environment", "-t", this.targets.session, "COMANDOS_E2E_OWNER_NONCE",
     ], {allowFailure: true});
@@ -295,6 +302,7 @@ class TmuxController {
       owned: environment.status === 0 && nonce === this.nonce && exactSession,
       exists: true,
       sessionId,
+      namedSessionIds,
       nonceMatches: nonce === this.nonce,
       exactSession,
     };

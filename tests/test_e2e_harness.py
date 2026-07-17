@@ -159,7 +159,11 @@ def test_uncertain_tmux_creation_kills_only_nonce_owned_session():
           controller.run = args => {
             if (args[0] === "new-session") throw new HarnessError("simulated timeout");
             if (args[0] === "has-session") return {status: live ? 0 : 1, stdout: "", stderr: ""};
-            if (args[0] === "display-message") return {status: 0, stdout: "$77\n", stderr: ""};
+            if (args[0] === "list-sessions") return {
+              status: 0,
+              stdout: "user-session|$4\ncomandos-e2e-999999|$77\n",
+              stderr: "",
+            };
             if (args[0] === "show-environment") return matchingNonce
               ? {status: 0, stdout: `COMANDOS_E2E_OWNER_NONCE=${nonce}\n`, stderr: ""}
               : {status: 1, stdout: "", stderr: ""};
