@@ -1,8 +1,10 @@
 #!/usr/bin/env python3
 import importlib.machinery
 import importlib.util
+import json
 import sys
 from pathlib import Path
+from types import SimpleNamespace
 
 
 SRC = Path("bin/cc-dash").read_text()
@@ -150,11 +152,69 @@ def test_new_sessions_load_provider_keys_env():
     assert 'data.get("agent")' in SRC
 
 
-def test_tab_close_endpoint_syncs_mirror_and_history():
+def test_tab_close_endpoint_delegates_with_explicit_ephemeral_flag():
     assert '"/tab-close"' in SRC
     assert "app-tab-close.json" in SRC
     body = SRC.split('"/tab-close"', 1)[1].split('self.path ==', 1)[0]
-    assert "remember_tab" in body and "TABS_FILE" in body
+    assert 'data.get("ephemeral") is True' in body
+    assert "close_app_tab(sess, ephemeral=ephemeral)" in body
+
+
+def test_ephemeral_tab_close_skips_history_and_rejects_non_e2e_names(tmp_path, monkeypatch):
+    dash = load_dash_module()
+    tabs_file = tmp_path / "app-tabs.json"
+    history_file = tmp_path / "app-tabs-history.json"
+    tabs_file.write_text(json.dumps({
+        "comandos-e2e-4242": "e2e",
+        "term-user": "user",
+    }))
+    history_file.write_text(json.dumps([{"session": "existing", "ts": 1}]))
+    monkeypatch.setattr(dash, "HOOKS", str(tmp_path))
+    monkeypatch.setattr(dash, "TABS_FILE", str(tabs_file))
+    monkeypatch.setattr(dash, "TAB_HISTORY_FILE", str(history_file))
+    monkeypatch.setattr(dash, "tmux", lambda *_args, **_kwargs: (_ for _ in ()).throw(
+        AssertionError("ephemeral close must not inspect tmux")
+    ))
+
+    assert dash.close_app_tab("comandos-e2e-4242", ephemeral=True) is None
+    assert json.loads(tabs_file.read_text()) == {"term-user": "user"}
+    assert json.loads(history_file.read_text()) == [{"session": "existing", "ts": 1}]
+    assert json.loads((tmp_path / "app-tab-close.json").read_text())["session"] == "comandos-e2e-4242"
+
+    before_tabs = tabs_file.read_text()
+    before_history = history_file.read_text()
+    assert dash.close_app_tab("term-user", ephemeral=True) == "ephemeral requiere comandos-e2e-"
+    assert tabs_file.read_text() == before_tabs
+    assert history_file.read_text() == before_history
+
+
+def test_normal_tab_close_still_records_recents(tmp_path, monkeypatch):
+    dash = load_dash_module()
+    tabs_file = tmp_path / "app-tabs.json"
+    history_file = tmp_path / "app-tabs-history.json"
+    tabs_file.write_text(json.dumps({"term-user": "User tab"}))
+    history_file.write_text("[]")
+    monkeypatch.setattr(dash, "HOOKS", str(tmp_path))
+    monkeypatch.setattr(dash, "TABS_FILE", str(tabs_file))
+    monkeypatch.setattr(dash, "TAB_HISTORY_FILE", str(history_file))
+    monkeypatch.setattr(dash, "session_labels", lambda: {"term-user": "User tab"})
+    monkeypatch.setattr(dash, "state_agent", lambda _session: "codex")
+    monkeypatch.setattr(dash, "tmux", lambda *_args, **_kwargs: SimpleNamespace(
+        returncode=0, stdout="/tmp/project\n", stderr=""
+    ))
+
+    assert dash.close_app_tab("term-user", ephemeral=False) is None
+    history = json.loads(history_file.read_text())
+    assert isinstance(history[0]["ts"], int)
+    assert history[0] == {
+        "session": "term-user",
+        "label": "User tab",
+        "cwd": "/tmp/project",
+        "agent": "codex",
+        "reason": "closed",
+        "ts": history[0]["ts"],
+    }
+    assert json.loads(tabs_file.read_text()) == {}
 
 
 def test_usage_state_is_cached_and_refresh_is_backgrounded():
@@ -189,7 +249,7 @@ def test_agent_pane_maps_keeps_one_agent_per_tmux_pane():
 if __name__ == "__main__":
     test_pane_border_uses_tmux_option_not_per_pane_subprocess()
     test_usage_state_is_cached_and_refresh_is_backgrounded()
-    test_tab_close_endpoint_syncs_mirror_and_history()
+    test_tab_close_endpoint_delegates_with_explicit_ephemeral_flag()
     test_alert_rules_endpoint_and_evaluation()
     test_codex_dropdown_drives_numbered_picker()
     test_limit_alerts_notify_by_desktop_and_telegram()

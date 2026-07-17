@@ -10,6 +10,9 @@ const CHROME = "/usr/bin/google-chrome";
 const OUTPUT_DIR = "/tmp/comandos-v160-e2e";
 const POLL_TIMEOUT_MS = 10_000;
 const API_TIMEOUT_MS = 7_000;
+const ZERO_READER_WINDOW_MS = 3_000;
+const ZERO_READER_MIN_TAIL_MS = 500;
+const INITIAL_MARKER = "COMANDOS-E2E-READY";
 const HEIGHT_TEXT = "abcdefghijklmno";
 const HEIGHT_MARKER = `mobile-input-${HEIGHT_TEXT}`;
 const MATRIX = Object.freeze([
@@ -24,6 +27,7 @@ class HarnessError extends Error {
     const suffix = details === undefined ? "" : `: ${diagnostic(details)}`;
     super(`${label}${suffix}`);
     this.name = "HarnessError";
+    this.details = details;
   }
 }
 
@@ -56,6 +60,97 @@ function tmuxTargetsFor(session) {
 
 function ownershipNonce() {
   return crypto.randomBytes(32).toString("hex");
+}
+
+function normalizeXtermPaste(text) {
+  return String(text).replace(/\r?\n/g, "\r");
+}
+
+function locateVisibleMarker(lines, marker, viewportY, rows, cols) {
+  if (!Array.isArray(lines) || typeof marker !== "string" || marker.length === 0 ||
+      !Number.isInteger(viewportY) || !Number.isInteger(rows) || !Number.isInteger(cols) ||
+      viewportY < 0 || rows <= 0 || cols <= 0) return null;
+  const first = Math.min(viewportY, lines.length);
+  const last = Math.min(lines.length, viewportY + rows);
+  for (let bufferRow = last - 1; bufferRow >= first; bufferRow -= 1) {
+    const line = typeof lines[bufferRow] === "string" ? lines[bufferRow] : "";
+    const column = line.indexOf(marker);
+    if (column >= 0 && column + marker.length <= cols) {
+      return {
+        bufferRow,
+        visibleRow: bufferRow - viewportY,
+        column,
+        length: marker.length,
+      };
+    }
+  }
+  return null;
+}
+
+function markerCanvasRegion(location, cols, rows, width, height) {
+  if (!location || !Number.isInteger(cols) || !Number.isInteger(rows) ||
+      !Number.isFinite(width) || !Number.isFinite(height) || cols <= 0 || rows <= 0 ||
+      width <= 0 || height <= 0) return null;
+  const left = Math.floor(location.column * width / cols);
+  const top = Math.floor(location.visibleRow * height / rows);
+  const right = Math.ceil((location.column + location.length) * width / cols);
+  const bottom = Math.ceil((location.visibleRow + 1) * height / rows);
+  if (left < 0 || top < 0 || right > width || bottom > height || right <= left || bottom <= top) {
+    return null;
+  }
+  return {left, top, right, bottom, width: right - left, height: bottom - top};
+}
+
+function registrationStateAfterError(error) {
+  const status = error?.details?.status;
+  return Number.isInteger(status) && status >= 400 && status < 500 ? "rejected" : "uncertain";
+}
+
+function registrationCleanupDecision(state, ownership) {
+  assertThat(["not-attempted", "uncertain", "confirmed", "rejected"].includes(state),
+    "invalid registration state", {state});
+  if (state === "confirmed") return "close";
+  if (state === "uncertain") return ownership?.owned ? "close" : "blocked";
+  return "skip";
+}
+
+function loadPlaywright(options = {}) {
+  const requireFn = options.requireFn || require;
+  const spawnFn = options.spawnFn || spawnSync;
+  let localError;
+  try {
+    return requireFn("playwright");
+  } catch (error) {
+    localError = error;
+  }
+  const npmCommand = options.npmCommand || (process.platform === "win32" ? "npm.cmd" : "npm");
+  const npmRoot = spawnFn(npmCommand, ["root", "-g"], {
+    encoding: "utf8",
+    timeout: 5_000,
+    maxBuffer: 1024 * 1024,
+  });
+  if (npmRoot.error || npmRoot.status !== 0) {
+    throw new HarnessError("Playwright resolution failed", {
+      local: localError?.message || String(localError),
+      npmCommand,
+      npmRootStatus: npmRoot.status,
+      npmRootError: npmRoot.error?.message || "",
+      npmRootStderr: (npmRoot.stderr || "").trim(),
+    });
+  }
+  const root = (npmRoot.stdout || "").trim();
+  assertThat(path.isAbsolute(root), "global npm root is not an absolute path", {npmCommand, root});
+  const globalPlaywright = path.join(root, "playwright");
+  try {
+    return requireFn(globalPlaywright);
+  } catch (error) {
+    throw new HarnessError("Playwright is unavailable from local and global npm resolution", {
+      local: localError?.message || String(localError),
+      npmCommand,
+      globalPlaywright,
+      global: error?.message || String(error),
+    });
+  }
 }
 
 function normalizeBase(raw) {
@@ -163,22 +258,29 @@ class TmuxController {
     this.assertOwnedSession();
     this.assertOwnedPrimaryPane();
     this.created = true;
+    const sessionTarget = this.sessionTarget();
     const effective = this.run([
-      "show-options", "-A", "-v", "-t", this.targets.session, "mouse",
+      "show-options", "-A", "-v", "-t", sessionTarget, "mouse",
     ]).stdout.trim();
     const local = this.run([
-      "show-options", "-q", "-v", "-t", this.targets.session, "mouse",
+      "show-options", "-q", "-v", "-t", sessionTarget, "mouse",
     ], {allowFailure: true}).stdout.trim();
     assertThat(["on", "off"].includes(effective), "unexpected tmux mouse value", {effective});
     this.mouseSnapshot = {effective, hadLocal: local === "on" || local === "off", local};
   }
 
-  exists() {
-    return this.run(["has-session", "-t", this.targets.session], {allowFailure: true}).status === 0;
+  sessionTarget() {
+    return this.targets.sessionId || this.targets.session;
+  }
+
+  exists(target = this.sessionTarget()) {
+    return this.run(["has-session", "-t", target], {allowFailure: true}).status === 0;
   }
 
   ownershipProbe() {
-    if (!this.creationAttempted || !this.exists()) return {owned: false, exists: false};
+    if (!this.creationAttempted || !this.exists(this.targets.session)) {
+      return {owned: false, exists: false};
+    }
     const sessionId = this.run([
       "display-message", "-p", "-t", this.targets.session, "#{session_id}",
     ], {allowFailure: true}).stdout.trim();
@@ -225,7 +327,7 @@ class TmuxController {
   capture(lines = 240) {
     this.assertOwnedPrimaryPane();
     return this.run([
-      "capture-pane", "-p", "-t", this.targets.primaryPane, "-S", `-${lines}`,
+      "capture-pane", "-p", "-J", "-t", this.targets.primaryPane, "-S", `-${lines}`,
     ]).stdout;
   }
 
@@ -319,10 +421,11 @@ class TmuxController {
   restoreMouseLocal() {
     if (!this.created || !this.mouseSnapshot) return;
     this.assertOwnedSession();
+    const sessionTarget = this.sessionTarget();
     if (this.mouseSnapshot.hadLocal) {
-      this.run(["set-option", "-t", this.targets.session, "mouse", this.mouseSnapshot.local]);
+      this.run(["set-option", "-t", sessionTarget, "mouse", this.mouseSnapshot.local]);
     } else {
-      this.run(["set-option", "-q", "-u", "-t", this.targets.session, "mouse"]);
+      this.run(["set-option", "-q", "-u", "-t", sessionTarget, "mouse"]);
     }
   }
 
@@ -334,9 +437,10 @@ class TmuxController {
       target: this.targets.session,
       probe,
     });
-    this.run(["kill-session", "-t", this.targets.session]);
-    assertThat(!this.exists(), "exact disposable tmux session still exists after cleanup", {
-      target: this.targets.session,
+    const sessionTarget = this.sessionTarget();
+    this.run(["kill-session", "-t", sessionTarget]);
+    assertThat(!this.exists(sessionTarget), "exact disposable tmux session still exists after cleanup", {
+      target: sessionTarget,
       probe,
     });
     return {killed: true, probe};
@@ -390,6 +494,25 @@ function instrumentationScript() {
     const state = window.__comandosE2EInstrumentation = {
       webSockets: 0, socketMessages: 0, frameLoads: 0,
     };
+    let terminalConstructor;
+    Object.defineProperty(window, "Terminal", {
+      configurable: true,
+      get() { return terminalConstructor; },
+      set(NativeTerminal) {
+        if (typeof NativeTerminal !== "function") {
+          terminalConstructor = NativeTerminal;
+          return;
+        }
+        function InstrumentedTerminal(...args) {
+          const instance = Reflect.construct(NativeTerminal, args, NativeTerminal);
+          window.__comandosE2ETerminal = instance;
+          return instance;
+        }
+        Object.setPrototypeOf(InstrumentedTerminal, NativeTerminal);
+        InstrumentedTerminal.prototype = NativeTerminal.prototype;
+        terminalConstructor = InstrumentedTerminal;
+      },
+    });
     if (window.top === window) {
       window.addEventListener("load", event => {
         if (event.target instanceof HTMLIFrameElement) state.frameLoads += 1;
@@ -444,7 +567,9 @@ async function openTerminal(context, base, token, session) {
   await poll("custom terminal readiness", async () => frame.evaluate(() => {
     const error = document.getElementById("err");
     const screen = document.querySelector(".xterm-screen");
-    return !!screen && (!error || getComputedStyle(error).display === "none");
+    const term = window.__comandosE2ETerminal;
+    return !!screen && !!term?.buffer?.active && typeof term.buffer.active.getLine === "function" &&
+      (!error || getComputedStyle(error).display === "none");
   }));
 
   const compatibility = await iframeLocator.getAttribute("data-compat");
@@ -541,41 +666,111 @@ function assertStableConnection(before, after, label) {
     `${label}: page WebSocket creation count changed`, stableConnectionDiagnostics(before, after));
 }
 
-async function inspectGeometry(opened, view) {
-  let pixelEvidence = [];
-  await poll(`${view.name} foreground terminal glyph pixels`, async () => {
-    pixelEvidence = await opened.frame.evaluate(() => [...document.querySelectorAll(".xterm-screen canvas")]
-      .map(canvas => {
-        const evidence = {
-          width: canvas.width, height: canvas.height, sampled: 0, distinct: 0,
-          foregroundPixels: 0, dominant: "", error: "",
+async function markerRenderEvidence(frame, marker) {
+  return frame.evaluate(expected => {
+    const term = window.__comandosE2ETerminal;
+    if (!term?.buffer?.active || typeof term.buffer.active.getLine !== "function") {
+      return {rendered: false, marker: expected, error: "real xterm public buffer is unavailable", canvases: []};
+    }
+    const buffer = term.buffer.active;
+    const viewportY = buffer.viewportY;
+    let location = null;
+    for (let bufferRow = Math.min(buffer.length, viewportY + term.rows) - 1;
+      bufferRow >= viewportY; bufferRow -= 1) {
+      const line = buffer.getLine(bufferRow)?.translateToString(false) || "";
+      const column = line.indexOf(expected);
+      if (column >= 0 && column + expected.length <= term.cols) {
+        location = {
+          bufferRow,
+          visibleRow: bufferRow - viewportY,
+          column,
+          length: expected.length,
         };
-        try {
-          const ctx = canvas.getContext("2d", {willReadFrequently: true});
-          if (!ctx) throw new Error("2d canvas context is unavailable");
-          if (!canvas.width || !canvas.height) throw new Error("canvas has zero dimensions");
-          const data = ctx.getImageData(0, 0, canvas.width, canvas.height).data;
-          const counts = new Map();
-          const stride = Math.max(4, Math.floor(data.length / 20_000 / 4) * 4);
-          for (let index = 0; index < data.length; index += stride) {
-            const color = `${data[index]},${data[index + 1]},${data[index + 2]},${data[index + 3]}`;
-            counts.set(color, (counts.get(color) || 0) + 1);
-            evidence.sampled += 1;
+        break;
+      }
+    }
+    if (!location) {
+      return {
+        rendered: false,
+        marker: expected,
+        error: "marker is not visible in the real xterm buffer",
+        buffer: {length: buffer.length, viewportY, rows: term.rows, cols: term.cols},
+        canvases: [],
+      };
+    }
+    const rawBackground = String(term.options?.theme?.background ||
+      getComputedStyle(document.documentElement).getPropertyValue("--term-bg") || "").trim();
+    const hex = rawBackground.match(/^#([0-9a-f]{6})$/i);
+    const background = hex ? [
+      Number.parseInt(hex[1].slice(0, 2), 16),
+      Number.parseInt(hex[1].slice(2, 4), 16),
+      Number.parseInt(hex[1].slice(4, 6), 16),
+    ] : null;
+    const canvases = [...document.querySelectorAll(".xterm-screen canvas")].map(canvas => {
+      const evidence = {
+        width: canvas.width,
+        height: canvas.height,
+        region: null,
+        sampled: 0,
+        foregroundPixels: 0,
+        distinctForeground: 0,
+        error: "",
+      };
+      try {
+        if (!background) throw new Error(`unsupported terminal background: ${rawBackground}`);
+        const context = canvas.getContext("2d", {willReadFrequently: true});
+        if (!context) throw new Error("2d canvas context is unavailable");
+        if (!canvas.width || !canvas.height) throw new Error("canvas has zero dimensions");
+        const left = Math.floor(location.column * canvas.width / term.cols);
+        const top = Math.floor(location.visibleRow * canvas.height / term.rows);
+        const right = Math.ceil((location.column + location.length) * canvas.width / term.cols);
+        const bottom = Math.ceil((location.visibleRow + 1) * canvas.height / term.rows);
+        if (left < 0 || top < 0 || right > canvas.width || bottom > canvas.height ||
+            right <= left || bottom <= top) throw new Error("marker canvas region is invalid");
+        evidence.region = {left, top, right, bottom, width: right - left, height: bottom - top};
+        const pixels = context.getImageData(left, top, right - left, bottom - top).data;
+        const colors = new Set();
+        for (let index = 0; index < pixels.length; index += 4) {
+          evidence.sampled += 1;
+          const alpha = pixels[index + 3];
+          const isBackground = pixels[index] === background[0] &&
+            pixels[index + 1] === background[1] && pixels[index + 2] === background[2];
+          if (alpha > 0 && !isBackground) {
+            evidence.foregroundPixels += 1;
+            colors.add(`${pixels[index]},${pixels[index + 1]},${pixels[index + 2]},${alpha}`);
           }
-          evidence.distinct = counts.size;
-          const dominant = [...counts.entries()].sort((a, b) => b[1] - a[1])[0];
-          evidence.dominant = dominant?.[0] || "";
-          evidence.foregroundPixels = [...counts.entries()]
-            .filter(([color]) => color !== evidence.dominant)
-            .reduce((total, [, count]) => total + count, 0);
-        } catch (error) {
-          evidence.error = error?.message || String(error);
         }
-        return evidence;
-      }));
-    return pixelEvidence.some(canvas => canvas.error === "" && canvas.distinct >= 2 &&
-      canvas.foregroundPixels >= 12);
+        evidence.distinctForeground = colors.size;
+      } catch (error) {
+        evidence.error = error?.message || String(error);
+      }
+      return evidence;
+    });
+    const rendered = canvases.some(canvas => canvas.error === "" &&
+      canvas.foregroundPixels >= Math.max(12, expected.length) && canvas.distinctForeground > 0);
+    return {
+      rendered,
+      marker: expected,
+      location,
+      buffer: {length: buffer.length, viewportY, rows: term.rows, cols: term.cols},
+      background: rawBackground,
+      canvases,
+      error: rendered ? "" : "marker region has no foreground glyph pixels",
+    };
+  }, marker);
+}
+
+async function waitForMarkerRender(frame, marker, label) {
+  return poll(label, async () => {
+    const evidence = await markerRenderEvidence(frame, marker);
+    if (!evidence.rendered) throw new HarnessError(`${label}: marker render evidence unavailable`, evidence);
+    return evidence;
   });
+}
+
+async function inspectGeometry(opened, view) {
+  const markerEvidence = await waitForMarkerRender(opened.frame, INITIAL_MARKER,
+    `${view.name} ${INITIAL_MARKER} canvas glyph region`);
   const parent = await opened.page.evaluate(() => {
     const rect = element => {
       const value = element.getBoundingClientRect();
@@ -599,7 +794,7 @@ async function inspectGeometry(opened, view) {
     };
   });
 
-  const terminal = await opened.frame.evaluate(() => {
+  const terminal = await opened.frame.evaluate(evidence => {
     const rect = element => {
       const value = element.getBoundingClientRect();
       return {left: value.left, top: value.top, right: value.right, bottom: value.bottom,
@@ -624,10 +819,10 @@ async function inspectGeometry(opened, view) {
         key: button.dataset.key || button.dataset.action,
         ...rect(button),
       })),
-      canvasEvidence: pixelEvidence,
+      markerEvidence: evidence,
       errorVisible: getComputedStyle(document.getElementById("err")).display !== "none",
     };
-  });
+  }, markerEvidence);
 
   const result = {name: view.name, expected: view, parent, terminal};
   assertThat(parent.viewport.width === view.width && parent.viewport.height === view.height,
@@ -654,9 +849,10 @@ async function inspectGeometry(opened, view) {
     terminal.buttons.every(button => button.top >= terminal.toolbar.top - 1 &&
       button.bottom <= terminal.toolbar.bottom + 1),
   `${view.name}: toolbar row is clipped or overlaps terminal rows`, result);
-  assertThat(terminal.canvasEvidence.some(canvas => canvas.width > 0 && canvas.height > 0 &&
-    canvas.error === "" && canvas.distinct >= 2 && canvas.foregroundPixels >= 12),
-  `${view.name}: terminal canvas has no foreground glyph pixel evidence`, result);
+  assertThat(terminal.markerEvidence.rendered && terminal.markerEvidence.marker === INITIAL_MARKER &&
+    terminal.markerEvidence.canvases.some(canvas => canvas.width > 0 && canvas.height > 0 &&
+      canvas.error === "" && canvas.foregroundPixels >= INITIAL_MARKER.length),
+  `${view.name}: ${INITIAL_MARKER} canvas region has no foreground glyph evidence`, result);
   return result;
 }
 
@@ -670,10 +866,10 @@ function fixedByteReader(label, byteCount) {
 import os, sys, termios, tty
 fd = sys.stdin.fileno()
 old = termios.tcgetattr(fd)
-print(${JSON.stringify(`${label}-READY`)}, flush=True)
 data = b""
 try:
     tty.setraw(fd)
+    print(${JSON.stringify(`${label}-READY`)}, flush=True)
     while len(data) < ${byteCount}:
         chunk = os.read(fd, ${byteCount} - len(data))
         if not chunk:
@@ -685,17 +881,23 @@ print("\\r\\n" + ${JSON.stringify(`${label}-HEX:`)} + data.hex(), flush=True)
 `);
 }
 
-function zeroByteReader(label, timeoutSeconds = 0.5) {
+function zeroByteReader(label, windowMs = ZERO_READER_WINDOW_MS) {
   return pythonCommand(`
-import os, select, sys, termios, tty
+import os, select, sys, termios, time, tty
 fd = sys.stdin.fileno()
 old = termios.tcgetattr(fd)
-print(${JSON.stringify(`${label}-READY`)}, flush=True)
+window_seconds = ${windowMs} / 1000.0
+deadline = time.monotonic() + window_seconds
+deadline_wall_ms = int((time.time() + window_seconds) * 1000)
 data = b""
 try:
     tty.setraw(fd)
+    print(${JSON.stringify(`${label}-READY:`)} + str(deadline_wall_ms), flush=True)
     while True:
-        readable, _, _ = select.select([fd], [], [], ${timeoutSeconds})
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            break
+        readable, _, _ = select.select([fd], [], [], remaining)
         if not readable:
             break
         chunk = os.read(fd, 512)
@@ -713,10 +915,10 @@ function enterTerminatedReader(label, maxBytes = 512) {
 import os, sys, termios, tty
 fd = sys.stdin.fileno()
 old = termios.tcgetattr(fd)
-print(${JSON.stringify(`${label}-READY`)}, flush=True)
 data = b""
 try:
     tty.setraw(fd)
+    print(${JSON.stringify(`${label}-READY`)}, flush=True)
     while len(data) < ${maxBytes}:
         chunk = os.read(fd, 1)
         if not chunk or chunk in (b"\\r", b"\\n"):
@@ -737,7 +939,7 @@ async function waitForCapture(tmux, needle, label = needle) {
 
 async function startReader(tmux, command, readyMarker) {
   tmux.sendShell(command);
-  await waitForCapture(tmux, readyMarker);
+  return waitForCapture(tmux, readyMarker);
 }
 
 async function waitForReaderHex(tmux, label, expectedHex, description = label) {
@@ -825,21 +1027,35 @@ async function assertTerminalFocused(frame, label) {
 }
 
 async function assertNoTtyBytes(tmux, action, label) {
-  await startReader(tmux, zeroByteReader(label), `${label}-READY`);
+  const readyCapture = await startReader(tmux, zeroByteReader(label), `${label}-READY:`);
+  const ready = readyCapture.match(new RegExp(`${label}-READY:(\\d+)`));
+  assertThat(ready, `${label}: zero-byte reader deadline is missing`, {readyCapture});
+  const deadlineMs = Number(ready[1]);
   await action();
+  const completedAtMs = Date.now();
+  const remainingMs = deadlineMs - completedAtMs;
+  assertThat(remainingMs >= ZERO_READER_MIN_TAIL_MS,
+    `${label}: UI action left too little delayed-byte observation time`, {
+      deadlineMs,
+      completedAtMs,
+      remainingMs,
+      minimumTailMs: ZERO_READER_MIN_TAIL_MS,
+    });
   await waitForReaderHex(tmux, label, "", `${label} zero-byte tty probe`);
+  return {remainingMs, observedUntilMs: deadlineMs};
 }
 
 async function runClipboardChecks(opened, tmux) {
   const pasteButton = opened.frame.locator('[data-action="paste"]');
   const dialog = opened.frame.locator("#paste-dialog");
   const successText = "line one\nline two";
+  const expectedSuccessText = normalizeXtermPaste(successText);
   const successLabel = "CLIPOK";
-  await startReader(tmux, fixedByteReader(successLabel, Buffer.byteLength(successText)),
+  await startReader(tmux, fixedByteReader(successLabel, Buffer.byteLength(expectedSuccessText)),
     `${successLabel}-READY`);
   await stubClipboardRead(opened.frame, "resolve", successText);
   await pasteButton.click();
-  await waitForReaderHex(tmux, successLabel, Buffer.from(successText).toString("hex"),
+  await waitForReaderHex(tmux, successLabel, Buffer.from(expectedSuccessText).toString("hex"),
     "successful clipboard paste bytes");
   await assertTerminalFocused(opened.frame, "successful clipboard paste");
 
@@ -881,7 +1097,7 @@ async function runClipboardChecks(opened, tmux) {
   }, "CLIPEMPTY");
   await assertTerminalFocused(opened.frame, "empty clipboard");
   await stubClipboardRead(opened.frame, "restore");
-  return {successBytes: Buffer.byteLength(successText), manualText};
+  return {successBytes: Buffer.byteLength(expectedSuccessText), manualText};
 }
 
 async function dispatchTouchDrag(cdp, points, options = {}) {
@@ -1034,21 +1250,21 @@ async function runSelectionCopy(opened, tmux, api, session) {
   await waitForCapture(tmux, marker, "selection marker");
   await poll("selection marker delivery to iframe", async () =>
     (await frameMetrics(opened)).socketMessages > beforeMessages);
-  await poll("selection marker rendered in xterm accessibility rows", () => opened.frame.evaluate(expected =>
-    [...document.querySelectorAll(".xterm-accessibility-tree [aria-label]")]
-      .some(row => row.getAttribute("aria-label")?.includes(expected)), marker));
+  const rendered = await waitForMarkerRender(opened.frame, marker,
+    "selection marker real xterm buffer/canvas region");
   await setInteraction(opened, tmux, api, session, true);
 
   const screen = opened.frame.locator(".xterm-screen");
   const box = await screen.boundingBox();
-  const windowSize = tmux.windowSize();
   assertThat(box && box.width > 0 && box.height > 0, "selection screen has invalid geometry", {box});
-  const cellWidth = box.width / windowSize.width;
-  const cellHeight = box.height / windowSize.height;
-  const y = box.y + cellHeight * 0.55;
-  await opened.page.mouse.move(box.x + cellWidth * 0.15, y);
+  const region = markerCanvasRegion(rendered.location, rendered.buffer.cols, rendered.buffer.rows,
+    box.width, box.height);
+  assertThat(region, "selection marker CSS region is invalid", {box, rendered});
+  const cellWidth = box.width / rendered.buffer.cols;
+  const y = box.y + region.top + (region.height / 2);
+  await opened.page.mouse.move(box.x + region.left + (cellWidth * 0.15), y);
   await opened.page.mouse.down();
-  await opened.page.mouse.move(box.x + cellWidth * (marker.length + 0.75), y, {steps: 12});
+  await opened.page.mouse.move(box.x + region.right - (cellWidth * 0.15), y, {steps: 12});
   await opened.page.mouse.up();
   await opened.page.keyboard.press("Control+C");
   const copied = await poll("known terminal selection in browser clipboard", async () => {
@@ -1057,7 +1273,7 @@ async function runSelectionCopy(opened, tmux, api, session) {
   });
   assertThat(copied.includes(marker), "copied terminal selection omitted known marker", {marker, copied});
   await setInteraction(opened, tmux, api, session, false);
-  return {marker, copied};
+  return {marker, copied, rendered};
 }
 
 function paneGeometryFor(panes, id) {
@@ -1181,8 +1397,12 @@ async function clickThemeUntil(opened, name) {
       document.documentElement.dataset.theme || "noche");
     if (current === name) return waitForThemePropagation(opened, name);
     await button.click();
-    await poll(`dashboard theme transition away from ${current}`, () => opened.page.evaluate(previous =>
-      (document.documentElement.dataset.theme || "noche") !== previous, current));
+    const next = await poll(`dashboard theme transition away from ${current}`, () => opened.page.evaluate(previous => {
+      const actual = document.documentElement.dataset.theme || "noche";
+      return actual !== previous ? actual : false;
+    }, current));
+    const propagated = await waitForThemePropagation(opened, next);
+    if (next === name) return propagated;
   }
   const actual = await opened.page.evaluate(() => document.documentElement.dataset.theme || "noche");
   assertThat(actual === name, `could not cycle to ${name}`, {actual});
@@ -1325,7 +1545,7 @@ async function main() {
   let playwright;
   try {
     runtime = validateRuntime(process.env.CC_REMOTE_BASE, process.env.CC_REMOTE_TOKEN);
-    playwright = require("playwright");
+    playwright = loadPlaywright();
   } catch (error) {
     throw new HarnessError("runtime validation failed", redactSecrets(error, secrets));
   }
@@ -1337,8 +1557,7 @@ async function main() {
   const cleanupErrors = [];
   let browser = null;
   let primaryError = null;
-  let registrationAttempted = false;
-  let registered = false;
+  let registrationState = "not-attempted";
   let result = null;
 
   fs.rmSync(OUTPUT_DIR, {recursive: true, force: true});
@@ -1346,11 +1565,16 @@ async function main() {
   try {
     tmux.create();
     tmux.assertOwnedSession();
-    registrationAttempted = true;
-    await api.post("/tab-register", {session, label: session});
-    registered = true;
-    tmux.sendShell("printf '\\033[2J\\033[HCOMANDOS-E2E-READY\\n'");
-    await waitForCapture(tmux, "COMANDOS-E2E-READY", "initial terminal marker");
+    registrationState = "uncertain";
+    try {
+      await api.post("/tab-register", {session, label: session});
+      registrationState = "confirmed";
+    } catch (error) {
+      registrationState = registrationStateAfterError(error);
+      throw error;
+    }
+    tmux.sendShell(`printf '\\033[2J\\033[H${INITIAL_MARKER}\\n'`);
+    await waitForCapture(tmux, INITIAL_MARKER, "initial terminal marker");
     browser = await playwright.chromium.launch({
       executablePath: CHROME,
       headless: true,
@@ -1384,13 +1608,23 @@ async function main() {
         cleanupErrors.push(`browser close: ${error.message}`);
       }
     }
-    if (registrationAttempted) {
+    let registrationOwnership = null;
+    if (registrationState === "uncertain") {
       try {
-        tmux.assertOwnedSession();
-        await api.post("/tab-close", {session});
+        registrationOwnership = tmux.ownershipProbe();
       } catch (error) {
-        cleanupErrors.push(`/tab-close: ${error.message}`);
+        cleanupErrors.push(`uncertain /tab-register ownership probe: ${error.message}`);
       }
+    }
+    const registrationCleanup = registrationCleanupDecision(registrationState, registrationOwnership);
+    if (registrationCleanup === "close") {
+      try {
+        await api.post("/tab-close", {session, ephemeral: true});
+      } catch (error) {
+        cleanupErrors.push(`ephemeral /tab-close: ${error.message}`);
+      }
+    } else if (registrationCleanup === "blocked") {
+      cleanupErrors.push("uncertain /tab-register not closed because session ownership is unproven");
     }
     if (tmux.mouseSnapshot) {
       try {
@@ -1421,8 +1655,7 @@ async function main() {
     const details = {
       failure: primaryError ? redactSecrets(primaryError, secrets) : undefined,
       cleanup: cleanupErrors.map(error => redactSecrets(error, secrets)),
-      registrationAttempted,
-      registered,
+      registrationState,
       exactSession: session,
     };
     throw new HarnessError("Task 7 browser harness failed", details);
@@ -1439,15 +1672,25 @@ async function main() {
 module.exports = {
   ApiClient,
   HarnessError,
+  INITIAL_MARKER,
   MATRIX,
   OUTPUT_DIR,
   TmuxController,
   assertThat,
+  enterTerminatedReader,
+  fixedByteReader,
+  loadPlaywright,
+  locateVisibleMarker,
+  markerCanvasRegion,
   normalizeBase,
+  normalizeXtermPaste,
   poll,
   redactSecrets,
+  registrationCleanupDecision,
+  registrationStateAfterError,
   sessionNameFor,
   tmuxTargetsFor,
+  zeroByteReader,
 };
 
 if (require.main === module) {

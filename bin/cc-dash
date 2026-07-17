@@ -882,6 +882,34 @@ def register_app_tab(sess, label=None):
         pass
 
 
+def close_app_tab(sess, ephemeral=False):
+    """Remove a mirrored tab and notify the desktop surface.
+
+    Explicit e2e tabs are disposable and must not enter the user's Recents.
+    The prefix guard runs before any file or tmux mutation.
+    """
+    if ephemeral and not sess.startswith("comandos-e2e-"):
+        return "ephemeral requiere comandos-e2e-"
+    if not ephemeral:
+        label = session_labels().get(sess, sess)
+        cwd = ""
+        r = tmux("display-message", "-p", "-t", "=" + sess + ":",
+                 "#{pane_current_path}")
+        if r.returncode == 0:
+            cwd = r.stdout.strip()
+        remember_tab(sess, label, cwd, state_agent(sess), reason="closed")
+    tabs_map = load_json_file(TABS_FILE, {})
+    if isinstance(tabs_map, dict) and sess in tabs_map:
+        tabs_map.pop(sess, None)
+        write_json_file(TABS_FILE, tabs_map)
+    try:
+        with open(os.path.join(HOOKS, "app-tab-close.json"), "w") as f:
+            json.dump({"session": sess, "ts": time.time()}, f)
+    except Exception:
+        pass
+    return None
+
+
 def pick_terminal():
     want = read_conf().get("TERMINAL_CMD", "")
     for name, argf, cls in TERMINALS:
@@ -2567,23 +2595,12 @@ class Handler(http.server.SimpleHTTPRequestHandler):
         if self.path == "/tab-close":
             # Cierra la PESTANA en todas las superficies (la sesion tmux sigue
             # viva): la saca del espejo app-tabs.json (si no, el poll /tabs la
-            # resucitaba en remoto), la guarda en Recientes, y si la app de
-            # escritorio esta abierta le pide cerrar su tab GTK.
-            label = session_labels().get(sess, sess)
-            cwd = ""
-            r = tmux("display-message", "-p", "-t", "=" + sess + ":", "#{pane_current_path}")
-            if r.returncode == 0:
-                cwd = r.stdout.strip()
-            remember_tab(sess, label, cwd, state_agent(sess), reason="closed")
-            tabs_map = load_json_file(TABS_FILE, {})
-            if isinstance(tabs_map, dict) and sess in tabs_map:
-                tabs_map.pop(sess, None)
-                write_json_file(TABS_FILE, tabs_map)
-            try:
-                with open(os.path.join(HOOKS, "app-tab-close.json"), "w") as f:
-                    json.dump({"session": sess, "ts": time.time()}, f)
-            except Exception:
-                pass
+            # resucitaba en remoto) y pide cerrar su tab GTK. Las tabs normales
+            # entran a Recientes; las e2e efimeras se descartan sin historial.
+            ephemeral = data.get("ephemeral") is True
+            err = close_app_tab(sess, ephemeral=ephemeral)
+            if err:
+                return self._json(400, {"error": err})
             return self._json(200, {"ok": True})
 
         if self.path == "/recover-tab":
