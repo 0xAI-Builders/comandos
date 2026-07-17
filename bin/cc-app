@@ -45,6 +45,11 @@ PAL_DIA = ["#20242E", "#C7392B", "#177A44", "#9A6700", "#2059C8", "#7A3FD1",
 PAL_CALIDO = ["#2A2015", "#E06C4B", "#9DC76F", "#E5B567", "#7E9CC0", "#C795C0",
               "#8FBFAE", "#E8D9BE", "#6E5F49", "#F08A63", "#B5DB8A", "#FFCB7D",
               "#9AB4D6", "#DBA9D4", "#A6D4C2", "#FFF4E0"]
+PAL_BRUNO = [
+    "#1A1A1A", "#DA462F", "#73E89A", "#FAD075", "#8BC2F9", "#D691ED",
+    "#7DDFF2", "#CCCCCC", "#666666", "#F38172", "#73E89A", "#FAD075",
+    "#8BC2F9", "#D691ED", "#7DDFF2", "#FFFFFF",
+]
 THEMES = {
     "noche": dict(fg="#EAF0FB", bg="#0A0D13", cursor="#FFAE1A", pal=PALETTE,
                   bar="#0D1119", dim="#9AA6BF", text="#EAF0FB", brand="#8B7CFF",
@@ -60,6 +65,9 @@ THEMES = {
     "termius": dict(fg="#D6E0EA", bg="#0E1620", cursor="#FFAE1A", pal=PALETTE,
                     bar="#0A121B", dim="#8FA0B4", text="#D6E0EA", brand="#4CE07A",
                     line="#1C2733", line2="#25384F", faint="#5C6B80"),
+    "bruno": dict(fg="#CCCCCC", bg="#1A1A1A", cursor="#E4AE49", pal=PAL_BRUNO,
+                  bar="#222224", dim="#AAAAAA", text="#CCCCCC", brand="#E4AE49",
+                  line="#333333", line2="#444444", faint="#999999"),
 }
 FONT_FAMILY = "JetBrainsMono Nerd Font Mono,JetBrainsMono Nerd Font,JetBrainsMono NF,JetBrains Mono,Cascadia Code,Fira Code,DejaVu Sans Mono,Monospace"
 FONT_SIZE = 13

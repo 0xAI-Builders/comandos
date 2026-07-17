@@ -11,21 +11,31 @@ seleccionable, tipografía monoespaciada consistente, íconos monolínea.
 
 ## 1. Paleta
 
-Tres temas simultáneos — el usuario alterna con el botón luna/sol/llama. Todos
+Cinco temas simultáneos — el usuario alterna con el botón luna/sol/llama,
+brotes y rayo. Todos
 los colores viven en variables CSS (`--bg`, `--panel`, `--brand`, …) y en el
 diccionario `THEMES` de `bin/cc-app`. Nunca hardcodear un color en un
 componente nuevo: usar la variable.
 
-| Rol             | noche       | dia         | calido      |
-| --------------- | ----------- | ----------- | ----------- |
-| Fondo app       | `#0A0D13`   | `#F2F4F8`   | `#161009`   |
-| Panel           | `#121722`   | `#FBFCFE`   | `#1F1811`   |
-| Text            | `#EAF0FB`   | `#1B2130`   | `#F2E5D0`   |
-| Dim (label)    | `#9AA6BF`   | `#4E5A70`   | `#BCA98C`   |
-| Faint (hint)   | `#5E6980`   | `#8892A6`   | `#8A7A5F`   |
-| Brand (acento) | `#8B7CFF`   | `#5B4BD6`   | `#E0A458`   |
-| Línea (border) | `#222A3A`   | `#D9DEE8`   | `#36291A`   |
-| Warning         | `#FFAE1A`   | `#B26A00`   | `#FFB454`   |
+| Rol             | noche       | dia         | calido      | termius    | bruno      |
+| --------------- | ----------- | ----------- | ----------- | ---------- | ---------- |
+| Fondo app       | `#0A0D13`   | `#F2F4F8`   | `#161009`   | `#0E1620`  | `#1A1A1A`  |
+| Panel           | `#121722`   | `#FBFCFE`   | `#1F1811`   | `#141E2A`  | `#222224`  |
+| Panel secundario| `#161C29`   | `#EDF0F6`   | `#261D14`   | `#182432`  | `#26292B`  |
+| Text            | `#EAF0FB`   | `#1B2130`   | `#F2E5D0`   | `#D6E0EA`  | `#CCCCCC`  |
+| Dim (label)    | `#9AA6BF`   | `#4E5A70`   | `#BCA98C`   | `#8FA0B4`  | `#AAAAAA`  |
+| Faint (hint)   | `#5E6980`   | `#8892A6`   | `#8A7A5F`   | `#5C6B80`  | `#999999`  |
+| Brand (acento) | `#8B7CFF`   | `#5B4BD6`   | `#E0A458`   | `#4CE07A`  | `#E4AE49`  |
+| Línea (border) | `#222A3A`   | `#D9DEE8`   | `#36291A`   | `#1C2733`  | `#333333`  |
+| Línea 2         | `#2E3852`   | `#C3CAD8`   | `#4A3823`   | `#25384F`  | `#444444`  |
+| Warning         | `#FFAE1A`   | `#B26A00`   | `#FFB454`   | `#FFAE1A`  | `#F6AB79`  |
+
+Bruno es la fuente de verdad para sus roles: fondo `#1A1A1A`, panel
+`#222224`, panel secundario `#26292B`, texto `#CCCCCC`, cursor/acento
+`#E4AE49`, línea `#333333`, línea 2 `#444444`, dim `#AAAAAA` y faint
+`#999999`. Su ANSI, en orden negro a blanco y luego brillantes, es:
+`#1A1A1A #DA462F #73E89A #FAD075 #8BC2F9 #D691ED #7DDFF2 #CCCCCC
+#666666 #F38172 #73E89A #FAD075 #8BC2F9 #D691ED #7DDFF2 #FFFFFF`.
 
 Uso disciplinado: **brand solo para acentos** (chip activa, foco, marca).
 Etiquetas y texto secundario → `dim`. Placeholders y hints → `faint`.
@@ -191,7 +201,7 @@ Antes de agregar un componente nuevo:
 4. **Selección** — el elemento debe respetar la regla de user-select. Si su
    contenido es copiable, agregar `.selectable` o listarlo en el CSS del
    `<body>`.
-5. **Diagnóstico** — probar con los 3 temas antes de mergear.
+5. **Diagnóstico** — probar con los 5 temas antes de mergear.
 
 ---
 

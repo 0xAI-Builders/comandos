@@ -1129,7 +1129,7 @@ const frameQueue = new Map();
 const timerQueue = [];
 const windowListeners = {};
 const elements = new Map();
-for (const id of ['dbg', 'err', 'term', 'term-toolbar']) {
+for (const id of ['dbg', 'err', 'term', 'term-shell', 'term-toolbar']) {
   elements.set(id, {
     classList: {add(){}}, style: {}, textContent: '',
   });
@@ -1144,7 +1144,7 @@ globalThis.window = {
   open(){ throw new Error('link opener should not run in geometry test'); },
 };
 globalThis.document = {
-  title: '', body: {appendChild(){}},
+  title: '', documentElement: {style:{setProperty(){}}}, body: {appendChild(){}, style:{}},
   getElementById(id){ return elements.get(id); },
   createElement(){ return {}; },
 };
@@ -2347,6 +2347,13 @@ console.log(JSON.stringify({
     assert result["sshAfterOwnRequest"]["mouse"] is False
     assert result["devAfterRequest"]["mouse"] is False
     assert result["compatAfterRequest"]["mouse"] is True
+
+
+def test_theme_bridge_keeps_task_five_interaction_messages_independent():
+    assert "function handleTerminalMessage" in TERM_HTML
+    listener = extract_js_function(TERM_HTML, "handleTerminalMessage")
+    assert "interaction-state" not in listener
+    assert "type !== 'theme'" in listener
 
 
 def test_remote_terminal_selection_ignores_stale_get_and_keepalive_is_temporary_only():

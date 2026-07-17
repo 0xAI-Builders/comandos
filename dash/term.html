@@ -28,42 +28,55 @@
     font-weight: 700; font-style: italic;
     src: url('../assets/fonts/JetBrainsMono/JetBrainsMonoNerdFontMono-BoldItalic.ttf') format('truetype');
   }
-  html, body { margin: 0; padding: 0; height: 100%; background: #0A0D13; overflow: hidden; }
-  #term-shell { height: 100%; display: grid; grid-template-rows: minmax(0, 1fr) auto; }
+  :root {
+    --term-bg:#0A0D13; --term-panel:#121722; --term-panel2:#161C29;
+    --term-line:#222A3A; --term-line2:#2E3852; --term-text:#EAF0FB;
+    --term-dim:#9AA6BF; --term-faint:#5E6980; --term-brand:#8B7CFF;
+  }
+  html, body { margin: 0; padding: 0; height: 100%; background:var(--term-bg); color:var(--term-text); overflow: hidden; }
+  #term-shell { height: 100%; display: grid; grid-template-rows: minmax(0, 1fr) auto; background:var(--term-bg); }
   #term {
     padding: 8px 6px 6px 10px;
     box-sizing: border-box;
     min-height: 0;
   }
   #term-toolbar { display: flex; gap: 6px; min-width: 0; overflow-x: auto;
-    padding: 6px; border-top: 1px solid #2E3852; background: #111720;
+    padding: 6px; border-top: 1px solid var(--term-line2); background:var(--term-panel);
     overscroll-behavior-x: contain; -webkit-overflow-scrolling: touch; touch-action: pan-x; }
   #term-toolbar button { box-sizing: border-box; flex: 0 0 auto; min-width: 44px; height: 44px; padding: 0 10px;
-    border: 1px solid #3B4968; border-radius: 4px; background: #182130; color: #EAF0FB;
+    border: 1px solid var(--term-line2); border-radius: 4px; background:var(--term-panel2); color:var(--term-text);
     font: 700 12px 'JetBrainsMono Nerd Font Mono', monospace; }
-  #term-toolbar button.on { background: #FFAE1A; border-color: #FFAE1A; color: #0A0D13; }
+  #term-toolbar button.on { background:var(--term-brand); border-color:var(--term-brand); color:var(--term-bg); }
   #term-toolbar button:disabled { opacity: .55; }
   #term-toolbar svg { width: 20px; height: 20px; fill: none; stroke: currentColor;
     stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; vertical-align: middle; }
-  #paste-dialog { width: min(420px, calc(100vw - 32px)); color: #EAF0FB; background: #111720;
-    border: 1px solid #3B4968; border-radius: 6px; padding: 14px; }
+  #paste-dialog { width: min(420px, calc(100vw - 32px)); color:var(--term-text); background:var(--term-panel);
+    border: 1px solid var(--term-line2); border-radius: 6px; padding: 14px; }
   #paste-dialog::backdrop { background: rgba(0, 0, 0, .55); }
   #paste-dialog form { display: grid; gap: 10px; }
   #paste-text { min-height: 132px; box-sizing: border-box; resize: vertical; color: inherit;
-    background: #0A0D13; border: 1px solid #3B4968; font: 13px 'JetBrainsMono Nerd Font Mono', monospace; }
+    background:var(--term-bg); border: 1px solid var(--term-line2); font: 13px 'JetBrainsMono Nerd Font Mono', monospace; }
   #paste-dialog form > div { display: flex; justify-content: flex-end; gap: 8px; }
+  #paste-dialog button { background:var(--term-panel2); border:1px solid var(--term-line2); color:var(--term-text);
+    border-radius:4px; padding:6px 10px; font:inherit; }
+  #paste-dialog button:hover { border-color:var(--term-brand); }
   #err {
     position: absolute; inset: 0; display: none;
-    color: #FF7B72; font-family: 'JetBrainsMono Nerd Font Mono', monospace;
+    color:var(--term-brand); font-family: 'JetBrainsMono Nerd Font Mono', monospace;
     padding: 16px; white-space: pre-wrap;
   }
   #dbg {
     position: fixed; right: 8px; top: 8px; z-index: 9; display: none;
-    color: #FFAE1A; font-family: 'JetBrainsMono Nerd Font Mono', monospace;
-    font-size: 11px; background: rgba(0,0,0,.5); padding: 4px 8px;
+    color:var(--term-brand); font-family: 'JetBrainsMono Nerd Font Mono', monospace;
+    font-size: 11px; background:var(--term-panel); padding: 4px 8px;
     border-radius: 4px; max-width: 60vw; white-space: pre-wrap;
   }
   #dbg.on { display: block; }
+  *{scrollbar-width:thin;scrollbar-color:var(--term-line2) var(--term-bg)}
+  *::-webkit-scrollbar{width:10px;height:10px}
+  *::-webkit-scrollbar-track{background:var(--term-bg)}
+  *::-webkit-scrollbar-thumb{background:var(--term-line2);border-radius:10px;border:3px solid var(--term-bg);background-clip:padding-box}
+  *::-webkit-scrollbar-thumb:hover{background:var(--term-brand);background-clip:padding-box}
 </style>
 </head>
 <body>
@@ -119,13 +132,13 @@
   const ws_url = arg ? `${wsBase}?arg=${encodeURIComponent(arg)}` : wsBase;
 
   const THEMES = {
-    noche:  { background:'#0A0D13', foreground:'#EAF0FB', cursor:'#FFAE1A',
-              cursorAccent:'#0A0D13', selectionBackground:'#2E3852' },
-    dia:    { background:'#F7F8FB', foreground:'#1B2130', cursor:'#B26A00',
-              cursorAccent:'#F7F8FB', selectionBackground:'#D9DEE8' },
-    calido: { background:'#161009', foreground:'#F2E5D0', cursor:'#FFB454',
-              cursorAccent:'#161009', selectionBackground:'#36291A' },
+    noche:  {background:'#0A0D13',foreground:'#EAF0FB',cursor:'#FFAE1A',cursorAccent:'#0A0D13',selectionBackground:'#2E3852',panel:'#121722',panel2:'#161C29',line:'#222A3A',line2:'#2E3852',dim:'#9AA6BF',faint:'#5E6980',brand:'#8B7CFF'},
+    dia:    {background:'#F7F8FB',foreground:'#1B2130',cursor:'#B26A00',cursorAccent:'#F7F8FB',selectionBackground:'#D9DEE8',panel:'#FBFCFE',panel2:'#EDF0F6',line:'#D9DEE8',line2:'#C3CAD8',dim:'#4E5A70',faint:'#8892A6',brand:'#5B4BD6'},
+    calido: {background:'#161009',foreground:'#F2E5D0',cursor:'#FFB454',cursorAccent:'#161009',selectionBackground:'#36291A',panel:'#1F1811',panel2:'#261D14',line:'#36291A',line2:'#4A3823',dim:'#BCA98C',faint:'#8A7A5F',brand:'#E0A458'},
+    termius:{background:'#0E1620',foreground:'#D6E0EA',cursor:'#FFAE1A',cursorAccent:'#0E1620',selectionBackground:'#25384F',panel:'#141E2A',panel2:'#182432',line:'#1C2733',line2:'#25384F',dim:'#8FA0B4',faint:'#5C6B80',brand:'#4CE07A'},
+    bruno:  {background:'#1A1A1A',foreground:'#CCCCCC',cursor:'#E4AE49',cursorAccent:'#1A1A1A',selectionBackground:'#444444',panel:'#222224',panel2:'#26292B',line:'#333333',line2:'#444444',dim:'#AAAAAA',faint:'#999999',brand:'#E4AE49',black:'#1A1A1A',red:'#DA462F',green:'#73E89A',yellow:'#FAD075',blue:'#8BC2F9',magenta:'#D691ED',cyan:'#7DDFF2',white:'#CCCCCC',brightBlack:'#666666',brightRed:'#F38172',brightGreen:'#73E89A',brightYellow:'#FAD075',brightBlue:'#8BC2F9',brightMagenta:'#D691ED',brightCyan:'#7DDFF2',brightWhite:'#FFFFFF'},
   };
+  let activeTheme = THEMES[theme] ? theme : 'noche';
 
   const showErr = (msg) => {
     const e = document.getElementById('err');
@@ -153,7 +166,7 @@
     cursorStyle: 'block',
     scrollback: 10000,
     allowProposedApi: true,   // requerido por CanvasAddon para exponer ligas
-    theme: THEMES[theme] || THEMES.noche,
+    theme: THEMES[activeTheme],
     windowsMode: false,
   });
 
@@ -171,17 +184,61 @@
   const IS_TOUCH = ('ontouchstart' in window) || navigator.maxTouchPoints > 0;
   const toolbar = document.getElementById('term-toolbar');
   toolbar.hidden = !IS_TOUCH;
-  const themeCfg = THEMES[theme] || THEMES.noche;
-  if (!IS_TOUCH) {
+  const themeCfg = THEMES[activeTheme];
+  let ligatures = null;
+  function installLigatures(cfg) {
     const liga = new LigaturesWebAddon({
       fontUrl: '../assets/fonts/JetBrainsMono/JetBrainsMonoNerdFontMono-Regular.ttf',
       fontSize: 14,
-      foreground: themeCfg.foreground,
-      background: themeCfg.background,
+      foreground: cfg.foreground,
+      background: cfg.background,
       debug: debug,
     });
-    try { term.loadAddon(liga); } catch (e) { dbg('LigaturesWebAddon failed: ' + e.message); }
+    try {
+      term.loadAddon(liga);
+      ligatures = liga;
+    } catch (e) { dbg('LigaturesWebAddon failed: ' + e.message); }
   }
+  function refreshLigatures(cfg) {
+    if (IS_TOUCH || !ligatures) return;
+    try { ligatures.dispose(); } catch (_) {}
+    ligatures = null;
+    installLigatures(cfg);
+  }
+  if (!IS_TOUCH) installLigatures(themeCfg);
+
+  function applyTerminalTheme(name) {
+    if (!THEMES[name]) return false;
+    const changed = activeTheme !== name;
+    activeTheme = name;
+    const cfg = THEMES[activeTheme];
+    term.options.theme = cfg;
+    const root = document.documentElement.style;
+    root.background = cfg.background;
+    root.setProperty('--term-bg', cfg.background);
+    root.setProperty('--term-panel', cfg.panel);
+    root.setProperty('--term-panel2', cfg.panel2);
+    root.setProperty('--term-line', cfg.line);
+    root.setProperty('--term-line2', cfg.line2);
+    root.setProperty('--term-text', cfg.foreground);
+    root.setProperty('--term-dim', cfg.dim);
+    root.setProperty('--term-faint', cfg.faint);
+    root.setProperty('--term-brand', cfg.brand);
+    document.body.style.background = cfg.background;
+    document.getElementById('term-shell').style.background = cfg.background;
+    if (changed) refreshLigatures(cfg);
+    return true;
+  }
+
+  function handleTerminalMessage(event) {
+    const data = event.data;
+    if (event.origin !== location.origin || event.source !== parent ||
+        !data || data.source !== 'comandos' || data.type !== 'theme' ||
+        !THEMES[data.theme]) return false;
+    return applyTerminalTheme(data.theme);
+  }
+
+  applyTerminalTheme(activeTheme);
 
   let fitFrame = 0;
   let heightFitTimer = 0;
@@ -486,6 +543,7 @@
     text.value = '';
   });
   pasteDialog.addEventListener('close', focusTerminal);
+  window.addEventListener('message', e => { handleTerminalMessage(e); });
   window.addEventListener('message', e => {
     const data = e.data;
     if (e.origin !== location.origin || e.source !== parent ||
