@@ -336,10 +336,18 @@ _section_remote() {
   fi
   if command -v ttyd >/dev/null; then
     _check "$sec" "ttyd" pass "installed"
-    if pgrep -f "ttyd.*cc-webterm-attach" >/dev/null 2>&1; then
-      _check "$sec" "cc-webterm" pass "corriendo"
+    # Default endpoints: http://127.0.0.1:4780/term/token and http://127.0.0.1:4779/token.
+    local webterm_port="${CC_WEBTERM_PORT:-4779}"
+    local webterm_path_port="${CC_WEBTERM_PATH_PORT:-4780}"
+    if curl -fsS --max-time 2 "http://127.0.0.1:$webterm_path_port/term/token" >/dev/null 2>&1; then
+      _check "$sec" "cc-webterm-primary" pass "responde en /term"
     else
-      _check "$sec" "cc-webterm" warn "apagado — cc-webterm para arrancar"
+      _check "$sec" "cc-webterm-primary" warn "apagado — cc-webterm para arrancar"
+    fi
+    if curl -fsS --max-time 2 "http://127.0.0.1:$webterm_port/token" >/dev/null 2>&1; then
+      _check "$sec" "cc-webterm-fallback" pass "responde en :8443"
+    else
+      _check "$sec" "cc-webterm-fallback" warn "apagado — cc-webterm para arrancar"
     fi
   else
     _check "$sec" "ttyd" skip "no instalado"

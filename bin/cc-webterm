@@ -22,6 +22,33 @@ SELF_DIR="$(cd "$(dirname "$(readlink -f "$0")")" && pwd)"
 die(){ printf '\033[31m✗\033[0m %s\n' "$1" >&2; exit 1; }
 ok(){ printf '\033[32m✓\033[0m %s\n' "$1"; }
 
+probe_url() {
+  curl -fsS --max-time 2 "$1" >/dev/null 2>&1
+}
+
+health_state() {
+  local primary=0 fallback=0
+  probe_url "http://127.0.0.1:$PATH_PORT/term/token" && primary=1
+  probe_url "http://127.0.0.1:$PORT/token" && fallback=1
+  if [ "$primary" -eq 1 ] && [ "$fallback" -eq 1 ]; then
+    printf '%s\n' active
+  elif [ "$primary" -eq 1 ] || [ "$fallback" -eq 1 ]; then
+    printf '%s\n' degraded
+  else
+    printf '%s\n' off
+  fi
+}
+
+wait_for_endpoint() {
+  local url="$1" attempt=0
+  while [ "$attempt" -lt 20 ]; do
+    probe_url "$url" && return 0
+    attempt=$((attempt + 1))
+    sleep 0.1
+  done
+  return 1
+}
+
 stop() {
   systemctl --user stop cc-webterm.service >/dev/null 2>&1 || true
   systemctl --user stop cc-webterm-path.service >/dev/null 2>&1 || true
@@ -32,12 +59,14 @@ stop() {
 
 case "${1:-on}" in
   off) stop; ok "Terminal web detenido."; exit 0 ;;
-  status)
-    if pgrep -f "ttyd.*cc-webterm-attach" >/dev/null; then
-      ok "Terminal web corriendo en 127.0.0.1:$PORT (:8443) y 127.0.0.1:$PATH_PORT (/term)"
-    else echo "Terminal web apagado."; fi
-    exit 0 ;;
+  status) health_state; exit 0 ;;
 esac
+
+current_state="$(health_state)"
+if [ "$current_state" = active ]; then
+  ok "Terminal web ya esta activo."
+  exit 0
+fi
 
 if ! command -v ttyd >/dev/null 2>&1; then
   echo "Falta 'ttyd' (el motor del terminal web). Instalalo:"
@@ -86,19 +115,21 @@ TTYD_PATH_ARGS=(ttyd -p "$PATH_PORT" -b /term "${IFLAG[@]}" "${TTYD_COMMON[@]}")
 if command -v systemd-run >/dev/null 2>&1; then
   systemctl --user reset-failed cc-webterm.service >/dev/null 2>&1 || true
   systemctl --user reset-failed cc-webterm-path.service >/dev/null 2>&1 || true
-  systemd-run --user --collect --quiet --unit=cc-webterm "${TTYD_ARGS[@]}" >/dev/null 2>&1
-  systemd-run --user --collect --quiet --unit=cc-webterm-path "${TTYD_PATH_ARGS[@]}" >/dev/null 2>&1
+  SYSTEMD_RESTART=(--property=Restart=on-failure --property=RestartSec=1s)
+  systemd-run --user --collect --quiet --unit=cc-webterm \
+    "${SYSTEMD_RESTART[@]}" "${TTYD_ARGS[@]}" >/dev/null 2>&1
+  systemd-run --user --collect --quiet --unit=cc-webterm-path \
+    "${SYSTEMD_RESTART[@]}" "${TTYD_PATH_ARGS[@]}" >/dev/null 2>&1
 else
   setsid "${TTYD_ARGS[@]}" </dev/null >/dev/null 2>&1 &
   echo $! > "$PIDF"
   setsid "${TTYD_PATH_ARGS[@]}" </dev/null >/dev/null 2>&1 &
 fi
-sleep 0.4
-if curl -s -m 2 "http://127.0.0.1:$PORT/token" >/dev/null 2>&1 && \
-   curl -s -m 2 "http://127.0.0.1:$PATH_PORT/term/token" >/dev/null 2>&1; then
+if wait_for_endpoint "http://127.0.0.1:$PORT/token" && \
+   wait_for_endpoint "http://127.0.0.1:$PATH_PORT/term/token"; then
   ok "Terminal web listo en 127.0.0.1:$PORT (:8443) y 127.0.0.1:$PATH_PORT (/term)."
   echo "  Exponlo al celular con:  cc-mobile   (lo enruta por https del tailnet)"
   echo "  (Solo tu tailnet lo alcanza — como SSH sobre Tailscale)"
 else
-  die "ttyd no arranco. Revisa: ttyd --version"
+  die "ttyd no arranco por completo. Estado: $(health_state)"
 fi
