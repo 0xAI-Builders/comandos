@@ -72,6 +72,13 @@ def test_harness_paste_marker_and_registration_helpers():
         equal(h.registrationCleanupDecision("uncertain", {owned: true}), "close", "owned uncertain cleanup");
         equal(h.registrationCleanupDecision("uncertain", {owned: false}), "blocked", "unowned uncertain cleanup");
         equal(h.registrationCleanupDecision("rejected", {owned: true}), "skip", "rejected cleanup");
+        equal(h.readerHexFromCapture("line\nEMPTY-HEX:\n", "EMPTY"), "", "empty tty result");
+        equal(h.readerHexFromCapture("line\nFULL-HEX:0d0a\n", "FULL"), "0d0a", "nonempty tty result");
+        equal(h.readerHexFromCapture("line without marker", "EMPTY"), null, "missing tty result");
+        equal(h.parsePaneScrollState("0|"), {inMode: false, scrollPosition: null},
+          "pane outside copy mode");
+        equal(h.parsePaneScrollState("1|17"), {inMode: true, scrollPosition: 17},
+          "pane copy-mode scroll position");
         console.log("helpers-ok");
         """
     )
@@ -146,6 +153,54 @@ def test_readers_enter_raw_before_ready_and_capture_joins_wrapped_lines():
         """
     )
     assert output == "readers-ok"
+
+
+def test_iframe_load_instrumentation_observes_inserted_frames_directly():
+    source = HARNESS.read_text()
+    instrumentation = source.split("function instrumentationScript()", 1)[1].split(
+        "async function createTouchContext", 1
+    )[0]
+    assert "new MutationObserver" in instrumentation
+    assert 'frame.addEventListener("load"' in instrumentation
+    assert "watchedFrames.has(frame)" in instrumentation
+    assert 'window.addEventListener("load"' not in instrumentation
+
+
+def test_terminal_scroll_uses_tmux_history_and_restores_live_mode():
+    source = HARNESS.read_text()
+    terminal_scroll = source.split("async function runTerminalScroll", 1)[1].split(
+        "async function interactionState", 1
+    )[0]
+    marker_wait = 'waitForMarkerRender(opened.frame, "E2E-SCROLL-200"'
+    assert marker_wait in terminal_scroll
+    assert "tmux.paneScrollState()" in terminal_scroll
+    assert "scrollPosition > 0" in terminal_scroll
+    assert "tmux.cancelCopyMode()" in terminal_scroll
+    assert "scrollHeight" not in terminal_scroll
+
+
+def test_pane_resize_uses_exact_created_pane_id_not_global_base_index():
+    source = HARNESS.read_text()
+    resize = source.split("async function resizeOneAxis", 1)[1].split(
+        "async function runPaneResize", 1
+    )[0]
+    assert "tmux.targets.primaryPane" in resize
+    assert "pane.paneIndex === 0" not in resize
+
+
+def test_mobile_theme_cycle_uses_visible_panel_control_and_returns_to_terminal():
+    source = HARNESS.read_text()
+    visible_click = source.split("async function clickVisibleThemeControl", 1)[1].split(
+        "async function clickThemeUntil", 1
+    )[0]
+    cycle = source.split("async function clickThemeUntil", 1)[1].split(
+        "async function themeColors", 1
+    )[0]
+    assert "button.isVisible()" in visible_click
+    assert "⌂ Panel" in visible_click
+    assert "opened.session" in visible_click
+    assert "force:" not in visible_click
+    assert "clickVisibleThemeControl(opened)" in cycle
 
 
 def test_uncertain_tmux_creation_kills_only_nonce_owned_session():

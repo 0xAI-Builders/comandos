@@ -227,6 +227,7 @@ const term = {{
   textarea: {{focus() {{ active = "terminal"; focusHistory.push(active); }}}},
   focus() {{ active = "terminal"; focusHistory.push(active); }},
   paste(text) {{ pasted.push(text); }},
+  attachCustomKeyEventHandler() {{}},
 }};
 const navigator = {{clipboard: {{readText: async () => ""}}}};
 function sendInput(data) {{ sent.push(data); }}
@@ -303,6 +304,48 @@ def test_terminal_toolbar_starts_unknown_and_keeps_touch_panning_native():
     assert "applyInteractionState(interactionState);" in TERM_HTML
     assert "touch-action: pan-x" in TERM_HTML
     assert "if (e.pointerType !== 'touch') e.preventDefault();" in TERM_HTML
+
+
+def test_selected_ctrl_c_copies_without_sending_sigint():
+    controller = "\n\n".join(
+        extract_js_function(TERM_HTML, name)
+        for name in ("copyTerminalSelection", "handleTerminalKeyEvent")
+    )
+    script = r"""
+const writes = [];
+let selection = "SELECT-COPY-KNOWN";
+const term = {
+  hasSelection() { return selection.length > 0; },
+  getSelection() { return selection; },
+};
+const navigator = {clipboard: {writeText: async text => { writes.push(text); }}};
+
+__CONTROLLER__
+
+(async () => {
+  const selectedResult = handleTerminalKeyEvent({
+    type:"keydown", key:"c", ctrlKey:true, metaKey:false, altKey:false,
+  });
+  await Promise.resolve();
+  selection = "";
+  const plainCtrlCResult = handleTerminalKeyEvent({
+    type:"keydown", key:"c", ctrlKey:true, metaKey:false, altKey:false,
+  });
+  const keyupResult = handleTerminalKeyEvent({
+    type:"keyup", key:"c", ctrlKey:true, metaKey:false, altKey:false,
+  });
+  console.log(JSON.stringify({selectedResult, plainCtrlCResult, keyupResult, writes}));
+})().catch(error => { console.error(error); process.exit(1); });
+"""
+    result = run_node_json(script.replace("__CONTROLLER__", controller))
+
+    assert result == {
+        "selectedResult": False,
+        "plainCtrlCResult": True,
+        "keyupResult": True,
+        "writes": ["SELECT-COPY-KNOWN"],
+    }
+    assert "term.attachCustomKeyEventHandler(handleTerminalKeyEvent);" in TERM_HTML
 
 
 def test_terminal_paste_focus_follows_actual_dialog_close_lifecycle():
@@ -609,15 +652,6 @@ async function connect() {{
         const evaluated = await send("Runtime.evaluate", {{
           expression:`(() => {{
             const toolbar = document.getElementById("term-toolbar");
-            if (toolbar) {{
-              toolbar.style.position = "fixed";
-              toolbar.style.left = "0";
-              toolbar.style.right = "0";
-              toolbar.style.bottom = "0";
-              toolbar.style.width = "auto";
-              toolbar.style.zIndex = "100";
-              toolbar.style.pointerEvents = "auto";
-            }}
             const probe = {{url:location.href, ready:document.readyState,
                            exists:!!toolbar, hidden:toolbar?.hidden,
                            clientWidth:toolbar?.clientWidth || 0,
@@ -643,6 +677,7 @@ async function connect() {{
             const keyRect = toolbar.querySelector('[data-key="escape"]').getBoundingClientRect();
             return {{geometry:{{left:rect.left, right:rect.right, top:rect.top, height:rect.height,
                      clientWidth:toolbar.clientWidth, scrollWidth:toolbar.scrollWidth,
+                     viewportWidth:innerWidth, documentScrollX:scrollX,
                      tapX:keyRect.left + keyRect.width / 2,
                      tapY:keyRect.top + keyRect.height / 2}}, probe}};
           }})()`, returnByValue:true,
@@ -716,8 +751,20 @@ async function connect() {{
   }} finally {{
     try {{ connection?.ws.close(); }} catch (_) {{}}
     browser.kill("SIGTERM");
-    await delay(100);
-    fs.rmSync(profile, {{recursive:true, force:true}});
+    if (browser.exitCode === null) {{
+      await Promise.race([
+        new Promise(resolve => browser.once("exit", resolve)),
+        delay(2000),
+      ]);
+    }}
+    if (browser.exitCode === null) {{
+      browser.kill("SIGKILL");
+      await new Promise(resolve => browser.once("exit", resolve));
+    }}
+    for (let attempt = 0; attempt < 10; attempt++) {{
+      try {{ fs.rmSync(profile, {{recursive:true, force:true}}); break; }}
+      catch (error) {{ if (attempt === 9) throw error; await delay(50); }}
+    }}
   }}
 }})().catch(error => {{ console.error(error); process.exit(1); }});
 """
@@ -1792,6 +1839,10 @@ console.log(JSON.stringify({results, paneMouseDrag, mousePrevented:down.prevente
 def test_chrome_touch_drag_scrolls_toolbar_without_terminal_prevent_default():
     result = run_chrome_toolbar_touch_drag()
 
+    assert result["left"] >= 0
+    assert result["right"] <= result["viewportWidth"]
+    assert result["clientWidth"] <= result["viewportWidth"]
+    assert result["documentScrollX"] == 0
     assert result["scrollWidth"] > result["clientWidth"]
     assert result["scrollLeft"] > 100, json.dumps(result, sort_keys=True)
     assert result["prevented"]

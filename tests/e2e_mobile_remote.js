@@ -101,6 +101,18 @@ function markerCanvasRegion(location, cols, rows, width, height) {
   return {left, top, right, bottom, width: right - left, height: bottom - top};
 }
 
+function parsePaneScrollState(raw) {
+  const match = String(raw).trimEnd().match(/^(0|1)\|([0-9]*)$/);
+  assertThat(match, "invalid tmux pane scroll state", {raw});
+  const inMode = match[1] === "1";
+  assertThat(inMode ? match[2] !== "" : match[2] === "",
+    "inconsistent tmux pane scroll state", {raw});
+  return {
+    inMode,
+    scrollPosition: inMode ? Number(match[2]) : null,
+  };
+}
+
 function registrationStateAfterError(error) {
   const status = error?.details?.status;
   return Number.isInteger(status) && status >= 400 && status < 500 ? "rejected" : "uncertain";
@@ -395,6 +407,22 @@ class TmuxController {
     return result.stdout.split("\n").filter(name => name === this.session).length;
   }
 
+  paneScrollState() {
+    this.assertOwnedPrimaryPane();
+    const output = this.run([
+      "display-message", "-p", "-t", this.targets.primaryPane,
+      "#{pane_in_mode}|#{scroll_position}",
+    ]).stdout;
+    return parsePaneScrollState(output);
+  }
+
+  cancelCopyMode() {
+    const before = this.paneScrollState();
+    if (!before.inMode) return before;
+    this.run(["send-keys", "-X", "-t", this.targets.primaryPane, "cancel"]);
+    return this.paneScrollState();
+  }
+
   split(flag) {
     assertThat(flag === "-h" || flag === "-v", "invalid split orientation", {flag});
     this.assertOwnedPrimaryPane();
@@ -522,9 +550,24 @@ function instrumentationScript() {
       },
     });
     if (window.top === window) {
-      window.addEventListener("load", event => {
-        if (event.target instanceof HTMLIFrameElement) state.frameLoads += 1;
-      }, true);
+      const watchedFrames = new WeakSet();
+      const watchFrame = frame => {
+        if (!(frame instanceof HTMLIFrameElement) || watchedFrames.has(frame)) return;
+        watchedFrames.add(frame);
+        frame.addEventListener("load", () => { state.frameLoads += 1; });
+      };
+      const watchFramesIn = root => {
+        if (root instanceof HTMLIFrameElement) watchFrame(root);
+        root.querySelectorAll?.("iframe").forEach(watchFrame);
+      };
+      watchFramesIn(document);
+      new MutationObserver(records => {
+        for (const record of records) {
+          for (const node of record.addedNodes) {
+            if (node instanceof Element) watchFramesIn(node);
+          }
+        }
+      }).observe(document, {childList: true, subtree: true});
     }
     const NativeWebSocket = window.WebSocket;
     function InstrumentedWebSocket(...args) {
@@ -603,7 +646,7 @@ async function openTerminal(context, base, token, session) {
     }
     return top.__e2eFrameIds.get(iframe);
   }, iframeHandle);
-  return {page, frame, iframeLocator, iframeHandle, sockets, identity};
+  return {page, frame, iframeLocator, iframeHandle, sockets, identity, session};
 }
 
 async function activeTerminalFrame(opened) {
@@ -649,7 +692,8 @@ async function validFrameBaseline(opened, label) {
     const metrics = await frameMetrics(opened);
     const valid = metrics.sameNode && metrics.identity > 0 && metrics.loadCount >= 1 &&
       metrics.frameWebSockets === 1 && metrics.pageWebSockets === 1;
-    return valid ? metrics : false;
+    if (!valid) throw new HarnessError(`${label}: invalid live iframe/socket counters`, metrics);
+    return metrics;
   });
 }
 
@@ -950,17 +994,22 @@ async function startReader(tmux, command, readyMarker) {
   return waitForCapture(tmux, readyMarker);
 }
 
+function readerHexFromCapture(capture, label) {
+  const match = String(capture).match(new RegExp(`${label}-HEX:([0-9a-f]*)`));
+  return match ? match[1] : null;
+}
+
 async function waitForReaderHex(tmux, label, expectedHex, description = label) {
   return poll(`tty reader ${description}`, () => {
     const capture = tmux.capture();
-    const match = capture.match(new RegExp(`${label}-HEX:([0-9a-f]*)`));
-    if (!match) return false;
-    assertThat(match[1] === expectedHex, `${description}: unexpected tty bytes`, {
+    const actualHex = readerHexFromCapture(capture, label);
+    if (actualHex === null) return false;
+    assertThat(actualHex === expectedHex, `${description}: unexpected tty bytes`, {
       expectedHex,
-      actualHex: match[1],
+      actualHex,
       capture,
     });
-    return match[1];
+    return {hex: actualHex};
   });
 }
 
@@ -1188,28 +1237,50 @@ async function runTerminalScroll(opened, tmux, cdp) {
   await waitForCapture(tmux, "E2E-SCROLL-200", "200 generated scroll lines");
   await poll("scroll output delivery to iframe", async () =>
     (await frameMetrics(opened)).socketMessages > beforeMessages);
-  const viewport = opened.frame.locator(".xterm-viewport");
+  await waitForMarkerRender(opened.frame, "E2E-SCROLL-200",
+    "last generated scroll line rendered in real xterm");
   const screen = opened.frame.locator(".xterm-screen");
   const box = await screen.boundingBox();
-  const before = await viewport.evaluate(element => ({
-    scrollTop: element.scrollTop,
-    scrollHeight: element.scrollHeight,
-    clientHeight: element.clientHeight,
-  }));
-  assertThat(box && before.scrollHeight > before.clientHeight,
-    "terminal has no scrollback after generating 200 lines", {box, before});
+  const xtermState = await opened.frame.evaluate(() => {
+    const terminal = window.__comandosE2ETerminal;
+    const buffer = terminal?.buffer?.active;
+    return {
+      bufferType: buffer?.type || "",
+      bufferLength: buffer?.length ?? -1,
+      baseY: buffer?.baseY ?? -1,
+      viewportY: buffer?.viewportY ?? -1,
+      rows: terminal?.rows ?? -1,
+      cols: terminal?.cols ?? -1,
+      scrollback: terminal?.options?.scrollback ?? -1,
+      mouseTrackingMode: terminal?.modes?.mouseTrackingMode || "",
+    };
+  });
+  const before = tmux.paneScrollState();
+  assertThat(box && xtermState.bufferType === "alternate" &&
+    xtermState.bufferLength === xtermState.rows &&
+    xtermState.mouseTrackingMode !== "none" && !before.inMode,
+  "terminal is not ready to delegate touch history scrolling to tmux", {box, before, xtermState});
   const x = box.x + box.width / 2;
   const points = interpolate(
     {x, y: box.y + box.height * 0.25},
     {x, y: box.y + box.height * 0.82},
     10,
   );
-  await dispatchTouchDrag(cdp, points, {id: 22});
-  const after = await poll("terminal touch scroll position change", async () => {
-    const state = await viewport.evaluate(element => ({scrollTop: element.scrollTop}));
-    return state.scrollTop !== before.scrollTop ? state : false;
-  });
-  return {before, after};
+  let after;
+  try {
+    await dispatchTouchDrag(cdp, points, {id: 22});
+    after = await poll("tmux history position change after terminal touch scroll", () => {
+      const state = tmux.paneScrollState();
+      return state.inMode && state.scrollPosition > 0 ? state : false;
+    });
+    return {xtermState, before, after};
+  } finally {
+    if (tmux.exists()) {
+      tmux.cancelCopyMode();
+      await poll("tmux return to live mode after terminal touch scroll", () =>
+        !tmux.paneScrollState().inMode);
+    }
+  }
 }
 
 async function interactionState(api, session) {
@@ -1261,6 +1332,16 @@ async function runSelectionCopy(opened, tmux, api, session) {
   const rendered = await waitForMarkerRender(opened.frame, marker,
     "selection marker real xterm buffer/canvas region");
   await setInteraction(opened, tmux, api, session, true);
+  const beforeSelection = await opened.frame.evaluate(() => {
+    const terminal = window.__comandosE2ETerminal;
+    return {
+      mouseTrackingMode: terminal?.modes?.mouseTrackingMode || "",
+      hasSelection: terminal?.hasSelection?.() || false,
+      selection: terminal?.getSelection?.() || "",
+      activeElement: document.activeElement?.className || document.activeElement?.tagName || "",
+      documentFocused: document.hasFocus(),
+    };
+  });
 
   const screen = opened.frame.locator(".xterm-screen");
   const box = await screen.boundingBox();
@@ -1274,11 +1355,67 @@ async function runSelectionCopy(opened, tmux, api, session) {
   await opened.page.mouse.down();
   await opened.page.mouse.move(box.x + region.right - (cellWidth * 0.15), y, {steps: 12});
   await opened.page.mouse.up();
-  await opened.page.keyboard.press("Control+C");
-  const copied = await poll("known terminal selection in browser clipboard", async () => {
-    const value = await opened.page.evaluate(() => navigator.clipboard.readText());
-    return value.includes(marker) ? value : false;
+  const afterSelection = await opened.frame.evaluate(() => {
+    const terminal = window.__comandosE2ETerminal;
+    return {
+      mouseTrackingMode: terminal?.modes?.mouseTrackingMode || "",
+      hasSelection: terminal?.hasSelection?.() || false,
+      selection: terminal?.getSelection?.() || "",
+      position: terminal?.getSelectionPosition?.() || null,
+      activeElement: document.activeElement?.className || document.activeElement?.tagName || "",
+      documentFocused: document.hasFocus(),
+    };
   });
+  assertThat(afterSelection.hasSelection && afterSelection.selection.includes(marker),
+    "mouse drag did not select the known marker in xterm", {
+      marker, beforeSelection, afterSelection, rendered,
+    });
+  await opened.frame.evaluate(() => {
+    window.__e2eCopyEvents = [];
+    document.addEventListener("copy", event => {
+      window.__e2eCopyEvents.push({
+        phase: "capture",
+        target: event.target?.className || event.target?.tagName || "",
+        defaultPrevented: event.defaultPrevented,
+        types: [...(event.clipboardData?.types || [])],
+        text: event.clipboardData?.getData("text/plain") || "",
+      });
+    }, {capture: true, once: true});
+    document.addEventListener("copy", event => {
+      window.__e2eCopyEvents.push({
+        phase: "bubble",
+        target: event.target?.className || event.target?.tagName || "",
+        defaultPrevented: event.defaultPrevented,
+        types: [...(event.clipboardData?.types || [])],
+        text: event.clipboardData?.getData("text/plain") || "",
+      });
+    }, {once: true});
+  });
+  await opened.page.keyboard.press("Control+C");
+  let copied;
+  try {
+    copied = await poll("known terminal selection in browser clipboard", async () => {
+      const value = await opened.page.evaluate(() => navigator.clipboard.readText());
+      return value.includes(marker) ? value : false;
+    });
+  } catch (error) {
+    const [frameCopy, pageClipboard, permissions] = await Promise.all([
+      opened.frame.evaluate(() => ({
+        events: window.__e2eCopyEvents || [],
+        activeElement: document.activeElement?.className || document.activeElement?.tagName || "",
+        selection: window.__comandosE2ETerminal?.getSelection?.() || "",
+        hasSelection: window.__comandosE2ETerminal?.hasSelection?.() || false,
+      })),
+      opened.page.evaluate(() => navigator.clipboard.readText()),
+      opened.page.evaluate(async () => ({
+        read: (await navigator.permissions.query({name: "clipboard-read"})).state,
+        write: (await navigator.permissions.query({name: "clipboard-write"})).state,
+      })),
+    ]);
+    throw new HarnessError("known terminal selection was not copied to browser clipboard", {
+      marker, poll: error.message, frameCopy, pageClipboard, permissions,
+    });
+  }
   assertThat(copied.includes(marker), "copied terminal selection omitted known marker", {marker, copied});
   await setInteraction(opened, tmux, api, session, false);
   return {marker, copied, rendered};
@@ -1296,7 +1433,7 @@ async function resizeOneAxis(opened, tmux, cdp, flag) {
     addedPane = tmux.split(flag);
     await poll(`${flag} disposable split`, () => tmux.panes().length === 2);
     const before = tmux.panes();
-    const primary = paneGeometryFor(before, before.find(pane => pane.paneIndex === 0).id);
+    const primary = paneGeometryFor(before, tmux.targets.primaryPane);
     const other = paneGeometryFor(before, addedPane);
     const screenBox = await opened.frame.locator(".xterm-screen").boundingBox();
     const windowSize = tmux.windowSize();
@@ -1391,20 +1528,52 @@ async function themePropagation(opened) {
 async function waitForThemePropagation(opened, name) {
   const expected = THEME_CSS[name];
   assertThat(expected, "unknown theme propagation expectation", {name});
-  return poll(`dashboard and terminal ${name} theme propagation`, async () => {
-    const state = await themePropagation(opened);
-    return state.dashboardTheme === name && state.terminal.background === expected.background &&
-      state.terminal.brand === expected.brand ? state : false;
+  let lastState;
+  try {
+    return await poll(`dashboard and terminal ${name} theme propagation`, async () => {
+      lastState = await themePropagation(opened);
+      return lastState.dashboardTheme === name &&
+        lastState.terminal.background === expected.background &&
+        lastState.terminal.brand === expected.brand ? lastState : false;
+    });
+  } catch (error) {
+    throw new HarnessError(`dashboard and terminal ${name} theme did not converge`, {
+      expected, lastState, poll: error.message,
+    });
+  }
+}
+
+async function clickVisibleThemeControl(opened) {
+  const button = opened.page.locator("#btn-theme");
+  if (await button.isVisible()) {
+    await button.click();
+    return;
+  }
+  const panelLabel = opened.page.locator(".apptab .lbl", {hasText: "⌂ Panel"}).first();
+  await panelLabel.waitFor({state: "visible", timeout: POLL_TIMEOUT_MS});
+  assertThat(await panelLabel.textContent() === "⌂ Panel",
+    "mobile panel tab label did not resolve exactly");
+  await panelLabel.click();
+  await button.waitFor({state: "visible", timeout: POLL_TIMEOUT_MS});
+  await button.click();
+
+  const terminalLabel = opened.page.locator(".apptab .lbl", {hasText: opened.session}).first();
+  await terminalLabel.waitFor({state: "visible", timeout: POLL_TIMEOUT_MS});
+  assertThat(await terminalLabel.textContent() === opened.session,
+    "mobile terminal tab label did not resolve exactly", {session: opened.session});
+  await terminalLabel.click();
+  await poll("return to same terminal iframe after visible theme control", async () => {
+    const metrics = await frameMetrics(opened);
+    return metrics.sameNode && metrics.identity === opened.identity ? metrics : false;
   });
 }
 
 async function clickThemeUntil(opened, name) {
-  const button = opened.page.locator("#btn-theme");
   for (let attempt = 0; attempt < 5; attempt += 1) {
     const current = await opened.page.evaluate(() =>
       document.documentElement.dataset.theme || "noche");
     if (current === name) return waitForThemePropagation(opened, name);
-    await button.click();
+    await clickVisibleThemeControl(opened);
     const next = await poll(`dashboard theme transition away from ${current}`, () => opened.page.evaluate(previous => {
       const actual = document.documentElement.dataset.theme || "noche";
       return actual !== previous ? actual : false;
@@ -1692,7 +1861,9 @@ module.exports = {
   markerCanvasRegion,
   normalizeBase,
   normalizeXtermPaste,
+  parsePaneScrollState,
   poll,
+  readerHexFromCapture,
   redactSecrets,
   registrationCleanupDecision,
   registrationStateAfterError,

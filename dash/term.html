@@ -33,14 +33,19 @@
     --term-line:#222A3A; --term-line2:#2E3852; --term-text:#EAF0FB;
     --term-dim:#9AA6BF; --term-faint:#5E6980; --term-brand:#8B7CFF;
   }
-  html, body { margin: 0; padding: 0; height: 100%; background:var(--term-bg); color:var(--term-text); overflow: hidden; }
-  #term-shell { height: 100%; display: grid; grid-template-rows: minmax(0, 1fr) auto; background:var(--term-bg); }
+  html, body { margin: 0; padding: 0; width: 100%; max-width: 100%; height: 100%; background:var(--term-bg); color:var(--term-text); overflow: hidden; }
+  #term-shell { width: 100%; max-width: 100%; min-width: 0; height: 100%; display: grid;
+    grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 1fr) auto;
+    overflow: hidden; background:var(--term-bg); }
   #term {
+    width: 100%; max-width: 100%;
     padding: 8px 6px 6px 10px;
     box-sizing: border-box;
-    min-height: 0;
+    min-width: 0; min-height: 0;
+    overflow: hidden;
   }
-  #term-toolbar { display: flex; gap: 6px; min-width: 0; overflow-x: auto;
+  #term-toolbar { box-sizing: border-box; display: flex; gap: 6px;
+    width: 100%; max-width: 100%; min-width: 0; overflow-x: auto;
     padding: 6px; border-top: 1px solid var(--term-line2); background:var(--term-panel);
     overscroll-behavior-x: contain; -webkit-overflow-scrolling: touch; touch-action: pan-x; }
   #term-toolbar button { box-sizing: border-box; flex: 0 0 auto; min-width: 44px; height: 44px; padding: 0 10px;
@@ -498,6 +503,27 @@
       document.getElementById('paste-dialog').showModal();
     }
   }
+
+  async function copyTerminalSelection() {
+    const text = term.getSelection();
+    if (!text) return false;
+    try {
+      await navigator.clipboard.writeText(text);
+      return true;
+    } catch (_) {
+      try { return document.execCommand('copy'); } catch (_) { return false; }
+    }
+  }
+
+  function handleTerminalKeyEvent(event) {
+    const copyShortcut = event.type === 'keydown' && !event.altKey &&
+      (event.ctrlKey || event.metaKey) && String(event.key).toLowerCase() === 'c';
+    if (!copyShortcut || !term.hasSelection()) return true;
+    void copyTerminalSelection();
+    return false;
+  }
+
+  term.attachCustomKeyEventHandler(handleTerminalKeyEvent);
 
   function applyInteractionState(next) {
     interactionState = {
