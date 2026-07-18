@@ -94,7 +94,9 @@ stop; sleep 0.3
 WFLAG=""
 ttyd --help 2>&1 | grep -q -- "--writable" && WFLAG="-W"
 # ttyd en su PROPIA unidad (systemd-run en Linux, como cc-dash): sobrevive a
-# que cierres la terminal o reinicies tu sesion. Fallback setsid (macOS).
+# que cierres la terminal o reinicies tu sesion. Sin systemd detachamos a mano:
+# setsid en Linux; en macOS NO existe setsid (ni 'brew install ttyd' lo aporta,
+# solo util-linux keg-only), asi que ahi usamos nohup, que si viene de fabrica.
 TTYD_COMMON=(-i 127.0.0.1 $WFLAG --url-arg
   -t 'theme={"background":"#0A0D13","foreground":"#EAF0FB","cursor":"#FFAE1A","selectionBackground":"#2E3852"}'
   -t fontSize=14
@@ -121,9 +123,15 @@ if command -v systemd-run >/dev/null 2>&1; then
   systemd-run --user --collect --quiet --unit=cc-webterm-path \
     "${SYSTEMD_RESTART[@]}" "${TTYD_PATH_ARGS[@]}" >/dev/null 2>&1
 else
-  setsid "${TTYD_ARGS[@]}" </dev/null >/dev/null 2>&1 &
+  # Detach que exista en esta plataforma: setsid (Linux) o nohup (macOS).
+  if command -v setsid >/dev/null 2>&1; then
+    DETACH=(setsid)
+  else
+    DETACH=(nohup)
+  fi
+  "${DETACH[@]}" "${TTYD_ARGS[@]}" </dev/null >/dev/null 2>&1 &
   echo $! > "$PIDF"
-  setsid "${TTYD_PATH_ARGS[@]}" </dev/null >/dev/null 2>&1 &
+  "${DETACH[@]}" "${TTYD_PATH_ARGS[@]}" </dev/null >/dev/null 2>&1 &
 fi
 if wait_for_endpoint "http://127.0.0.1:$PORT/token" && \
    wait_for_endpoint "http://127.0.0.1:$PATH_PORT/term/token"; then

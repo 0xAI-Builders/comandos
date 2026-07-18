@@ -137,7 +137,7 @@ ComandOS authentication.
 |---|---|
 | **Linux** (GNOME/X11) | Everything — this is the daily driver ✓ |
 | **Windows 11** | Via **WSL2 + WSLg** (GUI app, audio and all) ✓ |
-| **macOS** | Engine + web dashboard + native notifications/voice (`osascript`, `say`, `afplay`); GTK app/popups pending — beta, [testers welcome](https://github.com/0xAI-Builders/comandos/issues) |
+| **macOS** | Engine + web dashboard + **native app** (`cc-app`, PyObjC + WKWebView; needs `pip install pyobjc-framework-Cocoa pyobjc-framework-WebKit` + `brew install ttyd`) + native notifications/voice (`osascript`, `say`, `afplay`); popups pending — beta, [testers welcome](https://github.com/0xAI-Builders/comandos/issues) |
 
 ### Windows setup (WSL2 + WSLg)
 
