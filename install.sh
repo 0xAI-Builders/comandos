@@ -77,6 +77,11 @@ ln -sfn "$REPO/assets" "$HOOKS/dash/assets"
 # Secretos (token de bot, config): solo el dueno (0600)
 chmod 600 "$HOOKS/telegram.env" "$HOOKS/cc-notify.conf" 2>/dev/null || true
 
+# Hooks de Claude Code en ~/.claude/settings.json (los demás agentes van
+# vía cc-agents setup). Sin esto Claude nunca llama a cc-notify.sh y el
+# tablero no ve estados working/waiting/done.
+cc_register_claude_hooks "$HOOKS/cc-notify.sh"
+
 # Config de terminal
 ln -sf "$REPO/config/kitty.conf" "$HOME/.config/kitty/kitty.conf"
 if [ ! -e "$HOME/.tmux.conf" ]; then
@@ -129,6 +134,11 @@ case "$CC_PLAT" in
   <key>ProgramArguments</key><array>
     <string>$BIN/cc-dash</string><string>--no-open</string>
   </array>
+  <key>EnvironmentVariables</key><dict>
+    <!-- launchd no hereda el PATH del shell: sin Homebrew aquí, cc-dash no
+         encuentra tmux y /state (y toda acción tmux) muere con conexión vacía. -->
+    <key>PATH</key><string>$BIN:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+  </dict>
   <key>RunAtLoad</key><true/>
   <key>KeepAlive</key><true/>
 </dict></plist>
