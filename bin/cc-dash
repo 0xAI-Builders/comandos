@@ -971,7 +971,7 @@ def tmux_new_session(sess, cwd, agent="claude"):
     Antes de lanzar carga ~/.claude/hooks/providers.env: UN solo archivo donde
     viven las API keys de proveedores (groq/cerebras/sambanova/cloudflare...)
     que opencode y otros agentes leen del ambiente."""
-    launch = AGENT_LAUNCH.get(agent, AGENT_LAUNCH["claude"])
+    launch = agent_launch(agent)
     launch = 'set -a; . "$HOME/.claude/hooks/providers.env" 2>/dev/null; set +a; ' + launch
     r = subprocess.run(
         scope_cmd(["tmux", "new-session", "-d", "-s", sess, "-n", "claude",
@@ -1157,6 +1157,23 @@ AGENT_LAUNCH = {
     "agy":      "agy --continue 2>/dev/null || agy",
     "aider":    "aider",
 }
+
+
+def agent_launch(agent):
+    """Comando con el que se LANZA un agente al crear/revivir su sesion.
+    Prioridad:
+      1. AGENT_LAUNCH_<CLAVE> en cc-notify.conf — permite comandos propios
+         (wrappers como claude-mpm/claude-personal) y TAMBIEN sobreescribir
+         un builtin (p.ej. AGENT_LAUNCH_CLAUDE=...).
+      2. La tabla AGENT_LAUNCH de arriba (agentes conocidos).
+      3. 'claude' como ultimo respaldo.
+    <CLAVE> = nombre del agente en MAYUSCULAS con '-' y '.' -> '_'
+    (claude-mpm -> AGENT_LAUNCH_CLAUDE_MPM). read_conf() ya quita comillas."""
+    key = "AGENT_LAUNCH_" + agent.replace("-", "_").replace(".", "_").upper()
+    custom = read_conf().get(key)
+    if custom:
+        return custom
+    return AGENT_LAUNCH.get(agent, AGENT_LAUNCH["claude"])
 
 
 def agent_set():
