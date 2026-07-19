@@ -6,10 +6,23 @@
 # ttyd pasa el ?arg=... de la URL como $1; lo validamos estrictamente (nada de
 # shell injection: solo [A-Za-z0-9._-], y siempre con comillas).
 set -uo pipefail
+TOKEN_FILE="$HOME/.claude/hooks/dash-token"
+
+presented="${1:-}"
+expected=""
+[ -r "$TOKEN_FILE" ] && expected=$(cat "$TOKEN_FILE")
+if [ -z "$expected" ] || [ "$presented" != "$expected" ]; then
+  echo "Acceso denegado al terminal de ComandOS."
+  exit 1
+fi
+shift
 
 pick() {
-  local sels s i=0
-  mapfile -t sels < <(tmux list-sessions -F "#{session_name}" 2>/dev/null \
+  local -a sels=()
+  local s i=0
+  while IFS= read -r s; do
+    [ -n "$s" ] && sels[${#sels[@]}]="$s"
+  done < <(tmux list-sessions -F "#{session_name}" 2>/dev/null \
     | grep -vE '^(local|hub|control)$')
   if [ "${#sels[@]}" -eq 0 ]; then
     echo "No hay sesiones. Crea una:  ccx nombre"; echo; exec "$SHELL"

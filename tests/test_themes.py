@@ -265,6 +265,8 @@ function wireTermFrameScroll() {{}}
 function wireTermFrameShortcuts() {{}}
 function applyTermInteraction(value) {{ interactions.push(value); }}
 function resolveTermBase() {{ return Promise.resolve(TERM_BASE); }}
+function webtermAccessToken() {{ return Promise.resolve("test-token"); }}
+function tf(es, _en) {{ return es; }}
 function toast(message) {{ throw new Error(message); }}
 {ensure_frame}
 (async () => {{
@@ -292,7 +294,7 @@ function toast(message) {{ throw new Error(message); }}
         "sameEntryFrame": True,
         "sameSessionEntry": True,
         "sameAppendedFrame": True,
-        "src": "/term/?arg=dev%20%2F%20blue&theme=bruno",
+        "src": "/term/?auth=test-token&arg=dev%20%2F%20blue&theme=bruno",
         "compat": "0",
         "interactions": ["dev / blue"],
         "removed": False,

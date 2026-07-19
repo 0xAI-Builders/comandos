@@ -112,22 +112,23 @@ Scan the QR, open the dashboard, "Add to Home Screen" — it installs as an app
 `cc-webterm` — every session gets a **Terminal** button that opens the real,
 live, interactive terminal (xterm.js attached to the same tmux session). Type,
 scroll, run `vim` — exactly like sitting at your desk, shared in real time.
-It is routed under `/term` by the same Tailscale Serve. The interactive ttyd
-terminal relies on your tailnet access policy and does not add separate
-ComandOS authentication.
+It is routed under `/term` by the same Tailscale Serve. ComandOS passes the
+existing access token as a per-connection launch capability; the attach helper
+rejects the connection before opening tmux when it is missing or wrong. There
+is no second login prompt.
 
 **When you enable remote access, security is layered:**
 - **Tailscale** (WireGuard): access follows your tailnet policy for authorized users and devices, with end-to-end encryption. ComandOS uses Serve, never public Funnel.
 - **Automatic TLS** via `tailscale serve` (https on your tailnet).
-- **Access token**: protects the remote dashboard and cc-dash API, including
-  session data and actions. `cc-dash` still binds only to `127.0.0.1`; Serve
-  bridges it.
-- **Interactive terminal boundary**: ttyd also binds only to loopback, but it
-  has no additional ComandOS login. Its `/term` and `:8443` routes rely on your
-  Tailscale access policy, like SSH over Tailscale.
+- **Access token**: protects the remote dashboard, cc-dash API, and every
+  interactive terminal attachment. `cc-dash` still binds only to `127.0.0.1`;
+  Serve bridges it.
+- **Interactive terminal boundary**: ttyd also binds only to loopback. Its
+  attach helper validates the same token before opening tmux, while Tailscale
+  policy limits who can reach `/term` and `:8443` in the first place.
 - **Anti-DNS-rebinding**: Host-header allowlist (loopback + `*.ts.net`).
-- The local desktop app/browser needs no token; remote/proxied dashboard and
-  API requests do.
+- Local clients receive the terminal capability automatically; remote/proxied
+  dashboard and API requests must present the access token.
 
 `cc-mobile off` stops exposing it.
 
@@ -137,7 +138,7 @@ ComandOS authentication.
 |---|---|
 | **Linux** (GNOME/X11) | Everything — this is the daily driver ✓ |
 | **Windows 11** | Via **WSL2 + WSLg** (GUI app, audio and all) ✓ |
-| **macOS** | Engine + web dashboard + **native app** (`cc-app`, PyObjC + WKWebView; needs `pip install pyobjc-framework-Cocoa pyobjc-framework-WebKit` + `brew install ttyd`) + native notifications/voice (`osascript`, `say`, `afplay`); popups pending — beta, [testers welcome](https://github.com/0xAI-Builders/comandos/issues) |
+| **macOS** | Engine + web dashboard + **native app** (`cc-app`, PyObjC + WKWebView; needs `pip install pyobjc-framework-Cocoa pyobjc-framework-WebKit` + `brew install tmux jq ttyd`) + native notifications/voice (`osascript`, `say`, `afplay`); popups pending — beta, [testers welcome](https://github.com/0xAI-Builders/comandos/issues) |
 
 ### Windows setup (WSL2 + WSLg)
 
