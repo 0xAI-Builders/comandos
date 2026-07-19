@@ -59,4 +59,18 @@ printf '{not json' > "$S"
 CC_CLAUDE_SETTINGS="$S" cc_register_claude_hooks "$CMD" 2>/dev/null
 [ "$(cat "$S")" = "{not json" ] || { echo "broken: invalid file was modified"; exit 1; }
 
+# Case 5: un archivo existente pero vacio tambien es JSON invalido; no se
+# interpreta como si no existiera ni se reemplaza silenciosamente.
+S="$TMP/empty.json"
+: > "$S"
+CC_CLAUDE_SETTINGS="$S" cc_register_claude_hooks "$CMD" 2>/dev/null
+[ ! -s "$S" ] || { echo "empty: existing empty file was modified"; exit 1; }
+
+# Case 6: en WSL jq se instala dentro del dispatch de plataforma. El registro
+# debe ocurrir despues para que una instalacion limpia no termine sin hooks.
+deps_line=$(grep -n '^[[:space:]]*_cc_wsl_install_deps$' "$ROOT/install.sh" | cut -d: -f1)
+register_line=$(grep -n '^cc_register_claude_hooks ' "$ROOT/install.sh" | cut -d: -f1)
+[ -n "$deps_line" ] && [ -n "$register_line" ] && [ "$register_line" -gt "$deps_line" ] \
+  || { echo "order: Claude hooks are registered before WSL dependencies"; exit 1; }
+
 echo "test_install_hooks: OK"
