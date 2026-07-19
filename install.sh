@@ -77,11 +77,6 @@ ln -sfn "$REPO/assets" "$HOOKS/dash/assets"
 # Secretos (token de bot, config): solo el dueno (0600)
 chmod 600 "$HOOKS/telegram.env" "$HOOKS/cc-notify.conf" 2>/dev/null || true
 
-# Hooks de Claude Code en ~/.claude/settings.json (los demás agentes van
-# vía cc-agents setup). Sin esto Claude nunca llama a cc-notify.sh y el
-# tablero no ve estados working/waiting/done.
-cc_register_claude_hooks "$HOOKS/cc-notify.sh"
-
 # Config de terminal
 ln -sf "$REPO/config/kitty.conf" "$HOME/.config/kitty/kitty.conf"
 if [ ! -e "$HOME/.tmux.conf" ]; then
@@ -177,6 +172,10 @@ PLIST
       && systemctl --user enable --now cc-telegram.service 2>/dev/null || true
     ;;
 esac
+
+# Hooks de Claude Code en ~/.claude/settings.json (los demás agentes van
+# vía cc-agents setup). En WSL esto debe correr DESPUES de instalar jq.
+cc_register_claude_hooks "$HOOKS/cc-notify.sh"
 
 # Conectar otros agentes instalados (codex, opencode, gemini, agy)
 "$BIN/cc-agents" setup || true
