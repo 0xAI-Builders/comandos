@@ -127,3 +127,40 @@ apt_install_confirmed() {
   fi
   sudo apt update && sudo apt install -y $missing
 }
+
+# Registra los hooks de Claude Code en ~/.claude/settings.json (idempotente).
+# $1 = comando del hook (ruta a cc-notify.sh). Respeta hooks ajenos existentes
+# y no duplica si el comando ya está registrado en ese evento.
+# CC_CLAUDE_SETTINGS: override de la ruta para tests.
+cc_register_claude_hooks() {
+  local cmd="$1"
+  local settings="${CC_CLAUDE_SETTINGS:-$HOME/.claude/settings.json}"
+  command -v jq >/dev/null 2>&1 || {
+    echo "  (sin jq: registra los hooks de Claude Code a mano en $settings)" >&2
+    return 0
+  }
+  mkdir -p "$(dirname "$settings")"
+  [ -s "$settings" ] || echo '{}' > "$settings"
+  if ! jq -e . "$settings" >/dev/null 2>&1; then
+    echo "  ($settings no es JSON válido; no toco los hooks — revísalo a mano)" >&2
+    return 0
+  fi
+  local tmp
+  tmp=$(mktemp)
+  if jq --arg cmd "$cmd" '
+      def ensure($ev):
+        .hooks[$ev] = ((.hooks[$ev] // []) as $arr
+          | if ($arr | map((.hooks // [])[] | .command // "") | index($cmd)) != null
+            then $arr
+            else $arr + [{"hooks": [{"type": "command", "command": $cmd}]}]
+            end);
+      .hooks //= {}
+      | ensure("UserPromptSubmit") | ensure("Stop")
+      | ensure("Notification")     | ensure("SessionEnd")
+    ' "$settings" > "$tmp" 2>/dev/null; then
+    mv "$tmp" "$settings"
+  else
+    rm -f "$tmp"
+    echo "  (no pude actualizar $settings; registra los hooks a mano)" >&2
+  fi
+}
