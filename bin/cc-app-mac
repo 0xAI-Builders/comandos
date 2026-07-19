@@ -1,0 +1,1006 @@
+#!/usr/bin/env python3
+"""Centro Claude para macOS: tablero + MULTIPLES terminales en pestanas nativas.
+
+Port nativo (PyObjC + WKWebView) de la app GTK de Linux (bin/cc-app). En Mac no
+hay GTK ni VTE, asi que:
+  - Izquierda: el tablero (WKWebView contra http://127.0.0.1:4777).
+  - Derecha: una tira de pestanas + un WKWebView por pestana que carga
+    dash/term.html (xterm.js) contra el terminal web de cc-webterm (ttyd en
+    127.0.0.1:4779) — LA MISMA terminal en vivo que ve el resto del ecosistema.
+
+Interop total con la app de Linux: comparte el esquema de persistencia
+(~/.claude/hooks/app-tabs.json + app-tabs-history.json), el puente del tablero
+("centro" -> abrir/renombrar/tema) y los watchers de IPC de cc-dash
+(app-focus.json / app-tab-open.json / app-tab-close.json).
+
+Teclas (menu nativo — los Cmd funcionan de verdad):
+  Cmd+R                  recargar tablero
+  F12                    mostrar/ocultar el panel de terminales
+  Cmd+= / Cmd+- / Cmd+0  zoom de la terminal activa
+  Cmd+T                  nueva terminal local (sesion scratch en el cwd)
+  Cmd+W                  cerrar pestana
+  Cmd+Shift+] / [        siguiente / anterior pestana
+  Cmd+Q                  salir
+
+Deliberadamente FUERA de v1 (se pueden anadir despues sin reestructurar):
+  switcher difuso (Ctrl+K), overview de pestanas, modal de snippets,
+  copiar/exportar respuesta, drag&drop, config de ligaduras, permisos de
+  notificacion (WKWebView no implementa Web Notifications — se ignora en silencio).
+"""
+import json
+import os
+import subprocess
+import sys
+import threading
+import time
+import urllib.error
+import urllib.parse
+import urllib.request
+
+# Import guard: PyObjC es runtime-only y NO es dependencia de instalacion. Si
+# falta, damos el comando exacto (bilingue) y salimos limpio — mismo tono que
+# el chequeo de ttyd en bin/cc-webterm.
+try:
+    import objc  # noqa: F401
+    from Foundation import (
+        NSObject, NSURL, NSURLComponents, NSMakeRect, NSTimer,
+        NSMutableAttributedString, NSAttributedString,
+    )
+    from AppKit import (
+        NSApplication, NSApp, NSWindow, NSView, NSButton, NSSplitView,
+        NSMenu, NSMenuItem, NSAlert, NSTextField, NSColor, NSFont,
+        NSApplicationActivationPolicyRegular, NSAppearance,
+        NSAppearanceNameDarkAqua,
+        NSWindowStyleMaskTitled, NSWindowStyleMaskClosable,
+        NSWindowStyleMaskMiniaturizable, NSWindowStyleMaskResizable,
+        NSBackingStoreBuffered, NSViewWidthSizable, NSViewHeightSizable,
+        NSViewMinYMargin, NSBezelStyleRecessed, NSButtonTypePushOnPushOff,
+        NSControlStateValueOn, NSControlStateValueOff,
+        NSAlertFirstButtonReturn,
+        NSForegroundColorAttributeName, NSFontAttributeName,
+    )
+    from WebKit import (
+        WKWebView, WKWebViewConfiguration, WKUserContentController,
+    )
+    from PyObjCTools import AppHelper
+except ImportError as e:  # pragma: no cover - depende del entorno
+    _es = os.environ.get("LANG", "").lower().startswith("es")
+    if _es:
+        print("Falta PyObjC (el motor de la app nativa de macOS). Instalalo:")
+        print("  pip install --user pyobjc-framework-Cocoa pyobjc-framework-WebKit")
+        print("Y para las pestanas de terminal:  brew install ttyd")
+        print(f"  (detalle: {e})")
+    else:
+        print("Missing PyObjC (the macOS native app engine). Install it:")
+        print("  pip install --user pyobjc-framework-Cocoa pyobjc-framework-WebKit")
+        print("And for the terminal tabs:  brew install ttyd")
+        print(f"  (detail: {e})")
+    sys.exit(1)
+
+
+# ---------------------------------------------------------------------------
+# Constantes y resolucion de rutas (mismo patron que bin/cc-app)
+# ---------------------------------------------------------------------------
+DASH_URL = "http://127.0.0.1:4777"
+# Raiz del repo desde este binario. Con el symlink en ~/.local/bin, realpath
+# resuelve al archivo real dentro del repo, asi ../assets y dash/term.html
+# quedan accesibles.
+CC_REPO = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
+TERM_HTML = os.path.join(CC_REPO, "dash", "term.html")
+CC_WEBTERM = os.path.join(CC_REPO, "bin", "cc-webterm")
+# file:// no tiene origen ni host, asi que term.html cae a este WS por defecto;
+# lo pasamos EXPLICITO por ?ws= para no depender de esa heuristica.
+WS_URL = "ws://127.0.0.1:4779/ws"
+WEBTERM_TOKEN_URL = "http://127.0.0.1:4779/token"
+
+TABS_FILE = os.path.expanduser("~/.claude/hooks/app-tabs.json")
+TAB_HISTORY_FILE = os.path.expanduser("~/.claude/hooks/app-tabs-history.json")
+FOCUS_FILE = os.path.expanduser("~/.claude/hooks/app-focus.json")
+OPEN_FILE = os.path.expanduser("~/.claude/hooks/app-tab-open.json")
+CLOSE_FILE = os.path.expanduser("~/.claude/hooks/app-tab-close.json")
+
+# Punto de estado por pestana (mismos colores que DOT_COLORS de bin/cc-app).
+DOT_COLORS = {"waiting": "#FFAE1A", "working": "#7AA5FF",
+              "done": "#2EE59D", "dead": "#FF6B6B"}
+DOT_IDLE = "#39445C"
+DEFAULT_THEME = "noche"
+VALID_THEMES = ("noche", "dia", "calido", "termius", "bruno")
+
+HUB_KEY = "__hub__"   # clave interna de la pestana hub (no persiste como sesion)
+TAB_STRIP_H = 30.0
+
+
+def _ui_lang():
+    """Idioma resuelto por cc-dash (igual que bin/cc-app._ui_lang)."""
+    try:
+        with urllib.request.urlopen(DASH_URL + "/conf", timeout=2) as r:
+            l = json.loads(r.read().decode()).get("_lang")
+            if l in ("es", "en"):
+                return l
+    except Exception:
+        pass
+    return "es" if os.environ.get("LANG", "").lower().startswith("es") else "en"
+
+
+ES = _ui_lang() == "es"
+
+
+# ---------------------------------------------------------------------------
+# Helpers de red / tmux (plano — SIN systemd-run: macOS no lo tiene)
+# ---------------------------------------------------------------------------
+def http_get_json(path, timeout=3):
+    try:
+        with urllib.request.urlopen(DASH_URL + path, timeout=timeout) as r:
+            return json.loads(r.read().decode())
+    except Exception:
+        return None
+
+
+def http_post(path, payload, timeout=15):
+    """POST JSON a cc-dash. Devuelve (data|None, error|None)."""
+    body = json.dumps(payload).encode()
+    req = urllib.request.Request(DASH_URL + path, data=body,
+                                 headers={"Content-Type": "application/json"})
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as r:
+            raw = r.read().decode()
+            try:
+                return json.loads(raw), None
+            except Exception:
+                return None, None
+    except urllib.error.HTTPError as e:
+        try:
+            return None, json.loads(e.read().decode()).get("error", str(e))
+        except Exception:
+            return None, str(e)
+    except Exception as e:
+        return None, str(e)
+
+
+def tmuxc(*args):
+    """tmux plano (sin scope/systemd). Igual semantica que tmuxc de bin/cc-app
+    pero sin el envoltorio de Linux."""
+    try:
+        return subprocess.run(["tmux", *args], capture_output=True,
+                              text=True, timeout=10)
+    except Exception:
+        class _R:  # stub para que .returncode / .stdout no exploten
+            returncode = 1
+            stdout = ""
+            stderr = ""
+        return _R()
+
+
+def initial_theme():
+    """Tema actual (Ajustes de cc-dash). Cae a noche si no responde."""
+    p = http_get_json("/prefs")
+    if isinstance(p, dict) and p.get("theme") in VALID_THEMES:
+        return p["theme"]
+    return DEFAULT_THEME
+
+
+def term_url(sess, theme):
+    """file:// a dash/term.html con arg/theme/ws. Construido por NSURLComponents
+    para preservar el query (loadFileURL lo respeta en el WebKit de macOS
+    moderno; lo verificamos en runtime leyendo location.search)."""
+    q = {"theme": theme, "ws": WS_URL}
+    if sess:
+        q["arg"] = sess
+    comps = NSURLComponents.alloc().init()
+    comps.setScheme_("file")
+    comps.setPath_(TERM_HTML)
+    comps.setPercentEncodedQuery_(urllib.parse.urlencode(q))
+    return comps.URL()
+
+
+# ---------------------------------------------------------------------------
+# Persistencia de pestanas — MISMO esquema que bin/cc-app (interop con Linux)
+# ---------------------------------------------------------------------------
+def load_saved_tabs():
+    """Lee app-tabs.json. Acepta el formato dict {clave: etiqueta} y el viejo
+    formato lista de claves. Devuelve una lista ordenada de (clave, etiqueta)."""
+    try:
+        with open(TABS_FILE) as f:
+            data = json.load(f)
+    except Exception:
+        return []
+    if isinstance(data, list):
+        return [(k, None) for k in data if isinstance(k, str) and k]
+    if isinstance(data, dict):
+        return [(k, v) for k, v in data.items() if isinstance(k, str) and k]
+    return []
+
+
+def saved_tab_label(key):
+    for k, v in load_saved_tabs():
+        if k == key and isinstance(v, str) and v:
+            return v
+    return None
+
+
+def archive_tab(key, label, reason="closed"):
+    """Anade la pestana a app-tabs-history.json (Recientes). Replica el item y
+    la escritura atomica de archive_tab() de bin/cc-app."""
+    if not key:
+        return
+    cwd = ""
+    r = tmuxc("display-message", "-p", "-t", "=" + key + ":", "#{pane_current_path}")
+    if r.returncode == 0:
+        cwd = r.stdout.strip()
+    agent = ""
+    r = tmuxc("display-message", "-p", "-t", "=" + key + ":", "#{pane_current_command}")
+    cmd = r.stdout.strip() if r.returncode == 0 else ""
+    agent = ("codex" if cmd == "node"
+             else cmd if cmd in {"claude", "opencode", "gemini", "agy", "aider"}
+             else "claude")
+    item = {"session": key, "label": label or key, "cwd": cwd, "agent": agent,
+            "reason": reason, "ts": int(time.time())}
+    try:
+        with open(TAB_HISTORY_FILE) as f:
+            hist = json.load(f)
+        if not isinstance(hist, list):
+            hist = []
+    except Exception:
+        hist = []
+    hist = [h for h in hist if not isinstance(h, dict) or h.get("session") != key]
+    tmp = TAB_HISTORY_FILE + ".tmp"
+    try:
+        os.makedirs(os.path.dirname(TAB_HISTORY_FILE), exist_ok=True)
+        with open(tmp, "w") as f:
+            json.dump([item] + hist[:79], f)
+        os.replace(tmp, TAB_HISTORY_FILE)
+    except Exception:
+        pass
+
+
+# ---------------------------------------------------------------------------
+# cc-webterm: asegurar el motor del terminal web antes de la primera pestana
+# ---------------------------------------------------------------------------
+def ensure_webterm():
+    """Arranca cc-webterm si 127.0.0.1:4779 no responde, y espera <=5s a que
+    levante. Si falta ttyd, cc-webterm muere con su propio mensaje y term.html
+    muestra su error en la pestana — no montamos UI de error extra."""
+    def probe():
+        try:
+            urllib.request.urlopen(WEBTERM_TOKEN_URL, timeout=1)
+            return True
+        except Exception:
+            return False
+
+    if probe():
+        return True
+    bin_path = CC_WEBTERM if os.path.exists(CC_WEBTERM) else "cc-webterm"
+    try:
+        subprocess.Popen([bin_path], stdout=subprocess.DEVNULL,
+                         stderr=subprocess.DEVNULL)
+    except Exception:
+        return False
+    for _ in range(25):  # ~5s
+        if probe():
+            return True
+        time.sleep(0.2)
+    return False
+
+
+# ---------------------------------------------------------------------------
+# Puente del tablero: WKScriptMessageHandler "centro"
+# ---------------------------------------------------------------------------
+class DashBridge(NSObject):
+    """Recibe los mensajes JSON que dash/index.html postea a
+    window.webkit.messageHandlers.centro (mismas 3 formas que on_msg de
+    bin/cc-app). Cero cambios de JS: reusamos el canal existente."""
+
+    def initWithController_(self, controller):
+        self = objc.super(DashBridge, self).init()
+        if self is None:
+            return None
+        self.controller = controller  # el AppController (delega la logica UI)
+        return self
+
+    def userContentController_didReceiveScriptMessage_(self, ucc, message):
+        try:
+            d = json.loads(str(message.body()))
+        except Exception:
+            # message.body() ya puede venir como dict si el JS mando objeto.
+            body = message.body()
+            d = dict(body) if hasattr(body, "keys") else None
+        if not isinstance(d, dict):
+            return
+        try:
+            if d.get("theme"):
+                self.controller.applyTheme_(d["theme"])
+                return
+            if d.get("type") == "rename":
+                sess = d.get("session", "")
+                label = d.get("label", "")
+                if sess and isinstance(label, str) and label.strip():
+                    self.controller.renameTab_to_(sess, label.strip())
+                return
+            sess = d.get("session", "")
+            if sess:
+                win = d.get("win", "claude")
+                label = d.get("label", None)
+                self.controller.openOrFocus_win_label_(
+                    sess, win, label if isinstance(label, str) and label else None)
+        except Exception as e:
+            print(f"mensaje invalido del tablero: {e}", file=sys.stderr)
+
+
+# ---------------------------------------------------------------------------
+# Controlador principal / delegado de la app
+# ---------------------------------------------------------------------------
+class AppController(NSObject):
+
+    # -- ciclo de vida ------------------------------------------------------
+    def applicationDidFinishLaunching_(self, _notification):
+        self.theme = initial_theme()
+        # Cada pestana: dict con key, label, webview, button, is_hub.
+        self.tabs = []
+        self.active_key = None
+        self.term_visible = True
+        self._ipc_mtimes = {}
+
+        self._build_window()
+        self._build_menu()
+        self._start_ipc_timer()
+        threading.Thread(target=self._state_poll_loop, daemon=True).start()
+        # cc-webterm puede tardar; lo levantamos fuera del hilo de UI y, cuando
+        # esta listo, creamos el hub y restauramos las pestanas en el main thread.
+        threading.Thread(target=self._boot_terminals, daemon=True).start()
+
+    def applicationShouldTerminateAfterLastWindowClosed_(self, _sender):
+        return True
+
+    # -- construccion de la ventana ----------------------------------------
+    @objc.python_method
+    def _build_window(self):
+        NSApp.setActivationPolicy_(NSApplicationActivationPolicyRegular)
+        # Apariencia oscura global (equivalente a prefer-dark-theme de GTK). NO
+        # portamos el chrome custom de la barra: en Mac es un anti-patron y la
+        # barra nativa ya trae semaforo + arrastre + fullscreen.
+        try:
+            NSApp.setAppearance_(
+                NSAppearance.appearanceNamed_(NSAppearanceNameDarkAqua))
+        except Exception:
+            pass
+
+        style = (NSWindowStyleMaskTitled | NSWindowStyleMaskClosable
+                 | NSWindowStyleMaskMiniaturizable | NSWindowStyleMaskResizable)
+        rect = NSMakeRect(0, 0, 1280, 800)
+        self.window = NSWindow.alloc().initWithContentRect_styleMask_backing_defer_(
+            rect, style, NSBackingStoreBuffered, False)
+        self.window.setTitle_("ComandOS")
+        self.window.setMinSize_((760, 480))
+        self.window.center()
+
+        content = self.window.contentView()
+        cw, ch = content.frame().size.width, content.frame().size.height
+
+        split = NSSplitView.alloc().initWithFrame_(NSMakeRect(0, 0, cw, ch))
+        split.setVertical_(True)          # divisor vertical -> paneles L/R
+        split.setDividerStyle_(1)         # thin
+        split.setAutoresizingMask_(NSViewWidthSizable | NSViewHeightSizable)
+        self.split = split
+
+        # Izquierda: WKWebView del tablero con el handler "centro".
+        ucc = WKUserContentController.alloc().init()
+        cfg = WKWebViewConfiguration.alloc().init()
+        cfg.setUserContentController_(ucc)
+        self._enable_local_access(cfg)
+        self.dash_web = WKWebView.alloc().initWithFrame_configuration_(
+            NSMakeRect(0, 0, cw * 0.52, ch), cfg)
+        self.dash_web.setAutoresizingMask_(
+            NSViewWidthSizable | NSViewHeightSizable)
+        self.dash_web.setNavigationDelegate_(self)
+        self.bridge = DashBridge.alloc().initWithController_(self)
+        ucc.addScriptMessageHandler_name_(self.bridge, "centro")
+        self.dash_web.loadRequest_(_request(DASH_URL))
+
+        # Derecha: contenedor con tira de pestanas (arriba) + area de contenido.
+        right = NSView.alloc().initWithFrame_(
+            NSMakeRect(0, 0, cw * 0.48, ch))
+        right.setAutoresizingMask_(NSViewWidthSizable | NSViewHeightSizable)
+        rw, rh = right.frame().size.width, right.frame().size.height
+
+        self.tab_strip = NSView.alloc().initWithFrame_(
+            NSMakeRect(0, rh - TAB_STRIP_H, rw, TAB_STRIP_H))
+        self.tab_strip.setAutoresizingMask_(
+            NSViewWidthSizable | NSViewMinYMargin)
+        right.addSubview_(self.tab_strip)
+
+        # Boton "+" (nueva terminal local) fijado a la derecha de la tira.
+        self.plus_btn = self._make_strip_button("＋")
+        self.plus_btn.setTarget_(self)
+        self.plus_btn.setAction_("newLocalTab:")
+        self.plus_btn.setToolTip_(
+            "Nueva terminal local" if ES else "New local tab")
+        self.tab_strip.addSubview_(self.plus_btn)
+
+        self.term_area = NSView.alloc().initWithFrame_(
+            NSMakeRect(0, 0, rw, rh - TAB_STRIP_H))
+        self.term_area.setAutoresizingMask_(
+            NSViewWidthSizable | NSViewHeightSizable)
+        right.addSubview_(self.term_area)
+        self.right = right
+
+        split.addSubview_(self.dash_web)
+        split.addSubview_(right)
+        content.addSubview_(split)
+        split.setPosition_ofDividerAtIndex_(int(cw * 0.52), 0)
+
+        self.window.makeKeyAndOrderFront_(None)
+        NSApp.activateIgnoringOtherApps_(True)
+
+    @objc.python_method
+    def _enable_local_access(self, cfg):
+        """file:// necesita permiso explicito para leer los .js/.ttf del repo
+        (equivalente a allow-file-access-from-file-urls de WebKitGTK)."""
+        prefs = cfg.preferences()
+        for k in ("allowFileAccessFromFileURLs",
+                  "allowUniversalAccessFromFileURLs"):
+            try:
+                prefs.setValue_forKey_(True, k)
+            except Exception:
+                pass
+        try:
+            cfg.setValue_forKey_(True, "allowUniversalAccessFromFileURLs")
+        except Exception:
+            pass
+
+    # -- tira de pestanas ---------------------------------------------------
+    @objc.python_method
+    def _make_strip_button(self, title):
+        b = NSButton.alloc().initWithFrame_(NSMakeRect(0, 3, 60, 24))
+        b.setBezelStyle_(NSBezelStyleRecessed)
+        b.setButtonType_(NSButtonTypePushOnPushOff)
+        b.setBordered_(True)
+        b.setFont_(NSFont.systemFontOfSize_(11))
+        b.setTitle_(title)
+        return b
+
+    @objc.python_method
+    def _relayout_strip(self):
+        x = 6.0
+        for t in self.tabs:
+            btn = t["button"]
+            btn.sizeToFit()
+            w = max(64.0, btn.frame().size.width + 14.0)
+            btn.setFrame_(NSMakeRect(x, 3, w, 24))
+            x += w + 4
+        # "+" al final.
+        self.plus_btn.setFrame_(NSMakeRect(x, 3, 30, 24))
+
+    @objc.python_method
+    def _set_tab_title(self, tab):
+        """Titulo con punto de estado coloreado como prefijo (● + etiqueta)."""
+        status = getattr(self, "_states", {}).get(tab["key"], "")
+        color_hex = DOT_COLORS.get(status, DOT_IDLE)
+        att = NSMutableAttributedString.alloc().init()
+        dot = NSAttributedString.alloc().initWithString_attributes_(
+            "● ", {
+                NSForegroundColorAttributeName: _nscolor(color_hex),
+                NSFontAttributeName: NSFont.systemFontOfSize_(8),
+            })
+        label = NSAttributedString.alloc().initWithString_attributes_(
+            tab["label"], {
+                NSForegroundColorAttributeName: NSColor.labelColor(),
+                NSFontAttributeName: NSFont.systemFontOfSize_(11),
+            })
+        att.appendAttributedString_(dot)
+        att.appendAttributedString_(label)
+        tab["button"].setAttributedTitle_(att)
+
+    @objc.python_method
+    def _add_tab(self, key, label, sess_for_url, is_hub=False):
+        """Crea el WKWebView de la pestana y su boton. Los webviews NO se quitan
+        de la jerarquia al cambiar de pestana (evita recargas) — solo togglea
+        isHidden."""
+        cfg = WKWebViewConfiguration.alloc().init()
+        self._enable_local_access(cfg)
+        frame = self.term_area.bounds()
+        wv = WKWebView.alloc().initWithFrame_configuration_(frame, cfg)
+        wv.setAutoresizingMask_(NSViewWidthSizable | NSViewHeightSizable)
+        wv.loadFileURL_allowingReadAccessToURL_(
+            term_url(sess_for_url, self.theme),
+            NSURL.fileURLWithPath_(CC_REPO))
+        wv.setHidden_(True)
+        self.term_area.addSubview_(wv)
+
+        btn = self._make_strip_button(label)
+        btn.setTarget_(self)
+        btn.setAction_("tabClicked:")
+        # Menu contextual (click derecho): renombrar / cerrar. Cada item lleva
+        # la clave de SU pestana en representedObject, asi el handler sabe sobre
+        # cual actuar sin depender de la seleccion.
+        btn.setMenu_(self._tab_context_menu(key))
+        self.tab_strip.addSubview_(btn)
+
+        tab = {"key": key, "label": label, "webview": wv, "button": btn,
+               "is_hub": is_hub}
+        self.tabs.append(tab)
+        self._set_tab_title(tab)
+        self._relayout_strip()
+        return tab
+
+    @objc.python_method
+    def _tab_context_menu(self, key):
+        menu = NSMenu.alloc().init()
+        rename = NSMenuItem.alloc().initWithTitle_action_keyEquivalent_(
+            "Renombrar pestana…" if ES else "Rename tab…",
+            "renameTabFromMenu:", "")
+        rename.setTarget_(self)
+        rename.setRepresentedObject_(key)
+        close = NSMenuItem.alloc().initWithTitle_action_keyEquivalent_(
+            "Cerrar pestana" if ES else "Close tab", "closeTabFromMenu:", "")
+        close.setTarget_(self)
+        close.setRepresentedObject_(key)
+        menu.addItem_(rename)
+        menu.addItem_(close)
+        return menu
+
+    @objc.python_method
+    def _tab_for_button(self, btn):
+        for t in self.tabs:
+            if t["button"] is btn:
+                return t
+        return None
+
+    @objc.python_method
+    def _tab_for_key(self, key):
+        for t in self.tabs:
+            if t["key"] == key:
+                return t
+        return None
+
+    @objc.python_method
+    def _select_tab(self, tab):
+        if tab is None:
+            return
+        for t in self.tabs:
+            sel = t is tab
+            t["webview"].setHidden_(not sel)
+            t["button"].setState_(
+                NSControlStateValueOn if sel else NSControlStateValueOff)
+        self.active_key = tab["key"]
+        self.window.makeFirstResponder_(tab["webview"])
+
+    # -- acciones de la tira (target/action) --------------------------------
+    def tabClicked_(self, sender):
+        self._select_tab(self._tab_for_button(sender))
+
+    def renameTabFromMenu_(self, item):
+        tab = self._tab_for_key(item.representedObject())
+        if tab is not None:
+            self._prompt_rename(tab)
+
+    def closeTabFromMenu_(self, item):
+        tab = self._tab_for_key(item.representedObject())
+        if tab is not None:
+            self._close_tab(tab, confirm=True)
+
+    # -- menu principal -----------------------------------------------------
+    @objc.python_method
+    def _build_menu(self):
+        main = NSMenu.alloc().init()
+
+        # App menu.
+        app_item = NSMenuItem.alloc().init()
+        main.addItem_(app_item)
+        app_menu = NSMenu.alloc().init()
+        app_menu.addItem_(self._mi(
+            "Salir" if ES else "Quit ComandOS", "terminate:", "q"))
+        app_item.setSubmenu_(app_menu)
+
+        # View.
+        view_item = NSMenuItem.alloc().init()
+        main.addItem_(view_item)
+        view_menu = NSMenu.alloc().initWithTitle_("Vista" if ES else "View")
+        view_menu.addItem_(self._mi(
+            "Recargar tablero" if ES else "Reload dashboard",
+            "reloadDashboard:", "r"))
+        toggle = self._mi(
+            "Mostrar/ocultar terminales" if ES else "Toggle terminal pane",
+            "toggleTermPane:", "")  # F12
+        toggle.setKeyEquivalentModifierMask_(0)
+        view_menu.addItem_(toggle)
+        view_menu.addItem_(self._mi("Zoom +", "zoomIn:", "="))
+        view_menu.addItem_(self._mi("Zoom -", "zoomOut:", "-"))
+        view_menu.addItem_(self._mi(
+            "Zoom 100%", "zoomReset:", "0"))
+        view_item.setSubmenu_(view_menu)
+
+        # Tabs.
+        tabs_item = NSMenuItem.alloc().init()
+        main.addItem_(tabs_item)
+        tabs_menu = NSMenu.alloc().initWithTitle_(
+            "Pestanas" if ES else "Tabs")
+        tabs_menu.addItem_(self._mi(
+            "Nueva terminal local" if ES else "New local tab",
+            "newLocalTab:", "t"))
+        tabs_menu.addItem_(self._mi(
+            "Cerrar pestana" if ES else "Close tab", "closeCurrentTab:", "w"))
+        from AppKit import NSEventModifierFlagCommand, NSEventModifierFlagShift
+        nxt = self._mi(
+            "Siguiente pestana" if ES else "Next tab", "nextTab:", "]")
+        nxt.setKeyEquivalentModifierMask_(
+            NSEventModifierFlagCommand | NSEventModifierFlagShift)
+        prv = self._mi(
+            "Pestana anterior" if ES else "Previous tab", "prevTab:", "[")
+        prv.setKeyEquivalentModifierMask_(
+            NSEventModifierFlagCommand | NSEventModifierFlagShift)
+        tabs_menu.addItem_(nxt)
+        tabs_menu.addItem_(prv)
+        tabs_item.setSubmenu_(tabs_menu)
+
+        NSApp.setMainMenu_(main)
+
+    @objc.python_method
+    def _mi(self, title, action, key):
+        it = NSMenuItem.alloc().initWithTitle_action_keyEquivalent_(
+            title, action, key)
+        it.setTarget_(None)  # first responder chain -> este controlador
+        return it
+
+    # -- acciones del menu --------------------------------------------------
+    def reloadDashboard_(self, _s):
+        self.dash_web.reload()
+
+    def toggleTermPane_(self, _s):
+        self.term_visible = not self.term_visible
+        cw = self.window.contentView().frame().size.width
+        pos = int(cw) if not self.term_visible else int(cw * 0.52)
+        self.split.setPosition_ofDividerAtIndex_(pos, 0)
+
+    def zoomIn_(self, _s):
+        self._zoom_active(1.1)
+
+    def zoomOut_(self, _s):
+        self._zoom_active(1 / 1.1)
+
+    def zoomReset_(self, _s):
+        tab = self._tab_for_key(self.active_key)
+        if tab is not None:
+            try:
+                tab["webview"].setMagnification_(1.0)
+            except Exception:
+                pass
+
+    @objc.python_method
+    def _zoom_active(self, factor):
+        tab = self._tab_for_key(self.active_key)
+        if tab is None:
+            return
+        wv = tab["webview"]
+        try:
+            wv.setAllowsMagnification_(True)
+            cur = wv.magnification() or 1.0
+            wv.setMagnification_(max(0.5, min(3.0, cur * factor)))
+        except Exception:
+            pass
+
+    def newLocalTab_(self, _s):
+        cwd = self._current_cwd()
+        sess = f"term-{os.getpid() % 10000}-{int(time.time()) % 100000}"
+        # tmux plano (sin systemd-run): sesion scratch en el cwd actual.
+        tmuxc("new-session", "-d", "-s", sess, "-c", cwd)
+        label = os.path.basename(cwd) or "term"
+        tab = self._add_tab(sess, label, sess)
+        self._select_tab(tab)
+        self._save_tabs()
+
+    def closeCurrentTab_(self, _s):
+        tab = self._tab_for_key(self.active_key)
+        if tab is not None and not tab["is_hub"]:
+            self._close_tab(tab, confirm=True)
+
+    def nextTab_(self, _s):
+        self._cycle_tab(1)
+
+    def prevTab_(self, _s):
+        self._cycle_tab(-1)
+
+    @objc.python_method
+    def _cycle_tab(self, delta):
+        if not self.tabs:
+            return
+        idx = next((i for i, t in enumerate(self.tabs)
+                    if t["key"] == self.active_key), 0)
+        self._select_tab(self.tabs[(idx + delta) % len(self.tabs)])
+
+    # -- operaciones de pestana --------------------------------------------
+    @objc.python_method
+    def _current_cwd(self):
+        tab = self._tab_for_key(self.active_key)
+        if tab is not None and not tab["is_hub"]:
+            r = tmuxc("display-message", "-p", "-t", f"={tab['key']}:",
+                      "#{pane_current_path}")
+            if r.returncode == 0 and r.stdout.strip():
+                return r.stdout.strip()
+        return os.path.expanduser("~")
+
+    @objc.python_method
+    def _select_win(self, sess, winname):
+        """Replica select_win() de bin/cc-app con tmux plano: intenta la ventana
+        pedida; si 'claude' se renombro, busca donde corre claude de verdad."""
+        if tmuxc("select-window", "-t", f"={sess}:{winname}").returncode == 0:
+            return
+        if winname != "claude":
+            return
+        r = tmuxc("list-panes", "-s", "-t", "=" + sess,
+                  "-F", "#{window_index}|#{pane_current_command}")
+        for line in r.stdout.splitlines():
+            idx, _, cmd = line.partition("|")
+            if cmd == "claude":
+                tmuxc("select-window", "-t", f"={sess}:{idx}")
+                return
+        tmuxc("select-window", "-t", f"={sess}:^")
+
+    def openOrFocus_win_label_(self, sess, winname, label):
+        """Abre (o enfoca) LA pestana de una sesion. Antes de abrir, POST /ensure
+        (get-or-create) y selecciona la ventana pedida — equivalente a open_tab()
+        de bin/cc-app pero delegando la creacion tmux a cc-dash."""
+        if not sess or sess in ("local", "hub", "control"):
+            return
+        existing = self._tab_for_key(sess)
+        if existing is not None:
+            self._select_win(sess, winname or "claude")
+            self._select_tab(existing)
+            self._raise()
+            return
+        http_post("/ensure", {"session": sess, "win": winname or "claude"})
+        self._select_win(sess, winname or "claude")
+        lbl = label or saved_tab_label(sess) or sess
+        tab = self._add_tab(sess, lbl, sess)
+        self._select_tab(tab)
+        self._save_tabs()
+        self._raise()
+
+    def renameTab_to_(self, sess, label):
+        tab = self._tab_for_key(sess)
+        if tab is not None:
+            tab["label"] = label
+            self._set_tab_title(tab)
+            self._relayout_strip()
+            self._save_tabs()
+
+    @objc.python_method
+    def _prompt_rename(self, tab):
+        alert = NSAlert.alloc().init()
+        alert.setMessageText_(
+            "Renombrar pestana" if ES else "Rename tab")
+        tf = NSTextField.alloc().initWithFrame_(NSMakeRect(0, 0, 260, 24))
+        tf.setStringValue_(tab["label"])
+        alert.setAccessoryView_(tf)
+        alert.addButtonWithTitle_("OK")
+        alert.addButtonWithTitle_("Cancelar" if ES else "Cancel")
+        if alert.runModal() == NSAlertFirstButtonReturn:
+            new = str(tf.stringValue()).strip()
+            if new:
+                tab["label"] = new
+                self._set_tab_title(tab)
+                self._relayout_strip()
+                # Persistir en el tablero tambien (mismo canal que el remoto).
+                http_post("/rename", {"session": tab["key"], "label": new})
+                self._save_tabs()
+
+    @objc.python_method
+    def _close_tab(self, tab, confirm=True):
+        if tab["is_hub"]:
+            return
+        key, label = tab["key"], tab["label"]
+        if confirm:
+            alert = NSAlert.alloc().init()
+            alert.setMessageText_(
+                f"¿Cerrar la pestana «{label}»?" if ES
+                else f"Close tab “{label}”?")
+            alert.setInformativeText_(
+                "La sesion tmux sigue viva; puedes recuperarla en Recientes del tablero."
+                if ES else
+                "The tmux session stays alive; recover it from the dashboard's Recents.")
+            alert.addButtonWithTitle_("Cerrar" if ES else "Close")
+            alert.addButtonWithTitle_("Cancelar" if ES else "Cancel")
+            if alert.runModal() != NSAlertFirstButtonReturn:
+                return
+        archive_tab(key, label, reason="closed")
+        tab["webview"].removeFromSuperview()
+        tab["button"].removeFromSuperview()
+        self.tabs = [t for t in self.tabs if t is not tab]
+        self._relayout_strip()
+        self._save_tabs()
+        # Scratch term-* con puro shell ocioso: al cerrar, matamos la sesion
+        # (adios fantasmas). Si algo corre dentro, sobrevive (replica close_tab).
+        if key.startswith("term-"):
+            r = tmuxc("list-panes", "-s", "-t", "=" + key,
+                      "-F", "#{pane_current_command}")
+            cmds = set(r.stdout.split())
+            if r.returncode == 0 and cmds and cmds <= {"zsh", "bash", "sh", "fish"}:
+                tmuxc("kill-session", "-t", "=" + key)
+        # Selecciona una pestana vecina.
+        if self.tabs:
+            self._select_tab(self.tabs[-1])
+
+    @objc.python_method
+    def _save_tabs(self):
+        """Escribe app-tabs.json con el esquema dict {clave: etiqueta}, en el
+        orden actual, EXCLUYENDO el hub (no es una sesion). Interop con Linux."""
+        try:
+            data = {}
+            for t in self.tabs:
+                if t["is_hub"]:
+                    continue
+                data[t["key"]] = t["label"]
+            os.makedirs(os.path.dirname(TABS_FILE), exist_ok=True)
+            with open(TABS_FILE, "w") as f:
+                json.dump(data, f)
+        except Exception:
+            pass
+
+    # -- arranque de terminales / restauracion -----------------------------
+    @objc.python_method
+    def _boot_terminals(self):
+        ensure_webterm()
+        AppHelper.callAfter(self._create_hub_and_restore)
+
+    @objc.python_method
+    def _create_hub_and_restore(self):
+        # Hub fijado: term.html SIN ?arg -> cc-webterm-attach lanza su selector
+        # interactivo. Comportamiento de hub aceptable para v1.
+        hub = self._add_tab(HUB_KEY, "local", None, is_hub=True)
+        self._select_tab(hub)
+        # Restaura las pestanas de la sesion pasada (revive via /ensure).
+        threading.Thread(target=self._restore_saved, daemon=True).start()
+
+    @objc.python_method
+    def _restore_saved(self):
+        for key, label in load_saved_tabs():
+            if not isinstance(key, str) or not key:
+                continue
+            sess = key.partition(":")[0]  # claves viejas "sesion:ventana"
+            if sess.startswith("xterm-"):
+                continue  # pestanas experimentales de Linux: no aplican en Mac
+            # Revive la sesion si murio (get-or-create).
+            http_post("/ensure", {"session": sess, "win": "claude"})
+            AppHelper.callAfter(
+                self._restore_one, sess,
+                label if isinstance(label, str) and label else None)
+
+    @objc.python_method
+    def _restore_one(self, sess, label):
+        if self._tab_for_key(sess) is not None:
+            return
+        self._select_win(sess, "claude")
+        lbl = label or sess
+        self._add_tab(sess, lbl, sess)
+
+    @objc.python_method
+    def _raise(self):
+        self.window.makeKeyAndOrderFront_(None)
+        NSApp.activateIgnoringOtherApps_(True)
+
+    # -- polling de estado (hilo de fondo) ---------------------------------
+    @objc.python_method
+    def _state_poll_loop(self):
+        while True:
+            items = http_get_json("/state")
+            if isinstance(items, list):
+                states = {it["session"]: it.get("status", "idle")
+                          for it in items if it.get("session")}
+                AppHelper.callAfter(self._update_dots, states)
+            time.sleep(3)
+
+    @objc.python_method
+    def _update_dots(self, states):
+        self._states = states
+        for t in self.tabs:
+            if not t["is_hub"]:
+                self._set_tab_title(t)
+
+    # -- IPC por archivos (NSTimer 500ms; mismo patron que poll_state_loop) --
+    @objc.python_method
+    def _start_ipc_timer(self):
+        # Semilla: registra los mtimes actuales para NO disparar acciones con
+        # archivos preexistentes al arrancar.
+        for p in (FOCUS_FILE, OPEN_FILE, CLOSE_FILE):
+            self._ipc_mtimes[p] = self._mtime(p)
+        self._ipc_timer = NSTimer.scheduledTimerWithTimeInterval_target_selector_userInfo_repeats_(
+            0.5, self, "checkIPC:", None, True)
+
+    @objc.python_method
+    def _mtime(self, path):
+        try:
+            return os.path.getmtime(path)
+        except Exception:
+            return 0
+
+    def checkIPC_(self, _timer):
+        for path, handler in ((FOCUS_FILE, self._on_focus),
+                              (OPEN_FILE, self._on_open),
+                              (CLOSE_FILE, self._on_close)):
+            m = self._mtime(path)
+            if m and m != self._ipc_mtimes.get(path):
+                self._ipc_mtimes[path] = m
+                try:
+                    with open(path) as f:
+                        handler(json.load(f))
+                except Exception:
+                    pass
+
+    @objc.python_method
+    def _on_focus(self, d):
+        # Super+N y popups: enfoca (o abre) la pestana y sube la app al frente.
+        sess = d.get("session", "")
+        if sess and sess not in ("local", "hub", "control"):
+            self.openOrFocus_win_label_(
+                sess, d.get("win", "claude"), d.get("label") or None)
+            self._raise()
+
+    @objc.python_method
+    def _on_open(self, d):
+        # El remoto abrio una tab: la abrimos en segundo plano SIN robar foco.
+        sess = d.get("session", "")
+        if not sess or self._tab_for_key(sess) is not None:
+            return
+        prev = self.active_key
+        http_post("/ensure", {"session": sess, "win": "claude"})
+        self._select_win(sess, "claude")
+        lbl = d.get("label") or saved_tab_label(sess) or sess
+        self._add_tab(sess, lbl, sess)
+        self._save_tabs()
+        prev_tab = self._tab_for_key(prev)
+        if prev_tab is not None:
+            self._select_tab(prev_tab)
+
+    @objc.python_method
+    def _on_close(self, d):
+        # cc-dash ya confirmo con el usuario: cerramos sin re-preguntar.
+        sess = d.get("session", "")
+        tab = self._tab_for_key(sess)
+        if tab is not None:
+            self._close_tab(tab, confirm=False)
+
+    # -- tema ---------------------------------------------------------------
+    def applyTheme_(self, name):
+        if name not in VALID_THEMES:
+            return
+        self.theme = name
+        # term.html escucha postMessage({source:'comandos',type:'theme',...}).
+        # En un WKWebView top-level, window === parent, asi que el check
+        # event.source !== parent pasa. Lo entregamos por evaluateJavaScript.
+        js = ("window.postMessage({source:'comandos',type:'theme',theme:"
+              + json.dumps(name) + "},'*');")
+        for t in self.tabs:
+            try:
+                t["webview"].evaluateJavaScript_completionHandler_(js, None)
+            except Exception:
+                pass
+
+    # -- WKNavigationDelegate: reintento de carga del tablero --------------
+    def webView_didFailProvisionalNavigation_withError_(self, wv, _nav, _err):
+        if wv is self.dash_web:
+            NSTimer.scheduledTimerWithTimeInterval_target_selector_userInfo_repeats_(
+                2.0, self, "retryDash:", None, False)
+
+    def retryDash_(self, _timer):
+        self.dash_web.loadRequest_(_request(DASH_URL))
+
+
+def _nscolor(hex_str):
+    h = hex_str.lstrip("#")
+    r, g, b = (int(h[i:i + 2], 16) / 255.0 for i in (0, 2, 4))
+    return NSColor.colorWithSRGBRed_green_blue_alpha_(r, g, b, 1.0)
+
+
+def _request(url):
+    from Foundation import NSURLRequest
+    return NSURLRequest.requestWithURL_(NSURL.URLWithString_(url))
+
+
+def main():
+    app = NSApplication.sharedApplication()
+    controller = AppController.alloc().init()
+    app.setDelegate_(controller)
+    AppHelper.runEventLoop()
+
+
+if __name__ == "__main__":
+    main()

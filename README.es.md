@@ -138,7 +138,7 @@ autenticación separada de ComandOS.
 |---|---|
 | **Linux** (GNOME/X11) | Todo — es el daily driver ✓ |
 | **Windows 11** | Vía **WSL2 + WSLg** (app GUI, audio y todo) ✓ |
-| **macOS** | Motor + tablero web + notificaciones/voz nativas (`osascript`, `say`, `afplay`); app/popups GTK pendientes — beta, [se buscan testers](https://github.com/0xAI-Builders/comandos/issues) |
+| **macOS** | Motor + tablero web + **app nativa** (`cc-app`, PyObjC + WKWebView; requiere `pip install pyobjc-framework-Cocoa pyobjc-framework-WebKit` + `brew install ttyd`) + notificaciones/voz nativas (`osascript`, `say`, `afplay`); popups pendientes — beta, [se buscan testers](https://github.com/0xAI-Builders/comandos/issues) |
 
 ### Setup Windows (WSL2 + WSLg)
 

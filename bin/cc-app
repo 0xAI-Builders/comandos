@@ -17,6 +17,13 @@ Teclas:
 """
 import json, os, re, secrets, shlex, shutil, subprocess, sys, threading, time, urllib.request
 from urllib.parse import unquote, urlparse
+# macOS no tiene GTK/VTE: despachamos a la app nativa (PyObjC + WKWebView) ANTES
+# de tocar `gi`. os.execv reemplaza el proceso pasando argv intacto; el symlink
+# de ~/.local/bin ya resolvio a este archivo real dentro del repo, asi que el
+# hermano cc-app-mac vive junto a nosotros.
+if sys.platform == "darwin":
+    _mac = os.path.join(os.path.dirname(os.path.realpath(__file__)), "cc-app-mac")
+    os.execv(_mac, [_mac, *sys.argv[1:]])
 import gi
 gi.require_version("Gtk", "3.0")
 # WebKit2 4.1 en Ubuntu 24.04 (noble), 4.0 en 22.04 (jammy). Intenta 4.1 primero.
