@@ -59,6 +59,20 @@ def test_dot_and_dash_both_normalize_to_underscore(monkeypatch):
     assert dash.agent_launch("my-a.b") == "custom-cmd"
 
 
+def test_read_conf_removes_only_one_matching_outer_quote_pair(tmp_path, monkeypatch):
+    dash = load_dash_module()
+    hooks = tmp_path / "hooks"
+    hooks.mkdir()
+    (hooks / "cc-notify.conf").write_text(
+        'AGENT_LAUNCH_CLAUDE_MPM="claude-mpm --label \'daily account\'"\n'
+    )
+    monkeypatch.setattr(dash, "HOOKS", str(hooks))
+
+    assert dash.read_conf()["AGENT_LAUNCH_CLAUDE_MPM"] == (
+        "claude-mpm --label 'daily account'"
+    )
+
+
 if __name__ == "__main__":
     import pytest
     raise SystemExit(pytest.main([__file__, "-q"]))
