@@ -271,6 +271,21 @@
   let fitDeferredForSelection = false;
   let resizeDisposed = false;
 
+  function terminalSurfaceVisible() {
+    try {
+      const ownerFrame = typeof window !== 'undefined' ? window.frameElement : null;
+      if (ownerFrame && typeof ownerFrame.getClientRects === 'function' &&
+          ownerFrame.getClientRects().length === 0) return false;
+      if (typeof document === 'undefined') return true;
+      const surface = document.getElementById('term');
+      if (!surface || typeof surface.getBoundingClientRect !== 'function') return true;
+      const rect = surface.getBoundingClientRect();
+      return rect.width > 0 && rect.height > 0;
+    } catch (_) {
+      return true;
+    }
+  }
+
   function clearResizeTimers() {
     if (fitFrame) cancelAnimationFrame(fitFrame);
     if (heightFitTimer) clearTimeout(heightFitTimer);
@@ -280,7 +295,7 @@
 
   function commitColumnReload() {
     columnReloadTimer = 0;
-    if (resizeDisposed) return;
+    if (resizeDisposed || !terminalSurfaceVisible()) return;
     if (term.hasSelection()) {
       fitDeferredForSelection = true;
       return;
@@ -290,7 +305,7 @@
 
   function commitHeightFit() {
     heightFitTimer = 0;
-    if (resizeDisposed) return;
+    if (resizeDisposed || !terminalSurfaceVisible()) return;
     try {
       const finalSize = fit.proposeDimensions();
       if (!finalSize) return;
@@ -307,6 +322,10 @@
   function coordinateResize() {
     fitFrame = 0;
     if (resizeDisposed) return;
+    if (!terminalSurfaceVisible()) {
+      clearResizeTimers();
+      return;
+    }
     try {
       const next = fit.proposeDimensions();
       if (!next) return;

@@ -67,6 +67,7 @@ def extract_js_initializer(source, name):
 
 def resize_coordinator_js():
     names = (
+        "terminalSurfaceVisible",
         "clearResizeTimers",
         "commitColumnReload",
         "commitHeightFit",
@@ -1403,6 +1404,76 @@ console.log(JSON.stringify({{
     assert result["reloads"] == 3
     assert result["fitCalls"] == 0
     assert result["scheduledDelays"] == [180, 180, 180]
+
+
+def test_remote_hidden_terminal_does_not_reload_for_transient_width():
+    coordinator = resize_coordinator_js()
+    script = f"""
+let fitFrame = 0;
+let heightFitTimer = 0;
+let columnReloadTimer = 0;
+let fitDeferredForSelection = false;
+let resizeDisposed = false;
+let nextFrame = 1;
+let nextTimer = 1;
+let reloads = 0;
+let visible = true;
+let proposed = {{cols:46, rows:35}};
+const frames = new Map();
+const timers = new Map();
+const window = {{
+  frameElement: {{getClientRects(){{ return visible ? [{{}}] : []; }}}},
+}};
+const document = {{
+  getElementById() {{
+    return {{getBoundingClientRect() {{
+      return visible ? {{width:390, height:700}} : {{width:0, height:0}};
+    }}}};
+  }},
+}};
+const term = {{cols:46, rows:35, hasSelection(){{ return false; }}}};
+const fit = {{proposeDimensions(){{ return {{...proposed}}; }}, fit(){{}}}};
+const location = {{reload(){{ reloads += 1; }}}};
+const requestAnimationFrame = callback => {{
+  const id = nextFrame++; frames.set(id, callback); return id;
+}};
+const cancelAnimationFrame = id => frames.delete(id);
+const setTimeout = (callback, delay) => {{
+  const id = nextTimer++; timers.set(id, {{callback, delay}}); return id;
+}};
+const clearTimeout = id => timers.delete(id);
+const resizeObserver = {{disconnect(){{}}}};
+const flushFrames = () => {{
+  const callbacks = [...frames.values()]; frames.clear(); callbacks.forEach(callback => callback());
+}};
+const flushTimers = () => {{
+  const callbacks = [...timers.values()]; timers.clear(); callbacks.forEach(timer => timer.callback());
+}};
+{coordinator}
+
+proposed = {{cols:51, rows:35}};
+scheduleFit();
+flushFrames();
+const visibleTimer = timers.size;
+
+visible = false;
+proposed = {{cols:2, rows:1}};
+scheduleFit();
+flushFrames();
+const hiddenTimers = timers.size;
+flushTimers();
+
+visible = true;
+proposed = {{cols:46, rows:35}};
+scheduleFit();
+flushFrames();
+flushTimers();
+
+console.log(JSON.stringify({{visibleTimer, hiddenTimers, reloads}}));
+"""
+    result = run_node_json(script)
+
+    assert result == {"visibleTimer": 1, "hiddenTimers": 0, "reloads": 0}
 
 
 def test_remote_column_resize_waits_for_active_selection_to_clear():
