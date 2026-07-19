@@ -48,6 +48,7 @@ try:
     )
     from AppKit import (
         NSApplication, NSApp, NSWindow, NSView, NSButton, NSSplitView,
+        NSScrollView, NSWorkspace,
         NSMenu, NSMenuItem, NSAlert, NSTextField, NSColor, NSFont,
         NSApplicationActivationPolicyRegular, NSAppearance,
         NSAppearanceNameDarkAqua,
@@ -98,6 +99,7 @@ TAB_HISTORY_FILE = os.path.expanduser("~/.claude/hooks/app-tabs-history.json")
 FOCUS_FILE = os.path.expanduser("~/.claude/hooks/app-focus.json")
 OPEN_FILE = os.path.expanduser("~/.claude/hooks/app-tab-open.json")
 CLOSE_FILE = os.path.expanduser("~/.claude/hooks/app-tab-close.json")
+DASH_TOKEN_FILE = os.path.expanduser("~/.claude/hooks/dash-token")
 
 # Punto de estado por pestana (mismos colores que DOT_COLORS de bin/cc-app).
 DOT_COLORS = {"waiting": "#FFAE1A", "working": "#7AA5FF",
@@ -179,11 +181,11 @@ def initial_theme():
     return DEFAULT_THEME
 
 
-def term_url(sess, theme):
+def term_url(sess, theme, auth):
     """file:// a dash/term.html con arg/theme/ws. Construido por NSURLComponents
     para preservar el query (loadFileURL lo respeta en el WebKit de macOS
     moderno; lo verificamos en runtime leyendo location.search)."""
-    q = {"theme": theme, "ws": WS_URL}
+    q = {"theme": theme, "ws": WS_URL, "auth": auth}
     if sess:
         q["arg"] = sess
     comps = NSURLComponents.alloc().init()
@@ -191,6 +193,29 @@ def term_url(sess, theme):
     comps.setPath_(TERM_HTML)
     comps.setPercentEncodedQuery_(urllib.parse.urlencode(q))
     return comps.URL()
+
+
+def webterm_access_token():
+    data = http_get_json("/webterm-token")
+    if isinstance(data, dict) and data.get("token"):
+        return str(data["token"])
+    try:
+        with open(DASH_TOKEN_FILE) as handle:
+            return handle.read().strip()
+    except OSError:
+        return ""
+
+
+def ssh_host_from_session(sess):
+    if not isinstance(sess, str):
+        return None
+    if sess.startswith("ssh-"):
+        return sess[4:] or None
+    if sess.startswith("sshtab-"):
+        host, sep, index = sess[len("sshtab-"):].rpartition("-")
+        if sep and index.isdigit() and host:
+            return host
+    return None
 
 
 # ---------------------------------------------------------------------------
@@ -338,6 +363,7 @@ class AppController(NSObject):
         self.tabs = []
         self.active_key = None
         self.term_visible = True
+        self.webterm_token = ""
         self._ipc_mtimes = {}
 
         self._build_window()
@@ -392,6 +418,7 @@ class AppController(NSObject):
         self.dash_web.setAutoresizingMask_(
             NSViewWidthSizable | NSViewHeightSizable)
         self.dash_web.setNavigationDelegate_(self)
+        self.dash_web.setUIDelegate_(self)
         self.bridge = DashBridge.alloc().initWithController_(self)
         ucc.addScriptMessageHandler_name_(self.bridge, "centro")
         self.dash_web.loadRequest_(_request(DASH_URL))
@@ -402,11 +429,18 @@ class AppController(NSObject):
         right.setAutoresizingMask_(NSViewWidthSizable | NSViewHeightSizable)
         rw, rh = right.frame().size.width, right.frame().size.height
 
-        self.tab_strip = NSView.alloc().initWithFrame_(
+        self.tab_scroll = NSScrollView.alloc().initWithFrame_(
             NSMakeRect(0, rh - TAB_STRIP_H, rw, TAB_STRIP_H))
-        self.tab_strip.setAutoresizingMask_(
+        self.tab_scroll.setAutoresizingMask_(
             NSViewWidthSizable | NSViewMinYMargin)
-        right.addSubview_(self.tab_strip)
+        self.tab_scroll.setDrawsBackground_(False)
+        self.tab_scroll.setHasVerticalScroller_(False)
+        self.tab_scroll.setHasHorizontalScroller_(True)
+        self.tab_scroll.setAutohidesScrollers_(True)
+        self.tab_strip = NSView.alloc().initWithFrame_(
+            NSMakeRect(0, 0, rw, TAB_STRIP_H))
+        self.tab_scroll.setDocumentView_(self.tab_strip)
+        right.addSubview_(self.tab_scroll)
 
         # Boton "+" (nueva terminal local) fijado a la derecha de la tira.
         self.plus_btn = self._make_strip_button("＋")
@@ -469,6 +503,9 @@ class AppController(NSObject):
             x += w + 4
         # "+" al final.
         self.plus_btn.setFrame_(NSMakeRect(x, 3, 30, 24))
+        viewport = self.tab_scroll.contentSize().width
+        self.tab_strip.setFrame_(
+            NSMakeRect(0, 0, max(viewport, x + 36.0), TAB_STRIP_H))
 
     @objc.python_method
     def _set_tab_title(self, tab):
@@ -500,8 +537,9 @@ class AppController(NSObject):
         frame = self.term_area.bounds()
         wv = WKWebView.alloc().initWithFrame_configuration_(frame, cfg)
         wv.setAutoresizingMask_(NSViewWidthSizable | NSViewHeightSizable)
+        wv.setUIDelegate_(self)
         wv.loadFileURL_allowingReadAccessToURL_(
-            term_url(sess_for_url, self.theme),
+            term_url(sess_for_url, self.theme, self.webterm_token),
             NSURL.fileURLWithPath_(CC_REPO))
         wv.setHidden_(True)
         self.term_area.addSubview_(wv)
@@ -562,6 +600,7 @@ class AppController(NSObject):
             t["button"].setState_(
                 NSControlStateValueOn if sel else NSControlStateValueOff)
         self.active_key = tab["key"]
+        self.tab_strip.scrollRectToVisible_(tab["button"].frame())
         self.window.makeFirstResponder_(tab["webview"])
 
     # -- acciones de la tira (target/action) --------------------------------
@@ -839,27 +878,58 @@ class AppController(NSObject):
     @objc.python_method
     def _boot_terminals(self):
         ensure_webterm()
+        self.webterm_token = webterm_access_token()
         AppHelper.callAfter(self._create_hub_and_restore)
 
     @objc.python_method
     def _create_hub_and_restore(self):
-        # Hub fijado: term.html SIN ?arg -> cc-webterm-attach lanza su selector
-        # interactivo. Comportamiento de hub aceptable para v1.
-        hub = self._add_tab(HUB_KEY, "local", None, is_hub=True)
+        # Igual que Linux: el hub mantiene un cliente tmux en =local. cc-dash
+        # usa ese cliente para detectar la app y entregar app-focus.json.
+        if tmuxc("has-session", "-t", "=local").returncode != 0:
+            tmuxc("new-session", "-d", "-s", "local", "-c",
+                  os.path.expanduser("~"))
+        hub = self._add_tab(HUB_KEY, "local", "local", is_hub=True)
         self._select_tab(hub)
-        # Restaura las pestanas de la sesion pasada (revive via /ensure).
+        # Restaura las pestanas de la sesion pasada segun su tipo.
         threading.Thread(target=self._restore_saved, daemon=True).start()
 
     @objc.python_method
     def _restore_saved(self):
+        seen = set()
         for key, label in load_saved_tabs():
             if not isinstance(key, str) or not key:
                 continue
             sess = key.partition(":")[0]  # claves viejas "sesion:ventana"
-            if sess.startswith("xterm-"):
+            if sess.startswith("xterm-") or sess in seen:
                 continue  # pestanas experimentales de Linux: no aplican en Mac
-            # Revive la sesion si murio (get-or-create).
-            http_post("/ensure", {"session": sess, "win": "claude"})
+            seen.add(sess)
+            if tmuxc("has-session", "-t", "=" + sess).returncode != 0:
+                error = None
+                host = ssh_host_from_session(sess)
+                if sess.startswith("term-"):
+                    result = tmuxc("new-session", "-d", "-s", sess, "-c",
+                                   os.path.expanduser("~"))
+                    if result.returncode != 0:
+                        error = result.stderr.strip() or "tmux fallo"
+                elif host and sess.startswith("ssh-"):
+                    response, error = http_post(
+                        "/ssh-connect", {"host": host}, timeout=20)
+                    if isinstance(response, dict) and response.get("session"):
+                        sess = response["session"]
+                elif host:
+                    response, error = http_post(
+                        "/ssh-new-tab", {"host": host}, timeout=20)
+                    if isinstance(response, dict) and response.get("session"):
+                        sess = response["session"]
+                        label = response.get("label") or label
+                else:
+                    response, error = http_post("/new", {"session": sess})
+                    if isinstance(response, dict) and response.get("session"):
+                        sess = response["session"]
+                if error or tmuxc("has-session", "-t", "=" + sess).returncode != 0:
+                    print(f"no pude restaurar {key}: {error or 'sesion no creada'}",
+                          file=sys.stderr)
+                    continue
             AppHelper.callAfter(
                 self._restore_one, sess,
                 label if isinstance(label, str) and label else None)
@@ -871,6 +941,7 @@ class AppController(NSObject):
         self._select_win(sess, "claude")
         lbl = label or sess
         self._add_tab(sess, lbl, sess)
+        self._save_tabs()
 
     @objc.python_method
     def _raise(self):
@@ -973,6 +1044,18 @@ class AppController(NSObject):
                 t["webview"].evaluateJavaScript_completionHandler_(js, None)
             except Exception:
                 pass
+
+    # -- WKUIDelegate: target=_blank sale al navegador predeterminado -------
+    def webView_createWebViewWithConfiguration_forNavigationAction_windowFeatures_(
+            self, _webview, _configuration, navigation_action, _features):
+        try:
+            url = navigation_action.request().URL()
+            scheme = str(url.scheme() or "").lower() if url is not None else ""
+            if scheme in ("http", "https", "mailto"):
+                NSWorkspace.sharedWorkspace().openURL_(url)
+        except Exception as exc:
+            print(f"no pude abrir enlace externo: {exc}", file=sys.stderr)
+        return None
 
     # -- WKNavigationDelegate: reintento de carga del tablero --------------
     def webView_didFailProvisionalNavigation_withError_(self, wv, _nav, _err):

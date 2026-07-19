@@ -118,6 +118,7 @@
 (function () {
   const params = new URLSearchParams(location.search);
   const arg    = params.get('arg') || '';
+  const accessTokenParam = params.get('auth') || '';
   const theme  = (params.get('theme') || 'noche').toLowerCase();
   const debug  = params.get('debug') === '1';
 
@@ -134,7 +135,14 @@
   const wsBase = params.get('ws')
     || (location.host ? `${proto}://${location.host}${basePath}/ws`
                       : `ws://127.0.0.1:4779/ws`);
-  const ws_url = arg ? `${wsBase}?arg=${encodeURIComponent(arg)}` : wsBase;
+  function ttydWebSocketUrl(base, accessToken, session) {
+    const args = new URLSearchParams();
+    if (accessToken) args.append('arg', accessToken);
+    if (session) args.append('arg', session);
+    const query = args.toString();
+    return query ? `${base}?${query}` : base;
+  }
+  const ws_url = ttydWebSocketUrl(wsBase, accessTokenParam, arg);
 
   const THEMES = {
     noche:  {background:'#0A0D13',foreground:'#EAF0FB',cursor:'#FFAE1A',cursorAccent:'#0A0D13',selectionBackground:'#2E3852',panel:'#121722',panel2:'#161C29',line:'#222A3A',line2:'#2E3852',dim:'#9AA6BF',faint:'#5E6980',brand:'#8B7CFF'},

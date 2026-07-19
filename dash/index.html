@@ -1277,6 +1277,14 @@ async function openSession(it, win){
   }catch(e){}
 })();
 function authToken(){ try{ return localStorage.getItem("cc_token") || ""; }catch(e){ return ""; } }
+let webtermTokenPromise = null;
+async function webtermAccessToken(){
+  const remoteToken = authToken();
+  if(remoteToken) return remoteToken;
+  if(!webtermTokenPromise)
+    webtermTokenPromise = api("/webterm-token").then(r => r.token || "");
+  return webtermTokenPromise;
+}
 async function api(path, body){
   const headers = {};
   const tok = authToken();
@@ -2629,10 +2637,15 @@ function ensureFrame(sess){
     document.getElementById("term-area").appendChild(frame);
     o.frame = frame;
     applyTermInteraction(sess);
-    resolveTermBase().then(base => {
+    resolveTermBase().then(async base => {
       if(openTerms.get(sess)?.frame !== frame) return;
+      const accessToken = await webtermAccessToken();
+      if(!accessToken)
+        throw new Error(tf("Token de terminal no disponible", "Terminal token unavailable"));
       frame.dataset.compat = base === TERM_BASE ? "0" : "1";
-      frame.src = `${base}/?arg=${encodeURIComponent(sess)}&theme=${encodeURIComponent(curTheme)}`;
+      frame.src = base === TERM_BASE
+        ? `${base}/?auth=${encodeURIComponent(accessToken)}&arg=${encodeURIComponent(sess)}&theme=${encodeURIComponent(curTheme)}`
+        : `${base}/?arg=${encodeURIComponent(accessToken)}&arg=${encodeURIComponent(sess)}`;
     }).catch(err => {
       if(openTerms.get(sess)?.frame !== frame) return;
       frame.remove();

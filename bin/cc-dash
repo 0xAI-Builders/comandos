@@ -569,10 +569,11 @@ def gui_env():
 
 def remote_urls(host, token):
     base = f"https://{host}"
+    auth = urllib.parse.quote(token, safe="")
     return {
         "dashboard": f"{base}/?token={token}",
-        "terminal": f"{base}/term",
-        "terminalFallback": f"{base}:8443/",
+        "terminal": f"{base}/term/?auth={auth}",
+        "terminalFallback": f"{base}:8443/?arg={auth}",
     }
 
 
@@ -1920,9 +1921,8 @@ def ssh_connect(host):
     except Exception:
         keyok, stderr = False, "timeout"
     r = subprocess.run(
-        ["systemd-run", "--user", "--scope", "--collect", "--quiet",
-         "tmux", "new-session", "-d", "-s", sess, "-n", "ssh",
-         f"ssh {shlex.quote(host)}; exec $SHELL"],
+        scope_cmd(["tmux", "new-session", "-d", "-s", sess, "-n", "ssh",
+                   f"ssh {shlex.quote(host)}; exec $SHELL"]),
         capture_output=True, text=True, timeout=15)
     if r.returncode != 0:
         return None, False, r.stderr.strip() or "No se pudo crear la sesion"
@@ -2185,7 +2185,8 @@ class Handler(http.server.SimpleHTTPRequestHandler):
     # sw.js, manifest, iconos) NO — no revela nada (es codigo open-source) y
     # asi la PWA instala y carga sin depender de cookies en el webview movil.
     API_GET = ("/state", "/usage/state", "/opencode/models", "/events", "/conf", "/prefs", "/ssh", "/tabs",
-               "/tab-history", "/remote-state", "/remote-qr.png", "/snippets", "/tmux-mouse")
+               "/tab-history", "/remote-state", "/remote-qr.png", "/snippets", "/tmux-mouse",
+               "/webterm-token")
 
     def do_GET(self):
         host = self.headers.get("Host", "")
@@ -2198,6 +2199,8 @@ class Handler(http.server.SimpleHTTPRequestHandler):
         return self._do_GET()
 
     def _do_GET(self):
+        if self.path.startswith("/webterm-token"):
+            return self._json(200, {"token": access_token()})
         if self.path.startswith("/state"):
             return self._json(200, read_states_cached())
         if self.path.startswith("/opencode/models"):

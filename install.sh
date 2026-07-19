@@ -136,7 +136,8 @@ PLIST
     launchctl unload "$HOME/Library/LaunchAgents/com.0xai.cc-dash.plist" 2>/dev/null || true
     launchctl load "$HOME/Library/LaunchAgents/com.0xai.cc-dash.plist" 2>/dev/null || true
     echo "  macOS: cc-dash como LaunchAgent. App nativa (cc-app) ya disponible; requiere"
-    echo "  'pip install pyobjc-framework-Cocoa pyobjc-framework-WebKit' y 'brew install ttyd' (pestanas)."
+    echo "  'pip install pyobjc-framework-Cocoa pyobjc-framework-WebKit' y"
+    echo "  'brew install tmux jq ttyd' (motor, hooks y pestanas)."
     ;;
   linux-wsl-ubuntu)
     # 1) systemd disponible?

@@ -89,14 +89,14 @@ def load_handler_method(name, extra=None):
     return ns[name]
 
 
-def test_remote_urls_keep_dashboard_token_out_of_ttyd_urls():
+def test_remote_urls_pass_terminal_launch_capability():
     ns = load_remote_helpers()
 
     urls = ns["remote_urls"]("zion.tail63a117.ts.net", "abc123")
 
     assert urls["dashboard"] == "https://zion.tail63a117.ts.net/?token=abc123"
-    assert urls["terminal"] == "https://zion.tail63a117.ts.net/term"
-    assert urls["terminalFallback"] == "https://zion.tail63a117.ts.net:8443/"
+    assert urls["terminal"] == "https://zion.tail63a117.ts.net/term/?auth=abc123"
+    assert urls["terminalFallback"] == "https://zion.tail63a117.ts.net:8443/?arg=abc123"
 
 
 def test_remote_status_separates_routes_from_endpoint_health():
@@ -472,10 +472,11 @@ def test_ssh_connect_disables_tmux_mouse_for_native_text_selection():
 
     extra = {
         "os": os,
-        "shlex": __import__("shlex"),
-        "subprocess": types.SimpleNamespace(run=fake_run),
-        "tmux": fake_tmux,
-        "SSH_HOST_RE": re.compile(r"^[A-Za-z0-9._-]{1,80}$"),
+            "shlex": __import__("shlex"),
+            "subprocess": types.SimpleNamespace(run=fake_run),
+            "tmux": fake_tmux,
+            "scope_cmd": lambda argv: argv,
+            "SSH_HOST_RE": re.compile(r"^[A-Za-z0-9._-]{1,80}$"),
     }
     ns = load_functions("parse_ssh_config", "ssh_connect", extra=extra)
     old_home = os.environ.get("HOME", "")

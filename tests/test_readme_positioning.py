@@ -5,6 +5,7 @@ README = Path("README.md").read_text()
 README_ES = Path("README.es.md").read_text()
 RELEASE = Path("docs/releases/v1.5.0.md")
 WEBTERM = Path("bin/cc-webterm").read_text()
+WEBTERM_ATTACH = Path("bin/cc-webterm-attach").read_text()
 MOBILE = Path("bin/cc-mobile").read_text()
 SECURITY = Path("SECURITY.md").read_text()
 PLAN = Path(
@@ -40,7 +41,7 @@ def test_privacy_claims_are_precise():
     assert "tailscale" in README.lower()
 
 
-def test_remote_security_claims_distinguish_dashboard_token_from_ttyd():
+def test_remote_security_claims_cover_terminal_launch_capability():
     for text in (README, README_ES):
         lowered = text.lower()
         assert "behind the same token" not in lowered
@@ -50,15 +51,12 @@ def test_remote_security_claims_distinguish_dashboard_token_from_ttyd():
 
     english = " ".join(README.lower().split())
     spanish = " ".join(README_ES.lower().split())
-    assert "dashboard and cc-dash api" in english
-    assert "does not add separate comandos authentication" in english
-    assert "tablero remoto y la api de cc-dash" in spanish
-    assert "no agrega autenticación separada de comandos" in spanish
-    assert "token del dashboard/api no autentica ttyd" in WEBTERM.lower()
-    assert "dash-token" not in WEBTERM
-    assert "ttyd depende de la política de acceso de tailscale" in MOBILE.lower()
-    assert "tailscale policy can operate ttyd" in SECURITY.lower()
-    assert "tailnet + a valid token" not in SECURITY.lower()
+    assert "existing access token as a per-connection launch capability" in english
+    assert "token existente como capacidad de arranque por conexión" in spanish
+    assert "dash-token" in WEBTERM
+    assert "presented" in WEBTERM_ATTACH and "expected" in WEBTERM_ATTACH
+    assert "cada attach del terminal" in MOBILE.lower()
+    assert "attach helper rejects connections without that token" in SECURITY.lower()
 
 
 def test_stale_agent_roadmap_is_removed():
