@@ -46,7 +46,7 @@ CC_LANG=auto
 #   claude-personal) y para sobreescribir un builtin (AGENT_LAUNCH_CLAUDE=...).
 # AGENTS="claude codex claude-mpm"
 # AGENT_DEFAULT=claude-mpm
-# AGENT_LAUNCH_CLAUDE_MPM=claude-mpm run --continue 2>/dev/null || claude-mpm run
+# AGENT_LAUNCH_CLAUDE_MPM='claude-mpm run --continue 2>/dev/null || claude-mpm run'
 
 # Uso y limites locales de ComandOS.
 # OPENAI_ADMIN_KEY / ANTHROPIC_ADMIN_KEY habilitan APIs admin de uso/costo si tu cuenta las tiene.

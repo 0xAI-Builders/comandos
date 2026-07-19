@@ -68,4 +68,23 @@ out3="$(run_ccx "$LOG3" "$PROJ")"
 grep -q "claude --continue" "$LOG3" \
   || { echo "FALLO 3: sin config no cayo al builtin claude"; cat "$LOG3"; exit 1; }
 
+# --- Caso 4: una ruta de agente es una clave literal, no una regex de sed ---
+LOG4="$TMP/log4"
+ERR4="$TMP/err4"
+run_ccx "$LOG4" -a /opt/custom-agent "$PROJ" 2>"$ERR4" >/dev/null
+[ ! -s "$ERR4" ] \
+  || { echo "FALLO 4: conf_get interpreto la ruta como regex"; cat "$ERR4"; exit 1; }
+grep -q "/opt/custom-agent" "$LOG4" \
+  || { echo "FALLO 4b: no se conservo el comando de agente"; cat "$LOG4"; exit 1; }
+
+# --- Caso 5: el ejemplo documentado se puede descomentar y sourcear sin
+# ejecutar el agente durante la carga de cc-notify.conf. ---
+EXAMPLE_CONF="$TMP/example.conf"
+sed -n 's/^# \(AGENT_LAUNCH_CLAUDE_MPM=.*\)$/\1/p' \
+  "$ROOT/hooks/cc-notify.conf.example" > "$EXAMPLE_CONF"
+example_value=$(bash -c 'set -u; . "$1"; printf "%s" "$AGENT_LAUNCH_CLAUDE_MPM"' \
+  _ "$EXAMPLE_CONF")
+[ "$example_value" = "claude-mpm run --continue 2>/dev/null || claude-mpm run" ] \
+  || { echo "FALLO 5: el ejemplo AGENT_LAUNCH no es una asignacion segura"; exit 1; }
+
 echo "test_ccx_agent.sh OK"

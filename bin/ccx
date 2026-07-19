@@ -28,9 +28,29 @@ CONF="$HOME/.claude/hooks/cc-notify.conf"
 # definicion, recorta espacios y quita un par de comillas envolventes.
 conf_get() {
   [ -f "$CONF" ] || return 0
-  sed -n "s/^[[:space:]]*$1[[:space:]]*=//p" "$CONF" | tail -1 \
-    | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//' \
-          -e 's/^"\(.*\)"$/\1/' -e "s/^'\(.*\)'\$/\1/"
+  local value
+  value=$(awk -v wanted="$1" '
+    {
+      line = $0
+      sub(/^[[:space:]]*/, "", line)
+      if (line ~ /^#/ || index(line, "=") == 0) next
+      pos = index(line, "=")
+      key = substr(line, 1, pos - 1)
+      sub(/[[:space:]]+$/, "", key)
+      if (key == wanted) {
+        value = substr(line, pos + 1)
+        sub(/^[[:space:]]*/, "", value)
+        sub(/[[:space:]]*$/, "", value)
+        found = 1
+      }
+    }
+    END { if (found) print value }
+  ' "$CONF") || return 0
+  case "$value" in
+    \"*\") value="${value#\"}"; value="${value%\"}" ;;
+    \'*\') value="${value#\'}"; value="${value%\'}" ;;
+  esac
+  printf '%s\n' "$value"
 }
 
 # Agente por defecto: CCX_AGENT (entorno) -> AGENT_DEFAULT (config) -> claude.
