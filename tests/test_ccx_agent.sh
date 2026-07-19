@@ -87,4 +87,14 @@ example_value=$(bash -c 'set -u; . "$1"; printf "%s" "$AGENT_LAUNCH_CLAUDE_MPM"'
 [ "$example_value" = "claude-mpm run --continue 2>/dev/null || claude-mpm run" ] \
   || { echo "FALLO 5: el ejemplo AGENT_LAUNCH no es una asignacion segura"; exit 1; }
 
+# --- Caso 6: el parser Bash elimina solo las comillas exteriores y conserva
+# comillas internas como parte del unico argumento de comando enviado a tmux.
+cat > "$FAKE_HOME/.claude/hooks/cc-notify.conf" <<'EOF'
+AGENT_LAUNCH_CLAUDE_MPM="claude-mpm --label 'daily account'"
+EOF
+LOG6="$TMP/log6"
+run_ccx "$LOG6" -a claude-mpm "$PROJ" >/dev/null
+grep -Fxq "claude-mpm --label 'daily account'; exec \$SHELL" "$LOG6" \
+  || { echo "FALLO 6: ccx altero las comillas internas del comando"; cat "$LOG6"; exit 1; }
+
 echo "test_ccx_agent.sh OK"
