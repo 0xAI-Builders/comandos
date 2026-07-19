@@ -95,6 +95,7 @@ WS_URL = "ws://127.0.0.1:4779/ws"
 WEBTERM_TOKEN_URL = "http://127.0.0.1:4779/token"
 
 TABS_FILE = os.path.expanduser("~/.claude/hooks/app-tabs.json")
+TABS_META_FILE = os.path.expanduser("~/.claude/hooks/app-tabs-meta.json")
 TAB_HISTORY_FILE = os.path.expanduser("~/.claude/hooks/app-tabs-history.json")
 FOCUS_FILE = os.path.expanduser("~/.claude/hooks/app-focus.json")
 OPEN_FILE = os.path.expanduser("~/.claude/hooks/app-tab-open.json")
@@ -218,6 +219,87 @@ def ssh_host_from_session(sess):
     return None
 
 
+TAB_KINDS = {"project", "scratch", "shell", "ssh", "ssh-tab"}
+
+
+def load_tab_metadata():
+    try:
+        with open(TABS_META_FILE) as f:
+            data = json.load(f)
+    except Exception:
+        return {}
+    if not isinstance(data, dict):
+        return {}
+    out = {}
+    for sess, value in data.items():
+        if not isinstance(sess, str) or not isinstance(value, dict):
+            continue
+        kind = value.get("kind")
+        if kind not in TAB_KINDS:
+            continue
+        item = {"kind": kind}
+        if isinstance(value.get("host"), str) and value["host"]:
+            item["host"] = value["host"]
+        if isinstance(value.get("cwd"), str) and value["cwd"].startswith("/"):
+            item["cwd"] = value["cwd"]
+        out[sess] = item
+    return out
+
+
+def find_project_dir(sess):
+    """Find a project one or two levels below ~/codebase using ccx naming."""
+    base = os.path.expanduser("~/codebase")
+    try:
+        first_level = [entry for entry in os.scandir(base) if entry.is_dir()]
+    except OSError:
+        return ""
+    candidates = list(first_level)
+    for parent in first_level:
+        try:
+            candidates.extend(
+                entry for entry in os.scandir(parent.path)
+                if entry.is_dir() and entry.name != "node_modules")
+        except OSError:
+            continue
+    want = sess.lower()
+    for entry in candidates:
+        name = entry.name.replace(".", "-").replace(":", "-")[:80]
+        if name.lower() == want:
+            return entry.path
+    return ""
+
+
+def restore_tab_spec(key, metadata, project_dir=""):
+    """Resolve restoration identity from persisted metadata, with legacy fallback."""
+    sess = key.partition(":")[0]
+    value = metadata.get(sess, {}) if isinstance(metadata, dict) else {}
+    if isinstance(value, dict) and value.get("kind") in (
+            "project", "scratch", "shell", "ssh", "ssh-tab"):
+        host = value.get("host", "")
+        cwd = value.get("cwd", "")
+        return {
+            "session": sess,
+            "kind": value["kind"],
+            "host": host if isinstance(host, str) else "",
+            "cwd": cwd if isinstance(cwd, str) else "",
+        }
+    if project_dir:
+        return {"session": sess, "kind": "project", "host": "",
+                "cwd": project_dir}
+    if sess.startswith("xterm-"):
+        return {"session": sess, "kind": "xterm", "host": "", "cwd": ""}
+    host = ssh_host_from_session(sess)
+    if host and sess.startswith("ssh-"):
+        kind = "ssh"
+    elif host:
+        kind = "ssh-tab"
+    elif sess.startswith("term-"):
+        kind = "scratch"
+    else:
+        kind = "project"
+    return {"session": sess, "kind": kind, "host": host or "", "cwd": ""}
+
+
 # ---------------------------------------------------------------------------
 # Persistencia de pestanas — MISMO esquema que bin/cc-app (interop con Linux)
 # ---------------------------------------------------------------------------
@@ -234,6 +316,39 @@ def load_saved_tabs():
     if isinstance(data, dict):
         return [(k, v) for k, v in data.items() if isinstance(k, str) and k]
     return []
+
+
+def merge_tab_labels(saved_tabs, current_labels):
+    """Keep not-yet-restored startup tabs while early actions save state."""
+    out = {}
+    for key, label in saved_tabs or []:
+        if isinstance(key, str) and key:
+            out[key] = label if isinstance(label, str) and label else key
+    out.update(current_labels)
+    return out
+
+
+def cancel_restore_snapshot(saved_tabs, sess):
+    """Remove every legacy/current key that resolves to the cancelled session."""
+    remaining = []
+    removed = False
+    for key, label in saved_tabs or []:
+        if isinstance(key, str) and key.partition(":")[0] == sess:
+            removed = True
+            continue
+        remaining.append((key, label))
+    return remaining, removed
+
+
+def terminal_action_session(args):
+    if not args:
+        return ""
+    first = args[0]
+    if isinstance(first, str):
+        return first
+    if isinstance(first, dict) and isinstance(first.get("session"), str):
+        return first["session"]
+    return ""
 
 
 def saved_tab_label(key):
@@ -364,6 +479,13 @@ class AppController(NSObject):
         self.active_key = None
         self.term_visible = True
         self.webterm_token = ""
+        self.terminals_ready = False
+        self._pending_terminal_actions = []
+        self._restore_snapshot = []
+        self._restore_cancelled = set()
+        self._restore_original_by_current = {}
+        self._restore_current_by_original = {}
+        self._restore_lock = threading.RLock()
         self._ipc_mtimes = {}
 
         self._build_window()
@@ -528,10 +650,22 @@ class AppController(NSObject):
         tab["button"].setAttributedTitle_(att)
 
     @objc.python_method
-    def _add_tab(self, key, label, sess_for_url, is_hub=False):
+    def _add_tab(self, key, label, sess_for_url, is_hub=False,
+                 kind=None, host="", cwd=""):
         """Crea el WKWebView de la pestana y su boton. Los webviews NO se quitan
         de la jerarquia al cambiar de pestana (evita recargas) — solo togglea
         isHidden."""
+        if not self.webterm_token:
+            raise RuntimeError("terminal token unavailable")
+        if not is_hub:
+            saved = load_tab_metadata().get(key, {})
+            kind = kind if kind in TAB_KINDS else saved.get("kind", "shell")
+            host = host or saved.get("host", "")
+            cwd = cwd or saved.get("cwd", "")
+            http_post("/tab-metadata", {
+                "session": key, "kind": kind, "host": host, "cwd": cwd,
+            }, timeout=3)
+
         cfg = WKWebViewConfiguration.alloc().init()
         self._enable_local_access(cfg)
         frame = self.term_area.bounds()
@@ -554,7 +688,8 @@ class AppController(NSObject):
         self.tab_strip.addSubview_(btn)
 
         tab = {"key": key, "label": label, "webview": wv, "button": btn,
-               "is_hub": is_hub}
+               "is_hub": is_hub, "kind": kind or "internal",
+               "host": host, "cwd": cwd}
         self.tabs.append(tab)
         self._set_tab_title(tab)
         self._relayout_strip()
@@ -718,12 +853,14 @@ class AppController(NSObject):
             pass
 
     def newLocalTab_(self, _s):
+        if self._defer_terminal_action(self.newLocalTab_, None):
+            return
         cwd = self._current_cwd()
         sess = f"term-{os.getpid() % 10000}-{int(time.time()) % 100000}"
         # tmux plano (sin systemd-run): sesion scratch en el cwd actual.
         tmuxc("new-session", "-d", "-s", sess, "-c", cwd)
         label = os.path.basename(cwd) or "term"
-        tab = self._add_tab(sess, label, sess)
+        tab = self._add_tab(sess, label, sess, kind="scratch", cwd=cwd)
         self._select_tab(tab)
         self._save_tabs()
 
@@ -779,6 +916,9 @@ class AppController(NSObject):
         (get-or-create) y selecciona la ventana pedida — equivalente a open_tab()
         de bin/cc-app pero delegando la creacion tmux a cc-dash."""
         if not sess or sess in ("local", "hub", "control"):
+            return
+        if self._defer_terminal_action(
+                self.openOrFocus_win_label_, sess, winname, label):
             return
         existing = self._tab_for_key(sess)
         if existing is not None:
@@ -841,14 +981,17 @@ class AppController(NSObject):
             if alert.runModal() != NSAlertFirstButtonReturn:
                 return
         archive_tab(key, label, reason="closed")
+        self._cancel_pending_terminal_actions(key)
+        self._cancel_pending_restore(key)
         tab["webview"].removeFromSuperview()
         tab["button"].removeFromSuperview()
         self.tabs = [t for t in self.tabs if t is not tab]
         self._relayout_strip()
         self._save_tabs()
-        # Scratch term-* con puro shell ocioso: al cerrar, matamos la sesion
+        http_post("/tab-metadata-remove", {"session": key}, timeout=3)
+        # Scratch con puro shell ocioso: al cerrar, matamos la sesion
         # (adios fantasmas). Si algo corre dentro, sobrevive (replica close_tab).
-        if key.startswith("term-"):
+        if tab.get("kind") == "scratch":
             r = tmuxc("list-panes", "-s", "-t", "=" + key,
                       "-F", "#{pane_current_command}")
             cmds = set(r.stdout.split())
@@ -860,14 +1003,14 @@ class AppController(NSObject):
 
     @objc.python_method
     def _save_tabs(self):
-        """Escribe app-tabs.json con el esquema dict {clave: etiqueta}, en el
-        orden actual, EXCLUYENDO el hub (no es una sesion). Interop con Linux."""
+        """Persist ordered tab labels, excluding the internal hub."""
         try:
-            data = {}
+            current = {}
             for t in self.tabs:
                 if t["is_hub"]:
                     continue
-                data[t["key"]] = t["label"]
+                current[t["key"]] = t["label"]
+            data = merge_tab_labels(self._restore_snapshot, current)
             os.makedirs(os.path.dirname(TABS_FILE), exist_ok=True)
             with open(TABS_FILE, "w") as f:
                 json.dump(data, f)
@@ -879,7 +1022,70 @@ class AppController(NSObject):
     def _boot_terminals(self):
         ensure_webterm()
         self.webterm_token = webterm_access_token()
+        if not self.webterm_token:
+            print("terminal token unavailable; tab opens remain queued", file=sys.stderr)
+            return
         AppHelper.callAfter(self._create_hub_and_restore)
+
+    @objc.python_method
+    def _defer_terminal_action(self, callback, *args):
+        if self.terminals_ready and self.webterm_token:
+            return False
+        self._pending_terminal_actions.append(
+            (callback, args, terminal_action_session(args)))
+        return True
+
+    @objc.python_method
+    def _drain_pending_terminal_actions(self):
+        pending = self._pending_terminal_actions
+        self._pending_terminal_actions = []
+        for callback, args, _sess in pending:
+            try:
+                callback(*args)
+            except Exception as exc:
+                print(f"queued terminal action failed: {exc}", file=sys.stderr)
+
+    @objc.python_method
+    def _cancel_pending_terminal_actions(self, sess):
+        remaining = [
+            action for action in self._pending_terminal_actions
+            if action[2] != sess
+        ]
+        removed = len(remaining) != len(self._pending_terminal_actions)
+        self._pending_terminal_actions = remaining
+        return removed
+
+    @objc.python_method
+    def _record_restore_alias(self, original, current):
+        if not original or not current or original == current:
+            return
+        with self._restore_lock:
+            self._restore_original_by_current[current] = original
+            self._restore_current_by_original[original] = current
+
+    @objc.python_method
+    def _restore_current_session(self, sess):
+        with self._restore_lock:
+            original = self._restore_original_by_current.get(sess, sess)
+            return self._restore_current_by_original.get(original, sess)
+
+    @objc.python_method
+    def _cancel_pending_restore(self, sess):
+        with self._restore_lock:
+            original = self._restore_original_by_current.get(sess, sess)
+            current = self._restore_current_by_original.get(original, sess)
+            remaining, removed = cancel_restore_snapshot(
+                self._restore_snapshot, original)
+            if not removed and original == sess and current == sess:
+                return False
+            self._restore_snapshot = remaining
+            self._restore_cancelled.update((original, current, sess))
+            return True
+
+    @objc.python_method
+    def _restore_is_cancelled(self, sess):
+        with self._restore_lock:
+            return sess in self._restore_cancelled
 
     @objc.python_method
     def _create_hub_and_restore(self):
@@ -890,57 +1096,100 @@ class AppController(NSObject):
                   os.path.expanduser("~"))
         hub = self._add_tab(HUB_KEY, "local", "local", is_hub=True)
         self._select_tab(hub)
-        # Restaura las pestanas de la sesion pasada segun su tipo.
-        threading.Thread(target=self._restore_saved, daemon=True).start()
+        saved_tabs = load_saved_tabs()
+        metadata = load_tab_metadata()
+        self._restore_snapshot = saved_tabs
+        with self._restore_lock:
+            self._restore_cancelled.clear()
+            self._restore_original_by_current.clear()
+            self._restore_current_by_original.clear()
+        self.terminals_ready = True
+        threading.Thread(
+            target=self._restore_saved, args=(saved_tabs, metadata),
+            daemon=True).start()
+        self._drain_pending_terminal_actions()
 
     @objc.python_method
-    def _restore_saved(self):
+    def _restore_saved(self, saved_tabs=None, metadata=None):
         seen = set()
-        for key, label in load_saved_tabs():
+        saved_tabs = load_saved_tabs() if saved_tabs is None else saved_tabs
+        metadata = load_tab_metadata() if metadata is None else metadata
+        for key, label in saved_tabs:
             if not isinstance(key, str) or not key:
                 continue
-            sess = key.partition(":")[0]  # claves viejas "sesion:ventana"
-            if sess.startswith("xterm-") or sess in seen:
+            raw_sess = key.partition(":")[0]
+            project = "" if raw_sess in metadata else find_project_dir(raw_sess)
+            spec = restore_tab_spec(key, metadata, project)
+            sess = spec["session"]
+            restore_sess = sess
+            kind = spec["kind"]
+            host = spec["host"]
+            cwd = spec["cwd"]
+            if kind == "xterm" or sess in seen:
                 continue  # pestanas experimentales de Linux: no aplican en Mac
             seen.add(sess)
+            if self._restore_is_cancelled(restore_sess):
+                continue
             if tmuxc("has-session", "-t", "=" + sess).returncode != 0:
                 error = None
-                host = ssh_host_from_session(sess)
-                if sess.startswith("term-"):
+                if kind in ("scratch", "shell"):
                     result = tmuxc("new-session", "-d", "-s", sess, "-c",
-                                   os.path.expanduser("~"))
+                                   cwd if cwd and os.path.isdir(cwd)
+                                   else os.path.expanduser("~"))
                     if result.returncode != 0:
                         error = result.stderr.strip() or "tmux fallo"
-                elif host and sess.startswith("ssh-"):
+                elif kind == "ssh" and host:
                     response, error = http_post(
                         "/ssh-connect", {"host": host}, timeout=20)
                     if isinstance(response, dict) and response.get("session"):
                         sess = response["session"]
-                elif host:
+                        self._record_restore_alias(restore_sess, sess)
+                elif kind == "ssh-tab" and host:
                     response, error = http_post(
                         "/ssh-new-tab", {"host": host}, timeout=20)
                     if isinstance(response, dict) and response.get("session"):
                         sess = response["session"]
+                        self._record_restore_alias(restore_sess, sess)
                         label = response.get("label") or label
                 else:
-                    response, error = http_post("/new", {"session": sess})
+                    response, error = http_post(
+                        "/ensure", {"session": sess, "cwd": cwd,
+                                    "win": "claude"})
                     if isinstance(response, dict) and response.get("session"):
                         sess = response["session"]
+                        self._record_restore_alias(restore_sess, sess)
                 if error or tmuxc("has-session", "-t", "=" + sess).returncode != 0:
                     print(f"no pude restaurar {key}: {error or 'sesion no creada'}",
                           file=sys.stderr)
                     continue
+            if (self._restore_is_cancelled(restore_sess)
+                    or self._restore_is_cancelled(sess)):
+                continue
             AppHelper.callAfter(
                 self._restore_one, sess,
-                label if isinstance(label, str) and label else None)
+                label if isinstance(label, str) and label else None,
+                kind, host, cwd, restore_sess)
+        AppHelper.callAfter(self._finish_restore)
 
     @objc.python_method
-    def _restore_one(self, sess, label):
+    def _finish_restore(self):
+        self._restore_snapshot = []
+        self._save_tabs()
+        with self._restore_lock:
+            self._restore_cancelled.clear()
+            self._restore_original_by_current.clear()
+            self._restore_current_by_original.clear()
+
+    @objc.python_method
+    def _restore_one(self, sess, label, kind, host, cwd, restore_sess=None):
+        if (self._restore_is_cancelled(restore_sess or sess)
+                or self._restore_is_cancelled(sess)):
+            return
         if self._tab_for_key(sess) is not None:
             return
         self._select_win(sess, "claude")
         lbl = label or sess
-        self._add_tab(sess, lbl, sess)
+        self._add_tab(sess, lbl, sess, kind=kind, host=host, cwd=cwd)
         self._save_tabs()
 
     @objc.python_method
@@ -1008,6 +1257,8 @@ class AppController(NSObject):
     @objc.python_method
     def _on_open(self, d):
         # El remoto abrio una tab: la abrimos en segundo plano SIN robar foco.
+        if self._defer_terminal_action(self._on_open, dict(d)):
+            return
         sess = d.get("session", "")
         if not sess or self._tab_for_key(sess) is not None:
             return
@@ -1025,9 +1276,17 @@ class AppController(NSObject):
     def _on_close(self, d):
         # cc-dash ya confirmo con el usuario: cerramos sin re-preguntar.
         sess = d.get("session", "")
-        tab = self._tab_for_key(sess)
+        queued = self._cancel_pending_terminal_actions(sess) if sess else False
+        restoring = self._cancel_pending_restore(sess) if sess else False
+        current_sess = self._restore_current_session(sess) if sess else sess
+        tab = self._tab_for_key(sess) or self._tab_for_key(current_sess)
         if tab is not None:
             self._close_tab(tab, confirm=False)
+        elif restoring:
+            self._save_tabs()
+            http_post("/tab-metadata-remove", {"session": sess}, timeout=3)
+        elif queued:
+            http_post("/tab-metadata-remove", {"session": sess}, timeout=3)
 
     # -- tema ---------------------------------------------------------------
     def applyTheme_(self, name):

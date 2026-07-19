@@ -107,3 +107,47 @@ def test_dashboard_delivers_protected_token_to_terminal_frame():
 def test_webterm_bootstraps_shared_dashboard_token():
     assert 'TOKEN_FILE="$HOOKS/dash-token"' in WEBTERM_SOURCE
     assert "ensure_dashboard_token" in WEBTERM_SOURCE
+
+
+def test_terminal_reconnect_controller_retries_with_bounded_backoff():
+    helper = extract_js_function(TERM_HTML, "createWebSocketReconnectController")
+    script = textwrap.dedent(
+        f"""
+        {helper}
+        const queued = [];
+        let connects = 0;
+        const setTimer = (fn, delay) => {{
+          const timer = {{fn, delay, cancelled:false}};
+          queued.push(timer);
+          return timer;
+        }};
+        const clearTimer = timer => {{ timer.cancelled = true; }};
+        const ctl = createWebSocketReconnectController(
+          () => {{ connects += 1; }}, setTimer, clearTimer);
+
+        const delays = [];
+        for (let i = 0; i < 10; i += 1) {{
+          delays.push(ctl.schedule());
+          if (ctl.schedule() !== false) throw new Error('duplicate timer');
+          queued.at(-1).fn();
+        }}
+        ctl.connected();
+        const resetDelay = ctl.schedule();
+        ctl.dispose();
+        const afterDispose = ctl.schedule();
+        console.log(JSON.stringify({{delays, connects, resetDelay, afterDispose}}));
+        """
+    )
+    result = json.loads(subprocess.check_output(["node", "-e", script], text=True))
+
+    assert result["connects"] == 10
+    assert result["delays"][0] == 250
+    assert max(result["delays"]) == 4000
+    assert result["resetDelay"] == 250
+    assert result["afterDispose"] is False
+
+
+def test_terminal_socket_close_schedules_reconnect_without_disposing_resize():
+    assert "reconnectController.schedule()" in TERM_HTML
+    assert "ws.addEventListener('close', disposeResizeCoordinator)" not in TERM_HTML
+    assert "term.reset()" in TERM_HTML

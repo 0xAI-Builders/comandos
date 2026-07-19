@@ -68,7 +68,7 @@
   #err {
     position: absolute; inset: 0; display: none;
     color:var(--term-brand); font-family: 'JetBrainsMono Nerd Font Mono', monospace;
-    padding: 16px; white-space: pre-wrap;
+    padding: 16px; white-space: pre-wrap; pointer-events:none;
   }
   #dbg {
     position: fixed; right: 8px; top: 8px; z-index: 9; display: none;
@@ -157,6 +157,11 @@
     const e = document.getElementById('err');
     e.textContent = msg;
     e.style.display = 'block';
+  };
+  const hideErr = () => {
+    const e = document.getElementById('err');
+    e.textContent = '';
+    e.style.display = 'none';
   };
 
   function openWebLink(_event, url) {
@@ -367,13 +372,46 @@
   //   client -> server:  '0'+bytes = INPUT  '1'+JSON = RESIZE
   //                      '2' = PAUSE  '3' = RESUME
   //   server -> client:  '0'+bytes = OUTPUT '1'+txt  = TITLE  '2'+JSON = PREFS
-  const ws = new WebSocket(ws_url, ['tty']);
-  ws.binaryType = 'arraybuffer';
+  function createWebSocketReconnectController(
+      connect, setTimer = setTimeout, clearTimer = clearTimeout) {
+    let timer = null;
+    let attempt = 0;
+    let disposed = false;
+    function schedule() {
+      if (disposed || timer !== null) return false;
+      const delay = Math.min(250 * (2 ** attempt), 4000);
+      attempt = Math.min(attempt + 1, 5);
+      timer = setTimer(() => {
+        timer = null;
+        if (!disposed) connect();
+      }, delay);
+      return delay;
+    }
+    function connected() {
+      attempt = 0;
+      if (timer !== null) clearTimer(timer);
+      timer = null;
+    }
+    function dispose() {
+      disposed = true;
+      if (timer !== null) clearTimer(timer);
+      timer = null;
+    }
+    return {schedule, connected, dispose};
+  }
+
+  let ws = null;
+  let socketCloseCleanup = () => {};
+  let connectionDown = false;
   const enc = new TextEncoder();
   const dec = new TextDecoder();
 
+  function socketIsOpen() {
+    return ws !== null && ws.readyState === 1;
+  }
+
   const sendInput = (data) => {
-    if (ws.readyState !== 1) return;
+    if (!socketIsOpen()) return;
     const buf = enc.encode(data);
     const out = new Uint8Array(buf.length + 1);
     out[0] = 0x30; // '0' = INPUT (client→server)
@@ -382,7 +420,7 @@
   };
   let lastResize = '';
   function sendResize(size) {
-    if (ws.readyState !== 1) return;
+    if (ws === null || ws.readyState !== 1) return;
     const cols = size && size.cols !== undefined ? size.cols : term.cols;
     const rows = size && size.rows !== undefined ? size.rows : term.rows;
     const key = `${cols}x${rows}`;
@@ -391,20 +429,7 @@
     ws.send('1' + JSON.stringify({columns: cols, rows}));
   }
 
-  ws.addEventListener('open', () => {
-    dbg(`WS open (proto=${ws.protocol||'-'}), auth cols=${term.cols} rows=${term.rows}`);
-    // ttyd espera el primer mensaje como JSON crudo (SIN prefijo de comando).
-    lastResize = `${term.cols}x${term.rows}`;
-    ws.send(JSON.stringify({
-      AuthToken: '',
-      columns: term.cols,
-      rows: term.rows,
-    }));
-    setTimeout(scheduleFit, 30);
-  });
-
-  ws.addEventListener('message', (ev) => {
-    const data = ev.data;
+  function handleSocketMessage(data) {
     // Puede llegar como ArrayBuffer o string según el frame de ttyd.
     if (typeof data === 'string') {
       const cmd = data[0];
@@ -419,31 +444,72 @@
           scheduleFit();
         } catch (_) {}
       }
-    } else {
-      const bytes = new Uint8Array(data);
-      const cmd = String.fromCharCode(bytes[0]);
-      const rest = bytes.subarray(1);
-      if (cmd === '0') term.write(rest);
-      else if (cmd === '1') document.title = dec.decode(rest);
-      else if (cmd === '2') {
-        try {
-          const prefs = JSON.parse(dec.decode(rest));
-          if (prefs.fontFamily) term.options.fontFamily = prefs.fontFamily;
-          if (prefs.fontSize)   term.options.fontSize   = +prefs.fontSize;
-          scheduleFit();
-        } catch (_) {}
-      }
+      return;
     }
-  });
+    const bytes = new Uint8Array(data);
+    const cmd = String.fromCharCode(bytes[0]);
+    const rest = bytes.subarray(1);
+    if (cmd === '0') term.write(rest);
+    else if (cmd === '1') document.title = dec.decode(rest);
+    else if (cmd === '2') {
+      try {
+        const prefs = JSON.parse(dec.decode(rest));
+        if (prefs.fontFamily) term.options.fontFamily = prefs.fontFamily;
+        if (prefs.fontSize)   term.options.fontSize   = +prefs.fontSize;
+        scheduleFit();
+      } catch (_) {}
+    }
+  }
 
-  ws.addEventListener('close', (ev) => {
-    dbg(`WS close code=${ev.code} reason="${ev.reason||''}" clean=${ev.wasClean}`);
-    term.write(`\r\n\x1b[90m[conexión cerrada${ev.code ? ' · '+ev.code : ''}]\x1b[0m\r\n`);
-  });
-  ws.addEventListener('close', disposeResizeCoordinator);
-  ws.addEventListener('error', (e) => {
-    dbg(`WS error a ${ws_url}`);
-    showErr(`No pude conectar a ${ws_url}\n\nAsegurate de que cc-webterm esté corriendo:\n  cc-webterm status`);
+  function connectWebSocket() {
+    const socket = new WebSocket(ws_url, ['tty']);
+    ws = socket;
+    socket.binaryType = 'arraybuffer';
+    socket.addEventListener('open', () => {
+      if (ws !== socket) return;
+      dbg(`WS open (proto=${socket.protocol||'-'}), auth cols=${term.cols} rows=${term.rows}`);
+      reconnectController.connected();
+      hideErr();
+      if (connectionDown) {
+        term.reset();
+        term.write('\r\n\x1b[90m[conexión restablecida]\x1b[0m\r\n');
+      }
+      connectionDown = false;
+      // ttyd espera el primer mensaje como JSON crudo (SIN prefijo de comando).
+      lastResize = `${term.cols}x${term.rows}`;
+      socket.send(JSON.stringify({
+        AuthToken: '',
+        columns: term.cols,
+        rows: term.rows,
+      }));
+      setTimeout(scheduleFit, 30);
+    });
+    socket.addEventListener('message', ev => {
+      if (ws === socket) handleSocketMessage(ev.data);
+    });
+    socket.addEventListener('close', ev => {
+      if (ws !== socket) return;
+      dbg(`WS close code=${ev.code} reason="${ev.reason||''}" clean=${ev.wasClean}`);
+      socketCloseCleanup();
+      if (!connectionDown) {
+        term.write(`\r\n\x1b[90m[conexión cerrada${ev.code ? ' · '+ev.code : ''}; reconectando]\x1b[0m\r\n`);
+      }
+      connectionDown = true;
+      showErr('Terminal desconectada. Reconectando…');
+      reconnectController.schedule();
+    });
+    socket.addEventListener('error', () => {
+      if (ws !== socket) return;
+      dbg(`WS error a ${ws_url}`);
+      showErr('No pude conectar con la terminal. Reconectando…');
+    });
+  }
+
+  const reconnectController = createWebSocketReconnectController(connectWebSocket);
+  connectWebSocket();
+  window.addEventListener('pagehide', () => {
+    reconnectController.dispose();
+    try { ws?.close(); } catch (_) {}
   });
 
   term.onData(sendTerminalData);
@@ -745,7 +811,7 @@
   const sendMotion = () => {
     gesture.frame = 0;
     if (gesture.phase !== 'resizing' || !gesture.pressSent ||
-        ws.readyState !== 1 || !gesture.pendingCell) return;
+        ws === null || ws.readyState !== 1 || !gesture.pendingCell) return;
     const c = gesture.pendingCell;
     gesture.pendingCell = null;
     if (!sameCell(c, gesture.lastCell)) {
@@ -768,7 +834,8 @@
     gesture.timer = 0;
     if (gesture.frame) cancelAnimationFrame(gesture.frame);
     gesture.frame = 0;
-    if (gesture.phase === 'resizing' && gesture.pressSent && ws.readyState === 1) {
+    if (gesture.phase === 'resizing' && gesture.pressSent &&
+        ws !== null && ws.readyState === 1) {
       sendMotion();
       if (gesture.lastCell) sendInput(sgr(0, gesture.lastCell, true));
       requestPaneRefreshAfterResize();
@@ -790,7 +857,8 @@
   };
   const tryEngageResize = () => {
     gesture.timer = 0;
-    if (gesture.phase !== 'pending' || selectingText() || !mouseOn() || ws.readyState !== 1) return;
+    if (gesture.phase !== 'pending' || selectingText() || !mouseOn() ||
+        ws === null || ws.readyState !== 1) return;
     const raw = cellFromTouch({clientX: gesture.sx, clientY: gesture.sy});
     const snap = raw && snapToBorder(raw);
     if (!snap) return; // sigue pending: si luego se mueve, se convierte en scroll
@@ -860,6 +928,7 @@
   });
   document.addEventListener('touchcancel', finishGesture);
   window.addEventListener('pagehide', finishGesture);
+  if (typeof socketCloseCleanup === 'function') socketCloseCleanup = finishGesture;
   ws.addEventListener('close', finishGesture);
 
   const ta = term.textarea;

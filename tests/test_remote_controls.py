@@ -1,10 +1,12 @@
 #!/usr/bin/env python3
 import ast
+import json
 import os
 import re
 import subprocess
 import tempfile
 import textwrap
+import threading
 import types
 import urllib.request
 from pathlib import Path
@@ -470,12 +472,15 @@ def test_ssh_connect_disables_tmux_mouse_for_native_text_selection():
         calls.append(("run", tuple(args)))
         return types.SimpleNamespace(returncode=0, stdout="", stderr="")
 
+    metadata = {}
     extra = {
         "os": os,
             "shlex": __import__("shlex"),
             "subprocess": types.SimpleNamespace(run=fake_run),
             "tmux": fake_tmux,
             "scope_cmd": lambda argv: argv,
+            "write_tab_metadata": lambda sess, kind, **values: metadata.update(
+                {sess: {"kind": kind, **values}}),
             "SSH_HOST_RE": re.compile(r"^[A-Za-z0-9._-]{1,80}$"),
     }
     ns = load_functions("parse_ssh_config", "ssh_connect", extra=extra)
@@ -493,6 +498,154 @@ def test_ssh_connect_disables_tmux_mouse_for_native_text_selection():
     assert connected is True
     assert note is None
     assert ("tmux", ("set-option", "-t", "ssh-prod", "mouse", "off")) in calls
+    assert metadata == {"ssh-prod": {"kind": "ssh", "host": "prod"}}
+
+
+def test_tab_metadata_round_trip_preserves_exact_restore_identity():
+    storage = {}
+    path = "/tmp/app-tabs-meta.json"
+
+    def fake_load(want, default):
+        return storage.get(want, default)
+
+    def fake_write(want, data):
+        storage[want] = data
+
+    ns = load_functions(
+        "read_tab_metadata", "write_tab_metadata",
+        extra={
+            "os": os,
+            "TABS_META_FILE": path,
+            "TAB_KINDS": {"project", "scratch", "shell", "ssh", "ssh-tab"},
+            "TAB_METADATA_LOCK": threading.RLock(),
+            "SESSION_RE": re.compile(r"^[A-Za-z0-9._-]{1,80}$"),
+            "load_json_file": fake_load,
+            "write_json_file": fake_write,
+        },
+    )
+    host = "build-" + "x" * 54
+    item = ns["write_tab_metadata"](
+        "ssh-build", "ssh", host=host, cwd="/srv/build")
+
+    assert item == {"kind": "ssh", "host": host, "cwd": "/srv/build"}
+    assert ns["read_tab_metadata"]() == {"ssh-build": item}
+
+
+def test_tab_metadata_concurrent_updates_do_not_drop_entries(tmp_path):
+    ns = load_functions(
+        "load_json_file", "write_json_file", "read_tab_metadata",
+        "write_tab_metadata",
+        extra={
+            "json": json,
+            "os": os,
+            "tempfile": tempfile,
+            "TABS_META_FILE": str(tmp_path / "app-tabs-meta.json"),
+            "TAB_KINDS": {"project", "scratch", "shell", "ssh", "ssh-tab"},
+            "TAB_METADATA_LOCK": threading.RLock(),
+            "SESSION_RE": re.compile(r"^[A-Za-z0-9._-]{1,80}$"),
+        },
+    )
+    barrier = threading.Barrier(12)
+    errors = []
+
+    def write(index):
+        try:
+            barrier.wait()
+            ns["write_tab_metadata"](
+                f"project-{index}", "project", cwd=f"/code/project-{index}")
+        except Exception as exc:
+            errors.append(exc)
+
+    threads = [threading.Thread(target=write, args=(i,)) for i in range(12)]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join()
+
+    assert errors == []
+    assert set(ns["read_tab_metadata"]()) == {
+        f"project-{index}" for index in range(12)
+    }
+
+
+def test_tab_metadata_resolver_prefers_project_over_legacy_prefix():
+    ns = load_functions(
+        "tab_metadata_for_session",
+        extra={
+            "read_tab_metadata": lambda: {},
+            "find_project_dir": lambda sess: "/code/ssh-client"
+            if sess == "ssh-client" else None,
+            "ssh_host_entry": lambda host: {"host": host},
+        },
+    )
+
+    assert ns["tab_metadata_for_session"]("ssh-client") == {
+        "kind": "project", "cwd": "/code/ssh-client",
+    }
+
+
+def test_shell_window_uses_metadata_instead_of_ssh_name_prefix(tmp_path):
+    calls = []
+
+    def fake_tmux(*args, timeout=5):
+        calls.append(args)
+        return types.SimpleNamespace(returncode=0, stdout="", stderr="")
+
+    ns = load_functions(
+        "ensure_shell_window",
+        extra={
+            "os": os,
+            "shlex": __import__("shlex"),
+            "tmux": fake_tmux,
+            "find_project_dir": lambda _sess: None,
+            "tab_metadata_for_session": lambda _sess: {"kind": "project"},
+            "SSH_HOST_RE": re.compile(r"^[A-Za-z0-9._-]{1,60}$"),
+        },
+    )
+    ns["ensure_shell_window"]("ssh-client", str(tmp_path))
+
+    created = next(args for args in calls if args[0] == "new-window")
+    assert created[-2:] == ("-c", str(tmp_path))
+    assert not any("ssh client" in str(arg) for arg in created)
+
+
+def test_ssh_connect_session_name_preserves_full_saved_alias():
+    host = "build-" + "x" * 54
+    calls = []
+
+    def fake_tmux(*args, timeout=5):
+        calls.append(("tmux", args))
+        return types.SimpleNamespace(returncode=1 if args[0] == "has-session" else 0,
+                                     stdout="", stderr="")
+
+    def fake_run(args, capture_output=True, text=True, timeout=15):
+        calls.append(("run", tuple(args)))
+        return types.SimpleNamespace(returncode=0, stdout="", stderr="")
+
+    ns = load_functions(
+        "parse_ssh_config", "ssh_connect",
+        extra={
+            "os": os,
+            "shlex": __import__("shlex"),
+            "subprocess": types.SimpleNamespace(run=fake_run),
+            "tmux": fake_tmux,
+            "scope_cmd": lambda argv: argv,
+            "write_tab_metadata": lambda *_args, **_kwargs: None,
+            "SSH_HOST_RE": re.compile(r"^[A-Za-z0-9._-]{1,60}$"),
+        },
+    )
+    old_home = os.environ.get("HOME", "")
+    with tempfile.TemporaryDirectory() as home:
+        os.environ["HOME"] = home
+        ssh_dir = Path(home) / ".ssh"
+        ssh_dir.mkdir()
+        (ssh_dir / "config").write_text(f"Host {host}\n    HostName 203.0.113.10\n")
+        sess, connected, note = ns["ssh_connect"](host)
+    os.environ["HOME"] = old_home
+
+    assert sess == "ssh-" + host
+    assert connected is True
+    assert note is None
 
 
 def test_ssh_new_tab_creates_unique_tmux_session_for_saved_host():
@@ -511,6 +664,7 @@ def test_ssh_new_tab_creates_unique_tmux_session_for_saved_host():
         return types.SimpleNamespace(returncode=0, stdout="", stderr="")
 
     labels = {}
+    metadata = {}
 
     extra = {
         "os": os,
@@ -519,6 +673,8 @@ def test_ssh_new_tab_creates_unique_tmux_session_for_saved_host():
         "tmux": fake_tmux,
         "scope_cmd": lambda argv: ["scope", *argv],
         "write_app_tab": lambda sess, label: labels.setdefault(sess, label),
+        "write_tab_metadata": lambda sess, kind, **values: metadata.update(
+            {sess: {"kind": kind, **values}}),
         "SSH_HOST_RE": re.compile(r"^[A-Za-z0-9._-]{1,80}$"),
     }
     ns = load_functions(
@@ -542,6 +698,7 @@ def test_ssh_new_tab_creates_unique_tmux_session_for_saved_host():
     assert connected is True
     assert note is None
     assert labels == {"sshtab-prod-2": "prod"}
+    assert metadata == {"sshtab-prod-2": {"kind": "ssh-tab", "host": "prod"}}
     run_args = next(args for kind, args in calls if kind == "run" and "new-session" in args)
     assert run_args[:5] == ("scope", "tmux", "new-session", "-d", "-s")
     assert run_args[5] == "sshtab-prod-2"
