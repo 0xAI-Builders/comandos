@@ -140,7 +140,7 @@ cc_register_claude_hooks() {
     return 0
   }
   mkdir -p "$(dirname "$settings")"
-  [ -s "$settings" ] || echo '{}' > "$settings"
+  [ -e "$settings" ] || echo '{}' > "$settings"
   if ! jq -e . "$settings" >/dev/null 2>&1; then
     echo "  ($settings no es JSON válido; no toco los hooks — revísalo a mano)" >&2
     return 0

@@ -77,9 +77,15 @@ ln -sfn "$REPO/assets" "$HOOKS/dash/assets"
 # Secretos (token de bot, config): solo el dueno (0600)
 chmod 600 "$HOOKS/telegram.env" "$HOOKS/cc-notify.conf" 2>/dev/null || true
 
+# WSL instala jq de forma asistida; haz ese preflight antes de registrar. En
+# las demas plataformas jq es un requisito externo y el helper avisa si falta.
+if [ "$CC_PLAT" = "linux-wsl-ubuntu" ]; then
+  cc_systemd_ok || _cc_wsl_enable_systemd
+  _cc_wsl_install_deps
+fi
+
 # Hooks de Claude Code en ~/.claude/settings.json (los demás agentes van
-# vía cc-agents setup). Sin esto Claude nunca llama a cc-notify.sh y el
-# tablero no ve estados working/waiting/done.
+# vía cc-agents setup). Corre antes del setup falible de UI/servicios.
 cc_register_claude_hooks "$HOOKS/cc-notify.sh"
 
 # Config de terminal
@@ -149,11 +155,8 @@ PLIST
     echo "  usa el tablero en el navegador (las notificaciones van por 'osascript'/'say')."
     ;;
   linux-wsl-ubuntu)
-    # 1) systemd disponible?
-    cc_systemd_ok || _cc_wsl_enable_systemd
-    # 2) deps WSL Ubuntu
-    _cc_wsl_install_deps
-    # 3) systemd user services (mismo que linux-native)
+    # Dependencias y systemd ya se validaron antes de registrar hooks.
+    # Configura los servicios de usuario (mismo flujo que linux-native).
     for s in cc-dash cc-notifyd cc-telegram; do
       ln -sf "$REPO/systemd/$s.service" "$HOME/.config/systemd/user/$s.service"
     done
@@ -161,7 +164,7 @@ PLIST
     systemctl --user enable --now cc-dash.service cc-notifyd.service 2>/dev/null || true
     grep -q "^CC_TELEGRAM_BOT_TOKEN=." "$HOOKS/telegram.env" 2>/dev/null \
       && systemctl --user enable --now cc-telegram.service 2>/dev/null || true
-    # 4) Shortcut en el menú Inicio de Windows (native .lnk + .ico).
+    # Shortcut en el menú Inicio de Windows (native .lnk + .ico).
     "$BIN/cc-winstart" 2>&1 | sed 's/^/  /' || \
       echo "  (no pude publicar en Start Menu; correlo a mano: cc-winstart)"
     ;;
