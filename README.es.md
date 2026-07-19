@@ -113,22 +113,23 @@ desde la cama.
 y corre `cc-webterm` — cada sesión tiene un botón **Terminal** que abre la
 terminal real, viva (xterm.js attacheado a la misma sesión tmux). Tecleas,
 scrolleas, corres `vim` — igual que sentado en tu escritorio, en vivo y
-compartido. Se enruta en `/term` por el mismo Tailscale Serve. La terminal
-interactiva ttyd depende de la política de acceso de tu tailnet y no agrega
-autenticación separada de ComandOS.
+compartido. Se enruta en `/term` por el mismo Tailscale Serve. ComandOS pasa el
+token existente como capacidad de arranque por conexión; el helper de attach
+rechaza la conexión antes de abrir tmux si falta o es incorrecto. No aparece un
+segundo login.
 
 **Cuando activas el acceso remoto, la seguridad usa varias capas:**
 - **Tailscale** (WireGuard): el acceso sigue la política de tu tailnet para usuarios y dispositivos autorizados, con cifrado extremo a extremo. ComandOS usa Serve, jamás Funnel público.
 - **TLS automático** vía `tailscale serve` (https en tu tailnet).
-- **Token de acceso**: protege el tablero remoto y la API de cc-dash, incluidos
-  los datos de sesiones y las acciones. `cc-dash` sigue escuchando solo en
+- **Token de acceso**: protege el tablero remoto, la API de cc-dash y cada
+  conexión a la terminal interactiva. `cc-dash` sigue escuchando solo en
   `127.0.0.1`; Serve hace de puente.
 - **Frontera de la terminal interactiva**: ttyd también escucha únicamente en
-  loopback, pero no agrega otro login de ComandOS. Sus rutas `/term` y `:8443`
-  dependen de la política de acceso de Tailscale, como SSH sobre Tailscale.
+  loopback. Su helper valida el mismo token antes de abrir tmux, mientras la
+  política de Tailscale limita quién alcanza `/term` y `:8443`.
 - **Anti DNS-rebinding**: allowlist de cabecera Host (loopback + `*.ts.net`).
-- El escritorio (app/navegador local) no necesita token; las peticiones
-  remotas/proxeadas del tablero y la API sí.
+- Los clientes locales reciben automáticamente la capacidad de terminal; las
+  peticiones remotas/proxeadas del tablero y la API deben presentar el token.
 
 `cc-mobile off` deja de exponerlo.
 
@@ -138,7 +139,7 @@ autenticación separada de ComandOS.
 |---|---|
 | **Linux** (GNOME/X11) | Todo — es el daily driver ✓ |
 | **Windows 11** | Vía **WSL2 + WSLg** (app GUI, audio y todo) ✓ |
-| **macOS** | Motor + tablero web + **app nativa** (`cc-app`, PyObjC + WKWebView; requiere `pip install pyobjc-framework-Cocoa pyobjc-framework-WebKit` + `brew install ttyd`) + notificaciones/voz nativas (`osascript`, `say`, `afplay`); popups pendientes — beta, [se buscan testers](https://github.com/0xAI-Builders/comandos/issues) |
+| **macOS** | Motor + tablero web + **app nativa** (`cc-app`, PyObjC + WKWebView; requiere `pip install pyobjc-framework-Cocoa pyobjc-framework-WebKit` + `brew install tmux jq ttyd`) + notificaciones/voz nativas (`osascript`, `say`, `afplay`); popups pendientes — beta, [se buscan testers](https://github.com/0xAI-Builders/comandos/issues) |
 
 ### Setup Windows (WSL2 + WSLg)
 

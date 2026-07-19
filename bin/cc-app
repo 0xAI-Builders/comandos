@@ -16,7 +16,7 @@ Teclas:
   Ctrl+Q                 salir
 """
 import json, os, re, secrets, shlex, shutil, subprocess, sys, threading, time, urllib.request
-from urllib.parse import unquote, urlparse
+from urllib.parse import quote, unquote, urlparse
 # macOS no tiene GTK/VTE: despachamos a la app nativa (PyObjC + WKWebView) ANTES
 # de tocar `gi`. os.execv reemplaza el proceso pasando argv intacto; el symlink
 # de ~/.local/bin ya resolvio a este archivo real dentro del repo, asi que el
@@ -1729,7 +1729,14 @@ def open_xterm_tab(sess="local"):
         return
     _ensure_cc_webterm()
     theme_name = next((k for k, v in THEMES.items() if v is THEME), "noche")
-    uri = f"file://{TERM_HTML}?arg={sess}&theme={theme_name}"
+    token = ""
+    try:
+        with urllib.request.urlopen(URL + "/webterm-token", timeout=2) as response:
+            token = json.loads(response.read().decode()).get("token") or ""
+    except Exception:
+        pass
+    uri = (f"file://{TERM_HTML}?auth={quote(token, safe='')}&"
+           f"arg={quote(sess, safe='')}&theme={quote(theme_name, safe='')}")
 
     wv = WebKit2.WebView()
     st = wv.get_settings()

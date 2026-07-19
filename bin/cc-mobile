@@ -6,8 +6,8 @@
 #      con cifrado extremo a extremo.
 #   2) Tailscale Serve: TLS automatico (https) y NUNCA sale a la internet
 #      publica — solo a tu tailnet. (Funnel/publico: JAMAS, a proposito.)
-#   3) Token de acceso: protege el dashboard/API remoto de cc-dash.
-#   4) ttyd depende de la política de acceso de Tailscale; no agrega otro login.
+#   3) Token de acceso: protege dashboard/API y cada attach del terminal.
+#   4) Tailscale limita qué peers pueden alcanzar ttyd; no hay segundo login.
 #   5) cc-dash y ttyd escuchan SOLO en 127.0.0.1; Serve hace de puente.
 #
 # Uso:

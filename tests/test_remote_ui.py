@@ -78,10 +78,7 @@ def resize_coordinator_js():
 
 
 def resize_lifecycle_wiring_js():
-    statements = (
-        "window.addEventListener('pagehide', disposeResizeCoordinator);",
-        "ws.addEventListener('close', disposeResizeCoordinator);",
-    )
+    statements = ("window.addEventListener('pagehide', disposeResizeCoordinator);",)
     extracted = []
     for statement in statements:
         matches = [line.strip() for line in TERM_HTML.splitlines()
@@ -1558,7 +1555,7 @@ console.log(JSON.stringify({{
     assert result["scheduledDelays"] == [180, 180]
 
 
-def test_remote_resize_cleanup_cancels_frame_and_settle_timers():
+def test_remote_resize_cleanup_runs_on_pagehide_but_survives_socket_close():
     coordinator = resize_coordinator_js()
     lifecycle_wiring = resize_lifecycle_wiring_js()
     assert "resizeObserver?.observe(document.getElementById('term'))" in TERM_HTML
@@ -1649,10 +1646,16 @@ console.log(JSON.stringify(results));
         assert result[signal]["frame"]["before"] == {"frames": 1, "delays": []}
         assert result[signal]["height"]["before"] == {"frames": 1, "delays": [120]}
         assert result[signal]["column"]["before"] == {"frames": 1, "delays": [180]}
-        for pending in ("frame", "height", "column"):
-            assert result[signal][pending]["after"] == {"frames": 0, "timers": 0}
-            assert result[signal][pending]["disposed"] is True
-            assert result[signal][pending]["disconnected"] == 1
+    for pending in ("frame", "height", "column"):
+        assert result["pagehide"][pending]["after"] == {"frames": 0, "timers": 0}
+        assert result["pagehide"][pending]["disposed"] is True
+        assert result["pagehide"][pending]["disconnected"] == 1
+    assert result["close"]["frame"]["after"] == {"frames": 1, "timers": 0}
+    assert result["close"]["height"]["after"] == {"frames": 1, "timers": 1}
+    assert result["close"]["column"]["after"] == {"frames": 1, "timers": 1}
+    for pending in ("frame", "height", "column"):
+        assert result["close"][pending]["disposed"] is False
+        assert result["close"][pending]["disconnected"] == 0
 
 
 def test_webterm_data_handler_sends_input_without_resize_work():

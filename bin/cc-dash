@@ -53,6 +53,7 @@ EVENTS = os.path.join(HOOKS, "events.jsonl")
 DASH = os.path.join(HOOKS, "dash")
 TOKEN_FILE = os.path.join(HOOKS, "dash-token")
 TABS_FILE = os.path.join(HOOKS, "app-tabs.json")
+TABS_META_FILE = os.path.join(HOOKS, "app-tabs-meta.json")
 TAB_HISTORY_FILE = os.path.join(HOOKS, "app-tabs-history.json")
 SNIPPETS_FILE = os.path.join(HOOKS, "snippets.json")
 SNIPPET_ID_RE = re.compile(r"^[a-f0-9]{16}$")
@@ -569,10 +570,11 @@ def gui_env():
 
 def remote_urls(host, token):
     base = f"https://{host}"
+    auth = urllib.parse.quote(token, safe="")
     return {
         "dashboard": f"{base}/?token={token}",
-        "terminal": f"{base}/term",
-        "terminalFallback": f"{base}:8443/",
+        "terminal": f"{base}/term/?auth={auth}",
+        "terminalFallback": f"{base}:8443/?arg={auth}",
     }
 
 
@@ -722,10 +724,18 @@ def load_json_file(path, default):
 
 
 def write_json_file(path, data):
-    tmp = path + ".tmp"
-    with open(tmp, "w") as f:
-        json.dump(data, f)
-    os.replace(tmp, path)
+    directory = os.path.dirname(path) or "."
+    fd, tmp = tempfile.mkstemp(
+        prefix=os.path.basename(path) + ".", suffix=".tmp", dir=directory)
+    try:
+        with os.fdopen(fd, "w") as f:
+            json.dump(data, f)
+        os.replace(tmp, path)
+    finally:
+        try:
+            os.unlink(tmp)
+        except FileNotFoundError:
+            pass
 
 
 def snippet_validate(name, body, tags):
@@ -860,10 +870,80 @@ def write_app_tab(sess, label):
     write_json_file(TABS_FILE, tabs)
 
 
+TAB_KINDS = {"project", "scratch", "shell", "ssh", "ssh-tab"}
+TAB_METADATA_LOCK = threading.RLock()
+
+
+def read_tab_metadata():
+    data = load_json_file(TABS_META_FILE, {})
+    if not isinstance(data, dict):
+        return {}
+    out = {}
+    for sess, value in data.items():
+        if not isinstance(sess, str) or not isinstance(value, dict):
+            continue
+        kind = value.get("kind")
+        if kind not in TAB_KINDS:
+            continue
+        item = {"kind": kind}
+        host = value.get("host")
+        cwd = value.get("cwd")
+        if isinstance(host, str) and host:
+            item["host"] = host
+        if isinstance(cwd, str) and cwd.startswith("/"):
+            item["cwd"] = cwd
+        out[sess] = item
+    return out
+
+
+def write_tab_metadata(sess, kind, host="", cwd=""):
+    if not SESSION_RE.fullmatch(sess or "") or kind not in TAB_KINDS:
+        return None
+    with TAB_METADATA_LOCK:
+        metadata = read_tab_metadata()
+        item = {"kind": kind}
+        if host:
+            item["host"] = str(host)
+        if cwd and os.path.isabs(cwd):
+            item["cwd"] = cwd
+        metadata[sess] = item
+        write_json_file(TABS_META_FILE, metadata)
+        return item
+
+
+def remove_tab_metadata(sess):
+    with TAB_METADATA_LOCK:
+        metadata = read_tab_metadata()
+        if sess in metadata:
+            metadata.pop(sess, None)
+            write_json_file(TABS_META_FILE, metadata)
+
+
+def tab_metadata_for_session(sess):
+    """Return persisted tab identity, or derive a legacy entry conservatively."""
+    saved = read_tab_metadata().get(sess)
+    if saved:
+        return saved
+    project = find_project_dir(sess)
+    if project:
+        return {"kind": "project", "cwd": project}
+    if sess.startswith("ssh-"):
+        host = sess[4:]
+        if ssh_host_entry(host):
+            return {"kind": "ssh", "host": host}
+    if sess.startswith("sshtab-"):
+        host, sep, index = sess[len("sshtab-"):].rpartition("-")
+        if sep and index.isdigit() and ssh_host_entry(host):
+            return {"kind": "ssh-tab", "host": host}
+    if sess.startswith("term-"):
+        return {"kind": "scratch"}
+    return {"kind": "shell"}
+
+
 TAB_OPEN_FILE = os.path.join(HOOKS, "app-tab-open.json")
 
 
-def register_app_tab(sess, label=None):
+def register_app_tab(sess, label=None, kind="", host="", cwd=""):
     """Paridad remoto=escritorio: toda tab abierta en remoto entra al espejo
     (app-tabs.json) y se avisa a la app viva (app-tab-open.json) para que abra
     la MISMA pestana. Si ya existe en el espejo no se toca (el escritorio es
@@ -874,10 +954,18 @@ def register_app_tab(sess, label=None):
     if sess not in tabs:
         tabs[sess] = (label or sess)[:80]
         write_json_file(TABS_FILE, tabs)
+    meta = (write_tab_metadata(sess, kind, host=host, cwd=cwd)
+            if kind in TAB_KINDS else tab_metadata_for_session(sess))
+    if meta and not read_tab_metadata().get(sess):
+        meta = write_tab_metadata(
+            sess, meta["kind"], host=meta.get("host", ""), cwd=meta.get("cwd", ""))
     try:
         with open(TAB_OPEN_FILE, "w") as f:
-            json.dump({"session": sess, "label": (label or sess)[:80],
-                       "ts": time.time()}, f)
+            event = {"session": sess, "label": (label or sess)[:80],
+                     "ts": time.time()}
+            if meta:
+                event["meta"] = meta
+            json.dump(event, f)
     except OSError:
         pass
 
@@ -902,6 +990,7 @@ def close_app_tab(sess, ephemeral=False):
     if isinstance(tabs_map, dict) and sess in tabs_map:
         tabs_map.pop(sess, None)
         write_json_file(TABS_FILE, tabs_map)
+    remove_tab_metadata(sess)
     try:
         with open(os.path.join(HOOKS, "app-tab-close.json"), "w") as f:
             json.dump({"session": sess, "ts": time.time()}, f)
@@ -986,9 +1075,10 @@ def ensure_shell_window(sess, cwd):
     wins = tmux("list-windows", "-t", "=" + sess, "-F", "#{window_name}").stdout.split()
     if "shell" in wins:
         return
-    if sess.startswith("ssh-"):
+    meta = tab_metadata_for_session(sess)
+    if meta.get("kind") in ("ssh", "ssh-tab"):
         # En sesiones de servidor, la "consola" extra es OTRA conexion ssh al mismo host
-        host = sess[4:]
+        host = meta.get("host", "")
         if SSH_HOST_RE.match(host):
             tmux("new-window", "-d", "-t", "=" + sess, "-n", "shell",
                  f"ssh {shlex.quote(host)}; exec $SHELL")
@@ -1898,7 +1988,8 @@ def ssh_connect(host):
     devuelve (sess, connected, note). connected=False => hara falta password."""
     if not SSH_HOST_RE.match(host) or not any(h["host"] == host for h in parse_ssh_config()):
         return None, False, "Host desconocido; agregalo primero"
-    sess = ("ssh-" + host)[:60]
+    sess = "ssh-" + host
+    write_tab_metadata(sess, "ssh", host=host)
     if tmux("has-session", "-t", "=" + sess).returncode == 0:
         tmux("set-option", "-t", sess, "mouse", "off")
         st = ssh_state(sess)
@@ -1920,9 +2011,8 @@ def ssh_connect(host):
     except Exception:
         keyok, stderr = False, "timeout"
     r = subprocess.run(
-        ["systemd-run", "--user", "--scope", "--collect", "--quiet",
-         "tmux", "new-session", "-d", "-s", sess, "-n", "ssh",
-         f"ssh {shlex.quote(host)}; exec $SHELL"],
+        scope_cmd(["tmux", "new-session", "-d", "-s", sess, "-n", "ssh",
+                   f"ssh {shlex.quote(host)}; exec $SHELL"]),
         capture_output=True, text=True, timeout=15)
     if r.returncode != 0:
         return None, False, r.stderr.strip() or "No se pudo crear la sesion"
@@ -1967,6 +2057,7 @@ def ssh_open_new_tab(host):
         return None, False, r.stderr.strip() or "No se pudo crear la sesion"
     tmux("set-option", "-t", sess, "mouse", "off")
     write_app_tab(sess, host)
+    write_tab_metadata(sess, "ssh-tab", host=host)
     if keyok:
         return sess, True, None
     if "denied" in stderr or "authentication" in stderr:
@@ -2185,7 +2276,8 @@ class Handler(http.server.SimpleHTTPRequestHandler):
     # sw.js, manifest, iconos) NO — no revela nada (es codigo open-source) y
     # asi la PWA instala y carga sin depender de cookies en el webview movil.
     API_GET = ("/state", "/usage/state", "/opencode/models", "/events", "/conf", "/prefs", "/ssh", "/tabs",
-               "/tab-history", "/remote-state", "/remote-qr.png", "/snippets", "/tmux-mouse")
+               "/tab-history", "/remote-state", "/remote-qr.png", "/snippets", "/tmux-mouse",
+               "/webterm-token")
 
     def do_GET(self):
         host = self.headers.get("Host", "")
@@ -2198,6 +2290,8 @@ class Handler(http.server.SimpleHTTPRequestHandler):
         return self._do_GET()
 
     def _do_GET(self):
+        if self.path.startswith("/webterm-token"):
+            return self._json(200, {"token": access_token()})
         if self.path.startswith("/state"):
             return self._json(200, read_states_cached())
         if self.path.startswith("/opencode/models"):
@@ -2568,7 +2662,8 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             r = tmux("new-session", "-d", "-s", new_sess, "-c", os.path.expanduser("~"))
             if r.returncode != 0:
                 return self._json(500, {"error": (r.stderr or "tmux fallo").strip()})
-            register_app_tab(new_sess, label)
+            register_app_tab(new_sess, label, kind="scratch",
+                             cwd=os.path.expanduser("~"))
             return self._json(200, {"session": new_sess, "label": label})
 
         sess = data.get("session", "")
@@ -2589,7 +2684,24 @@ class Handler(http.server.SimpleHTTPRequestHandler):
                 return self._json(400, {"error": "session invalida"})
             if tmux("has-session", "-t", "=" + sess).returncode != 0:
                 return self._json(404, {"error": f"'{sess}' no existe"})
-            register_app_tab(sess, str(data.get("label") or sess)[:80])
+            register_app_tab(
+                sess, str(data.get("label") or sess)[:80],
+                kind=str(data.get("kind") or ""),
+                host=str(data.get("host") or ""),
+                cwd=str(data.get("cwd") or ""))
+            return self._json(200, {"ok": True})
+
+        if self.path == "/tab-metadata":
+            item = write_tab_metadata(
+                sess, str(data.get("kind") or ""),
+                host=str(data.get("host") or ""),
+                cwd=str(data.get("cwd") or ""))
+            if item is None:
+                return self._json(400, {"error": "metadata de pestana invalida"})
+            return self._json(200, {"ok": True, "metadata": item})
+
+        if self.path == "/tab-metadata-remove":
+            remove_tab_metadata(sess)
             return self._json(200, {"ok": True})
 
         if self.path == "/tab-close":
@@ -2618,6 +2730,7 @@ class Handler(http.server.SimpleHTTPRequestHandler):
                 if r.returncode != 0:
                     return self._json(500, {"error": r.stderr.strip() or "No se pudo recuperar la sesion"})
             write_app_tab(sess, label)
+            write_tab_metadata(sess, "project", cwd=cwd)
             remember_tab(sess, label, cwd, agent, reason="recovered")
             return self._json(200, {"ok": True, "session": sess, "label": label, "cwd": cwd})
 
@@ -2770,6 +2883,13 @@ class Handler(http.server.SimpleHTTPRequestHandler):
                 r = tmux_new_session(sess, cwd, data.get("agent") or state_agent(sess))
                 if r.returncode != 0:
                     return self._json(500, {"error": r.stderr.strip() or "No se pudo crear la sesion"})
+            if cwd and os.path.isdir(cwd):
+                write_tab_metadata(sess, "project", cwd=cwd)
+            elif not read_tab_metadata().get(sess):
+                inferred = tab_metadata_for_session(sess)
+                write_tab_metadata(
+                    sess, inferred["kind"], host=inferred.get("host", ""),
+                    cwd=inferred.get("cwd", ""))
             if win == "shell":
                 ensure_shell_window(sess, cwd)
             return self._json(200, {"ok": True, "session": sess})
@@ -2783,6 +2903,7 @@ class Handler(http.server.SimpleHTTPRequestHandler):
                     r = tmux_new_session(sess, proj, data.get("agent") or state_agent(sess))
                     if r.returncode != 0:
                         return self._json(500, {"error": r.stderr.strip() or "No se pudo crear"})
+                write_tab_metadata(sess, "project", cwd=proj)
                 return self._json(200, {"ok": True, "kind": "project", "session": sess})
             if tmux("has-session", "-t", target).returncode != 0:
                 r = subprocess.run(
@@ -2791,6 +2912,7 @@ class Handler(http.server.SimpleHTTPRequestHandler):
                     capture_output=True, text=True, timeout=15)
                 if r.returncode != 0:
                     return self._json(500, {"error": r.stderr.strip() or "No se pudo crear"})
+            write_tab_metadata(sess, "shell", cwd=os.path.expanduser("~"))
             return self._json(200, {"ok": True, "kind": "shell", "session": sess})
 
         if self.path == "/shell":

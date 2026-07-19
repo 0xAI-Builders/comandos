@@ -62,3 +62,8 @@ def test_mobile_and_doctor_do_not_use_process_matches_as_health():
     section = doctor.split("_section_remote()", 1)[1].split("\n}", 1)[0]
     assert '4780/term/token' in section and '4779/token' in section
     assert "pgrep" not in section
+
+
+def test_launcher_does_not_require_gnu_readlink():
+    assert "readlink -f" not in SOURCE
+    assert "os.path.realpath" in SOURCE

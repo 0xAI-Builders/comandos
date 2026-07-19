@@ -16,7 +16,7 @@ self.addEventListener("fetch", (e) => {
   // APIs y acciones: SIEMPRE red, nunca cache (datos vivos, comandos reales).
   const live = [
     "/state", "/events", "/conf", "/prefs", "/ssh",
-    "/tabs", "/tab-history", "/remote-state", "/remote-qr.png", "/term"
+    "/tabs", "/tab-history", "/remote-state", "/remote-qr.png", "/webterm-token", "/term"
   ];
   if (e.request.method !== "GET" || live.some((p) => url.pathname.startsWith(p))) return;
   // La URL remota usa token en querystring: red primero sin guardar esa variante.
