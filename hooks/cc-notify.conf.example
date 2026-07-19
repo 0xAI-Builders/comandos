@@ -35,6 +35,19 @@ SOUND_MONEY=/usr/share/sounds/freedesktop/stereo/message.oga
 # Idioma de la UI: auto (por $LANG del sistema), es, en
 CC_LANG=auto
 
+# Agentes (ccx y el tablero).
+# AGENTS: lista de agentes que el tablero detecta/ofrece (default:
+#   "claude codex opencode gemini agy aider"). Amplia con los tuyos.
+# AGENT_DEFAULT: agente que usa `ccx` sin escribir -a (lo pisa la variable
+#   de entorno CCX_AGENT, y el flag -a manda sobre todo).
+# AGENT_LAUNCH_<NOMBRE>: comando con el que se LANZA un agente al crear o
+#   revivir su sesion (ccx y el tablero). <NOMBRE> = agente en MAYUSCULAS
+#   con '-' y '.' -> '_'. Sirve para wrappers propios (claude-mpm,
+#   claude-personal) y para sobreescribir un builtin (AGENT_LAUNCH_CLAUDE=...).
+# AGENTS="claude codex claude-mpm"
+# AGENT_DEFAULT=claude-mpm
+# AGENT_LAUNCH_CLAUDE_MPM=claude-mpm run --continue 2>/dev/null || claude-mpm run
+
 # Uso y limites locales de ComandOS.
 # OPENAI_ADMIN_KEY / ANTHROPIC_ADMIN_KEY habilitan APIs admin de uso/costo si tu cuenta las tiene.
 # Los limites de plan de Codex/Claude Code no siempre son expuestos por API; configura estos

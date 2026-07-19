@@ -9,10 +9,37 @@
 #
 # El nombre se busca en ~/codebase (2 niveles), no importa mayusculas.
 #   ccx -a codex <nombre>   usa OTRO agente (codex|opencode|gemini|agy|claude)
+#
+# Configuracion (opcional) en ~/.claude/hooks/cc-notify.conf:
+#   AGENT_DEFAULT=claude-mpm            agente por defecto sin escribir -a
+#                                       (la variable de entorno CCX_AGENT gana,
+#                                        y -a gana sobre todo)
+#   AGENT_LAUNCH_<NOMBRE>=<comando>     comando a lanzar para un agente propio;
+#                                       <NOMBRE> = agente en MAYUSCULAS con
+#                                       '-' y '.' -> '_'. Ej.: claude-mpm ->
+#                                       AGENT_LAUNCH_CLAUDE_MPM. Tambien
+#                                       sobreescribe builtins (AGENT_LAUNCH_CLAUDE).
 set -uo pipefail
 
-AGENT=claude
+CONF="$HOME/.claude/hooks/cc-notify.conf"
+
+# Lee UNA sola clave KEY=VALUE del archivo de config sin volcar TODO el
+# archivo al entorno (igual que haria un hook prudente). Toma la ULTIMA
+# definicion, recorta espacios y quita un par de comillas envolventes.
+conf_get() {
+  [ -f "$CONF" ] || return 0
+  sed -n "s/^[[:space:]]*$1[[:space:]]*=//p" "$CONF" | tail -1 \
+    | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//' \
+          -e 's/^"\(.*\)"$/\1/' -e "s/^'\(.*\)'\$/\1/"
+}
+
+# Agente por defecto: CCX_AGENT (entorno) -> AGENT_DEFAULT (config) -> claude.
+# El flag -a sigue mandando sobre todo lo demas.
+AGENT="${CCX_AGENT:-}"
 if [ "${1:-}" = "-a" ]; then AGENT="${2:-claude}"; shift 2; fi
+if [ -z "$AGENT" ]; then AGENT=$(conf_get AGENT_DEFAULT); fi
+if [ -z "$AGENT" ]; then AGENT=claude; fi
+
 case "$AGENT" in
   claude)   LAUNCH='claude --continue 2>/dev/null || claude' ;;
   codex)    LAUNCH='codex resume --last 2>/dev/null || codex' ;;
@@ -21,6 +48,13 @@ case "$AGENT" in
   agy)      LAUNCH='agy --continue 2>/dev/null || agy' ;;
   *)        LAUNCH="$AGENT" ;;
 esac
+
+# Comando de arranque personalizado desde la config: AGENT_LAUNCH_<CLAVE>
+# (<CLAVE> = agente en MAYUSCULAS con '-' y '.' -> '_'). Sirve para wrappers
+# propios (claude-mpm, claude-personal) y para sobreescribir un builtin.
+agent_key=$(printf '%s' "$AGENT" | tr 'a-z.-' 'A-Z__')
+custom_launch=$(conf_get "AGENT_LAUNCH_$agent_key")
+if [ -n "$custom_launch" ]; then LAUNCH="$custom_launch"; fi
 
 CODEBASE="$HOME/codebase"
 
