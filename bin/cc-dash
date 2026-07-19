@@ -555,7 +555,11 @@ def read_conf():
                 line = line.strip()
                 if line and not line.startswith("#") and "=" in line:
                     k, _, v = line.partition("=")
-                    conf[k.strip()] = v.strip().strip('"').strip("'")
+                    value = v.strip()
+                    if (len(value) >= 2 and value[0] == value[-1]
+                            and value[0] in ('"', "'")):
+                        value = value[1:-1]
+                    conf[k.strip()] = value
     except FileNotFoundError:
         pass
     return conf
