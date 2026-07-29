@@ -127,6 +127,44 @@ https://zion.tail63a117.ts.net:8443
     assert off["webtermReachable"] is False
 
 
+def test_dashboard_restores_requested_webterm_after_reboot(tmp_path):
+    marker = tmp_path / "webterm-enabled"
+    starts = []
+
+    class ImmediateThread:
+        def __init__(self, target, daemon):
+            self.target = target
+            self.daemon = daemon
+
+        def start(self):
+            starts.append(self.daemon)
+            self.target()
+
+    ns = load_functions(
+        "restore_requested_webterm",
+        extra={
+            "os": os,
+            "WEBTERM_ENABLED_FILE": str(marker),
+            "threading": types.SimpleNamespace(Thread=ImmediateThread),
+            "webterm_on": lambda: starts.append("webterm"),
+        },
+    )
+
+    assert ns["restore_requested_webterm"]() is False
+    marker.touch()
+    assert ns["restore_requested_webterm"]() is True
+    assert starts == [True, "webterm"]
+
+    main_source = ast.get_source_segment(
+        SRC,
+        next(
+            node for node in ast.parse(SRC).body
+            if isinstance(node, ast.FunctionDef) and node.name == "main"
+        ),
+    )
+    assert "restore_requested_webterm()" in main_source
+
+
 def test_webterm_health_probes_primary_and_fallback_independently():
     ns = load_remote_helpers()
     calls = []

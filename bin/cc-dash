@@ -52,6 +52,7 @@ STATE = os.path.join(HOOKS, "state")
 EVENTS = os.path.join(HOOKS, "events.jsonl")
 DASH = os.path.join(HOOKS, "dash")
 TOKEN_FILE = os.path.join(HOOKS, "dash-token")
+WEBTERM_ENABLED_FILE = os.path.join(HOOKS, "webterm-enabled")
 TABS_FILE = os.path.join(HOOKS, "app-tabs.json")
 TABS_META_FILE = os.path.join(HOOKS, "app-tabs-meta.json")
 TAB_HISTORY_FILE = os.path.join(HOOKS, "app-tabs-history.json")
@@ -716,6 +717,13 @@ def webterm_off():
     else:
         run_quiet(["pkill", "-f", "ttyd.*cc-webterm-attach"], timeout=6)
     return None
+
+
+def restore_requested_webterm():
+    if not os.path.isfile(WEBTERM_ENABLED_FILE):
+        return False
+    threading.Thread(target=webterm_on, daemon=True).start()
+    return True
 
 
 def load_json_file(path, default):
@@ -2979,6 +2987,7 @@ def main():
     with socketserver.ThreadingTCPServer(("127.0.0.1", port), Handler) as srv:
         url = f"http://127.0.0.1:{port}"
         print(f"Centro Claude corriendo en {url}  (Ctrl+C para salir)")
+        restore_requested_webterm()
         if open_browser:
             try:
                 webbrowser.open(url)

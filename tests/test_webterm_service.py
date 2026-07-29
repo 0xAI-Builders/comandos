@@ -54,6 +54,19 @@ def test_transient_units_restart_only_after_failure():
     assert "systemctl --user stop cc-webterm-path.service" in SOURCE
 
 
+def test_enabled_state_survives_reboot_until_user_turns_terminal_off():
+    assert 'ENABLED_FILE="$HOOKS/webterm-enabled"' in SOURCE
+    assert "mark_enabled()" in SOURCE
+    assert 'rm -f "$ENABLED_FILE"' in SOURCE
+    active = SOURCE.split('if [ "$current_state" = active ]; then', 1)[1]
+    active = active.split("fi", 1)[0]
+    assert "mark_enabled" in active
+    successful = SOURCE.split(
+        'wait_for_endpoint "http://127.0.0.1:$PATH_PORT/term/token"; then', 1)[1]
+    successful = successful.split("else", 1)[0]
+    assert "mark_enabled" in successful
+
+
 def test_mobile_and_doctor_do_not_use_process_matches_as_health():
     mobile = (ROOT / "bin" / "cc-mobile").read_text()
     doctor = (ROOT / "bin" / "cc-doctor").read_text()

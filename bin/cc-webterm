@@ -18,6 +18,7 @@ PORT="${CC_WEBTERM_PORT:-4779}"
 PATH_PORT="${CC_WEBTERM_PATH_PORT:-4780}"
 PIDF="$HOOKS/cc-webterm.pid"
 TOKEN_FILE="$HOOKS/dash-token"
+ENABLED_FILE="$HOOKS/webterm-enabled"
 SELF_DIR="$(cd "$(dirname "$(python3 -c 'import os, sys; print(os.path.realpath(sys.argv[1]))' "$0")")" && pwd)"
 
 die(){ printf '\033[31m✗\033[0m %s\n' "$1" >&2; exit 1; }
@@ -102,13 +103,20 @@ stop() {
   rm -f "$PIDF"
 }
 
+mark_enabled() {
+  mkdir -p "$HOOKS"
+  : > "$ENABLED_FILE"
+  chmod 600 "$ENABLED_FILE"
+}
+
 case "${1:-on}" in
-  off) stop; ok "Terminal web detenido."; exit 0 ;;
+  off) rm -f "$ENABLED_FILE"; stop; ok "Terminal web detenido."; exit 0 ;;
   status) health_state; exit 0 ;;
 esac
 
 current_state="$(health_state)"
 if [ "$current_state" = active ]; then
+  mark_enabled
   ok "Terminal web ya esta activo."
   exit 0
 fi
@@ -181,6 +189,7 @@ else
 fi
 if wait_for_endpoint "http://127.0.0.1:$PORT/token" && \
    wait_for_endpoint "http://127.0.0.1:$PATH_PORT/term/token"; then
+  mark_enabled
   ok "Terminal web listo en 127.0.0.1:$PORT (:8443) y 127.0.0.1:$PATH_PORT (/term)."
   echo "  Exponlo al celular con:  cc-mobile   (lo enruta por https del tailnet)"
   echo "  (Solo tu tailnet lo alcanza — como SSH sobre Tailscale)"

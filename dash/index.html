@@ -126,18 +126,6 @@
     flex-wrap:wrap;padding:11px 18px;
     font-family:var(--mono);font-size:12.5px;
   }
-  /* Movil/tablet: barra apilada y tarjetas a una columna, toques comodos */
-  @media (max-width:640px){
-    header{padding:9px 12px;gap:6px 10px}
-    .brand{font-size:12px;letter-spacing:.1em}
-    #q{width:100%}
-    .hdr-right{width:100%;gap:6px}
-    #urgent{grid-template-columns:1fr}
-    .sec,#ssh-bar,#tl-wrap{padding-left:12px;padding-right:12px}
-    .row .rpath{display:none}
-    .send button,.opts button,.keys button,.ops button,.ops .mdl-btn{min-height:40px}
-    #content{padding-bottom:env(safe-area-inset-bottom)}
-  }
   .brand{font-weight:800;letter-spacing:.16em;font-size:13px}
   .brand b{color:var(--brand)}
   .counts{display:flex;gap:6px;flex-wrap:wrap}
@@ -563,6 +551,13 @@
   #srv-form .frow{display:flex;gap:10px}
   #srv-form .frow .set{flex:1}
   #srv-form label{font-size:11.5px;color:var(--dim)}
+  #srv-form .srv-remember{display:flex;align-items:flex-start;gap:9px;min-height:44px;
+    margin-top:8px;padding:8px 10px;border:1px solid var(--line);border-radius:8px;
+    cursor:pointer}
+  #srv-form .srv-remember input{width:18px;height:18px;margin:1px 0 0;flex:none;
+    accent-color:var(--brand)}
+  #srv-form .srv-remember span{font-size:11.5px;line-height:1.4;color:var(--text)}
+  #srv-form .srv-remember small{display:block;color:var(--faint)}
 
   /* ---------- conmutador Ctrl+K ---------- */
   #sw-ov{position:fixed;inset:0;z-index:40;background:rgba(4,6,10,.55);
@@ -798,6 +793,40 @@
 	  .card .usage-chip{align-self:flex-start;max-width:100%;white-space:normal;
 	    overflow:visible;text-overflow:clip;line-height:1.5;margin-top:-2px}
 	  .row .usage-chip{font-size:9px}
+	  /* Tablet: las acciones bajan a su propia fila antes de desbordarse. */
+	  @media (max-width:900px){
+	    .row{flex-wrap:wrap;gap:6px 8px;padding:10px}
+	    .row .name{flex:1 1 180px;max-width:none;min-width:0}
+	    .row .rpath{max-width:35vw}
+	    .row .abadge,.row .usage-chip,.row .exttag{max-width:100%}
+	    .row .rprev{order:2;flex:1 1 calc(100% - 70px);min-width:0}
+	    .row .ago{order:2;margin-left:auto}
+	    .row .acts{order:3;flex:1 0 100%;width:100%;
+	      justify-content:flex-end;flex-wrap:wrap;opacity:1}
+	    .row .acts button{min-height:36px}
+	    .row .acts button.cp,.row .acts button.ren,
+	    .row .acts button.term,.row .acts button.kill{width:36px}
+	  }
+	  /* Movil: se declara al final para ganar a todas las reglas base. */
+	  @media (max-width:640px){
+	    header{padding:9px 12px;gap:6px 10px}
+	    .brand{font-size:12px;letter-spacing:.1em}
+	    #q{width:100%}
+	    .hdr-right{width:100%;gap:6px}
+	    #urgent{grid-template-columns:1fr}
+	    .sec,#ssh-bar,#tl-wrap{padding-left:12px;padding-right:12px}
+	    #ssh-bar{flex-wrap:nowrap;overflow-x:auto;overflow-y:hidden;
+	      -webkit-overflow-scrolling:touch;overscroll-behavior-x:contain}
+	    #ssh-bar .lbl,.ssh-chip,#ssh-manage{flex:none}
+	    .row .name{flex-basis:140px}
+	    .row .rpath{display:none}
+	    #servers .modal-panel{padding:24px 18px}
+	    .srv-row{flex-wrap:wrap}
+	    .srv-info{flex-basis:100%}
+	    .srv-row button{flex:1 1 0;min-height:36px}
+	    .send button,.opts button,.keys button,.ops button,.ops .mdl-btn{min-height:40px}
+	    #content{padding-bottom:env(safe-area-inset-bottom)}
+	  }
 	</style>
 
 <div id="panes">
@@ -1083,6 +1112,12 @@
       <div class="set"><label>Puerto</label><input name="port" placeholder="22"></div>
       <div class="set"><label>Llave (opcional)</label><input name="identity" placeholder="~/.ssh/id_ed25519"></div>
     </div>
+    <label class="srv-remember">
+      <input type="checkbox" id="srv-remember" name="remember" checked>
+      <span>Recordar acceso despues de reiniciar
+        <small>Instala tu llave publica; te pedira el password una ultima vez.</small>
+      </span>
+    </label>
     <input type="hidden" name="orig">
     <div class="set" style="display:flex;gap:8px;margin-top:4px">
       <button type="submit" class="test">Guardar</button>
@@ -3504,6 +3539,7 @@ function fillSrvForm(h){
   f.host.value = h.host || ""; f.hostname.value = h.hostname || "";
   f.user.value = h.user || ""; f.port.value = h.port || "";
   f.identity.value = h.identity || ""; f.orig.value = h.host || "";
+  f.remember.checked = !h.host;
   $("#srv-form-title").textContent = h.host ? tf(`Editar ${h.host}`, `Edit ${h.host}`) : t("Agregar servidor");
   $("#srv-cancel").classList.toggle("hidden", !h.host);
 }
@@ -3523,7 +3559,7 @@ async function loadSsh(){
       const row = document.createElement("div");
       row.className = "srv-row";
       row.innerHTML = `<div class="srv-info"><div class="srv-name"></div><div class="srv-tgt"></div></div>
-        <button class="con">Conectar</button><button class="key">Llave</button><button class="ed">Editar</button><button class="del">Borrar</button>`;
+        <button class="con">Conectar</button><button class="key">Recordar</button><button class="ed">Editar</button><button class="del">Borrar</button>`;
       row.querySelector(".srv-name").textContent = h.host;
       row.querySelector(".srv-tgt").textContent =
         `${h.user ? h.user + "@" : ""}${h.hostname || ""}${h.port ? ":" + h.port : ""}`;
@@ -3556,6 +3592,7 @@ $("#srv-cancel").addEventListener("click", ()=>{ $("#srv-form").reset(); fillSrv
 $("#srv-form").addEventListener("submit", async e=>{
   e.preventDefault();
   const f = e.target;
+  const remember = f.remember.checked;
   const d = {host: f.host.value.trim(), hostname: f.hostname.value.trim(),
              user: f.user.value.trim(), port: f.port.value.trim(),
              identity: f.identity.value.trim()};
@@ -3564,6 +3601,7 @@ $("#srv-form").addEventListener("submit", async e=>{
     else { await api("/ssh-add", d); toast(tf(`${d.host} guardado`, `${d.host} saved`)); }
     f.reset(); fillSrvForm({});
     loadSsh();
+    if(remember) await setupSshKey(d.host);
   }catch(err){ toast(err.message, true); }
 });
 

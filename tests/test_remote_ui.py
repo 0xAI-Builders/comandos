@@ -1324,7 +1324,7 @@ console.log(JSON.stringify({
     assert result["fontSize"] == 18
 
 
-def test_remote_column_resize_reloads_once_after_geometry_stabilizes():
+def test_remote_column_resize_reattaches_once_after_geometry_stabilizes():
     coordinator = resize_coordinator_js()
     script = f"""
 let fitFrame = 0;
@@ -1336,6 +1336,7 @@ let nextFrame = 1;
 let nextTimer = 1;
 let fitCalls = 0;
 let reloads = 0;
+let reattaches = 0;
 const frames = new Map();
 const timers = new Map();
 const scheduledDelays = [];
@@ -1344,9 +1345,10 @@ let width = 390;
 const sizes = {{390: {{cols:46, rows:35}}, 430: {{cols:51, rows:35}}}};
 const fit = {{
   proposeDimensions(){{ return {{...sizes[width]}}; }},
-  fit(){{ fitCalls += 1; }},
+  fit(){{ fitCalls += 1; term.cols = sizes[width].cols; term.rows = sizes[width].rows; }},
 }};
 const location = {{reload(){{ reloads += 1; }}}};
+const restartWebSocketForResize = () => {{ reattaches += 1; }};
 const requestAnimationFrame = cb => {{
   const id = nextFrame++; frames.set(id, cb); return id;
 }};
@@ -1385,6 +1387,7 @@ console.log(JSON.stringify({{
   firstWidth,
   returnedWidth,
   reloads,
+  reattaches,
   fitCalls,
   scheduledDelays,
 }}));
@@ -1397,13 +1400,99 @@ console.log(JSON.stringify({{
         "timers": 1,
     }
     assert result["returnedWidth"] == {
-        "fitCalls": 0,
+        "fitCalls": 2,
         "delay": 180,
         "timers": 1,
     }
-    assert result["reloads"] == 3
-    assert result["fitCalls"] == 0
+    assert result["reloads"] == 0
+    assert result["reattaches"] == 3
+    assert result["fitCalls"] == 3
     assert result["scheduledDelays"] == [180, 180, 180]
+
+
+def test_remote_column_resize_reattaches_without_reloading_document():
+    coordinator = resize_coordinator_js()
+    script = f"""
+let fitFrame = 0;
+let heightFitTimer = 0;
+let columnReloadTimer = 0;
+let fitDeferredForSelection = false;
+let resizeDisposed = false;
+let nextFrame = 1;
+let nextTimer = 1;
+let fitCalls = 0;
+let reloads = 0;
+let reattaches = 0;
+const frames = new Map();
+const timers = new Map();
+const term = {{cols:46, rows:35, hasSelection(){{ return false; }}}};
+const fit = {{
+  proposeDimensions(){{ return {{cols:51, rows:35}}; }},
+  fit(){{ fitCalls += 1; term.cols = 51; }},
+}};
+const location = {{reload(){{ reloads += 1; }}}};
+const restartWebSocketForResize = () => {{ reattaches += 1; }};
+const requestAnimationFrame = callback => {{
+  const id = nextFrame++; frames.set(id, callback); return id;
+}};
+const cancelAnimationFrame = id => frames.delete(id);
+const setTimeout = (callback, delay) => {{
+  const id = nextTimer++; timers.set(id, callback); return id;
+}};
+const clearTimeout = id => timers.delete(id);
+const resizeObserver = {{disconnect(){{}}}};
+const flushFrames = () => {{
+  const callbacks = [...frames.values()]; frames.clear();
+  callbacks.forEach(callback => callback());
+}};
+const flushTimers = () => {{
+  const callbacks = [...timers.values()]; timers.clear();
+  callbacks.forEach(callback => callback());
+}};
+{coordinator}
+
+scheduleFit();
+flushFrames();
+flushTimers();
+console.log(JSON.stringify({{fitCalls, reloads, reattaches, cols:term.cols}}));
+"""
+    result = run_node_json(script)
+
+    assert result == {
+        "fitCalls": 1,
+        "reloads": 0,
+        "reattaches": 1,
+        "cols": 51,
+    }
+
+
+def test_remote_fit_failure_does_not_open_a_parallel_socket():
+    commit = extract_js_function(TERM_HTML, "commitColumnReload")
+    script = f"""
+let columnReloadTimer = 1;
+let resizeDisposed = false;
+let reconnects = 0;
+let reattaches = 0;
+const terminalSurfaceVisible = () => true;
+const term = {{cols:46, rows:35, hasSelection(){{ return false; }}}};
+const fit = {{
+  proposeDimensions(){{ return {{cols:51, rows:35}}; }},
+  fit(){{ throw new Error('fit failed'); }},
+}};
+const reconnectController = {{schedule(){{ reconnects += 1; }}}};
+const restartWebSocketForResize = () => {{ reattaches += 1; }};
+{commit}
+
+commitColumnReload();
+console.log(JSON.stringify({{reconnects, reattaches, columnReloadTimer}}));
+"""
+    result = run_node_json(script)
+
+    assert result == {
+        "reconnects": 0,
+        "reattaches": 0,
+        "columnReloadTimer": 0,
+    }
 
 
 def test_remote_hidden_terminal_does_not_reload_for_transient_width():
@@ -1492,6 +1581,7 @@ let nextTimer = 1;
 let fitCalls = 0;
 let reloads = 0;
 const reloadedCols = [];
+const reattachedCols = [];
 let selected = true;
 const frames = new Map();
 const timers = new Map();
@@ -1507,9 +1597,12 @@ const fit = {{
   proposeDimensions(){{ return {{...proposed}}; }},
   fit(){{
     fitCalls += 1;
+    term.cols = proposed.cols;
+    term.rows = proposed.rows;
   }},
 }};
 const location = {{reload(){{ reloads += 1; reloadedCols.push(proposed.cols); }}}};
+const restartWebSocketForResize = () => {{ reattachedCols.push(proposed.cols); }};
 const requestAnimationFrame = cb => {{
   const id = nextFrame++; frames.set(id, cb); return id;
 }};
@@ -1586,6 +1679,7 @@ console.log(JSON.stringify({{
   latestPending,
   reloads,
   reloadedCols,
+  reattachedCols,
   fitCalls,
   scheduledDelays,
 }}));
@@ -1620,9 +1714,10 @@ console.log(JSON.stringify({{
         "delay": 180,
         "deferred": False,
     }
-    assert result["reloads"] == 1
-    assert result["reloadedCols"] == [53]
-    assert result["fitCalls"] == 0
+    assert result["reloads"] == 0
+    assert result["reloadedCols"] == []
+    assert result["reattachedCols"] == [53]
+    assert result["fitCalls"] == 1
     assert result["scheduledDelays"] == [180, 180]
 
 
@@ -2827,6 +2922,17 @@ def test_existing_ssh_manager_can_setup_passwordless_key_access():
     assert 'api("/ssh-key-setup"' in fn
     assert "openInApp(r.session" in fn
     assert "openTerm(r.session" in fn
+
+
+def test_new_ssh_server_defaults_to_persistent_key_access_setup():
+    assert 'id="srv-remember"' in HTML
+    assert 'name="remember" checked' in HTML
+    assert 'class="key">Recordar</button>' in HTML
+    submit = HTML.split(
+        '$("#srv-form").addEventListener("submit", async e=>{', 1)[1]
+    submit = submit.split("\n});", 1)[0]
+    assert "const remember = f.remember.checked;" in submit
+    assert "if(remember) await setupSshKey(d.host);" in submit
 
 
 def test_left_clicking_ssh_chip_opens_a_fresh_ssh_tab():

@@ -300,7 +300,16 @@
       fitDeferredForSelection = true;
       return;
     }
-    location.reload();
+    try {
+      const finalSize = fit.proposeDimensions();
+      if (!finalSize) return;
+      if (finalSize.cols === term.cols) {
+        if (finalSize.rows !== term.rows) fit.fit();
+        return;
+      }
+      fit.fit();
+      restartWebSocketForResize();
+    } catch (_) {}
   }
 
   function commitHeightFit() {
@@ -420,6 +429,7 @@
   }
 
   let ws = null;
+  let resizeReconnectSocket = null;
   let socketCloseCleanup = () => {};
   let connectionDown = false;
   const enc = new TextEncoder();
@@ -427,6 +437,23 @@
 
   function socketIsOpen() {
     return ws !== null && ws.readyState === 1;
+  }
+
+  function restartWebSocketForResize() {
+    const socket = ws;
+    if (!socket || socket.readyState !== 1) {
+      reconnectController.schedule();
+      return false;
+    }
+    resizeReconnectSocket = socket;
+    try {
+      socket.close(1000, 'resize');
+      return true;
+    } catch (_) {
+      resizeReconnectSocket = null;
+      reconnectController.schedule();
+      return false;
+    }
   }
 
   const sendInput = (data) => {
@@ -510,6 +537,15 @@
       if (ws !== socket) return;
       dbg(`WS close code=${ev.code} reason="${ev.reason||''}" clean=${ev.wasClean}`);
       socketCloseCleanup();
+      if (resizeReconnectSocket === socket) {
+        resizeReconnectSocket = null;
+        if (resizeDisposed) return;
+        connectionDown = false;
+        hideErr();
+        term.reset();
+        connectWebSocket();
+        return;
+      }
       if (!connectionDown) {
         term.write(`\r\n\x1b[90m[conexión cerrada${ev.code ? ' · '+ev.code : ''}; reconectando]\x1b[0m\r\n`);
       }
@@ -519,6 +555,7 @@
     });
     socket.addEventListener('error', () => {
       if (ws !== socket) return;
+      if (resizeReconnectSocket === socket) return;
       dbg(`WS error a ${ws_url}`);
       showErr('No pude conectar con la terminal. Reconectando…');
     });
