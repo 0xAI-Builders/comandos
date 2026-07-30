@@ -724,6 +724,49 @@
   const screenEl = () => document.querySelector('.xterm-screen');
   const mouseOn = () => { try { return term.modes.mouseTrackingMode !== 'none'; } catch (_) { return false; } };
   const selectingText = () => interactionState.known && interactionState.selecting;
+  const hasActiveSelection = () => {
+    try { return term.hasSelection(); } catch (_) { return false; }
+  };
+  let tmuxScrollLines = 0;
+  let tmuxScrollFrame = 0;
+  let tmuxScrollPoint = null;
+  let tmuxScrollChain = Promise.resolve();
+  function queueTmuxScroll(deltaY, point) {
+    if (!arg || !accessTokenParam || !Number.isFinite(deltaY) || !deltaY) return false;
+    const cell = cellFromTouch(point);
+    if (!cell) return false;
+    const lines = Math.max(1, Math.min(8, Math.round(Math.abs(deltaY) / 28)));
+    tmuxScrollLines = Math.max(
+      -24, Math.min(24, tmuxScrollLines + Math.sign(deltaY) * lines));
+    tmuxScrollPoint = {col:cell.col - 1, row:cell.row - 1};
+    if (!tmuxScrollFrame) tmuxScrollFrame = requestAnimationFrame(flushTmuxScroll);
+    return true;
+  }
+  function flushTmuxScroll() {
+    tmuxScrollFrame = 0;
+    const delta = tmuxScrollLines;
+    const point = tmuxScrollPoint;
+    tmuxScrollLines = 0;
+    tmuxScrollPoint = null;
+    if (!delta || !point) return;
+    tmuxScrollChain = tmuxScrollChain.then(() => fetch('/tmux-scroll', {
+      method:'POST',
+      headers:{
+        'Content-Type':'application/json',
+        'X-Comandos-Token':accessTokenParam,
+      },
+      body:JSON.stringify({session:arg, delta, col:point.col, row:point.row}),
+      cache:'no-store',
+    })).catch(() => {});
+  }
+  function handleMouseOffWheel(e) {
+    if (terminalUiOwnsEvent(e) || mouseOn() || hasActiveSelection() || !e.deltaY)
+      return false;
+    if (!queueTmuxScroll(e.deltaY, e)) return false;
+    e.preventDefault();
+    e.stopPropagation();
+    return true;
+  }
   function terminalUiOwnsEvent(event) {
     const insideUi = node => node && typeof node.closest === 'function' &&
       node.closest('#term-toolbar, #paste-dialog');
@@ -775,6 +818,8 @@
     const row = Math.max(1, Math.min(term.rows, Math.floor((t.clientY - r.top) / (r.height / term.rows)) + 1));
     return { col, row };
   };
+  document.addEventListener('wheel', handleMouseOffWheel,
+    {capture:true, passive:false});
   const cellChar = (col, row) => {
     if (!Number.isInteger(col) || !Number.isInteger(row) ||
         col < 1 || col > term.cols || row < 1 || row > term.rows) return '';
@@ -830,6 +875,7 @@
 
   const TOUCH_WHEEL_STEP = 56;
   const TOUCH_WHEEL_MAX_TICKS = 3;
+  const TOUCH_WHEEL_REMAINDER_MIN = 18;
   const gesture = {
     phase: 'idle', touchId: null, sx: 0, sy: 0, lastY: 0,
     wheelAccum: 0, timer: 0, frame: 0,
@@ -911,6 +957,13 @@
     e.preventDefault();
     e.stopPropagation();
   };
+  const flushScrollRemainder = (touch, fallback) => {
+    if (gesture.phase !== 'scrolling' ||
+        Math.abs(gesture.wheelAccum) < TOUCH_WHEEL_REMAINDER_MIN) return;
+    const dy = Math.sign(gesture.wheelAccum) * TOUCH_WHEEL_STEP;
+    if (emitWheel(termTargetAt(touch, fallback), dy, touch))
+      gesture.wheelAccum = 0;
+  };
   const tryEngageResize = () => {
     gesture.timer = 0;
     if (gesture.phase !== 'pending' || selectingText() || !mouseOn() ||
@@ -930,7 +983,7 @@
 
   document.addEventListener('touchstart', (e) => {
     if (terminalUiOwnsEvent(e)) { finishGesture(); return; }
-    if (selectingText()) { finishGesture(); return; }
+    if (hasActiveSelection()) { finishGesture(); return; }
     if (!e.touches || e.touches.length !== 1) { finishGesture(); return; }
     if (gesture.phase !== 'idle') finishGesture();
     const touch = e.touches[0];
@@ -943,7 +996,7 @@
   document.addEventListener('touchmove', (e) => {
     if (terminalUiOwnsEvent(e)) { finishGesture(); return; }
     if (gesture.phase === 'idle') return;
-    if (selectingText() || !e.touches || e.touches.length !== 1) {
+    if (hasActiveSelection() || !e.touches || e.touches.length !== 1) {
       finishGesture();
       return;
     }
@@ -951,8 +1004,10 @@
     if (!touch) { finishGesture(); return; }
     if (gesture.phase === 'pending') {
       if (Math.hypot(touch.clientX - gesture.sx, touch.clientY - gesture.sy) <= 12) {
-        e.preventDefault();
-        e.stopPropagation();
+        if (!selectingText()) {
+          e.preventDefault();
+          e.stopPropagation();
+        }
         return;
       }
       if (gesture.timer) clearTimeout(gesture.timer);
@@ -975,11 +1030,15 @@
   }, {passive: false});
   document.addEventListener('touchend', (e) => {
     if (terminalUiOwnsEvent(e)) { finishGesture(); return; }
+    const touch = touchById(e.changedTouches) || {
+      clientX:gesture.sx, clientY:gesture.lastY,
+      screenX:gesture.sx, screenY:gesture.lastY,
+    };
     if (gesture.phase === 'resizing') {
-      const touch = touchById(e.changedTouches);
       const c = touch && cellOnLockedAxis(touch);
       if (c) gesture.pendingCell = c;
     }
+    flushScrollRemainder(touch, e.target);
     finishGesture();
   });
   document.addEventListener('touchcancel', finishGesture);

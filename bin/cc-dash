@@ -1236,6 +1236,84 @@ def set_tmux_mouse(sess, enabled):
     return None
 
 
+def tmux_pane_at(sess, col=None, row=None):
+    """Resolve a terminal grid position to a pane in the active tmux window."""
+    target = f"={sess}:"
+    if col is None and row is None:
+        return target, None
+    if col is None or row is None:
+        return None, "Posicion de pane invalida"
+    try:
+        col = int(col)
+        row = int(row)
+    except (TypeError, ValueError):
+        return None, "Posicion de pane invalida"
+    if not 0 <= col <= 10000 or not 0 <= row <= 10000:
+        return None, "Posicion de pane invalida"
+    try:
+        result = tmux(
+            "list-panes", "-t", target, "-F",
+            "#{pane_id}|#{pane_left}|#{pane_top}|#{pane_right}|#{pane_bottom}",
+        )
+    except Exception as exc:
+        return None, str(exc).strip() or "tmux fallo"
+    if result.returncode != 0:
+        return None, result.stderr.strip() or f"No hay sesion tmux '{sess}'"
+    for line in result.stdout.splitlines():
+        fields = line.split("|")
+        if len(fields) != 5:
+            continue
+        pane, left, top, right, bottom = fields
+        try:
+            contains = (
+                int(left) <= col <= int(right) and
+                int(top) <= row <= int(bottom)
+            )
+        except ValueError:
+            continue
+        if contains:
+            return pane, None
+    return None, "No encontre el pane bajo el cursor"
+
+
+def tmux_scroll(sess, delta, col=None, row=None):
+    """Scroll tmux history while session mouse mode remains disabled."""
+    if not SESSION_RE.fullmatch(sess or ""):
+        return "Nombre de sesion invalido"
+    try:
+        delta = int(delta)
+    except (TypeError, ValueError):
+        return "Scroll invalido"
+    if delta == 0:
+        return "Scroll invalido"
+    delta = max(-60, min(60, delta))
+    target, err = tmux_pane_at(sess, col, row)
+    if err:
+        return err
+    try:
+        if delta < 0:
+            result = tmux("copy-mode", "-e", "-t", target)
+            if result.returncode != 0:
+                return result.stderr.strip() or "No pude abrir el historial"
+        else:
+            mode = tmux(
+                "display-message", "-p", "-t", target, "#{pane_in_mode}",
+            )
+            if mode.returncode != 0:
+                return mode.stderr.strip() or "No pude leer el historial"
+            if mode.stdout.strip() != "1":
+                return None
+        result = tmux(
+            "send-keys", "-X", "-N", str(abs(delta)), "-t", target,
+            "scroll-up" if delta < 0 else "scroll-down",
+        )
+    except Exception as exc:
+        return str(exc).strip() or "tmux fallo"
+    if result.returncode != 0:
+        return result.stderr.strip() or "No pude mover el historial"
+    return None
+
+
 def session_name(project):
     # misma regla que ccx: basename con '.' y ':' -> '-'
     return re.sub(r"[.:]", "-", project)[:80]
@@ -2706,6 +2784,13 @@ class Handler(http.server.SimpleHTTPRequestHandler):
                 code = 404 if err.startswith("No hay sesion") else 500
                 return self._json(code, {"error": err})
             return self._json(200, {"ok": True, "mouse": "on" if enabled else "off"})
+
+        if self.path == "/tmux-scroll":
+            err = tmux_scroll(sess, data.get("delta"), data.get("col"), data.get("row"))
+            if err:
+                code = 404 if err.startswith("No hay sesion") else 400
+                return self._json(code, {"error": err})
+            return self._json(200, {"ok": True})
 
         if self.path == "/tab-register":
             # El remoto abrio una tab: reflejarla en el escritorio

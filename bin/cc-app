@@ -16,6 +16,7 @@ Teclas:
   Ctrl+Q                 salir
 """
 import json, os, re, secrets, shlex, shutil, subprocess, sys, threading, time, urllib.request
+from concurrent.futures import ThreadPoolExecutor
 from urllib.parse import quote, unquote, urlparse
 # macOS no tiene GTK/VTE: despachamos a la app nativa (PyObjC + WKWebView) ANTES
 # de tocar `gi`. os.execv reemplaza el proceso pasando argv intacto; el symlink
@@ -382,6 +383,83 @@ def ssh_host_from_session(sess):
     return None
 
 
+_SSH_SCROLL_PENDING = {}
+_SSH_SCROLL_TIMERS = {}
+_SSH_SCROLL_EXECUTOR = ThreadPoolExecutor(
+    max_workers=1, thread_name_prefix="comandos-ssh-scroll")
+
+
+def terminal_grid_at_event(term, event):
+    col = int(
+        max(0, float(event.x) - float(term.get_margin_start())) /
+        max(1.0, float(term.get_char_width() or 1))
+    )
+    row = int(
+        max(0, float(event.y) - float(term.get_margin_top())) /
+        max(1.0, float(term.get_char_height() or 1))
+    )
+    col = min(col, max(0, int(term.get_column_count() or 1) - 1))
+    row = min(row, max(0, int(term.get_row_count() or 1) - 1))
+    return col, row
+
+
+def _ssh_scroll_amount(event):
+    if event.direction == Gdk.ScrollDirection.UP:
+        return -3.0
+    if event.direction == Gdk.ScrollDirection.DOWN:
+        return 3.0
+    if event.direction != Gdk.ScrollDirection.SMOOTH:
+        return 0.0
+    try:
+        values = event.get_scroll_deltas()
+        if len(values) == 3:
+            ok, _dx, dy = values
+            if not ok:
+                return 0.0
+        else:
+            _dx, dy = values
+        return max(-8.0, min(8.0, float(dy) * 2.0))
+    except Exception:
+        return 0.0
+
+
+def _flush_ssh_scroll(sess):
+    pending = _SSH_SCROLL_PENDING.pop(sess, None)
+    _SSH_SCROLL_TIMERS.pop(sess, None)
+    if not pending:
+        return False
+    delta = int(round(pending["delta"]))
+    if not delta and abs(pending["delta"]) >= 0.25:
+        delta = 1 if pending["delta"] > 0 else -1
+    if not delta:
+        return False
+    col, row = pending["col"], pending["row"]
+    _SSH_SCROLL_EXECUTOR.submit(
+        http_post, "/tmux-scroll",
+        {"session": sess, "delta": delta, "col": col, "row": row}, 3,
+    )
+    return False
+
+
+def on_ssh_scroll(term, event):
+    if term.get_has_selection():
+        return False
+    sess = getattr(term, "_session_hint", None) or term_session(term)
+    if not ssh_host_from_session(sess):
+        return False
+    amount = _ssh_scroll_amount(event)
+    if not amount:
+        return False
+    col, row = terminal_grid_at_event(term, event)
+    pending = _SSH_SCROLL_PENDING.setdefault(
+        sess, {"delta": 0.0, "col": col, "row": row})
+    pending["delta"] = max(-24.0, min(24.0, pending["delta"] + amount))
+    pending["col"], pending["row"] = col, row
+    if sess not in _SSH_SCROLL_TIMERS:
+        _SSH_SCROLL_TIMERS[sess] = GLib.timeout_add(45, _flush_ssh_scroll, sess)
+    return True
+
+
 _CURSOR_SHAPE_MAP = {
     "block":     Vte.CursorShape.BLOCK,
     "ibeam":     Vte.CursorShape.IBEAM,
@@ -410,6 +488,7 @@ def make_term(argv_sh):
     term.set_audible_bell(False)
     term.connect("button-press-event", on_term_button)
     term.connect("button-release-event", on_term_release)
+    term.connect("scroll-event", on_ssh_scroll)
     # Seleccionar = copiar al clipboard del sistema (portapapeles compartido)
     term.connect("selection-changed", lambda t: copy_vte_selection(t))
     # URLs clickeables: click simple (sin arrastre) o Ctrl+click, con manita
@@ -1800,6 +1879,7 @@ def open_tab(sess, winname, label=None):
     cmd = (f"tmux attach -t '={sess}' || {{ echo '[sesion terminada — cierra esta pestana con la x]'; exec cat; }}")
     box = make_term(cmd)
     box._key = key
+    box._term._session_hint = sess
     box._label = label or saved_tab_label(sess) or sess
     idx = nb.append_page(box, tab_label(box._label, key))
     nb.set_tab_reorderable(box, True)

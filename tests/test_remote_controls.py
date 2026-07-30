@@ -367,6 +367,90 @@ def test_tmux_mouse_helpers_convert_process_exceptions_to_api_errors():
     assert "tmux timed out" in set_error
 
 
+def test_tmux_scroll_moves_the_pane_history_without_enabling_mouse():
+    calls = []
+    pane_modes = iter(("1\n", "0\n"))
+
+    def fake_tmux(*args, timeout=5):
+        calls.append(args)
+        stdout = next(pane_modes) if args[0] == "display-message" else ""
+        return types.SimpleNamespace(returncode=0, stdout=stdout, stderr="")
+
+    ns = load_functions(
+        "tmux_pane_at", "tmux_scroll",
+        extra={
+            "tmux": fake_tmux,
+            "SESSION_RE": re.compile(r"^[A-Za-z0-9._-]{1,80}$"),
+        },
+    )
+
+    assert ns["tmux_scroll"]("ssh-prod", -4) is None
+    assert ns["tmux_scroll"]("ssh-prod", 2) is None
+    assert ns["tmux_scroll"]("ssh-prod", 2) is None
+    assert calls == [
+        ("copy-mode", "-e", "-t", "=ssh-prod:"),
+        ("send-keys", "-X", "-N", "4", "-t", "=ssh-prod:", "scroll-up"),
+        ("display-message", "-p", "-t", "=ssh-prod:", "#{pane_in_mode}"),
+        ("send-keys", "-X", "-N", "2", "-t", "=ssh-prod:", "scroll-down"),
+        ("display-message", "-p", "-t", "=ssh-prod:", "#{pane_in_mode}"),
+    ]
+
+
+def test_tmux_scroll_targets_the_split_pane_under_the_pointer():
+    calls = []
+
+    def fake_tmux(*args, timeout=5):
+        calls.append(args)
+        if args[0] == "list-panes":
+            return types.SimpleNamespace(
+                returncode=0,
+                stdout="%1|0|0|39|23\n%2|41|0|79|23\n",
+                stderr="",
+            )
+        return types.SimpleNamespace(returncode=0, stdout="", stderr="")
+
+    ns = load_functions(
+        "tmux_pane_at", "tmux_scroll",
+        extra={
+            "tmux": fake_tmux,
+            "SESSION_RE": re.compile(r"^[A-Za-z0-9._-]{1,80}$"),
+        },
+    )
+
+    assert ns["tmux_scroll"]("ssh-prod", -3, col=60, row=10) is None
+    assert calls == [
+        (
+            "list-panes", "-t", "=ssh-prod:", "-F",
+            "#{pane_id}|#{pane_left}|#{pane_top}|#{pane_right}|#{pane_bottom}",
+        ),
+        ("copy-mode", "-e", "-t", "%2"),
+        ("send-keys", "-X", "-N", "3", "-t", "%2", "scroll-up"),
+    ]
+
+
+def test_tmux_scroll_rejects_invalid_requests_without_running_tmux():
+    calls = []
+    ns = load_functions(
+        "tmux_pane_at", "tmux_scroll",
+        extra={
+            "tmux": lambda *args, **kwargs: calls.append(args),
+            "SESSION_RE": re.compile(r"^[A-Za-z0-9._-]{1,80}$"),
+        },
+    )
+
+    assert ns["tmux_scroll"]("../bad", -3) == "Nombre de sesion invalido"
+    assert ns["tmux_scroll"]("ssh-prod", 0) == "Scroll invalido"
+    assert ns["tmux_scroll"]("ssh-prod", "wat") == "Scroll invalido"
+    assert ns["tmux_scroll"]("ssh-prod", -3, col="x", row=2) == \
+        "Posicion de pane invalida"
+    assert calls == []
+
+
+def test_tmux_scroll_endpoint_is_authenticated_and_available():
+    assert 'self.path == "/tmux-scroll"' in SRC
+    assert "tmux_scroll(sess, data.get(\"delta\")" in SRC
+
+
 def test_tmux_mouse_get_is_authenticated_and_post_stays_available():
     assert 'self.path == "/tmux-mouse"' in SRC
     api_get = SRC.split("API_GET = ", 1)[1].split("def do_GET", 1)[0]

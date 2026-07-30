@@ -95,6 +95,24 @@ def test_tablet_dashboard_wraps_session_rows_before_they_overflow():
     assert ".row.actsbutton.term,.row.actsbutton.kill{width:36px}" in compact
 
 
+def test_ssh_connection_list_is_an_independent_touch_scroller():
+    saved = rule("#srv-list")
+
+    assert "max-height:min(42dvh,420px)" in saved
+    assert "overflow-y:auto" in saved
+    assert "overflow-x:hidden" in saved
+    assert "overscroll-behavior-y:contain" in saved
+    assert "-webkit-overflow-scrolling:touch" in saved
+    assert "touch-action:pan-y" in saved
+    assert "scrollbar-gutter:stable" in saved
+    assert "scrollbar-width:auto" in saved
+    assert "width:10px" in rule("#srv-list::-webkit-scrollbar")
+    assert (
+        '<div id="srv-list" role="region" '
+        'aria-label="Conexiones guardadas" tabindex="0"></div>'
+    ) in CSS
+
+
 if __name__ == "__main__":
     test_split_left_panel_is_the_scroll_container()
     test_desktop_panel_has_a_real_content_scroller()

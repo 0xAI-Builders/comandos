@@ -195,6 +195,17 @@
   #ssh-manage:hover{color:var(--text);border-color:var(--brand)}
   .srv-privacy{color:var(--faint);font-size:11.5px;line-height:1.5;margin:2px 0 12px}
   .srv-privacy code{color:var(--code)}
+  #srv-list{max-height:min(42dvh,420px);overflow-y:auto;overflow-x:hidden;
+    overscroll-behavior-y:contain;-webkit-overflow-scrolling:touch;
+    touch-action:pan-y;scrollbar-gutter:stable;scrollbar-width:auto;
+    scrollbar-color:var(--line2) transparent}
+  #srv-list::-webkit-scrollbar{width:10px}
+  #srv-list::-webkit-scrollbar-track{background:transparent}
+  #srv-list::-webkit-scrollbar-thumb{background:var(--line2);border-radius:8px;
+    border:2px solid var(--panel2);background-clip:padding-box}
+  #srv-list::-webkit-scrollbar-thumb:hover{background:var(--brand);
+    background-clip:padding-box}
+  #srv-list:focus-visible{outline:1px solid var(--brand);outline-offset:3px}
 
   /* ---------- secciones ---------- */
   .sec{max-width:1360px;margin:0 auto;padding:22px 18px 0}
@@ -1100,7 +1111,7 @@
   <code>~/.ssh/config</code> y las llaves en <code>~/.ssh/</code> (el estándar
   de SSH, permisos 0600). ComandOS <b>nunca guarda passwords</b> ni sube nada
   a ningún lado — si tecleas un password, va directo a tu servidor.</p>
-  <div id="srv-list"></div>
+  <div id="srv-list" role="region" aria-label="Conexiones guardadas" tabindex="0"></div>
   <h3 style="margin-top:22px" id="srv-form-title">Agregar servidor</h3>
   <form id="srv-form">
     <div class="frow">
@@ -3582,12 +3593,19 @@ async function loadSsh(){
     if(!hosts.length) list.innerHTML = '<div class="desc">Sin servidores. Agrega el primero abajo.</div>';
   }catch(e){}
 }
-	$("#ssh-manage").addEventListener("click", ()=>{
-	  $("#servers").classList.toggle("open");
-	  $("#settings").classList.remove("open");
-	  $("#remote").classList.remove("open");
-	  $("#usage").classList.remove("open");
-	});
+function toggleSshManager(){
+  const modal = $("#servers");
+  const opening = !modal.classList.contains("open");
+  modal.classList.toggle("open");
+  $("#settings").classList.remove("open");
+  $("#remote").classList.remove("open");
+  $("#usage").classList.remove("open");
+  if(opening){
+    modal.scrollTop = 0;
+    $("#srv-list").scrollTop = 0;
+  }
+}
+$("#ssh-manage").addEventListener("click", toggleSshManager);
 $("#srv-cancel").addEventListener("click", ()=>{ $("#srv-form").reset(); fillSrvForm({}); });
 $("#srv-form").addEventListener("submit", async e=>{
   e.preventDefault();

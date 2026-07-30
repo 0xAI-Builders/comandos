@@ -388,6 +388,11 @@ def touch_controller_js():
     return TERM_HTML[start:end]
 
 
+def tmux_scroll_bridge_js():
+    names = ("queueTmuxScroll", "flushTmuxScroll", "handleMouseOffWheel")
+    return "\n\n".join(extract_js_function(TERM_HTML, name) for name in names)
+
+
 def term_interaction_js():
     names = (
         "termInteractionState",
@@ -453,6 +458,7 @@ def run_touch_controller(
     viewport_y=0,
     mouse_on=True,
     selecting=False,
+    has_selection=False,
     socket_open=True,
 ):
     """Execute the real iframe touch controller with deterministic I/O."""
@@ -517,6 +523,7 @@ const term = {{
   cols: 80,
   rows: 24,
   modes: {{mouseTrackingMode: {json.dumps('sgr' if mouse_on else 'none')}}},
+  hasSelection() {{ return {str(has_selection).lower()}; }},
   refresh(first, last) {{ refreshCalls.push([first, last]); }},
   onWriteParsed(cb) {{ this.writeParsedHandler = cb; }},
   buffer: {{active: {{
@@ -2060,6 +2067,105 @@ console.log(JSON.stringify({{
         assert result["indicator"] == "none"
 
 
+def test_mouse_off_wheel_posts_the_target_split_position_to_tmux():
+    bridge = tmux_scroll_bridge_js()
+    result = run_node_json(f"""
+const arg = "ssh-prod";
+const accessTokenParam = "secret-token";
+let tmuxScrollLines = 0;
+let tmuxScrollFrame = 0;
+let tmuxScrollPoint = null;
+let tmuxScrollChain = Promise.resolve();
+const frames = [];
+const requests = [];
+let selected = false;
+function requestAnimationFrame(callback) {{ frames.push(callback); return frames.length; }}
+const fetch = async (path, options) => {{
+  requests.push({{path, options}});
+  return {{ok:true}};
+}};
+const term = {{hasSelection() {{ return selected; }}}};
+const mouseOn = () => false;
+const hasActiveSelection = () => term.hasSelection();
+const terminalUiOwnsEvent = () => false;
+const cellFromTouch = () => ({{col:61, row:11}});
+
+{bridge}
+
+(async () => {{
+  const event = {{
+    deltaY:-70, clientX:610, clientY:210, target:{{}},
+    prevented:false, stopped:false,
+    preventDefault() {{ this.prevented = true; }},
+    stopPropagation() {{ this.stopped = true; }},
+  }};
+  const handled = handleMouseOffWheel(event);
+  frames.shift()();
+  await tmuxScrollChain;
+  selected = true;
+  const selectionEvent = {{
+    ...event, prevented:false, stopped:false,
+    preventDefault() {{ this.prevented = true; }},
+    stopPropagation() {{ this.stopped = true; }},
+  }};
+  const selectedHandled = handleMouseOffWheel(selectionEvent);
+  console.log(JSON.stringify({{
+    handled, selectedHandled,
+    prevented:event.prevented, stopped:event.stopped,
+    selectedPrevented:selectionEvent.prevented,
+    requests:requests.map(request => ({{
+      path:request.path,
+      token:request.options.headers["X-Comandos-Token"],
+      body:JSON.parse(request.options.body),
+    }})),
+  }}));
+}})().catch(error => {{ console.error(error); process.exit(1); }});
+""")
+
+    assert result == {
+        "handled": True,
+        "selectedHandled": False,
+        "prevented": True,
+        "stopped": True,
+        "selectedPrevented": False,
+        "requests": [{
+            "path": "/tmux-scroll",
+            "token": "secret-token",
+            "body": {
+                "session": "ssh-prod", "delta": -3, "col": 60, "row": 10,
+            },
+        }],
+    }
+    assert "document.addEventListener('wheel', handleMouseOffWheel" in TERM_HTML
+    assert "{capture:true, passive:false}" in TERM_HTML
+
+
+def test_short_touch_swipe_is_not_discarded():
+    result = run_touch_controller(
+        r"""
+const start = point(20, 10);
+const move = point(20, 10, 0, -40);
+listeners.touchstart(event([start]));
+const moveEvent = event([move]);
+listeners.touchmove(moveEvent);
+listeners.touchend(event([], [move]));
+console.log(JSON.stringify({
+  wheels,
+  prevented: moveEvent.prevented,
+  timers: timers.size,
+  frames: frames.size,
+}));
+"""
+    )
+
+    assert result == {
+        "wheels": [{"deltaY": 56, "clientY": 150}],
+        "prevented": True,
+        "timers": 0,
+        "frames": 0,
+    }
+
+
 def test_touch_resize_survives_transverse_jitter():
     result = run_touch_controller(
         r"""
@@ -2387,13 +2493,13 @@ def test_touch_pagehide_and_websocket_close_centralize_cleanup():
     assert disconnected["indicator"] == "none"
 
 
-def test_touch_selection_mode_is_not_captured():
+def test_touch_selection_mode_keeps_long_press_available_to_the_browser():
     result = run_touch_controller(
         r"""
 const startEvent = event([point(40, 10)]);
 listeners.touchstart(startEvent);
 runTimers();
-const moveEvent = event([point(44, 10)]);
+const moveEvent = event([point(40, 10, 4, 3)]);
 listeners.touchmove(moveEvent);
 console.log(JSON.stringify({
   sent,
@@ -2405,6 +2511,63 @@ console.log(JSON.stringify({
 """,
         cells=valid_vertical_cells(),
         selecting=True,
+    )
+
+    assert result == {
+        "sent": [],
+        "wheels": [],
+        "prevented": False,
+        "timers": 0,
+        "frames": 0,
+    }
+
+
+def test_touch_selection_mode_can_scroll_before_text_is_selected():
+    result = run_touch_controller(
+        r"""
+const start = point(40, 10);
+const move = point(40, 10, 0, -70);
+listeners.touchstart(event([start]));
+const moveEvent = event([move]);
+listeners.touchmove(moveEvent);
+listeners.touchend(event([], [move]));
+console.log(JSON.stringify({
+  sent,
+  wheels,
+  prevented: moveEvent.prevented,
+  timers: timers.size,
+  frames: frames.size,
+}));
+""",
+        selecting=True,
+    )
+
+    assert result == {
+        "sent": [],
+        "wheels": [{"deltaY": 56, "clientY": 120}],
+        "prevented": True,
+        "timers": 0,
+        "frames": 0,
+    }
+
+
+def test_touch_active_text_selection_is_never_captured():
+    result = run_touch_controller(
+        r"""
+const startEvent = event([point(40, 10)]);
+listeners.touchstart(startEvent);
+const moveEvent = event([point(40, 10, 0, -70)]);
+listeners.touchmove(moveEvent);
+console.log(JSON.stringify({
+  sent,
+  wheels,
+  prevented: startEvent.prevented || moveEvent.prevented,
+  timers: timers.size,
+  frames: frames.size,
+}));
+""",
+        selecting=True,
+        has_selection=True,
     )
 
     assert result == {
@@ -2933,6 +3096,19 @@ def test_new_ssh_server_defaults_to_persistent_key_access_setup():
     submit = submit.split("\n});", 1)[0]
     assert "const remember = f.remember.checked;" in submit
     assert "if(remember) await setupSshKey(d.host);" in submit
+
+
+def test_ssh_manager_reopens_at_the_top_of_both_scroll_surfaces():
+    fn = extract_js_function(HTML, "toggleSshManager")
+
+    assert 'const modal = $("#servers");' in fn
+    assert 'const opening = !modal.classList.contains("open");' in fn
+    assert "modal.scrollTop = 0;" in fn
+    assert '$("#srv-list").scrollTop = 0;' in fn
+    assert (
+        '$("#ssh-manage").addEventListener("click", toggleSshManager);'
+        in HTML
+    )
 
 
 def test_left_clicking_ssh_chip_opens_a_fresh_ssh_tab():

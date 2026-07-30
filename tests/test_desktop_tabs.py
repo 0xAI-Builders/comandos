@@ -153,6 +153,24 @@ def test_terminals_paste_file_paths_on_drop():
     assert "feed_child" in src
 
 
+def test_ssh_terminal_scroll_routes_each_pointer_position_to_tmux_history():
+    make_term = function_source("make_term")
+    handler = function_source("on_ssh_scroll")
+    flush = function_source("_flush_ssh_scroll")
+    open_tab = function_source("open_tab")
+
+    assert 'term.connect("scroll-event", on_ssh_scroll)' in make_term
+    assert "term.get_has_selection()" in handler
+    assert "ssh_host_from_session(sess)" in handler
+    assert "terminal_grid_at_event(term, event)" in handler
+    assert "http_post" in flush
+    assert '"/tmux-scroll"' in flush
+    assert '"session": sess' in flush
+    assert '"col": col' in flush
+    assert '"row": row' in flush
+    assert "box._term._session_hint = sess" in open_tab
+
+
 def test_raise_main_window_uses_keep_above_pulse_for_gnome():
     src = function_source("raise_main_window")
     assert "set_keep_above(True)" in src
