@@ -1074,6 +1074,18 @@ class AppController(NSObject):
         self.active_key = tab["key"]
         self.tab_strip.scrollRectToVisible_(tab["button"].frame())
         self.window.makeFirstResponder_(tab["webview"])
+        self._focus_terminal(tab)
+
+    @objc.python_method
+    def _focus_terminal(self, tab):
+        """makeFirstResponder enfoca la VISTA; el teclado de xterm entra por un
+        textarea DENTRO de la pagina, asi que hay que enfocarlo aparte o la
+        pestana abre sin poder escribir hasta que le des click."""
+        try:
+            tab["webview"].evaluateJavaScript_completionHandler_(
+                "window.__comandosFocus && window.__comandosFocus()", None)
+        except Exception:
+            pass
 
     # -- acciones de la tira (target/action) --------------------------------
     def tabClicked_(self, sender):

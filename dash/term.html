@@ -719,7 +719,16 @@
   // El puente solo existe en la app, asi que en el navegador y en el celular
   // el comportamiento no cambia.
   const nativeMenu = window.webkit?.messageHandlers?.term;
+  // La app nativa necesita poder devolver el foco al cambiar de pestana: hacer
+  // primer respondedor al WKWebView enfoca la VISTA, no el textarea interno de
+  // xterm, que es por donde entra el teclado.
+  window.__comandosFocus = focusTerminal;
   if (nativeMenu) {
+    // En escritorio la terminal debe estar lista para escribir en cuanto abre,
+    // como el grab_focus() de la app GTK. NO lo hacemos en tactil/navegador:
+    // ahi enfocar solo levantaria el teclado del celular sin que lo pidan.
+    focusTerminal();
+    window.addEventListener('load', focusTerminal);
     // tmux corre con `mouse on` y trae su propio binding MouseDown3Pane que
     // abre un display-menu (Horizontal Split / Swap / Kill / Zoom). xterm.js
     // reenvia el boton derecho al PTY en el *mousedown*, mucho antes de que
