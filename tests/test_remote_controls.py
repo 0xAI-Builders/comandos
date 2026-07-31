@@ -369,7 +369,7 @@ def test_tmux_mouse_helpers_convert_process_exceptions_to_api_errors():
 
 def test_tmux_scroll_moves_the_pane_history_without_enabling_mouse():
     calls = []
-    pane_modes = iter(("1\n", "0\n"))
+    pane_modes = iter(("0|0|0|0\n", "0|0|0|1\n", "0|0|0|0\n"))
 
     def fake_tmux(*args, timeout=5):
         calls.append(args)
@@ -388,11 +388,24 @@ def test_tmux_scroll_moves_the_pane_history_without_enabling_mouse():
     assert ns["tmux_scroll"]("ssh-prod", 2) is None
     assert ns["tmux_scroll"]("ssh-prod", 2) is None
     assert calls == [
+        (
+            "display-message", "-p", "-t", "=ssh-prod:",
+            "#{mouse_sgr_flag}|#{mouse_utf8_flag}|"
+            "#{mouse_standard_flag}|#{pane_in_mode}",
+        ),
         ("copy-mode", "-e", "-t", "=ssh-prod:"),
         ("send-keys", "-X", "-N", "4", "-t", "=ssh-prod:", "scroll-up"),
-        ("display-message", "-p", "-t", "=ssh-prod:", "#{pane_in_mode}"),
+        (
+            "display-message", "-p", "-t", "=ssh-prod:",
+            "#{mouse_sgr_flag}|#{mouse_utf8_flag}|"
+            "#{mouse_standard_flag}|#{pane_in_mode}",
+        ),
         ("send-keys", "-X", "-N", "2", "-t", "=ssh-prod:", "scroll-down"),
-        ("display-message", "-p", "-t", "=ssh-prod:", "#{pane_in_mode}"),
+        (
+            "display-message", "-p", "-t", "=ssh-prod:",
+            "#{mouse_sgr_flag}|#{mouse_utf8_flag}|"
+            "#{mouse_standard_flag}|#{pane_in_mode}",
+        ),
     ]
 
 
@@ -406,6 +419,10 @@ def test_tmux_scroll_targets_the_split_pane_under_the_pointer():
                 returncode=0,
                 stdout="%1|0|0|39|23\n%2|41|0|79|23\n",
                 stderr="",
+            )
+        if args[0] == "display-message":
+            return types.SimpleNamespace(
+                returncode=0, stdout="0|0|0|0\n", stderr="",
             )
         return types.SimpleNamespace(returncode=0, stdout="", stderr="")
 
@@ -423,8 +440,164 @@ def test_tmux_scroll_targets_the_split_pane_under_the_pointer():
             "list-panes", "-t", "=ssh-prod:", "-F",
             "#{pane_id}|#{pane_left}|#{pane_top}|#{pane_right}|#{pane_bottom}",
         ),
+        (
+            "display-message", "-p", "-t", "%2",
+            "#{mouse_sgr_flag}|#{mouse_utf8_flag}|"
+            "#{mouse_standard_flag}|#{pane_in_mode}",
+        ),
         ("copy-mode", "-e", "-t", "%2"),
         ("send-keys", "-X", "-N", "3", "-t", "%2", "scroll-up"),
+    ]
+
+
+def test_tmux_scroll_forwards_wheel_to_an_alternate_screen_mouse_client():
+    calls = []
+
+    def fake_tmux(*args, timeout=5):
+        calls.append(args)
+        if args[0] == "list-panes":
+            return types.SimpleNamespace(
+                returncode=0,
+                stdout="%1|0|0|39|23\n%2|41|0|79|23\n",
+                stderr="",
+            )
+        if args[0] == "display-message":
+            return types.SimpleNamespace(
+                returncode=0, stdout="1|0|0|0\n", stderr="",
+            )
+        return types.SimpleNamespace(returncode=0, stdout="", stderr="")
+
+    ns = load_functions(
+        "tmux_pane_at", "tmux_scroll",
+        extra={
+            "tmux": fake_tmux,
+            "SESSION_RE": re.compile(r"^[A-Za-z0-9._-]{1,80}$"),
+        },
+    )
+
+    assert ns["tmux_scroll"]("sshtab-heritage-3", -6, col=60, row=10) is None
+    assert calls == [
+        (
+            "list-panes", "-t", "=sshtab-heritage-3:", "-F",
+            "#{pane_id}|#{pane_left}|#{pane_top}|#{pane_right}|#{pane_bottom}",
+        ),
+        (
+            "display-message", "-p", "-t", "%2",
+            "#{mouse_sgr_flag}|#{mouse_utf8_flag}|"
+            "#{mouse_standard_flag}|#{pane_in_mode}",
+        ),
+        (
+            "send-keys", "-l", "-t", "%2",
+            "\x1b[<64;20;11M\x1b[<64;20;11M",
+        ),
+    ]
+
+
+def test_tmux_scroll_leaves_stale_copy_mode_before_forwarding_wheel():
+    calls = []
+
+    def fake_tmux(*args, timeout=5):
+        calls.append(args)
+        if args[0] == "display-message":
+            return types.SimpleNamespace(
+                returncode=0, stdout="1|0|0|1\n", stderr="",
+            )
+        return types.SimpleNamespace(returncode=0, stdout="", stderr="")
+
+    ns = load_functions(
+        "tmux_pane_at", "tmux_scroll",
+        extra={
+            "tmux": fake_tmux,
+            "SESSION_RE": re.compile(r"^[A-Za-z0-9._-]{1,80}$"),
+        },
+    )
+
+    assert ns["tmux_scroll"]("sshtab-heritage-3", -3) is None
+    assert calls == [
+        (
+            "display-message", "-p", "-t", "=sshtab-heritage-3:",
+            "#{mouse_sgr_flag}|#{mouse_utf8_flag}|"
+            "#{mouse_standard_flag}|#{pane_in_mode}",
+        ),
+        ("send-keys", "-X", "-t", "=sshtab-heritage-3:", "cancel"),
+        (
+            "send-keys", "-l", "-t", "=sshtab-heritage-3:",
+            "\x1b[<64;1;1M",
+        ),
+    ]
+
+
+def test_tmux_scroll_forwards_wheel_to_a_standard_mouse_client():
+    calls = []
+
+    def fake_tmux(*args, timeout=5):
+        calls.append(args)
+        if args[0] == "display-message":
+            return types.SimpleNamespace(
+                returncode=0, stdout="0|0|1|0\n", stderr="",
+            )
+        return types.SimpleNamespace(returncode=0, stdout="", stderr="")
+
+    ns = load_functions(
+        "tmux_pane_at", "tmux_scroll",
+        extra={
+            "tmux": fake_tmux,
+            "SESSION_RE": re.compile(r"^[A-Za-z0-9._-]{1,80}$"),
+        },
+    )
+
+    assert ns["tmux_scroll"]("ssh-ops", 3) is None
+    assert calls == [
+        (
+            "display-message", "-p", "-t", "=ssh-ops:",
+            "#{mouse_sgr_flag}|#{mouse_utf8_flag}|"
+            "#{mouse_standard_flag}|#{pane_in_mode}",
+        ),
+        (
+            "send-keys", "-H", "-t", "=ssh-ops:",
+            "1b", "5b", "4d", "61", "21", "21",
+        ),
+    ]
+
+
+def test_tmux_scroll_encodes_large_coordinates_for_a_utf8_mouse_client():
+    calls = []
+
+    def fake_tmux(*args, timeout=5):
+        calls.append(args)
+        if args[0] == "list-panes":
+            return types.SimpleNamespace(
+                returncode=0, stdout="%1|0|0|299|49\n", stderr="",
+            )
+        if args[0] == "display-message":
+            return types.SimpleNamespace(
+                returncode=0, stdout="0|1|0|0\n", stderr="",
+            )
+        return types.SimpleNamespace(returncode=0, stdout="", stderr="")
+
+    ns = load_functions(
+        "tmux_pane_at", "tmux_scroll",
+        extra={
+            "tmux": fake_tmux,
+            "SESSION_RE": re.compile(r"^[A-Za-z0-9._-]{1,80}$"),
+        },
+    )
+
+    assert ns["tmux_scroll"]("ssh-wide", -3, col=259, row=9) is None
+    assert calls == [
+        (
+            "list-panes", "-t", "=ssh-wide:", "-F",
+            "#{pane_id}|#{pane_left}|#{pane_top}|#{pane_right}|#{pane_bottom}",
+        ),
+        (
+            "display-message", "-p", "-t", "%1",
+            "#{mouse_sgr_flag}|#{mouse_utf8_flag}|"
+            "#{mouse_standard_flag}|#{pane_in_mode}",
+        ),
+        (
+            "send-keys", "-H", "-t", "%1",
+            "1b", "5b", "4d", "60", "c4", "a4", "2a",
+        ),
     ]
 
 
