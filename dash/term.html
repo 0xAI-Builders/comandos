@@ -720,6 +720,18 @@
   // el comportamiento no cambia.
   const nativeMenu = window.webkit?.messageHandlers?.term;
   if (nativeMenu) {
+    // tmux corre con `mouse on` y trae su propio binding MouseDown3Pane que
+    // abre un display-menu (Horizontal Split / Swap / Kill / Zoom). xterm.js
+    // reenvia el boton derecho al PTY en el *mousedown*, mucho antes de que
+    // llegue el evento `contextmenu`, asi que preventDefault ahi no alcanza:
+    // hay que matar el click en fase de CAPTURA para que xterm nunca lo vea.
+    for (const type of ['mousedown', 'mouseup', 'auxclick']) {
+      window.addEventListener(type, (e) => {
+        if (e.button !== 2) return;
+        e.preventDefault();
+        e.stopPropagation();
+      }, true);
+    }
     window.addEventListener('contextmenu', (e) => {
       e.preventDefault();
       // Celda bajo el cursor: tmux razona en columnas/filas, no en pixeles.

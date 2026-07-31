@@ -810,11 +810,11 @@ class AppController(NSObject):
         m = self._build_term_menu(
             tab, int(info.get("col") or 0), int(info.get("row") or 0),
             info.get("selection") or "")
-        # El punto llega en coordenadas CSS (origen arriba-izquierda); AppKit
-        # mide desde abajo, asi que invertimos la Y contra el alto del webview.
+        # WKWebView.isFlipped() es True: su origen ya esta ARRIBA-izquierda,
+        # igual que las coordenadas CSS del click. Invertir la Y aqui (el
+        # reflejo normal en AppKit) mandaba el menu al extremo opuesto.
         wv = tab["webview"]
-        pt = NSPoint(float(info.get("x") or 0),
-                     wv.bounds().size.height - float(info.get("y") or 0))
+        pt = NSPoint(float(info.get("x") or 0), float(info.get("y") or 0))
         m.popUpMenuPositioningItem_atLocation_inView_(None, pt, wv)
 
     @objc.python_method
