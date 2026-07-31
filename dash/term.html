@@ -48,6 +48,10 @@
     width: 100%; max-width: 100%; min-width: 0; overflow-x: auto;
     padding: 6px; border-top: 1px solid var(--term-line2); background:var(--term-panel);
     overscroll-behavior-x: contain; -webkit-overflow-scrolling: touch; touch-action: pan-x; }
+  /* `display:flex` con selector de ID le gana a la regla [hidden]{display:none}
+     de la hoja del navegador, asi que sin esto el atributo hidden NO oculta
+     nada y la botonera tactil sale tambien en escritorio. */
+  #term-toolbar[hidden] { display: none; }
   #term-toolbar button { box-sizing: border-box; flex: 0 0 auto; min-width: 44px; height: 44px; padding: 0 10px;
     border: 1px solid var(--term-line2); border-radius: 4px; background:var(--term-panel2); color:var(--term-text);
     font: 700 12px 'JetBrainsMono Nerd Font Mono', monospace; }

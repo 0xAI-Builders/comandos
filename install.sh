@@ -209,6 +209,12 @@ case "$CC_PLAT" in
   <key>WorkingDirectory</key><string>$HOME</string>
   <key>RunAtLoad</key><true/>
   <key>KeepAlive</key><true/>
+  <!-- launchd da 256 descriptores por defecto (systemd en Linux da 1024+).
+       Para un servicio de larga vida que abre sqlite y lanza tmux sin parar,
+       256 se agota y el proceso queda vivo pero inservible. -->
+  <key>SoftResourceLimits</key><dict>
+    <key>NumberOfFiles</key><integer>4096</integer>
+  </dict>
   <key>StandardOutPath</key><string>$HOME/Library/Logs/ComandOS/$name.log</string>
   <key>StandardErrorPath</key><string>$HOME/Library/Logs/ComandOS/$name.log</string>
 </dict></plist>

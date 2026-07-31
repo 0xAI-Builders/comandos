@@ -48,9 +48,24 @@ def usage_db_path(hooks_dir=None):
     return os.path.join(hooks_dir or DEFAULT_HOOKS_DIR, DB_FILENAME)
 
 
+class _Connection(sqlite3.Connection):
+    """`sqlite3.Connection.__exit__` hace commit/rollback pero NO cierra: es un
+    context manager de TRANSACCION, no de recurso. Con `with connect(...)` en
+    17 sitios y el refresco de uso corriendo en segundo plano, cada llamada
+    filtraba un descriptor hasta agotar el limite del proceso; a partir de ahi
+    cc-dash no podia abrir la base ni lanzar tmux y TODOS los endpoints morian
+    con respuesta vacia. Cerramos siempre, conservando el commit/rollback."""
+
+    def __exit__(self, exc_type, exc, tb):
+        try:
+            return super().__exit__(exc_type, exc, tb)
+        finally:
+            self.close()
+
+
 def connect(db_path):
     os.makedirs(os.path.dirname(db_path), exist_ok=True)
-    con = sqlite3.connect(db_path)
+    con = sqlite3.connect(db_path, factory=_Connection)
     con.row_factory = sqlite3.Row
     return con
 
