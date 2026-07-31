@@ -127,33 +127,109 @@ _cc_install_fonts() {
 }
 _cc_install_fonts
 
+# App bundle de macOS. El .desktop de Linux no existe en Mac, así que sin esto
+# ComandOS no aparece en Spotlight/Launchpad ni se puede anclar al Dock.
+# Idempotente: reescribe el bundle en cada install.
+_cc_mac_app_bundle() {
+  local app="$HOME/Applications/ComandOS.app"
+  local res="$app/Contents/Resources" macos="$app/Contents/MacOS"
+  mkdir -p "$macos" "$res"
+
+  # Icono: icon-512.png -> .icns (iconutil exige un .iconset con los tamaños).
+  local src="$REPO/dash/icon-512.png"
+  if [ -f "$src" ] && command -v sips >/dev/null 2>&1; then
+    local iconset; iconset="$(mktemp -d)/comandos.iconset"
+    mkdir -p "$iconset"
+    local s d
+    for s in 16 32 128 256 512; do
+      sips -z "$s" "$s" "$src" --out "$iconset/icon_${s}x${s}.png" >/dev/null 2>&1
+      d=$((s * 2))
+      [ "$d" -le 512 ] && sips -z "$d" "$d" "$src" \
+        --out "$iconset/icon_${s}x${s}@2x.png" >/dev/null 2>&1
+    done
+    cp "$src" "$iconset/icon_512x512@2x.png" 2>/dev/null || true
+    iconutil -c icns "$iconset" -o "$res/comandos.icns" 2>/dev/null || true
+    rm -rf "$(dirname "$iconset")"
+  fi
+
+  cat > "$app/Contents/Info.plist" <<'PLIST'
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0"><dict>
+  <key>CFBundleName</key><string>ComandOS</string>
+  <key>CFBundleDisplayName</key><string>ComandOS</string>
+  <key>CFBundleIdentifier</key><string>com.0xai.comandos</string>
+  <key>CFBundleVersion</key><string>1.0</string>
+  <key>CFBundleShortVersionString</key><string>1.0</string>
+  <key>CFBundlePackageType</key><string>APPL</string>
+  <key>CFBundleExecutable</key><string>ComandOS</string>
+  <key>CFBundleIconFile</key><string>comandos</string>
+  <key>NSHighResolutionCapable</key><true/>
+  <key>LSMinimumSystemVersion</key><string>11.0</string>
+</dict></plist>
+PLIST
+
+  cat > "$macos/ComandOS" <<LAUNCHER
+#!/bin/bash
+# Las apps de macOS no heredan el PATH del shell: sin esto no encuentra
+# python3/tmux/jq de Homebrew.
+export PATH="$BIN:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"
+exec "$REPO/bin/cc-app-mac"
+LAUNCHER
+  chmod +x "$macos/ComandOS"
+
+  # Registrar en LaunchServices para que Spotlight lo indexe de inmediato.
+  local lsreg="/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister"
+  [ -x "$lsreg" ] && "$lsreg" -f "$app" 2>/dev/null || true
+}
+
 # Servicios: dispatch por plataforma. macOS/Linux nativo mantienen el
 # comportamiento anterior byte-a-byte; linux-wsl-ubuntu se rellena en Tasks 5–6.
 case "$CC_PLAT" in
   darwin)
-    mkdir -p "$HOME/Library/LaunchAgents"
-    cat > "$HOME/Library/LaunchAgents/com.0xai.cc-dash.plist" <<PLIST
+    mkdir -p "$HOME/Library/LaunchAgents" "$HOME/Library/Logs/ComandOS"
+    # Escribe y (re)carga un LaunchAgent. $1=nombre corto, $2..=argv del programa.
+    _cc_launchagent() {
+      local name="$1"; shift
+      local plist="$HOME/Library/LaunchAgents/com.0xai.$name.plist" argv=""
+      local a; for a in "$@"; do argv="$argv<string>$a</string>"; done
+      cat > "$plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0"><dict>
-  <key>Label</key><string>com.0xai.cc-dash</string>
-  <key>ProgramArguments</key><array>
-    <string>$BIN/cc-dash</string><string>--no-open</string>
-  </array>
+  <key>Label</key><string>com.0xai.$name</string>
+  <key>ProgramArguments</key><array>$argv</array>
   <key>EnvironmentVariables</key><dict>
-    <!-- launchd no hereda el PATH del shell: sin Homebrew aquí, cc-dash no
-         encuentra tmux y /state (y toda acción tmux) muere con conexión vacía. -->
+    <!-- launchd no hereda el PATH del shell: sin Homebrew aquí no encuentra
+         tmux/jq y /state (y toda acción tmux) muere con conexión vacía. -->
     <key>PATH</key><string>$BIN:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+    <!-- Sin LANG, launchd arranca en C/POSIX y la UI cae a inglés. -->
+    <key>LANG</key><string>${LANG:-en_US.UTF-8}</string>
   </dict>
+  <key>WorkingDirectory</key><string>$HOME</string>
   <key>RunAtLoad</key><true/>
   <key>KeepAlive</key><true/>
+  <key>StandardOutPath</key><string>$HOME/Library/Logs/ComandOS/$name.log</string>
+  <key>StandardErrorPath</key><string>$HOME/Library/Logs/ComandOS/$name.log</string>
 </dict></plist>
 PLIST
-    launchctl unload "$HOME/Library/LaunchAgents/com.0xai.cc-dash.plist" 2>/dev/null || true
-    launchctl load "$HOME/Library/LaunchAgents/com.0xai.cc-dash.plist" 2>/dev/null || true
-    echo "  macOS: cc-dash como LaunchAgent. App nativa (cc-app) ya disponible; requiere"
-    echo "  'pip install pyobjc-framework-Cocoa pyobjc-framework-WebKit' y"
-    echo "  'brew install tmux jq ttyd' (motor, hooks y pestanas)."
+      launchctl unload "$plist" 2>/dev/null || true
+      launchctl load "$plist" 2>/dev/null || true
+    }
+    _cc_launchagent cc-dash "$BIN/cc-dash" --no-open
+    # Popups accionables nativos (NSPanel + WKWebView). cc-notifyd despacha
+    # solo a cc-notifyd-mac en darwin, así que el argv es el mismo que Linux.
+    _cc_launchagent cc-notifyd "$BIN/cc-notifyd"
+
+    # App bundle: sin esto ComandOS no sale en Spotlight/Launchpad (el .desktop
+    # de Linux no aplica) y la app nativa solo se abriría desde la terminal.
+    _cc_mac_app_bundle
+
+    echo "  macOS: cc-dash + cc-notifyd (popups nativos) como LaunchAgents,"
+    echo "  y ComandOS.app en ~/Applications. Requiere:"
+    echo "    python3 -m pip install --user --break-system-packages \\"
+    echo "      pyobjc-framework-Cocoa pyobjc-framework-WebKit"
+    echo "    brew install tmux jq ttyd"
     ;;
   linux-wsl-ubuntu)
     # Dependencias y systemd ya se validaron antes de registrar hooks.

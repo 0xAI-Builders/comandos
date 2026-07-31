@@ -1,0 +1,762 @@
+#!/usr/bin/env python3
+"""Popups accionables de ComandOS para macOS (puerto nativo de bin/cc-notifyd).
+
+En Linux el popup es una Gtk.Window con markup de Pango. En Mac no hay GTK, y
+rehacer el markdown (tablas incluidas) a mano con NSAttributedString seria mucho
+codigo y se veria distinto. Asi que cada popup es un NSPanel flotante y
+transparente que hospeda un WKWebView: el mismo design system, tablas de verdad,
+y el input/los botones son HTML.
+
+Anatomia (identica a Linux):
+  - Franja de color a la izquierda (ambar = espera / verde = termino)
+  - Punto de estado + NOMBRE DEL PROYECTO (click = Abrir) + etiqueta de estado
+  - Boton de mute (sincronizado con SOUND_ENABLED de cc-notify.conf) y cerrar
+  - Preview renderizado; "… Ver TODO" despliega el turno completo
+  - Copiar al portapapeles
+  - Botones [1][2][3][4] si el prompt es numerado; [Enter][Esc] en esperas
+  - Input: escribe y Enter -> llega al Claude de esa sesion tmux
+  - Boton [Abrir] -> enfoca la pestana/sesion via cc-dash
+
+Protocolo IDENTICO al de Linux, para que hooks/cc-notify.sh no cambie:
+  POST 127.0.0.1:4778/notify
+  {title, body, session, kind, project, options, full}
+
+Corre como servicio:  launchctl list | grep cc-notifyd
+"""
+import json
+import os
+import re
+import subprocess
+import threading
+import urllib.request
+import http.server
+import socketserver
+
+try:
+    import objc  # noqa: F401
+    from Foundation import NSObject, NSMakeRect, NSTimer, NSURL
+    from AppKit import (
+        NSApplication, NSApp, NSPanel, NSColor, NSScreen, NSPasteboard,
+        NSPasteboardTypeString, NSApplicationActivationPolicyAccessory,
+        NSWindowStyleMaskBorderless, NSWindowStyleMaskNonactivatingPanel,
+        NSBackingStoreBuffered, NSWindowCollectionBehaviorCanJoinAllSpaces,
+        NSWindowCollectionBehaviorFullScreenAuxiliary,
+        NSWindowCollectionBehaviorStationary,
+    )
+    from WebKit import (
+        WKWebView, WKWebViewConfiguration, WKUserContentController,
+    )
+    from PyObjCTools import AppHelper
+except ImportError:
+    _es = os.environ.get("LANG", "").lower().startswith("es")
+    if _es:
+        print("Falta PyObjC (motor de los popups nativos de macOS). Instalalo:")
+    else:
+        print("PyObjC is missing (engine for the native macOS popups). Install it:")
+    print("  python3 -m pip install --user --break-system-packages "
+          "pyobjc-framework-Cocoa pyobjc-framework-WebKit")
+    raise SystemExit(1)
+
+try:  # nivel de ventana: por encima de apps normales, debajo de alertas del SO
+    from AppKit import NSFloatingWindowLevel as _WIN_LEVEL
+except ImportError:  # pragma: no cover
+    _WIN_LEVEL = 3
+
+PORT = 4778
+DASH = "http://127.0.0.1:4777"
+CARD_W = 470.0          # ancho de la tarjeta (igual que WIDTH en Linux)
+PAD = 10.0              # colchon transparente para la sombra CSS
+PANEL_W = CARD_W + PAD * 2
+MARGIN = 14.0
+TOP = 48.0
+GAP = 10.0
+MAX_POPUPS = 8
+DONE_TIMEOUT = 12.0
+ALLOWED_KEYS = {"Enter", "Escape", "1", "2", "3"}
+SESSION_RE = re.compile(r"^[A-Za-z0-9._-]{1,80}$")
+
+
+def _ui_lang():
+    v = "auto"
+    try:
+        with open(os.path.expanduser("~/.claude/hooks/cc-notify.conf")) as f:
+            for line in f:
+                line = line.strip()
+                if line.startswith("CC_LANG="):
+                    v = line.split("=", 1)[1].strip().strip('"\'')
+    except Exception:
+        pass
+    if v in ("es", "en"):
+        return v
+    return "es" if os.environ.get("LANG", "").lower().startswith("es") else "en"
+
+
+UI_LANG = _ui_lang()
+TR = {  # (es, en) — mismas cadenas que bin/cc-notifyd
+    "waiting_tag": ("espera tu respuesta", "waiting for your answer"),
+    "done_tag": ("listo", "done"),
+    "see_all": ("… Ver TODO", "… View ALL"),
+    "see_less": ("… Ver menos", "… View less"),
+    "copy": ("Copiar", "Copy"),
+    "copied": ("Copiado ✓", "Copied ✓"),
+    "reply_wait": ("Responde aqui y Enter...", "Reply here and press Enter..."),
+    "reply_next": ("Siguiente instruccion...", "Next instruction..."),
+    "open": ("Abrir", "Open"),
+    "mute_tip": ("Silenciar / activar el sonido de las notificaciones",
+                 "Mute / unmute notification sounds"),
+}
+
+
+def tr(k):
+    return TR[k][0 if UI_LANG == "es" else 1]
+
+
+popups = []          # NSPanel en orden de apilado (arriba -> abajo)
+by_session = {}      # sesion -> NSPanel (uno por sesion, como en Linux)
+
+
+# ---------------------------------------------------------------------------
+# Puente a tmux / cc-dash — identico a la version Linux
+# ---------------------------------------------------------------------------
+def tmux(*args):
+    try:
+        return subprocess.run(["tmux", *args], capture_output=True,
+                              text=True, timeout=5)
+    except Exception:
+        return subprocess.CompletedProcess(args, 1, "", "")
+
+
+def alive(sess):
+    return (SESSION_RE.match(sess)
+            and tmux("has-session", "-t", f"={sess}").returncode == 0)
+
+
+def dash(path, payload):
+    """cc-dash sabe donde vive el claude de un proyecto (aunque este en una
+    pestana term-* de la app) — por eso las teclas van via el, no directo a
+    tmux. Lanza excepcion si cc-dash no responde."""
+    req = urllib.request.Request(
+        DASH + path, data=json.dumps(payload).encode(),
+        headers={"Content-Type": "application/json"})
+    urllib.request.urlopen(req, timeout=5)
+
+
+def dash_get(path, timeout=1.5):
+    with urllib.request.urlopen(DASH + path, timeout=timeout) as r:
+        return json.loads(r.read().decode())
+
+
+def send_key(sess, key):
+    if key not in ALLOWED_KEYS or not SESSION_RE.match(sess):
+        return
+    try:
+        dash("/key", {"session": sess, "key": key})
+    except Exception:
+        if alive(sess):
+            tmux("send-keys", "-t", f"={sess}:", key)
+
+
+def choose(sess, digit):
+    """Opcion N de un prompt numerado: el digito y, 250ms despues, el Enter."""
+    send_key(sess, digit)
+
+    def _confirm():
+        send_key(sess, "Enter")
+    threading.Timer(0.25, _confirm).start()
+
+
+def send_text(sess, text):
+    text = (text or "").strip()
+    if not text or not SESSION_RE.match(sess):
+        return
+    try:
+        dash("/send", {"session": sess, "text": text})
+    except Exception:
+        if alive(sess):
+            tmux("send-keys", "-t", f"={sess}:", "-l", "--", text)
+            tmux("send-keys", "-t", f"={sess}:", "Enter")
+
+
+def open_session(sess):
+    if not SESSION_RE.match(sess):
+        return
+    # Delegar en cc-dash: enfoca la pestana correcta de la app (o cambia el
+    # cliente tmux / abre una terminal si la app no esta abierta).
+    try:
+        dash("/focus", {"session": sess})
+    except Exception:
+        tmux("switch-client", "-t", f"={sess}")
+    # En Mac no hay wmctrl: traemos ComandOS al frente con open -a (no-op si
+    # no esta instalada la app).
+    try:
+        subprocess.run(["open", "-a", "ComandOS"], capture_output=True,
+                       timeout=2)
+    except Exception:
+        pass
+
+
+def sound_enabled():
+    try:
+        return str(dash_get("/conf").get("SOUND_ENABLED", "1")) != "0"
+    except Exception:
+        return True
+
+
+def set_sound_enabled(on):
+    try:
+        dash("/conf-set", {"key": "SOUND_ENABLED", "value": "1" if on else "0"})
+    except Exception:
+        pass
+
+
+def copy_to_clipboard(text):
+    pb = NSPasteboard.generalPasteboard()
+    pb.clearContents()
+    pb.setString_forType_(text or "", NSPasteboardTypeString)
+
+
+# ---------------------------------------------------------------------------
+# HTML del popup — el markdown se renderiza en JS (tablas de verdad)
+# ---------------------------------------------------------------------------
+CSS = """
+:root { color-scheme: dark; }
+* { box-sizing: border-box; }
+html, body { margin:0; padding:0; background:transparent; overflow:hidden; }
+body {
+  padding: %(pad)spx;
+  font-family: 'JetBrainsMono Nerd Font', 'JetBrainsMono Nerd Font Mono',
+               ui-monospace, Menlo, monospace;
+  -webkit-user-select: none; user-select: none;
+}
+.card {
+  display:flex; background:#121722; border:1px solid #222A3A;
+  border-radius:12px; overflow:hidden;
+  box-shadow: 0 18px 50px rgba(0,0,0,.55);
+}
+.card.waiting { border-color:#6b4c12; }
+.edge { flex:0 0 6px; background:#2EE59D; }
+.card.waiting .edge { background:#FFAE1A; }
+.main { flex:1 1 auto; min-width:0; padding:9px 11px 10px; }
+
+.head { display:flex; align-items:center; gap:6px; }
+.dot { color:#2EE59D; font-size:9px; line-height:1; }
+.card.waiting .dot { color:#FFAE1A; }
+.proj {
+  color:#EAF0FB; font-weight:700; font-size:13.5px; cursor:pointer;
+  white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:210px;
+}
+.proj:hover { color:#7AA5FF; }
+.tag { color:#FFAE1A; font-size:9.5px; font-weight:700; flex:1 1 auto;
+       white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.card.done .tag { color:#2EE59D; }
+.iconbtn { background:none; border:none; color:#5E6980; cursor:pointer;
+           padding:0 3px; font-size:12.5px; font-family:inherit; }
+.iconbtn:hover { color:#EAF0FB; }
+
+.body {
+  color:#D6DEED; font-size:12.5px; line-height:1.5; margin-top:7px;
+  -webkit-user-select:text; user-select:text; word-break:break-word;
+}
+.body.full { max-height:520px; overflow-y:auto; }
+.body b { color:#EAF0FB; }
+.body code, .body pre {
+  font-family:inherit; background:#0A0D13; border-radius:4px;
+  color:#B9C6DE;
+}
+.body code { padding:1px 4px; font-size:11.5px; }
+.body pre { padding:7px 9px; margin:6px 0; overflow-x:auto; font-size:11.5px; }
+.body ::selection { background:#8B7CFF; color:#0A0D13; }
+.body u { color:#7AA5FF; text-decoration:underline; }
+.tablewrap { overflow-x:auto; margin:6px 0; }
+.body table { border-collapse:collapse; font-size:11.5px; white-space:nowrap; }
+.body th, .body td {
+  border:1px solid #222A3A; padding:3px 8px; text-align:left;
+}
+.body th { color:#EAF0FB; background:#0F141E; font-weight:700; }
+
+.tools { display:flex; align-items:center; gap:10px; margin-top:8px; }
+.link {
+  color:#7AA5FF; font-size:11.5px; background:none; border:none; padding:0;
+  cursor:pointer; font-family:inherit;
+}
+.link:hover { color:#EAF0FB; }
+
+.opts { display:flex; gap:6px; margin-top:8px; flex-wrap:wrap; }
+.opts.stack { flex-direction:column; }
+.btn {
+  background:#0A0D13; color:#9AA6BF; border:1px solid #222A3A;
+  border-radius:6px; padding:4px 10px; font-size:11.5px; cursor:pointer;
+  font-family:inherit; min-height:24px; text-align:left;
+}
+.btn:hover { color:#EAF0FB; border-color:#5E6980; background:#161C29; }
+.btn.primary { color:#FFAE1A; border-color:#6b4c12; }
+.btn.primary:hover { border-color:#FFAE1A; }
+.btn.open { color:#7AA5FF; flex:0 0 auto; }
+.opts.stack .btn { width:100%%; }
+
+.foot { display:flex; gap:6px; margin-top:8px; align-items:center; }
+input.reply {
+  flex:1 1 auto; min-width:0; background:#0A0D13; color:#EAF0FB;
+  border:1px solid #222A3A; border-radius:7px; padding:6px 10px;
+  font-family:inherit; font-size:12px; caret-color:#7AA5FF;
+  -webkit-user-select:text; user-select:text;
+}
+input.reply:focus { outline:none; border-color:#7AA5FF; }
+input.reply::placeholder { color:#5E6980; }
+""" % {"pad": PAD}
+
+JS = r"""
+const D = window.__CC__;
+const send = (m) => { try { window.webkit.messageHandlers.pop.postMessage(m); }
+                      catch (e) {} };
+
+/* ---- markdown -> HTML (bold/italic/code/fences/headings/listas/tablas) ---- */
+const esc = (s) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;")
+                    .replace(/>/g, "&gt;");
+function inline(s) {
+  return esc(s)
+    .replace(/`([^`]+)`/g, (m, c) => "<code>" + c + "</code>")
+    .replace(/\*\*([^*]+)\*\*/g, "<b>$1</b>")
+    .replace(/(^|[\s(])\*([^*\n]+)\*(?=[\s).,;:!?]|$)/g, "$1<i>$2</i>")
+    .replace(/\[([^\]]+)\]\([^)]*\)/g, "<u>$1</u>");
+}
+function isRow(l) { return /^\s*\|.*\|\s*$/.test(l); }
+function isSep(l) { return /^\s*\|[\s:|-]+\|\s*$/.test(l); }
+function cells(l) {
+  return l.trim().replace(/^\||\|$/g, "").split("|").map((c) => c.trim());
+}
+function md(text) {
+  const lines = (text || "").split("\n");
+  let out = "", i = 0, fence = null;
+  while (i < lines.length) {
+    const l = lines[i];
+    if (/^\s*```/.test(l)) {                       /* bloque de codigo */
+      if (fence === null) { fence = []; i++; continue; }
+      out += "<pre>" + esc(fence.join("\n")) + "</pre>"; fence = null; i++;
+      continue;
+    }
+    if (fence !== null) { fence.push(l); i++; continue; }
+    if (isRow(l) && i + 1 < lines.length && isSep(lines[i + 1])) {
+      const head = cells(l); i += 2;
+      let t = "<div class=tablewrap><table><tr>";
+      head.forEach((c) => { t += "<th>" + inline(c) + "</th>"; });
+      t += "</tr>";
+      while (i < lines.length && isRow(lines[i])) {
+        t += "<tr>";
+        cells(lines[i]).forEach((c) => { t += "<td>" + inline(c) + "</td>"; });
+        t += "</tr>"; i++;
+      }
+      out += t + "</table></div>"; continue;
+    }
+    if (/^\s*#{1,6}\s+/.test(l)) {
+      out += "<b>" + inline(l.replace(/^\s*#{1,6}\s+/, "")) + "</b><br>";
+      i++; continue;
+    }
+    if (/^\s*[-*]\s+/.test(l)) {
+      out += "• " + inline(l.replace(/^\s*[-*]\s+/, "")) + "<br>"; i++; continue;
+    }
+    out += (l.trim() === "" ? "<br>" : inline(l) + "<br>"); i++;
+  }
+  if (fence !== null) out += "<pre>" + esc(fence.join("\n")) + "</pre>";
+  return out;
+}
+
+/* ---- preview: hasta 8 lineas no vacias o 520 chars (igual que Linux) ---- */
+function head(text) {
+  const keep = []; let n = 0, chars = 0;
+  for (const l of (text || "").split("\n")) {
+    if (l.trim()) { n++; chars += l.length; }
+    keep.push(l);
+    if (n >= 8 || chars >= 520) break;
+  }
+  return keep.join("\n");
+}
+
+const src = D.full || D.body || "";
+const preview = head(src);
+const bodyEl = document.getElementById("body");
+bodyEl.innerHTML = md(preview);
+
+let expanded = false;
+const moreBtn = document.getElementById("more");
+if (D.full && D.full.trim() !== preview.trim()) {
+  moreBtn.style.display = "";
+  moreBtn.onclick = () => {
+    expanded = !expanded;
+    bodyEl.innerHTML = md(expanded ? D.full.slice(0, 16000) : preview);
+    bodyEl.classList.toggle("full", expanded);
+    moreBtn.textContent = expanded ? D.t.see_less : D.t.see_all;
+    send({ action: "expanded", on: expanded });
+    report();
+  };
+}
+
+document.getElementById("copy").onclick = (e) => {
+  send({ action: "copy", text: src });
+  e.target.textContent = D.t.copied;
+  setTimeout(() => { e.target.textContent = D.t.copy; }, 2000);
+};
+document.getElementById("close").onclick = () => send({ action: "close" });
+document.getElementById("proj").onclick = () => send({ action: "open" });
+document.getElementById("openbtn").onclick = () => send({ action: "open" });
+
+const mute = document.getElementById("mute");
+let sound = D.sound;
+const paintMute = () => { mute.textContent = sound ? "🔊" : "🔇"; };
+paintMute();
+mute.onclick = () => { sound = !sound; paintMute();
+                       send({ action: "mute", on: sound }); };
+
+document.querySelectorAll("[data-opt]").forEach((b) => {
+  b.onclick = () => send({ action: "choose", n: b.dataset.opt });
+});
+document.querySelectorAll("[data-key]").forEach((b) => {
+  b.onclick = () => send({ action: "key", key: b.dataset.key });
+});
+
+const reply = document.getElementById("reply");
+reply.addEventListener("keydown", (e) => {
+  if (e.key === "Enter") {
+    e.preventDefault();
+    const t = reply.value.trim();
+    if (t) send({ action: "send", text: t });
+  }
+});
+reply.addEventListener("focus", () => send({ action: "typing", on: true }));
+reply.addEventListener("blur", () => send({ action: "typing", on: false }));
+
+/* ---- altura real -> el panel se ajusta al contenido ---- */
+let last = 0;
+function report() {
+  const h = Math.ceil(
+    document.querySelector(".card").getBoundingClientRect().height + %(pad2)s);
+  if (h !== last) { last = h; send({ action: "height", h: h }); }
+}
+new ResizeObserver(report).observe(document.querySelector(".card"));
+report();
+""" % {"pad2": PAD * 2}
+
+
+def _js_json(obj):
+    """json.dumps seguro para incrustar dentro de <script>."""
+    return (json.dumps(obj)
+            .replace("<", "\\u003c").replace(">", "\\u003e")
+            .replace("&", "\\u0026"))
+
+
+def _esc(s):
+    return (str(s).replace("&", "&amp;").replace("<", "&lt;")
+            .replace(">", "&gt;").replace('"', "&quot;"))
+
+
+def popup_html(body, session, kind, project, options_str="", full=""):
+    labels = [o.strip() for o in (options_str or "").split("\x1f") if o.strip()][:4]
+    waiting = kind == "waiting"
+    tag = tr("waiting_tag") if waiting else tr("done_tag")
+
+    # Etiquetas largas -> un boton por renglon (igual que Linux).
+    stack = any(len(x) > 14 for x in labels)
+    limit = 60 if stack else 16
+    opts = ""
+    for i, lab in enumerate(labels):
+        short = lab if len(lab) <= limit else lab[:limit - 1] + "…"
+        opts += (f'<button class="btn primary" data-opt="{i + 1}">'
+                 f'{i + 1}. {_esc(short)}</button>')
+    # Enter solo si NO hay opciones numeradas; Esc siempre en esperas.
+    keys = ""
+    if waiting:
+        if not labels:
+            keys += '<button class="btn primary" data-key="Enter">Enter</button>'
+        keys += '<button class="btn" data-key="Escape">Esc</button>'
+    row = opts + keys
+    optrow = (f'<div class="opts{" stack" if stack and opts else ""}">{row}</div>'
+              if row else "")
+
+    data = {
+        "body": body or "",
+        "full": full or "",
+        "sound": sound_enabled(),
+        "t": {k: tr(k) for k in ("see_all", "see_less", "copy", "copied")},
+    }
+    placeholder = tr("reply_wait") if waiting else tr("reply_next")
+    return f"""<!doctype html>
+<meta charset="utf-8">
+<style>{CSS}</style>
+<div class="card {'waiting' if waiting else 'done'}">
+  <div class="edge"></div>
+  <div class="main">
+    <div class="head">
+      <span class="dot">●</span>
+      <span class="proj" id="proj" title="{_esc(project)}">{_esc(project)}</span>
+      <span class="tag">{_esc(tag)}</span>
+      <button class="iconbtn" id="mute" title="{_esc(tr('mute_tip'))}">🔊</button>
+      <button class="iconbtn" id="close">✕</button>
+    </div>
+    <div class="body" id="body"></div>
+    <div class="tools">
+      <button class="link" id="copy">{_esc(tr('copy'))}</button>
+      <button class="link" id="more" style="display:none">{_esc(tr('see_all'))}</button>
+    </div>
+    {optrow}
+    <div class="foot">
+      <input class="reply" id="reply" placeholder="{_esc(placeholder)}"
+             autocomplete="off" spellcheck="false">
+      <button class="btn open" id="openbtn">{_esc(tr('open'))}</button>
+    </div>
+  </div>
+</div>
+<script>window.__CC__ = {_js_json(data)};</script>
+<script>{JS}</script>
+"""
+
+
+# ---------------------------------------------------------------------------
+# NSPanel + WKWebView
+# ---------------------------------------------------------------------------
+class PopupPanel(NSPanel):
+    """Panel sin marco que SI puede tomar el teclado (para el input de
+    respuesta) sin activar la app ni robar el foco al aparecer."""
+
+    def canBecomeKeyWindow(self):
+        return True
+
+
+class PopupBridge(NSObject):
+    """Recibe los mensajes del WKWebView (window.webkit.messageHandlers.pop)."""
+
+    def initWithSession_panel_kind_(self, session, panel, kind):
+        self = objc.super(PopupBridge, self).init()
+        if self is None:
+            return None
+        self.session = session
+        self.panel = panel
+        self.kind = kind
+        self.typing = False
+        self.expanded = False
+        return self
+
+    def userContentController_didReceiveScriptMessage_(self, _ucc, message):
+        try:
+            body = message.body()
+            msg = json.loads(body) if isinstance(body, str) else dict(body)
+        except Exception:
+            return
+        action = msg.get("action")
+        if action == "height":
+            resize_panel(self.panel, float(msg.get("h") or 0))
+        elif action == "choose":
+            choose(self.session, str(msg.get("n") or ""))
+            close_popup(self.panel)
+        elif action == "key":
+            send_key(self.session, str(msg.get("key") or ""))
+            close_popup(self.panel)
+        elif action == "send":
+            send_text(self.session, msg.get("text") or "")
+            close_popup(self.panel)
+        elif action == "open":
+            open_session(self.session)
+            close_popup(self.panel)
+        elif action == "close":
+            close_popup(self.panel)
+        elif action == "copy":
+            copy_to_clipboard(msg.get("text") or "")
+        elif action == "mute":
+            set_sound_enabled(bool(msg.get("on")))
+        elif action == "typing":
+            self.typing = bool(msg.get("on"))
+        elif action == "expanded":
+            self.expanded = bool(msg.get("on"))
+
+    # -- auto-cierre de los "done" (12s), respetando escritura/expansion ----
+    def autoDismiss_(self, _timer):
+        if self.typing or self.expanded:
+            schedule_dismiss(self.panel)
+            return
+        close_popup(self.panel)
+
+
+def screen_frame():
+    scr = NSScreen.mainScreen() or (NSScreen.screens()[0]
+                                    if NSScreen.screens() else None)
+    if scr is None:
+        return (0.0, 0.0, 1440.0, 900.0)
+    f = scr.visibleFrame()
+    return (f.origin.x, f.origin.y, f.size.width, f.size.height)
+
+
+def reposition():
+    """Apila los popups arriba a la derecha. Ojo: AppKit mide desde abajo."""
+    x0, y0, w, h = screen_frame()
+    x = x0 + w - PANEL_W - MARGIN
+    top = y0 + h - TOP
+    for p in popups:
+        ph = p.frame().size.height
+        p.setFrameOrigin_((x, top - ph))
+        top -= ph + GAP
+
+
+def resize_panel(panel, height):
+    if height <= 0:
+        return
+    f = panel.frame()
+    # El origen vive abajo-izquierda: al crecer hay que bajar el origen para
+    # que el borde superior no se mueva.
+    panel.setFrame_display_(
+        NSMakeRect(f.origin.x, f.origin.y + f.size.height - height,
+                   PANEL_W, height), True)
+    reposition()
+
+
+def close_popup(panel):
+    if panel in popups:
+        popups.remove(panel)
+    for s, p in list(by_session.items()):
+        if p is panel:
+            by_session.pop(s, None)
+    timer = getattr(panel, "_cc_timer", None)
+    if timer is not None:
+        try:
+            timer.invalidate()
+        except Exception:
+            pass
+    panel.orderOut_(None)
+    panel.close()
+    reposition()
+
+
+def schedule_dismiss(panel):
+    bridge = getattr(panel, "_cc_bridge", None)
+    if bridge is None:
+        return
+    panel._cc_timer = (
+        NSTimer.scheduledTimerWithTimeInterval_target_selector_userInfo_repeats_(
+            DONE_TIMEOUT, bridge, "autoDismiss:", None, False))
+
+
+def make_popup(title, body, session, kind, project, options_str="", full=""):
+    old = by_session.get(session)
+    if old is not None:
+        close_popup(old)
+
+    style = NSWindowStyleMaskBorderless | NSWindowStyleMaskNonactivatingPanel
+    panel = PopupPanel.alloc().initWithContentRect_styleMask_backing_defer_(
+        NSMakeRect(0, 0, PANEL_W, 160), style, NSBackingStoreBuffered, False)
+    panel.setLevel_(_WIN_LEVEL)
+    panel.setOpaque_(False)
+    panel.setBackgroundColor_(NSColor.clearColor())
+    panel.setHasShadow_(False)          # la sombra la dibuja el CSS
+    panel.setMovableByWindowBackground_(True)
+    panel.setHidesOnDeactivate_(False)
+    panel.setBecomesKeyOnlyIfNeeded_(True)
+    panel.setCollectionBehavior_(
+        NSWindowCollectionBehaviorCanJoinAllSpaces
+        | NSWindowCollectionBehaviorFullScreenAuxiliary
+        | NSWindowCollectionBehaviorStationary)
+
+    bridge = PopupBridge.alloc().initWithSession_panel_kind_(
+        session, panel, kind)
+    ucc = WKUserContentController.alloc().init()
+    ucc.addScriptMessageHandler_name_(bridge, "pop")
+    cfg = WKWebViewConfiguration.alloc().init()
+    cfg.setUserContentController_(ucc)
+
+    wv = WKWebView.alloc().initWithFrame_configuration_(
+        NSMakeRect(0, 0, PANEL_W, 160), cfg)
+    try:
+        wv.setValue_forKey_(False, "drawsBackground")   # fondo transparente
+    except Exception:
+        pass
+    wv.loadHTMLString_baseURL_(
+        popup_html(body, session, kind, project, options_str, full),
+        NSURL.URLWithString_("about:blank"))
+    panel.setContentView_(wv)
+
+    panel._cc_bridge = bridge
+    panel._cc_timer = None
+    popups.append(panel)
+    by_session[session] = panel
+    reposition()
+    panel.orderFrontRegardless()        # visible SIN robar el foco
+    if kind != "waiting":
+        schedule_dismiss(panel)
+    return panel
+
+
+# ---------------------------------------------------------------------------
+# Servidor HTTP — mismo endpoint y mismas defensas que la version Linux
+# ---------------------------------------------------------------------------
+class Handler(http.server.BaseHTTPRequestHandler):
+    def log_message(self, *_a):
+        pass
+
+    def _reply(self, code, payload=b'{"ok":true}'):
+        self.send_response(code)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Length", str(len(payload)))
+        self.end_headers()
+        self.wfile.write(payload)
+
+    def do_POST(self):
+        if self.client_address[0] not in ("127.0.0.1", "::1"):
+            self._reply(403, b'{"error":"forbidden"}')
+            return
+        origin = self.headers.get("Origin")
+        if origin and not origin.startswith("http://127.0.0.1"):
+            self._reply(403, b'{"error":"forbidden"}')
+            return
+        if self.path != "/notify":
+            self._reply(404, b'{"error":"not found"}')
+            return
+        try:
+            n = int(self.headers.get("Content-Length") or 0)
+        except ValueError:
+            n = 0
+        if n > 200000:
+            self._reply(413, b'{"error":"too large"}')
+            return
+        try:
+            d = json.loads(self.rfile.read(n).decode() or "{}")
+        except Exception:
+            self._reply(400, b'{"error":"bad json"}')
+            return
+        if len(popups) >= MAX_POPUPS:      # anti-spam de pantalla
+            self._reply(200)
+            return
+        sess = str(d.get("session") or "")
+        if not SESSION_RE.match(sess):
+            self._reply(200)
+            return
+        args = (
+            str(d.get("title") or "")[:200],
+            str(d.get("body") or "")[:400],
+            sess,
+            "waiting" if d.get("kind") == "waiting" else "done",
+            str(d.get("project") or "")[:80],
+            str(d.get("options") or "")[:600],
+            str(d.get("full") or "")[:60000],
+        )
+        AppHelper.callAfter(lambda: make_popup(*args))
+        self._reply(200)
+
+
+class AppDelegate(NSObject):
+    def applicationDidFinishLaunching_(self, _n):
+        NSApp.setActivationPolicy_(NSApplicationActivationPolicyAccessory)
+
+
+def serve():
+    socketserver.ThreadingTCPServer.allow_reuse_address = True
+    with socketserver.ThreadingTCPServer(("127.0.0.1", PORT), Handler) as srv:
+        srv.serve_forever()
+
+
+def main():
+    app = NSApplication.sharedApplication()
+    delegate = AppDelegate.alloc().init()
+    app.setDelegate_(delegate)
+    threading.Thread(target=serve, daemon=True).start()
+    AppHelper.runEventLoop()
+
+
+if __name__ == "__main__":
+    main()

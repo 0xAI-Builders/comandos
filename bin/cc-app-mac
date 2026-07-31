@@ -586,6 +586,35 @@ class AppController(NSObject):
 
         self.window.makeKeyAndOrderFront_(None)
         NSApp.activateIgnoringOtherApps_(True)
+        # El split y los webviews nacen con el frame previo al primer display:
+        # hasta que algo fuerza resizeSubviewsWithOldSize, xterm mide columnas
+        # contra ese tamano viejo y tmux queda en ~24 cols. Un relayout diferido
+        # un tick despues del primer display lo corrige.
+        NSTimer.scheduledTimerWithTimeInterval_target_selector_userInfo_repeats_(
+            0.4, self, "forceRelayout:", None, False)
+
+    def forceRelayout_(self, _timer):
+        self._force_relayout()
+
+    @objc.python_method
+    def _force_relayout(self):
+        try:
+            cw = self.window.contentView().frame().size.width
+            self.split.adjustSubviews()
+            self.split.setPosition_ofDividerAtIndex_(
+                int(cw) if not self.term_visible else int(cw * 0.52), 0)
+            self._fit_tab_webviews()
+            self._relayout_strip()
+        except Exception:
+            pass
+
+    @objc.python_method
+    def _fit_tab_webviews(self):
+        """Cada webview debe llenar term_area; si no, el ResizeObserver de
+        term.html nunca corrige las columnas heredadas del frame inicial."""
+        bounds = self.term_area.bounds()
+        for t in self.tabs:
+            t["webview"].setFrame_(bounds)
 
     @objc.python_method
     def _enable_local_access(self, cfg):
@@ -692,6 +721,7 @@ class AppController(NSObject):
                "host": host, "cwd": cwd}
         self.tabs.append(tab)
         self._set_tab_title(tab)
+        self._fit_tab_webviews()
         self._relayout_strip()
         return tab
 
