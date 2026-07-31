@@ -50,6 +50,7 @@ try:
         NSApplication, NSApp, NSWindow, NSView, NSButton, NSSplitView,
         NSScrollView, NSWorkspace,
         NSMenu, NSMenuItem, NSAlert, NSTextField, NSColor, NSFont,
+        NSPasteboard, NSPasteboardTypeString, NSPoint,
         NSApplicationActivationPolicyRegular, NSAppearance,
         NSAppearanceNameDarkAqua,
         NSWindowStyleMaskTitled, NSWindowStyleMaskClosable,
@@ -423,6 +424,37 @@ def ensure_webterm():
 
 
 # ---------------------------------------------------------------------------
+# Puente de la terminal: WKScriptMessageHandler "term" (menu contextual)
+# ---------------------------------------------------------------------------
+class TermBridge(NSObject):
+    """Un puente por pestana. term.html detecta su existencia para saber que
+    corre en la app de escritorio y nos manda el click derecho con la celda
+    (col,row) bajo el cursor, para que tmux pueda resolver el pane igual que
+    hace pane_at() en la version GTK."""
+
+    def initWithController_key_(self, controller, key):
+        self = objc.super(TermBridge, self).init()
+        if self is None:
+            return None
+        self.controller = controller
+        self.key = key
+        return self
+
+    def userContentController_didReceiveScriptMessage_(self, _ucc, message):
+        try:
+            body = message.body()
+            msg = json.loads(body) if isinstance(body, str) else dict(body)
+        except Exception:
+            return
+        if msg.get("action") != "contextmenu":
+            return
+        try:
+            self.controller.showTermMenuForKey_info_(self.key, msg)
+        except Exception as e:  # pragma: no cover
+            print("menu contextual:", e, file=sys.stderr)
+
+
+# ---------------------------------------------------------------------------
 # Puente del tablero: WKScriptMessageHandler "centro"
 # ---------------------------------------------------------------------------
 class DashBridge(NSObject):
@@ -697,6 +729,13 @@ class AppController(NSObject):
 
         cfg = WKWebViewConfiguration.alloc().init()
         self._enable_local_access(cfg)
+        # Puente del menu contextual: term.html detecta este handler para saber
+        # que corre dentro de la app y mandarnos el click derecho en vez de
+        # dejar que WebKit muestre su menu de "Recargar / Inspeccionar".
+        term_ucc = WKUserContentController.alloc().init()
+        term_bridge = TermBridge.alloc().initWithController_key_(self, key)
+        term_ucc.addScriptMessageHandler_name_(term_bridge, "term")
+        cfg.setUserContentController_(term_ucc)
         frame = self.term_area.bounds()
         wv = WKWebView.alloc().initWithFrame_configuration_(frame, cfg)
         wv.setAutoresizingMask_(NSViewWidthSizable | NSViewHeightSizable)
@@ -718,12 +757,280 @@ class AppController(NSObject):
 
         tab = {"key": key, "label": label, "webview": wv, "button": btn,
                "is_hub": is_hub, "kind": kind or "internal",
-               "host": host, "cwd": cwd}
+               "host": host, "cwd": cwd, "bridge": term_bridge}
         self.tabs.append(tab)
         self._set_tab_title(tab)
         self._fit_tab_webviews()
         self._relayout_strip()
         return tab
+
+    # -- menu contextual de la terminal (paridad con on_term_button de GTK) --
+    @objc.python_method
+    def _pane_at(self, sess, col, row):
+        """(pane_id, total) del pane bajo el cursor — mismo criterio que
+        pane_at() en bin/cc-app, pero con la celda que ya calculo term.html."""
+        if not sess:
+            return None, 0
+        r = tmuxc("list-panes", "-t", "=" + sess + ":", "-F",
+                  "#{pane_id}|#{pane_left}|#{pane_top}|#{pane_right}|#{pane_bottom}")
+        panes = [l.split("|") for l in r.stdout.splitlines() if l.count("|") == 4]
+        for pid, left, top, right, bottom in panes:
+            try:
+                if (int(left) <= col <= int(right)
+                        and int(top) <= row <= int(bottom)):
+                    return pid, len(panes)
+            except ValueError:
+                continue
+        return None, len(panes)
+
+    @objc.python_method
+    def _menu_item(self, menu, title, handler, enabled=True):
+        """NSMenuItem con callback Python. PyObjC necesita un target objc, asi
+        que guardamos el callable en una lista viva mientras exista el menu."""
+        it = NSMenuItem.alloc().initWithTitle_action_keyEquivalent_(
+            title, "runMenuAction:" if enabled else None, "")
+        if enabled:
+            it.setTarget_(self)
+            it.setRepresentedObject_(len(self._menu_actions))
+            self._menu_actions.append(handler)
+        it.setEnabled_(bool(enabled))
+        menu.addItem_(it)
+        return it
+
+    def runMenuAction_(self, sender):
+        try:
+            self._menu_actions[int(sender.representedObject())]()
+        except Exception as e:  # pragma: no cover
+            print("accion de menu:", e, file=sys.stderr)
+
+    def showTermMenuForKey_info_(self, key, info):
+        tab = self._tab_for_key(key)
+        if tab is None:
+            return
+        m = self._build_term_menu(
+            tab, int(info.get("col") or 0), int(info.get("row") or 0),
+            info.get("selection") or "")
+        # El punto llega en coordenadas CSS (origen arriba-izquierda); AppKit
+        # mide desde abajo, asi que invertimos la Y contra el alto del webview.
+        wv = tab["webview"]
+        pt = NSPoint(float(info.get("x") or 0),
+                     wv.bounds().size.height - float(info.get("y") or 0))
+        m.popUpMenuPositioningItem_atLocation_inView_(None, pt, wv)
+
+    @objc.python_method
+    def _build_term_menu(self, tab, col, row, selection):
+        sess = "local" if tab["is_hub"] else tab["key"]
+        pane_id, npanes = self._pane_at(sess, col, row)
+        if pane_id:
+            tmuxc("select-pane", "-t", pane_id)   # igual que GTK: enfoca antes
+        host = ssh_host_from_session(sess)
+
+        def split(flags, cmd=None):
+            target = pane_id or ("=" + sess + ":")
+            args = ["split-window"] + list(flags) + ["-t", target]
+            if cmd:
+                args.append(cmd)
+            else:
+                r = tmuxc("display-message", "-p", "-t", target,
+                          "#{pane_current_path}")
+                cwd = r.stdout.strip()
+                if cwd:
+                    args += ["-c", cwd]
+            tmuxc(*args)
+
+        self._menu_actions = []
+        m = NSMenu.alloc().init()
+        # Sin esto NSMenu decide solo que habilitar (via validateMenuItem:) e
+        # IGNORA setEnabled_, asi que "Cerrar ESTE split" saldria activo con un
+        # solo pane. Linux marca esos items como insensibles explicitamente.
+        m.setAutoenablesItems_(False)
+        mi = self._menu_item
+
+        mi(m, "Copiar                   Ctrl+C" if ES else
+              "Copy                     Ctrl+C",
+           lambda: self._copy_selection(sess, pane_id, selection))
+        mi(m, "Pegar                    Ctrl+V" if ES else
+              "Paste                    Ctrl+V",
+           lambda: self._paste_into(sess, pane_id))
+        mi(m, "Copiar respuesta de Claude" if ES else "Copy Claude's reply",
+           lambda: self._copy_claude_reply(sess))
+        mi(m, "Guardar respuesta como .txt" if ES else "Save reply as .txt",
+           lambda: self._export_reply(sess, "txt"))
+        mi(m, "Guardar respuesta como PDF" if ES else "Save reply as PDF",
+           lambda: self._export_reply(sess, "pdf"))
+        m.addItem_(NSMenuItem.separatorItem())
+
+        if host:
+            sshcmd = "ssh " + host
+            mi(m, "Split derecha    (otra conexion al server)" if ES else
+                  "Split right    (new connection to server)",
+               lambda: split(["-h"], sshcmd))
+            mi(m, "Split izquierda  (otra conexion al server)" if ES else
+                  "Split left     (new connection to server)",
+               lambda: split(["-h", "-b"], sshcmd))
+            mi(m, "Split abajo      (otra conexion al server)" if ES else
+                  "Split down     (new connection to server)",
+               lambda: split(["-v"], sshcmd))
+            mi(m, "Split arriba     (otra conexion al server)" if ES else
+                  "Split up       (new connection to server)",
+               lambda: split(["-v", "-b"], sshcmd))
+            mi(m, "Split local (tu maquina, derecha)" if ES else
+                  "Local split (your machine, right)", lambda: split(["-h"]))
+        else:
+            mi(m, "Split derecha" if ES else "Split right",
+               lambda: split(["-h"]))
+            mi(m, "Split izquierda" if ES else "Split left",
+               lambda: split(["-h", "-b"]))
+            mi(m, "Split abajo" if ES else "Split down",
+               lambda: split(["-v"]))
+            mi(m, "Split arriba" if ES else "Split up",
+               lambda: split(["-v", "-b"]))
+        mi(m, "Alternar ventana 1/2     Ctrl-b l" if ES else
+              "Toggle window 1/2        Ctrl-b l",
+           lambda: tmuxc("send-keys", "-t", "=" + sess + ":", "C-b", "l"))
+        mi(m, "Cerrar ESTE split" if ES else "Close THIS split",
+           lambda: tmuxc("kill-pane", "-t", pane_id),
+           enabled=bool(pane_id) and npanes > 1)
+        m.addItem_(NSMenuItem.separatorItem())
+
+        mi(m, "Nueva terminal aqui       Cmd+T" if ES else
+              "New terminal here         Cmd+T",
+           lambda: self.newLocalTab_(None))
+        mi(m, "Abrir proyecto..." if ES else "Open project...",
+           self._prompt_new_session)
+        sub = NSMenu.alloc().init()
+        sub.setAutoenablesItems_(False)
+        r = tmuxc("list-sessions", "-F", "#{session_name}")
+        for s in (r.stdout.split() if r.returncode == 0 else []):
+            mi(sub, s, (lambda s=s: self.openOrFocus_win_label_(s, "claude", s)))
+        sub_item = NSMenuItem.alloc().initWithTitle_action_keyEquivalent_(
+            "Abrir sesion existente" if ES else "Open existing session", None, "")
+        sub_item.setSubmenu_(sub)
+        m.addItem_(sub_item)
+        m.addItem_(NSMenuItem.separatorItem())
+
+        mi(m, "Renombrar pestana..." if ES else "Rename tab...",
+           lambda: self._prompt_rename(tab), enabled=not tab["is_hub"])
+        mi(m, "Cerrar pestana" if ES else "Close tab",
+           lambda: self._close_tab(tab, confirm=True), enabled=not tab["is_hub"])
+        return m
+
+    @objc.python_method
+    def _clipboard_set(self, text):
+        pb = NSPasteboard.generalPasteboard()
+        pb.clearContents()
+        pb.setString_forType_(text or "", NSPasteboardTypeString)
+
+    @objc.python_method
+    def _copy_selection(self, sess, pane_id, selection):
+        """Hay DOS selecciones: la de xterm.js (arrastrar en la app) y la de
+        tmux copy-mode (la que persiste). Cubrimos ambas, como el GTK."""
+        if selection.strip():
+            self._clipboard_set(selection)
+            return
+        target = pane_id
+        if not target:
+            r = tmuxc("list-panes", "-t", "=" + sess + ":", "-F",
+                      "#{pane_id}|#{pane_in_mode}")
+            for line in r.stdout.splitlines():
+                pane, _, mode = line.partition("|")
+                if mode == "1":
+                    target = pane
+                    break
+        if target:
+            tmuxc("send-keys", "-t", target, "-X", "copy-selection-no-clear")
+            r = tmuxc("save-buffer", "-")
+            if r.returncode == 0 and r.stdout:
+                self._clipboard_set(r.stdout)
+                return
+        self._notify(
+            "No se pudo copiar" if ES else "Could not copy",
+            "No encontre una seleccion activa" if ES else
+            "No active selection found")
+
+    @objc.python_method
+    def _paste_into(self, sess, pane_id):
+        pb = NSPasteboard.generalPasteboard()
+        text = pb.stringForType_(NSPasteboardTypeString) or ""
+        if not text:
+            return
+        target = pane_id or ("=" + sess + ":")
+        tmuxc("send-keys", "-t", target, "-X", "cancel")   # sal de copy-mode
+        # load-buffer + paste-buffer -p = pegado entre corchetes: nada corre
+        # hasta que el usuario da Enter (mismo criterio que snip_paste en GTK).
+        p = subprocess.run(["tmux", "load-buffer", "-b", "cc-paste", "-"],
+                           input=text, text=True, capture_output=True)
+        if p.returncode == 0:
+            tmuxc("paste-buffer", "-p", "-b", "cc-paste", "-t", target)
+            tmuxc("delete-buffer", "-b", "cc-paste")
+
+    @objc.python_method
+    def _claude_reply(self, sess):
+        state = http_get_json("/state") or {}
+        for it in (state.get("items") or []):
+            if it.get("session") == sess or it.get("project") == sess:
+                return it.get("detail") or it.get("last") or ""
+        return ""
+
+    @objc.python_method
+    def _copy_claude_reply(self, sess):
+        txt = self._claude_reply(sess)
+        if txt:
+            self._clipboard_set(txt)
+            self._notify("Respuesta copiada" if ES else "Reply copied",
+                         "%d caracteres" % len(txt))
+        else:
+            self._notify("Sin respuesta" if ES else "No reply",
+                         "No hay respuesta guardada para %s" % sess if ES
+                         else "No stored reply for %s" % sess)
+
+    @objc.python_method
+    def _export_reply(self, sess, fmt):
+        res, err = http_post("/export", {"session": sess, "format": fmt},
+                             timeout=45)
+        if err or not res:
+            self._notify("No se pudo exportar" if ES else "Export failed",
+                         str(err or ""))
+            return
+        self._notify("Guardado" if ES else "Saved", str(res.get("path") or ""))
+
+    @objc.python_method
+    def _notify(self, title, body):
+        """Reusa los popups nativos (cc-notifyd-mac) igual que notify_popup()
+        en GTK; si el demonio no corre, no pasa nada."""
+        try:
+            urllib.request.urlopen(urllib.request.Request(
+                "http://127.0.0.1:4778/notify",
+                data=json.dumps({
+                    "title": title, "body": body, "session": "local",
+                    "kind": "done", "project": title, "options": "",
+                    "full": body}).encode(),
+                headers={"Content-Type": "application/json"}), timeout=2)
+        except Exception:
+            pass
+
+    @objc.python_method
+    def _prompt_new_session(self):
+        alert = NSAlert.alloc().init()
+        alert.setMessageText_("Abrir proyecto" if ES else "Open project")
+        alert.setInformativeText_(
+            "Nombre de la sesion" if ES else "Session name")
+        tf = NSTextField.alloc().initWithFrame_(NSMakeRect(0, 0, 260, 24))
+        alert.setAccessoryView_(tf)
+        alert.addButtonWithTitle_("OK")
+        alert.addButtonWithTitle_("Cancelar" if ES else "Cancel")
+        if alert.runModal() != NSAlertFirstButtonReturn:
+            return
+        name = (tf.stringValue() or "").strip().replace(".", "-").replace(":", "-")
+        if not name:
+            return
+        res, err = http_post("/new", {"session": name}, timeout=20)
+        if err:
+            self._notify("No se pudo abrir" if ES else "Could not open",
+                         str(err))
+            return
+        self.openOrFocus_win_label_(
+            (res or {}).get("session") or name, "claude", name)
 
     @objc.python_method
     def _tab_context_menu(self, key):

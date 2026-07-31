@@ -713,6 +713,35 @@
   window.addEventListener('message', handleTerminalMessage);
   if (parent !== window) parent.postMessage({source:'comandos-term', type:'ready'}, location.origin);
 
+  // Menu contextual NATIVO cuando corremos dentro de la app de escritorio
+  // (macOS). Sin esto el click derecho cae al menu por defecto de WebKit
+  // —Recargar / Inspeccionar— en vez del menu de tmux que da la app de Linux.
+  // El puente solo existe en la app, asi que en el navegador y en el celular
+  // el comportamiento no cambia.
+  const nativeMenu = window.webkit?.messageHandlers?.term;
+  if (nativeMenu) {
+    window.addEventListener('contextmenu', (e) => {
+      e.preventDefault();
+      // Celda bajo el cursor: tmux razona en columnas/filas, no en pixeles.
+      // xterm ajusta la rejilla al contenedor, asi que el tamano de celda
+      // sale de dividir el area de pantalla entre cols/rows.
+      let col = 0, row = 0;
+      try {
+        const scr = document.querySelector('.xterm-screen');
+        const r = scr.getBoundingClientRect();
+        col = Math.max(0, Math.floor((e.clientX - r.left) / (r.width / term.cols)));
+        row = Math.max(0, Math.floor((e.clientY - r.top) / (r.height / term.rows)));
+      } catch (_) {}
+      let sel = '';
+      try { sel = term.hasSelection() ? term.getSelection() : ''; } catch (_) {}
+      nativeMenu.postMessage({
+        action: 'contextmenu',
+        x: e.clientX, y: e.clientY,
+        col, row, selection: sel,
+      });
+    });
+  }
+
   // Teclado MOVIL (GBoard/Android): borrar y Enter llegan como eventos
   // beforeinput sin keydown — xterm.js los pierde con el buffer de
   // composicion vacio y "borrar no borra". Los interceptamos y mandamos
