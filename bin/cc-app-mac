@@ -446,12 +446,16 @@ class TermBridge(NSObject):
             msg = json.loads(body) if isinstance(body, str) else dict(body)
         except Exception:
             return
-        if msg.get("action") != "contextmenu":
-            return
+        action = msg.get("action")
         try:
-            self.controller.showTermMenuForKey_info_(self.key, msg)
+            if action == "contextmenu":
+                self.controller.showTermMenuForKey_info_(self.key, msg)
+            elif action == "exitcopy":
+                self.controller.exitCopyForKey_char_cancel_(
+                    self.key, str(msg.get("key") or ""),
+                    bool(msg.get("cancel")))
         except Exception as e:  # pragma: no cover
-            print("menu contextual:", e, file=sys.stderr)
+            print("puente term:", e, file=sys.stderr)
 
 
 # ---------------------------------------------------------------------------
@@ -523,10 +527,71 @@ class AppController(NSObject):
         self._build_window()
         self._build_menu()
         self._start_ipc_timer()
+        self._pane_mode_timer = (
+            NSTimer.scheduledTimerWithTimeInterval_target_selector_userInfo_repeats_(
+                1.0, self, "pollPaneMode:", None, True))
         threading.Thread(target=self._state_poll_loop, daemon=True).start()
         # cc-webterm puede tardar; lo levantamos fuera del hilo de UI y, cuando
         # esta listo, creamos el hub y restauramos las pestanas en el main thread.
         threading.Thread(target=self._boot_terminals, daemon=True).start()
+        if os.environ.get("COMANDOS_DEBUG_FOCUS"):
+            self._start_focus_debug()
+
+    # -- instrumentacion temporal (COMANDOS_DEBUG_FOCUS=1) ------------------
+    @objc.python_method
+    def _start_focus_debug(self):
+        from AppKit import NSEvent, NSEventMaskKeyDown
+
+        def on_key(ev):
+            fr = self.window.firstResponder()
+            print("[DBG] keyDown llego a la APP: chars=%r firstResponder=%s" %
+                  (ev.characters(), type(fr).__name__), flush=True)
+            return ev
+        self._dbg_monitor = NSEvent.addLocalMonitorForEventsMatchingMask_handler_(
+            NSEventMaskKeyDown, on_key)
+        self._dbg_timer = (
+            NSTimer.scheduledTimerWithTimeInterval_target_selector_userInfo_repeats_(
+                3.0, self, "dbgTick:", None, True))
+
+    def dbgTick_(self, _t):
+        fr = self.window.firstResponder()
+        key = self.window.isKeyWindow()
+        tab = self._tab_for_key(self.active_key)
+        wv_name = "?"
+        if tab is not None:
+            in_term = False
+            r = fr
+            while r is not None and hasattr(r, "superview"):
+                if r is tab["webview"]:
+                    in_term = True
+                    break
+                r = r.superview()
+            wv_name = "TERMINAL" if in_term else "OTRO"
+        print("[DBG] keyWindow=%s firstResponder=%s (%s) activeTab=%s" %
+              (key, type(fr).__name__, wv_name, self.active_key), flush=True)
+        if tab is not None:
+            tab["webview"].evaluateJavaScript_completionHandler_(
+                "JSON.stringify({hasFocus:document.hasFocus(),"
+                "active:document.activeElement&&(document.activeElement.className"
+                "||document.activeElement.tagName),"
+                "kd:window.__kd||0,"
+                "hook:typeof window.__comandosFocus})",
+                lambda r, e: print("[DBG] pagina:", r if e is None else e,
+                                   flush=True))
+            tab["webview"].evaluateJavaScript_completionHandler_(
+                "if(!window.__kdInstalled){window.__kdInstalled=1;window.__kd=0;"
+                "window.__wsSend=0;window.__beforeinput=0;window.__input=0;"
+                "addEventListener('keydown',()=>window.__kd++,true);"
+                "addEventListener('beforeinput',()=>window.__beforeinput++,true);"
+                "addEventListener('input',()=>window.__input++,true);"
+                "const s=WebSocket.prototype.send;"
+                "WebSocket.prototype.send=function(...a){window.__wsSend++;"
+                "return s.apply(this,a)}}'ok'", None)
+            tab["webview"].evaluateJavaScript_completionHandler_(
+                "JSON.stringify({wsSend:window.__wsSend,bi:window.__beforeinput,"
+                "inp:window.__input})",
+                lambda r, e: print("[DBG] contadores:", r if e is None else e,
+                                   flush=True))
 
     def applicationShouldTerminateAfterLastWindowClosed_(self, _sender):
         return True
@@ -914,6 +979,65 @@ class AppController(NSObject):
         mi(m, "Cerrar pestana" if ES else "Close tab",
            lambda: self._close_tab(tab, confirm=True), enabled=not tab["is_hub"])
         return m
+
+    def exitCopyForKey_char_cancel_(self, key, ch, cancel):
+        """El pane esta en copy-mode y el usuario tecleo algo imprimible:
+        cancela el modo y entrega la tecla despues, EN ORDEN. Un solo worker
+        con cola FIFO — si corrieran en threads sueltos, dos teclas rapidas
+        podrian llegar transpuestas a tmux. Cuando la cola vacia, avisamos a
+        la pagina (__ccRouteDone) para que vuelva a la ruta rapida del ws."""
+        tab = self._tab_for_key(key)
+        if tab is None:
+            return
+        sess = "local" if tab["is_hub"] else key
+        if not hasattr(self, "_key_queue"):
+            import queue
+            self._key_queue = queue.Queue()
+            threading.Thread(target=self._key_queue_worker,
+                             daemon=True).start()
+        self._key_queue.put((tab, "=" + sess + ":", ch, cancel))
+
+    @objc.python_method
+    def _key_queue_worker(self):
+        while True:
+            tab, target, ch, cancel = self._key_queue.get()
+            if cancel:
+                tmuxc("send-keys", "-t", target, "-X", "cancel")
+            if ch:
+                tmuxc("send-keys", "-t", target, "-l", "--", ch)
+            if self._key_queue.empty():
+                def push(t=tab):
+                    try:
+                        t["webview"].evaluateJavaScript_completionHandler_(
+                            "window.__ccRouteDone && window.__ccRouteDone()",
+                            None)
+                    except Exception:
+                        pass
+                AppHelper.callAfter(push)
+
+    def pollPaneMode_(self, _timer):
+        """Cada segundo: ¿el pane visible esta en copy-mode? Se lo dice a la
+        pagina para que el keydown pueda rescatar el teclado. Un solo `tmux
+        display` por tick — mas barato que el poll de /state que ya corre."""
+        tab = self._tab_for_key(self.active_key)
+        if tab is None or tab["webview"].isHidden():
+            return
+        sess = "local" if tab["is_hub"] else tab["key"]
+
+        def work():
+            r = tmuxc("display", "-t", "=" + sess + ":", "-p",
+                      "#{pane_in_mode}")
+            in_mode = r.returncode == 0 and r.stdout.strip() == "1"
+
+            def push():
+                try:
+                    tab["webview"].evaluateJavaScript_completionHandler_(
+                        "window.__ccSetPaneMode && window.__ccSetPaneMode(%s)"
+                        % ("true" if in_mode else "false"), None)
+                except Exception:
+                    pass
+            AppHelper.callAfter(push)
+        threading.Thread(target=work, daemon=True).start()
 
     @objc.python_method
     def _clipboard_set(self, text):
