@@ -454,6 +454,8 @@ class TermBridge(NSObject):
                 self.controller.exitCopyForKey_char_cancel_(
                     self.key, str(msg.get("key") or ""),
                     bool(msg.get("cancel")))
+            elif action == "clickrescue":
+                self.controller.clickRescueForKey_(self.key)
         except Exception as e:  # pragma: no cover
             print("puente term:", e, file=sys.stderr)
 
@@ -1014,6 +1016,28 @@ class AppController(NSObject):
                     except Exception:
                         pass
                 AppHelper.callAfter(push)
+
+    def clickRescueForKey_(self, key):
+        """Un click (arrastre < 5px) acaba de terminar. Si dejo al pane en
+        copy-mode VACIO — sin seleccion y sin scroll — fue el micro-arrastre
+        del click, no una intencion: cancelamos para que el cursor no se quede
+        pegado en la celda clickeada. Seleccionar de verdad (hay seleccion) o
+        leer historial (scroll > 0) nunca entran aqui."""
+        tab = self._tab_for_key(key)
+        if tab is None:
+            return
+        sess = "local" if tab["is_hub"] else key
+        target = "=" + sess + ":"
+
+        def work():
+            time.sleep(0.15)   # deja que tmux termine de procesar el drag
+            r = tmuxc("display", "-t", target, "-p",
+                      "#{pane_in_mode} #{selection_present} #{scroll_position}")
+            parts = (r.stdout or "").split()
+            if (r.returncode == 0 and parts[:2] == ["1", "0"]
+                    and parts[2:3] in ([], ["0"])):
+                tmuxc("send-keys", "-t", target, "-X", "cancel")
+        threading.Thread(target=work, daemon=True).start()
 
     def pollPaneMode_(self, _timer):
         """Cada segundo: ¿el pane visible esta en copy-mode? Se lo dice a la

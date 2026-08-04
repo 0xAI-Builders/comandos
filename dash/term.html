@@ -747,6 +747,25 @@
     // como "ads". Native avisa con __ccRouteDone cuando la cola vacio.
     let ccRouting = false;
     window.__ccRouteDone = () => { ccRouting = false; };
+
+    // Un click real de trackpad casi siempre trae 1-3px de arrastre; tmux lo
+    // toma como MouseDrag1Pane y mete el pane en copy-mode con seleccion
+    // VACIA: el cursor queda "pegado" en la celda clickeada. La app GTK usa
+    // un umbral de 5px para distinguir click de arrastre (on_term_release);
+    // aqui igual: si fue click, native cancela el modo solo si quedo vacio
+    // (sin seleccion y sin scroll — leer historial o seleccionar de verdad
+    // no se tocan). Listeners pasivos: xterm recibe todo normal.
+    let ccMouseDown = null;
+    window.addEventListener('mousedown', (e) => {
+      if (e.button === 0) ccMouseDown = {x: e.clientX, y: e.clientY};
+    }, true);
+    window.addEventListener('mouseup', (e) => {
+      if (e.button !== 0 || !ccMouseDown) return;
+      const dx = Math.abs(e.clientX - ccMouseDown.x);
+      const dy = Math.abs(e.clientY - ccMouseDown.y);
+      ccMouseDown = null;
+      if (dx < 5 && dy < 5) nativeMenu.postMessage({action: 'clickrescue'});
+    }, true);
     window.addEventListener('keydown', (e) => {
       if (!window.__ccPaneInMode && !ccRouting) return;
       if (e.metaKey || e.ctrlKey || e.altKey || e.key.length !== 1) return;
