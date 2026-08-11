@@ -183,6 +183,23 @@ def initial_theme():
     return DEFAULT_THEME
 
 
+# Colores de chrome por tema — mismos valores que THEMES en bin/cc-app (el
+# design system del headerbar GTK): bar=fondo de la barra, brand=acento,
+# text=wordmark, dim=iconos en reposo.
+CHROME_COLORS = {
+    "noche":   dict(bar="#0D1119", brand="#8B7CFF", text="#EAF0FB",
+                    dim="#9AA6BF", line="#222A3A"),
+    "dia":     dict(bar="#E7EBF3", brand="#5B4BD6", text="#1B2130",
+                    dim="#4E5A70", line="#D9DEE8"),
+    "calido":  dict(bar="#1D150D", brand="#E0A458", text="#F2E5D0",
+                    dim="#BCA98C", line="#36291A"),
+    "termius": dict(bar="#0A121B", brand="#4CE07A", text="#D6E0EA",
+                    dim="#8FA0B4", line="#1C2733"),
+    "bruno":   dict(bar="#222224", brand="#E4AE49", text="#CCCCCC",
+                    dim="#AAAAAA", line="#333333"),
+}
+
+
 def term_url(sess, theme, auth):
     """file:// a dash/term.html con arg/theme/ws. Construido por NSURLComponents
     para preservar el query (loadFileURL lo respeta en el WebKit de macOS
@@ -619,6 +636,7 @@ class AppController(NSObject):
         self.window.setTitle_("ComandOS")
         self.window.setMinSize_((760, 480))
         self.window.center()
+        self._style_titlebar()
 
         content = self.window.contentView()
         cw, ch = content.frame().size.width, content.frame().size.height
@@ -714,6 +732,99 @@ class AppController(NSObject):
         bounds = self.term_area.bounds()
         for t in self.tabs:
             t["webview"].setFrame_(bounds)
+
+    # -- titlebar con el design system de ComandOS (paridad visual con el
+    # headerbar GTK). En Mac NO quitamos la barra nativa: los semaforos dan
+    # cerrar/minimizar/fullscreen y el arrastre/doble-click gratis. En su
+    # lugar la barra se vuelve transparente, el fondo de la ventana pinta el
+    # color `bar` del tema, y el brand + botones van como accesorios nativos
+    # del titlebar (NSTitlebarAccessoryViewController).
+    @objc.python_method
+    def _style_titlebar(self):
+        from AppKit import (NSTitlebarAccessoryViewController,
+                            NSWindowTitleHidden, NSLayoutAttributeLeft,
+                            NSLayoutAttributeRight, NSImage,
+                            NSMutableParagraphStyle)
+        from Foundation import NSAttributedString, NSMutableAttributedString
+
+        colors = CHROME_COLORS.get(self.theme, CHROME_COLORS["noche"])
+        self.window.setTitlebarAppearsTransparent_(True)
+        self.window.setTitleVisibility_(NSWindowTitleHidden)
+        self.window.setBackgroundColor_(_nscolor(colors["bar"]))
+
+        # Brand: punto en color de acento + wordmark COMANDOS con tracking,
+        # misma receta que label.cc-brand del CSS GTK (11.5px, .18em).
+        mono = (NSFont.monospacedSystemFontOfSize_weight_(11.5, 0.7)
+                if hasattr(NSFont, "monospacedSystemFontOfSize_weight_")
+                else NSFont.boldSystemFontOfSize_(11.5))
+        brand = NSMutableAttributedString.alloc().init()
+        brand.appendAttributedString_(
+            NSAttributedString.alloc().initWithString_attributes_("●  ", {
+                NSForegroundColorAttributeName: _nscolor(colors["brand"]),
+                NSFontAttributeName: mono,
+            }))
+        brand.appendAttributedString_(
+            NSAttributedString.alloc().initWithString_attributes_("COMANDOS", {
+                NSForegroundColorAttributeName: _nscolor(colors["text"]),
+                NSFontAttributeName: mono,
+                "NSKern": 2.0,
+            }))
+        label = NSTextField.alloc().initWithFrame_(NSMakeRect(0, 0, 150, 24))
+        label.setEditable_(False)
+        label.setBordered_(False)
+        label.setDrawsBackground_(False)
+        label.setSelectable_(False)
+        label.setAttributedStringValue_(brand)
+        brand_wrap = NSView.alloc().initWithFrame_(NSMakeRect(0, 0, 162, 27))
+        label.setFrameOrigin_((10, 5))
+        brand_wrap.addSubview_(label)
+        left = NSTitlebarAccessoryViewController.alloc().init()
+        left.setView_(brand_wrap)
+        left.setLayoutAttribute_(NSLayoutAttributeLeft)
+        self.window.addTitlebarAccessoryViewController_(left)
+
+        # Acciones a la derecha, como el headerbar GTK. Solo las que ya
+        # existen en el port: copiar respuesta de Claude y nueva terminal.
+        # Iconos Lucide del repo como template (se tinen con el tema);
+        # fallback a texto si este macOS no rasteriza SVG.
+        def icon_btn(svg_name, fallback, action, tip, x):
+            b = NSButton.alloc().initWithFrame_(NSMakeRect(x, 3, 30, 22))
+            b.setBordered_(False)
+            b.setButtonType_(0)
+            img = NSImage.alloc().initWithContentsOfFile_(
+                os.path.join(CC_REPO, "dash", "icons", svg_name + ".svg"))
+            if img is not None:
+                img.setSize_((15, 15))
+                img.setTemplate_(True)
+                b.setImage_(img)
+            else:
+                b.setFont_(NSFont.systemFontOfSize_(12))
+                b.setTitle_(fallback)
+            try:
+                b.setContentTintColor_(_nscolor(colors["dim"]))
+            except Exception:
+                pass
+            b.setTarget_(self)
+            b.setAction_(action)
+            b.setToolTip_(tip)
+            return b
+
+        bar_wrap = NSView.alloc().initWithFrame_(NSMakeRect(0, 0, 76, 27))
+        bar_wrap.addSubview_(icon_btn(
+            "copy", "⧉", "hbCopyReply:",
+            "Copiar respuesta de Claude" if ES else "Copy Claude's reply", 4))
+        bar_wrap.addSubview_(icon_btn(
+            "plus", "＋", "newLocalTab:",
+            "Nueva terminal (Cmd+T)" if ES else "New terminal (Cmd+T)", 40))
+        right = NSTitlebarAccessoryViewController.alloc().init()
+        right.setView_(bar_wrap)
+        right.setLayoutAttribute_(NSLayoutAttributeRight)
+        self.window.addTitlebarAccessoryViewController_(right)
+
+    def hbCopyReply_(self, _s):
+        tab = self._tab_for_key(self.active_key)
+        sess = "local" if (tab is None or tab["is_hub"]) else tab["key"]
+        self._copy_claude_reply(sess)
 
     @objc.python_method
     def _enable_local_access(self, cfg):
