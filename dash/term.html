@@ -48,6 +48,10 @@
     width: 100%; max-width: 100%; min-width: 0; overflow-x: auto;
     padding: 6px; border-top: 1px solid var(--term-line2); background:var(--term-panel);
     overscroll-behavior-x: contain; -webkit-overflow-scrolling: touch; touch-action: pan-x; }
+  /* `display:flex` con selector de ID le gana a la regla [hidden]{display:none}
+     de la hoja del navegador, asi que sin esto el atributo hidden NO oculta
+     nada y la botonera tactil sale tambien en escritorio. */
+  #term-toolbar[hidden] { display: none; }
   #term-toolbar button { box-sizing: border-box; flex: 0 0 auto; min-width: 44px; height: 44px; padding: 0 10px;
     border: 1px solid var(--term-line2); border-radius: 4px; background:var(--term-panel2); color:var(--term-text);
     font: 700 12px 'JetBrainsMono Nerd Font Mono', monospace; }
@@ -708,6 +712,104 @@
   pasteDialog.addEventListener('close', focusTerminal);
   window.addEventListener('message', handleTerminalMessage);
   if (parent !== window) parent.postMessage({source:'comandos-term', type:'ready'}, location.origin);
+
+  // Menu contextual NATIVO cuando corremos dentro de la app de escritorio
+  // (macOS). Sin esto el click derecho cae al menu por defecto de WebKit
+  // —Recargar / Inspeccionar— en vez del menu de tmux que da la app de Linux.
+  // El puente solo existe en la app, asi que en el navegador y en el celular
+  // el comportamiento no cambia.
+  const nativeMenu = window.webkit?.messageHandlers?.term;
+  // La app nativa necesita poder devolver el foco al cambiar de pestana: hacer
+  // primer respondedor al WKWebView enfoca la VISTA, no el textarea interno de
+  // xterm, que es por donde entra el teclado.
+  window.__comandosFocus = focusTerminal;
+  if (nativeMenu) {
+    // En escritorio la terminal debe estar lista para escribir en cuanto abre,
+    // como el grab_focus() de la app GTK. NO lo hacemos en tactil/navegador:
+    // ahi enfocar solo levantaria el teclado del celular sin que lo pidan.
+    focusTerminal();
+    window.addEventListener('load', focusTerminal);
+
+    // Rescate del copy-mode (paridad con el latch de la app GTK): con
+    // `mouse on`, scrollear o seleccionar mete el pane en copy-mode y ahi las
+    // letras son comandos, no input — el cursor "desaparece" y escribir no
+    // hace nada. El pane ademas queda asi en el SERVIDOR tmux, o sea que
+    // sobrevive a reiniciar la app. La app nativa nos avisa si el pane esta
+    // en modo; si el usuario teclea algo imprimible, cancelamos el modo y la
+    // tecla se entrega DESPUES en orden (via tmux), sin perderse — igual que
+    // exit_copy_mode() + reenvio en bin/cc-app. Enter/Escape/q/flechas pasan
+    // normal: en copy-mode significan algo.
+    window.__ccPaneInMode = false;
+    window.__ccSetPaneMode = (v) => { window.__ccPaneInMode = !!v; };
+    // Mientras el rescate viaja (cancel + tecla van por tmux, ~decenas de ms),
+    // las teclas siguientes tambien se enrutan por la MISMA cola serial del
+    // lado nativo; si fueran por el websocket lo rebasarian y "asd" llegaria
+    // como "ads". Native avisa con __ccRouteDone cuando la cola vacio.
+    let ccRouting = false;
+    window.__ccRouteDone = () => { ccRouting = false; };
+
+    // Un click real de trackpad casi siempre trae 1-3px de arrastre; tmux lo
+    // toma como MouseDrag1Pane y mete el pane en copy-mode con seleccion
+    // VACIA: el cursor queda "pegado" en la celda clickeada. La app GTK usa
+    // un umbral de 5px para distinguir click de arrastre (on_term_release);
+    // aqui igual: si fue click, native cancela el modo solo si quedo vacio
+    // (sin seleccion y sin scroll — leer historial o seleccionar de verdad
+    // no se tocan). Listeners pasivos: xterm recibe todo normal.
+    let ccMouseDown = null;
+    window.addEventListener('mousedown', (e) => {
+      if (e.button === 0) ccMouseDown = {x: e.clientX, y: e.clientY};
+    }, true);
+    window.addEventListener('mouseup', (e) => {
+      if (e.button !== 0 || !ccMouseDown) return;
+      const dx = Math.abs(e.clientX - ccMouseDown.x);
+      const dy = Math.abs(e.clientY - ccMouseDown.y);
+      ccMouseDown = null;
+      if (dx < 5 && dy < 5) nativeMenu.postMessage({action: 'clickrescue'});
+    }, true);
+    window.addEventListener('keydown', (e) => {
+      if (!window.__ccPaneInMode && !ccRouting) return;
+      if (e.metaKey || e.ctrlKey || e.altKey || e.key.length !== 1) return;
+      e.preventDefault();
+      e.stopPropagation();
+      const needsCancel = window.__ccPaneInMode;
+      window.__ccPaneInMode = false;
+      ccRouting = true;
+      nativeMenu.postMessage(
+        {action: 'exitcopy', key: e.key, cancel: needsCancel});
+    }, true);
+    // tmux corre con `mouse on` y trae su propio binding MouseDown3Pane que
+    // abre un display-menu (Horizontal Split / Swap / Kill / Zoom). xterm.js
+    // reenvia el boton derecho al PTY en el *mousedown*, mucho antes de que
+    // llegue el evento `contextmenu`, asi que preventDefault ahi no alcanza:
+    // hay que matar el click en fase de CAPTURA para que xterm nunca lo vea.
+    for (const type of ['mousedown', 'mouseup', 'auxclick']) {
+      window.addEventListener(type, (e) => {
+        if (e.button !== 2) return;
+        e.preventDefault();
+        e.stopPropagation();
+      }, true);
+    }
+    window.addEventListener('contextmenu', (e) => {
+      e.preventDefault();
+      // Celda bajo el cursor: tmux razona en columnas/filas, no en pixeles.
+      // xterm ajusta la rejilla al contenedor, asi que el tamano de celda
+      // sale de dividir el area de pantalla entre cols/rows.
+      let col = 0, row = 0;
+      try {
+        const scr = document.querySelector('.xterm-screen');
+        const r = scr.getBoundingClientRect();
+        col = Math.max(0, Math.floor((e.clientX - r.left) / (r.width / term.cols)));
+        row = Math.max(0, Math.floor((e.clientY - r.top) / (r.height / term.rows)));
+      } catch (_) {}
+      let sel = '';
+      try { sel = term.hasSelection() ? term.getSelection() : ''; } catch (_) {}
+      nativeMenu.postMessage({
+        action: 'contextmenu',
+        x: e.clientX, y: e.clientY,
+        col, row, selection: sel,
+      });
+    });
+  }
 
   // Teclado MOVIL (GBoard/Android): borrar y Enter llegan como eventos
   // beforeinput sin keydown — xterm.js los pierde con el buffer de

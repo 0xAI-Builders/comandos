@@ -50,6 +50,9 @@ try:
         NSApplication, NSApp, NSWindow, NSView, NSButton, NSSplitView,
         NSScrollView, NSWorkspace,
         NSMenu, NSMenuItem, NSAlert, NSTextField, NSColor, NSFont,
+        NSPasteboard, NSPasteboardTypeString, NSPoint,
+        NSPanel, NSTableView, NSTableColumn, NSTextView,
+        NSWindowStyleMaskBorderless,
         NSApplicationActivationPolicyRegular, NSAppearance,
         NSAppearanceNameDarkAqua,
         NSWindowStyleMaskTitled, NSWindowStyleMaskClosable,
@@ -180,6 +183,55 @@ def initial_theme():
     if isinstance(p, dict) and p.get("theme") in VALID_THEMES:
         return p["theme"]
     return DEFAULT_THEME
+
+
+# Colores de chrome por tema — mismos valores que THEMES en bin/cc-app (el
+# design system del headerbar GTK): bar=fondo de la barra, brand=acento,
+# text=wordmark, dim=iconos en reposo.
+CHROME_COLORS = {
+    "noche":   dict(bar="#0D1119", brand="#8B7CFF", text="#EAF0FB",
+                    dim="#9AA6BF", line="#222A3A", bg="#0A0D13"),
+    "dia":     dict(bar="#E7EBF3", brand="#5B4BD6", text="#1B2130",
+                    dim="#4E5A70", line="#D9DEE8", bg="#F7F8FB"),
+    "calido":  dict(bar="#1D150D", brand="#E0A458", text="#F2E5D0",
+                    dim="#BCA98C", line="#36291A", bg="#161009"),
+    "termius": dict(bar="#0A121B", brand="#4CE07A", text="#D6E0EA",
+                    dim="#8FA0B4", line="#1C2733", bg="#0E1620"),
+    "bruno":   dict(bar="#222224", brand="#E4AE49", text="#CCCCCC",
+                    dim="#AAAAAA", line="#333333", bg="#1A1A1A"),
+}
+
+
+def fuzzy_score(q, s):
+    """None si no matchea; menor = mejor. Copia 1:1 de bin/cc-app."""
+    q, s = q.lower(), s.lower()
+    score, pos = 0, 0
+    for ch in q:
+        i = s.find(ch, pos)
+        if i < 0:
+            return None
+        score += i - pos
+        pos = i + 1
+    return score + len(s) * 0.01
+
+
+# Mismos colores de estado que DOT_COLORS en bin/cc-app.
+STATUS_DOTS = {"waiting": "#FFAE1A", "working": "#7AA5FF",
+               "done": "#2EE59D", "dead": "#FF6B6B"}
+STATUS_HINTS_ES = {"waiting": "espera TU respuesta", "working": "trabajando",
+                   "done": "listo"}
+STATUS_HINTS_EN = {"waiting": "waiting for YOU", "working": "working",
+                   "done": "done"}
+STATUS_PRIO = {"waiting": 0, "done": 1, "working": 2}
+
+
+def load_snippets():
+    try:
+        with open(os.path.expanduser("~/.claude/hooks/snippets.json")) as f:
+            data = json.load(f)
+        return data if isinstance(data, list) else []
+    except Exception:
+        return []
 
 
 def term_url(sess, theme, auth):
@@ -423,6 +475,268 @@ def ensure_webterm():
 
 
 # ---------------------------------------------------------------------------
+# Picker flotante (switcher Cmd+K / tabs / snippets) — design system ComandOS
+# ---------------------------------------------------------------------------
+class CCPanelWindow(NSPanel):
+    """Panel sin marco que puede tomar el teclado (para el buscador)."""
+
+    def canBecomeKeyWindow(self):
+        return True
+
+
+class CCPicker(NSObject):
+    """Panel flotante reutilizable: buscador fuzzy + lista, con el estilo del
+    modal GTK (.cc-modal-panel): fondo del tema, radio 12, borde 1px. Enter
+    abre, flechas navegan, Esc o click fuera cierran. Es el switcher de
+    Ctrl+K, el overview de tabs y el picker de snippets de Linux, en AppKit.
+    Cell-based NSTableView a proposito: menos codigo y sobra para texto."""
+
+    W, H, ROW_H = 560.0, 440.0, 28.0
+
+    def initWithController_(self, controller):
+        self = objc.super(CCPicker, self).init()
+        if self is None:
+            return None
+        self.controller = controller
+        self.colors = CHROME_COLORS.get(controller.theme,
+                                        CHROME_COLORS["noche"])
+        self.items = []          # [{label, hint, dot, search, prio, action}]
+        self.filtered = []
+        self.panel = None
+        self.field = None
+        self.table = None
+        return self
+
+    # -- construccion -------------------------------------------------------
+    @objc.python_method
+    def _build(self):
+        c = self.colors
+        panel = CCPanelWindow.alloc().initWithContentRect_styleMask_backing_defer_(
+            NSMakeRect(0, 0, self.W, self.H), NSWindowStyleMaskBorderless,
+            NSBackingStoreBuffered, False)
+        panel.setOpaque_(False)
+        panel.setBackgroundColor_(NSColor.clearColor())
+        panel.setHasShadow_(True)
+        panel.setDelegate_(self)
+
+        root = NSView.alloc().initWithFrame_(
+            NSMakeRect(0, 0, self.W, self.H))
+        root.setWantsLayer_(True)
+        layer = root.layer()
+        layer.setBackgroundColor_(_nscolor(c["bar"]).CGColor())
+        layer.setCornerRadius_(12.0)
+        layer.setBorderWidth_(1.0)
+        layer.setBorderColor_(_nscolor(c["line"]).CGColor())
+
+        field = NSTextField.alloc().initWithFrame_(
+            NSMakeRect(14, self.H - 46, self.W - 28, 32))
+        field.setFont_(NSFont.monospacedSystemFontOfSize_weight_(13, 0.3)
+                       if hasattr(NSFont, "monospacedSystemFontOfSize_weight_")
+                       else NSFont.systemFontOfSize_(13))
+        field.setBezeled_(False)
+        field.setDrawsBackground_(True)
+        field.setBackgroundColor_(_nscolor(c["bg"]))
+        field.setTextColor_(_nscolor(c["text"]))
+        field.setFocusRingType_(1)          # NSFocusRingTypeNone
+        field.setDelegate_(self)
+        field.setWantsLayer_(True)
+        field.layer().setCornerRadius_(7.0)
+        field.layer().setBorderWidth_(1.0)
+        field.layer().setBorderColor_(_nscolor(c["line"]).CGColor())
+        root.addSubview_(field)
+
+        table = NSTableView.alloc().initWithFrame_(
+            NSMakeRect(0, 0, self.W - 28, self.H - 70))
+        col = NSTableColumn.alloc().initWithIdentifier_("c")
+        col.setWidth_(self.W - 48)
+        table.addTableColumn_(col)
+        table.setHeaderView_(None)
+        table.setRowHeight_(self.ROW_H)
+        table.setBackgroundColor_(NSColor.clearColor())
+        table.setDataSource_(self)
+        table.setTarget_(self)
+        table.setDoubleAction_("rowActivated:")
+        try:
+            table.setStyle_(1)              # plain, sin inset de Big Sur
+        except Exception:
+            pass
+
+        scroll = NSScrollView.alloc().initWithFrame_(
+            NSMakeRect(14, 12, self.W - 28, self.H - 70))
+        scroll.setDocumentView_(table)
+        scroll.setHasVerticalScroller_(True)
+        scroll.setDrawsBackground_(False)
+        scroll.setAutohidesScrollers_(True)
+        root.addSubview_(scroll)
+
+        panel.setContentView_(root)
+        self.panel, self.field, self.table = panel, field, table
+
+    # -- API ----------------------------------------------------------------
+    @objc.python_method
+    def show(self, items, placeholder):
+        if self.panel is None:
+            self._build()
+        self.items = items
+        self.field.setStringValue_("")
+        self.field.setPlaceholderString_(placeholder)
+        self._refilter("")
+        wf = self.controller.window.frame()
+        self.panel.setFrameOrigin_(
+            (wf.origin.x + (wf.size.width - self.W) / 2.0,
+             wf.origin.y + wf.size.height - self.H - 80.0))
+        self.panel.makeKeyAndOrderFront_(None)
+        self.panel.makeFirstResponder_(self.field)
+
+    @objc.python_method
+    def close(self):
+        if self.panel is not None:
+            self.panel.orderOut_(None)
+        tab = self.controller._tab_for_key(self.controller.active_key)
+        if tab is not None:
+            self.controller.window.makeFirstResponder_(tab["webview"])
+            self.controller._focus_terminal(tab)
+
+    # -- filtro + render ----------------------------------------------------
+    @objc.python_method
+    def _refilter(self, query):
+        query = query.strip()
+        if not query:
+            self.filtered = sorted(
+                self.items, key=lambda it: (it["prio"], it.get("order", 0)))
+        else:
+            scored = []
+            for it in self.items:
+                s = fuzzy_score(query, it["search"])
+                if s is not None:
+                    scored.append((it["prio"], s, it))
+            scored.sort(key=lambda t: (t[0], t[1]))
+            self.filtered = [t[2] for t in scored]
+        self.table.reloadData()
+        if self.filtered:
+            from Foundation import NSIndexSet
+            self.table.selectRowIndexes_byExtendingSelection_(
+                NSIndexSet.indexSetWithIndex_(0), False)
+
+    def numberOfRowsInTableView_(self, _t):
+        return len(self.filtered)
+
+    def tableView_objectValueForTableColumn_row_(self, _t, _c, row):
+        from Foundation import NSMutableAttributedString, NSAttributedString
+        it = self.filtered[row]
+        c = self.colors
+        mono = (NSFont.monospacedSystemFontOfSize_weight_(12, 0.3)
+                if hasattr(NSFont, "monospacedSystemFontOfSize_weight_")
+                else NSFont.systemFontOfSize_(12))
+        out = NSMutableAttributedString.alloc().init()
+        out.appendAttributedString_(
+            NSAttributedString.alloc().initWithString_attributes_(
+                "● ", {NSForegroundColorAttributeName:
+                       _nscolor(it.get("dot") or "#39445C"),
+                       NSFontAttributeName: NSFont.systemFontOfSize_(9)}))
+        out.appendAttributedString_(
+            NSAttributedString.alloc().initWithString_attributes_(
+                it["label"], {NSForegroundColorAttributeName:
+                              _nscolor(c["text"]),
+                              NSFontAttributeName: mono}))
+        if it.get("hint"):
+            out.appendAttributedString_(
+                NSAttributedString.alloc().initWithString_attributes_(
+                    "   " + it["hint"],
+                    {NSForegroundColorAttributeName: _nscolor(c["dim"]),
+                     NSFontAttributeName: NSFont.systemFontOfSize_(11)}))
+        return out
+
+    # -- interaccion --------------------------------------------------------
+    def controlTextDidChange_(self, _n):
+        self._refilter(str(self.field.stringValue()))
+
+    def control_textView_doCommandBySelector_(self, _c, _tv, selector):
+        s = str(selector)
+        if s == "moveDown:":
+            self._move(1)
+            return True
+        if s == "moveUp:":
+            self._move(-1)
+            return True
+        if s == "insertNewline:":
+            self._activate()
+            return True
+        if s == "cancelOperation:":
+            self.close()
+            return True
+        return False
+
+    @objc.python_method
+    def _move(self, delta):
+        if not self.filtered:
+            return
+        from Foundation import NSIndexSet
+        row = max(0, min(len(self.filtered) - 1,
+                         self.table.selectedRow() + delta))
+        self.table.selectRowIndexes_byExtendingSelection_(
+            NSIndexSet.indexSetWithIndex_(row), False)
+        self.table.scrollRowToVisible_(row)
+
+    @objc.python_method
+    def _activate(self):
+        row = self.table.selectedRow()
+        if row < 0 or row >= len(self.filtered):
+            return
+        it = self.filtered[row]
+        self.close()
+        try:
+            it["action"]()
+        except Exception as e:  # pragma: no cover
+            print("picker:", e, file=sys.stderr)
+
+    def rowActivated_(self, _sender):
+        self._activate()
+
+    def windowDidResignKey_(self, _n):
+        # Click fuera = cerrar, como el backdrop del modal GTK.
+        if self.panel is not None and self.panel.isVisible():
+            self.panel.orderOut_(None)
+
+
+# ---------------------------------------------------------------------------
+# Puente de la terminal: WKScriptMessageHandler "term" (menu contextual)
+# ---------------------------------------------------------------------------
+class TermBridge(NSObject):
+    """Un puente por pestana. term.html detecta su existencia para saber que
+    corre en la app de escritorio y nos manda el click derecho con la celda
+    (col,row) bajo el cursor, para que tmux pueda resolver el pane igual que
+    hace pane_at() en la version GTK."""
+
+    def initWithController_key_(self, controller, key):
+        self = objc.super(TermBridge, self).init()
+        if self is None:
+            return None
+        self.controller = controller
+        self.key = key
+        return self
+
+    def userContentController_didReceiveScriptMessage_(self, _ucc, message):
+        try:
+            body = message.body()
+            msg = json.loads(body) if isinstance(body, str) else dict(body)
+        except Exception:
+            return
+        action = msg.get("action")
+        try:
+            if action == "contextmenu":
+                self.controller.showTermMenuForKey_info_(self.key, msg)
+            elif action == "exitcopy":
+                self.controller.exitCopyForKey_char_cancel_(
+                    self.key, str(msg.get("key") or ""),
+                    bool(msg.get("cancel")))
+            elif action == "clickrescue":
+                self.controller.clickRescueForKey_(self.key)
+        except Exception as e:  # pragma: no cover
+            print("puente term:", e, file=sys.stderr)
+
+
+# ---------------------------------------------------------------------------
 # Puente del tablero: WKScriptMessageHandler "centro"
 # ---------------------------------------------------------------------------
 class DashBridge(NSObject):
@@ -491,10 +805,71 @@ class AppController(NSObject):
         self._build_window()
         self._build_menu()
         self._start_ipc_timer()
+        self._pane_mode_timer = (
+            NSTimer.scheduledTimerWithTimeInterval_target_selector_userInfo_repeats_(
+                1.0, self, "pollPaneMode:", None, True))
         threading.Thread(target=self._state_poll_loop, daemon=True).start()
         # cc-webterm puede tardar; lo levantamos fuera del hilo de UI y, cuando
         # esta listo, creamos el hub y restauramos las pestanas en el main thread.
         threading.Thread(target=self._boot_terminals, daemon=True).start()
+        if os.environ.get("COMANDOS_DEBUG_FOCUS"):
+            self._start_focus_debug()
+
+    # -- instrumentacion temporal (COMANDOS_DEBUG_FOCUS=1) ------------------
+    @objc.python_method
+    def _start_focus_debug(self):
+        from AppKit import NSEvent, NSEventMaskKeyDown
+
+        def on_key(ev):
+            fr = self.window.firstResponder()
+            print("[DBG] keyDown llego a la APP: chars=%r firstResponder=%s" %
+                  (ev.characters(), type(fr).__name__), flush=True)
+            return ev
+        self._dbg_monitor = NSEvent.addLocalMonitorForEventsMatchingMask_handler_(
+            NSEventMaskKeyDown, on_key)
+        self._dbg_timer = (
+            NSTimer.scheduledTimerWithTimeInterval_target_selector_userInfo_repeats_(
+                3.0, self, "dbgTick:", None, True))
+
+    def dbgTick_(self, _t):
+        fr = self.window.firstResponder()
+        key = self.window.isKeyWindow()
+        tab = self._tab_for_key(self.active_key)
+        wv_name = "?"
+        if tab is not None:
+            in_term = False
+            r = fr
+            while r is not None and hasattr(r, "superview"):
+                if r is tab["webview"]:
+                    in_term = True
+                    break
+                r = r.superview()
+            wv_name = "TERMINAL" if in_term else "OTRO"
+        print("[DBG] keyWindow=%s firstResponder=%s (%s) activeTab=%s" %
+              (key, type(fr).__name__, wv_name, self.active_key), flush=True)
+        if tab is not None:
+            tab["webview"].evaluateJavaScript_completionHandler_(
+                "JSON.stringify({hasFocus:document.hasFocus(),"
+                "active:document.activeElement&&(document.activeElement.className"
+                "||document.activeElement.tagName),"
+                "kd:window.__kd||0,"
+                "hook:typeof window.__comandosFocus})",
+                lambda r, e: print("[DBG] pagina:", r if e is None else e,
+                                   flush=True))
+            tab["webview"].evaluateJavaScript_completionHandler_(
+                "if(!window.__kdInstalled){window.__kdInstalled=1;window.__kd=0;"
+                "window.__wsSend=0;window.__beforeinput=0;window.__input=0;"
+                "addEventListener('keydown',()=>window.__kd++,true);"
+                "addEventListener('beforeinput',()=>window.__beforeinput++,true);"
+                "addEventListener('input',()=>window.__input++,true);"
+                "const s=WebSocket.prototype.send;"
+                "WebSocket.prototype.send=function(...a){window.__wsSend++;"
+                "return s.apply(this,a)}}'ok'", None)
+            tab["webview"].evaluateJavaScript_completionHandler_(
+                "JSON.stringify({wsSend:window.__wsSend,bi:window.__beforeinput,"
+                "inp:window.__input})",
+                lambda r, e: print("[DBG] contadores:", r if e is None else e,
+                                   flush=True))
 
     def applicationShouldTerminateAfterLastWindowClosed_(self, _sender):
         return True
@@ -520,6 +895,7 @@ class AppController(NSObject):
         self.window.setTitle_("ComandOS")
         self.window.setMinSize_((760, 480))
         self.window.center()
+        self._style_titlebar()
 
         content = self.window.contentView()
         cw, ch = content.frame().size.width, content.frame().size.height
@@ -586,6 +962,290 @@ class AppController(NSObject):
 
         self.window.makeKeyAndOrderFront_(None)
         NSApp.activateIgnoringOtherApps_(True)
+        # El split y los webviews nacen con el frame previo al primer display:
+        # hasta que algo fuerza resizeSubviewsWithOldSize, xterm mide columnas
+        # contra ese tamano viejo y tmux queda en ~24 cols. Un relayout diferido
+        # un tick despues del primer display lo corrige.
+        NSTimer.scheduledTimerWithTimeInterval_target_selector_userInfo_repeats_(
+            0.4, self, "forceRelayout:", None, False)
+
+    def forceRelayout_(self, _timer):
+        self._force_relayout()
+
+    @objc.python_method
+    def _force_relayout(self):
+        try:
+            cw = self.window.contentView().frame().size.width
+            self.split.adjustSubviews()
+            self.split.setPosition_ofDividerAtIndex_(
+                int(cw) if not self.term_visible else int(cw * 0.52), 0)
+            self._fit_tab_webviews()
+            self._relayout_strip()
+        except Exception:
+            pass
+
+    @objc.python_method
+    def _fit_tab_webviews(self):
+        """Cada webview debe llenar term_area; si no, el ResizeObserver de
+        term.html nunca corrige las columnas heredadas del frame inicial."""
+        bounds = self.term_area.bounds()
+        for t in self.tabs:
+            t["webview"].setFrame_(bounds)
+
+    # -- titlebar con el design system de ComandOS (paridad visual con el
+    # headerbar GTK). En Mac NO quitamos la barra nativa: los semaforos dan
+    # cerrar/minimizar/fullscreen y el arrastre/doble-click gratis. En su
+    # lugar la barra se vuelve transparente, el fondo de la ventana pinta el
+    # color `bar` del tema, y el brand + botones van como accesorios nativos
+    # del titlebar (NSTitlebarAccessoryViewController).
+    @objc.python_method
+    def _style_titlebar(self):
+        from AppKit import (NSTitlebarAccessoryViewController,
+                            NSWindowTitleHidden, NSLayoutAttributeLeft,
+                            NSLayoutAttributeRight, NSImage,
+                            NSMutableParagraphStyle)
+        from Foundation import NSAttributedString, NSMutableAttributedString
+
+        colors = CHROME_COLORS.get(self.theme, CHROME_COLORS["noche"])
+        self.window.setTitlebarAppearsTransparent_(True)
+        self.window.setTitleVisibility_(NSWindowTitleHidden)
+        self.window.setBackgroundColor_(_nscolor(colors["bar"]))
+
+        # Brand: punto en color de acento + wordmark COMANDOS con tracking,
+        # misma receta que label.cc-brand del CSS GTK (11.5px, .18em).
+        mono = (NSFont.monospacedSystemFontOfSize_weight_(11.5, 0.7)
+                if hasattr(NSFont, "monospacedSystemFontOfSize_weight_")
+                else NSFont.boldSystemFontOfSize_(11.5))
+        brand = NSMutableAttributedString.alloc().init()
+        brand.appendAttributedString_(
+            NSAttributedString.alloc().initWithString_attributes_("●  ", {
+                NSForegroundColorAttributeName: _nscolor(colors["brand"]),
+                NSFontAttributeName: mono,
+            }))
+        brand.appendAttributedString_(
+            NSAttributedString.alloc().initWithString_attributes_("COMANDOS", {
+                NSForegroundColorAttributeName: _nscolor(colors["text"]),
+                NSFontAttributeName: mono,
+                "NSKern": 2.0,
+            }))
+        label = NSTextField.alloc().initWithFrame_(NSMakeRect(0, 0, 150, 24))
+        label.setEditable_(False)
+        label.setBordered_(False)
+        label.setDrawsBackground_(False)
+        label.setSelectable_(False)
+        label.setAttributedStringValue_(brand)
+        brand_wrap = NSView.alloc().initWithFrame_(NSMakeRect(0, 0, 162, 27))
+        label.setFrameOrigin_((10, 5))
+        brand_wrap.addSubview_(label)
+        left = NSTitlebarAccessoryViewController.alloc().init()
+        left.setView_(brand_wrap)
+        left.setLayoutAttribute_(NSLayoutAttributeLeft)
+        self.window.addTitlebarAccessoryViewController_(left)
+
+        # Acciones a la derecha, como el headerbar GTK. Solo las que ya
+        # existen en el port: copiar respuesta de Claude y nueva terminal.
+        # Iconos Lucide del repo como template (se tinen con el tema);
+        # fallback a texto si este macOS no rasteriza SVG.
+        def icon_btn(svg_name, fallback, action, tip, x):
+            b = NSButton.alloc().initWithFrame_(NSMakeRect(x, 3, 30, 22))
+            b.setBordered_(False)
+            b.setButtonType_(0)
+            img = NSImage.alloc().initWithContentsOfFile_(
+                os.path.join(CC_REPO, "dash", "icons", svg_name + ".svg"))
+            if img is not None:
+                img.setSize_((15, 15))
+                img.setTemplate_(True)
+                b.setImage_(img)
+            else:
+                b.setFont_(NSFont.systemFontOfSize_(12))
+                b.setTitle_(fallback)
+            try:
+                b.setContentTintColor_(_nscolor(colors["dim"]))
+            except Exception:
+                pass
+            b.setTarget_(self)
+            b.setAction_(action)
+            b.setToolTip_(tip)
+            return b
+
+        # Mismo set y orden visual que el headerbar GTK (de izq a der):
+        # help · plus · snippet · search · layers · copy. Los semaforos
+        # nativos reemplazan a minimize/maximize/close.
+        buttons = [
+            ("help", "?", "showHelpPanel:",
+             "Atajos de teclado" if ES else "Keyboard shortcuts"),
+            ("plus", "＋", "newLocalTab:",
+             "Nueva terminal (Cmd+T)" if ES else "New terminal (Cmd+T)"),
+            ("snippet", "⌘", "openSnippets:",
+             "Snippets guardados (Cmd+Shift+K)" if ES
+             else "Saved snippets (Cmd+Shift+K)"),
+            ("search", "🔍", "openSwitcher:",
+             "Saltar a una pestana/sesion (Cmd+K)" if ES
+             else "Jump to a tab/session (Cmd+K)"),
+            ("layers", "▤", "openTabsOverview:",
+             "Ver y saltar entre tabs abiertas" if ES
+             else "View and jump between open tabs"),
+            ("copy", "⧉", "hbCopyReply:",
+             "Copiar la ultima respuesta de Claude de ESTA pestana" if ES
+             else "Copy Claude's latest reply from THIS tab"),
+        ]
+        bar_wrap = NSView.alloc().initWithFrame_(
+            NSMakeRect(0, 0, 8 + 32 * len(buttons), 27))
+        for i, (svg, fb, action, tip) in enumerate(buttons):
+            bar_wrap.addSubview_(icon_btn(svg, fb, action, tip, 4 + 32 * i))
+        right = NSTitlebarAccessoryViewController.alloc().init()
+        right.setView_(bar_wrap)
+        right.setLayoutAttribute_(NSLayoutAttributeRight)
+        self.window.addTitlebarAccessoryViewController_(right)
+
+    def hbCopyReply_(self, _s):
+        tab = self._tab_for_key(self.active_key)
+        sess = "local" if (tab is None or tab["is_hub"]) else tab["key"]
+        self._copy_claude_reply(sess)
+
+    # -- switcher / tabs / snippets / ayuda (paridad con los modales GTK) ---
+    @objc.python_method
+    def _picker(self):
+        if getattr(self, "_picker_obj", None) is None:
+            self._picker_obj = CCPicker.alloc().initWithController_(self)
+        return self._picker_obj
+
+    @objc.python_method
+    def _session_entries(self, include_closed):
+        """Filas del switcher: pestanas abiertas + (opcional) sesiones vivas
+        de /state que no estan abiertas — mismos candidatos que open_switcher
+        en GTK."""
+        state = http_get_json("/state")
+        states = {it.get("session"): it for it in state} \
+            if isinstance(state, list) else {}
+        hints = STATUS_HINTS_ES if ES else STATUS_HINTS_EN
+        entries, open_keys = [], set()
+        for order, t in enumerate(self.tabs):
+            key = "local" if t["is_hub"] else t["key"]
+            open_keys.add(key)
+            st = (states.get(key) or {}).get("status", "")
+            entries.append({
+                "label": t["label"],
+                "hint": hints.get(st, "abierta" if ES else "open"),
+                "dot": STATUS_DOTS.get(st),
+                "search": t["label"] + " " + key,
+                "prio": STATUS_PRIO.get(st, 3),
+                "order": order,
+                "action": (lambda t=t: self._select_tab(t)),
+            })
+        if include_closed:
+            for it in states.values():
+                sess = it.get("session")
+                if (not sess or sess in open_keys or sess == "local"
+                        or not it.get("alive", True)):
+                    continue
+                st = it.get("status", "")
+                label = it.get("project") or sess
+                entries.append({
+                    "label": label,
+                    "hint": (hints.get(st, "") + "  [abrir]") if ES
+                            else (hints.get(st, "") + "  [open]"),
+                    "dot": STATUS_DOTS.get(st),
+                    "search": label + " " + sess,
+                    "prio": STATUS_PRIO.get(st, 3),
+                    "order": 99,
+                    "action": (lambda s=sess, l=label:
+                               self.openOrFocus_win_label_(s, "claude", l)),
+                })
+        return entries
+
+    def openSwitcher_(self, _s):
+        self._picker().show(
+            self._session_entries(include_closed=True),
+            "Saltar a pestana o sesion…" if ES else "Jump to tab or session…")
+
+    def openTabsOverview_(self, _s):
+        self._picker().show(
+            self._session_entries(include_closed=False),
+            "Tabs abiertas…" if ES else "Open tabs…")
+
+    def openSnippets_(self, _s):
+        snips = sorted(load_snippets(),
+                       key=lambda s: s.get("updated_at") or 0, reverse=True)
+        entries = []
+        for order, sn in enumerate(snips):
+            body = sn.get("body") or ""
+            tags = ", ".join(sn.get("tags") or [])
+            entries.append({
+                "label": sn.get("name") or "(sin nombre)",
+                "hint": tags,
+                "dot": CHROME_COLORS.get(self.theme,
+                                         CHROME_COLORS["noche"])["brand"],
+                "search": " ".join(filter(None, (sn.get("name"), tags, body))),
+                "prio": 0,
+                "order": order,
+                "action": (lambda b=body: self._paste_snippet(b)),
+            })
+        if not entries:
+            entries = [{
+                "label": ("No hay snippets — crealos en el tablero"
+                          if ES else "No snippets — create them in the dashboard"),
+                "hint": "", "dot": None, "search": "", "prio": 0, "order": 0,
+                "action": (lambda: None),
+            }]
+        self._picker().show(
+            entries, "Snippet a pegar (Enter pega, no ejecuta)…" if ES
+            else "Snippet to paste (Enter pastes, never runs)…")
+
+    @objc.python_method
+    def _paste_snippet(self, body):
+        """Pegado entre corchetes en la sesion activa: aparece en el prompt
+        pero NO corre hasta que el usuario da Enter (contrato de snip_paste)."""
+        if not body:
+            return
+        tab = self._tab_for_key(self.active_key)
+        sess = "local" if (tab is None or tab["is_hub"]) else tab["key"]
+        target = "=" + sess + ":"
+
+        def work():
+            tmuxc("send-keys", "-t", target, "-X", "cancel")
+            p = subprocess.run(["tmux", "load-buffer", "-b", "cc-snip", "-"],
+                               input=body, text=True, capture_output=True)
+            if p.returncode == 0:
+                tmuxc("paste-buffer", "-p", "-b", "cc-snip", "-t", target)
+                tmuxc("delete-buffer", "-b", "cc-snip")
+        threading.Thread(target=work, daemon=True).start()
+
+    def showHelpPanel_(self, _s):
+        rows_es = [
+            ("PESTANAS", ""),
+            ("Cmd+T", "nueva terminal aqui"),
+            ("Cmd+K", "saltar a pestana/sesion (fuzzy)"),
+            ("Cmd+Shift+K", "snippets (Enter pega, no ejecuta)"),
+            ("Cmd+W", "cerrar pestana"),
+            ("Cmd+Shift+] / [", "siguiente / anterior pestana"),
+            ("", ""),
+            ("VISTA", ""),
+            ("F12", "mostrar/ocultar terminales"),
+            ("Cmd+R", "recargar tablero"),
+            ("Cmd+= / - / 0", "zoom de la terminal"),
+            ("", ""),
+            ("TERMINAL (tmux)", ""),
+            ("click derecho", "menu: copiar/pegar/splits/exportar"),
+            ("rueda", "scroll del historial (q o Esc salen)"),
+            ("Ctrl-b l", "alternar ventana claude/shell"),
+            ("Ctrl-b z", "zoom del split actual"),
+            ("", ""),
+            ("POPUPS", ""),
+            ("1/2/3", "elegir opcion · Enter/Esc responden"),
+            ("escribe y Enter", "respuesta libre a esa sesion"),
+        ]
+        rows_en = [(k, v) for k, v in rows_es]  # atajos iguales; texto ES/EN
+        entries = []
+        for order, (k, v) in enumerate(rows_es if ES else rows_en):
+            entries.append({
+                "label": k, "hint": v, "dot": None if v else "#39445C",
+                "search": k + " " + v, "prio": 0, "order": order,
+                "action": (lambda: None),
+            })
+        self._picker().show(
+            entries, "Atajos de teclado (Esc cierra)…" if ES
+            else "Keyboard shortcuts (Esc closes)…")
 
     @objc.python_method
     def _enable_local_access(self, cfg):
@@ -668,6 +1328,13 @@ class AppController(NSObject):
 
         cfg = WKWebViewConfiguration.alloc().init()
         self._enable_local_access(cfg)
+        # Puente del menu contextual: term.html detecta este handler para saber
+        # que corre dentro de la app y mandarnos el click derecho en vez de
+        # dejar que WebKit muestre su menu de "Recargar / Inspeccionar".
+        term_ucc = WKUserContentController.alloc().init()
+        term_bridge = TermBridge.alloc().initWithController_key_(self, key)
+        term_ucc.addScriptMessageHandler_name_(term_bridge, "term")
+        cfg.setUserContentController_(term_ucc)
         frame = self.term_area.bounds()
         wv = WKWebView.alloc().initWithFrame_configuration_(frame, cfg)
         wv.setAutoresizingMask_(NSViewWidthSizable | NSViewHeightSizable)
@@ -689,11 +1356,361 @@ class AppController(NSObject):
 
         tab = {"key": key, "label": label, "webview": wv, "button": btn,
                "is_hub": is_hub, "kind": kind or "internal",
-               "host": host, "cwd": cwd}
+               "host": host, "cwd": cwd, "bridge": term_bridge}
         self.tabs.append(tab)
         self._set_tab_title(tab)
+        self._fit_tab_webviews()
         self._relayout_strip()
         return tab
+
+    # -- menu contextual de la terminal (paridad con on_term_button de GTK) --
+    @objc.python_method
+    def _pane_at(self, sess, col, row):
+        """(pane_id, total) del pane bajo el cursor — mismo criterio que
+        pane_at() en bin/cc-app, pero con la celda que ya calculo term.html."""
+        if not sess:
+            return None, 0
+        r = tmuxc("list-panes", "-t", "=" + sess + ":", "-F",
+                  "#{pane_id}|#{pane_left}|#{pane_top}|#{pane_right}|#{pane_bottom}")
+        panes = [l.split("|") for l in r.stdout.splitlines() if l.count("|") == 4]
+        for pid, left, top, right, bottom in panes:
+            try:
+                if (int(left) <= col <= int(right)
+                        and int(top) <= row <= int(bottom)):
+                    return pid, len(panes)
+            except ValueError:
+                continue
+        return None, len(panes)
+
+    @objc.python_method
+    def _menu_item(self, menu, title, handler, enabled=True):
+        """NSMenuItem con callback Python. PyObjC necesita un target objc, asi
+        que guardamos el callable en una lista viva mientras exista el menu."""
+        it = NSMenuItem.alloc().initWithTitle_action_keyEquivalent_(
+            title, "runMenuAction:" if enabled else None, "")
+        if enabled:
+            it.setTarget_(self)
+            it.setRepresentedObject_(len(self._menu_actions))
+            self._menu_actions.append(handler)
+        it.setEnabled_(bool(enabled))
+        menu.addItem_(it)
+        return it
+
+    def runMenuAction_(self, sender):
+        try:
+            self._menu_actions[int(sender.representedObject())]()
+        except Exception as e:  # pragma: no cover
+            print("accion de menu:", e, file=sys.stderr)
+
+    def showTermMenuForKey_info_(self, key, info):
+        tab = self._tab_for_key(key)
+        if tab is None:
+            return
+        m = self._build_term_menu(
+            tab, int(info.get("col") or 0), int(info.get("row") or 0),
+            info.get("selection") or "")
+        # WKWebView.isFlipped() es True: su origen ya esta ARRIBA-izquierda,
+        # igual que las coordenadas CSS del click. Invertir la Y aqui (el
+        # reflejo normal en AppKit) mandaba el menu al extremo opuesto.
+        wv = tab["webview"]
+        pt = NSPoint(float(info.get("x") or 0), float(info.get("y") or 0))
+        m.popUpMenuPositioningItem_atLocation_inView_(None, pt, wv)
+
+    @objc.python_method
+    def _build_term_menu(self, tab, col, row, selection):
+        sess = "local" if tab["is_hub"] else tab["key"]
+        pane_id, npanes = self._pane_at(sess, col, row)
+        if pane_id:
+            tmuxc("select-pane", "-t", pane_id)   # igual que GTK: enfoca antes
+        host = ssh_host_from_session(sess)
+
+        def split(flags, cmd=None):
+            target = pane_id or ("=" + sess + ":")
+            args = ["split-window"] + list(flags) + ["-t", target]
+            if cmd:
+                args.append(cmd)
+            else:
+                r = tmuxc("display-message", "-p", "-t", target,
+                          "#{pane_current_path}")
+                cwd = r.stdout.strip()
+                if cwd:
+                    args += ["-c", cwd]
+            tmuxc(*args)
+
+        self._menu_actions = []
+        m = NSMenu.alloc().init()
+        # Sin esto NSMenu decide solo que habilitar (via validateMenuItem:) e
+        # IGNORA setEnabled_, asi que "Cerrar ESTE split" saldria activo con un
+        # solo pane. Linux marca esos items como insensibles explicitamente.
+        m.setAutoenablesItems_(False)
+        mi = self._menu_item
+
+        mi(m, "Copiar                   Ctrl+C" if ES else
+              "Copy                     Ctrl+C",
+           lambda: self._copy_selection(sess, pane_id, selection))
+        mi(m, "Pegar                    Ctrl+V" if ES else
+              "Paste                    Ctrl+V",
+           lambda: self._paste_into(sess, pane_id))
+        mi(m, "Copiar respuesta de Claude" if ES else "Copy Claude's reply",
+           lambda: self._copy_claude_reply(sess))
+        mi(m, "Guardar respuesta como .txt" if ES else "Save reply as .txt",
+           lambda: self._export_reply(sess, "txt"))
+        mi(m, "Guardar respuesta como PDF" if ES else "Save reply as PDF",
+           lambda: self._export_reply(sess, "pdf"))
+        m.addItem_(NSMenuItem.separatorItem())
+
+        if host:
+            sshcmd = "ssh " + host
+            mi(m, "Split derecha    (otra conexion al server)" if ES else
+                  "Split right    (new connection to server)",
+               lambda: split(["-h"], sshcmd))
+            mi(m, "Split izquierda  (otra conexion al server)" if ES else
+                  "Split left     (new connection to server)",
+               lambda: split(["-h", "-b"], sshcmd))
+            mi(m, "Split abajo      (otra conexion al server)" if ES else
+                  "Split down     (new connection to server)",
+               lambda: split(["-v"], sshcmd))
+            mi(m, "Split arriba     (otra conexion al server)" if ES else
+                  "Split up       (new connection to server)",
+               lambda: split(["-v", "-b"], sshcmd))
+            mi(m, "Split local (tu maquina, derecha)" if ES else
+                  "Local split (your machine, right)", lambda: split(["-h"]))
+        else:
+            mi(m, "Split derecha" if ES else "Split right",
+               lambda: split(["-h"]))
+            mi(m, "Split izquierda" if ES else "Split left",
+               lambda: split(["-h", "-b"]))
+            mi(m, "Split abajo" if ES else "Split down",
+               lambda: split(["-v"]))
+            mi(m, "Split arriba" if ES else "Split up",
+               lambda: split(["-v", "-b"]))
+        mi(m, "Alternar ventana 1/2     Ctrl-b l" if ES else
+              "Toggle window 1/2        Ctrl-b l",
+           lambda: tmuxc("send-keys", "-t", "=" + sess + ":", "C-b", "l"))
+        mi(m, "Cerrar ESTE split" if ES else "Close THIS split",
+           lambda: tmuxc("kill-pane", "-t", pane_id),
+           enabled=bool(pane_id) and npanes > 1)
+        m.addItem_(NSMenuItem.separatorItem())
+
+        mi(m, "Nueva terminal aqui       Cmd+T" if ES else
+              "New terminal here         Cmd+T",
+           lambda: self.newLocalTab_(None))
+        mi(m, "Abrir proyecto..." if ES else "Open project...",
+           self._prompt_new_session)
+        sub = NSMenu.alloc().init()
+        sub.setAutoenablesItems_(False)
+        r = tmuxc("list-sessions", "-F", "#{session_name}")
+        for s in (r.stdout.split() if r.returncode == 0 else []):
+            mi(sub, s, (lambda s=s: self.openOrFocus_win_label_(s, "claude", s)))
+        sub_item = NSMenuItem.alloc().initWithTitle_action_keyEquivalent_(
+            "Abrir sesion existente" if ES else "Open existing session", None, "")
+        sub_item.setSubmenu_(sub)
+        m.addItem_(sub_item)
+        m.addItem_(NSMenuItem.separatorItem())
+
+        mi(m, "Renombrar pestana..." if ES else "Rename tab...",
+           lambda: self._prompt_rename(tab), enabled=not tab["is_hub"])
+        mi(m, "Cerrar pestana" if ES else "Close tab",
+           lambda: self._close_tab(tab, confirm=True), enabled=not tab["is_hub"])
+        return m
+
+    def exitCopyForKey_char_cancel_(self, key, ch, cancel):
+        """El pane esta en copy-mode y el usuario tecleo algo imprimible:
+        cancela el modo y entrega la tecla despues, EN ORDEN. Un solo worker
+        con cola FIFO — si corrieran en threads sueltos, dos teclas rapidas
+        podrian llegar transpuestas a tmux. Cuando la cola vacia, avisamos a
+        la pagina (__ccRouteDone) para que vuelva a la ruta rapida del ws."""
+        tab = self._tab_for_key(key)
+        if tab is None:
+            return
+        sess = "local" if tab["is_hub"] else key
+        if not hasattr(self, "_key_queue"):
+            import queue
+            self._key_queue = queue.Queue()
+            threading.Thread(target=self._key_queue_worker,
+                             daemon=True).start()
+        self._key_queue.put((tab, "=" + sess + ":", ch, cancel))
+
+    @objc.python_method
+    def _key_queue_worker(self):
+        while True:
+            tab, target, ch, cancel = self._key_queue.get()
+            if cancel:
+                tmuxc("send-keys", "-t", target, "-X", "cancel")
+            if ch:
+                tmuxc("send-keys", "-t", target, "-l", "--", ch)
+            if self._key_queue.empty():
+                def push(t=tab):
+                    try:
+                        t["webview"].evaluateJavaScript_completionHandler_(
+                            "window.__ccRouteDone && window.__ccRouteDone()",
+                            None)
+                    except Exception:
+                        pass
+                AppHelper.callAfter(push)
+
+    def clickRescueForKey_(self, key):
+        """Un click (arrastre < 5px) acaba de terminar. Si dejo al pane en
+        copy-mode VACIO — sin seleccion y sin scroll — fue el micro-arrastre
+        del click, no una intencion: cancelamos para que el cursor no se quede
+        pegado en la celda clickeada. Seleccionar de verdad (hay seleccion) o
+        leer historial (scroll > 0) nunca entran aqui."""
+        tab = self._tab_for_key(key)
+        if tab is None:
+            return
+        sess = "local" if tab["is_hub"] else key
+        target = "=" + sess + ":"
+
+        def work():
+            time.sleep(0.15)   # deja que tmux termine de procesar el drag
+            r = tmuxc("display", "-t", target, "-p",
+                      "#{pane_in_mode} #{selection_present} #{scroll_position}")
+            parts = (r.stdout or "").split()
+            if (r.returncode == 0 and parts[:2] == ["1", "0"]
+                    and parts[2:3] in ([], ["0"])):
+                tmuxc("send-keys", "-t", target, "-X", "cancel")
+        threading.Thread(target=work, daemon=True).start()
+
+    def pollPaneMode_(self, _timer):
+        """Cada segundo: ¿el pane visible esta en copy-mode? Se lo dice a la
+        pagina para que el keydown pueda rescatar el teclado. Un solo `tmux
+        display` por tick — mas barato que el poll de /state que ya corre."""
+        tab = self._tab_for_key(self.active_key)
+        if tab is None or tab["webview"].isHidden():
+            return
+        sess = "local" if tab["is_hub"] else tab["key"]
+
+        def work():
+            r = tmuxc("display", "-t", "=" + sess + ":", "-p",
+                      "#{pane_in_mode}")
+            in_mode = r.returncode == 0 and r.stdout.strip() == "1"
+
+            def push():
+                try:
+                    tab["webview"].evaluateJavaScript_completionHandler_(
+                        "window.__ccSetPaneMode && window.__ccSetPaneMode(%s)"
+                        % ("true" if in_mode else "false"), None)
+                except Exception:
+                    pass
+            AppHelper.callAfter(push)
+        threading.Thread(target=work, daemon=True).start()
+
+    @objc.python_method
+    def _clipboard_set(self, text):
+        pb = NSPasteboard.generalPasteboard()
+        pb.clearContents()
+        pb.setString_forType_(text or "", NSPasteboardTypeString)
+
+    @objc.python_method
+    def _copy_selection(self, sess, pane_id, selection):
+        """Hay DOS selecciones: la de xterm.js (arrastrar en la app) y la de
+        tmux copy-mode (la que persiste). Cubrimos ambas, como el GTK."""
+        if selection.strip():
+            self._clipboard_set(selection)
+            return
+        target = pane_id
+        if not target:
+            r = tmuxc("list-panes", "-t", "=" + sess + ":", "-F",
+                      "#{pane_id}|#{pane_in_mode}")
+            for line in r.stdout.splitlines():
+                pane, _, mode = line.partition("|")
+                if mode == "1":
+                    target = pane
+                    break
+        if target:
+            tmuxc("send-keys", "-t", target, "-X", "copy-selection-no-clear")
+            r = tmuxc("save-buffer", "-")
+            if r.returncode == 0 and r.stdout:
+                self._clipboard_set(r.stdout)
+                return
+        self._notify(
+            "No se pudo copiar" if ES else "Could not copy",
+            "No encontre una seleccion activa" if ES else
+            "No active selection found")
+
+    @objc.python_method
+    def _paste_into(self, sess, pane_id):
+        pb = NSPasteboard.generalPasteboard()
+        text = pb.stringForType_(NSPasteboardTypeString) or ""
+        if not text:
+            return
+        target = pane_id or ("=" + sess + ":")
+        tmuxc("send-keys", "-t", target, "-X", "cancel")   # sal de copy-mode
+        # load-buffer + paste-buffer -p = pegado entre corchetes: nada corre
+        # hasta que el usuario da Enter (mismo criterio que snip_paste en GTK).
+        p = subprocess.run(["tmux", "load-buffer", "-b", "cc-paste", "-"],
+                           input=text, text=True, capture_output=True)
+        if p.returncode == 0:
+            tmuxc("paste-buffer", "-p", "-b", "cc-paste", "-t", target)
+            tmuxc("delete-buffer", "-b", "cc-paste")
+
+    @objc.python_method
+    def _claude_reply(self, sess):
+        state = http_get_json("/state") or {}
+        for it in (state.get("items") or []):
+            if it.get("session") == sess or it.get("project") == sess:
+                return it.get("detail") or it.get("last") or ""
+        return ""
+
+    @objc.python_method
+    def _copy_claude_reply(self, sess):
+        txt = self._claude_reply(sess)
+        if txt:
+            self._clipboard_set(txt)
+            self._notify("Respuesta copiada" if ES else "Reply copied",
+                         "%d caracteres" % len(txt))
+        else:
+            self._notify("Sin respuesta" if ES else "No reply",
+                         "No hay respuesta guardada para %s" % sess if ES
+                         else "No stored reply for %s" % sess)
+
+    @objc.python_method
+    def _export_reply(self, sess, fmt):
+        res, err = http_post("/export", {"session": sess, "format": fmt},
+                             timeout=45)
+        if err or not res:
+            self._notify("No se pudo exportar" if ES else "Export failed",
+                         str(err or ""))
+            return
+        self._notify("Guardado" if ES else "Saved", str(res.get("path") or ""))
+
+    @objc.python_method
+    def _notify(self, title, body):
+        """Reusa los popups nativos (cc-notifyd-mac) igual que notify_popup()
+        en GTK; si el demonio no corre, no pasa nada."""
+        try:
+            urllib.request.urlopen(urllib.request.Request(
+                "http://127.0.0.1:4778/notify",
+                data=json.dumps({
+                    "title": title, "body": body, "session": "local",
+                    "kind": "done", "project": title, "options": "",
+                    "full": body}).encode(),
+                headers={"Content-Type": "application/json"}), timeout=2)
+        except Exception:
+            pass
+
+    @objc.python_method
+    def _prompt_new_session(self):
+        alert = NSAlert.alloc().init()
+        alert.setMessageText_("Abrir proyecto" if ES else "Open project")
+        alert.setInformativeText_(
+            "Nombre de la sesion" if ES else "Session name")
+        tf = NSTextField.alloc().initWithFrame_(NSMakeRect(0, 0, 260, 24))
+        alert.setAccessoryView_(tf)
+        alert.addButtonWithTitle_("OK")
+        alert.addButtonWithTitle_("Cancelar" if ES else "Cancel")
+        if alert.runModal() != NSAlertFirstButtonReturn:
+            return
+        name = (tf.stringValue() or "").strip().replace(".", "-").replace(":", "-")
+        if not name:
+            return
+        res, err = http_post("/new", {"session": name}, timeout=20)
+        if err:
+            self._notify("No se pudo abrir" if ES else "Could not open",
+                         str(err))
+            return
+        self.openOrFocus_win_label_(
+            (res or {}).get("session") or name, "claude", name)
 
     @objc.python_method
     def _tab_context_menu(self, key):
@@ -737,6 +1754,18 @@ class AppController(NSObject):
         self.active_key = tab["key"]
         self.tab_strip.scrollRectToVisible_(tab["button"].frame())
         self.window.makeFirstResponder_(tab["webview"])
+        self._focus_terminal(tab)
+
+    @objc.python_method
+    def _focus_terminal(self, tab):
+        """makeFirstResponder enfoca la VISTA; el teclado de xterm entra por un
+        textarea DENTRO de la pagina, asi que hay que enfocarlo aparte o la
+        pestana abre sin poder escribir hasta que le des click."""
+        try:
+            tab["webview"].evaluateJavaScript_completionHandler_(
+                "window.__comandosFocus && window.__comandosFocus()", None)
+        except Exception:
+            pass
 
     # -- acciones de la tira (target/action) --------------------------------
     def tabClicked_(self, sender):
@@ -794,6 +1823,18 @@ class AppController(NSObject):
         tabs_menu.addItem_(self._mi(
             "Cerrar pestana" if ES else "Close tab", "closeCurrentTab:", "w"))
         from AppKit import NSEventModifierFlagCommand, NSEventModifierFlagShift
+        tabs_menu.addItem_(self._mi(
+            "Saltar a pestana/sesion…" if ES else "Jump to tab/session…",
+            "openSwitcher:", "k"))
+        snip = self._mi("Snippets…", "openSnippets:", "k")
+        snip.setKeyEquivalentModifierMask_(
+            NSEventModifierFlagCommand | NSEventModifierFlagShift)
+        tabs_menu.addItem_(snip)
+        tabs_menu.addItem_(self._mi(
+            "Tabs abiertas…" if ES else "Open tabs…", "openTabsOverview:", ""))
+        tabs_menu.addItem_(self._mi(
+            "Atajos de teclado" if ES else "Keyboard shortcuts",
+            "showHelpPanel:", "?"))
         nxt = self._mi(
             "Siguiente pestana" if ES else "Next tab", "nextTab:", "]")
         nxt.setKeyEquivalentModifierMask_(

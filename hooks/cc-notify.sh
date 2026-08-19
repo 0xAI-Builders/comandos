@@ -18,10 +18,17 @@ EVENTS="$HOOKS_DIR/events.jsonl"
 mkdir -p "$STATE_DIR"
 
 # ---- Config editable (valores por defecto si no existe el archivo) ----
-SOUND_DONE="/usr/share/sounds/freedesktop/stereo/message.oga"
-# window-attention: un toquecito discreto (dialog-warning=campanazo y
-# message-new-instant=ding le resultaron molestos al oido con muchos claudes)
-SOUND_ATTENTION="/usr/share/sounds/freedesktop/stereo/window-attention.oga"
+# Los .oga de freedesktop no existen en macOS y afplay tampoco los reproduce:
+# sin este branch el chime NUNCA suena en Mac (falla en silencio).
+if [ "$(uname -s)" = "Darwin" ]; then
+  SOUND_DONE="/System/Library/Sounds/Glass.aiff"
+  SOUND_ATTENTION="/System/Library/Sounds/Tink.aiff"
+else
+  SOUND_DONE="/usr/share/sounds/freedesktop/stereo/message.oga"
+  # window-attention: un toquecito discreto (dialog-warning=campanazo y
+  # message-new-instant=ding le resultaron molestos al oido con muchos claudes)
+  SOUND_ATTENTION="/usr/share/sounds/freedesktop/stereo/window-attention.oga"
+fi
 DESKTOP_NOTIFY=1
 SOUND_ENABLED=1
 TELEGRAM_ENABLED=1

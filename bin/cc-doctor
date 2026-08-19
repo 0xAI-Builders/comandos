@@ -150,7 +150,8 @@ _fix_piper_voice() {
 
 # Section runners (implemented in Tasks 13–16)
 _section_core() {
-  local sec="Núcleo"
+  local sec="Núcleo" plat _svc_hint _notify_hint
+  plat=$(cc_platform)
   # tmux
   if command -v tmux >/dev/null; then
     _check "$sec" "tmux" pass "$(tmux -V 2>/dev/null)"
@@ -169,23 +170,35 @@ _section_core() {
   else
     _check "$sec" "python3" fail "no instalado" "apt_install_confirmed python3"
   fi
-  # systemd --user
-  if cc_systemd_ok; then
+  # Supervisor de servicios: systemd en Linux, launchd en macOS.
+  if [ "$plat" = "darwin" ]; then
+    if launchctl list 2>/dev/null | grep -q 'com.0xai.cc-dash'; then
+      _check "$sec" "launchd (agentes)" pass "com.0xai.* cargados"
+    else
+      _check "$sec" "launchd (agentes)" fail "sin agentes" \
+        "cd $REPO && ./install.sh"
+    fi
+  elif cc_systemd_ok; then
     _check "$sec" "systemd --user" pass "running"
   else
     _check "$sec" "systemd --user" fail "no responde" ""
   fi
   # cc-dash
+  _svc_hint="systemctl --user start cc-dash"
+  [ "$plat" = "darwin" ] && _svc_hint="launchctl kickstart -k gui/$UID/com.0xai.cc-dash"
   if curl -s -m 2 http://127.0.0.1:4777/prefs >/dev/null 2>&1; then
     _check "$sec" "cc-dash" pass "responde en 127.0.0.1:4777"
   else
-    _check "$sec" "cc-dash" fail "no responde" "systemctl --user start cc-dash"
+    _check "$sec" "cc-dash" fail "no responde" "$_svc_hint"
   fi
-  # cc-notifyd
-  if ss -ltn 2>/dev/null | grep -q ':4778 '; then
+  # cc-notifyd (popups accionables). ss no existe en macOS: usamos lsof.
+  _notify_hint="systemctl --user start cc-notifyd"
+  [ "$plat" = "darwin" ] && _notify_hint="launchctl kickstart -k gui/$UID/com.0xai.cc-notifyd"
+  if { [ "$plat" = "darwin" ] && lsof -ti:4778 >/dev/null 2>&1; } \
+     || ss -ltn 2>/dev/null | grep -q ':4778 '; then
     _check "$sec" "cc-notifyd" pass "escucha en 127.0.0.1:4778"
   else
-    _check "$sec" "cc-notifyd" warn "no está escuchando" "systemctl --user start cc-notifyd"
+    _check "$sec" "cc-notifyd" warn "no está escuchando" "$_notify_hint"
   fi
   # hooks
   if [ -x "$HOME/.claude/hooks/cc-notify.sh" ]; then
@@ -296,7 +309,15 @@ _section_audio() {
       _check "$sec" "WSLg PulseServer" warn "/mnt/wslg/PulseServer missing — audio no funcionará"
     fi
   fi
-  if command -v pw-play >/dev/null; then
+  if [ "$plat" = "darwin" ]; then
+    # En macOS el reproductor es afplay (parte del sistema) y los chimes son
+    # los .aiff de /System/Library/Sounds — los .oga de Linux no aplican.
+    if command -v afplay >/dev/null; then
+      _check "$sec" "afplay" pass "installed"
+    else
+      _check "$sec" "afplay" fail "sin reproductor" ""
+    fi
+  elif command -v pw-play >/dev/null; then
     _check "$sec" "pw-play" pass "installed"
   elif command -v paplay >/dev/null; then
     _check "$sec" "paplay" pass "installed"

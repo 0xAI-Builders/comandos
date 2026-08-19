@@ -16,8 +16,14 @@ Anatomia del popup:
 Recibe eventos de cc-notify.sh:  POST 127.0.0.1:4778/notify
 Corre como servicio:             systemctl --user status cc-notifyd
 """
-import json, os, re, subprocess, threading, urllib.request
+import json, os, re, subprocess, sys, threading, urllib.request
 import http.server, socketserver
+# macOS no tiene GTK: despachamos al puerto nativo (NSPanel + WKWebView) ANTES
+# de tocar `gi`. Mismo patron que bin/cc-app -> bin/cc-app-mac.
+if sys.platform == "darwin":
+    _mac = os.path.join(os.path.dirname(os.path.realpath(__file__)),
+                        "cc-notifyd-mac")
+    os.execv(_mac, [_mac, *sys.argv[1:]])
 import gi
 gi.require_version("Gtk", "3.0")
 from gi.repository import Gtk, Gdk, GLib
