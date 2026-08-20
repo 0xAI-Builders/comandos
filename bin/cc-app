@@ -15,7 +15,7 @@ Teclas:
   Ctrl+Shift + / - / 0   zoom de letra (pestana actual)
   Ctrl+Q                 salir
 """
-import json, os, re, secrets, shlex, shutil, subprocess, sys, threading, time, urllib.request
+import glob, json, os, re, secrets, shlex, shutil, subprocess, sys, threading, time, urllib.request
 from concurrent.futures import ThreadPoolExecutor
 from urllib.parse import quote, unquote, urlparse
 # macOS no tiene GTK/VTE: despachamos a la app nativa (PyObjC + WKWebView) ANTES
@@ -1374,6 +1374,208 @@ def archive_tab(key, reason="closed"):
     os.replace(tmp, TAB_HISTORY_FILE)
 
 
+
+# ---- Snapshot de resurreccion: para que un reinicio de la compu no pierda nada.
+# Cada ~30s se guarda, por pestana term-*, su cwd + agente + session-id EXACTO
+# (claude: ~/.claude/sessions/<pid>.json trae pid/sessionId/pane tmux;
+#  codex: el binario mantiene abierto su rollout-*.jsonl -> uuid del nombre).
+# restore_tabs() usa esto para revivir cada tab en su directorio y retomar la
+# conversacion precisa con `claude --resume <id>` / `codex resume <id>`.
+SNAPSHOT_FILE = os.path.expanduser("~/.claude/hooks/app-tabs-snapshot.json")
+CLAUDE_SESS_DIR = os.path.expanduser("~/.claude/sessions")
+CLAUDE_PROJ_DIR = os.path.expanduser("~/.claude/projects")
+CODEX_SESS_DIR = os.path.expanduser("~/.codex/sessions")
+_ROLLOUT_RE = re.compile(
+    r"rollout-.*-([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\.jsonl$")
+_RESUME_SKIP_FLAGS = {"--resume", "--continue", "-r", "-c", "--last"}
+
+
+def _pid_alive(pid):
+    try:
+        os.kill(int(pid), 0)
+        return True
+    except Exception:
+        return False
+
+
+def _proc_flags(pid):
+    """Flags (args que empiezan con '-') con que corre el agente, para
+    relanzarlo igual (p.ej. --dangerously-skip-permissions)."""
+    try:
+        with open(f"/proc/{int(pid)}/cmdline", "rb") as f:
+            argv = [a.decode("utf-8", "replace") for a in f.read().split(b"\0") if a]
+    except Exception:
+        return []
+    return [a for a in argv[1:] if a.startswith("-") and a not in _RESUME_SKIP_FLAGS]
+
+
+def _claude_by_tmux_session():
+    """{sesion tmux: {id, pid}} de los claude VIVOS, via ~/.claude/sessions."""
+    out = {}
+    try:
+        names = os.listdir(CLAUDE_SESS_DIR)
+    except Exception:
+        return out
+    for n in names:
+        if not n.endswith(".json"):
+            continue
+        try:
+            with open(os.path.join(CLAUDE_SESS_DIR, n)) as f:
+                d = json.load(f)
+        except Exception:
+            continue
+        if not isinstance(d, dict):
+            continue
+        pid, tm, sid = d.get("pid"), d.get("tmux") or "", d.get("sessionId")
+        if not (isinstance(pid, int) and isinstance(tm, str) and isinstance(sid, str) and sid):
+            continue
+        sess = tm.partition(":")[0]
+        if not sess or not _pid_alive(pid):
+            continue
+        prev = out.get(sess)
+        if prev and prev.get("startedAt", 0) >= (d.get("startedAt") or 0):
+            continue
+        out[sess] = {"id": sid, "pid": pid, "startedAt": d.get("startedAt") or 0}
+    return out
+
+
+def _ppid_map():
+    kids = {}
+    try:
+        pids = [n for n in os.listdir("/proc") if n.isdigit()]
+    except Exception:
+        return kids
+    for n in pids:
+        try:
+            with open(f"/proc/{n}/stat") as f:
+                st = f.read()
+            ppid = int(st.rsplit(")", 1)[1].split()[1])
+            kids.setdefault(ppid, []).append(int(n))
+        except Exception:
+            continue
+    return kids
+
+
+def _codex_info_for_session(sess, kids):
+    """Busca en los descendientes del pane un proceso con su rollout de codex
+    abierto -> {id, flags}. None si no hay codex en esa sesion."""
+    r = tmuxc("list-panes", "-s", "-t", "=" + sess + ":", "-F", "#{pane_pid}")
+    if r.returncode != 0:
+        return None
+    stack = [int(x) for x in r.stdout.split() if x.isdigit()]
+    seen = set()
+    while stack:
+        p = stack.pop()
+        if p in seen:
+            continue
+        seen.add(p)
+        stack.extend(kids.get(p, []))
+    for p in seen:
+        try:
+            fds = os.listdir(f"/proc/{p}/fd")
+        except Exception:
+            continue
+        for fd in fds:
+            try:
+                t = os.readlink(f"/proc/{p}/fd/{fd}")
+            except Exception:
+                continue
+            m = _ROLLOUT_RE.search(t)
+            if m:
+                return {"id": m.group(1), "flags": _proc_flags(p)}
+    return None
+
+
+_SNAPSHOT_LOCK = threading.Lock()
+
+
+def snapshot_tabs():
+    """Corre en hilo. Persiste el estado de resurreccion de las tabs term-*."""
+    if not _SNAPSHOT_LOCK.acquire(blocking=False):
+        return
+    try:
+        keys = [k for k in list(tabs.keys())
+                if isinstance(k, str) and k.startswith("term-")]
+        cl = _claude_by_tmux_session()
+        kids = None
+        data = {}
+        for k in keys:
+            it = STATE_ITEMS.get(k, {}) or {}
+            cwd = it.get("cwd") or ""
+            if not cwd:
+                r = tmuxc("display-message", "-p", "-t", "=" + k + ":",
+                          "#{pane_current_path}")
+                cwd = r.stdout.strip() if r.returncode == 0 else ""
+            ent = {"cwd": cwd, "agent": it.get("agent") or "", "ts": int(time.time())}
+            if k in cl:
+                ent["agent"] = "claude"
+                ent["resume_id"] = cl[k]["id"]
+                ent["flags"] = _proc_flags(cl[k]["pid"])
+            else:
+                if kids is None:
+                    kids = _ppid_map()
+                info = _codex_info_for_session(k, kids)
+                if info:
+                    ent["agent"] = "codex"
+                    ent["resume_id"] = info["id"]
+                    ent["flags"] = info["flags"]
+                elif ent["agent"] in {"claude", "codex"}:
+                    pass  # agente reportado pero sin id: quedara el fallback
+                else:
+                    ent["agent"] = ""  # shell puro: no relanzar nada
+            data[k] = ent
+        tmp = SNAPSHOT_FILE + ".tmp"
+        with open(tmp, "w") as f:
+            json.dump(data, f)
+        os.replace(tmp, SNAPSHOT_FILE)
+    except Exception:
+        pass
+    finally:
+        _SNAPSHOT_LOCK.release()
+
+
+def load_tab_snapshot():
+    try:
+        with open(SNAPSHOT_FILE) as f:
+            d = json.load(f)
+        return d if isinstance(d, dict) else {}
+    except Exception:
+        return {}
+
+
+def resume_command(snap):
+    """Comando para retomar el agente de una tab muerta; None = solo shell."""
+    if not isinstance(snap, dict):
+        return None
+    agent = snap.get("agent") or ""
+    flags = snap.get("flags") if isinstance(snap.get("flags"), list) else []
+    flags = [f for f in flags if isinstance(f, str) and f.startswith("-")
+             and f not in _RESUME_SKIP_FLAGS]
+    fl = ("" if not flags else " " + " ".join(shlex.quote(f) for f in flags))
+    sid = snap.get("resume_id") or ""
+    sid = sid if isinstance(sid, str) and re.fullmatch(r"[0-9a-f-]{36}", sid) else ""
+    if agent == "claude" and shutil.which("claude"):
+        if sid and glob.glob(os.path.join(CLAUDE_PROJ_DIR, "*", sid + ".jsonl")):
+            return "claude --resume " + sid + fl
+        return "claude --continue" + fl
+    if agent == "codex" and shutil.which("codex"):
+        if sid and glob.glob(os.path.join(CODEX_SESS_DIR, "*", "*", "*",
+                                          "rollout-*" + sid + ".jsonl")):
+            return "codex resume " + sid + fl
+        return "codex resume --last" + fl
+    return None
+
+
+def _send_resume(sess, cmd):
+    try:
+        if subprocess.run(["tmux", "has-session", "-t", "=" + sess],
+                          capture_output=True, timeout=5).returncode == 0:
+            tmuxc("send-keys", "-t", "=" + sess + ":", cmd, "Enter")
+    except Exception:
+        pass
+    return False
+
+
 def restore_tabs():
     """Al abrir la app, reabre las pestanas de la vez pasada (con su nombre);
     si una sesion murio (p.ej. reinicio), la revive (claude --continue /
@@ -1387,6 +1589,7 @@ def restore_tabs():
         data = {k: None for k in data if isinstance(k, str)}
     if not isinstance(data, dict):
         return False
+    snaps = load_tab_snapshot()
     for key, label in data.items():
         if not isinstance(key, str) or not key:
             continue
@@ -1409,11 +1612,21 @@ def restore_tabs():
                               capture_output=True, timeout=5).returncode != 0:
                 ssh_host = ssh_host_from_session(sess)
                 if sess.startswith("term-"):
-                    # terminal scratch: recrear shell simple en HOME
+                    # terminal scratch: revivir en SU cwd y retomar el agente
+                    # exacto (claude --resume <id> / codex resume <id>) que
+                    # corria antes del apagado, segun el snapshot periodico.
+                    snap = snaps.get(sess) if isinstance(snaps, dict) else None
+                    snap = snap if isinstance(snap, dict) else {}
+                    cwd = snap.get("cwd") or ""
+                    if not (isinstance(cwd, str) and os.path.isdir(cwd)):
+                        cwd = os.path.expanduser("~")
                     subprocess.run(
                         ["systemd-run", "--user", "--scope", "--collect", "--quiet",
-                         "tmux", "new-session", "-d", "-s", sess, "-c", os.path.expanduser("~")],
+                         "tmux", "new-session", "-d", "-s", sess, "-c", cwd],
                         capture_output=True, timeout=12)
+                    cmd = resume_command(snap)
+                    if cmd:
+                        GLib.timeout_add(1500, _send_resume, sess, cmd)
                 elif ssh_host and sess.startswith("ssh-"):
                     http_post("/ssh-connect", {"host": ssh_host}, timeout=20)
                 elif ssh_host:
@@ -3243,5 +3456,7 @@ win.connect("destroy", Gtk.main_quit)
 win.show_all()
 hub._term.grab_focus()
 GLib.timeout_add(600, restore_tabs)
+GLib.timeout_add_seconds(30, lambda: (threading.Thread(target=snapshot_tabs, daemon=True).start(), True)[1])
+GLib.timeout_add_seconds(8, lambda: (threading.Thread(target=snapshot_tabs, daemon=True).start(), False)[1])
 threading.Thread(target=poll_state_loop, daemon=True).start()
 Gtk.main()
