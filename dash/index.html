@@ -1709,7 +1709,7 @@ function mdStrip(s){ return (s||"").replace(/\*\*|`|^#{1,6} /g, ""); }
 	  "..................",
 	  "..................",
 	];
-	function axoDraw(cv, frame, st, hat, px){
+	function axoDraw(cv, frame, st, hat, px, costume){
 	  px = px || 4;
 	  cv.width = 18 * px; cv.height = 13 * px;
 	  const ctx = cv.getContext("2d");
@@ -1746,11 +1746,39 @@ function mdStrip(s){ return (s||"").replace(/\*\*|`|^#{1,6} /g, ""); }
 	  if(st === "idle"){  // zzz
 	    put(15, 2, "#5A6580"); put(16, 1, "#5A6580"); put(14, 3, "#5A6580");
 	  }
+	  const alt = frame === AXO_F2;   // varia el disfraz entre frames
+	  if(costume === "fuego"){
+	    const F="#FF6B35", A="#FFA630", Y="#FFE066";
+	    [[4,2,F],[5,1,A],[6,2,Y],[7,1,F],[8,2,A],[5,3,F],[7,3,A]]
+	      .forEach(([x,y,c]) => put(x + (alt ? 1 : 0), y, c));
+	    [[10,5],[11,5],[12,5],[13,5]].forEach(([x,y]) => put(x, y, "#14121A")); // lentes
+	  } else if(costume === "hamster"){
+	    ctx.strokeStyle = "#8B95AB"; ctx.lineWidth = Math.max(2, px * 0.8);
+	    ctx.setLineDash([px * 1.5, px]);
+	    ctx.beginPath();
+	    ctx.arc(cv.width/2, cv.height/2 + px, Math.min(cv.width, cv.height)/2 - px/2,
+	            alt ? 0.4 : 0, Math.PI*2);
+	    ctx.stroke(); ctx.setLineDash([]);
+	  } else if(costume === "gordo"){
+	    for(let x=3; x<=12; x++){ put(x, 9, AXO_PAL.B); }
+	    for(let x=4; x<=11; x++){ put(x, 10, AXO_PAL.D); }
+	    put(7, 9, AXO_PAL.W); put(8, 9, AXO_PAL.W);   // pancita
+	  } else if(costume === "huevo"){
+	    const SH="#F5EFE0", SD="#D9CDB4";
+	    for(let x=2; x<=15; x++){ for(let y=7; y<=10; y++){ put(x, y, SH); } }
+	    [[3,6],[5,7],[7,6],[9,7],[11,6],[13,7],[15,6]].forEach(([x,y]) => put(x, y, SH));
+	    [[4,8],[9,9],[13,8]].forEach(([x,y]) => put(x, y, SD));   // grietas
+	  } else if(costume === "bufanda"){
+	    const R="#E63946", R2="#B22B37";
+	    [[11,7],[12,7],[13,7],[14,7],[11,8],[12,8]].forEach(([x,y]) => put(x, y, R));
+	    [[13,8],[13,9],[13,10]].forEach(([x,y]) => put(x, y, alt ? R : R2)); // puntita
+	  }
 	}
 	let axoFlip = false;
 	setInterval(() => {
 	  axoFlip = !axoFlip;
-	  document.querySelectorAll('.cx-hero[data-st="working"]').forEach(a => {
+	  document.querySelectorAll('.cx-hero').forEach(a => {
+	    if(a.dataset.st !== "working" && !a.closest("#centro")) return;
 	    const f1 = a.querySelector(".f1"), f2 = a.querySelector(".f2");
 	    if(!f1 || !f2) return;
 	    f1.style.display = axoFlip ? "none" : "";
@@ -1799,7 +1827,8 @@ function mdStrip(s){ return (s||"").replace(/\*\*|`|^#{1,6} /g, ""); }
   const role = roleOfModel(model);
 	  const hat = role ? role.hat :
 	    (tier === ((MT && MT.alertTier) || "high") ? "corona" : "");
-	  const sig = `${it.session}|${st}|${hat}`;
+	  const costume = it.costume || "";
+	  const sig = `${it.session}|${st}|${hat}|${costume}`;
 	  if(box.dataset.sig !== sig){
 	    box.dataset.sig = sig;
 	    box.innerHTML = `
@@ -1828,8 +1857,8 @@ function mdStrip(s){ return (s||"").replace(/\*\*|`|^#{1,6} /g, ""); }
 	      </div>`;
 	    const fr = box.querySelector(".frames");
 	    fr.innerHTML = `<canvas class="f1"></canvas><canvas class="f2" style="display:none"></canvas>`;
-	    axoDraw(fr.querySelector(".f1"), AXO_F1, st, hat, 7);
-	    axoDraw(fr.querySelector(".f2"), AXO_F2, st, hat, 7);
+	    axoDraw(fr.querySelector(".f1"), AXO_F1, st, hat, 7, costume);
+	    axoDraw(fr.querySelector(".f2"), AXO_F2, st, hat, 7, costume);
 	    // Rol actual + cambio de rol (usa el switch de modelo existente)
 	    const rbox = box.querySelector(".cx-roles");
 	    if(ROLES && (ROLES.roles || []).length && ["claude","codex","opencode"].includes(it.agent)){
@@ -1902,7 +1931,8 @@ function mdStrip(s){ return (s||"").replace(/\*\*|`|^#{1,6} /g, ""); }
 	  const stTxt = {waiting: tf("espera tu respuesta", "waiting for you"),
 	                 working: tf("trabajando", "working"), done: tf("listo", "done"),
 	                 idle: tf("descansando", "idle"), dead: tf("apagada", "dead")}[st] || st;
-	  box.querySelector(".cx-sub").textContent = stTxt;
+	  box.querySelector(".cx-sub").textContent = stTxt +
+	    (it.why ? ` · ${it.why}` : (it.contextPct ? ` · ctx ${it.contextPct}%` : ""));
 	  const me = box.querySelector(".cx-model");
 	  me.textContent = model ? `${model}${tst && tst.symbol ? " " + tst.symbol : ""}` :
 	    tf("modelo aun no detectado", "model not detected yet");

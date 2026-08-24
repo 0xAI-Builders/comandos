@@ -1,0 +1,14 @@
+{
+  "_doc": "Umbrales de los detectores de disfraces del ajolote — EDITABLE. Todo se mide de datos reales (transcripts locales de ~/.claude/projects). fuego: tokens de salida en la ventana; gordo: % de contexto usado (input+cache del ultimo turno vs la menor ventana de contextWindows en la que cabe (auto-adapta a modelos de 200k o 1M)); hamster: mismo archivo editado N veces en las ultimas M tool calls; huevo: sesion recien nacida; bufanda: minutos sin actividad (cache fria, >5min = ttl del prompt cache).",
+  "gordoPct": 45,
+  "fuegoOutTokens": 25000,
+  "fuegoWindowMin": 10,
+  "hamsterEdits": 5,
+  "hamsterWindow": 30,
+  "huevoSecs": 150,
+  "bufandaMin": 5,
+  "contextWindows": [
+    200000,
+    1000000
+  ]
+}
