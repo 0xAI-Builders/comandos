@@ -457,6 +457,158 @@ def account_for_pid(pid, agent):
     return info
 
 
+TOOL_COSTS_FILE = os.path.join(REPO_ROOT, "config", "tool-costs.json")
+_tool_costs_cache = {"mtime": None, "data": {}}
+
+
+def load_tool_costs():
+    try:
+        mtime = os.path.getmtime(TOOL_COSTS_FILE)
+    except OSError:
+        return _tool_costs_cache["data"]
+    if _tool_costs_cache["mtime"] != mtime:
+        try:
+            with open(TOOL_COSTS_FILE) as f:
+                d = json.load(f)
+            _tool_costs_cache.update(mtime=mtime, data=d if isinstance(d, dict) else {})
+        except Exception:
+            pass
+    return _tool_costs_cache["data"]
+
+
+def _mcp_est_tokens(name):
+    cfg = load_tool_costs()
+    known = cfg.get("mcpServers") or {}
+    for key, val in known.items():
+        if key in name:
+            return int(val)
+    return int(cfg.get("mcpServerDefault") or 1500)
+
+
+def _read_json_quiet(path):
+    try:
+        with open(path) as f:
+            return json.load(f)
+    except Exception:
+        return {}
+
+
+def session_mcps(cwd):
+    """MCPs visibles para un cwd: globales (~/.claude.json) + del proyecto
+    (.mcp.json), con su estado segun settings del proyecto."""
+    out = []
+    settings = {}
+    for fn in ("settings.json", "settings.local.json"):
+        settings.update(_read_json_quiet(os.path.join(cwd, ".claude", fn)) or {})
+    disabled = set(settings.get("disabledMcpjsonServers") or [])
+    glob_cfg = _read_json_quiet(os.path.expanduser("~/.claude.json"))
+    for name in sorted((glob_cfg.get("mcpServers") or {}).keys()):
+        out.append({"name": name, "scope": "user", "enabled": True,
+                    "est_tokens": _mcp_est_tokens(name), "toggleable": False})
+    proj = _read_json_quiet(os.path.join(cwd, ".mcp.json"))
+    for name in sorted((proj.get("mcpServers") or {}).keys()):
+        out.append({"name": name, "scope": "project",
+                    "enabled": name not in disabled,
+                    "est_tokens": _mcp_est_tokens(name), "toggleable": True})
+    return out
+
+
+def _skill_dirs(cwd):
+    dirs = [(os.path.expanduser("~/.claude/skills"), "user")]
+    if cwd:
+        dirs.append((os.path.join(cwd, ".claude", "skills"), "project"))
+    return dirs
+
+
+def _parse_skill_md(path):
+    """(name, description, disabled) del frontmatter de un SKILL.md."""
+    try:
+        with open(path) as f:
+            txt = f.read(20000)
+    except OSError:
+        return None
+    m = re.match(r"^---\n(.*?)\n---", txt, re.S)
+    if not m:
+        return None
+    fm = m.group(1)
+    def field(key):
+        fm_m = re.search(rf"^{key}:\s*(.+)$", fm, re.M)
+        return fm_m.group(1).strip().strip("\"'") if fm_m else ""
+    disabled = bool(re.search(r"^disable-model-invocation:\s*true\s*$", fm, re.M))
+    return {"name": field("name") or os.path.basename(os.path.dirname(path)),
+            "description": field("description"), "disabled": disabled}
+
+
+def session_skills(cwd):
+    cfg = load_tool_costs()
+    per_char = float(cfg.get("skillCharsPerToken") or 4)
+    overhead = int(cfg.get("skillOverheadTokens") or 30)
+    out = []
+    for base, scope in _skill_dirs(cwd):
+        try:
+            names = sorted(os.listdir(base))
+        except OSError:
+            continue
+        for n in names:
+            md = os.path.join(base, n, "SKILL.md")
+            info = _parse_skill_md(md)
+            if not info:
+                continue
+            est = overhead + int(len(info["name"] + info["description"]) / per_char)
+            out.append({"name": info["name"], "scope": scope, "path": md,
+                        "enabled": not info["disabled"],
+                        "est_tokens": 0 if info["disabled"] else est,
+                        "est_full": est, "toggleable": True})
+    return out
+
+
+def toggle_skill(path, enable):
+    """Prende/apaga una skill via disable-model-invocation en su frontmatter.
+    Apagada = cero tokens hasta invocarla a mano (mecanismo documentado)."""
+    real = os.path.realpath(path)
+    allowed = [os.path.realpath(os.path.expanduser("~/.claude/skills"))]
+    if not any(real.startswith(a + os.sep) for a in allowed) or             not real.endswith("SKILL.md"):
+        # skills de proyecto: permitir si el md esta bajo <algo>/.claude/skills
+        if "/.claude/skills/" not in real or not real.endswith("SKILL.md"):
+            return "ruta fuera de los directorios de skills"
+    try:
+        with open(real) as f:
+            txt = f.read()
+    except OSError as e:
+        return str(e)
+    m = re.match(r"^(---\n)(.*?)(\n---)", txt, re.S)
+    if not m:
+        return "SKILL.md sin frontmatter"
+    fm = m.group(2)
+    fm = re.sub(r"\n?disable-model-invocation:.*", "", fm)
+    if not enable:
+        fm += "\ndisable-model-invocation: true"
+    new = "---\n" + fm + "\n---" + txt[m.end(3):]
+    tmp = real + ".tmp"
+    with open(tmp, "w") as f:
+        f.write(new)
+    os.replace(tmp, real)
+    return None
+
+
+def toggle_project_mcp(cwd, name, enable):
+    sdir = os.path.join(cwd, ".claude")
+    os.makedirs(sdir, exist_ok=True)
+    spath = os.path.join(sdir, "settings.local.json")
+    data = _read_json_quiet(spath)
+    dis = set(data.get("disabledMcpjsonServers") or [])
+    if enable:
+        dis.discard(name)
+    else:
+        dis.add(name)
+    data["disabledMcpjsonServers"] = sorted(dis)
+    tmp = spath + ".tmp"
+    with open(tmp, "w") as f:
+        json.dump(data, f, indent=2)
+    os.replace(tmp, spath)
+    return None
+
+
 _TIER_LAST = {}
 
 
@@ -2605,7 +2757,7 @@ class Handler(http.server.SimpleHTTPRequestHandler):
     # Endpoints con DATOS o ACCIONES: exigen token. El shell estatico (HTML,
     # sw.js, manifest, iconos) NO — no revela nada (es codigo open-source) y
     # asi la PWA instala y carga sin depender de cookies en el webview movil.
-    API_GET = ("/state", "/usage/state", "/opencode/models", "/model-tiers", "/events", "/conf", "/prefs", "/ssh", "/tabs",
+    API_GET = ("/state", "/usage/state", "/opencode/models", "/model-tiers", "/session-brain", "/events", "/conf", "/prefs", "/ssh", "/tabs",
                "/tab-history", "/remote-state", "/remote-qr.png", "/snippets", "/tmux-mouse",
                "/webterm-token")
 
@@ -2628,6 +2780,14 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             return self._json(200, {"providers": opencode_models()})
         if self.path.startswith("/model-tiers"):
             return self._json(200, load_model_tiers())
+        if self.path.startswith("/session-brain"):
+            import urllib.parse
+            q = urllib.parse.parse_qs(urllib.parse.urlparse(self.path).query)
+            cwd = (q.get("cwd") or [""])[0]
+            if not cwd.startswith("/") or not os.path.isdir(cwd):
+                return self._json(400, {"error": "cwd invalido"})
+            return self._json(200, {"mcps": session_mcps(cwd),
+                                    "skills": session_skills(cwd)})
 
         if self.path.startswith("/usage/state"):
             refresh_local_usage(False)
@@ -2748,6 +2908,37 @@ class Handler(http.server.SimpleHTTPRequestHandler):
                 return self._json(400, {"error": "Clave o valor invalido"})
             write_conf_key(key, val)
             return self._json(200, {"ok": True})
+
+        if self.path == "/skill-toggle":
+            err = toggle_skill(str(data.get("path", "")), bool(data.get("on")))
+            if err:
+                return self._json(400, {"error": err})
+            return self._json(200, {"ok": True,
+                "note": "aplica al reciclar las sesiones"})
+
+        if self.path == "/mcp-toggle":
+            cwd, name = str(data.get("cwd", "")), str(data.get("name", ""))[:80]
+            if not cwd.startswith("/") or not os.path.isdir(cwd) or not name:
+                return self._json(400, {"error": "cwd o name invalido"})
+            err = toggle_project_mcp(cwd, name, bool(data.get("on")))
+            if err:
+                return self._json(400, {"error": err})
+            return self._json(200, {"ok": True,
+                "note": "aplica al reciclar la sesion"})
+
+        if self.path == "/pause":
+            sess = str(data.get("session", ""))[:80]
+            on = bool(data.get("on"))
+            by_session, _ = agent_pane_maps(agent_procs())
+            info = by_session.get(sess)
+            if not info or not info.get("pid"):
+                return self._json(404, {"error": "sin agente vivo en esa sesion"})
+            import signal as _sig
+            try:
+                os.kill(int(info["pid"]), _sig.SIGSTOP if on else _sig.SIGCONT)
+            except OSError as e:
+                return self._json(500, {"error": str(e)})
+            return self._json(200, {"ok": True, "paused": on})
 
         if self.path == "/event":
             # Puerta universal de agentes: cualquier CLI/plugin (opencode,

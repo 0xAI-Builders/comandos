@@ -295,26 +295,46 @@
   .card.ext{background:var(--panel);border-color:var(--line);box-shadow:none}
   .card.ext .tag{color:var(--working);background:rgba(122,165,255,.12)}
 
-  /* Colonia: un ajolote pixel-art por sesion. El COLOR DEL AGUA (halo) dice
-     el estado; el ajolote siempre es rosita (bonito). Click = ir a la sesion. */
-  #colonia{display:flex;flex-wrap:wrap;gap:10px;align-items:flex-start}
-  #colonia-wrap.hidden{display:none}
-  .axo{display:flex;flex-direction:column;align-items:center;gap:3px;
-    width:78px;padding:8px 2px 6px;border-radius:14px;cursor:pointer;border:1px solid transparent;
-    transition:transform .12s ease,border-color .12s ease;background:none}
-  .axo:hover{transform:translateY(-2px);border-color:var(--line2)}
-  .axo canvas{image-rendering:pixelated;width:56px;height:44px}
-  .axo .aqua{width:62px;height:50px;border-radius:50%;display:flex;align-items:center;
-    justify-content:center;background:radial-gradient(circle at 50% 42%,var(--aqua-c,#232B3E) 0%,transparent 72%)}
-  .axo[data-st="waiting"]{--aqua-c:#6E4C12}
-  .axo[data-st="working"]{--aqua-c:#274070}
-  .axo[data-st="done"]{--aqua-c:#155239}
-  .axo[data-st="idle"]{--aqua-c:#252C3D}
-  .axo[data-st="dead"] canvas{filter:grayscale(.95) opacity(.55)}
-  .axo .axname{font-family:var(--mono);font-size:9.5px;color:var(--dim);max-width:74px;
-    overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-  .axo[data-st="waiting"] .axname{color:var(--waiting);font-weight:700}
-  @media (prefers-reduced-motion:reduce){.axo canvas.f2{display:none!important}}
+  /* Centro de control: EL ajolote (la mascota, sesion seleccionada) +
+     cerebro/cuenta/MCPs/skills/acciones. Vive donde vivian las cards. */
+  #centro{display:flex;gap:18px;padding:16px;border:1px solid var(--line);
+    border-radius:14px;background:var(--panel);flex-wrap:wrap}
+  .cx-hero{display:flex;flex-direction:column;align-items:center;gap:6px;min-width:150px}
+  .cx-hero canvas{image-rendering:pixelated;width:126px;height:91px}
+  .cx-hero .aqua{width:140px;height:104px;border-radius:50%;display:flex;align-items:center;
+    justify-content:center;background:radial-gradient(circle at 50% 44%,var(--aqua-c,#232B3E) 0%,transparent 74%)}
+  .cx-hero[data-st="waiting"]{--aqua-c:#6E4C12}
+  .cx-hero[data-st="working"]{--aqua-c:#274070}
+  .cx-hero[data-st="done"]{--aqua-c:#155239}
+  .cx-hero[data-st="dead"] canvas{filter:grayscale(.95) opacity(.55)}
+  .cx-name{font-weight:700;font-size:15px}
+  .cx-sub{font-family:var(--mono);font-size:10.5px;color:var(--dim)}
+  .cx-cols{display:flex;gap:26px;flex:1;flex-wrap:wrap;min-width:0}
+  .cx-block{min-width:200px;flex:1}
+  .cx-title{font-family:var(--mono);font-size:10px;font-weight:700;color:var(--faint);
+    letter-spacing:.12em;text-transform:uppercase;margin-bottom:8px}
+  .cx-row{display:flex;align-items:center;gap:8px;padding:4px 0;min-width:0}
+  .cx-row .nm{flex:1;font-family:var(--mono);font-size:11.5px;overflow:hidden;
+    text-overflow:ellipsis;white-space:nowrap}
+  .cx-row .tok{font-family:var(--mono);font-size:10px;color:var(--dim);flex:none}
+  .cx-row.off .nm,.cx-row.off .tok{color:var(--faint);text-decoration:line-through}
+  .cx-total{font-family:var(--mono);font-size:10.5px;color:var(--dim);margin-top:6px;
+    padding-top:6px;border-top:1px solid var(--line)}
+  .sw{flex:none;width:34px;height:20px;border-radius:99px;background:var(--line2);
+    position:relative;border:none;cursor:pointer;transition:background .18s ease;padding:0}
+  .sw::after{content:"";position:absolute;top:2px;left:2px;width:16px;height:16px;
+    border-radius:50%;background:var(--dim);transition:left .18s ease,background .18s ease}
+  .sw.on{background:var(--brand)}
+  .sw.on::after{left:16px;background:#fff}
+  .sw:disabled{opacity:.45;cursor:default}
+  .cx-acts{display:flex;gap:8px;flex-wrap:wrap;margin-top:4px}
+  .cx-acts button{font-family:var(--mono);font-size:11px;font-weight:700;padding:7px 14px;
+    border-radius:9px;border:1px solid var(--line2);background:none;color:var(--text);cursor:pointer;
+    transition:border-color .12s ease,color .12s ease}
+  .cx-acts button:hover{border-color:var(--brand);color:var(--brand)}
+  .cx-acts .danger:hover{border-color:#FF6B6B;color:#FF6B6B}
+  .cx-note{font-family:var(--mono);font-size:9.5px;color:var(--faint);margin-top:6px}
+  @media (prefers-reduced-motion:reduce){.cx-hero canvas.f2{display:none!important}}
   /* Sesiones: filas compactas */
   #rows{display:flex;flex-direction:column;border:1px solid var(--line);border-radius:14px;
     background:var(--panel);overflow:hidden}
@@ -908,8 +928,8 @@
 </div>
 
 <div id="content">
-<section class="sec" id="colonia-wrap">
-  <div id="colonia" title=""></div>
+<section class="sec hidden" id="centro-wrap">
+  <div id="centro"></div>
 </section>
 <section class="sec">
   <div class="sec-label">Sesiones
@@ -1676,8 +1696,8 @@ function mdStrip(s){ return (s||"").replace(/\*\*|`|^#{1,6} /g, ""); }
 	  "..................",
 	  "..................",
 	];
-	function axoDraw(cv, frame, st, crown){
-	  const px = 4;
+	function axoDraw(cv, frame, st, crown, px){
+	  px = px || 4;
 	  cv.width = 18 * px; cv.height = 13 * px;
 	  const ctx = cv.getContext("2d");
 	  ctx.clearRect(0, 0, cv.width, cv.height);
@@ -1711,52 +1731,142 @@ function mdStrip(s){ return (s||"").replace(/\*\*|`|^#{1,6} /g, ""); }
 	let axoFlip = false;
 	setInterval(() => {
 	  axoFlip = !axoFlip;
-	  document.querySelectorAll('.axo[data-st="working"]').forEach(a => {
-	    a.querySelector(".f1").style.display = axoFlip ? "none" : "";
-	    a.querySelector(".f2").style.display = axoFlip ? "" : "none";
+	  document.querySelectorAll('.cx-hero[data-st="working"]').forEach(a => {
+	    const f1 = a.querySelector(".f1"), f2 = a.querySelector(".f2");
+	    if(!f1 || !f2) return;
+	    f1.style.display = axoFlip ? "none" : "";
+	    f2.style.display = axoFlip ? "" : "none";
 	  });
 	}, 550);
-	function renderColonia(list){
-	  const box = $("#colonia");
-	  if(!box) return;
+	// Centro de control: EL ajolote de la sesion seleccionada + sus controles.
+	let brainCache = {cwd: null, data: null};
+	async function loadBrain(cwd){
+	  if(brainCache.cwd === cwd && brainCache.data) return brainCache.data;
+	  try{
+	    const d = await api(`/session-brain?cwd=${encodeURIComponent(cwd)}`);
+	    brainCache = {cwd, data: d};
+	    return d;
+	  }catch(e){ return null; }
+	}
+	function pickSel(list){
 	  const seen = new Set(), items = [];
 	  for(const it of list || []){
 	    if(seen.has(it.session)) continue;
-	    seen.add(it.session);
-	    if(it.alive || it.status === "waiting") items.push(it);
+	    seen.add(it.session); items.push(it);
 	  }
-	  const order = {waiting:0, working:1, done:2, idle:3, dead:4};
-	  items.sort((a,b) => (order[a.status] ?? 5) - (order[b.status] ?? 5));
-	  $("#colonia-wrap").classList.toggle("hidden", !items.length);
-	  const live = new Set(items.map(i => i.session));
-	  box.querySelectorAll(".axo").forEach(el => { if(!live.has(el.dataset.session)) el.remove(); });
-	  items.forEach((it, idx) => {
-	    let el = box.querySelector(`.axo[data-session="${CSS.escape(it.session)}"]`);
-	    if(!el){
-	      el = document.createElement("button");
-	      el.type = "button"; el.className = "axo"; el.dataset.session = it.session;
-	      el.innerHTML = `<span class="aqua"><span class="frames"></span></span><span class="axname"></span>`;
-	      el.addEventListener("click", async ()=>{
-	        try{ toast(await openSession(it, "claude")); }catch(err){ toast(err.message, true); }
-	      });
-	      box.appendChild(el);
-	    }
-	    box.insertBefore(el, box.children[idx] || null);
-	    const st = it.status || "idle";
-	    const crown = tierOf(shortModel(usageForItem(it)?.model || "")) ===
-	                  ((MT && MT.alertTier) || "high");
-	    const sig = `${st}|${crown ? 1 : 0}`;
-	    if(el.dataset.sig !== sig){
-	      el.dataset.sig = sig; el.dataset.st = st;
-	      const fr = el.querySelector(".frames");
-	      fr.innerHTML = `<canvas class="f1"></canvas><canvas class="f2" style="display:none"></canvas>`;
-	      axoDraw(fr.querySelector(".f1"), AXO_F1, st, crown);
-	      axoDraw(fr.querySelector(".f2"), AXO_F2, st, crown);
-	    }
-	    el.querySelector(".axname").textContent = it.project || it.session;
-	    el.title = `${it.project || it.session} — ${st}` +
-	      (crown ? " · modelo caro $$$" : "") + (it.account && it.account !== "main" ? ` · ${it.account}` : "");
-	  });
+	  let it = items.find(i => i.session === S.sel);
+	  if(!it) it = items.find(i => i.status === "waiting") || items.find(i => i.alive) || items[0];
+	  return it || null;
+	}
+	function renderCentro(list){
+	  const wrap = $("#centro-wrap"), box = $("#centro");
+	  if(!box) return;
+	  const it = pickSel(list);
+	  wrap.classList.toggle("hidden", !it);
+	  if(!it) return;
+	  const st = it.status || "idle";
+	  const model = shortModel(usageForItem(it)?.model || "");
+	  const tier = tierOf(model);
+	  const tst = tierStyleOf(tier);
+	  const crown = tier === ((MT && MT.alertTier) || "high");
+	  const sig = `${it.session}|${st}|${crown ? 1 : 0}`;
+	  if(box.dataset.sig !== sig){
+	    box.dataset.sig = sig;
+	    box.innerHTML = `
+	      <div class="cx-hero" data-st="${attrEsc(st)}">
+	        <span class="aqua"><span class="frames"></span></span>
+	        <span class="cx-name"></span><span class="cx-sub"></span>
+	      </div>
+	      <div class="cx-cols">
+	        <div class="cx-block">
+	          <div class="cx-title">${tf("cerebro", "brain")}</div>
+	          <div class="cx-row"><span class="nm cx-model"></span></div>
+	          <div class="cx-row"><span class="nm cx-acct"></span></div>
+	          <div class="cx-acts">
+	            <button type="button" class="cx-open">${t("Abrir")}</button>
+	            <button type="button" class="cx-pause">⏸ ${tf("Pausar", "Pause")}</button>
+	            <button type="button" class="cx-resume hidden">▶ ${tf("Reanudar", "Resume")}</button>
+	            <button type="button" class="cx-kill danger">✕ ${tf("Matar", "Kill")}</button>
+	          </div>
+	          <div class="cx-note">${tf("los switches aplican al reciclar la sesion", "switches apply on session recycle")}</div>
+	        </div>
+	        <div class="cx-block"><div class="cx-title">MCPs</div><div class="cx-mcps"></div></div>
+	        <div class="cx-block"><div class="cx-title">Skills</div><div class="cx-skills"></div></div>
+	      </div>`;
+	    const fr = box.querySelector(".frames");
+	    fr.innerHTML = `<canvas class="f1"></canvas><canvas class="f2" style="display:none"></canvas>`;
+	    axoDraw(fr.querySelector(".f1"), AXO_F1, st, crown, 7);
+	    axoDraw(fr.querySelector(".f2"), AXO_F2, st, crown, 7);
+	    box.querySelector(".cx-open").addEventListener("click", async ()=>{
+	      try{ toast(await openSession(it, "claude")); }catch(err){ toast(err.message, true); }
+	    });
+	    const pauseB = box.querySelector(".cx-pause"), resumeB = box.querySelector(".cx-resume");
+	    pauseB.addEventListener("click", async ()=>{
+	      try{ await api("/pause", {session: it.session, on: true});
+	           pauseB.classList.add("hidden"); resumeB.classList.remove("hidden");
+	           toast(tf("Agente congelado", "Agent frozen")); }
+	      catch(err){ toast(err.message, true); }
+	    });
+	    resumeB.addEventListener("click", async ()=>{
+	      try{ await api("/pause", {session: it.session, on: false});
+	           resumeB.classList.add("hidden"); pauseB.classList.remove("hidden");
+	           toast(tf("Agente reanudado", "Agent resumed")); }
+	      catch(err){ toast(err.message, true); }
+	    });
+	    box.querySelector(".cx-kill").addEventListener("click", async ()=>{
+	      try{ await api("/kill", {session: it.session});
+	           toast(tf(`${it.project} eliminada`, `${it.project} killed`)); tick(); }
+	      catch(err){ toast(err.message, true); }
+	    });
+	  }
+	  box.querySelector(".cx-name").textContent = it.project || it.session;
+	  const stTxt = {waiting: tf("espera tu respuesta", "waiting for you"),
+	                 working: tf("trabajando", "working"), done: tf("listo", "done"),
+	                 idle: tf("descansando", "idle"), dead: tf("apagada", "dead")}[st] || st;
+	  box.querySelector(".cx-sub").textContent = stTxt;
+	  const me = box.querySelector(".cx-model");
+	  me.textContent = model ? `${model}${tst && tst.symbol ? " " + tst.symbol : ""}` :
+	    tf("modelo aun no detectado", "model not detected yet");
+	  me.style.color = (tst && tst.css) || "";
+	  box.querySelector(".cx-acct").textContent =
+	    `${tf("cuenta", "account")}: ${it.account || "main"}` +
+	    (it.accountEmail ? ` · ${it.accountEmail}` : "");
+	  renderBrain(box, it);
+	}
+	async function renderBrain(box, it){
+	  if(!it.cwd) return;
+	  const d = await loadBrain(it.cwd);
+	  if(!d || box.dataset.sig.indexOf(it.session) !== 0) return;
+	  const row = (kind, x) => `
+	    <div class="cx-row ${x.enabled ? "" : "off"}">
+	      <button type="button" class="sw ${x.enabled ? "on" : ""}" ${x.toggleable ? "" : "disabled"}
+	        data-kind="${kind}" data-name="${attrEsc(x.name)}" data-path="${attrEsc(x.path || "")}"
+	        data-on="${x.enabled ? 1 : 0}"
+	        title="${x.toggleable ? tf("prender/apagar", "toggle") : tf("global (~/.claude.json) — no apagable por proyecto", "global — not per-project toggleable")}"></button>
+	      <span class="nm" title="${attrEsc(x.name)}">${mdEsc(x.name)}</span>
+	      <span class="tok">~${(x.est_full || x.est_tokens) >= 1000 ?
+	        ((x.est_full || x.est_tokens)/1000).toFixed(1) + "k" : (x.est_full || x.est_tokens)} tok</span>
+	    </div>`;
+	  const mcps = d.mcps || [], skills = d.skills || [];
+	  const tot = arr => arr.filter(x => x.enabled).reduce((a, x) => a + (x.est_tokens || 0), 0);
+	  box.querySelector(".cx-mcps").innerHTML =
+	    (mcps.map(x => row("mcp", x)).join("") || `<div class="cx-note">${tf("sin MCPs", "no MCPs")}</div>`) +
+	    `<div class="cx-total">${tf("activos", "active")}: ~${Math.round(tot(mcps)/100)/10}k tok/turno</div>`;
+	  box.querySelector(".cx-skills").innerHTML =
+	    (skills.map(x => row("skill", x)).join("") || `<div class="cx-note">${tf("sin skills", "no skills")}</div>`) +
+	    `<div class="cx-total">${tf("activas", "active")}: ~${Math.round(tot(skills)/100)/10}k tok/turno</div>`;
+	  box.querySelectorAll(".sw:not(:disabled)").forEach(b => b.addEventListener("click", async ()=>{
+	    const on = b.dataset.on !== "1";
+	    try{
+	      if(b.dataset.kind === "mcp")
+	        await api("/mcp-toggle", {cwd: it.cwd, name: b.dataset.name, on});
+	      else
+	        await api("/skill-toggle", {path: b.dataset.path, on});
+	      brainCache = {cwd: null, data: null};
+	      renderBrain(box, it);
+	      toast(`${b.dataset.name} ${on ? "ON" : "OFF"} — ${tf("aplica al reciclar", "applies on recycle")}`);
+	    }catch(err){ toast(err.message, true); }
+	  }));
 	}
 	// Color estable por alias de cuenta (hash -> hue): sin lista fija.
 	function acctColor(a){
@@ -3023,6 +3133,7 @@ function rowEl(it){
   });
   el.addEventListener("click", async e=>{
     if(e.target.closest("button") || e.target.closest(".rxp")) return;
+    S.sel = it.session; renderCentro(S.list || []);
     if(el.classList.contains("ext")) return toast(tf("Corre en una pestana suelta: cierrala alla y usa Revivir", "Runs in a detached tab: close it there and use Revive"), true);
     try{ toast(await openSession(it, "claude")); }catch(err){ toast(err.message, true); }
   });
@@ -3179,7 +3290,7 @@ function render(list){
   document.querySelectorAll("#rows [data-session]").forEach(el=>{
     if(!seen.has(el.dataset.session)) el.remove();
   });
-  renderColonia(list);
+  renderCentro(list);
   if(!rows.querySelector(".row") && !rows.querySelector(".empty")){
     rows.innerHTML = `<div class="empty">${tf("Sin sesiones. Abre una arriba con", "No sessions. Open one above with")}
       <code>${tf("abrir proyecto", "open project")}</code>${tf(", o en cualquier terminal:", ", or in any terminal:")} <code>ccx ${tf("nombre", "name")}</code></div>`;

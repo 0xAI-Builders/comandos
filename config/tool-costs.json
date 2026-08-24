@@ -1,0 +1,12 @@
+{
+  "_doc": "Estimaciones de costo en tokens/turno de herramientas — EDITABLE. mcpServerDefault se usa cuando no se conoce el numero de tools de un server; los aliases con valor conocido van en mcpServers. skillCharsPerToken convierte la descripcion de una skill a tokens.",
+  "mcpServerDefault": 1500,
+  "mcpPerTool": 280,
+  "mcpServers": {
+    "chrome-devtools": 4500,
+    "claude-in-chrome": 4500,
+    "playwright": 3800
+  },
+  "skillCharsPerToken": 4,
+  "skillOverheadTokens": 30
+}
