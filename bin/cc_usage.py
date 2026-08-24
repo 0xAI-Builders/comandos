@@ -542,7 +542,7 @@ def _attach_pane_turn_usage(turns, panes, now):
     for pane in panes:
         provider = pane.get("provider") or pane.get("agent") or ""
         groups.setdefault((provider, pane.get("pane_pwd") or ""), []).append(pane)
-    sums, latest_model = {}, {}
+    sums, latest_model, day_model_tokens = {}, {}, {}
     for turn in turns:  # vienen ordenados por turn_finished_at desc
         provider = turn.get("provider") or turn.get("agent") or ""
         key = (provider, turn.get("pane_pwd") or "")
@@ -552,9 +552,17 @@ def _attach_pane_turn_usage(turns, panes, now):
             latest_model[key] = turn["model"]
         if _as_int(turn.get("turn_finished_at")) < day_start:
             continue
+        if turn.get("model"):
+            mt = day_model_tokens.setdefault(key, {})
+            mt[turn["model"]] = mt.get(turn["model"], 0) + max(
+                1, _as_int(turn.get("total_tokens")))
         item = sums.setdefault(key, {"tokens": 0, "cost": 0.0})
         item["tokens"] += _as_int(turn.get("total_tokens"))
         item["cost"] += _as_float(turn.get("cost_usd"))
+    # Modelo DOMINANTE del dia (por tokens), no el del ultimo turno: la CLI
+    # intercala turnos de modelos chicos (subagentes) y el chip bailaba.
+    for key, mt in day_model_tokens.items():
+        latest_model[key] = max(mt.items(), key=lambda kv: kv[1])[0]
     for key, group in groups.items():
         item = sums.get(key)
         model = latest_model.get(key, "")

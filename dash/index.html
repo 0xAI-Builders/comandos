@@ -1447,15 +1447,20 @@ function mdStrip(s){ return (s||"").replace(/\*\*|`|^#{1,6} /g, ""); }
 	  return labels[c] || c || "";
 	}
 	function usageChipText(u){
+	  // El chip dice lo que importa: MODELO (con su $) y gasto del dia.
+	  // Provider/confianza son detalle -> tooltip (usageChipTitle).
 	  if(!u) return "";
 	  const bits = [];
-	  if(u.provider || u.agent) bits.push(u.provider || u.agent);
-	  if(u.model) bits.push(String(u.model).replace(/^claude-/, ""));
+	  if(u.model) bits.push(shortModel(u.model));
 	  if(Number(u.cost_usd || 0) > 0) bits.push(fmtMoney(u.cost_usd));
 	  else if(Number(u.total_tokens || 0) > 0)
 	    bits.push(`${fmtTokens(u.total_tokens)}${u.usage_window === "24h" ? tf(" hoy", " today") : ""}`);
-	  if(confidenceLabel(u.confidence)) bits.push(confidenceLabel(u.confidence));
-	  return bits.slice(0, 4).join(" · ");
+	  return bits.slice(0, 3).join(" · ");
+	}
+	function usageChipTitle(u){
+	  if(!u) return "";
+	  return [u.provider || u.agent, shortModel(u.model || ""),
+	          confidenceLabel(u.confidence)].filter(Boolean).join(" · ");
 	}
 	function fmtPercent(n){
 	  return n === null || n === undefined ? "--" : `${Number(n).toFixed(Number(n) % 1 ? 1 : 0)}%`;
@@ -2886,7 +2891,7 @@ function render(list){
 	      uchip.textContent = utxt + ((tst && tst.symbol) ? ` ${tst.symbol}` : "");
 	      uchip.classList.toggle("hidden", !utxt);
 	      uchip.style.color = (tst && tst.css) || "";
-	      uchip.title = utxt + ((tst && tst.label) ? ` — ${tst.label}` : "");
+	      uchip.title = usageChipTitle(u) + ((tst && tst.label) ? ` — ${tst.label}` : "");
 	    }
 	    const mcur = el.querySelector(".mdl-cur");
 	    if(mcur){
@@ -2979,13 +2984,8 @@ function render(list){
       el.style.order = (S.favs.has(it.session) ? -100000 : 0) +
         (ROW_ORDER[it.status] ?? 9) * 1000 - Math.min(999, Math.floor((it.ts||0)/60)%1000);
     }
-    // transiciones -> notificacion del navegador (el sonido lo pone el
-    // sistema: voz/chime de cc-notify.sh, con el volumen de Ajustes)
-    const prev = S.prev.get(it.session);
-    if(prev && prev !== it.status){
-      if(it.status === "waiting") notify(it, tf("necesita tu respuesta", "needs your answer"));
-      if(it.status === "done") notify(it, tf("termino", "finished"));
-    }
+    // Las transiciones ya las anuncian los popups PROPIOS (cc-notifyd, con
+    // tema); las Notification() del navegador eran duplicado gris sin tema.
     S.prev.set(it.session, it.status);
   }
   document.querySelectorAll("[data-session]").forEach(el=>{

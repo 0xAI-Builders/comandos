@@ -193,7 +193,7 @@ _limits_cache = {"at": 0, "limits": [], "health": {}}
 _limits_refreshing = False
 
 
-def usage_alert_send(message):
+def usage_alert_send(message, title=None, kind="waiting", project=None):
     """Entrega una alerta de uso por los MISMOS canales que las notificaciones
     normales: el popup PROPIO de ComandOS (cc-notifyd; jamas el popup plano
     de GNOME) y/o Telegram, segun lo que este prendido."""
@@ -201,8 +201,8 @@ def usage_alert_send(message):
     if conf.get("DESKTOP_NOTIFY", "1") == "1":
         try:
             payload = json.dumps({
-                "title": "Límite de uso", "body": message, "session": "",
-                "kind": "waiting", "project": "Uso", "options": "",
+                "title": title or "Límite de uso", "body": message, "session": "",
+                "kind": kind, "project": project or "Uso", "options": "",
                 "full": message,
             }).encode()
             urllib.request.urlopen(urllib.request.Request(
@@ -446,7 +446,9 @@ def _maybe_tier_alert(sess, agent, model, tier):
     msg = (f"{sess}: {agent or 'agente'} ahora usa {model} {sym} (nivel {lbl})"
            if ui_lang() == "es" else
            f"{sess}: {agent or 'agent'} now uses {model} {sym} ({lbl} tier)")
-    threading.Thread(target=usage_alert_send, args=(msg,), daemon=True).start()
+    threading.Thread(target=usage_alert_send, args=(msg,),
+                     kwargs={"title": "Modelo", "kind": "done",
+                             "project": sess}, daemon=True).start()
 
 
 _pane_model_lock = threading.Lock()
