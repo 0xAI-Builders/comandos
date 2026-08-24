@@ -609,6 +609,88 @@ def toggle_project_mcp(cwd, name, enable):
     return None
 
 
+def load_agent_roles():
+    try:
+        with open(os.path.join(REPO_ROOT, "config", "agent-roles.json")) as f:
+            d = json.load(f)
+        return d if isinstance(d, dict) else {}
+    except Exception:
+        return {}
+
+
+def _provider_catalog(agent):
+    """Catalogo VIVO de modelos por proveedor — nunca listas congeladas."""
+    if agent == "codex":
+        return list(CODEX_MODEL_DIGITS.keys())
+    if agent == "opencode":
+        out = []
+        for prov in opencode_models() or []:
+            for m in (prov.get("models") or []):
+                mid = m.get("id") if isinstance(m, dict) else m
+                if mid:
+                    out.append(mid)
+        return out
+    return []
+
+
+def resolve_role_model(role, agent):
+    """(modelo, effort) para un rol+proveedor, resuelto contra el catalogo
+    vivo. claude usa alias oficiales (el CLI los resuelve). None si el
+    patron no matchea nada real — jamas inventamos un modelo."""
+    spec = (role.get("byProvider") or {}).get(agent) or {}
+    effort = spec.get("effort") or ""
+    if agent == "claude":
+        return (spec.get("alias") or None), effort
+    cat = _provider_catalog(agent)
+    for pat in spec.get("match") or []:
+        for m in cat:
+            try:
+                if re.search(pat, m):
+                    return m, effort
+            except re.error:
+                continue
+    return None, effort
+
+
+def resolved_agent_roles():
+    d = load_agent_roles()
+    for role in d.get("roles") or []:
+        for agent in list((role.get("byProvider") or {}).keys()):
+            model, effort = resolve_role_model(role, agent)
+            role["byProvider"][agent]["resolved"] = model
+    return d
+
+
+def flow_step_cmd(step, danger, roles_by_id, danger_flags):
+    """Comando de un step de flujo, resuelto en el MOMENTO del lanzamiento."""
+    agent = step.get("agent") or "claude"
+    extra = str(step.get("extra") or "").strip()
+    model, effort = None, ""
+    if step.get("alias") and agent == "claude":
+        model = step["alias"]
+    elif step.get("role"):
+        role = roles_by_id.get(step["role"]) or {}
+        model, effort = resolve_role_model(role, agent)
+        if model is None and agent != "claude":
+            return None, (f"{agent}: ningun modelo del catalogo vivo matchea "
+                          f"el rol '{step['role']}' — configura el provider o ajusta el patron")
+    if agent == "claude":
+        cmd = "claude" + (f" --model {model}" if model else "")
+    elif agent == "codex":
+        cmd = "codex" + (f" -m {model}" if model else "")
+    elif agent == "opencode":
+        cmd = "opencode" + (f" --model {model}" if model else "")
+    else:
+        return None, f"agente desconocido: {agent}"
+    if danger:
+        flag = (danger_flags or {}).get(agent) or ""
+        if flag:
+            cmd += " " + flag
+    if extra:
+        cmd += " " + extra
+    return cmd, None
+
+
 _TIER_LAST = {}
 
 
@@ -2781,11 +2863,7 @@ class Handler(http.server.SimpleHTTPRequestHandler):
         if self.path.startswith("/model-tiers"):
             return self._json(200, load_model_tiers())
         if self.path.startswith("/agent-roles"):
-            try:
-                with open(os.path.join(REPO_ROOT, "config", "agent-roles.json")) as f:
-                    return self._json(200, json.load(f))
-            except Exception:
-                return self._json(200, {"roles": []})
+            return self._json(200, resolved_agent_roles())
         if self.path.startswith("/session-brain"):
             import urllib.parse
             q = urllib.parse.parse_qs(urllib.parse.urlparse(self.path).query)
@@ -3187,18 +3265,22 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             flow_id = str(data.get("flow", ""))[:60]
             if not cwd.startswith("/") or not os.path.isdir(cwd):
                 return self._json(400, {"error": "cwd invalido"})
-            try:
-                with open(os.path.join(REPO_ROOT, "config", "agent-roles.json")) as f:
-                    flows = {fl.get("id"): fl for fl in (json.load(f).get("flows") or [])}
-            except Exception:
-                flows = {}
+            flows = {fl.get("id"): fl
+                     for fl in (load_agent_roles().get("flows") or [])}
             flow = flows.get(flow_id)
             if not flow:
                 return self._json(404, {"error": f"flujo '{flow_id}' no existe"})
-            opened = []
+            cfg = load_agent_roles()
+            roles_by_id = {r.get("id"): r for r in cfg.get("roles") or []}
+            danger = bool(data.get("danger"))
+            opened, errors = [], []
             proj = os.path.basename(cwd.rstrip("/"))
             for step in flow.get("steps") or []:
-                cmd = str(step.get("cmd", "")).strip()
+                cmd, err = flow_step_cmd(step, danger, roles_by_id,
+                                         cfg.get("dangerFlags") or {})
+                if err:
+                    errors.append(err)
+                    continue
                 if not cmd:
                     continue
                 n = int(time.time() * 10) % 1000000
@@ -3217,8 +3299,8 @@ class Handler(http.server.SimpleHTTPRequestHandler):
                 threading.Thread(target=_send, daemon=True).start()
                 opened.append({"session": new_sess, "label": label, "cmd": cmd})
             if not opened:
-                return self._json(500, {"error": "no se pudo abrir ningun step"})
-            return self._json(200, {"ok": True, "opened": opened})
+                return self._json(500, {"error": "; ".join(errors) or "no se pudo abrir ningun step"})
+            return self._json(200, {"ok": True, "opened": opened, "errors": errors})
 
         if self.path == "/tab-new":
             # Boton + del remoto: terminal scratch nueva, visible en AMBOS lados
