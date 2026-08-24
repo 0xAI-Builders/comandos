@@ -1,0 +1,17 @@
+{
+  "_doc": "Niveles de costo por modelo — EDITABLE. Gana el primer patron (regex, case-insensitive) que matchee; modelo desconocido cae en defaultTier. alertTier dispara notificacion al cambiar una sesion a ese nivel.",
+  "alertTier": "high",
+  "defaultTier": "unknown",
+  "tiers": {
+    "high":    {"symbol": "$$$", "tmux": "203", "css": "#FF6B6B", "label": "caro"},
+    "mid":     {"symbol": "$$",  "tmux": "179", "css": "#FFC46B", "label": "medio"},
+    "low":     {"symbol": "$",   "tmux": "114", "css": "#2EE59D", "label": "barato"},
+    "unknown": {"symbol": "",    "tmux": "244", "css": "#9AA4B8", "label": ""}
+  },
+  "patterns": [
+    {"match": "fable|mythos|opus", "tier": "high"},
+    {"match": "gpt-5\\.6|codex-max|-pro($|[^a-z])", "tier": "high"},
+    {"match": "sonnet|gpt-5\\.5|gpt-5\\.4(?!-mini)|terra|sol|luna", "tier": "mid"},
+    {"match": "haiku|mini|spark|nano|lite|flash", "tier": "low"}
+  ]
+}

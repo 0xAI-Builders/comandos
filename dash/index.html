@@ -238,6 +238,8 @@
     letter-spacing:.08em;text-transform:uppercase;padding:2px 7px;border-radius:4px;
     color:var(--dim);border:1px solid var(--line2)}
   .abadge[data-a="codex"]{color:#19C39C;border-color:#19C39C55}
+  .acct-chip{flex:none}
+  .tier-sym{font-family:var(--mono);font-size:9px;font-weight:700;margin-left:3px}
   .abadge[data-a="opencode"]{color:#FAB283;border-color:#FAB28355}
   .abadge[data-a="gemini"]{color:#7AA5FF;border-color:#7AA5FF55}
   .abadge[data-a="agy"]{color:#B49CFF;border-color:#B49CFF55}
@@ -1550,6 +1552,27 @@ function mdStrip(s){ return (s||"").replace(/\*\*|`|^#{1,6} /g, ""); }
 	};
 	function shortModel(m){
 	  return String(m || "").replace(/^claude-/, "");
+	}
+	// Niveles de costo por modelo: catalogo servido por /model-tiers (archivo
+	// editable config/model-tiers.json, nada hardcodeado aqui).
+	let MT = null;
+	api("/model-tiers").then(t => { MT = t || null; }).catch(() => {});
+	function tierOf(model){
+	  if(!MT || !model) return "";
+	  for(const p of (MT.patterns || [])){
+	    try{ if(new RegExp(p.match, "i").test(model)) return p.tier || ""; }
+	    catch(e){}
+	  }
+	  return MT.defaultTier || "";
+	}
+	function tierStyleOf(tier){
+	  return (MT && MT.tiers && MT.tiers[tier]) || null;
+	}
+	// Color estable por alias de cuenta (hash -> hue): sin lista fija.
+	function acctColor(a){
+	  let h = 0;
+	  for(const c of String(a)) h = (h * 31 + c.charCodeAt(0)) % 360;
+	  return `hsl(${h},65%,70%)`;
 	}
 	function modelMenuEl(session, pane, provider, current){
 	  const cur = shortModel(current) || tf("modelo", "model");
@@ -2865,6 +2888,22 @@ function render(list){
       ab.textContent = it.agent || "";
       ab.dataset.a = it.agent || "";
       ab.classList.toggle("hidden", !it.agent || it.agent === "claude");
+      let ac = el.querySelector(".acct-chip");
+      if(!ac){
+        ac = document.createElement("span");
+        ac.className = "abadge acct-chip hidden";
+        ab.after(ac);
+      }
+      const acct = it.account || "";
+      const showAcct = !!acct && acct !== "main";
+      ac.classList.toggle("hidden", !showAcct);
+      if(showAcct){
+        ac.textContent = acct;
+        const c = acctColor(acct);
+        ac.style.color = c; ac.style.borderColor = c;
+        ac.title = it.accountEmail || acct;
+      }
+      if(it.accountEmail) ab.title = it.accountEmail;
     }
 	    el.dataset.pane = it.pane || "";
 	    el._detail = it.detail || it.last || "";
@@ -2879,6 +2918,18 @@ function render(list){
 	    const mcur = el.querySelector(".mdl-cur");
 	    if(mcur){
 	      const um = shortModel(usageForItem(it)?.model || "");
+	      // Semaforo de costo: color + $ segun el tier del modelo actual
+	      const tst = tierStyleOf(tierOf(um));
+	      mcur.style.color = (tst && tst.css) || "";
+	      let tsym = el.querySelector(".tier-sym");
+	      if(!tsym){
+	        tsym = document.createElement("span");
+	        tsym.className = "tier-sym";
+	        mcur.after(tsym);
+	      }
+	      tsym.textContent = (tst && tst.symbol) || "";
+	      tsym.style.color = (tst && tst.css) || "";
+	      if(tst && tst.label && um) mcur.title = um + " — " + tst.label;
 	      if(um && mcur.classList.contains("pending")){
 	        // El cambio pedido ya se refleja en un turno real: dejar de marcarlo
 	        if(um.toLowerCase().includes(mcur.textContent.trim().toLowerCase())){

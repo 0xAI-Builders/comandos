@@ -16,6 +16,7 @@ Endpoints:
 
 Solo escucha en 127.0.0.1. Todas las llamadas a tmux van sin shell (sin inyeccion).
 """
+import base64
 import html as html_mod
 import hmac, secrets
 import json, os, glob, re, shlex, shutil, sys, subprocess, threading, time, webbrowser
@@ -308,6 +309,146 @@ PANE_MODEL_COLORS = {  # color del borde por agente
 PANE_MODEL_RETRY_SECONDS = 5.0
 
 
+# ---- Niveles de costo por modelo (config/model-tiers.json, editable; cero
+# hardcode: regex->tier con fallback neutro) y cuenta por sesion (leida del
+# entorno REAL del proceso del agente: CLAUDE_CONFIG_DIR / CODEX_HOME).
+REPO_ROOT = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
+MODEL_TIERS_FILE = os.path.join(REPO_ROOT, "config", "model-tiers.json")
+_model_tiers_cache = {"mtime": None, "data": {}}
+
+# agente -> (variable de entorno del dir de config, dir por defecto)
+AGENT_ACCOUNT_ENV = {
+    "claude": ("CLAUDE_CONFIG_DIR", "~/.claude"),
+    "codex": ("CODEX_HOME", "~/.codex"),
+}
+
+
+def load_model_tiers():
+    try:
+        mtime = os.path.getmtime(MODEL_TIERS_FILE)
+    except OSError:
+        return _model_tiers_cache["data"]
+    if _model_tiers_cache["mtime"] != mtime:
+        try:
+            with open(MODEL_TIERS_FILE) as f:
+                data = json.load(f)
+            _model_tiers_cache.update(mtime=mtime,
+                                      data=data if isinstance(data, dict) else {})
+        except Exception:
+            pass
+    return _model_tiers_cache["data"]
+
+
+def model_tier(model):
+    if not model:
+        return ""
+    cfg = load_model_tiers()
+    for pat in cfg.get("patterns") or []:
+        try:
+            if re.search(pat.get("match", ""), model, re.I):
+                return pat.get("tier") or ""
+        except re.error:
+            continue
+    return cfg.get("defaultTier") or ""
+
+
+def tier_style(tier):
+    st = (load_model_tiers().get("tiers") or {}).get(tier or "")
+    return st if isinstance(st, dict) else {}
+
+
+def _read_environ(pid):
+    try:
+        with open(f"/proc/{int(pid)}/environ", "rb") as f:
+            raw = f.read()
+        return dict(x.split(b"=", 1) for x in raw.split(b"\0") if b"=" in x)
+    except Exception:
+        return {}
+
+
+_ACCOUNT_PID_CACHE = {}
+_ACCOUNT_EMAIL_CACHE = {}
+
+
+def account_email_for_dir(path, agent):
+    """Email de la cuenta que vive en ese dir de config (cache 5 min)."""
+    key = (path, agent)
+    hit = _ACCOUNT_EMAIL_CACHE.get(key)
+    if hit and time.time() - hit[1] < 300:
+        return hit[0]
+    email = ""
+    try:
+        if agent == "codex":
+            with open(os.path.join(path, "auth.json")) as f:
+                a = json.load(f)
+            idt = (a.get("tokens") or {}).get("id_token", "")
+            if idt.count(".") >= 2:
+                part = idt.split(".")[1]
+                part += "=" * (-len(part) % 4)
+                email = json.loads(base64.urlsafe_b64decode(part)).get("email", "")
+        else:
+            cfg = os.path.join(path, ".claude.json")
+            if not os.path.exists(cfg):
+                # instalacion clasica: ~/.claude.json vive JUNTO a ~/.claude
+                cfg = os.path.join(os.path.dirname(path.rstrip("/")), ".claude.json")
+            with open(cfg) as f:
+                d = json.load(f)
+            email = ((d.get("oauthAccount") or {}).get("emailAddress")) or ""
+    except Exception:
+        pass
+    _ACCOUNT_EMAIL_CACHE[key] = (email, time.time())
+    return email
+
+
+def account_for_pid(pid, agent):
+    """{'account': alias, 'accountEmail': email} del proceso del agente.
+    alias = 'main' para el dir por defecto; si no, el basename del dir."""
+    spec = AGENT_ACCOUNT_ENV.get(agent or "")
+    if not spec or not pid:
+        return {}
+    key = (int(pid), agent)
+    hit = _ACCOUNT_PID_CACHE.get(key)
+    if hit is not None:
+        return hit
+    env = _read_environ(pid)
+    envvar, default = spec
+    raw = env.get(envvar.encode())
+    base = os.path.expanduser(default)
+    path = raw.decode("utf-8", "replace") if raw else base
+    try:
+        is_main = os.path.realpath(path) == os.path.realpath(base)
+    except OSError:
+        is_main = path == base
+    alias = "main" if is_main else (os.path.basename(path.rstrip("/")) or "main")
+    info = {"account": alias, "accountEmail": account_email_for_dir(path, agent)}
+    if len(_ACCOUNT_PID_CACHE) > 4096:
+        _ACCOUNT_PID_CACHE.clear()
+    _ACCOUNT_PID_CACHE[key] = info
+    return info
+
+
+_TIER_LAST = {}
+
+
+def _maybe_tier_alert(sess, agent, model, tier):
+    """Aviso UNA vez cuando una sesion CAMBIA al nivel de alerta (caro)."""
+    if not sess or not tier:
+        return
+    prev = _TIER_LAST.get(sess)
+    _TIER_LAST[sess] = tier
+    cfg = load_model_tiers()
+    if prev is None or prev == tier or tier != (cfg.get("alertTier") or "high"):
+        return
+    if read_conf().get("NOTIFY_MODEL_TIER", "1") == "0":
+        return
+    sym = tier_style(tier).get("symbol") or ""
+    lbl = tier_style(tier).get("label") or tier
+    msg = (f"{sess}: {agent or 'agente'} ahora usa {model} {sym} (nivel {lbl})"
+           if ui_lang() == "es" else
+           f"{sess}: {agent or 'agent'} now uses {model} {sym} ({lbl} tier)")
+    threading.Thread(target=usage_alert_send, args=(msg,), daemon=True).start()
+
+
 _pane_model_lock = threading.Lock()
 _pane_model_state = {
     "desired": {},
@@ -330,12 +471,24 @@ def _pane_model_values(panes):
         agent = pane.get("agent") or pane.get("provider") or ""
         model = (pane.get("model") or "").replace("claude-", "")
         model = model.rsplit("/", 1)[-1] if "/" in model else model
-        label = f"{agent} · {model}" if model else agent
+        acct = account_for_pid(pane.get("agent_pid") or pane.get("pid") or 0,
+                               agent).get("account") or ""
+        head = f"{acct} · {agent}" if acct and acct != "main" else agent
+        tier = model_tier(model)
+        st = tier_style(tier)
+        sym = st.get("symbol") or ""
+        label = (f"{head} · {model}" + (f" {sym}" if sym else "")) if model else head
+        if model:
+            _maybe_tier_alert(pane.get("tmux_session") or pane.get("session") or "",
+                              agent, model, tier)
         if label:
             color = PANE_MODEL_COLORS.get(agent, "244")
-            values[pane_id] = (
-                f"#[fg=colour{color},bold]▸ {label}#[default]"
-            )
+            seg = f"#[fg=colour{color},bold]▸ {head}#[default]"
+            if model:
+                mcolor = st.get("tmux") or color
+                seg += (f"#[fg=colour{mcolor},bold] · {model}"
+                        + (f" {sym}" if sym else "") + "#[default]")
+            values[pane_id] = seg
             plain[pane_id] = f"{pane_id} {label}"
         else:
             values[pane_id] = None
@@ -1689,6 +1842,8 @@ def read_states():
                 "agent": d.get("agent") or live_agent or "claude",
                 "ts": ts, "alive": alive, "external": external,
                 "tabbed": sess in labels}
+        if pane_info and pane_info.get("pid"):
+            item.update(account_for_pid(pane_info["pid"], item["agent"]))
         if zombie:
             item["zombie"] = True
         if pane:
@@ -1714,6 +1869,8 @@ def read_states():
         item = {"project": labels.get(sess, sess), "session": sess, "status": status,
                 "detail": "", "cwd": cwd, "ts": 0, "alive": True,
                 "external": False, "agent": agent, "tabbed": sess in labels}
+        if info and info.get("pid") and agent:
+            item.update(account_for_pid(info["pid"], agent))
         if pane:
             item["pane"] = pane
         if sess.startswith("ssh-"):
@@ -1804,7 +1961,7 @@ def usage_live_panes():
 
 
 # Claves de cc-notify.conf editables desde la interfaz
-CONF_KEYS = {"DESKTOP_NOTIFY", "SOUND_ENABLED", "TELEGRAM_ENABLED",
+CONF_KEYS = {"DESKTOP_NOTIFY", "SOUND_ENABLED", "TELEGRAM_ENABLED", "NOTIFY_MODEL_TIER",
              "NOTIFY_ON_DONE", "NOTIFY_ON_ATTENTION", "SPEAK_ATTENTION", "SPEAK_DONE",
              "VOLUME", "CC_LANG"}
 CONF_DEFAULTS = {"VOLUME": "60", "CC_LANG": "auto"}
@@ -2416,7 +2573,7 @@ class Handler(http.server.SimpleHTTPRequestHandler):
     # Endpoints con DATOS o ACCIONES: exigen token. El shell estatico (HTML,
     # sw.js, manifest, iconos) NO — no revela nada (es codigo open-source) y
     # asi la PWA instala y carga sin depender de cookies en el webview movil.
-    API_GET = ("/state", "/usage/state", "/opencode/models", "/events", "/conf", "/prefs", "/ssh", "/tabs",
+    API_GET = ("/state", "/usage/state", "/opencode/models", "/model-tiers", "/events", "/conf", "/prefs", "/ssh", "/tabs",
                "/tab-history", "/remote-state", "/remote-qr.png", "/snippets", "/tmux-mouse",
                "/webterm-token")
 
@@ -2437,6 +2594,8 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             return self._json(200, read_states_cached())
         if self.path.startswith("/opencode/models"):
             return self._json(200, {"providers": opencode_models()})
+        if self.path.startswith("/model-tiers"):
+            return self._json(200, load_model_tiers())
 
         if self.path.startswith("/usage/state"):
             refresh_local_usage(False)
