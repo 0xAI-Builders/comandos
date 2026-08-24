@@ -476,50 +476,16 @@ def make_popup(title, body, session, kind, project, options_str="", full=""):
     if sw is not None:
         content.pack_start(sw, True, True, 0)
 
-    def mk_btn(label, cb, cls=None):
-        b = Gtk.Button(label=label)
-        b.get_style_context().add_class("btn")
-        if cls:
-            b.get_style_context().add_class(cls)
-        b.connect("clicked", lambda *_: (cb(), close_popup(win)))
-        return b
-
-    long_opts = any(len(l) > 14 for l in labels)
-    if labels and long_opts:
-        # Opciones largas (pregunta): una por renglon, ancho completo
-        for i, lab in enumerate(labels):
-            b = mk_btn(f"{lab[:60]}", lambda i=i: choose(session, str(i + 1)), "primary")
-            b.get_child().set_xalign(0)
-            content.pack_start(b, False, False, 0)
-
-    btns = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
-    if labels and not long_opts:
-        for i, lab in enumerate(labels):
-            btns.pack_start(mk_btn(lab[:16], lambda i=i: choose(session, str(i + 1)), "primary"),
-                            False, False, 0)
-    if kind == "waiting":
-        if not labels:
-            btns.pack_start(mk_btn("Enter", lambda: send_key(session, "Enter"), "primary"),
-                            False, False, 0)
-        btns.pack_start(mk_btn("Esc", lambda: send_key(session, "Escape")), False, False, 0)
-    if btns.get_children():
-        content.pack_start(btns, False, False, 0)
-
-    # Fila final: input que se estira + Abrir (una sola linea de accion)
-    entry = Gtk.Entry()
-    entry.get_style_context().add_class("entry")
-    entry.set_placeholder_text(
-        tr("reply_wait") if kind == "waiting" else tr("reply_next"))
-
-    def on_activate(e):
-        send_text(session, e.get_text())
+    # El popup es un AVISO PURO (apoyo cognitivo visual): sin inputs ni
+    # botones de opciones — responder se hace en la terminal, con contexto.
+    # Click en cualquier parte no-interactiva = saltar a esa sesion.
+    def goto(*_):
+        open_session(session)
         close_popup(win)
+        return True
 
-    entry.connect("activate", on_activate)
-    row_send = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
-    row_send.pack_start(entry, True, True, 0)
-    row_send.pack_end(mk_btn(tr("open"), lambda: open_session(session), "open"), False, False, 0)
-    content.pack_start(row_send, False, False, 1)
+    win.add_events(Gdk.EventMask.BUTTON_PRESS_MASK)
+    win.connect("button-press-event", goto)
 
     card.pack_start(content, True, True, 0)
     win.add(card)
@@ -531,12 +497,12 @@ def make_popup(title, body, session, kind, project, options_str="", full=""):
 
     if kind != "waiting":
         def auto():
-            # no cerrar si el usuario escribe en el input o esta LEYENDO el texto
-            if win in popups and not entry.has_focus() and not win._expanded:
+            # no cerrar mientras el usuario esta LEYENDO el texto expandido
+            if win in popups and not win._expanded:
                 close_popup(win)
                 return False
             return win in popups
-        GLib.timeout_add_seconds(12, auto)
+        GLib.timeout_add_seconds(10, auto)
     return False
 
 

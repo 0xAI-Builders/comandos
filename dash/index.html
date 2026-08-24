@@ -215,7 +215,6 @@
   .sec-label::after{content:"";flex:1;height:1px;background:var(--line)}
 
   /* Urgentes: tarjetas grandes */
-  #urgent{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(380px,100%),1fr));gap:14px}
   .card{
     min-width:0;border-radius:14px;padding:15px 16px 13px;
     background:linear-gradient(140deg, rgba(255,174,26,.09), rgba(255,174,26,.02) 45%), var(--panel);
@@ -293,13 +292,18 @@
   /* Sesiones: filas compactas */
   #rows{display:flex;flex-direction:column;border:1px solid var(--line);border-radius:14px;
     background:var(--panel);overflow:hidden}
-  .row{display:flex;align-items:center;gap:10px;padding:10px 14px;min-width:0;
+  .row{display:flex;flex-wrap:wrap;align-items:center;gap:10px;padding:10px 14px;min-width:0;
     background:var(--panel);border:1px solid transparent;border-radius:8px;
     margin-bottom:4px;cursor:pointer;
     transition:border-color .12s ease, background .12s ease, transform .08s ease}
   .row:hover{background:var(--panel2);border-color:var(--line2)}
   .row:active{transform:translateY(1px)}
   .row.s-waiting{border-color:color-mix(in srgb,var(--waiting) 30%,transparent)}
+  .row.s-waiting .dot{background:var(--waiting);box-shadow:0 0 8px rgba(255,174,26,.5)}
+  .rxp{flex-basis:100%;min-width:0;display:flex;flex-direction:column;gap:8px;
+    padding:6px 2px 4px 18px;cursor:default}
+  .row:not(.open) .rxp{display:none}
+  .rxp .preview{margin:0;white-space:pre-wrap;overflow-wrap:anywhere;color:var(--text)}
   .dot{flex:none;width:8px;height:8px;border-radius:50%;background:var(--faint)}
   .row.s-done .dot{background:var(--done);box-shadow:0 0 8px rgba(46,229,157,.5)}
   .row.s-working .dot{background:var(--working)}
@@ -673,7 +677,6 @@
       transform:translateY(-50%);box-shadow:0 -10px 0 var(--line2),0 10px 0 var(--line2)}
     body.app.split #splitter:hover::after,body.app.dragging #splitter::after{background:var(--brand);
       box-shadow:0 -10px 0 var(--brand),0 10px 0 var(--brand)}
-    body.app.split #view-panel #urgent{grid-template-columns:1fr}
     body.app.split #view-panel .sec,body.app.split #view-panel #ssh-bar,
     body.app.split #view-panel #tl-wrap{max-width:none;padding-left:14px;padding-right:14px}
     body.app.split #view-panel .row .rpath{display:none}
@@ -826,7 +829,6 @@
 	    .brand{font-size:12px;letter-spacing:.1em}
 	    #q{width:100%}
 	    .hdr-right{width:100%;gap:6px}
-	    #urgent{grid-template-columns:1fr}
 	    .sec,#ssh-bar,#tl-wrap{padding-left:12px;padding-right:12px}
 	    #ssh-bar{flex-wrap:nowrap;overflow-x:auto;overflow-y:hidden;
 	      -webkit-overflow-scrolling:touch;overscroll-behavior-x:contain}
@@ -880,11 +882,6 @@
 </div>
 
 <div id="content">
-<section class="sec" id="urgent-wrap">
-  <div class="sec-label">Esperan tu respuesta</div>
-  <div id="urgent"></div>
-</section>
-
 <section class="sec">
   <div class="sec-label">Sesiones
     <input id="q" placeholder="buscar sesión" autocomplete="off" spellcheck="false"
@@ -1191,7 +1188,7 @@ const S = {
 	  usageSelected: null,
 	};
 const $ = s => document.querySelector(s);
-const urgent = $("#urgent"), rows = $("#rows");
+const rows = $("#rows");
 
 // ---------- i18n ----------
 // El markup y los literales viven en espanol; T_EN los traduce cuando L==="en".
@@ -1347,7 +1344,7 @@ async function api(path, body){
 }
 
 // ---------- helpers ----------
-const ROW_ORDER = {done:0, working:1, idle:2, dead:4};
+const ROW_ORDER = {waiting:-1, done:0, working:1, idle:2, dead:4};
 let LABEL = {waiting:"Esperando respuesta", done:"Termino", working:"Trabajando",
                idle:"Viva, sin actividad", dead:"Apagada"};
 function agoTxt(ts){
@@ -1905,51 +1902,6 @@ function mdStrip(s){ return (s||"").replace(/\*\*|`|^#{1,6} /g, ""); }
     try{ await api("/prefs-set", {favorites: [...S.favs]}); }catch(e){}
     tick();
   };
-}
-
-// ---------- tarjeta urgente ----------
-function cardEl(it){
-  const el = document.createElement("article");
-  el.className = "card"; el.dataset.session = it.session; el.dataset.kind = "card";
-	  el.innerHTML = `
-	    <div class="top">
-	      <button type="button" class="fav" title="${t('Favorito')}">★</button>
-	      <h2></h2><span class="abadge hidden"></span><span class="tag"></span><span class="ago"></span>
-	    </div>
-    <div class="path"></div>
-    <span class="usage-chip hidden"></span>
-    <p class="preview"></p>
-    <div class="opts hidden"></div>
-    <form class="send">
-      <input type="text" autocomplete="off" spellcheck="false" placeholder="${t('Responde aqui y Enter')}">
-      <button type="submit">${t("Enviar")}</button>
-    </form>
-    <div class="row2">
-      <div class="keys">
-        <button type="button" data-key="1">1</button>
-        <button type="button" data-key="2">2</button>
-        <button type="button" data-key="3">3</button>
-        <button type="button" data-key="Enter">Enter</button>
-        <button type="button" data-key="Escape">Esc</button>
-      </div>
-      <div class="ops">
-        ${["", "claude", "codex", "opencode"].includes(it.agent || "") ? modelMenuEl(it.session, it.pane || "", it.agent || "claude", "") : ""}
-        <button type="button" class="ren" title="${t('Renombrar pestaña')}">${svg("pencil",14)}</button>
-        <button type="button" class="cp" title="${t('Copiar la respuesta completa de Claude')}">${t("Copiar")}</button>
-        <button type="button" class="xtxt" title="${t('Guardar la respuesta como .txt en Descargas')}">TXT</button>
-        <button type="button" class="xpdf" title="${t('Guardar la respuesta como PDF (markdown renderizado) en Descargas')}">PDF</button>
-        <button type="button" class="term hidden" title="${t('Abrir la terminal REAL de esta sesion')}">${t("Terminal")}</button>
-        <button type="button" class="go">${t("Abrir")}</button>
-        <button type="button" class="up hidden">${t("Revivir")}</button>
-      </div>
-    </div>`;
-  el.querySelector("h2").textContent = it.project;
-  el.querySelectorAll(".mdl-wrap").forEach(wireModelMenu);
-  const pv = el.querySelector(".preview");
-  pv.title = t("Click: ver TODO el texto / colapsar");
-  pv.addEventListener("click", e=>{ e.stopPropagation(); pv.classList.toggle("open"); });
-  wireActions(el, it);
-  return el;
 }
 
 // Persistencia de labels custom: sobrevive reload del tablero. cc-app los
@@ -2837,7 +2789,23 @@ function rowEl(it){
       <button type="button" class="go">${t("Abrir")}</button>
       <button type="button" class="up hidden">${t("Revivir")}</button>
       <button type="button" class="kill" title="${t('Matar la sesion tmux (y lo que corra dentro)')}">${svg("x",14)}</button>
-    </span>`;
+      <button type="button" class="xp hidden" title="${t('Responder desde aqui')}">▾</button>
+    </span>
+    <div class="rxp">
+      <p class="preview"></p>
+      <div class="opts hidden"></div>
+      <form class="send">
+        <input type="text" autocomplete="off" spellcheck="false" placeholder="${t('Responde aqui y Enter')}">
+        <button type="submit">${t("Enviar")}</button>
+      </form>
+      <div class="keys">
+        <button type="button" data-key="1">1</button>
+        <button type="button" data-key="2">2</button>
+        <button type="button" data-key="3">3</button>
+        <button type="button" data-key="Enter">Enter</button>
+        <button type="button" data-key="Escape">Esc</button>
+      </div>
+    </div>`;
   el.querySelector(".name").textContent = it.project;
   const kill = el.querySelector(".kill");
   const killIcon = kill.innerHTML;   // guardamos el SVG del ícono
@@ -2853,8 +2821,15 @@ function rowEl(it){
     catch(err){ toast(err.message, true); }
   });
   wireActions(el, it);
+  const xp = el.querySelector(".xp");
+  xp.addEventListener("click", e=>{
+    e.stopPropagation();
+    el.classList.toggle("open");
+    xp.textContent = el.classList.contains("open") ? "▴" : "▾";
+    render(S.list || []);   // llena .rxp (pregunta/opciones) al instante
+  });
   el.addEventListener("click", async e=>{
-    if(e.target.closest("button")) return;
+    if(e.target.closest("button") || e.target.closest(".rxp")) return;
     if(el.classList.contains("ext")) return toast(tf("Corre en una pestana suelta: cierrala alla y usa Revivir", "Runs in a detached tab: close it there and use Revive"), true);
     try{ toast(await openSession(it, "claude")); }catch(err){ toast(err.message, true); }
   });
@@ -2862,26 +2837,21 @@ function rowEl(it){
 }
 
 // ---------- render ----------
-function itemKind(it){
-  if(it.status === "waiting") return "card";
-  if((it.agent || "") === "codex" && it.status === "done" && ((it.detail || it.last || "").trim())) return "card";
-  return "row";
-}
+function itemKind(it){ return "row"; }   // cards eliminadas: una sola estructura
 
 function render(list){
   S.list = list;
   const seen = new Set();
   const counts = {waiting:0, done:0, working:0};
-  let cardCount = 0;
   for(const it of list){
+    if(seen.has(it.session)) continue;   // /state puede duplicar sesiones
     seen.add(it.session);
     if(counts[it.status] !== undefined) counts[it.status]++;
     const kind = itemKind(it);
-    if(kind === "card") cardCount++;
-    const container = kind === "card" ? urgent : rows;
+    const container = rows;
     let el = document.querySelector(`[data-session="${CSS.escape(it.session)}"]`);
     if(el && el.dataset.kind !== kind){ el.remove(); el = null; }
-    if(!el){ el = kind === "card" ? cardEl(it) : rowEl(it); container.appendChild(el); }
+    if(!el){ el = rowEl(it); container.appendChild(el); }
     const ext = !!it.external;
     const ab = el.querySelector(".abadge");
     if(ab){
@@ -2910,10 +2880,13 @@ function render(list){
 	    el.dataset.search = `${it.project} ${it.cwd||""}`.toLowerCase();
 	    const uchip = el.querySelector(".usage-chip");
 	    if(uchip){
-	      const utxt = usageChipText(usageForItem(it));
-	      uchip.textContent = utxt;
+	      const u = usageForItem(it);
+	      const utxt = usageChipText(u);
+	      const tst = tierStyleOf(tierOf(shortModel(u?.model || "")));
+	      uchip.textContent = utxt + ((tst && tst.symbol) ? ` ${tst.symbol}` : "");
 	      uchip.classList.toggle("hidden", !utxt);
-	      uchip.title = utxt;
+	      uchip.style.color = (tst && tst.css) || "";
+	      uchip.title = utxt + ((tst && tst.label) ? ` — ${tst.label}` : "");
 	    }
 	    const mcur = el.querySelector(".mdl-cur");
 	    if(mcur){
@@ -2942,48 +2915,9 @@ function render(list){
 	    }
 	    el.querySelector(".fav").classList.toggle("on", S.favs.has(it.session));
     el.querySelector(".ago").textContent = agoTxt(it.ts);
-    if(kind === "card"){
-      el.classList.toggle("ext", ext);
-      // canSend: hay un claude VIVO esperando; si murio, la card queda con la
-      // pregunta visible y el camino de Revivir/Abrir (nunca respondas al vacio)
-      const canSend = it.alive && !ext && !it.zombie;
-      el.querySelector(".tag").textContent = ext ? t("Suelta")
-        : !canSend ? t("Pregunta pendiente · claude apagado")
-        : it.status === "done" ? t("Listo para responder") : t("Necesita respuesta");
-      const pe = el.querySelector(".path");
-      pe.textContent = it.cwd ? shortPath(it.cwd) : t("carpeta no encontrada");
-      pe.title = it.cwd || ""; pe.classList.toggle("missing", !it.cwd);
-      el.querySelector(".preview").innerHTML = mdHtml(it.detail || it.last || t("Esperando input o permiso"));
-      // Opciones REALES (las mismas de los popups): 1 boton por opcion
-      const opts = el.querySelector(".opts");
-      const optsStr = (canSend && it.options) ? it.options : "";
-      if(el.dataset.opts !== optsStr){
-        el.dataset.opts = optsStr;
-        opts.innerHTML = "";
-        optsStr.split("\u001f").filter(Boolean).slice(0, 4).forEach((lab, i)=>{
-          const b = document.createElement("button");
-          b.type = "button";
-          b.textContent = `${i + 1} · ${lab}`;
-          b.addEventListener("click", async e=>{
-            e.stopPropagation();
-            try{
-              await api("/key", {session: el.dataset.session, key: String(i + 1),
-                                 pane: el.dataset.pane || undefined});
-              setTimeout(()=> api("/key", {session: el.dataset.session, key: "Enter",
-                                           pane: el.dataset.pane || undefined}).catch(()=>{}), 300);
-              toast(`${lab} → ${it.project}`);
-            }catch(err){ toast(err.message, true); }
-          });
-          opts.appendChild(b);
-        });
-      }
-      opts.classList.toggle("hidden", !optsStr);
-      el.querySelector(".send").classList.toggle("hidden", !canSend);
-      el.querySelector(".keys").classList.toggle("hidden", !canSend || !!optsStr);
-      el.querySelector(".up").classList.toggle("hidden", it.alive || ext);
-      el.style.order = (S.favs.has(it.session) ? -1000 : 0) + Math.floor((it.ts||0)/60)%1000;
-    } else {
-      el.className = `row s-${it.status}` + (ext ? " ext" : "");
+    {
+      el.className = `row s-${it.status}` + (ext ? " ext" : "") +
+        (el.classList.contains("open") ? " open" : "");
       el.querySelector(".exttag").classList.toggle("hidden", !ext);
       el.querySelector(".rpath").textContent = shortPath(it.cwd);
       el.querySelector(".rpath").title = it.cwd || "";
@@ -3001,6 +2935,47 @@ function render(list){
       el.querySelector(".up").classList.toggle("hidden", it.alive || ext);
       el.querySelector(".go").classList.toggle("hidden", ext || (!it.alive && !inApp()));
       el.querySelector(".kill").classList.toggle("hidden", !it.alive || ext);
+      // Responder inline (.rxp): la fila expandible sustituye a las cards.
+      // canSend: hay un agente VIVO al que hablarle; si murio, la pregunta
+      // queda visible y el camino es Revivir (nunca respondas al vacio).
+      const canSend = it.alive && !ext && !it.zombie;
+      const answerable = canSend && (it.status === "waiting" || it.status === "done");
+      const xp = el.querySelector(".xp");
+      if(xp){
+        xp.classList.toggle("hidden", !answerable);
+        if(!it.alive && el.classList.contains("open")){
+          el.classList.remove("open"); xp.textContent = "▾";
+        }
+      }
+      if(el.classList.contains("open")){
+        el.querySelector(".preview").innerHTML =
+          mdHtml(it.detail || it.last || t("Esperando input o permiso"));
+        const opts = el.querySelector(".opts");
+        const optsStr = (canSend && it.options) ? it.options : "";
+        if(el.dataset.opts !== optsStr){
+          el.dataset.opts = optsStr;
+          opts.innerHTML = "";
+          optsStr.split("\u001f").filter(Boolean).slice(0, 4).forEach((lab, i)=>{
+            const b = document.createElement("button");
+            b.type = "button";
+            b.textContent = `${i + 1} · ${lab}`;
+            b.addEventListener("click", async e=>{
+              e.stopPropagation();
+              try{
+                await api("/key", {session: el.dataset.session, key: String(i + 1),
+                                   pane: el.dataset.pane || undefined});
+                setTimeout(()=> api("/key", {session: el.dataset.session, key: "Enter",
+                                             pane: el.dataset.pane || undefined}).catch(()=>{}), 300);
+                toast(`${lab} → ${it.project}`);
+              }catch(err){ toast(err.message, true); }
+            });
+            opts.appendChild(b);
+          });
+        }
+        opts.classList.toggle("hidden", !optsStr);
+        el.querySelector(".send").classList.toggle("hidden", !canSend);
+        el.querySelector(".keys").classList.toggle("hidden", !canSend || !!optsStr);
+      }
       el.style.order = (S.favs.has(it.session) ? -100000 : 0) +
         (ROW_ORDER[it.status] ?? 9) * 1000 - Math.min(999, Math.floor((it.ts||0)/60)%1000);
     }
@@ -3016,7 +2991,6 @@ function render(list){
   document.querySelectorAll("[data-session]").forEach(el=>{
     if(!seen.has(el.dataset.session)) el.remove();
   });
-  $("#urgent-wrap").classList.toggle("hidden", cardCount === 0);
   if(!rows.querySelector(".row") && !rows.querySelector(".empty")){
     rows.innerHTML = `<div class="empty">${tf("Sin sesiones. Abre una arriba con", "No sessions. Open one above with")}
       <code>${tf("abrir proyecto", "open project")}</code>${tf(", o en cualquier terminal:", ", or in any terminal:")} <code>ccx ${tf("nombre", "name")}</code></div>`;
