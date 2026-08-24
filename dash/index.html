@@ -327,6 +327,17 @@
   .sw.on{background:var(--brand)}
   .sw.on::after{left:16px;background:#fff}
   .sw:disabled{opacity:.45;cursor:default}
+  .cx-roles{display:flex;gap:6px;flex-wrap:wrap;margin:8px 0 2px}
+  .cx-role{font-family:var(--mono);font-size:10px;font-weight:700;padding:4px 10px;
+    border-radius:99px;border:1px solid var(--line2);background:none;color:var(--dim);cursor:pointer;
+    transition:all .12s ease}
+  .cx-role:hover{border-color:var(--brand);color:var(--brand)}
+  .cx-role.on{color:var(--brand);border-color:var(--brand);background:color-mix(in srgb,var(--brand) 12%,transparent)}
+  .cx-flows{display:flex;flex-direction:column;gap:5px;align-items:flex-start}
+  .cx-flow{font-family:var(--mono);font-size:10.5px;padding:5px 10px;border-radius:8px;
+    border:1px solid var(--line2);background:none;color:var(--text);cursor:pointer;text-align:left;
+    transition:border-color .12s ease}
+  .cx-flow:hover{border-color:var(--done);color:var(--done)}
   .cx-acts{display:flex;gap:8px;flex-wrap:wrap;margin-top:4px}
   .cx-acts button{font-family:var(--mono);font-size:11px;font-weight:700;padding:7px 14px;
     border-radius:9px;border:1px solid var(--line2);background:none;color:var(--text);cursor:pointer;
@@ -1696,7 +1707,7 @@ function mdStrip(s){ return (s||"").replace(/\*\*|`|^#{1,6} /g, ""); }
 	  "..................",
 	  "..................",
 	];
-	function axoDraw(cv, frame, st, crown, px){
+	function axoDraw(cv, frame, st, hat, px){
 	  px = px || 4;
 	  cv.width = 18 * px; cv.height = 13 * px;
 	  const ctx = cv.getContext("2d");
@@ -1717,9 +1728,15 @@ function mdStrip(s){ return (s||"").replace(/\*\*|`|^#{1,6} /g, ""); }
 	      put(x, y, AXO_PAL[ch] || AXO_PAL.B);
 	    });
 	  });
-	  if(crown){  // modelo caro: coronita dorada
+	  if(hat === "corona"){  // arquitecto / modelo caro
 	    [[10,1],[12,1],[14,1],[10,2],[11,2],[12,2],[13,2],[14,2]]
 	      .forEach(([x,y]) => put(x, y, AXO_PAL.K));
+	  } else if(hat === "casco"){  // constructor
+	    [[11,1],[12,1],[13,1],[10,2],[11,2],[12,2],[13,2],[14,2],[15,2]]
+	      .forEach(([x,y]) => put(x, y, "#FF9F43"));
+	  } else if(hat === "visor"){  // verificador
+	    [[10,2],[11,2],[12,2],[13,2],[14,2],[15,2],[15,3],[16,3]]
+	      .forEach(([x,y]) => put(x, y, "#4ECDC4"));
 	  }
 	  if(st === "waiting"){  // burbuja "!"
 	    put(16, 2, "#FFAE1A"); put(16, 3, "#FFAE1A"); put(16, 5, "#FFAE1A");
@@ -1739,6 +1756,15 @@ function mdStrip(s){ return (s||"").replace(/\*\*|`|^#{1,6} /g, ""); }
 	  });
 	}, 550);
 	// Centro de control: EL ajolote de la sesion seleccionada + sus controles.
+	let ROLES = null;
+	api("/agent-roles").then(r => { ROLES = r || null; }).catch(() => {});
+	function roleOfModel(model){
+	  if(!ROLES || !model) return null;
+	  const m = model.toLowerCase();
+	  for(const r of (ROLES.roles || []))
+	    if((r.matches || []).some(x => m.includes(x))) return r;
+	  return null;
+	}
 	let brainCache = {cwd: null, data: null};
 	async function loadBrain(cwd){
 	  if(brainCache.cwd === cwd && brainCache.data) return brainCache.data;
@@ -1768,8 +1794,10 @@ function mdStrip(s){ return (s||"").replace(/\*\*|`|^#{1,6} /g, ""); }
 	  const model = shortModel(usageForItem(it)?.model || "");
 	  const tier = tierOf(model);
 	  const tst = tierStyleOf(tier);
-	  const crown = tier === ((MT && MT.alertTier) || "high");
-	  const sig = `${it.session}|${st}|${crown ? 1 : 0}`;
+  const role = roleOfModel(model);
+	  const hat = role ? role.hat :
+	    (tier === ((MT && MT.alertTier) || "high") ? "corona" : "");
+	  const sig = `${it.session}|${st}|${hat}`;
 	  if(box.dataset.sig !== sig){
 	    box.dataset.sig = sig;
 	    box.innerHTML = `
@@ -1788,6 +1816,9 @@ function mdStrip(s){ return (s||"").replace(/\*\*|`|^#{1,6} /g, ""); }
 	            <button type="button" class="cx-resume hidden">▶ ${tf("Reanudar", "Resume")}</button>
 	            <button type="button" class="cx-kill danger">✕ ${tf("Matar", "Kill")}</button>
 	          </div>
+	          <div class="cx-roles"></div>
+	          <div class="cx-title" style="margin-top:10px">${tf("flujos", "flows")}</div>
+	          <div class="cx-flows"></div>
 	          <div class="cx-note">${tf("los switches aplican al reciclar la sesion", "switches apply on session recycle")}</div>
 	        </div>
 	        <div class="cx-block"><div class="cx-title">MCPs</div><div class="cx-mcps"></div></div>
@@ -1795,8 +1826,40 @@ function mdStrip(s){ return (s||"").replace(/\*\*|`|^#{1,6} /g, ""); }
 	      </div>`;
 	    const fr = box.querySelector(".frames");
 	    fr.innerHTML = `<canvas class="f1"></canvas><canvas class="f2" style="display:none"></canvas>`;
-	    axoDraw(fr.querySelector(".f1"), AXO_F1, st, crown, 7);
-	    axoDraw(fr.querySelector(".f2"), AXO_F2, st, crown, 7);
+	    axoDraw(fr.querySelector(".f1"), AXO_F1, st, hat, 7);
+	    axoDraw(fr.querySelector(".f2"), AXO_F2, st, hat, 7);
+	    // Rol actual + cambio de rol (usa el switch de modelo existente)
+	    const rbox = box.querySelector(".cx-roles");
+	    if(ROLES && (ROLES.roles || []).length && ["claude","codex","opencode"].includes(it.agent)){
+	      rbox.innerHTML = (ROLES.roles || []).map(r => `
+	        <button type="button" class="cx-role ${role && role.id === r.id ? "on" : ""}"
+	          data-role="${attrEsc(r.id)}" title="${attrEsc(r.desc || "")}">${mdEsc(r.label)}</button>`).join("");
+	      rbox.querySelectorAll(".cx-role").forEach(b => b.addEventListener("click", async ()=>{
+	        const r = (ROLES.roles || []).find(x => x.id === b.dataset.role);
+	        const spec = r && r.byProvider && r.byProvider[it.agent];
+	        if(!spec) return toast(tf(`sin modelo de ${b.dataset.role} para ${it.agent}`,
+	                                  `no ${b.dataset.role} model for ${it.agent}`), true);
+	        try{
+	          await api("/model/switch", {session: it.session, pane: it.pane || "",
+	            provider: it.agent, model: spec.model, effort: spec.effort || ""});
+	          toast(`${r.label} → ${spec.model}`);
+	        }catch(err){ toast(err.message, true); }
+	      }));
+	    }
+	    // Flujos multi-proveedor (config/agent-roles.json)
+	    const fbox = box.querySelector(".cx-flows");
+	    if(ROLES && (ROLES.flows || []).length && it.cwd){
+	      fbox.innerHTML = (ROLES.flows || []).map(f => `
+	        <button type="button" class="cx-flow" data-flow="${attrEsc(f.id)}"
+	          title="${attrEsc(f.desc || "")}">▶ ${mdEsc(f.label)}</button>`).join("");
+	      fbox.querySelectorAll(".cx-flow").forEach(b => b.addEventListener("click", async ()=>{
+	        try{
+	          const r = await api("/flow-launch", {cwd: it.cwd, flow: b.dataset.flow});
+	          toast(tf(`${r.opened.length} tabs abiertas en ${shortPath(it.cwd)}`,
+	                   `${r.opened.length} tabs opened in ${shortPath(it.cwd)}`));
+	        }catch(err){ toast(err.message, true); }
+	      }));
+	    }
 	    box.querySelector(".cx-open").addEventListener("click", async ()=>{
 	      try{ toast(await openSession(it, "claude")); }catch(err){ toast(err.message, true); }
 	    });

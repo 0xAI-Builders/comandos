@@ -2757,7 +2757,7 @@ class Handler(http.server.SimpleHTTPRequestHandler):
     # Endpoints con DATOS o ACCIONES: exigen token. El shell estatico (HTML,
     # sw.js, manifest, iconos) NO — no revela nada (es codigo open-source) y
     # asi la PWA instala y carga sin depender de cookies en el webview movil.
-    API_GET = ("/state", "/usage/state", "/opencode/models", "/model-tiers", "/session-brain", "/events", "/conf", "/prefs", "/ssh", "/tabs",
+    API_GET = ("/state", "/usage/state", "/opencode/models", "/model-tiers", "/agent-roles", "/session-brain", "/events", "/conf", "/prefs", "/ssh", "/tabs",
                "/tab-history", "/remote-state", "/remote-qr.png", "/snippets", "/tmux-mouse",
                "/webterm-token")
 
@@ -2780,6 +2780,12 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             return self._json(200, {"providers": opencode_models()})
         if self.path.startswith("/model-tiers"):
             return self._json(200, load_model_tiers())
+        if self.path.startswith("/agent-roles"):
+            try:
+                with open(os.path.join(REPO_ROOT, "config", "agent-roles.json")) as f:
+                    return self._json(200, json.load(f))
+            except Exception:
+                return self._json(200, {"roles": []})
         if self.path.startswith("/session-brain"):
             import urllib.parse
             q = urllib.parse.parse_qs(urllib.parse.urlparse(self.path).query)
@@ -3173,6 +3179,46 @@ class Handler(http.server.SimpleHTTPRequestHandler):
                 return self._json(404, {"error": "snippet no encontrado"})
             write_snippets(new_items)
             return self._json(200, {"ok": True})
+
+        if self.path == "/flow-launch":
+            # Lanza un flujo (config/agent-roles.json): cada step abre una tab
+            # scratch EN EL CWD del proyecto y arranca su agente/modelo.
+            cwd = str(data.get("cwd", ""))
+            flow_id = str(data.get("flow", ""))[:60]
+            if not cwd.startswith("/") or not os.path.isdir(cwd):
+                return self._json(400, {"error": "cwd invalido"})
+            try:
+                with open(os.path.join(REPO_ROOT, "config", "agent-roles.json")) as f:
+                    flows = {fl.get("id"): fl for fl in (json.load(f).get("flows") or [])}
+            except Exception:
+                flows = {}
+            flow = flows.get(flow_id)
+            if not flow:
+                return self._json(404, {"error": f"flujo '{flow_id}' no existe"})
+            opened = []
+            proj = os.path.basename(cwd.rstrip("/"))
+            for step in flow.get("steps") or []:
+                cmd = str(step.get("cmd", "")).strip()
+                if not cmd:
+                    continue
+                n = int(time.time() * 10) % 1000000
+                new_sess = f"term-r{n}"
+                while tmux("has-session", "-t", "=" + new_sess).returncode == 0:
+                    n += 1
+                    new_sess = f"term-r{n}"
+                r = tmux("new-session", "-d", "-s", new_sess, "-c", cwd)
+                if r.returncode != 0:
+                    continue
+                label = f"{proj} · {step.get('label') or 'step'}"
+                register_app_tab(new_sess, label, kind="project", cwd=cwd)
+                def _send(sess=new_sess, c=cmd):
+                    time.sleep(1.5)
+                    tmux("send-keys", "-t", "=" + sess + ":", c, "Enter")
+                threading.Thread(target=_send, daemon=True).start()
+                opened.append({"session": new_sess, "label": label, "cmd": cmd})
+            if not opened:
+                return self._json(500, {"error": "no se pudo abrir ningun step"})
+            return self._json(200, {"ok": True, "opened": opened})
 
         if self.path == "/tab-new":
             # Boton + del remoto: terminal scratch nueva, visible en AMBOS lados
