@@ -295,6 +295,26 @@
   .card.ext{background:var(--panel);border-color:var(--line);box-shadow:none}
   .card.ext .tag{color:var(--working);background:rgba(122,165,255,.12)}
 
+  /* Colonia: un ajolote pixel-art por sesion. El COLOR DEL AGUA (halo) dice
+     el estado; el ajolote siempre es rosita (bonito). Click = ir a la sesion. */
+  #colonia{display:flex;flex-wrap:wrap;gap:10px;align-items:flex-start}
+  #colonia-wrap.hidden{display:none}
+  .axo{display:flex;flex-direction:column;align-items:center;gap:3px;
+    width:78px;padding:8px 2px 6px;border-radius:14px;cursor:pointer;border:1px solid transparent;
+    transition:transform .12s ease,border-color .12s ease;background:none}
+  .axo:hover{transform:translateY(-2px);border-color:var(--line2)}
+  .axo canvas{image-rendering:pixelated;width:56px;height:44px}
+  .axo .aqua{width:62px;height:50px;border-radius:50%;display:flex;align-items:center;
+    justify-content:center;background:radial-gradient(circle at 50% 42%,var(--aqua-c,#232B3E) 0%,transparent 72%)}
+  .axo[data-st="waiting"]{--aqua-c:#6E4C12}
+  .axo[data-st="working"]{--aqua-c:#274070}
+  .axo[data-st="done"]{--aqua-c:#155239}
+  .axo[data-st="idle"]{--aqua-c:#252C3D}
+  .axo[data-st="dead"] canvas{filter:grayscale(.95) opacity(.55)}
+  .axo .axname{font-family:var(--mono);font-size:9.5px;color:var(--dim);max-width:74px;
+    overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .axo[data-st="waiting"] .axname{color:var(--waiting);font-weight:700}
+  @media (prefers-reduced-motion:reduce){.axo canvas.f2{display:none!important}}
   /* Sesiones: filas compactas */
   #rows{display:flex;flex-direction:column;border:1px solid var(--line);border-radius:14px;
     background:var(--panel);overflow:hidden}
@@ -888,6 +908,9 @@
 </div>
 
 <div id="content">
+<section class="sec" id="colonia-wrap">
+  <div id="colonia" title=""></div>
+</section>
 <section class="sec">
   <div class="sec-label">Sesiones
     <input id="q" placeholder="buscar sesión" autocomplete="off" spellcheck="false"
@@ -1598,6 +1621,123 @@ function mdStrip(s){ return (s||"").replace(/\*\*|`|^#{1,6} /g, ""); }
 	}
 	function tierStyleOf(tier){
 	  return (MT && MT.tiers && MT.tiers[tier]) || null;
+	}
+	// ---- La mascota de ComandOS: el AJOLOTE (pixel-art). Uno por sesion.
+	// Mapa de pixeles 18x13: .=nada B=cuerpo D=contorno G=branquita W=panza
+	// Dos frames (cola arriba/abajo) para nadar; expresiones por estado.
+	const AXO_PAL = {B:"#FFB3C7", D:"#E58AA6", G:"#FF7FA8", W:"#FFDCE7",
+	                 E:"#3A2B3F", K:"#FFD166", R:"#FF8FA3", M:"#D96E8E"};
+	const AXO_F1 = [
+	  "..................",
+	  "..........G..G.G..",
+	  ".........GG.GG.GG.",
+	  ".....DDDDDDDDDDG..",
+	  "...DDBBBBBBBBBBD..",
+	  "..DBBBBBBBBBEBBD..",
+	  ".DBBBBBBBBBBBBMBD.",
+	  ".DBBBBBBBBBRBBBD..",
+	  "..DDBWWBBWWBBDD...",
+	  "....DDDDDDDDD.....",
+	  "......D...D.......",
+	  "..................",
+	  "..................",
+	];
+	const AXO_F2 = [
+	  "..................",
+	  "..................",
+	  "..........G..G.G..",
+	  "..DD.....GG.GG.GG.",
+	  "...DDDDDDDDDDDDG..",
+	  "..DBBBBBBBBBEBBD..",
+	  ".DBBBBBBBBBBBBMBD.",
+	  ".DBBBBBBBBBRBBBD..",
+	  "..DDBWWBBWWBBDD...",
+	  "....DDDDDDDDD.....",
+	  "....D.....D.......",
+	  "..................",
+	  "..................",
+	];
+	function axoDraw(cv, frame, st, crown){
+	  const px = 4;
+	  cv.width = 18 * px; cv.height = 13 * px;
+	  const ctx = cv.getContext("2d");
+	  ctx.clearRect(0, 0, cv.width, cv.height);
+	  const put = (x, y, c) => { ctx.fillStyle = c; ctx.fillRect(x*px, y*px, px, px); };
+	  frame.forEach((row, y) => {
+	    [...row].forEach((ch, x) => {
+	      if(ch === ".") return;
+	      // ojo segun estado: feliz (arco), dormido (linea), alerta (grande), x (muerto)
+	      if(ch === "E"){
+	        if(st === "done"){ put(x, y, AXO_PAL.E); put(x-1, y, AXO_PAL.E); return; }
+	        if(st === "idle"){ put(x, y, AXO_PAL.D); put(x-1, y, AXO_PAL.D); return; }
+	        if(st === "dead"){ put(x, y, AXO_PAL.E); put(x-1, y-1, AXO_PAL.E); put(x+1, y-1, AXO_PAL.E); return; }
+	        put(x, y, AXO_PAL.E);
+	        if(st === "waiting") put(x, y-1, AXO_PAL.E);
+	        return;
+	      }
+	      put(x, y, AXO_PAL[ch] || AXO_PAL.B);
+	    });
+	  });
+	  if(crown){  // modelo caro: coronita dorada
+	    [[10,1],[12,1],[14,1],[10,2],[11,2],[12,2],[13,2],[14,2]]
+	      .forEach(([x,y]) => put(x, y, AXO_PAL.K));
+	  }
+	  if(st === "waiting"){  // burbuja "!"
+	    put(16, 2, "#FFAE1A"); put(16, 3, "#FFAE1A"); put(16, 5, "#FFAE1A");
+	  }
+	  if(st === "idle"){  // zzz
+	    put(15, 2, "#5A6580"); put(16, 1, "#5A6580"); put(14, 3, "#5A6580");
+	  }
+	}
+	let axoFlip = false;
+	setInterval(() => {
+	  axoFlip = !axoFlip;
+	  document.querySelectorAll('.axo[data-st="working"]').forEach(a => {
+	    a.querySelector(".f1").style.display = axoFlip ? "none" : "";
+	    a.querySelector(".f2").style.display = axoFlip ? "" : "none";
+	  });
+	}, 550);
+	function renderColonia(list){
+	  const box = $("#colonia");
+	  if(!box) return;
+	  const seen = new Set(), items = [];
+	  for(const it of list || []){
+	    if(seen.has(it.session)) continue;
+	    seen.add(it.session);
+	    if(it.alive || it.status === "waiting") items.push(it);
+	  }
+	  const order = {waiting:0, working:1, done:2, idle:3, dead:4};
+	  items.sort((a,b) => (order[a.status] ?? 5) - (order[b.status] ?? 5));
+	  $("#colonia-wrap").classList.toggle("hidden", !items.length);
+	  const live = new Set(items.map(i => i.session));
+	  box.querySelectorAll(".axo").forEach(el => { if(!live.has(el.dataset.session)) el.remove(); });
+	  items.forEach((it, idx) => {
+	    let el = box.querySelector(`.axo[data-session="${CSS.escape(it.session)}"]`);
+	    if(!el){
+	      el = document.createElement("button");
+	      el.type = "button"; el.className = "axo"; el.dataset.session = it.session;
+	      el.innerHTML = `<span class="aqua"><span class="frames"></span></span><span class="axname"></span>`;
+	      el.addEventListener("click", async ()=>{
+	        try{ toast(await openSession(it, "claude")); }catch(err){ toast(err.message, true); }
+	      });
+	      box.appendChild(el);
+	    }
+	    box.insertBefore(el, box.children[idx] || null);
+	    const st = it.status || "idle";
+	    const crown = tierOf(shortModel(usageForItem(it)?.model || "")) ===
+	                  ((MT && MT.alertTier) || "high");
+	    const sig = `${st}|${crown ? 1 : 0}`;
+	    if(el.dataset.sig !== sig){
+	      el.dataset.sig = sig; el.dataset.st = st;
+	      const fr = el.querySelector(".frames");
+	      fr.innerHTML = `<canvas class="f1"></canvas><canvas class="f2" style="display:none"></canvas>`;
+	      axoDraw(fr.querySelector(".f1"), AXO_F1, st, crown);
+	      axoDraw(fr.querySelector(".f2"), AXO_F2, st, crown);
+	    }
+	    el.querySelector(".axname").textContent = it.project || it.session;
+	    el.title = `${it.project || it.session} — ${st}` +
+	      (crown ? " · modelo caro $$$" : "") + (it.account && it.account !== "main" ? ` · ${it.account}` : "");
+	  });
 	}
 	// Color estable por alias de cuenta (hash -> hue): sin lista fija.
 	function acctColor(a){
@@ -3017,9 +3157,10 @@ function render(list){
     // tema); las Notification() del navegador eran duplicado gris sin tema.
     S.prev.set(it.session, it.status);
   }
-  document.querySelectorAll("[data-session]").forEach(el=>{
+  document.querySelectorAll("#rows [data-session]").forEach(el=>{
     if(!seen.has(el.dataset.session)) el.remove();
   });
+  renderColonia(list);
   if(!rows.querySelector(".row") && !rows.querySelector(".empty")){
     rows.innerHTML = `<div class="empty">${tf("Sin sesiones. Abre una arriba con", "No sessions. Open one above with")}
       <code>${tf("abrir proyecto", "open project")}</code>${tf(", o en cualquier terminal:", ", or in any terminal:")} <code>ccx ${tf("nombre", "name")}</code></div>`;
