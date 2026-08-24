@@ -238,6 +238,12 @@
     color:var(--dim);border:1px solid var(--line2)}
   .abadge[data-a="codex"]{color:#19C39C;border-color:#19C39C55}
   .acct-chip{flex:none}
+  .uv-accts{display:flex;gap:6px;flex-wrap:wrap;grid-column:1/-1;margin-bottom:4px}
+  .uv-acct{font-family:var(--mono);font-size:10px;font-weight:700;padding:3px 10px;
+    border-radius:99px;border:1px solid var(--line2);background:none;color:var(--dim);cursor:pointer}
+  .uv-acct.on{color:var(--brand);border-color:var(--brand)}
+  .uv-acct-tag{font-size:9px;font-weight:700;border:1px solid var(--line2);
+    border-radius:99px;padding:1px 6px;color:var(--dim)}
   .tier-sym{font-family:var(--mono);font-size:9px;font-weight:700;margin-left:3px}
   .abadge[data-a="opencode"]{color:#FAB283;border-color:#FAB28355}
   .abadge[data-a="gemini"]{color:#7AA5FF;border-color:#7AA5FF55}
@@ -1489,9 +1495,27 @@ function mdStrip(s){ return (s||"").replace(/\*\*|`|^#{1,6} /g, ""); }
 	// Porcentajes EXACTOS del plan: OAuth de Claude Code y rollouts de Codex.
 	// Cada ventana lleva su boton de alerta (ej. "codex sesion 5h al 60%").
 	function renderUsageLimits(state){
-	  const items = state?.limits || [];
+	  const all = state?.limits || [];
 	  const rules = state?.alert_rules || [];
-	  $("#usage-limits").innerHTML = items.length ? items.map(l=>{
+	  // Selector de cuenta: aparece SOLO si hay mas de una (main + alias de
+	  // ~/.claude-accounts). El filtro vive en S.usageAcct ("all" = todas).
+	  const accts = [...new Set(all.filter(l => l.provider === "claude")
+	                               .map(l => l.account || "main"))];
+	  let selHtml = "";
+	  if(accts.length > 1){
+	    const cur = S.usageAcct || "all";
+	    const chip = (id, label, email) =>
+	      `<button type="button" class="uv-acct ${cur === id ? "on" : ""}"
+	         data-acct="${attrEsc(id)}" title="${attrEsc(email || label)}">${mdEsc(label)}</button>`;
+	    selHtml = `<div class="uv-accts">` + chip("all", tf("todas", "all"), "") +
+	      accts.map(a => chip(a, a,
+	        (all.find(l => (l.account || "main") === a && l.accountEmail) || {}).accountEmail))
+	        .join("") + `</div>`;
+	  }
+	  const cur = S.usageAcct || "all";
+	  const items = all.filter(l => l.provider !== "claude" ||
+	    cur === "all" || (l.account || "main") === cur);
+	  $("#usage-limits").innerHTML = selHtml + (items.length ? items.map(l=>{
 	    const pct = Math.max(0, Math.min(100, Number(l.percent || 0)));
 	    const rule = rules.find(r => r.id === `limit:${l.id}`);
 	    const sub = [
@@ -1499,8 +1523,10 @@ function mdStrip(s){ return (s||"").replace(/\*\*|`|^#{1,6} /g, ""); }
 	      l.plan_type ? `plan ${l.plan_type}` : "",
 	      limitAge(l),
 	    ].filter(Boolean).join(" · ");
+	    const acct = (l.account && l.account !== "main")
+	      ? ` <span class="uv-acct-tag" title="${attrEsc(l.accountEmail || l.account)}">${mdEsc(l.account)}</span>` : "";
 	    return `<div class="usage-card usage-window ${limitSeverity(l)}">
-	      <div class="usage-title">${mdEsc(l.provider || "")} · ${mdEsc(l.label || "")}<small>${mdEsc(confidenceLabel(l.confidence))}</small></div>
+	      <div class="usage-title">${mdEsc(l.provider || "")}${acct} · ${mdEsc(l.label || "")}<small>${mdEsc(confidenceLabel(l.confidence))}</small></div>
 	      <div class="usage-metric">${fmtPercent(l.percent)}
 	        <button type="button" class="uv-bell ${rule ? "on" : ""}" data-scope="limit"
 	          data-target="${attrEsc(l.id)}" data-label="${attrEsc(`${l.provider} ${l.label}`)}"
@@ -1509,7 +1535,9 @@ function mdStrip(s){ return (s||"").replace(/\*\*|`|^#{1,6} /g, ""); }
 	      <div class="usage-sub">${mdEsc(sub || tf("sin ventana de reset", "no reset window"))}</div>
 	      <div class="usage-bar"><span style="width:${pct}%"></span></div>
 	    </div>`;
-	  }).join("") : `<div class="desc">${tf("Sin datos todavia — se actualizan solos en unos segundos", "No data yet — auto-refreshes in a few seconds")}</div>`;
+	  }).join("") : `<div class="desc">${tf("Sin datos todavia — se actualizan solos en unos segundos", "No data yet — auto-refreshes in a few seconds")}</div>`);
+	  $("#usage-limits").querySelectorAll(".uv-acct").forEach(b =>
+	    b.addEventListener("click", ()=>{ S.usageAcct = b.dataset.acct; renderUsageLimits(state); }));
 	}
 	// Porcentajes globales del plan, siempre visibles junto a los contadores.
 	function renderLimitsStrip(state){
@@ -1518,8 +1546,9 @@ function mdStrip(s){ return (s||"").replace(/\*\*|`|^#{1,6} /g, ""); }
 	  const limits = state?.limits || [];
 	  const pills = [];
 	  for(const prov of ["claude", "codex"]){
-	    const ses = limits.find(l => l.provider === prov && l.window === "5h");
-	    const wk = limits.find(l => l.provider === prov && l.window === "7d" && !l.scope);
+	    const mine = limits.filter(l => (l.account || "main") === "main");
+	    const ses = mine.find(l => l.provider === prov && l.window === "5h");
+	    const wk = mine.find(l => l.provider === prov && l.window === "7d" && !l.scope);
 	    if(!ses && !wk) continue;
 	    const worst = Math.max(Number(ses?.percent ?? 0), Number(wk?.percent ?? 0));
 	    const cls = worst >= 90 ? "lim-danger" : worst >= 70 ? "lim-warn" : "lim-ok";

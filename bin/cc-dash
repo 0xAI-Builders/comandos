@@ -241,22 +241,52 @@ def _check_limit_alerts(limits):
             pass
 
 
+def _claude_account_creds():
+    """[(alias, creds_path)]: main (~/.claude) + cada ~/.claude-accounts/<alias>.
+    Descubrimiento por convencion de directorios — nada hardcodeado."""
+    out = [("main", os.path.expanduser("~/.claude/.credentials.json"))]
+    base = os.path.expanduser("~/.claude-accounts")
+    try:
+        for name in sorted(os.listdir(base)):
+            path = os.path.join(base, name, ".credentials.json")
+            if os.path.isfile(path):
+                out.append((name, path))
+    except OSError:
+        pass
+    return out
+
+
 def _refresh_provider_limits():
     global _limits_refreshing
     try:
         codex_rows = cc_usage.read_codex_rate_limits()
-        claude_rows, claude_health = cc_usage.fetch_claude_oauth_limits()
+        claude_rows, healths = [], {}
+        for alias, path in _claude_account_creds():
+            rows, health = cc_usage.fetch_claude_oauth_limits(creds_path=path)
+            email = account_email_for_dir(os.path.dirname(path), "claude")
+            for r in rows:
+                r["account"] = alias
+                if email:
+                    r["accountEmail"] = email
+                if alias != "main":
+                    r["id"] = f"{alias}:{r.get('id', '')}"
+            if not rows and health.get("status") == "error":
+                # Fetch fallido (p.ej. 429): conservar el ultimo dato bueno DE
+                # ESA cuenta. captured_at delata su edad y la UI la muestra.
+                with _limits_lock:
+                    rows = [r for r in _limits_cache["limits"]
+                            if r.get("provider") == "claude"
+                            and (r.get("account") or "main") == alias]
+                health["stale"] = bool(rows)
+            key = "claude_oauth" if alias == "main" else f"claude_oauth:{alias}"
+            health["account"] = alias
+            healths[key] = health
+            claude_rows += rows
         _check_limit_alerts(claude_rows + codex_rows)
         with _limits_lock:
-            if not claude_rows and claude_health.get("status") == "error":
-                # Fetch fallido (p.ej. 429): conservar el ultimo dato bueno.
-                # captured_at delata su edad y la UI la muestra.
-                claude_rows = [r for r in _limits_cache["limits"]
-                               if r.get("provider") == "claude"]
-                claude_health["stale"] = bool(claude_rows)
             _limits_cache["at"] = int(time.time())
             _limits_cache["limits"] = claude_rows + codex_rows
-            _limits_cache["health"] = {"claude_oauth": claude_health}
+            _limits_cache["health"] = healths
     finally:
         with _limits_lock:
             _limits_refreshing = False
