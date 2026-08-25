@@ -317,9 +317,9 @@
   #centro{display:flex;gap:18px;padding:16px;border:1px solid var(--line);
     border-radius:14px;background:var(--panel);flex-wrap:wrap}
   .cx-hero{display:flex;flex-direction:column;align-items:center;gap:6px;min-width:150px}
-  .axo-ascii{font-family:var(--mono);font-size:10.5px;line-height:1;letter-spacing:0;
+  .axo-ascii{font-family:var(--mono);font-size:8.5px;line-height:1;letter-spacing:0;
     white-space:pre;margin:0;user-select:none;display:block;cursor:pointer;
-    filter:drop-shadow(0 5px 16px #0009)}
+    filter:drop-shadow(0 3px 10px #0006)}
   .cx-hero .frames{display:block;animation:axofloat 4.5s ease-in-out infinite}
   @keyframes axofloat{0%,100%{transform:translateY(0)}50%{transform:translateY(-6px)}}
   .axo-ascii.boing{animation:axoboing .5s ease}
@@ -351,8 +351,9 @@
   @media (prefers-reduced-motion:reduce){.cx-hero .frames,
     .axo-ascii.boing,.axo-ascii.hop,.axo-ascii.spin,.axo-ascii.tilt,.axo-ascii.shake,
     .axo-ascii.flip,.axo-ascii.stretch,.axo-ascii.peek,.axo-ascii.wiggle{animation:none}}
-  .cx-hero .aqua{width:300px;height:230px;border-radius:50%;display:flex;align-items:center;
-    justify-content:center;background:radial-gradient(circle at 50% 48%,var(--aqua-c,#232B3E) 0%,transparent 72%)}
+  .cx-hero .aqua{width:250px;height:196px;border-radius:50%;display:flex;align-items:center;
+    justify-content:center;background:radial-gradient(circle at 50% 48%,
+      color-mix(in srgb,var(--aqua-c,#232B3E) 62%,transparent) 0%,transparent 70%)}
   .cx-hero[data-st="waiting"]{--aqua-c:#6E4C12}
   .cx-hero[data-st="working"]{--aqua-c:#274070}
   .cx-hero[data-st="done"]{--aqua-c:#155239}
@@ -363,8 +364,8 @@
   @media (max-width:760px){
     #centro{flex-direction:column;align-items:stretch;gap:12px}
     .cx-hero{flex-direction:row;justify-content:flex-start;gap:12px;min-width:0}
-    .cx-hero .aqua{width:200px;height:170px;flex:none}
-    .axo-ascii{font-size:8px}
+    .cx-hero .aqua{width:180px;height:150px;flex:none}
+    .axo-ascii{font-size:7px}
     .cx-cols{flex-direction:column;gap:14px}
     .cx-block{min-width:0}
   }
@@ -1909,7 +1910,8 @@ function mdStrip(s){ return (s||"").replace(/\*\*|`|^#{1,6} /g, ""); }
 	  AXO_THEMED = AXO_PIX.pal.map(hex => {
 	    const [h, sat, l] = _hex2hsl(hex);
 	    if(sat < 0.18) return hex;          // ojos/brillos: neutros, no tocar
-	    return _hsl2hex(brandH, sat, l);    // mismo tono relativo, hue del tema
+	    // DISCRETO: hue del tema, saturacion contenida y luz ligeramente bajada
+	    return _hsl2hex(brandH, Math.min(sat * 0.42, 0.34), l * 0.82 + 0.03);
 	  });
 	  return AXO_THEMED;
 	}
@@ -1945,7 +1947,7 @@ function mdStrip(s){ return (s||"").replace(/\*\*|`|^#{1,6} /g, ""); }
 	  const axo = document.querySelector(".axo-ascii");
 	  if(axo && !document.hidden)
 	    axoMove(axo, AXO_MOVES[Math.floor(Math.random() * AXO_MOVES.length)]);
-	  setTimeout(axoIdleLoop, 2200 + Math.random() * 6000);
+	  setTimeout(axoIdleLoop, 6000 + Math.random() * 10000);
 	})();
 	// (la mascota flota con CSS; los frames pixel viejos quedan sin uso)
 	// Centro de control: EL ajolote de la sesion seleccionada + sus controles.
