@@ -4387,7 +4387,7 @@ $("#srv-form").addEventListener("submit", async e=>{
 async function loadConf(){
   try{
     const conf = await api("/conf");
-    document.querySelectorAll(".cfg").forEach(b=>{
+    document.querySelectorAll(".cfg[data-key]").forEach(b=>{
       const on = conf[b.dataset.key] !== "0";
       b.classList.toggle("on", on);
       b.setAttribute("aria-checked", String(on));
@@ -4422,7 +4422,7 @@ $("#vol-top").addEventListener("change", async ()=>{
     loadConf();
   }catch(err){ toast(err.message, true); }
 });
-document.querySelectorAll(".cfg").forEach(b=>{
+document.querySelectorAll(".cfg[data-key]").forEach(b=>{
   b.addEventListener("click", async ()=>{
     const on = !b.classList.contains("on");
     const name = b.closest(".switch")?.querySelector("label")?.textContent || b.dataset.key;
