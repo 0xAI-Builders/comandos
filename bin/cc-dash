@@ -841,6 +841,81 @@ def session_costumes():
     return data
 
 
+# ---- Dedicacion: cuanto tiempo REAL le diste a cada proyecto, calculado de
+# los turnos locales (comandos-usage.sqlite). El "pomodoro" automatico: cero
+# fricción, cero nube — turnos consecutivos con hueco <= gapMin se encadenan.
+_dedication_cache = {"at": 0.0, "data": None}
+
+
+def dedication_stats(days=7, gap_min=15):
+    now = time.time()
+    if _dedication_cache["data"] and now - _dedication_cache["at"] < 60:
+        return _dedication_cache["data"]
+    import sqlite3
+    since = int(now - days * 86400)
+    rows = []
+    try:
+        db = sqlite3.connect(USAGE_DB)
+        rows = db.execute(
+            """select turn_started_at, turn_finished_at,
+                      coalesce(nullif(git_root, ''), pane_pwd) as proj,
+                      provider, total_tokens, cost_usd
+               from usage_turns
+               where turn_started_at >= ? and proj != ''
+               order by proj, turn_started_at""", (since,)).fetchall()
+        db.close()
+    except Exception:
+        pass
+    gap = gap_min * 60
+    # bloques por (dia, proyecto): union de intervalos [inicio, fin] puenteando
+    # huecos <= gap. minutos = suma de bloques (incluye tu lectura entre turnos).
+    per = {}
+    for st_at, fin_at, proj, provider, toks, cost in rows:
+        st_at = int(st_at or 0)
+        fin_at = max(int(fin_at or 0), st_at + 30)
+        day = time.strftime("%Y-%m-%d", time.localtime(st_at))
+        e = per.setdefault((day, proj), {"iv": [], "turns": 0, "tokens": 0, "cost": 0.0})
+        e["iv"].append((st_at, fin_at))
+        e["turns"] += 1
+        e["tokens"] += int(toks or 0)
+        e["cost"] += float(cost or 0.0)
+    by_day = {}
+    for (day, proj), e in per.items():
+        secs, cur_s, cur_e = 0, None, None
+        for st_at, fin_at in sorted(e["iv"]):
+            if cur_e is not None and st_at <= cur_e + gap:
+                cur_e = max(cur_e, fin_at)
+            else:
+                if cur_e is not None:
+                    secs += cur_e - cur_s
+                cur_s, cur_e = st_at, fin_at
+        if cur_e is not None:
+            secs += cur_e - cur_s
+        by_day.setdefault(day, {})[proj] = {
+            "path": proj, "name": os.path.basename(proj.rstrip("/")),
+            "minutes": secs / 60.0, "turns": e["turns"],
+            "tokens": e["tokens"], "cost": e["cost"]}
+    out_days = []
+    for day in sorted(by_day, reverse=True):
+        projs = sorted(by_day[day].values(), key=lambda x: -x["minutes"])
+        for x in projs:
+            x["minutes"] = round(x["minutes"], 1)
+            x["cost"] = round(x["cost"], 4)
+        out_days.append({"date": day, "projects": projs})
+    week = {}
+    for d in out_days:
+        for x in d["projects"]:
+            w = week.setdefault(x["path"], {"path": x["path"], "name": x["name"],
+                                            "minutes": 0.0, "tokens": 0, "cost": 0.0})
+            w["minutes"] = round(w["minutes"] + x["minutes"], 1)
+            w["tokens"] += x["tokens"]
+            w["cost"] = round(w["cost"] + x["cost"], 4)
+    data = {"days": out_days,
+            "week": sorted(week.values(), key=lambda x: -x["minutes"])}
+    _dedication_cache.update(at=now, data=data)
+    return data
+
+
 _TIER_LAST = {}
 
 
@@ -2993,7 +3068,7 @@ class Handler(http.server.SimpleHTTPRequestHandler):
     # Endpoints con DATOS o ACCIONES: exigen token. El shell estatico (HTML,
     # sw.js, manifest, iconos) NO — no revela nada (es codigo open-source) y
     # asi la PWA instala y carga sin depender de cookies en el webview movil.
-    API_GET = ("/state", "/usage/state", "/opencode/models", "/model-tiers", "/agent-roles", "/session-brain", "/events", "/conf", "/prefs", "/ssh", "/tabs",
+    API_GET = ("/state", "/usage/state", "/opencode/models", "/model-tiers", "/agent-roles", "/dedication", "/session-brain", "/events", "/conf", "/prefs", "/ssh", "/tabs",
                "/tab-history", "/remote-state", "/remote-qr.png", "/snippets", "/tmux-mouse",
                "/webterm-token")
 
@@ -3016,6 +3091,8 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             return self._json(200, {"providers": opencode_models()})
         if self.path.startswith("/model-tiers"):
             return self._json(200, load_model_tiers())
+        if self.path.startswith("/dedication"):
+            return self._json(200, dedication_stats())
         if self.path.startswith("/agent-roles"):
             return self._json(200, resolved_agent_roles())
         if self.path.startswith("/session-brain"):

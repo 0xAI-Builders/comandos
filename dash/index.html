@@ -238,6 +238,15 @@
     color:var(--dim);border:1px solid var(--line2)}
   .abadge[data-a="codex"]{color:#19C39C;border-color:#19C39C55}
   .acct-chip{flex:none}
+  #dedication{display:flex;flex-direction:column;gap:6px;margin-top:6px}
+  .ded-row{display:flex;align-items:center;gap:10px;font-family:var(--mono);font-size:11px}
+  .ded-row .dn{width:150px;flex:none;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+    color:var(--text);cursor:default}
+  .ded-row .db{flex:1;height:14px;border-radius:7px;background:var(--panel2);overflow:hidden}
+  .ded-row .db span{display:block;height:100%;border-radius:7px;
+    background:linear-gradient(90deg,color-mix(in srgb,var(--brand) 55%,transparent),var(--brand))}
+  .ded-row .dm{width:88px;flex:none;text-align:right;color:var(--dim)}
+  .ded-week{margin-top:4px;font-family:var(--mono);font-size:10px;color:var(--faint)}
   .uv-accts{display:flex;gap:6px;flex-wrap:wrap;grid-column:1/-1;margin-bottom:4px}
   .uv-acct{font-family:var(--mono);font-size:10px;font-weight:700;padding:3px 10px;
     border-radius:99px;border:1px solid var(--line2);background:none;color:var(--dim);cursor:pointer}
@@ -1127,6 +1136,8 @@
     <div class="set"><div class="desc" id="usage-summary">Sin datos todavia.</div></div>
     <h3>Limites del plan</h3>
     <div id="usage-limits" class="usage-grid"></div>
+    <div class="sec-label" style="margin-top:14px">Dedicación <small id="ded-sub"></small></div>
+    <div id="dedication"></div>
   </div>
 
   <div class="mtab-pane" data-mpane="proveedores">
@@ -2298,7 +2309,35 @@ function mdStrip(s){ return (s||"").replace(/\*\*|`|^#{1,6} /g, ""); }
 	  }catch(err){ toast(err.message, true); }
 	}
 	let usagePollTs = 0;
+	function fmtMin(m){
+	  return m >= 90 ? `${(m/60).toFixed(1)} h` : `${Math.round(m)} min`;
+	}
+	let dedTs = 0;
+	async function renderDedication(){
+	  if(Date.now() - dedTs < 60000) return;
+	  dedTs = Date.now();
+	  try{
+	    const d = await api("/dedication");
+	    const box = $("#dedication");
+	    if(!box) return;
+	    const today = (d.days && d.days[0]) || {projects: []};
+	    $("#ded-sub").textContent = tf("hoy, medida de tus turnos locales — nada sale de tu maquina",
+	                                   "today, from your local turns — nothing leaves your machine");
+	    const top = (today.projects || []).slice(0, 8);
+	    const max = Math.max(1, ...top.map(x => x.minutes));
+	    box.innerHTML = top.map(x => `
+	      <div class="ded-row" title="${attrEsc(x.path)} · ${x.turns} ${tf("turnos","turns")}${x.cost ? ` · $${x.cost.toFixed(2)}` : ""}">
+	        <span class="dn">${mdEsc(x.name)}</span>
+	        <span class="db"><span style="width:${Math.round(100*x.minutes/max)}%"></span></span>
+	        <span class="dm">${fmtMin(x.minutes)}</span>
+	      </div>`).join("") || `<div class="desc">${tf("Sin actividad hoy todavia", "No activity yet today")}</div>`;
+	    const wk = (d.week || []).slice(0, 5)
+	      .map(x => `${x.name} ${(x.minutes/60).toFixed(1)}h`).join(" · ");
+	    if(wk) box.innerHTML += `<div class="ded-week">7d: ${mdEsc(wk)}</div>`;
+	  }catch(e){}
+	}
 	async function tickUsage(force=false){
+	  renderDedication();
 	  const now = Date.now();
 	  if(!force && now - usagePollTs < 10000) return;
 	  usagePollTs = now;
