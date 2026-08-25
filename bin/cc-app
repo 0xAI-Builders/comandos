@@ -2615,10 +2615,22 @@ def show_new_tab_menu(btn):
     menu.popup_at_widget(btn, Gdk.Gravity.SOUTH_WEST, Gdk.Gravity.NORTH_WEST, None)
 
 
+def _open_wizard(*_):
+    """El + abre el wizard del tablero (carpeta + agente + cuenta), no una
+    terminal pelona. El menu viejo de motores sigue en click derecho."""
+    try:
+        nb.set_visible(True)
+        wv.run_javascript("try{nsOpen()}catch(e){}", None, None, None)
+    except Exception:
+        show_new_tab_menu()
+
+
 _plus = _icon_btn(
     "plus",
-    "Nueva terminal — elegí motor (VTE o xterm.js)" if ES else "New terminal — pick engine (VTE or xterm.js)",
-    show_new_tab_menu)
+    "Nueva sesión — carpeta, agente y cuenta" if ES else "New session — folder, agent and account",
+    _open_wizard)
+_plus.connect("button-press-event",
+              lambda w, e: (show_new_tab_menu(w) or True) if e.button == 3 else False)
 _help = _icon_btn(
     "help",
     "Ver todos los atajos (? o F1)" if ES else "All shortcuts (? or F1)",

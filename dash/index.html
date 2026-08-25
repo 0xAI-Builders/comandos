@@ -752,6 +752,8 @@
   /* Solo activa cuando entras por el tailnet (WEBTERM). El body se vuelve la
      app: barra de pestanas arriba, y debajo el panel o una terminal. */
   body.app{height:var(--app-height,100dvh);overflow:hidden;display:block}
+  /* En la app las pestanas YA son la navegacion: la lista de sesiones sobra */
+  body.app #sessions-wrap{display:none}
   #tabbar{display:none}
   body.app #tabbar{display:flex;align-items:stretch;gap:0;flex:none;
     background:linear-gradient(180deg,var(--panel) 0%,var(--bg) 100%);
@@ -1045,7 +1047,7 @@
 <section class="sec hidden" id="centro-wrap">
   <div id="centro"></div>
 </section>
-<section class="sec">
+<section class="sec" id="sessions-wrap">
   <div class="sec-label">Sesiones
     <button type="button" id="btn-newsess" class="ns-plus" title="Nueva sesión (elige carpeta, agente y cuenta)" aria-label="Nueva sesión"></button>
   </div>
@@ -2111,9 +2113,14 @@ function mdStrip(s){ return (s||"").replace(/\*\*|`|^#{1,6} /g, ""); }
 	}
 	let ACTIVE_TAB = {session: "", ts: 0};
 	setInterval(async ()=>{
-	  try{ const d = await api("/active-tab");
-	       if(d && d.session) ACTIVE_TAB = d; }catch(e){}
-	}, 3000);
+	  try{
+	    const d = await api("/active-tab");
+	    if(d && d.session && d.session !== ACTIVE_TAB.session){
+	      ACTIVE_TAB = d;
+	      renderCentro(S.list || []);   // el centro cambia AL INSTANTE
+	    } else if(d && d.session){ ACTIVE_TAB = d; }
+	  }catch(e){}
+	}, 1000);
 	function pickSel(list){
 	  const seen = new Set(), items = [];
 	  for(const it of list || []){
