@@ -238,6 +238,14 @@
     color:var(--dim);border:1px solid var(--line2)}
   .abadge[data-a="codex"]{color:#19C39C;border-color:#19C39C55}
   .acct-chip{flex:none}
+  #btn-pomo.running{color:#FF6B35;border-color:#FF6B3577;font-weight:700}
+  #pomo-menu{position:fixed;z-index:60;background:var(--panel);border:1px solid var(--line2);
+    border-radius:10px;padding:6px;display:flex;flex-direction:column;gap:4px;box-shadow:0 8px 30px #0008}
+  #pomo-menu button{font-family:var(--mono);font-size:11.5px;padding:7px 16px;border:none;
+    background:none;color:var(--text);cursor:pointer;border-radius:7px;text-align:left}
+  #pomo-menu button:hover{background:var(--panel2);color:var(--brand)}
+  button:focus-visible,[tabindex]:focus-visible,input:focus-visible{
+    outline:2px solid var(--brand);outline-offset:2px;border-radius:6px}
   #dedication{display:flex;flex-direction:column;gap:6px;margin-top:6px}
   .ded-row{display:flex;align-items:center;gap:10px;font-family:var(--mono);font-size:11px}
   .ded-row .dn{width:150px;flex:none;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
@@ -935,6 +943,9 @@
 	    <button class="hdr-btn" id="btn-switch" aria-label="switch" title="Saltar a cualquier sesión (Ctrl+K)"><span data-icon="search" data-size="16"></span></button>
 	    <button class="hdr-btn" id="btn-snippets" aria-label="snippets" title="Snippets (Ctrl+Shift+K)"><span data-icon="snippet" data-size="16"></span></button>
 	    <button class="hdr-btn" id="btn-theme" aria-label="theme" title="Tema: Noche → Día → Cálido → Termius → Bruno"></button>
+	    <button class="hdr-btn" id="btn-pomo" role="timer" aria-label="Pomodoro"
+	      title="Pomodoro: tú lo inicias, se registra por proyecto — todo local">🍅</button>
+	    <div id="pomo-menu" class="hidden" role="menu"></div>
 	    <button class="hdr-btn" id="btn-usage" title="Uso, límites y gasto por pane">Uso</button>
 	    <button class="hdr-btn" id="btn-remote" title="Continuar desde celular/tablet">Remoto</button>
 	    <button class="hdr-btn" id="btn-settings">Ajustes</button>
@@ -1959,7 +1970,8 @@ function mdStrip(s){ return (s||"").replace(/\*\*|`|^#{1,6} /g, ""); }
 	  if(!d || box.dataset.sig.indexOf(it.session) !== 0) return;
 	  const row = (kind, x) => `
 	    <div class="cx-row ${x.enabled ? "" : "off"}">
-	      <button type="button" class="sw ${x.enabled ? "on" : ""}" ${x.toggleable ? "" : "disabled"}
+	      <button type="button" role="switch" aria-checked="${x.enabled}"
+	        aria-label="${attrEsc(x.name)}" class="sw ${x.enabled ? "on" : ""}" ${x.toggleable ? "" : "disabled"}
 	        data-kind="${kind}" data-name="${attrEsc(x.name)}" data-path="${attrEsc(x.path || "")}"
 	        data-on="${x.enabled ? 1 : 0}"
 	        title="${x.toggleable ? tf("prender/apagar", "toggle") : tf("global (~/.claude.json) — no apagable por proyecto", "global — not per-project toggleable")}"></button>
@@ -1969,6 +1981,22 @@ function mdStrip(s){ return (s||"").replace(/\*\*|`|^#{1,6} /g, ""); }
 	    </div>`;
 	  const mcps = d.mcps || [], skills = d.skills || [];
 	  const tot = arr => arr.filter(x => x.enabled).reduce((a, x) => a + (x.est_tokens || 0), 0);
+	  const acctRow = box.querySelector(".cx-acct");
+	  if(acctRow && (d.accounts || []).length > 1 && !box.querySelector(".cx-accs")){
+	    const div = document.createElement("div");
+	    div.className = "cx-row cx-accs";
+	    div.innerHTML = `<span class="tok">${tf("nueva aqui con:", "new here as:")}</span>` +
+	      d.accounts.map(a => `<button type="button" class="cx-role" data-acct="${attrEsc(a.alias)}"
+	        title="${attrEsc(a.email || a.alias)}">${mdEsc(a.alias)}</button>`).join("");
+	    acctRow.parentElement.insertBefore(div, acctRow.nextSibling);
+	    div.querySelectorAll("[data-acct]").forEach(b => b.addEventListener("click", async ()=>{
+	      try{
+	        const danger = localStorage.getItem("cc-flow-danger") !== "0";
+	        const r = await api("/open-with-account", {cwd: it.cwd, account: b.dataset.acct, danger});
+	        toast(`${tf("sesion nueva", "new session")} ${r.session} · ${b.dataset.acct}`);
+	      }catch(err){ toast(err.message, true); }
+	    }));
+	  }
 	  box.querySelector(".cx-mcps").innerHTML =
 	    (mcps.map(x => row("mcp", x)).join("") || `<div class="cx-note">${tf("sin MCPs", "no MCPs")}</div>`) +
 	    `<div class="cx-total">${tf("activos", "active")}: ~${Math.round(tot(mcps)/100)/10}k tok/turno</div>`;
@@ -2309,6 +2337,67 @@ function mdStrip(s){ return (s||"").replace(/\*\*|`|^#{1,6} /g, ""); }
 	  }catch(err){ toast(err.message, true); }
 	}
 	let usagePollTs = 0;
+	const POMO = {t: null, end: 0, mins: 0, project: ""};
+	function pomoLog(){
+	  try{ return JSON.parse(localStorage.getItem("cc-pomos") || "[]"); }catch(e){ return []; }
+	}
+	function pomoToday(){
+	  const today = new Date().toISOString().slice(0, 10);
+	  return pomoLog().filter(x => x.date === today);
+	}
+	function pomoFinish(done){
+	  clearInterval(POMO.t); POMO.t = null;
+	  const b = $("#btn-pomo");
+	  b.classList.remove("running"); b.textContent = "🍅";
+	  b.setAttribute("aria-label", "Pomodoro");
+	  if(done){
+	    const log = pomoLog();
+	    log.push({date: new Date().toISOString().slice(0, 10),
+	              mins: POMO.mins, project: POMO.project});
+	    localStorage.setItem("cc-pomos", JSON.stringify(log.slice(-500)));
+	    dedTs = 0;
+	    toast(`🍅 ${POMO.mins} min ${tf("completados en", "done on")} ${POMO.project || "?"}`);
+	    fetch("http://127.0.0.1:4778/notify", {method: "POST",
+	      headers: {"Content-Type": "application/json"},
+	      body: JSON.stringify({title: "Pomodoro", kind: "done",
+	        project: POMO.project || "Pomodoro",
+	        body: `🍅 ${POMO.mins} min ${tf("completados", "completed")} — ${tf("descansa tantito", "take a short break")}`})
+	    }).catch(()=>{});
+	  }
+	}
+	function pomoStart(mins){
+	  const it = pickSel(S.list || []);
+	  POMO.mins = mins; POMO.project = it ? (it.project || it.session) : "";
+	  POMO.end = Date.now() + mins * 60000;
+	  const b = $("#btn-pomo");
+	  b.classList.add("running");
+	  const tick = ()=>{
+	    const left = POMO.end - Date.now();
+	    if(left <= 0) return pomoFinish(true);
+	    const mm = Math.floor(left/60000), ss = Math.floor(left%60000/1000);
+	    b.textContent = `🍅 ${mm}:${String(ss).padStart(2,"0")}`;
+	    b.setAttribute("aria-label", `Pomodoro: ${mm} minutos ${ss} segundos restantes`);
+	  };
+	  clearInterval(POMO.t); POMO.t = setInterval(tick, 1000); tick();
+	  toast(`🍅 ${mins} min → ${POMO.project || tf("sin proyecto", "no project")}`);
+	}
+	$("#btn-pomo").addEventListener("click", e => {
+	  if(POMO.t){ pomoFinish(false); toast(tf("Pomodoro cancelado", "Pomodoro cancelled")); return; }
+	  const m = $("#pomo-menu");
+	  if(!m.classList.contains("hidden")) return m.classList.add("hidden");
+	  m.innerHTML = [15, 25, 50].map(n =>
+	    `<button role="menuitem" data-min="${n}">🍅 ${n} min</button>`).join("");
+	  const r = e.currentTarget.getBoundingClientRect();
+	  m.style.top = (r.bottom + 6) + "px"; m.style.left = r.left + "px";
+	  m.classList.remove("hidden");
+	  m.querySelectorAll("button").forEach(x => x.addEventListener("click", ()=>{
+	    m.classList.add("hidden"); pomoStart(Number(x.dataset.min));
+	  }));
+	});
+	document.addEventListener("click", e => {
+	  if(!e.target.closest("#pomo-menu") && !e.target.closest("#btn-pomo"))
+	    $("#pomo-menu")?.classList.add("hidden");
+	});
 	function fmtMin(m){
 	  return m >= 90 ? `${(m/60).toFixed(1)} h` : `${Math.round(m)} min`;
 	}
@@ -2331,6 +2420,13 @@ function mdStrip(s){ return (s||"").replace(/\*\*|`|^#{1,6} /g, ""); }
 	        <span class="db"><span style="width:${Math.round(100*x.minutes/max)}%"></span></span>
 	        <span class="dm">${fmtMin(x.minutes)}</span>
 	      </div>`).join("") || `<div class="desc">${tf("Sin actividad hoy todavia", "No activity yet today")}</div>`;
+	    const pomos = pomoToday();
+	    if(pomos.length){
+	      const byP = {};
+	      pomos.forEach(x => byP[x.project || "?"] = (byP[x.project || "?"] || 0) + 1);
+	      box.innerHTML += `<div class="ded-week">🍅 ${tf("hoy", "today")}: ${pomos.length} — ` +
+	        mdEsc(Object.entries(byP).map(([k, v]) => `${k} ×${v}`).join(" · ")) + `</div>`;
+	    }
 	    const wk = (d.week || []).slice(0, 5)
 	      .map(x => `${x.name} ${(x.minutes/60).toFixed(1)}h`).join(" · ");
 	    if(wk) box.innerHTML += `<div class="ded-week">7d: ${mdEsc(wk)}</div>`;
@@ -3240,7 +3336,8 @@ function rowEl(it){
       <button type="button" class="go">${t("Abrir")}</button>
       <button type="button" class="up hidden">${t("Revivir")}</button>
       <button type="button" class="kill" title="${t('Matar la sesion tmux (y lo que corra dentro)')}">${svg("x",14)}</button>
-      <button type="button" class="xp hidden" title="${t('Responder desde aqui')}">▾</button>
+      <button type="button" class="xp hidden" aria-label="${t('Responder desde aqui')}"
+        aria-expanded="false" title="${t('Responder desde aqui')}">▾</button>
     </span>
     <div class="rxp">
       <p class="preview"></p>
@@ -3276,7 +3373,9 @@ function rowEl(it){
   xp.addEventListener("click", e=>{
     e.stopPropagation();
     el.classList.toggle("open");
-    xp.textContent = el.classList.contains("open") ? "▴" : "▾";
+    const _open = el.classList.contains("open");
+    xp.textContent = _open ? "▴" : "▾";
+    xp.setAttribute("aria-expanded", _open);
     render(S.list || []);   // llena .rxp (pregunta/opciones) al instante
   });
   el.addEventListener("click", async e=>{

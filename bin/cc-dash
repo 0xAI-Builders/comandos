@@ -3101,8 +3101,13 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             cwd = (q.get("cwd") or [""])[0]
             if not cwd.startswith("/") or not os.path.isdir(cwd):
                 return self._json(400, {"error": "cwd invalido"})
+            accounts = []
+            for alias, path in _claude_account_creds():
+                accounts.append({"alias": alias,
+                                 "email": account_email_for_dir(os.path.dirname(path), "claude")})
             return self._json(200, {"mcps": session_mcps(cwd),
-                                    "skills": session_skills(cwd)})
+                                    "skills": session_skills(cwd),
+                                    "accounts": accounts})
 
         if self.path.startswith("/usage/state"):
             refresh_local_usage(False)
@@ -3488,6 +3493,41 @@ class Handler(http.server.SimpleHTTPRequestHandler):
                 return self._json(404, {"error": "snippet no encontrado"})
             write_snippets(new_items)
             return self._json(200, {"ok": True})
+
+        if self.path == "/open-with-account":
+            # Nueva sesion claude EN el cwd con la cuenta elegida
+            # (CLAUDE_CONFIG_DIR por convencion de ~/.claude-accounts).
+            cwd = str(data.get("cwd", ""))
+            alias = str(data.get("account", "main"))[:40]
+            if not cwd.startswith("/") or not os.path.isdir(cwd):
+                return self._json(400, {"error": "cwd invalido"})
+            if not re.match(r"^[A-Za-z0-9._-]+$", alias):
+                return self._json(400, {"error": "alias invalido"})
+            if alias != "main" and not os.path.isdir(
+                    os.path.expanduser(f"~/.claude-accounts/{alias}")):
+                return self._json(404, {"error": f"cuenta '{alias}' no existe"})
+            n = int(time.time() * 10) % 1000000
+            new_sess = f"term-r{n}"
+            while tmux("has-session", "-t", "=" + new_sess).returncode == 0:
+                n += 1
+                new_sess = f"term-r{n}"
+            r = tmux("new-session", "-d", "-s", new_sess, "-c", cwd)
+            if r.returncode != 0:
+                return self._json(500, {"error": (r.stderr or "tmux fallo").strip()})
+            proj = os.path.basename(cwd.rstrip("/"))
+            register_app_tab(new_sess, f"{proj} · {alias}", kind="project", cwd=cwd)
+            cmd = "claude"
+            if alias != "main":
+                cmd = (f"CLAUDE_CONFIG_DIR=$HOME/.claude-accounts/{alias} " + cmd)
+            if data.get("danger"):
+                flag = (load_agent_roles().get("dangerFlags") or {}).get("claude") or ""
+                if flag:
+                    cmd += " " + flag
+            def _send(sess=new_sess, c=cmd):
+                time.sleep(1.5)
+                tmux("send-keys", "-t", "=" + sess + ":", c, "Enter")
+            threading.Thread(target=_send, daemon=True).start()
+            return self._json(200, {"ok": True, "session": new_sess, "cmd": cmd})
 
         if self.path == "/flow-launch":
             # Lanza un flujo (config/agent-roles.json): cada step abre una tab
