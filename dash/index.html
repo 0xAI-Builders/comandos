@@ -317,9 +317,16 @@
   #centro{display:flex;gap:18px;padding:16px;border:1px solid var(--line);
     border-radius:14px;background:var(--panel);flex-wrap:wrap}
   .cx-hero{display:flex;flex-direction:column;align-items:center;gap:6px;min-width:150px}
-  .cx-hero canvas{image-rendering:pixelated;width:216px;height:144px}
-  .cx-hero .aqua{width:236px;height:168px;border-radius:50%;display:flex;align-items:center;
-    justify-content:center;background:radial-gradient(circle at 50% 44%,var(--aqua-c,#232B3E) 0%,transparent 74%)}
+  .axo-wrap{position:relative;display:block}
+  .axo-img{width:220px;height:220px;display:block;user-select:none;
+    filter:drop-shadow(0 6px 18px #0009);animation:axofloat 4.5s ease-in-out infinite}
+  @keyframes axofloat{0%,100%{transform:translateY(0)}50%{transform:translateY(-7px)}}
+  @media (prefers-reduced-motion:reduce){.axo-img{animation:none}}
+  .axo-badge{position:absolute;font-size:30px;filter:drop-shadow(0 2px 6px #000A)}
+  .axo-hat{top:-6px;right:6px}
+  .axo-cos{bottom:2px;right:2px}
+  .cx-hero .aqua{width:252px;height:252px;border-radius:50%;display:flex;align-items:center;
+    justify-content:center;background:radial-gradient(circle at 50% 48%,var(--aqua-c,#232B3E) 0%,transparent 72%)}
   .cx-hero[data-st="waiting"]{--aqua-c:#6E4C12}
   .cx-hero[data-st="working"]{--aqua-c:#274070}
   .cx-hero[data-st="done"]{--aqua-c:#155239}
@@ -330,8 +337,8 @@
   @media (max-width:760px){
     #centro{flex-direction:column;align-items:stretch;gap:12px}
     .cx-hero{flex-direction:row;justify-content:flex-start;gap:12px;min-width:0}
-    .cx-hero .aqua{width:190px;height:134px;flex:none}
-    .cx-hero canvas{width:174px;height:116px}
+    .cx-hero .aqua{width:190px;height:190px;flex:none}
+    .axo-img{width:164px;height:164px}
     .cx-cols{flex-direction:column;gap:14px}
     .cx-block{min-width:0}
   }
@@ -373,6 +380,8 @@
     border-radius:9px;border:1px solid var(--line2);background:none;color:var(--text);cursor:pointer;
     transition:border-color .12s ease,color .12s ease}
   .cx-acts button:hover{border-color:var(--brand);color:var(--brand)}
+  .cx-more{opacity:.75}
+  .cx-extra{min-width:0}
   .cx-acts .danger:hover{border-color:#FF6B6B;color:#FF6B6B}
   .cx-note{font-family:var(--mono);font-size:9.5px;color:var(--faint);margin-top:6px}
   @media (prefers-reduced-motion:reduce){.cx-hero canvas.f2{display:none!important}}
@@ -1853,16 +1862,7 @@ function mdStrip(s){ return (s||"").replace(/\*\*|`|^#{1,6} /g, ""); }
 	    [[22,17],[22,18],[22,19],[23,17]].forEach(([x,y])=>put(x,y,alt?R:R2));
 	  }
 	}
-	let axoFlip = false;
-	setInterval(() => {
-	  axoFlip = !axoFlip;
-	  document.querySelectorAll('.cx-hero[data-st="working"]').forEach(a => {
-	    const f1 = a.querySelector(".f1"), f2 = a.querySelector(".f2");
-	    if(!f1 || !f2) return;
-	    f1.style.display = axoFlip ? "none" : "";
-	    f2.style.display = axoFlip ? "" : "none";
-	  });
-	}, 550);
+	// (la mascota HD flota con CSS; los frames pixel quedan para futuros usos)
 	// Centro de control: EL ajolote de la sesion seleccionada + sus controles.
 	let ROLES = null;
 	api("/agent-roles").then(r => { ROLES = r || null; }).catch(() => {});
@@ -1929,7 +1929,6 @@ function mdStrip(s){ return (s||"").replace(/\*\*|`|^#{1,6} /g, ""); }
 	      </div>
 	      <div class="cx-cols">
 	        <div class="cx-block">
-	          <div class="cx-title">${tf("cerebro", "brain")}</div>
 	          <div class="cx-row"><span class="nm cx-model"></span></div>
 	          <div class="cx-row"><span class="nm cx-acct"></span></div>
 	          <div class="cx-acts">
@@ -1937,19 +1936,27 @@ function mdStrip(s){ return (s||"").replace(/\*\*|`|^#{1,6} /g, ""); }
 	            <button type="button" class="cx-pause">⏸ ${tf("Pausar", "Pause")}</button>
 	            <button type="button" class="cx-resume hidden">▶ ${tf("Reanudar", "Resume")}</button>
 	            <button type="button" class="cx-kill danger">✕ ${tf("Matar", "Kill")}</button>
+	            <button type="button" class="cx-more" aria-expanded="false">${tf("Más", "More")} ▾</button>
 	          </div>
-	          <div class="cx-roles"></div>
-	          <div class="cx-title" style="margin-top:10px">${tf("flujos", "flows")}</div>
-	          <div class="cx-flows"></div>
-	          <div class="cx-note">${tf("los switches aplican al reciclar la sesion", "switches apply on session recycle")}</div>
+	          <div class="cx-extra hidden">
+	            <div class="cx-title" style="margin-top:12px">${tf("rol (cambia el modelo de ESTA sesion)", "role (switches THIS session's model)")}</div>
+	            <div class="cx-roles"></div>
+	            <div class="cx-title" style="margin-top:12px">${tf("flujos — abren pestañas nuevas en este proyecto con el pipeline elegido", "flows — open new tabs in this project running the chosen pipeline")}</div>
+	            <div class="cx-flows"></div>
+	            <div class="cx-title" style="margin-top:12px">MCPs · Skills <small>${tf("(apagar = menos tokens por turno; aplica al reciclar)", "(off = fewer tokens per turn; applies on recycle)")}</small></div>
+	            <div class="cx-mcps"></div>
+	            <div class="cx-skills"></div>
+	          </div>
 	        </div>
-	        <div class="cx-block"><div class="cx-title">MCPs</div><div class="cx-mcps"></div></div>
-	        <div class="cx-block"><div class="cx-title">Skills</div><div class="cx-skills"></div></div>
 	      </div>`;
 	    const fr = box.querySelector(".frames");
-	    fr.innerHTML = `<canvas class="f1"></canvas><canvas class="f2" style="display:none"></canvas>`;
-	    axoDraw(fr.querySelector(".f1"), AXO_F1, st, hat, 7, costume);
-	    axoDraw(fr.querySelector(".f2"), AXO_F2, st, hat, 7, costume);
+	    const HATS = {corona: "👑", casco: "👷", visor: "🔍"};
+	    const COSTUMES = {fuego: "🔥", hamster: "🎡", gordo: "🍔", huevo: "🥚", bufanda: "🧣"};
+	    fr.innerHTML = `<span class="axo-wrap">
+	      <img class="axo-img" src="/axolotl.png" alt="ComandOS axolotl" draggable="false">
+	      ${HATS[hat] ? `<span class="axo-badge axo-hat">${HATS[hat]}</span>` : ""}
+	      ${COSTUMES[costume] ? `<span class="axo-badge axo-cos">${COSTUMES[costume]}</span>` : ""}
+	    </span>`;
 	    // Rol actual + cambio de rol (usa el switch de modelo existente)
 	    const rbox = box.querySelector(".cx-roles");
 	    if(ROLES && (ROLES.roles || []).length && ["claude","codex","opencode"].includes(it.agent)){
@@ -1996,6 +2003,13 @@ function mdStrip(s){ return (s||"").replace(/\*\*|`|^#{1,6} /g, ""); }
 	        }catch(err){ toast(err.message, true); }
 	      }));
 	    }
+	    const moreB = box.querySelector(".cx-more");
+	    moreB.addEventListener("click", ()=>{
+	      const ex = box.querySelector(".cx-extra");
+	      const open = ex.classList.toggle("hidden") === false;
+	      moreB.textContent = open ? tf("Menos ▴", "Less ▴") : tf("Más ▾", "More ▾");
+	      moreB.setAttribute("aria-expanded", open);
+	    });
 	    box.querySelector(".cx-open").addEventListener("click", async ()=>{
 	      try{ toast(await openSession(it, "claude")); }catch(err){ toast(err.message, true); }
 	    });
