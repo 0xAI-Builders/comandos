@@ -1698,102 +1698,130 @@ function mdStrip(s){ return (s||"").replace(/\*\*|`|^#{1,6} /g, ""); }
 	    if(/^#[0-9a-f]{6}$/i.test(brand)){ const t=_hex2hsl(brand); h=t[0]; sat=Math.max(.3, t[1]*.55); }
 	  }catch(e){}
 	  const c=(sv,l)=>`hsl(${h},${Math.round(sv*100)}%,${l}%)`;
-	  return {B:c(sat,68), D:c(sat,52), G:c(Math.min(1,sat*1.5),60), W:c(sat*.6,86),
-	          E:"#2A2633", K:"#FFD166", R:c(Math.min(1,sat*1.4),62), M:c(sat,45)};
+	  return {B:c(sat,66), L:c(sat*.85,80), S:c(sat*1.05,52), D:c(sat*1.15,36),
+	          W:c(sat*.5,90), F:c(sat*.65,72), G:c(Math.min(1,sat*1.7),78),
+	          R:c(Math.min(1,sat*1.35),55), E:"#221E2E", H:"#FFFFFF",
+	          M:c(sat,40), K:c(Math.min(1,sat*1.6),76), Kg:"#FFD166"};
 	})();
-	const AXO_F1 = [
-	  "..................",
-	  "..........G..G.G..",
-	  ".........GG.GG.GG.",
-	  ".....DDDDDDDDDDG..",
-	  "...DDBBBBBBBBBBD..",
-	  "..DBBBBBBBBBEBBD..",
-	  ".DBBBBBBBBBBBBMBD.",
-	  ".DBBBBBBBBBRBBBD..",
-	  "..DDBWWBBWWBBDD...",
-	  "....DDDDDDDDD.....",
-	  "......D...D.......",
-	  "..................",
-	  "..................",
-	];
-	const AXO_F2 = [
-	  "..................",
-	  "..................",
-	  "..........G..G.G..",
-	  "..DD.....GG.GG.GG.",
-	  "...DDDDDDDDDDDDG..",
-	  "..DBBBBBBBBBEBBD..",
-	  ".DBBBBBBBBBBBBMBD.",
-	  ".DBBBBBBBBBRBBBD..",
-	  "..DDBWWBBWWBBDD...",
-	  "....DDDDDDDDD.....",
-	  "....D.....D.......",
-	  "..................",
-	  "..................",
-	];
+	// Sprite PROCEDURAL 36x24: cuerpo por elipses rasterizadas (curvas suaves),
+	// sombreado en 3 tonos + panza, contorno, branquias plumosas, aleta dorsal
+	// y caudal, patitas, ojo con brillo, cachete. Dos frames (cola/branquias).
+	const AXO_W = 36, AXO_H = 24;
+	function _axoBuild(alt){
+	  const g = Array.from({length: AXO_H}, () => Array(AXO_W).fill("."));
+	  const inE = (x,y,cx,cy,rx,ry) => ((x-cx)/rx)**2 + ((y-cy)/ry)**2 <= 1;
+	  const body = (x,y) =>
+	    inE(x,y,25,13.5,6.0,5.2) ||                  // cabeza
+	    inE(x,y,16,14.5,8.5,4.4) ||                  // torso
+	    inE(x,y,8,15.5,5.5,2.8) ||                   // base cola
+	    inE(x,y,3.2,16+(alt?0.9:0),3.0,1.6);         // punta cola (aletea)
+	  const fin = (x,y) =>
+	    inE(x,y,13,9.2,10.5,3.4) ||                  // cresta dorsal ALTA
+	    inE(x,y,3.2,15.5+(alt?0.9:0),4.8,4.6);       // aleta caudal grande
+	  // 1) aleta (membrana clara) detras del cuerpo
+	  for(let y=0;y<AXO_H;y++) for(let x=0;x<AXO_W;x++)
+	    if(fin(x,y) && !body(x,y)) g[y][x]="F";
+	  // 2) cuerpo con sombreado por altura relativa
+	  for(let y=0;y<AXO_H;y++) for(let x=0;x<AXO_W;x++){
+	    if(!body(x,y)) continue;
+	    g[y][x] = body(x,y-1) ? (body(x,y+1) ? "B" : "S") : "L";
+	  }
+	  // 3) panza clara
+	  for(let y=15;y<=18;y++) for(let x=12;x<=23;x++)
+	    if(g[y][x]==="B"||g[y][x]==="S") if(inE(x,y,17,17.4,7.4,2.4)) g[y][x]="W";
+	  // 4) contorno
+	  for(let y=0;y<AXO_H;y++) for(let x=0;x<AXO_W;x++){
+	    if(g[y][x]!=="." ) continue;
+	    const n=[[1,0],[-1,0],[0,1],[0,-1]].some(([dx,dy])=>{
+	      const c=(g[y+dy]||[])[x+dx]; return c && c!=="."&&c!=="D"&&c!=="F";
+	    });
+	    if(n) g[y][x]="D";
+	  }
+	  // 5) branquias: 3 tallos por lado visibles, plumosos (se mecen con alt)
+	  const sway = alt ? 1 : 0;
+	  const stalk = (pts, tip) => {
+	    pts.forEach(([x,y]) => { if(g[y]&&g[y][x]!==undefined) g[y][x]="R"; });
+	    tip.forEach(([x,y]) => { if(g[y]&&g[y][x]!==undefined) g[y][x]="G"; });
+	  };
+	  // branquias GRANDES y plumosas: lo iconico del ajolote
+	  stalk([[23,8],[22,7],[22,6],[21,5]],
+	        [[20,4],[21,3+sway],[22,4],[19,5],[20,3],[21,4],[20+sway,2]]);
+	  stalk([[27,8],[27,7],[27,6],[27,5]],
+	        [[26,4],[27,3],[28,4],[26,2+sway],[28,2],[27,2],[25,3],[29,3]]);
+	  stalk([[30,9],[31,8],[32,7],[32,6]],
+	        [[33,5],[33,4+sway],[32,4],[34,6],[34,5],[33,6],[34,7]]);
+	  // 6) patitas
+	  [[13,19],[13,20],[14,20],[21,19],[21,20],[22,20]].forEach(([x,y])=>g[y][x]="S");
+	  [[12,20],[20,20]].forEach(([x,y])=>g[y][x]="D");
+	  // 7) carita: ojo grande con brillo, sonrisa, cachete
+	  g[11][26]="E"; g[11][27]="E"; g[12][26]="E"; g[12][27]="E"; g[11][27]="H";
+	  g[14][27]="M"; g[14][28]="M"; g[15][26]="M";
+	  g[13][23]="K"; g[13][24]="K";
+	  return g.map(r => r.join(""));
+	}
+	const AXO_F1 = _axoBuild(false);
+	const AXO_F2 = _axoBuild(true);
 	function axoDraw(cv, frame, st, hat, px, costume){
-	  px = px || 4;
-	  cv.width = 18 * px; cv.height = 13 * px;
+	  px = px || 3;
+	  cv.width = AXO_W * px; cv.height = AXO_H * px;
 	  const ctx = cv.getContext("2d");
 	  ctx.clearRect(0, 0, cv.width, cv.height);
 	  const put = (x, y, c) => { ctx.fillStyle = c; ctx.fillRect(x*px, y*px, px, px); };
-	  frame.forEach((row, y) => {
-	    [...row].forEach((ch, x) => {
-	      if(ch === ".") return;
-	      // ojo segun estado: feliz (arco), dormido (linea), alerta (grande), x (muerto)
-	      if(ch === "E"){
-	        if(st === "done"){ put(x, y, AXO_PAL.E); put(x-1, y, AXO_PAL.E); return; }
-	        if(st === "idle"){ put(x, y, AXO_PAL.D); put(x-1, y, AXO_PAL.D); return; }
-	        if(st === "dead"){ put(x, y, AXO_PAL.E); put(x-1, y-1, AXO_PAL.E); put(x+1, y-1, AXO_PAL.E); return; }
-	        put(x, y, AXO_PAL.E);
-	        if(st === "waiting") put(x, y-1, AXO_PAL.E);
-	        return;
-	      }
-	      put(x, y, AXO_PAL[ch] || AXO_PAL.B);
-	    });
-	  });
-	  if(hat === "corona"){  // arquitecto / modelo caro
-	    [[10,1],[12,1],[14,1],[10,2],[11,2],[12,2],[13,2],[14,2]]
-	      .forEach(([x,y]) => put(x, y, AXO_PAL.K));
-	  } else if(hat === "casco"){  // constructor
-	    [[11,1],[12,1],[13,1],[10,2],[11,2],[12,2],[13,2],[14,2],[15,2]]
+	  frame.forEach((row, y) => [...row].forEach((ch, x) => {
+	    if(ch !== ".") put(x, y, AXO_PAL[ch] || AXO_PAL.B);
+	  }));
+	  // expresion por estado (sobre la carita base)
+	  if(st === "done"){       // ojitos felices ^ ^
+	    put(27,11,AXO_PAL.B); put(28,11,AXO_PAL.B); put(27,12,AXO_PAL.E); put(28,12,AXO_PAL.E);
+	    put(26,11,AXO_PAL.E); put(29,11,AXO_PAL.E);
+	  } else if(st === "idle"){ // dormido — + zzz
+	    put(27,11,AXO_PAL.B); put(28,11,AXO_PAL.B); put(27,12,AXO_PAL.S); put(28,12,AXO_PAL.S);
+	    put(32,3,"#7C88A6"); put(33,2,"#7C88A6"); put(31,4,"#7C88A6");
+	  } else if(st === "dead"){ // x x
+	    put(27,11,AXO_PAL.E); put(28,12,AXO_PAL.E); put(28,11,AXO_PAL.B); put(27,12,AXO_PAL.B);
+	    put(26,10,AXO_PAL.E); put(29,13,AXO_PAL.E);
+	  } else if(st === "waiting"){ // ojo MUY abierto + !
+	    put(27,10,AXO_PAL.E); put(28,10,AXO_PAL.E);
+	    put(33,8,"#FFAE1A"); put(33,9,"#FFAE1A"); put(33,11,"#FFAE1A");
+	  }
+	  // sombreritos (sobre la cabeza: x 22-30, y 3-6)
+	  if(hat === "corona"){
+	    [[23,5],[25,4],[27,5],[29,4],[23,6],[24,6],[25,6],[26,6],[27,6],[28,6],[29,6]]
+	      .forEach(([x,y]) => put(x, y, AXO_PAL.Kg));
+	  } else if(hat === "casco"){
+	    [[24,4],[25,4],[26,4],[27,4],[23,5],[24,5],[25,5],[26,5],[27,5],[28,5],[22,6],[29,6]]
 	      .forEach(([x,y]) => put(x, y, "#FF9F43"));
-	  } else if(hat === "visor"){  // verificador
-	    [[10,2],[11,2],[12,2],[13,2],[14,2],[15,2],[15,3],[16,3]]
+	  } else if(hat === "visor"){
+	    [[23,6],[24,6],[25,6],[26,6],[27,6],[28,6],[29,7],[30,7]]
 	      .forEach(([x,y]) => put(x, y, "#4ECDC4"));
 	  }
-	  if(st === "waiting"){  // burbuja "!"
-	    put(16, 2, "#FFAE1A"); put(16, 3, "#FFAE1A"); put(16, 5, "#FFAE1A");
-	  }
-	  if(st === "idle"){  // zzz
-	    put(15, 2, "#5A6580"); put(16, 1, "#5A6580"); put(14, 3, "#5A6580");
-	  }
-	  const alt = frame === AXO_F2;   // varia el disfraz entre frames
+	  const alt = frame === AXO_F2;
 	  if(costume === "fuego"){
 	    const F="#FF6B35", A="#FFA630", Y="#FFE066";
-	    [[4,2,F],[5,1,A],[6,2,Y],[7,1,F],[8,2,A],[5,3,F],[7,3,A]]
-	      .forEach(([x,y,c]) => put(x + (alt ? 1 : 0), y, c));
-	    [[10,5],[11,5],[12,5],[13,5]].forEach(([x,y]) => put(x, y, "#14121A")); // lentes
+	    [[9,6,F],[10,5,A],[11,6,Y],[13,5,F],[14,6,A],[16,5,Y],[17,6,F],[12,4,A],[15,4,F]]
+	      .forEach(([x,y,c]) => put(x + (alt?1:0), y, c));
+	    [[25,11],[26,11],[27,11],[28,11],[29,11],[25,12],[29,12]]
+	      .forEach(([x,y]) => put(x, y, "#14121A"));   // lentes
 	  } else if(costume === "hamster"){
-	    ctx.strokeStyle = "#8B95AB"; ctx.lineWidth = Math.max(2, px * 0.8);
-	    ctx.setLineDash([px * 1.5, px]);
+	    ctx.strokeStyle = "#8B95AB"; ctx.lineWidth = Math.max(2, px*0.8);
+	    ctx.setLineDash([px*1.6, px]);
 	    ctx.beginPath();
-	    ctx.arc(cv.width/2, cv.height/2 + px, Math.min(cv.width, cv.height)/2 - px/2,
-	            alt ? 0.4 : 0, Math.PI*2);
+	    ctx.arc(cv.width/2, cv.height/2, Math.min(cv.width,cv.height)/2 - px, alt?0.4:0, Math.PI*2);
 	    ctx.stroke(); ctx.setLineDash([]);
 	  } else if(costume === "gordo"){
-	    for(let x=3; x<=12; x++){ put(x, 9, AXO_PAL.B); }
-	    for(let x=4; x<=11; x++){ put(x, 10, AXO_PAL.D); }
-	    put(7, 9, AXO_PAL.W); put(8, 9, AXO_PAL.W);   // pancita
+	    for(let x=11;x<=24;x++){ put(x,19,AXO_PAL.W); put(x,20,AXO_PAL.B); }
+	    for(let x=12;x<=23;x++) put(x,21,AXO_PAL.D);
 	  } else if(costume === "huevo"){
-	    const SH="#F5EFE0", SD="#D9CDB4";
-	    for(let x=2; x<=15; x++){ for(let y=7; y<=10; y++){ put(x, y, SH); } }
-	    [[3,6],[5,7],[7,6],[9,7],[11,6],[13,7],[15,6]].forEach(([x,y]) => put(x, y, SH));
-	    [[4,8],[9,9],[13,8]].forEach(([x,y]) => put(x, y, SD));   // grietas
+	    const SH="#F5EFE0", SD="#DFD3B8";
+	    for(let y=14;y<=21;y++) for(let x=5;x<=31;x++){
+	      if(((x-18)/13.5)**2 + ((y-14)/8)**2 <= 1 && y>=14) put(x,y,SH);
+	    }
+	    [[8,13],[12,14],[16,13],[20,14],[24,13],[28,14]].forEach(([x,y])=>put(x,y,SH));
+	    [[10,17],[19,18],[26,16]].forEach(([x,y])=>put(x,y,SD));
 	  } else if(costume === "bufanda"){
 	    const R="#E63946", R2="#B22B37";
-	    [[11,7],[12,7],[13,7],[14,7],[11,8],[12,8]].forEach(([x,y]) => put(x, y, R));
-	    [[13,8],[13,9],[13,10]].forEach(([x,y]) => put(x, y, alt ? R : R2)); // puntita
+	    for(let x=20;x<=26;x++){ put(x,15,R); put(x,16,x%2?R:R2); }
+	    [[22,17],[22,18],[22,19],[23,17]].forEach(([x,y])=>put(x,y,alt?R:R2));
 	  }
 	}
 	let axoFlip = false;
@@ -1826,15 +1854,28 @@ function mdStrip(s){ return (s||"").replace(/\*\*|`|^#{1,6} /g, ""); }
 	    return d;
 	  }catch(e){ return null; }
 	}
+	let ACTIVE_TAB = {session: "", ts: 0};
+	setInterval(async ()=>{
+	  try{ const d = await api("/active-tab");
+	       if(d && d.session) ACTIVE_TAB = d; }catch(e){}
+	}, 3000);
 	function pickSel(list){
 	  const seen = new Set(), items = [];
 	  for(const it of list || []){
 	    if(seen.has(it.session)) continue;
 	    seen.add(it.session); items.push(it);
 	  }
-	  let it = items.find(i => i.session === S.sel);
-	  if(!it) it = items.find(i => i.status === "waiting") || items.find(i => i.alive) || items[0];
-	  return it || null;
+	  // gana el evento MAS RECIENTE: tu click en una fila vs la pestana activa
+	  // de la app (el ajolote es el de la sesion donde estas parado)
+	  const cand = [];
+	  if(S.sel) cand.push({sess: S.sel, ts: S.selTs || 0});
+	  if(ACTIVE_TAB.session) cand.push({sess: ACTIVE_TAB.session, ts: (ACTIVE_TAB.ts || 0) * 1000});
+	  cand.sort((a, b) => b.ts - a.ts);
+	  for(const c of cand){
+	    const it = items.find(i => i.session === c.sess);
+	    if(it) return it;
+	  }
+	  return items.find(i => i.status === "waiting") || items.find(i => i.alive) || items[0] || null;
 	}
 	function renderCentro(list){
 	  const wrap = $("#centro-wrap"), box = $("#centro");
@@ -3380,7 +3421,7 @@ function rowEl(it){
   });
   el.addEventListener("click", async e=>{
     if(e.target.closest("button") || e.target.closest(".rxp")) return;
-    S.sel = it.session; renderCentro(S.list || []);
+    S.sel = it.session; S.selTs = Date.now(); renderCentro(S.list || []);
     if(el.classList.contains("ext")) return toast(tf("Corre en una pestana suelta: cierrala alla y usa Revivir", "Runs in a detached tab: close it there and use Revive"), true);
     try{ toast(await openSession(it, "claude")); }catch(err){ toast(err.message, true); }
   });

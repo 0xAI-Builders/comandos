@@ -3068,7 +3068,7 @@ class Handler(http.server.SimpleHTTPRequestHandler):
     # Endpoints con DATOS o ACCIONES: exigen token. El shell estatico (HTML,
     # sw.js, manifest, iconos) NO — no revela nada (es codigo open-source) y
     # asi la PWA instala y carga sin depender de cookies en el webview movil.
-    API_GET = ("/state", "/usage/state", "/opencode/models", "/model-tiers", "/agent-roles", "/dedication", "/session-brain", "/events", "/conf", "/prefs", "/ssh", "/tabs",
+    API_GET = ("/state", "/usage/state", "/opencode/models", "/model-tiers", "/agent-roles", "/dedication", "/active-tab", "/session-brain", "/events", "/conf", "/prefs", "/ssh", "/tabs",
                "/tab-history", "/remote-state", "/remote-qr.png", "/snippets", "/tmux-mouse",
                "/webterm-token")
 
@@ -3091,6 +3091,12 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             return self._json(200, {"providers": opencode_models()})
         if self.path.startswith("/model-tiers"):
             return self._json(200, load_model_tiers())
+        if self.path.startswith("/active-tab"):
+            try:
+                with open(os.path.join(HOOKS, "app-tab-active.json")) as f:
+                    return self._json(200, json.load(f))
+            except Exception:
+                return self._json(200, {})
         if self.path.startswith("/dedication"):
             return self._json(200, dedication_stats())
         if self.path.startswith("/agent-roles"):

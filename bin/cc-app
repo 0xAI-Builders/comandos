@@ -2535,6 +2535,27 @@ nb.append_page(hub, tab_label("⌂ local", closable=False))
 nb.set_tab_reorderable(hub, False)
 nb.connect("page-reordered", on_tab_reordered)
 
+# La pestana ACTIVA de la app: el tablero la usa para que EL ajolote sea
+# siempre el de la sesion en la que estas parado.
+ACTIVE_TAB_FILE = os.path.expanduser("~/.claude/hooks/app-tab-active.json")
+
+
+def _report_active_tab(*_):
+    page = nb.get_nth_page(nb.get_current_page()) if nb.get_n_pages() else None
+    key = getattr(page, "_key", None)
+    if not isinstance(key, str):
+        return
+    try:
+        tmp = ACTIVE_TAB_FILE + ".tmp"
+        with open(tmp, "w") as f:
+            json.dump({"session": key.partition(":")[0], "ts": time.time()}, f)
+        os.replace(tmp, ACTIVE_TAB_FILE)
+    except Exception:
+        pass
+
+
+nb.connect("switch-page", lambda *_: GLib.idle_add(_report_active_tab))
+
 # Barra de pestanas: boton "+" (nueva terminal) y "?" (atajos)
 def _icon_btn(name, tooltip, on_click, size=16):
     """Botón chico con SVG Lucide de dash/icons/. Es LA MISMA familia que usa
