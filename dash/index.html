@@ -2217,6 +2217,13 @@ function mdStrip(s){ return (s||"").replace(/\*\*|`|^#{1,6} /g, ""); }
 	        }catch(err){ toast(err.message, true); }
 	      }));
 	    }
+	    const moreB = box.querySelector(".cx-more");
+	    moreB.addEventListener("click", ()=>{
+	      const ex = box.querySelector(".cx-extra");
+	      const open = ex.classList.toggle("hidden") === false;
+	      moreB.textContent = open ? tf("Menos ▴", "Less ▴") : tf("Más ▾", "More ▾");
+	      moreB.setAttribute("aria-expanded", open);
+	    });
 	    box.querySelector(".cx-open").addEventListener("click", async ()=>{
 	      try{ toast(await openSession(it, "claude")); }catch(err){ toast(err.message, true); }
 	    });
