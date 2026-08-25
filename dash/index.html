@@ -318,10 +318,39 @@
     border-radius:14px;background:var(--panel);flex-wrap:wrap}
   .cx-hero{display:flex;flex-direction:column;align-items:center;gap:6px;min-width:150px}
   .axo-ascii{font-family:var(--mono);font-size:10.5px;line-height:1;letter-spacing:0;
-    white-space:pre;margin:0;user-select:none;display:block;
-    filter:drop-shadow(0 5px 16px #0009);animation:axofloat 4.5s ease-in-out infinite}
+    white-space:pre;margin:0;user-select:none;display:block;cursor:pointer;
+    filter:drop-shadow(0 5px 16px #0009)}
+  .cx-hero .frames{display:block;animation:axofloat 4.5s ease-in-out infinite}
   @keyframes axofloat{0%,100%{transform:translateY(0)}50%{transform:translateY(-6px)}}
-  @media (prefers-reduced-motion:reduce){.axo-ascii{animation:none}}
+  .axo-ascii.boing{animation:axoboing .5s ease}
+  @keyframes axoboing{0%{transform:scale(1)}30%{transform:scale(1.14,.86)}
+    60%{transform:scale(.9,1.1)}80%{transform:scale(1.05,.95)}100%{transform:scale(1)}}
+  .axo-ascii.hop{animation:axohop .55s cubic-bezier(.3,1.6,.5,1)}
+  @keyframes axohop{0%{transform:translateY(0) scale(1)}25%{transform:translateY(2px) scale(1.1,.9)}
+    55%{transform:translateY(-16px) scale(.94,1.08)}100%{transform:translateY(0) scale(1)}}
+  .axo-ascii.spin{animation:axospin .8s ease-in-out}
+  @keyframes axospin{0%{transform:rotate(0)}100%{transform:rotate(360deg)}}
+  .axo-ascii.tilt{animation:axotilt .9s ease-in-out}
+  @keyframes axotilt{0%,100%{transform:rotate(0)}25%{transform:rotate(-9deg)}
+    75%{transform:rotate(9deg)}}
+  .axo-ascii.shake{animation:axoshake .45s linear}
+  @keyframes axoshake{0%,100%{transform:translateX(0)}20%{transform:translateX(-5px)}
+    40%{transform:translateX(5px)}60%{transform:translateX(-4px)}80%{transform:translateX(3px)}}
+  .axo-ascii.flip{animation:axoflip .7s ease-in-out}
+  @keyframes axoflip{0%{transform:scaleX(1)}45%{transform:scaleX(-1)}
+    55%{transform:scaleX(-1)}100%{transform:scaleX(1)}}
+  .axo-ascii.stretch{animation:axostretch .8s ease-in-out}
+  @keyframes axostretch{0%,100%{transform:scale(1)}40%{transform:scale(.92,1.16)}
+    70%{transform:scale(1.08,.9)}}
+  .axo-ascii.peek{animation:axopeek 1.1s ease-in-out}
+  @keyframes axopeek{0%,100%{transform:translateX(0)}30%{transform:translateX(-18px)}
+    70%{transform:translateX(14px)}}
+  .axo-ascii.wiggle{animation:axowiggle .8s ease-in-out}
+  @keyframes axowiggle{0%,100%{transform:rotate(0) translateY(0)}20%{transform:rotate(4deg) translateY(-3px)}
+    45%{transform:rotate(-5deg) translateY(2px)}70%{transform:rotate(3deg) translateY(-2px)}}
+  @media (prefers-reduced-motion:reduce){.cx-hero .frames,
+    .axo-ascii.boing,.axo-ascii.hop,.axo-ascii.spin,.axo-ascii.tilt,.axo-ascii.shake,
+    .axo-ascii.flip,.axo-ascii.stretch,.axo-ascii.peek,.axo-ascii.wiggle{animation:none}}
   .cx-hero .aqua{width:300px;height:230px;border-radius:50%;display:flex;align-items:center;
     justify-content:center;background:radial-gradient(circle at 50% 48%,var(--aqua-c,#232B3E) 0%,transparent 72%)}
   .cx-hero[data-st="waiting"]{--aqua-c:#6E4C12}
@@ -1859,8 +1888,34 @@ function mdStrip(s){ return (s||"").replace(/\*\*|`|^#{1,6} /g, ""); }
 	const AXO_PIX = {"w":44,"h":38,"pal":["#124080","#1F7EDC","#31C8FC","#76A9F9","#A4CFFB","#5EA2F9","#6397F0"],"rows":["......aba..........................aba......","......accba......................abcca......","......bcccca....................accccb......","......abcccbb..................bbcccba......","......abbcccc......aaaaaa......ccccbba......",".......bbcccba...bbdeddedbb...abcccbb.......",".......abbcccbabfddddddddddfbabcccbba.......","........bbbccbbdddggfffffggddbbccbbb........","acbbaa...abccgdfdedgdfffddfgfdgccba...aabbc.",".bcccbba..abbddedddffffffffdffdbbb..abccccb.",".bcccccbb..bdfddfffffffffffffffdb..bbcccccb.",".abbcccccbadffggfffffffffffgggfdfabcccccbba.","..bbbccccbbdgfdddgffffffffgdddfgdbbccccbbb..","..aabbbccbgfdgaagdgfffffdgdgaagddgbccbbbaa..","....aabbbbgfgaea.gdgfdffgdgge.agffbbbbaa....",".....aabbbddaaea.adggdffgdaee..addbbbaa.....",".........bdda..a..dggddggd...g.addb.........","..aabababbdda...aaddfggfdd...a.addbbababaa..","abccccccbbfgga..agdagddgadg..aagffbbccccccba","bccccccccbggddbagddbaaaabddgabddfgbccccccccb",".bcbcccccbbfdddddgfdggggdfgdddddfbbcccbcbcb.",".abbbbbbbabgfdggfffgddddgfdfggdfgbabbbbbbba.","...aabab..abggddffddddddddddddggba.ababaa...","...........abbggdgggfffffgfdggbba...........","............abbbggddddddddggbbba............","............aggggeeeeeeeeeegggga............","...........addggdeeeeeeeeeedggdfa...........","...........bfggbdeeeeeeeeeedbgfdb...........","...........gdgdggeeeeeeeeeeggdgdg...........","...........bdggdbeeeeeeeeeebdggdb...........","...........agdfbaeeeeeeeeeeagfdga...........","............bbbageeeeeeeeeegbbba............","............abbbdeeeeeeeeeedbbba............","............bffffeeeeeeeeeeffffb............","............agdggfdeeeeeedfggdga............",".............bdddgbdeddddbgdddb.............",".............aggggaaaaaaaagggga.............","..............aaaa........aaaa.............."]};
 	// Mascota en PIXEL ART DE CONSOLA: half-blocks ▀▄ coloreados (arte ANSI),
 	// texto puro en la fuente mono del tema — cero imagenes.
+	function _hsl2hex(h, s, l){
+	  const f = n => {
+	    const k = (n + h/30) % 12;
+	    const a = s * Math.min(l, 1-l);
+	    const v = l - a * Math.max(-1, Math.min(k-3, Math.min(9-k, 1)));
+	    return Math.round(v * 255).toString(16).padStart(2, "0");
+	  };
+	  return "#" + f(0) + f(8) + f(4);
+	}
+	let AXO_THEMED = null;
+	function axoThemedPal(){
+	  if(AXO_THEMED) return AXO_THEMED;
+	  let brandH = 231;   // hue del azul original como fallback
+	  try{
+	    const brand = getComputedStyle(document.documentElement)
+	      .getPropertyValue("--brand").trim();
+	    if(/^#[0-9a-f]{6}$/i.test(brand)) brandH = _hex2hsl(brand)[0];
+	  }catch(e){}
+	  AXO_THEMED = AXO_PIX.pal.map(hex => {
+	    const [h, sat, l] = _hex2hsl(hex);
+	    if(sat < 0.18) return hex;          // ojos/brillos: neutros, no tocar
+	    return _hsl2hex(brandH, sat, l);    // mismo tono relativo, hue del tema
+	  });
+	  return AXO_THEMED;
+	}
 	function axoAscii(){
-	  const {pal, rows} = AXO_PIX;
+	  const {rows} = AXO_PIX;
+	  const pal = axoThemedPal();
 	  const col = ch => pal[ch.charCodeAt(0) - 97];
 	  let out = "";
 	  for(let y = 0; y < rows.length; y += 2){
@@ -1879,6 +1934,19 @@ function mdStrip(s){ return (s||"").replace(/\*\*|`|^#{1,6} /g, ""); }
 	  }
 	  return out;
 	}
+	// Vida propia: cada tanto (aleatorio) hace un movimiento impredecible.
+	const AXO_MOVES = ["boing", "hop", "spin", "tilt", "shake", "flip",
+	                   "stretch", "peek", "wiggle"];
+	function axoMove(axo, mv){
+	  axo.classList.remove(...AXO_MOVES); void axo.offsetWidth;
+	  axo.classList.add(mv);
+	}
+	(function axoIdleLoop(){
+	  const axo = document.querySelector(".axo-ascii");
+	  if(axo && !document.hidden)
+	    axoMove(axo, AXO_MOVES[Math.floor(Math.random() * AXO_MOVES.length)]);
+	  setTimeout(axoIdleLoop, 2200 + Math.random() * 6000);
+	})();
 	// (la mascota flota con CSS; los frames pixel viejos quedan sin uso)
 	// Centro de control: EL ajolote de la sesion seleccionada + sus controles.
 	let ROLES = null;
@@ -1968,6 +2036,15 @@ function mdStrip(s){ return (s||"").replace(/\*\*|`|^#{1,6} /g, ""); }
 	      </div>`;
 	    const fr = box.querySelector(".frames");
 	    fr.innerHTML = `<pre class="axo-ascii" aria-label="ComandOS axolotl">${axoAscii()}</pre>`;
+	    const axo = fr.querySelector(".axo-ascii");
+	    const FRASES = ["glub glub", ">_ a sus ordenes", "ñam", "glub?",
+	                    ">_ todo local, jefe", "blub~", ">_ nada se me escapa"];
+	    axo.addEventListener("click", e => {
+	      e.stopPropagation();
+	      axoMove(axo, "boing");
+	      toast(FRASES[Math.floor(Math.random() * FRASES.length)]);
+	    });
+	    axo.addEventListener("animationend", () => axo.classList.remove(...AXO_MOVES));
 	    // Rol actual + cambio de rol (usa el switch de modelo existente)
 	    const rbox = box.querySelector(".cx-roles");
 	    if(ROLES && (ROLES.roles || []).length && ["claude","codex","opencode"].includes(it.agent)){
