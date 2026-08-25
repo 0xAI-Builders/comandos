@@ -2359,7 +2359,8 @@ function mdStrip(s){ return (s||"").replace(/\*\*|`|^#{1,6} /g, ""); }
 	      <div class="cx-accs-chips">` +
 	      d.accounts.map(a => `<button type="button" class="cx-newacct" data-acct="${attrEsc(a.alias)}"
 	        title="${tf("Abre una pestana nueva en este proyecto con la cuenta", "Opens a new tab in this project as")} ${attrEsc(a.email || a.alias)}">＋ ${mdEsc(a.alias)}</button>`).join("") + `</div>`;
-	    acctRow.parentElement.insertBefore(div, acctRow.nextSibling);
+	    const acctLine = acctRow.closest(".cx-row") || acctRow;
+	    acctLine.parentElement.insertBefore(div, acctLine.nextSibling);
 	    div.querySelectorAll("[data-acct]").forEach(b => b.addEventListener("click", async ()=>{
 	      try{
 	        const danger = localStorage.getItem("cc-flow-danger") !== "0";
