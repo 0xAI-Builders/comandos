@@ -753,7 +753,8 @@
      app: barra de pestanas arriba, y debajo el panel o una terminal. */
   body.app{height:var(--app-height,100dvh);overflow:hidden;display:block}
   /* En la app las pestanas YA son la navegacion: la lista de sesiones sobra */
-  body.app #sessions-wrap{display:none}
+  html.gtkapp #sessions-wrap{display:none}
+  html.gtkapp #recent-wrap{display:none}
   #tabbar{display:none}
   body.app #tabbar{display:flex;align-items:stretch;gap:0;flex:none;
     background:linear-gradient(180deg,var(--panel) 0%,var(--bg) 100%);
@@ -1469,6 +1470,8 @@ function saveCfg(){ localStorage.setItem("cc-cfg", JSON.stringify(S.cfg)); }
 function inApp(){
   return !!(window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.centro);
 }
+// marca el webview de la app de escritorio: ahi las pestanas son la navegacion
+if(inApp()) document.documentElement.classList.add("gtkapp");
 function openInApp(sess, win, label){
   window.webkit.messageHandlers.centro.postMessage(JSON.stringify({session: sess, win, label}));
 }
