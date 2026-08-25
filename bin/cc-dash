@@ -661,6 +661,287 @@ def resolved_agent_roles():
     return d
 
 
+def _claude_md_lines(cwd):
+    for name in ("CLAUDE.md", "AGENTS.md"):
+        try:
+            with open(os.path.join(cwd, name)) as f:
+                return name, sum(1 for _ in f)
+        except OSError:
+            continue
+    return "", 0
+
+
+def _cwd_has_live_agent(cwd):
+    _, by_cwd = agent_pane_maps(agent_procs())
+    return bool(by_cwd.get(cwd))
+
+
+def _worktree_include_files(cwd):
+    """Patrones de .worktreeinclude, o el fallback sensato (.env*)."""
+    pats = []
+    try:
+        with open(os.path.join(cwd, ".worktreeinclude")) as f:
+            pats = [l.strip() for l in f if l.strip() and not l.startswith("#")]
+    except OSError:
+        pats = [".env", ".env.*", ".envrc"]
+    out = []
+    for pat in pats:
+        out += glob.glob(os.path.join(cwd, pat))
+    return [f for f in out if os.path.isfile(f)]
+
+
+def make_worktree(cwd):
+    """Crea un worktree del repo y copia los gitignored esenciales.
+    (El paso que todo el mundo omite, segun la investigacion.)"""
+    if subprocess.run(["git", "-C", cwd, "rev-parse", "--git-dir"],
+                      capture_output=True, timeout=8).returncode != 0:
+        return None, "no es repo git"
+    n = int(time.time()) % 100000
+    name = f"wt-{n}"
+    path = os.path.join(cwd, ".claude", "worktrees", name)
+    while os.path.exists(path):
+        n += 1
+        name = f"wt-{n}"
+        path = os.path.join(cwd, ".claude", "worktrees", name)
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    r = subprocess.run(["git", "-C", cwd, "worktree", "add", path,
+                        "-b", f"worktree-{name}"],
+                       capture_output=True, text=True, timeout=30)
+    if r.returncode != 0:
+        return None, (r.stderr or "git worktree fallo").strip()[:200]
+    for f in _worktree_include_files(cwd):
+        try:
+            shutil.copy2(f, os.path.join(path, os.path.basename(f)))
+        except OSError:
+            pass
+    return path, None
+
+
+# ---- Detectores de disfraces del ajolote: TODO medido de datos locales
+# reales (transcripts de ~/.claude/projects), umbrales en config/detectors.json.
+DETECTORS_FILE = os.path.join(REPO_ROOT, "config", "detectors.json")
+_detectors_cache = {"mtime": None, "data": {}}
+_costume_state = {"at": 0.0, "data": {}}
+_costume_lock = threading.Lock()
+
+
+def load_detectors():
+    try:
+        mtime = os.path.getmtime(DETECTORS_FILE)
+    except OSError:
+        return _detectors_cache["data"]
+    if _detectors_cache["mtime"] != mtime:
+        try:
+            with open(DETECTORS_FILE) as f:
+                d = json.load(f)
+            _detectors_cache.update(mtime=mtime, data=d if isinstance(d, dict) else {})
+        except Exception:
+            pass
+    return _detectors_cache["data"]
+
+
+def _claude_tmux_sessions():
+    """{sesion tmux: {sid, startedAt}} de los claude vivos (~/.claude/sessions)."""
+    out = {}
+    base = os.path.expanduser("~/.claude/sessions")
+    try:
+        names = os.listdir(base)
+    except OSError:
+        return out
+    for n in names:
+        if not n.endswith(".json"):
+            continue
+        try:
+            with open(os.path.join(base, n)) as f:
+                d = json.load(f)
+        except Exception:
+            continue
+        pid, tm, sid = d.get("pid"), d.get("tmux") or "", d.get("sessionId")
+        if not (isinstance(pid, int) and isinstance(sid, str) and sid):
+            continue
+        try:
+            os.kill(pid, 0)
+        except Exception:
+            continue
+        sess = tm.partition(":")[0]
+        if sess:
+            prev = out.get(sess)
+            if prev and prev.get("startedAt", 0) >= (d.get("startedAt") or 0):
+                continue
+            out[sess] = {"sid": sid, "startedAt": (d.get("startedAt") or 0) / 1000.0}
+    return out
+
+
+def _transcript_path(sid):
+    hits = glob.glob(os.path.expanduser(f"~/.claude/projects/*/{sid}.jsonl"))
+    return hits[0] if hits else None
+
+
+def _analyze_transcript(path, cfg, now):
+    """(context_pct, out_tokens_ventana, ediciones_repetidas) del tail del
+    transcript. Barato: solo los ultimos ~250KB."""
+    try:
+        size = os.path.getsize(path)
+        with open(path, "rb") as f:
+            if size > 250_000:
+                f.seek(-250_000, 2)
+            raw = f.read().decode("utf-8", "replace")
+    except OSError:
+        return 0.0, 0, 0
+    lines = raw.splitlines()
+    if size > 250_000 and lines:
+        lines = lines[1:]  # primera linea posiblemente cortada
+    ctx_pct, out_win, edits = 0.0, 0, {}
+    win_start = now - float(cfg.get("fuegoWindowMin") or 10) * 60
+    tool_seq = []
+    for ln in lines:
+        try:
+            d = json.loads(ln)
+        except Exception:
+            continue
+        if d.get("isSidechain"):
+            continue  # turnos de subagentes: su contexto no es el de la sesion
+        msg = d.get("message") or {}
+        u = msg.get("usage") or {}
+        if u:
+            total_in = (u.get("input_tokens") or 0) +                 (u.get("cache_read_input_tokens") or 0) +                 (u.get("cache_creation_input_tokens") or 0)
+            if total_in:
+                wins = sorted(cfg.get("contextWindows") or [200000, 1000000])
+                win = next((w for w in wins if total_in <= w), wins[-1])
+                ctx_pct = 100.0 * total_in / float(win)
+            ts = d.get("timestamp") or ""
+            try:
+                t = time.mktime(time.strptime(ts[:19], "%Y-%m-%dT%H:%M:%S")) - time.timezone
+            except Exception:
+                t = 0
+            if t >= win_start:
+                out_win += (u.get("output_tokens") or 0)
+        for blk in (msg.get("content") or []) if isinstance(msg.get("content"), list) else []:
+            if isinstance(blk, dict) and blk.get("type") == "tool_use":
+                name = blk.get("name") or ""
+                fp = (blk.get("input") or {}).get("file_path") or ""
+                if name in ("Edit", "Write", "MultiEdit") and fp:
+                    tool_seq.append(fp)
+    tail = tool_seq[-int(cfg.get("hamsterWindow") or 30):]
+    for fp in tail:
+        edits[fp] = edits.get(fp, 0) + 1
+    max_edits = max(edits.values()) if edits else 0
+    return ctx_pct, out_win, max_edits
+
+
+def _refresh_costumes():
+    cfg = load_detectors()
+    now = time.time()
+    data = {}
+    for sess, info in _claude_tmux_sessions().items():
+        costume, why, ctx_pct = "", "", 0.0
+        path = _transcript_path(info["sid"])
+        if path:
+            ctx_pct, out_win, max_edits = _analyze_transcript(path, cfg, now)
+            try:
+                idle_min = (now - os.path.getmtime(path)) / 60.0
+            except OSError:
+                idle_min = 0
+            if max_edits >= int(cfg.get("hamsterEdits") or 5):
+                costume, why = "hamster", f"posible loop: un archivo editado {max_edits}x seguidas"
+            elif out_win >= int(cfg.get("fuegoOutTokens") or 25000):
+                costume, why = "fuego", f"quemando ~{out_win//1000}k tokens en {cfg.get('fuegoWindowMin', 10)} min"
+            elif ctx_pct >= float(cfg.get("gordoPct") or 45):
+                costume, why = "gordo", f"contexto al {ctx_pct:.0f}% — considera /compact o /clear"
+            elif now - info["startedAt"] < float(cfg.get("huevoSecs") or 150):
+                costume, why = "huevo", "recien nacida"
+            elif idle_min >= float(cfg.get("bufandaMin") or 5):
+                costume, why = "bufanda", f"~{idle_min:.0f} min sin actividad — cache fria"
+        data[sess] = {"costume": costume, "why": why, "contextPct": round(ctx_pct, 1)}
+    with _costume_lock:
+        _costume_state["at"] = now
+        _costume_state["data"] = data
+
+
+def session_costumes():
+    with _costume_lock:
+        stale = time.time() - _costume_state["at"] > 10
+        data = dict(_costume_state["data"])
+    if stale:
+        threading.Thread(target=_refresh_costumes, daemon=True).start()
+    return data
+
+
+# ---- Dedicacion: cuanto tiempo REAL le diste a cada proyecto, calculado de
+# los turnos locales (comandos-usage.sqlite). El "pomodoro" automatico: cero
+# fricción, cero nube — turnos consecutivos con hueco <= gapMin se encadenan.
+_dedication_cache = {"at": 0.0, "data": None}
+
+
+def dedication_stats(days=7, gap_min=15):
+    now = time.time()
+    if _dedication_cache["data"] and now - _dedication_cache["at"] < 60:
+        return _dedication_cache["data"]
+    import sqlite3
+    since = int(now - days * 86400)
+    rows = []
+    try:
+        db = sqlite3.connect(USAGE_DB)
+        rows = db.execute(
+            """select turn_started_at, turn_finished_at,
+                      coalesce(nullif(git_root, ''), pane_pwd) as proj,
+                      provider, total_tokens, cost_usd
+               from usage_turns
+               where turn_started_at >= ? and proj != ''
+               order by proj, turn_started_at""", (since,)).fetchall()
+        db.close()
+    except Exception:
+        pass
+    gap = gap_min * 60
+    # bloques por (dia, proyecto): union de intervalos [inicio, fin] puenteando
+    # huecos <= gap. minutos = suma de bloques (incluye tu lectura entre turnos).
+    per = {}
+    for st_at, fin_at, proj, provider, toks, cost in rows:
+        st_at = int(st_at or 0)
+        fin_at = max(int(fin_at or 0), st_at + 30)
+        day = time.strftime("%Y-%m-%d", time.localtime(st_at))
+        e = per.setdefault((day, proj), {"iv": [], "turns": 0, "tokens": 0, "cost": 0.0})
+        e["iv"].append((st_at, fin_at))
+        e["turns"] += 1
+        e["tokens"] += int(toks or 0)
+        e["cost"] += float(cost or 0.0)
+    by_day = {}
+    for (day, proj), e in per.items():
+        secs, cur_s, cur_e = 0, None, None
+        for st_at, fin_at in sorted(e["iv"]):
+            if cur_e is not None and st_at <= cur_e + gap:
+                cur_e = max(cur_e, fin_at)
+            else:
+                if cur_e is not None:
+                    secs += cur_e - cur_s
+                cur_s, cur_e = st_at, fin_at
+        if cur_e is not None:
+            secs += cur_e - cur_s
+        by_day.setdefault(day, {})[proj] = {
+            "path": proj, "name": os.path.basename(proj.rstrip("/")),
+            "minutes": secs / 60.0, "turns": e["turns"],
+            "tokens": e["tokens"], "cost": e["cost"]}
+    out_days = []
+    for day in sorted(by_day, reverse=True):
+        projs = sorted(by_day[day].values(), key=lambda x: -x["minutes"])
+        for x in projs:
+            x["minutes"] = round(x["minutes"], 1)
+            x["cost"] = round(x["cost"], 4)
+        out_days.append({"date": day, "projects": projs})
+    week = {}
+    for d in out_days:
+        for x in d["projects"]:
+            w = week.setdefault(x["path"], {"path": x["path"], "name": x["name"],
+                                            "minutes": 0.0, "tokens": 0, "cost": 0.0})
+            w["minutes"] = round(w["minutes"] + x["minutes"], 1)
+            w["tokens"] += x["tokens"]
+            w["cost"] = round(w["cost"] + x["cost"], 4)
+    data = {"days": out_days,
+            "week": sorted(week.values(), key=lambda x: -x["minutes"])}
+    _dedication_cache.update(at=now, data=data)
+    return data
+
+
 _TIER_LAST = {}
 
 
@@ -2201,7 +2482,7 @@ def usage_live_panes():
 
 
 # Claves de cc-notify.conf editables desde la interfaz
-CONF_KEYS = {"DESKTOP_NOTIFY", "SOUND_ENABLED", "TELEGRAM_ENABLED", "NOTIFY_MODEL_TIER",
+CONF_KEYS = {"DESKTOP_NOTIFY", "SOUND_ENABLED", "TELEGRAM_ENABLED", "NOTIFY_MODEL_TIER", "AUTO_WORKTREE",
              "NOTIFY_ON_DONE", "NOTIFY_ON_ATTENTION", "SPEAK_ATTENTION", "SPEAK_DONE",
              "VOLUME", "CC_LANG"}
 CONF_DEFAULTS = {"VOLUME": "60", "CC_LANG": "auto"}
@@ -2856,9 +3137,11 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             for alias, path in _claude_account_creds():
                 accounts.append({"alias": alias,
                                  "email": account_email_for_dir(os.path.dirname(path), "claude")})
+            md_name, md_lines = _claude_md_lines(cwd)
             return self._json(200, {"mcps": session_mcps(cwd),
                                     "skills": session_skills(cwd),
-                                    "accounts": accounts})
+                                    "accounts": accounts,
+                                    "claudeMd": {"name": md_name, "lines": md_lines}})
 
         if self.path.startswith("/usage/state"):
             refresh_local_usage(False)
@@ -3244,6 +3527,55 @@ class Handler(http.server.SimpleHTTPRequestHandler):
                 return self._json(404, {"error": "snippet no encontrado"})
             write_snippets(new_items)
             return self._json(200, {"ok": True})
+
+        if self.path == "/session-new":
+            # Wizard "+": nueva sesion con proyecto + agente + cuenta.
+            # Si el repo YA tiene un agente activo, nace en worktree (auto).
+            cwd = os.path.expanduser(str(data.get("cwd", "")))
+            agent = str(data.get("agent", "shell"))[:16]
+            alias = str(data.get("account", "main"))[:40]
+            if not cwd.startswith("/") or not os.path.isdir(cwd):
+                return self._json(400, {"error": "carpeta invalida"})
+            if agent not in ("claude", "codex", "shell"):
+                return self._json(400, {"error": "agente invalido"})
+            if not re.match(r"^[A-Za-z0-9._-]+$", alias):
+                return self._json(400, {"error": "alias invalido"})
+            wt = False
+            final_cwd = cwd
+            if read_conf().get("AUTO_WORKTREE", "1") != "0" and                     agent != "shell" and _cwd_has_live_agent(cwd):
+                path, err = make_worktree(cwd)
+                if path:
+                    final_cwd, wt = path, True
+            n = int(time.time()) % 100000
+            new_sess = f"term-r{n}"
+            while tmux("has-session", "-t", "=" + new_sess).returncode == 0:
+                n += 1
+                new_sess = f"term-r{n}"
+            r = tmux("new-session", "-d", "-s", new_sess, "-c", final_cwd)
+            if r.returncode != 0:
+                return self._json(500, {"error": (r.stderr or "tmux fallo").strip()})
+            proj = os.path.basename(cwd.rstrip("/"))
+            label = proj + (" ⎇" if wt else "")
+            register_app_tab(new_sess, label, kind="project", cwd=final_cwd)
+            cmd = ""
+            flags = load_agent_roles().get("dangerFlags") or {}
+            if agent == "claude":
+                cmd = "claude"
+                if alias != "main":
+                    cmd = f"CLAUDE_CONFIG_DIR=$HOME/.claude-accounts/{alias} " + cmd
+                if data.get("danger") and flags.get("claude"):
+                    cmd += " " + flags["claude"]
+            elif agent == "codex":
+                cmd = "codex"
+                if data.get("danger") and flags.get("codex"):
+                    cmd += " " + flags["codex"]
+            if cmd:
+                def _send(sess=new_sess, c=cmd):
+                    time.sleep(1.5)
+                    tmux("send-keys", "-t", "=" + sess + ":", c, "Enter")
+                threading.Thread(target=_send, daemon=True).start()
+            return self._json(200, {"ok": True, "session": new_sess,
+                                    "cwd": final_cwd, "worktree": wt, "label": label})
 
         if self.path == "/open-with-account":
             # Nueva sesion claude EN el cwd con la cuenta elegida

@@ -318,11 +318,12 @@
     border-radius:14px;background:var(--panel);flex-wrap:wrap}
   .cx-hero{display:flex;flex-direction:column;align-items:center;gap:6px;min-width:150px}
   body.no-axo .cx-hero .aqua{display:none}
-  .axo-ascii{font-family:var(--mono);font-size:8.5px;line-height:1;letter-spacing:0;
+  .axo-ascii{font-family:var(--mono);font-size:6.5px;line-height:1;letter-spacing:0;
     white-space:pre;margin:0;user-select:none;display:block;cursor:pointer;
     filter:drop-shadow(0 3px 10px #0006)}
-  .cx-hero .frames{display:block;animation:axofloat 4.5s ease-in-out infinite}
-  @keyframes axofloat{0%,100%{transform:translateY(0)}50%{transform:translateY(-6px)}}
+  .cx-hero .frames{display:block;animation:axobreathe 3.6s ease-in-out infinite}
+  @keyframes axobreathe{0%,100%{transform:translateY(0) scale(1)}
+    50%{transform:translateY(-5px) scale(1.012,0.988)}}
   .axo-ascii.boing{animation:axoboing .5s ease}
   @keyframes axoboing{0%{transform:scale(1)}30%{transform:scale(1.14,.86)}
     60%{transform:scale(.9,1.1)}80%{transform:scale(1.05,.95)}100%{transform:scale(1)}}
@@ -349,7 +350,8 @@
   .axo-ascii.wiggle{animation:axowiggle .8s ease-in-out}
   @keyframes axowiggle{0%,100%{transform:rotate(0) translateY(0)}20%{transform:rotate(4deg) translateY(-3px)}
     45%{transform:rotate(-5deg) translateY(2px)}70%{transform:rotate(3deg) translateY(-2px)}}
-  @media (prefers-reduced-motion:reduce){.cx-hero .frames,
+  @media (prefers-reduced-motion:reduce){.cx-hero .frames{animation:none}}
+  @media (prefers-reduced-motion:reduce){
     .axo-ascii.boing,.axo-ascii.hop,.axo-ascii.spin,.axo-ascii.tilt,.axo-ascii.shake,
     .axo-ascii.flip,.axo-ascii.stretch,.axo-ascii.peek,.axo-ascii.wiggle{animation:none}}
   .cx-hero .aqua{width:250px;height:196px;border-radius:50%;display:flex;align-items:center;
@@ -366,7 +368,7 @@
     #centro{flex-direction:column;align-items:stretch;gap:12px}
     .cx-hero{flex-direction:row;justify-content:flex-start;gap:12px;min-width:0}
     .cx-hero .aqua{width:180px;height:150px;flex:none}
-    .axo-ascii{font-size:7px}
+    .axo-ascii{font-size:5.5px}
     .cx-cols{flex-direction:column;gap:14px}
     .cx-block{min-width:0}
   }
@@ -404,6 +406,42 @@
     transition:border-color .12s ease,color .12s ease}
   .cx-acts button:hover{border-color:var(--brand);color:var(--brand)}
   .cx-more{opacity:.75}
+  .cx-advice{font-family:var(--mono);font-size:10.5px;color:var(--waiting);
+    margin:6px 0 2px;line-height:1.45;max-width:420px}
+  .ns-plus{width:24px;height:24px;border-radius:8px;border:1px solid var(--line2);
+    background:none;color:var(--dim);cursor:pointer;font-size:15px;line-height:1;
+    transition:all .12s ease;margin-left:8px;vertical-align:middle}
+  .ns-plus::before{content:"+"}
+  .ns-plus:hover{color:var(--brand);border-color:var(--brand);transform:scale(1.08)}
+  #newsess{position:fixed;inset:0;z-index:70;background:#0008;display:flex;
+    align-items:center;justify-content:center;backdrop-filter:blur(3px)}
+  #newsess.hidden{display:none}
+  .ns-card{background:var(--panel);border:1px solid var(--line2);border-radius:16px;
+    padding:22px 24px;width:min(420px,92vw);box-shadow:0 18px 50px #000A;
+    display:flex;flex-direction:column;gap:8px}
+  .ns-title{font-weight:700;font-size:15px;margin-bottom:4px}
+  .ns-label{font-family:var(--mono);font-size:10px;font-weight:700;color:var(--faint);
+    letter-spacing:.1em;text-transform:uppercase;margin-top:6px}
+  #ns-cwd{background:var(--bg);border:1px solid var(--line);border-radius:10px;
+    padding:9px 12px;color:var(--text);font-family:var(--mono);font-size:12px}
+  #ns-cwd:focus{outline:none;border-color:var(--brand)}
+  .ns-chips{display:flex;gap:6px;flex-wrap:wrap}
+  .ns-chips button{font-family:var(--mono);font-size:11px;font-weight:700;
+    padding:7px 14px;border-radius:99px;border:1px solid var(--line2);background:none;
+    color:var(--dim);cursor:pointer;transition:all .12s ease}
+  .ns-chips button:hover{border-color:var(--brand);color:var(--brand)}
+  .ns-chips button.on{color:var(--brand);border-color:var(--brand);
+    background:color-mix(in srgb,var(--brand) 12%,transparent)}
+  .ns-danger{display:flex;align-items:center;gap:8px;font-family:var(--mono);
+    font-size:10.5px;color:var(--dim);margin-top:8px;cursor:pointer}
+  .ns-note{font-family:var(--mono);font-size:10px;color:var(--faint);min-height:14px}
+  .ns-actions{display:flex;justify-content:flex-end;gap:8px;margin-top:6px}
+  .ns-actions button{font-family:var(--mono);font-size:12px;font-weight:700;
+    padding:9px 18px;border-radius:10px;border:1px solid var(--line2);background:none;
+    color:var(--text);cursor:pointer;transition:all .12s ease}
+  .ns-actions button:hover{border-color:var(--brand);color:var(--brand)}
+  .ns-actions .primary{background:var(--brand);color:#0A0D13;border-color:var(--brand)}
+  .ns-actions .primary:hover{filter:brightness(1.12);color:#0A0D13}
   .cx-extra{min-width:0}
   .cx-acts .danger:hover{border-color:#FF6B6B;color:#FF6B6B}
   .cx-note{font-family:var(--mono);font-size:9.5px;color:var(--faint);margin-top:6px}
@@ -1008,9 +1046,34 @@
   <div id="centro"></div>
 </section>
 <section class="sec">
-  <div class="sec-label">Sesiones</div>
+  <div class="sec-label">Sesiones
+    <button type="button" id="btn-newsess" class="ns-plus" title="Nueva sesión (elige carpeta, agente y cuenta)" aria-label="Nueva sesión"></button>
+  </div>
   <div id="rows"></div>
 </section>
+
+<div id="newsess" class="hidden" role="dialog" aria-modal="true" aria-label="Nueva sesión">
+  <div class="ns-card">
+    <div class="ns-title">Nueva sesión</div>
+    <label class="ns-label">Carpeta del proyecto</label>
+    <input id="ns-cwd" list="ns-dirs" autocomplete="off" spellcheck="false"
+      placeholder="~/codebase/...">
+    <datalist id="ns-dirs"></datalist>
+    <label class="ns-label">Agente</label>
+    <div class="ns-chips" id="ns-agent"></div>
+    <div id="ns-acct-wrap" class="hidden">
+      <label class="ns-label">Cuenta</label>
+      <div class="ns-chips" id="ns-acct"></div>
+    </div>
+    <label class="ns-danger"><button type="button" class="sw on" id="ns-danger" role="switch" aria-checked="true"></button>
+      <span>sin aprobaciones (dangerously)</span></label>
+    <div class="ns-note" id="ns-note"></div>
+    <div class="ns-actions">
+      <button type="button" id="ns-cancel">Cancelar</button>
+      <button type="button" id="ns-go" class="primary">Crear</button>
+    </div>
+  </div>
+</div>
 
 <section class="sec hidden" id="recent-wrap">
   <div class="sec-label">Recientes (cerradas)</div>
@@ -1043,6 +1106,7 @@
     <div class="set"><label for="vol">Volumen (voz y chime)</label>
       <input type="range" id="vol" class="solid" min="0" max="100" value="60"></div>
     <div class="set switch"><label>Mascota ajolote</label><button id="sw-axo" class="cfg" role="switch" aria-label="Mostrar u ocultar la mascota"></button></div>
+    <div class="set switch"><label>Worktrees automáticos (repo ocupado → sesión aislada)</label><button class="cfg" data-key="AUTO_WORKTREE" role="switch"></button></div>
     <div class="set switch"><label>Avisar al terminar</label><button class="cfg" data-key="NOTIFY_ON_DONE" role="switch"></button></div>
     <div class="set switch"><label>Avisar al pedir atencion</label><button class="cfg" data-key="NOTIFY_ON_ATTENTION" role="switch"></button></div>
     <div class="set switch"><label>Voz (anuncia el proyecto)</label><button id="sw-voice" role="switch"></button></div>
@@ -1883,7 +1947,7 @@ function mdStrip(s){ return (s||"").replace(/\*\*|`|^#{1,6} /g, ""); }
 	    [[22,17],[22,18],[22,19],[23,17]].forEach(([x,y])=>put(x,y,alt?R:R2));
 	  }
 	}
-	const AXO_PIX = {"w":44,"h":38,"pal":["#124080","#1F7EDC","#31C8FC","#76A9F9","#A4CFFB","#5EA2F9","#6397F0"],"rows":["......aba..........................aba......","......accba......................abcca......","......bcccca....................accccb......","......abcccbb..................bbcccba......","......abbcccc......aaaaaa......ccccbba......",".......bbcccba...bbdeddedbb...abcccbb.......",".......abbcccbabfddddddddddfbabcccbba.......","........bbbccbbdddggfffffggddbbccbbb........","acbbaa...abccgdfdedgdfffddfgfdgccba...aabbc.",".bcccbba..abbddedddffffffffdffdbbb..abccccb.",".bcccccbb..bdfddfffffffffffffffdb..bbcccccb.",".abbcccccbadffggfffffffffffgggfdfabcccccbba.","..bbbccccbbdgfdddgffffffffgdddfgdbbccccbbb..","..aabbbccbgfdgaagdgfffffdgdgaagddgbccbbbaa..","....aabbbbgfgaea.gdgfdffgdgge.agffbbbbaa....",".....aabbbddaaea.adggdffgdaee..addbbbaa.....",".........bdda..a..dggddggd...g.addb.........","..aabababbdda...aaddfggfdd...a.addbbababaa..","abccccccbbfgga..agdagddgadg..aagffbbccccccba","bccccccccbggddbagddbaaaabddgabddfgbccccccccb",".bcbcccccbbfdddddgfdggggdfgdddddfbbcccbcbcb.",".abbbbbbbabgfdggfffgddddgfdfggdfgbabbbbbbba.","...aabab..abggddffddddddddddddggba.ababaa...","...........abbggdgggfffffgfdggbba...........","............abbbggddddddddggbbba............","............aggggeeeeeeeeeegggga............","...........addggdeeeeeeeeeedggdfa...........","...........bfggbdeeeeeeeeeedbgfdb...........","...........gdgdggeeeeeeeeeeggdgdg...........","...........bdggdbeeeeeeeeeebdggdb...........","...........agdfbaeeeeeeeeeeagfdga...........","............bbbageeeeeeeeeegbbba............","............abbbdeeeeeeeeeedbbba............","............bffffeeeeeeeeeeffffb............","............agdggfdeeeeeedfggdga............",".............bdddgbdeddddbgdddb.............",".............aggggaaaaaaaagggga.............","..............aaaa........aaaa.............."]};
+	const AXO_PIX = {"w":64,"h":68,"pal":["#6D6F89","#151520","#392F41","#4C4760","#788BA4","#8B96AF","#516280","#9FB1C5","#8DA1B8"],"rows":[".........................................ab.....................",".........cb...........................bdae......................",".........fb...........................ceedd.....................","........cagb.........................cdaddc.....................","........aaac........................bcaacdc.....................",".......bcada........................dcaaddb.....................",".......bdaadb......................bddadcdc.......c.............",".......ccdadd......................dddfcdc......bdf.............",".......bddedgb....................bddfaccdc...bcafd.............",".c.....bdcfaddc...................dcghdcdc...bddaacab...........",".aac....ccgfcac.....bdddddddc....bddhacccb..cdadadab............",".cegd...ddcffcdc.bdffhhhhhhhheac..dffgcddbbcadafccdb............",".caaagc.bdcdhedcdihhhhhiifffiihhedffacddbbdddgfddac.............",".cdaadac.cdcahaahifiiiiiiiiiiffeiieadcccddddefdccb..............",".cdcaadddcdcdgfhfhhfiiiiiiiiffiieefaccddddaffccadb..............","..cdcffdddcccahhfiiiiiiiiifihhiiiiifccdaeffacccbbb..............","..bddcahegdcdhaaifiiiiiiiiiedgfiiiffaafffadcccdc................","...bddcdfffaeaigdhiiiiiiiieeh.cfifeiedaaacccdcbb................","...bbcdcdgadicedciiiiiiiihgdfbbaiefeedddcbddccb.................","....bdcdcccdhdb.ciiiiiiiiiab.bcgifieegccddbcc...b.bbc...........","......cccdceigdcaieiiiieiiecdgdeiiifegc.bcccccccdccdddd.........","........bccffiggiiaifiagiiiaddeifiifegaaddcddddddaaaaab.........","acccccdcccbeegiiffiiiiiifiihiifgeifeadgfffeaaaaefadddc..........","cfeadddddaagiaggdddggdgdddgggggaiieagddaaeffffadccdccb..........",".caaefffffaceifeffaaaaaefeaaaaiifeagdcddddddccbcdccc............","cdcdcddddddccaeiiiiiiiiiiiiiiiffegggccccccccdcdcbc..............","..ccdcccccccccgaeeeffffffifeeeeagggb.dcdcddcddbdb...............","...dccdcdccddcbggaaaaaeeeeaaaggggdb..bcccccdbcc.................",".....cbbcbcbc...cdgggggggggggggggc......b..cb...................",".........b........cddddgggggggggac..............................","..................ggggggggggaeeeed..............................","..................aagggggaeefiifec..........................bb..",".................cafeaaaeeeiiffiheb.........................id..","................aagfefffffihfffifhhc.......................dhg..","...............ghdahfefiihhhiegfifiha.....................chhi..","............bbdhedehhhhhhhhhieddafeehd...................chhihd.","......bdgc.dfifegdihhhhhhhhhhfadddgiiib..................fhfihd.",".......baiehiieggdhhhhhhhhhhhieagdhifab.................ghfifie.","......bgafiffeagbdhhhhhhhhhhheaggiifec..................eheaffib","......gddfiedccb.ghhhhhhhhhheaaeiifed..................ahfegaihg","......bbegec....behhhhhhhhhadgihifgc..................ahfiagaihg",".......ggbg.....behhhhhhhhhhaagaedb..................chieeaaafhg",".......c.bc.....behhhhhhhhhiggdecdb..................chifaeagiig","..........b.....beihhhhhhhhhehgdaeb..................iiiigigaifh","................beihhhhhhhhhhhdaiec.................ehfeegiggefh","................befhhhhhhhhhhheffid...............dfheifgfidgfii",".................gfihhhhhhhhhhiffieb............behiiffeahedafhg",".................dffhhhhhhhhhhiffifad..........dhhifiiegfiedafhg",".................cefihhhhhhhhhifffhgid........chihffeigehfadefig",".................baffhhhhhhhhhffffieahfdb...bdhheiiefaahffggefib","..................geefhhhhhhhiifiiiigehhhagahhiiefffaahfieggeif.","..................bafffihhhhiifffiffegifihhhhfiieffaahiffadaehg.",".................bcgefefiiiiiffeeiieeagfiieiieifeegahifiegdefic.","................cfidgefffffffffaeifheeegaefhefeaggfhifieadgeie..","...............chiiadgefffffffedaiifheeiaggggggafhhififagdeehd..","...............ahfeadggaeffeeeegdefifhgehhffffhhhifiifegggeie...","..............bfieggddaggeeeeeagdgeffheaifihiiiffiiifeaggeeic...","..............cifadc..dagggggggggddgiiigiffffffiiiifeagdgehd....","..............cifgb....gagggggggggddiifgiiiiiiiiifeeagdgeia.....","..............ghed......gagggggggggdeiigefffffffeeaggdgeffb.....","...........bdgfiab.......deggggggggdgiiageeeeeeeagggdgaefb......","..........ceaifid.........ceegggggggdfiiggeaaaaggggdgafeb.......",".........bdcagegg..........bgeegggggdiiifadggggggggaeieb........","...........adda.gb...........bgaeaggeeefaaagaagddgaeiab.........","..........bd.ac.bb.............bdggggggdfcddgddaeffac...........",".............d....................bdbggbecddaefeedc.............",".....................................cd.cbbcdccb................","......................................b........................."]};
 	// Mascota en PIXEL ART DE CONSOLA: half-blocks ▀▄ coloreados (arte ANSI),
 	// texto puro en la fuente mono del tema — cero imagenes.
 	function _hsl2hex(h, s, l){
@@ -1934,6 +1998,65 @@ function mdStrip(s){ return (s||"").replace(/\*\*|`|^#{1,6} /g, ""); }
 	  return out;
 	}
 	// Vida propia: cada tanto (aleatorio) hace un movimiento impredecible.
+	// ---- Wizard "+": nueva sesion (carpeta + agente + cuenta) en 3 clicks.
+	const NS = {agent: "claude", account: "main"};
+	function nsChips(el, items, cur, cb){
+	  el.innerHTML = items.map(x =>
+	    `<button type="button" class="${x.id === cur ? "on" : ""}" data-id="${attrEsc(x.id)}"
+	       ${x.title ? `title="${attrEsc(x.title)}"` : ""}>${mdEsc(x.label)}</button>`).join("");
+	  el.querySelectorAll("button").forEach(b => b.addEventListener("click", ()=>{
+	    el.querySelectorAll("button").forEach(o => o.classList.remove("on"));
+	    b.classList.add("on"); cb(b.dataset.id);
+	  }));
+	}
+	async function nsOpen(){
+	  const m = $("#newsess");
+	  m.classList.remove("hidden");
+	  // carpetas conocidas: cwds de las sesiones vivas (sin duplicados)
+	  const dirs = [...new Set((S.list || []).map(i => i.cwd).filter(Boolean))].sort();
+	  $("#ns-dirs").innerHTML = dirs.map(d => `<option value="${attrEsc(d)}">`).join("");
+	  const sel = pickSel(S.list || []);
+	  if(sel && sel.cwd && !$("#ns-cwd").value) $("#ns-cwd").value = sel.cwd;
+	  nsChips($("#ns-agent"), [
+	    {id: "claude", label: "claude"}, {id: "codex", label: "codex"},
+	    {id: "shell", label: "shell", title: tf("terminal pelona", "plain terminal")},
+	  ], NS.agent, id => { NS.agent = id; nsSync(); });
+	  try{
+	    const d = await api(`/session-brain?cwd=${encodeURIComponent($("#ns-cwd").value || dirs[0] || "/")}`);
+	    nsChips($("#ns-acct"), (d.accounts || [{alias: "main"}]).map(a =>
+	      ({id: a.alias, label: a.alias, title: a.email || ""})), NS.account,
+	      id => { NS.account = id; });
+	  }catch(e){}
+	  nsSync();
+	  $("#ns-cwd").focus();
+	}
+	function nsSync(){
+	  $("#ns-acct-wrap").classList.toggle("hidden", NS.agent !== "claude");
+	  $("#ns-note").textContent = NS.agent === "shell" ? "" :
+	    tf("si el repo ya tiene un agente activo, nace en worktree ⎇ aislado (auto)",
+	       "if the repo already has an active agent, it's born in an isolated worktree ⎇");
+	}
+	$("#btn-newsess").addEventListener("click", nsOpen);
+	$("#ns-cancel").addEventListener("click", ()=> $("#newsess").classList.add("hidden"));
+	$("#newsess").addEventListener("click", e => {
+	  if(e.target.id === "newsess") $("#newsess").classList.add("hidden");
+	});
+	$("#ns-danger").addEventListener("click", ()=>{
+	  const b = $("#ns-danger");
+	  const on = !b.classList.contains("on");
+	  b.classList.toggle("on", on); b.setAttribute("aria-checked", String(on));
+	});
+	$("#ns-go").addEventListener("click", async ()=>{
+	  const cwd = $("#ns-cwd").value.trim();
+	  if(!cwd) return toast(tf("Falta la carpeta", "Missing folder"), true);
+	  try{
+	    const r = await api("/session-new", {cwd, agent: NS.agent,
+	      account: NS.account, danger: $("#ns-danger").classList.contains("on")});
+	    $("#newsess").classList.add("hidden");
+	    toast(`${r.label} ${tf("creada", "created")}${r.worktree ? " · ⎇ worktree" : ""}`);
+	    tick();
+	  }catch(err){ toast(err.message, true); }
+	});
 	// Mostrar/ocultar la mascota (preferencia local, Ajustes)
 	function axoVisible(){ return localStorage.getItem("cc-axo") !== "0"; }
 	function applyAxoPref(){
@@ -1953,11 +2076,18 @@ function mdStrip(s){ return (s||"").replace(/\*\*|`|^#{1,6} /g, ""); }
 	  axo.classList.remove(...AXO_MOVES); void axo.offsetWidth;
 	  axo.classList.add(mv);
 	}
+	// Idle REAL: respira siempre (sutil), y cada tanto hace una secuencia de
+	// 1-3 movimientos encadenados — impredecible pero organico.
+	function axoChain(axo, n){
+	  if(n <= 0 || !axo.isConnected) return;
+	  axoMove(axo, AXO_MOVES[Math.floor(Math.random() * AXO_MOVES.length)]);
+	  setTimeout(() => axoChain(axo, n - 1), 700 + Math.random() * 900);
+	}
 	(function axoIdleLoop(){
 	  const axo = document.querySelector(".axo-ascii");
 	  if(axo && !document.hidden)
-	    axoMove(axo, AXO_MOVES[Math.floor(Math.random() * AXO_MOVES.length)]);
-	  setTimeout(axoIdleLoop, 6000 + Math.random() * 10000);
+	    axoChain(axo, 1 + Math.floor(Math.random() * 3));
+	  setTimeout(axoIdleLoop, 5000 + Math.random() * 9000);
 	})();
 	// (la mascota flota con CSS; los frames pixel viejos quedan sin uso)
 	// Centro de control: EL ajolote de la sesion seleccionada + sus controles.
@@ -2027,15 +2157,18 @@ function mdStrip(s){ return (s||"").replace(/\*\*|`|^#{1,6} /g, ""); }
 	      <div class="cx-cols">
 	        <div class="cx-block">
 	          <div class="cx-row"><span class="nm cx-model"></span></div>
-	          <div class="cx-row"><span class="nm cx-acct"></span></div>
+	          <div class="cx-advice"></div>
 	          <div class="cx-acts">
-	            <button type="button" class="cx-open">${t("Abrir")}</button>
-	            <button type="button" class="cx-pause">⏸ ${tf("Pausar", "Pause")}</button>
-	            <button type="button" class="cx-resume hidden">▶ ${tf("Reanudar", "Resume")}</button>
-	            <button type="button" class="cx-kill danger">✕ ${tf("Matar", "Kill")}</button>
+	            <button type="button" class="cx-open">${svg("layers",13)} ${t("Abrir")}</button>
 	            <button type="button" class="cx-more" aria-expanded="false">${tf("Más", "More")} ▾</button>
 	          </div>
 	          <div class="cx-extra hidden">
+	            <div class="cx-acts" style="margin-top:12px">
+	              <button type="button" class="cx-pause">⏸ ${tf("Pausar", "Pause")}</button>
+	              <button type="button" class="cx-resume hidden">▶ ${tf("Reanudar", "Resume")}</button>
+	              <button type="button" class="cx-kill danger">${svg("close",13)} ${tf("Matar", "Kill")}</button>
+	            </div>
+	            <div class="cx-row" style="margin-top:8px"><span class="nm cx-acct"></span></div>
 	            <div class="cx-title" style="margin-top:12px">${tf("rol (cambia el modelo de ESTA sesion)", "role (switches THIS session's model)")}</div>
 	            <div class="cx-roles"></div>
 	            <div class="cx-title" style="margin-top:12px">MCPs · Skills <small>${tf("(apagar = menos tokens por turno; aplica al reciclar)", "(off = fewer tokens per turn; applies on recycle)")}</small></div>
@@ -2101,7 +2234,8 @@ function mdStrip(s){ return (s||"").replace(/\*\*|`|^#{1,6} /g, ""); }
 	                 working: tf("trabajando", "working"), done: tf("listo", "done"),
 	                 idle: tf("descansando", "idle"), dead: tf("apagada", "dead")}[st] || st;
 	  box.querySelector(".cx-sub").textContent = stTxt +
-	    (it.why ? ` · ${it.why}` : (it.contextPct ? ` · ctx ${it.contextPct}%` : ""));
+	    (it.contextPct ? ` · ctx ${it.contextPct}%` : "");
+	  renderAdvice(box, it);
 	  const me = box.querySelector(".cx-model");
 	  me.textContent = model ? `${model}${tst && tst.symbol ? " " + tst.symbol : ""}` :
 	    tf("modelo aun no detectado", "model not detected yet");
@@ -2110,6 +2244,28 @@ function mdStrip(s){ return (s||"").replace(/\*\*|`|^#{1,6} /g, ""); }
 	    `${tf("cuenta", "account")}: ${it.account || "main"}` +
 	    (it.accountEmail ? ` · ${it.accountEmail}` : "");
 	  renderBrain(box, it);
+	}
+	// LA linea sabia: UN problema a la vez, el mas importante primero.
+	// Prioridad: loop > contexto > quema > cache > MCPs pesados > CLAUDE.md largo.
+	function renderAdvice(box, it){
+	  const el = box.querySelector(".cx-advice");
+	  if(!el) return;
+	  let msg = it.why || "";
+	  if(!msg){
+	    const d = (brainCache.cwd === it.cwd) && brainCache.data;
+	    if(d){
+	      const act = (d.mcps || []).filter(m => m.enabled);
+	      const tot = act.reduce((a, m) => a + (m.est_tokens || 0), 0);
+	      if(act.length > 7)
+	        msg = tf(`${act.length} MCPs activos ≈ ${Math.round(tot/1000)}k tokens por turno — apaga los que no uses (Más ▾)`,
+	                 `${act.length} active MCPs ≈ ${Math.round(tot/1000)}k tokens/turn — turn off unused ones (More ▾)`);
+	      else if(d.claudeMd && d.claudeMd.lines > 200)
+	        msg = tf(`${d.claudeMd.name}: ${d.claudeMd.lines} lineas — cuando es tan largo, Claude ignora la mitad`,
+	                 `${d.claudeMd.name}: ${d.claudeMd.lines} lines — when this long, Claude ignores half of it`);
+	    }
+	  }
+	  el.textContent = msg ? "⚠ " + msg : "";
+	  el.classList.toggle("hidden", !msg);
 	}
 	async function renderBrain(box, it){
 	  if(!it.cwd) return;
@@ -2128,6 +2284,7 @@ function mdStrip(s){ return (s||"").replace(/\*\*|`|^#{1,6} /g, ""); }
 	    </div>`;
 	  const mcps = d.mcps || [], skills = d.skills || [];
 	  const tot = arr => arr.filter(x => x.enabled).reduce((a, x) => a + (x.est_tokens || 0), 0);
+	  renderAdvice(box, it);
 	  const acctRow = box.querySelector(".cx-acct");
 	  if(acctRow && (d.accounts || []).length > 1 && !box.querySelector(".cx-accs")){
 	    const div = document.createElement("div");
