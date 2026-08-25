@@ -141,7 +141,7 @@ def test_changed_and_stale_pane_models_are_reconciled(tmp_path, monkeypatch):
         "set-option", "-p", "-t", "%1", "@ccmodel"
     ) for args in calls)
     assert ("set-option", "-p", "-u", "-t", "%2", "@ccmodel") in calls
-    assert Path(dash.PANE_MODELS_FILE).read_text() == "%1 codex · gpt-5.6\n"
+    assert Path(dash.PANE_MODELS_FILE).read_text() == "%1 codex · gpt-5.6 $$$\n"
 
 
 def test_explicit_none_pane_model_clears_unknown_restart_state_once(

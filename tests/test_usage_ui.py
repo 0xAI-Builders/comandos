@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+import re
 from pathlib import Path
 
 
@@ -65,10 +66,21 @@ def test_no_agent_badges_in_header():
 
 
 def test_header_has_no_search_nor_open_project():
-    # "abrir proyecto" fuera; el buscador vive junto al titulo de Sesiones
+    # The old inline search was removed; Ctrl+K opens the session switcher and
+    # the plus button sits beside the Sessions heading.
     assert 'id="new-form"' not in HTML
     assert 'id="new-name"' not in HTML
-    assert 'Sesiones\n    <input id="q"' in HTML
+    assert 'id="q"' not in HTML
+    switch_button = re.search(
+        r'<button\b(?=[^>]*\bid="btn-switch")'
+        r'(?=[^>]*\btitle="[^"]*Ctrl\+K)[^>]*>', HTML
+    )
+    assert switch_button
+    sessions_label = re.search(
+        r'<div class="sec-label">Sesiones(?P<body>.*?)</div>', HTML, re.S
+    )
+    assert sessions_label
+    assert 'id="btn-newsess"' in sessions_label.group("body")
 
 
 def test_recent_closed_sessions_are_recoverable():

@@ -118,11 +118,11 @@ def test_pane_model_values_normalize_labels_and_preserve_clears():
     ])
 
     assert values == {
-        "%1": "#[fg=colour141,bold]▸ claude · sonnet#[default]",
-        "%2": "#[fg=colour43,bold]▸ codex · gpt-5.6#[default]",
+        "%1": "#[fg=colour141,bold]▸ claude#[default]#[fg=colour179,bold] · sonnet $$#[default]",
+        "%2": "#[fg=colour43,bold]▸ codex#[default]#[fg=colour203,bold] · gpt-5.6 $$$#[default]",
         "%3": None,
     }
-    assert plain == "%1 claude · sonnet\n%2 codex · gpt-5.6\n"
+    assert plain == "%1 claude · sonnet $$\n%2 codex · gpt-5.6 $$$\n"
 
 
 def test_alert_rules_endpoint_and_evaluation():

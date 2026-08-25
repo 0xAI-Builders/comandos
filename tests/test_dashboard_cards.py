@@ -28,25 +28,40 @@ def run_node(script: str):
     subprocess.run(["node", "-e", script], check=True, text=True)
 
 
-def test_codex_done_with_detail_renders_as_actionable_card():
+def test_all_session_states_render_as_uniform_rows():
     run_node(textwrap.dedent(f"""
         const assert = require("assert");
         {js_function("itemKind")}
 
-        assert.equal(itemKind({{status: "waiting", agent: "codex"}}), "card");
-        assert.equal(itemKind({{status: "done", agent: "codex", detail: "Final answer"}}), "card");
-        assert.equal(itemKind({{status: "done", agent: "codex", last: "Final answer"}}), "card");
+        assert.equal(itemKind({{status: "waiting", agent: "codex"}}), "row");
+        assert.equal(itemKind({{status: "done", agent: "codex", detail: "Final answer"}}), "row");
+        assert.equal(itemKind({{status: "done", agent: "codex", last: "Final answer"}}), "row");
         assert.equal(itemKind({{status: "done", agent: "claude", detail: "Final answer"}}), "row");
         assert.equal(itemKind({{status: "working", agent: "codex"}}), "row");
     """))
 
 
-def test_card_container_visibility_uses_rendered_card_count_not_only_waiting():
-    assert 'let cardCount = 0;' in HTML
-    assert 'cardCount++' in HTML
-    assert '$("#urgent-wrap").classList.toggle("hidden", cardCount === 0)' in HTML
+def test_renderer_uses_one_row_container_and_inline_expansion():
+    render = js_function("render")
+    row = js_function("rowEl")
+
+    assert "const container = rows;" in render
+    assert "rowEl(it)" in render
+    assert "ROW_ORDER = {waiting:-1" in HTML
+    assert "style.order =" in render
+    assert 'class="rxp"' in row
+    assert 'class="xp hidden"' in row
+    assert 'el.classList.toggle("open")' in row
+
+
+def test_cards_and_urgent_section_are_removed():
+    assert "cardCount" not in HTML
+    assert "#urgent-wrap" not in HTML
+    assert 'id="urgent-wrap"' not in HTML
+    assert "cardEl" not in HTML
 
 
 if __name__ == "__main__":
-    test_codex_done_with_detail_renders_as_actionable_card()
-    test_card_container_visibility_uses_rendered_card_count_not_only_waiting()
+    test_all_session_states_render_as_uniform_rows()
+    test_renderer_uses_one_row_container_and_inline_expansion()
+    test_cards_and_urgent_section_are_removed()
