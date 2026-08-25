@@ -11,4 +11,7 @@ for f in dash/index.html dash/term.html; do
   " || { echo "FALLA parse JS en $f"; exit 1; }
 done
 node --check assets/xterm/addon-ligatures-web.js
+for f in dash/perezos/*.js; do
+  node --check "$f"
+done
 echo OK
