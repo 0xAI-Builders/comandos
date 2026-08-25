@@ -65,7 +65,7 @@ chmod +x "$REPO"/bin/* "$REPO"/hooks/cc-notify.sh "$REPO"/hooks/cc-status.sh
 
 # Hooks + dashboard
 for f in cc-notify.sh cc-status.sh md2tg.py; do ln -sf "$REPO/hooks/$f" "$HOOKS/$f"; done
-for f in index.html sw.js manifest.webmanifest icon-192.png icon-512.png term.html axolotl.png; do
+for f in index.html sw.js manifest.webmanifest icon-192.png icon-512.png term.html; do
   ln -sf "$REPO/dash/$f" "$HOOKS/dash/$f"
 done
 # Iconos Lucide y assets bundleados (xterm.js, fuentes): el terminal web
