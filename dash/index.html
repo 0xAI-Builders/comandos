@@ -239,11 +239,46 @@
   .abadge[data-a="codex"]{color:#19C39C;border-color:#19C39C55}
   .acct-chip{flex:none}
   #btn-pomo.running{color:#FF6B35;border-color:#FF6B3577;font-weight:700}
-  #pomo-menu{position:fixed;z-index:60;background:var(--panel);border:1px solid var(--line2);
-    border-radius:10px;padding:6px;display:flex;flex-direction:column;gap:4px;box-shadow:0 8px 30px #0008}
-  #pomo-menu button{font-family:var(--mono);font-size:11.5px;padding:7px 16px;border:none;
-    background:none;color:var(--text);cursor:pointer;border-radius:7px;text-align:left}
-  #pomo-menu button:hover{background:var(--panel2);color:var(--brand)}
+  #pomo-panel{position:fixed;z-index:60;background:var(--panel);border:1px solid var(--line2);
+    border-radius:16px;padding:18px;display:flex;flex-direction:column;gap:14px;
+    box-shadow:0 16px 44px #000A;width:280px;max-width:92vw}
+  .pp-ring{position:relative;width:150px;height:150px;margin:0 auto}
+  .pp-ring svg{transform:rotate(-90deg)}
+  .pp-ring .bgc{stroke:var(--line);fill:none}
+  .pp-ring .fgc{stroke:#FF6B35;fill:none;stroke-linecap:round;
+    transition:stroke-dashoffset .9s linear}
+  .pp-time{position:absolute;inset:0;display:flex;flex-direction:column;
+    align-items:center;justify-content:center;gap:2px}
+  .pp-time b{font-family:var(--mono);font-size:26px;letter-spacing:.02em}
+  .pp-time small{font-family:var(--mono);font-size:9.5px;color:var(--dim);
+    max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .pp-durs{display:flex;gap:6px;justify-content:center}
+  .pp-durs button{font-family:var(--mono);font-size:12px;font-weight:700;
+    width:52px;height:38px;border-radius:10px;border:1px solid var(--line2);
+    background:none;color:var(--dim);cursor:pointer;transition:all .13s ease}
+  .pp-durs button:hover{color:var(--text);border-color:var(--text)}
+  .pp-durs button.on{color:#FF6B35;border-color:#FF6B35;
+    background:color-mix(in srgb,#FF6B35 10%,transparent)}
+  .pp-go{font-family:var(--mono);font-size:13px;font-weight:700;height:40px;
+    border-radius:11px;border:none;background:#FF6B35;color:#14121A;cursor:pointer;
+    transition:filter .12s ease}
+  .pp-go:hover{filter:brightness(1.1)}
+  .pp-go.stop{background:none;border:1px solid var(--line2);color:var(--dim)}
+  .pp-go.stop:hover{color:#FF6B6B;border-color:#FF6B6B}
+  .pp-proj{font-family:var(--mono);font-size:10.5px;color:var(--dim);text-align:center}
+  .pp-tiles{display:flex;gap:8px}
+  .pp-tile{flex:1;background:var(--bg);border:1px solid var(--line);border-radius:12px;
+    padding:10px 6px;display:flex;flex-direction:column;align-items:center;gap:2px}
+  .pp-tile b{font-family:var(--mono);font-size:17px}
+  .pp-tile small{font-family:var(--mono);font-size:8.5px;color:var(--faint);
+    letter-spacing:.08em;text-transform:uppercase}
+  .pp-bars{display:flex;gap:5px;align-items:flex-end;height:56px;padding:0 4px}
+  .pp-bar{flex:1;display:flex;flex-direction:column;align-items:center;gap:3px;height:100%;
+    justify-content:flex-end}
+  .pp-bar span{width:100%;border-radius:4px 4px 2px 2px;background:#FF6B3599;min-height:2px;
+    transition:height .3s ease}
+  .pp-bar.today span{background:#FF6B35}
+  .pp-bar small{font-family:var(--mono);font-size:8px;color:var(--faint)}
   button:focus-visible,[tabindex]:focus-visible,input:focus-visible{
     outline:2px solid var(--brand);outline-offset:2px;border-radius:6px}
   #dedication{display:flex;flex-direction:column;gap:6px;margin-top:6px}
@@ -1060,7 +1095,7 @@
 	    <button class="hdr-btn" id="btn-theme" aria-label="theme" title="Tema: Noche → Día → Cálido → Termius → Bruno"></button>
 	    <button class="hdr-btn" id="btn-pomo" role="timer" aria-label="Pomodoro"
 	      title="Pomodoro: tú lo inicias, se registra por proyecto — todo local">🍅</button>
-	    <div id="pomo-menu" class="hidden" role="menu"></div>
+	    <div id="pomo-panel" class="hidden" role="dialog" aria-label="Pomodoro"></div>
 	    <button class="hdr-btn" id="btn-usage" title="Uso, límites y gasto por pane">Uso</button>
 	    <button class="hdr-btn" id="btn-remote" title="Continuar desde celular/tablet">Remoto</button>
 	    <button class="hdr-btn" id="btn-settings">Ajustes</button>
@@ -2720,13 +2755,79 @@ function mdStrip(s){ return (s||"").replace(/\*\*|`|^#{1,6} /g, ""); }
 	  }catch(err){ toast(err.message, true); }
 	}
 	let usagePollTs = 0;
-	const POMO = {t: null, end: 0, mins: 0, project: ""};
+	const POMO = {t: null, end: 0, mins: 25, project: ""};
 	function pomoLog(){
 	  try{ return JSON.parse(localStorage.getItem("cc-pomos") || "[]"); }catch(e){ return []; }
 	}
-	function pomoToday(){
-	  const today = new Date().toISOString().slice(0, 10);
-	  return pomoLog().filter(x => x.date === today);
+	function pomoDay(offset){
+	  const d = new Date(); d.setDate(d.getDate() - offset);
+	  return d.toISOString().slice(0, 10);
+	}
+	function pomoToday(){ return pomoLog().filter(x => x.date === pomoDay(0)); }
+	function pomoStats(){
+	  const log = pomoLog();
+	  const days = [];
+	  for(let i = 6; i >= 0; i--){
+	    const date = pomoDay(i);
+	    days.push({date, n: log.filter(x => x.date === date).length});
+	  }
+	  let streak = 0;
+	  for(let i = 0; i < 365; i++){
+	    const n = log.filter(x => x.date === pomoDay(i)).length;
+	    if(n > 0) streak++;
+	    else if(i === 0) continue;   // hoy sin pomos aun no rompe la racha
+	    else break;
+	  }
+	  const today = pomoToday();
+	  return {days, streak,
+	          todayN: today.length,
+	          todayMin: today.reduce((a, x) => a + (x.mins || 0), 0)};
+	}
+	function pomoRender(){
+	  const m = $("#pomo-panel");
+	  if(m.classList.contains("hidden")) return;
+	  const st = pomoStats();
+	  const it = pickSel(S.list || []);
+	  const proj = POMO.t ? POMO.project : (it ? (it.project || it.session) : "");
+	  const total = POMO.mins * 60000;
+	  const left = POMO.t ? Math.max(0, POMO.end - Date.now()) : total;
+	  const R = 64, C = 2 * Math.PI * R;
+	  const off = C * (1 - left / total);
+	  const mm = Math.floor(left / 60000), ss = Math.floor(left % 60000 / 1000);
+	  const dias = ["D", "L", "M", "X", "J", "V", "S"];
+	  const maxN = Math.max(1, ...st.days.map(d => d.n));
+	  m.innerHTML = `
+	    <div class="pp-ring">
+	      <svg width="150" height="150" viewBox="0 0 150 150">
+	        <circle class="bgc" cx="75" cy="75" r="${R}" stroke-width="9"/>
+	        <circle class="fgc" cx="75" cy="75" r="${R}" stroke-width="9"
+	          stroke-dasharray="${C.toFixed(1)}" stroke-dashoffset="${off.toFixed(1)}"/>
+	      </svg>
+	      <div class="pp-time"><b>${mm}:${String(ss).padStart(2, "0")}</b>
+	        <small title="${attrEsc(proj)}">${mdEsc(proj || "—")}</small></div>
+	    </div>
+	    ${POMO.t ? "" : `<div class="pp-durs">` +
+	      [15, 25, 50].map(n => `<button type="button" class="${POMO.mins === n ? "on" : ""}"
+	        data-min="${n}">${n}′</button>`).join("") + `</div>`}
+	    <button type="button" class="pp-go ${POMO.t ? "stop" : ""}" id="pp-go">
+	      ${POMO.t ? tf("Cancelar", "Cancel") : tf("Enfocar", "Focus")}</button>
+	    <div class="pp-tiles">
+	      <div class="pp-tile"><b>${st.todayN}</b><small>${tf("hoy", "today")}</small></div>
+	      <div class="pp-tile"><b>${st.todayMin}′</b><small>min</small></div>
+	      <div class="pp-tile"><b>${st.streak}</b><small>${tf("racha", "streak")}</small></div>
+	    </div>
+	    <div class="pp-bars">${st.days.map((d, i) => `
+	      <div class="pp-bar ${i === 6 ? "today" : ""}" title="${d.date}: ${d.n} 🍅">
+	        <span style="height:${Math.round(100 * d.n / maxN)}%"></span>
+	        <small>${dias[new Date(d.date + "T12:00").getDay()]}</small>
+	      </div>`).join("")}</div>`;
+	  m.querySelectorAll(".pp-durs button").forEach(b =>
+	    b.addEventListener("click", ()=>{ POMO.mins = Number(b.dataset.min); pomoRender(); }));
+	  m.querySelector("#pp-go").addEventListener("click", ()=>{
+	    if(POMO.t){ pomoFinish(false); toast(tf("Pomodoro cancelado", "Pomodoro cancelled")); }
+	    else pomoStart(POMO.mins);
+	    pomoRender();
+	  });
 	}
 	function pomoFinish(done){
 	  clearInterval(POMO.t); POMO.t = null;
@@ -2735,8 +2836,7 @@ function mdStrip(s){ return (s||"").replace(/\*\*|`|^#{1,6} /g, ""); }
 	  b.setAttribute("aria-label", "Pomodoro");
 	  if(done){
 	    const log = pomoLog();
-	    log.push({date: new Date().toISOString().slice(0, 10),
-	              mins: POMO.mins, project: POMO.project});
+	    log.push({date: pomoDay(0), mins: POMO.mins, project: POMO.project});
 	    localStorage.setItem("cc-pomos", JSON.stringify(log.slice(-500)));
 	    dedTs = 0;
 	    toast(`🍅 ${POMO.mins} min ${tf("completados en", "done on")} ${POMO.project || "?"}`);
@@ -2747,6 +2847,7 @@ function mdStrip(s){ return (s||"").replace(/\*\*|`|^#{1,6} /g, ""); }
 	        body: `🍅 ${POMO.mins} min ${tf("completados", "completed")} — ${tf("descansa tantito", "take a short break")}`})
 	    }).catch(()=>{});
 	  }
+	  pomoRender();
 	}
 	function pomoStart(mins){
 	  const it = pickSel(S.list || []);
@@ -2760,26 +2861,23 @@ function mdStrip(s){ return (s||"").replace(/\*\*|`|^#{1,6} /g, ""); }
 	    const mm = Math.floor(left/60000), ss = Math.floor(left%60000/1000);
 	    b.textContent = `🍅 ${mm}:${String(ss).padStart(2,"0")}`;
 	    b.setAttribute("aria-label", `Pomodoro: ${mm} minutos ${ss} segundos restantes`);
+	    pomoRender();
 	  };
 	  clearInterval(POMO.t); POMO.t = setInterval(tick, 1000); tick();
 	  toast(`🍅 ${mins} min → ${POMO.project || tf("sin proyecto", "no project")}`);
 	}
 	$("#btn-pomo").addEventListener("click", e => {
-	  if(POMO.t){ pomoFinish(false); toast(tf("Pomodoro cancelado", "Pomodoro cancelled")); return; }
-	  const m = $("#pomo-menu");
+	  const m = $("#pomo-panel");
 	  if(!m.classList.contains("hidden")) return m.classList.add("hidden");
-	  m.innerHTML = [15, 25, 50].map(n =>
-	    `<button role="menuitem" data-min="${n}">🍅 ${n} min</button>`).join("");
 	  const r = e.currentTarget.getBoundingClientRect();
-	  m.style.top = (r.bottom + 6) + "px"; m.style.left = r.left + "px";
+	  m.style.top = (r.bottom + 8) + "px";
+	  m.style.left = Math.max(8, Math.min(r.left, window.innerWidth - 296)) + "px";
 	  m.classList.remove("hidden");
-	  m.querySelectorAll("button").forEach(x => x.addEventListener("click", ()=>{
-	    m.classList.add("hidden"); pomoStart(Number(x.dataset.min));
-	  }));
+	  pomoRender();
 	});
 	document.addEventListener("click", e => {
-	  if(!e.target.closest("#pomo-menu") && !e.target.closest("#btn-pomo"))
-	    $("#pomo-menu")?.classList.add("hidden");
+	  if(!e.target.closest("#pomo-panel") && !e.target.closest("#btn-pomo"))
+	    $("#pomo-panel")?.classList.add("hidden");
 	});
 	function fmtMin(m){
 	  return m >= 90 ? `${(m/60).toFixed(1)} h` : `${Math.round(m)} min`;
