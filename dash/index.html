@@ -317,8 +317,8 @@
   #centro{display:flex;gap:18px;padding:16px;border:1px solid var(--line);
     border-radius:14px;background:var(--panel);flex-wrap:wrap}
   .cx-hero{display:flex;flex-direction:column;align-items:center;gap:6px;min-width:150px}
-  .cx-hero canvas{image-rendering:pixelated;width:126px;height:91px}
-  .cx-hero .aqua{width:140px;height:104px;border-radius:50%;display:flex;align-items:center;
+  .cx-hero canvas{image-rendering:pixelated;width:216px;height:144px}
+  .cx-hero .aqua{width:236px;height:168px;border-radius:50%;display:flex;align-items:center;
     justify-content:center;background:radial-gradient(circle at 50% 44%,var(--aqua-c,#232B3E) 0%,transparent 74%)}
   .cx-hero[data-st="waiting"]{--aqua-c:#6E4C12}
   .cx-hero[data-st="working"]{--aqua-c:#274070}
@@ -330,7 +330,8 @@
   @media (max-width:760px){
     #centro{flex-direction:column;align-items:stretch;gap:12px}
     .cx-hero{flex-direction:row;justify-content:flex-start;gap:12px;min-width:0}
-    .cx-hero .aqua{width:110px;height:82px;flex:none}
+    .cx-hero .aqua{width:190px;height:134px;flex:none}
+    .cx-hero canvas{width:174px;height:116px}
     .cx-cols{flex-direction:column;gap:14px}
     .cx-block{min-width:0}
   }
@@ -1716,7 +1717,7 @@ function mdStrip(s){ return (s||"").replace(/\*\*|`|^#{1,6} /g, ""); }
 	// Sprite PROCEDURAL 36x24: cuerpo por elipses rasterizadas (curvas suaves),
 	// sombreado en 3 tonos + panza, contorno, branquias plumosas, aleta dorsal
 	// y caudal, patitas, ojo con brillo, cachete. Dos frames (cola/branquias).
-	const AXO_Q = 2;                       // factor HD: 2x la resolucion base
+	const AXO_Q = 4;                       // factor HD: 4x — malla 144x96
 	const AXO_W = 36 * AXO_Q, AXO_H = 24 * AXO_Q;
 	function _axoBuild(alt){
 	  const g = Array.from({length: AXO_H}, () => Array(AXO_W).fill("."));
@@ -1776,7 +1777,8 @@ function mdStrip(s){ return (s||"").replace(/\*\*|`|^#{1,6} /g, ""); }
 	  [[12,20],[20,20]].forEach(([x,y])=>blk(x,y,"D"));
 	  // 7) carita: ojo grande con brillo, sonrisa, cachete
 	  blk(26,11,"E"); blk(27,11,"E"); blk(26,12,"E"); blk(27,12,"E");
-	  g[11*AXO_Q][27*AXO_Q]="H"; g[11*AXO_Q][27*AXO_Q+1]="H";   // brillo
+	  for(let dy=0;dy<AXO_Q;dy++) for(let dx=0;dx<AXO_Q;dx++)
+	    g[11*AXO_Q+dy][27*AXO_Q+dx]="H";                        // brillo
 	  blk(27,14,"M"); blk(28,14,"M"); blk(26,15,"M");
 	  blk(23,13,"K"); blk(24,13,"K");
 	  return g.map(r => r.join(""));
