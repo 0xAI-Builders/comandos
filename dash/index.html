@@ -985,10 +985,7 @@
   <div id="centro"></div>
 </section>
 <section class="sec">
-  <div class="sec-label">Sesiones
-    <input id="q" placeholder="buscar sesión" autocomplete="off" spellcheck="false"
-      title="Filtra por nombre o ruta">
-  </div>
+  <div class="sec-label">Sesiones</div>
   <div id="rows"></div>
 </section>
 
@@ -1950,12 +1947,8 @@ function mdStrip(s){ return (s||"").replace(/\*\*|`|^#{1,6} /g, ""); }
 	        </div>
 	      </div>`;
 	    const fr = box.querySelector(".frames");
-	    const HATS = {corona: "👑", casco: "👷", visor: "🔍"};
-	    const COSTUMES = {fuego: "🔥", hamster: "🎡", gordo: "🍔", huevo: "🥚", bufanda: "🧣"};
 	    fr.innerHTML = `<span class="axo-wrap">
 	      <img class="axo-img" src="/axolotl.png" alt="ComandOS axolotl" draggable="false">
-	      ${HATS[hat] ? `<span class="axo-badge axo-hat">${HATS[hat]}</span>` : ""}
-	      ${COSTUMES[costume] ? `<span class="axo-badge axo-cos">${COSTUMES[costume]}</span>` : ""}
 	    </span>`;
 	    // Rol actual + cambio de rol (usa el switch de modelo existente)
 	    const rbox = box.querySelector(".cx-roles");
@@ -3844,7 +3837,7 @@ function applyQ(){
     c.classList.toggle("hidden", !!q && !(c.dataset.search||"").includes(q));
   });
 }
-$("#q").addEventListener("input", e=>{ S.q = e.target.value; applyQ(); });
+// (buscador de sesion eliminado a peticion del usuario; Ctrl+K sigue vivo)
 
 // ---------- iconos ----------
 // SVG monolínea estilo Lucide/Termius, hereda color con currentColor.
