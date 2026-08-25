@@ -326,7 +326,14 @@
   .cx-hero[data-st="dead"] canvas{filter:grayscale(.95) opacity(.55)}
   .cx-name{font-weight:700;font-size:15px}
   .cx-sub{font-family:var(--mono);font-size:10.5px;color:var(--dim)}
-  .cx-cols{display:flex;gap:26px;flex:1;flex-wrap:wrap;min-width:0}
+  .cx-cols{display:flex;gap:22px;flex:1;flex-wrap:wrap;min-width:0}
+  @media (max-width:760px){
+    #centro{flex-direction:column;align-items:stretch;gap:12px}
+    .cx-hero{flex-direction:row;justify-content:flex-start;gap:12px;min-width:0}
+    .cx-hero .aqua{width:110px;height:82px;flex:none}
+    .cx-cols{flex-direction:column;gap:14px}
+    .cx-block{min-width:0}
+  }
   .cx-block{min-width:200px;flex:1}
   .cx-title{font-family:var(--mono);font-size:10px;font-weight:700;color:var(--faint);
     letter-spacing:.12em;text-transform:uppercase;margin-bottom:8px}
@@ -351,6 +358,9 @@
   .cx-role:hover{border-color:var(--brand);color:var(--brand)}
   .cx-role.on{color:var(--brand);border-color:var(--brand);background:color-mix(in srgb,var(--brand) 12%,transparent)}
   .cx-flows{display:flex;flex-direction:column;gap:5px;align-items:flex-start}
+  .cx-newacct{font-family:var(--mono);font-size:10px;padding:3px 9px;border-radius:7px;
+    border:1px dashed var(--line2);background:none;color:var(--dim);cursor:pointer}
+  .cx-newacct:hover{border-color:var(--done);color:var(--done)}
   .cx-danger{display:flex;align-items:center;gap:8px;font-family:var(--mono);
     font-size:10px;color:var(--dim);margin-bottom:3px;cursor:pointer}
   .cx-flow{font-family:var(--mono);font-size:10.5px;padding:5px 10px;border-radius:8px;
@@ -1706,10 +1716,14 @@ function mdStrip(s){ return (s||"").replace(/\*\*|`|^#{1,6} /g, ""); }
 	// Sprite PROCEDURAL 36x24: cuerpo por elipses rasterizadas (curvas suaves),
 	// sombreado en 3 tonos + panza, contorno, branquias plumosas, aleta dorsal
 	// y caudal, patitas, ojo con brillo, cachete. Dos frames (cola/branquias).
-	const AXO_W = 36, AXO_H = 24;
+	const AXO_Q = 2;                       // factor HD: 2x la resolucion base
+	const AXO_W = 36 * AXO_Q, AXO_H = 24 * AXO_Q;
 	function _axoBuild(alt){
 	  const g = Array.from({length: AXO_H}, () => Array(AXO_W).fill("."));
-	  const inE = (x,y,cx,cy,rx,ry) => ((x-cx)/rx)**2 + ((y-cy)/ry)**2 <= 1;
+	  const inE = (xx,yy,cx,cy,rx,ry) => {
+	    const x = xx / AXO_Q, y = yy / AXO_Q;
+	    return ((x-cx)/rx)**2 + ((y-cy)/ry)**2 <= 1;
+	  };
 	  const body = (x,y) =>
 	    inE(x,y,25,13.5,6.0,5.2) ||                  // cabeza
 	    inE(x,y,16,14.5,8.5,4.4) ||                  // torso
@@ -1727,7 +1741,7 @@ function mdStrip(s){ return (s||"").replace(/\*\*|`|^#{1,6} /g, ""); }
 	    g[y][x] = body(x,y-1) ? (body(x,y+1) ? "B" : "S") : "L";
 	  }
 	  // 3) panza clara
-	  for(let y=15;y<=18;y++) for(let x=12;x<=23;x++)
+	  for(let y=15*AXO_Q;y<=18*AXO_Q;y++) for(let x=12*AXO_Q;x<=23*AXO_Q;x++)
 	    if(g[y][x]==="B"||g[y][x]==="S") if(inE(x,y,17,17.4,7.4,2.4)) g[y][x]="W";
 	  // 4) contorno
 	  for(let y=0;y<AXO_H;y++) for(let x=0;x<AXO_W;x++){
@@ -1739,9 +1753,16 @@ function mdStrip(s){ return (s||"").replace(/\*\*|`|^#{1,6} /g, ""); }
 	  }
 	  // 5) branquias: 3 tallos por lado visibles, plumosos (se mecen con alt)
 	  const sway = alt ? 1 : 0;
+	  const blk = (x, y, ch, w) => {      // bloque QxQ en coords base
+	    w = w || AXO_Q;
+	    for(let dy=0; dy<w; dy++) for(let dx=0; dx<w; dx++){
+	      const yy = y*AXO_Q + dy, xx = x*AXO_Q + dx;
+	      if(g[yy] && g[yy][xx] !== undefined) g[yy][xx] = ch;
+	    }
+	  };
 	  const stalk = (pts, tip) => {
-	    pts.forEach(([x,y]) => { if(g[y]&&g[y][x]!==undefined) g[y][x]="R"; });
-	    tip.forEach(([x,y]) => { if(g[y]&&g[y][x]!==undefined) g[y][x]="G"; });
+	    pts.forEach(([x,y]) => blk(x, y, "R"));
+	    tip.forEach(([x,y]) => blk(x, y, "G", AXO_Q + 1));   // plumas mas gorditas
 	  };
 	  // branquias GRANDES y plumosas: lo iconico del ajolote
 	  stalk([[23,8],[22,7],[22,6],[21,5]],
@@ -1751,12 +1772,13 @@ function mdStrip(s){ return (s||"").replace(/\*\*|`|^#{1,6} /g, ""); }
 	  stalk([[30,9],[31,8],[32,7],[32,6]],
 	        [[33,5],[33,4+sway],[32,4],[34,6],[34,5],[33,6],[34,7]]);
 	  // 6) patitas
-	  [[13,19],[13,20],[14,20],[21,19],[21,20],[22,20]].forEach(([x,y])=>g[y][x]="S");
-	  [[12,20],[20,20]].forEach(([x,y])=>g[y][x]="D");
+	  [[13,19],[13,20],[14,20],[21,19],[21,20],[22,20]].forEach(([x,y])=>blk(x,y,"S"));
+	  [[12,20],[20,20]].forEach(([x,y])=>blk(x,y,"D"));
 	  // 7) carita: ojo grande con brillo, sonrisa, cachete
-	  g[11][26]="E"; g[11][27]="E"; g[12][26]="E"; g[12][27]="E"; g[11][27]="H";
-	  g[14][27]="M"; g[14][28]="M"; g[15][26]="M";
-	  g[13][23]="K"; g[13][24]="K";
+	  blk(26,11,"E"); blk(27,11,"E"); blk(26,12,"E"); blk(27,12,"E");
+	  g[11*AXO_Q][27*AXO_Q]="H"; g[11*AXO_Q][27*AXO_Q+1]="H";   // brillo
+	  blk(27,14,"M"); blk(28,14,"M"); blk(26,15,"M");
+	  blk(23,13,"K"); blk(24,13,"K");
 	  return g.map(r => r.join(""));
 	}
 	const AXO_F1 = _axoBuild(false);
@@ -1766,10 +1788,15 @@ function mdStrip(s){ return (s||"").replace(/\*\*|`|^#{1,6} /g, ""); }
 	  cv.width = AXO_W * px; cv.height = AXO_H * px;
 	  const ctx = cv.getContext("2d");
 	  ctx.clearRect(0, 0, cv.width, cv.height);
-	  const put = (x, y, c) => { ctx.fillStyle = c; ctx.fillRect(x*px, y*px, px, px); };
+	  const put1 = (x, y, c) => { ctx.fillStyle = c; ctx.fillRect(x*px, y*px, px, px); };
 	  frame.forEach((row, y) => [...row].forEach((ch, x) => {
-	    if(ch !== ".") put(x, y, AXO_PAL[ch] || AXO_PAL.B);
+	    if(ch !== ".") put1(x, y, AXO_PAL[ch] || AXO_PAL.B);
 	  }));
+	  // los adornos se dibujan en coords BASE (bloques Q x Q)
+	  const put = (x, y, c) => {
+	    ctx.fillStyle = c;
+	    ctx.fillRect(x*AXO_Q*px, y*AXO_Q*px, AXO_Q*px, AXO_Q*px);
+	  };
 	  // expresion por estado (sobre la carita base)
 	  if(st === "done"){       // ojitos felices ^ ^
 	    put(27,11,AXO_PAL.B); put(28,11,AXO_PAL.B); put(27,12,AXO_PAL.E); put(28,12,AXO_PAL.E);
@@ -1827,8 +1854,7 @@ function mdStrip(s){ return (s||"").replace(/\*\*|`|^#{1,6} /g, ""); }
 	let axoFlip = false;
 	setInterval(() => {
 	  axoFlip = !axoFlip;
-	  document.querySelectorAll('.cx-hero').forEach(a => {
-	    if(a.dataset.st !== "working" && !a.closest("#centro")) return;
+	  document.querySelectorAll('.cx-hero[data-st="working"]').forEach(a => {
 	    const f1 = a.querySelector(".f1"), f2 = a.querySelector(".f2");
 	    if(!f1 || !f2) return;
 	    f1.style.display = axoFlip ? "none" : "";
@@ -2026,9 +2052,9 @@ function mdStrip(s){ return (s||"").replace(/\*\*|`|^#{1,6} /g, ""); }
 	  if(acctRow && (d.accounts || []).length > 1 && !box.querySelector(".cx-accs")){
 	    const div = document.createElement("div");
 	    div.className = "cx-row cx-accs";
-	    div.innerHTML = `<span class="tok">${tf("nueva aqui con:", "new here as:")}</span>` +
-	      d.accounts.map(a => `<button type="button" class="cx-role" data-acct="${attrEsc(a.alias)}"
-	        title="${attrEsc(a.email || a.alias)}">${mdEsc(a.alias)}</button>`).join("");
+	    div.innerHTML = `<span class="tok">${tf("abrir NUEVA sesion aqui con:", "open NEW session here as:")}</span>` +
+	      d.accounts.map(a => `<button type="button" class="cx-newacct" data-acct="${attrEsc(a.alias)}"
+	        title="${tf("Abre una pestana nueva en este proyecto con la cuenta", "Opens a new tab in this project as")} ${attrEsc(a.email || a.alias)}">＋ ${mdEsc(a.alias)}</button>`).join("");
 	    acctRow.parentElement.insertBefore(div, acctRow.nextSibling);
 	    div.querySelectorAll("[data-acct]").forEach(b => b.addEventListener("click", async ()=>{
 	      try{
