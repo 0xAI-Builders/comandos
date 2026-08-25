@@ -7,63 +7,101 @@
   },
   "roles": [
     {
-      "id": "verificador", "label": "Verificador", "hat": "visor",
+      "id": "verificador",
+      "label": "Verificador",
+      "hat": "visor",
       "desc": "lint, tests, triage, renames — barato y rapido",
-      "matches": ["haiku", "spark", "mini", "air", "flash", "nano"],
+      "matches": [
+        "haiku",
+        "spark",
+        "mini",
+        "air",
+        "flash",
+        "nano"
+      ],
       "byProvider": {
-        "claude":   {"alias": "haiku"},
-        "codex":    {"match": ["spark", "mini"], "effort": "low"},
-        "opencode": {"match": ["glm-4\\.5-air", "haiku", "mini", "flash"]}
+        "claude": {
+          "alias": "haiku"
+        },
+        "codex": {
+          "match": [
+            "spark",
+            "mini"
+          ],
+          "effort": "low"
+        },
+        "opencode": {
+          "match": [
+            "glm-4\\.5-air",
+            "haiku",
+            "mini",
+            "flash"
+          ]
+        }
       }
     },
     {
-      "id": "constructor", "label": "Constructor", "hat": "casco",
+      "id": "constructor",
+      "label": "Constructor",
+      "hat": "casco",
       "desc": "features normales, refactors acotados",
-      "matches": ["sonnet", "gpt-5\\.4", "glm-4\\.6", "terra", "luna"],
+      "matches": [
+        "sonnet",
+        "gpt-5\\.4",
+        "glm-4\\.6",
+        "terra",
+        "luna"
+      ],
       "byProvider": {
-        "claude":   {"alias": "sonnet"},
-        "codex":    {"match": ["gpt-5\\.4$", "terra", "luna"], "effort": "medium"},
-        "opencode": {"match": ["glm-4\\.6", "sonnet"]}
+        "claude": {
+          "alias": "sonnet"
+        },
+        "codex": {
+          "match": [
+            "gpt-5\\.4$",
+            "terra",
+            "luna"
+          ],
+          "effort": "medium"
+        },
+        "opencode": {
+          "match": [
+            "glm-4\\.6",
+            "sonnet"
+          ]
+        }
       }
     },
     {
-      "id": "arquitecto", "label": "Arquitecto", "hat": "corona",
+      "id": "arquitecto",
+      "label": "Arquitecto",
+      "hat": "corona",
       "desc": "ambiguo + multi-archivo + irreversible — solo cuando lo vale",
-      "matches": ["opus", "fable", "mythos", "gpt-5\\.6", "sol"],
+      "matches": [
+        "opus",
+        "fable",
+        "mythos",
+        "gpt-5\\.6",
+        "sol"
+      ],
       "byProvider": {
-        "claude":   {"alias": "opus"},
-        "codex":    {"match": ["sol$", "gpt-5\\.6"], "effort": "high"},
-        "opencode": {"match": ["glm-4\\.6", "opus"]}
+        "claude": {
+          "alias": "opus"
+        },
+        "codex": {
+          "match": [
+            "sol$",
+            "gpt-5\\.6"
+          ],
+          "effort": "high"
+        },
+        "opencode": {
+          "match": [
+            "glm-4\\.6",
+            "opus"
+          ]
+        }
       }
     }
-  ],
-  "flows": [
-    {"id": "fable-planea-codex-construye",
-     "label": "Fable planea · Codex construye",
-     "desc": "El caro piensa el plan (modo plan), el barato lo implementa",
-     "steps": [
-       {"agent": "claude", "alias": "fable", "extra": "--permission-mode plan", "label": "plan"},
-       {"agent": "codex", "role": "constructor", "label": "build"}
-     ]},
-    {"id": "opus-planea-sonnet-construye",
-     "label": "Opus planea · Sonnet construye",
-     "desc": "Cascada 100% Claude",
-     "steps": [
-       {"agent": "claude", "role": "arquitecto", "extra": "--permission-mode plan", "label": "plan"},
-       {"agent": "claude", "role": "constructor", "label": "build"}
-     ]},
-    {"id": "codex-construye-haiku-verifica",
-     "label": "Codex construye · Haiku verifica",
-     "desc": "Builder + verificador barato corriendo tests/lint",
-     "steps": [
-       {"agent": "codex", "role": "constructor", "label": "build"},
-       {"agent": "claude", "role": "verificador", "label": "verify"}
-     ]},
-    {"id": "glm-construye",
-     "label": "GLM construye (opencode)",
-     "desc": "Se resuelve contra el catalogo real de opencode; si no hay glm configurado, avisa",
-     "steps": [
-       {"agent": "opencode", "role": "constructor", "label": "build"}
-     ]}
   ]
 }

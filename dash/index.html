@@ -393,16 +393,11 @@
     transition:all .12s ease}
   .cx-role:hover{border-color:var(--brand);color:var(--brand)}
   .cx-role.on{color:var(--brand);border-color:var(--brand);background:color-mix(in srgb,var(--brand) 12%,transparent)}
-  .cx-flows{display:flex;flex-direction:column;gap:5px;align-items:flex-start}
   .cx-newacct{font-family:var(--mono);font-size:10px;padding:3px 9px;border-radius:7px;
     border:1px dashed var(--line2);background:none;color:var(--dim);cursor:pointer}
   .cx-newacct:hover{border-color:var(--done);color:var(--done)}
   .cx-danger{display:flex;align-items:center;gap:8px;font-family:var(--mono);
     font-size:10px;color:var(--dim);margin-bottom:3px;cursor:pointer}
-  .cx-flow{font-family:var(--mono);font-size:10.5px;padding:5px 10px;border-radius:8px;
-    border:1px solid var(--line2);background:none;color:var(--text);cursor:pointer;text-align:left;
-    transition:border-color .12s ease}
-  .cx-flow:hover{border-color:var(--done);color:var(--done)}
   .cx-acts{display:flex;gap:8px;flex-wrap:wrap;margin-top:4px}
   .cx-acts button{font-family:var(--mono);font-size:11px;font-weight:700;padding:7px 14px;
     border-radius:9px;border:1px solid var(--line2);background:none;color:var(--text);cursor:pointer;
@@ -2043,8 +2038,6 @@ function mdStrip(s){ return (s||"").replace(/\*\*|`|^#{1,6} /g, ""); }
 	          <div class="cx-extra hidden">
 	            <div class="cx-title" style="margin-top:12px">${tf("rol (cambia el modelo de ESTA sesion)", "role (switches THIS session's model)")}</div>
 	            <div class="cx-roles"></div>
-	            <div class="cx-title" style="margin-top:12px">${tf("flujos — abren pestañas nuevas en este proyecto con el pipeline elegido", "flows — open new tabs in this project running the chosen pipeline")}</div>
-	            <div class="cx-flows"></div>
 	            <div class="cx-title" style="margin-top:12px">MCPs · Skills <small>${tf("(apagar = menos tokens por turno; aplica al reciclar)", "(off = fewer tokens per turn; applies on recycle)")}</small></div>
 	            <div class="cx-mcps"></div>
 	            <div class="cx-skills"></div>
@@ -2081,40 +2074,6 @@ function mdStrip(s){ return (s||"").replace(/\*\*|`|^#{1,6} /g, ""); }
 	        }catch(err){ toast(err.message, true); }
 	      }));
 	    }
-	    // Flujos multi-proveedor (config/agent-roles.json)
-	    const fbox = box.querySelector(".cx-flows");
-	    if(ROLES && (ROLES.flows || []).length && it.cwd){
-	      const dangerOn = localStorage.getItem("cc-flow-danger") !== "0";
-	      fbox.innerHTML = `<label class="cx-danger">
-	          <button type="button" class="sw ${dangerOn ? "on" : ""}" id="flow-danger"></button>
-	          <span>⚡ ${tf("sin aprobaciones (dangerously)", "no approvals (dangerously)")}</span>
-	        </label>` + (ROLES.flows || []).map(f => `
-	        <button type="button" class="cx-flow" data-flow="${attrEsc(f.id)}"
-	          title="${attrEsc(f.desc || "")}">▶ ${mdEsc(f.label)}</button>`).join("");
-	      const dsw = fbox.querySelector("#flow-danger");
-	      dsw.addEventListener("click", ()=>{
-	        const on = !dsw.classList.contains("on");
-	        dsw.classList.toggle("on", on);
-	        localStorage.setItem("cc-flow-danger", on ? "1" : "0");
-	      });
-	      fbox.querySelectorAll(".cx-flow").forEach(b => b.addEventListener("click", async ()=>{
-	        try{
-	          const r = await api("/flow-launch", {cwd: it.cwd, flow: b.dataset.flow,
-	            danger: dsw.classList.contains("on")});
-	          let msg = tf(`${r.opened.length} tabs abiertas en ${shortPath(it.cwd)}`,
-	                       `${r.opened.length} tabs opened in ${shortPath(it.cwd)}`);
-	          if((r.errors || []).length) msg += ` · ⚠ ${r.errors[0]}`;
-	          toast(msg, (r.errors || []).length > 0);
-	        }catch(err){ toast(err.message, true); }
-	      }));
-	    }
-	    const moreB = box.querySelector(".cx-more");
-	    moreB.addEventListener("click", ()=>{
-	      const ex = box.querySelector(".cx-extra");
-	      const open = ex.classList.toggle("hidden") === false;
-	      moreB.textContent = open ? tf("Menos ▴", "Less ▴") : tf("Más ▾", "More ▾");
-	      moreB.setAttribute("aria-expanded", open);
-	    });
 	    box.querySelector(".cx-open").addEventListener("click", async ()=>{
 	      try{ toast(await openSession(it, "claude")); }catch(err){ toast(err.message, true); }
 	    });
