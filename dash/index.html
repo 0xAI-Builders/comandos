@@ -317,6 +317,7 @@
   #centro{display:flex;gap:18px;padding:16px;border:1px solid var(--line);
     border-radius:14px;background:var(--panel);flex-wrap:wrap}
   .cx-hero{display:flex;flex-direction:column;align-items:center;gap:6px;min-width:150px}
+  body.no-axo .cx-hero .aqua{display:none}
   .axo-ascii{font-family:var(--mono);font-size:8.5px;line-height:1;letter-spacing:0;
     white-space:pre;margin:0;user-select:none;display:block;cursor:pointer;
     filter:drop-shadow(0 3px 10px #0006)}
@@ -1046,6 +1047,7 @@
   <div class="mtab-pane active" data-mpane="notif">
     <div class="set"><label for="vol">Volumen (voz y chime)</label>
       <input type="range" id="vol" class="solid" min="0" max="100" value="60"></div>
+    <div class="set switch"><label>Mascota ajolote</label><button id="sw-axo" class="cfg" role="switch" aria-label="Mostrar u ocultar la mascota"></button></div>
     <div class="set switch"><label>Avisar al terminar</label><button class="cfg" data-key="NOTIFY_ON_DONE" role="switch"></button></div>
     <div class="set switch"><label>Avisar al pedir atencion</label><button class="cfg" data-key="NOTIFY_ON_ATTENTION" role="switch"></button></div>
     <div class="set switch"><label>Voz (anuncia el proyecto)</label><button id="sw-voice" role="switch"></button></div>
@@ -1937,6 +1939,19 @@ function mdStrip(s){ return (s||"").replace(/\*\*|`|^#{1,6} /g, ""); }
 	  return out;
 	}
 	// Vida propia: cada tanto (aleatorio) hace un movimiento impredecible.
+	// Mostrar/ocultar la mascota (preferencia local, Ajustes)
+	function axoVisible(){ return localStorage.getItem("cc-axo") !== "0"; }
+	function applyAxoPref(){
+	  document.body.classList.toggle("no-axo", !axoVisible());
+	  const b = $("#sw-axo");
+	  if(b){ b.classList.toggle("on", axoVisible());
+	         b.setAttribute("aria-checked", String(axoVisible())); }
+	}
+	applyAxoPref();
+	$("#sw-axo")?.addEventListener("click", ()=>{
+	  localStorage.setItem("cc-axo", axoVisible() ? "0" : "1");
+	  applyAxoPref();
+	});
 	const AXO_MOVES = ["boing", "hop", "spin", "tilt", "shake", "flip",
 	                   "stretch", "peek", "wiggle"];
 	function axoMove(axo, mv){
