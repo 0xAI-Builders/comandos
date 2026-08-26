@@ -824,6 +824,17 @@ test("authored rest pose hangs from two upper cable contacts with one curled fre
   const loaded = Object.values(rig.supports).filter(support => support.mode === "loaded");
   assert.deepEqual(loaded.map(support => support.limb), ["front-left", "rear-right"]);
   const pelvis = artAnchor("pelvis");
+  const skull = artAnchor("skull");
+  const ribcage = artAnchor("ribcage");
+  const lineX = pelvis.x - skull.x;
+  const lineY = pelvis.y - skull.y;
+  const lineAngle = Math.atan2(lineY, lineX) * 180 / Math.PI;
+  assert.ok(lineX >= 28 && lineY >= 64,
+    `skull-to-pelvis axis ${lineX},${lineY} is still upright instead of diagonal`);
+  assert.ok(lineAngle >= 58 && lineAngle <= 72,
+    `torso line angle ${lineAngle.toFixed(2)}deg does not read as a hanging diagonal`);
+  assert.ok(ribcage.x >= skull.x && pelvis.x > ribcage.x + 20,
+    "head, shoulder, and pelvis need a progressive three-quarter line of action");
   for(const support of loaded){
     const cable = sampleCable(rig, support.cableT,
       rig.values[R.channelIndex("cable-contact-bias")]);
@@ -833,11 +844,15 @@ test("authored rest pose hangs from two upper cable contacts with one curled fre
     assert.ok(rig.limbs[support.limb].contactError < 1);
   }
   const freeHind = rig.limbs["rear-left"];
-  assert.ok(freeHind.end.y < 175, `free hind end ${freeHind.end.y} reads as a planted foot`);
-  assert.ok(freeHind.end.x < freeHind.root.x - 20,
-    "free hind limb must curl outside the torso silhouette");
+  assert.ok(freeHind.end.y >= 156 && freeHind.end.y <= 168,
+    `free hind end ${freeHind.end.y} must curl visibly below the rump without touching floor`);
+  assert.ok(freeHind.joint.x < freeHind.root.x - 24 &&
+    freeHind.joint.y > freeHind.root.y + 14 &&
+    freeHind.end.x > freeHind.joint.x + 20 &&
+    freeHind.end.y > freeHind.joint.y + 14,
+  "free hind limb must fold back into a recognisable hook instead of extending like a leg");
   assert.ok(Math.abs(normalizedBranchCross(freeHind.root, freeHind.joint,
-    freeHind.end)) > 0.18, "free hind limb must keep a visibly bent silhouette");
+    freeHind.end)) > 0.3, "free hind limb must keep a visibly curled silhouette");
   assert.ok(pelvis.y > Math.max(...loaded.map(support => support.point.y)) + 20,
     "body center must remain suspended below both cable contacts");
 });
@@ -899,20 +914,20 @@ test("released chains solve back to their independently authored rest anchors", 
 
 test("Art-derived body zones reject segment traversal, endpoints, and contacts", () => {
   const crossing = R.createRig(241);
-  crossing.limbs["front-left"].joint.x = 140;
-  crossing.limbs["front-left"].joint.y = 71;
+  crossing.limbs["front-left"].joint.x = 85;
+  crossing.limbs["front-left"].joint.y = 105;
   assert.ok(R.validatePose(crossing).some(error => error.includes("segment enters body")));
 
   const endpoint = R.createRig(242);
-  endpoint.limbs["front-left"].end.x = 100;
-  endpoint.limbs["front-left"].end.y = 70;
+  endpoint.limbs["front-left"].end.x = 151;
+  endpoint.limbs["front-left"].end.y = 129;
   assert.ok(R.validatePose(endpoint).some(error => error.includes("endpoint enters body")));
 
   const contact = R.createRig(243);
-  contact.supports["front-left"].point.x = 100;
-  contact.supports["front-left"].point.y = 70;
-  contact.claws["claw-front-left-1"].point.x = 100;
-  contact.claws["claw-front-left-1"].point.y = 70;
+  contact.supports["front-left"].point.x = 107;
+  contact.supports["front-left"].point.y = 107;
+  contact.claws["claw-front-left-1"].point.x = 107;
+  contact.claws["claw-front-left-1"].point.y = 107;
   assert.ok(R.validatePose(contact).some(error => error.includes("contact enters body")));
 
   assert.deepEqual(R.validatePose(R.createRig(244)), []);

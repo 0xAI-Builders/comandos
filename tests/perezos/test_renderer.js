@@ -21,7 +21,7 @@ const D = NS.Renderer;
 test("renderer module exposes the exact public contract", () => {
   assert.ok(D, "ComandOSPerezOS.Renderer is undefined");
   assert.deepEqual(Object.keys(D).sort(), [
-    "QUALITY", "createRenderer", "destroyRenderer", "markDirty", "render",
+    "QUALITY", "auditBufferIdentities", "createRenderer", "destroyRenderer", "markDirty", "render",
     "rendererDiagnostics", "setTheme", "setViewport",
   ]);
   assert.deepEqual(D.QUALITY,
@@ -352,9 +352,9 @@ if(D){
     assert.equal(D.render(renderer, rig, context, "economy"), true);
     const before = destinationMap(fake);
     fake.context.reset();
-    R.setChannelTarget(rig, "front-right-reach-x", -16);
-    R.setChannelTarget(rig, "front-right-reach-y", 12);
-    R.setChannelTarget(rig, "front-right-lift", 8);
+    R.setChannelTarget(rig, "front-right-reach-x", 12);
+    R.setChannelTarget(rig, "front-right-reach-y", 8);
+    R.setChannelTarget(rig, "front-right-lift", 4);
     for(let step = 0; step < 45; step += 1){
       assert.equal(R.solveRig(rig, 1 / 120), true);
     }
@@ -374,9 +374,9 @@ if(D){
     assert.equal(D.render(renderer, rig, context, "economy"), true);
     const before = destinationMap(fake);
     fake.context.reset();
-    R.setChannelTarget(rig, "front-right-reach-x", -16);
-    R.setChannelTarget(rig, "front-right-reach-y", 12);
-    R.setChannelTarget(rig, "front-right-lift", 8);
+    R.setChannelTarget(rig, "front-right-reach-x", 12);
+    R.setChannelTarget(rig, "front-right-reach-y", 8);
+    R.setChannelTarget(rig, "front-right-lift", 4);
     for(let step = 0; step < 45; step += 1) assert.equal(R.solveRig(rig, 1 / 120), true);
     assert.equal(D.render(renderer, rig, context, "economy"), true);
     const after = destinationMap(fake);
@@ -576,12 +576,29 @@ if(D){
     assert.equal(D.rendererDiagnostics(renderer).contactMasks > 0, true);
   });
 
-  test("authored contact masks are selected from loaded supports and state", () => {
-    const {renderer, rig} = fixture();
+  test("authored contact masks follow loaded cable points and never become floor debris", () => {
+    const {fake, renderer, rig} = fixture();
     let context = fixtureContext({costume:""});
     assert.equal(D.render(renderer, rig, context, "economy"), true);
     assert.equal(D.rendererDiagnostics(renderer).contactMasks, 2,
       "safe diagonal selects front-left and compact rear-cable contact masks");
+    const scale = D.rendererDiagnostics(renderer).camera.scale;
+    const camera = D.rendererDiagnostics(renderer).camera;
+    const maskFills = fake.fills.filter(call => call.style === A.PALETTE[0]);
+    for(const support of [rig.supports["front-left"], rig.supports["rear-right"]]){
+      const screenPoint = {
+        x:camera.x + (Math.round(support.point.x) - camera.sourceX) * scale,
+        y:camera.y + (Math.round(support.point.y) - camera.sourceY) * scale,
+      };
+      assert.ok(maskFills.some(call => {
+        const [x,y,width,height] = call.rectangle;
+        return x <= screenPoint.x && screenPoint.x <= x + width &&
+          y <= screenPoint.y && screenPoint.y <= y + height;
+      }), `${support.limb} mask must cover its actual cable contact`);
+    }
+    assert.ok(maskFills.every(call => call.rectangle[1] <
+      camera.y + (170 - camera.sourceY) * scale),
+    "loaded contact masks must not leave isolated rectangles on the floor band");
     assert.equal(R.requestGrip(rig, "front-right", "loaded", 0.72), true);
     assert.equal(D.render(renderer, rig, context, "economy"), true);
     assert.equal(D.rendererDiagnostics(renderer).contactMasks, 3);
@@ -791,6 +808,25 @@ if(D){
     fake.context.reset();
     assert.equal(D.setViewport(renderer, 180, 148, 1), true);
     assert.equal(D.render(renderer, rig, context, "static"), true);
+  });
+
+  test("Static working renders loaded silhouettes and masks only for its two physical supports", () => {
+    const expectedLoaded = [
+      "arm-fl-upper@loaded", "palm-fl@loaded",
+      "claw-front-left-1@loaded", "claw-front-left-2@loaded",
+      "claw-front-left-3@loaded", "claw-rear-right-1@loaded",
+      "claw-rear-right-2@loaded", "claw-rear-right-3@loaded",
+    ].sort();
+    for(const status of ["idle", "working", "waiting", "done", "dead"]){
+      const {fake, renderer, rig} = fixture();
+      assert.equal(D.render(renderer, rig, fixtureContext({status, costume:""}), "static"), true);
+      const loaded = atlasDraws(fake).map(entry => entry[0])
+        .filter(key => key.endsWith("@loaded")).sort();
+      assert.deepEqual(loaded, expectedLoaded,
+        `${status} must not relabel released claws or axial pieces as loaded`);
+      assert.equal(D.rendererDiagnostics(renderer).contactMasks, 2,
+        `${status} Static pose must draw exactly the two physical cable contacts`);
+    }
   });
 
   test("decoded memory accounts for atlas pages, typed arrays, and retained caches below 16 MiB", () => {

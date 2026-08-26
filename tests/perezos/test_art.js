@@ -236,13 +236,40 @@ test("every piece contains authored indexed clusters inside integer bounds", () 
   }
 });
 
-test("authored safe silhouette is one cohesive furry body before separate claws", () => {
+test("visible near-side joints use ragged fur silhouettes instead of stacked rectangles", () => {
+  const harness = makeCanvasFactory();
+  const atlas = A.buildAtlas(harness.factory, "dark");
+  for(const id of ["wrist-fl", "palm-fl", "ankle-rl", "palm-rl"]){
+    const rect = atlas.rects[id];
+    const occupancy = pixelsInRect(harness, rect, false).size / (rect.width * rect.height);
+    assert.ok(occupancy >= 0.2 && occupancy <= 0.64,
+      `${id} occupancy ${occupancy.toFixed(3)} reads as a rectangular stack, not a fur joint`);
+  }
+  for(const [id,maxWidth,maxHeight] of [["arm-fl-fore",16,13],["wrist-fl",14,12]]){
+    const rect = atlas.rects[id];
+    const coordinates = [...pixelsInRect(harness, rect, false).keys()]
+      .map(key => key.split(",").map(Number));
+    const width = Math.max(...coordinates.map(point => point[0])) -
+      Math.min(...coordinates.map(point => point[0])) + 1;
+    const height = Math.max(...coordinates.map(point => point[1])) -
+      Math.min(...coordinates.map(point => point[1])) + 1;
+    assert.ok(width <= maxWidth && height <= maxHeight,
+      `${id} ${width}x${height} footprint still stacks as a rectangular arm segment`);
+  }
+});
+
+test("authored clusters reserve one dominant furry body plus only small rig-bridged joints", () => {
   const pixels = authoredBodyPixels();
   const components = componentSizes(pixels);
   assert.ok(pixels.size >= 7600, `safe body needs more organic mass, got ${pixels.size} pixels`);
-  assert.equal(components.length, 1,
-    `safe body is a marionette with ${components.length} disconnected masses: ${components.slice(0, 8)}`);
-  assert.equal(components[0], pixels.size);
+  assert.ok(components.length <= 8,
+    `authored clusters fragmented into ${components.length} masses: ${components.slice(0, 8)}`);
+  assert.ok(components[0] / pixels.size >= 0.9,
+    `dominant body owns only ${(components[0] / pixels.size).toFixed(4)} of authored mass`);
+  assert.ok(components.slice(1).every(size => size / pixels.size < 0.03),
+    `a detached joint cluster is too large: ${components.slice(1)}`);
+  assert.ok(components.slice(1).reduce((sum, size) => sum + size, 0) / pixels.size < 0.1,
+    `rig-bridged tufts own too much atlas mass: ${components.slice(1)}`);
 });
 
 test("warm palette and state variants are explicit indexed artwork", () => {
@@ -408,8 +435,8 @@ test("representative anatomical raster families match authored golden signatures
   };
   assert.deepEqual(Object.fromEntries(Object.entries(groups).map(([name, ids]) =>
     [name, goldenSignature(harness, atlas, ids)])), {
-    head:"9184d40b", torso:"5e12b424", frontLeft:"c279cdb0", frontRight:"8f19faeb",
-    rearLeft:"e442cfbd", rearRight:"1cf05a59", clawFrontLeft:"d5297881",
+    head:"fd4a6ac7", torso:"af17d9ee", frontLeft:"21f37e02", frontRight:"97709aff",
+    rearLeft:"f2fa6b50", rearRight:"45fb6d72", clawFrontLeft:"d5297881",
     clawFrontRight:"6d2d63b8", clawRearLeft:"ed1c4d1e", clawRearRight:"d727ecfb",
   });
 });

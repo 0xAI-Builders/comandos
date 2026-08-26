@@ -2,212 +2,151 @@
 
 ## Status
 
-GREEN. This report covers Task 9 only. No Task 10 release or documentation work
-was performed.
+GREEN after the strict visual/static/buffer remediation. This report covers
+Task 9 only; no Task 10 release work was performed.
 
-## Formal-review findings resolved
+## Review findings resolved
 
-1. `body-lean-x` remains bounded to `[-2, 2]`, while `brace`, `shift-weight`,
-   `pull`, `recoil`, and `recover` now author different nonlinear curves strictly
-   inside that envelope. Focused tests prove that intensity/distance and side
-   still change the requested target instead of collapsing at a clamp endpoint.
-2. The long-run watchdog tracks continuous owner identity, phase, transition
-   state, and first-owned time per channel. A phase owner is bounded by its
-   declared `durationMs + 320 ms` interruption allowance and a transition owner
-   by `160 ms`, each with one frame of tolerance. Failure diagnostics retain
-   seed, timestamp, pose hash, and channel.
-3. Long-run reporting now separates `idleSignatures` from `allSignatures` and
-   behavior families from primitive families.
-4. Performance uses a 2,048-entry preallocated trace, separate from the
-   governor's retained 240-frame ring. Every scheduled update/render attempt is
-   recorded with timestamp, combined/update/render cost, active/quiet state,
-   and quality. Window slicing proves both temporal edges and every intervening
-   sequence entry were retained.
-5. The former allocation label is now the accurate
-   `stableBufferReplacements`. Zero means the preallocated renderer, engine,
-   motion, rig, timing, and trace buffers retained identity. Independent source
-   audit verifies that trace writes allocate no arrays. Browser memory is
-   reported separately as stabilized, bounded heap growth after CDP garbage
-   collection; it is not described as zero heap allocations.
-6. Each of `idle`, `working`, `waiting`, `done`, and `dead` is reconstructed from
-   a fresh Rig/Director/Motion/Renderer using the same seed and fixed clock,
-   repeated exactly, and required to have a causally distinct pixel hash.
-7. The complete real dashboard exercises click, Enter, Space, the neighboring
-   More control, the real `sw-mascot` preference/localStorage/body class, and a
-   1400-to-600-pixel responsive resize. Canvas/controller/renderer identity and
-   truthful switch accessibility are asserted. The harness remains only for
-   deterministic internals and lifecycle seams.
-8. Pause assertions capture the baseline and immediate result in the same
-   JavaScript task. Preference and document visibility require zero immediate
-   and sustained deltas. IntersectionObserver acknowledgement is measured as a
-   distinct phase, after which sustained work must remain zero.
-9. Exit 77 is restricted to a positively identified missing Playwright module,
-   missing executable text, or executable `ENOENT`. Launch crashes and invalid
-   flags fail normally.
-10. The rest silhouette is authored as a suspended three-quarter sloth: loaded
-    `front-left` and `rear-right` claws touch two upper cable points, the free
-    rear-left limb bends away from the bottom edge, the pelvis remains below the
-    supports, near/far contacts are diagonally asymmetric, and face regions are
-    retained. Renderer ground shadow/strip artwork was removed. Tests use
-    anchors, contact errors, regional alpha occupancy, silhouette bounds, and a
-    zero-pixel floor band rather than subjective golden approval.
-11. Static/reduced-motion rendering snapshots the same authored Rig cable,
-    limbs, supports, and claws as one immutable safe pose. Its two loaded palms
-    remain on the upper cable, its free rear limb remains suspended and
-    asymmetric, and exactly two contact masks are emitted even if the live Rig
-    subsequently changes.
+1. The authored rest pose is now an unambiguously suspended three-quarter
+   sloth. Its skull-to-pelvis line is `36x94` pixels at `69.044°`; head,
+   shoulder, and pelvis advance diagonally; `front-left` and `rear-right` grip
+   two separated points on the same cable; and the released rear-left limb
+   folds through `(143,119) -> (102,143) -> (129,163)` into a visible C below
+   the rump without reaching the floor.
+2. Near-side wrist, palm, ankle, and free-hind artwork was re-authored as ragged
+   indexed fur clusters rather than stacked solid rectangles. Continuous
+   retained renderer bridges join the clusters along the IK bones. The final
+   rendered raster measures `11,052 / 11,081 = 99.7383%` of opaque pixels in
+   one eight-connected component.
+3. The two contact masks now derive their origin from the actual loaded cable
+   points. The obsolete fixed mask positions that produced isolated dark
+   rectangles near the panel edge were removed. The authored sample has a
+   bottom bound of `169` and zero pixels in the `y >= 176` floor band.
+4. Static/reduced-motion rendering uses one immutable authored Rig snapshot for
+   cable, supports, limbs, and claws. Across `idle`, `working`, `waiting`,
+   `done`, and `dead`, only the physically loaded front-left and rear-right
+   supports select `@loaded` artwork and exactly two contact masks. Status text
+   can no longer relabel all twelve claws.
+5. `stableBufferReplacements` now audits every retained typed hot-loop buffer,
+   not a representative subset: Rig `14`, Motion `7`, Renderer `5`, and Engine
+   timing/trace `12`, total `38`. The counter means identity replacement only.
+   Retained browser heap growth remains a separate CDP measurement.
+6. The visual harness derives pelvis/skull/ribcage geometry from the Art
+   manifest rather than obsolete hard-coded coordinates. It now checks torso
+   angle, two cable contacts, rear-hook geometry and margin, regional alpha,
+   rendered connectivity, and the absence of floor pixels.
+7. Narrative-family figures remain observations, not a falsely fixed public
+   cardinality: the earlier six-hour run observed `31` composed behavior
+   families and `31` primitive families, with no missing primitive family.
 
 ## TDD evidence
 
 ### RED
 
-- The first body-lean regression found `brace` still requested the exact `2`
-  limit at high effort; all five primitives were re-authored inside the range.
-- The posture regression found the free rear foot at `y=184` and a wide renderer
-  floor shadow. It now ends at approximately `(53,168)` with normalized bend
-  `-0.3953`; the renderer floor band is empty.
-- The owner-age test initially failed because continuous age tracking did not
-  exist. The regression now proves the exact declared phase allowance boundary
-  and that a new phase resets identity age.
-- Complete-trace tests initially lacked timestamps and active state and found
-  only four buffers. The trace now has six preallocated buffers and an
-  allocation-free scalar push path.
-- A real Chrome action probe exposed `112` samples over five seconds
-  (`22.2 Hz`) despite every sample being active. The cause was exact: two
-  `16.6 ms` rAF intervals total `33.2 ms`, just below the `33.333 ms` Full action
-  interval; resetting the accumulator discarded the remainder and waited for a
-  third tick. A jitter regression failed at `116` rather than about `174`
-  samples. The scheduler now subtracts one fixed interval while retaining the
-  remainder.
-- The first complete browser run also proved that repeated activation was not a
-  sustained action load (`437` produced samples). The final load uses bounded
-  10 Hz pointer sampling; an accepted pointer has a real 150 ms active tail, so
-  safe input remains action cadence continuously without resetting Motion.
-- The Static regression initially exposed a split source of truth: limbs and
-  supports came from the safe Rig snapshot while the cable came from an older
-  constant. The focused test failed because both loaded palms missed that old
-  cable. Static now freezes the cable with the same Rig snapshot; the contact,
-  suspension, asymmetry, and exact two-mask assertions pass.
+- The stronger posture regression initially measured an upright skull/pelvis
+  axis and a rear limb that did not form the required suspended C.
+- A renderer regression proved the old contact masks did not cover either
+  physical cable point and left a rectangle in the floor band.
+- The Static working regression initially selected loaded variants from global
+  status instead of the two loaded supports.
+- The buffer regression initially found only the previously sampled
+  Rig/Motion/Renderer identities rather than all retained typed buffers.
+- Atlas-only connectivity found several intentionally separated joint tufts.
+  This was not hidden with an aesthetic assertion: atlas mass is bounded to one
+  dominant body plus small bridge-owned tufts, while the browser measures the
+  assembled final raster directly.
+- The final Chrome run exposed `startLagMs=-0.5` because an rAF timestamp is
+  captured at frame start and can precede a `performance.now()` baseline taken
+  before that frame is committed. A focused test failed first. Coverage now
+  intersects trace timestamps with the measured browser window, so it never
+  overstates coverage or reports a negative boundary lag.
 
 ### GREEN
 
-The real five-second Chrome focal measured:
-
 ```text
-samples=150 coverageMs=4983.2 cadenceHz=29.900
-allActive=true allFull=true updates=150 renders=150 pointers=45
+torso dx=36 dy=94 angle=69.044223°
+loaded supports=front-left,rear-right; contactError<=7.11e-15
+free hind root=(143,119) joint=(102,143) end=(129,163) bend=-0.919630
+rendered largest component=11052/11081 (99.7383%)
+upper grip regions=533/1924 curled-hind=1662 face=3208 floorBand=0
 ```
 
-The final 30-second action window measured:
+The five fixed-seed/fixed-clock status renders repeat exactly and remain
+causally distinct:
 
 ```text
-samples=900 coverageMs=29965.5 cadenceHz=30.001168
-allActive=true allFull=true pointerSamples=272
-qualityTransitions=0 governorTransitions=0
+idle=dc0f88bc working=6aebdd6a waiting=b5a96ed7
+done=441aee81 dead=2bee3f97
 ```
 
-## Six-visible-hour result
+## Current visual evidence
 
-The simulation covers eight deterministic seeds, five statuses, and 21,600
-visible seconds at 30 Hz: 5,184,000 externally checked frames. It does not sleep
-or recover by weakening assertions.
+- Full idle: `/tmp/perezos-task9-full-idle.png`, `6,240` bytes,
+  SHA-256 `e002d3928af77b9766878af4d46d41b625bd4e64439d7604862845270484e156`
+- Full action: `/tmp/perezos-task9-full-action.png`, `6,523` bytes,
+  SHA-256 `38ece485961c8d59013b5a342689560d1eb58d4d94d3f6e13c95742942804379`
 
-```text
-statusFrames: idle=1036800 working=1036800 waiting=1036800
-              done=1036800 dead=1036800
-nonFinite=0 invalidContacts=0 deadlineMisses=0
-cooldownViolations=0 stuckOwners=0 maxOwnerAgeMs=2500
-maxCableStretch=0.003769670581622058
-maxContactError=6.355287432313019e-14
-maxCableEnergy=22284.286831462567
-idleSignatures=26480 allSignatures=69516
-behaviorFamilies=31 primitiveFamilies=31 missingPrimitiveFamilies=[]
-```
-
-`node tests/perezos/test_long_run.js` completed 4/4 in 285.10 seconds;
-the six-hour case itself took 281.39 seconds.
-
-## Deterministic visual evidence
-
-Fixed seed `task9-fixed-status` and fixed clock `12000` repeat exactly:
-
-```text
-idle=afda9ae2 working=f7a909b2 waiting=e4b042ad
-done=c7fc7d94 dead=a5c8f830
-```
-
-The authored rest sample has 31.88% occupancy, bounds `146x176`, centroid
-approximately `(106.66,89.10)`, 21 rendered colors, and zero nontransparent
-pixels in the bottom floor band. Regional alpha counts are 874/1291 for the two
-upper grip zones, 983 for the curled hind zone, and 3546 for the face zone.
-
-- Full idle: `/tmp/perezos-task9-full-idle.png`, 6,249 bytes,
-  SHA-256 `ede20a7f271b9123ce79732d8228722e018cebf8724a15e4445b4f2979725e21`
-- Full action: `/tmp/perezos-task9-full-action.png`, 6,447 bytes,
-  SHA-256 `cfff0df35133f644e02b123b525a0331b6f650cfbdba194b36fa534358ce07b1`
-
-Both latest screenshots were inspected from disk after the pytest wrapper.
-Chrome remained headless/background throughout.
+Both 1400x900 captures were regenerated by the final headless Chrome run and
+inspected from disk. The harness defaults to no costume so props do not conceal
+the morphology; prop rendering remains covered independently.
 
 ## Browser performance and memory
 
-Standalone final evidence, followed by a passing pytest browser wrapper:
+The final Chrome run measured:
 
 ```text
-visualFailures=[] lifecycleFailures=[] accessibilityFailures=[]
-averageMs=0.6135678417 p95Ms=0.8999999762
-decodedBytes=8829470 stableBufferReplacements=0
-heap baseline=3946184 afterIdle=4029240 afterAction=4120956
-heap growth=174772 budget=2097152 bounded=true
-idle samples=597 coverageMs=30015.4 allFull=true transitions=0/0
-action samples=900 coverageMs=29965.5 allFull=true allActive=true
-action cadenceHz=30.001168 transitions=0/0
+visualFailures=[] accessibilityFailures=[]
+averageMs=0.638796 p95Ms=0.900000 decodedBytes=8829470
+stableBufferReplacements=0
+stableBufferAudit={rig:14,motion:7,renderer:5,engine:12,total:38}
+heap baseline=3912500 afterIdle=4030272 afterAction=4109148
+heap growth=196648 budget=2097152 bounded=true
+idle samples=598 coverageMs=30048.8 allFull=true transitions=0/0
+action samples=902 raw-overlap coverageMs=29981.7 allFull=true allActive=true
+action cadenceHz=30.051164 pointerSamples=272 transitions=0/0
 ```
 
-The timing values include every scheduled end-to-end attempt and its update and
-render-check components. The governor still uses its original produced-frame
-ring of 240 samples and hysteresis behavior.
+The run's pre-fix report contained one lifecycle string solely for the
+`-0.5 ms` raw start lag described above. Every substantive lifecycle condition
+was green. Per the instruction to perform one final long browser/capture run,
+the 69-second run was not repeated; the corrected window-intersection function
+is covered by a focused RED/GREEN regression and makes the same recorded trace
+pass without changing any budget.
 
-## Fresh verification
+## Verification
 
 ```text
-node tests/perezos/test_long_run.js
-  4 passed; 5,184,000 frames; 285.10s
-
 node --test <all tests/perezos/test_*.js except test_long_run.js>
-  205 tests passed; 0 failed; 11.62s
+  208 passed; 0 failed; 11.64s
 
-node --test tests/perezos/test_renderer.js
-  35 tests passed; 0 failed; 0.52s (post-review Static regression)
+node --check dash/perezos/{art,rig,renderer,engine}.js
+node --check tests/e2e_perezos.js
+  all parsed
 
-pytest -q tests/test_perezos_e2e.py
-  2 passed in 92.29s
-
-pytest -q tests/test_dashboard_assets.py tests/test_dashboard_layout.py \
-  tests/test_dashboard_security.py
-  28 passed in 0.51s
-
-bash tests/test_js_parses.sh
-  OK
+pytest -q tests/perezos/test_integration.py tests/test_dashboard_layout.py \
+  tests/test_perezos_e2e.py::test_perezos_browser_harness_imports_without_launching
+  21 passed; 0 failed; 0.16s
 
 git diff --check
   clean
 ```
 
-The long-run was not repeated inside `tests/test_perezos.py`; its exact Node
-suite and every other PerezOS Node suite were run separately, preserving the
-same non-skippable coverage without spending another simulated six-hour pass.
+The light Node set includes the current 30-minute deterministic cable swing.
+The five-minute `test_long_run.js` six-visible-hour simulation was deliberately
+not repeated during this remediation. Its prior evidence was 4/4 cases,
+5,184,000 frames, zero non-finite/contact/deadline/cooldown/owner failures; that
+evidence predates this Art/IK geometry change and is retained as historical,
+not represented as a fresh current-tree run.
 
 ## Terminology and residual risk
 
-- `behaviorFamilies` means composed narrative families such as
-  `careful-advance`; `primitiveFamilies` means phase primitives such as
-  `shift-weight`; signatures are reported as idle-only and all-status totals.
-- `stableBufferReplacements=0` is an identity-stability counter, not a heap
-  allocation count. Heap evidence is independently stabilized and bounded.
-- Browser timing remains machine-dependent by design; the absolute approved
-  gates remain average `<1 ms`, p95 `<2 ms`, decoded memory `<16 MiB`, and no
-  Full-quality transition in either complete window.
-- Pixel hashes prove deterministic causality, not aesthetic equivalence.
-  Identity is protected by objective posture, contacts, regions, occupancy,
-  palette, bounds, and face/silhouette checks.
+- `stableBufferReplacements=0` is an exact identity-stability result for the
+  named 38 retained typed buffers, not a zero-allocation claim.
+- Heap evidence is independently garbage-collected and bounded; current growth
+  is `196,648` bytes against a `2,097,152` byte budget.
+- Browser timing remains machine-dependent. The unchanged gates are average
+  `<1 ms`, p95 `<2 ms`, decoded memory `<16 MiB`, complete 30-second trace
+  coverage, and no Full-quality transition.
+- Pixel hashes prove deterministic causality, not taste. Morphology is guarded
+  by independent geometry, contact, floor-margin, region, and final-raster
+  connectivity checks; the two screenshots remain the human visual evidence.

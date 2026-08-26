@@ -672,6 +672,10 @@ if(E){
     env.frames.advance(40000);
     const diagnostics = controller.getDiagnostics();
     assert.equal(diagnostics.stableBufferReplacements, 0);
+    assert.deepEqual(diagnostics.stableBufferAudit, {
+      rig:14, motion:7, renderer:5, engine:12, total:38,
+      semantics:"identity replacements across every retained typed hot-loop buffer",
+    });
     assert.equal(diagnostics.timings.capacity, 240);
     assert.ok(diagnostics.timings.count > 0);
     assert.ok(diagnostics.timings.update.count > 0);
@@ -729,6 +733,12 @@ if(E){
     const hotPath = source.slice(start, end);
     assert.doesNotMatch(hotPath, /\bnew\s+(?:Array|Float\d+Array|Int\d+Array|Uint\d+Array)/);
     assert.doesNotMatch(hotPath, /Array\.from|\.map\s*\(|\.slice\s*\(/);
+    assert.match(hotPath, /RIG_TYPED_BUFFERS/,
+      "identity audit must cover every declared Rig typed buffer");
+    assert.match(hotPath, /MOTION_TYPED_BUFFERS/,
+      "identity audit must cover every declared Motion typed buffer");
+    assert.match(hotPath, /Renderer\.auditBufferIdentities/,
+      "identity audit must cover Renderer hot-loop typed buffers");
   });
 
   test("destroy is idempotent and leaves no callbacks, listeners, or observers", () => {

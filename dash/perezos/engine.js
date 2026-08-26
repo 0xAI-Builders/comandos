@@ -52,6 +52,21 @@
     "owners", "channelTargets", "phaseStarts", "baseTargets", "previousVelocities",
     "accelerations", "queueTerminalDeadlines",
   ]);
+  const ENGINE_BUFFER_FIELDS = Object.freeze([
+    "timingValues", "timingScratch", "updateTimingValues", "updateTimingScratch",
+    "renderTimingValues", "renderTimingScratch", "traceTimestamp", "traceCombined",
+    "traceUpdate", "traceRender", "traceActive", "traceQuality",
+  ]);
+  const ENGINE_TYPED_BUFFER_COUNT = ENGINE_BUFFER_FIELDS.length;
+  const STABLE_BUFFER_AUDIT = Object.freeze({
+    rig:RIG_TYPED_BUFFERS.length,
+    motion:MOTION_TYPED_BUFFERS.length,
+    renderer:5,
+    engine:ENGINE_TYPED_BUFFER_COUNT,
+    total:RIG_TYPED_BUFFERS.length + MOTION_TYPED_BUFFERS.length + 5 +
+      ENGINE_TYPED_BUFFER_COUNT,
+    semantics:"identity replacements across every retained typed hot-loop buffer",
+  });
   const MODULE_DECODE_LATCH = {failed:false};
   let nextIdentity = 1;
 
@@ -304,6 +319,25 @@
       internal.performanceTrace.quality.byteLength;
   }
 
+  function captureBufferIdentities(record, names){
+    const identities = new Array(names.length);
+    for(let index = 0; index < names.length; index += 1){
+      identities[index] = record[names[index]];
+    }
+    return Object.seal(identities);
+  }
+
+  function auditRecordBufferIdentities(record, names, identities){
+    let replacements = 0;
+    for(let index = 0; index < names.length; index += 1){
+      const current = record[names[index]];
+      if(current === identities[index]) continue;
+      identities[index] = current;
+      replacements += 1;
+    }
+    return replacements;
+  }
+
   function createSession(internal, sessionId){
     const rig = Rig.createRig(sessionId);
     const director = Behaviors.createDirector(sessionId);
@@ -327,44 +361,20 @@
         internal.activePerformance = null;
       }
     };
-    internal.bufferValues = rig.values;
-    internal.bufferTargets = rig.targets;
-    internal.bufferOwners = motion.owners;
+    internal.rigBufferIdentities = captureBufferIdentities(rig, RIG_TYPED_BUFFERS);
+    internal.motionBufferIdentities = captureBufferIdentities(motion, MOTION_TYPED_BUFFERS);
     internal.engineBufferBytes = engineBufferBytes(internal);
   }
 
   function auditBufferIdentities(internal){
-    if(internal.rig.values !== internal.bufferValues ||
-       internal.rig.targets !== internal.bufferTargets ||
-       internal.motion.owners !== internal.bufferOwners ||
-       internal.timing.values !== internal.timingValues ||
-       internal.timing.scratch !== internal.timingScratch ||
-       internal.updateTiming.values !== internal.updateTimingValues ||
-       internal.updateTiming.scratch !== internal.updateTimingScratch ||
-       internal.renderTiming.values !== internal.renderTimingValues ||
-       internal.renderTiming.scratch !== internal.renderTimingScratch ||
-       internal.performanceTrace.timestamp !== internal.traceTimestamp ||
-       internal.performanceTrace.combined !== internal.traceCombined ||
-       internal.performanceTrace.update !== internal.traceUpdate ||
-       internal.performanceTrace.render !== internal.traceRender ||
-       internal.performanceTrace.active !== internal.traceActive ||
-       internal.performanceTrace.quality !== internal.traceQuality){
-      internal.stableBufferReplacements += 1;
-      internal.bufferValues = internal.rig.values;
-      internal.bufferTargets = internal.rig.targets;
-      internal.bufferOwners = internal.motion.owners;
-      internal.timingValues = internal.timing.values;
-      internal.timingScratch = internal.timing.scratch;
-      internal.updateTimingValues = internal.updateTiming.values;
-      internal.updateTimingScratch = internal.updateTiming.scratch;
-      internal.renderTimingValues = internal.renderTiming.values;
-      internal.renderTimingScratch = internal.renderTiming.scratch;
-      internal.traceTimestamp = internal.performanceTrace.timestamp;
-      internal.traceCombined = internal.performanceTrace.combined;
-      internal.traceUpdate = internal.performanceTrace.update;
-      internal.traceRender = internal.performanceTrace.render;
-      internal.traceActive = internal.performanceTrace.active;
-      internal.traceQuality = internal.performanceTrace.quality;
+    internal.stableBufferReplacements += auditRecordBufferIdentities(
+      internal.rig, RIG_TYPED_BUFFERS, internal.rigBufferIdentities);
+    internal.stableBufferReplacements += auditRecordBufferIdentities(
+      internal.motion, MOTION_TYPED_BUFFERS, internal.motionBufferIdentities);
+    internal.stableBufferReplacements += auditRecordBufferIdentities(
+      internal, ENGINE_BUFFER_FIELDS, internal.engineBufferIdentities);
+    if(internal.renderer){
+      internal.stableBufferReplacements += Renderer.auditBufferIdentities(internal.renderer);
     }
   }
 
@@ -746,7 +756,8 @@
       traceRender:performanceTrace.render, traceActive:performanceTrace.active,
       traceQuality:performanceTrace.quality,
       rig:null, director:null, motion:null, activePerformance:null,
-      bufferValues:null, bufferTargets:null, bufferOwners:null,
+      rigBufferIdentities:null, motionBufferIdentities:null,
+      engineBufferIdentities:null,
       sessionGeneration:0, sessionTimeMs:0, personalitySignature:"",
       engineBufferBytes:0,
       viewportWidth:0, viewportHeight:0, dpr:0,
@@ -775,6 +786,7 @@
       frameCallback:null, visibilityListener:null, mediaListener:null,
       intersectionListener:null, resizeListener:null,
     };
+    internal.engineBufferIdentities = captureBufferIdentities(internal, ENGINE_BUFFER_FIELDS);
     internal.reduced = internal.explicitReduced || internal.mediaReduced;
     createSession(internal, internal.context.sessionId);
     if(browser.decodeLatch.failed){
@@ -935,9 +947,9 @@
       internal.motion = null;
       internal.director = null;
       internal.rig = null;
-      internal.bufferValues = null;
-      internal.bufferTargets = null;
-      internal.bufferOwners = null;
+      internal.rigBufferIdentities = null;
+      internal.motionBufferIdentities = null;
+      internal.engineBufferIdentities = null;
       clearTiming(internal.timing);
       clearTiming(internal.updateTiming);
       clearTiming(internal.renderTiming);
@@ -999,6 +1011,7 @@
         listenerCount:internal.listenerCount,
         observerCount:internal.observerCount,
         stableBufferReplacements:internal.stableBufferReplacements,
+        stableBufferAudit:STABLE_BUFFER_AUDIT,
         habituation:drives ? drives.habituation : 0,
         pendingBehaviorInteractions:internal.director ?
           internal.director.pendingInteractions : 0,

@@ -1246,7 +1246,9 @@
     updateClaws(rig);
     computeMetrics(rig, rig.lastDt);
     hardenRig(rig);
-    if(!internallyValid(rig, false)) throw new Error("PerezOS rig initial pose is invalid");
+    if(!internallyValid(rig, false)){
+      throw new Error(`PerezOS rig initial pose is invalid: ${validatePose(rig).join("; ")}`);
+    }
     saveLastValid(rig);
     return rig;
   }

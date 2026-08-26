@@ -84,6 +84,9 @@
     rim:"brand", deepShadowBias:"line", cableNodeFill:"panel",
     cableNodeRing:"brand", cableNodeEdge:"line", prop:"brand", propEdge:"line",
   });
+  const BUFFER_FIELDS = Object.freeze([
+    "poseSnapshot", "anchor", "groupCounts", "lineMinimums", "lineMaximums",
+  ]);
 
   for(let index = 0; index < Art.PARTS.length; index += 1){
     const part = Art.PARTS[index];
@@ -334,11 +337,14 @@
     const groupCounts = new Int16Array(OCCLUSION_GROUPS.length);
     const lineMinimums = new Int16Array(LINE_ROW_COUNT);
     const lineMaximums = new Int16Array(LINE_ROW_COUNT);
+    const bufferIdentities = Object.seal([
+      poseSnapshot, anchor, groupCounts, lineMinimums, lineMaximums,
+    ]);
     const renderer = Object.seal({canvas});
     const internal = {
       canvas, ctx, canvasFactory:factory, pages:{dark:null, light:null},
       theme:initialTheme, page:null, poseSnapshot, anchor, groupCounts,
-      lineMinimums, lineMaximums,
+      lineMinimums, lineMaximums, bufferIdentities,
       poseReady:false, lastRig:null, destroyed:false, dirty:true,
       viewportWidth:0, viewportHeight:0, dpr:0, backingWidth:0, backingHeight:0,
       camera:null, cameraRevision:0, paletteRevision:0, accentRevision:0,
@@ -691,20 +697,22 @@
     }
   }
 
-  function supportLoadForPart(part, rig){
+  function supportLimbForPart(part){
     const id = part.id;
-    let limb = "";
-    if(id.includes("fl") || id.startsWith("claw-front-left")) limb = "front-left";
-    else if(id.includes("fr") || id.startsWith("claw-front-right")) limb = "front-right";
-    else if(id.includes("rl") || id.startsWith("claw-rear-left")) limb = "rear-left";
-    else if(id.includes("rr") || id.startsWith("claw-rear-right")) limb = "rear-right";
-    if(limb) return rig.supports[limb].load;
-    let load = 0;
-    for(let index = 0; index < LIMB_NAMES.length; index += 1){
-      const candidate = rig.supports[LIMB_NAMES[index]].load;
-      if(candidate > load) load = candidate;
+    if(id.includes("fl") || id.startsWith("claw-front-left")) return "front-left";
+    if(id.includes("fr") || id.startsWith("claw-front-right")) return "front-right";
+    if(id.includes("rl") || id.startsWith("claw-rear-left")) return "rear-left";
+    if(id.includes("rr") || id.startsWith("claw-rear-right")) return "rear-right";
+    return "";
+  }
+
+  function loadedForPart(part, rig, staticMode){
+    const poseSource = staticMode ? STATIC_POSE : rig;
+    if(part.id.startsWith("claw-")){
+      return poseSource.claws[part.id].mode === "loaded";
     }
-    return load;
+    const limb = supportLimbForPart(part);
+    return !!limb && poseSource.supports[limb].mode === "loaded";
   }
 
   function turnBand(part, rig){
@@ -736,12 +744,8 @@
     const searching = context.status === "waiting" || context.contextPressure === "high" ||
       context.expanded === true;
     if(keys.searching && searching) return keys.searching;
-    if(!staticMode && keys.turned && turnBand(part, rig) >= 0.45) return keys.turned;
-    const loadedClaw = part.id.startsWith("claw-") &&
-      (staticMode ? STATIC_POSE.claws[part.id].mode === "loaded" :
-        rig.claws[part.id].mode === "loaded");
-    if(keys.loaded && (loadedClaw || context.status === "working" ||
-       (!staticMode && supportLoadForPart(part, rig) >= 0.66))) return keys.loaded;
+    if(!staticMode && keys.turned && turnBand(part, rig) >= 0.39) return keys.turned;
+    if(keys.loaded && loadedForPart(part, rig, staticMode)) return keys.loaded;
     return keys.base;
   }
 
@@ -831,11 +835,11 @@
   }
 
   function drawLimbSegment(internal, x0, y0, x1, y1){
-    drawThickPixelLine(internal, x0, y0, x1, y1, 4,
+    drawThickPixelLine(internal, x0, y0, x1, y1, 5,
       internal.page.atlas.palette[1], 0, 0);
-    drawThickPixelLine(internal, x0, y0, x1, y1, 2,
+    drawThickPixelLine(internal, x0, y0, x1, y1, 3,
       internal.page.atlas.palette[3], 0, 0);
-    drawThickPixelLine(internal, x0, y0, x1, y1, 0,
+    drawThickPixelLine(internal, x0, y0, x1, y1, 1,
       internal.page.atlas.palette[5], -1, -1);
   }
 
@@ -893,20 +897,19 @@
     if(maskId === "contact-front-left"){
       const point = poseSource.supports["front-left"].mode === "loaded" ?
         poseSource.supports["front-left"].point : poseSource.limbs["front-left"].end;
-      x += Math.round(point.x - REST_X["palm-fl"]);
-      y += Math.round(point.y - REST_Y["palm-fl"]);
+      x = Math.round(point.x - mask.bounds[2] / 2);
+      y = Math.round(point.y - mask.bounds[3] / 2);
     }else if(maskId === "contact-front-right"){
       const point = poseSource.supports["front-right"].mode === "loaded" ?
         poseSource.supports["front-right"].point : poseSource.limbs["front-right"].end;
-      x += Math.round(point.x - REST_X["palm-fr"]);
-      y += Math.round(point.y - REST_Y["palm-fr"]);
+      x = Math.round(point.x - mask.bounds[2] / 2);
+      y = Math.round(point.y - mask.bounds[3] / 2);
     }else if(maskId === "contact-rear"){
       const limb = poseSource.supports["rear-left"].mode === "loaded" ?
         "rear-left" : "rear-right";
-      const palm = limb === "rear-left" ? "palm-rl" : "palm-rr";
       const point = poseSource.supports[limb].point;
-      x += Math.round(point.x - REST_X[palm]);
-      y += Math.round(point.y - REST_Y[palm]);
+      x = Math.round(point.x - mask.bounds[2] / 2);
+      y = Math.round(point.y - mask.bounds[3] / 2);
     }else if(!staticMode){
       x += Math.round(rig.values[INDEX.bodyLean]);
       y -= Math.round(rig.values[INDEX.bodyLift]);
@@ -958,7 +961,7 @@
       count += 1;
       bits |= 4;
     }
-    if(context.status === "dead" || context.contextPressure === "high"){
+    if(!staticMode && (context.status === "dead" || context.contextPressure === "high")){
       drawMask(internal, "contact-belly", rig, staticMode);
       count += 1;
       bits |= 8;
@@ -1175,6 +1178,19 @@
     return true;
   }
 
+  function auditBufferIdentities(renderer){
+    const internal = RENDERERS.get(renderer);
+    if(!internal || internal.destroyed) return 0;
+    let replacements = 0;
+    for(let index = 0; index < BUFFER_FIELDS.length; index += 1){
+      const current = internal[BUFFER_FIELDS[index]];
+      if(current === internal.bufferIdentities[index]) continue;
+      internal.bufferIdentities[index] = current;
+      replacements += 1;
+    }
+    return replacements;
+  }
+
   function destroyRenderer(renderer){
     const internal = RENDERERS.get(renderer);
     if(!internal || internal.destroyed) return false;
@@ -1240,5 +1256,5 @@
   }
 
   NS.Renderer = Object.freeze({QUALITY, createRenderer, setViewport, setTheme,
-    render, markDirty, destroyRenderer, rendererDiagnostics});
+    render, markDirty, auditBufferIdentities, destroyRenderer, rendererDiagnostics});
 })(typeof window !== "undefined" ? window : globalThis);

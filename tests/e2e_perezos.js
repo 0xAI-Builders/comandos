@@ -146,10 +146,15 @@ function traceRange(trace, sequenceStart, sequenceEnd){
 function temporalCoverage(trace, windowStart, windowEnd){
   const first = trace.timestamp.length ? trace.timestamp[0] : Number.NaN;
   const last = trace.timestamp.length ? trace.timestamp[trace.timestamp.length - 1] : Number.NaN;
+  const overlapStart = Number.isFinite(first) ? Math.max(first, windowStart) : Number.NaN;
+  const overlapEnd = Number.isFinite(last) ? Math.min(last, windowEnd) : Number.NaN;
   return Object.freeze({windowMs:windowEnd - windowStart,
-    coverageMs:Number.isFinite(first) && Number.isFinite(last) ? last - first : 0,
-    startLagMs:Number.isFinite(first) ? first - windowStart : Number.POSITIVE_INFINITY,
-    endLagMs:Number.isFinite(last) ? windowEnd - last : Number.POSITIVE_INFINITY});
+    coverageMs:Number.isFinite(overlapStart) && Number.isFinite(overlapEnd) ?
+      Math.max(0, overlapEnd - overlapStart) : 0,
+    startLagMs:Number.isFinite(first) ? Math.max(0, first - windowStart) :
+      Number.POSITIVE_INFINITY,
+    endLagMs:Number.isFinite(last) ? Math.max(0, windowEnd - last) :
+      Number.POSITIVE_INFINITY});
 }
 
 function sourcePreallocationAudit(){
@@ -202,7 +207,7 @@ min-height:300px;padding:24px;border:1px solid var(--line2);border-radius:14px;b
   const neighbor = document.getElementById("neighbor");
   const controller = window.ComandOSPerezOS.createPerezOS(canvas, {visible:true});
   let timestamp = 1;
-  let state = {sessionId:"task9-harness",status:"idle",role:"daily",costume:"bufanda",
+  let state = {sessionId:"task9-harness",status:"idle",role:"daily",costume:"",
     contextPressure:"medium",theme:"noche",expanded:false,
     colors:{brand:"#8B7CFF",panel:"#121722",line:"#222A3A"}};
   let neighboringClicks = 0;
@@ -241,6 +246,7 @@ min-height:300px;padding:24px;border:1px solid var(--line2);border-radius:14px;b
     const rgba = ctx.getImageData(0, 0, width, height).data;
     let hash = 0x811c9dc5, count = 0, sumX = 0, sumY = 0;
     let minX = width, minY = height, maxX = -1, maxY = -1;
+    const opaque = new Uint8Array(width * height);
     const palette = new Set();
     const regions = {upperLeftGrip:0,upperRightGrip:0,curledHind:0,face:0,floorBand:0};
     for(let offset = 0; offset < rgba.length; offset += 4){
@@ -249,6 +255,7 @@ min-height:300px;padding:24px;border:1px solid var(--line2);border-radius:14px;b
       }
       if(rgba[offset + 3] === 0) continue;
       const pixel = offset / 4, x = pixel % width, y = Math.floor(pixel / width);
+      opaque[pixel] = 1;
       count += 1; sumX += x; sumY += y;
       minX = Math.min(minX, x); maxX = Math.max(maxX, x);
       minY = Math.min(minY, y); maxY = Math.max(maxY, y);
@@ -256,13 +263,41 @@ min-height:300px;padding:24px;border:1px solid var(--line2);border-radius:14px;b
         rgba[offset + 2] + "," + rgba[offset + 3]);
       if(x >= 55 && x <= 92 && y >= 18 && y <= 56) regions.upperLeftGrip += 1;
       if(x >= 130 && x <= 174 && y >= 62 && y <= 108) regions.upperRightGrip += 1;
-      if(x >= 25 && x <= 80 && y >= 132 && y <= 179) regions.curledHind += 1;
+      if(x >= 90 && x <= 155 && y >= 125 && y <= 175) regions.curledHind += 1;
       if(x >= 78 && x <= 148 && y <= 64) regions.face += 1;
-      if(y >= 180) regions.floorBand += 1;
+      if(y >= 176) regions.floorBand += 1;
+    }
+    const stack = new Int32Array(width * height);
+    let components = 0, largestComponent = 0;
+    for(let start = 0; start < opaque.length; start += 1){
+      if(opaque[start] === 0) continue;
+      components += 1;
+      let top = 0, size = 0;
+      stack[top++] = start;
+      opaque[start] = 0;
+      while(top > 0){
+        const pixel = stack[--top];
+        const x = pixel % width;
+        const y = Math.floor(pixel / width);
+        size += 1;
+        const fromX = Math.max(0, x - 1), toX = Math.min(width - 1, x + 1);
+        const fromY = Math.max(0, y - 1), toY = Math.min(height - 1, y + 1);
+        for(let nextY = fromY; nextY <= toY; nextY += 1){
+          for(let nextX = fromX; nextX <= toX; nextX += 1){
+            const next = nextY * width + nextX;
+            if(opaque[next] === 0) continue;
+            opaque[next] = 0;
+            stack[top++] = next;
+          }
+        }
+      }
+      largestComponent = Math.max(largestComponent, size);
     }
     return {hash:(hash >>> 0).toString(16).padStart(8, "0"), width, height,
       nonTransparent:count, occupancy:count / (width * height),
       transparent:count < width * height, uniquePalette:palette.size,
+      connectivity:{components,largestComponent,
+        largestComponentRatio:count ? largestComponent / count : 0},
       regions,
       centroid:count ? {x:sumX / count, y:sumY / count} : null,
       bounds:count ? {left:minX,top:minY,right:maxX,bottom:maxY,
@@ -275,8 +310,20 @@ min-height:300px;padding:24px;border:1px solid var(--line2);border-radius:14px;b
       .map(name => ({name,point:{...rig.supports[name].point},
         contactError:rig.limbs[name].contactError,cableT:rig.supports[name].cableT}));
     const freeHind = rig.limbs["rear-left"];
-    return {loaded,pelvis:{x:106 + lean,y:131 + lift},freeHind:{
+    const anchor = id => {
+      const part = window.ComandOSPerezOS.Art.PARTS.find(candidate => candidate.id === id);
+      return {x:part.bounds[0] + part.pivot[0] + lean,
+        y:part.bounds[1] + part.pivot[1] - lift};
+    };
+    const skull = anchor("skull");
+    const ribcage = anchor("ribcage");
+    const pelvis = anchor("pelvis");
+    const torsoDx = pelvis.x - skull.x;
+    const torsoDy = pelvis.y - skull.y;
+    return {loaded,pelvis,torso:{skull,ribcage,pelvis,dx:torsoDx,dy:torsoDy,
+      angleDegrees:Math.atan2(torsoDy, torsoDx) * 180 / Math.PI},freeHind:{
       root:{...freeHind.root},joint:{...freeHind.joint},end:{...freeHind.end},
+      floorMargin:192 - freeHind.end.y,
       normalizedBend:((freeHind.joint.x-freeHind.root.x)*(freeHind.end.y-freeHind.root.y)-
         (freeHind.joint.y-freeHind.root.y)*(freeHind.end.x-freeHind.root.x)) /
         (freeHind.upperLength*freeHind.lowerLength),
@@ -288,7 +335,7 @@ min-height:300px;padding:24px;border:1px solid var(--line2);border-radius:14px;b
     const rig = window.ComandOSPerezOS.Rig.createRig("task9-authored-posture");
     const renderer = window.ComandOSPerezOS.Renderer.createRenderer(target);
     window.ComandOSPerezOS.Renderer.setViewport(renderer, 224, 192, 1);
-    window.ComandOSPerezOS.Renderer.render(renderer, rig, {...state,status:"idle",
+    window.ComandOSPerezOS.Renderer.render(renderer, rig, {...state,status:"idle",costume:"",
       sessionId:"task9-authored-posture",theme:"noche"}, "full");
     const result = {sample:pixelSample(target),geometry:rigGeometry(rig),
       poseHash:window.ComandOSPerezOS.Rig.poseHash(rig)};
@@ -699,8 +746,12 @@ async function runPerezOSE2E(options = {}){
     const freeHind = authoredPosture.geometry.freeHind;
     recordFailure(visualFailures,
       JSON.stringify(loadedNames) === JSON.stringify(["front-left","rear-right"]) &&
-      loadedAboveBody && freeHind.end.y < 180 &&
-      freeHind.end.x < freeHind.root.x - 20 && Math.abs(freeHind.normalizedBend) > 0.18,
+      loadedAboveBody && freeHind.floorMargin >= 24 &&
+      freeHind.joint.x < freeHind.root.x - 24 &&
+      freeHind.joint.y > freeHind.root.y + 14 &&
+      freeHind.end.x > freeHind.joint.x + 20 &&
+      freeHind.end.y > freeHind.joint.y + 14 &&
+      Math.abs(freeHind.normalizedBend) > 0.3,
     "authored pose is suspended from two upper contacts with a curled free hind limb",
     authoredPosture.geometry);
     const contactSpread = authoredPosture.geometry.loaded.length === 2 ? {
@@ -710,15 +761,22 @@ async function runPerezOSE2E(options = {}){
         authoredPosture.geometry.loaded[1].point.y),
     } : {x:0,y:0};
     recordFailure(visualFailures,
-      authoredPosture.geometry.pelvis.y < 155 && contactSpread.x > 50 && contactSpread.y > 30 &&
+      authoredPosture.geometry.pelvis.y < 155 &&
+      authoredPosture.geometry.torso.dx >= 28 && authoredPosture.geometry.torso.dy >= 64 &&
+      authoredPosture.geometry.torso.angleDegrees >= 58 &&
+      authoredPosture.geometry.torso.angleDegrees <= 72 &&
+      authoredPosture.geometry.torso.ribcage.x >= authoredPosture.geometry.torso.skull.x &&
+      contactSpread.x > 50 && contactSpread.y > 30 &&
       visuals.authoredPosture.regions.upperLeftGrip > 40 &&
       visuals.authoredPosture.regions.upperRightGrip > 40 &&
       visuals.authoredPosture.regions.curledHind > 80 &&
       visuals.authoredPosture.regions.face > 400 &&
-      visuals.authoredPosture.regions.floorBand < 20,
-    "authored silhouette keeps diagonal near/far support, face, curled hind, and no floor line",
+      visuals.authoredPosture.regions.floorBand < 20 &&
+      visuals.authoredPosture.bounds.bottom <= 171 &&
+      visuals.authoredPosture.connectivity.largestComponentRatio >= 0.82,
+    "authored raster is one connected diagonal sloth with two grips, face, curled hind, and floor margin",
     {geometry:authoredPosture.geometry, regions:visuals.authoredPosture.regions,
-      contactSpread});
+      connectivity:visuals.authoredPosture.connectivity,contactSpread});
 
     const statusRuns = {};
     for(const status of ["idle","working","waiting","done","dead"]){
@@ -969,7 +1027,8 @@ async function runPerezOSE2E(options = {}){
       p95Ms:Math.max(idleCombined.p95, actionCombined.p95),
       decodedBytes:Math.max(idleEnd.decodedBytes, actionEnd.decodedBytes),
       stableBufferReplacements,
-      bufferCounter:"preallocated renderer/engine typed-buffer identity replacements",
+      stableBufferAudit:actionEnd.stableBufferAudit,
+      bufferCounter:"all 38 retained typed hot-loop identities: Rig 14, Motion 7, Renderer 5, Engine timing/trace 12",
       sourceAudit,
       heap:{baselineBytes:heapBaseline,afterIdleBytes:heapAfterIdle,
         afterActionBytes:heapAfterAction,growthBytes:heapGrowthBytes,
@@ -1010,9 +1069,12 @@ async function runPerezOSE2E(options = {}){
       actionGovernorTransitions === 0,
     "entire 30 second action trace sustains safe Full 30 Hz without quality transitions",
     performance.action);
-    recordFailure(lifecycleFailures, stableBufferReplacements === 0 && sourceAudit.preallocated,
-      "stable hot-loop buffers retain identity and trace writes use preallocated storage",
-      {stableBufferReplacements,sourceAudit});
+    const expectedBufferAudit = {rig:14,motion:7,renderer:5,engine:12,total:38,
+      semantics:"identity replacements across every retained typed hot-loop buffer"};
+    recordFailure(lifecycleFailures, stableBufferReplacements === 0 && sourceAudit.preallocated &&
+      JSON.stringify(performance.stableBufferAudit) === JSON.stringify(expectedBufferAudit),
+      "all 38 named hot-loop typed buffers retain identity and trace writes use preallocated storage",
+      {stableBufferReplacements,stableBufferAudit:performance.stableBufferAudit,sourceAudit});
     recordFailure(lifecycleFailures, heapGrowthBytes <= heapBudgetBytes,
       "stabilized browser heap remains bounded across both 30 second windows", performance.heap);
     recordFailure(lifecycleFailures, performance.averageMs < 1 && performance.p95Ms < 2 &&
@@ -1059,7 +1121,7 @@ async function runPerezOSE2E(options = {}){
 
 module.exports = {ACTION_SCREENSHOT, IDLE_SCREENSHOT, PERFORMANCE, VIEWPORT,
   analyzePixels, assertImportContract, createServer, harnessDocument,
-  isBrowserUnavailable, requireCachedPlaywright, runPerezOSE2E};
+  isBrowserUnavailable, requireCachedPlaywright, runPerezOSE2E, temporalCoverage};
 
 if(require.main === module){
   runPerezOSE2E().then(report => {

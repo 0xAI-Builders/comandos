@@ -60,6 +60,14 @@ def test_perezos_browser_contract():
     assert report["performance"]["p95Ms"] < 2.0
     assert report["performance"]["decodedBytes"] < 16 * 1024 * 1024
     assert report["performance"]["stableBufferReplacements"] == 0
+    assert report["performance"]["stableBufferAudit"] == {
+        "rig": 14,
+        "motion": 7,
+        "renderer": 5,
+        "engine": 12,
+        "total": 38,
+        "semantics": "identity replacements across every retained typed hot-loop buffer",
+    }
     assert "steadyAllocations" not in report["performance"]
     assert report["performance"]["sourceAudit"]["preallocated"] is True
     assert report["performance"]["heap"]["bounded"] is True
