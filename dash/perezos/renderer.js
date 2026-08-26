@@ -78,6 +78,11 @@
     ])}),
   ]);
   const DITHER_PIXEL_COUNT = 18;
+  const HEX_COLOR_PATTERN = /^#[0-9a-f]{6}$/i;
+  const ACCENT_DESCRIPTOR = Object.freeze({
+    rim:"brand", deepShadowBias:"line", cableNodeFill:"panel",
+    cableNodeRing:"brand", cableNodeEdge:"line", prop:"brand", propEdge:"line",
+  });
 
   for(let index = 0; index < Art.PARTS.length; index += 1){
     const part = Art.PARTS[index];
@@ -223,6 +228,33 @@
     return theme === "dark" || theme === "light" ? theme : "";
   }
 
+  function validHexColor(color){
+    return typeof color === "string" && HEX_COLOR_PATTERN.test(color);
+  }
+
+  function createAccentPalette(){
+    return Object.seal({brand:"", panel:"", line:""});
+  }
+
+  function accentChanged(internal, colors){
+    return internal.accent.brand !== colors.brand ||
+      internal.accent.panel !== colors.panel ||
+      internal.accent.line !== colors.line;
+  }
+
+  function syncAccentPalette(internal, colors){
+    const brand = colors.brand;
+    const panel = colors.panel;
+    const line = colors.line;
+    if(internal.accent.brand === brand && internal.accent.panel === panel &&
+       internal.accent.line === line) return false;
+    internal.accent.brand = brand;
+    internal.accent.panel = panel;
+    internal.accent.line = line;
+    internal.accentRevision += 1;
+    return true;
+  }
+
   function buildDetailPage(internal, theme, palette){
     const canvas = internal.canvasFactory(Art.WORLD.width, Art.WORLD.height);
     if(!canvas || typeof canvas.getContext !== "function"){
@@ -279,7 +311,8 @@
       theme:initialTheme, page:null, poseSnapshot, anchor, groupCounts,
       poseReady:false, lastRig:null, destroyed:false, dirty:true,
       viewportWidth:0, viewportHeight:0, dpr:0, backingWidth:0, backingHeight:0,
-      camera:null, cameraRevision:0, paletteRevision:0, manualRevision:0,
+      camera:null, cameraRevision:0, paletteRevision:0, accentRevision:0,
+      accent:createAccentPalette(), manualRevision:0,
       poseRevision:0, contextRevision:0, contactRevision:0, propRevision:0,
       renders:0, skippedClean:0, atlasBuilds:0, atlasBytes:0,
       retainedCacheBytes:0, typedArrayBytes:poseSnapshot.byteLength +
@@ -387,14 +420,17 @@
       !!context && typeof context === "object" && typeof context.status === "string" &&
       typeof context.role === "string" && typeof context.costume === "string" &&
       typeof context.contextPressure === "string" && typeof context.theme === "string" &&
-      typeof context.expanded === "boolean";
+      typeof context.expanded === "boolean" && !!context.colors &&
+      typeof context.colors === "object" && validHexColor(context.colors.brand) &&
+      validHexColor(context.colors.panel) && validHexColor(context.colors.line);
   }
 
   function visualContextChanged(internal, context){
     return !internal.contextReady || internal.status !== context.status ||
       internal.role !== context.role || internal.costume !== context.costume ||
       internal.pressure !== context.contextPressure ||
-      internal.contextTheme !== context.theme || internal.expanded !== context.expanded;
+      internal.contextTheme !== context.theme || internal.expanded !== context.expanded ||
+      accentChanged(internal, context.colors);
   }
 
   function saveVisualContext(internal, context){
@@ -751,12 +787,29 @@
     }
   }
 
+  function drawCableNode(internal, rig, staticMode){
+    const scale = internal.camera.scale;
+    const x = cableValue(rig, staticMode, 16);
+    const y = cableValue(rig, staticMode, 17);
+    internal.ctx.fillStyle = internal.accent.line;
+    internal.ctx.fillRect(screenX(internal, x - 2), screenY(internal, y - 2),
+      5 * scale, 5 * scale);
+    internal.ctx.fillStyle = internal.accent.brand;
+    internal.ctx.fillRect(screenX(internal, x - 1), screenY(internal, y - 1),
+      3 * scale, 3 * scale);
+    internal.ctx.fillStyle = internal.accent.panel;
+    internal.ctx.fillRect(screenX(internal, x), screenY(internal, y), scale, scale);
+  }
+
   function drawShadow(internal, rig, staticMode){
     const lean = staticMode ? 0 : Math.round(rig.values[INDEX.bodyLean]);
     const lift = staticMode ? 0 : Math.round(rig.values[INDEX.bodyLift]);
     internal.ctx.fillStyle = internal.page.atlas.palette[0];
     internal.ctx.fillRect(screenX(internal, 68 + lean), screenY(internal, 187 - lift),
       92 * internal.camera.scale, 3 * internal.camera.scale);
+    internal.ctx.fillStyle = internal.accent.line;
+    internal.ctx.fillRect(screenX(internal, 82 + lean), screenY(internal, 187 - lift),
+      14 * internal.camera.scale, internal.camera.scale);
   }
 
   function maskOrigin(internal, maskId, rig, staticMode){
@@ -886,10 +939,21 @@
     }
     const rect = internal.page.atlas.rects[PROP_KEYS[context.costume]];
     const scale = internal.camera.scale;
+    const propX = propAnchorX - rect.pivotX;
+    const propY = propAnchorY - rect.pivotY;
     internal.ctx.drawImage(internal.page.atlas.canvas, rect.x, rect.y,
-      rect.width, rect.height, screenX(internal, propAnchorX - rect.pivotX),
-      screenY(internal, propAnchorY - rect.pivotY), rect.width * scale,
+      rect.width, rect.height, screenX(internal, propX),
+      screenY(internal, propY), rect.width * scale,
       rect.height * scale);
+    const markWidth = Math.min(5, rect.width);
+    const markX = propX + Math.floor((rect.width - markWidth) / 2);
+    const markY = propY + Math.min(2, rect.height - 1);
+    internal.ctx.fillStyle = internal.accent.line;
+    internal.ctx.fillRect(screenX(internal, markX), screenY(internal, markY),
+      markWidth * scale, 2 * scale);
+    internal.ctx.fillStyle = internal.accent.brand;
+    internal.ctx.fillRect(screenX(internal, markX + 1), screenY(internal, markY),
+      Math.max(1, markWidth - 2) * scale, scale);
     return 1;
   }
 
@@ -936,6 +1000,11 @@
           screenY(internal, faceY + 6), 16 * scale, scale);
       }
     }
+    internal.ctx.fillStyle = internal.accent.brand;
+    internal.ctx.fillRect(screenX(internal, 85 + rimOffsetX),
+      screenY(internal, 52 + rimOffsetY), scale, 20 * scale);
+    internal.ctx.fillRect(screenX(internal, 88 + rimOffsetX),
+      screenY(internal, 48 + rimOffsetY), 18 * scale, scale);
   }
 
   function render(renderer, rig, context, quality){
@@ -954,6 +1023,7 @@
         internal.skippedClean += 1;
         return false;
       }
+      syncAccentPalette(internal, context.colors);
 
       const ctx = internal.ctx;
       ctx.imageSmoothingEnabled = false;
@@ -989,7 +1059,8 @@
         (quality === QUALITY.FULL || quality === QUALITY.BALANCED ? 1 : 0);
       internal.groupCounts[8] = drawProp(internal, rig, context, staticMode);
       drawCable(internal, rig, staticMode, 4, 8);
-      internal.groupCounts[9] = 1;
+      drawCableNode(internal, rig, staticMode);
+      internal.groupCounts[9] = 2;
       drawRim(internal, rig, context, staticMode);
       internal.groupCounts[10] = 1;
 
@@ -1074,6 +1145,8 @@
       contactMasks:internal.contactMasks,
       cameraRevision:internal.cameraRevision,
       paletteRevision:internal.paletteRevision,
+      accentRevision:internal.accentRevision,
+      accentDescriptor:ACCENT_DESCRIPTOR,
       poseRevision:internal.poseRevision,
       contextRevision:internal.contextRevision,
       contactRevision:internal.contactRevision,

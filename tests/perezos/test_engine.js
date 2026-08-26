@@ -225,6 +225,24 @@ if(E){
     controller.destroy();
   });
 
+  test("dashboard accent changes render without recreating same-session living state", () => {
+    const env = fakeEnvironment();
+    const controller = E(env.canvas, engineOptions(env));
+    controller.setContext(context());
+    env.frames.advance(120);
+    const before = controller.getDiagnostics();
+    assert.equal(controller.setContext(context({theme:"calido",
+      colors:{brand:"#E0A458", panel:"#1F1811", line:"#36291A"}})), true);
+    const changed = controller.getDiagnostics();
+    assert.equal(changed.controllerIdentity, before.controllerIdentity);
+    assert.equal(changed.rigIdentity, before.rigIdentity);
+    assert.equal(changed.rendererIdentity, before.rendererIdentity);
+    assert.equal(changed.sessionGeneration, before.sessionGeneration);
+    env.frames.advance(120);
+    assert.ok(controller.getDiagnostics().renders > before.renders);
+    controller.destroy();
+  });
+
   test("context diffs become bounded habituable Behavior perceptions", () => {
     const env = fakeEnvironment();
     const controller = E(env.canvas, engineOptions(env));

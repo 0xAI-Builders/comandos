@@ -38,6 +38,18 @@ DONE
   dashboard test expectation.
 - Renamed only the requested backend comments; `costume` response fields and
   detector values were not changed.
+- Added one preallocated, validated accent palette that maps dashboard
+  `brand`/`panel`/`line` colors to the rim, deep-shadow bias, cable node, and
+  prop markings. The full execution cable retains its authored metal palette.
+  Accent-only changes redraw exactly once without rebuilding an atlas or
+  replacing the controller, rig, renderer, or Motion state.
+- Compiled editable role `matches` entries as case-insensitive regular
+  expressions, ignored malformed patterns without throwing, and classified
+  current `gpt-5.4`, `gpt-5.5`, `gpt-5.6-sol`, and `glm-4.6` models into their
+  authored PerezOS role props.
+- Replaced source-shape-only same-session coverage with a behavioral Node
+  harness that executes two real `renderCentro()` calls and asserts exact
+  canvas/controller identity, one shell construction, and live second context.
 
 ## TDD evidence
 
@@ -80,14 +92,51 @@ Result:
 OK
 ```
 
+### Formal-review remediation RED/GREEN
+
+RED commands:
+
+```text
+node --test --test-name-pattern='five dashboard themes|color-only context|dashboard accent changes' \
+  tests/perezos/test_renderer.js tests/perezos/test_engine.js
+pytest -q tests/perezos/test_integration.py -k 'same_session or real_model_regexes'
+```
+
+Observed RED before the production fix:
+
+```text
+2 JS failures: theme accents absent; color-only changes skipped as clean
+1 Python failure: gpt-5.4 pattern treated as a literal substring
+```
+
+The behavioral same-session test passed on the real implementation, while the
+reviewer's unconditional-`innerHTML` mutation exited nonzero with
+`same-session Control Center shell rebuilt`.
+
+Fresh GREEN after remediation:
+
+```text
+3/3 focused JS tests passed
+3/3 focused Python tests passed
+```
+
+Review follow-up also exercised a RED in which the full cable was incorrectly
+theme-colored and the color helper contained a render-time regex literal.
+GREEN restores the authored light/dark cable-metal index, bounds theme colors
+to the allowed rim/deep-shadow/node/prop pixels, and reuses one module-level
+hex pattern covered by the expanded hot-path source audit.
+
 ## Verification
 
-- Focused Task 8 dashboard/integration suite: 30/30 passing.
+- Focused Task 8 dashboard/integration suite: 32/32 passing.
 - `bash tests/test_js_parses.sh`: `OK`.
-- `node --test tests/perezos/test_*.js`: 196/196 passing (178 top-level
+- `node --test tests/perezos/test_*.js`: 199/199 passing (181 top-level
   tests plus nested cases).
-- `pytest -q`: 396/396 passing in 105.17 seconds.
+- `pytest -q`: 398/398 passing in 105.66 seconds.
 - `git diff --check`: passing.
+- Formal read-only remediation re-review: `Ready: Yes`, with no remaining
+  Critical or Important findings after restoring authored cable metal and
+  moving the hex validator pattern out of the render path.
 - Source scan: no old character art/name/runtime/CSS/phrase remains in the
   active dashboard; the single `cc-axo` occurrence is the required read-only
   migration read.
@@ -97,7 +146,11 @@ OK
 - `dash/perezos/perezos.css` (new)
 - `tests/perezos/test_integration.py` (new)
 - `dash/index.html`
+- `dash/perezos/renderer.js`
+- `config/agent-roles.json`
 - `dash/sw.js`
+- `tests/perezos/test_engine.js`
+- `tests/perezos/test_renderer.js`
 - `tests/test_dashboard_layout.py`
 - `tests/test_remote_ui.py` (direct SW v3 expectation update)
 - `bin/cc-dash` (comment only)
@@ -117,6 +170,16 @@ OK
 - Theme, role, costume, expansion, and status reach the current controller as
   stable primitive context. Detector costume values override role props rather
   than changing their backend meaning.
+- Theme accents are six-digit hex values before they can reach Canvas
+  `fillStyle`; malformed direct-renderer colors fail closed before touching
+  Canvas state. The body remains authored atlas artwork, while five dashboard
+  themes share two cached light/dark pages and vary only bounded accent pixels.
+- The steady render path compares stable accent strings without creating a new
+  palette object or regular expression. A color diff increments
+  `accentRevision` once; the next identical frame skips all Canvas operations.
+- The same-session regression harness is mutation-sensitive: the exact
+  unconditional-`innerHTML` mutation described by review fails on its shell
+  construction count.
 - Existing session text and actions remain authoritative and visible when the
   mascot preference is off.
 

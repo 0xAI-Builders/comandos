@@ -133,6 +133,10 @@ if(D){
 
   function baseId(key){ return key.includes("@") ? key.slice(0, key.indexOf("@")) : key; }
 
+  const DEFAULT_COLORS = Object.freeze({
+    brand:"#8B7CFF", panel:"#121722", line:"#222A3A",
+  });
+
   function fixtureContext(overrides = {}){
     return {
       sessionId:"session-name",
@@ -143,7 +147,7 @@ if(D){
       theme:"noche",
       expanded:false,
       timestamp:0,
-      colors:{brand:"#8B7CFF", panel:"#121722", line:"#222A3A"},
+      colors:DEFAULT_COLORS,
       ...overrides,
     };
   }
@@ -220,7 +224,7 @@ if(D){
     assert.deepEqual(ids, expected);
     const diagnostics = D.rendererDiagnostics(renderer);
     assert.deepEqual(diagnostics.occlusionGroups, OCCLUSION_GROUPS);
-    assert.deepEqual(diagnostics.lastGroupDrawCounts, [2,8,1,6,8,11,14,3,1,1,1]);
+    assert.deepEqual(diagnostics.lastGroupDrawCounts, [2,8,1,6,8,11,14,3,1,2,1]);
 
     const operationIndex = id => fake.operations.findIndex(operation => {
       if(operation[0] !== "drawImage") return false;
@@ -235,14 +239,16 @@ if(D){
     assert.ok(fake.operations.slice(0, rearStart).some(operation =>
       operation[0] === "fillRect" && operation[1].style === A.PALETTE[0]), "shadow order");
     assert.ok(fake.operations.slice(0, rearStart).some(operation =>
-      operation[0] === "fillRect" && operation[1].style === A.PALETTE[18]), "rear cable order");
+      operation[0] === "fillRect" && operation[1].style === A.PALETTE[18]),
+    "rear cable order");
     assert.ok(fake.operations.slice(lastClaw + 1, furStart).some(operation =>
       operation[0] === "fillRect" && operation[1].style === A.PALETTE[0]), "contact-mask order");
     assert.ok(fake.operations.slice(furEnd + 1, prop).some(operation =>
       operation[0] === "drawImage" && operation[1].image.width === A.WORLD.width),
     "fine-detail order");
     assert.ok(fake.operations.slice(prop + 1).some(operation =>
-      operation[0] === "fillRect" && operation[1].style === A.PALETTE[18]), "front cable order");
+      operation[0] === "fillRect" && operation[1].style === A.PALETTE[18]),
+    "front cable order");
     const lastCable = fake.operations.findLastIndex(operation =>
       operation[0] === "fillRect" && operation[1].style === A.PALETTE[18]);
     assert.ok(fake.operations.slice(lastCable + 1).some(operation =>
@@ -656,6 +662,78 @@ if(D){
     assert.equal(R.poseHash(rig), beforeHash);
   });
 
+  test("five dashboard themes preserve body art while changing validated accent pixels", () => {
+    const {fake, renderer, rig} = fixture();
+    const themes = [
+      ["noche", "dark", {brand:"#8B7CFF", panel:"#121722", line:"#222A3A"}],
+      ["dia", "light", {brand:"#5B4BD6", panel:"#FBFCFE", line:"#D9DEE8"}],
+      ["calido", "dark", {brand:"#E0A458", panel:"#1F1811", line:"#36291A"}],
+      ["termius", "dark", {brand:"#4CE07A", panel:"#141E2A", line:"#1C2733"}],
+      ["bruno", "dark", {brand:"#E4AE49", panel:"#222224", line:"#333333"}],
+    ];
+    let bodySignature = null;
+    const accentSignatures = new Set();
+    for(const [theme, paletteTheme, colors] of themes){
+      D.setTheme(renderer, paletteTheme);
+      fake.context.reset();
+      assert.equal(D.render(renderer, rig, fixtureContext({theme, colors}), "full"), true);
+      const body = atlasDraws(fake).filter(([key]) => !key.startsWith("prop:"))
+        .map(([key, call]) => [key, call.source, call.destination]);
+      if(bodySignature === null) bodySignature = body;
+      else assert.deepEqual(body, bodySignature, `${theme} recolored or rebuilt body geometry`);
+      const styles = new Set(fake.fills.map(call => call.style));
+      assert.equal(styles.has(colors.brand), true, `${theme} brand accent absent`);
+      assert.equal(styles.has(colors.panel), true, `${theme} panel node absent`);
+      assert.equal(styles.has(colors.line), true, `${theme} cable accent absent`);
+      const propDraw = fake.operations.findIndex(operation =>
+        operation[0] === "drawImage" && atlasKeyForDraw(operation[1]) === "prop:corona");
+      const propAccents = fake.operations.slice(propDraw + 1)
+        .filter(operation => operation[0] === "fillRect").slice(0, 2)
+        .map(operation => operation[1].style);
+      assert.deepEqual(propAccents, [colors.line, colors.brand], `${theme} prop accents`);
+      const nodeFill = fake.fills.findIndex(call => call.style === colors.panel);
+      assert.ok(nodeFill > 0, `${theme} cable node absent`);
+      assert.equal(fake.fills[nodeFill - 1].style, colors.brand, `${theme} cable node edge`);
+      assert.ok(fake.fills.filter(call => call.style === A.THEMES[paletteTheme][18]).length > 16,
+        `${theme} authored metallic cable was recolored`);
+      assert.equal(fake.fills.filter(call => call.style === colors.line).length, 3,
+        `${theme} line accent escaped its bounded shadow/node/prop marks`);
+      assert.deepEqual(fake.fills.slice(-2).map(call => call.style),
+        [colors.brand, colors.brand], `${theme} rim did not use brand color`);
+      accentSignatures.add([colors.brand, colors.panel, colors.line]
+        .map(color => `${color}:${fake.fills.filter(call => call.style === color).length}`).join("|"));
+    }
+    assert.equal(accentSignatures.size, themes.length);
+    const diagnostics = D.rendererDiagnostics(renderer);
+    assert.deepEqual(diagnostics.accentDescriptor, {
+      rim:"brand", deepShadowBias:"line", cableNodeFill:"panel",
+      cableNodeRing:"brand", cableNodeEdge:"line", prop:"brand", propEdge:"line",
+    });
+    assert.equal(diagnostics.atlasBuilds, 2,
+      "accent-only dark themes must reuse the same authored body atlas");
+  });
+
+  test("color-only context changes redraw once and invalid CSS colors fail closed", () => {
+    const {fake, renderer, rig} = fixture();
+    const initial = fixtureContext();
+    assert.equal(D.render(renderer, rig, initial, "full"), true);
+    const before = D.rendererDiagnostics(renderer);
+    fake.context.reset();
+    const changed = fixtureContext({colors:{brand:"#E0A458", panel:"#1F1811", line:"#36291A"}});
+    assert.equal(D.render(renderer, rig, changed, "full"), true);
+    const after = D.rendererDiagnostics(renderer);
+    assert.equal(after.accentRevision, before.accentRevision + 1);
+    fake.context.reset();
+    assert.equal(D.render(renderer, rig, changed, "full"), false);
+    assert.deepEqual(fake.operations, []);
+    for(const [field, value] of [["brand", "red"], ["panel", "var(--panel)"],
+                                  ["line", "#12345g"]]){
+      const colors = {...DEFAULT_COLORS, [field]:value};
+      assert.equal(D.render(renderer, rig, fixtureContext({colors}), "full"), false, field);
+      assert.deepEqual(fake.operations, [], field);
+    }
+  });
+
   test("Static ignores live pose revisions and redraws an authored safe pose only for visual events", () => {
     const {fake, renderer, rig} = fixture();
     let context = fixtureContext({costume:""});
@@ -714,11 +792,21 @@ if(D){
     assert.equal(after.atlasBuilds, before.atlasBuilds);
     assert.equal(after.decodedBytes, before.decodedBytes);
     const source = fs.readFileSync(rendererPath, "utf8");
+    const validationStart = source.indexOf("function validHexColor(");
+    const validationEnd = source.indexOf("function createAccentPalette(", validationStart);
+    const accentStart = source.indexOf("function accentChanged(", validationEnd);
+    const accentEnd = source.indexOf("function buildDetailPage(", accentStart);
     const start = source.indexOf("function scanPose(");
     const end = source.indexOf("function markDirty(", start);
+    assert.ok(validationStart >= 0 && validationEnd > validationStart);
+    assert.ok(accentStart >= 0 && accentEnd > accentStart);
     assert.ok(start >= 0 && end > start);
-    const hotPath = source.slice(start, end);
+    const hotPath = source.slice(validationStart, validationEnd) +
+      source.slice(accentStart, accentEnd) + source.slice(start, end);
     assert.doesNotMatch(hotPath, /\bnew\s+(?:Array|Float\d+Array|Int\d+Array|Map|Set)\b/);
+    assert.doesNotMatch(hotPath, /\bnew\s+RegExp\b/);
+    assert.doesNotMatch(hotPath, /\/\^#\[0-9a-f\]\{6\}\$\/i/,
+      "render-time color validation must reuse a module-level pattern");
     assert.doesNotMatch(hotPath, /Object\.(?:keys|values|entries)\s*\(/);
     assert.doesNotMatch(hotPath, /\.map\s*\(/);
     assert.doesNotMatch(hotPath, /(?:const|let|var)\s+\w+\s*=\s*\[/,

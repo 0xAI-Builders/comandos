@@ -81,6 +81,7 @@
         "opus",
         "fable",
         "mythos",
+        "gpt-5\\.5",
         "gpt-5\\.6",
         "sol"
       ],
@@ -91,6 +92,7 @@
         "codex": {
           "match": [
             "sol$",
+            "gpt-5\\.5",
             "gpt-5\\.6"
           ],
           "effort": "high"

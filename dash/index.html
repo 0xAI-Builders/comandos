@@ -1907,9 +1907,12 @@ function mdStrip(s){ return (s||"").replace(/\*\*|`|^#{1,6} /g, ""); }
 	}).catch(() => {});
 	function roleOfModel(model){
 	  if(!ROLES || !model) return null;
-	  const m = model.toLowerCase();
-	  for(const r of (ROLES.roles || []))
-	    if((r.matches || []).some(x => m.includes(x))) return r;
+	  for(const r of (ROLES.roles || [])){
+	    for(const pattern of (r.matches || [])){
+	      try{ if(new RegExp(pattern, "i").test(model)) return r; }
+	      catch(e){}
+	    }
+	  }
 	  return null;
 	}
 	function perezosThemeColor(name, fallback){

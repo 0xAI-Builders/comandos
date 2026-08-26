@@ -1,4 +1,7 @@
+import json
 import re
+import subprocess
+import textwrap
 from pathlib import Path
 
 
@@ -38,16 +41,118 @@ def test_stage_is_one_semantic_persistent_canvas():
     assert "const CENTRO_VIEW = {sessionId:\"\", item:null, mascot:null, roleSig:\"\"}" in HTML
 
 
-def test_same_session_updates_context_without_rebuilding_shell():
+def render_harness(render_source: str) -> subprocess.CompletedProcess:
+    script = textwrap.dedent(f"""
+        const assert = require("node:assert/strict");
+        global.window = global;
+        function classes(initial = []){{
+          const values = new Set(initial);
+          return {{
+            add(name){{ values.add(name); }},
+            remove(name){{ values.delete(name); }},
+            contains(name){{ return values.has(name); }},
+            toggle(name, force){{
+              const enabled = force === undefined ? !values.has(name) : !!force;
+              if(enabled) values.add(name); else values.delete(name);
+              return enabled;
+            }},
+          }};
+        }}
+        function element(initial = []){{
+          return {{dataset:{{}}, style:{{}}, textContent:"", classList:classes(initial),
+            listeners:new Map(),
+            addEventListener(type, listener){{ this.listeners.set(type, listener); }},
+            setAttribute(name, value){{ this[name] = String(value); }},
+          }};
+        }}
+        const canvas = {{identity:"persistent-canvas"}};
+        const stage = element();
+        stage.querySelector = selector => selector === ".perezos-canvas" ? canvas : null;
+        stage.getBoundingClientRect = () => ({{left:0, top:0, width:256, height:208}});
+        const nodes = {{
+          ".perezos-stage":stage, ".cx-hero":element(), ".cx-name":element(),
+          ".cx-sub":element(), ".cx-model":element(), ".cx-acct":element(),
+          ".cx-open":element(), ".cx-more":element(), ".cx-extra":element(["hidden"]),
+          ".cx-pause":element(), ".cx-resume":element(["hidden"]),
+          ".cx-kill":element(), ".cx-roles":element(),
+        }};
+        let shellWrites = 0;
+        const box = {{dataset:{{}}, querySelector:selector => nodes[selector] || null,
+          querySelectorAll(){{ return []; }}, replaceChildren(){{ this.replaced = true; }},
+          get innerHTML(){{ return ""; }},
+          set innerHTML(value){{ shellWrites += 1; this.lastMarkup = value; }},
+        }};
+        const wrap = {{classList:classes()}};
+        const CENTRO_VIEW = {{sessionId:"", item:null, mascot:null, roleSig:""}};
+        let controllersCreated = 0;
+        window.ComandOSPerezOS = {{createPerezOS(receivedCanvas){{
+          assert.strictEqual(receivedCanvas, canvas);
+          controllersCreated += 1;
+          return {{identity:`controller-${{controllersCreated}}`, contexts:[],
+            setContext(value){{ this.contexts.push(value); }}, setVisible(){{}}, destroy(){{}},
+            notifyInteraction(){{ return true; }},
+          }};
+        }}}};
+        const $ = selector => selector === "#centro-wrap" ? wrap : selector === "#centro" ? box : null;
+        const pickSel = list => list[0] || null;
+        const usageForItem = () => ({{model:"gpt-5.4"}});
+        const shortModel = value => value;
+        const tierOf = () => "daily";
+        const tierStyleOf = () => null;
+        const roleOfModel = () => ({{id:"constructor", hat:"casco"}});
+        const perezosCostumeFor = (item, role) => item.costume || role.hat;
+        const perezosContext = item => ({{sessionId:item.session, status:item.status}});
+        const attrEsc = value => String(value || "");
+        const svg = () => "";
+        const t = value => value;
+        const tf = (es, en) => es;
+        const toast = () => {{}};
+        const openSession = async () => "";
+        const api = async () => ({{}});
+        const tick = () => {{}};
+        const renderCentroRoles = () => {{}};
+        const renderAdvice = () => {{}};
+        const renderBrain = () => {{}};
+        const mascotVisible = () => true;
+        const applyMascotPreference = () => {{}};
+        const PEREZOS_PHRASES = [["hola", "hello"]];
+        let perezosPhraseIndex = 0;
+        const renderSource = {json.dumps(render_source)};
+        const renderCentro = eval("(" + renderSource + ")");
+        const first = {{session:"same-session", project:"Uno", status:"idle", costume:"",
+          contextPct:10, account:"main", ts:1}};
+        renderCentro([first]);
+        const firstCanvas = box.querySelector(".perezos-stage").querySelector(".perezos-canvas");
+        const firstController = CENTRO_VIEW.mascot;
+        renderCentro([{{...first, status:"working", costume:"fuego", contextPct:80, ts:2}}]);
+        assert.strictEqual(box.querySelector(".perezos-stage").querySelector(".perezos-canvas"),
+          firstCanvas, "same-session canvas identity changed");
+        assert.strictEqual(CENTRO_VIEW.mascot, firstController,
+          "same-session controller identity changed");
+        assert.equal(shellWrites, 1, "same-session Control Center shell rebuilt");
+        assert.equal(controllersCreated, 1, "same-session controller was recreated");
+        assert.equal(firstController.contexts.length, 2);
+        assert.equal(firstController.contexts[1].status, "working");
+    """)
+    return subprocess.run(["node", "-e", script], text=True, capture_output=True)
+
+
+def test_same_session_updates_keep_exact_canvas_and_controller_identity():
+    result = render_harness(js_function("renderCentro"))
+    assert result.returncode == 0, result.stderr
+
+
+def test_same_session_harness_rejects_reviewers_unconditional_innerhtml_mutation():
     render = js_function("renderCentro")
-    assert "const sameSession = CENTRO_VIEW.sessionId === it.session" in render
-    assert "if(!sameSession)" in render
-    rebuild = render.split("if(!sameSession)", 1)[1].split("CENTRO_VIEW.mascot.setContext", 1)[0]
-    assert "box.innerHTML" in rebuild
-    update = render.split("CENTRO_VIEW.mascot.setContext", 1)[1]
-    assert "box.innerHTML" not in update
-    assert "CENTRO_VIEW.item = it" in render
-    assert "perezosContext(CENTRO_VIEW.item" in render
+    mutated = render.replace(
+        "const sameSession = CENTRO_VIEW.sessionId === it.session;",
+        'box.innerHTML = "<div>forced rebuild</div>";\n'
+        "  const sameSession = CENTRO_VIEW.sessionId === it.session;",
+    )
+    assert mutated != render
+    result = render_harness(mutated)
+    assert result.returncode != 0
+    assert "same-session Control Center shell rebuilt" in result.stderr
 
 
 def test_handlers_use_live_item_and_lifecycle_destroys_without_selection():
@@ -72,6 +177,32 @@ def test_context_maps_session_ui_and_theme_without_recreating_controller():
     theme = js_function("applyTheme")
     assert "CENTRO_VIEW.mascot?.setContext" in theme
     assert "createPerezOS" not in theme
+
+
+def test_real_model_regexes_select_expected_role_props_and_ignore_invalid_patterns():
+    roles = json.loads(Path("config/agent-roles.json").read_text())
+    script = textwrap.dedent(f"""
+        const assert = require("node:assert/strict");
+        let ROLES = {json.dumps(roles)};
+        const MT = {{alertTier:"high"}};
+        {js_function("roleOfModel")}
+        {js_function("perezosCostumeFor")}
+        ROLES.roles.unshift({{id:"broken", hat:"none", matches:["["]}});
+        const expected = [
+          ["gpt-5.4", "constructor", "casco"],
+          ["gpt-5.5", "arquitecto", "corona"],
+          ["gpt-5.6-sol", "arquitecto", "corona"],
+          ["glm-4.6", "constructor", "casco"],
+        ];
+        for(const [model, roleId, prop] of expected){{
+          let role;
+          assert.doesNotThrow(() => {{ role = roleOfModel(model); }});
+          assert.equal(role && role.id, roleId, model);
+          assert.equal(perezosCostumeFor({{}}, role, ""), prop, model);
+        }}
+    """)
+    result = subprocess.run(["node", "-e", script], text=True, capture_output=True)
+    assert result.returncode == 0, result.stderr
 
 
 def test_preference_migration_reads_old_key_once_and_new_code_uses_cc_mascot():
