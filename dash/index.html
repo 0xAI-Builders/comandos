@@ -274,6 +274,14 @@
   .pp-tile b{font-family:var(--mono);font-size:17px}
   .pp-tile small{font-family:var(--mono);font-size:8.5px;color:var(--faint);
     letter-spacing:.08em;text-transform:uppercase}
+  .pp-breaks button{width:64px}
+  .pp-break-go{background:none;border:1px solid var(--line2);color:var(--dim);height:34px;font-size:11.5px}
+  .pp-break-go:hover{color:var(--done);border-color:var(--done);filter:none}
+  #pomo-panel.break .fgc{stroke:var(--done)}
+  #pomo-panel.break .pp-time b{color:var(--done)}
+  .pp-link{font-family:var(--mono);font-size:10px;color:var(--dim);background:none;
+    border:none;cursor:pointer;text-align:left;padding:0}
+  .pp-link:hover{color:var(--brand)}
   .pp-bars{display:flex;gap:5px;align-items:flex-end;height:56px;padding:0 4px}
   .pp-bar{flex:1;display:flex;flex-direction:column;align-items:center;gap:3px;height:100%;
     justify-content:flex-end}
@@ -2602,7 +2610,7 @@ function mdStrip(s){ return (s||"").replace(/\*\*|`|^#{1,6} /g, ""); }
 	  }catch(err){ toast(err.message, true); }
 	}
 	let usagePollTs = 0;
-	const POMO = {t: null, end: 0, mins: 25, project: ""};
+	const POMO = {t: null, end: 0, mins: 25, project: "", mode: "focus", breakMins: 5};
 	function pomoLog(){
 	  try{ return JSON.parse(localStorage.getItem("cc-pomos") || "[]"); }catch(e){ return []; }
 	}
@@ -2636,7 +2644,7 @@ function mdStrip(s){ return (s||"").replace(/\*\*|`|^#{1,6} /g, ""); }
 	  const st = pomoStats();
 	  const it = pickSel(S.list || []);
 	  const proj = POMO.t ? POMO.project : (it ? (it.project || it.session) : "");
-	  const total = POMO.mins * 60000;
+	  const total = (POMO.t ? (POMO._runMins || POMO.mins) : POMO.mins) * 60000;
 	  const left = POMO.t ? Math.max(0, POMO.end - Date.now()) : total;
 	  const R = 64, C = 2 * Math.PI * R;
 	  const off = C * (1 - left / total);
@@ -2655,21 +2663,35 @@ function mdStrip(s){ return (s||"").replace(/\*\*|`|^#{1,6} /g, ""); }
 	    </div>
 	    ${POMO.t ? "" : `<div class="pp-durs">` +
 	      [15, 25, 50].map(n => `<button type="button" class="${POMO.mins === n ? "on" : ""}"
-	        data-min="${n}">${n}′</button>`).join("") + `</div>`}
+	        data-min="${n}">${n}′</button>`).join("") + `</div>
+	    <div class="pp-durs pp-breaks">` +
+	      [5, 10].map(n => `<button type="button" class="${POMO.breakMins === n ? "on" : ""}"
+	        data-break="${n}">☕ ${n}′</button>`).join("") + `</div>`}
 	    <button type="button" class="pp-go ${POMO.t ? "stop" : ""}" id="pp-go">
-	      ${POMO.t ? tf("Cancelar", "Cancel") : tf("Enfocar", "Focus")}</button>
+	      ${POMO.t ? tf("Cancelar", "Cancel")
+	               : tf("Enfocar", "Focus")}</button>
+	    ${POMO.t ? "" : `<button type="button" class="pp-go pp-break-go" id="pp-break">☕ ${tf("Descanso", "Break")} ${POMO.breakMins}′</button>`}
 	    <div class="pp-tiles">
 	      <div class="pp-tile"><b>${st.todayN}</b><small>${tf("hoy", "today")}</small></div>
 	      <div class="pp-tile"><b>${st.todayMin}′</b><small>min</small></div>
 	      <div class="pp-tile"><b>${st.streak}</b><small>${tf("racha", "streak")}</small></div>
 	    </div>
+	    <button type="button" class="pp-link" id="pp-analytics">${tf("ver analytics completos (Dedicación) →", "full analytics (Dedication) →")}</button>
 	    <div class="pp-bars">${st.days.map((d, i) => `
 	      <div class="pp-bar ${i === 6 ? "today" : ""}" title="${d.date}: ${d.n} 🍅">
 	        <span style="height:${Math.round(100 * d.n / maxN)}%"></span>
 	        <small>${dias[new Date(d.date + "T12:00").getDay()]}</small>
 	      </div>`).join("")}</div>`;
-	  m.querySelectorAll(".pp-durs button").forEach(b =>
+	  m.querySelectorAll(".pp-durs button[data-min]").forEach(b =>
 	    b.addEventListener("click", ()=>{ POMO.mins = Number(b.dataset.min); pomoRender(); }));
+	  m.querySelectorAll(".pp-durs button[data-break]").forEach(b =>
+	    b.addEventListener("click", ()=>{ POMO.breakMins = Number(b.dataset.break); pomoRender(); }));
+	  m.querySelector("#pp-break")?.addEventListener("click", ()=>{
+	    pomoStart(POMO.breakMins, "break"); pomoRender();
+	  });
+	  m.querySelector("#pp-analytics")?.addEventListener("click", ()=>{
+	    m.classList.add("hidden"); $("#btn-usage").click();
+	  });
 	  m.querySelector("#pp-go").addEventListener("click", ()=>{
 	    if(POMO.t){ pomoFinish(false); toast(tf("Pomodoro cancelado", "Pomodoro cancelled")); }
 	    else pomoStart(POMO.mins);
@@ -2681,6 +2703,15 @@ function mdStrip(s){ return (s||"").replace(/\*\*|`|^#{1,6} /g, ""); }
 	  const b = $("#btn-pomo");
 	  b.classList.remove("running"); b.textContent = "🍅";
 	  b.setAttribute("aria-label", "Pomodoro");
+	  $("#pomo-panel").classList.remove("break");
+	  if(done && POMO.mode === "break"){
+	    toast(`☕ ${tf("descanso terminado — a darle", "break over — back to it")}`);
+	    fetch("http://127.0.0.1:4778/notify", {method: "POST",
+	      headers: {"Content-Type": "application/json"},
+	      body: JSON.stringify({title: "Pomodoro", kind: "done", project: "Pomodoro",
+	        body: `☕ ${tf("descanso terminado — a darle", "break over — back to it")}`})}).catch(()=>{});
+	    pomoRender(); return;
+	  }
 	  if(done){
 	    const log = pomoLog();
 	    log.push({date: pomoDay(0), mins: POMO.mins, project: POMO.project});
@@ -2696,17 +2727,21 @@ function mdStrip(s){ return (s||"").replace(/\*\*|`|^#{1,6} /g, ""); }
 	  }
 	  pomoRender();
 	}
-	function pomoStart(mins){
+	function pomoStart(mins, mode){
 	  const it = pickSel(S.list || []);
-	  POMO.mins = mins; POMO.project = it ? (it.project || it.session) : "";
+	  POMO.mode = mode || "focus";
+	  if(POMO.mode === "focus") POMO.mins = mins;
+	  POMO.project = it ? (it.project || it.session) : "";
+	  POMO._runMins = mins;
 	  POMO.end = Date.now() + mins * 60000;
+	  $("#pomo-panel").classList.toggle("break", POMO.mode === "break");
 	  const b = $("#btn-pomo");
 	  b.classList.add("running");
 	  const tick = ()=>{
 	    const left = POMO.end - Date.now();
 	    if(left <= 0) return pomoFinish(true);
 	    const mm = Math.floor(left/60000), ss = Math.floor(left%60000/1000);
-	    b.textContent = `🍅 ${mm}:${String(ss).padStart(2,"0")}`;
+	    b.textContent = `${POMO.mode === "break" ? "☕" : "🍅"} ${mm}:${String(ss).padStart(2,"0")}`;
 	    b.setAttribute("aria-label", `Pomodoro: ${mm} minutos ${ss} segundos restantes`);
 	    pomoRender();
 	  };
