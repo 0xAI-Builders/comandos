@@ -19,12 +19,13 @@
     --mono:'JetBrainsMono Nerd Font','JetBrains Mono',ui-monospace,Menlo,Consolas,monospace;
     --sans:'Inter',system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;
   }
-  /* Dia: claro sin blanco/negro puros (evita halacion); texto ~13:1 */
+  /* Dia: estilo Windows 11 — fondo Mica gris, cards blancas, accent azul
+     Fluent (#0067C0), verdes/ambar del sistema. Bordes suaves #E5E5E5. */
   :root[data-theme="dia"]{
-    --bg:#F2F4F8; --panel:#FBFCFE; --panel2:#EDF0F6; --line:#D9DEE8; --line2:#C3CAD8;
-    --text:#1B2130; --dim:#4E5A70; --faint:#8892A6;
-    --brand:#5B4BD6; --waiting:#9A6700; --done:#0E7A55; --working:#2059C8;
-    --glow:#E4E9F4; --code:#2059C8; --shadow:rgba(30,40,70,.14);
+    --bg:#F3F3F3; --panel:#FFFFFF; --panel2:#F9F9F9; --line:#E5E5E5; --line2:#D1D1D1;
+    --text:#1A1A1A; --dim:#5D5D5D; --faint:#8A8A8A;
+    --brand:#0067C0; --waiting:#9D5D00; --done:#0F7B0F; --working:#0067C0;
+    --glow:#EBF3FB; --code:#0067C0; --shadow:rgba(0,0,0,.08);
   }
   /* Calido: oscuro sepia, poco azul (sesiones nocturnas) */
   :root[data-theme="calido"]{
@@ -239,14 +240,14 @@
     color:var(--dim);border:1px solid var(--line2)}
   .abadge[data-a="codex"]{color:#19C39C;border-color:#19C39C55}
   .acct-chip{flex:none}
-  #btn-pomo.running{color:#FF6B35;border-color:#FF6B3577;font-weight:700}
+  #btn-pomo.running{color:var(--brand);border-color:var(--brand);font-weight:700}
   #pomo-panel{position:fixed;z-index:60;background:var(--panel);border:1px solid var(--line2);
     border-radius:16px;padding:18px;display:flex;flex-direction:column;gap:14px;
     box-shadow:0 16px 44px #000A;width:280px;max-width:92vw}
   .pp-ring{position:relative;width:150px;height:150px;margin:0 auto}
   .pp-ring svg{transform:rotate(-90deg)}
   .pp-ring .bgc{stroke:var(--line);fill:none}
-  .pp-ring .fgc{stroke:#FF6B35;fill:none;stroke-linecap:round;
+  .pp-ring .fgc{stroke:var(--brand);fill:none;stroke-linecap:round;
     transition:stroke-dashoffset .9s linear}
   .pp-time{position:absolute;inset:0;display:flex;flex-direction:column;
     align-items:center;justify-content:center;gap:2px}
@@ -258,10 +259,10 @@
     width:52px;height:38px;border-radius:10px;border:1px solid var(--line2);
     background:none;color:var(--dim);cursor:pointer;transition:all .13s ease}
   .pp-durs button:hover{color:var(--text);border-color:var(--text)}
-  .pp-durs button.on{color:#FF6B35;border-color:#FF6B35;
-    background:color-mix(in srgb,#FF6B35 10%,transparent)}
+  .pp-durs button.on{color:var(--brand);border-color:var(--brand);
+    background:color-mix(in srgb,var(--brand) 10%,transparent)}
   .pp-go{font-family:var(--mono);font-size:13px;font-weight:700;height:40px;
-    border-radius:11px;border:none;background:#FF6B35;color:#14121A;cursor:pointer;
+    border-radius:11px;border:none;background:var(--brand);color:var(--panel);cursor:pointer;
     transition:filter .12s ease}
   .pp-go:hover{filter:brightness(1.1)}
   .pp-go.stop{background:none;border:1px solid var(--line2);color:var(--dim)}
@@ -276,9 +277,9 @@
   .pp-bars{display:flex;gap:5px;align-items:flex-end;height:56px;padding:0 4px}
   .pp-bar{flex:1;display:flex;flex-direction:column;align-items:center;gap:3px;height:100%;
     justify-content:flex-end}
-  .pp-bar span{width:100%;border-radius:4px 4px 2px 2px;background:#FF6B3599;min-height:2px;
+  .pp-bar span{width:100%;border-radius:4px 4px 2px 2px;background:color-mix(in srgb,var(--brand) 55%,transparent);min-height:2px;
     transition:height .3s ease}
-  .pp-bar.today span{background:#FF6B35}
+  .pp-bar.today span{background:var(--brand)}
   .pp-bar small{font-family:var(--mono);font-size:8px;color:var(--faint)}
   button:focus-visible,[tabindex]:focus-visible,input:focus-visible{
     outline:2px solid var(--brand);outline-offset:2px;border-radius:6px}
