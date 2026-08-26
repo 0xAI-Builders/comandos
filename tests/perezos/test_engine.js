@@ -171,10 +171,12 @@ function context(overrides = {}){
   };
 }
 
+function engineOptions(env){ return {env, decodeLatch:env.decodeLatch}; }
+
 test("engine exports createPerezOS and the controller exact public API", () => {
   assert.equal(typeof E, "function", "ComandOSPerezOS.createPerezOS is undefined");
   const env = fakeEnvironment();
-  const controller = E(env.canvas, {env});
+  const controller = E(env.canvas, engineOptions(env));
   assert.deepEqual(Object.keys(controller).sort(), [
     "destroy", "getDiagnostics", "notifyInteraction", "setContext",
     "setReducedMotion", "setViewport", "setVisible",
@@ -187,7 +189,7 @@ test("engine exports createPerezOS and the controller exact public API", () => {
 if(E){
   test("context is normalized to the exact deeply immutable primitive shape", () => {
     const env = fakeEnvironment();
-    const controller = E(env.canvas, {env});
+    const controller = E(env.canvas, engineOptions(env));
     const input = context({sessionId:42, status:"BOGUS", role:"  BUILD  ", costume:null,
       contextPressure:"impossible", expanded:1, timestamp:-8,
       colors:{brand:"bad", panel:"#abcdef", line:"#123456"}});
@@ -207,7 +209,7 @@ if(E){
 
   test("same-session context changes retain controller, rig, renderer, and observers", () => {
     const env = fakeEnvironment();
-    const controller = E(env.canvas, {env});
+    const controller = E(env.canvas, engineOptions(env));
     controller.setContext(context());
     const before = controller.getDiagnostics();
     assert.equal(controller.setContext(context({status:"working", timestamp:100})), true);
@@ -225,7 +227,7 @@ if(E){
 
   test("context diffs become bounded habituable Behavior perceptions", () => {
     const env = fakeEnvironment();
-    const controller = E(env.canvas, {env});
+    const controller = E(env.canvas, engineOptions(env));
     const changes = [
       {status:"working"},
       {status:"working", role:"build"},
@@ -258,7 +260,7 @@ if(E){
 
   test("session changes reset living state but recreate a stable deterministic personality", () => {
     const env = fakeEnvironment();
-    const controller = E(env.canvas, {env});
+    const controller = E(env.canvas, engineOptions(env));
     controller.setContext(context({sessionId:"alpha"}));
     const alpha = controller.getDiagnostics();
     controller.setContext(context({sessionId:"beta"}));
@@ -274,7 +276,7 @@ if(E){
 
   test("a new session restarts director and Motion on session-local visible time", () => {
     const env = fakeEnvironment();
-    const controller = E(env.canvas, {env});
+    const controller = E(env.canvas, engineOptions(env));
     controller.setContext(context({sessionId:"old-session", status:"working"}));
     env.frames.advance(5000);
     const old = controller.getDiagnostics();
@@ -295,7 +297,7 @@ if(E){
 
   test("visible scheduler uses rAF as wakeup and keeps bounded visible time", () => {
     const env = fakeEnvironment();
-    const controller = E(env.canvas, {env});
+    const controller = E(env.canvas, engineOptions(env));
     controller.setContext(context());
     env.frames.advance(1000);
     const diagnostics = controller.getDiagnostics();
@@ -309,7 +311,7 @@ if(E){
 
   test("hidden controller performs zero work and does not replay backlog", () => {
     const env = fakeEnvironment();
-    const controller = E(env.canvas, {env});
+    const controller = E(env.canvas, engineOptions(env));
     controller.setContext(context());
     env.frames.advance(1000);
     const before = controller.getDiagnostics();
@@ -331,7 +333,7 @@ if(E){
 
   test("offscreen and preference stop cancel immediately and resume independently", () => {
     const env = fakeEnvironment();
-    const controller = E(env.canvas, {env});
+    const controller = E(env.canvas, engineOptions(env));
     controller.setContext(context());
     env.frames.advance(500);
     env.intersections[0].emit(false);
@@ -350,7 +352,7 @@ if(E){
 
   test("IntersectionObserver gates all work until its first sample", () => {
     const env = fakeEnvironment({autoIntersect:false});
-    const controller = E(env.canvas, {env});
+    const controller = E(env.canvas, engineOptions(env));
     controller.setContext(context({status:"working"}));
     assert.equal(env.frames.pending(), 0);
     env.frames.advance(1000);
@@ -364,7 +366,7 @@ if(E){
     controller.destroy();
 
     const noObserverEnv = fakeEnvironment({noIntersectionObserver:true});
-    const noObserver = E(noObserverEnv.canvas, {env:noObserverEnv});
+    const noObserver = E(noObserverEnv.canvas, engineOptions(noObserverEnv));
     noObserverEnv.frames.advance(250);
     assert.ok(noObserver.getDiagnostics().updates > 0,
       "without IntersectionObserver the visible controller must still run");
@@ -373,7 +375,7 @@ if(E){
 
   test("pointer proximity is sampled at no more than 10 Hz and drives habituation", () => {
     const env = fakeEnvironment();
-    const controller = E(env.canvas, {env});
+    const controller = E(env.canvas, engineOptions(env));
     controller.setContext(context());
     assert.equal(controller.notifyInteraction("pointer", 40, 40), true);
     for(let index = 0; index < 20; index += 1){
@@ -390,7 +392,7 @@ if(E){
 
   test("activation is cooldown-limited while repeated acknowledgements habituate", () => {
     const env = fakeEnvironment();
-    const controller = E(env.canvas, {env});
+    const controller = E(env.canvas, engineOptions(env));
     controller.setContext(context());
     assert.equal(controller.notifyInteraction("activate", 128, 104), true);
     assert.equal(controller.notifyInteraction("click", 128, 104), false);
@@ -403,7 +405,7 @@ if(E){
 
   test("accepted interaction requests a safe Motion interruption before it can expire", () => {
     const env = fakeEnvironment();
-    const controller = E(env.canvas, {env});
+    const controller = E(env.canvas, engineOptions(env));
     env.frames.advance(300);
     const before = controller.getDiagnostics();
     assert.ok(before.motionCurrentFamily, "fixture needs an active idle performance");
@@ -422,7 +424,7 @@ if(E){
 
   test("reduced motion and its media listener force event-driven Static quality", () => {
     const env = fakeEnvironment();
-    const controller = E(env.canvas, {env});
+    const controller = E(env.canvas, engineOptions(env));
     controller.setContext(context());
     controller.setReducedMotion(true);
     env.frames.advance(1000);
@@ -440,7 +442,7 @@ if(E){
 
   test("quality governor uses a 240-sample ring and 120/600-frame hysteresis", () => {
     const env = fakeEnvironment();
-    const controller = E(env.canvas, {env});
+    const controller = E(env.canvas, engineOptions(env));
     controller.setContext(context({status:"working"}));
     env.costs.update = 0.8;
     env.costs.render = 1.5;
@@ -486,8 +488,8 @@ if(E){
 
     const high = fakeEnvironment();
     const baseline = fakeEnvironment();
-    const highController = E(high.canvas, {env:high});
-    const baselineController = E(baseline.canvas, {env:baseline});
+    const highController = E(high.canvas, engineOptions(high));
+    const baselineController = E(baseline.canvas, engineOptions(baseline));
     highController.setContext(context({status:"working"}));
     baselineController.setContext(context({status:"working"}));
     high.costs.update = 0.8; high.costs.render = 1.5;
@@ -505,8 +507,8 @@ if(E){
 
     const upgrade = fakeEnvironment();
     const balanced = fakeEnvironment();
-    const upgradeController = E(upgrade.canvas, {env:upgrade});
-    const balancedController = E(balanced.canvas, {env:balanced});
+    const upgradeController = E(upgrade.canvas, engineOptions(upgrade));
+    const balancedController = E(balanced.canvas, engineOptions(balanced));
     upgradeController.setContext(context({status:"working"}));
     balancedController.setContext(context({status:"working"}));
     upgrade.costs.update = 0.8; upgrade.costs.render = 1.5;
@@ -533,7 +535,7 @@ if(E){
 
   test("device and compact viewport ceilings prevent inappropriate upgrades", () => {
     const weakEnv = fakeEnvironment({hardwareConcurrency:2, deviceMemory:2});
-    const weak = E(weakEnv.canvas, {env:weakEnv});
+    const weak = E(weakEnv.canvas, engineOptions(weakEnv));
     assert.equal(weak.getDiagnostics().qualityCeiling, "economy");
     assert.equal(weak.getDiagnostics().quality, "economy");
     weak.setViewport(120, 90, 3);
@@ -541,7 +543,7 @@ if(E){
     weak.destroy();
 
     const env = fakeEnvironment();
-    const controller = E(env.canvas, {env});
+    const controller = E(env.canvas, engineOptions(env));
     controller.setViewport(160, 130, 2);
     assert.equal(controller.getDiagnostics().qualityCeiling, "economy");
     assert.equal(controller.getDiagnostics().quality, "economy");
@@ -550,7 +552,7 @@ if(E){
 
   test("viewport state commits only after Renderer acceptance and fallback enforces safe bounds", () => {
     const env = fakeEnvironment();
-    const controller = E(env.canvas, {env});
+    const controller = E(env.canvas, engineOptions(env));
     const before = controller.getDiagnostics();
     const oldWidth = env.canvas.width;
     let storedHeight = env.canvas.height;
@@ -570,7 +572,7 @@ if(E){
     controller.destroy();
 
     const fallbackEnv = fakeEnvironment({decodeFailure:true});
-    const fallback = E(fallbackEnv.canvas, {env:fallbackEnv});
+    const fallback = E(fallbackEnv.canvas, engineOptions(fallbackEnv));
     const fallbackBefore = fallback.getDiagnostics();
     const backing = [fallbackEnv.canvas.width, fallbackEnv.canvas.height];
     assert.equal(fallback.setViewport(9000, 9000, 4), false);
@@ -581,7 +583,7 @@ if(E){
 
   test("atlas decode failure enters a one-shot compact static fallback", () => {
     const env = fakeEnvironment({decodeFailure:true});
-    const controller = E(env.canvas, {env});
+    const controller = E(env.canvas, engineOptions(env));
     controller.setContext(context());
     env.frames.advance(100);
     const diagnostics = controller.getDiagnostics();
@@ -597,11 +599,11 @@ if(E){
 
   test("decode failure latch is shared across controllers without retrying", () => {
     const env = fakeEnvironment({decodeFailure:true});
-    const first = E(env.canvas, {env});
+    const first = E(env.canvas, engineOptions(env));
     assert.equal(env.decodeAttempts(), 1);
     assert.equal(first.getDiagnostics().decodeAttempts, 1);
     const secondCanvas = canvasFixture();
-    const second = E(secondCanvas, {env});
+    const second = E(secondCanvas, engineOptions(env));
     assert.equal(env.decodeAttempts(), 1, "second controller must honor the page latch");
     assert.equal(second.getDiagnostics().fallback, true);
     assert.equal(second.getDiagnostics().decodeAttempts, 0);
@@ -610,9 +612,22 @@ if(E){
     second.destroy();
   });
 
+  test("decode latch injection is isolated from host environment globals", () => {
+    const env = fakeEnvironment();
+    env.decodeLatch = Object.freeze({failed:true});
+    const privateLatch = {failed:false};
+    const controller = E(env.canvas, {env, decodeLatch:privateLatch});
+    const diagnostics = controller.getDiagnostics();
+    assert.equal(diagnostics.fallback, false,
+      "an unrelated host global must not poison PerezOS decode");
+    assert.equal(diagnostics.decodeAttempts, 1);
+    assert.equal(privateLatch.failed, false);
+    controller.destroy();
+  });
+
   test("hot-loop buffers stay stable and diagnostics report measured counters", () => {
     const env = fakeEnvironment();
-    const controller = E(env.canvas, {env});
+    const controller = E(env.canvas, engineOptions(env));
     controller.setContext(context());
     env.frames.advance(5000);
     const diagnostics = controller.getDiagnostics();
@@ -627,7 +642,7 @@ if(E){
 
   test("destroy is idempotent and leaves no callbacks, listeners, or observers", () => {
     const env = fakeEnvironment();
-    const controller = E(env.canvas, {env});
+    const controller = E(env.canvas, engineOptions(env));
     controller.setContext(context());
     env.frames.advance(200);
     const before = controller.getDiagnostics();

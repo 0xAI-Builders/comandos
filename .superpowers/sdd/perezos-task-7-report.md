@@ -256,3 +256,34 @@ Additional verification:
 - Perception and direct-interaction performances still enter Motion through its
   validated public queue/interrupt API; no Rig channel or contact is mutated by
   the controller directly.
+
+### Minor review follow-up: decode-latch injection isolation
+
+The test-only decode latch is now read exclusively from
+`createPerezOS(..., {decodeLatch})`, never from the injected browser environment.
+Production without that private option still uses the page/module lifetime
+latch. This prevents an unrelated host global named `decodeLatch` from poisoning
+PerezOS while retaining deterministic multi-controller failure tests.
+
+RED:
+
+```text
+node --test --test-name-pattern='decode latch injection is isolated' \
+  tests/perezos/test_engine.js
+1 test, 0 pass, 1 fail
+actual fallback true; expected false because env.decodeLatch collided
+```
+
+GREEN:
+
+```text
+node --test --test-name-pattern='decode latch injection is isolated|decode failure latch is shared' \
+  tests/perezos/test_engine.js
+2 tests, 2 pass, 0 fail
+
+node --test tests/perezos/test_engine.js
+23 tests, 23 pass, 0 fail
+```
+
+Verification: `tests/test_js_parses.sh` reports `OK`, `node --check` passes,
+and `git diff --check` is clean.

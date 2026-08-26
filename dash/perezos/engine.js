@@ -178,8 +178,8 @@
       canvasFactory:options && typeof options.canvasFactory === "function" ?
         options.canvasFactory : typeof env.canvasFactory === "function" ?
           env.canvasFactory.bind(env) : undefined,
-      decodeLatch:env.decodeLatch && typeof env.decodeLatch === "object" ?
-        env.decodeLatch : MODULE_DECODE_LATCH,
+      decodeLatch:options && options.decodeLatch &&
+        typeof options.decodeLatch === "object" ? options.decodeLatch : MODULE_DECODE_LATCH,
       dpr:Number(env.devicePixelRatio) || Number(root.devicePixelRatio) || 1,
     };
   }
