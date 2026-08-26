@@ -154,6 +154,27 @@ test("motion preallocates typed ownership and causal state for every rig channel
   assert.equal(M.isIdle(motion), true);
 });
 
+test("motion construction avoids Chrome-incompatible sealing of populated typed arrays", () => {
+  const rig = R.createRig("chrome-motion-typed-array-contract");
+  const nativeSeal = Object.seal;
+  Object.seal = value => {
+    if(ArrayBuffer.isView(value) && value.byteLength > 0){
+      throw new TypeError("Cannot seal array buffer views with elements");
+    }
+    return nativeSeal(value);
+  };
+  try{
+    let motion;
+    assert.doesNotThrow(() => { motion = M.createMotion(rig); });
+    assert.equal(Object.isExtensible(motion.owners), false);
+    assert.equal(Reflect.defineProperty(motion.owners, "custom", {value:true}), false);
+    motion.owners[0] = 7;
+    assert.equal(motion.owners[0], 7, "motion buffers must keep writable elements");
+  }finally{
+    Object.seal = nativeSeal;
+  }
+});
+
 test("phase targets progress in order with smoothstep blending", () => {
   const {motion, rig} = fixture("smooth-order");
   const yaw = R.channelIndex("head-yaw");

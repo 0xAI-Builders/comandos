@@ -165,7 +165,9 @@
     previousVelocities.set(rig.velocities);
     queueTerminalDeadlines.fill(MAX_SAFE_TIME);
     for(const buffer of [owners, channelTargets, phaseStarts, baseTargets,
-      previousVelocities, accelerations, queueTerminalDeadlines]) Object.seal(buffer);
+      previousVelocities, accelerations, queueTerminalDeadlines]){
+      Object.preventExtensions(buffer);
+    }
     const secondaryLinks = createSecondaryLinks(rig);
     const internal = {
       rig,
