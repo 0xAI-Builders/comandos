@@ -1105,7 +1105,8 @@
   }
 
   function expectedBuffer(buffer, length){
-    return buffer instanceof Float64Array && buffer.length === length && Object.isSealed(buffer);
+    return buffer instanceof Float64Array && buffer.length === length &&
+      !Object.isExtensible(buffer);
   }
 
   function authoritativeBuffersUsable(rig, internal){
