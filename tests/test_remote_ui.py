@@ -3274,7 +3274,7 @@ function fetch(_url, options) {{
 
 
 def test_remote_routes_are_never_served_from_stale_shell_cache():
-    assert 'const SHELL = "comandos-shell-v2"' in SW
+    assert 'const SHELL = "comandos-shell-v3"' in SW
     for endpoint in (
         "/remote-state",
         "/remote-qr.png",

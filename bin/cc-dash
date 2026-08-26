@@ -717,7 +717,7 @@ def make_worktree(cwd):
     return path, None
 
 
-# ---- Detectores de disfraces del ajolote: TODO medido de datos locales
+# ---- Detectores de disfraces de PerezOS: TODO medido de datos locales
 # reales (transcripts de ~/.claude/projects), umbrales en config/detectors.json.
 DETECTORS_FILE = os.path.join(REPO_ROOT, "config", "detectors.json")
 _detectors_cache = {"mtime": None, "data": {}}

@@ -2535,8 +2535,8 @@ nb.append_page(hub, tab_label("⌂ local", closable=False))
 nb.set_tab_reorderable(hub, False)
 nb.connect("page-reordered", on_tab_reordered)
 
-# La pestana ACTIVA de la app: el tablero la usa para que EL ajolote sea
-# siempre el de la sesion en la que estas parado.
+# La pestana ACTIVA de la app: el tablero la usa para que PerezOS sea siempre
+# el operador de la sesion en la que estas parado.
 ACTIVE_TAB_FILE = os.path.expanduser("~/.claude/hooks/app-tab-active.json")
 
 

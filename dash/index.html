@@ -9,6 +9,7 @@
 <meta name="apple-mobile-web-app-title" content="ComandOS">
 <link rel="icon" href="/icon-192.png">
 <link rel="apple-touch-icon" href="/icon-192.png">
+<link rel="stylesheet" href="/perezos/perezos.css">
 <style>
   :root{
     --bg:#0A0D13; --panel:#121722; --panel2:#161C29; --line:#222A3A; --line2:#2E3852;
@@ -347,63 +348,16 @@
   .card.ext{background:var(--panel);border-color:var(--line);box-shadow:none}
   .card.ext .tag{color:var(--working);background:rgba(122,165,255,.12)}
 
-  /* Centro de control: EL ajolote (la mascota, sesion seleccionada) +
-     cerebro/cuenta/MCPs/skills/acciones. Vive donde vivian las cards. */
+  /* Centro de control: PerezOS + cerebro/cuenta/MCPs/skills/acciones. */
   #centro{display:flex;gap:18px;padding:16px;border:1px solid var(--line);
     border-radius:14px;background:var(--panel);flex-wrap:wrap}
   .cx-hero{display:flex;flex-direction:column;align-items:center;gap:6px;min-width:150px}
-  body.no-axo .cx-hero .aqua{display:none}
-  .axo-ascii{font-family:var(--mono);font-size:6.5px;line-height:1;letter-spacing:0;
-    white-space:pre;margin:0;user-select:none;display:block;cursor:pointer;
-    filter:drop-shadow(0 3px 10px #0006)}
-  .cx-hero .frames{display:block;animation:axobreathe 3.6s ease-in-out infinite}
-  @keyframes axobreathe{0%,100%{transform:translateY(0) scale(1)}
-    50%{transform:translateY(-5px) scale(1.012,0.988)}}
-  .axo-ascii.boing{animation:axoboing .5s ease}
-  @keyframes axoboing{0%{transform:scale(1)}30%{transform:scale(1.14,.86)}
-    60%{transform:scale(.9,1.1)}80%{transform:scale(1.05,.95)}100%{transform:scale(1)}}
-  .axo-ascii.hop{animation:axohop .55s cubic-bezier(.3,1.6,.5,1)}
-  @keyframes axohop{0%{transform:translateY(0) scale(1)}25%{transform:translateY(2px) scale(1.1,.9)}
-    55%{transform:translateY(-16px) scale(.94,1.08)}100%{transform:translateY(0) scale(1)}}
-  .axo-ascii.spin{animation:axospin .8s ease-in-out}
-  @keyframes axospin{0%{transform:rotate(0)}100%{transform:rotate(360deg)}}
-  .axo-ascii.tilt{animation:axotilt .9s ease-in-out}
-  @keyframes axotilt{0%,100%{transform:rotate(0)}25%{transform:rotate(-9deg)}
-    75%{transform:rotate(9deg)}}
-  .axo-ascii.shake{animation:axoshake .45s linear}
-  @keyframes axoshake{0%,100%{transform:translateX(0)}20%{transform:translateX(-5px)}
-    40%{transform:translateX(5px)}60%{transform:translateX(-4px)}80%{transform:translateX(3px)}}
-  .axo-ascii.flip{animation:axoflip .7s ease-in-out}
-  @keyframes axoflip{0%{transform:scaleX(1)}45%{transform:scaleX(-1)}
-    55%{transform:scaleX(-1)}100%{transform:scaleX(1)}}
-  .axo-ascii.stretch{animation:axostretch .8s ease-in-out}
-  @keyframes axostretch{0%,100%{transform:scale(1)}40%{transform:scale(.92,1.16)}
-    70%{transform:scale(1.08,.9)}}
-  .axo-ascii.peek{animation:axopeek 1.1s ease-in-out}
-  @keyframes axopeek{0%,100%{transform:translateX(0)}30%{transform:translateX(-18px)}
-    70%{transform:translateX(14px)}}
-  .axo-ascii.wiggle{animation:axowiggle .8s ease-in-out}
-  @keyframes axowiggle{0%,100%{transform:rotate(0) translateY(0)}20%{transform:rotate(4deg) translateY(-3px)}
-    45%{transform:rotate(-5deg) translateY(2px)}70%{transform:rotate(3deg) translateY(-2px)}}
-  @media (prefers-reduced-motion:reduce){.cx-hero .frames{animation:none}}
-  @media (prefers-reduced-motion:reduce){
-    .axo-ascii.boing,.axo-ascii.hop,.axo-ascii.spin,.axo-ascii.tilt,.axo-ascii.shake,
-    .axo-ascii.flip,.axo-ascii.stretch,.axo-ascii.peek,.axo-ascii.wiggle{animation:none}}
-  .cx-hero .aqua{width:250px;height:196px;border-radius:50%;display:flex;align-items:center;
-    justify-content:center;background:radial-gradient(circle at 50% 48%,
-      color-mix(in srgb,var(--aqua-c,#232B3E) 62%,transparent) 0%,transparent 70%)}
-  .cx-hero[data-st="waiting"]{--aqua-c:#6E4C12}
-  .cx-hero[data-st="working"]{--aqua-c:#274070}
-  .cx-hero[data-st="done"]{--aqua-c:#155239}
-  .cx-hero[data-st="dead"] canvas{filter:grayscale(.95) opacity(.55)}
   .cx-name{font-weight:700;font-size:15px}
   .cx-sub{font-family:var(--mono);font-size:10.5px;color:var(--dim)}
   .cx-cols{display:flex;gap:22px;flex:1;flex-wrap:wrap;min-width:0}
   @media (max-width:760px){
     #centro{flex-direction:column;align-items:stretch;gap:12px}
     .cx-hero{flex-direction:row;justify-content:flex-start;gap:12px;min-width:0}
-    .cx-hero .aqua{width:180px;height:150px;flex:none}
-    .axo-ascii{font-size:5.5px}
     .cx-cols{flex-direction:column;gap:14px}
     .cx-block{min-width:0}
   }
@@ -1174,7 +1128,7 @@
   <div class="mtab-pane active" data-mpane="notif">
     <div class="set"><label for="vol">Volumen (voz y chime)</label>
       <input type="range" id="vol" class="solid" min="0" max="100" value="60"></div>
-    <div class="set switch"><label>Mascota ajolote</label><button id="sw-axo" class="cfg" role="switch" aria-label="Mostrar u ocultar la mascota"></button></div>
+    <div class="set switch"><label>Mascota PerezOS</label><button id="sw-mascot" class="cfg" role="switch" aria-label="Mostrar u ocultar a PerezOS"></button></div>
     <div class="set switch"><label>Worktrees automáticos (repo ocupado → sesión aislada)</label><button class="cfg" data-key="AUTO_WORKTREE" role="switch"></button></div>
     <div class="set switch"><label>Avisar al terminar</label><button class="cfg" data-key="NOTIFY_ON_DONE" role="switch"></button></div>
     <div class="set switch"><label>Avisar al pedir atencion</label><button class="cfg" data-key="NOTIFY_ON_ATTENTION" role="switch"></button></div>
@@ -1431,6 +1385,13 @@
   </div>
 </dialog>
 
+<script src="/perezos/core.js"></script>
+<script src="/perezos/art.js"></script>
+<script src="/perezos/rig.js"></script>
+<script src="/perezos/behaviors.js"></script>
+<script src="/perezos/motion.js"></script>
+<script src="/perezos/renderer.js"></script>
+<script src="/perezos/engine.js"></script>
 <script>
 "use strict";
 const S = {
@@ -1489,6 +1450,7 @@ const T_EN = {
     "Remote off does not turn off Tailscale; it only stops exposing ComandOS and stops the web terminal.",
   "Notificaciones (todo el sistema)": "Notifications (system-wide)",
   "Volumen (voz y chime)": "Volume (voice and chime)",
+  "Mascota PerezOS": "PerezOS mascot",
   "Avisar al terminar": "Notify when done", "Avisar al pedir atencion": "Notify on attention",
   "Voz (anuncia el proyecto)": "Voice (announces the project)",
   "Chime (suena si la voz esta apagada)": "Chime (plays if voice is off)",
@@ -1528,6 +1490,7 @@ function applyI18n(){
   ti("#btn-switch", "Jump to any session (Ctrl+K)");
   ti("#btn-theme", "Theme: Night → Day → Warm (dashboard, tabs and terminals)");
   ti("#ssh-manage", "Add, edit or delete (they live in ~/.ssh/config)");
+  $("#sw-mascot")?.setAttribute("aria-label", "Show or hide PerezOS");
 }
 
 function saveCfg(){ localStorage.setItem("cc-cfg", JSON.stringify(S.cfg)); }
@@ -1853,222 +1816,6 @@ function mdStrip(s){ return (s||"").replace(/\*\*|`|^#{1,6} /g, ""); }
 	function tierStyleOf(tier){
 	  return (MT && MT.tiers && MT.tiers[tier]) || null;
 	}
-	// ---- La mascota de ComandOS: el AJOLOTE (pixel-art). Uno por sesion.
-	// Mapa de pixeles 18x13: .=nada B=cuerpo D=contorno G=branquita W=panza
-	// Dos frames (cola arriba/abajo) para nadar; expresiones por estado.
-	// Paleta del ajolote DERIVADA del tema (hue del --brand, suavizado):
-	// nada hardcodeado — si el tema cambia, el ajolote muda de piel.
-	function _hex2hsl(hex){
-	  const n = parseInt(hex.replace("#",""), 16);
-	  const r=(n>>16&255)/255, g=(n>>8&255)/255, b=(n&255)/255;
-	  const mx=Math.max(r,g,b), mn=Math.min(r,g,b); let h=0, l=(mx+mn)/2;
-	  const d=mx-mn, sat=d===0?0:d/(1-Math.abs(2*l-1));
-	  if(d){ h = mx===r ? ((g-b)/d)%6 : mx===g ? (b-r)/d+2 : (r-g)/d+4; h=Math.round(h*60); if(h<0)h+=360; }
-	  return [h, sat, l];
-	}
-	const AXO_PAL = (()=>{
-	  let h = 38, sat = 0.5;
-	  try{
-	    const brand = getComputedStyle(document.documentElement)
-	      .getPropertyValue("--brand").trim();
-	    if(/^#[0-9a-f]{6}$/i.test(brand)){ const t=_hex2hsl(brand); h=t[0]; sat=Math.max(.3, t[1]*.55); }
-	  }catch(e){}
-	  const c=(sv,l)=>`hsl(${h},${Math.round(sv*100)}%,${l}%)`;
-	  return {B:c(sat,66), L:c(sat*.85,80), S:c(sat*1.05,52), D:c(sat*1.15,36),
-	          W:c(sat*.5,90), F:c(sat*.65,72), G:c(Math.min(1,sat*1.7),78),
-	          R:c(Math.min(1,sat*1.35),55), E:"#221E2E", H:"#FFFFFF",
-	          M:c(sat,40), K:c(Math.min(1,sat*1.6),76), Kg:"#FFD166"};
-	})();
-	// Sprite PROCEDURAL 36x24: cuerpo por elipses rasterizadas (curvas suaves),
-	// sombreado en 3 tonos + panza, contorno, branquias plumosas, aleta dorsal
-	// y caudal, patitas, ojo con brillo, cachete. Dos frames (cola/branquias).
-	const AXO_Q = 4;                       // factor HD: 4x — malla 144x96
-	const AXO_W = 36 * AXO_Q, AXO_H = 24 * AXO_Q;
-	function _axoBuild(alt){
-	  const g = Array.from({length: AXO_H}, () => Array(AXO_W).fill("."));
-	  const inE = (xx,yy,cx,cy,rx,ry) => {
-	    const x = xx / AXO_Q, y = yy / AXO_Q;
-	    return ((x-cx)/rx)**2 + ((y-cy)/ry)**2 <= 1;
-	  };
-	  const body = (x,y) =>
-	    inE(x,y,25,13.5,6.0,5.2) ||                  // cabeza
-	    inE(x,y,16,14.5,8.5,4.4) ||                  // torso
-	    inE(x,y,8,15.5,5.5,2.8) ||                   // base cola
-	    inE(x,y,3.2,16+(alt?0.9:0),3.0,1.6);         // punta cola (aletea)
-	  const fin = (x,y) =>
-	    inE(x,y,13,9.2,10.5,3.4) ||                  // cresta dorsal ALTA
-	    inE(x,y,3.2,15.5+(alt?0.9:0),4.8,4.6);       // aleta caudal grande
-	  // 1) aleta (membrana clara) detras del cuerpo
-	  for(let y=0;y<AXO_H;y++) for(let x=0;x<AXO_W;x++)
-	    if(fin(x,y) && !body(x,y)) g[y][x]="F";
-	  // 2) cuerpo con sombreado por altura relativa
-	  for(let y=0;y<AXO_H;y++) for(let x=0;x<AXO_W;x++){
-	    if(!body(x,y)) continue;
-	    g[y][x] = body(x,y-1) ? (body(x,y+1) ? "B" : "S") : "L";
-	  }
-	  // 3) panza clara
-	  for(let y=15*AXO_Q;y<=18*AXO_Q;y++) for(let x=12*AXO_Q;x<=23*AXO_Q;x++)
-	    if(g[y][x]==="B"||g[y][x]==="S") if(inE(x,y,17,17.4,7.4,2.4)) g[y][x]="W";
-	  // 4) contorno
-	  for(let y=0;y<AXO_H;y++) for(let x=0;x<AXO_W;x++){
-	    if(g[y][x]!=="." ) continue;
-	    const n=[[1,0],[-1,0],[0,1],[0,-1]].some(([dx,dy])=>{
-	      const c=(g[y+dy]||[])[x+dx]; return c && c!=="."&&c!=="D"&&c!=="F";
-	    });
-	    if(n) g[y][x]="D";
-	  }
-	  // 5) branquias: 3 tallos por lado visibles, plumosos (se mecen con alt)
-	  const sway = alt ? 1 : 0;
-	  const blk = (x, y, ch, w) => {      // bloque QxQ en coords base
-	    w = w || AXO_Q;
-	    for(let dy=0; dy<w; dy++) for(let dx=0; dx<w; dx++){
-	      const yy = y*AXO_Q + dy, xx = x*AXO_Q + dx;
-	      if(g[yy] && g[yy][xx] !== undefined) g[yy][xx] = ch;
-	    }
-	  };
-	  const stalk = (pts, tip) => {
-	    pts.forEach(([x,y]) => blk(x, y, "R"));
-	    tip.forEach(([x,y]) => blk(x, y, "G", AXO_Q + 1));   // plumas mas gorditas
-	  };
-	  // branquias GRANDES y plumosas: lo iconico del ajolote
-	  stalk([[23,8],[22,7],[22,6],[21,5]],
-	        [[20,4],[21,3+sway],[22,4],[19,5],[20,3],[21,4],[20+sway,2]]);
-	  stalk([[27,8],[27,7],[27,6],[27,5]],
-	        [[26,4],[27,3],[28,4],[26,2+sway],[28,2],[27,2],[25,3],[29,3]]);
-	  stalk([[30,9],[31,8],[32,7],[32,6]],
-	        [[33,5],[33,4+sway],[32,4],[34,6],[34,5],[33,6],[34,7]]);
-	  // 6) patitas
-	  [[13,19],[13,20],[14,20],[21,19],[21,20],[22,20]].forEach(([x,y])=>blk(x,y,"S"));
-	  [[12,20],[20,20]].forEach(([x,y])=>blk(x,y,"D"));
-	  // 7) carita: ojo grande con brillo, sonrisa, cachete
-	  blk(26,11,"E"); blk(27,11,"E"); blk(26,12,"E"); blk(27,12,"E");
-	  for(let dy=0;dy<AXO_Q;dy++) for(let dx=0;dx<AXO_Q;dx++)
-	    g[11*AXO_Q+dy][27*AXO_Q+dx]="H";                        // brillo
-	  blk(27,14,"M"); blk(28,14,"M"); blk(26,15,"M");
-	  blk(23,13,"K"); blk(24,13,"K");
-	  return g.map(r => r.join(""));
-	}
-	const AXO_F1 = _axoBuild(false);
-	const AXO_F2 = _axoBuild(true);
-	function axoDraw(cv, frame, st, hat, px, costume){
-	  px = px || 3;
-	  cv.width = AXO_W * px; cv.height = AXO_H * px;
-	  const ctx = cv.getContext("2d");
-	  ctx.clearRect(0, 0, cv.width, cv.height);
-	  const put1 = (x, y, c) => { ctx.fillStyle = c; ctx.fillRect(x*px, y*px, px, px); };
-	  frame.forEach((row, y) => [...row].forEach((ch, x) => {
-	    if(ch !== ".") put1(x, y, AXO_PAL[ch] || AXO_PAL.B);
-	  }));
-	  // los adornos se dibujan en coords BASE (bloques Q x Q)
-	  const put = (x, y, c) => {
-	    ctx.fillStyle = c;
-	    ctx.fillRect(x*AXO_Q*px, y*AXO_Q*px, AXO_Q*px, AXO_Q*px);
-	  };
-	  // expresion por estado (sobre la carita base)
-	  if(st === "done"){       // ojitos felices ^ ^
-	    put(27,11,AXO_PAL.B); put(28,11,AXO_PAL.B); put(27,12,AXO_PAL.E); put(28,12,AXO_PAL.E);
-	    put(26,11,AXO_PAL.E); put(29,11,AXO_PAL.E);
-	  } else if(st === "idle"){ // dormido — + zzz
-	    put(27,11,AXO_PAL.B); put(28,11,AXO_PAL.B); put(27,12,AXO_PAL.S); put(28,12,AXO_PAL.S);
-	    put(32,3,"#7C88A6"); put(33,2,"#7C88A6"); put(31,4,"#7C88A6");
-	  } else if(st === "dead"){ // x x
-	    put(27,11,AXO_PAL.E); put(28,12,AXO_PAL.E); put(28,11,AXO_PAL.B); put(27,12,AXO_PAL.B);
-	    put(26,10,AXO_PAL.E); put(29,13,AXO_PAL.E);
-	  } else if(st === "waiting"){ // ojo MUY abierto + !
-	    put(27,10,AXO_PAL.E); put(28,10,AXO_PAL.E);
-	    put(33,8,"#FFAE1A"); put(33,9,"#FFAE1A"); put(33,11,"#FFAE1A");
-	  }
-	  // sombreritos (sobre la cabeza: x 22-30, y 3-6)
-	  if(hat === "corona"){
-	    [[23,5],[25,4],[27,5],[29,4],[23,6],[24,6],[25,6],[26,6],[27,6],[28,6],[29,6]]
-	      .forEach(([x,y]) => put(x, y, AXO_PAL.Kg));
-	  } else if(hat === "casco"){
-	    [[24,4],[25,4],[26,4],[27,4],[23,5],[24,5],[25,5],[26,5],[27,5],[28,5],[22,6],[29,6]]
-	      .forEach(([x,y]) => put(x, y, "#FF9F43"));
-	  } else if(hat === "visor"){
-	    [[23,6],[24,6],[25,6],[26,6],[27,6],[28,6],[29,7],[30,7]]
-	      .forEach(([x,y]) => put(x, y, "#4ECDC4"));
-	  }
-	  const alt = frame === AXO_F2;
-	  if(costume === "fuego"){
-	    const F="#FF6B35", A="#FFA630", Y="#FFE066";
-	    [[9,6,F],[10,5,A],[11,6,Y],[13,5,F],[14,6,A],[16,5,Y],[17,6,F],[12,4,A],[15,4,F]]
-	      .forEach(([x,y,c]) => put(x + (alt?1:0), y, c));
-	    [[25,11],[26,11],[27,11],[28,11],[29,11],[25,12],[29,12]]
-	      .forEach(([x,y]) => put(x, y, "#14121A"));   // lentes
-	  } else if(costume === "hamster"){
-	    ctx.strokeStyle = "#8B95AB"; ctx.lineWidth = Math.max(2, px*0.8);
-	    ctx.setLineDash([px*1.6, px]);
-	    ctx.beginPath();
-	    ctx.arc(cv.width/2, cv.height/2, Math.min(cv.width,cv.height)/2 - px, alt?0.4:0, Math.PI*2);
-	    ctx.stroke(); ctx.setLineDash([]);
-	  } else if(costume === "gordo"){
-	    for(let x=11;x<=24;x++){ put(x,19,AXO_PAL.W); put(x,20,AXO_PAL.B); }
-	    for(let x=12;x<=23;x++) put(x,21,AXO_PAL.D);
-	  } else if(costume === "huevo"){
-	    const SH="#F5EFE0", SD="#DFD3B8";
-	    for(let y=14;y<=21;y++) for(let x=5;x<=31;x++){
-	      if(((x-18)/13.5)**2 + ((y-14)/8)**2 <= 1 && y>=14) put(x,y,SH);
-	    }
-	    [[8,13],[12,14],[16,13],[20,14],[24,13],[28,14]].forEach(([x,y])=>put(x,y,SH));
-	    [[10,17],[19,18],[26,16]].forEach(([x,y])=>put(x,y,SD));
-	  } else if(costume === "bufanda"){
-	    const R="#E63946", R2="#B22B37";
-	    for(let x=20;x<=26;x++){ put(x,15,R); put(x,16,x%2?R:R2); }
-	    [[22,17],[22,18],[22,19],[23,17]].forEach(([x,y])=>put(x,y,alt?R:R2));
-	  }
-	}
-	const AXO_PIX = {"w":64,"h":68,"pal":["#6D6F89","#151520","#392F41","#4C4760","#788BA4","#8B96AF","#516280","#9FB1C5","#8DA1B8"],"rows":[".........................................ab.....................",".........cb...........................bdae......................",".........fb...........................ceedd.....................","........cagb.........................cdaddc.....................","........aaac........................bcaacdc.....................",".......bcada........................dcaaddb.....................",".......bdaadb......................bddadcdc.......c.............",".......ccdadd......................dddfcdc......bdf.............",".......bddedgb....................bddfaccdc...bcafd.............",".c.....bdcfaddc...................dcghdcdc...bddaacab...........",".aac....ccgfcac.....bdddddddc....bddhacccb..cdadadab............",".cegd...ddcffcdc.bdffhhhhhhhheac..dffgcddbbcadafccdb............",".caaagc.bdcdhedcdihhhhhiifffiihhedffacddbbdddgfddac.............",".cdaadac.cdcahaahifiiiiiiiiiiffeiieadcccddddefdccb..............",".cdcaadddcdcdgfhfhhfiiiiiiiiffiieefaccddddaffccadb..............","..cdcffdddcccahhfiiiiiiiiifihhiiiiifccdaeffacccbbb..............","..bddcahegdcdhaaifiiiiiiiiiedgfiiiffaafffadcccdc................","...bddcdfffaeaigdhiiiiiiiieeh.cfifeiedaaacccdcbb................","...bbcdcdgadicedciiiiiiiihgdfbbaiefeedddcbddccb.................","....bdcdcccdhdb.ciiiiiiiiiab.bcgifieegccddbcc...b.bbc...........","......cccdceigdcaieiiiieiiecdgdeiiifegc.bcccccccdccdddd.........","........bccffiggiiaifiagiiiaddeifiifegaaddcddddddaaaaab.........","acccccdcccbeegiiffiiiiiifiihiifgeifeadgfffeaaaaefadddc..........","cfeadddddaagiaggdddggdgdddgggggaiieagddaaeffffadccdccb..........",".caaefffffaceifeffaaaaaefeaaaaiifeagdcddddddccbcdccc............","cdcdcddddddccaeiiiiiiiiiiiiiiiffegggccccccccdcdcbc..............","..ccdcccccccccgaeeeffffffifeeeeagggb.dcdcddcddbdb...............","...dccdcdccddcbggaaaaaeeeeaaaggggdb..bcccccdbcc.................",".....cbbcbcbc...cdgggggggggggggggc......b..cb...................",".........b........cddddgggggggggac..............................","..................ggggggggggaeeeed..............................","..................aagggggaeefiifec..........................bb..",".................cafeaaaeeeiiffiheb.........................id..","................aagfefffffihfffifhhc.......................dhg..","...............ghdahfefiihhhiegfifiha.....................chhi..","............bbdhedehhhhhhhhhieddafeehd...................chhihd.","......bdgc.dfifegdihhhhhhhhhhfadddgiiib..................fhfihd.",".......baiehiieggdhhhhhhhhhhhieagdhifab.................ghfifie.","......bgafiffeagbdhhhhhhhhhhheaggiifec..................eheaffib","......gddfiedccb.ghhhhhhhhhheaaeiifed..................ahfegaihg","......bbegec....behhhhhhhhhadgihifgc..................ahfiagaihg",".......ggbg.....behhhhhhhhhhaagaedb..................chieeaaafhg",".......c.bc.....behhhhhhhhhiggdecdb..................chifaeagiig","..........b.....beihhhhhhhhhehgdaeb..................iiiigigaifh","................beihhhhhhhhhhhdaiec.................ehfeegiggefh","................befhhhhhhhhhhheffid...............dfheifgfidgfii",".................gfihhhhhhhhhhiffieb............behiiffeahedafhg",".................dffhhhhhhhhhhiffifad..........dhhifiiegfiedafhg",".................cefihhhhhhhhhifffhgid........chihffeigehfadefig",".................baffhhhhhhhhhffffieahfdb...bdhheiiefaahffggefib","..................geefhhhhhhhiifiiiigehhhagahhiiefffaahfieggeif.","..................bafffihhhhiifffiffegifihhhhfiieffaahiffadaehg.",".................bcgefefiiiiiffeeiieeagfiieiieifeegahifiegdefic.","................cfidgefffffffffaeifheeegaefhefeaggfhifieadgeie..","...............chiiadgefffffffedaiifheeiaggggggafhhififagdeehd..","...............ahfeadggaeffeeeegdefifhgehhffffhhhifiifegggeie...","..............bfieggddaggeeeeeagdgeffheaifihiiiffiiifeaggeeic...","..............cifadc..dagggggggggddgiiigiffffffiiiifeagdgehd....","..............cifgb....gagggggggggddiifgiiiiiiiiifeeagdgeia.....","..............ghed......gagggggggggdeiigefffffffeeaggdgeffb.....","...........bdgfiab.......deggggggggdgiiageeeeeeeagggdgaefb......","..........ceaifid.........ceegggggggdfiiggeaaaaggggdgafeb.......",".........bdcagegg..........bgeegggggdiiifadggggggggaeieb........","...........adda.gb...........bgaeaggeeefaaagaagddgaeiab.........","..........bd.ac.bb.............bdggggggdfcddgddaeffac...........",".............d....................bdbggbecddaefeedc.............",".....................................cd.cbbcdccb................","......................................b........................."]};
-	// Mascota en PIXEL ART DE CONSOLA: half-blocks ▀▄ coloreados (arte ANSI),
-	// texto puro en la fuente mono del tema — cero imagenes.
-	function _hsl2hex(h, s, l){
-	  const f = n => {
-	    const k = (n + h/30) % 12;
-	    const a = s * Math.min(l, 1-l);
-	    const v = l - a * Math.max(-1, Math.min(k-3, Math.min(9-k, 1)));
-	    return Math.round(v * 255).toString(16).padStart(2, "0");
-	  };
-	  return "#" + f(0) + f(8) + f(4);
-	}
-	let AXO_THEMED = null;
-	function axoThemedPal(){
-	  if(AXO_THEMED) return AXO_THEMED;
-	  let brandH = 231;   // hue del azul original como fallback
-	  try{
-	    const brand = getComputedStyle(document.documentElement)
-	      .getPropertyValue("--brand").trim();
-	    if(/^#[0-9a-f]{6}$/i.test(brand)) brandH = _hex2hsl(brand)[0];
-	  }catch(e){}
-	  AXO_THEMED = AXO_PIX.pal.map(hex => {
-	    const [h, sat, l] = _hex2hsl(hex);
-	    if(sat < 0.18) return hex;          // ojos/brillos: neutros, no tocar
-	    // DISCRETO: hue del tema, saturacion contenida y luz ligeramente bajada
-	    return _hsl2hex(brandH, Math.min(sat * 0.42, 0.34), l * 0.82 + 0.03);
-	  });
-	  return AXO_THEMED;
-	}
-	function axoAscii(){
-	  const {rows} = AXO_PIX;
-	  const pal = axoThemedPal();
-	  const col = ch => pal[ch.charCodeAt(0) - 97];
-	  let out = "";
-	  for(let y = 0; y < rows.length; y += 2){
-	    const top = rows[y], bot = rows[y+1] || "";
-	    for(let x = 0; x < top.length; x++){
-	      const t = top[x], b = bot[x] || ".";
-	      if(t === "." && b === "."){ out += " "; continue; }
-	      if(t !== "." && b !== ".")
-	        out += `<span style="color:${col(t)};background:${col(b)}">▀</span>`;
-	      else if(t !== ".")
-	        out += `<span style="color:${col(t)}">▀</span>`;
-	      else
-	        out += `<span style="color:${col(b)}">▄</span>`;
-	    }
-	    out += "\n";
-	  }
-	  return out;
-	}
-	// Vida propia: cada tanto (aleatorio) hace un movimiento impredecible.
 	// ---- Wizard "+": nueva sesion (carpeta + agente + cuenta) en 3 clicks.
 	const NS = {agent: "claude", account: "main"};
 	function nsChips(el, items, cur, cb){
@@ -2128,48 +1875,77 @@ function mdStrip(s){ return (s||"").replace(/\*\*|`|^#{1,6} /g, ""); }
 	    tick();
 	  }catch(err){ toast(err.message, true); }
 	});
-	// Mostrar/ocultar la mascota (preferencia local, Ajustes)
-	function axoVisible(){ return localStorage.getItem("cc-axo") !== "0"; }
-	function applyAxoPref(){
-	  document.body.classList.toggle("no-axo", !axoVisible());
-	  const b = $("#sw-axo");
-	  if(b){ b.classList.toggle("on", axoVisible());
-	         b.setAttribute("aria-checked", String(axoVisible())); }
+	// Un solo operador PerezOS representa la sesion seleccionada.
+	const CENTRO_VIEW = {sessionId:"", item:null, mascot:null, roleSig:""};
+	function migrateMascotPreference(){
+	  if(localStorage.getItem("cc-mascot") === null){
+	    localStorage.setItem("cc-mascot", localStorage.getItem("cc-axo") === "0" ? "0" : "1");
+	  }
 	}
-	applyAxoPref();
-	$("#sw-axo")?.addEventListener("click", ()=>{
-	  localStorage.setItem("cc-axo", axoVisible() ? "0" : "1");
-	  applyAxoPref();
+	function mascotVisible(){ return localStorage.getItem("cc-mascot") !== "0"; }
+	function applyMascotPreference(){
+	  const visible = mascotVisible();
+	  document.body.classList.toggle("no-mascot", !visible);
+	  const button = $("#sw-mascot");
+	  if(button){
+	    button.classList.toggle("on", visible);
+	    button.setAttribute("aria-checked", String(visible));
+	  }
+	  CENTRO_VIEW.mascot?.setVisible(visible);
+	}
+	migrateMascotPreference();
+	applyMascotPreference();
+	$("#sw-mascot")?.addEventListener("click", ()=>{
+	  localStorage.setItem("cc-mascot", mascotVisible() ? "0" : "1");
+	  applyMascotPreference();
 	});
-	const AXO_MOVES = ["boing", "hop", "spin", "tilt", "shake", "flip",
-	                   "stretch", "peek", "wiggle"];
-	function axoMove(axo, mv){
-	  axo.classList.remove(...AXO_MOVES); void axo.offsetWidth;
-	  axo.classList.add(mv);
-	}
-	// Idle REAL: respira siempre (sutil), y cada tanto hace una secuencia de
-	// 1-3 movimientos encadenados — impredecible pero organico.
-	function axoChain(axo, n){
-	  if(n <= 0 || !axo.isConnected) return;
-	  axoMove(axo, AXO_MOVES[Math.floor(Math.random() * AXO_MOVES.length)]);
-	  setTimeout(() => axoChain(axo, n - 1), 700 + Math.random() * 900);
-	}
-	(function axoIdleLoop(){
-	  const axo = document.querySelector(".axo-ascii");
-	  if(axo && !document.hidden)
-	    axoChain(axo, 1 + Math.floor(Math.random() * 3));
-	  setTimeout(axoIdleLoop, 5000 + Math.random() * 9000);
-	})();
-	// (la mascota flota con CSS; los frames pixel viejos quedan sin uso)
-	// Centro de control: EL ajolote de la sesion seleccionada + sus controles.
+	// Centro de control de la sesion seleccionada + sus controles.
 	let ROLES = null;
-	api("/agent-roles").then(r => { ROLES = r || null; }).catch(() => {});
+	api("/agent-roles").then(r => {
+	  ROLES = r || null;
+	  renderCentro(S.list || []);
+	}).catch(() => {});
 	function roleOfModel(model){
 	  if(!ROLES || !model) return null;
 	  const m = model.toLowerCase();
 	  for(const r of (ROLES.roles || []))
 	    if((r.matches || []).some(x => m.includes(x))) return r;
 	  return null;
+	}
+	function perezosThemeColor(name, fallback){
+	  const value = getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+	  return /^#[0-9a-f]{6}$/i.test(value) ? value : fallback;
+	}
+	function perezosContext(it, role, costume){
+	  const pct = Number(it && it.contextPct) || 0;
+	  return {
+	    sessionId: it && it.session || "session-name",
+	    status: it && it.status || "idle",
+	    role: role && role.id || it && it.agent || "daily",
+	    costume: costume || "",
+	    contextPressure: pct >= 75 ? "high" : pct >= 45 ? "medium" : "low",
+	    expanded: !$("#centro .cx-extra")?.classList.contains("hidden"),
+	    theme: curTheme,
+	    timestamp: Number(it && it.ts) || 0,
+	    colors: {
+	      brand: perezosThemeColor("--brand", "#8B7CFF"),
+	      panel: perezosThemeColor("--panel", "#121722"),
+	      line: perezosThemeColor("--line", "#222A3A"),
+	    },
+	  };
+	}
+	function perezosCostumeFor(it, role, tier){
+	  if(it && it.costume) return it.costume;
+	  if(role && role.hat) return role.hat;
+	  return tier === ((MT && MT.alertTier) || "high") ? "corona" : "";
+	}
+	function syncPerezOSContext(){
+	  const it = CENTRO_VIEW.item;
+	  if(!it || !CENTRO_VIEW.mascot) return;
+	  const model = shortModel(usageForItem(it)?.model || "");
+	  const tier = tierOf(model);
+	  const role = roleOfModel(model);
+	  CENTRO_VIEW.mascot.setContext(perezosContext(it, role, perezosCostumeFor(it, role, tier)));
 	}
 	let brainCache = {cwd: null, data: null};
 	async function loadBrain(cwd){
@@ -2197,7 +1973,7 @@ function mdStrip(s){ return (s||"").replace(/\*\*|`|^#{1,6} /g, ""); }
 	    seen.add(it.session); items.push(it);
 	  }
 	  // gana el evento MAS RECIENTE: tu click en una fila vs la pestana activa
-	  // de la app (el ajolote es el de la sesion donde estas parado)
+	  // de la app (PerezOS representa la sesion donde estas parado)
 	  const cand = [];
 	  if(S.sel) cand.push({sess: S.sel, ts: S.selTs || 0});
 	  if(ACTIVE_TAB.session) cand.push({sess: ACTIVE_TAB.session, ts: (ACTIVE_TAB.ts || 0) * 1000});
@@ -2208,27 +1984,79 @@ function mdStrip(s){ return (s||"").replace(/\*\*|`|^#{1,6} /g, ""); }
 	  }
 	  return items.find(i => i.status === "waiting") || items.find(i => i.alive) || items[0] || null;
 	}
+	const PEREZOS_PHRASES = [
+	  [">_ cable firme, jefe", ">_ cable secure, boss"],
+	  [">_ despacio también es avanzar", ">_ slow is still forward"],
+	  [">_ tres garras, cero pánico", ">_ three claws, zero panic"],
+	  [">_ vigilo esta sesión", ">_ watching this session"],
+	  [">_ todo cuelga en equilibrio", ">_ everything hangs in balance"],
+	];
+	let perezosPhraseIndex = 0;
+	function renderCentroRoles(box, role, model){
+	  const it = CENTRO_VIEW.item;
+	  if(!it) return;
+	  const roles = ROLES && ROLES.roles || [];
+	  const catalogSig = roles.map(r => r.id).join(",");
+	  const sig = `${it.session}|${it.agent || ""}|${model}|${role && role.id || ""}|${catalogSig}`;
+	  if(CENTRO_VIEW.roleSig === sig) return;
+	  CENTRO_VIEW.roleSig = sig;
+	  const rbox = box.querySelector(".cx-roles");
+	  rbox.textContent = "";
+	  if(!roles.length || !["claude","codex","opencode"].includes(it.agent)) return;
+	  rbox.innerHTML = roles.map(r => `
+	    <button type="button" class="cx-role ${role && role.id === r.id ? "on" : ""}"
+	      data-role="${attrEsc(r.id)}" title="${attrEsc(r.desc || "")}">${mdEsc(r.label)}</button>`).join("");
+	  rbox.querySelectorAll(".cx-role").forEach(button => button.addEventListener("click", async ()=>{
+	    const live = CENTRO_VIEW.item;
+	    if(!live) return;
+	    const selectedRole = (ROLES && ROLES.roles || []).find(x => x.id === button.dataset.role);
+	    const spec = selectedRole && selectedRole.byProvider && selectedRole.byProvider[live.agent];
+	    const nextModel = spec && (spec.resolved || spec.alias);
+	    if(!nextModel) return toast(tf(`el catalogo vivo de ${live.agent} no tiene modelo para ${button.dataset.role}`,
+	                                  `${live.agent}'s live catalog has no ${button.dataset.role} model`), true);
+	    try{
+	      await api("/model/switch", {session:live.session, pane:live.pane || "",
+	        provider:live.agent, model:nextModel, effort:spec.effort || ""});
+	      toast(`${selectedRole.label} → ${nextModel}`);
+	    }catch(err){ toast(err.message, true); }
+	  }));
+	}
 	function renderCentro(list){
 	  const wrap = $("#centro-wrap"), box = $("#centro");
 	  if(!box) return;
 	  const it = pickSel(list);
 	  wrap.classList.toggle("hidden", !it);
-	  if(!it) return;
+	  if(!it){
+	    CENTRO_VIEW.mascot?.destroy();
+	    CENTRO_VIEW.sessionId = "";
+	    CENTRO_VIEW.item = null;
+	    CENTRO_VIEW.mascot = null;
+	    CENTRO_VIEW.roleSig = "";
+	    box.replaceChildren();
+	    delete box.dataset.sig;
+	    return;
+	  }
 	  const st = it.status || "idle";
 	  const model = shortModel(usageForItem(it)?.model || "");
 	  const tier = tierOf(model);
 	  const tst = tierStyleOf(tier);
-  const role = roleOfModel(model);
-	  const hat = role ? role.hat :
-	    (tier === ((MT && MT.alertTier) || "high") ? "corona" : "");
-	  const costume = it.costume || "";
-	  const sig = `${it.session}|${st}|${hat}|${costume}`;
-	  if(box.dataset.sig !== sig){
-	    box.dataset.sig = sig;
+	  const role = roleOfModel(model);
+	  const costume = perezosCostumeFor(it, role, tier);
+	  const sameSession = CENTRO_VIEW.sessionId === it.session;
+	  CENTRO_VIEW.item = it;
+	  if(!sameSession){
+	    CENTRO_VIEW.mascot?.destroy();
+	    CENTRO_VIEW.sessionId = it.session;
+	    CENTRO_VIEW.mascot = null;
+	    CENTRO_VIEW.roleSig = "";
+	    box.dataset.sig = it.session;
 	    box.innerHTML = `
 	      <div class="cx-hero" data-st="${attrEsc(st)}">
-	        <span class="aqua"><span class="frames"></span></span>
-	        <span class="cx-name"></span><span class="cx-sub"></span>
+	        <button type="button" class="perezos-stage"
+	          aria-label="${tf("PerezOS, mascota de la sesión seleccionada", "PerezOS, selected session mascot")}">
+	          <canvas class="perezos-canvas" width="224" height="192" aria-hidden="true"></canvas>
+	        </button>
+	        <span class="cx-name"></span><span class="cx-sub" aria-live="polite"></span>
 	      </div>
 	      <div class="cx-cols">
 	        <div class="cx-block">
@@ -2254,97 +2082,105 @@ function mdStrip(s){ return (s||"").replace(/\*\*|`|^#{1,6} /g, ""); }
 	              <div class="cx-title" style="margin-top:12px">${tf("rol — cambia el modelo de ESTA sesion", "role — switches THIS session's model")}</div>
 	              <div class="cx-roles"></div>
 	            </div>
-	            <div class="cx-pane hidden" data-pane="mcps">
-	              <div class="cx-scroll cx-mcps"></div>
-	            </div>
-	            <div class="cx-pane hidden" data-pane="skills">
-	              <div class="cx-scroll cx-skills"></div>
-	            </div>
+	            <div class="cx-pane hidden" data-pane="mcps"><div class="cx-scroll cx-mcps"></div></div>
+	            <div class="cx-pane hidden" data-pane="skills"><div class="cx-scroll cx-skills"></div></div>
 	            <div class="cx-note">${tf("apagar = menos tokens por turno · aplica al reciclar la sesion", "off = fewer tokens per turn · applies on session recycle")}</div>
 	          </div>
 	        </div>
 	      </div>`;
-	    const fr = box.querySelector(".frames");
-	    fr.innerHTML = `<pre class="axo-ascii" aria-label="ComandOS axolotl">${axoAscii()}</pre>`;
-	    const axo = fr.querySelector(".axo-ascii");
-	    const FRASES = ["glub glub", ">_ a sus ordenes", "ñam", "glub?",
-	                    ">_ todo local, jefe", "blub~", ">_ nada se me escapa"];
-	    axo.addEventListener("click", e => {
-	      e.stopPropagation();
-	      axoMove(axo, "boing");
-	      toast(FRASES[Math.floor(Math.random() * FRASES.length)]);
-	    });
-	    axo.addEventListener("animationend", () => axo.classList.remove(...AXO_MOVES));
-	    // Rol actual + cambio de rol (usa el switch de modelo existente)
-	    const rbox = box.querySelector(".cx-roles");
-	    if(ROLES && (ROLES.roles || []).length && ["claude","codex","opencode"].includes(it.agent)){
-	      rbox.innerHTML = (ROLES.roles || []).map(r => `
-	        <button type="button" class="cx-role ${role && role.id === r.id ? "on" : ""}"
-	          data-role="${attrEsc(r.id)}" title="${attrEsc(r.desc || "")}">${mdEsc(r.label)}</button>`).join("");
-	      rbox.querySelectorAll(".cx-role").forEach(b => b.addEventListener("click", async ()=>{
-	        const r = (ROLES.roles || []).find(x => x.id === b.dataset.role);
-	        const spec = r && r.byProvider && r.byProvider[it.agent];
-	        const model = spec && (spec.resolved || spec.alias);
-	        if(!model) return toast(tf(`el catalogo vivo de ${it.agent} no tiene modelo para ${b.dataset.role}`,
-	                                   `${it.agent}'s live catalog has no ${b.dataset.role} model`), true);
-	        try{
-	          await api("/model/switch", {session: it.session, pane: it.pane || "",
-	            provider: it.agent, model, effort: spec.effort || ""});
-	          toast(`${r.label} → ${model}`);
-	        }catch(err){ toast(err.message, true); }
-	      }));
+	    const stage = box.querySelector(".perezos-stage");
+	    const canvas = stage.querySelector(".perezos-canvas");
+	    try{
+	      CENTRO_VIEW.mascot = window.ComandOSPerezOS.createPerezOS(canvas, {visible:mascotVisible()});
+	    }catch(error){
+	      console.error("PerezOS no pudo iniciar", error);
 	    }
-	    box.querySelectorAll(".cx-tabs button").forEach(tb =>
-	      tb.addEventListener("click", ()=>{
-	        box.querySelectorAll(".cx-tabs button").forEach(o => o.classList.remove("on"));
-	        tb.classList.add("on");
-	        box.querySelectorAll(".cx-pane").forEach(pn =>
-	          pn.classList.toggle("hidden", pn.dataset.pane !== tb.dataset.pane));
+	    stage.addEventListener("pointermove", event => {
+	      const rect = stage.getBoundingClientRect();
+	      const x = Math.max(0, Math.min(rect.width, event.clientX - rect.left));
+	      const y = Math.max(0, Math.min(rect.height, event.clientY - rect.top));
+	      CENTRO_VIEW.mascot?.notifyInteraction("pointer", x, y);
+	    }, {passive:true});
+	    stage.addEventListener("click", event => {
+	      event.stopPropagation();
+	      if(!CENTRO_VIEW.mascot?.notifyInteraction("activate", 0, 0)) return;
+	      const phrase = PEREZOS_PHRASES[perezosPhraseIndex++ % PEREZOS_PHRASES.length];
+	      toast(tf(phrase[0], phrase[1]));
+	    });
+	    box.querySelectorAll(".cx-tabs button").forEach(tab =>
+	      tab.addEventListener("click", ()=>{
+	        box.querySelectorAll(".cx-tabs button").forEach(other => other.classList.remove("on"));
+	        tab.classList.add("on");
+	        box.querySelectorAll(".cx-pane").forEach(pane =>
+	          pane.classList.toggle("hidden", pane.dataset.pane !== tab.dataset.pane));
 	      }));
-	    const moreB = box.querySelector(".cx-more");
-	    moreB.addEventListener("click", ()=>{
-	      const ex = box.querySelector(".cx-extra");
-	      const open = ex.classList.toggle("hidden") === false;
-	      moreB.textContent = open ? tf("Menos ▴", "Less ▴") : tf("Más ▾", "More ▾");
-	      moreB.setAttribute("aria-expanded", open);
+	    const moreButton = box.querySelector(".cx-more");
+	    moreButton.addEventListener("click", ()=>{
+	      const extra = box.querySelector(".cx-extra");
+	      const open = extra.classList.toggle("hidden") === false;
+	      moreButton.textContent = open ? tf("Menos ▴", "Less ▴") : tf("Más ▾", "More ▾");
+	      moreButton.setAttribute("aria-expanded", String(open));
+	      syncPerezOSContext();
 	    });
 	    box.querySelector(".cx-open").addEventListener("click", async ()=>{
-	      try{ toast(await openSession(it, "claude")); }catch(err){ toast(err.message, true); }
+	      const live = CENTRO_VIEW.item;
+	      if(!live) return;
+	      try{ toast(await openSession(CENTRO_VIEW.item, "claude")); }catch(err){ toast(err.message, true); }
 	    });
-	    const pauseB = box.querySelector(".cx-pause"), resumeB = box.querySelector(".cx-resume");
-	    pauseB.addEventListener("click", async ()=>{
-	      try{ await api("/pause", {session: it.session, on: true});
-	           pauseB.classList.add("hidden"); resumeB.classList.remove("hidden");
-	           toast(tf("Agente congelado", "Agent frozen")); }
-	      catch(err){ toast(err.message, true); }
+	    const pauseButton = box.querySelector(".cx-pause");
+	    const resumeButton = box.querySelector(".cx-resume");
+	    pauseButton.addEventListener("click", async ()=>{
+	      const live = CENTRO_VIEW.item;
+	      if(!live) return;
+	      try{
+	        await api("/pause", {session:live.session, on:true});
+	        pauseButton.classList.add("hidden");
+	        resumeButton.classList.remove("hidden");
+	        toast(tf("Agente congelado", "Agent frozen"));
+	      }catch(err){ toast(err.message, true); }
 	    });
-	    resumeB.addEventListener("click", async ()=>{
-	      try{ await api("/pause", {session: it.session, on: false});
-	           resumeB.classList.add("hidden"); pauseB.classList.remove("hidden");
-	           toast(tf("Agente reanudado", "Agent resumed")); }
-	      catch(err){ toast(err.message, true); }
+	    resumeButton.addEventListener("click", async ()=>{
+	      const live = CENTRO_VIEW.item;
+	      if(!live) return;
+	      try{
+	        await api("/pause", {session:live.session, on:false});
+	        resumeButton.classList.add("hidden");
+	        pauseButton.classList.remove("hidden");
+	        toast(tf("Agente reanudado", "Agent resumed"));
+	      }catch(err){ toast(err.message, true); }
 	    });
 	    box.querySelector(".cx-kill").addEventListener("click", async ()=>{
-	      try{ await api("/kill", {session: it.session});
-	           toast(tf(`${it.project} eliminada`, `${it.project} killed`)); tick(); }
-	      catch(err){ toast(err.message, true); }
+	      const live = CENTRO_VIEW.item;
+	      if(!live) return;
+	      try{
+	        await api("/kill", {session:live.session});
+	        toast(tf(`${live.project} eliminada`, `${live.project} killed`));
+	        tick();
+	      }catch(err){ toast(err.message, true); }
 	    });
+	    applyMascotPreference();
 	  }
+	  box.dataset.sig = it.session;
+	  box.querySelector(".cx-hero").dataset.st = st;
+	  renderCentroRoles(box, role, model);
 	  box.querySelector(".cx-name").textContent = it.project || it.session;
-	  const stTxt = {waiting: tf("espera tu respuesta", "waiting for you"),
-	                 working: tf("trabajando", "working"), done: tf("listo", "done"),
-	                 idle: tf("descansando", "idle"), dead: tf("apagada", "dead")}[st] || st;
+	  const stTxt = {waiting:tf("espera tu respuesta", "waiting for you"),
+	                 working:tf("trabajando", "working"), done:tf("listo", "done"),
+	                 idle:tf("descansando", "idle"), dead:tf("apagada", "dead")}[st] || st;
 	  box.querySelector(".cx-sub").textContent = stTxt +
 	    (it.contextPct ? ` · ctx ${it.contextPct}%` : "");
 	  renderAdvice(box, it);
-	  const me = box.querySelector(".cx-model");
-	  me.textContent = model ? `${model}${tst && tst.symbol ? " " + tst.symbol : ""}` :
+	  const modelElement = box.querySelector(".cx-model");
+	  modelElement.textContent = model ? `${model}${tst && tst.symbol ? " " + tst.symbol : ""}` :
 	    tf("modelo aun no detectado", "model not detected yet");
-	  me.style.color = (tst && tst.css) || "";
+	  modelElement.style.color = tst && tst.css || "";
 	  box.querySelector(".cx-acct").textContent =
 	    `${tf("cuenta", "account")}: ${it.account || "main"}` +
 	    (it.accountEmail ? ` · ${it.accountEmail}` : "");
 	  renderBrain(box, it);
+	  if(CENTRO_VIEW.mascot){
+	    CENTRO_VIEW.mascot.setContext(perezosContext(CENTRO_VIEW.item, role, costume));
+	  }
 	}
 	// LA linea sabia: UN problema a la vez, el mas importante primero.
 	// Prioridad: loop > contexto > quema > cache > MCPs pesados > CLAUDE.md largo.
@@ -2370,8 +2206,11 @@ function mdStrip(s){ return (s||"").replace(/\*\*|`|^#{1,6} /g, ""); }
 	}
 	async function renderBrain(box, it){
 	  if(!it.cwd) return;
+	  const requestedSession = it.session;
 	  const d = await loadBrain(it.cwd);
-	  if(!d || box.dataset.sig.indexOf(it.session) !== 0) return;
+	  if(!d || box.dataset.sig !== requestedSession ||
+	     CENTRO_VIEW.item?.session !== requestedSession) return;
+	  it = CENTRO_VIEW.item;
 	  const row = (kind, x) => `
 	    <div class="cx-row ${x.enabled ? "" : "off"}">
 	      <button type="button" role="switch" aria-checked="${x.enabled}"
@@ -2398,8 +2237,10 @@ function mdStrip(s){ return (s||"").replace(/\*\*|`|^#{1,6} /g, ""); }
 	    acctLine.parentElement.insertBefore(div, acctLine.nextSibling);
 	    div.querySelectorAll("[data-acct]").forEach(b => b.addEventListener("click", async ()=>{
 	      try{
+	        const live = CENTRO_VIEW.item;
+	        if(!live || live.session !== box.dataset.sig) return;
 	        const danger = localStorage.getItem("cc-flow-danger") !== "0";
-	        const r = await api("/open-with-account", {cwd: it.cwd, account: b.dataset.acct, danger});
+	        const r = await api("/open-with-account", {cwd:live.cwd, account:b.dataset.acct, danger});
 	        toast(`${tf("sesion nueva", "new session")} ${r.session} · ${b.dataset.acct}`);
 	      }catch(err){ toast(err.message, true); }
 	    }));
@@ -2424,12 +2265,14 @@ function mdStrip(s){ return (s||"").replace(/\*\*|`|^#{1,6} /g, ""); }
 	  box.querySelectorAll(".sw:not(:disabled)").forEach(b => b.addEventListener("click", async ()=>{
 	    const on = b.dataset.on !== "1";
 	    try{
+	      const live = CENTRO_VIEW.item;
+	      if(!live || live.session !== box.dataset.sig) return;
 	      if(b.dataset.kind === "mcp")
-	        await api("/mcp-toggle", {cwd: it.cwd, name: b.dataset.name, on});
+	        await api("/mcp-toggle", {cwd:live.cwd, name:b.dataset.name, on});
 	      else
 	        await api("/skill-toggle", {path: b.dataset.path, on});
 	      brainCache = {cwd: null, data: null};
-	      renderBrain(box, it);
+	      renderBrain(box, live);
 	      toast(`${b.dataset.name} ${on ? "ON" : "OFF"} — ${tf("aplica al reciclar", "applies on recycle")}`);
 	    }catch(err){ toast(err.message, true); }
 	  }));
@@ -4303,6 +4146,14 @@ function applyTheme(name, tellApp){
   else document.documentElement.dataset.theme = name;
   $("#btn-theme").innerHTML = svg(THEME_ICON[name], 15);
   broadcastTermTheme(name);
+  if(CENTRO_VIEW.item){
+    const live = CENTRO_VIEW.item;
+    const model = shortModel(usageForItem(live)?.model || "");
+    const tier = tierOf(model);
+    const role = roleOfModel(model);
+    CENTRO_VIEW.mascot?.setContext(
+      perezosContext(live, role, perezosCostumeFor(live, role, tier)));
+  }
   if(tellApp && inApp())
     window.webkit.messageHandlers.centro.postMessage(JSON.stringify({theme: name}));
 }

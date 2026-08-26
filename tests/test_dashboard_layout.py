@@ -3,7 +3,9 @@ import re
 from pathlib import Path
 
 
-CSS = Path("dash/index.html").read_text()
+INDEX = Path("dash/index.html").read_text()
+PEREZOS_CSS = Path("dash/perezos/perezos.css").read_text()
+CSS = INDEX + "\n" + PEREZOS_CSS
 
 
 def rule(selector: str) -> str:
@@ -111,6 +113,19 @@ def test_ssh_connection_list_is_an_independent_touch_scroller():
         '<div id="srv-list" role="region" '
         'aria-label="Conexiones guardadas" tabindex="0"></div>'
     ) in CSS
+
+
+def test_perezos_stage_fits_desktop_and_narrow_control_center():
+    stage = rule(".perezos-stage")
+    assert "width:256px" in stage
+    assert "height:208px" in stage
+    assert "background:transparent" in stage
+
+    compact = re.sub(r"\s+", "", PEREZOS_CSS)
+    assert "@media(max-width:760px)" in compact
+    assert ".perezos-stage{width:180px;height:148px" in compact
+    assert "body.no-mascot.perezos-stage{display:none;}" in compact
+    assert "image-rendering:pixelated" in compact
 
 
 if __name__ == "__main__":

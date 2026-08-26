@@ -1,6 +1,6 @@
 // Service worker minimo: habilita instalar como app (PWA) y una pantalla
 // offline decente. NO cachea /state ni las APIs (siempre en vivo).
-const SHELL = "comandos-shell-v2";
+const SHELL = "comandos-shell-v3";
 self.addEventListener("install", (e) => {
   self.skipWaiting();
   e.waitUntil(caches.open(SHELL).then((c) => c.addAll(["/", "/manifest.webmanifest"])));
