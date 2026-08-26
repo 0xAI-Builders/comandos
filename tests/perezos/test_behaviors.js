@@ -87,6 +87,36 @@ test("primitive registry is exact, complete, and deeply immutable", () => {
   }
 });
 
+test("body-lean primitives preserve side and effort variation inside the safe envelope", () => {
+  const cases = [
+    ["brace", "intensity"],
+    ["shift-weight", "distance"],
+    ["pull", "intensity"],
+    ["recoil", "intensity"],
+    ["recover", "intensity"],
+  ];
+  const highMagnitudes = new Set();
+  for(const [name, varying] of cases){
+    const primitive = B.PRIMITIVES[name];
+    const sample = (side, amount) => primitive.targets({side, intensity:0.5,
+      distance:0.5, grip:0.6, [varying]:amount})["body-lean-x"];
+    const leftLow = sample("left", 0.2);
+    const leftHigh = sample("left", 0.8);
+    const rightLow = sample("right", 0.2);
+    const rightHigh = sample("right", 0.8);
+    for(const target of [leftLow, leftHigh, rightLow, rightHigh]){
+      assert.ok(Math.abs(target) < 2, `${name} ${target} saturates the ±2 solver envelope`);
+    }
+    assert.notEqual(leftLow, leftHigh, `${name} loses ${varying} variation after clamping`);
+    assert.notEqual(rightLow, rightHigh, `${name} loses ${varying} variation after clamping`);
+    assert.equal(Math.sign(leftLow), -Math.sign(rightLow), `${name} loses side direction`);
+    assert.equal(Math.sign(leftHigh), -Math.sign(rightHigh), `${name} loses side direction`);
+    highMagnitudes.add(Math.abs(leftHigh).toFixed(4));
+  }
+  assert.equal(highMagnitudes.size, cases.length,
+    "brace/shift/pull/recoil/recover require distinct authored response curves");
+});
+
 test("personality is stable, varied, frozen, and created from a separate fork", () => {
   const first = B.createDirector("personality-a");
   const again = B.createDirector("personality-a");

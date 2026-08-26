@@ -18,7 +18,7 @@
   const LINE_MIN_SENTINEL = 32767;
   const LINE_MAX_SENTINEL = -32768;
   const OCCLUSION_GROUPS = Object.freeze([
-    "rear-cable-shadow", "rear-limbs", "axial-deep-fur", "torso",
+    "rear-cable-depth", "rear-limbs", "axial-deep-fur", "torso",
     "front-limbs", "face", "claws-contact-masks", "medium-fine-fur",
     "props", "front-cable", "state-rim-light",
   ]);
@@ -47,9 +47,6 @@
     "lid-left-upper", "lid-left-lower", "lid-right-upper", "lid-right-lower",
   ]);
   const FUR_IDS = Object.freeze(["fur-belly", "fur-head"]);
-  const STATIC_CABLE = Object.freeze([
-    26,-11, 44,8, 66,30, 84,52, 106,72, 135,91, 152,111, 162,132, 169,146,
-  ]);
   const RENDERERS = new WeakMap();
   const PART_BY_ID = Object.create(null);
   const VARIANT_KEYS = Object.create(null);
@@ -134,6 +131,32 @@
   configureLimb("front-right", "arm-fr-upper", "arm-fr-fore", "wrist-fr", "palm-fr");
   configureLimb("rear-left", "leg-rl-upper", "leg-rl-lower", "ankle-rl", "palm-rl");
   configureLimb("rear-right", "leg-rr-upper", "leg-rr-lower", "ankle-rr", "palm-rr");
+
+  function authoredStaticPose(){
+    const rig = Rig.createRig("renderer-authored-static-pose");
+    const limbs = {};
+    const supports = {};
+    const claws = {};
+    const point = value => Object.freeze({x:value.x, y:value.y});
+    for(let index = 0; index < LIMB_NAMES.length; index += 1){
+      const name = LIMB_NAMES[index];
+      const limb = rig.limbs[name];
+      const support = rig.supports[name];
+      limbs[name] = Object.freeze({root:point(limb.root),joint:point(limb.joint),
+        end:point(limb.end)});
+      supports[name] = Object.freeze({mode:support.mode,load:support.load,
+        point:point(support.point)});
+    }
+    for(let index = 0; index < CLAW_IDS.length; index += 1){
+      const id = CLAW_IDS[index];
+      claws[id] = Object.freeze({mode:rig.claws[id].mode,point:point(rig.claws[id].point)});
+    }
+    return Object.freeze({cable:Object.freeze(Array.from(rig.cable)),
+      limbs:Object.freeze(limbs),supports:Object.freeze(supports),
+      claws:Object.freeze(claws)});
+  }
+
+  const STATIC_POSE = authoredStaticPose();
 
   for(let index = 0; index < CLAW_IDS.length; index += 1){
     const id = CLAW_IDS[index];
@@ -636,11 +659,12 @@
 
   function anchorForPart(internal, part, rig, staticMode){
     const pose = POSE_RECORDS[part.id];
-    if(staticMode || !pose || pose.kind === 0){
+    if(!pose || pose.kind === 0){
       globalAnchor(internal, part, rig, staticMode);
       return;
     }
-    const limb = rig.limbs[pose.limb];
+    const poseSource = staticMode ? STATIC_POSE : rig;
+    const limb = poseSource.limbs[pose.limb];
     if(pose.kind === 1){
       internal.anchor[0] = Math.round(limb.root.x);
       internal.anchor[1] = Math.round(limb.root.y);
@@ -656,12 +680,14 @@
       internal.anchor[0] = Math.round(limb.end.x);
       internal.anchor[1] = Math.round(limb.end.y);
     }else{
-      const claw = rig.claws[part.id];
+      const claw = poseSource.claws[part.id];
       internal.anchor[0] = Math.round(claw.point.x + pose.offsetX);
       internal.anchor[1] = Math.round(claw.point.y + pose.offsetY);
-      internal.anchor[0] += Math.round(rig.values[CLAW_SPREAD_INDEX[part.id]] *
-        CLAW_FAN[part.id] * 3);
-      internal.anchor[1] += Math.round(rig.values[CLAW_CURL_INDEX[part.id]] * 3);
+      if(!staticMode){
+        internal.anchor[0] += Math.round(rig.values[CLAW_SPREAD_INDEX[part.id]] *
+          CLAW_FAN[part.id] * 3);
+        internal.anchor[1] += Math.round(rig.values[CLAW_CURL_INDEX[part.id]] * 3);
+      }
     }
   }
 
@@ -711,8 +737,9 @@
       context.expanded === true;
     if(keys.searching && searching) return keys.searching;
     if(!staticMode && keys.turned && turnBand(part, rig) >= 0.45) return keys.turned;
-    const loadedClaw = !staticMode && part.id.startsWith("claw-") &&
-      rig.claws[part.id].mode === "loaded";
+    const loadedClaw = part.id.startsWith("claw-") &&
+      (staticMode ? STATIC_POSE.claws[part.id].mode === "loaded" :
+        rig.claws[part.id].mode === "loaded");
     if(keys.loaded && (loadedClaw || context.status === "working" ||
        (!staticMode && supportLoadForPart(part, rig) >= 0.66))) return keys.loaded;
     return keys.base;
@@ -813,16 +840,16 @@
   }
 
   function drawLimbBridge(internal, rig, limbName, staticMode){
-    const limb = rig.limbs[limbName];
-    const rootPoint = staticMode ? limb.restRoot : limb.root;
-    const jointPoint = staticMode ? limb.restJoint : limb.joint;
-    const endPoint = staticMode ? limb.restEnd : limb.end;
+    const limb = staticMode ? STATIC_POSE.limbs[limbName] : rig.limbs[limbName];
+    const rootPoint = limb.root;
+    const jointPoint = limb.joint;
+    const endPoint = limb.end;
     drawLimbSegment(internal, rootPoint.x, rootPoint.y, jointPoint.x, jointPoint.y);
     drawLimbSegment(internal, jointPoint.x, jointPoint.y, endPoint.x, endPoint.y);
   }
 
   function cableValue(rig, staticMode, index){
-    return staticMode ? STATIC_CABLE[index] : rig.cable[index];
+    return staticMode ? STATIC_POSE.cable[index] : rig.cable[index];
   }
 
   function drawCable(internal, rig, staticMode, firstSegment, endSegment){
@@ -850,31 +877,36 @@
     internal.ctx.fillRect(screenX(internal, x), screenY(internal, y), scale, scale);
   }
 
-  function drawShadow(internal, rig, staticMode){
+  function drawSuspensionDepth(internal, rig, staticMode){
     const lean = staticMode ? 0 : Math.round(rig.values[INDEX.bodyLean]);
     const lift = staticMode ? 0 : Math.round(rig.values[INDEX.bodyLift]);
-    internal.ctx.fillStyle = internal.page.atlas.palette[0];
-    internal.ctx.fillRect(screenX(internal, 68 + lean), screenY(internal, 187 - lift),
-      92 * internal.camera.scale, 3 * internal.camera.scale);
     internal.ctx.fillStyle = internal.accent.line;
-    internal.ctx.fillRect(screenX(internal, 82 + lean), screenY(internal, 187 - lift),
+    internal.ctx.fillRect(screenX(internal, 97 + lean), screenY(internal, 151 - lift),
       14 * internal.camera.scale, internal.camera.scale);
   }
 
   function maskOrigin(internal, maskId, rig, staticMode){
     const mask = Art.MASKS[maskId];
+    const poseSource = staticMode ? STATIC_POSE : rig;
     let x = mask.bounds[0];
     let y = mask.bounds[1];
-    if(!staticMode && maskId === "contact-front-left"){
-      const point = rig.supports["front-left"].mode === "loaded" ?
-        rig.supports["front-left"].point : rig.limbs["front-left"].end;
+    if(maskId === "contact-front-left"){
+      const point = poseSource.supports["front-left"].mode === "loaded" ?
+        poseSource.supports["front-left"].point : poseSource.limbs["front-left"].end;
       x += Math.round(point.x - REST_X["palm-fl"]);
       y += Math.round(point.y - REST_Y["palm-fl"]);
-    }else if(!staticMode && maskId === "contact-front-right"){
-      const point = rig.supports["front-right"].mode === "loaded" ?
-        rig.supports["front-right"].point : rig.limbs["front-right"].end;
+    }else if(maskId === "contact-front-right"){
+      const point = poseSource.supports["front-right"].mode === "loaded" ?
+        poseSource.supports["front-right"].point : poseSource.limbs["front-right"].end;
       x += Math.round(point.x - REST_X["palm-fr"]);
       y += Math.round(point.y - REST_Y["palm-fr"]);
+    }else if(maskId === "contact-rear"){
+      const limb = poseSource.supports["rear-left"].mode === "loaded" ?
+        "rear-left" : "rear-right";
+      const palm = limb === "rear-left" ? "palm-rl" : "palm-rr";
+      const point = poseSource.supports[limb].point;
+      x += Math.round(point.x - REST_X[palm]);
+      y += Math.round(point.y - REST_Y[palm]);
     }else if(!staticMode){
       x += Math.round(rig.values[INDEX.bodyLean]);
       y -= Math.round(rig.values[INDEX.bodyLift]);
@@ -907,21 +939,22 @@
   }
 
   function drawContactMasks(internal, rig, context, staticMode){
+    const supports = staticMode ? STATIC_POSE.supports : rig.supports;
     let count = 0;
     let bits = 0;
-    if(staticMode || rig.supports["front-left"].mode === "loaded"){
+    if(supports["front-left"].mode === "loaded"){
       drawMask(internal, "contact-front-left", rig, staticMode);
       count += 1;
       bits |= 1;
     }
-    if(staticMode || rig.supports["front-right"].mode === "loaded"){
+    if(supports["front-right"].mode === "loaded"){
       drawMask(internal, "contact-front-right", rig, staticMode);
       count += 1;
       bits |= 2;
     }
-    if(staticMode || rig.supports["rear-left"].mode === "loaded" ||
-       rig.supports["rear-right"].mode === "loaded"){
-      drawMask(internal, "contact-ground", rig, staticMode);
+    if(supports["rear-left"].mode === "loaded" ||
+       supports["rear-right"].mode === "loaded"){
+      drawMask(internal, "contact-rear", rig, staticMode);
       count += 1;
       bits |= 4;
     }
@@ -1082,8 +1115,8 @@
       internal.dynamicDitherPixels = 0;
       internal.contactMasks = 0;
 
-      drawShadow(internal, rig, staticMode);
       drawCable(internal, rig, staticMode, 0, 4);
+      drawSuspensionDepth(internal, rig, staticMode);
       internal.groupCounts[0] = 2;
       drawLimbBridge(internal, rig, "front-right", staticMode);
       drawLimbBridge(internal, rig, "rear-right", staticMode);

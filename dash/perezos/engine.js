@@ -18,8 +18,10 @@
   const STATUS = Object.freeze(["idle", "working", "waiting", "done", "dead"]);
   const PRESSURE = Object.freeze(["low", "medium", "high"]);
   const TIMING_CAPACITY = 240;
+  const PERFORMANCE_TRACE_CAPACITY = 2048;
   const MAX_RESUME_STEP_MS = 100;
   const POINTER_INTERVAL_MS = 100;
+  const POINTER_ACTIVE_TAIL_MS = 150;
   const ACTIVATION_INTERVAL_MS = 750;
   const DEFAULT_COLORS = Object.freeze({
     brand:"#8B7CFF", panel:"#121722", line:"#222A3A",
@@ -39,6 +41,16 @@
   ]);
   const CONTACT_LIMBS = Object.freeze([
     "front-left", "front-right", "rear-left", "rear-right",
+  ]);
+  const RIG_TYPED_BUFFERS = Object.freeze([
+    "values", "targets", "velocities", "lastValidValues", "lastValidTargets",
+    "lastValidVelocities", "cable", "cablePrevious", "cableRestLengths",
+    "lastValidCable", "lastValidCablePrevious", "lastValidSupports", "lastValidLimbs",
+    "lastValidClaws",
+  ]);
+  const MOTION_TYPED_BUFFERS = Object.freeze([
+    "owners", "channelTargets", "phaseStarts", "baseTargets", "previousVelocities",
+    "accelerations", "queueTerminalDeadlines",
   ]);
   const MODULE_DECODE_LATCH = {failed:false};
   let nextIdentity = 1;
@@ -94,6 +106,78 @@
       scratch:new Float64Array(TIMING_CAPACITY),
       cursor:0, count:0, total:0,
     };
+  }
+
+  function createPerformanceTrace(){
+    return {
+      timestamp:new Float64Array(PERFORMANCE_TRACE_CAPACITY),
+      combined:new Float64Array(PERFORMANCE_TRACE_CAPACITY),
+      update:new Float64Array(PERFORMANCE_TRACE_CAPACITY),
+      render:new Float64Array(PERFORMANCE_TRACE_CAPACITY),
+      active:new Uint8Array(PERFORMANCE_TRACE_CAPACITY),
+      quality:new Uint8Array(PERFORMANCE_TRACE_CAPACITY),
+      cursor:0, count:0, totalSamples:0,
+    };
+  }
+
+  function clearPerformanceTrace(trace){
+    trace.timestamp.fill(0);
+    trace.combined.fill(0);
+    trace.update.fill(0);
+    trace.render.fill(0);
+    trace.active.fill(0);
+    trace.quality.fill(0);
+    trace.cursor = 0;
+    trace.count = 0;
+    trace.totalSamples = 0;
+  }
+
+  function pushPerformanceTrace(trace, timestamp, combined, update, render, active, quality){
+    const index = trace.cursor;
+    trace.timestamp[index] = timestamp;
+    trace.combined[index] = combined;
+    trace.update[index] = update;
+    trace.render[index] = render;
+    trace.active[index] = active ? 1 : 0;
+    trace.quality[index] = quality;
+    trace.cursor = (index + 1) % PERFORMANCE_TRACE_CAPACITY;
+    if(trace.count < PERFORMANCE_TRACE_CAPACITY) trace.count += 1;
+    trace.totalSamples += 1;
+  }
+
+  function performanceTraceDiagnostics(trace, includeSamples){
+    const diagnostics = {
+      capacity:PERFORMANCE_TRACE_CAPACITY,
+      count:trace.count,
+      totalSamples:trace.totalSamples,
+      sequenceStart:trace.totalSamples - trace.count,
+      sequenceEnd:trace.totalSamples,
+    };
+    if(includeSamples){
+      const timestamp = new Array(trace.count);
+      const combined = new Array(trace.count);
+      const update = new Array(trace.count);
+      const render = new Array(trace.count);
+      const active = new Array(trace.count);
+      const quality = new Array(trace.count);
+      const start = trace.count === PERFORMANCE_TRACE_CAPACITY ? trace.cursor : 0;
+      for(let offset = 0; offset < trace.count; offset += 1){
+        const index = (start + offset) % PERFORMANCE_TRACE_CAPACITY;
+        timestamp[offset] = trace.timestamp[index];
+        combined[offset] = trace.combined[index];
+        update[offset] = trace.update[index];
+        render[offset] = trace.render[index];
+        active[offset] = trace.active[index] === 1;
+        quality[offset] = QUALITY_ORDER[trace.quality[index]];
+      }
+      diagnostics.samples = Object.freeze({
+        timestamp:Object.freeze(timestamp), combined:Object.freeze(combined),
+        update:Object.freeze(update),
+        render:Object.freeze(render), active:Object.freeze(active),
+        quality:Object.freeze(quality),
+      });
+    }
+    return Object.freeze(diagnostics);
   }
 
   function clearTiming(ring){
@@ -197,6 +281,29 @@
       personality.gripCaution.toFixed(6)].join(":");
   }
 
+  function typedBufferBytes(record, names){
+    let bytes = 0;
+    for(let index = 0; index < names.length; index += 1){
+      const buffer = record[names[index]];
+      if(buffer && Number.isFinite(buffer.byteLength)) bytes += buffer.byteLength;
+    }
+    return bytes;
+  }
+
+  function engineBufferBytes(internal){
+    return typedBufferBytes(internal.rig, RIG_TYPED_BUFFERS) +
+      typedBufferBytes(internal.motion, MOTION_TYPED_BUFFERS) +
+      internal.timing.values.byteLength + internal.timing.scratch.byteLength +
+      internal.updateTiming.values.byteLength + internal.updateTiming.scratch.byteLength +
+      internal.renderTiming.values.byteLength + internal.renderTiming.scratch.byteLength +
+      internal.performanceTrace.timestamp.byteLength +
+      internal.performanceTrace.combined.byteLength +
+      internal.performanceTrace.update.byteLength +
+      internal.performanceTrace.render.byteLength +
+      internal.performanceTrace.active.byteLength +
+      internal.performanceTrace.quality.byteLength;
+  }
+
   function createSession(internal, sessionId){
     const rig = Rig.createRig(sessionId);
     const director = Behaviors.createDirector(sessionId);
@@ -223,6 +330,7 @@
     internal.bufferValues = rig.values;
     internal.bufferTargets = rig.targets;
     internal.bufferOwners = motion.owners;
+    internal.engineBufferBytes = engineBufferBytes(internal);
   }
 
   function auditBufferIdentities(internal){
@@ -234,8 +342,14 @@
        internal.updateTiming.values !== internal.updateTimingValues ||
        internal.updateTiming.scratch !== internal.updateTimingScratch ||
        internal.renderTiming.values !== internal.renderTimingValues ||
-       internal.renderTiming.scratch !== internal.renderTimingScratch){
-      internal.hotLoopBufferReplacements += 1;
+       internal.renderTiming.scratch !== internal.renderTimingScratch ||
+       internal.performanceTrace.timestamp !== internal.traceTimestamp ||
+       internal.performanceTrace.combined !== internal.traceCombined ||
+       internal.performanceTrace.update !== internal.traceUpdate ||
+       internal.performanceTrace.render !== internal.traceRender ||
+       internal.performanceTrace.active !== internal.traceActive ||
+       internal.performanceTrace.quality !== internal.traceQuality){
+      internal.stableBufferReplacements += 1;
       internal.bufferValues = internal.rig.values;
       internal.bufferTargets = internal.rig.targets;
       internal.bufferOwners = internal.motion.owners;
@@ -245,6 +359,12 @@
       internal.updateTimingScratch = internal.updateTiming.scratch;
       internal.renderTimingValues = internal.renderTiming.values;
       internal.renderTimingScratch = internal.renderTiming.scratch;
+      internal.traceTimestamp = internal.performanceTrace.timestamp;
+      internal.traceCombined = internal.performanceTrace.combined;
+      internal.traceUpdate = internal.performanceTrace.update;
+      internal.traceRender = internal.performanceTrace.render;
+      internal.traceActive = internal.performanceTrace.active;
+      internal.traceQuality = internal.performanceTrace.quality;
     }
   }
 
@@ -289,9 +409,11 @@
     }
   }
 
-  function hasActiveGesture(internal){
+  function hasActiveGesture(internal, now){
     const phase = internal.motion.phase;
-    return !!(phase && !QUIET_PHASES[phase.primitive]);
+    const recentPointer = internal.pointerAccepted > 0 &&
+      now - internal.lastPointerMs <= POINTER_ACTIVE_TAIL_MS;
+    return recentPointer || !!(phase && !QUIET_PHASES[phase.primitive]);
   }
 
   function setQuality(internal, quality, automatic){
@@ -385,7 +507,8 @@
       pushTiming(internal.renderTiming, cost);
     }
     else internal.skippedCleanRenders += 1;
-    return rendered ? cost : -1;
+    internal.lastRenderProduced = rendered;
+    return cost;
   }
 
   function updateFrame(internal, stepMs){
@@ -453,17 +576,21 @@
       if(!Number.isFinite(elapsed) || elapsed < 0) elapsed = 0;
       internal.accumulatorMs += Math.min(elapsed, MAX_RESUME_STEP_MS);
     }
-    const active = hasActiveGesture(internal);
+    const active = hasActiveGesture(internal, now);
     const frequency = CADENCE[internal.quality][active ? "action" : "idle"];
     const interval = 1000 / frequency;
     if(internal.updateImmediately || internal.accumulatorMs + 1e-9 >= interval){
-      let stepMs = internal.updateImmediately ? 0.001 : internal.accumulatorMs;
+      const immediate = internal.updateImmediately;
+      let stepMs = immediate ? 0.001 : interval;
       internal.updateImmediately = false;
-      internal.accumulatorMs = 0;
+      if(immediate) internal.accumulatorMs = 0;
+      else internal.accumulatorMs = Math.max(0, internal.accumulatorMs - interval);
       stepMs = Math.min(MAX_RESUME_STEP_MS, Math.max(0.001, stepMs));
       const updateCost = updateFrame(internal, stepMs);
       const renderCost = renderFrame(internal);
-      if(renderCost >= 0){
+      pushPerformanceTrace(internal.performanceTrace, now, updateCost + renderCost,
+        updateCost, renderCost, active, qualityIndex(internal.quality));
+      if(internal.lastRenderProduced){
         pushTiming(internal.timing, updateCost + renderCost);
         governQuality(internal);
       }
@@ -603,19 +730,25 @@
     const timing = createTimingRing();
     const updateTiming = createTimingRing();
     const renderTiming = createTimingRing();
+    const performanceTrace = createPerformanceTrace();
     const initialWidth = Math.max(1, Number(canvas.clientWidth) || Number(canvas.width) || 256);
     const initialHeight = Math.max(1, Number(canvas.clientHeight) || Number(canvas.height) || 208);
     const media = browser.matchMedia ? browser.matchMedia("(prefers-reduced-motion: reduce)") : null;
     const internal = {
       canvas, browser, media, renderer:null, fallbackContext:null,
       controllerIdentity:nextIdentity++, rendererIdentity:nextIdentity++, rigIdentity:0,
-      context:normalizeContext({}), timing, updateTiming, renderTiming,
+      context:normalizeContext({}), timing, updateTiming, renderTiming, performanceTrace,
       timingValues:timing.values, timingScratch:timing.scratch,
       updateTimingValues:updateTiming.values, updateTimingScratch:updateTiming.scratch,
       renderTimingValues:renderTiming.values, renderTimingScratch:renderTiming.scratch,
+      traceTimestamp:performanceTrace.timestamp, traceCombined:performanceTrace.combined,
+      traceUpdate:performanceTrace.update,
+      traceRender:performanceTrace.render, traceActive:performanceTrace.active,
+      traceQuality:performanceTrace.quality,
       rig:null, director:null, motion:null, activePerformance:null,
       bufferValues:null, bufferTargets:null, bufferOwners:null,
       sessionGeneration:0, sessionTimeMs:0, personalitySignature:"",
+      engineBufferBytes:0,
       viewportWidth:0, viewportHeight:0, dpr:0,
       deviceCeiling:deviceCeiling(browser), viewportCeiling:QUALITY.FULL,
       qualityCeiling:QUALITY.FULL, quality:QUALITY.FULL,
@@ -626,9 +759,10 @@
       sharedDecodeFailure:false, destroyed:false, staticDirty:true,
       frameId:0, lastWakeMs:-1, accumulatorMs:0, updateImmediately:true,
       visibleTimeMs:0, maxStepMs:0, wakeups:0, updates:0, renders:0,
+      lastRenderProduced:false,
       skippedCleanRenders:0, motionFailures:0, qualityTransitions:0,
       governorTransitions:0,
-      overBudgetFrames:0, underBudgetFrames:0, hotLoopBufferReplacements:0,
+      overBudgetFrames:0, underBudgetFrames:0, stableBufferReplacements:0,
       pointerAccepted:0, pointerDropped:0, activationAccepted:0,
       activationDropped:0, lastPointerMs:-POINTER_INTERVAL_MS,
       lastActivationMs:-ACTIVATION_INTERVAL_MS,
@@ -807,10 +941,11 @@
       clearTiming(internal.timing);
       clearTiming(internal.updateTiming);
       clearTiming(internal.renderTiming);
+      clearPerformanceTrace(internal.performanceTrace);
       return true;
     }
 
-    function getDiagnostics(){
+    function getDiagnostics(options){
       const rendererDiagnostics = internal.renderer ?
         Renderer.rendererDiagnostics(internal.renderer) : null;
       const rigRecoveries = internal.rig && internal.rig.diagnostics ?
@@ -858,10 +993,12 @@
         decodeFailures:internal.decodeFailures,
         decodeAttempts:internal.decodeAttempts,
         sharedDecodeFailure:internal.sharedDecodeFailure,
-        decodedBytes:rendererDiagnostics ? rendererDiagnostics.decodedBytes : 0,
+        engineBufferBytes:internal.engineBufferBytes,
+        decodedBytes:(rendererDiagnostics ? rendererDiagnostics.decodedBytes : 0) +
+          internal.engineBufferBytes,
         listenerCount:internal.listenerCount,
         observerCount:internal.observerCount,
-        hotLoopBufferReplacements:internal.hotLoopBufferReplacements,
+        stableBufferReplacements:internal.stableBufferReplacements,
         habituation:drives ? drives.habituation : 0,
         pendingBehaviorInteractions:internal.director ?
           internal.director.pendingInteractions : 0,
@@ -902,6 +1039,8 @@
             average:timingAverage(internal.renderTiming),
             p95:timingP95(internal.renderTiming)}),
         }),
+        performanceTrace:performanceTraceDiagnostics(internal.performanceTrace,
+          !!(options && options.includePerformanceTrace === true)),
       });
     }
 

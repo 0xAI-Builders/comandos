@@ -33,7 +33,25 @@ function assertImportContract(){
     dash:DASH,
     scripts:SCRIPT_NAMES.slice(),
     viewport:{...VIEWPORT},
+    unavailableClassification:Object.freeze({
+      missingPackage:isBrowserUnavailable(Object.assign(
+        new Error("Cannot find module 'playwright'"), {code:"MODULE_NOT_FOUND"})),
+      missingExecutable:isBrowserUnavailable(
+        new Error("Executable doesn't exist at /missing/chromium")),
+      launchCrash:isBrowserUnavailable(
+        new Error("browserType.launch: Target page, context or browser has been closed")),
+      invalidFlags:isBrowserUnavailable(new Error("unknown option --not-a-real-flag")),
+    }),
   });
+}
+
+function isBrowserUnavailable(error){
+  const message = error && (error.message || error.stack) || String(error || "");
+  if(error && error.code === "MODULE_NOT_FOUND" &&
+     /(?:^|[\\/'"])playwright(?:[\\/'"]|$)/i.test(message)) return true;
+  if(/Executable doesn.t exist at\s+\S+/i.test(message)) return true;
+  return !!(error && error.code === "ENOENT" &&
+    /(?:chrome|chromium|browser executable)/i.test(message));
 }
 
 function requireCachedPlaywright(request){
@@ -93,6 +111,59 @@ function analyzePixels(rgba, width, height){
     bounds:count ? {left:minX, top:minY, right:maxX, bottom:maxY,
       width:maxX - minX + 1, height:maxY - minY + 1} : null,
   });
+}
+
+function summarizeSamples(values){
+  if(!Array.isArray(values) || values.length === 0){
+    return Object.freeze({count:0,average:0,p95:0});
+  }
+  let total = 0;
+  for(const value of values) total += value;
+  const ordered = values.slice().sort((left, right) => left - right);
+  return Object.freeze({count:values.length,average:total / values.length,
+    p95:ordered[Math.ceil(values.length * 0.95) - 1]});
+}
+
+function traceRange(trace, sequenceStart, sequenceEnd){
+  const samples = trace && trace.samples;
+  const complete = !!samples && sequenceStart >= trace.sequenceStart &&
+    sequenceEnd <= trace.sequenceEnd && sequenceEnd >= sequenceStart;
+  if(!complete){
+    return Object.freeze({complete:false,sequenceStart,sequenceEnd,expected:Math.max(0,
+      sequenceEnd - sequenceStart),timestamp:[],combined:[],update:[],render:[],active:[],
+      quality:[]});
+  }
+  const from = sequenceStart - trace.sequenceStart;
+  const to = sequenceEnd - trace.sequenceStart;
+  return Object.freeze({complete:to - from === sequenceEnd - sequenceStart,
+    sequenceStart,sequenceEnd,expected:sequenceEnd - sequenceStart,
+    timestamp:samples.timestamp.slice(from, to),
+    combined:samples.combined.slice(from, to), update:samples.update.slice(from, to),
+    render:samples.render.slice(from, to), active:samples.active.slice(from, to),
+    quality:samples.quality.slice(from, to)});
+}
+
+function temporalCoverage(trace, windowStart, windowEnd){
+  const first = trace.timestamp.length ? trace.timestamp[0] : Number.NaN;
+  const last = trace.timestamp.length ? trace.timestamp[trace.timestamp.length - 1] : Number.NaN;
+  return Object.freeze({windowMs:windowEnd - windowStart,
+    coverageMs:Number.isFinite(first) && Number.isFinite(last) ? last - first : 0,
+    startLagMs:Number.isFinite(first) ? first - windowStart : Number.POSITIVE_INFINITY,
+    endLagMs:Number.isFinite(last) ? windowEnd - last : Number.POSITIVE_INFINITY});
+}
+
+function sourcePreallocationAudit(){
+  const source = fs.readFileSync(path.join(DASH, "perezos", "engine.js"), "utf8");
+  const createStart = source.indexOf("function createPerformanceTrace");
+  const pushStart = source.indexOf("function pushPerformanceTrace");
+  const diagnosticsStart = source.indexOf("function performanceTraceDiagnostics");
+  const createSource = source.slice(createStart, pushStart);
+  const pushSource = source.slice(pushStart, diagnosticsStart);
+  const typedBuffers = (createSource.match(/new (?:Float64|Uint8)Array\(/g) || []).length;
+  const hotPathAllocation = /\bnew\s+|Array\.from|\.slice\(|\.map\(/.test(pushSource);
+  return Object.freeze({preallocated:createStart >= 0 && pushStart > createStart &&
+    diagnosticsStart > pushStart && typedBuffers === 6 && !hotPathAllocation,
+  typedBuffers,hotPathAllocation,scope:"engine performance trace buffers and push hot path"});
 }
 
 function harnessDocument(){
@@ -171,6 +242,7 @@ min-height:300px;padding:24px;border:1px solid var(--line2);border-radius:14px;b
     let hash = 0x811c9dc5, count = 0, sumX = 0, sumY = 0;
     let minX = width, minY = height, maxX = -1, maxY = -1;
     const palette = new Set();
+    const regions = {upperLeftGrip:0,upperRightGrip:0,curledHind:0,face:0,floorBand:0};
     for(let offset = 0; offset < rgba.length; offset += 4){
       for(let channel = 0; channel < 4; channel += 1){
         hash ^= rgba[offset + channel]; hash = Math.imul(hash, 0x01000193);
@@ -182,13 +254,72 @@ min-height:300px;padding:24px;border:1px solid var(--line2);border-radius:14px;b
       minY = Math.min(minY, y); maxY = Math.max(maxY, y);
       palette.add(rgba[offset] + "," + rgba[offset + 1] + "," +
         rgba[offset + 2] + "," + rgba[offset + 3]);
+      if(x >= 55 && x <= 92 && y >= 18 && y <= 56) regions.upperLeftGrip += 1;
+      if(x >= 130 && x <= 174 && y >= 62 && y <= 108) regions.upperRightGrip += 1;
+      if(x >= 25 && x <= 80 && y >= 132 && y <= 179) regions.curledHind += 1;
+      if(x >= 78 && x <= 148 && y <= 64) regions.face += 1;
+      if(y >= 180) regions.floorBand += 1;
     }
     return {hash:(hash >>> 0).toString(16).padStart(8, "0"), width, height,
       nonTransparent:count, occupancy:count / (width * height),
       transparent:count < width * height, uniquePalette:palette.size,
+      regions,
       centroid:count ? {x:sumX / count, y:sumY / count} : null,
       bounds:count ? {left:minX,top:minY,right:maxX,bottom:maxY,
         width:maxX-minX+1,height:maxY-minY+1} : null};
+  }
+  function rigGeometry(rig){
+    const lean = rig.values[window.ComandOSPerezOS.Rig.channelIndex("body-lean-x")];
+    const lift = rig.values[window.ComandOSPerezOS.Rig.channelIndex("body-lift")];
+    const loaded = Object.keys(rig.supports).filter(name => rig.supports[name].mode === "loaded")
+      .map(name => ({name,point:{...rig.supports[name].point},
+        contactError:rig.limbs[name].contactError,cableT:rig.supports[name].cableT}));
+    const freeHind = rig.limbs["rear-left"];
+    return {loaded,pelvis:{x:106 + lean,y:131 + lift},freeHind:{
+      root:{...freeHind.root},joint:{...freeHind.joint},end:{...freeHind.end},
+      normalizedBend:((freeHind.joint.x-freeHind.root.x)*(freeHind.end.y-freeHind.root.y)-
+        (freeHind.joint.y-freeHind.root.y)*(freeHind.end.x-freeHind.root.x)) /
+        (freeHind.upperLength*freeHind.lowerLength),
+    }};
+  }
+  function renderAuthoredPosture(){
+    const target = document.createElement("canvas");
+    target.width = 224; target.height = 192;
+    const rig = window.ComandOSPerezOS.Rig.createRig("task9-authored-posture");
+    const renderer = window.ComandOSPerezOS.Renderer.createRenderer(target);
+    window.ComandOSPerezOS.Renderer.setViewport(renderer, 224, 192, 1);
+    window.ComandOSPerezOS.Renderer.render(renderer, rig, {...state,status:"idle",
+      sessionId:"task9-authored-posture",theme:"noche"}, "full");
+    const result = {sample:pixelSample(target),geometry:rigGeometry(rig),
+      poseHash:window.ComandOSPerezOS.Rig.poseHash(rig)};
+    window.ComandOSPerezOS.Renderer.destroyRenderer(renderer);
+    return result;
+  }
+  function renderDeterministicStatus(status){
+    const target = document.createElement("canvas");
+    target.width = 224; target.height = 192;
+    const seed = "task9-fixed-status";
+    const fixedClock = 12000;
+    const rig = window.ComandOSPerezOS.Rig.createRig(seed);
+    const director = window.ComandOSPerezOS.Behaviors.createDirector(seed);
+    const context = {...state,sessionId:seed,status,theme:"noche",
+      colors:{brand:"#8B7CFF",panel:"#121722",line:"#222A3A"}};
+    window.ComandOSPerezOS.Behaviors.updateContext(director, context, fixedClock);
+    const performance = window.ComandOSPerezOS.Behaviors.nextPerformance(director, fixedClock);
+    const motion = window.ComandOSPerezOS.Motion.createMotion(rig);
+    window.ComandOSPerezOS.Motion.enqueue(motion, performance, fixedClock);
+    for(let frame = 0; frame < 18; frame += 1){
+      window.ComandOSPerezOS.Motion.stepMotion(motion, 1/30,
+        fixedClock + frame * (1000/30));
+    }
+    const renderer = window.ComandOSPerezOS.Renderer.createRenderer(target);
+    window.ComandOSPerezOS.Renderer.setViewport(renderer, 224, 192, 1);
+    window.ComandOSPerezOS.Renderer.render(renderer, rig, context, "full");
+    const result = {status,seed,fixedClock,family:performance.family,
+      performanceState:performance.state,poseHash:window.ComandOSPerezOS.Rig.poseHash(rig),
+      sample:pixelSample(target)};
+    window.ComandOSPerezOS.Renderer.destroyRenderer(renderer);
+    return result;
   }
   function renderSlipRecovery(){
     const target = document.createElement("canvas");
@@ -222,7 +353,8 @@ min-height:300px;padding:24px;border:1px solid var(--line2);border-radius:14px;b
     return sample;
   }
   window.__perezosHarness = Object.freeze({canvas, stage, wrapper, controller,
-    applyContext, pixelSample, renderSlipRecovery,
+    applyContext, pixelSample, renderAuthoredPosture, renderDeterministicStatus,
+    renderSlipRecovery,
     setVisible(value){ visible = value === true; controller.setVisible(visible);
       toggle.setAttribute("aria-checked", String(visible)); },
     setHidden(value){ forcedHidden = value === true;
@@ -341,17 +473,24 @@ async function setContextAndSample(page, name, patch){
   return page.evaluate(() => window.__perezosHarness.pixelSample());
 }
 
-async function assertPaused(page, action, failures, label){
-  await action();
-  await page.waitForTimeout(150);
-  const before = await page.evaluate(() =>
-    window.__perezosHarness.controller.getDiagnostics());
+async function assertPaused(page, action, failures, label, options = {}){
+  const transition = await action();
+  const before = transition.before;
+  const immediate = transition.immediate;
+  recordFailure(failures,
+    immediate.updates === before.updates && immediate.renders === before.renders,
+    `${label} pauses with zero immediate delta`, {before, immediate});
+  if(options.ioAckMs) await page.waitForTimeout(options.ioAckMs);
+  const ioAcknowledged = options.ioAckMs ? await page.evaluate(() =>
+    window.__perezosHarness.controller.getDiagnostics()) : immediate;
   await page.waitForTimeout(1_100);
   const after = await page.evaluate(() =>
     window.__perezosHarness.controller.getDiagnostics());
-  recordFailure(failures, after.updates === before.updates && after.renders === before.renders,
-    `${label} performs zero engine work`, {before, after});
-  return {before, after};
+  recordFailure(failures, after.updates === ioAcknowledged.updates &&
+    after.renders === ioAcknowledged.renders,
+  `${label} performs zero sustained work after lifecycle acknowledgement`,
+  {before, immediate, ioAcknowledged, after});
+  return {before, immediate, ioAcknowledged, after};
 }
 
 async function runPerezOSE2E(options = {}){
@@ -401,6 +540,88 @@ async function runPerezOSE2E(options = {}){
       "dashboard stage exposes button semantics and hides decorative canvas", dashboardContract);
     recordFailure(visualFailures, Number(dashboardContract.edgeZ) > Number(dashboardContract.canvasZ),
       "panel edge occludes the canvas in authored composition", dashboardContract);
+
+    const dashboardIdentity = await dashboard.evaluate(() => {
+      const mascot = (0, eval)("CENTRO_VIEW.mascot");
+      const canvas = document.querySelector("#centro .perezos-canvas");
+      window.__task9DashboardCanvas = canvas;
+      window.__task9DashboardController = mascot;
+      return mascot.getDiagnostics();
+    });
+    const dashboardStage = dashboard.locator("#centro .perezos-stage");
+    await dashboardStage.click();
+    await dashboard.waitForTimeout(800);
+    await dashboardStage.press("Enter");
+    await dashboard.waitForTimeout(800);
+    await dashboardStage.press("Space");
+    await dashboard.waitForTimeout(800);
+    const dashboardInteraction = await dashboard.evaluate(() =>
+      (0, eval)("CENTRO_VIEW.mascot.getDiagnostics()"));
+    recordFailure(lifecycleFailures,
+      dashboardInteraction.interactions.activationAccepted -
+        dashboardIdentity.interactions.activationAccepted >= 3,
+    "real dashboard click, Enter, and Space acknowledge PerezOS",
+    {before:dashboardIdentity.interactions, after:dashboardInteraction.interactions});
+
+    const beforeDashboardNeighbor = dashboardInteraction.interactions.activationAccepted;
+    await dashboard.locator("#centro .cx-more").click();
+    const dashboardNeighbor = await dashboard.evaluate(() => ({
+      expanded:document.querySelector("#centro .cx-more")?.getAttribute("aria-expanded"),
+      activations:(0, eval)("CENTRO_VIEW.mascot.getDiagnostics()")
+        .interactions.activationAccepted,
+    }));
+    recordFailure(lifecycleFailures, dashboardNeighbor.expanded === "true" &&
+      dashboardNeighbor.activations === beforeDashboardNeighbor,
+    "real dashboard neighboring control expands without greeting PerezOS", dashboardNeighbor);
+
+    const dashboardPauseBefore = await dashboard.evaluate(() =>
+      (0, eval)("CENTRO_VIEW.mascot.getDiagnostics()"));
+    const dashboardPauseImmediate = await dashboard.evaluate(() => {
+      document.getElementById("sw-mascot").click();
+      const diagnostics = (0, eval)("CENTRO_VIEW.mascot.getDiagnostics()");
+      return {diagnostics,hidden:document.body.classList.contains("no-mascot"),
+        checked:document.getElementById("sw-mascot").getAttribute("aria-checked"),
+        stored:localStorage.getItem("cc-mascot")};
+    });
+    await dashboard.waitForTimeout(1_100);
+    const dashboardPauseAfter = await dashboard.evaluate(() =>
+      (0, eval)("CENTRO_VIEW.mascot.getDiagnostics()"));
+    recordFailure(lifecycleFailures,
+      dashboardPauseImmediate.hidden && dashboardPauseImmediate.checked === "false" &&
+      dashboardPauseImmediate.stored === "0" &&
+      dashboardPauseImmediate.diagnostics.updates === dashboardPauseBefore.updates &&
+      dashboardPauseImmediate.diagnostics.renders === dashboardPauseBefore.renders &&
+      dashboardPauseAfter.updates === dashboardPauseBefore.updates &&
+      dashboardPauseAfter.renders === dashboardPauseBefore.renders,
+    "real dashboard preference hides and pauses immediately and sustainably",
+    {before:dashboardPauseBefore, immediate:dashboardPauseImmediate, after:dashboardPauseAfter});
+    await dashboard.evaluate(() => document.getElementById("sw-mascot").click());
+    await dashboard.waitForTimeout(300);
+
+    await dashboard.setViewportSize({width:600,height:900});
+    await dashboard.waitForFunction(() =>
+      (0, eval)("CENTRO_VIEW.mascot.getDiagnostics().viewport.width") === 180,
+    null, {timeout:10_000});
+    const dashboardNarrow = await dashboard.evaluate(() => ({
+      sameCanvas:window.__task9DashboardCanvas ===
+        document.querySelector("#centro .perezos-canvas"),
+      sameController:window.__task9DashboardController === (0, eval)("CENTRO_VIEW.mascot"),
+      diagnostics:(0, eval)("CENTRO_VIEW.mascot.getDiagnostics()"),
+      checked:document.getElementById("sw-mascot").getAttribute("aria-checked"),
+      hidden:document.body.classList.contains("no-mascot"),
+    }));
+    recordFailure(lifecycleFailures, dashboardNarrow.sameCanvas &&
+      dashboardNarrow.sameController && dashboardNarrow.diagnostics.viewport.width === 180 &&
+      dashboardNarrow.diagnostics.viewport.height === 148 &&
+      dashboardNarrow.diagnostics.controllerIdentity === dashboardIdentity.controllerIdentity &&
+      dashboardNarrow.diagnostics.rendererIdentity === dashboardIdentity.rendererIdentity &&
+      dashboardNarrow.checked === "true" && !dashboardNarrow.hidden,
+    "real dashboard resize preserves canvas/controller identity and visible preference",
+    dashboardNarrow);
+    await dashboard.setViewportSize(VIEWPORT);
+    await dashboard.waitForFunction(() =>
+      (0, eval)("CENTRO_VIEW.mascot.getDiagnostics().viewport.width") === 256,
+    null, {timeout:10_000});
     await dashboard.close();
 
     const page = await browserContext.newPage();
@@ -468,6 +689,59 @@ async function runPerezOSE2E(options = {}){
     "pointer sampling is bounded and habituates", pointer.interactions);
 
     visuals.activation = await page.evaluate(() => window.__perezosHarness.pixelSample());
+    const authoredPosture = await page.evaluate(() =>
+      window.__perezosHarness.renderAuthoredPosture());
+    visuals.authoredPosture = authoredPosture.sample;
+    assertVisual(visuals.authoredPosture, "authored suspended posture", visualFailures);
+    const loadedNames = authoredPosture.geometry.loaded.map(contact => contact.name).sort();
+    const loadedAboveBody = authoredPosture.geometry.loaded.every(contact =>
+      contact.point.y < authoredPosture.geometry.pelvis.y - 12 && contact.contactError < 1);
+    const freeHind = authoredPosture.geometry.freeHind;
+    recordFailure(visualFailures,
+      JSON.stringify(loadedNames) === JSON.stringify(["front-left","rear-right"]) &&
+      loadedAboveBody && freeHind.end.y < 180 &&
+      freeHind.end.x < freeHind.root.x - 20 && Math.abs(freeHind.normalizedBend) > 0.18,
+    "authored pose is suspended from two upper contacts with a curled free hind limb",
+    authoredPosture.geometry);
+    const contactSpread = authoredPosture.geometry.loaded.length === 2 ? {
+      x:Math.abs(authoredPosture.geometry.loaded[0].point.x -
+        authoredPosture.geometry.loaded[1].point.x),
+      y:Math.abs(authoredPosture.geometry.loaded[0].point.y -
+        authoredPosture.geometry.loaded[1].point.y),
+    } : {x:0,y:0};
+    recordFailure(visualFailures,
+      authoredPosture.geometry.pelvis.y < 155 && contactSpread.x > 50 && contactSpread.y > 30 &&
+      visuals.authoredPosture.regions.upperLeftGrip > 40 &&
+      visuals.authoredPosture.regions.upperRightGrip > 40 &&
+      visuals.authoredPosture.regions.curledHind > 80 &&
+      visuals.authoredPosture.regions.face > 400 &&
+      visuals.authoredPosture.regions.floorBand < 20,
+    "authored silhouette keeps diagonal near/far support, face, curled hind, and no floor line",
+    {geometry:authoredPosture.geometry, regions:visuals.authoredPosture.regions,
+      contactSpread});
+
+    const statusRuns = {};
+    for(const status of ["idle","working","waiting","done","dead"]){
+      const pair = await page.evaluate(value => [
+        window.__perezosHarness.renderDeterministicStatus(value),
+        window.__perezosHarness.renderDeterministicStatus(value),
+      ], status);
+      statusRuns[status] = pair[0];
+      visuals[`status-${status}`] = pair[0].sample;
+      recordFailure(visualFailures,
+        pair[0].seed === pair[1].seed && pair[0].fixedClock === pair[1].fixedClock &&
+        pair[0].performanceState === status && pair[1].performanceState === status &&
+        pair[0].poseHash === pair[1].poseHash &&
+        pair[0].sample.hash === pair[1].sample.hash &&
+        pair[0].sample.nonTransparent === pair[1].sample.nonTransparent &&
+        JSON.stringify(pair[0].sample.bounds) === JSON.stringify(pair[1].sample.bounds),
+      `fixed seed and clock reproduce ${status} exactly`, {first:pair[0],repeat:pair[1]});
+    }
+    const statusHashes = Object.fromEntries(Object.entries(statusRuns)
+      .map(([status, run]) => [status,run.sample.hash]));
+    recordFailure(visualFailures, new Set(Object.values(statusHashes)).size === 5,
+      "five fixed-seed fixed-clock statuses cause five distinct pixel hashes", statusHashes);
+
     visuals.slipRecovery = await page.evaluate(() => window.__perezosHarness.renderSlipRecovery());
     assertVisual(visuals.slipRecovery, "slip recovery", visualFailures);
     const slipRecoveryRepeat = await page.evaluate(() =>
@@ -485,12 +759,6 @@ async function runPerezOSE2E(options = {}){
     visuals.waiting = await setContextAndSample(page, "waiting", {status:"waiting"});
     visuals.dead = await setContextAndSample(page, "dead", {status:"dead"});
     for(const [name, sample] of Object.entries(visuals)) assertVisual(sample, name, visualFailures);
-    const distinctHashes = new Set(Object.values(visuals).map(sample => sample.hash));
-    recordFailure(visualFailures, distinctHashes.size >= 6,
-      "state/theme/action poses produce distinct deterministic pixel hashes",
-      {count:distinctHashes.size, hashes:Object.fromEntries(Object.entries(visuals)
-        .map(([name, sample]) => [name, sample.hash]))});
-
     await page.evaluate(() => {
       const h = window.__perezosHarness;
       h.setVisible(false);
@@ -533,17 +801,32 @@ async function runPerezOSE2E(options = {}){
       window.__perezosHarness.controller.getDiagnostics().quality !== "static");
 
     await assertPaused(page,
-      () => page.evaluate(() => window.__perezosHarness.setVisible(false)),
+      () => page.evaluate(() => {
+        const h = window.__perezosHarness;
+        const before = h.controller.getDiagnostics();
+        h.setVisible(false);
+        return {before,immediate:h.controller.getDiagnostics()};
+      }),
       lifecycleFailures, "hidden mascot preference");
     await page.evaluate(() => window.__perezosHarness.setVisible(true));
     await page.waitForTimeout(300);
     await assertPaused(page,
-      () => page.evaluate(() => window.__perezosHarness.setOffscreen(true)),
-      lifecycleFailures, "offscreen stage");
+      () => page.evaluate(() => {
+        const h = window.__perezosHarness;
+        const before = h.controller.getDiagnostics();
+        h.setOffscreen(true);
+        return {before,immediate:h.controller.getDiagnostics()};
+      }),
+      lifecycleFailures, "offscreen stage", {ioAckMs:150});
     await page.evaluate(() => window.__perezosHarness.setOffscreen(false));
     await page.waitForTimeout(300);
     const hiddenPause = await assertPaused(page,
-      () => page.evaluate(() => window.__perezosHarness.setHidden(true)),
+      () => page.evaluate(() => {
+        const h = window.__perezosHarness;
+        const before = h.controller.getDiagnostics();
+        h.setHidden(true);
+        return {before,immediate:h.controller.getDiagnostics()};
+      }),
       lifecycleFailures, "hidden document");
     const resumedAt = Date.now();
     await page.evaluate(() => window.__perezosHarness.setHidden(false));
@@ -592,50 +875,151 @@ async function runPerezOSE2E(options = {}){
     {before:sessionBefore, after:sessionAfter});
 
     await page.waitForTimeout(PERFORMANCE.warmupMs);
-    const allocationBaseline = await page.evaluate(() =>
-      window.__perezosHarness.controller.getDiagnostics().hotLoopBufferReplacements);
+    const cdp = await browserContext.newCDPSession(page);
+    await cdp.send("HeapProfiler.enable");
+    async function stabilizedHeap(){
+      await cdp.send("HeapProfiler.collectGarbage");
+      const usage = await cdp.send("Runtime.getHeapUsage");
+      return Math.round(usage.usedSize);
+    }
+    const heapBaseline = await stabilizedHeap();
+    const performanceBaselineRecord = await page.evaluate(() => ({clock:performance.now(),
+      diagnostics:window.__perezosHarness.controller.getDiagnostics()}));
+    const performanceBaseline = performanceBaselineRecord.diagnostics;
     await page.locator("#stage-wrap").screenshot({path:IDLE_SCREENSHOT, animations:"disabled"});
     await page.waitForTimeout(PERFORMANCE.sampleMs);
-    const idlePerformance = await page.evaluate(() =>
-      window.__perezosHarness.controller.getDiagnostics());
-    recordFailure(lifecycleFailures, idlePerformance.quality === "full",
-      "performance idle sample remains Full", idlePerformance);
+    const idleEndRecord = await page.evaluate(() => ({clock:performance.now(),
+      diagnostics:window.__perezosHarness.controller.getDiagnostics()}));
+    const idleEnd = idleEndRecord.diagnostics;
+    const heapAfterIdle = await stabilizedHeap();
+    const idleTraceDiagnostics = await page.evaluate(() =>
+      window.__perezosHarness.controller.getDiagnostics({includePerformanceTrace:true}));
+    const idleTrace = traceRange(idleTraceDiagnostics.performanceTrace,
+      performanceBaseline.performanceTrace.sequenceEnd,
+      idleEnd.performanceTrace.sequenceEnd);
+    const idleCoverage = temporalCoverage(idleTrace, performanceBaselineRecord.clock,
+      idleEndRecord.clock);
 
-    await page.evaluate(() => window.__perezosHarness.applyContext({status:"idle"}));
+    const actionBaselineRecord = await page.evaluate(() => {
+      const h = window.__perezosHarness;
+      h.applyContext({status:"working"});
+      let left = false;
+      const stimulate = () => {
+        left = !left;
+        h.controller.notifyInteraction("pointer", left ? 40 : 210, 80);
+      };
+      stimulate();
+      window.__task9ActionLoad = setInterval(stimulate, 110);
+      return {clock:performance.now(),diagnostics:h.controller.getDiagnostics()};
+    });
+    const actionBaseline = actionBaselineRecord.diagnostics;
     const actionDeadline = Date.now() + PERFORMANCE.sampleMs;
-    let capturedAction = false;
-    while(Date.now() < actionDeadline){
-      await page.evaluate(() =>
-        window.__perezosHarness.controller.notifyInteraction("activate", 128, 104));
-      if(!capturedAction){
-        await page.waitForTimeout(350);
-        await page.locator("#stage-wrap").screenshot({path:ACTION_SCREENSHOT,
-          animations:"disabled"});
-        capturedAction = true;
-      }
-      await page.waitForTimeout(850);
-    }
-    const actionPerformance = await page.evaluate(() =>
-      window.__perezosHarness.controller.getDiagnostics());
-    const steadyAllocations = actionPerformance.hotLoopBufferReplacements - allocationBaseline;
+    await page.waitForTimeout(350);
+    await page.locator("#stage-wrap").screenshot({path:ACTION_SCREENSHOT,
+      animations:"disabled"});
+    const actionRemaining = actionDeadline - Date.now();
+    if(actionRemaining > 0) await page.waitForTimeout(actionRemaining);
+    const actionEndRecord = await page.evaluate(() => {
+      const record = {clock:performance.now(),
+        diagnostics:window.__perezosHarness.controller.getDiagnostics()};
+      clearInterval(window.__task9ActionLoad);
+      delete window.__task9ActionLoad;
+      return record;
+    });
+    const actionEnd = actionEndRecord.diagnostics;
+    const heapAfterAction = await stabilizedHeap();
+    const actionTraceDiagnostics = await page.evaluate(() =>
+      window.__perezosHarness.controller.getDiagnostics({includePerformanceTrace:true}));
+    const actionTrace = traceRange(actionTraceDiagnostics.performanceTrace,
+      actionBaseline.performanceTrace.sequenceEnd, actionEnd.performanceTrace.sequenceEnd);
+    const actionCoverage = temporalCoverage(actionTrace, actionBaselineRecord.clock,
+      actionEndRecord.clock);
+    const idleCombined = summarizeSamples(idleTrace.combined);
+    const idleUpdate = summarizeSamples(idleTrace.update);
+    const idleRender = summarizeSamples(idleTrace.render);
+    const actionCombined = summarizeSamples(actionTrace.combined);
+    const actionUpdate = summarizeSamples(actionTrace.update);
+    const actionRender = summarizeSamples(actionTrace.render);
+    const stableBufferReplacements = actionEnd.stableBufferReplacements -
+      performanceBaseline.stableBufferReplacements;
+    const heapBudgetBytes = 2 * 1024 * 1024;
+    const heapGrowthBytes = Math.max(0, heapAfterIdle - heapBaseline,
+      heapAfterAction - heapBaseline);
+    const sourceAudit = sourcePreallocationAudit();
+    const idleQualityTransitions = idleEnd.qualityTransitions -
+      performanceBaseline.qualityTransitions;
+    const idleGovernorTransitions = idleEnd.governorTransitions -
+      performanceBaseline.governorTransitions;
+    const actionQualityTransitions = actionEnd.qualityTransitions -
+      actionBaseline.qualityTransitions;
+    const actionGovernorTransitions = actionEnd.governorTransitions -
+      actionBaseline.governorTransitions;
+    const idleAllFull = idleTrace.quality.length === idleTrace.expected &&
+      idleTrace.quality.every(quality => quality === "full");
+    const actionAllFull = actionTrace.quality.length === actionTrace.expected &&
+      actionTrace.quality.every(quality => quality === "full");
+    const actionAllActive = actionTrace.active.length === actionTrace.expected &&
+      actionTrace.active.every(Boolean);
+    const actionCadenceHz = actionTrace.timestamp.length > 1 && actionCoverage.coverageMs > 0 ?
+      (actionTrace.timestamp.length - 1) / (actionCoverage.coverageMs / 1000) : 0;
+    const actionPointerSamples = actionEnd.interactions.pointerAccepted -
+      actionBaseline.interactions.pointerAccepted;
     const performance = {
-      averageMs:Math.max(idlePerformance.timings.average, actionPerformance.timings.average),
-      p95Ms:Math.max(idlePerformance.timings.p95, actionPerformance.timings.p95),
-      decodedBytes:Math.max(idlePerformance.decodedBytes, actionPerformance.decodedBytes),
-      steadyAllocations,
-      allocationCounter:"controller hot-loop typed-buffer identity replacements",
-      idle:{averageMs:idlePerformance.timings.average, p95Ms:idlePerformance.timings.p95,
-        samples:idlePerformance.timings.count, quality:idlePerformance.quality,
-        update:idlePerformance.timings.update, render:idlePerformance.timings.render},
-      action:{averageMs:actionPerformance.timings.average,
-        p95Ms:actionPerformance.timings.p95, samples:actionPerformance.timings.count,
-        quality:actionPerformance.quality,
-        update:actionPerformance.timings.update, render:actionPerformance.timings.render},
+      averageMs:Math.max(idleCombined.average, actionCombined.average),
+      p95Ms:Math.max(idleCombined.p95, actionCombined.p95),
+      decodedBytes:Math.max(idleEnd.decodedBytes, actionEnd.decodedBytes),
+      stableBufferReplacements,
+      bufferCounter:"preallocated renderer/engine typed-buffer identity replacements",
+      sourceAudit,
+      heap:{baselineBytes:heapBaseline,afterIdleBytes:heapAfterIdle,
+        afterActionBytes:heapAfterAction,growthBytes:heapGrowthBytes,
+        budgetBytes:heapBudgetBytes,bounded:heapGrowthBytes <= heapBudgetBytes,
+        method:"CDP collectGarbage then Runtime.getHeapUsage; bounded stabilized heap, not zero allocations"},
+      idle:{averageMs:idleCombined.average,p95Ms:idleCombined.p95,
+        samples:idleCombined.count,complete:idleTrace.complete,allFull:idleAllFull,
+        coverageMs:idleCoverage.coverageMs,startLagMs:idleCoverage.startLagMs,
+        endLagMs:idleCoverage.endLagMs,windowMs:idleCoverage.windowMs,
+        qualityTransitions:idleQualityTransitions,governorTransitions:idleGovernorTransitions,
+        sequenceStart:idleTrace.sequenceStart,sequenceEnd:idleTrace.sequenceEnd,
+        update:idleUpdate,render:idleRender},
+      action:{averageMs:actionCombined.average,p95Ms:actionCombined.p95,
+        samples:actionCombined.count,complete:actionTrace.complete,allFull:actionAllFull,
+        allActive:actionAllActive,cadenceHz:actionCadenceHz,expectedCadenceHz:30,
+        pointerSamples:actionPointerSamples,
+        coverageMs:actionCoverage.coverageMs,startLagMs:actionCoverage.startLagMs,
+        endLagMs:actionCoverage.endLagMs,windowMs:actionCoverage.windowMs,
+        qualityTransitions:actionQualityTransitions,
+        governorTransitions:actionGovernorTransitions,
+        sequenceStart:actionTrace.sequenceStart,sequenceEnd:actionTrace.sequenceEnd,
+        update:actionUpdate,render:actionRender},
       warmupMs:PERFORMANCE.warmupMs,
       sampleMsPerScenario:PERFORMANCE.sampleMs,
     };
-    recordFailure(lifecycleFailures, actionPerformance.quality === "full",
-      "performance action sample remains Full", actionPerformance);
+    recordFailure(lifecycleFailures, idleTrace.complete && idleTrace.combined.length > 0 &&
+      idleCoverage.coverageMs >= 29_700 && idleCoverage.startLagMs >= 0 &&
+      idleCoverage.startLagMs <= 150 && idleCoverage.endLagMs >= 0 &&
+      idleCoverage.endLagMs <= 150 &&
+      idleAllFull && idleQualityTransitions === 0 && idleGovernorTransitions === 0,
+    "entire 30 second idle trace remains Full without quality transitions", performance.idle);
+    recordFailure(lifecycleFailures, actionTrace.complete && actionTrace.combined.length > 0 &&
+      actionCoverage.coverageMs >= 29_700 && actionCoverage.startLagMs >= 0 &&
+      actionCoverage.startLagMs <= 150 && actionCoverage.endLagMs >= 0 &&
+      actionCoverage.endLagMs <= 150 &&
+      actionAllFull && actionAllActive && actionCadenceHz >= 28 && actionCadenceHz <= 31.5 &&
+      actionPointerSamples >= 250 && actionQualityTransitions === 0 &&
+      actionGovernorTransitions === 0,
+    "entire 30 second action trace sustains safe Full 30 Hz without quality transitions",
+    performance.action);
+    recordFailure(lifecycleFailures, stableBufferReplacements === 0 && sourceAudit.preallocated,
+      "stable hot-loop buffers retain identity and trace writes use preallocated storage",
+      {stableBufferReplacements,sourceAudit});
+    recordFailure(lifecycleFailures, heapGrowthBytes <= heapBudgetBytes,
+      "stabilized browser heap remains bounded across both 30 second windows", performance.heap);
+    recordFailure(lifecycleFailures, performance.averageMs < 1 && performance.p95Ms < 2 &&
+      performance.decodedBytes < 16 * 1024 * 1024,
+    "measured end-to-end timing and decoded memory remain within budget",
+    {averageMs:performance.averageMs,p95Ms:performance.p95Ms,
+      decodedBytes:performance.decodedBytes});
 
     const beforeDestroy = await page.evaluate(() =>
       window.__perezosHarness.controller.getDiagnostics());
@@ -675,14 +1059,14 @@ async function runPerezOSE2E(options = {}){
 
 module.exports = {ACTION_SCREENSHOT, IDLE_SCREENSHOT, PERFORMANCE, VIEWPORT,
   analyzePixels, assertImportContract, createServer, harnessDocument,
-  requireCachedPlaywright, runPerezOSE2E};
+  isBrowserUnavailable, requireCachedPlaywright, runPerezOSE2E};
 
 if(require.main === module){
   runPerezOSE2E().then(report => {
     process.stdout.write(`${JSON.stringify(report)}\n`);
   }).catch(error => {
     const message = error && (error.stack || error.message) || String(error);
-    if(/Playwright|browserType\.launch|Executable doesn.t exist|Cannot find module/i.test(message)){
+    if(isBrowserUnavailable(error)){
       process.stderr.write(`${message}\n`);
       process.exitCode = 77;
       return;

@@ -273,7 +273,9 @@ test("every input prop and contact mask is authored and immutable", () => {
     assert.ok(prop.commands.every(command => paletteIndexes([command])[0] < A.PALETTE.length));
     assert.equal(Object.isFrozen(prop), true, `${name} must be frozen`);
   }
-  assert.ok(Object.keys(A.MASKS).includes("contact-belly"));
+  assert.deepEqual(Object.keys(A.MASKS).sort(), [
+    "contact-belly", "contact-front-left", "contact-front-right", "contact-rear",
+  ]);
   for(const [name, mask] of Object.entries(A.MASKS)){
     assert.ok(mask.commands.length >= 1, `${name} commands`);
     assert.ok(mask.bounds.every(Number.isInteger), `${name} bounds`);

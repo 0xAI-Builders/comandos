@@ -1,176 +1,213 @@
-# PerezOS Task 9 Implementer Report
+# PerezOS Task 9 Remediation Report
 
 ## Status
 
-DONE
+GREEN. This report covers Task 9 only. No Task 10 release or documentation work
+was performed.
 
-## Scope delivered
+## Formal-review findings resolved
 
-- Added a deterministic six-visible-hour simulation over the exact eight seeds
-  and five statuses at 30 Hz (5,184,000 checked frames). Every frame validates
-  120 finite/bounded channels, ownership, normalized supports, loaded contact
-  error, cable stretch/energy, and solver recovery; minute boundaries also run
-  the full topology validator.
-- Added exact waiting/dead response deadlines, rare-family cooldown checks,
-  idle ownership release, behavior/primitive coverage, and a deterministic
-  signature sweep. Invariant failures name seed, simulated timestamp, pose
-  hash, and the affected channel/contact.
-- Added an import-safe Playwright module that reuses `loadPlaywright()` from
-  `tests/e2e_mobile_remote.js`, finds an existing npm-cached Playwright only as
-  a loader fallback, binds an isolated server to `127.0.0.1:0`, and serves both
-  the real complete dashboard and a focused seven-script PerezOS harness.
-- Exercised Chrome at 1400x900 in headless/background mode. Scenarios cover
-  Full idle, working, waiting, done, dead, activation, deterministic slip
-  recovery, day-theme accents, narrow camera, canvas/controller/renderer
-  identity, click/Enter/Space, neighboring-control isolation, pointer sampling
-  and habituation, reduced motion, user hide, offscreen intersection, document
-  visibility, no resume replay, resize continuity, session reset, and destroy.
-- Added per-canvas FNV pixel hashes, transparent bounds, 8..32-color palette,
-  and objective composition checks. The real-dashboard capture requires at
-  least 8% nontransparent occupancy, at least 42% canvas width and 50% canvas
-  height, and a centroid no farther than 22%/25% from canvas center. This is
-  motivated by `/tmp/perezos-control-center-real.png` without creating a
-  subjective golden-image dependency.
-- Added real Full-mode performance measurement: 10-second warmup, 30-second
-  idle sample, and 30-second repeated-action sample. The report exposes the
-  separate update/render rings as well as combined engine timings.
-- Added pytest wrappers for import safety, browser results, exact performance
-  thresholds, and screenshot artifacts; the existing PerezOS wrapper now
-  includes the non-skippable long simulation with a bounded timeout.
+1. `body-lean-x` remains bounded to `[-2, 2]`, while `brace`, `shift-weight`,
+   `pull`, `recoil`, and `recover` now author different nonlinear curves strictly
+   inside that envelope. Focused tests prove that intensity/distance and side
+   still change the requested target instead of collapsing at a clamp endpoint.
+2. The long-run watchdog tracks continuous owner identity, phase, transition
+   state, and first-owned time per channel. A phase owner is bounded by its
+   declared `durationMs + 320 ms` interruption allowance and a transition owner
+   by `160 ms`, each with one frame of tolerance. Failure diagnostics retain
+   seed, timestamp, pose hash, and channel.
+3. Long-run reporting now separates `idleSignatures` from `allSignatures` and
+   behavior families from primitive families.
+4. Performance uses a 2,048-entry preallocated trace, separate from the
+   governor's retained 240-frame ring. Every scheduled update/render attempt is
+   recorded with timestamp, combined/update/render cost, active/quiet state,
+   and quality. Window slicing proves both temporal edges and every intervening
+   sequence entry were retained.
+5. The former allocation label is now the accurate
+   `stableBufferReplacements`. Zero means the preallocated renderer, engine,
+   motion, rig, timing, and trace buffers retained identity. Independent source
+   audit verifies that trace writes allocate no arrays. Browser memory is
+   reported separately as stabilized, bounded heap growth after CDP garbage
+   collection; it is not described as zero heap allocations.
+6. Each of `idle`, `working`, `waiting`, `done`, and `dead` is reconstructed from
+   a fresh Rig/Director/Motion/Renderer using the same seed and fixed clock,
+   repeated exactly, and required to have a causally distinct pixel hash.
+7. The complete real dashboard exercises click, Enter, Space, the neighboring
+   More control, the real `sw-mascot` preference/localStorage/body class, and a
+   1400-to-600-pixel responsive resize. Canvas/controller/renderer identity and
+   truthful switch accessibility are asserted. The harness remains only for
+   deterministic internals and lifecycle seams.
+8. Pause assertions capture the baseline and immediate result in the same
+   JavaScript task. Preference and document visibility require zero immediate
+   and sustained deltas. IntersectionObserver acknowledgement is measured as a
+   distinct phase, after which sustained work must remain zero.
+9. Exit 77 is restricted to a positively identified missing Playwright module,
+   missing executable text, or executable `ENOENT`. Launch crashes and invalid
+   flags fail normally.
+10. The rest silhouette is authored as a suspended three-quarter sloth: loaded
+    `front-left` and `rear-right` claws touch two upper cable points, the free
+    rear-left limb bends away from the bottom edge, the pelvis remains below the
+    supports, near/far contacts are diagonally asymmetric, and face regions are
+    retained. Renderer ground shadow/strip artwork was removed. Tests use
+    anchors, contact errors, regional alpha occupancy, silhouette bounds, and a
+    zero-pixel floor band rather than subjective golden approval.
+11. Static/reduced-motion rendering snapshots the same authored Rig cable,
+    limbs, supports, and claws as one immutable safe pose. Its two loaded palms
+    remain on the upper cable, its free rear limb remains suspended and
+    asymmetric, and exactly two contact masks are emitted even if the live Rig
+    subsequently changes.
 
 ## TDD evidence
 
-### Long-run RED
+### RED
 
-The first invariant run failed rather than recovering silently:
+- The first body-lean regression found `brace` still requested the exact `2`
+  limit at high effort; all five primitives were re-authored inside the range.
+- The posture regression found the free rear foot at `y=184` and a wide renderer
+  floor shadow. It now ends at approximately `(53,168)` with normalized bend
+  `-0.3953`; the renderer floor band is empty.
+- The owner-age test initially failed because continuous age tracking did not
+  exist. The regression now proves the exact declared phase allowance boundary
+  and that a new phase resets identity age.
+- Complete-trace tests initially lacked timestamps and active state and found
+  only four buffers. The trace now has six preallocated buffers and an
+  allocation-free scalar push path.
+- A real Chrome action probe exposed `112` samples over five seconds
+  (`22.2 Hz`) despite every sample being active. The cause was exact: two
+  `16.6 ms` rAF intervals total `33.2 ms`, just below the `33.333 ms` Full action
+  interval; resetting the accumulator discarded the remainder and waited for a
+  third tick. A jitter regression failed at `116` rather than about `174`
+  samples. The scheduler now subtracts one fixed interval while retaining the
+  remainder.
+- The first complete browser run also proved that repeated activation was not a
+  sustained action load (`437` produced samples). The final load uses bounded
+  10 Hz pointer sampling; an accepted pointer has a real 150 ms active tail, so
+  safe input remains action cadence continuously without resetting Motion.
+- The Static regression initially exposed a split source of truth: limbs and
+  supports came from the safe Rig snapshot while the cable came from an older
+  constant. The focused test failed because both loaded palms missed that old
+  cable. Static now freezes the cable with the same Rig snapshot; the contact,
+  suspension, asymmetry, and exact two-mask assertions pass.
+
+### GREEN
+
+The real five-second Chrome focal measured:
 
 ```text
-seed=7 timestampMs=24133.333... poseHash=04a260f5 channel=shift-weight
-seed=7 timestampMs=1184166.666... poseHash=7397ac3 channel=recover
+samples=150 coverageMs=4983.2 cadenceHz=29.900
+allActive=true allFull=true updates=150 renders=150 pointers=45
 ```
 
-Focused instrumentation showed right-limb endpoints entering an unauthorized
-axial overlap zone when `body-lean-x` approached 2.96. The systemic authored
-limit allowed `[-10, 10]`, although the valid renderer/solver grammar only
-needed `[-2, 2]`. The fix narrows that Rig channel to `[-2, 2]`; two focused
-regressions preserve both failures, and no invariant assertion was loosened.
-
-### Long-run GREEN
+The final 30-second action window measured:
 
 ```text
-node --test tests/perezos/test_long_run.js
-3 passed
+samples=900 coverageMs=29965.5 cadenceHz=30.001168
+allActive=true allFull=true pointerSamples=272
+qualityTransitions=0 governorTransitions=0
 ```
 
-Observed report:
+## Six-visible-hour result
+
+The simulation covers eight deterministic seeds, five statuses, and 21,600
+visible seconds at 30 Hz: 5,184,000 externally checked frames. It does not sleep
+or recover by weakening assertions.
 
 ```text
-nonFinite=0 invalidContacts=0 deadlineMisses=0 cooldownViolations=0
-stuckOwners=0 recoveries=0
+statusFrames: idle=1036800 working=1036800 waiting=1036800
+              done=1036800 dead=1036800
+nonFinite=0 invalidContacts=0 deadlineMisses=0
+cooldownViolations=0 stuckOwners=0 maxOwnerAgeMs=2500
 maxCableStretch=0.003769670581622058
 maxContactError=6.355287432313019e-14
 maxCableEnergy=22284.286831462567
-idleSignatures=69516 missingPrimitiveFamilies=[]
-statusFrames={idle:1036800,working:1036800,waiting:1036800,
-              done:1036800,dead:1036800}
+idleSignatures=26480 allSignatures=69516
+behaviorFamilies=31 primitiveFamilies=31 missingPrimitiveFamilies=[]
 ```
 
-### Browser/performance RED
+`node tests/perezos/test_long_run.js` completed 4/4 in 285.10 seconds;
+the six-hour case itself took 281.39 seconds.
 
-The initial real Chrome sample measured approximately 1.21--1.23 ms average,
-1.7 ms p95, and triggered Economy. Update/render instrumentation localized the
-cost to rendering (about 0.63 ms/frame). A renderer regression then recorded
-5,115 individual `fillRect` calls for one Full frame (RED).
+## Deterministic visual evidence
 
-The renderer now constructs thick limb bridges as preallocated integer row
-runs and submits them in Canvas paths. The row buffers are retained, included
-in decoded-memory accounting, audited for identity, and cleared on destroy.
-The engine's preallocated timing rings separately measure update and produced
-render work. The regression budget is below 1,500 individual `fillRect` calls;
-the focused engine/renderer suite is 58/58 GREEN.
-
-The visibility lifecycle initially sampled the cancellation transition itself.
-The browser regression now waits for the state acknowledgement, establishes a
-post-transition baseline, then requires exactly zero updates and renders for
-1.1 seconds. Resume additionally bounds work to fresh elapsed visible time and
-`maxStepMs <= 100`; it does not permit backlog replay.
-
-## Browser result and artifacts
-
-Latest standalone headless Chrome result:
+Fixed seed `task9-fixed-status` and fixed clock `12000` repeat exactly:
 
 ```text
-visualFailures=[] lifecycleFailures=[] accessibilityFailures=[] browser.errors=[]
-Full maximum: average=0.8329166715 ms p95=1.3000000715 ms
-idle update avg/p95=0.2600/0.5000 ms render=0.5692/0.9000 ms
-action update avg/p95=0.2458/0.4000 ms render=0.5713/0.8000 ms
-decodedBytes=8735822 steadyAllocations=0 quality=full
+idle=afda9ae2 working=f7a909b2 waiting=e4b042ad
+done=c7fc7d94 dead=a5c8f830
 ```
 
-`steadyAllocations` is the measured change in the controller's typed hot-loop
-buffer identity counter, not a fabricated constant. The source audit and
-renderer stress test cover the intended allocation-free steady hot path; it is
-not presented as a browser-heap-profiler measurement.
+The authored rest sample has 31.88% occupancy, bounds `146x176`, centroid
+approximately `(106.66,89.10)`, 21 rendered colors, and zero nontransparent
+pixels in the bottom floor band. Regional alpha counts are 874/1291 for the two
+upper grip zones, 983 for the curled hind zone, and 3546 for the face zone.
 
-- Full idle: `/tmp/perezos-task9-full-idle.png` (6,223 bytes)
-- Full action: `/tmp/perezos-task9-full-action.png` (6,411 bytes)
-- Real dashboard sample: 27.08% occupancy, centroid (124.51, 102.82) in a
-  256x208 canvas, bounds 151x200, 19 rendered colors.
-- Seeded slip-recovery sample: hash `70d0c34e`, repeat-exact hash/bounds,
-  33.68% occupancy, bounds 144x192, 21 rendered colors.
+- Full idle: `/tmp/perezos-task9-full-idle.png`, 6,249 bytes,
+  SHA-256 `ede20a7f271b9123ce79732d8228722e018cebf8724a15e4445b4f2979725e21`
+- Full action: `/tmp/perezos-task9-full-action.png`, 6,447 bytes,
+  SHA-256 `cfff0df35133f644e02b123b525a0331b6f650cfbdba194b36fa534358ce07b1`
+
+Both latest screenshots were inspected from disk after the pytest wrapper.
+Chrome remained headless/background throughout.
+
+## Browser performance and memory
+
+Standalone final evidence, followed by a passing pytest browser wrapper:
+
+```text
+visualFailures=[] lifecycleFailures=[] accessibilityFailures=[]
+averageMs=0.6135678417 p95Ms=0.8999999762
+decodedBytes=8829470 stableBufferReplacements=0
+heap baseline=3946184 afterIdle=4029240 afterAction=4120956
+heap growth=174772 budget=2097152 bounded=true
+idle samples=597 coverageMs=30015.4 allFull=true transitions=0/0
+action samples=900 coverageMs=29965.5 allFull=true allActive=true
+action cadenceHz=30.001168 transitions=0/0
+```
+
+The timing values include every scheduled end-to-end attempt and its update and
+render-check components. The governor still uses its original produced-frame
+ring of 240 samples and hysteresis behavior.
 
 ## Fresh verification
 
 ```text
-pytest -q tests/test_perezos.py tests/test_perezos_e2e.py
-3 passed in 391.73s
+node tests/perezos/test_long_run.js
+  4 passed; 5,184,000 frames; 285.10s
 
-node --test tests/perezos/test_engine.js tests/perezos/test_renderer.js
-58 passed
+node --test <all tests/perezos/test_*.js except test_long_run.js>
+  205 tests passed; 0 failed; 11.62s
+
+node --test tests/perezos/test_renderer.js
+  35 tests passed; 0 failed; 0.52s (post-review Static regression)
+
+pytest -q tests/test_perezos_e2e.py
+  2 passed in 92.29s
 
 pytest -q tests/test_dashboard_assets.py tests/test_dashboard_layout.py \
   tests/test_dashboard_security.py
-28 passed in 0.59s
+  28 passed in 0.51s
 
 bash tests/test_js_parses.sh
-OK
+  OK
 
 git diff --check
-clean
+  clean
 ```
 
-The pytest browser test may skip only when Playwright/Chromium is unavailable;
-on this machine it ran and passed. The six-hour simulation cannot skip.
+The long-run was not repeated inside `tests/test_perezos.py`; its exact Node
+suite and every other PerezOS Node suite were run separately, preserving the
+same non-skippable coverage without spending another simulated six-hour pass.
 
-## Files changed
+## Terminology and residual risk
 
-- `tests/perezos/test_long_run.js` (new)
-- `tests/e2e_perezos.js` (new)
-- `tests/test_perezos_e2e.py` (new)
-- `tests/test_perezos.py`
-- `tests/perezos/test_engine.js`
-- `tests/perezos/test_renderer.js`
-- `dash/perezos/rig.js`
-- `dash/perezos/engine.js`
-- `dash/perezos/renderer.js`
-
-## Self-review findings
-
-- Re-read the Task 9 checklist and inspected the complete production/test diff.
-  All requested scenarios and exact thresholds have executable assertions;
-  there is no Task 10 work.
-- Renamed the renderer regression during review so it accurately claims a
-  reduction in individual `fillRect` submissions, not all Canvas method calls.
-- Confirmed there are no task debug prints, TODO/FIXME markers, sleeps in the
-  simulation, subjective golden hashes, or unrelated tracked changes.
-- Confirmed the report's zero-allocation wording is bounded to the real
-  diagnostic being measured and does not claim a browser heap result.
-
-## Residual risks
-
-- Browser timings depend on machine and Chrome build; the test intentionally
-  enforces the approved absolute Full-mode budgets on every available run.
-- Pixel hashes document deterministic frames but are not golden snapshots;
-  objective bounds, palette, transparency, occupancy, and repeated seeded
-  recovery provide less-fragile visual regressions.
-- No Task 10 documentation or release work was performed.
+- `behaviorFamilies` means composed narrative families such as
+  `careful-advance`; `primitiveFamilies` means phase primitives such as
+  `shift-weight`; signatures are reported as idle-only and all-status totals.
+- `stableBufferReplacements=0` is an identity-stability counter, not a heap
+  allocation count. Heap evidence is independently stabilized and bounded.
+- Browser timing remains machine-dependent by design; the absolute approved
+  gates remain average `<1 ms`, p95 `<2 ms`, decoded memory `<16 MiB`, and no
+  Full-quality transition in either complete window.
+- Pixel hashes prove deterministic causality, not aesthetic equivalence.
+  Identity is protected by objective posture, contacts, regions, occupancy,
+  palette, bounds, and face/silhouette checks.

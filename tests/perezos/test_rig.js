@@ -819,6 +819,29 @@ test("two-link IK configuration is derived from every authored anchor chain", ()
   assert.ok(rig.diagnostics.maxLoadedContactError < 1);
 });
 
+test("authored rest pose hangs from two upper cable contacts with one curled free hind limb", () => {
+  const rig = R.createRig("suspended-three-quarter");
+  const loaded = Object.values(rig.supports).filter(support => support.mode === "loaded");
+  assert.deepEqual(loaded.map(support => support.limb), ["front-left", "rear-right"]);
+  const pelvis = artAnchor("pelvis");
+  for(const support of loaded){
+    const cable = sampleCable(rig, support.cableT,
+      rig.values[R.channelIndex("cable-contact-bias")]);
+    assertPointNear(support.point, cable, 1e-9);
+    assert.ok(support.point.y < pelvis.y - 12,
+      `${support.limb} contact ${support.point.y} is not above the suspended body`);
+    assert.ok(rig.limbs[support.limb].contactError < 1);
+  }
+  const freeHind = rig.limbs["rear-left"];
+  assert.ok(freeHind.end.y < 175, `free hind end ${freeHind.end.y} reads as a planted foot`);
+  assert.ok(freeHind.end.x < freeHind.root.x - 20,
+    "free hind limb must curl outside the torso silhouette");
+  assert.ok(Math.abs(normalizedBranchCross(freeHind.root, freeHind.joint,
+    freeHind.end)) > 0.18, "free hind limb must keep a visibly bent silhouette");
+  assert.ok(pelvis.y > Math.max(...loaded.map(support => support.point.y)) + 20,
+    "body center must remain suspended below both cable contacts");
+});
+
 test("every solved chain retains its independently authored bend branch", () => {
   const rig = R.createRig("authored-branches");
   for(const [limbName, ids] of Object.entries(ART_CHAINS)){

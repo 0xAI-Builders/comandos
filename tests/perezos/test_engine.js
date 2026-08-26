@@ -408,6 +408,28 @@ if(E){
     controller.destroy();
   });
 
+  test("continuous sampled pointer activity sustains the Full action cadence", () => {
+    const env = fakeEnvironment();
+    const controller = E(env.canvas, engineOptions(env));
+    controller.setContext(context({status:"working"}));
+    env.frames.advance(500);
+    const before = controller.getDiagnostics().performanceTrace.sequenceEnd;
+    for(let sample = 0; sample < 50; sample += 1){
+      assert.equal(controller.notifyInteraction("pointer", sample % 2 ? 44 : 180, 72), true);
+      env.frames.advance(7 * 16.6, 16.6);
+    }
+    const diagnostics = controller.getDiagnostics();
+    const produced = diagnostics.performanceTrace.sequenceEnd - before;
+    assert.ok(produced >= 170 && produced <= 180,
+      `5.81 seconds of jittered active Full input must produce about 174 frames, got ${produced}`);
+    assert.equal(diagnostics.quality, "full");
+    const trace = controller.getDiagnostics({includePerformanceTrace:true}).performanceTrace;
+    const from = before - trace.sequenceStart;
+    assert.ok(trace.samples.active.slice(from).every(Boolean),
+      "every frame in the continuous pointer window must be action cadence");
+    controller.destroy();
+  });
+
   test("activation is cooldown-limited while repeated acknowledgements habituate", () => {
     const env = fakeEnvironment();
     const controller = E(env.canvas, engineOptions(env));
@@ -647,9 +669,9 @@ if(E){
     const env = fakeEnvironment();
     const controller = E(env.canvas, engineOptions(env));
     controller.setContext(context());
-    env.frames.advance(5000);
+    env.frames.advance(40000);
     const diagnostics = controller.getDiagnostics();
-    assert.equal(diagnostics.hotLoopBufferReplacements, 0);
+    assert.equal(diagnostics.stableBufferReplacements, 0);
     assert.equal(diagnostics.timings.capacity, 240);
     assert.ok(diagnostics.timings.count > 0);
     assert.ok(diagnostics.timings.update.count > 0);
@@ -658,10 +680,55 @@ if(E){
     assert.ok(Number.isFinite(diagnostics.timings.update.p95));
     assert.ok(Number.isFinite(diagnostics.timings.render.average));
     assert.ok(Number.isFinite(diagnostics.timings.render.p95));
-    assert.ok(diagnostics.decodedBytes > 0);
+    assert.equal(diagnostics.performanceTrace.capacity, 2048);
+    assert.ok(diagnostics.performanceTrace.count > diagnostics.timings.capacity,
+      "the validation trace must retain the complete 30-second window, not governor ring 240");
+    assert.equal(diagnostics.performanceTrace.totalSamples,
+      diagnostics.performanceTrace.count);
+    assert.equal(diagnostics.performanceTrace.samples, undefined,
+      "ordinary diagnostics must not materialize trace arrays");
+    const traced = controller.getDiagnostics({includePerformanceTrace:true}).performanceTrace;
+    assert.equal(traced.samples.combined.length, traced.count);
+    assert.equal(traced.samples.update.length, traced.count);
+    assert.equal(traced.samples.render.length, traced.count);
+    assert.equal(traced.samples.timestamp.length, traced.count);
+    assert.equal(traced.samples.active.length, traced.count);
+    assert.equal(traced.samples.quality.length, traced.count);
+    assert.ok(traced.samples.combined.every(Number.isFinite));
+    assert.ok(traced.samples.update.every(Number.isFinite));
+    assert.ok(traced.samples.render.every(Number.isFinite));
+    assert.ok(traced.samples.timestamp.every(Number.isFinite));
+    assert.ok(traced.samples.timestamp.every((value, index, values) =>
+      index === 0 || value >= values[index - 1]));
+    assert.ok(traced.samples.active.every(value => typeof value === "boolean"));
+    assert.deepEqual([...new Set(traced.samples.quality)], ["full"]);
+    assert.ok(diagnostics.engineBufferBytes >= 2048 * (8 + 8 + 8 + 8 + 1 + 1));
+    assert.ok(diagnostics.decodedBytes > diagnostics.engineBufferBytes,
+      "decoded budget includes both renderer atlas/cache and engine buffers");
     assert.equal(diagnostics.listenerCount, 2);
     assert.equal(diagnostics.observerCount, 2);
     controller.destroy();
+  });
+
+  test("steady timing and identity instrumentation is preallocated outside the frame loop", () => {
+    const source = fs.readFileSync(enginePath, "utf8");
+    const traceCreateStart = source.indexOf("function createPerformanceTrace");
+    const tracePushStart = source.indexOf("function pushPerformanceTrace");
+    const traceDiagnosticsStart = source.indexOf("function performanceTraceDiagnostics");
+    assert.ok(traceCreateStart >= 0 && tracePushStart > traceCreateStart &&
+      traceDiagnosticsStart > tracePushStart);
+    const traceCreate = source.slice(traceCreateStart, tracePushStart);
+    const tracePush = source.slice(tracePushStart, traceDiagnosticsStart);
+    assert.equal((traceCreate.match(/new (?:Float64|Uint8)Array\(/g) || []).length, 6,
+      "the complete-window trace owns six preallocated time/component/state buffers");
+    assert.doesNotMatch(tracePush, /\bnew\s+|Array\.from|\.map\s*\(|\.slice\s*\(/,
+      "recording one produced frame does not materialize new storage");
+    const start = source.indexOf("function auditBufferIdentities");
+    const end = source.indexOf("function updateCeiling");
+    assert.ok(start >= 0 && end > start);
+    const hotPath = source.slice(start, end);
+    assert.doesNotMatch(hotPath, /\bnew\s+(?:Array|Float\d+Array|Int\d+Array|Uint\d+Array)/);
+    assert.doesNotMatch(hotPath, /Array\.from|\.map\s*\(|\.slice\s*\(/);
   });
 
   test("destroy is idempotent and leaves no callbacks, listeners, or observers", () => {

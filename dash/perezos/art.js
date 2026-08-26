@@ -219,19 +219,19 @@
       ["poly",3,6,4,18,8,9,28], ["rect",4,8,7,8,16],
       ["run",6,9,8,6], ["run",5,8,24,7], ["px",7,14,11], ["px",2,6,18],
     ]),
-    piece("leg-rl-lower", "leg-rl-upper", [9,4], [72,154,21,29], 17, [
+    piece("leg-rl-lower", "leg-rl-upper", [9,4], [57,144,21,29], 17, [
       ["poly",1,3,1,18,4,8,28], ["rect",1,2,1,17,27], ["rect",1,0,12,5,8],
       ["rect",2,5,5,12,18],
       ["poly",3,7,4,17,7,10,26], ["rect",5,9,7,7,14],
       ["run",6,10,8,5], ["run",4,8,22,6], ["px",7,14,10], ["px",2,7,17],
     ]),
-    piece("ankle-rl", "leg-rl-lower", [9,3], [70,176,20,12], 18, [
+    piece("ankle-rl", "leg-rl-lower", [9,3], [49,156,20,12], 18, [
       ["poly",1,1,3,18,1,15,10], ["rect",1,1,1,18,10], ["rect",1,0,0,2,12],
       ["rect",1,0,6,4,5],
       ["rect",3,4,3,12,7],
       ["poly",5,6,4,14,3,9,10], ["run",6,8,5,5], ["run",2,4,10,11],
     ]),
-    piece("palm-rl", "ankle-rl", [14,4], [54,180,31,12], 19, [
+    piece("palm-rl", "ankle-rl", [14,4], [39,164,31,12], 19, [
       ["poly",1,1,3,30,2,24,11], ["rect",1,1,1,29,10], ["rect",1,0,0,2,12],
       ["rect",1,0,6,6,5],
       ["rect",2,4,4,24,7],
@@ -294,15 +294,15 @@
     piece("claw-front-right-3", "palm-fr", [3,1], [150,146,10,7], 35, [
       ["poly",0,1,2,9,1,8,6], ["poly",10,3,2,8,2,8,5], ["px",20,6,3],
     ], {loaded:replaceState([["poly",0,1,1,9,1,4,6],["poly",10,2,2,8,2,4,5],["run",12,3,4,5],["px",20,4,3]])}),
-    piece("claw-rear-left-1", "palm-rl", [8,1], [48,186,12,6], 23, [
+    piece("claw-rear-left-1", "palm-rl", [8,1], [33,170,12,6], 23, [
       ["poly",0,1,1,5,1,2,5], ["poly",10,2,2,4,2,2,4],
       ["rect",6,1,3,2,2], ["px",20,3,2],
     ], {loaded:replaceState([["poly",0,1,1,11,1,6,5],["poly",10,2,2,10,2,6,4],["run",12,3,3,6],["px",20,7,2]])}),
-    piece("claw-rear-left-2", "palm-rl", [7,1], [58,187,11,5], 23, [
+    piece("claw-rear-left-2", "palm-rl", [7,1], [43,171,11,5], 23, [
       ["poly",0,1,1,7,1,2,4], ["poly",10,2,2,6,2,2,3],
       ["run",6,2,3,3], ["px",20,3,2],
     ], {loaded:replaceState([["poly",0,1,1,10,1,5,4],["poly",10,2,2,9,2,5,3],["run",12,3,3,5],["px",20,6,2]])}),
-    piece("claw-rear-left-3", "palm-rl", [6,1], [68,187,10,5], 23, [
+    piece("claw-rear-left-3", "palm-rl", [6,1], [53,171,10,5], 23, [
       ["poly",0,1,1,6,1,2,4], ["poly",10,2,2,5,2,2,3],
       ["run",6,2,3,3], ["px",20,3,2],
     ], {loaded:replaceState([["poly",0,1,1,9,1,4,4],["poly",10,2,2,8,2,4,3],["run",12,2,3,5],["px",20,5,2]])}),
@@ -397,7 +397,7 @@
   const PROP_NAMES = Object.freeze(["corona", "casco", "visor", "fuego",
     "hamster", "gordo", "huevo", "bufanda"]);
   const MASK_NAMES = Object.freeze(["contact-belly", "contact-front-left",
-    "contact-front-right", "contact-ground"]);
+    "contact-front-right", "contact-rear"]);
 
   function mask(id, bounds, commands){
     return Object.freeze({id, bounds:Object.freeze(bounds), commands:freezeCommands(commands)});
@@ -412,8 +412,8 @@
     "contact-front-right":mask("contact-front-right", [152,137,25,12], [
       ["rect",0,1,1,23,10], ["run",0,4,11,17],
     ]),
-    "contact-ground":mask("contact-ground", [53,180,118,12], [
-      ["rect",0,1,3,116,8], ["run",0,8,2,102],
+    "contact-rear":mask("contact-rear", [145,176,22,12], [
+      ["rect",0,1,2,20,7], ["run",0,4,9,14],
     ]),
   });
 

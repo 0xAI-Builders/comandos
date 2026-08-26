@@ -163,7 +163,7 @@ if(D){
   }
 
   const OCCLUSION_GROUPS = [
-    "rear-cable-shadow", "rear-limbs", "axial-deep-fur", "torso",
+    "rear-cable-depth", "rear-limbs", "axial-deep-fur", "torso",
     "front-limbs", "face", "claws-contact-masks", "medium-fine-fur",
     "props", "front-cable", "state-rim-light",
   ];
@@ -240,7 +240,8 @@ if(D){
     const furEnd = operationIndex("fur-head");
     const prop = operationIndex("prop:corona");
     assert.ok(fake.operations.slice(0, rearStart).some(operation =>
-      operation[0] === "fillRect" && operation[1].style === A.PALETTE[0]), "shadow order");
+      operation[0] === "fillRect" && operation[1].style === fixtureContext().colors.line),
+    "suspension depth order");
     assert.ok(fake.operations.slice(0, rearStart).some(operation =>
       operation[0] === "fillRect" && operation[1].style === A.PALETTE[18]),
     "rear cable order");
@@ -286,19 +287,30 @@ if(D){
     assert.equal(keys.includes("claw-front-right-1@loaded"), false);
   });
 
+  test("suspended composition has no planted ground shadow or ground contact strip", () => {
+    const {fake, renderer, rig} = fixture();
+    assert.equal(D.render(renderer, rig, fixtureContext({costume:""}), "full"), true);
+    const nearFloorStrips = fake.fills.filter(call => {
+      const [, y, width] = call.rectangle;
+      return y >= fake.canvas.height - 32 && width >= 150;
+    });
+    assert.deepEqual(nearFloorStrips, [],
+      "a hanging sloth must not be visually grounded by a horizontal floor line");
+  });
+
   test("body lean and lift move torso, face, fur, and attached props coherently", () => {
     const {fake, renderer, rig} = fixture();
     const context = fixtureContext();
     assert.equal(D.render(renderer, rig, context, "economy"), true);
     const before = destinationMap(fake);
     fake.context.reset();
-    rig.values[R.channelIndex("body-lean-x")] = 5;
+    rig.values[R.channelIndex("body-lean-x")] = 2;
     rig.values[R.channelIndex("body-lift")] = 3;
     assert.equal(D.render(renderer, rig, context, "economy"), true);
     const after = destinationMap(fake);
     for(const id of ["pelvis", "ribcage", "neck-upper", "skull", "face-mask",
                        "fur-back", "fur-head", "prop:corona"]){
-      assert.equal(after.get(id)[0] - before.get(id)[0], 10, `${id} lean`);
+      assert.equal(after.get(id)[0] - before.get(id)[0], 4, `${id} lean`);
       assert.equal(after.get(id)[1] - before.get(id)[1], -6, `${id} lift`);
     }
   });
@@ -560,7 +572,7 @@ if(D){
     assert.ok(FACE.every(id => ids.includes(id)));
     assert.ok(CLAWS.every(id => ids.includes(id)));
     assert.ok(ids.includes("prop:corona"));
-    assert.ok(fake.fills.length > 0, "contact masks, cable, shadow, and rim must remain");
+    assert.ok(fake.fills.length > 0, "contact masks, cable, suspended depth, and rim must remain");
     assert.equal(D.rendererDiagnostics(renderer).contactMasks > 0, true);
   });
 
@@ -569,7 +581,7 @@ if(D){
     let context = fixtureContext({costume:""});
     assert.equal(D.render(renderer, rig, context, "economy"), true);
     assert.equal(D.rendererDiagnostics(renderer).contactMasks, 2,
-      "safe diagonal selects front-left and rear contact masks");
+      "safe diagonal selects front-left and compact rear-cable contact masks");
     assert.equal(R.requestGrip(rig, "front-right", "loaded", 0.72), true);
     assert.equal(D.render(renderer, rig, context, "economy"), true);
     assert.equal(D.rendererDiagnostics(renderer).contactMasks, 3);
@@ -742,15 +754,29 @@ if(D){
     let context = fixtureContext({costume:""});
     assert.equal(D.render(renderer, rig, context, "static"), true);
     const before = atlasDraws(fake).map(([key, call]) => [baseId(key), call.destination]);
-    const clawDraw = atlasDraws(fake).find(([key]) => baseId(key) === "claw-front-right-1");
-    const clawRect = atlasFixture.rects[clawDraw[0]];
     const scale = D.rendererDiagnostics(renderer).camera.scale;
-    const clawAnchor = [clawDraw[1].destination[0] + clawRect.pivotX * scale,
-      clawDraw[1].destination[1] + clawRect.pivotY * scale];
     const cablePixels = fake.fills.filter(call => call.style === A.PALETTE[18]);
-    assert.ok(cablePixels.some(call => Math.hypot(call.rectangle[0] - clawAnchor[0],
-      call.rectangle[1] - clawAnchor[1]) <= 3 * scale),
-    "Static safe pose must visibly attach a front claw to the execution cable");
+    const anchorOf = id => {
+      const draw = atlasDraws(fake).find(([key]) => baseId(key) === id);
+      const rect = atlasFixture.rects[draw[0]];
+      return [draw[1].destination[0] + rect.pivotX * scale,
+        draw[1].destination[1] + rect.pivotY * scale];
+    };
+    const loadedAnchors = [anchorOf("palm-fl"), anchorOf("palm-rr")];
+    for(const contactAnchor of loadedAnchors){
+      assert.ok(cablePixels.some(call => Math.hypot(call.rectangle[0] - contactAnchor[0],
+        call.rectangle[1] - contactAnchor[1]) <= 3 * scale),
+      "Static safe pose must attach both loaded palms/claws to the execution cable");
+    }
+    const pelvisAnchor = anchorOf("pelvis");
+    const freeHindAnchor = anchorOf("palm-rl");
+    assert.ok(loadedAnchors.every(anchor => anchor[1] < pelvisAnchor[1] - 12 * scale));
+    assert.ok(freeHindAnchor[1] < fake.canvas.height - 24 * scale,
+      "Static free hind limb must remain visibly above the panel edge");
+    assert.ok(freeHindAnchor[1] > loadedAnchors[1][1] + 40 * scale,
+      "Static rear near/far limbs require a suspended asymmetric silhouette");
+    assert.equal(D.rendererDiagnostics(renderer).contactMasks, 2,
+      "Static safe pose exposes only its two loaded cable contacts");
     fake.context.reset();
     rig.values[R.channelIndex("head-yaw")] = 0.8;
     rig.cable[4] += 5;

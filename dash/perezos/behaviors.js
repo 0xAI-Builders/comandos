@@ -167,7 +167,8 @@
       280, 720, false, 0.9, requiresStableSupport, params => {
         const sign = sideSign(normalizedSide(params.side));
         const intensity = clamp01(finiteParam(params, "intensity", 0.5));
-        return {"body-lean-x":-sign * intensity * 2.5, "body-lift":intensity * 1.5,
+        const lean = 0.25 + 1.2 * intensity * intensity;
+        return {"body-lean-x":-sign * lean, "body-lift":intensity * 1.5,
           "cable-tension":0.96 + intensity * 0.04,
           "spine-pelvis-angle":-sign * intensity * 0.06};
       }),
@@ -176,7 +177,8 @@
       420, 1100, false, 0.85, requiresStableSupport, params => {
         const sign = sideSign(normalizedSide(params.side));
         const distance = clamp01(finiteParam(params, "distance", 0.5));
-        return {"body-lean-x":sign * (1.5 + distance * 4), "spine-pelvis-x":sign * distance * 3,
+        const lean = 0.45 + 1.3 * distance * (2 - distance);
+        return {"body-lean-x":sign * lean, "spine-pelvis-x":sign * distance * 3,
           "spine-lower-angle":-sign * distance * 0.15,
           "cable-contact-bias":sign * distance * 0.25};
       }),
@@ -234,9 +236,10 @@
         const side = normalizedSide(params.side);
         const sign = sideSign(side);
         const intensity = clamp01(finiteParam(params, "intensity", 0.5));
+        const lean = 0.2 + 1.55 * intensity;
         return {...sideFrontTargets(params, {"reach-x":-sign * (2 + intensity * 5),
           "reach-y":intensity * 3, "elbow-angle":sign * intensity * 0.7}),
-          "body-lean-x":-sign * intensity * 4,
+          "body-lean-x":-sign * lean,
           "cable-load-scale":0.7 + clamp01(finiteParam(params, "grip", 0.5)) * 0.5};
       }),
     "settle":primitive(
@@ -330,7 +333,8 @@
         const sign = sideSign(normalizedSide(params.side));
         const intensity = clamp01(finiteParam(params, "intensity", 0.5));
         const follow = clamp01(finiteParam(params, "furFollowThrough", 0.5));
-        return {"body-lean-x":-sign * intensity * 5, "body-lift":intensity * 3,
+        const lean = 0.35 + 1.55 * intensity * intensity * intensity;
+        return {"body-lean-x":-sign * lean, "body-lift":intensity * 3,
           "head-pitch":-intensity * 0.3, "fur-head-crest":intensity * follow,
           "fur-neck-ruff-left":intensity * follow * 0.6,
           "fur-neck-ruff-right":intensity * follow * 0.6};
@@ -367,7 +371,8 @@
         "fur-back-shoulder"], 420, 1100, false, 1, requiresStableSupport, params => {
         const sign = sideSign(normalizedSide(params.side));
         const intensity = clamp01(finiteParam(params, "intensity", 0.5));
-        return {"body-lean-x":-sign * intensity, "body-lift":1 + intensity * 2,
+        const lean = 0.15 + 1.05 * Math.sqrt(intensity);
+        return {"body-lean-x":-sign * lean, "body-lift":1 + intensity * 2,
           "spine-pelvis-angle":sign * intensity * 0.08, "cable-tension":1,
           "fur-back-shoulder":intensity * 0.35};
       }),
