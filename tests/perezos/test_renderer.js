@@ -44,6 +44,9 @@ if(D){
       fills,
       transforms,
       clearRect(...args){ operations.push(["clearRect", ...args]); },
+      beginPath(){ operations.push(["beginPath"]); },
+      rect(...args){ operations.push(["rect", ...args]); },
+      fill(){ operations.push(["fill", {style:fillStyle}]); },
       fillRect(...args){
         const call = {style:fillStyle, rectangle:args};
         fills.push(call);
@@ -776,6 +779,13 @@ if(D){
       diagnostics.atlasBytes + diagnostics.typedArrayBytes + diagnostics.retainedCacheBytes);
     assert.ok(diagnostics.decodedBytes < 16 * 1024 * 1024,
       `${diagnostics.decodedBytes} decoded bytes`);
+  });
+
+  test("living limb bridges batch pixel runs instead of thousands of fillRect submissions", () => {
+    const {fake, renderer, rig} = fixture(256, 208, 1);
+    assert.equal(D.render(renderer, rig, fixtureContext(), "full"), true);
+    assert.ok(fake.fills.length < 1_500,
+      `${fake.fills.length} fillRect submissions exceed the retained pixel-run budget`);
   });
 
   test("renderer hot path retains allocation shape across stress redraws", () => {

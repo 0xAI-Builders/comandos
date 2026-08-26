@@ -13,6 +13,10 @@
   const QUALITY_NAMES = Object.freeze([
     QUALITY.FULL, QUALITY.BALANCED, QUALITY.ECONOMY, QUALITY.STATIC,
   ]);
+  const LINE_ROW_OFFSET = 32;
+  const LINE_ROW_COUNT = Art.WORLD.height + LINE_ROW_OFFSET * 2;
+  const LINE_MIN_SENTINEL = 32767;
+  const LINE_MAX_SENTINEL = -32768;
   const OCCLUSION_GROUPS = Object.freeze([
     "rear-cable-shadow", "rear-limbs", "axial-deep-fur", "torso",
     "front-limbs", "face", "claws-contact-masks", "medium-fine-fur",
@@ -305,10 +309,13 @@
     const poseSnapshot = new Float64Array(POSE_SNAPSHOT_LENGTH);
     const anchor = new Int32Array(2);
     const groupCounts = new Int16Array(OCCLUSION_GROUPS.length);
+    const lineMinimums = new Int16Array(LINE_ROW_COUNT);
+    const lineMaximums = new Int16Array(LINE_ROW_COUNT);
     const renderer = Object.seal({canvas});
     const internal = {
       canvas, ctx, canvasFactory:factory, pages:{dark:null, light:null},
       theme:initialTheme, page:null, poseSnapshot, anchor, groupCounts,
+      lineMinimums, lineMaximums,
       poseReady:false, lastRig:null, destroyed:false, dirty:true,
       viewportWidth:0, viewportHeight:0, dpr:0, backingWidth:0, backingHeight:0,
       camera:null, cameraRevision:0, paletteRevision:0, accentRevision:0,
@@ -316,7 +323,8 @@
       poseRevision:0, contextRevision:0, contactRevision:0, propRevision:0,
       renders:0, skippedClean:0, atlasBuilds:0, atlasBytes:0,
       retainedCacheBytes:0, typedArrayBytes:poseSnapshot.byteLength +
-        anchor.byteLength + groupCounts.byteLength,
+        anchor.byteLength + groupCounts.byteLength + lineMinimums.byteLength +
+        lineMaximums.byteLength,
       quality:"", detailPolicy:"", dynamicDitherPixels:0, contactMasks:0,
       contextReady:false, status:"", role:"", costume:"", pressure:"",
       contextTheme:"", expanded:false, scanOffset:0, scanChanged:false,
@@ -747,20 +755,61 @@
     }
   }
 
+  function drawThickPixelLine(internal, x0, y0, x1, y1, radius, color,
+      shiftX, shiftY){
+    x0 = Math.round(x0 + shiftX);
+    y0 = Math.round(y0 + shiftY);
+    x1 = Math.round(x1 + shiftX);
+    y1 = Math.round(y1 + shiftY);
+    const minimums = internal.lineMinimums;
+    const maximums = internal.lineMaximums;
+    minimums.fill(LINE_MIN_SENTINEL);
+    maximums.fill(LINE_MAX_SENTINEL);
+    const dx = Math.abs(x1 - x0);
+    const sx = x0 < x1 ? 1 : -1;
+    const dy = -Math.abs(y1 - y0);
+    const sy = y0 < y1 ? 1 : -1;
+    let error = dx + dy;
+    while(true){
+      for(let offsetY = -radius; offsetY <= radius; offsetY += 1){
+        const row = y0 + offsetY + LINE_ROW_OFFSET;
+        if(row < 0 || row >= LINE_ROW_COUNT) continue;
+        const edge = radius - Math.floor(Math.abs(offsetY) / 2);
+        const minimum = x0 - edge;
+        const maximum = x0 + edge;
+        if(minimum < minimums[row]) minimums[row] = minimum;
+        if(maximum > maximums[row]) maximums[row] = maximum;
+      }
+      if(x0 === x1 && y0 === y1) break;
+      const doubled = error * 2;
+      if(doubled >= dy){ error += dy; x0 += sx; }
+      if(doubled <= dx){ error += dx; y0 += sy; }
+    }
+    internal.ctx.fillStyle = color;
+    const scale = internal.camera.scale;
+    const pathBatch = typeof internal.ctx.beginPath === "function" &&
+      typeof internal.ctx.rect === "function" && typeof internal.ctx.fill === "function";
+    if(pathBatch) internal.ctx.beginPath();
+    for(let row = 0; row < LINE_ROW_COUNT; row += 1){
+      const minimum = minimums[row];
+      const maximum = maximums[row];
+      if(minimum > maximum) continue;
+      const x = screenX(internal, minimum);
+      const y = screenY(internal, row - LINE_ROW_OFFSET);
+      const width = (maximum - minimum + 1) * scale;
+      if(pathBatch) internal.ctx.rect(x, y, width, scale);
+      else internal.ctx.fillRect(x, y, width, scale);
+    }
+    if(pathBatch) internal.ctx.fill();
+  }
+
   function drawLimbSegment(internal, x0, y0, x1, y1){
-    internal.ctx.fillStyle = internal.page.atlas.palette[1];
-    for(let offset = -4; offset <= 4; offset += 1){
-      drawPixelLine(internal, x0 + offset, y0, x1 + offset, y1);
-    }
-    for(let offset = -3; offset <= 3; offset += 1){
-      drawPixelLine(internal, x0, y0 + offset, x1, y1 + offset);
-    }
-    internal.ctx.fillStyle = internal.page.atlas.palette[3];
-    for(let offset = -2; offset <= 2; offset += 1){
-      drawPixelLine(internal, x0 + offset, y0, x1 + offset, y1);
-    }
-    internal.ctx.fillStyle = internal.page.atlas.palette[5];
-    drawPixelLine(internal, x0 - 1, y0 - 1, x1 - 1, y1 - 1);
+    drawThickPixelLine(internal, x0, y0, x1, y1, 4,
+      internal.page.atlas.palette[1], 0, 0);
+    drawThickPixelLine(internal, x0, y0, x1, y1, 2,
+      internal.page.atlas.palette[3], 0, 0);
+    drawThickPixelLine(internal, x0, y0, x1, y1, 0,
+      internal.page.atlas.palette[5], -1, -1);
   }
 
   function drawLimbBridge(internal, rig, limbName, staticMode){
@@ -1109,6 +1158,8 @@
     internal.poseSnapshot = null;
     internal.anchor = null;
     internal.groupCounts = null;
+    internal.lineMinimums = null;
+    internal.lineMaximums = null;
     internal.atlasBytes = 0;
     internal.retainedCacheBytes = 0;
     internal.typedArrayBytes = 0;

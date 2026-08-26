@@ -652,6 +652,12 @@ if(E){
     assert.equal(diagnostics.hotLoopBufferReplacements, 0);
     assert.equal(diagnostics.timings.capacity, 240);
     assert.ok(diagnostics.timings.count > 0);
+    assert.ok(diagnostics.timings.update.count > 0);
+    assert.ok(diagnostics.timings.render.count > 0);
+    assert.ok(Number.isFinite(diagnostics.timings.update.average));
+    assert.ok(Number.isFinite(diagnostics.timings.update.p95));
+    assert.ok(Number.isFinite(diagnostics.timings.render.average));
+    assert.ok(Number.isFinite(diagnostics.timings.render.p95));
     assert.ok(diagnostics.decodedBytes > 0);
     assert.equal(diagnostics.listenerCount, 2);
     assert.equal(diagnostics.observerCount, 2);

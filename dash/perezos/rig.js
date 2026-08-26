@@ -71,7 +71,7 @@
       ["neck-upper-angle", -0.9, 0.9, 0], ["head-yaw", -0.8, 0.8, 0],
       ["head-pitch", -0.7, 0.7, 0], ["head-roll", -0.55, 0.55, 0],
       ["chest-expand", -1, 1, 0], ["belly-compress", -1, 1, 0],
-      ["body-lean-x", -10, 10, 0], ["body-lift", -10, 10, 0],
+      ["body-lean-x", -2, 2, 0], ["body-lift", -10, 10, 0],
     ],
     face:[
       ["jaw-open", 0, 1, 0], ["muzzle-lift", -1, 1, 0],

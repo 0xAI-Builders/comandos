@@ -230,13 +230,21 @@
        internal.rig.targets !== internal.bufferTargets ||
        internal.motion.owners !== internal.bufferOwners ||
        internal.timing.values !== internal.timingValues ||
-       internal.timing.scratch !== internal.timingScratch){
+       internal.timing.scratch !== internal.timingScratch ||
+       internal.updateTiming.values !== internal.updateTimingValues ||
+       internal.updateTiming.scratch !== internal.updateTimingScratch ||
+       internal.renderTiming.values !== internal.renderTimingValues ||
+       internal.renderTiming.scratch !== internal.renderTimingScratch){
       internal.hotLoopBufferReplacements += 1;
       internal.bufferValues = internal.rig.values;
       internal.bufferTargets = internal.rig.targets;
       internal.bufferOwners = internal.motion.owners;
       internal.timingValues = internal.timing.values;
       internal.timingScratch = internal.timing.scratch;
+      internal.updateTimingValues = internal.updateTiming.values;
+      internal.updateTimingScratch = internal.updateTiming.scratch;
+      internal.renderTimingValues = internal.renderTiming.values;
+      internal.renderTimingScratch = internal.renderTiming.scratch;
     }
   }
 
@@ -372,7 +380,10 @@
     const rendered = internal.fallback ? fallbackRender(internal) :
       Renderer.render(internal.renderer, internal.rig, internal.context, internal.quality);
     const cost = measuredCost(internal, "render", start);
-    if(rendered) internal.renders += 1;
+    if(rendered){
+      internal.renders += 1;
+      pushTiming(internal.renderTiming, cost);
+    }
     else internal.skippedCleanRenders += 1;
     return rendered ? cost : -1;
   }
@@ -392,7 +403,9 @@
     if(stepMs > internal.maxStepMs) internal.maxStepMs = stepMs;
     if(!solved) internal.motionFailures += 1;
     auditBufferIdentities(internal);
-    return measuredCost(internal, "update", start);
+    const cost = measuredCost(internal, "update", start);
+    pushTiming(internal.updateTiming, cost);
+    return cost;
   }
 
   function isRunning(internal){
@@ -588,14 +601,18 @@
     options = options && typeof options === "object" ? options : {};
     const browser = environment(options);
     const timing = createTimingRing();
+    const updateTiming = createTimingRing();
+    const renderTiming = createTimingRing();
     const initialWidth = Math.max(1, Number(canvas.clientWidth) || Number(canvas.width) || 256);
     const initialHeight = Math.max(1, Number(canvas.clientHeight) || Number(canvas.height) || 208);
     const media = browser.matchMedia ? browser.matchMedia("(prefers-reduced-motion: reduce)") : null;
     const internal = {
       canvas, browser, media, renderer:null, fallbackContext:null,
       controllerIdentity:nextIdentity++, rendererIdentity:nextIdentity++, rigIdentity:0,
-      context:normalizeContext({}), timing,
+      context:normalizeContext({}), timing, updateTiming, renderTiming,
       timingValues:timing.values, timingScratch:timing.scratch,
+      updateTimingValues:updateTiming.values, updateTimingScratch:updateTiming.scratch,
+      renderTimingValues:renderTiming.values, renderTimingScratch:renderTiming.scratch,
       rig:null, director:null, motion:null, activePerformance:null,
       bufferValues:null, bufferTargets:null, bufferOwners:null,
       sessionGeneration:0, sessionTimeMs:0, personalitySignature:"",
@@ -788,6 +805,8 @@
       internal.bufferTargets = null;
       internal.bufferOwners = null;
       clearTiming(internal.timing);
+      clearTiming(internal.updateTiming);
+      clearTiming(internal.renderTiming);
       return true;
     }
 
@@ -876,6 +895,12 @@
           count:internal.timing.count,
           average:timingAverage(internal.timing),
           p95:timingP95(internal.timing),
+          update:Object.freeze({count:internal.updateTiming.count,
+            average:timingAverage(internal.updateTiming),
+            p95:timingP95(internal.updateTiming)}),
+          render:Object.freeze({count:internal.renderTiming.count,
+            average:timingAverage(internal.renderTiming),
+            p95:timingP95(internal.renderTiming)}),
         }),
       });
     }
