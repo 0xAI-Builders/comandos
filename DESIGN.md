@@ -252,3 +252,61 @@ Enter. Nunca corren automáticamente — esa promesa es load-bearing.
 Contains case-insensitive sobre `name + tags + body`. Ordenamiento: matches en
 `name` primero (score 3), luego `tags` (2), luego `body` (1), luego por
 `updated_at` desc.
+
+---
+
+## 10. PerezOS
+
+PerezOS es el operador perezoso de pixel art del Centro de Control de la
+sesión seleccionada. Cuelga del cable de ejecución cuyo anclaje pertenece al
+borde superior del panel: cable, cuerpo, sombras de contacto, nodo y borde
+forman una sola composición. La mascota permanece dentro de su escenario y
+nunca cubre controles ni modifica el ancho mínimo del Centro de Control.
+
+### Identidad visual y composición
+
+- Su identidad corporal siempre usa pelaje café cálido y crema, máscara facial
+  oscura y tres garras por extremidad. Los temas sólo ajustan el rim light, el
+  sesgo de sombras profundas, el nodo del cable y props pequeños; nunca
+  recolorean todo el cuerpo.
+- Todo elemento deformable —cable, anatomía, cara, garras, pelaje, luz y
+  sombras— se pinta en un solo canvas transparente de 224×192 píxeles lógicos.
+  No se permiten nodos DOM por parte del cuerpo ni actualizaciones DOM por
+  frame. Los pseudo-elementos CSS se reservan para el anclaje fijo del panel.
+- El render usa nearest-neighbor y escala únicamente por píxeles enteros; si el
+  espacio es menor, usa la cámara compacta y letterboxing. Nunca distorsiona o
+  escala fraccionalmente el atlas.
+- La postura es de cuerpo completo, colgante y estable en tres cuartos. Las
+  piezas anatómicas y sus máscaras mantienen contacto y oclusión. Se prohíben
+  transforms de novedad aplicados al sprite completo —giros, saltos, flips o
+  sacudidas— porque el movimiento debe tener causa anatómica y continuidad.
+
+### Estado, interacción y movimiento
+
+- `idle` mantiene respiración, parpadeo, mirada y cambios de soporte tranquilos;
+  `working` se vuelve atento y se afirma; `waiting` mira el aviso y extiende una
+  garra libre; `done` libera esfuerzo y se acomoda; `dead` comprueba la señal,
+  se acurruca de forma segura en el cable y duerme. El texto de estado sigue
+  siendo la fuente autoritativa: PerezOS no comunica estado sólo con color o
+  movimiento.
+- El escenario es un botón alcanzable por teclado. Click, Enter y Space
+  solicitan una reacción segura, limitada por cooldown, y muestran una frase
+  localizada; la interacción nunca captura el puntero ni activa controles
+  vecinos. El nombre accesible se localiza y las microacciones no se anuncian.
+- `prefers-reduced-motion: reduce` selecciona inmediatamente el modo Static:
+  un cuadro seguro por cambio relevante, sin tracking continuo de ojos,
+  respiración en loop, balanceo del cable ni movimiento secundario del pelaje.
+- Hay cero trabajo cuando está oculto por preferencia, fuera del viewport o con
+  `document.hidden`: no quedan actualizaciones ni renders programados y al
+  volver no se reproduce un backlog. Destruir el controlador también elimina
+  callbacks, observers y listeners.
+
+### Rendimiento y degradación
+
+Hay un solo controlador para la sesión seleccionada y se conserva al cambiar
+estado, tema, rol o costume. El gobernador adapta Full → Balanced → Economy →
+Static con histéresis antes de afectar la respuesta del dashboard. Al degradar
+prioriza, en este orden, seguridad de contactos, silueta y anatomía, lectura de
+la cara y continuidad; después conserva pelaje medio, y descarta primero
+detalle fino, dithering dinámico y luces secundarias. Cambiar de calidad nunca
+reinicia pose, contactos, fase de comportamiento ni secuencia determinista.

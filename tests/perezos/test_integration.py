@@ -1,3 +1,4 @@
+import gzip
 import json
 import re
 import subprocess
@@ -249,3 +250,13 @@ def test_service_worker_and_backend_copy_name_perezos():
     assert 'const SHELL = "comandos-shell-v3"' in Path("dash/sw.js").read_text()
     assert "disfraces de PerezOS" in Path("bin/cc-dash").read_text()
     assert "PerezOS sea siempre" in Path("bin/cc-app").read_text()
+
+
+def test_perezos_payload_and_design_documentation():
+    files = sorted(Path("dash/perezos").glob("*.js")) + [Path("dash/perezos/perezos.css")]
+    compressed = sum(len(gzip.compress(path.read_bytes(), compresslevel=9)) for path in files)
+    assert compressed < 750 * 1024
+    design = Path("DESIGN.md").read_text()
+    for phrase in ["PerezOS", "un solo canvas", "prefers-reduced-motion",
+                   "píxeles enteros", "cero trabajo cuando está oculto"]:
+        assert phrase in design
