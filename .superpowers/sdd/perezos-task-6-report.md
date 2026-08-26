@@ -46,8 +46,11 @@ No Task 7 controller, HTML, CSS, or dashboard integration was added.
 - Diagnostics account separately for atlas bytes, retained cache bytes, typed
   arrays, revisions, detail policy, group counts, renders, and clean skips.
   Two retained theme pages remain below the 16 MiB decoded-memory ceiling.
-- Hostile inputs return `false` without Canvas mutation; destruction releases
-  retained pages and buffers and is idempotent.
+- Invalid values return `false` before Canvas mutation. If a hostile Canvas
+  setter mutates and then throws, the renderer attempts a best-effort restore
+  and never commits the failed camera internally; it cannot guarantee an
+  atomic rollback when the host rejects the restoring assignment too.
+  Destruction releases retained pages and buffers and is idempotent.
 
 ## Post-review remediation
 
@@ -81,12 +84,20 @@ The resulting GREEN implementation:
 - uses solved limb angles for atlas alternates and places the static cable at
   the authored right-claw contact;
 - floors fractional DPR before allocating the nearest-neighbour backing store
-  and atomically restores viewport dimensions after hostile setters;
+  and attempts a best-effort viewport restore after hostile setters;
 - replaces the unsupported typed-array sealing operation with
   `Object.preventExtensions`, preserving writable physics elements while
   preventing topology changes;
 - removes the unmeasured `hotLoopAllocations: 0` diagnostic rather than
   presenting a synthetic performance claim.
+
+A second read-only review then found three remaining visible no-ops. Focused
+RED tests proved that all 18 Full-quality dither pixels and the state rim stayed
+in world coordinates, `spine-pelvis-angle: 0.08` moved no axial descendant, and
+`light-visor-glow: 0.9` emitted no face light. The corresponding GREEN change
+groups authored dither by anatomical parent, attaches rim geometry to the back,
+adds bounded hierarchical pelvis shear within the actual behavior range, and
+renders bounded visor pixels attached to the live face anchor.
 
 ## TDD Evidence
 
@@ -154,6 +165,22 @@ Result after the first implementation: 19/19 passed, Node duration 209.883 ms.
   - 55 drawn layers, 4.17 MiB decoded memory;
   - 0.530 ms/frame mean over 1,000 forced Full-quality redraws;
   - capture: `/tmp/perezos-renderer-unshimmed.png`.
+
+### Second review remediation
+
+- `node --test tests/perezos/test_renderer.js`
+  - 31/31 passed; Node duration 876.499 ms.
+- `node --test tests/perezos/test_*.js`
+  - 172/172 passed; Node duration 11807.872 ms.
+- `bash tests/test_js_parses.sh`
+  - passed with `OK`.
+- Independent Chrome 146 reviewer benchmark, without shims:
+  - 0.525 ms/frame mean, 0.600 ms p95, 1.8 ms maximum;
+  - 4.17 MiB decoded memory.
+- Fresh Chrome checkpoint after the second remediation:
+  - document reached `data-ready="true"`;
+  - 55 drawn layers, 4.17 MiB, 0.573 ms/frame mean;
+  - capture: `/tmp/perezos-renderer-rereview-green.png`.
 
 ## Files Changed
 

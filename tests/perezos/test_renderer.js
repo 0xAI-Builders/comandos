@@ -416,6 +416,61 @@ if(D){
       "lighting channels must change bounded state-rim geometry");
   });
 
+  test("authored Full dither and state rim remain attached to the moving torso", () => {
+    const {fake, renderer, rig} = fixture();
+    const context = fixtureContext({costume:""});
+    assert.equal(D.render(renderer, rig, context, "full"), true);
+    const beforeDither = fake.fills.filter(call => call.style === A.PALETTE[7])
+      .map(call => call.rectangle);
+    const beforeRim = fake.fills.filter(call => call.style === A.PALETTE[15])
+      .map(call => call.rectangle);
+    assert.ok(beforeDither.length > 0);
+    assert.ok(beforeRim.length > 0);
+
+    fake.context.reset();
+    rig.values[R.channelIndex("spine-pelvis-x")] = 4;
+    rig.values[R.channelIndex("spine-pelvis-y")] = -2;
+    assert.equal(D.render(renderer, rig, context, "full"), true);
+    const afterDither = fake.fills.filter(call => call.style === A.PALETTE[7])
+      .map(call => call.rectangle);
+    const afterRim = fake.fills.filter(call => call.style === A.PALETTE[15])
+      .map(call => call.rectangle);
+    assert.deepEqual(afterDither.map((rectangle, index) =>
+      [rectangle[0] - beforeDither[index][0], rectangle[1] - beforeDither[index][1]]),
+    afterDither.map(() => [8, -4]));
+    assert.deepEqual(afterRim.map((rectangle, index) =>
+      [rectangle[0] - beforeRim[index][0], rectangle[1] - beforeRim[index][1]]),
+    afterRim.map(() => [8, -4]));
+  });
+
+  test("behavior-range pelvis inclination visibly cascades through axial descendants", () => {
+    const {fake, renderer, rig} = fixture();
+    const context = fixtureContext({costume:""});
+    assert.equal(D.render(renderer, rig, context, "economy"), true);
+    const before = destinationMap(fake);
+    fake.context.reset();
+    rig.values[R.channelIndex("spine-pelvis-angle")] = 0.08;
+    assert.equal(D.render(renderer, rig, context, "economy"), true);
+    const after = destinationMap(fake);
+    const deltaX = id => after.get(id)[0] - before.get(id)[0];
+    assert.equal(deltaX("pelvis"), 0);
+    assert.ok(deltaX("abdomen") > 0);
+    assert.ok(deltaX("ribcage") >= deltaX("abdomen"));
+    assert.ok(deltaX("skull") > deltaX("ribcage"));
+  });
+
+  test("inspect visor glow channel produces face-attached light pixels", () => {
+    const {fake, renderer, rig} = fixture();
+    const context = fixtureContext({costume:"visor"});
+    assert.equal(D.render(renderer, rig, context, "economy"), true);
+    const before = fake.fills.filter(call => call.style === A.PALETTE[12]).length;
+    fake.context.reset();
+    rig.values[R.channelIndex("light-visor-glow")] = 0.9;
+    assert.equal(D.render(renderer, rig, context, "economy"), true);
+    const after = fake.fills.filter(call => call.style === A.PALETTE[12]).length;
+    assert.ok(after > before, "light-visor-glow must emit bounded face light pixels");
+  });
+
   test("retained fine-detail cells remain attached to their anatomical parents", () => {
     const {fake, renderer, rig} = fixture();
     const context = fixtureContext({costume:""});

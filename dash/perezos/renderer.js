@@ -67,10 +67,17 @@
     Object.freeze({part:"fur-belly", x:77, y:74, width:66, height:72}),
   ]);
   const AUTHORED_DITHER = Object.freeze([
-    90,14, 97,10, 105,16, 119,12, 128,17, 136,22,
-    76,59, 83,71, 91,64, 139,58, 146,73, 132,83,
-    79,91, 87,105, 96,116, 126,102, 136,119, 145,94,
+    Object.freeze({part:"fur-head", points:Object.freeze([
+      90,14, 97,10, 105,16, 119,12, 128,17, 136,22,
+    ])}),
+    Object.freeze({part:"fur-back", points:Object.freeze([
+      76,59, 83,71, 91,64, 139,58, 146,73, 132,83,
+    ])}),
+    Object.freeze({part:"fur-belly", points:Object.freeze([
+      79,91, 87,105, 96,116, 126,102, 136,119, 145,94,
+    ])}),
   ]);
+  const DITHER_PIXEL_COUNT = 18;
 
   for(let index = 0; index < Art.PARTS.length; index += 1){
     const part = Art.PARTS[index];
@@ -189,6 +196,7 @@
     lightRim:Rig.channelIndex("light-rim-intensity"),
     lightLoaded:Rig.channelIndex("light-loaded-pulse"),
     lightSearching:Rig.channelIndex("light-searching-pulse"),
+    lightVisor:Rig.channelIndex("light-visor-glow"),
     flShoulder:Rig.channelIndex("front-left-shoulder-angle"),
     flElbow:Rig.channelIndex("front-left-elbow-angle"),
     frShoulder:Rig.channelIndex("front-right-shoulder-angle"),
@@ -510,6 +518,7 @@
       y += Math.round(values[INDEX.pelvisY]);
     }
     if(level >= 1){
+      x += Math.round(values[INDEX.pelvisAngle] * Math.min(level, 4) * 10);
       x += Math.round(values[INDEX.lowerAngle] * 3);
     }
     if(level >= 2){
@@ -841,12 +850,20 @@
     if(quality !== QUALITY.FULL) return;
     internal.ctx.fillStyle = internal.page.atlas.palette[7];
     const roll = staticMode ? 0 : rig.values[INDEX.headRoll];
-    for(let index = 0; index < AUTHORED_DITHER.length; index += 2){
-      const x = AUTHORED_DITHER[index] + Math.round(roll * ((index >> 1) % 3 - 1));
-      const y = AUTHORED_DITHER[index + 1];
-      internal.ctx.fillRect(screenX(internal, x), screenY(internal, y), scale, scale);
+    for(let groupIndex = 0; groupIndex < AUTHORED_DITHER.length; groupIndex += 1){
+      const group = AUTHORED_DITHER[groupIndex];
+      const part = PART_BY_ID[group.part];
+      globalAnchor(internal, part, rig, staticMode);
+      const offsetX = internal.anchor[0] - REST_X[group.part];
+      const offsetY = internal.anchor[1] - REST_Y[group.part];
+      for(let index = 0; index < group.points.length; index += 2){
+        const x = group.points[index] + offsetX +
+          Math.round(roll * ((index >> 1) % 3 - 1));
+        const y = group.points[index + 1] + offsetY;
+        internal.ctx.fillRect(screenX(internal, x), screenY(internal, y), scale, scale);
+      }
     }
-    internal.dynamicDitherPixels = AUTHORED_DITHER.length / 2;
+    internal.dynamicDitherPixels = DITHER_PIXEL_COUNT;
   }
 
   function drawProp(internal, rig, context, staticMode){
@@ -882,19 +899,41 @@
     else if(context.status === "waiting") paletteIndex = 13;
     else if(context.status === "dead" || context.status === "done") paletteIndex = 14;
     const scale = internal.camera.scale;
+    const rimParent = PART_BY_ID["fur-back"];
+    globalAnchor(internal, rimParent, rig, staticMode);
+    const rimOffsetX = internal.anchor[0] - REST_X["fur-back"];
+    const rimOffsetY = internal.anchor[1] - REST_Y["fur-back"];
     internal.ctx.fillStyle = internal.page.atlas.palette[paletteIndex];
-    internal.ctx.fillRect(screenX(internal, 84), screenY(internal, 51),
+    internal.ctx.fillRect(screenX(internal, 84 + rimOffsetX),
+      screenY(internal, 51 + rimOffsetY),
       2 * scale, 22 * scale);
-    internal.ctx.fillRect(screenX(internal, 87), screenY(internal, 48),
+    internal.ctx.fillRect(screenX(internal, 87 + rimOffsetX),
+      screenY(internal, 48 + rimOffsetY),
       20 * scale, scale);
     if(!staticMode){
       const energy = Math.abs(rig.values[INDEX.lightKey]) +
         Math.abs(rig.values[INDEX.lightFill]) + Math.abs(rig.values[INDEX.lightRim]) +
-        Math.abs(rig.values[INDEX.lightLoaded]) + Math.abs(rig.values[INDEX.lightSearching]);
+        Math.abs(rig.values[INDEX.lightLoaded]) + Math.abs(rig.values[INDEX.lightSearching]) +
+        Math.abs(rig.values[INDEX.lightVisor]);
       const extra = Math.min(8, Math.round(energy * 2));
       if(extra > 0){
-        internal.ctx.fillRect(screenX(internal, 108), screenY(internal, 49),
+        internal.ctx.fillRect(screenX(internal, 108 + rimOffsetX),
+          screenY(internal, 49 + rimOffsetY),
           extra * scale, scale);
+      }
+      const visorGlow = Math.min(4, Math.ceil(rig.values[INDEX.lightVisor] * 4));
+      if(visorGlow > 0){
+        const faceParent = PART_BY_ID["face-mask"];
+        globalAnchor(internal, faceParent, rig, false);
+        const faceX = internal.anchor[0];
+        const faceY = internal.anchor[1];
+        internal.ctx.fillStyle = internal.page.atlas.palette[12];
+        internal.ctx.fillRect(screenX(internal, faceX - 15 - visorGlow),
+          screenY(internal, faceY - 7), visorGlow * scale, scale);
+        internal.ctx.fillRect(screenX(internal, faceX + 14),
+          screenY(internal, faceY - 7), visorGlow * scale, scale);
+        internal.ctx.fillRect(screenX(internal, faceX - 8),
+          screenY(internal, faceY + 6), 16 * scale, scale);
       }
     }
   }
