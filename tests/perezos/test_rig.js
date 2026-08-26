@@ -236,6 +236,26 @@ test("rig preallocates typed live, target, cable, and rollback buffers", () => {
   assert.equal(rig.cableIterations, 8);
 });
 
+test("rig construction does not seal populated typed arrays in Chrome-incompatible form", () => {
+  const nativeSeal = Object.seal;
+  Object.seal = value => {
+    if(ArrayBuffer.isView(value) && value.byteLength > 0){
+      throw new TypeError("Cannot seal array buffer views with elements");
+    }
+    return nativeSeal(value);
+  };
+  try{
+    let rig;
+    assert.doesNotThrow(() => { rig = R.createRig("chrome-typed-array-contract"); });
+    assert.equal(Object.isExtensible(rig.values), false);
+    assert.equal(Reflect.defineProperty(rig.values, "set", {value(){}}), false);
+    rig.values[0] = 3;
+    assert.equal(rig.values[0], 3, "physics elements must remain writable");
+  }finally{
+    Object.seal = nativeSeal;
+  }
+});
+
 test("initial support is the authored safe diagonal", () => {
   const rig = R.createRig(42);
   assert.deepEqual(rig.supports["front-left"], {

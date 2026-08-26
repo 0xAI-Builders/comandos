@@ -44,7 +44,7 @@
   ]);
   const FUR_IDS = Object.freeze(["fur-belly", "fur-head"]);
   const STATIC_CABLE = Object.freeze([
-    26,-11, 44,6, 63,23, 81,40, 100,57, 141,74, 153,91, 155,108, 173,125,
+    26,-11, 44,8, 66,30, 84,52, 106,72, 135,91, 152,111, 162,132, 169,146,
   ]);
   const RENDERERS = new WeakMap();
   const PART_BY_ID = Object.create(null);
@@ -53,6 +53,24 @@
   const POSE_RECORDS = Object.create(null);
   const REST_X = Object.create(null);
   const REST_Y = Object.create(null);
+  const AXIAL_LEVEL = Object.create(null);
+  const CLAW_CURL_INDEX = Object.create(null);
+  const CLAW_SPREAD_INDEX = Object.create(null);
+  const CLAW_FAN = Object.create(null);
+  const PROP_CHANNEL = Object.freeze({
+    corona:"prop-corona-tilt", casco:"prop-casco-tilt", visor:"prop-visor-open",
+    fuego:"prop-fuego-height", bufanda:"prop-bufanda-sway", huevo:"prop-huevo-wobble",
+  });
+  const DETAIL_CELLS = Object.freeze([
+    Object.freeze({part:"fur-head", x:76, y:0, width:72, height:60}),
+    Object.freeze({part:"fur-back", x:60, y:40, width:100, height:112}),
+    Object.freeze({part:"fur-belly", x:77, y:74, width:66, height:72}),
+  ]);
+  const AUTHORED_DITHER = Object.freeze([
+    90,14, 97,10, 105,16, 119,12, 128,17, 136,22,
+    76,59, 83,71, 91,64, 139,58, 146,73, 132,83,
+    79,91, 87,105, 96,116, 126,102, 136,119, 145,94,
+  ]);
 
   for(let index = 0; index < Art.PARTS.length; index += 1){
     const part = Art.PARTS[index];
@@ -101,6 +119,26 @@
   configureLimb("rear-left", "leg-rl-upper", "leg-rl-lower", "ankle-rl", "palm-rl");
   configureLimb("rear-right", "leg-rr-upper", "leg-rr-lower", "ankle-rr", "palm-rr");
 
+  for(let index = 0; index < CLAW_IDS.length; index += 1){
+    const id = CLAW_IDS[index];
+    CLAW_CURL_INDEX[id] = Rig.channelIndex(`${id}-curl`);
+    CLAW_SPREAD_INDEX[id] = Rig.channelIndex(`${id}-spread`);
+    CLAW_FAN[id] = index % 3 - 1;
+  }
+
+  AXIAL_LEVEL.pelvis = 0;
+  AXIAL_LEVEL.abdomen = 1;
+  AXIAL_LEVEL["fur-belly"] = 1;
+  AXIAL_LEVEL.ribcage = 2;
+  AXIAL_LEVEL["fur-back"] = 2;
+  AXIAL_LEVEL["neck-lower"] = 3;
+  AXIAL_LEVEL["neck-mid"] = 4;
+  AXIAL_LEVEL["neck-upper"] = 5;
+  for(let index = 0; index < FACE_IDS.length; index += 1){
+    AXIAL_LEVEL[FACE_IDS[index]] = 6;
+  }
+  AXIAL_LEVEL["fur-head"] = 6;
+
   const INDEX = Object.freeze({
     bodyLean:Rig.channelIndex("body-lean-x"),
     bodyLift:Rig.channelIndex("body-lift"),
@@ -128,6 +166,29 @@
     lidLeftLower:Rig.channelIndex("lid-left-lower"),
     lidRightUpper:Rig.channelIndex("lid-right-upper"),
     lidRightLower:Rig.channelIndex("lid-right-lower"),
+    chestExpand:Rig.channelIndex("chest-expand"),
+    bellyCompress:Rig.channelIndex("belly-compress"),
+    browLeft:Rig.channelIndex("brow-left-lift"),
+    browRight:Rig.channelIndex("brow-right-lift"),
+    cheekLeft:Rig.channelIndex("cheek-left-puff"),
+    cheekRight:Rig.channelIndex("cheek-right-puff"),
+    furHeadCrest:Rig.channelIndex("fur-head-crest"),
+    furHeadCheekLeft:Rig.channelIndex("fur-head-cheek-left"),
+    furHeadCheekRight:Rig.channelIndex("fur-head-cheek-right"),
+    furHeadNape:Rig.channelIndex("fur-head-nape"),
+    furNeckLeft:Rig.channelIndex("fur-neck-ruff-left"),
+    furNeckRight:Rig.channelIndex("fur-neck-ruff-right"),
+    furBackShoulder:Rig.channelIndex("fur-back-shoulder"),
+    furBackMid:Rig.channelIndex("fur-back-mid"),
+    furBackRump:Rig.channelIndex("fur-back-rump"),
+    furBellyChest:Rig.channelIndex("fur-belly-chest"),
+    furBellyMid:Rig.channelIndex("fur-belly-mid"),
+    furBellyFlank:Rig.channelIndex("fur-belly-flank"),
+    lightKey:Rig.channelIndex("light-key-intensity"),
+    lightFill:Rig.channelIndex("light-fill-intensity"),
+    lightRim:Rig.channelIndex("light-rim-intensity"),
+    lightLoaded:Rig.channelIndex("light-loaded-pulse"),
+    lightSearching:Rig.channelIndex("light-searching-pulse"),
     flShoulder:Rig.channelIndex("front-left-shoulder-angle"),
     flElbow:Rig.channelIndex("front-left-elbow-angle"),
     frShoulder:Rig.channelIndex("front-right-shoulder-angle"),
@@ -163,13 +224,21 @@
     if(!ctx) throw new Error("PerezOS detail cache requires a 2d canvas context");
     ctx.imageSmoothingEnabled = false;
     ctx.clearRect(0, 0, Art.WORLD.width, Art.WORLD.height);
-    ctx.fillStyle = palette[0];
-    for(let y = 54; y <= 114; y += 10){
-      ctx.fillRect(82 + ((y / 10) & 1) * 3, y, 2, 1);
-      ctx.fillRect(127 - ((y / 10) & 1) * 2, y + 4, 1, 1);
+    ctx.fillStyle = palette[1];
+    for(let y = 54; y <= 140; y += 9){
+      ctx.fillRect(71 + ((y / 9) & 1) * 4, y, 3, 1);
+      ctx.fillRect(148 - ((y / 9) & 1) * 3, y + 3, 2, 1);
+    }
+    ctx.fillStyle = palette[5];
+    for(let y = 62; y <= 132; y += 8){
+      ctx.fillRect(92 + ((y / 8) & 3) * 5, y, 4, 1);
+      ctx.fillRect(101 + ((y / 8 + 1) & 3) * 6, y + 3, 2, 1);
     }
     ctx.fillStyle = palette[7];
-    for(let x = 91; x <= 130; x += 7) ctx.fillRect(x, 18 + (x & 3), 1, 1);
+    for(let x = 88; x <= 138; x += 6){
+      ctx.fillRect(x, 10 + (x & 3), 2, 1);
+      ctx.fillRect(91 + ((x / 6) & 3) * 9, 99 + (x & 7), 2, 1);
+    }
     return canvas;
   }
 
@@ -222,16 +291,31 @@
     if(!internal || internal.destroyed || !Number.isFinite(width) ||
        !Number.isFinite(height) || !Number.isFinite(dpr) || width <= 0 ||
        height <= 0 || dpr <= 0) return false;
-    const backingWidth = Math.round(width * dpr);
-    const backingHeight = Math.round(height * dpr);
+    const logicalWidth = Math.floor(width);
+    const logicalHeight = Math.floor(height);
+    const effectiveDpr = Math.max(1, Math.floor(dpr));
+    const backingWidth = logicalWidth * effectiveDpr;
+    const backingHeight = logicalHeight * effectiveDpr;
     if(backingWidth < 1 || backingHeight < 1 || backingWidth > 8192 ||
        backingHeight > 8192) return false;
     if(internal.viewportWidth === width && internal.viewportHeight === height &&
        internal.dpr === dpr && internal.backingWidth === backingWidth &&
        internal.backingHeight === backingHeight) return false;
     try{
-      if(internal.canvas.width !== backingWidth) internal.canvas.width = backingWidth;
-      if(internal.canvas.height !== backingHeight) internal.canvas.height = backingHeight;
+      const oldWidth = internal.canvas.width;
+      const oldHeight = internal.canvas.height;
+      try{
+        if(oldWidth !== backingWidth) internal.canvas.width = backingWidth;
+        if(oldHeight !== backingHeight) internal.canvas.height = backingHeight;
+      }catch(error){
+        try{
+          if(internal.canvas.width !== oldWidth) internal.canvas.width = oldWidth;
+          if(internal.canvas.height !== oldHeight) internal.canvas.height = oldHeight;
+        }catch(rollbackError){
+          // A hostile host canvas may reject both the requested size and rollback.
+        }
+        return false;
+      }
     }catch(error){
       return false;
     }
@@ -240,8 +324,8 @@
     internal.dpr = dpr;
     internal.backingWidth = backingWidth;
     internal.backingHeight = backingHeight;
-    const logicalCamera = Art.compactCamera(Math.floor(width), Math.floor(height));
-    let scale = Math.max(1, Math.floor(logicalCamera.scale * dpr));
+    const logicalCamera = Art.compactCamera(logicalWidth, logicalHeight);
+    let scale = logicalCamera.scale * effectiveDpr;
     let cameraWidth = logicalCamera.width;
     let cameraHeight = logicalCamera.height;
     let sourceX = logicalCamera.sourceX;
@@ -418,21 +502,51 @@
       return;
     }
     const values = rig.values;
+    const level = AXIAL_LEVEL[part.id];
     x += Math.round(values[INDEX.bodyLean]);
     y -= Math.round(values[INDEX.bodyLift]);
-    if(part.id === "pelvis"){
+    if(level !== undefined){
       x += Math.round(values[INDEX.pelvisX]);
       y += Math.round(values[INDEX.pelvisY]);
-    }else if(part.id === "abdomen"){
+    }
+    if(level >= 1){
       x += Math.round(values[INDEX.lowerAngle] * 3);
-    }else if(part.id === "ribcage"){
+    }
+    if(level >= 2){
       x += Math.round(values[INDEX.midAngle] * 4);
-    }else if(part.id === "neck-lower"){
+    }
+    if(level >= 3){
       x += Math.round(values[INDEX.upperAngle] * 4);
-    }else if(part.id === "neck-mid"){
-      x += Math.round((values[INDEX.upperAngle] + values[INDEX.neckLower]) * 4);
-    }else if(part.id === "neck-upper"){
-      x += Math.round((values[INDEX.neckLower] + values[INDEX.neckMid]) * 4);
+    }
+    if(level >= 4){
+      x += Math.round(values[INDEX.neckLower] * 4);
+    }
+    if(level >= 5){
+      x += Math.round(values[INDEX.neckMid] * 4);
+    }
+    if(level >= 6){
+      x += Math.round(values[INDEX.neckUpper] * 4);
+    }
+    if(level >= 2){
+      y -= Math.round(values[INDEX.chestExpand] * 2);
+    }
+    if(part.id === "abdomen" || part.id === "pelvis" || part.id === "fur-belly"){
+      y += Math.round(values[INDEX.bellyCompress] * 2);
+    }
+    if(part.id === "fur-back"){
+      x += Math.round((values[INDEX.furBackShoulder] + values[INDEX.furBackMid] * 0.7 +
+        values[INDEX.furBackRump] * 0.45) * 2);
+      y += Math.round((values[INDEX.furBackMid] + values[INDEX.furBackRump]) * 0.7);
+    }else if(part.id === "fur-belly"){
+      x += Math.round((values[INDEX.furBellyChest] - values[INDEX.furBellyFlank]) * 1.5);
+      y += Math.round((values[INDEX.furBellyMid] + values[INDEX.furBellyFlank]) * 1.2);
+    }else if(part.id === "fur-head"){
+      x += Math.round((values[INDEX.furHeadCheekRight] -
+        values[INDEX.furHeadCheekLeft]) * 1.5);
+      y -= Math.round((values[INDEX.furHeadCrest] + values[INDEX.furHeadNape] * 0.5) * 2);
+    }else if(part.id === "neck-lower" || part.id === "neck-mid" ||
+             part.id === "neck-upper"){
+      x += Math.round((values[INDEX.furNeckRight] - values[INDEX.furNeckLeft]) * 1.5);
     }
     const face = part.id === "skull" || part.id === "face-mask" ||
       part.id === "muzzle" || part.id === "jaw" || part.id === "nose" ||
@@ -457,6 +571,12 @@
     if(part.id === "lid-left-lower") y -= Math.round(values[INDEX.lidLeftLower] * 2);
     if(part.id === "lid-right-upper") y += Math.round(values[INDEX.lidRightUpper] * 2);
     if(part.id === "lid-right-lower") y -= Math.round(values[INDEX.lidRightLower] * 2);
+    if(part.id === "lid-left-upper") y -= Math.round(values[INDEX.browLeft] * 2);
+    if(part.id === "lid-right-upper") y -= Math.round(values[INDEX.browRight] * 2);
+    if(part.id === "muzzle" || part.id === "jaw"){
+      x += Math.round((values[INDEX.cheekRight] - values[INDEX.cheekLeft]) * 1.5);
+      y -= Math.round((values[INDEX.cheekRight] + values[INDEX.cheekLeft]) * 0.5);
+    }
     internal.anchor[0] = Math.round(x);
     internal.anchor[1] = Math.round(y);
   }
@@ -486,6 +606,9 @@
       const claw = rig.claws[part.id];
       internal.anchor[0] = Math.round(claw.point.x + pose.offsetX);
       internal.anchor[1] = Math.round(claw.point.y + pose.offsetY);
+      internal.anchor[0] += Math.round(rig.values[CLAW_SPREAD_INDEX[part.id]] *
+        CLAW_FAN[part.id] * 3);
+      internal.anchor[1] += Math.round(rig.values[CLAW_CURL_INDEX[part.id]] * 3);
     }
   }
 
@@ -512,14 +635,20 @@
     if(id === "skull" || id === "face-mask" || id === "muzzle" ||
        id.startsWith("lid-")) return Math.max(Math.abs(values[INDEX.headYaw]),
          Math.abs(values[INDEX.faceTurn]));
-    if(id.includes("fr")) return id.includes("fore") ?
-      Math.abs(values[INDEX.frElbow]) : Math.abs(values[INDEX.frShoulder]);
-    if(id.includes("rr")) return id.includes("lower") ?
-      Math.abs(values[INDEX.rrElbow]) : Math.abs(values[INDEX.rrShoulder]);
-    if(id.includes("fl")) return id.includes("fore") ?
-      Math.abs(values[INDEX.flElbow]) : Math.abs(values[INDEX.flShoulder]);
-    if(id.includes("rl")) return id.includes("lower") ?
-      Math.abs(values[INDEX.rlElbow]) : Math.abs(values[INDEX.rlShoulder]);
+    let limb = null;
+    if(id.includes("fr")) limb = rig.limbs["front-right"];
+    else if(id.includes("rr")) limb = rig.limbs["rear-right"];
+    else if(id.includes("fl")) limb = rig.limbs["front-left"];
+    else if(id.includes("rl")) limb = rig.limbs["rear-left"];
+    if(limb){
+      const restUpper = Math.atan2(limb.restJoint.y - limb.restRoot.y,
+        limb.restJoint.x - limb.restRoot.x);
+      const restLower = restUpper - Math.atan2(limb.restEnd.y - limb.restJoint.y,
+        limb.restEnd.x - limb.restJoint.x);
+      return id.includes("fore") || id.includes("lower") || id.includes("wrist") ||
+        id.includes("ankle") || id.includes("palm") ?
+        Math.abs(limb.lowerAngle - restLower) : Math.abs(limb.upperAngle - restUpper);
+    }
     return 0;
   }
 
@@ -571,6 +700,31 @@
       if(doubled >= dy){ error += dy; x0 += sx; }
       if(doubled <= dx){ error += dx; y0 += sy; }
     }
+  }
+
+  function drawLimbSegment(internal, x0, y0, x1, y1){
+    internal.ctx.fillStyle = internal.page.atlas.palette[1];
+    for(let offset = -4; offset <= 4; offset += 1){
+      drawPixelLine(internal, x0 + offset, y0, x1 + offset, y1);
+    }
+    for(let offset = -3; offset <= 3; offset += 1){
+      drawPixelLine(internal, x0, y0 + offset, x1, y1 + offset);
+    }
+    internal.ctx.fillStyle = internal.page.atlas.palette[3];
+    for(let offset = -2; offset <= 2; offset += 1){
+      drawPixelLine(internal, x0 + offset, y0, x1 + offset, y1);
+    }
+    internal.ctx.fillStyle = internal.page.atlas.palette[5];
+    drawPixelLine(internal, x0 - 1, y0 - 1, x1 - 1, y1 - 1);
+  }
+
+  function drawLimbBridge(internal, rig, limbName, staticMode){
+    const limb = rig.limbs[limbName];
+    const rootPoint = staticMode ? limb.restRoot : limb.root;
+    const jointPoint = staticMode ? limb.restJoint : limb.joint;
+    const endPoint = staticMode ? limb.restEnd : limb.end;
+    drawLimbSegment(internal, rootPoint.x, rootPoint.y, jointPoint.x, jointPoint.y);
+    drawLimbSegment(internal, jointPoint.x, jointPoint.y, endPoint.x, endPoint.y);
   }
 
   function cableValue(rig, staticMode, index){
@@ -649,8 +803,8 @@
       count += 1;
       bits |= 1;
     }
-    if(!staticMode && rig.supports["front-right"].mode === "loaded"){
-      drawMask(internal, "contact-front-right", rig, false);
+    if(staticMode || rig.supports["front-right"].mode === "loaded"){
+      drawMask(internal, "contact-front-right", rig, staticMode);
       count += 1;
       bits |= 2;
     }
@@ -671,19 +825,28 @@
 
   function drawFineDetail(internal, rig, quality, staticMode){
     if(quality === QUALITY.ECONOMY || quality === QUALITY.STATIC) return;
-    const camera = internal.camera;
-    internal.ctx.drawImage(internal.page.detail, camera.sourceX, camera.sourceY,
-      camera.width, camera.height, camera.x, camera.y,
-      camera.width * camera.scale, camera.height * camera.scale);
+    const scale = internal.camera.scale;
+    for(let index = 0; index < DETAIL_CELLS.length; index += 1){
+      const cell = DETAIL_CELLS[index];
+      const part = PART_BY_ID[cell.part];
+      globalAnchor(internal, part, rig, staticMode);
+      const restX = REST_X[cell.part];
+      const restY = REST_Y[cell.part];
+      const worldX = cell.x + internal.anchor[0] - restX;
+      const worldY = cell.y + internal.anchor[1] - restY;
+      internal.ctx.drawImage(internal.page.detail, cell.x, cell.y, cell.width, cell.height,
+        screenX(internal, worldX), screenY(internal, worldY),
+        cell.width * scale, cell.height * scale);
+    }
     if(quality !== QUALITY.FULL) return;
     internal.ctx.fillStyle = internal.page.atlas.palette[7];
-    const scale = camera.scale;
-    for(let index = 0; index < 8; index += 1){
-      const channel = staticMode ? 0 : rig.values[INDEX.headRoll] * (index - 3);
-      internal.ctx.fillRect(screenX(internal, 88 + index * 6 + Math.round(channel)),
-        screenY(internal, 47 + (index & 1) * 5), scale, scale);
+    const roll = staticMode ? 0 : rig.values[INDEX.headRoll];
+    for(let index = 0; index < AUTHORED_DITHER.length; index += 2){
+      const x = AUTHORED_DITHER[index] + Math.round(roll * ((index >> 1) % 3 - 1));
+      const y = AUTHORED_DITHER[index + 1];
+      internal.ctx.fillRect(screenX(internal, x), screenY(internal, y), scale, scale);
     }
-    internal.dynamicDitherPixels = 8;
+    internal.dynamicDitherPixels = AUTHORED_DITHER.length / 2;
   }
 
   function drawProp(internal, rig, context, staticMode){
@@ -693,8 +856,17 @@
     anchorForPart(internal, parent, rig, staticMode);
     const parentRestX = parent.bounds[0] + parent.pivot[0];
     const parentRestY = parent.bounds[1] + parent.pivot[1];
-    const propAnchorX = prop.bounds[0] + prop.pivot[0] + internal.anchor[0] - parentRestX;
-    const propAnchorY = prop.bounds[1] + prop.pivot[1] + internal.anchor[1] - parentRestY;
+    let propAnchorX = prop.bounds[0] + prop.pivot[0] + internal.anchor[0] - parentRestX;
+    let propAnchorY = prop.bounds[1] + prop.pivot[1] + internal.anchor[1] - parentRestY;
+    if(!staticMode && PROP_CHANNEL[context.costume]){
+      const value = rig.values[Rig.channelIndex(PROP_CHANNEL[context.costume])];
+      if(context.costume === "fuego") propAnchorY -= Math.round(value * 4);
+      else if(context.costume === "visor") propAnchorY += Math.round(value * 3);
+      else{
+        propAnchorX += Math.round(value * 3);
+        propAnchorY += Math.round(Math.abs(value) * 1.5);
+      }
+    }
     const rect = internal.page.atlas.rects[PROP_KEYS[context.costume]];
     const scale = internal.camera.scale;
     internal.ctx.drawImage(internal.page.atlas.canvas, rect.x, rect.y,
@@ -704,7 +876,7 @@
     return 1;
   }
 
-  function drawRim(internal, context){
+  function drawRim(internal, rig, context, staticMode){
     let paletteIndex = 15;
     if(context.status === "working") paletteIndex = 12;
     else if(context.status === "waiting") paletteIndex = 13;
@@ -715,6 +887,16 @@
       2 * scale, 22 * scale);
     internal.ctx.fillRect(screenX(internal, 87), screenY(internal, 48),
       20 * scale, scale);
+    if(!staticMode){
+      const energy = Math.abs(rig.values[INDEX.lightKey]) +
+        Math.abs(rig.values[INDEX.lightFill]) + Math.abs(rig.values[INDEX.lightRim]) +
+        Math.abs(rig.values[INDEX.lightLoaded]) + Math.abs(rig.values[INDEX.lightSearching]);
+      const extra = Math.min(8, Math.round(energy * 2));
+      if(extra > 0){
+        internal.ctx.fillRect(screenX(internal, 108), screenY(internal, 49),
+          extra * scale, scale);
+      }
+    }
   }
 
   function render(renderer, rig, context, quality){
@@ -745,12 +927,16 @@
       drawShadow(internal, rig, staticMode);
       drawCable(internal, rig, staticMode, 0, 4);
       internal.groupCounts[0] = 2;
+      drawLimbBridge(internal, rig, "front-right", staticMode);
+      drawLimbBridge(internal, rig, "rear-right", staticMode);
       drawParts(internal, REAR_IDS, rig, context, staticMode);
       internal.groupCounts[1] = REAR_IDS.length;
       drawPart(internal, PART_BY_ID["fur-back"], rig, context, staticMode);
       internal.groupCounts[2] = 1;
       drawParts(internal, TORSO_IDS, rig, context, staticMode);
       internal.groupCounts[3] = TORSO_IDS.length;
+      drawLimbBridge(internal, rig, "front-left", staticMode);
+      drawLimbBridge(internal, rig, "rear-left", staticMode);
       drawParts(internal, FRONT_IDS, rig, context, staticMode);
       internal.groupCounts[4] = FRONT_IDS.length;
       drawParts(internal, FACE_IDS, rig, context, staticMode);
@@ -765,7 +951,7 @@
       internal.groupCounts[8] = drawProp(internal, rig, context, staticMode);
       drawCable(internal, rig, staticMode, 4, 8);
       internal.groupCounts[9] = 1;
-      drawRim(internal, context);
+      drawRim(internal, rig, context, staticMode);
       internal.groupCounts[10] = 1;
 
       if(!staticMode){
@@ -854,7 +1040,6 @@
       contactRevision:internal.contactRevision,
       propRevision:internal.propRevision,
       manualRevision:internal.manualRevision,
-      hotLoopAllocations:0,
     });
   }
 

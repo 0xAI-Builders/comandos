@@ -456,7 +456,7 @@
 
   function hardenRig(rig){
     for(let index = 0; index < PUBLIC_BUFFER_FIELDS.length; index += 1){
-      Object.seal(rig[PUBLIC_BUFFER_FIELDS[index]]);
+      Object.preventExtensions(rig[PUBLIC_BUFFER_FIELDS[index]]);
     }
     Object.seal(rig.diagnostics);
     lockFields(rig, RIG_STABLE_FIELDS);

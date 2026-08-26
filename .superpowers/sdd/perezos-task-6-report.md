@@ -2,9 +2,13 @@
 
 ## Scope
 
-Implemented Task 6 only:
+Implemented and remediated Task 6 only:
 
+- `dash/perezos/art.js`
+- `dash/perezos/rig.js`
 - `dash/perezos/renderer.js`
+- `tests/perezos/test_art.js`
+- `tests/perezos/test_rig.js`
 - `tests/perezos/test_renderer.js`
 
 No Task 7 controller, HTML, CSS, or dashboard integration was added.
@@ -28,7 +32,7 @@ No Task 7 controller, HTML, CSS, or dashboard integration was added.
   rotation.
 - Props retain their authored parent relationship, including palm-attached
   props following solved endpoints.
-- Full adds retained fine detail plus bounded dynamic dither; Balanced uses the
+- Full adds retained fine detail plus bounded authored dither; Balanced uses the
   retained merged detail page; Economy keeps anatomy, face, contacts,
   silhouette, medium fur, props, cable, and rim while omitting fine/dynamic
   detail; Static ignores live pose changes and uses a safe authored pose.
@@ -44,6 +48,45 @@ No Task 7 controller, HTML, CSS, or dashboard integration was added.
   Two retained theme pages remain below the 16 MiB decoded-memory ceiling.
 - Hostile inputs return `false` without Canvas mutation; destruction releases
   retained pages and buffers and is idempotent.
+
+## Post-review remediation
+
+The first formal visual review rejected the implementation after inspecting a
+real Chrome capture. Although its unit suite was green, the rendered animal was
+a collection of detached rectangular masses and several scanned channels had no
+visible effect. The browser also exposed a separate construction failure:
+Chrome throws when `Object.seal` is applied to a populated typed array.
+
+The remediation was driven by focused RED tests:
+
+- the authored safe silhouette measured 7,270 pixels across 16 disconnected
+  non-claw masses;
+- pelvis translation did not propagate to the abdomen;
+- fractional DPR 1.25 produced a 320-pixel backing width instead of a stable
+  256-pixel logical raster;
+- a Chrome-compatible `Object.seal` probe threw during `Rig.createRig`.
+
+The resulting GREEN implementation:
+
+- rebuilds the sloth atlas around one connected organic body silhouette with
+  asymmetric face patches, fur tufts, belly volume, thicker long limbs, and
+  differentiated near/far anatomy;
+- draws integer-pixel limb bridges through solved root, joint, and claw points,
+  so live IK cannot visually separate the anatomy;
+- applies cumulative pelvis/spine/neck transforms and makes chest, belly,
+  brow, cheek, fur, independent claw, prop-secondary, and lighting channels
+  visibly affect output;
+- attaches three retained detail cells to head, back, and belly parents and
+  uses authored Full-quality dither instead of a world-fixed overlay;
+- uses solved limb angles for atlas alternates and places the static cable at
+  the authored right-claw contact;
+- floors fractional DPR before allocating the nearest-neighbour backing store
+  and atomically restores viewport dimensions after hostile setters;
+- replaces the unsupported typed-array sealing operation with
+  `Object.preventExtensions`, preserving writable physics elements while
+  preventing topology changes;
+- removes the unmeasured `hotLoopAllocations: 0` diagnostic rather than
+  presenting a synthetic performance claim.
 
 ## TDD Evidence
 
@@ -81,6 +124,8 @@ Result after the first implementation: 19/19 passed, Node duration 209.883 ms.
 
 ## Verification
 
+### Initial implementation
+
 - `node --check dash/perezos/renderer.js`
   - passed.
 - `node --test tests/perezos/test_renderer.js tests/perezos/test_art.js tests/perezos/test_rig.js`
@@ -94,11 +139,31 @@ Result after the first implementation: 19/19 passed, Node duration 209.883 ms.
 - `pytest -q`
   - 385/385 passed; pytest duration 105.54 s.
 
+### Post-review remediation
+
+- `node --test tests/perezos/test_art.js tests/perezos/test_rig.js tests/perezos/test_renderer.js`
+  - 102/102 passed; Node duration 11399.098 ms.
+- `node --test tests/perezos/test_*.js`
+  - 169/169 passed; Node duration 11458.654 ms.
+- `bash tests/test_js_parses.sh`
+  - passed with `OK`.
+- `pytest -q`
+  - 385/385 passed; pytest duration 105.54 s.
+- Chrome 146 headless, without compatibility shims:
+  - document reached `data-ready="true"` with no construction failure;
+  - 55 drawn layers, 4.17 MiB decoded memory;
+  - 0.530 ms/frame mean over 1,000 forced Full-quality redraws;
+  - capture: `/tmp/perezos-renderer-unshimmed.png`.
+
 ## Files Changed
 
 - `.superpowers/sdd/perezos-task-6-report.md`
+- `dash/perezos/art.js`
 - `dash/perezos/renderer.js`
+- `dash/perezos/rig.js`
+- `tests/perezos/test_art.js`
 - `tests/perezos/test_renderer.js`
+- `tests/perezos/test_rig.js`
 
 ## Self-review
 

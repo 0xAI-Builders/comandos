@@ -105,6 +105,59 @@ function shapeDifference(harness, atlas, left, right){
                          pixelsInRect(harness, atlas.rects[right], false));
 }
 
+function authoredBodyPixels(){
+  const pixels = new Set();
+  const add = (x, y) => pixels.add(`${x},${y}`);
+  for(const part of A.PARTS){
+    if(part.id.startsWith("claw-")) continue;
+    const originX = part.bounds[0];
+    const originY = part.bounds[1];
+    for(const command of part.commands){
+      if(command[0] === "px"){
+        add(originX + command[2], originY + command[3]);
+      }else if(command[0] === "run"){
+        for(let x = 0; x < command[4]; x += 1){
+          add(originX + command[2] + x, originY + command[3]);
+        }
+      }else if(command[0] === "rect"){
+        for(let y = 0; y < command[5]; y += 1){
+          for(let x = 0; x < command[4]; x += 1){
+            add(originX + command[2] + x, originY + command[3] + y);
+          }
+        }
+      }else{
+        for(const run of A.rasterTriangle(command)){
+          for(let x = 0; x < run[4]; x += 1){
+            add(originX + run[2] + x, originY + run[3]);
+          }
+        }
+      }
+    }
+  }
+  return pixels;
+}
+
+function componentSizes(source){
+  const remaining = new Set(source);
+  const sizes = [];
+  while(remaining.size){
+    const first = remaining.values().next().value;
+    remaining.delete(first);
+    const stack = [first];
+    let size = 0;
+    while(stack.length){
+      const [x, y] = stack.pop().split(",").map(Number);
+      size += 1;
+      for(const [nextX, nextY] of [[x - 1,y], [x + 1,y], [x,y - 1], [x,y + 1]]){
+        const key = `${nextX},${nextY}`;
+        if(remaining.delete(key)) stack.push(key);
+      }
+    }
+    sizes.push(size);
+  }
+  return sizes.sort((left, right) => right - left);
+}
+
 function manifestFixture(overrides = {}){
   return {
     BODY_IDS:[...A.BODY_IDS],
@@ -181,6 +234,15 @@ test("every piece contains authored indexed clusters inside integer bounds", () 
       assert.ok(command.slice(2).every(Number.isInteger), `${part.id} command geometry`);
     }
   }
+});
+
+test("authored safe silhouette is one cohesive furry body before separate claws", () => {
+  const pixels = authoredBodyPixels();
+  const components = componentSizes(pixels);
+  assert.ok(pixels.size >= 7600, `safe body needs more organic mass, got ${pixels.size} pixels`);
+  assert.equal(components.length, 1,
+    `safe body is a marionette with ${components.length} disconnected masses: ${components.slice(0, 8)}`);
+  assert.equal(components[0], pixels.size);
 });
 
 test("warm palette and state variants are explicit indexed artwork", () => {
@@ -344,8 +406,8 @@ test("representative anatomical raster families match authored golden signatures
   };
   assert.deepEqual(Object.fromEntries(Object.entries(groups).map(([name, ids]) =>
     [name, goldenSignature(harness, atlas, ids)])), {
-    head:"e9fc3490", torso:"7a092361", frontLeft:"24333438", frontRight:"daa2c55e",
-    rearLeft:"14b2a305", rearRight:"644ed50e", clawFrontLeft:"d5297881",
+    head:"9184d40b", torso:"5e12b424", frontLeft:"c279cdb0", frontRight:"8f19faeb",
+    rearLeft:"e442cfbd", rearRight:"1cf05a59", clawFrontLeft:"d5297881",
     clawFrontRight:"6d2d63b8", clawRearLeft:"ed1c4d1e", clawRearRight:"d727ecfb",
   });
 });

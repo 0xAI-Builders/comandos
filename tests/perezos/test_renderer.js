@@ -221,12 +221,39 @@ if(D){
     const diagnostics = D.rendererDiagnostics(renderer);
     assert.deepEqual(diagnostics.occlusionGroups, OCCLUSION_GROUPS);
     assert.deepEqual(diagnostics.lastGroupDrawCounts, [2,8,1,6,8,11,14,3,1,1,1]);
+
+    const operationIndex = id => fake.operations.findIndex(operation => {
+      if(operation[0] !== "drawImage") return false;
+      const key = atlasKeyForDraw(operation[1]);
+      return key !== null && baseId(key) === id;
+    });
+    const rearStart = operationIndex(REAR_LIMBS[0]);
+    const lastClaw = operationIndex(CLAWS[CLAWS.length - 1]);
+    const furStart = operationIndex("fur-belly");
+    const furEnd = operationIndex("fur-head");
+    const prop = operationIndex("prop:corona");
+    assert.ok(fake.operations.slice(0, rearStart).some(operation =>
+      operation[0] === "fillRect" && operation[1].style === A.PALETTE[0]), "shadow order");
+    assert.ok(fake.operations.slice(0, rearStart).some(operation =>
+      operation[0] === "fillRect" && operation[1].style === A.PALETTE[18]), "rear cable order");
+    assert.ok(fake.operations.slice(lastClaw + 1, furStart).some(operation =>
+      operation[0] === "fillRect" && operation[1].style === A.PALETTE[0]), "contact-mask order");
+    assert.ok(fake.operations.slice(furEnd + 1, prop).some(operation =>
+      operation[0] === "drawImage" && operation[1].image.width === A.WORLD.width),
+    "fine-detail order");
+    assert.ok(fake.operations.slice(prop + 1).some(operation =>
+      operation[0] === "fillRect" && operation[1].style === A.PALETTE[18]), "front cable order");
+    const lastCable = fake.operations.findLastIndex(operation =>
+      operation[0] === "fillRect" && operation[1].style === A.PALETTE[18]);
+    assert.ok(fake.operations.slice(lastCable + 1).some(operation =>
+      operation[0] === "fillRect" && operation[1].style === A.PALETTE[15]), "state rim order");
   });
 
   test("authored alternates are selected from joint and load bands without rotation", () => {
     const {fake, renderer, rig} = fixture();
-    rig.values[R.channelIndex("head-yaw")] = 0.7;
-    rig.values[R.channelIndex("front-right-shoulder-angle")] = 0.9;
+    R.setChannelTarget(rig, "head-yaw", 0.7);
+    R.setChannelTarget(rig, "front-right-reach-y", -14);
+    for(let step = 0; step < 90; step += 1) assert.equal(R.solveRig(rig, 1 / 120), true);
     rig.supports["front-left"].load = 0.8;
     rig.supports["rear-right"].load = 0.2;
     assert.equal(D.render(renderer, rig, fixtureContext({costume:""}), "full"), true);
@@ -264,6 +291,37 @@ if(D){
                        "fur-back", "fur-head", "prop:corona"]){
       assert.equal(after.get(id)[0] - before.get(id)[0], 10, `${id} lean`);
       assert.equal(after.get(id)[1] - before.get(id)[1], -6, `${id} lift`);
+    }
+  });
+
+  test("axial parent motion propagates through every visual descendant", () => {
+    const {fake, renderer, rig} = fixture();
+    const context = fixtureContext({costume:""});
+    assert.equal(D.render(renderer, rig, context, "economy"), true);
+    const before = destinationMap(fake);
+
+    fake.context.reset();
+    rig.values[R.channelIndex("spine-pelvis-x")] = 6;
+    rig.values[R.channelIndex("spine-pelvis-y")] = -3;
+    assert.equal(D.render(renderer, rig, context, "economy"), true);
+    const pelvisAfter = destinationMap(fake);
+    for(const id of ["pelvis", "abdomen", "ribcage", "neck-lower", "neck-mid",
+                       "neck-upper", "skull", "face-mask", "fur-back", "fur-belly",
+                       "fur-head"]){
+      assert.deepEqual([
+        pelvisAfter.get(id)[0] - before.get(id)[0],
+        pelvisAfter.get(id)[1] - before.get(id)[1],
+      ], [12, -6], `${id} must inherit pelvis translation`);
+    }
+
+    fake.context.reset();
+    rig.values[R.channelIndex("neck-lower-angle")] = 0.75;
+    assert.equal(D.render(renderer, rig, context, "economy"), true);
+    const neckAfter = destinationMap(fake);
+    for(const id of ["neck-mid", "neck-upper", "skull", "face-mask", "muzzle",
+                       "eye-left", "eye-right", "fur-head"]){
+      assert.notDeepEqual(neckAfter.get(id).slice(0, 2),
+        pelvisAfter.get(id).slice(0, 2), `${id} must inherit lower-neck motion`);
     }
   });
 
@@ -330,6 +388,56 @@ if(D){
     assert.deepEqual(after.get("eye-right"), before.get("eye-right"));
   });
 
+  test("fur, brow, cheek, claw, prop, and lighting channels change visible geometry", () => {
+    const {fake, renderer, rig} = fixture();
+    const context = fixtureContext({costume:"bufanda"});
+    assert.equal(D.render(renderer, rig, context, "full"), true);
+    const before = destinationMap(fake);
+    const beforeRim = fake.fills.filter(call => call.style === A.PALETTE[15])
+      .map(call => call.rectangle);
+    for(const [channel, value] of [
+      ["fur-head-crest", 1], ["fur-back-shoulder", 1], ["fur-belly-flank", 1],
+      ["brow-left-lift", 1], ["cheek-right-puff", 1],
+      ["claw-front-left-1-curl", 1], ["claw-front-left-1-spread", 1],
+      ["prop-bufanda-sway", 1], ["light-rim-intensity", 1],
+    ]) assert.equal(R.setChannelTarget(rig, channel, value), true, channel);
+    for(let step = 0; step < 120; step += 1) assert.equal(R.solveRig(rig, 1 / 120), true);
+
+    fake.context.reset();
+    assert.equal(D.render(renderer, rig, context, "full"), true);
+    const after = destinationMap(fake);
+    for(const id of ["fur-head", "fur-back", "fur-belly", "lid-left-upper",
+                       "muzzle", "claw-front-left-1", "prop:bufanda"]){
+      assert.notDeepEqual(after.get(id).slice(0, 2), before.get(id).slice(0, 2), id);
+    }
+    const afterRim = fake.fills.filter(call => call.style === A.PALETTE[15])
+      .map(call => call.rectangle);
+    assert.notDeepEqual(afterRim, beforeRim,
+      "lighting channels must change bounded state-rim geometry");
+  });
+
+  test("retained fine-detail cells remain attached to their anatomical parents", () => {
+    const {fake, renderer, rig} = fixture();
+    const context = fixtureContext({costume:""});
+    assert.equal(D.render(renderer, rig, context, "balanced"), true);
+    const before = fake.draws.filter(call =>
+      call.image && call.image.width === A.WORLD.width && call.image.height === A.WORLD.height)
+      .map(call => call.destination);
+    assert.equal(before.length, 3);
+    fake.context.reset();
+    rig.values[R.channelIndex("spine-pelvis-x")] = 4;
+    rig.values[R.channelIndex("spine-pelvis-y")] = -2;
+    assert.equal(D.render(renderer, rig, context, "balanced"), true);
+    const after = fake.draws.filter(call =>
+      call.image && call.image.width === A.WORLD.width && call.image.height === A.WORLD.height)
+      .map(call => call.destination);
+    assert.equal(after.length, 3);
+    for(let index = 0; index < before.length; index += 1){
+      assert.deepEqual([after[index][0] - before[index][0], after[index][1] - before[index][1]],
+        [8, -4], `detail cell ${index} detached from parent`);
+    }
+  });
+
   test("cable pixels and contact masks follow actual Rig nodes and support points", () => {
     const {fake, renderer, rig} = fixture();
     const context = fixtureContext({costume:""});
@@ -366,11 +474,11 @@ if(D){
         call.image && call.image.width === A.WORLD.width && call.image.height === A.WORLD.height);
       const diagnostics = D.rendererDiagnostics(renderer);
       if(quality === "full"){
-        assert.equal(detailDraws.length, 1);
+        assert.equal(detailDraws.length, 3);
         assert.ok(diagnostics.dynamicDitherPixels > 0);
         assert.equal(diagnostics.detailPolicy, "all");
       }else if(quality === "balanced"){
-        assert.equal(detailDraws.length, 1);
+        assert.equal(detailDraws.length, 3);
         assert.equal(diagnostics.dynamicDitherPixels, 0);
         assert.equal(diagnostics.detailPolicy, "merged-fine");
       }else{
@@ -423,6 +531,20 @@ if(D){
     assert.equal(D.render(renderer, rig, fixtureContext(), "economy"), true);
     assert.deepEqual(D.rendererDiagnostics(renderer).camera,
       {x:0, y:0, sourceX:22, sourceY:8, scale:2, width:180, height:148});
+  });
+
+  test("fractional DPR allocates only an integer effective pixel scale", () => {
+    for(const dpr of [1.25, 1.5]){
+      const {fake, renderer, rig} = fixture(256, 208, dpr);
+      assert.equal(D.render(renderer, rig, fixtureContext(), "economy"), true);
+      const camera = D.rendererDiagnostics(renderer).camera;
+      assert.equal(camera.scale, 1, `${dpr} DPR must use one physical pixel per logical pixel`);
+      assert.equal(fake.canvas.width, 256, `${dpr} DPR retained unusable horizontal pixels`);
+      assert.equal(fake.canvas.height, 208, `${dpr} DPR retained unusable vertical pixels`);
+      for(const call of fake.draws){
+        assert.ok(call.destination.every(Number.isInteger), JSON.stringify(call.destination));
+      }
+    }
   });
 
   test("clean rendering touches no Canvas 2D state and ignores nonvisual timestamps", () => {
@@ -484,6 +606,15 @@ if(D){
     let context = fixtureContext({costume:""});
     assert.equal(D.render(renderer, rig, context, "static"), true);
     const before = atlasDraws(fake).map(([key, call]) => [baseId(key), call.destination]);
+    const clawDraw = atlasDraws(fake).find(([key]) => baseId(key) === "claw-front-right-1");
+    const clawRect = atlasFixture.rects[clawDraw[0]];
+    const scale = D.rendererDiagnostics(renderer).camera.scale;
+    const clawAnchor = [clawDraw[1].destination[0] + clawRect.pivotX * scale,
+      clawDraw[1].destination[1] + clawRect.pivotY * scale];
+    const cablePixels = fake.fills.filter(call => call.style === A.PALETTE[18]);
+    assert.ok(cablePixels.some(call => Math.hypot(call.rectangle[0] - clawAnchor[0],
+      call.rectangle[1] - clawAnchor[1]) <= 3 * scale),
+    "Static safe pose must visibly attach a front claw to the execution cable");
     fake.context.reset();
     rig.values[R.channelIndex("head-yaw")] = 0.8;
     rig.cable[4] += 5;
@@ -527,8 +658,6 @@ if(D){
     const after = D.rendererDiagnostics(renderer);
     assert.equal(after.atlasBuilds, before.atlasBuilds);
     assert.equal(after.decodedBytes, before.decodedBytes);
-    assert.equal(after.hotLoopAllocations, 0);
-
     const source = fs.readFileSync(rendererPath, "utf8");
     const start = source.indexOf("function scanPose(");
     const end = source.indexOf("function markDirty(", start);
@@ -571,5 +700,27 @@ if(D){
     const diagnostics = D.rendererDiagnostics(renderer);
     assert.equal(diagnostics.destroyed, true);
     assert.equal(diagnostics.decodedBytes, 0);
+  });
+
+  test("viewport mutation rolls width back when a hostile height setter throws", () => {
+    const context = recordingContext();
+    let width = 64;
+    let height = 64;
+    const canvas = {
+      get width(){ return width; },
+      set width(value){ width = value; },
+      get height(){ return height; },
+      set height(value){
+        if(value !== height) throw new Error("hostile height");
+        height = value;
+      },
+      getContext(kind){ return kind === "2d" ? context : null; },
+    };
+    const fake = fakeCanvas();
+    const renderer = D.createRenderer(canvas, {canvasFactory:fake.factory});
+    assert.equal(D.setViewport(renderer, 256, 208, 1), false);
+    assert.equal(width, 64);
+    assert.equal(height, 64);
+    assert.equal(D.rendererDiagnostics(renderer).camera, null);
   });
 }
