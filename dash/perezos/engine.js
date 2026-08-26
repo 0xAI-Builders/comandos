@@ -52,12 +52,7 @@
     "owners", "channelTargets", "phaseStarts", "baseTargets", "previousVelocities",
     "accelerations", "queueTerminalDeadlines",
   ]);
-  const ENGINE_BUFFER_FIELDS = Object.freeze([
-    "timingValues", "timingScratch", "updateTimingValues", "updateTimingScratch",
-    "renderTimingValues", "renderTimingScratch", "traceTimestamp", "traceCombined",
-    "traceUpdate", "traceRender", "traceActive", "traceQuality",
-  ]);
-  const ENGINE_TYPED_BUFFER_COUNT = ENGINE_BUFFER_FIELDS.length;
+  const ENGINE_TYPED_BUFFER_COUNT = 12;
   const STABLE_BUFFER_AUDIT = Object.freeze({
     rig:RIG_TYPED_BUFFERS.length,
     motion:MOTION_TYPED_BUFFERS.length,
@@ -327,6 +322,17 @@
     return Object.seal(identities);
   }
 
+  function captureEngineBufferIdentities(internal){
+    return Object.seal([
+      internal.timing.values, internal.timing.scratch,
+      internal.updateTiming.values, internal.updateTiming.scratch,
+      internal.renderTiming.values, internal.renderTiming.scratch,
+      internal.performanceTrace.timestamp, internal.performanceTrace.combined,
+      internal.performanceTrace.update, internal.performanceTrace.render,
+      internal.performanceTrace.active, internal.performanceTrace.quality,
+    ]);
+  }
+
   function auditRecordBufferIdentities(record, names, identities){
     let replacements = 0;
     for(let index = 0; index < names.length; index += 1){
@@ -336,6 +342,28 @@
       replacements += 1;
     }
     return replacements;
+  }
+
+  function compareBufferIdentity(identities, index, current){
+    if(current === identities[index]) return 0;
+    identities[index] = current;
+    return 1;
+  }
+
+  function auditEngineBufferIdentities(internal){
+    const identities = internal.engineBufferIdentities;
+    return compareBufferIdentity(identities, 0, internal.timing.values) +
+      compareBufferIdentity(identities, 1, internal.timing.scratch) +
+      compareBufferIdentity(identities, 2, internal.updateTiming.values) +
+      compareBufferIdentity(identities, 3, internal.updateTiming.scratch) +
+      compareBufferIdentity(identities, 4, internal.renderTiming.values) +
+      compareBufferIdentity(identities, 5, internal.renderTiming.scratch) +
+      compareBufferIdentity(identities, 6, internal.performanceTrace.timestamp) +
+      compareBufferIdentity(identities, 7, internal.performanceTrace.combined) +
+      compareBufferIdentity(identities, 8, internal.performanceTrace.update) +
+      compareBufferIdentity(identities, 9, internal.performanceTrace.render) +
+      compareBufferIdentity(identities, 10, internal.performanceTrace.active) +
+      compareBufferIdentity(identities, 11, internal.performanceTrace.quality);
   }
 
   function createSession(internal, sessionId){
@@ -371,8 +399,7 @@
       internal.rig, RIG_TYPED_BUFFERS, internal.rigBufferIdentities);
     internal.stableBufferReplacements += auditRecordBufferIdentities(
       internal.motion, MOTION_TYPED_BUFFERS, internal.motionBufferIdentities);
-    internal.stableBufferReplacements += auditRecordBufferIdentities(
-      internal, ENGINE_BUFFER_FIELDS, internal.engineBufferIdentities);
+    internal.stableBufferReplacements += auditEngineBufferIdentities(internal);
     if(internal.renderer){
       internal.stableBufferReplacements += Renderer.auditBufferIdentities(internal.renderer);
     }
@@ -748,13 +775,6 @@
       canvas, browser, media, renderer:null, fallbackContext:null,
       controllerIdentity:nextIdentity++, rendererIdentity:nextIdentity++, rigIdentity:0,
       context:normalizeContext({}), timing, updateTiming, renderTiming, performanceTrace,
-      timingValues:timing.values, timingScratch:timing.scratch,
-      updateTimingValues:updateTiming.values, updateTimingScratch:updateTiming.scratch,
-      renderTimingValues:renderTiming.values, renderTimingScratch:renderTiming.scratch,
-      traceTimestamp:performanceTrace.timestamp, traceCombined:performanceTrace.combined,
-      traceUpdate:performanceTrace.update,
-      traceRender:performanceTrace.render, traceActive:performanceTrace.active,
-      traceQuality:performanceTrace.quality,
       rig:null, director:null, motion:null, activePerformance:null,
       rigBufferIdentities:null, motionBufferIdentities:null,
       engineBufferIdentities:null,
@@ -786,7 +806,7 @@
       frameCallback:null, visibilityListener:null, mediaListener:null,
       intersectionListener:null, resizeListener:null,
     };
-    internal.engineBufferIdentities = captureBufferIdentities(internal, ENGINE_BUFFER_FIELDS);
+    internal.engineBufferIdentities = captureEngineBufferIdentities(internal);
     internal.reduced = internal.explicitReduced || internal.mediaReduced;
     createSession(internal, internal.context.sessionId);
     if(browser.decodeLatch.failed){

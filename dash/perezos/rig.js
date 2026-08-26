@@ -198,9 +198,10 @@
       CABLE_REST_Y[segment + 1] - CABLE_REST_Y[segment])));
 
   const AXIAL_ZONES = Object.freeze(AXIAL_ZONE_IDS.map(id => {
-    const bounds = PART_BY_ID[id].bounds;
-    return Object.freeze({id, x:bounds[0], y:bounds[1],
-      width:bounds[2], height:bounds[3]});
+    const rects = PART_BY_ID[id].collisionRects.map(bounds => Object.freeze({
+      x:bounds[0], y:bounds[1], width:bounds[2], height:bounds[3],
+    }));
+    return Object.freeze({id, rects:Object.freeze(rects)});
   }));
 
   const CLAW_IDS_BY_LIMB = Object.freeze(LIMB_NAMES.map(limb => Object.freeze([
@@ -707,17 +708,28 @@
   }
 
   function pointInZone(x, y, zone, lean, lift){
-    const minX = zone.x + lean;
-    const minY = zone.y - lift;
-    return x >= minX && x <= minX + zone.width &&
-      y >= minY && y <= minY + zone.height;
+    for(let index = 0; index < zone.rects.length; index += 1){
+      const rect = zone.rects[index];
+      const minX = rect.x + lean;
+      const minY = rect.y - lift;
+      if(x >= minX && x <= minX + rect.width &&
+         y >= minY && y <= minY + rect.height) return true;
+    }
+    return false;
   }
 
   function segmentIntersectsZone(x1, y1, x2, y2, zone, lean, lift){
-    const minX = zone.x + lean;
-    const maxX = minX + zone.width;
-    const minY = zone.y - lift;
-    const maxY = minY + zone.height;
+    for(let index = 0; index < zone.rects.length; index += 1){
+      if(segmentIntersectsRect(x1, y1, x2, y2, zone.rects[index], lean, lift)) return true;
+    }
+    return false;
+  }
+
+  function segmentIntersectsRect(x1, y1, x2, y2, rect, lean, lift){
+    const minX = rect.x + lean;
+    const maxX = minX + rect.width;
+    const minY = rect.y - lift;
+    const maxY = minY + rect.height;
     const dx = x2 - x1;
     const dy = y2 - y1;
     let enter = 0;

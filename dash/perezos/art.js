@@ -54,8 +54,11 @@
     }
     return Object.freeze(frozen);
   }
-  function piece(id, parent, pivot, bounds, z, commands, states){
+  function piece(id, parent, pivot, bounds, z, commands, states, collisionRects){
+    const frozenCollisionRects = Object.freeze((collisionRects || [bounds])
+      .map(rect => Object.freeze(rect)));
     return Object.freeze({id, parent, pivot:Object.freeze(pivot), bounds:Object.freeze(bounds), z,
+      collisionRects:frozenCollisionRects,
       commands:freezeCommands(commands), states:freezeStates(states, commands)});
   }
 
@@ -65,7 +68,10 @@
       ["rect",4,8,4,20,18], ["rect",5,11,6,14,13], ["run",6,13,7,9],
       ["poly",1,3,12,8,3,7,23], ["poly",1,28,4,33,13,29,23],
       ["run",2,8,24,20], ["px",7,24,9],
-    ], {turned:[["rect",14,4,12,4,6],["run",13,8,10,20]]}),
+    ], {turned:[["rect",14,4,12,4,6],["run",13,8,10,20]]}, [
+      [140,117,22,2], [138,119,26,1], [136,120,30,15],
+      [138,135,26,1], [140,136,22,3],
+    ]),
     piece("abdomen", "pelvis", [18,24], [89,90,36,34], 18, [
       ["rect",2,3,6,30,23], ["rect",2,6,3,24,29], ["rect",3,5,5,26,25],
       ["rect",4,8,4,20,26], ["rect",5,11,7,14,20], ["run",6,13,8,10],

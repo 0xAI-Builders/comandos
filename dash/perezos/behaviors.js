@@ -442,6 +442,16 @@
     ]),
   });
 
+  const narrativeNames = templates => Object.freeze(templates.map(template => template[0]));
+  const NARRATIVE_FAMILIES = Object.freeze({
+    idle:narrativeNames(IDLE_TEMPLATES),
+    working:narrativeNames(STATE_TEMPLATES.working),
+    waiting:narrativeNames(STATE_TEMPLATES.waiting),
+    done:narrativeNames(STATE_TEMPLATES.done),
+    dead:narrativeNames(STATE_TEMPLATES.dead),
+    interaction:narrativeNames(STATE_TEMPLATES.interaction),
+  });
+
   const SAFE_TEMPLATES = Object.freeze({
     idle:Object.freeze([
       Object.freeze(["idle-safe-breathe", Object.freeze(["neutral", "breathe"]), false]),
@@ -995,6 +1005,7 @@
     return `${header}|${phases}`;
   }
 
-  NS.Behaviors = Object.freeze({PRIMITIVES, createDirector, updateContext, notify,
+  NS.Behaviors = Object.freeze({PRIMITIVES, NARRATIVE_FAMILIES,
+    createDirector, updateContext, notify,
     nextPerformance, completePerformance, performanceSignature});
 })(typeof window !== "undefined" ? window : globalThis);

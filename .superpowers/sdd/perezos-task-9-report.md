@@ -29,15 +29,28 @@ Task 9 only; no Task 10 release work was performed.
    can no longer relabel all twelve claws.
 5. `stableBufferReplacements` now audits every retained typed hot-loop buffer,
    not a representative subset: Rig `14`, Motion `7`, Renderer `5`, and Engine
-   timing/trace `12`, total `38`. The counter means identity replacement only.
+   timing/trace `12`, total `38`. Engine identity reads use the authoritative
+   nested fields directly: the `values` and `scratch` buffers of all three
+   timing rings, plus `timestamp`, `combined`, `update`, `render`, `active`, and
+   `quality` on the performance trace. Trace `cursor`, `count`, and
+   `totalSamples` are scalars; `sequenceStart`/`sequenceEnd` are derived scalar
+   diagnostics, not buffers. The counter means identity replacement only.
    Retained browser heap growth remains a separate CDP measurement.
 6. The visual harness derives pelvis/skull/ribcage geometry from the Art
    manifest rather than obsolete hard-coded coordinates. It now checks torso
    angle, two cable contacts, rear-hook geometry and margin, regional alpha,
    rendered connectivity, and the absence of floor pixels.
-7. Narrative-family figures remain observations, not a falsely fixed public
-   cardinality: the earlier six-hour run observed `31` composed behavior
-   families and `31` primitive families, with no missing primitive family.
+7. Primary narrative families are now an explicit frozen contract derived from
+   the authored template registries: `19` idle, `3` working, `2` waiting, `3`
+   done, `2` dead, and `3` interaction families (`32` total). The five long-run
+   statuses require `29`; the final run covered all `29`, plus two declared
+   safe fallbacks. All `31` primitive families were also covered.
+8. The long-run rejects at `21,700 ms`, `245,933.333 ms`, and `55,400 ms`
+   were traced to the old rectangular pelvis collision box filling transparent
+   chamfers in the pixel art. The pelvis now authors five frozen collision
+   rectangles matching its opaque row spans. Point, segment, endpoint, and
+   contact rejection remain active against their union; no channel, cable,
+   contact, stretch, or collision budget was relaxed.
 
 ## TDD evidence
 
@@ -51,6 +64,13 @@ Task 9 only; no Task 10 release work was performed.
   status instead of the two loaded supports.
 - The buffer regression initially found only the previously sampled
   Rig/Motion/Renderer identities rather than all retained typed buffers.
+- Replacing each of the twelve authoritative Engine arrays individually first
+  left `stableBufferReplacements` unchanged because the audit read mutable
+  top-level aliases. The GREEN implementation snapshots and compares only the
+  nested owners, outside allocation-producing hot-path constructs.
+- `NARRATIVE_FAMILIES` was initially absent, and the coverage helper could only
+  report observed cardinality. The GREEN contract asserts exact per-state
+  names and proves that removing `doze` is reported as a primary-family loss.
 - Atlas-only connectivity found several intentionally separated joint tufts.
   This was not hidden with an aesthetic assertion: atlas mass is bounded to one
   dominant body plus small bridge-owned tufts, while the browser measures the
@@ -112,15 +132,34 @@ was green. Per the instruction to perform one final long browser/capture run,
 the 69-second run was not repeated; the corrected window-intersection function
 is covered by a focused RED/GREEN regression and makes the same recorded trace
 pass without changing any budget.
+- The current Art/IK geometry exposed three deterministic collision REDs:
+  seed 1 recoil at `21,700 ms`, seed 7 transition/celebrate at
+  `245,933.333 ms`, and seed 1 settle at `55,400 ms`. Failed-state
+  instrumentation showed the front-right lower segment touching only
+  transparent atlas padding. Exact focused replays are now GREEN against the
+  authored opaque collision runs.
 
 ## Verification
 
 ```text
 node --test <all tests/perezos/test_*.js except test_long_run.js>
-  208 passed; 0 failed; 11.64s
+  211 passed; 0 failed; 12.945s
 
-node --check dash/perezos/{art,rig,renderer,engine}.js
-node --check tests/e2e_perezos.js
+node --test --test-name-pattern='through recoil sag|through settle sag|seed 7 idle recovery' \
+  tests/perezos/test_long_run.js
+  3 passed; 0 failed; 4.075s
+
+node --test tests/perezos/test_long_run.js
+  7 passed; 0 failed; 327.749s
+  5,184,000 frames; idle signatures=26,480; all signatures=69,516
+  primary narrative families=29/29; primitive families=31/31
+  maxCableStretch=0.003769670581622058
+  maxContactError=6.550880341146756e-14
+  maxCableEnergy=22284.286831462567
+  nonFinite=invalidContacts=deadlineMisses=cooldownViolations=stuckOwners=0
+
+node --check <all changed PerezOS JavaScript>
+bash tests/test_js_parses.sh
   all parsed
 
 pytest -q tests/perezos/test_integration.py tests/test_dashboard_layout.py \
@@ -132,16 +171,19 @@ git diff --check
 ```
 
 The light Node set includes the current 30-minute deterministic cable swing.
-The five-minute `test_long_run.js` six-visible-hour simulation was deliberately
-not repeated during this remediation. Its prior evidence was 4/4 cases,
-5,184,000 frames, zero non-finite/contact/deadline/cooldown/owner failures; that
-evidence predates this Art/IK geometry change and is retained as historical,
-not represented as a fresh current-tree run.
+The final five-minute `test_long_run.js` evidence is from the current tree and
+is stored verbatim at `/tmp/perezos-task9-review-long-run-final.tap`. The two
+earlier current-turn full attempts are retained as failing diagnostic evidence,
+not represented as GREEN: recoil at `21,700 ms` and settle at `55,400 ms`.
 
 ## Terminology and residual risk
 
 - `stableBufferReplacements=0` is an exact identity-stability result for the
-  named 38 retained typed buffers, not a zero-allocation claim.
+  named 38 retained typed buffers, not a zero-allocation claim. Every one of
+  the twelve Engine arrays has an individual replacement-counter regression.
+- Narrative totals distinguish the explicit primary template contract from
+  safe runtime fallbacks: the final run had no missing primary family and two
+  additional safe fallback families.
 - Heap evidence is independently garbage-collected and bounded; current growth
   is `196,648` bytes against a `2,097,152` byte budget.
 - Browser timing remains machine-dependent. The unchanged gates are average

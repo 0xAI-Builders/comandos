@@ -4,6 +4,7 @@ const test = require("node:test");
 const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const path = require("node:path");
+const vm = require("node:vm");
 
 global.window = global;
 require("../../dash/perezos/core.js");
@@ -172,6 +173,24 @@ function context(overrides = {}){
 }
 
 function engineOptions(env){ return {env, decodeLatch:env.decodeLatch}; }
+
+function instrumentedEngineInternals(){
+  const source = fs.readFileSync(enginePath, "utf8");
+  const returnMarker = "    return Object.freeze({setContext, setVisible, setReducedMotion, setViewport,";
+  assert.ok(source.includes(returnMarker), "engine controller return marker changed");
+  const instrumented = source.replace(returnMarker,
+    `    root.__perezosEngineInternal = internal;\n${returnMarker}`);
+  const namespace = {
+    Core:NS.Core, Art:NS.Art, Rig:NS.Rig, Behaviors:NS.Behaviors,
+    Motion:NS.Motion, Renderer:NS.Renderer,
+  };
+  const sandbox = {ComandOSPerezOS:namespace};
+  sandbox.window = sandbox;
+  sandbox.globalThis = sandbox;
+  vm.runInNewContext(instrumented, sandbox, {filename:enginePath});
+  return {createPerezOS:sandbox.ComandOSPerezOS.createPerezOS,
+    internal:() => sandbox.__perezosEngineInternal};
+}
 
 test("engine exports createPerezOS and the controller exact public API", () => {
   assert.equal(typeof E, "function", "ComandOSPerezOS.createPerezOS is undefined");
@@ -714,6 +733,39 @@ if(E){
     controller.destroy();
   });
 
+  test("identity counter detects replacement of each authoritative Engine buffer", () => {
+    const instrumented = instrumentedEngineInternals();
+    const env = fakeEnvironment();
+    const controller = instrumented.createPerezOS(env.canvas, engineOptions(env));
+    controller.setContext(context());
+    const internal = instrumented.internal();
+    const authoritative = [
+      ["timing.values", internal.timing, "values"],
+      ["timing.scratch", internal.timing, "scratch"],
+      ["updateTiming.values", internal.updateTiming, "values"],
+      ["updateTiming.scratch", internal.updateTiming, "scratch"],
+      ["renderTiming.values", internal.renderTiming, "values"],
+      ["renderTiming.scratch", internal.renderTiming, "scratch"],
+      ["performanceTrace.timestamp", internal.performanceTrace, "timestamp"],
+      ["performanceTrace.combined", internal.performanceTrace, "combined"],
+      ["performanceTrace.update", internal.performanceTrace, "update"],
+      ["performanceTrace.render", internal.performanceTrace, "render"],
+      ["performanceTrace.active", internal.performanceTrace, "active"],
+      ["performanceTrace.quality", internal.performanceTrace, "quality"],
+    ];
+    assert.equal(controller.getDiagnostics().stableBufferReplacements, 0);
+    for(let index = 0; index < authoritative.length; index += 1){
+      const [label, owner, field] = authoritative[index];
+      const previous = owner[field];
+      owner[field] = new previous.constructor(previous.length);
+      env.frames.advance(100);
+      assert.equal(controller.getDiagnostics().stableBufferReplacements, index + 1,
+        `${label} authoritative buffer replacement was not counted`);
+    }
+    assert.equal(authoritative.length, 12);
+    controller.destroy();
+  });
+
   test("steady timing and identity instrumentation is preallocated outside the frame loop", () => {
     const source = fs.readFileSync(enginePath, "utf8");
     const traceCreateStart = source.indexOf("function createPerformanceTrace");
@@ -739,6 +791,19 @@ if(E){
       "identity audit must cover every declared Motion typed buffer");
     assert.match(hotPath, /Renderer\.auditBufferIdentities/,
       "identity audit must cover Renderer hot-loop typed buffers");
+    const engineAuditStart = source.indexOf("function compareBufferIdentity");
+    const engineAuditEnd = source.indexOf("function createSession", engineAuditStart);
+    assert.ok(engineAuditStart >= 0 && engineAuditEnd > engineAuditStart);
+    const engineAudit = source.slice(engineAuditStart, engineAuditEnd);
+    assert.doesNotMatch(engineAudit, /\bnew\s+|Array\.from|\.map\s*\(|\.slice\s*\(/,
+      "authoritative Engine identity audit must not allocate in the update hot path");
+    for(const path of ["timing.values", "timing.scratch", "updateTiming.values",
+      "updateTiming.scratch", "renderTiming.values", "renderTiming.scratch",
+      "performanceTrace.timestamp", "performanceTrace.combined", "performanceTrace.update",
+      "performanceTrace.render", "performanceTrace.active", "performanceTrace.quality"]){
+      assert.match(engineAudit, new RegExp(path.replace(".", "\\.")),
+        `${path} is missing from the authoritative Engine audit`);
+    }
   });
 
   test("destroy is idempotent and leaves no callbacks, listeners, or observers", () => {

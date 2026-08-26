@@ -27,6 +27,20 @@ const DRIVE_NAMES = Object.freeze([
   "boredom", "satisfaction", "alertness", "habituation",
 ]);
 
+const EXPECTED_NARRATIVE_FAMILIES = Object.freeze({
+  idle:Object.freeze([
+    "observe", "head-turn", "breathing", "weight-shift", "reach-touch", "search",
+    "cable-comfort", "stretch", "scratch", "groom", "yawn", "doze", "swing",
+    "inspect", "startle", "slip-recover", "pull-cable", "neutral-reset",
+    "small-celebration",
+  ]),
+  working:Object.freeze(["careful-advance", "packet-inspect", "packet-refocus"]),
+  waiting:Object.freeze(["notice-point", "notice-indicate"]),
+  done:Object.freeze(["task-settle", "task-satisfied", "task-relax"]),
+  dead:Object.freeze(["signal-safe-curl", "signal-check-curl"]),
+  interaction:Object.freeze(["interaction-orient", "interaction-touch", "interaction-recoil"]),
+});
+
 function baseContext(status = "idle", overrides = {}){
   return {
     sessionId:"session-test",
@@ -56,6 +70,15 @@ function collect(seed, count, context = baseContext()){
 
 test("behavior namespace is installed", () => {
   assert.ok(B, "ComandOSPerezOS.Behaviors must be defined");
+});
+
+test("primary narrative family contract is exact and loss-detectable by state", () => {
+  assert.deepEqual(B.NARRATIVE_FAMILIES, EXPECTED_NARRATIVE_FAMILIES);
+  assert.equal(Object.isFrozen(B.NARRATIVE_FAMILIES), true);
+  for(const families of Object.values(B.NARRATIVE_FAMILIES)){
+    assert.equal(Object.isFrozen(families), true);
+  }
+  assert.equal(new Set(Object.values(B.NARRATIVE_FAMILIES).flat()).size, 32);
 });
 
 test("primitive registry is exact, complete, and deeply immutable", () => {

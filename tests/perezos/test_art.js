@@ -272,6 +272,40 @@ test("authored clusters reserve one dominant furry body plus only small rig-brid
     `rig-bridged tufts own too much atlas mass: ${components.slice(1)}`);
 });
 
+test("axial collision envelopes are frozen authored silhouette runs", () => {
+  const axial = ["pelvis", "abdomen", "ribcage", "neck-lower", "neck-mid",
+    "neck-upper", "skull"];
+  for(const id of axial){
+    const part = A.PARTS.find(candidate => candidate.id === id);
+    assert.equal(Object.isFrozen(part.collisionRects), true, `${id} collision rectangles`);
+    const [x, y, width, height] = part.bounds;
+    for(const rect of part.collisionRects){
+      assert.equal(Object.isFrozen(rect), true, `${id} collision rectangle`);
+      const [cx, cy, cwidth, cheight] = rect;
+      assert.ok(cx >= x && cy >= y && cx + cwidth <= x + width &&
+        cy + cheight <= y + height, `${id} collision envelope stays inside atlas bounds`);
+    }
+  }
+  assert.deepEqual(A.PARTS.find(part => part.id === "pelvis").collisionRects, [
+    [140,117,22,2], [138,119,26,1], [136,120,30,15],
+    [138,135,26,1], [140,136,22,3],
+  ], "pelvis runs preserve its opaque silhouette while excluding transparent chamfers");
+  const pelvis = A.PARTS.find(part => part.id === "pelvis");
+  const harness = makeCanvasFactory();
+  const atlas = A.buildAtlas(harness.factory, "dark");
+  const opaque = new Set(pixelsInRect(harness, atlas.rects.pelvis, false).keys());
+  const collision = new Set();
+  for(const [x, y, width, height] of pelvis.collisionRects){
+    for(let py = y; py < y + height; py += 1){
+      for(let px = x; px < x + width; px += 1){
+        collision.add(`${px - pelvis.bounds[0]},${py - pelvis.bounds[1]}`);
+      }
+    }
+  }
+  assert.deepEqual(collision, opaque,
+    "pelvis collision rectangles must equal its complete opaque base raster");
+});
+
 test("warm palette and state variants are explicit indexed artwork", () => {
   assert.ok(A.PALETTE.length >= 12);
   assert.ok(A.PALETTE.every(color => /^#[0-9a-f]{6}$/i.test(color)));

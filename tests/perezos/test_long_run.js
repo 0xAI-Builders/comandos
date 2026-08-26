@@ -195,7 +195,7 @@ function recordPerformance(state, performance, report){
   const signature = B.performanceSignature(performance);
   report.allSignatures.add(signature);
   if(performance.state === "idle") report.idleSignatures.add(signature);
-  report.behaviorFamilies.add(performance.family);
+  report.narrativeFamilies.add(performance.family);
   for(const phase of performance.phases) report.primitiveFamilies.add(phase.primitive);
   const cooldown = RARE_COOLDOWNS[performance.family] || 0;
   if(!cooldown) return;
@@ -275,12 +275,25 @@ function signatureSweep(seeds, report){
       const signature = B.performanceSignature(performance);
       report.idleSignatures.add(signature);
       report.allSignatures.add(signature);
-      report.behaviorFamilies.add(performance.family);
+      report.narrativeFamilies.add(performance.family);
       for(const phase of performance.phases) report.primitiveFamilies.add(phase.primitive);
       assert.equal(B.completePerformance(director, performance,
         nowMs + performance.durationMs), true);
     }
   }
+}
+
+function narrativeFamilyCoverage(statuses, observed){
+  const expected = Object.freeze([...new Set(statuses.flatMap(status =>
+    B.NARRATIVE_FAMILIES[status]))].sort());
+  const actual = Object.freeze([...observed].sort());
+  const expectedSet = new Set(expected);
+  return Object.freeze({
+    actual,
+    expected,
+    missing:Object.freeze(expected.filter(family => !observed.has(family))),
+    additional:Object.freeze(actual.filter(family => !expectedSet.has(family))),
+  });
 }
 
 function simulate({seeds, statuses, seconds, hz}){
@@ -301,7 +314,7 @@ function simulate({seeds, statuses, seconds, hz}){
     statusFrames:Object.fromEntries(statuses.map(status => [status, 0])),
     idleSignatures:new Set(),
     allSignatures:new Set(),
-    behaviorFamilies:new Set(),
+    narrativeFamilies:new Set(),
     primitiveFamilies:new Set(),
   };
   signatureSweep(seeds, report);
@@ -369,6 +382,7 @@ function simulate({seeds, statuses, seconds, hz}){
     }
   }
 
+  const narrativeCoverage = narrativeFamilyCoverage(statuses, report.narrativeFamilies);
   return Object.freeze({
     nonFinite:report.nonFinite,
     invalidContacts:report.invalidContacts,
@@ -382,7 +396,10 @@ function simulate({seeds, statuses, seconds, hz}){
     statusFrames:Object.freeze({...report.statusFrames}),
     idleSignatures:report.idleSignatures.size,
     allSignatures:report.allSignatures.size,
-    behaviorFamilies:Object.freeze([...report.behaviorFamilies].sort()),
+    narrativeFamilies:narrativeCoverage.actual,
+    expectedNarrativeFamilies:narrativeCoverage.expected,
+    missingNarrativeFamilies:narrativeCoverage.missing,
+    additionalNarrativeFamilies:narrativeCoverage.additional,
     primitiveFamilies:Object.freeze([...report.primitiveFamilies].sort()),
     missingPrimitiveFamilies:Object.freeze(Object.keys(B.PRIMITIVES)
       .filter(primitive => !report.primitiveFamilies.has(primitive))),
@@ -395,7 +412,7 @@ function runFocused(seed, finalFrame, statusAtFrame){
   const director = B.createDirector(`long-run-${seed}`);
   const motion = M.createMotion(rig);
   const report = {idleSignatures:new Set(), allSignatures:new Set(),
-    behaviorFamilies:new Set(), primitiveFamilies:new Set(), cooldownViolations:0,
+    narrativeFamilies:new Set(), primitiveFamilies:new Set(), cooldownViolations:0,
     stuckOwners:0, maxOwnerAgeMs:0};
   const ownerValues = new Int16Array(R.CHANNELS.length);
   ownerValues.fill(-32768);
@@ -461,10 +478,29 @@ test("working seed 7 does not recover while shift-weight crosses 24 seconds", ()
   runFocused(7, 724, () => "working");
 });
 
+test("right-side cable grips stay outside the diagonal torso through recoil sag", () => {
+  runFocused(1, 651, () => "idle");
+});
+
+test("right-side cable grips stay outside the diagonal torso through settle sag", () => {
+  runFocused(1, 1_662, () => "idle");
+});
+
 test("seed 7 idle recovery remains valid after repeated status transitions", () => {
   const statuses = ["idle", "working", "waiting", "done", "dead"];
   runFocused(7, 35_525, frame =>
     statuses[(Math.floor(frame / (STATUS_WINDOW_SECONDS * 30)) + 1) % statuses.length]);
+});
+
+test("expected narrative coverage reports an exact primary family loss", () => {
+  const statuses = ["idle", "working", "waiting", "done", "dead"];
+  const observed = new Set(statuses.flatMap(status => B.NARRATIVE_FAMILIES[status]));
+  observed.delete("doze");
+  observed.add("notice-safe-observe");
+  const coverage = narrativeFamilyCoverage(statuses, observed);
+  assert.equal(coverage.expected.length, 29);
+  assert.deepEqual(coverage.missing, ["doze"]);
+  assert.deepEqual(coverage.additional, ["notice-safe-observe"]);
 });
 
 test("six visible hours remain finite, supported, diverse, and bounded", {timeout:0}, () => {
@@ -480,6 +516,8 @@ test("six visible hours remain finite, supported, diverse, and bounded", {timeou
   assert.ok(report.maxContactError < 1);
   assert.ok(report.maxCableEnergy <= CABLE_ENERGY_LIMIT);
   assert.ok(report.idleSignatures >= 10_000, `${report.idleSignatures} idle signatures`);
+  assert.equal(report.expectedNarrativeFamilies.length, 29);
+  assert.deepEqual(report.missingNarrativeFamilies, []);
   assert.deepEqual(report.missingPrimitiveFamilies, []);
   for(const frames of Object.values(report.statusFrames)) assert.ok(frames > 0);
   process.stdout.write(`\nPEREZOS_LONG_RUN ${JSON.stringify(report)}\n`);
