@@ -126,6 +126,36 @@ GREEN restores the authored light/dark cable-metal index, bounds theme colors
 to the allowed rim/deep-shadow/node/prop pixels, and reuses one module-level
 hex pattern covered by the expanded hot-path source audit.
 
+### Local dev-proxy security remediation
+
+The real `devhost` checkpoint reproduced the integration bug before the fix:
+
+```text
+http://comandos-perezos.localhost/       -> 403 Host no permitido
+http://comandos-perezos.localhost/state  -> 403 Host no permitido
+http://127.0.0.1:7383/                   -> 200
+http://127.0.0.1:7383/state              -> 200
+```
+
+Five incremental RED/GREEN cycles now cover:
+
+- RFC-style `localhost` subdomains and bounded ports, while malformed labels,
+  arbitrary suffixes, paths, and invalid ports remain rejected;
+- tokenless local proxy access only when the socket peer is loopback, Host is
+  `localhost`/`*.localhost`, Origin remains allowed, and every IP in XFF is
+  loopback, including IPv4-mapped IPv6;
+- duplicate XFF header fields as one security chain, so a non-loopback value in
+  any field keeps the token requirement.
+- empty, whitespace-only, or partially empty XFF fields as present-but-invalid
+  proxy metadata rather than accidentally treating them as a direct request;
+- exactly one Host, at most one nonempty Origin, direct tokenless authority
+  restricted to localhost or loopback literals, and the 253-character RFC
+  hostname boundary.
+
+Remote/tailnet hosts, non-loopback peers, malformed XFF, mixed XFF chains, and
+local-looking IP Hosts with XFF still require the existing token. Foreign
+Origins still fail before authentication. The server bind remains loopback.
+
 ## Verification
 
 - Focused Task 8 dashboard/integration suite: 32/32 passing.
@@ -137,6 +167,11 @@ hex pattern covered by the expanded hot-path source audit.
 - Formal read-only remediation re-review: `Ready: Yes`, with no remaining
   Critical or Important findings after restoring authored cable metal and
   moving the hex validator pattern out of the render path.
+- Local proxy security unit suite: 17/17 passing.
+- Remote/security regression suite: 141/141 passing.
+- Formal local-proxy security re-review: `Ready: Yes`, with 0 remaining
+  Critical or Important findings after covering ambiguous headers, tailnet
+  direct access, and the RFC hostname-length boundary.
 - Source scan: no old character art/name/runtime/CSS/phrase remains in the
   active dashboard; the single `cc-axo` occurrence is the required read-only
   migration read.
@@ -153,8 +188,9 @@ hex pattern covered by the expanded hot-path source audit.
 - `tests/perezos/test_renderer.js`
 - `tests/test_dashboard_layout.py`
 - `tests/test_remote_ui.py` (direct SW v3 expectation update)
-- `bin/cc-dash` (comment only)
+- `bin/cc-dash` (Task 8 backend comment plus localhost proxy security gate)
 - `bin/cc-app` (comment only)
+- `tests/test_dashboard_security.py` (new)
 - `.superpowers/sdd/perezos-task-8-report.md` (new)
 
 ## Self-review
@@ -182,6 +218,9 @@ hex pattern covered by the expanded hot-path source audit.
   construction count.
 - Existing session text and actions remain authoritative and visible when the
   mascot preference is off.
+- Local proxy trust is conjunctive rather than header-based: a remote or mixed
+  XFF chain cannot become tokenless merely by presenting a `*.localhost` Host.
+  Tailscale token and Origin anti-CSRF behavior is unchanged.
 
 ## Real checkpoint for screenshot
 

@@ -19,6 +19,7 @@ Solo escucha en 127.0.0.1. Todas las llamadas a tmux van sin shell (sin inyeccio
 import base64
 import html as html_mod
 import hmac, secrets
+import ipaddress
 import json, os, glob, re, shlex, shutil, sys, subprocess, threading, time, webbrowser
 import urllib.parse, urllib.request
 import http.server, socketserver
@@ -1204,10 +1205,48 @@ def access_token():
     return t
 
 
-# Hosts aceptados en la cabecera Host (anti DNS-rebinding): loopback y tailnet.
+# Hosts aceptados en la cabecera Host (anti DNS-rebinding): nombres RFC bajo
+# localhost, loopback literal y tailnet. Cada label impide guiones de borde.
+_HOST_LABEL = r"[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?"
+_HOST_PORT = (r"(?:[0-9]{1,4}|[1-5][0-9]{4}|6[0-4][0-9]{3}|"
+              r"65[0-4][0-9]{2}|655[0-2][0-9]|6553[0-5])")
+_LOOPBACK_LITERAL = r"(?:127\.0\.0\.1|\[::1\]|\[::ffff:127\.0\.0\.1\])"
+LOCALHOST_OK_RE = re.compile(
+    rf"^(?:{_HOST_LABEL}\.)*localhost(?::{_HOST_PORT})?$", re.IGNORECASE)
+DIRECT_LOCAL_OK_RE = re.compile(
+    rf"^(?:(?:{_HOST_LABEL}\.)*localhost|{_LOOPBACK_LITERAL})"
+    rf"(?::{_HOST_PORT})?$", re.IGNORECASE)
 HOST_OK_RE = re.compile(
-    r"^(localhost|127\.0\.0\.1|\[::1\]|\[::ffff:127\.0\.0\.1\])(:\d+)?$"
-    r"|^[a-z0-9-]+(\.[a-z0-9-]+)*\.ts\.net(:\d+)?$", re.IGNORECASE)
+    rf"^(?:(?:{_HOST_LABEL}\.)*localhost|{_LOOPBACK_LITERAL}|"
+    rf"{_HOST_LABEL}(?:\.{_HOST_LABEL})*\.ts\.net)"
+    rf"(?::{_HOST_PORT})?$", re.IGNORECASE)
+
+
+def _authority_matches(pattern, authority):
+    if not authority or not pattern.fullmatch(authority):
+        return False
+    if authority.startswith("["):
+        hostname = authority.partition("]")[0] + "]"
+    else:
+        hostname = authority.rpartition(":")[0] if ":" in authority else authority
+    return len(hostname) <= 253
+
+
+def _ip_is_loopback(value):
+    try:
+        address = ipaddress.ip_address((value or "").strip())
+    except ValueError:
+        return False
+    if address.is_loopback:
+        return True
+    mapped = getattr(address, "ipv4_mapped", None)
+    return bool(mapped and mapped.is_loopback)
+
+
+def _xff_is_loopback_chain(value):
+    parts = (value or "").split(",")
+    return bool(value) and all(part.strip() and _ip_is_loopback(part)
+                               for part in parts)
 
 # Terminales soportadas para abrir sesiones, en orden de preferencia.
 # Se puede forzar una con TERMINAL_CMD=kitty|tilix|gnome-terminal en cc-notify.conf
@@ -3062,7 +3101,14 @@ class Handler(http.server.SimpleHTTPRequestHandler):
 
     def _peer_is_loopback(self):
         ip = (self.client_address[0] if self.client_address else "")
-        return ip in ("127.0.0.1", "::1", "::ffff:127.0.0.1")
+        return _ip_is_loopback(ip)
+
+    def _header_values(self, name):
+        get_all = getattr(self.headers, "get_all", None)
+        if get_all:
+            return get_all(name) or []
+        value = self.headers.get(name)
+        return [value] if value is not None else []
 
     def _security_gate(self):
         """Devuelve None si la peticion puede continuar, o (code, obj) si se
@@ -3073,19 +3119,33 @@ class Handler(http.server.SimpleHTTPRequestHandler):
               llegaria como loopback; pero el navegador SIEMPRE manda Origin
               en cross-origin, y ahi lo rechazamos.
           (3) Token para remoto/proxeado (tailscale serve pone X-Forwarded-For).
-        Localhost DIRECTO de un cliente NO-navegador (sin Origin) no necesita
-        token: la app GTK y el propio navegador local (Origin propio) pasan."""
-        host = self.headers.get("Host", "")
-        if host and not HOST_OK_RE.match(host):
+        Localhost directo no necesita token. Un proxy de desarrollo bajo
+        *.localhost tampoco, pero solo cuando el peer y la cadena XFF completa
+        son loopback; cualquier salto no-local conserva el requisito de token."""
+        host_values = self._header_values("Host")
+        if len(host_values) != 1:
             return 403, {"error": "Host no permitido"}
-        origin = self.headers.get("Origin", "")
-        if origin:
+        host = host_values[0]
+        if not _authority_matches(HOST_OK_RE, host):
+            return 403, {"error": "Host no permitido"}
+        origin_values = self._header_values("Origin")
+        if len(origin_values) > 1:
+            return 403, {"error": "Origen no permitido"}
+        if origin_values:
+            origin = origin_values[0]
             import urllib.parse
             oh = urllib.parse.urlparse(origin).netloc
-            if not oh or not HOST_OK_RE.match(oh):
+            if not _authority_matches(HOST_OK_RE, oh):
                 return 403, {"error": "Origen no permitido"}
-        proxied = bool(self.headers.get("X-Forwarded-For"))
-        if self._peer_is_loopback() and not proxied:
+        forwarded_values = self._header_values("X-Forwarded-For")
+        forwarded_for = ",".join(forwarded_values)
+        local_peer = self._peer_is_loopback()
+        direct_local = (local_peer and not forwarded_values
+                        and _authority_matches(DIRECT_LOCAL_OK_RE, host))
+        trusted_dev_proxy = (local_peer and bool(forwarded_values)
+                             and _authority_matches(LOCALHOST_OK_RE, host)
+                             and _xff_is_loopback_chain(forwarded_for))
+        if direct_local or trusted_dev_proxy:
             return None
         if hmac.compare_digest(self._presented_token(), access_token()):
             return None
@@ -3099,8 +3159,8 @@ class Handler(http.server.SimpleHTTPRequestHandler):
                "/webterm-token")
 
     def do_GET(self):
-        host = self.headers.get("Host", "")
-        if host and not HOST_OK_RE.match(host):
+        host_values = self._header_values("Host")
+        if len(host_values) != 1 or not _authority_matches(HOST_OK_RE, host_values[0]):
             return self._json(403, {"error": "Host no permitido"})
         if any(self.path.startswith(p) for p in self.API_GET):
             gate = self._security_gate()
