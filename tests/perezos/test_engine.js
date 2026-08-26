@@ -72,6 +72,8 @@ function fakeEnvironment(options = {}){
   const resizes = [];
   const observerRecords = [];
   const costs = {update:0, render:0};
+  const decodeLatch = {failed:false, attempts:0};
+  let decodeAttempts = 0;
 
   class IntersectionObserver {
     constructor(callback){
@@ -81,7 +83,10 @@ function fakeEnvironment(options = {}){
       intersections.push(this);
       observerRecords.push(this);
     }
-    observe(target){ this.observed.add(target); }
+    observe(target){
+      this.observed.add(target);
+      if(options.autoIntersect !== false) this.emit(true);
+    }
     disconnect(){ this.disconnected = true; this.observed.clear(); }
     emit(isIntersecting){
       this.callback([{target:canvas, isIntersecting, intersectionRatio:isIntersecting ? 1 : 0}]);
@@ -133,12 +138,13 @@ function fakeEnvironment(options = {}){
     devicePixelRatio:options.dpr || 2,
     requestAnimationFrame,
     cancelAnimationFrame,
-    IntersectionObserver,
+    IntersectionObserver:options.noIntersectionObserver ? undefined : IntersectionObserver,
     ResizeObserver,
     matchMedia(){ return media; },
     now(){ return now; },
     sampleCost(kind, measured){ return costs[kind] ?? measured; },
     canvasFactory(width, height){
+      decodeAttempts += 1;
       if(options.decodeFailure) throw new Error("synthetic atlas decode failure");
       const offscreen = canvasFixture(width, height);
       return offscreen;
@@ -148,6 +154,8 @@ function fakeEnvironment(options = {}){
     resizes,
     media,
     costs,
+    decodeLatch,
+    decodeAttempts(){ return decodeAttempts; },
     listenerCount(){ return document.totalListeners() + media.totalListeners(); },
     observerRecords,
   };
@@ -215,6 +223,39 @@ if(E){
     controller.destroy();
   });
 
+  test("context diffs become bounded habituable Behavior perceptions", () => {
+    const env = fakeEnvironment();
+    const controller = E(env.canvas, {env});
+    const changes = [
+      {status:"working"},
+      {status:"working", role:"build"},
+      {status:"working", role:"build", contextPressure:"high"},
+      {status:"working", role:"build", contextPressure:"high", expanded:true},
+      {status:"working", role:"build", contextPressure:"high", expanded:true,
+        theme:"dia"},
+      {status:"working", role:"build", contextPressure:"high", expanded:true,
+        theme:"dia", costume:"visor"},
+    ];
+    let current = context();
+    for(const change of changes){
+      current = {...current, ...change};
+      assert.equal(controller.setContext(current), true);
+    }
+    const first = controller.getDiagnostics();
+    assert.deepEqual(first.perceptions.byField, {
+      status:1, role:1, contextPressure:1, expanded:1, theme:1, costume:1,
+    });
+    assert.equal(first.perceptions.total, 6);
+    assert.ok(first.pendingBehaviorInteractions > 0);
+    assert.ok(first.habituation > 0);
+    const beforeRepeat = first.habituation;
+    controller.setContext({...current, expanded:false});
+    controller.setContext({...current, expanded:true});
+    assert.ok(controller.getDiagnostics().habituation > beforeRepeat,
+      "repeated same-field perceptions must habituate through Behaviors.notify");
+    controller.destroy();
+  });
+
   test("session changes reset living state but recreate a stable deterministic personality", () => {
     const env = fakeEnvironment();
     const controller = E(env.canvas, {env});
@@ -228,6 +269,27 @@ if(E){
     assert.equal(alphaAgain.personalitySignature, alpha.personalitySignature);
     assert.equal(alphaAgain.rendererIdentity, alpha.rendererIdentity);
     assert.equal(alphaAgain.sessionGeneration, alpha.sessionGeneration + 2);
+    controller.destroy();
+  });
+
+  test("a new session restarts director and Motion on session-local visible time", () => {
+    const env = fakeEnvironment();
+    const controller = E(env.canvas, {env});
+    controller.setContext(context({sessionId:"old-session", status:"working"}));
+    env.frames.advance(5000);
+    const old = controller.getDiagnostics();
+    assert.ok(old.visibleTimeMs > 1000);
+    assert.ok(old.sessionVisibleTimeMs > 1000);
+    controller.setContext(context({sessionId:"fresh-session", status:"idle"}));
+    const fresh = controller.getDiagnostics();
+    assert.equal(fresh.sessionVisibleTimeMs, 0);
+    assert.equal(fresh.behaviorVisibleTimeMs, 0);
+    assert.equal(fresh.motionStartedAtMs, 0);
+    assert.ok(fresh.visibleTimeMs >= old.visibleTimeMs,
+      "controller-visible time remains a cumulative diagnostic");
+    env.frames.advance(250);
+    const advanced = controller.getDiagnostics();
+    assert.ok(advanced.sessionVisibleTimeMs > 0 && advanced.sessionVisibleTimeMs <= 250);
     controller.destroy();
   });
 
@@ -286,6 +348,29 @@ if(E){
     controller.destroy();
   });
 
+  test("IntersectionObserver gates all work until its first sample", () => {
+    const env = fakeEnvironment({autoIntersect:false});
+    const controller = E(env.canvas, {env});
+    controller.setContext(context({status:"working"}));
+    assert.equal(env.frames.pending(), 0);
+    env.frames.advance(1000);
+    const beforeSample = controller.getDiagnostics();
+    assert.equal(beforeSample.wakeups, 0);
+    assert.equal(beforeSample.updates, 0);
+    assert.equal(beforeSample.renders, 0);
+    env.intersections[0].emit(true);
+    env.frames.advance(250);
+    assert.ok(controller.getDiagnostics().updates > 0);
+    controller.destroy();
+
+    const noObserverEnv = fakeEnvironment({noIntersectionObserver:true});
+    const noObserver = E(noObserverEnv.canvas, {env:noObserverEnv});
+    noObserverEnv.frames.advance(250);
+    assert.ok(noObserver.getDiagnostics().updates > 0,
+      "without IntersectionObserver the visible controller must still run");
+    noObserver.destroy();
+  });
+
   test("pointer proximity is sampled at no more than 10 Hz and drives habituation", () => {
     const env = fakeEnvironment();
     const controller = E(env.canvas, {env});
@@ -313,6 +398,25 @@ if(E){
     env.frames.advance(800);
     assert.equal(controller.notifyInteraction("activate", 128, 104), true);
     assert.ok(controller.getDiagnostics().habituation > first);
+    controller.destroy();
+  });
+
+  test("accepted interaction requests a safe Motion interruption before it can expire", () => {
+    const env = fakeEnvironment();
+    const controller = E(env.canvas, {env});
+    env.frames.advance(300);
+    const before = controller.getDiagnostics();
+    assert.ok(before.motionCurrentFamily, "fixture needs an active idle performance");
+    assert.equal(controller.notifyInteraction("activate", 128, 104), true);
+    const requested = controller.getDiagnostics();
+    assert.ok(requested.motionPendingFamily || requested.motionCurrentState === "interaction",
+      "Behavior interaction must be handed to Motion immediately");
+    assert.equal(requested.interactionInterruptRequests, 1);
+    env.frames.advance(5000);
+    const reached = controller.getDiagnostics();
+    assert.ok(reached.interactionAcknowledgementsStarted >= 1,
+      "safe-boundary interruption must reach the acknowledgement before expiry");
+    assert.equal(reached.solverRecoveries, 0);
     controller.destroy();
   });
 
@@ -360,6 +464,73 @@ if(E){
     controller.destroy();
   });
 
+  test("governor downgrade and upgrade preserve pose, contacts, phase, and RNG state", () => {
+    const continuity = diagnostics => {
+      assert.equal(typeof diagnostics.poseHash, "string");
+      assert.equal(typeof diagnostics.contactSignature, "string");
+      assert.equal(typeof diagnostics.randomState, "number");
+      return {
+        poseHash:diagnostics.poseHash,
+        contactSignature:diagnostics.contactSignature,
+        motionCurrentFamily:diagnostics.motionCurrentFamily,
+        motionCurrentState:diagnostics.motionCurrentState,
+        motionPhase:diagnostics.motionPhase,
+        motionPhaseIndex:diagnostics.motionPhaseIndex,
+        randomState:diagnostics.randomState,
+      };
+    };
+    const advancePair = (left, right, milliseconds = 1000 / 60) => {
+      left.frames.advance(milliseconds);
+      right.frames.advance(milliseconds);
+    };
+
+    const high = fakeEnvironment();
+    const baseline = fakeEnvironment();
+    const highController = E(high.canvas, {env:high});
+    const baselineController = E(baseline.canvas, {env:baseline});
+    highController.setContext(context({status:"working"}));
+    baselineController.setContext(context({status:"working"}));
+    high.costs.update = 0.8; high.costs.render = 1.5;
+    baseline.costs.update = 0.1; baseline.costs.render = 0.1;
+    for(let frame = 0; frame < 1800 && highController.getDiagnostics().quality === "full";
+        frame += 1){
+      advancePair(high, baseline);
+    }
+    assert.equal(highController.getDiagnostics().quality, "balanced");
+    assert.equal(baselineController.getDiagnostics().quality, "full");
+    assert.deepEqual(continuity(highController.getDiagnostics()),
+      continuity(baselineController.getDiagnostics()));
+    highController.destroy();
+    baselineController.destroy();
+
+    const upgrade = fakeEnvironment();
+    const balanced = fakeEnvironment();
+    const upgradeController = E(upgrade.canvas, {env:upgrade});
+    const balancedController = E(balanced.canvas, {env:balanced});
+    upgradeController.setContext(context({status:"working"}));
+    balancedController.setContext(context({status:"working"}));
+    upgrade.costs.update = 0.8; upgrade.costs.render = 1.5;
+    balanced.costs.update = 0.8; balanced.costs.render = 1.5;
+    for(let frame = 0; frame < 1800 && upgradeController.getDiagnostics().quality === "full";
+        frame += 1){
+      advancePair(upgrade, balanced);
+    }
+    assert.equal(upgradeController.getDiagnostics().quality, "balanced");
+    assert.equal(balancedController.getDiagnostics().quality, "balanced");
+    upgrade.costs.update = 0.1; upgrade.costs.render = 0.1;
+    balanced.costs.update = 0.4; balanced.costs.render = 0.4;
+    for(let frame = 0; frame < 5000 && upgradeController.getDiagnostics().quality !== "full";
+        frame += 1){
+      advancePair(upgrade, balanced);
+    }
+    assert.equal(upgradeController.getDiagnostics().quality, "full");
+    assert.equal(balancedController.getDiagnostics().quality, "balanced");
+    assert.deepEqual(continuity(upgradeController.getDiagnostics()),
+      continuity(balancedController.getDiagnostics()));
+    upgradeController.destroy();
+    balancedController.destroy();
+  });
+
   test("device and compact viewport ceilings prevent inappropriate upgrades", () => {
     const weakEnv = fakeEnvironment({hardwareConcurrency:2, deviceMemory:2});
     const weak = E(weakEnv.canvas, {env:weakEnv});
@@ -377,6 +548,37 @@ if(E){
     controller.destroy();
   });
 
+  test("viewport state commits only after Renderer acceptance and fallback enforces safe bounds", () => {
+    const env = fakeEnvironment();
+    const controller = E(env.canvas, {env});
+    const before = controller.getDiagnostics();
+    const oldWidth = env.canvas.width;
+    let storedHeight = env.canvas.height;
+    Object.defineProperty(env.canvas, "height", {
+      configurable:true,
+      get(){ return storedHeight; },
+      set(value){
+        if(value !== storedHeight) throw new Error("hostile height");
+        storedHeight = value;
+      },
+    });
+    assert.equal(controller.setViewport(120, 90, 2), false);
+    const rejected = controller.getDiagnostics();
+    assert.deepEqual(rejected.viewport, before.viewport);
+    assert.equal(rejected.qualityCeiling, before.qualityCeiling);
+    assert.equal(env.canvas.width, oldWidth, "Renderer rollback must restore backing width");
+    controller.destroy();
+
+    const fallbackEnv = fakeEnvironment({decodeFailure:true});
+    const fallback = E(fallbackEnv.canvas, {env:fallbackEnv});
+    const fallbackBefore = fallback.getDiagnostics();
+    const backing = [fallbackEnv.canvas.width, fallbackEnv.canvas.height];
+    assert.equal(fallback.setViewport(9000, 9000, 4), false);
+    assert.deepEqual(fallback.getDiagnostics().viewport, fallbackBefore.viewport);
+    assert.deepEqual([fallbackEnv.canvas.width, fallbackEnv.canvas.height], backing);
+    fallback.destroy();
+  });
+
   test("atlas decode failure enters a one-shot compact static fallback", () => {
     const env = fakeEnvironment({decodeFailure:true});
     const controller = E(env.canvas, {env});
@@ -391,6 +593,21 @@ if(E){
     env.frames.advance(100);
     assert.equal(controller.getDiagnostics().decodeFailures, 1, "must never retry decode");
     controller.destroy();
+  });
+
+  test("decode failure latch is shared across controllers without retrying", () => {
+    const env = fakeEnvironment({decodeFailure:true});
+    const first = E(env.canvas, {env});
+    assert.equal(env.decodeAttempts(), 1);
+    assert.equal(first.getDiagnostics().decodeAttempts, 1);
+    const secondCanvas = canvasFixture();
+    const second = E(secondCanvas, {env});
+    assert.equal(env.decodeAttempts(), 1, "second controller must honor the page latch");
+    assert.equal(second.getDiagnostics().fallback, true);
+    assert.equal(second.getDiagnostics().decodeAttempts, 0);
+    assert.equal(second.getDiagnostics().sharedDecodeFailure, true);
+    first.destroy();
+    second.destroy();
   });
 
   test("hot-loop buffers stay stable and diagnostics report measured counters", () => {

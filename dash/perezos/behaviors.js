@@ -605,6 +605,7 @@
       visibleTimeMs:{enumerable:true, get(){ return internal.visibleTimeMs; }},
       pendingInteractions:{enumerable:true, get(){ return pendingInteractionCount(internal); }},
       completions:{enumerable:true, get(){ return internal.completions; }},
+      randomState:{get(){ return internal.actionRng.state; }},
     });
     Object.freeze(director);
     DIRECTORS.set(director, internal);

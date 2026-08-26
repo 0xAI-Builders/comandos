@@ -34,6 +34,13 @@
     neutral:true, breathe:true, blink:true, refocus:true, perceive:true,
     "orient-gaze":true, "turn-head":true, settle:true, inspect:true, doze:true,
   });
+  const PERCEPTION_FIELDS = Object.freeze([
+    "status", "role", "contextPressure", "expanded", "theme", "costume",
+  ]);
+  const CONTACT_LIMBS = Object.freeze([
+    "front-left", "front-right", "rear-left", "rear-right",
+  ]);
+  const MODULE_DECODE_LATCH = {failed:false};
   let nextIdentity = 1;
 
   function cleanString(value, fallback, maxLength){
@@ -171,6 +178,8 @@
       canvasFactory:options && typeof options.canvasFactory === "function" ?
         options.canvasFactory : typeof env.canvasFactory === "function" ?
           env.canvasFactory.bind(env) : undefined,
+      decodeLatch:env.decodeLatch && typeof env.decodeLatch === "object" ?
+        env.decodeLatch : MODULE_DECODE_LATCH,
       dpr:Number(env.devicePixelRatio) || Number(root.devicePixelRatio) || 1,
     };
   }
@@ -196,6 +205,10 @@
     internal.director = director;
     internal.motion = motion;
     internal.activePerformance = null;
+    internal.sessionTimeMs = 0;
+    internal.lastWakeMs = -1;
+    internal.accumulatorMs = 0;
+    internal.updateImmediately = true;
     internal.sessionGeneration += 1;
     internal.rigIdentity = nextIdentity++;
     internal.personalitySignature = personalitySignature(director.personality);
@@ -203,7 +216,7 @@
       if(record.status === "completed" && internal.activePerformance &&
          record.family === internal.activePerformance.family){
         Behaviors.completePerformance(internal.director, internal.activePerformance,
-          internal.visibleTimeMs);
+          record.endedAtMs);
         internal.activePerformance = null;
       }
     };
@@ -229,9 +242,42 @@
 
   function ensurePerformance(internal){
     if(!Motion.isIdle(internal.motion)) return;
-    const performance = Behaviors.nextPerformance(internal.director, internal.visibleTimeMs);
-    if(Motion.enqueue(internal.motion, performance, internal.visibleTimeMs)){
+    const performance = Behaviors.nextPerformance(internal.director, internal.sessionTimeMs);
+    if(Motion.enqueue(internal.motion, performance, internal.sessionTimeMs)){
       internal.activePerformance = performance;
+    }
+  }
+
+  function handoffDirectorPerformance(internal, directInteraction){
+    const performance = Behaviors.nextPerformance(internal.director, internal.sessionTimeMs);
+    if(Motion.isIdle(internal.motion)){
+      if(!Motion.enqueue(internal.motion, performance, internal.sessionTimeMs)) return false;
+      internal.activePerformance = performance;
+      if(performance.state === "interaction") internal.interactionAcknowledgementsStarted += 1;
+      return true;
+    }
+    if(internal.motion.current === performance || internal.motion.pendingInterrupt === performance){
+      return false;
+    }
+    if(!Motion.requestInterrupt(internal.motion, performance, internal.sessionTimeMs)) return false;
+    internal.activePerformance = performance;
+    if(directInteraction) internal.interactionInterruptRequests += 1;
+    return true;
+  }
+
+  function emitContextPerceptions(internal, previous, next){
+    for(let index = 0; index < PERCEPTION_FIELDS.length; index += 1){
+      const field = PERCEPTION_FIELDS[index];
+      if(previous[field] === next[field]) continue;
+      if(Behaviors.notify(internal.director, {
+        type:"interaction",
+        target:`context:${field}`,
+        side:internal.director.personality.preferredSide,
+        intensity:field === "status" ? 0.55 : 0.32,
+      }, internal.sessionTimeMs)){
+        internal.perceptionCounts[field] += 1;
+        internal.perceptionTotal += 1;
+      }
     }
   }
 
@@ -333,10 +379,16 @@
 
   function updateFrame(internal, stepMs){
     const start = internal.browser.now();
+    const stateBefore = internal.motion.current ? internal.motion.current.state : "";
     ensurePerformance(internal);
-    const solved = Motion.stepMotion(internal.motion, stepMs / 1000, internal.visibleTimeMs);
+    const solved = Motion.stepMotion(internal.motion, stepMs / 1000, internal.sessionTimeMs);
     internal.visibleTimeMs += stepMs;
+    internal.sessionTimeMs += stepMs;
     internal.updates += 1;
+    const stateAfter = internal.motion.current ? internal.motion.current.state : "";
+    if(stateBefore !== "interaction" && stateAfter === "interaction"){
+      internal.interactionAcknowledgementsStarted += 1;
+    }
     if(stepMs > internal.maxStepMs) internal.maxStepMs = stepMs;
     if(!solved) internal.motionFailures += 1;
     auditBufferIdentities(internal);
@@ -415,25 +467,57 @@
     }
   }
 
-  function applyViewport(internal, width, height, dpr){
+  function validViewport(width, height, dpr){
     if(!Number.isFinite(width) || !Number.isFinite(height) || !Number.isFinite(dpr) ||
-       width <= 0 || height <= 0 || dpr <= 0) return false;
+       width <= 0 || height <= 0 || dpr <= 0) return null;
     width = Math.floor(width);
     height = Math.floor(height);
     dpr = Math.max(1, Math.floor(dpr));
-    if(width === internal.viewportWidth && height === internal.viewportHeight &&
-       dpr === internal.dpr) return false;
-    internal.viewportWidth = width;
-    internal.viewportHeight = height;
-    internal.dpr = dpr;
-    updateCeiling(internal);
-    if(internal.renderer) Renderer.setViewport(internal.renderer, width, height, dpr);
-    else{
+    const backingWidth = width * dpr;
+    const backingHeight = height * dpr;
+    if(!Number.isSafeInteger(backingWidth) || !Number.isSafeInteger(backingHeight) ||
+       backingWidth < 1 || backingHeight < 1 || backingWidth > 8192 ||
+       backingHeight > 8192) return null;
+    return {width, height, dpr, backingWidth, backingHeight};
+  }
+
+  function setFallbackViewport(internal, viewport){
+    let oldWidth;
+    let oldHeight;
+    try{
+      oldWidth = internal.canvas.width;
+      oldHeight = internal.canvas.height;
       try{
-        internal.canvas.width = width * dpr;
-        internal.canvas.height = height * dpr;
-      }catch(error){ /* fallback keeps its last usable backing store */ }
+        if(oldWidth !== viewport.backingWidth) internal.canvas.width = viewport.backingWidth;
+        if(oldHeight !== viewport.backingHeight) internal.canvas.height = viewport.backingHeight;
+        if(internal.canvas.width !== viewport.backingWidth ||
+           internal.canvas.height !== viewport.backingHeight){
+          throw new Error("fallback canvas rejected viewport dimensions");
+        }
+      }catch(error){
+        try{
+          if(internal.canvas.width !== oldWidth) internal.canvas.width = oldWidth;
+          if(internal.canvas.height !== oldHeight) internal.canvas.height = oldHeight;
+        }catch(rollbackError){ /* hostile fallback canvas remains safely rejected */ }
+        return false;
+      }
+      return true;
+    }catch(error){
+      return false;
     }
+  }
+
+  function applyViewport(internal, width, height, dpr){
+    const viewport = validViewport(width, height, dpr);
+    if(!viewport || (viewport.width === internal.viewportWidth &&
+       viewport.height === internal.viewportHeight && viewport.dpr === internal.dpr)) return false;
+    const accepted = internal.renderer ? Renderer.setViewport(internal.renderer,
+      viewport.width, viewport.height, viewport.dpr) : setFallbackViewport(internal, viewport);
+    if(!accepted) return false;
+    internal.viewportWidth = viewport.width;
+    internal.viewportHeight = viewport.height;
+    internal.dpr = viewport.dpr;
+    updateCeiling(internal);
     internal.staticDirty = true;
     schedule(internal);
     return true;
@@ -514,13 +598,15 @@
       timingValues:timing.values, timingScratch:timing.scratch,
       rig:null, director:null, motion:null, activePerformance:null,
       bufferValues:null, bufferTargets:null, bufferOwners:null,
-      sessionGeneration:0, personalitySignature:"",
+      sessionGeneration:0, sessionTimeMs:0, personalitySignature:"",
       viewportWidth:0, viewportHeight:0, dpr:0,
       deviceCeiling:deviceCeiling(browser), viewportCeiling:QUALITY.FULL,
       qualityCeiling:QUALITY.FULL, quality:QUALITY.FULL,
-      userVisible:options.visible !== false, intersecting:true,
+      userVisible:options.visible !== false,
+      intersecting:browser.IntersectionObserver ? false : true,
       explicitReduced:false, mediaReduced:!!(media && media.matches), reduced:false,
-      fallback:false, decodeFailures:0, destroyed:false, staticDirty:true,
+      fallback:false, decodeFailures:0, decodeAttempts:0,
+      sharedDecodeFailure:false, destroyed:false, staticDirty:true,
       frameId:0, lastWakeMs:-1, accumulatorMs:0, updateImmediately:true,
       visibleTimeMs:0, maxStepMs:0, wakeups:0, updates:0, renders:0,
       skippedCleanRenders:0, motionFailures:0, qualityTransitions:0,
@@ -529,6 +615,10 @@
       pointerAccepted:0, pointerDropped:0, activationAccepted:0,
       activationDropped:0, lastPointerMs:-POINTER_INTERVAL_MS,
       lastActivationMs:-ACTIVATION_INTERVAL_MS,
+      interactionInterruptRequests:0, interactionAcknowledgementsStarted:0,
+      perceptionTotal:0,
+      perceptionCounts:{status:0, role:0, contextPressure:0, expanded:0, theme:0,
+        costume:0},
       listenerCount:0, observerCount:0, visibilityRegistered:false,
       mediaMode:0, intersectionObserver:null, resizeObserver:null,
       frameCallback:null, visibilityListener:null, mediaListener:null,
@@ -536,16 +626,26 @@
     };
     internal.reduced = internal.explicitReduced || internal.mediaReduced;
     createSession(internal, internal.context.sessionId);
-    try{
-      internal.renderer = Renderer.createRenderer(canvas, {
-        canvasFactory:browser.canvasFactory,
-        theme:paletteTheme(internal.context.theme),
-      });
-    }catch(error){
+    if(browser.decodeLatch.failed){
       internal.fallback = true;
-      internal.decodeFailures = 1;
+      internal.sharedDecodeFailure = true;
       try{ internal.fallbackContext = canvas.getContext("2d", {alpha:true}); }
       catch(contextError){ internal.fallbackContext = null; }
+    }else{
+      try{
+        internal.decodeAttempts += 1;
+        internal.renderer = Renderer.createRenderer(canvas, {
+          canvasFactory:browser.canvasFactory,
+          theme:paletteTheme(internal.context.theme),
+        });
+      }catch(error){
+        browser.decodeLatch.failed = true;
+        internal.fallback = true;
+        internal.decodeFailures = 1;
+        internal.sharedDecodeFailure = true;
+        try{ internal.fallbackContext = canvas.getContext("2d", {alpha:true}); }
+        catch(contextError){ internal.fallbackContext = null; }
+      }
     }
     internal.frameCallback = timestamp => runWakeup(internal, timestamp);
     internal.visibilityListener = () => refreshScheduling(internal);
@@ -585,18 +685,13 @@
       if(internal.destroyed) return false;
       const next = normalizeContext(input);
       if(contextsEqual(internal.context, next)) return false;
-      const sessionChanged = next.sessionId !== internal.context.sessionId;
+      const previous = internal.context;
+      const sessionChanged = next.sessionId !== previous.sessionId;
       internal.context = next;
       if(sessionChanged) createSession(internal, next.sessionId);
-      Behaviors.updateContext(internal.director, next, internal.visibleTimeMs);
-      const performance = Behaviors.nextPerformance(internal.director, internal.visibleTimeMs);
-      if(Motion.isIdle(internal.motion)){
-        if(Motion.enqueue(internal.motion, performance, internal.visibleTimeMs)){
-          internal.activePerformance = performance;
-        }
-      }else if(Motion.requestInterrupt(internal.motion, performance, internal.visibleTimeMs)){
-        internal.activePerformance = performance;
-      }
+      Behaviors.updateContext(internal.director, next, internal.sessionTimeMs);
+      emitContextPerceptions(internal, previous, next);
+      handoffDirectorPerformance(internal, false);
       if(internal.renderer){
         Renderer.setTheme(internal.renderer, paletteTheme(next.theme));
         Renderer.markDirty(internal.renderer, "context");
@@ -671,7 +766,8 @@
       if(accepted) Behaviors.notify(internal.director, {
         type:behaviorType, target:"viewer", side,
         intensity:kind === "pointer" || kind === "hover" || kind === "move" ? 0.35 : 0.7,
-      }, internal.visibleTimeMs);
+      }, internal.sessionTimeMs);
+      if(accepted) handoffDirectorPerformance(internal, true);
       internal.staticDirty = true;
       if(internal.renderer) Renderer.markDirty(internal.renderer, "interaction");
       schedule(internal);
@@ -701,6 +797,22 @@
       const rigRecoveries = internal.rig && internal.rig.diagnostics ?
         internal.rig.diagnostics.recoveries : 0;
       const drives = internal.director ? internal.director.drives : null;
+      const motionCurrent = internal.motion ? internal.motion.current : null;
+      const motionPending = internal.motion ? internal.motion.pendingInterrupt : null;
+      const completions = internal.motion ? internal.motion.completions : null;
+      const lastCompletion = completions && completions.length ?
+        completions[completions.length - 1] : null;
+      let contactSignature = "";
+      if(internal.rig){
+        const contacts = [];
+        for(let index = 0; index < CONTACT_LIMBS.length; index += 1){
+          const limb = CONTACT_LIMBS[index];
+          const support = internal.rig.supports[limb];
+          contacts.push(`${limb}:${support.mode}:${support.cableT}:${support.load}:` +
+            `${support.point.x}:${support.point.y}`);
+        }
+        contactSignature = contacts.join("|");
+      }
       return Object.freeze({
         destroyed:internal.destroyed,
         controllerIdentity:internal.controllerIdentity,
@@ -714,6 +826,8 @@
         qualityTransitions:internal.qualityTransitions,
         governorTransitions:internal.governorTransitions,
         visibleTimeMs:internal.visibleTimeMs,
+        sessionVisibleTimeMs:internal.sessionTimeMs,
+        behaviorVisibleTimeMs:internal.director ? internal.director.visibleTimeMs : 0,
         maxStepMs:internal.maxStepMs,
         wakeups:internal.wakeups,
         updates:internal.updates,
@@ -723,11 +837,34 @@
         motionFailures:internal.motionFailures,
         fallback:internal.fallback,
         decodeFailures:internal.decodeFailures,
+        decodeAttempts:internal.decodeAttempts,
+        sharedDecodeFailure:internal.sharedDecodeFailure,
         decodedBytes:rendererDiagnostics ? rendererDiagnostics.decodedBytes : 0,
         listenerCount:internal.listenerCount,
         observerCount:internal.observerCount,
         hotLoopBufferReplacements:internal.hotLoopBufferReplacements,
         habituation:drives ? drives.habituation : 0,
+        pendingBehaviorInteractions:internal.director ?
+          internal.director.pendingInteractions : 0,
+        perceptions:Object.freeze({
+          total:internal.perceptionTotal,
+          byField:Object.freeze({...internal.perceptionCounts}),
+        }),
+        viewport:Object.freeze({width:internal.viewportWidth,
+          height:internal.viewportHeight, dpr:internal.dpr}),
+        poseHash:internal.rig ? Rig.poseHash(internal.rig) : "",
+        contactSignature,
+        randomState:internal.director ? internal.director.randomState : 0,
+        motionCurrentFamily:motionCurrent ? motionCurrent.family : "",
+        motionCurrentState:motionCurrent ? motionCurrent.state : "",
+        motionPendingFamily:motionPending ? motionPending.family : "",
+        motionPhase:internal.motion && internal.motion.phase ?
+          internal.motion.phase.primitive : "",
+        motionPhaseIndex:internal.motion ? internal.motion.phaseIndex : -1,
+        motionStartedAtMs:motionCurrent ? motionCurrent.createdAtMs : null,
+        lastMotionCompletion:lastCompletion,
+        interactionInterruptRequests:internal.interactionInterruptRequests,
+        interactionAcknowledgementsStarted:internal.interactionAcknowledgementsStarted,
         interactions:Object.freeze({
           pointerAccepted:internal.pointerAccepted,
           pointerDropped:internal.pointerDropped,

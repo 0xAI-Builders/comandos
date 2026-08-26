@@ -149,3 +149,110 @@ Result:
 - Device ceilings use conservative capability bands (2 cores/2 GiB => Economy,
   4 cores/4 GiB => Balanced). Task 9 browser measurements may tune these bands
   without changing the public lifecycle contract.
+
+---
+
+## Formal review remediation
+
+### Findings closed
+
+- `setContext()` now compares `status`, `role`, `contextPressure`, `expanded`,
+  `theme`, and `costume` independently and emits one bounded perception per
+  changed field through the real `Behaviors.notify()` API. Repeated same-field
+  perceptions use a stable target and therefore follow Behavior habituation.
+- Each new `sessionId` now resets a session-local visible clock to zero for its
+  Director and Motion timeline. The controller's cumulative visible time is
+  retained only as an engine diagnostic, never passed into a new session.
+- `setViewport()` is transactional. Engine viewport and quality-ceiling state
+  commit only after `Renderer.setViewport()` succeeds. Fallback mode enforces
+  finite integer backing dimensions no larger than 8192 pixels per axis,
+  verifies host canvas acceptance, and attempts rollback on hostile setters.
+- A controller with `IntersectionObserver` starts non-intersecting and schedules
+  no wakeup until the first positive observer sample. Environments without the
+  API continue with a sensible visible default.
+- Decode failure now sets a page/module lifetime latch. Later controllers enter
+  the compact fallback without another decode attempt. Tests inject a private
+  latch per fake page so failure cases cannot contaminate the rest of the suite.
+- Accepted pointer/activation input is handed immediately from Behavior to
+  `Motion.requestInterrupt()`. Motion still owns safe-boundary/contact handling;
+  the engine records the request and observed acknowledgement start.
+- Diagnostics now expose deterministic pose hash, contact signature, Motion
+  state/phase, and the Director's read-only random-stream state. Twin-controller
+  tests prove both downgrade and upgrade leave all five identical at the exact
+  transition frame.
+
+### Remediation RED
+
+Command:
+
+```text
+node --test --test-name-pattern='context diffs|session-local|first sample|safe Motion interruption|preserve pose|viewport state commits|decode failure latch' tests/perezos/test_engine.js
+```
+
+Result before remediation:
+
+```text
+7 tests: 1 pass, 6 fail
+- perceptions diagnostics absent
+- session-local visible time absent
+- one rAF callback scheduled before the first intersection sample
+- no Motion acknowledgement handoff diagnostics
+- viewport returned true after Renderer rejection
+- shared decode-attempt diagnostics/latch absent
+```
+
+The initial quality-continuity fixture passed only because all compared fields
+were undefined. Its assertion was tightened in RED to require concrete string
+pose/contact hashes and a numeric RNG state, making the missing contract fail
+before implementation.
+
+### Remediation GREEN
+
+Focused command above:
+
+```text
+7 tests, 7 pass, 0 fail
+```
+
+Final Task 7 suite:
+
+```text
+node --test tests/perezos/test_engine.js
+22 tests, 22 pass, 0 fail
+```
+
+Final integrated PerezOS suite:
+
+```text
+node --test tests/perezos/test_core.js tests/perezos/test_art.js \
+  tests/perezos/test_rig.js tests/perezos/test_behaviors.js \
+  tests/perezos/test_motion.js tests/perezos/test_renderer.js \
+  tests/perezos/test_engine.js
+195 tests, 195 pass, 0 fail
+```
+
+Additional verification:
+
+- `bash tests/test_js_parses.sh`: `OK`.
+- `node --check dash/perezos/engine.js`: passing.
+- `git diff --check`: passing.
+
+### Remediation files
+
+- `dash/perezos/engine.js`
+- `tests/perezos/test_engine.js`
+- `dash/perezos/behaviors.js` — adds a non-enumerable read-only deterministic
+  RNG-state getter used only by diagnostics/tests.
+- `.superpowers/sdd/perezos-task-7-report.md`
+
+### Remediation self-review
+
+- No Task 8 HTML, CSS, service worker, dashboard, preference, or integration
+  file was touched.
+- New objects are created only during controller/session construction, external
+  context/viewport/interaction events, or explicit diagnostics. The scheduler's
+  steady update/render path retains its preallocated timing, Rig, and Motion
+  buffers.
+- Perception and direct-interaction performances still enter Motion through its
+  validated public queue/interrupt API; no Rig channel or contact is mutated by
+  the controller directly.
