@@ -102,6 +102,16 @@ for ev in $EVENTS; do
     || { echo "install failure: hook missing for $ev after later setup error"; exit 1; }
 done
 
+# Los modulos de PerezOS deben quedar publicados junto al dashboard instalado,
+# incluso si una fase posterior del instalador falla.
+PEREZOS_LINK="$FAKE_HOME/.claude/hooks/dash/perezos"
+[ -L "$PEREZOS_LINK" ] \
+  || { echo "install failure: PerezOS dashboard link missing"; exit 1; }
+[ "$(readlink "$PEREZOS_LINK")" = "$ROOT/dash/perezos" ] \
+  || { echo "install failure: PerezOS dashboard link has wrong target"; exit 1; }
+[ -r "$PEREZOS_LINK/engine.js" ] \
+  || { echo "install failure: PerezOS engine asset is not readable"; exit 1; }
+
 # Case 5: un archivo existente pero vacio tambien es JSON invalido; no se
 # interpreta como si no existiera ni se reemplaza silenciosamente.
 S="$TMP/empty.json"

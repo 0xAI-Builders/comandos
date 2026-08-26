@@ -52,7 +52,21 @@ def _open_url(url, env=None):
 HOOKS = os.path.expanduser("~/.claude/hooks")
 STATE = os.path.join(HOOKS, "state")
 EVENTS = os.path.join(HOOKS, "events.jsonl")
-DASH = os.path.join(HOOKS, "dash")
+
+
+def _dashboard_directory():
+    installed = os.path.join(HOOKS, "dash")
+    override = os.environ.get("COMANDOS_DASH_DIR")
+    if not override:
+        return installed
+    candidate = os.path.abspath(os.path.expanduser(override))
+    if not os.path.isdir(candidate) or not os.access(candidate, os.R_OK | os.X_OK):
+        raise SystemExit(
+            f"COMANDOS_DASH_DIR no es un directorio legible: {candidate}")
+    return candidate
+
+
+DASH = _dashboard_directory()
 TOKEN_FILE = os.path.join(HOOKS, "dash-token")
 WEBTERM_ENABLED_FILE = os.path.join(HOOKS, "webterm-enabled")
 TABS_FILE = os.path.join(HOOKS, "app-tabs.json")

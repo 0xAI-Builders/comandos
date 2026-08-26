@@ -71,6 +71,7 @@ done
 # Iconos Lucide y assets bundleados (xterm.js, fuentes): el terminal web
 # remoto los carga via cc-dash en /icons y /assets.
 ln -sfn "$REPO/dash/icons" "$HOOKS/dash/icons"
+ln -sfn "$REPO/dash/perezos" "$HOOKS/dash/perezos"
 ln -sfn "$REPO/assets" "$HOOKS/dash/assets"
 [ -f "$HOOKS/cc-notify.conf" ] || cp "$REPO/hooks/cc-notify.conf.example" "$HOOKS/cc-notify.conf"
 [ -f "$HOOKS/telegram.env" ]   || cp "$REPO/hooks/telegram.env.example"   "$HOOKS/telegram.env"

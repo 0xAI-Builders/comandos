@@ -156,6 +156,28 @@ Remote/tailnet hosts, non-loopback peers, malformed XFF, mixed XFF chains, and
 local-looking IP Hosts with XFF still require the existing token. Foreign
 Origins still fail before authentication. The server bind remains loopback.
 
+### Installed and development asset roots
+
+The browser checkpoint exposed a second integration gap: `cc-dash` correctly
+served its installed hooks directory, but the installer had never published
+`dash/perezos`, while a worktree launch had no explicit way to select the
+worktree dashboard.
+
+Three incremental RED/GREEN cycles now cover:
+
+- an isolated, intentionally interrupted installer run still creates
+  `$HOOKS/dash/perezos` as a symlink to the repository modules and resolves a
+  real engine asset through it;
+- `COMANDOS_DASH_DIR` selects an explicit development dashboard root, verified
+  through real HTTP requests for both `index.html` and `perezos/engine.js`;
+- missing, non-directory, and unreadable override paths stop at startup with a
+  clear `COMANDOS_DASH_DIR` error instead of silently serving stale assets.
+
+With no override, the static root remains `$HOOKS/dash`. The override is read
+only from the process environment during startup and cannot be influenced by
+an HTTP request. The installer was exercised only with an isolated fake HOME;
+the real installer and `~/.claude` were not modified.
+
 ## Verification
 
 - Focused Task 8 dashboard/integration suite: 32/32 passing.
@@ -172,6 +194,14 @@ Origins still fail before authentication. The server bind remains loopback.
 - Formal local-proxy security re-review: `Ready: Yes`, with 0 remaining
   Critical or Important findings after covering ambiguous headers, tailnet
   direct access, and the RFC hostname-length boundary.
+- Installed/development asset-root suite: 3/3 passing, plus the isolated
+  installer regression script.
+- Focused asset/security/PerezOS integration regression: 69/69 passing.
+- Expanded `cc-dash` consumer regression (remote controls/UI, web terminal,
+  themes, preferences, concurrency, app integration): 184/184 passing.
+- Formal installed/development asset review: `Ready: Yes`, with 0 Critical or
+  Important findings; the reviewer independently reran the HTTP asset tests,
+  shell syntax check, and diff check.
 - Source scan: no old character art/name/runtime/CSS/phrase remains in the
   active dashboard; the single `cc-axo` occurrence is the required read-only
   migration read.
@@ -188,8 +218,12 @@ Origins still fail before authentication. The server bind remains loopback.
 - `tests/perezos/test_renderer.js`
 - `tests/test_dashboard_layout.py`
 - `tests/test_remote_ui.py` (direct SW v3 expectation update)
-- `bin/cc-dash` (Task 8 backend comment plus localhost proxy security gate)
+- `bin/cc-dash` (Task 8 backend comment, localhost proxy security gate, and
+  validated development asset-root override)
 - `bin/cc-app` (comment only)
+- `install.sh` (publishes the PerezOS asset directory)
+- `tests/test_install_hooks.sh` (isolated PerezOS install regression)
+- `tests/test_dashboard_assets.py` (real HTTP default/override regression)
 - `tests/test_dashboard_security.py` (new)
 - `.superpowers/sdd/perezos-task-8-report.md` (new)
 
@@ -221,6 +255,9 @@ Origins still fail before authentication. The server bind remains loopback.
 - Local proxy trust is conjunctive rather than header-based: a remote or mixed
   XFF chain cannot become tokenless merely by presenting a `*.localhost` Host.
   Tailscale token and Origin anti-CSRF behavior is unchanged.
+- Static-root selection is process-local and resolved once at startup. Invalid
+  explicit overrides fail closed; normal installed launches retain the exact
+  hooks dashboard root.
 
 ## Real checkpoint for screenshot
 
@@ -228,7 +265,7 @@ From this worktree, use an unused port so the installed dashboard on 4777 is
 not disturbed:
 
 ```text
-./bin/cc-dash 4788 --no-open
+COMANDOS_DASH_DIR="$PWD/dash" ./bin/cc-dash 4788 --no-open
 ```
 
 Then open `http://127.0.0.1:4788/`, select a real session row, and capture the
