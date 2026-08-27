@@ -1,0 +1,52 @@
+{
+  "_doc": "Motor Codex dentro de Claude Code: proxy local (claude-codex, Rust, MIT) que expone /v1/messages y rutea por nombre de modelo — gpt-* a tu ChatGPT/Codex (OAuth de ~/.codex/auth.json), claude-* a Anthropic. EDITABLE.",
+  "port": 18765,
+  "codex": {
+    "model": "gpt-5.6-sol[1m]",
+    "small": "gpt-5.6-luna",
+    "label": "Codex (ChatGPT)",
+    "menu": [
+      {
+        "id": "gpt-5.6-sol[1m]",
+        "name": "GPT-5.6 Sol",
+        "tag": "más inteligente · 1M ctx"
+      },
+      {
+        "id": "gpt-5.6-terra",
+        "name": "GPT-5.6 Terra",
+        "tag": "equilibrado"
+      },
+      {
+        "id": "gpt-5.6-luna",
+        "name": "GPT-5.6 Luna",
+        "tag": "rápido y barato"
+      },
+      {
+        "id": "gpt-5.5",
+        "name": "GPT-5.5",
+        "tag": "generación anterior"
+      }
+    ]
+  },
+  "claude": {
+    "model": "claude-fable-5[1m]",
+    "label": "Claude",
+    "menu": [
+      {
+        "id": "claude-fable-5[1m]",
+        "name": "Fable 5",
+        "tag": "más inteligente · 1M ctx"
+      },
+      {
+        "id": "claude-opus-5",
+        "name": "Opus 5",
+        "tag": "potente"
+      },
+      {
+        "id": "claude-sonnet-5",
+        "name": "Sonnet 5",
+        "tag": "rápido y barato"
+      }
+    ]
+  }
+}

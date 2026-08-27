@@ -3,15 +3,75 @@
   "alertTier": "high",
   "defaultTier": "unknown",
   "tiers": {
-    "high":    {"symbol": "$$$", "tmux": "203", "css": "#FF6B6B", "label": "caro"},
-    "mid":     {"symbol": "$$",  "tmux": "179", "css": "#FFC46B", "label": "medio"},
-    "low":     {"symbol": "$",   "tmux": "114", "css": "#2EE59D", "label": "barato"},
-    "unknown": {"symbol": "",    "tmux": "244", "css": "#9AA4B8", "label": ""}
+    "high": {
+      "symbol": "$$$",
+      "tmux": "203",
+      "css": "#FF6B6B",
+      "label": "caro"
+    },
+    "mid": {
+      "symbol": "$$",
+      "tmux": "179",
+      "css": "#FFC46B",
+      "label": "medio"
+    },
+    "low": {
+      "symbol": "$",
+      "tmux": "114",
+      "css": "#2EE59D",
+      "label": "barato"
+    },
+    "unknown": {
+      "symbol": "",
+      "tmux": "244",
+      "css": "#9AA4B8",
+      "label": ""
+    }
   },
   "patterns": [
-    {"match": "fable|mythos|opus", "tier": "high"},
-    {"match": "gpt-5\\.6|codex-max|-pro($|[^a-z])", "tier": "high"},
-    {"match": "sonnet|gpt-5\\.5|gpt-5\\.4(?!-mini)|terra|sol|luna", "tier": "mid"},
-    {"match": "haiku|mini|spark|nano|lite|flash", "tier": "low"}
+    {
+      "match": "fable|mythos|opus",
+      "tier": "high"
+    },
+    {
+      "match": "gpt-5\\.6|codex-max|-pro($|[^a-z])",
+      "tier": "high"
+    },
+    {
+      "match": "sonnet|gpt-5\\.5|gpt-5\\.4(?!-mini)|terra|sol|luna",
+      "tier": "mid"
+    },
+    {
+      "match": "haiku|mini|spark|nano|lite|flash",
+      "tier": "low"
+    }
+  ],
+  "_doc_providers": "Proveedor por patron (regex sobre agente o modelo) para el logo del badge — EDITABLE; desconocido = monograma del agente.",
+  "providers": [
+    {
+      "match": "claude|anthropic|fable|mythos|opus|sonnet|haiku",
+      "icon": "anthropic",
+      "label": "Anthropic"
+    },
+    {
+      "match": "codex|openai|^gpt|^o[0-9]",
+      "icon": "openai",
+      "label": "OpenAI"
+    },
+    {
+      "match": "gemini|agy|google",
+      "icon": "gemini",
+      "label": "Google"
+    },
+    {
+      "match": "glm|zhipu|zai",
+      "icon": "glm",
+      "label": "Z.ai"
+    },
+    {
+      "match": "opencode",
+      "icon": "opencode",
+      "label": "OpenCode"
+    }
   ]
 }

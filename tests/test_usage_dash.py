@@ -53,7 +53,8 @@ def test_usage_capture_and_refresh_endpoints_exist():
 def test_model_switch_endpoint_targets_requested_pane():
     assert 'self.path == "/model/switch"' in SRC
     assert "cc_usage.model_switch_text" in SRC
-    assert 'tmux("send-keys", "-t", pane, "-l", "--", switch_text)' in SRC
+    assert 'tmux("send-keys", "-t", pane, "-l", "--", c)' in SRC  # cada comando (/model, /effort) va al pane pedido
+    assert "claude_pane_busy(pane)" in SRC  # y nunca a mitad de turno
 
 
 def test_model_switch_accepts_direct_model():

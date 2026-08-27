@@ -4,6 +4,7 @@ This module is intentionally stdlib-only because it is imported by cc-dash,
 which runs as a small user service without project packaging.
 """
 import json
+import re
 import os
 import sqlite3
 import subprocess
@@ -1176,6 +1177,9 @@ def model_switch_text(provider, preset, model=None):
     if provider not in ("claude", "anthropic"):
         return "/model"
     if model in CLAUDE_MODEL_ALIASES:
+        return f"/model {model}"
+    # id explicito (claude-fable-5[1m], gpt-5.6-sol[1m] via proxy): se pasa tal cual
+    if model and re.match(r"^[a-z0-9][a-z0-9._\-\[\]/]{2,80}$", model):
         return f"/model {model}"
     item = next((p for p in model_presets() if p["id"] == preset), None)
     if not item:

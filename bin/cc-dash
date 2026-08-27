@@ -17,6 +17,7 @@ Endpoints:
 Solo escucha en 127.0.0.1. Todas las llamadas a tmux van sin shell (sin inyeccion).
 """
 import base64
+import shlex
 import html as html_mod
 import hmac, secrets
 import ipaddress
@@ -51,6 +52,98 @@ def _open_url(url, env=None):
 
 HOOKS = os.path.expanduser("~/.claude/hooks")
 STATE = os.path.join(HOOKS, "state")
+UI_LOG = os.path.join(HOOKS, "ui-events.jsonl")     # registro LOCAL de uso de la interfaz (clicks, pantallas, tiempos)
+FOCUS_FILE = os.path.join(HOOKS, "focus.json")          # pomodoro en curso: {project, session, until}
+FOCUS_QUEUE = os.path.join(HOOKS, "focus-queue.jsonl")  # avisos encolados por cc-notifyd mientras te enfocas
+
+
+def ui_log_append(events):
+    """Anexa eventos de uso (lista de dicts) y rota a 30 días / 2 MB."""
+    now = time.time()
+    keep = []
+    for e in events[:200]:
+        if not isinstance(e, dict):
+            continue
+        keep.append({"ts": float(e.get("ts") or now), "k": str(e.get("k") or "")[:24], "n": str(e.get("n") or "")[:80],
+                     "c": str(e.get("c") or "")[:80], "d": int(e.get("d") or 0), "s": str(e.get("s") or "")[:80]})
+    if not keep:
+        return 0
+    with open(UI_LOG, "a") as f:
+        for e in keep:
+            f.write(json.dumps(e, ensure_ascii=False) + "\n")
+    try:
+        if os.path.getsize(UI_LOG) > 2_000_000:
+            cutoff = now - 30 * 86400
+            with open(UI_LOG) as f:
+                lines = [ln for ln in f if ln.strip()]
+            fresh = [ln for ln in lines[-20000:] if json.loads(ln).get("ts", 0) >= cutoff]
+            with open(UI_LOG, "w") as f:
+                f.writelines(fresh)
+    except Exception:
+        pass
+    return len(keep)
+
+
+def ui_log_summary(days=7):
+    """Top de acciones, caminos repetidos (pares consecutivos) y tiempo por pantalla."""
+    since = time.time() - days * 86400
+    evs = []
+    try:
+        with open(UI_LOG) as f:
+            for ln in f:
+                try:
+                    e = json.loads(ln)
+                except Exception:
+                    continue
+                if e.get("ts", 0) >= since:
+                    evs.append(e)
+    except OSError:
+        pass
+    clicks = [e for e in evs if e.get("k") == "click"]
+    top, pairs, screens, sessions = {}, {}, {}, {}
+    prev = None
+    for e in clicks:
+        top[e["n"]] = top.get(e["n"], 0) + 1
+        if prev and e["ts"] - prev["ts"] < 30:
+            key = prev["n"] + " → " + e["n"]
+            pairs[key] = pairs.get(key, 0) + 1
+        prev = e
+        if e.get("s"):
+            sessions[e["s"]] = sessions.get(e["s"], 0) + 1
+    for e in evs:
+        if e.get("k") == "screen" and e.get("d"):
+            screens[e["n"]] = screens.get(e["n"], 0) + e["d"]
+    fmt = lambda d: sorted(d.items(), key=lambda kv: -kv[1])
+    return {"days": days, "events": len(evs), "clicks": len(clicks),
+            "top": [{"name": k, "n": v} for k, v in fmt(top)[:25]],
+            "paths": [{"path": k, "n": v} for k, v in fmt(pairs)[:15] if v >= 2],
+            "screens": [{"name": k, "seconds": v} for k, v in fmt(screens)[:15]],
+            "sessions": [{"name": k, "n": v} for k, v in fmt(sessions)[:10]]}
+
+
+def focus_state():
+    try:
+        with open(FOCUS_FILE) as f:
+            d = json.load(f)
+        if float(d.get("until") or 0) > time.time():
+            return d
+    except Exception:
+        pass
+    return None
+
+
+def focus_queue():
+    out = []
+    try:
+        with open(FOCUS_QUEUE) as f:
+            for ln in f:
+                try:
+                    out.append(json.loads(ln))
+                except Exception:
+                    continue
+    except OSError:
+        pass
+    return out[-50:]
 EVENTS = os.path.join(HOOKS, "events.jsonl")
 
 
@@ -271,6 +364,33 @@ def _claude_account_creds():
     return out
 
 
+def claude_accounts():
+    """[{alias, dir, email, loggedIn}] — main (~/.claude) + ~/.claude-accounts/<alias>
+    (tambien las recien creadas sin login, para que se vean como 'pendiente')."""
+    out = [{"alias": "main", "dir": os.path.expanduser("~/.claude")}]
+    base = os.path.expanduser("~/.claude-accounts")
+    try:
+        for name in sorted(os.listdir(base)):
+            d = os.path.join(base, name)
+            if name.startswith(("-", ".")) or not os.path.isdir(d):
+                continue
+            out.append({"alias": name, "dir": d})
+    except OSError:
+        pass
+    for a in out:
+        a["loggedIn"] = os.path.isfile(os.path.join(a["dir"], ".credentials.json"))
+        a["email"] = account_email_for_dir(a["dir"], "claude") if a["loggedIn"] else ""
+    return out
+
+
+def _proc_cmdline(pid):
+    try:
+        with open(f"/proc/{int(pid)}/cmdline", "rb") as f:
+            return [x.decode("utf-8", "replace") for x in f.read().split(b"\0") if x]
+    except Exception:
+        return []
+
+
 def _refresh_provider_limits():
     global _limits_refreshing
     try:
@@ -359,6 +479,472 @@ PANE_MODEL_RETRY_SECONDS = 5.0
 # entorno REAL del proceso del agente: CLAUDE_CONFIG_DIR / CODEX_HOME).
 REPO_ROOT = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
 MODEL_TIERS_FILE = os.path.join(REPO_ROOT, "config", "model-tiers.json")
+PROXY_FILE = os.path.join(REPO_ROOT, "config", "proxy.json")
+
+
+def load_proxy_cfg():
+    try:
+        with open(PROXY_FILE) as f:
+            return json.load(f)
+    except Exception:
+        return {"port": 18765, "codex": {"model": "gpt-5.6-sol"}, "claude": {"model": "claude-fable-5"}}
+
+
+def proxy_settings_enabled():
+    try:
+        with open(os.path.expanduser("~/.claude/settings.json")) as f:
+            st = json.load(f)
+        return bool((st.get("env") or {}).get("ANTHROPIC_BASE_URL"))
+    except Exception:
+        return False
+
+
+PROXY_ENV_SINCE = os.path.expanduser("~/.claude/hooks/proxy-env-since.json")
+
+
+def _proxy_env_mark(cfg_dir, on):
+    """Registra DESDE cuANDO el settings.json de ese config-dir tiene el env del
+    proxy: los claude arrancados antes no lo traen (el env se lee al arrancar)."""
+    try:
+        try:
+            with open(PROXY_ENV_SINCE) as f:
+                d = json.load(f)
+        except Exception:
+            d = {}
+        key = os.path.realpath(os.path.expanduser(cfg_dir))
+        if on:
+            d.setdefault(key, time.time())
+        else:
+            d.pop(key, None)
+        os.makedirs(os.path.dirname(PROXY_ENV_SINCE), exist_ok=True)
+        tmp = PROXY_ENV_SINCE + ".tmp"
+        with open(tmp, "w") as f:
+            json.dump(d, f)
+        os.replace(tmp, PROXY_ENV_SINCE)
+    except Exception:
+        pass
+
+
+def _proxied(pid, env):
+    """True si ese claude vivo pasa por cc-proxy: lo trae en su entorno, o su
+    config-dir ya tenia el env del proxy cuando arranco."""
+    if env.get(b"ANTHROPIC_BASE_URL"):
+        return True
+    cfg = env.get(b"CLAUDE_CONFIG_DIR", b"").decode("utf-8", "replace") or "~/.claude"
+    key = os.path.realpath(os.path.expanduser(cfg))
+    try:
+        with open(os.path.join(key, "settings.json")) as f:
+            if not (json.load(f).get("env") or {}).get("ANTHROPIC_BASE_URL"):
+                return False
+    except Exception:
+        return False
+    try:
+        with open(PROXY_ENV_SINCE) as f:
+            since = json.load(f).get(key)
+    except Exception:
+        since = None
+    if not since:
+        return True   # env presente y sin marca: asumir de siempre
+    try:
+        started = os.stat(f"/proc/{int(pid)}").st_mtime
+    except Exception:
+        return False
+    return started >= float(since)
+
+
+def _proxy_env_write(path, on, port):
+    try:
+        with open(path) as f:
+            st = json.load(f)
+    except Exception:
+        st = {}
+    env = st.get("env") or {}
+    if on:
+        env["ANTHROPIC_BASE_URL"] = f"http://127.0.0.1:{port}"
+    else:
+        env.pop("ANTHROPIC_BASE_URL", None)
+    st["env"] = env
+    if not env:
+        st.pop("env", None)
+    try:
+        tmp = path + ".tmp"
+        with open(tmp, "w") as f:
+            json.dump(st, f, indent=2, ensure_ascii=False)
+        os.replace(tmp, path)
+        _proxy_env_mark(os.path.dirname(path), on)
+    except Exception:
+        pass
+
+
+def _resume_flags(argv):
+    """Flags del claude vivo que vale la pena conservar al reanudar (sin --resume/-c)."""
+    flags, skip = [], 0
+    rest = argv[1:]
+    for i, a in enumerate(rest):
+        if skip:
+            skip -= 1
+            continue
+        if a in ("--resume", "-r", "--continue", "-c", "--session-id"):
+            if a in ("--resume", "-r", "--session-id"):
+                skip = 1
+            continue
+        if a.startswith("-"):
+            flags.append(a)
+            if a in ("--model", "--effort", "--permission-mode", "--add-dir"):
+                skip = 1
+                flags.append(rest[i + 1] if i + 1 < len(rest) else "")
+    return [f for f in flags if f]
+
+
+def _claude_restart_resume(pane, pid, cmd, after_cmds=(), queued=False, sess=None, gen=None):
+    """/exit + relanzar `cmd` (claude --resume …) en el MISMO pane; luego teclea after_cmds
+    cuando el prompt vuelve. Si queued, espera primero a que termine el turno actual."""
+    def _go():
+        if queued:
+            for _ in range(1350):
+                time.sleep(2.0)
+                if sess and gen and not motor_gen_ok(sess, gen):
+                    return   # cancelado o superado por un click mas nuevo
+                if not claude_pane_busy(pane):
+                    break
+            else:
+                return
+            time.sleep(1.0)
+        if sess and gen and not motor_gen_ok(sess, gen):
+            return
+        tmux("send-keys", "-t", pane, "C-u")
+        time.sleep(0.15)
+        tmux("send-keys", "-t", pane, "-l", "--", "/exit")
+        tmux("send-keys", "-t", pane, "Enter")
+        for _ in range(40):          # esperar a que el proceso muera (max 20 s)
+            time.sleep(0.5)
+            try:
+                os.kill(int(pid), 0)
+            except Exception:
+                break
+        time.sleep(0.8)
+        tmux("send-keys", "-t", pane, "-l", "--", cmd)
+        tmux("send-keys", "-t", pane, "Enter")
+        if after_cmds:
+            for _ in range(60):      # esperar el prompt del claude nuevo (max 30 s)
+                time.sleep(0.5)
+                if not claude_pane_busy(pane):
+                    break
+            time.sleep(1.5)
+            for c in after_cmds:
+                tmux("send-keys", "-t", pane, "-l", "--", c)
+                tmux("send-keys", "-t", pane, "Enter")
+                time.sleep(3.0)
+        if sess:
+            motor_result_set(sess, True, cmd.split(" claude ")[-1][:120])
+    threading.Thread(target=_go, daemon=True).start()
+
+
+def proxy_set_enabled(on):
+    """Motor Codex para TODAS las sesiones de Claude Code: ANTHROPIC_BASE_URL en
+    ~/.claude/settings.json (el proxy rutea claude-* a Anthropic tal cual, y
+    gpt-* a Codex) + servicio cc-proxy. Reversible con un click."""
+    port = int(load_proxy_cfg().get("port") or 18765)
+    if on:
+        subprocess.run(["systemctl", "--user", "enable", "--now", "cc-proxy.service"], capture_output=True, timeout=15)
+    else:
+        subprocess.run(["systemctl", "--user", "disable", "--now", "cc-proxy.service"], capture_output=True, timeout=15)
+    # Claude Code lee `env` del settings.json de SU config-dir: aplicar a todas las cuentas
+    paths = [os.path.expanduser("~/.claude/settings.json")] + [
+        os.path.join(a["dir"], "settings.json") for a in claude_accounts() if a["alias"] != "main"]
+    for path in paths[1:]:
+        _proxy_env_write(path, on, port)
+    path = paths[0]
+    try:
+        with open(path) as f:
+            st = json.load(f)
+    except Exception:
+        st = {}
+    env = st.get("env") or {}
+    if on:
+        env["ANTHROPIC_BASE_URL"] = f"http://127.0.0.1:{port}"
+    else:
+        env.pop("ANTHROPIC_BASE_URL", None)
+    st["env"] = env
+    if not env:
+        st.pop("env", None)
+    tmp = path + ".tmp"
+    with open(tmp, "w") as f:
+        json.dump(st, f, indent=2, ensure_ascii=False)
+    os.replace(tmp, path)
+
+
+def claude_pane_busy(pane):
+    """'' si Claude Code esta en el prompt esperando; si no, el motivo. Un comando
+    tecleado a mitad de turno se encola como MENSAJE, no como comando."""
+    r = tmux("capture-pane", "-p", "-t", pane, "-S", "-14")
+    if r.returncode != 0:
+        return ""
+    tail = r.stdout.rstrip("\n")
+    if re.search(r"esc to interrupt|ctrl\+c to interrupt|esc para interrumpir", tail, re.I):
+        return "La sesion esta trabajando: espera a que termine el turno"
+    if re.search(r"^\s*(Do you want|Allow|¿Permitir|Yes, |No, )", tail, re.M) and re.search(r"❯\s*1\.|\(y\)|Enter to confirm", tail, re.I):
+        return "La sesion tiene un permiso pendiente: respondelo primero"
+    if "❯" not in tail and ">" not in tail:
+        return "No veo el prompt de Claude Code en esa sesion"
+    return ""
+
+
+# Cambios de motor/cuenta EN COLA por sesion: generacion que invalida hilos viejos.
+MOTOR_GEN = {}
+_MOTOR_GEN_LOCK = threading.Lock()
+
+
+def motor_gen_bump(sess):
+    with _MOTOR_GEN_LOCK:
+        MOTOR_GEN[sess] = MOTOR_GEN.get(sess, 0) + 1
+        return MOTOR_GEN[sess]
+
+
+def motor_gen_ok(sess, gen):
+    with _MOTOR_GEN_LOCK:
+        return MOTOR_GEN.get(sess, 0) == gen
+
+
+MOTOR_RESULT = {}   # sess -> {"ok": bool, "detail": str, "ts": float}
+MOTOR_QUEUE_FILE = os.path.expanduser("~/.claude/hooks/motor-queue.json")
+
+
+def _motor_queue_write(d):
+    try:
+        os.makedirs(os.path.dirname(MOTOR_QUEUE_FILE), exist_ok=True)
+        tmp = MOTOR_QUEUE_FILE + ".tmp"
+        with open(tmp, "w") as f:
+            json.dump(d, f)
+        os.replace(tmp, MOTOR_QUEUE_FILE)
+    except Exception:
+        pass
+
+
+def motor_queue_put(sess, payload):
+    """Cola persistente: un cambio encolado sobrevive reinicios de cc-dash."""
+    try:
+        with open(MOTOR_QUEUE_FILE) as f:
+            d = json.load(f)
+    except Exception:
+        d = {}
+    d[sess] = payload
+    _motor_queue_write(d)
+
+
+def motor_queue_pop(sess, gen):
+    try:
+        with open(MOTOR_QUEUE_FILE) as f:
+            d = json.load(f)
+    except Exception:
+        return
+    if sess in d and d[sess].get("gen", gen) == gen:
+        d.pop(sess, None)
+        _motor_queue_write(d)
+
+
+def motor_apply(payload):
+    """Teclea /model y /effort en el pane con certeza: espera al prompt (anti-
+    carrera con doble check), confirma en el pane y reintenta; restaura los
+    defaults de settings.json; reporta a MOTOR_RESULT; limpia la cola."""
+    pane, cmds, provider = payload["pane"], payload["cmds"], payload["provider"]
+    saved, sess, effort = payload.get("saved"), payload["sess"], payload.get("effort")
+    gen, interrupt = payload["gen"], payload.get("interrupt")
+    try:
+        if interrupt and provider == "claude" and claude_pane_busy(pane):
+            motor_stage(sess, "interrumpiendo el turno (Escape)")
+            tmux("send-keys", "-t", pane, "Escape")
+            time.sleep(1.5)
+        if provider == "claude":
+            if claude_pane_busy(pane):
+                motor_stage(sess, "esperando a que termine el turno")
+            for _ in range(1350):
+                if not motor_gen_ok(sess, gen):
+                    return   # cancelado o superado por un click mas nuevo
+                if not claude_pane_busy(pane):
+                    time.sleep(0.7)
+                    if not claude_pane_busy(pane):
+                        break
+                time.sleep(2.0)
+            else:
+                motor_result_set(sess, False, "la sesion nunca quedo libre (45 min)")
+                return
+            if not motor_gen_ok(sess, gen):
+                return
+        for i, c in enumerate(cmds):
+            if i:
+                time.sleep(3.0)
+                for _ in range(12):
+                    if not claude_pane_busy(pane):
+                        break
+                    time.sleep(0.5)
+            marker = ("Set model to" if c.startswith("/model ") else
+                      "Set effort level" if c.startswith("/effort ") else "")
+            motor_stage(sess, f"tecleando {c}")
+            sent = False
+            for attempt in range(3):
+                if not motor_gen_ok(sess, gen):
+                    return
+                if provider == "claude":
+                    tmux("send-keys", "-t", pane, "C-u")   # limpiar texto a medio escribir sin interrumpir nada
+                    time.sleep(0.15)
+                r = tmux("send-keys", "-t", pane, "-l", "--", c)
+                if r.returncode != 0:
+                    motor_result_set(sess, False, f"tmux fallo con {c}")
+                    return
+                tmux("send-keys", "-t", pane, "Enter")
+                if provider != "claude" or not marker:
+                    sent = True
+                    break
+                motor_stage(sess, f"confirmando {c.split(chr(32))[0]} en el pane")
+                if claude_pane_confirm(pane, marker, 10):
+                    sent = True
+                    break
+                motor_stage(sess, f"no entro {c.split(chr(32))[0]}: reintento {attempt + 2}/3")
+                for _ in range(60):
+                    if not claude_pane_busy(pane):
+                        break
+                    time.sleep(2.0)
+            if not sent:
+                motor_result_set(sess, False, f"no se confirmo {c} en el pane")
+                return
+        motor_result_set(sess, True, " · ".join(cmds))
+        if effort and provider == "claude":
+            session_effort_set(sess, effort)
+        if provider == "claude" and saved:
+            time.sleep(4.0 + 3.5 * (len(cmds) - 1))
+            path = os.path.expanduser("~/.claude/settings.json")
+            try:
+                with open(path) as f:
+                    st = json.load(f)
+                changed = False
+                for k, v in saved.items():
+                    if st.get(k) != v:
+                        changed = True
+                        if v is None:
+                            st.pop(k, None)
+                        else:
+                            st[k] = v
+                if changed:
+                    tmp = path + ".tmp"
+                    with open(tmp, "w") as f:
+                        json.dump(st, f, indent=2, ensure_ascii=False)
+                    os.replace(tmp, path)
+            except Exception:
+                pass
+    finally:
+        motor_queue_pop(sess, gen)
+
+
+def motor_queue_resume():
+    """Al arrancar cc-dash: relanzar los cambios encolados que un reinicio mato."""
+    try:
+        with open(MOTOR_QUEUE_FILE) as f:
+            d = json.load(f)
+    except Exception:
+        return
+    for sess, payload in d.items():
+        if time.time() - (payload.get("ts") or 0) > 2700:
+            continue
+        payload = dict(payload)
+        payload["gen"] = motor_gen_bump(sess)
+        payload["sess"] = sess
+        motor_queue_put(sess, payload)
+        threading.Thread(target=motor_apply, args=(payload,), daemon=True).start()
+
+
+def motor_result_set(sess, ok, detail):
+    MOTOR_RESULT[sess] = {"ok": bool(ok), "detail": str(detail)[:200], "ts": time.time()}
+
+
+def motor_stage(sess, stage):
+    """Progreso visible del cambio (la UI lo muestra como loading con estados)."""
+    MOTOR_RESULT[sess] = {"stage": str(stage)[:120], "ts": time.time()}
+
+
+def claude_pane_confirm(pane, marker, secs):
+    """True si el marcador aparece en el pane dentro de N segundos."""
+    for _ in range(int(secs * 2)):
+        r = tmux("capture-pane", "-p", "-t", pane, "-S", "-25")
+        if r.returncode == 0 and marker in r.stdout:
+            return True
+        time.sleep(0.5)
+    return False
+
+
+SESSION_EFFORT = os.path.expanduser("~/.claude/hooks/session-effort.json")
+
+
+def session_effort_all():
+    try:
+        with open(SESSION_EFFORT) as f:
+            return json.load(f)
+    except Exception:
+        return {}
+
+
+def session_effort_set(sess, effort):
+    d = session_effort_all()
+    d[sess] = effort
+    try:
+        os.makedirs(os.path.dirname(SESSION_EFFORT), exist_ok=True)
+        tmp = SESSION_EFFORT + ".tmp"
+        with open(tmp, "w") as f:
+            json.dump(d, f)
+        os.replace(tmp, SESSION_EFFORT)
+    except Exception:
+        pass
+
+
+def effort_defaults():
+    """Default de esfuerzo de Claude Code: global y por modelo (settings.json)."""
+    try:
+        with open(os.path.expanduser("~/.claude/settings.json")) as f:
+            st = json.load(f)
+    except Exception:
+        return {"effort": "", "perModel": {}}
+    per = {k: (v or {}).get("effortLevel") for k, v in (st.get("modelSettings") or {}).items() if isinstance(v, dict)}
+    return {"effort": st.get("effortLevel") or "", "perModel": {k: v for k, v in per.items() if v}}
+
+
+def motor_global():
+    """'codex' si el modelo por defecto de Claude Code es gpt-*, si no 'claude'."""
+    try:
+        with open(os.path.expanduser("~/.claude/settings.json")) as f:
+            m = str(json.load(f).get("model") or "")
+    except Exception:
+        m = ""
+    return ("codex" if re.match(r"^(gpt|o[0-9]|codex)", m, re.I) else "claude"), m
+
+
+def motor_set_global(motor, model=None):
+    cfg = load_proxy_cfg()
+    prov = (cfg.get("codex") if motor == "codex" else cfg.get("claude")) or {}
+    allowed = {m.get("id") for m in prov.get("menu") or []}
+    model = (model or "").strip()
+    if model not in allowed:
+        model = prov.get("model") or ("gpt-5.6-sol[1m]" if motor == "codex" else "claude-fable-5[1m]")
+    path = os.path.expanduser("~/.claude/settings.json")
+    try:
+        with open(path) as f:
+            st = json.load(f)
+    except Exception:
+        st = {}
+    st["model"] = model
+    tmp = path + ".tmp"
+    with open(tmp, "w") as f:
+        json.dump(st, f, indent=2, ensure_ascii=False)
+    os.replace(tmp, path)
+    return model
+
+
+def proxy_alive():
+    import socket
+    try:
+        with socket.create_connection(("127.0.0.1", int(load_proxy_cfg().get("port") or 18765)), timeout=0.3):
+            return True
+    except OSError:
+        return False
 _model_tiers_cache = {"mtime": None, "data": {}}
 
 # agente -> (variable de entorno del dir de config, dir por defecto)
@@ -648,34 +1234,6 @@ def _provider_catalog(agent):
     return []
 
 
-def resolve_role_model(role, agent):
-    """(modelo, effort) para un rol+proveedor, resuelto contra el catalogo
-    vivo. claude usa alias oficiales (el CLI los resuelve). None si el
-    patron no matchea nada real — jamas inventamos un modelo."""
-    spec = (role.get("byProvider") or {}).get(agent) or {}
-    effort = spec.get("effort") or ""
-    if agent == "claude":
-        return (spec.get("alias") or None), effort
-    cat = _provider_catalog(agent)
-    for pat in spec.get("match") or []:
-        for m in cat:
-            try:
-                if re.search(pat, m):
-                    return m, effort
-            except re.error:
-                continue
-    return None, effort
-
-
-def resolved_agent_roles():
-    d = load_agent_roles()
-    for role in d.get("roles") or []:
-        for agent in list((role.get("byProvider") or {}).keys()):
-            model, effort = resolve_role_model(role, agent)
-            role["byProvider"][agent]["resolved"] = model
-    return d
-
-
 def _claude_md_lines(cwd):
     for name in ("CLAUDE.md", "AGENTS.md"):
         try:
@@ -732,7 +1290,7 @@ def make_worktree(cwd):
     return path, None
 
 
-# ---- Detectores de disfraces de PerezOS: TODO medido de datos locales
+# ---- Detectores de avisos de la sesion: TODO medido de datos locales
 # reales (transcripts de ~/.claude/projects), umbrales en config/detectors.json.
 DETECTORS_FILE = os.path.join(REPO_ROOT, "config", "detectors.json")
 _detectors_cache = {"mtime": None, "data": {}}
@@ -758,16 +1316,17 @@ def load_detectors():
 def _claude_tmux_sessions():
     """{sesion tmux: {sid, startedAt}} de los claude vivos (~/.claude/sessions)."""
     out = {}
-    base = os.path.expanduser("~/.claude/sessions")
-    try:
-        names = os.listdir(base)
-    except OSError:
-        return out
-    for n in names:
-        if not n.endswith(".json"):
-            continue
+    # Claude Code registra cada proceso en <config-dir>/sessions. Con varias
+    # cuentas (CLAUDE_CONFIG_DIR=~/.claude-accounts/<x>) hay varios directorios.
+    files = []
+    for base in [os.path.expanduser("~/.claude/sessions")] + glob.glob(os.path.expanduser("~/.claude-accounts/*/sessions")):
         try:
-            with open(os.path.join(base, n)) as f:
+            files += [os.path.join(base, n) for n in os.listdir(base) if n.endswith(".json")]
+        except OSError:
+            continue
+    for fp in files:
+        try:
+            with open(fp) as f:
                 d = json.load(f)
         except Exception:
             continue
@@ -779,16 +1338,55 @@ def _claude_tmux_sessions():
         except Exception:
             continue
         sess = tm.partition(":")[0]
+        pane_id = tm.rpartition(".")[2] if "." in tm else ""
         if sess:
             prev = out.get(sess)
             if prev and prev.get("startedAt", 0) >= (d.get("startedAt") or 0):
                 continue
-            out[sess] = {"sid": sid, "startedAt": (d.get("startedAt") or 0) / 1000.0}
+            out[sess] = {"sid": sid, "pid": pid, "pane": pane_id if pane_id.startswith("%") else "",
+                         "startedAt": (d.get("startedAt") or 0) / 1000.0}
     return out
 
 
+def _claude_info_for(sess, pane=""):
+    """El claude de ESE pane. Con splits hay varios claude en una misma sesion
+    tmux: el registro (<cfg>/sessions/*.json, campo tmux 'ses:@w.%p') dice en
+    que pane vive cada uno. Sin pane (o sin match) cae al mas reciente."""
+    best, best_ts = None, -1
+    files = []
+    for base in [os.path.expanduser("~/.claude/sessions")] + glob.glob(os.path.expanduser("~/.claude-accounts/*/sessions")):
+        try:
+            files += [os.path.join(base, n) for n in os.listdir(base) if n.endswith(".json")]
+        except OSError:
+            continue
+    for fp in files:
+        try:
+            with open(fp) as f:
+                d = json.load(f)
+        except Exception:
+            continue
+        pid, tm, sid = d.get("pid"), d.get("tmux") or "", d.get("sessionId")
+        if not (isinstance(pid, int) and isinstance(sid, str) and sid):
+            continue
+        if tm.partition(":")[0] != sess:
+            continue
+        try:
+            os.kill(pid, 0)
+        except Exception:
+            continue
+        p_id = tm.rpartition(".")[2] if "." in tm else ""
+        info = {"sid": sid, "pid": pid, "pane": p_id if p_id.startswith("%") else "",
+                "startedAt": (d.get("startedAt") or 0) / 1000.0}
+        if pane and info["pane"] == pane:
+            return info          # match exacto de pane: ese es
+        if info["startedAt"] > best_ts:
+            best, best_ts = info, info["startedAt"]
+    return best
+
+
 def _transcript_path(sid):
-    hits = glob.glob(os.path.expanduser(f"~/.claude/projects/*/{sid}.jsonl"))
+    hits = (glob.glob(os.path.expanduser(f"~/.claude/projects/*/{sid}.jsonl"))
+            or glob.glob(os.path.expanduser(f"~/.claude-accounts/*/projects/*/{sid}.jsonl")))
     return hits[0] if hits else None
 
 
@@ -809,6 +1407,7 @@ def _analyze_transcript(path, cfg, now):
     ctx_pct, out_win, edits = 0.0, 0, {}
     win_start = now - float(cfg.get("fuegoWindowMin") or 10) * 60
     tool_seq = []
+    model = ""
     for ln in lines:
         try:
             d = json.loads(ln)
@@ -817,6 +1416,8 @@ def _analyze_transcript(path, cfg, now):
         if d.get("isSidechain"):
             continue  # turnos de subagentes: su contexto no es el de la sesion
         msg = d.get("message") or {}
+        if isinstance(msg, dict) and msg.get("role") == "assistant" and msg.get("model"):
+            model = str(msg.get("model"))[:120]   # el modelo REAL que respondio (ultimo gana)
         u = msg.get("usage") or {}
         if u:
             total_in = (u.get("input_tokens") or 0) +                 (u.get("cache_read_input_tokens") or 0) +                 (u.get("cache_creation_input_tokens") or 0)
@@ -841,7 +1442,7 @@ def _analyze_transcript(path, cfg, now):
     for fp in tail:
         edits[fp] = edits.get(fp, 0) + 1
     max_edits = max(edits.values()) if edits else 0
-    return ctx_pct, out_win, max_edits
+    return ctx_pct, out_win, max_edits, model
 
 
 def _refresh_costumes():
@@ -849,10 +1450,10 @@ def _refresh_costumes():
     now = time.time()
     data = {}
     for sess, info in _claude_tmux_sessions().items():
-        costume, why, ctx_pct = "", "", 0.0
+        costume, why, ctx_pct, model = "", "", 0.0, ""
         path = _transcript_path(info["sid"])
         if path:
-            ctx_pct, out_win, max_edits = _analyze_transcript(path, cfg, now)
+            ctx_pct, out_win, max_edits, model = _analyze_transcript(path, cfg, now)
             try:
                 idle_min = (now - os.path.getmtime(path)) / 60.0
             except OSError:
@@ -867,10 +1468,121 @@ def _refresh_costumes():
                 costume, why = "huevo", "recien nacida"
             elif idle_min >= float(cfg.get("bufandaMin") or 5):
                 costume, why = "bufanda", f"~{idle_min:.0f} min sin actividad — cache fria"
-        data[sess] = {"costume": costume, "why": why, "contextPct": round(ctx_pct, 1)}
+        data[sess] = {"costume": costume, "why": why, "contextPct": round(ctx_pct, 1), "model": model}
     with _costume_lock:
         _costume_state["at"] = now
         _costume_state["data"] = data
+
+
+_codex_model_cache = {"at": 0.0, "data": {}}
+
+
+def _codex_models_by_cwd():
+    """{cwd: model} del rollout MAS RECIENTE de cada cwd en ~/.codex/sessions
+    (JSONL local de Codex: session_meta trae cwd; los turnos traen model)."""
+    now = time.time()
+    if now - _codex_model_cache["at"] < 30:
+        return _codex_model_cache["data"]
+    out = {}
+    base = os.path.expanduser("~/.codex/sessions")
+    files = sorted(glob.glob(os.path.join(base, "*", "*", "*", "rollout-*.jsonl")),
+                   key=lambda f: os.path.getmtime(f), reverse=True)[:60]
+    for f in files:
+        cwd, model = "", ""
+        try:
+            with open(f, "rb") as fh:
+                head = fh.read(64_000).decode("utf-8", "replace")
+                fh.seek(0, 2)
+                size = fh.tell()
+                fh.seek(max(0, size - 64_000))
+                tail = fh.read().decode("utf-8", "replace")
+        except OSError:
+            continue
+        m = re.search(r'"cwd":"([^"]+)"', head)
+        cwd = m.group(1) if m else ""
+        ms = re.findall(r'"model":"([^"]+)"', tail) or re.findall(r'"model":"([^"]+)"', head)
+        model = ms[-1] if ms else ""
+        if cwd and model and cwd not in out:
+            out[cwd] = model[:120]
+    _codex_model_cache.update(at=now, data=out)
+    return out
+
+
+def sovereignty_report():
+    """Qué se guarda en esta máquina (archivos, bases, tablas) y qué canales
+    salen de ella (solo si están activados). Cero valores secretos: nombres,
+    tamaños, conteos y permisos."""
+    import sqlite3, stat as _stat
+    def finfo(path, label, kind):
+        try:
+            st = os.stat(path)
+            return {"label": label, "path": path.replace(os.path.expanduser("~"), "~"), "kind": kind,
+                    "bytes": st.st_size, "mtime": int(st.st_mtime), "mode": oct(_stat.S_IMODE(st.st_mode)),
+                    "private": _stat.S_IMODE(st.st_mode) & 0o077 == 0}
+        except OSError:
+            return None
+    stores = []
+    db = os.path.join(HOOKS, "comandos-usage.sqlite")
+    fi = finfo(db, "Uso y costos (turnos medidos)", "sqlite")
+    if fi:
+        try:
+            c = sqlite3.connect(f"file:{db}?mode=ro", uri=True)
+            fi["tables"] = [{"name": t, "rows": c.execute(f'select count(*) from "{t}"').fetchone()[0]}
+                            for (t,) in c.execute("select name from sqlite_master where type='table' and name not like 'sqlite_%'")]
+            c.close()
+        except Exception:
+            fi["tables"] = []
+        stores.append(fi)
+    n_state = len(glob.glob(os.path.join(STATE, "*.json")))
+    stores.append({"label": "Estado por sesión (hooks)", "path": "~/.claude/hooks/state/", "kind": "json", "count": n_state})
+    fi = finfo(EVENTS, "Historial de eventos", "jsonl")
+    if fi:
+        try:
+            with open(EVENTS, "rb") as f:
+                fi["count"] = sum(1 for _ in f)
+        except OSError:
+            pass
+        stores.append(fi)
+    for name, label, kind in (("prefs.json", "Preferencias del tablero", "json"), ("snippets.json", "Snippets", "json"),
+                              ("app-tabs.json", "Pestañas de la app", "json"), ("focus.json", "Pomodoro en curso", "json"),
+                              ("focus-queue.jsonl", "Avisos encolados en foco", "jsonl"), ("pane-models.txt", "Modelo por pane (tmux)", "txt"),
+                              ("dash-token", "Token de acceso remoto", "secret"), ("telegram.env", "Credenciales Telegram", "secret"),
+                              ("providers.env", "Credenciales de proveedores", "secret"), ("cc-notify.conf", "Configuración de avisos", "conf")):
+        fi = finfo(os.path.join(HOOKS, name), label, kind)
+        if fi:
+            stores.append(fi)
+    try:
+        n_tr = len(glob.glob(os.path.expanduser("~/.claude/projects/*/*.jsonl")))
+    except Exception:
+        n_tr = 0
+    stores.append({"label": "Transcripts de Claude Code", "path": "~/.claude/projects/*/", "kind": "jsonl", "count": n_tr})
+    n_cx = len(glob.glob(os.path.expanduser("~/.codex/sessions/*/*/*/rollout-*.jsonl")))
+    if n_cx:
+        stores.append({"label": "Rollouts de Codex", "path": "~/.codex/sessions/", "kind": "jsonl", "count": n_cx})
+    ssh_hosts = 0
+    try:
+        with open(os.path.expanduser("~/.ssh/config")) as f:
+            ssh_hosts = sum(1 for ln in f if ln.strip().lower().startswith("host ") and "*" not in ln)
+    except OSError:
+        pass
+    stores.append({"label": "Servidores SSH", "path": "~/.ssh/config", "kind": "conf", "count": ssh_hosts})
+    browser = [{"key": "cc-pomos", "label": "Registro de pomodoros"}, {"key": "cc-dash-labels", "label": "Nombres de pestañas"},
+               {"key": "cc-ssh-open", "label": "Servidores desplegados"}]
+    conf = {}
+    try:
+        with open(os.path.join(HOOKS, "cc-notify.conf")) as f:
+            for ln in f:
+                if "=" in ln and not ln.strip().startswith("#"):
+                    k, v = ln.strip().split("=", 1); conf[k] = v.strip().strip('"\'')
+    except OSError:
+        pass
+    outbound = [
+        {"label": "Telegram (avisos al celular)", "on": conf.get("TELEGRAM_ENABLED", "0") == "1", "how": "bot de Telegram, solo si TELEGRAM_ENABLED=1"},
+        {"label": "Acceso remoto (tailnet)", "on": os.path.exists(os.path.join(HOOKS, "webterm-enabled")), "how": "tailscale serve — solo tu tailnet, nunca Funnel"},
+        {"label": "Proveedores de IA (los agentes)", "on": True, "how": "Claude/Codex/etc. hablan con su API: eso es el agente, no ComandOS"},
+        {"label": "Notificaciones nativas del escritorio", "on": conf.get("NATIVE_NOTIFY", "0") == "1", "how": "GNOME, en esta máquina"},
+    ]
+    return {"stores": stores, "browser": browser, "outbound": outbound, "generatedAt": int(time.time())}
 
 
 def session_costumes():
@@ -2418,6 +3130,8 @@ def read_states():
         cos = _costumes_now.get(sess)
         if cos:
             item.update(cos)
+        if item.get("agent") == "codex" and not item.get("model") and item.get("cwd"):
+            item["model"] = _codex_models_by_cwd().get(item["cwd"], "")
         if zombie:
             item["zombie"] = True
         if pane:
@@ -2428,23 +3142,36 @@ def read_states():
     # de la app...): TODAS visibles — nada de sesiones fantasma que solo
     # aparecen en el conmutador. Nombre = etiqueta de su pestana si existe.
     for sess in sorted(live - seen):
-        if sess in HIDDEN_SESSIONS:
+        info = by_session.get(sess)
+        agent = info.get("agent") if info else None
+        # 'local'/'hub'/'control' son terminales internas de la app... salvo que el
+        # usuario haya arrancado claude/codex ahi: entonces ES una sesion y va como tarjeta.
+        if sess in HIDDEN_SESSIONS and not agent:
             continue
         r = tmux("display-message", "-p", "-t", "=" + sess + ":", "#{pane_current_path}")
         cwd = r.stdout.strip() if r.returncode == 0 else ""
         if not cwd:
             cwd = find_project_dir(sess) or ""
-        info = by_session.get(sess)
-        agent = info.get("agent") if info else None
         pane = info.get("pane") if info else None
         status = pane_status_hint(pane, agent) or "idle"
         if sess.startswith("term-") and sess not in labels and not agent and status == "idle":
             continue
-        item = {"project": labels.get(sess, sess), "session": sess, "status": status,
-                "detail": "", "cwd": cwd, "ts": 0, "alive": True,
+        name = labels.get(sess) or (os.path.basename(cwd) if sess in HIDDEN_SESSIONS and cwd else sess)
+        ra = tmux("display-message", "-p", "-t", "=" + sess + ":", "#{session_activity}")
+        try:
+            ts = float(ra.stdout.strip()) if ra.returncode == 0 else 0.0
+        except ValueError:
+            ts = 0.0
+        item = {"project": name, "session": sess, "status": status,
+                "detail": "", "cwd": cwd, "ts": ts, "alive": True,
                 "external": False, "agent": agent, "tabbed": sess in labels}
         if info and info.get("pid") and agent:
             item.update(account_for_pid(info["pid"], agent))
+        cos = _costumes_now.get(sess)
+        if cos:
+            item.update(cos)
+        if agent == "codex" and not item.get("model") and cwd:
+            item["model"] = _codex_models_by_cwd().get(cwd, "")
         if pane:
             item["pane"] = pane
         if sess.startswith("ssh-"):
@@ -2452,6 +3179,11 @@ def read_states():
             item["sshConnected"] = st != ""
             item["sshMux"] = st == "mux"
         items.append(item)
+    # Orden fijo y util: vivas con agente primero (mas recientes arriba), luego
+    # vivas sin agente, al final las muertas.
+    items.sort(key=lambda i: (not i.get("alive"),
+                              0 if i.get("agent") else 1,
+                              -(i.get("ts") or 0)))
     return items
 
 
@@ -3168,7 +3900,7 @@ class Handler(http.server.SimpleHTTPRequestHandler):
     # Endpoints con DATOS o ACCIONES: exigen token. El shell estatico (HTML,
     # sw.js, manifest, iconos) NO — no revela nada (es codigo open-source) y
     # asi la PWA instala y carga sin depender de cookies en el webview movil.
-    API_GET = ("/state", "/usage/state", "/opencode/models", "/model-tiers", "/agent-roles", "/dedication", "/active-tab", "/session-brain", "/events", "/conf", "/prefs", "/ssh", "/tabs",
+    API_GET = ("/pomodoro", "/proxy", "/sovereignty", "/ui-log/summary", "/state", "/usage/state", "/opencode/models", "/model-tiers", "/dedication", "/active-tab", "/session-brain", "/events", "/conf", "/prefs", "/ssh", "/tabs",
                "/tab-history", "/remote-state", "/remote-qr.png", "/snippets", "/tmux-mouse",
                "/webterm-token")
 
@@ -3199,8 +3931,23 @@ class Handler(http.server.SimpleHTTPRequestHandler):
                 return self._json(200, {})
         if self.path.startswith("/dedication"):
             return self._json(200, dedication_stats())
-        if self.path.startswith("/agent-roles"):
-            return self._json(200, resolved_agent_roles())
+        if self.path == "/pomodoro":
+            return self._json(200, {"focus": focus_state(), "queue": focus_queue()})
+        if self.path == "/sovereignty":
+            return self._json(200, sovereignty_report())
+        if self.path == "/proxy":
+            cfg = load_proxy_cfg()
+            mg, mm = motor_global()
+            return self._json(200, {"alive": proxy_alive(), "enabled": proxy_settings_enabled(), "port": cfg.get("port"),
+                                    "motor": mg, "defaultModel": mm, "effortDefaults": effort_defaults(),
+                                    "sessionEffort": session_effort_all(),
+                                    "switchResult": MOTOR_RESULT,
+                                    "accounts": [{k: v for k, v in a.items() if k != "dir"} for a in claude_accounts()],
+                                    "codex": cfg.get("codex"), "claude": cfg.get("claude"),
+                                    "installed": os.path.exists(os.path.expanduser("~/.cargo/bin/claude-codex")),
+                                    "codexLogin": os.path.exists(os.path.expanduser("~/.codex/auth.json"))})
+        if self.path.startswith("/ui-log/summary"):
+            return self._json(200, ui_log_summary())
         if self.path.startswith("/session-brain"):
             import urllib.parse
             q = urllib.parse.parse_qs(urllib.parse.urlparse(self.path).query)
@@ -3327,6 +4074,39 @@ class Handler(http.server.SimpleHTTPRequestHandler):
         except Exception:
             return self._json(400, {"error": "JSON invalido"})
 
+        if self.path == "/proxy":
+            try:
+                if data.get("motor") in ("claude", "codex"):
+                    if data["motor"] == "codex" and not proxy_settings_enabled():
+                        proxy_set_enabled(True)
+                    model = motor_set_global(data["motor"], data.get("model"))
+                    mg, mm = motor_global()
+                    return self._json(200, {"ok": True, "motor": mg, "defaultModel": mm, "alive": proxy_alive(), "enabled": proxy_settings_enabled()})
+                proxy_set_enabled(bool(data.get("enable")))
+            except Exception as e:
+                return self._json(500, {"error": str(e)})
+            time.sleep(1.0)
+            return self._json(200, {"ok": True, "alive": proxy_alive(), "enabled": proxy_settings_enabled()})
+        if self.path == "/ui-log":
+            return self._json(200, {"ok": True, "n": ui_log_append(data.get("events") or [])})
+        if self.path == "/pomodoro":
+            # start: {project, session, mins} · stop: {stop:true} · ack: {ack:true} (vacia la cola)
+            if data.get("stop"):
+                try: os.remove(FOCUS_FILE)
+                except OSError: pass
+                return self._json(200, {"ok": True, "queue": focus_queue()})
+            if data.get("ack"):
+                try: os.remove(FOCUS_QUEUE)
+                except OSError: pass
+                return self._json(200, {"ok": True})
+            mins = max(1, min(180, int(data.get("mins") or 25)))
+            st = {"project": str(data.get("project") or "")[:120], "session": str(data.get("session") or "")[:120],
+                  "until": time.time() + mins * 60, "startedAt": time.time()}
+            try: os.remove(FOCUS_QUEUE)
+            except OSError: pass
+            with open(FOCUS_FILE, "w") as f:
+                json.dump(st, f)
+            return self._json(200, {"ok": True, "focus": st})
         if self.path == "/conf-set":
             key, val = data.get("key", ""), str(data.get("value", ""))
             ok = (key == "VOLUME" and val.isdigit() and 0 <= int(val) <= 100) or \
@@ -3474,6 +4254,8 @@ class Handler(http.server.SimpleHTTPRequestHandler):
                 prefs["terminal_opacity"] = max(30, min(100, int(data["terminal_opacity"])))
             if isinstance(data.get("ligatures"), bool):
                 prefs["ligatures"] = data["ligatures"]
+            if data.get("notif_pos") in ("tl", "tr", "bl", "br", "free"):
+                prefs["notif_pos"] = data["notif_pos"]   # esquina de los popups (free = donde los arrastres)
             with open(PREFS_PATH, "w") as f:
                 json.dump(prefs, f)
             return self._json(200, {"ok": True})
@@ -3610,8 +4392,10 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             alias = str(data.get("account", "main"))[:40]
             if not cwd.startswith("/") or not os.path.isdir(cwd):
                 return self._json(400, {"error": "carpeta invalida"})
-            if agent not in ("claude", "codex", "shell"):
+            if agent not in ("claude", "claude-codex", "codex", "shell"):
                 return self._json(400, {"error": "agente invalido"})
+            if agent == "claude-codex" and not proxy_alive():
+                return self._json(503, {"error": "El motor Codex no está corriendo (cc-proxy). Actívalo en Ajustes."})
             if not re.match(r"^[A-Za-z0-9._-]+$", alias):
                 return self._json(400, {"error": "alias invalido"})
             wt = False
@@ -3633,8 +4417,12 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             register_app_tab(new_sess, label, kind="project", cwd=final_cwd)
             cmd = ""
             flags = load_agent_roles().get("dangerFlags") or {}
-            if agent == "claude":
+            if agent in ("claude", "claude-codex"):
                 cmd = "claude"
+                if agent == "claude-codex":
+                    pc = load_proxy_cfg()
+                    cmd = (f"ANTHROPIC_BASE_URL=http://127.0.0.1:{int(pc.get('port') or 18765)} "
+                           f"claude --model {shlex.quote(str((pc.get('codex') or {}).get('model') or 'gpt-5.6-sol'))}")
                 if alias != "main":
                     cmd = f"CLAUDE_CONFIG_DIR=$HOME/.claude-accounts/{alias} " + cmd
                 if data.get("danger") and flags.get("claude"):
@@ -3700,6 +4488,56 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             register_app_tab(new_sess, label, kind="scratch",
                              cwd=os.path.expanduser("~"))
             return self._json(200, {"session": new_sess, "label": label})
+
+        if self.path == "/account/add":
+            # Crea el config-dir y abre una pestana con claude adentro: la PRIMERA vez
+            # Claude Code pide /login (OAuth en el navegador) — eso lo hace el usuario.
+            alias = str(data.get("alias") or "").strip()[:40]
+            if not re.match(r"^[A-Za-z0-9][A-Za-z0-9._-]*$", alias) or alias == "main":
+                return self._json(400, {"error": "alias invalido (letras, numeros, . _ -)"})
+            d = os.path.expanduser(f"~/.claude-accounts/{alias}")
+            os.makedirs(d, exist_ok=True)
+            # los hooks de ComandOS viven en el settings.json de CADA config-dir
+            try:
+                with open(os.path.expanduser("~/.claude/settings.json")) as f:
+                    hooks = json.load(f).get("hooks") or {}
+                sp = os.path.join(d, "settings.json")
+                try:
+                    with open(sp) as f:
+                        st = json.load(f)
+                except Exception:
+                    st = {}
+                changed = False
+                if hooks and not st.get("hooks"):
+                    st["hooks"] = hooks
+                    changed = True
+                # los avisos van por los popups con tema de ComandOS, no los nativos de GNOME
+                if st.get("preferredNotifChannel") != "notifications_disabled":
+                    st["preferredNotifChannel"] = "notifications_disabled"
+                    changed = True
+                if changed:
+                    with open(sp, "w") as f:
+                        json.dump(st, f, indent=2, ensure_ascii=False)
+            except Exception:
+                pass
+            cwd = str(data.get("cwd") or os.path.expanduser("~"))
+            if not os.path.isdir(cwd):
+                cwd = os.path.expanduser("~")
+            n = int(time.time() * 10) % 1000000
+            new_sess = f"term-r{n}"
+            while tmux("has-session", "-t", "=" + new_sess).returncode == 0:
+                n += 1
+                new_sess = f"term-r{n}"
+            r = tmux("new-session", "-d", "-s", new_sess, "-c", cwd)
+            if r.returncode != 0:
+                return self._json(500, {"error": (r.stderr or "tmux fallo").strip()})
+            register_app_tab(new_sess, f"login · {alias}", kind="project", cwd=cwd)
+            cmd = f"CLAUDE_CONFIG_DIR=$HOME/.claude-accounts/{alias} claude /login"
+            def _send(sess=new_sess, c=cmd):
+                time.sleep(1.5)
+                tmux("send-keys", "-t", "=" + sess + ":", c, "Enter")
+            threading.Thread(target=_send, daemon=True).start()
+            return self._json(200, {"ok": True, "session": new_sess, "alias": alias})
 
         sess = data.get("session", "")
         if not SESSION_RE.match(sess):
@@ -3792,6 +4630,79 @@ class Handler(http.server.SimpleHTTPRequestHandler):
                 tmux("display-message", "-p", "-t", want, "#{pane_id}").stdout.strip() == want:
             pane = want
 
+        if self.path == "/account/switch":
+            # Misma conversacion, otra cuenta: copiar el transcript al config-dir de la
+            # cuenta destino, salir de claude y reanudar con --resume <sid> en el mismo pane.
+            alias = str(data.get("alias") or "main")[:40]
+            if not re.match(r"^[A-Za-z0-9._-]+$", alias):
+                return self._json(400, {"error": "alias invalido"})
+            acc = next((a for a in claude_accounts() if a["alias"] == alias), None)
+            if not acc:
+                return self._json(404, {"error": f"cuenta '{alias}' no existe"})
+            if not acc["loggedIn"]:
+                return self._json(409, {"error": f"la cuenta '{alias}' aun no tiene login"})
+            if tmux("has-session", "-t", target).returncode != 0:
+                return self._json(404, {"error": f"No hay sesion tmux '{sess}'"})
+            info = _claude_info_for(sess, str(data.get("pane") or ""))
+            if not info:
+                return self._json(409, {"error": "No encuentro un claude vivo en esa sesion"})
+            queued = bool(claude_pane_busy(pane))
+            sid, pid = info["sid"], info.get("pid")
+            src = _transcript_path(sid)
+            if not src:
+                return self._json(409, {"error": "No encuentro el transcript de la sesion"})
+            src_dir = os.path.dirname(src)
+            src_cfg = os.path.dirname(os.path.dirname(src_dir))
+            if os.path.realpath(src_cfg) == os.path.realpath(acc["dir"]):
+                return self._json(400, {"error": f"esa sesion ya usa la cuenta '{alias}'"})
+            dst_dir = os.path.join(acc["dir"], "projects", os.path.basename(src_dir))
+            try:
+                import shutil
+                os.makedirs(dst_dir, exist_ok=True)
+                shutil.copy2(src, os.path.join(dst_dir, os.path.basename(src)))
+                extra = os.path.join(src_dir, sid)
+                if os.path.isdir(extra) and not os.path.isdir(os.path.join(dst_dir, sid)):
+                    shutil.copytree(extra, os.path.join(dst_dir, sid))
+            except Exception as e:
+                return self._json(500, {"error": f"no pude copiar el transcript: {e}"})
+            # La carpeta ya es de confianza en la cuenta origen: heredar ese "si" para que
+            # --resume no se quede parado en "Do you trust this folder?".
+            try:
+                cwd_r = tmux("display-message", "-p", "-t", pane, "#{pane_current_path}").stdout.strip()
+                with open(os.path.join(src_cfg, ".claude.json")) as f:
+                    sp = (json.load(f).get("projects") or {}).get(cwd_r) or {}
+                if sp.get("hasTrustDialogAccepted"):
+                    dj = os.path.join(acc["dir"], ".claude.json")
+                    try:
+                        with open(dj) as f:
+                            dd = json.load(f)
+                    except Exception:
+                        dd = {}
+                    dd.setdefault("projects", {}).setdefault(cwd_r, {})["hasTrustDialogAccepted"] = True
+                    tmp = dj + ".tmp"
+                    with open(tmp, "w") as f:
+                        json.dump(dd, f, indent=2)
+                    os.replace(tmp, dj)
+            except Exception:
+                pass
+            argv = _proc_cmdline(pid) if pid else []
+            flags = _resume_flags(argv)
+            env = _read_environ(pid) if pid else {}
+            base_url = env.get(b"ANTHROPIC_BASE_URL", b"").decode("utf-8", "replace")
+            prefix = "" if alias == "main" else f"CLAUDE_CONFIG_DIR=$HOME/.claude-accounts/{alias} "
+            if base_url:
+                prefix += f"ANTHROPIC_BASE_URL={shlex.quote(base_url)} "
+            cmd = prefix + "claude --resume " + shlex.quote(sid) + "".join(" " + shlex.quote(f) for f in flags)
+            if data.get("interrupt") and claude_pane_busy(pane):
+                tmux("send-keys", "-t", pane, "Escape")
+                time.sleep(1.2)
+            _claude_restart_resume(pane, pid, cmd, queued=queued, sess=sess, gen=motor_gen_bump(sess))
+            return self._json(202 if queued else 200, {"ok": True, "queued": queued, "command": cmd, "sid": sid})
+
+        if self.path == "/model/switch-cancel":
+            motor_gen_bump(sess)     # invalida cualquier cambio de motor/cuenta en cola
+            return self._json(200, {"ok": True, "note": "cambios en cola cancelados"})
+
         if self.path == "/model/switch":
             provider = str(data.get("provider") or data.get("agent") or state_agent(sess))[:32]
             preset = str(data.get("preset") or "diario")[:32]
@@ -3834,12 +4745,75 @@ class Handler(http.server.SimpleHTTPRequestHandler):
                     if pause:
                         time.sleep(pause)
                 return self._json(200, {"ok": True, "command": f"/models → {query}"})
-            switch_text = cc_usage.model_switch_text(provider, preset, model)
-            r = tmux("send-keys", "-t", pane, "-l", "--", switch_text)
-            if r.returncode != 0:
-                return self._json(500, {"error": r.stderr.strip() or "tmux fallo"})
-            tmux("send-keys", "-t", pane, "Enter")
-            return self._json(200, {"ok": True, "command": switch_text})
+            EFFORTS = ("low", "medium", "high", "xhigh", "max")
+            if effort and effort not in EFFORTS:
+                return self._json(400, {"error": f"effort invalido: {effort}"})
+            cmds = []
+            if model or not effort:
+                cmds.append(cc_usage.model_switch_text(provider, preset, model))
+            if effort and provider == "claude":
+                cmds.append(f"/effort {effort}")   # Claude Code lo manda como output_config.effort; el proxy lo traduce a reasoning de Codex
+            # `/model X` y `/effort X` en Claude Code tambien se GUARDAN como default de
+            # sesiones nuevas. El cambio es de ESTA sesion: restaurar los defaults.
+            saved = None
+            if provider == "claude":
+                try:
+                    with open(os.path.expanduser("~/.claude/settings.json")) as f:
+                        st0 = json.load(f)
+                    saved = {k: st0.get(k) for k in ("model", "effortLevel", "modelSettings")}
+                except Exception:
+                    saved = None
+            queued = bool(provider == "claude" and claude_pane_busy(pane))
+            interrupt = bool(data.get("interrupt"))
+            gen = motor_gen_bump(sess)
+            if provider == "claude" and model and re.match(r"^(gpt|codex|o[0-9])", model, re.I):
+                info = _claude_info_for(sess, str(data.get("pane") or ""))
+                pid = info.get("pid") if info else None
+                env = _read_environ(pid) if pid else {}
+                if pid and not _proxied(pid, env):
+                    # Esta sesion nacio SIN proxy: `/model gpt-…` diria "not found". Misma
+                    # conversacion, mismo pane, ahora con proxy: /exit + claude --resume.
+                    if not proxy_alive():
+                        return self._json(409, {"error": "cc-proxy no responde; enciendelo en Ajustes → Motor"})
+                    port = int(load_proxy_cfg().get("port") or 18765)
+                    cfg_dir = env.get(b"CLAUDE_CONFIG_DIR", b"").decode("utf-8", "replace")
+                    prefix = f"ANTHROPIC_BASE_URL=http://127.0.0.1:{port} "
+                    if cfg_dir:
+                        prefix = f"CLAUDE_CONFIG_DIR={shlex.quote(cfg_dir)} " + prefix
+                    flags = [f for f in _resume_flags(_proc_cmdline(pid)) if f not in ("--model",)]
+                    # quitar el valor que seguia a --model si lo habia
+                    cleaned, skip = [], False
+                    raw = _resume_flags(_proc_cmdline(pid))
+                    for i, f in enumerate(raw):
+                        if f == "--model":
+                            skip = True
+                            continue
+                        if skip:
+                            skip = False
+                            continue
+                        cleaned.append(f)
+                    cmd = (prefix + "claude --resume " + shlex.quote(info["sid"]) + " --model " + shlex.quote(model)
+                           + "".join(" " + shlex.quote(f) for f in cleaned))
+                    after = [f"/effort {effort}"] if effort else []
+                    if effort:
+                        session_effort_set(sess, effort)
+                    if data.get("interrupt") and claude_pane_busy(pane):
+                        tmux("send-keys", "-t", pane, "Escape")
+                        time.sleep(1.2)
+                    _claude_restart_resume(pane, pid, cmd, after_cmds=after, queued=queued, sess=sess, gen=gen)
+                    return self._json(202 if queued else 200, {"ok": True, "queued": queued, "restart": True, "command": cmd,
+                                            "effort": effort or None,
+                                            "note": "La sesion no pasaba por cc-proxy: se reanuda la misma conversacion ya con proxy"})
+
+            payload = {"pane": pane, "cmds": cmds, "provider": provider, "saved": saved,
+                       "sess": sess, "effort": effort, "gen": gen, "interrupt": interrupt,
+                       "ts": time.time()}
+            motor_queue_put(sess, payload)   # persistente: sobrevive reinicios de cc-dash
+            threading.Thread(target=motor_apply, args=(payload,), daemon=True).start()
+            if queued:
+                return self._json(202, {"ok": True, "queued": True, "command": " · ".join(cmds), "effort": effort or None,
+                                        "note": "La sesion esta a mitad de turno: el cambio se aplica solo al terminar"})
+            return self._json(200, {"ok": True, "command": " · ".join(cmds), "effort": effort or None})
 
         if self.path == "/send":
             text = str(data.get("text", ""))[:4000]
@@ -3992,6 +4966,7 @@ class Handler(http.server.SimpleHTTPRequestHandler):
 
 
 def main():
+    motor_queue_resume()
     args = [a for a in sys.argv[1:]]
     open_browser = "--no-open" not in args
     ports = [int(a) for a in args if a.isdigit()] or [4777]
