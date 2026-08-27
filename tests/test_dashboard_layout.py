@@ -4,8 +4,7 @@ from pathlib import Path
 
 
 INDEX = Path("dash/index.html").read_text()
-PEREZOS_CSS = Path("dash/perezos/perezos.css").read_text()
-CSS = INDEX + "\n" + PEREZOS_CSS
+CSS = INDEX
 
 
 def rule(selector: str) -> str:
@@ -75,8 +74,7 @@ def test_phone_dashboard_keeps_servers_compact_and_session_actions_visible():
     mobile = block("@media (max-width:640px)")
     compact = re.sub(r"\s+", "", mobile)
 
-    assert "#ssh-bar{flex-wrap:nowrap;overflow-x:auto;overflow-y:hidden" in compact
-    assert ".ssh-chip,#ssh-manage{flex:none}" in compact
+    assert "#ssh-bar{flex-wrap:wrap;overflow:visible}" in compact, "servidores se envuelven, sin scroll horizontal"
     assert ".row.rpath{display:none}" in compact
     assert ".row.name{flex-basis:140px}" in compact
     assert "#servers.modal-panel{padding:24px18px}" in compact
@@ -89,12 +87,8 @@ def test_tablet_dashboard_wraps_session_rows_before_they_overflow():
     tablet = block("@media (max-width:900px)")
     compact = re.sub(r"\s+", "", tablet)
 
-    assert ".row{flex-wrap:wrap" in compact
-    assert ".row.rpath{max-width:35vw}" in compact
-    assert ".row.acts{order:3;flex:10" in compact
-    assert "width:100%;justify-content:flex-end;flex-wrap:wrap;opacity:1" in compact
-    assert ".row.actsbutton{min-height:36px}" in compact
-    assert ".row.actsbutton.term,.row.actsbutton.kill{width:36px}" in compact
+    assert '"actsactsactsacts"' in compact, "las acciones bajan a su propia fila"
+    assert ".row.acts{display:none}" in compact, "las tarjetas no llevan botones: click = seleccionar"
 
 
 def test_ssh_connection_list_is_an_independent_touch_scroller():
@@ -113,23 +107,3 @@ def test_ssh_connection_list_is_an_independent_touch_scroller():
         '<div id="srv-list" role="region" '
         'aria-label="Conexiones guardadas" tabindex="0"></div>'
     ) in CSS
-
-
-def test_perezos_stage_fits_desktop_and_narrow_control_center():
-    stage = rule(".perezos-stage")
-    assert "width:256px" in stage
-    assert "height:208px" in stage
-    assert "background:transparent" in stage
-
-    compact = re.sub(r"\s+", "", PEREZOS_CSS)
-    assert "@media(max-width:760px)" in compact
-    assert ".perezos-stage{width:180px;height:148px" in compact
-    assert "body.no-mascot.perezos-stage{display:none;}" in compact
-    assert "image-rendering:pixelated" in compact
-
-
-if __name__ == "__main__":
-    test_split_left_panel_is_the_scroll_container()
-    test_desktop_panel_has_a_real_content_scroller()
-    test_remote_shell_uses_dynamic_viewport_grid_without_fixed_tab_offset()
-    test_remote_touch_targets_have_stable_minimums()

@@ -55,12 +55,12 @@ def running_dash(home, *, override=None):
 
 
 def _write_dashboard(path, marker):
-    (path / "perezos").mkdir(parents=True)
+    (path / "assets").mkdir(parents=True)
     (path / "index.html").write_text(marker)
-    (path / "perezos" / "engine.js").write_text(f"// {marker}\n")
+    (path / "assets" / "app.js").write_text(f"// {marker}\n")
 
 
-def test_development_override_serves_fixture_dashboard_and_perezos_assets(tmp_path):
+def test_development_override_serves_fixture_dashboard_and_nested_assets(tmp_path):
     home = tmp_path / "home"
     installed = home / ".claude" / "hooks" / "dash"
     development = tmp_path / "worktree" / "dash"
@@ -71,25 +71,25 @@ def test_development_override_serves_fixture_dashboard_and_perezos_assets(tmp_pa
         assert urllib.request.urlopen(f"{base_url}/", timeout=5).read() == (
             b"development-dashboard")
         assert urllib.request.urlopen(
-            f"{base_url}/perezos/engine.js", timeout=5).read() == (
+            f"{base_url}/assets/app.js", timeout=5).read() == (
                 b"// development-dashboard\n")
 
 
 def test_default_still_serves_dashboard_installed_under_hooks(tmp_path):
     home = tmp_path / "home"
     installed = home / ".claude" / "hooks" / "dash"
-    source_assets = tmp_path / "repository" / "dash" / "perezos"
+    source_assets = tmp_path / "repository" / "dash" / "assets"
     installed.mkdir(parents=True)
     source_assets.mkdir(parents=True)
     (installed / "index.html").write_text("installed-dashboard")
-    (source_assets / "engine.js").write_text("// installed-dashboard\n")
-    (installed / "perezos").symlink_to(source_assets, target_is_directory=True)
+    (source_assets / "app.js").write_text("// installed-dashboard\n")
+    (installed / "assets").symlink_to(source_assets, target_is_directory=True)
 
     with running_dash(home) as base_url:
         assert urllib.request.urlopen(f"{base_url}/", timeout=5).read() == (
             b"installed-dashboard")
         assert urllib.request.urlopen(
-            f"{base_url}/perezos/engine.js", timeout=5).read() == (
+            f"{base_url}/assets/app.js", timeout=5).read() == (
                 b"// installed-dashboard\n")
 
 

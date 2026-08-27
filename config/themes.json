@@ -1,0 +1,75 @@
+{
+  "_doc": "Tokens de color por tema (fuente: dash/index.html). Los lee cc-notifyd para que los popups sigan el tema del tablero. EDITABLE.",
+  "themes": {
+    "noche": {
+      "bg": "#0A0D13",
+      "panel": "#121722",
+      "panel2": "#161C29",
+      "line": "#222A3A",
+      "line2": "#2E3852",
+      "text": "#EAF0FB",
+      "dim": "#9AA6BF",
+      "faint": "#5E6980",
+      "brand": "#8B7CFF",
+      "waiting": "#FFAE1A",
+      "done": "#2EE59D",
+      "working": "#7AA5FF"
+    },
+    "dia": {
+      "bg": "#0A0D13",
+      "panel": "#121722",
+      "panel2": "#161C29",
+      "line": "#222A3A",
+      "line2": "#2E3852",
+      "text": "#EAF0FB",
+      "dim": "#9AA6BF",
+      "faint": "#5E6980",
+      "brand": "#8B7CFF",
+      "waiting": "#FFAE1A",
+      "done": "#2EE59D",
+      "working": "#7AA5FF"
+    },
+    "calido": {
+      "bg": "#161009",
+      "panel": "#1F1811",
+      "panel2": "#261D14",
+      "line": "#36291A",
+      "line2": "#4A3823",
+      "text": "#F2E5D0",
+      "dim": "#BCA98C",
+      "faint": "#8A7A5F",
+      "brand": "#E0A458",
+      "waiting": "#FFB454",
+      "done": "#8FD48A",
+      "working": "#89A7E0"
+    },
+    "termius": {
+      "bg": "#0E1620",
+      "panel": "#141E2A",
+      "panel2": "#182432",
+      "line": "#1C2733",
+      "line2": "#25384F",
+      "text": "#D6E0EA",
+      "dim": "#8FA0B4",
+      "faint": "#5C6B80",
+      "brand": "#4CE07A",
+      "waiting": "#FFAE1A",
+      "done": "#4CE07A",
+      "working": "#7DB4E6"
+    },
+    "bruno": {
+      "bg": "#1A1A1A",
+      "panel": "#222224",
+      "panel2": "#26292B",
+      "line": "#333333",
+      "line2": "#444444",
+      "text": "#CCCCCC",
+      "dim": "#AAAAAA",
+      "faint": "#999999",
+      "brand": "#E4AE49",
+      "waiting": "#F6AB79",
+      "done": "#73E89A",
+      "working": "#8BC2F9"
+    }
+  }
+}
