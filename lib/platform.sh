@@ -148,9 +148,10 @@ cc_register_claude_hooks() {
   local tmp
   tmp=$(mktemp)
   if jq --arg cmd "$cmd" '
+      def norm: sub("^~"; env.HOME);
       def ensure($ev):
         .hooks[$ev] = ((.hooks[$ev] // []) as $arr
-          | if ($arr | map((.hooks // [])[] | .command // "") | index($cmd)) != null
+          | if ($arr | map((.hooks // [])[] | (.command // "") | norm) | index($cmd | norm)) != null
             then $arr
             else $arr + [{"hooks": [{"type": "command", "command": $cmd}]}]
             end);

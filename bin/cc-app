@@ -124,9 +124,12 @@ notebook > header > tabs > arrow:hover { color: @BRAND@; }
 notebook > header > tabs > arrow:disabled { color: @LINE@; }
 notebook stack { background: @BG@; }
 .termwrap { background: @BG@; }
-.tabplus { color: @FAINT@; padding: 2px 10px; border: none; background: none;
-  font-family: monospace; font-size: 14px; }
-.tabplus:hover { color: @BRAND@; }
+.tabplus { color: @DIM@; padding: 4px 8px; margin: 0 1px; border: none; background: none;
+  border-radius: 8px; min-width: 28px; min-height: 28px; font-family: monospace; font-size: 14px;
+  -gtk-icon-effect: none; }
+.tabplus:hover { color: @TEXT@; background: @LINE@; }
+.tabplus:active { color: @BRAND@; }
+.tabplus image { opacity: 0.92; }
 scrollbar { background: transparent; border: 0; box-shadow: none; }
 scrollbar trough { background: transparent; border: 0; min-width: 5px; min-height: 5px; }
 scrollbar slider { background: @LINE@; border: 0; border-radius: 6px;
@@ -992,6 +995,9 @@ def _build_hb_css():
     b" border-bottom-left-radius:10px;border-bottom-right-radius:10px;"
     b"}"
     b"paned{background:" + THEME["bg"].encode() + b";}"
+    b".cc-popover{background:" + THEME.get("panel", THEME["bg"]).encode() + b";border:1px solid " + THEME["line2"].encode() + b";border-radius:14px;padding:0;}"
+    b".cc-badge{background:" + THEME.get("waiting", "#FFAE1A").encode() + b";color:" + THEME["bg"].encode() + b";"
+    b" font-family:monospace;font-size:8px;font-weight:800;border-radius:8px;padding:0 3px;min-width:12px;min-height:12px;margin:2px 2px 0 0;}"
     # Separator del Paned: mismo color de línea del theme y bien delgado.
     # Reglas específicas para vertical/horizontal + backdrop porque el default
     # de Adwaita lo dibuja en gris claro con margen (por eso se veía blanco).
@@ -1773,6 +1779,11 @@ def tab_label(text, key=None, closable=True):
 def update_dots(states, items=None):
     STATE_CACHE.clear()
     STATE_CACHE.update(states)
+    try:
+        if items is not None:
+            set_notif_badge(sum(1 for it in items if it.get("status") == "waiting" and it.get("alive")))
+    except Exception:
+        pass
     if items is not None:
         STATE_ITEMS.clear()
         STATE_ITEMS.update({it.get("session"): it for it in items if it.get("session")})
@@ -2531,11 +2542,13 @@ def _apply_tmux_theme():
 hub = make_term("tmux new-session -A -s local -c ~")
 # Aplica el tema al tmux status ya en el arranque (idempotente).
 GLib.timeout_add(500, lambda: (_apply_tmux_theme(), False)[1])
+hub._key = "local"   # la pestana ⌂ opera la sesion tmux "local": sin esto, al pararte
+# aqui el tablero seguia "pinneando" la sesion de la pestana anterior (p.ej. Signara)
 nb.append_page(hub, tab_label("⌂ local", closable=False))
 nb.set_tab_reorderable(hub, False)
 nb.connect("page-reordered", on_tab_reordered)
 
-# La pestana ACTIVA de la app: el tablero la usa para que PerezOS sea siempre
+# La pestana ACTIVA de la app: el tablero la usa para que el Centro de Control sea siempre
 # el operador de la sesion en la que estas parado.
 ACTIVE_TAB_FILE = os.path.expanduser("~/.claude/hooks/app-tab-active.json")
 
@@ -2564,7 +2577,17 @@ def _icon_btn(name, tooltip, on_click, size=16):
     b = Gtk.Button()
     svg_path = os.path.join(_ICONS_DIR, f"{name}.svg")
     if os.path.isfile(svg_path):
-        pb = GdkPixbuf.Pixbuf.new_from_file_at_size(svg_path, size, size)
+        # Los SVG usan currentColor; GdkPixbuf no conoce el color del tema, así
+        # que se sustituye por el color de icono del tema al cargar.
+        try:
+            with open(svg_path, "rb") as f:
+                data = f.read().replace(b"currentColor", THEME.get("dim", "#9AA6BF").encode())
+            loader = GdkPixbuf.PixbufLoader.new_with_type("svg")
+            loader.set_size(size, size)
+            loader.write(data); loader.close()
+            pb = loader.get_pixbuf()
+        except Exception:
+            pb = GdkPixbuf.Pixbuf.new_from_file_at_size(svg_path, size, size)
         img = Gtk.Image.new_from_pixbuf(pb)
     else:
         img = Gtk.Image.new_from_icon_name(name, Gtk.IconSize.SMALL_TOOLBAR)
@@ -2635,6 +2658,76 @@ _help = _icon_btn(
     "help",
     "Ver todos los atajos (? o F1)" if ES else "All shortcuts (? or F1)",
     lambda *_: show_help())
+# Pomodoro · Notificaciones · Ajustes: viven AQUÍ, a la altura de min/max
+# (es la barra siempre visible). Cada uno dispara su control del tablero.
+def _dash_click(elem_id):
+    def go(*_):
+        try:
+            # el tablero es el panel izquierdo del paned: si está plegado, se abre
+            try:
+                if paned.get_position() < 420:
+                    paned.set_position(700)
+            except Exception:
+                pass
+            wv.run_javascript(f"try{{document.getElementById('{elem_id}').click()}}catch(e){{}}", None, None, None)
+        except Exception:
+            pass
+    return go
+
+_POPOVERS = {}
+
+
+def _panel_popover(btn, panel, width, height):
+    """Popover nativo pegado al icono con el MISMO panel del tablero
+    (index.html?panel=...): mismo tema y mismo código, pero junto al botón."""
+    def go(*_):
+        pop = _POPOVERS.get(panel)
+        if pop is None:
+            pop = Gtk.Popover.new(btn)
+            pop.set_position(Gtk.PositionType.BOTTOM)
+            pop.get_style_context().add_class("cc-popover")
+            pv = WebKit2.WebView()
+            pv.set_size_request(width, height)
+            try:
+                pv.set_background_color(Gdk.RGBA(0, 0, 0, 0))
+            except Exception:
+                pass
+            pv.get_settings().set_property("enable-webaudio", True)
+            pop.add(pv)
+            pop._pv = pv
+            _POPOVERS[panel] = pop
+        if not getattr(pop, "_loaded", False):
+            pop._pv.load_uri(f"{URL}/?panel={panel}")
+            pop._loaded = True
+        else:
+            # NO recargar: el pomodoro en curso vive en esta página. Solo refrescar.
+            pop._pv.run_javascript("try{typeof pomoRender==='function'&&pomoRender();typeof notifRender==='function'&&notifRender()}catch(e){}", None, None, None)
+        pop.show_all()
+        pop.popup()
+    return go
+
+
+_pomo_btn = _icon_btn("timer", "Pomodoro" if ES else "Pomodoro", lambda *_: None)   # cronometro Lucide (el jitomate dibujado no gusto)
+_pomo_btn.connect("clicked", _panel_popover(_pomo_btn, "pomo", 320, 560))
+_notif_btn = _icon_btn("bell", "Notificaciones" if ES else "Notifications", lambda *_: None)
+_notif_btn.connect("clicked", _panel_popover(_notif_btn, "notif", 400, 600))
+_notif_badge = Gtk.Label(label="")
+_notif_badge.get_style_context().add_class("cc-badge")
+_notif_badge.set_no_show_all(True)
+_notif_wrap = Gtk.Overlay()
+_notif_wrap.add(_notif_btn)
+_notif_badge.set_halign(Gtk.Align.END); _notif_badge.set_valign(Gtk.Align.START)
+_notif_wrap.add_overlay(_notif_badge)
+_notif_wrap.set_overlay_pass_through(_notif_badge, True)
+_settings_btn = _icon_btn("settings", "Ajustes" if ES else "Settings", _dash_click("btn-settings"))
+
+
+def set_notif_badge(n):
+    if n > 0:
+        _notif_badge.set_text(str(n)); _notif_badge.show()
+    else:
+        _notif_badge.hide()
+
 # Botones min/max/close CUSTOM — mismo helper que los demás para look uniforme.
 # Se packean ANTES (así quedan más a la derecha) y con separador visual entre
 # los actions de app y los controles de ventana.
@@ -2659,13 +2752,15 @@ _headerbar.pack_end(_minimize)
 # Separador sutil entre controles de ventana y actions de app.
 _hb_sep = Gtk.Box(); _hb_sep.set_size_request(8, 1)
 _headerbar.pack_end(_hb_sep)
-# Los 5 action buttons (más a la izquierda).
-_headerbar.pack_end(_help)
+# Ajustes · Notificaciones · Pomodoro — pegados a los controles de ventana.
+_headerbar.pack_end(_settings_btn)
+_headerbar.pack_end(_notif_wrap)
+_headerbar.pack_end(_pomo_btn)
+_hb_sep2 = Gtk.Box(); _hb_sep2.set_size_request(8, 1)
+_headerbar.pack_end(_hb_sep2)
+# Solo el "+" (nueva sesión). Copiar/pestañas/buscar/snippets/ayuda siguen
+# disponibles por atajos y menús, pero NO en la barra (el usuario no los usa).
 _headerbar.pack_end(_plus)
-_headerbar.pack_end(_snippets)
-_headerbar.pack_end(_find)
-_headerbar.pack_end(_tabs)
-_headerbar.pack_end(_copy)
 _headerbar.show_all()
 
 # Puente tablero -> app: las tarjetas piden abrir pestanas aqui
@@ -3380,6 +3475,8 @@ def on_key(w, e):
         t.set_font_scale(1.0); return True
     if ctrl and not shift and e.keyval in (Gdk.KEY_k, Gdk.KEY_K):
         open_switcher(); return True
+    if ctrl and not shift and e.keyval in (Gdk.KEY_o, Gdk.KEY_O):
+        open_tabs_overview(); return True
     # CONTROL_MASK + SHIFT_MASK + Gdk.KEY_K → snippets modal
     if ctrl and shift and e.keyval in (Gdk.KEY_k, Gdk.KEY_K):
         open_snippets_dialog(); return True

@@ -61,3 +61,9 @@ COMANDOS_USAGE_CLAUDE_MAX_FILES=120
 # COMANDOS_CLAUDE_DAILY_TOKEN_LIMIT=
 # COMANDOS_CLAUDE_WEEKLY_TOKEN_LIMIT=
 # COMANDOS_DAILY_BUDGET_USD=
+
+# Notificaciones nativas del escritorio (GNOME) en vez de los popups con tema: 1 para activar
+NATIVE_NOTIFY=0
+
+# Popups flotantes de cc-notifyd (ventanas propias): 1 para activarlos. Por defecto los avisos van dentro del tablero.
+POPUPS=0

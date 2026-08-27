@@ -16,14 +16,20 @@ Anatomia del popup:
 Recibe eventos de cc-notify.sh:  POST 127.0.0.1:4778/notify
 Corre como servicio:             systemctl --user status cc-notifyd
 """
-import json, os, re, subprocess, threading, urllib.request
+import json, os, re, subprocess, threading, time, urllib.request
 import http.server, socketserver
 import gi
 gi.require_version("Gtk", "3.0")
+try:
+    gi.require_version("Notify", "0.7")
+    from gi.repository import Notify
+    HAVE_NOTIFY = True
+except Exception:
+    Notify, HAVE_NOTIFY = None, False
 from gi.repository import Gtk, Gdk, GLib
 
 PORT = 4778
-WIDTH = 470
+WIDTH = 320
 MARGIN = 14
 TOP = 48
 ALLOWED_KEYS = {"Enter", "Escape", "1", "2", "3"}
@@ -46,6 +52,81 @@ def _ui_lang():
 
 
 UI_LANG = _ui_lang()
+
+
+def _conf_value(key, default):
+    try:
+        with open(os.path.expanduser("~/.claude/hooks/cc-notify.conf")) as f:
+            for line in f:
+                line = line.strip()
+                if line.startswith(key + "="):
+                    return line.split("=", 1)[1].strip().strip('"\'')
+    except Exception:
+        pass
+    return default
+
+
+REPO_ROOT = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
+THEMES_FILE = os.path.join(REPO_ROOT, "config", "themes.json")
+_theme_cache = {"at": 0.0, "tokens": None}
+
+
+def theme_tokens():
+    """Tokens del tema ACTUAL del tablero (prefs de cc-dash + config/themes.json)."""
+    now = time.time()
+    if _theme_cache["tokens"] and now - _theme_cache["at"] < 30:
+        return _theme_cache["tokens"]
+    themes = {}
+    try:
+        with open(THEMES_FILE) as f:
+            themes = json.load(f).get("themes") or {}
+    except Exception:
+        pass
+    name = "noche"
+    try:
+        name = dash_get("/prefs").get("theme") or "noche"
+    except Exception:
+        pass
+    base = {"bg": "#0A0D13", "panel": "#121722", "panel2": "#161C29", "line": "#222A3A", "line2": "#2E3852",
+            "text": "#EAF0FB", "dim": "#9AA6BF", "faint": "#5E6980", "brand": "#8B7CFF",
+            "waiting": "#FFAE1A", "done": "#2EE59D", "working": "#7AA5FF"}
+    tokens = dict(base, **(themes.get(name) or themes.get("noche") or {}))
+    tokens["name"] = name
+    _theme_cache.update(at=now, tokens=tokens)
+    return tokens
+
+
+def build_css(t):
+    return f"""
+window.ccpop {{ background-color: rgba(0,0,0,0); }}
+.card {{ background-color: {t['panel']}; border: 1px solid {t['line2']};
+  border-radius: 14px; box-shadow: 0 8px 26px rgba(0,0,0,0.45); }}
+.hd {{ background-color: rgba(0,0,0,0); border-radius: 14px; }}
+.kbadge {{ background-color: {t['done']}; color: {t['bg']}; border-radius: 8px;
+  font-family: 'JetBrainsMono Nerd Font', monospace; font-weight: 900; font-size: 12px;
+  min-width: 22px; min-height: 22px; padding: 0px; }}
+.kbadge.waiting {{ background-color: {t['waiting']}; }}
+.proj {{ color: {t['text']}; font-family: 'JetBrainsMono Nerd Font', monospace; font-weight: 800; font-size: 13px; letter-spacing: 0.2px; }}
+.inprev {{ color: mix({t['text']}, {t['dim']}, 0.35); font-size: 12.5px; }}
+.when {{ color: alpha({t['dim']}, 0.9); font-family: 'JetBrainsMono Nerd Font', monospace; font-size: 11px; }}
+.body {{ color: {t['text']}; font-size: 13.5px; }}
+.body selection {{ background-color: {t['brand']}; color: {t['bg']}; }}
+.vermas {{ color: {t['dim']}; font-size: 11.5px; padding: 4px 10px; background: none; border: none;
+  font-family: 'JetBrainsMono Nerd Font', monospace; font-weight: 700; border-radius: 7px; }}
+.vermas:hover {{ color: {t['text']}; background-color: alpha({t['dim']}, 0.15); }}
+.btn {{ background-color: transparent; color: {t['text']}; border: 1px solid alpha({t['dim']}, 0.5);
+  border-radius: 9px; padding: 5px 16px; font-family: 'JetBrainsMono Nerd Font', monospace;
+  font-size: 12px; font-weight: 800; min-height: 30px; }}
+.btn:hover {{ border-color: {t['brand']}; color: {t['brand']}; }}
+.btn.primary {{ background-color: {t['brand']}; color: {t['bg']}; border-color: {t['brand']}; }}
+.btn.primary:hover {{ background-color: mix({t['brand']}, {t['text']}, 0.18); color: {t['bg']}; }}
+.close {{ background: none; border: none; color: {t['dim']}; padding: 2px 8px; font-size: 15px;
+  min-width: 26px; min-height: 26px; border-radius: 8px; }}
+.close:hover {{ color: {t['text']}; background-color: alpha({t['dim']}, 0.18); }}
+.entry {{ background-color: {t['bg']}; color: {t['text']}; border: 1px solid {t['line2']};
+  border-radius: 8px; padding: 6px 10px; font-family: 'JetBrainsMono Nerd Font', monospace; font-size: 12px; }}
+.entry:focus {{ border-color: {t['brand']}; }}
+""".encode()
 TR = {  # (es, en)
     "waiting_tag": ("espera tu respuesta", "waiting for your answer"),
     "done_tag": ("listo", "done"),
@@ -69,12 +150,15 @@ CSS = b"""
 window.ccpop { background-color: rgba(0,0,0,0); }
 .card { background-color: #121722; border: 1px solid #222A3A; border-radius: 12px; }
 .card.waiting { border-color: #6b4c12; }
-.edge { border-radius: 11px 0px 0px 11px; background-color: #2EE59D; }
-.edge.waiting { background-color: #FFAE1A; }
+.hd { background-color: rgba(0,0,0,0); }
+.kbadge { background-color: #2EE59D; color: #0A0D13; border-radius: 7px; min-width: 20px; min-height: 20px; font-weight: 900; }
+.kbadge.waiting { background-color: #FFAE1A; }
+.when { color: #9AA6BF; font-size: 8.5px; }
+.inprev { color: #9AA6BF; font-size: 11px; }
 .tag { color: #FFAE1A; font-family: 'JetBrainsMono Nerd Font', monospace; font-size: 9.5px; font-weight: 700; }
 .tag.done { color: #2EE59D; }
-.proj { color: #EAF0FB; font-family: 'JetBrainsMono Nerd Font', monospace; font-weight: 700; font-size: 14px; }
-.body { color: #D6DEED; font-size: 13.5px; }
+.proj { color: #EAF0FB; font-family: 'JetBrainsMono Nerd Font', monospace; font-weight: 800; font-size: 12.5px; }
+.body { color: #D6DEED; font-size: 12.5px; }
 .body selection { background-color: #8B7CFF; color: #0A0D13; }
 .vermas { color: #7AA5FF; font-size: 11.5px; padding: 0; background: none; border: none;
   font-family: 'JetBrainsMono Nerd Font', monospace; }
@@ -86,13 +170,13 @@ window.ccpop { background-color: rgba(0,0,0,0); }
 }
 .entry:focus { border-color: #7AA5FF; }
 .btn {
-  background-color: #0A0D13; color: #9AA6BF; border: 1px solid #222A3A;
-  border-radius: 6px; padding: 3px 10px; font-family: 'JetBrainsMono Nerd Font', monospace;
-  font-size: 11.5px; min-height: 24px;
+  background-color: transparent; color: #9AA6BF; border: 1px solid #222A3A;
+  border-radius: 8px; padding: 2px 11px; font-family: 'JetBrainsMono Nerd Font', monospace;
+  font-size: 10.5px; font-weight: 800; min-height: 22px;
 }
-.btn:hover { color: #EAF0FB; border-color: #5E6980; background-color: #161C29; }
-.btn.primary { color: #FFAE1A; border-color: #6b4c12; }
-.btn.primary:hover { border-color: #FFAE1A; }
+.btn:hover { color: #EAF0FB; border-color: #E4AE49; }
+.btn.primary { background-color: #E4AE49; color: #0A0D13; border-color: #E4AE49; }
+.btn.primary:hover { background-color: #EFC26A; }
 .btn.open { color: #7AA5FF; }
 .close { background: none; border: none; color: #5E6980; padding: 0px 4px; font-size: 13px; }
 .close:hover { color: #EAF0FB; }
@@ -100,6 +184,29 @@ window.ccpop { background-color: rgba(0,0,0,0); }
 
 popups = []
 by_session = {}
+POS_FILE = os.path.expanduser("~/.claude/hooks/notifyd-pos.json")
+
+
+def _anchor_load():
+    try:
+        with open(POS_FILE) as f:
+            d = json.load(f)
+        return int(d["x"]), int(d["y"])
+    except Exception:
+        return None
+
+
+def _anchor_save(x, y):
+    try:
+        tmp = POS_FILE + ".tmp"
+        with open(tmp, "w") as f:
+            json.dump({"x": int(x), "y": int(y)}, f)
+        os.replace(tmp, POS_FILE)
+    except Exception:
+        pass
+
+
+ANCHOR = _anchor_load()
 
 
 def tmux(*args):
@@ -291,14 +398,78 @@ def open_session(sess):
         pass
 
 
+_NPOS_CACHE = {"at": 0.0, "val": "free"}
+
+
+def _notif_pos():
+    now = time.time()
+    if now - _NPOS_CACHE["at"] > 5:
+        _NPOS_CACHE["at"] = now
+        try:
+            _NPOS_CACHE["val"] = dash_get("/prefs").get("notif_pos") or "free"
+        except Exception:
+            pass
+    return _NPOS_CACHE["val"]
+
+
 def reposition():
     disp = Gdk.Display.get_default()
     mon = disp.get_primary_monitor() or disp.get_monitor(0)
     geo = mon.get_geometry()
-    y = geo.y + TOP
+    mode = _notif_pos()
+    up = False
+    if mode in ("tl", "tr", "bl", "br"):
+        x = geo.x + MARGIN if mode.endswith("l") else geo.x + geo.width - WIDTH - MARGIN
+        if mode.startswith("t"):
+            y = geo.y + TOP
+        else:
+            up = True
+            y = geo.y + geo.height - MARGIN   # borde inferior EXACTO; el loop resta cada altura
+    elif ANCHOR:
+        # "Libre": la pila nace donde el usuario dejo el ultimo arrastre.
+        x = max(geo.x, min(ANCHOR[0], geo.x + geo.width - WIDTH - 4))
+        y = max(geo.y, min(ANCHOR[1], geo.y + geo.height - 120))
+    else:
+        x = geo.x + geo.width - WIDTH - MARGIN
+        y = geo.y + TOP
     for w in popups:
-        w.move(geo.x + geo.width - WIDTH - MARGIN, y)
-        y += w.get_allocated_height() + 10
+        h = w.get_allocated_height()
+        if up:
+            y -= h
+        w._want = (x, y)
+        w.move(x, y)
+        y = (y - 10) if up else (y + h + 10)
+    return False
+
+
+def _on_configure(win, ev):
+    """Si la ventana quedo donde NO la pusimos, fue un arrastre del usuario:
+    esa posicion (menos su offset en la pila) es la nueva ancla, y se recuerda."""
+    global ANCHOR
+    want = getattr(win, "_want", None)
+    if not want:
+        return False
+    if getattr(win, "_dragging", None):
+        return False
+    if time.time() - getattr(win, "_drag_ts", 0) > 6:
+        # Movimiento del WM (mapa inicial, restack), no del usuario: re-asentar
+        # nuestra posicion (mutter recoloca las NOTIFICATION al mapear).
+        if (abs(ev.x - want[0]) > 2 or abs(ev.y - want[1]) > 2) and getattr(win, "_fix", 0) < 5:
+            win._fix = getattr(win, "_fix", 0) + 1
+            GLib.timeout_add(60, reposition)
+        return False
+    if abs(ev.x - want[0]) <= 2 and abs(ev.y - want[1]) <= 2:
+        return False
+    try:
+        idx = popups.index(win)
+    except ValueError:
+        return False
+    off = 0
+    for w in popups[:idx]:
+        off += w.get_allocated_height() + 10
+    ANCHOR = (int(ev.x), int(ev.y) - off)
+    _anchor_save(*ANCHOR)
+    GLib.timeout_add(60, reposition)
     return False
 
 
@@ -312,7 +483,23 @@ def close_popup(win):
     reposition()
 
 
-def make_popup(title, body, session, kind, project, options_str="", full=""):
+CSS_PROVIDER = None
+
+
+def apply_theme_css():
+    global CSS_PROVIDER
+    if CSS_PROVIDER is None:
+        CSS_PROVIDER = Gtk.CssProvider()
+        Gtk.StyleContext.add_provider_for_screen(
+            Gdk.Screen.get_default(), CSS_PROVIDER, Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION)
+    try:
+        CSS_PROVIDER.load_from_data(build_css(theme_tokens()))
+    except Exception:
+        pass
+
+
+def make_popup(title, body, session, kind, project, options_str="", full="", expanded=False):
+    apply_theme_css()
     labels = [o.strip() for o in (options_str or "").split("\x1f") if o.strip()][:4]
     full = (full or "").strip()
     old = by_session.get(session)
@@ -333,69 +520,56 @@ def make_popup(title, body, session, kind, project, options_str="", full=""):
         win.set_visual(visual)
     win.set_app_paintable(True)
 
-    card = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL)
+    card = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
     card.get_style_context().add_class("card")
-    edge = Gtk.Box(); edge.set_size_request(6, -1)
-    edge.get_style_context().add_class("edge")
+
+    # Franja de cabecera tintada por estado: la meta-info vive ARRIBA, separada
+    # del texto — jerarquia clara y color de estado imposible de confundir.
+    hd = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=9)
+    hd.get_style_context().add_class("hd")
     if kind == "waiting":
-        card.get_style_context().add_class("waiting")
-        edge.get_style_context().add_class("waiting")
-    card.pack_start(edge, False, False, 0)
+        hd.get_style_context().add_class("waiting")
+    hdi = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=9)
+    hdi.set_margin_top(9); hdi.set_margin_bottom(3)
+    hdi.set_margin_start(10); hdi.set_margin_end(30)
+    ar = Gtk.Label(label="›")
+    ar.get_style_context().add_class("when")
+    hdi.pack_start(ar, False, False, 0)
+    kd = Gtk.Label(label=("?" if kind == "waiting" else "✓"))
+    kd.get_style_context().add_class("kbadge")
+    if kind == "waiting":
+        kd.get_style_context().add_class("waiting")
+    kd.set_tooltip_text(tr("waiting_tag") if kind == "waiting" else tr("done_tag"))
+    hdi.pack_start(kd, False, False, 0)
+    pl2 = Gtk.Label(label=project or session, xalign=0)
+    pl2.get_style_context().add_class("proj")
+    pl2.set_ellipsize(3)  # END
+    pev2 = Gtk.EventBox()
+    pev2.add(pl2)
+    pev2.connect("button-press-event", lambda *_: (open_session(session), close_popup(win)))
+    pev2.set_tooltip_text("Abrir la sesion" if UI_LANG == "es" else "Open the session")
+    hdi.pack_start(pev2, False, False, 0)
+    spacer = Gtk.Box()          # sin ventana X: el click pasa al toggle de la tarjeta
+    spacer.set_hexpand(True)
+    hdi.pack_start(spacer, True, True, 0)
+    # el nombre NO se expande (su click abre la sesion — debe ser solo el texto)
+    hdv = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=1)
+    hdv.pack_start(hdi, False, False, 0)
+    first_line = next((l.strip() for l in (full or body or "").splitlines() if l.strip()), "")
+    inprev = Gtk.Label(label=first_line, xalign=0)
+    inprev.get_style_context().add_class("inprev")
+    inprev.set_ellipsize(3)  # END
+    inprev.set_margin_start(48)
+    inprev.set_margin_end(30)
+    inprev.set_margin_bottom(10)
+    hdv.pack_start(inprev, False, False, 0)
+    hd.pack_start(hdv, True, True, 0)
 
-    content = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=7)
-    content.set_margin_top(10); content.set_margin_bottom(11)
-    content.set_margin_start(13); content.set_margin_end(11)
+    content = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
+    content.set_no_show_all(True)
+    content.set_margin_top(4); content.set_margin_bottom(12)
+    content.set_margin_start(14); content.set_margin_end(13)
 
-    # Linea de contexto COMPACTA: ● proyecto · estado    [🔊][×]
-    # (el texto es el protagonista; el contexto es una sola linea discreta)
-    header = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
-    d = Gtk.Label()
-    d.set_markup('<span size="10000" foreground="%s">●</span>'
-                 % ("#FFAE1A" if kind == "waiting" else "#2EE59D"))
-    header.pack_start(d, False, False, 0)
-    pl = Gtk.Label(label=project or session, xalign=0)
-    pl.get_style_context().add_class("proj")
-    pl.set_ellipsize(3)  # END
-    pev = Gtk.EventBox()
-    pev.add(pl)
-    pev.connect("button-press-event", lambda *_: (open_session(session), close_popup(win)))
-    header.pack_start(pev, False, False, 0)
-    tag = Gtk.Label(label=tr("waiting_tag") if kind == "waiting" else tr("done_tag"))
-    tag.get_style_context().add_class("tag")
-    if kind == "done":
-        tag.get_style_context().add_class("done")
-    header.pack_start(tag, False, False, 0)
-    close = Gtk.Button(label="×")
-    close.get_style_context().add_class("close")
-    close.set_relief(Gtk.ReliefStyle.NONE)
-    close.connect("clicked", lambda *_: close_popup(win))
-    header.pack_end(close, False, False, 0)
-    # Silenciar el chime desde el popup mismo (donde molesta): toggle de
-    # SOUND_ENABLED via cc-dash; el volumen esta en la barra del tablero
-    mute = Gtk.Button(label="🔊")
-    mute.get_style_context().add_class("close")
-    mute.set_relief(Gtk.ReliefStyle.NONE)
-    mute.set_tooltip_text(tr("mute_tip"))
-
-    def sync_mute():
-        try:
-            on = dash_get("/conf").get("SOUND_ENABLED", "1") != "0"
-            mute.set_label("🔊" if on else "🔇")
-        except Exception:
-            pass
-
-    def toggle_mute(_b):
-        on = mute.get_label() == "🔊"
-        try:
-            dash("/conf-set", {"key": "SOUND_ENABLED", "value": "0" if on else "1"})
-            mute.set_label("🔇" if on else "🔊")
-        except Exception:
-            pass
-
-    mute.connect("clicked", toggle_mute)
-    header.pack_end(mute, False, False, 0)
-    GLib.idle_add(lambda: (sync_mute(), False)[1])
-    content.pack_start(header, False, False, 0)
 
     # Preview colapsado RENDERIZADO (markdown y tablas alineadas desde el
     # primer vistazo, sin tener que dar 'Ver TODO')
@@ -471,25 +645,177 @@ def make_popup(title, body, session, kind, project, options_str="", full=""):
 
         vt.connect("clicked", toggle)
         tools.pack_start(vt, False, False, 0)
-    if tools.get_children():
-        content.pack_start(tools, False, False, 0)
+    ob = Gtk.Button(label=tr("open"))
+    ob.get_style_context().add_class("btn"); ob.get_style_context().add_class("primary")
+    # Estilo clavado AL WIDGET (prioridad USER): las ventanas de aviso viven sin
+    # foco y el estado :backdrop de GTK desaturaba el boton primario.
+    try:
+        tt = theme_tokens()
+        _pv = Gtk.CssProvider()
+        _pv.load_from_data((
+            "button, button:backdrop { background-image: none; background-color: %s; "
+            "color: %s; border: 1px solid %s; border-radius: 8px; font-weight: 800; "
+            "padding: 2px 11px; min-height: 22px; font-family: 'JetBrainsMono Nerd Font', monospace; font-size: 10.5px; } "
+            "button label, button:backdrop label { color: %s; } "
+            "button:hover { background-color: %s; }"
+            % (tt['brand'], tt['bg'], tt['brand'], tt['bg'], tt.get('text', '#fff'))).encode())
+        ob.get_style_context().add_provider(_pv, Gtk.STYLE_PROVIDER_PRIORITY_USER)
+        ch = ob.get_child()
+        if ch is not None:
+            ch.get_style_context().add_provider(_pv, Gtk.STYLE_PROVIDER_PRIORITY_USER)
+    except Exception:
+        pass
+    ob.connect("clicked", lambda *_: (open_session(session), close_popup(win)))
+    tools.pack_end(ob, False, False, 0)
+    content.pack_start(tools, False, False, 0)
     if sw is not None:
-        content.pack_start(sw, True, True, 0)
+        content.pack_start(sw, False, False, 0)
 
     # El popup es un AVISO PURO (apoyo cognitivo visual): sin inputs ni
     # botones de opciones — responder se hace en la terminal, con contexto.
-    # Click en cualquier parte no-interactiva = saltar a esa sesion.
-    def goto(*_):
-        open_session(session)
-        close_popup(win)
+    # Click corto en zona no-interactiva = saltar a la sesion; ARRASTRE = moverlo
+    # (y recordar el ancla). begin_move_drag no sirve: mutter lo ignora en
+    # ventanas NOTIFICATION, asi que el drag es manual con el grab implicito de X.
+    win._dragging = None
+
+    def _press(_w, ev):
+        if ev.button != 1:
+            return False
+        wx, wy = win.get_position()
+        win._dragging = {"dx": ev.x_root - wx, "dy": ev.y_root - wy,
+                         "x0": ev.x_root, "y0": ev.y_root, "moved": False}
         return True
 
-    win.add_events(Gdk.EventMask.BUTTON_PRESS_MASK)
-    win.connect("button-press-event", goto)
+    def _motion(_w, ev):
+        d = win._dragging
+        if not d:
+            return False
+        if not d["moved"] and abs(ev.x_root - d["x0"]) < 5 and abs(ev.y_root - d["y0"]) < 5:
+            return False
+        d["moved"] = True
+        win._drag_ts = time.time()
+        nx, ny = int(ev.x_root - d["dx"]), int(ev.y_root - d["dy"])
+        win._want = (nx, ny)          # que el re-asiento anti-WM no pelee el arrastre
+        win.move(nx, ny)
+        return True
 
-    card.pack_start(content, True, True, 0)
-    win.add(card)
+    def _release(_w, ev):
+        global ANCHOR
+        d = win._dragging
+        win._dragging = None
+        if not d:
+            return False
+        if not d["moved"]:
+            win._toggle()
+            return True
+        # nueva ancla = donde quedo ESTA ventana, menos su offset en la pila
+        try:
+            idx = popups.index(win)
+        except ValueError:
+            idx = 0
+        off = 0
+        for w in popups[:idx]:
+            off += w.get_allocated_height() + 10
+        x, y = win.get_position()
+        ANCHOR = (int(x), int(y) - off)
+        _anchor_save(*ANCHOR)
+        _NPOS_CACHE.update(at=time.time() + 30, val="free")
+        def _tofree():
+            try:
+                dash("/prefs-set", {"notif_pos": "free"})
+            except Exception:
+                pass
+        threading.Thread(target=_tofree, daemon=True).start()
+        GLib.timeout_add(60, reposition)
+        return True
+
+    win.add_events(Gdk.EventMask.BUTTON_PRESS_MASK | Gdk.EventMask.BUTTON1_MOTION_MASK |
+                   Gdk.EventMask.BUTTON_RELEASE_MASK | Gdk.EventMask.POINTER_MOTION_MASK)
+    win.connect("button-press-event", _press)
+    win.connect("motion-notify-event", _motion)
+    win.connect("button-release-event", _release)
+    win.connect("configure-event", _on_configure)
+
+    def _keys(_w, ev):
+        name = Gdk.keyval_name(ev.keyval) or ""
+        if name == "Escape":
+            close_popup(win)
+            return True
+        if name in ("Return", "KP_Enter", "space"):
+            win._toggle()
+            return True
+        return False
+    win.connect("key-press-event", _keys)
+
+    # Titulo = EventBox (ventana X propia: click confiable); detalle = Gtk.Revealer
+    # (animacion prehecha). El Expander se fue: su modelo de input daba clicks muertos.
+    title_ev = Gtk.EventBox()
+    title_ev.add(hd)
+    rev = Gtk.Revealer()
+    rev.set_transition_type(Gtk.RevealerTransitionType.SLIDE_DOWN)
+    rev.set_transition_duration(150)
+    rev.add(content)
+    win._detail = bool(expanded)
+
+    def _set_open(open_):
+        win._detail = bool(open_)
+        ar.set_text("⌄" if open_ else "›")
+        inprev.set_visible(not open_)
+        if open_:
+            content.set_no_show_all(False)
+            content.show_all()
+            if sw is not None and not win._expanded:
+                sw.hide()
+        rev.set_reveal_child(bool(open_))
+
+        def _later():
+            win.resize(WIDTH, 1)
+            reposition()
+            return False
+        for ms in (80, 240, 480):
+            GLib.timeout_add(ms, _later)
+
+    def _toggle(*_):
+        _set_open(not win._detail)
+        return True
+    title_ev.connect("button-release-event", _toggle)
+    win._toggle = _toggle
+    card.pack_start(title_ev, False, False, 0)
+    card.pack_start(rev, True, True, 0)
+    if win._detail:
+        _set_open(True)
+
+    # ✕ FLOTANTE (Gtk.Overlay): recibe el click antes que el Expander — cerrar
+    # siempre funciona, y el label queda limpio.
+    cl2 = Gtk.Button(label=chr(215))
+    cl2.get_style_context().add_class("close")
+    cl2.set_relief(Gtk.ReliefStyle.NONE)
+    cl2.set_halign(Gtk.Align.END)
+    cl2.set_valign(Gtk.Align.START)
+    cl2.set_margin_top(5)
+    cl2.set_margin_end(7)
+    cl2.connect("clicked", lambda *_: close_popup(win))
+    cl2.set_tooltip_text("Cerrar (Esc)" if UI_LANG == "es" else "Close (Esc)")
+    ovl = Gtk.Overlay()
+    ovl.add(card)
+    ovl.add_overlay(cl2)
+    win.add(ovl)
+    win.set_opacity(0.0)
     win.show_all()
+    if not win._detail:
+        content.hide()   # no_show_all lo protege; el Revealer arranca cerrado
+
+    def _fade(step=[0]):
+        step[0] += 1
+        win.set_opacity(min(0.98, step[0] / 6.0))
+        return step[0] < 6
+    GLib.timeout_add(25, _fade)
+    for ms in (40, 220, 450):
+        GLib.timeout_add(ms, lambda: (None if win._expanded else win.resize(WIDTH, 1), False)[1])   # altura natural, sin aire muerto
+    if expanded and sw is not None:
+        win._expanded = True
+        sw.set_no_show_all(False); sw.show_all()
+        if bl: bl.hide()
     popups.append(win)
     by_session[session] = win
     reposition()
@@ -503,6 +829,51 @@ def make_popup(title, body, session, kind, project, options_str="", full=""):
                 return False
             return win in popups
         GLib.timeout_add_seconds(10, auto)
+    return False
+
+
+NATIVE_KEEP = []   # referencias vivas: libnotify pierde las acciones si el objeto se recolecta
+
+
+def native_notify(title, body, session, kind, project, options_str="", full=""):
+    """Aviso NATIVO del escritorio (GNOME: historial en la bandeja, No Molestar,
+    acciones). El texto completo queda a un click ("Ver todo" -> popup propio)."""
+    if not (HAVE_NOTIFY and _conf_value("NATIVE_NOTIFY", "0") == "1"):   # nativas SOLO si se piden (NATIVE_NOTIFY=1)
+        return make_popup(title, body, session, kind, project, options_str, full)
+    src = (full or body or "").strip()
+    # vista previa: solo prosa (tablas y bloques de codigo van en "Ver todo")
+    prose, in_code = [], False
+    for ln in src.splitlines():
+        if ln.strip().startswith("```"):
+            in_code = not in_code; continue
+        if in_code or re.match(r"^\s*\|.*\|\s*$", ln) or not ln.strip():
+            continue
+        prose.append(re.sub(r"[*_`#>]+", "", ln).strip())
+        if len(prose) >= 4:
+            break
+    lines = prose or [ln for ln in src.splitlines() if ln.strip()][:4]
+    short = "\n".join(lines)[:360]
+    if len(src) > len(short):
+        short = short.rstrip() + " …"
+    tag = tr("waiting_tag") if kind == "waiting" else tr("done_tag")
+    summary = f"{project or session} · {tag}"
+    icon = os.path.expanduser("~/.claude/hooks/dash/icon-192.png")
+    if not os.path.exists(icon):
+        icon = "dialog-information"
+    n = Notify.Notification.new(summary, GLib.markup_escape_text(short), icon)
+    n.set_app_name("ComandOS")
+    n.set_urgency(Notify.Urgency.CRITICAL if kind == "waiting" else Notify.Urgency.NORMAL)
+    n.set_hint("suppress-sound", GLib.Variant("b", True))   # el chime lo pone cc-notify.sh
+    n.set_hint("desktop-entry", GLib.Variant("s", "comandos"))
+    n.add_action("open", tr("open"), lambda *_: open_session(session))
+    n.add_action("full", tr("see_all").replace("… ", ""),
+                 lambda *_: GLib.idle_add(make_popup, title, body, session, kind, project, options_str, full, True))
+    n.connect("closed", lambda nn: NATIVE_KEEP.remove(nn) if nn in NATIVE_KEEP else None)
+    NATIVE_KEEP.append(n)
+    try:
+        n.show()
+    except Exception:
+        return make_popup(title, body, session, kind, project, options_str, full)
     return False
 
 
@@ -528,10 +899,46 @@ class Handler(http.server.BaseHTTPRequestHandler):
             d = json.loads(self.rfile.read(n) or b"{}")
         except Exception:
             self.send_response(400); self.end_headers(); return
+        # Foco (pomodoro): tú decides cuándo te interrumpen. Si hay un bloque
+        # activo y el aviso NO es de la sesión enfocada, se guarda en la cola
+        # (sin popup ni sonido) y el tablero lo muestra al llegar el descanso.
+        try:
+            with open(os.path.expanduser("~/.claude/hooks/focus.json")) as f:
+                focus = json.load(f)
+            active = float(focus.get("until") or 0) > time.time()
+        except Exception:
+            focus, active = None, False
+        if active and str(d.get("session", "")) != str(focus.get("session", "")) \
+                and str(d.get("project", "")) != str(focus.get("project", "")):
+            try:
+                with open(os.path.expanduser("~/.claude/hooks/focus-queue.jsonl"), "a") as f:
+                    f.write(json.dumps({"ts": time.time(), "title": str(d.get("title", ""))[:200],
+                                        "body": str(d.get("body", ""))[:400], "full": str(d.get("full", ""))[:60000],
+                                        "session": str(d.get("session", "")), "kind": str(d.get("kind", "done")),
+                                        "project": str(d.get("project", ""))[:80]}, ensure_ascii=False) + "\n")
+            except OSError:
+                pass
+            out = b'{"ok": true, "queued": true}'
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(out)))
+            self.end_headers()
+            self.wfile.write(out)
+            return
+        # Popups flotantes: SOLO si se piden (POPUPS=1). Por defecto los avisos
+        # viven dentro del tablero (pila superior derecha + campana).
+        if _conf_value("POPUPS", "0") != "1":
+            out = b'{"ok": true, "popup": false}'
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(out)))
+            self.end_headers()
+            self.wfile.write(out)
+            return
         if len(popups) >= 8:   # tope anti screen-spam / DoS de popups
             self.send_response(200)
             self.send_header("Content-Length", "0"); self.end_headers(); return
-        GLib.idle_add(make_popup,
+        GLib.idle_add(native_notify,
                       str(d.get("title", "Claude Code"))[:200],
                       str(d.get("body", ""))[:400],
                       str(d.get("session", "")),
@@ -548,11 +955,12 @@ class Handler(http.server.BaseHTTPRequestHandler):
 
 
 def main():
-    provider = Gtk.CssProvider()
-    provider.load_from_data(CSS)
-    Gtk.StyleContext.add_provider_for_screen(
-        Gdk.Screen.get_default(), provider,
-        Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION)
+    apply_theme_css()
+    if HAVE_NOTIFY:
+        try:
+            Notify.init("ComandOS")
+        except Exception:
+            pass
     socketserver.TCPServer.allow_reuse_address = True
     srv = socketserver.ThreadingTCPServer(("127.0.0.1", PORT), Handler)
     threading.Thread(target=srv.serve_forever, daemon=True).start()

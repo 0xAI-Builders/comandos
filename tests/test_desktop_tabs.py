@@ -58,7 +58,9 @@ def test_visual_tabs_overview_button_is_present():
     # el dashboard HTML — ver DESIGN.md §3), cableado a open_tabs_overview.
     assert '"layers"' in src
     assert "open_tabs_overview" in src
-    assert "_headerbar.pack_end(_tabs" in src   # ahora vive en el headerbar custom
+    # Ya NO se empaqueta en la barra (el usuario solo usa "+"): sigue por atajo.
+    assert "_headerbar.pack_end(_tabs" not in src
+    assert "_headerbar.pack_end(_plus)" in src
 
 
 def test_visual_tabs_overview_can_focus_and_close_tabs():
