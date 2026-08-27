@@ -1348,6 +1348,37 @@ def _claude_tmux_sessions():
     return out
 
 
+def _claude_all_panes():
+    """[{sess,pane,sid,pid,cwd,startedAt}] de TODOS los claude vivos con pane
+    conocido. Con splits hay varios por sesion tmux: cada uno merece su card."""
+    out = []
+    files = []
+    for base in [os.path.expanduser("~/.claude/sessions")] + glob.glob(os.path.expanduser("~/.claude-accounts/*/sessions")):
+        try:
+            files += [os.path.join(base, n) for n in os.listdir(base) if n.endswith(".json")]
+        except OSError:
+            continue
+    for fp in files:
+        try:
+            with open(fp) as f:
+                d = json.load(f)
+        except Exception:
+            continue
+        pid, tm, sid = d.get("pid"), d.get("tmux") or "", d.get("sessionId")
+        if not (isinstance(pid, int) and isinstance(sid, str) and sid and tm):
+            continue
+        try:
+            os.kill(pid, 0)
+        except Exception:
+            continue
+        p_id = tm.rpartition(".")[2] if "." in tm else ""
+        if not p_id.startswith("%"):
+            continue
+        out.append({"sess": tm.partition(":")[0], "pane": p_id, "sid": sid, "pid": pid,
+                    "cwd": d.get("cwd") or "", "startedAt": (d.get("startedAt") or 0) / 1000.0})
+    return out
+
+
 def _claude_info_for(sess, pane=""):
     """El claude de ESE pane. Con splits hay varios claude en una misma sesion
     tmux: el registro (<cfg>/sessions/*.json, campo tmux 'ses:@w.%p') dice en
@@ -3179,6 +3210,46 @@ def read_states():
             item["sshConnected"] = st != ""
             item["sshMux"] = st == "mux"
         items.append(item)
+    # SPLITS: una card por cada pane con claude vivo que aun no tiene card.
+    # (el estado por hooks agrupa por proyecto/sesion; con panes divididos los
+    # demas claude quedaban invisibles y sin control)
+    have = set()
+    for it in items:
+        if it.get("alive"):
+            have.add((it["session"], it.get("pane") or ""))
+    by_sess_count = {}
+    panes = _claude_all_panes()
+    for e in panes:
+        by_sess_count[e["sess"]] = by_sess_count.get(e["sess"], 0) + 1
+    for e in sorted(panes, key=lambda x: (x["sess"], x["pane"])):
+        sess_l, pane_l = e["sess"], e["pane"]
+        if sess_l in HIDDEN_SESSIONS and by_sess_count.get(sess_l, 0) < 2:
+            continue
+        if (sess_l, pane_l) in have or (sess_l, "") in have and by_sess_count.get(sess_l, 0) == 1:
+            continue
+        if tmux("display-message", "-p", "-t", pane_l, "#{pane_id}").stdout.strip() != pane_l:
+            continue
+        base = os.path.basename((e["cwd"] or "").rstrip("/")) or sess_l
+        label = base if by_sess_count.get(sess_l, 0) == 1 else f"{base} ⫽{pane_l[1:]}"
+        model, ctx = "", None
+        tp = _transcript_path(e["sid"])
+        if tp:
+            try:
+                ctx_pct, _o, _m, model = _analyze_transcript(tp, load_model_tiers(), time.time())
+                ctx = round(ctx_pct, 1)
+            except Exception:
+                pass
+        busy = bool(claude_pane_busy(pane_l))
+        item = {"project": label, "session": sess_l, "pane": pane_l, "status": "working" if busy else "idle",
+                "detail": "", "cwd": e["cwd"], "ts": e["startedAt"], "alive": True,
+                "external": False, "agent": "claude", "tabbed": False, "split": True}
+        if model:
+            item["model"] = model
+        if ctx is not None:
+            item["contextPct"] = ctx
+        item.update(account_for_pid(e["pid"], "claude"))
+        items.append(item)
+        have.add((sess_l, pane_l))
     # Orden fijo y util: vivas con agente primero (mas recientes arriba), luego
     # vivas sin agente, al final las muertas.
     items.sort(key=lambda i: (not i.get("alive"),

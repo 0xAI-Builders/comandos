@@ -690,8 +690,20 @@ def make_popup(title, body, session, kind, project, options_str="", full="", exp
         d = win._dragging
         if not d:
             return False
-        if not d["moved"] and abs(ev.x_root - d["x0"]) < 5 and abs(ev.y_root - d["y0"]) < 5:
+        # ARRASTRAR = boton FISICAMENTE presionado. Si el release se lo comio
+        # otro widget (p.ej. el titulo al hacer toggle), el estado quedaba
+        # colgado y la tarjeta seguia al mouse sin boton.
+        if not (ev.state & Gdk.ModifierType.BUTTON1_MASK):
+            win._dragging = None
             return False
+        if not d["moved"]:
+            # Umbral GENEROSO: un click con temblor de mano NO es un arrastre
+            # (con 5px cualquier click sucio movia la tarjeta y robaba el toggle)
+            if abs(ev.x_root - d["x0"]) < 12 and abs(ev.y_root - d["y0"]) < 12:
+                return False
+            # sin brinco: el arrastre continua desde DONDE esta la ventana ahora
+            wx0, wy0 = win.get_position()
+            d["dx"], d["dy"] = ev.x_root - wx0, ev.y_root - wy0
         d["moved"] = True
         win._drag_ts = time.time()
         nx, ny = int(ev.x_root - d["dx"]), int(ev.y_root - d["dy"])

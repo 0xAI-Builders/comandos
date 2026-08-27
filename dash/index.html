@@ -2109,17 +2109,23 @@ function mdStrip(s){ return (s||"").replace(/\*\*|`|^#{1,6} /g, ""); }
 	function pickSel(list){
 	  const seen = new Set(), items = [];
 	  for(const it of list || []){
-	    if(seen.has(it.session)) continue;
-	    seen.add(it.session); items.push(it);
+	    const k = rowKey(it);
+	    if(seen.has(k)) continue;
+	    seen.add(k); items.push(it);
 	  }
 	  // gana el evento MAS RECIENTE: tu click en una fila vs la pestana activa
 	  // de la app (la sesion donde estas parado)
 	  const cand = [];
 	  if(S.sel) cand.push({sess: S.sel, ts: S.selTs || 0});
-	  if(ACTIVE_TAB.session) cand.push({sess: ACTIVE_TAB.session, ts: (ACTIVE_TAB.ts || 0) * 1000});
+	  // La pestana activa solo conoce la SESION; si tu click es de esa misma
+	  // sesion pero de un SPLIT concreto, el click (mas especifico) manda —
+	  // si no, abrir la pestana pisaba la seleccion y "click y nada".
+	  const selSess = String(S.sel || "").split("|")[0];
+	  if(ACTIVE_TAB.session && ACTIVE_TAB.session !== selSess)
+	    cand.push({sess: ACTIVE_TAB.session, ts: (ACTIVE_TAB.ts || 0) * 1000});
 	  cand.sort((a, b) => b.ts - a.ts);
 	  for(const c of cand){
-	    const it = items.find(i => i.session === c.sess);
+	    const it = items.find(i => rowKey(i) === c.sess) || items.find(i => i.session === c.sess);
 	    if(it && it.alive) return it;   // una pestana activa MUERTA no opera el Centro
 	  }
 	  return items.find(i => i.status === "waiting") || items.find(i => i.alive) || items[0] || null;
@@ -2140,11 +2146,12 @@ function mdStrip(s){ return (s||"").replace(/\*\*|`|^#{1,6} /g, ""); }
 	  const model = shortModel(it.model || usageForItem(it)?.model || "");   // transcript = lo que corre AHORA
 	  const tier = tierOf(model);
 	  const tst = tierStyleOf(tier);
-	  const sameSession = CENTRO_VIEW.sessionId === it.session;
+	  // clave por sesion|pane: un SPLIT distinto de la misma sesion ES otra card
+	  const sameSession = CENTRO_VIEW.sessionId === rowKey(it);
 	  CENTRO_VIEW.item = it;
 	  if(!sameSession){
-	    CENTRO_VIEW.sessionId = it.session;
-	    box.dataset.sig = it.session;
+	    CENTRO_VIEW.sessionId = rowKey(it);
+	    box.dataset.sig = rowKey(it);
 	    box.innerHTML = `
 	      <div class="cx-hero" data-st="${attrEsc(st)}">
 	        <span class="cx-name"></span><span class="cx-sub" aria-live="polite"></span>
@@ -4097,9 +4104,10 @@ function initApp(){
 }
 
 // ---------- fila compacta ----------
+function rowKey(it){ return it.session + (it.pane ? "|" + it.pane : ""); }
 function rowEl(it){
   const el = document.createElement("div");
-  el.className = "row"; el.dataset.session = it.session; el.dataset.kind = "row";
+  el.className = "row"; el.dataset.session = it.session; el.dataset.rk = rowKey(it); el.dataset.kind = "row";
   el.setAttribute("tabindex", "0");
   el.innerHTML = `
     <button type="button" class="fav" title="${t('Favorito')}">★</button>
@@ -4163,7 +4171,7 @@ function rowEl(it){
   });
   el.addEventListener("click", async e=>{
     if(e.target.closest("button") || e.target.closest(".rxp")) return;
-    S.sel = it.session; S.selTs = Date.now(); renderCentro(S.list || []);
+    S.sel = rowKey(it); S.selTs = Date.now(); renderCentro(S.list || []);
     if(el.classList.contains("ext")) return toast(tf("Corre en una pestana suelta: cierrala alla y usa Revivir", "Runs in a detached tab: close it there and use Revive"), true);
     try{ toast(await openSession(it, "claude")); }catch(err){ toast(err.message, true); }
   });
@@ -4180,21 +4188,23 @@ function render(list){
   const act = (typeof ACTIVE_TAB === "object" && ACTIVE_TAB.session) || "";
   if(act) list = [...list].sort((a, b) => (b.session === act ? 1 : 0) - (a.session === act ? 1 : 0));
   // La sesión que el Centro ya muestra NO se repite como fila: su tarjeta ES el Centro
-  const shown = (typeof pickSel === "function" && (pickSel(list) || {}).session) || "";
+  const shownIt = (typeof pickSel === "function" && pickSel(list)) || null;
+  const shown = shownIt ? rowKey(shownIt) : "";
   const seen = new Set();
   const counts = {waiting:0, done:0, working:0};
   for(const it of list){
-    if(seen.has(it.session)) continue;   // /state puede duplicar sesiones
-    seen.add(it.session);
+    const rk = rowKey(it);
+    if(seen.has(rk)) continue;   // /state puede duplicar sesiones (los splits son claves distintas)
+    seen.add(rk);
     if(counts[it.status] !== undefined) counts[it.status]++;
     const kind = itemKind(it);
     const container = rows;
-    let el = document.querySelector(`[data-session="${CSS.escape(it.session)}"]`);
+    let el = document.querySelector(`.row[data-rk="${CSS.escape(rk)}"]`);
     if(el && el.dataset.kind !== kind){ el.remove(); el = null; }
     if(!el){ el = rowEl(it); container.appendChild(el); }
     // La sesión que el Centro ya muestra no se repite como fila. style inline:
     // sobrevive a los `el.className = ...` que reescriben las clases después.
-    el.style.display = it.session === shown ? "none" : "";
+    el.style.display = rk === shown ? "none" : "";
     const ext = !!it.external;
     const ab = el.querySelector(".abadge");
     if(ab){
@@ -4351,7 +4361,7 @@ function render(list){
     S.prev.set(it.session, it.status);
   }
   document.querySelectorAll("#rows [data-session]").forEach(el=>{
-    if(!seen.has(el.dataset.session)) el.remove();
+    if(!seen.has(el.dataset.rk || el.dataset.session)) el.remove();
   });
   renderCentro(list);
   if(!rows.querySelector(".row") && !rows.querySelector(".empty")){
