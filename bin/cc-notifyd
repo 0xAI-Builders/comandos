@@ -122,7 +122,7 @@ window.ccpop {{ background-color: rgba(0,0,0,0); }}
 .btn.primary:hover {{ background-color: mix({t['brand']}, {t['text']}, 0.18); color: {t['bg']}; }}
 .close {{ background: none; border: none; color: {t['dim']}; padding: 2px 8px; font-size: 15px;
   min-width: 26px; min-height: 26px; border-radius: 8px; }}
-.close:hover {{ color: {t['text']}; background-color: alpha({t['dim']}, 0.18); }}
+.close:hover, .close.hover {{ color: {t['text']}; background-color: alpha({t['dim']}, 0.18); }}
 .entry {{ background-color: {t['bg']}; color: {t['text']}; border: 1px solid {t['line2']};
   border-radius: 8px; padding: 6px 10px; font-family: 'JetBrainsMono Nerd Font', monospace; font-size: 12px; }}
 .entry:focus {{ border-color: {t['brand']}; }}
@@ -533,8 +533,13 @@ def make_popup(title, body, session, kind, project, options_str="", full="", exp
     hdi.set_margin_top(9); hdi.set_margin_bottom(3)
     hdi.set_margin_start(10); hdi.set_margin_end(30)
     ar = Gtk.Label(label="›")
-    ar.get_style_context().add_class("when")
-    hdi.pack_start(ar, False, False, 0)
+    ar.get_style_context().add_class("close")
+    ar_ev = Gtk.EventBox()
+    ar_ev.add(ar)
+    ar_ev.set_tooltip_text("Expandir / colapsar" if UI_LANG == "es" else "Expand / collapse")
+    ar_ev.connect("enter-notify-event", lambda *_: (ar.get_style_context().add_class("hover"), False)[1])
+    ar_ev.connect("leave-notify-event", lambda *_: (ar.get_style_context().remove_class("hover"), False)[1])
+    hdi.pack_start(ar_ev, False, False, 0)
     kd = Gtk.Label(label=("?" if kind == "waiting" else "✓"))
     kd.get_style_context().add_class("kbadge")
     if kind == "waiting":
@@ -791,6 +796,7 @@ def make_popup(title, body, session, kind, project, options_str="", full="", exp
         _set_open(not win._detail)
         return True
     title_ev.connect("button-release-event", _toggle)
+    ar_ev.connect("button-release-event", _toggle)   # hitbox propio; no depende del titulo
     win._toggle = _toggle
     card.pack_start(title_ev, False, False, 0)
     card.pack_start(rev, True, True, 0)

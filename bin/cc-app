@@ -35,7 +35,15 @@ except ValueError:
 gi.require_version("Vte", "2.91")
 from gi.repository import Gtk, WebKit2, Vte, GLib, Gdk, GdkPixbuf, Gio, Pango
 
-URL = "http://127.0.0.1:4777"
+BASE_URL = "http://127.0.0.1:4777"
+# Cache-bust del HTML/JS: WebKitGTK conserva versiones viejas entre reinicios
+# y el Centro (datos nuevos) podía convivir con un renderer de cards antiguo.
+_DASH_FILE = os.path.join(os.path.dirname(os.path.dirname(os.path.realpath(__file__))), "dash", "index.html")
+try:
+    _DASH_V = str(int(os.path.getmtime(_DASH_FILE)))
+except OSError:
+    _DASH_V = str(int(time.time()))
+URL = f"{BASE_URL}/?app=1&v={_DASH_V}"
 # Raíz del repo desde este binario. Cuando cc-app se instala como symlink en
 # ~/.local/bin, os.path.realpath resuelve al archivo real dentro del repo.
 CC_REPO = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
@@ -2034,7 +2042,7 @@ def open_xterm_tab(sess="local"):
     theme_name = next((k for k, v in THEMES.items() if v is THEME), "noche")
     token = ""
     try:
-        with urllib.request.urlopen(URL + "/webterm-token", timeout=2) as response:
+        with urllib.request.urlopen(BASE_URL + "/webterm-token", timeout=2) as response:
             token = json.loads(response.read().decode()).get("token") or ""
     except Exception:
         pass
@@ -2697,7 +2705,7 @@ def _panel_popover(btn, panel, width, height):
             pop._pv = pv
             _POPOVERS[panel] = pop
         if not getattr(pop, "_loaded", False):
-            pop._pv.load_uri(f"{URL}/?panel={panel}")
+            pop._pv.load_uri(f"{BASE_URL}/?panel={panel}&v={_DASH_V}")
             pop._loaded = True
         else:
             # NO recargar: el pomodoro en curso vive en esta página. Solo refrescar.
@@ -3475,8 +3483,6 @@ def on_key(w, e):
         t.set_font_scale(1.0); return True
     if ctrl and not shift and e.keyval in (Gdk.KEY_k, Gdk.KEY_K):
         open_switcher(); return True
-    if ctrl and not shift and e.keyval in (Gdk.KEY_o, Gdk.KEY_O):
-        open_tabs_overview(); return True
     # CONTROL_MASK + SHIFT_MASK + Gdk.KEY_K → snippets modal
     if ctrl and shift and e.keyval in (Gdk.KEY_k, Gdk.KEY_K):
         open_snippets_dialog(); return True

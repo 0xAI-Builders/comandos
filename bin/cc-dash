@@ -3997,9 +3997,18 @@ class Handler(http.server.SimpleHTTPRequestHandler):
         if self.path.startswith("/active-tab"):
             try:
                 with open(os.path.join(HOOKS, "app-tab-active.json")) as f:
-                    return self._json(200, json.load(f))
+                    active = json.load(f)
             except Exception:
-                return self._json(200, {})
+                active = {}
+            # La app solo escribe la sesión de la pestaña. Tmux sí conoce el
+            # PANE activo: al clickar un split, enriquecer la señal con %pane.
+            sess_a = str(active.get("session") or "")
+            if SESSION_RE.match(sess_a) and tmux("has-session", "-t", "=" + sess_a).returncode == 0:
+                rp = tmux("display-message", "-p", "-t", "=" + sess_a + ":", "#{pane_id}")
+                pane_a = rp.stdout.strip() if rp.returncode == 0 else ""
+                if PANE_RE.match(pane_a):
+                    active["pane"] = pane_a
+            return self._json(200, active)
         if self.path.startswith("/dedication"):
             return self._json(200, dedication_stats())
         if self.path == "/pomodoro":

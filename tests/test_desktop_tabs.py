@@ -193,3 +193,14 @@ if __name__ == "__main__":
     test_modals_close_on_click_outside()
     test_tab_scroll_arrows_have_padding()
     test_raise_main_window_uses_keep_above_pulse_for_gnome()
+
+
+def test_ctrl_o_is_not_captured_by_the_app():
+    # Ctrl+O pertenece al CLI/terminal; no debe abrir un overlay de tabs.
+    assert 'e.keyval in (Gdk.KEY_o, Gdk.KEY_O)' not in SRC
+
+
+def test_dashboard_url_is_cache_busted_on_app_start():
+    assert 'BASE_URL = "http://127.0.0.1:4777"' in SRC
+    assert '_DASH_V' in SRC
+    assert 'URL = f"{BASE_URL}/?app=1&v={_DASH_V}"' in SRC

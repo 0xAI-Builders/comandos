@@ -265,3 +265,16 @@ if __name__ == "__main__":
     test_pane_models_file_for_tmux_borders()
     test_new_sessions_load_provider_keys_env()
     test_agent_pane_maps_keeps_one_agent_per_tmux_pane()
+
+
+def test_active_tab_endpoint_enriches_session_with_active_tmux_pane():
+    assert 'if self.path.startswith("/active-tab")' in SRC
+    assert '"#{pane_id}"' in SRC
+    assert 'active["pane"] = pane_a' in SRC
+
+
+def test_state_emits_one_control_card_per_live_claude_split():
+    assert "def _claude_all_panes" in SRC
+    assert '"pane": pane_l' in SRC
+    assert '"split": True' in SRC
+    assert "by_sess_count" in SRC

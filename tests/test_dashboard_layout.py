@@ -107,3 +107,27 @@ def test_ssh_connection_list_is_an_independent_touch_scroller():
         '<div id="srv-list" role="region" '
         'aria-label="Conexiones guardadas" tabindex="0"></div>'
     ) in CSS
+
+
+def test_gtk_sidebar_keeps_split_cards_and_hides_global_inventory():
+    # La app GTK necesita las cards de panes; ocultar sessions-wrap deja sidebar vacío.
+    assert "html.gtkapp #sessions-wrap{display:none}" not in INDEX
+    assert 'id="sessions-title"' in INDEX
+    assert "appPanes.length >= 2 && it.session === appSess" in INDEX
+    assert '$("#sessions-wrap").classList.toggle("hidden", nPanes < 2)' in INDEX
+    assert "CENTRO_VIEW.sessionId === rowKey(it)" in INDEX
+    assert 'const rk = rowKey(it)' in INDEX
+
+
+def test_active_tmux_pane_drives_the_sidebar_control_card():
+    assert '(d.pane || "") !== (ACTIVE_TAB.pane || "")' in INDEX
+    assert 'S.sel = key; S.selTs = Date.now()' in INDEX
+    assert 'render(S.list || [])' in INDEX
+    assert 'r.dataset.rk === key' in INDEX
+
+
+def test_gtk_sidebar_reuses_compact_analytics_instead_of_all_sessions():
+    assert 'id="sidebar-insights"' in INDEX
+    assert "async function renderSidebarInsights()" in INDEX
+    assert 'api("/dedication")' in INDEX
+    assert 'api("/usage/state")' in INDEX

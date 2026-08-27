@@ -77,7 +77,7 @@ def test_header_has_no_search_nor_open_project():
     )
     assert switch_button
     sessions_label = re.search(
-        r'<div class="sec-label"><span class="chip">Sesiones</span>(?P<body>.*?)</div>', HTML, re.S
+        r'<div class="sec-label"><span class="chip" id="sessions-title">Sesiones</span>(?P<body>.*?)</div>', HTML, re.S
     )
     assert sessions_label
     assert 'id="btn-newsess"' in sessions_label.group("body")

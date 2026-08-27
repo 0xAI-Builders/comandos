@@ -620,6 +620,21 @@
   @media (min-width:1360px){
     #rows{display:grid;grid-template-columns:1fr 1fr;gap:8px;align-items:start}
   }
+  #sidebar-insights{display:none}
+  html.gtkapp #sidebar-insights{display:block}
+  .side-kpis{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:10px}
+  .side-kpi{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:10px 11px;display:flex;flex-direction:column;gap:2px;min-width:0}
+  .side-kpi .v{font-family:var(--mono);font-size:18px;font-weight:800;color:var(--text);font-variant-numeric:tabular-nums}
+  .side-kpi .l{font-family:var(--mono);font-size:9.5px;color:var(--dim);text-transform:uppercase;letter-spacing:.06em}
+  .side-link{margin-left:auto;font-family:var(--mono);font-size:10px;color:var(--brand);border:1px solid var(--line2);border-radius:7px;padding:3px 8px;background:none}
+  .side-link:hover{border-color:var(--brand);background:color-mix(in srgb,var(--brand) 9%,transparent)}
+  #side-projects{display:flex;flex-direction:column;gap:7px}
+  .side-proj{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:4px 8px;align-items:center}
+  .side-proj .n{font-size:11px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .side-proj .m{font-family:var(--mono);font-size:10px;color:var(--dim);font-variant-numeric:tabular-nums}
+  .side-proj .bar{grid-column:1/-1;height:3px;border-radius:3px;background:var(--line);overflow:hidden}
+  .side-proj .bar i{display:block;height:100%;border-radius:3px;background:var(--brand)}
+
   .row{display:grid;grid-template-columns:auto auto auto minmax(0,1fr) auto;grid-template-areas:
       "fav dot name state ago"
       "fav dot prev prev acts"
@@ -629,6 +644,7 @@
     border-radius:12px;cursor:pointer;
     transition:border-color .15s ease, background .15s ease, box-shadow .15s ease}
   .row:hover{background:var(--panel2);border-color:var(--line2);box-shadow:0 4px 16px #0004}
+  .row.active-pane{border-color:color-mix(in srgb,var(--brand) 55%,var(--line));box-shadow:inset 0 0 0 1px color-mix(in srgb,var(--brand) 28%,transparent)}
   .row:focus-visible{outline:2px solid var(--brand);outline-offset:2px}
   .row.s-waiting{border-left-color:var(--waiting)}
   .row.s-done{border-left-color:var(--done)}
@@ -933,7 +949,6 @@
      app: barra de pestanas arriba, y debajo el panel o una terminal. */
   body.app{height:var(--app-height,100dvh);overflow:hidden;display:block}
   /* En la app las pestanas YA son la navegacion: la lista de sesiones sobra */
-  html.gtkapp #sessions-wrap{display:none}
   html.gtkapp #recent-wrap{display:none}
   #tabbar{display:none}
   body.app #tabbar{display:flex;align-items:stretch;gap:0;flex:none;
@@ -1248,10 +1263,18 @@
   <div id="centro"></div>
 </section>
 <section class="sec" id="sessions-wrap">
-  <div class="sec-label"><span class="chip">Sesiones</span>
+  <div class="sec-label"><span class="chip" id="sessions-title">Sesiones</span>
     <button type="button" id="btn-newsess" class="ns-plus" title="Nueva sesión (elige carpeta, agente y cuenta)" aria-label="Nueva sesión"></button>
   </div>
   <div id="rows"></div>
+</section>
+<section class="sec" id="sidebar-insights">
+  <div class="sec-label"><span class="chip">Hoy</span><button type="button" id="side-usage" class="side-link">Uso →</button></div>
+  <div class="side-kpis">
+    <div class="side-kpi"><span class="v" id="side-time">—</span><span class="l">en foco</span></div>
+    <div class="side-kpi"><span class="v" id="side-panes">—</span><span class="l">agentes activos</span></div>
+  </div>
+  <div id="side-projects"></div>
 </section>
 
 <div id="newsess" class="hidden" role="dialog" aria-modal="true" aria-label="Nueva sesión">
@@ -2097,13 +2120,19 @@ function mdStrip(s){ return (s||"").replace(/\*\*|`|^#{1,6} /g, ""); }
 	setInterval(async ()=>{
 	  try{
 	    const d = await api("/active-tab");
-	    if(d && d.session && d.session !== ACTIVE_TAB.session){
-	      ACTIVE_TAB = d;
-	      renderCentro(S.list || []);   // el centro cambia AL INSTANTE
-	      // ...y la fila de esa sesion se trae a la vista (con 40+ filas quedaba fuera de pantalla)
-	      const row = document.querySelector(`.row[data-session="${CSS.escape(d.session)}"]`);
-	      if(row) row.scrollIntoView({block: "nearest", behavior: "smooth"});
-	    } else if(d && d.session){ ACTIVE_TAB = d; }
+	    const changed = d && d.session && (d.session !== ACTIVE_TAB.session || (d.pane || "") !== (ACTIVE_TAB.pane || ""));
+	    if(changed){
+	      // El cambio de pane ocurre DESPUÉS del click: timestamp local fresco
+	      // para que pane activo gane al estado anterior del Centro.
+	      ACTIVE_TAB = {...d, ts: Date.now() / 1000};
+	      const key = d.session + (d.pane ? "|" + d.pane : "");
+	      S.sel = key; S.selTs = Date.now();
+	      document.querySelectorAll("#rows .row").forEach(r => r.classList.toggle("active-pane", r.dataset.rk === key));
+	      render(S.list || []);   // actualiza Centro + lista de panes de la pestaña
+	      // NO scrollIntoView aquí: la fila activa puede ocultarse porque ya está
+	      // en el Centro; WebKit desplaza #rows cientos de px hacia arriba al
+	      // intentar scrollear un display:none (sidebar queda aparentemente vacío).
+	    } else if(d && d.session){ ACTIVE_TAB = {...ACTIVE_TAB, ...d}; }
 	  }catch(e){}
 	}, 1000);
 	function pickSel(list){
@@ -2121,8 +2150,11 @@ function mdStrip(s){ return (s||"").replace(/\*\*|`|^#{1,6} /g, ""); }
 	  // sesion pero de un SPLIT concreto, el click (mas especifico) manda —
 	  // si no, abrir la pestana pisaba la seleccion y "click y nada".
 	  const selSess = String(S.sel || "").split("|")[0];
-	  if(ACTIVE_TAB.session && ACTIVE_TAB.session !== selSess)
-	    cand.push({sess: ACTIVE_TAB.session, ts: (ACTIVE_TAB.ts || 0) * 1000});
+	  const activeKey = ACTIVE_TAB.session ? ACTIVE_TAB.session + (ACTIVE_TAB.pane ? "|" + ACTIVE_TAB.pane : "") : "";
+	  // Pane activo es específico y siempre puede ganar; una señal que solo
+	  // conoce la sesión no pisa un click de split de esa misma sesión.
+	  if(activeKey && (ACTIVE_TAB.pane || ACTIVE_TAB.session !== selSess))
+	    cand.push({sess: activeKey, ts: (ACTIVE_TAB.ts || 0) * 1000});
 	  cand.sort((a, b) => b.ts - a.ts);
 	  for(const c of cand){
 	    const it = items.find(i => rowKey(i) === c.sess) || items.find(i => i.session === c.sess);
@@ -4202,9 +4234,16 @@ function render(list){
     let el = document.querySelector(`.row[data-rk="${CSS.escape(rk)}"]`);
     if(el && el.dataset.kind !== kind){ el.remove(); el = null; }
     if(!el){ el = rowEl(it); container.appendChild(el); }
-    // La sesión que el Centro ya muestra no se repite como fila. style inline:
-    // sobrevive a los `el.className = ...` que reescriben las clases después.
-    el.style.display = rk === shown ? "none" : "";
+    const appSess = inApp() ? (ACTIVE_TAB.session || "") : "";
+    const appPanes = appSess ? list.filter(x => x.alive && x.session === appSess && x.pane) : [];
+    const splitCount = list.filter(x => x.alive && x.session === it.session && x.pane).length;
+    if(inApp()){
+      // Sidebar GTK: SOLO los panes de la pestaña activa. El inventario global
+      // estorbaba; el resto del espacio es analytics.
+      el.style.display = (appPanes.length >= 2 && it.session === appSess) ? "" : "none";
+    }else{
+      el.style.display = (splitCount < 2 && rk === shown) ? "none" : "";
+    }
     const ext = !!it.external;
     const ab = el.querySelector(".abadge");
     if(ab){
@@ -4231,6 +4270,7 @@ function render(list){
       if(it.accountEmail) ab.title = it.accountEmail;
     }
 	    el.dataset.pane = it.pane || "";
+	    el.classList.toggle("active-pane", !!ACTIVE_TAB.session && it.session === ACTIVE_TAB.session && (!ACTIVE_TAB.pane || it.pane === ACTIVE_TAB.pane));
 	    el._detail = it.detail || it.last || "";
 	    el.dataset.search = `${it.project} ${it.cwd||""}`.toLowerCase();
 	    const uchip = el.querySelector(".usage-chip");
@@ -4341,11 +4381,28 @@ function render(list){
       // Orden visual: 1) la sesion de la pestana ACTIVA de la app, 2) favoritas,
       // 3) vivas por estado (esperan → listos → trabajando → resto), muertas al
       // final, y dentro de cada grupo las mas recientes arriba (edad real, sin mod).
-      const ageMin = Math.min(999, Math.max(0, Math.floor((Date.now()/1000 - (it.ts || 0)) / 60)));
-      el.style.order = ((typeof ACTIVE_TAB === "object" && ACTIVE_TAB.session === it.session) ? -1000000 : 0) +
-        (S.favs.has(it.session) ? -100000 : 0) +
-        (it.alive ? 0 : 50000) +
-        (ROW_ORDER[it.status] ?? 9) * 1000 + ageMin;
+      const ageOf = x => Math.min(999, Math.max(0, Math.floor((Date.now()/1000 - (x.ts || 0)) / 60)));
+      const siblings = list.filter(x => x.alive && x.session === it.session && x.pane);
+      const isSplit = siblings.length >= 2;
+      if(isSplit){
+        // Todos los panes de la misma sesión forman UN BLOQUE contiguo. Antes
+        // el split waiting estaba arriba y el idle 1,350px abajo: parecía que
+        // solo existía una card.
+        const sorted = [...siblings].sort((a,b) => Number((a.pane||"%0").slice(1)) - Number((b.pane||"%0").slice(1)));
+        const idx = Math.max(0, sorted.findIndex(x => rowKey(x) === rk));
+        const bestState = Math.min(...siblings.map(x => ROW_ORDER[x.status] ?? 9));
+        const newest = Math.min(...siblings.map(ageOf));
+        const groupFav = siblings.some(x => S.favs.has(rowKey(x)) || S.favs.has(x.session));
+        const activeGroup = typeof ACTIVE_TAB === "object" && ACTIVE_TAB.session === it.session;
+        el.style.order = (activeGroup ? -10000000 : 0) + (groupFav ? -1000000 : 0) +
+          bestState * 100000 + newest * 100 + idx;
+      }else{
+        const ageMin = ageOf(it);
+        el.style.order = ((typeof ACTIVE_TAB === "object" && ACTIVE_TAB.session === it.session) ? -10000000 : 0) +
+          (S.favs.has(it.session) ? -1000000 : 0) +
+          (it.alive ? 0 : 5000000) +
+          (ROW_ORDER[it.status] ?? 9) * 100000 + ageMin * 100;
+      }
     }
     // Transiciones → aviso en la pila superior derecha del tablero (con tema).
     // Durante un foco de pomodoro, solo la sesión enfocada avisa; el resto se
@@ -4363,6 +4420,11 @@ function render(list){
   document.querySelectorAll("#rows [data-session]").forEach(el=>{
     if(!seen.has(el.dataset.rk || el.dataset.session)) el.remove();
   });
+  if(inApp()){
+    const nPanes = list.filter(x => x.alive && x.session === (ACTIVE_TAB.session || "") && x.pane).length;
+    $("#sessions-wrap").classList.toggle("hidden", nPanes < 2);
+    const st = $("#sessions-title"); if(st) st.textContent = nPanes > 1 ? `Panes · ${nPanes}` : "Panes";
+  }
   renderCentro(list);
   if(!rows.querySelector(".row") && !rows.querySelector(".empty")){
     rows.innerHTML = `<div class="empty">${tf("Sin sesiones. Abre una arriba con", "No sessions. Open one above with")}
@@ -4756,6 +4818,26 @@ $("#btn-theme").addEventListener("click", async ()=>{
   const labelEn = ({noche:"Night",dia:"Day",calido:"Warm",termius:"Termius",bruno:"Bruno"}[next]||next);
   toast(tf(`Tema: ${label}`, `Theme: ${labelEn}`));
 });
+
+// ---------- analytics compactos del sidebar GTK ----------
+async function renderSidebarInsights(){
+  if(!inApp()) return;
+  try{
+    const [d,u] = await Promise.all([api("/dedication"), api("/usage/state")]);
+    const today = (d.days || [])[0] || {projects:[]};
+    const projects = (today.projects || []).slice().sort((a,b)=>Number(b.minutes||0)-Number(a.minutes||0));
+    const total = projects.reduce((n,x)=>n+Number(x.minutes||0),0);
+    const panes = (u.providers || []).reduce((n,x)=>n+Number(x.active_panes||0),0);
+    const tm = $("#side-time"), pn = $("#side-panes");
+    if(tm) tm.textContent = fmtMin(total);
+    if(pn) pn.textContent = String(panes);
+    const top = projects.slice(0,3), max = Math.max(1,...top.map(x=>Number(x.minutes||0)));
+    const box = $("#side-projects");
+    if(box) box.innerHTML = top.length ? top.map(x=>`<div class="side-proj">
+      <span class="n" title="${attrEsc(x.path||x.name||"")}">${mdEsc(x.name||"")}</span><span class="m">${fmtMin(Number(x.minutes||0))}</span>
+      <span class="bar"><i style="width:${Math.max(3,Math.round(Number(x.minutes||0)/max*100))}%"></i></span></div>`).join("") : `<div class="desc">Sin turnos medidos hoy.</div>`;
+  }catch(e){}
+}
 
 // ---------- favoritos ----------
 async function loadPrefs(){
@@ -5324,6 +5406,8 @@ document.querySelectorAll(".lang-btn").forEach(b=>{
   initApp();   // barra de pestanas + terminales embebidas (si es tailnet)
   await loadRemote();
   loadPrefs().then(tick);
+  renderSidebarInsights(); setInterval(renderSidebarInsights, 60000);
+  const su = $("#side-usage"); if(su && !su._wired){ su._wired=true; su.addEventListener("click", ()=>$("#btn-usage")?.click()); }
   loadSsh();
   loadConf();
   tickEvents();
