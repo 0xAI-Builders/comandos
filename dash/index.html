@@ -572,6 +572,8 @@
     background:none;color:var(--dim);cursor:pointer;font-size:15px;line-height:1;
     transition:all .12s ease;margin-left:8px;vertical-align:middle}
   .ns-plus::before{content:"+"}
+  html.gtkapp .ns-plus{width:auto;padding:0 9px;font-family:var(--mono);font-size:10px;font-weight:700;gap:4px}
+  html.gtkapp .ns-plus::after{content:" Nueva"}
   .ns-plus:hover{color:var(--brand);border-color:var(--brand);transform:scale(1.08)}
   #newsess{position:fixed;inset:0;z-index:70;background:#0008;display:flex;
     align-items:center;justify-content:center;backdrop-filter:blur(3px)}
@@ -1292,7 +1294,7 @@
     <input id="ns-cwd" list="ns-dirs" autocomplete="off" spellcheck="false"
       placeholder="~/codebase/...">
     <datalist id="ns-dirs"></datalist>
-    <label class="ns-label">Agente</label>
+    <label class="ns-label">Harness / motor</label>
     <div class="ns-chips" id="ns-agent"></div>
     <div id="ns-acct-wrap" class="hidden">
       <label class="ns-label">Cuenta</label>
@@ -2070,7 +2072,7 @@ function mdStrip(s){ return (s||"").replace(/\*\*|`|^#{1,6} /g, ""); }
 	function nsChips(el, items, cur, cb){
 	  el.innerHTML = items.map(x =>
 	    `<button type="button" class="${x.id === cur ? "on" : ""}" data-id="${attrEsc(x.id)}"
-	       ${x.title ? `title="${attrEsc(x.title)}"` : ""}>${mdEsc(x.label)}</button>`).join("");
+	       ${x.title ? `title="${attrEsc(x.title)}"` : ""}>${x.icon ? providerMark(x.icon, x.model || "", 13) : ""}${mdEsc(x.label)}</button>`).join("");
 	  el.querySelectorAll("button").forEach(b => b.addEventListener("click", ()=>{
 	    el.querySelectorAll("button").forEach(o => o.classList.remove("on"));
 	    b.classList.add("on"); cb(b.dataset.id);
@@ -2085,11 +2087,11 @@ function mdStrip(s){ return (s||"").replace(/\*\*|`|^#{1,6} /g, ""); }
 	  const sel = pickSel(S.list || []);
 	  if(sel && sel.cwd && !$("#ns-cwd").value) $("#ns-cwd").value = sel.cwd;
 	  nsChips($("#ns-agent"), [
-	    {id: "claude", label: "Claude Code"},
-	    {id: "claude-codex", label: "Claude + Codex", title: tf("Claude Code con tu ChatGPT como motor", "Claude Code with your ChatGPT as engine")},
-	    {id: "claude-grok", label: "Claude + Grok", title: tf("Claude Code con tu suscripción Grok como motor", "Claude Code with your Grok subscription as engine")},
-	    {id: "codex", label: "Codex CLI"},
-	    {id: "grok", label: "Grok Build", title: tf("Harness oficial xAI: Grok 4.6/4.5, MCPs, hooks y skills", "Official xAI harness: Grok 4.6/4.5, MCPs, hooks and skills")},
+	    {id: "claude", label: "Claude Code", icon:"claude"},
+	    {id: "claude-codex", label: "Claude + Codex", icon:"codex", title: tf("Claude Code con tu ChatGPT como motor", "Claude Code with your ChatGPT as engine")},
+	    {id: "claude-grok", label: "Claude + Grok", icon:"grok", title: tf("Claude Code con tu suscripción Grok como motor", "Claude Code with your Grok subscription as engine")},
+	    {id: "codex", label: "Codex CLI", icon:"codex"},
+	    {id: "grok", label: "Grok Build", icon:"grok", title: tf("Harness oficial xAI: Grok 4.6/4.5, MCPs, hooks y skills", "Official xAI harness: Grok 4.6/4.5, MCPs, hooks and skills")},
 	    {id: "shell", label: "shell", title: tf("terminal pelona", "plain terminal")},
 	  ], NS.agent, id => { NS.agent = id; NS.account="main"; nsRenderAccounts(); nsSync(); });
 	  try{
@@ -2820,8 +2822,8 @@ function mdStrip(s){ return (s||"").replace(/\*\*|`|^#{1,6} /g, ""); }
 	}
 	function renderMotor(box, it, model){
 	  const el = box.querySelector(".cx-motor"); if(!el) return;
-	  const show = PROXY && it && it.alive && (it.agent === "claude" || it.agent === "grok") &&
-	    (it.agent === "grok" || (PROXY.installed && PROXY.codexLogin));
+	  const show = PROXY && it && it.alive && ["claude","codex","grok"].includes(it.agent) &&
+	    (it.agent !== "claude" || (PROXY.installed && PROXY.codexLogin));
 	  el.classList.toggle("hidden", !show);
 	  if(!show) return;
 	  let btn = el.querySelector(".motor-pill");
@@ -2833,9 +2835,10 @@ function mdStrip(s){ return (s||"").replace(/\*\*|`|^#{1,6} /g, ""); }
 	  // NUNCA deshabilitar por "trabajando": el backend encola (o interrumpe con
 	  // "detener y cambiar YA") y confirma en el pane. Solo bloquea un proxy muerto.
 	  const stopBtn = box.querySelector(".cx-stop");
-	  if(stopBtn) stopBtn.classList.toggle("hidden", !(it.alive && it.agent === "claude" && (it.status === "working" || MOTOR_PENDING.has(targetKey))));
+	  if(stopBtn) stopBtn.classList.toggle("hidden", !(it.alive && ["claude","codex","grok"].includes(it.agent) && (it.status === "working" || MOTOR_PENDING.has(targetKey))));
 	  const eff = p2 && p2.effort ? p2.effort : (it.effort || effortFor(targetKey, model));
-	  motorPill(btn, p2 ? p2.motor : (motorOf(model) || "claude"), p2 ? p2.model : model, p2 || false, p2 ? "" : (eff || tf("esta sesión", "this session")));
+	  const currentHarnessMotor = ["codex","grok"].includes(it.agent) ? it.agent : (motorOf(model) || "claude");
+	  motorPill(btn, p2 ? p2.motor : currentHarnessMotor, p2 ? p2.model : model, p2 || false, p2 ? "" : (eff || tf("esta sesión", "this session")));
 	  btn.disabled = it.agent === "claude" && !PROXY.alive;
 	  btn.title = (it.agent === "claude" && !PROXY.alive) ? tf("cc-proxy no responde", "cc-proxy not responding") :
 	    it.status === "working" ? tf("Está trabajando: el cambio se encola, o usa ■ detener y cambiar YA", "Working: the switch queues, or use ■ stop & switch NOW") :
@@ -2881,7 +2884,8 @@ function mdStrip(s){ return (s||"").replace(/\*\*|`|^#{1,6} /g, ""); }
 	  const pop = $("#motor-pop"); if(!MPOP) return;
 	  const {mode, item, model} = MPOP.ctx;
 	  const curModel = mode === "global" ? PROXY.defaultModel : model;
-	  const curProv = mode === "global" ? (PROXY.motor === "codex" ? "codex" : "claude") : (motorOf(model) || "claude");
+	  const curProv = mode === "global" ? (PROXY.motor || motorOf(PROXY.defaultModel) || "claude") :
+	    (item && ["codex","grok"].includes(item.agent) ? item.agent : (motorOf(model) || "claude"));
 	  const curEffort = mode === "global" ? ((PROXY.effortDefaults || {}).effort || "") : (item.effort || effortFor(motorTargetKey(item), model));
 	  // Selección en DOS pasos (sesión): eliges modelo + modo de pensamiento y
 	  // disparas con el botón — nada se ejecuta al tocar los radios.
@@ -2893,7 +2897,8 @@ function mdStrip(s){ return (s||"").replace(/\*\*|`|^#{1,6} /g, ""); }
 	                                 : [tf("Motor de esta sesión", "This session's engine"), mdEsc(item.project) + " · " + tf("el contexto se conserva", "context is kept")];
 	  const tile = (prov, title, sub) => {
 	    const on = (mode === "global" ? curProv : st.prov) === prov;
-	    const dis = (prov !== "claude" && !PROXY.alive) || (prov === "codex" && !PROXY.codexLogin) || (prov === "grok" && !PROXY.grokLogin);
+	    const nativeHarness = item && item.agent === prov;
+	    const dis = !nativeHarness && ((prov !== "claude" && !PROXY.alive) || (prov === "codex" && !PROXY.codexLogin) || (prov === "grok" && !PROXY.grokLogin));
 	    const tileModel = on ? (mode === "global" ? curModel : st.model) : ((motorMenu(prov)[0] || {}).id || "");
 	    const tileEfforts = effortsFor(prov, tileModel);
 	    return `<div class="mtile ${on ? "on" : "off"}" data-prov="${prov}">
@@ -2910,7 +2915,7 @@ function mdStrip(s){ return (s||"").replace(/\*\*|`|^#{1,6} /g, ""); }
 	    ${busyNow ? `<div class="mp-busy"><span class="msg">⚠ ${tf("Está trabajando. Sin marcar, el cambio espera a que termine el turno.", "Working. Unchecked, the switch waits for the turn to end.")}</span>
 	      <button type="button" class="sw" aria-pressed="false">■ ${tf("detener y cambiar YA", "stop & switch NOW")}</button></div>` : ""}
 	    <div class="mp-grid">
-	      ${(item && item.agent === "grok" ? ["grok"] : ENGINE_IDS).map(id=>tile(id, engineLabel(id), engineSub(id))).join("")}
+	      ${(item && ["grok","codex"].includes(item.agent) ? [item.agent] : ENGINE_IDS).map(id=>tile(id, engineLabel(id), engineSub(id))).join("")}
 	    </div>
 	    ${mode !== "global" && (st.prov !== curProv || motorKey(st.model) !== motorKey(curModel) || (st.effort || "") !== (curEffort || "")) ? `<div class="mp-go">
 	      <button type="button" class="do">→ ${tf("Cambiar a", "Switch to")} ${mdEsc(engineLabel(st.prov))} · ${mdEsc(motorName(st.prov, st.model))}${st.effort ? ` · ${st.effort}` : ""}</button>
@@ -2990,7 +2995,7 @@ function mdStrip(s){ return (s||"").replace(/\*\*|`|^#{1,6} /g, ""); }
 	    ulog("click", `motor-go:${st.prov}:${st.model}:${st.effort}`, "centro");
 	    try{
 	      const sameModel = st.prov === curProv && motorKey(st.model) === motorKey(curModel);
-	      const driver = item.agent === "grok" ? "grok" : "claude";
+	      const driver = ["grok","codex"].includes(item.agent) ? item.agent : "claude";
 	      const r = await api("/model/switch", {session: item.session, pane: item.pane || "", provider: driver,
 	        model: sameModel ? "" : st.model, effort: st.effort || "", interrupt: INTERRUPT()});
 	      const opkey = (r && r.operationKey) || pendingKey || item.session;

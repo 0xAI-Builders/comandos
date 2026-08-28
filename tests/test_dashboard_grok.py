@@ -27,8 +27,8 @@ def test_grok_models_and_per_model_efforts_are_exposed():
 
 def test_claude_picker_is_three_engine_and_native_grok_is_single_engine():
     assert 'const ENGINE_IDS = ["claude", "codex", "grok"]' in HTML
-    assert 'item && item.agent === "grok" ? ["grok"] : ENGINE_IDS' in HTML
-    assert 'driver = item.agent === "grok" ? "grok" : "claude"' in HTML
+    assert 'item && ["grok","codex"].includes(item.agent) ? [item.agent] : ENGINE_IDS' in HTML
+    assert 'driver = ["grok","codex"].includes(item.agent) ? item.agent : "claude"' in HTML
 
 
 def test_grok_wizard_modes_and_accounts_are_visible():
@@ -42,3 +42,12 @@ def test_switch_loading_and_results_are_pane_keyed():
     assert "r.operationKey" in HTML
     assert 'stageTxt: r && r.queued ?' in HTML
     assert 'confirmando modelo y esfuerzo' not in HTML  # stage comes from backend, not a fake optimistic string
+
+
+def test_native_harness_cards_have_their_own_model_picker_and_driver():
+    assert '["claude","codex","grok"].includes(it.agent)' in HTML
+    assert 'item && ["grok","codex"].includes(item.agent) ? [item.agent] : ENGINE_IDS' in HTML
+    assert 'driver = ["grok","codex"].includes(item.agent) ? item.agent : "claude"' in HTML
+    assert 'Harness / motor' in HTML
+    for label in ("Claude Code", "Claude + Codex", "Claude + Grok", "Codex CLI", "Grok Build"):
+        assert label in HTML

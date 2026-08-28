@@ -1013,6 +1013,25 @@ def claude_command_confirm(pane, command, baseline, secs):
     return False, ""
 
 
+def codex_pane_model(pane):
+    r = tmux("capture-pane", "-p", "-t", pane, "-S", "-35")
+    if r.returncode != 0:
+        return "", ""
+    hits = re.findall(r"\b(gpt-[a-z0-9.\-]+)\s+(low|medium|high|xhigh)\b", r.stdout, re.I)
+    return (hits[-1][0].lower(), hits[-1][1].lower()) if hits else ("", "")
+
+
+def confirm_codex_native(opkey, pane, model, effort):
+    motor_stage(opkey, "confirmando modelo y esfuerzo en Codex CLI")
+    for _ in range(40):
+        time.sleep(0.5)
+        got_model, got_effort = codex_pane_model(pane)
+        if got_model == model and (not effort or got_effort == effort):
+            motor_result_set(opkey, True, f"{got_model} · {got_effort}")
+            return
+    motor_result_set(opkey, False, "Codex CLI no confirmó el cambio")
+
+
 SESSION_EFFORT = os.path.expanduser("~/.claude/hooks/session-effort.json")
 
 
@@ -3337,8 +3356,12 @@ def read_states():
         cos = _costumes_now.get(sess)
         if cos:
             item.update(cos)
-        if item.get("agent") == "codex" and not item.get("model") and item.get("cwd"):
-            item["model"] = _codex_models_by_cwd().get(item["cwd"], "")
+        if item.get("agent") == "codex":
+            pane_model, pane_effort = codex_pane_model(pane) if pane else ("", "")
+            if pane_model:
+                item["model"], item["effort"] = pane_model, pane_effort
+            elif not item.get("model") and item.get("cwd"):
+                item["model"] = _codex_models_by_cwd().get(item["cwd"], "")
         if zombie:
             item["zombie"] = True
         if pane:
@@ -3395,8 +3418,12 @@ def read_states():
         cos = _costumes_now.get(sess)
         if cos:
             item.update(cos)
-        if agent == "codex" and not item.get("model") and cwd:
-            item["model"] = _codex_models_by_cwd().get(cwd, "")
+        if agent == "codex":
+            pane_model, pane_effort = codex_pane_model(pane) if pane else ("", "")
+            if pane_model:
+                item["model"], item["effort"] = pane_model, pane_effort
+            elif not item.get("model") and cwd:
+                item["model"] = _codex_models_by_cwd().get(cwd, "")
         if pane:
             item["pane"] = pane
         if sess.startswith("ssh-"):
@@ -5068,7 +5095,14 @@ class Handler(http.server.SimpleHTTPRequestHandler):
                         return self._json(500, {"error": r.stderr.strip() or "tmux fallo"})
                     if pause:
                         time.sleep(pause)
-                return self._json(200, {"ok": True, "command": f"/model → {model} {effort or 'medium'}"})
+                chosen_effort = effort or "medium"
+                opkey = f"{sess}|{pane}"
+                motor_stage(opkey, "aplicando modelo en Codex CLI")
+                threading.Thread(target=confirm_codex_native,
+                                 args=(opkey, pane, model, chosen_effort), daemon=True).start()
+                return self._json(202, {"ok": True, "operationKey": opkey,
+                                        "command": f"/model → {model} {chosen_effort}",
+                                        "model": model, "effort": chosen_effort})
             if provider == "opencode":
                 # OpenCode: su picker /models busca por NOMBRE mostrado. La
                 # secuencia limpia estado (Escape+C-u) y teclea la busqueda.

@@ -316,3 +316,10 @@ def test_model_confirmation_does_not_accept_stale_marker(monkeypatch):
     )
     monkeypatch.setattr(dash.time, "sleep", lambda _n: None)
     assert dash.claude_command_confirm("%1", "/model grok-4.6", stale, 1) == (False, "")
+
+
+def test_native_codex_switch_reports_pane_keyed_confirmed_result():
+    assert "def confirm_codex_native" in SRC
+    assert "def codex_pane_model" in SRC
+    assert 'operationKey": opkey' in SRC
+    assert 'confirmando modelo y esfuerzo en Codex CLI' in SRC
