@@ -458,14 +458,18 @@
   .motor-pill .mp-caret{color:var(--dim);font-size:9px}
   .motor-pill.pending .mp-model{color:var(--warn)}
   .motor-pill:disabled{opacity:.5;cursor:not-allowed}
-  #motor-pop{position:fixed;z-index:200;width:min(900px,calc(100vw - 16px));max-height:calc(100vh - 80px);overflow-y:auto;background:var(--panel);border:1px solid var(--line2);border-radius:14px;
+  #motor-pop{position:fixed;z-index:200;box-sizing:border-box;width:min(900px,calc(100vw - 16px));max-height:calc(100vh - 80px);overflow-y:auto;background:var(--panel);border:1px solid var(--line2);border-radius:14px;
     box-shadow:0 18px 48px rgba(0,0,0,.35);padding:12px;display:none}
   #motor-pop.open{display:block}
+  html.gtkapp #motor-pop.inline{position:relative;left:auto!important;top:auto!important;width:100%;max-height:min(66vh,720px);margin-top:8px;
+    box-shadow:none;border-color:var(--line);padding:9px;overflow-y:auto}
+  html.gtkapp #motor-pop.inline .mp-grid{grid-template-columns:1fr}
+
   #motor-pop .mp-head{display:flex;justify-content:space-between;align-items:baseline;gap:10px;margin:2px 4px 10px;font-family:var(--mono);font-size:11px;color:var(--dim)}
   #motor-pop .mp-head b{color:var(--text);font-size:12.5px}
   #motor-pop .mp-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:10px}
   @media (max-width:560px){#motor-pop .mp-grid{grid-template-columns:1fr}}
-  .mtile{position:relative;border:1.5px solid var(--line2);border-radius:12px;padding:12px;background:var(--bg);transition:border-color .12s,box-shadow .12s}
+  .mtile{position:relative;box-sizing:border-box;min-width:0;border:1.5px solid var(--line2);border-radius:12px;padding:12px;background:var(--bg);transition:border-color .12s,box-shadow .12s}
   .mtile.on{border-color:var(--brand);box-shadow:0 0 0 3px color-mix(in srgb,var(--brand) 22%,transparent)}
   .mtile.off{opacity:.78}
   .mtile .mt-top{display:flex;align-items:center;gap:9px;margin-bottom:10px;min-width:0}
@@ -491,10 +495,10 @@
   .mtile .mt-eff button:hover{color:var(--text);background:var(--panel2)}
   .mtile .mt-eff button.sel{color:var(--bg);background:var(--brand);border-color:var(--brand)}
   .mtile .mt-eff button:disabled{opacity:.45;cursor:not-allowed}
-  #motor-pop .mp-busy{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:8px;margin:0 2px 10px;padding:8px 10px;border:1px solid color-mix(in srgb,var(--warn) 45%,var(--line2));
+  #motor-pop .mp-busy{display:grid;grid-template-columns:minmax(0,1fr);align-items:center;gap:8px;margin:0 2px 10px;padding:8px 10px;border:1px solid color-mix(in srgb,var(--warn) 45%,var(--line2));
     border-radius:9px;font-family:var(--mono);font-size:10.5px;color:var(--warn)}
   #motor-pop .mp-busy .msg{min-width:0;line-height:1.35}
-  #motor-pop .mp-busy .sw{margin-left:0;font-weight:800;padding:5px 10px;border-radius:7px;border:1px solid var(--err);color:var(--err);background:none;cursor:pointer;white-space:nowrap}
+  #motor-pop .mp-busy .sw{margin-left:0;justify-self:start;max-width:100%;white-space:normal;font-weight:800;padding:5px 10px;border-radius:7px;border:1px solid var(--err);color:var(--err);background:none;cursor:pointer;white-space:nowrap}
   #motor-pop .mp-busy .sw.on{color:var(--bg);background:var(--err)}
   #motor-pop .mp-cancel{margin-top:10px;width:100%;font-family:var(--mono);font-size:10.5px;font-weight:700;padding:7px;border:1px dashed var(--err);
     border-radius:9px;background:none;color:var(--err);cursor:pointer}
@@ -2844,10 +2848,18 @@ function mdStrip(s){ return (s||"").replace(/\*\*|`|^#{1,6} /g, ""); }
 	  if(pop.classList.contains("open") && MPOP && MPOP.anchor === anchor){ motorPopClose(); return; }
 	  MPOP = {anchor, ctx};
 	  motorPopRender();
+	  if(inApp()){
+	    pop.classList.add("inline");
+	    $("#centro-wrap").appendChild(pop);
+	    pop.style.left = ""; pop.style.top = "";
+	  }else{
+	    pop.classList.remove("inline");
+	    document.body.appendChild(pop);
+	    const r = anchor.getBoundingClientRect(), w = pop.offsetWidth;
+	    let left = Math.min(r.left, window.innerWidth - w - 8); if(left < 8) left = 8;
+	    pop.style.left = left + "px"; pop.style.top = Math.min(r.bottom + 8, window.innerHeight - pop.offsetHeight - 8) + "px";
+	  }
 	  pop.classList.add("open");
-	  const r = anchor.getBoundingClientRect(), w = pop.offsetWidth;
-	  let left = Math.min(r.left, window.innerWidth - w - 8); if(left < 8) left = 8;
-	  pop.style.left = left + "px"; pop.style.top = Math.min(r.bottom + 8, window.innerHeight - pop.offsetHeight - 8) + "px";
 	  setTimeout(()=> document.addEventListener("click", motorPopOutside, true), 0);
 	  document.addEventListener("keydown", motorPopKey);
 	}
@@ -4264,11 +4276,11 @@ function rowEl(it){
     xp.setAttribute("aria-expanded", _open);
     render(S.list || []);   // llena .rxp (pregunta/opciones) al instante
   });
-  el.addEventListener("click", async e=>{
+  el.addEventListener("click", e=>{
     if(e.target.closest("button") || e.target.closest(".rxp")) return;
+    // Seleccionar card/pane NO cambia la pestaña ni la sesión del terminal.
+    // Para eso existe el botón explícito "Abrir" del Centro.
     S.sel = rowKey(it); S.selTs = Date.now(); renderCentro(S.list || []);
-    if(el.classList.contains("ext")) return toast(tf("Corre en una pestana suelta: cierrala alla y usa Revivir", "Runs in a detached tab: close it there and use Revive"), true);
-    try{ toast(await openSession(it, "claude")); }catch(err){ toast(err.message, true); }
   });
   return el;
 }

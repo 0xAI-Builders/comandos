@@ -131,3 +131,20 @@ def test_gtk_sidebar_reuses_compact_analytics_instead_of_all_sessions():
     assert "async function renderSidebarInsights()" in INDEX
     assert 'api("/dedication")' in INDEX
     assert 'api("/usage/state")' in INDEX
+
+
+def test_motor_picker_is_inline_and_contained_in_gtk_sidebar():
+    assert '$("#centro-wrap").appendChild(pop)' in INDEX
+    assert 'pop.classList.add("inline")' in INDEX
+    assert 'html.gtkapp #motor-pop.inline' in INDEX
+    assert 'box-sizing:border-box' in rule("#motor-pop")
+    assert 'minmax(260px,1fr)' in rule("#motor-pop .mp-grid")
+    assert 'box-sizing:border-box' in rule(".mtile")
+    assert 'min-width:0' in rule(".mtile")
+
+
+def test_selecting_card_does_not_focus_or_change_terminal_session():
+    handler = INDEX.split('el.addEventListener("click", e=>{', 1)[1].split('});', 1)[0]
+    assert "S.sel = rowKey(it)" in handler
+    assert "openSession" not in handler
+    assert 'botón explícito "Abrir"' in handler
