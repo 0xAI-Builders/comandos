@@ -48,5 +48,38 @@
         "tag": "rápido y barato"
       }
     ]
+  },
+  "grok": {
+    "model": "grok-4.6",
+    "label": "Grok (suscripción)",
+    "experimental": true,
+    "supportsEffort": true,
+    "menu": [
+      {
+        "id": "grok-4.6",
+        "name": "Grok 4.6",
+        "tag": "coding recomendado · 500k ctx",
+        "efforts": [
+          "low",
+          "medium",
+          "high",
+          "xhigh"
+        ]
+      },
+      {
+        "id": "grok-4.5",
+        "name": "Grok 4.5",
+        "tag": "500k ctx",
+        "efforts": [
+          "low",
+          "medium",
+          "high"
+        ]
+      }
+    ],
+    "limitations": [
+      "usa el endpoint de suscripción del CLI",
+      "puede cambiar con una actualización de xAI"
+    ]
   }
 }

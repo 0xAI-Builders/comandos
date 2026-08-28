@@ -30,6 +30,10 @@
   },
   "patterns": [
     {
+      "match": "grok-4\\.(6|5)",
+      "tier": "high"
+    },
+    {
       "match": "fable|mythos|opus",
       "tier": "high"
     },
@@ -48,6 +52,11 @@
   ],
   "_doc_providers": "Proveedor por patron (regex sobre agente o modelo) para el logo del badge — EDITABLE; desconocido = monograma del agente.",
   "providers": [
+    {
+      "match": "grok|xai",
+      "icon": "xai",
+      "label": "xAI / Grok"
+    },
     {
       "match": "claude|anthropic|fable|mythos|opus|sonnet|haiku",
       "icon": "anthropic",

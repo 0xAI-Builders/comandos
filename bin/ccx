@@ -8,7 +8,7 @@
 #   ccx kill <nombre>    mata la sesion de ese proyecto
 #
 # El nombre se busca en ~/codebase (2 niveles), no importa mayusculas.
-#   ccx -a codex <nombre>   usa OTRO agente (codex|opencode|gemini|agy|claude)
+#   ccx -a grok <nombre>    usa otro harness (grok|codex|opencode|gemini|agy|claude)
 #
 # Configuracion (opcional) en ~/.claude/hooks/cc-notify.conf:
 #   AGENT_DEFAULT=claude-mpm            agente por defecto sin escribir -a
@@ -63,6 +63,7 @@ if [ -z "$AGENT" ]; then AGENT=claude; fi
 case "$AGENT" in
   claude)   LAUNCH='claude --continue 2>/dev/null || claude' ;;
   codex)    LAUNCH='codex resume --last 2>/dev/null || codex' ;;
+  grok)     LAUNCH='grok --continue 2>/dev/null || grok' ;;
   opencode) LAUNCH='opencode --continue 2>/dev/null || opencode' ;;
   gemini)   LAUNCH='gemini' ;;
   agy)      LAUNCH='agy --continue 2>/dev/null || agy' ;;

@@ -255,6 +255,7 @@
     letter-spacing:.08em;text-transform:uppercase;padding:2px 7px;border-radius:4px;
     color:var(--dim);border:1px solid var(--line2)}
   .abadge[data-a="codex"]{color:#19C39C;border-color:#19C39C55}
+  .abadge[data-a="grok"]{color:#F2C94C;border-color:#F2C94C66}
   .abadge{display:inline-flex;align-items:center;gap:5px}
   .pmark{display:inline-flex;align-items:center;justify-content:center;flex:none;line-height:1;margin-right:1px}
   .pmark .ico{display:inline-flex}
@@ -462,7 +463,7 @@
   #motor-pop.open{display:block}
   #motor-pop .mp-head{display:flex;justify-content:space-between;align-items:baseline;gap:10px;margin:2px 4px 10px;font-family:var(--mono);font-size:11px;color:var(--dim)}
   #motor-pop .mp-head b{color:var(--text);font-size:12.5px}
-  #motor-pop .mp-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+  #motor-pop .mp-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(205px,1fr));gap:10px}
   @media (max-width:560px){#motor-pop .mp-grid{grid-template-columns:1fr}}
   .mtile{position:relative;border:1.5px solid var(--line2);border-radius:12px;padding:12px;background:var(--bg);transition:border-color .12s,box-shadow .12s}
   .mtile.on{border-color:var(--brand);box-shadow:0 0 0 3px color-mix(in srgb,var(--brand) 22%,transparent)}
@@ -1138,6 +1139,7 @@
 	  .uv-pane:hover{background:var(--panel2);border-color:var(--line)}
 	  .uv-dot{flex:none;width:8px;height:8px;border-radius:50%;background:var(--brand)}
 	  .uv-dot[data-a="codex"]{background:#19C39C}
+	  .uv-dot[data-a="grok"]{background:#F2C94C}
 	  .uv-dot[data-a="opencode"]{background:#FAB283}
 	  .uv-dot[data-a="gemini"]{background:#7AA5FF}
 	  .uv-dot[data-a="agy"]{background:#B49CFF}
@@ -1890,6 +1892,7 @@ function mdStrip(s){ return (s||"").replace(/\*\*|`|^#{1,6} /g, ""); }
 	  if(!u) return "";
 	  const bits = [];
 	  if(u.model) bits.push(shortModel(u.model));
+	  if(u.reasoning_effort || u.effort) bits.push(u.reasoning_effort || u.effort);
 	  if(Number(u.cost_usd || 0) > 0) bits.push(fmtMoney(u.cost_usd));
 	  else if(Number(u.total_tokens || 0) > 0)
 	    bits.push(`${fmtTokens(u.total_tokens)}${u.usage_window === "24h" ? tf(" hoy", " today") : ""}`);
@@ -2012,14 +2015,20 @@ function mdStrip(s){ return (s||"").replace(/\*\*|`|^#{1,6} /g, ""); }
 	    {model: "gpt-5.6-sol",         effort: "xhigh",  name: "5.6-sol · xhigh",   intent: "Máximo — lo más duro",           dot: "var(--brand)"},
 	    {model: "gpt-5.5",             effort: "high",   name: "gpt-5.5 · high",    intent: "Frontier clásico",               dot: "var(--faint)"},
 	  ],
+	  grok: [
+	    {model: "grok-4.6", effort: "high",  name: "Grok 4.6 · high",  intent: "Coding recomendado · 500k", dot: "var(--waiting)"},
+	    {model: "grok-4.6", effort: "xhigh", name: "Grok 4.6 · xhigh", intent: "Máximo razonamiento",           dot: "var(--brand)"},
+	    {model: "grok-4.5", effort: "high",  name: "Grok 4.5 · high",  intent: "Frontier estable · 500k",  dot: "var(--working)"},
+	  ],
 	};
 	function shortModel(m){
 	  return String(m || "").replace(/^claude-/, "");
 	}
 	// Niveles de costo por modelo: catalogo servido por /model-tiers (archivo
 	// editable config/model-tiers.json, nada hardcodeado aqui).
-	let MT = null;
+	let MT = null, PROVIDERS = null;
 	api("/model-tiers").then(t => { MT = t || null; }).catch(() => {});
+	api("/providers").then(t => { PROVIDERS = t || null; }).catch(() => {});
 	function providerOf(agent, model){
 	  const hay = `${agent || ""} ${model || ""}`;
 	  for(const p of ((MT && MT.providers) || [])){
@@ -2046,6 +2055,12 @@ function mdStrip(s){ return (s||"").replace(/\*\*|`|^#{1,6} /g, ""); }
 	}
 	// ---- Wizard "+": nueva sesion (carpeta + agente + cuenta) en 3 clicks.
 	const NS = {agent: "claude", account: "main"};
+	let NS_CLAUDE_ACCOUNTS = [{alias:"main"}];
+	function nsAccountItems(){
+	  if(NS.agent === "grok") return (((((PROVIDERS||{}).harnesses||{}).grok||{}).accounts)||[{alias:"main",authenticated:false}]).map(a=>({id:a.alias,label:a.alias,title:a.email||a.name||""}));
+	  return NS_CLAUDE_ACCOUNTS.map(a=>({id:a.alias,label:a.alias,title:a.email||""}));
+	}
+	function nsRenderAccounts(){ nsChips($("#ns-acct"), nsAccountItems(), NS.account, id=>{NS.account=id;}); }
 	function nsChips(el, items, cur, cb){
 	  el.innerHTML = items.map(x =>
 	    `<button type="button" class="${x.id === cur ? "on" : ""}" data-id="${attrEsc(x.id)}"
@@ -2064,22 +2079,23 @@ function mdStrip(s){ return (s||"").replace(/\*\*|`|^#{1,6} /g, ""); }
 	  const sel = pickSel(S.list || []);
 	  if(sel && sel.cwd && !$("#ns-cwd").value) $("#ns-cwd").value = sel.cwd;
 	  nsChips($("#ns-agent"), [
-	    {id: "claude", label: "claude"},
-	    {id: "claude-codex", label: "claude · motor codex", title: tf("Claude Code (herramientas, hooks, MCPs) con GPT de tu ChatGPT como motor", "Claude Code harness with GPT from your ChatGPT as the engine")},
-	    {id: "codex", label: "codex"},
+	    {id: "claude", label: "Claude Code"},
+	    {id: "claude-codex", label: "Claude + Codex", title: tf("Claude Code con tu ChatGPT como motor", "Claude Code with your ChatGPT as engine")},
+	    {id: "claude-grok", label: "Claude + Grok", title: tf("Claude Code con tu suscripción Grok como motor", "Claude Code with your Grok subscription as engine")},
+	    {id: "codex", label: "Codex CLI"},
+	    {id: "grok", label: "Grok Build", title: tf("Harness oficial xAI: Grok 4.6/4.5, MCPs, hooks y skills", "Official xAI harness: Grok 4.6/4.5, MCPs, hooks and skills")},
 	    {id: "shell", label: "shell", title: tf("terminal pelona", "plain terminal")},
-	  ], NS.agent, id => { NS.agent = id; nsSync(); });
+	  ], NS.agent, id => { NS.agent = id; NS.account="main"; nsRenderAccounts(); nsSync(); });
 	  try{
 	    const d = await api(`/session-brain?cwd=${encodeURIComponent($("#ns-cwd").value || dirs[0] || "/")}`);
-	    nsChips($("#ns-acct"), (d.accounts || [{alias: "main"}]).map(a =>
-	      ({id: a.alias, label: a.alias, title: a.email || ""})), NS.account,
-	      id => { NS.account = id; });
+	    NS_CLAUDE_ACCOUNTS = d.accounts || [{alias:"main"}];
+	    nsRenderAccounts();
 	  }catch(e){}
 	  nsSync();
 	  $("#ns-cwd").focus();
 	}
 	function nsSync(){
-	  $("#ns-acct-wrap").classList.toggle("hidden", NS.agent !== "claude" && NS.agent !== "claude-codex");
+	  $("#ns-acct-wrap").classList.toggle("hidden", !["claude","claude-codex","claude-grok","grok"].includes(NS.agent));
 	  $("#ns-note").textContent = NS.agent === "shell" ? "" :
 	    tf("si el repo ya tiene un agente activo, nace en worktree ⎇ aislado (auto)",
 	       "if the repo already has an active agent, it's born in an isolated worktree ⎇");
@@ -2278,7 +2294,7 @@ function mdStrip(s){ return (s||"").replace(/\*\*|`|^#{1,6} /g, ""); }
 	      }catch(err){ toast(err.message, true); }
 	    });
 	  }
-	  box.dataset.sig = it.session;
+	  box.dataset.sig = rowKey(it);
 	  box.querySelector(".cx-hero").dataset.st = st;
 	  box.querySelector(".cx-name").textContent = it.project || it.session;
 	  const stTxt = {waiting:tf("espera tu respuesta", "waiting for you"),
@@ -2288,9 +2304,15 @@ function mdStrip(s){ return (s||"").replace(/\*\*|`|^#{1,6} /g, ""); }
 	    (it.contextPct ? ` · ctx ${it.contextPct}%` : "");
 	  renderAdvice(box, it);
 	  const modelElement = box.querySelector(".cx-model");
-	  modelElement.innerHTML = model ? providerMark(it.agent, model, 13) + `<span>${model}${tst && tst.symbol ? " " + tst.symbol : ""}</span>` :
+	  modelElement.innerHTML = model ? providerMark(it.agent, model, 13) + `<span>${model}${it.effort ? " · " + mdEsc(it.effort) : ""}${tst && tst.symbol ? " " + tst.symbol : ""}</span>` :
 	    tf("modelo aun no detectado", "model not detected yet");
 	  renderMotor(box, it, model);
+	  if(MPOP && MPOP.ctx.mode === "session" && motorTargetKey(MPOP.ctx.item) === rowKey(it) &&
+	      (MPOP.ctx.model !== model || MPOP.ctx.item.effort !== it.effort)){
+	    MPOP.ctx.item = it; MPOP.ctx.model = model;
+	    if(!MOTOR_PENDING.has(rowKey(it))) MPOP.staged = null;
+	    motorPopRender();
+	  }
 	  modelElement.style.color = tst && tst.css || "";
 	  box.querySelector(".cx-acct").textContent =
 	    `${tf("cuenta", "account")}: ${it.account || "main"}` +
@@ -2722,31 +2744,51 @@ function mdStrip(s){ return (s||"").replace(/\*\*|`|^#{1,6} /g, ""); }
 	  if(!MOTOR_PENDING.size) return;
 	  try{ PROXY = Object.assign(PROXY || {}, await api("/proxy")); }catch(e){ return; }
 	  const res = (PROXY && PROXY.switchResult) || {};
-	  for(const sess of [...MOTOR_PENDING.keys()]){
-	    const r = res[sess];
-	    if(!r || SWITCH_SEEN.get(sess) === r.ts) continue;
+	  for(const key of [...MOTOR_PENDING.keys()]){
+	    const it = (S.list || []).find(x => rowKey(x) === key) || (S.list || []).find(x => x.session === key);
+	    const r = res[key] || (it && res[it.session]);
+	    if(!r || SWITCH_SEEN.get(key) === r.ts) continue;
 	    if(r.stage !== undefined && r.ok === undefined){
-	      const pend = MOTOR_PENDING.get(sess);
-	      if(pend && pend.stageTxt !== r.stage){ pend.stageTxt = r.stage; renderCentro(S.list || []); if(MPOP && MPOP.ctx.mode === "session" && MPOP.ctx.item.session === sess) motorPopRender(); }
+	      const pend = MOTOR_PENDING.get(key);
+	      if(pend && pend.stageTxt !== r.stage){ pend.stageTxt = r.stage; renderCentro(S.list || []); if(MPOP && MPOP.ctx.mode === "session" && motorTargetKey(MPOP.ctx.item) === key) motorPopRender(); }
 	      continue;
 	    }
-	    SWITCH_SEEN.set(sess, r.ts);
-	    const it = (S.list || []).find(x => x.session === sess);
-	    const name = (it && it.project) || sess;
+	    SWITCH_SEEN.set(key, r.ts);
+	    const name = (it && it.project) || key;
 	    if(r.ok){ toast(`✓ ${name}: ${r.detail}`); }
 	    else { toast(tf(`✗ ${name}: el cambio NO entró (${r.detail}) — reinténtalo`, `✗ ${name}: switch did NOT apply (${r.detail}) — retry`), true); }
-	    MOTOR_PENDING.delete(sess);
+	    MOTOR_PENDING.delete(key);
+	    if(MPOP && MPOP.ctx.mode === "session" && motorTargetKey(MPOP.ctx.item) === key && it){
+	      MPOP.ctx.item = it; MPOP.ctx.model = it.model || ""; MPOP.staged = null;
+	      motorPopRender();
+	    }
 	    renderCentro(S.list || []);
 	  }
 	}, 3000);
-	const MOTOR_PENDING = new Map();   // session -> {motor, model, since}
+	const MOTOR_PENDING = new Map();   // session|pane -> {motor, model, since}
+	const motorTargetKey = it => it ? rowKey(it) : "";
+	const ENGINE_IDS = ["claude", "codex", "grok"];
+	function engineMeta(prov){ return (PROXY && PROXY.engines && PROXY.engines[prov]) || {label: prov}; }
+	function engineLabel(prov){ return (engineMeta(prov).label || prov).replace("xAI / ", ""); }
 	function motorMenu(prov){ return (PROXY && PROXY[prov] && PROXY[prov].menu) || []; }
-	function motorOf(model){ return /^(gpt|codex|o[0-9])/i.test(model || "") ? "codex" : (model ? "claude" : ""); }
+	function motorOf(model){
+	  const value = String(model || "");
+	  for(const id of ENGINE_IDS){ const pat = engineMeta(id).modelMatch; try{ if(pat && new RegExp(pat,"i").test(value)) return id; }catch(e){} }
+	  if(/^(grok-|xai\/)/i.test(value)) return "grok";
+	  if(/^(gpt|codex|o[0-9])/i.test(value)) return "codex";
+	  return value ? "claude" : "";
+	}
+	function effortsFor(prov, model){
+	  const spec = motorMenu(prov).find(x => motorKey(x.id) === motorKey(model));
+	  return (spec && spec.efforts && spec.efforts.length) ? spec.efforts : ["low","medium","high","xhigh","max"];
+	}
 	function motorKey(m){ return String(m || "").toLowerCase().replace(/\[.*$/, "").replace(/^claude-/, "").replace(/-\d{8}$/, ""); }
 	const EFFORTS = ["low", "medium", "high", "xhigh", "max"];
 	function effortFor(sess, model){
 	  if(!PROXY) return "";
-	  const se = PROXY.sessionEffort || {}; if(sess && se[sess]) return se[sess];
+	  const se = PROXY.sessionEffort || {};
+	  if(sess && se[sess]) return se[sess];
+	  if(sess && sess.includes("|") && se[sess.split("|")[0]]) return se[sess.split("|")[0]];
 	  const d = PROXY.effortDefaults || {}; const pm = d.perModel || {}; const k = motorKey(model);
 	  const hit = Object.keys(pm).find(id => motorKey(id) === k);
 	  return hit ? pm[hit] : (d.effort || "");
@@ -2755,8 +2797,8 @@ function mdStrip(s){ return (s||"").replace(/\*\*|`|^#{1,6} /g, ""); }
 	function motorPill(btn, prov, model, pending, label){
 	  if(pending === true) pending = {};
 	  btn.classList.toggle("pending", !!pending);
-	  btn.innerHTML = providerMark(prov === "codex" ? "codex" : "claude", model, 16) +
-	    `<span class="mp-prov">${prov === "codex" ? "Codex" : "Claude"}</span>` +
+	  btn.innerHTML = providerMark(prov, model, 16) +
+	    `<span class="mp-prov">${mdEsc(engineLabel(prov))}</span>` +
 	    `<span class="mp-model">${pending ? `<span class="sp">⟳</span> ${mdEsc(pending.stageTxt || tf("cambiando…", "switching…"))}` : mdEsc(motorName(prov, model))}</span>` +
 	    (label ? `<span class="mp-model">· ${mdEsc(label)}</span>` : "") + `<span class="mp-caret">▾</span>`;
 	}
@@ -2772,22 +2814,24 @@ function mdStrip(s){ return (s||"").replace(/\*\*|`|^#{1,6} /g, ""); }
 	}
 	function renderMotor(box, it, model){
 	  const el = box.querySelector(".cx-motor"); if(!el) return;
-	  const show = PROXY && PROXY.installed && PROXY.codexLogin && it && it.alive && it.agent === "claude";
+	  const show = PROXY && it && it.alive && (it.agent === "claude" || it.agent === "grok") &&
+	    (it.agent === "grok" || (PROXY.installed && PROXY.codexLogin));
 	  el.classList.toggle("hidden", !show);
 	  if(!show) return;
 	  let btn = el.querySelector(".motor-pill");
 	  if(!btn){ el.innerHTML = '<button type="button" class="motor-pill" aria-haspopup="dialog"></button>'; btn = el.querySelector(".motor-pill"); }
-	  const pend = MOTOR_PENDING.get(it.session);
-	  if(pend && (Date.now() - pend.since > (pend.queued ? 2700000 : 90000) || motorOf(model) === pend.motor && (!pend.model || motorKey(pend.model) === motorKey(model)))) MOTOR_PENDING.delete(it.session);
-	  const p2 = MOTOR_PENDING.get(it.session);
+	  const targetKey = motorTargetKey(it);
+	  const pend = MOTOR_PENDING.get(targetKey);
+	  if(pend && (Date.now() - pend.since > (pend.queued ? 2700000 : 90000) || motorOf(model) === pend.motor && (!pend.model || motorKey(pend.model) === motorKey(model)))) MOTOR_PENDING.delete(targetKey);
+	  const p2 = MOTOR_PENDING.get(targetKey);
 	  // NUNCA deshabilitar por "trabajando": el backend encola (o interrumpe con
 	  // "detener y cambiar YA") y confirma en el pane. Solo bloquea un proxy muerto.
 	  const stopBtn = box.querySelector(".cx-stop");
-	  if(stopBtn) stopBtn.classList.toggle("hidden", !(it.alive && it.agent === "claude" && (it.status === "working" || MOTOR_PENDING.has(it.session))));
-	  const eff = p2 && p2.effort ? p2.effort : effortFor(it.session, model);
+	  if(stopBtn) stopBtn.classList.toggle("hidden", !(it.alive && it.agent === "claude" && (it.status === "working" || MOTOR_PENDING.has(targetKey))));
+	  const eff = p2 && p2.effort ? p2.effort : (it.effort || effortFor(targetKey, model));
 	  motorPill(btn, p2 ? p2.motor : (motorOf(model) || "claude"), p2 ? p2.model : model, p2 || false, p2 ? "" : (eff || tf("esta sesión", "this session")));
-	  btn.disabled = !PROXY.alive;
-	  btn.title = !PROXY.alive ? tf("cc-proxy no responde", "cc-proxy not responding") :
+	  btn.disabled = it.agent === "claude" && !PROXY.alive;
+	  btn.title = (it.agent === "claude" && !PROXY.alive) ? tf("cc-proxy no responde", "cc-proxy not responding") :
 	    it.status === "working" ? tf("Está trabajando: el cambio se encola, o usa ■ detener y cambiar YA", "Working: the switch queues, or use ■ stop & switch NOW") :
 	    tf("Cambiar el motor de ESTA sesión conservando el contexto", "Switch THIS session's engine, keeping context");
 	  btn.onclick = ()=>{ if(btn.disabled) return; ulog("click", "motor-session", "centro"); motorPopOpen(btn, {mode: "session", item: it, model}); };
@@ -2809,27 +2853,41 @@ function mdStrip(s){ return (s||"").replace(/\*\*|`|^#{1,6} /g, ""); }
 	  document.removeEventListener("click", motorPopOutside, true); document.removeEventListener("keydown", motorPopKey); }
 	function motorPopOutside(e){ const pop = $("#motor-pop"); if(!pop.contains(e.target) && !(MPOP && MPOP.anchor.contains(e.target))) motorPopClose(); }
 	function motorPopKey(e){ if(e.key === "Escape") motorPopClose(); }
+	function engineSub(prov){
+	  if(prov === "claude") return tf("tu suscripción Claude", "your Claude subscription");
+	  if(prov === "codex") return tf("tu ChatGPT, vía gateway", "your ChatGPT, via gateway");
+	  return tf("tu suscripción Grok · Labs", "your Grok subscription · Labs");
+	}
+	function motorAccounts(item){
+	  if(item && item.agent === "grok") return (((((PROVIDERS||{}).harnesses||{}).grok||{}).accounts)||[]).map(a=>({alias:a.alias,email:a.email||a.name||"",loggedIn:!!a.authenticated}));
+	  return PROXY.accounts || [];
+	}
+
 	function motorPopRender(){
 	  const pop = $("#motor-pop"); if(!MPOP) return;
 	  const {mode, item, model} = MPOP.ctx;
 	  const curModel = mode === "global" ? PROXY.defaultModel : model;
 	  const curProv = mode === "global" ? (PROXY.motor === "codex" ? "codex" : "claude") : (motorOf(model) || "claude");
-	  const curEffort = mode === "global" ? ((PROXY.effortDefaults || {}).effort || "") : effortFor(item.session, model);
+	  const curEffort = mode === "global" ? ((PROXY.effortDefaults || {}).effort || "") : (item.effort || effortFor(motorTargetKey(item), model));
 	  // Selección en DOS pasos (sesión): eliges modelo + modo de pensamiento y
 	  // disparas con el botón — nada se ejecuta al tocar los radios.
 	  if(!MPOP.staged) MPOP.staged = {prov: curProv, model: (curModel || "").trim(), effort: curEffort || ""};
 	  const st = MPOP.staged;
-	  const pendNow = mode !== "global" && MOTOR_PENDING.get(item.session);
+	  const pendingKey = mode !== "global" ? motorTargetKey(item) : "";
+	  const pendNow = mode !== "global" && MOTOR_PENDING.get(pendingKey);
 	  const head = mode === "global" ? [tf("Motor de Claude Code", "Claude Code engine"), tf("para sesiones nuevas", "for new sessions")]
 	                                 : [tf("Motor de esta sesión", "This session's engine"), mdEsc(item.project) + " · " + tf("el contexto se conserva", "context is kept")];
 	  const tile = (prov, title, sub) => {
-	    const on = (mode === "global" ? curProv : st.prov) === prov, dis = prov === "codex" && !PROXY.alive;
+	    const on = (mode === "global" ? curProv : st.prov) === prov;
+	    const dis = (prov !== "claude" && !PROXY.alive) || (prov === "codex" && !PROXY.codexLogin) || (prov === "grok" && !PROXY.grokLogin);
+	    const tileModel = on ? (mode === "global" ? curModel : st.model) : ((motorMenu(prov)[0] || {}).id || "");
+	    const tileEfforts = effortsFor(prov, tileModel);
 	    return `<div class="mtile ${on ? "on" : "off"}" data-prov="${prov}">
 	      <div class="mt-top">${providerMark(prov, "", 28)}<div><div class="mt-name">${title}</div><div class="mt-sub">${sub}</div></div>${on ? `<span class="mt-act">${tf("ACTIVO", "ACTIVE")}</span>` : ""}</div>
 	      ${motorMenu(prov).map(m => `<button type="button" class="mt-opt ${on && motorKey(m.id) === motorKey(mode === "global" ? curModel : st.model) ? "sel" : ""}" data-prov="${prov}" data-model="${m.id}" ${dis ? "disabled" : ""}>
 	        <span class="rd"></span><span class="nm">${mdEsc(m.name)}</span>${curProv === prov && motorKey(m.id) === motorKey(curModel) ? `<span class="cur">${tf("ACTUAL", "NOW")}</span>` : ""}<span class="tg">${mdEsc(m.tag || "")}</span></button>`).join("")}
 	      <div class="mt-eff"><span class="mt-eff-lbl"><span>${tf("esfuerzo · rápido", "effort · faster")}</span><span>${tf("inteligente", "smarter")}</span></span>
-	        ${EFFORTS.map(e => `<button type="button" data-prov="${prov}" data-effort="${e}" class="${on && (mode === "global" ? curEffort : st.effort) === e ? "sel" : ""}" ${dis ? "disabled" : ""} title="/effort ${e}">${e}</button>`).join("")}</div>
+	        ${tileEfforts.map(e => `<button type="button" data-prov="${prov}" data-effort="${e}" class="${on && (mode === "global" ? curEffort : st.effort) === e ? "sel" : ""}" ${dis ? "disabled" : ""} title="/effort ${e}">${e}</button>`).join("")}</div>
 	    </div>`;
 	  };
 	  const busyNow = mode !== "global" && item && item.status === "working";
@@ -2838,30 +2896,29 @@ function mdStrip(s){ return (s||"").replace(/\*\*|`|^#{1,6} /g, ""); }
 	    ${busyNow ? `<div class="mp-busy">⚠ ${tf("Está trabajando. Sin marcar, el cambio espera a que termine el turno.", "Working. Unchecked, the switch waits for the turn to end.")}
 	      <button type="button" class="sw" aria-pressed="false">■ ${tf("detener y cambiar YA", "stop & switch NOW")}</button></div>` : ""}
 	    <div class="mp-grid">
-	      ${tile("claude", "Claude", tf("tu suscripción de Claude", "your Claude subscription"))}
-	      ${tile("codex", "Codex", tf("tu ChatGPT, vía cc-proxy", "your ChatGPT, via cc-proxy"))}
+	      ${(item && item.agent === "grok" ? ["grok"] : ENGINE_IDS).map(id=>tile(id, engineLabel(id), engineSub(id))).join("")}
 	    </div>
 	    ${mode !== "global" && (st.prov !== curProv || motorKey(st.model) !== motorKey(curModel) || (st.effort || "") !== (curEffort || "")) ? `<div class="mp-go">
-	      <button type="button" class="do">→ ${tf("Cambiar a", "Switch to")} ${st.prov === "codex" ? "Codex" : "Claude"} · ${mdEsc(motorName(st.prov, st.model))}${st.effort ? ` · ${st.effort}` : ""}</button>
+	      <button type="button" class="do">→ ${tf("Cambiar a", "Switch to")} ${mdEsc(engineLabel(st.prov))} · ${mdEsc(motorName(st.prov, st.model))}${st.effort ? ` · ${st.effort}` : ""}</button>
 	      <span class="note">${busyNow ? tf("se encola o marca detener", "queues, or tick stop") : tf("contexto intacto", "context kept")}</span>
 	    </div>` : ""}
-	    ${mode !== "global" && MOTOR_PENDING.has(item.session) ? `<button type="button" class="mp-cancel">✕ ${tf("cancelar el cambio en cola", "cancel the queued switch")}</button>` : ""}
+	    ${mode !== "global" && MOTOR_PENDING.has(pendingKey) ? `<button type="button" class="mp-cancel">✕ ${tf("cancelar el cambio en cola", "cancel the queued switch")}</button>` : ""}
 	    <div class="mp-acct">
 	      <span class="lbl">${tf("cuenta", "account")}</span>
-	      ${(PROXY.accounts || []).map(a => { const on = mode !== "global" && (item.account || "main") === a.alias;
+	      ${motorAccounts(item).map(a => { const on = mode !== "global" && (item.account || "main") === a.alias;
 	        return `<button type="button" class="ac ${on ? "on" : ""} ${a.loggedIn ? "" : "pending"}" data-alias="${attrEsc(a.alias)}" ${mode === "global" || !a.loggedIn ? "disabled" : ""}
 	          title="${a.loggedIn ? attrEsc(a.email || a.alias) : tf("sin login todavía: abre su pestaña y haz /login", "no login yet: open its tab and run /login")}">${mdEsc(a.alias)}${a.email ? ` <span class="em">${mdEsc(a.email)}</span>` : (a.loggedIn ? "" : ` <span class="em">${tf("sin login", "no login")}</span>`)}</button>`; }).join("")}
 	      <button type="button" class="ac add" data-add="1">+ ${tf("cuenta", "account")}</button>
 	    </div>
-	    <div class="mp-foot">${PROXY.alive ? `<span class="ok">●</span> cc-proxy 127.0.0.1:${PROXY.port}` : `<span class="bad">●</span> ${tf("cc-proxy apagado — Codex no disponible", "cc-proxy down — Codex unavailable")}`}
-	      <span>· ${tf("el contexto, herramientas y MCPs son los mismos con ambos", "context, tools and MCPs are the same on both")}</span></div>`;
+	    <div class="mp-foot">${PROXY.alive ? `<span class="ok">●</span> cc-proxy 127.0.0.1:${PROXY.port}` : `<span class="bad">●</span> ${tf("cc-proxy apagado — motores externos no disponibles", "cc-proxy down — external engines unavailable")}`}
+	      <span>· ${tf("el contexto, herramientas y MCPs se conservan entre motores", "context, tools and MCPs are preserved across engines")}</span></div>`;
 	  const swb = pop.querySelector(".mp-busy .sw");
 	  if(swb) swb.addEventListener("click", ()=>{ swb.classList.toggle("on"); swb.setAttribute("aria-pressed", swb.classList.contains("on")); });
 	  const INTERRUPT = ()=> !!(swb && swb.classList.contains("on"));
 	  const mpc = pop.querySelector(".mp-cancel");
 	  if(mpc) mpc.addEventListener("click", async ()=>{
 	    ulog("click", "motor-cancel", "centro");
-	    try{ await api("/model/switch-cancel", {session: item.session}); MOTOR_PENDING.delete(item.session);
+	    try{ await api("/model/switch-cancel", {session: item.session, pane: item.pane || ""}); MOTOR_PENDING.delete(pendingKey);
 	      toast(tf("Cambio en cola cancelado", "Queued switch cancelled")); motorPopRender(); renderCentro(S.list || []); }
 	    catch(err){ toast(err.message, true); }
 	  });
@@ -2884,7 +2941,7 @@ function mdStrip(s){ return (s||"").replace(/\*\*|`|^#{1,6} /g, ""); }
 	      const alias = inp.value.trim(); if(!alias){ motorPopRender(); return; }
 	      ulog("click", `account-add:${alias}`, "centro");
 	      try{
-	        const r = await api("/account/add", {alias, cwd: (item && item.cwd) || ""});
+	        const r = await api("/account/add", {alias, provider: item && item.agent === "grok" ? "grok" : "claude", cwd: (item && item.cwd) || ""});
 	        toast(tf(`Cuenta ${alias}: se abrió una pestaña con /login — inicia sesión ahí`, `Account ${alias}: a tab with /login opened — sign in there`));
 	        motorPopClose(); PROXY.accounts = null; proxyStatus();
 	      }catch(err){ toast(err.message, true); motorPopRender(); }
@@ -2896,6 +2953,7 @@ function mdStrip(s){ return (s||"").replace(/\*\*|`|^#{1,6} /g, ""); }
 	    if(mode === "global"){ toast(tf("El esfuerzo por defecto se cambia con /effort en una sesión", "Default effort is set with /effort inside a session")); return; }
 	    st.effort = b.dataset.effort;
 	    if(b.dataset.prov !== st.prov){ st.prov = b.dataset.prov; st.model = (motorMenu(st.prov)[0] || {}).id || ""; }
+	    if(!effortsFor(st.prov, st.model).includes(st.effort)) st.effort = effortsFor(st.prov, st.model)[0] || "";
 	    ulog("click", `motor-stage-effort:${st.effort}`, "centro");
 	    motorPopRender();
 	  }));
@@ -2909,6 +2967,7 @@ function mdStrip(s){ return (s||"").replace(/\*\*|`|^#{1,6} /g, ""); }
 	      return;
 	    }
 	    st.prov = prov; st.model = m;
+	    const allowed = effortsFor(prov, m); if(!allowed.includes(st.effort)) st.effort = allowed[0] || "";
 	    ulog("click", `motor-stage-model:${m}`, "centro");
 	    motorPopRender();
 	  }));
@@ -2917,11 +2976,13 @@ function mdStrip(s){ return (s||"").replace(/\*\*|`|^#{1,6} /g, ""); }
 	    ulog("click", `motor-go:${st.prov}:${st.model}:${st.effort}`, "centro");
 	    try{
 	      const sameModel = st.prov === curProv && motorKey(st.model) === motorKey(curModel);
-	      const r = await api("/model/switch", {session: item.session, pane: item.pane || "", provider: "claude",
+	      const driver = item.agent === "grok" ? "grok" : "claude";
+	      const r = await api("/model/switch", {session: item.session, pane: item.pane || "", provider: driver,
 	        model: sameModel ? "" : st.model, effort: st.effort || "", interrupt: INTERRUPT()});
-	      if(st.effort) PROXY.sessionEffort = Object.assign(PROXY.sessionEffort || {}, {[item.session]: st.effort});
-	      MOTOR_PENDING.set(item.session, {motor: st.prov, model: sameModel ? "" : st.model, effort: st.effort, since: Date.now(), queued: !!(r && r.queued), stageTxt: r && r.queued ? tf("en cola: esperando el fin del turno", "queued: waiting for the turn to end") : ""});
-	      toast(tf(`${item.project} → ${st.prov === "codex" ? "Codex" : "Claude"} · ${motorName(st.prov, st.model)}${st.effort ? " · " + st.effort : ""}`, `${item.project} → ${st.prov === "codex" ? "Codex" : "Claude"} · ${motorName(st.prov, st.model)}${st.effort ? " · " + st.effort : ""}`));
+	      const opkey = (r && r.operationKey) || pendingKey || item.session;
+	      if(st.effort) PROXY.sessionEffort = Object.assign(PROXY.sessionEffort || {}, {[opkey]: st.effort});
+	      MOTOR_PENDING.set(opkey, {motor: st.prov, model: sameModel ? "" : st.model, effort: st.effort, since: Date.now(), queued: !!(r && r.queued), stageTxt: r && r.queued ? tf("en cola: esperando el fin del turno", "queued: waiting for the turn to end") : tf("preparando cambio…", "preparing switch…")});
+	      toast(`${item.project} → ${engineLabel(st.prov)} · ${motorName(st.prov, st.model)}${st.effort ? " · " + st.effort : ""}`);
 	      MPOP.staged = null; motorPopRender(); renderCentro(S.list || []);
 	    }catch(err){ toast(err.message, true); }
 	  });
@@ -4248,10 +4309,11 @@ function render(list){
     const ab = el.querySelector(".abadge");
     if(ab){
       const agentModel = it.model || usageForItem(it)?.model || "";
-      const onCodexEngine = it.agent === "claude" && /^(gpt|codex|o[0-9])/i.test(agentModel);
-      ab.innerHTML = providerMark(onCodexEngine ? "codex" : it.agent, agentModel, 11) + `<span>${onCodexEngine ? "codex" : (it.agent || "")}</span>`;
-      ab.dataset.a = onCodexEngine ? "codex" : (it.agent || "");
-      ab.classList.toggle("hidden", !it.agent || (it.agent === "claude" && !onCodexEngine));
+      const routedEngine = it.agent === "claude" ? motorOf(agentModel) : "";
+      const shownAgent = routedEngine && routedEngine !== "claude" ? routedEngine : it.agent;
+      ab.innerHTML = providerMark(shownAgent, agentModel, 11) + `<span>${shownAgent || ""}</span>`;
+      ab.dataset.a = shownAgent || "";
+      ab.classList.toggle("hidden", !shownAgent || (it.agent === "claude" && shownAgent === "claude"));
       let ac = el.querySelector(".acct-chip");
       if(!ac){
         ac = document.createElement("span");
@@ -4277,7 +4339,7 @@ function render(list){
 	    if(uchip){
 	      // Modelo: turnos medidos (usage) y, si aun no hay, el modelo REAL que
 	      // respondio en el transcript (it.model) — nunca "no detectado" si hubo turno.
-	      const u = (it.model ? {model: it.model, confidence: "transcript"} : null) || usageForItem(it);
+	      const u = (it.model ? {model: it.model, effort: it.effort || "", confidence: "transcript"} : null) || usageForItem(it);
 	      const utxt = usageChipText(u);
 	      const tst = tierStyleOf(tierOf(shortModel(u?.model || "")));
 	      uchip.innerHTML = providerMark(it.agent, u?.model || "", 11) +
@@ -4761,6 +4823,8 @@ const ICON = {
   snippet:   '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>',
   anthropic: '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M10.3 3h3.4l7.3 18h-3.5l-1.5-3.9H8L6.5 21H3l7.3-18zm1.7 4.2-2.9 7.4h5.8L12 7.2z"/></svg>',
   openai:    '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"><path d="M12 3.2l7.6 4.4v8.8L12 20.8l-7.6-4.4V7.6L12 3.2z"/><path d="M12 7.4l3.9 2.3v4.6L12 16.6l-3.9-2.3V9.7L12 7.4z"/><path d="M12 3.2v4.2M19.6 7.6l-3.7 2.1M19.6 16.4l-3.7-2.1M12 20.8v-4.2M4.4 16.4l3.7-2.1M4.4 7.6l3.7 2.1"/></svg>',
+  xai:       '<svg viewBox="0 0 1000 1000" fill="currentColor" role="img" aria-label="xAI Grok"><polygon points="226.83 411.15 501.31 803.15 623.31 803.15 348.82 411.15"/><polygon points="348.72 628.87 226.69 803.15 348.77 803.15 409.76 716.05"/><polygon points="651.23 196.85 440.28 498.12 501.32 585.29 773.31 196.85"/><polygon points="673.31 383.25 673.31 803.15 773.31 803.15 773.31 240.44"/></svg>',
+  grok:      '<svg viewBox="0 0 1000 1000" fill="currentColor" role="img" aria-label="xAI Grok"><polygon points="226.83 411.15 501.31 803.15 623.31 803.15 348.82 411.15"/><polygon points="348.72 628.87 226.69 803.15 348.77 803.15 409.76 716.05"/><polygon points="651.23 196.85 440.28 498.12 501.32 585.29 773.31 196.85"/><polygon points="673.31 383.25 673.31 803.15 773.31 803.15 773.31 240.44"/></svg>',
   gemini:    '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2c.6 5.4 4.6 9.4 10 10-5.4.6-9.4 4.6-10 10-.6-5.4-4.6-9.4-10-10 5.4-.6 9.4-4.6 10-10z"/></svg>',
   pause:     '<svg viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="4" width="4" height="16" rx="1"/><rect x="14" y="4" width="4" height="16" rx="1"/></svg>',
   play:      '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M7 4.5v15a1 1 0 0 0 1.5.86l12-7.5a1 1 0 0 0 0-1.72l-12-7.5A1 1 0 0 0 7 4.5z"/></svg>',

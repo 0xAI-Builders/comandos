@@ -97,4 +97,13 @@ run_ccx "$LOG6" -a claude-mpm "$PROJ" >/dev/null
 grep -Fxq "claude-mpm --label 'daily account'; exec \$SHELL" "$LOG6" \
   || { echo "FALLO 6: ccx altero las comillas internas del comando"; cat "$LOG6"; exit 1; }
 
+# --- Caso 7: Grok Build oficial es un builtin y usa --continue. ---
+: > "$FAKE_HOME/.claude/hooks/cc-notify.conf"
+LOG7="$TMP/log7"
+out7="$(run_ccx "$LOG7" -a grok "$PROJ")"
+grep -q "grok --continue" "$LOG7" \
+  || { echo "FALLO 7: -a grok no uso Grok Build oficial"; cat "$LOG7"; exit 1; }
+grep -q "con grok" <<<"$out7" \
+  || { echo "FALLO 7b: ccx no reporto Grok ('$out7')"; exit 1; }
+
 echo "test_ccx_agent.sh OK"

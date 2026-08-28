@@ -91,6 +91,44 @@ PY
   ok "codex: lifecycle hooks -> adapters/codex-hooks.sh (working/waiting/done)"
 }
 
+setup_grok() {
+  command -v grok >/dev/null || { no "grok: no instalado"; return; }
+  local dir="$HOME/.grok/hooks"
+  local cfg="$dir/comandos.json"
+  mkdir -p "$dir"
+  python3 - "$cfg" "$HOME/.claude/hooks/cc-notify.sh" <<'PY'
+import json, os, sys
+path, command = sys.argv[1], sys.argv[2]
+try:
+    data = json.load(open(path))
+except Exception:
+    data = {}
+hooks = data.setdefault("hooks", {})
+for event in ("StopFailure", "StopCancelled"):
+    groups = hooks.setdefault(event, [])
+    exists = any(h.get("type") == "command" and os.path.realpath(os.path.expanduser(h.get("command", ""))) == os.path.realpath(command)
+                 for group in groups if isinstance(group, dict)
+                 for h in group.get("hooks", []) if isinstance(h, dict))
+    if not exists:
+        groups.append({"hooks": [{"type": "command", "command": command, "timeout": 30}]})
+with open(path, "w") as f:
+    json.dump(data, f, indent=2)
+    f.write("\n")
+PY
+  ln -sf "$AD/grok-hooks.py" "$HOME/.local/bin/grok-hooks.py"
+  ok "grok: hooks nativos + StopFailure/StopCancelled conectados"
+}
+
+status_grok() {
+  if ! command -v grok >/dev/null; then no "grok: no instalado"; return; fi
+  local cfg="$HOME/.grok/hooks/comandos.json"
+  if [ -e "$cfg" ] && grep -q 'StopFailure' "$cfg" && grep -q 'StopCancelled' "$cfg"; then
+    ok "grok: conectado (hooks heredados + errores/cancelaciones)"
+  else
+    warn "grok: instalado pero faltan hooks de error/cancelacion (corre: cc-agents setup)"
+  fi
+}
+
 setup_opencode() {
   command -v opencode >/dev/null || { no "opencode: no instalado"; return; }
   mkdir -p "$HOME/.config/opencode/plugin"
@@ -162,6 +200,7 @@ case "${1:-status}" in
     echo "Conectando agentes a ComandOS:"
     ok "claude: hooks nativos (los instala install.sh)"
     setup_codex
+    setup_grok
     setup_opencode
     setup_gemini_like "gemini" gemini "$HOME/.gemini/settings.json" gemini
     setup_agy
@@ -172,6 +211,7 @@ case "${1:-status}" in
     echo "Integraciones de agentes:"
     ok "claude: hooks nativos"
     status_codex
+    status_grok
     status_one opencode opencode "comandos" "$HOME/.config/opencode/plugin/comandos.js"
     status_one gemini gemini "gemini-hooks.sh" "$HOME/.gemini/settings.json"
     status_one "antigravity (agy)" agy "agy-hooks.sh" "$HOME/.gemini/antigravity-cli/hooks.json"

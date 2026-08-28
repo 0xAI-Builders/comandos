@@ -61,10 +61,11 @@ mkdir -p "$BIN" "$HOOKS/dash" "$HOOKS/state" \
 
 # Binarios (symlink: los updates del repo se reflejan solos)
 for f in "$REPO"/bin/*; do ln -sf "$f" "$BIN/$(basename "$f")"; done
-chmod +x "$REPO"/bin/* "$REPO"/hooks/cc-notify.sh "$REPO"/hooks/cc-status.sh
+chmod +x "$REPO"/bin/* "$REPO"/hooks/cc-notify.sh "$REPO"/hooks/cc-status.sh "$REPO"/adapters/grok-hooks.py
 
 # Hooks + dashboard
 for f in cc-notify.sh cc-status.sh md2tg.py; do ln -sf "$REPO/hooks/$f" "$HOOKS/$f"; done
+ln -sf "$REPO/adapters/grok-hooks.py" "$BIN/grok-hooks.py"
 for f in index.html sw.js manifest.webmanifest icon-192.png icon-512.png term.html; do
   ln -sf "$REPO/dash/$f" "$HOOKS/dash/$f"
 done
@@ -87,6 +88,21 @@ fi
 # Hooks de Claude Code en ~/.claude/settings.json (los demás agentes van
 # vía cc-agents setup). Corre antes del setup falible de UI/servicios.
 cc_register_claude_hooks "$HOOKS/cc-notify.sh"
+
+# Gateway Claude/Codex/Grok fijado por ComandOS. Se recompila solo si
+# falta o el source vendorizado es más nuevo; no cambia el enabled-state.
+GATEWAY_SRC="$REPO/vendor/claude-codex"
+GATEWAY_BIN="$BIN/cc-model-proxy"
+if [ -f "$GATEWAY_SRC/Cargo.toml" ] && command -v cargo >/dev/null 2>&1; then
+  if [ ! -x "$GATEWAY_BIN" ] || find "$GATEWAY_SRC/src" -type f -newer "$GATEWAY_BIN" -print -quit | grep -q .; then
+    echo "  Compilando gateway Claude/Codex/Grok (release, locked)..."
+    cargo build --release --locked --manifest-path "$GATEWAY_SRC/Cargo.toml"
+    install -m 0755 "$GATEWAY_SRC/target/release/claude-codex" "$GATEWAY_BIN"
+  fi
+elif [ ! -x "$GATEWAY_BIN" ]; then
+  echo "  (cargo no disponible: instala Rust para compilar cc-model-proxy)" >&2
+fi
+
 
 # Config de terminal
 ln -sf "$REPO/config/kitty.conf" "$HOME/.config/kitty/kitty.conf"
@@ -158,7 +174,7 @@ PLIST
   linux-wsl-ubuntu)
     # Dependencias y systemd ya se validaron antes de registrar hooks.
     # Configura los servicios de usuario (mismo flujo que linux-native).
-    for s in cc-dash cc-notifyd cc-telegram; do
+    for s in cc-dash cc-notifyd cc-proxy cc-telegram; do
       ln -sf "$REPO/systemd/$s.service" "$HOME/.config/systemd/user/$s.service"
     done
     systemctl --user daemon-reload
@@ -171,7 +187,7 @@ PLIST
     ;;
   linux-native|linux-other)
     [ "$CC_PLAT" = "linux-other" ] && echo "  (distro Linux no probada; sigo con el flujo Linux estándar)"
-    for s in cc-dash cc-notifyd cc-telegram; do
+    for s in cc-dash cc-notifyd cc-proxy cc-telegram; do
       ln -sf "$REPO/systemd/$s.service" "$HOME/.config/systemd/user/$s.service"
     done
     systemctl --user daemon-reload

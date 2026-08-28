@@ -278,3 +278,41 @@ def test_state_emits_one_control_card_per_live_claude_split():
     assert '"pane": pane_l' in SRC
     assert '"split": True' in SRC
     assert "by_sess_count" in SRC
+
+
+def test_providers_endpoint_is_security_gated_and_uses_sanitized_registry():
+    assert '"/providers"' in SRC.split("API_GET =", 1)[1].split("def do_GET", 1)[0]
+    assert 'provider_registry.public_state(load_provider_registry())' in SRC
+
+
+def test_model_confirmation_handles_cross_provider_dialog_and_requires_new_marker(monkeypatch):
+    dash = load_dash_module()
+    captures = iter([
+        "old\n❯ /model grok-4.6\nSwitch model?\n1. Yes, switch to grok-4.6\n2. No",
+        "old\n❯ /model grok-4.6\nSet model to grok-4.6 and saved as your default",
+    ])
+    sent = []
+
+    def fake_tmux(*args, **_kwargs):
+        if args[0] == "capture-pane":
+            return SimpleNamespace(returncode=0, stdout=next(captures), stderr="")
+        sent.append(args)
+        return SimpleNamespace(returncode=0, stdout="", stderr="")
+
+    monkeypatch.setattr(dash, "tmux", fake_tmux)
+    monkeypatch.setattr(dash.time, "sleep", lambda _n: None)
+    ok, error = dash.claude_command_confirm("%1", "/model grok-4.6", "old", 2)
+    assert (ok, error) == (True, "")
+    assert ("send-keys", "-t", "%1", "1") in sent
+    assert ("send-keys", "-t", "%1", "Enter") in sent
+
+
+def test_model_confirmation_does_not_accept_stale_marker(monkeypatch):
+    dash = load_dash_module()
+    stale = "Set model to gpt-5.6-sol\n❯ /model grok-4.6\nSwitching..."
+    monkeypatch.setattr(
+        dash, "tmux",
+        lambda *_args, **_kwargs: SimpleNamespace(returncode=0, stdout=stale, stderr=""),
+    )
+    monkeypatch.setattr(dash.time, "sleep", lambda _n: None)
+    assert dash.claude_command_confirm("%1", "/model grok-4.6", stale, 1) == (False, "")

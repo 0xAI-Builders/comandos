@@ -76,3 +76,10 @@ def test_read_conf_removes_only_one_matching_outer_quote_pair(tmp_path, monkeypa
 if __name__ == "__main__":
     import pytest
     raise SystemExit(pytest.main([__file__, "-q"]))
+
+
+def test_grok_builtin_launch_uses_official_continue(monkeypatch):
+    dash = load_dash_module()
+    monkeypatch.setattr(dash, "read_conf", lambda: {})
+    assert dash.agent_launch("grok") == "grok --continue 2>/dev/null || grok"
+    assert dash.agent_process_aliases()["grok-linux-x86_64"] == "grok"

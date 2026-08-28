@@ -95,13 +95,35 @@ if [ "${1:-}" = "--agent" ] || [ "${1:-}" = "--event" ]; then
   input=""
 else
   input=$(cat)
-  event=$(jq -r '.hook_event_name // "Stop"' <<<"$input" 2>/dev/null)
-  cwd=$(jq -r '.cwd // ""' <<<"$input" 2>/dev/null)
-  msg=$(jq -r '.message // ""' <<<"$input" 2>/dev/null)
-  transcript=$(jq -r '.transcript_path // ""' <<<"$input" 2>/dev/null)
+  if jq -e 'has("hookEventName")' <<<"$input" >/dev/null 2>&1; then
+    AGENT=grok
+    adapter="$(dirname "$(readlink -f "$0")")/../adapters/grok-hooks.py"
+    [ -x "$adapter" ] || adapter="$HOME/.local/bin/grok-hooks.py"
+    normalized=$(printf '%s' "$input" | python3 "$adapter" 2>/dev/null || true)
+    [ -n "$normalized" ] || exit 0
+    status=$(jq -r '.status // ""' <<<"$normalized")
+    case "$status" in
+      working) event=UserPromptSubmit ;;
+      done) event=Stop ;;
+      waiting|error) event=Notification ;;
+      idle) event=GrokIdle ;;
+      end) event=SessionEnd ;;
+      *) exit 0 ;;
+    esac
+    cwd=$(jq -r '.cwd // ""' <<<"$input" 2>/dev/null)
+    msg=$(jq -r '.detail // ""' <<<"$normalized" 2>/dev/null)
+    transcript=""
+    export COMANDOS_USAGE_MODEL=$(jq -r '.model // ""' <<<"$normalized")
+    export COMANDOS_USAGE_REASONING_EFFORT=$(jq -r '.effort // ""' <<<"$normalized")
+  else
+    event=$(jq -r '.hook_event_name // "Stop"' <<<"$input" 2>/dev/null)
+    cwd=$(jq -r '.cwd // ""' <<<"$input" 2>/dev/null)
+    msg=$(jq -r '.message // ""' <<<"$input" 2>/dev/null)
+    transcript=$(jq -r '.transcript_path // ""' <<<"$input" 2>/dev/null)
+  fi
 fi
 case "$AGENT" in
-  claude) AGENT_NAME=Claude ;; codex) AGENT_NAME=Codex ;;
+  claude) AGENT_NAME=Claude ;; codex) AGENT_NAME=Codex ;; grok) AGENT_NAME=Grok ;;
   opencode) AGENT_NAME=OpenCode ;; gemini) AGENT_NAME=Gemini ;;
   agy) AGENT_NAME=Antigravity ;; *) AGENT_NAME="$AGENT" ;;
 esac
@@ -133,13 +155,19 @@ fi
 if ! printf '%s' "$SESSION_HINT" | grep -Eq '^[A-Za-z0-9._-]{1,80}$'; then
   SESSION_HINT=$(printf '%s' "$proj" | tr '.:' '--' | head -c 60)
 fi
+# Estado pane-aware: dos agentes en el mismo cwd ya no se pisan.
+state_key="$proj_file"
+if [ -n "$SESSION_HINT" ] && [ -n "$PANE_HINT" ]; then
+  state_key="${proj_file}--${SESSION_HINT}--${PANE_HINT#%}"
+fi
+STATE_FILE="$STATE_DIR/$state_key.json"
 
 write_state() { # $1=status $2=detalle $3=opciones (labels \x1f). LAST=respuesta previa
   jq -n --arg p "$proj" --arg s "$1" --arg d "$2" --arg c "$cwd" --arg o "${3:-}" \
     --arg L "${LAST:-}" --arg a "$AGENT" --arg sess "$SESSION_HINT" --arg pane "$PANE_HINT" \
     --argjson t "$now" \
     '{project:$p,status:$s,detail:$d,cwd:$c,ts:$t,options:$o,last:$L,agent:$a,session:$sess}
-     + (if $pane != "" then {pane:$pane} else {} end)' > "$STATE_DIR/$proj_file.json" 2>/dev/null
+     + (if $pane != "" then {pane:$pane} else {} end)' > "$STATE_FILE" 2>/dev/null
   # el timeline solo necesita una probadita, no la respuesta entera
   jq -cn --arg p "$proj" --arg s "$1" --arg d "$(printf '%s' "$2" | head -c 280)" --argjson t "$now" \
     '{project:$p,status:$s,detail:$d,ts:$t}' >> "$EVENTS" 2>/dev/null
@@ -197,17 +225,22 @@ case "$event" in
     # Conservar la ULTIMA respuesta (para Copiar/TXT/PDF mientras trabaja)
     LAST=$(jq -r 'if ((.status=="done" or .status=="waiting") and ((.detail//"")!=""))
                   then .detail else (.last//"") end' \
-           "$STATE_DIR/$proj_file.json" 2>/dev/null)
+           "$STATE_FILE" 2>/dev/null)
     write_state "working" ""
     exit 0
     ;;
+  GrokIdle)
+    LAST=$(jq -r '.detail // .last // ""' "$STATE_FILE" 2>/dev/null)
+    write_state "idle" "${msg:-}"
+    exit 0
+    ;;
   SessionEnd)
-    rm -f "$STATE_DIR/$proj_file.json"
+    rm -f "$STATE_FILE"
     exit 0
     ;;
   Notification)
     # Anti-spam: si ya estaba "waiting" hace poco, refresca estado pero no re-notifica
-    prev=$(jq -r '[.status,(.ts|tostring)]|join(" ")' "$STATE_DIR/$proj_file.json" 2>/dev/null)
+    prev=$(jq -r '[.status,(.ts|tostring)]|join(" ")' "$STATE_FILE" 2>/dev/null)
     prev_s=${prev%% *}; prev_t=${prev##* }
     title="🟡 [$proj] $AGENT_NAME $T_ATTN"
     body="${msg:-$T_WAITBODY}"

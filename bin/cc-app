@@ -1371,7 +1371,7 @@ def archive_tab(key, reason="closed"):
     if not agent:
         r = tmuxc("display-message", "-p", "-t", "=" + key + ":", "#{pane_current_command}")
         cmd = r.stdout.strip() if r.returncode == 0 else ""
-        agent = "codex" if cmd == "node" else cmd if cmd in {"claude", "opencode", "gemini", "agy", "aider"} else "claude"
+        agent = "codex" if cmd == "node" else cmd if cmd in {"claude", "grok", "opencode", "gemini", "agy", "aider"} else "claude"
     item = {"session": key, "label": label, "cwd": cwd, "agent": agent,
             "reason": reason, "ts": int(time.time())}
     try:
@@ -1399,6 +1399,7 @@ SNAPSHOT_FILE = os.path.expanduser("~/.claude/hooks/app-tabs-snapshot.json")
 CLAUDE_SESS_DIR = os.path.expanduser("~/.claude/sessions")
 CLAUDE_PROJ_DIR = os.path.expanduser("~/.claude/projects")
 CODEX_SESS_DIR = os.path.expanduser("~/.codex/sessions")
+GROK_HOME_DEFAULT = os.path.expanduser("~/.grok")
 _ROLLOUT_RE = re.compile(
     r"rollout-.*-([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\.jsonl$")
 _RESUME_SKIP_FLAGS = {"--resume", "--continue", "-r", "-c", "--last"}
@@ -1533,6 +1534,14 @@ def snapshot_tabs():
                     ent["agent"] = "codex"
                     ent["resume_id"] = info["id"]
                     ent["flags"] = info["flags"]
+                elif ent["agent"] == "grok":
+                    sid = it.get("agentSessionId") or ""
+                    if isinstance(sid, str) and re.fullmatch(r"[0-9a-f-]{36}", sid):
+                        ent["resume_id"] = sid
+                    alias = it.get("account") or "main"
+                    ent["account"] = alias
+                    ent["grok_home"] = (GROK_HOME_DEFAULT if alias == "main" else
+                                         os.path.expanduser(f"~/.grok-accounts/{alias}"))
                 elif ent["agent"] in {"claude", "codex"}:
                     pass  # agente reportado pero sin id: quedara el fallback
                 else:
@@ -1577,6 +1586,13 @@ def resume_command(snap):
                                           "rollout-*" + sid + ".jsonl")):
             return "codex resume " + sid + fl
         return "codex resume --last" + fl
+    if agent == "grok" and shutil.which("grok"):
+        home = snap.get("grok_home") or GROK_HOME_DEFAULT
+        home = os.path.realpath(os.path.expanduser(home))
+        prefix = "" if home == os.path.realpath(GROK_HOME_DEFAULT) else f"GROK_HOME={shlex.quote(home)} "
+        if sid and glob.glob(os.path.join(home, "sessions", "**", sid, "summary.json"), recursive=True):
+            return prefix + "grok --resume " + sid + fl
+        return prefix + "grok --continue" + fl
     return None
 
 

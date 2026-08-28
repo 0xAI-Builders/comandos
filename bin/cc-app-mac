@@ -371,7 +371,7 @@ def archive_tab(key, label, reason="closed"):
     r = tmuxc("display-message", "-p", "-t", "=" + key + ":", "#{pane_current_command}")
     cmd = r.stdout.strip() if r.returncode == 0 else ""
     agent = ("codex" if cmd == "node"
-             else cmd if cmd in {"claude", "opencode", "gemini", "agy", "aider"}
+             else cmd if cmd in {"claude", "grok", "opencode", "gemini", "agy", "aider"}
              else "claude")
     item = {"session": key, "label": label or key, "cwd": cwd, "agent": agent,
             "reason": reason, "ts": int(time.time())}

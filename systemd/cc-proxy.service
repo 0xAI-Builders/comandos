@@ -1,0 +1,12 @@
+[Unit]
+Description=ComandOS model gateway — Claude, Codex and Grok
+After=network.target
+
+[Service]
+Environment=PORT=18765
+ExecStart=%h/.local/bin/cc-model-proxy
+Restart=on-failure
+RestartSec=2
+
+[Install]
+WantedBy=default.target

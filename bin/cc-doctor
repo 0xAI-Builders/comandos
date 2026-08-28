@@ -169,6 +169,23 @@ _section_core() {
   else
     _check "$sec" "python3" fail "no instalado" "apt_install_confirmed python3"
   fi
+  # Grok Build oficial (binario + login por suscripción)
+  if command -v grok >/dev/null; then
+    _check "$sec" "Grok Build" pass "$(grok --version 2>/dev/null | head -1)"
+    if [ -s "$HOME/.grok/auth.json" ]; then
+      _check "$sec" "Grok auth nativa" pass "suscripción configurada (sin exponer tokens)"
+    else
+      _check "$sec" "Grok auth nativa" warn "sin login" "grok login"
+    fi
+    if [ -f "$HOME/.grok/hooks/comandos.json" ] && grep -q StopCancelled "$HOME/.grok/hooks/comandos.json"; then
+      _check "$sec" "Grok hooks" pass "pane/status/error conectados"
+    else
+      _check "$sec" "Grok hooks" warn "faltan eventos de error/cancelación" "cc-agents setup"
+    fi
+  else
+    _check "$sec" "Grok Build" warn "no instalado" ""
+  fi
+
   # systemd --user
   if cc_systemd_ok; then
     _check "$sec" "systemd --user" pass "running"

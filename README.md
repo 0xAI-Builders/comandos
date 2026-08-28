@@ -87,6 +87,7 @@ Open **ComandOS** from your app menu, or the dashboard at <http://127.0.0.1:4777
 |---|---|---|
 | **Claude Code** | native hooks (auto via `install.sh`) | working · waiting **with real options** · done · full reply |
 | **Codex CLI** | lifecycle hooks + `notify` fallback (`cc-agents setup`) | working · waiting for permissions · done + last message |
+| **Grok Build** | official xAI CLI + hooks (`cc-agents setup`) | Grok 4.6/4.5 · low→xhigh · MCPs · skills · subagents · accounts · splits |
 | **OpenCode** | plugin (`cc-agents setup`) | working · waiting · errors · done |
 | **Gemini CLI** | hooks (`cc-agents setup`) | working · waiting · done · full reply |
 | **Antigravity CLI** (`agy`) | hooks (`cc-agents setup`) | working · done — verified on a real session |
@@ -94,6 +95,13 @@ Open **ComandOS** from your app menu, or the dashboard at <http://127.0.0.1:4777
 One command connects everything you have installed: **`cc-agents setup`**.
 If Codex asks you to review new hooks, open `/hooks` in Codex and trust the
 ComandOS hook once.
+
+Grok has two modes: **native Grok Build** (`ccx -a grok project`, recommended)
+and **Grok as the engine inside Claude Code**. Both reuse the subscription in
+`~/.grok/auth.json`; no `XAI_API_KEY` is required. The latter uses the local
+gateway and is labeled Labs because the CLI subscription endpoint is not a
+public stable API. The picker preserves the same session ID/context across
+Claude ↔ Codex ↔ Grok and confirms model/effort before updating the card.
 Any other agent can join with a single HTTP call:
 `POST 127.0.0.1:4777/event {"agent","event","cwd","msg?","full?"}`.
 

@@ -204,3 +204,11 @@ def test_dashboard_url_is_cache_busted_on_app_start():
     assert 'BASE_URL = "http://127.0.0.1:4777"' in SRC
     assert '_DASH_V' in SRC
     assert 'URL = f"{BASE_URL}/?app=1&v={_DASH_V}"' in SRC
+
+
+def test_grok_tabs_snapshot_exact_session_and_resume_with_grok_home():
+    assert 'ent["agent"] == "grok"' in SRC
+    assert 'it.get("agentSessionId")' in SRC
+    assert 'GROK_HOME_DEFAULT' in SRC
+    assert 'grok --resume ' in SRC
+    assert 'grok --continue' in SRC

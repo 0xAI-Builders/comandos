@@ -1,0 +1,142 @@
+{
+  "version": 1,
+  "harnesses": {
+    "claude": {
+      "label": "Claude Code",
+      "icon": "anthropic",
+      "binary": "claude",
+      "processNames": ["claude"],
+      "launchDriver": "claude",
+      "accountEnv": "CLAUDE_CONFIG_DIR",
+      "defaultHome": "~/.claude",
+      "accountsRoot": "~/.claude-accounts",
+      "authFile": ".credentials.json",
+      "capabilities": {
+        "models": true,
+        "effort": true,
+        "accounts": true,
+        "liveAccountSwitch": true,
+        "resume": true,
+        "splits": true
+      }
+    },
+    "codex": {
+      "label": "Codex CLI",
+      "icon": "openai",
+      "binary": "codex",
+      "processNames": ["codex", "node"],
+      "launchDriver": "codex",
+      "accountEnv": "CODEX_HOME",
+      "defaultHome": "~/.codex",
+      "accountsRoot": "~/.codex-accounts",
+      "authFile": "auth.json",
+      "capabilities": {
+        "models": true,
+        "effort": true,
+        "accounts": true,
+        "liveAccountSwitch": false,
+        "resume": true,
+        "splits": true
+      }
+    },
+    "grok": {
+      "label": "Grok Build",
+      "icon": "xai",
+      "binary": "grok",
+      "minimumVersion": "1.0.5",
+      "processNames": ["grok", "grok-linux-x86_64"],
+      "launchDriver": "grok",
+      "accountEnv": "GROK_HOME",
+      "defaultHome": "~/.grok",
+      "accountsRoot": "~/.grok-accounts",
+      "authFile": "auth.json",
+      "color": "208",
+      "models": [
+        {
+          "id": "grok-4.6",
+          "name": "Grok 4.6",
+          "tag": "coding recomendado · 500k ctx",
+          "efforts": ["low", "medium", "high", "xhigh"],
+          "defaultEffort": "high"
+        },
+        {
+          "id": "grok-4.5",
+          "name": "Grok 4.5",
+          "tag": "500k ctx",
+          "efforts": ["low", "medium", "high"],
+          "defaultEffort": "high"
+        }
+      ],
+      "capabilities": {
+        "models": true,
+        "effort": true,
+        "accounts": true,
+        "liveAccountSwitch": false,
+        "resume": true,
+        "splits": true,
+        "mcp": true,
+        "hooks": true,
+        "skills": true,
+        "subagents": true
+      }
+    },
+    "opencode": {
+      "label": "OpenCode",
+      "icon": "opencode",
+      "binary": "opencode",
+      "processNames": ["opencode"],
+      "launchDriver": "opencode",
+      "capabilities": {"models": true, "effort": false, "accounts": false, "resume": false, "splits": true}
+    },
+    "gemini": {
+      "label": "Gemini CLI",
+      "icon": "gemini",
+      "binary": "gemini",
+      "processNames": ["gemini"],
+      "launchDriver": "gemini",
+      "capabilities": {"models": false, "effort": false, "accounts": false, "resume": false, "splits": true}
+    },
+    "shell": {
+      "label": "Shell",
+      "icon": "terminal",
+      "binary": null,
+      "processNames": ["bash", "zsh", "fish"],
+      "launchDriver": "shell",
+      "capabilities": {"models": false, "effort": false, "accounts": false, "resume": false, "splits": true}
+    }
+  },
+  "claudeEngines": {
+    "claude": {
+      "label": "Claude",
+      "icon": "anthropic",
+      "modelMatch": "^(?:claude-|opus$|sonnet$|haiku$|fable$)",
+      "transport": "anthropic",
+      "experimental": false,
+      "supportsEffort": true,
+      "preservesThinking": true
+    },
+    "codex": {
+      "label": "Codex",
+      "icon": "openai",
+      "modelMatch": "^(?:gpt-|o[0-9]|codex)",
+      "transport": "cc-proxy",
+      "experimental": false,
+      "supportsEffort": true,
+      "preservesThinking": true
+    },
+    "grok": {
+      "label": "Grok",
+      "icon": "xai",
+      "modelMatch": "^(?:grok-|xai/)",
+      "transport": "grok-subscription",
+      "experimental": true,
+      "supportsEffort": true,
+      "preservesThinking": true,
+      "authSource": "~/.grok/auth.json",
+      "limitations": [
+        "La ruta Claude Code + Grok usa el endpoint de suscripción del CLI, no una API pública estable.",
+        "Puede requerir actualización cuando xAI cambie su servicio de CLI."
+      ]
+    }
+  }
+}

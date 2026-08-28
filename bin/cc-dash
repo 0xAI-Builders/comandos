@@ -468,7 +468,7 @@ PANE_MODELS_FILE = os.path.join(HOOKS, "pane-models.txt")
 
 
 PANE_MODEL_COLORS = {  # color del borde por agente
-    "claude": "141", "codex": "43", "opencode": "215",
+    "claude": "141", "codex": "43", "grok": "208", "opencode": "215",
     "gemini": "111", "agy": "183",
 }
 PANE_MODEL_RETRY_SECONDS = 5.0
@@ -478,6 +478,63 @@ PANE_MODEL_RETRY_SECONDS = 5.0
 # hardcode: regex->tier con fallback neutro) y cuenta por sesion (leida del
 # entorno REAL del proceso del agente: CLAUDE_CONFIG_DIR / CODEX_HOME).
 REPO_ROOT = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
+LIB_DIR = os.path.join(REPO_ROOT, "lib")
+if LIB_DIR not in sys.path:
+    sys.path.insert(0, LIB_DIR)
+import providers as provider_registry
+import grok_state
+PROVIDERS_FILE = os.path.join(REPO_ROOT, "config", "providers.json")
+_provider_registry_cache = {"mtime": None, "data": None}
+
+
+def load_provider_registry():
+    try:
+        mtime = os.path.getmtime(PROVIDERS_FILE)
+    except OSError:
+        mtime = None
+    if _provider_registry_cache["data"] is None or _provider_registry_cache["mtime"] != mtime:
+        _provider_registry_cache["data"] = provider_registry.load_registry(PROVIDERS_FILE)
+        _provider_registry_cache["mtime"] = mtime
+    return _provider_registry_cache["data"]
+
+
+def grok_metadata_for_pid(pid):
+    env = _read_environ(pid) if pid else {}
+    raw = env.get(b"GROK_HOME", b"").decode("utf-8", "replace")
+    home = os.path.realpath(os.path.expanduser(raw or "~/.grok"))
+    return grok_state.session_for_pid(int(pid), home) if pid else {}
+
+
+def agent_info_for_pane(pane):
+    if not PANE_RE.match(str(pane or "")):
+        return None
+    _by_session, by_cwd = agent_pane_maps(agent_procs())
+    for infos in by_cwd.values():
+        for info in infos:
+            if info.get("pane") == pane:
+                return info
+    return None
+
+
+def grok_pane_busy(sess, pane):
+    try:
+        return any(i.get("session") == sess and i.get("pane") == pane and i.get("status") == "working"
+                   for i in read_states_cached(ttl=0.2))
+    except Exception:
+        return False
+
+
+def provider_public_state():
+    public = provider_registry.public_state(load_provider_registry())
+    grok = (public.get("harnesses") or {}).get("grok")
+    if grok is not None:
+        accounts = grok_state.accounts_public()
+        grok["accounts"] = [{k: v for k, v in a.items() if k != "home"} for a in accounts]
+        grok["models"] = grok_state.models() or grok.get("models") or []
+        grok["authenticated"] = any(a.get("alias") == "main" and a.get("authenticated") for a in accounts)
+    return public
+
+
 MODEL_TIERS_FILE = os.path.join(REPO_ROOT, "config", "model-tiers.json")
 PROXY_FILE = os.path.join(REPO_ROOT, "config", "proxy.json")
 
@@ -743,6 +800,64 @@ def motor_queue_pop(sess, gen):
         _motor_queue_write(d)
 
 
+def grok_motor_apply(payload):
+    pane, sess = payload["pane"], payload["sess"]
+    opkey = payload.get("key") or f"{sess}|{pane}"
+    gen = payload["gen"]
+    model, effort = payload.get("model") or "", payload.get("effort") or ""
+    try:
+        if payload.get("interrupt") and grok_pane_busy(sess, pane):
+            motor_stage(opkey, "interrumpiendo el turno Grok (Escape)")
+            tmux("send-keys", "-t", pane, "Escape")
+            time.sleep(1.2)
+        if grok_pane_busy(sess, pane):
+            motor_stage(opkey, "esperando a que Grok termine el turno")
+        for _ in range(1350):
+            if not motor_gen_ok(opkey, gen):
+                return
+            if not grok_pane_busy(sess, pane):
+                time.sleep(0.5)
+                if not grok_pane_busy(sess, pane):
+                    break
+            time.sleep(2.0)
+        else:
+            motor_result_set(opkey, False, "Grok nunca quedo libre (45 min)")
+            return
+        info = agent_info_for_pane(pane)
+        if not info or info.get("agent") != "grok":
+            motor_result_set(opkey, False, "el pane ya no contiene Grok")
+            return
+        current = grok_metadata_for_pid(info.get("pid"))
+        if model:
+            command = "/model " + model + ((" " + effort) if effort else "")
+        elif effort:
+            command = "/effort " + effort
+        else:
+            motor_result_set(opkey, False, "modelo o esfuerzo requeridos")
+            return
+        motor_stage(opkey, f"tecleando {command}")
+        tmux("send-keys", "-t", pane, "C-u")
+        time.sleep(0.15)
+        r = tmux("send-keys", "-t", pane, "-l", "--", command)
+        if r.returncode != 0:
+            motor_result_set(opkey, False, r.stderr.strip() or "tmux fallo")
+            return
+        tmux("send-keys", "-t", pane, "Enter")
+        motor_stage(opkey, "confirmando modelo y esfuerzo en summary.json")
+        for _ in range(60):
+            if not motor_gen_ok(opkey, gen):
+                return
+            time.sleep(0.5)
+            now = grok_metadata_for_pid(info.get("pid"))
+            if (not model or now.get("model") == model) and (not effort or now.get("effort") == effort):
+                motor_result_set(opkey, True, f"{now.get('model','')} · {now.get('effort','')}")
+                return
+        motor_result_set(opkey, False,
+                         f"Grok no confirmo el cambio; sigue {current.get('model','?')} · {current.get('effort','?')}")
+    finally:
+        motor_queue_pop(opkey, gen)
+
+
 def motor_apply(payload):
     """Teclea /model y /effort en el pane con certeza: espera al prompt (anti-
     carrera con doble check), confirma en el pane y reintenta; restaura los
@@ -750,16 +865,19 @@ def motor_apply(payload):
     pane, cmds, provider = payload["pane"], payload["cmds"], payload["provider"]
     saved, sess, effort = payload.get("saved"), payload["sess"], payload.get("effort")
     gen, interrupt = payload["gen"], payload.get("interrupt")
+    opkey = payload.get("key") or sess
+    if provider == "grok":
+        return grok_motor_apply(payload)
     try:
         if interrupt and provider == "claude" and claude_pane_busy(pane):
-            motor_stage(sess, "interrumpiendo el turno (Escape)")
+            motor_stage(opkey, "interrumpiendo el turno (Escape)")
             tmux("send-keys", "-t", pane, "Escape")
             time.sleep(1.5)
         if provider == "claude":
             if claude_pane_busy(pane):
-                motor_stage(sess, "esperando a que termine el turno")
+                motor_stage(opkey, "esperando a que termine el turno")
             for _ in range(1350):
-                if not motor_gen_ok(sess, gen):
+                if not motor_gen_ok(opkey, gen):
                     return   # cancelado o superado por un click mas nuevo
                 if not claude_pane_busy(pane):
                     time.sleep(0.7)
@@ -767,9 +885,9 @@ def motor_apply(payload):
                         break
                 time.sleep(2.0)
             else:
-                motor_result_set(sess, False, "la sesion nunca quedo libre (45 min)")
+                motor_result_set(opkey, False, "la sesion nunca quedo libre (45 min)")
                 return
-            if not motor_gen_ok(sess, gen):
+            if not motor_gen_ok(opkey, gen):
                 return
         for i, c in enumerate(cmds):
             if i:
@@ -780,37 +898,42 @@ def motor_apply(payload):
                     time.sleep(0.5)
             marker = ("Set model to" if c.startswith("/model ") else
                       "Set effort level" if c.startswith("/effort ") else "")
-            motor_stage(sess, f"tecleando {c}")
+            motor_stage(opkey, f"tecleando {c}")
             sent = False
             for attempt in range(3):
-                if not motor_gen_ok(sess, gen):
+                if not motor_gen_ok(opkey, gen):
                     return
                 if provider == "claude":
                     tmux("send-keys", "-t", pane, "C-u")   # limpiar texto a medio escribir sin interrumpir nada
                     time.sleep(0.15)
+                before = tmux("capture-pane", "-p", "-t", pane, "-S", "-220").stdout
                 r = tmux("send-keys", "-t", pane, "-l", "--", c)
                 if r.returncode != 0:
-                    motor_result_set(sess, False, f"tmux fallo con {c}")
+                    motor_result_set(opkey, False, f"tmux fallo con {c}")
                     return
                 tmux("send-keys", "-t", pane, "Enter")
                 if provider != "claude" or not marker:
                     sent = True
                     break
-                motor_stage(sess, f"confirmando {c.split(chr(32))[0]} en el pane")
-                if claude_pane_confirm(pane, marker, 10):
+                motor_stage(opkey, f"confirmando {c.split(chr(32))[0]} en el pane")
+                confirmed, failure = claude_command_confirm(pane, c, before, 15)
+                if confirmed:
                     sent = True
                     break
-                motor_stage(sess, f"no entro {c.split(chr(32))[0]}: reintento {attempt + 2}/3")
+                if failure:
+                    motor_result_set(opkey, False, failure)
+                    return
+                motor_stage(opkey, f"no entro {c.split(chr(32))[0]}: reintento {attempt + 2}/3")
                 for _ in range(60):
                     if not claude_pane_busy(pane):
                         break
                     time.sleep(2.0)
             if not sent:
-                motor_result_set(sess, False, f"no se confirmo {c} en el pane")
+                motor_result_set(opkey, False, f"no se confirmo {c} en el pane")
                 return
-        motor_result_set(sess, True, " · ".join(cmds))
+        motor_result_set(opkey, True, " · ".join(cmds))
         if effort and provider == "claude":
-            session_effort_set(sess, effort)
+            session_effort_set(opkey, effort)
         if provider == "claude" and saved:
             time.sleep(4.0 + 3.5 * (len(cmds) - 1))
             path = os.path.expanduser("~/.claude/settings.json")
@@ -833,7 +956,7 @@ def motor_apply(payload):
             except Exception:
                 pass
     finally:
-        motor_queue_pop(sess, gen)
+        motor_queue_pop(opkey, gen)
 
 
 def motor_queue_resume():
@@ -862,14 +985,32 @@ def motor_stage(sess, stage):
     MOTOR_RESULT[sess] = {"stage": str(stage)[:120], "ts": time.time()}
 
 
-def claude_pane_confirm(pane, marker, secs):
-    """True si el marcador aparece en el pane dentro de N segundos."""
+def claude_command_confirm(pane, command, baseline, secs):
+    """Confirm a NEW result for this command and handle provider-switch UI."""
+    marker = ("Set model to" if command.startswith("/model ") else
+              "Set effort level" if command.startswith("/effort ") else "")
+    target = command.split(None, 1)[1].split()[0] if " " in command else ""
+    dialog_answered = False
     for _ in range(int(secs * 2)):
-        r = tmux("capture-pane", "-p", "-t", pane, "-S", "-25")
-        if r.returncode == 0 and marker in r.stdout:
-            return True
+        r = tmux("capture-pane", "-p", "-t", pane, "-S", "-220")
+        text = r.stdout if r.returncode == 0 else ""
+        command_pos = text.rfind(command)
+        tail = text[command_pos:] if command_pos >= 0 else ""
+        if (command.startswith("/model ") and not dialog_answered and
+                "Switch model?" in tail and target.lower() in tail.lower()):
+            tmux("send-keys", "-t", pane, "1")
+            tmux("send-keys", "-t", pane, "Enter")
+            dialog_answered = True
+            time.sleep(0.8)
+            continue
+        if marker and tail.rfind(marker) >= 0:
+            return True, ""
+        errors = [line.strip() for line in tail.splitlines()
+                  if "API Error:" in line or ("Model '" in line and "not found" in line)]
+        if errors:
+            return False, errors[-1][:200]
         time.sleep(0.5)
-    return False
+    return False, ""
 
 
 SESSION_EFFORT = os.path.expanduser("~/.claude/hooks/session-effort.json")
@@ -914,16 +1055,19 @@ def motor_global():
             m = str(json.load(f).get("model") or "")
     except Exception:
         m = ""
-    return ("codex" if re.match(r"^(gpt|o[0-9]|codex)", m, re.I) else "claude"), m
+    return (provider_registry.engine_for_model(load_provider_registry(), m) or "claude"), m
 
 
 def motor_set_global(motor, model=None):
     cfg = load_proxy_cfg()
-    prov = (cfg.get("codex") if motor == "codex" else cfg.get("claude")) or {}
+    if motor not in (load_provider_registry().get("claudeEngines") or {}):
+        raise ValueError(f"motor desconocido: {motor}")
+    prov = cfg.get(motor) or {}
     allowed = {m.get("id") for m in prov.get("menu") or []}
     model = (model or "").strip()
+    defaults = {"claude": "claude-fable-5[1m]", "codex": "gpt-5.6-sol[1m]", "grok": "grok-4.6"}
     if model not in allowed:
-        model = prov.get("model") or ("gpt-5.6-sol[1m]" if motor == "codex" else "claude-fable-5[1m]")
+        model = prov.get("model") or defaults.get(motor, "")
     path = os.path.expanduser("~/.claude/settings.json")
     try:
         with open(path) as f:
@@ -951,6 +1095,7 @@ _model_tiers_cache = {"mtime": None, "data": {}}
 AGENT_ACCOUNT_ENV = {
     "claude": ("CLAUDE_CONFIG_DIR", "~/.claude"),
     "codex": ("CODEX_HOME", "~/.codex"),
+    "grok": ("GROK_HOME", "~/.grok"),
 }
 
 
@@ -1017,6 +1162,11 @@ def account_email_for_dir(path, agent):
                 part = idt.split(".")[1]
                 part += "=" * (-len(part) % 4)
                 email = json.loads(base64.urlsafe_b64decode(part)).get("email", "")
+        elif agent == "grok":
+            with open(os.path.join(path, "auth.json")) as f:
+                a = json.load(f)
+            rec = next((v for v in a.values() if isinstance(v, dict)), {})
+            email = rec.get("email") or rec.get("user_id") or rec.get("principal_id") or ""
         else:
             cfg = os.path.join(path, ".claude.json")
             if not os.path.exists(cfg):
@@ -2820,7 +2970,7 @@ def session_name(project):
 
 
 # Agentes soportados (binarios a detectar); ampliable en cc-notify.conf: AGENTS="..."
-DEFAULT_AGENTS = "claude codex opencode gemini agy aider"
+DEFAULT_AGENTS = "claude codex grok opencode gemini agy aider"
 # Turnos no interactivos (codex exec, jobs de agentes) terminan el proceso antes
 # del siguiente poll del dashboard. Conserva "done" brevemente para que el UI
 # muestre el cierre real antes de degradarlo a "dead".
@@ -2832,6 +2982,7 @@ ZOMBIE_WAITING_GRACE_SECS = 24 * 60 * 60
 AGENT_LAUNCH = {
     "claude":   "claude --continue 2>/dev/null || claude",
     "codex":    "codex resume --last 2>/dev/null || codex",
+    "grok":     "grok --continue 2>/dev/null || grok",
     "opencode": "opencode --continue 2>/dev/null || opencode",
     "gemini":   "gemini",
     "agy":      "agy --continue 2>/dev/null || agy",
@@ -2860,23 +3011,41 @@ def agent_set():
     return set((read_conf().get("AGENTS") or DEFAULT_AGENTS).split())
 
 
+def agent_process_aliases():
+    """basename de proceso/argv -> harness. Evita aliases demasiado genéricos
+    (node/python/shell): solo los nombres distintivos del registro."""
+    out = {agent: agent for agent in agent_set()}
+    generic = {"node", "python", "python3", "bash", "zsh", "fish", "sh"}
+    try:
+        reg = load_provider_registry()
+        for ident, item in (reg.get("harnesses") or {}).items():
+            if ident not in agent_set():
+                continue
+            for name in item.get("processNames") or []:
+                if name not in generic:
+                    out[os.path.basename(str(name))] = ident
+    except Exception:
+        pass
+    return out
+
+
 def agent_procs():
     """Procesos de CUALQUIER agente corriendo: [(pid, cwd, agent)].
     Linux: /proc (cmdline, porque gemini/npm corren como 'node script.js').
     macOS (sin /proc): ps + lsof."""
     agents = agent_set()
+    aliases = agent_process_aliases()
     out = []
     if os.path.isdir("/proc"):
         for p in glob.glob("/proc/[0-9]*/cmdline"):
             try:
                 with open(p, "rb") as f:
                     argv = f.read().split(b"\0")
-                names = {os.path.basename(a.decode("utf-8", "replace")) for a in argv[:2] if a}
-                hit = names & agents
+                names = [os.path.basename(a.decode("utf-8", "replace")) for a in argv[:3] if a]
+                hit = next((aliases[name] for name in names if name in aliases), "")
                 if hit:
                     d = os.path.dirname(p)
-                    out.append((int(os.path.basename(d)), os.readlink(d + "/cwd"),
-                                sorted(hit)[0]))
+                    out.append((int(os.path.basename(d)), os.readlink(d + "/cwd"), hit))
             except Exception:
                 pass
         return out
@@ -3109,12 +3278,14 @@ def read_states():
         pane = None
         live_agent = ""
         state_pane = str(d.get("pane") or "")
-        pane_info = by_session.get(sess)
-        if not pane_info and PANE_RE.match(state_pane):
+        pane_info = None
+        if PANE_RE.match(state_pane):
             for info in by_cwd.get(cwd, []):
-                if info.get("pane") == state_pane:
+                if info.get("session") == sess and info.get("pane") == state_pane:
                     pane_info = info
                     break
+        if not pane_info:
+            pane_info = by_session.get(sess)
         if not pane_info:
             pane_info = choose_agent_pane(d.get("project", ""), sess,
                                           by_cwd.get(cwd, []), labels)
@@ -3158,6 +3329,11 @@ def read_states():
                 "tabbed": sess in labels}
         if pane_info and pane_info.get("pid"):
             item.update(account_for_pid(pane_info["pid"], item["agent"]))
+            if item["agent"] == "grok":
+                gm = grok_metadata_for_pid(pane_info["pid"])
+                if gm:
+                    item.update({"model": gm.get("model", ""), "effort": gm.get("effort", ""),
+                                 "agentSessionId": gm.get("sessionId", ""), "grokTitle": gm.get("title", "")})
         cos = _costumes_now.get(sess)
         if cos:
             item.update(cos)
@@ -3167,8 +3343,21 @@ def read_states():
             item["zombie"] = True
         if pane:
             item["pane"] = pane
+        efforts = session_effort_all()
+        effort_value = efforts.get(f"{sess}|{pane}") if pane else None
+        effort_value = effort_value or efforts.get(sess)
+        if effort_value and not item.get("effort"):
+            item["effort"] = effort_value
         items.append(item)
         seen.add(sess)
+    # Preferir el estado pane-aware más nuevo sobre archivos legacy por proyecto.
+    dedup = {}
+    for item in items:
+        key = (item.get("session"), item.get("pane") or "")
+        prev = dedup.get(key)
+        if prev is None or float(item.get("ts") or 0) >= float(prev.get("ts") or 0):
+            dedup[key] = item
+    items = list(dedup.values())
     # sesiones tmux vivas sin estado (recien creadas con ccx, scratch term-*
     # de la app...): TODAS visibles — nada de sesiones fantasma que solo
     # aparecen en el conmutador. Nombre = etiqueta de su pestana si existe.
@@ -3198,6 +3387,11 @@ def read_states():
                 "external": False, "agent": agent, "tabbed": sess in labels}
         if info and info.get("pid") and agent:
             item.update(account_for_pid(info["pid"], agent))
+            if agent == "grok":
+                gm = grok_metadata_for_pid(info["pid"])
+                if gm:
+                    item.update({"model": gm.get("model", ""), "effort": gm.get("effort", ""),
+                                 "agentSessionId": gm.get("sessionId", ""), "grokTitle": gm.get("title", "")})
         cos = _costumes_now.get(sess)
         if cos:
             item.update(cos)
@@ -3971,7 +4165,7 @@ class Handler(http.server.SimpleHTTPRequestHandler):
     # Endpoints con DATOS o ACCIONES: exigen token. El shell estatico (HTML,
     # sw.js, manifest, iconos) NO — no revela nada (es codigo open-source) y
     # asi la PWA instala y carga sin depender de cookies en el webview movil.
-    API_GET = ("/pomodoro", "/proxy", "/sovereignty", "/ui-log/summary", "/state", "/usage/state", "/opencode/models", "/model-tiers", "/dedication", "/active-tab", "/session-brain", "/events", "/conf", "/prefs", "/ssh", "/tabs",
+    API_GET = ("/pomodoro", "/providers", "/proxy", "/sovereignty", "/ui-log/summary", "/state", "/usage/state", "/opencode/models", "/model-tiers", "/dedication", "/active-tab", "/session-brain", "/events", "/conf", "/prefs", "/ssh", "/tabs",
                "/tab-history", "/remote-state", "/remote-qr.png", "/snippets", "/tmux-mouse",
                "/webterm-token")
 
@@ -3990,6 +4184,11 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             return self._json(200, {"token": access_token()})
         if self.path.startswith("/state"):
             return self._json(200, read_states_cached())
+        if self.path.startswith("/providers"):
+            try:
+                return self._json(200, provider_public_state())
+            except Exception as e:
+                return self._json(500, {"error": f"providers.json invalido: {e}"})
         if self.path.startswith("/opencode/models"):
             return self._json(200, {"providers": opencode_models()})
         if self.path.startswith("/model-tiers"):
@@ -4023,9 +4222,11 @@ class Handler(http.server.SimpleHTTPRequestHandler):
                                     "sessionEffort": session_effort_all(),
                                     "switchResult": MOTOR_RESULT,
                                     "accounts": [{k: v for k, v in a.items() if k != "dir"} for a in claude_accounts()],
-                                    "codex": cfg.get("codex"), "claude": cfg.get("claude"),
-                                    "installed": os.path.exists(os.path.expanduser("~/.cargo/bin/claude-codex")),
-                                    "codexLogin": os.path.exists(os.path.expanduser("~/.codex/auth.json"))})
+                                    "codex": cfg.get("codex"), "claude": cfg.get("claude"), "grok": cfg.get("grok"),
+                                    "engines": provider_public_state().get("claudeEngines", {}),
+                                    "installed": bool(shutil.which("cc-model-proxy") or os.path.exists(os.path.expanduser("~/.cargo/bin/claude-codex"))),
+                                    "codexLogin": os.path.exists(os.path.expanduser("~/.codex/auth.json")),
+                                    "grokLogin": grok_state.auth_identity(os.path.expanduser("~/.grok")).get("authenticated", False)})
         if self.path.startswith("/ui-log/summary"):
             return self._json(200, ui_log_summary())
         if self.path.startswith("/session-brain"):
@@ -4156,8 +4357,8 @@ class Handler(http.server.SimpleHTTPRequestHandler):
 
         if self.path == "/proxy":
             try:
-                if data.get("motor") in ("claude", "codex"):
-                    if data["motor"] == "codex" and not proxy_settings_enabled():
+                if data.get("motor") in ("claude", "codex", "grok"):
+                    if data["motor"] in ("codex", "grok") and not proxy_settings_enabled():
                         proxy_set_enabled(True)
                     model = motor_set_global(data["motor"], data.get("model"))
                     mg, mm = motor_global()
@@ -4472,10 +4673,12 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             alias = str(data.get("account", "main"))[:40]
             if not cwd.startswith("/") or not os.path.isdir(cwd):
                 return self._json(400, {"error": "carpeta invalida"})
-            if agent not in ("claude", "claude-codex", "codex", "shell"):
+            if agent not in ("claude", "claude-codex", "claude-grok", "codex", "grok", "shell"):
                 return self._json(400, {"error": "agente invalido"})
-            if agent == "claude-codex" and not proxy_alive():
-                return self._json(503, {"error": "El motor Codex no está corriendo (cc-proxy). Actívalo en Ajustes."})
+            if agent in ("claude-codex", "claude-grok") and not proxy_alive():
+                return self._json(503, {"error": "El gateway de modelos no está corriendo (cc-proxy). Actívalo en Ajustes."})
+            if agent == "claude-grok" and not grok_state.auth_identity(os.path.expanduser("~/.grok")).get("authenticated"):
+                return self._json(409, {"error": "Grok no tiene sesión; corre grok login"})
             if not re.match(r"^[A-Za-z0-9._-]+$", alias):
                 return self._json(400, {"error": "alias invalido"})
             wt = False
@@ -4497,12 +4700,14 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             register_app_tab(new_sess, label, kind="project", cwd=final_cwd)
             cmd = ""
             flags = load_agent_roles().get("dangerFlags") or {}
-            if agent in ("claude", "claude-codex"):
+            if agent in ("claude", "claude-codex", "claude-grok"):
                 cmd = "claude"
-                if agent == "claude-codex":
+                if agent in ("claude-codex", "claude-grok"):
                     pc = load_proxy_cfg()
+                    engine = "grok" if agent == "claude-grok" else "codex"
+                    fallback = "grok-4.6" if engine == "grok" else "gpt-5.6-sol"
                     cmd = (f"ANTHROPIC_BASE_URL=http://127.0.0.1:{int(pc.get('port') or 18765)} "
-                           f"claude --model {shlex.quote(str((pc.get('codex') or {}).get('model') or 'gpt-5.6-sol'))}")
+                           f"claude --model {shlex.quote(str((pc.get(engine) or {}).get('model') or fallback))}")
                 if alias != "main":
                     cmd = f"CLAUDE_CONFIG_DIR=$HOME/.claude-accounts/{alias} " + cmd
                 if data.get("danger") and flags.get("claude"):
@@ -4511,6 +4716,30 @@ class Handler(http.server.SimpleHTTPRequestHandler):
                 cmd = "codex"
                 if data.get("danger") and flags.get("codex"):
                     cmd += " " + flags["codex"]
+            elif agent == "grok":
+                accounts = {a["alias"]: a for a in grok_state.accounts_public()}
+                acc = accounts.get(alias)
+                if not acc or not acc.get("authenticated"):
+                    tmux("kill-session", "-t", "=" + new_sess)
+                    return self._json(409, {"error": f"cuenta Grok '{alias}' sin login; agrégala/inicia sesión primero"})
+                home = os.path.expanduser("~/.grok" if alias == "main" else f"~/.grok-accounts/{alias}")
+                prefix = "" if alias == "main" else f"GROK_HOME={shlex.quote(home)} "
+                cmd = prefix + "grok"
+                grok_model = str(data.get("model") or "")
+                grok_effort = str(data.get("effort") or "")
+                if grok_model:
+                    catalog = {m["id"]: m for m in grok_state.models(home)}
+                    if grok_model not in catalog:
+                        tmux("kill-session", "-t", "=" + new_sess)
+                        return self._json(400, {"error": f"modelo Grok no disponible: {grok_model}"})
+                    if grok_effort and grok_effort not in (catalog[grok_model].get("efforts") or []):
+                        tmux("kill-session", "-t", "=" + new_sess)
+                        return self._json(400, {"error": f"esfuerzo no válido para {grok_model}"})
+                    cmd += " --model " + shlex.quote(grok_model)
+                    if grok_effort:
+                        cmd += " --effort " + shlex.quote(grok_effort)
+                if data.get("danger") and flags.get("grok"):
+                    cmd += " " + flags["grok"]
             if cmd:
                 def _send(sess=new_sess, c=cmd):
                     time.sleep(1.5)
@@ -4570,15 +4799,19 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             return self._json(200, {"session": new_sess, "label": label})
 
         if self.path == "/account/add":
-            # Crea el config-dir y abre una pestana con claude adentro: la PRIMERA vez
-            # Claude Code pide /login (OAuth en el navegador) — eso lo hace el usuario.
+            provider = str(data.get("provider") or "claude")
+            if provider not in ("claude", "grok"):
+                return self._json(400, {"error": "provider de cuenta no soportado"})
             alias = str(data.get("alias") or "").strip()[:40]
             if not re.match(r"^[A-Za-z0-9][A-Za-z0-9._-]*$", alias) or alias == "main":
                 return self._json(400, {"error": "alias invalido (letras, numeros, . _ -)"})
-            d = os.path.expanduser(f"~/.claude-accounts/{alias}")
+            d = os.path.expanduser(f"~/.grok-accounts/{alias}" if provider == "grok" else f"~/.claude-accounts/{alias}")
             os.makedirs(d, exist_ok=True)
-            # los hooks de ComandOS viven en el settings.json de CADA config-dir
+            # los hooks de Claude viven en settings por cuenta; Grok hereda los
+            # hooks Claude y agrega errores/cancelaciones mediante cc-agents.
             try:
+                if provider != "claude":
+                    raise RuntimeError("no Claude settings for Grok account")
                 with open(os.path.expanduser("~/.claude/settings.json")) as f:
                     hooks = json.load(f).get("hooks") or {}
                 sp = os.path.join(d, "settings.json")
@@ -4611,13 +4844,16 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             r = tmux("new-session", "-d", "-s", new_sess, "-c", cwd)
             if r.returncode != 0:
                 return self._json(500, {"error": (r.stderr or "tmux fallo").strip()})
-            register_app_tab(new_sess, f"login · {alias}", kind="project", cwd=cwd)
-            cmd = f"CLAUDE_CONFIG_DIR=$HOME/.claude-accounts/{alias} claude /login"
+            register_app_tab(new_sess, f"login {provider} · {alias}", kind="project", cwd=cwd)
+            if provider == "grok":
+                cmd = f"GROK_HOME=$HOME/.grok-accounts/{alias} grok login"
+            else:
+                cmd = f"CLAUDE_CONFIG_DIR=$HOME/.claude-accounts/{alias} claude /login"
             def _send(sess=new_sess, c=cmd):
                 time.sleep(1.5)
                 tmux("send-keys", "-t", "=" + sess + ":", c, "Enter")
             threading.Thread(target=_send, daemon=True).start()
-            return self._json(200, {"ok": True, "session": new_sess, "alias": alias})
+            return self._json(200, {"ok": True, "session": new_sess, "alias": alias, "provider": provider})
 
         sess = data.get("session", "")
         if not SESSION_RE.match(sess):
@@ -4780,8 +5016,9 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             return self._json(202 if queued else 200, {"ok": True, "queued": queued, "command": cmd, "sid": sid})
 
         if self.path == "/model/switch-cancel":
-            motor_gen_bump(sess)     # invalida cualquier cambio de motor/cuenta en cola
-            return self._json(200, {"ok": True, "note": "cambios en cola cancelados"})
+            opkey = f"{sess}|{pane}" if PANE_RE.match(pane) else sess
+            motor_gen_bump(opkey)     # invalida cualquier cambio de motor/cuenta en cola
+            return self._json(200, {"ok": True, "operationKey": opkey, "note": "cambios en cola cancelados"})
 
         if self.path == "/model/switch":
             provider = str(data.get("provider") or data.get("agent") or state_agent(sess))[:32]
@@ -4790,6 +5027,31 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             effort = str(data.get("effort") or "")[:16]
             if tmux("has-session", "-t", target).returncode != 0:
                 return self._json(404, {"error": f"No hay sesion tmux '{sess}'"})
+            if provider == "grok":
+                info = agent_info_for_pane(pane)
+                if not info or info.get("agent") != "grok":
+                    return self._json(409, {"error": "ese pane no contiene Grok"})
+                env = _read_environ(info.get("pid"))
+                home = env.get(b"GROK_HOME", b"").decode("utf-8", "replace") or os.path.expanduser("~/.grok")
+                catalog = {m["id"]: m for m in (grok_state.models(home) or (load_provider_registry()["harnesses"]["grok"].get("models") or []))}
+                current = grok_metadata_for_pid(info.get("pid"))
+                requested_model = model or current.get("model") or ""
+                if requested_model not in catalog:
+                    return self._json(400, {"error": f"modelo Grok no disponible: {requested_model}"})
+                allowed = catalog[requested_model].get("efforts") or []
+                if effort and effort not in allowed:
+                    return self._json(400, {"error": f"{requested_model} no admite esfuerzo {effort}; usa {', '.join(allowed)}"})
+                opkey = f"{sess}|{pane}"
+                gen = motor_gen_bump(opkey)
+                queued = grok_pane_busy(sess, pane) and not bool(data.get("interrupt"))
+                payload = {"key": opkey, "pane": pane, "cmds": [], "provider": "grok",
+                           "sess": sess, "model": model, "effort": effort, "gen": gen,
+                           "interrupt": bool(data.get("interrupt")), "ts": time.time()}
+                motor_queue_put(opkey, payload)
+                threading.Thread(target=motor_apply, args=(payload,), daemon=True).start()
+                return self._json(202 if queued else 200,
+                                  {"ok": True, "queued": queued, "operationKey": opkey,
+                                   "model": requested_model, "effort": effort or current.get("effort")})
             if provider == "codex" and model in CODEX_MODEL_DIGITS:
                 # El picker de codex es de DOS pasos numerados (modelo →
                 # reasoning): un digito selecciona y avanza solo.
@@ -4845,8 +5107,9 @@ class Handler(http.server.SimpleHTTPRequestHandler):
                     saved = None
             queued = bool(provider == "claude" and claude_pane_busy(pane))
             interrupt = bool(data.get("interrupt"))
-            gen = motor_gen_bump(sess)
-            if provider == "claude" and model and re.match(r"^(gpt|codex|o[0-9])", model, re.I):
+            opkey = f"{sess}|{pane}" if PANE_RE.match(pane) else sess
+            gen = motor_gen_bump(opkey)
+            if provider == "claude" and model and provider_registry.engine_for_model(load_provider_registry(), model) in ("codex", "grok"):
                 info = _claude_info_for(sess, str(data.get("pane") or ""))
                 pid = info.get("pid") if info else None
                 env = _read_environ(pid) if pid else {}
@@ -4880,20 +5143,20 @@ class Handler(http.server.SimpleHTTPRequestHandler):
                     if data.get("interrupt") and claude_pane_busy(pane):
                         tmux("send-keys", "-t", pane, "Escape")
                         time.sleep(1.2)
-                    _claude_restart_resume(pane, pid, cmd, after_cmds=after, queued=queued, sess=sess, gen=gen)
-                    return self._json(202 if queued else 200, {"ok": True, "queued": queued, "restart": True, "command": cmd,
+                    _claude_restart_resume(pane, pid, cmd, after_cmds=after, queued=queued, sess=opkey, gen=gen)
+                    return self._json(202 if queued else 200, {"ok": True, "queued": queued, "restart": True, "operationKey": opkey, "command": cmd,
                                             "effort": effort or None,
                                             "note": "La sesion no pasaba por cc-proxy: se reanuda la misma conversacion ya con proxy"})
 
-            payload = {"pane": pane, "cmds": cmds, "provider": provider, "saved": saved,
+            payload = {"key": opkey, "pane": pane, "cmds": cmds, "provider": provider, "saved": saved,
                        "sess": sess, "effort": effort, "gen": gen, "interrupt": interrupt,
                        "ts": time.time()}
-            motor_queue_put(sess, payload)   # persistente: sobrevive reinicios de cc-dash
+            motor_queue_put(opkey, payload)   # persistente: sobrevive reinicios de cc-dash
             threading.Thread(target=motor_apply, args=(payload,), daemon=True).start()
             if queued:
-                return self._json(202, {"ok": True, "queued": True, "command": " · ".join(cmds), "effort": effort or None,
+                return self._json(202, {"ok": True, "queued": True, "operationKey": opkey, "command": " · ".join(cmds), "effort": effort or None,
                                         "note": "La sesion esta a mitad de turno: el cambio se aplica solo al terminar"})
-            return self._json(200, {"ok": True, "command": " · ".join(cmds), "effort": effort or None})
+            return self._json(200, {"ok": True, "operationKey": opkey, "command": " · ".join(cmds), "effort": effort or None})
 
         if self.path == "/send":
             text = str(data.get("text", ""))[:4000]

@@ -87,6 +87,7 @@ Abre **ComandOS** desde el menú de apps o el tablero en <http://127.0.0.1:4777>
 |---|---|---|
 | **Claude Code** | hooks nativos (auto vía `install.sh`) | working · waiting **con opciones reales** · done · respuesta completa |
 | **Codex CLI** | hooks lifecycle + fallback `notify` (`cc-agents setup`) | working · waiting por permisos · done + ultimo mensaje |
+| **Grok Build** | CLI oficial xAI + hooks (`cc-agents setup`) | Grok 4.6/4.5 · low→xhigh · MCPs · skills · subagentes · cuentas · splits |
 | **OpenCode** | plugin (`cc-agents setup`) | working · waiting · errores · done |
 | **Gemini CLI** | hooks (`cc-agents setup`) | working · waiting · done · respuesta completa |
 | **Antigravity CLI** (`agy`) | hooks (`cc-agents setup`) | working · done — verificado con sesión real |
@@ -94,6 +95,13 @@ Abre **ComandOS** desde el menú de apps o el tablero en <http://127.0.0.1:4777>
 Un comando conecta todo lo que tengas instalado: **`cc-agents setup`**.
 Si Codex te pide revisar hooks nuevos, abre `/hooks` en Codex y confia una vez
 en el hook de ComandOS.
+
+Grok tiene dos modos: **Grok Build nativo** (`ccx -a grok proyecto`, recomendado)
+y **Grok como motor dentro de Claude Code**. Ambos reutilizan la suscripción de
+`~/.grok/auth.json`; no requieren `XAI_API_KEY`. El segundo modo pasa por el
+gateway local y se marca Labs porque el endpoint de suscripción del CLI no es
+una API pública estable. El selector conserva el mismo session ID/contexto al
+cambiar Claude ↔ Codex ↔ Grok y confirma modelo/esfuerzo antes de actualizar la card.
 Cualquier otro agente entra con una llamada HTTP:
 `POST 127.0.0.1:4777/event {"agent","event","cwd","msg?","full?"}`.
 
