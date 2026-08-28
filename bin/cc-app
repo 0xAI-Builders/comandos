@@ -1425,17 +1425,18 @@ def _proc_flags(pid):
 
 
 def _claude_by_tmux_session():
-    """{sesion tmux: {id, pid}} de los claude VIVOS, via ~/.claude/sessions."""
+    """{sesion tmux: {id,pid,config_dir}} de TODOS los config-dirs Claude."""
     out = {}
-    try:
-        names = os.listdir(CLAUDE_SESS_DIR)
-    except Exception:
-        return out
-    for n in names:
-        if not n.endswith(".json"):
-            continue
+    dirs = [CLAUDE_SESS_DIR] + glob.glob(os.path.expanduser("~/.claude-accounts/*/sessions"))
+    files = []
+    for directory in dirs:
         try:
-            with open(os.path.join(CLAUDE_SESS_DIR, n)) as f:
+            files.extend((directory, n) for n in os.listdir(directory) if n.endswith(".json"))
+        except Exception:
+            continue
+    for directory, n in files:
+        try:
+            with open(os.path.join(directory, n)) as f:
                 d = json.load(f)
         except Exception:
             continue
@@ -1450,7 +1451,8 @@ def _claude_by_tmux_session():
         prev = out.get(sess)
         if prev and prev.get("startedAt", 0) >= (d.get("startedAt") or 0):
             continue
-        out[sess] = {"id": sid, "pid": pid, "startedAt": d.get("startedAt") or 0}
+        out[sess] = {"id": sid, "pid": pid, "startedAt": d.get("startedAt") or 0,
+                     "config_dir": os.path.dirname(directory)}
     return out
 
 
@@ -1526,6 +1528,7 @@ def snapshot_tabs():
                 ent["agent"] = "claude"
                 ent["resume_id"] = cl[k]["id"]
                 ent["flags"] = _proc_flags(cl[k]["pid"])
+                ent["claude_config_dir"] = cl[k].get("config_dir") or os.path.expanduser("~/.claude")
             else:
                 if kids is None:
                     kids = _ppid_map()
@@ -1578,9 +1581,12 @@ def resume_command(snap):
     sid = snap.get("resume_id") or ""
     sid = sid if isinstance(sid, str) and re.fullmatch(r"[0-9a-f-]{36}", sid) else ""
     if agent == "claude" and shutil.which("claude"):
-        if sid and glob.glob(os.path.join(CLAUDE_PROJ_DIR, "*", sid + ".jsonl")):
-            return "claude --resume " + sid + fl
-        return "claude --continue" + fl
+        cfg = os.path.realpath(os.path.expanduser(snap.get("claude_config_dir") or "~/.claude"))
+        projects = os.path.join(cfg, "projects")
+        prefix = "" if cfg == os.path.realpath(os.path.expanduser("~/.claude")) else f"CLAUDE_CONFIG_DIR={shlex.quote(cfg)} "
+        if sid and glob.glob(os.path.join(projects, "*", sid + ".jsonl")):
+            return prefix + "claude --resume " + sid + fl
+        return prefix + "claude --continue" + fl
     if agent == "codex" and shutil.which("codex"):
         if sid and glob.glob(os.path.join(CODEX_SESS_DIR, "*", "*", "*",
                                           "rollout-*" + sid + ".jsonl")):

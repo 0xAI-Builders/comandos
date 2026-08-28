@@ -458,22 +458,23 @@
   .motor-pill .mp-caret{color:var(--dim);font-size:9px}
   .motor-pill.pending .mp-model{color:var(--warn)}
   .motor-pill:disabled{opacity:.5;cursor:not-allowed}
-  #motor-pop{position:fixed;z-index:200;width:min(680px,calc(100vw - 16px));max-height:calc(100vh - 80px);overflow-y:auto;background:var(--panel);border:1px solid var(--line2);border-radius:14px;
+  #motor-pop{position:fixed;z-index:200;width:min(900px,calc(100vw - 16px));max-height:calc(100vh - 80px);overflow-y:auto;background:var(--panel);border:1px solid var(--line2);border-radius:14px;
     box-shadow:0 18px 48px rgba(0,0,0,.35);padding:12px;display:none}
   #motor-pop.open{display:block}
   #motor-pop .mp-head{display:flex;justify-content:space-between;align-items:baseline;gap:10px;margin:2px 4px 10px;font-family:var(--mono);font-size:11px;color:var(--dim)}
   #motor-pop .mp-head b{color:var(--text);font-size:12.5px}
-  #motor-pop .mp-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(205px,1fr));gap:10px}
+  #motor-pop .mp-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:10px}
   @media (max-width:560px){#motor-pop .mp-grid{grid-template-columns:1fr}}
   .mtile{position:relative;border:1.5px solid var(--line2);border-radius:12px;padding:12px;background:var(--bg);transition:border-color .12s,box-shadow .12s}
   .mtile.on{border-color:var(--brand);box-shadow:0 0 0 3px color-mix(in srgb,var(--brand) 22%,transparent)}
   .mtile.off{opacity:.78}
-  .mtile .mt-top{display:flex;align-items:center;gap:10px;margin-bottom:10px}
+  .mtile .mt-top{display:flex;align-items:center;gap:9px;margin-bottom:10px;min-width:0}
+  .mtile .mt-top>div{min-width:0;overflow:hidden}
   .mtile .mt-top .pmark{width:28px;height:28px;padding:5px;border-radius:9px;background:var(--panel2);color:var(--text)}
   .mtile.on .mt-top .pmark{background:var(--brand);color:var(--bg)}
-  .mtile .mt-name{font-weight:800;font-size:14px;letter-spacing:.2px}
-  .mtile .mt-sub{font-family:var(--mono);font-size:10.5px;color:var(--dim);white-space:nowrap}
-  .mtile .mt-act{margin-left:auto;font-family:var(--mono);font-size:9.5px;font-weight:800;letter-spacing:.6px;padding:3px 7px;border-radius:99px;
+  .mtile .mt-name{font-weight:800;font-size:14px;letter-spacing:.2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .mtile .mt-sub{font-family:var(--mono);font-size:10.5px;color:var(--dim);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .mtile .mt-act{margin-left:auto;flex:none;font-family:var(--mono);font-size:9.5px;font-weight:800;letter-spacing:.6px;padding:3px 7px;border-radius:99px;
     color:var(--bg);background:var(--brand)}
   .mtile .mt-opt{display:flex;align-items:center;gap:9px;width:100%;text-align:left;padding:8px 9px;border:1px solid transparent;border-radius:9px;
     background:none;color:var(--text);cursor:pointer;font-family:inherit}
@@ -481,18 +482,19 @@
   .mtile .mt-opt .rd{width:14px;height:14px;border-radius:50%;border:2px solid var(--dim);flex:none;position:relative}
   .mtile .mt-opt.sel .rd{border-color:var(--brand)}
   .mtile .mt-opt.sel .rd::after{content:"";position:absolute;inset:2px;border-radius:50%;background:var(--brand)}
-  .mtile .mt-opt .nm{font-weight:700;font-size:12.5px;white-space:nowrap}
-  .mtile .mt-opt .tg{font-family:var(--mono);font-size:9.5px;color:var(--dim);margin-left:auto;text-align:right;white-space:nowrap}
+  .mtile .mt-opt .nm{font-weight:700;font-size:12.5px;white-space:nowrap;flex:none;max-width:42%;overflow:hidden;text-overflow:ellipsis}
+  .mtile .mt-opt .tg{font-family:var(--mono);font-size:9.5px;color:var(--dim);margin-left:auto;text-align:right;white-space:nowrap;min-width:0;max-width:46%;overflow:hidden;text-overflow:ellipsis}
   .mtile .mt-opt:disabled{opacity:.5;cursor:not-allowed}
-  .mtile .mt-eff{display:grid;grid-template-columns:repeat(5,1fr);gap:4px;margin-top:10px;padding-top:10px;border-top:1px dashed var(--line2)}
+  .mtile .mt-eff{display:grid;grid-template-columns:repeat(auto-fit,minmax(42px,1fr));gap:4px;margin-top:10px;padding-top:10px;border-top:1px dashed var(--line2)}
   .mtile .mt-eff-lbl{grid-column:1/-1;display:flex;justify-content:space-between;font-family:var(--mono);font-size:9px;color:var(--dim);letter-spacing:.5px;text-transform:uppercase;margin-bottom:2px}
   .mtile .mt-eff button{font-family:var(--mono);font-size:10px;font-weight:700;padding:5px 0;border:1px solid var(--line2);border-radius:7px;background:none;color:var(--dim);cursor:pointer}
   .mtile .mt-eff button:hover{color:var(--text);background:var(--panel2)}
   .mtile .mt-eff button.sel{color:var(--bg);background:var(--brand);border-color:var(--brand)}
   .mtile .mt-eff button:disabled{opacity:.45;cursor:not-allowed}
-  #motor-pop .mp-busy{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin:0 2px 10px;padding:8px 10px;border:1px solid color-mix(in srgb,var(--warn) 45%,var(--line2));
+  #motor-pop .mp-busy{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:8px;margin:0 2px 10px;padding:8px 10px;border:1px solid color-mix(in srgb,var(--warn) 45%,var(--line2));
     border-radius:9px;font-family:var(--mono);font-size:10.5px;color:var(--warn)}
-  #motor-pop .mp-busy .sw{margin-left:auto;flex:none;font-weight:800;padding:5px 10px;border-radius:7px;border:1px solid var(--err);color:var(--err);background:none;cursor:pointer;white-space:nowrap}
+  #motor-pop .mp-busy .msg{min-width:0;line-height:1.35}
+  #motor-pop .mp-busy .sw{margin-left:0;font-weight:800;padding:5px 10px;border-radius:7px;border:1px solid var(--err);color:var(--err);background:none;cursor:pointer;white-space:nowrap}
   #motor-pop .mp-busy .sw.on{color:var(--bg);background:var(--err)}
   #motor-pop .mp-cancel{margin-top:10px;width:100%;font-family:var(--mono);font-size:10.5px;font-weight:700;padding:7px;border:1px dashed var(--err);
     border-radius:9px;background:none;color:var(--err);cursor:pointer}
@@ -507,7 +509,7 @@
   #motor-pop .mp-prog .sp{display:inline-block;animation:mpspin 1s linear infinite}
   @keyframes mpspin{to{transform:rotate(360deg)}}
   .motor-pill .sp{display:inline-block;animation:mpspin 1s linear infinite}
-  .mt-opt .cur{font-family:var(--mono);font-size:8.5px;font-weight:800;color:var(--bg);background:var(--dim);border-radius:99px;padding:1px 6px;margin-left:6px}
+  .mt-opt .cur{font-family:var(--mono);font-size:8.5px;font-weight:800;flex:none;color:var(--bg);background:var(--dim);border-radius:99px;padding:1px 6px;margin-left:6px}
   #motor-pop .mp-acct{margin-top:10px;padding-top:10px;border-top:1px solid var(--line2);display:flex;align-items:center;gap:6px;flex-wrap:wrap}
   #motor-pop .mp-acct .lbl{font-family:var(--mono);font-size:9.5px;color:var(--dim);letter-spacing:.5px;text-transform:uppercase;margin-right:4px}
   #motor-pop .mp-acct .ac{display:inline-flex;align-items:center;gap:6px;font-family:var(--mono);font-size:10.5px;font-weight:700;padding:5px 10px;border:1px solid var(--line2);border-radius:99px;background:none;color:var(--dim);cursor:pointer}
@@ -518,7 +520,7 @@
   #motor-pop .mp-acct .ac:disabled{opacity:.45;cursor:not-allowed}
   #motor-pop .mp-acct .add{border-style:dashed;color:var(--brand)}
   #motor-pop .mp-acct input{font-family:var(--mono);font-size:11px;padding:5px 8px;border:1px solid var(--brand);border-radius:8px;background:var(--bg);color:var(--text);width:150px}
-  #motor-pop .mp-foot{margin:10px 4px 0;font-family:var(--mono);font-size:10px;color:var(--dim);display:flex;gap:8px;align-items:center;white-space:nowrap;overflow:hidden}
+  #motor-pop .mp-foot{margin:10px 4px 0;font-family:var(--mono);font-size:10px;color:var(--dim);display:flex;gap:6px;align-items:center;flex-wrap:wrap;line-height:1.35}
   #motor-pop .mp-foot .ok{color:var(--ok)} #motor-pop .mp-foot .bad{color:var(--err)}
   .cx-motor{display:inline-flex}
   .cx-block > .cx-advice{grid-area:advice;margin:0;max-width:none}
@@ -2893,7 +2895,7 @@ function mdStrip(s){ return (s||"").replace(/\*\*|`|^#{1,6} /g, ""); }
 	  const busyNow = mode !== "global" && item && item.status === "working";
 	  pop.innerHTML = `<div class="mp-head"><b>${head[0]}</b><span>${head[1]}</span></div>
 	    ${pendNow ? `<div class="mp-prog"><span class="sp">⟳</span> ${mdEsc(pendNow.stageTxt || tf("cambiando…", "switching…"))}</div>` : ""}
-	    ${busyNow ? `<div class="mp-busy">⚠ ${tf("Está trabajando. Sin marcar, el cambio espera a que termine el turno.", "Working. Unchecked, the switch waits for the turn to end.")}
+	    ${busyNow ? `<div class="mp-busy"><span class="msg">⚠ ${tf("Está trabajando. Sin marcar, el cambio espera a que termine el turno.", "Working. Unchecked, the switch waits for the turn to end.")}</span>
 	      <button type="button" class="sw" aria-pressed="false">■ ${tf("detener y cambiar YA", "stop & switch NOW")}</button></div>` : ""}
 	    <div class="mp-grid">
 	      ${(item && item.agent === "grok" ? ["grok"] : ENGINE_IDS).map(id=>tile(id, engineLabel(id), engineSub(id))).join("")}

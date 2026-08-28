@@ -212,3 +212,11 @@ def test_grok_tabs_snapshot_exact_session_and_resume_with_grok_home():
     assert 'GROK_HOME_DEFAULT' in SRC
     assert 'grok --resume ' in SRC
     assert 'grok --continue' in SRC
+
+
+def test_claude_snapshot_and_resume_scan_all_account_config_dirs():
+    assert '~/.claude-accounts/*/sessions' in SRC
+    assert '"config_dir": os.path.dirname(directory)' in SRC
+    assert 'ent["claude_config_dir"]' in SRC
+    assert 'projects = os.path.join(cfg, "projects")' in SRC
+    assert 'CLAUDE_CONFIG_DIR=' in functions()["resume_command"]
