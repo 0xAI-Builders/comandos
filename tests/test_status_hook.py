@@ -66,9 +66,11 @@ def run_hook(
 
 def test_status_hook_preserves_output_with_one_jq(tmp_path):
     output, calls, _stderr = run_hook(tmp_path, 4)
+    # cc-status.sh ahora emite la paleta "aurora" con glifos nerd-font
+    # (\uf0f3 atencion / \uf00c listo) y separador · entre proyecto y extra
     assert output == (
-        "#[fg=colour214,bold]ATENCION: needs-you edge #[default]"
-        "#[fg=colour84]LISTO: finished #[default]"
+        "#[fg=#D08770]\uf0f3 needs-you · edge#[default]  "
+        "#[fg=#A3BE8C]\uf00c finished#[default]"
     )
     assert calls == 1
 
@@ -80,7 +82,8 @@ def test_status_hook_process_count_does_not_scale(tmp_path):
 
 def test_status_hook_preserves_newline_in_project(tmp_path):
     output, calls, _stderr = run_hook(tmp_path, 1, first_project="needs\nyou")
-    assert output == "#[fg=colour214,bold]ATENCION: needs\nyou #[default]"
+    # el salto de linea del proyecto se colapsa a " · " (una sola linea de barra)
+    assert output == "#[fg=#D08770]\uf0f3 needs · you#[default]"
     assert calls == 1
 
 

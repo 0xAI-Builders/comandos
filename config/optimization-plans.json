@@ -1,0 +1,38 @@
+{
+  "version": 1,
+  "plans": [
+    {
+      "id": "ahorro",
+      "label": "Ahorro",
+      "icon": "sprout",
+      "intent": "Menos razonamiento y modelos rápidos para trabajo rutinario.",
+      "variants": {
+        "claude": {"routeId":"claude:codex","model":"gpt-5.6-luna","effort":"low"},
+        "codex": {"routeId":"codex:codex","model":"gpt-5.6-luna","effort":"low"},
+        "grok": {"routeId":"grok:grok","model":"grok-4.5","effort":"low"}
+      }
+    },
+    {
+      "id": "equilibrio",
+      "label": "Equilibrio",
+      "icon": "layers",
+      "intent": "Buen balance para implementación, tests y debugging normal.",
+      "variants": {
+        "claude": {"routeId":"claude:codex","model":"gpt-5.6-terra","effort":"medium"},
+        "codex": {"routeId":"codex:codex","model":"gpt-5.6-terra","effort":"medium"},
+        "grok": {"routeId":"grok:grok","model":"grok-4.6","effort":"medium"}
+      }
+    },
+    {
+      "id": "calidad",
+      "label": "Calidad",
+      "icon": "sparkles",
+      "intent": "Modelos fuertes para arquitectura, ambigüedad y bugs difíciles.",
+      "variants": {
+        "claude": {"routeId":"claude:claude","model":"claude-fable-5[1m]","effort":"high"},
+        "codex": {"routeId":"codex:codex","model":"gpt-5.6-sol[1m]","effort":"high"},
+        "grok": {"routeId":"grok:grok","model":"grok-4.6","effort":"high"}
+      }
+    }
+  ]
+}

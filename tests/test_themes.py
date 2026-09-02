@@ -13,7 +13,7 @@ TERM = (ROOT / "dash" / "term.html").read_text()
 DESIGN = (ROOT / "DESIGN.md").read_text()
 
 ANSI = [
-    "#1A1A1A", "#DA462F", "#73E89A", "#FAD075",
+    "#888888", "#DA462F", "#73E89A", "#FAD075",
     "#8BC2F9", "#D691ED", "#7DDFF2", "#CCCCCC",
     "#666666", "#F38172", "#73E89A", "#FAD075",
     "#8BC2F9", "#D691ED", "#7DDFF2", "#FFFFFF",
@@ -23,12 +23,13 @@ ANSI_KEYS = [
     "brightBlack", "brightRed", "brightGreen", "brightYellow", "brightBlue",
     "brightMagenta", "brightCyan", "brightWhite",
 ]
-THEME_IDS = {"noche", "dia", "calido", "termius", "bruno"}
+THEME_IDS = {"noche", "dia", "calido", "termius", "bruno", "superglass", "neon", "contraste"}
 BRUNO_DASHBOARD_DECLARATIONS = {
     "--bg": "#1A1A1A", "--panel": "#222224", "--panel2": "#26292B",
     "--line": "#333333", "--line2": "#444444", "--text": "#CCCCCC",
-    "--dim": "#AAAAAA", "--faint": "#999999", "--brand": "#E4AE49",
-    "--waiting": "#F6AB79", "--done": "#73E89A", "--working": "#8BC2F9",
+    "--dim": "#AAAAAA", "--faint": "#999999", "--brand": "#E4AE49", "--on-brand": "#17120A",
+    "--waiting": "#D08770", "--done": "#A3BE8C", "--working": "#81A1C1",
+    "--err": "#BF616A", "--warn": "#D08770", "--ok": "#A3BE8C",
     "--glow": "#1A1A1A", "--code": "#8BC2F9", "--shadow": "rgba(0,0,0,.5)",
 }
 
@@ -173,14 +174,37 @@ def native_apply_namespace():
     return namespace
 
 
-def test_every_theme_registry_accepts_exactly_the_five_approved_ids():
+def test_canonical_theme_contrast_and_day_surface_separation():
+    canonical = json.loads((ROOT / "config" / "themes.json").read_text())
+    assert canonical["order"] == ["noche", "dia", "calido", "termius", "bruno", "superglass", "neon", "contraste"]
+
+    def luminance(value):
+        channels = [int(value[index:index + 2], 16) / 255 for index in (1, 3, 5)]
+        channels = [channel / 12.92 if channel <= 0.04045 else ((channel + 0.055) / 1.055) ** 2.4 for channel in channels]
+        return 0.2126 * channels[0] + 0.7152 * channels[1] + 0.0722 * channels[2]
+
+    def contrast(left, right):
+        a, b = luminance(left), luminance(right)
+        return (max(a, b) + 0.05) / (min(a, b) + 0.05)
+
+    for ident, theme in canonical["themes"].items():
+        assert contrast(theme["text"], theme["bg"]) >= 4.5, ident
+        assert contrast(theme["dim"], theme["panel"]) >= 4.5, ident
+        assert contrast(theme["onBrand"], theme["brand"]) >= 4.5, ident
+    day = canonical["themes"]["dia"]
+    assert day["bg"] != "#FFFFFF"
+    assert contrast(day["panel"], day["bg"]) >= 1.4
+    assert contrast(day["line2"], day["panel"]) >= 3.0
+
+
+def test_every_theme_registry_accepts_exactly_the_approved_ids():
     term_themes = eval_js_initializer(TERM, "THEMES")
     native_themes = native_theme_namespace()["THEMES"]
     dashboard_sequence = eval_js_initializer(INDEX, "THEME_SEQ")
 
     assert set(term_themes) == THEME_IDS
     assert set(native_themes) == THEME_IDS
-    assert dashboard_sequence == ["noche", "dia", "calido", "termius", "bruno"]
+    assert dashboard_sequence == ["noche", "dia", "calido", "termius", "bruno", "superglass", "neon", "contraste"]
     assert backend_theme_whitelist() == THEME_IDS
 
 

@@ -57,7 +57,8 @@ def test_backend_has_native_grok_launch_account_and_confirmed_switch_driver():
     assert 'grok_state.models(home)' in DASH
     assert 'summary.json' in DASH
     assert 'operationKey' in DASH
-    assert 'GROK_HOME=$HOME/.grok-accounts/' in DASH
+    assert 'account_registry.account_environment(load_provider_registry(), agent, alias)' in DASH
+    assert '"GROK_HOME"' in (ROOT / "config/providers.json").read_text()
 
 
 def test_desktop_and_ccx_resume_grok_exactly():

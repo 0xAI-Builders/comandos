@@ -26,7 +26,7 @@ try:
     HAVE_NOTIFY = True
 except Exception:
     Notify, HAVE_NOTIFY = None, False
-from gi.repository import Gtk, Gdk, GLib
+from gi.repository import Gtk, Gdk, GLib, GdkPixbuf
 
 PORT = 4778
 WIDTH = 320
@@ -96,16 +96,31 @@ def theme_tokens():
     return tokens
 
 
+_NOTIF_ICONS = os.path.join(os.path.dirname(os.path.realpath(__file__)),
+                            "..", "dash", "icons")
+
+
+def _icon_image(name, size, color):
+    """Icono Lucide (mismo set del tablero) tintado; nada de glifos '?'."""
+    try:
+        with open(os.path.join(_NOTIF_ICONS, f"{name}.svg"), "rb") as f:
+            data = f.read().replace(b"currentColor", color.encode())
+        loader = GdkPixbuf.PixbufLoader.new_with_type("svg")
+        loader.set_size(size, size)
+        loader.write(data); loader.close()
+        return Gtk.Image.new_from_pixbuf(loader.get_pixbuf())
+    except Exception:
+        return Gtk.Label(label="•")
+
+
 def build_css(t):
     return f"""
 window.ccpop {{ background-color: rgba(0,0,0,0); }}
 .card {{ background-color: {t['panel']}; border: 1px solid {t['line2']};
   border-radius: 14px; box-shadow: 0 8px 26px rgba(0,0,0,0.45); }}
 .hd {{ background-color: rgba(0,0,0,0); border-radius: 14px; }}
-.kbadge {{ background-color: {t['done']}; color: {t['bg']}; border-radius: 8px;
-  font-family: 'JetBrainsMono Nerd Font', monospace; font-weight: 900; font-size: 12px;
-  min-width: 22px; min-height: 22px; padding: 0px; }}
-.kbadge.waiting {{ background-color: {t['waiting']}; }}
+.kbadge {{ background: none; min-width: 22px; min-height: 22px; padding: 0px; }}
+.kbadge.waiting {{ background: none; }}
 .proj {{ color: {t['text']}; font-family: 'JetBrainsMono Nerd Font', monospace; font-weight: 800; font-size: 13px; letter-spacing: 0.2px; }}
 .inprev {{ color: mix({t['text']}, {t['dim']}, 0.35); font-size: 12.5px; }}
 .when {{ color: alpha({t['dim']}, 0.9); font-family: 'JetBrainsMono Nerd Font', monospace; font-size: 11px; }}
@@ -149,10 +164,10 @@ PERM_RE = re.compile(r"permi|pregunta|question|asking", re.IGNORECASE)
 CSS = b"""
 window.ccpop { background-color: rgba(0,0,0,0); }
 .card { background-color: #121722; border: 1px solid #222A3A; border-radius: 12px; }
-.card.waiting { border-color: #6b4c12; }
+.card.waiting { border-color: #222A3A; }
 .hd { background-color: rgba(0,0,0,0); }
-.kbadge { background-color: #2EE59D; color: #0A0D13; border-radius: 7px; min-width: 20px; min-height: 20px; font-weight: 900; }
-.kbadge.waiting { background-color: #FFAE1A; }
+.kbadge { background: none; min-width: 20px; min-height: 20px; }
+.kbadge.waiting { background: none; }
 .when { color: #9AA6BF; font-size: 8.5px; }
 .inprev { color: #9AA6BF; font-size: 11px; }
 .tag { color: #FFAE1A; font-family: 'JetBrainsMono Nerd Font', monospace; font-size: 9.5px; font-weight: 700; }
@@ -540,7 +555,10 @@ def make_popup(title, body, session, kind, project, options_str="", full="", exp
     ar_ev.connect("enter-notify-event", lambda *_: (ar.get_style_context().add_class("hover"), False)[1])
     ar_ev.connect("leave-notify-event", lambda *_: (ar.get_style_context().remove_class("hover"), False)[1])
     hdi.pack_start(ar_ev, False, False, 0)
-    kd = Gtk.Label(label=("?" if kind == "waiting" else "✓"))
+    tk = theme_tokens() if callable(globals().get("theme_tokens")) else {}
+    kd = _icon_image("bell" if kind == "waiting" else "check", 15,
+                     (tk.get("waiting") or "#F5B14C") if kind == "waiting"
+                     else (tk.get("done") or "#34D399"))
     kd.get_style_context().add_class("kbadge")
     if kind == "waiting":
         kd.get_style_context().add_class("waiting")

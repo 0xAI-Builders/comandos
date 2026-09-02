@@ -1,75 +1,15 @@
 {
-  "_doc": "Tokens de color por tema (fuente: dash/index.html). Los lee cc-notifyd para que los popups sigan el tema del tablero. EDITABLE.",
+  "_doc": "Canonical ComandOS visual tokens. Consumers use opaque surfaces; treatment metadata is interpreted by the dashboard.",
+  "default": "noche",
+  "order": ["noche", "dia", "calido", "termius", "bruno", "superglass", "neon", "contraste"],
   "themes": {
-    "noche": {
-      "bg": "#0A0D13",
-      "panel": "#121722",
-      "panel2": "#161C29",
-      "line": "#222A3A",
-      "line2": "#2E3852",
-      "text": "#EAF0FB",
-      "dim": "#9AA6BF",
-      "faint": "#5E6980",
-      "brand": "#8B7CFF",
-      "waiting": "#FFAE1A",
-      "done": "#2EE59D",
-      "working": "#7AA5FF"
-    },
-    "dia": {
-      "bg": "#0A0D13",
-      "panel": "#121722",
-      "panel2": "#161C29",
-      "line": "#222A3A",
-      "line2": "#2E3852",
-      "text": "#EAF0FB",
-      "dim": "#9AA6BF",
-      "faint": "#5E6980",
-      "brand": "#8B7CFF",
-      "waiting": "#FFAE1A",
-      "done": "#2EE59D",
-      "working": "#7AA5FF"
-    },
-    "calido": {
-      "bg": "#161009",
-      "panel": "#1F1811",
-      "panel2": "#261D14",
-      "line": "#36291A",
-      "line2": "#4A3823",
-      "text": "#F2E5D0",
-      "dim": "#BCA98C",
-      "faint": "#8A7A5F",
-      "brand": "#E0A458",
-      "waiting": "#FFB454",
-      "done": "#8FD48A",
-      "working": "#89A7E0"
-    },
-    "termius": {
-      "bg": "#0E1620",
-      "panel": "#141E2A",
-      "panel2": "#182432",
-      "line": "#1C2733",
-      "line2": "#25384F",
-      "text": "#D6E0EA",
-      "dim": "#8FA0B4",
-      "faint": "#5C6B80",
-      "brand": "#4CE07A",
-      "waiting": "#FFAE1A",
-      "done": "#4CE07A",
-      "working": "#7DB4E6"
-    },
-    "bruno": {
-      "bg": "#1A1A1A",
-      "panel": "#222224",
-      "panel2": "#26292B",
-      "line": "#333333",
-      "line2": "#444444",
-      "text": "#CCCCCC",
-      "dim": "#AAAAAA",
-      "faint": "#999999",
-      "brand": "#E4AE49",
-      "waiting": "#F6AB79",
-      "done": "#73E89A",
-      "working": "#8BC2F9"
-    }
+    "noche": {"label":"Noche Órbita","icon":"moon","scheme":"dark","treatment":"solid","bg":"#0A0D13","panel":"#121722","panel2":"#161C29","line":"#222A3A","line2":"#2E3852","text":"#EAF0FB","dim":"#9AA6BF","faint":"#5E6980","brand":"#8B7CFF","onBrand":"#080B11","waiting":"#FFAE1A","working":"#7AA5FF","done":"#2EE59D","err":"#FF7580","warn":"#FFAE1A","ok":"#2EE59D","glow":"#141B2E","code":"#A3C0FF","cursor":"#FFAE1A","bar":"#0D1119"},
+    "dia": {"label":"Día Mineral","icon":"sun","scheme":"light","treatment":"solid","bg":"#BCC7D4","panel":"#F1F4F7","panel2":"#DDE4EB","line":"#98A6B6","line2":"#687A90","text":"#17202B","dim":"#3E4D61","faint":"#5E7087","brand":"#1D55C7","onBrand":"#FFFFFF","waiting":"#774A00","working":"#1D55C7","done":"#126642","err":"#A81E32","warn":"#774A00","ok":"#126642","glow":"#96A8BC","code":"#1749AD","cursor":"#1D55C7","bar":"#AEBAC8"},
+    "calido": {"label":"Cálido Ámbar","icon":"flame","scheme":"dark","treatment":"solid","bg":"#161009","panel":"#1F1811","panel2":"#261D14","line":"#36291A","line2":"#4A3823","text":"#F2E5D0","dim":"#BCA98C","faint":"#8A7A5F","brand":"#E0A458","onBrand":"#201308","waiting":"#FFB454","working":"#89A7E0","done":"#8FD48A","err":"#FF7F78","warn":"#FFB454","ok":"#8FD48A","glow":"#241A0F","code":"#E5C68F","cursor":"#FFB454","bar":"#1D150D"},
+    "termius": {"label":"Termius","icon":"terminal","scheme":"dark","treatment":"solid","bg":"#0E1620","panel":"#141E2A","panel2":"#182432","line":"#1C2733","line2":"#25384F","text":"#D6E0EA","dim":"#8FA0B4","faint":"#5C6B80","brand":"#4CE07A","onBrand":"#07160E","waiting":"#FFAE1A","working":"#7DB4E6","done":"#4CE07A","err":"#FF7580","warn":"#FFAE1A","ok":"#4CE07A","glow":"#0B131C","code":"#7DB4E6","cursor":"#FFAE1A","bar":"#0A121B"},
+    "bruno": {"label":"Bruno Grafito","icon":"zap","scheme":"dark","treatment":"solid","bg":"#1A1A1A","panel":"#222224","panel2":"#26292B","line":"#333333","line2":"#444444","text":"#CCCCCC","dim":"#AAAAAA","faint":"#999999","brand":"#E4AE49","onBrand":"#17120A","waiting":"#D08770","working":"#81A1C1","done":"#A3BE8C","err":"#BF616A","warn":"#D08770","ok":"#A3BE8C","glow":"#1A1A1A","code":"#8BC2F9","cursor":"#E4AE49","bar":"#222224"},
+    "superglass": {"label":"Super Glass","icon":"sparkles","scheme":"dark","treatment":"glass","bg":"#080B19","panel":"#171B36","panel2":"#202749","line":"#34416C","line2":"#53679A","text":"#F2F5FF","dim":"#B7C3E8","faint":"#8291BD","brand":"#72E6FF","onBrand":"#061119","waiting":"#FFC66D","working":"#8EA7FF","done":"#70F0B4","err":"#FF7FAD","warn":"#FFC66D","ok":"#70F0B4","glow":"#352C78","code":"#9EDFFF","cursor":"#72E6FF","bar":"#11152C"},
+    "neon": {"label":"Neón","icon":"zap","scheme":"dark","treatment":"neon","bg":"#07080D","panel":"#11131B","panel2":"#181B27","line":"#33384B","line2":"#596079","text":"#F7F7FC","dim":"#B7B8CA","faint":"#85879F","brand":"#28E7F2","onBrand":"#041214","waiting":"#FFD166","working":"#BC7CFF","done":"#53F2A7","err":"#FF5FA2","warn":"#FFD166","ok":"#53F2A7","glow":"#2B103F","code":"#7BF6FF","cursor":"#28E7F2","bar":"#0D0F16"},
+    "contraste": {"label":"Contraste","icon":"layers","scheme":"dark","treatment":"contrast","bg":"#000000","panel":"#0B0B0B","panel2":"#171717","line":"#8A8A8A","line2":"#FFFFFF","text":"#FFFFFF","dim":"#E0E0E0","faint":"#B8B8B8","brand":"#59B0FF","onBrand":"#000000","waiting":"#FFD43B","working":"#79B8FF","done":"#5CFF9A","err":"#FF7B85","warn":"#FFD43B","ok":"#5CFF9A","glow":"#000000","code":"#8CC8FF","cursor":"#59B0FF","bar":"#000000"}
   }
 }

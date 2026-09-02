@@ -146,10 +146,13 @@
 
   const THEMES = {
     noche:  {background:'#0A0D13',foreground:'#EAF0FB',cursor:'#FFAE1A',cursorAccent:'#0A0D13',selectionBackground:'#2E3852',panel:'#121722',panel2:'#161C29',line:'#222A3A',line2:'#2E3852',dim:'#9AA6BF',faint:'#5E6980',brand:'#8B7CFF'},
-    dia:    {background:'#F7F8FB',foreground:'#1B2130',cursor:'#B26A00',cursorAccent:'#F7F8FB',selectionBackground:'#D9DEE8',panel:'#FBFCFE',panel2:'#EDF0F6',line:'#D9DEE8',line2:'#C3CAD8',dim:'#4E5A70',faint:'#8892A6',brand:'#5B4BD6'},
+    dia:    {background:'#BCC7D4',foreground:'#17202B',cursor:'#1D55C7',cursorAccent:'#FFFFFF',selectionBackground:'#98A6B6',panel:'#F1F4F7',panel2:'#DDE4EB',line:'#98A6B6',line2:'#687A90',dim:'#3E4D61',faint:'#5E7087',brand:'#1D55C7'},
     calido: {background:'#161009',foreground:'#F2E5D0',cursor:'#FFB454',cursorAccent:'#161009',selectionBackground:'#36291A',panel:'#1F1811',panel2:'#261D14',line:'#36291A',line2:'#4A3823',dim:'#BCA98C',faint:'#8A7A5F',brand:'#E0A458'},
     termius:{background:'#0E1620',foreground:'#D6E0EA',cursor:'#FFAE1A',cursorAccent:'#0E1620',selectionBackground:'#25384F',panel:'#141E2A',panel2:'#182432',line:'#1C2733',line2:'#25384F',dim:'#8FA0B4',faint:'#5C6B80',brand:'#4CE07A'},
-    bruno:  {background:'#1A1A1A',foreground:'#CCCCCC',cursor:'#E4AE49',cursorAccent:'#1A1A1A',selectionBackground:'#444444',panel:'#222224',panel2:'#26292B',line:'#333333',line2:'#444444',dim:'#AAAAAA',faint:'#999999',brand:'#E4AE49',black:'#1A1A1A',red:'#DA462F',green:'#73E89A',yellow:'#FAD075',blue:'#8BC2F9',magenta:'#D691ED',cyan:'#7DDFF2',white:'#CCCCCC',brightBlack:'#666666',brightRed:'#F38172',brightGreen:'#73E89A',brightYellow:'#FAD075',brightBlue:'#8BC2F9',brightMagenta:'#D691ED',brightCyan:'#7DDFF2',brightWhite:'#FFFFFF'},
+    bruno:  {background:'#1A1A1A',foreground:'#CCCCCC',cursor:'#E4AE49',cursorAccent:'#1A1A1A',selectionBackground:'#444444',panel:'#222224',panel2:'#26292B',line:'#333333',line2:'#444444',dim:'#AAAAAA',faint:'#999999',brand:'#E4AE49',black:'#888888',red:'#DA462F',green:'#73E89A',yellow:'#FAD075',blue:'#8BC2F9',magenta:'#D691ED',cyan:'#7DDFF2',white:'#CCCCCC',brightBlack:'#666666',brightRed:'#F38172',brightGreen:'#73E89A',brightYellow:'#FAD075',brightBlue:'#8BC2F9',brightMagenta:'#D691ED',brightCyan:'#7DDFF2',brightWhite:'#FFFFFF'},
+    superglass:{background:'#080B19',foreground:'#F2F5FF',cursor:'#72E6FF',cursorAccent:'#061119',selectionBackground:'#34416C',panel:'#171B36',panel2:'#202749',line:'#34416C',line2:'#53679A',dim:'#B7C3E8',faint:'#8291BD',brand:'#72E6FF'},
+    neon:   {background:'#07080D',foreground:'#F7F7FC',cursor:'#28E7F2',cursorAccent:'#041214',selectionBackground:'#33384B',panel:'#11131B',panel2:'#181B27',line:'#33384B',line2:'#596079',dim:'#B7B8CA',faint:'#85879F',brand:'#28E7F2'},
+    contraste:{background:'#000000',foreground:'#FFFFFF',cursor:'#59B0FF',cursorAccent:'#000000',selectionBackground:'#8A8A8A',panel:'#0B0B0B',panel2:'#171717',line:'#8A8A8A',line2:'#FFFFFF',dim:'#E0E0E0',faint:'#B8B8B8',brand:'#59B0FF'},
   };
   let activeTheme = THEMES[theme] ? theme : 'noche';
 
@@ -194,6 +197,39 @@
   term.loadAddon(fit);
   term.loadAddon(links);
   term.open(document.getElementById('term'));
+  // URLs ENVUELTAS por el wrap duro de tmux: WebLinksAddon solo ve una fila;
+  // este provider re-une el bloque de filas llenas y liga el span completo.
+  // Un link jamas debe romperse por saltos de linea.
+  try{ term.registerLinkProvider && term.registerLinkProvider({
+    provideLinks(row, cb){
+      try{
+        const buf = term.buffer.active;
+        const y = row - 1;
+        const lineTxt = i => { const l = buf.getLine(i); return l ? l.translateToString(true) : ""; };
+        const full = i => lineTxt(i).length >= term.cols;   // fila llena => wrap duro probable
+        let top = y, bot = y;
+        while (top > 0 && full(top - 1)) top--;
+        while (bot < buf.length - 1 && full(bot)) bot++;
+        if (top === bot){ cb(undefined); return; }          // una sola fila: la cubre WebLinksAddon
+        const rows = []; let joined = "";
+        for (let i = top; i <= bot; i++){ rows.push({i, off: joined.length, len: lineTxt(i).length}); joined += lineTxt(i); }
+        const found = [];
+        const re = /https?:\/\/[^\s'"<>\])]+/g; let m;
+        while ((m = re.exec(joined))){
+          const s = m.index, e = m.index + m[0].length;
+          const sr = rows.filter(r => r.off <= s).pop(), er = rows.filter(r => r.off < e).pop();
+          if (!sr || !er || sr.i === er.i) continue;         // solo spans multi-fila
+          if (y < sr.i || y > er.i) continue;                // debe tocar la fila pedida
+          found.push({
+            text: m[0],
+            range: {start: {x: s - sr.off + 1, y: sr.i + 1}, end: {x: e - er.off, y: er.i + 1}},
+            activate: (_e, text) => openWebLink(_e, text),
+          });
+        }
+        cb(found.length ? found : undefined);
+      }catch(e){ cb(undefined); }
+    }
+  }); }catch(_e){}
   // Canvas addon debe cargarse DESPUES de open() y antes de escribir.
   try { term.loadAddon(canvas); } catch (e) { console.warn('CanvasAddon failed', e); }
 

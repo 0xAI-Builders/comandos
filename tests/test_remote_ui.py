@@ -2877,7 +2877,7 @@ console.log(JSON.stringify({{
             "selectionBackground": "#444444", "panel": "#222224",
             "panel2": "#26292B", "line": "#333333", "line2": "#444444",
             "dim": "#AAAAAA", "faint": "#999999", "brand": "#E4AE49",
-            "black": "#1A1A1A", "red": "#DA462F", "green": "#73E89A",
+            "black": "#888888", "red": "#DA462F", "green": "#73E89A",
             "yellow": "#FAD075", "blue": "#8BC2F9", "magenta": "#D691ED",
             "cyan": "#7DDFF2", "white": "#CCCCCC", "brightBlack": "#666666",
             "brightRed": "#F38172", "brightGreen": "#73E89A",
@@ -3274,7 +3274,7 @@ function fetch(_url, options) {{
 
 
 def test_remote_routes_are_never_served_from_stale_shell_cache():
-    assert 'const SHELL = "comandos-shell-v3"' in SW
+    assert 'const SHELL = "comandos-shell-v5"' in SW
     for endpoint in (
         "/remote-state",
         "/remote-qr.png",

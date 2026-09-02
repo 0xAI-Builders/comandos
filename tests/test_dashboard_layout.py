@@ -75,7 +75,9 @@ def test_phone_dashboard_keeps_servers_compact_and_session_actions_visible():
     compact = re.sub(r"\s+", "", mobile)
 
     assert "#ssh-bar{flex-wrap:wrap;overflow:visible}" in compact, "servidores se envuelven, sin scroll horizontal"
-    assert ".row.rpath{display:none}" in compact
+    # el PATH ya no se oculta en móvil: es el identificador humano de la fila
+    # (display:block bajo el nombre, con wrap — decisión del rediseño de rows)
+    assert ".row.rpath{display:block" in compact
     assert ".row.name{flex-basis:140px}" in compact
     assert "#servers.modal-panel{padding:24px18px}" in compact
     assert ".srv-row{flex-wrap:wrap}" in compact

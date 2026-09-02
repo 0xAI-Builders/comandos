@@ -1,11 +1,13 @@
 {
-  "version": 1,
+  "version": 2,
   "harnesses": {
     "claude": {
       "label": "Claude Code",
       "icon": "anthropic",
       "binary": "claude",
-      "processNames": ["claude"],
+      "processNames": [
+        "claude"
+      ],
       "launchDriver": "claude",
       "accountEnv": "CLAUDE_CONFIG_DIR",
       "defaultHome": "~/.claude",
@@ -24,7 +26,10 @@
       "label": "Codex CLI",
       "icon": "openai",
       "binary": "codex",
-      "processNames": ["codex", "node"],
+      "processNames": [
+        "codex",
+        "node"
+      ],
       "launchDriver": "codex",
       "accountEnv": "CODEX_HOME",
       "defaultHome": "~/.codex",
@@ -44,7 +49,10 @@
       "icon": "xai",
       "binary": "grok",
       "minimumVersion": "1.0.5",
-      "processNames": ["grok", "grok-linux-x86_64"],
+      "processNames": [
+        "grok",
+        "grok-linux-x86_64"
+      ],
       "launchDriver": "grok",
       "accountEnv": "GROK_HOME",
       "defaultHome": "~/.grok",
@@ -56,14 +64,23 @@
           "id": "grok-4.6",
           "name": "Grok 4.6",
           "tag": "coding recomendado · 500k ctx",
-          "efforts": ["low", "medium", "high", "xhigh"],
+          "efforts": [
+            "low",
+            "medium",
+            "high",
+            "xhigh"
+          ],
           "defaultEffort": "high"
         },
         {
           "id": "grok-4.5",
           "name": "Grok 4.5",
           "tag": "500k ctx",
-          "efforts": ["low", "medium", "high"],
+          "efforts": [
+            "low",
+            "medium",
+            "high"
+          ],
           "defaultEffort": "high"
         }
       ],
@@ -84,25 +101,51 @@
       "label": "OpenCode",
       "icon": "opencode",
       "binary": "opencode",
-      "processNames": ["opencode"],
+      "processNames": [
+        "opencode"
+      ],
       "launchDriver": "opencode",
-      "capabilities": {"models": true, "effort": false, "accounts": false, "resume": false, "splits": true}
+      "capabilities": {
+        "models": true,
+        "effort": false,
+        "accounts": false,
+        "resume": false,
+        "splits": true
+      }
     },
     "gemini": {
       "label": "Gemini CLI",
       "icon": "gemini",
       "binary": "gemini",
-      "processNames": ["gemini"],
+      "processNames": [
+        "gemini"
+      ],
       "launchDriver": "gemini",
-      "capabilities": {"models": false, "effort": false, "accounts": false, "resume": false, "splits": true}
+      "capabilities": {
+        "models": false,
+        "effort": false,
+        "accounts": false,
+        "resume": false,
+        "splits": true
+      }
     },
     "shell": {
       "label": "Shell",
       "icon": "terminal",
       "binary": null,
-      "processNames": ["bash", "zsh", "fish"],
+      "processNames": [
+        "bash",
+        "zsh",
+        "fish"
+      ],
       "launchDriver": "shell",
-      "capabilities": {"models": false, "effort": false, "accounts": false, "resume": false, "splits": true}
+      "capabilities": {
+        "models": false,
+        "effort": false,
+        "accounts": false,
+        "resume": false,
+        "splits": true
+      }
     }
   },
   "claudeEngines": {
@@ -138,5 +181,324 @@
         "Puede requerir actualización cuando xAI cambie su servicio de CLI."
       ]
     }
-  }
+  },
+  "matrixHarnesses": [
+    "claude",
+    "codex",
+    "grok"
+  ],
+  "motors": {
+    "claude": {
+      "label": "Claude",
+      "icon": "anthropic",
+      "modelMatch": "^(?:claude-|opus$|sonnet$|haiku$|fable$)",
+      "models": [
+        {
+          "id": "claude-fable-5-1",
+          "name": "Fable 5.1",
+          "tag": "más inteligente · 1M ctx",
+          "efforts": [
+            "low",
+            "medium",
+            "high",
+            "xhigh",
+            "max"
+          ],
+          "defaultEffort": "high"
+        },
+        {
+          "id": "claude-fable-5[1m]",
+          "name": "Fable 5",
+          "tag": "más inteligente · 1M ctx",
+          "efforts": [
+            "low",
+            "medium",
+            "high",
+            "xhigh",
+            "max"
+          ],
+          "defaultEffort": "high"
+        },
+        {
+          "id": "claude-opus-5",
+          "name": "Opus 5",
+          "tag": "potente",
+          "efforts": [
+            "low",
+            "medium",
+            "high",
+            "xhigh",
+            "max"
+          ],
+          "defaultEffort": "high"
+        },
+        {
+          "id": "claude-sonnet-5",
+          "name": "Sonnet 5",
+          "tag": "rápido y barato",
+          "efforts": [
+            "low",
+            "medium",
+            "high",
+            "xhigh",
+            "max"
+          ],
+          "defaultEffort": "high"
+        }
+      ]
+    },
+    "codex": {
+      "label": "Codex",
+      "icon": "openai",
+      "modelMatch": "^(?:gpt-|o[0-9]|codex)",
+      "models": [
+        {
+          "id": "gpt-5.6-sol[1m]",
+          "name": "GPT-5.6 Sol",
+          "tag": "más inteligente · 1M ctx",
+          "efforts": [
+            "low",
+            "medium",
+            "high",
+            "xhigh"
+          ],
+          "defaultEffort": "high"
+        },
+        {
+          "id": "gpt-5.6-terra",
+          "name": "GPT-5.6 Terra",
+          "tag": "equilibrado",
+          "efforts": [
+            "low",
+            "medium",
+            "high",
+            "xhigh"
+          ],
+          "defaultEffort": "high"
+        },
+        {
+          "id": "gpt-5.6-luna",
+          "name": "GPT-5.6 Luna",
+          "tag": "rápido y barato",
+          "efforts": [
+            "low",
+            "medium",
+            "high",
+            "xhigh"
+          ],
+          "defaultEffort": "high"
+        },
+        {
+          "id": "gpt-5.5",
+          "name": "GPT-5.5",
+          "tag": "generación anterior",
+          "efforts": [
+            "low",
+            "medium",
+            "high",
+            "xhigh"
+          ],
+          "defaultEffort": "high"
+        }
+      ]
+    },
+    "grok": {
+      "label": "Grok",
+      "icon": "xai",
+      "modelMatch": "^(?:grok-|xai/)",
+      "models": [
+        {
+          "id": "grok-4.6",
+          "name": "Grok 4.6",
+          "tag": "coding recomendado · 500k ctx",
+          "efforts": [
+            "low",
+            "medium",
+            "high",
+            "xhigh"
+          ],
+          "defaultEffort": "high"
+        },
+        {
+          "id": "grok-4.5",
+          "name": "Grok 4.5",
+          "tag": "500k ctx",
+          "efforts": [
+            "low",
+            "medium",
+            "high"
+          ],
+          "defaultEffort": "high"
+        }
+      ]
+    }
+  },
+  "routes": [
+    {
+      "id": "claude:claude",
+      "harness": "claude",
+      "motor": "claude",
+      "transport": "anthropic-subscription",
+      "authRequirements": [
+        "harness:claude"
+      ],
+      "actionScopes": [
+        "new_session",
+        "session_motor",
+        "session_model"
+      ],
+      "accountScopes": [
+        "harness"
+      ],
+      "driver": "claude",
+      "experimental": false
+    },
+    {
+      "id": "claude:codex",
+      "harness": "claude",
+      "motor": "codex",
+      "transport": "gateway-messages",
+      "authRequirements": [
+        "harness:claude",
+        "motor:codex",
+        "gateway"
+      ],
+      "actionScopes": [
+        "new_session",
+        "session_motor",
+        "session_model"
+      ],
+      "accountScopes": [
+        "harness",
+        "motor"
+      ],
+      "driver": "claude",
+      "experimental": false
+    },
+    {
+      "id": "claude:grok",
+      "harness": "claude",
+      "motor": "grok",
+      "transport": "gateway-messages",
+      "authRequirements": [
+        "harness:claude",
+        "motor:grok",
+        "gateway"
+      ],
+      "actionScopes": [
+        "new_session",
+        "session_motor",
+        "session_model"
+      ],
+      "accountScopes": [
+        "harness",
+        "motor"
+      ],
+      "driver": "claude",
+      "experimental": true,
+      "liveVerified": true
+    },
+    {
+      "id": "codex:codex",
+      "harness": "codex",
+      "motor": "codex",
+      "transport": "native",
+      "authRequirements": [
+        "harness:codex"
+      ],
+      "actionScopes": [
+        "new_session",
+        "session_model"
+      ],
+      "accountScopes": [
+        "harness"
+      ],
+      "driver": "codex",
+      "experimental": false
+    },
+    {
+      "id": "grok:grok",
+      "harness": "grok",
+      "motor": "grok",
+      "transport": "native",
+      "authRequirements": [
+        "harness:grok"
+      ],
+      "actionScopes": [
+        "new_session",
+        "session_model"
+      ],
+      "accountScopes": [
+        "harness"
+      ],
+      "driver": "grok",
+      "experimental": false
+    },
+    {
+      "id": "codex:grok",
+      "harness": "codex",
+      "motor": "grok",
+      "transport": "gateway-responses",
+      "authRequirements": [
+        "harness:codex",
+        "motor:grok",
+        "gateway"
+      ],
+      "actionScopes": [
+        "new_session",
+        "session_motor",
+        "session_model"
+      ],
+      "accountScopes": [
+        "harness",
+        "motor"
+      ],
+      "driver": "codex",
+      "experimental": true,
+      "liveVerified": false,
+      "reasonCode": "route_not_live_verified"
+    },
+    {
+      "id": "grok:codex",
+      "harness": "grok",
+      "motor": "codex",
+      "transport": "gateway-messages",
+      "authRequirements": [
+        "harness:grok",
+        "motor:codex",
+        "gateway"
+      ],
+      "actionScopes": [
+        "new_session",
+        "session_motor",
+        "session_model"
+      ],
+      "accountScopes": [
+        "harness",
+        "motor"
+      ],
+      "driver": "grok",
+      "experimental": true,
+      "liveVerified": false,
+      "reasonCode": "route_not_live_verified"
+    }
+  ],
+  "exclusions": [
+    {
+      "id": "codex:claude",
+      "harness": "codex",
+      "motor": "claude",
+      "productState": "unsupported_protocol",
+      "reasonCode": "unsupported_protocol",
+      "message": "Codex CLI solo admite Responses; Claude subscription no expone ese protocolo."
+    },
+    {
+      "id": "grok:claude",
+      "harness": "grok",
+      "motor": "claude",
+      "productState": "subscription_incompatible",
+      "reasonCode": "subscription_not_accepted",
+      "message": "Grok Build requiere API key Anthropic; Claude Max no se puede reenviar."
+    }
+  ]
 }

@@ -83,3 +83,12 @@ def test_grok_builtin_launch_uses_official_continue(monkeypatch):
     monkeypatch.setattr(dash, "read_conf", lambda: {})
     assert dash.agent_launch("grok") == "grok --continue 2>/dev/null || grok"
     assert dash.agent_process_aliases()["grok-linux-x86_64"] == "grok"
+
+
+def test_generic_account_environment_is_applied_to_native_launches():
+    source = Path("bin/cc-dash").read_text()
+    assert "account_registry.account_environment(load_provider_registry(), agent, alias)" in source
+    assert 'cmd = account_prefix + "codex"' in source
+    assert 'cmd = account_prefix + "grok"' in source
+    assert 'cmd = account_prefix + "claude"' in source
+    assert 'alias, motor_alias, route["id"], "session-new"' in source

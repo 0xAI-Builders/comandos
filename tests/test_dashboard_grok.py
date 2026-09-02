@@ -6,6 +6,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 HTML = (ROOT / "dash/index.html").read_text()
 PROXY = json.loads((ROOT / "config/proxy.json").read_text())
+REGISTRY = json.loads((ROOT / "config/providers.json").read_text())
 TIERS = json.loads((ROOT / "config/model-tiers.json").read_text())
 
 
@@ -18,23 +19,27 @@ def test_xai_logo_and_provider_match_ship_together():
 
 
 def test_grok_models_and_per_model_efforts_are_exposed():
-    models = {m["id"]: m for m in PROXY["grok"]["menu"]}
+    models = {m["id"]: m for m in REGISTRY["motors"]["grok"]["models"]}
     assert models["grok-4.6"]["efforts"] == ["low", "medium", "high", "xhigh"]
     assert models["grok-4.5"]["efforts"] == ["low", "medium", "high"]
     assert 'function effortsFor(prov, model)' in HTML
     assert "tileEfforts.map" in HTML
 
 
-def test_claude_picker_is_three_engine_and_native_grok_is_single_engine():
-    assert 'const ENGINE_IDS = ["claude", "codex", "grok"]' in HTML
-    assert 'item && ["grok","codex"].includes(item.agent) ? [item.agent] : ENGINE_IDS' in HTML
-    assert 'driver = ["grok","codex"].includes(item.agent) ? item.agent : "claude"' in HTML
+def test_picker_and_wizard_are_matrix_driven():
+    assert "function matrixRoute(harness,motor)" in HTML
+    assert "function matrixMotors(harness)" in HTML
+    assert "const nsMatrix =" in HTML
+    assert 'routeId:NS.routeId' in HTML
+    assert '5 disponibles' not in HTML  # counts come from runtime matrix
 
 
-def test_grok_wizard_modes_and_accounts_are_visible():
-    assert '{id: "claude-grok", label: "Claude + Grok"' in HTML
-    assert '{id: "grok", label: "Grok Build"' in HTML
-    assert 'provider: item && item.agent === "grok" ? "grok" : "claude"' in HTML
+def test_harness_accounts_are_registry_driven_for_all_providers():
+    assert 'function nsAccountItems(provider,role="harness")' in HTML
+    assert "nsHarness(provider).accounts" in HTML
+    assert 'NS.harness === "grok"' not in HTML
+    assert "PROXY.accounts || []" not in HTML
+    assert 'provider: (item&&item.agent)||"claude"' in HTML
 
 
 def test_switch_loading_and_results_are_pane_keyed():
@@ -44,10 +49,9 @@ def test_switch_loading_and_results_are_pane_keyed():
     assert 'confirmando modelo y esfuerzo' not in HTML  # stage comes from backend, not a fake optimistic string
 
 
-def test_native_harness_cards_have_their_own_model_picker_and_driver():
+def test_native_and_cross_engine_routes_have_explicit_backend_ids():
     assert '["claude","codex","grok"].includes(it.agent)' in HTML
-    assert 'item && ["grok","codex"].includes(item.agent) ? [item.agent] : ENGINE_IDS' in HTML
+    assert 'matrixMotors((item&&item.agent)||"claude")' in HTML
+    assert 'routeId:st.routeId' in HTML
     assert 'driver = ["grok","codex"].includes(item.agent) ? item.agent : "claude"' in HTML
-    assert 'Harness / motor' in HTML
-    for label in ("Claude Code", "Claude + Codex", "Claude + Grok", "Codex CLI", "Grok Build"):
-        assert label in HTML
+    assert 'Harness' in HTML and 'Motor' in HTML and 'Pensamiento' in HTML

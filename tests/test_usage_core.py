@@ -359,7 +359,7 @@ def test_record_local_codex_threads_imports_sqlite_tokens():
     assert state["totals"]["total_tokens"] == 1234
     assert state["projects"][0]["git_root"] == "/repo"
     assert state["projects"][0]["panes"][0]["provider"] == "codex"
-    assert state["projects"][0]["panes"][0]["confidence"] == "local"
+    assert state["projects"][0]["panes"][0]["confidence"] == "shared"
 
 
 def test_record_local_opencode_db_imports_assistant_tokens():

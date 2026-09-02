@@ -11,30 +11,28 @@ seleccionable, tipografía monoespaciada consistente, íconos monolínea.
 
 ## 1. Paleta
 
-Cinco temas simultáneos — el usuario alterna con el botón luna/sol/llama,
-brotes y rayo. Todos
-los colores viven en variables CSS (`--bg`, `--panel`, `--brand`, …) y en el
-diccionario `THEMES` de `bin/cc-app`. Nunca hardcodear un color en un
-componente nuevo: usar la variable.
+Ocho temas simultáneos viven en `config/themes.json`, la fuente canónica de
+metadata, superficies y estados. **Noche Órbita**, **Día Mineral**, **Cálido
+Ámbar**, **Termius** y **Bruno Grafito** preservan las identidades sólidas;
+**Super Glass** añade aurora y blur limitado al chrome; **Neón** usa carbono,
+cyan y magenta; **Contraste** elimina blur/sombras y refuerza límites. La
+selección se hace en Ajustes → Apariencia mediante radio-cards accesibles.
+Dashboard, xterm, GTK/VTE, macOS, tmux y popups deben proyectar el mismo contrato.
 
-| Rol             | noche       | dia         | calido      | termius    | bruno      |
-| --------------- | ----------- | ----------- | ----------- | ---------- | ---------- |
-| Fondo app       | `#0A0D13`   | `#F2F4F8`   | `#161009`   | `#0E1620`  | `#1A1A1A`  |
-| Panel           | `#121722`   | `#FBFCFE`   | `#1F1811`   | `#141E2A`  | `#222224`  |
-| Panel secundario| `#161C29`   | `#EDF0F6`   | `#261D14`   | `#182432`  | `#26292B`  |
-| Text            | `#EAF0FB`   | `#1B2130`   | `#F2E5D0`   | `#D6E0EA`  | `#CCCCCC`  |
-| Dim (label)    | `#9AA6BF`   | `#4E5A70`   | `#BCA98C`   | `#8FA0B4`  | `#AAAAAA`  |
-| Faint (hint)   | `#5E6980`   | `#8892A6`   | `#8A7A5F`   | `#5C6B80`  | `#999999`  |
-| Brand (acento) | `#8B7CFF`   | `#5B4BD6`   | `#E0A458`   | `#4CE07A`  | `#E4AE49`  |
-| Línea (border) | `#222A3A`   | `#D9DEE8`   | `#36291A`   | `#1C2733`  | `#333333`  |
-| Línea 2         | `#2E3852`   | `#C3CAD8`   | `#4A3823`   | `#25384F`  | `#444444`  |
-| Warning         | `#FFAE1A`   | `#B26A00`   | `#FFB454`   | `#FFAE1A`  | `#F6AB79`  |
+IDs estables: `noche`, `dia`, `calido`, `termius`, `bruno`, `superglass`,
+`neon`, `contraste`.
+
+Los roles obligatorios son `bg`, `panel`, `panel2`, `line`, `line2`, `text`,
+`dim`, `faint`, `brand`, `onBrand`, `waiting`, `working`, `done`, `err`, `warn`,
+`ok`, `glow`, `code`, `cursor` y `bar`. Nunca hardcodear un color en un
+componente nuevo: usar el rol semántico. Día Mineral usa canvas `#BCC7D4`, panel
+`#F1F4F7`, texto `#17202B` y acento `#1D55C7`: no usa blanco puro como canvas.
 
 Bruno es la fuente de verdad para sus roles: fondo `#1A1A1A`, panel
 `#222224`, panel secundario `#26292B`, texto `#CCCCCC`, cursor/acento
 `#E4AE49`, línea `#333333`, línea 2 `#444444`, dim `#AAAAAA` y faint
 `#999999`. Su ANSI, en orden negro a blanco y luego brillantes, es:
-`#1A1A1A #DA462F #73E89A #FAD075 #8BC2F9 #D691ED #7DDFF2 #CCCCCC
+`#888888 #DA462F #73E89A #FAD075 #8BC2F9 #D691ED #7DDFF2 #CCCCCC
 #666666 #F38172 #73E89A #FAD075 #8BC2F9 #D691ED #7DDFF2 #FFFFFF`.
 
 Uso disciplinado: **brand solo para acentos** (chip activa, foco, marca).

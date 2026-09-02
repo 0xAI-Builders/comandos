@@ -61,10 +61,10 @@ mkdir -p "$BIN" "$HOOKS/dash" "$HOOKS/state" \
 
 # Binarios (symlink: los updates del repo se reflejan solos)
 for f in "$REPO"/bin/*; do ln -sf "$f" "$BIN/$(basename "$f")"; done
-chmod +x "$REPO"/bin/* "$REPO"/hooks/cc-notify.sh "$REPO"/hooks/cc-status.sh "$REPO"/adapters/grok-hooks.py
+chmod +x "$REPO"/bin/* "$REPO"/hooks/cc-notify.sh "$REPO"/hooks/cc-status.sh "$REPO"/hooks/cc-usage-tool.sh "$REPO"/adapters/grok-hooks.py
 
 # Hooks + dashboard
-for f in cc-notify.sh cc-status.sh md2tg.py; do ln -sf "$REPO/hooks/$f" "$HOOKS/$f"; done
+for f in cc-notify.sh cc-status.sh cc-usage-tool.sh md2tg.py; do ln -sf "$REPO/hooks/$f" "$HOOKS/$f"; done
 ln -sf "$REPO/adapters/grok-hooks.py" "$BIN/grok-hooks.py"
 for f in index.html sw.js manifest.webmanifest icon-192.png icon-512.png term.html; do
   ln -sf "$REPO/dash/$f" "$HOOKS/dash/$f"
@@ -87,7 +87,7 @@ fi
 
 # Hooks de Claude Code en ~/.claude/settings.json (los demás agentes van
 # vía cc-agents setup). Corre antes del setup falible de UI/servicios.
-cc_register_claude_hooks "$HOOKS/cc-notify.sh"
+cc_register_claude_hooks "$HOOKS/cc-notify.sh" "$HOOKS/cc-usage-tool.sh"
 
 # Gateway Claude/Codex/Grok fijado por ComandOS. Se recompila solo si
 # falta o el source vendorizado es más nuevo; no cambia el enabled-state.

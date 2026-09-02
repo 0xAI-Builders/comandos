@@ -72,6 +72,7 @@ play_snd() { # $1 = archivo
 #   cc-notify.sh --agent codex --event done|waiting|working|end \
 #                --cwd DIR [--msg TXT] [--full TXT] [--options "a\x1fb"]
 AGENT=claude
+PROMPT_ID=""; AGENT_SESSION_ID=""
 full_arg=""; options_arg=""
 if [ "${1:-}" = "--agent" ] || [ "${1:-}" = "--event" ]; then
   event=""; cwd=""; msg=""; transcript=""
@@ -105,7 +106,8 @@ else
     case "$status" in
       working) event=UserPromptSubmit ;;
       done) event=Stop ;;
-      waiting|error) event=Notification ;;
+      waiting) event=Notification ;;
+      error) event=GrokError ;;
       idle) event=GrokIdle ;;
       end) event=SessionEnd ;;
       *) exit 0 ;;
@@ -115,11 +117,15 @@ else
     transcript=""
     export COMANDOS_USAGE_MODEL=$(jq -r '.model // ""' <<<"$normalized")
     export COMANDOS_USAGE_REASONING_EFFORT=$(jq -r '.effort // ""' <<<"$normalized")
+    PROMPT_ID=$(jq -r '.promptId // ""' <<<"$normalized")
+    AGENT_SESSION_ID=$(jq -r '.sessionId // ""' <<<"$normalized")
   else
     event=$(jq -r '.hook_event_name // "Stop"' <<<"$input" 2>/dev/null)
     cwd=$(jq -r '.cwd // ""' <<<"$input" 2>/dev/null)
     msg=$(jq -r '.message // ""' <<<"$input" 2>/dev/null)
     transcript=$(jq -r '.transcript_path // ""' <<<"$input" 2>/dev/null)
+    PROMPT_ID=$(jq -r '.prompt_id // .promptId // ""' <<<"$input" 2>/dev/null)
+    AGENT_SESSION_ID=$(jq -r '.session_id // .sessionId // ""' <<<"$input" 2>/dev/null)
   fi
 fi
 case "$AGENT" in
@@ -162,6 +168,16 @@ if [ -n "$SESSION_HINT" ] && [ -n "$PANE_HINT" ]; then
 fi
 STATE_FILE="$STATE_DIR/$state_key.json"
 
+usage_lifecycle() { # $1=status
+  local script="$HOME/.local/bin/cc_usage.py"
+  [ -r "$script" ] || return 0
+  jq -cn --arg status "$1" --arg harness "$AGENT" --arg session "$SESSION_HINT" \
+    --arg pane "$PANE_HINT" --arg prompt "$PROMPT_ID" --arg agent_session "$AGENT_SESSION_ID" \
+    --arg source "hook:$AGENT" --argjson at "$((now * 1000))" \
+    '{status:$status,harness:$harness,tmux_session:$session,tmux_pane:$pane,prompt_id:$prompt,agent_session_id:$agent_session,source:$source,confidence:"exact",at_ms:$at}' \
+    | python3 "$script" lifecycle >/dev/null 2>&1 &
+}
+
 write_state() { # $1=status $2=detalle $3=opciones (labels \x1f). LAST=respuesta previa
   jq -n --arg p "$proj" --arg s "$1" --arg d "$2" --arg c "$cwd" --arg o "${3:-}" \
     --arg L "${LAST:-}" --arg a "$AGENT" --arg sess "$SESSION_HINT" --arg pane "$PANE_HINT" \
@@ -176,6 +192,7 @@ write_state() { # $1=status $2=detalle $3=opciones (labels \x1f). LAST=respuesta
     tail -n 500 "$EVENTS" > "$EVENTS.tmp" && mv "$EVENTS.tmp" "$EVENTS"
   fi
   usage_capture "$1" >/dev/null 2>&1 || true
+  usage_lifecycle "$1" >/dev/null 2>&1 || true
 }
 
 usage_num() {
@@ -235,8 +252,17 @@ case "$event" in
     exit 0
     ;;
   SessionEnd)
+    usage_lifecycle "end" >/dev/null 2>&1 || true
     rm -f "$STATE_FILE"
     exit 0
+    ;;
+  GrokError)
+    title="🔴 [$proj] $AGENT_NAME error"
+    body="${msg:-Error del motor}"
+    full="$body"
+    urgency="critical"
+    sound="$SOUND_ATTENTION"
+    write_state "error" "$(printf '%s' "$body" | head -c 60000)"
     ;;
   Notification)
     # Anti-spam: si ya estaba "waiting" hace poco, refresca estado pero no re-notifica

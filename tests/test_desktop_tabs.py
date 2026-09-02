@@ -3,6 +3,16 @@ import ast
 from pathlib import Path
 
 
+def test_tab_titles_receive_live_verified_model_labels():
+    source = Path("bin/cc-app").read_text()
+    dash = Path("bin/cc-dash").read_text()
+    assert "APP_TAB_MODELS_FILE" in source and "APP_TAB_MODELS_FILE" in dash
+    assert "def _refresh_tab_models" in source
+    assert 'model_lbl.get_style_context().add_class("tab-model")' in source
+    assert "def write_app_tab_models" in dash
+    assert "write_app_tab_models(items)" in dash
+
+
 SRC = Path("bin/cc-app").read_text()
 
 
@@ -220,3 +230,59 @@ def test_claude_snapshot_and_resume_scan_all_account_config_dirs():
     assert 'ent["claude_config_dir"]' in SRC
     assert 'projects = os.path.join(cfg, "projects")' in SRC
     assert 'CLAUDE_CONFIG_DIR=' in functions()["resume_command"]
+
+
+def test_terminal_model_bar_shows_certainty_and_actions():
+    # Pildoras POR PANE, ancladas a la linea de titulo tmux (geometria real
+    # de list-panes): modelo verificado con color de marca y boton de motor
+    # que abre el picker PROBADO del tablero. Sin boton harness (feedback).
+    src = Path("bin/cc-app").read_text()
+    assert "_attach_model_bar" in src and "_pane_pill" in src
+    assert "_pane_geometry" in src and "Gtk.Overlay" in src
+    for state in ("verified", "changing", "detecting"):
+        assert state in src
+    assert "openMotorFor" in src and "openHarnessFor" not in src
+    assert "pane-pill" in src and "pp-claude" in src
+    # la pestana local no se registra en tabs (rompia save_tabs y el strip)
+    assert 'tabs.setdefault("local", hub)' not in src
+    # la VTE nunca se empuja de lado: el overlay envuelve SOLO la terminal
+    assert "ov.add(term)" in src
+
+
+def test_dash_publishes_per_pane_model_detail_for_the_bar():
+    dash_src = Path("bin/cc-dash").read_text()
+    seg = dash_src.split("def write_app_tab_models", 1)[1][:4000]
+    for field in ('"panes"', '"state"', '"changing"', '"verified"', '"detecting"',
+                  '"hAcct"', '"mAcct"', '"target"'):
+        assert field in seg, field
+    # mismo criterio determinista que el borde tmux (MOTOR_RESULT pendiente)
+    assert "MOTOR_RESULT" in seg
+    html = Path("dash/index.html").read_text()
+    assert "window.openMotorFor" in html and "window.openHarnessFor" in html
+
+
+def test_sane_flags_keeps_values_and_drops_orphan_value_flags():
+    """Regresión del apagón 2-sep: el snapshot guardaba ["--model","--effort"]
+    sin valores y la resurrección lanzaba `claude --resume id --model --effort`
+    (claude tomaba "--effort" como modelo; todas las sesiones revivían rotas)."""
+    namespace = {}
+    exec(function_source("_sane_flags"), namespace)  # helper puro, sin deps GTK
+    exec("_RESUME_SKIP_FLAGS = " + repr({"--resume", "--continue", "-r", "-c", "--last"}), namespace)
+    exec(SRC.split("_VALUE_FLAGS = ")[1].split("\n\n")[0].join(["_VALUE_FLAGS = ", ""]), namespace)
+    sane = namespace["_sane_flags"]
+    # captura pares flag+valor y omite resume+id
+    assert sane(["--resume", "abc-123", "--model", "fable-5", "--effort", "high",
+                 "--dangerously-skip-permissions"]) == \
+        ["--model", "fable-5", "--effort", "high", "--dangerously-skip-permissions"]
+    # snapshot viejo roto: value-flags huérfanos se descartan, no se propagan
+    assert sane(["--model", "--effort", "--dangerously-skip-permissions"]) == \
+        ["--dangerously-skip-permissions"]
+    assert sane(["--continue", "--model"]) == []
+
+
+def test_resume_command_and_proc_flags_use_the_sane_helpers():
+    assert "_sane_flags(argv[1:])" in function_source("_proc_flags")
+    resume = function_source("resume_command")
+    assert "_sane_flags(" in resume
+    for cli in ("claude", "codex", "grok"):
+        assert f'_which_cli("{cli}")' in resume, f"resume de {cli} debe detectar el binario sin depender del PATH"

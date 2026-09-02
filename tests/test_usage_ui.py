@@ -23,6 +23,62 @@ def test_usage_state_is_fetched_without_secret_rendering():
         assert text not in HTML
 
 
+def test_compare_tab_exposes_evidence_and_local_rating_controls():
+    assert 'data-mtab="comparar"' in HTML
+    assert 'id="compare-days"' in HTML
+    assert 'id="compare-task"' in HTML
+    assert 'id="compare-body"' in HTML
+    assert 'api(`/usage/analytics?' in HTML
+    assert 'api("/usage/interactions?limit=12")' in HTML
+    assert 'api("/usage/rating",payload)' in HTML
+    assert "sólo experimentos pareados pueden declarar ganador" in HTML
+    assert "r.eligible" in HTML
+    assert "r.successCI" in HTML
+    assert "r.toolErrorRate" in HTML
+
+
+def test_notifications_v2_prioritize_and_carry_action_buttons():
+    # v2: el panel muestra SOLO lo importante (desbordes, sugerencias,
+    # modelos, skills/MCPs) con botones de accion; los turnos van agrupados
+    # y el badge cuenta unicamente las clases prioritarias.
+    assert "nfPriorityItems" in HTML
+    for cls in ('"desborde"', '"sugerencia"', '"modelo"', '"skill"', '"mcp"'):
+        assert cls in HTML, cls
+    # acciones: aplicar / guardia / ahorro + abrir(Brave)/copiar + snooze/pin/dismiss.
+    # Las cards de NOTICIA traen sus botones DIRECTOS en la propia card ("leer"
+    # abre en el navegador del sistema via /open-url, "copiar" copia el link);
+    # la de MODELO expande su detalle in-place ("detalle"). Un solo click.
+    for act in ('"aplicar"', '"guardia"', '"ahorro"', '"detalle"',
+                '"leer"', '"copiar"', '"snooze"', '"pin"', '"dismiss"'):
+        assert act in HTML, act
+    # la card de modelo abre su detalle in-place, NUNCA el wizard de sesion nueva
+    assert 'nsOpen(); return; }' not in HTML
+    # se retiro el navegador MODAL interno: nada abre openUrlModal desde las cards
+    assert 'data-inapp' not in HTML and 'openUrlModal:' not in HTML
+    assert "cc-nf-snooze" in HTML and "cc-nf-pins" in HTML and "cc-nf-dismiss" in HTML
+    # turnos rutinarios agrupados y plegados, no cards individuales
+    assert "nf2-rest" in HTML and "turnos terminados" in HTML
+    # badge solo prioridades
+    assert "el badge cuenta SOLO lo importante" in HTML
+
+
+def test_model_confirmation_action_is_sticky():
+    # El sticky ya no es solo el botón de acción: TODO el footer (mp-stick =
+    # acción + cambio de harness + cuenta + estado) queda fijo fuera del scroll.
+    assert "#motor-pop .mp-stick{position:sticky" in HTML
+    assert '<div class="mp-stick">' in HTML
+    assert "min-height:44px" in HTML
+
+
+def test_effort_only_switch_does_not_resend_model():
+    # Cambiar SOLO el esfuerzo (mismo modelo) NUNCA debe re-teclear `/model
+    # <id>`: eso dejaba el modelo en un id crudo que la API rechaza con
+    # model_unavailable en el siguiente turno. Con mismo modelo -> model:"".
+    assert 'model:sameModel?"":st.model' in HTML
+    # el ternario roto (ambas ramas iguales) no debe volver
+    assert "sameModel?st.model:st.model" not in HTML
+
+
 def test_session_cards_have_usage_chip_container():
     assert 'class="usage-chip hidden"' in HTML
     assert "usageChipText" in HTML
@@ -188,6 +244,34 @@ def test_header_shows_global_limit_percentages():
     assert "renderLimitsStrip" in HTML
 
 
+def test_refactored_limit_cards_show_remaining_reset_and_daily_curve():
+    # La card responde las tres preguntas: cuanto llevo, CUANTO ME QUEDA,
+    # y cuando resetea; Grok ademas dibuja su curva diaria real (14d)
+    assert "uw-remain" in HTML and '"queda", "left"' in HTML
+    assert "uw-reset" in HTML and "uw-track" in HTML
+    assert "uw-daily" in HTML and "l.daily" in HTML
+    # Umbrales de alerta visibles en el track (70% y 90%)
+    assert 'left:70%' in HTML and 'left:90%' in HTML
+    # Cuota declarada por el usuario para providers sin API de limites
+    assert "/usage/quota" in HTML and "data-quota-provider" in HTML
+    assert "definir límite" in HTML
+    # El editor es inline (input + guardar), no un prompt del navegador
+    assert "uw-quota-edit" in HTML and "window.prompt" not in HTML
+
+
+def test_limit_cards_have_style_switcher_and_grok_measured_support():
+    # Switcher persistido (barras / anillos / compacta) con logos por card
+    assert "cc-limit-style" in HTML
+    for style in ("bars", "rings", "compact"):
+        assert f'data-style="{style}"' in HTML or f'"{style}"' in HTML
+    assert "limitRingSvg" in HTML and "uv-style" in HTML
+    # Grok sin API de limites: card medida-local honesta, sin barra falsa
+    assert "medido local" in HTML
+    assert "limitMetricHtml" in HTML and "tokens_today" in HTML
+    # La campana de alertas no se ofrece en cards medidas (no hay % que alertar)
+    assert 'l.kind === "measured"' in HTML
+
+
 if __name__ == "__main__":
     test_terminal_tab_close_asks_with_modal_and_syncs_desktop()
     test_remote_tab_mirror_prunes_closed_desktop_tabs()
@@ -212,3 +296,28 @@ if __name__ == "__main__":
     test_opencode_menu_offers_providers_and_models()
     test_card_usage_chip_is_full_width_line()
     test_usage_drawer_collapses_historic_sessions()
+
+
+def test_every_metric_surface_carries_an_insight_with_recommendation():
+    # Regla de producto: ninguna métrica "pelona" — cada bloque interpreta
+    # su número y recomienda algo concreto, calculado determinístico.
+    assert "limitInsight" in HTML          # cards de límites (ritmo vs reloj)
+    assert "pcDailyInsight" in HTML        # serie diaria (tendencia 3d)
+    assert "pc-insight" in HTML and "uw-insight" in HTML
+    # composición (salud de caché), tabla de modelos ($/turno), estimado, ROI
+    for marker in ("reutiliza", "necesita el caro", "absorbieron", "ROI"):
+        assert marker in HTML, marker
+    # dedicación y proyectos también interpretan
+    assert "Día enfocado" in HTML and "se come el" in HTML
+    # proyección honesta: usa la ventana real del límite, no números mágicos
+    assert "LIMIT_WINDOW_SEC" in HTML
+    # los insights traen BOTONES de acción reales (Guardia/Optimizar/CSV)
+    assert "pc-act" in HTML and 'act: "guardia"' in HTML
+    assert 'act: "optimizar"' in HTML and 'act: "csv"' in HTML
+    # gráficos nuevos: heatmap día×hora, dispersión, tabla ordenable, $ por día
+    assert "pcHeatmap" in HTML and "pcScatterChart" in HTML
+    assert "pcModelTable" in HTML and "pcEstDailyChart" in HTML
+    assert 'data-sort=' in HTML and "pcModelsCsv" in HTML
+    # ROI: costo de suscripción declarado por el usuario + moneda
+    assert "pcRoiBlock" in HTML and "data-sub-provider" in HTML
+    assert "/usage/subscription" in HTML and "SUBS_CURRENCIES" in HTML

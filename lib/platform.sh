@@ -134,6 +134,7 @@ apt_install_confirmed() {
 # CC_CLAUDE_SETTINGS: override de la ruta para tests.
 cc_register_claude_hooks() {
   local cmd="$1"
+  local tool_cmd="${2:-$(dirname "$cmd")/cc-usage-tool.sh}"
   local settings="${CC_CLAUDE_SETTINGS:-$HOME/.claude/settings.json}"
   command -v jq >/dev/null 2>&1 || {
     echo "  (sin jq: registra los hooks de Claude Code a mano en $settings)" >&2
@@ -147,17 +148,23 @@ cc_register_claude_hooks() {
   fi
   local tmp
   tmp=$(mktemp)
-  if jq --arg cmd "$cmd" '
+  if jq --arg cmd "$cmd" --arg tool_cmd "$tool_cmd" '
       def norm: sub("^~"; env.HOME);
-      def ensure($ev):
+      def ensure($ev; $command):
         .hooks[$ev] = ((.hooks[$ev] // []) as $arr
-          | if ($arr | map((.hooks // [])[] | (.command // "") | norm) | index($cmd | norm)) != null
+          | if ($arr | map((.hooks // [])[] | (.command // "") | norm) | index($command | norm)) != null
             then $arr
-            else $arr + [{"hooks": [{"type": "command", "command": $cmd}]}]
+            else $arr + [{"hooks": [{"type": "command", "command": $command}]}]
             end);
+      def remove($ev; $command):
+        .hooks[$ev] = ((.hooks[$ev] // [])
+          | map(.hooks = ((.hooks // []) | map(select(((.command // "") | norm) != ($command | norm)))))
+          | map(select((.hooks | length) > 0)));
       .hooks //= {}
-      | ensure("UserPromptSubmit") | ensure("Stop")
-      | ensure("Notification")     | ensure("SessionEnd")
+      | ensure("UserPromptSubmit"; $cmd) | ensure("Stop"; $cmd)
+      | ensure("Notification"; $cmd)     | ensure("SessionEnd"; $cmd)
+      | ensure("PreToolUse"; $tool_cmd) | ensure("PostToolUse"; $tool_cmd)
+      | remove("PostToolUseFailure"; $tool_cmd)
     ' "$settings" > "$tmp" 2>/dev/null; then
     mv "$tmp" "$settings"
   else

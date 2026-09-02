@@ -51,8 +51,14 @@ def usage_db_path(hooks_dir=None):
 
 def connect(db_path):
     os.makedirs(os.path.dirname(db_path), exist_ok=True)
-    con = sqlite3.connect(db_path)
+    con = sqlite3.connect(db_path, timeout=10)
     con.row_factory = sqlite3.Row
+    con.execute("pragma busy_timeout=10000")
+    con.execute("pragma foreign_keys=on")
+    try:
+        con.execute("pragma journal_mode=wal")
+    except sqlite3.OperationalError:
+        pass
     return con
 
 
@@ -181,6 +187,166 @@ def init_db(db_path):
           created_at integer not null
         );
         """)
+        _migrate_db(con)
+
+
+USAGE_SCHEMA_VERSION = 8
+
+
+def _table_columns(con, table):
+    return {row[1] for row in con.execute(f"pragma table_info({table})")}
+
+
+def _ensure_columns(con, table, columns):
+    present = _table_columns(con, table)
+    for name, ddl in columns.items():
+        if name not in present:
+            con.execute(f"alter table {table} add column {name} {ddl}")
+
+
+def _migrate_db(con):
+    """Idempotent additive migration from populated legacy databases."""
+    current = int(con.execute("pragma user_version").fetchone()[0])
+    if current >= USAGE_SCHEMA_VERSION:
+        return
+    with con:
+        _ensure_columns(con, "usage_turns", {
+            "harness": "text not null default ''",
+            "motor": "text not null default ''",
+            "route_id": "text not null default ''",
+            "harness_account": "text not null default 'unknown'",
+            "motor_account": "text not null default 'unknown'",
+            "interaction_id": "text not null default ''",
+            "experiment_run_id": "text not null default ''",
+            "tool_profile": "text not null default ''",
+            "duration_ms": "integer",
+            "outcome": "text not null default 'unknown'",
+            "reasoning_tokens": "integer",
+        })
+        tables = {row[0] for row in con.execute("select name from sqlite_master where type='table'")}
+        # v4 adds correlation identifiers without retaining prompt contents.
+        if "usage_interactions" in tables:
+            _ensure_columns(con, "usage_interactions", {
+                "prompt_id": "text not null default ''",
+                "agent_session_id": "text not null default ''",
+            })
+        if "usage_experiments" in tables:
+            _ensure_columns(con, "usage_experiments", {
+                "project_id": "text not null default ''",
+                "primary_metric": "text not null default 'outcome'",
+                "min_pairs": "integer not null default 10",
+            })
+        if "usage_experiment_runs" in tables:
+            _ensure_columns(con, "usage_experiment_runs", {
+                "task_id": "text not null default ''",
+                "project_id": "text not null default ''",
+                "launch_order": "integer not null default 0",
+            })
+        con.executescript("""
+        create table if not exists usage_session_configs (
+          id text primary key, tmux_session text not null, tmux_pane text not null,
+          effective_at integer not null, harness text not null, motor text not null,
+          model text not null, effort text not null default '',
+          harness_account text not null default 'unknown', motor_account text not null default 'unknown',
+          route_id text not null, source text not null, confidence text not null
+        );
+        create table if not exists usage_tasks (
+          id text primary key, task_type text not null default 'unclassified',
+          type_source text not null default 'manual', type_confidence text not null default 'exact',
+          label text not null default '', design text not null default 'observational',
+          created_at integer not null, updated_at integer not null
+        );
+        create table if not exists usage_interactions (
+          id text primary key, tmux_session text not null, tmux_pane text not null,
+          task_id text not null default '', config_id text not null default '',
+          prompt_id text not null default '', agent_session_id text not null default '',
+          started_at_ms integer, first_output_at_ms integer, finished_at_ms integer,
+          duration_ms integer, completion_status text not null default 'unknown',
+          error_class text not null default '', source text not null, confidence text not null,
+          created_at integer not null
+        );
+        create table if not exists usage_tool_calls (
+          id text primary key, interaction_id text not null, sequence integer not null,
+          tool_name text not null, tool_family text not null default '',
+          started_at_ms integer, finished_at_ms integer, duration_ms integer,
+          status text not null default 'unknown', error_class text not null default '',
+          confidence text not null, foreign key(interaction_id) references usage_interactions(id) on delete cascade
+        );
+        create table if not exists usage_ratings (
+          interaction_id text primary key, rated_at integer not null,
+          outcome text not null default 'unknown', rating integer, note text not null default '',
+          foreign key(interaction_id) references usage_interactions(id) on delete cascade
+        );
+        create table if not exists usage_experiments (
+          id text primary key, label text not null, task_type text not null,
+          status text not null, design text not null default 'paired',
+          project_id text not null default '', primary_metric text not null default 'outcome',
+          min_pairs integer not null default 10,
+          created_at integer not null, updated_at integer not null
+        );
+        create table if not exists usage_experiment_variants (
+          experiment_id text not null, variant_index integer not null,
+          label text not null default '', harness text not null, motor text not null,
+          model text not null, effort text not null default '', route_id text not null,
+          harness_account text not null default 'unknown', motor_account text not null default 'unknown',
+          primary key(experiment_id,variant_index),
+          foreign key(experiment_id) references usage_experiments(id) on delete cascade
+        );
+        create table if not exists usage_experiment_runs (
+          id text primary key, experiment_id text not null, interaction_id text not null default '',
+          task_id text not null default '', project_id text not null default '',
+          variant_index integer not null, harness text not null, motor text not null,
+          model text not null, effort text not null default '', route_id text not null,
+          harness_account text not null default 'unknown', motor_account text not null default 'unknown',
+          tmux_session text not null default '', tmux_pane text not null default '',
+          launch_order integer not null default 0,
+          status text not null default 'planned', started_at integer, finished_at integer,
+          foreign key(experiment_id) references usage_experiments(id) on delete cascade
+        );
+        create table if not exists usage_changes (
+          id text primary key, created_at integer not null,
+          origin text not null default 'manual', kind text not null default 'switch',
+          tmux_session text not null default '', tmux_pane text not null default '',
+          project text not null default '',
+          before_model text not null default '', before_effort text not null default '',
+          before_route text not null default '',
+          after_model text not null default '', after_effort text not null default '',
+          after_route text not null default '',
+          status text not null default 'applied', note text not null default ''
+        );
+        create index if not exists idx_usage_changes_created on usage_changes(created_at);
+        create table if not exists focus_blocks (
+          id text primary key, mode text not null, project text not null default '',
+          tmux_session text not null default '', tmux_pane text not null default '',
+          planned_minutes integer not null, cycle_index integer not null default 1,
+          cycle_total integer not null default 1, started_at_ms integer not null,
+          ended_at_ms integer, status text not null default 'running',
+          interruptions integer not null default 0, source text not null default 'comandos'
+        );
+        create table if not exists focus_settings (
+          key text primary key, value text not null
+        );
+        create index if not exists idx_focus_blocks_started on focus_blocks(started_at_ms);
+        create index if not exists idx_focus_blocks_project on focus_blocks(project, started_at_ms);
+        create index if not exists idx_usage_turns_finished on usage_turns(turn_finished_at);
+        create index if not exists idx_usage_turns_route_finished on usage_turns(route_id, turn_finished_at);
+        create index if not exists idx_usage_turns_interaction on usage_turns(interaction_id);
+        create index if not exists idx_session_configs_pane_time on usage_session_configs(tmux_session, tmux_pane, effective_at);
+        create index if not exists idx_interactions_config_time on usage_interactions(config_id, finished_at_ms);
+        create index if not exists idx_interactions_prompt on usage_interactions(tmux_session, tmux_pane, prompt_id);
+        create index if not exists idx_tasks_type_time on usage_tasks(task_type, created_at);
+        create index if not exists idx_experiment_variants_experiment on usage_experiment_variants(experiment_id, variant_index);
+        create index if not exists idx_experiment_runs_experiment on usage_experiment_runs(experiment_id, variant_index);
+        """)
+        con.execute("""update usage_turns set harness=case when harness='' then agent else harness end""")
+        con.execute("""update usage_turns set motor=case
+          when motor!='' then motor
+          when lower(model) like 'grok-%' then 'grok'
+          when lower(model) like 'gpt-%' or lower(model) like 'codex%' then 'codex'
+          when harness in ('codex','grok') then harness
+          else 'claude' end""")
+        con.execute("""update usage_turns set route_id=harness||':'||motor where route_id=''""")
+        con.execute(f"pragma user_version={USAGE_SCHEMA_VERSION}")
 
 
 def git_root_for_path(path, run=None):
@@ -325,23 +491,45 @@ TURN_FIELDS = [
     "git_root", "model", "reasoning_effort", "turn_started_at",
     "turn_finished_at", "input_tokens", "output_tokens", "cache_read_tokens",
     "cache_write_tokens", "total_tokens", "cost_usd", "source",
-    "confidence", "raw",
+    "confidence", "raw", "harness", "motor", "route_id",
+    "harness_account", "motor_account", "interaction_id", "experiment_run_id",
+    "tool_profile", "duration_ms", "outcome", "reasoning_tokens",
 ]
 
 TURN_INSERT_SQL = """
-insert or replace into usage_turns (
-  id, provider, agent, tmux_session, tmux_pane, pane_pwd,
-  git_root, model, reasoning_effort, turn_started_at,
-  turn_finished_at, input_tokens, output_tokens, cache_read_tokens,
-  cache_write_tokens, total_tokens, cost_usd, source,
-  confidence, raw
-) values (
-  :id, :provider, :agent, :tmux_session, :tmux_pane, :pane_pwd,
-  :git_root, :model, :reasoning_effort, :turn_started_at,
-  :turn_finished_at, :input_tokens, :output_tokens, :cache_read_tokens,
-  :cache_write_tokens, :total_tokens, :cost_usd, :source,
-  :confidence, :raw
-)
+insert into usage_turns (id, provider, agent, tmux_session, tmux_pane, pane_pwd, git_root, model, reasoning_effort, turn_started_at, turn_finished_at, input_tokens, output_tokens, cache_read_tokens, cache_write_tokens, total_tokens, cost_usd, source, confidence, raw, harness, motor, route_id, harness_account, motor_account, interaction_id, experiment_run_id, tool_profile, duration_ms, outcome, reasoning_tokens)
+values (:id, :provider, :agent, :tmux_session, :tmux_pane, :pane_pwd, :git_root, :model, :reasoning_effort, :turn_started_at, :turn_finished_at, :input_tokens, :output_tokens, :cache_read_tokens, :cache_write_tokens, :total_tokens, :cost_usd, :source, :confidence, :raw, :harness, :motor, :route_id, :harness_account, :motor_account, :interaction_id, :experiment_run_id, :tool_profile, :duration_ms, :outcome, :reasoning_tokens)
+on conflict(id) do update set
+  provider=excluded.provider,
+  agent=excluded.agent,
+  tmux_session=excluded.tmux_session,
+  tmux_pane=excluded.tmux_pane,
+  pane_pwd=excluded.pane_pwd,
+  git_root=excluded.git_root,
+  model=excluded.model,
+  reasoning_effort=excluded.reasoning_effort,
+  turn_started_at=excluded.turn_started_at,
+  turn_finished_at=excluded.turn_finished_at,
+  input_tokens=excluded.input_tokens,
+  output_tokens=excluded.output_tokens,
+  cache_read_tokens=excluded.cache_read_tokens,
+  cache_write_tokens=excluded.cache_write_tokens,
+  total_tokens=excluded.total_tokens,
+  cost_usd=excluded.cost_usd,
+  source=excluded.source,
+  confidence=excluded.confidence,
+  raw=excluded.raw,
+  harness=excluded.harness,
+  motor=excluded.motor,
+  route_id=excluded.route_id,
+  harness_account=excluded.harness_account,
+  motor_account=excluded.motor_account,
+  interaction_id=excluded.interaction_id,
+  experiment_run_id=excluded.experiment_run_id,
+  tool_profile=excluded.tool_profile,
+  duration_ms=excluded.duration_ms,
+  outcome=excluded.outcome,
+  reasoning_tokens=excluded.reasoning_tokens
 """
 
 
@@ -365,7 +553,24 @@ def _turn_values(event):
     data.setdefault("cost_usd", 0.0)
     data.setdefault("source", "cli_turn")
     data.setdefault("confidence", "exact")
-    data.setdefault("raw", json.dumps(event, sort_keys=True))
+    # Raw metadata is opt-in from trusted importers. Never serialize arbitrary
+    # event keys here because they may contain prompts, responses or tool payloads.
+    data.setdefault("raw", "{}")
+    data.setdefault("harness", data.get("agent") or "")
+    model_lower = str(data.get("model") or "").lower()
+    inferred_motor = ("grok" if model_lower.startswith("grok-") else
+                      "codex" if model_lower.startswith(("gpt-", "codex")) else
+                      data.get("harness") if data.get("harness") in ("codex", "grok") else "claude")
+    data.setdefault("motor", inferred_motor)
+    data.setdefault("route_id", f"{data.get('harness')}:{data.get('motor')}")
+    data.setdefault("harness_account", "unknown")
+    data.setdefault("motor_account", "unknown")
+    data.setdefault("interaction_id", "")
+    data.setdefault("experiment_run_id", "")
+    data.setdefault("tool_profile", "")
+    data.setdefault("duration_ms", max(0, (_as_int(data.get("turn_finished_at")) - _as_int(data.get("turn_started_at"))) * 1000))
+    data.setdefault("outcome", "unknown")
+    data.setdefault("reasoning_tokens", None)
     data["id"] = data.get("id") or _stable_id([
         data.get("provider"), data.get("tmux_session"), data.get("tmux_pane"),
         data.get("turn_started_at"), data.get("turn_finished_at"), data.get("model"),
@@ -1198,7 +1403,7 @@ def record_local_codex_threads(db_path, state_db=None, now=None, max_age_days=14
         con.row_factory = sqlite3.Row
         rows = con.execute(
             """
-            select id, created_at, updated_at, source, model_provider, cwd, title,
+            select id, created_at, updated_at, source, model_provider, cwd,
                    tokens_used, model, reasoning_effort
             from threads
             where tokens_used > 0 and updated_at >= ?
@@ -1228,12 +1433,20 @@ def record_local_codex_threads(db_path, state_db=None, now=None, max_age_days=14
             "git_root": roots[cwd],
             "model": _text(row["model"]),
             "reasoning_effort": _text(row["reasoning_effort"]),
-            "turn_started_at": _as_int(row["created_at"]),
+            # state_5 stores thread lifetime, not individual-turn latency. Keep
+            # the cumulative token snapshot, but never mislabel lifetime as a turn.
+            "turn_started_at": _as_int(row["updated_at"]),
             "turn_finished_at": _as_int(row["updated_at"]),
+            "duration_ms": None,
             "total_tokens": _as_int(row["tokens_used"]),
             "source": "codex_state_db",
-            "confidence": "local",
-            "raw": json.dumps(dict(row), sort_keys=True),
+            "confidence": "shared",
+            "raw": json.dumps({
+                "thread_id": _text(row["id"]),
+                "model_provider": _text(row["model_provider"]),
+                "tokens_used": _as_int(row["tokens_used"]),
+                "snapshot_at": _as_int(row["updated_at"]),
+            }, sort_keys=True),
         }
         events.append(event)
     return record_turns(db_path, events)
@@ -1319,6 +1532,312 @@ def record_local_opencode_db(db_path, oc_db=None, now=None, max_age_days=14):
             "confidence": "local",
         })
     return record_turns(db_path, events)
+
+
+def record_local_grok_updates(db_path, homes=None, now=None, max_age_days=14, max_files=200):
+    """Import exact per-turn Grok usage without reading message content."""
+    import glob
+    init_db(db_path)
+    homes = homes or [os.path.expanduser("~/.grok")]
+    ts = int(now if now is not None else time.time())
+    cutoff_ms = (ts - int(max_age_days) * 86400) * 1000
+    files = []
+    for home in homes:
+        for path in glob.glob(os.path.join(os.fspath(home), "sessions", "**", "updates.jsonl"), recursive=True):
+            try:
+                if os.path.getmtime(path) * 1000 >= cutoff_ms:
+                    files.append((os.path.getmtime(path), path))
+            except OSError:
+                pass
+    files.sort(reverse=True)
+    events = []
+    with connect(db_path) as telemetry:
+        for _mtime, path in files[:max_files]:
+            summary_path = os.path.join(os.path.dirname(path), "summary.json")
+            try:
+                summary = json.load(open(summary_path, errors="replace"))
+            except Exception:
+                summary = {}
+            info = summary.get("info") if isinstance(summary.get("info"), dict) else {}
+            cwd = _text(info.get("cwd"))
+            git_root = git_root_for_path(cwd)
+            session_id = _text(info.get("id") or os.path.basename(os.path.dirname(path)))
+            model = _text(summary.get("current_model_id"))
+            effort = _text(summary.get("reasoning_effort"))
+            try:
+                lines = open(path, errors="replace")
+            except OSError:
+                continue
+            with lines:
+                for line_no, line in enumerate(lines, 1):
+                    try:
+                        row = json.loads(line)
+                    except Exception:
+                        continue
+                    params = row.get("params") if isinstance(row, dict) else None
+                    update = params.get("update") if isinstance(params, dict) else None
+                    if not isinstance(update, dict) or update.get("sessionUpdate") != "turn_completed":
+                        continue
+                    usage = update.get("usage")
+                    if not isinstance(usage, dict):
+                        continue
+                    finished_ms = _as_int(row.get("timestamp"))
+                    if 0 < finished_ms < 100_000_000_000:   # el CLI escribe SEGUNDOS
+                        finished_ms *= 1000
+                    if finished_ms < cutoff_ms:
+                        continue
+                    prompt_id = _text(update.get("prompt_id"))
+                    external_session = _text(params.get("sessionId")) or session_id
+                    interaction = telemetry.execute("""select i.id,i.tmux_session,i.tmux_pane,c.harness_account
+                      from usage_interactions i left join usage_session_configs c on c.id=i.config_id
+                      where i.agent_session_id=? and (?='' or i.prompt_id=?)
+                      order by i.started_at_ms desc limit 1""",
+                      (external_session, prompt_id, prompt_id)).fetchone()
+                    duration_ms = _as_int(usage.get("apiDurationMs"), 0) or None
+                    finished = finished_ms // 1000
+                    model_usage = usage.get("modelUsage") if isinstance(usage.get("modelUsage"), dict) else {}
+                    actual_model = next(iter(model_usage), "") or model
+                    input_tokens = _as_int(usage.get("inputTokens"))
+                    output_tokens = _as_int(usage.get("outputTokens"))
+                    cache_read = _as_int(usage.get("cachedReadTokens"))
+                    cache_write = _as_int(usage.get("cacheCreationTokens"))
+                    event_id = _text((params.get("_meta") or {}).get("eventId"))
+                    events.append({
+                        "id": "grok-update-" + (event_id or _stable_id([path, line_no, prompt_id])),
+                        "provider": "grok", "agent": "grok", "harness": "grok", "motor": "grok",
+                        "route_id": "grok:grok",
+                        "tmux_session": interaction["tmux_session"] if interaction else external_session,
+                        "tmux_pane": interaction["tmux_pane"] if interaction else "",
+                        "pane_pwd": cwd, "git_root": git_root,
+                        "model": actual_model, "reasoning_effort": effort,
+                        "turn_started_at": finished - ((duration_ms or 0) // 1000),
+                        "turn_finished_at": finished, "duration_ms": duration_ms,
+                        "input_tokens": input_tokens, "output_tokens": output_tokens,
+                        "cache_read_tokens": cache_read, "cache_write_tokens": cache_write,
+                        "total_tokens": _as_int(usage.get("totalTokens")) or input_tokens + output_tokens,
+                        "reasoning_tokens": _as_int(usage.get("reasoningTokens"), None),
+                        "interaction_id": interaction["id"] if interaction else "",
+                        "harness_account": (interaction["harness_account"] if interaction else "unknown") or "unknown",
+                        "motor_account": "main", "source": "grok_updates", "confidence": "exact",
+                        "raw": json.dumps({"session_id": external_session, "prompt_id": prompt_id,
+                                           "stop_reason": _text(update.get("stop_reason")),
+                                           "model_calls": _as_int(usage.get("modelCalls")),
+                                           "num_turns": _as_int(usage.get("numTurns"))}, sort_keys=True),
+                    })
+    return record_turns(db_path, events)
+
+
+def provider_comparison(db_path, prices_path=None, now=None, days=14):
+    """Comparativa por proveedor: serie diaria, composicion de tokens, top
+    modelos y valor API estimado (precios editables, cobertura reportada).
+    Solo agregados; nunca contenido."""
+    import datetime as _dtm
+    ts = int(now if now is not None else time.time())
+    days = max(1, min(30, int(days)))
+    day0 = int(_dtm.datetime.fromtimestamp(ts)
+               .replace(hour=0, minute=0, second=0, microsecond=0).timestamp())
+    since = day0 - (days - 1) * 86400
+    prices = []
+    if prices_path:
+        try:
+            with open(prices_path) as fh:
+                for p in (json.load(fh).get("patterns") or []):
+                    try:
+                        prices.append((re.compile(str(p.get("match") or ""), re.I), p))
+                    except re.error:
+                        pass
+        except (OSError, ValueError):
+            pass
+
+    def price_for(model):
+        for rx, p in prices:
+            if rx.search(model or ""):
+                return p
+        return None
+
+    init_db(db_path)
+    out = {"days": days, "since": since, "daily": [], "composition": [],
+           "models": [], "est": [], "est_daily": [], "heat": [],
+           "priced_at": bool(prices)}
+    with connect(db_path) as con:
+        rows = con.execute(
+            "SELECT t.provider, t.model, t.turn_finished_at, t.input_tokens,"
+            " t.output_tokens, t.cache_read_tokens, t.cache_write_tokens,"
+            " t.total_tokens, COALESCE(NULLIF(t.duration_ms, 0), i.duration_ms)"
+            " FROM usage_turns t LEFT JOIN usage_interactions i"
+            " ON i.id = t.interaction_id AND t.interaction_id != ''"
+            " WHERE t.turn_finished_at >= ?", (since,)).fetchall()
+    daily = {}
+    comp = {}
+    models = {}
+    est = {}
+    est_daily = {}
+    heat = [[0] * 24 for _ in range(7)]   # [dia_semana][hora] tokens locales
+
+    def turn_usd(model, i, o, cr, cw):
+        p = price_for(model)
+        # Sin desglose i/o/cache (p.ej. rollouts de codex solo traen total)
+        # NO se puede poner precio: contarlo como cubierto seria mentir.
+        if not p or p.get("in") is None or (i + o + cr + cw) <= 0:
+            return None
+        return (i * float(p.get("in") or 0) + o * float(p.get("out") or 0)
+                + cr * float(p.get("cacheRead") or 0)
+                + cw * float(p.get("cacheWrite") or p.get("in") or 0)) / 1e6
+
+    for prov, model, fin, i, o, cr, cw, tot, dur in rows:
+        i, o, cr, cw, tot = (int(i or 0), int(o or 0), int(cr or 0),
+                             int(cw or 0), int(tot or 0))
+        d = since + ((int(fin) - since) // 86400) * 86400
+        daily.setdefault(d, {})[prov] = daily.get(d, {}).get(prov, 0) + tot
+        lt = _dtm.datetime.fromtimestamp(int(fin))
+        heat[lt.weekday()][lt.hour] += tot
+        c = comp.setdefault(prov, {"input": 0, "output": 0, "cache_read": 0,
+                                   "cache_write": 0, "total": 0, "turns": 0})
+        c["input"] += i; c["output"] += o
+        c["cache_read"] += cr; c["cache_write"] += cw
+        c["total"] += tot; c["turns"] += 1
+        m = models.setdefault((prov, model), {"provider": prov, "model": model,
+                                              "tokens": 0, "turns": 0, "durs": [],
+                                              "input": 0, "output": 0, "usd": 0.0,
+                                              "priced_turns": 0})
+        m["tokens"] += tot; m["turns"] += 1
+        m["input"] += i; m["output"] += o
+        if dur: m["durs"].append(int(dur))
+        e = est.setdefault(prov, {"usd": 0.0, "priced_tokens": 0, "total_tokens": 0})
+        e["total_tokens"] += tot
+        usd = turn_usd(model, i, o, cr, cw)
+        if usd is not None:
+            e["usd"] += usd
+            e["priced_tokens"] += tot
+            m["usd"] += usd; m["priced_turns"] += 1
+            est_daily.setdefault(d, {})[prov] = est_daily.get(d, {}).get(prov, 0.0) + usd
+    for d in range(days):
+        day = since + d * 86400
+        out["daily"].append({"day": day, "providers": daily.get(day, {})})
+        out["est_daily"].append({"day": day, "providers": {
+            k: round(v, 2) for k, v in (est_daily.get(day) or {}).items()}})
+    out["heat"] = heat
+    for prov, c in sorted(comp.items(), key=lambda kv: -kv[1]["total"]):
+        out["composition"].append({"provider": prov, **c})
+    top = sorted(models.values(), key=lambda m: -m["tokens"])[:14]
+    # Latencia medida por modelo: si los turnos no la traen, usar la de las
+    # interacciones correlacionadas (misma fuente que las sugerencias por pane).
+    lat = {}
+    try:
+        for c in experiment_analytics(db_path, days).get("configurations", []):
+            mdl = c.get("model")
+            if c.get("durationP50Ms") and (mdl not in lat or (c.get("attempts") or 0) > lat[mdl][2]):
+                lat[mdl] = (c.get("durationP50Ms"), c.get("durationP90Ms"), c.get("attempts") or 0)
+    except Exception:
+        lat = {}
+    for m in top:
+        durs = sorted(m.pop("durs"))
+        m["p50_ms"] = durs[len(durs) // 2] if durs else None
+        m["p90_ms"] = durs[min(len(durs) - 1, int(len(durs) * 0.9))] if durs else None
+        if m["p50_ms"] is None and m["model"] in lat:
+            m["p50_ms"], m["p90_ms"] = lat[m["model"]][0], lat[m["model"]][1]
+            m["latency_source"] = "interactions"
+        m["tokens_per_turn"] = round(m["tokens"] / m["turns"]) if m["turns"] else 0
+        m["usd"] = round(m["usd"], 2)
+        m["usd_per_turn"] = round(m["usd"] / m["priced_turns"], 4) if m["priced_turns"] else None
+        out["models"].append(m)
+    for prov, e in est.items():
+        cov = round(e["priced_tokens"] / e["total_tokens"] * 100, 1) if e["total_tokens"] else 0.0
+        out["est"].append({"provider": prov, "usd": round(e["usd"], 2), "coverage": cov})
+    out["est"].sort(key=lambda x: -x["usd"])
+    return out
+
+
+def read_grok_credit_limits(homes=None, now=None, tail_bytes=524288):
+    """Limite semanal OFICIAL de Grok, leido del log local del CLI.
+
+    grok escribe "billing: fetched credits config" (creditUsagePercent,
+    currentPeriod, subscriptionTier) en logs/unified.jsonl cada vez que corre.
+    Solo campos allowlisted; nada de tokens ni identidad.
+    """
+    ts = int(now if now is not None else time.time())
+    homes = homes or [os.path.expanduser("~/.grok")]
+    best = None
+    for home in homes:
+        path = os.path.join(os.fspath(home), "logs", "unified.jsonl")
+        try:
+            with open(path, "rb") as fh:
+                fh.seek(0, 2)
+                size = fh.tell()
+                fh.seek(max(0, size - tail_bytes))
+                chunk = fh.read().decode(errors="replace")
+        except OSError:
+            continue
+        for line in chunk.splitlines():
+            if '"billing: fetched credits config"' not in line and "fetched credits config" not in line:
+                continue
+            try:
+                row = json.loads(line)
+            except ValueError:
+                continue
+            ctx = row.get("ctx") or {}
+            cfg = ctx.get("config") or {}
+            period = cfg.get("currentPeriod") or {}
+            try:
+                captured = int(datetime.fromisoformat(
+                    (row.get("ts") or "").replace("Z", "+00:00")).timestamp())
+            except ValueError:
+                captured = 0
+            entry = {
+                "percent": float(cfg.get("creditUsagePercent") or 0.0),
+                "period_start": _iso_epoch(period.get("start")),
+                "resets_at": _iso_epoch(period.get("end")),
+                "tier": str(ctx.get("subscriptionTier") or "")[:40],
+                "captured_at": captured,
+            }
+            if entry["resets_at"] and (best is None or captured > best["captured_at"]):
+                best = entry
+    if not best:
+        return None
+    # Ventana ya vencida => el % es de un periodo viejo; no es dato vigente
+    if best["resets_at"] <= ts:
+        best["stale_period"] = True
+    return best
+
+
+def _iso_epoch(value):
+    try:
+        return int(datetime.fromisoformat(str(value)).timestamp())
+    except (ValueError, TypeError):
+        return 0
+
+
+def grok_measured_usage(db_path, now=None):
+    """Consumo Grok medido de turnos locales; xAI no expone limites por API."""
+    import datetime
+    ts = int(now if now is not None else time.time())
+    day_start = int(datetime.datetime.fromtimestamp(ts)
+                    .replace(hour=0, minute=0, second=0, microsecond=0).timestamp())
+    init_db(db_path)
+    with connect(db_path) as con:
+        def agg(since):
+            row = con.execute(
+                "SELECT COUNT(*), COALESCE(SUM(total_tokens),0), MAX(turn_finished_at)"
+                " FROM usage_turns WHERE provider='grok' AND turn_finished_at >= ?",
+                (since,)).fetchone()
+            return {"turns": int(row[0] or 0), "tokens": int(row[1] or 0),
+                    "last_at": int(row[2] or 0)}
+        today = agg(day_start)
+        week = agg(ts - 7 * 86400)
+        # Serie diaria (14d) para que la UI dibuje la curva de consumo real
+        daily = []
+        for d in range(13, -1, -1):
+            start = day_start - d * 86400
+            row = con.execute(
+                "SELECT COALESCE(SUM(total_tokens),0) FROM usage_turns"
+                " WHERE provider='grok' AND turn_finished_at >= ? AND turn_finished_at < ?",
+                (start, start + 86400)).fetchone()
+            daily.append({"day": start, "tokens": int(row[0] or 0)})
+    if not week["turns"]:
+        return None
+    return {"tokens_today": today["tokens"], "turns_today": today["turns"],
+            "tokens_7d": week["tokens"], "turns_7d": week["turns"],
+            "last_at": week["last_at"], "daily": daily}
 
 
 def record_local_claude_jsonl(db_path, projects_root=None, now=None, max_age_days=14, max_files=400):
@@ -1472,8 +1991,593 @@ def capture_hook_payload(payload, db_path=None):
         "source": payload.get("source") or "hook",
         "confidence": payload.get("confidence") or "exact",
     }
+    init_db(db_path)
+    with connect(db_path) as con:
+        interaction = con.execute("""select id,config_id from usage_interactions
+          where tmux_session=? and tmux_pane=? and finished_at_ms is null
+          order by started_at_ms desc limit 1""",
+          (event["tmux_session"], event["tmux_pane"])).fetchone()
+        if interaction:
+            event["interaction_id"] = interaction["id"]
+            config = con.execute("select * from usage_session_configs where id=?", (interaction["config_id"],)).fetchone()
+            if config:
+                event.update({key: config[key] for key in (
+                    "harness", "motor", "route_id", "harness_account", "motor_account")})
     record_turn(db_path, event)
     return {"ok": True, "captured": True}
+
+
+def focus_block_start(db_path, event):
+    init_db(db_path)
+    data = dict(event or {})
+    mode = _text(data.get("mode") or "focus")
+    if mode not in {"focus", "break"}:
+        raise ValueError("invalid focus mode")
+    minutes = max(1, min(180, _as_int(data.get("planned_minutes"), 25)))
+    started = _as_int(data.get("started_at_ms") or int(time.time() * 1000))
+    ident = _stable_id(["focus", started, data.get("tmux_session"), data.get("tmux_pane"), mode])
+    with connect(db_path) as con:
+        con.execute("""insert into focus_blocks
+          (id,mode,project,tmux_session,tmux_pane,planned_minutes,cycle_index,cycle_total,started_at_ms,status,source)
+          values(?,?,?,?,?,?,?,?,?,'running',?)""",
+          (ident, mode, _text(data.get("project"))[:160], _text(data.get("tmux_session"))[:80],
+           _text(data.get("tmux_pane"))[:32], minutes, max(1,_as_int(data.get("cycle_index"),1)),
+           max(1,_as_int(data.get("cycle_total"),1)), started, _text(data.get("source")) or "comandos"))
+    return {"id": ident, "mode": mode, "planned_minutes": minutes, "started_at_ms": started}
+
+
+def focus_block_finish(db_path, block_id, status="completed", ended_at_ms=None):
+    init_db(db_path)
+    if status not in {"completed", "cancelled", "skipped"}:
+        raise ValueError("invalid focus status")
+    ended = _as_int(ended_at_ms or int(time.time() * 1000))
+    with connect(db_path) as con:
+        cur = con.execute("""update focus_blocks set ended_at_ms=?,status=?
+          where id=? and status='running'""", (ended, status, _text(block_id)))
+    return {"id": _text(block_id), "status": status, "updated": cur.rowcount > 0}
+
+
+def focus_analytics(db_path, days=7, now=None):
+    init_db(db_path)
+    days = max(1, min(90, int(days)))
+    now_ms = _as_int(now or int(time.time() * 1000))
+    since = now_ms - days * 86400000
+    with connect(db_path) as con:
+        rows = _rows(con.execute("""select id,mode,project,tmux_session,tmux_pane,
+          planned_minutes,cycle_index,cycle_total,started_at_ms,ended_at_ms,status,interruptions
+          from focus_blocks where started_at_ms>=? order by started_at_ms desc""", (since,)))
+    focus = [row for row in rows if row["mode"] == "focus"]
+    completed = [row for row in focus if row["status"] == "completed"]
+    today = datetime.fromtimestamp(now_ms / 1000).date()
+    today_rows = [row for row in completed if datetime.fromtimestamp(row["started_at_ms"] / 1000).date() == today]
+    by_day = []
+    for offset in range(days - 1, -1, -1):
+        day = today.fromordinal(today.toordinal() - offset)
+        matching = [row for row in completed if datetime.fromtimestamp(row["started_at_ms"] / 1000).date() == day]
+        by_day.append({"date": day.isoformat(), "blocks": len(matching),
+                       "minutes": sum(row["planned_minutes"] for row in matching)})
+    terminal = [row for row in focus if row["status"] != "running"]
+    return {
+        "days": days,
+        "today": {"blocks": len(today_rows), "minutes": sum(row["planned_minutes"] for row in today_rows)},
+        "completionRate": (len(completed) / len(terminal)) if terminal else None,
+        "interruptions": sum(row["interruptions"] for row in focus),
+        "byDay": by_day,
+        "recent": rows[:30],
+    }
+
+
+def set_focus_settings(db_path, values):
+    allowed = {"focusMinutes", "shortBreakMinutes", "longBreakMinutes", "cycles", "autoBreak", "dailyGoalMinutes"}
+    init_db(db_path)
+    with connect(db_path) as con:
+        for key, value in (values or {}).items():
+            if key in allowed:
+                con.execute("insert into focus_settings(key,value) values(?,?) on conflict(key) do update set value=excluded.value",
+                            (key, json.dumps(value)))
+        rows = con.execute("select key,value from focus_settings").fetchall()
+    output = {}
+    for key, value in rows:
+        try: output[key] = json.loads(value)
+        except Exception: pass
+    return output
+
+
+def read_focus_settings(db_path):
+    return set_focus_settings(db_path, {})
+
+
+TASK_TYPES = {"implementation", "debugging", "testing", "review", "architecture", "research", "documentation", "operations", "other", "unclassified"}
+OUTCOMES = {"solved", "partial", "failed", "unknown"}
+
+
+def configuration_id(harness, motor, model, effort, account="unknown"):
+    return _stable_id([harness, motor, model, effort, account])
+
+
+def record_session_config(db_path, event):
+    init_db(db_path)
+    data = dict(event or {})
+    session, pane = _text(data.get("tmux_session")), _text(data.get("tmux_pane"))
+    harness, motor = _text(data.get("harness")), _text(data.get("motor"))
+    model, effort = _text(data.get("model")), _text(data.get("effort"))
+    route_id = _text(data.get("route_id")) or f"{harness}:{motor}"
+    at = _as_int(data.get("effective_at") or time.time())
+    ident = _stable_id([session, pane, at, route_id, model, effort])
+    row = (ident, session, pane, at, harness, motor, model, effort,
+           _text(data.get("harness_account")) or "unknown",
+           _text(data.get("motor_account")) or "unknown", route_id,
+           _text(data.get("source")) or "runtime", _text(data.get("confidence")) or "exact")
+    with connect(db_path) as con:
+        con.execute("""insert into usage_session_configs
+          (id,tmux_session,tmux_pane,effective_at,harness,motor,model,effort,harness_account,motor_account,route_id,source,confidence)
+          values(?,?,?,?,?,?,?,?,?,?,?,?,?) on conflict(id) do update set
+          model=excluded.model,effort=excluded.effort,route_id=excluded.route_id""", row)
+    return {"id": ident, "route_id": route_id}
+
+
+def latest_session_config(db_path, session, pane=""):
+    init_db(db_path)
+    with connect(db_path) as con:
+        row = con.execute("""select * from usage_session_configs
+          where tmux_session=? and (tmux_pane=? or (?='' and tmux_pane=''))
+          order by effective_at desc limit 1""", (session, pane, pane)).fetchone()
+    return dict(row) if row else {}
+
+
+def _latest_config(con, session, pane, at):
+    row = con.execute("""select * from usage_session_configs where tmux_session=? and tmux_pane=? and effective_at<=?
+                         order by effective_at desc limit 1""", (session, pane, at)).fetchone()
+    return dict(row) if row else {}
+
+
+def capture_lifecycle(db_path, event):
+    """Record prompt/settle boundaries without storing prompt/response text."""
+    init_db(db_path)
+    data = dict(event or {})
+    status = _text(data.get("status"))
+    session, pane = _text(data.get("tmux_session")), _text(data.get("tmux_pane"))
+    at_ms = _as_int(data.get("at_ms") or int(time.time() * 1000))
+    prompt_id = _text(data.get("prompt_id"))
+    agent_session_id = _text(data.get("agent_session_id"))
+    if not session or not pane:
+        return {"captured": False, "reason": "missing_identity"}
+    with connect(db_path) as con:
+        if status == "working":
+            ident = _stable_id(["interaction", session, pane, prompt_id or at_ms])
+            cfg = _latest_config(con, session, pane, at_ms // 1000)
+            con.execute("""insert into usage_interactions
+              (id,tmux_session,tmux_pane,task_id,config_id,prompt_id,agent_session_id,started_at_ms,completion_status,source,confidence,created_at)
+              values(?,?,?,?,?,?,?,?,?,?,?,?) on conflict(id) do nothing""",
+              (ident,session,pane,_text(data.get("task_id")),cfg.get("id", ""),prompt_id,agent_session_id,at_ms,"unknown",
+               _text(data.get("source")) or "hook",_text(data.get("confidence")) or "exact",at_ms//1000))
+            return {"captured": True, "interaction_id": ident}
+        # Permission/attention notifications are an intermediate state, not a
+        # completed response. Keeping the interaction open preserves latency.
+        if status == "waiting":
+            return {"captured": True, "pending": True}
+        row = None
+        if prompt_id:
+            row = con.execute("""select id,started_at_ms from usage_interactions
+                                 where tmux_session=? and tmux_pane=? and prompt_id=? and finished_at_ms is null
+                                 order by started_at_ms desc limit 1""",(session,pane,prompt_id)).fetchone()
+        if not row:
+            row = con.execute("""select id,started_at_ms from usage_interactions where tmux_session=? and tmux_pane=? and finished_at_ms is null
+                                 order by started_at_ms desc limit 1""",(session,pane)).fetchone()
+        if not row:
+            return {"captured": False, "reason": "no_open_interaction"}
+        completion = {"done":"completed","error":"failed","idle":"cancelled","cancelled":"cancelled","end":"cancelled"}.get(status,"unknown")
+        duration = max(0, at_ms - int(row["started_at_ms"] or at_ms))
+        con.execute("""update usage_interactions set finished_at_ms=?,duration_ms=?,completion_status=?,error_class=? where id=?""",
+                    (at_ms,duration,completion,_text(data.get("error_class")),row["id"]))
+        return {"captured": True, "interaction_id": row["id"], "completion_status": completion}
+
+
+def capture_tool_event(db_path, event):
+    """Record tool timing/name only; arguments and results are never accepted."""
+    init_db(db_path)
+    data = dict(event or {})
+    phase = _text(data.get("phase"))
+    session, pane = _text(data.get("tmux_session")), _text(data.get("tmux_pane"))
+    tool_name = _text(data.get("tool_name"))[:120]
+    at_ms = _as_int(data.get("at_ms") or int(time.time() * 1000))
+    if phase not in {"start", "success", "failed"} or not session or not pane or not tool_name:
+        return {"captured": False, "reason": "invalid_tool_event"}
+    with connect(db_path) as con:
+        interaction = con.execute("""select id from usage_interactions
+          where tmux_session=? and tmux_pane=? and finished_at_ms is null
+          order by started_at_ms desc limit 1""", (session, pane)).fetchone()
+        if not interaction:
+            return {"captured": False, "reason": "no_open_interaction"}
+        interaction_id = interaction["id"]
+        external_id = _text(data.get("tool_use_id"))
+        family = _tool_family(tool_name)
+        if phase == "start":
+            sequence = con.execute("select count(*) from usage_tool_calls where interaction_id=?", (interaction_id,)).fetchone()[0]
+            ident = _stable_id(["tool", interaction_id, external_id or sequence, tool_name])
+            con.execute("""insert into usage_tool_calls
+              (id,interaction_id,sequence,tool_name,tool_family,started_at_ms,status,error_class,confidence)
+              values(?,?,?,?,?,?,?,'',?) on conflict(id) do nothing""",
+              (ident, interaction_id, sequence, tool_name, family, at_ms, "running", _text(data.get("confidence")) or "exact"))
+        else:
+            if external_id:
+                ident = _stable_id(["tool", interaction_id, external_id, tool_name])
+                row = con.execute("select started_at_ms from usage_tool_calls where id=?", (ident,)).fetchone()
+            else:
+                existing = con.execute("""select id,started_at_ms from usage_tool_calls
+                  where interaction_id=? and tool_name=? and status='running'
+                  order by sequence desc limit 1""", (interaction_id, tool_name)).fetchone()
+                ident = existing["id"] if existing else _stable_id(["tool", interaction_id, at_ms, tool_name])
+                row = existing
+            if not row:
+                sequence = con.execute("select count(*) from usage_tool_calls where interaction_id=?", (interaction_id,)).fetchone()[0]
+                con.execute("""insert into usage_tool_calls
+                  (id,interaction_id,sequence,tool_name,tool_family,started_at_ms,finished_at_ms,duration_ms,status,error_class,confidence)
+                  values(?,?,?,?,?,?,?,?,?,?,?)""",
+                  (ident, interaction_id, sequence, tool_name, family, None, at_ms, None,
+                   phase, "tool_error" if phase == "failed" else "", _text(data.get("confidence")) or "exact"))
+            else:
+                started = row["started_at_ms"]
+                duration = max(0, at_ms - started) if started is not None else None
+                con.execute("""update usage_tool_calls set finished_at_ms=?,duration_ms=?,status=?,error_class=? where id=?""",
+                            (at_ms, duration, phase, "tool_error" if phase == "failed" else "", ident))
+        return {"captured": True, "interaction_id": interaction_id, "tool_call_id": ident}
+
+
+def _tool_family(name):
+    value = str(name or "").lower()
+    if any(part in value for part in ("bash", "shell", "terminal", "computer")):
+        return "execution"
+    if any(part in value for part in ("read", "grep", "glob", "search", "fetch")):
+        return "retrieval"
+    if any(part in value for part in ("write", "edit", "notebook")):
+        return "mutation"
+    if any(part in value for part in ("agent", "task", "workflow")):
+        return "orchestration"
+    return "other"
+
+
+def set_interaction_task(db_path, interaction_id, task_type, label=""):
+    init_db(db_path)
+    if task_type not in TASK_TYPES:
+        raise ValueError("invalid task type")
+    now = int(time.time())
+    task_id = _stable_id(["task", interaction_id])
+    with connect(db_path) as con:
+        exists = con.execute("select 1 from usage_interactions where id=?", (interaction_id,)).fetchone()
+        if not exists:
+            raise ValueError("interaction not found")
+        con.execute("""insert into usage_tasks
+          (id,task_type,type_source,type_confidence,label,design,created_at,updated_at)
+          values(?,?,'manual','exact',?,'observational',?,?)
+          on conflict(id) do update set task_type=excluded.task_type,label=excluded.label,updated_at=excluded.updated_at""",
+          (task_id, task_type, _text(label)[:80], now, now))
+        con.execute("update usage_interactions set task_id=? where id=?", (task_id, interaction_id))
+    return {"interaction_id": interaction_id, "task_id": task_id, "task_type": task_type}
+
+
+def recent_interactions(db_path, limit=20):
+    init_db(db_path)
+    limit = max(1, min(100, int(limit)))
+    with connect(db_path) as con:
+        rows = con.execute("""select i.id,i.started_at_ms,i.finished_at_ms,i.duration_ms,
+          i.completion_status,i.confidence,r.rating,r.outcome,t.task_type,
+          c.harness,c.motor,c.model,c.effort,c.route_id,c.harness_account,c.motor_account,
+          (select count(*) from usage_tool_calls x where x.interaction_id=i.id) as tool_calls,
+          (select count(*) from usage_tool_calls x where x.interaction_id=i.id and x.status='failed') as tool_errors
+          from usage_interactions i
+          left join usage_ratings r on r.interaction_id=i.id
+          left join usage_tasks t on t.id=i.task_id
+          left join usage_session_configs c on c.id=i.config_id
+          where i.finished_at_ms is not null
+          order by i.started_at_ms desc limit ?""", (limit,)).fetchall()
+    return [dict(row) for row in rows]
+
+
+def set_interaction_feedback(db_path, interaction_id, outcome="unknown", rating=None, note=""):
+    init_db(db_path)
+    if outcome not in OUTCOMES:
+        raise ValueError("invalid outcome")
+    if rating is not None:
+        rating = int(rating)
+        if rating < 1 or rating > 5:
+            raise ValueError("rating must be 1..5")
+    note = _text(note)[:240]
+    now = int(time.time())
+    with connect(db_path) as con:
+        exists = con.execute("select 1 from usage_interactions where id=?",(interaction_id,)).fetchone()
+        if not exists:
+            raise ValueError("interaction not found")
+        con.execute("""insert into usage_ratings(interaction_id,rated_at,outcome,rating,note) values(?,?,?,?,?)
+                       on conflict(interaction_id) do update set rated_at=excluded.rated_at,outcome=excluded.outcome,rating=excluded.rating,note=excluded.note""",
+                    (interaction_id,now,outcome,rating,note))
+    return {"interaction_id": interaction_id, "outcome": outcome, "rating": rating}
+
+
+def percentile(values, q):
+    values = sorted(float(value) for value in values if value is not None)
+    if not values:
+        return None
+    if len(values) == 1:
+        return values[0]
+    position = max(0.0, min(1.0, float(q))) * (len(values) - 1)
+    low = int(position)
+    high = min(len(values) - 1, low + 1)
+    fraction = position - low
+    return values[low] + (values[high] - values[low]) * fraction
+
+
+def wilson_interval(successes, total, z=1.96):
+    if total <= 0:
+        return (0.0, 1.0)
+    p = successes / total
+    den = 1 + z*z/total
+    center = (p + z*z/(2*total))/den
+    margin = z*((p*(1-p)/total + z*z/(4*total*total))**0.5)/den
+    return (max(0.0,center-margin),min(1.0,center+margin))
+
+
+def record_change(db_path, event):
+    """Ledger local de cambios de configuración: qué había, qué quedó, por qué."""
+    init_db(db_path)
+    data = dict(event or {})
+    now = _as_int(data.get("created_at") or time.time())
+    ident = _stable_id(["change", now, data.get("tmux_session"), data.get("tmux_pane"),
+                        data.get("after_model"), data.get("after_route")])
+    with connect(db_path) as con:
+        con.execute("""insert into usage_changes
+          (id,created_at,origin,kind,tmux_session,tmux_pane,project,
+           before_model,before_effort,before_route,after_model,after_effort,after_route,status,note)
+          values(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) on conflict(id) do nothing""",
+          (ident, now, _text(data.get("origin"))[:40] or "manual", _text(data.get("kind"))[:24] or "switch",
+           _text(data.get("tmux_session"))[:80], _text(data.get("tmux_pane"))[:32],
+           _text(data.get("project"))[:120],
+           _text(data.get("before_model"))[:120], _text(data.get("before_effort"))[:16],
+           _text(data.get("before_route"))[:80],
+           _text(data.get("after_model"))[:120], _text(data.get("after_effort"))[:16],
+           _text(data.get("after_route"))[:80],
+           _text(data.get("status"))[:24] or "applied", _text(data.get("note"))[:200]))
+    return {"id": ident}
+
+
+def change_ledger(db_path, days=7):
+    init_db(db_path)
+    since = int(time.time()) - max(1, min(30, int(days))) * 86400
+    with connect(db_path) as con:
+        rows = _rows(con.execute("""select * from usage_changes where created_at>=?
+          order by created_at desc limit 60""", (since,)))
+    return rows
+
+
+def token_guard_report(db_path, now=None):
+    """Rolling local anomaly detector. It never pauses or signals a process."""
+    init_db(db_path)
+    now = _as_int(now or time.time())
+    since_hour, since_ten = now - 3600, now - 600
+    with connect(db_path) as con:
+        rows = _rows(con.execute("""select git_root,model,total_tokens,turn_finished_at,raw
+          from usage_turns where source='claude_jsonl' and turn_finished_at>=?
+          and lower(model) like 'claude-%'""", (since_hour,)))
+    projects = {}
+    for row in rows:
+        root = row.get("git_root") or "unknown"
+        item = projects.setdefault(root, {"project": os.path.basename(root.rstrip("/")) or "unknown",
+            "path": root if root != "unknown" else "",
+            "calls10m":0,"callsHour":0,"tokensHour":0,"subagentFiles":set(),"models":{}})
+        item["callsHour"] += 1
+        item["tokensHour"] += _as_int(row.get("total_tokens"))
+        if _as_int(row.get("turn_finished_at")) >= since_ten:
+            item["calls10m"] += 1
+        model = _text(row.get("model"))
+        item["models"][model] = item["models"].get(model, 0) + 1
+        try:
+            path = json.loads(row.get("raw") or "{}").get("path", "")
+            if "/subagents/" in path:
+                item["subagentFiles"].add(os.path.basename(path))
+        except Exception:
+            pass
+    output=[]
+    for item in projects.values():
+        models=item.pop("models")
+        item["topModel"] = max(models, key=models.get) if models else ""
+        item["subagentFiles"] = len(item["subagentFiles"])
+        critical = item["calls10m"] >= 300 or item["tokensHour"] >= 100_000_000 or item["subagentFiles"] >= 20
+        warning = item["calls10m"] >= 120 or item["tokensHour"] >= 40_000_000 or item["subagentFiles"] >= 8
+        item["level"] = "critical" if critical else "warning" if warning else "normal"
+        item["action"] = ("Revisar fan-out y encolar un modelo barato; no se congelará la sesión."
+                          if critical else "Vigilar ritmo y contexto." if warning else "Dentro de límites locales.")
+        output.append(item)
+    output.sort(key=lambda row: ({"critical":0,"warning":1,"normal":2}[row["level"]],-row["tokensHour"]))
+    return {"generatedAt":now,"policy":{"calls10mWarning":120,"calls10mCritical":300,
+            "tokensHourWarning":40_000_000,"tokensHourCritical":100_000_000,
+            "subagentsWarning":8,"subagentsCritical":20,"automaticFreeze":False},
+            "projects":output,"critical":sum(row["level"]=="critical" for row in output),
+            "warning":sum(row["level"]=="warning" for row in output)}
+
+
+def create_experiment(db_path, label, task_type, variants, project_id="", min_pairs=10):
+    init_db(db_path)
+    if task_type not in TASK_TYPES:
+        raise ValueError("invalid task type")
+    if not isinstance(variants, list) or len(variants) != 2:
+        raise ValueError("paired experiments require exactly two variants")
+    now = int(time.time())
+    ident = _stable_id(["experiment", now, label, project_id, *(v.get("route_id") for v in variants)])
+    with connect(db_path) as con:
+        con.execute("""insert into usage_experiments
+          (id,label,task_type,status,design,project_id,primary_metric,min_pairs,created_at,updated_at)
+          values(?,?,?,'draft','paired',?,'outcome',?,?,?)""",
+          (ident, _text(label)[:120] or "A/B", task_type, _text(project_id)[:80],
+           max(2,min(100,int(min_pairs))), now, now))
+        for index, variant in enumerate(variants):
+            con.execute("""insert into usage_experiment_variants
+              (experiment_id,variant_index,label,harness,motor,model,effort,route_id,harness_account,motor_account)
+              values(?,?,?,?,?,?,?,?,?,?)""",
+              (ident,index,_text(variant.get("label"))[:80],_text(variant.get("harness"))[:32],
+               _text(variant.get("motor"))[:32],_text(variant.get("model"))[:120],
+               _text(variant.get("effort"))[:16],_text(variant.get("route_id"))[:80],
+               _text(variant.get("harness_account"))[:64] or "unknown",
+               _text(variant.get("motor_account"))[:64] or "unknown"))
+    return {"id": ident, "status": "draft"}
+
+
+def create_experiment_pair(db_path, experiment_id, label=""):
+    init_db(db_path)
+    now = int(time.time())
+    task_id = _stable_id(["paired-task", experiment_id, now, label])
+    with connect(db_path) as con:
+        experiment = con.execute("select * from usage_experiments where id=?", (experiment_id,)).fetchone()
+        variants = con.execute("select * from usage_experiment_variants where experiment_id=? order by variant_index", (experiment_id,)).fetchall()
+        if not experiment or len(variants) != 2:
+            raise ValueError("experiment not found or incomplete")
+        con.execute("""insert into usage_tasks
+          (id,task_type,type_source,type_confidence,label,design,created_at,updated_at)
+          values(?,?,'experiment','exact',?,'paired',?,?)""",
+          (task_id, experiment["task_type"], _text(label)[:80], now, now))
+        runs = []
+        for order, variant in enumerate(variants):
+            run_id = _stable_id(["experiment-run", task_id, variant["variant_index"]])
+            con.execute("""insert into usage_experiment_runs
+              (id,experiment_id,task_id,project_id,variant_index,harness,motor,model,effort,route_id,
+               harness_account,motor_account,launch_order,status)
+              values(?,?,?,?,?,?,?,?,?,?,?,?,?,'planned')""",
+              (run_id,experiment_id,task_id,experiment["project_id"],variant["variant_index"],
+               variant["harness"],variant["motor"],variant["model"],variant["effort"],variant["route_id"],
+               variant["harness_account"],variant["motor_account"],order))
+            runs.append({"id": run_id, "variantIndex": variant["variant_index"], "status": "planned"})
+        con.execute("update usage_experiments set status='active',updated_at=? where id=?", (now,experiment_id))
+    return {"experimentId": experiment_id, "taskId": task_id, "runs": runs}
+
+
+def list_experiments(db_path):
+    init_db(db_path)
+    with connect(db_path) as con:
+        experiments = _rows(con.execute("""select id,label,task_type,status,design,project_id,primary_metric,min_pairs,created_at,updated_at
+          from usage_experiments order by updated_at desc"""))
+        for experiment in experiments:
+            experiment["variants"] = _rows(con.execute("""select variant_index,label,harness,motor,model,effort,route_id,harness_account,motor_account
+              from usage_experiment_variants where experiment_id=? order by variant_index""", (experiment["id"],)))
+            experiment["runs"] = _rows(con.execute("""select id,task_id,variant_index,status,tmux_session,tmux_pane,started_at,finished_at
+              from usage_experiment_runs where experiment_id=? order by id""", (experiment["id"],)))
+    return experiments
+
+
+def _paired_experiment_analytics(con):
+    rows = con.execute("""select e.id as experiment_id,e.label,e.task_type,
+      x.variant_index,x.harness,x.motor,x.model,x.effort,x.route_id,
+      i.task_id,r.outcome,r.rating,i.duration_ms
+      from usage_experiments e join usage_experiment_runs x on x.experiment_id=e.id
+      join usage_interactions i on i.id=x.interaction_id
+      left join usage_ratings r on r.interaction_id=i.id
+      where x.status='completed' and i.finished_at_ms is not null and i.task_id!=''
+      order by e.id,i.task_id,x.variant_index""").fetchall()
+    experiments = {}
+    for raw in rows:
+        row = dict(raw)
+        exp = experiments.setdefault(row["experiment_id"], {
+            "id": row["experiment_id"], "label": row["label"], "taskType": row["task_type"], "tasks": {}, "variants": {},
+        })
+        exp["tasks"].setdefault(row["task_id"], {})[int(row["variant_index"])] = row
+        exp["variants"].setdefault(int(row["variant_index"]), {
+            "variantIndex": int(row["variant_index"]), "harness": row["harness"], "motor": row["motor"],
+            "model": row["model"], "effort": row["effort"], "routeId": row["route_id"],
+            "solved": 0, "failed": 0, "ratings": [], "durations": [],
+        })
+    output = []
+    for exp in experiments.values():
+        indexes = sorted(exp["variants"])
+        complete = [task for task in exp["tasks"].values()
+                    if indexes and all(i in task and task[i].get("outcome") in {"solved", "failed", "partial"} for i in indexes)]
+        for task in complete:
+            for index in indexes:
+                row, variant = task[index], exp["variants"][index]
+                if row.get("outcome") == "solved": variant["solved"] += 1
+                elif row.get("outcome") == "failed": variant["failed"] += 1
+                if row.get("rating") is not None: variant["ratings"].append(int(row["rating"]))
+                if row.get("duration_ms") is not None: variant["durations"].append(int(row["duration_ms"]))
+        variants = []
+        for index in indexes:
+            variant = exp["variants"][index]
+            binary = variant["solved"] + variant["failed"]
+            lo, hi = wilson_interval(variant["solved"], binary)
+            durations = sorted(variant.pop("durations")); ratings = variant.pop("ratings")
+            variant["successRate"] = variant["solved"] / binary if binary else None
+            variant["successCI"] = [lo, hi]
+            variant["ratingMean"] = sum(ratings) / len(ratings) if ratings else None
+            variant["medianDurationMs"] = durations[len(durations)//2] if durations else None
+            variants.append(variant)
+        eligible = len(complete) >= 10 and len(variants) >= 2
+        winner = None
+        if eligible:
+            ranked = sorted((v for v in variants if v["successRate"] is not None), key=lambda v: v["successCI"][0], reverse=True)
+            if len(ranked) >= 2 and ranked[0]["successCI"][0] > max(v["successCI"][1] for v in ranked[1:]):
+                winner = ranked[0]["variantIndex"]
+        output.append({"id": exp["id"], "label": exp["label"], "taskType": exp["taskType"],
+                       "completePairs": len(complete), "eligible": eligible, "winnerVariant": winner,
+                       "variants": variants})
+    return output
+
+
+def experiment_analytics(db_path, days=14, task_type=""):
+    init_db(db_path)
+    days = max(1, min(30, int(days)))
+    since_ms = int((time.time()-days*86400)*1000)
+    where = "where i.finished_at_ms>=?"
+    args = [since_ms]
+    if task_type:
+        if task_type not in TASK_TYPES:
+            raise ValueError("invalid task type")
+        where += " and t.task_type=?"; args.append(task_type)
+    with connect(db_path) as con:
+        rows = con.execute(f"""select i.*,r.outcome,r.rating,t.task_type,
+          c.harness,c.motor,c.model,c.effort,c.route_id,c.harness_account,c.motor_account,
+          (select sum(u.total_tokens) from usage_turns u where u.interaction_id=i.id) as interaction_tokens,
+          (select sum(u.cache_read_tokens) from usage_turns u where u.interaction_id=i.id) as cache_read_tokens,
+          (select sum(u.reasoning_tokens) from usage_turns u where u.interaction_id=i.id) as reasoning_tokens,
+          (select count(*) from usage_tool_calls x where x.interaction_id=i.id) as tool_calls,
+          (select count(*) from usage_tool_calls x where x.interaction_id=i.id and x.status='failed') as tool_errors
+          from usage_interactions i
+          left join usage_ratings r on r.interaction_id=i.id
+          left join usage_tasks t on t.id=i.task_id
+          left join usage_session_configs c on c.id=i.config_id
+          {where}""",args).fetchall()
+        paired = _paired_experiment_analytics(con)
+    groups = {}
+    for row in rows:
+        d = dict(row); key = d.get("route_id") or "unknown"
+        key += "|"+(d.get("model") or "")+"|"+(d.get("effort") or "")+"|"+(d.get("harness_account") or "unknown")+"|"+(d.get("motor_account") or "unknown")
+        g = groups.setdefault(key,{"configKey":key,"harness":d.get("harness") or "unknown","motor":d.get("motor") or "unknown",
+                                   "model":d.get("model") or "","effort":d.get("effort") or "",
+                                   "harnessAccount":d.get("harness_account") or "unknown","motorAccount":d.get("motor_account") or "unknown","attempts":0,"labeled":0,"solved":0,"failed":0,"partial":0,"ratings":[],"durations":[],"tokens":[],"cacheRead":0,"reasoningTokens":0,"toolCalls":0,"toolErrors":0,"taskIds":set(),"days":set()})
+        g["attempts"]+=1
+        if d.get("task_id"): g["taskIds"].add(d["task_id"])
+        if d.get("finished_at_ms"): g["days"].add(datetime.fromtimestamp(d["finished_at_ms"]/1000,timezone.utc).date().isoformat())
+        outcome=d.get("outcome") or "unknown"
+        if outcome in ("solved","failed","partial"):
+            g["labeled"]+=1;g[outcome]+=1
+        if d.get("rating") is not None:g["ratings"].append(int(d["rating"]))
+        if d.get("duration_ms") is not None:g["durations"].append(int(d["duration_ms"]))
+        if d.get("interaction_tokens") is not None:g["tokens"].append(int(d["interaction_tokens"]))
+        g["cacheRead"] += _as_int(d.get("cache_read_tokens"))
+        g["reasoningTokens"] += _as_int(d.get("reasoning_tokens"))
+        g["toolCalls"] += _as_int(d.get("tool_calls"))
+        g["toolErrors"] += _as_int(d.get("tool_errors"))
+    out=[]
+    for g in groups.values():
+        judged=g["labeled"];lo,hi=wilson_interval(g["solved"],judged)
+        g["successRate"]=(g["solved"]/judged if judged else None);g["partialRate"]=(g["partial"]/judged if judged else None);g["successCI"]=[lo,hi]
+        g["ratingMean"]=(sum(g["ratings"])/len(g["ratings"]) if g["ratings"] else None);g["ratingN"]=len(g["ratings"])
+        g["durationP50Ms"]=percentile(g["durations"],.5);g["durationP90Ms"]=percentile(g["durations"],.9);g["medianDurationMs"]=g["durationP50Ms"]
+        g["tokensP50"]=percentile(g["tokens"],.5);g["tokensP90"]=percentile(g["tokens"],.9);g["medianTokens"]=g["tokensP50"]
+        g["toolErrorRate"]=(g["toolErrors"]/g["toolCalls"] if g["toolCalls"] else None)
+        g["distinctTasks"]=len(g.pop("taskIds"));g["activeDays"]=len(g.pop("days"));g.pop("ratings");g.pop("durations");g.pop("tokens")
+        g["eligible"] = g["labeled"]>=12 and g["distinctTasks"]>=6 and g["activeDays"]>=3 and (hi-lo)<=0.50
+        g["evidence"] = "eligible" if g["eligible"] else "insufficient"
+        out.append(g)
+    return {"days":days,"taskType":task_type or "all","configurations":sorted(out,key=lambda x:(not x["eligible"],-(x["successCI"][0] if x["eligible"] else 0),-x["attempts"])),
+            "policy":{"observationalMinLabeled":12,"minDistinctTasks":6,"minActiveDays":3,"recommendationMinLabeled":20,"pairedMinComplete":10},
+            "mode":"observational","pairedExperiments":paired,
+            "disclaimer":"Direccional; solo experimentos pareados pueden declarar ganador."}
 
 
 def main(argv=None):
@@ -1482,7 +2586,15 @@ def main(argv=None):
         payload = json.load(sys.stdin)
         print(json.dumps(capture_hook_payload(payload)))
         return 0
-    print("usage: cc_usage.py capture-hook", file=sys.stderr)
+    if argv and argv[0] == "lifecycle":
+        payload = json.load(sys.stdin)
+        print(json.dumps(capture_lifecycle(usage_db_path(), payload)))
+        return 0
+    if argv and argv[0] == "tool-event":
+        payload = json.load(sys.stdin)
+        print(json.dumps(capture_tool_event(usage_db_path(), payload)))
+        return 0
+    print("usage: cc_usage.py capture-hook|lifecycle|tool-event", file=sys.stderr)
     return 2
 
 

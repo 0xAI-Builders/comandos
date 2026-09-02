@@ -58,7 +58,10 @@ def test_cards_and_urgent_section_are_removed():
     assert "cardCount" not in HTML
     assert "#urgent-wrap" not in HTML
     assert 'id="urgent-wrap"' not in HTML
-    assert "cardEl" not in HTML
+    # el renderer legacy de cards no existe; "cardEl" suelto como nombre de
+    # variable local (p.ej. en notificaciones) no es el renderer
+    assert "function cardEl" not in HTML
+    assert "const cardEl" not in HTML
 
 
 if __name__ == "__main__":

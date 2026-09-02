@@ -12,12 +12,19 @@ Teclas:
   F12                    mostrar/ocultar terminales
   F5                     recargar tablero
   Ctrl+PgUp / Ctrl+PgDn  cambiar de pestana
+  Ctrl+G                 mosaico: TODAS las sesiones en una pantalla
   Ctrl+Shift + / - / 0   zoom de letra (pestana actual)
   Ctrl+Q                 salir
 """
 import glob, json, os, re, secrets, shlex, shutil, subprocess, sys, threading, time, urllib.request
 from concurrent.futures import ThreadPoolExecutor
 from urllib.parse import quote, unquote, urlparse
+# Cada pestaña es un VTE que corre `tmux attach`. Si cc-app se lanza DESDE dentro
+# de una sesión tmux (p.ej. un dev relanzándolo en su terminal), $TMUX se hereda y
+# TODOS los attach fallan con "sessions should be nested with care" → "no se ve
+# nada". Limpiarlo aquí, una vez, blinda al app pase lo que pase con quien lo lance.
+os.environ.pop("TMUX", None)
+os.environ.pop("TMUX_PANE", None)
 # macOS no tiene GTK/VTE: despachamos a la app nativa (PyObjC + WKWebView) ANTES
 # de tocar `gi`. os.execv reemplaza el proceso pasando argv intacto; el symlink
 # de ~/.local/bin ya resolvio a este archivo real dentro del repo, asi que el
@@ -25,6 +32,44 @@ from urllib.parse import quote, unquote, urlparse
 if sys.platform == "darwin":
     _mac = os.path.join(os.path.dirname(os.path.realpath(__file__)), "cc-app-mac")
     os.execv(_mac, [_mac, *sys.argv[1:]])
+
+# INSTANCIA ÚNICA: dos cc-app a la vez = ventanas duplicadas donde una corre
+# código viejo y "los fixes no se ven" (nos pasó varias veces). flock exclusivo
+# sobre un lockfile por usuario+display; si ya hay uno vivo, activamos su
+# ventana (best-effort) y salimos SIN tocar al otro proceso.
+import fcntl as _fcntl
+_LOCK_NAME = f"cc-app-{(os.environ.get('DISPLAY') or 'x').replace('/', '_').replace(':', '')}.lock"
+# El lockfile prefiere XDG_RUNTIME_DIR, pero ese dir puede quedar inaccesible
+# (p.ej. /run/user/1000 remontado como root): NUNCA crashear por el candado —
+# cae a /tmp. El singleton es una comodidad, no un requisito para arrancar.
+_LOCK_FH = None
+for _base in (os.environ.get("XDG_RUNTIME_DIR"), f"/tmp/comandos-{os.getuid()}", "/tmp"):
+    if not _base:
+        continue
+    try:
+        os.makedirs(_base, exist_ok=True)
+        _LOCK_FH = open(os.path.join(_base, _LOCK_NAME), "w")
+        break
+    except OSError:
+        continue
+if _LOCK_FH is None:                        # sin lockfile posible: seguir sin singleton
+    class _NullLock:
+        def write(self, *_a): pass
+        def flush(self): pass
+    _LOCK_FH = _NullLock()
+if hasattr(_LOCK_FH, "fileno"):
+    try:
+        _fcntl.flock(_LOCK_FH, _fcntl.LOCK_EX | _fcntl.LOCK_NB)
+        _LOCK_FH.write(str(os.getpid())); _LOCK_FH.flush()
+    except OSError:
+        print("ComandOS ya está corriendo; activando la ventana existente.")
+        try:
+            import subprocess as _sp
+            _sp.run(["wmctrl", "-a", "ComandOS"], timeout=5,
+                    stdout=_sp.DEVNULL, stderr=_sp.DEVNULL)
+        except Exception:
+            pass
+        sys.exit(0)
 import gi
 gi.require_version("Gtk", "3.0")
 # WebKit2 4.1 en Ubuntu 24.04 (noble), 4.0 en 22.04 (jammy). Intenta 4.1 primero.
@@ -50,6 +95,7 @@ CC_REPO = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
 TERM_HTML = os.path.join(CC_REPO, "dash", "term.html")
 # Familia unificada de iconos — los mismos SVG Lucide que usa el dashboard.
 _ICONS_DIR = os.path.join(CC_REPO, "dash", "icons")
+_THEMED_ICON_BUTTONS = []
 PALETTE = ["#232B3E", "#FF6B6B", "#2EE59D", "#FFAE1A", "#7AA5FF", "#B49CFF",
            "#4DD0E1", "#EAF0FB", "#5E6980", "#FF8F8F", "#6FF0BC", "#FFC55C",
            "#A3C0FF", "#CDBBFF", "#86E3F0", "#FFFFFF"]
@@ -62,7 +108,7 @@ PAL_CALIDO = ["#2A2015", "#E06C4B", "#9DC76F", "#E5B567", "#7E9CC0", "#C795C0",
               "#8FBFAE", "#E8D9BE", "#6E5F49", "#F08A63", "#B5DB8A", "#FFCB7D",
               "#9AB4D6", "#DBA9D4", "#A6D4C2", "#FFF4E0"]
 PAL_BRUNO = [
-    "#1A1A1A", "#DA462F", "#73E89A", "#FAD075", "#8BC2F9", "#D691ED",
+    "#888888", "#DA462F", "#73E89A", "#FAD075", "#8BC2F9", "#D691ED",
     "#7DDFF2", "#CCCCCC", "#666666", "#F38172", "#73E89A", "#FAD075",
     "#8BC2F9", "#D691ED", "#7DDFF2", "#FFFFFF",
 ]
@@ -70,9 +116,9 @@ THEMES = {
     "noche": dict(fg="#EAF0FB", bg="#0A0D13", cursor="#FFAE1A", pal=PALETTE,
                   bar="#0D1119", dim="#9AA6BF", text="#EAF0FB", brand="#8B7CFF",
                   line="#222A3A", line2="#2E3852", faint="#5E6980"),
-    "dia": dict(fg="#1B2130", bg="#F7F8FB", cursor="#B26A00", pal=PAL_DIA,
-                bar="#E7EBF3", dim="#4E5A70", text="#1B2130", brand="#5B4BD6",
-                line="#D9DEE8", line2="#C3CAD8", faint="#8892A6"),
+    "dia": dict(fg="#17202B", bg="#BCC7D4", cursor="#1D55C7", pal=PAL_DIA,
+                bar="#AEBAC8", dim="#3E4D61", text="#17202B", brand="#1D55C7",
+                line="#98A6B6", line2="#687A90", faint="#5E7087"),
     "calido": dict(fg="#F2E5D0", bg="#161009", cursor="#FFB454", pal=PAL_CALIDO,
                    bar="#1D150D", dim="#BCA98C", text="#F2E5D0", brand="#E0A458",
                    line="#36291A", line2="#4A3823", faint="#8A7A5F"),
@@ -84,6 +130,15 @@ THEMES = {
     "bruno": dict(fg="#CCCCCC", bg="#1A1A1A", cursor="#E4AE49", pal=PAL_BRUNO,
                   bar="#222224", dim="#AAAAAA", text="#CCCCCC", brand="#E4AE49",
                   line="#333333", line2="#444444", faint="#999999"),
+    "superglass": dict(fg="#F2F5FF", bg="#080B19", cursor="#72E6FF", pal=PALETTE,
+                       bar="#11152C", dim="#B7C3E8", text="#F2F5FF", brand="#72E6FF",
+                       line="#34416C", line2="#53679A", faint="#8291BD"),
+    "neon": dict(fg="#F7F7FC", bg="#07080D", cursor="#28E7F2", pal=PALETTE,
+                 bar="#0D0F16", dim="#B7B8CA", text="#F7F7FC", brand="#28E7F2",
+                 line="#33384B", line2="#596079", faint="#85879F"),
+    "contraste": dict(fg="#FFFFFF", bg="#000000", cursor="#59B0FF", pal=PALETTE,
+                      bar="#000000", dim="#E0E0E0", text="#FFFFFF", brand="#59B0FF",
+                      line="#8A8A8A", line2="#FFFFFF", faint="#B8B8B8"),
 }
 FONT_FAMILY = "JetBrainsMono Nerd Font Mono,JetBrainsMono Nerd Font,JetBrainsMono NF,JetBrains Mono,Cascadia Code,Fira Code,DejaVu Sans Mono,Monospace"
 FONT_SIZE = 13
@@ -118,18 +173,32 @@ notebook > header > tabs > tab {
 notebook > header > tabs > tab:checked {
   color: @TEXT@; box-shadow: inset 0 -2px 0 0 @BRAND@;
 }
+.tab-model { color: @BRAND@; font-family: monospace; font-size: 9px; }
 notebook > header > tabs > tab button {
   color: @FAINT@; padding: 0; margin: 0; min-height: 14px; min-width: 14px;
   border: none; background: none;
 }
 notebook > header > tabs > tab button:hover { color: @TEXT@; }
 /* Flechas de scroll de tabs: sin esto quedan pegadas a la primera pestana */
+/* Flechas nativas del notebook OCULTAS: navegacion por los botones
+   ‹ › propios del headerbar (misma familia que el "+"). */
 notebook > header > tabs > arrow {
-  color: @FAINT@; min-width: 18px; padding: 0 7px; margin: 0 4px;
-  background: none; border: none;
+  min-width: 0; min-height: 0; padding: 0; margin: 0; opacity: 0;
+  -gtk-icon-source: none;
 }
-notebook > header > tabs > arrow:hover { color: @BRAND@; }
-notebook > header > tabs > arrow:disabled { color: @LINE@; }
+.tabnav { color: @TEXT@; padding: 4px 10px; margin: 2px 3px; border: 1px solid @LINE@;
+  background: none; border-radius: 10px; min-width: 38px; min-height: 34px; -gtk-icon-effect: none; }
+.tabnav:hover { color: @TEXT@; background: @LINE@; }
+.tabnav:active { color: @BRAND@; }
+.tabnav:disabled { opacity: .35; }
+.mosaic-head { background: @BAR@; border-bottom: 1px solid @LINE@; min-height: 30px; }
+.mosaic-cell { background: @BG@; border: 1px solid @LINE@; border-radius: 8px;
+  transition: border-color 160ms ease, background 160ms ease; }
+.mosaic-cell.focused { border-color: @BRAND@; }
+.mosaic-cell.tap { background: shade(@BG@, 1.18); }
+.mosaic-ph { color: @FAINT@; font-size: 18px; }
+.mosaic-cell-title { padding: 1px 4px; }
+.mosaic-zoom { background: @BG@; border: 2px solid @BRAND@; border-radius: 12px; }
 notebook stack { background: @BG@; }
 .termwrap { background: @BG@; }
 .tabplus { color: @DIM@; padding: 4px 8px; margin: 0 1px; border: none; background: none;
@@ -165,9 +234,14 @@ paned separator { background: @LINE@; min-width: 2px; }
 
 def theme_css(t):
     s = APP_CSS
+    try:
+        icons = _ICONS_DIR
+    except NameError:          # tests ejecutan esta funcion aislada
+        icons = ""
     for k, v in (("@BAR@", t["bar"]), ("@BG@", t["bg"]), ("@TEXT@", t["text"]),
                  ("@DIM@", t["dim"]), ("@FAINT@", t["faint"]), ("@BRAND@", t["brand"]),
-                 ("@LINE@", t["line"]), ("@LINE2@", t["line2"])):
+                 ("@LINE@", t["line"]), ("@LINE2@", t["line2"]),
+                 ("@ICONS@", icons)):
         s = s.replace(k, v)
     return s
 
@@ -327,6 +401,9 @@ def snip_paste(sess, text):
 
 
 URL_RE = r"https?://[^\s'\"<>\]\)]+"
+# Rutas locales clickeables: ~/lo-que-sea, o absolutas con >=2 segmentos (asi
+# /model, /compact o /usr solitos NO se vuelven links). Acepta :linea al final.
+PATH_RE = r"(?:~/[\w.+@%,=-]+(?:/[\w.+@%,=-]+)*|/[\w.+@%,=-]+(?:/[\w.+@%,=-]+)+)(?::\d+)?"
 
 
 def normalize_wrapped_url_text(text):
@@ -336,22 +413,50 @@ def normalize_wrapped_url_text(text):
 
 
 def url_from_wrapped_text(text, fragment="", row=None, col=None):
-    pat = r"https?://(?:[^\s'\"<>\]\)]+|[ \t]*\r?\n[ \t]*[^\s'\"<>\]\)]+)+"
+    """URL o RUTA local bajo el punto, re-unida si el wrap la partio en
+    varias filas. Un link JAMAS debe romperse por saltos de linea."""
+    wrap = r"[ \t]*\r?\n[ \t]*"
+    uch = r"[^\s'\"<>\]\)]"
+    pch = r"[\w.+@%,=~/-]"
+    pats = (
+        rf"https?://(?:{uch}+|{wrap}{uch}+)+",
+        # ~/... o /a/b (>=2 segmentos), con :linea opcional; tolera wraps
+        rf"(?:~|/)(?:{pch}+|{wrap}{pch}+)+(?::\d+)?",
+    )
     point = None
     if row is not None and col is not None:
         lines = (text or "").splitlines(True)
         if 0 <= row < len(lines):
             point = sum(len(lines[i]) for i in range(row)) + min(max(col, 0), len(lines[row]))
     frag = normalize_wrapped_url_text(fragment or "").strip()
-    matches = list(re.finditer(pat, text or ""))
-    for m in matches:
-        url = re.sub(r"[ \t]*\r?\n[ \t]*", "", m.group(0))
-        if frag and (frag in url or url in frag):
-            return url
+
+    def joined(m):
+        link = re.sub(wrap, "", m.group(0))
+        if link.startswith("http"):
+            return link
+        # rutas: exigir >=2 segmentos en absolutas (que /model no sea link)
+        body = link[:-len(link.rsplit(":", 1)[1]) - 1] if re.search(r":\d+$", link) else link
+        if body.startswith("/") and body.count("/") < 2:
+            return None
+        return link
+
+    candidates = []
+    for pat in pats:
+        for m in re.finditer(pat, text or ""):
+            link = joined(m)
+            if link:
+                candidates.append((m, link))
+    # una ruta contenida dentro de una URL no es candidata propia
+    candidates = [(m, link) for m, link in candidates
+                  if not any(o is not m and o.start() <= m.start() and m.end() <= o.end()
+                             for o, _l in candidates)]
+    for m, link in candidates:
+        if frag and (frag in link or link in frag):
+            return link
         if point is not None and m.start() <= point < m.end():
-            return url
-    if not frag and point is None and len(matches) == 1:
-        return re.sub(r"[ \t]*\r?\n[ \t]*", "", matches[0].group(0))
+            return link
+    if not frag and point is None and len(candidates) == 1:
+        return candidates[0][1]
     return frag
 
 
@@ -372,8 +477,24 @@ def url_at_event(term, event, match=""):
     try:
         row, col = cell_at_event(term, event)
         cols = max(1, int(term.get_column_count() or 1))
-        start = max(0, row - 2)
-        text, _attrs = term.get_text_range(start, 0, row + 3, cols, None, None)
+        start = max(0, row - 3)
+        text, _attrs = term.get_text_range(start, 0, row + 4, cols, None, None)
+        # En splits tmux cada fila mezcla varios panes + bordes │: recortar
+        # las lineas a las columnas del pane clickeado para que el wrap se
+        # re-una dentro DE ESE pane y no se contamine con el vecino.
+        sess = term_session(term)
+        if sess and text:
+            r = tmuxc("list-panes", "-t", "=" + sess + ":",
+                      "-F", "#{pane_id}|#{pane_left}|#{pane_right}")
+            for line in (r.stdout or "").splitlines():
+                parts = line.split("|")
+                if len(parts) == 3 and int(parts[1]) <= col <= int(parts[2]):
+                    left, right = int(parts[1]), int(parts[2])
+                    if left > 0 or right < cols - 1:
+                        text = "\n".join(l[left:right + 1]
+                                         for l in text.splitlines())
+                        col -= left
+                    break
         url = url_from_wrapped_text(text or "", match or "", row - start, col)
         if url:
             return url
@@ -503,15 +624,16 @@ def make_term(argv_sh):
     # Seleccionar = copiar al clipboard del sistema (portapapeles compartido)
     term.connect("selection-changed", lambda t: copy_vte_selection(t))
     # URLs clickeables: click simple (sin arrastre) o Ctrl+click, con manita
-    try:
-        rx = Vte.Regex.new_for_match(URL_RE, -1, 0x00000400)  # PCRE2_MULTILINE
-        tag = term.match_add_regex(rx, 0)
+    for pattern in (URL_RE, PATH_RE):
         try:
-            term.match_set_cursor_name(tag, "pointer")
+            rx = Vte.Regex.new_for_match(pattern, -1, 0x00000400)  # PCRE2_MULTILINE
+            tag = term.match_add_regex(rx, 0)
+            try:
+                term.match_set_cursor_name(tag, "pointer")
+            except Exception:
+                pass
         except Exception:
             pass
-    except Exception:
-        pass
     # Padding alrededor del texto (configurable en Ajustes > Terminal).
     term.set_margin_start(TERM_PADDING + 2); term.set_margin_end(max(0, TERM_PADDING - 4))
     term.set_margin_top(TERM_PADDING); term.set_margin_bottom(max(0, TERM_PADDING - 2))
@@ -768,10 +890,20 @@ def exit_copy_mode(term):
 
 
 def open_url(url, parent=None, timestamp=0):
-    """Abre una URL en el navegador default del usuario.
-    En WSL prefiere `wslview` (rutea al navegador de Windows via wslu);
-    en macOS usa `open`; en Linux nativo usa el contexto del click para
-    activar el navegador, con fallbacks a GIO y `xdg-open`."""
+    """Abre una URL en el navegador default — o una RUTA LOCAL con su app
+    default (xdg-open): archivos, carpetas, PDFs, imágenes; nunca ejecuta.
+    En WSL prefiere `wslview`; en macOS `open`; en Linux nativo usa el
+    contexto del click, con fallbacks a GIO y `xdg-open`."""
+    if isinstance(url, str) and url[:1] in ("/", "~"):
+        path = os.path.expanduser(re.sub(r":\d+$", "", url.strip()))
+        if os.path.exists(path):
+            try:
+                subprocess.Popen(["xdg-open" if sys.platform != "darwin" else "open", path],
+                                 start_new_session=True,
+                                 stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            except Exception:
+                pass
+            return
     is_wsl = False
     try:
         with open("/proc/sys/kernel/osrelease") as f:
@@ -803,6 +935,106 @@ def open_url(url, parent=None, timestamp=0):
         return False
 
 
+def _clean_local_path(url):
+    """'/a/b.py:12' o '~/x' -> ruta absoluta existente, o '' si no es archivo."""
+    if not isinstance(url, str) or url[:1] not in ("/", "~"):
+        return ""
+    path = os.path.expanduser(re.sub(r":\d+$", "", url.strip()))
+    return path if os.path.exists(path) else ""
+
+
+def reveal_in_file_manager(path):
+    """Abre el EXPLORADOR de archivos con el archivo RESALTADO (no lo abre con
+    su app). Estándar org.freedesktop.FileManager1.ShowItems — lo implementan
+    Nautilus, Nemo, Dolphin, Caja, Thunar…; si no responde, abre la carpeta
+    contenedora con xdg-open."""
+    path = _clean_local_path(path) or os.path.expanduser(re.sub(r":\d+$", "", str(path).strip()))
+    try:
+        uri = GLib.filename_to_uri(path, None)
+        r = subprocess.run(
+            ["gdbus", "call", "--session",
+             "--dest", "org.freedesktop.FileManager1",
+             "--object-path", "/org/freedesktop/FileManager1",
+             "--method", "org.freedesktop.FileManager1.ShowItems",
+             "[" + GLib.Variant("s", uri).print_(False) + "]", ""],
+            timeout=4, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        if r.returncode == 0:
+            return True
+    except Exception:
+        pass
+    # Fallback: abrir la carpeta contenedora (no el archivo).
+    folder = path if os.path.isdir(path) else os.path.dirname(path)
+    try:
+        subprocess.Popen(["xdg-open" if sys.platform != "darwin" else "open", folder],
+                         start_new_session=True,
+                         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        return True
+    except Exception:
+        return False
+
+
+def link_actions_popover(term, event, url):
+    """Popover al hacer click en una ruta/link de la terminal. Rutas locales:
+    ABRIR CARPETA (explorador, resaltado) por defecto + botones Abrir archivo y
+    Copiar. Links web: Abrir (navegador) + Copiar. Nada se abre sin que el
+    usuario elija."""
+    is_path = bool(_clean_local_path(url)) or url[:1] in ("/", "~")
+    disp = re.sub(r"^file://", "", url)
+    home = os.path.expanduser("~")
+    disp_short = ("~" + disp[len(home):]) if disp.startswith(home) else disp
+    pop = Gtk.Popover()
+    pop.set_relative_to(term)
+    rect = Gdk.Rectangle()
+    rect.x, rect.y, rect.width, rect.height = int(event.x), int(event.y), 1, 1
+    pop.set_pointing_to(rect)
+    pop.set_position(Gtk.PositionType.BOTTOM)
+    box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=3)
+    for m in ("start", "end", "top", "bottom"):
+        getattr(box, f"set_margin_{m}")(8)
+    lbl = Gtk.Label(xalign=0)
+    lbl.set_markup(f'<span size="small" font_family="monospace">{GLib.markup_escape_text(disp_short[:80])}</span>')
+    lbl.set_ellipsize(Pango.EllipsizeMode.MIDDLE)
+    lbl.set_max_width_chars(46)
+    box.pack_start(lbl, False, False, 0)
+    box.pack_start(Gtk.Separator(orientation=Gtk.Orientation.HORIZONTAL), False, False, 2)
+
+    def row(icon, label, cb):
+        b = Gtk.Button()
+        b.set_relief(Gtk.ReliefStyle.NONE)
+        inner = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
+        inner.pack_start(_themed_icon_image(icon, 15), False, False, 0)
+        tl = Gtk.Label(label=label, xalign=0)
+        inner.pack_start(tl, True, True, 0)
+        b.add(inner)
+        b.get_style_context().add_class("tabplus")
+
+        def go(*_a):
+            pop.popdown()
+            try:
+                cb()
+            except Exception:
+                pass
+        b.connect("clicked", go)
+        box.pack_start(b, False, False, 0)
+        return b
+
+    if is_path:
+        row("folder-open", "Abrir carpeta" if ES else "Open folder",
+            lambda: reveal_in_file_manager(url))
+        row("file", "Abrir archivo" if ES else "Open file",
+            lambda: open_url(url, term.get_toplevel(), getattr(event, "time", 0)))
+        row("copy", "Copiar ruta" if ES else "Copy path",
+            lambda: copy_text_to_clipboard(disp))
+    else:
+        row("external-link", "Abrir" if ES else "Open",
+            lambda: open_url(url, term.get_toplevel(), getattr(event, "time", 0)))
+        row("copy", "Copiar link" if ES else "Copy link",
+            lambda: copy_text_to_clipboard(url))
+    pop.add(box)
+    box.show_all()
+    pop.popup()
+
+
 def on_term_release(term, event):
     """Al soltar el mouse: 1) si fue un CLICK limpio sobre una URL, abrirla;
     2) marcar que pudo quedar seleccion tmux (el primer keypress la limpia)."""
@@ -818,18 +1050,25 @@ def on_term_release(term, event):
             if pane_id:
                 tmuxc("select-pane", "-t", pane_id)
             if url:
-                open_url(url, term.get_toplevel(), getattr(event, "time", 0))
+                # Click simple: NO abrir directo. Popover con opciones — para
+                # rutas locales, abrir carpeta (explorador) es lo principal;
+                # además Copiar y Abrir archivo. Para links: Abrir + Copiar.
+                link_actions_popover(term, event, url)
     return False
 
 
 def on_term_button(term, event):
-    # Ctrl+click en una URL: abrirla directo
+    # Ctrl+click: acción directa RÁPIDA (sin popover) — link al navegador,
+    # ruta local al EXPLORADOR de archivos (resaltada), nunca abre el archivo.
     if event.button == 1 and (event.state & Gdk.ModifierType.CONTROL_MASK):
         try:
             match, _tag = term.match_check_event(event)
             url = url_at_event(term, event, match or "")
             if url:
-                open_url(url, term.get_toplevel(), getattr(event, "time", 0))
+                if _clean_local_path(url):
+                    reveal_in_file_manager(url)
+                else:
+                    open_url(url, term.get_toplevel(), getattr(event, "time", 0))
                 return True
         except Exception:
             pass
@@ -982,6 +1221,17 @@ def _build_hb_css():
     de nuevo desde apply_theme() cuando el user cambia noche/dia/calido/termius,
     así el headerbar, menús, paned separator, etc. cambian con el tema."""
     return (
+    b".pane-pill{background:" + THEME["bg"].encode() + b";"
+    b" border-radius:999px;padding:3px 12px;"
+    b" border:1.5px solid rgba(148,148,148,0.5);"
+    b" box-shadow:0 1px 4px rgba(0,0,0,0.4);}"
+    b".pane-pill label{color:" + THEME["fg"].encode() + b"; font-size:11.5px;}"
+    b".pane-pill.pp-claude,.pane-pill.pp-codex,.pane-pill.pp-grok{"
+    b" border-color:rgba(148,148,148,0.5);}"
+    b".pill-btn{padding:2px 5px;margin:0;background:rgba(148,148,148,0.12);"
+    b" border:1px solid rgba(148,148,148,0.55);border-radius:999px;min-height:0;}"
+    b".pill-btn:hover{border-color:" + THEME["fg"].encode() + b";"
+    b" background:rgba(148,148,148,0.28);}"
     b"window,window.background,window.solid-csd,window.csd{"
     b" background:" + THEME["bg"].encode() + b";"
     b" border-radius:10px;"
@@ -1403,6 +1653,54 @@ GROK_HOME_DEFAULT = os.path.expanduser("~/.grok")
 _ROLLOUT_RE = re.compile(
     r"rollout-.*-([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\.jsonl$")
 _RESUME_SKIP_FLAGS = {"--resume", "--continue", "-r", "-c", "--last"}
+# Flags que llevan valor: hay que conservar el PAR flag+valor. Guardar solo el
+# flag produce comandos rotos tipo `claude --model --effort` (claude toma
+# "--effort" como nombre de modelo y toda la sesion revive inservible).
+_VALUE_FLAGS = {"--model", "--effort", "--permission-mode", "--add-dir",
+                "--settings", "--session-id", "--agents", "--mcp-config"}
+
+
+def _which_cli(name):
+    """shutil.which + bins de usuario. Lanzada desde el escritorio, la app
+    hereda un PATH sin ~/.bun/bin (codex) o ~/.local/bin: la deteccion de CLIs
+    instalados no puede depender del entorno (mismo criterio que lib/providers)."""
+    hit = shutil.which(name)
+    if hit:
+        return hit
+    for directory in ("~/.local/bin", "~/.bun/bin", "~/.cargo/bin",
+                      "~/.npm-global/bin", "~/bin", "/usr/local/bin"):
+        candidate = os.path.join(os.path.expanduser(directory), name)
+        if os.path.isfile(candidate) and os.access(candidate, os.X_OK):
+            return candidate
+    return None
+
+
+def _sane_flags(raw):
+    """Normaliza una lista de args a flags relanzables: conserva flag+valor de
+    los _VALUE_FLAGS, descarta value-flags huerfanos (snapshots viejos rotos) y
+    omite los flags de reanudacion junto con su id."""
+    out, i = [], 0
+    raw = [a for a in raw if isinstance(a, str)]
+    while i < len(raw):
+        arg = raw[i]
+        if not arg.startswith("-"):
+            i += 1
+            continue
+        if arg in _RESUME_SKIP_FLAGS:
+            i += 1
+            if arg in ("--resume", "-r") and i < len(raw) and not raw[i].startswith("-"):
+                i += 1  # saltar el session-id del resume viejo
+            continue
+        if arg in _VALUE_FLAGS:
+            if i + 1 < len(raw) and not raw[i + 1].startswith("-"):
+                out.extend((arg, raw[i + 1]))
+                i += 2
+            else:
+                i += 1  # value-flag sin valor: descartarlo, no propagar el bug
+            continue
+        out.append(arg)
+        i += 1
+    return out
 
 
 def _pid_alive(pid):
@@ -1414,14 +1712,14 @@ def _pid_alive(pid):
 
 
 def _proc_flags(pid):
-    """Flags (args que empiezan con '-') con que corre el agente, para
-    relanzarlo igual (p.ej. --dangerously-skip-permissions)."""
+    """Flags (con su valor cuando lo llevan) con que corre el agente, para
+    relanzarlo igual (p.ej. --model X --effort high --dangerously-skip-permissions)."""
     try:
         with open(f"/proc/{int(pid)}/cmdline", "rb") as f:
             argv = [a.decode("utf-8", "replace") for a in f.read().split(b"\0") if a]
     except Exception:
         return []
-    return [a for a in argv[1:] if a.startswith("-") and a not in _RESUME_SKIP_FLAGS]
+    return _sane_flags(argv[1:])
 
 
 def _claude_by_tmux_session():
@@ -1574,25 +1872,26 @@ def resume_command(snap):
     if not isinstance(snap, dict):
         return None
     agent = snap.get("agent") or ""
-    flags = snap.get("flags") if isinstance(snap.get("flags"), list) else []
-    flags = [f for f in flags if isinstance(f, str) and f.startswith("-")
-             and f not in _RESUME_SKIP_FLAGS]
+    # _sane_flags conserva pares --flag valor y tira value-flags huerfanos:
+    # un snapshot viejo con ["--model","--effort"] jamas debe volver a generar
+    # `claude --resume id --model --effort` (modelo invalido, sesion rota).
+    flags = _sane_flags(snap.get("flags") if isinstance(snap.get("flags"), list) else [])
     fl = ("" if not flags else " " + " ".join(shlex.quote(f) for f in flags))
     sid = snap.get("resume_id") or ""
     sid = sid if isinstance(sid, str) and re.fullmatch(r"[0-9a-f-]{36}", sid) else ""
-    if agent == "claude" and shutil.which("claude"):
+    if agent == "claude" and _which_cli("claude"):
         cfg = os.path.realpath(os.path.expanduser(snap.get("claude_config_dir") or "~/.claude"))
         projects = os.path.join(cfg, "projects")
         prefix = "" if cfg == os.path.realpath(os.path.expanduser("~/.claude")) else f"CLAUDE_CONFIG_DIR={shlex.quote(cfg)} "
         if sid and glob.glob(os.path.join(projects, "*", sid + ".jsonl")):
             return prefix + "claude --resume " + sid + fl
         return prefix + "claude --continue" + fl
-    if agent == "codex" and shutil.which("codex"):
+    if agent == "codex" and _which_cli("codex"):
         if sid and glob.glob(os.path.join(CODEX_SESS_DIR, "*", "*", "*",
                                           "rollout-*" + sid + ".jsonl")):
             return "codex resume " + sid + fl
         return "codex resume --last" + fl
-    if agent == "grok" and shutil.which("grok"):
+    if agent == "grok" and _which_cli("grok"):
         home = snap.get("grok_home") or GROK_HOME_DEFAULT
         home = os.path.realpath(os.path.expanduser(home))
         prefix = "" if home == os.path.realpath(GROK_HOME_DEFAULT) else f"GROK_HOME={shlex.quote(home)} "
@@ -1682,9 +1981,11 @@ def restore_tabs():
 
 # Punto de estado por pestana: el color se procesa ANTES de leer el nombre
 # (ambar: espera tu respuesta / azul: trabajando / verde: listo)
-DOT_COLORS = {"waiting": "#FFAE1A", "working": "#7AA5FF",
-              "done": "#2EE59D", "dead": "#FF6B6B"}
-DOT_IDLE = "#39445C"
+# Semaforo refinado: tonos suaves y armonicos, mismos en tabs y cards GTK
+# Semaforo "aurora": tonos apagados y elegantes que no pelean con Bruno
+DOT_COLORS = {"waiting": "#D08770", "working": "#81A1C1",
+              "done": "#A3BE8C", "dead": "#BF616A"}
+DOT_IDLE = "#4B5568"
 STATE_CACHE = {}   # session -> status (lo alimenta el poller de /state)
 STATE_ITEMS = {}   # session -> item completo de /state para el switcher
 
@@ -1730,8 +2031,15 @@ def tab_label(text, key=None, closable=True):
     lbl_box.set_visible_window(False)
     lbl_box.add(lbl)
     hb.pack_start(lbl_box, False, False, 0)
+    micon = Gtk.Image()
+    hb.pack_start(micon, False, False, 0)
+    model_lbl = Gtk.Label(label="")
+    model_lbl.get_style_context().add_class("tab-model")
+    hb.pack_start(model_lbl, False, False, 0)
     hb._dot = dot
     hb._text = lbl
+    hb._micon = micon
+    hb._model = model_lbl
     hb._text_box = lbl_box
 
     def begin_rename(*_):
@@ -1811,7 +2119,14 @@ def update_dots(states, items=None):
     STATE_CACHE.update(states)
     try:
         if items is not None:
-            set_notif_badge(sum(1 for it in items if it.get("status") == "waiting" and it.get("alive")))
+            # el badge cuenta lo IMPORTANTE (mismo conteo v2 del tablero,
+            # respetando la limpieza compartida), no sesiones en espera
+            try:
+                with urllib.request.urlopen("http://127.0.0.1:4777/notifs/count", timeout=2) as _r:
+                    nc = json.loads(_r.read().decode()).get("count", 0)
+            except Exception:
+                nc = 0
+            set_notif_badge(int(nc))
     except Exception:
         pass
     if items is not None:
@@ -2134,6 +2449,7 @@ def open_tab(sess, winname, label=None):
     box = make_term(cmd)
     box._key = key
     box._term._session_hint = sess
+    _attach_model_bar(box, sess)
     box._label = label or saved_tab_label(sess) or sess
     idx = nb.append_page(box, tab_label(box._label, key))
     nb.set_tab_reorderable(box, True)
@@ -2511,6 +2827,10 @@ def apply_theme(name):
     terminales abiertas (lo dispara el boton de tema del tablero)."""
     global THEME
     THEME = THEMES.get(name, THEMES["noche"])
+    try:
+        Gtk.Settings.get_default().set_property("gtk-application-prefer-dark-theme", name != "dia")
+    except Exception:
+        pass
     _prov.load_from_data(theme_css(THEME).encode())
     # Regenerar el CSS de headerbar, menús, paned separator, notebook border
     # con los colores del NUEVO tema — sin esto queda "oscuro" en modo día.
@@ -2537,6 +2857,11 @@ def apply_theme(name):
         ))
     except Exception as e:
         print(f"apply_theme CSS reload err: {e}")
+    for button, icon_name, icon_size in list(globals().get("_THEMED_ICON_BUTTONS", [])):
+        try:
+            button.set_image(_themed_icon_image(icon_name, icon_size))
+        except Exception:
+            pass
     for i in range(nb.get_n_pages()):
         t = getattr(nb.get_nth_page(i), "_term", None)
         if t:
@@ -2581,6 +2906,7 @@ nb.connect("page-reordered", on_tab_reordered)
 # La pestana ACTIVA de la app: el tablero la usa para que el Centro de Control sea siempre
 # el operador de la sesion en la que estas parado.
 ACTIVE_TAB_FILE = os.path.expanduser("~/.claude/hooks/app-tab-active.json")
+APP_TAB_MODELS_FILE = os.path.expanduser("~/.claude/hooks/app-tab-models.json")
 
 
 def _report_active_tab(*_):
@@ -2597,31 +2923,301 @@ def _report_active_tab(*_):
         pass
 
 
+_tab_models_mtime = 0.0
+
+# ---- Pildoras de modelo POR PANE: ancladas a la linea de titulo de cada
+# pane tmux (geometria real de list-panes), con boton de motor. El usuario
+# marco ese renglon exacto como el lugar de la info y las acciones.
+_PV_HEX = {"claude": "#A78BFA", "codex": "#2DD4BF", "grok": "#FB923C",
+           "opencode": "#F0ABFC", "gemini": "#93C5FD"}
+_STATE_UI = {
+    "verified":  ("#4ADE80", "✓"),
+    "changing":  ("#FBBF24", "⟳"),
+    "detecting": ("#9CA3AF", "◌"),
+}
+
+
+def _dash_js(code):
+    try:
+        try:
+            if paned.get_position() < 420:
+                paned.set_position(700)
+        except Exception:
+            pass
+        wv.run_javascript(f"try{{{code}}}catch(e){{}}", None, None, None)
+    except Exception:
+        pass
+
+
+def _esc(t):
+    return GLib.markup_escape_text(str(t or ""))
+
+
+_PV_ICON = {"claude": "anthropic", "codex": "openai", "grok": "grok"}
+
+
+def _svg_image(name, size, color):
+    """Logo SVG tintado con un color puntual (no el dim del tema)."""
+    svg_path = os.path.join(_ICONS_DIR, f"{name}.svg")
+    try:
+        with open(svg_path, "rb") as f:
+            data = f.read().replace(b"currentColor", color.encode())
+        loader = GdkPixbuf.PixbufLoader.new_with_type("svg")
+        loader.set_size(size, size)
+        loader.write(data); loader.close()
+        return Gtk.Image.new_from_pixbuf(loader.get_pixbuf())
+    except Exception:
+        return Gtk.Label(label="⬤")
+
+
+def _attach_model_bar(box, sess):
+    """Envuelve la VTE en un Gtk.Overlay para flotar pildoras sobre la linea
+    de titulo de cada pane. No cambia el layout term+scrollbar (aprendido:
+    meter una barra al box horizontal recortaba la terminal)."""
+    term = getattr(box, "_term", None)
+    if term is None:
+        return
+    ov = Gtk.Overlay()
+    pos = 0
+    for i, ch in enumerate(box.get_children()):
+        if ch is term:
+            pos = i
+            break
+    box.remove(term)
+    ov.add(term)
+    box.pack_start(ov, True, True, 0)
+    box.reorder_child(ov, pos)
+    box._pill_overlay = ov
+    box._pill_sess = sess
+    box._pill_sig = ""
+    box._pills = []
+    term.connect("size-allocate", lambda *_a, b=box: setattr(b, "_pill_sig", ""))
+    box.show_all()
+
+
+def _pane_geometry(sess):
+    try:
+        out = subprocess.run(
+            ["tmux", "list-panes", "-t", f"={sess}", "-F",
+             "#{pane_id} #{pane_left} #{pane_top} #{pane_width}"],
+            capture_output=True, text=True, timeout=2).stdout
+    except Exception:
+        return {}
+    geo = {}
+    for line in out.splitlines():
+        parts = line.split()
+        if len(parts) == 4 and parts[0].startswith("%"):
+            geo[parts[0]] = (int(parts[1]), int(parts[2]), int(parts[3]))
+    return geo
+
+
+def _pane_pill(sess, p):
+    """Pildora MINIMALISTA: logo(s) de marca + modelo + glifo de certeza +
+    engrane. Sin texto redundante: el logo ES la identidad; el tooltip
+    carga todo el detalle (harness→motor, cuentas, pane, estado)."""
+    harness, motor = p.get("harness") or "?", p.get("motor") or "?"
+    state = p.get("state") or "detecting"
+    scol, sglyph = _STATE_UI.get(state, _STATE_UI["detecting"])
+    fg = THEME.get("fg", "#ECECEC")
+    dim = "#8A8F98"
+    pill = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
+    pill.get_style_context().add_class("pane-pill")
+    pill.get_style_context().add_class(f"pp-{motor if motor in _PV_HEX else 'x'}")
+    pill.set_valign(Gtk.Align.START)
+    if motor != harness and harness in _PV_ICON:
+        pill.pack_start(_svg_image(_PV_ICON[harness], 12, dim), False, False, 0)
+    pill.pack_start(_svg_image(_PV_ICON.get(motor, "layers"), 15, fg), False, False, 0)
+    lab = Gtk.Label()
+    if state == "changing":
+        lab.set_markup(f'<span foreground="{fg}" weight="bold">{_esc("→ " + (p.get("target") or "…"))}</span>')
+    elif state == "verified":
+        lab.set_markup(f'<span foreground="{fg}" weight="bold">{_esc(p.get("model"))}</span>'
+                       + (f'<span foreground="{dim}"> {_esc(p.get("effort"))}</span>' if p.get("effort") else ""))
+    else:
+        lab.set_markup(f'<span foreground="{dim}">…</span>')
+    pill.pack_start(lab, False, False, 0)
+    # UNICO acento de color en toda la pildora: el estado. Verde=confia,
+    # ambar=espera, gris=aun no se sabe. Cero carga cognitiva extra.
+    st = Gtk.Label()
+    st.set_markup(f'<span foreground="{scol}" weight="bold">{sglyph}</span>')
+    pill.pack_start(st, False, False, 0)
+    accts = ""
+    ha, ma = p.get("hAcct") or "", p.get("mAcct") or ""
+    if ha and ha != "unknown":
+        accts = ha + ("" if not ma or ma in ("unknown", ha) else "→" + ma)
+    pill.set_tooltip_text(f"{harness} → {motor} · {p.get('model') or '?'}"
+                          + (f" · {p.get('effort')}" if p.get("effort") else "")
+                          + (f" · {p.get('tierSym')}" if p.get("tierSym") else "")
+                          + (f" · cuenta {accts}" if accts else "")
+                          + (f" · pane {p.get('pane')}" if p.get("pane") else "")
+                          + {"verified": " · verificado en el proceso vivo",
+                             "changing": " · cambio de motor en curso",
+                             "detecting": " · detectando, aun sin confirmar"}.get(state, ""))
+    b = Gtk.Button()
+    b.add(_svg_image("settings", 12, dim))
+    b.set_relief(Gtk.ReliefStyle.NONE)
+    b.get_style_context().add_class("pill-btn")
+    b.set_tooltip_text("Cambiar motor / modelo / cuenta de ESTE pane" if ES else "Switch this pane's motor/model/account")
+    b.connect("clicked", lambda *_, s=sess, pn=(p.get("pane") or ""): _dash_js(f"openMotorFor({json.dumps(s)},{json.dumps(pn)})"))
+    pill.pack_start(b, False, False, 0)
+    return pill
+
+
+def _place_pills(box, panes):
+    ov = getattr(box, "_pill_overlay", None)
+    term = getattr(box, "_term", None)
+    if ov is None or term is None:
+        return
+    for w in getattr(box, "_pills", []):
+        try: ov.remove(w)
+        except Exception: pass
+    box._pills = []
+    if not panes:
+        return
+    geo = _pane_geometry(getattr(box, "_pill_sess", ""))
+    try:
+        cw = term.get_char_width(); chh = term.get_char_height()
+    except Exception:
+        return
+    if cw < 4 or chh < 6:
+        box._pill_sig = ""      # fuente aun no lista: reintenta al siguiente tick
+        return
+    m_l = term.get_margin_start(); m_t = term.get_margin_top()
+    for p in panes[:6]:
+        g = geo.get(p.get("pane") or "")
+        if not g:
+            continue
+        left, top, width = g
+        pill = _pane_pill(getattr(box, "_pill_sess", ""), p)
+        # anclada al INICIO de cada pane, SOBRE el renglon de titulo tmux
+        # que va vacio (riel reservado): no tapa contenido y la posicion es
+        # determinista sin medir anchos de widget
+        pill.set_halign(Gtk.Align.START)
+        pill.set_valign(Gtk.Align.START)
+        pill.set_margin_top(max(0, m_t + max(0, top - 1) * chh - 3))
+        pill.set_margin_start(max(0, int(m_l + left * cw + cw * 2)))
+        ov.add_overlay(pill)
+        pill.show_all()
+        box._pills.append(pill)
+
+
+def _refresh_tab_models():
+    global _tab_models_mtime
+    force = False
+    try:
+        mtime = os.path.getmtime(APP_TAB_MODELS_FILE)
+        force = mtime != _tab_models_mtime
+        _tab_models_mtime = mtime
+        with open(APP_TAB_MODELS_FILE) as f:
+            models = json.load(f)
+    except Exception:
+        return True
+    pages = list(tabs.items())
+    if hub not in tabs.values():
+        pages.append(("local", hub))
+    current = nb.get_nth_page(nb.get_current_page())
+    for key, box in pages:
+        session = str(key).partition(":")[0]
+        info = models.get(session) if isinstance(models, dict) else None
+        hb = nb.get_tab_label(box)
+        label = getattr(hb, "_model", None)
+        # la pestana ⌂ local NO lleva sufijo de modelo (infla el tab strip);
+        # SEMANTICA: logo del proveedor + modelo corto (no "Claude · fable")
+        micon = getattr(hb, "_micon", None)
+        if label is not None and box is not hub:
+            panes = (info or {}).get("panes") if isinstance(info, dict) else None
+            first = next((p for p in (panes or []) if p.get("model")), None)
+            if first:
+                extra = len([p for p in panes if p.get("model")]) - 1
+                label.set_text(f"{first['model']}{f' +{extra}' if extra > 0 else ''}")
+                if micon is not None:
+                    try:
+                        img = _svg_image(_PV_ICON.get(first.get("motor"), "layers"), 11,
+                                         THEME.get("dim", "#9AA6BF"))
+                        micon.set_from_pixbuf(img.get_pixbuf())
+                        micon.show()
+                    except Exception:
+                        micon.hide()
+            else:
+                label.set_text("")
+                if micon is not None: micon.hide()
+        elif micon is not None:
+            micon.hide()
+        if getattr(box, "_pill_overlay", None) is None or box is not current:
+            continue
+        panes = (info or {}).get("panes") if isinstance(info, dict) else None
+        try:
+            metrics = f"{box._term.get_char_width()}x{box._term.get_char_height()}w{getattr(box, '_pill_overlay', None) and box._pill_overlay.get_allocated_width()}"
+        except Exception:
+            metrics = ""
+        sig = json.dumps(panes or [], sort_keys=True) + "|" + json.dumps(sorted(_pane_geometry(session).items())) + "|" + metrics
+        if force or sig != getattr(box, "_pill_sig", ""):
+            box._pill_sig = sig
+            _place_pills(box, panes or [])
+    return True
+
+
 nb.connect("switch-page", lambda *_: GLib.idle_add(_report_active_tab))
+_attach_model_bar(hub, "local")
+GLib.timeout_add_seconds(2, _refresh_tab_models)
+
+# Navegación de tabs sin Alt: Ctrl+Tab alterna las DOS últimas (ping-pong MRU),
+# Ctrl+PgUp/PgDn ciclan. Ninguna llega al terminal (VTE no genera secuencia
+# para Ctrl+Tab) ni choca con tmux/readline/Claude Code.
+_MRU_PAGES = []
+
+
+def _track_mru(_nb, page, _idx):
+    try:
+        if page in _MRU_PAGES:
+            _MRU_PAGES.remove(page)
+        _MRU_PAGES.append(page)
+        del _MRU_PAGES[:-2]
+    except Exception:
+        pass
+
+
+nb.connect("switch-page", _track_mru)
+
+
+def _mru_toggle():
+    if len(_MRU_PAGES) >= 2:
+        num = nb.page_num(_MRU_PAGES[-2])
+        if num >= 0:
+            nb.set_current_page(num)
+            return True
+    return False
+
+
+def _cycle_tab(step):
+    n = nb.get_n_pages()
+    if n:
+        nb.set_current_page((nb.get_current_page() + step) % n)
 
 # Barra de pestanas: boton "+" (nueva terminal) y "?" (atajos)
-def _icon_btn(name, tooltip, on_click, size=16):
-    """Botón chico con SVG Lucide de dash/icons/. Es LA MISMA familia que usa
-    el dashboard HTML — así la app tiene un solo set de iconos consistente
-    (antes mezclabamos Adwaita en GTK + Lucide en HTML, se veían distintos)."""
-    b = Gtk.Button()
+def _themed_icon_image(name, size=16):
     svg_path = os.path.join(_ICONS_DIR, f"{name}.svg")
     if os.path.isfile(svg_path):
-        # Los SVG usan currentColor; GdkPixbuf no conoce el color del tema, así
-        # que se sustituye por el color de icono del tema al cargar.
         try:
             with open(svg_path, "rb") as f:
                 data = f.read().replace(b"currentColor", THEME.get("dim", "#9AA6BF").encode())
             loader = GdkPixbuf.PixbufLoader.new_with_type("svg")
             loader.set_size(size, size)
             loader.write(data); loader.close()
-            pb = loader.get_pixbuf()
+            pixbuf = loader.get_pixbuf()
         except Exception:
-            pb = GdkPixbuf.Pixbuf.new_from_file_at_size(svg_path, size, size)
-        img = Gtk.Image.new_from_pixbuf(pb)
-    else:
-        img = Gtk.Image.new_from_icon_name(name, Gtk.IconSize.SMALL_TOOLBAR)
-    b.set_image(img)
+            pixbuf = GdkPixbuf.Pixbuf.new_from_file_at_size(svg_path, size, size)
+        return Gtk.Image.new_from_pixbuf(pixbuf)
+    return Gtk.Image.new_from_icon_name(name, Gtk.IconSize.SMALL_TOOLBAR)
+
+
+def _icon_btn(name, tooltip, on_click, size=16):
+    """Botón chico con SVG Lucide de dash/icons/. Es LA MISMA familia que usa
+    el dashboard HTML — así la app tiene un solo set de iconos consistente
+    (antes mezclabamos Adwaita en GTK + Lucide en HTML, se veían distintos)."""
+    b = Gtk.Button()
+    b.set_image(_themed_icon_image(name, size))
+    _THEMED_ICON_BUTTONS.append((b, name, size))
     b.set_always_show_image(True)
     b.get_style_context().add_class("tabplus")
     b.set_relief(Gtk.ReliefStyle.NONE)
@@ -2790,11 +3386,449 @@ _hb_sep2 = Gtk.Box(); _hb_sep2.set_size_request(8, 1)
 _headerbar.pack_end(_hb_sep2)
 # Solo el "+" (nueva sesión). Copiar/pestañas/buscar/snippets/ayuda siguen
 # disponibles por atajos y menús, pero NO en la barra (el usuario no los usa).
+# ---- Modo MOSAICO (Ctrl+G): TODAS las sesiones en un grid de terminales
+# VIVAS y operables. tmux window-size=latest evita encoger las pestañas
+# grandes: cada ventana se dimensiona al cliente activo mas reciente.
+_MOSAIC = {"on": False, "box": None, "terms": []}
+
+
+def _tween(widget, apply_fn, v_from, v_to, ms=150, done=None):
+    """Interpolacion suave ease-out-cubic ligada al reloj de frames de GTK.
+    apply_fn(t) recibe el valor interpolado 0..1 ya aplicado a v_from->v_to."""
+    start = [None]
+
+    def _tick(w, clock):
+        now = clock.get_frame_time()
+        if start[0] is None:
+            start[0] = now
+        t = min(1.0, (now - start[0]) / (ms * 1000.0))
+        e = 1 - (1 - t) ** 3
+        apply_fn(v_from + (v_to - v_from) * e)
+        if t >= 1.0:
+            if done:
+                done()
+            return False
+        return True
+    widget.add_tick_callback(_tick)
+
+
+def _mosaic_sessions():
+    try:
+        r = subprocess.run(["tmux", "ls", "-F", "#S"], capture_output=True,
+                           text=True, timeout=3)
+        names = [n for n in r.stdout.splitlines() if n]
+    except Exception:
+        names = []
+    labels = {}
+    try:
+        with open(TABS_FILE) as f:
+            labels = json.load(f) or {}
+    except Exception:
+        pass
+    out = [(labels.get(n) or n, n) for n in names]
+    out.sort(key=lambda x: (x[1] != "local", str(x[0]).lower()))
+    return out[:12]
+
+
+def _mosaic_close():
+    if not _MOSAIC["on"]:
+        return
+    for t in _MOSAIC["terms"]:
+        try:
+            t._respawn = False
+        except Exception:
+            pass
+    box = _MOSAIC["box"]
+    _MOSAIC.update(on=False, box=None, terms=[], cells=[])
+    try:
+        paned.remove(box)
+        box.destroy()
+    except Exception:
+        pass
+    nb.show()
+    paned.pack2(nb, True, False)
+    try:
+        paned.set_position(int(_MOSAIC.get("paned_pos") or 0) or paned.get_position() or 700)
+    except Exception:
+        pass
+    if cur_term():
+        cur_term().grab_focus()
+
+
+def _mosaic_open():
+    if _MOSAIC["on"]:
+        return
+    sessions = _mosaic_sessions()
+    if not sessions:
+        return
+    outer = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=0)
+    head = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
+    head.get_style_context().add_class("mosaic-head")
+    ttl = Gtk.Label(xalign=0)
+    ttl.set_markup(f'<span weight="bold">⊞ {"Mosaico" if ES else "Mosaic"}</span>'
+                   f'<span foreground="#8A8F98"> · {len(sessions)} '
+                   f'{"sesiones — click en una celda para teclear ahí" if ES else "sessions — click a cell to type there"}</span>')
+    head.pack_start(ttl, True, True, 8)
+    x = _icon_btn("close", "Cerrar mosaico (Ctrl+G)" if ES else "Close mosaic (Ctrl+G)",
+                  lambda *_: _mosaic_close(), size=14)
+    head.pack_end(x, False, False, 4)
+
+    def _side_toggle(*_):
+        if paned.get_position() < 60:
+            paned.set_position(int(_MOSAIC.get("paned_pos") or 620))
+        else:
+            paned.set_position(0)
+    sb = _icon_btn("layers", "Mostrar/ocultar el tablero lateral" if ES else "Show/hide the side dashboard",
+                   _side_toggle, size=14)
+    head.pack_end(sb, False, False, 0)
+    outer.pack_start(head, False, False, 0)
+    grid = Gtk.Grid()
+    grid.set_row_spacing(4)
+    grid.set_column_spacing(4)
+    n = len(sessions)
+    cols = 2 if n <= 4 else 3 if n <= 9 else 4
+    rows_n = max(1, -(-n // cols))
+    base, extra = divmod(n, rows_n)
+    row_sizes = [base + (1 if r < extra else 0) for r in range(rows_n)]
+    UNITS = 12
+    slots = []
+    for r, size in enumerate(row_sizes):
+        span = UNITS // max(1, size)
+        used = 0
+        for j in range(size):
+            w = span if j < size - 1 else UNITS - used
+            slots.append((r, used, w))
+            used += w
+    _MOSAIC["cells"] = []
+    cells = []
+    # 1) el grid abre AL INSTANTE con placeholders; nada de congelar la UI
+    for i, (label, sess) in enumerate(sessions):
+        cell = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=0)
+        cell.get_style_context().add_class("mosaic-cell")
+        trow = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=4)
+        trow.get_style_context().add_class("mosaic-cell-title")
+        cl = Gtk.Label(xalign=0)
+        cl.set_markup(f'<span size="small" weight="bold" foreground="#C9CDD4"> {GLib.markup_escape_text(str(label))}</span>')
+        clev = Gtk.EventBox(); clev.add(cl)
+        clev.set_tooltip_text("Click: enfocar esta sesión en grande" if ES else "Click: focus this session big")
+        clev.connect("button-press-event", lambda *_a, ss=sess, ll=label: (_mosaic_zoom(ss, ll), True)[1])
+        trow.pack_start(clev, True, True, 0)
+        zb = _icon_btn("maximize", "Enfocar en grande (con sus splits)" if ES else "Focus big (with its splits)",
+                       lambda *_a, ss=sess, ll=label: _mosaic_zoom(ss, ll), size=12)
+        trow.pack_end(zb, False, False, 1)
+        cell.pack_start(trow, False, False, 1)
+        ph = Gtk.Label(label="· · ·")
+        ph.get_style_context().add_class("mosaic-ph")
+        cell.pack_start(ph, True, True, 0)
+        cell._mos_ph = ph
+        r, cx, wspan = slots[i]
+        cell.set_hexpand(True); cell.set_vexpand(True)
+        grid.attach(cell, cx, r, wspan, 1)
+        _MOSAIC["cells"].append(cell)
+        cells.append((cell, label, sess))
+    outer.pack_start(grid, True, True, 0)
+    paned.remove(nb)
+    nb.hide()
+    paned.pack2(outer, True, False)
+    outer.show_all()
+    _MOSAIC["paned_pos"] = paned.get_position()
+    paned.set_position(0)
+    _MOSAIC.update(on=True, box=outer)
+
+    # 2) conectar terminales de forma PROGRESIVA (una por tick de ~40ms):
+    #    la vista responde de inmediato y las celdas van encendiendo
+    def _fill(i=0):
+        if not _MOSAIC["on"] or _MOSAIC["box"] is not outer or i >= len(cells):
+            return False
+        cell, label, sess = cells[i]
+        try:
+            tbox = _mosaic_term(f"tmux attach -t '={sess}'")
+            tbox._term._session_hint = sess
+
+            def _cell_focus_in(_t, _e, c=cell):
+                for other in _MOSAIC.get("cells", []):
+                    if other is not c and getattr(other, "_mos_grown", False):
+                        _shrink_cell(other)
+                    other.get_style_context().remove_class("focused")
+                if getattr(c, "_mos_base", None) is None:
+                    a = c.get_allocation()
+                    if a.width > 50:
+                        c._mos_base = (a.width, a.height)
+                base = getattr(c, "_mos_base", None)
+                if base and not getattr(c, "_mos_grown", False):
+                    c._mos_grown = True
+                    bw, bh = base
+                    _tween(c, lambda v, cc=c, bw=bw, bh=bh:
+                           cc.set_size_request(int(bw + (bw * 0.12) * v),
+                                               int(bh + (bh * 0.12) * v)),
+                           0.0, 1.0, ms=160)
+                c.get_style_context().add_class("focused")
+                return False
+
+            def _cell_focus_out(_t, _e, c=cell):
+                _shrink_cell(c)
+                c.get_style_context().remove_class("focused")
+                return False
+
+            def _cell_press(_t, ev, c=cell, ss=sess, ll=label):
+                if ev.type == Gdk.EventType._2BUTTON_PRESS and ev.button == 1:
+                    _mosaic_zoom(ss, ll)
+                    return True
+                c.get_style_context().add_class("tap")
+                GLib.timeout_add(160, lambda cc=c: (cc.get_style_context().remove_class("tap"), False)[1])
+                return False
+
+            tbox._term.connect("focus-in-event", _cell_focus_in)
+            tbox._term.connect("focus-out-event", _cell_focus_out)
+            tbox._term.connect("button-press-event", _cell_press)
+            _MOSAIC["terms"].append(tbox._term)
+            ph = getattr(cell, "_mos_ph", None)
+            if ph is not None:
+                cell.remove(ph)
+                cell._mos_ph = None
+            cell.pack_start(tbox, True, True, 0)
+            tbox.show_all()
+        except Exception:
+            pass
+        GLib.timeout_add(25, _fill, i + 1)
+        return False
+    GLib.timeout_add(10, _fill, 0)
+
+
+def _mosaic_term(cmd):
+    """VTE minima para celdas: spawn ASINCRONO (no bloquea la UI), sin
+    regexes de links, scrollback corto, sin scrollbar. El peso completo
+    vive en las pestañas y en el modal de enfoque, no aqui."""
+    term = Vte.Terminal()
+    term.set_font(Pango.FontDescription(FONT))
+    term.set_colors(rgba(THEME["fg"]), _bg_rgba(), [rgba(p) for p in THEME["pal"]])
+    term.set_scrollback_lines(400)
+    term.set_audible_bell(False)
+    term.set_cursor_blink_mode(Vte.CursorBlinkMode.OFF)
+    try:
+        term.spawn_async(Vte.PtyFlags.DEFAULT, os.path.expanduser("~"),
+                         ["/bin/sh", "-lc", cmd], None,
+                         GLib.SpawnFlags.DEFAULT, None, None, -1, None, None)
+    except TypeError:
+        term.spawn_async(Vte.PtyFlags.DEFAULT, os.path.expanduser("~"),
+                         ["/bin/sh", "-lc", cmd], None,
+                         GLib.SpawnFlags.DEFAULT, None, None, -1, None, None, None)
+    box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL)
+    box.pack_start(term, True, True, 0)
+    box._term = term
+    term._respawn = False
+    return box
+
+
+def _shrink_cell(c):
+    base = getattr(c, "_mos_base", None)
+    if not getattr(c, "_mos_grown", False):
+        c.set_size_request(-1, -1)
+        return
+    c._mos_grown = False
+    if base:
+        bw, bh = base
+        _tween(c, lambda v, cc=c, bw=bw, bh=bh:
+               cc.set_size_request(int(bw + (bw * 0.12) * v),
+                                   int(bh + (bh * 0.12) * v)),
+               1.0, 0.0, ms=140,
+               done=lambda cc=c: cc.set_size_request(-1, -1))
+    else:
+        c.set_size_request(-1, -1)
+
+
+def _mosaic_zoom(sess, label):
+    """Enfocar UNA sesion en un modal casi-fullscreen: operar rapido con
+    todos sus splits, Esc o ✕ para volver al mosaico."""
+    dlg = Gtk.Window(type=Gtk.WindowType.TOPLEVEL)
+    dlg.set_transient_for(win)
+    dlg.set_modal(True)
+    dlg.set_decorated(False)
+    w, h = win.get_size()
+    dlg.set_default_size(max(600, w - 90), max(400, h - 70))
+    dlg.set_position(Gtk.WindowPosition.CENTER_ON_PARENT)
+    box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=0)
+    box.get_style_context().add_class("mosaic-zoom")
+    head = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
+    head.get_style_context().add_class("mosaic-head")
+    tl = Gtk.Label(xalign=0)
+    tl.set_markup(f'<span weight="bold"> ⛶ {GLib.markup_escape_text(str(label))}</span>'
+                  f'<span foreground="#8A8F98" size="small">  · Esc {"para volver al mosaico" if ES else "back to mosaic"}</span>')
+    head.pack_start(tl, True, True, 8)
+
+    def _zoom_out(*_):
+        if getattr(dlg, "_closing", False):
+            return
+        dlg._closing = True
+        _tween(dlg, lambda v: dlg.set_opacity(v), 1.0, 0.0, ms=120,
+               done=dlg.destroy)
+    xb = _icon_btn("close", "Volver al mosaico (Esc)" if ES else "Back to mosaic (Esc)",
+                   lambda *_: _zoom_out(), size=14)
+    head.pack_end(xb, False, False, 4)
+    box.pack_start(head, False, False, 0)
+    tbox = make_term(f"tmux attach -t '={sess}'")
+    tbox._term._session_hint = sess
+    box.pack_start(tbox, True, True, 0)
+    dlg.add(box)
+
+    def _zoom_key(_w, ev):
+        if ev.keyval == Gdk.KEY_Escape:
+            _zoom_out()
+            return True
+        return False
+    dlg.connect("key-press-event", _zoom_key)
+    dlg.connect("destroy", lambda *_: setattr(tbox._term, "_respawn", False))
+    dlg.set_opacity(0.0)
+    dlg.show_all()
+    _tween(dlg, lambda v: dlg.set_opacity(v), 0.0, 1.0, ms=150)
+    tbox._term.grab_focus()
+
+
+def _mosaic_toggle(*_):
+    _mosaic_close() if _MOSAIC["on"] else _mosaic_open()
+
+
+# SIGUSR2 alterna el mosaico (verificacion headless y automatizaciones):
+#   kill -USR2 $(pgrep -f cc-app)
+try:
+    import signal as _signal
+    _signal.signal(_signal.SIGUSR2,
+                   lambda *_a: GLib.idle_add(_mosaic_toggle))
+    # NUNCA usar SIGUSR1 aqui: JavaScriptCore (WebKit) lo usa para GC y
+    # pisarle el handler desestabiliza/mata el proceso. Para debug remoto
+    # del webview usamos una señal de tiempo real (WebKit no las toca):
+    #   kill -RTMIN+2 <pid>  abre el panel de notifs y loguea NFDBG a stdout.
+    _signal.signal(_signal.SIGRTMIN + 2,
+                   lambda *_a: GLib.idle_add(lambda: _dash_js(
+                       'document.getElementById("btn-notif").click();'
+                       'setTimeout(()=>console.log("NFDBG cards=",'
+                       'document.querySelectorAll("#notif-panel .nf2").length,'
+                       '"panel=",(getComputedStyle(document.getElementById("notif-panel")||document.body).display),'
+                       '"badge=",document.getElementById("notif-badge").textContent,'
+                       '"webBtns=",document.querySelectorAll(".nf2-web").length), 2500)')))
+
+    #   kill -RTMIN+3 <pid>  ejecuta el JS de $XDG_RUNTIME_DIR/comandos-dbg.js
+    #   en el webview del dashboard (debug local; dir 0700 del usuario, nunca
+    #   /tmp compartido donde otro uid podria plantar el archivo).
+    _DBG_JS = os.path.join(os.environ.get("XDG_RUNTIME_DIR")
+                           or f"/tmp/comandos-{os.getuid()}", "comandos-dbg.js")
+
+    def _dbg_js_file(*_a):
+        try:
+            if os.stat(_DBG_JS).st_uid != os.getuid():
+                return
+            with open(_DBG_JS) as fh:
+                code = fh.read()
+        except OSError:
+            return
+        try:
+            print("NFGTK paned_pos=", paned.get_position(),
+                  "wv_alloc=", wv.get_allocated_width(), "x", wv.get_allocated_height(),
+                  "zoom=", wv.get_zoom_level(), flush=True)
+        except Exception:
+            pass
+        GLib.idle_add(lambda: _dash_js(code))
+    _signal.signal(_signal.SIGRTMIN + 3, _dbg_js_file)
+except Exception:
+    pass
+
+
+
+_mosaic_btn = _icon_btn("grid",
+                        "Mosaico: TODAS las sesiones en una pantalla (Ctrl+G)" if ES
+                        else "Mosaic: ALL sessions on one screen (Ctrl+G)",
+                        _mosaic_toggle, size=17)
+_headerbar.pack_end(_mosaic_btn)
 _headerbar.pack_end(_plus)
+
+
+def _cycle_page(delta):
+    n = nb.get_n_pages()
+    if n:
+        nb.set_current_page((nb.get_current_page() + delta) % n)
+
+
+_tab_prev = _icon_btn("chevron-left",
+                      "Pestaña anterior (Ctrl+PgUp)" if ES else "Previous tab (Ctrl+PgUp)",
+                      lambda *_: _cycle_page(-1), size=20)
+_tab_next = _icon_btn("chevron-right",
+                      "Pestaña siguiente (Ctrl+PgDn)" if ES else "Next tab (Ctrl+PgDn)",
+                      lambda *_: _cycle_page(1), size=20)
+for _b in (_tab_prev, _tab_next):
+    _b.get_style_context().add_class("tabnav")
+    _b.show_all()
+# FLANQUEANDO el tab strip (donde el pulgar ya los busca), no escondidos
+# en el headerbar: action widgets del notebook, izquierda y derecha.
+nb.set_action_widget(_tab_prev, Gtk.PackType.START)
+nb.set_action_widget(_tab_next, Gtk.PackType.END)
 _headerbar.show_all()
 
 # Puente tablero -> app: las tarjetas piden abrir pestanas aqui
 ucm = WebKit2.UserContentManager()
+
+
+_WEBMODAL = {"win": None, "wv": None, "title": None}
+
+
+def open_web_modal(url, label=""):
+    """Navegador MODAL ultraligero: UN solo WebView cacheado que se reutiliza
+    para todos los links (cero procesos web nuevos por click). Esc lo oculta
+    sin destruirlo — reabrir es instantaneo."""
+    if _WEBMODAL["win"] is None:
+        dlg = Gtk.Window(type=Gtk.WindowType.TOPLEVEL)
+        dlg.set_transient_for(win)
+        dlg.set_modal(True)
+        dlg.set_decorated(False)
+        box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=0)
+        box.get_style_context().add_class("mosaic-zoom")
+        head = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
+        head.get_style_context().add_class("mosaic-head")
+        tl = Gtk.Label(xalign=0)
+        tl.set_ellipsize(Pango.EllipsizeMode.END)
+        head.pack_start(tl, True, True, 8)
+        xb = _icon_btn("close", "Cerrar (Esc)" if ES else "Close (Esc)",
+                       lambda *_: dlg.hide(), size=14)
+        head.pack_end(xb, False, False, 4)
+        box.pack_start(head, False, False, 0)
+        wv2 = WebKit2.WebView()
+        box.pack_start(wv2, True, True, 0)
+        dlg.add(box)
+        dlg.connect("key-press-event",
+                    lambda _w, ev: (dlg.hide(), True)[1] if ev.keyval == Gdk.KEY_Escape else False)
+        dlg.connect("delete-event", lambda *_: (dlg.hide(), True)[1])
+        _WEBMODAL.update(win=dlg, wv=wv2, title=tl)
+    w, h = win.get_size()
+    _WEBMODAL["win"].set_default_size(max(640, w - 120), max(420, h - 90))
+    _WEBMODAL["win"].set_position(Gtk.WindowPosition.CENTER_ON_PARENT)
+    _WEBMODAL["title"].set_markup(
+        f'<span weight="bold"> 🌐 {GLib.markup_escape_text((label or url)[:80])}</span>'
+        f'<span foreground="#8A8F98" size="small">  · Esc {"cierra" if ES else "closes"}</span>')
+    _WEBMODAL["wv"].load_uri(url)
+    _WEBMODAL["win"].show_all()
+    return False
+
+
+def open_web_tab(url, label=""):
+    """Navegador DENTRO de ComandOS: una pestaña WebKit para leer noticias
+    sin salir de la app. Cerrable como cualquier pestaña."""
+    key = f"web:{url[:120]}"
+    if key in tabs:
+        nb.set_current_page(nb.page_num(tabs[key]))
+        return False
+    wv2 = WebKit2.WebView()
+    wv2.load_uri(url)
+    box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
+    box.pack_start(wv2, True, True, 0)
+    box._term = None
+    box._webview = wv2
+    box._key = key
+    box._label = ("🌐 " + (label or url.split("/")[2]))[:40]
+    idx = nb.append_page(box, tab_label(box._label, key))
+    nb.set_tab_reorderable(box, True)
+    box.show_all()
+    nb.set_current_page(idx)
+    tabs[key] = box
+    return False
 
 
 def on_msg(mgr, res):
@@ -2802,6 +3836,16 @@ def on_msg(mgr, res):
         d = json.loads(res.get_js_value().to_string())
         if d.get("theme"):
             apply_theme(d["theme"])
+            return
+        if d.get("openUrlModal"):
+            u = str(d.get("openUrlModal"))[:2000]
+            if u.startswith("http://") or u.startswith("https://"):
+                GLib.idle_add(open_web_modal, u, str(d.get("label") or "")[:80])
+            return
+        if d.get("openUrl"):
+            u = str(d.get("openUrl"))[:2000]
+            if u.startswith("http://") or u.startswith("https://"):
+                GLib.idle_add(open_web_tab, u, str(d.get("label") or "")[:60])
             return
         if d.get("type") == "rename":
             sess = d.get("session", "")
@@ -2821,6 +3865,12 @@ ucm.register_script_message_handler("centro")
 ucm.connect("script-message-received::centro", on_msg)
 
 wv = WebKit2.WebView.new_with_user_content_manager(ucm)
+try:
+    # errores JS del tablero al stdout/log del app: sin esto los bugs del
+    # webview (motor WebKitGTK != Chrome) son invisibles
+    wv.get_settings().set_property("enable-write-console-messages-to-stdout", True)
+except Exception:
+    pass
 wv.get_settings().set_property("enable-developer-extras", True)
 wv.get_settings().set_property("enable-webaudio", True)
 
@@ -2892,7 +3942,44 @@ _PANED_CSS.load_from_data((
 ))
 Gtk.StyleContext.add_provider_for_screen(
     Gdk.Screen.get_default(), _PANED_CSS, Gtk.STYLE_PROVIDER_PRIORITY_USER)
-paned.set_position(700)
+PANE_POSITION_FILE = os.path.expanduser("~/.claude/hooks/app-pane-position.json")
+_pane_position_initialized = False
+
+
+def _load_pane_position():
+    try:
+        with open(PANE_POSITION_FILE) as f:
+            return int(json.load(f).get("position") or 0)
+    except Exception:
+        return 0
+
+
+def _init_pane_position(_widget, allocation):
+    global _pane_position_initialized
+    if _pane_position_initialized or allocation.width < 900:
+        return
+    saved = _load_pane_position()
+    maximum = max(320, allocation.width - 720)
+    position = max(300, min(maximum, saved or round(allocation.width * 0.27)))
+    _pane_position_initialized = True
+    paned.set_position(position)
+
+
+def _save_pane_position(*_):
+    if not _pane_position_initialized:
+        return
+    try:
+        os.makedirs(os.path.dirname(PANE_POSITION_FILE), exist_ok=True)
+        tmp = PANE_POSITION_FILE + ".tmp"
+        with open(tmp, "w") as f:
+            json.dump({"position": paned.get_position()}, f)
+        os.replace(tmp, PANE_POSITION_FILE)
+    except Exception:
+        pass
+
+
+paned.connect("size-allocate", _init_pane_position)
+paned.connect("notify::position", _save_pane_position)
 
 # Layout root: headerbar arriba (envuelto en EventBox para drag) + paned.
 # El EventBox necesita set_above_child(False) para que los botones sigan
@@ -3328,6 +4415,8 @@ SHORTCUTS_ES = [
     ("Ventana ComandOS", [
         ("? / F1", "Esta ayuda"),
         ("Ctrl+K", "Saltar a cualquier pestana/sesion (escribe y Enter)"),
+        ("Ctrl+Tab", "Alternar entre las DOS ultimas pestanas (ping-pong)"),
+        ("Ctrl+Shift+Tab", "Pestana anterior (ciclo)"),
         ("Ctrl+T", "Nueva terminal en el directorio actual"),
         ("Ctrl+Shift+T", "Terminal experimental (xterm.js, con ligaduras)"),
         ("Ctrl+Shift+W", "Cerrar la pestana actual"),
@@ -3342,6 +4431,7 @@ SHORTCUTS_ES = [
         ("Ctrl+C", "Copiar (si hay seleccion) / interrumpir"),
         ("Seleccionar con mouse", "Copia al portapapeles automaticamente"),
         ("Click en URL", "Abrir el enlace en el navegador"),
+        ("Click en ruta (~/... o /...)", "Abrir el archivo/carpeta con su app default"),
         ("Click derecho", "Copiar, pegar, splits, renombrar pestana, cerrar"),
     ]),
     ("Splits y ventanas (tmux)", [
@@ -3367,6 +4457,8 @@ SHORTCUTS_EN = [
     ("ComandOS window", [
         ("? / F1", "This help"),
         ("Ctrl+K", "Jump to any tab/session (type and Enter)"),
+        ("Ctrl+Tab", "Toggle between the last TWO tabs (ping-pong)"),
+        ("Ctrl+Shift+Tab", "Previous tab (cycle)"),
         ("Ctrl+T", "New terminal in the current directory"),
         ("Ctrl+Shift+T", "Experimental terminal (xterm.js, with ligatures)"),
         ("Ctrl+Shift+W", "Close the current tab"),
@@ -3381,6 +4473,7 @@ SHORTCUTS_EN = [
         ("Ctrl+C", "Copy (if selected) / interrupt"),
         ("Mouse selection", "Copies to clipboard automatically"),
         ("Click a URL", "Open the link in your browser"),
+        ("Click a path (~/... or /...)", "Open the file/folder with its default app"),
         ("Right click", "Copy, paste, splits, rename tab, close"),
     ]),
     ("Splits and windows (tmux)", [
@@ -3495,6 +4588,22 @@ def on_key(w, e):
         return True
     if e.keyval == Gdk.KEY_F5:
         wv.load_uri(URL)
+        return True
+    if ctrl and e.keyval in (Gdk.KEY_Tab, Gdk.KEY_ISO_Left_Tab):
+        if shift:
+            _cycle_tab(-1)          # Ctrl+Shift+Tab: ciclar hacia atrás
+        elif not _mru_toggle():
+            _cycle_tab(1)           # sin historial MRU aún: ciclar adelante
+        if cur_term():
+            cur_term().grab_focus()
+        return True
+    if ctrl and e.keyval in (Gdk.KEY_g, Gdk.KEY_G):
+        _mosaic_toggle()
+        return True
+    if ctrl and e.keyval in (Gdk.KEY_Page_Down, Gdk.KEY_Page_Up):
+        _cycle_tab(1 if e.keyval == Gdk.KEY_Page_Down else -1)
+        if cur_term():
+            cur_term().grab_focus()
         return True
     t = cur_term()
     if t and ctrl and shift and e.keyval in (Gdk.KEY_plus, Gdk.KEY_equal, Gdk.KEY_KP_Add):

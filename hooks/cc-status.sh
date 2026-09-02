@@ -31,7 +31,17 @@ done < <(
       | join("|") + "\u0000"
     ' 2>/dev/null
 )
+# Minimal y semantico: glifo + hasta 2 nombres + contador. Nada de gritos.
+short() {  # $1=lista  ->  "a · b +3"
+  set -- $1
+  local n=$# out=""
+  [ $# -ge 1 ] && out="$1"
+  [ $# -ge 2 ] && out="$out · $2"
+  [ $n -gt 2 ] && out="$out +$((n-2))"
+  printf '%s' "$out"
+}
+# Iconos Nerd Font (la terminal usa JetBrainsMono Nerd Font) + aurora hex
 out=""
-[ -n "$waiting" ] && out="#[fg=colour214,bold]ATENCION: ${waiting}#[default]"
-[ -n "$done_" ]   && out="$out#[fg=colour84]LISTO: ${done_}#[default]"
-printf '%s' "$out"
+[ -n "$waiting" ] && out="#[fg=#D08770] $(short "$waiting")#[default]"
+[ -n "$done_" ]   && out="$out  #[fg=#A3BE8C] $(short "$done_")#[default]"
+printf '%b' "$out"

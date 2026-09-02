@@ -94,7 +94,9 @@ def load_tmux_copy_helpers(fake_tmuxc, fake_gtk, fake_gdk):
 
 
 def load_mouse_helpers(fake_pane_at, fake_tmuxc, fake_open_url,
-                       fake_select_pane_at_event):
+                       fake_select_pane_at_event,
+                       fake_link_popover=None, fake_reveal=None,
+                       fake_clean_path=None):
     ns = {
         "Gdk": types.SimpleNamespace(
             ModifierType=types.SimpleNamespace(CONTROL_MASK=1)
@@ -105,6 +107,11 @@ def load_mouse_helpers(fake_pane_at, fake_tmuxc, fake_open_url,
         "select_pane_at_event": fake_select_pane_at_event,
         "tmuxc": fake_tmuxc,
         "url_at_event": lambda _term, _event, match: match or None,
+        # Click limpio -> popover de acciones; Ctrl+click en ruta -> explorador.
+        "link_actions_popover": fake_link_popover or (lambda *a: None),
+        "reveal_in_file_manager": fake_reveal or (lambda *a: None),
+        "_clean_local_path": fake_clean_path or (
+            lambda u: u if isinstance(u, str) and u[:1] in ("/", "~") else ""),
     }
     exec("\n\n".join((function_source("on_term_release"),
                        function_source("on_term_button"))), ns)
@@ -245,7 +252,10 @@ def test_clicking_split_pane_selects_it_without_stealing_terminal_mouse_event():
     assert "select_pane_at_event(term, event)" not in src
 
 
-def test_clean_url_click_opens_despite_preexisting_selection():
+def test_clean_url_click_shows_actions_popover_despite_preexisting_selection():
+    # El click limpio ya NO abre directo: muestra el popover de acciones
+    # (Abrir/Copiar para links; Abrir carpeta/Abrir archivo/Copiar para rutas).
+    popovers = []
     opened = []
     selected_on_press = []
     tmux_calls = []
@@ -255,6 +265,7 @@ def test_clean_url_click_opens_despite_preexisting_selection():
         lambda *args: tmux_calls.append(args),
         lambda url, *_context: opened.append(url),
         lambda term, event: selected_on_press.append((term, event)),
+        fake_link_popover=lambda term, event, url: popovers.append(url),
     )
     term = FakeTerm("https://example.com/path", selected=True)
     press = MouseEvent(1, 10, 20)
@@ -266,7 +277,9 @@ def test_clean_url_click_opens_despite_preexisting_selection():
     assert ns["on_term_release"](term, release) is False
 
     assert tmux_calls == [("select-pane", "-t", "%2")]
-    assert opened == ["https://example.com/path"]
+    # popover mostrado con la URL, y NO se abrió nada directo
+    assert popovers == ["https://example.com/path"]
+    assert opened == []
 
 
 def test_primary_drag_neither_opens_url_nor_selects_pane():
@@ -308,7 +321,8 @@ def test_clean_non_link_click_selects_recorded_split_only_on_release():
     assert tmux_calls == [("select-pane", "-t", "%7")]
 
 
-def test_ctrl_click_remains_an_immediate_link_command():
+def test_ctrl_click_web_link_remains_an_immediate_open():
+    # Ctrl+click en un LINK web sigue abriendo directo en el navegador.
     opened = []
     ns = load_mouse_helpers(
         lambda _term, _event: ("%2", 2),
@@ -324,20 +338,44 @@ def test_ctrl_click_remains_an_immediate_link_command():
     assert opened == ["https://example.com/ctrl"]
 
 
-def test_clean_link_click_passes_window_and_event_timestamp():
+def test_ctrl_click_local_path_reveals_in_file_manager():
+    # Ctrl+click en una RUTA local abre el EXPLORADOR (resaltado), no el archivo.
+    revealed = []
+    opened = []
+    ns = load_mouse_helpers(
+        lambda _term, _event: ("%2", 2),
+        lambda *_args: None,
+        lambda url, *_context: opened.append(url),
+        lambda _term, _event: None,
+        fake_reveal=lambda p: revealed.append(p),
+    )
+    term = FakeTerm("/home/me/proj/file.py")
+
+    handled = ns["on_term_button"](term, MouseEvent(1, 5, 6, state=1))
+
+    assert handled is True
+    assert revealed == ["/home/me/proj/file.py"]
+    assert opened == []
+
+
+def test_clean_link_click_shows_popover_not_direct_open():
+    # El click limpio en un link muestra el popover con la URL (no abre directo).
+    popovers = []
     opened = []
     ns = load_mouse_helpers(
         lambda _term, _event: ("%2", 2),
         lambda *_args: None,
         lambda *args: opened.append(args),
         lambda _term, _event: None,
+        fake_link_popover=lambda term, event, url: popovers.append(url),
     )
     term = FakeTerm("https://example.com/focus")
 
     ns["on_term_button"](term, MouseEvent(1, 5, 6, timestamp=7001))
     ns["on_term_release"](term, MouseEvent(1, 5, 6, timestamp=7002))
 
-    assert opened == [("https://example.com/focus", term, 7002)]
+    assert popovers == ["https://example.com/focus"]
+    assert opened == []
 
 
 def test_linux_open_url_prefers_gtk_click_context_for_focus():
@@ -473,3 +511,59 @@ if __name__ == "__main__":
     test_linux_open_url_reports_total_dispatch_failure()
     test_tmux_copy_selection_goes_through_gtk_clipboard_not_xclip_only()
     test_vte_selection_copy_is_remembered_for_context_menu_fallback()
+
+
+def test_wrapped_paths_are_rejoined_like_urls():
+    # Un link (URL o RUTA) JAMAS se rompe por saltos de linea: el wrap del
+    # terminal se re-une antes de abrir.
+    ns = load_url_helpers()
+    text = ("mira el archivo /home/someguy/codebase/0xJesus/Com\n"
+            "andOS/dash/index.html y dime")
+    got = ns["url_from_wrapped_text"](text, "/home/someguy/codebase/0xJesus/Com")
+    assert got == "/home/someguy/codebase/0xJesus/ComandOS/dash/index.html"
+    # ruta con numero de linea, envuelta
+    text2 = "err en ~/codebase/0xJesus/ComandOS/bin/cc-\ndash:412 revisa"
+    got2 = ns["url_from_wrapped_text"](text2, "~/codebase/0xJesus/ComandOS/bin/cc-")
+    assert got2 == "~/codebase/0xJesus/ComandOS/bin/cc-dash:412"
+    # por punto (click) sin fragmento
+    got3 = ns["url_from_wrapped_text"](text, "", 0, 30)
+    assert got3 == "/home/someguy/codebase/0xJesus/ComandOS/dash/index.html"
+
+
+def test_slash_commands_are_not_paths():
+    ns = load_url_helpers()
+    assert ns["url_from_wrapped_text"]("usa /model para cambiar", "", 0, 6) == ""
+    assert ns["url_from_wrapped_text"]("corre /compact ahora", "/compact") == "/compact"
+
+
+def test_click_reconstruction_slices_tmux_pane_columns():
+    # En splits, url_at_event recorta las filas al pane clickeado para que
+    # la re-union del wrap no absorba texto del pane vecino ni el borde │.
+    assert 'l[left:right + 1]' in SRC
+    assert "pane_left}|#{pane_right}" in SRC
+
+
+def test_local_paths_open_file_explorer_with_copy_and_direct_actions():
+    # Rutas locales: el popover ofrece Abrir carpeta (explorador, resaltado),
+    # Abrir archivo y Copiar; los links ofrecen Abrir y Copiar. Nada se abre
+    # sin que el usuario elija.
+    assert "def reveal_in_file_manager" in SRC
+    assert "org.freedesktop.FileManager1.ShowItems" in SRC
+    assert "def link_actions_popover" in SRC
+    assert "def _clean_local_path" in SRC
+    # botones por tipo
+    assert ('"Abrir carpeta"' in SRC) and ('"Abrir archivo"' in SRC)
+    assert ('"Copiar ruta"' in SRC) and ('"Copiar link"' in SRC)
+    # el click limpio dispara el popover, no un open directo
+    assert "link_actions_popover(term, event, url)" in SRC
+    # Ctrl+click en ruta revela en el explorador
+    assert "reveal_in_file_manager(url)" in SRC
+
+
+def test_wrapped_links_still_never_break_on_line_wraps():
+    # Regresión: un link/ruta partido por salto de línea se reconstruye entero.
+    ns = load_url_helpers()
+    f = ns["url_from_wrapped_text"]
+    web = f("mira https://earn.superteam.fun/listings/algun-\nbounty-largo ok",
+            "https://earn.superteam.fun/listings/algun-")
+    assert web == "https://earn.superteam.fun/listings/algun-bounty-largo"

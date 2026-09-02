@@ -31,6 +31,22 @@ def test_usage_state_endpoint_exists_and_is_authenticated():
     assert '"/usage/state"' in api_get
 
 
+def test_combination_analytics_and_rating_endpoints_are_authenticated():
+    assert '"/usage/analytics"' in SRC
+    assert '"/usage/interactions"' in SRC
+    api_get = SRC.split("API_GET = ", 1)[1].split("def do_GET", 1)[0]
+    assert '"/usage/analytics"' in api_get
+    assert '"/usage/interactions"' in api_get
+    assert '"/usage/experiments"' in api_get
+    assert 'self.path == "/usage/rating"' in SRC
+    assert '"/usage/experiments"' in SRC
+    assert 'self.path == "/usage/experiment"' in SRC
+    assert "cc_usage.create_experiment" in SRC and "cc_usage.create_experiment_pair" in SRC
+    assert "cc_usage.experiment_analytics" in SRC
+    assert "cc_usage.set_interaction_feedback" in SRC
+    assert "cc_usage.set_interaction_task" in SRC
+
+
 def test_usage_live_panes_records_pane_pwd_and_git_root():
     assert "def usage_live_panes" in SRC
     assert "cc_usage.normalize_pane_identity" in SRC
@@ -48,6 +64,90 @@ def test_usage_capture_and_refresh_endpoints_exist():
     assert "record_local_claude_jsonl" in SRC
     assert "usage_credential_health" in SRC
     assert 'state["credential_health"] = usage_credential_health(env)' in SRC
+
+
+def test_cards_reconcile_harness_and_model_from_live_pane_and_confirmed_config():
+    assert '"agent": live_agent or d.get("agent") or "claude"' in SRC
+    assert "def reconcile_card_config" in SRC
+    assert "claude_pane_model(pane)" in SRC
+    assert "cc_usage.latest_session_config" in SRC
+    assert 'item["modelSource"] = "pane"' in SRC
+    html = Path("dash/index.html").read_text()
+    assert "harnessLabel" in html and "→ ${mdEsc(engineLabel(motor))}" in html
+
+
+def test_effort_only_switch_keeps_current_pane_model():
+    # Cambiar SOLO el esfuerzo (model vacío + routeId) NO debe saltar al modelo
+    # default del registro ni vaciar el modelo confirmado: usa el modelo que ya
+    # corre el pane, no teclea /model, y lo conserva para el registro.
+    assert 'if not selection_data.get("model") and scope == "session_model" and current_item.get("model"):' in SRC
+    assert 'selection_data["model"] = current_item.get("model")' in SRC
+    assert "effort_only = True" in SRC
+    assert "if (model and not effort_only) or not effort:" in SRC
+    # session-effort: al fijar clave pane-level, se limpia la de sesión huérfana
+    assert 'd.pop(sess.split("|", 1)[0], None)' in SRC
+
+
+def test_motor_switch_auto_picks_a_logged_in_account():
+    # Cambiar de MOTOR no debe heredar la cuenta del harness para un motor que
+    # no la tiene (causa de motor_account_login_required). Se resuelve contra el
+    # motor DESTINO y cae a una cuenta con login.
+    assert "def _pick_motor_account" in SRC
+    assert 'if not data.get("motorAccount"):' in SRC
+    assert "_pick_motor_account(requested_motor, pref)" in SRC
+    # el error se traduce a un mensaje humano, no el código crudo
+    assert "no tiene login en la cuenta" in SRC
+    mod = load_dash_module()
+    # _pick_motor_account devuelve un alias con login (o el preferido si falla)
+    assert callable(mod._pick_motor_account)
+
+
+def test_global_optimization_profiles_apply_through_real_switch_endpoint():
+    html = Path("dash/index.html").read_text()
+    assert 'data-mtab="optimizar"' in html
+    assert 'api("/optimization/default"' in html
+    assert 'api("/model/switch"' in html
+    assert "Confirmar ${keys.length} cambios" in html
+    assert '"/optimization/plans"' in SRC
+
+
+def test_external_motor_switch_locks_all_subagent_slots_and_is_recoverable():
+    assert "def motor_lock_env" in SRC
+    for key in ("ANTHROPIC_DEFAULT_OPUS_MODEL", "ANTHROPIC_DEFAULT_SONNET_MODEL", "ANTHROPIC_DEFAULT_HAIKU_MODEL", "CLAUDE_CODE_SUBAGENT_MODEL"):
+        assert key in SRC
+    assert '"kind":"restart"' in SRC
+    assert "resume_restart_payload(payload)" in SRC
+    assert 'source="switch-restart-confirmed"' not in SRC  # source is positional, not a dead keyword
+    assert "def _restore_shell_tty" in SRC
+    assert "def _paste_shell_command" in SRC
+    assert 'motor_result_set(sess, False, "Claude salió, pero el resume no arrancó; usa Reintentar")' in SRC
+    assert 'candidate.get("agent") == "claude"' in SRC
+
+
+def test_motor_switch_state_survives_dashboard_restart():
+    assert "MOTOR_RESULT_FILE" in SRC
+    assert "MOTOR_RESULT = _motor_result_load()" in SRC
+    resume = SRC.split("def motor_queue_resume", 1)[1].split("def _set_motor_result", 1)[0]
+    assert 'payload["key"] = opkey' in resume
+    assert 'payload["sess"] = payload.get("sess") or opkey.partition("|")[0]' in resume
+    assert 'motor_stage(opkey, "recuperando cambio después del reinicio"' in resume
+
+
+def test_confirmed_switch_beats_stale_launch_model_in_cards():
+    reconcile = SRC.split("def reconcile_card_config",1)[1].split("def read_states",1)[0]
+    assert reconcile.index('config = cc_usage.latest_session_config') < reconcile.index('elif launch_model:')
+    assert 'item["modelSource"] = "confirmed"' in reconcile
+
+
+def test_model_status_uses_operation_specific_fast_polling():
+    assert '"/model/status"' in SRC.split("API_GET =", 1)[1].split("def do_GET", 1)[0]
+    assert 'self.path.startswith("/model/status")' in SRC
+    html = Path("dash/index.html").read_text()
+    assert 'api(`/model/status?operationKey=' in html
+    assert "},450);" in html
+    assert "time.sleep(3.0)" not in SRC.split("def motor_apply", 1)[1].split("def motor_queue_resume", 1)[0]
+    assert '"queuedMs"' not in SRC  # camelCase is emitted as a keyword, not a quoted fake UI value
+    assert "queuedMs=max(0" in SRC and "applyMs=max(0" in SRC
 
 
 def test_model_switch_endpoint_targets_requested_pane():
@@ -104,7 +204,12 @@ def test_pane_border_uses_tmux_option_not_per_pane_subprocess():
     assert "_pane_model_state" in SRC
     assert "threading.Thread" in SRC
     conf = Path("config/tmux.conf").read_text()
-    assert "#{E:@ccmodel}" in conf
+    # Los titulos de TEXTO en el borde se eliminaron a proposito: el renglon
+    # queda reservado VACIO como riel de las pildoras por pane de cc-app.
+    # @ccmodel se sigue escribiendo (tooling externo / estados deterministas).
+    assert "pane-border-status top" in conf
+    assert "pane-border-format ' '" in conf
+    assert "#{E:@ccmodel}" not in conf
     assert "cc-pane-model" not in conf
 
 
@@ -124,6 +229,88 @@ def test_pane_model_values_normalize_labels_and_preserve_clears():
         "%3": None,
     }
     assert plain == "%1 claude · sonnet $$\n%2 codex · gpt-5.6 $$$\n"
+
+
+def test_context_shrink_warning_fires_only_when_window_gets_smaller():
+    dash = load_dash_module()
+    dash.read_states_cached = lambda ttl=1.2: [
+        {"session": "s", "pane": "%1", "model": "claude-fable-5[1m]", "contextPct": 45.0}]
+    warn = dash.context_shrink_warning("s", "%1", "claude-opus-5")
+    assert "compactará en ráfaga" in warn and "1000k" in warn   # 45% de 1M → 225% de 200k
+    assert dash.context_shrink_warning("s", "%1", "claude-fable-5[1m]") == ""   # misma ventana
+    dash.read_states_cached = lambda ttl=1.2: [
+        {"session": "s", "pane": "%1", "model": "claude-opus-5", "contextPct": 45.0}]
+    assert dash.context_shrink_warning("s", "%1", "claude-fable-5[1m]") == ""   # crecer nunca advierte
+
+
+def test_pane_suggestions_are_deterministic_with_one_executable_action():
+    dash = load_dash_module()
+    guard = {"forecasts": [{"scope": "Fable", "level": "critical", "downtimeHours": 28.0}],
+             "projects": [{"project": "mrp", "level": "warning", "calls10m": 80, "tokensHour": 45_000_000}]}
+    routes = {"claude:codex", "codex:codex", "grok:grok"}
+
+    hot = {"alive": True, "agent": "claude", "session": "s", "pane": "%1", "contextPct": 12,
+           "model": "claude-fable-5[1m]", "project": "otro", "cwd": "/x/otro"}
+    dash._annotate_suggestion(hot, guard, routes)
+    assert hot["suggestion"]["kind"] == "switch"
+    assert hot["suggestion"]["model"] == "gpt-5.6-luna"
+    assert "28h sin Fable" in hot["suggestion"]["text"].replace("~", "")
+
+    ctx = {"alive": True, "agent": "codex", "session": "s", "pane": "%2", "contextPct": 86, "model": "gpt-5.6-sol"}
+    dash._annotate_suggestion(ctx, guard, routes)
+    assert ctx["suggestion"] == {"kind": "send", "icon": "zap", "command": "/compact",
+                                 "text": ctx["suggestion"]["text"], "button": "Compactar ahora"}
+
+    cheap = {"alive": True, "agent": "grok", "session": "s", "pane": "%3", "contextPct": 10, "model": "grok-4.5"}
+    dash._annotate_suggestion(cheap, guard, routes)
+    assert "suggestion" not in cheap   # ya es barato: no molestar
+
+    import time as _t
+    stuck = {"alive": True, "agent": "claude", "session": "s", "pane": "%4", "status": "working",
+             "ts": _t.time() - 20 * 60, "project": "sin-llamadas", "model": "claude-opus-5"}
+    dash._annotate_suggestion(stuck, guard, routes)
+    assert stuck["suggestion"]["kind"] == "key" and stuck["suggestion"]["key"] == "Escape"
+    assert "parece colgado" in stuck["suggestion"]["text"]
+
+    looping = {"alive": True, "agent": "claude", "session": "s", "pane": "%5", "status": "working",
+               "ts": _t.time() - 25 * 60, "project": "mrp", "model": "claude-opus-5"}
+    guard_loop = dict(guard, projects=[{"project": "mrp", "level": "critical", "calls10m": 120, "tokensHour": 9}])
+    dash._annotate_suggestion(looping, guard_loop, routes)
+    assert "Posible loop: 120 llamadas" in looping["suggestion"]["text"]
+
+    html = Path("dash/index.html").read_text()
+    assert "cx-suggest" in html and 'class="sg-go"' in html
+
+
+def test_defensive_wizard_never_creates_shell_from_unavailable_route():
+    assert '"routeId" in data and not data.get("routeId")' in SRC
+    assert '"code": "route_unavailable"' in SRC
+    html = Path("dash/index.html").read_text()
+    assert 'go.disabled=!shell&&!NS.routeId' in html
+    assert 'class="sw" id="ns-danger" role="switch" aria-checked="false"' in html
+
+
+def test_change_ledger_records_switches_and_offers_undo():
+    assert '"/usage/changes"' in SRC.split("API_GET =", 1)[1].split("def do_GET", 1)[0]
+    assert "cc_usage.record_change" in SRC
+    assert "cc_usage.change_ledger" in SRC
+    html = Path("dash/index.html").read_text()
+    assert 'id="guard-ledger"' in html
+    assert "data-undo=" in html
+    assert '${target&&target.selectable?"":"disabled"}' in html  # Optimizar: nada preseleccionado
+
+
+def test_pane_border_shows_deterministic_switching_and_detecting_states():
+    dash = load_dash_module()
+    dash.MOTOR_RESULT["term-x|%9"] = {"stage": "tecleando /model", "model": "gpt-5.6-luna", "ts": __import__("time").time()}
+    values, plain = dash._pane_model_values([
+        {"tmux_pane": "%9", "tmux_session": "term-x", "agent": "claude", "model": "claude-fable-5"},
+        {"tmux_pane": "%10", "tmux_session": "term-y", "agent": "grok", "model": ""},
+    ])
+    assert "cambiando → gpt-5.6-luna" in values["%9"]
+    assert "detectando…" in values["%10"]
+    assert "%9 claude · cambiando → gpt-5.6-luna" in plain
+    assert "%10 grok · detectando…" in plain
 
 
 def test_alert_rules_endpoint_and_evaluation():
@@ -282,7 +469,8 @@ def test_state_emits_one_control_card_per_live_claude_split():
 
 def test_providers_endpoint_is_security_gated_and_uses_sanitized_registry():
     assert '"/providers"' in SRC.split("API_GET =", 1)[1].split("def do_GET", 1)[0]
-    assert 'provider_registry.public_state(load_provider_registry())' in SRC
+    assert "provider_registry.public_state(registry)" in SRC
+    assert "account_registry.public_accounts(registry)" in SRC
 
 
 def test_model_confirmation_handles_cross_provider_dialog_and_requires_new_marker(monkeypatch):
@@ -323,3 +511,112 @@ def test_native_codex_switch_reports_pane_keyed_confirmed_result():
     assert "def codex_pane_model" in SRC
     assert 'operationKey": opkey' in SRC
     assert 'confirmando modelo y esfuerzo en Codex CLI' in SRC
+
+
+def test_session_new_and_model_switch_accept_canonical_route_ids():
+    assert 'route, selected = resolve_route_selection(data, "new_session")' in SRC
+    assert 'routeId": route.get("id") if route else "shell"' in SRC
+    assert 'if data.get("routeId"):' in SRC
+    assert 'scope = "session_model" if requested.get("motor") == current_motor else "session_motor"' in SRC
+    assert 'current_harness=current_harness' in SRC
+
+
+def test_user_quota_is_persisted_validated_and_feeds_grok_percent(tmp_path, monkeypatch):
+    # La cuota Grok la declara el USUARIO (xAI no expone limites por API):
+    # se guarda local, solo providers permitidos, y 0 la borra.
+    dash = load_dash_module()
+    monkeypatch.setattr(dash, "QUOTAS_FILE", str(tmp_path / "provider-quotas.json"))
+    saved = dash.set_user_quota("grok", 50_000_000)
+    assert saved == {"tokens_7d": 50_000_000, "set_at": saved["set_at"]}
+    assert dash.user_quotas()["grok"]["tokens_7d"] == 50_000_000
+    dash.set_user_quota("grok", 0)
+    assert "grok" not in dash.user_quotas()
+    try:
+        dash.set_user_quota("claude", 1)   # claude tiene limites REALES: no aplica
+        raise AssertionError("provider no permitido acepto cuota")
+    except ValueError:
+        pass
+    # El endpoint existe y refresca limits al guardar
+    assert '"/usage/quota"' in SRC
+    assert "usage_provider_limits(force=True)" in SRC.split('"/usage/quota"', 1)[1][:600]
+
+
+def test_user_subscription_costs_are_validated_and_currency_aware(tmp_path, monkeypatch):
+    dash = load_dash_module()
+    monkeypatch.setattr(dash, "SUBS_FILE", str(tmp_path / "provider-subs.json"))
+    data = dash.set_user_sub("claude", 200, "USD", None)
+    assert data["subs"]["claude"] == {"monthly": 200, "currency": "USD"}
+    data = dash.set_user_sub("", None, None, {"currency": "MXN", "usdRate": 18.5})
+    assert data["display"] == {"currency": "MXN", "usdRate": 18.5}
+    data = dash.set_user_sub("claude", 0, "USD", None)   # 0 borra
+    assert "claude" not in data["subs"]
+    for bad in (("openai", 10, "USD"), ("claude", 10, "BTC")):
+        try:
+            dash.set_user_sub(*bad, None)
+            raise AssertionError(f"acepto {bad}")
+        except ValueError:
+            pass
+    assert '"/usage/subscription"' in SRC
+
+
+def test_fs_browser_is_home_confined_and_mkdir_is_explicit(tmp_path, monkeypatch):
+    # El navegador de carpetas del wizard: solo NOMBRES de directorios bajo
+    # $HOME; mkdir jamas sale de HOME ni pisa archivos.
+    dash = load_dash_module()
+    monkeypatch.setattr(dash, "FS_HOME", str(tmp_path))
+    (tmp_path / "codebase" / "proyecto").mkdir(parents=True)
+    (tmp_path / "codebase" / ".oculta").mkdir()
+    (tmp_path / "codebase" / "archivo.txt").write_text("x")
+
+    d = dash.fs_dirs(str(tmp_path / "codebase"))
+    assert d["exists"] is True
+    names = [x["name"] for x in d["dirs"]]
+    assert "proyecto" in names and ".oculta" not in names and "archivo.txt" not in names
+
+    # path inexistente: reporta lo que falta y lista el ancestro con filtro
+    d2 = dash.fs_dirs(str(tmp_path / "codebase" / "pro"))
+    assert d2["exists"] is False and d2["missing"] == "pro"
+    assert [x["name"] for x in d2["dirs"]] == ["proyecto"]
+
+    # fuera de HOME: rechazado
+    assert "error" in dash.fs_dirs("/etc")
+
+    created = dash.fs_mkdir(str(tmp_path / "nueva" / "sub"))
+    assert created == str(tmp_path / "nueva" / "sub") and (tmp_path / "nueva" / "sub").is_dir()
+    for bad in ("/etc/x", str(tmp_path / "codebase" / "archivo.txt")):
+        try:
+            dash.fs_mkdir(bad)
+            raise AssertionError(f"mkdir acepto {bad}")
+        except ValueError:
+            pass
+    # session-new distingue carpeta faltante (409 accionable, no 400 generico)
+    assert '"code": "cwd_missing"' in SRC
+
+
+def test_harness_handoff_switch_exists_and_is_guarded():
+    # Cambio de HARNESS (el CLI) en vivo con handoff: endpoint + orquestación +
+    # captura de contexto SIN secretos + comando de lanzamiento por harness.
+    assert 'if self.path == "/harness/switch":' in SRC
+    assert "def capture_handoff" in SRC
+    assert "def harness_switch_apply" in SRC
+    assert "def _harness_launch_cmd" in SRC
+    # espera idle (no cambiar a mitad de un tool call) y captura ANTES de cerrar
+    assert '"wait_idle"' in SRC and '"capture"' in SRC
+    # el handoff es un archivo efímero en el cwd
+    assert 'HANDOFF_FILE = ".comandos-handoff.md"' in SRC
+    # rechaza harness inválido y el mismo harness
+    assert "harness desconocido" in SRC
+    assert "el pane ya corre" in SRC
+    mod = load_dash_module()
+    # comandos de lanzamiento por harness (misma forma que /session-new)
+    assert "claude" in mod._harness_launch_cmd("claude", "claude-fable-5[1m]", "high", "main")
+    assert "codex" in mod._harness_launch_cmd("codex", "gpt-5.6-luna", "low", "main")
+    assert "grok" in mod._harness_launch_cmd("grok", "grok-4.6", "high", "main")
+
+
+def test_harness_switch_ui_section_present():
+    html = Path("dash/index.html").read_text()
+    assert "Cambiar de CLI (harness)" in html
+    assert 'data-harness=' in html
+    assert 'api("/harness/switch"' in html
+    assert "MPOP.harnessArm" in html   # confirmación de dos toques

@@ -9,7 +9,9 @@ trap 'rm -rf "$TMP"' EXIT
 . "$ROOT/lib/platform.sh"
 
 CMD="$HOME/.claude/hooks/cc-notify.sh"
+TOOL_CMD="$HOME/.claude/hooks/cc-usage-tool.sh"
 EVENTS="UserPromptSubmit Stop Notification SessionEnd"
+TOOL_EVENTS="PreToolUse PostToolUse"
 
 count_cmd() { # $1=settings $2=evento $3=comando opcional
   local expected_cmd="${3:-$CMD}"
@@ -23,6 +25,10 @@ CC_CLAUDE_SETTINGS="$S" cc_register_claude_hooks "$CMD"
 for ev in $EVENTS; do
   n=$(count_cmd "$S" "$ev")
   [ "$n" = "1" ] || { echo "fresh: expected 1 hook for $ev, got $n"; exit 1; }
+done
+for ev in $TOOL_EVENTS; do
+  n=$(count_cmd "$S" "$ev" "$TOOL_CMD")
+  [ "$n" = "1" ] || { echo "fresh: expected 1 telemetry hook for $ev, got $n"; exit 1; }
 done
 
 # Case 2: idempotente -> segunda corrida no duplica
