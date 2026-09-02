@@ -376,6 +376,17 @@ def _clean_str(value, limit=500):
     return str(value or "")[:limit]
 
 
+def _real_model(value, limit=120):
+    """Nombre de modelo utilizable o "". Los transcripts de claude marcan los
+    mensajes sintéticos (errores de API, avisos) con model "<synthetic>", y un
+    proceso lanzado con flags rotos puede reportar un flag como modelo: ninguno
+    de los dos debe llegar a chips, tabs ni atribución de uso."""
+    name = str(value or "").strip()[:limit]
+    if not name or name.startswith(("<", "-")):
+        return ""
+    return name
+
+
 def _provider_for_agent(agent):
     if agent == "codex":
         return "codex"
@@ -402,7 +413,7 @@ def normalize_pane_identity(raw, labels=None, now=None):
         "agent": agent,
         "provider": provider,
         "agent_pid": int(raw.get("pid") or raw.get("agent_pid") or 0),
-        "model": _clean_str(raw.get("model"), 120),
+        "model": _real_model(raw.get("model")),
         "reasoning_effort": _clean_str(raw.get("reasoning_effort"), 40),
         "started_at": int(raw.get("started_at") or ts),
         "last_seen_at": ts,
@@ -754,13 +765,16 @@ def _attach_pane_turn_usage(turns, panes, now):
         key = (provider, turn.get("pane_pwd") or "")
         if key not in groups:
             continue
-        if turn.get("model") and key not in latest_model:
-            latest_model[key] = turn["model"]
+        # _real_model también aquí: la DB puede traer turnos viejos ya
+        # ingeridos con "<synthetic>" o flags como modelo
+        turn_model = _real_model(turn.get("model"))
+        if turn_model and key not in latest_model:
+            latest_model[key] = turn_model
         if _as_int(turn.get("turn_finished_at")) < day_start:
             continue
-        if turn.get("model"):
+        if turn_model:
             mt = day_model_tokens.setdefault(key, {})
-            mt[turn["model"]] = mt.get(turn["model"], 0) + max(
+            mt[turn_model] = mt.get(turn_model, 0) + max(
                 1, _as_int(turn.get("total_tokens")))
         item = sums.setdefault(key, {"tokens": 0, "cost": 0.0})
         item["tokens"] += _as_int(turn.get("total_tokens"))
@@ -1896,7 +1910,7 @@ def record_local_claude_jsonl(db_path, projects_root=None, now=None, max_age_day
                         "tmux_pane": "",
                         "pane_pwd": cwd,
                         "git_root": roots[cwd],
-                        "model": _text(msg.get("model")),
+                        "model": _real_model(msg.get("model")),
                         "turn_started_at": finished,
                         "turn_finished_at": finished,
                         "input_tokens": input_tokens,

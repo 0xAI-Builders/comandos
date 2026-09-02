@@ -985,3 +985,14 @@ def test_read_codex_rate_limits_classifies_by_window_minutes():
     assert by["codex_session"]["percent"] == 15.0 and by["codex_session"]["window"] == "5h"
     assert by["codex_weekly"]["percent"] == 42.0 and by["codex_weekly"]["window"] == "7d"
 
+
+
+def test_real_model_rejects_synthetic_and_flag_values():
+    """El chip/tab jamás debe mostrar "<synthetic>" (mensajes de error del
+    transcript) ni un flag ("--effort") como si fueran el modelo del pane."""
+    assert cc_usage._real_model("claude-fable-5") == "claude-fable-5"
+    assert cc_usage._real_model("  gpt-5.6-sol ") == "gpt-5.6-sol"
+    assert cc_usage._real_model("<synthetic>") == ""
+    assert cc_usage._real_model("--effort") == ""
+    assert cc_usage._real_model("-x") == ""
+    assert cc_usage._real_model(None) == ""

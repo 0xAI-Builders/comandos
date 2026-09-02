@@ -2531,7 +2531,11 @@ def _analyze_transcript(path, cfg, now):
             continue  # turnos de subagentes: su contexto no es el de la sesion
         msg = d.get("message") or {}
         if isinstance(msg, dict) and msg.get("role") == "assistant" and msg.get("model"):
-            model = str(msg.get("model"))[:120]   # el modelo REAL que respondio (ultimo gana)
+            candidate = str(msg.get("model"))[:120]   # el modelo REAL que respondio (ultimo gana)
+            # los mensajes sinteticos (errores de API, avisos) traen model
+            # "<synthetic>": no son el modelo de la sesion
+            if candidate and not candidate.startswith(("<", "-")):
+                model = candidate
         u = msg.get("usage") or {}
         if u:
             total_in = (u.get("input_tokens") or 0) +                 (u.get("cache_read_input_tokens") or 0) +                 (u.get("cache_creation_input_tokens") or 0)
