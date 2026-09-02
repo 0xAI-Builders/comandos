@@ -2974,7 +2974,7 @@ function mdStrip(s){ return (s||"").replace(/\*\*|`|^#{1,6} /g, ""); }
 	function nsModel(){ return nsModels().find(m=>m.id===NS.model) || nsModels()[0] || {}; }
 	function nsAccountItems(provider,role="harness"){
 	  const accounts = (nsHarness(provider).accounts || []);
-	  return accounts.map(a=>{const selectable=role==="motor"?a.motorSelectable:a.selectable;return {id:a.alias,label:a.alias,title:a.identity||(!selectable&&a.selectable?tf("cuenta de motor nombrada: gateway aislado aún no disponible","named motor account: isolated gateway not available yet"):({ready:"suscripción lista",login_required:"requiere login",unsupported_auth:"auth no compatible con suscripción"}[a.state]||a.state||"")),disabled:!selectable,icon:provider};});
+	  const acpRoute=role==="motor"&&((nsRoute()||{}).driver==="acp");return accounts.map(a=>{const selectable=role==="motor"?(acpRoute?a.selectable:a.motorSelectable):a.selectable;return {id:a.alias,label:a.alias,title:a.identity||(!selectable&&a.selectable?tf("cuenta de motor nombrada: gateway aislado aún no disponible","named motor account: isolated gateway not available yet"):({ready:"suscripción lista",login_required:"requiere login",unsupported_auth:"auth no compatible con suscripción"}[a.state]||a.state||"")),disabled:!selectable,icon:provider};});
 	}
 	function nsEnsureAccount(provider, field, role="harness"){
 	  const items=nsAccountItems(provider,role), ready=items.filter(x=>!x.disabled);
@@ -4783,12 +4783,14 @@ function mdStrip(s){ return (s||"").replace(/\*\*|`|^#{1,6} /g, ""); }
 	      // aquí cambias la interfaz entera (Claude Code ↔ Codex CLI ↔ Grok Build)
 	      // en el MISMO pane, con handoff del contexto. La conversación actual se
 	      // cierra (cada CLI es su propio proceso).
-	      const HL = {claude: "Claude Code", codex: "Codex CLI", grok: "Grok Build"};
+	      const HL = {claude: "Claude Code", codex: "Codex CLI", grok: "Grok Build", acp: "ComandOS ACP", opencode: "OpenCode", agy: "Antigravity"};
 	      const cur = (item.agent||"claude");
 	      const armed = MPOP.harnessArm;
+	      // harnesses del registro (matrixHarnesses) — el ACP de ComandOS hospeda cualquier motor
+	      const hlist = (((PROVIDERS||{}).matrixHarnesses)||["claude","codex","grok"]).filter(h=>HL[h]);
 	      return `<div class="mp-harness">
 	        <div class="mp-hh">${svg("layers",12)} ${tf("Cambiar de CLI (harness)","Switch CLI (harness)")}</div>
-	        <div class="mp-hrow">${["claude","codex","grok"].map(h=>{
+	        <div class="mp-hrow">${hlist.map(h=>{
 	          const on = h===cur;
 	          return `<button type="button" class="mp-hbtn ${on?"on":""} ${armed===h?"arm":""}" data-harness="${h}" ${on?"disabled":""}>
 	            ${providerMark(h,"",14)} <span>${HL[h]}</span>${on?` <span class="mp-hcur">${tf("actual","now")}</span>`:""}${armed===h?` <span class="mp-harm">${tf("confirmar","confirm")}</span>`:""}</button>`;}).join("")}</div>

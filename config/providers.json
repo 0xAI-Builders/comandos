@@ -97,6 +97,25 @@
         "subagents": true
       }
     },
+    "acp": {
+      "label": "ComandOS ACP",
+      "icon": "layers",
+      "binary": "cc-acp",
+      "processNames": [
+        "cc-acp"
+      ],
+      "launchDriver": "acp",
+      "description": "ComandOS como cliente ACP: cualquier agente (Claude Code, Codex, Grok, OpenCode, Antigravity) con SU suscripción, en un pane. Sin API keys.",
+      "capabilities": {
+        "models": true,
+        "effort": true,
+        "accounts": false,
+        "liveAccountSwitch": false,
+        "resume": true,
+        "splits": true,
+        "motorAccounts": true
+      }
+    },
     "opencode": {
       "label": "OpenCode",
       "icon": "opencode",
@@ -110,6 +129,23 @@
         "effort": false,
         "accounts": false,
         "resume": false,
+        "splits": true
+      }
+    },
+    "agy": {
+      "label": "Antigravity",
+      "icon": "gemini",
+      "binary": "agy",
+      "processNames": [
+        "agy"
+      ],
+      "launchDriver": "agy",
+      "capabilities": {
+        "models": true,
+        "effort": true,
+        "accounts": false,
+        "liveAccountSwitch": false,
+        "resume": true,
         "splits": true
       }
     },
@@ -185,7 +221,10 @@
   "matrixHarnesses": [
     "claude",
     "codex",
-    "grok"
+    "grok",
+    "acp",
+    "opencode",
+    "agy"
   ],
   "motors": {
     "claude": {
@@ -329,6 +368,154 @@
             "high"
           ],
           "defaultEffort": "high"
+        }
+      ]
+    },
+    "opencode": {
+      "label": "OpenCode",
+      "icon": "opencode",
+      "modelMatch": "^(?:opencode/|openrouter/|groq/|cerebras/)",
+      "models": [
+        {
+          "id": "opencode/big-pickle",
+          "name": "Big Pickle (free)",
+          "tag": "gratis · sin login",
+          "efforts": [],
+          "defaultEffort": ""
+        },
+        {
+          "id": "opencode/nemotron-3-ultra-free",
+          "name": "Nemotron 3 Ultra (free)",
+          "tag": "gratis",
+          "efforts": [],
+          "defaultEffort": ""
+        },
+        {
+          "id": "openrouter/anthropic/claude-fable-5.1",
+          "name": "Fable 5.1 (OpenRouter)",
+          "tag": "vía tu OpenRouter",
+          "efforts": [],
+          "defaultEffort": ""
+        },
+        {
+          "id": "openrouter/~openai/gpt-latest",
+          "name": "GPT latest (OpenRouter)",
+          "tag": "vía tu OpenRouter",
+          "efforts": [],
+          "defaultEffort": ""
+        },
+        {
+          "id": "groq/openai/gpt-oss-120b",
+          "name": "GPT-OSS 120B (Groq)",
+          "tag": "vía tu Groq",
+          "efforts": [],
+          "defaultEffort": ""
+        }
+      ]
+    },
+    "agy": {
+      "label": "Antigravity",
+      "icon": "gemini",
+      "modelMatch": "^(?:gemini-|claude-sonnet-4-6|claude-opus-4-6|gpt-oss-)",
+      "models": [
+        {
+          "id": "claude-sonnet-4-6",
+          "name": "Claude Sonnet 4.6",
+          "tag": "Claude con tu suscripción Antigravity",
+          "efforts": [
+            "low",
+            "medium",
+            "high"
+          ],
+          "defaultEffort": "high"
+        },
+        {
+          "id": "claude-opus-4-6-thinking",
+          "name": "Claude Opus 4.6 (thinking)",
+          "tag": "Claude con tu suscripción Antigravity",
+          "efforts": [
+            "low",
+            "medium",
+            "high"
+          ],
+          "defaultEffort": "high"
+        },
+        {
+          "id": "gemini-3.1-pro-high",
+          "name": "Gemini 3.1 Pro (high)",
+          "tag": "más inteligente",
+          "efforts": [
+            "low",
+            "medium",
+            "high"
+          ],
+          "defaultEffort": "high"
+        },
+        {
+          "id": "gemini-3.1-pro-low",
+          "name": "Gemini 3.1 Pro (low)",
+          "tag": "rápido",
+          "efforts": [
+            "low",
+            "medium",
+            "high"
+          ],
+          "defaultEffort": "high"
+        },
+        {
+          "id": "gemini-3.8-flash-high",
+          "name": "Gemini 3.8 Flash (high)",
+          "tag": "rápido · reciente",
+          "efforts": [
+            "low",
+            "medium",
+            "high"
+          ],
+          "defaultEffort": "high"
+        },
+        {
+          "id": "gemini-3.8-flash-medium",
+          "name": "Gemini 3.8 Flash (medium)",
+          "tag": "equilibrado",
+          "efforts": [
+            "low",
+            "medium",
+            "high"
+          ],
+          "defaultEffort": "high"
+        },
+        {
+          "id": "gemini-3.8-flash-low",
+          "name": "Gemini 3.8 Flash (low)",
+          "tag": "el más rápido",
+          "efforts": [
+            "low",
+            "medium",
+            "high"
+          ],
+          "defaultEffort": "high"
+        },
+        {
+          "id": "gemini-3.7-flash-high",
+          "name": "Gemini 3.7 Flash (high)",
+          "tag": "estable",
+          "efforts": [
+            "low",
+            "medium",
+            "high"
+          ],
+          "defaultEffort": "high"
+        },
+        {
+          "id": "gpt-oss-120b-medium",
+          "name": "GPT-OSS 120B",
+          "tag": "abierto",
+          "efforts": [
+            "low",
+            "medium",
+            "high"
+          ],
+          "defaultEffort": "medium"
         }
       ]
     }
@@ -481,6 +668,126 @@
       "experimental": true,
       "liveVerified": false,
       "reasonCode": "route_not_live_verified"
+    },
+    {
+      "id": "acp:claude",
+      "harness": "acp",
+      "motor": "claude",
+      "transport": "acp-stdio",
+      "authRequirements": [
+        "motor:claude"
+      ],
+      "actionScopes": [
+        "new_session",
+        "session_motor",
+        "session_model"
+      ],
+      "accountScopes": [
+        "motor"
+      ],
+      "driver": "acp",
+      "experimental": false,
+      "liveVerified": true
+    },
+    {
+      "id": "acp:codex",
+      "harness": "acp",
+      "motor": "codex",
+      "transport": "acp-stdio",
+      "authRequirements": [
+        "motor:codex"
+      ],
+      "actionScopes": [
+        "new_session",
+        "session_motor",
+        "session_model"
+      ],
+      "accountScopes": [
+        "motor"
+      ],
+      "driver": "acp",
+      "experimental": false,
+      "liveVerified": true
+    },
+    {
+      "id": "acp:grok",
+      "harness": "acp",
+      "motor": "grok",
+      "transport": "acp-stdio",
+      "authRequirements": [
+        "motor:grok"
+      ],
+      "actionScopes": [
+        "new_session",
+        "session_motor",
+        "session_model"
+      ],
+      "accountScopes": [
+        "motor"
+      ],
+      "driver": "acp",
+      "experimental": false,
+      "liveVerified": true
+    },
+    {
+      "id": "acp:opencode",
+      "harness": "acp",
+      "motor": "opencode",
+      "transport": "acp-stdio",
+      "authRequirements": [],
+      "actionScopes": [
+        "new_session",
+        "session_motor",
+        "session_model"
+      ],
+      "accountScopes": [],
+      "driver": "acp",
+      "experimental": false,
+      "liveVerified": true
+    },
+    {
+      "id": "acp:agy",
+      "harness": "acp",
+      "motor": "agy",
+      "transport": "agy-stream",
+      "authRequirements": [],
+      "actionScopes": [
+        "new_session",
+        "session_motor",
+        "session_model"
+      ],
+      "accountScopes": [],
+      "driver": "acp",
+      "experimental": false,
+      "liveVerified": true
+    },
+    {
+      "id": "opencode:opencode",
+      "harness": "opencode",
+      "motor": "opencode",
+      "transport": "native",
+      "authRequirements": [],
+      "actionScopes": [
+        "new_session",
+        "session_model"
+      ],
+      "accountScopes": [],
+      "driver": "opencode",
+      "experimental": false
+    },
+    {
+      "id": "agy:agy",
+      "harness": "agy",
+      "motor": "agy",
+      "transport": "native",
+      "authRequirements": [],
+      "actionScopes": [
+        "new_session",
+        "session_model"
+      ],
+      "accountScopes": [],
+      "driver": "agy",
+      "experimental": false
     }
   ],
   "exclusions": [
@@ -500,5 +807,114 @@
       "reasonCode": "subscription_not_accepted",
       "message": "Grok Build requiere API key Anthropic; Claude Max no se puede reenviar."
     }
-  ]
+  ],
+  "coreHarnesses": [
+    "claude",
+    "codex",
+    "grok"
+  ],
+  "acpAgents": {
+    "claude": {
+      "label": "Claude Code (ACP)",
+      "command": [
+        "claude-agent-acp"
+      ],
+      "requires": [
+        "claude"
+      ],
+      "env": {
+        "CLAUDE_CODE_EXECUTABLE": "which:claude"
+      },
+      "accountsProvider": "claude",
+      "modelVia": "acp",
+      "effortEnv": "MAX_THINKING_TOKENS",
+      "effortEnvMap": {
+        "low": "1024",
+        "medium": "4096",
+        "high": "16000",
+        "xhigh": "32000",
+        "max": "63999"
+      },
+      "dangerMode": "bypassPermissions",
+      "resume": true
+    },
+    "codex": {
+      "label": "Codex (ACP)",
+      "command": [
+        "codex-acp"
+      ],
+      "accountsProvider": "codex",
+      "modelArgs": [
+        "-c",
+        "model=\"{model}\""
+      ],
+      "effortArgs": [
+        "-c",
+        "model_reasoning_effort=\"{effort}\""
+      ],
+      "dangerMode": "full-access",
+      "resume": false
+    },
+    "grok": {
+      "label": "Grok Build (ACP)",
+      "command": [
+        "grok",
+        "agent",
+        "--no-leader",
+        "{model_args}",
+        "{effort_args}",
+        "{danger_args}",
+        "stdio"
+      ],
+      "accountsProvider": "grok",
+      "modelArgs": [
+        "-m",
+        "{model}"
+      ],
+      "effortArgs": [
+        "--reasoning-effort",
+        "{effort}"
+      ],
+      "dangerArgs": [
+        "--always-approve"
+      ],
+      "modelVia": "acp",
+      "resume": false
+    },
+    "opencode": {
+      "label": "OpenCode (ACP)",
+      "command": [
+        "opencode",
+        "acp"
+      ],
+      "modelEnv": "OPENCODE_CONFIG_CONTENT",
+      "modelEnvTemplate": "{\"model\":\"{model}\"}",
+      "resume": false
+    },
+    "agy": {
+      "label": "Antigravity (stream-json)",
+      "transport": "agy-stream",
+      "command": [
+        "agy",
+        "-p",
+        "",
+        "--input-format",
+        "stream-json",
+        "--output-format",
+        "stream-json"
+      ],
+      "modelArgs": [
+        "--model",
+        "{model}"
+      ],
+      "effortArgs": [
+        "--effort",
+        "{effort}"
+      ],
+      "dangerArgs": [
+        "--dangerously-skip-permissions"
+      ],
+      "resume": false
+    }
+  }
 }

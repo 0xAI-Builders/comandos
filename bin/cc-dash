@@ -942,12 +942,17 @@ def provider_runtime_facts(public=None):
     for key, value in harnesses.items():
         if (public.get("harnesses") or {}).get(key, {}).get("authenticated") is None:
             value["authenticated"] = value["available"]
+    # Motores: los que tienen cuentas exigen login; los que no (opencode, agy)
+    # cuentan como autenticados si su binario existe (login lo maneja el CLI).
+    motors = {}
+    for provider in (registry.get("motors") or {}):
+        if provider in discovered:
+            motors[provider] = {"authenticated": any(a.get("selectable") for a in discovered.get(provider, []))}
+        else:
+            motors[provider] = {"authenticated": bool(harnesses.get(provider, {}).get("available"))}
     return {
         "harnesses": harnesses,
-        "motors": {
-            provider: {"authenticated": any(a.get("selectable") for a in discovered.get(provider, []))}
-            for provider in ("claude", "codex", "grok")
-        },
+        "motors": motors,
         "gateway": {"installed": bool(shutil.which("cc-model-proxy")), "alive": proxy_alive()},
     }
 
@@ -1006,20 +1011,29 @@ def resolve_route_selection(data, scope, current_harness=None):
         motor_alias = str(data.get("motorAccount") or harness_alias)
     else:
         motor_alias = str(data.get("motorAccount") or "main")
+    harness_caps = ((registry.get("harnesses") or {}).get(harness) or {}).get("capabilities") or {}
+    motor_caps = ((registry.get("harnesses") or {}).get(route.get("motor")) or {}).get("capabilities") or {}
     try:
-        harness_accounts = account_registry.list_accounts(registry, harness)
-        selected_harness = next((a for a in harness_accounts if a.get("alias") == harness_alias), None)
-        if not selected_harness or not selected_harness.get("selectable"):
-            raise provider_registry.ProviderRegistryError("harness_account_login_required")
+        if harness_caps.get("accounts"):
+            harness_accounts = account_registry.list_accounts(registry, harness)
+            selected_harness = next((a for a in harness_accounts if a.get("alias") == harness_alias), None)
+            if not selected_harness or not selected_harness.get("selectable"):
+                raise provider_registry.ProviderRegistryError("harness_account_login_required")
+        else:
+            harness_alias = "main"   # acp/opencode/agy: el harness no tiene cuentas propias
         if route.get("motor") == harness:
             motor_alias = harness_alias
-        elif "motor" in (route.get("accountScopes") or []):
+        elif "motor" in (route.get("accountScopes") or []) and motor_caps.get("accounts"):
             motor_accounts = account_registry.list_accounts(registry, route.get("motor"))
             selected_motor = next((a for a in motor_accounts if a.get("alias") == motor_alias), None)
             if not selected_motor or not selected_motor.get("selectable"):
                 raise provider_registry.ProviderRegistryError("motor_account_login_required")
-            if motor_alias != "main":
+            # Solo el gateway (cc-proxy) esta limitado a la cuenta main del
+            # motor; por ACP el agente corre con la suscripcion que se elija.
+            if motor_alias != "main" and route.get("driver") != "acp":
                 raise provider_registry.ProviderRegistryError("motor_account_gateway_not_ready")
+        else:
+            motor_alias = "main"
     except account_registry.AccountError as exc:
         raise provider_registry.ProviderRegistryError("account_invalid") from exc
     selection["harnessAccount"] = harness_alias
@@ -1363,8 +1377,29 @@ def _harness_launch_cmd(to_harness, model, effort, account):
             cmd += " --model " + shlex.quote(model)
         if effort:
             cmd += " --effort " + shlex.quote(effort)
+    elif to_harness == "opencode":
+        cmd = "opencode" + (" --model " + shlex.quote(model) if model else "")
+    elif to_harness == "agy":
+        cmd = "agy" + (" --model " + shlex.quote(model) if model else "") + (" --effort " + shlex.quote(effort) if effort else "")
     else:
         cmd = ""
+    return cmd
+
+
+def _acp_launch_cmd(motor, model, effort, account, danger=False, resume=""):
+    """Comando del pane cliente ACP: `cc-acp --agent <motor> ...`. La cuenta
+    es la del MOTOR (cc-acp resuelve el env de la suscripción por registro)."""
+    cmd = "cc-acp --agent " + shlex.quote(str(motor or "claude"))
+    if model:
+        cmd += " --model " + shlex.quote(model)
+    if effort:
+        cmd += " --effort " + shlex.quote(effort)
+    if account and account != "main":
+        cmd += " --account " + shlex.quote(account)
+    if resume:
+        cmd += " --resume " + shlex.quote(resume)
+    if danger:
+        cmd += " --danger"
     return cmd
 
 
@@ -1442,7 +1477,11 @@ def harness_switch_apply(payload):
             return
         time.sleep(0.6)
         # 4) lanzar el nuevo harness
-        cmd = _harness_launch_cmd(to, payload.get("model", ""), payload.get("effort", ""), payload.get("account", "main"))
+        if to == "acp":
+            cmd = _acp_launch_cmd(payload.get("motor") or "claude", payload.get("model", ""), payload.get("effort", ""),
+                                  payload.get("account", "main"), danger=bool(payload.get("danger")))
+        else:
+            cmd = _harness_launch_cmd(to, payload.get("model", ""), payload.get("effort", ""), payload.get("account", "main"))
         if not cmd:
             motor_result_set(opkey, False, f"no sé lanzar el harness {to}")
             return
@@ -3941,6 +3980,8 @@ AGENT_LAUNCH = {
     "gemini":   "gemini",
     "agy":      "agy --continue 2>/dev/null || agy",
     "aider":    "aider",
+    # pane cliente ACP de ComandOS: el motor/cuenta/modelo vienen del route
+    "acp":      "cc-acp",
 }
 
 
@@ -6156,7 +6197,9 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             register_app_tab(new_sess, label, kind="project", cwd=final_cwd)
             cmd = ""
             account_prefix = ""
-            if agent != "shell":
+            harness_has_accounts = bool((((load_provider_registry().get("harnesses") or {}).get(agent) or {})
+                                         .get("capabilities") or {}).get("accounts"))
+            if agent != "shell" and harness_has_accounts:
                 try:
                     account_env = account_registry.account_environment(load_provider_registry(), agent, alias)
                     account_prefix = " ".join(f"{key}={shlex.quote(value)}" for key, value in account_env.items()) + " "
@@ -6204,6 +6247,15 @@ class Handler(http.server.SimpleHTTPRequestHandler):
                         cmd += " --effort " + shlex.quote(grok_effort)
                 if data.get("danger") and flags.get("grok"):
                     cmd += " " + flags["grok"]
+            elif agent == "acp":
+                # ComandOS como cliente ACP: el motor corre con SU suscripcion
+                # (cuenta del motor), sin gateway ni API keys.
+                cmd = _acp_launch_cmd(route["motor"] if route else "claude", selected.get("model") or "",
+                                      selected.get("effort") or "", motor_alias, danger=bool(data.get("danger")))
+            elif agent in ("opencode", "agy"):
+                cmd = _harness_launch_cmd(agent, selected.get("model") or "", selected.get("effort") or "", alias)
+                if data.get("danger") and flags.get(agent):
+                    cmd += " " + flags[agent]
             if cmd:
                 pane_new = tmux("display-message", "-p", "-t", "=" + new_sess + ":", "#{pane_id}").stdout.strip()
                 if route:
@@ -6504,7 +6556,10 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             model = str(data.get("model") or "")[:120]
             effort = str(data.get("effort") or "")[:16]
             account = str(data.get("account") or data.get("harnessAccount") or "main")[:64]
-            if to not in ("claude", "codex", "grok"):
+            registry_now = load_provider_registry()
+            switchable = {h for h, spec in (registry_now.get("harnesses") or {}).items()
+                          if spec.get("launchDriver") in ("claude", "codex", "grok", "acp", "opencode", "agy")}
+            if to not in switchable:
                 return self._json(400, {"error": f"harness desconocido: {to}"})
             if tmux("has-session", "-t", target).returncode != 0:
                 return self._json(404, {"error": f"No hay sesión tmux '{sess}'"})
@@ -6514,19 +6569,28 @@ class Handler(http.server.SimpleHTTPRequestHandler):
                 return self._json(409, {"error": "no detecto el harness actual del pane"})
             if frm == to:
                 return self._json(409, {"error": f"el pane ya corre {to}; para cambiar el modelo usa el selector de motor"})
-            # la ruta nativa del harness destino debe estar habilitada
-            dest = provider_registry.route_for(load_provider_registry(), f"{to}:{to}") or {}
-            if not dest.get("selectable", True):
-                return self._json(409, {"error": (dest.get("reason") or {}).get("message") or f"{to} no está disponible"})
-            # la cuenta del harness destino debe tener login
-            try:
-                accts = account_registry.list_accounts(load_provider_registry(), to)
-                if not any(a.get("alias") == account and a.get("selectable") for a in accts):
-                    account = _pick_motor_account(to, account)
+            # ACP: el motor destino es el que pidan o, por defecto, el mismo
+            # cerebro que corria en el pane (claude -> acp:claude), asi el
+            # cambio de TUI no cambia de modelo a escondidas.
+            acp_agents = registry_now.get("acpAgents") or {}
+            motor = str(data.get("motor") or (frm if frm in acp_agents else "claude"))[:16] if to == "acp" else to
+            dest_id = f"{to}:{motor}"
+            dest = next((c for c in capability_matrix() if c.get("id") == dest_id), None) or {}
+            if not dest.get("selectable", False):
+                return self._json(409, {"error": (dest.get("reason") or {}).get("message") or f"{dest_id} no está disponible"})
+            # la cuenta (del harness, o del MOTOR si el harness es acp) debe tener login
+            acct_provider = motor if to == "acp" else to
+            if ((registry_now.get("harnesses") or {}).get(acct_provider) or {}).get("capabilities", {}).get("accounts"):
+                try:
+                    accts = account_registry.list_accounts(registry_now, acct_provider)
                     if not any(a.get("alias") == account and a.get("selectable") for a in accts):
-                        return self._json(409, {"error": f"El harness {to} no tiene ninguna cuenta con login. Inicia sesión primero."})
-            except Exception:
-                pass
+                        account = _pick_motor_account(acct_provider, account)
+                        if not any(a.get("alias") == account and a.get("selectable") for a in accts):
+                            return self._json(409, {"error": f"{acct_provider} no tiene ninguna cuenta con login. Inicia sesión primero."})
+                except Exception:
+                    pass
+            else:
+                account = "main"
             cwd = info.get("cwd") or ""
             if not cwd:
                 r = tmux("display-message", "-p", "-t", pane, "#{pane_current_path}")
@@ -6536,7 +6600,8 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             queued = bool((claude_pane_busy(pane) if frm == "claude" else False)) and not bool(data.get("interrupt"))
             payload = {"key": opkey, "sess": sess, "pane": pane, "from": frm, "to": to,
                        "cwd": cwd, "pid": info.get("pid"), "model": model, "effort": effort,
-                       "account": account, "gen": gen, "interrupt": bool(data.get("interrupt"))}
+                       "account": account, "gen": gen, "interrupt": bool(data.get("interrupt")),
+                       "motor": motor, "danger": bool(data.get("danger"))}
             harness_switch_apply(payload)
             return self._json(200, {"ok": True, "operationKey": opkey, "from": frm, "to": to,
                                     "queued": queued,

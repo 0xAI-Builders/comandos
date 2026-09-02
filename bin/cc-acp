@@ -1,0 +1,379 @@
+#!/usr/bin/env python3
+"""cc-acp — pane cliente ACP de ComandOS.
+
+Corre dentro de un pane tmux y habla con CUALQUIER agente (Claude Code, Codex,
+Grok Build, OpenCode, Antigravity) por Agent Client Protocol, cada uno con su
+propia suscripción. Aquí cambias de motor, modelo, esfuerzo o cuenta sin
+depender de la TUI del vendor.
+
+  cc-acp --agent codex --model gpt-5.5 --effort high --account main
+  cc-acp --agent claude --resume <sessionId>
+
+Comandos en el prompt:
+  /model <id>     /effort <nivel>    /agent <claude|codex|grok|opencode|agy>
+  /account <alias>  /models  /mode <id>  /danger  /status  /exit
+"""
+from __future__ import annotations
+
+import argparse
+import json
+import os
+import readline  # noqa: F401  (historial/edición en input())
+import shlex
+import signal
+import subprocess
+import sys
+import threading
+import time
+
+REPO = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
+sys.path.insert(0, os.path.join(REPO, "lib"))
+import acp  # noqa: E402
+import accounts as account_registry  # noqa: E402
+import providers as provider_registry  # noqa: E402
+
+HOOKS = os.path.expanduser("~/.claude/hooks")
+STATE_FILE = os.path.expanduser("~/.claude/hooks/acp-panes.json")
+
+C = {k: (v if sys.stdout.isatty() else "") for k, v in {
+    "dim": "\033[2m", "bold": "\033[1m", "off": "\033[0m", "cyan": "\033[36m",
+    "yel": "\033[33m", "grn": "\033[32m", "red": "\033[31m", "mag": "\033[35m"}.items()}
+
+EFFORTS = ("low", "medium", "high", "xhigh", "max")
+
+
+def say(text="", color="", end="\n"):
+    sys.stdout.write((C.get(color, "") + text + (C["off"] if color else "")) + end)
+    sys.stdout.flush()
+
+
+def tmux_pane() -> str:
+    return os.environ.get("TMUX_PANE", "")
+
+
+def tmux(*args):
+    try:
+        return subprocess.run(["tmux", *args], capture_output=True, text=True, timeout=5)
+    except Exception:
+        return None
+
+
+def notify(event: str, cwd: str, extra: dict | None = None):
+    """Estado working/done/waiting para el dashboard: reutiliza cc-notify.sh
+    (el mismo hook que Claude Code) con un payload compatible."""
+    hook = os.path.join(HOOKS, "cc-notify.sh")
+    if not os.path.exists(hook):
+        return
+    payload = {"hook_event_name": event, "cwd": cwd, "session_id": os.environ.get("CC_ACP_SESSION", ""),
+               "harness": "acp"}
+    payload.update(extra or {})
+    try:
+        subprocess.Popen([hook], stdin=subprocess.PIPE, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                         text=True, env=dict(os.environ, HARNESS="acp")).stdin.write(json.dumps(payload))
+    except Exception:
+        pass
+
+
+class Pane:
+    def __init__(self, args):
+        self.registry = provider_registry.load_registry()
+        self.specs = acp.agent_specs(self.registry)
+        self.cwd = os.path.realpath(args.cwd or os.getcwd())
+        self.agent = args.agent
+        self.model = args.model or ""
+        self.effort = args.effort or ""
+        self.account = args.account or "main"
+        self.danger = bool(args.danger)
+        self.resume_id = args.resume or ""
+        self.session = None
+        self.history: list[tuple[str, str]] = []   # (rol, texto) para handoff
+        self.busy = False
+        self.stop = False
+
+    # ---- lanzamiento
+    def spec(self) -> dict:
+        spec = self.specs.get(self.agent)
+        if not spec:
+            raise acp.AcpError(f"agente ACP desconocido: {self.agent} (hay: {', '.join(self.specs)})")
+        return spec
+
+    def account_env(self) -> dict[str, str]:
+        provider = self.spec().get("accountsProvider")
+        if not provider:
+            return {}
+        return account_registry.account_environment(self.registry, provider, self.account)
+
+    def default_model(self) -> str:
+        motor = (self.registry.get("motors") or {}).get(self.agent) or {}
+        models = motor.get("models") or []
+        return models[0]["id"] if models else ""
+
+    def connect(self):
+        spec = self.spec()
+        if not acp.agent_available(spec):
+            raise acp.AcpError(f"{spec.get('label') or self.agent} no está instalado")
+        model = self.model if spec.get("modelVia") != "acp" else ""   # por ACP se fija tras session/new
+        if not self.model and spec.get("transport") == "agy-stream":
+            self.model = model = self.default_model()
+        self.session = acp.open_session(spec, self.cwd, model=model, effort=self.effort, danger=self.danger,
+                                        extra_env=self.account_env(), permission_handler=self.on_permission)
+        self.session.initialize()
+        if self.resume_id and self.session.supports_load():
+            say(f"↻ reanudando sesión {self.resume_id[:8]}…", "dim")
+            self.session.load_session(self.resume_id, on_event=lambda e: None)
+        else:
+            self.session.new_session()
+        if spec.get("modelVia") == "acp":
+            if self.model and self.session.models:
+                ids = [m.get("modelId") for m in self.session.models]
+                target = self.model if self.model in ids else next((i for i in ids if i and self.model.split("[")[0] in i), "")
+                if target and target != self.session.current_model:
+                    self.session.set_model(target)
+            self.model = self.session.current_model or self.model
+        if self.danger and spec.get("dangerMode") and any(m.get("id") == spec["dangerMode"] for m in self.session.modes):
+            try:
+                self.session.set_mode(spec["dangerMode"])
+            except acp.AcpError as exc:
+                say(f"(modo {spec['dangerMode']} no aplicado: {exc})", "dim")
+        self.publish()
+
+    def reconnect(self, keep_context=True):
+        """Relanza el agente (cambio de motor/cuenta/esfuerzo). Si el agente
+        soporta session/load se retoma la misma conversación; si no, se
+        inyecta un handoff visible con los últimos intercambios."""
+        old = self.session
+        prev_id = old.session_id if old else ""
+        prev_agent = self.agent
+        if old:
+            old.close()
+        spec = self.spec()
+        self.resume_id = prev_id if (spec.get("resume") and prev_id and prev_agent == self.agent) else ""
+        self.connect()
+        if keep_context and not self.resume_id and self.history:
+            handoff = self.handoff_text()
+            say("→ handoff del contexto al nuevo agente…", "dim")
+            self.run_prompt(handoff, record=False)
+
+    def handoff_text(self) -> str:
+        lines = ["[HANDOFF desde ComandOS] Continúas una conversación que llevaba otro agente. Resumen de lo último:"]
+        for role, text in self.history[-8:]:
+            lines.append(f"- {role}: {text.strip()[:700]}")
+        lines.append("Responde solo: 'Contexto recibido' y espera la siguiente instrucción.")
+        return "\n".join(lines)
+
+    # ---- estado visible para ComandOS
+    def publish(self):
+        pane = tmux_pane()
+        label = f"acp:{self.agent} · {self.model or '?'}" + (f" · {self.effort}" if self.effort else "")
+        if pane:
+            tmux("set-option", "-p", "-t", pane, "@ccmodel", label)
+        try:
+            data = {}
+            if os.path.exists(STATE_FILE):
+                with open(STATE_FILE) as handle:
+                    data = json.load(handle) or {}
+            key = pane or f"pid-{os.getpid()}"
+            data[key] = {"agent": self.agent, "model": self.model, "effort": self.effort, "account": self.account,
+                         "cwd": self.cwd, "sessionId": getattr(self.session, "session_id", ""),
+                         "pid": os.getpid(), "ts": int(time.time())}
+            tmp = STATE_FILE + ".tmp"
+            with open(tmp, "w") as handle:
+                json.dump(data, handle)
+            os.replace(tmp, STATE_FILE)
+        except Exception:
+            pass
+
+    # ---- permisos
+    def on_permission(self, req: dict) -> str | None:
+        options = req.get("options") or []
+        if self.danger:
+            return None  # auto-allow (lo resuelve la sesión)
+        say("")
+        say(f"⚠ permiso: {req.get('title') or req.get('kind') or 'acción'}", "yel")
+        for index, opt in enumerate(options, 1):
+            say(f"  {index}. {opt.get('name') or opt.get('optionId')}  [{opt.get('kind') or ''}]", "dim")
+        try:
+            choice = input(f"{C['yel']}elige (Enter = permitir):{C['off']} ").strip()
+        except EOFError:
+            choice = ""
+        if choice.isdigit() and 1 <= int(choice) <= len(options):
+            return options[int(choice) - 1].get("optionId")
+        return None
+
+    # ---- turnos
+    def on_event(self, event: dict):
+        kind = event.get("type")
+        if kind == "text":
+            sys.stdout.write(event.get("text", ""))
+            sys.stdout.flush()
+            self._reply.append(event.get("text", ""))
+        elif kind == "thought":
+            say(event.get("text", ""), "dim", end="")
+        elif kind == "tool":
+            status = event.get("status") or ""
+            mark = {"completed": "✓", "failed": "✗", "in_progress": "…", "pending": "·"}.get(status, "·")
+            say(f"\n{mark} {event.get('title') or event.get('kind') or 'tool'}", "mag")
+        elif kind == "plan":
+            say("\n" + "\n".join(f"  □ {e.get('content','')}" for e in event.get("entries") or []), "dim")
+        elif kind == "permission":
+            say(f"  → {event.get('decision') or 'cancelado'}", "dim")
+
+    def run_prompt(self, text: str, record=True):
+        self._reply = []
+        self.busy = True
+        notify("UserPromptSubmit", self.cwd)
+        started = time.time()
+        try:
+            stop = self.session.prompt(text, on_event=self.on_event)
+        except acp.AcpError as exc:
+            say(f"\n✗ {exc}", "red")
+            stop = "error"
+        finally:
+            self.busy = False
+        reply = "".join(self._reply)
+        if record:
+            self.history.append(("usuario", text))
+            self.history.append((self.agent, reply))
+        say("")
+        say(f"— {stop} · {time.time() - started:.1f}s · {self.agent} · {self.model}", "dim")
+        notify("Stop", self.cwd, {"last_assistant_message": reply[-400:]})
+
+    # ---- comandos
+    def command(self, line: str) -> bool:
+        parts = shlex.split(line)
+        cmd, arg = parts[0], (parts[1] if len(parts) > 1 else "")
+        if cmd in ("/exit", "/quit", "/q"):
+            return False
+        if cmd == "/help":
+            say(__doc__.split("Comandos en el prompt:")[1], "dim")
+        elif cmd == "/status":
+            say(f"agente={self.agent} modelo={self.model or '?'} esfuerzo={self.effort or '-'} cuenta={self.account} "
+                f"danger={self.danger} sesión={getattr(self.session, 'session_id', '')[:12]} cwd={self.cwd}", "cyan")
+        elif cmd == "/models":
+            live = [m.get("modelId") for m in getattr(self.session, "models", [])]
+            static = [m["id"] for m in ((self.registry.get("motors") or {}).get(self.agent) or {}).get("models") or []]
+            say("modelos: " + ", ".join(live or static or ["(el agente no publica lista; usa el id del vendor)"]), "cyan")
+        elif cmd == "/model":
+            if not arg:
+                say("uso: /model <id>", "yel"); return True
+            spec = self.spec()
+            if spec.get("modelVia") == "acp" and getattr(self.session, "models", None):
+                try:
+                    self.session.set_model(arg); self.model = arg; self.publish()
+                    say(f"✓ modelo → {arg}", "grn")
+                except acp.AcpError as exc:
+                    say(f"✗ {exc}", "red")
+            else:
+                self.model = arg
+                say(f"↻ relanzando {self.agent} con {arg}…", "dim")
+                self.reconnect()
+        elif cmd == "/effort":
+            if arg not in EFFORTS:
+                say(f"uso: /effort <{'|'.join(EFFORTS)}>", "yel"); return True
+            self.effort = arg
+            say(f"↻ relanzando {self.agent} con esfuerzo {arg}…", "dim")
+            self.reconnect()
+        elif cmd == "/agent":
+            if arg not in self.specs:
+                say(f"uso: /agent <{'|'.join(self.specs)}>", "yel"); return True
+            if arg != self.agent:
+                self.agent, self.model, self.account = arg, "", "main"
+                if self.specs[arg].get("transport") == "agy-stream":
+                    self.model = self.default_model()
+                say(f"↻ cambiando a {arg} (handoff de contexto)…", "dim")
+                self.reconnect()
+        elif cmd == "/account":
+            provider = self.spec().get("accountsProvider")
+            if not provider:
+                say(f"{self.agent} no maneja cuentas múltiples", "yel"); return True
+            live = [a for a in account_registry.list_accounts(self.registry, provider) if a.get("selectable")]
+            if not arg:
+                say("cuentas: " + ", ".join(f"{a['alias']} ({a.get('identity') or 'sin login'})" for a in live), "cyan"); return True
+            if arg not in [a["alias"] for a in live]:
+                say(f"cuenta sin login: {arg}", "red"); return True
+            self.account = arg
+            say(f"↻ relanzando {self.agent} con cuenta {arg}…", "dim")
+            self.reconnect()
+        elif cmd == "/mode":
+            try:
+                self.session.set_mode(arg); say(f"✓ modo → {arg}", "grn")
+            except acp.AcpError as exc:
+                say(f"✗ {exc}", "red")
+        elif cmd == "/danger":
+            self.danger = not self.danger
+            say(f"auto-aprobar: {'ON' if self.danger else 'OFF'}", "yel")
+            spec = self.spec()
+            if self.danger and spec.get("dangerMode"):
+                try: self.session.set_mode(spec["dangerMode"])
+                except acp.AcpError: pass
+        else:
+            say(f"comando desconocido: {cmd} (/help)", "yel")
+        return True
+
+    # ---- loop
+    def banner(self):
+        spec = self.spec()
+        say(f"{C['bold']}ComandOS ACP{C['off']} · {spec.get('label') or self.agent} · "
+            f"{C['cyan']}{self.model or 'modelo del agente'}{C['off']}"
+            + (f" · {self.effort}" if self.effort else "") + f" · cuenta {self.account}"
+            + (f" · {C['yel']}auto-aprobar{C['off']}" if self.danger else ""))
+        say(f"{self.cwd}  ·  /help para comandos  ·  Ctrl-C cancela el turno", "dim")
+
+    def loop(self):
+        def on_sigint(signum, frame):
+            if self.busy and self.session:
+                say("\n■ cancelando turno…", "yel")
+                self.session.cancel()
+            else:
+                raise KeyboardInterrupt
+        signal.signal(signal.SIGINT, on_sigint)
+        while not self.stop:
+            try:
+                line = input(f"{C['grn']}❯{C['off']} ").strip()
+            except EOFError:
+                break
+            except KeyboardInterrupt:
+                say("\n(/exit para salir)", "dim")
+                continue
+            if not line:
+                continue
+            if line.startswith("/"):
+                try:
+                    if not self.command(line):
+                        break
+                except acp.AcpError as exc:
+                    say(f"✗ {exc}", "red")
+                continue
+            self.run_prompt(line)
+        if self.session:
+            self.session.close()
+        notify("SessionEnd", self.cwd)
+
+
+def main():
+    parser = argparse.ArgumentParser(description="pane cliente ACP de ComandOS")
+    parser.add_argument("--agent", default="claude")
+    parser.add_argument("--model", default="")
+    parser.add_argument("--effort", default="")
+    parser.add_argument("--account", default="main")
+    parser.add_argument("--cwd", default="")
+    parser.add_argument("--resume", default="")
+    parser.add_argument("--danger", action="store_true", help="auto-aprobar permisos")
+    parser.add_argument("--once", default="", help="manda un solo prompt y sale (pruebas E2E)")
+    args = parser.parse_args()
+    pane = Pane(args)
+    try:
+        pane.connect()
+    except acp.AcpError as exc:
+        say(f"✗ no pude arrancar {args.agent}: {exc}", "red")
+        sys.exit(2)
+    pane.banner()
+    if args.once:
+        pane.run_prompt(args.once)
+        pane.session.close()
+        return
+    pane.loop()
+
+
+if __name__ == "__main__":
+    main()

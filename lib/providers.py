@@ -99,8 +99,14 @@ def validate_registry(data: dict[str, Any]) -> dict[str, Any]:
                 raise ProviderRegistryError(f"bad motor regex {ident}: {exc}") from exc
             _validate_models("motors", ident, item)
         matrix = data.get("matrixHarnesses") or []
-        if set(matrix) != {"claude", "codex", "grok"}:
+        core = data.get("coreHarnesses") or ["claude", "codex", "grok"]
+        if not {"claude", "codex", "grok"}.issubset(set(matrix)):
             raise ProviderRegistryError("matrixHarnesses must cover claude/codex/grok")
+        if not set(matrix).issubset(set(data["harnesses"])):
+            raise ProviderRegistryError("matrixHarnesses references unknown harness")
+        for ident, spec in (data.get("acpAgents") or {}).items():
+            if ident not in motors or not isinstance(spec, dict) or not spec.get("command"):
+                raise ProviderRegistryError(f"bad acpAgent: {ident}")
         cells, route_ids = set(), set()
         scopes = {"new_session", "session_motor", "session_model"}
         for route in data.get("routes") or []:
@@ -114,15 +120,21 @@ def validate_registry(data: dict[str, Any]) -> dict[str, Any]:
                 raise ProviderRegistryError(f"bad route reference: {ident}")
             if not set(route.get("actionScopes") or []).issubset(scopes):
                 raise ProviderRegistryError(f"bad route scope: {ident}")
+            if route.get("driver") == "acp" and cell[1] not in (data.get("acpAgents") or {}):
+                raise ProviderRegistryError(f"acp route without acpAgent: {ident}")
             route_ids.add(ident); cells.add(cell)
         for exclusion in data.get("exclusions") or []:
             cell = (exclusion.get("harness"), exclusion.get("motor"))
             if cell in cells:
                 raise ProviderRegistryError(f"excluded cell is routed: {cell}")
             cells.add(cell)
-        expected = {(h, m) for h in matrix for m in matrix}
-        if cells != expected:
-            raise ProviderRegistryError(f"matrix coverage mismatch: missing={sorted(expected-cells)} extra={sorted(cells-expected)}")
+        # El nucleo (claude/codex/grok) exige cobertura explicita: cada celda
+        # es ruta o exclusion razonada. Fuera del nucleo (acp, opencode, agy)
+        # las celdas sin ruta se sintetizan como "not_routed" al evaluar.
+        expected = {(h, m) for h in core for m in core}
+        core_cells = {c for c in cells if c[0] in core and c[1] in core}
+        if core_cells != expected:
+            raise ProviderRegistryError(f"matrix coverage mismatch: missing={sorted(expected-core_cells)} extra={sorted(core_cells-expected)}")
     return data
 
 
@@ -230,8 +242,22 @@ def evaluate_capability_matrix(registry: dict[str, Any], facts: dict[str, Any]) 
         cell.update(runtimeState="unavailable", selectable=False, actionScopes=[])
         cell["reason"] = {"code": cell.get("reasonCode"), "message": cell.get("message")}
         out.append(cell)
+    # Celdas fuera del nucleo sin ruta declarada: visibles y honestas, nunca
+    # seleccionables (p.ej. opencode:claude — la TUI de OpenCode no hospeda
+    # un cerebro ajeno; para eso esta el harness acp).
+    covered = {(c.get("harness"), c.get("motor")) for c in out}
+    motor_ids = list((registry.get("motors") or {}).keys())
+    for harness_id in registry.get("matrixHarnesses") or []:
+        for motor_id in motor_ids:
+            if (harness_id, motor_id) in covered:
+                continue
+            out.append({"id": f"{harness_id}:{motor_id}", "harness": harness_id, "motor": motor_id,
+                        "productState": "not_routed", "runtimeState": "unavailable", "selectable": False,
+                        "actionScopes": [], "reason": {"code": "not_routed",
+                        "message": "esta TUI no hospeda ese motor; usa el harness ACP de ComandOS"}})
     order = {name: i for i, name in enumerate(registry.get("matrixHarnesses") or [])}
-    return sorted(out, key=lambda x: (order.get(x.get("harness"), 99), order.get(x.get("motor"), 99)))
+    morder = {name: i for i, name in enumerate(motor_ids)}
+    return sorted(out, key=lambda x: (order.get(x.get("harness"), 99), morder.get(x.get("motor"), 99)))
 
 
 def allowed_routes(matrix: list[dict[str, Any]], scope: str, current_harness: str | None = None) -> list[dict[str, Any]]:

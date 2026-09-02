@@ -10,10 +10,17 @@ sys.path.insert(0, str(ROOT / "lib"))
 import providers
 
 
+ALL_HARNESSES = ("claude", "codex", "grok", "acp", "opencode", "agy")
+ALL_MOTORS = ("claude", "codex", "grok", "opencode", "agy")
+CORE_LIVE = {"claude:claude", "claude:codex", "claude:grok", "codex:codex", "grok:grok"}
+ACP_LIVE = {"acp:claude", "acp:codex", "acp:grok", "acp:opencode", "acp:agy"}
+NATIVE_EXTRA = {"opencode:opencode", "agy:agy"}
+
+
 def facts(**overrides):
     value = {
-        "harnesses": {x: {"available": True, "authenticated": True} for x in ("claude", "codex", "grok")},
-        "motors": {x: {"authenticated": True} for x in ("claude", "codex", "grok")},
+        "harnesses": {x: {"available": True, "authenticated": True} for x in ALL_HARNESSES},
+        "motors": {x: {"authenticated": True} for x in ALL_MOTORS},
         "gateway": {"installed": True, "alive": True},
     }
     value.update(overrides)
@@ -23,24 +30,28 @@ def facts(**overrides):
 def test_matrix_covers_exactly_nine_cells_and_five_are_live_subscription_routes():
     registry = providers.load_registry(ROOT / "config/providers.json")
     matrix = providers.evaluate_capability_matrix(registry, facts())
+    # nucleo 3x3 intacto + filas acp/opencode/agy: la matriz cubre TODO
+    # harness x motor, y cada celda dice por que si o por que no
     assert {(x["harness"], x["motor"]) for x in matrix} == {
-        (h, m) for h in ("claude", "codex", "grok") for m in ("claude", "codex", "grok")
+        (h, m) for h in ALL_HARNESSES for m in ALL_MOTORS
     }
-    assert {x["id"] for x in matrix if x["selectable"]} == {
-        "claude:claude", "claude:codex", "claude:grok", "codex:codex", "grok:grok"
-    }
+    assert {x["id"] for x in matrix if x["selectable"]} == CORE_LIVE | ACP_LIVE | NATIVE_EXTRA
 
 
 def test_unavailable_cells_are_explanatory_and_never_selectable():
     registry = providers.load_registry(ROOT / "config/providers.json")
     matrix = providers.evaluate_capability_matrix(registry, facts())
     reasons = {x["id"]: x["reason"]["code"] for x in matrix if not x["selectable"]}
-    assert reasons == {
+    core = {k: v for k, v in reasons.items() if k.split(":")[0] in ("claude", "codex", "grok") and k.split(":")[1] in ("claude", "codex", "grok")}
+    assert core == {
         "codex:claude": "unsupported_protocol",
         "codex:grok": "route_not_live_verified",
         "grok:claude": "subscription_not_accepted",
         "grok:codex": "route_not_live_verified",
     }
+    # fuera del nucleo, toda celda sin ruta se sintetiza como not_routed (visible, no seleccionable)
+    assert {v for k, v in reasons.items() if k not in core} == {"not_routed"}
+    assert all(x["reason"]["message"] for x in matrix if not x["selectable"])
 
 
 def test_gateway_down_disables_only_external_claude_routes():
@@ -48,7 +59,8 @@ def test_gateway_down_disables_only_external_claude_routes():
     runtime = facts(gateway={"installed": True, "alive": False})
     matrix = providers.evaluate_capability_matrix(registry, runtime)
     selected = {x["id"] for x in matrix if x["selectable"]}
-    assert selected == {"claude:claude", "codex:codex", "grok:grok"}
+    # sin gateway sobreviven las nativas y TODAS las ACP (no pasan por cc-proxy)
+    assert selected == {"claude:claude", "codex:codex", "grok:grok"} | ACP_LIVE | NATIVE_EXTRA
     assert {x["reason"]["code"] for x in matrix if x["id"] in ("claude:codex", "claude:grok")} == {"gateway_down"}
 
 
@@ -93,3 +105,25 @@ def test_binary_detection_survives_minimal_daemon_path(tmp_path, monkeypatch):
     public = providers.public_state(registry)
     availability = {k: public["harnesses"][k]["available"] for k in ("claude", "codex", "grok")}
     assert availability == {"claude": True, "codex": True, "grok": True}
+
+
+def test_acp_routes_need_only_the_motor_login_never_the_gateway():
+    """Las rutas ACP corren el agente del vendor con SU suscripcion: sin
+    cc-proxy y sin API keys. Que caiga el gateway no las apaga."""
+    registry = providers.load_registry(ROOT / "config/providers.json")
+    runtime = facts(gateway={"installed": False, "alive": False})
+    matrix = providers.evaluate_capability_matrix(registry, runtime)
+    assert ACP_LIVE.issubset({x["id"] for x in matrix if x["selectable"]})
+    runtime = facts(motors={**{x: {"authenticated": True} for x in ALL_MOTORS}, "codex": {"authenticated": False}})
+    matrix = providers.evaluate_capability_matrix(registry, runtime)
+    assert {x["reason"]["code"] for x in matrix if x["id"] == "acp:codex"} == {"motor_login_missing"}
+    assert "acp:claude" in {x["id"] for x in matrix if x["selectable"]}
+
+
+def test_acp_agents_are_declared_for_every_acp_route():
+    registry = providers.load_registry(ROOT / "config/providers.json")
+    agents = registry["acpAgents"]
+    for route in registry["routes"]:
+        if route["harness"] == "acp":
+            assert route["motor"] in agents
+            assert agents[route["motor"]]["command"]

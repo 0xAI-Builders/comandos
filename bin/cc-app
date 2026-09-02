@@ -1843,6 +1843,18 @@ def snapshot_tabs():
                     ent["account"] = alias
                     ent["grok_home"] = (GROK_HOME_DEFAULT if alias == "main" else
                                          os.path.expanduser(f"~/.grok-accounts/{alias}"))
+                elif ent["agent"] == "acp":
+                    # pane cliente ACP: cc-acp publica agente/modelo/cuenta y el
+                    # sessionId en acp-panes.json por pane tmux
+                    r = tmuxc("display-message", "-p", "-t", "=" + k + ":", "#{pane_id}")
+                    pane_id = r.stdout.strip() if r.returncode == 0 else ""
+                    try:
+                        with open(os.path.expanduser("~/.claude/hooks/acp-panes.json")) as f:
+                            acp_state = (json.load(f) or {}).get(pane_id) or {}
+                    except Exception:
+                        acp_state = {}
+                    if acp_state.get("agent"):
+                        ent["acp"] = {key: acp_state.get(key, "") for key in ("agent", "model", "effort", "account", "sessionId")}
                 elif ent["agent"] in {"claude", "codex"}:
                     pass  # agente reportado pero sin id: quedara el fallback
                 else:
@@ -1891,6 +1903,14 @@ def resume_command(snap):
                                           "rollout-*" + sid + ".jsonl")):
             return "codex resume " + sid + fl
         return "codex resume --last" + fl
+    if agent == "acp" and _which_cli("cc-acp"):
+        st = snap.get("acp") if isinstance(snap.get("acp"), dict) else {}
+        cmd = "cc-acp --agent " + shlex.quote(str(st.get("agent") or "claude"))
+        for flag, key in (("--model", "model"), ("--effort", "effort"), ("--account", "account"), ("--resume", "sessionId")):
+            value = str(st.get(key) or "")
+            if value and not (key == "account" and value == "main"):
+                cmd += f" {flag} " + shlex.quote(value)
+        return cmd + fl
     if agent == "grok" and _which_cli("grok"):
         home = snap.get("grok_home") or GROK_HOME_DEFAULT
         home = os.path.realpath(os.path.expanduser(home))

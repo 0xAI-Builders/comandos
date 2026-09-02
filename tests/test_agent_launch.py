@@ -92,3 +92,14 @@ def test_generic_account_environment_is_applied_to_native_launches():
     assert 'cmd = account_prefix + "grok"' in source
     assert 'cmd = account_prefix + "claude"' in source
     assert 'alias, motor_alias, route["id"], "session-new"' in source
+
+
+def test_acp_pane_launch_command_carries_motor_model_effort_account_and_danger():
+    dash = load_dash_module()
+    assert dash.agent_launch("acp") == "cc-acp"
+    assert dash._acp_launch_cmd("codex", "gpt-5.5", "low", "main") == "cc-acp --agent codex --model gpt-5.5 --effort low"
+    assert dash._acp_launch_cmd("claude", "claude-fable-5[1m]", "", "relotto", danger=True, resume="abc-1") == \
+        "cc-acp --agent claude --model 'claude-fable-5[1m]' --account relotto --resume abc-1 --danger"
+    # opencode/agy nativos tambien salen de _harness_launch_cmd (sin prefijo de cuenta)
+    assert dash._harness_launch_cmd("agy", "gemini-3.8-flash-low", "low", "main") == "agy --model gemini-3.8-flash-low --effort low"
+    assert dash._harness_launch_cmd("opencode", "opencode/big-pickle", "", "main") == "opencode --model opencode/big-pickle"
