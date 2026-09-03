@@ -232,6 +232,17 @@ def test_claude_snapshot_and_resume_scan_all_account_config_dirs():
     assert 'CLAUDE_CONFIG_DIR=' in functions()["resume_command"]
 
 
+def test_right_click_shell_can_start_ai_session_like_plus():
+    """Click derecho en una terminal NORMAL (zsh, sin CLI de IA) debe ofrecer
+    arrancar una sesión de IA en ESE pane — el mismo wizard que el +. Sin esto
+    hay que ir al tablero y crear otra pestaña."""
+    src = function_source("on_term_button")
+    assert "Iniciar sesión de IA" in src or "Start AI session" in src
+    assert "open_ai_session_here" in SRC or "nsOpenForPane" in SRC
+    assert "openMotorFor" in SRC or "nsOpen" in SRC
+    assert "/harness/switch" in SRC or "nsOpenForPane" in SRC or "openAiHere" in SRC
+
+
 def test_terminal_model_bar_shows_certainty_and_actions():
     # Pildoras POR PANE, ancladas a la linea de titulo tmux (geometria real
     # de list-panes): modelo verificado con color de marca y boton de motor
@@ -247,6 +258,9 @@ def test_terminal_model_bar_shows_certainty_and_actions():
     assert 'tabs.setdefault("local", hub)' not in src
     # la VTE nunca se empuja de lado: el overlay envuelve SOLO la terminal
     assert "ov.add(term)" in src
+    # el riel tmux queda VACIO: el titulo @ccmodel no se pinta detras de la pildora
+    assert '"pane-border-format"' in src
+    assert 'opacity:1' in src
 
 
 def test_dash_publishes_per_pane_model_detail_for_the_bar():
@@ -259,6 +273,14 @@ def test_dash_publishes_per_pane_model_detail_for_the_bar():
     assert "MOTOR_RESULT" in seg
     html = Path("dash/index.html").read_text()
     assert "window.openMotorFor" in html and "window.openHarnessFor" in html
+
+
+def test_archive_and_snapshot_recognize_cc_acp_as_acp_harness():
+    assert '"cc-acp"' in SRC
+    archive = function_source("archive_tab")
+    assert "cc-acp" in archive
+    assert 'ent["agent"] == "acp"' in function_source("snapshot_tabs")
+    assert 'agent == "acp"' in function_source("resume_command")
 
 
 def test_sane_flags_keeps_values_and_drops_orphan_value_flags():

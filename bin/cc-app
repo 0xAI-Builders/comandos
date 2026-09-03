@@ -1160,6 +1160,8 @@ def on_term_button(term, event):
          lambda: tmuxc("kill-pane", "-t", pane_id),
          sensitive=bool(pane_id) and npanes > 1)
     menu.append(Gtk.SeparatorMenuItem())
+    item("Iniciar sesión de IA aquí…" if ES else "Start AI session here…",
+         lambda: open_ai_session_here(cur_sess, pane_id))
     item("Nueva terminal aqui       Ctrl+T" if ES else "New terminal here         Ctrl+T", new_local_tab)
     item("Terminal experimental (xterm.js)  Ctrl+Shift+T"
          if ES else "Experimental terminal (xterm.js)  Ctrl+Shift+T",
@@ -1222,10 +1224,12 @@ def _build_hb_css():
     así el headerbar, menús, paned separator, etc. cambian con el tema."""
     return (
     b".pane-pill{background:" + THEME["bg"].encode() + b";"
+    b" background-clip:padding-box;opacity:1;"
     b" border-radius:999px;padding:3px 12px;"
-    b" border:1.5px solid rgba(148,148,148,0.5);"
-    b" box-shadow:0 1px 4px rgba(0,0,0,0.4);}"
-    b".pane-pill label{color:" + THEME["fg"].encode() + b"; font-size:11.5px;}"
+    b" border:1.5px solid " + THEME["line"].encode() + b";"
+    b" box-shadow:0 1px 4px rgba(0,0,0,0.55);}"
+    b".pane-pill label{color:" + THEME["fg"].encode() + b"; font-size:11.5px;"
+    b" background:transparent;}"
     b".pane-pill.pp-claude,.pane-pill.pp-codex,.pane-pill.pp-grok{"
     b" border-color:rgba(148,148,148,0.5);}"
     b".pill-btn{padding:2px 5px;margin:0;background:rgba(148,148,148,0.12);"
@@ -1621,7 +1625,7 @@ def archive_tab(key, reason="closed"):
     if not agent:
         r = tmuxc("display-message", "-p", "-t", "=" + key + ":", "#{pane_current_command}")
         cmd = r.stdout.strip() if r.returncode == 0 else ""
-        agent = "codex" if cmd == "node" else cmd if cmd in {"claude", "grok", "opencode", "gemini", "agy", "aider"} else "claude"
+        agent = "codex" if cmd == "node" else "acp" if cmd == "cc-acp" else cmd if cmd in {"claude", "grok", "opencode", "gemini", "agy", "aider", "acp"} else "claude"
     item = {"session": key, "label": label, "cwd": cwd, "agent": agent,
             "reason": reason, "ts": int(time.time())}
     try:
@@ -1835,6 +1839,13 @@ def snapshot_tabs():
                     ent["agent"] = "codex"
                     ent["resume_id"] = info["id"]
                     ent["flags"] = info["flags"]
+                else:
+                    rcmd = tmuxc("display-message", "-p", "-t", "=" + k + ":", "#{pane_current_command}")
+                    pane_cmd = rcmd.stdout.strip() if rcmd.returncode == 0 else ""
+                    if pane_cmd == "cc-acp":
+                        ent["agent"] = "acp"
+                if ent["agent"] == "codex":
+                    pass
                 elif ent["agent"] == "grok":
                     sid = it.get("agentSessionId") or ""
                     if isinstance(sid, str) and re.fullmatch(r"[0-9a-f-]{36}", sid):
@@ -2909,6 +2920,10 @@ def _apply_tmux_theme():
         ("pane-active-border-style",     f"#{{?pane_in_mode,fg=yellow,fg={brand}}}"),
         ("pane-border-style",            f"fg={line}"),
         ("message-style",                f"bg={brand},fg={bg}"),
+        # Riel reservado VACIO: el texto @ccmodel detras de la pildora GTK
+        # (titulos $$$ / modelo) no se pinta. La pildora es el unico chrome.
+        ("pane-border-status",           "top"),
+        ("pane-border-format",           " "),
     ):
         tmuxc("set-option", "-g", opts[0], opts[1])
 
@@ -2949,7 +2964,8 @@ _tab_models_mtime = 0.0
 # pane tmux (geometria real de list-panes), con boton de motor. El usuario
 # marco ese renglon exacto como el lugar de la info y las acciones.
 _PV_HEX = {"claude": "#A78BFA", "codex": "#2DD4BF", "grok": "#FB923C",
-           "opencode": "#F0ABFC", "gemini": "#93C5FD"}
+           "opencode": "#F0ABFC", "gemini": "#93C5FD", "acp": "#67E8F9",
+           "agy": "#93C5FD"}
 _STATE_UI = {
     "verified":  ("#4ADE80", "✓"),
     "changing":  ("#FBBF24", "⟳"),
@@ -2969,11 +2985,29 @@ def _dash_js(code):
         pass
 
 
+def open_ai_session_here(sess, pane):
+    """Click derecho en una terminal NORMAL: mismo wizard que el +, pero
+    arranca el CLI en ESTE pane (no crea otra pestaña)."""
+    cwd = ""
+    target = pane or (("=" + sess + ":") if sess else "")
+    if target:
+        r = tmuxc("display-message", "-p", "-t", target, "#{pane_current_path}")
+        cwd = (r.stdout or "").strip()
+    if not sess:
+        notify_popup("Sin sesión tmux" if ES else "No tmux session",
+                     "No pude ver en qué terminal estás" if ES else "Could not see this terminal")
+        return
+    _dash_js(
+        f"nsOpenForPane({json.dumps(sess)},{json.dumps(pane or '')},{json.dumps(cwd)})"
+    )
+
+
 def _esc(t):
     return GLib.markup_escape_text(str(t or ""))
 
 
-_PV_ICON = {"claude": "anthropic", "codex": "openai", "grok": "grok"}
+_PV_ICON = {"claude": "anthropic", "codex": "openai", "grok": "grok",
+            "acp": "layers", "opencode": "layers", "agy": "gemini"}
 
 
 def _svg_image(name, size, color):
@@ -3114,8 +3148,10 @@ def _place_pills(box, panes):
         # determinista sin medir anchos de widget
         pill.set_halign(Gtk.Align.START)
         pill.set_valign(Gtk.Align.START)
-        pill.set_margin_top(max(0, m_t + max(0, top - 1) * chh - 3))
-        pill.set_margin_start(max(0, int(m_l + left * cw + cw * 2)))
+        # Sobre el renglón de borde tmux (vacío). Sin -3: ese offset metía la
+        # pildora en la statusline del TUI (Grok/Claude) y el titulo se veía detrás.
+        pill.set_margin_top(max(0, m_t + max(0, top) * chh))
+        pill.set_margin_start(max(0, int(m_l + left * cw + cw)))
         ov.add_overlay(pill)
         pill.show_all()
         box._pills.append(pill)

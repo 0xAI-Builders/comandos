@@ -687,7 +687,14 @@
   #motor-pop .mp-hcur{font-family:var(--mono);font-size:8.5px;color:var(--faint);text-transform:uppercase}
   #motor-pop .mp-harm{font-family:var(--mono);font-size:8.5px;color:var(--warn);text-transform:uppercase}
   #motor-pop .mp-hnote{margin-top:6px;font-size:10.5px;color:var(--dim);line-height:1.45}
-  #motor-pop .mp-acct{margin-top:10px;padding-top:10px;border-top:1px solid var(--line2);display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+  #motor-pop .mp-cli-go{display:block;width:100%;margin-top:8px;padding:10px 12px;border:0;border-radius:10px;
+    background:var(--brand);color:var(--on-brand);font-family:var(--sans);font-size:13px;font-weight:700;cursor:pointer;min-height:44px}
+  #motor-pop .mp-cli-go:hover{filter:brightness(1.06)}
+  #motor-pop .mp-acct{margin-top:10px;padding-top:10px;border-top:1px solid var(--line2);display:flex;flex-direction:column;align-items:stretch;gap:8px}
+  #motor-pop .mp-acct-row{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+  #motor-pop .mp-acct-group{display:flex;flex-direction:column;gap:4px;padding:6px 8px;border:1px solid var(--line2);border-radius:10px;background:var(--bg)}
+  #motor-pop .mp-acct-prov{display:flex;align-items:center;gap:6px;font-family:var(--mono);font-size:10px;font-weight:700;color:var(--text)}
+  #motor-pop .mp-acct-prov .em{font-weight:400;color:var(--dim)}
   #motor-pop .mp-acct .lbl{font-family:var(--mono);font-size:9.5px;color:var(--dim);letter-spacing:.5px;text-transform:uppercase;margin-right:4px}
   #motor-pop .mp-acct .ac{display:inline-flex;align-items:center;gap:6px;font-family:var(--mono);font-size:10.5px;font-weight:700;padding:5px 10px;border:1px solid var(--line2);border-radius:99px;background:none;color:var(--dim);cursor:pointer}
   #motor-pop .mp-acct .ac:hover{color:var(--text);background:var(--panel2)}
@@ -842,19 +849,38 @@
     #rows{display:grid;grid-template-columns:1fr 1fr;gap:8px;align-items:start}
   }
   #sidebar-insights{display:none}
-  html.gtkapp #sidebar-insights{display:block}
+  html.gtkapp #sidebar-insights{display:block;background:var(--bg);position:relative;z-index:1;padding-bottom:8px}
   .side-kpis{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:10px}
   .side-kpi{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:10px 11px;display:flex;flex-direction:column;gap:2px;min-width:0}
   .side-kpi .v{font-family:var(--mono);font-size:18px;font-weight:800;color:var(--text);font-variant-numeric:tabular-nums}
   .side-kpi .l{font-family:var(--mono);font-size:9.5px;color:var(--dim);text-transform:uppercase;letter-spacing:.06em}
   .side-link{margin-left:auto;font-family:var(--mono);font-size:10px;color:var(--brand);border:1px solid var(--line2);border-radius:7px;padding:3px 8px;background:none}
   .side-link:hover{border-color:var(--brand);background:color-mix(in srgb,var(--brand) 9%,transparent)}
-  #side-projects{display:flex;flex-direction:column;gap:7px}
-  .side-proj{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:4px 8px;align-items:center}
-  .side-proj .n{font-size:11px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-  .side-proj .m{font-family:var(--mono);font-size:10px;color:var(--dim);font-variant-numeric:tabular-nums}
-  .side-proj .bar{grid-column:1/-1;height:3px;border-radius:3px;background:var(--line);overflow:hidden}
-  .side-proj .bar i{display:block;height:100%;border-radius:3px;background:var(--brand)}
+  #side-projects{display:flex;flex-direction:column;gap:8px}
+  .side-proj{display:flex;flex-direction:column;gap:6px;padding:8px 10px;background:var(--panel);border:1px solid var(--line);border-radius:10px}
+  .side-proj-meta{display:flex;align-items:baseline;gap:8px;min-width:0}
+  .side-proj .n{flex:1;min-width:0;font-size:12px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .side-proj .m{font-family:var(--mono);font-size:10.5px;color:var(--dim);font-variant-numeric:tabular-nums;flex:none}
+  .side-proj .bar{display:block;height:8px;border-radius:6px;background:var(--line);overflow:hidden}
+  .side-proj .bar i{display:block;height:100%;border-radius:6px;background:var(--brand);min-width:4px}
+  html.gtkapp .side-keys{display:none}
+  html.gtkapp .cx-block > .cx-row:has(.cx-model){display:none}
+  #pane-filter{display:none}
+  html.gtkapp #sessions-wrap .sec-label{display:flex;align-items:center;gap:8px}
+  html.gtkapp #pane-filter{display:block;flex:1;min-width:0;height:26px;font:600 11px var(--mono);color:var(--text);background:var(--panel);border:1px solid var(--line);border-radius:7px;padding:0 8px}
+  html.gtkapp #pane-filter:focus{border-color:var(--brand);outline:none}
+  html.gtkapp #rows{display:flex;flex-direction:column;gap:3px;max-height:min(46vh,480px);overflow-y:auto;padding-right:2px}
+  html.gtkapp .row{grid-template-columns:auto minmax(0,1fr) auto auto;grid-template-areas:"dot ident rst ago";
+    column-gap:8px;row-gap:0;padding:6px 8px;border-radius:8px;border-left-width:1px;
+    transition:border-color .14s ease, background .14s ease}
+  html.gtkapp .row .rpath,html.gtkapp .row .rprev,html.gtkapp .row .fav,html.gtkapp .row .rxp,
+  html.gtkapp .row .acts .xp,html.gtkapp .row .acts .cp,html.gtkapp .row .acts .ren{display:none!important}
+  html.gtkapp .row .acts{display:none;grid-area:ago}
+  html.gtkapp .row:hover .acts,html.gtkapp .row.active-pane .acts,html.gtkapp .row:focus-visible .acts{display:flex}
+  html.gtkapp .row .ago{font-size:10px}
+  html.gtkapp .row .name{font-size:12.5px}
+  html.gtkapp .row.open .rxp{display:none}
+  @media (prefers-reduced-motion:reduce){html.gtkapp .row{transition:none}}
 
   .row{display:grid;grid-template-columns:auto auto auto minmax(0,1fr) auto;grid-template-areas:
       "fav dot name state ago"
@@ -1834,6 +1860,7 @@
 </section>
 <section class="sec" id="sessions-wrap">
   <div class="sec-label"><span class="chip" id="sessions-title">Sesiones</span>
+    <input id="pane-filter" type="search" placeholder="filtrar panes…" autocomplete="off" spellcheck="false" aria-label="Filtrar panes">
     <button type="button" id="btn-newsess" class="ns-plus" title="Nueva sesión (elige carpeta, agente y cuenta)" aria-label="Nueva sesión"></button>
   </div>
   <div id="rows"></div>
@@ -2276,6 +2303,15 @@ const S = {
 	};
 const $ = s => document.querySelector(s);
 const rows = $("#rows");
+let PANE_FILTER = "";
+const paneFilter = $("#pane-filter");
+if(paneFilter && !paneFilter._wired){
+  paneFilter._wired = true;
+  paneFilter.addEventListener("input", ()=>{
+    PANE_FILTER = String(paneFilter.value || "").toLowerCase();
+    render(S.list || []);
+  });
+}
 
 // ---------- i18n ----------
 // El markup y los literales viven en espanol; T_EN los traduce cuando L==="en".
@@ -2995,14 +3031,17 @@ function mdStrip(s){ return (s||"").replace(/\*\*|`|^#{1,6} /g, ""); }
 	  const models=nsModels(); if(!models.some(m=>m.id===NS.model)) NS.model=(models[0]||{}).id||"";
 	  const allowed=nsModel().efforts||[]; if(!allowed.includes(NS.effort)) NS.effort=nsModel().defaultEffort||allowed[0]||"";
 	}
-	function nsRender(){
-	  const shell=NS.harness==="shell";
+	function nsSelectableMotors(h){
+		  return nsMatrix().filter(r=>r.harness===h && (r.selectable || ((r.reason||{}).code||"")!=="not_routed"));
+		}
+		function nsRender(){
+		  const shell=NS.harness==="shell";
 	  nsChips($("#ns-harness"), [...(((PROVIDERS||{}).matrixHarnesses)||["claude","codex","grok"]).map(id=>({id,label:nsHarness(id).label||id,icon:nsHarness(id).icon})),{id:"shell",label:"Shell",icon:"terminal"}], NS.harness, id=>{NS.harness=id;NS.motor=id==="shell"?"":id;NS.harnessAccount="main";NS.motorAccount="main";nsSelectDefaults();nsRender();});
 	  $("#ns-motor-wrap").classList.toggle("hidden",shell);
 	  $("#ns-model-wrap").classList.toggle("hidden",shell);
 	  $("#ns-effort-wrap").classList.toggle("hidden",shell);
 	  if(!shell){
-	    const cells=nsMatrix().filter(r=>r.harness===NS.harness);
+	    const cells=nsSelectableMotors(NS.harness);
 	    nsChips($("#ns-motor"),cells.map(r=>({id:r.motor,label:(nsMotor(r.motor).label||r.motor),icon:nsMotor(r.motor).icon,disabled:!r.selectable,title:r.selectable?"":((r.reason||{}).message||r.productState)})),NS.motor,id=>{NS.motor=id;NS.motorAccount="main";nsSelectDefaults();nsRender();});
 	    nsChips($("#ns-model"),nsModels().map(m=>({id:m.id,label:m.name||m.id,model:m.id,icon:NS.motor})),NS.model,id=>{NS.model=id;nsSelectDefaults();nsRender();});
 	    nsChips($("#ns-effort"),(nsModel().efforts||[]).map(e=>({id:e,label:e})),NS.effort,id=>{NS.effort=id;});
@@ -3015,9 +3054,9 @@ function mdStrip(s){ return (s||"").replace(/\*\*|`|^#{1,6} /g, ""); }
 	  $("#ns-motor-acct-wrap").classList.toggle("hidden",!separateMotor);
 	  if(separateMotor){ nsEnsureAccount(NS.motor,"motorAccount","motor"); nsChips($("#ns-motor-acct"),nsAccountItems(NS.motor,"motor"),NS.motorAccount,id=>{NS.motorAccount=id;}); $("#ns-motor-acct-note").textContent=tf("Esta suscripción paga la inferencia; la cuenta del harness conserva transcript y herramientas.","This subscription runs inference; the harness account keeps transcript and tools."); }
 	  else if(!shell) NS.motorAccount=NS.harnessAccount;
-	  const unavailable=nsMatrix().filter(r=>!r.selectable);
+	  const unavailable=nsMatrix().filter(r=>!r.selectable && ((r.reason||{}).code||"")!=="not_routed");
 	  $("#ns-unavailable").classList.toggle("hidden",shell||!unavailable.length);
-	  $("#ns-unavailable").querySelector("summary").textContent=`${nsMatrix().filter(r=>r.selectable).length} disponibles · ${unavailable.length} no disponibles`;
+	  $("#ns-unavailable").querySelector("summary").textContent=`${nsMatrix().filter(r=>r.selectable).length} combinaciones listas · ${unavailable.length} bloqueadas (login / gateway)`;
 	  $("#ns-matrix").innerHTML=unavailable.map(r=>`<div><b>${mdEsc(nsHarness(r.harness).label||r.harness)} → ${mdEsc(nsMotor(r.motor).label||r.motor)}</b><small>${mdEsc((r.reason||{}).message||r.productState||"")}</small></div>`).join("");
 	  NS.routeId=route&&route.selectable?route.id:"";
 	  const go=$("#ns-go");
@@ -3124,8 +3163,8 @@ function mdStrip(s){ return (s||"").replace(/\*\*|`|^#{1,6} /g, ""); }
 	    if(smChanged) nfSave("cc-nf-snooze-meta", sm);
 	  }catch(e){}
 	}, 120000);
-	$("#btn-newsess").addEventListener("click", nsOpen);
-	$("#ns-cancel").addEventListener("click", ()=> $("#newsess").classList.add("hidden"));
+	$("#btn-newsess").addEventListener("click", ()=>{ NS.intoPane=null; nsOpen(); });
+	$("#ns-cancel").addEventListener("click", ()=> { NS.intoPane=null; $("#newsess").classList.add("hidden"); });
 	$("#newsess").addEventListener("click", e => {
 	  if(e.target.id === "newsess") $("#newsess").classList.add("hidden");
 	});
@@ -3138,9 +3177,22 @@ function mdStrip(s){ return (s||"").replace(/\*\*|`|^#{1,6} /g, ""); }
 	  const cwd = $("#ns-cwd").value.trim();
 	  if(!cwd) return toast(tf("Falta la carpeta", "Missing folder"), true);
 	  try{
+	    if(NS.intoPane && NS.harness !== "shell"){
+	      const r = await api("/harness/switch", {session: NS.intoPane.session, pane: NS.intoPane.pane || "",
+	        toHarness: NS.harness, motor: NS.motor, model: NS.model, effort: NS.effort,
+	        account: NS.harnessAccount, harnessAccount: NS.harnessAccount, motorAccount: NS.motorAccount,
+	        danger: $("#ns-danger").classList.contains("on")});
+	      const opkey = (r && r.operationKey) || `${NS.intoPane.session}|${NS.intoPane.pane||""}`;
+	      MOTOR_PENDING.set(opkey, {motor: NS.motor || NS.harness, model: NS.model || "", effort: NS.effort || "",
+	        since: Date.now(), queued: !!(r&&r.queued),
+	        stageTxt: tf("arrancando CLI en esta terminal…","starting CLI in this terminal…")});
+	      NS.intoPane=null; $("#newsess").classList.add("hidden");
+	      toast(tf(`Arrancando ${NS.harness} en esta terminal`, `Starting ${NS.harness} in this terminal`));
+	      tick(); return;
+	    }
 	    const payload = NS.harness === "shell" ? {cwd,agent:"shell"} : {cwd,routeId:NS.routeId,model:NS.model,effort:NS.effort,harnessAccount:NS.harnessAccount,motorAccount:NS.motorAccount};
 	    const r = await api("/session-new", {...payload, danger: $("#ns-danger").classList.contains("on")});
-	    $("#newsess").classList.add("hidden");
+	    NS.intoPane=null; $("#newsess").classList.add("hidden");
 	    toast(`${r.label} ${tf("creada", "created")}${r.worktree ? " · ⎇ worktree" : ""}`);
 	    tick();
 	  }catch(err){
@@ -4575,8 +4627,9 @@ function mdStrip(s){ return (s||"").replace(/\*\*|`|^#{1,6} /g, ""); }
 	      SWITCH_SEEN.set(key,r.ts);
 	      const name=(it&&it.project)||key;
 	      if(r.ok){
-	        if(it){if(r.model)it.model=r.model;if(r.effort!==undefined)it.effort=r.effort;}
+	        if(it){if(r.harness)it.agent=r.harness;if(r.motor)it.motor=r.motor;if(r.model)it.model=r.model;if(r.effort!==undefined)it.effort=r.effort;if(r.route_id||r.routeId)it.routeId=r.route_id||r.routeId;}
 	        toast(`✓ ${name}: ${r.detail}${r.applyMs!=null?` · ${Math.round(r.applyMs/100)/10}s`:""}`);
+	        tick();
 	      }else toast(tf(`✗ ${name}: el cambio NO entró (${r.detail}) — reinténtalo`,`✗ ${name}: switch did NOT apply (${r.detail}) — retry`),true);
 	      MOTOR_PENDING.delete(key);
 	      if(MPOP&&MPOP.ctx.mode==="session"&&motorTargetKey(MPOP.ctx.item)===key&&it){MPOP.ctx.item=it;MPOP.ctx.model=it.model||"";MPOP.staged=null;motorPopRender();}
@@ -4592,12 +4645,20 @@ function mdStrip(s){ return (s||"").replace(/\*\*|`|^#{1,6} /g, ""); }
 	function motorMenu(prov){ return (engineMeta(prov).models || (PROXY && PROXY[prov] && PROXY[prov].menu) || []); }
 	function matrixRoute(harness,motor){ return (((PROVIDERS||{}).matrix)||[]).find(r=>r.harness===harness&&r.motor===motor); }
 	function matrixMotors(harness){ return (((PROVIDERS||{}).matrix)||[]).filter(r=>r.harness===harness).map(r=>r.motor); }
+	function liveHarnesses(){ return (((PROVIDERS||{}).matrixHarnesses)||["claude","codex","grok","acp","opencode","agy"]); }
 	function motorOf(model){
 	  const value = String(model || "");
-	  for(const id of ENGINE_IDS){ const pat = engineMeta(id).modelMatch; try{ if(pat && new RegExp(pat,"i").test(value)) return id; }catch(e){} }
+	  const motors = Object.keys(((PROVIDERS||{}).motors)||{});
+	  for(const id of (motors.length ? motors : ENGINE_IDS)){ const pat = engineMeta(id).modelMatch; try{ if(pat && new RegExp(pat,"i").test(value)) return id; }catch(e){} }
 	  if(/^(grok-|xai\/)/i.test(value)) return "grok";
 	  if(/^(gpt|codex|o[0-9])/i.test(value)) return "codex";
 	  return value ? "claude" : "";
+	}
+	function currentMotorOf(item, model){
+	  if(!item) return motorOf(model) || "claude";
+	  if(item.agent === "acp") return item.motor || motorOf(model) || "claude";
+	  if(["codex","grok","opencode","agy"].includes(item.agent)) return item.agent;
+	  return item.motor && item.motor !== item.agent ? item.motor : (motorOf(model) || item.agent || "claude");
 	}
 	function effortsFor(prov, model){
 	  const spec = motorMenu(prov).find(x => motorKey(x.id) === motorKey(model));
@@ -4635,8 +4696,8 @@ function mdStrip(s){ return (s||"").replace(/\*\*|`|^#{1,6} /g, ""); }
 	}
 	function renderMotor(box, it, model){
 	  const el = box.querySelector(".cx-motor"); if(!el) return;
-	  const show = PROXY && it && it.alive && ["claude","codex","grok"].includes(it.agent) &&
-	    (it.agent !== "claude" || (PROXY.installed && PROXY.codexLogin));
+	  const isShell = !it || !it.agent || it.agent === "shell";
+	  const show = it && it.alive && (liveHarnesses().includes(it.agent) || isShell);
 	  el.classList.toggle("hidden", !show);
 	  if(!show) return;
 	  let btn = el.querySelector(".motor-pill");
@@ -4648,15 +4709,21 @@ function mdStrip(s){ return (s||"").replace(/\*\*|`|^#{1,6} /g, ""); }
 	  // NUNCA deshabilitar por "trabajando": el backend encola (o interrumpe con
 	  // "detener y cambiar YA") y confirma en el pane. Solo bloquea un proxy muerto.
 	  const stopBtn = box.querySelector(".cx-stop");
-	  if(stopBtn) stopBtn.classList.toggle("hidden", !(it.alive && ["claude","codex","grok"].includes(it.agent) && (it.status === "working" || MOTOR_PENDING.has(targetKey))));
+	  if(stopBtn) stopBtn.classList.toggle("hidden", !(it.alive && liveHarnesses().includes(it.agent) && (it.status === "working" || MOTOR_PENDING.has(targetKey))));
 	  const eff = p2 && p2.effort ? p2.effort : (it.effort || effortFor(targetKey, model));
-	  const currentHarnessMotor = ["codex","grok"].includes(it.agent) ? it.agent : (motorOf(model) || "claude");
-	  motorPill(btn, p2 ? p2.motor : currentHarnessMotor, p2 ? p2.model : model, p2 || false, p2 ? "" : (eff || tf("esta sesión", "this session")));
-	  btn.disabled = it.agent === "claude" && !PROXY.alive;
-	  btn.title = (it.agent === "claude" && !PROXY.alive) ? tf("cc-proxy no responde", "cc-proxy not responding") :
+	  const currentHarnessMotor = currentMotorOf(it, model);
+	  if(isShell && !p2){
+	    btn.innerHTML = `<span class="mp-prov">${mdEsc(tf("Shell","Shell"))}</span><span class="mp-model">${mdEsc(tf("iniciar IA…","start AI…"))}</span><span class="mp-caret">▾</span>`;
+	  } else {
+	    motorPill(btn, p2 ? p2.motor : currentHarnessMotor, p2 ? p2.model : model, p2 || false, p2 ? "" : (eff || tf("esta sesión", "this session")));
+	  }
+	  btn.disabled = !isShell && it.agent === "claude" && !(PROXY && PROXY.alive);
+	  btn.title = (it.agent === "claude" && !(PROXY && PROXY.alive)) ? tf("cc-proxy no responde", "cc-proxy not responding") :
 	    it.status === "working" ? tf("Está trabajando: el cambio se encola, o usa ■ detener y cambiar YA", "Working: the switch queues, or use ■ stop & switch NOW") :
-	    tf("Cambiar el motor de ESTA sesión conservando el contexto", "Switch THIS session's engine, keeping context");
-	  btn.onclick = ()=>{ if(btn.disabled) return; ulog("click", "motor-session", "centro"); motorPopOpen(btn, {mode: "session", item: it, model}); };
+	    tf("Cambiar harness, motor, esfuerzo o cuenta de ESTA sesión", "Switch THIS session's harness, engine, effort or account");
+	  btn.onclick = ()=>{ if(btn.disabled) return; ulog("click", "motor-session", "centro");
+	    if(isShell){ nsOpenForPane(it.session, it.pane || "", it.cwd || ""); return; }
+	    motorPopOpen(btn, {mode: "session", item: it, model}); };
 	}
 	let MPOP = null;
 	// Puentes para la barra de modelo de cc-app: abren el picker PROBADO del
@@ -4675,12 +4742,20 @@ function mdStrip(s){ return (s||"").replace(/\*\*|`|^#{1,6} /g, ""); }
 	window.openHarnessFor = (sess) => {
 	  const it = (S.list || []).find(x => x.session === sess);
 	  ulog("click", "harness-from-terminal", sess);
-	  nsOpen().then(()=>{
-	    if(it?.cwd){ const c = $("#ns-cwd"); if(c) c.value = it.cwd; }
-	    toast(tf("Elige harness y motor: abre una sesión NUEVA en esa carpeta (la actual no se toca).",
-	             "Pick harness and motor: opens a NEW session in that folder (current one untouched)."));
-	  });
+	  nsOpenForPane(sess, it?.pane || "", it?.cwd || "");
 	};
+	window.nsOpenForPane = async (sess, pane, cwd) => {
+	  const it = (S.list || []).find(x => x.session === sess && (!pane || x.pane === pane))
+	          || (S.list || []).find(x => x.session === sess);
+	  NS.intoPane = {session: sess, pane: pane || (it && it.pane) || ""};
+	  ulog("click", "open-ai-here", sess);
+	  await nsOpen();
+	  const c = $("#ns-cwd");
+	  if(c) c.value = cwd || it?.cwd || c.value || "";
+	  toast(tf("Elige CLI y motor: arranca en ESTA terminal (como el +).",
+	           "Pick CLI and engine: starts in THIS terminal (same as +)."));
+	};
+	window.openAiHere = (sess, pane, cwd) => nsOpenForPane(sess, pane, cwd);
 	function motorPopOpen(anchor, ctx){
 	  const pop = $("#motor-pop"); if(!pop) return;
 	  if(pop.classList.contains("open") && MPOP && MPOP.anchor === anchor){ motorPopClose(); return; }
@@ -4706,26 +4781,74 @@ function mdStrip(s){ return (s||"").replace(/\*\*|`|^#{1,6} /g, ""); }
 	function motorPopOutside(e){ const pop = $("#motor-pop"); if(!pop.contains(e.target) && !(MPOP && MPOP.anchor.contains(e.target))) motorPopClose(); }
 	function motorPopKey(e){ if(e.key === "Escape") motorPopClose(); }
 	function engineSub(prov){
-	  if(prov === "claude") return tf("tu suscripción Claude", "your Claude subscription");
-	  if(prov === "codex") return tf("tu ChatGPT, vía gateway", "your ChatGPT, via gateway");
-	  return tf("tu suscripción Grok · Labs", "your Grok subscription · Labs");
-	}
-	function motorAccounts(item){
-	  const harness=(item&&item.agent)||"claude";
-	  return (((((PROVIDERS||{}).harnesses||{})[harness]||{}).accounts)||[]);
-	}
-
-	function motorProgressHtml(pending){
+		  if(prov === "claude") return tf("TUI de Claude · tu Max", "Claude TUI · your Max");
+		  if(prov === "codex") return tf("TUI de Codex · tu ChatGPT", "Codex TUI · your ChatGPT");
+		  if(prov === "opencode") return tf("TUI de OpenCode", "OpenCode TUI");
+		  if(prov === "agy") return tf("TUI de Antigravity", "Antigravity TUI");
+		  if(prov === "acp") return tf("una TUI de ComandOS · cambias de cerebro con /agent · no es un modelo", "one ComandOS TUI · switch brains with /agent · not a model");
+		  return tf("TUI de Grok · tu Labs", "Grok TUI · your Labs");
+		}
+		function motorAccounts(item){
+		  const harness=(item&&item.agent)||"claude";
+		  const provider = harness==="acp" ? (item.motor||"claude") : harness;
+		  return (((((PROVIDERS||{}).harnesses||{})[provider]||{}).accounts)||[]);
+		}
+		function accountsByProvider(){
+		  const out = [];
+		  const hs = ((PROVIDERS||{}).harnesses)||{};
+		  for(const id of (liveHarnesses()||["claude","codex","grok"])){
+		    const spec = hs[id] || {};
+		    const acc = spec.accounts || [];
+		    if(!acc.length) continue;
+		    out.push({id, label: spec.label || id, icon: spec.icon || id, accounts: acc});
+		  }
+		  return out;
+		}
+		function motorProgressHtml(pending){
 	  const code=pending?.stageCode||"prepare",order={prepare:0,recover:0,wait_idle:1,wait_prompt:1,apply:2,confirm:3};const active=order[code]??0;
 	  const steps=[["lock",tf("Validar","Validate")],["timer",tf("Esperar pane","Wait pane")],["zap",tf("Aplicar","Apply")],["check",tf("Confirmar","Confirm")]];
 	  return `<div class="mp-prog-main"><span class="sp">${svg("refresh",14)}</span><b>${mdEsc(pending?.stageTxt||tf("Preparando cambio…","Preparing switch…"))}</b></div><div class="mp-steps">${steps.map((step,index)=>`<span class="${index<active?"done":index===active?"active":""}">${index<active?svg("check",10):svg(step[0],10)} ${step[1]}</span>`).join("")}</div>`;
 	}
-	function motorPopRender(){
+	function pickerTileIds(item, mode){
+		  if(mode === "global") return ENGINE_IDS;
+		  const harness = (item && item.agent) || "claude";
+		  const motors = (((PROVIDERS||{}).matrix)||[]).filter(r=>r.harness===harness && r.selectable).map(r=>r.motor);
+		  if(motors.length) return motors;
+		  return (item&&["grok","codex","opencode","agy"].includes(item.agent)?[item.agent]:ENGINE_IDS);
+		}
+		function tileAction(item, prov){
+		  const harness = (item && item.agent) || "claude";
+		  if(!prov || prov === harness) return "motor";
+		  const route = matrixRoute(harness, prov);
+		  if(route && route.selectable) return "motor";
+		  if((liveHarnesses()||[]).includes(prov)) return "harness";
+		  return "blocked";
+		}
+		function destHarnessModel(to, item, model){
+		  const current = String((model || (item&&item.model) || "")).trim();
+		  const motors = (((PROVIDERS||{}).motors)||{})[to] || {};
+		  const models = motors.models || [];
+		  const ids = models.map(m=>m.id);
+		  const pat = motors.modelMatch;
+		  try{ if(pat && current && new RegExp(pat,"i").test(current)) return current; }catch(e){}
+		  if(ids.includes(current)) return current;
+		  return (models[0]||{}).id || "";
+		}
+		function destHarnessEffort(to, item, destModel){
+		  const models = ((((PROVIDERS||{}).motors)||{})[to]||{}).models || [];
+		  const spec = models.find(m=>m.id===destModel) || {};
+		  const allowed = spec.efforts || [];
+		  const cur = (item&&item.effort) || "";
+		  if(allowed.includes(cur)) return cur;
+		  return spec.defaultEffort || allowed[0] || "";
+		}
+		function nativeDefaultModel(to){ return destHarnessModel(to, {}, ""); }
+		function motorPopRender(){
 	  const pop = $("#motor-pop"); if(!MPOP) return;
 	  const {mode, item, model} = MPOP.ctx;
 	  const curModel = mode === "global" ? PROXY.defaultModel : model;
 	  const curProv = mode === "global" ? (PROXY.motor || motorOf(PROXY.defaultModel) || "claude") :
-	    (item && ["codex","grok"].includes(item.agent) ? item.agent : (motorOf(model) || "claude"));
+	    currentMotorOf(item, model);
 	  const curEffort = mode === "global" ? ((PROXY.effortDefaults || {}).effort || "") : (item.effort || effortFor(motorTargetKey(item), model));
 	  // Selección en DOS pasos (sesión): eliges modelo + modo de pensamiento y
 	  // disparas con el botón — nada se ejecuta al tocar los radios.
@@ -4734,14 +4857,16 @@ function mdStrip(s){ return (s||"").replace(/\*\*|`|^#{1,6} /g, ""); }
 	  const pendingKey = mode !== "global" ? motorTargetKey(item) : "";
 	  const pendNow = mode !== "global" && MOTOR_PENDING.get(pendingKey);
 	  const head = mode === "global" ? [tf("Motor de Claude Code", "Claude Code engine"), tf("para sesiones nuevas", "for new sessions")]
-	                                 : [tf("Motor de esta sesión", "This session's engine"), mdEsc(item.project) + " · " + tf("el contexto se conserva", "context is kept")];
+	                                 : [tf("2. Cerebro — modelo de ESTA interfaz", "2. Brain — model for THIS interface"), mdEsc(item.project) + " · " + tf("OpenCode/AGY se cambian arriba, en CLI", "OpenCode/AGY switch above, under CLI")];
 	  const tile = (prov, title, sub) => {
 	    const on = (mode === "global" ? curProv : st.prov) === prov;
 	    const harness = (item && item.agent) || "claude";
 	    const route = matrixRoute(harness, prov);
+	    const action = mode === "global" ? "motor" : tileAction(item, prov);
 	    const nativeHarness = item && item.agent === prov;
-	    const dis = route ? !route.selectable : (!nativeHarness && ((prov !== "claude" && !PROXY.alive) || (prov === "codex" && !PROXY.codexLogin) || (prov === "grok" && !PROXY.grokLogin)));
-	    const why = dis ? (((route||{}).reason||{}).message || tf("ruta no disponible","route unavailable")) : "";
+	    const dis = action === "blocked" || (action === "motor" && route && !route.selectable) || (mode === "global" && !nativeHarness && ((prov !== "claude" && !PROXY.alive) || (prov === "codex" && !PROXY.codexLogin) || (prov === "grok" && !PROXY.grokLogin)));
+	    const why = dis ? (((route||{}).reason||{}).message || tf("ruta no disponible","route unavailable"))
+	      : (action === "harness" ? tf("cambia de CLI (cierra esta TUI)","switches CLI (closes this TUI)") : "");
 	    const tileModel = on ? (mode === "global" ? curModel : st.model) : ((motorMenu(prov)[0] || {}).id || "");
 	    const tileEfforts = effortsFor(prov, tileModel);
 	    return `<div class="mtile ${on ? "on" : "off"}" data-prov="${prov}">
@@ -4756,13 +4881,35 @@ function mdStrip(s){ return (s||"").replace(/\*\*|`|^#{1,6} /g, ""); }
 	  const harnesses=(PROVIDERS&&PROVIDERS.harnesses)||{};
 	  const harnessSpec=harnesses[(item&&item.agent)||"claude"]||{};
 	  const harnessCaps=harnessSpec.capabilities||{};
-	  const liveAccountSwitch=!!harnessCaps.liveAccountSwitch;
+	  const liveAccountSwitch=!!harnessCaps.liveAccountSwitch || (item&&item.agent)==="acp";
 	  pop.innerHTML = `<div class="mp-head"><div class="mp-htitle"><b>${head[0]}</b><span>${head[1]}</span></div><button type="button" class="mp-close" title="${attrEsc(tf("Cerrar","Close"))}" aria-label="${attrEsc(tf("Cerrar","Close"))}">${svg("close",14)}</button></div>
 	    ${pendNow ? `<div class="mp-prog">${motorProgressHtml(pendNow)}</div>` : ""}
 	    ${busyNow ? `<div class="mp-busy"><span class="msg">⚠ ${tf("Está trabajando. Sin marcar, el cambio espera a que termine el turno.", "Working. Unchecked, the switch waits for the turn to end.")}</span>
 	      <button type="button" class="sw" aria-pressed="false">■ ${tf("detener y cambiar YA", "stop & switch NOW")}</button></div>` : ""}
+	    ${mode !== "global" ? (()=>{
+	      // CAMBIO DE HARNESS (el CLI, no el motor). Distinto del motor de arriba:
+	      // aquí cambias la interfaz entera (Claude Code ↔ Codex CLI ↔ Grok Build)
+	      // en el MISMO pane, con handoff del contexto. La conversación actual se
+	      // cierra (cada CLI es su propio proceso).
+	      const HL = {claude: "Claude Code", codex: "Codex CLI", grok: "Grok Build", acp: "ACP (una TUI, varios cerebros)", opencode: "OpenCode", agy: "Antigravity"};
+	      const cur = (item.agent||"claude");
+	      const armed = MPOP.harnessArm;
+	      const hlist = (((PROVIDERS||{}).matrixHarnesses)||["claude","codex","grok"]).filter(h=>HL[h]);
+	      return `<div class="mp-harness">
+	        <div class="mp-hh">${svg("layers",12)} ${tf("Interfaz (CLI)","Interface (CLI)")}</div>
+	        <div class="mp-hrow">${hlist.map(h=>{
+	          const on = h===cur;
+	          return `<button type="button" class="mp-hbtn ${on?"on":""} ${armed===h?"arm":""}" data-harness="${h}" ${on?"disabled":""}>
+	            ${providerMark(h,"",14)} <span>${HL[h]}</span>${on?` <span class="mp-hcur">${tf("ahora","now")}</span>`:""}</button>`;}).join("")}</div>
+	        <div class="mp-hnote">${armed
+	          ? tf("Cierra "+HL[cur]+" y abre "+HL[armed]+" aquí. Archivos y git se quedan. El chat interno de "+HL[cur]+" no se copia. Al volver a Claude se reanuda el transcript.",
+	               "Closes "+HL[cur]+" and opens "+HL[armed]+" here. Files and git stay. "+HL[cur]+"'s internal chat is not copied. Back to Claude resumes the transcript.")
+	          : tf("ComandOS ACP no es un modelo ni OpenCode: es la misma pantalla de ComandOS para cambiar de cerebro (/agent) sin la TUI de cada vendor.",
+	               "ACP is not a model and not OpenCode: one ComandOS screen to switch brains (/agent) without each vendor TUI.")}</div>
+	        ${armed ? `<button type="button" class="mp-cli-go" data-harness="${armed}">${tf("Sí, cambiar a","Switch to")} ${mdEsc(HL[armed])}</button>` : ""}
+	      </div>`;})() : ""}
 	    <div class="mp-grid">
-	      ${(matrixMotors((item&&item.agent)||"claude").length ? matrixMotors((item&&item.agent)||"claude") : (item&&["grok","codex"].includes(item.agent)?[item.agent]:ENGINE_IDS)).map(id=>tile(id,engineLabel(id),engineSub(id))).join("")}
+	      ${pickerTileIds(item, mode).map(id=>tile(id,engineLabel(id),engineSub(id))).join("")}
 	    </div>
 	    ${mode !== "global" && MOTOR_PENDING.has(pendingKey) ? `<button type="button" class="mp-cancel">✕ ${tf("cancelar el cambio en cola", "cancel the queued switch")}</button>` : ""}
     <div class="mp-stick">
@@ -4776,39 +4923,30 @@ function mdStrip(s){ return (s||"").replace(/\*\*|`|^#{1,6} /g, ""); }
 	      const acctTag = ` · ${tf("cuenta","account")} ${mdEsc(motorAcct)}`;
 	      return `<div class="mp-go">
 	      <button type="button" class="do">→ ${tf("Cambiar a", "Switch to")} ${mdEsc(engineLabel(st.prov))} · ${mdEsc(motorName(st.prov, st.model))}${st.effort ? ` · ${st.effort}` : ""}${acctTag}</button>
-	      <span class="note">${busyNow ? tf("se encola o marca detener", "queues, or tick stop") : tf("contexto intacto", "context kept")}</span>
+	      <span class="note">${busyNow ? tf("se encola o marca detener", "queues, or tick stop") : tf("mismo CLI: conversación intacta · otro CLI: git+handoff; al volver a Claude se reanuda el transcript", "same CLI: conversation kept · other CLI: git+handoff; returning to Claude resumes the transcript")}</span>
 	    </div>`;})() : ""}
-	    ${mode !== "global" ? (()=>{
-	      // CAMBIO DE HARNESS (el CLI, no el motor). Distinto del motor de arriba:
-	      // aquí cambias la interfaz entera (Claude Code ↔ Codex CLI ↔ Grok Build)
-	      // en el MISMO pane, con handoff del contexto. La conversación actual se
-	      // cierra (cada CLI es su propio proceso).
-	      const HL = {claude: "Claude Code", codex: "Codex CLI", grok: "Grok Build", acp: "ComandOS ACP", opencode: "OpenCode", agy: "Antigravity"};
-	      const cur = (item.agent||"claude");
-	      const armed = MPOP.harnessArm;
-	      // harnesses del registro (matrixHarnesses) — el ACP de ComandOS hospeda cualquier motor
-	      const hlist = (((PROVIDERS||{}).matrixHarnesses)||["claude","codex","grok"]).filter(h=>HL[h]);
-	      return `<div class="mp-harness">
-	        <div class="mp-hh">${svg("layers",12)} ${tf("Cambiar de CLI (harness)","Switch CLI (harness)")}</div>
-	        <div class="mp-hrow">${hlist.map(h=>{
-	          const on = h===cur;
-	          return `<button type="button" class="mp-hbtn ${on?"on":""} ${armed===h?"arm":""}" data-harness="${h}" ${on?"disabled":""}>
-	            ${providerMark(h,"",14)} <span>${HL[h]}</span>${on?` <span class="mp-hcur">${tf("actual","now")}</span>`:""}${armed===h?` <span class="mp-harm">${tf("confirmar","confirm")}</span>`:""}</button>`;}).join("")}</div>
-	        <div class="mp-hnote">${armed
-	          ? `⚠ ${tf("Cerrará "+HL[cur]+" y arrancará "+HL[armed]+" en este pane con un handoff (objetivo, últimos pasos, git). La memoria interna de "+HL[cur]+" NO se transfiere. Toca de nuevo para confirmar.", "Will close "+HL[cur]+" and start "+HL[armed]+" here with a handoff. "+HL[cur]+"'s internal memory is NOT transferred. Tap again to confirm.")}`
-	          : tf("Cambia la interfaz entera en el mismo pane; el contexto pasa como handoff visible.","Swaps the whole CLI in the same pane; context passes as a visible handoff.")}</div>
-	      </div>`;})() : ""}
+	    
 	    <div class="mp-acct">
-	      <span class="lbl">${tf("cuenta", "account")}</span>
-	      ${motorAccounts(item).map(a => { const on = mode !== "global" && (item.account || "main") === a.alias;
-	        const disabled=mode === "global"||!a.selectable||!liveAccountSwitch;
-	        const title=!a.selectable?tf("requiere login de suscripción","subscription login required"):!liveAccountSwitch?tf("este harness sólo cambia de cuenta al crear una sesión nueva","this harness changes account only in a new session"):(a.identity||a.alias);
-	        return `<button type="button" class="ac ${on ? "on" : ""} ${a.selectable ? "" : "pending"}" data-alias="${attrEsc(a.alias)}" ${disabled ? "disabled" : ""}
-	          title="${attrEsc(title)}">${providerMark((item&&item.agent)||"claude","",12)} ${mdEsc(a.alias)}${a.identity ? ` <span class="em">${mdEsc(a.identity)}</span>` : (a.selectable ? "" : ` <span class="em">${tf("sin login", "no login")}</span>`)}</button>`; }).join("")}
+	      <span class="lbl">${tf("cuentas por proveedor", "accounts by provider")}</span>
+	      ${accountsByProvider().map(g => {
+	        const curProv = (item&&item.agent)==="acp" ? (item.motor||"claude") : ((item&&item.agent)||"claude");
+	        const curAlias = item.account || "main";
+	        return `<div class="mp-acct-group" data-prov="${attrEsc(g.id)}">
+	          <div class="mp-acct-prov">${providerMark(g.id,"",14)} ${mdEsc(g.label)}
+	            <span class="em">${g.accounts.filter(a=>a.selectable).length?tf("logeado","signed in"):tf("sin login","no login")}</span></div>
+	          <div class="mp-acct-row">${g.accounts.map(a => {
+	            const on = mode !== "global" && curProv===g.id && curAlias === a.alias;
+	            const disabled=mode === "global"||!a.selectable||(g.id!==curProv)||!liveAccountSwitch;
+	            const title=!a.selectable?tf("requiere login de suscripción","subscription login required"):g.id!==curProv?tf("cuenta de otro proveedor — cambia el CLI para usarla","other provider — switch CLI to use it"):!liveAccountSwitch?tf("este CLI cambia de cuenta al crear sesión nueva","this CLI changes account only in a new session"):(a.identity||a.alias);
+	            return `<button type="button" class="ac ${on ? "on" : ""} ${a.selectable ? "" : "pending"}" data-alias="${attrEsc(a.alias)}" data-prov="${attrEsc(g.id)}" ${disabled ? "disabled" : ""}
+	              title="${attrEsc(title)}">${mdEsc(a.alias)}${a.identity ? ` <span class="em">${mdEsc(a.identity)}</span>` : (a.selectable ? "" : ` <span class="em">${tf("sin login", "no login")}</span>`)}</button>`;
+	          }).join("")}</div>
+	        </div>`;
+	      }).join("")}
 	      <button type="button" class="ac add" data-add="1">+ ${tf("cuenta", "account")}</button>
 	    </div>
 	    <div class="mp-foot">${PROXY.alive ? `<span class="ok">●</span> cc-proxy 127.0.0.1:${PROXY.port}` : `<span class="bad">●</span> ${tf("cc-proxy apagado — motores externos no disponibles", "cc-proxy down — external engines unavailable")}`}
-	      <span>· ${tf("el contexto, herramientas y MCPs se conservan entre motores", "context, tools and MCPs are preserved across engines")}</span></div>
+	      <span>· ${tf("mismo CLI: conversación intacta. Cambio de CLI: archivos y git sí; memoria interna del TUI no. Al volver a Claude: --resume del transcript.", "same CLI: conversation kept. CLI switch: files+git yes; TUI memory no. Back to Claude: --resume the transcript.")}</span></div>
 	    </div>`;
 	  const mpClose = pop.querySelector(".mp-close");
   if(mpClose) mpClose.addEventListener("click", e => { e.stopPropagation(); motorPopClose(); });
@@ -4817,14 +4955,24 @@ function mdStrip(s){ return (s||"").replace(/\*\*|`|^#{1,6} /g, ""); }
 	  const INTERRUPT = ()=> !!(swb && swb.classList.contains("on"));
 	  // Cambio de HARNESS (CLI) — confirmación en DOS toques (cierra la conversación
 	  // actual): 1er toque arma, 2o dispara /harness/switch.
-	  pop.querySelectorAll(".mp-hbtn[data-harness]").forEach(b => b.addEventListener("click", async ()=>{
-	    if(b.disabled) return;
-	    const to = b.dataset.harness;
-	    if(MPOP.harnessArm !== to){ MPOP.harnessArm = to; motorPopRender(); return; }
-	    MPOP.harnessArm = null;
-	    ulog("click", `harness-switch:${to}`, "centro");
+	  pop.querySelectorAll(".mp-hbtn[data-harness]").forEach(b => b.addEventListener("click", ()=>{
+		    if(b.disabled) return;
+		    const to = b.dataset.harness;
+		    MPOP.harnessArm = to;
+		    motorPopRender();
+		  }));
+		  pop.querySelectorAll(".mp-cli-go[data-harness]").forEach(b => b.addEventListener("click", async ()=>{
+		    const to = b.dataset.harness;
+		    if(!to) return;
+		    MPOP.harnessArm = null;
+ulog("click", `harness-switch:${to}`, "centro");
 	    try{
-	      const r = await api("/harness/switch", {session: item.session, pane: item.pane || "", toHarness: to, interrupt: INTERRUPT()});
+	      const destModel = destHarnessModel(to, item, model);
+		      const destEffort = destHarnessEffort(to, item, destModel);
+		      const r = await api("/harness/switch", {session: item.session, pane: item.pane || "", toHarness: to, interrupt: INTERRUPT(),
+		        motor: to==="acp" ? currentMotorOf(item, model) : to,
+		        account: item.motorAccount || item.account || "main",
+		        model: destModel, effort: destEffort});
 	      const opkey = (r && r.operationKey) || pendingKey || item.session;
 	      MOTOR_PENDING.set(opkey, {motor: to, model: "", effort: "", since: Date.now(), queued: !!(r&&r.queued),
 	        stageTxt: r && r.queued ? tf("en cola: espera fin de turno","queued: waiting for turn") : tf("cambiando de CLI…","switching CLI…")});
@@ -4842,8 +4990,19 @@ function mdStrip(s){ return (s||"").replace(/\*\*|`|^#{1,6} /g, ""); }
 	  pop.querySelectorAll(".mp-acct .ac[data-alias]").forEach(b => b.addEventListener("click", async ()=>{
 	    if(b.disabled || b.classList.contains("on")) return;
 	    const alias = b.dataset.alias;
-	    ulog("click", `account-switch:${alias}`, "centro");
+		    const prov = b.dataset.prov || ((item&&item.agent)==="acp" ? (item.motor||"claude") : (item.agent||"claude"));
+		    if(prov && item && item.agent && prov !== item.agent && item.agent !== "acp"){
+		      toast(tf("Esa cuenta es de "+prov+" — cambia el CLI primero","That account belongs to "+prov+" — switch CLI first"), true);
+		      return;
+		    }
+		    ulog("click", `account-switch:${alias}`, "centro");
 	    try{
+	      if((item.agent||"") === "acp"){
+	        const r = await api("/model/switch", {session:item.session,pane:item.pane||"",routeId:matrixRoute("acp", currentMotorOf(item, model))?.id||`acp:${currentMotorOf(item, model)}`,provider:"acp",model:item.model||"",effort:item.effort||"",motorAccount:alias,interrupt:INTERRUPT()});
+	        MOTOR_PENDING.set((r && r.operationKey) || pendingKey || item.session, {motor: currentMotorOf(item, model), model:"", effort:item.effort||"", since:Date.now(), queued:!!(r&&r.queued), stageTxt: tf("cambiando cuenta ACP…","switching ACP account…")});
+	        toast(tf(`${item.project} → cuenta ${alias} (ACP)`, `${item.project} → account ${alias} (ACP)`));
+	        motorPopClose(); return;
+	      }
 	      const r = await api("/account/switch", {session: item.session, pane: item.pane || "", alias, interrupt: INTERRUPT()});
 	      toast(r && r.queued ? tf(`${item.project} → cuenta ${alias} en cola — al terminar el turno sale y reanuda la misma conversación`, `${item.project} → account ${alias} queued — when the turn ends it exits and resumes the same conversation`) : tf(`${item.project} → cuenta ${alias}: saliendo y reanudando la misma conversación…`, `${item.project} → account ${alias}: exiting and resuming the same conversation…`));
 	      motorPopClose();
@@ -4858,7 +5017,7 @@ function mdStrip(s){ return (s||"").replace(/\*\*|`|^#{1,6} /g, ""); }
 	      const alias = inp.value.trim(); if(!alias){ motorPopRender(); return; }
 	      ulog("click", `account-add:${alias}`, "centro");
 	      try{
-	        const r = await api("/account/add", {alias, provider: (item&&item.agent)||"claude", cwd: (item && item.cwd) || ""});
+	        const r = await api("/account/add", {alias, provider: (item&&item.agent)==="acp"?(item.motor||"claude"):((item&&item.agent)||"claude"), cwd: (item && item.cwd) || ""});
 	        toast(tf(`Cuenta ${alias}: se abrió una pestaña con /login — inicia sesión ahí`, `Account ${alias}: a tab with /login opened — sign in there`));
 	        motorPopClose(); PROVIDERS=await api("/providers"); proxyStatus();
 	      }catch(err){ toast(err.message, true); motorPopRender(); }
@@ -4897,14 +5056,28 @@ function mdStrip(s){ return (s||"").replace(/\*\*|`|^#{1,6} /g, ""); }
 	  if(goBtn) goBtn.addEventListener("click", async ()=>{
 	    ulog("click", `motor-go:${st.prov}:${st.model}:${st.effort}`, "centro");
 	    try{
-	      const sameModel = st.prov === curProv && motorKey(st.model) === motorKey(curModel);
-	      const driver = ["grok","codex"].includes(item.agent) ? item.agent : "claude";
+	      if(tileAction(item, st.prov) === "harness"){
+		        const destModel = destHarnessModel(st.prov, item, st.model);
+		        const destEffort = destHarnessEffort(st.prov, item, destModel);
+		        const r = await api("/harness/switch", {session: item.session, pane: item.pane || "", toHarness: st.prov, interrupt: INTERRUPT(),
+		          motor: st.prov==="acp" ? currentMotorOf(item, model) : st.prov,
+		          account: item.motorAccount || item.account || "main",
+		          model: destModel, effort: destEffort});
+		        const opkey = (r && r.operationKey) || pendingKey || item.session;
+		        MOTOR_PENDING.set(opkey, {motor: st.prov, model: destModel || "", effort: destEffort || "", since: Date.now(), queued: !!(r&&r.queued),
+		          stageTxt: r && r.queued ? tf("en cola: espera fin de turno","queued: waiting for turn") : tf("cambiando de CLI…","switching CLI…")});
+		        toast(tf(`Cambiando a ${engineLabel(st.prov)} — cierra esta TUI y arranca la otra`, `Switching to ${engineLabel(st.prov)} — closes this TUI and starts the other`));
+		        motorPopClose(); renderCentro(S.list || []); return;
+		      }
+		      const sameModel = st.prov === curProv && motorKey(st.model) === motorKey(curModel);
+	      const driver = item.agent;
 	      // Si NO cambia el modelo (solo el esfuerzo), mandar model:"" — asi el
 	      // backend teclea SOLO `/effort X`. Mandar el id tecnico (claude-fable-5[1m])
 	      // hace que Claude Code intente `/model claude-fable-5[1m]`, no lo reconozca
 	      // en su picker y responda model_unavailable. Ese era el "perro error".
 	      const r = await api("/model/switch", {session:item.session,pane:item.pane||"",routeId:st.routeId,provider:driver,
-	        model:sameModel?"":st.model,effort:st.effort||"",interrupt:INTERRUPT()});
+	        model:sameModel?"":st.model,effort:st.effort||"",interrupt:INTERRUPT(),
+	        motorAccount: item.agent==="acp" ? (item.motorAccount||item.account||"main") : undefined});
 	      const opkey = (r && r.operationKey) || pendingKey || item.session;
 	      if(st.effort) PROXY.sessionEffort = Object.assign(PROXY.sessionEffort || {}, {[opkey]: st.effort});
 	      MOTOR_PENDING.set(opkey, {motor: st.prov, model: sameModel ? "" : st.model, effort: st.effort, since: Date.now(), queued: !!(r && r.queued), stageTxt: r && r.queued ? tf("en cola: esperando el fin del turno", "queued: waiting for the turn to end") : tf("preparando cambio…", "preparing switch…")});
@@ -6505,17 +6678,21 @@ function rowEl(it){
   const xp = el.querySelector(".xp");
   xp.addEventListener("click", e=>{
     e.stopPropagation();
+    if(inApp()) return;   // GTK: lista compacta, nunca se agranda al click
     el.classList.toggle("open");
     const _open = el.classList.contains("open");
     xp.textContent = _open ? "▴" : "▾";
     xp.setAttribute("aria-expanded", _open);
-    render(S.list || []);   // llena .rxp (pregunta/opciones) al instante
+    render(S.list || []);
   });
   el.addEventListener("click", e=>{
     if(e.target.closest("button") || e.target.closest(".rxp")) return;
-    // Seleccionar card/pane NO cambia la pestaña ni la sesión del terminal.
-    // Para eso existe el botón explícito "Abrir" del Centro.
-    S.sel = rowKey(it); S.selTs = Date.now(); renderCentro(S.list || []);
+    // Seleccionar card/pane NO cambia la pestaña ni agranda la fila.
+    // Para enfocar el terminal existe el botón explícito "Abrir" del Centro.
+    S.sel = rowKey(it); S.selTs = Date.now();
+    el.classList.remove("open");
+    renderCentro(S.list || []);
+    document.querySelectorAll("#rows .row").forEach(r => r.classList.toggle("active-pane", r.dataset.rk === rowKey(it)));
   });
   return el;
 }
@@ -6544,15 +6721,16 @@ function render(list){
     let el = document.querySelector(`.row[data-rk="${CSS.escape(rk)}"]`);
     if(el && el.dataset.kind !== kind){ el.remove(); el = null; }
     if(!el){ el = rowEl(it); container.appendChild(el); }
-    const appSess = inApp() ? (ACTIVE_TAB.session || "") : "";
-    const appPanes = appSess ? list.filter(x => x.alive && x.session === appSess && x.pane) : [];
     const splitCount = list.filter(x => x.alive && x.session === it.session && x.pane).length;
+    const q = (typeof PANE_FILTER === "string" ? PANE_FILTER : "").trim();
+    const hay = !q || (el.dataset.search || "").includes(q) || rk.toLowerCase().includes(q);
     if(inApp()){
-      // Sidebar GTK: SOLO los panes de la pestaña activa. El inventario global
-      // estorbaba; el resto del espacio es analytics.
-      el.style.display = (appPanes.length >= 2 && it.session === appSess) ? "" : "none";
+      // Operador: todos los panes vivos, compactos. Click selecciona (Centro);
+      // no expande. Filtrar con #pane-filter.
+      el.style.display = (it.alive && hay) ? "" : "none";
+      el.classList.remove("open");
     }else{
-      el.style.display = (splitCount < 2 && rk === shown) ? "none" : "";
+      el.style.display = (!hay || (splitCount < 2 && rk === shown)) ? "none" : "";
     }
     const ext = !!it.external;
     const ab = el.querySelector(".abadge");
@@ -6592,7 +6770,7 @@ function render(list){
 	      const u = (it.model ? {model: it.model, effort: it.effort || "", confidence: "transcript"} : null) || usageForItem(it);
 	      const utxt = usageChipText(u);
 	      const tst = tierStyleOf(tierOf(shortModel(u?.model || "")));
-	      uchip.innerHTML = providerMark(it.agent, u?.model || "", 11) +
+	      uchip.innerHTML = providerMark(it.motor||it.agent, u?.model || "", 11) +
 	        `<span>${utxt}${(tst && tst.symbol) ? ` ${tst.symbol}` : ""}</span>`;
 	      uchip.classList.toggle("hidden", !utxt);
 	      uchip.style.color = (tst && tst.css) || "";
@@ -6733,9 +6911,9 @@ function render(list){
     if(!seen.has(el.dataset.rk || el.dataset.session)) el.remove();
   });
   if(inApp()){
-    const nPanes = list.filter(x => x.alive && x.session === (ACTIVE_TAB.session || "") && x.pane).length;
-    $("#sessions-wrap").classList.toggle("hidden", nPanes < 2);
-    const st = $("#sessions-title"); if(st) st.textContent = nPanes > 1 ? `Panes · ${nPanes}` : "Panes";
+    const nPanes = list.filter(x => x.alive).length;
+    $("#sessions-wrap").classList.toggle("hidden", nPanes < 1);
+    const st = $("#sessions-title"); if(st) st.textContent = `Panes · ${nPanes}`;
   }
   renderCentro(list);
   if(!rows.querySelector(".row") && !rows.querySelector(".empty")){
@@ -7190,9 +7368,13 @@ async function renderSidebarInsights(){
     if(pn) pn.textContent = String(panes);
     const top = projects.slice(0,3), max = Math.max(1,...top.map(x=>Number(x.minutes||0)));
     const box = $("#side-projects");
-    if(box) box.innerHTML = top.length ? top.map(x=>`<div class="side-proj">
-      <span class="n" title="${attrEsc(x.path||x.name||"")}">${mdEsc(x.name||"")}</span><span class="m">${fmtMin(Number(x.minutes||0))}</span>
-      <span class="bar"><i style="width:${Math.max(3,Math.round(Number(x.minutes||0)/max*100))}%"></i></span></div>`).join("") : `<div class="desc">Sin turnos medidos hoy.</div>`;
+    if(box) box.innerHTML = top.length ? top.map(x=>{
+      const mins = Number(x.minutes||0);
+      const pct = Math.max(6, Math.round(mins/max*100));
+      return `<div class="side-proj">
+      <div class="side-proj-meta"><span class="n" title="${attrEsc(x.path||x.name||"")}">${mdEsc(x.name||"")}</span><span class="m">${fmtMin(mins)}</span></div>
+      <span class="bar" role="meter" aria-valuemin="0" aria-valuemax="${max}" aria-valuenow="${mins}"><i style="width:${pct}%"></i></span></div>`;
+    }).join("") : `<div class="desc">Sin turnos medidos hoy.</div>`;
   }catch(e){}
 }
 
