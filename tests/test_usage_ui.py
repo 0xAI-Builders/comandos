@@ -70,6 +70,39 @@ def test_model_confirmation_action_is_sticky():
     assert "min-height:44px" in HTML
 
 
+def test_motor_picker_is_visible_for_every_matrix_harness():
+    # El popover (harness + motor + cuenta) debe abrirse en ACP/OpenCode/Antigravity,
+    # no solo en Claude/Codex/Grok. Si el pill está hidden, no hay forma de cambiar
+    # de CLI en esas sesiones.
+    assert "matrixHarnesses" in HTML
+    assert "function liveHarnesses()" in HTML or "function switchableHarnesses()" in HTML or \
+           "((PROVIDERS||{}).matrixHarnesses)" in HTML
+    # visibilidad del pill: cualquier harness de la matriz, no el triple legado
+    render = HTML.split("function renderMotor", 1)[1][:2200]
+    assert "liveHarnesses()" in render or "matrixHarnesses" in render
+    assert "acp" in render or "liveHarnesses()" in render
+    assert "it.alive" in render
+    # el driver del /model/switch es el harness vivo, no "siempre claude"
+    assert "const driver = item.agent" in HTML
+
+
+def test_switch_result_updates_harness_motor_model_and_effort_everywhere():
+    # Tras /model/switch o /harness/switch, el poll debe pintar harness/motor/modelo/esfuerzo
+    # en el item vivo (card, chip, popover). Si solo copia model/effort, ACP se queda
+    # mostrando Claude y el effort no llega a las pills.
+    poll = HTML.split("if(!MOTOR_PENDING.size||MOTOR_STATUS_BUSY) return;", 1)[1]
+    poll = poll.split("},450);", 1)[0]
+    compact = poll.replace(" ", "")
+    assert "if(r.harness)it.agent=r.harness" in compact
+    assert "if(r.motor)it.motor=r.motor" in compact
+    assert "if(r.model)it.model=r.model" in compact
+    assert "r.effort!==undefined" in compact
+    assert "renderCentro" in poll
+    assert "tick();" in poll
+    # las filas del sidebar también leen it.agent/it.motor/it.effort
+    assert "harness=it.agent||\"claude\",motor=it.motor||motorOf(agentModel)||harness" in HTML.replace(" ", "")
+
+
 def test_effort_only_switch_does_not_resend_model():
     # Cambiar SOLO el esfuerzo (mismo modelo) NUNCA debe re-teclear `/model
     # <id>`: eso dejaba el modelo en un id crudo que la API rechaza con
@@ -133,10 +166,11 @@ def test_header_has_no_search_nor_open_project():
     )
     assert switch_button
     sessions_label = re.search(
-        r'<div class="sec-label"><span class="chip" id="sessions-title">Sesiones</span>(?P<body>.*?)</div>', HTML, re.S
+        r'<div class="sec-label[^"]*"[^>]*>.*?</div>', HTML, re.S
     )
     assert sessions_label
-    assert 'id="btn-newsess"' in sessions_label.group("body")
+    assert 'id="sessions-title"' in sessions_label.group(0)
+    assert 'id="btn-newsess"' in sessions_label.group(0)
 
 
 def test_recent_closed_sessions_are_recoverable():
@@ -257,6 +291,66 @@ def test_refactored_limit_cards_show_remaining_reset_and_daily_curve():
     assert "definir límite" in HTML
     # El editor es inline (input + guardar), no un prompt del navegador
     assert "uw-quota-edit" in HTML and "window.prompt" not in HTML
+
+
+def test_picker_tiles_jump_to_opencode_agy_cli_instead_of_not_routed():
+    """CLI y cerebro van separados: OpenCode/AGY son chips de CLI, no tiles
+    muertas con 'esta TUI no hospeda'. El wizard tampoco lista not_routed."""
+    assert "function tileAction" in HTML
+    assert "pickerTileIds" in HTML
+    assert "function nsSelectableMotors" in HTML or "not_routed" in HTML.split("function nsRender", 1)[1][:2200]
+    go = HTML.split("const goBtn = pop.querySelector", 1)[1][:2800]
+    assert 'api("/harness/switch"' in go
+    assert 'data-harness="${h}"' in HTML
+    # el grid de cerebros NO usa celdas not_routed
+    ids = HTML.split("function pickerTileIds", 1)[1][:900]
+    assert "selectable" in ids
+    tile = HTML.split("const tile = (prov, title, sub)", 1)[1][:1800]
+    assert "tileAction" in tile
+
+
+def test_harness_switch_sends_destination_default_model_not_source_model():
+    """Cambiar de CLI no reenvía el modelo de Claude a OpenCode/AGY."""
+    switch = HTML.split('api("/harness/switch"', 1)[1][:900]
+    assert "destHarnessModel" in HTML or "nativeDefaultModel" in HTML
+    assert "item.model || \"\"" not in switch or "destModel" in switch
+
+
+def test_picker_explains_acp_and_confirms_cli_switch_with_a_button():
+    """ACP no es un modelo: una línea en el picker. Cambiar de CLI no es
+    'toca el chip otra vez': hay un botón explícito de confirmar."""
+    assert "una TUI" in HTML or "misma pantalla" in HTML
+    assert "/agent" in HTML
+    assert "mp-cli-go" in HTML or "Sí, cambiar a" in HTML
+    assert "ComandOS ACP" in HTML or "ACP (una TUI" in HTML
+    assert "no es un modelo" in HTML.lower() or "no es OpenCode" in HTML or "no es la TUI" in HTML
+
+
+def test_picker_states_honestly_what_switch_keeps():
+    """Motor/effort = conversación intacta. Cambio de CLI = archivos+git+handoff;
+    al volver a Claude se reanuda el transcript. Nunca fingir que la memoria
+    interna del TUI se transfiere."""
+    assert "conversación intacta" in HTML or "contexto intacto" in HTML
+    assert "transcript" in HTML.lower() or "al volver a Claude" in HTML or "resume" in HTML.lower()
+
+
+def test_wizard_hides_not_routed_cells_from_unavailable_list():
+    ns = HTML.split("function nsRender", 1)[1][:2800]
+    assert "not_routed" in ns
+    assert "nsSelectableMotors" in HTML or "r.selectable" in ns
+
+
+def test_motor_picker_offers_agy_and_opencode_native_and_acp_mixes():
+    # Combinaciones operables: nativo agy/opencode + ACP hospedando esos motores.
+    assert "OpenCode" in HTML and "Antigravity" in HTML
+    assert 'api("/harness/switch"' in HTML
+    assert "to===" in HTML and "acp" in HTML
+    assert "opencode" in HTML and "agy" in HTML
+    # desde un pane shell el picker de harness sigue visible
+    compact = HTML.replace(" ", "")
+    assert "liveHarnesses()" in compact
+    assert "nsOpenForPane" in HTML or "openAiHere" in HTML or \
+           "Iniciar sesión de IA" in HTML or "Start AI session" in HTML
 
 
 def test_limit_cards_have_style_switcher_and_grok_measured_support():

@@ -111,6 +111,18 @@ def test_ssh_connection_list_is_an_independent_touch_scroller():
     ) in CSS
 
 
+def test_gtk_ops_rail_has_semantic_sections_and_icons():
+    assert "> Foco <" in INDEX or "Foco" in INDEX
+    assert "Flotilla" in INDEX
+    assert 'data-icon="layers"' in INDEX
+    assert 'data-icon="rows"' in INDEX
+    assert 'data-icon="timer"' in INDEX
+    assert "cx-mark" in INDEX
+    assert "rmark" in INDEX
+    assert "moreH" in INDEX
+    assert "html.gtkapp #tl-wrap" in INDEX
+
+
 def test_gtk_sidebar_lists_all_live_panes_compact_without_expanding():
     # Operar 15–20 panes: lista compacta de TODOS los vivos, filtro, sin
     # agrandar la fila al click. sessions-wrap no se oculta.
