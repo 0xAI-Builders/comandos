@@ -430,3 +430,12 @@ def test_motor_picker_is_flex_head_scrollbody_foot_and_footer_holds_only_apply()
     assert '<div class="mp-acct">' in body and '<div class="mp-foot">' in body
     stick = HTML.split('<div class="mp-stick">')[1].split("`;")[0]
     assert "mp-acct" not in stick and "mp-foot" not in stick
+
+
+def test_picker_always_shows_every_provider_card_not_only_routed_ones():
+    # En un pane de Grok deben verse Claude, Codex, etc. (cambio de CLI o
+    # bloqueada), no solo la card de Grok. Las ruteables van primero.
+    ids = HTML.split("function pickerTileIds", 1)[1][:1400]
+    assert "const routed = rows.filter(r=>r.selectable)" in ids
+    assert "Object.keys(((PROVIDERS||{}).motors)||{})" in ids
+    assert "routed.concat(rest)" in ids

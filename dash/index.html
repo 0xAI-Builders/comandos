@@ -4800,8 +4800,16 @@ function mdStrip(s){ return (s||"").replace(/\*\*|`|^#{1,6} /g, ""); }
 	function pickerTileIds(item, mode){
 		  if(mode === "global") return ENGINE_IDS;
 		  const harness = (item && item.agent) || "claude";
-		  const motors = (((PROVIDERS||{}).matrix)||[]).filter(r=>r.harness===harness && r.selectable).map(r=>r.motor);
-		  if(motors.length) return motors;
+		  // TODAS las cards de proveedor, siempre: primero las que este CLI hospeda
+		  // (selectable), después el resto de motores conocidos. tileAction decide
+		  // por card si es cambio de motor, cambio de CLI o bloqueada. Antes se
+		  // filtraba por selectable y en un pane de Grok solo quedaba la card de Grok.
+		  const rows = (((PROVIDERS||{}).matrix)||[]).filter(r=>r.harness===harness);
+		  const routed = rows.filter(r=>r.selectable).map(r=>r.motor);
+		  const known = Object.keys(((PROVIDERS||{}).motors)||{}).filter(m => m !== "shell");
+		  const rest = rows.map(r=>r.motor).concat(known).filter(m => m && !routed.includes(m));
+		  const ids = routed.concat(rest).filter((m, i, a) => a.indexOf(m) === i);
+		  if(ids.length) return ids;
 		  return (item&&["grok","codex","opencode","agy"].includes(item.agent)?[item.agent]:ENGINE_IDS);
 		}
 		function tileAction(item, prov){
