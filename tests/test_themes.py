@@ -23,7 +23,7 @@ ANSI_KEYS = [
     "brightBlack", "brightRed", "brightGreen", "brightYellow", "brightBlue",
     "brightMagenta", "brightCyan", "brightWhite",
 ]
-THEME_IDS = {"noche", "dia", "calido", "termius", "bruno", "superglass", "neon", "contraste"}
+THEME_IDS = {"noche", "dia", "calido", "termius", "bruno", "superglass", "neon", "contraste", "ubuntu"}
 BRUNO_DASHBOARD_DECLARATIONS = {
     "--bg": "#1A1A1A", "--panel": "#222224", "--panel2": "#26292B",
     "--line": "#333333", "--line2": "#444444", "--text": "#CCCCCC",
@@ -153,12 +153,12 @@ def backend_theme_whitelist():
 
 
 def native_theme_namespace():
-    names = {"PALETTE", "PAL_DIA", "PAL_CALIDO", "PAL_BRUNO", "THEMES"}
+    names = {"PALETTE", "PAL_DIA", "PAL_CALIDO", "PAL_BRUNO", "PAL_UBUNTU", "THEMES"}
     return exec_python_assignments(APP, names)
 
 
 def native_apply_namespace():
-    assignments = {"PALETTE", "PAL_DIA", "PAL_CALIDO", "PAL_BRUNO", "THEMES", "APP_CSS"}
+    assignments = {"PALETTE", "PAL_DIA", "PAL_CALIDO", "PAL_BRUNO", "PAL_UBUNTU", "THEMES", "APP_CSS"}
     functions = {"theme_css", "_build_hb_css", "apply_theme", "_apply_tmux_theme"}
     selected = []
     for node in ast.parse(APP).body:
@@ -176,7 +176,7 @@ def native_apply_namespace():
 
 def test_canonical_theme_contrast_and_day_surface_separation():
     canonical = json.loads((ROOT / "config" / "themes.json").read_text())
-    assert canonical["order"] == ["noche", "dia", "calido", "termius", "bruno", "superglass", "neon", "contraste"]
+    assert canonical["order"] == ["noche", "dia", "calido", "termius", "bruno", "superglass", "neon", "contraste", "ubuntu"]
 
     def luminance(value):
         channels = [int(value[index:index + 2], 16) / 255 for index in (1, 3, 5)]
@@ -204,7 +204,7 @@ def test_every_theme_registry_accepts_exactly_the_approved_ids():
 
     assert set(term_themes) == THEME_IDS
     assert set(native_themes) == THEME_IDS
-    assert dashboard_sequence == ["noche", "dia", "calido", "termius", "bruno", "superglass", "neon", "contraste"]
+    assert dashboard_sequence == ["noche", "dia", "calido", "termius", "bruno", "superglass", "neon", "contraste", "ubuntu"]
     assert backend_theme_whitelist() == THEME_IDS
 
 

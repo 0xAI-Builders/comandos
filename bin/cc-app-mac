@@ -107,7 +107,7 @@ DOT_COLORS = {"waiting": "#FFAE1A", "working": "#7AA5FF",
               "done": "#2EE59D", "dead": "#FF6B6B"}
 DOT_IDLE = "#39445C"
 DEFAULT_THEME = "noche"
-VALID_THEMES = ("noche", "dia", "calido", "termius", "bruno", "superglass", "neon", "contraste")
+VALID_THEMES = ("noche", "dia", "calido", "termius", "bruno", "superglass", "neon", "contraste", "ubuntu")
 
 HUB_KEY = "__hub__"   # clave interna de la pestana hub (no persiste como sesion)
 TAB_STRIP_H = 30.0

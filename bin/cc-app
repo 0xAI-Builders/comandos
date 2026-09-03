@@ -112,6 +112,11 @@ PAL_BRUNO = [
     "#7DDFF2", "#CCCCCC", "#666666", "#F38172", "#73E89A", "#FAD075",
     "#8BC2F9", "#D691ED", "#7DDFF2", "#FFFFFF",
 ]
+PAL_UBUNTU = [  # Ptyxis "Ubuntu" (Tango): la terminal por defecto de Ubuntu 25.10+
+    "#2E3436", "#CC0000", "#4E9A06", "#C4A000", "#3465A4", "#75507B",
+    "#06989A", "#D3D7CF", "#555753", "#EF2929", "#8AE234", "#FCE94F",
+    "#729FCF", "#AD7FA8", "#34E2E2", "#EEEEEC",
+]
 THEMES = {
     "noche": dict(fg="#EAF0FB", bg="#0A0D13", cursor="#FFAE1A", pal=PALETTE,
                   bar="#0D1119", dim="#9AA6BF", text="#EAF0FB", brand="#8B7CFF",
@@ -139,6 +144,10 @@ THEMES = {
     "contraste": dict(fg="#FFFFFF", bg="#000000", cursor="#59B0FF", pal=PALETTE,
                       bar="#000000", dim="#E0E0E0", text="#FFFFFF", brand="#59B0FF",
                       line="#8A8A8A", line2="#FFFFFF", faint="#B8B8B8"),
+    # Ubuntu Terminal: berenjena de Ptyxis + Tango + naranja Ubuntu como marca.
+    "ubuntu": dict(fg="#FFFFFF", bg="#300A24", cursor="#FFFFFF", pal=PAL_UBUNTU,
+                   bar="#2C0A22", dim="#E8DCE4", text="#FFFFFF", brand="#E95420",
+                   line="#5C2A4F", line2="#7A4069", faint="#BBA5B5"),
 }
 FONT_FAMILY = "JetBrainsMono Nerd Font Mono,JetBrainsMono Nerd Font,JetBrainsMono NF,JetBrains Mono,Cascadia Code,Fira Code,DejaVu Sans Mono,Monospace"
 FONT_SIZE = 13

@@ -5486,6 +5486,56 @@ PREFS_DEFAULTS = {
 _CURSOR_SHAPES = ("block", "ibeam", "underline")
 
 
+# Fonts de terminal: solo se ofrecen las INSTALADAS (fc-list). Una opción
+# que no existe en la máquina cae en silencio a otra fuente y parece que el
+# selector "no sirve". a11y=True marca las diseñadas para legibilidad.
+FONT_CATALOG = [
+    ("JetBrainsMono Nerd Font Mono", "JetBrains Mono · con iconos (bundle)", False),
+    ("Ubuntu Sans Mono", "Ubuntu Sans Mono · la nueva de Ubuntu", False),
+    ("Atkinson Hyperlegible Mono", "Atkinson Hyperlegible Mono", True),
+    ("Intel One Mono", "Intel One Mono", True),
+    ("JetBrains Mono", "JetBrains Mono", False),
+    ("Monaspace Neon Var", "Monaspace Neon", False),
+    ("Monaspace Argon Var", "Monaspace Argon", False),
+    ("Geist Mono", "Geist Mono", False),
+    ("Cascadia Code", "Cascadia Code", False),
+    ("Fira Code", "Fira Code", False),
+    ("Ubuntu Mono", "Ubuntu Mono · clásica 2011", False),
+    ("Iosevka", "Iosevka", False),
+    ("Hack", "Hack", False),
+    ("Source Code Pro", "Source Code Pro", False),
+    ("DejaVu Sans Mono", "DejaVu Sans Mono", False),
+]
+_FONT_CACHE = {"at": 0.0, "fams": None}
+
+
+def _installed_font_families():
+    now = time.time()
+    if _FONT_CACHE["fams"] is not None and now - _FONT_CACHE["at"] < 60:
+        return _FONT_CACHE["fams"]
+    fams = set()
+    try:
+        out = subprocess.run(["fc-list", ":", "family"], capture_output=True, text=True, timeout=5).stdout
+        for line in out.splitlines():
+            for fam in line.split(","):
+                fam = fam.strip()
+                if fam:
+                    fams.add(fam)
+    except Exception:
+        pass
+    _FONT_CACHE.update(at=now, fams=fams)
+    return fams
+
+
+def installed_terminal_fonts():
+    """Lista para el selector: catálogo filtrado por lo instalado + 'Monospace'
+    del sistema al final. Cada entrada: family, label, a11y."""
+    fams = _installed_font_families()
+    rows = [{"family": f, "label": l, "a11y": a} for f, l, a in FONT_CATALOG if f in fams]
+    rows.append({"family": "Monospace", "label": "Monospace del sistema", "a11y": False})
+    return rows
+
+
 def read_prefs():
     try:
         with open(PREFS_PATH) as f:
@@ -6074,7 +6124,9 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             out["_lang"] = ui_lang(conf)   # idioma RESUELTO para las UIs
             return self._json(200, out)
         if self.path.startswith("/prefs"):
-            return self._json(200, read_prefs())
+            prefs = dict(read_prefs())
+            prefs["fonts"] = installed_terminal_fonts()
+            return self._json(200, prefs)
         if self.path == "/tmux-mouse" or self.path.startswith("/tmux-mouse?"):
             query = urllib.parse.parse_qs(urllib.parse.urlsplit(self.path).query)
             sess = (query.get("session") or [""])[0]
@@ -6358,7 +6410,7 @@ class Handler(http.server.SimpleHTTPRequestHandler):
                                      if isinstance(v, (int, float))}
             if "favorites" in data and isinstance(data["favorites"], list):
                 prefs["favorites"] = [str(x)[:80] for x in data["favorites"]][:200]
-            if data.get("theme") in ("noche", "dia", "calido", "termius", "bruno", "superglass", "neon", "contraste"):
+            if data.get("theme") in ("noche", "dia", "calido", "termius", "bruno", "superglass", "neon", "contraste", "ubuntu"):
                 prefs["theme"] = data["theme"]
             # Tipografía y estilo de terminal — cada campo se valida por su tipo.
             if isinstance(data.get("font_family"), str):

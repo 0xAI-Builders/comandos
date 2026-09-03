@@ -100,3 +100,15 @@ if __name__ == "__main__":
             fn()
             print(f"ok  {name}")
     print("terminal prefs tests pass")
+
+
+def test_font_selector_only_offers_installed_fonts_with_a11y_flag():
+    # cc-dash consulta fc-list y expone p.fonts; el dashboard construye las
+    # <option> desde ahí (nada de fonts fantasma que no hacen nada al elegirlas).
+    assert "def installed_terminal_fonts" in CC_DASH
+    assert '["fc-list", ":", "family"]' in CC_DASH
+    assert 'prefs["fonts"] = installed_terminal_fonts()' in CC_DASH
+    assert '("Atkinson Hyperlegible Mono", "Atkinson Hyperlegible Mono", True)' in CC_DASH
+    assert '("Ubuntu Sans Mono",' in CC_DASH
+    assert "Array.isArray(p.fonts)" in INDEX
+    assert 'tf("accesible", "accessible")' in INDEX

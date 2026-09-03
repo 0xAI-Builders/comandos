@@ -11,16 +11,18 @@ seleccionable, tipografía monoespaciada consistente, íconos monolínea.
 
 ## 1. Paleta
 
-Ocho temas simultáneos viven en `config/themes.json`, la fuente canónica de
+Nueve temas simultáneos viven en `config/themes.json`, la fuente canónica de
 metadata, superficies y estados. **Noche Órbita**, **Día Mineral**, **Cálido
 Ámbar**, **Termius** y **Bruno Grafito** preservan las identidades sólidas;
 **Super Glass** añade aurora y blur limitado al chrome; **Neón** usa carbono,
-cyan y magenta; **Contraste** elimina blur/sombras y refuerza límites. La
+cyan y magenta; **Contraste** elimina blur/sombras y refuerza límites; **Ubuntu Terminal**
+reproduce la terminal por defecto de Ubuntu (Ptyxis): fondo berenjena `#300A24`,
+ANSI Tango y naranja Ubuntu `#E95420` como marca, texto sobre marca oscuro. La
 selección se hace en Ajustes → Apariencia mediante radio-cards accesibles.
 Dashboard, xterm, GTK/VTE, macOS, tmux y popups deben proyectar el mismo contrato.
 
 IDs estables: `noche`, `dia`, `calido`, `termius`, `bruno`, `superglass`,
-`neon`, `contraste`.
+`neon`, `contraste`, `ubuntu`.
 
 Los roles obligatorios son `bg`, `panel`, `panel2`, `line`, `line2`, `text`,
 `dim`, `faint`, `brand`, `onBrand`, `waiting`, `working`, `done`, `err`, `warn`,

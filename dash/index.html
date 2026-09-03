@@ -69,6 +69,12 @@
     --waiting:#FFD43B;--done:#5CFF9A;--working:#79B8FF;--err:#FF7B85;--warn:#FFD43B;--ok:#5CFF9A;
     --glow:#000000;--code:#8CC8FF;--shadow:rgba(0,0,0,0);
   }
+  :root[data-theme="ubuntu"]{
+    --bg:#300A24;--panel:#3C1531;--panel2:#48193C;--line:#5C2A4F;--line2:#7A4069;
+    --text:#FFFFFF;--dim:#E8DCE4;--faint:#BBA5B5;--brand:#E95420;--on-brand:#1E0D08;
+    --waiting:#FCE94F;--done:#8AE234;--working:#729FCF;--err:#EF2929;--warn:#FCE94F;--ok:#8AE234;
+    --glow:#4A1240;--code:#34E2E2;--shadow:rgba(0,0,0,.45);
+  }
   *{box-sizing:border-box;margin:0;padding:0}
   html,body{height:100%}
   /* La pagina NO scrollea: scrollea #content. Asi las barras de arriba quedan
@@ -7265,7 +7271,7 @@ const tooltipObserver=new MutationObserver(records=>records.forEach(record=>reco
 document.addEventListener("DOMContentLoaded",()=>tooltipObserver.observe(document.body,{childList:true,subtree:true}));
 
 // ---------- tema ----------
-const THEME_SEQ = ["noche", "dia", "calido", "termius", "bruno", "superglass", "neon", "contraste"];
+const THEME_SEQ = ["noche", "dia", "calido", "termius", "bruno", "superglass", "neon", "contraste", "ubuntu"];
 const THEME_META = {
   noche:{icon:"moon",label:"Noche Órbita",desc:"navy profundo · foco",treatment:"solid",scheme:"dark",sw:["#0A0D13","#121722","#8B7CFF"]},
   dia:{icon:"sun",label:"Día Mineral",desc:"slate descansado · contraste",treatment:"solid",scheme:"light",sw:["#BCC7D4","#F1F4F7","#1D55C7"]},
@@ -7274,7 +7280,8 @@ const THEME_META = {
   bruno:{icon:"zap",label:"Bruno Grafito",desc:"carbón · oro",treatment:"solid",scheme:"dark",sw:["#1A1A1A","#26292B","#E4AE49"]},
   superglass:{icon:"sparkles",label:"Super Glass",desc:"aurora · chrome esmerilado",treatment:"glass",scheme:"dark",sw:["#080B19","#202749","#72E6FF"]},
   neon:{icon:"zap",label:"Neón",desc:"carbono · cyan · magenta",treatment:"neon",scheme:"dark",sw:["#07080D","#181B27","#28E7F2"]},
-  contraste:{icon:"layers",label:"Contraste",desc:"límites fuertes · cero blur",treatment:"contrast",scheme:"dark",sw:["#000000","#171717","#59B0FF"]}
+  contraste:{icon:"layers",label:"Contraste",desc:"límites fuertes · cero blur",treatment:"contrast",scheme:"dark",sw:["#000000","#171717","#59B0FF"]},
+  ubuntu:{icon:"layers",label:"Ubuntu Terminal",desc:"berenjena Ptyxis · Tango · naranja",treatment:"solid",scheme:"dark",sw:["#300A24","#48193C","#E95420"]}
 };
 let curTheme = "noche";
 function broadcastTermTheme(name){
@@ -7352,7 +7359,18 @@ async function loadPrefs(){
 
 // ---------- prefs de terminal (fuente/cursor/padding/opacity/ligas) ----------
 function hydrateTerminalPrefs(p){
-  const ff = $("#pf-font-family"); if(ff) ff.value = p.font_family || "JetBrainsMono Nerd Font Mono";
+  const ff = $("#pf-font-family");
+  if(ff){
+    const cur = p.font_family || "JetBrainsMono Nerd Font Mono";
+    if(Array.isArray(p.fonts) && p.fonts.length){
+      // Solo fonts INSTALADAS (cc-dash las lee con fc-list). Cada option se
+      // pinta con su propia fuente para que el menú sea la vista previa.
+      const rows = p.fonts.slice();
+      if(!rows.some(f => f.family === cur)) rows.unshift({family: cur, label: cur + " · " + tf("no instalada", "not installed"), a11y: false});
+      ff.innerHTML = rows.map(f => `<option value="${attrEsc(f.family)}" style="font-family:'${attrEsc(f.family)}',monospace">${mdEsc(f.label || f.family)}${f.a11y ? " · " + tf("accesible", "accessible") : ""}</option>`).join("");
+    }
+    ff.value = cur;
+  }
   const fs = $("#pf-font-size"), fsv = $("#pf-font-size-v");
   if(fs){ fs.value = p.font_size || 13; if(fsv) fsv.textContent = fs.value; }
   const pd = $("#pf-padding"), pdv = $("#pf-padding-v");
@@ -7443,7 +7461,7 @@ function updateFontPreview(){
   const size = $("#pf-font-size")?.value || 13;
   const p = $("#font-preview");
   if(p){
-    p.style.fontFamily = `"${fam}", "JetBrains Mono", monospace`;
+    p.style.fontFamily = `"${fam}", monospace`;
     p.style.fontSize = size + "px";
   }
 }
