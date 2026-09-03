@@ -101,5 +101,57 @@ def test_acp_pane_launch_command_carries_motor_model_effort_account_and_danger()
     assert dash._acp_launch_cmd("claude", "claude-fable-5[1m]", "", "relotto", danger=True, resume="abc-1") == \
         "cc-acp --agent claude --model 'claude-fable-5[1m]' --account relotto --resume abc-1 --danger"
     # opencode/agy nativos tambien salen de _harness_launch_cmd (sin prefijo de cuenta)
-    assert dash._harness_launch_cmd("agy", "gemini-3.8-flash-low", "low", "main") == "agy --model gemini-3.8-flash-low --effort low"
-    assert dash._harness_launch_cmd("opencode", "opencode/big-pickle", "", "main") == "opencode --model opencode/big-pickle"
+    agy_cmd = dash._harness_launch_cmd("agy", "gemini-3.8-flash-low", "low", "main")
+    assert "agy" in agy_cmd and "gemini-3.8-flash-low" in agy_cmd and "--effort low" in agy_cmd
+    oc_cmd = dash._harness_launch_cmd("opencode", "opencode/big-pickle", "", "main")
+    assert "opencode" in oc_cmd and "opencode/big-pickle" in oc_cmd
+
+
+def test_harness_switch_to_opencode_or_agy_drops_foreign_model_and_uses_absolute_binary():
+    """Al saltar de Claude → OpenCode/AGY el pane manda el modelo de Claude
+    (claude-fable-5). OpenCode exige provider/model y aborta con
+    'Invalid model format'. Además tmux no tiene ~/.opencode/bin en PATH."""
+    dash = load_dash_module()
+    oc = dash._harness_launch_cmd("opencode", "claude-fable-5", "high", "main")
+    assert "claude-fable-5" not in oc
+    assert "opencode/" in oc or oc.rstrip().endswith("opencode") or "/opencode" in oc
+    assert oc.strip().startswith("/") or oc.split()[0].startswith("/")
+    agy = dash._harness_launch_cmd("agy", "claude-fable-5", "high", "main")
+    assert "claude-fable-5" not in agy
+    assert "--effort high" not in agy  # effort de Claude no es del catalogo agy si el modelo se descarto
+    assert agy.strip().startswith("/") or agy.split()[0].startswith("/")
+
+
+def test_acp_is_a_first_class_detected_agent(monkeypatch):
+    """Sin 'acp' en DEFAULT_AGENTS, agent_info_for_pane nunca ve cc-acp:
+    /harness/switch a ACP queda en 'no arrancó' y no se puede salir de ACP.
+    Un AGENTS= custom tampoco puede dejarlo fuera: el registro manda."""
+    dash = load_dash_module()
+    monkeypatch.setattr(dash, "read_conf", lambda: {"AGENTS": "claude"})
+    assert "acp" in dash.DEFAULT_AGENTS.split()
+    assert "acp" in dash.agent_set()
+    aliases = dash.agent_process_aliases()
+    assert aliases["cc-acp"] == "acp"
+    assert aliases["acp"] == "acp"
+
+
+def test_agy_and_opencode_are_first_class_detected_agents(monkeypatch):
+    dash = load_dash_module()
+    monkeypatch.setattr(dash, "read_conf", lambda: {"AGENTS": "claude"})
+    aliases = dash.agent_process_aliases()
+    assert "agy" in dash.agent_set()
+    assert "opencode" in dash.agent_set()
+    assert aliases["agy"] == "agy"
+    assert aliases["opencode"] == "opencode"
+
+
+def test_harness_switch_exits_acp_with_slash_exit_and_records_motor():
+    source = Path("bin/cc-dash").read_text()
+    # /exit sale limpio de cc-acp (C-c cancela el turno, no cierra el pane)
+    assert 'from_harness in ("claude", "acp")' in source or \
+           'from_harness in {"claude", "acp"}' in source
+    # al aterrizar en ACP el motor es el cerebro (claude/codex/…), no "acp"
+    assert "harness-handoff" in source
+    assert "dest_motor" in source
+    assert 'record_runtime_config(sess, pane, to, dest_motor' in source or \
+           'record_runtime_config(sess, pane, to, payload.get("motor")' in source

@@ -362,6 +362,55 @@ def test_record_local_codex_threads_imports_sqlite_tokens():
     assert state["projects"][0]["panes"][0]["confidence"] == "shared"
 
 
+def test_parse_groq_ratelimit_headers_reads_remaining_limit_and_reset():
+    # Groq no tiene OAuth de uso: el % sale de x-ratelimit-* de la última
+    # respuesta HTTP. remaining/limit → percent usado; reset-requests es epoch.
+    rows = cc_usage.parse_groq_ratelimit_headers({
+        "x-ratelimit-limit-requests": "14400",
+        "x-ratelimit-remaining-requests": "12960",
+        "x-ratelimit-reset-requests": "1788003600",
+        "x-ratelimit-limit-tokens": "250000",
+        "x-ratelimit-remaining-tokens": "187500",
+        "x-ratelimit-reset-tokens": "1788000060",
+    }, now=1_788_000_000)
+    by_id = {r["id"]: r for r in rows}
+    assert by_id["groq_requests"]["percent"] == 10.0
+    assert by_id["groq_requests"]["resets_at"] == 1_788_003_600
+    assert by_id["groq_requests"]["provider"] == "groq"
+    assert by_id["groq_requests"]["confidence"] == "exact"
+    assert by_id["groq_tokens"]["percent"] == 25.0
+    assert by_id["groq_tokens"]["window"] == "tpm"
+
+
+def test_record_local_opencode_db_tags_groq_provider_from_provider_id():
+    with tempfile.TemporaryDirectory() as d:
+        db = os.path.join(d, "usage.sqlite")
+        oc = os.path.join(d, "opencode.db")
+        con = sqlite3.connect(oc)
+        con.executescript("""
+            create table session (id text primary key, directory text);
+            create table message (id text primary key, session_id text,
+                                  time_created integer, data text);
+        """)
+        now = 1_788_000_000
+        con.execute("insert into session values ('ses_g', '/repo')")
+        con.execute("insert into message values ('msg_g', 'ses_g', ?, ?)", (
+            now * 1000,
+            json.dumps({"role": "assistant", "modelID": "llama-3.3-70b-versatile",
+                        "providerID": "groq", "cost": 0.01,
+                        "tokens": {"input": 100, "output": 20, "reasoning": 0,
+                                   "cache": {"read": 0, "write": 0}}}),
+        ))
+        con.commit()
+        con.close()
+        count = cc_usage.record_local_opencode_db(db, oc, now=now)
+        m = cc_usage.groq_measured_usage(db, now=now)
+    assert count == 1
+    assert m["tokens_today"] == 120
+    assert m["turns_today"] == 1
+    assert m["tokens_7d"] == 120
+
+
 def test_record_local_opencode_db_imports_assistant_tokens():
     with tempfile.TemporaryDirectory() as d:
         db = os.path.join(d, "usage.sqlite")

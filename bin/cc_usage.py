@@ -1183,6 +1183,71 @@ def fetch_claude_oauth_limits(creds_path=None, now=None, http=None):
         return [], health
 
 
+def parse_groq_ratelimit_headers(headers, now=None):
+    """Groq no tiene OAuth de uso: el % sale de x-ratelimit-* de la última
+    respuesta HTTP (remaining/limit). reset puede ser epoch o duración (7s)."""
+    ts = int(now if now is not None else time.time())
+    raw = {str(k).lower(): str(v) for k, v in (headers or {}).items()}
+
+    def _reset_at(value):
+        text = str(value or "").strip()
+        if not text:
+            return 0
+        try:
+            number = float(text)
+            if number >= ts - 86400:
+                return int(number)
+            if 0 < number < 86400:
+                return ts + int(number)
+        except ValueError:
+            pass
+        total, num = 0.0, ""
+        for ch in text.lower():
+            if ch.isdigit() or ch == ".":
+                num += ch
+                continue
+            if not num:
+                continue
+            amount = float(num)
+            num = ""
+            if ch == "h":
+                total += amount * 3600
+            elif ch == "m":
+                total += amount * 60
+            elif ch == "s":
+                total += amount
+        return ts + int(total) if total else 0
+
+    rows = []
+    windows = (
+        ("requests", "groq_requests", "Requests", "rpm"),
+        ("tokens", "groq_tokens", "Tokens", "tpm"),
+    )
+    for kind, lid, label, window in windows:
+        limit = _as_float(raw.get(f"x-ratelimit-limit-{kind}"))
+        remaining = raw.get(f"x-ratelimit-remaining-{kind}")
+        if limit <= 0 or remaining in (None, ""):
+            continue
+        left = _as_float(remaining)
+        used = max(0.0, limit - left)
+        rows.append({
+            "id": lid,
+            "provider": "groq",
+            "kind": "window",
+            "label": label,
+            "scope": "",
+            "percent": round(used / limit * 100, 1),
+            "resets_at": _reset_at(raw.get(f"x-ratelimit-reset-{kind}")),
+            "severity": "normal",
+            "is_active": True,
+            "window": window,
+            "source": "headers",
+            "confidence": "exact",
+            "captured_at": ts,
+        })
+    return rows
+
+
 def _codex_window_label(minutes, default):
     if minutes == 300:
         return "Sesion 5h"
@@ -1525,9 +1590,10 @@ def record_local_opencode_db(db_path, oc_db=None, now=None, max_age_days=14):
             roots[cwd] = git_root_for_path(cwd)
         provider_id = _text(msg.get("providerID"))
         model_id = _text(msg.get("modelID"))
+        bucket = "groq" if provider_id == "groq" else "opencode"
         events.append({
             "id": "opencode-db-" + _text(mid),
-            "provider": "opencode",
+            "provider": bucket,
             "agent": "opencode",
             "tmux_session": _text(session_id),
             "tmux_pane": "",
@@ -1821,8 +1887,8 @@ def _iso_epoch(value):
         return 0
 
 
-def grok_measured_usage(db_path, now=None):
-    """Consumo Grok medido de turnos locales; xAI no expone limites por API."""
+def _measured_usage(db_path, provider, now=None):
+    """Consumo medido de turnos locales para un provider sin API de limites."""
     import datetime
     ts = int(now if now is not None else time.time())
     day_start = int(datetime.datetime.fromtimestamp(ts)
@@ -1832,26 +1898,35 @@ def grok_measured_usage(db_path, now=None):
         def agg(since):
             row = con.execute(
                 "SELECT COUNT(*), COALESCE(SUM(total_tokens),0), MAX(turn_finished_at)"
-                " FROM usage_turns WHERE provider='grok' AND turn_finished_at >= ?",
-                (since,)).fetchone()
+                " FROM usage_turns WHERE provider=? AND turn_finished_at >= ?",
+                (provider, since)).fetchone()
             return {"turns": int(row[0] or 0), "tokens": int(row[1] or 0),
                     "last_at": int(row[2] or 0)}
         today = agg(day_start)
         week = agg(ts - 7 * 86400)
-        # Serie diaria (14d) para que la UI dibuje la curva de consumo real
         daily = []
         for d in range(13, -1, -1):
             start = day_start - d * 86400
             row = con.execute(
                 "SELECT COALESCE(SUM(total_tokens),0) FROM usage_turns"
-                " WHERE provider='grok' AND turn_finished_at >= ? AND turn_finished_at < ?",
-                (start, start + 86400)).fetchone()
+                " WHERE provider=? AND turn_finished_at >= ? AND turn_finished_at < ?",
+                (provider, start, start + 86400)).fetchone()
             daily.append({"day": start, "tokens": int(row[0] or 0)})
     if not week["turns"]:
         return None
     return {"tokens_today": today["tokens"], "turns_today": today["turns"],
             "tokens_7d": week["tokens"], "turns_7d": week["turns"],
             "last_at": week["last_at"], "daily": daily}
+
+
+def grok_measured_usage(db_path, now=None):
+    """Consumo Grok medido de turnos locales; xAI no expone limites por API."""
+    return _measured_usage(db_path, "grok", now)
+
+
+def groq_measured_usage(db_path, now=None):
+    """Consumo Groq medido (turnos OpenCode con providerID=groq)."""
+    return _measured_usage(db_path, "groq", now)
 
 
 def record_local_claude_jsonl(db_path, projects_root=None, now=None, max_age_days=14, max_files=400):

@@ -506,7 +506,7 @@ def set_user_sub(provider, monthly, currency, display=None):
 
 
 def set_user_quota(provider, tokens_7d):
-    if provider not in ("grok",):
+    if provider not in ("grok", "groq"):
         raise ValueError("provider sin cuota configurable")
     tokens = max(0, int(tokens_7d or 0))
     with _quotas_lock:
@@ -747,14 +747,66 @@ def _refresh_provider_limits():
                 "daily": gm.get("daily") or [], "quota_7d": quota or None,
                 "note": note,
             })
-        _check_limit_alerts(claude_rows + codex_rows)
+        groq_rows = _groq_limit_rows()
+        _check_limit_alerts(claude_rows + codex_rows + [r for r in groq_rows if r.get("percent") is not None])
         with _limits_lock:
             _limits_cache["at"] = int(time.time())
-            _limits_cache["limits"] = claude_rows + codex_rows + grok_rows
+            _limits_cache["limits"] = claude_rows + codex_rows + grok_rows + groq_rows
             _limits_cache["health"] = healths
     finally:
         with _limits_lock:
             _limits_refreshing = False
+
+
+GROQ_RATELIMIT_FILE = os.path.join(HOOKS, "groq-ratelimit.json")
+
+
+def read_groq_rate_limits():
+    """Últimos x-ratelimit-* de Groq (si OpenCode/un probe los guardó). Sin
+    inventar cuota: si no hay archivo, la card es consumo medido local."""
+    try:
+        with open(GROQ_RATELIMIT_FILE) as fh:
+            data = json.load(fh)
+        headers = data.get("headers") if isinstance(data, dict) else None
+        captured = int(data.get("at") or 0) if isinstance(data, dict) else 0
+        if not isinstance(headers, dict):
+            return []
+        rows = cc_usage.parse_groq_ratelimit_headers(headers, now=captured or None)
+        for row in rows:
+            row["account"] = "main"
+        return rows
+    except Exception:
+        return []
+
+
+def _groq_limit_rows():
+    rows = []
+    try:
+        gm = cc_usage.groq_measured_usage(USAGE_DB)
+    except Exception:
+        gm = None
+    headers = read_groq_rate_limits()
+    if not gm and not headers:
+        return rows
+    gm = gm or {"tokens_today": 0, "turns_today": 0, "tokens_7d": 0,
+                "turns_7d": 0, "daily": []}
+    quota = int((user_quotas().get("groq") or {}).get("tokens_7d") or 0)
+    if headers:
+        rows.extend(headers)
+    pct = round(gm["tokens_7d"] / quota * 100, 1) if quota > 0 else None
+    rows.append({
+        "id": "groq_measured", "provider": "groq",
+        "kind": "measured", "label": "Consumo medido", "scope": "",
+        "percent": pct, "resets_at": 0, "severity": "info", "is_active": True,
+        "window": "7d", "source": "local", "confidence": "measured",
+        "captured_at": int(time.time()), "account": "main",
+        "tokens_today": gm["tokens_today"], "turns_today": gm["turns_today"],
+        "tokens_7d": gm["tokens_7d"], "turns_7d": gm["turns_7d"],
+        "daily": gm.get("daily") or [], "quota_7d": quota or None,
+        "note": (" Groq x-ratelimit de la última respuesta" if headers else
+                 "sin API de cuota — declara un límite o pega headers x-ratelimit-*"),
+    })
+    return rows
 
 
 def usage_provider_limits(force=False):
@@ -1197,6 +1249,15 @@ def _restore_shell_tty(pane):
         subprocess.run(["stty", "sane", "-F", tty], capture_output=True, timeout=3)
 
 
+def _send_shell_line(pane, command):
+    """Teclea un comando de shell y Enter. NO usa paste-buffer -p: zsh imprime
+    ^[[200~ (bracketed paste) y el usuario no puede usar el CLI."""
+    r = tmux("send-keys", "-t", pane, "-l", "--", str(command or ""))
+    if r.returncode != 0:
+        raise RuntimeError(r.stderr.strip() or "tmux send-keys fallo")
+    tmux("send-keys", "-t", pane, "Enter")
+
+
 def _paste_shell_command(pane, command):
     error = snippet_paste_to_pane(pane, command, tmux_stdin)
     if error:
@@ -1237,7 +1298,7 @@ def _claude_restart_resume(pane, pid, cmd, after_cmds=(), queued=False, sess=Non
         time.sleep(0.4)
         try:
             _restore_shell_tty(pane)
-            _paste_shell_command(pane, cmd)
+            _send_shell_line(pane, cmd)
         except Exception as exc:
             if sess:
                 motor_result_set(sess, False, f"no se pudo relanzar Claude: {exc}")
@@ -1256,7 +1317,7 @@ def _claude_restart_resume(pane, pid, cmd, after_cmds=(), queued=False, sess=Non
         if after_cmds:
             time.sleep(0.8)
             for c in after_cmds:
-                _paste_shell_command(pane, c)
+                _send_shell_line(pane, c)
                 time.sleep(0.5)
         if config:
             record_runtime_config(config["session"], pane, config["harness"], config["motor"],
@@ -1282,7 +1343,7 @@ def resume_restart_payload(payload):
     # The old CLI may already have exited before cc-dash restarted.
     try:
         _restore_shell_tty(payload["pane"])
-        _paste_shell_command(payload["pane"], payload["restart_cmd"])
+        _send_shell_line(payload["pane"], payload["restart_cmd"])
     except Exception as exc:
         motor_result_set(payload["key"], False, f"no se pudo recuperar el resume: {exc}")
         return
@@ -1313,11 +1374,68 @@ def resume_restart_payload(payload):
 # salir del CLI actual, lanzar el nuevo en el MISMO pane e inyectarle ese contexto.
 
 HANDOFF_FILE = ".comandos-handoff.md"
+ACP_PANES_FILE = os.path.expanduser("~/.claude/hooks/acp-panes.json")
+PANE_RESUME_FILE = os.path.join(HOOKS, "pane-resume.json")
+_pane_resume_lock = threading.Lock()
 
 
-def capture_handoff(pane, from_harness, to_harness, cwd):
+def pane_resume_get(sess, pane, harness="claude"):
+    """sessionId guardado al salir de un CLI, para --resume al volver."""
+    try:
+        with open(PANE_RESUME_FILE) as fh:
+            data = json.load(fh) or {}
+        row = data.get(f"{sess}|{pane}") or data.get(sess) or {}
+        item = row.get(harness) if isinstance(row, dict) else None
+        if isinstance(item, dict):
+            return str(item.get("sid") or "")
+        return str(item or "")
+    except Exception:
+        return ""
+
+
+def pane_resume_set(sess, pane, harness, sid, account="main"):
+    if not sid:
+        return
+    key = f"{sess}|{pane}" if pane else sess
+    with _pane_resume_lock:
+        try:
+            with open(PANE_RESUME_FILE) as fh:
+                data = json.load(fh) or {}
+        except Exception:
+            data = {}
+        row = data.get(key) if isinstance(data.get(key), dict) else {}
+        row[str(harness)] = {"sid": str(sid), "account": str(account or "main"),
+                             "at": int(time.time())}
+        data[key] = row
+        tmp = PANE_RESUME_FILE + ".tmp"
+        os.makedirs(os.path.dirname(PANE_RESUME_FILE), exist_ok=True)
+        with open(tmp, "w") as fh:
+            json.dump(data, fh)
+        os.replace(tmp, PANE_RESUME_FILE)
+
+
+def acp_state_for_pane(pane):
+    """Estado que publica cc-acp (motor, modelo, cuenta, sessionId) por pane tmux."""
+    try:
+        with open(ACP_PANES_FILE) as f:
+            data = json.load(f) or {}
+        return data.get(str(pane or "")) or {}
+    except Exception:
+        return {}
+
+
+def harness_pane_busy(sess, pane, harness):
+    if harness in ("", "shell"):
+        return False
+    if harness == "claude":
+        return claude_pane_busy(pane)
+    return grok_pane_busy(sess, pane)
+
+
+def capture_handoff(pane, from_harness, to_harness, cwd, sid=""):
     """Texto de handoff efímero. Solo lo que YA se ve en el pane + estado git;
-    cero prompts/secretos/tool payloads."""
+    cero prompts/secretos/tool payloads. Si hay transcript de Claude, se apunta
+    al archivo (el contenido NO se copia: el sid sirve para --resume al volver)."""
     try:
         branch = subprocess.run(["git", "-C", cwd, "rev-parse", "--abbrev-ref", "HEAD"],
                                 capture_output=True, text=True, timeout=5).stdout.strip()
@@ -1340,19 +1458,76 @@ def capture_handoff(pane, from_harness, to_harness, cwd):
             continue
         keep.append(s)
     tail = "\n".join(keep[-45:])
+    transcript = ""
+    if sid:
+        path = _transcript_path(sid)
+        if path:
+            transcript = (f"\n## Transcript de {from_harness} (se conserva en disco)\n"
+                          f"Archivo: `{path}`\n"
+                          f"sessionId: `{sid}` — al VOLVER a {from_harness} ComandOS "
+                          f"lanza `--resume` con este id. La memoria interna del TUI "
+                          f"NO se copia a {to_harness}.\n")
     return (f"# Handoff de ComandOS — {from_harness} → {to_harness}\n\n"
             f"Vienes de una sesión de **{from_harness}** en `{cwd}`. Eres un CLI "
             f"distinto: NO tienes su memoria interna. Usa esto para continuar la MISMA tarea.\n\n"
             f"## Estado git (rama {branch or '?'})\n```\n{(st or '(sin cambios sin commitear)')}\n"
-            f"{diff}\n```\n\n"
+            f"{diff}\n```\n"
+            f"{transcript}\n"
             f"## Últimos pasos visibles de la sesión anterior\n```\n{tail}\n```\n\n"
             f"Continúa desde aquí. Revisa archivos y git si necesitas más contexto. "
             f"Cuando termines de leer, puedes borrar este archivo.\n")
 
 
-def _harness_launch_cmd(to_harness, model, effort, account):
+def _harness_bin(name):
+    """Ruta absoluta del CLI: tmux hereda un PATH corto (sin ~/.opencode/bin)."""
+    spec = (load_provider_registry().get("harnesses") or {}).get(name) or {}
+    binary = spec.get("binary") or name
+    return provider_registry.which(binary) or binary
+
+
+def _native_launch_model(harness, model, effort):
+    """Descarta modelo/esfuerzo que el CLI destino no entiende.
+
+    OpenCode aborta con 'Invalid model format' si le pasas claude-fable-5.
+    Un effort de Claude (xhigh) tampoco es válido en agy."""
+    model, effort = str(model or ""), str(effort or "")
+    try:
+        registry = load_provider_registry()
+    except Exception:
+        return model, effort
+    motor = (registry.get("motors") or {}).get(harness) or {}
+    models = [m for m in (motor.get("models") or []) if isinstance(m, dict) and m.get("id")]
+    ids = {m["id"] for m in models}
+    harness_models = [m for m in ((registry.get("harnesses") or {}).get(harness) or {}).get("models") or []
+                      if isinstance(m, dict) and m.get("id")]
+    ids.update(m["id"] for m in harness_models)
+    pat = str(motor.get("modelMatch") or "")
+    fits = False
+    if model:
+        if model in ids:
+            fits = True
+        elif pat:
+            try:
+                fits = bool(re.search(pat, model, re.I))
+            except re.error:
+                fits = False
+    if not fits:
+        return "", ""
+    spec = next((m for m in models + harness_models if m.get("id") == model), None)
+    allowed = list(spec.get("efforts") or []) if spec else []
+    if effort and allowed and effort not in allowed:
+        effort = str(spec.get("defaultEffort") or "")
+    if effort and spec is not None and not allowed:
+        effort = ""
+    return model, effort
+
+
+def _harness_launch_cmd(to_harness, model, effort, account, resume=""):
     """Comando de shell para lanzar `to_harness` con su cuenta/modelo/effort —
-    misma forma que /session-new."""
+    misma forma que /session-new. `resume` reanuda el transcript de Claude."""
+    model, effort = _native_launch_model(to_harness, model, effort)
+    binary = _harness_bin(to_harness)
+    quoted = shlex.quote(binary) if binary else to_harness
     try:
         env = account_registry.account_environment(load_provider_registry(), to_harness, account)
         prefix = " ".join(f"{k}={shlex.quote(v)}" for k, v in env.items())
@@ -1360,27 +1535,29 @@ def _harness_launch_cmd(to_harness, model, effort, account):
         prefix = ""
     prefix = (prefix + " ") if prefix else ""
     if to_harness == "claude":
-        cmd = prefix + "claude"
+        cmd = prefix + quoted
+        if resume:
+            cmd += " --resume " + shlex.quote(resume)
         if model:
             cmd += " --model " + shlex.quote(model)
         if effort:
             cmd += " --effort " + shlex.quote(effort)
     elif to_harness == "codex":
-        cmd = prefix + "codex"
+        cmd = prefix + quoted
         if model:
             cmd += " -m " + shlex.quote(model)
         if effort:
             cmd += " -c " + shlex.quote(f'model_reasoning_effort="{effort}"')
     elif to_harness == "grok":
-        cmd = prefix + "grok"
+        cmd = prefix + quoted
         if model:
             cmd += " --model " + shlex.quote(model)
         if effort:
             cmd += " --effort " + shlex.quote(effort)
     elif to_harness == "opencode":
-        cmd = "opencode" + (" --model " + shlex.quote(model) if model else "")
+        cmd = quoted + (" --model " + shlex.quote(model) if model else "")
     elif to_harness == "agy":
-        cmd = "agy" + (" --model " + shlex.quote(model) if model else "") + (" --effort " + shlex.quote(effort) if effort else "")
+        cmd = quoted + (" --model " + shlex.quote(model) if model else "") + (" --effort " + shlex.quote(effort) if effort else "")
     else:
         cmd = ""
     return cmd
@@ -1389,6 +1566,7 @@ def _harness_launch_cmd(to_harness, model, effort, account):
 def _acp_launch_cmd(motor, model, effort, account, danger=False, resume=""):
     """Comando del pane cliente ACP: `cc-acp --agent <motor> ...`. La cuenta
     es la del MOTOR (cc-acp resuelve el env de la suscripción por registro)."""
+    model, effort = _native_launch_model(str(motor or "claude"), model, effort)
     cmd = "cc-acp --agent " + shlex.quote(str(motor or "claude"))
     if model:
         cmd += " --model " + shlex.quote(model)
@@ -1406,9 +1584,15 @@ def _acp_launch_cmd(motor, model, effort, account, danger=False, resume=""):
 def _pane_exit_current(pane, pid, from_harness):
     """Sale del CLI actual y espera a que muera. /exit primero; si no, Ctrl-C
     doble; en última instancia SIGTERM al pid (nunca a ciegas por patrón)."""
+    if from_harness in ("", "shell"):
+        return True
+    tmux("send-keys", "-t", pane, "Escape")
+    time.sleep(0.12)
     tmux("send-keys", "-t", pane, "C-u")
     time.sleep(0.15)
-    if from_harness == "claude":
+    if from_harness in ("claude", "acp"):
+        tmux("send-keys", "-t", pane, "Escape")
+        time.sleep(0.1)
         tmux("send-keys", "-t", pane, "-l", "--", "/exit")
         tmux("send-keys", "-t", pane, "Enter")
     else:
@@ -1445,15 +1629,16 @@ def harness_switch_apply(payload):
     gen = payload["gen"]
 
     def _go():
+        from_shell = frm in ("", "shell")
         # 1) esperar idle (nunca cambiar a mitad de un tool call)
-        busy = claude_pane_busy(pane) if frm == "claude" else grok_pane_busy(sess, pane) if frm == "grok" else False
+        busy = False if from_shell else harness_pane_busy(sess, pane, frm)
         if busy and not payload.get("interrupt"):
             motor_stage(opkey, "esperando a que el harness actual quede libre", "wait_idle")
             for _ in range(1350):
                 time.sleep(2.0)
                 if not motor_gen_ok(opkey, gen):
                     return
-                b = claude_pane_busy(pane) if frm == "claude" else grok_pane_busy(sess, pane) if frm == "grok" else False
+                b = harness_pane_busy(sess, pane, frm)
                 if not b:
                     break
             else:
@@ -1461,27 +1646,46 @@ def harness_switch_apply(payload):
                 return
         if not motor_gen_ok(opkey, gen):
             return
-        # 2) capturar handoff ANTES de matar nada
-        motor_stage(opkey, "capturando el contexto para el handoff", "capture")
-        try:
-            hand = capture_handoff(pane, frm, to, cwd)
-            with open(os.path.join(cwd, HANDOFF_FILE), "w") as fh:
-                fh.write(hand)
-        except Exception as exc:
-            motor_result_set(opkey, False, f"no se pudo capturar el handoff: {exc}")
-            return
-        # 3) salir del CLI actual
-        motor_stage(opkey, f"cerrando {frm} (la conversación de {frm} se termina)", "exit_from")
-        if pid and not _pane_exit_current(pane, pid, frm):
-            motor_result_set(opkey, False, f"{frm} no cerró a tiempo; sigue vivo, nada se perdió")
-            return
-        time.sleep(0.6)
-        # 4) lanzar el nuevo harness
+        # 2) capturar handoff ANTES de matar nada (un pane shell no tiene
+        # conversación que transferir: arranca el CLI como el wizard +).
+        previous_sid = str(payload.get("previousSid") or "")
+        if frm == "claude" and not previous_sid:
+            try:
+                previous_sid = str((_claude_info_for(sess, pane) or {}).get("sid") or "")
+            except Exception:
+                previous_sid = ""
+        if previous_sid and frm == "claude":
+            pane_resume_set(sess, pane, "claude", previous_sid, payload.get("account", "main"))
+        if not from_shell:
+            motor_stage(opkey, "capturando el contexto para el handoff", "capture")
+            try:
+                hand = capture_handoff(pane, frm, to, cwd, sid=previous_sid)
+                with open(os.path.join(cwd, HANDOFF_FILE), "w") as fh:
+                    fh.write(hand)
+            except Exception as exc:
+                motor_result_set(opkey, False, f"no se pudo capturar el handoff: {exc}")
+                return
+            motor_stage(opkey, f"cerrando {frm} (la conversación de {frm} se termina)", "exit_from")
+            if pid and not _pane_exit_current(pane, pid, frm):
+                motor_result_set(opkey, False, f"{frm} no cerró a tiempo; sigue vivo, nada se perdió")
+                return
+            time.sleep(0.6)
+        # 4) lanzar el nuevo harness. Modelo/esfuerzo del ORIGEN (p.ej. claude-fable-5)
+        # no se reenvían: OpenCode aborta con "Invalid model format".
+        dest_motor = payload.get("motor") or to
+        dest_model, dest_effort = _native_launch_model(
+            dest_motor if to == "acp" else to,
+            payload.get("model", ""), payload.get("effort", ""))
+        resume_sid = ""
+        if to == "claude":
+            resume_sid = previous_sid or pane_resume_get(sess, pane, "claude")
         if to == "acp":
-            cmd = _acp_launch_cmd(payload.get("motor") or "claude", payload.get("model", ""), payload.get("effort", ""),
-                                  payload.get("account", "main"), danger=bool(payload.get("danger")))
+            cmd = _acp_launch_cmd(dest_motor, dest_model, dest_effort,
+                                  payload.get("account", "main"), danger=bool(payload.get("danger")),
+                                  resume=resume_sid if dest_motor == "claude" else "")
         else:
-            cmd = _harness_launch_cmd(to, payload.get("model", ""), payload.get("effort", ""), payload.get("account", "main"))
+            cmd = _harness_launch_cmd(to, dest_model, dest_effort, payload.get("account", "main"),
+                                      resume=resume_sid)
         if not cmd:
             motor_result_set(opkey, False, f"no sé lanzar el harness {to}")
             return
@@ -1493,7 +1697,7 @@ def harness_switch_apply(payload):
         for attempt in range(3):
             try:
                 _restore_shell_tty(pane)
-                _paste_shell_command(pane, cmd)
+                _send_shell_line(pane, cmd)
             except Exception as exc:
                 motor_result_set(opkey, False, f"no se pudo lanzar {to}: {exc}")
                 return
@@ -1519,28 +1723,26 @@ def harness_switch_apply(payload):
         if not live:
             motor_result_set(opkey, False, f"{to} no arrancó; el pane quedó en shell — reintenta")
             return
-        # 6) inyectar el handoff (Claude/Grok piden confirmar carpeta primero)
-        motor_stage(opkey, "inyectando el contexto en el nuevo harness", "inject")
-        time.sleep(1.5)
-        scroll = tmux("capture-pane", "-p", "-t", pane, "-S", "-40").stdout or ""
-        if re.search(r"trust this folder|confías en esta carpeta|Do you trust|trust the contents", scroll, re.I):
-            # Claude/Grok: la opción "No" está ARRIBA (default), hay que bajar a
-            # "Yes". Codex: "1. Yes, continue" está ARRIBA (default) — solo Enter.
-            if to != "codex":
-                tmux("send-keys", "-t", pane, "Down"); time.sleep(0.3)
-            tmux("send-keys", "-t", pane, "Enter"); time.sleep(2.0)
-        prompt = (f"Lee ./{HANDOFF_FILE} — es el contexto (objetivo, últimos pasos y git) "
-                  f"de lo que venía haciendo en {frm}. Continúa esa misma tarea desde ahí.")
-        try:
-            _paste_shell_command(pane, prompt)
-        except Exception:
-            pass
+        # 6) confirmar carpeta si el CLI lo pide. El handoff YA está en disco
+        # (.comandos-handoff.md): NO se pega como primer turno — eso hacía que
+        # Grok/ACP pidieran permisos y trabajaran solos.
+        if not from_shell:
+            motor_stage(opkey, "esperando el prompt del nuevo CLI", "inject")
+            time.sleep(1.2)
+            scroll = tmux("capture-pane", "-p", "-t", pane, "-S", "-40").stdout or ""
+            if re.search(r"trust this folder|confías en esta carpeta|Do you trust|trust the contents", scroll, re.I):
+                if to != "codex":
+                    tmux("send-keys", "-t", pane, "Down"); time.sleep(0.3)
+                tmux("send-keys", "-t", pane, "Enter"); time.sleep(1.0)
         # 7) registrar el nuevo estado y confirmar
-        record_runtime_config(sess, pane, to, to, payload.get("model", ""), payload.get("effort", ""),
+        dest_motor = payload.get("motor") or to
+        record_runtime_config(sess, pane, to, dest_motor, dest_model, dest_effort,
                               payload.get("account", "main"), payload.get("account", "main"),
-                              f"{to}:{to}", "harness-handoff")
+                              f"{to}:{dest_motor}", "harness-handoff")
         motor_result_set(opkey, True, f"handoff {frm} → {to} · contexto inyectado",
-                         harness=to, motor=to, model=payload.get("model", ""), effort=payload.get("effort", ""))
+                         harness=to, motor=dest_motor, model=dest_model, effort=dest_effort)
+        if dest_effort:
+            session_effort_set(opkey, dest_effort)
         motor_queue_pop(opkey, gen)
 
     threading.Thread(target=_go, daemon=True).start()
@@ -1729,9 +1931,231 @@ def grok_motor_apply(payload):
                                  confirmMs=int((time.time() - confirm_started) * 1000))
                 record_runtime_config(sess, pane, "grok", "grok", now.get("model", ""), now.get("effort", ""),
                                       payload.get("harness_account", "unknown"), payload.get("motor_account", payload.get("harness_account", "unknown")), payload.get("route_id", "grok:grok"), "switch-confirmed")
+                if now.get("effort"):
+                    session_effort_set(opkey, now.get("effort"))
                 return
         motor_result_set(opkey, False,
                          f"Grok no confirmo el cambio; sigue {current.get('model','?')} · {current.get('effort','?')}")
+    finally:
+        motor_queue_pop(opkey, gen)
+
+
+def _native_slash_motor_apply(payload, harness, slash_cmds):
+    """Cambio de modelo/esfuerzo en un CLI nativo (agy/opencode): espera idle,
+    teclea slash commands, registra el resultado. Sin fingir que es Claude."""
+    pane, sess = payload["pane"], payload["sess"]
+    opkey = payload.get("key") or f"{sess}|{pane}"
+    gen = payload["gen"]
+    model, effort = payload.get("model") or "", payload.get("effort") or ""
+    try:
+        if payload.get("interrupt") and harness_pane_busy(sess, pane, harness):
+            motor_stage(opkey, f"interrumpiendo el turno {harness} (Escape)")
+            tmux("send-keys", "-t", pane, "Escape")
+            time.sleep(1.0)
+        if harness_pane_busy(sess, pane, harness):
+            motor_stage(opkey, f"esperando a que {harness} quede libre", "wait_idle")
+        for _ in range(1350):
+            if not motor_gen_ok(opkey, gen):
+                return
+            if not harness_pane_busy(sess, pane, harness):
+                time.sleep(0.4)
+                if not harness_pane_busy(sess, pane, harness):
+                    break
+            time.sleep(2.0)
+        else:
+            motor_result_set(opkey, False, f"{harness} nunca quedó libre (45 min)")
+            return
+        info = agent_info_for_pane(pane)
+        if not info or info.get("agent") != harness:
+            motor_result_set(opkey, False, f"el pane ya no contiene {harness}")
+            return
+        for command in slash_cmds:
+            motor_stage(opkey, f"tecleando {command}", "apply")
+            err = _tmux_slash(pane, command)
+            if err:
+                motor_result_set(opkey, False, err)
+                return
+            time.sleep(0.6)
+        record_runtime_config(sess, pane, "agy" if harness == "agy" else harness,
+                              "agy" if harness == "agy" else harness, model, effort,
+                              payload.get("harness_account", "main"),
+                              payload.get("motor_account", "main"),
+                              payload.get("route_id", f"{harness}:{harness}"),
+                              "switch-confirmed")
+        if effort:
+            session_effort_set(opkey, effort)
+        motor_result_set(opkey, True, f"{harness} · {model} · {effort}".strip(" ·"),
+                         harness=harness, motor=harness, model=model, effort=effort)
+    finally:
+        motor_queue_pop(opkey, gen)
+
+
+def agy_motor_apply(payload):
+    model, effort = payload.get("model") or "", payload.get("effort") or ""
+    cmds = []
+    if model:
+        cmds.append("/model " + model)
+    if effort:
+        cmds.append("/effort " + effort)
+    if not cmds:
+        motor_result_set(payload.get("key") or payload["sess"], False, "modelo o esfuerzo requeridos")
+        return
+    _native_slash_motor_apply(payload, "agy", cmds)
+
+
+def opencode_motor_apply(payload):
+    """OpenCode busca por NOMBRE en /models; luego registra el modelo elegido."""
+    pane, sess = payload["pane"], payload["sess"]
+    opkey = payload.get("key") or f"{sess}|{pane}"
+    gen = payload["gen"]
+    model = payload.get("model") or ""
+    query = payload.get("query") or ""
+    try:
+        if payload.get("interrupt") and harness_pane_busy(sess, pane, "opencode"):
+            motor_stage(opkey, "interrumpiendo OpenCode (Escape)")
+            tmux("send-keys", "-t", pane, "Escape")
+            time.sleep(0.8)
+        if harness_pane_busy(sess, pane, "opencode"):
+            motor_stage(opkey, "esperando a que OpenCode quede libre", "wait_idle")
+        for _ in range(1350):
+            if not motor_gen_ok(opkey, gen):
+                return
+            if not harness_pane_busy(sess, pane, "opencode"):
+                time.sleep(0.4)
+                if not harness_pane_busy(sess, pane, "opencode"):
+                    break
+            time.sleep(2.0)
+        else:
+            motor_result_set(opkey, False, "OpenCode nunca quedó libre (45 min)")
+            return
+        info = agent_info_for_pane(pane)
+        if not info or info.get("agent") != "opencode":
+            motor_result_set(opkey, False, "el pane ya no contiene OpenCode")
+            return
+        motor_stage(opkey, f"tecleando /models → {query or model}", "apply")
+        for keys, pause in (
+            (("Escape",), 0.35), (("C-u",), 0.25),
+            (("-l", "--", "/models"), 0.5), (("Enter",), 1.0),
+            (("-l", "--", query or model), 0.8), (("Enter",), 0),
+        ):
+            r = tmux("send-keys", "-t", pane, *keys)
+            if r.returncode != 0:
+                motor_result_set(opkey, False, r.stderr.strip() or "tmux fallo")
+                return
+            if pause:
+                time.sleep(pause)
+        record_runtime_config(sess, pane, "opencode", "opencode", model, "",
+                              payload.get("harness_account", "main"),
+                              payload.get("motor_account", "main"),
+                              payload.get("route_id", "opencode:opencode"),
+                              "switch-confirmed")
+        motor_result_set(opkey, True, f"opencode · {model}",
+                         harness="opencode", motor="opencode", model=model, effort="")
+    finally:
+        motor_queue_pop(opkey, gen)
+
+
+def _tmux_slash(pane, command):
+    tmux("send-keys", "-t", pane, "C-u")
+    time.sleep(0.12)
+    r = tmux("send-keys", "-t", pane, "-l", "--", command)
+    if r.returncode != 0:
+        return r.stderr.strip() or "tmux fallo"
+    tmux("send-keys", "-t", pane, "Enter")
+    return None
+
+
+def acp_motor_apply(payload):
+    """Cambio de motor/modelo/esfuerzo/cuenta DENTRO de cc-acp: slash commands,
+    no relanzar el pane. /agent relanza el subproceso ACP; el pane sigue vivo."""
+    pane, sess = payload["pane"], payload["sess"]
+    opkey = payload.get("key") or f"{sess}|{pane}"
+    gen = payload["gen"]
+    want_motor = str(payload.get("motor") or "")
+    want_model = str(payload.get("model") or "")
+    want_effort = str(payload.get("effort") or "")
+    want_account = str(payload.get("motor_account") or payload.get("account") or "")
+    try:
+        if payload.get("interrupt") and harness_pane_busy(sess, pane, "acp"):
+            motor_stage(opkey, "interrumpiendo el turno ACP (Escape)")
+            tmux("send-keys", "-t", pane, "Escape")
+            time.sleep(1.0)
+        if harness_pane_busy(sess, pane, "acp"):
+            motor_stage(opkey, "esperando a que ACP quede libre", "wait_idle")
+        for _ in range(1350):
+            if not motor_gen_ok(opkey, gen):
+                return
+            if not harness_pane_busy(sess, pane, "acp"):
+                time.sleep(0.4)
+                if not harness_pane_busy(sess, pane, "acp"):
+                    break
+            time.sleep(2.0)
+        else:
+            motor_result_set(opkey, False, "ACP nunca quedó libre (45 min)")
+            return
+        info = agent_info_for_pane(pane)
+        if not info or info.get("agent") != "acp":
+            motor_result_set(opkey, False, "el pane ya no contiene ACP")
+            return
+        current = acp_state_for_pane(pane)
+        cmds = list(payload.get("cmds") or [])
+        if not cmds:
+            if want_motor and want_motor != current.get("agent"):
+                cmds.append("/agent " + want_motor)
+            if want_model and want_model != current.get("model"):
+                cmds.append("/model " + want_model)
+            if want_effort and want_effort != current.get("effort"):
+                cmds.append("/effort " + want_effort)
+            if want_account and want_account != (current.get("account") or "main"):
+                cmds.append("/account " + want_account)
+        if not cmds:
+            motor_result_set(opkey, True, "ACP ya está en ese setup",
+                             harness="acp", motor=current.get("agent") or want_motor,
+                             model=current.get("model") or want_model, effort=current.get("effort") or want_effort)
+            return
+        for command in cmds:
+            if not motor_gen_ok(opkey, gen):
+                return
+            motor_stage(opkey, f"tecleando {command}", "apply")
+            err = _tmux_slash(pane, command)
+            if err:
+                motor_result_set(opkey, False, err)
+                return
+            if command.startswith("/agent "):
+                dest = command.split(None, 1)[1]
+                for _ in range(50):
+                    time.sleep(0.3)
+                    if acp_state_for_pane(pane).get("agent") == dest:
+                        break
+            else:
+                time.sleep(0.8)
+        confirm_started = time.time()
+        motor_stage(opkey, "confirmando en acp-panes.json", "confirm",
+                    model=want_model, effort=want_effort)
+        for attempt in range(80):
+            if not motor_gen_ok(opkey, gen):
+                return
+            time.sleep(0.15 if attempt < 40 else 0.4)
+            now = acp_state_for_pane(pane)
+            motor_ok = (not want_motor) or now.get("agent") == want_motor
+            model_ok = (not want_model) or now.get("model") == want_model
+            effort_ok = (not want_effort) or now.get("effort") == want_effort
+            account_ok = (not want_account) or now.get("account") == want_account
+            if motor_ok and model_ok and effort_ok and account_ok:
+                motor_result_set(opkey, True, f"acp:{now.get('agent','')} · {now.get('model','')} · {now.get('effort','')}",
+                                 harness="acp", motor=now.get("agent") or want_motor,
+                                 model=now.get("model") or want_model, effort=now.get("effort") or want_effort,
+                                 confirmMs=int((time.time() - confirm_started) * 1000))
+                record_runtime_config(sess, pane, "acp", now.get("agent") or want_motor,
+                                      now.get("model") or want_model, now.get("effort") or want_effort,
+                                      payload.get("harness_account", "main"),
+                                      now.get("account") or want_account or "main",
+                                      payload.get("route_id") or f"acp:{now.get('agent') or want_motor}",
+                                      "switch-confirmed")
+                if now.get("effort") or want_effort:
+                    session_effort_set(opkey, now.get("effort") or want_effort)
+                return
+        motor_result_set(opkey, False, "ACP no confirmó el cambio; reintenta")
     finally:
         motor_queue_pop(opkey, gen)
 
@@ -1746,6 +2170,12 @@ def motor_apply(payload):
     opkey = payload.get("key") or sess
     if provider == "grok":
         return grok_motor_apply(payload)
+    if provider == "acp":
+        return acp_motor_apply(payload)
+    if provider == "agy":
+        return agy_motor_apply(payload)
+    if provider == "opencode":
+        return opencode_motor_apply(payload)
     op_started = time.time()
     apply_started = op_started
     try:
@@ -1975,6 +2405,8 @@ def confirm_codex_native(opkey, sess, pane, model, effort, route_id="codex:codex
                              confirmMs=int((time.time() - started) * 1000))
             record_runtime_config(sess, pane, "codex", "codex", got_model, got_effort,
                                   account, motor_account or account, route_id, "switch-confirmed")
+            if got_effort:
+                session_effort_set(opkey, got_effort)
             return
     motor_result_set(opkey, False, "Codex CLI no confirmó el cambio")
 
@@ -3963,7 +4395,8 @@ def session_name(project):
 
 
 # Agentes soportados (binarios a detectar); ampliable en cc-notify.conf: AGENTS="..."
-DEFAULT_AGENTS = "claude codex grok opencode gemini agy aider"
+# acp = pane cliente ComandOS (cc-acp); sin él /harness/switch a ACP nunca confirma.
+DEFAULT_AGENTS = "claude codex grok acp opencode gemini agy aider"
 # Turnos no interactivos (codex exec, jobs de agentes) terminan el proceso antes
 # del siguiente poll del dashboard. Conserva "done" brevemente para que el UI
 # muestre el cierre real antes de degradarlo a "dead".
@@ -4003,7 +4436,12 @@ def agent_launch(agent):
 
 
 def agent_set():
-    return set((read_conf().get("AGENTS") or DEFAULT_AGENTS).split())
+    agents = set((read_conf().get("AGENTS") or DEFAULT_AGENTS).split())
+    try:
+        agents.update(h for h in (load_provider_registry().get("harnesses") or {}) if h != "shell")
+    except Exception:
+        pass
+    return agents
 
 
 def agent_process_aliases():
@@ -4257,7 +4695,7 @@ def write_app_tab_models(items):
         # Detalle por pane para la barra de modelo de cc-app: MISMO estado
         # determinista que el borde tmux (cambiando > verificado > detectando)
         pane_id = str(item.get("pane") or "")
-        if item.get("agent") in ("claude", "codex", "grok", "opencode", "gemini"):
+        if item.get("agent") in ("claude", "codex", "grok", "opencode", "gemini", "acp", "agy"):
             opkey = f"{item['session']}|{pane_id}"
             pending = MOTOR_RESULT.get(opkey) or {}
             switching = ("stage" in pending and "ok" not in pending
@@ -4314,6 +4752,16 @@ def reconcile_card_config(item, pane_info=None):
         direct_model = metadata.get("model", "")
         if metadata.get("effort"):
             item["effort"] = metadata["effort"]
+    elif agent == "acp":
+        live = acp_state_for_pane(pane or item.get("pane") or "")
+        if live.get("model"):
+            direct_model = live["model"]
+        if live.get("effort"):
+            item["effort"] = live["effort"]
+        if live.get("agent"):
+            item["motor"] = live["agent"]
+        if live.get("account"):
+            item["motorAccount"] = live["account"]
     config = cc_usage.latest_session_config(USAGE_DB, item.get("session", ""), pane)
     if direct_model:
         item["model"] = direct_model
@@ -4327,15 +4775,17 @@ def reconcile_card_config(item, pane_info=None):
     elif launch_model:
         item["model"] = launch_model
         item["modelSource"] = "launch"
+    live_motor = item.get("motor") if agent == "acp" else None
+    live_motor_account = item.get("motorAccount") if agent == "acp" else None
     if config and config.get("harness") == agent:
         item["routeId"] = config.get("route_id") or ""
-        item["motor"] = config.get("motor") or (provider_registry.engine_for_model(load_provider_registry(), item.get("model", "")) or agent)
+        item["motor"] = live_motor or config.get("motor") or (provider_registry.engine_for_model(load_provider_registry(), item.get("model", "")) or agent)
         item["harnessAccount"] = config.get("harness_account") or item.get("account") or "unknown"
-        item["motorAccount"] = config.get("motor_account") or "unknown"
+        item["motorAccount"] = live_motor_account or config.get("motor_account") or "unknown"
     else:
-        item["motor"] = provider_registry.engine_for_model(load_provider_registry(), item.get("model", "")) or agent
+        item["motor"] = live_motor or provider_registry.engine_for_model(load_provider_registry(), item.get("model", "")) or agent
         item["harnessAccount"] = item.get("account") or "unknown"
-        item["motorAccount"] = item["harnessAccount"] if item["motor"] == agent else "unknown"
+        item["motorAccount"] = live_motor_account or (item["harnessAccount"] if item["motor"] == agent else "unknown")
     return item
 
 
@@ -4572,7 +5022,7 @@ def read_states():
         efforts = session_effort_all()
         effort_value = efforts.get(f"{sess}|{pane}") if pane else None
         effort_value = effort_value or efforts.get(sess)
-        if effort_value and not item.get("effort"):
+        if effort_value:
             item["effort"] = effort_value
         reconcile_card_config(item, pane_info)
         items.append(item)
@@ -6564,9 +7014,9 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             if tmux("has-session", "-t", target).returncode != 0:
                 return self._json(404, {"error": f"No hay sesión tmux '{sess}'"})
             info = agent_info_for_pane(pane) or {}
-            frm = str(info.get("agent") or state_agent(sess) or "")
-            if not frm:
-                return self._json(409, {"error": "no detecto el harness actual del pane"})
+            frm = str(info.get("agent") or state_agent(sess) or "shell")
+            if frm in ("", "shell"):
+                frm = "shell"
             if frm == to:
                 return self._json(409, {"error": f"el pane ya corre {to}; para cambiar el modelo usa el selector de motor"})
             # ACP: el motor destino es el que pidan o, por defecto, el mismo
@@ -6597,17 +7047,24 @@ class Handler(http.server.SimpleHTTPRequestHandler):
                 cwd = r.stdout.strip()
             opkey = f"{sess}|{pane}" if PANE_RE.match(pane) else sess
             gen = motor_gen_bump(opkey)
-            queued = bool((claude_pane_busy(pane) if frm == "claude" else False)) and not bool(data.get("interrupt"))
+            queued = bool(harness_pane_busy(sess, pane, frm)) and not bool(data.get("interrupt"))
+            previous_sid = ""
+            if frm == "claude":
+                try:
+                    previous_sid = str((_claude_info_for(sess, pane) or {}).get("sid") or "")
+                except Exception:
+                    previous_sid = ""
             payload = {"key": opkey, "sess": sess, "pane": pane, "from": frm, "to": to,
                        "cwd": cwd, "pid": info.get("pid"), "model": model, "effort": effort,
                        "account": account, "gen": gen, "interrupt": bool(data.get("interrupt")),
-                       "motor": motor, "danger": bool(data.get("danger"))}
+                       "motor": motor, "danger": bool(data.get("danger")),
+                       "previousSid": previous_sid}
             harness_switch_apply(payload)
+            keep = ("Motor/esfuerzo en el MISMO CLI: conversación intacta. "
+                    "Cambio de CLI: archivos + git + handoff; al volver a Claude se reanuda el transcript. "
+                    f"La memoria interna de {frm} NO se transfiere a {to}.")
             return self._json(200, {"ok": True, "operationKey": opkey, "from": frm, "to": to,
-                                    "queued": queued,
-                                    "note": (f"Cambio de harness {frm} → {to}. La conversación de {frm} se cierra; "
-                                             f"{to} arranca en el mismo pane con un handoff del contexto visible "
-                                             f"(objetivo, últimos pasos y git). La memoria interna de {frm} NO se transfiere.")})
+                                    "queued": queued, "previousSid": previous_sid, "note": keep})
 
         if self.path == "/model/switch":
             provider = str(data.get("provider") or data.get("agent") or state_agent(sess))[:32]
@@ -6621,7 +7078,11 @@ class Handler(http.server.SimpleHTTPRequestHandler):
                 info = agent_info_for_pane(pane)
                 current_harness = str((info or {}).get("agent") or state_agent(sess) or "")
                 current_item = next((i for i in read_states_cached() if i.get("session") == sess and i.get("pane") == pane), {})
-                current_motor = provider_registry.engine_for_model(load_provider_registry(), str(current_item.get("model") or "")) or current_harness
+                current_motor = str(current_item.get("motor") or "") \
+                    or provider_registry.engine_for_model(load_provider_registry(), str(current_item.get("model") or "")) \
+                    or ("" if current_harness == "acp" else current_harness)
+                if current_harness == "acp" and current_motor in ("", "acp"):
+                    current_motor = str((acp_state_for_pane(pane) or {}).get("agent") or "claude")
                 requested = provider_registry.route_for(load_provider_registry(), str(data.get("routeId"))) or {}
                 scope = "session_model" if requested.get("motor") == current_motor else "session_motor"
                 selection_data = dict(data)
@@ -6676,6 +7137,27 @@ class Handler(http.server.SimpleHTTPRequestHandler):
                     effort_only = True
             if tmux("has-session", "-t", target).returncode != 0:
                 return self._json(404, {"error": f"No hay sesion tmux '{sess}'"})
+            if provider == "acp":
+                info = agent_info_for_pane(pane)
+                if not info or info.get("agent") != "acp":
+                    return self._json(409, {"error": "ese pane no contiene ACP"})
+                opkey = f"{sess}|{pane}" if PANE_RE.match(pane) else sess
+                gen = motor_gen_bump(opkey)
+                queued = harness_pane_busy(sess, pane, "acp") and not bool(data.get("interrupt"))
+                live = acp_state_for_pane(pane)
+                dest_motor = str((route.get("motor") if route else "") or data.get("motor") or live.get("agent") or "claude")
+                payload = {"key": opkey, "pane": pane, "cmds": [], "provider": "acp",
+                           "sess": sess, "model": model, "effort": effort, "motor": dest_motor,
+                           "route_id": route.get("id") if route else f"acp:{dest_motor}",
+                           "harness": "acp",
+                           "harness_account": (selected.get("harnessAccount") if route else "main"),
+                           "motor_account": (selected.get("motorAccount") if route else (live.get("account") or "main")),
+                           "gen": gen, "interrupt": bool(data.get("interrupt")), "ts": time.time()}
+                motor_queue_put(opkey, payload)
+                threading.Thread(target=motor_apply, args=(payload,), daemon=True).start()
+                return self._json(202 if queued else 200,
+                                  {"ok": True, "queued": queued, "operationKey": opkey,
+                                   "model": model, "effort": effort})
             if provider == "grok":
                 info = agent_info_for_pane(pane)
                 if not info or info.get("agent") != "grok":
@@ -6732,24 +7214,50 @@ class Handler(http.server.SimpleHTTPRequestHandler):
                 return self._json(202, {"ok": True, "operationKey": opkey,
                                         "command": f"/model → {model} {chosen_effort}",
                                         "model": model, "effort": chosen_effort})
+            if provider == "agy":
+                info = agent_info_for_pane(pane)
+                if not info or info.get("agent") != "agy":
+                    return self._json(409, {"error": "ese pane no contiene Antigravity"})
+                opkey = f"{sess}|{pane}"
+                gen = motor_gen_bump(opkey)
+                queued = harness_pane_busy(sess, pane, "agy") and not bool(data.get("interrupt"))
+                payload = {"key": opkey, "pane": pane, "cmds": [], "provider": "agy",
+                           "sess": sess, "model": model, "effort": effort,
+                           "route_id": route.get("id") if route else "agy:agy",
+                           "harness": "agy", "motor": "agy",
+                           "harness_account": (selected.get("harnessAccount") if route else "main"),
+                           "motor_account": (selected.get("motorAccount") if route else "main"),
+                           "gen": gen, "interrupt": bool(data.get("interrupt")), "ts": time.time()}
+                motor_queue_put(opkey, payload)
+                threading.Thread(target=motor_apply, args=(payload,), daemon=True).start()
+                return self._json(202 if queued else 200,
+                                  {"ok": True, "queued": queued, "operationKey": opkey,
+                                   "model": model, "effort": effort})
             if provider == "opencode":
                 # OpenCode: su picker /models busca por NOMBRE mostrado. La
                 # secuencia limpia estado (Escape+C-u) y teclea la busqueda.
+                info = agent_info_for_pane(pane)
+                if not info or info.get("agent") != "opencode":
+                    return self._json(409, {"error": "ese pane no contiene OpenCode"})
                 model_provider = model.split("/", 1)[0] if "/" in model else ""
                 query = cc_usage.opencode_picker_query(
                     str(data.get("model_name") or model.rsplit("/", 1)[-1]),
                     model_provider)
-                for keys, pause in (
-                    (("Escape",), 0.35), (("C-u",), 0.25),
-                    (("-l", "--", "/models"), 0.5), (("Enter",), 1.0),
-                    (("-l", "--", query), 0.8), (("Enter",), 0),
-                ):
-                    r = tmux("send-keys", "-t", pane, *keys)
-                    if r.returncode != 0:
-                        return self._json(500, {"error": r.stderr.strip() or "tmux fallo"})
-                    if pause:
-                        time.sleep(pause)
-                return self._json(200, {"ok": True, "command": f"/models → {query}"})
+                opkey = f"{sess}|{pane}"
+                gen = motor_gen_bump(opkey)
+                queued = harness_pane_busy(sess, pane, "opencode") and not bool(data.get("interrupt"))
+                payload = {"key": opkey, "pane": pane, "cmds": [], "provider": "opencode",
+                           "sess": sess, "model": model, "effort": "", "query": query,
+                           "route_id": route.get("id") if route else "opencode:opencode",
+                           "harness": "opencode", "motor": "opencode",
+                           "harness_account": (selected.get("harnessAccount") if route else "main"),
+                           "motor_account": (selected.get("motorAccount") if route else "main"),
+                           "gen": gen, "interrupt": bool(data.get("interrupt")), "ts": time.time()}
+                motor_queue_put(opkey, payload)
+                threading.Thread(target=motor_apply, args=(payload,), daemon=True).start()
+                return self._json(202 if queued else 200,
+                                  {"ok": True, "queued": queued, "operationKey": opkey,
+                                   "command": f"/models → {query}", "model": model})
             EFFORTS = ("low", "medium", "high", "xhigh", "max")
             if effort and effort not in EFFORTS:
                 return self._json(400, {"error": f"effort invalido: {effort}"})

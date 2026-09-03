@@ -593,6 +593,37 @@ def test_fs_browser_is_home_confined_and_mkdir_is_explicit(tmp_path, monkeypatch
     assert '"code": "cwd_missing"' in SRC
 
 
+def test_harness_launch_types_command_without_bracketed_paste():
+    """zsh imprime ^[[200~ si pegamos el launch con paste-buffer -p. El switch
+    tiene que teclear el comando (send-keys -l) y Enter, no pegar un snippet."""
+    assert "def _send_shell_line" in SRC
+    launch = SRC.split("lanzando {to} en el mismo pane", 1)[1][:1800]
+    assert "_send_shell_line" in launch or "_paste_shell_command" in launch
+    send = SRC.split("def _send_shell_line", 1)[1].split("\ndef ", 1)[0]
+    assert '"-l"' in send and "Enter" in send
+    # el docstring puede mencionar paste-buffer; el CUERPO no lo llama
+    body = send.split('"""', 2)[-1]
+    assert "paste-buffer" not in body
+    assert "tmux(" in body
+
+
+def test_harness_switch_does_not_auto_submit_handoff_as_a_turn():
+    """El handoff se ESCRIBE al disco. NO se pega 'Lee .comandos-handoff.md' como
+    primer turno: eso hace que Grok/ACP pidan permisos y trabajen solos."""
+    apply = SRC.split("def harness_switch_apply", 1)[1].split("def proxy_set_enabled", 1)[0]
+    assert "HANDOFF_FILE" in apply
+    assert "Lee ./" not in apply
+    assert "_paste_shell_command(pane, prompt)" not in apply
+
+
+def test_claude_exit_dismisses_slash_palette_before_exit_command():
+    """Si Claude tiene el menú `/` abierto, `/exit` filtra el menú en vez de
+    salir. Escape primero cierra paletas; luego /exit + Enter."""
+    body = SRC.split("def _pane_exit_current", 1)[1].split("def harness_switch_apply", 1)[0]
+    assert '"Escape"' in body
+    assert "/exit" in body
+
+
 def test_harness_handoff_switch_exists_and_is_guarded():
     # Cambio de HARNESS (el CLI) en vivo con handoff: endpoint + orquestación +
     # captura de contexto SIN secretos + comando de lanzamiento por harness.
@@ -616,7 +647,110 @@ def test_harness_handoff_switch_exists_and_is_guarded():
 
 def test_harness_switch_ui_section_present():
     html = Path("dash/index.html").read_text()
-    assert "Cambiar de CLI (harness)" in html
-    assert 'data-harness=' in html
+    assert "data-harness=" in html
     assert 'api("/harness/switch"' in html
     assert "MPOP.harnessArm" in html   # confirmación de dos toques
+    assert "Interfaz (CLI)" in html or "1. CLI" in html or "Cambiar de CLI" in html
+    assert "mp-cli-go" in html
+
+
+def test_returning_to_claude_resumes_saved_sid():
+    """Al salir de Claude se guarda el sessionId; al VOLVER se lanza con --resume
+    para no perder el transcript. Motor/effort en el MISMO CLI no tocan el sid."""
+    dash = load_dash_module()
+    cmd = dash._harness_launch_cmd("claude", "claude-fable-5-1", "high", "main", resume="sess-keep-me")
+    assert "--resume" in cmd and "sess-keep-me" in cmd
+    assert "def pane_resume_set" in SRC
+    assert "def pane_resume_get" in SRC
+    assert 'payload.get("previousSid")' in SRC or "previousSid" in SRC
+    assert "capture_handoff(" in SRC and "sid=" in SRC.split("def capture_handoff", 1)[1][:800]
+
+
+def test_handoff_mentions_what_is_kept_and_points_at_transcript():
+    src = SRC.split("def capture_handoff", 1)[1][:2500]
+    assert "transcript" in src.lower() or "_transcript_path" in src
+    assert "memoria interna" in src or "NO tienes su memoria" in src
+
+
+def test_accounts_panel_groups_by_provider_with_logo_and_identity():
+    html = Path("dash/index.html").read_text()
+    assert "function accountsByProvider" in html
+    assert "mp-acct-group" in html
+    assert "providerMark(prov" in html or "providerMark(p" in html
+    # no una sola fila plana sin agrupar
+    assert "mp-acct-prov" in html
+
+
+def test_native_agy_and_opencode_model_switch_uses_slash_then_records():
+    """En un pane nativo de AGY/OpenCode el picker NO debe fingir que es Claude:
+    teclea /model (y /effort en agy) y confirma contra record_runtime_config."""
+    assert 'if provider == "agy":' in SRC
+    assert 'if provider == "opencode":' in SRC
+    assert "def agy_motor_apply" in SRC
+    assert "def opencode_motor_apply" in SRC
+    assert '"/model "' in SRC
+    assert '"/effort "' in SRC
+    assert 'record_runtime_config(sess, pane, "agy"' in SRC
+    assert 'record_runtime_config(sess, pane, "opencode"' in SRC
+    # OpenCode usa -m / --model al lanzar; el switch en vivo es /models
+    assert 'provider == "opencode"' in SRC
+
+
+def test_harness_switch_from_plain_shell_pane_is_allowed():
+    """Una terminal normal (zsh/bash, sin CLI de IA) debe poder ARRANCAR un
+    harness en el mismo pane — el mismo flujo que el + de nueva sesión, sin
+    exigir un harness detectado. 'no detecto el harness' bloqueaba esto."""
+    body = SRC.split('if self.path == "/harness/switch":', 1)[1].split("if self.path ==", 1)[0]
+    assert 'frm = str(info.get("agent") or state_agent(sess) or "")' not in body or \
+           'frm = str(info.get("agent") or state_agent(sess) or "shell")' in body
+    assert 'from_harness in ("claude", "acp", "shell")' in SRC or \
+           'from_harness in {"claude", "acp", "shell"}' in SRC or \
+           'frm in ("", "shell")' in SRC
+    assert "no detecto el harness actual del pane" not in body or \
+           'frm = str(info.get("agent") or state_agent(sess) or "shell")' in body
+    assert 'toHarness' in body
+    # shell no espera idle de un CLI inexistente
+    assert "shell" in body
+
+
+def test_user_quota_accepts_groq_as_measured_provider(tmp_path, monkeypatch):
+    dash = load_dash_module()
+    monkeypatch.setattr(dash, "QUOTAS_FILE", str(tmp_path / "provider-quotas.json"))
+    saved = dash.set_user_quota("groq", 1_000_000)
+    assert saved["tokens_7d"] == 1_000_000
+    assert dash.user_quotas()["groq"]["tokens_7d"] == 1_000_000
+    try:
+        dash.set_user_quota("claude", 1)
+        raise AssertionError("claude no debe aceptar cuota manual")
+    except ValueError:
+        pass
+    assert "cc_usage.groq_measured_usage" in SRC
+    assert "parse_groq_ratelimit_headers" in SRC or "read_groq_rate_limits" in SRC
+
+
+def test_opencode_catalog_lists_live_groq_coding_models():
+    catalog = json.loads(Path("config/providers.json").read_text())
+    ids = [m["id"] for m in catalog["motors"]["opencode"]["models"]]
+    for mid in (
+        "groq/llama-3.1-8b-instant",
+        "groq/llama-3.3-70b-versatile",
+        "groq/openai/gpt-oss-120b",
+        "groq/openai/gpt-oss-20b",
+        "groq/qwen/qwen3.6-27b",
+        "groq/qwen/qwen3.8-27b",
+    ):
+        assert mid in ids, mid
+    # no meter voz / routers / guards
+    assert "groq/whisper-large-v3" not in ids
+    assert "groq/compound" not in ids
+    assert "groq/allam-2-7b" not in ids
+
+
+def test_model_switch_sends_acp_slash_commands_inside_cc_acp():
+    """En un pane ACP, cambiar motor/modelo/esfuerzo/cuenta es teclear /agent /model
+    /effort /account — no matar el proceso ni fingir que es Claude Code."""
+    assert 'provider == "acp"' in SRC
+    assert '"-l", "--", "/agent"' in SRC or '"/agent "' in SRC
+    assert '"/model "' in SRC
+    assert '"/effort "' in SRC
+    assert '"/account "' in SRC

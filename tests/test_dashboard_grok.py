@@ -39,7 +39,7 @@ def test_harness_accounts_are_registry_driven_for_all_providers():
     assert "nsHarness(provider).accounts" in HTML
     assert 'NS.harness === "grok"' not in HTML
     assert "PROXY.accounts || []" not in HTML
-    assert 'provider: (item&&item.agent)||"claude"' in HTML
+    assert 'provider: (item&&item.agent)==="acp"?(item.motor||"claude"):((item&&item.agent)||"claude")' in HTML
 
 
 def test_switch_loading_and_results_are_pane_keyed():
@@ -50,8 +50,8 @@ def test_switch_loading_and_results_are_pane_keyed():
 
 
 def test_native_and_cross_engine_routes_have_explicit_backend_ids():
-    assert '["claude","codex","grok"].includes(it.agent)' in HTML
-    assert 'matrixMotors((item&&item.agent)||"claude")' in HTML
-    assert 'routeId:st.routeId' in HTML
-    assert 'driver = ["grok","codex"].includes(item.agent) ? item.agent : "claude"' in HTML
+    # el picker decide por harness vivo (acp/opencode/agy inclusive), no el triple legado
+    assert "function liveHarnesses()" in HTML
+    assert "tileAction(item" in HTML
+    assert "routeId: s.routeId" in HTML
     assert 'Harness' in HTML and 'Motor' in HTML and 'Pensamiento' in HTML

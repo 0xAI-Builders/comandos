@@ -405,9 +405,44 @@
           "defaultEffort": ""
         },
         {
+          "id": "groq/llama-3.1-8b-instant",
+          "name": "Llama 3.1 8B (Groq)",
+          "tag": "rápido · vía Groq",
+          "efforts": [],
+          "defaultEffort": ""
+        },
+        {
+          "id": "groq/llama-3.3-70b-versatile",
+          "name": "Llama 3.3 70B (Groq)",
+          "tag": "vía Groq",
+          "efforts": [],
+          "defaultEffort": ""
+        },
+        {
           "id": "groq/openai/gpt-oss-120b",
           "name": "GPT-OSS 120B (Groq)",
           "tag": "vía tu Groq",
+          "efforts": [],
+          "defaultEffort": ""
+        },
+        {
+          "id": "groq/openai/gpt-oss-20b",
+          "name": "GPT-OSS 20B (Groq)",
+          "tag": "vía Groq",
+          "efforts": [],
+          "defaultEffort": ""
+        },
+        {
+          "id": "groq/qwen/qwen3.6-27b",
+          "name": "Qwen3.6 27B (Groq)",
+          "tag": "vía Groq",
+          "efforts": [],
+          "defaultEffort": ""
+        },
+        {
+          "id": "groq/qwen/qwen3.8-27b",
+          "name": "Qwen3.8 27B (Groq)",
+          "tag": "vía Groq",
           "efforts": [],
           "defaultEffort": ""
         }
