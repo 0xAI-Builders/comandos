@@ -5475,7 +5475,7 @@ PREFS_PATH = os.path.join(HOOKS, "prefs.json")
 # y a dash/term.html. Ver DESIGN.md §3 y §7 para las decisiones.
 PREFS_DEFAULTS = {
     "theme": "noche",
-    "font_family": "JetBrainsMono Nerd Font Mono",
+    "font_family": "Ubuntu Sans Mono",  # la mono de Ubuntu 24.04+ (Ptyxis); cae a JetBrains si no está
     "font_size": 13,
     "cursor_shape": "block",       # block | ibeam | underline
     "cursor_blink": True,
@@ -5490,8 +5490,8 @@ _CURSOR_SHAPES = ("block", "ibeam", "underline")
 # que no existe en la máquina cae en silencio a otra fuente y parece que el
 # selector "no sirve". a11y=True marca las diseñadas para legibilidad.
 FONT_CATALOG = [
+    ("Ubuntu Sans Mono", "Ubuntu Sans Mono · la de Ubuntu (default)", False),
     ("JetBrainsMono Nerd Font Mono", "JetBrains Mono · con iconos (bundle)", False),
-    ("Ubuntu Sans Mono", "Ubuntu Sans Mono · la nueva de Ubuntu", False),
     ("Atkinson Hyperlegible Mono", "Atkinson Hyperlegible Mono", True),
     ("Intel One Mono", "Intel One Mono", True),
     ("JetBrains Mono", "JetBrains Mono", False),

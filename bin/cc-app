@@ -149,7 +149,7 @@ THEMES = {
                    bar="#2C0A22", dim="#E8DCE4", text="#FFFFFF", brand="#E95420",
                    line="#5C2A4F", line2="#7A4069", faint="#BBA5B5"),
 }
-FONT_FAMILY = "JetBrainsMono Nerd Font Mono,JetBrainsMono Nerd Font,JetBrainsMono NF,JetBrains Mono,Cascadia Code,Fira Code,DejaVu Sans Mono,Monospace"
+FONT_FAMILY = "Ubuntu Sans Mono,JetBrainsMono Nerd Font Mono,JetBrainsMono Nerd Font,JetBrainsMono NF,JetBrains Mono,Cascadia Code,Fira Code,DejaVu Sans Mono,Monospace"
 FONT_SIZE = 13
 FONT = f"{FONT_FAMILY} {FONT_SIZE}"
 
@@ -274,7 +274,7 @@ THEME = THEMES.get(PREFS.get("theme", "noche"), THEMES["noche"])
 
 # Overrides de terminal desde /prefs — con defaults sensatos si cc-dash aún no
 # guardó el schema nuevo. Ver DESIGN.md §7.
-_PF_FAMILY = (PREFS.get("font_family") or "").strip() or "JetBrainsMono Nerd Font Mono"
+_PF_FAMILY = (PREFS.get("font_family") or "").strip() or "Ubuntu Sans Mono"
 _PF_SIZE = int(PREFS.get("font_size") or FONT_SIZE)
 FONT_FAMILY = f"{_PF_FAMILY},JetBrainsMono Nerd Font,JetBrains Mono,DejaVu Sans Mono,Monospace"
 FONT_SIZE = _PF_SIZE
@@ -2191,7 +2191,7 @@ def apply_terminal_prefs(p=None):
     global _PF_FAMILY, _PF_SIZE, FONT_FAMILY, FONT_SIZE, FONT
     global TERM_PADDING, TERM_OPACITY, _CURSOR_SHAPE, _CURSOR_BLINK
     if p is not None:
-        _PF_FAMILY = (p.get("font_family") or "").strip() or "JetBrainsMono Nerd Font Mono"
+        _PF_FAMILY = (p.get("font_family") or "").strip() or "Ubuntu Sans Mono"
         _PF_SIZE = int(p.get("font_size") or FONT_SIZE)
         FONT_FAMILY = f"{_PF_FAMILY},JetBrainsMono Nerd Font,JetBrains Mono,DejaVu Sans Mono,Monospace"
         FONT_SIZE = _PF_SIZE

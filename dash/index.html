@@ -74,6 +74,7 @@
     --text:#FFFFFF;--dim:#E8DCE4;--faint:#BBA5B5;--brand:#E95420;--on-brand:#1E0D08;
     --waiting:#FCE94F;--done:#8AE234;--working:#729FCF;--err:#EF2929;--warn:#FCE94F;--ok:#8AE234;
     --glow:#4A1240;--code:#34E2E2;--shadow:rgba(0,0,0,.45);
+    --sans:'Ubuntu Sans','Ubuntu',system-ui,sans-serif;--mono:'Ubuntu Sans Mono','JetBrainsMono Nerd Font','JetBrains Mono',ui-monospace,monospace;
   }
   *{box-sizing:border-box;margin:0;padding:0}
   html,body{height:100%}
@@ -4901,8 +4902,8 @@ function mdStrip(s){ return (s||"").replace(/\*\*|`|^#{1,6} /g, ""); }
 	        <div class="mp-hnote">${armed
 	          ? tf("Cierra "+HL[cur]+" y abre "+HL[armed]+" aquí. Archivos y git se quedan. El chat interno de "+HL[cur]+" no se copia. Al volver a Claude se reanuda el transcript.",
 	               "Closes "+HL[cur]+" and opens "+HL[armed]+" here. Files and git stay. "+HL[cur]+"'s internal chat is not copied. Back to Claude resumes the transcript.")
-	          : tf("ComandOS ACP no es un modelo ni OpenCode: es la misma pantalla de ComandOS para cambiar de cerebro (/agent) sin la TUI de cada vendor.",
-	               "ACP is not a model and not OpenCode: one ComandOS screen to switch brains (/agent) without each vendor TUI.")}</div>
+	          : tf("Toca un CLI y confirma. ACP = una sola pantalla de ComandOS donde cambias de cerebro con /agent.",
+	               "Tap a CLI and confirm. ACP = one ComandOS screen where you switch brains with /agent.")}</div>
 	        ${armed ? `<button type="button" class="mp-cli-go" data-harness="${armed}">${tf("Sí, cambiar a","Switch to")} ${mdEsc(HL[armed])}</button>` : ""}
 	      </div>`;})() : ""}
 	    <div class="mp-grid">
@@ -7381,7 +7382,7 @@ async function loadPrefs(){
 function hydrateTerminalPrefs(p){
   const ff = $("#pf-font-family");
   if(ff){
-    const cur = p.font_family || "JetBrainsMono Nerd Font Mono";
+    const cur = p.font_family || "Ubuntu Sans Mono";
     if(Array.isArray(p.fonts) && p.fonts.length){
       // Solo fonts INSTALADAS (cc-dash las lee con fc-list). Cada option se
       // pinta con su propia fuente para que el menú sea la vista previa.
@@ -7477,7 +7478,7 @@ if(document.readyState !== "loading"){ wireRangeFills(); setInterval(refreshAllR
 
 // ---------- preview de tipografía (Settings > Terminal) ----------
 function updateFontPreview(){
-  const fam = $("#pf-font-family")?.value || "JetBrainsMono Nerd Font Mono";
+  const fam = $("#pf-font-family")?.value || "Ubuntu Sans Mono";
   const size = $("#pf-font-size")?.value || 13;
   const p = $("#font-preview");
   if(p){

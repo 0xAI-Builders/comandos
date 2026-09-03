@@ -112,3 +112,16 @@ def test_font_selector_only_offers_installed_fonts_with_a11y_flag():
     assert '("Ubuntu Sans Mono",' in CC_DASH
     assert "Array.isArray(p.fonts)" in INDEX
     assert 'tf("accesible", "accessible")' in INDEX
+
+
+def test_default_terminal_font_is_ubuntu_sans_mono_everywhere():
+    # Tema o no, la mono por defecto es la de Ubuntu (Ptyxis / 24.04+):
+    # pref, fallback de cc-app, cadena VTE, ttyd y xterm. JetBrains queda de respaldo.
+    assert '"font_family": "Ubuntu Sans Mono"' in CC_DASH
+    assert 'or "Ubuntu Sans Mono"' in CC_APP
+    assert 'FONT_FAMILY = "Ubuntu Sans Mono,JetBrainsMono Nerd Font Mono,' in CC_APP
+    assert 'p.font_family || "Ubuntu Sans Mono"' in INDEX
+    assert "fontFamily=Ubuntu Sans Mono, " in (REPO / "bin" / "cc-webterm").read_text()
+    assert "'Ubuntu Sans Mono', 'JetBrainsMono Nerd Font Mono'" in (REPO / "dash" / "term.html").read_text()
+    # el tema ubuntu también cambia la sans del chrome a Ubuntu Sans
+    assert "--sans:'Ubuntu Sans'" in INDEX.split(':root[data-theme="ubuntu"]')[1].split("}")[0]
