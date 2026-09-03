@@ -111,38 +111,14 @@ def test_ssh_connection_list_is_an_independent_touch_scroller():
     ) in CSS
 
 
-def test_gtk_ops_rail_has_semantic_sections_and_icons():
-    assert "> Foco <" in INDEX or "Foco" in INDEX
-    assert "Flotilla" in INDEX
-    assert 'data-icon="layers"' in INDEX
-    assert 'data-icon="rows"' in INDEX
-    assert 'data-icon="timer"' in INDEX
-    assert "cx-mark" in INDEX
-    assert "rmark" in INDEX
-    assert "moreH" in INDEX
-    assert "html.gtkapp #tl-wrap" in INDEX
-
-
-def test_gtk_sidebar_lists_all_live_panes_compact_without_expanding():
-    # Operar 15–20 panes: lista compacta de TODOS los vivos, filtro, sin
-    # agrandar la fila al click. sessions-wrap no se oculta.
+def test_gtk_sidebar_keeps_split_cards_and_hides_global_inventory():
+    # La app GTK necesita las cards de panes; ocultar sessions-wrap deja sidebar vacío.
     assert "html.gtkapp #sessions-wrap{display:none}" not in INDEX
     assert 'id="sessions-title"' in INDEX
-    assert 'id="pane-filter"' in INDEX
-    assert "it.alive && hay" in INDEX
-    assert "if(inApp()) return" in INDEX
-    assert "el.classList.remove(\"open\")" in INDEX
-    assert '$("#sessions-wrap").classList.toggle("hidden", nPanes < 1)' in INDEX
+    assert "appPanes.length >= 2 && it.session === appSess" in INDEX
+    assert '$("#sessions-wrap").classList.toggle("hidden", nPanes < 2)' in INDEX
     assert "CENTRO_VIEW.sessionId === rowKey(it)" in INDEX
     assert 'const rk = rowKey(it)' in INDEX
-
-
-def test_sidebar_today_bars_use_a_real_track():
-    assert "side-proj-meta" in INDEX
-    assert 'role="meter"' in INDEX
-    assert "html.gtkapp .side-keys" in INDEX and "display:none" in INDEX
-    bars = rule(".side-proj .bar")
-    assert "height:8px" in bars or "height:8px" in INDEX
 
 
 def test_active_tmux_pane_drives_the_sidebar_control_card():

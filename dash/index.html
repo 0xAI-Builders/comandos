@@ -849,92 +849,19 @@
     #rows{display:grid;grid-template-columns:1fr 1fr;gap:8px;align-items:start}
   }
   #sidebar-insights{display:none}
+  html.gtkapp #sidebar-insights{display:block}
   .side-kpis{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:10px}
   .side-kpi{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:10px 11px;display:flex;flex-direction:column;gap:2px;min-width:0}
   .side-kpi .v{font-family:var(--mono);font-size:18px;font-weight:800;color:var(--text);font-variant-numeric:tabular-nums}
   .side-kpi .l{font-family:var(--mono);font-size:9.5px;color:var(--dim);text-transform:uppercase;letter-spacing:.06em}
   .side-link{margin-left:auto;font-family:var(--mono);font-size:10px;color:var(--brand);border:1px solid var(--line2);border-radius:7px;padding:3px 8px;background:none}
   .side-link:hover{border-color:var(--brand);background:color-mix(in srgb,var(--brand) 9%,transparent)}
-  #side-projects{display:flex;flex-direction:column;gap:8px}
-  .side-proj{display:flex;flex-direction:column;gap:6px;padding:8px 10px;background:var(--panel);border:1px solid var(--line);border-radius:10px}
-  .side-proj-meta{display:flex;align-items:baseline;gap:8px;min-width:0}
-  .side-proj .n{flex:1;min-width:0;font-size:12px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-  .side-proj .m{font-family:var(--mono);font-size:10.5px;color:var(--dim);font-variant-numeric:tabular-nums;flex:none}
-  .side-proj .bar{display:block;height:8px;border-radius:6px;background:var(--line);overflow:hidden}
-  .side-proj .bar i{display:block;height:100%;border-radius:6px;background:var(--brand);min-width:4px}
-  .row .rmark,.row .rail{display:none}
-  #pane-filter{display:none}
-
-  /* ---- GTK ops rail: consola, no dump de cards ---- */
-  html.gtkapp #sidebar-insights{display:block;background:var(--bg);position:relative;z-index:1}
-  html.gtkapp #tl-wrap,html.gtkapp .side-keys,html.gtkapp #recent-wrap{display:none!important}
-  .rail-head{display:none}
-  html.gtkapp .rail-head{display:flex;align-items:center;gap:8px;margin:0 0 8px;padding:0;
-    font-family:var(--mono);font-size:10px;font-weight:700;letter-spacing:.16em;text-transform:uppercase;color:var(--faint)}
-  html.gtkapp .rail-head .ico{color:var(--dim)}
-  html.gtkapp .rail-count{margin-left:auto;letter-spacing:0;text-transform:none;font-variant-numeric:tabular-nums;
-    color:var(--text);background:var(--panel2);border:1px solid var(--line);border-radius:20px;padding:1px 8px;font-size:10.5px}
-  html.gtkapp #centro-wrap{display:block}
-  html.gtkapp #centro-wrap.hidden{display:none}
-  html.gtkapp #centro{
-    display:grid;grid-template-columns:40px minmax(0,1fr) auto;grid-template-areas:
-      "mark id acts"
-      "mark motor acts"
-      "advice advice advice";
-    gap:4px 10px;align-items:center;padding:12px;border-radius:10px}
-  html.gtkapp .cx-hero{grid-area:id;display:flex;flex-direction:column;gap:2px;min-width:0}
-  .cx-mark{display:none}
-  html.gtkapp .cx-mark{display:grid;grid-area:mark;width:40px;height:40px;border-radius:10px;background:var(--panel2);
-    border:1px solid var(--line);display:grid;place-items:center;color:var(--text)}
-  html.gtkapp .cx-mark .pmark,html.gtkapp .cx-mark .ico{width:22px;height:22px}
-  html.gtkapp .cx-name{font-size:14px;max-width:100%}
-  html.gtkapp .cx-sub{display:inline-flex;align-items:center;gap:6px;font-size:10px}
-  html.gtkapp .cx-path{display:none}
-  html.gtkapp .cx-cols,html.gtkapp .cx-block{display:contents}
-  html.gtkapp .cx-block > .cx-row:has(.cx-model){display:none}
-  html.gtkapp .cx-motor{grid-area:motor;min-width:0}
-  html.gtkapp .cx-motor .motor-pill{height:26px;padding:0 8px;font-size:10.5px}
-  html.gtkapp .cx-acts{grid-area:acts;display:flex;flex-direction:column;gap:4px;align-items:stretch}
-  html.gtkapp .cx-acts > button{height:28px;min-width:28px;padding:0 8px;font-size:11px}
-  html.gtkapp .cx-advice{grid-area:advice;display:flex;align-items:center;gap:6px;margin:4px 0 0;
-    padding:6px 8px;border-radius:8px;background:color-mix(in srgb,var(--waiting) 10%,var(--panel));
-    border:1px solid color-mix(in srgb,var(--waiting) 35%,var(--line));
-    font-family:var(--mono);font-size:10px;color:var(--waiting);line-height:1.35}
-  html.gtkapp .cx-advice.hidden{display:none!important}
-  html.gtkapp .cx-advice .ico{flex:none;color:var(--waiting)}
-  html.gtkapp #sessions-wrap .sec-label,html.gtkapp #sidebar-insights .sec-label{
-    display:flex;align-items:center;gap:8px;margin-bottom:8px}
-  html.gtkapp #sessions-wrap .sec-label .chip,html.gtkapp #sidebar-insights .sec-label .chip{display:none}
-  html.gtkapp #pane-filter{display:block;flex:1;min-width:0;height:28px;font:600 11px var(--mono);color:var(--text);
-    background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:0 8px 0 28px;
-    background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='14' height='14' fill='none' stroke='%235E6980' stroke-width='2' stroke-linecap='round'><circle cx='6.5' cy='6.5' r='4.5'/><path d='m13 13-2.4-2.4'/></svg>");
-    background-repeat:no-repeat;background-position:8px 50%}
-  html.gtkapp #pane-filter:focus{border-color:var(--brand);outline:none}
-  html.gtkapp #rows{display:flex;flex-direction:column;gap:2px;max-height:min(48vh,520px);overflow-y:auto;padding:2px}
-  html.gtkapp .row{display:grid;grid-template-columns:22px minmax(0,1fr) auto;grid-template-areas:"mark ident meta";
-    column-gap:8px;row-gap:0;padding:6px 8px;min-height:36px;border-radius:8px;border:1px solid transparent;
-    background:transparent;box-shadow:none;transition:background .12s ease,border-color .12s ease}
-  html.gtkapp .row:hover{background:var(--panel2);border-color:var(--line);box-shadow:none}
-  html.gtkapp .row.active-pane{background:color-mix(in srgb,var(--brand) 12%,var(--panel));
-    border-color:color-mix(in srgb,var(--brand) 40%,var(--line));box-shadow:none}
-  html.gtkapp .row .rmark{display:grid;grid-area:mark;place-items:center;width:22px;height:22px;color:var(--text)}
-  html.gtkapp .row .ident{grid-area:ident;display:flex;align-items:center;gap:6px;min-width:0}
-  html.gtkapp .row .name{font-size:12.5px}
-  html.gtkapp .row .rst{display:none}
-  html.gtkapp .row .ago{grid-area:meta;font-size:10px}
-  html.gtkapp .row .dot{width:7px;height:7px;margin:0}
-  html.gtkapp .row .rpath,html.gtkapp .row .rprev,html.gtkapp .row .fav,html.gtkapp .row .rxp,
-  html.gtkapp .row .abadge,html.gtkapp .row .usage-chip,html.gtkapp .row .exttag,
-  html.gtkapp .row .acts .xp,html.gtkapp .row .acts .cp,html.gtkapp .row .acts .ren{display:none!important}
-  html.gtkapp .row .acts{display:none;grid-area:meta}
-  html.gtkapp .row:hover .acts,html.gtkapp .row.active-pane .acts,html.gtkapp .row:focus-visible .acts{display:flex}
-  html.gtkapp .row:hover .ago,html.gtkapp .row.active-pane .ago{display:none}
-  html.gtkapp .row.open .rxp{display:none}
-  html.gtkapp .side-kpi{flex-direction:row;align-items:center;gap:10px;padding:10px}
-  html.gtkapp .side-kpi .ico{color:var(--dim);flex:none}
-  html.gtkapp .side-kpi .v{font-size:16px;line-height:1}
-  html.gtkapp .side-kpi .l{letter-spacing:.08em}
-  @media (prefers-reduced-motion:reduce){html.gtkapp .row{transition:none}}
+  #side-projects{display:flex;flex-direction:column;gap:7px}
+  .side-proj{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:4px 8px;align-items:center}
+  .side-proj .n{font-size:11px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .side-proj .m{font-family:var(--mono);font-size:10px;color:var(--dim);font-variant-numeric:tabular-nums}
+  .side-proj .bar{grid-column:1/-1;height:3px;border-radius:3px;background:var(--line);overflow:hidden}
+  .side-proj .bar i{display:block;height:100%;border-radius:3px;background:var(--brand)}
 
   .row{display:grid;grid-template-columns:auto auto auto minmax(0,1fr) auto;grid-template-areas:
       "fav dot name state ago"
@@ -1910,25 +1837,19 @@
 
 <div id="content">
 <section class="sec hidden" id="centro-wrap">
-  <div class="rail-head"><span data-icon="layers" data-size="12"></span> Foco <span class="rail-count" id="foco-st"></span></div>
   <div id="centro"></div>
 </section>
 <section class="sec" id="sessions-wrap">
-  <div class="sec-label rail-head"><span data-icon="rows" data-size="12"></span> Flotilla
-    <span class="chip" id="sessions-title">Sesiones</span>
-    <span class="rail-count" id="fleet-count">0</span>
-    <input id="pane-filter" type="search" placeholder="filtrar…" autocomplete="off" spellcheck="false" aria-label="Filtrar panes">
+  <div class="sec-label"><span class="chip" id="sessions-title">Sesiones</span>
     <button type="button" id="btn-newsess" class="ns-plus" title="Nueva sesión (elige carpeta, agente y cuenta)" aria-label="Nueva sesión"></button>
   </div>
   <div id="rows"></div>
 </section>
 <section class="sec" id="sidebar-insights">
-  <div class="sec-label rail-head"><span data-icon="timer" data-size="12"></span> Hoy
-    <span class="chip">Hoy</span>
-    <button type="button" id="side-usage" class="side-link">Analytics</button></div>
+  <div class="sec-label"><span class="chip">Hoy</span><button type="button" id="side-usage" class="side-link">Analytics →</button></div>
   <div class="side-kpis">
-    <div class="side-kpi"><span data-icon="timer" data-size="16"></span><span class="v" id="side-time">—</span><span class="l">en foco</span></div>
-    <div class="side-kpi"><span data-icon="zap" data-size="16"></span><span class="v" id="side-panes">—</span><span class="l">agentes</span></div>
+    <div class="side-kpi"><span class="v" id="side-time">—</span><span class="l">en foco</span></div>
+    <div class="side-kpi"><span class="v" id="side-panes">—</span><span class="l">agentes activos</span></div>
   </div>
   <div id="side-projects"></div>
   <div class="side-keys" title="Atajos completos: ? o F1">
@@ -2362,15 +2283,6 @@ const S = {
 	};
 const $ = s => document.querySelector(s);
 const rows = $("#rows");
-let PANE_FILTER = "";
-const paneFilter = $("#pane-filter");
-if(paneFilter && !paneFilter._wired){
-  paneFilter._wired = true;
-  paneFilter.addEventListener("input", ()=>{
-    PANE_FILTER = String(paneFilter.value || "").toLowerCase();
-    render(S.list || []);
-  });
-}
 
 // ---------- i18n ----------
 // El markup y los literales viven en espanol; T_EN los traduce cuando L==="en".
@@ -3345,7 +3257,6 @@ function mdStrip(s){ return (s||"").replace(/\*\*|`|^#{1,6} /g, ""); }
 	    CENTRO_VIEW.sessionId = rowKey(it);
 	    box.dataset.sig = rowKey(it);
 	    box.innerHTML = `
-	      <span class="cx-mark" aria-hidden="true"></span>
 	      <div class="cx-hero" data-st="${attrEsc(st)}">
 	        <span class="cx-name"></span><span class="cx-sub" aria-live="polite"></span>
 	        <span class="cx-path"></span>
@@ -3358,7 +3269,7 @@ function mdStrip(s){ return (s||"").replace(/\*\*|`|^#{1,6} /g, ""); }
 	          <div class="cx-acts">
 	            <button type="button" class="cx-open">${svg("layers",13)} ${t("Abrir")}</button>
 	            <button type="button" class="cx-stop hidden" title="${tf("Interrumpe el turno actual (Escape): la sesión queda en el prompt, lista para cambiar de motor o darle otra orden", "Interrupt the current turn (Escape): back to the prompt, ready to switch engines or take another order")}">■ ${tf("Detener", "Stop")}</button>
-	            <button type="button" class="cx-more" aria-expanded="false">${svg("moreH",14)} ${tf("Más", "More")}</button>
+	            <button type="button" class="cx-more" aria-expanded="false">${tf("Más", "More")} ▾</button>
 	          </div>
 	          <div class="cx-extra hidden">
 	            <div class="cx-tabs" role="tablist">
@@ -3391,7 +3302,7 @@ function mdStrip(s){ return (s||"").replace(/\*\*|`|^#{1,6} /g, ""); }
 	    moreButton.addEventListener("click", ()=>{
 	      const extra = box.querySelector(".cx-extra");
 	      const open = extra.classList.toggle("hidden") === false;
-	      moreButton.innerHTML = open ? `${svg("close",14)} ${tf("Menos", "Less")}` : `${svg("moreH",14)} ${tf("Más", "More")}`;
+	      moreButton.textContent = open ? tf("Menos ▴", "Less ▴") : tf("Más ▾", "More ▾");
 	      moreButton.setAttribute("aria-expanded", String(open));
 	    });
 	    box.querySelector(".cx-stop").addEventListener("click", async ()=>{
@@ -3442,19 +3353,14 @@ function mdStrip(s){ return (s||"").replace(/\*\*|`|^#{1,6} /g, ""); }
 	  }
 	  box.dataset.sig = rowKey(it);
 	  box.querySelector(".cx-hero").dataset.st = st;
-	  const stTxt = {waiting:tf("espera tu respuesta", "waiting for you"),
-	                 working:tf("trabajando", "working"), done:tf("listo", "done"),
-	                 idle:tf("descansando", "idle"), dead:tf("apagada", "dead")}[st] || st;
-	  const stIco = {waiting:"bell", working:"zap", done:"check", idle:"circle", dead:"close"}[st] || "circle";
-	  const mark = box.querySelector(".cx-mark");
-	  if(mark) mark.innerHTML = providerMark(it.motor || it.agent || "claude", model, 22) || svg("layers", 22);
-	  const focoSt = $("#foco-st");
-	  if(focoSt) focoSt.textContent = stTxt;
 	  box.querySelector(".cx-name").textContent = it.project || it.session;
 	  const cxp = box.querySelector(".cx-path");
 	  if(cxp) cxp.innerHTML = it.cwd ? `<a href="#" class="pathlink" data-path="${attrEsc(it.cwd)}" title="${attrEsc(it.cwd)} — ${tf("click: abrir carpeta","click: open folder")}">${mdEsc(shortPath(it.cwd))}</a>` : "";
-	  const sub = box.querySelector(".cx-sub");
-	  if(sub) sub.innerHTML = `${svg(stIco, 11)} ${mdEsc(stTxt)}${it.contextPct ? ` · ctx ${it.contextPct}%` : ""}`;
+	  const stTxt = {waiting:tf("espera tu respuesta", "waiting for you"),
+	                 working:tf("trabajando", "working"), done:tf("listo", "done"),
+	                 idle:tf("descansando", "idle"), dead:tf("apagada", "dead")}[st] || st;
+	  box.querySelector(".cx-sub").textContent = stTxt +
+	    (it.contextPct ? ` · ctx ${it.contextPct}%` : "");
 	  renderAdvice(box, it);
 	  const modelElement = box.querySelector(".cx-model");
 	  const cardMotor=it.motor||motorOf(model)||it.agent;
@@ -3523,7 +3429,7 @@ function mdStrip(s){ return (s||"").replace(/\*\*|`|^#{1,6} /g, ""); }
 	                 `${d.claudeMd.name}: ${d.claudeMd.lines} lines — when this long, Claude ignores half of it`);
 	    }
 	  }
-	  el.innerHTML = msg ? `${svg("plug",12)} <span>${mdEsc(msg)}</span>` : "";
+	  el.textContent = msg ? "⚠ " + msg : "";
 	  el.classList.toggle("hidden", !msg);
 	}
 	async function renderBrain(box, it){
@@ -6692,7 +6598,6 @@ function rowEl(it){
   el.innerHTML = `
     <button type="button" class="fav" title="${t('Favorito')}">★</button>
     <span class="dot"></span>
-    <span class="rmark" aria-hidden="true"></span>
     <span class="ident"><span class="name"></span>
 	    <span class="abadge hidden"></span>
 	    <span class="usage-chip hidden"></span>
@@ -6744,21 +6649,17 @@ function rowEl(it){
   const xp = el.querySelector(".xp");
   xp.addEventListener("click", e=>{
     e.stopPropagation();
-    if(inApp()) return;   // GTK: lista compacta, nunca se agranda al click
     el.classList.toggle("open");
     const _open = el.classList.contains("open");
     xp.textContent = _open ? "▴" : "▾";
     xp.setAttribute("aria-expanded", _open);
-    render(S.list || []);
+    render(S.list || []);   // llena .rxp (pregunta/opciones) al instante
   });
   el.addEventListener("click", e=>{
     if(e.target.closest("button") || e.target.closest(".rxp")) return;
-    // Seleccionar card/pane NO cambia la pestaña ni agranda la fila.
-    // Para enfocar el terminal existe el botón explícito "Abrir" del Centro.
-    S.sel = rowKey(it); S.selTs = Date.now();
-    el.classList.remove("open");
-    renderCentro(S.list || []);
-    document.querySelectorAll("#rows .row").forEach(r => r.classList.toggle("active-pane", r.dataset.rk === rowKey(it)));
+    // Seleccionar card/pane NO cambia la pestaña ni la sesión del terminal.
+    // Para eso existe el botón explícito "Abrir" del Centro.
+    S.sel = rowKey(it); S.selTs = Date.now(); renderCentro(S.list || []);
   });
   return el;
 }
@@ -6787,16 +6688,15 @@ function render(list){
     let el = document.querySelector(`.row[data-rk="${CSS.escape(rk)}"]`);
     if(el && el.dataset.kind !== kind){ el.remove(); el = null; }
     if(!el){ el = rowEl(it); container.appendChild(el); }
+    const appSess = inApp() ? (ACTIVE_TAB.session || "") : "";
+    const appPanes = appSess ? list.filter(x => x.alive && x.session === appSess && x.pane) : [];
     const splitCount = list.filter(x => x.alive && x.session === it.session && x.pane).length;
-    const q = (typeof PANE_FILTER === "string" ? PANE_FILTER : "").trim();
-    const hay = !q || (el.dataset.search || "").includes(q) || rk.toLowerCase().includes(q);
     if(inApp()){
-      // Operador: todos los panes vivos, compactos. Click selecciona (Centro);
-      // no expande. Filtrar con #pane-filter.
-      el.style.display = (it.alive && hay) ? "" : "none";
-      el.classList.remove("open");
+      // Sidebar GTK: SOLO los panes de la pestaña activa. El inventario global
+      // estorbaba; el resto del espacio es analytics.
+      el.style.display = (appPanes.length >= 2 && it.session === appSess) ? "" : "none";
     }else{
-      el.style.display = (!hay || (splitCount < 2 && rk === shown)) ? "none" : "";
+      el.style.display = (splitCount < 2 && rk === shown) ? "none" : "";
     }
     const ext = !!it.external;
     const ab = el.querySelector(".abadge");
@@ -6804,8 +6704,6 @@ function render(list){
       const agentModel = it.model || usageForItem(it)?.model || "";
       const harness=it.agent||"claude",motor=it.motor||motorOf(agentModel)||harness;
       const harnessLabel=(nsHarness(harness).label||harness).replace(" Code","");
-      const rmark = el.querySelector(".rmark");
-      if(rmark) rmark.innerHTML = providerMark(motor || harness, agentModel, 16);
       ab.innerHTML=providerMark(harness,"",11)+`<span>${mdEsc(harnessLabel)} → ${mdEsc(engineLabel(motor))}</span>`;
       ab.dataset.a=harness;
       ab.classList.toggle("hidden",!harness);
@@ -6979,10 +6877,9 @@ function render(list){
     if(!seen.has(el.dataset.rk || el.dataset.session)) el.remove();
   });
   if(inApp()){
-    const nPanes = list.filter(x => x.alive).length;
-    $("#sessions-wrap").classList.toggle("hidden", nPanes < 1);
-    const st = $("#sessions-title"); if(st) st.textContent = `Panes · ${nPanes}`;
-    const fc = $("#fleet-count"); if(fc) fc.textContent = String(nPanes);
+    const nPanes = list.filter(x => x.alive && x.session === (ACTIVE_TAB.session || "") && x.pane).length;
+    $("#sessions-wrap").classList.toggle("hidden", nPanes < 2);
+    const st = $("#sessions-title"); if(st) st.textContent = nPanes > 1 ? `Panes · ${nPanes}` : "Panes";
   }
   renderCentro(list);
   if(!rows.querySelector(".row") && !rows.querySelector(".empty")){
@@ -7339,8 +7236,6 @@ const ICON = {
   coffee:    '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 8h12v7a4 4 0 0 1-4 4H8a4 4 0 0 1-4-4V8zM16 10h2a3 3 0 0 1 0 6h-2M6 2v2M10 2v2M14 2v2"/></svg>',
   skip:      '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m5 4 10 8-10 8V4zM19 5v14"/></svg>',
   x:         '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18M6 6l12 12"/></svg>',
-  moreH:     '<svg viewBox="0 0 24 24" fill="currentColor"><circle cx="5" cy="12" r="1.8"/><circle cx="12" cy="12" r="1.8"/><circle cx="19" cy="12" r="1.8"/></svg>',
-  circle:    '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="4"/></svg>',
 };
 const svg = (name, sz=14) =>
   ICON[name] ? `<span class="ico" style="width:${sz}px;height:${sz}px;display:inline-flex;align-items:center;justify-content:center;vertical-align:-2px">${ICON[name]}</span>` : "";
@@ -7439,13 +7334,9 @@ async function renderSidebarInsights(){
     if(pn) pn.textContent = String(panes);
     const top = projects.slice(0,3), max = Math.max(1,...top.map(x=>Number(x.minutes||0)));
     const box = $("#side-projects");
-    if(box) box.innerHTML = top.length ? top.map(x=>{
-      const mins = Number(x.minutes||0);
-      const pct = Math.max(6, Math.round(mins/max*100));
-      return `<div class="side-proj">
-      <div class="side-proj-meta"><span class="n" title="${attrEsc(x.path||x.name||"")}">${mdEsc(x.name||"")}</span><span class="m">${fmtMin(mins)}</span></div>
-      <span class="bar" role="meter" aria-valuemin="0" aria-valuemax="${max}" aria-valuenow="${mins}"><i style="width:${pct}%"></i></span></div>`;
-    }).join("") : `<div class="desc">Sin turnos medidos hoy.</div>`;
+    if(box) box.innerHTML = top.length ? top.map(x=>`<div class="side-proj">
+      <span class="n" title="${attrEsc(x.path||x.name||"")}">${mdEsc(x.name||"")}</span><span class="m">${fmtMin(Number(x.minutes||0))}</span>
+      <span class="bar"><i style="width:${Math.max(3,Math.round(Number(x.minutes||0)/max*100))}%"></i></span></div>`).join("") : `<div class="desc">Sin turnos medidos hoy.</div>`;
   }catch(e){}
 }
 
