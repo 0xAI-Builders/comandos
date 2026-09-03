@@ -152,10 +152,11 @@ def test_selecting_card_does_not_focus_or_change_terminal_session():
     assert 'botón explícito "Abrir"' in handler
 
 
-def test_sidebar_today_projects_are_a_card_with_real_tracks_and_share():
-    # Hoy: pista de 7px visible, filas de 44px mínimo separadas, % del día y
-    # progressbar accesible. Sin porcentajes (solo horas). Nada de hilos de 3px.
-    assert ".side-proj .bar{grid-column:1/-1;height:7px" in INDEX
+def test_sidebar_today_projects_are_minimal_rows_with_thin_flat_track():
+    # Hoy: nombre + horas + pista fina de 4px con relleno plano. Sin card,
+    # sin divisores, sin porcentajes. progressbar accesible.
+    assert ".side-proj .bar{grid-column:1/-1;height:4px" in INDEX
+    assert ".side-proj .bar i{display:block;height:100%;border-radius:4px;background:var(--brand)" in INDEX
     assert ".side-proj{display:grid;grid-template-columns:minmax(0,1fr) auto;" in INDEX
-    assert "min-height:44px" in INDEX.split(".side-proj{",1)[1].split("}",1)[0]
+    assert ".side-proj + .side-proj{border-top" not in INDEX
     assert '<span class="pct"' not in INDEX and 'role="progressbar"' in INDEX
