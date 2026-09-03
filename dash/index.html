@@ -599,17 +599,22 @@
   .motor-pill .mp-caret{color:var(--dim);font-size:9px}
   .motor-pill.pending .mp-model{color:var(--warn)}
   .motor-pill:disabled{opacity:.5;cursor:not-allowed}
-  #motor-pop{position:fixed;z-index:200;box-sizing:border-box;width:min(900px,calc(100vw - 16px));max-height:calc(100vh - 80px);overflow-y:auto;background:var(--panel);border:1px solid var(--line2);border-radius:14px;
-    box-shadow:0 18px 48px rgba(0,0,0,.35);padding:18px;display:none}
-  #motor-pop.open{display:block}
-  html.gtkapp #motor-pop.inline{position:relative;left:auto!important;top:auto!important;width:100%;max-height:min(66vh,720px);margin-top:8px;
-    box-shadow:none;border-color:var(--line);padding:14px;overflow-y:auto}
+  #motor-pop{position:fixed;z-index:200;box-sizing:border-box;width:min(900px,calc(100vw - 16px));max-height:calc(100vh - 80px);overflow:hidden;background:var(--panel);border:1px solid var(--line2);border-radius:14px;
+    box-shadow:0 18px 48px rgba(0,0,0,.35);padding:0;display:none;flex-direction:column}
+  #motor-pop.open{display:flex}
+  /* Tres partes: cabecera fija, cuerpo que scrollea, pie fijo con SOLO el botón de
+     aplicar. Antes todo el popover scrolleaba con head/pie sticky encima del
+     contenido y en el sidebar quedaba una rendija de pocos px para operar. */
+  #motor-pop .mp-body{flex:1 1 auto;min-height:0;overflow-y:auto;padding:12px 18px 14px;overscroll-behavior:contain}
+  html.gtkapp #motor-pop.inline .mp-body{padding:10px 14px 12px}
+  html.gtkapp #motor-pop.inline{position:relative;left:auto!important;top:auto!important;width:100%;max-height:min(72vh,760px);margin-top:8px;
+    box-shadow:none;border-color:var(--line);padding:0;overflow:hidden}
   html.gtkapp #motor-pop.inline .mp-grid{grid-template-columns:1fr}
 
-  #motor-pop .mp-head{position:sticky;top:-18px;z-index:5;display:flex;justify-content:space-between;align-items:center;gap:10px;
-    margin:-18px -18px 10px;padding:14px 16px;background:var(--panel);border-bottom:1px solid var(--line);border-radius:14px 14px 0 0;
+  #motor-pop .mp-head{flex:none;display:flex;justify-content:space-between;align-items:center;gap:10px;
+    margin:0;padding:10px 16px;background:var(--panel);border-bottom:1px solid var(--line);border-radius:14px 14px 0 0;
     font-family:var(--mono);font-size:11px;color:var(--dim)}
-  html.gtkapp #motor-pop.inline .mp-head{margin:-14px -14px 10px;padding:12px 14px;top:-14px}
+  html.gtkapp #motor-pop.inline .mp-head{margin:0;padding:8px 12px}
   #motor-pop .mp-htitle{display:flex;align-items:baseline;gap:10px;min-width:0}
   #motor-pop .mp-htitle b{color:var(--text)}
   #motor-pop .mp-close{flex:none;width:28px;height:28px;display:grid;place-items:center;border:1px solid var(--line);border-radius:8px;
@@ -665,9 +670,10 @@
   #motor-pop .mp-cancel:hover{background:color-mix(in srgb,var(--err) 10%,transparent)}
   /* Footer sticky: harness + cuenta + estado SIEMPRE visibles (fuera del scroll
      de los tiles de motor), con el boton de accion encima cuando hay cambios. */
-  #motor-pop .mp-stick{position:sticky;bottom:-18px;z-index:6;margin:12px -18px -18px;padding:8px 18px 14px;background:var(--panel);border-top:1px solid var(--line2);box-shadow:0 -12px 28px var(--shadow)}
-  html.gtkapp #motor-pop.inline .mp-stick{bottom:-14px;margin:12px -14px -14px;padding:8px 14px 12px}
-  #motor-pop .mp-go{margin:8px 0 0;padding:12px;display:flex;align-items:center;gap:12px;background:color-mix(in srgb,var(--panel) 94%,transparent);border:1px solid var(--line2);border-radius:12px;-webkit-backdrop-filter:blur(14px);backdrop-filter:blur(14px)}
+  #motor-pop .mp-stick{flex:none;margin:0;padding:6px 18px 12px;background:var(--panel);border-top:1px solid var(--line2)}
+  #motor-pop .mp-stick:empty{display:none}
+  html.gtkapp #motor-pop.inline .mp-stick{padding:6px 12px 10px}
+  #motor-pop .mp-go{margin:0;padding:10px;display:flex;align-items:center;gap:12px;background:color-mix(in srgb,var(--panel) 94%,transparent);border:1px solid var(--line2);border-radius:12px;-webkit-backdrop-filter:blur(14px);backdrop-filter:blur(14px)}
   #motor-pop .mp-go .do{flex:1;min-height:44px;font-family:var(--mono);font-size:12px;font-weight:800;padding:12px 18px;border:none;border-radius:9px;
     background:var(--brand);color:var(--on-brand);cursor:pointer;letter-spacing:.2px}
   #motor-pop .mp-go .do:hover{filter:brightness(1.08)}
@@ -4747,9 +4753,14 @@ function mdStrip(s){ return (s||"").replace(/\*\*|`|^#{1,6} /g, ""); }
 	    document.body.appendChild(pop);
 	    const r = anchor.getBoundingClientRect(), w = pop.offsetWidth;
 	    let left = Math.min(r.left, window.innerWidth - w - 8); if(left < 8) left = 8;
-	    pop.style.left = left + "px"; pop.style.top = Math.min(r.bottom + 8, window.innerHeight - pop.offsetHeight - 8) + "px";
+	    pop.style.left = left + "px"; pop.style.top = (r.bottom + 8) + "px";
 	  }
 	  pop.classList.add("open");
+	  if(!pop.classList.contains("inline")){
+	    // Con display:none offsetHeight es 0: el clamp solo vale ya abierto.
+	    const top = Math.max(8, Math.min(parseFloat(pop.style.top) || 8, window.innerHeight - pop.offsetHeight - 8));
+	    pop.style.top = top + "px";
+	  }
 	  setTimeout(()=> document.addEventListener("click", motorPopOutside, true), 0);
 	  document.addEventListener("keydown", motorPopKey);
 	}
@@ -4860,6 +4871,7 @@ function mdStrip(s){ return (s||"").replace(/\*\*|`|^#{1,6} /g, ""); }
 	  const harnessCaps=harnessSpec.capabilities||{};
 	  const liveAccountSwitch=!!harnessCaps.liveAccountSwitch || (item&&item.agent)==="acp";
 	  pop.innerHTML = `<div class="mp-head"><div class="mp-htitle"><b>${head[0]}</b><span>${head[1]}</span></div><button type="button" class="mp-close" title="${attrEsc(tf("Cerrar","Close"))}" aria-label="${attrEsc(tf("Cerrar","Close"))}">${svg("close",14)}</button></div>
+	    <div class="mp-body">
 	    ${pendNow ? `<div class="mp-prog">${motorProgressHtml(pendNow)}</div>` : ""}
 	    ${busyNow ? `<div class="mp-busy"><span class="msg">⚠ ${tf("Está trabajando. Sin marcar, el cambio espera a que termine el turno.", "Working. Unchecked, the switch waits for the turn to end.")}</span>
 	      <button type="button" class="sw" aria-pressed="false">■ ${tf("detener y cambiar YA", "stop & switch NOW")}</button></div>` : ""}
@@ -4889,20 +4901,6 @@ function mdStrip(s){ return (s||"").replace(/\*\*|`|^#{1,6} /g, ""); }
 	      ${pickerTileIds(item, mode).map(id=>tile(id,engineLabel(id),engineSub(id))).join("")}
 	    </div>
 	    ${mode !== "global" && MOTOR_PENDING.has(pendingKey) ? `<button type="button" class="mp-cancel">✕ ${tf("cancelar el cambio en cola", "cancel the queued switch")}</button>` : ""}
-    <div class="mp-stick">
-    ${mode !== "global" && (st.prov !== curProv || motorKey(st.model) !== motorKey(curModel) || (st.effort || "") !== (curEffort || "") || MPOP.effortTouched) ? (()=>{
-	      // Cuenta del MOTOR: nativa (mismo que el harness) = la cuenta del harness;
-	      // cruzada (motor distinto) = la cuenta 'main' que usa el gateway. Se muestra
-	      // para que el usuario SEPA con qué cuenta responde el motor y no choque con
-	      // "motor_account_login_required".
-	      const nativeMotor = st.prov === (item.agent||"claude");
-	      const motorAcct = nativeMotor ? (item.account||"main") : "main";
-	      const acctTag = ` · ${tf("cuenta","account")} ${mdEsc(motorAcct)}`;
-	      return `<div class="mp-go">
-	      <button type="button" class="do">→ ${tf("Cambiar a", "Switch to")} ${mdEsc(engineLabel(st.prov))} · ${mdEsc(motorName(st.prov, st.model))}${st.effort ? ` · ${st.effort}` : ""}${acctTag}</button>
-	      <span class="note">${busyNow ? tf("se encola o marca detener", "queues, or tick stop") : tf("mismo CLI: conversación intacta · otro CLI: git+handoff; al volver a Claude se reanuda el transcript", "same CLI: conversation kept · other CLI: git+handoff; returning to Claude resumes the transcript")}</span>
-	    </div>`;})() : ""}
-	    
 	    <div class="mp-acct">
 	      <span class="lbl">${tf("cuentas por proveedor", "accounts by provider")}</span>
 	      ${accountsByProvider().map(g => {
@@ -4924,6 +4922,20 @@ function mdStrip(s){ return (s||"").replace(/\*\*|`|^#{1,6} /g, ""); }
 	    </div>
 	    <div class="mp-foot">${PROXY.alive ? `<span class="ok">●</span> cc-proxy 127.0.0.1:${PROXY.port}` : `<span class="bad">●</span> ${tf("cc-proxy apagado — motores externos no disponibles", "cc-proxy down — external engines unavailable")}`}
 	      <span>· ${tf("mismo CLI: conversación intacta. Cambio de CLI: archivos y git sí; memoria interna del TUI no. Al volver a Claude: --resume del transcript.", "same CLI: conversation kept. CLI switch: files+git yes; TUI memory no. Back to Claude: --resume the transcript.")}</span></div>
+	    </div>
+    <div class="mp-stick">
+    ${mode !== "global" && (st.prov !== curProv || motorKey(st.model) !== motorKey(curModel) || (st.effort || "") !== (curEffort || "") || MPOP.effortTouched) ? (()=>{
+	      // Cuenta del MOTOR: nativa (mismo que el harness) = la cuenta del harness;
+	      // cruzada (motor distinto) = la cuenta 'main' que usa el gateway. Se muestra
+	      // para que el usuario SEPA con qué cuenta responde el motor y no choque con
+	      // "motor_account_login_required".
+	      const nativeMotor = st.prov === (item.agent||"claude");
+	      const motorAcct = nativeMotor ? (item.account||"main") : "main";
+	      const acctTag = ` · ${tf("cuenta","account")} ${mdEsc(motorAcct)}`;
+	      return `<div class="mp-go">
+	      <button type="button" class="do">→ ${tf("Cambiar a", "Switch to")} ${mdEsc(engineLabel(st.prov))} · ${mdEsc(motorName(st.prov, st.model))}${st.effort ? ` · ${st.effort}` : ""}${acctTag}</button>
+	      <span class="note">${busyNow ? tf("se encola o marca detener", "queues, or tick stop") : tf("mismo CLI: conversación intacta · otro CLI: git+handoff; al volver a Claude se reanuda el transcript", "same CLI: conversation kept · other CLI: git+handoff; returning to Claude resumes the transcript")}</span>
+	    </div>`;})() : ""}
 	    </div>`;
 	  const mpClose = pop.querySelector(".mp-close");
   if(mpClose) mpClose.addEventListener("click", e => { e.stopPropagation(); motorPopClose(); });

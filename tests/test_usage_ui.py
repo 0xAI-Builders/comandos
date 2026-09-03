@@ -63,9 +63,11 @@ def test_notifications_v2_prioritize_and_carry_action_buttons():
 
 
 def test_model_confirmation_action_is_sticky():
-    # El sticky ya no es solo el botón de acción: TODO el footer (mp-stick =
-    # acción + cambio de harness + cuenta + estado) queda fijo fuera del scroll.
-    assert "#motor-pop .mp-stick{position:sticky" in HTML
+    # El pie (mp-stick) queda fijo fuera del scroll, pero como parte flex del
+    # popover (no sticky sobre el contenido) y lleva SOLO el botón de aplicar:
+    # cuentas y estado viven en el cuerpo scrolleable. Ver
+    # test_motor_picker_is_flex_head_scrollbody_foot_and_footer_holds_only_apply.
+    assert "#motor-pop .mp-stick{flex:none;" in HTML
     assert '<div class="mp-stick">' in HTML
     assert "min-height:44px" in HTML
 
@@ -415,3 +417,16 @@ def test_every_metric_surface_carries_an_insight_with_recommendation():
     # ROI: costo de suscripción declarado por el usuario + moneda
     assert "pcRoiBlock" in HTML and "data-sub-provider" in HTML
     assert "/usage/subscription" in HTML and "SUBS_CURRENCIES" in HTML
+
+
+def test_motor_picker_is_flex_head_scrollbody_foot_and_footer_holds_only_apply():
+    # Cabecera y pie NO son sticky sobre un popover que scrollea entero: el
+    # cuerpo (.mp-body) es el único que scrollea y el pie solo lleva el botón.
+    assert "#motor-pop .mp-body{flex:1 1 auto;min-height:0;overflow-y:auto" in HTML
+    assert "#motor-pop .mp-head{flex:none;" in HTML
+    assert "#motor-pop .mp-stick{flex:none;" in HTML
+    assert "position:sticky" not in HTML.split("#motor-pop .mp-head{")[1].split("}")[0]
+    body = HTML.split('<div class="mp-body">')[1].split('<div class="mp-stick">')[0]
+    assert '<div class="mp-acct">' in body and '<div class="mp-foot">' in body
+    stick = HTML.split('<div class="mp-stick">')[1].split("`;")[0]
+    assert "mp-acct" not in stick and "mp-foot" not in stick
