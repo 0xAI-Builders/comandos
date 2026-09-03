@@ -869,12 +869,17 @@
   .side-kpi .l{font-family:var(--mono);font-size:9.5px;color:var(--dim);text-transform:uppercase;letter-spacing:.06em}
   .side-link{margin-left:auto;font-family:var(--mono);font-size:10px;color:var(--brand);border:1px solid var(--line2);border-radius:7px;padding:3px 8px;background:none}
   .side-link:hover{border-color:var(--brand);background:color-mix(in srgb,var(--brand) 9%,transparent)}
-  #side-projects{display:flex;flex-direction:column;gap:7px}
-  .side-proj{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:4px 8px;align-items:center}
-  .side-proj .n{font-size:11px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-  .side-proj .m{font-family:var(--mono);font-size:10px;color:var(--dim);font-variant-numeric:tabular-nums}
-  .side-proj .bar{grid-column:1/-1;height:3px;border-radius:3px;background:var(--line);overflow:hidden}
-  .side-proj .bar i{display:block;height:100%;border-radius:3px;background:var(--brand)}
+  /* Hoy · proyectos: una card, filas con pista de 7px real y % del día.
+     Antes eran hilos de 3px sin pista y filas pegadas: se veía roto. */
+  #side-projects{display:flex;flex-direction:column;gap:0;background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:4px 11px;overflow:visible}
+  .side-proj{display:grid;grid-template-columns:minmax(0,1fr) auto auto;gap:5px 8px;align-items:center;padding:8px 0;min-height:44px}
+  .side-proj + .side-proj{border-top:1px solid var(--line)}
+  .side-proj .n{font-size:11.5px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--text)}
+  .side-proj .m{font-family:var(--mono);font-size:10.5px;color:var(--text);font-variant-numeric:tabular-nums;font-weight:700}
+  .side-proj .pct{font-family:var(--mono);font-size:9.5px;color:var(--dim);font-variant-numeric:tabular-nums;min-width:30px;text-align:right}
+  .side-proj .bar{grid-column:1/-1;height:7px;border-radius:7px;background:color-mix(in srgb,var(--line2) 55%,var(--panel));overflow:hidden}
+  .side-proj .bar i{display:block;height:100%;border-radius:7px;background:linear-gradient(90deg,color-mix(in srgb,var(--brand) 70%,var(--panel)),var(--brand));min-width:8px;transition:width .35s ease}
+  #side-projects .desc{padding:8px 0;color:var(--dim);font-size:11px}
 
   .row{display:grid;grid-template-columns:auto auto auto minmax(0,1fr) auto;grid-template-areas:
       "fav dot name state ago"
@@ -7362,9 +7367,9 @@ async function renderSidebarInsights(){
     if(pn) pn.textContent = String(panes);
     const top = projects.slice(0,3), max = Math.max(1,...top.map(x=>Number(x.minutes||0)));
     const box = $("#side-projects");
-    if(box) box.innerHTML = top.length ? top.map(x=>`<div class="side-proj">
-      <span class="n" title="${attrEsc(x.path||x.name||"")}">${mdEsc(x.name||"")}</span><span class="m">${fmtMin(Number(x.minutes||0))}</span>
-      <span class="bar"><i style="width:${Math.max(3,Math.round(Number(x.minutes||0)/max*100))}%"></i></span></div>`).join("") : `<div class="desc">Sin turnos medidos hoy.</div>`;
+    if(box) box.innerHTML = top.length ? top.map(x=>{const m=Number(x.minutes||0), share=total>0?Math.round(m/total*100):0; return `<div class="side-proj">
+      <span class="n" title="${attrEsc(x.path||x.name||"")}">${mdEsc(x.name||"")}</span><span class="m">${fmtMin(m)}</span><span class="pct" title="${tf("del tiempo de hoy","of today")}">${share}%</span>
+      <span class="bar" role="progressbar" aria-valuenow="${share}" aria-valuemin="0" aria-valuemax="100"><i style="width:${Math.max(4,Math.round(m/max*100))}%"></i></span></div>`;}).join("") : `<div class="desc">Sin turnos medidos hoy.</div>`;
   }catch(e){}
 }
 

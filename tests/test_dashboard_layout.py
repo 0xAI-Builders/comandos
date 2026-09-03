@@ -150,3 +150,12 @@ def test_selecting_card_does_not_focus_or_change_terminal_session():
     assert "S.sel = rowKey(it)" in handler
     assert "openSession" not in handler
     assert 'botón explícito "Abrir"' in handler
+
+
+def test_sidebar_today_projects_are_a_card_with_real_tracks_and_share():
+    # Hoy: pista de 7px visible, filas de 44px mínimo separadas, % del día y
+    # progressbar accesible. Nada de hilos de 3px sin pista.
+    assert ".side-proj .bar{grid-column:1/-1;height:7px" in INDEX
+    assert ".side-proj{display:grid;grid-template-columns:minmax(0,1fr) auto auto" in INDEX
+    assert "min-height:44px" in INDEX.split(".side-proj{",1)[1].split("}",1)[0]
+    assert '<span class="pct"' in INDEX and 'role="progressbar"' in INDEX
