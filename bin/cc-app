@@ -1241,8 +1241,9 @@ def _build_hb_css():
     b" background:transparent;}"
     b".pane-pill.pp-claude,.pane-pill.pp-codex,.pane-pill.pp-grok{"
     b" border-color:rgba(148,148,148,0.5);}"
-    b".pane-pill.pp-shell{padding:0 6px 0 2px;}"
-    b".pane-pill.pp-shell .pill-btn{padding:0 8px;}"
+    b".pane-pill.pp-shell{padding:0;border:0;background:transparent;box-shadow:none;}"
+    b".pane-pill.pp-shell .pill-btn{padding:1px 10px;background:" + THEME["bg"].encode() + b";"
+    b" border:1.5px solid " + THEME["line"].encode() + b";box-shadow:0 1px 4px rgba(0,0,0,0.55);}"
     b".pane-pill.pp-shell label{font-size:11px;}"
     b".pill-btn{padding:2px 5px;margin:0;background:rgba(148,148,148,0.12);"
     b" border:1px solid rgba(148,148,148,0.55);border-radius:999px;min-height:0;}"
@@ -3195,10 +3196,16 @@ def _place_pills(box, panes):
         box._pill_sig = ""      # fuente aun no lista: reintenta al siguiente tick
         return
     m_l = term.get_margin_start(); m_t = term.get_margin_top()
+    placed = set()
     for p in panes[:6]:
         g = geo.get(p.get("pane") or "")
         if not g:
             continue
+        if _PANE_CMD.get(p.get("pane") or "", "") in _SHELLS:
+            # cc-dash aun cree que hay agente pero el pane ya volvio al shell
+            # (sesion detenida): NO pintar el modelo viejo; abajo va 'Iniciar IA'.
+            continue
+        placed.add(p.get("pane"))
         left, top, width = g
         pill = _pane_pill(getattr(box, "_pill_sess", ""), p)
         # anclada al INICIO de cada pane, SOBRE el renglon de titulo tmux
@@ -3214,7 +3221,7 @@ def _place_pills(box, panes):
         pill.show_all()
         box._pills.append(pill)
     # Panes SIN agente (shell vivo): boton visible para arrancar una IA ahi.
-    with_agent = {p.get("pane") for p in panes[:6]}
+    with_agent = placed
     sess = getattr(box, "_pill_sess", "")
     for pane_id, (left, top, width) in geo.items():
         if pane_id in with_agent or _PANE_CMD.get(pane_id, "") not in _SHELLS or width < 24:
@@ -3278,7 +3285,9 @@ def _refresh_tab_models():
             metrics = f"{box._term.get_char_width()}x{box._term.get_char_height()}w{getattr(box, '_pill_overlay', None) and box._pill_overlay.get_allocated_width()}"
         except Exception:
             metrics = ""
-        sig = json.dumps(panes or [], sort_keys=True) + "|" + json.dumps(sorted(_pane_geometry(session).items())) + "|" + metrics
+        geo_now = _pane_geometry(session)   # tambien refresca _PANE_CMD
+        sig = (json.dumps(panes or [], sort_keys=True) + "|" + json.dumps(sorted(geo_now.items()))
+               + "|" + json.dumps(sorted((k, _PANE_CMD.get(k, "")) for k in geo_now)) + "|" + metrics)
         if force or sig != getattr(box, "_pill_sig", ""):
             box._pill_sig = sig
             _place_pills(box, panes or [])

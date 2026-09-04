@@ -331,3 +331,13 @@ def test_pills_sit_on_the_reserved_tmux_border_row_not_on_content():
     assert "row = top - 1 if top >= 1 else 0" in SRC
     assert SRC.count("pill.set_margin_top(_pill_row_y(m_t, top, chh))") == 2  # IA + shell
     assert "max(0, m_t + max(0, top) * chh)" not in SRC
+
+
+def test_model_pill_disappears_when_pane_returns_to_shell_and_shell_pill_has_single_border():
+    # Sesion detenida: el pane vuelve a zsh y cc-dash puede tardar en enterarse.
+    # La pildora de modelo se decide por el comando VIVO del pane, y el cambio
+    # claude->zsh (o zsh->claude al abrir) entra en la firma de refresco.
+    assert 'if _PANE_CMD.get(p.get("pane") or "", "") in _SHELLS:' in SRC
+    assert "with_agent = placed" in SRC
+    assert 'json.dumps(sorted((k, _PANE_CMD.get(k, "")) for k in geo_now))' in SRC
+    assert '.pane-pill.pp-shell{padding:0;border:0;background:transparent;box-shadow:none;}' in SRC
