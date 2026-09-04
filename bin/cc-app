@@ -1241,6 +1241,9 @@ def _build_hb_css():
     b" background:transparent;}"
     b".pane-pill.pp-claude,.pane-pill.pp-codex,.pane-pill.pp-grok{"
     b" border-color:rgba(148,148,148,0.5);}"
+    b".pane-pill.pp-shell{padding:0 6px 0 2px;}"
+    b".pane-pill.pp-shell .pill-btn{padding:0 8px;}"
+    b".pane-pill.pp-shell label{font-size:11px;}"
     b".pill-btn{padding:2px 5px;margin:0;background:rgba(148,148,148,0.12);"
     b" border:1px solid rgba(148,148,148,0.55);border-radius:999px;min-height:0;}"
     b".pill-btn:hover{border-color:" + THEME["fg"].encode() + b";"
@@ -3163,6 +3166,15 @@ def _pane_pill(sess, p):
     return pill
 
 
+def _pill_row_y(m_t, top, chh):
+    """Y de la pildora: SOBRE el renglon de borde tmux (pane-border-status top,
+    formato vacio = riel reservado), que es la fila pane_top-1. Antes se usaba
+    pane_top a secas y la pildora caia en la PRIMERA fila de contenido, tapando
+    el prompt o el titulo del TUI."""
+    row = top - 1 if top >= 1 else 0
+    return max(0, int(m_t + row * chh))
+
+
 def _place_pills(box, panes):
     ov = getattr(box, "_pill_overlay", None)
     term = getattr(box, "_term", None)
@@ -3196,7 +3208,7 @@ def _place_pills(box, panes):
         pill.set_valign(Gtk.Align.START)
         # Sobre el renglón de borde tmux (vacío). Sin -3: ese offset metía la
         # pildora en la statusline del TUI (Grok/Claude) y el titulo se veía detrás.
-        pill.set_margin_top(max(0, m_t + max(0, top) * chh))
+        pill.set_margin_top(_pill_row_y(m_t, top, chh))
         pill.set_margin_start(max(0, int(m_l + left * cw + cw)))
         ov.add_overlay(pill)
         pill.show_all()
@@ -3210,7 +3222,7 @@ def _place_pills(box, panes):
         pill = _shell_pill(sess, pane_id)
         pill.set_halign(Gtk.Align.START)
         pill.set_valign(Gtk.Align.START)
-        pill.set_margin_top(max(0, m_t + max(0, top) * chh))
+        pill.set_margin_top(_pill_row_y(m_t, top, chh))
         pill.set_margin_start(max(0, int(m_l + left * cw + cw)))
         ov.add_overlay(pill)
         pill.show_all()

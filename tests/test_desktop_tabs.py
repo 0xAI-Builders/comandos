@@ -322,3 +322,12 @@ def test_shell_panes_get_a_visible_start_ai_pill_and_ctrl_shift_a():
     assert "if ctrl and shift and e.keyval in (Gdk.KEY_A, Gdk.KEY_a):" in src
     assert "console.error('dash_js: '" in src
     assert 'tf("Iniciar IA aquí","Start AI here")' in Path("dash/index.html").read_text()
+
+
+def test_pills_sit_on_the_reserved_tmux_border_row_not_on_content():
+    # pane-border-status top + formato vacio reserva la fila pane_top-1.
+    # La pildora va AHI, no en la primera fila de contenido (tapaba el prompt).
+    assert "def _pill_row_y(m_t, top, chh)" in SRC
+    assert "row = top - 1 if top >= 1 else 0" in SRC
+    assert SRC.count("_pill_row_y(m_t, top, chh)") == 2
+    assert "max(0, m_t + max(0, top) * chh)" not in SRC
