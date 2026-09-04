@@ -1170,7 +1170,7 @@ def on_term_button(term, event):
          sensitive=bool(pane_id) and npanes > 1)
     menu.append(Gtk.SeparatorMenuItem())
     item("Iniciar sesión de IA aquí…" if ES else "Start AI session here…",
-         lambda: open_ai_session_here(cur_sess, pane_id))
+         lambda: open_ai_session_here(cur_sess or str(key or "").partition(":")[0], pane_id))
     item("Nueva terminal aqui       Ctrl+T" if ES else "New terminal here         Ctrl+T", new_local_tab)
     item("Terminal experimental (xterm.js)  Ctrl+Shift+T"
          if ES else "Experimental terminal (xterm.js)  Ctrl+Shift+T",
@@ -2989,20 +2989,27 @@ def _dash_js(code):
                 paned.set_position(700)
         except Exception:
             pass
-        wv.run_javascript(f"try{{{code}}}catch(e){{}}", None, None, None)
-    except Exception:
-        pass
+        wv.run_javascript(
+            f"try{{{code}}}catch(e){{console.error('dash_js: '+(e&&e.stack||e))}}", None, None, None)
+    except Exception as e:
+        print(f"_dash_js fallo: {e}")
 
 
 def open_ai_session_here(sess, pane):
     """Click derecho en una terminal NORMAL: mismo wizard que el +, pero
     arranca el CLI en ESTE pane (no crea otra pestaña)."""
     cwd = ""
+    if pane and not sess:
+        # el tty del cliente no siempre esta registrado (pestanas restauradas):
+        # el pane si sabe a que sesion pertenece
+        r = tmuxc("display-message", "-p", "-t", pane, "#{session_name}")
+        sess = (r.stdout or "").strip() or sess
     target = pane or (("=" + sess + ":") if sess else "")
     if target:
         r = tmuxc("display-message", "-p", "-t", target, "#{pane_current_path}")
         cwd = (r.stdout or "").strip()
     if not sess:
+        print("open_ai_session_here: sin sesion tmux (pane=%r)" % (pane,))
         notify_popup("Sin sesión tmux" if ES else "No tmux session",
                      "No pude ver en qué terminal estás" if ES else "Could not see this terminal")
         return
@@ -3062,16 +3069,46 @@ def _pane_geometry(sess):
     try:
         out = subprocess.run(
             ["tmux", "list-panes", "-t", f"={sess}", "-F",
-             "#{pane_id} #{pane_left} #{pane_top} #{pane_width}"],
+             "#{pane_id} #{pane_left} #{pane_top} #{pane_width} #{pane_current_command}"],
             capture_output=True, text=True, timeout=2).stdout
     except Exception:
         return {}
     geo = {}
     for line in out.splitlines():
         parts = line.split()
-        if len(parts) == 4 and parts[0].startswith("%"):
+        if len(parts) >= 4 and parts[0].startswith("%"):
             geo[parts[0]] = (int(parts[1]), int(parts[2]), int(parts[3]))
+            _PANE_CMD[parts[0]] = parts[4] if len(parts) > 4 else ""
     return geo
+
+
+_PANE_CMD = {}          # pane_id -> comando vivo (zsh/bash/claude/…) del ultimo _pane_geometry
+_SHELLS = {"zsh", "bash", "sh", "fish", "dash", "ksh", "tcsh", "csh", "nu"}
+
+
+def _shell_pill(sess, pane_id):
+    """Pildora para un pane SIN agente: un solo boton grande 'Iniciar IA aqui'.
+    Antes esos panes no tenian pildora y la unica via era el click derecho,
+    que nadie descubre."""
+    pill = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
+    pill.get_style_context().add_class("pane-pill")
+    pill.get_style_context().add_class("pp-shell")
+    pill.set_valign(Gtk.Align.START)
+    b = Gtk.Button()
+    hb = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
+    hb.pack_start(_svg_image("layers", 13, THEME.get("brand", "#8B7CFF")), False, False, 0)
+    lab = Gtk.Label()
+    lab.set_markup(f'<span foreground="{THEME.get("fg", "#ECECEC")}" weight="bold">'
+                   f'{_esc("Iniciar IA aquí" if ES else "Start AI here")}</span>')
+    hb.pack_start(lab, False, False, 0)
+    b.add(hb)
+    b.set_relief(Gtk.ReliefStyle.NONE)
+    b.get_style_context().add_class("pill-btn")
+    b.set_tooltip_text("Elige CLI, motor y cuenta: arranca en ESTA terminal (Ctrl+Shift+A)" if ES
+                       else "Pick CLI, engine and account: starts in THIS terminal (Ctrl+Shift+A)")
+    b.connect("clicked", lambda *_, s=sess, pn=pane_id: open_ai_session_here(s, pn))
+    pill.pack_start(b, False, False, 0)
+    return pill
 
 
 def _pane_pill(sess, p):
@@ -3135,9 +3172,9 @@ def _place_pills(box, panes):
         try: ov.remove(w)
         except Exception: pass
     box._pills = []
-    if not panes:
-        return
     geo = _pane_geometry(getattr(box, "_pill_sess", ""))
+    if not geo:
+        return
     try:
         cw = term.get_char_width(); chh = term.get_char_height()
     except Exception:
@@ -3159,6 +3196,20 @@ def _place_pills(box, panes):
         pill.set_valign(Gtk.Align.START)
         # Sobre el renglón de borde tmux (vacío). Sin -3: ese offset metía la
         # pildora en la statusline del TUI (Grok/Claude) y el titulo se veía detrás.
+        pill.set_margin_top(max(0, m_t + max(0, top) * chh))
+        pill.set_margin_start(max(0, int(m_l + left * cw + cw)))
+        ov.add_overlay(pill)
+        pill.show_all()
+        box._pills.append(pill)
+    # Panes SIN agente (shell vivo): boton visible para arrancar una IA ahi.
+    with_agent = {p.get("pane") for p in panes[:6]}
+    sess = getattr(box, "_pill_sess", "")
+    for pane_id, (left, top, width) in geo.items():
+        if pane_id in with_agent or _PANE_CMD.get(pane_id, "") not in _SHELLS or width < 24:
+            continue
+        pill = _shell_pill(sess, pane_id)
+        pill.set_halign(Gtk.Align.START)
+        pill.set_valign(Gtk.Align.START)
         pill.set_margin_top(max(0, m_t + max(0, top) * chh))
         pill.set_margin_start(max(0, int(m_l + left * cw + cw)))
         ov.add_overlay(pill)
@@ -4653,6 +4704,16 @@ def on_key(w, e):
         return True
     if e.keyval == Gdk.KEY_F5:
         wv.load_uri(URL)
+        return True
+    if ctrl and shift and e.keyval in (Gdk.KEY_A, Gdk.KEY_a):
+        # Ctrl+Shift+A: iniciar IA en el pane activo de la pestana actual
+        try:
+            box = nb.get_nth_page(nb.get_current_page())
+            sess = term_session(getattr(box, "_term", None)) or str(getattr(box, "_key", "") or "").partition(":")[0]
+            r = tmuxc("display-message", "-p", "-t", "=" + sess + ":", "#{pane_id}") if sess else None
+            open_ai_session_here(sess, (r.stdout or "").strip() if r else "")
+        except Exception as ex:
+            print(f"ctrl+shift+a: {ex}")
         return True
     if ctrl and e.keyval in (Gdk.KEY_Tab, Gdk.KEY_ISO_Left_Tab):
         if shift:

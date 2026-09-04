@@ -308,3 +308,17 @@ def test_resume_command_and_proc_flags_use_the_sane_helpers():
     assert "_sane_flags(" in resume
     for cli in ("claude", "codex", "grok"):
         assert f'_which_cli("{cli}")' in resume, f"resume de {cli} debe detectar el binario sin depender del PATH"
+
+
+def test_shell_panes_get_a_visible_start_ai_pill_and_ctrl_shift_a():
+    # Los panes sin agente no tenian pildora: la unica via era el click derecho.
+    # Ahora: boton 'Iniciar IA aqui' sobre cada shell, atajo Ctrl+Shift+A, y
+    # el menu contextual resuelve la sesion aunque el tty no este registrado.
+    src = SRC
+    assert "def _shell_pill(sess, pane_id)" in src
+    assert '"#{pane_id} #{pane_left} #{pane_top} #{pane_width} #{pane_current_command}"' in src
+    assert "_PANE_CMD.get(pane_id, \"\") not in _SHELLS" in src
+    assert 'open_ai_session_here(cur_sess or str(key or "").partition(":")[0], pane_id)' in src
+    assert "if ctrl and shift and e.keyval in (Gdk.KEY_A, Gdk.KEY_a):" in src
+    assert "console.error('dash_js: '" in src
+    assert 'tf("Iniciar IA aquí","Start AI here")' in Path("dash/index.html").read_text()

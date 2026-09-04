@@ -4701,7 +4701,7 @@ function mdStrip(s){ return (s||"").replace(/\*\*|`|^#{1,6} /g, ""); }
 	  const eff = p2 && p2.effort ? p2.effort : (it.effort || effortFor(targetKey, model));
 	  const currentHarnessMotor = currentMotorOf(it, model);
 	  if(isShell && !p2){
-	    btn.innerHTML = `<span class="mp-prov">${mdEsc(tf("Shell","Shell"))}</span><span class="mp-model">${mdEsc(tf("iniciar IA…","start AI…"))}</span><span class="mp-caret">▾</span>`;
+	    btn.innerHTML = `<span class="mp-prov">▶</span><span class="mp-model">${mdEsc(tf("Iniciar IA aquí","Start AI here"))}</span><span class="mp-caret">▾</span>`;
 	  } else {
 	    motorPill(btn, p2 ? p2.motor : currentHarnessMotor, p2 ? p2.model : model, p2 || false, p2 ? "" : (eff || tf("esta sesión", "this session")));
 	  }
