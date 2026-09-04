@@ -447,3 +447,10 @@ def test_picker_marks_registry_models_flagged_soon_as_disabled_not_selectable():
     # para no prometer un cambio que el CLI no puede hacer.
     assert "m.soon ? `disabled title=" in HTML
     assert 'class="cur soon"' in HTML
+
+
+def test_gtk_inline_picker_is_a_fullscreen_overlay_with_apply_always_visible():
+    # En la app: overlay fijo a pantalla completa del sidebar, no inline en la
+    # lista. Así el botón 'Cambiar a…' (pie flex) nunca queda bajo el fold.
+    css = HTML.split("html.gtkapp #motor-pop.inline{",1)[1].split("}",1)[0]
+    assert "position:fixed" in css and "height:100vh" in css and "max-height:none" in css

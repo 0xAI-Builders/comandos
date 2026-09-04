@@ -608,14 +608,18 @@
      contenido y en el sidebar quedaba una rendija de pocos px para operar. */
   #motor-pop .mp-body{flex:1 1 auto;min-height:0;overflow-y:auto;padding:12px 18px 14px;overscroll-behavior:contain}
   html.gtkapp #motor-pop.inline .mp-body{padding:10px 14px 12px}
-  html.gtkapp #motor-pop.inline{position:relative;left:auto!important;top:auto!important;width:100%;max-height:min(72vh,760px);margin-top:8px;
-    box-shadow:none;border-color:var(--line);padding:0;overflow:hidden}
+  /* En la app el picker toma el sidebar COMPLETO (overlay fijo): cabecera y
+     botón de aplicar siempre a la vista, un solo scroll (el cuerpo). Antes iba
+     inline dentro de la lista y el botón quedaba fuera de pantalla. */
+  html.gtkapp #motor-pop.inline{position:fixed;left:0!important;top:0!important;width:100vw;height:100vh;max-height:none;margin:0;
+    border-radius:0;border:0;box-shadow:none;padding:0;overflow:hidden;z-index:300}
   html.gtkapp #motor-pop.inline .mp-grid{grid-template-columns:1fr}
 
   #motor-pop .mp-head{flex:none;display:flex;justify-content:space-between;align-items:center;gap:10px;
     margin:0;padding:10px 16px;background:var(--panel);border-bottom:1px solid var(--line);border-radius:14px 14px 0 0;
     font-family:var(--mono);font-size:11px;color:var(--dim)}
-  html.gtkapp #motor-pop.inline .mp-head{margin:0;padding:8px 12px}
+  html.gtkapp #motor-pop.inline .mp-head{margin:0;padding:10px 12px;border-bottom:1px solid var(--line2)}
+  html.gtkapp #motor-pop.inline .mp-stick{padding:8px 12px calc(10px + env(safe-area-inset-bottom,0px));box-shadow:0 -10px 24px var(--shadow)}
   #motor-pop .mp-htitle{display:flex;align-items:baseline;gap:10px;min-width:0}
   #motor-pop .mp-htitle b{color:var(--text)}
   #motor-pop .mp-close{flex:none;width:28px;height:28px;display:grid;place-items:center;border:1px solid var(--line);border-radius:8px;
