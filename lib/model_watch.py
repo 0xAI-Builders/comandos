@@ -17,13 +17,19 @@ import shutil
 import subprocess
 import time
 
+try:
+    from providers import which as _which   # shutil.which + ~/.local/bin, ~/.bun/bin…
+except Exception:  # pragma: no cover
+    _which = shutil.which
+
 _ANSI = re.compile(r"\x1b\[[0-9;]*[A-Za-z]")
 
 # Formas canonicas: solo ids que un humano reconoceria como modelo completo.
 _CLAUDE_RE = re.compile(r"claude-(?:fable|opus|sonnet|haiku|mythos)-\d(?:-\d)?"
                         r"(?:-\d{8})?(?:\[1m\])?$")
-_CODEX_RE = re.compile(r"gpt-\d+(?:\.\d+)?(?:-codex)?"
-                       r"(?:-(?:sol|luna|terra|mini|max|spark|nano|turbo))?$")
+# Sufijo con nombre abierto (sol, luna, terra, astra, mini, max…): OpenAI
+# bautiza cada generación y una lista cerrada se queda ciega (Astra no cabía).
+_CODEX_RE = re.compile(r"gpt-\d+(?:\.\d+)?(?:-codex)?(?:-[a-z]{2,12})?$")
 _GROK_RE = re.compile(r"grok-[\w.]+$")
 
 
@@ -41,8 +47,10 @@ def installed_versions():
     for prov, cmd in (("claude", ["claude", "--version"]),
                       ("codex", ["codex", "--version"]),
                       ("grok", ["grok", "--version"])):
-        if shutil.which(cmd[0]):
-            m = re.search(r"\d+\.\d+[\w.-]*", _run(cmd, timeout=15))
+        exe = _which(cmd[0])
+        if exe:
+            # ejecutar la RUTA resuelta: bajo systemd `codex` a pelo no está en PATH
+            m = re.search(r"\d+\.\d+[\w.-]*", _run([exe] + cmd[1:], timeout=15))
             out[prov] = m.group(0) if m else "?"
     return out
 
@@ -67,12 +75,12 @@ def _claude_binary():
         versions = sorted(os.listdir(base), key=lambda v: [int(x) for x in re.findall(r"\d+", v)])
         return os.path.join(base, versions[-1]) if versions else ""
     except OSError:
-        real = shutil.which("claude")
+        real = _which("claude")
         return os.path.realpath(real) if real else ""
 
 
 def _codex_binary():
-    real = shutil.which("codex")
+    real = _which("codex")
     if not real:
         return ""
     root = os.path.dirname(os.path.dirname(os.path.realpath(real)))
@@ -92,11 +100,12 @@ def discover_models(grok_home=None):
     xb = _codex_binary()
     if xb:
         found["codex"] = _binary_ids(xb, rb"gpt-\d[\w.-]{1,24}", _CODEX_RE)
-    if shutil.which("grok"):
+    grok_exe = _which("grok")
+    if grok_exe:
         env = dict(os.environ)
         if grok_home:
             env["GROK_HOME"] = os.fspath(grok_home)
-        out = _run(["grok", "models"], timeout=25, env=env)
+        out = _run([grok_exe, "models"], timeout=25, env=env)
         for line in out.splitlines():
             m = re.match(r"\s*[-*]\s+([\w.-]+)", line)
             if m and _GROK_RE.fullmatch(m.group(1)):
