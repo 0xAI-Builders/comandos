@@ -647,6 +647,7 @@
   .mtile .mt-opt .nm{font-weight:700;font-size:12.5px;white-space:nowrap;flex:none;max-width:42%;overflow:hidden;text-overflow:ellipsis}
   .mtile .mt-opt .tg{font-family:var(--mono);font-size:9.5px;color:var(--dim);margin-left:auto;text-align:right;white-space:nowrap;min-width:0;max-width:46%;overflow:hidden;text-overflow:ellipsis}
   .mtile .mt-opt:disabled{opacity:.45;cursor:not-allowed}
+  .mtile .mt-opt .cur.soon{background:transparent;color:var(--warn);border:1px solid var(--warn);opacity:1}
   .mtile .mt-opt:active:not(:disabled){transform:scale(.985)}
   .mtile .mt-opt.sel{background:color-mix(in srgb,var(--brand) 9%,transparent);border-color:color-mix(in srgb,var(--brand) 45%,var(--line2))}
   .mtile .mt-eff{display:flex;margin-top:10px;padding-top:10px;border-top:1px dashed var(--line2);flex-wrap:wrap}
@@ -4871,8 +4872,8 @@ function mdStrip(s){ return (s||"").replace(/\*\*|`|^#{1,6} /g, ""); }
 	    const tileEfforts = effortsFor(prov, tileModel);
 	    return `<div class="mtile ${on ? "on" : "off"}" data-prov="${prov}">
 	      <div class="mt-top">${providerMark(prov, "", 28)}<div><div class="mt-name">${title}</div><div class="mt-sub">${sub}</div>${why?`<div class="mt-why">${mdEsc(why)}</div>`:""}</div>${on ? `<span class="mt-act">${tf("ACTIVO", "ACTIVE")}</span>` : ""}</div>
-	      ${motorMenu(prov).map(m => `<button type="button" class="mt-opt ${on && motorKey(m.id) === motorKey(mode === "global" ? curModel : st.model) ? "sel" : ""}" data-prov="${prov}" data-model="${m.id}" ${dis ? `disabled title="${attrEsc(why)}"` : ""}>
-	        <span class="rd"></span><span class="nm">${mdEsc(m.name)}</span>${curProv === prov && motorKey(m.id) === motorKey(curModel) ? `<span class="cur">${tf("ACTUAL", "NOW")}</span>` : ""}<span class="tg">${mdEsc(m.tag || "")}</span></button>`).join("")}
+	      ${motorMenu(prov).map(m => `<button type="button" class="mt-opt ${on && motorKey(m.id) === motorKey(mode === "global" ? curModel : st.model) ? "sel" : ""}" data-prov="${prov}" data-model="${m.id}" ${dis ? `disabled title="${attrEsc(why)}"` : (m.soon ? `disabled title="${attrEsc(tf("Aún no disponible en tu cuenta: el vendor lo libera por oleadas. Aparecerá solo.", "Not yet available on your account: the vendor rolls it out in waves. It will show up on its own."))}"` : "")}>
+	        <span class="rd"></span><span class="nm">${mdEsc(m.name)}</span>${m.soon ? `<span class="cur soon">${tf("PRONTO", "SOON")}</span>` : ""}${curProv === prov && motorKey(m.id) === motorKey(curModel) ? `<span class="cur">${tf("ACTUAL", "NOW")}</span>` : ""}<span class="tg">${mdEsc(m.tag || "")}</span></button>`).join("")}
 	      <div class="mt-eff"><span class="mt-eff-lbl"><span>${tf("esfuerzo · rápido", "effort · faster")}</span><span>${tf("inteligente", "smarter")}</span></span>
 	        ${tileEfforts.map(e => `<button type="button" data-prov="${prov}" data-effort="${e}" class="${on && (mode === "global" ? curEffort : st.effort) === e ? "sel" : ""}" ${dis ? "disabled" : ""} title="/effort ${e}">${e}</button>`).join("")}</div>
 	    </div>`;

@@ -439,3 +439,11 @@ def test_picker_always_shows_every_provider_card_not_only_routed_ones():
     assert "const routed = rows.filter(r=>r.selectable)" in ids
     assert "Object.keys(((PROVIDERS||{}).motors)||{})" in ids
     assert "routed.concat(rest)" in ids
+
+
+def test_picker_marks_registry_models_flagged_soon_as_disabled_not_selectable():
+    # Un modelo puede estar en el registry antes de que la cuenta lo tenga
+    # (GPT-6 Astra). Debe verse, pero deshabilitado y etiquetado PRONTO,
+    # para no prometer un cambio que el CLI no puede hacer.
+    assert "m.soon ? `disabled title=" in HTML
+    assert 'class="cur soon"' in HTML

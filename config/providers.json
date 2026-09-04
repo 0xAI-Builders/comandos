@@ -294,7 +294,8 @@
         {
           "id": "gpt-6-astra",
           "name": "GPT-6 Astra",
-          "tag": "nueva generación · en despliegue por cuentas",
+          "tag": "OpenAI lo libera por oleadas · aún no en tu cuenta",
+          "soon": true,
           "efforts": ["low", "medium", "high", "xhigh"],
           "defaultEffort": "high"
         },
