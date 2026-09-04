@@ -329,5 +329,5 @@ def test_pills_sit_on_the_reserved_tmux_border_row_not_on_content():
     # La pildora va AHI, no en la primera fila de contenido (tapaba el prompt).
     assert "def _pill_row_y(m_t, top, chh)" in SRC
     assert "row = top - 1 if top >= 1 else 0" in SRC
-    assert SRC.count("_pill_row_y(m_t, top, chh)") == 2
+    assert SRC.count("pill.set_margin_top(_pill_row_y(m_t, top, chh))") == 2  # IA + shell
     assert "max(0, m_t + max(0, top) * chh)" not in SRC
