@@ -454,3 +454,12 @@ def test_gtk_inline_picker_is_a_fullscreen_overlay_with_apply_always_visible():
     # lista. Así el botón 'Cambiar a…' (pie flex) nunca queda bajo el fold.
     css = HTML.split("html.gtkapp #motor-pop.inline{",1)[1].split("}",1)[0]
     assert "position:fixed" in css and "height:100vh" in css and "max-height:none" in css
+
+
+def test_busy_block_is_switch_plus_text_and_apply_button_reflects_interrupt():
+    # El texto ya no vive dentro del interruptor de 34px (se encimaba). Al
+    # encenderlo, el botón del pie pasa a "■ Detener y cambiar a…".
+    assert 'class="sw" role="switch" aria-checked="false"' in HTML
+    assert "#motor-pop .mp-busy{display:grid;grid-template-columns:auto minmax(0,1fr)" in HTML
+    assert 'tf("Detener y cambiar a", "Stop and switch to")' in HTML
+    assert "go.classList.toggle(\"danger\", on)" in HTML

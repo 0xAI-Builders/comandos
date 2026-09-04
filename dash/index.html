@@ -666,11 +666,17 @@
   .mtile .mt-eff button:active{transform:scale(.96)}
   .mtile .mt-eff button.sel{color:var(--on-brand);background:var(--brand);border-color:var(--brand)}
   .mtile .mt-eff button:disabled{opacity:.4;cursor:not-allowed}
-  #motor-pop .mp-busy{display:grid;grid-template-columns:minmax(0,1fr);align-items:center;gap:8px;margin:0 2px 10px;padding:8px 10px;border:1px solid color-mix(in srgb,var(--warn) 45%,var(--line2));
-    border-radius:9px;font-family:var(--mono);font-size:10.5px;color:var(--warn)}
-  #motor-pop .mp-busy .msg{min-width:0;line-height:1.35}
-  #motor-pop .mp-busy .sw{margin-left:0;justify-self:start;max-width:100%;white-space:normal;font-weight:800;padding:5px 10px;border-radius:7px;border:1px solid var(--err);color:var(--err);background:none;cursor:pointer;white-space:nowrap}
-  #motor-pop .mp-busy .sw.on{color:var(--on-brand);background:var(--err)}
+  /* "Está trabajando": interruptor real a la izquierda, texto a la derecha.
+     Antes el texto vivía DENTRO del interruptor de 34px y se encimaba. */
+  #motor-pop .mp-busy{display:grid;grid-template-columns:auto minmax(0,1fr);align-items:center;gap:10px;margin:0 2px 10px;padding:9px 11px;border:1px solid color-mix(in srgb,var(--warn) 45%,var(--line2));border-radius:10px;background:color-mix(in srgb,var(--warn) 7%,var(--panel))}
+  #motor-pop .mp-busy .msg{min-width:0;display:flex;flex-direction:column;gap:2px;line-height:1.3}
+  #motor-pop .mp-busy .msg b{font-size:12px;color:var(--text)}
+  #motor-pop .mp-busy .msg small{font-family:var(--mono);font-size:10px;color:var(--dim)}
+  #motor-pop .mp-busy .sw{flex:none;width:36px;height:20px;padding:0;margin:0;border-radius:999px;border:1px solid var(--line2);background:var(--panel2);position:relative;cursor:pointer;transition:background .18s ease,border-color .18s ease}
+  #motor-pop .mp-busy .sw::after{content:"";position:absolute;top:2px;left:2px;width:14px;height:14px;border-radius:50%;background:var(--dim);transition:transform .18s ease,background .18s ease}
+  #motor-pop .mp-busy .sw.on{background:var(--err);border-color:var(--err)}
+  #motor-pop .mp-busy .sw.on::after{transform:translateX(16px);background:#fff}
+  #motor-pop .mp-busy.on .msg b{color:var(--err)}
   #motor-pop .mp-cancel{margin-top:10px;width:100%;font-family:var(--mono);font-size:10.5px;font-weight:700;padding:7px;border:1px dashed var(--err);
     border-radius:9px;background:none;color:var(--err);cursor:pointer}
   #motor-pop .mp-cancel:hover{background:color-mix(in srgb,var(--err) 10%,transparent)}
@@ -680,6 +686,7 @@
   #motor-pop .mp-stick:empty{display:none}
   html.gtkapp #motor-pop.inline .mp-stick{padding:6px 12px 10px}
   #motor-pop .mp-go{margin:0;padding:10px;display:flex;align-items:center;gap:12px;background:color-mix(in srgb,var(--panel) 94%,transparent);border:1px solid var(--line2);border-radius:12px;-webkit-backdrop-filter:blur(14px);backdrop-filter:blur(14px)}
+  #motor-pop .mp-go .do.danger{background:var(--err);color:#fff}
   #motor-pop .mp-go .do{flex:1;min-height:44px;font-family:var(--mono);font-size:12px;font-weight:800;padding:12px 18px;border:none;border-radius:9px;
     background:var(--brand);color:var(--on-brand);cursor:pointer;letter-spacing:.2px}
   #motor-pop .mp-go .do:hover{filter:brightness(1.08)}
@@ -4890,8 +4897,8 @@ function mdStrip(s){ return (s||"").replace(/\*\*|`|^#{1,6} /g, ""); }
 	  pop.innerHTML = `<div class="mp-head"><div class="mp-htitle"><b>${head[0]}</b><span>${head[1]}</span></div><button type="button" class="mp-close" title="${attrEsc(tf("Cerrar","Close"))}" aria-label="${attrEsc(tf("Cerrar","Close"))}">${svg("close",14)}</button></div>
 	    <div class="mp-body">
 	    ${pendNow ? `<div class="mp-prog">${motorProgressHtml(pendNow)}</div>` : ""}
-	    ${busyNow ? `<div class="mp-busy"><span class="msg">⚠ ${tf("Está trabajando. Sin marcar, el cambio espera a que termine el turno.", "Working. Unchecked, the switch waits for the turn to end.")}</span>
-	      <button type="button" class="sw" aria-pressed="false">■ ${tf("detener y cambiar YA", "stop & switch NOW")}</button></div>` : ""}
+	    ${busyNow ? `<div class="mp-busy"><button type="button" class="sw" role="switch" aria-checked="false" aria-label="${attrEsc(tf("Detener y cambiar ya","Stop and switch now"))}"></button>
+	      <span class="msg"><b>${tf("Detener y cambiar ya", "Stop and switch now")}</b><small>${tf("Apagado: el cambio espera a que termine el turno actual.", "Off: the switch waits for the current turn to end.")}</small></span></div>` : ""}
 	    ${mode !== "global" ? (()=>{
 	      // CAMBIO DE HARNESS (el CLI, no el motor). Distinto del motor de arriba:
 	      // aquí cambias la interfaz entera (Claude Code ↔ Codex CLI ↔ Grok Build)
@@ -4957,7 +4964,23 @@ function mdStrip(s){ return (s||"").replace(/\*\*|`|^#{1,6} /g, ""); }
 	  const mpClose = pop.querySelector(".mp-close");
   if(mpClose) mpClose.addEventListener("click", e => { e.stopPropagation(); motorPopClose(); });
   const swb = pop.querySelector(".mp-busy .sw");
-	  if(swb) swb.addEventListener("click", ()=>{ swb.classList.toggle("on"); swb.setAttribute("aria-pressed", swb.classList.contains("on")); });
+	  if(swb) swb.addEventListener("click", ()=>{
+	    const on = swb.classList.toggle("on");
+	    swb.setAttribute("aria-checked", on);
+	    swb.closest(".mp-busy")?.classList.toggle("on", on);
+	    const small = swb.closest(".mp-busy")?.querySelector("small");
+	    if(small) small.textContent = on ? tf("Encendido: interrumpe el turno y cambia de inmediato.", "On: interrupts the turn and switches right away.")
+	                                     : tf("Apagado: el cambio espera a que termine el turno actual.", "Off: the switch waits for the current turn to end.");
+	    // el botón del pie dice lo que va a pasar, sin volver a renderizar
+	    const go = pop.querySelector(".mp-stick .do");
+	    if(go){
+	      if(!go.dataset.base) go.dataset.base = go.textContent.replace(/^[→■]\s*(Cambiar a|Switch to|Detener y cambiar a|Stop and switch to)\s*/, "");
+	      go.textContent = (on ? "■ " + tf("Detener y cambiar a", "Stop and switch to") : "→ " + tf("Cambiar a", "Switch to")) + " " + go.dataset.base;
+	      go.classList.toggle("danger", on);
+	    }
+	    const note = pop.querySelector(".mp-stick .note");
+	    if(note) note.textContent = on ? tf("interrumpe el turno actual", "interrupts the current turn") : tf("se encola o marca detener", "queues, or tick stop");
+	  });
 	  const INTERRUPT = ()=> !!(swb && swb.classList.contains("on"));
 	  // Cambio de HARNESS (CLI) — confirmación en DOS toques (cierra la conversación
 	  // actual): 1er toque arma, 2o dispara /harness/switch.
