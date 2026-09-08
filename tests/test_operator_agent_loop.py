@@ -120,3 +120,16 @@ def test_provider_stream_retries_second_url_on_http_error():
     family, events = ns["operator_provider_stream"]("haiku", "SYS", [{"role": "user", "content": "x"}])
     assert family == "anthropic" and tried == list(urls) and invalidated == []
     assert {"t": "delta", "text": "ok"} in list(events)
+
+
+def test_cc_dash_registers_every_local_intent():
+    import operator_dispatch as od
+    body = SRC.split("def operator_build_dispatcher(", 1)[1].split("\ndef ", 1)[0]
+    for intent in od.LOCAL_INTENTS:
+        assert f'"{intent}":' in body, intent
+
+
+def test_handle_chat_uses_dispatcher_not_legacy_callbacks():
+    body = SRC.split("def operator_handle_chat(", 1)[1].split("\ndef ", 1)[0]
+    assert "dispatcher=operator_build_dispatcher()" in body
+    assert "focus=focus_session" not in body
