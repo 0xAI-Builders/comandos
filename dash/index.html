@@ -966,6 +966,62 @@
   #tl-toggle{font-family:var(--mono);font-size:10.5px;color:var(--faint);
     letter-spacing:.14em;text-transform:uppercase;padding:8px 0}
   #tl-toggle:hover{color:var(--dim)}
+  html.gtkapp #tl-wrap{padding:4px 14px 4px}
+  html.gtkapp #rows{display:none}
+  html.gtkapp #content{display:flex;flex-direction:column;flex:1 1 auto;min-height:0;overflow:hidden}
+  html.gtkapp body.app.split #view-panel.on{overflow:hidden}
+  html.gtkapp body.app.split #view-panel.on #content{flex:1 1 auto;min-height:0;overflow:hidden;display:flex;flex-direction:column}
+  html.gtkapp #side-top{flex:1 1 auto;min-height:48px;overflow-y:auto}
+  html.gtkapp #op-split{display:block;flex:none;height:10px;cursor:row-resize;position:relative;z-index:8;
+    background:linear-gradient(180deg,transparent,var(--line),transparent);touch-action:none}
+  html.gtkapp #op-split::before{content:"";position:absolute;inset:-12px 0}
+  html.gtkapp #op-split::after{content:"";position:absolute;left:50%;top:4px;width:42px;height:2px;border-radius:2px;
+    background:var(--line2);transform:translateX(-50%)}
+  html.gtkapp #op-split:hover::after,html.gtkapp.op-drag #op-split::after{background:var(--brand)}
+  html.gtkapp #content > *:not(#op-chat):not(#op-split):not(#side-top){flex:none;min-height:0}
+  html.gtkapp #op-chat{flex:0 0 var(--op-chat-h,72%);min-height:160px;max-height:90%;overflow:hidden;display:flex;flex-direction:column}
+  html.gtkapp #op-msgs{flex:1 1 auto;min-height:0;overflow-y:auto}
+  html.gtkapp #op-form{flex:none;position:sticky;bottom:0;background:var(--bg);z-index:3;padding-top:6px;box-shadow:0 -10px 16px var(--bg)}
+  #op-split{display:none}
+  html.only-panel #op-chat{display:none}
+  #op-chat{display:flex;flex-direction:column;min-width:0;margin:0 auto;max-width:1360px;
+    padding:4px 18px 12px;min-height:160px}
+  #op-head{display:flex;align-items:center;gap:8px;margin-bottom:6px}
+  #op-head .chip{margin:0}
+  #op-meta{font-family:var(--mono);font-size:10px;color:var(--faint);margin-left:2px}
+  #op-head .op-btns{margin-left:auto;display:flex;gap:4px}
+  #op-head .op-btns button{width:28px;height:28px;border:1px solid var(--line);border-radius:7px;
+    background:none;color:var(--dim);display:inline-flex;align-items:center;justify-content:center;cursor:pointer}
+  #op-head .op-btns #op-stop{width:auto;padding:0 8px;font-family:var(--mono);font-size:10px}
+  #op-head .op-btns button:hover{color:var(--text);border-color:var(--brand)}
+  #op-msgs{flex:1;min-height:80px;overflow-y:auto;display:flex;flex-direction:column;gap:6px;padding:2px 0 8px}
+  .op-bubble{max-width:92%;font-family:var(--mono);font-size:11.5px;line-height:1.4;padding:6px 10px;border-radius:8px}
+  .op-bubble.user{align-self:flex-end;background:var(--panel2);color:var(--text)}
+  .op-bubble.bot{align-self:flex-start;background:var(--panel);color:var(--dim);border:1px solid var(--line)}
+  #op-form{display:flex;flex-direction:column;gap:4px;flex:none}
+  #op-compose{display:flex;align-items:center;gap:6px}
+  #op-in{flex:1;width:100%;background:var(--panel2);border:1px solid var(--brand);border-radius:8px;
+    color:var(--text);font-family:var(--mono);font-size:12.5px;padding:8px 10px}
+  #op-in:focus{outline:none;border-color:var(--brand)}
+  #op-go,#op-stop,#op-stop-in{flex:none;font-family:var(--mono);font-size:11px;padding:7px 10px;
+    border:1px solid var(--line);border-radius:7px;color:var(--dim);background:none;cursor:pointer}
+  #op-go:hover{color:var(--text);border-color:var(--brand)}
+  #op-stop,#op-stop-in{color:var(--err);border-color:color-mix(in srgb,var(--err) 45%,var(--line))}
+  #op-stop.hidden,#op-stop-in.hidden{display:none}
+  #op-model-wrap .mdl-btn{max-width:180px}
+  #op-hint{font-family:var(--mono);font-size:10px;color:var(--faint)}
+  .op-bubble{-webkit-user-select:text;user-select:text;white-space:pre-wrap}
+  .op-acts{display:flex;gap:4px;margin-top:4px}
+  .op-acts button{font-family:var(--mono);font-size:10px;color:var(--faint);border:1px solid var(--line);
+    border-radius:5px;padding:2px 7px;background:none;cursor:pointer}
+  .op-acts button:hover{color:var(--text);border-color:var(--brand)}
+  #op-list{display:none;flex-direction:column;gap:2px;margin:0 0 8px;max-height:140px;overflow-y:auto}
+  #op-list.open{display:flex}
+  #op-list button{text-align:left;background:none;border:0;color:var(--dim);font-family:var(--mono);
+    font-size:11px;padding:6px 8px;border-radius:6px;cursor:pointer}
+  #op-list button:hover,#op-list button.on{background:var(--line);color:var(--text)}
+  .op-tool{font:11px/1.4 var(--mono);color:var(--faint);padding:2px 0 2px 8px;border-left:2px solid var(--line2);margin:2px 0}
+  .op-tool.ok{border-color:var(--done)} .op-tool.bad{border-color:var(--waiting)} .op-tool.run{border-color:var(--working)}
   #timeline{border-left:1px solid var(--line);margin:6px 0 0 4px;padding-left:14px;
     display:flex;flex-direction:column;gap:5px}
   .ev{font-family:var(--mono);font-size:11.5px;color:var(--dim);display:flex;gap:10px;min-width:0}
@@ -1864,6 +1920,7 @@
 </div>
 
 <div id="content">
+<div id="side-top">
 <section class="sec hidden" id="centro-wrap">
   <div id="centro"></div>
 </section>
@@ -1944,6 +2001,35 @@
   <button id="tl-toggle">Ver actividad reciente</button>
   <div id="timeline" class="hidden"></div>
 </div>
+</div><!-- /#side-top -->
+<div id="op-split" role="separator" aria-orientation="horizontal" aria-label="Ajustar altura del chat"></div>
+<section id="op-chat" aria-label="Chat de ComandOS">
+  <div id="op-head">
+    <span class="chip">CHAT</span>
+    <span class="mdl-wrap" id="op-model-wrap">
+      <button type="button" class="mdl-btn" id="op-model" aria-haspopup="listbox" aria-expanded="false"
+        title="Cambiar modelo del chat">
+        <span class="mdl-cur" id="op-model-cur">Haiku</span><span class="mdl-caret">▾</span>
+      </button>
+    </span>
+    <div class="op-btns">
+      <button type="button" id="op-stop" class="hidden" title="Parar respuesta" aria-label="Parar">Stop</button>
+      <button type="button" id="op-hist" title="Conversaciones guardadas" aria-label="Conversaciones"><span data-icon="bars" data-size="13"></span></button>
+      <button type="button" id="op-new" title="Nueva conversación" aria-label="Nueva conversación"><span data-icon="plus" data-size="13"></span></button>
+    </div>
+  </div>
+  <div id="op-list" hidden></div>
+  <div id="op-msgs"></div>
+  <form id="op-form">
+    <div id="op-compose">
+      <input id="op-in" type="text" autocomplete="off" spellcheck="true"
+        placeholder="Dile a ComandOS…" maxlength="2000">
+      <button type="button" id="op-stop-in" class="hidden" title="Parar respuesta">Stop</button>
+      <button type="submit" id="op-go" title="Enviar">Enviar</button>
+    </div>
+    <div id="op-hint">Haiku · barato · rápido</div>
+  </form>
+</section>
 </div>
 </div><!-- /#view-panel -->
 <div id="splitter" role="separator" aria-orientation="vertical" aria-label="Ajustar panel"></div>
@@ -5920,6 +6006,7 @@ const termInteraction = new Map(); // session -> actual tmux mouse + temporary s
 let termInteractionSeq = 0;
 let termPageHidden = false;
 const SPLIT_KEY = "cc-split-left";
+const OP_H_KEY = "cc-op-chat-h";
 let appViewportFrame = 0;
 
 function appEnabled(){ return WEBTERM; }
@@ -5974,6 +6061,65 @@ function setSplitLeft(px, save, bounds){
 function restoreSplitLeft(){
   const raw = parseInt(localStorage.getItem(SPLIT_KEY) || "", 10);
   setSplitLeft(Number.isFinite(raw) ? raw : 380, false);
+}
+function setOpChatH(px, save){
+  const content = document.getElementById("content");
+  const h = content?.clientHeight || 0;
+  const min = 160;
+  const max = Math.max(min, h ? Math.round(h * 0.9) : 2400);
+  const fallback = h ? Math.round(h * 0.72) : 420;
+  const v = Math.max(min, Math.min(max, Math.round(Number(px) || fallback)));
+  if(content) content.style.setProperty("--op-chat-h", v + "px");
+  document.documentElement.style.setProperty("--op-chat-h", v + "px");
+  if(save) try{ localStorage.setItem(OP_H_KEY, String(v)); }catch(e){}
+  return v;
+}
+function restoreOpChatH(){
+  const raw = parseInt(localStorage.getItem(OP_H_KEY) || "", 10);
+  const content = document.getElementById("content");
+  const h = content?.clientHeight || 0;
+  setOpChatH(Number.isFinite(raw) ? raw : (h ? h * 0.72 : 420), false);
+}
+function initOpChatSplit(){
+  const split = document.getElementById("op-split");
+  const content = document.getElementById("content");
+  if(!split || !content || split._wired) return;
+  split._wired = true;
+  restoreOpChatH();
+  let pointerId = null;
+  let lastPx = null;
+  const move = e => {
+    if(pointerId === null || (e.pointerId !== undefined && e.pointerId !== pointerId)) return;
+    const r = content.getBoundingClientRect();
+    if(!r.height) return;
+    lastPx = setOpChatH(r.bottom - e.clientY, false);
+  };
+  const stop = e => {
+    if(pointerId === null || (e.pointerId !== undefined && e.pointerId !== pointerId)) return;
+    const ended = pointerId;
+    if(e.type === "pointerup" && Number.isFinite(e.clientY)) move(e);
+    pointerId = null;
+    document.documentElement.classList.remove("op-drag");
+    window.removeEventListener("pointermove", move);
+    window.removeEventListener("pointerup", stop);
+    window.removeEventListener("pointercancel", stop);
+    try{ split.releasePointerCapture(ended); }catch(_){}
+    if(lastPx !== null) setOpChatH(lastPx, true);
+  };
+  split.addEventListener("pointerdown", e => {
+    if(e.button !== undefined && e.button !== 0) return;
+    if(pointerId !== null) return;
+    pointerId = e.pointerId;
+    lastPx = null;
+    document.documentElement.classList.add("op-drag");
+    try{ split.setPointerCapture(e.pointerId); }catch(_){}
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", stop);
+    window.addEventListener("pointercancel", stop);
+    move(e);
+    e.preventDefault();
+  });
+  window.addEventListener("resize", restoreOpChatH);
 }
 function initSplitDrag(){
   const splitter = document.getElementById("splitter");
@@ -8250,6 +8396,268 @@ document.getElementById("snip-q").addEventListener("input", (e) => {
   renderSnipList();
 });
 document.getElementById("snip-new").addEventListener("click", () => openSnipEditor(null));
+
+// ---------- chat operador (tablero izquierdo) ----------
+const OP = {id: "", messages: [], conversations: [], models: [],
+  model: "haiku", effort: "", modelName: "Haiku", ac: null};
+
+function opEsc(s){
+  return String(s||"").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"}[c]));
+}
+function opBusy(on){
+  $("#op-stop")?.classList.toggle("hidden", !on);
+  $("#op-stop-in")?.classList.toggle("hidden", !on);
+  $("#op-go")?.classList.toggle("hidden", !!on);
+  $("#op-in")?.toggleAttribute("disabled", !!on);
+}
+function opSyncModel(){
+  const cur = $("#op-model-cur");
+  if(cur) cur.textContent = OP.modelName || OP.model || "local";
+  const hint = $("#op-hint");
+  if(hint) hint.textContent = `${OP.modelName || OP.model} · ${tf("barato · rápido","cheap · fast")}`;
+}
+function opApplyPayload(d){
+  if(!d) return;
+  OP.id = d.id || OP.id;
+  if(d.messages) OP.messages = d.messages;
+  if(d.conversations) OP.conversations = d.conversations;
+  if(d.model) OP.model = d.model;
+  if("effort" in (d||{})) OP.effort = d.effort || "";
+  if(d.modelName) OP.modelName = d.modelName;
+  if(d.models) OP.models = d.models;
+  opSyncModel();
+}
+function opRender(){
+  const box = $("#op-msgs");
+  if(!box) return;
+  const empty = tf(
+    "Dile «pásate a Relotto», «lista» o «sesión nueva». El modelo se cambia arriba.",
+    "Say “switch to Relotto”, “list” or “new session”. Switch the model above."
+  );
+  box.innerHTML = (OP.messages||[]).map((m,i) => {
+      const tools = (m.tools||[]).map(x => `<div class="op-tool ${x.ok===false?"bad":x.ok?"ok":"run"}">${opEsc(opToolLine(x.name, x.args))}${x.reply?` <span>${opEsc(String(x.reply).slice(0,140))}</span>`:""}</div>`).join("");
+      return `<div class="op-bubble ${m.role==="user"?"user":"bot"}" data-i="${i}">
+      ${tools}<div class="op-text">${opEsc(m.text||"")}</div>
+      <div class="op-acts">
+        <button type="button" data-act="copy" data-i="${i}">${tf("copiar","copy")}</button>
+        <button type="button" data-act="paste" data-i="${i}">${tf("pegar","paste")}</button>
+      </div>
+    </div>`;
+  }).join("") || `<div class="op-bubble bot"><div class="op-text">${opEsc(empty)}</div></div>`;
+  box.querySelectorAll(".op-acts button").forEach(b => b.addEventListener("click", async ev => {
+    ev.stopPropagation();
+    const msg = (OP.messages||[])[Number(b.dataset.i)];
+    const t = String(msg && msg.text || "");
+    if(!t) return;
+    if(b.dataset.act === "copy"){
+      const ok = await copyText(t);
+      toast(ok ? tf("Copiado","Copied") : tf("No pude copiar","Could not copy"), !ok);
+    } else {
+      const inp = $("#op-in");
+      if(inp){ inp.value = t; inp.focus(); }
+    }
+  }));
+  box.scrollTop = box.scrollHeight;
+  const list = $("#op-list");
+  if(list){
+    list.innerHTML = (OP.conversations||[]).map(c =>
+      `<button type="button" data-id="${opEsc(c.id)}" class="${c.id===OP.id?"on":""}">${opEsc(c.title||tf("Conversación","Conversation"))}</button>`
+    ).join("");
+    list.querySelectorAll("button").forEach(b => b.addEventListener("click", () => opLoad(b.dataset.id)));
+  }
+}
+function opClick(sel){
+  try{ $(sel)?.click(); }catch(e){}
+}
+function opApplyActions(actions){
+  for(const a of (actions||[])){
+    if(a.type === "open_wizard"){
+      try{ nsOpen(); }catch(e){}
+    }
+    if(a.type === "rename" && a.session && a.label && inApp()){
+      try{ window.webkit.messageHandlers.centro.postMessage(JSON.stringify({type:"rename", session:a.session, label:a.label})); }catch(e){}
+    }
+    if(a.type === "send_back" && a.session && inApp()){
+      try{ window.webkit.messageHandlers.centro.postMessage(JSON.stringify({type:"send_back", session:a.session})); }catch(e){}
+    }
+    if(a.type === "ui"){
+      const t = a.target;
+      if(t === "settings") opClick("#btn-settings");
+      else if(t === "analytics") opClick("#btn-usage");
+      else if(t === "notif") opClick("#btn-notif");
+      else if(t === "pomo") opClick("#btn-pomo");
+      else if(t === "snippets") opClick("#btn-snippets");
+      else if(t === "remote") opClick("#btn-remote");
+      else if(t === "mute"){ if($("#btn-mute")?.dataset.on === "1") opClick("#btn-mute"); }
+      else if(t === "unmute"){ if($("#btn-mute")?.dataset.on !== "1") opClick("#btn-mute"); }
+      else if(t === "switcher") opClick("#btn-switch");
+      else if(t === "sov") opClick("#btn-sov");
+      else if(t === "servers") opClick("#ssh-manage");
+      else if(t === "timeline") opClick("#tl-toggle");
+      else if(t === "theme" && a.value){ try{ selectTheme(a.value); }catch(e){} }
+      if(a.tab && (t === "settings" || t === "analytics")){
+        const root = t === "settings" ? $("#settings .modal-panel") : $("#usage .modal-panel");
+        if(root) try{ activateMtab(root, a.tab); }catch(e){}
+      }
+    }
+    if(a.type === "pref" && a.key){
+      api("/conf-set", {key: a.key, value: a.on ? "1" : "0"}).then(()=>loadConf()).catch(err => toast(err.message, true));
+    }
+    if(a.type === "volume"){
+      api("/conf-set", {key:"VOLUME", value:String(a.value)}).then(()=>loadConf()).catch(err => toast(err.message, true));
+    }
+    if(a.type === "lang" && a.value){
+      const b = document.querySelector(`.lang-btn[data-lang="${a.value}"]`);
+      if(b) b.click();
+    }
+    if(a.type === "notify_pos" && a.value){
+      const b = document.querySelector(`[data-npos="${a.value}"]`);
+      if(b) b.click();
+    }
+    if(a.type === "copy_reply"){
+      const last = [...(OP.messages||[])].reverse().find(m => m.role !== "user");
+      if(last?.text) copyText(last.text).then(ok => toast(ok ? tf("Copiado","Copied") : tf("No pude copiar","Could not copy"), !ok));
+    }
+    if(a.type === "copy_session" && a.session){
+      const it = (S.list||[]).find(x => x.session === a.session);
+      const t = it?.detail || it?.last || "";
+      if(t) copyText(t).then(ok => toast(ok ? tf("Copiado","Copied") : tf("No pude copiar","Could not copy"), !ok));
+      else toast(tf("Esa sesión no tiene respuesta guardada","This session has no saved reply"), true);
+    }
+    if(a.type === "export" && a.session){
+      api("/export", {session: a.session, format: a.fmt || "txt"})
+        .then(r => toast(tf(`Guardado: ${r.path}`, `Saved: ${r.path}`)))
+        .catch(err => toast(err.message, true));
+    }
+  }
+}
+async function opLoad(id){
+  try{
+    const q = id ? `?id=${encodeURIComponent(id)}` : "";
+    const d = await api("/operator" + q);
+    opApplyPayload(d);
+    opRender();
+  }catch(e){ /* el chat no debe tumbar el tablero */ }
+}
+function opStop(){
+  try{ OP.ac?.abort(); }catch(e){}
+  OP.ac = null;
+  opBusy(false);
+}
+function opToolLine(name, args){
+  const short = Object.entries(args||{}).filter(([k])=>k!=="confirm")
+    .map(([k,v])=>`${k}=${typeof v==="string"?v:JSON.stringify(v)}`).join(", ");
+  return `⚙ ${name}(${short})`;
+}
+let opLiveRaf = 0;
+function opRenderLive(){ if(!opLiveRaf) opLiveRaf = requestAnimationFrame(() => { opLiveRaf = 0; opRender(); }); }
+async function opSend(text){
+  const t = String(text||"").trim();
+  if(!t || OP.ac) return;
+  OP.messages = [...(OP.messages||[]), {role:"user", text:t}];
+  const live = {role:"assistant", text:"", tools:[]};
+  OP.messages.push(live);
+  opRender();
+  OP.ac = new AbortController();
+  opBusy(true);
+  try{
+    const headers = {"Content-Type":"application/json"};
+    const tok = authToken(); if(tok) headers["X-Comandos-Token"] = tok;
+    const res = await fetch("/operator/chat/stream", {method:"POST", headers, signal: OP.ac.signal,
+      body: JSON.stringify({id: OP.id, text: t, model: OP.model, effort: OP.effort})});
+    if(!res.ok || !res.body) throw new Error((await res.json().catch(()=>({}))).error || res.statusText);
+    const reader = res.body.getReader();
+    const dec = new TextDecoder();
+    let buf = "", payload = null;
+    for(;;){
+      const {value, done} = await reader.read();
+      if(done) break;
+      buf += dec.decode(value, {stream:true});
+      let i;
+      while((i = buf.indexOf("\n\n")) >= 0){
+        const frame = buf.slice(0, i); buf = buf.slice(i+2);
+        const line = frame.split("\n").find(l => l.startsWith("data:"));
+        if(!line) continue;
+        let ev; try{ ev = JSON.parse(line.slice(5)); }catch(e){ continue; }
+        if(ev.t === "delta"){ live.text += ev.text; opRenderLive(); }
+        else if(ev.t === "tool"){ live.tools.push({name:ev.name, args:ev.args, ok:null}); opRenderLive(); }
+        else if(ev.t === "tool_result"){ const x = [...live.tools].reverse().find(z => z.name===ev.name && z.ok===null); if(x){ x.ok = ev.ok; x.reply = ev.reply; } opRenderLive(); }
+        else if(ev.t === "action"){ opApplyActions([ev]); }
+        else if(ev.t === "error"){ live.text += (live.text?"\n":"") + "⚠ " + ev.text; opRenderLive(); }
+        else if(ev.t === "final"){ if(!live.text) live.text = ev.reply; }
+        else if(ev.t === "payload"){ payload = ev; }
+      }
+    }
+    if(payload){ opApplyPayload(payload); opRender(); }
+  }catch(e){
+    live.text = e.name === "AbortError" ? tf("Paré la respuesta.","Stopped.") : (e.message || tf("No pude hablar con ComandOS","Could not talk to ComandOS"));
+    opRender();
+  } finally {
+    OP.ac = null;
+    opBusy(false);
+  }
+}
+function opOpenModelMenu(){
+  const btn = $("#op-model");
+  const menu = $("#mdl-menu");
+  if(!btn || !menu) return;
+  const items = OP.models && OP.models.length ? OP.models : [
+    {id:"haiku", model:"haiku", effort:"", name:"Haiku", intent:"Claude · barato · rápido"}
+  ];
+  menu.innerHTML = `<div class="mdl-head">${tf("Modelo del chat","Chat model")}</div>` +
+    items.map(m => `<button type="button" class="mdl-opt" role="option"
+      data-model="${opEsc(m.model)}" data-effort="${opEsc(m.effort||"")}" data-name="${opEsc(m.name)}">
+      <i style="background:var(--done)"></i>
+      <b>${opEsc(m.name)}</b><span>${opEsc(m.intent||"")}</span></button>`).join("");
+  menu.classList.remove("hidden");
+  positionModelMenu(btn);
+  mdlMenuBtn = btn;
+  btn.setAttribute("aria-expanded", "true");
+  menu.querySelectorAll(".mdl-opt").forEach(o => o.addEventListener("click", async e => {
+    e.stopPropagation();
+    closeModelMenus();
+    try{
+      const d = await api("/operator/model", {model: o.dataset.model, effort: o.dataset.effort || ""});
+      opApplyPayload(d);
+      toast(tf(`Modelo: ${d.modelName || d.model}`, `Model: ${d.modelName || d.model}`));
+    }catch(err){ toast(err.message, true); }
+  }));
+}
+$("#op-form")?.addEventListener("submit", e => {
+  e.preventDefault();
+  const inp = $("#op-in");
+  const v = inp?.value || "";
+  if(inp) inp.value = "";
+  opSend(v);
+});
+$("#op-stop")?.addEventListener("click", opStop);
+$("#op-stop-in")?.addEventListener("click", opStop);
+$("#op-model")?.addEventListener("click", e => {
+  e.stopPropagation();
+  const menu = $("#mdl-menu");
+  if(menu && !menu.classList.contains("hidden") && mdlMenuBtn === $("#op-model")){
+    closeModelMenus();
+    return;
+  }
+  opOpenModelMenu();
+});
+$("#op-new")?.addEventListener("click", async () => {
+  try{
+    const d = await api("/operator/new", {});
+    opApplyPayload(d);
+    OP.messages = d.messages || [];
+    opRender();
+    $("#op-in")?.focus();
+  }catch(e){ toast(e.message, true); }
+});
+$("#op-hist")?.addEventListener("click", () => {
+  const list = $("#op-list");
+  if(!list) return;
+  const open = list.classList.toggle("open");
+  list.hidden = !open;
+});
+opLoad();
+initOpChatSplit();
 document.addEventListener("keydown", (e) => {
   if (e.ctrlKey && e.shiftKey && (e.key === "K" || e.key === "k")) {
     e.preventDefault();

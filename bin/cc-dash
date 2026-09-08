@@ -4770,6 +4770,41 @@ def operator_set_model(data):
     return snap
 
 
+def operator_sse_frame(obj):
+    return b"data: " + json.dumps(obj, ensure_ascii=False).encode("utf-8") + b"\n\n"
+
+
+def operator_handle_chat_stream(data, write):
+    root = operator_store_root()
+    store = operator_chat.load_store(root)
+    cid = str(data.get("id") or store.get("current") or "")
+    convo = operator_chat.get_conversation(store, cid) or operator_chat.new_conversation(store)
+    text = str(data.get("text") or "")[:4000]
+    tabs = operator_tabs_payload()
+    memory = operator_chat.load_memory(root)
+    active = operator_active_session()
+    if data.get("model"):
+        operator_chat.set_model(store, str(data.get("model") or "haiku"), str(data.get("effort") or ""))
+    model = str(store.get("model") or "haiku")
+    operator_chat.append_message(convo, "user", text)
+    final = {"reply": "Listo.", "actions": []}
+    for ev in operator_agent_stream(text, model=model, tabs=tabs, memory=memory, active=active,
+                                    convo=convo, dispatcher=operator_build_dispatcher()):
+        if ev["t"] == "final":
+            final = {"reply": ev["reply"], "actions": ev["actions"]}
+        write(operator_sse_frame(ev))
+    operator_chat.append_message(convo, "assistant", final["reply"], final["actions"])
+    store["current"] = convo["id"]
+    operator_chat.save_store(root, store)
+    pub = operator_chat.public_store(store)
+    write(operator_sse_frame({"t": "payload", "ok": True, "id": convo["id"], "reply": final["reply"],
+                              "actions": final["actions"], "messages": convo.get("messages") or [],
+                              "conversations": pub["conversations"], "memory": memory,
+                              "model": pub.get("model") or "haiku", "effort": pub.get("effort") or "",
+                              "modelName": pub.get("modelName") or "Haiku",
+                              "models": pub.get("models") or operator_chat.MODELS}))
+
+
 def operator_handle_chat(data):
     root = operator_store_root()
     store = operator_chat.load_store(root)
@@ -7105,6 +7140,28 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             data = json.loads(self.rfile.read(n) or b"{}")
         except Exception:
             return self._json(400, {"error": "JSON invalido"})
+
+        if self.path == "/operator/chat/stream":
+            if not str(data.get("text") or "").strip():
+                return self._json(400, {"error": "Escribe un mensaje"})
+            self.send_response(200)
+            self.send_header("Content-Type", "text/event-stream; charset=utf-8")
+            self.send_header("Cache-Control", "no-cache")
+            self.send_header("X-Accel-Buffering", "no")
+            self.end_headers()
+            def write(chunk):
+                self.wfile.write(chunk)
+                self.wfile.flush()
+            try:
+                operator_handle_chat_stream(data, write)
+            except (BrokenPipeError, ConnectionResetError):
+                pass
+            except Exception as e:
+                try:
+                    write(operator_sse_frame({"t": "error", "text": str(e)[:300]}))
+                except Exception:
+                    pass
+            return
 
         if self.path == "/operator/chat":
             text = str(data.get("text") or "").strip()

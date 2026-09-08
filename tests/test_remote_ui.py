@@ -3274,7 +3274,7 @@ function fetch(_url, options) {{
 
 
 def test_remote_routes_are_never_served_from_stale_shell_cache():
-    assert 'const SHELL = "comandos-shell-v5"' in SW
+    assert 'const SHELL = "comandos-shell-v7"' in SW
     for endpoint in (
         "/remote-state",
         "/remote-qr.png",
@@ -3365,6 +3365,13 @@ def test_ssh_privacy_note_states_local_only_storage():
     assert "srv-privacy" in html
     assert "~/.ssh/config" in html
     assert "nunca guarda passwords" in html
+
+
+def test_operator_chat_streams_over_sse():
+    dash = open("bin/cc-dash").read()
+    assert '"/operator/chat/stream"' in dash and "text/event-stream" in dash
+    assert "/operator/chat/stream" in HTML and "getReader()" in HTML and "op-tool" in HTML
+    assert "/operator/chat/stream" in SW
 
 
 if __name__ == "__main__":

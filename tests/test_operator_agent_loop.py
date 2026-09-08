@@ -133,3 +133,8 @@ def test_handle_chat_uses_dispatcher_not_legacy_callbacks():
     body = SRC.split("def operator_handle_chat(", 1)[1].split("\ndef ", 1)[0]
     assert "dispatcher=operator_build_dispatcher()" in body
     assert "focus=focus_session" not in body
+
+
+def test_sse_frame_helper_formats_events():
+    ns = _load({"operator_sse_frame"})
+    assert ns["operator_sse_frame"]({"t": "delta", "text": "ho\nla"}) == b'data: {"t": "delta", "text": "ho\\nla"}\n\n'
