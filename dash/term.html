@@ -297,6 +297,18 @@
       applyInteractionState(data);
       return true;
     }
+    if (data.type === 'toolbar') {
+      const t = data.term || {};
+      if (t.type === 'toolbar' && TOOLBAR_KEYS[t.key]) { sendToolbarKey(t.key); return true; }
+      if (t.type === 'paste' && typeof t.text === 'string') { pasteTerminalText(t.text); focusTerminal(); return true; }
+      if (t.type === 'mode') {
+        if (interactionState.known && interactionState.selecting !== !!t.selecting) requestInteractionMode();
+        return true;
+      }
+      if (t.type === 'ctrl') { setCtrlArmed(true); focusTerminal(); return true; }
+      if (t.type === 'focus') { focusTerminal(); return true; }
+      return false;
+    }
     return false;
   }
 

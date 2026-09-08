@@ -4865,6 +4865,130 @@ _open_mon.connect("changed", on_tab_open_request)
 _focus_mon = Gio.File.new_for_path(FOCUS_FILE).monitor_file(Gio.FileMonitorFlags.NONE, None)
 _focus_mon.connect("changed", on_focus_request)
 
+
+def _cur_page():
+    return nb.get_nth_page(nb.get_current_page())
+
+
+def _cur_term():
+    page = _cur_page()
+    return getattr(page, "_term", None) or (page if hasattr(page, "feed_child") else None)
+
+
+def _page_for(sess):
+    for i in range(nb.get_n_pages()):
+        p = nb.get_nth_page(i)
+        if getattr(p, "_key", None) == sess:
+            return i, p
+    return -1, None
+
+
+def _cur_pane_id():
+    key = getattr(_cur_page(), "_key", None) or "local"
+    r = tmuxc("display-message", "-p", "-t", f"={key}:", "#{pane_id}")
+    return (r.stdout or "").strip()
+
+
+def _split_cmd(side, ssh=False):
+    # split() vive anidada en el menú contextual (flags, cmd=None); aquí
+    # replicamos su tmux split-window contra el pane/sesión actuales.
+    flags = {"right": ["-h"], "left": ["-h", "-b"], "down": ["-v"], "up": ["-v", "-b"]}[side]
+    term = _cur_term()
+    cur_sess = term_session(term) if term is not None else None
+    if not cur_sess:
+        cur_sess = getattr(_cur_page(), "_key", None)
+    target = _cur_pane_id() or (("=" + cur_sess + ":") if cur_sess else None)
+    if not target:
+        return
+    cmd = None
+    if ssh:
+        host = ssh_host_from_session(cur_sess)
+        if host:
+            cmd = f"ssh {host}"
+    args = ["split-window"] + flags + ["-t", target]
+    if cmd:
+        args.append(cmd)
+    else:
+        r = tmuxc("display-message", "-p", "-t", target, "#{pane_current_path}")
+        cwd = (r.stdout or "").strip()
+        if cwd:
+            args += ["-c", cwd]
+    tmuxc(*args)
+
+
+def _side_toggle():
+    if paned.get_position() > 0:
+        _MOSAIC["paned_pos"] = paned.get_position()
+        paned.set_position(0)
+    else:
+        paned.set_position(int(_MOSAIC.get("paned_pos") or 700) or 700)
+
+
+def set_font_scale(scale):
+    t = _cur_term()
+    if t is None:
+        return
+    t.set_font_scale(max(0.5, min(2.5, float(scale))))
+
+
+APP_COMMANDS = {
+    "split": lambda a: _split_cmd(a.get("side", "right")),
+    "split_ssh": lambda a: _split_cmd(a.get("side", "right"), ssh=True),
+    "kill_pane": lambda a: tmuxc("kill-pane", "-t", _cur_pane_id()),
+    "toggle_window": lambda a: feed(_cur_term(), b"\x02l"),
+    "select_pane": lambda a: tmuxc("select-pane", "-t", str(a.get("pane") or "")),
+    "next_tab": lambda a: _cycle_tab(1),
+    "prev_tab": lambda a: _cycle_tab(-1),
+    "mru_toggle": lambda a: _mru_toggle(),
+    "focus_page": lambda a: (lambda i: nb.set_current_page(i) if i >= 0 else None)(_page_for(a.get("session"))[0]),
+    "tab_reorder": lambda a: (lambda i, p: (nb.reorder_child(p, int(a.get("index", 0))), save_tabs()) if p else None)(*_page_for(a.get("session"))),
+    "mosaic": lambda a: {"on": _mosaic_open, "off": _mosaic_close, "toggle": _mosaic_toggle}[a.get("state", "toggle")](),
+    "mosaic_zoom": lambda a: _mosaic_zoom(a.get("session"), a.get("session")),
+    "side_panel": lambda a: _side_toggle() if bool(a.get("on")) != (paned.get_position() > 0) else None,
+    "terminals_visible": lambda a: nb.set_visible(bool(a.get("on", True))),
+    "reload_dashboard": lambda a: wv.load_uri(URL),
+    "font_scale": lambda a: set_font_scale(1.0) if not a.get("delta") else set_font_scale(_cur_term().get_font_scale() + float(a["delta"])),
+    "open_switcher": lambda a: open_switcher(),
+    "tabs_overview": lambda a: open_tabs_overview(),
+    "help": lambda a: show_help(),
+    "snippets": lambda a: open_snippets_dialog(),
+    "new_local_tab": lambda a: new_local_tab(),
+    "open_xterm_tab": lambda a: open_xterm_tab(a.get("session") or "local"),
+    "open_wizard": lambda a: _open_wizard(),
+    "start_ai_here": lambda a: open_ai_session_here(a.get("session"), a.get("pane")),
+    "copy_selection": lambda a: copy_vte_selection(_cur_term()),
+    "paste_clipboard": lambda a: (exit_copy_mode(_cur_term()), _cur_term().paste_clipboard()),
+    "copy_reply": lambda a: copy_claude_reply(_cur_term()),
+    "window": lambda a: {"minimize": win.iconify, "maximize": win.maximize, "restore": win.unmaximize, "raise": raise_main_window}[a.get("action", "raise")](),
+    "paned_position": lambda a: paned.set_position(int(a.get("px", 700))),
+    "quit": lambda a: Gtk.main_quit(),
+}
+
+
+def on_app_command(path):
+    try:
+        with open(path) as f:
+            data = json.load(f)
+        os.remove(path)
+    except Exception:
+        return
+    fn = APP_COMMANDS.get(str(data.get("command") or ""))
+    if not fn:
+        return
+    try:
+        fn(data.get("args") or {})
+    except Exception as e:
+        notify_popup(f"Comando '{data.get('command')}' falló", str(e))
+
+
+# Dispatcher (y POST /app/command) escriben app-command.json; la app observa
+# el archivo y ejecuta el comando GTK equivalente (splits, mosaico, pestañas).
+CMD_FILE = os.path.expanduser("~/.claude/hooks/app-command.json")
+_cmd_file = Gio.File.new_for_path(CMD_FILE)
+_cmd_mon = _cmd_file.monitor_file(Gio.FileMonitorFlags.NONE, None)
+_cmd_mon.connect("changed", lambda m, f, o, ev: on_app_command(f.get_path())
+                 if f is not None and ev in (Gio.FileMonitorEvent.CREATED, Gio.FileMonitorEvent.CHANGES_DONE_HINT) else None)
+
 win.connect("key-press-event", on_key)
 win.connect("destroy", Gtk.main_quit)
 win.show_all()

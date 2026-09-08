@@ -70,6 +70,12 @@ Algunas funciones usan la red solo cuando las utilizas o configuras:
   sobreviven reinicios sin un servicio alojado de ComandOS.
 - UI en **inglés y español** (auto-detectado por `$LANG`, cambiable en Ajustes).
 
+### Chat del operador
+
+El chat del operador responde en **streaming** (el texto llega por partes) y puede
+ejecutar cualquier acción del tablero, la terminal web y la app GTK. Catálogo
+completo: [`docs/operator-actions.md`](./docs/operator-actions.md).
+
 ## Instalar
 
 ```bash

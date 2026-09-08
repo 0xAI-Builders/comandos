@@ -341,3 +341,15 @@ def test_model_pill_disappears_when_pane_returns_to_shell_and_shell_pill_has_sin
     assert "with_agent = placed" in SRC
     assert 'json.dumps(sorted((k, _PANE_CMD.get(k, "")) for k in geo_now))' in SRC
     assert '.pane-pill.pp-shell{padding:0;border:0;background:transparent;box-shadow:none;}' in SRC
+
+
+def test_app_command_table_covers_catalog():
+    import sys
+    root = Path(__file__).resolve().parents[1]
+    sys.path.insert(0, str(root / "lib"))
+    import operator_catalog as cat
+    table = SRC.split("APP_COMMANDS = {", 1)[1].split("\n}\n", 1)[0]
+    for t in cat.CATALOG:
+        if t.target["kind"] == "app":
+            assert f'"{t.target["command"]}":' in table, t.target["command"]
+    assert "app-command.json" in SRC and "def on_app_command(" in SRC

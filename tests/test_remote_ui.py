@@ -3274,7 +3274,7 @@ function fetch(_url, options) {{
 
 
 def test_remote_routes_are_never_served_from_stale_shell_cache():
-    assert 'const SHELL = "comandos-shell-v5"' in SW
+    assert 'const SHELL = "comandos-shell-v7"' in SW
     for endpoint in (
         "/remote-state",
         "/remote-qr.png",
@@ -3306,6 +3306,13 @@ def test_remote_term_page_fixes_mobile_keys_and_ws():
     assert "deleteContentBackward" in term
     # ws same-origin cuando se sirve bajo /term
     assert "location.host" in term and "/ws" in term
+
+
+def test_term_page_accepts_toolbar_messages_from_parent():
+    term = open("dash/term.html").read()
+    assert "data.type === 'toolbar'" in term
+    for k in ("sendToolbarKey(", "pasteTerminalText(", "requestInteractionMode(", "setCtrlArmed("):
+        assert k in term
 
 
 def test_remote_term_touch_longpress_resizes_panes():
@@ -3365,6 +3372,29 @@ def test_ssh_privacy_note_states_local_only_storage():
     assert "srv-privacy" in html
     assert "~/.ssh/config" in html
     assert "nunca guarda passwords" in html
+
+
+def test_operator_chat_streams_over_sse():
+    dash = open("bin/cc-dash").read()
+    assert '"/operator/chat/stream"' in dash and "text/event-stream" in dash
+    assert "/operator/chat/stream" in HTML and "getReader()" in HTML and "op-tool" in HTML
+    assert "/operator/chat/stream" in SW
+
+
+def test_operator_generic_ui_actions_and_globals_exist():
+    for fn in ("opFavorite", "setPollSeconds", "setBrowserNotifications", "setLimitStyle", "nfDismiss",
+               "nfPin", "nfUnpin", "nfSnooze", "setTimeline", "closeAllPanels", "swOpenWith",
+               "nsOpenPrefilled", "selectSessionCard", "expandReply", "openAnalyticsTab",
+               "compareSetDays", "setSplitLeft", "setOpChatHeight", "reloadDashboard", "focusVisibleTerm"):
+        assert f"window.{fn} = " in HTML, fn
+    for op in ('a.op === "click"', 'a.op === "call"', 'a.op === "term"'):
+        assert op in HTML, op
+    assert 'a.type === "pref"' in HTML and 'a.type === "voice"' in HTML and 'a.type === "notify_pos"' in HTML
+
+
+def test_app_command_endpoint_exists():
+    dash = open("bin/cc-dash").read()
+    assert '"/app/command"' in dash and "APP_COMMAND_NAMES" in dash
 
 
 if __name__ == "__main__":
