@@ -35,10 +35,10 @@ def test_every_tool_has_group_description_and_valid_target():
             assert "confirm" in t.params and "confirm" in t.required, t.name
 
 
-# set_chat_model apunta a POST /operator/model. El catálogo (Parte 2) lo
-# declara así; este worktree todavía no tiene rutas /operator/* en cc-dash
-# (llegan en tasks posteriores). No tocamos bin/cc-dash en esta tarea.
-_PENDING_API_PATHS = frozenset({"/operator/model"})
+# set_chat_model → POST /operator/model (ya existe en main). Este worktree
+# tiene un cc-dash desactualizado sin rutas /operator/*. No tocamos
+# bin/cc-dash aquí; la aserción se re-habilita sola cuando la ruta aparezca.
+_STALE_BASELINE_API_PATHS = frozenset({"/operator/model"})
 
 
 def test_api_targets_point_to_real_cc_dash_paths():
@@ -46,9 +46,10 @@ def test_api_targets_point_to_real_cc_dash_paths():
         if t.target["kind"] != "api":
             continue
         path = t.target["path"]
-        if path in _PENDING_API_PATHS:
-            continue
-        assert f'"{path}"' in DASH, (t.name, path)
+        quoted = f'"{path}"'
+        if quoted not in DASH and path in _STALE_BASELINE_API_PATHS:
+            continue  # ausente solo por baseline stale del worktree vs main
+        assert quoted in DASH, (t.name, path)
 
 
 @pytest.mark.xfail(strict=True, reason="Task 7 crea las globales/selectores")
