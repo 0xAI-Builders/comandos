@@ -3308,6 +3308,13 @@ def test_remote_term_page_fixes_mobile_keys_and_ws():
     assert "location.host" in term and "/ws" in term
 
 
+def test_term_page_accepts_toolbar_messages_from_parent():
+    term = open("dash/term.html").read()
+    assert "data.type === 'toolbar'" in term
+    for k in ("sendToolbarKey(", "pasteTerminalText(", "requestInteractionMode(", "setCtrlArmed("):
+        assert k in term
+
+
 def test_remote_term_touch_longpress_resizes_panes():
     # Gesto tactil: dejar el dedo (~300ms) y arrastrar = drag de mouse SGR
     # (solo cuando tmux pidio tracking). Verificado E2E: panes 50/50 -> 37/63.
