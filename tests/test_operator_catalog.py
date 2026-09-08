@@ -94,3 +94,9 @@ def test_minimum_coverage_per_group():
              "news": 4, "nav": 14, "term": 5, "app": 26, "chat": 6}
     for g, n in floor.items():
         assert counts.get(g, 0) >= n, (g, counts.get(g, 0))
+
+
+def test_operator_actions_doc_lists_every_tool():
+    doc = (ROOT / "docs" / "operator-actions.md").read_text()
+    for t in cat.CATALOG:
+        assert f"`{t.name}`" in doc, t.name
