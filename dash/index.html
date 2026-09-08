@@ -994,34 +994,72 @@
     background:none;color:var(--dim);display:inline-flex;align-items:center;justify-content:center;cursor:pointer}
   #op-head .op-btns #op-stop{width:auto;padding:0 8px;font-family:var(--mono);font-size:10px}
   #op-head .op-btns button:hover{color:var(--text);border-color:var(--brand)}
-  #op-msgs{flex:1;min-height:80px;overflow-y:auto;display:flex;flex-direction:column;gap:6px;padding:2px 0 8px}
-  .op-bubble{max-width:92%;font-family:var(--mono);font-size:11.5px;line-height:1.4;padding:6px 10px;border-radius:8px}
-  .op-bubble.user{align-self:flex-end;background:var(--panel2);color:var(--text)}
-  .op-bubble.bot{align-self:flex-start;background:var(--panel);color:var(--dim);border:1px solid var(--line)}
-  #op-form{display:flex;flex-direction:column;gap:4px;flex:none}
-  #op-compose{display:flex;align-items:center;gap:6px}
-  #op-in{flex:1;width:100%;background:var(--panel2);border:1px solid var(--brand);border-radius:8px;
-    color:var(--text);font-family:var(--mono);font-size:12.5px;padding:8px 10px}
+  /* Chat = log de consola (Invariant: estructura, no burbujas). Un acento: brand. */
+  #op-msgs{flex:1;min-height:80px;overflow-y:auto;display:flex;flex-direction:column;gap:0;padding:4px 0 8px}
+  .op-msg{-webkit-user-select:text;user-select:text;padding:12px 0;border-top:1px solid var(--line);
+    display:grid;grid-template-columns:72px 1fr;gap:8px 16px;align-items:start}
+  .op-msg:first-child{border-top:0}
+  .op-who{font-family:var(--mono);font-size:10.5px;color:var(--faint);letter-spacing:.12em;
+    text-transform:uppercase;padding-top:3px;user-select:none}
+  .op-msg.user .op-who{color:var(--dim)}
+  .op-msg.bot .op-who{color:var(--brand)}
+  .op-body{min-width:0;display:flex;flex-direction:column;gap:8px}
+  .op-msg.user .op-text{white-space:pre-wrap;color:var(--text);font-family:var(--sans);font-size:13.5px;line-height:1.5}
+  .op-msg.bot .op-text{color:var(--text);font-family:var(--sans);font-size:14px;line-height:1.55}
+  .op-md .mdh{display:block;color:var(--text);font-weight:650;margin:12px 0 4px;font-size:14px}
+  .op-md hr{border:none;border-top:1px solid var(--line);margin:10px 0}
+  .op-md i{color:var(--dim)}
+  .op-md code,.op-md pre{font-family:var(--mono);font-size:12.5px;color:var(--code);background:var(--panel2);padding:1px 5px;border-radius:4px}
+  .op-md pre{display:block;padding:10px 12px;margin:8px 0;overflow-x:auto;white-space:pre-wrap;line-height:1.45;border:1px solid var(--line);border-radius:8px}
+  .op-md u{text-decoration-color:var(--brand)}
+  .op-md table{border-collapse:collapse;margin:8px 0;font-size:12.5px;display:block;overflow-x:auto;max-width:100%}
+  .op-md th,.op-md td{border-bottom:1px solid var(--line);padding:6px 12px 6px 0;text-align:left}
+  .op-md th{color:var(--dim);font-weight:650;font-family:var(--mono);font-size:11px;letter-spacing:.06em}
+  .op-load{grid-column:2;position:relative;padding:14px 0 10px;min-height:48px}
+  .op-scan{display:block;height:2px;background:var(--brand);transform-origin:0 50%;
+    animation:opScan 1.35s cubic-bezier(.4,0,.2,1) infinite;margin-bottom:12px}
+  @keyframes opScan{0%{transform:scaleX(.08);opacity:.3}40%{transform:scaleX(1);opacity:1}100%{transform:scaleX(1);opacity:.15}}
+  .op-wait{display:inline-block;width:7px;height:13px;margin-left:4px;vertical-align:-2px;
+    background:var(--brand);animation:opCaret 1.05s steps(1) infinite}
+  @keyframes opCaret{50%{opacity:0}}
+  @media (prefers-reduced-motion:reduce){
+    .op-scan{animation:none;opacity:.7;transform:scaleX(.4)}
+    .op-wait{animation:none;opacity:.55}
+  }
+  .op-load b{display:block;font-family:var(--sans);font-size:14px;font-weight:600;color:var(--text)}
+  .op-load .op-load-meta{font-family:var(--mono);font-size:11px;color:var(--faint);margin-top:3px}
+  .op-empty{color:var(--faint);font-family:var(--sans);font-size:13.5px;line-height:1.5;padding:20px 0}
+  #op-form{display:flex;flex-direction:column;gap:8px;flex:none;padding:12px 0 0;border-top:1px solid var(--line);background:var(--bg)}
+  #op-compose{display:flex;align-items:stretch;gap:8px}
+  #op-in{flex:1;width:100%;background:var(--panel);border:1px solid var(--line);border-radius:8px;
+    color:var(--text);font-family:var(--sans);font-size:14px;padding:10px 12px;min-height:44px}
   #op-in:focus{outline:none;border-color:var(--brand)}
-  #op-go,#op-stop,#op-stop-in{flex:none;font-family:var(--mono);font-size:11px;padding:7px 10px;
-    border:1px solid var(--line);border-radius:7px;color:var(--dim);background:none;cursor:pointer}
-  #op-go:hover{color:var(--text);border-color:var(--brand)}
-  #op-stop,#op-stop-in{color:var(--err);border-color:color-mix(in srgb,var(--err) 45%,var(--line))}
+  #op-go,#op-stop,#op-stop-in{flex:none;font-family:var(--sans);font-size:13px;font-weight:650;
+    padding:0 14px;border-radius:8px;cursor:pointer;min-width:88px}
+  #op-go{background:var(--brand);color:var(--on-brand);border:1px solid var(--brand)}
+  #op-go:hover{filter:brightness(1.07)}
+  #op-stop,#op-stop-in{background:transparent;color:var(--err);border:1px solid color-mix(in srgb,var(--err) 55%,var(--line))}
+  #op-stop:hover,#op-stop-in:hover{background:color-mix(in srgb,var(--err) 14%,transparent)}
   #op-stop.hidden,#op-stop-in.hidden{display:none}
+  #op-head .op-btns #op-stop{width:auto;min-width:0;padding:0 10px;font-size:11px;border-radius:7px}
   #op-model-wrap .mdl-btn{max-width:180px}
-  #op-hint{font-family:var(--mono);font-size:10px;color:var(--faint)}
-  .op-bubble{-webkit-user-select:text;user-select:text;white-space:pre-wrap}
-  .op-acts{display:flex;gap:4px;margin-top:4px}
-  .op-acts button{font-family:var(--mono);font-size:10px;color:var(--faint);border:1px solid var(--line);
-    border-radius:5px;padding:2px 7px;background:none;cursor:pointer}
+  #op-hint{font-family:var(--mono);font-size:10.5px;color:var(--faint)}
+  .op-acts{display:flex;flex-wrap:wrap;gap:6px;user-select:none}
+  .op-acts button{font-family:var(--sans);font-size:12px;color:var(--dim);border:1px solid var(--line);
+    border-radius:8px;padding:6px 11px;background:var(--bg);cursor:pointer}
   .op-acts button:hover{color:var(--text);border-color:var(--brand)}
+  .op-acts button[data-act="stop"]{color:var(--err);border-color:color-mix(in srgb,var(--err) 45%,var(--line))}
   #op-list{display:none;flex-direction:column;gap:2px;margin:0 0 8px;max-height:140px;overflow-y:auto}
   #op-list.open{display:flex}
   #op-list button{text-align:left;background:none;border:0;color:var(--dim);font-family:var(--mono);
     font-size:11px;padding:6px 8px;border-radius:6px;cursor:pointer}
   #op-list button:hover,#op-list button.on{background:var(--line);color:var(--text)}
-  .op-tool{font:11px/1.4 var(--mono);color:var(--faint);padding:2px 0 2px 8px;border-left:2px solid var(--line2);margin:2px 0}
-  .op-tool.ok{border-color:var(--done)} .op-tool.bad{border-color:var(--waiting)} .op-tool.run{border-color:var(--working)}
+  .op-tools{display:flex;flex-direction:column;gap:4px;font-family:var(--mono);font-size:11.5px}
+  .op-tool{color:var(--dim);display:flex;gap:8px;align-items:baseline}
+  .op-tool::before{content:"";width:6px;height:6px;border-radius:1px;background:var(--line2);flex:none;transform:translateY(-1px)}
+  .op-tool.run{color:var(--working)} .op-tool.run::before{background:var(--working)}
+  .op-tool.ok{color:var(--done)} .op-tool.ok::before{background:var(--done)}
+  .op-tool.bad{color:var(--err)} .op-tool.bad::before{background:var(--err)}
   #timeline{border-left:1px solid var(--line);margin:6px 0 0 4px;padding-left:14px;
     display:flex;flex-direction:column;gap:5px}
   .ev{font-family:var(--mono);font-size:11.5px;color:var(--dim);display:flex;gap:10px;min-width:0}
@@ -1937,11 +1975,11 @@
     <div class="side-kpi"><span class="v" id="side-panes">—</span><span class="l">agentes activos</span></div>
   </div>
   <div id="side-projects"></div>
-  <div class="side-keys" title="Atajos completos: ? o F1">
+  <div class="side-keys" title="Atajos completos: F1">
     <span><kbd>Ctrl+Tab</kbd> última tab</span>
     <span><kbd>Ctrl+K</kbd> saltar</span>
     <span><kbd>Ctrl+PgDn</kbd> siguiente</span>
-    <span><kbd>?</kbd> ayuda</span>
+    <span><kbd>F1</kbd> ayuda</span>
   </div>
 </section>
 
@@ -2013,7 +2051,7 @@
       </button>
     </span>
     <div class="op-btns">
-      <button type="button" id="op-stop" class="hidden" title="Parar respuesta" aria-label="Parar">Stop</button>
+      <button type="button" id="op-stop" class="hidden" title="Parar respuesta" aria-label="Parar">Parar</button>
       <button type="button" id="op-hist" title="Conversaciones guardadas" aria-label="Conversaciones"><span data-icon="bars" data-size="13"></span></button>
       <button type="button" id="op-new" title="Nueva conversación" aria-label="Nueva conversación"><span data-icon="plus" data-size="13"></span></button>
     </div>
@@ -2024,7 +2062,7 @@
     <div id="op-compose">
       <input id="op-in" type="text" autocomplete="off" spellcheck="true"
         placeholder="Dile a ComandOS…" maxlength="2000">
-      <button type="button" id="op-stop-in" class="hidden" title="Parar respuesta">Stop</button>
+      <button type="button" id="op-stop-in" class="hidden" title="Parar respuesta">Parar</button>
       <button type="submit" id="op-go" title="Enviar">Enviar</button>
     </div>
     <div id="op-hint">Haiku · barato · rápido</div>
@@ -2618,6 +2656,7 @@ function mdHtml(s){
     out.push(l + "<br>");
   }
   flushTbl();
+  if(code) out.push("</pre>");
   return linkifyPaths(out.join(""));
 }
 // Toda ruta local visible se vuelve clickeable (abre con la app default via
@@ -8408,7 +8447,15 @@ function opBusy(on){
   $("#op-stop")?.classList.toggle("hidden", !on);
   $("#op-stop-in")?.classList.toggle("hidden", !on);
   $("#op-go")?.classList.toggle("hidden", !!on);
-  $("#op-in")?.toggleAttribute("disabled", !!on);
+  if(!on){
+    if(OP.tick){ clearInterval(OP.tick); OP.tick = 0; }
+    OP.t0 = 0;
+  }
+}
+function opTick(){
+  if(!OP.t0) return;
+  const el = document.querySelector(".op-t");
+  if(el) el.textContent = ((performance.now() - OP.t0) / 1000).toFixed(1) + "s";
 }
 function opSyncModel(){
   const cur = $("#op-model-cur");
@@ -8434,18 +8481,36 @@ function opRender(){
     "Dile «pásate a Relotto», «lista» o «sesión nueva». El modelo se cambia arriba.",
     "Say “switch to Relotto”, “list” or “new session”. Switch the model above."
   );
-  box.innerHTML = (OP.messages||[]).map((m,i) => {
-      const tools = (m.tools||[]).map(x => `<div class="op-tool ${x.ok===false?"bad":x.ok?"ok":"run"}">${opEsc(opToolLine(x.name, x.args))}${x.reply?` <span>${opEsc(String(x.reply).slice(0,140))}</span>`:""}</div>`).join("");
-      return `<div class="op-bubble ${m.role==="user"?"user":"bot"}" data-i="${i}">
-      ${tools}<div class="op-text">${opEsc(m.text||"")}</div>
-      <div class="op-acts">
-        <button type="button" data-act="copy" data-i="${i}">${tf("copiar","copy")}</button>
-        <button type="button" data-act="paste" data-i="${i}">${tf("pegar","paste")}</button>
-      </div>
+  const msgs = OP.messages || [];
+  const elapsed = OP.t0 ? ((performance.now() - OP.t0) / 1000).toFixed(1) + "s" : "0.0s";
+  const loadHtml = `<div class="op-load" role="status" aria-live="polite">
+      <span class="op-scan" aria-hidden="true"></span>
+      <b>${tf("Trabajando","Working")}</b>
+      <div class="op-load-meta">${opEsc(OP.modelName || OP.model || "local")} · <span class="op-t">${elapsed}</span></div>
     </div>`;
-  }).join("") || `<div class="op-bubble bot"><div class="op-text">${opEsc(empty)}</div></div>`;
+  box.innerHTML = msgs.map((m,i) => {
+      const live = OP.ac && i === msgs.length - 1 && m.role !== "user";
+      const tools = (m.tools||[]).length
+        ? `<div class="op-tools">${(m.tools||[]).map(x => `<div class="op-tool ${x.ok===false?"bad":x.ok?"ok":"run"}">${opEsc(opToolLine(x.name, x.args))}${x.reply?` — ${opEsc(String(x.reply).slice(0,80))}`:""}</div>`).join("")}</div>`
+        : "";
+      const who = m.role === "user" ? tf("tú","you") : (OP.modelName || "ComandOS");
+      const body = m.role === "user" ? opEsc(m.text||"") : mdHtml(m.text||"");
+      const caret = live && m.text ? `<span class="op-wait" aria-hidden="true"></span>` : "";
+      const textBlock = live && !m.text ? loadHtml
+        : `<div class="op-text${m.role==="user"?"":" op-md"}">${body}${caret}</div>`;
+      const acts = `<div class="op-acts">
+        ${live ? `<button type="button" data-act="stop">${tf("Parar","Stop")}</button>` : ""}
+        ${(m.text||"").trim() ? `<button type="button" data-act="copy" data-i="${i}">${tf("Copiar","Copy")}</button>
+        <button type="button" data-act="paste" data-i="${i}">${tf("Usar como prompt","Use as prompt")}</button>` : ""}
+      </div>`;
+      return `<div class="op-msg ${m.role==="user"?"user":"bot"}" data-i="${i}">
+      <div class="op-who">${opEsc(who)}</div>
+      <div class="op-body">${tools}${textBlock}${acts}</div>
+    </div>`;
+  }).join("") || `<div class="op-empty">${opEsc(empty)}</div>`;
   box.querySelectorAll(".op-acts button").forEach(b => b.addEventListener("click", async ev => {
     ev.stopPropagation();
+    if(b.dataset.act === "stop"){ opStop(); return; }
     const msg = (OP.messages||[])[Number(b.dataset.i)];
     const t = String(msg && msg.text || "");
     if(!t) return;
@@ -8597,11 +8662,12 @@ function opStop(){
   try{ OP.ac?.abort(); }catch(e){}
   OP.ac = null;
   opBusy(false);
+  opRender();
 }
 function opToolLine(name, args){
   const short = Object.entries(args||{}).filter(([k])=>k!=="confirm")
     .map(([k,v])=>`${k}=${typeof v==="string"?v:JSON.stringify(v)}`).join(", ");
-  return `⚙ ${name}(${short})`;
+  return short ? `${name} ${short}` : name;
 }
 let opLiveRaf = 0;
 function opRenderLive(){ if(!opLiveRaf) opLiveRaf = requestAnimationFrame(() => { opLiveRaf = 0; opRender(); }); }
@@ -8611,6 +8677,9 @@ async function opSend(text){
   OP.messages = [...(OP.messages||[]), {role:"user", text:t}];
   const live = {role:"assistant", text:"", tools:[]};
   OP.messages.push(live);
+  OP.t0 = performance.now();
+  if(OP.tick) clearInterval(OP.tick);
+  OP.tick = setInterval(opTick, 100);
   opRender();
   OP.ac = new AbortController();
   opBusy(true);
@@ -8642,13 +8711,13 @@ async function opSend(text){
         else if(ev.t === "payload"){ payload = ev; }
       }
     }
-    if(payload){ opApplyPayload(payload); opRender(); }
+    if(payload) opApplyPayload(payload);
   }catch(e){
     live.text = e.name === "AbortError" ? tf("Paré la respuesta.","Stopped.") : (e.message || tf("No pude hablar con ComandOS","Could not talk to ComandOS"));
-    opRender();
   } finally {
     OP.ac = null;
     opBusy(false);
+    opRender();
   }
 }
 function opOpenModelMenu(){

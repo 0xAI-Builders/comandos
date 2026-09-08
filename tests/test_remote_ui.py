@@ -3381,6 +3381,16 @@ def test_operator_chat_streams_over_sse():
     assert "/operator/chat/stream" in SW
 
 
+def test_operator_chat_renders_markdown_and_wait_caret():
+    assert "mdHtml(m.text" in HTML
+    assert "op-wait" in HTML
+    assert "op-load" in HTML and "op-scan" in HTML
+    assert "op-md" in HTML
+    assert "op-bubble" not in HTML
+    assert "<kbd>F1</kbd>" in HTML
+    assert 'data-act="copy"' in HTML and 'data-act="stop"' in HTML
+
+
 def test_operator_generic_ui_actions_and_globals_exist():
     for fn in ("opFavorite", "setPollSeconds", "setBrowserNotifications", "setLimitStyle", "nfDismiss",
                "nfPin", "nfUnpin", "nfSnooze", "setTimeline", "closeAllPanels", "swOpenWith",

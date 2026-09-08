@@ -3419,7 +3419,7 @@ _plus.connect("button-press-event",
               lambda w, e: (show_new_tab_menu(w) or True) if e.button == 3 else False)
 _help = _icon_btn(
     "help",
-    "Ver todos los atajos (? o F1)" if ES else "All shortcuts (? or F1)",
+    "Ver todos los atajos (F1)" if ES else "All shortcuts (F1)",
     lambda *_: show_help())
 # Pomodoro · Notificaciones · Ajustes: viven AQUÍ, a la altura de min/max
 # (es la barra siempre visible). Cada uno dispara su control del tablero.
@@ -4550,7 +4550,7 @@ def open_snippets_dialog(*_):
 
 SHORTCUTS_ES = [
     ("Ventana ComandOS", [
-        ("? / F1", "Esta ayuda"),
+        ("F1", "Esta ayuda"),
         ("Ctrl+K", "Saltar a cualquier pestana/sesion (escribe y Enter)"),
         ("Ctrl+Tab", "Alternar entre las DOS ultimas pestanas (ping-pong)"),
         ("Ctrl+Shift+Tab", "Pestana anterior (ciclo)"),
@@ -4592,7 +4592,7 @@ SHORTCUTS_ES = [
 ]
 SHORTCUTS_EN = [
     ("ComandOS window", [
-        ("? / F1", "This help"),
+        ("F1", "This help"),
         ("Ctrl+K", "Jump to any tab/session (type and Enter)"),
         ("Ctrl+Tab", "Toggle between the last TWO tabs (ping-pong)"),
         ("Ctrl+Shift+Tab", "Previous tab (cycle)"),
@@ -4691,11 +4691,8 @@ def show_help(*_):
 def on_key(w, e):
     ctrl = e.state & Gdk.ModifierType.CONTROL_MASK
     shift = e.state & Gdk.ModifierType.SHIFT_MASK
-    # Ayuda: F1 siempre; '?' solo si el foco NO esta en una terminal
-    fw0 = win.get_focus()
+    # Ayuda: F1. Nunca '?': Shift+/ tiene que escribir el signo en el chat.
     if e.keyval == Gdk.KEY_F1:
-        show_help(); return True
-    if e.keyval == Gdk.KEY_question and not isinstance(fw0, Vte.Terminal):
         show_help(); return True
     # Clipboard natural cuando el foco esta en una terminal:
     #   Ctrl+V pega; Ctrl+C copia si hay seleccion (si no, interrumpe como siempre)
