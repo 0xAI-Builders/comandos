@@ -869,6 +869,10 @@ import accounts as account_registry
 import capabilities as capability_inventory
 import model_watch as model_watch_lib
 import news_watch as news_watch_lib
+import operator_catalog
+import operator_stream
+import operator_chat
+import operator_tools
 PROVIDERS_FILE = os.path.join(REPO_ROOT, "config", "providers.json")
 OPTIMIZATION_FILE = os.path.join(REPO_ROOT, "config", "optimization-plans.json")
 OPTIMIZATION_STATE = os.path.join(HOOKS, "optimization-default.json")
@@ -4199,6 +4203,190 @@ ALLOWED_KEYS = {"Enter", "Escape", "Up", "Down", "Tab", "y", "n",
                 "1", "2", "3", "4", "5", "6", "7", "8", "9"}
 SESSION_RE = re.compile(r"^[A-Za-z0-9._-]{1,80}$")
 PANE_RE = re.compile(r"^%\d{1,7}$")
+
+
+def operator_grok_key():
+    for _alias, home in grok_state.account_homes():
+        path = os.path.join(str(home), "auth.json")
+        try:
+            with open(path) as fh:
+                data = json.load(fh)
+            rec = next((v for v in data.values() if isinstance(v, dict)), {})
+            key = str(rec.get("key") or "").strip()
+            if key:
+                return key
+        except Exception:
+            continue
+    return str(os.environ.get("XAI_API_KEY") or "").strip()
+
+
+def operator_claude_token():
+    for _alias, path in _claude_account_creds():
+        try:
+            with open(path) as fh:
+                data = json.load(fh)
+            token = str((data.get("claudeAiOauth") or {}).get("accessToken") or "").strip()
+            if token:
+                return token
+        except Exception:
+            continue
+    return ""
+
+
+def _operator_http_error(err):
+    body = ""
+    try:
+        body = err.read().decode("utf-8", "replace")[:400]
+    except Exception:
+        body = ""
+    msg = ""
+    try:
+        parsed = json.loads(body) if body else {}
+        msg = str((parsed.get("error") or {}).get("message") or parsed.get("error") or "")
+    except Exception:
+        msg = body.strip()
+    if err.code == 401:
+        return "Login rechazado (401). Reabre Claude/Codex/Grok o corre el login del CLI."
+    return (msg or (err.reason or str(err)))[:240]
+
+
+def _llm_poison(text):
+    t = str(text or "")
+    return any(s in t for s in ("401", "HTTP Error", "Unauthorized", "Login rechazado"))
+
+
+OPERATOR_CREDS = operator_stream.Credentials(lambda: operator_claude_token(), lambda: operator_grok_key(), ttl=60)
+OPERATOR_TIMEOUT = 30
+
+
+def operator_build_payload(model, sys_txt, conv, tools=True):
+    port = int(load_proxy_cfg().get("port") or 18765)
+    proxy_url = f"http://127.0.0.1:{port}/v1/messages"
+    if str(model).startswith("grok"):
+        key = OPERATOR_CREDS.grok()
+        if not key:
+            raise RuntimeError("No hay login de Grok.")
+        payload = {"model": model, "stream": True,
+                   "messages": ([{"role": "system", "content": sys_txt}] if sys_txt else []) + conv}
+        if tools:
+            payload["tools"] = operator_catalog.openai_tools()
+        headers = {"Authorization": "Bearer " + key, "Content-Type": "application/json", "Accept": "text/event-stream"}
+        return "openai", payload, headers, ("https://api.x.ai/v1/chat/completions",
+                                            "https://cli-chat-proxy.grok.com/v1/chat/completions")
+    payload = {"model": model, "max_tokens": 1024, "stream": True, "messages": conv}
+    if sys_txt:
+        payload["system"] = [{"type": "text", "text": sys_txt, "cache_control": {"type": "ephemeral"}}]
+    if tools:
+        tl = operator_catalog.anthropic_tools()
+        tl[-1] = dict(tl[-1], cache_control={"type": "ephemeral"})
+        payload["tools"] = tl
+    if model == "haiku" or str(model).startswith("claude"):
+        token = OPERATOR_CREDS.claude()
+        if not token:
+            raise RuntimeError("No hay login de Claude.")
+        payload["model"] = "claude-haiku-4-5-20251001" if model == "haiku" else model
+        headers = {"Content-Type": "application/json", "Authorization": "Bearer " + token,
+                   "anthropic-version": "2023-06-01", "anthropic-beta": "oauth-2025-04-20", "Accept": "text/event-stream"}
+        return "anthropic", payload, headers, ("https://api.anthropic.com/v1/messages", proxy_url)
+    headers = {"Content-Type": "application/json", "anthropic-version": "2023-06-01", "Accept": "text/event-stream"}
+    return "anthropic", payload, headers, (proxy_url,)
+
+
+def operator_provider_stream(model, sys_txt, conv, tools=True):
+    family, payload, headers, urls = operator_build_payload(model, sys_txt, conv, tools)
+    last = "sin respuesta"
+    for url in urls:
+        try:
+            lines = operator_stream.open_stream(url, payload, headers, timeout=OPERATOR_TIMEOUT)
+            events = operator_stream.parse_sse(lines)
+            norm = operator_stream.stream_anthropic(events) if family == "anthropic" else operator_stream.stream_openai(events)
+            return family, norm
+        except urllib.error.HTTPError as e:
+            if e.code == 401:
+                OPERATOR_CREDS.invalidate()
+            last = _operator_http_error(e)
+            if e.code not in operator_stream.RETRYABLE:
+                break
+        except Exception as e:
+            last = str(e)[:240]
+    raise RuntimeError(last)
+
+
+def operator_agent_stream(text, *, model, tabs, memory, active, convo, dispatcher, max_rounds=6):
+    sys_txt = operator_tools.agent_system_prompt(tabs, memory, active)
+    conv = []
+    for msg in (convo.get("messages") or [])[-16:]:
+        blob = str(msg.get("text") or "")
+        if _llm_poison(blob):
+            continue
+        conv.append({"role": "assistant" if msg.get("role") != "user" else "user", "content": blob[:4000]})
+    if not conv or conv[-1].get("content") != text:
+        conv.append({"role": "user", "content": text})
+    want = operator_chat.model_entry(model)["model"]
+    order = [want] + [m["model"] for m in operator_chat.MODELS if m["model"] != want]
+    actions, notes = [], []
+    for _round in range(max_rounds):
+        family, events, err = None, None, ""
+        for cand in order:
+            try:
+                family, events = operator_provider_stream(cand, sys_txt, conv, tools=True)
+                break
+            except RuntimeError as e:
+                err = str(e)
+        if events is None:
+            yield {"t": "error", "text": err or "No pude hablar con el modelo."}
+            yield {"t": "final", "reply": "No pude hablar con el modelo. Prueba otra vez.", "actions": actions}
+            return
+        text_acc, calls = "", []
+        for ev in events:
+            if ev["t"] == "delta":
+                text_acc += ev["text"]
+                yield ev
+            elif ev["t"] == "tool_call":
+                calls.append(ev)
+            elif ev["t"] == "error":
+                yield ev
+        if not calls:
+            reply = text_acc.strip() or (notes[-1] if notes else "Listo.")
+            if _llm_poison(reply):
+                reply = "Listo."
+            yield {"t": "final", "reply": reply, "actions": actions}
+            return
+        if family == "openai":
+            conv.append({"role": "assistant", "content": text_acc or "",
+                         "tool_calls": [{"id": c["id"], "type": "function", "function": {"name": c["name"], "arguments": json.dumps(c["input"])}} for c in calls]})
+        else:
+            content = ([{"type": "text", "text": text_acc}] if text_acc else []) + \
+                      [{"type": "tool_use", "id": c["id"], "name": c["name"], "input": c["input"]} for c in calls]
+            conv.append({"role": "assistant", "content": content})
+        if dispatcher is None:
+            yield {"t": "final", "reply": "(operador en migración)", "actions": []}
+            return
+        results = []
+        for c in calls:
+            yield {"t": "tool", "name": c["name"], "args": c["input"]}
+            out = dispatcher.run(c["name"], c["input"])
+            actions.extend(out.get("actions") or [])
+            for a in out.get("actions") or []:
+                yield {"t": "action", **a}
+            note = str(out.get("reply") or "ok")
+            notes.append(note)
+            yield {"t": "tool_result", "name": c["name"], "ok": bool(out.get("ok")), "reply": note}
+            results.append((c, note))
+        if family == "openai":
+            for c, note in results:
+                conv.append({"role": "tool", "tool_call_id": c["id"], "content": note})
+        else:
+            conv.append({"role": "user", "content": [{"type": "tool_result", "tool_use_id": c["id"], "content": note} for c, note in results]})
+    yield {"t": "final", "reply": notes[-1] if notes else "Listo.", "actions": actions}
+
+
+def operator_agent_turn(text, *, model, tabs, memory, active, convo, dispatcher, **_ignored):
+    final = {"reply": "Listo.", "actions": []}
+    for ev in operator_agent_stream(text, model=model, tabs=tabs, memory=memory, active=active, convo=convo, dispatcher=dispatcher):
+        if ev["t"] == "final":
+            final = {"reply": ev["reply"], "actions": ev["actions"]}
+    return final
 
 
 def tmux(*args, timeout=5):
