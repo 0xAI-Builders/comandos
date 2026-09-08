@@ -4300,7 +4300,14 @@ def operator_provider_stream(model, sys_txt, conv, tools=True):
             lines = operator_stream.open_stream(url, payload, headers, timeout=OPERATOR_TIMEOUT)
             events = operator_stream.parse_sse(lines)
             norm = operator_stream.stream_anthropic(events) if family == "anthropic" else operator_stream.stream_openai(events)
-            return family, norm
+            # open_stream is lazy: urlopen runs on first next(), not on call.
+            first = next(norm)
+
+            def primed(first=first, rest=norm):
+                yield first
+                yield from rest
+
+            return family, primed()
         except urllib.error.HTTPError as e:
             if e.code == 401:
                 OPERATOR_CREDS.invalidate()

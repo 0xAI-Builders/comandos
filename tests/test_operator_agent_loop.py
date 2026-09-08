@@ -1,8 +1,10 @@
 # tests/test_operator_agent_loop.py
 import ast
+import io
 import json
 import sys
 import types
+import urllib.error
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -88,3 +90,33 @@ def test_agent_stream_reports_provider_failure_without_fallback_storm():
     events = list(ns["operator_agent_stream"]("x", model="haiku", tabs=[], memory="", active=None, convo={"messages": []}, dispatcher=None))
     assert tried == ["haiku", "gpt-5.3-codex-spark", "grok-4.5"]      # una pasada por modelo, no 4 rondas × 3
     assert events[0]["t"] == "error" and events[-1]["t"] == "final"
+
+
+def test_provider_stream_retries_second_url_on_http_error():
+    """open_stream is a generator; HTTPError on URL 1 must fire inside the retry try."""
+    ns = _load({"operator_provider_stream", "_operator_http_error"})
+    ns["urllib"] = __import__("urllib")
+    ns["OPERATOR_TIMEOUT"] = 30
+    invalidated = []
+    ns["OPERATOR_CREDS"] = types.SimpleNamespace(invalidate=lambda: invalidated.append(True))
+    urls = ("https://api.anthropic.com/v1/messages", "http://127.0.0.1:18765/v1/messages")
+    ns["operator_build_payload"] = lambda *a, **k: ("anthropic", {}, {}, urls)
+    tried = []
+
+    def fake_open(url, payload, headers, timeout=30):
+        tried.append(url)
+        if url == urls[0]:
+            raise urllib.error.HTTPError(
+                url, 500, "err", hdrs=None, fp=io.BytesIO(b'{"error":{"message":"boom"}}'))
+        yield b'data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"ok"}}\n'
+
+    ns["operator_stream"] = types.SimpleNamespace(
+        open_stream=fake_open,
+        parse_sse=operator_stream.parse_sse,
+        stream_anthropic=operator_stream.stream_anthropic,
+        stream_openai=operator_stream.stream_openai,
+        RETRYABLE=operator_stream.RETRYABLE,
+    )
+    family, events = ns["operator_provider_stream"]("haiku", "SYS", [{"role": "user", "content": "x"}])
+    assert family == "anthropic" and tried == list(urls) and invalidated == []
+    assert {"t": "delta", "text": "ok"} in list(events)
