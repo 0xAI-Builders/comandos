@@ -7867,6 +7867,17 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             threading.Thread(target=_send, daemon=True).start()
             return self._json(200, {"ok": True, "session": new_sess, "alias": alias, "provider": provider})
 
+        if self.path == "/app/command":
+            cmd = str(data.get("command") or "")
+            if cmd not in operator_catalog.APP_COMMAND_NAMES:
+                return self._json(400, {"error": "comando desconocido"})
+            spec = operator_catalog.by_name(operator_catalog.APP_TOOL_BY_COMMAND[cmd])
+            args = dict(data.get("args") or {})
+            if spec.destructive and args.get("confirm") is not True:
+                return self._json(400, {"error": "requiere confirm=true"})
+            operator_build_dispatcher()._run_app(spec, args)
+            return self._json(200, {"ok": True})
+
         sess = data.get("session", "")
         if not SESSION_RE.match(sess):
             return self._json(400, {"error": "Nombre de sesion invalido"})

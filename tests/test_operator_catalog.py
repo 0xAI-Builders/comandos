@@ -4,8 +4,6 @@ import re
 import sys
 from pathlib import Path
 
-import pytest
-
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "lib"))
 import operator_catalog as cat  # noqa: E402
@@ -70,7 +68,6 @@ def test_ui_targets_point_to_real_selectors_or_functions():
             raise AssertionError((t.name, op))
 
 
-@pytest.mark.xfail(strict=True, reason="Task 9 crea APP_COMMANDS en cc-app")
 def test_app_targets_are_handled_by_cc_app():
     for t in cat.CATALOG:
         if t.target["kind"] != "app":

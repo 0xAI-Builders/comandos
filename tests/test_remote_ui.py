@@ -3392,6 +3392,11 @@ def test_operator_generic_ui_actions_and_globals_exist():
     assert 'a.type === "pref"' in HTML and 'a.type === "voice"' in HTML and 'a.type === "notify_pos"' in HTML
 
 
+def test_app_command_endpoint_exists():
+    dash = open("bin/cc-dash").read()
+    assert '"/app/command"' in dash and "APP_COMMAND_NAMES" in dash
+
+
 if __name__ == "__main__":
     test_tabs_endpoint_is_exact_mirror_no_history_resurrection()
     test_ssh_privacy_note_states_local_only_storage()
