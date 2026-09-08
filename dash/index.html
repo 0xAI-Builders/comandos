@@ -5417,19 +5417,19 @@ ulog("click", `harness-switch:${to}`, "centro");
 	                     modelo: tf("MODELO","MODEL"), skill: "SKILL", mcp: "MCP", noticia: tf("NOTICIA","NEWS"),
 	                     bounty: "BOUNTY", hackathon: tf("HACKATHON","HACKATHON")};
 	  const card = (it, pinned=false) => `<div class="nf2 ${it.sev} ${it.clickDetail ? "clickable" : ""}" data-key="${attrEsc(it.key)}" ${it.clickDetail ? `data-detail="1" title="${attrEsc(tf("Click: ver detalle y links","Click: detail & links"))}"` : ""}>
-	      ${pinned ? "" : `<button type="button" class="nf2-x" data-act="dismiss" data-key="${attrEsc(it.key)}" title="${attrEsc(tf("Marcar leída y quitar","Mark read & remove"))}">${svg("close",12)}</button>`}
+	      ${pinned ? "" : `<button type="button" class="nf2-x" data-act="dismiss" data-id="${attrEsc(it.key)}" data-key="${attrEsc(it.key)}" title="${attrEsc(tf("Marcar leída y quitar","Mark read & remove"))}">${svg("close",12)}</button>`}
 	      <div class="nf2-h"><span class="nf2-ico" style="color:${sevIcon[it.sev]||"var(--dim)"}">${svg(it.icon,13)}</span>
 	        <span class="nf2-cls">${CLS_LABEL[it.cls]||it.cls}</span>
 	        <b class="nf2-t" ${it.tip ? `title="${attrEsc(it.tip)}"` : ""}>${mdEsc(it.title)}</b>
 	        <small>${it.ts ? agoTxt(it.ts) : ""}</small></div>
 	      ${it.body ? `<div class="nf2-b">${mdEsc(it.body)}</div>` : ""}
 	      <div class="nf2-a">
-	        ${(it.actions||[]).map(a => `<button type="button" class="nf2-act" data-act="${a.id}" data-key="${attrEsc(it.key)}"
+	        ${(it.actions||[]).map(a => `<button type="button" class="nf2-act" data-act="${a.id}" data-id="${attrEsc(it.key)}" data-key="${attrEsc(it.key)}"
 	            data-session="${attrEsc(it.session||"")}" data-pane="${attrEsc(it.pane||"")}">${svg(a.icon,11)} ${mdEsc(a.label)}</button>`).join("")}
 	        ${pinned
-	          ? `<button type="button" class="nf2-act quiet" data-act="unpin" data-key="${attrEsc(it.key)}">${svg("close",11)} ${tf("Quitar","Remove")}</button>`
-	          : `<button type="button" class="nf2-act quiet" data-act="pin" data-key="${attrEsc(it.key)}" title="${attrEsc(tf("Guardar en tu lista","Save to your list"))}">${svg("snippet",11)} ${tf("Guardar","Save")}</button>
-	             <button type="button" class="nf2-act quiet" data-act="snooze" data-key="${attrEsc(it.key)}" title="${attrEsc(tf("Recordarme en 1 hora (te aviso con popup)","Remind me in 1 hour (popup)"))}">${svg("timer",11)} 1h</button>
+	          ? `<button type="button" class="nf2-act quiet" data-act="unpin" data-id="${attrEsc(it.key)}" data-key="${attrEsc(it.key)}">${svg("close",11)} ${tf("Quitar","Remove")}</button>`
+	          : `<button type="button" class="nf2-act quiet" data-act="pin" data-id="${attrEsc(it.key)}" data-key="${attrEsc(it.key)}" title="${attrEsc(tf("Guardar en tu lista","Save to your list"))}">${svg("snippet",11)} ${tf("Guardar","Save")}</button>
+	             <button type="button" class="nf2-act quiet" data-act="snooze" data-id="${attrEsc(it.key)}" data-key="${attrEsc(it.key)}" title="${attrEsc(tf("Recordarme en 1 hora (te aviso con popup)","Remind me in 1 hour (popup)"))}">${svg("timer",11)} 1h</button>
 `}
 	      </div></div>`;
 	  // lo demas: turnos agrupados
@@ -8471,6 +8471,27 @@ function opClick(sel){
 }
 function opApplyActions(actions){
   for(const a of (actions||[])){
+    if(a.type === "ui" && a.op === "click"){
+      const el = document.querySelector(a.selector);
+      if(el) el.click(); else toast(tf("No encuentro el control ", "Control not found ") + a.selector, true);
+      continue;
+    }
+    if(a.type === "ui" && a.op === "call"){
+      const fn = window[a.fn];
+      if(typeof fn === "function"){ try{ fn(...(a.args||[])); }catch(e){ toast(String(e.message||e), true); } }
+      else toast(tf("Acción desconocida ", "Unknown action ") + a.fn, true);
+      continue;
+    }
+    if(a.type === "ui" && a.op === "term"){
+      const sess = a.term?.session || activeTerm || [...openTerms.keys()][0];
+      const frame = sess && openTerms.get(sess)?.frame;
+      if(frame?.contentWindow) frame.contentWindow.postMessage({source:"comandos", type:"toolbar", term:a.term}, location.origin);
+      else toast(tf("No hay terminal abierta", "No terminal open"), true);
+      continue;
+    }
+    if(a.type === "pref"){ api("/conf-set", {key:a.key, value:a.on?"1":"0"}).then(loadConf).catch(e=>toast(e.message,true)); continue; }
+    if(a.type === "voice"){ Promise.all([api("/conf-set",{key:"SPEAK_DONE",value:a.on?"1":"0"}), api("/conf-set",{key:"SPEAK_ATTENTION",value:a.on?"1":"0"})]).then(loadConf).catch(e=>toast(e.message,true)); continue; }
+    if(a.type === "notify_pos"){ document.querySelector(`[data-npos="${a.corner || a.value}"]`)?.click(); continue; }
     if(a.type === "open_wizard"){
       try{ nsOpen(); }catch(e){}
     }
@@ -8483,25 +8504,24 @@ function opApplyActions(actions){
     if(a.type === "ui"){
       const t = a.target;
       if(t === "settings") opClick("#btn-settings");
-      else if(t === "analytics") opClick("#btn-usage");
+      else if(t === "analytics") openAnalyticsTab(a.tab);
       else if(t === "notif") opClick("#btn-notif");
       else if(t === "pomo") opClick("#btn-pomo");
       else if(t === "snippets") opClick("#btn-snippets");
       else if(t === "remote") opClick("#btn-remote");
       else if(t === "mute"){ if($("#btn-mute")?.dataset.on === "1") opClick("#btn-mute"); }
       else if(t === "unmute"){ if($("#btn-mute")?.dataset.on !== "1") opClick("#btn-mute"); }
-      else if(t === "switcher") opClick("#btn-switch");
-      else if(t === "sov") opClick("#btn-sov");
+      else if(t === "switcher") swOpen();
+      else if(t === "sov") $("#btn-sov")?.click();
       else if(t === "servers") opClick("#ssh-manage");
-      else if(t === "timeline") opClick("#tl-toggle");
+      else if(t === "timeline") setTimeline(true);
+      else if(t === "wizard") nsOpen();
+      else if(t === "centro") document.getElementById("centro")?.scrollIntoView({behavior:"smooth"});
       else if(t === "theme" && a.value){ try{ selectTheme(a.value); }catch(e){} }
-      if(a.tab && (t === "settings" || t === "analytics")){
-        const root = t === "settings" ? $("#settings .modal-panel") : $("#usage .modal-panel");
+      if(a.tab && t === "settings"){
+        const root = $("#settings .modal-panel");
         if(root) try{ activateMtab(root, a.tab); }catch(e){}
       }
-    }
-    if(a.type === "pref" && a.key){
-      api("/conf-set", {key: a.key, value: a.on ? "1" : "0"}).then(()=>loadConf()).catch(err => toast(err.message, true));
     }
     if(a.type === "volume"){
       api("/conf-set", {key:"VOLUME", value:String(a.value)}).then(()=>loadConf()).catch(err => toast(err.message, true));
@@ -8531,6 +8551,40 @@ function opApplyActions(actions){
     }
   }
 }
+window.opFavorite = async (session, on) => {
+  const favs = new Set(S.favs || []);
+  if(on) favs.add(session); else favs.delete(session);
+  await api("/prefs-set", {favorites:[...favs]}); await loadPrefs(); render(S.list || []);
+};
+window.setPollSeconds = (n) => { const el = $("#poll"); if(el){ el.value = n; el.dispatchEvent(new Event("input", {bubbles:true})); } };
+window.setBrowserNotifications = (on) => { const el = $("#sw-notif"); if(el && el.classList.contains("on") !== !!on) el.click(); };
+window.setLimitStyle = setLimitStyle;
+window.nfDismiss = (id) => document.querySelector(`.nf2-x[data-id="${CSS.escape(id)}"]`)?.click();
+window.nfPin = (id) => document.querySelector(`[data-act="pin"][data-id="${CSS.escape(id)}"]`)?.click();
+window.nfUnpin = (id) => document.querySelector(`[data-act="unpin"][data-id="${CSS.escape(id)}"]`)?.click();
+window.nfSnooze = (id) => document.querySelector(`[data-act="snooze"][data-id="${CSS.escape(id)}"]`)?.click();
+window.setTimeline = (on) => { const open = $("#timeline") && !$("#timeline").classList.contains("hidden"); if(!!on !== !!open) $("#tl-toggle")?.click(); };
+window.closeAllPanels = () => { document.querySelectorAll(".modal.open").forEach(m => m.classList.remove("open")); closeModelMenus(); if(typeof motorPopClose === "function") motorPopClose(); };
+window.swOpenWith = (q) => { swOpen(); const i = $("#sw-in"); if(i){ i.value = q||""; i.dispatchEvent(new Event("input", {bubbles:true})); } };
+window.nsOpenPrefilled = (cwd, harness, motor, model, effort, danger) => {
+  Promise.resolve(nsOpen()).then(() => {
+    if(cwd){ const c = $("#ns-cwd"); if(c){ c.value = cwd; c.dispatchEvent(new Event("input", {bubbles:true})); } }
+    const pick = (box, val) => val && [...document.querySelectorAll(`${box} button`)].find(ch => ch.dataset.id === val || ch.textContent.trim() === val)?.click();
+    pick("#ns-harness", harness); pick("#ns-motor", motor); pick("#ns-model", model); pick("#ns-effort", effort);
+    if(typeof danger === "boolean"){ const d = $("#ns-danger"); if(d && d.classList.contains("on") !== danger) d.click(); }
+  });
+};
+window.selectSessionCard = (session) => document.querySelector(`.row[data-session="${CSS.escape(session)}"]`)?.click();
+window.expandReply = (session, on) => { const row = document.querySelector(`.row[data-session="${CSS.escape(session)}"]`); const open = row?.classList.contains("open"); if(row && !!on !== !!open) row.querySelector(".xp")?.click(); };
+window.openAnalyticsTab = (tab) => { $("#btn-usage")?.click(); const root = $("#usage .modal-panel"); if(root) activateMtab(root, tab || "resumen"); };
+window.compareSetDays = (n) => { const s = $("#compare-days"); if(s){ s.value = String(n); s.dispatchEvent(new Event("change", {bubbles:true})); } };
+window.setSplitLeft = ((orig) => function(px, save, bounds){
+  if(arguments.length >= 2) return orig(px, save, bounds);
+  localStorage.setItem("cc-split-left", String(px)); restoreSplitLeft(); applyAppLayout();
+})(setSplitLeft);
+window.setOpChatHeight = (px) => { localStorage.setItem("cc-op-chat-h", String(px)); restoreOpChatH(); };
+window.reloadDashboard = () => location.reload();
+window.focusVisibleTerm = () => { const f = activeTerm && openTerms.get(activeTerm)?.frame; f?.contentWindow?.postMessage({source:"comandos", type:"toolbar", term:{type:"focus"}}, location.origin); };
 async function opLoad(id){
   try{
     const q = id ? `?id=${encodeURIComponent(id)}` : "";

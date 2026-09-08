@@ -3374,6 +3374,17 @@ def test_operator_chat_streams_over_sse():
     assert "/operator/chat/stream" in SW
 
 
+def test_operator_generic_ui_actions_and_globals_exist():
+    for fn in ("opFavorite", "setPollSeconds", "setBrowserNotifications", "setLimitStyle", "nfDismiss",
+               "nfPin", "nfUnpin", "nfSnooze", "setTimeline", "closeAllPanels", "swOpenWith",
+               "nsOpenPrefilled", "selectSessionCard", "expandReply", "openAnalyticsTab",
+               "compareSetDays", "setSplitLeft", "setOpChatHeight", "reloadDashboard", "focusVisibleTerm"):
+        assert f"window.{fn} = " in HTML, fn
+    for op in ('a.op === "click"', 'a.op === "call"', 'a.op === "term"'):
+        assert op in HTML, op
+    assert 'a.type === "pref"' in HTML and 'a.type === "voice"' in HTML and 'a.type === "notify_pos"' in HTML
+
+
 if __name__ == "__main__":
     test_tabs_endpoint_is_exact_mirror_no_history_resurrection()
     test_ssh_privacy_note_states_local_only_storage()

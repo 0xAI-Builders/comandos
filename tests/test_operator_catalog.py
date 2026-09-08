@@ -52,7 +52,6 @@ def test_api_targets_point_to_real_cc_dash_paths():
         assert quoted in DASH, (t.name, path)
 
 
-@pytest.mark.xfail(strict=True, reason="Task 7 crea las globales/selectores")
 def test_ui_targets_point_to_real_selectors_or_functions():
     for t in cat.CATALOG:
         if t.target["kind"] != "ui":
