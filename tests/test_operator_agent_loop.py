@@ -51,7 +51,7 @@ def test_build_payload_openai_for_grok():
 
 
 def test_agent_stream_runs_tool_then_final_text():
-    ns = _load({"operator_agent_stream", "_llm_poison"})
+    ns = _load({"operator_agent_stream", "_llm_poison", "_run_tool_batch"})
     rounds = [
         [{"t": "delta", "text": "Voy."}, {"t": "tool_call", "id": "1", "name": "focus_tab", "input": {"tab": "Signara"}}, {"t": "done", "stop": "tool_use"}],
         [{"t": "delta", "text": "Listo, "}, {"t": "delta", "text": "enfocada."}, {"t": "done", "stop": "end_turn"}],
@@ -69,8 +69,26 @@ def test_agent_stream_runs_tool_then_final_text():
     assert events[-1] == {"t": "final", "reply": "Listo, enfocada.", "actions": [{"type": "ui", "op": "click", "selector": "#x"}]}
 
 
+def test_readonly_tools_run_in_parallel_and_keep_order():
+    import time as _t
+    ns = _load({"operator_agent_stream", "_llm_poison", "_run_tool_batch"})
+    ns["operator_provider_stream"] = lambda *a, **k: ("anthropic", iter([
+        {"t": "tool_call", "id": "1", "name": "usage_state", "input": {}},
+        {"t": "tool_call", "id": "2", "name": "list_tabs", "input": {}},
+        {"t": "done", "stop": "tool_use"}]))
+    ns["operator_tools"] = types.SimpleNamespace(agent_system_prompt=lambda *a, **k: "SYS")
+    ns["operator_chat"] = _fake_chat()
+    def run(name, args):
+        _t.sleep(0.2); return {"ok": True, "reply": name, "actions": [], "data": None}
+    t0 = _t.monotonic()
+    events = list(ns["operator_agent_stream"]("x", model="haiku", tabs=[], memory="", active=None, convo={"messages": []},
+                                              dispatcher=types.SimpleNamespace(run=run), max_rounds=1))
+    assert _t.monotonic() - t0 < 0.35
+    assert [e["name"] for e in events if e["t"] == "tool_result"] == ["usage_state", "list_tabs"]
+
+
 def test_agent_stream_stops_after_max_rounds():
-    ns = _load({"operator_agent_stream", "_llm_poison"})
+    ns = _load({"operator_agent_stream", "_llm_poison", "_run_tool_batch"})
     ns["operator_provider_stream"] = lambda *a, **k: ("anthropic", iter([{"t": "tool_call", "id": "1", "name": "list_tabs", "input": {}}, {"t": "done", "stop": "tool_use"}]))
     ns["operator_tools"] = types.SimpleNamespace(agent_system_prompt=lambda *a, **k: "SYS")
     ns["operator_chat"] = _fake_chat()

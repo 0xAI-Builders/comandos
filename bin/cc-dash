@@ -4546,6 +4546,23 @@ def operator_provider_stream(model, sys_txt, conv, tools=True):
     raise RuntimeError(last)
 
 
+def _run_tool_batch(dispatcher, calls):
+    from concurrent.futures import ThreadPoolExecutor
+    out = [None] * len(calls)
+    ro = [(i, c) for i, c in enumerate(calls) if c["name"] in operator_catalog.READONLY]
+    rw = [(i, c) for i, c in enumerate(calls) if c["name"] not in operator_catalog.READONLY]
+    if len(ro) > 1:
+        with ThreadPoolExecutor(max_workers=min(6, len(ro))) as ex:
+            for (i, _c), res in zip(ro, ex.map(lambda ic: dispatcher.run(ic[1]["name"], ic[1]["input"]), ro)):
+                out[i] = res
+    else:
+        for i, c in ro:
+            out[i] = dispatcher.run(c["name"], c["input"])
+    for i, c in rw:
+        out[i] = dispatcher.run(c["name"], c["input"])
+    return out
+
+
 def operator_agent_stream(text, *, model, tabs, memory, active, convo, dispatcher, max_rounds=6):
     sys_txt = operator_tools.agent_system_prompt(tabs, memory, active)
     conv = []
@@ -4593,10 +4610,10 @@ def operator_agent_stream(text, *, model, tabs, memory, active, convo, dispatche
             content = ([{"type": "text", "text": text_acc}] if text_acc else []) + \
                       [{"type": "tool_use", "id": c["id"], "name": c["name"], "input": c["input"]} for c in calls]
             conv.append({"role": "assistant", "content": content})
-        results = []
         for c in calls:
             yield {"t": "tool", "name": c["name"], "args": c["input"]}
-            out = dispatcher.run(c["name"], c["input"])
+        results = []
+        for c, out in zip(calls, _run_tool_batch(dispatcher, calls)):
             actions.extend(out.get("actions") or [])
             for a in out.get("actions") or []:
                 yield {"t": "action", **a}
