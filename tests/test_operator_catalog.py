@@ -10,6 +10,7 @@ import operator_catalog as cat  # noqa: E402
 
 DASH = (ROOT / "bin" / "cc-dash").read_text()
 HTML = (ROOT / "dash" / "index.html").read_text()
+HTML += (ROOT / "dash" / "workspace.js").read_text()
 TERM = (ROOT / "dash" / "term.html").read_text()
 APP = (ROOT / "bin" / "cc-app").read_text()
 

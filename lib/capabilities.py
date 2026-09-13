@@ -1,20 +1,22 @@
 #!/usr/bin/env python3
 """Sanitized per-harness capability inventory.
 
-Only capability names and provenance leave this module. Commands, URLs,
+Only capability names, descriptions and provenance leave this module. Commands, URLs,
 environment values, arguments and tool payloads are never returned.
 """
 from __future__ import annotations
 
 import json
+import ast
 import os
 import re
 from pathlib import Path
 from typing import Any
 
 from accounts import account_home
+from mcp_descriptions import metadata as description_metadata
 
-_SECTION_RE = re.compile(r"^\s*\[\s*mcp_servers\.(.+?)\s*\]\s*(?:#.*)?$")
+_SECTION_RE = re.compile(r'''^\s*\[\s*mcp_servers\s*\.\s*("(?:\\.|[^"\\])*"|'[^']*'|[A-Za-z0-9_-]+)\s*\]\s*(?:\#.*)?$''')
 _SAFE_NAME_RE = re.compile(r"^[^\x00-\x1f]{1,160}$")
 
 
@@ -42,21 +44,43 @@ def _toml_mcps(path: Path, provider: str, scope: str, source: str) -> list[dict[
     output = []
     current = None
     enabled = True
+    description = None
     def append_current():
         if current:
-            output.append(_entry(current, provider, scope, source, enabled))
-    for line in lines:
+            output.append(_entry(current, provider, scope, source, enabled, description))
+    index = 0
+    while index < len(lines):
+        line = lines[index]
+        index += 1
         match = _SECTION_RE.match(line)
         if match:
             append_current()
             current = _clean_name(match.group(1))
             enabled = True
+            description = None
             continue
         if current and re.match(r"^\s*(enabled\s*=\s*false|disabled\s*=\s*true)\b", line, re.I):
             enabled = False
         elif current and re.match(r"^\s*\[", line):
             append_current()
             current = None
+        # Read only a declared public description. Consume multiline string
+        # values so their contents cannot manufacture another server section.
+        field = re.match(r'^\s*([A-Za-z0-9_-]+)\s*=\s*(.*)$', line)
+        if field:
+            value = field.group(2).strip()
+            delimiter = value[:3]
+            if delimiter in ('"""', "'''"):
+                while delimiter not in value[3:] and index < len(lines):
+                    value += '\n' + lines[index]
+                    index += 1
+                end = value.find(delimiter, 3)
+                value = value[:end + 3] if end >= 0 else ''
+            if current and field.group(1) == 'description':
+                try:
+                    description = ast.literal_eval(value)
+                except (ValueError, SyntaxError):
+                    description = None
     append_current()
     return output
 
@@ -66,11 +90,12 @@ def _json_mcps(path: Path, provider: str, scope: str, source: str, disabled=()) 
     if not isinstance(servers, dict):
         return []
     disabled = set(str(x) for x in disabled)
-    return [_entry(str(name), provider, scope, source, str(name) not in disabled)
-            for name in sorted(servers) if _SAFE_NAME_RE.fullmatch(str(name))]
+    return [_entry(str(name), provider, scope, source, str(name) not in disabled,
+                   spec.get('description') if isinstance(spec, dict) else None)
+            for name, spec in sorted(servers.items()) if _SAFE_NAME_RE.fullmatch(str(name))]
 
 
-def _entry(name: str, provider: str, scope: str, source: str, enabled: bool) -> dict[str, Any]:
+def _entry(name: str, provider: str, scope: str, source: str, enabled: bool, description=None) -> dict[str, Any]:
     return {
         "name": name,
         "provider": provider,
@@ -80,6 +105,7 @@ def _entry(name: str, provider: str, scope: str, source: str, enabled: bool) -> 
         "enabled": bool(enabled),
         "status": "configured" if enabled else "disabled",
         "confidence": "configured",
+        **description_metadata(name, description),
     }
 
 
@@ -125,6 +151,8 @@ def _merge(entries: list[dict[str, Any]]) -> list[dict[str, Any]]:
                 previous["sources"].append(source)
         if previous["scope"] != item["scope"]:
             previous["scope"] = "mixed"
+        if item.get('descriptionSource') == 'configuration':
+            previous.update(description=item['description'], descriptionSource='configuration')
     return sorted(merged.values(), key=lambda item: item["name"].casefold())
 
 
@@ -154,10 +182,14 @@ def session_capabilities(registry: dict[str, Any], harness: str, alias: str, cwd
     elif harness == "codex":
         entries.extend(_toml_mcps(home / "config.toml", harness, "user", "codex-user"))
         for parent in parents:
+            if (parent / '.codex' / 'config.toml').resolve() == (home / 'config.toml').resolve():
+                continue
             entries.extend(_toml_mcps(parent / ".codex" / "config.toml", harness, "project", "codex-project"))
     elif harness == "grok":
         entries.extend(_toml_mcps(home / "config.toml", harness, "user", "grok-user"))
         for parent in parents:
+            if (parent / '.grok' / 'config.toml').resolve() == (home / 'config.toml').resolve():
+                continue
             entries.extend(_toml_mcps(parent / ".grok" / "config.toml", harness, "project", "grok-project"))
         # Grok Build intentionally loads Claude-compatible MCP declarations too.
         claude_spec = (registry.get("harnesses") or {}).get("claude") or {}

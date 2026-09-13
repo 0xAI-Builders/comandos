@@ -145,13 +145,19 @@ def test_agy_and_opencode_are_first_class_detected_agents(monkeypatch):
     assert aliases["opencode"] == "opencode"
 
 
-def test_harness_switch_exits_acp_with_slash_exit_and_records_motor():
-    source = Path("bin/cc-dash").read_text()
-    # /exit sale limpio de cc-acp (C-c cancela el turno, no cierra el pane)
-    assert 'from_harness in ("claude", "acp")' in source or \
-           'from_harness in {"claude", "acp"}' in source
-    # al aterrizar en ACP el motor es el cerebro (claude/codex/…), no "acp"
-    assert "harness-handoff" in source
-    assert "dest_motor" in source
-    assert 'record_runtime_config(sess, pane, to, dest_motor' in source or \
-           'record_runtime_config(sess, pane, to, payload.get("motor")' in source
+def test_harness_switch_routes_complete_payload_through_coordinator(monkeypatch):
+    dash = load_dash_module()
+    received = []
+    monkeypatch.setattr(dash, "session_configure", lambda data: received.append(data) or (202, {"ok": True}))
+    dash.harness_switch_apply({"sess": "mixed", "pane": "%9", "to": "acp", "motor": "codex",
+                              "model": "gpt-6-astra", "effort": "ultra", "account": "work"})
+    assert received == [{"session": "mixed", "pane": "%9", "toHarness": "acp", "motor": "codex",
+                         "model": "gpt-6-astra", "effort": "ultra", "harnessAccount": "main", "motorAccount": "work", "interrupt": False}]
+
+
+def test_harness_switch_trusts_live_pane_command_over_session_state(monkeypatch):
+    dash = load_dash_module()
+    monkeypatch.setattr(dash, "agent_info_for_pane", lambda pane: None)
+    monkeypatch.setattr(dash, "state_agent", lambda session: "claude")
+    adapter = dash.SessionConfiguration({"session": "mixed", "pane": "%9"}, {"pane_current_command": "zsh"})
+    assert adapter.frm == "shell"

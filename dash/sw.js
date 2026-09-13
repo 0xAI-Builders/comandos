@@ -1,6 +1,6 @@
 // Service worker minimo: habilita instalar como app (PWA) y una pantalla
 // offline decente. NO cachea /state ni las APIs (siempre en vivo).
-const SHELL = "comandos-shell-v7";
+const SHELL = "comandos-shell-v12";
 self.addEventListener("install", (e) => {
   self.skipWaiting();
   e.waitUntil(caches.open(SHELL).then((c) => c.addAll(["/", "/manifest.webmanifest"])));
@@ -17,9 +17,13 @@ self.addEventListener("fetch", (e) => {
   const live = [
     "/state", "/events", "/conf", "/prefs", "/ssh",
     "/tabs", "/tab-history", "/remote-state", "/remote-qr.png", "/webterm-token", "/term",
-    "/operator"  // /operator, /operator/chat, /operator/chat/stream
+    "/operator", // Includes /operator/chat/stream and durable action results.
+    "/session-", "/extension-usage", "/model/", "/usage/", "/providers"
   ];
+  if (url.origin !== self.location.origin) return;
   if (e.request.method !== "GET" || live.some((p) => url.pathname.startsWith(p))) return;
+  // Cache only the static shell/assets, never an unknown/new API response.
+  if (url.pathname !== "/" && !/\.(?:html|css|js|png|svg|ico|woff2?|ttf|webmanifest)$/.test(url.pathname)) return;
   // La URL remota usa token en querystring: red primero sin guardar esa variante.
   if (url.pathname === "/" && url.searchParams.has("token")) {
     e.respondWith(fetch(e.request).catch(() => caches.match("/")));

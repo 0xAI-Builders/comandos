@@ -394,6 +394,8 @@ def test_real_native_apply_theme_recolors_every_vte_gtk_provider_and_tmux_role()
         ("set-option", "-g", "pane-active-border-style", "#{?pane_in_mode,fg=yellow,fg=#E4AE49}"),
         ("set-option", "-g", "pane-border-style", "fg=#333333"),
         ("set-option", "-g", "message-style", "bg=#E4AE49,fg=#222224"),
+        ("set-option", "-g", "pane-border-status", "top"),
+        ("set-option", "-g", "pane-border-format", " "),
     ]
 
 

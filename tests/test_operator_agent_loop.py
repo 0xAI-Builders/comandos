@@ -50,7 +50,7 @@ def test_build_payload_openai_for_grok():
     assert payload["tools"][0]["type"] == "function" and "x.ai" in urls[0]
 
 
-def test_agent_stream_runs_tool_then_final_text():
+def test_agent_stream_runs_tool_then_final_text(tmp_path):
     ns = _load({"operator_agent_stream", "_llm_poison", "_run_tool_batch"})
     rounds = [
         [{"t": "delta", "text": "Voy."}, {"t": "tool_call", "id": "1", "name": "focus_tab", "input": {"tab": "Signara"}}, {"t": "done", "stop": "tool_use"}],
@@ -59,14 +59,18 @@ def test_agent_stream_runs_tool_then_final_text():
     ns["operator_provider_stream"] = lambda model, sys_txt, conv, tools=True: ("anthropic", iter(rounds.pop(0)))
     ns["operator_tools"] = types.SimpleNamespace(agent_system_prompt=lambda *a, **k: "SYS")
     ns["operator_chat"] = _fake_chat()
+    ns["operator_store_root"] = lambda: tmp_path
     calls = []
     dispatcher = types.SimpleNamespace(run=lambda name, args: (calls.append((name, args)) or {"ok": True, "reply": "Foco en Signara", "actions": [{"type": "ui", "op": "click", "selector": "#x"}], "data": None}))
     events = list(ns["operator_agent_stream"]("enfoca signara", model="haiku", tabs=[], memory="", active=None, convo={"messages": []}, dispatcher=dispatcher))
     kinds = [e["t"] for e in events]
     assert kinds[:2] == ["delta", "tool"]
-    assert {"t": "tool_result", "name": "focus_tab", "ok": True, "reply": "Foco en Signara"} in events
+    assert {"t": "tool_result", "name": "focus_tab", "ok": True, "pending": False, "reply": "Foco en Signara"} in events
     assert calls == [("focus_tab", {"tab": "Signara"})]
-    assert events[-1] == {"t": "final", "reply": "Listo, enfocada.", "actions": [{"type": "ui", "op": "click", "selector": "#x"}]}
+    assert events[-1]["reply"] == "Listo, enfocada."
+    action = events[-1]["actions"][0]
+    assert action["selector"] == "#x" and action["actionId"]
+    assert next(e for e in events if e["t"] == "action")["actionId"] == action["actionId"]
 
 
 def test_readonly_tools_run_in_parallel_and_keep_order():

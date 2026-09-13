@@ -261,18 +261,23 @@ def refresh_local_usage(force=False):
 # asi la mayoria de los polls devuelven al instante. Los limites del plan
 # (que si cambian aparte) se adjuntan DESPUES: son baratos.
 _usage_state_cache = {"key": None, "state": None}
+_usage_state_lock = threading.Lock()
+_usage_state_generation = 0
 
 
 def cached_usage_state(panes, env, limits):
     pane_sig = tuple(sorted(
         (p.get("tmux_session"), p.get("tmux_pane"), p.get("pane_pwd"), p.get("agent"))
         for p in panes))
-    key = (LOCAL_USAGE_REFRESH_AT, pane_sig)
-    if _usage_state_cache["key"] != key:
-        _usage_state_cache["state"] = cc_usage.build_usage_state(
-            USAGE_DB, panes, settings=env)
-        _usage_state_cache["key"] = key
-    state = dict(_usage_state_cache["state"])   # copia superficial: no mutar el memo
+    # Several browser polls can arrive together after an import. Only one may
+    # allocate the historical summary; waiting requests reuse that result.
+    with _usage_state_lock:
+        key = (_usage_state_generation, pane_sig)
+        if _usage_state_cache["key"] != key:
+            _usage_state_cache["state"] = cc_usage.build_usage_state(
+                USAGE_DB, panes, settings=env)
+            _usage_state_cache["key"] = key
+        state = dict(_usage_state_cache["state"])   # copia superficial: no mutar el memo
     state["limits"] = list(limits or [])
     return state
 
@@ -307,6 +312,7 @@ def _pane_models_for_live_state(live_panes, state):
 
 
 def _do_refresh_local_usage():
+    global _usage_state_generation
     now = int(time.time())
     env = usage_runtime_env()
     # Poda: turnos fuera de la ventana de retencion (14d) — sin esto la tabla
@@ -345,6 +351,10 @@ def _do_refresh_local_usage():
             max_age_days=max_age,
         ),
     }
+    # Keep the previous summary available during the import. Invalidate only
+    # after its writes finish so the next poll includes the completed import.
+    with _usage_state_lock:
+        _usage_state_generation += 1
     return counts
 
 
@@ -866,8 +876,17 @@ if LIB_DIR not in sys.path:
     sys.path.insert(0, LIB_DIR)
 import providers as provider_registry
 import grok_state
+import pane_snapshot
+import tmux_snapshot
+import session_operations
+import tui_state
+_TUI_TRANSCRIPTS = tui_state.TranscriptCache()
+_TUI_STATES = tui_state.StateTracker()
+_GROK_METADATA = tui_state.GrokMetadataCache()
+_CODEX_METADATA_CACHE = pane_snapshot.CodexMetadataCache()
 import accounts as account_registry
 import capabilities as capability_inventory
+import session_profiles as session_profile_store
 import model_watch as model_watch_lib
 import news_watch as news_watch_lib
 import operator_catalog
@@ -965,7 +984,7 @@ def grok_metadata_for_pid(pid):
     env = _read_environ(pid) if pid else {}
     raw = env.get(b"GROK_HOME", b"").decode("utf-8", "replace")
     home = os.path.realpath(os.path.expanduser(raw or "~/.grok"))
-    return grok_state.session_for_pid(int(pid), home) if pid else {}
+    return _GROK_METADATA.read(int(pid), home) if pid else {}
 
 
 def agent_info_for_pane(pane):
@@ -1438,7 +1457,7 @@ def harness_pane_busy(sess, pane, harness):
     return grok_pane_busy(sess, pane)
 
 
-def capture_handoff(pane, from_harness, to_harness, cwd, sid=""):
+def capture_handoff(pane, from_harness, to_harness, cwd, sid="", transcript_path=""):
     """Texto de handoff efímero. Solo lo que YA se ve en el pane + estado git;
     cero prompts/secretos/tool payloads. Si hay transcript de Claude, se apunta
     al archivo (el contenido NO se copia: el sid sirve para --resume al volver)."""
@@ -1466,7 +1485,7 @@ def capture_handoff(pane, from_harness, to_harness, cwd, sid=""):
     tail = "\n".join(keep[-45:])
     transcript = ""
     if sid:
-        path = _transcript_path(sid)
+        path = transcript_path or _transcript_path(sid)
         if path:
             transcript = (f"\n## Transcript de {from_harness} (se conserva en disco)\n"
                           f"Archivo: `{path}`\n"
@@ -1592,6 +1611,13 @@ def _pane_exit_current(pane, pid, from_harness):
     doble; en última instancia SIGTERM al pid (nunca a ciegas por patrón)."""
     if from_harness in ("", "shell"):
         return True
+    started = _process_start(pid)
+    if not started:
+        try:
+            os.kill(int(pid), 0)
+        except ProcessLookupError:
+            return True
+        return False
     tmux("send-keys", "-t", pane, "Escape")
     time.sleep(0.12)
     tmux("send-keys", "-t", pane, "C-u")
@@ -1607,10 +1633,14 @@ def _pane_exit_current(pane, pid, from_harness):
         tmux("send-keys", "-t", pane, "C-c")
     for _ in range(30):          # hasta 15 s
         time.sleep(0.5)
+        if _process_start(pid) != started:
+            return True
         try:
             os.kill(int(pid), 0)
         except Exception:
             return True
+    if _process_start(pid) != started:
+        return True
     try:
         os.kill(int(pid), 15)
         time.sleep(1.0)
@@ -1623,135 +1653,464 @@ def _pane_exit_current(pane, pid, from_harness):
         return True
 
 
-def harness_switch_apply(payload):
-    """Handoff completo en el MISMO pane: espera idle → captura handoff → sale del
-    CLI actual → lanza el nuevo → inyecta el contexto. Rollback: si el nuevo no
-    arranca, lo reporta (el pane queda en shell para reintentar)."""
-    pane, sess = payload["pane"], payload["sess"]
-    opkey = payload["key"]
-    frm, to = payload["from"], payload["to"]
-    cwd = payload["cwd"]
-    pid = payload.get("pid")
-    gen = payload["gen"]
+_SESSION_OPERATIONS = None
+_SESSION_OPERATIONS_LOCK = threading.Lock()
 
-    def _go():
-        from_shell = frm in ("", "shell")
-        # 1) esperar idle (nunca cambiar a mitad de un tool call)
-        busy = False if from_shell else harness_pane_busy(sess, pane, frm)
-        if busy and not payload.get("interrupt"):
-            motor_stage(opkey, "esperando a que el harness actual quede libre", "wait_idle")
-            for _ in range(1350):
-                time.sleep(2.0)
-                if not motor_gen_ok(opkey, gen):
-                    return
-                b = harness_pane_busy(sess, pane, frm)
-                if not b:
-                    break
+
+def session_operation_store():
+    global _SESSION_OPERATIONS
+    with _SESSION_OPERATIONS_LOCK:
+        if _SESSION_OPERATIONS is None:
+            _SESSION_OPERATIONS = session_operations.OperationStore(os.path.join(HOOKS, 'session-operations.sqlite3'))
+            _SESSION_OPERATIONS.recover_abandoned()
+    return _SESSION_OPERATIONS
+
+
+def _configuration_command(harness, motor, model, effort, account, resume='', flags=()):
+    """Build one launch containing the complete draft. No fallback to latest."""
+    binary = _harness_bin('acp' if harness == 'acp' else harness)
+    if not provider_registry.which(binary):
+        raise ValueError(f'no encuentro el ejecutable {binary}')
+    registry = load_provider_registry()
+    provider = motor if harness == 'acp' else harness
+    caps = ((registry.get('harnesses') or {}).get(provider) or {}).get('capabilities') or {}
+    environment = account_registry.account_environment(registry, provider, account) if caps.get('accounts') else {}
+    if harness == 'claude' and motor != 'claude':
+        if not proxy_alive():
+            raise ValueError('el gateway local no responde')
+        environment['ANTHROPIC_BASE_URL'] = f'http://127.0.0.1:{int(load_proxy_cfg().get("port") or 18765)}'
+        environment.update(motor_lock_env(motor, model))
+    clear = ('CLAUDE_CONFIG_DIR', 'CODEX_HOME', 'GROK_HOME', 'ANTHROPIC_BASE_URL',
+             'ANTHROPIC_DEFAULT_OPUS_MODEL', 'ANTHROPIC_DEFAULT_SONNET_MODEL',
+             'ANTHROPIC_DEFAULT_HAIKU_MODEL', 'ANTHROPIC_MODEL', 'CLAUDE_CODE_SUBAGENT_MODEL')
+    argv = ['env']
+    for name in clear:
+        argv.extend(['-u', name])
+    argv.extend(f'{key}={value}' for key, value in environment.items())
+    argv.append(binary)
+    if harness == 'acp':
+        argv.extend(['--agent', motor])
+        if account != 'main':
+            argv.extend(['--account', account])
+    if resume:
+        argv.extend(['resume', resume] if harness == 'codex' else ['--resume', resume])
+    if model:
+        argv.extend(['-m' if harness == 'codex' else '--model', model])
+    if effort:
+        argv.extend(['-c', f'model_reasoning_effort="{effort}"'] if harness == 'codex' else ['--effort', effort])
+    # Preserve explicit permissions only when resuming the same CLI. Model and
+    # effort are supplied once, with the latest observed values.
+    i = 0
+    while i < len(flags):
+        flag = flags[i]
+        if flag in ('--model', '-m', '--effort', '-c', '--config'):
+            i += 2
+            continue
+        argv.append(flag)
+        i += 1
+    return shlex.join(argv)
+
+
+def _snapshot_transcript(origin):
+    agent = origin.get('agent')
+    if agent not in ('claude', 'codex', 'grok'):
+        return ''
+    sid = origin.get('resume_id') or ''
+    if not sid or not re.fullmatch(r'[A-Za-z0-9_-]+', sid):
+        raise ValueError('identificador de conversación inválido')
+    root_key, default, pattern = {
+        'claude': ('claude_config_dir', '~/.claude', f'projects/*/{sid}.jsonl'),
+        'codex': ('codex_home', '~/.codex', f'sessions/**/rollout-*{sid}.jsonl'),
+        'grok': ('grok_home', '~/.grok', f'sessions/**/{sid}/summary.json'),
+    }[agent]
+    root = origin.get(root_key) or os.path.expanduser(default)
+    matches = glob.glob(os.path.join(root, pattern), recursive=True)
+    if len(matches) != 1 or not os.path.isfile(matches[0]):
+        raise ValueError('no se encontró un único historial para reanudar; el origen sigue abierto')
+    return matches[0]
+
+
+class SessionConfiguration:
+    def __init__(self, data, identity):
+        self.data, self.identity = data, identity
+        self.sess, self.pane = data['session'], data['pane']
+        self.original = agent_info_for_pane(self.pane) or {}
+        self.original_start = _process_start(self.original['pid']) if self.original.get('pid') else ''
+        # The live pane command wins over stale session hook state.
+        pane_cmd = identity['pane_current_command']
+        self.frm = self.original.get('agent') or ('shell' if pane_cmd in ('bash', 'zsh', 'sh', 'fish', 'dash') else '')
+        self.plan = None
+
+    def check_identity(self):
+        if getattr(self, 'store', None):
+            row = self.store.get(self.data['requestId'])
+            if row and row['state'] == 'failed':
+                raise RuntimeError('operación cancelada')
+        current = _pane_identity(self.sess, self.pane)
+        if _identity_key(current) != _identity_key(self.identity):
+            raise RuntimeError('cambió la identidad del panel; no se enviaron comandos')
+        live = agent_info_for_pane(self.pane) or {}
+        if live.get('pid') != self.original.get('pid') or (live.get('pid') and _process_start(live['pid']) != self.original_start):
+            raise RuntimeError('el proceso original cambió durante la espera')
+
+    def prepare(self):
+        if not self.frm:
+            raise ValueError('no se reconoce el proceso del panel')
+        if self.frm not in ('shell', 'claude', 'codex', 'grok', 'acp'):
+            raise ValueError(f'{self.frm} no ofrece recuperación exacta; se conserva el agente actual')
+        data = self.data
+        current = observe_pane(self.sess, self.pane, self.original) if self.original else {}
+        if self.frm == 'acp' and not ((load_provider_registry().get('acpAgents') or {}).get(current.get('motor')) or {}).get('resume'):
+            raise ValueError('este motor ACP no admite reanudación exacta; el agente sigue abierto')
+        to = data.get('toHarness') or self.frm
+        requested_route = provider_registry.route_for(load_provider_registry(), str(data.get('routeId') or '')) or {}
+        model_motor = provider_registry.engine_for_model(load_provider_registry(), str(data.get('model') or ''))
+        motor = data.get('motor') or requested_route.get('motor') or (model_motor or current.get('motor') if to == self.frm else to)
+        if to == 'acp' and motor in ('acp', 'shell', '', None):
+            motor = 'claude'
+        if to not in ('claude', 'codex', 'grok', 'acp', 'opencode', 'agy'):
+            raise ValueError(f'harness desconocido: {to}')
+        if to == motor and data.get('motorAccount') and data.get('harnessAccount') and data['motorAccount'] != data['harnessAccount']:
+            raise ValueError('un CLI nativo necesita la misma cuenta de harness y motor')
+        selection = dict(data, routeId=f'{to}:{motor}')
+        if not selection.get('model') and motor == current.get('motor'):
+            selection['model'] = current.get('model') or ''
+        if 'effort' not in selection and motor == current.get('motor'):
+            selection['effort'] = current.get('effort') or ''
+        selection.setdefault('harnessAccount', current.get('harnessAccount') if to == self.frm else 'main')
+        selection.setdefault('motorAccount', current.get('motorAccount') if motor == current.get('motor') else
+                             selection.get('harnessAccount') if motor == to else 'main')
+        scope = 'new_session' if to != self.frm else 'session_model' if motor == current.get('motor') else 'session_motor'
+        route, selected = resolve_route_selection(selection, scope)
+        for account_key in ('harnessAccount', 'motorAccount'):
+            if data.get(account_key) and selected[account_key] != data[account_key]:
+                raise ValueError(f'{account_key}: esa cuenta no es compatible con el destino')
+        model, effort = selected['model'], selected['effort']
+        account = selected['motorAccount'] if to == 'acp' else selected['harnessAccount']
+        same_conversation = self.frm == to and (to != 'acp' or motor == current.get('motor'))
+        saved_origin = session_operation_store().saved_origin(_identity_key(self.identity), to) if not same_conversation else None
+        if saved_origin and to == 'acp' and (saved_origin.get('observed') or {}).get('motor') != motor:
+            saved_origin = None
+        if saved_origin:
+            _snapshot_transcript(saved_origin)
+        sid = ((saved_origin.get('observed') or {}).get('conversationId') if saved_origin else current.get('conversationId')) or ''
+        # Validate the target command now, before a snapshot or any terminal input.
+        cmd = _configuration_command(to, motor, model, effort, account,
+                                     resume=sid if same_conversation or saved_origin else '')
+        if not os.path.isdir(self.identity['pane_current_path']):
+            raise ValueError('la carpeta del panel ya no existe')
+        self.plan = dict(to=to, motor=motor, model=model, effort=effort,
+                         harnessAccount=selected['harnessAccount'], motorAccount=selected['motorAccount'],
+                         command=cmd, previous=current, routeId=route['id'], returnOrigin=saved_origin,
+                         expectedSid=sid if same_conversation or saved_origin else '', sameConversation=same_conversation)
+        self.plan['unchanged'] = to == self.frm and all(self.plan.get(k) == current.get(k) for k in
+            ('motor', 'model', 'effort', 'harnessAccount', 'motorAccount'))
+        return self.plan
+
+    def wait_idle(self):
+        if self.data.get('interrupt') or self.frm == 'shell':
+            return
+        for _ in range(1350):
+            self.check_identity()
+            if not harness_pane_busy(self.sess, self.pane, self.frm):
+                return
+            time.sleep(2)
+        raise RuntimeError('el agente no quedó libre en 45 minutos')
+
+    def snapshot(self, plan):
+        inspector = pane_snapshot.PaneInspector()
+        layout = tmux_snapshot.capture_session(tmux, self.sess, inspector)
+        origin = next(p for window in layout['windows'] for p in window['panes'] if p['id'] == self.pane)
+        observed = observe_pane(self.sess, self.pane, self.original, inspector) if self.original else {}
+        sid = origin.get('resume_id') or (origin.get('acp') or {}).get('sessionId') or ''
+        if self.frm != 'shell' and not sid:
+            raise ValueError('no se encontró la conversación exacta; el agente sigue abierto')
+        if self.frm != 'shell' and sid != observed.get('conversationId'):
+            raise ValueError('la conversación cambió durante el snapshot')
+        origin['transcriptPath'] = _snapshot_transcript(origin)
+        origin['observed'] = observed
+        origin['agent_pid'] = self.original.get('pid')
+        origin['agent_start'] = self.original_start
+        origin['identity'] = self.identity
+        if plan.get('returnOrigin'):
+            prior = plan['returnOrigin']
+            account = plan['motorAccount'] if plan['to'] == 'acp' else plan['harnessAccount']
+            prior_account = (prior.get('observed') or {}).get('motorAccount' if plan['to'] == 'acp' else 'harnessAccount')
+            if account != prior_account:
+                self._copy_conversation(prior, account)
+        # Pin the complete snapshot in SQLite; periodic app snapshots never replace it.
+        if self.frm != 'shell':
+            account = observed.get('motorAccount') if self.frm == 'acp' else observed.get('harnessAccount')
+            if not account or account == 'unknown':
+                raise ValueError('no se pudo identificar la cuenta original')
+            origin['resume_command'] = _configuration_command(self.frm, observed.get('motor') or self.frm,
+                observed.get('model') or '', observed.get('effort') or '', account, sid, origin.get('flags') or [])
+            if plan.get('sameConversation'):
+                target_account = plan['motorAccount'] if self.frm == 'acp' else plan['harnessAccount']
+                if target_account != account:
+                    self._copy_conversation(origin, target_account)
+                plan['command'] = _configuration_command(plan['to'], plan['motor'], plan['model'], plan['effort'],
+                    target_account, sid, origin.get('flags') or [])
+                plan['expectedSid'] = sid
+            handoff_dir = os.path.join(HOOKS, 'session-handoffs')
+            os.makedirs(handoff_dir, mode=0o700, exist_ok=True)
+            path = os.path.join(handoff_dir, self.data['requestId'] + '.md')
+            with open(path, 'x') as fh:
+                os.chmod(path, 0o600)
+                fh.write(capture_handoff(self.pane, self.frm, plan['to'], origin['cwd'], sid if self.frm == 'claude' else '',
+                                         transcript_path=origin['transcriptPath'] if self.frm == 'claude' else ''))
+            origin['handoffPath'] = path
+        return {'session': self.sess, 'layout': layout, 'origin': origin, 'destination': dict(plan)}
+
+    def _copy_conversation(self, origin, account):
+        # Account switches preserve the exact transcript and supporting directory.
+        # Copying happens again after waiting, immediately before closing source.
+        agent = origin.get('agent') or self.frm
+        if agent == 'acp':
+            raise ValueError('cambiar cuenta ACP requiere exportación de conversación; se conserva el origen')
+        sid = origin.get('resume_id') or ''
+        env_key, default = {'claude': ('CLAUDE_CONFIG_DIR', '~/.claude'),
+                            'codex': ('CODEX_HOME', '~/.codex'), 'grok': ('GROK_HOME', '~/.grok')}[agent]
+        source_root = origin.get({'claude': 'claude_config_dir', 'codex': 'codex_home', 'grok': 'grok_home'}[agent]) or os.path.expanduser(default)
+        env = account_registry.account_environment(load_provider_registry(), agent, account)
+        target_root = env.get(env_key) or os.path.expanduser(default)
+        pattern = {'claude': f'projects/*/{sid}.jsonl', 'codex': f'sessions/**/rollout-*{sid}.jsonl',
+                   'grok': f'sessions/**/{sid}/summary.json'}[agent]
+        paths = glob.glob(os.path.join(source_root, pattern), recursive=True)
+        if len(paths) != 1:
+            raise ValueError('no se encontró un único historial de origen')
+        source = paths[0]
+        if agent == 'grok':
+            source = os.path.dirname(source)
+        target = os.path.join(target_root, os.path.relpath(source, source_root))
+        copies = [(source, target)]
+        extra = os.path.join(os.path.dirname(source), sid)
+        if agent == 'claude' and os.path.isdir(extra):
+            copies.append((extra, os.path.join(os.path.dirname(target), sid)))
+        # Validate the complete transcript and all subagent/sidecar files before
+        # changing any destination file. Divergent histories remain untouched.
+        for source_item, target_item in copies:
+            existing_files = glob.glob(os.path.join(target_item, '**', '*'), recursive=True) if os.path.isdir(source_item) else [target_item]
+            for existing in existing_files:
+                if not os.path.exists(existing):
+                    continue
+                if os.path.islink(existing):
+                    raise ValueError('el historial destino contiene un enlace; no se sobrescribe')
+                if os.path.isdir(existing):
+                    continue
+                original = os.path.join(source_item, os.path.relpath(existing, target_item)) if os.path.isdir(source_item) else source_item
+                if not os.path.isfile(original) or not self._compatible_copy(original, existing):
+                    raise ValueError('el historial destino contiene cambios propios; no se sobrescribe')
+        for source_item, target_item in copies:
+            os.makedirs(os.path.dirname(target_item), exist_ok=True)
+            if os.path.isdir(source_item):
+                shutil.copytree(source_item, target_item, dirs_exist_ok=True)
             else:
-                motor_result_set(opkey, False, "el harness nunca quedó libre (45 min)")
-                return
-        if not motor_gen_ok(opkey, gen):
-            return
-        # 2) capturar handoff ANTES de matar nada (un pane shell no tiene
-        # conversación que transferir: arranca el CLI como el wizard +).
-        previous_sid = str(payload.get("previousSid") or "")
-        if frm == "claude" and not previous_sid:
-            try:
-                previous_sid = str((_claude_info_for(sess, pane) or {}).get("sid") or "")
-            except Exception:
-                previous_sid = ""
-        if previous_sid and frm == "claude":
-            pane_resume_set(sess, pane, "claude", previous_sid, payload.get("account", "main"))
-        if not from_shell:
-            motor_stage(opkey, "capturando el contexto para el handoff", "capture")
-            try:
-                hand = capture_handoff(pane, frm, to, cwd, sid=previous_sid)
-                with open(os.path.join(cwd, HANDOFF_FILE), "w") as fh:
-                    fh.write(hand)
-            except Exception as exc:
-                motor_result_set(opkey, False, f"no se pudo capturar el handoff: {exc}")
-                return
-            motor_stage(opkey, f"cerrando {frm} (la conversación de {frm} se termina)", "exit_from")
-            if pid and not _pane_exit_current(pane, pid, frm):
-                motor_result_set(opkey, False, f"{frm} no cerró a tiempo; sigue vivo, nada se perdió")
-                return
-            time.sleep(0.6)
-        # 4) lanzar el nuevo harness. Modelo/esfuerzo del ORIGEN (p.ej. claude-fable-5)
-        # no se reenvían: OpenCode aborta con "Invalid model format".
-        dest_motor = payload.get("motor") or to
-        dest_model, dest_effort = _native_launch_model(
-            dest_motor if to == "acp" else to,
-            payload.get("model", ""), payload.get("effort", ""))
-        resume_sid = ""
-        if to == "claude":
-            resume_sid = previous_sid or pane_resume_get(sess, pane, "claude")
-        if to == "acp":
-            cmd = _acp_launch_cmd(dest_motor, dest_model, dest_effort,
-                                  payload.get("account", "main"), danger=bool(payload.get("danger")),
-                                  resume=resume_sid if dest_motor == "claude" else "")
-        else:
-            cmd = _harness_launch_cmd(to, dest_model, dest_effort, payload.get("account", "main"),
-                                      resume=resume_sid)
-        if not cmd:
-            motor_result_set(opkey, False, f"no sé lanzar el harness {to}")
-            return
-        motor_stage(opkey, f"lanzando {to} en el mismo pane", "launch")
-        # Lanzar con hasta 3 intentos: algunos CLIs (p.ej. codex) se AUTO-ACTUALIZAN
-        # al primer arranque ("Update ran successfully! Please restart") y vuelven al
-        # shell sin abrir el TUI — hay que reenviar el comando.
-        live = None
-        for attempt in range(3):
-            try:
-                _restore_shell_tty(pane)
-                _send_shell_line(pane, cmd)
-            except Exception as exc:
-                motor_result_set(opkey, False, f"no se pudo lanzar {to}: {exc}")
-                return
-            updated = False
-            for _ in range(60):          # ~36 s por intento
-                time.sleep(0.6)
-                cand = agent_info_for_pane(pane)
-                if cand and cand.get("agent") == to:
-                    live = cand
-                    break
-                scr = tmux("capture-pane", "-p", "-t", pane, "-S", "-15").stdout or ""
-                if re.search(r"Update ran successfully|Please restart|installed \[", scr, re.I) \
-                        and re.search(r"[➜\$#]\s*$|git:\(", scr):
-                    updated = True          # se actualizó y volvió al shell → reintentar
-                    break
-            if live:
-                break
-            if updated:
-                motor_stage(opkey, f"{to} se actualizó; reintentando el arranque", "relaunch")
-                time.sleep(1.0)
-                continue
-            break
-        if not live:
-            motor_result_set(opkey, False, f"{to} no arrancó; el pane quedó en shell — reintenta")
-            return
-        # 6) confirmar carpeta si el CLI lo pide. El handoff YA está en disco
-        # (.comandos-handoff.md): NO se pega como primer turno — eso hacía que
-        # Grok/ACP pidieran permisos y trabajaran solos.
-        if not from_shell:
-            motor_stage(opkey, "esperando el prompt del nuevo CLI", "inject")
-            time.sleep(1.2)
-            scroll = tmux("capture-pane", "-p", "-t", pane, "-S", "-40").stdout or ""
-            if re.search(r"trust this folder|confías en esta carpeta|Do you trust|trust the contents", scroll, re.I):
-                if to != "codex":
-                    tmux("send-keys", "-t", pane, "Down"); time.sleep(0.3)
-                tmux("send-keys", "-t", pane, "Enter"); time.sleep(1.0)
-        # 7) registrar el nuevo estado y confirmar
-        dest_motor = payload.get("motor") or to
-        record_runtime_config(sess, pane, to, dest_motor, dest_model, dest_effort,
-                              payload.get("account", "main"), payload.get("account", "main"),
-                              f"{to}:{dest_motor}", "harness-handoff")
-        motor_result_set(opkey, True, f"handoff {frm} → {to} · contexto inyectado",
-                         harness=to, motor=dest_motor, model=dest_model, effort=dest_effort)
-        if dest_effort:
-            session_effort_set(opkey, dest_effort)
-        motor_queue_pop(opkey, gen)
+                shutil.copy2(source_item, target_item)
 
-    threading.Thread(target=_go, daemon=True).start()
+    @staticmethod
+    def _compatible_copy(source, target):
+        with open(source, 'rb') as src, open(target, 'rb') as dst:
+            while True:
+                chunk = dst.read(65536)
+                if not chunk:
+                    return True
+                if src.read(len(chunk)) != chunk:
+                    return False
+
+    def apply(self, plan, snapshot):
+        if self.frm != 'shell' and not _pane_exit_current(self.pane, self.original['pid'], self.frm):
+            raise RuntimeError('el agente original no cerró')
+        current = _pane_identity(self.sess, self.pane)
+        if _identity_key(current) != _identity_key(self.identity):
+            raise RuntimeError('el panel cambió después de cerrar el origen')
+        if self.frm == plan['to'] and self.frm != 'shell':
+            origin = snapshot['origin']
+            previous = origin.get('observed') or {}
+            account_key = 'motorAccount' if self.frm == 'acp' else 'harnessAccount'
+            if plan[account_key] != previous.get(account_key):
+                self._copy_conversation(origin, plan[account_key])
+        self.snapshot_record = snapshot
+        _restore_shell_tty(self.pane)
+        _send_shell_line(self.pane, 'env ' + shlex.quote('COMANDOS_OPERATION_ID=' + self.data['requestId']) + ' ' + plan['command'])
+
+    def _verify(self, expected, sid=''):
+        for _ in range(60):
+            time.sleep(0.5)
+            identity = _pane_identity(self.sess, self.pane)
+            if _identity_key(identity) != _identity_key(self.identity):
+                raise RuntimeError('el panel cambió durante la verificación')
+            info = agent_info_for_pane(self.pane) or {}
+            if info.get('agent') != expected['to']:
+                continue
+            if not getattr(self, 'in_recovery', False) and not expected.get('unchanged'):
+                marker = _read_environ(info['pid']).get(b'COMANDOS_OPERATION_ID', b'').decode('utf-8', 'replace')
+                if marker != self.data['requestId']:
+                    continue
+            observed = observe_pane(self.sess, self.pane, info)
+            if getattr(self, 'snapshot_record', None) and not getattr(self, 'in_recovery', False):
+                pin = {'pid': info['pid'], 'start': _process_start(info['pid']),
+                       'conversationId': observed.get('conversationId') or ''}
+                previous_pin = self.snapshot_record.get('destinationProcess')
+                if previous_pin and previous_pin.get('conversationId') and pin != previous_pin:
+                    raise RuntimeError('cambió la conversación destino durante la verificación')
+                if pin != previous_pin:
+                    self.snapshot_record['destinationProcess'] = pin
+                    self.store.stage(self.data['requestId'], 'verifying', snapshot=self.snapshot_record)
+            if sid and observed.get('conversationId') != sid:
+                continue
+            if expected['to'] in ('claude', 'codex', 'grok', 'acp') and not observed.get('conversationId'):
+                continue
+            if expected.get('model') and observed.get('model') != expected['model']:
+                continue
+            if expected.get('effort') and observed.get('effort') != expected['effort']:
+                continue
+            if expected.get('harnessAccount') and observed.get('harnessAccount') != expected['harnessAccount']:
+                continue
+            if expected.get('motorAccount') and observed.get('motorAccount') != expected['motorAccount']:
+                continue
+            screen = tmux('capture-pane', '-p', '-t', self.pane, '-S', '-15').stdout or ''
+            if re.search(r'trust this folder|Do you trust|sign in|log in|login required|error:', screen, re.I):
+                continue
+            if not re.search(r'(^|\n)\s*[❯›>]|esc to interrupt|ctrl\+c to interrupt', screen, re.I):
+                continue
+            return observed
+        return None
+
+    def verify(self, plan, snapshot):
+        return self._verify(plan, plan.get('expectedSid', ''))
+
+    def rollback(self, snapshot):
+        self.in_recovery = True
+        origin = snapshot['origin']
+        current = _pane_identity(self.sess, self.pane)
+        if _identity_key(current) != _identity_key(self.identity):
+            raise RuntimeError('el panel cambió; el snapshot conserva la recuperación exacta')
+        live = agent_info_for_pane(self.pane) or {}
+        original_observed = origin.get('observed') or {}
+        expected = dict(original_observed, to=self.frm)
+        sid = original_observed.get('conversationId') or ''
+        if live.get('pid') == self.original.get('pid') and self.frm != 'shell' and _process_start(live['pid']) == origin.get('agent_start', ''):
+            if self._verify(expected, sid):
+                return
+            raise RuntimeError('el proceso de origen sigue vivo pero no confirmó su estado')
+        if live:
+            marker = _read_environ(live['pid']).get(b'COMANDOS_OPERATION_ID', b'').decode('utf-8', 'replace')
+            if live.get('agent') != self.plan['to'] or marker != self.data['requestId']:
+                raise RuntimeError('hay otro proceso en el panel; no se interrumpe')
+            pin = snapshot.get('destinationProcess') or {}
+            if pin and (live['pid'] != pin.get('pid') or _process_start(live['pid']) != pin.get('start')):
+                raise RuntimeError('el proceso destino fue sustituido; no se interrumpe')
+            expected_sid = pin.get('conversationId') or self.plan.get('expectedSid')
+            if not expected_sid:
+                raise RuntimeError('no se guardó la conversación destino; cierra ese CLI manualmente antes de recuperar el origen')
+            if observe_pane(self.sess, self.pane, live).get('conversationId') != expected_sid:
+                raise RuntimeError('la conversación destino cambió; no se interrumpe')
+            if not _pane_exit_current(self.pane, live['pid'], live['agent']):
+                raise RuntimeError('no se pudo cerrar el destino fallido')
+        if not live and current['pane_current_command'] not in ('bash', 'zsh', 'sh', 'fish', 'dash'):
+            raise RuntimeError('hay un proceso sin identificar en el panel; no se envía la recuperación')
+        if self.frm == 'shell':
+            return
+        _restore_shell_tty(self.pane)
+        _send_shell_line(self.pane, origin['resume_command'])
+        if not self._verify(expected, sid):
+            raise RuntimeError('no se confirmó la reanudación de la conversación original')
+
+
+def session_configure(data):
+    data = dict(data)
+    sess, pane = str(data.get('session') or ''), str(data.get('pane') or '')
+    if not SESSION_RE.fullmatch(sess) or not PANE_RE.fullmatch(pane):
+        return 400, {'ok': False, 'error': 'sesión y panel exactos requeridos'}
+    request_id = str(data.get('requestId') or secrets.token_hex(16))
+    if not re.fullmatch(r'[A-Za-z0-9_-]{8,100}', request_id):
+        return 400, {'ok': False, 'error': 'requestId inválido'}
+    data['requestId'] = request_id
+    store = session_operation_store()
+    opkey = f'{sess}|{pane}'
+    try:
+        # Retry lookup precedes live identity resolution: a completed request is
+        # still idempotent after its pane or tmux server has disappeared.
+        previous = store.get(request_id)
+        if previous:
+            store.claim(request_id, previous['pane_key'], data)
+            result = previous.get('result') or {}
+            return (200 if previous['state'] in ('confirmed', 'failed', 'rolled_back', 'recovery_required') else 202), {
+                **result, 'ok': result.get('ok', True), 'pending': previous['state'] not in ('confirmed', 'failed', 'rolled_back', 'recovery_required'),
+                'operationKey': opkey, 'operationId': request_id, 'state': previous['state']}
+        identity = _pane_identity(sess, pane)
+        adapter = SessionConfiguration(data, identity)
+        adapter.store = store
+        if not store.claim(request_id, _identity_key(identity), data):
+            return 202, {'ok': True, 'pending': True, 'operationKey': opkey, 'operationId': request_id}
+    except (ValueError, RuntimeError) as exc:
+        return 409, {'ok': False, 'error': str(exc), 'operationKey': opkey}
+    def notify(stage, result):
+        if stage in ('confirmed', 'failed', 'rolled_back', 'recovery_required'):
+            result = result or {}
+            observed = result.get('observed') or {}
+            motor_result_set(opkey, bool(result.get('ok')), result.get('error') or 'configuración confirmada',
+                             operationId=request_id, state=stage, **{k: observed.get(k) for k in ('harness', 'motor', 'model', 'effort')},
+                             rolledBack=result.get('rolledBack', False), recoveryRequired=result.get('recoveryRequired', False))
+            if result.get('ok'):
+                record_runtime_config(sess, pane, observed['harness'], observed['motor'], observed['model'],
+                    observed.get('effort', ''), observed.get('harnessAccount', 'unknown'), observed.get('motorAccount', 'unknown'),
+                    adapter.plan['routeId'], 'switch-observed')
+        else:
+            motor_stage(opkey, stage, stage, operationId=request_id)
+    motor_stage(opkey, 'validando configuración', 'validating', operationId=request_id)
+    threading.Thread(target=session_operations.run_operation, args=(store, request_id, adapter, notify), daemon=True).start()
+    return 202, {'ok': True, 'pending': True, 'queued': True, 'operationKey': opkey, 'operationId': request_id}
+
+
+def session_recover(data):
+    operation_id = str(data.get('operationId') or '')
+    store = session_operation_store()
+    store.recover_abandoned()
+    row = store.get(operation_id)
+    if not row or row['state'] != 'recovery_required' or not row.get('snapshot'):
+        return 409, {'ok': False, 'error': 'la operación no tiene una recuperación pendiente'}
+    snapshot = row['snapshot']
+    origin = snapshot['origin']
+    identity = origin['identity']
+    request = row['request']
+    opkey = f"{request['session']}|{request['pane']}"
+    try:
+        if _identity_key(_pane_identity(request['session'], request['pane'])) != _identity_key(identity):
+            raise ValueError('el panel original cambió; el snapshot se conserva para recuperación manual')
+        if not store.claim_recovery(operation_id):
+            raise ValueError('la recuperación ya está en curso')
+    except (ValueError, RuntimeError) as exc:
+        return 409, {'ok': False, 'error': str(exc)}
+    def recover():
+        try:
+            adapter = SessionConfiguration(request, identity)
+            adapter.original = {'pid': origin.get('agent_pid'), 'agent': origin.get('agent') or 'shell'}
+            adapter.frm = origin.get('agent') or 'shell'
+            adapter.plan = snapshot['destination']
+            adapter.rollback(snapshot)
+            result = {'ok': False, 'rolledBack': True, 'recoveryRequired': False,
+                      'error': 'conversación original recuperada; no se aplicó el destino'}
+            store.stage(operation_id, 'rolled_back', result=result)
+        except Exception as exc:
+            result = {'ok': False, 'recoveryRequired': True, 'error': str(exc)}
+            store.stage(operation_id, 'recovery_required', result=result)
+        motor_result_set(opkey, False, result['error'], operationId=operation_id,
+                         rolledBack=result.get('rolledBack', False), recoveryRequired=result.get('recoveryRequired', False))
+    motor_stage(opkey, 'recuperando conversación original', 'recovering', operationId=operation_id)
+    threading.Thread(target=recover, daemon=True).start()
+    return 202, {'ok': True, 'pending': True, 'operationKey': opkey, 'operationId': operation_id}
+
+
+def harness_switch_apply(payload):
+    """Compatibility entry point; the coordinator owns the complete operation."""
+    return session_configure({"session": payload["sess"], "pane": payload["pane"],
+        "toHarness": payload["to"], "motor": payload.get("motor") or payload["to"],
+        "model": payload.get("model") or "", "effort": payload.get("effort") or "",
+        "harnessAccount": "main" if payload["to"] == "acp" else payload.get("account") or "main",
+        "motorAccount": payload.get("account") or "main", "interrupt": bool(payload.get("interrupt")),
+        **({"requestId": payload["requestId"]} if payload.get("requestId") else {})})
 
 
 def proxy_set_enabled(on):
@@ -1817,6 +2176,12 @@ def motor_gen_bump(sess):
 
 def model_switch_cancel(sess, pane):
     opkey = f"{sess}|{pane}" if PANE_RE.match(str(pane or "")) else sess
+    store = session_operation_store()
+    row = store.latest_for_target(sess, pane)
+    if row and row['state'] not in ('confirmed', 'failed', 'rolled_back'):
+        if not store.cancel_waiting(row['id']):
+            raise ValueError('el cambio ya empezó; espera la verificación o recuperación')
+        motor_result_set(opkey, False, 'operación cancelada antes de cerrar el origen', cancelled=True)
     motor_gen_bump(opkey)
     return None
 
@@ -2292,32 +2657,15 @@ def motor_apply(payload):
 
 
 def motor_queue_resume():
-    """Al arrancar cc-dash: relanzar los cambios encolados que un reinicio mato."""
+    """Retain legacy queue records for inspection, without replaying terminal IO."""
+    session_operation_store().recover_abandoned()
     try:
-        with open(MOTOR_QUEUE_FILE) as f:
-            d = json.load(f)
-    except Exception:
+        with open(MOTOR_QUEUE_FILE) as fh:
+            queued = json.load(fh)
+    except (OSError, ValueError):
         return
-    stale = []
-    for opkey, stored in d.items():
-        if time.time() - (stored.get("ts") or 0) > 2700:
-            stale.append(opkey)
-            continue
-        payload = dict(stored)
-        payload["key"] = opkey
-        payload["sess"] = payload.get("sess") or opkey.partition("|")[0]
-        payload["gen"] = motor_gen_bump(opkey)
-        motor_queue_put(opkey, payload)
-        motor_stage(opkey, "recuperando cambio después del reinicio", "recover",
-                    model=payload.get("model") or (payload.get("config") or {}).get("model"), effort=payload.get("effort") or (payload.get("config") or {}).get("effort"))
-        if payload.get("kind") == "restart":
-            resume_restart_payload(payload)
-        else:
-            threading.Thread(target=motor_apply, args=(payload,), daemon=True).start()
-    if stale:
-        for key in stale:
-            d.pop(key, None)
-        _motor_queue_write(d)
+    for opkey in queued:
+        motor_result_set(opkey, False, "cambio antiguo sin snapshot verificable; vuelve a solicitarlo")
 
 
 def _set_motor_result(key, result):
@@ -2387,22 +2735,20 @@ def claude_model_for_pid(pid):
     return ""
 
 
-def claude_pane_model(pane):
+def pane_visible_config(pane, harness):
     if not pane:
-        return ""
+        return {}
     result = tmux("capture-pane", "-p", "-t", pane, "-S", "-45")
-    if result.returncode != 0:
-        return ""
-    matches = re.findall(r"(?:^|\s)[·•]\s*claude\s*[·•]\s*([a-z0-9][a-z0-9._\-\[\]]+)", result.stdout, re.I | re.M)
-    return matches[-1] if matches else ""
+    return tui_state.screen_state(harness, result.stdout) if result.returncode == 0 else {}
+
+
+def claude_pane_model(pane):
+    return pane_visible_config(pane, 'claude').get('model', '')
 
 
 def codex_pane_model(pane):
-    r = tmux("capture-pane", "-p", "-t", pane, "-S", "-35")
-    if r.returncode != 0:
-        return "", ""
-    hits = re.findall(r"\b(gpt-[a-z0-9.\-]+)\s+(low|medium|high|xhigh)\b", r.stdout, re.I)
-    return (hits[-1][0].lower(), hits[-1][1].lower()) if hits else ("", "")
+    observed = pane_visible_config(pane, 'codex')
+    return observed.get('model', ''), observed.get('effort', '')
 
 
 def confirm_codex_native(opkey, sess, pane, model, effort, route_id="codex:codex", account="main", motor_account=""):
@@ -2563,65 +2909,71 @@ _ACCOUNT_EMAIL_CACHE = {}
 
 
 def account_email_for_dir(path, agent):
-    """Email de la cuenta que vive en ese dir de config (cache 5 min)."""
+    """Read public identity only when its source file changes (login/logout)."""
+    cfg = os.path.join(path, 'auth.json' if agent in ('codex', 'grok') else '.claude.json')
+    if agent == 'claude' and not os.path.exists(cfg):
+        cfg = os.path.join(os.path.dirname(path.rstrip('/')), '.claude.json')
+    try:
+        st = os.stat(cfg)
+        signature = (st.st_dev, st.st_ino, st.st_mtime_ns, st.st_size)
+    except OSError:
+        signature = None
     key = (path, agent)
     hit = _ACCOUNT_EMAIL_CACHE.get(key)
-    if hit and time.time() - hit[1] < 300:
+    if hit and hit[1] == signature:
         return hit[0]
-    email = ""
+    email = ''
     try:
-        if agent == "codex":
-            with open(os.path.join(path, "auth.json")) as f:
-                a = json.load(f)
-            idt = (a.get("tokens") or {}).get("id_token", "")
-            if idt.count(".") >= 2:
-                part = idt.split(".")[1]
-                part += "=" * (-len(part) % 4)
-                email = json.loads(base64.urlsafe_b64decode(part)).get("email", "")
-        elif agent == "grok":
-            with open(os.path.join(path, "auth.json")) as f:
-                a = json.load(f)
-            rec = next((v for v in a.values() if isinstance(v, dict)), {})
-            email = rec.get("email") or rec.get("user_id") or rec.get("principal_id") or ""
+        with open(cfg) as f:
+            data = json.load(f)
+        if agent == 'codex':
+            token = (data.get('tokens') or {}).get('id_token', '')
+            if token.count('.') >= 2:
+                part = token.split('.')[1]
+                part += '=' * (-len(part) % 4)
+                email = json.loads(base64.urlsafe_b64decode(part)).get('email', '')
+        elif agent == 'grok':
+            rec = next((v for v in data.values() if isinstance(v, dict)), {})
+            email = rec.get('email') or rec.get('user_id') or rec.get('principal_id') or ''
         else:
-            cfg = os.path.join(path, ".claude.json")
-            if not os.path.exists(cfg):
-                # instalacion clasica: ~/.claude.json vive JUNTO a ~/.claude
-                cfg = os.path.join(os.path.dirname(path.rstrip("/")), ".claude.json")
-            with open(cfg) as f:
-                d = json.load(f)
-            email = ((d.get("oauthAccount") or {}).get("emailAddress")) or ""
+            email = (data.get('oauthAccount') or {}).get('emailAddress') or ''
     except Exception:
         pass
-    _ACCOUNT_EMAIL_CACHE[key] = (email, time.time())
+    if len(_ACCOUNT_EMAIL_CACHE) > 4096:
+        _ACCOUNT_EMAIL_CACHE.clear()
+    _ACCOUNT_EMAIL_CACHE[key] = (email, signature)
     return email
 
 
+def _process_start(pid):
+    try:
+        with open(f'/proc/{int(pid)}/stat') as fh:
+            return fh.read().rsplit(')', 1)[1].split()[19]
+    except (OSError, ValueError, IndexError):
+        return ''
+
+
 def account_for_pid(pid, agent):
-    """{'account': alias, 'accountEmail': email} del proceso del agente.
-    alias = 'main' para el dir por defecto; si no, el basename del dir."""
-    spec = AGENT_ACCOUNT_ENV.get(agent or "")
+    """The process fixes its account directory; native login can change identity."""
+    spec = AGENT_ACCOUNT_ENV.get(agent or '')
     if not spec or not pid:
         return {}
-    key = (int(pid), agent)
+    key = (int(pid), _process_start(pid), agent)
     hit = _ACCOUNT_PID_CACHE.get(key)
-    if hit is not None:
-        return hit
-    env = _read_environ(pid)
-    envvar, default = spec
-    raw = env.get(envvar.encode())
-    base = os.path.expanduser(default)
-    path = raw.decode("utf-8", "replace") if raw else base
-    try:
+    if hit is None:
+        env = _read_environ(pid)
+        envvar, default = spec
+        raw = env.get(envvar.encode())
+        base = os.path.expanduser(default)
+        path = raw.decode('utf-8', 'replace') if raw else base
         is_main = os.path.realpath(path) == os.path.realpath(base)
-    except OSError:
-        is_main = path == base
-    alias = "main" if is_main else (os.path.basename(path.rstrip("/")) or "main")
-    info = {"account": alias, "accountEmail": account_email_for_dir(path, agent)}
-    if len(_ACCOUNT_PID_CACHE) > 4096:
-        _ACCOUNT_PID_CACHE.clear()
-    _ACCOUNT_PID_CACHE[key] = info
-    return info
+        alias = 'main' if is_main else (os.path.basename(path.rstrip('/')) or 'main')
+        hit = (alias, path)
+        if len(_ACCOUNT_PID_CACHE) > 4096:
+            _ACCOUNT_PID_CACHE.clear()
+        _ACCOUNT_PID_CACHE[key] = hit
+    alias, path = hit
+    return {'account': alias, 'accountEmail': account_email_for_dir(path, agent)}
 
 
 TOOL_COSTS_FILE = os.path.join(REPO_ROOT, "config", "tool-costs.json")
@@ -4013,6 +4365,8 @@ def register_app_tab(sess, label=None, kind="", host="", cwd=""):
     (app-tabs.json) y se avisa a la app viva (app-tab-open.json) para que abra
     la MISMA pestana. Si ya existe en el espejo no se toca (el escritorio es
     dueno de sus etiquetas)."""
+    if sess == "local":
+        return  # GTK already owns the pinned home tab outside this registry.
     tabs = load_json_file(TABS_FILE, {})
     if not isinstance(tabs, dict):
         tabs = {}
@@ -4041,6 +4395,8 @@ def close_app_tab(sess, ephemeral=False):
     Explicit e2e tabs are disposable and must not enter the user's Recents.
     The prefix guard runs before any file or tmux mutation.
     """
+    if sess == "local":
+        return "La pestaña local permanece abierta"
     if ephemeral and not sess.startswith("comandos-e2e-"):
         return "ephemeral requiere comandos-e2e-"
     if not ephemeral:
@@ -4261,10 +4617,12 @@ def operator_snapshot(cid=None):
         convo = operator_chat.new_conversation(store)
         operator_chat.save_store(root, store)
     pub = operator_chat.public_store(store)
+    msgs = [m for m in (convo.get("messages") or [])
+            if not _llm_poison(str((m or {}).get("text") or ""))]
     return {
         "ok": True,
         "id": convo.get("id"),
-        "messages": convo.get("messages") or [],
+        "messages": msgs[-40:],
         "conversations": pub["conversations"],
         "memory": operator_chat.load_memory(root),
         "model": pub.get("model") or "haiku",
@@ -4420,6 +4778,37 @@ def operator_close_split(sess):
     return None
 
 
+def save_closed_pane_snapshot(sess, pane):
+    """Keep bounded recovery data before an explicit remote pane close."""
+    from pathlib import Path
+    import uuid
+    inspector = pane_snapshot.PaneInspector()
+    layout = tmux_snapshot.capture_session(tmux, sess, inspector)
+    if not any(p['id'] == pane for w in layout['windows'] for p in w['panes']):
+        raise ValueError('El panel cambió antes de guardar la copia')
+    captured = tmux('capture-pane', '-p', '-J', '-t', pane, '-S', '-2000')
+    if captured.returncode:
+        raise ValueError('No se pudo guardar el texto. El panel sigue abierto')
+    root = Path.home() / '.local/state/comandos/closed-panes'
+    root.mkdir(parents=True, exist_ok=True, mode=0o700)
+    root.chmod(0o700)
+    name = str(time.time_ns()) + '-' + uuid.uuid4().hex + '.json'
+    record = {'session': sess, 'pane': pane, 'layout': layout,
+              'text': captured.stdout[-500_000:], 'closedAt': time.time()}
+    fd = os.open(root / name, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
+    with os.fdopen(fd, 'w') as stream:
+        json.dump(record, stream, ensure_ascii=False)
+        stream.flush()
+        os.fsync(stream.fileno())
+    # Keep the latest 50 explicit-close records; the regular layout backup is separate.
+    for old in sorted(root.glob('[0-9]*-*.json'), reverse=True)[50:]:
+        try:
+            old.unlink()
+        except OSError:
+            pass
+    return name
+
+
 def operator_key(sess, keyname, pane=None):
     if keyname not in ALLOWED_KEYS:
         return "Tecla no permitida"
@@ -4547,20 +4936,25 @@ def operator_provider_stream(model, sys_txt, conv, tools=True):
 
 
 def _run_tool_batch(dispatcher, calls):
+    """Read-only runs may overlap; mutations yield their result before the next call."""
     from concurrent.futures import ThreadPoolExecutor
-    out = [None] * len(calls)
-    ro = [(i, c) for i, c in enumerate(calls) if c["name"] in operator_catalog.READONLY]
-    rw = [(i, c) for i, c in enumerate(calls) if c["name"] not in operator_catalog.READONLY]
-    if len(ro) > 1:
-        with ThreadPoolExecutor(max_workers=min(6, len(ro))) as ex:
-            for (i, _c), res in zip(ro, ex.map(lambda ic: dispatcher.run(ic[1]["name"], ic[1]["input"]), ro)):
-                out[i] = res
-    else:
-        for i, c in ro:
-            out[i] = dispatcher.run(c["name"], c["input"])
-    for i, c in rw:
-        out[i] = dispatcher.run(c["name"], c["input"])
-    return out
+    index = 0
+    while index < len(calls):
+        call = calls[index]
+        if call["name"] not in operator_catalog.READONLY:
+            yield dispatcher.run(call["name"], call["input"])
+            index += 1
+            continue
+        end = index
+        while end < len(calls) and calls[end]["name"] in operator_catalog.READONLY:
+            end += 1
+        batch = calls[index:end]
+        if len(batch) == 1:
+            yield dispatcher.run(call["name"], call["input"])
+        else:
+            with ThreadPoolExecutor(max_workers=min(6, len(batch))) as executor:
+                yield from executor.map(lambda c: dispatcher.run(c["name"], c["input"]), batch)
+        index = end
 
 
 def operator_agent_stream(text, *, model, tabs, memory, active, convo, dispatcher, max_rounds=6):
@@ -4614,12 +5008,16 @@ def operator_agent_stream(text, *, model, tabs, memory, active, convo, dispatche
             yield {"t": "tool", "name": c["name"], "args": c["input"]}
         results = []
         for c, out in zip(calls, _run_tool_batch(dispatcher, calls)):
-            actions.extend(out.get("actions") or [])
-            for a in out.get("actions") or []:
+            for action_index, a in enumerate(out.get("actions") or []):
+                import operator_receipts
+                receipt = out.get("receiptId") if action_index == 0 else None
+                receipt = receipt or operator_receipts.create(operator_store_root(), c["name"])
+                a = {**a, "toolName": c["name"], "actionId": receipt}
+                actions.append(a)
                 yield {"t": "action", **a}
             note = str(out.get("reply") or "ok")
             notes.append(note)
-            yield {"t": "tool_result", "name": c["name"], "ok": bool(out.get("ok")), "reply": note}
+            yield {"t": "tool_result", "name": c["name"], "ok": bool(out.get("ok")), "pending": bool(out.get("pending")), "reply": note}
             results.append((c, note))
         if family == "openai":
             for c, note in results:
@@ -4714,14 +5112,16 @@ def operator_snippet_send(snip_id, sess):
     return _ok(err, f"Pegado en {sess}")
 
 
-def operator_build_dispatcher():
+def operator_build_dispatcher(session=None, pane=None):
     tabs = operator_tabs_payload()
-    active = operator_active_session()
+    active = session or operator_active_session()
     root = operator_store_root()
 
     def with_tab(fn):
         def inner(args):
             sess, err = _op_tab(args, tabs, active)
+            if pane and sess == active and not args.get("pane"):
+                args = {**args, "pane": pane}
             return err or fn(sess, args)
         return inner
 
@@ -4771,7 +5171,7 @@ def operator_build_dispatcher():
         "copy_reply": lambda a: ui({"type": "copy_reply"}),
         "copy_session": with_tab(lambda s, a: ui({"type": "copy_session", "session": s})),
     }
-    return operator_dispatch.Dispatcher(base_url=f"http://127.0.0.1:{PORT}", token=access_token(), hooks_dir=HOOKS, local_handlers=handlers)
+    return operator_dispatch.Dispatcher(base_url=f"http://127.0.0.1:{PORT}", token=access_token(), hooks_dir=HOOKS, local_handlers=handlers, receipt_root=root, default_session=active, default_pane=pane)
 
 
 def operator_set_model(data):
@@ -4799,20 +5199,35 @@ def operator_handle_chat_stream(data, write):
     text = str(data.get("text") or "")[:4000]
     tabs = operator_tabs_payload()
     memory = operator_chat.load_memory(root)
-    active = operator_active_session()
+    active = str(data.get("session") or operator_active_session())
+    selected_pane = str(data.get("pane") or "")
     if data.get("model"):
         operator_chat.set_model(store, str(data.get("model") or "haiku"), str(data.get("effort") or ""))
     model = str(store.get("model") or "haiku")
     operator_chat.append_message(convo, "user", text)
-    final = {"reply": "Listo.", "actions": []}
-    for ev in operator_agent_stream(text, model=model, tabs=tabs, memory=memory, active=active,
-                                    convo=convo, dispatcher=operator_build_dispatcher()):
-        if ev["t"] == "final":
-            final = {"reply": ev["reply"], "actions": ev["actions"]}
-        write(operator_sse_frame(ev))
-    operator_chat.append_message(convo, "assistant", final["reply"], final["actions"])
-    store["current"] = convo["id"]
-    operator_chat.save_store(root, store)
+    operator_chat.save_conversation(root, store, convo)
+    final = {"reply": "", "actions": []}
+    partial = ""
+    disconnected = False
+    try:
+        for ev in operator_agent_stream(text, model=model, tabs=tabs, memory=memory, active=active,
+                                        convo=convo, dispatcher=operator_build_dispatcher(active, selected_pane)):
+            if ev["t"] == "delta":
+                partial += str(ev.get("text") or "")
+            elif ev["t"] == "action":
+                final["actions"].append(ev)
+            elif ev["t"] == "final":
+                final["reply"] = ev["reply"]
+            write(operator_sse_frame(ev))
+    except (BrokenPipeError, ConnectionResetError):
+        disconnected = True
+    finally:
+        final["reply"] = final["reply"] or partial or "Respuesta interrumpida. Revisa las acciones antes de reintentar."
+        operator_chat.append_message(convo, "assistant", final["reply"], final["actions"])
+        store["current"] = convo["id"]
+        operator_chat.save_conversation(root, store, convo)
+    if disconnected:
+        return
     pub = operator_chat.public_store(store)
     write(operator_sse_frame({"t": "payload", "ok": True, "id": convo["id"], "reply": final["reply"],
                               "actions": final["actions"], "messages": convo.get("messages") or [],
@@ -5199,45 +5614,87 @@ def parent_pid(pid):
             return 0
 
 
-def agent_pane_maps(procs):
-    """Mapea procesos de agentes vivos a panes tmux reales.
+def tmux_pane_inventory():
+    """One authoritative row per existing tmux pane, including shells and SSH."""
+    fields = ('session_name', 'pane_id', 'pane_pid', 'pane_current_command',
+              'pane_current_path', 'session_activity')
+    result = tmux('list-panes', '-a', '-F', '|'.join('#{' + name + '}' for name in fields))
+    if result.returncode:
+        return []
+    panes = []
+    for line in result.stdout.splitlines():
+        values = line.split('|', 5)
+        if len(values) < 3 or not values[2].isdigit():
+            continue
+        values += [''] * (6 - len(values))
+        session, pane, pid, command, cwd, activity = values
+        if not SESSION_RE.fullmatch(session) or not PANE_RE.fullmatch(pane):
+            continue
+        try:
+            timestamp = float(activity or 0)
+        except ValueError:
+            timestamp = 0
+        panes.append({'session': session, 'pane': pane, 'pane_pid': int(pid),
+                      'command': command, 'cwd': cwd, 'activity': timestamp})
+    return panes
 
-    Devuelve (by_session, by_cwd). by_cwd conserva listas porque el usuario
-    puede tener varias tabs Codex en el mismo repo/cwd.
-    """
-    r = tmux("list-panes", "-a", "-F", "#{session_name}|#{pane_id}|#{pane_pid}")
-    if r.returncode != 0:
-        return {}, {}
-    by_pid = {}
-    for l in r.stdout.splitlines():
-        sess, _, rest = l.partition("|")
-        pane, _, ppid = rest.partition("|")
-        if ppid.isdigit():
-            by_pid[int(ppid)] = (sess, pane)
-    best_by_pane = {}
+
+def _tmux_process_owners(procs, panes):
+    """Attribute wrappers, native CLIs and delegated children to their pane."""
+    roots = {row['pane_pid']: row for row in panes}
+    parents, owners = {}, {}
+    for pid, _cwd, _agent in procs:
+        ancestor, seen = pid, set()
+        for depth in range(128):
+            if ancestor in roots:
+                owners[pid] = (roots[ancestor], depth)
+                break
+            if ancestor <= 1 or ancestor in seen:
+                break
+            seen.add(ancestor)
+            if ancestor not in parents:
+                parents[ancestor] = parent_pid(ancestor)
+            ancestor = parents[ancestor]
+    return owners
+
+
+def agent_pane_maps(procs, panes=None, ownership=None):
+    """Match each pane's primary agent; wrappers and delegated CLIs are distinct."""
+    panes = tmux_pane_inventory() if panes is None else panes
+    ownership = _tmux_process_owners(procs, panes) if ownership is None else ownership
+    shells = {'zsh', 'bash', 'sh', 'fish', 'dash', 'ksh', 'ssh'}
+    argv_cache = {}
+    def wrapper(pid):
+        if pid not in argv_cache:
+            argv_cache[pid] = _proc_cmdline(pid)
+        argv = argv_cache[pid]
+        return bool(argv and os.path.basename(argv[0]) in ('node', 'nodejs', 'python', 'python3', 'bun'))
+    candidates = {}
     for pid, cwd, agent in procs:
-        p = pid
-        for depth in range(25):
-            if p in by_pid:
-                sess, pane = by_pid[p]
-                key = (sess, pane)
-                info = {
-                    "session": sess, "pane": pane, "cwd": cwd,
-                    "agent": agent, "pid": pid, "_depth": depth,
-                }
-                prev = best_by_pane.get(key)
-                if not prev or depth < prev["_depth"] or (depth == prev["_depth"] and pid > prev["pid"]):
-                    best_by_pane[key] = info
-                break
-            p = parent_pid(p)
-            if p <= 1:
-                break
+        owner = ownership.get(pid)
+        if not owner:
+            continue
+        row, depth = owner
+        if row.get('command') in shells:
+            continue
+        info = {'session': row['session'], 'pane': row['pane'], 'cwd': cwd or row.get('cwd') or '',
+                'agent': agent, 'pid': pid, '_depth': depth}
+        candidates.setdefault((row['session'], row['pane']), []).append(info)
     by_session, by_cwd = {}, {}
-    for info in best_by_pane.values():
-        info = dict(info)
-        info.pop("_depth", None)
-        by_session.setdefault(info["session"], info)
-        by_cwd.setdefault(info["cwd"], []).append(info)
+    for key, options in candidates.items():
+        selected = min(options, key=lambda item: (item['_depth'], -item['pid']))
+        # npm's Codex launcher is a node process above the actual native CLI.
+        # Select its direct same-agent child so rollout FDs and runtime flags
+        # come from the agent, without ever selecting a delegated conversation.
+        if wrapper(selected['pid']):
+            native = [item for item in options if item['agent'] == selected['agent']
+                      and item['_depth'] == selected['_depth'] + 1
+                      and parent_pid(item['pid']) == selected['pid'] and not wrapper(item['pid'])]
+            if native:
+                selected = min(native, key=lambda item: item['pid'])
+        info = {name: value for name, value in selected.items() if name != '_depth'}
+        by_session.setdefault(info['session'], info)
+        by_cwd.setdefault(info['cwd'], []).append(info)
     return by_session, by_cwd
 
 
@@ -5400,63 +5857,136 @@ def write_app_tab_models(items):
         pass
 
 
-def reconcile_card_config(item, pane_info=None):
-    """Make the card agree with the live pane, then confirmed persisted config.
+def _pane_identity(sess, pane):
+    if not PANE_RE.fullmatch(str(pane or '')):
+        raise ValueError('se necesita el panel exacto')
+    fields = ('socket_path', 'pid', 'session_id', 'session_name', 'pane_id',
+              'pane_pid', 'pane_current_command', 'pane_current_path')
+    result = tmux('display-message', '-p', '-t', pane, '\t'.join('#{' + f + '}' for f in fields))
+    parts = result.stdout.strip().split('\t')
+    if result.returncode or len(parts) != len(fields):
+        raise ValueError('el panel ya no existe')
+    identity = dict(zip(fields, parts))
+    if identity['pane_id'] != pane or identity['session_name'] != sess:
+        raise ValueError('el panel no pertenece a esa sesión')
+    try:
+        with open('/proc/' + identity['pid'] + '/stat') as fh:
+            identity['server_start'] = fh.read().rsplit(')', 1)[1].split()[19]
+    except OSError:
+        identity['server_start'] = ''
+    return identity
 
-    Process identity always wins for harness. Native CLI metadata wins for model;
-    confirmed dashboard switches fill the gap for Claude before its next reply.
-    """
+
+def _identity_key(identity):
+    return '|'.join(identity.get(k, '') for k in
+                    ('socket_path', 'pid', 'server_start', 'session_id', 'pane_id', 'pane_pid'))
+
+
+def observe_pane(sess, pane, info=None, inspector=None):
+    """Conversation metadata and process accounts belong to exactly this pane."""
+    info = info or agent_info_for_pane(pane) or {}
+    if not info.get('pid'):
+        return {'confirmed': False, 'model': '', 'effort': '', 'source': 'unconfirmed'}
+    identity = _pane_identity(sess, pane)
+    inspector = inspector or pane_snapshot.PaneInspector()
+    snap = inspector({'id': pane, 'pid': int(identity['pane_pid']),
+                      'command': identity['pane_current_command']})
+    agent, pid = info.get('agent'), info['pid']
+    result = {'harness': agent, 'pid': pid, 'conversationId': snap.get('resume_id') or
+              (snap.get('acp') or {}).get('sessionId') or '', 'model': '', 'effort': '',
+              'source': 'unconfirmed', 'observedAt': time.time(), 'identity': _identity_key(identity)}
+    account = account_for_pid(pid, agent).get('account') or 'unknown'
+    caps = ((load_provider_registry().get('harnesses') or {}).get(agent) or {}).get('capabilities') or {}
+    if not caps.get('accounts'):
+        account = 'main'
+    result['harnessAccount'] = account
+    args = _proc_cmdline(pid)
+    launch_model, launch_effort = '', ''
+    for i, arg in enumerate(args[:-1]):
+        value = args[i + 1]
+        if value.startswith('-'):
+            continue
+        if arg in ('--model', '-m'):
+            launch_model = value
+        elif arg == '--effort':
+            launch_effort = value
+        elif arg in ('-c', '--config'):
+            match = re.fullmatch(r'model_reasoning_effort=["\']?([a-z]+)["\']?', value)
+            if match:
+                launch_effort = match[1]
+    conversation = {}
+    if agent == 'codex' and result['conversationId']:
+        # Only the root rollout held by THIS process; delegated conversations and
+        # another Codex in the same directory cannot contribute model metadata.
+        for fd in glob.glob(f'/proc/{pid}/fd/*'):
+            try:
+                path = os.readlink(fd)
+                if not path.endswith(result['conversationId'] + '.jsonl'):
+                    continue
+                context = _TUI_TRANSCRIPTS.read('codex', result['conversationId'], fd)
+                if context.get('model'):
+                    conversation = context
+                if conversation.get('model'):
+                    break
+            except OSError:
+                continue
+    elif agent == 'grok':
+        metadata = grok_metadata_for_pid(pid)
+        if metadata.get('sessionId') == result['conversationId']:
+            conversation = dict(model=metadata.get('model') or '', effort=metadata.get('effort') or '',
+                                revision=metadata.get('lastActiveAt') or '')
+    elif agent == 'acp':
+        metadata = acp_state_for_pane(pane)
+        conversation = dict(model=metadata.get('model') or '', effort=metadata.get('effort') or '')
+        result.update(motor=metadata.get('agent') or '', motorAccount=metadata.get('account') or 'unknown',
+                      harnessAccount='main')
+    elif agent == 'claude' and result['conversationId']:
+        transcript_root = snap.get('claude_config_dir') or os.path.expanduser('~/.claude')
+        transcripts = glob.glob(os.path.join(transcript_root, 'projects', '*', result['conversationId'] + '.jsonl'))
+        transcript = transcripts[0] if len(transcripts) == 1 else None
+        if transcript:
+            conversation = _TUI_TRANSCRIPTS.read('claude', result['conversationId'], transcript)
+    visible = pane_visible_config(pane, agent) if agent in ('codex', 'claude', 'opencode') else {}
+    # Scope retained observations to the live process AND exact conversation.
+    state_key = (result['identity'], agent, pid, _process_start(pid), result['conversationId'])
+    result.update(_TUI_STATES.observe(state_key, {'model': launch_model, 'effort': launch_effort},
+                                     conversation, visible, now=result['observedAt']))
+    result['motor'] = result.get('motor') or provider_registry.engine_for_model(load_provider_registry(), result['model']) or agent
+    result['motorAccount'] = result.get('motorAccount') or (account if result['motor'] == agent else 'unknown')
+    if agent == 'claude' and result['motor'] in ('codex', 'grok'):
+        env = _read_environ(pid)
+        base = env.get(b'ANTHROPIC_BASE_URL', b'').decode('utf-8', 'replace')
+        if base.startswith(('http://127.0.0.1:', 'http://localhost:')):
+            result['motorAccount'] = 'main'
+    result['confirmed'] = bool(result['model']) and result['source'] not in ('process', 'unconfirmed')
+    result['accountSource'] = 'process-environment' if agent != 'acp' else 'acp-state'
+    result['limitations'] = (['native-runtime-state-unavailable'] if agent in ('opencode', 'agy') and not visible else [])
+    if not result['effort']:
+        result['limitations'].append('effort-unobserved')
+    return result
+
+
+def reconcile_card_config(item, pane_info=None, inspector=None):
     pane = item.get("pane") or (pane_info or {}).get("pane") or ""
-    agent = (pane_info or {}).get("agent") or item.get("agent") or "claude"
-    item["agent"] = agent
-    direct_model = ""
-    launch_model = ""
-    if agent == "claude":
-        direct_model = claude_pane_model(pane)
-        launch_model = claude_model_for_pid((pane_info or {}).get("pid"))
-    elif agent == "codex":
-        direct_model, direct_effort = codex_pane_model(pane)
-        if direct_effort:
-            item["effort"] = direct_effort
-    elif agent == "grok" and (pane_info or {}).get("pid"):
-        metadata = grok_metadata_for_pid(pane_info["pid"])
-        direct_model = metadata.get("model", "")
-        if metadata.get("effort"):
-            item["effort"] = metadata["effort"]
-    elif agent == "acp":
-        live = acp_state_for_pane(pane or item.get("pane") or "")
-        if live.get("model"):
-            direct_model = live["model"]
-        if live.get("effort"):
-            item["effort"] = live["effort"]
-        if live.get("agent"):
-            item["motor"] = live["agent"]
-        if live.get("account"):
-            item["motorAccount"] = live["account"]
+    if not pane or not item.get("alive"):
+        return item
+    try:
+        observed = observe_pane(item.get("session", ""), pane, pane_info, inspector) if inspector is not None else observe_pane(item.get("session", ""), pane, pane_info)
+    except (OSError, ValueError, RuntimeError):
+        observed = {"confirmed": False, "model": "", "effort": "", "source": "unconfirmed"}
     config = cc_usage.latest_session_config(USAGE_DB, item.get("session", ""), pane)
-    if direct_model:
-        item["model"] = direct_model
-        item["modelSource"] = "pane"
-    elif config and config.get("harness") == agent:
-        if config.get("model"):
-            item["model"] = config["model"]
-        if config.get("effort"):
-            item["effort"] = config["effort"]
-        item["modelSource"] = "confirmed"
-    elif launch_model:
-        item["model"] = launch_model
-        item["modelSource"] = "launch"
-    live_motor = item.get("motor") if agent == "acp" else None
-    live_motor_account = item.get("motorAccount") if agent == "acp" else None
-    if config and config.get("harness") == agent:
-        item["routeId"] = config.get("route_id") or ""
-        item["motor"] = live_motor or config.get("motor") or (provider_registry.engine_for_model(load_provider_registry(), item.get("model", "")) or agent)
-        item["harnessAccount"] = config.get("harness_account") or item.get("account") or "unknown"
-        item["motorAccount"] = live_motor_account or config.get("motor_account") or "unknown"
-    else:
-        item["motor"] = live_motor or provider_registry.engine_for_model(load_provider_registry(), item.get("model", "")) or agent
-        item["harnessAccount"] = item.get("account") or "unknown"
-        item["motorAccount"] = live_motor_account or (item["harnessAccount"] if item["motor"] == agent else "unknown")
+    item["observedConfig"] = observed
+    item["lastConfirmedConfig"] = config or None
+    item["model"], item["effort"] = observed.get("model", ""), observed.get("effort", "")
+    item["modelSource"] = observed.get("source", "unconfirmed")
+    item["configConfirmed"] = bool(observed.get("confirmed"))
+    item["agentSessionId"] = observed.get("conversationId", "")
+    if observed.get("harness"):
+        item["agent"] = observed["harness"]
+    for key in ("motor", "harnessAccount", "motorAccount"):
+        item[key] = observed.get(key) or "unknown"
+    item["routeId"] = f'{item.get("agent") or ""}:{item["motor"]}'
+    item["account"] = item["harnessAccount"]
     return item
 
 
@@ -5588,227 +6118,146 @@ def _annotate_suggestion(item, guard, routes, latency=None):
 
 
 def read_states():
-    _costumes_now = session_costumes()
+    """Live tmux panes define cards. Hook files only annotate an identified pane."""
+    inspector = pane_snapshot.PaneInspector()
     now_ts = int(time.time())
-    live = tmux_sessions()
+    panes = tmux_pane_inventory()
+    live = {row['session'] for row in panes}
     procs = agent_procs()
-    externals = {cwd for _, cwd, _a in procs}
-    by_session, by_cwd = agent_pane_maps(procs)
+    ownership = _tmux_process_owners(procs, panes)
+    by_session, by_cwd = agent_pane_maps(procs, panes, ownership)
+    agents = {(info['session'], info['pane']): info for rows in by_cwd.values() for info in rows}
+    by_session_agents = {}
+    for info in agents.values():
+        by_session_agents.setdefault(info['session'], []).append(info)
     labels = session_labels()
-    items, seen = [], set()
-    for f in glob.glob(os.path.join(STATE, "*.json")):
+    annotations, detached = {}, []
+    for path in glob.glob(os.path.join(STATE, '*.json')):
         try:
-            with open(f) as fh:
-                d = json.load(fh)
-        except Exception:
+            with open(path) as fh:
+                record = json.load(fh)
+            if not isinstance(record, dict):
+                continue
+            timestamp = float(record.get('ts') or 0)
+        except (OSError, ValueError, TypeError):
             continue
-        state_sess = str(d.get("session") or "")
-        sess = state_sess if SESSION_RE.match(state_sess) else session_name(d.get("project", ""))
-        if not SESSION_RE.match(sess or ""):
+        explicit_session = str(record.get('session') or '')
+        session = explicit_session if SESSION_RE.fullmatch(explicit_session) else session_name(record.get('project', ''))
+        if not SESSION_RE.fullmatch(session or ''):
             continue
-        alive = sess in live
-        status = d.get("status", "idle")
-        try:
-            ts = int(d.get("ts") or 0)
-        except Exception:
-            ts = 0
-        cwd = d.get("cwd", "")
-        if not cwd:
-            cwd = find_project_dir(sess) or ""
-        # Donde corre el claude MANDA (pestana term-* de la app, hub, un
-        # split), aunque exista una sesion tmux con el nombre del proyecto
-        # (zombie sin claude adentro): la card opera la sesion y pane REALES.
-        pane = None
-        live_agent = ""
-        state_pane = str(d.get("pane") or "")
-        pane_info = None
-        if PANE_RE.match(state_pane):
-            for info in by_cwd.get(cwd, []):
-                if info.get("session") == sess and info.get("pane") == state_pane:
-                    pane_info = info
-                    break
-        if not pane_info:
-            pane_info = by_session.get(sess)
-        if not pane_info:
-            pane_info = choose_agent_pane(d.get("project", ""), sess,
-                                          by_cwd.get(cwd, []), labels)
-        if pane_info:
-            real, pane = pane_info["session"], pane_info["pane"]
-            live_agent = pane_info.get("agent", "")
-            if real != sess:
-                if alive:
-                    seen.add(sess)  # la homonima vacia no sale como card duplicada
-                sess = real
-            alive = True
-        # Claude corriendo FUERA de tmux (una pestana suelta de Tilix/Tabby):
-        # el estado es real (los hooks reportan) pero no es operable desde aqui.
-        external = (not alive) and cwd in externals
-        # Una PREGUNTA pendiente (waiting) JAMAS se esconde: aunque el claude
-        # haya muerto, la card se muestra (con Revivir). Un "done" reciente de
-        # agentes one-shot (Codex exec, jobs) tambien debe verse como terminado:
-        # esos procesos salen inmediatamente despues de notificar.
-        recent_done = status == "done" and (now_ts - ts) <= DONE_GRACE_SECS
-        stale_waiting = status == "waiting" and not alive and not external \
-            and sess not in labels and (now_ts - ts) > ZOMBIE_WAITING_GRACE_SECS
-        if stale_waiting:
-            status = "dead"
-        if not alive and not external and status != "waiting" and not recent_done:
-            status = "dead"
-        detail = d.get("detail", "")
-        hint = pane_status_hint(pane, live_agent)
-        if hint == "working" and status != "waiting":
-            status, detail = "working", ""
-        zombie = False
-        if alive and pane is None and cwd and cwd not in externals:
-            if status == "working":
-                status, detail = "idle", ""
-            elif status == "waiting":
-                zombie = True    # sesion viva pero el claude que pregunto murio
-        item = {"project": d.get("project"), "session": sess, "status": status,
-                "detail": detail, "cwd": cwd, "options": d.get("options", ""),
-                "last": d.get("last", ""),
-                "agent": live_agent or d.get("agent") or "claude",
-                "ts": ts, "alive": alive, "external": external,
-                "tabbed": sess in labels}
-        if pane_info and pane_info.get("pid"):
-            item.update(account_for_pid(pane_info["pid"], item["agent"]))
-            if item["agent"] == "grok":
-                gm = grok_metadata_for_pid(pane_info["pid"])
-                if gm:
-                    item.update({"model": gm.get("model", ""), "effort": gm.get("effort", ""),
-                                 "agentSessionId": gm.get("sessionId", ""), "grokTitle": gm.get("title", "")})
-        cos = _costumes_now.get(sess)
-        if cos:
-            item.update(cos)
-        if item.get("agent") == "codex":
-            pane_model, pane_effort = codex_pane_model(pane) if pane else ("", "")
-            if pane_model:
-                item["model"], item["effort"] = pane_model, pane_effort
-            elif not item.get("model") and item.get("cwd"):
-                item["model"] = _codex_models_by_cwd().get(item["cwd"], "")
-        if zombie:
-            item["zombie"] = True
-        if pane:
-            item["pane"] = pane
-        efforts = session_effort_all()
-        effort_value = efforts.get(f"{sess}|{pane}") if pane else None
-        effort_value = effort_value or efforts.get(sess)
-        if effort_value:
-            item["effort"] = effort_value
-        reconcile_card_config(item, pane_info)
+        pane = str(record.get('pane') or '')
+        reported_agent = record.get('agent') or 'claude'
+        match = None
+        if PANE_RE.fullmatch(pane):
+            match = agents.get((session, pane))
+            if match and match['agent'] != reported_agent:
+                match = None
+        else:
+            candidates = [info for info in by_session_agents.get(session, []) if info['agent'] == reported_agent]
+            # A legacy hook without pane identity is safe only when unambiguous.
+            if not candidates and not explicit_session:
+                candidates = [info for info in by_cwd.get(record.get('cwd') or '', []) if info['agent'] == reported_agent]
+            if len(candidates) == 1:
+                match = candidates[0]
+        if match:
+            key = (match['session'], match['pane'])
+            previous = annotations.get(key)
+            exact = bool(PANE_RE.fullmatch(pane))
+            priority = (exact, timestamp)
+            if not previous or priority > previous[0]:
+                annotations[key] = (priority, record)
+        elif session not in live or record.get('status') == 'waiting':
+            detached.append((session, record, timestamp))
+        # A stale hook in a surviving session cannot invent an alive pane-less
+        # agent or hide another live split. Its real panes are emitted below.
+
+    counts = {}
+    for row in panes:
+        counts[row['session']] = counts.get(row['session'], 0) + 1
+    items = []
+    for row in panes:
+        session, pane = row['session'], row['pane']
+        info = agents.get((session, pane))
+        agent = info.get('agent') if info else None
+        if session in HIDDEN_SESSIONS and not agent:
+            continue
+        record = (annotations.get((session, pane)) or (None, {}))[1]
+        cwd = (info or {}).get('cwd') or row.get('cwd') or ''
+        base = labels.get(session) or record.get('project') or os.path.basename(cwd.rstrip('/')) or session
+        label = f'{base} ⫽{pane[1:]}' if counts[session] > 1 else base
+        status = record.get('status') or 'idle'
+        if status == 'dead':
+            status = 'idle'
+        detail = record.get('detail') or ''
+        hint = pane_status_hint(pane, agent)
+        if hint == 'working' and status != 'waiting':
+            status, detail = 'working', ''
+        if not record and agent == 'claude' and claude_pane_busy(pane):
+            status = 'working'
+        item = {'project': label, 'session': session, 'pane': pane, 'agent': agent,
+                'status': status, 'detail': detail, 'cwd': cwd, 'options': record.get('options') or '',
+                'last': record.get('last') or '', 'ts': record.get('ts') or row.get('activity') or 0,
+                'alive': True, 'external': False, 'tabbed': session in labels,
+                'split': counts[session] > 1}
+        if info and info.get('pid'):
+            item.update(account_for_pid(info['pid'], agent))
+            if agent == 'grok':
+                metadata = grok_metadata_for_pid(info['pid'])
+                item['grokTitle'] = metadata.get('title') or ''
+            reconcile_card_config(item, info, inspector)
+        else:
+            item.update(model='', effort='', motor='', harnessAccount='unknown', motorAccount='unknown',
+                        configConfirmed=False, modelSource='unconfirmed')
+        if session.startswith('ssh-'):
+            state = ssh_state(session)
+            item.update(sshConnected=bool(state), sshMux=state == 'mux')
         items.append(item)
-        seen.add(sess)
-    # Preferir el estado pane-aware más nuevo sobre archivos legacy por proyecto.
-    dedup = {}
-    for item in items:
-        key = (item.get("session"), item.get("pane") or "")
-        prev = dedup.get(key)
-        if prev is None or float(item.get("ts") or 0) >= float(prev.get("ts") or 0):
-            dedup[key] = item
-    items = list(dedup.values())
-    # sesiones tmux vivas sin estado (recien creadas con ccx, scratch term-*
-    # de la app...): TODAS visibles — nada de sesiones fantasma que solo
-    # aparecen en el conmutador. Nombre = etiqueta de su pestana si existe.
-    for sess in sorted(live - seen):
-        info = by_session.get(sess)
-        agent = info.get("agent") if info else None
-        # 'local'/'hub'/'control' son terminales internas de la app... salvo que el
-        # usuario haya arrancado claude/codex ahi: entonces ES una sesion y va como tarjeta.
-        if sess in HIDDEN_SESSIONS and not agent:
+
+    # Keep detached waiting/done history and external-process cards, but never
+    # call them alive merely because an unrelated tmux session still exists.
+    historical = {}
+    agent_pids = {pid for pid, _cwd, _agent in procs}
+    external_agents, parent_cache = set(), {}
+    for pid, cwd, agent in procs:
+        if pid in ownership:
             continue
-        r = tmux("display-message", "-p", "-t", "=" + sess + ":", "#{pane_current_path}")
-        cwd = r.stdout.strip() if r.returncode == 0 else ""
-        if not cwd:
-            cwd = find_project_dir(sess) or ""
-        pane = info.get("pane") if info else None
-        status = pane_status_hint(pane, agent) or "idle"
-        if sess.startswith("term-") and sess not in labels and not agent and status == "idle":
+        ancestor, seen = pid, set()
+        for _ in range(128):
+            if ancestor not in parent_cache:
+                parent_cache[ancestor] = parent_pid(ancestor)
+            ancestor = parent_cache[ancestor]
+            if ancestor <= 1:
+                external_agents.add((cwd, agent))
+                break
+            if ancestor in agent_pids or ancestor in seen:
+                break  # wrappers own their native children and delegated CLIs
+            seen.add(ancestor)
+    for session, record, timestamp in detached:
+        cwd = record.get('cwd') or ''
+        external = (cwd, record.get('agent') or 'claude') in external_agents
+        status = record.get('status') or 'idle'
+        recent_done = status == 'done' and now_ts - timestamp <= DONE_GRACE_SECS
+        if status == 'waiting' and not external and session not in labels and now_ts - timestamp > ZOMBIE_WAITING_GRACE_SECS:
+            status = 'dead'
+        if not external and status != 'waiting' and not recent_done:
+            status = 'dead'
+        key = (session, str(record.get('pane') or ''))
+        if key in historical and historical[key]['ts'] >= timestamp:
             continue
-        name = labels.get(sess) or (os.path.basename(cwd) if sess in HIDDEN_SESSIONS and cwd else sess)
-        ra = tmux("display-message", "-p", "-t", "=" + sess + ":", "#{session_activity}")
-        try:
-            ts = float(ra.stdout.strip()) if ra.returncode == 0 else 0.0
-        except ValueError:
-            ts = 0.0
-        item = {"project": name, "session": sess, "status": status,
-                "detail": "", "cwd": cwd, "ts": ts, "alive": True,
-                "external": False, "agent": agent, "tabbed": sess in labels}
-        if info and info.get("pid") and agent:
-            item.update(account_for_pid(info["pid"], agent))
-            if agent == "grok":
-                gm = grok_metadata_for_pid(info["pid"])
-                if gm:
-                    item.update({"model": gm.get("model", ""), "effort": gm.get("effort", ""),
-                                 "agentSessionId": gm.get("sessionId", ""), "grokTitle": gm.get("title", "")})
-        cos = _costumes_now.get(sess)
-        if cos:
-            item.update(cos)
-        if agent == "codex":
-            pane_model, pane_effort = codex_pane_model(pane) if pane else ("", "")
-            if pane_model:
-                item["model"], item["effort"] = pane_model, pane_effort
-            elif not item.get("model") and cwd:
-                item["model"] = _codex_models_by_cwd().get(cwd, "")
-        if pane:
-            item["pane"] = pane
-        if sess.startswith("ssh-"):
-            st = ssh_state(sess)
-            item["sshConnected"] = st != ""
-            item["sshMux"] = st == "mux"
-        reconcile_card_config(item, info)
-        items.append(item)
-    # SPLITS: una card por cada pane con claude vivo que aun no tiene card.
-    # (el estado por hooks agrupa por proyecto/sesion; con panes divididos los
-    # demas claude quedaban invisibles y sin control)
-    have = set()
-    for it in items:
-        if it.get("alive"):
-            have.add((it["session"], it.get("pane") or ""))
-    by_sess_count = {}
-    panes = _claude_all_panes()
-    for e in panes:
-        by_sess_count[e["sess"]] = by_sess_count.get(e["sess"], 0) + 1
-    for e in sorted(panes, key=lambda x: (x["sess"], x["pane"])):
-        sess_l, pane_l = e["sess"], e["pane"]
-        if sess_l in HIDDEN_SESSIONS and by_sess_count.get(sess_l, 0) < 2:
-            continue
-        if (sess_l, pane_l) in have or (sess_l, "") in have and by_sess_count.get(sess_l, 0) == 1:
-            continue
-        if tmux("display-message", "-p", "-t", pane_l, "#{pane_id}").stdout.strip() != pane_l:
-            continue
-        base = os.path.basename((e["cwd"] or "").rstrip("/")) or sess_l
-        label = base if by_sess_count.get(sess_l, 0) == 1 else f"{base} ⫽{pane_l[1:]}"
-        model, ctx = "", None
-        tp = _transcript_path(e["sid"])
-        if tp:
-            try:
-                ctx_pct, _o, _m, model = _analyze_transcript(tp, load_model_tiers(), time.time())
-                ctx = round(ctx_pct, 1)
-            except Exception:
-                pass
-        busy = bool(claude_pane_busy(pane_l))
-        item = {"project": label, "session": sess_l, "pane": pane_l, "status": "working" if busy else "idle",
-                "detail": "", "cwd": e["cwd"], "ts": e["startedAt"], "alive": True,
-                "external": False, "agent": "claude", "tabbed": False, "split": True}
-        if model:
-            item["model"] = model
-        if ctx is not None:
-            item["contextPct"] = ctx
-        item.update(account_for_pid(e["pid"], "claude"))
-        reconcile_card_config(item, {"pane": pane_l, "pid": e["pid"], "agent": "claude"})
-        items.append(item)
-        have.add((sess_l, pane_l))
-    # Orden fijo y util: vivas con agente primero (mas recientes arriba), luego
-    # vivas sin agente, al final las muertas.
+        historical[key] = {'project': record.get('project') or session, 'session': session,
+            'agent': record.get('agent') or 'claude', 'status': status, 'detail': record.get('detail') or '',
+            'cwd': cwd, 'options': record.get('options') or '', 'last': record.get('last') or '',
+            'ts': timestamp, 'alive': False, 'external': external, 'tabbed': session in labels,
+            'historical': True, 'operable': False, 'previousPane': str(record.get('pane') or ''),
+            'zombie': status == 'waiting' and not external}
+    items.extend(historical.values())
     try:
         guard, routes, latency = _suggestion_context()
-        for it in items:
-            _annotate_suggestion(it, guard, routes, latency)
+        for item in items:
+            _annotate_suggestion(item, guard, routes, latency)
     except Exception:
         pass
-    items.sort(key=lambda i: (not i.get("alive"),
-                              0 if i.get("agent") else 1,
-                              -(i.get("ts") or 0)))
+    items.sort(key=lambda item: (not item.get('alive'), 0 if item.get('agent') else 1, -(float(item.get('ts') or 0))))
     write_app_tab_models(items)
     return items
 
@@ -6140,7 +6589,10 @@ def ssh_remove(host):
     return None
 
 
+from session_tabs import ordered_tab_keys
+
 PREFS_PATH = os.path.join(HOOKS, "prefs.json")
+_PREFS_LOCK = threading.Lock()
 
 # Defaults del tema visual y de las terminales. Sirven a cc-app (VTE y xterm.js)
 # y a dash/term.html. Ver DESIGN.md §3 y §7 para las decisiones.
@@ -6219,6 +6671,60 @@ def read_prefs():
     for k, v in PREFS_DEFAULTS.items():
         p.setdefault(k, v)
     return p
+
+
+def update_prefs(data):
+    # Serialize read/modify/write across desktop and remote clients. Atomic
+    # replacement lets pollers always read a complete preference document.
+    with _PREFS_LOCK:
+        prefs = read_prefs()
+        if "favorite" in data:
+            patch = data["favorite"]
+            if (not isinstance(patch, dict) or not isinstance(patch.get("session"), str)
+                    or not 1 <= len(patch["session"]) <= 160 or patch["session"] == "local"
+                    or any(ord(c) < 32 for c in patch["session"])
+                    or not isinstance(patch.get("enabled"), bool)):
+                raise ValueError("Favorito inválido")
+            favorites = list(dict.fromkeys(x for x in prefs.get("favorites", [])
+                                          if isinstance(x, str) and x != "local"))
+            session = patch["session"]
+            if patch["enabled"] and session not in favorites:
+                if len(favorites) >= 200:
+                    raise ValueError("Máximo de 200 favoritos alcanzado")
+                favorites.append(session)
+            elif not patch["enabled"]:
+                favorites = [x for x in favorites if x != session]
+            prefs["favorites"] = favorites
+        # limpieza de notificaciones COMPARTIDA (dashboard + badge del app)
+        if isinstance(data.get("nfDismiss"), dict):
+            prefs["nfDismiss"] = {str(k)[:160]: 1 for k in list(data["nfDismiss"])[:600]}
+        if isinstance(data.get("nfSnooze"), dict):
+            prefs["nfSnooze"] = {str(k)[:160]: float(v) for k, v in list(data["nfSnooze"].items())[:200]
+                                 if isinstance(v, (int, float))}
+        if "favorite" not in data and isinstance(data.get("favorites"), list):
+            prefs["favorites"] = list(dict.fromkeys(x[:160] for x in data["favorites"]
+                                                       if isinstance(x, str) and x and x != "local"))[:200]
+        if data.get("theme") in ("noche", "dia", "calido", "termius", "bruno", "superglass", "neon", "contraste", "ubuntu"):
+            prefs["theme"] = data["theme"]
+        # Tipografía y estilo de terminal — cada campo se valida por su tipo.
+        if isinstance(data.get("font_family"), str):
+            prefs["font_family"] = data["font_family"][:120].strip() or PREFS_DEFAULTS["font_family"]
+        if isinstance(data.get("font_size"), (int, float)):
+            prefs["font_size"] = max(8, min(28, int(data["font_size"])))
+        if data.get("cursor_shape") in _CURSOR_SHAPES:
+            prefs["cursor_shape"] = data["cursor_shape"]
+        if isinstance(data.get("cursor_blink"), bool):
+            prefs["cursor_blink"] = data["cursor_blink"]
+        if isinstance(data.get("terminal_padding"), (int, float)):
+            prefs["terminal_padding"] = max(0, min(40, int(data["terminal_padding"])))
+        if isinstance(data.get("terminal_opacity"), (int, float)):
+            prefs["terminal_opacity"] = max(30, min(100, int(data["terminal_opacity"])))
+        if isinstance(data.get("ligatures"), bool):
+            prefs["ligatures"] = data["ligatures"]
+        if data.get("notif_pos") in ("tl", "tr", "bl", "br", "free"):
+            prefs["notif_pos"] = data["notif_pos"]   # esquina de los popups (free = donde los arrastres)
+        write_json_file(PREFS_PATH, prefs)
+        return prefs
 
 
 def pane_cmd(sess):
@@ -6462,6 +6968,10 @@ def export_response(item, fmt):
 
 
 def model_switch_apply(sess, pane, target, data):
+    return session_configure(dict(data, session=sess, pane=pane))
+
+
+def _legacy_model_switch_apply(sess, pane, target, data):
     """Misma lógica que POST /model/switch. Devuelve (status, body)."""
     def _json(code, body):
         return code, body
@@ -6743,6 +7253,11 @@ def model_switch_apply(sess, pane, target, data):
 
 
 class Handler(http.server.SimpleHTTPRequestHandler):
+    # HTTP/1.0 (el default) bufferiza el SSE en WebKitGTK: el chat se queda
+    # en "trabajando" hasta que el modelo termina, o nunca pinta. 1.1 + close
+    # deja pasar cada flush() al getReader()/XHR.onprogress.
+    protocol_version = "HTTP/1.1"
+
     def __init__(self, *a, **kw):
         super().__init__(*a, directory=DASH, **kw)
 
@@ -6758,9 +7273,13 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             self._no_store()
         super().end_headers()
 
-    def _json(self, code, obj):
+    def _json(self, code, obj, *, close=False):
         body = json.dumps(obj).encode()
         self.send_response(code)
+        if close:
+            # Rejected bodies must never become the next keep-alive request.
+            self.close_connection = True
+            self.send_header("Connection", "close")
         self.send_header("Content-Type", "application/json")
         self._no_store()
         self.send_header("Content-Length", str(len(body)))
@@ -6855,7 +7374,7 @@ class Handler(http.server.SimpleHTTPRequestHandler):
     # Endpoints con DATOS o ACCIONES: exigen token. El shell estatico (HTML,
     # sw.js, manifest, iconos) NO — no revela nada (es codigo open-source) y
     # asi la PWA instala y carga sin depender de cookies en el webview movil.
-    API_GET = ("/pomodoro", "/providers", "/optimization/plans", "/proxy", "/model/status", "/sovereignty", "/ui-log/summary", "/state", "/usage/state", "/usage/guard", "/usage/changes", "/usage/provider-compare", "/fs/dirs", "/models/latest", "/news/latest", "/notifs/count", "/usage/analytics", "/usage/interactions", "/usage/experiments", "/opencode/models", "/model-tiers", "/dedication", "/active-tab", "/session-brain", "/events", "/conf", "/prefs", "/ssh", "/tabs",
+    API_GET = ("/pomodoro", "/providers", "/optimization/plans", "/proxy", "/model/status", "/sovereignty", "/ui-log/summary", "/state", "/usage/state", "/usage/guard", "/usage/changes", "/usage/provider-compare", "/fs/dirs", "/models/latest", "/news/latest", "/notifs/count", "/usage/analytics", "/usage/interactions", "/usage/experiments", "/opencode/models", "/model-tiers", "/dedication", "/active-tab", "/session-profiles", "/extension-usage", "/session-brain", "/events", "/conf", "/prefs", "/ssh", "/tabs",
                "/tab-history", "/remote-state", "/remote-qr.png", "/snippets", "/tmux-mouse",
                "/webterm-token", "/operator")
 
@@ -6915,7 +7434,24 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             session_part, _, pane_part = operation.partition("|")
             if not SESSION_RE.fullmatch(session_part) or (pane_part and not PANE_RE.fullmatch(pane_part)):
                 return self._json(400, {"error": "operationKey invalido"})
+            store = session_operation_store()
+            store.recover_abandoned()
+            record = store.latest_for_target(session_part, pane_part)
             result = dict(MOTOR_RESULT.get(operation) or {})
+            if record:
+                durable = record.get('result') or {}
+                result.update(operationId=record['id'], state=record['state'])
+                if record['state'] in ('confirmed', 'failed', 'rolled_back', 'recovery_required'):
+                    result.update(durable)
+                    result['detail'] = durable.get('error') or 'configuración confirmada'
+                    result.update(durable.get('observed') or {})
+                else:
+                    result.pop('ok', None)
+                    result.update(stage=record['state'], stageCode=record['state'])
+                origin = (record.get('snapshot') or {}).get('origin') or {}
+                result.update(sourceHarness=origin.get('agent') or '',
+                              sourceConversationId=(origin.get('observed') or {}).get('conversationId') or '',
+                              handoffPath=origin.get('handoffPath') or '')
             if not result:
                 result = {"stage": "preparando cambio", "stageCode": "prepare", "ts": time.time()}
             result["operationKey"] = operation
@@ -6935,6 +7471,26 @@ class Handler(http.server.SimpleHTTPRequestHandler):
                                     "grokLogin": grok_state.auth_identity(os.path.expanduser("~/.grok")).get("authenticated", False)})
         if self.path.startswith("/ui-log/summary"):
             return self._json(200, ui_log_summary())
+        if self.path.startswith("/session-profiles"):
+            q = urllib.parse.parse_qs(urllib.parse.urlsplit(self.path).query)
+            cwd = (q.get("cwd") or [os.path.expanduser("~")])[0]
+            harness = (q.get("harness") or ["codex"])[0]
+            alias = (q.get("account") or ["main"])[0]
+            try:
+                inventory = session_profile_store.inventory(load_provider_registry(), harness, alias, cwd)
+                return self._json(200, {"profiles": session_profile_store.list_profiles(USAGE_DB),
+                    "inventory": inventory, "capabilities": inventory["capabilities"],
+                    "scope": "profile", "effectiveNow": None})
+            except (ValueError, OSError) as e:
+                return self._json(400, {"error": str(e)})
+        if self.path.startswith("/extension-usage"):
+            q = urllib.parse.parse_qs(urllib.parse.urlsplit(self.path).query)
+            try:
+                return self._json(200, session_profile_store.extension_usage(USAGE_DB,
+                    (q.get("session") or [""])[0], (q.get("pane") or [""])[0],
+                    days=(q.get("days") or ["7"])[0]))
+            except (ValueError, OSError) as e:
+                return self._json(400, {"error": str(e)})
         if self.path.startswith("/session-brain"):
             q = urllib.parse.parse_qs(urllib.parse.urlparse(self.path).query)
             cwd = (q.get("cwd") or [""])[0]
@@ -6956,14 +7512,19 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             mcps = []
             for item in inventory.get("mcps") or []:
                 row = dict(item)
-                row["est_tokens"] = _mcp_est_tokens(row["name"]) if row.get("enabled") else 0
-                row["toggleable"] = harness == "claude" and row.get("source") == "mcp-json" and row.get("scope") == "project"
+                row["est_tokens"] = None
+                row["effectiveNow"] = None
+                row["toggleable"] = False
+                row["toggleScope"] = "profile"
                 mcps.append(row)
             accounts = account_registry.list_accounts(load_provider_registry(), harness)
             md_name, md_lines = _claude_md_lines(cwd) if harness == "claude" else ("", [])
             return self._json(200, {"harness": harness, "account": alias,
                                     "mcps": mcps, "mcpDetection": {"status": inventory.get("status"), "confidence": inventory.get("confidence")},
-                                    "skills": session_skills(cwd) if harness == "claude" else [],
+                                    "skills": [{**skill, "automaticInvocation": skill["enabled"], "enabled": True,
+                                                "toggleable": False, "est_tokens": None, "est_full": None,
+                                                "effectiveNow": None, "toggleScope": "profile"}
+                                               for skill in session_skills(cwd)] if harness == "claude" else [],
                                     "accounts": accounts,
                                     "claudeMd": {"name": md_name, "lines": md_lines}})
 
@@ -7093,10 +7654,12 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             # Las MISMAS pestanas abiertas en la app de escritorio (app-tabs.json)
             # para que el movil muestre exactamente lo mismo. Solo sesiones vivas.
             live = tmux_sessions()
-            out = []
-            for sess, label in tab_labels().items():
+            # GTK creates its pinned home tab outside the saved closable tabs.
+            out = [{"session": "local", "label": "⌂ local", "closable": False}] if "local" in live else []
+            labels = tab_labels()
+            for sess in ordered_tab_keys(labels, read_prefs().get("favorites", [])):
                 if sess in live and sess not in HIDDEN_SESSIONS:
-                    out.append({"session": sess, "label": label or sess})
+                    out.append({"session": sess, "label": labels[sess] or sess})
             return self._json(200, out)
         if self.path.startswith("/tab-history"):
             labels = tab_labels()
@@ -7140,6 +7703,9 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             return self._json(200, evs)
         if self.path == "/snippets":
             return self._json(200, read_snippets())
+        if self.path.startswith("/operator/action-results"):
+            import operator_receipts
+            return self._json(200, {"actions": operator_receipts.recent(operator_store_root())})
         if self.path.startswith("/operator"):
             query = urllib.parse.parse_qs(urllib.parse.urlsplit(self.path).query)
             cid = (query.get("id") or [""])[0]
@@ -7149,14 +7715,46 @@ class Handler(http.server.SimpleHTTPRequestHandler):
     def do_POST(self):
         gate = self._security_gate()
         if gate:
-            return self._json(*gate)
+            return self._json(*gate, close=True)
         try:
             n = int(self.headers.get("Content-Length", 0))
+            if n < 0:
+                raise ValueError("Content-Length negativo")
             if n > 20_000_000:
-                return self._json(413, {"error": "Payload demasiado grande"})
+                return self._json(413, {"error": "Payload demasiado grande"}, close=True)
             data = json.loads(self.rfile.read(n) or b"{}")
         except Exception:
-            return self._json(400, {"error": "JSON invalido"})
+            return self._json(400, {"error": "JSON invalido"}, close=True)
+
+        if self.path == "/session/recover":
+            code, body = session_recover(data)
+            return self._json(code, body)
+
+        if self.path == "/operator/action-result":
+            import operator_receipts
+            try:
+                return self._json(200, operator_receipts.acknowledge(operator_store_root(), data))
+            except ValueError as exc:
+                return self._json(400, {"error": str(exc)})
+
+        if self.path == "/terminal-history":
+            import terminal_history
+            try:
+                return self._json(200, terminal_history.capture(tmux, data))
+            except (ValueError, TypeError) as exc:
+                return self._json(400, {"error": str(exc)})
+            except Exception:
+                return self._json(503, {"error": "Historial temporalmente no disponible"})
+
+        if self.path == "/terminal-panes":
+            import terminal_panes
+            try:
+                result = terminal_panes.execute(tmux, _pane_identity, save_closed_pane_snapshot, data)
+                return self._json(200, result)
+            except (ValueError, TypeError) as exc:
+                return self._json(400, {"error": str(exc)})
+            except Exception:
+                return self._json(503, {"error": "No se pudo completar la acción del panel. Comprueba Paneles antes de reintentar"})
 
         if self.path == "/operator/chat/stream":
             if not str(data.get("text") or "").strip():
@@ -7165,6 +7763,7 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             self.send_header("Content-Type", "text/event-stream; charset=utf-8")
             self.send_header("Cache-Control", "no-cache")
             self.send_header("X-Accel-Buffering", "no")
+            self.send_header("Connection", "close")
             self.end_headers()
             def write(chunk):
                 self.wfile.write(chunk)
@@ -7281,22 +7880,54 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             write_conf_key(key, val)
             return self._json(200, {"ok": True})
 
-        if self.path == "/skill-toggle":
-            err = toggle_skill(str(data.get("path", "")), bool(data.get("on")))
-            if err:
-                return self._json(400, {"error": err})
-            return self._json(200, {"ok": True,
-                "note": "aplica al reciclar las sesiones"})
+        if self.path == "/session-profiles":
+            try:
+                if data.get("action") == "delete":
+                    session_profile_store.delete_profile(USAGE_DB, data.get("id"))
+                    return self._json(200, {"ok": True})
+                profile = session_profile_store.save_profile(USAGE_DB, data)
+                return self._json(200, {"ok": True, "profile": profile, "status": "saved",
+                    "effectiveNow": False, "scope": "profile"})
+            except ValueError as e:
+                return self._json(400, {"error": str(e)})
 
-        if self.path == "/mcp-toggle":
-            cwd, name = str(data.get("cwd", "")), str(data.get("name", ""))[:80]
-            if not cwd.startswith("/") or not os.path.isdir(cwd) or not name:
-                return self._json(400, {"error": "cwd o name invalido"})
-            err = toggle_project_mcp(cwd, name, bool(data.get("on")))
-            if err:
-                return self._json(400, {"error": err})
-            return self._json(200, {"ok": True,
-                "note": "aplica al reciclar la sesion"})
+        if self.path == "/session-profile-apply":
+            try:
+                profile = session_profile_store.get_profile(USAGE_DB, data.get("profileId"))
+                draft = session_profile_store.launch_draft(profile)
+                resolve_route_selection(draft, "new_session")
+                if profile.get("skills") or profile.get("mcps"):
+                    session_profile_store.launch_args(profile, load_provider_registry(),
+                        str(data.get("cwd") or ""), os.path.join(HOOKS, "profile-launches"), dry_run=True)
+                return self._json(200, {"ok": True, "profile": profile, "launchDraft": draft,
+                    "status": "next_launch", "effectiveNow": False, "scope": "profile",
+                    "note": "Preparado para una sesión nueva. El agente vivo conserva su configuración."})
+            except (ValueError, provider_registry.ProviderRegistryError) as e:
+                return self._json(409, {"error": str(e), "code": "profile_unavailable"})
+
+        if self.path in ("/skill-toggle", "/mcp-toggle"):
+            if not data.get("profileId"):
+                return self._json(409, {"error": "Selecciona un perfil de sesión para guardar este cambio.",
+                    "code": "profile_required", "scope": "profile", "effectiveNow": False})
+            try:
+                profile = session_profile_store.get_profile(USAGE_DB, data.get("profileId"))
+                kind = "skills" if self.path == "/skill-toggle" else "mcps"
+                if type(data.get("on")) is not bool:
+                    raise ValueError("estado de extensión inválido")
+                inv = session_profile_store.inventory(load_provider_registry(), profile["harness"],
+                    profile["harnessAccount"], str(data.get("cwd") or ""))
+                ident = str(data.get("id") or data.get("name") or "")
+                row = next((r for r in inv[kind] if r["id"] == ident), None)
+                if not row or not row.get("toggleable"):
+                    raise ValueError("extensión no disponible para selección por perfil")
+                profile[kind][ident] = data["on"]
+                session_profile_store.launch_args(profile, load_provider_registry(), str(data.get("cwd") or ""),
+                    os.path.join(HOOKS, "profile-launches"), dry_run=True)
+                profile = session_profile_store.save_profile(USAGE_DB, profile)
+                return self._json(200, {"ok": True, "profile": profile, "status": "next_launch",
+                    "effectiveNow": False, "scope": "profile"})
+            except ValueError as e:
+                return self._json(409, {"error": str(e), "code": "profile_unavailable"})
 
         if self.path == "/pause":
             sess = str(data.get("session", ""))[:80]
@@ -7398,37 +8029,13 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             return self._json(200, {"ok": True})
 
         if self.path == "/prefs-set":
-            prefs = read_prefs()
-            # limpieza de notificaciones COMPARTIDA (dashboard + badge del app)
-            if isinstance(data.get("nfDismiss"), dict):
-                prefs["nfDismiss"] = {str(k)[:160]: 1 for k in list(data["nfDismiss"])[:600]}
-            if isinstance(data.get("nfSnooze"), dict):
-                prefs["nfSnooze"] = {str(k)[:160]: float(v) for k, v in list(data["nfSnooze"].items())[:200]
-                                     if isinstance(v, (int, float))}
-            if "favorites" in data and isinstance(data["favorites"], list):
-                prefs["favorites"] = [str(x)[:80] for x in data["favorites"]][:200]
-            if data.get("theme") in ("noche", "dia", "calido", "termius", "bruno", "superglass", "neon", "contraste", "ubuntu"):
-                prefs["theme"] = data["theme"]
-            # Tipografía y estilo de terminal — cada campo se valida por su tipo.
-            if isinstance(data.get("font_family"), str):
-                prefs["font_family"] = data["font_family"][:120].strip() or PREFS_DEFAULTS["font_family"]
-            if isinstance(data.get("font_size"), (int, float)):
-                prefs["font_size"] = max(8, min(28, int(data["font_size"])))
-            if data.get("cursor_shape") in _CURSOR_SHAPES:
-                prefs["cursor_shape"] = data["cursor_shape"]
-            if isinstance(data.get("cursor_blink"), bool):
-                prefs["cursor_blink"] = data["cursor_blink"]
-            if isinstance(data.get("terminal_padding"), (int, float)):
-                prefs["terminal_padding"] = max(0, min(40, int(data["terminal_padding"])))
-            if isinstance(data.get("terminal_opacity"), (int, float)):
-                prefs["terminal_opacity"] = max(30, min(100, int(data["terminal_opacity"])))
-            if isinstance(data.get("ligatures"), bool):
-                prefs["ligatures"] = data["ligatures"]
-            if data.get("notif_pos") in ("tl", "tr", "bl", "br", "free"):
-                prefs["notif_pos"] = data["notif_pos"]   # esquina de los popups (free = donde los arrastres)
-            with open(PREFS_PATH, "w") as f:
-                json.dump(prefs, f)
-            return self._json(200, {"ok": True})
+            try:
+                prefs = update_prefs(data)
+            except ValueError as exc:
+                return self._json(400, {"error": str(exc)})
+            except OSError:
+                return self._json(503, {"error": "No se pudieron guardar las preferencias"})
+            return self._json(200, {"ok": True, "favorites": prefs.get("favorites", [])})
 
         if self.path == "/usage/experiment":
             action = str(data.get("action") or "create")
@@ -7644,6 +8251,14 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             return self._json(200, {"ok": True})
 
         if self.path == "/session-new":
+            profile = None
+            profile_flags = []
+            if data.get("profileId"):
+                try:
+                    profile = session_profile_store.get_profile(USAGE_DB, data["profileId"])
+                    data = {**session_profile_store.launch_draft(profile), **data}
+                except ValueError as e:
+                    return self._json(409, {"error": str(e), "code": "profile_unavailable"})
             # Wizard "+": nueva sesion con proyecto + agente + cuenta.
             # Si el repo YA tiene un agente activo, nace en worktree (auto).
             cwd = os.path.expanduser(str(data.get("cwd", "")))
@@ -7683,6 +8298,13 @@ class Handler(http.server.SimpleHTTPRequestHandler):
                 path, err = make_worktree(cwd)
                 if path:
                     final_cwd, wt = path, True
+            if profile:
+                try:
+                    launch_profile = {**profile, "harness": agent, "harnessAccount": alias}
+                    profile_flags = session_profile_store.launch_args(launch_profile, load_provider_registry(),
+                        final_cwd, os.path.join(HOOKS, "profile-launches"))
+                except (ValueError, OSError) as e:
+                    return self._json(409, {"error": str(e), "code": "profile_unavailable"})
             n = int(time.time()) % 100000
             new_sess = f"term-r{n}"
             while tmux("has-session", "-t", "=" + new_sess).returncode == 0:
@@ -7755,6 +8377,10 @@ class Handler(http.server.SimpleHTTPRequestHandler):
                 cmd = _harness_launch_cmd(agent, selected.get("model") or "", selected.get("effort") or "", alias)
                 if data.get("danger") and flags.get(agent):
                     cmd += " " + flags[agent]
+            if cmd and profile:
+                cmd = "COMANDOS_SESSION_PROFILE=" + shlex.quote(profile["id"]) + " " + cmd
+                if profile_flags:
+                    cmd += " " + shlex.join(profile_flags)
             if cmd:
                 pane_new = tmux("display-message", "-p", "-t", "=" + new_sess + ":", "#{pane_id}").stdout.strip()
                 if route:
@@ -7769,7 +8395,10 @@ class Handler(http.server.SimpleHTTPRequestHandler):
                                     "cwd": final_cwd, "worktree": wt, "label": label,
                                     "routeId": route.get("id") if route else "shell",
                                     "model": selected.get("model"), "effort": selected.get("effort"),
-                                    "harnessAccount": alias, "motorAccount": motor_alias})
+                                    "harnessAccount": alias, "motorAccount": motor_alias,
+                                    "profileId": profile["id"] if profile else None,
+                                    "profileStatus": "launch_requested" if profile else None,
+                                    "profileEffectiveNow": None})
 
         if self.path == "/open-with-account":
             # Nueva sesion claude EN el cwd con la cuenta elegida
@@ -7974,7 +8603,7 @@ class Handler(http.server.SimpleHTTPRequestHandler):
         # homonima (zombie sin claude), las teclas y el foco van a la sesion y
         # pane reales. Tambien evita que cc-next/popups dupliquen sesiones.
         resolved = resolve_project_session(sess)
-        if resolved:
+        if resolved and self.path not in ("/session/configure", "/account/switch", "/harness/switch", "/model/switch"):
             sess = resolved[0]
         target = "=" + sess          # target-session (has-session, switch-client)
         pane = "=" + sess + ":"      # target-pane; tmux 3.2a exige el ':' final
@@ -7986,145 +8615,25 @@ class Handler(http.server.SimpleHTTPRequestHandler):
                 tmux("display-message", "-p", "-t", want, "#{pane_id}").stdout.strip() == want:
             pane = want
 
-        if self.path == "/account/switch":
-            # Misma conversacion, otra cuenta: copiar el transcript al config-dir de la
-            # cuenta destino, salir de claude y reanudar con --resume <sid> en el mismo pane.
-            alias = str(data.get("alias") or "main")[:40]
-            if not re.match(r"^[A-Za-z0-9._-]+$", alias):
-                return self._json(400, {"error": "alias invalido"})
-            acc = next((a for a in claude_accounts() if a["alias"] == alias), None)
-            if not acc:
-                return self._json(404, {"error": f"cuenta '{alias}' no existe"})
-            if not acc["loggedIn"]:
-                return self._json(409, {"error": f"la cuenta '{alias}' aun no tiene login"})
-            if tmux("has-session", "-t", target).returncode != 0:
-                return self._json(404, {"error": f"No hay sesion tmux '{sess}'"})
-            info = _claude_info_for(sess, str(data.get("pane") or ""))
-            if not info:
-                return self._json(409, {"error": "No encuentro un claude vivo en esa sesion"})
-            queued = bool(claude_pane_busy(pane))
-            sid, pid = info["sid"], info.get("pid")
-            src = _transcript_path(sid)
-            if not src:
-                return self._json(409, {"error": "No encuentro el transcript de la sesion"})
-            src_dir = os.path.dirname(src)
-            src_cfg = os.path.dirname(os.path.dirname(src_dir))
-            if os.path.realpath(src_cfg) == os.path.realpath(acc["dir"]):
-                return self._json(400, {"error": f"esa sesion ya usa la cuenta '{alias}'"})
-            dst_dir = os.path.join(acc["dir"], "projects", os.path.basename(src_dir))
-            try:
-                import shutil
-                os.makedirs(dst_dir, exist_ok=True)
-                shutil.copy2(src, os.path.join(dst_dir, os.path.basename(src)))
-                extra = os.path.join(src_dir, sid)
-                if os.path.isdir(extra) and not os.path.isdir(os.path.join(dst_dir, sid)):
-                    shutil.copytree(extra, os.path.join(dst_dir, sid))
-            except Exception as e:
-                return self._json(500, {"error": f"no pude copiar el transcript: {e}"})
-            # La carpeta ya es de confianza en la cuenta origen: heredar ese "si" para que
-            # --resume no se quede parado en "Do you trust this folder?".
-            try:
-                cwd_r = tmux("display-message", "-p", "-t", pane, "#{pane_current_path}").stdout.strip()
-                with open(os.path.join(src_cfg, ".claude.json")) as f:
-                    sp = (json.load(f).get("projects") or {}).get(cwd_r) or {}
-                if sp.get("hasTrustDialogAccepted"):
-                    dj = os.path.join(acc["dir"], ".claude.json")
-                    try:
-                        with open(dj) as f:
-                            dd = json.load(f)
-                    except Exception:
-                        dd = {}
-                    dd.setdefault("projects", {}).setdefault(cwd_r, {})["hasTrustDialogAccepted"] = True
-                    tmp = dj + ".tmp"
-                    with open(tmp, "w") as f:
-                        json.dump(dd, f, indent=2)
-                    os.replace(tmp, dj)
-            except Exception:
-                pass
-            argv = _proc_cmdline(pid) if pid else []
-            flags = _resume_flags(argv)
-            env = _read_environ(pid) if pid else {}
-            base_url = env.get(b"ANTHROPIC_BASE_URL", b"").decode("utf-8", "replace")
-            prefix = "" if alias == "main" else f"CLAUDE_CONFIG_DIR=$HOME/.claude-accounts/{alias} "
-            if base_url:
-                prefix += f"ANTHROPIC_BASE_URL={shlex.quote(base_url)} "
-            cmd = prefix + "claude --resume " + shlex.quote(sid) + "".join(" " + shlex.quote(f) for f in flags)
-            if data.get("interrupt") and claude_pane_busy(pane):
-                tmux("send-keys", "-t", pane, "Escape")
-                time.sleep(1.2)
-            _claude_restart_resume(pane, pid, cmd, queued=queued, sess=sess, gen=motor_gen_bump(sess))
-            return self._json(202 if queued else 200, {"ok": True, "queued": queued, "command": cmd, "sid": sid})
+        if self.path in ("/session/configure", "/account/switch", "/harness/switch"):
+            configuration = dict(data, session=sess, pane=str(data.get("pane") or pane))
+            if self.path == "/account/switch":
+                configuration["harnessAccount"] = configuration["motorAccount"] = str(data.get("alias") or "main")
+            if self.path == "/harness/switch":
+                configuration["toHarness"] = data.get("toHarness") or data.get("to")
+                if data.get("account"):
+                    configuration["harnessAccount"] = "main" if configuration["toHarness"] == "acp" else data["account"]
+                    configuration["motorAccount"] = data["account"]
+            code, body = session_configure(configuration)
+            return self._json(code, body)
 
         if self.path == "/model/switch-cancel":
             opkey = f"{sess}|{pane}" if PANE_RE.match(pane) else sess
-            model_switch_cancel(sess, pane)
+            try:
+                model_switch_cancel(sess, pane)
+            except ValueError as exc:
+                return self._json(409, {"ok": False, "error": str(exc)})
             return self._json(200, {"ok": True, "operationKey": opkey, "note": "cambios en cola cancelados"})
-
-        if self.path == "/harness/switch":
-            # Cambiar el HARNESS (el CLI) de un pane vivo, con handoff de contexto.
-            to = str(data.get("toHarness") or data.get("to") or "")[:16]
-            model = str(data.get("model") or "")[:120]
-            effort = str(data.get("effort") or "")[:16]
-            account = str(data.get("account") or data.get("harnessAccount") or "main")[:64]
-            registry_now = load_provider_registry()
-            switchable = {h for h, spec in (registry_now.get("harnesses") or {}).items()
-                          if spec.get("launchDriver") in ("claude", "codex", "grok", "acp", "opencode", "agy")}
-            if to not in switchable:
-                return self._json(400, {"error": f"harness desconocido: {to}"})
-            if tmux("has-session", "-t", target).returncode != 0:
-                return self._json(404, {"error": f"No hay sesión tmux '{sess}'"})
-            info = agent_info_for_pane(pane) or {}
-            frm = str(info.get("agent") or state_agent(sess) or "shell")
-            if frm in ("", "shell"):
-                frm = "shell"
-            if frm == to:
-                return self._json(409, {"error": f"el pane ya corre {to}; para cambiar el modelo usa el selector de motor"})
-            # ACP: el motor destino es el que pidan o, por defecto, el mismo
-            # cerebro que corria en el pane (claude -> acp:claude), asi el
-            # cambio de TUI no cambia de modelo a escondidas.
-            acp_agents = registry_now.get("acpAgents") or {}
-            motor = str(data.get("motor") or (frm if frm in acp_agents else "claude"))[:16] if to == "acp" else to
-            dest_id = f"{to}:{motor}"
-            dest = next((c for c in capability_matrix() if c.get("id") == dest_id), None) or {}
-            if not dest.get("selectable", False):
-                return self._json(409, {"error": (dest.get("reason") or {}).get("message") or f"{dest_id} no está disponible"})
-            # la cuenta (del harness, o del MOTOR si el harness es acp) debe tener login
-            acct_provider = motor if to == "acp" else to
-            if ((registry_now.get("harnesses") or {}).get(acct_provider) or {}).get("capabilities", {}).get("accounts"):
-                try:
-                    accts = account_registry.list_accounts(registry_now, acct_provider)
-                    if not any(a.get("alias") == account and a.get("selectable") for a in accts):
-                        account = _pick_motor_account(acct_provider, account)
-                        if not any(a.get("alias") == account and a.get("selectable") for a in accts):
-                            return self._json(409, {"error": f"{acct_provider} no tiene ninguna cuenta con login. Inicia sesión primero."})
-                except Exception:
-                    pass
-            else:
-                account = "main"
-            cwd = info.get("cwd") or ""
-            if not cwd:
-                r = tmux("display-message", "-p", "-t", pane, "#{pane_current_path}")
-                cwd = r.stdout.strip()
-            opkey = f"{sess}|{pane}" if PANE_RE.match(pane) else sess
-            gen = motor_gen_bump(opkey)
-            queued = bool(harness_pane_busy(sess, pane, frm)) and not bool(data.get("interrupt"))
-            previous_sid = ""
-            if frm == "claude":
-                try:
-                    previous_sid = str((_claude_info_for(sess, pane) or {}).get("sid") or "")
-                except Exception:
-                    previous_sid = ""
-            payload = {"key": opkey, "sess": sess, "pane": pane, "from": frm, "to": to,
-                       "cwd": cwd, "pid": info.get("pid"), "model": model, "effort": effort,
-                       "account": account, "gen": gen, "interrupt": bool(data.get("interrupt")),
-                       "motor": motor, "danger": bool(data.get("danger")),
-                       "previousSid": previous_sid}
-            harness_switch_apply(payload)
-            keep = ("Motor/esfuerzo en el MISMO CLI: conversación intacta. "
-                    "Cambio de CLI: archivos + git + handoff; al volver a Claude se reanuda el transcript. "
-                    f"La memoria interna de {frm} NO se transfiere a {to}.")
-            return self._json(200, {"ok": True, "operationKey": opkey, "from": frm, "to": to,
-                                    "queued": queued, "previousSid": previous_sid, "note": keep})
 
         if self.path == "/model/switch":
             code, body = model_switch_apply(sess, pane, target, data)

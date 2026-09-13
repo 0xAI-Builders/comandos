@@ -30,6 +30,7 @@ REPO = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
 sys.path.insert(0, os.path.join(REPO, "lib"))
 import acp  # noqa: E402
 import accounts as account_registry  # noqa: E402
+import claude_trust  # noqa: E402
 import providers as provider_registry  # noqa: E402
 
 HOOKS = os.path.expanduser("~/.claude/hooks")
@@ -115,8 +116,11 @@ class Pane:
         model = self.model if spec.get("modelVia") != "acp" else ""   # por ACP se fija tras session/new
         if not self.model and spec.get("transport") == "agy-stream":
             self.model = model = self.default_model()
+        extra = self.account_env()
+        if self.agent == "claude":
+            claude_trust.ensure_cwd_trusted(self.cwd, config_dir=extra.get("CLAUDE_CONFIG_DIR"))
         self.session = acp.open_session(spec, self.cwd, model=model, effort=self.effort, danger=self.danger,
-                                        extra_env=self.account_env(), permission_handler=self.on_permission)
+                                        extra_env=extra, permission_handler=self.on_permission)
         self.session.initialize()
         if self.resume_id and self.session.supports_load():
             say(f"↻ reanudando sesión {self.resume_id[:8]}…", "dim")

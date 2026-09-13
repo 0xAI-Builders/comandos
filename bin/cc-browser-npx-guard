@@ -1,0 +1,18 @@
+#!/bin/sh
+# Keep cached browser MCP launches on the remote client.
+is_browser_package() {
+    while [ "$#" -gt 0 ]; do
+        case "$1" in
+            -y|--yes|--no-install) shift ;;
+            chrome-devtools-mcp|chrome-devtools-mcp@*) return 0 ;;
+            *) return 1 ;;
+        esac
+    done
+    return 1
+}
+
+if is_browser_package "$@"; then
+    exec "$HOME/.local/bin/cc-browser-remote"
+fi
+
+exec '/home/someguy/.nvm/versions/node/v22.19.0/bin/node' '/home/someguy/.nvm/versions/node/v22.19.0/lib/node_modules/npm/bin/npx-cli.js' "$@"

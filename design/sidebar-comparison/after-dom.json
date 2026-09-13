@@ -1,0 +1,122 @@
+{
+  "desktop": {
+    "width": 380,
+    "geometry": {
+      "content": {
+        "height": 915,
+        "basis": "auto"
+      },
+      "side-top": {
+        "height": 283,
+        "basis": "auto"
+      },
+      "op-chat": {
+        "height": 622,
+        "basis": "622px"
+      }
+    },
+    "sections": [
+      "centro-wrap",
+      "sessions-wrap",
+      "sidebar-insights"
+    ],
+    "rows": [
+      "alpha|%1",
+      "alpha|%2"
+    ],
+    "insights": "HOY\nAnalytics →\n2.0 h\nEN FOCO\n3\nAGENTES ACTIVOS\nAlpha\n1.6 h\nBeta\n25 min\nCtrl+Tab última tab\nCtrl+K saltar\nCtrl+PgDn siguiente\nF1 ayuda",
+    "tools": 104,
+    "overflow": false,
+    "errors": []
+  },
+  "remote": {
+    "width": 379,
+    "geometry": {
+      "content": {
+        "height": 915,
+        "basis": "auto"
+      },
+      "side-top": {
+        "height": 283,
+        "basis": "auto"
+      },
+      "op-chat": {
+        "height": 622,
+        "basis": "622px"
+      }
+    },
+    "sections": [
+      "centro-wrap",
+      "sessions-wrap",
+      "sidebar-insights"
+    ],
+    "rows": [
+      "alpha|%1",
+      "alpha|%2"
+    ],
+    "insights": "HOY\nAnalytics →\n2.0 h\nEN FOCO\n3\nAGENTES ACTIVOS\nAlpha\n1.6 h\nBeta\n25 min\nCtrl+Tab última tab\nCtrl+K saltar\nCtrl+PgDn siguiente\nF1 ayuda",
+    "tools": 104,
+    "overflow": false,
+    "errors": []
+  },
+  "phone390": {
+    "width": 390,
+    "geometry": {
+      "content": {
+        "height": 714,
+        "basis": "auto"
+      },
+      "side-top": {
+        "height": 218,
+        "basis": "auto"
+      },
+      "op-chat": {
+        "height": 486,
+        "basis": "486px"
+      }
+    },
+    "sections": [
+      "centro-wrap",
+      "sessions-wrap",
+      "sidebar-insights"
+    ],
+    "rows": [
+      "alpha|%1",
+      "alpha|%2"
+    ],
+    "insights": "HOY\nAnalytics →\n2.0 h\nEN FOCO\n3\nAGENTES ACTIVOS\nAlpha\n1.6 h\nBeta\n25 min\nCtrl+Tab última tab\nCtrl+K saltar\nCtrl+PgDn siguiente\nF1 ayuda",
+    "tools": 104,
+    "overflow": false,
+    "errors": []
+  },
+  "phone320": {
+    "width": 320,
+    "geometry": {
+      "content": {
+        "height": 714,
+        "basis": "auto"
+      },
+      "side-top": {
+        "height": 218,
+        "basis": "auto"
+      },
+      "op-chat": {
+        "height": 486,
+        "basis": "486px"
+      }
+    },
+    "sections": [
+      "centro-wrap",
+      "sessions-wrap",
+      "sidebar-insights"
+    ],
+    "rows": [
+      "alpha|%1",
+      "alpha|%2"
+    ],
+    "insights": "HOY\nAnalytics →\n2.0 h\nEN FOCO\n3\nAGENTES ACTIVOS\nAlpha\n1.6 h\nBeta\n25 min\nCtrl+Tab última tab\nCtrl+K saltar\nCtrl+PgDn siguiente\nF1 ayuda",
+    "tools": 104,
+    "overflow": false,
+    "errors": []
+  }
+}

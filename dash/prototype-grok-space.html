@@ -1,0 +1,288 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<title>Mockup · más espacio para Grok</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+  :root {
+    --ub-bg: #300A24;
+    --ub-bar: #2C0A22;
+    --ub-brand: #E95420;
+    --ub-line: #5C2A4F;
+    --ub-dim: #E8DCE4;
+    --ub-text: #FFFFFF;
+    --ub-faint: #BBA5B5;
+    --rp-bg: #232136;
+    --rp-surf: #2a273f;
+    --rp-hl: #393552;
+    --rp-text: #e0def4;
+    --rp-muted: #908caa;
+    --rp-iris: #c4a7e7;
+    --rp-pine: #3e8fb0;
+    --rp-gold: #f6c177;
+    --rp-rose: #eb6f92;
+    --mono: "Ubuntu Sans Mono", "JetBrains Mono", ui-monospace, monospace;
+    --sans: "Ubuntu Sans", "Ubuntu", system-ui, sans-serif;
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; margin: 0; background: #1a0614; color: var(--ub-text); font-family: var(--sans); }
+  body { display: flex; flex-direction: column; }
+
+  .note {
+    flex: none; padding: 10px 18px 8px; background: #1f0818;
+    border-bottom: 1px solid var(--ub-line); font-size: 13px; color: var(--ub-dim);
+  }
+  .note b { color: var(--ub-brand); }
+  .note code { font-family: var(--mono); font-size: 12px; color: var(--rp-gold); }
+
+  #stage { flex: 1; min-height: 0; padding: 14px 16px 72px; }
+  .desk {
+    height: 100%; border: 1px solid var(--ub-line); border-radius: 10px;
+    overflow: hidden; display: flex; flex-direction: column; background: var(--ub-bg);
+    box-shadow: 0 18px 50px rgba(0,0,0,.45);
+  }
+
+  /* chrome */
+  .titlebar {
+    flex: none; height: 42px; display: flex; align-items: center; gap: 10px;
+    padding: 0 12px; background: var(--ub-bar); border-bottom: 1px solid var(--ub-line);
+  }
+  .dots { display: flex; gap: 6px; }
+  .dots i { width: 10px; height: 10px; border-radius: 50%; display: block; }
+  .dots i:nth-child(1){ background: #e95420; }
+  .dots i:nth-child(2){ background: #eda417; }
+  .dots i:nth-child(3){ background: #4e9a06; }
+  .titlebar .appname { font-size: 12px; font-weight: 650; letter-spacing: .02em; }
+  .titlebar .sp { flex: 1; }
+  .titlebar .btn {
+    font-size: 11px; color: var(--ub-faint); padding: 4px 8px; border-radius: 6px;
+    border: 1px solid var(--ub-line);
+  }
+
+  .tabs {
+    flex: none; height: 36px; display: flex; align-items: stretch; gap: 0;
+    background: linear-gradient(180deg, var(--ub-bar), var(--ub-bg));
+    border-bottom: 1px solid var(--ub-line); padding: 0 8px;
+  }
+  .tab {
+    display: flex; align-items: center; gap: 7px; padding: 0 12px;
+    font-family: var(--mono); font-size: 11px; color: var(--ub-faint);
+    border-bottom: 2px solid transparent;
+  }
+  .tab.on { color: #fff; border-bottom-color: var(--ub-brand); }
+  .dot { width: 7px; height: 7px; border-radius: 50%; background: #81A1C1; box-shadow: 0 0 6px #81A1C1; }
+
+  .body { flex: 1; min-height: 0; display: flex; }
+
+  .side {
+    width: 280px; flex: none; background: #26081d;
+    border-right: 1px solid var(--ub-line); padding: 10px 10px;
+    font-size: 12px; overflow: hidden;
+  }
+  .side h4 { margin: 0 0 8px; font-size: 11px; color: var(--ub-faint); font-weight: 650; }
+  .card {
+    border: 1px solid var(--ub-line); border-radius: 8px; padding: 8px 9px; margin-bottom: 7px;
+    background: #2c0a22;
+  }
+  .card .n { font-family: var(--mono); font-size: 11px; }
+  .card .m { color: var(--ub-faint); font-size: 10px; margin-top: 3px; }
+
+  .terms { flex: 1; min-width: 0; display: flex; flex-direction: column; background: var(--ub-bg); }
+  .splits { flex: 1; min-height: 0; display: flex; }
+
+  .pane {
+    flex: 1; min-width: 0; display: flex; flex-direction: column;
+    border-right: 1px solid var(--ub-line);
+  }
+  .pane:last-child { border-right: 0; }
+  .rail {
+    flex: none; height: 16px; background: #3a102c;
+    border-bottom: 1px solid var(--ub-line);
+    display: flex; align-items: center; padding: 0 6px;
+    font-size: 9px; color: var(--ub-faint); font-family: var(--mono);
+  }
+  .term {
+    flex: 1; min-height: 0; background: var(--rp-bg); color: var(--rp-text);
+    font-family: var(--mono); font-size: 12px; line-height: 1.45;
+    padding: 10px 12px; overflow: hidden; position: relative;
+  }
+  .term .muted { color: var(--rp-muted); }
+  .term .iris { color: var(--rp-iris); }
+  .term .gold { color: var(--rp-gold); }
+  .term .pine { color: var(--rp-pine); }
+  .term .user { color: var(--rp-rose); }
+  .prompt-box {
+    position: absolute; left: 10px; right: 10px; bottom: 28px;
+    border: 1px solid var(--rp-hl); border-radius: 8px;
+    background: var(--rp-surf); padding: 8px 10px; color: var(--rp-muted);
+  }
+  .keys {
+    position: absolute; left: 10px; right: 10px; bottom: 6px;
+    font-size: 10px; color: var(--rp-muted); display: flex; gap: 10px;
+  }
+  .badge {
+    position: absolute; top: 8px; right: 10px; font-size: 10px;
+    background: #1a1628; border: 1px solid var(--rp-hl); color: var(--rp-iris);
+    padding: 2px 7px; border-radius: 999px; font-family: var(--mono);
+  }
+
+  /* variants */
+  .v-hoy .side { width: 280px; }
+  .v-hoy .titlebar { height: 42px; }
+  .v-hoy .tabs { height: 36px; }
+  .v-hoy .rail { display: flex; }
+  .v-hoy .term { padding: 12px; font-size: 12px; }
+  .v-hoy .prompt-box { bottom: 28px; }
+
+  .v-compact .side { width: 0; padding: 0; border: 0; overflow: hidden; }
+  .v-compact .titlebar { height: 32px; }
+  .v-compact .tabs { height: 28px; }
+  .v-compact .tab { font-size: 10px; padding: 0 9px; }
+  .v-compact .rail { display: none; }
+  .v-compact .term { padding: 8px 10px; font-size: 12.5px; }
+  .v-compact .prompt-box { bottom: 22px; padding: 6px 9px; }
+
+  .v-zen .side { display: none; }
+  .v-zen .titlebar { height: 0; overflow: hidden; border: 0; padding: 0; }
+  .v-zen .tabs {
+    position: absolute; top: 0; left: 0; right: 0; height: 26px;
+    opacity: .22; z-index: 2;
+  }
+  .v-zen .desk { position: relative; }
+  .v-zen .body { flex: 1; }
+  .v-zen .rail { display: none; }
+  .v-zen .term { padding: 14px 16px; font-size: 13px; }
+  .v-zen .prompt-box { bottom: 18px; }
+  .v-zen .keys { opacity: .45; }
+  .v-zen .splits { position: relative; }
+  .v-zen-hint {
+    display: none; position: absolute; top: 8px; left: 50%; transform: translateX(-50%);
+    font-size: 10px; color: var(--ub-faint); z-index: 3; pointer-events: none;
+  }
+  .v-zen .v-zen-hint { display: block; }
+
+  .meter {
+    flex: none; display: flex; gap: 14px; padding: 7px 12px;
+    border-top: 1px solid var(--ub-line); background: #24081b;
+    font-family: var(--mono); font-size: 11px; color: var(--ub-dim);
+  }
+  .meter b { color: var(--rp-gold); }
+
+  .switcher {
+    position: fixed; left: 50%; bottom: 14px; transform: translateX(-50%);
+    display: flex; align-items: center; gap: 8px;
+    background: #12040e; border: 1px solid var(--ub-brand); color: #fff;
+    border-radius: 999px; padding: 8px 10px; z-index: 20;
+    box-shadow: 0 10px 30px rgba(0,0,0,.5);
+  }
+  .switcher button {
+    background: var(--ub-brand); color: #fff; border: 0; width: 32px; height: 32px;
+    border-radius: 50%; font-size: 16px; cursor: pointer;
+  }
+  .switcher .lab { min-width: 210px; text-align: center; font-size: 12px; }
+  .switcher .lab small { display: block; color: var(--ub-faint); font-size: 10px; margin-top: 1px; }
+</style>
+</head>
+<body>
+  <div class="note">
+    Mockup throwaway · <b>más espacio para Grok</b> recortando chrome de ComandOS.
+    Flechas o botones para cambiar variante. No es la app real.
+  </div>
+
+  <div id="stage">
+    <div class="desk" id="desk">
+      <div class="titlebar" id="titlebar">
+        <div class="dots"><i></i><i></i><i></i></div>
+        <span class="appname">ComandOS</span>
+        <span class="sp"></span>
+        <span class="btn">Apariencia</span>
+        <span class="btn">Hoy</span>
+      </div>
+      <div class="tabs" id="tabs">
+        <div class="tab on"><span class="dot"></span>Relotto</div>
+        <div class="tab"><span class="dot"></span>Merauto</div>
+        <div class="tab"><span class="dot"></span>SAVA</div>
+        <div class="tab"><span class="dot"></span>Blockpay</div>
+        <div class="v-zen-hint">tabs al pasar el mouse · Esc sale de zen</div>
+      </div>
+      <div class="body">
+        <aside class="side" id="side">
+          <h4>Sesiones</h4>
+          <div class="card"><div class="n">Relotto</div><div class="m">Grok 4.6 · xhigh</div></div>
+          <div class="card"><div class="n">Merauto</div><div class="m">Grok 4.6 · high</div></div>
+          <div class="card"><div class="n">SAVA</div><div class="m">Grok 4.6 · xhigh</div></div>
+          <div class="card"><div class="n">Hoy</div><div class="m">3h 12m · Relotto</div></div>
+        </aside>
+        <div class="terms">
+          <div class="splits">
+            <div class="pane">
+              <div class="rail">riel tmux vacío (1 fila)</div>
+              <div class="term">
+                <span class="badge">~76 cols</span>
+                <div class="muted">Relotto · pane izquierdo</div>
+                <div><span class="user">❯</span> ya pusheaste todo???</div>
+                <div class="iris">Sí. Tickets Odoo al día. El watcher de Resend sigue en prod.</div>
+                <div class="muted">Worked for 24m</div>
+                <div class="prompt-box">❯ _</div>
+                <div class="keys"><span>Tab: foco</span><span>Esc: cancel</span><span>always-approve</span></div>
+              </div>
+            </div>
+            <div class="pane">
+              <div class="rail">riel tmux vacío (1 fila)</div>
+              <div class="term">
+                <span class="badge">~76 cols</span>
+                <div class="muted">Relotto · pane derecho</div>
+                <div class="gold">Grok 4.6 · high</div>
+                <div class="pine">session resumed</div>
+                <div class="prompt-box">❯ _</div>
+                <div class="keys"><span>Shift+Tab: modo</span><span>Ctrl+x</span></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="meter" id="meter"><span>espacio útil Grok: <b id="stats">~76 × 39</b></span><span id="what">hoy: tablero + header + tabs + riel + padding 8</span></div>
+    </div>
+  </div>
+
+  <div class="switcher">
+    <button type="button" id="prev" aria-label="anterior">←</button>
+    <div class="lab"><span id="vname">A — Hoy</span><small id="vdesc">como está ahora</small></div>
+    <button type="button" id="next" aria-label="siguiente">→</button>
+  </div>
+
+<script>
+const V = [
+  { id: "hoy", cls: "v-hoy", name: "A — Hoy", desc: "tablero + header + tabs + riel", stats: "~76 × 39", what: "hoy: tablero 280px + header 42 + tabs 36 + riel 1 fila/pane + padding 8", cols: "~76 cols" },
+  { id: "compact", cls: "v-compact", name: "B — Compacto", desc: "tablero plegado, riel off, padding 4", stats: "~110 × 44", what: "compacto: sin tablero, header/tabs más bajos, riel off, padding 4", cols: "~110 cols" },
+  { id: "zen", cls: "v-zen", name: "C — Zen", desc: "chrome oculto, Grok casi fullscreen", stats: "~140 × 48", what: "zen: sin header, tabs fantasma, sin tablero ni riel. Esc para volver.", cols: "~140 cols" },
+];
+let i = 0;
+const desk = document.getElementById("desk");
+function apply() {
+  const v = V[i];
+  desk.className = "desk " + v.cls;
+  document.getElementById("vname").textContent = v.name;
+  document.getElementById("vdesc").textContent = v.desc;
+  document.getElementById("stats").textContent = v.stats;
+  document.getElementById("what").textContent = v.what;
+  document.querySelectorAll(".badge").forEach(b => { b.textContent = v.cols; });
+  const url = new URL(location.href);
+  url.searchParams.set("variant", v.id);
+  history.replaceState(null, "", url);
+}
+const q = new URLSearchParams(location.search).get("variant");
+const found = V.findIndex(v => v.id === q);
+if (found >= 0) i = found;
+document.getElementById("prev").onclick = () => { i = (i + V.length - 1) % V.length; apply(); };
+document.getElementById("next").onclick = () => { i = (i + 1) % V.length; apply(); };
+document.addEventListener("keydown", e => {
+  if (e.target.matches("input,textarea,[contenteditable]")) return;
+  if (e.key === "ArrowLeft") { i = (i + V.length - 1) % V.length; apply(); }
+  if (e.key === "ArrowRight") { i = (i + 1) % V.length; apply(); }
+});
+apply();
+</script>
+</body>
+</html>

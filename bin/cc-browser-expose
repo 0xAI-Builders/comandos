@@ -1,0 +1,187 @@
+#!/usr/bin/env python3
+"""Expose a local development port to the Mac browser over an owned SSH tunnel."""
+
+import argparse
+import fcntl
+import json
+import os
+from pathlib import Path
+import stat
+import subprocess
+import sys
+
+HOST = 'macmini'
+
+
+class ForwardError(Exception):
+    pass
+
+
+def port(value, minimum):
+    if not value.isascii() or not value.isdecimal() or not minimum <= int(value) <= 65535:
+        raise argparse.ArgumentTypeError('Port must be a decimal integer from %d to 65535' % minimum)
+    return int(value)
+
+
+def directory(create=False):
+    override = os.environ.get('CC_BROWSER_FORWARD_DIR')
+    runtime = os.environ.get('XDG_RUNTIME_DIR')
+    root = Path(override) if override else (Path(runtime) / 'cc-browser-forwards' if runtime else Path.home() / '.local/state/cc-browser-forwards')
+    if not root.is_absolute():
+        raise ForwardError('Forward state directory must be an absolute path')
+    if create:
+        root.mkdir(parents=True, exist_ok=True, mode=0o700)
+    try:
+        metadata = root.lstat()
+    except FileNotFoundError:
+        return root
+    if not stat.S_ISDIR(metadata.st_mode) or metadata.st_uid != os.getuid() or stat.S_IMODE(metadata.st_mode) & 0o077:
+        raise ForwardError('Forward state directory must be owned by you, private, and not a symlink')
+    return root
+
+
+def socket_path(root, remote):
+    path = root / ('%d.sock' % remote)
+    if len(os.fsencode(path)) >= 104:
+        raise ForwardError('SSH control path is too long; set CC_BROWSER_FORWARD_DIR to a shorter private directory')
+    if path.is_symlink():
+        raise ForwardError('Owned control socket must not be a symlink')
+    return path
+
+
+def read_mapping(root, remote):
+    path = root / ('%d.json' % remote)
+    try:
+        fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW)
+    except FileNotFoundError:
+        return None
+    with os.fdopen(fd) as stream:
+        metadata = os.fstat(stream.fileno())
+        if not stat.S_ISREG(metadata.st_mode) or metadata.st_uid != os.getuid() or stat.S_IMODE(metadata.st_mode) & 0o077:
+            raise ForwardError('Forward mapping must be a private regular file owned by you')
+        try:
+            mapping = json.load(stream)
+            valid = mapping == {'version': 1, 'host': HOST, 'remote_port': remote, 'local_port': mapping['local_port']} and type(mapping['local_port']) is int and 1 <= mapping['local_port'] <= 65535
+        except (ValueError, TypeError, KeyError):
+            valid = False
+        if not valid:
+            raise ForwardError('Invalid owned forward mapping')
+    return mapping
+
+
+def ssh(args):
+    try:
+        result = subprocess.run(['ssh', *args], stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
+                                stderr=subprocess.PIPE, timeout=15, text=True)
+        return result.returncode == 0
+    except (OSError, subprocess.TimeoutExpired):
+        return False
+
+
+def control(socket, operation):
+    return ssh(['-S', str(socket), '-o', 'BatchMode=yes', '-o', 'ConnectTimeout=8', '-O', operation, HOST])
+
+
+def start(root, local, remote):
+    socket = socket_path(root, remote)
+    mapping = read_mapping(root, remote)
+    if mapping:
+        if mapping['local_port'] != local:
+            raise ForwardError('Remote port already belongs to a different local port; stop that mapping first')
+        if control(socket, 'check'):
+            print('Already running: Mac http://127.0.0.1:%d -> local 127.0.0.1:%d' % (remote, local))
+            return
+        if socket.exists():
+            raise ForwardError('Owned SSH master is not responding; inspect or stop it before restarting')
+    elif socket.exists():
+        raise ForwardError('Control socket exists without an owned mapping; refusing to use it')
+    path = root / ('%d.json' % remote)
+    if mapping is None:
+        fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
+        with os.fdopen(fd, 'w') as stream:
+            json.dump({'version': 1, 'host': HOST, 'local_port': local, 'remote_port': remote}, stream)
+            stream.write('\n')
+            stream.flush()
+            os.fsync(stream.fileno())
+    args = ['-M', '-S', str(socket), '-fNT', '-o', 'ControlPersist=no', '-o', 'BatchMode=yes',
+            '-o', 'ExitOnForwardFailure=yes', '-o', 'ConnectTimeout=8',
+            '-R', '127.0.0.1:%d:127.0.0.1:%d' % (remote, local), HOST]
+    started = ssh(args)
+    if started and control(socket, 'check'):
+        print('Started: Mac http://127.0.0.1:%d -> local 127.0.0.1:%d' % (remote, local))
+        return
+    # A timed-out launch can still have created a master. Keep its ownership
+    # record unless cleanup succeeds or no control socket appeared.
+    if not socket.exists() or control(socket, 'exit'):
+        path.unlink(missing_ok=True)
+    raise ForwardError('SSH forward did not pass its master check; no ready tunnel confirmed')
+
+
+def stop(root, remote):
+    socket = socket_path(root, remote)
+    mapping = read_mapping(root, remote)
+    if mapping is None:
+        print('No owned forward on remote port %d' % remote)
+        return
+    if socket.exists() and not control(socket, 'exit'):
+        raise ForwardError('Owned SSH master did not stop; mapping retained for inspection')
+    (root / ('%d.json' % remote)).unlink()
+    print('Stopped owned forward on remote port %d' % remote)
+
+
+def status(root):
+    entries = sorted(root.glob('*.json')) if root.exists() else []
+    if not entries:
+        print('No forwards configured')
+        return
+    for entry in entries:
+        try:
+            remote = port(entry.stem, 1024)
+        except argparse.ArgumentTypeError:
+            continue
+        mapping = read_mapping(root, remote)
+        if mapping is None:
+            continue
+        state = 'running' if control(socket_path(root, remote), 'check') else 'not running'
+        print('%s: Mac 127.0.0.1:%d -> local 127.0.0.1:%d' % (state, remote, mapping['local_port']))
+
+
+def main(argv=None):
+    parser = argparse.ArgumentParser(description=__doc__)
+    commands = parser.add_subparsers(dest='action', required=True)
+    start_command = commands.add_parser('start')
+    start_command.add_argument('local_port', type=lambda value: port(value, 1))
+    start_command.add_argument('remote_port', type=lambda value: port(value, 1024), nargs='?')
+    stop_command = commands.add_parser('stop')
+    stop_command.add_argument('remote_port', type=lambda value: port(value, 1024))
+    commands.add_parser('status')
+    args = parser.parse_args(argv)
+    if args.action == 'start':
+        args.remote_port = args.remote_port if args.remote_port is not None else args.local_port
+        if args.remote_port < 1024:
+            parser.error('A local privileged port requires an explicit remote port from 1024 to 65535')
+    try:
+        root = directory(create=args.action == 'start')
+        if args.action == 'status':
+            status(root)
+            return 0
+        if args.action == 'stop' and not root.exists():
+            print('No owned forward on remote port %d' % args.remote_port)
+            return 0
+        fd = os.open(root / '.lock', os.O_RDWR | os.O_CREAT | os.O_NOFOLLOW, 0o600)
+        with os.fdopen(fd, 'r+') as lock:
+            fcntl.flock(lock, fcntl.LOCK_EX)
+            if args.action == 'start':
+                start(root, args.local_port, args.remote_port)
+            else:
+                stop(root, args.remote_port)
+        return 0
+    except ForwardError as error:
+        print(str(error), file=sys.stderr)
+    except OSError:
+        print('Cannot access private SSH forward state', file=sys.stderr)
+    return 1
+
+
+if __name__ == '__main__':
+    raise SystemExit(main())

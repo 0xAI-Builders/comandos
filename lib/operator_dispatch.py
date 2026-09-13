@@ -52,13 +52,17 @@ def _fail(msg: str) -> dict:
 class Dispatcher:
     def __init__(self, *, base_url: str, token: str, hooks_dir: str,
                  local_handlers: dict[str, Callable[[dict], dict]],
-                 http_post=None, http_get=None):
+                 http_post=None, http_get=None, receipt_root=None,
+                 default_session=None, default_pane=None):
         self.base_url = base_url.rstrip("/")
         self.token = token
         self.hooks_dir = hooks_dir
         self.local_handlers = local_handlers
         self._post = http_post or self._default_post
         self._get = http_get or self._default_get
+        self.receipt_root = receipt_root
+        self.default_session = default_session
+        self.default_pane = default_pane
 
     def _default_post(self, path, body):
         req = urllib.request.Request(self.base_url + path, data=json.dumps(body).encode(), method="POST",
@@ -76,6 +80,28 @@ class Dispatcher:
             return json.loads(r.read().decode("utf-8", "replace") or "{}")
 
     def run(self, name: str, args: dict | None) -> dict:
+        args = dict(args or {})
+        spec = cat.by_name(name)
+        if spec and self.default_session:
+            if "session" in spec.params and not args.get("session"):
+                args["session"] = self.default_session
+            if "pane" in spec.params and self.default_pane and not args.get("pane") and args.get("session", self.default_session) == self.default_session:
+                args["pane"] = self.default_pane
+        receipt_id = None
+        if self.receipt_root and spec and not spec.readonly:
+            import operator_receipts
+            receipt_id = operator_receipts.create(self.receipt_root, name)
+        result = self._execute(name, args)
+        if receipt_id:
+            status = "failed" if not result.get("ok") else "dispatched" if result.get("pending") or result.get("actions") or spec.target["kind"] == "app" else "confirmed"
+            data = result.get("data") or {}
+            reference = {k: data[k] for k in ("operationId", "operationKey") if isinstance(data, dict) and k in data}
+            operator_receipts.acknowledge(self.receipt_root, {"actionId": receipt_id, "status": status,
+                "detail": json.dumps({"session": args.get("session", self.default_session), "pane": args.get("pane"), **reference})})
+            result["receiptId"] = receipt_id
+        return result
+
+    def _execute(self, name: str, args: dict | None) -> dict:
         args = dict(args or {})
         spec = cat.by_name(name)
         if spec is None:
@@ -110,8 +136,13 @@ class Dispatcher:
         else:
             data = self._post(t["path"], substitute(t.get("body") or {}, args))
         err = data.get("error") if isinstance(data, dict) else None
-        reply = _summarize(data) if spec.readonly else (str(err) if err else "Hecho.")
-        return {"ok": not err, "reply": reply, "actions": [], "data": data}
+        if isinstance(data, dict) and data.get("ok") is False and not err:
+            err = data.get("message") or "La operación no se completó."
+        pending = bool(isinstance(data, dict) and
+                       (data.get("pending") or data.get("queued") or data.get("operationKey")))
+        reply = _summarize(data) if spec.readonly else (str(err) if err else
+                "Cambio solicitado; consulta su estado para confirmar el resultado." if pending else "Hecho.")
+        return {"ok": not err, "pending": pending and not bool(err), "reply": reply, "actions": [], "data": data}
 
     def _run_ui(self, spec, args):
         t = spec.target
@@ -122,7 +153,7 @@ class Dispatcher:
             action = {"type": "ui", "op": "call", "fn": t["fn"], "args": [v if v is not _MISSING else None for v in vals]}
         else:
             action = {"type": "ui", "op": "term", "term": {"type": t["type"], **{k: v for k, v in args.items() if k != "confirm"}}}
-        return {"ok": True, "reply": "Hecho en el tablero.", "actions": [action], "data": None}
+        return {"ok": True, "pending": True, "reply": "Acción enviada al tablero; falta confirmar su ejecución.", "actions": [action], "data": None}
 
     def _run_app(self, spec, args):
         path = os.path.join(self.hooks_dir, "app-command.json")
@@ -142,4 +173,7 @@ class Dispatcher:
         out.setdefault("reply", "Hecho.")
         out.setdefault("actions", [])
         out.setdefault("data", None)
+        if out.get("actions"):
+            out["pending"] = True
+            out["reply"] = "Acción enviada al tablero; falta confirmar su ejecución."
         return out

@@ -98,7 +98,7 @@ def test_remote_open_requests_open_background_tab():
     assert "on_tab_open_request" in SRC
     src = function_source("on_tab_open_request")
     assert "sess in tabs" in src          # no re-abre ni roba foco si ya existe
-    assert "set_current_page(cur)" in src  # abre en segundo plano
+    assert "set_current_page(nb.page_num(cur))" in src  # conserva la página aunque una favorita cambie los índices
 
 
 def test_remote_close_requests_skip_confirm():

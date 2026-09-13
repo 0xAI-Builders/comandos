@@ -25,6 +25,26 @@ def test_cc_dash_imports_usage_module():
     assert "import cc_usage" in SRC
 
 
+def test_operator_chat_endpoints_are_authenticated():
+    assert "import operator_chat" in SRC
+    api_get = SRC.split("API_GET = ", 1)[1].split("def do_GET", 1)[0]
+    assert '"/operator"' in api_get
+    assert 'self.path == "/operator/chat"' in SRC
+    assert 'self.path == "/operator/new"' in SRC
+    assert "operator_handle_chat" in SRC
+    assert "operator_send_back" in SRC
+    assert "import operator_tools" in SRC
+    assert "operator_agent_turn" in SRC
+    assert 'self.path == "/operator/model"' in SRC
+    assert "operator_agent_stream" in SRC
+    assert "comandos-operator" not in SRC
+    assert "claudeAiOauth" in SRC
+    assert "oauth-2025-04-20" in SRC
+    assert "operator_claude_token" in SRC
+    assert "_llm_poison" in SRC
+    assert "https://api.anthropic.com/v1/messages" in SRC
+
+
 def test_usage_state_endpoint_exists_and_is_authenticated():
     assert '"/usage/state"' in SRC
     api_get = SRC.split("API_GET = ", 1)[1].split("def do_GET", 1)[0]
@@ -67,11 +87,11 @@ def test_usage_capture_and_refresh_endpoints_exist():
 
 
 def test_cards_reconcile_harness_and_model_from_live_pane_and_confirmed_config():
-    assert '"agent": live_agent or d.get("agent") or "claude"' in SRC
+    assert "agents = {(info['session'], info['pane'])" in SRC
     assert "def reconcile_card_config" in SRC
     assert "claude_pane_model(pane)" in SRC
     assert "cc_usage.latest_session_config" in SRC
-    assert 'item["modelSource"] = "pane"' in SRC
+    assert 'item["modelSource"] = observed.get("source", "unconfirmed")' in SRC
     html = Path("dash/index.html").read_text()
     assert "harnessLabel" in html and "→ ${mdEsc(engineLabel(motor))}" in html
 
@@ -128,15 +148,16 @@ def test_motor_switch_state_survives_dashboard_restart():
     assert "MOTOR_RESULT_FILE" in SRC
     assert "MOTOR_RESULT = _motor_result_load()" in SRC
     resume = SRC.split("def motor_queue_resume", 1)[1].split("def _set_motor_result", 1)[0]
-    assert 'payload["key"] = opkey' in resume
-    assert 'payload["sess"] = payload.get("sess") or opkey.partition("|")[0]' in resume
-    assert 'motor_stage(opkey, "recuperando cambio después del reinicio"' in resume
+    assert "recover_abandoned" in resume
+    assert "resume_restart_payload(payload)" not in resume
+    assert "sin snapshot verificable" in resume
 
 
-def test_confirmed_switch_beats_stale_launch_model_in_cards():
-    reconcile = SRC.split("def reconcile_card_config",1)[1].split("def read_states",1)[0]
-    assert reconcile.index('config = cc_usage.latest_session_config') < reconcile.index('elif launch_model:')
-    assert 'item["modelSource"] = "confirmed"' in reconcile
+def test_confirmed_card_state_is_separate_from_historical_config():
+    reconcile = SRC.split("def reconcile_card_config", 1)[1].split("def read_states", 1)[0]
+    assert 'item["observedConfig"] = observed' in reconcile
+    assert 'item["lastConfirmedConfig"] = config or None' in reconcile
+    assert 'item["model"], item["effort"] = observed.get' in reconcile
 
 
 def test_model_status_uses_operation_specific_fast_polling():
@@ -286,7 +307,7 @@ def test_defensive_wizard_never_creates_shell_from_unavailable_route():
     assert '"routeId" in data and not data.get("routeId")' in SRC
     assert '"code": "route_unavailable"' in SRC
     html = Path("dash/index.html").read_text()
-    assert 'go.disabled=!shell&&!NS.routeId' in html
+    assert 'go.disabled=!!profileError||(!shell&&!NS.routeId)' in html
     assert 'class="sw" id="ns-danger" role="switch" aria-checked="false"' in html
 
 
@@ -460,11 +481,9 @@ def test_active_tab_endpoint_enriches_session_with_active_tmux_pane():
     assert 'active["pane"] = pane_a' in SRC
 
 
-def test_state_emits_one_control_card_per_live_claude_split():
-    assert "def _claude_all_panes" in SRC
-    assert '"pane": pane_l' in SRC
-    assert '"split": True' in SRC
-    assert "by_sess_count" in SRC
+def test_state_emits_one_control_card_per_live_split_of_each_agent(tmp_path, monkeypatch):
+    from test_live_pane_inventory import test_inventory_emits_all_mixed_splits_and_shells_once
+    test_inventory_emits_all_mixed_splits_and_shells_once(tmp_path, monkeypatch)
 
 
 def test_providers_endpoint_is_security_gated_and_uses_sanitized_registry():
@@ -597,7 +616,7 @@ def test_harness_launch_types_command_without_bracketed_paste():
     """zsh imprime ^[[200~ si pegamos el launch con paste-buffer -p. El switch
     tiene que teclear el comando (send-keys -l) y Enter, no pegar un snippet."""
     assert "def _send_shell_line" in SRC
-    launch = SRC.split("lanzando {to} en el mismo pane", 1)[1][:1800]
+    launch = SRC.split("    def apply(self, plan, snapshot):", 1)[1].split("    def _verify", 1)[0]
     assert "_send_shell_line" in launch or "_paste_shell_command" in launch
     send = SRC.split("def _send_shell_line", 1)[1].split("\ndef ", 1)[0]
     assert '"-l"' in send and "Enter" in send
@@ -610,8 +629,8 @@ def test_harness_launch_types_command_without_bracketed_paste():
 def test_harness_switch_does_not_auto_submit_handoff_as_a_turn():
     """El handoff se ESCRIBE al disco. NO se pega 'Lee .comandos-handoff.md' como
     primer turno: eso hace que Grok/ACP pidan permisos y trabajen solos."""
-    apply = SRC.split("def harness_switch_apply", 1)[1].split("def proxy_set_enabled", 1)[0]
-    assert "HANDOFF_FILE" in apply
+    apply = SRC.split("class SessionConfiguration", 1)[1].split("def session_configure", 1)[0]
+    assert "session-handoffs" in apply
     assert "Lee ./" not in apply
     assert "_paste_shell_command(pane, prompt)" not in apply
 
@@ -632,12 +651,11 @@ def test_harness_handoff_switch_exists_and_is_guarded():
     assert "def harness_switch_apply" in SRC
     assert "def _harness_launch_cmd" in SRC
     # espera idle (no cambiar a mitad de un tool call) y captura ANTES de cerrar
-    assert '"wait_idle"' in SRC and '"capture"' in SRC
-    # el handoff es un archivo efímero en el cwd
-    assert 'HANDOFF_FILE = ".comandos-handoff.md"' in SRC
-    # rechaza harness inválido y el mismo harness
+    assert "def wait_idle(self)" in SRC and "tmux_snapshot.capture_session" in SRC
+    # Each operation has a distinct handoff and pinned snapshot.
+    assert "self.data['requestId'] + '.md'" in SRC
     assert "harness desconocido" in SRC
-    assert "el pane ya corre" in SRC
+    assert "self.plan['unchanged']" in SRC
     mod = load_dash_module()
     # comandos de lanzamiento por harness (misma forma que /session-new)
     assert "claude" in mod._harness_launch_cmd("claude", "claude-fable-5[1m]", "high", "main")
@@ -662,7 +680,8 @@ def test_returning_to_claude_resumes_saved_sid():
     assert "--resume" in cmd and "sess-keep-me" in cmd
     assert "def pane_resume_set" in SRC
     assert "def pane_resume_get" in SRC
-    assert 'payload.get("previousSid")' in SRC or "previousSid" in SRC
+    assert "saved_origin(_identity_key(self.identity), to)" in SRC
+    assert "expectedSid" in SRC
     assert "capture_handoff(" in SRC and "sid=" in SRC.split("def capture_handoff", 1)[1][:800]
 
 
@@ -696,21 +715,13 @@ def test_native_agy_and_opencode_model_switch_uses_slash_then_records():
     assert 'provider == "opencode"' in SRC
 
 
-def test_harness_switch_from_plain_shell_pane_is_allowed():
-    """Una terminal normal (zsh/bash, sin CLI de IA) debe poder ARRANCAR un
-    harness en el mismo pane — el mismo flujo que el + de nueva sesión, sin
-    exigir un harness detectado. 'no detecto el harness' bloqueaba esto."""
-    body = SRC.split('if self.path == "/harness/switch":', 1)[1].split("if self.path ==", 1)[0]
-    assert 'frm = str(info.get("agent") or state_agent(sess) or "")' not in body or \
-           'frm = str(info.get("agent") or state_agent(sess) or "shell")' in body
-    assert 'from_harness in ("claude", "acp", "shell")' in SRC or \
-           'from_harness in {"claude", "acp", "shell"}' in SRC or \
-           'frm in ("", "shell")' in SRC
-    assert "no detecto el harness actual del pane" not in body or \
-           'frm = str(info.get("agent") or state_agent(sess) or "shell")' in body
-    assert 'toHarness' in body
-    # shell no espera idle de un CLI inexistente
-    assert "shell" in body
+def test_harness_switch_from_plain_shell_pane_is_allowed(monkeypatch):
+    dash = load_dash_module()
+    monkeypatch.setattr(dash, "agent_info_for_pane", lambda pane: None)
+    adapter = dash.SessionConfiguration({"session": "term-1", "pane": "%9"}, {"pane_current_command": "bash"})
+    assert adapter.frm == "shell"
+    monkeypatch.setattr(dash, "harness_pane_busy", lambda *args: (_ for _ in ()).throw(AssertionError("shell must not wait on a CLI")))
+    adapter.wait_idle()
 
 
 def test_user_quota_accepts_groq_as_measured_provider(tmp_path, monkeypatch):

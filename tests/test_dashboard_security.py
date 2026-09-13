@@ -1,11 +1,49 @@
 #!/usr/bin/env python3
 import importlib.machinery
 import importlib.util
+import http.client
+import http.server
 import sys
+import threading
 from email.message import Message
 from pathlib import Path
 
 import pytest
+
+
+@pytest.mark.parametrize("endpoint", ["/terminal-history", "/terminal-panes"])
+@pytest.mark.parametrize("headers,expected", [
+    ({"X-Forwarded-For": "203.0.113.8", "X-Comandos-Token": "wrong"}, 401),
+    ({"Origin": "https://invalid.example"}, 403),
+    ({"Content-Length": "20000001"}, 413),
+    ({"Content-Length": "invalid"}, 400),
+    ({"Content-Length": "-1"}, 400),
+])
+def test_rejected_post_cannot_corrupt_following_asset_request(
+        dash, monkeypatch, tmp_path, headers, expected, endpoint):
+    monkeypatch.setattr(dash, "DASH", str(tmp_path))
+    monkeypatch.setattr(dash, "access_token", lambda: "correct-token")
+    (tmp_path / "terminal.css").write_text(".xterm { color: white; }")
+    server = http.server.ThreadingHTTPServer(("127.0.0.1", 0), dash.Handler)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    client = http.client.HTTPConnection(*server.server_address, timeout=2)
+    try:
+        client.request("POST", endpoint, body="{}", headers=headers)
+        response = client.getresponse()
+        assert response.status == expected
+        response.read()
+        # Unread POST bytes used to become the next method: '{}GET' -> 501.
+        client.request("GET", "/terminal.css")
+        asset = client.getresponse()
+        assert asset.status == 200
+        assert asset.read() == b".xterm { color: white; }"
+        assert response.getheader("Connection") == "close"
+    finally:
+        client.close()
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=2)
 
 
 @pytest.fixture(scope="module")

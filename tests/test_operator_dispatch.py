@@ -72,3 +72,20 @@ def test_unknown_tool_and_missing_required(tmp_path):
 def test_every_local_intent_in_catalog_is_declared():
     intents = {t.target["intent"] for t in cat.CATALOG if t.target["kind"] == "local"}
     assert intents <= set(od.LOCAL_INTENTS), intents - set(od.LOCAL_INTENTS)
+
+
+def test_api_failure_without_error_is_not_success(tmp_path):
+    d = od.Dispatcher(base_url="http://unused", token="", hooks_dir=str(tmp_path),
+                      local_handlers={}, http_post=lambda *args: {"ok": False})
+    result = d.run("model_switch", {"session": "test"})
+    assert result["ok"] is False
+    assert result["reply"] != "Hecho."
+
+
+def test_queued_action_is_not_reported_as_finished(tmp_path):
+    d = od.Dispatcher(base_url="http://unused", token="", hooks_dir=str(tmp_path),
+                      local_handlers={}, http_post=lambda *args: {"ok": True, "operationKey": "test|%1"})
+    assert d.run("model_switch", {"session": "test"})["pending"] is True
+    result = d.run("open_pomodoro", {})
+    assert result["pending"] is True
+    assert "falta confirmar" in result["reply"]

@@ -1,0 +1,75 @@
+#!/usr/bin/env python3
+"""Save split layouts now; optionally bridge an already-running older GTK app."""
+import argparse
+import fcntl
+import json
+import os
+from pathlib import Path
+import subprocess
+import sys
+import time
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'lib'))
+from pane_snapshot import PaneInspector
+from tmux_snapshot import capture_session, read_snapshot, write_snapshot
+
+
+def tmux(*args):
+    return subprocess.run(['tmux', *args], capture_output=True, text=True, timeout=5)
+
+
+def process_start(pid):
+    try:
+        return Path(f'/proc/{pid}/stat').read_text().rsplit(')', 1)[1].split()[19]
+    except (OSError, IndexError):
+        return None
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--watch-pid', type=int, help='capture every 5 seconds only while this existing app lives')
+    parser.add_argument('--output', type=Path, default=Path.home()/'.claude/hooks/app-sessions-v2.json')
+    args = parser.parse_args()
+    start = process_start(args.watch_pid) if args.watch_pid else None
+    if args.watch_pid and start is None:
+        return 1
+    lockpath = args.output.with_name(args.output.name + '.bridge.lock')
+    lockpath.parent.mkdir(parents=True, exist_ok=True)
+    with lockpath.open('w') as lock:
+        try:
+            fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError:
+            return 0
+        while True:
+            if args.watch_pid and process_start(args.watch_pid) != start:
+                return 0
+            try:
+                labels = json.loads((Path.home()/'.claude/hooks/app-tabs.json').read_text())
+                keys = ['local'] + [k for k in labels if k.startswith('term-')]
+                saved = read_snapshot(args.output)['sessions']
+                inspector = PaneInspector()
+                for key in keys:
+                    try:
+                        captured = capture_session(tmux, key, inspector)
+                        if any(p.get('agent') in {'claude', 'codex', 'grok'} and not p.get('resume_id')
+                               for w in captured['windows'] for p in w['panes']):
+                            raise RuntimeError('agent identity not ready')
+                        saved[key] = captured
+                    except Exception as exc:
+                        print(f'{key}: retained previous snapshot: {exc}', file=sys.stderr)
+                # A replacement app now owns persistence; never race its startup.
+                if args.watch_pid and process_start(args.watch_pid) != start:
+                    return 0
+                write_snapshot(args.output, saved)
+            except Exception as exc:
+                print(f'snapshot failed: {exc}', file=sys.stderr)
+                if not args.watch_pid:
+                    return 1
+            if not args.watch_pid:
+                print(f'Saved {len(saved)} sessions to {args.output}')
+                return 0
+            time.sleep(5)
+
+
+if __name__ == '__main__':
+    raise SystemExit(main())

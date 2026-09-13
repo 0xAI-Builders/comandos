@@ -404,6 +404,7 @@ def test_usage_route_reconciles_only_live_panes_not_historical_state():
 def test_cached_models_survive_live_cache_hits_but_history_clears(
         tmp_path, monkeypatch):
     dash = load_dash_module()
+    monkeypatch.setattr(dash, "read_states_cached", lambda: [])
     dash.USAGE_DB = str(tmp_path / "usage.sqlite")
     dash.LOCAL_USAGE_REFRESH_AT = 123
     dash._usage_state_cache = {"key": None, "state": None}
@@ -452,6 +453,21 @@ def test_cached_models_survive_live_cache_hits_but_history_clears(
     historical_state = dash.cached_usage_state([], {}, [])
     assert historical_state["panes"][0]["model"] == "stale-history"
     assert dash._pane_models_for_live_state([], historical_state) == []
+
+
+def test_observed_pane_model_overrides_cached_turn_without_mutating_cache(monkeypatch):
+    dash = load_dash_module()
+    monkeypatch.setattr(dash, "read_states_cached", lambda: [{
+        "session": "dev", "pane": "%1", "agent": "codex",
+        "model": "observed-model", "effort": "ultra", "alive": True,
+    }])
+    pane = {"tmux_session": "dev", "tmux_pane": "%1", "agent": "codex",
+            "model": "cached-model"}
+    state = {"panes": [dict(pane)]}
+    actual = dash._pane_models_for_live_state([pane], state)
+    assert actual[0]["model"] == "observed-model"
+    assert actual[0]["reasoning_effort"] == "ultra"
+    assert state["panes"][0]["model"] == "cached-model"
 
 
 def test_eight_expired_state_requests_share_one_result():

@@ -80,9 +80,15 @@ def T(name, group, description, params=None, required=(), target=None, destructi
     return ToolSpec(name, group, description, params, required, target or {}, destructive, readonly)
 
 
-EFFORT = ("string", "Esfuerzo", ("low", "medium", "high", "xhigh", "max"))
+EFFORT = ("string", "Esfuerzo", ("low", "medium", "high", "xhigh", "max", "ultra"))
 
 CATALOG: list[ToolSpec] = [
+    T("configure_session", "models", "Solicita un único cambio recuperable de CLI, motor, modelo, esfuerzo y cuentas en el panel exacto. Consulta model_switch_status para confirmar.", P(session="Sesión", pane=PANE, toHarness="CLI destino", motor="Motor destino", model="Modelo", effort=EFFORT, harnessAccount="Cuenta del CLI", motorAccount="Cuenta del motor", interrupt=("boolean", "Interrumpir el turno"), requestId="Identificador único para reintentos"), ("session", "pane", "toHarness"), api("POST", "/session/configure", {"session":"$session", "pane":"$pane", "toHarness":"$toHarness", "motor":"$motor", "model":"$model", "effort":"$effort", "harnessAccount":"$harnessAccount", "motorAccount":"$motorAccount", "interrupt":"$interrupt", "requestId":"$requestId"})),
+    T("list_session_profiles", "sessions", "Lista perfiles de inicio y capacidades de skills/MCPs para el CLI y proyecto.", P(cwd="Carpeta", harness="CLI", account="Cuenta"), (), api("GET", "/session-profiles", query={"cwd":"$cwd", "harness":"$harness", "account":"$account"}), readonly=True),
+    T("extension_usage", "usage", "Uso observado de skills y MCPs; no atribuye tokens o costes cuando faltan datos.", P(session="Sesión opcional", pane=PANE, days=("integer", "Días, máximo 90")), (), api("GET", "/extension-usage", query={"session":"$session", "pane":"$pane", "days":"$days"}), readonly=True),
+    T("show_chat", "chat", "Muestra u oculta el chat conservando su borrador e historial.", P(visible=("boolean", "Mostrar chat")), ("visible",), ui_call("setChatVisible", "$visible")),
+    T("open_session_profiles", "sessions", "Abre el editor de perfiles de inicio; las preferencias se aplican a sesiones nuevas.", target=ui_call("openSessionProfiles")),
+    T("operator_action_results", "chat", "Consulta el registro durable de acciones del chat, incluidas acciones enviadas y fallos.", target=api("GET", "/operator/action-results"), readonly=True),
     # ───────────── sessions / tabs ─────────────
     T("list_tabs", "sessions", "Lista las pestañas abiertas (mismas que el escritorio).", target=api("GET", "/tabs"), readonly=True),
     T("list_sessions", "sessions", "Estado de todas las sesiones/agentes: status, proyecto, último mensaje.", target=api("GET", "/state"), readonly=True),

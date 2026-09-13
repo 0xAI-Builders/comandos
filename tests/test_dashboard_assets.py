@@ -124,3 +124,25 @@ def test_explicit_override_fails_clearly_for_unusable_directory(tmp_path):
             assert "COMANDOS_DASH_DIR" in result.stderr
     finally:
         unreadable.chmod(0o700)
+
+
+def test_installer_serves_every_local_dashboard_script_and_stylesheet(tmp_path):
+    import re
+    home = tmp_path / "home"
+    hooks = home / ".claude" / "hooks"
+    (hooks / "dash").mkdir(parents=True)
+    installer = (ROOT / "install.sh").read_text()
+    block = installer.split("# Hooks + dashboard\n", 1)[1].split(
+        '[ -f "$HOOKS/cc-notify.conf" ]', 1)[0]
+    bindir = home / "bin"
+    bindir.mkdir()
+    subprocess.run(["bash", "-euc", block], check=True, env={
+        **os.environ, "REPO": str(ROOT), "HOOKS": str(hooks), "BIN": str(bindir)})
+    html = (ROOT / "dash" / "index.html").read_text()
+    assets = re.findall(r'(?:src|href)="(/[^"?]+\.(?:js|css)(?:\?[^" ]+)?)"', html)
+    assert any(asset.split("?", 1)[0] == "/workspace.js" for asset in assets)
+    with running_dash(home) as base_url:
+        for asset in assets:
+            with urllib.request.urlopen(base_url + asset, timeout=5) as response:
+                assert response.status == 200
+                assert response.read()

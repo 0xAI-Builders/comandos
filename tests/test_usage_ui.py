@@ -175,6 +175,20 @@ def test_header_has_no_search_nor_open_project():
     assert 'id="btn-newsess"' in sessions_label.group(0)
 
 
+def test_operator_chat_dock_lives_below_recent_activity():
+    assert 'id="op-chat"' in HTML
+    assert 'id="tl-toggle"' in HTML
+    assert HTML.index('id="tl-wrap"') < HTML.index('id="op-chat"')
+    assert 'Dile a ComandOS' in HTML
+    assert 'id="op-model"' in HTML
+    assert "op-compose" in HTML
+    assert 'opStreamXhr("/operator/chat/stream"' in HTML
+    assert "nsOpen()" in HTML
+    assert "Elegí un snippet" not in HTML
+    assert "creá uno nuevo" not in HTML
+    assert "Reabrí las existentes" not in HTML
+
+
 def test_recent_closed_sessions_are_recoverable():
     assert 'id="recent-wrap"' in HTML
     assert 'api("/tab-history")' in HTML

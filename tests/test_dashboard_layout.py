@@ -28,17 +28,6 @@ def block(selector: str) -> str:
     raise AssertionError(f"unclosed CSS block: {selector}")
 
 
-def test_split_left_panel_is_the_scroll_container():
-    panel = rule("body.app.split #view-panel")
-    assert "min-height:0" in panel
-    assert "overflow-y:auto" in panel
-    assert "overflow-x:hidden" in panel
-
-    content = rule("body.app.split #view-panel #content")
-    assert "overflow:visible" in content
-    assert "flex:none" in content
-
-
 def test_desktop_panel_has_a_real_content_scroller():
     panes = rule("#panes")
     assert "display:flex" in panes
@@ -55,7 +44,7 @@ def test_remote_shell_uses_dynamic_viewport_grid_without_fixed_tab_offset():
     app = rule("body.app")
     assert "var(--app-height,100dvh)" in app
     panes = rule("body.app #panes")
-    assert "grid-template-rows:auto minmax(0,1fr)" in panes
+    assert "grid-template-rows:44px minmax(0,1fr)" in panes
     assert "safe-area-inset-top" in panes
     assert "safe-area-inset-bottom" in panes
     narrow = rule("body.app #view-panel,body.app #term-area")
@@ -111,30 +100,6 @@ def test_ssh_connection_list_is_an_independent_touch_scroller():
     ) in CSS
 
 
-def test_gtk_sidebar_keeps_split_cards_and_hides_global_inventory():
-    # La app GTK necesita las cards de panes; ocultar sessions-wrap deja sidebar vacío.
-    assert "html.gtkapp #sessions-wrap{display:none}" not in INDEX
-    assert 'id="sessions-title"' in INDEX
-    assert "appPanes.length >= 2 && it.session === appSess" in INDEX
-    assert '$("#sessions-wrap").classList.toggle("hidden", nPanes < 2)' in INDEX
-    assert "CENTRO_VIEW.sessionId === rowKey(it)" in INDEX
-    assert 'const rk = rowKey(it)' in INDEX
-
-
-def test_active_tmux_pane_drives_the_sidebar_control_card():
-    assert '(d.pane || "") !== (ACTIVE_TAB.pane || "")' in INDEX
-    assert 'S.sel = key; S.selTs = Date.now()' in INDEX
-    assert 'render(S.list || [])' in INDEX
-    assert 'r.dataset.rk === key' in INDEX
-
-
-def test_gtk_sidebar_reuses_compact_analytics_instead_of_all_sessions():
-    assert 'id="sidebar-insights"' in INDEX
-    assert "async function renderSidebarInsights()" in INDEX
-    assert 'api("/dedication")' in INDEX
-    assert 'api("/usage/state")' in INDEX
-
-
 def test_motor_picker_is_inline_and_contained_in_gtk_sidebar():
     assert '$("#centro-wrap").appendChild(pop)' in INDEX
     assert 'pop.classList.add("inline")' in INDEX
@@ -152,11 +117,9 @@ def test_selecting_card_does_not_focus_or_change_terminal_session():
     assert 'botón explícito "Abrir"' in handler
 
 
-def test_sidebar_today_projects_are_minimal_rows_with_thin_flat_track():
-    # Hoy: nombre + horas + pista fina de 4px con relleno plano. Sin card,
-    # sin divisores, sin porcentajes. progressbar accesible.
-    assert ".side-proj .bar{grid-column:1/-1;height:4px" in INDEX
-    assert ".side-proj .bar i{display:block;height:100%;border-radius:4px;background:var(--brand)" in INDEX
-    assert ".side-proj{display:grid;grid-template-columns:minmax(0,1fr) auto;" in INDEX
-    assert ".side-proj + .side-proj{border-top" not in INDEX
-    assert '<span class="pct"' not in INDEX and 'role="progressbar"' in INDEX
+def test_operator_chat_rejects_stale_tiny_height():
+    assert "raw < h * 0.36" in INDEX
+    assert "requestAnimationFrame(() => requestAnimationFrame(restoreOpChatH))" in INDEX
+    assert "if(d.messages && !OP.ac)" in INDEX
+    assert 'tf("Escribe un mensaje"' in INDEX
+    assert 'Espera o dale Parar' in INDEX

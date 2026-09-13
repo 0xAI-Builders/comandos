@@ -4,6 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content">
 <title>ComandOS · terminal</title>
+<link rel="icon" href="../icon-192.png">
 <link rel="stylesheet" href="../assets/xterm/xterm.css">
 <!-- Cargamos la fuente bundleada por @font-face para que WebKit la use aun si
      fontconfig del sistema no la conoce. -->
@@ -35,7 +36,7 @@
   }
   html, body { margin: 0; padding: 0; width: 100%; max-width: 100%; height: 100%; background:var(--term-bg); color:var(--term-text); overflow: hidden; }
   #term-shell { width: 100%; max-width: 100%; min-width: 0; height: 100%; display: grid;
-    grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 1fr) auto;
+    grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 1fr) auto auto; position:relative;
     overflow: hidden; background:var(--term-bg); }
   #term {
     width: 100%; max-width: 100%;
@@ -52,7 +53,28 @@
     border: 1px solid var(--term-line2); border-radius: 4px; background:var(--term-panel2); color:var(--term-text);
     font: 700 12px 'JetBrainsMono Nerd Font Mono', monospace; }
   #term-toolbar button.on { background:var(--term-brand); border-color:var(--term-brand); color:var(--term-bg); }
+  [hidden] { display:none !important; }
   #term-toolbar button:disabled { opacity: .55; }
+  #selection-toolbar { grid-row:2 / 4; padding:6px; border-top:1px solid var(--term-line2); background:var(--term-panel); }
+  .selection-row { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:6px; }
+  .selection-row + .selection-row { margin-top:6px; }
+  #selection-toolbar button,#selection-edge { min-width:0; min-height:44px; border:1px solid var(--term-line2);
+    border-radius:4px; background:var(--term-panel2); color:var(--term-text); font:600 14px sans-serif; touch-action:manipulation; }
+  #selection-toolbar button:disabled { opacity:.5; }
+  #pane-dialog { box-sizing:border-box; width:min(460px,calc(100vw - 20px)); max-height:80dvh; overflow:auto;
+    border:1px solid var(--term-line2); border-radius:10px; padding:14px; color:var(--term-text); background:var(--term-panel); }
+  #pane-dialog::backdrop { background:#0009; }
+  #pane-dialog h2 { margin:0 0 10px; font:600 18px sans-serif; }
+  #pane-dialog button { min-height:44px; border:1px solid var(--term-line2); border-radius:4px;
+    padding:8px 12px; background:var(--term-panel2); color:var(--term-text); font:14px sans-serif; touch-action:manipulation; }
+  #pane-dialog button:disabled { opacity:.5; }
+  #pane-list { display:grid; gap:8px; margin:10px 0; }
+  .pane-option { display:flex; gap:8px; min-width:0; }
+  .pane-option > button:first-child { flex:1; min-width:0; overflow-wrap:anywhere; text-align:left; }
+  .pane-option [aria-pressed="true"] { border-color:var(--term-brand)!important; }
+  #pane-dialog .danger { color:#ff9b9b; border-color:#a64c55; }
+  #pane-dialog p { font:14px/1.4 sans-serif; }
+  #pane-dialog footer { display:flex; gap:8px; justify-content:flex-end; }
   #term-toolbar svg { width: 20px; height: 20px; fill: none; stroke: currentColor;
     stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; vertical-align: middle; }
   #paste-dialog { width: min(420px, calc(100vw - 32px)); color:var(--term-text); background:var(--term-panel);
@@ -65,6 +87,30 @@
   #paste-dialog button { background:var(--term-panel2); border:1px solid var(--term-line2); color:var(--term-text);
     border-radius:4px; padding:6px 10px; font:inherit; }
   #paste-dialog button:hover { border-color:var(--term-brand); }
+  #mobile-compose { display:flex; gap:6px; padding:6px; border-top:1px solid var(--term-line2); background:var(--term-panel); min-width:0; }
+  #mobile-draft { flex:1; min-width:0; resize:none; max-height:25dvh; box-sizing:border-box; padding:8px;
+    border:1px solid var(--term-line2); border-radius:4px; background:var(--term-bg); color:var(--term-text);
+    font:16px/1.35 monospace; touch-action:pan-y; }
+  #mobile-compose button, #terminal-history button, #history-pane { min-height:44px; border:1px solid var(--term-line2);
+    border-radius:4px; color:var(--term-text); background:var(--term-panel2); font:inherit; padding:6px 10px; }
+  #mobile-compose button:disabled { opacity:.5; }
+  #mobile-compose button { min-width:44px; font:600 12px/1.2 sans-serif; }
+  #terminal-history { position:absolute; inset:0 0 112px; z-index:5; display:flex; flex-direction:column;
+    min-height:0; background:var(--term-bg); padding:8px; box-sizing:border-box; }
+  #history-controls { display:flex; flex-wrap:wrap; gap:6px; align-items:center; flex:none; font:13px sans-serif; }
+  #history-pane { flex:1; min-width:90px; max-width:100%; }
+  #history-status { font:12px/1.3 sans-serif; color:var(--term-dim); margin:6px 0; flex:none; }
+  #history-text { margin:0; padding:10px; flex:1; min-height:0; overflow:auto; white-space:pre;
+    overflow-wrap:normal; width:100%; box-sizing:border-box; resize:none; border:1px solid var(--term-line2);
+    border-radius:4px; color:var(--term-text); background:var(--term-bg); font:16px/1.45 monospace; user-select:text; -webkit-user-select:text;
+    touch-action:manipulation; -webkit-touch-callout:default; overscroll-behavior:contain; -webkit-overflow-scrolling:touch; }
+  #history-text::selection { background:var(--term-brand); color:var(--term-bg); }
+  #term-toolbar button,#history-controls button { touch-action:manipulation; }
+  @media(pointer:coarse){
+    /* Editable controls below 16px trigger automatic focus zoom on iOS. */
+    #history-pane,#selection-edge,#paste-text,.xterm .xterm-helper-textarea { font-size:16px!important; }
+    #pane-dialog { margin:auto auto max(10px,env(safe-area-inset-bottom)); }
+  }
   #err {
     position: absolute; inset: 0; display: none;
     color:var(--term-brand); font-family: 'JetBrainsMono Nerd Font Mono', monospace;
@@ -89,15 +135,51 @@
   <div id="term"></div>
   <div id="term-toolbar" role="toolbar" aria-label="Controles de terminal" hidden>
     <button type="button" data-action="mode" aria-pressed="false">Seleccionar</button>
+    <button type="button" data-action="panes">Paneles</button>
+    <button type="button" data-key="backspace" title="Borrar un carácter en la terminal (Backspace)" aria-label="Borrar un carácter en la terminal">⌫</button>
     <button type="button" data-key="escape">Esc</button>
+    <button type="button" data-action="history" aria-pressed="false">Historial</button>
+    <button type="button" data-action="copy">Copiar</button>
+    <button type="button" data-action="paste">Pegar</button>
+    <button type="button" data-action="keyboard" aria-pressed="false" title="Alternar borrador móvil y teclado directo">Teclado directo</button>
     <button type="button" data-action="ctrl" aria-pressed="false">Ctrl</button>
     <button type="button" data-key="tab">Tab</button>
     <button type="button" data-key="left" aria-label="Izquierda" title="Izquierda"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="m15 18-6-6 6-6"/></svg></button>
     <button type="button" data-key="up" aria-label="Arriba" title="Arriba"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="m18 15-6-6-6 6"/></svg></button>
     <button type="button" data-key="down" aria-label="Abajo" title="Abajo"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></svg></button>
     <button type="button" data-key="right" aria-label="Derecha" title="Derecha"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="m9 18 6-6-6-6"/></svg></button>
-    <button type="button" data-action="paste" aria-label="Pegar" title="Pegar"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M15 4h2a2 2 0 0 1 2 2v14H5V6a2 2 0 0 1 2-2h2"/><rect width="6" height="4" x="9" y="2" rx="1"/><path d="m9 14 2 2 4-4"/></svg></button>
+
   </div>
+  <form id="mobile-compose" hidden aria-label="Escribir en la terminal">
+    <textarea id="mobile-draft" rows="2" aria-label="Borrador para la terminal" placeholder="Escribe aquí…" autocapitalize="off" spellcheck="false"></textarea>
+    <button type="button" id="draft-insert" title="Insertar texto sin Enter">Insertar</button>
+    <button type="submit" id="draft-send" title="Enviar texto y Enter">Enviar ↵</button>
+  </form>
+  <div id="selection-toolbar" role="toolbar" aria-label="Ajustar selección de texto" hidden>
+    <div class="selection-row">
+      <button type="button" id="selection-close">Volver</button>
+      <button type="button" id="selection-copy">Copiar</button>
+      <button type="button" id="selection-all">Todo</button>
+      <select id="selection-edge" aria-label="Extremo de la selección que ajustan las flechas">
+        <option value="start">Inicio</option><option value="end" selected>Fin</option>
+      </select>
+    </div>
+    <div class="selection-row">
+      <button type="button" data-selection-key="left" aria-label="Mover selección un carácter a la izquierda">←</button>
+      <button type="button" data-selection-key="up" aria-label="Mover selección una línea arriba">↑</button>
+      <button type="button" data-selection-key="down" aria-label="Mover selección una línea abajo">↓</button>
+      <button type="button" data-selection-key="right" aria-label="Mover selección un carácter a la derecha">→</button>
+    </div>
+  </div>
+  <section id="terminal-history" hidden aria-label="Historial seleccionable">
+    <div id="history-controls">
+      <select id="history-pane" aria-label="Panel del historial"></select>
+      <button type="button" id="history-refresh">Actualizar</button>
+      <button type="button" id="history-bottom">Final</button>
+    </div>
+    <p id="history-status" role="status"></p>
+    <textarea id="history-text" readonly wrap="off" inputmode="none" spellcheck="false" aria-label="Texto del panel. Selecciona con el dedo o ajusta Inicio y Fin con las flechas de abajo."></textarea>
+  </section>
 </div>
 <div id="err"></div>
 <div id="dbg">iniciando…</div>
@@ -106,6 +188,17 @@
     <textarea id="paste-text" aria-label="Texto para pegar"></textarea>
     <div><button value="cancel">Cancelar</button><button id="paste-submit" value="default">Pegar</button></div>
   </form>
+</dialog>
+<dialog id="pane-dialog" aria-labelledby="pane-dialog-title">
+  <h2 id="pane-dialog-title">Paneles de esta sesión</h2>
+  <p id="pane-status" role="status"></p>
+  <div id="pane-list"></div>
+  <div id="pane-confirm" hidden>
+    <p id="pane-confirm-label"></p>
+    <p>Se cerrará el proceso de este panel.</p>
+    <footer><button type="button" id="pane-cancel">Cancelar</button><button type="button" id="pane-close-confirm" class="danger">Cerrar split</button></footer>
+  </div>
+  <footer><button type="button" id="pane-dismiss">Volver</button></footer>
 </dialog>
 
 <script src="../assets/xterm/xterm.js"></script>
@@ -238,7 +331,8 @@
   // tactil el overlay redibuja carisimo y hace lento el resize de panes.
   const IS_TOUCH = ('ontouchstart' in window) || navigator.maxTouchPoints > 0;
   const toolbar = document.getElementById('term-toolbar');
-  toolbar.hidden = !IS_TOUCH;
+  const HAS_REMOTE_CONTROLS = IS_TOUCH || (location.protocol !== 'file:' && !!arg);
+  toolbar.hidden = !HAS_REMOTE_CONTROLS;
   const themeCfg = THEMES[activeTheme];
   let ligatures = null;
   function installLigatures(cfg) {
@@ -305,7 +399,11 @@
         if (interactionState.known && interactionState.selecting !== !!t.selecting) requestInteractionMode();
         return true;
       }
-      if (t.type === 'ctrl') { setCtrlArmed(true); focusTerminal(); return true; }
+      if (t.type === 'ctrl') {
+        setCtrlArmed(true);
+        if (typeof mobileDraftMode !== 'undefined' && mobileDraftMode) setMobileDraftMode(false);
+        focusTerminal(); return true;
+      }
       if (t.type === 'focus') { focusTerminal(); return true; }
       return false;
     }
@@ -506,12 +604,18 @@
   }
 
   const sendInput = (data) => {
-    if (!socketIsOpen()) return;
+    if (!socketIsOpen()) {
+      showErr('Terminal desconectada. El borrador se conserva; vuelve a enviar al conectar.');
+      return false;
+    }
     const buf = enc.encode(data);
     const out = new Uint8Array(buf.length + 1);
     out[0] = 0x30; // '0' = INPUT (client→server)
     out.set(buf, 1);
-    ws.send(out);
+    try { ws.send(out); return true; } catch (_) {
+      showErr('No se pudo enviar. El borrador se conserva.');
+      return false;
+    }
   };
   let lastResize = '';
   function sendResize(size) {
@@ -621,7 +725,7 @@
   term.onResize(sendResize);
 
   const TOOLBAR_KEYS = Object.freeze({
-    escape: '\x1b', tab: '\t', left: '\x1b[D', up: '\x1b[A',
+    escape: '\x1b', backspace: '\x7f', tab: '\t', left: '\x1b[D', up: '\x1b[A',
     down: '\x1b[B', right: '\x1b[C',
   });
   let ctrlArmed = false;
@@ -645,6 +749,10 @@
   }
 
   function focusTerminal() {
+    if (typeof mobileDraftMode !== 'undefined' && mobileDraftMode) {
+      document.getElementById('mobile-draft').focus({preventScroll:true});
+      return;
+    }
     try { term.textarea?.focus({preventScroll:true}); } catch (_) { term.focus(); }
   }
 
@@ -668,6 +776,10 @@
 
   function pasteTerminalText(text) {
     if (!text) return false;
+    if (typeof socketIsOpen === 'function' && !socketIsOpen()) {
+      showErr('Terminal desconectada. El texto no se ha enviado.');
+      return false;
+    }
     pasting = true;
     try { term.paste(text); } finally { pasting = false; }
     return true;
@@ -676,7 +788,8 @@
   async function requestClipboardPaste() {
     try {
       const text = await navigator.clipboard.readText();
-      pasteTerminalText(text);
+      if (typeof mobileDraftMode !== 'undefined' && mobileDraftMode) insertMobileDraft(text);
+      else pasteTerminalText(text);
       focusTerminal();
     } catch (_) {
       document.getElementById('paste-dialog').showModal();
@@ -684,13 +797,22 @@
   }
 
   async function copyTerminalSelection() {
-    const text = term.getSelection();
+    const nativeSelection = typeof window !== 'undefined' ? window.getSelection?.() : null;
+    const historyText = typeof document !== 'undefined' ? document.getElementById('history-text') : null;
+    const historyOpen = typeof document !== 'undefined' && document.getElementById('terminal-history')?.hidden === false;
+    const text = historyOpen && typeof historyText?.value === 'string'
+      ? historyText.value.slice(historyText.selectionStart, historyText.selectionEnd)
+      : nativeSelection && historyText?.contains(nativeSelection.anchorNode)
+      ? nativeSelection.toString() : historyOpen ? '' : term.getSelection();
     if (!text) return false;
     try {
       await navigator.clipboard.writeText(text);
       return true;
     } catch (_) {
-      try { return document.execCommand('copy'); } catch (_) { return false; }
+      try {
+        if (historyOpen) historyText.focus({preventScroll:true});
+        return document.execCommand('copy');
+      } catch (_) { return false; }
     }
   }
 
@@ -712,6 +834,14 @@
     };
     const button = document.querySelector('[data-action="mode"]');
     if (!button) return;
+    if (typeof HAS_REMOTE_CONTROLS !== 'undefined' && HAS_REMOTE_CONTROLS) {
+      const open = document.getElementById('terminal-history')?.hidden === false;
+      button.disabled = false;
+      button.classList.toggle('on', open);
+      button.setAttribute('aria-pressed', String(open));
+      button.textContent = open ? 'Volver a terminal' : 'Seleccionar';
+      return;
+    }
     button.disabled = !interactionState.known || interactionState.busy;
     button.classList.toggle('on', interactionState.known && interactionState.selecting);
     button.setAttribute('aria-pressed', interactionState.known
@@ -739,10 +869,20 @@
     if (button.dataset.key) sendToolbarKey(button.dataset.key);
     else if (button.dataset.action === 'ctrl') {
       setCtrlArmed(!ctrlArmed);
+      if (typeof mobileDraftMode !== 'undefined' && mobileDraftMode) setMobileDraftMode(false);
       focusTerminal();
     }
     else if (button.dataset.action === 'paste') requestClipboardPaste();
+    else if (button.dataset.action === 'copy') void requestTerminalCopy();
+    else if (button.dataset.action === 'history') void openTerminalHistory();
+    else if (button.dataset.action === 'panes') void openPaneDialog();
+    else if (button.dataset.action === 'keyboard') setMobileDraftMode(!mobileDraftMode);
     else if (button.dataset.action === 'mode') {
+      if (typeof HAS_REMOTE_CONTROLS !== 'undefined' && HAS_REMOTE_CONTROLS) {
+        if (terminalHistory.isOpen()) closeTerminalHistory();
+        else void openTerminalHistory();
+        return;
+      }
       requestInteractionMode();
       focusTerminal();
     }
@@ -751,17 +891,16 @@
   pasteDialog.querySelector('form').addEventListener('submit', e => {
     if (e.submitter?.id !== 'paste-submit') return;
     const text = document.getElementById('paste-text');
-    pasteTerminalText(text.value);
+    if (typeof mobileDraftMode !== 'undefined' && mobileDraftMode) insertMobileDraft(text.value);
+    else if (!pasteTerminalText(text.value)) { e.preventDefault(); return; }
     text.value = '';
   });
   pasteDialog.addEventListener('close', focusTerminal);
   window.addEventListener('message', handleTerminalMessage);
   if (parent !== window) parent.postMessage({source:'comandos-term', type:'ready'}, location.origin);
 
-  // Teclado MOVIL (GBoard/Android): borrar y Enter llegan como eventos
-  // beforeinput sin keydown — xterm.js los pierde con el buffer de
-  // composicion vacio y "borrar no borra". Los interceptamos y mandamos
-  // la tecla real; preventDefault evita el doble envio.
+  // Teclado MOVIL: el borrador nativo procesa beforeinput y composición.
+  // Solo Insertar/Enviar produce bytes; el teclado directo queda en xterm.
   // --- GESTO TÁCTIL: dejar el dedo (~220ms) CERCA de una separación de
   // panes y arrastrar = resize. Mejoras de fluidez y precisión:
   //  · SNAP al borde: lee el buffer y busca │ o ─ hasta ±2 celdas del dedo;
@@ -793,11 +932,13 @@
   }
   function flushTmuxScroll() {
     tmuxScrollFrame = 0;
+    if (flushTmuxScroll.inFlight) return;
     const delta = tmuxScrollLines;
     const point = tmuxScrollPoint;
     tmuxScrollLines = 0;
     tmuxScrollPoint = null;
     if (!delta || !point) return;
+    flushTmuxScroll.inFlight = true;
     tmuxScrollChain = tmuxScrollChain.then(() => fetch('/tmux-scroll', {
       method:'POST',
       headers:{
@@ -805,8 +946,11 @@
         'X-Comandos-Token':accessTokenParam,
       },
       body:JSON.stringify({session:arg, delta, col:point.col, row:point.row}),
-      cache:'no-store',
-    })).catch(() => {});
+      cache:'no-store', signal:AbortSignal.timeout(7000),
+    })).catch(() => {}).finally(() => {
+      flushTmuxScroll.inFlight = false;
+      if (tmuxScrollLines && !tmuxScrollFrame) tmuxScrollFrame = requestAnimationFrame(flushTmuxScroll);
+    });
   }
   function handleMouseOffWheel(e) {
     if (terminalUiOwnsEvent(e) || mouseOn() || hasActiveSelection() || !e.deltaY)
@@ -818,7 +962,7 @@
   }
   function terminalUiOwnsEvent(event) {
     const insideUi = node => node && typeof node.closest === 'function' &&
-      node.closest('#term-toolbar, #paste-dialog');
+      node.closest('#term-toolbar, #selection-toolbar, #pane-dialog, #paste-dialog, #mobile-compose, #terminal-history');
     const path = typeof event?.composedPath === 'function' ? event.composedPath() : [];
     return path.some(insideUi) || !!insideUi(event?.target);
   }
@@ -926,7 +1070,7 @@
   const TOUCH_WHEEL_MAX_TICKS = 3;
   const TOUCH_WHEEL_REMAINDER_MIN = 18;
   const gesture = {
-    phase: 'idle', touchId: null, sx: 0, sy: 0, lastY: 0,
+    phase: 'idle', touchId: null, historyOpened:false, sx: 0, sy: 0, lastY: 0,
     wheelAccum: 0, timer: 0, frame: 0,
     anchor: null, lastCell: null, pendingCell: null, pressSent: false,
   };
@@ -972,6 +1116,7 @@
   };
   const resetGesture = () => {
     gesture.phase = 'idle';
+    gesture.historyOpened = false;
     gesture.touchId = null;
     gesture.sx = gesture.sy = gesture.lastY = 0;
     gesture.wheelAccum = 0;
@@ -1018,8 +1163,14 @@
     if (gesture.phase !== 'pending' || selectingText() || !mouseOn() ||
         ws === null || ws.readyState !== 1) return;
     const raw = cellFromTouch({clientX: gesture.sx, clientY: gesture.sy});
-    const snap = raw && snapToBorder(raw);
-    if (!snap) return; // sigue pending: si luego se mueve, se convierte en scroll
+    if (!raw) return;
+    const snap = snapToBorder(raw);
+    if (!snap) {
+      if (typeof openTerminalHistory === 'function') gesture.timer = setTimeout(() => {
+        if (gesture.phase === 'pending') void openTerminalHistory({col:raw.col - 1,row:raw.row - 1});
+      }, 300);
+      return;
+    }
     gesture.phase = 'resizing';
     gesture.anchor = snap;
     gesture.lastCell = {col: snap.col, row: snap.row};
@@ -1041,6 +1192,10 @@
     gesture.sx = touch.clientX;
     gesture.sy = gesture.lastY = touch.clientY;
     if (mouseOn()) gesture.timer = setTimeout(tryEngageResize, 220);
+    else if (typeof openTerminalHistory === 'function') gesture.timer = setTimeout(() => {
+      const cell = cellFromTouch(touch);
+      if (cell && gesture.phase === 'pending') void openTerminalHistory({col:cell.col - 1,row:cell.row - 1});
+    }, 520);
   }, {passive: true});
   document.addEventListener('touchmove', (e) => {
     if (terminalUiOwnsEvent(e)) { finishGesture(); return; }
@@ -1078,6 +1233,9 @@
     }
   }, {passive: false});
   document.addEventListener('touchend', (e) => {
+    if (gesture.historyOpened) {
+      e.preventDefault(); e.stopPropagation(); finishGesture(); return;
+    }
     if (terminalUiOwnsEvent(e)) { finishGesture(); return; }
     const touch = touchById(e.changedTouches) || {
       clientX:gesture.sx, clientY:gesture.lastY,
@@ -1089,21 +1247,431 @@
     }
     flushScrollRemainder(touch, e.target);
     finishGesture();
-  });
+  }, {passive:false});
   document.addEventListener('touchcancel', finishGesture);
   window.addEventListener('pagehide', finishGesture);
   if (typeof socketCloseCleanup === 'function') socketCloseCleanup = finishGesture;
   ws.addEventListener('close', finishGesture);
 
   const ta = term.textarea;
-  if (ta) ta.addEventListener('beforeinput', (e) => {
-    if (e.isComposing) return;
-    if (e.inputType === 'deleteContentBackward') {
-      e.preventDefault(); sendInput('\x7f');
-    } else if (e.inputType === 'insertLineBreak') {
-      e.preventDefault(); sendInput('\r');
+  // Teclado MOVIL: beforeinput (including deleteContentBackward) belongs
+  // entirely to the native draft. No synthetic key is sent during composition.
+  function terminalPastePayload(text, bracketed, enter) {
+    const normalized = String(text).replace(/\r?\n/g, '\r').replace(/\x1b/g, '');
+    const payload = normalized && bracketed ? '\x1b[200~' + normalized + '\x1b[201~' : normalized;
+    return payload + (enter ? '\r' : '');
+  }
+
+  function createMobileDraftController(options) {
+    let composing = false;
+    const changed = () => options.changed(options.read());
+    return {
+      compositionStart() { composing = true; },
+      compositionEnd() { composing = false; changed(); },
+      input() { changed(); },
+      submit(enter) {
+        if (composing) return false;
+        const text = options.read();
+        if (!text && !enter) return false;
+        if (!options.send(text, !!enter)) return false;
+        options.write('');
+        changed();
+        return true;
+      },
+    };
+  }
+
+  function createTerminalHistoryController(options) {
+    let active = false, revision = 0, request = {}, dirty = false;
+    async function open(next) {
+      active = true;
+      request = next || {};
+      dirty = false;
+      const current = ++revision;
+      options.loading?.();
+      options.status('Cargando historial…');
+      try {
+        const snapshot = await options.fetchSnapshot(request);
+        if (!active || current !== revision) return false;
+        // Pin refreshes to the captured pane, even if tmux focus changes.
+        if (snapshot.pane) request = {pane:snapshot.pane};
+        options.render(snapshot);
+        options.status(snapshot.local
+          ? 'Buffer local. El historial de tmux no está disponible.'
+          : 'Ajusta Inicio o Fin con las flechas de abajo. También puedes seleccionar con el dedo.');
+        return true;
+      } catch (error) {
+        if (active && current === revision) options.status('No pude cargar el historial: ' + error.message);
+        return false;
+      }
+    }
+    return {
+      open,
+      refresh: () => open(request),
+      close() { active = false; ++revision; },
+      isOpen: () => active,
+      output() {
+        if (!active || dirty) return;
+        dirty = true;
+        options.status('Hay salida nueva. Actualiza cuando termines de seleccionar.');
+      },
+    };
+  }
+
+  function moveTextSelection(text, start, end, edge, direction) {
+    start = Math.max(0, Math.min(text.length, start));
+    end = Math.max(start, Math.min(text.length, end));
+    const position = edge === 'start' ? start : end;
+    const segments = typeof Intl.Segmenter === 'function'
+      ? new Intl.Segmenter(undefined, {granularity:'grapheme'}).segment(text) : null;
+    let next = position;
+    if (direction === 'left' && position > 0) {
+      next = segments ? segments.containing(position - 1).index
+        : position - (Array.from(text.slice(0, position)).pop()?.length || 1);
+    } else if (direction === 'right' && position < text.length) {
+      const part = segments?.containing(position);
+      next = part ? part.index + part.segment.length : position + String.fromCodePoint(text.codePointAt(position)).length;
+    } else if (direction === 'up' || direction === 'down') {
+      const lineStart = position ? text.lastIndexOf('\n', position - 1) + 1 : 0;
+      const column = position - lineStart;
+      if (direction === 'up') {
+        const previousEnd = Math.max(0, lineStart - 1);
+        const previousStart = lineStart > 1 ? text.lastIndexOf('\n', lineStart - 2) + 1 : 0;
+        next = Math.min(previousEnd, previousStart + column);
+      } else {
+        const newline = text.indexOf('\n', position);
+        if (newline < 0) next = text.length;
+        else {
+          const followingEnd = text.indexOf('\n', newline + 1);
+          next = Math.min(followingEnd < 0 ? text.length : followingEnd, newline + 1 + column);
+        }
+      }
+      if (next < text.length && segments) next = segments.containing(next).index;
+    }
+    return edge === 'start' ? {start:Math.min(next, end), end} : {start, end:Math.max(start, next)};
+  }
+
+  const draftElement = document.getElementById('mobile-draft');
+  const composeElement = document.getElementById('mobile-compose');
+  let mobileDraftMode = false;
+  const draftStorageKey = 'comandos:terminal-draft:' + arg;
+  try { draftElement.value = sessionStorage.getItem(draftStorageKey) || ''; } catch (_) {}
+  const mobileDraft = createMobileDraftController({
+    read: () => draftElement.value,
+    write: text => { draftElement.value = text; },
+    changed: text => {
+      try {
+        if (text) sessionStorage.setItem(draftStorageKey, text);
+        else sessionStorage.removeItem(draftStorageKey);
+      } catch (_) {}
+    },
+    send: (text, enter) => sendInput(terminalPastePayload(text, term.modes.bracketedPasteMode, enter)),
+  });
+  draftElement.addEventListener('compositionstart', mobileDraft.compositionStart);
+  draftElement.addEventListener('compositionend', mobileDraft.compositionEnd);
+  draftElement.addEventListener('input', mobileDraft.input);
+  composeElement.addEventListener('submit', event => {
+    event.preventDefault();
+    mobileDraft.submit(true);
+    draftElement.focus({preventScroll:true});
+  });
+  document.getElementById('draft-insert').addEventListener('click', () => {
+    mobileDraft.submit(false);
+    draftElement.focus({preventScroll:true});
+  });
+  function insertMobileDraft(text) {
+    draftElement.setRangeText(text, draftElement.selectionStart, draftElement.selectionEnd, 'end');
+    mobileDraft.input();
+  }
+  function setMobileDraftMode(on) {
+    mobileDraftMode = !!on;
+    composeElement.hidden = !mobileDraftMode || document.getElementById('terminal-history')?.hidden === false;
+    if (term.textarea) {
+      term.textarea.readOnly = mobileDraftMode;
+      term.textarea.setAttribute('inputmode', mobileDraftMode ? 'none' : 'text');
+    }
+    const button = document.querySelector('[data-action="keyboard"]');
+    button.textContent = mobileDraftMode ? 'Teclado directo' : 'Escribir borrador';
+    button.setAttribute('aria-pressed', String(!mobileDraftMode));
+    syncHistoryInset();
+    scheduleFit();
+  }
+  term.textarea?.addEventListener('focus', () => {
+    if (mobileDraftMode) {
+      draftElement.focus({preventScroll:true});
     }
   });
+  // Read-only also blocks programmatic/synthetic IME events from xterm's
+  // hidden textarea. Mouse SGR and toolbar keys still use the normal channel.
+  for (const type of ['keydown', 'keypress', 'beforeinput', 'input',
+                       'compositionstart', 'compositionupdate', 'compositionend', 'paste']) {
+    term.textarea?.addEventListener(type, event => {
+      if (!mobileDraftMode) return;
+      if (event.cancelable) event.preventDefault();
+      event.stopImmediatePropagation();
+    }, true);
+  }
+
+  const historyElement = document.getElementById('terminal-history');
+  const historyText = document.getElementById('history-text');
+  const historyPane = document.getElementById('history-pane');
+  const selectionToolbar = document.getElementById('selection-toolbar');
+  const selectionEdge = document.getElementById('selection-edge');
+  let historyReady = false;
+  function syncHistoryTypography() {
+    const screen = document.querySelector('.xterm-screen');
+    const cellHeight = screen?.getBoundingClientRect().height / term.rows;
+    historyText.style.fontFamily = term.options.fontFamily || 'monospace';
+    historyText.style.fontSize = Math.max(IS_TOUCH ? 16 : 12, term.options.fontSize) + 'px';
+    historyText.style.lineHeight = Number.isFinite(cellHeight) && cellHeight > 0
+      ? Math.max(IS_TOUCH ? 22 : 16, cellHeight) + 'px' : 'normal';
+    historyText.style.letterSpacing = (term.options.letterSpacing || 0) + 'px';
+  }
+  function syncHistoryInset() {
+    const overlay = document.getElementById('terminal-history');
+    const controlsHeight = toolbar.getBoundingClientRect().height + composeElement.getBoundingClientRect().height
+      + document.getElementById('selection-toolbar').getBoundingClientRect().height;
+    overlay.style.bottom = controlsHeight + 'px';
+  }
+  const historyLayoutObserver = typeof ResizeObserver === 'function' ? new ResizeObserver(syncHistoryInset) : null;
+  historyLayoutObserver?.observe(toolbar);
+  historyLayoutObserver?.observe(composeElement);
+  historyLayoutObserver?.observe(selectionToolbar);
+  const terminalHistory = createTerminalHistoryController({
+    loading() {
+      historyReady = false;
+      historyText.value = '';
+      historyText.disabled = true;
+      updateSelectionControls();
+    },
+    async fetchSnapshot(request) {
+      if (!arg || !accessTokenParam) {
+        const buffer = term.buffer.active;
+        let text = '';
+        for (let index = 0; index < buffer.length; index++) {
+          const line = buffer.getLine(index);
+          if (!line) continue;
+          text += (index && !line.isWrapped ? '\n' : '') + line.translateToString(true);
+        }
+        return {text, local:true, panes:[]};
+      }
+      const response = await fetch('/terminal-history', {
+        method:'POST', cache:'no-store',
+        headers:{'Content-Type':'application/json', 'X-Comandos-Token':accessTokenParam},
+        body:JSON.stringify({session:arg, lines:2000, ...request}),
+        signal:AbortSignal.timeout(10000),
+      });
+      const data = await response.json();
+      if (!response.ok || data.ok === false || data.error) throw new Error(data.error || 'Error ' + response.status);
+      if (typeof data.text !== 'string') throw new Error('Respuesta sin texto');
+      return data;
+    },
+    render(snapshot) {
+      syncHistoryTypography();
+      historyText.value = snapshot.text;
+      historyText.disabled = false;
+      historyReady = true;
+      historyPane.replaceChildren();
+      for (const pane of snapshot.panes || []) {
+        const option = document.createElement('option');
+        option.value = pane.id;
+        option.textContent = pane.id + (pane.title ? ' · ' + pane.title : '');
+        option.selected = pane.id === snapshot.pane;
+        historyPane.appendChild(option);
+      }
+      historyPane.hidden = !(snapshot.panes?.length);
+      const end = historyText.value.trimEnd().length;
+      const start = end ? historyText.value.lastIndexOf('\n', end - 1) + 1 : 0;
+      historyText.focus({preventScroll:true});
+      historyText.setSelectionRange(start, end, 'forward');
+      historyText.scrollTop = historyText.scrollHeight;
+      updateSelectionControls();
+    },
+    status: message => { document.getElementById('history-status').textContent = message; },
+  });
+  async function requestTerminalCopy() {
+    if (!await copyTerminalSelection()) {
+      if (!terminalHistory.isOpen()) await openTerminalHistory();
+      document.getElementById('history-status').textContent = 'Selecciona texto para copiar, o pulsa Todo.';
+      return;
+    }
+    const button = document.querySelector('[data-action="copy"]');
+    button.textContent = 'Copiado';
+    setTimeout(() => { button.textContent = 'Copiar'; }, 1200);
+  }
+  async function openTerminalHistory(request) {
+    const fromTouch = gesture.phase === 'pending';
+    finishGesture();
+    gesture.historyOpened = fromTouch;
+    term.blur();
+    draftElement.blur();
+    historyElement.hidden = false;
+    toolbar.hidden = true;
+    composeElement.hidden = true;
+    selectionToolbar.hidden = false;
+    syncHistoryTypography();
+    applyInteractionState(interactionState);
+    document.querySelector('[data-action="history"]').setAttribute('aria-pressed', 'true');
+    syncHistoryInset();
+    return terminalHistory.open(request);
+  }
+  function closeTerminalHistory() {
+    terminalHistory.close();
+    historyElement.hidden = true;
+    selectionToolbar.hidden = true;
+    toolbar.hidden = !HAS_REMOTE_CONTROLS;
+    composeElement.hidden = !mobileDraftMode;
+    syncHistoryInset();
+    scheduleFit();
+    applyInteractionState(interactionState);
+    document.querySelector('[data-action="history"]').setAttribute('aria-pressed', 'false');
+    const selection = window.getSelection();
+    if (selection && historyText.contains(selection.anchorNode)) selection.removeAllRanges();
+  }
+  historyPane.addEventListener('change', () => {
+    historyText.value = '';
+    void terminalHistory.open({pane:historyPane.value});
+  });
+  document.getElementById('selection-close').addEventListener('click', closeTerminalHistory);
+  document.getElementById('history-refresh').addEventListener('click', () => terminalHistory.refresh());
+  document.getElementById('history-bottom').addEventListener('click', () => { historyText.scrollTop = historyText.scrollHeight; });
+  document.getElementById('selection-copy').addEventListener('click', async () => {
+    const copied = await copyTerminalSelection();
+    document.getElementById('history-status').textContent = copied ? 'Copiado.' : 'No se pudo copiar. Usa Copiar en el menú del navegador.';
+  });
+  document.getElementById('selection-all').addEventListener('click', () => {
+    historyText.focus({preventScroll:true});
+    historyText.setSelectionRange(0, historyText.value.length);
+    updateSelectionControls();
+  });
+  function updateSelectionControls() {
+    for (const button of selectionToolbar.querySelectorAll('[data-selection-key],#selection-all'))
+      button.disabled = !historyReady || !historyText.value;
+    document.getElementById('selection-copy').disabled = !historyReady || historyText.selectionStart === historyText.selectionEnd;
+  }
+  // Prevent toolbar taps from collapsing the range or opening the keyboard.
+  selectionToolbar.addEventListener('pointerdown', event => {
+    if (event.target.closest('button')) event.preventDefault();
+  });
+  selectionToolbar.addEventListener('click', event => {
+    const direction = event.target.closest('[data-selection-key]')?.dataset.selectionKey;
+    if (!direction || !historyReady) return;
+    const range = moveTextSelection(historyText.value, historyText.selectionStart,
+      historyText.selectionEnd, selectionEdge.value, direction);
+    historyText.focus({preventScroll:true});
+    historyText.setSelectionRange(range.start, range.end, selectionEdge.value === 'start' ? 'backward' : 'forward');
+    const offset = selectionEdge.value === 'start' ? range.start : range.end;
+    const line = historyText.value.slice(0, offset).split('\n').length - 1;
+    const lineHeight = parseFloat(getComputedStyle(historyText).lineHeight) || 22;
+    const top = line * lineHeight;
+    if (top < historyText.scrollTop || top + lineHeight > historyText.scrollTop + historyText.clientHeight)
+      historyText.scrollTop = Math.max(0, top - historyText.clientHeight / 2);
+    updateSelectionControls();
+    document.getElementById('history-status').textContent = `${range.end - range.start} caracteres · Ajustando ${selectionEdge.value === 'start' ? 'Inicio' : 'Fin'}`;
+  });
+  historyText.addEventListener('select', updateSelectionControls);
+  historyText.addEventListener('selectionchange', updateSelectionControls);
+
+  const paneDialog = document.getElementById('pane-dialog');
+  const paneList = document.getElementById('pane-list');
+  const paneStatus = document.getElementById('pane-status');
+  const paneConfirm = document.getElementById('pane-confirm');
+  let paneBusy = false, paneRevision = 0, pendingPaneClose = null;
+  async function paneRequest(action, pane) {
+    if (!arg || !accessTokenParam) throw new Error('Abre la terminal desde ComandOS para administrar sus paneles.');
+    const response = await fetch('/terminal-panes', {
+      method:'POST', cache:'no-store',
+      headers:{'Content-Type':'application/json','X-Comandos-Token':accessTokenParam},
+      body:JSON.stringify({session:arg, action, ...(pane ? {pane:pane.id,identity:pane.identity} : {})}),
+      signal:AbortSignal.timeout(10000),
+    });
+    const result = await response.json();
+    if (!response.ok || result.ok !== true || !Array.isArray(result.panes))
+      throw new Error(result.error || 'No se pudo consultar el estado de los paneles');
+    return result;
+  }
+  function setPaneBusy(on) {
+    paneBusy = on;
+    for (const button of paneDialog.querySelectorAll('button'))
+      button.disabled = on || button.dataset.unavailable === 'true';
+  }
+  function renderPaneList(panes) {
+    paneList.replaceChildren();
+    panes.forEach((pane, index) => {
+      const row = document.createElement('div'); row.className = 'pane-option';
+      const label = `Panel ${index + 1} · ${pane.title || 'Terminal'}`;
+      const select = document.createElement('button'); select.type = 'button';
+      select.textContent = label + (pane.active ? ' · Activo' : '');
+      select.setAttribute('aria-pressed', String(!!pane.active));
+      select.addEventListener('click', () => void applyPaneAction('select', pane));
+      const close = document.createElement('button'); close.type = 'button'; close.className = 'danger';
+      close.textContent = 'Cerrar'; close.setAttribute('aria-label', 'Cerrar ' + label);
+      close.disabled = panes.length <= 1; close.dataset.unavailable = String(panes.length <= 1);
+      close.addEventListener('click', () => {
+        // Freeze the exact identity shown in the confirmation, independent of focus.
+        pendingPaneClose = {...pane};
+        document.getElementById('pane-confirm-label').textContent = `¿Cerrar ${label}?`;
+        paneList.hidden = true; paneConfirm.hidden = false;
+      });
+      row.append(select, close); paneList.appendChild(row);
+    });
+    paneStatus.textContent = panes.length === 1
+      ? 'Queda un panel. La sesión permanece abierta.' : 'Elige un panel para activarlo o cerrar su split.';
+  }
+  async function openPaneDialog() {
+    if (paneBusy) return;
+    const revision = ++paneRevision;
+    pendingPaneClose = null; paneConfirm.hidden = true; paneList.hidden = false; paneList.replaceChildren();
+    paneStatus.textContent = 'Cargando paneles…';
+    term.blur(); draftElement.blur();
+    if (!paneDialog.open) paneDialog.showModal();
+    try {
+      const result = await paneRequest('list');
+      if (revision === paneRevision && paneDialog.open) renderPaneList(result.panes);
+    } catch (error) {
+      if (revision === paneRevision && paneDialog.open) paneStatus.textContent = error.message;
+    }
+  }
+  async function applyPaneAction(action, pane) {
+    if (paneBusy || !pane) return;
+    const revision = ++paneRevision;
+    setPaneBusy(true);
+    paneStatus.textContent = action === 'close' ? 'Guardando copia y cerrando el split…' : 'Activando panel…';
+    try {
+      const result = await paneRequest(action, pane);
+      if (revision !== paneRevision) return;
+      if (action === 'select') paneDialog.close();
+      else {
+        pendingPaneClose = null; paneConfirm.hidden = true; paneList.hidden = false;
+        renderPaneList(result.panes);
+        paneStatus.textContent = 'Split cerrado. Los demás paneles siguen abiertos.';
+      }
+    } catch (error) {
+      if (revision === paneRevision) {
+        pendingPaneClose = null; paneConfirm.hidden = true; paneList.hidden = false; paneList.replaceChildren();
+        paneStatus.textContent = error.message + ' Vuelve a abrir Paneles para comprobar el estado.';
+      }
+    } finally { setPaneBusy(false); }
+  }
+  document.getElementById('pane-close-confirm').addEventListener('click', () => void applyPaneAction('close', pendingPaneClose));
+  document.getElementById('pane-cancel').addEventListener('click', () => {
+    if (paneBusy) return;
+    pendingPaneClose = null; paneConfirm.hidden = true; paneList.hidden = false;
+  });
+  document.getElementById('pane-dismiss').addEventListener('click', () => { if (!paneBusy) paneDialog.close(); });
+  paneDialog.addEventListener('cancel', event => { if (paneBusy) event.preventDefault(); });
+  paneDialog.addEventListener('close', () => { ++paneRevision; pendingPaneClose = null; });
+  // Keep touch selection handles and scroll entirely within the native view.
+  // The global gesture recognizer ignores this subtree via terminalUiOwnsEvent.
+  historyElement.addEventListener('keydown', event => {
+    if (event.key === 'Escape') closeTerminalHistory();
+  });
+  term.onWriteParsed(() => terminalHistory.output());
+  window.addEventListener('pagehide', () => {
+    terminalHistory.close();
+    historyLayoutObserver?.disconnect();
+  });
+  if (IS_TOUCH) setMobileDraftMode(true);
 })();
 </script>
 </body>

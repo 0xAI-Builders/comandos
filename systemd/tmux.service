@@ -1,0 +1,16 @@
+[Unit]
+Description=tmux server for ComandOS (must outlive cc-app)
+After=default.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+# If the server is born as a child of cc-app, restarting the GTK app
+# kills every session (incident 2026-09-04 14:41).
+ExecStart=/usr/bin/tmux start-server
+ExecStart=/usr/bin/tmux set-option -s exit-empty off
+ExecStart=/usr/bin/tmux set-option -s exit-unattached off
+ManagedOOMPreference=avoid
+
+[Install]
+WantedBy=default.target

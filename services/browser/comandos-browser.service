@@ -1,0 +1,22 @@
+[Unit]
+Description=ComandOS remote browser broker
+After=network-online.target
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/python3 %h/.local/share/comandos-browser/service/broker.py --config %h/.config/comandos-browser/config.json
+WorkingDirectory=%h/.local/share/comandos-browser
+Environment=TMPDIR=/tmp
+UMask=0077
+Restart=on-failure
+RestartSec=3
+TimeoutStopSec=20
+KillMode=control-group
+MemoryHigh=4G
+MemoryMax=6G
+CPUQuota=200%
+TasksMax=512
+NoNewPrivileges=true
+
+[Install]
+WantedBy=default.target

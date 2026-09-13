@@ -190,7 +190,7 @@ def init_db(db_path):
         _migrate_db(con)
 
 
-USAGE_SCHEMA_VERSION = 8
+USAGE_SCHEMA_VERSION = 9
 
 
 def _table_columns(con, table):
@@ -346,6 +346,9 @@ def _migrate_db(con):
           when harness in ('codex','grok') then harness
           else 'claude' end""")
         con.execute("""update usage_turns set route_id=harness||':'||motor where route_id=''""")
+        _ensure_columns(con, "usage_tool_calls", {"skill_name": "text not null default ''"})
+        con.execute("create index if not exists idx_usage_tools_interaction on usage_tool_calls(interaction_id)")
+        con.execute("create index if not exists idx_usage_tools_time on usage_tool_calls(coalesce(finished_at_ms,started_at_ms))")
         con.execute(f"pragma user_version={USAGE_SCHEMA_VERSION}")
 
 
@@ -458,7 +461,7 @@ def record_pane(db_path, pane):
 
 
 def _rows(cur):
-    return [dict(row) for row in cur.fetchall()]
+    return [dict(row) for row in cur]
 
 
 def list_panes(db_path):
@@ -803,7 +806,12 @@ def build_usage_state(db_path, live_panes=None, now=None, settings=None, limits=
     ts = int(now if now is not None else time.time())
     panes = live_panes if live_panes else list_panes(db_path)
     with connect(db_path) as con:
-        turns = _rows(con.execute("select * from usage_turns order by turn_finished_at desc"))
+        # The summary needs counters and grouping keys, not raw transcripts or
+        # interaction metadata. Keep those large columns out of the result set.
+        turns = _rows(con.execute(
+            "select tmux_session, tmux_pane, pane_pwd, git_root, agent, provider,"
+            " model, confidence, cost_usd, total_tokens, turn_finished_at"
+            " from usage_turns order by turn_finished_at desc"))
         provider_usage = _rows(con.execute("select * from provider_usage_buckets order by end_time desc"))
         provider_costs = _rows(con.execute("select * from provider_cost_buckets order by end_time desc"))
     _attach_pane_turn_usage(turns, panes, ts)
@@ -2310,6 +2318,10 @@ def capture_tool_event(db_path, event):
                 duration = max(0, at_ms - started) if started is not None else None
                 con.execute("""update usage_tool_calls set finished_at_ms=?,duration_ms=?,status=?,error_class=? where id=?""",
                             (at_ms, duration, phase, "tool_error" if phase == "failed" else "", ident))
+        # Store only the explicit Skill selector, never its arguments or result.
+        skill_name = data.get("skill_name") if tool_name.lower() == "skill" else ""
+        if isinstance(skill_name, str) and re.fullmatch(r"[A-Za-z0-9_][A-Za-z0-9_.:@/-]{0,159}", skill_name):
+            con.execute("update usage_tool_calls set skill_name=? where id=?", (skill_name, ident))
         return {"captured": True, "interaction_id": interaction_id, "tool_call_id": ident}
 
 

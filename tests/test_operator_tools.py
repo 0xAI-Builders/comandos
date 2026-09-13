@@ -40,8 +40,9 @@ def test_tools_come_from_catalog_with_json_schema():
 
 def test_openai_tools_wrap_functions():
     wrapped = OT.openai_tools()
-    assert wrapped[0]["type"] == "function"
-    assert wrapped[0]["function"]["name"] == "list_tabs"
+    assert all(tool["type"] == "function" for tool in wrapped)
+    assert [tool["function"]["name"] for tool in wrapped] == [tool.name for tool in cat.CATALOG]
+    assert "list_tabs" in {tool["function"]["name"] for tool in wrapped}
     assert wrapped == cat.openai_tools()
 
 

@@ -970,81 +970,65 @@ console.log(JSON.stringify({{split}}));
     assert result == {"split": False}
 
 
-def test_active_tab_reveal_does_not_schedule_for_unchanged_visible_tab():
+def test_active_tab_reveal_scrolls_only_the_bar_for_explicit_selection():
     reveal = extract_js_function(HTML, "revealActiveTab")
     result = run_node_json(f"""
-let activeView = "term:prod";
 const scheduled = [];
-const calls = [];
 function requestAnimationFrame(callback) {{ scheduled.push(callback); }}
-const tab = {{
-  getBoundingClientRect() {{ return {{left: 20, right: 80}}; }},
-  scrollIntoView(options) {{ calls.push(options); }},
-}};
+function updateTabNavigation() {{}}
+const tab = {{getBoundingClientRect() {{ return {{left: 120, right: 180}}; }}}};
 const bar = {{
+  scrollLeft: 30,
   getBoundingClientRect() {{ return {{left: 0, right: 100}}; }},
   querySelector(selector) {{ return selector === ".apptab.on" ? tab : null; }},
 }};
 {reveal}
-revealActiveTab.lastView = activeView;
 revealActiveTab(bar);
 scheduled.forEach(callback => callback());
-console.log(JSON.stringify({{scheduled: scheduled.length, calls}}));
+console.log(JSON.stringify({{scheduled: scheduled.length, scrollLeft:bar.scrollLeft}}));
 """)
-    assert result == {"scheduled": 0, "calls": []}
+    assert result == {"scheduled": 1, "scrollLeft": 110}
 
 
-def test_active_tab_reveal_schedules_for_unchanged_rebuilt_out_of_bounds_tab():
-    reveal = extract_js_function(HTML, "revealActiveTab")
+def test_view_refresh_never_reveals_tabs_but_explicit_selection_does():
+    show = extract_js_function(HTML, "showView")
     result = run_node_json(f"""
-let activeView = "term:prod";
-const scheduled = [];
-const calls = [];
-function requestAnimationFrame(callback) {{ scheduled.push(callback); }}
-const tab = {{
-  getBoundingClientRect() {{ return {{left: 120, right: 180}}; }},
-  scrollIntoView(options) {{ calls.push(options); }},
-}};
-const bar = {{
-  getBoundingClientRect() {{ return {{left: 0, right: 100}}; }},
-  querySelector(selector) {{ return selector === ".apptab.on" ? tab : null; }},
-}};
-{reveal}
-revealActiveTab.lastView = activeView;
-revealActiveTab(bar);
-scheduled.forEach(callback => callback());
-console.log(JSON.stringify({{scheduled: scheduled.length, calls}}));
+let activeTerm='prod', activeView='panel', activeTermTs=0, reveals=0, renders=0;
+const openTerms=new Map([['prod',{{frame:null}}]]);
+const termInteraction=new Map([['prod',{{mouse:'on'}}]]);
+const S={{sel:'prod',list:[]}};
+const document={{body:{{classList:{{contains(){{return true;}}}}}},getElementById(){{return {{classList:{{toggle(){{}}}}}};}}}};
+function ensureFrame(){{}}function restoreInactiveTermInteractions(){{}}function syncTermInteraction(){{}}
+function inApp(){{return true;}}function render(){{}}function renderTabbar(){{renders++;}}
+function revealActiveTab(){{reveals++;}}
+{show}
+for(let i=0;i<20;i++) showView(i%2 ? 'panel' : 'term:prod');
+const backgroundReveals=reveals;
+showView('term:prod',true);
+console.log(JSON.stringify({{backgroundReveals,reveals,renders}}));
 """)
-    assert result == {
-        "scheduled": 1,
-        "calls": [{"block": "nearest", "inline": "nearest"}],
-    }
+    assert result == {"backgroundReveals":0,"reveals":1,"renders":21}
 
 
-def test_active_tab_reveal_schedules_for_changed_view():
-    reveal = extract_js_function(HTML, "revealActiveTab")
+def test_mobile_selection_is_available_before_tmux_state_and_tracks_native_view():
+    apply_state = extract_js_function(TERM_HTML, "applyInteractionState")
     result = run_node_json(f"""
-let activeView = "term:prod";
-const scheduled = [];
-const calls = [];
-function requestAnimationFrame(callback) {{ scheduled.push(callback); }}
-const tab = {{
-  getBoundingClientRect() {{ return {{left: 120, right: 180}}; }},
-  scrollIntoView(options) {{ calls.push(options); }},
-}};
-const bar = {{
-  getBoundingClientRect() {{ return {{left: 0, right: 100}}; }},
-  querySelector(selector) {{ return selector === ".apptab.on" ? tab : null; }},
-}};
-{reveal}
-revealActiveTab.lastView = "panel";
-revealActiveTab(bar);
-scheduled.forEach(callback => callback());
-console.log(JSON.stringify({{scheduled: scheduled.length, calls}}));
+const IS_TOUCH = true, HAS_REMOTE_CONTROLS = true;
+let interactionState;
+const history = {{hidden:true}};
+const button = {{disabled:true, textContent:'', attrs:{{}}, classList:{{toggle(){{}}}},
+  setAttribute(key,value){{this.attrs[key]=value;}}}};
+const document = {{querySelector(){{return button;}},getElementById(){{return history;}}}};
+{apply_state}
+applyInteractionState({{known:false,busy:true}});
+const closed = {{disabled:button.disabled, label:button.textContent, pressed:button.attrs['aria-pressed']}};
+history.hidden=false;
+applyInteractionState({{known:true,selecting:false}});
+console.log(JSON.stringify({{closed,open:{{disabled:button.disabled,label:button.textContent,pressed:button.attrs['aria-pressed']}}}}));
 """)
     assert result == {
-        "scheduled": 1,
-        "calls": [{"block": "nearest", "inline": "nearest"}],
+        "closed": {"disabled": False, "label": "Seleccionar", "pressed": "false"},
+        "open": {"disabled": False, "label": "Volver a terminal", "pressed": "true"},
     }
 
 
@@ -3274,7 +3258,7 @@ function fetch(_url, options) {{
 
 
 def test_remote_routes_are_never_served_from_stale_shell_cache():
-    assert 'const SHELL = "comandos-shell-v7"' in SW
+    assert 'const SHELL = "comandos-shell-v12"' in SW
     for endpoint in (
         "/remote-state",
         "/remote-qr.png",
@@ -3377,8 +3361,11 @@ def test_ssh_privacy_note_states_local_only_storage():
 def test_operator_chat_streams_over_sse():
     dash = open("bin/cc-dash").read()
     assert '"/operator/chat/stream"' in dash and "text/event-stream" in dash
-    assert "/operator/chat/stream" in HTML and "getReader()" in HTML and "op-tool" in HTML
+    assert 'protocol_version = "HTTP/1.1"' in dash
+    assert "/operator/chat/stream" in HTML and "opStreamXhr" in HTML and "op-tool" in HTML
     assert "/operator/chat/stream" in SW
+    assert "if(d.messages && !OP.ac)" in HTML
+    assert 'tf("Escribe un mensaje"' in HTML
 
 
 def test_operator_chat_renders_markdown_and_wait_caret():

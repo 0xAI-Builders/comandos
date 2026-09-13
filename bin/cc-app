@@ -16,7 +16,7 @@ Teclas:
   Ctrl+Shift + / - / 0   zoom de letra (pestana actual)
   Ctrl+Q                 salir
 """
-import glob, json, os, re, secrets, shlex, shutil, subprocess, sys, threading, time, urllib.request
+import glob, json, os, re, secrets, shlex, shutil, subprocess, sys, tempfile, threading, time, urllib.request
 from concurrent.futures import ThreadPoolExecutor
 from urllib.parse import quote, unquote, urlparse
 # Cada pestaña es un VTE que corre `tmux attach`. Si cc-app se lanza DESDE dentro
@@ -92,6 +92,10 @@ URL = f"{BASE_URL}/?app=1&v={_DASH_V}"
 # Raíz del repo desde este binario. Cuando cc-app se instala como symlink en
 # ~/.local/bin, os.path.realpath resuelve al archivo real dentro del repo.
 CC_REPO = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
+sys.path.insert(0, os.path.join(CC_REPO, "lib"))
+import tmux_snapshot as layout_snapshot
+from pane_snapshot import PaneInspector
+from session_tabs import ordered_tab_keys
 TERM_HTML = os.path.join(CC_REPO, "dash", "term.html")
 # Familia unificada de iconos — los mismos SVG Lucide que usa el dashboard.
 _ICONS_DIR = os.path.join(CC_REPO, "dash", "icons")
@@ -188,6 +192,8 @@ notebook > header > tabs > tab button {
   border: none; background: none;
 }
 notebook > header > tabs > tab button:hover { color: @TEXT@; }
+notebook > header > tabs > tab button.tabfav { font-size: 15px; min-width: 20px; }
+notebook > header > tabs > tab button.tabfav.favorite { color: @BRAND@; }
 /* Flechas de scroll de tabs: sin esto quedan pegadas a la primera pestana */
 /* Flechas nativas del notebook OCULTAS: navegacion por los botones
    ‹ › propios del headerbar (misma familia que el "+"). */
@@ -1572,6 +1578,11 @@ nb.set_scrollable(True)
 tabs = {}   # clave ("sess" o "sess:shell") -> box
 TABS_FILE = os.path.expanduser("~/.claude/hooks/app-tabs.json")
 TAB_HISTORY_FILE = os.path.expanduser("~/.claude/hooks/app-tabs-history.json")
+TAB_FAVORITES = set(PREFS.get("favorites") or []) - {"local"}
+_TAB_REORDERING = False
+_FAVORITE_PENDING = {}
+_FAVORITE_GENERATION = 0
+_FAVORITE_REQUEST_LOCK = threading.Lock()
 
 
 def notebook_pages():
@@ -1588,6 +1599,89 @@ def current_tab_order():
     return out
 
 
+def enforce_tab_order():
+    global _TAB_REORDERING
+    if _TAB_REORDERING:
+        return
+    _TAB_REORDERING = True
+    try:
+        pages = {getattr(p, "_key", None): p for p in notebook_pages()}
+        active = nb.get_nth_page(nb.get_current_page())
+        for index, key in enumerate(ordered_tab_keys(pages, TAB_FAVORITES)):
+            page = pages[key]
+            if nb.page_num(page) != index:
+                nb.reorder_child(page, index)
+        if active is not None and nb.get_nth_page(nb.get_current_page()) is not active:
+            nb.set_current_page(nb.page_num(active))
+    finally:
+        _TAB_REORDERING = False
+
+
+def refresh_favorite_buttons():
+    for key, page in tabs.items():
+        button = getattr(nb.get_tab_label(page), "_favorite", None)
+        if button is None:
+            continue
+        favorite = key in TAB_FAVORITES
+        button.set_label("★" if favorite else "☆")
+        style = button.get_style_context()
+        (style.add_class if favorite else style.remove_class)("favorite")
+        button.set_sensitive(key not in _FAVORITE_PENDING)
+        button.set_tooltip_text(("Quitar de favoritos" if favorite else "Marcar como favorita") if ES
+                                else ("Remove from favorites" if favorite else "Add to favorites"))
+
+
+def apply_tab_favorites(favorites, generation=None):
+    if generation is not None and generation != _FAVORITE_GENERATION:
+        return False
+    updated = set(favorites or []) - {"local"}
+    for key, enabled in _FAVORITE_PENDING.items():
+        (updated.add if enabled else updated.discard)(key)
+    changed = updated != TAB_FAVORITES
+    TAB_FAVORITES.clear()
+    TAB_FAVORITES.update(updated)
+    refresh_favorite_buttons()
+    if changed:
+        save_tabs()
+    return False
+
+
+def toggle_tab_favorite(key):
+    global _FAVORITE_GENERATION
+    if not key or key == "local" or key in _FAVORITE_PENDING:
+        return
+    before = key in TAB_FAVORITES
+    _FAVORITE_PENDING[key] = not before
+    _FAVORITE_GENERATION += 1
+    apply_tab_favorites(TAB_FAVORITES)
+
+    def finish(favorites, error):
+        global _FAVORITE_GENERATION
+        _FAVORITE_PENDING.pop(key, None)
+        _FAVORITE_GENERATION += 1
+        if error:
+            favorites = set(TAB_FAVORITES)
+            (favorites.add if before else favorites.discard)(key)
+        apply_tab_favorites(favorites)
+        if error:
+            message = "No se pudo guardar el favorito. Inténtalo de nuevo." if ES else "Could not save favorite. Try again."
+            notify_popup("Favoritos" if ES else "Favorites", message)
+        return False
+
+    def persist():
+        with _FAVORITE_REQUEST_LOCK:
+            try:
+                request = urllib.request.Request("http://127.0.0.1:4777/prefs-set",
+                    data=json.dumps({"favorite": {"session": key, "enabled": not before}}).encode(),
+                    headers={"Content-Type": "application/json"}, method="POST")
+                with urllib.request.urlopen(request, timeout=5) as response:
+                    result = json.loads(response.read().decode())
+                GLib.idle_add(finish, result["favorites"], False)
+            except Exception:
+                GLib.idle_add(finish, None, True)
+    threading.Thread(target=persist, daemon=True).start()
+
+
 def ordered_tab_labels(page_keys, labels):
     out = {}
     for key in page_keys:
@@ -1600,12 +1694,23 @@ def ordered_tab_labels(page_keys, labels):
 
 
 def save_tabs():
+    if _TAB_REORDERING:
+        return
+    enforce_tab_order()
+    if not globals().get("_LAYOUT_RESTORE_READY", False):
+        return
+    tmp = None
     try:
         labels = {k: getattr(b, "_label", None) for k, b in tabs.items()}
-        with open(TABS_FILE, "w") as f:
+        fd, tmp = tempfile.mkstemp(prefix="app-tabs.", suffix=".tmp", dir=os.path.dirname(TABS_FILE))
+        with os.fdopen(fd, "w") as f:
             json.dump(ordered_tab_labels(current_tab_order(), labels), f)
+        os.replace(tmp, TABS_FILE)
     except Exception:
         pass
+    finally:
+        if tmp and os.path.exists(tmp):
+            os.unlink(tmp)
 
 
 def on_tab_reordered(_nb, _child, _page_num):
@@ -1818,6 +1923,69 @@ def _codex_info_for_session(sess, kids):
     return None
 
 
+LAYOUT_SNAPSHOT_FILE = os.path.expanduser("~/.claude/hooks/app-sessions-v2.json")
+_LAYOUT_LOCK = threading.Lock()
+_LAYOUT_RESTORE_READY = False
+
+
+def snapshot_layouts(wait=False):
+    """Keep the last complete per-pane layout; never save a partial startup."""
+    if not _LAYOUT_RESTORE_READY:
+        return False
+    if not _LAYOUT_LOCK.acquire(blocking=wait):
+        return False
+    try:
+        keys = ["local"] + [k for k in list(tabs) if k.startswith("term-")]
+        previous = layout_snapshot.read_snapshot(LAYOUT_SNAPSHOT_FILE)["sessions"]
+        inspector = PaneInspector()
+        data = dict(previous)
+        for key in keys:
+            try:
+                captured = layout_snapshot.capture_session(tmuxc, key, inspector)
+                if any(p.get("agent") in {"claude", "codex", "grok"} and not p.get("resume_id")
+                       for w in captured["windows"] for p in w["panes"]):
+                    raise RuntimeError("agent identity not ready")
+                data[key] = captured
+            except Exception as exc:
+                if key in previous:
+                    data[key] = previous[key]
+                print(f"snapshot {key}: {exc}", file=sys.stderr)
+        layout_snapshot.write_snapshot(LAYOUT_SNAPSHOT_FILE, data)
+    except Exception as exc:
+        print(f"snapshot layouts: {exc}", file=sys.stderr)
+    finally:
+        _LAYOUT_LOCK.release()
+    return False
+
+
+def exact_resume_command(pane):
+    """A new per-pane snapshot must never resume another conversation via --last."""
+    if not pane.get("resume_id") and not (pane.get("acp") or {}).get("sessionId"):
+        return None
+    cmd = resume_command(pane)
+    if cmd and not {"--last", "--continue"}.intersection(shlex.split(cmd)):
+        return cmd
+    return None
+
+
+def restore_saved_layout(sess):
+    saved = layout_snapshot.read_snapshot(LAYOUT_SNAPSHOT_FILE)["sessions"].get(sess)
+    if not saved or not saved.get("windows"):
+        return False
+    layout_snapshot.restore_session(tmuxc, sess, saved, exact_resume_command)
+    return True
+
+
+def finish_startup_restore():
+    global _LAYOUT_RESTORE_READY
+    try:
+        restore_tabs()
+    finally:
+        _LAYOUT_RESTORE_READY = True
+    save_tabs()
+    return False
+
+
 _SNAPSHOT_LOCK = threading.Lock()
 
 
@@ -1923,10 +2091,12 @@ def resume_command(snap):
             return prefix + "claude --resume " + sid + fl
         return prefix + "claude --continue" + fl
     if agent == "codex" and _which_cli("codex"):
-        if sid and glob.glob(os.path.join(CODEX_SESS_DIR, "*", "*", "*",
+        codex_home = os.path.realpath(os.path.expanduser(snap.get("codex_home") or "~/.codex"))
+        prefix = "" if codex_home == os.path.realpath(os.path.expanduser("~/.codex")) else f"CODEX_HOME={shlex.quote(codex_home)} "
+        if sid and glob.glob(os.path.join(codex_home, "sessions", "*", "*", "*",
                                           "rollout-*" + sid + ".jsonl")):
-            return "codex resume " + sid + fl
-        return "codex resume --last" + fl
+            return prefix + "codex resume " + sid + fl
+        return prefix + "codex resume --last" + fl
     if agent == "acp" and _which_cli("cc-acp"):
         st = snap.get("acp") if isinstance(snap.get("acp"), dict) else {}
         cmd = "cc-acp --agent " + shlex.quote(str(st.get("agent") or "claude"))
@@ -1990,7 +2160,9 @@ def restore_tabs():
             if subprocess.run(["tmux", "has-session", "-t", "=" + sess],
                               capture_output=True, timeout=5).returncode != 0:
                 ssh_host = ssh_host_from_session(sess)
-                if sess.startswith("term-"):
+                if sess.startswith("term-") and restore_saved_layout(sess):
+                    pass
+                elif sess.startswith("term-"):
                     # terminal scratch: revivir en SU cwd y retomar el agente
                     # exacto (claude --resume <id> / codex resume <id>) que
                     # corria antes del apagado, segun el snapshot periodico.
@@ -2017,7 +2189,8 @@ def restore_tabs():
                         label = res.get("label") or label
                 else:
                     http_post("/new", {"session": sess})
-            open_tab(sess, "claude", label=label if isinstance(label, str) and label else None)
+            current = tmuxc("display-message", "-p", "-t", "=" + sess + ":", "#{window_index}")
+            open_tab(sess, current.stdout.strip() or "claude", label=label if isinstance(label, str) and label else None)
         except Exception as e:
             print(f"no pude restaurar {key}: {e}")
     return False
@@ -2085,6 +2258,18 @@ def tab_label(text, key=None, closable=True):
     hb._micon = micon
     hb._model = model_lbl
     hb._text_box = lbl_box
+    if key and key != "local":
+        favorite = Gtk.Button(label="★" if key in TAB_FAVORITES else "☆")
+        favorite.set_relief(Gtk.ReliefStyle.NONE)
+        favorite.set_focus_on_click(False)
+        favorite.get_style_context().add_class("tabfav")
+        if key in TAB_FAVORITES:
+            favorite.get_style_context().add_class("favorite")
+        favorite.set_tooltip_text(("Quitar de favoritos" if key in TAB_FAVORITES else "Marcar como favorita") if ES
+                                  else ("Remove from favorites" if key in TAB_FAVORITES else "Add to favorites"))
+        favorite.connect("clicked", lambda *_: toggle_tab_favorite(key))
+        hb.pack_start(favorite, False, False, 0)
+        hb._favorite = favorite
 
     def begin_rename(*_):
         if getattr(hb, "_editing", False) or key is None:
@@ -2245,8 +2430,10 @@ def poll_state_loop():
         # aqui en <=3s a todas las terminales (fuente/cursor/padding/opacidad
         # y tema). Antes solo se leian al arrancar la app.
         try:
+            favorite_generation = _FAVORITE_GENERATION
             with urllib.request.urlopen("http://127.0.0.1:4777/prefs", timeout=3) as r:
                 p = json.loads(r.read().decode())
+            GLib.idle_add(apply_tab_favorites, p.get("favorites", []), favorite_generation)
             snap = {k: p.get(k) for k in _LIVE_PREF_KEYS}
             if last_prefs is None:
                 last_prefs = snap
@@ -2942,6 +3129,10 @@ def _apply_tmux_theme():
 
 # Pestana "local": tu terminal de control (scratch en HOME). Es el cliente que
 # mueven Super+N y los popups. No aparece como tarjeta en el tablero.
+try:
+    restore_saved_layout("local")
+except Exception as exc:
+    print(f"no pude restaurar local: {exc}", file=sys.stderr)
 hub = make_term("tmux new-session -A -s local -c ~")
 # Aplica el tema al tmux status ya en el arranque (idempotente).
 GLib.timeout_add(500, lambda: (_apply_tmux_theme(), False)[1])
@@ -4847,13 +5038,13 @@ def on_tab_open_request(_mon, _f, _other, event):
         return
     if not sess or sess in tabs:
         return
-    cur = nb.get_current_page()
+    cur = nb.get_nth_page(nb.get_current_page())
     try:
         open_tab(sess, "claude", label=label)
     except Exception:
         return
-    if cur >= 0:
-        nb.set_current_page(cur)
+    if cur is not None and nb.page_num(cur) >= 0:
+        nb.set_current_page(nb.page_num(cur))
 
 
 _open_mon = Gio.File.new_for_path(OPEN_FILE).monitor_file(Gio.FileMonitorFlags.NONE, None)
@@ -4990,8 +5181,12 @@ win.connect("key-press-event", on_key)
 win.connect("destroy", Gtk.main_quit)
 win.show_all()
 hub._term.grab_focus()
-GLib.timeout_add(600, restore_tabs)
+GLib.timeout_add(600, finish_startup_restore)
+GLib.timeout_add_seconds(5, lambda: (threading.Thread(target=snapshot_layouts, daemon=True).start(), True)[1])
 GLib.timeout_add_seconds(30, lambda: (threading.Thread(target=snapshot_tabs, daemon=True).start(), True)[1])
 GLib.timeout_add_seconds(8, lambda: (threading.Thread(target=snapshot_tabs, daemon=True).start(), False)[1])
 threading.Thread(target=poll_state_loop, daemon=True).start()
-Gtk.main()
+try:
+    Gtk.main()
+finally:
+    snapshot_layouts(wait=True)

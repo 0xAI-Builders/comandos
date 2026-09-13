@@ -77,6 +77,11 @@ def test_mobile_and_doctor_do_not_use_process_matches_as_health():
     assert "pgrep" not in section
 
 
+def test_remote_ttyd_uses_small_font_for_tui_density():
+    assert "fontSize=11" in SOURCE
+    assert "fontSize=14" not in SOURCE
+
+
 def test_launcher_does_not_require_gnu_readlink():
     assert "readlink -f" not in SOURCE
     assert "os.path.realpath" in SOURCE

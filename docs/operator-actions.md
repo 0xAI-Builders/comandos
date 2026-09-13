@@ -275,3 +275,15 @@ Generado desde `lib/operator_catalog.py`. Un control de la UX sin fila aquí es 
 | `set_chat_model` | Modelo del chat: haiku, gpt-5.3-codex-spark, grok-4.5. | model | POST /operator/model |
 | `copy_last_reply` | Copia la última respuesta del chat. | — | local:copy_reply |
 | `copy_session_reply` | Copia la última respuesta de la IA de una sesión. | tab | local:copy_session |
+
+
+## Perfiles y operaciones recuperables
+
+| Tool | Qué hace | Cómo se ejecuta |
+|---|---|---|
+| `configure_session` | Un cambio de CLI, motor, modelo y cuentas por panel; requiere verificar resultado. | POST /session/configure |
+| `list_session_profiles` | Perfiles y capacidades de extensiones disponibles. | GET /session-profiles |
+| `extension_usage` | Llamadas observadas, duración y procedencia. | GET /extension-usage |
+| `show_chat` | Oculta o muestra el chat conservando el borrador. | UI setChatVisible |
+| `open_session_profiles` | Abre el editor de perfiles de inicio. | UI openSessionProfiles |
+| `operator_action_results` | Consulta acciones enviadas, confirmadas y fallidas. | GET /operator/action-results |

@@ -20,7 +20,7 @@ def test_cc_dash_defines_terminal_prefs_defaults():
 
 def test_cc_dash_prefs_set_validates_new_fields():
     # /prefs-set debe validar tipos y clamear rangos para no aceptar basura.
-    handler = CC_DASH.split('if self.path == "/prefs-set":')[1].split("return")[0]
+    handler = CC_DASH.split('def update_prefs(data):')[1].split('\ndef pane_cmd')[0]
     assert 'data.get("font_family")' in handler
     assert 'data.get("font_size")' in handler
     assert 'data.get("cursor_shape")' in handler

@@ -1,0 +1,3 @@
+#!/bin/sh
+# Stream MCP JSONL directly to the remote browser broker.
+exec ssh -T -o BatchMode=yes -o ExitOnForwardFailure=yes -o ConnectTimeout=8 -W 127.0.0.1:19441 macmini

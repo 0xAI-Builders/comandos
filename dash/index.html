@@ -790,8 +790,8 @@
     background:none;color:var(--dim);cursor:pointer;font-size:15px;line-height:1;
     transition:all .12s ease;margin-left:8px;vertical-align:middle}
   .ns-plus::before{content:"+"}
-  html.gtkapp .ns-plus{width:auto;padding:0 9px;font-family:var(--mono);font-size:10px;font-weight:700;gap:4px}
-  html.gtkapp .ns-plus::after{content:" Nueva"}
+  .ns-plus{width:auto;padding:0 9px;font-family:var(--mono);font-size:10px;font-weight:700;gap:4px}
+  .ns-plus::after{content:" Nueva"}
   .ns-plus:hover{color:var(--brand);border-color:var(--brand);transform:scale(1.08)}
   #newsess{position:fixed;inset:0;z-index:70;background:#0008;display:flex;
     align-items:center;justify-content:center;backdrop-filter:blur(3px)}
@@ -873,8 +873,7 @@
   @media (min-width:1360px){
     #rows{display:grid;grid-template-columns:1fr 1fr;gap:8px;align-items:start}
   }
-  #sidebar-insights{display:none}
-  html.gtkapp #sidebar-insights{display:block}
+  #sidebar-insights{display:block}
   .side-kpis{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:10px}
   .side-kpi{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:10px 11px;display:flex;flex-direction:column;gap:2px;min-width:0}
   .side-kpi .v{font-family:var(--mono);font-size:18px;font-weight:800;color:var(--text);font-variant-numeric:tabular-nums}
@@ -966,22 +965,7 @@
   #tl-toggle{font-family:var(--mono);font-size:10.5px;color:var(--faint);
     letter-spacing:.14em;text-transform:uppercase;padding:8px 0}
   #tl-toggle:hover{color:var(--dim)}
-  html.gtkapp #tl-wrap{padding:4px 14px 4px}
-  html.gtkapp #rows{display:none}
-  html.gtkapp #content{display:flex;flex-direction:column;flex:1 1 auto;min-height:0;overflow:hidden}
-  html.gtkapp body.app.split #view-panel.on{overflow:hidden}
-  html.gtkapp body.app.split #view-panel.on #content{flex:1 1 auto;min-height:0;overflow:hidden;display:flex;flex-direction:column}
-  html.gtkapp #side-top{flex:1 1 auto;min-height:48px;overflow-y:auto}
-  html.gtkapp #op-split{display:block;flex:none;height:10px;cursor:row-resize;position:relative;z-index:8;
-    background:linear-gradient(180deg,transparent,var(--line),transparent);touch-action:none}
-  html.gtkapp #op-split::before{content:"";position:absolute;inset:-12px 0}
-  html.gtkapp #op-split::after{content:"";position:absolute;left:50%;top:4px;width:42px;height:2px;border-radius:2px;
-    background:var(--line2);transform:translateX(-50%)}
-  html.gtkapp #op-split:hover::after,html.gtkapp.op-drag #op-split::after{background:var(--brand)}
-  html.gtkapp #content > *:not(#op-chat):not(#op-split):not(#side-top){flex:none;min-height:0}
-  html.gtkapp #op-chat{flex:0 0 var(--op-chat-h,72%);min-height:160px;max-height:90%;overflow:hidden;display:flex;flex-direction:column}
-  html.gtkapp #op-msgs{flex:1 1 auto;min-height:0;overflow-y:auto}
-  html.gtkapp #op-form{flex:none;position:sticky;bottom:0;background:var(--bg);z-index:3;padding-top:6px;box-shadow:0 -10px 16px var(--bg)}
+  /* Shared sidebar layout and split visibility live in workspace.css. */
   #op-split{display:none}
   html.only-panel #op-chat{display:none}
   #op-chat{display:flex;flex-direction:column;min-width:0;margin:0 auto;max-width:1360px;
@@ -1304,33 +1288,40 @@
      app: barra de pestanas arriba, y debajo el panel o una terminal. */
   body.app{height:var(--app-height,100dvh);overflow:hidden;display:block}
   /* En la app las pestanas YA son la navegacion: la lista de sesiones sobra */
-  html.gtkapp #recent-wrap{display:none}
+  #app-navigation{display:none}
+  body.app #app-navigation{display:flex;align-items:stretch;min-width:0;min-height:0;height:44px;
+    overflow:hidden;background:var(--panel);z-index:5}
   #tabbar{display:none}
-  body.app #tabbar{display:flex;align-items:stretch;gap:0;flex:none;
-    background:linear-gradient(180deg,var(--panel) 0%,var(--bg) 100%);
-    border-bottom:1px solid var(--line);box-shadow:0 2px 10px rgba(0,0,0,.25);
-    padding:0 8px;overflow-x:auto;overflow-y:hidden;
-    -webkit-overflow-scrolling:touch;scrollbar-width:thin;scrollbar-color:var(--line2) transparent}
-  body.app #tabbar::-webkit-scrollbar{height:5px}
-  body.app #tabbar::-webkit-scrollbar-track{background:transparent}
-  body.app #tabbar::-webkit-scrollbar-thumb{background:var(--line);border-radius:6px;
-    border:2px solid transparent;background-clip:padding-box}
-  body.app #tabbar::-webkit-scrollbar-thumb:hover{background:var(--brand);background-clip:padding-box}
+  body.app #tabbar{display:flex;align-items:stretch;gap:0;flex:1 1 0;min-width:0;min-height:0;height:44px;
+    padding:0;overflow-x:auto;overflow-y:hidden;overscroll-behavior-x:contain;
+    touch-action:pan-x;overflow-anchor:none;scrollbar-width:none;-webkit-overflow-scrolling:touch}
+  body.app #tabbar::-webkit-scrollbar{display:none;width:0;height:0}
+  .tab-nav-btn{flex:0 0 36px;min-width:36px;border:0;border-radius:0;background:transparent;color:var(--dim);
+    font:20px var(--mono);padding:0;display:grid;place-items:center;cursor:pointer;touch-action:manipulation}
+  .tab-nav-btn:hover{color:var(--text);background:var(--line)}
+  .tab-nav-btn:disabled{opacity:.3;cursor:default}
+  body.app.split #tab-panel{display:none}
+  @media(pointer:coarse){.tab-step{display:none}.tab-nav-btn{flex-basis:44px;min-width:44px}}
   body.app.dragging{user-select:none;cursor:col-resize}
   .apptab{position:relative;display:flex;align-items:center;gap:8px;white-space:nowrap;
-    min-height:44px;padding:11px 14px 10px;font-family:var(--mono);font-size:12px;color:var(--dim);
+    height:44px;min-height:44px;padding:0 12px;font-family:var(--mono);font-size:11px;color:var(--dim);
     cursor:pointer;flex:none;max-width:200px;letter-spacing:.02em;
     border-bottom:2px solid transparent;transition:color .15s,background .15s}
   .apptab:hover{color:var(--text);background:color-mix(in srgb,var(--brand) 6%,transparent)}
   .apptab .lbl{overflow:hidden;text-overflow:ellipsis;font-weight:600}
   .apptab.on{color:var(--text);border-bottom-color:var(--brand);
     background:color-mix(in srgb,var(--brand) 9%,transparent)}
-  .apptab.on::after{content:"";position:absolute;left:8px;right:8px;bottom:-1px;height:2px;
-    background:var(--brand);border-radius:2px 2px 0 0;box-shadow:0 0 8px var(--brand)}
   .apptab .x{color:var(--faint);font-size:16px;line-height:1;padding:2px 3px;border-radius:5px;
     margin-left:2px;transition:color .12s,background .12s}
   .apptab .x:hover{color:#fff;background:#FF6B6B}
   .apptab .x.arm{color:#fff;background:var(--done);font-weight:800}
+  .apptab .tab-fav{flex:none;width:26px;height:40px;padding:0;border:0;background:transparent;
+    color:var(--faint);font:18px var(--sans);cursor:pointer;touch-action:pan-x}
+  .apptab .tab-fav.on{color:var(--brand)}
+  .apptab .tab-fav:hover{color:var(--text)}
+  .apptab .tab-fav:focus-visible{outline:2px solid var(--brand);outline-offset:-3px;border-radius:4px}
+  .apptab .tab-fav:disabled{opacity:.5;cursor:wait}
+  @media(pointer:coarse){.apptab .tab-fav{width:44px}}
   .apptab .dot{width:7px;height:7px;border-radius:50%;flex:none;box-shadow:0 0 6px currentColor}
   .apptab.plus{font-size:18px;color:var(--faint);padding:8px 15px}
   .apptab.plus:hover{color:var(--brand)}
@@ -1340,10 +1331,10 @@
   #splitter{display:none}
   /* --- ANGOSTO (celular): tabs arriba a todo lo ancho; panel O terminal a
          pantalla completa, se cambia con las tabs --- */
-  body.app #panes{height:100%;min-height:0;display:grid;
-    grid-template-columns:minmax(0,1fr);grid-template-rows:auto minmax(0,1fr);
+  body.app #panes{height:100%;width:100%;min-width:0;min-height:0;overflow:hidden;display:grid;
+    grid-template-columns:minmax(0,1fr);grid-template-rows:44px minmax(0,1fr);
     padding-top:env(safe-area-inset-top);padding-bottom:env(safe-area-inset-bottom)}
-  body.app #tabbar{grid-column:1;grid-row:1;position:relative;inset:auto;z-index:5;padding:0 8px}
+  body.app #app-navigation{grid-column:1;grid-row:1;position:relative;inset:auto}
   body.app #view-panel,body.app #term-area{
     grid-column:1;grid-row:2;position:relative;inset:auto;min-width:0;min-height:0}
   body.app #view-panel{display:none;flex-direction:column}
@@ -1362,9 +1353,9 @@
          abajo a la derecha. --- */
   @media (min-width:748px){
     body.app.split #panes{display:grid;
-      grid-template-columns:var(--split-left,380px) 8px minmax(0,1fr);grid-template-rows:auto 1fr;
+      grid-template-columns:minmax(0,var(--split-left,380px)) 8px minmax(0,1fr);grid-template-rows:44px minmax(0,1fr);
       grid-template-areas:"panel split tabs" "panel split term"}
-    body.app.split #tabbar{grid-area:tabs;position:relative;inset:auto;top:auto}
+    body.app.split #app-navigation{grid-area:tabs;position:relative;inset:auto;top:auto}
     body.app.split #view-panel{grid-area:panel;position:relative;inset:auto;top:auto;
       display:flex;min-width:0;min-height:0;border-right:1px solid var(--line);
       overflow-y:auto;overflow-x:hidden;-webkit-overflow-scrolling:touch;
@@ -1393,7 +1384,9 @@
   }
   /* ---------- toasts ---------- */
   #toasts{position:fixed;right:12px;top:calc(var(--hdr-h,58px) + 6px);z-index:30;display:flex;
-    flex-direction:column;gap:8px;align-items:flex-end}
+    flex-direction:column;gap:8px;align-items:flex-end;pointer-events:none}
+  body.app #toasts{top:calc(env(safe-area-inset-top) + 50px)}
+  #toasts .alert,#toasts .alert-more{pointer-events:auto}
   .toast{background:var(--panel2);border:1px solid var(--line);
     border-left:3px solid var(--brand);border-radius:9px;padding:10px 14px;
     font-family:var(--mono);font-size:12px;max-width:min(380px,90vw)}
@@ -1911,9 +1904,18 @@
 	    #content{padding-bottom:env(safe-area-inset-bottom)}
 	  }
 	</style>
+<link rel="stylesheet" href="/workspace.css?v=0774279ce4ae">
+<script src="/session-config.js"></script>
 
 <div id="panes">
-<div id="tabbar"></div>
+<nav id="app-navigation" aria-label="Pestañas de sesiones">
+  <button type="button" id="tab-panel" class="tab-nav-btn" aria-label="Panel de sesiones" title="Panel de sesiones"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M9 4v16"/></svg></button>
+  <button type="button" id="tab-prev" class="tab-nav-btn tab-step" aria-label="Desplazar pestañas a la izquierda">‹</button>
+  <div id="tabbar" role="tablist" aria-label="Terminales"></div>
+  <button type="button" id="tab-next" class="tab-nav-btn tab-step" aria-label="Desplazar pestañas a la derecha">›</button>
+  <button type="button" id="tab-new" class="tab-nav-btn" aria-label="Nueva terminal" title="Nueva terminal">+</button>
+  <button type="button" id="tab-open" class="tab-nav-btn" aria-label="Ver todas las sesiones" title="Ver todas las sesiones"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="m12 3 9 5-9 5-9-5 9-5Zm-9 9 9 5 9-5M3 16l9 5 9-5"/></svg></button>
+</nav>
 <div id="view-panel" class="on">
 <div id="topbar">
 <header>
@@ -1966,7 +1968,8 @@
   <div class="sec-label"><span class="chip" id="sessions-title">Sesiones</span>
     <button type="button" id="btn-newsess" class="ns-plus" title="Nueva sesión (elige carpeta, agente y cuenta)" aria-label="Nueva sesión"></button>
   </div>
-  <div id="rows"></div>
+  <div id="workspace-tools"><button id="toggle-chat" aria-controls="op-chat" aria-expanded="true">Ocultar chat</button><button id="toggle-overview" aria-pressed="false">Todas las sesiones</button><button id="open-session-profiles">Perfiles</button><button id="open-extension-usage">Uso de herramientas</button></div>
+  <div id="session-overview" hidden></div><div id="rows"></div>
 </section>
 <section class="sec" id="sidebar-insights">
   <div class="sec-label"><span class="chip">Hoy</span><button type="button" id="side-usage" class="side-link">Analytics →</button></div>
@@ -2025,6 +2028,7 @@
     <div class="ns-note" id="ns-note"></div>
     <div class="ns-actions">
       <button type="button" id="ns-cancel">Cancelar</button>
+      <span id="ns-profile-note" class="sc-note">Sin perfil</span><button type="button" id="ns-profile-open" class="sc-btn">Elegir perfil</button><button type="button" id="ns-profile-clear" class="sc-btn">Quitar perfil</button>
       <button type="button" id="ns-go" class="primary">Crear</button>
     </div>
   </div>
@@ -2052,6 +2056,8 @@
     </span>
     <div class="op-btns">
       <button type="button" id="op-stop" class="hidden" title="Parar respuesta" aria-label="Parar">Parar</button>
+      <button type="button" id="op-action-history" title="Resultados de acciones" aria-label="Resultados de acciones">✓</button>
+      <button type="button" id="op-hide" title="Ocultar chat" aria-label="Ocultar chat">−</button>
       <button type="button" id="op-hist" title="Conversaciones guardadas" aria-label="Conversaciones"><span data-icon="bars" data-size="13"></span></button>
       <button type="button" id="op-new" title="Nueva conversación" aria-label="Nueva conversación"><span data-icon="plus" data-size="13"></span></button>
     </div>
@@ -2060,12 +2066,11 @@
   <div id="op-msgs"></div>
   <form id="op-form">
     <div id="op-compose">
-      <input id="op-in" type="text" autocomplete="off" spellcheck="true"
-        placeholder="Dile a ComandOS…" maxlength="2000">
+      <textarea id="op-in" rows="2" autocomplete="off" spellcheck="true" placeholder="Dile a ComandOS… · Shift+Enter para nueva línea" maxlength="4000"></textarea>
       <button type="button" id="op-stop-in" class="hidden" title="Parar respuesta">Parar</button>
       <button type="submit" id="op-go" title="Enviar">Enviar</button>
     </div>
-    <div id="op-hint">Haiku · barato · rápido</div>
+    <div id="op-target" aria-live="polite"></div><div id="op-hint">Haiku · barato · rápido</div>
   </form>
 </section>
 </div>
@@ -2174,7 +2179,7 @@
       <label for="pf-opacity">Opacidad del fondo: <span id="pf-opacity-v">100</span>%</label>
       <input type="range" id="pf-opacity" class="solid" min="30" max="100" value="100">
     </div>
-    <div class="desc" style="margin-top:-4px">Cambios se aplican al abrir una pestaña nueva. Reabrí las existentes para verlos.</div>
+    <div class="desc" style="margin-top:-4px">Cambios se aplican al abrir una pestaña nueva. Reabre las existentes para verlos.</div>
   </div>
 
   <!-- ========= Tablero ========= -->
@@ -2414,7 +2419,7 @@
       </div>
     </div>
     <div class="snip-pane" id="snip-pane">
-      <div class="snip-empty" data-en="Select a snippet or create a new one." data-es="Elegí un snippet o creá uno nuevo.">Elegí un snippet o creá uno nuevo.</div>
+      <div class="snip-empty" data-en="Select a snippet or create a new one." data-es="Elige un snippet o crea uno nuevo.">Elige un snippet o crea uno nuevo.</div>
     </div>
   </div>
 </dialog>
@@ -2596,7 +2601,7 @@ async function api(path, body){
     : (tok ? {headers} : undefined);
   const r = await fetch(path, opt);
   const j = await r.json().catch(()=>({}));
-  if(!r.ok) throw new Error(j.error || r.statusText);
+  if(!r.ok || (body && j.ok === false)) throw new Error(j.error || j.message || r.statusText || "La acción no se completó");
   return j;
 }
 
@@ -2723,7 +2728,7 @@ function mdStrip(s){ return (s||"").replace(/\*\*|`|^#{1,6} /g, ""); }
 	function usageForItem(it){
 	  if(!it) return null;
 	  return S.usageByPane.get(usagePaneKey(it.session, it.pane || "")) ||
-	         S.usageByPane.get(usagePaneKey(it.session, "")) || null;
+	         (it.pane ? null : S.usageByPane.get(usagePaneKey(it.session, ""))) || null;
 	}
 	function confidenceLabel(c){
 	  const labels = {"detected": "detectado", "exact": "exacto", "reconciled": "reconciliado", "unattributed": "sin asignar", "transcript": "del transcript", "measured": "medido local"};
@@ -3137,6 +3142,7 @@ function mdStrip(s){ return (s||"").replace(/\*\*|`|^#{1,6} /g, ""); }
 	  const acpRoute=role==="motor"&&((nsRoute()||{}).driver==="acp");return accounts.map(a=>{const selectable=role==="motor"?(acpRoute?a.selectable:a.motorSelectable):a.selectable;return {id:a.alias,label:a.alias,title:a.identity||(!selectable&&a.selectable?tf("cuenta de motor nombrada: gateway aislado aún no disponible","named motor account: isolated gateway not available yet"):({ready:"suscripción lista",login_required:"requiere login",unsupported_auth:"auth no compatible con suscripción"}[a.state]||a.state||"")),disabled:!selectable,icon:provider};});
 	}
 	function nsEnsureAccount(provider, field, role="harness"){
+    if(NS.profileId) return;
 	  const items=nsAccountItems(provider,role), ready=items.filter(x=>!x.disabled);
 	  if(!ready.some(x=>x.id===NS[field])) NS[field]=(ready[0]||{}).id||"main";
 	}
@@ -3152,8 +3158,8 @@ function mdStrip(s){ return (s||"").replace(/\*\*|`|^#{1,6} /g, ""); }
 	function nsSelectDefaults(){
 	  const route = nsRoute();
 	  NS.routeId = route && route.selectable ? route.id : "";
-	  const models=nsModels(); if(!models.some(m=>m.id===NS.model)) NS.model=(models[0]||{}).id||"";
-	  const allowed=nsModel().efforts||[]; if(!allowed.includes(NS.effort)) NS.effort=nsModel().defaultEffort||allowed[0]||"";
+	  const models=nsModels(); if((!NS.profileId || !NS.model) && !models.some(m=>m.id===NS.model)) NS.model=(models[0]||{}).id||"";
+	  const allowed=nsModel().efforts||[]; if((!NS.profileId || !NS.effort) && !allowed.includes(NS.effort)) NS.effort=nsModel().defaultEffort||allowed[0]||"";
 	}
 	function nsSelectableMotors(h){
 		  return nsMatrix().filter(r=>r.harness===h && (r.selectable || ((r.reason||{}).code||"")!=="not_routed"));
@@ -3184,8 +3190,9 @@ function mdStrip(s){ return (s||"").replace(/\*\*|`|^#{1,6} /g, ""); }
 	  $("#ns-matrix").innerHTML=unavailable.map(r=>`<div><b>${mdEsc(nsHarness(r.harness).label||r.harness)} → ${mdEsc(nsMotor(r.motor).label||r.motor)}</b><small>${mdEsc((r.reason||{}).message||r.productState||"")}</small></div>`).join("");
 	  NS.routeId=route&&route.selectable?route.id:"";
 	  const go=$("#ns-go");
-	  if(go){go.disabled=!shell&&!NS.routeId;go.title=go.disabled?tf("Esta combinación no está disponible — elige un motor habilitado","This combination is unavailable — pick an enabled engine"):tf("Crear la sesión con este setup","Create the session with this setup");}
-	  $("#ns-note").textContent=shell?"":NS.routeId?`${nsHarness(NS.harness).label} → ${nsMotor(NS.motor).label} · ${NS.model}${NS.effort?" · "+NS.effort:""}`:tf("combinación no disponible","combination unavailable");
+	  const profileError=NS.profileId&&!shell?SessionConfig.validate(PROVIDERS||{}, {...NS,toHarness:NS.harness}):"";
+      if(go){go.disabled=!!profileError||(!shell&&!NS.routeId);go.title=go.disabled?tf("Esta combinación no está disponible — elige un motor habilitado","This combination is unavailable — pick an enabled engine"):tf("Crear la sesión con este setup","Create the session with this setup");}
+	  $("#ns-note").textContent=profileError|| (shell?"":NS.routeId?`${nsHarness(NS.harness).label} → ${nsMotor(NS.motor).label} · ${NS.model}${NS.effort?" · "+NS.effort:""}`:tf("combinación no disponible","combination unavailable"));
 	}
 	async function nsOpen(){
 	  const m=$("#newsess");m.classList.remove("hidden");
@@ -3302,7 +3309,7 @@ function mdStrip(s){ return (s||"").replace(/\*\*|`|^#{1,6} /g, ""); }
 	  if(!cwd) return toast(tf("Falta la carpeta", "Missing folder"), true);
 	  try{
 	    if(NS.intoPane && NS.harness !== "shell"){
-	      const r = await api("/harness/switch", {session: NS.intoPane.session, pane: NS.intoPane.pane || "",
+	      const r = await api("/session/configure", {session: NS.intoPane.session, pane: NS.intoPane.pane || "",
 	        toHarness: NS.harness, motor: NS.motor, model: NS.model, effort: NS.effort,
 	        account: NS.harnessAccount, harnessAccount: NS.harnessAccount, motorAccount: NS.motorAccount,
 	        danger: $("#ns-danger").classList.contains("on")});
@@ -3315,7 +3322,7 @@ function mdStrip(s){ return (s||"").replace(/\*\*|`|^#{1,6} /g, ""); }
 	      tick(); return;
 	    }
 	    const payload = NS.harness === "shell" ? {cwd,agent:"shell"} : {cwd,routeId:NS.routeId,model:NS.model,effort:NS.effort,harnessAccount:NS.harnessAccount,motorAccount:NS.motorAccount};
-	    const r = await api("/session-new", {...payload, danger: $("#ns-danger").classList.contains("on")});
+	    const r = await api("/session-new", {...payload, profileId:NS.profileId || undefined, danger: $("#ns-danger").classList.contains("on")});
 	    NS.intoPane=null; $("#newsess").classList.add("hidden");
 	    toast(`${r.label} ${tf("creada", "created")}${r.worktree ? " · ⎇ worktree" : ""}`);
 	    tick();
@@ -3343,6 +3350,7 @@ function mdStrip(s){ return (s||"").replace(/\*\*|`|^#{1,6} /g, ""); }
 	}
 	let ACTIVE_TAB = {session: "", ts: 0};
 	setInterval(async ()=>{
+	  if(!inApp()) return; // Remote selection belongs to this browser, not GTK focus.
 	  try{
 	    const d = await api("/active-tab");
 	    const changed = d && d.session && (d.session !== ACTIVE_TAB.session || (d.pane || "") !== (ACTIVE_TAB.pane || ""));
@@ -3375,11 +3383,12 @@ function mdStrip(s){ return (s||"").replace(/\*\*|`|^#{1,6} /g, ""); }
 	  // sesion pero de un SPLIT concreto, el click (mas especifico) manda —
 	  // si no, abrir la pestana pisaba la seleccion y "click y nada".
 	  const selSess = String(S.sel || "").split("|")[0];
-	  const activeKey = ACTIVE_TAB.session ? ACTIVE_TAB.session + (ACTIVE_TAB.pane ? "|" + ACTIVE_TAB.pane : "") : "";
+	  const active = sidebarActiveTab();
+	  const activeKey = active.session ? active.session + (active.pane ? "|" + active.pane : "") : "";
 	  // Pane activo es específico y siempre puede ganar; una señal que solo
 	  // conoce la sesión no pisa un click de split de esa misma sesión.
-	  if(activeKey && (ACTIVE_TAB.pane || ACTIVE_TAB.session !== selSess))
-	    cand.push({sess: activeKey, ts: (ACTIVE_TAB.ts || 0) * 1000});
+	  if(activeKey && (active.pane || active.session !== selSess))
+	    cand.push({sess: activeKey, ts: (active.ts || 0) * 1000});
 	  cand.sort((a, b) => b.ts - a.ts);
 	  for(const c of cand){
 	    const it = items.find(i => rowKey(i) === c.sess) || items.find(i => i.session === c.sess);
@@ -3440,7 +3449,7 @@ function mdStrip(s){ return (s||"").replace(/\*\*|`|^#{1,6} /g, ""); }
 	            </div>
 	            <div class="cx-pane hidden" data-pane="mcps"><div class="cx-scroll cx-mcps"></div></div>
 	            <div class="cx-pane hidden" data-pane="skills"><div class="cx-scroll cx-skills"></div></div>
-	            <div class="cx-note">${tf("apagar = menos tokens por turno · aplica al reciclar la sesion", "off = fewer tokens per turn · applies on session recycle")}</div>
+	            <div class="cx-note">${tf("Elige las herramientas en Perfiles. Los cambios se aplican al iniciar una sesión nueva.", "Choose tools in Profiles. Changes apply when starting a new session.")}</div>
 	          </div>
 	        </div>
 	      </div>`;
@@ -3575,11 +3584,11 @@ function mdStrip(s){ return (s||"").replace(/\*\*|`|^#{1,6} /g, ""); }
 	      const act = (d.mcps || []).filter(m => m.enabled);
 	      const tot = act.reduce((a, m) => a + (m.est_tokens || 0), 0);
 	      if(act.length > 7)
-	        msg = tf(`${act.length} MCPs activos ≈ ${Math.round(tot/1000)}k tokens por turno — apaga los que no uses (Más ▾)`,
-	                 `${act.length} active MCPs ≈ ${Math.round(tot/1000)}k tokens/turn — turn off unused ones (More ▾)`);
+	        msg = tf(`${act.length} MCPs configurados. Revisa el uso observado en Herramientas.`,
+	                 `${act.length} MCPs configured. Review observed use under Tools.`);
 	      else if(d.claudeMd && d.claudeMd.lines > 200)
-	        msg = tf(`${d.claudeMd.name}: ${d.claudeMd.lines} lineas — cuando es tan largo, Claude ignora la mitad`,
-	                 `${d.claudeMd.name}: ${d.claudeMd.lines} lines — when this long, Claude ignores half of it`);
+	        msg = tf(`${d.claudeMd.name}: ${d.claudeMd.lines} líneas de instrucciones. Revisa si todas son necesarias.`,
+	                 `${d.claudeMd.name}: ${d.claudeMd.lines} lines of instructions. Review whether they are all needed.`);
 	    }
 	  }
 	  el.textContent = msg ? "⚠ " + msg : "";
@@ -3598,11 +3607,10 @@ function mdStrip(s){ return (s||"").replace(/\*\*|`|^#{1,6} /g, ""); }
 	        aria-label="${attrEsc(x.name)}" class="sw ${x.enabled ? "on" : ""}" ${x.toggleable ? "" : "disabled"}
 	        data-kind="${kind}" data-name="${attrEsc(x.name)}" data-path="${attrEsc(x.path || "")}"
 	        data-on="${x.enabled ? 1 : 0}"
-	        title="${x.toggleable ? tf("prender/apagar", "toggle") : tf("global (~/.claude.json) — no apagable por proyecto", "global — not per-project toggleable")}"></button>
-	      <span class="nm" title="${attrEsc(x.name)}">${mdEsc(x.name)}</span>
+	        title="${x.toggleable ? tf("Configurar en un perfil de inicio", "Configure in a launch profile") : tf("global (~/.claude.json) — no apagable por proyecto", "global — not per-project toggleable")}"></button>
+	      <span class="nm" title="${attrEsc(x.name)}">${mdEsc(x.name)}${kind==='mcp'?`<small class="mcp-description">${mdEsc(x.description||tf('Este servidor no tiene una descripción disponible.','No description is available for this server.'))}</small>`:''}</span>
 	      ${kind==="mcp"?`<span class="tok">${mdEsc(x.source||x.scope||"")}</span>`:""}
-	      <span class="tok">~${(x.est_full || x.est_tokens) >= 1000 ?
-	        ((x.est_full || x.est_tokens)/1000).toFixed(1) + "k" : (x.est_full || x.est_tokens)} tok</span>
+	      <span class="tok">${x.enabled ? "Configurada" : "Desactivada en config"} · estado vivo sin confirmar</span>
 	    </div>`;
 	  const mcps = d.mcps || [], skills = d.skills || [];
 	  const tot = arr => arr.filter(x => x.enabled).reduce((a, x) => a + (x.est_tokens || 0), 0);
@@ -3635,32 +3643,23 @@ function mdStrip(s){ return (s||"").replace(/\*\*|`|^#{1,6} /g, ""); }
 	  const fmtK = n => n >= 1000 ? (n/1000).toFixed(1) + "k" : String(n);
 	  if(tabM){
 	    const tm = (d.mcps || []).filter(x => x.enabled).reduce((a, x) => a + (x.est_tokens || 0), 0);
-	    tabM.innerHTML = `MCPs <b>~${fmtK(tm)}</b>`;
+	    tabM.innerHTML = `MCPs <b>${mcps.filter(x=>x.enabled).length}</b>`;
 	  }
 	  if(tabS){
 	    const ts2 = (d.skills || []).filter(x => x.enabled).reduce((a, x) => a + (x.est_tokens || 0), 0);
-	    tabS.innerHTML = `Skills <b>~${fmtK(ts2)}</b>`;
+	    tabS.innerHTML = `Skills <b>${skills.filter(x=>x.enabled).length}</b>`;
 	  }
 	  box.querySelector(".cx-mcps").innerHTML =
 	    (mcps.map(x => row("mcp", x)).join("") || `<div class="cx-note">${providerMark(d.harness||it.agent||"claude","",13)} ${d.mcpDetection?.status==="empty"?tf(`sin MCPs configurados para ${d.harness||it.agent}`,`no MCPs configured for ${d.harness||it.agent}`):tf("detección MCP no disponible","MCP detection unavailable")}</div>`) +
-	    `<div class="cx-total">${tf("activos", "active")}: ~${Math.round(tot(mcps)/100)/10}k tok/turno</div>`;
+	    `<div class="cx-total">${mcps.filter(x=>x.enabled).length} configurados · llamadas observadas en Uso de herramientas</div>`;
 	  box.querySelector(".cx-skills").innerHTML =
 	    (skills.map(x => row("skill", x)).join("") || `<div class="cx-note">${tf("sin skills", "no skills")}</div>`) +
-	    `<div class="cx-total">${tf("activas", "active")}: ~${Math.round(tot(skills)/100)/10}k tok/turno</div>`;
-	  box.querySelectorAll(".sw:not(:disabled)").forEach(b => b.addEventListener("click", async ()=>{
-	    const on = b.dataset.on !== "1";
-	    try{
-	      const live = CENTRO_VIEW.item;
-	      if(!live || live.session !== box.dataset.sig) return;
-	      if(b.dataset.kind === "mcp")
-	        await api("/mcp-toggle", {cwd:live.cwd, name:b.dataset.name, on});
-	      else
-	        await api("/skill-toggle", {path: b.dataset.path, on});
-	      brainCache = {key: null, data: null};
-	      renderBrain(box, live);
-	      toast(`${b.dataset.name} ${on ? "ON" : "OFF"} — ${tf("aplica al reciclar", "applies on recycle")}`);
-	    }catch(err){ toast(err.message, true); }
-	  }));
+	    `<div class="cx-total">${skills.filter(x=>x.enabled).length} configuradas · llamadas observadas en Uso de herramientas</div>`;
+	  box.querySelectorAll(".sw[data-kind]").forEach(b => b.addEventListener("click", async ()=>{
+      const live = CENTRO_VIEW.item;
+      if(!live || rowKey(live) !== box.dataset.sig) return;
+      await openSessionProfiles(live);
+    }));
 	}
 	// Color estable por alias de cuenta (hash -> hue): sin lista fija.
 	function acctColor(a){
@@ -4834,7 +4833,7 @@ function mdStrip(s){ return (s||"").replace(/\*\*|`|^#{1,6} /g, ""); }
 	  // "detener y cambiar YA") y confirma en el pane. Solo bloquea un proxy muerto.
 	  const stopBtn = box.querySelector(".cx-stop");
 	  if(stopBtn) stopBtn.classList.toggle("hidden", !(it.alive && liveHarnesses().includes(it.agent) && (it.status === "working" || MOTOR_PENDING.has(targetKey))));
-	  const eff = p2 && p2.effort ? p2.effort : (it.effort || effortFor(targetKey, model));
+	  const eff = p2 && p2.effort ? p2.effort : (it.observedConfig ? (it.effort || "") : (it.effort || effortFor(targetKey, model)));
 	  const currentHarnessMotor = currentMotorOf(it, model);
 	  if(isShell && !p2){
 	    btn.innerHTML = `<span class="mp-prov">▶</span><span class="mp-model">${mdEsc(tf("Iniciar IA aquí","Start AI here"))}</span><span class="mp-caret">▾</span>`;
@@ -4885,6 +4884,7 @@ function mdStrip(s){ return (s||"").replace(/\*\*|`|^#{1,6} /g, ""); }
 	  if(pop.classList.contains("open") && MPOP && MPOP.anchor === anchor){ motorPopClose(); return; }
 	  MPOP = {anchor, ctx};
 	  motorPopRender();
+	  pop.classList.add("open"); // Measure its rendered width before clamping to the viewport.
 	  if(inApp()){
 	    pop.classList.add("inline");
 	    $("#centro-wrap").appendChild(pop);
@@ -4981,6 +4981,7 @@ function mdStrip(s){ return (s||"").replace(/\*\*|`|^#{1,6} /g, ""); }
 		}
 		function nativeDefaultModel(to){ return destHarnessModel(to, {}, ""); }
 		function motorPopRender(){
+      if(MPOP && MPOP.ctx.mode !== "global") return renderSessionConfig();
 	  const pop = $("#motor-pop"); if(!MPOP) return;
 	  const {mode, item, model} = MPOP.ctx;
 	  const curModel = mode === "global" ? PROXY.defaultModel : model;
@@ -5897,15 +5898,67 @@ ulog("click", `harness-switch:${to}`, "centro");
 	  usagePollTs = now;
 	  try{ renderUsage(await api("/usage/state")); }catch(e){}
 	}
-	function favBtn(it, el){
-	  const b = el.querySelector(".fav");
-  b.classList.toggle("on", S.favs.has(it.session));
-  b.onclick = async e=>{
+const favoritePending = new Map();
+let favoriteQueue = Promise.resolve(), favoriteVersion = 0;
+let favoriteReadAt = 0, favoriteReadPending = false;
+function updateFavoriteButton(button, session, label=session){
+  const on = S.favs.has(session);
+  button.classList.toggle("on", on);
+  const glyph = on ? "★" : "☆";
+  if(button.textContent !== glyph) button.textContent = glyph;
+  button.disabled = session === "local" || favoritePending.has(session);
+  button.title = session === "local" ? tf("LOCAL siempre va primero", "LOCAL always comes first") :
+    on ? tf("Quitar de favoritos", "Remove from favorites") : tf("Marcar como favorita", "Add to favorites");
+  button.setAttribute("aria-label", button.title + " · " + label);
+  button.setAttribute("aria-pressed", String(on));
+}
+function applyFavorites(favorites){
+  const next = new Set((favorites || []).filter(s => s !== "local"));
+  for(const [session,on] of favoritePending) on ? next.add(session) : next.delete(session);
+  const changed = next.size !== S.favs.size || [...next].some(s => !S.favs.has(s));
+  S.favs = next;
+  if(changed) render(S.list || []);
+}
+async function setSessionFavorite(session, on){
+  if(!session || session === "local" || favoritePending.has(session)) return;
+  const before = S.favs.has(session);
+  favoritePending.set(session, !!on);
+  favoriteVersion++;
+  applyFavorites([...S.favs]);
+  // Serialize writes from this client; the server merges individual changes
+  // with those from other clients. Polls cannot undo an in-flight click.
+  const write = favoriteQueue.catch(()=>{}).then(async () => {
+    try{
+      const result = await api("/prefs-set", {favorite:{session,enabled:!!on}});
+      favoritePending.delete(session);
+      favoriteVersion++;
+      applyFavorites(result.favorites);
+    }catch(error){
+      favoritePending.delete(session);
+      favoriteVersion++;
+      before ? S.favs.add(session) : S.favs.delete(session);
+      throw error;
+    }finally{ render(S.list || []); }
+  });
+  favoriteQueue = write;
+  return write;
+}
+async function refreshFavorites(){
+  if(favoriteReadPending || Date.now() - favoriteReadAt < 5000) return;
+  favoriteReadAt = Date.now();
+  favoriteReadPending = true;
+  const version = favoriteVersion;
+  try{
+    const prefs = await api("/prefs");
+    if(version === favoriteVersion) applyFavorites(prefs.favorites);
+  }catch(_){}finally{ favoriteReadPending = false; }
+}
+function favBtn(it, el){
+  const b = el.querySelector(".fav");
+  updateFavoriteButton(b, it.session, it.project || it.session);
+  b.onclick = e => {
     e.stopPropagation();
-    if(S.favs.has(it.session)) S.favs.delete(it.session); else S.favs.add(it.session);
-    b.classList.toggle("on", S.favs.has(it.session));
-    try{ await api("/prefs-set", {favorites: [...S.favs]}); }catch(e){}
-    tick();
+    setSessionFavorite(it.session, !S.favs.has(it.session)).catch(err => toast(err.message, true));
   };
 }
 
@@ -6040,6 +6093,11 @@ let termFallbackNotified = false;
 // en vivo). En tablet ancha se ve panel + terminal lado a lado.
 const openTerms = new Map();   // session -> {tab, frame}
 let activeTerm = null;   // terminal visible en el area de terminal
+let activeTermTs = 0;
+function sidebarActiveTab(){
+  if(inApp()) return ACTIVE_TAB;
+  return {session: activeTerm || "", ts: activeTermTs};
+}
 let activeView = "panel";
 const termInteraction = new Map(); // session -> actual tmux mouse + temporary selection
 let termInteractionSeq = 0;
@@ -6051,7 +6109,11 @@ let appViewportFrame = 0;
 function appEnabled(){ return WEBTERM; }
 
 function currentViewportHeight(){
-  return Math.round(window.visualViewport?.height || window.innerHeight || document.documentElement.clientHeight);
+  const viewport = window.visualViewport;
+  // Pinch zoom magnifies the existing layout; only the keyboard resizes it.
+  if(viewport && viewport.scale > 1.01)
+    return Math.round(document.documentElement.clientHeight || window.innerHeight);
+  return Math.round(viewport?.height || window.innerHeight || document.documentElement.clientHeight);
 }
 function updateAppViewport(){
   appViewportFrame = 0;
@@ -6065,7 +6127,7 @@ function shouldSplitLayout(width, height, coarse){
   return width >= 900;
 }
 function applyAppLayout(){
-  const width = Math.round(window.visualViewport?.width || window.innerWidth);
+  const width = Math.round(document.documentElement?.clientWidth || window.innerWidth);
   const height = currentViewportHeight();
   const coarse = window.matchMedia("(pointer:coarse)").matches || navigator.maxTouchPoints > 0;
   const screen = window.screen;
@@ -6114,10 +6176,15 @@ function setOpChatH(px, save){
   return v;
 }
 function restoreOpChatH(){
-  const raw = parseInt(localStorage.getItem(OP_H_KEY) || "", 10);
   const content = document.getElementById("content");
   const h = content?.clientHeight || 0;
-  setOpChatH(Number.isFinite(raw) ? raw : (h ? h * 0.72 : 420), false);
+  const raw = parseInt(localStorage.getItem(OP_H_KEY) || "", 10);
+  // Un valor guardado antes del layout (o un drag accidental a un sello de
+  // 280px) deja el chat inutilizable. Si es < 36% del panel, se tira.
+  const stale = !Number.isFinite(raw) || (h >= 400 && raw < h * 0.36);
+  // Persist only an explicit drag. Startup measures can precede the final header
+  // and tab layout; saving them made the same sidebar differ between clients.
+  setOpChatH(stale ? (h ? h * 0.68 : 420) : raw, false);
 }
 function initOpChatSplit(){
   const split = document.getElementById("op-split");
@@ -6125,6 +6192,8 @@ function initOpChatSplit(){
   if(!split || !content || split._wired) return;
   split._wired = true;
   restoreOpChatH();
+  requestAnimationFrame(() => requestAnimationFrame(restoreOpChatH));
+  setTimeout(restoreOpChatH, 250);
   let pointerId = null;
   let lastPx = null;
   const move = e => {
@@ -6635,72 +6704,105 @@ async function handleTermInteractionsPageShow(){
   return syncTermInteraction(current);
 }
 
+function orderedTermTabs(){
+  const rank = session => session === "local" ? 0 : S.favs.has(session) ? 1 : 2;
+  return [...openTerms].sort(([a],[b]) => rank(a) - rank(b));
+}
 function renderTabbar(){
   const bar = document.getElementById("tabbar");
-  bar.innerHTML = "";
-  const mk = (label, key, closable, status) => {
-    const t = document.createElement("div");
-    t.className = "apptab" + (activeView === key ? " on" : "");
-    const C = {waiting:"var(--waiting)", working:"var(--working)", done:"var(--done)"};
-    const c = C[status] || "var(--faint)";
-    const dot = status ? `<span class="dot" style="background:${c};color:${c}"></span>` : "";
-    t.innerHTML = `${dot}<span class="lbl">${mdEsc(label)}</span>${closable ? '<span class="x">×</span>' : ""}`;
-    t.querySelector(".lbl").onclick = () => showView(key);
-    if(!closable) t.onclick = () => showView(key);
-    const x = t.querySelector(".x");
-    if(x){
-      x.title = tf("Cerrar pestaña", "Close tab");
-      // key llega como "term:<sesion>"; closeTerm espera la sesion pelona
-      // (este prefijo sin recortar era la razon de que la × no cerrara nada)
-      x.onclick = (e) => { e.stopPropagation(); askCloseTab(key.replace(/^term:/, "")); };
-    }
-    bar.appendChild(t);
-  };
   const split = document.body.classList.contains("split");
-  // En ANGOSTO hay tab "Panel" para volver al tablero; en ANCHO (split) el
-  // panel esta siempre a la izquierda, asi que NO se pone tab de Panel.
-  if(!split) mk("⌂ Panel", "panel", false, null);
-  for(const [sess, o] of openTerms){
-    const it = (S.list||[]).find(i => i.session === sess);
-    mk(o.label || it?.project || sess, "term:"+sess, true, it?.status);
-  }
-  // + nueva terminal: crea la sesion en el servidor y la pestana aparece
-  // en AMBOS lados (remoto y escritorio) — misma experiencia que la app.
-  const newBtn = document.createElement("div");
-  newBtn.className = "apptab plus";
-  newBtn.textContent = "+";
-  newBtn.title = tf("Nueva terminal (se abre también en el escritorio)",
-                  "New terminal (also opens on desktop)");
-  newBtn.onclick = async () => {
-    try{
-      const r = await api("/tab-new", {});
-      openTerm(r.session, r.label);
-      tabsPollTs = 0;
-    }catch(err){ toast(err.message, true); }
+  const selected = split && activeView === "panel" && activeTerm
+    ? "term:" + activeTerm : activeView;
+  // Preserve nodes while polling: rebuilding the scroll container cancels
+  // touch momentum, loses pointer targets and resets horizontal position.
+  const existing = new Map([...bar.children].map(el => [el.dataset.tabKey, el]));
+  const wanted = [];
+  const take = key => {
+    let el = existing.get(key);
+    if(el) existing.delete(key);
+    else { el = document.createElement("div"); el.dataset.tabKey = key; }
+    wanted.push(el);
+    return el;
   };
-  bar.appendChild(newBtn);
-  // Boton + : abrir cualquier sesion como terminal (usa el conmutador)
-  const plus = document.createElement("div");
-  plus.className = "apptab plus"; plus.textContent = "+";
-  plus.title = tf("Abrir una sesion como terminal", "Open a session as a terminal");
-  plus.onclick = swOpen;
-  bar.appendChild(plus);
-  revealActiveTab(bar);
+  const mk = (label, key, closable, status) => {
+    const t = take(key);
+    if(!t.querySelector(".lbl")){
+      t.innerHTML = '<span class="dot"></span><span class="lbl"></span>' +
+        (closable ? '<button type="button" class="tab-fav"></button><span class="x">×</span>' : '');
+      t.onclick = () => showView(key, true);
+      t.onkeydown = e => {
+        if(e.target !== t) return;
+        if(e.key === "Enter" || e.key === " "){ e.preventDefault(); showView(key, true); }
+      };
+      const favorite = t.querySelector(".tab-fav");
+      if(favorite){
+        favorite.onclick = e => {
+          e.stopPropagation();
+          const session = key.replace(/^term:/, "");
+          setSessionFavorite(session, !S.favs.has(session)).catch(err => toast(err.message, true));
+        };
+      }
+      const x = t.querySelector(".x");
+      if(x){
+        x.onclick = e => { e.stopPropagation(); askCloseTab(key.replace(/^term:/, "")); };
+      }
+    }
+    t.className = "apptab" + (selected === key ? " on" : "");
+    t.setAttribute("role", "tab");
+    t.setAttribute("aria-selected", String(selected === key));
+    t.tabIndex = selected === key ? 0 : -1;
+    const text = t.querySelector(".lbl");
+    if(text.textContent !== label) text.textContent = label;
+    const dot = t.querySelector(".dot");
+    dot.hidden = !status;
+    const colors = {waiting:"var(--waiting)", working:"var(--working)", done:"var(--done)"};
+    const color = colors[status] || "var(--faint)";
+    dot.style.background = color; dot.style.color = color;
+    const x = t.querySelector(".x");
+    if(x) x.title = tf("Cerrar pestaña", "Close tab");
+    const favorite = t.querySelector(".tab-fav");
+    if(favorite) updateFavoriteButton(favorite, key.replace(/^term:/, ""), label);
+  };
+  for(const [sess, o] of orderedTermTabs()){
+    const it = (S.list||[]).find(i => i.session === sess && i.alive) ||
+      (S.list||[]).find(i => i.session === sess);
+    mk(o.label || it?.project || sess, "term:"+sess, sess !== "local", it?.status);
+  }
+  for(const el of existing.values()) el.remove();
+  wanted.forEach((el, index) => {
+    if(bar.children[index] !== el) bar.insertBefore(el, bar.children[index] || null);
+  });
+  updateTabNavigation();
+}
+function updateTabNavigation(){
+  const bar = document.getElementById("tabbar");
+  const prev = document.getElementById("tab-prev"), next = document.getElementById("tab-next");
+  if(prev) prev.disabled = bar.scrollLeft <= 1;
+  if(next) next.disabled = bar.scrollLeft >= bar.scrollWidth - bar.clientWidth - 1;
 }
 function revealActiveTab(bar){
-  const isFullyVisible = tab => {
-    const tabBounds = tab.getBoundingClientRect();
-    const barBounds = bar.getBoundingClientRect();
-    return tabBounds.left >= barBounds.left && tabBounds.right <= barBounds.right;
-  };
-  const activeTab = bar.querySelector(".apptab.on");
-  if(revealActiveTab.lastView === activeView && activeTab && isFullyVisible(activeTab)) return;
-  revealActiveTab.lastView = activeView;
   requestAnimationFrame(() => {
-    const currentTab = bar.querySelector(".apptab.on");
-    if(currentTab && !isFullyVisible(currentTab))
-      currentTab.scrollIntoView({block:"nearest", inline:"nearest"});
+    const tab = bar.querySelector(".apptab.on");
+    if(!tab) return;
+    const target = tab.getBoundingClientRect(), bounds = bar.getBoundingClientRect();
+    if(target.left < bounds.left) bar.scrollLeft += target.left - bounds.left;
+    else if(target.right > bounds.right) bar.scrollLeft += target.right - bounds.right;
+    updateTabNavigation();
   });
+}
+function initTabNavigation(){
+  const bar = document.getElementById("tabbar");
+  bar.addEventListener("scroll", updateTabNavigation, {passive:true});
+  document.getElementById("tab-prev").onclick = () => bar.scrollBy({left:-bar.clientWidth * .8, behavior:"smooth"});
+  document.getElementById("tab-next").onclick = () => bar.scrollBy({left:bar.clientWidth * .8, behavior:"smooth"});
+  document.getElementById("tab-panel").onclick = () => showView(activeView === "panel" && activeTerm ? "term:"+activeTerm : "panel");
+  document.getElementById("tab-open").onclick = swOpen;
+  const newBtn = document.getElementById("tab-new");
+  newBtn.title = tf("Nueva terminal (se abre también en el escritorio)", "New terminal (also opens on desktop)");
+  newBtn.onclick = async () => {
+    try{ const r = await api("/tab-new", {}); openTerm(r.session, r.label); tabsPollTs = 0; }
+    catch(err){ toast(err.message, true); }
+  };
 }
 // Attachea el iframe de una terminal solo cuando de verdad se abre (lazy):
 // asi mostramos las MISMAS tabs del escritorio sin attachear 11 clientes tmux.
@@ -6740,7 +6842,7 @@ function ensureFrame(sess){
     });
   }
 }
-function showView(key){
+function showView(key, reveal=false){
   const previousTerm = activeTerm;
   activeView = key;
   const split = document.body.classList.contains("split");
@@ -6756,7 +6858,13 @@ function showView(key){
     if(o.frame) o.frame.classList.toggle("on", sess === shown);
   if(shown && (shown !== previousTerm || termInteraction.get(shown)?.mouse == null))
     syncTermInteraction(shown);
+  if(!inApp() && activeTerm && (activeTerm !== previousTerm || String(S.sel || "").split("|")[0] !== activeTerm)){
+    activeTermTs = Date.now() / 1000;
+    S.sel = activeTerm; S.selTs = Date.now();
+    render(S.list || []);
+  }
   renderTabbar();
+  if(reveal) revealActiveTab(document.getElementById("tabbar"));
 }
 function addTermTab(sess, label, mirrored){   // registra la tab SIN attachear (lazy)
   const o = openTerms.get(sess);
@@ -6767,6 +6875,7 @@ function addTermTab(sess, label, mirrored){   // registra la tab SIN attachear (
 // aceptar cierra aquí Y en el escritorio (/tab-close saca la sesión del
 // espejo app-tabs.json — sin esto el poll de /tabs la resucitaba en 5s).
 function askCloseTab(sess){
+  if(sess === "local") return;
   const o = openTerms.get(sess);
   $("#tabclose-name").textContent = (o && o.label) || sess;
   const m = $("#tabclose");
@@ -6784,7 +6893,7 @@ function openTerm(sess, label){
   // remoto y escritorio muestran EXACTAMENTE las mismas pestanas
   addTermTab(sess, label, true);
   api("/tab-register", {session: sess, label: label || sess}).catch(()=>{});
-  showView("term:"+sess);
+  showView("term:"+sess, true);
 }
 function closeTerm(sess){
   const o = openTerms.get(sess);
@@ -6804,7 +6913,12 @@ async function loadDesktopTabs(){
     const want = new Set(tabs.map(t => t.session));
     for(const [s, o] of [...openTerms])
       if(o.mirrored && !want.has(s)) closeTerm(s);
-    if(document.body.classList.contains("split") && !activeTerm && tabs[0])
+    // Use the desktop order, retaining existing iframe instances and selection.
+    const ordered = tabs.map(t => [t.session, openTerms.get(t.session)]).filter(([,o]) => o);
+    for(const [key,o] of openTerms) if(!want.has(key)) ordered.push([key,o]);
+    openTerms.clear();
+    for(const [key,o] of ordered) openTerms.set(key,o);
+    if(!activeTerm && tabs[0])
       activeTerm = tabs[0].session;
     showView(activeView);
   }catch(e){}
@@ -6821,6 +6935,7 @@ function initApp(){
   document.body.classList.add("app");
   restoreSplitLeft();
   initSplitDrag();
+  initTabNavigation();
   const updateLayout = () => {
     scheduleAppViewport();
     applyAppLayout();
@@ -6902,7 +7017,7 @@ function rowEl(it){
     if(e.target.closest("button") || e.target.closest(".rxp")) return;
     // Seleccionar card/pane NO cambia la pestaña ni la sesión del terminal.
     // Para eso existe el botón explícito "Abrir" del Centro.
-    S.sel = rowKey(it); S.selTs = Date.now(); renderCentro(S.list || []);
+    S.sel = rowKey(it); S.selTs = Date.now(); render(S.list || []);
   });
   return el;
 }
@@ -6911,10 +7026,15 @@ function rowEl(it){
 function itemKind(it){ return "row"; }   // cards eliminadas: una sola estructura
 
 function render(list){
+  if(typeof renderSessionOverview === "function") renderSessionOverview(list);
+  const opTarget=document.querySelector("#op-target"), opItem=pickSel(list||[]);
+  if(opTarget)opTarget.textContent=opItem?`Destino: ${opItem.project||opItem.session} · ${opItem.pane||"panel"}`:"Sin sesión seleccionada";
   S.list = list;
   // La sesion de la pestana ACTIVA de la app siempre encabeza la lista: si estas
   // parado en "local", su card es lo primero que ves.
-  const act = (typeof ACTIVE_TAB === "object" && ACTIVE_TAB.session) || "";
+  const active = sidebarActiveTab();
+  const act = active.session || pickSel(list)?.session || "";
+  const activePanes = list.filter(x => x.alive && x.session === act && x.pane);
   if(act) list = [...list].sort((a, b) => (b.session === act ? 1 : 0) - (a.session === act ? 1 : 0));
   // La sesión que el Centro ya muestra NO se repite como fila: su tarjeta ES el Centro
   const shownIt = (typeof pickSel === "function" && pickSel(list)) || null;
@@ -6931,16 +7051,8 @@ function render(list){
     let el = document.querySelector(`.row[data-rk="${CSS.escape(rk)}"]`);
     if(el && el.dataset.kind !== kind){ el.remove(); el = null; }
     if(!el){ el = rowEl(it); container.appendChild(el); }
-    const appSess = inApp() ? (ACTIVE_TAB.session || "") : "";
-    const appPanes = appSess ? list.filter(x => x.alive && x.session === appSess && x.pane) : [];
-    const splitCount = list.filter(x => x.alive && x.session === it.session && x.pane).length;
-    if(inApp()){
-      // Sidebar GTK: SOLO los panes de la pestaña activa. El inventario global
-      // estorbaba; el resto del espacio es analytics.
-      el.style.display = (appPanes.length >= 2 && it.session === appSess) ? "" : "none";
-    }else{
-      el.style.display = (splitCount < 2 && rk === shown) ? "none" : "";
-    }
+    // Both clients show splits of their active session. The overview is global.
+    el.style.display = (activePanes.length >= 2 && it.alive && it.pane && it.session === act) ? "" : "none";
     const ext = !!it.external;
     const ab = el.querySelector(".abadge");
     if(ab){
@@ -6969,7 +7081,6 @@ function render(list){
       if(it.accountEmail) ab.title = it.accountEmail;
     }
 	    el.dataset.pane = it.pane || "";
-	    el.classList.toggle("active-pane", !!ACTIVE_TAB.session && it.session === ACTIVE_TAB.session && (!ACTIVE_TAB.pane || it.pane === ACTIVE_TAB.pane));
 	    el._detail = it.detail || it.last || "";
 	    el.dataset.search = `${it.project} ${it.cwd||""}`.toLowerCase();
 	    const uchip = el.querySelector(".usage-chip");
@@ -7010,11 +7121,12 @@ function render(list){
 	        mcur.textContent = um;
 	      }
 	    }
-	    el.querySelector(".fav").classList.toggle("on", S.favs.has(it.session));
+	    updateFavoriteButton(el.querySelector(".fav"), it.session, it.project || it.session);
     el.querySelector(".ago").textContent = agoTxt(it.ts);
     {
       el.className = `row s-${it.status}` + (ext ? " ext" : "") +
         (el.classList.contains("open") ? " open" : "");
+      el.classList.toggle("active-pane", rk === shown);
       el.querySelector(".exttag").classList.toggle("hidden", !ext);
       const rp = el.querySelector(".rpath");
       rp.innerHTML = it.cwd ? `<a href="#" class="pathlink" data-path="${attrEsc(it.cwd)}" title="${attrEsc(it.cwd)} — ${tf("click: abrir carpeta","click: open folder")}">${mdEsc(shortPath(it.cwd))}</a>` : "";
@@ -7033,13 +7145,15 @@ function render(list){
           (it.status==="working" ? t("Trabajando...") : it.status==="dead" ? t("Revivir para retomar") : "");
         el.querySelector(".rprev").title = mdStrip(it.detail);
       }
-      el.querySelector(".up").classList.toggle("hidden", it.alive || ext);
-      el.querySelector(".go").classList.toggle("hidden", ext || (!it.alive && !inApp()));
+      const readOnlyHistory = it.operable === false;
+      el.querySelectorAll('.up,.go,.kill,.ren,.term').forEach(button=>{button.disabled=readOnlyHistory;});
+      el.querySelector(".up").classList.toggle("hidden", readOnlyHistory || it.alive || ext);
+      el.querySelector(".go").classList.toggle("hidden", readOnlyHistory || ext || (!it.alive && !inApp()));
       el.querySelector(".kill").classList.toggle("hidden", !it.alive || ext);
       // Responder inline (.rxp): la fila expandible sustituye a las cards.
       // canSend: hay un agente VIVO al que hablarle; si murio, la pregunta
       // queda visible y el camino es Revivir (nunca respondas al vacio).
-      const canSend = it.alive && !ext && !it.zombie;
+      const canSend = !readOnlyHistory && it.alive && !ext && !it.zombie;
       const answerable = canSend && (it.status === "waiting" || it.status === "done");
       const xp = el.querySelector(".xp");
       if(xp){
@@ -7092,12 +7206,12 @@ function render(list){
         const bestState = Math.min(...siblings.map(x => ROW_ORDER[x.status] ?? 9));
         const newest = Math.min(...siblings.map(ageOf));
         const groupFav = siblings.some(x => S.favs.has(rowKey(x)) || S.favs.has(x.session));
-        const activeGroup = typeof ACTIVE_TAB === "object" && ACTIVE_TAB.session === it.session;
+        const activeGroup = act === it.session;
         el.style.order = (activeGroup ? -10000000 : 0) + (groupFav ? -1000000 : 0) +
           bestState * 100000 + newest * 100 + idx;
       }else{
         const ageMin = ageOf(it);
-        el.style.order = ((typeof ACTIVE_TAB === "object" && ACTIVE_TAB.session === it.session) ? -10000000 : 0) +
+        el.style.order = ((act === it.session) ? -10000000 : 0) +
           (S.favs.has(it.session) ? -1000000 : 0) +
           (it.alive ? 0 : 5000000) +
           (ROW_ORDER[it.status] ?? 9) * 100000 + ageMin * 100;
@@ -7119,11 +7233,9 @@ function render(list){
   document.querySelectorAll("#rows [data-session]").forEach(el=>{
     if(!seen.has(el.dataset.rk || el.dataset.session)) el.remove();
   });
-  if(inApp()){
-    const nPanes = list.filter(x => x.alive && x.session === (ACTIVE_TAB.session || "") && x.pane).length;
-    $("#sessions-wrap").classList.toggle("hidden", nPanes < 2);
-    const st = $("#sessions-title"); if(st) st.textContent = nPanes > 1 ? `Panes · ${nPanes}` : "Panes";
-  }
+  // Controls must remain reachable when there is only one pane or chat is hidden.
+  $("#sessions-wrap").classList.remove("hidden");
+  const st = $("#sessions-title"); if(st) st.textContent = activePanes.length > 1 ? `Panes · ${activePanes.length}` : "Sesiones";
   renderCentro(list);
   if(!rows.querySelector(".row") && !rows.querySelector(".empty")){
     rows.innerHTML = `<div class="empty">${tf("Sin sesiones. Abre una arriba con", "No sessions. Open one above with")}
@@ -7319,8 +7431,12 @@ function toast(msg, err){
 	    }catch(err){ toast(err.message, true); }
 	  }));
 	}
+let statePollInFlight = false;
 	async function tick(){
-	  try{ render(await api("/state")); }catch(e){}
+	  if(statePollInFlight) return;
+	  refreshFavorites();
+	  statePollInFlight = true;
+	  try{ render(await api("/state")); }catch(e){}finally{ statePollInFlight = false; }
 	  tickUsage();
 	  tickRecent();
 	}
@@ -7330,7 +7446,6 @@ async function tickEvents(){
 let timer = null;
 function remotePollSeconds(){
   let s = +S.cfg.poll || 2;
-  if(WEBTERM || REMOTE?.remoteOn) s = Math.max(s, 5);
   if(document.hidden) s = Math.max(s, 15);
   return s;
 }
@@ -7564,9 +7679,8 @@ $("#btn-theme").addEventListener("click",()=>{
   setTimeout(()=>$("#theme-gallery [aria-checked=\"true\"]")?.focus(),0);
 });
 
-// ---------- analytics compactos del sidebar GTK ----------
+// ---------- analytics compactos del sidebar compartido ----------
 async function renderSidebarInsights(){
-  if(!inApp()) return;
   try{
     const [d,u] = await Promise.all([api("/dedication"), api("/usage/state")]);
     const today = (d.days || [])[0] || {projects:[]};
@@ -7586,9 +7700,11 @@ async function renderSidebarInsights(){
 
 // ---------- favoritos ----------
 async function loadPrefs(){
+  const version = favoriteVersion;
   try{
     const p = await api("/prefs");
-    S.favs = new Set(p.favorites || []);
+    favoriteReadAt = Date.now();
+    if(version === favoriteVersion) applyFavorites(p.favorites);
     applyTheme(p.theme || "noche", true);   // sincroniza tambien la app al abrir
     hydrateTerminalPrefs(p);
   }catch(e){}
@@ -8245,7 +8361,7 @@ function renderSnipPane(){
   const pane = document.getElementById("snip-pane");
   const it = snipState.items.find(x => x.id === snipState.selectedId);
   if (!it){
-    pane.innerHTML = '<div class="snip-empty">Elegí un snippet o creá uno nuevo.</div>';
+    pane.innerHTML = '<div class="snip-empty">Elige un snippet o crea uno nuevo.</div>';
     return;
   }
   pane.innerHTML = "";
@@ -8466,7 +8582,7 @@ function opSyncModel(){
 function opApplyPayload(d){
   if(!d) return;
   OP.id = d.id || OP.id;
-  if(d.messages) OP.messages = d.messages;
+  if(d.messages && !OP.ac) OP.messages = d.messages;
   if(d.conversations) OP.conversations = d.conversations;
   if(d.model) OP.model = d.model;
   if("effort" in (d||{})) OP.effort = d.effort || "";
@@ -8477,6 +8593,7 @@ function opApplyPayload(d){
 function opRender(){
   const box = $("#op-msgs");
   if(!box) return;
+  const stickToBottom=box.scrollHeight-box.clientHeight-box.scrollTop<64, oldScroll=box.scrollTop;
   const empty = tf(
     "Dile «pásate a Relotto», «lista» o «sesión nueva». El modelo se cambia arriba.",
     "Say “switch to Relotto”, “list” or “new session”. Switch the model above."
@@ -8522,7 +8639,7 @@ function opRender(){
       if(inp){ inp.value = t; inp.focus(); }
     }
   }));
-  box.scrollTop = box.scrollHeight;
+  box.scrollTop = stickToBottom ? box.scrollHeight : oldScroll;
   const list = $("#op-list");
   if(list){
     list.innerHTML = (OP.conversations||[]).map(c =>
@@ -8534,7 +8651,7 @@ function opRender(){
 function opClick(sel){
   try{ $(sel)?.click(); }catch(e){}
 }
-function opApplyActions(actions){
+function opApplyActionsLegacy(actions){
   for(const a of (actions||[])){
     if(a.type === "ui" && a.op === "click"){
       const el = document.querySelector(a.selector);
@@ -8617,9 +8734,7 @@ function opApplyActions(actions){
   }
 }
 window.opFavorite = async (session, on) => {
-  const favs = new Set(S.favs || []);
-  if(on) favs.add(session); else favs.delete(session);
-  await api("/prefs-set", {favorites:[...favs]}); await loadPrefs(); render(S.list || []);
+  await setSessionFavorite(session, on);
 };
 window.setPollSeconds = (n) => { const el = $("#poll"); if(el){ el.value = n; el.dispatchEvent(new Event("input", {bubbles:true})); } };
 window.setBrowserNotifications = (on) => { const el = $("#sw-notif"); if(el && el.classList.contains("on") !== !!on) el.click(); };
@@ -8652,8 +8767,10 @@ window.reloadDashboard = () => location.reload();
 window.focusVisibleTerm = () => { const f = activeTerm && openTerms.get(activeTerm)?.frame; f?.contentWindow?.postMessage({source:"comandos", type:"toolbar", term:{type:"focus"}}, location.origin); };
 async function opLoad(id){
   try{
+    if(id) opStop();
     const q = id ? `?id=${encodeURIComponent(id)}` : "";
     const d = await api("/operator" + q);
+    if(id) OP.ac = null;
     opApplyPayload(d);
     opRender();
   }catch(e){ /* el chat no debe tumbar el tablero */ }
@@ -8671,9 +8788,71 @@ function opToolLine(name, args){
 }
 let opLiveRaf = 0;
 function opRenderLive(){ if(!opLiveRaf) opLiveRaf = requestAnimationFrame(() => { opLiveRaf = 0; opRender(); }); }
+function opParseSseChunk(buf){
+  const evs = [];
+  let i;
+  while((i = buf.indexOf("\n\n")) >= 0){
+    const frame = buf.slice(0, i); buf = buf.slice(i+2);
+    const line = frame.split("\n").find(l => l.startsWith("data:"));
+    if(!line) continue;
+    try{ evs.push(JSON.parse(line.slice(5).trim())); }catch(e){}
+  }
+  return [buf, evs];
+}
+function opHumanErr(s){
+  const t = String(s||"");
+  if(/401|Unauthorized|Login rechazado/i.test(t))
+    return tf("La sesión de Claude caducó. Entra otra vez al CLI y reintenta.","Claude login expired. Sign in again and retry.");
+  return t;
+}
+function opApplyEvent(live, ev){
+  if(ev.t === "delta"){ live.text += ev.text; opRenderLive(); }
+  else if(ev.t === "tool"){ live.tools.push({name:ev.name, args:ev.args, ok:null}); opRenderLive(); }
+  else if(ev.t === "tool_result"){ const x = [...(live.tools||[])].reverse().find(z => z.name===ev.name && z.ok===null); if(x){ x.ok = ev.pending ? null : ev.ok; x.reply = ev.reply; } opRenderLive(); }
+  else if(ev.t === "action"){ void opApplyActions([ev]); }
+  else if(ev.t === "error"){ live.text += (live.text?"\n":"") + opHumanErr(ev.text); opRenderLive(); }
+  else if(ev.t === "final"){ if(!live.text) live.text = opHumanErr(ev.reply); }
+  else if(ev.t === "payload"){
+    const {messages, ...meta} = ev;
+    opApplyPayload(meta);
+  }
+}
+function opStreamXhr(url, headers, body, signal, onEv){
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open("POST", url);
+    Object.keys(headers).forEach(k => xhr.setRequestHeader(k, headers[k]));
+    let buf = "", seen = 0;
+    const pump = () => {
+      const t = xhr.responseText || "";
+      if(t.length <= seen) return;
+      buf += t.slice(seen); seen = t.length;
+      let evs; [buf, evs] = opParseSseChunk(buf);
+      evs.forEach(onEv);
+    };
+    xhr.onprogress = pump;
+    xhr.onload = () => { pump(); if(xhr.status >= 400) reject(new Error(opHumanErr((()=>{ try{ return JSON.parse(xhr.responseText).error; }catch(e){ return xhr.statusText; } })()))); else resolve(); };
+    xhr.onerror = () => reject(new Error(tf("No pude hablar con ComandOS","Could not talk to ComandOS")));
+    xhr.onabort = () => reject(Object.assign(new Error("abort"), {name:"AbortError"}));
+    if(signal) signal.addEventListener("abort", () => { try{ xhr.abort(); }catch(e){} });
+    xhr.send(body);
+  });
+}
 async function opSend(text){
   const t = String(text||"").trim();
-  if(!t || OP.ac) return;
+  if(!t){
+    toast(tf("Escribe un mensaje","Write a message"), true);
+    $("#op-in")?.focus();
+    return false;
+  }
+  if(OP.ac){
+    toast(tf("Espera o dale Parar","Wait or hit Stop"), true);
+    return false;
+  }
+  OP.ac = new AbortController();
+  const inp = $("#op-in");
+  if(inp) inp.value = "";
+  try{localStorage.removeItem("cc-chat-draft");}catch(e){}
   OP.messages = [...(OP.messages||[]), {role:"user", text:t}];
   const live = {role:"assistant", text:"", tools:[]};
   OP.messages.push(live);
@@ -8681,44 +8860,22 @@ async function opSend(text){
   if(OP.tick) clearInterval(OP.tick);
   OP.tick = setInterval(opTick, 100);
   opRender();
-  OP.ac = new AbortController();
   opBusy(true);
   try{
     const headers = {"Content-Type":"application/json"};
     const tok = authToken(); if(tok) headers["X-Comandos-Token"] = tok;
-    const res = await fetch("/operator/chat/stream", {method:"POST", headers, signal: OP.ac.signal,
-      body: JSON.stringify({id: OP.id, text: t, model: OP.model, effort: OP.effort})});
-    if(!res.ok || !res.body) throw new Error((await res.json().catch(()=>({}))).error || res.statusText);
-    const reader = res.body.getReader();
-    const dec = new TextDecoder();
-    let buf = "", payload = null;
-    for(;;){
-      const {value, done} = await reader.read();
-      if(done) break;
-      buf += dec.decode(value, {stream:true});
-      let i;
-      while((i = buf.indexOf("\n\n")) >= 0){
-        const frame = buf.slice(0, i); buf = buf.slice(i+2);
-        const line = frame.split("\n").find(l => l.startsWith("data:"));
-        if(!line) continue;
-        let ev; try{ ev = JSON.parse(line.slice(5)); }catch(e){ continue; }
-        if(ev.t === "delta"){ live.text += ev.text; opRenderLive(); }
-        else if(ev.t === "tool"){ live.tools.push({name:ev.name, args:ev.args, ok:null}); opRenderLive(); }
-        else if(ev.t === "tool_result"){ const x = [...live.tools].reverse().find(z => z.name===ev.name && z.ok===null); if(x){ x.ok = ev.ok; x.reply = ev.reply; } opRenderLive(); }
-        else if(ev.t === "action"){ opApplyActions([ev]); }
-        else if(ev.t === "error"){ live.text += (live.text?"\n":"") + "⚠ " + ev.text; opRenderLive(); }
-        else if(ev.t === "final"){ if(!live.text) live.text = ev.reply; }
-        else if(ev.t === "payload"){ payload = ev; }
-      }
-    }
-    if(payload) opApplyPayload(payload);
+    const body = JSON.stringify({id: OP.id, text: t, model: OP.model, effort: OP.effort, session:pickSel(S.list||[])?.session, pane:pickSel(S.list||[])?.pane});
+    await opStreamXhr("/operator/chat/stream", headers, body, OP.ac.signal, ev => opApplyEvent(live, ev));
+    if(!live.text) live.text = tf("Listo.","Done.");
   }catch(e){
-    live.text = e.name === "AbortError" ? tf("Paré la respuesta.","Stopped.") : (e.message || tf("No pude hablar con ComandOS","Could not talk to ComandOS"));
+    live.text = e.name === "AbortError" ? tf("Paré la respuesta.","Stopped.") : opHumanErr(e.message || tf("No pude hablar con ComandOS","Could not talk to ComandOS"));
   } finally {
     OP.ac = null;
     opBusy(false);
     opRender();
+    $("#op-in")?.focus();
   }
+  return true;
 }
 function opOpenModelMenu(){
   const btn = $("#op-model");
@@ -8748,10 +8905,18 @@ function opOpenModelMenu(){
 }
 $("#op-form")?.addEventListener("submit", e => {
   e.preventDefault();
-  const inp = $("#op-in");
-  const v = inp?.value || "";
-  if(inp) inp.value = "";
-  opSend(v);
+  opSend($("#op-in")?.value || "");
+});
+$("#op-in")?.addEventListener("keydown", e => {
+  if(e.key === "Enter" && !e.shiftKey && !e.repeat){
+    e.preventDefault();
+    e.stopPropagation();
+    $("#op-form")?.dispatchEvent(new Event("submit", {cancelable:true, bubbles:true}));
+  }
+});
+$("#op-chat")?.addEventListener("pointerdown", e => {
+  if(e.target.closest("button, a, #op-list, #op-in")) return;
+  $("#op-in")?.focus();
 });
 $("#op-stop")?.addEventListener("click", opStop);
 $("#op-stop-in")?.addEventListener("click", opStop);
@@ -8792,3 +8957,5 @@ document.addEventListener("keydown", (e) => {
 if("serviceWorker" in navigator)
   navigator.serviceWorker.register("/sw.js").catch(()=>{});
 </script>
+
+<script src="/workspace.js?v=58ed56822729"></script>
