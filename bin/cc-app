@@ -1623,12 +1623,16 @@ def refresh_favorite_buttons():
         if button is None:
             continue
         favorite = key in TAB_FAVORITES
+        signature = (favorite, key not in _FAVORITE_PENDING, ES)
+        if getattr(button, "_favorite_signature", None) == signature:
+            continue
         button.set_label("★" if favorite else "☆")
         style = button.get_style_context()
         (style.add_class if favorite else style.remove_class)("favorite")
         button.set_sensitive(key not in _FAVORITE_PENDING)
         button.set_tooltip_text(("Quitar de favoritos" if favorite else "Marcar como favorita") if ES
                                 else ("Remove from favorites" if favorite else "Add to favorites"))
+        button._favorite_signature = signature
 
 
 def apply_tab_favorites(favorites, generation=None):
@@ -2343,21 +2347,11 @@ def tab_label(text, key=None, closable=True):
     return hb
 
 
-def update_dots(states, items=None):
+def update_dots(states, items=None, notif_count=None):
     STATE_CACHE.clear()
     STATE_CACHE.update(states)
-    try:
-        if items is not None:
-            # el badge cuenta lo IMPORTANTE (mismo conteo v2 del tablero,
-            # respetando la limpieza compartida), no sesiones en espera
-            try:
-                with urllib.request.urlopen("http://127.0.0.1:4777/notifs/count", timeout=2) as _r:
-                    nc = json.loads(_r.read().decode()).get("count", 0)
-            except Exception:
-                nc = 0
-            set_notif_badge(int(nc))
-    except Exception:
-        pass
+    if notif_count is not None:
+        set_notif_badge(notif_count)
     if items is not None:
         STATE_ITEMS.clear()
         STATE_ITEMS.update({it.get("session"): it for it in items if it.get("session")})
@@ -2367,7 +2361,9 @@ def update_dots(states, items=None):
         if dot is None:
             continue
         c = DOT_COLORS.get(states.get(key, ""), DOT_IDLE)
-        dot.set_markup(f'<span size="8500" foreground="{c}">●</span>')
+        if getattr(dot, "_state_color", None) != c:
+            dot.set_markup(f'<span size="8500" foreground="{c}">●</span>')
+            dot._state_color = c
     return False
 
 
@@ -2415,6 +2411,39 @@ _LIVE_PREF_KEYS = ("font_family", "font_size", "cursor_shape", "cursor_blink",
                    "terminal_padding", "terminal_opacity", "theme")
 
 
+_POLL_UI_LOCK = threading.Lock()
+_POLL_UI_PENDING = {}
+_POLL_UI_QUEUED = False
+
+
+def _queue_poll_update(callback, *args):
+    """Keep only the latest polled value for each UI callback while GTK is busy."""
+    global _POLL_UI_QUEUED
+    with _POLL_UI_LOCK:
+        # Preserve the order of the latest calls: terminal prefs must follow
+        # a theme update even when an older font-only update was pending.
+        _POLL_UI_PENDING.pop(callback, None)
+        _POLL_UI_PENDING[callback] = args
+        if _POLL_UI_QUEUED:
+            return
+        _POLL_UI_QUEUED = True
+    GLib.idle_add(_drain_poll_updates)
+
+
+def _drain_poll_updates():
+    global _POLL_UI_QUEUED
+    with _POLL_UI_LOCK:
+        updates = list(_POLL_UI_PENDING.items())
+        _POLL_UI_PENDING.clear()
+        _POLL_UI_QUEUED = False
+    for callback, args in updates:
+        try:
+            callback(*args)
+        except Exception as exc:
+            print(f"desktop poll update: {exc}", file=sys.stderr)
+    return False
+
+
 def poll_state_loop():
     last_prefs = None
     while True:
@@ -2423,7 +2452,13 @@ def poll_state_loop():
                 items = json.loads(r.read().decode())
             states = {it["session"]: it.get("status", "idle")
                       for it in items if it.get("session")}
-            GLib.idle_add(update_dots, states, items)
+            # Fetch the shared notification count off the GTK thread as well.
+            try:
+                with urllib.request.urlopen("http://127.0.0.1:4777/notifs/count", timeout=2) as r:
+                    nc = int(json.loads(r.read().decode()).get("count", 0))
+            except Exception:
+                nc = 0
+            _queue_poll_update(update_dots, states, items, nc)
         except Exception:
             pass
         # Watcher de prefs: Ajustes cambiado en CUALQUIER superficie se aplica
@@ -2433,7 +2468,7 @@ def poll_state_loop():
             favorite_generation = _FAVORITE_GENERATION
             with urllib.request.urlopen("http://127.0.0.1:4777/prefs", timeout=3) as r:
                 p = json.loads(r.read().decode())
-            GLib.idle_add(apply_tab_favorites, p.get("favorites", []), favorite_generation)
+            _queue_poll_update(apply_tab_favorites, p.get("favorites", []), favorite_generation)
             snap = {k: p.get(k) for k in _LIVE_PREF_KEYS}
             if last_prefs is None:
                 last_prefs = snap
@@ -2441,9 +2476,9 @@ def poll_state_loop():
                 theme_changed = snap.get("theme") != last_prefs.get("theme")
                 last_prefs = snap
                 if theme_changed and snap.get("theme"):
-                    GLib.idle_add(apply_theme, snap["theme"])
+                    _queue_poll_update(apply_theme, snap["theme"])
                 # tras el tema tambien: recolorea con la OPACIDAD correcta
-                GLib.idle_add(apply_terminal_prefs, p)
+                _queue_poll_update(apply_terminal_prefs, p)
         except Exception:
             pass
         time.sleep(3)
@@ -3162,8 +3197,6 @@ def _report_active_tab(*_):
         pass
 
 
-_tab_models_mtime = 0.0
-
 # ---- Pildoras de modelo POR PANE: ancladas a la linea de titulo de cada
 # pane tmux (geometria real de list-panes), con boton de motor. El usuario
 # marco ese renglon exacto como el lugar de la info y las acciones.
@@ -3256,7 +3289,6 @@ def _attach_model_bar(box, sess):
     box._pill_sess = sess
     box._pill_sig = ""
     box._pills = []
-    term.connect("size-allocate", lambda *_a, b=box: setattr(b, "_pill_sig", ""))
     box.show_all()
 
 
@@ -3367,7 +3399,7 @@ def _pill_row_y(m_t, top, chh):
     return max(0, int(m_t + row * chh))
 
 
-def _place_pills(box, panes):
+def _place_pills(box, panes, geo=None):
     ov = getattr(box, "_pill_overlay", None)
     term = getattr(box, "_term", None)
     if ov is None or term is None:
@@ -3376,7 +3408,8 @@ def _place_pills(box, panes):
         try: ov.remove(w)
         except Exception: pass
     box._pills = []
-    geo = _pane_geometry(getattr(box, "_pill_sess", ""))
+    if geo is None:
+        geo = _pane_geometry(getattr(box, "_pill_sess", ""))
     if not geo:
         return
     try:
@@ -3428,12 +3461,7 @@ def _place_pills(box, panes):
 
 
 def _refresh_tab_models():
-    global _tab_models_mtime
-    force = False
     try:
-        mtime = os.path.getmtime(APP_TAB_MODELS_FILE)
-        force = mtime != _tab_models_mtime
-        _tab_models_mtime = mtime
         with open(APP_TAB_MODELS_FILE) as f:
             models = json.load(f)
     except Exception:
@@ -3453,35 +3481,43 @@ def _refresh_tab_models():
         if label is not None and box is not hub:
             panes = (info or {}).get("panes") if isinstance(info, dict) else None
             first = next((p for p in (panes or []) if p.get("model")), None)
+            text, icon = "", None
             if first:
                 extra = len([p for p in panes if p.get("model")]) - 1
-                label.set_text(f"{first['model']}{f' +{extra}' if extra > 0 else ''}")
+                text = f"{first['model']}{f' +{extra}' if extra > 0 else ''}"
+                icon = (_PV_ICON.get(first.get("motor"), "layers"), THEME.get("dim", "#9AA6BF"))
+            if getattr(label, "_model_text", None) != text:
+                label.set_text(text)
+                label._model_text = text
+            if getattr(hb, "_model_icon", False) != icon:
                 if micon is not None:
-                    try:
-                        img = _svg_image(_PV_ICON.get(first.get("motor"), "layers"), 11,
-                                         THEME.get("dim", "#9AA6BF"))
-                        micon.set_from_pixbuf(img.get_pixbuf())
-                        micon.show()
-                    except Exception:
+                    if icon is None:
                         micon.hide()
-            else:
-                label.set_text("")
-                if micon is not None: micon.hide()
+                    else:
+                        try:
+                            img = _svg_image(icon[0], 11, icon[1])
+                            micon.set_from_pixbuf(img.get_pixbuf())
+                            micon.show()
+                        except Exception:
+                            micon.hide()
+                hb._model_icon = icon
         elif micon is not None:
             micon.hide()
         if getattr(box, "_pill_overlay", None) is None or box is not current:
             continue
         panes = (info or {}).get("panes") if isinstance(info, dict) else None
         try:
-            metrics = f"{box._term.get_char_width()}x{box._term.get_char_height()}w{getattr(box, '_pill_overlay', None) and box._pill_overlay.get_allocated_width()}"
+            metrics = (box._term.get_char_width(), box._term.get_char_height(),
+                       box._term.get_margin_start(), box._term.get_margin_top())
         except Exception:
-            metrics = ""
+            metrics = ()
         geo_now = _pane_geometry(session)   # tambien refresca _PANE_CMD
         sig = (json.dumps(panes or [], sort_keys=True) + "|" + json.dumps(sorted(geo_now.items()))
-               + "|" + json.dumps(sorted((k, _PANE_CMD.get(k, "")) for k in geo_now)) + "|" + metrics)
-        if force or sig != getattr(box, "_pill_sig", ""):
+               + "|" + json.dumps(sorted((k, _PANE_CMD.get(k, "")) for k in geo_now))
+               + "|" + json.dumps(metrics) + "|" + json.dumps([THEME.get("fg"), THEME.get("brand")]))
+        if sig != getattr(box, "_pill_sig", ""):
             box._pill_sig = sig
-            _place_pills(box, panes or [])
+            _place_pills(box, panes or [], geo_now)
     return True
 
 
@@ -3677,10 +3713,13 @@ _settings_btn = _icon_btn("settings", "Ajustes" if ES else "Settings", _dash_cli
 
 
 def set_notif_badge(n):
+    if getattr(_notif_badge, "_count", None) == n:
+        return
     if n > 0:
         _notif_badge.set_text(str(n)); _notif_badge.show()
     else:
         _notif_badge.hide()
+    _notif_badge._count = n
 
 # Botones min/max/close CUSTOM — mismo helper que los demás para look uniforme.
 # Se packean ANTES (así quedan más a la derecha) y con separador visual entre
