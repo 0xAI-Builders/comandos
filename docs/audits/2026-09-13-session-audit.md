@@ -93,7 +93,33 @@ that change.
 
 A private recovery backup contains the baseline source, workspace layouts,
 application tab state, pane IDs/PIDs and online SQLite backups of session
-operations and usage. Deployment verification is recorded after installation.
+operations and usage. Both backup databases passed SQLite's quick check.
+
+## Installed release
+
+Implementation commit `5e52f19` was fast-forwarded into the live checkout.
+Only `cc-dash.service` restarted; the desktop received `reload_dashboard`.
+There were no active configuration operations at deployment. All 31 pane IDs,
+shell PIDs and layouts matched before and after installation and the desktop
+process stayed running.
+
+The installed API returned 31 live cards, including Local's Codex pane and its
+shell pane. Local's observed model was `gpt-6-astra` with `xhigh` effort.
+Claude, Codex and Grok each returned inventories from their selected live
+provider/account/project. The public registry exposed 14 route policies for
+mid-session configuration.
+
+The final browser check ran on the Mac mini against the actual Tailscale HTTPS
+endpoint through a temporary SSH tunnel. At 390×844 it verified Local's card and
+chat target, Pomodoro opening, all configuration selectors, one Apply button and
+absence of horizontal page overflow. It reported zero JavaScript errors and
+zero mutation requests. Terminal frame connections were replaced with an inert
+page in this read-only production check; terminal interactions were covered by
+the separate Mac fixture suites described above.
+
+The browser context closed after verification. The temporary TLS tunnel was
+closed after the check. Existing remote pages need a refresh to load the new UI.
+No new permanent service or local browser was started.
 
 ## Operational limits
 
