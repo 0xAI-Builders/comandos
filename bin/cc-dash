@@ -1133,6 +1133,7 @@ def provider_public_state():
         grok["models"] = grok_state.models() or grok.get("models") or []
     matrix = provider_registry.evaluate_capability_matrix(registry, provider_runtime_facts(public))
     public["matrix"] = matrix
+    public["midSessionRoutes"] = session_change_support(registry)
     public["matrixSummary"] = {"selectable": sum(bool(x.get("selectable")) for x in matrix),
                                "unavailable": sum(not x.get("selectable") for x in matrix)}
     return public
@@ -1606,12 +1607,14 @@ def _acp_launch_cmd(motor, model, effort, account, danger=False, resume=""):
     return cmd
 
 
-def _pane_exit_current(pane, pid, from_harness):
+def _pane_exit_current(pane, pid, from_harness, expected_start=None):
     """Sale del CLI actual y espera a que muera. /exit primero; si no, Ctrl-C
     doble; en última instancia SIGTERM al pid (nunca a ciegas por patrón)."""
     if from_harness in ("", "shell"):
         return True
     started = _process_start(pid)
+    if expected_start is not None and started != expected_start:
+        return False
     if not started:
         try:
             os.kill(int(pid), 0)
@@ -1703,8 +1706,21 @@ def _configuration_command(harness, motor, model, effort, account, resume='', fl
     i = 0
     while i < len(flags):
         flag = flags[i]
-        if flag in ('--model', '-m', '--effort', '-c', '--config'):
+        if flag in ('--model', '-m', '--effort'):
             i += 2
+            continue
+        if flag.split('=', 1)[0] in ('--model', '--effort'):
+            i += 1
+            continue
+        if flag in ('-c', '--config') and i + 1 < len(flags):
+            if flags[i + 1].split('=', 1)[0].strip() in ('model', 'model_reasoning_effort'):
+                i += 2
+                continue
+            argv.extend([flag, flags[i + 1]])
+            i += 2
+            continue
+        if flag.startswith('--config=') and flag.split('=', 2)[1].strip() in ('model', 'model_reasoning_effort'):
+            i += 1
             continue
         argv.append(flag)
         i += 1
@@ -1728,6 +1744,47 @@ def _snapshot_transcript(origin):
     if len(matches) != 1 or not os.path.isfile(matches[0]):
         raise ValueError('no se encontró un único historial para reanudar; el origen sigue abierto')
     return matches[0]
+
+
+def session_change_support(registry=None, observed=None):
+    """Mid-session adapter policy; new-session availability is separate."""
+    registry = registry or load_provider_registry()
+    observed = observed or {}
+    result = {}
+    for route in registry.get('routes') or []:
+        harness, motor = route['harness'], route['motor']
+        reason = None
+        if route.get('experimental') and not route.get('liveVerified'):
+            reason = {'code': 'route_not_live_verified', 'message': 'puente pendiente de verificación E2E'}
+        elif harness not in ('claude', 'codex', 'grok', 'acp') or (harness == 'acp' and not
+                ((registry.get('acpAgents') or {}).get(motor) or {}).get('resume')):
+            reason = {'code': 'exact_resume_unavailable', 'message': 'este adaptador no ofrece recuperación exacta; crea una sesión nueva'}
+        elif harness == 'acp' and not (observed.get('harness') == 'acp' and observed.get('motor') == motor
+                                       and observed.get('effortSource') == 'acp-config-options'):
+            reason = {'code': 'acp_effort_unobserved', 'message': 'se necesita una sesión ACP que publique esfuerzo mediante configOptions'}
+        result[route['id']] = {'selectable': reason is None, 'reason': reason}
+    return result
+
+
+def _send_configuration_command(pane, command):
+    # Clear only the visible screen after the shell echoed this command. Old
+    # prompts remain in scrollback, outside the readiness check's capture.
+    _send_shell_line(pane, "printf '\\033[2J\\033[H'; " + command)
+
+
+def _stop_owned_startup(pid, started):
+    """Recovery must not press Enter on an unaccepted trust/login dialog."""
+    if _process_start(pid) != started:
+        return False
+    try:
+        os.kill(int(pid), 15)
+    except ProcessLookupError:
+        return True
+    for _ in range(30):
+        if _process_start(pid) != started:
+            return True
+        time.sleep(0.1)
+    return False
 
 
 class SessionConfiguration:
@@ -1760,10 +1817,21 @@ class SessionConfiguration:
             raise ValueError(f'{self.frm} no ofrece recuperación exacta; se conserva el agente actual')
         data = self.data
         current = observe_pane(self.sess, self.pane, self.original) if self.original else {}
+        if data.get('profileId'):
+            raise ValueError('los perfiles se aplican al crear una sesión; no se cambia el agente actual')
+        if data.get('expectedIdentity') and data['expectedIdentity'] != _identity_key(self.identity):
+            raise ValueError('cambió la identidad del panel desde que se abrió la configuración')
+        if data.get('expectedConversationId') and data['expectedConversationId'] != current.get('conversationId'):
+            raise ValueError('cambió la conversación desde que se abrió la configuración')
         if self.frm == 'acp' and not ((load_provider_registry().get('acpAgents') or {}).get(current.get('motor')) or {}).get('resume'):
             raise ValueError('este motor ACP no admite reanudación exacta; el agente sigue abierto')
-        to = data.get('toHarness') or self.frm
         requested_route = provider_registry.route_for(load_provider_registry(), str(data.get('routeId') or '')) or {}
+        if data.get('routeId') and not requested_route:
+            raise ValueError('ruta desconocida')
+        to = data.get('toHarness') or requested_route.get('harness') or self.frm
+        if requested_route and (to != requested_route['harness'] or
+                               data.get('motor') and data['motor'] != requested_route['motor']):
+            raise ValueError('la ruta no coincide con el harness y motor solicitados')
         model_motor = provider_registry.engine_for_model(load_provider_registry(), str(data.get('model') or ''))
         motor = data.get('motor') or requested_route.get('motor') or (model_motor or current.get('motor') if to == self.frm else to)
         if to == 'acp' and motor in ('acp', 'shell', '', None):
@@ -1785,10 +1853,16 @@ class SessionConfiguration:
         for account_key in ('harnessAccount', 'motorAccount'):
             if data.get(account_key) and selected[account_key] != data[account_key]:
                 raise ValueError(f'{account_key}: esa cuenta no es compatible con el destino')
+        if to in ('opencode', 'agy') or (to == 'acp' and not
+                ((load_provider_registry().get('acpAgents') or {}).get(motor) or {}).get('resume')):
+            raise ValueError(f'{to}:{motor} no ofrece recuperación exacta en este adaptador; crea una sesión nueva')
+        support = session_change_support(load_provider_registry(), current).get(route['id'])
+        if support and not support['selectable']:
+            raise ValueError(support['reason']['message'])
         model, effort = selected['model'], selected['effort']
         account = selected['motorAccount'] if to == 'acp' else selected['harnessAccount']
         same_conversation = self.frm == to and (to != 'acp' or motor == current.get('motor'))
-        saved_origin = session_operation_store().saved_origin(_identity_key(self.identity), to) if not same_conversation else None
+        saved_origin = self.store.saved_origin(_identity_key(self.identity), to) if not same_conversation else None
         if saved_origin and to == 'acp' and (saved_origin.get('observed') or {}).get('motor') != motor:
             saved_origin = None
         if saved_origin:
@@ -1796,7 +1870,8 @@ class SessionConfiguration:
         sid = ((saved_origin.get('observed') or {}).get('conversationId') if saved_origin else current.get('conversationId')) or ''
         # Validate the target command now, before a snapshot or any terminal input.
         cmd = _configuration_command(to, motor, model, effort, account,
-                                     resume=sid if same_conversation or saved_origin else '')
+                                     resume=sid if same_conversation or saved_origin else '',
+                                     flags=(saved_origin or {}).get('flags') or ())
         if not os.path.isdir(self.identity['pane_current_path']):
             raise ValueError('la carpeta del panel ya no existe')
         self.plan = dict(to=to, motor=motor, model=model, effort=effort,
@@ -1805,6 +1880,8 @@ class SessionConfiguration:
                          expectedSid=sid if same_conversation or saved_origin else '', sameConversation=same_conversation)
         self.plan['unchanged'] = to == self.frm and all(self.plan.get(k) == current.get(k) for k in
             ('motor', 'model', 'effort', 'harnessAccount', 'motorAccount'))
+        self.plan['continuity'] = {'continuity': 'resumed' if same_conversation or saved_origin else 'new-conversation',
+                                   'handoffRequired': self.frm != 'shell' and not same_conversation and not saved_origin}
         return self.plan
 
     def wait_idle(self):
@@ -1822,6 +1899,20 @@ class SessionConfiguration:
         layout = tmux_snapshot.capture_session(tmux, self.sess, inspector)
         origin = next(p for window in layout['windows'] for p in window['panes'] if p['id'] == self.pane)
         observed = observe_pane(self.sess, self.pane, self.original, inspector) if self.original else {}
+        if self.frm != 'shell':
+            fields = ('harness', 'motor', 'model', 'effort', 'harnessAccount', 'motorAccount', 'conversationId')
+            if any(observed.get(key) != plan['previous'].get(key) for key in fields):
+                raise ValueError('cambió la conversación o configuración durante la espera; vuelve a revisar el cambio')
+            if not observed.get('confirmed') or not observed.get('model'):
+                raise ValueError('no se observó la configuración original; el agente sigue abierto')
+            original_model = provider_registry.model_spec(load_provider_registry(), observed.get('motor'),
+                                                         observed['model'], section='motors') or {}
+            if original_model.get('efforts') and not observed.get('effort'):
+                raise ValueError('no se observó el esfuerzo original; no se puede asegurar su recuperación')
+            if any(not observed.get(key) or observed[key] == 'unknown' for key in ('harnessAccount', 'motorAccount')):
+                raise ValueError('no se identificaron las cuentas originales; el agente sigue abierto')
+            if origin.get('agent') != self.frm:
+                raise ValueError('cambió el agente durante el snapshot')
         sid = origin.get('resume_id') or (origin.get('acp') or {}).get('sessionId') or ''
         if self.frm != 'shell' and not sid:
             raise ValueError('no se encontró la conversación exacta; el agente sigue abierto')
@@ -1860,6 +1951,8 @@ class SessionConfiguration:
                 fh.write(capture_handoff(self.pane, self.frm, plan['to'], origin['cwd'], sid if self.frm == 'claude' else '',
                                          transcript_path=origin['transcriptPath'] if self.frm == 'claude' else ''))
             origin['handoffPath'] = path
+            if plan['continuity']['handoffRequired']:
+                plan['continuity']['handoffPath'] = path
         return {'session': self.sess, 'layout': layout, 'origin': origin, 'destination': dict(plan)}
 
     def _copy_conversation(self, origin, account):
@@ -1890,6 +1983,17 @@ class SessionConfiguration:
         # Validate the complete transcript and all subagent/sidecar files before
         # changing any destination file. Divergent histories remain untouched.
         for source_item, target_item in copies:
+            for item, root in ((source_item, source_root), (target_item, target_root)):
+                relative = os.path.relpath(item, root)
+                current = root
+                for part in relative.split(os.sep):
+                    current = os.path.join(current, part)
+                    if part == '..' or os.path.islink(current):
+                        raise ValueError('el historial contiene un enlace o sale de la cuenta; no se copia')
+                if os.path.isdir(item):
+                    for directory, subdirs, files in os.walk(item):
+                        if any(os.path.islink(os.path.join(directory, name)) for name in subdirs + files):
+                            raise ValueError('el historial contiene un enlace; no se copia')
             existing_files = glob.glob(os.path.join(target_item, '**', '*'), recursive=True) if os.path.isdir(source_item) else [target_item]
             for existing in existing_files:
                 if not os.path.exists(existing):
@@ -1901,12 +2005,24 @@ class SessionConfiguration:
                 original = os.path.join(source_item, os.path.relpath(existing, target_item)) if os.path.isdir(source_item) else source_item
                 if not os.path.isfile(original) or not self._compatible_copy(original, existing):
                     raise ValueError('el historial destino contiene cambios propios; no se sobrescribe')
+        def atomic_copy(source_file, target_file):
+            fd, temporary = tempfile.mkstemp(prefix='.comandos-copy-', dir=os.path.dirname(target_file))
+            os.close(fd)
+            try:
+                shutil.copy2(source_file, temporary)
+                with open(temporary, 'rb') as fh:
+                    os.fsync(fh.fileno())
+                os.replace(temporary, target_file)
+            finally:
+                if os.path.exists(temporary):
+                    os.unlink(temporary)
+            return target_file
         for source_item, target_item in copies:
             os.makedirs(os.path.dirname(target_item), exist_ok=True)
             if os.path.isdir(source_item):
-                shutil.copytree(source_item, target_item, dirs_exist_ok=True)
+                shutil.copytree(source_item, target_item, dirs_exist_ok=True, copy_function=atomic_copy)
             else:
-                shutil.copy2(source_item, target_item)
+                atomic_copy(source_item, target_item)
 
     @staticmethod
     def _compatible_copy(source, target):
@@ -1919,11 +2035,13 @@ class SessionConfiguration:
                     return False
 
     def apply(self, plan, snapshot):
-        if self.frm != 'shell' and not _pane_exit_current(self.pane, self.original['pid'], self.frm):
+        if self.frm != 'shell' and not _pane_exit_current(self.pane, self.original['pid'], self.frm, self.original_start):
             raise RuntimeError('el agente original no cerró')
         current = _pane_identity(self.sess, self.pane)
         if _identity_key(current) != _identity_key(self.identity):
             raise RuntimeError('el panel cambió después de cerrar el origen')
+        if current['pane_current_command'] not in ('bash', 'zsh', 'sh', 'fish', 'dash') or agent_info_for_pane(self.pane):
+            raise RuntimeError('hay otro proceso en el panel; no se envía el comando destino')
         if self.frm == plan['to'] and self.frm != 'shell':
             origin = snapshot['origin']
             previous = origin.get('observed') or {}
@@ -1932,11 +2050,12 @@ class SessionConfiguration:
                 self._copy_conversation(origin, plan[account_key])
         self.snapshot_record = snapshot
         _restore_shell_tty(self.pane)
-        _send_shell_line(self.pane, 'env ' + shlex.quote('COMANDOS_OPERATION_ID=' + self.data['requestId']) + ' ' + plan['command'])
+        _send_configuration_command(self.pane, 'env ' + shlex.quote('COMANDOS_OPERATION_ID=' + self.data['requestId']) + ' ' + plan['command'])
 
-    def _verify(self, expected, sid=''):
-        for _ in range(60):
-            time.sleep(0.5)
+    def _verify(self, expected, sid='', attempts=60):
+        for _ in range(attempts):
+            if attempts > 1:
+                time.sleep(0.5)
             identity = _pane_identity(self.sess, self.pane)
             if _identity_key(identity) != _identity_key(self.identity):
                 raise RuntimeError('el panel cambió durante la verificación')
@@ -1956,21 +2075,28 @@ class SessionConfiguration:
                     raise RuntimeError('cambió la conversación destino durante la verificación')
                 if pin != previous_pin:
                     self.snapshot_record['destinationProcess'] = pin
-                    self.store.stage(self.data['requestId'], 'verifying', snapshot=self.snapshot_record)
+                    if not getattr(self, 'refreshing', False):
+                        self.store.stage(self.data['requestId'], 'verifying', snapshot=self.snapshot_record)
             if sid and observed.get('conversationId') != sid:
+                continue
+            if not observed.get('confirmed') or observed.get('motor') != expected.get('motor'):
                 continue
             if expected['to'] in ('claude', 'codex', 'grok', 'acp') and not observed.get('conversationId'):
                 continue
             if expected.get('model') and observed.get('model') != expected['model']:
-                continue
+                registry = load_provider_registry()
+                wanted = provider_registry.model_spec(registry, expected.get('motor'), expected['model'], section='motors')
+                actual = provider_registry.model_spec(registry, expected.get('motor'), observed.get('model'), section='motors')
+                if not wanted or not actual or wanted['id'] != actual['id']:
+                    continue
             if expected.get('effort') and observed.get('effort') != expected['effort']:
                 continue
             if expected.get('harnessAccount') and observed.get('harnessAccount') != expected['harnessAccount']:
                 continue
             if expected.get('motorAccount') and observed.get('motorAccount') != expected['motorAccount']:
                 continue
-            screen = tmux('capture-pane', '-p', '-t', self.pane, '-S', '-15').stdout or ''
-            if re.search(r'trust this folder|Do you trust|sign in|log in|login required|error:', screen, re.I):
+            screen = tmux('capture-pane', '-p', '-t', self.pane).stdout or ''
+            if re.search(r'trust this folder|Do you trust|Accessing workspace|sign in|log in|login required|error:', screen, re.I):
                 continue
             if not re.search(r'(^|\n)\s*[❯›>]|esc to interrupt|ctrl\+c to interrupt', screen, re.I):
                 continue
@@ -1979,6 +2105,20 @@ class SessionConfiguration:
 
     def verify(self, plan, snapshot):
         return self._verify(plan, plan.get('expectedSid', ''))
+
+    def pending_confirmation(self, plan, snapshot):
+        if _identity_key(_pane_identity(self.sess, self.pane)) != _identity_key(self.identity):
+            return None
+        info = agent_info_for_pane(self.pane) or {}
+        pin = snapshot.get('destinationProcess') or {}
+        if (info.get('agent') != plan['to'] or not pin or info.get('pid') != pin.get('pid') or
+                _process_start(info['pid']) != pin.get('start') or
+                _read_environ(info['pid']).get(b'COMANDOS_OPERATION_ID', b'').decode() != self.data['requestId']):
+            return None
+        screen = tmux('capture-pane', '-p', '-t', self.pane).stdout or ''
+        if re.search(r'(^|\n)\s*(?:error:|fatal:)', screen, re.I):
+            return None
+        return observe_pane(self.sess, self.pane, info)
 
     def rollback(self, snapshot):
         self.in_recovery = True
@@ -1991,8 +2131,9 @@ class SessionConfiguration:
         expected = dict(original_observed, to=self.frm)
         sid = original_observed.get('conversationId') or ''
         if live.get('pid') == self.original.get('pid') and self.frm != 'shell' and _process_start(live['pid']) == origin.get('agent_start', ''):
-            if self._verify(expected, sid):
-                return
+            observed = self._verify(expected, sid)
+            if observed:
+                return observed
             raise RuntimeError('el proceso de origen sigue vivo pero no confirmó su estado')
         if live:
             marker = _read_environ(live['pid']).get(b'COMANDOS_OPERATION_ID', b'').decode('utf-8', 'replace')
@@ -2002,20 +2143,61 @@ class SessionConfiguration:
             if pin and (live['pid'] != pin.get('pid') or _process_start(live['pid']) != pin.get('start')):
                 raise RuntimeError('el proceso destino fue sustituido; no se interrumpe')
             expected_sid = pin.get('conversationId') or self.plan.get('expectedSid')
-            if not expected_sid:
+            if not expected_sid and not (getattr(self, 'allow_pending_recovery', False) and pin):
                 raise RuntimeError('no se guardó la conversación destino; cierra ese CLI manualmente antes de recuperar el origen')
-            if observe_pane(self.sess, self.pane, live).get('conversationId') != expected_sid:
+            if expected_sid and observe_pane(self.sess, self.pane, live).get('conversationId') != expected_sid:
                 raise RuntimeError('la conversación destino cambió; no se interrumpe')
-            if not _pane_exit_current(self.pane, live['pid'], live['agent']):
+            started = pin.get('start') or _process_start(live['pid'])
+            stopped = (_stop_owned_startup(live['pid'], started) if getattr(self, 'allow_pending_recovery', False)
+                       else _pane_exit_current(self.pane, live['pid'], live['agent'], started))
+            if not stopped:
                 raise RuntimeError('no se pudo cerrar el destino fallido')
         if not live and current['pane_current_command'] not in ('bash', 'zsh', 'sh', 'fish', 'dash'):
             raise RuntimeError('hay un proceso sin identificar en el panel; no se envía la recuperación')
         if self.frm == 'shell':
-            return
+            return {'harness': 'shell', 'motor': 'shell', 'source': 'pane-process', 'confirmed': True}
         _restore_shell_tty(self.pane)
-        _send_shell_line(self.pane, origin['resume_command'])
-        if not self._verify(expected, sid):
+        _send_configuration_command(self.pane, origin['resume_command'])
+        observed = self._verify(expected, sid)
+        if not observed:
             raise RuntimeError('no se confirmó la reanudación de la conversación original')
+        return observed
+
+
+def refresh_session_confirmation(store, row):
+    """One read of an owned pending target; never send terminal input on polling."""
+    if not row or row['state'] != 'awaiting_confirmation' or not row.get('snapshot'):
+        return row
+    snapshot = row['snapshot']
+    before_snapshot = json.dumps(snapshot, sort_keys=True)
+    try:
+        adapter = SessionConfiguration(row['request'], snapshot['origin']['identity'])
+        adapter.store, adapter.plan = store, snapshot['destination']
+        adapter.snapshot_record, adapter.refreshing = snapshot, True
+        # Validate the pinned process before observing any post-startup session.
+        if not adapter.pending_confirmation(adapter.plan, snapshot):
+            return row
+        observed = adapter._verify(adapter.plan, adapter.plan.get('expectedSid', ''), attempts=1)
+        if not observed and json.dumps(snapshot, sort_keys=True) == before_snapshot:
+            return row
+        result = {'ok': True, 'pending': not bool(observed), 'confirmed': bool(observed),
+                  'recoveryAllowed': not bool(observed), 'observed': observed or row['result'].get('observed', {}),
+                  **(adapter.plan.get('continuity') or {})}
+        with store.connect() as db:
+            changed = db.execute("UPDATE session_operations SET state=?,snapshot=?,result=?,updated=? "
+                                 "WHERE id=? AND state='awaiting_confirmation'", (
+                'confirmed' if observed else 'awaiting_confirmation', json.dumps(snapshot), json.dumps(result),
+                time.time(), row['id'])).rowcount
+        if changed and observed:
+            try:
+                record_runtime_config(adapter.sess, adapter.pane, observed['harness'], observed['motor'],
+                    observed['model'], observed.get('effort', ''), observed.get('harnessAccount', 'unknown'),
+                    observed.get('motorAccount', 'unknown'), adapter.plan['routeId'], 'switch-observed')
+            except Exception:
+                pass  # Analytics cannot undo durable, observed confirmation.
+        return store.get(row['id']) if changed else store.get(row['id']) or row
+    except (ValueError, RuntimeError, OSError):
+        return row
 
 
 def session_configure(data):
@@ -2069,7 +2251,7 @@ def session_recover(data):
     store = session_operation_store()
     store.recover_abandoned()
     row = store.get(operation_id)
-    if not row or row['state'] != 'recovery_required' or not row.get('snapshot'):
+    if not row or row['state'] not in ('recovery_required', 'awaiting_confirmation') or not row.get('snapshot'):
         return 409, {'ok': False, 'error': 'la operación no tiene una recuperación pendiente'}
     snapshot = row['snapshot']
     origin = snapshot['origin']
@@ -2089,8 +2271,11 @@ def session_recover(data):
             adapter.original = {'pid': origin.get('agent_pid'), 'agent': origin.get('agent') or 'shell'}
             adapter.frm = origin.get('agent') or 'shell'
             adapter.plan = snapshot['destination']
-            adapter.rollback(snapshot)
+            adapter.allow_pending_recovery = row['state'] == 'awaiting_confirmation'
+            adapter.store = store
+            observed = adapter.rollback(snapshot)
             result = {'ok': False, 'rolledBack': True, 'recoveryRequired': False,
+                      'observed': observed,
                       'error': 'conversación original recuperada; no se aplicó el destino'}
             store.stage(operation_id, 'rolled_back', result=result)
         except Exception as exc:
@@ -4572,7 +4757,7 @@ PANE_RE = re.compile(r"^%\d{1,7}$")
 def operator_tabs_payload():
     out = []
     for sess, label in tab_labels().items():
-        if sess in HIDDEN_SESSIONS:
+        if sess in HIDDEN_SESSIONS and sess != 'local':
             continue
         out.append({"session": sess, "label": label or sess})
     return out
@@ -4876,6 +5061,8 @@ OPERATOR_TIMEOUT = 30
 
 
 def operator_build_payload(model, sys_txt, conv, tools=True):
+    from operator_tools import provider_messages
+    conv = provider_messages(conv, 'openai' if str(model).startswith('grok') else 'anthropic')
     port = int(load_proxy_cfg().get("port") or 18765)
     proxy_url = f"http://127.0.0.1:{port}/v1/messages"
     if str(model).startswith("grok"):
@@ -4886,6 +5073,8 @@ def operator_build_payload(model, sys_txt, conv, tools=True):
                    "messages": ([{"role": "system", "content": sys_txt}] if sys_txt else []) + conv}
         if tools:
             payload["tools"] = operator_catalog.openai_tools()
+            if tools is not True:
+                payload["tools"] = [tool for tool in payload["tools"] if tool['function']['name'] in tools]
         headers = {"Authorization": "Bearer " + key, "Content-Type": "application/json", "Accept": "text/event-stream"}
         return "openai", payload, headers, ("https://api.x.ai/v1/chat/completions",
                                             "https://cli-chat-proxy.grok.com/v1/chat/completions")
@@ -4894,8 +5083,11 @@ def operator_build_payload(model, sys_txt, conv, tools=True):
         payload["system"] = [{"type": "text", "text": sys_txt, "cache_control": {"type": "ephemeral"}}]
     if tools:
         tl = operator_catalog.anthropic_tools()
-        tl[-1] = dict(tl[-1], cache_control={"type": "ephemeral"})
-        payload["tools"] = tl
+        if tools is not True:
+            tl = [tool for tool in tl if tool['name'] in tools]
+        if tl:
+            tl[-1] = dict(tl[-1], cache_control={"type": "ephemeral"})
+            payload["tools"] = tl
     if model == "haiku" or str(model).startswith("claude"):
         token = OPERATOR_CREDS.claude()
         if not token:
@@ -4918,6 +5110,10 @@ def operator_provider_stream(model, sys_txt, conv, tools=True):
             norm = operator_stream.stream_anthropic(events) if family == "anthropic" else operator_stream.stream_openai(events)
             # open_stream is lazy: urlopen runs on first next(), not on call.
             first = next(norm)
+            if first.get('t') == 'error':
+                norm.close()
+                lines.close()
+                raise RuntimeError(first.get('text') or 'El proveedor rechazó la consulta.')
 
             def primed(first=first, rest=norm):
                 yield first
@@ -4958,7 +5154,10 @@ def _run_tool_batch(dispatcher, calls):
 
 
 def operator_agent_stream(text, *, model, tabs, memory, active, convo, dispatcher, max_rounds=6):
-    sys_txt = operator_tools.agent_system_prompt(tabs, memory, active)
+    from operator_tools import provider_failure_message
+    if dispatcher is not None and hasattr(operator_tools, 'analysis_request'):
+        dispatcher.readonly = operator_tools.analysis_request(text)
+    sys_txt = operator_tools.agent_system_prompt(tabs, memory, active, context=getattr(dispatcher, 'context', None))
     conv = []
     for msg in (convo.get("messages") or [])[-16:]:
         blob = str(msg.get("text") or "")
@@ -4970,32 +5169,63 @@ def operator_agent_stream(text, *, model, tabs, memory, active, convo, dispatche
     want = operator_chat.model_entry(model)["model"]
     order = [want] + [m["model"] for m in operator_chat.MODELS if m["model"] != want]
     actions, notes = [], []
+    used_model, fallback_notice = None, ''
     for _round in range(max_rounds):
         family, events, err = None, None, ""
+        failures = []
         for cand in order:
             try:
-                family, events = operator_provider_stream(cand, sys_txt, conv, tools=True)
+                offered = operator_catalog.READONLY if getattr(dispatcher, 'readonly', False) else True
+                family, events = operator_provider_stream(cand, sys_txt, conv, tools=offered)
                 break
             except RuntimeError as e:
                 err = str(e)
+                failures.append((cand, err))
         if events is None:
-            yield {"t": "error", "text": err or "No pude hablar con el modelo."}
-            yield {"t": "final", "reply": "No pude hablar con el modelo. Prueba otra vez.", "actions": actions}
+            reply = provider_failure_message(failures)
+            yield {"t": "error", "text": reply}
+            yield {"t": "final", "ok": False, "reply": reply, "actions": actions}
             return
-        text_acc, calls = "", []
-        for ev in events:
-            if ev["t"] == "delta":
-                text_acc += ev["text"]
-                yield ev
-            elif ev["t"] == "tool_call":
-                calls.append(ev)
-            elif ev["t"] == "error":
-                yield ev
+        order = [cand] + [candidate for candidate in order if candidate != cand]
+        if cand != want:
+            names = {entry['model']: entry.get('name') or entry['model'] for entry in operator_chat.MODELS}
+            fallback_notice = f"Respuesta de {names.get(cand, cand)}; {names.get(want, want)} no estuvo disponible.\n\n"
+            if used_model != cand:
+                yield {'t': 'delta', 'text': fallback_notice}
+        else:
+            fallback_notice = ''
+        used_model = cand
+        text_acc, calls, stream_error = "", [], ""
+        try:
+            for ev in events:
+                if ev["t"] == "delta":
+                    text_acc += ev["text"]
+                    yield ev
+                elif ev["t"] == "tool_call":
+                    calls.append(ev)
+                elif ev["t"] == "error":
+                    stream_error = ev.get('text') or 'Respuesta incompleta.'
+                    yield ev
+        except (OSError, ValueError, RuntimeError) as exc:
+            stream_error = str(exc)
+            yield {'t': 'error', 'text': 'Se interrumpió la respuesta del modelo.'}
+        if stream_error:
+            yield {'t': 'final', 'ok': False, 'reply': fallback_notice + 'Respuesta interrumpida. No ejecuté las herramientas de esta respuesta; revisa los resultados de acciones anteriores antes de reintentar.', 'actions': actions}
+            return
         if not calls:
-            reply = text_acc.strip() or (notes[-1] if notes else "Listo.")
-            if _llm_poison(reply):
-                reply = "Listo."
-            yield {"t": "final", "reply": reply, "actions": actions}
+            reply = text_acc.strip()
+            contaminated = _llm_poison(reply)
+            if contaminated or (not reply and not notes):
+                reply = ('El modelo devolvió un error en lugar de una respuesta.' if contaminated else
+                         'El modelo terminó sin devolver una respuesta.')
+                if notes:
+                    reply += '\nÚltimo resultado de herramienta: ' + notes[-1]
+                reply = fallback_notice + reply
+                yield {'t': 'error', 'text': reply}
+                yield {'t': 'final', 'ok': False, 'reply': reply, 'actions': actions}
+                return
+            reply = reply or notes[-1]
+            yield {"t": "final", "reply": fallback_notice + reply, "actions": actions}
             return
         if family == "openai":
             conv.append({"role": "assistant", "content": text_acc or "",
@@ -5024,14 +5254,14 @@ def operator_agent_stream(text, *, model, tabs, memory, active, convo, dispatche
                 conv.append({"role": "tool", "tool_call_id": c["id"], "content": note})
         else:
             conv.append({"role": "user", "content": [{"type": "tool_result", "tool_use_id": c["id"], "content": note} for c, note in results]})
-    yield {"t": "final", "reply": notes[-1] if notes else "Listo.", "actions": actions}
+    yield {"t": "final", "reply": fallback_notice + (notes[-1] if notes else "Listo."), "actions": actions}
 
 
 def operator_agent_turn(text, *, model, tabs, memory, active, convo, dispatcher, **_ignored):
     final = {"reply": "Listo.", "actions": []}
     for ev in operator_agent_stream(text, model=model, tabs=tabs, memory=memory, active=active, convo=convo, dispatcher=dispatcher):
         if ev["t"] == "final":
-            final = {"reply": ev["reply"], "actions": ev["actions"]}
+            final = {"ok": ev.get('ok', True), "reply": ev["reply"], "actions": ev["actions"]}
     return final
 
 
@@ -5043,7 +5273,8 @@ def _ok(err, reply, actions=None):
 
 def _op_tab(args, tabs, active):
     name = str(args.get("tab") or args.get("session") or "")
-    if not name:
+    if not name or (active and operator_chat.fold(name) in
+                    (operator_chat.fold(active), 'actual', 'esta', 'esta tab', 'aqui')):
         return active, None
     hit = operator_chat._resolve_tab(name, tabs, active)
     if hit is None:
@@ -5171,7 +5402,11 @@ def operator_build_dispatcher(session=None, pane=None):
         "copy_reply": lambda a: ui({"type": "copy_reply"}),
         "copy_session": with_tab(lambda s, a: ui({"type": "copy_session", "session": s})),
     }
-    return operator_dispatch.Dispatcher(base_url=f"http://127.0.0.1:{PORT}", token=access_token(), hooks_dir=HOOKS, local_handlers=handlers, receipt_root=root, default_session=active, default_pane=pane)
+    dispatcher = operator_dispatch.Dispatcher(base_url=f"http://127.0.0.1:{PORT}", token=access_token(), hooks_dir=HOOKS, local_handlers=handlers, receipt_root=root, default_session=active, default_pane=pane)
+    if pane:
+        identity = _pane_identity(active, pane)
+        dispatcher.context['cwd'] = identity.get('pane_current_path') or ''
+    return dispatcher
 
 
 def operator_set_model(data):
@@ -5191,7 +5426,20 @@ def operator_sse_frame(obj):
     return b"data: " + json.dumps(obj, ensure_ascii=False).encode("utf-8") + b"\n\n"
 
 
+def _operator_request_context(data):
+    session = str(data.get('session') or operator_active_session() or '')
+    pane = str(data.get('pane') or '')
+    if pane:
+        if not session:
+            raise ValueError('El panel requiere una sesión seleccionada.')
+        _pane_identity(session, pane)
+    elif data.get('session') and tmux('has-session', '-t', '=' + session).returncode:
+        raise ValueError('La sesión seleccionada ya no existe.')
+    return session, pane
+
+
 def operator_handle_chat_stream(data, write):
+    active, selected_pane = _operator_request_context(data)
     root = operator_store_root()
     store = operator_chat.load_store(root)
     cid = str(data.get("id") or store.get("current") or "")
@@ -5199,14 +5447,12 @@ def operator_handle_chat_stream(data, write):
     text = str(data.get("text") or "")[:4000]
     tabs = operator_tabs_payload()
     memory = operator_chat.load_memory(root)
-    active = str(data.get("session") or operator_active_session())
-    selected_pane = str(data.get("pane") or "")
     if data.get("model"):
         operator_chat.set_model(store, str(data.get("model") or "haiku"), str(data.get("effort") or ""))
     model = str(store.get("model") or "haiku")
     operator_chat.append_message(convo, "user", text)
     operator_chat.save_conversation(root, store, convo)
-    final = {"reply": "", "actions": []}
+    final = {"ok": True, "reply": "", "actions": []}
     partial = ""
     disconnected = False
     try:
@@ -5218,6 +5464,7 @@ def operator_handle_chat_stream(data, write):
                 final["actions"].append(ev)
             elif ev["t"] == "final":
                 final["reply"] = ev["reply"]
+                final['ok'] = ev.get('ok', True)
             write(operator_sse_frame(ev))
     except (BrokenPipeError, ConnectionResetError):
         disconnected = True
@@ -5229,7 +5476,7 @@ def operator_handle_chat_stream(data, write):
     if disconnected:
         return
     pub = operator_chat.public_store(store)
-    write(operator_sse_frame({"t": "payload", "ok": True, "id": convo["id"], "reply": final["reply"],
+    write(operator_sse_frame({"t": "payload", "ok": final['ok'], "id": convo["id"], "reply": final["reply"],
                               "actions": final["actions"], "messages": convo.get("messages") or [],
                               "conversations": pub["conversations"], "memory": memory,
                               "model": pub.get("model") or "haiku", "effort": pub.get("effort") or "",
@@ -5238,6 +5485,7 @@ def operator_handle_chat_stream(data, write):
 
 
 def operator_handle_chat(data):
+    active, selected_pane = _operator_request_context(data)
     root = operator_store_root()
     store = operator_chat.load_store(root)
     cid = str(data.get("id") or store.get("current") or "")
@@ -5247,21 +5495,21 @@ def operator_handle_chat(data):
     text = str(data.get("text") or "")[:4000]
     tabs = operator_tabs_payload()
     memory = operator_chat.load_memory(root)
-    active = operator_active_session()
     if data.get("model"):
         operator_chat.set_model(store, str(data.get("model") or "haiku"),
                                 str(data.get("effort") or ""))
     model = str(store.get("model") or "haiku")
     operator_chat.append_message(convo, "user", text)
+    operator_chat.save_conversation(root, store, convo)
     result = operator_agent_turn(text, model=model, tabs=tabs, memory=memory, active=active,
-                                 convo=convo, dispatcher=operator_build_dispatcher())
+                                 convo=convo, dispatcher=operator_build_dispatcher(active, selected_pane))
     operator_chat.append_message(
         convo, "assistant", result["reply"], result.get("actions"))
     store["current"] = convo["id"]
-    operator_chat.save_store(root, store)
+    operator_chat.save_conversation(root, store, convo)
     pub = operator_chat.public_store(store)
     return {
-        "ok": True,
+        "ok": result.get('ok', True),
         "id": convo["id"],
         "reply": result["reply"],
         "actions": result.get("actions") or [],
@@ -5617,17 +5865,17 @@ def parent_pid(pid):
 def tmux_pane_inventory():
     """One authoritative row per existing tmux pane, including shells and SSH."""
     fields = ('session_name', 'pane_id', 'pane_pid', 'pane_current_command',
-              'pane_current_path', 'session_activity')
+              'pane_current_path', 'session_activity', 'pane_active', 'window_active')
     result = tmux('list-panes', '-a', '-F', '|'.join('#{' + name + '}' for name in fields))
     if result.returncode:
         return []
     panes = []
     for line in result.stdout.splitlines():
-        values = line.split('|', 5)
+        values = line.split('|', 7)
         if len(values) < 3 or not values[2].isdigit():
             continue
-        values += [''] * (6 - len(values))
-        session, pane, pid, command, cwd, activity = values
+        values += [''] * (8 - len(values))
+        session, pane, pid, command, cwd, activity, pane_active, window_active = values
         if not SESSION_RE.fullmatch(session) or not PANE_RE.fullmatch(pane):
             continue
         try:
@@ -5635,7 +5883,8 @@ def tmux_pane_inventory():
         except ValueError:
             timestamp = 0
         panes.append({'session': session, 'pane': pane, 'pane_pid': int(pid),
-                      'command': command, 'cwd': cwd, 'activity': timestamp})
+                      'command': command, 'cwd': cwd, 'activity': timestamp,
+                      'paneActive': pane_active == '1' and window_active == '1'})
     return panes
 
 
@@ -5772,6 +6021,96 @@ def resolve_project_session(sess):
 
 
 # Sesiones internas de la app (terminal de control): no son tarjetas
+def session_operation_status(operation, operation_id=''):
+    session, _, pane = str(operation).partition('|')
+    if not SESSION_RE.fullmatch(session) or (pane and not PANE_RE.fullmatch(pane)):
+        raise ValueError('operationKey inválido')
+    if operation_id and not re.fullmatch(r'[A-Za-z0-9_-]{1,128}', operation_id):
+        raise ValueError('operationId inválido')
+    store = session_operation_store()
+    store.recover_abandoned()
+    record = store.get(operation_id) if operation_id else store.latest_for_target(session, pane)
+    if operation_id and (not record or (record['request'].get('session'), record['request'].get('pane') or '') != (session, pane)):
+        raise ValueError('La operación no pertenece a este panel')
+    if record and record['state'] == 'awaiting_confirmation':
+        record = refresh_session_confirmation(store, record)
+    result = dict(MOTOR_RESULT.get(operation) or {}) if not record else {}
+    if record:
+        result.update(operationId=record['id'], state=record['state'], ts=record['updated'])
+        durable = record.get('result') or {}
+        if record['state'] in ('confirmed', 'failed', 'rolled_back', 'recovery_required'):
+            result.update(durable)
+            result['detail'] = durable.get('error') or 'configuración confirmada'
+            result.update(durable.get('observed') or {})
+        else:
+            result.update(durable)
+            result.pop('ok', None)
+            result.update(stage=record['state'], stageCode=record['state'])
+        origin = (record.get('snapshot') or {}).get('origin') or {}
+        result.update(sourceHarness=origin.get('agent') or '',
+                      sourceConversationId=(origin.get('observed') or {}).get('conversationId') or '',
+                      handoffPath=origin.get('handoffPath') or '')
+    if not result:
+        result = {'stage':'preparando cambio', 'stageCode':'prepare', 'ts':0}
+    result['operationKey'] = operation
+    return result
+
+
+def session_brain_snapshot(query):
+    """Resolve configuration from the selected process, retaining provenance."""
+    registry = load_provider_registry()
+    session, pane = str(query.get('session') or ''), str(query.get('pane') or '')
+    cwd, harness, alias = (str(query.get(k) or '') for k in ('cwd', 'harness', 'account'))
+    live = bool(session or pane)
+    if live:
+        identity = _pane_identity(session, pane)
+        cwd = identity['pane_current_path']
+        info = agent_info_for_pane(pane) or {}
+        harness = info.get('agent') or 'shell'
+        alias = account_for_pid(info['pid'], harness).get('account') or 'unknown' if info.get('pid') else 'unknown'
+    if not os.path.isabs(cwd) or not os.path.isdir(cwd):
+        raise ValueError('cwd inválido')
+    base = {'session':session, 'pane':pane, 'cwd':cwd, 'harness':harness, 'account':alias,
+            'skills':[], 'mcps':[], 'accounts':[], 'effectiveNow':None, 'limitations':[]}
+    if harness == 'shell':
+        return dict(base, status='not_applicable', mcpDetection={'status':'not_applicable'},
+                    limitations=['Este panel es una shell; inicia un CLI para consultar sus extensiones.'])
+    inventory_harness = harness
+    if harness == 'acp':
+        metadata = acp_state_for_pane(pane) if live else {}
+        if not metadata or str(metadata.get('pid')) != str(info.get('pid')):
+            return dict(base, status='unknown', mcpDetection={'status':'unknown'},
+                        limitations=['No se pudo verificar el agente conectado a este panel ACP.'])
+        inventory_harness = str(metadata.get('agent') or '')
+        alias = str(metadata.get('account') or 'unknown')
+        base['extensionProvider'] = inventory_harness
+        base['account'] = alias
+    provider = (registry.get('harnesses') or {}).get(inventory_harness)
+    if provider is None:
+        raise ValueError('harness no reconocido')
+    supports_accounts = (provider.get('capabilities') or {}).get('accounts', False)
+    if not supports_accounts:
+        alias = 'main'
+    elif live and alias == 'unknown':
+        return dict(base, status='unknown', mcpDetection={'status':'unknown'},
+                    limitations=['La cuenta de este proceso no está identificada; no se usa otra cuenta como sustituto.'])
+    else:
+        alias = alias or 'main'
+    inventory = session_profile_store.inventory(registry, inventory_harness, alias, cwd)
+    result = dict(base, **{k:v for k,v in inventory.items() if k not in base})
+    result.update(account=alias, limitations=inventory.get('limitations') or [])
+    for kind in ('skills', 'mcps'):
+        result[kind] = [dict(item, est_tokens=None, effectiveNow=None, toggleable=False,
+                             toggleScope='profile') for item in inventory.get(kind) or []]
+    if supports_accounts:
+        result['accounts'] = account_registry.list_accounts(registry, inventory_harness)
+    result['mcpDetection'] = {'status':inventory.get('status'), 'confidence':inventory.get('confidence')}
+    if harness == 'claude':
+        name, lines = _claude_md_lines(cwd)
+        result['claudeMd'] = {'name':name, 'lines':lines}
+    return result
+
+
 HIDDEN_SESSIONS = {"hub", "local", "control"}
 
 
@@ -5937,9 +6276,16 @@ def observe_pane(sess, pane, info=None, inspector=None):
                                 revision=metadata.get('lastActiveAt') or '')
     elif agent == 'acp':
         metadata = acp_state_for_pane(pane)
-        conversation = dict(model=metadata.get('model') or '', effort=metadata.get('effort') or '')
+        # CLI arguments are requests; only the matching process's protocol
+        # observations can confirm ACP model and reasoning configuration.
+        launch_model = launch_effort = ''
+        if metadata.get('pid') != pid or metadata.get('sessionId') != result['conversationId']:
+            metadata = {}
+        conversation = dict(model=metadata.get('observedModel') or '', effort=metadata.get('observedEffort') or '')
         result.update(motor=metadata.get('agent') or '', motorAccount=metadata.get('account') or 'unknown',
-                      harnessAccount='main')
+                      harnessAccount='main', effortSource=metadata.get('effortSource') or 'unconfirmed',
+                      requestedModel=metadata.get('requestedModel') or metadata.get('model') or '',
+                      requestedEffort=metadata.get('requestedEffort') or metadata.get('effort') or '')
     elif agent == 'claude' and result['conversationId']:
         transcript_root = snap.get('claude_config_dir') or os.path.expanduser('~/.claude')
         transcripts = glob.glob(os.path.join(transcript_root, 'projects', '*', result['conversationId'] + '.jsonl'))
@@ -5951,16 +6297,17 @@ def observe_pane(sess, pane, info=None, inspector=None):
     state_key = (result['identity'], agent, pid, _process_start(pid), result['conversationId'])
     result.update(_TUI_STATES.observe(state_key, {'model': launch_model, 'effort': launch_effort},
                                      conversation, visible, now=result['observedAt']))
-    result['motor'] = result.get('motor') or provider_registry.engine_for_model(load_provider_registry(), result['model']) or agent
+    result['motor'] = result.get('motor') or (agent if agent in ('opencode', 'agy', 'gemini') else
+        provider_registry.engine_for_model(load_provider_registry(), result['model']) or agent)
     result['motorAccount'] = result.get('motorAccount') or (account if result['motor'] == agent else 'unknown')
     if agent == 'claude' and result['motor'] in ('codex', 'grok'):
         env = _read_environ(pid)
         base = env.get(b'ANTHROPIC_BASE_URL', b'').decode('utf-8', 'replace')
         if base.startswith(('http://127.0.0.1:', 'http://localhost:')):
             result['motorAccount'] = 'main'
-    result['confirmed'] = bool(result['model']) and result['source'] not in ('process', 'unconfirmed')
+    result['confirmed'] = bool(result['model']) and result['source'] not in ('process', 'unconfirmed', 'status-script')
     result['accountSource'] = 'process-environment' if agent != 'acp' else 'acp-state'
-    result['limitations'] = (['native-runtime-state-unavailable'] if agent in ('opencode', 'agy') and not visible else [])
+    result['limitations'] = (['native-runtime-state-unavailable'] if agent in ('opencode', 'agy', 'gemini') and not visible else [])
     if not result['effort']:
         result['limitations'].append('effort-unobserved')
     return result
@@ -6179,11 +6526,11 @@ def read_states():
         session, pane = row['session'], row['pane']
         info = agents.get((session, pane))
         agent = info.get('agent') if info else None
-        if session in HIDDEN_SESSIONS and not agent:
+        if session in HIDDEN_SESSIONS and session != "local" and not agent:
             continue
         record = (annotations.get((session, pane)) or (None, {}))[1]
         cwd = (info or {}).get('cwd') or row.get('cwd') or ''
-        base = labels.get(session) or record.get('project') or os.path.basename(cwd.rstrip('/')) or session
+        base = ('⌂ local' if session == 'local' else labels.get(session) or record.get('project') or os.path.basename(cwd.rstrip('/')) or session)
         label = f'{base} ⫽{pane[1:]}' if counts[session] > 1 else base
         status = record.get('status') or 'idle'
         if status == 'dead':
@@ -6198,7 +6545,7 @@ def read_states():
                 'status': status, 'detail': detail, 'cwd': cwd, 'options': record.get('options') or '',
                 'last': record.get('last') or '', 'ts': record.get('ts') or row.get('activity') or 0,
                 'alive': True, 'external': False, 'tabbed': session in labels,
-                'split': counts[session] > 1}
+                'split': counts[session] > 1, 'paneActive': row.get('paneActive', False)}
         if info and info.get('pid'):
             item.update(account_for_pid(info['pid'], agent))
             if agent == 'grok':
@@ -7430,32 +7777,12 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             return self._json(200, sovereignty_report())
         if self.path.startswith("/model/status"):
             query = urllib.parse.parse_qs(urllib.parse.urlsplit(self.path).query)
-            operation = str((query.get("operationKey") or [""])[0])[:120]
-            session_part, _, pane_part = operation.partition("|")
-            if not SESSION_RE.fullmatch(session_part) or (pane_part and not PANE_RE.fullmatch(pane_part)):
-                return self._json(400, {"error": "operationKey invalido"})
-            store = session_operation_store()
-            store.recover_abandoned()
-            record = store.latest_for_target(session_part, pane_part)
-            result = dict(MOTOR_RESULT.get(operation) or {})
-            if record:
-                durable = record.get('result') or {}
-                result.update(operationId=record['id'], state=record['state'])
-                if record['state'] in ('confirmed', 'failed', 'rolled_back', 'recovery_required'):
-                    result.update(durable)
-                    result['detail'] = durable.get('error') or 'configuración confirmada'
-                    result.update(durable.get('observed') or {})
-                else:
-                    result.pop('ok', None)
-                    result.update(stage=record['state'], stageCode=record['state'])
-                origin = (record.get('snapshot') or {}).get('origin') or {}
-                result.update(sourceHarness=origin.get('agent') or '',
-                              sourceConversationId=(origin.get('observed') or {}).get('conversationId') or '',
-                              handoffPath=origin.get('handoffPath') or '')
-            if not result:
-                result = {"stage": "preparando cambio", "stageCode": "prepare", "ts": time.time()}
-            result["operationKey"] = operation
-            return self._json(200, result)
+            try:
+                return self._json(200, session_operation_status(
+                    str((query.get("operationKey") or [""])[0]),
+                    str((query.get("operationId") or [""])[0])))
+            except ValueError as error:
+                return self._json(400, {"error":str(error)})
         if self.path == "/proxy":
             cfg = load_proxy_cfg()
             mg, mm = motor_global()
@@ -7492,41 +7819,11 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             except (ValueError, OSError) as e:
                 return self._json(400, {"error": str(e)})
         if self.path.startswith("/session-brain"):
-            q = urllib.parse.parse_qs(urllib.parse.urlparse(self.path).query)
-            cwd = (q.get("cwd") or [""])[0]
-            if not cwd.startswith("/") or not os.path.isdir(cwd):
-                return self._json(400, {"error": "cwd invalido"})
-            pane = (q.get("pane") or [""])[0]
-            harness = (q.get("harness") or [""])[0]
-            alias = (q.get("account") or [""])[0]
-            info = agent_info_for_pane(pane) if PANE_RE.match(pane) else None
-            if info:
-                harness = str(info.get("agent") or harness or "claude")
-                detected = account_for_pid(info.get("pid"), harness)
-                alias = str(detected.get("account") or alias or "main")
-            if harness not in ("claude", "codex", "grok"):
-                harness = "claude"
-            alias = alias or "main"
-            inventory = capability_inventory.session_capabilities(
-                load_provider_registry(), harness, alias, cwd)
-            mcps = []
-            for item in inventory.get("mcps") or []:
-                row = dict(item)
-                row["est_tokens"] = None
-                row["effectiveNow"] = None
-                row["toggleable"] = False
-                row["toggleScope"] = "profile"
-                mcps.append(row)
-            accounts = account_registry.list_accounts(load_provider_registry(), harness)
-            md_name, md_lines = _claude_md_lines(cwd) if harness == "claude" else ("", [])
-            return self._json(200, {"harness": harness, "account": alias,
-                                    "mcps": mcps, "mcpDetection": {"status": inventory.get("status"), "confidence": inventory.get("confidence")},
-                                    "skills": [{**skill, "automaticInvocation": skill["enabled"], "enabled": True,
-                                                "toggleable": False, "est_tokens": None, "est_full": None,
-                                                "effectiveNow": None, "toggleScope": "profile"}
-                                               for skill in session_skills(cwd)] if harness == "claude" else [],
-                                    "accounts": accounts,
-                                    "claudeMd": {"name": md_name, "lines": md_lines}})
+            query = urllib.parse.parse_qs(urllib.parse.urlsplit(self.path).query)
+            try:
+                return self._json(200, session_brain_snapshot({k:v[0] for k,v in query.items()}))
+            except (ValueError, OSError) as error:
+                return self._json(400, {"error":str(error)})
 
         if self.path.startswith("/usage/guard"):
             return self._json(200, token_guard_with_forecast())
@@ -7759,6 +8056,10 @@ class Handler(http.server.SimpleHTTPRequestHandler):
         if self.path == "/operator/chat/stream":
             if not str(data.get("text") or "").strip():
                 return self._json(400, {"error": "Escribe un mensaje"})
+            try:
+                _operator_request_context(data)
+            except ValueError as exc:
+                return self._json(400, {'error': str(exc)})
             self.send_response(200)
             self.send_header("Content-Type", "text/event-stream; charset=utf-8")
             self.send_header("Cache-Control", "no-cache")
@@ -7785,6 +8086,8 @@ class Handler(http.server.SimpleHTTPRequestHandler):
                 return self._json(400, {"error": "Escribe un mensaje"})
             try:
                 return self._json(200, operator_handle_chat(data))
+            except ValueError as e:
+                return self._json(400, {"error": str(e)})
             except Exception as e:
                 return self._json(500, {"error": str(e)})
 

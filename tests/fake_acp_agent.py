@@ -25,6 +25,12 @@ def log(entry):
 
 pending_permission = None
 model = os.environ.get("FAKE_ACP_MODEL", "fake-1")
+effort = "high"
+def config_options():
+    return [{"id": "model", "category": "model", "type": "select", "currentValue": model,
+             "options": [{"value": "fake-1"}, {"value": "fake-2"}]},
+            {"id": "reasoning", "category": "thought_level", "type": "select", "currentValue": effort,
+             "options": [{"value": "low"}, {"value": "high"}]}]
 for raw in sys.stdin:
     raw = raw.strip()
     if not raw:
@@ -40,11 +46,18 @@ for raw in sys.stdin:
         sid = params.get("sessionId") or "sess-fake-1"
         send({"jsonrpc": "2.0", "id": rid, "result": {
             "sessionId": sid,
+            **({"configOptions": config_options()} if os.environ.get("FAKE_ACP_CONFIG_OPTIONS") else {}),
             "models": {"currentModelId": model, "availableModels": [{"modelId": model}, {"modelId": "fake-2"}]},
             "modes": {"currentModeId": "default", "availableModes": [{"id": "default"}, {"id": "bypassPermissions"}]}}})
     elif method == "session/set_model":
         model = params.get("modelId")
         send({"jsonrpc": "2.0", "id": rid, "result": {}})
+    elif method == "session/set_config_option":
+        if params.get("configId") == "model":
+            model = params["value"]
+        elif params.get("configId") == "reasoning":
+            effort = params["value"]
+        send({"jsonrpc": "2.0", "id": rid, "result": {"configOptions": config_options()}})
     elif method == "session/set_mode":
         send({"jsonrpc": "2.0", "id": rid, "result": {}})
     elif method == "session/prompt":

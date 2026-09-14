@@ -37,12 +37,35 @@ def substitute(template: Any, args: dict) -> Any:
     return template
 
 
-def _summarize(data: Any, limit: int = 1800) -> str:
+def _summarize(data: Any, limit: int = 16000) -> str:
     try:
         text = json.dumps(data, ensure_ascii=False)
     except Exception:
         text = str(data)
-    return text if len(text) <= limit else text[:limit] + "…"
+    if len(text) <= limit:
+        return text
+    def compact(value, count, depth=0):
+        if depth > 8:
+            return {'omitted': True}
+        if isinstance(value, dict):
+            items = list(value.items())
+            out = {k: compact(v, count, depth + 1) for k, v in items[:max(32, count)]}
+            if len(items) > max(32, count):
+                out['_omittedKeys'] = len(items) - max(32, count)
+            return out
+        if isinstance(value, list):
+            out = [compact(v, count, depth + 1) for v in value[:count]]
+            if len(value) > count:
+                out.append({'_omittedItems': len(value) - count})
+            return out
+        if isinstance(value, str) and len(value) > 300:
+            return value[:300] + ' [texto truncado]'
+        return value
+    for count in (24, 8, 2, 0):
+        text = json.dumps({'truncated': True, 'data': compact(data, count)}, ensure_ascii=False)
+        if len(text) <= limit:
+            return text
+    return json.dumps({'truncated': True, 'data': None, 'reason': 'Resultado demasiado grande; consulta un ámbito más concreto.'}, ensure_ascii=False)
 
 
 def _fail(msg: str) -> dict:
@@ -53,7 +76,7 @@ class Dispatcher:
     def __init__(self, *, base_url: str, token: str, hooks_dir: str,
                  local_handlers: dict[str, Callable[[dict], dict]],
                  http_post=None, http_get=None, receipt_root=None,
-                 default_session=None, default_pane=None):
+                 default_session=None, default_pane=None, readonly=False):
         self.base_url = base_url.rstrip("/")
         self.token = token
         self.hooks_dir = hooks_dir
@@ -63,6 +86,8 @@ class Dispatcher:
         self.receipt_root = receipt_root
         self.default_session = default_session
         self.default_pane = default_pane
+        self.readonly = readonly
+        self.context = {'session': default_session, 'pane': default_pane}
 
     def _default_post(self, path, body):
         req = urllib.request.Request(self.base_url + path, data=json.dumps(body).encode(), method="POST",
@@ -80,12 +105,24 @@ class Dispatcher:
             return json.loads(r.read().decode("utf-8", "replace") or "{}")
 
     def run(self, name: str, args: dict | None) -> dict:
+        if args is not None and not isinstance(args, dict):
+            return _fail('Los argumentos de la herramienta deben ser un objeto.')
         args = dict(args or {})
         spec = cat.by_name(name)
-        if spec and self.default_session:
+        if spec and self.readonly and not spec.readonly:
+            return _fail('Esta consulta es de análisis. Presenta la recomendación; aplicarla requiere una petición explícita posterior.')
+        all_scope = name == 'extension_usage' and args.get('scope') == 'all'
+        session_scope = name in ('extension_usage', 'session_status', 'session_usage') and args.get('scope') == 'session'
+        if session_scope:
+            args.pop('pane', None)
+        if all_scope:
+            args.pop('session', None)
+            args.pop('pane', None)
+        if spec and self.default_session and not all_scope:
             if "session" in spec.params and not args.get("session"):
                 args["session"] = self.default_session
-            if "pane" in spec.params and self.default_pane and not args.get("pane") and args.get("session", self.default_session) == self.default_session:
+            target = args.get('session') or args.get('tab') or self.default_session
+            if "pane" in spec.params and self.default_pane and not args.get("pane") and target == self.default_session and not session_scope:
                 args["pane"] = self.default_pane
         receipt_id = None
         if self.receipt_root and spec and not spec.readonly:
@@ -131,6 +168,18 @@ class Dispatcher:
 
     def _run_api(self, spec, args):
         t = spec.target
+        if spec.name in ('session_brain', 'list_session_profiles'):
+            rows = self._get('/state', {})
+            rows = self._scoped_rows(rows, args, live=True)
+            if len(rows) != 1:
+                return _fail('Selecciona un panel vivo exacto para consultar su configuración.')
+            row = rows[0]
+            if args.get('cwd') and args['cwd'] != row.get('cwd'):
+                return _fail('La carpeta solicitada no coincide con el panel seleccionado.')
+            profile = spec.name == 'list_session_profiles'
+            args = {**args, 'pane': row.get('pane'), 'cwd': row.get('cwd'),
+                    'harness': (args.get('harness') if profile else None) or row.get('agent'),
+                    'account': (args.get('account') if profile else None) or row.get('harnessAccount') or row.get('account')}
         if t["method"] == "GET":
             data = self._get(t["path"], substitute(t.get("query") or {}, args))
         else:
@@ -138,11 +187,30 @@ class Dispatcher:
         err = data.get("error") if isinstance(data, dict) else None
         if isinstance(data, dict) and data.get("ok") is False and not err:
             err = data.get("message") or "La operación no se completó."
+        if not err and spec.name == 'session_status':
+            data = {'scope': {'session': args['session'], 'pane': args.get('pane')},
+                    'source': '/state', 'sessions': self._scoped_rows(data, args, live=not args.get('historical'))}
+        elif not err and spec.name == 'session_usage':
+            rows = self._scoped_rows(data.get('panes') or [], args)
+            data = {'scope': {'session': args['session'], 'pane': args.get('pane')},
+                    'source': '/usage/state', 'generated_at': data.get('generated_at'), 'panes': rows,
+                    'attribution': 'reported' if rows else 'unavailable',
+                    'coverage': 'Conserva confidence de cada fila. Uso compartido/local por carpeta no equivale a uso exacto de este panel; no sumes contadores compartidos entre paneles. Sin fila no significa cero.'}
         pending = bool(isinstance(data, dict) and
                        (data.get("pending") or data.get("queued") or data.get("operationKey")))
         reply = _summarize(data) if spec.readonly else (str(err) if err else
                 "Cambio solicitado; consulta su estado para confirmar el resultado." if pending else "Hecho.")
+        if not spec.readonly and isinstance(data, dict) and (data.get('operationKey') or data.get('operationId')):
+            reply = _summarize({'ok': not bool(err), 'pending': pending and not bool(err), 'message': reply,
+                                'data': {k: data[k] for k in ('operationKey', 'operationId', 'state', 'error') if k in data}})
         return {"ok": not err, "pending": pending and not bool(err), "reply": reply, "actions": [], "data": data}
+
+    @staticmethod
+    def _scoped_rows(rows, args, live=False):
+        return [row for row in rows if isinstance(row, dict)
+                and (row.get('session') or row.get('tmux_session')) == args.get('session')
+                and (not args.get('pane') or (row.get('pane') or row.get('tmux_pane')) == args['pane'])
+                and (not live or row.get('alive') is True)]
 
     def _run_ui(self, spec, args):
         t = spec.target

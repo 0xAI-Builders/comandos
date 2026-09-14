@@ -9,8 +9,9 @@ Generado desde `lib/operator_catalog.py`. Un control de la UX sin fila aquí es 
 |---|---|---|---|
 | `list_tabs` 👁 | Lista las pestañas abiertas (mismas que el escritorio). | — | GET /tabs |
 | `list_sessions` 👁 | Estado de todas las sesiones/agentes: status, proyecto, último mensaje. | — | GET /state |
+| `session_status` 👁 | Estado del panel exacto; scope=session incluye sus paneles; solo filas vivas salvo historical=true. | session, pane, scope, historical | GET /state, filtro por identidad |
 | `get_active_tab` 👁 | Qué pestaña está activa en la app y su pane vivo. | — | GET /active-tab |
-| `session_brain` 👁 | MCPs, skills, cuentas y CLAUDE.md de un proyecto. | cwd, pane, harness | GET /session-brain |
+| `session_brain` 👁 | Configuración de skills/MCPs de un panel vivo, sin inferir uso. | session, pane; cwd debe coincidir si se indica | GET /state y GET /session-brain |
 | `events_log` 👁 | Últimos 80 eventos de actividad (working/waiting/done). | — | GET /events |
 | `dedication_stats` 👁 | Tiempo dedicado por proyecto (hoy y semana). | — | GET /dedication |
 | `tab_history` 👁 | Pestañas cerradas recientemente (recuperables). | — | GET /tab-history |
@@ -81,6 +82,7 @@ Generado desde `lib/operator_catalog.py`. Un control de la UX sin fila aquí es 
 | Tool | Qué hace | Parámetros | Cómo se ejecuta |
 |---|---|---|---|
 | `usage_state` 👁 | Uso y cuotas por proveedor/cuenta, alertas, salud de credenciales. | — | GET /usage/state |
+| `session_usage` 👁 | Contadores asociados al panel; scope=session incluye sus paneles sin sumar contadores compartidos. Sin datos significa desconocido. | session, pane, scope | GET /usage/state, filtro por identidad |
 | `usage_guard` 👁 | Guardia anti-desborde con pronóstico por proyecto. | — | GET /usage/guard |
 | `usage_changes` 👁 | Ledger de cambios de modelo hechos por la guardia. | — | GET /usage/changes |
 | `usage_provider_compare` 👁 | Comparativa de costo/uso entre proveedores. | days | GET /usage/provider-compare |
@@ -282,8 +284,8 @@ Generado desde `lib/operator_catalog.py`. Un control de la UX sin fila aquí es 
 | Tool | Qué hace | Cómo se ejecuta |
 |---|---|---|
 | `configure_session` | Un cambio de CLI, motor, modelo y cuentas por panel; requiere verificar resultado. | POST /session/configure |
-| `list_session_profiles` | Perfiles y capacidades de extensiones disponibles. | GET /session-profiles |
-| `extension_usage` | Llamadas observadas, duración y procedencia. | GET /extension-usage |
+| `list_session_profiles` | Perfiles y capacidades de extensiones para el panel seleccionado; admite otro harness/account como destino del perfil. | GET /state y GET /session-profiles |
+| `extension_usage` | Llamadas observadas del panel; scope=session incluye sus paneles y scope=all todas las sesiones. | GET /extension-usage |
 | `show_chat` | Oculta o muestra el chat conservando el borrador. | UI setChatVisible |
 | `open_session_profiles` | Abre el editor de perfiles de inicio. | UI openSessionProfiles |
 | `operator_action_results` | Consulta acciones enviadas, confirmadas y fallidas. | GET /operator/action-results |

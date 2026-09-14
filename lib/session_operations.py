@@ -108,14 +108,14 @@ class OperationStore:
     def claim_recovery(self, operation_id):
         with self.connect() as db:
             changed = db.execute("UPDATE session_operations SET state='recovering',owner=?,updated=? "
-                                 "WHERE id=? AND state='recovery_required'", (os.getpid(), time.time(), operation_id)).rowcount
+                                 "WHERE id=? AND state IN ('recovery_required','awaiting_confirmation')", (os.getpid(), time.time(), operation_id)).rowcount
         return bool(changed)
 
     def recover_abandoned(self):
         """Never replay uncertain terminal input after a dashboard restart."""
         with self.connect() as db:
             rows = db.execute("SELECT id,owner,state FROM session_operations WHERE state NOT IN "
-                              "('confirmed','failed','rolled_back','recovery_required')").fetchall()
+                              "('confirmed','failed','rolled_back','recovery_required','awaiting_confirmation')").fetchall()
         for row in rows:
             try:
                 os.kill(row['owner'], 0)
@@ -164,21 +164,41 @@ def run_operation(store, operation_id, adapter, notify=lambda stage, result: Non
         stage('verifying')
         observed = adapter.verify(plan, snapshot)
         if not observed:
+            pending = getattr(adapter, 'pending_confirmation', lambda plan, snapshot: None)(plan, snapshot)
+            if pending:
+                result = {'ok': True, 'pending': True, 'confirmed': False, 'recoveryAllowed': True,
+                          'observed': pending, 'message': 'el destino sigue abierto; revisa su terminal para confirmar o recuperar el origen'}
+                result.update(plan.get('continuity') or {})
+                stage('awaiting_confirmation', result, snapshot)
+                return result
             raise RuntimeError('el destino no confirmó conversación y configuración')
         result = {'ok': True, 'observed': observed}
+        result.update(plan.get('continuity') or {})
         stage('confirmed', result)
         return result
     except Exception as exc:
         result = {'ok': False, 'error': str(exc)}
-        if destructive and snapshot:
-            stage('recovering', result)
+        def recovery_stage(name):
             try:
-                adapter.rollback(snapshot)
+                stage(name, result)
+                return True
+            except Exception as persistence:
+                # The original snapshot is already durable. A broken database
+                # must not prevent attempting to restore that exact origin.
+                result['persistenceError'] = str(persistence)
+                return False
+        if destructive and snapshot:
+            recovery_stage('recovering')
+            try:
+                observed = adapter.rollback(snapshot)
                 result['rolledBack'] = True
-                stage('rolled_back', result)
+                if observed:
+                    result['observed'] = observed
+                if not recovery_stage('rolled_back'):
+                    result['recoveryRequired'] = True
             except Exception as recovery:
                 result.update(recoveryRequired=True, recoveryError=str(recovery))
-                stage('recovery_required', result)
+                recovery_stage('recovery_required')
         else:
-            stage('failed', result)
+            recovery_stage('failed')
         return result

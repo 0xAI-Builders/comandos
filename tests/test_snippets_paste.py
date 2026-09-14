@@ -11,7 +11,7 @@ def load_functions(*names, extra=None):
     funcs = {
         node.name: ast.get_source_segment(SRC, node)
         for node in tree.body
-        if isinstance(node, ast.FunctionDef)
+        if isinstance(node, ast.FunctionDef) and node.name in names
     }
     missing = [n for n in names if n not in funcs]
     assert not missing, f"missing helper(s): {', '.join(missing)}"

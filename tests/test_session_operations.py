@@ -143,6 +143,21 @@ def test_status_transport_error_after_commit_never_rolls_back(tmp_path):
     assert store.get('request-1234')['state'] == 'confirmed'
 
 
+@pytest.mark.parametrize('failed_stage', ['verifying', 'confirmed', 'recovering'])
+def test_persistence_failure_after_apply_still_attempts_recovery(tmp_path, failed_stage):
+    store, adapter = operation(tmp_path, 'apply' if failed_stage == 'recovering' else None)
+    original_stage = store.stage
+    def interrupted(operation_id, state, **kwargs):
+        if state == failed_stage:
+            raise OSError('disk unavailable')
+        original_stage(operation_id, state, **kwargs)
+    store.stage = interrupted
+    result = run_operation(store, 'request-1234', adapter)
+    assert result['ok'] is False
+    assert result['rolledBack'] is True
+    assert 'rollback' in adapter.calls
+
+
 @pytest.mark.parametrize('effort', ['low', 'xhigh', 'max', 'ultra'])
 def test_codex_status_accepts_each_supported_effort(monkeypatch, effort):
     from types import SimpleNamespace

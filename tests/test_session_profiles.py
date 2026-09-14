@@ -122,9 +122,9 @@ def test_skill_name_validation_does_not_store_arbitrary_payload(tmp_path):
     assert 'secret' not in json.dumps(result)
 
 
-def test_python310_can_override_mcps_and_skills_without_replacing_existing_arrays(tmp_path, monkeypatch):
+def test_python310_uses_available_toml_reader_to_preserve_existing_arrays(tmp_path, monkeypatch):
     mod = module()
-    monkeypatch.setattr(mod, 'tomllib', None)
+    monkeypatch.setattr(mod.capabilities, 'tomllib', None)
     monkeypatch.setenv('HOME', str(tmp_path))
     home = tmp_path / '.codex'
     skill = home / 'skills' / 'design' / 'SKILL.md'
@@ -139,9 +139,9 @@ def test_python310_can_override_mcps_and_skills_without_replacing_existing_array
     assert 'skills.config=' in args[1]
     config.write_text(config.read_text() + '\n[[skills.config]]\nname="other"\nenabled=false\n')
     inv = mod.inventory(registry(tmp_path), 'codex', 'main', str(tmp_path))
-    assert not inv['skills'][0]['toggleable']
-    with pytest.raises(ValueError, match='TOML'):
-        mod.launch_args({'harness':'codex','skills':{ident:False}}, registry(tmp_path), str(tmp_path), '')
+    assert inv['skills'][0]['toggleable']
+    args = mod.launch_args({'harness':'codex','skills':{ident:False}}, registry(tmp_path), str(tmp_path), '')
+    assert 'name="other",enabled=false' in args[1]
     assert mod.launch_args({'harness':'codex','mcps':{'docs':False}}, registry(tmp_path), str(tmp_path), '')
 
 

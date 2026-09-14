@@ -164,7 +164,9 @@ def test_model_status_uses_operation_specific_fast_polling():
     assert '"/model/status"' in SRC.split("API_GET =", 1)[1].split("def do_GET", 1)[0]
     assert 'self.path.startswith("/model/status")' in SRC
     html = Path("dash/index.html").read_text()
-    assert 'api(`/model/status?operationKey=' in html
+    assert 'new URLSearchParams({operationKey:key})' in html
+    assert 'params.set("operationId",id)' in html
+    assert 'api(`/model/status?${params}`)' in html
     assert "},450);" in html
     assert "time.sleep(3.0)" not in SRC.split("def motor_apply", 1)[1].split("def motor_queue_resume", 1)[0]
     assert '"queuedMs"' not in SRC  # camelCase is emitted as a keyword, not a quoted fake UI value
@@ -612,18 +614,23 @@ def test_fs_browser_is_home_confined_and_mkdir_is_explicit(tmp_path, monkeypatch
     assert '"code": "cwd_missing"' in SRC
 
 
-def test_harness_launch_types_command_without_bracketed_paste():
+def test_harness_launch_types_command_without_bracketed_paste(monkeypatch):
     """zsh imprime ^[[200~ si pegamos el launch con paste-buffer -p. El switch
     tiene que teclear el comando (send-keys -l) y Enter, no pegar un snippet."""
-    assert "def _send_shell_line" in SRC
     launch = SRC.split("    def apply(self, plan, snapshot):", 1)[1].split("    def _verify", 1)[0]
-    assert "_send_shell_line" in launch or "_paste_shell_command" in launch
-    send = SRC.split("def _send_shell_line", 1)[1].split("\ndef ", 1)[0]
-    assert '"-l"' in send and "Enter" in send
-    # el docstring puede mencionar paste-buffer; el CUERPO no lo llama
-    body = send.split('"""', 2)[-1]
-    assert "paste-buffer" not in body
-    assert "tmux(" in body
+    assert "_send_configuration_command" in launch
+    dash = load_dash_module()
+    calls = []
+    def tmux(*args):
+        calls.append(args)
+        return SimpleNamespace(returncode=0, stderr="")
+    monkeypatch.setattr(dash, "tmux", tmux)
+    command = "codex resume 'thread-with-spaces' --model gpt-test"
+    dash._send_configuration_command("%42", command)
+    assert calls == [
+        ("send-keys", "-t", "%42", "-l", "--", "printf '\\033[2J\\033[H'; " + command),
+        ("send-keys", "-t", "%42", "Enter"),
+    ]
 
 
 def test_harness_switch_does_not_auto_submit_handoff_as_a_turn():

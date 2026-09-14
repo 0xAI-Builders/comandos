@@ -1,11 +1,8 @@
 #!/usr/bin/env python3
-"""Claude Code 2.1+ workspace-trust dialog: ComandOS must pre-accept it.
+"""Explicit legacy trust helper and safe automated launch boundaries.
 
-WHY: every new session / motor switch in a folder that is its own git root
-lands on "Accessing workspace: … Yes, I trust this folder". Claude 2.1.263
-reads ~/.claude.json (HOME), NOT {CLAUDE_CONFIG_DIR}/.claude.json, and only
-walks ancestors until the git toplevel — so a trusted parent like ~/codebase
-does not cover ~/codebase/0xJesus/ServerMacMini.
+Configuration operations must leave provider trust acceptance to the user.
+The helper tests cover explicit calls only; launch tests never invoke it.
 """
 import json
 import sys
@@ -105,47 +102,73 @@ def test_ensure_cwd_trusted_does_not_wipe_corrupt_claude_json(tmp_path):
     assert (home / ".claude.json").read_text() == raw
 
 
-def test_session_new_and_open_with_account_pretrust_before_launching_claude():
-    src = (ROOT / "bin" / "cc-dash").read_text()
-    new = src.split('if self.path == "/session-new":', 1)[1].split('if self.path == "/open-with-account":', 1)[0]
-    open_acc = src.split('if self.path == "/open-with-account":', 1)[1].split('if self.path == "/tab-new":', 1)[0]
-    tmux_new = src.split("def tmux_new_session", 1)[1].split("\ndef ", 1)[0]
-    assert "ensure_cwd_trusted" in new
-    assert "ensure_cwd_trusted" in open_acc
-    assert "ensure_cwd_trusted" in tmux_new
-    # must run BEFORE send-keys of the claude command
-    assert new.index("ensure_cwd_trusted") < new.index("threading.Thread(target=_send")
-    assert open_acc.index("ensure_cwd_trusted") < open_acc.index("threading.Thread(target=_send")
+def test_launch_commands_do_not_persist_workspace_trust(tmp_path, monkeypatch):
+    from test_session_route_matrix import Boundary
+    boundary = Boundary(tmp_path, monkeypatch)
+    home_file = tmp_path / '.claude.json'
+    home_file.write_text('{"projects": {}}')
+    for account in ('main', 'work'):
+        config = tmp_path / 'claude' / account / '.claude.json'
+        config.write_text('{"projects": {}}')
+        command = boundary.dash._configuration_command('claude', 'claude', 'claude-sonnet-5', 'high', account)
+        assert '--model claude-sonnet-5' in command
+        assert 'skip-permissions' not in command
+        assert _read(config) == {'projects': {}}
+    assert _read(home_file) == {'projects': {}}
 
 
-def test_harness_switch_pretrusts_and_does_not_arrow_down_on_claude_trust_dialog():
-    """New dialog already highlights Yes; Down selects 'No, exit'."""
-    src = (ROOT / "bin" / "cc-dash").read_text()
-    apply = src.split("def harness_switch_apply", 1)[1].split("def proxy_set_enabled", 1)[0]
-    assert "ensure_cwd_trusted" in apply
-    # no Down for claude — Yes is the default in 2.1.263
-    assert 'if to != "codex":' not in apply
-    assert 'tmux("send-keys", "-t", pane, "Down")' not in apply
-    # still match the new copy so a leftover dialog can be Enter'd
-    assert "Accessing workspace" in apply or "I trust this folder" in apply
+def test_harness_switch_leaves_trust_dialog_unconfirmed_without_enter(tmp_path, monkeypatch):
+    from test_session_route_matrix import Boundary
+    boundary = Boundary(tmp_path, monkeypatch)
+    boundary.configure_source()
+    boundary.screen = 'Accessing workspace: /tmp\n> Yes, I trust this folder'
+    def configure(data):
+        data = {k: v for k, v in data.items() if k not in ('session', 'pane', 'requestId')}
+        return 200, boundary.run(**data)[0]
+    monkeypatch.setattr(boundary.dash, 'session_configure', configure)
+    _, result = boundary.dash.harness_switch_apply({'sess': 'audit', 'pane': '%1', 'to': 'claude',
+        'model': boundary.state['model'], 'effort': boundary.state['effort'], 'account': 'main'})
+    assert result['ok'] is False
+    assert not boundary.events
 
 
-def test_account_switch_pretrusts_destination_even_when_source_never_accepted():
-    src = (ROOT / "bin" / "cc-dash").read_text()
-    blk = src.split('if self.path == "/account/switch":', 1)[1][:4500]
-    assert "ensure_cwd_trusted" in blk
-    # old code only copied the flag if the SOURCE already had it — new folders never did
-    assert 'if sp.get("hasTrustDialogAccepted"):' not in blk
+def test_account_snapshot_copies_history_without_accepting_destination_trust(tmp_path, monkeypatch):
+    from test_session_route_matrix import Boundary
+    boundary = Boundary(tmp_path, monkeypatch)
+    boundary.configure_source()
+    home_file = tmp_path / '.claude.json'
+    home_file.write_text('{"projects": {}}')
+    config = tmp_path / 'claude/work/.claude.json'
+    config.write_text('{"projects": {}}')
+    adapter = boundary.adapter(harnessAccount='work', motorAccount='work')
+    snapshot = adapter.snapshot(adapter.prepare())
+    assert snapshot['origin']['resume_id'] == 'original-session'
+    assert boundary.transcript('claude', 'work', 'original-session').read_text() == 'original history\n'
+    assert _read(config) == _read(home_file) == {'projects': {}}
+    assert not boundary.events
 
 
-def test_cc_app_resume_and_cc_acp_connect_pretrust_cwd():
-    app = (ROOT / "bin" / "cc-app").read_text()
-    acp_bin = (ROOT / "bin" / "cc-acp").read_text()
-    assert "ensure_cwd_trusted" in app
-    assert "ensure_cwd_trusted" in acp_bin
-    resume = app.split("def resume_command", 1)[1].split("\ndef ", 1)[0]
-    send = app.split("def _send_resume", 1)[1].split("\ndef ", 1)[0]
-    connect = acp_bin.split("def connect(self)", 1)[1].split("\n    def ", 1)[0]
-    assert "ensure_cwd_trusted" in resume or "ensure_cwd_trusted" in send
-    assert "ensure_cwd_trusted" in connect
-    assert connect.index("ensure_cwd_trusted") < connect.index("open_session")
+def test_acp_connect_does_not_accept_workspace_trust(tmp_path, monkeypatch):
+    import importlib.machinery
+    import importlib.util
+    from types import SimpleNamespace
+    from test_session_route_matrix import Boundary
+    boundary = Boundary(tmp_path, monkeypatch)
+    loader = importlib.machinery.SourceFileLoader('acp_trust_test', str(ROOT / 'bin/cc-acp'))
+    spec = importlib.util.spec_from_loader(loader.name, loader)
+    module = importlib.util.module_from_spec(spec)
+    loader.exec_module(module)
+    monkeypatch.setattr(module.provider_registry, 'load_registry', lambda: boundary.registry)
+    monkeypatch.setattr(module.acp, 'agent_available', lambda spec: True)
+    opened = []
+    session = SimpleNamespace(initialize=lambda: None, new_session=lambda: opened.append('new'),
+                              models=[{'modelId': 'claude-sonnet-5'}], modes=[], current_model='claude-sonnet-5', close=lambda: None)
+    monkeypatch.setattr(module.acp, 'open_session', lambda *args, **kwargs: session)
+    cwd = tmp_path / 'workspace'; cwd.mkdir()
+    pane = module.Pane(SimpleNamespace(cwd=str(cwd), agent='claude', model='claude-sonnet-5',
+                                      effort='high', account='work', danger=False, resume=''))
+    monkeypatch.setattr(pane, 'publish', lambda: None)
+    pane.connect()
+    assert opened == ['new']
+    assert not (tmp_path / '.claude.json').exists()
+    assert not (tmp_path / 'claude/work/.claude.json').exists()

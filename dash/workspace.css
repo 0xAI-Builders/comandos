@@ -33,7 +33,7 @@ body.app #view-panel.on #content{display:flex;flex-direction:column;flex:1 1 aut
 #workspace-tools button[aria-pressed=true]{border-color:var(--brand);color:var(--brand)}
 #op-in{font:inherit;min-height:44px;max-height:160px;resize:vertical;width:100%;box-sizing:border-box}
 #op-target{font-size:11px;color:var(--dim);padding:4px 0}
-.session-config{display:flex;flex-direction:column;gap:14px;padding:16px}
+.session-config{min-height:0;overflow:auto;display:flex;flex-direction:column;gap:14px;padding:16px}
 .sc-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
 .sc-field{display:flex;flex-direction:column;gap:6px;min-width:0;color:var(--dim);font-size:12px}
 .sc-field select,.sc-field input{width:100%;box-sizing:border-box;min-height:44px;border:1px solid var(--line);border-radius:8px;padding:8px;background:var(--panel2);color:var(--text);font:inherit}
@@ -67,3 +67,10 @@ body.app #view-panel.on #content{display:flex;flex-direction:column;flex:1 1 aut
 .overview-card .sc-actions{margin-top:10px}
 @media(pointer:coarse){#op-head .op-btns button{min-width:40px;min-height:40px}.sc-btn{min-height:44px}}
 @media(max-width:560px){.sc-grid,.sc-extensions{grid-template-columns:1fr}.sc-modal{padding:8px}.sc-panel{padding:14px;max-height:94dvh}#motor-pop.open:not(.inline){position:fixed!important;inset:8px!important;width:auto!important;max-height:calc(100dvh - 16px);overflow:auto}.session-config{padding:12px}}
+
+.cx-motor{grid-column:1/-1;min-width:0;max-width:100%}
+.cx-motor .motor-pill{max-width:100%;min-height:44px;white-space:normal;text-align:left}
+body.app #btn-pomo,body.app #btn-notif,body.app #btn-settings{min-width:40px;min-height:40px}
+
+.cx-motor .motor-pill{height:auto;padding-block:8px;flex-wrap:wrap;gap:6px}
+.cx-motor .mp-action{color:var(--text);font-weight:600}

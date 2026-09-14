@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 import re
+import subprocess
 from pathlib import Path
 
 
@@ -94,15 +95,51 @@ def test_switch_result_updates_harness_motor_model_and_effort_everywhere():
     # mostrando Claude y el effort no llega a las pills.
     poll = HTML.split("if(!MOTOR_PENDING.size||MOTOR_STATUS_BUSY) return;", 1)[1]
     poll = poll.split("},450);", 1)[0]
-    compact = poll.replace(" ", "")
-    assert "if(r.harness)it.agent=r.harness" in compact
-    assert "if(r.motor)it.motor=r.motor" in compact
-    assert "if(r.model)it.model=r.model" in compact
-    assert "r.effort!==undefined" in compact
-    assert "renderCentro" in poll
-    assert "tick();" in poll
+    script = """
+const assert=require('node:assert/strict');
+let MOTOR_STATUS_BUSY=false, MPOP=null, ticks=0, renders=0, reply;
+const target={session:'local',pane:'%0',agent:'claude',motor:'claude',model:'old',effort:'high',account:'old'};
+const other={session:'signara',pane:'%21',model:'untouched'};
+const beforeOther=JSON.stringify(other), S={list:[target,other]};
+const MOTOR_PENDING=new Map(), SWITCH_SEEN=new Map();
+const rowKey=i=>i.session+'|'+i.pane, motorTargetKey=rowKey;
+const toast=()=>{}, tick=()=>ticks++, renderCentro=()=>renders++, tf=es=>es;
+async function api(path){
+  const url=new URL(path,'http://test');
+  assert.equal(url.pathname,'/model/status');
+  assert.equal(url.searchParams.get('operationKey'),'local|%0');
+  assert.equal(url.searchParams.get('operationId'),'op-current');
+  return reply;
+}
+async function poll(){
+""" + poll + """
+}
+(async()=>{
+  for(const rolledBack of [false,true]){
+    MOTOR_PENDING.set('local|%0',{operationId:'op-current'});
+    reply={operationId:'op-stale',ok:true,harness:'wrong',model:'wrong'};
+    const before=JSON.stringify(target);
+    await poll();
+    assert.equal(JSON.stringify(target),before);
+    assert.equal(MOTOR_PENDING.size,1);
+    reply={operationId:'op-current',state:rolledBack?'recovered':'confirmed',ts:rolledBack?2:1,
+      ok:!rolledBack,rolledBack,harness:rolledBack?'claude':'acp',motor:'codex',model:'gpt-test',
+      effort:'',harnessAccount:'work',motorAccount:'personal',routeId:'acp:codex'};
+    await poll();
+    assert.equal(target.agent,reply.harness);
+    for(const key of ['motor','model','effort','harnessAccount','motorAccount','routeId'])
+      assert.equal(target[key],reply[key],key);
+    assert.equal(target.account,'work');
+    assert.equal(MOTOR_PENDING.size,0);
+    assert.equal(JSON.stringify(other),beforeOther);
+    assert.equal(MOTOR_STATUS_BUSY,false);
+  }
+  assert.equal(ticks,2);assert.equal(renders,2);
+})().catch(e=>{console.error(e);process.exitCode=1;});
+"""
+    subprocess.run(['node', '-e', script], check=True)
     # las filas del sidebar también leen it.agent/it.motor/it.effort
-    assert "harness=it.agent||\"claude\",motor=it.motor||motorOf(agentModel)||harness" in HTML.replace(" ", "")
+    assert "harness=it.agent||\"shell\",motor=it.motor||motorOf(agentModel)||harness" in HTML.replace(" ", "")
 
 
 def test_effort_only_switch_does_not_resend_model():

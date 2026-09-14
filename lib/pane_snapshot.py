@@ -57,8 +57,15 @@ class PaneInspector:
             args = [a.decode(errors='replace') for a in (self.proc / str(pid) / 'cmdline').read_bytes().split(b'\0') if a]
         except OSError:
             return []
-        values = {'--model', '-m', '--effort', '--permission-mode', '--add-dir', '--settings', '--mcp-config'}
-        switches = {'--dangerously-skip-permissions', '--dangerously-bypass-approvals-and-sandbox', '--allow-dangerously-skip-permissions'}
+        values = {'--model', '-m', '--effort', '--permission-mode', '--add-dir', '--settings', '--mcp-config',
+                  '--sandbox', '-s', '--ask-for-approval', '-a', '--config', '-c', '--profile', '-p'}
+        switches = {'--dangerously-skip-permissions', '--dangerously-bypass-approvals-and-sandbox',
+                    '--allow-dangerously-skip-permissions', '--danger', '--full-auto', '--no-alt-screen',
+                    '--strict-mcp-config', '--disable-slash-commands'}
+        # -c/-p mean something different in other CLIs (continue/print).
+        exe = Path(args[0]).name if args else ''
+        if exe != 'codex':
+            values -= {'-c', '--config', '-p', '--profile', '-s', '-a'}
         out, i = [], 1
         while i < len(args):
             arg = args[i]
@@ -66,7 +73,7 @@ class PaneInspector:
                 out.extend(['--model' if arg == '-m' else arg, args[i + 1]])
                 i += 2
             else:
-                if arg in switches:
+                if arg in switches or '=' in arg and arg.split('=', 1)[0] in values:
                     out.append(arg)
                 i += 1
         return out
@@ -85,7 +92,7 @@ class PaneInspector:
                 pending.extend(self.children.get(process, []))
             if record.get('pid') not in descendants:
                 return {'agent': 'acp'}
-            return {'agent': 'acp', 'acp': {
+            return {'agent': 'acp', 'flags': self.flags(record['pid']), 'acp': {
                 key: record.get(key, '') for key in ('agent', 'model', 'effort', 'account', 'sessionId')
             }}
         queue = deque([int(pane['pid'])])

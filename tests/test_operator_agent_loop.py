@@ -6,6 +6,7 @@ import sys
 import types
 import urllib.error
 from pathlib import Path
+import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
 SRC = (ROOT / "bin" / "cc-dash").read_text()
@@ -48,6 +49,44 @@ def test_build_payload_openai_for_grok():
     fam, payload, headers, urls = ns["operator_build_payload"]("grok-4.5", "SYS", [{"role": "user", "content": "hola"}])
     assert fam == "openai" and payload["messages"][0] == {"role": "system", "content": "SYS"}
     assert payload["tools"][0]["type"] == "function" and "x.ai" in urls[0]
+
+
+@pytest.mark.parametrize('model', ['haiku', 'grok-4.5'])
+@pytest.mark.parametrize('names', [['session_status', 'session_usage'], {'session_status', 'session_usage'}])
+def test_payload_filters_tool_catalog_without_changing_schemas(model, names):
+    ns = _load({'operator_build_payload'})
+    ns['OPERATOR_CREDS'] = types.SimpleNamespace(claude=lambda:'tok', grok=lambda:'key')
+    ns['load_proxy_cfg'] = lambda: {'port':18765}
+    family, payload, _, _ = ns['operator_build_payload'](model, 'SYS', [], tools=names)
+    tools = payload['tools']
+    actual = {t['name'] if family == 'anthropic' else t['function']['name'] for t in tools}
+    assert actual == set(names)
+    if family == 'anthropic':
+        assert tools[-1]['cache_control'] == {'type':'ephemeral'}
+    _, no_tools, _, _ = ns['operator_build_payload'](model, 'SYS', [], tools=False)
+    assert 'tools' not in no_tools
+
+
+@pytest.mark.parametrize('text,readonly', [('estado y consumo de esta sesión', True), ('abre pomodoro', False)])
+def test_analysis_offers_only_readonly_tools_and_actions_keep_full_catalog(text, readonly):
+    import operator_tools
+    ns = _load({'operator_agent_stream', '_llm_poison'})
+    ns['operator_tools'] = types.SimpleNamespace(agent_system_prompt=lambda *a, **k:'SYS',
+                                                analysis_request=operator_tools.analysis_request)
+    ns['operator_chat'] = _fake_chat()
+    offered = []
+    def provider(*args, tools=True):
+        offered.append(tools)
+        return 'anthropic', iter([{'t':'delta','text':'respuesta'},{'t':'done','stop':'end_turn'}])
+    ns['operator_provider_stream'] = provider
+    dispatcher = types.SimpleNamespace()
+    list(ns['operator_agent_stream'](text, model='haiku', tabs=[], memory='', active='local',
+                                    convo={'messages':[]}, dispatcher=dispatcher))
+    assert dispatcher.readonly is readonly
+    assert offered == [operator_catalog.READONLY if readonly else True]
+    if readonly:
+        assert {'session_status','session_usage','session_brain'} <= offered[0]
+        assert not {'kill_session','configure_session','send_text'} & offered[0]
 
 
 def test_agent_stream_runs_tool_then_final_text(tmp_path):
@@ -101,6 +140,35 @@ def test_agent_stream_stops_after_max_rounds():
     assert sum(1 for e in events if e["t"] == "tool") == 3 and events[-1]["t"] == "final"
 
 
+@pytest.mark.parametrize('reply', ['', '  \n', 'HTTP Error 401: Unauthorized'])
+@pytest.mark.parametrize('with_tool_result', [False, True])
+def test_empty_or_contaminated_completion_never_invents_success(reply, with_tool_result):
+    ns = _load({'operator_agent_stream', '_llm_poison', '_run_tool_batch'})
+    ns['operator_tools'] = types.SimpleNamespace(agent_system_prompt=lambda *a, **k:'SYS')
+    ns['operator_chat'] = _fake_chat()
+    final_round = ([{'t':'delta','text':reply}] if reply else []) + [{'t':'done','stop':'end_turn'}]
+    rounds = ([ [{'t':'tool_call','id':'status','name':'session_status','input':{}},
+                 {'t':'done','stop':'tool_use'}] ] if with_tool_result else []) + [final_round]
+    ns['operator_provider_stream'] = lambda *a, **k: ('anthropic', iter(rounds.pop(0)))
+    calls = []
+    def run(name, args):
+        calls.append(name)
+        return {'ok':True,'reply':'Estado observado: waiting','actions':[]}
+    events = list(ns['operator_agent_stream']('estado',model='haiku',tabs=[],memory='',active='local',
+        convo={'messages':[]},dispatcher=types.SimpleNamespace(run=run)))
+    final = events[-1]
+    assert calls == (['session_status'] if with_tool_result else [])
+    assert 'Listo.' not in final['reply'] and not final['actions']
+    if with_tool_result:
+        assert 'Estado observado: waiting' in final['reply']
+    if reply.strip() or not with_tool_result:
+        assert final['ok'] is False
+        assert any(event['t'] == 'error' and event['text'] == final['reply'] for event in events)
+    else:
+        assert final.get('ok', True) is True
+        assert final['reply'] == 'Estado observado: waiting'
+
+
 def test_agent_stream_reports_provider_failure_without_fallback_storm():
     ns = _load({"operator_agent_stream", "_llm_poison"})
     tried = []
@@ -144,6 +212,70 @@ def test_provider_stream_retries_second_url_on_http_error():
     assert {"t": "delta", "text": "ok"} in list(events)
 
 
+def test_quota_failure_remains_visible_after_all_fallbacks_fail():
+    ns = _load({"operator_agent_stream", "_llm_poison"})
+    ns["operator_chat"] = _fake_chat()
+    ns["operator_tools"] = types.SimpleNamespace(agent_system_prompt=lambda *a, **k: "SYS")
+    errors = {"haiku": "You're out of extra usage. Add more at claude.ai/settings/usage and keep going.",
+              "gpt-5.3-codex-spark": "Gateway unavailable", "grok-4.5": "No hay login de Grok."}
+    def fail(model, *args, **kwargs):
+        raise RuntimeError(errors[model])
+    ns["operator_provider_stream"] = fail
+    events = list(ns["operator_agent_stream"]("estado", model="haiku", tabs=[], memory="", active="local",
+                                              convo={"messages": []}, dispatcher=None))
+    final = events[-1]
+    assert final["ok"] is False
+    assert "cuota agotada" in final["reply"].lower()
+    assert "Gateway unavailable" in final["reply"] and "No hay login de Grok" in final["reply"]
+    assert "Prueba otra vez" not in final["reply"]
+    assert events[0]["text"] == final["reply"]
+
+
+def test_fallback_names_actual_model_and_reuses_it_after_readonly_tool():
+    import operator_chat
+    ns = _load({'operator_agent_stream','_llm_poison','_run_tool_batch'})
+    ns['operator_chat'] = operator_chat
+    ns['operator_tools'] = types.SimpleNamespace(agent_system_prompt=lambda *a, **k:'SYS')
+    calls = []
+    def provider(model, *args, **kwargs):
+        calls.append(model)
+        if model == 'haiku':
+            raise RuntimeError("You're out of extra usage.")
+        events = ([{'t':'tool_call','id':'status','name':'session_status','input':{}}, {'t':'done','stop':'tool_use'}]
+                  if len(calls) == 2 else [{'t':'delta','text':'Local está libre.'},{'t':'done','stop':'end_turn'}])
+        return 'anthropic', iter(events)
+    ns['operator_provider_stream'] = provider
+    dispatcher = types.SimpleNamespace(run=lambda *args:{'ok':True,'reply':'idle','actions':[]})
+    events = list(ns['operator_agent_stream']('estado',model='haiku',tabs=[],memory='',active='local',
+                                             convo={'messages':[]},dispatcher=dispatcher))
+    assert calls == ['haiku','gpt-5.3-codex-spark','gpt-5.3-codex-spark']
+    notice = 'Respuesta de Codex Spark; Haiku no estuvo disponible.\n\n'
+    assert sum(event.get('text') == notice for event in events) == 1
+    assert events[-1]['reply'] == notice + 'Local está libre.'
+    assert not events[-1]['actions']
+
+
+def test_initial_sse_error_tries_fallback_before_exposing_output():
+    ns = _load({"operator_provider_stream", "_operator_http_error"})
+    ns.update(urllib=__import__("urllib"), OPERATOR_TIMEOUT=30)
+    urls = ("https://provider.invalid", "http://fallback.invalid")
+    ns["operator_build_payload"] = lambda *a, **k: ("anthropic", {}, {}, urls)
+    tried = []
+    def open_stream(url, *args, **kwargs):
+        tried.append(url)
+        if url == urls[0]:
+            yield b'data: {"type":"error","error":{"message":"quota exhausted"}}\n'
+        else:
+            yield b'data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"ok"}}\n'
+            yield b'data: {"type":"message_delta","delta":{"stop_reason":"end_turn"}}\n'
+    ns["operator_stream"] = types.SimpleNamespace(**{name:getattr(operator_stream,name) for name in
+        ("parse_sse", "stream_anthropic", "stream_openai", "RETRYABLE")}, open_stream=open_stream)
+    _, events = ns["operator_provider_stream"]("haiku", "SYS", [])
+    events = list(events)
+    assert tried == list(urls)
+    assert events == [{"t":"delta", "text":"ok"}, {"t":"done", "stop":"end_turn"}]
+
+
 def test_cc_dash_registers_every_local_intent():
     import operator_dispatch as od
     body = SRC.split("def operator_build_dispatcher(", 1)[1].split("\ndef ", 1)[0]
@@ -153,7 +285,7 @@ def test_cc_dash_registers_every_local_intent():
 
 def test_handle_chat_uses_dispatcher_not_legacy_callbacks():
     body = SRC.split("def operator_handle_chat(", 1)[1].split("\ndef ", 1)[0]
-    assert "dispatcher=operator_build_dispatcher()" in body
+    assert "dispatcher=operator_build_dispatcher(active, selected_pane)" in body
     assert "focus=focus_session" not in body
 
 

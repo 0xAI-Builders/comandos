@@ -213,7 +213,7 @@
   .hdr-right{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-left:auto;order:2}
   #snd-ctl,#btn-switch,#btn-snippets,#btn-danger,#btn-sov,#btn-term{display:none !important}   /* Remoto SI se queda (pedido 26-ago) */
   .hdr-primary{display:flex;align-items:center;gap:8px;order:3;flex:none}
-  body.app .hdr-primary,body.inapp .hdr-primary{display:none}   /* en la app viven en la barra GTK, junto a minimizar/maximizar */
+  body.inapp .hdr-primary{display:none}   /* en la app viven en la barra GTK, junto a minimizar/maximizar */
   .counts{order:1}
   #limits-strip{display:none !important}   /* los límites del plan viven en Uso, no en el header */
   /* Buscador DE SESIONES: vive junto al titulo de la seccion, no en el header */
@@ -3336,17 +3336,25 @@ function mdStrip(s){ return (s||"").replace(/\*\*|`|^#{1,6} /g, ""); }
 	});
 	const CENTRO_VIEW = {sessionId:"", item:null};
 	// Centro de control de la sesion seleccionada + sus controles.
-	let brainCache = {key: null, data: null};
-	function brainKey(it){ return it ? `${rowKey(it)}|${it.agent||"claude"}|${it.account||"main"}|${it.cwd||""}` : ""; }
+	let brainCache = {key:null, data:null, expires:0};
+	const brainPending = new Map();
+	function brainKey(it){ return it ? `${rowKey(it)}|${it.agent||"shell"}|${it.harnessAccount||it.account||"unknown"}|${it.cwd||""}|${it.motor||""}|${it.motorAccount||"unknown"}|${it.observedConfig?.identity||""}` : ""; }
 	async function loadBrain(it){
 	  const key = brainKey(it);
-	  if(brainCache.key === key && brainCache.data) return brainCache.data;
-	  try{
-	    const params = new URLSearchParams({cwd:it.cwd||"",session:it.session||"",pane:it.pane||"",harness:it.agent||"claude",account:it.account||"main"});
-	    const d = await api(`/session-brain?${params}`);
-	    brainCache = {key, data: d};
-	    return d;
-	  }catch(e){ return null; }
+	  if(brainCache.key === key && brainCache.data && brainCache.expires > Date.now()) return brainCache.data;
+	  if(brainPending.has(key)) return brainPending.get(key);
+	  brainCache = {key, data:null, expires:0};
+	  const request = (async()=>{
+	    try{
+	      const params = new URLSearchParams({cwd:it.cwd||"",session:it.session||"",pane:it.pane||"",harness:it.agent||"shell",account:it.harnessAccount||it.account||"unknown"});
+	      const data = await api(`/session-brain?${params}`);
+	      if(brainCache.key === key) brainCache = {key, data, expires:Date.now()+10000};
+	      return data;
+	    }catch(error){ return {skills:[],mcps:[],status:"unknown",limitations:[error.message],mcpDetection:{status:"unknown"}}; }
+	    finally{ brainPending.delete(key); }
+	  })();
+	  brainPending.set(key, request);
+	  return request;
 	}
 	let ACTIVE_TAB = {session: "", ts: 0};
 	setInterval(async ()=>{
@@ -3369,32 +3377,24 @@ function mdStrip(s){ return (s||"").replace(/\*\*|`|^#{1,6} /g, ""); }
 	  }catch(e){}
 	}, 1000);
 	function pickSel(list){
-	  const seen = new Set(), items = [];
-	  for(const it of list || []){
-	    const k = rowKey(it);
-	    if(seen.has(k)) continue;
-	    seen.add(k); items.push(it);
-	  }
-	  // gana el evento MAS RECIENTE: tu click en una fila vs la pestana activa
-	  // de la app (la sesion donde estas parado)
-	  const cand = [];
-	  if(S.sel) cand.push({sess: S.sel, ts: S.selTs || 0});
-	  // La pestana activa solo conoce la SESION; si tu click es de esa misma
-	  // sesion pero de un SPLIT concreto, el click (mas especifico) manda —
-	  // si no, abrir la pestana pisaba la seleccion y "click y nada".
-	  const selSess = String(S.sel || "").split("|")[0];
+	  const items = (list || []).filter(it => it.alive && it.operable !== false);
 	  const active = sidebarActiveTab();
-	  const activeKey = active.session ? active.session + (active.pane ? "|" + active.pane : "") : "";
-	  // Pane activo es específico y siempre puede ganar; una señal que solo
-	  // conoce la sesión no pisa un click de split de esa misma sesión.
-	  if(activeKey && (active.pane || active.session !== selSess))
-	    cand.push({sess: activeKey, ts: (active.ts || 0) * 1000});
-	  cand.sort((a, b) => b.ts - a.ts);
-	  for(const c of cand){
-	    const it = items.find(i => rowKey(i) === c.sess) || items.find(i => i.session === c.sess);
-	    if(it && it.alive) return it;   // una pestana activa MUERTA no opera el Centro
+	  const selected = String(S.sel || "");
+	  const selectedSession = selected.split("|")[0];
+	  if(active.session){
+	    const same = items.filter(it => it.session === active.session);
+	    if(selectedSession === active.session && (!active.pane || (S.selTs || 0) > (active.ts || 0) * 1000)){
+	      const clicked = same.find(it => rowKey(it) === selected);
+	      if(clicked) return clicked;
+	    }
+	    if(active.pane) return same.find(it => it.pane === active.pane) || null;
+	    return same[0] || null;
 	  }
-	  return items.find(i => i.status === "waiting") || items.find(i => i.alive) || items[0] || null;
+	  if(selected){
+	    return items.find(it => rowKey(it) === selected) ||
+	      (!selected.includes("|") ? items.find(it => it.session === selected) : null) || null;
+	  }
+	  return items.find(it => it.session === "local") || items[0] || null;
 	}
 	function renderCentro(list){
 	  const wrap = $("#centro-wrap"), box = $("#centro");
@@ -3409,7 +3409,7 @@ function mdStrip(s){ return (s||"").replace(/\*\*|`|^#{1,6} /g, ""); }
 	    return;
 	  }
 	  const st = it.status || "idle";
-	  const model = shortModel(it.model || usageForItem(it)?.model || "");   // transcript = lo que corre AHORA
+	  const model = shortModel(it.model || (!it.alive ? usageForItem(it)?.model : "") || "");   // transcript = lo que corre AHORA
 	  const tier = tierOf(model);
 	  const tst = tierStyleOf(tier);
 	  // clave por sesion|pane: un SPLIT distinto de la misma sesion ES otra card
@@ -3526,7 +3526,7 @@ function mdStrip(s){ return (s||"").replace(/\*\*|`|^#{1,6} /g, ""); }
 	  renderAdvice(box, it);
 	  const modelElement = box.querySelector(".cx-model");
 	  const cardMotor=it.motor||motorOf(model)||it.agent;
-	  modelElement.innerHTML = model ? providerMark(cardMotor, model, 13) + `<span>${mdEsc(nsHarness(it.agent).label||it.agent)} → ${mdEsc(engineLabel(cardMotor))} · ${mdEsc(model)}${it.effort ? " · " + mdEsc(it.effort) : ""}${tst && tst.symbol ? " " + tst.symbol : ""}</span>` :
+	  modelElement.innerHTML = model ? providerMark(cardMotor, model, 13) + `<span>${mdEsc(nsHarness(it.agent).label||it.agent)} → ${mdEsc(engineLabel(cardMotor))} · ${mdEsc(model)}${it.effort ? " · " + mdEsc(it.effort) : ""}${tst && tst.symbol ? " " + tst.symbol : ""}${it.configConfirmed===false?" · "+tf("sin confirmar","unconfirmed"):""}</span>` :
 	    tf("modelo aun no detectado", "model not detected yet");
 	  renderMotor(box, it, model);
 	  if(MPOP && MPOP.ctx.mode === "session" && motorTargetKey(MPOP.ctx.item) === rowKey(it) &&
@@ -3596,10 +3596,10 @@ function mdStrip(s){ return (s||"").replace(/\*\*|`|^#{1,6} /g, ""); }
 	}
 	async function renderBrain(box, it){
 	  if(!it.cwd) return;
-	  const requestedKey = rowKey(it);
+	  const requestedKey = rowKey(it), requestedBrain = brainKey(it);
 	  const d = await loadBrain(it);
 	  if(!d || box.dataset.sig !== requestedKey ||
-	     rowKey(CENTRO_VIEW.item || {}) !== requestedKey) return;
+	     brainKey(CENTRO_VIEW.item) !== requestedBrain) return;
 	  it = CENTRO_VIEW.item;
 	  const row = (kind, x) => `
 	    <div class="cx-row ${x.enabled ? "" : "off"}">
@@ -3607,31 +3607,36 @@ function mdStrip(s){ return (s||"").replace(/\*\*|`|^#{1,6} /g, ""); }
 	        aria-label="${attrEsc(x.name)}" class="sw ${x.enabled ? "on" : ""}" ${x.toggleable ? "" : "disabled"}
 	        data-kind="${kind}" data-name="${attrEsc(x.name)}" data-path="${attrEsc(x.path || "")}"
 	        data-on="${x.enabled ? 1 : 0}"
-	        title="${x.toggleable ? tf("Configurar en un perfil de inicio", "Configure in a launch profile") : tf("global (~/.claude.json) — no apagable por proyecto", "global — not per-project toggleable")}"></button>
-	      <span class="nm" title="${attrEsc(x.name)}">${mdEsc(x.name)}${kind==='mcp'?`<small class="mcp-description">${mdEsc(x.description||tf('Este servidor no tiene una descripción disponible.','No description is available for this server.'))}</small>`:''}</span>
+	        title="${x.toggleable ? tf("Configurar en un perfil de inicio", "Configure in a launch profile") : tf("Consulta el origen; configura las opciones disponibles en Perfiles", "Check the source; configure available options in Profiles")}"></button>
+	      <span class="nm" title="${attrEsc(x.name)}">${mdEsc(x.name)}${x.description||kind==='mcp'?`<small class="mcp-description">${mdEsc(x.description||tf('Este servidor no tiene una descripción disponible.','No description is available for this server.'))}</small>`:''}</span>
 	      ${kind==="mcp"?`<span class="tok">${mdEsc(x.source||x.scope||"")}</span>`:""}
-	      <span class="tok">${x.enabled ? "Configurada" : "Desactivada en config"} · estado vivo sin confirmar</span>
+	      <span class="tok">${x.enabled === true ? "Configurada" : x.enabled === false ? "Desactivada en config" : "Configuración sin confirmar"} · estado vivo sin confirmar</span>
 	    </div>`;
 	  const mcps = d.mcps || [], skills = d.skills || [];
 	  const tot = arr => arr.filter(x => x.enabled).reduce((a, x) => a + (x.est_tokens || 0), 0);
 	  renderAdvice(box, it);
 	  const acctRow = box.querySelector(".cx-acct");
+	  const accountSignature = JSON.stringify([requestedBrain,d.harness,d.accounts || []]);
+	  const existingAccounts = box.querySelector(".cx-accs");
+	  if(existingAccounts && existingAccounts.dataset.signature !== accountSignature) existingAccounts.remove();
 	  if(acctRow && (d.accounts || []).length > 1 && !box.querySelector(".cx-accs")){
 	    const div = document.createElement("div");
 	    div.className = "cx-accs";
+	    div.dataset.signature = accountSignature;
 	    div.innerHTML = `<div class="cx-title">${tf("nueva sesion aqui con", "new session here as")}</div>
 	      <div class="cx-accs-chips">` +
 	      d.accounts.map(a => `<button type="button" class="cx-newacct" data-acct="${attrEsc(a.alias)}"
 	        ${a.selectable ? "" : "disabled aria-disabled=\"true\""}
-	        title="${attrEsc(a.identity || ({login_required:tf("requiere login","login required"),unsupported_auth:tf("auth no compatible","unsupported auth")}[a.state] || a.alias))}">${providerMark(d.harness||it.agent||"claude","",12)} ${mdEsc(a.alias)}</button>`).join("") + `</div>`;
+	        title="${attrEsc(a.identity || ({login_required:tf("requiere login","login required"),unsupported_auth:tf("auth no compatible","unsupported auth")}[a.state] || a.alias))}">${providerMark(d.extensionProvider||d.harness||it.agent||"claude","",12)} ${mdEsc(a.alias)}</button>`).join("") + `</div>`;
 	    const acctLine = acctRow.closest(".cx-row") || acctRow;
 	    acctLine.parentElement.insertBefore(div, acctLine.nextSibling);
 	    div.querySelectorAll("[data-acct]").forEach(b => b.addEventListener("click", async ()=>{
 	      try{
 	        const live = CENTRO_VIEW.item;
-	        if(!live || live.session !== box.dataset.sig.split("|")[0]) return;
+	        if(!live || brainKey(live) !== requestedBrain) return;
 	        NS.harness=live.agent||"claude"; NS.motor=motorOf(live.model)||NS.harness;
-	        NS.harnessAccount=b.dataset.acct; NS.motorAccount=NS.motor===NS.harness?b.dataset.acct:"main";
+	        NS.harnessAccount=NS.harness==="acp"?"main":b.dataset.acct;
+	        NS.motorAccount=NS.harness==="acp"||NS.motor===NS.harness?b.dataset.acct:"main";
 	        NS.model=live.model||""; NS.effort=live.effort||"";
 	        $("#ns-cwd").value=live.cwd||""; await nsOpen();
 	        toast(tf("Configura la sesión nueva con esa cuenta", "Configure the new session with that account"));
@@ -3653,11 +3658,17 @@ function mdStrip(s){ return (s||"").replace(/\*\*|`|^#{1,6} /g, ""); }
 	    (mcps.map(x => row("mcp", x)).join("") || `<div class="cx-note">${providerMark(d.harness||it.agent||"claude","",13)} ${d.mcpDetection?.status==="empty"?tf(`sin MCPs configurados para ${d.harness||it.agent}`,`no MCPs configured for ${d.harness||it.agent}`):tf("detección MCP no disponible","MCP detection unavailable")}</div>`) +
 	    `<div class="cx-total">${mcps.filter(x=>x.enabled).length} configurados · llamadas observadas en Uso de herramientas</div>`;
 	  box.querySelector(".cx-skills").innerHTML =
-	    (skills.map(x => row("skill", x)).join("") || `<div class="cx-note">${tf("sin skills", "no skills")}</div>`) +
+	    (skills.map(x => row("skill", x)).join("") || `<div class="cx-note">${d.status==='unknown'?tf("detección de skills no disponible", "skill detection unavailable"):tf("sin skills configuradas", "no skills configured")}</div>`) +
 	    `<div class="cx-total">${skills.filter(x=>x.enabled).length} configuradas · llamadas observadas en Uso de herramientas</div>`;
+	  if(d.limitations?.length){
+	    for(const selector of [".cx-mcps", ".cx-skills"]){
+	      const note = document.createElement("div"); note.className = "cx-note";
+	      note.textContent = d.limitations.join(" · "); box.querySelector(selector).appendChild(note);
+	    }
+	  }
 	  box.querySelectorAll(".sw[data-kind]").forEach(b => b.addEventListener("click", async ()=>{
       const live = CENTRO_VIEW.item;
-      if(!live || rowKey(live) !== box.dataset.sig) return;
+      if(!live || rowKey(live) !== box.dataset.sig || brainKey(live) !== requestedBrain) return;
       await openSessionProfiles(live);
     }));
 	}
@@ -4729,6 +4740,9 @@ function mdStrip(s){ return (s||"").replace(/\*\*|`|^#{1,6} /g, ""); }
 	let PROXY = null;
 	async function proxyStatus(){ try{ PROXY = await api("/proxy"); }catch(e){ PROXY = null; } renderMotorGlobal(); return PROXY; }
 	proxyStatus(); setInterval(proxyStatus, 20000);
+	function sessionStageLabel(result){
+	  return result.pendingReason || ({validating:"Validando configuración…", waiting:"Esperando a que termine el turno…",snapshot:"Guardando recuperación…",applying:"Iniciando CLI…",verifying:"Comprobando configuración…",recovering:"Recuperando sesión original…",awaiting_confirmation:"Confirmación pendiente: revisa la terminal"})[result.stage||result.state] || result.stage || result.state || "Comprobando…";
+	}
 	const SWITCH_SEEN = new Map();
 	let MOTOR_STATUS_BUSY=false;
 	setInterval(async ()=>{
@@ -4737,21 +4751,41 @@ function mdStrip(s){ return (s||"").replace(/\*\*|`|^#{1,6} /g, ""); }
 	  try{
 	    const keys=[...MOTOR_PENDING.keys()];
 	    const results=await Promise.all(keys.map(async key=>{
-	      try{return [key,await api(`/model/status?operationKey=${encodeURIComponent(key)}`)];}catch(e){return [key,null];}
+	      try{
+	        const params = new URLSearchParams({operationKey:key});
+	        const id = MOTOR_PENDING.get(key)?.operationId; if(id) params.set("operationId",id);
+	        return [key,await api(`/model/status?${params}`)];
+	      }catch(e){return [key,null];}
 	    }));
 	    for(const [key,r] of results){
-	      if(!r||SWITCH_SEEN.get(key)===r.ts) continue;
+	      if(!r) continue;
+	      const pendingId = MOTOR_PENDING.get(key)?.operationId;
+	      if(pendingId && r.operationId !== pendingId) continue;
+	      const revision = JSON.stringify([r.operationId,r.state,r.ok,r.ts]);
+	      if(SWITCH_SEEN.get(key)===revision) continue;
 	      const it=(S.list||[]).find(x=>rowKey(x)===key)||(S.list||[]).find(x=>x.session===key);
+	      if(MPOP?.ctx.mode==="session" && motorTargetKey(MPOP.ctx.item)===key){
+	        MPOP.recovery=r.recoveryRequired||r.recoveryAllowed?r:null;
+	        MPOP.continuity=r.handoffRequired?r:null;
+	      }
 	      if(r.stage!==undefined&&r.ok===undefined){
 	        const pend=MOTOR_PENDING.get(key);
-	        if(pend&&pend.stageTxt!==r.stage){pend.stageTxt=r.stage;pend.stageCode=r.stageCode||"";renderCentro(S.list||[]);if(MPOP&&MPOP.ctx.mode==="session"&&motorTargetKey(MPOP.ctx.item)===key)motorPopRender();}
+	        if(pend&&pend.stageTxt!==sessionStageLabel(r)){pend.stageTxt=sessionStageLabel(r);pend.stageCode=r.stageCode||"";renderCentro(S.list||[]);if(MPOP&&MPOP.ctx.mode==="session"&&motorTargetKey(MPOP.ctx.item)===key)motorPopRender();}
 	        continue;
 	      }
-	      SWITCH_SEEN.set(key,r.ts);
+	      SWITCH_SEEN.set(key,revision);
 	      const name=(it&&it.project)||key;
+	      if((r.ok || r.rolledBack) && it){
+	        if(r.harness) it.agent=r.harness;
+	        for(const field of ["motor","model","effort","harnessAccount","motorAccount"]) if(r[field]!==undefined) it[field]=r[field];
+	        if(r.harnessAccount) it.account=r.harnessAccount;
+	        if(r.route_id||r.routeId) it.routeId=r.route_id||r.routeId;
+	      }
 	      if(r.ok){
-	        if(it){if(r.harness)it.agent=r.harness;if(r.motor)it.motor=r.motor;if(r.model)it.model=r.model;if(r.effort!==undefined)it.effort=r.effort;if(r.route_id||r.routeId)it.routeId=r.route_id||r.routeId;}
 	        toast(`✓ ${name}: ${r.detail}${r.applyMs!=null?` · ${Math.round(r.applyMs/100)/10}s`:""}`);
+	        tick();
+	      }else if(r.rolledBack){
+	        toast(MOTOR_PENDING.get(key)?.recovering ? tf(`${name}: sesión original recuperada`,`${name}: original session restored`) : tf(`${name}: el cambio no se aplicó; sesión original recuperada`,`${name}: switch did not apply; original session restored`));
 	        tick();
 	      }else toast(tf(`✗ ${name}: el cambio NO entró (${r.detail}) — reinténtalo`,`✗ ${name}: switch did NOT apply (${r.detail}) — retry`),true);
 	      MOTOR_PENDING.delete(key);
@@ -4827,10 +4861,9 @@ function mdStrip(s){ return (s||"").replace(/\*\*|`|^#{1,6} /g, ""); }
 	  if(!btn){ el.innerHTML = '<button type="button" class="motor-pill" aria-haspopup="dialog"></button>'; btn = el.querySelector(".motor-pill"); }
 	  const targetKey = motorTargetKey(it);
 	  const pend = MOTOR_PENDING.get(targetKey);
-	  if(pend && (Date.now() - pend.since > (pend.queued ? 2700000 : 90000) || motorOf(model) === pend.motor && (!pend.model || motorKey(pend.model) === motorKey(model)))) MOTOR_PENDING.delete(targetKey);
+	  // Only the operation endpoint can confirm completion, including account/effort-only changes.
 	  const p2 = MOTOR_PENDING.get(targetKey);
-	  // NUNCA deshabilitar por "trabajando": el backend encola (o interrumpe con
-	  // "detener y cambiar YA") y confirma en el pane. Solo bloquea un proxy muerto.
+	  // Route validation decides which destinations need a gateway; native changes do not.
 	  const stopBtn = box.querySelector(".cx-stop");
 	  if(stopBtn) stopBtn.classList.toggle("hidden", !(it.alive && liveHarnesses().includes(it.agent) && (it.status === "working" || MOTOR_PENDING.has(targetKey))));
 	  const eff = p2 && p2.effort ? p2.effort : (it.observedConfig ? (it.effort || "") : (it.effort || effortFor(targetKey, model)));
@@ -4839,10 +4872,11 @@ function mdStrip(s){ return (s||"").replace(/\*\*|`|^#{1,6} /g, ""); }
 	    btn.innerHTML = `<span class="mp-prov">▶</span><span class="mp-model">${mdEsc(tf("Iniciar IA aquí","Start AI here"))}</span><span class="mp-caret">▾</span>`;
 	  } else {
 	    motorPill(btn, p2 ? p2.motor : currentHarnessMotor, p2 ? p2.model : model, p2 || false, p2 ? "" : (eff || tf("esta sesión", "this session")));
+	    btn.insertAdjacentHTML("afterbegin", `<span class="mp-action">${tf("Configurar IA", "Configure AI")}</span>`);
 	  }
-	  btn.disabled = !isShell && it.agent === "claude" && !(PROXY && PROXY.alive);
-	  btn.title = (it.agent === "claude" && !(PROXY && PROXY.alive)) ? tf("cc-proxy no responde", "cc-proxy not responding") :
-	    it.status === "working" ? tf("Está trabajando: el cambio se encola, o usa ■ detener y cambiar YA", "Working: the switch queues, or use ■ stop & switch NOW") :
+	  btn.disabled = false;
+	  btn.setAttribute("aria-label", tf("Configurar IA: CLI, motor, modelo y cuenta", "Configure AI: CLI, engine, model and account"));
+	  btn.title = it.status === "working" ? tf("Está trabajando: el cambio se encola, o usa ■ detener y cambiar YA", "Working: the switch queues, or use ■ stop & switch NOW") :
 	    tf("Cambiar harness, motor, esfuerzo o cuenta de ESTA sesión", "Switch THIS session's harness, engine, effort or account");
 	  btn.onclick = ()=>{ if(btn.disabled) return; ulog("click", "motor-session", "centro");
 	    if(isShell){ nsOpenForPane(it.session, it.pane || "", it.cwd || ""); return; }
@@ -4852,8 +4886,7 @@ function mdStrip(s){ return (s||"").replace(/\*\*|`|^#{1,6} /g, ""); }
 	// Puentes para la barra de modelo de cc-app: abren el picker PROBADO del
 	// tablero para esa sesión/pane exactos (nunca un flujo paralelo a medias).
 	window.openMotorFor = (sess, pane) => {
-	  const it = (S.list || []).find(x => x.session === sess && (!pane || x.pane === pane))
-	          || (S.list || []).find(x => x.session === sess);
+	  const it = (S.list || []).find(x => x.alive && x.operable !== false && x.session === sess && (!pane || x.pane === pane));
 	  if(!it){ toast(tf("Sesión no encontrada en el tablero", "Session not found in dashboard"), true); return; }
 	  const card = document.querySelector(`article[data-session="${CSS.escape(sess)}"]${pane ? `[data-pane="${CSS.escape(pane)}"]` : ""}`)
 	            || document.querySelector(`article[data-session="${CSS.escape(sess)}"]`);
@@ -4868,9 +4901,9 @@ function mdStrip(s){ return (s||"").replace(/\*\*|`|^#{1,6} /g, ""); }
 	  nsOpenForPane(sess, it?.pane || "", it?.cwd || "");
 	};
 	window.nsOpenForPane = async (sess, pane, cwd) => {
-	  const it = (S.list || []).find(x => x.session === sess && (!pane || x.pane === pane))
-	          || (S.list || []).find(x => x.session === sess);
-	  NS.intoPane = {session: sess, pane: pane || (it && it.pane) || ""};
+	  const it = (S.list || []).find(x => x.alive && x.operable !== false && x.session === sess && (!pane || x.pane === pane));
+	  if(!it){ toast(tf("El panel ya no está disponible; actualiza la sesión", "Pane no longer available; refresh the session"), true); return; }
+	  NS.intoPane = {session: sess, pane: it.pane || ""};
 	  ulog("click", "open-ai-here", sess);
 	  await nsOpen();
 	  const c = $("#ns-cwd");
@@ -6094,9 +6127,21 @@ let termFallbackNotified = false;
 const openTerms = new Map();   // session -> {tab, frame}
 let activeTerm = null;   // terminal visible en el area de terminal
 let activeTermTs = 0;
+const remotePaneFocus = new Map();
+function rememberRemotePaneFocus(list){
+  const live = new Set();
+  for(const item of list || []){
+    if(!item.alive) continue;
+    live.add(item.session);
+    if(item.paneActive && item.pane && remotePaneFocus.get(item.session)?.pane !== item.pane)
+      remotePaneFocus.set(item.session,{pane:item.pane,ts:Date.now()/1000});
+  }
+  for(const session of remotePaneFocus.keys()) if(!live.has(session)) remotePaneFocus.delete(session);
+}
 function sidebarActiveTab(){
   if(inApp()) return ACTIVE_TAB;
-  return {session: activeTerm || "", ts: activeTermTs};
+  const focus = remotePaneFocus.get(activeTerm);
+  return {session: activeTerm || "", pane:focus?.pane || "", ts:Math.max(activeTermTs,focus?.ts || 0)};
 }
 let activeView = "panel";
 const termInteraction = new Map(); // session -> actual tmux mouse + temporary selection
@@ -6499,6 +6544,13 @@ function handleTermFrameMessage(event){
   }
   if(!sess) return false;
   if(data.type === "ready") return postTermState(sess);
+  if(data.type === "pane-selected"){
+    if(sess !== activeTerm || !/^%\d+$/.test(data.pane || "")) return false;
+    if(!(S.list || []).some(it => it.alive && it.session === sess && it.pane === data.pane)) return false;
+    S.sel = sess + "|" + data.pane; S.selTs = Date.now();
+    render(S.list || []);
+    return true;
+  }
   if(data.type === "interaction-request"){
     setTermSelectionMode(sess, !!data.selecting);
     return true;
@@ -6850,7 +6902,7 @@ function showView(key, reveal=false){
   // en split la terminal visible por defecto es la ultima activa (o la 1a)
   let shown = key.startsWith("term:") ? key.slice(5)
             : (split ? (activeTerm && openTerms.has(activeTerm) ? activeTerm : [...openTerms.keys()][0]) : null);
-  if(shown) ensureFrame(shown);
+  if(shown){ activeTerm = shown; ensureFrame(shown); }
   restoreInactiveTermInteractions(shown);
   document.getElementById("view-panel").classList.toggle("on", split || key === "panel");
   document.getElementById("term-area").classList.toggle("on", split ? !!shown : key.startsWith("term:"));
@@ -7026,6 +7078,7 @@ function rowEl(it){
 function itemKind(it){ return "row"; }   // cards eliminadas: una sola estructura
 
 function render(list){
+  if(!inApp()) rememberRemotePaneFocus(list);
   if(typeof renderSessionOverview === "function") renderSessionOverview(list);
   const opTarget=document.querySelector("#op-target"), opItem=pickSel(list||[]);
   if(opTarget)opTarget.textContent=opItem?`Destino: ${opItem.project||opItem.session} · ${opItem.pane||"panel"}`:"Sin sesión seleccionada";
@@ -7056,8 +7109,8 @@ function render(list){
     const ext = !!it.external;
     const ab = el.querySelector(".abadge");
     if(ab){
-      const agentModel = it.model || usageForItem(it)?.model || "";
-      const harness=it.agent||"claude",motor=it.motor||motorOf(agentModel)||harness;
+      const agentModel = it.model || (!it.alive ? usageForItem(it)?.model : "") || "";
+      const harness=it.agent||"shell",motor=it.motor||motorOf(agentModel)||harness;
       const harnessLabel=(nsHarness(harness).label||harness).replace(" Code","");
       ab.innerHTML=providerMark(harness,"",11)+`<span>${mdEsc(harnessLabel)} → ${mdEsc(engineLabel(motor))}</span>`;
       ab.dataset.a=harness;
@@ -7087,8 +7140,8 @@ function render(list){
 	    if(uchip){
 	      // Modelo: turnos medidos (usage) y, si aun no hay, el modelo REAL que
 	      // respondio en el transcript (it.model) — nunca "no detectado" si hubo turno.
-	      const u = (it.model ? {model: it.model, effort: it.effort || "", confidence: "transcript"} : null) || usageForItem(it);
-	      const utxt = usageChipText(u);
+	      const u = (it.model ? {model: it.model, effort: it.effort || "", confidence: it.configConfirmed===false?"unconfirmed":it.modelSource||"observed"} : null) || (!it.alive?usageForItem(it):null);
+	      const utxt = usageChipText(u) + (u?.model && it.configConfirmed===false ? " · "+tf("sin confirmar","unconfirmed") : "");
 	      const tst = tierStyleOf(tierOf(shortModel(u?.model || "")));
 	      uchip.innerHTML = providerMark(it.motor||it.agent, u?.model || "", 11) +
 	        `<span>${utxt}${(tst && tst.symbol) ? ` ${tst.symbol}` : ""}</span>`;
@@ -7098,7 +7151,7 @@ function render(list){
 	    }
 	    const mcur = el.querySelector(".mdl-cur");
 	    if(mcur){
-	      const um = shortModel(it.model || usageForItem(it)?.model || "");
+	      const um = shortModel(it.model || (!it.alive ? usageForItem(it)?.model : "") || "");
 	      // Semaforo de costo: color + $ segun el tier del modelo actual
 	      const tst = tierStyleOf(tierOf(um));
 	      mcur.style.color = (tst && tst.css) || "";
@@ -8849,6 +8902,11 @@ async function opSend(text){
     toast(tf("Espera o dale Parar","Wait or hit Stop"), true);
     return false;
   }
+  const selected = pickSel(S.list || []);
+  if((sidebarActiveTab().session || S.sel) && !selected){
+    toast(tf("El panel seleccionado ya no está disponible. Actualiza la sesión antes de enviar.", "Selected pane is unavailable. Refresh the session before sending."), true);
+    return false;
+  }
   OP.ac = new AbortController();
   const inp = $("#op-in");
   if(inp) inp.value = "";
@@ -8864,9 +8922,9 @@ async function opSend(text){
   try{
     const headers = {"Content-Type":"application/json"};
     const tok = authToken(); if(tok) headers["X-Comandos-Token"] = tok;
-    const body = JSON.stringify({id: OP.id, text: t, model: OP.model, effort: OP.effort, session:pickSel(S.list||[])?.session, pane:pickSel(S.list||[])?.pane});
+    const body = JSON.stringify({id: OP.id, text: t, model: OP.model, effort: OP.effort, session:selected?.session, pane:selected?.pane});
     await opStreamXhr("/operator/chat/stream", headers, body, OP.ac.signal, ev => opApplyEvent(live, ev));
-    if(!live.text) live.text = tf("Listo.","Done.");
+    if(!live.text) live.text = tf("No llegó una respuesta confirmada. Consulta el estado antes de repetir una acción.","No confirmed response arrived. Check status before repeating an action.");
   }catch(e){
     live.text = e.name === "AbortError" ? tf("Paré la respuesta.","Stopped.") : opHumanErr(e.message || tf("No pude hablar con ComandOS","Could not talk to ComandOS"));
   } finally {

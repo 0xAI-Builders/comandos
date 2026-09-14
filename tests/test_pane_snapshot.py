@@ -70,6 +70,24 @@ def test_resume_flags_preserve_values_and_never_capture_prompt_text(tmp_path):
     assert data['flags']==['--model','gpt-6-astra','--dangerously-bypass-approvals-and-sandbox']
 
 
+def test_resume_flags_preserve_explicit_sandbox_approvals_and_config(tmp_path):
+    m = module(); root = tmp_path / 'proc'; home = tmp_path / 'home'; home.mkdir()
+    proc(root, 1, 0, ['codex', 'resume', 'exact', '--sandbox', 'read-only', '--ask-for-approval=untrusted',
+                      '-c', 'approval_policy="never"', '-c', 'model_reasoning_effort="high"',
+                      '--add-dir', '/tmp/allowed', 'private prompt'])
+    flags = m.PaneInspector(home=home, proc_root=root)._flags(1)
+    assert flags == ['--sandbox', 'read-only', '--ask-for-approval=untrusted', '-c', 'approval_policy="never"',
+                     '-c', 'model_reasoning_effort="high"', '--add-dir', '/tmp/allowed']
+
+
+def test_acp_snapshot_preserves_explicit_danger_mode(tmp_path):
+    m = module(); root = tmp_path / 'proc'; home = tmp_path / 'home'; home.mkdir()
+    proc(root, 1, 0, ['sh']); proc(root, 2, 1, ['cc-acp', '--agent', 'claude', '--danger'])
+    hooks = home / '.claude' / 'hooks'; hooks.mkdir(parents=True)
+    (hooks / 'acp-panes.json').write_text(json.dumps({'%1': {'pid': 2, 'sessionId': 'exact'}}))
+    assert m.PaneInspector(home=home, proc_root=root)({'id': '%1', 'pid': 1, 'command': 'cc-acp'})['flags'] == ['--danger']
+
+
 def test_codex_chooses_root_rollout_when_same_process_opens_subagent_rollout_first(tmp_path):
     m = module()
     root = tmp_path / "proc"

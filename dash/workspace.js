@@ -13,12 +13,15 @@ function renderSessionConfig() {
   context.original ||= SessionConfig.draft(item);
   context.draft ||= {...context.original};
   const d = context.draft, c = SessionConfig.choices(registry,d);
-  const error = SessionConfig.validate(registry,d);
+  const error = SessionConfig.validate(registry,d,item);
   const pending = MOTOR_PENDING.get(motorTargetKey(item));
   if(!context.statusRequested) {
     context.statusRequested=true;
     api('/model/status?'+new URLSearchParams({operationKey:motorTargetKey(item)})).then(status=>{
-      context.recovery=status.recoveryRequired?status:null;
+      context.recovery=status.recoveryRequired||status.recoveryAllowed?status:null;
+      context.continuity=status.handoffRequired?status:null;
+      if(status.operationId && status.ok === undefined && status.state && !MOTOR_PENDING.has(motorTargetKey(item)))
+        MOTOR_PENDING.set(motorTargetKey(item),{operationId:status.operationId,since:Date.now(),stageTxt:sessionStageLabel(status)});
       if(MPOP===context)renderSessionConfig();
     }).catch(()=>{});
   }
@@ -37,10 +40,11 @@ function renderSessionConfig() {
     <div class="session-config">
       <div class="sc-note">Actual: ${mdEsc(names[item.agent]?.label||item.agent||'shell')} · ${mdEsc(item.model||'modelo sin confirmar')} · ${mdEsc(item.effort||'esfuerzo sin confirmar')}<br>Cuenta: ${mdEsc(item.harnessAccount||item.account||'sin confirmar')}</div>
       ${pending?`<div class="mp-prog">${motorProgressHtml(pending)}</div>`:''}
-      ${context.recovery?`<div class="sc-summary" role="alert">Un cambio anterior requiere recuperación. El historial original está guardado.<br><button class="sc-btn" data-recover>Recuperar ${mdEsc(context.recovery.sourceHarness||'sesión original')}</button></div>`:''}
+      ${context.recovery?`<div class="sc-summary" role="alert">${context.recovery.recoveryRequired?'El cambio necesita recuperación.':'La confirmación sigue pendiente. Puedes volver a la sesión original.'} El historial original está guardado.<br><button class="sc-btn" data-recover>Recuperar ${mdEsc(context.recovery.sourceHarness||'sesión original')}</button></div>`:''}
+      ${context.continuity?`<div class="sc-summary">Este CLI usa una conversación nueva. El historial original y la nota para retomar la tarea están guardados.<br><button class="sc-btn" data-copy-handoff>Copiar indicación para continuar</button></div>`:''}
       <div class="sc-grid">
         ${scSelect('toHarness','Interfaz / CLI',harnesses.map(h=>scOption(h,names[h]?.label||h,d.toHarness)).join(''))}
-        ${scSelect('motor','Motor de IA',motors.map(m=>scOption(m,registry.motors?.[m]?.label||m,d.motor,!(registry.matrix||[]).some(r=>r.harness===d.toHarness&&r.motor===m&&r.selectable))).join(''))}
+        ${scSelect('motor','Motor de IA',motors.map(m=>scOption(m,registry.motors?.[m]?.label||m,d.motor,!(registry.matrix||[]).some(r=>r.harness===d.toHarness&&r.motor===m&&r.selectable) || !!SessionConfig.switchError(registry,{...d,motor:m},item))).join(''))}
         ${scSelect('model','Modelo',models.map(m=>scOption(m.id,m.name||m.id,d.model,!!m.soon)).join(''))}
         ${scSelect('effort','Esfuerzo',(c.efforts.length?c.efforts:['']).map(e=>scOption(e,e||'No configurable',d.effort)).join(''))}
         ${scSelect(d.toHarness==='acp'?'motorAccount':'harnessAccount',d.toHarness==='acp'?'Cuenta del motor':'Cuenta del CLI',accounts(c.accounts,d.toHarness==='acp'?d.motorAccount:d.harnessAccount))}
@@ -54,6 +58,11 @@ function renderSessionConfig() {
       <div class="sc-actions"><button class="sc-btn" data-sc="profile">Skills, MCPs y perfiles</button><button class="sc-btn" data-sc="usage">Uso de herramientas</button></div>
     </div>`;
   pop.querySelector('.mp-close').onclick = motorPopClose;
+  const handoff=pop.querySelector('[data-copy-handoff]');
+  if(handoff)handoff.onclick=async()=>{try{
+    await navigator.clipboard.writeText('Lee la nota de continuidad en '+context.continuity.handoffPath+' y retoma la tarea. El historial original se conserva por separado.');
+    toast('Indicación copiada. Pégala en la terminal para continuar.');
+  }catch(e){toast('No se pudo copiar: '+e.message,true);}};
   pop.querySelectorAll('select,input').forEach(el=>el.addEventListener('change',()=>{
     context.draft=SessionConfig.update(registry,context.draft,el.name,el.type==='checkbox'?el.checked:el.value);
     context.error=''; context.requestId=null; renderSessionConfig();
@@ -63,7 +72,7 @@ function renderSessionConfig() {
   const recover=pop.querySelector('[data-recover]');
   if(recover)recover.onclick=async()=>{recover.disabled=true;try{
     const r=await api('/session/recover',{operationId:context.recovery.operationId});
-    MOTOR_PENDING.set(r.operationKey||motorTargetKey(item),{since:Date.now(),stageTxt:'Recuperando conversación original…'});
+    MOTOR_PENDING.set(r.operationKey||motorTargetKey(item),{operationId:r.operationId,recovering:true,since:Date.now(),stageTxt:'Recuperando conversación original…'});
     motorPopClose();renderCentro(S.list||[]);
   }catch(e){context.error=e.message;renderSessionConfig();}};
   pop.querySelector('.sc-apply').onclick=async()=>{
@@ -73,7 +82,7 @@ function renderSessionConfig() {
     renderSessionConfig();
     try {
       const r=await api('/session/configure',{session:item.session,pane:item.pane,...context.draft,requestId:context.requestId});
-      MOTOR_PENDING.set(r.operationKey||motorTargetKey(item),{motor:d.motor,model:d.model,effort:d.effort,since:Date.now(),queued:!!r.queued,stageTxt:'Cambio guardado; comprobando sesión…'});
+      MOTOR_PENDING.set(r.operationKey||motorTargetKey(item),{operationId:r.operationId,motor:d.motor,model:d.model,effort:d.effort,since:Date.now(),queued:!!r.queued,stageTxt:'Cambio guardado; comprobando sesión…'});
       if(MPOP===context) motorPopClose();
       renderCentro(S.list||[]); toast('Cambio solicitado. El resultado se confirmará en la sesión.');
     } catch(e) {context.error=e.message;} finally {context.sending=false;if(MPOP===context)renderSessionConfig();}

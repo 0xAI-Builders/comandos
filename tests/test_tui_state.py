@@ -205,3 +205,92 @@ def test_claude_native_display_label_and_combined_effort_confirmation():
     got = screen_state('claude', ' ⎿ Set model to `Opus 5 (1M context)` with xhigh effort\n❯')
     assert got['model'] == 'claude-opus-5[1m]'
     assert got['effort'] == 'xhigh'
+
+
+def test_claude_custom_status_cannot_override_transcript_on_cold_start():
+    from tui_state import StateTracker, screen_state
+    visible=screen_state('claude','repo · claude · claude-sonnet-5\n')
+    got=StateTracker().observe('root',{}, {'model':'gpt-6-astra','revision':'current'},visible,now=10)
+    assert got['model']=='gpt-6-astra'
+
+
+def test_unchanged_status_reappearing_after_picker_is_not_a_new_model_change():
+    from tui_state import StateTracker
+    tracker=StateTracker()
+    footer={'model':'gpt-5.6-luna','effort':'low','kind':'status'}
+    tracker.observe('root',{}, {'model':'gpt-5.6-luna','revision':'old'},footer,now=1)
+    current={'model':'gpt-6-astra','effort':'high','revision':'new'}
+    tracker.observe('root',{},current,{},now=2)
+    assert tracker.observe('root',{},current,footer,now=3)['model']=='gpt-6-astra'
+
+
+def test_transcript_preserves_effort_on_same_model_when_new_turn_omits_it(tmp_path):
+    import json
+    from tui_state import TranscriptCache
+    rows=[{'type':'assistant','sessionId':'root','effort':'high','message':{'model':'claude-fable-5'}},
+          {'type':'assistant','sessionId':'root','message':{'model':'claude-fable-5'}}]
+    path=tmp_path/'root.jsonl'
+    path.write_text(''.join(json.dumps(r)+'\n' for r in rows))
+    assert TranscriptCache().read('claude','root',path)['effort']=='high'
+
+
+def test_malformed_transcript_message_does_not_break_observation(tmp_path):
+    import json
+    from tui_state import TranscriptCache
+    path=tmp_path/'root.jsonl'
+    path.write_text(json.dumps({'type':'user','sessionId':'root','message':['malformed']})+'\n')
+    assert TranscriptCache().read('claude','root',path)=={}
+
+
+def test_native_provider_motor_is_not_inferred_from_its_model_family(monkeypatch):
+    dash=load_dash_module()
+    identity={'pane_pid':'10','pane_current_command':'opencode'}
+    monkeypatch.setattr(dash,'_pane_identity',lambda *a:identity)
+    monkeypatch.setattr(dash,'_process_start',lambda *a:'birth')
+    monkeypatch.setattr(dash,'_proc_cmdline',lambda *a:['opencode'])
+    monkeypatch.setattr(dash,'account_for_pid',lambda *a:{'account':'main'})
+    monkeypatch.setattr(dash,'pane_visible_config',lambda *a:{'model':'gpt-5.6-luna','kind':'status'})
+    got=dash.observe_pane('test','%1',{'agent':'opencode','pid':123},lambda *a:{})
+    assert got['motor']=='opencode' and got['confirmed'] is True
+
+
+def test_multiline_native_command_output_is_read_without_retaining_text(tmp_path):
+    import json
+    from tui_state import TranscriptCache
+    path=tmp_path/'root.jsonl'
+    path.write_text(json.dumps({'type':'user','sessionId':'root','message':{'content':'<local-command-stdout>\nSet model to gpt-5.6-luna\nSet effort level to high\n</local-command-stdout>'}})+'\n')
+    cache=TranscriptCache()
+    got=cache.read('claude','root',path)
+    assert got['model']=='gpt-5.6-luna' and got['effort']=='high'
+    assert 'local-command-stdout' not in repr(cache.entries)
+
+
+def test_malformed_model_and_effort_values_are_not_runtime_configuration(tmp_path):
+    import json
+    from tui_state import TranscriptCache
+    path=tmp_path/'root.jsonl'
+    path.write_text(json.dumps({'type':'assistant','sessionId':'root','message':{'model':['private']},'effort':{'private':'text'}})+'\n')
+    assert not TranscriptCache().read('claude','root',path).get('model')
+
+
+def test_unknown_provider_does_not_invent_a_model_from_prose():
+    from tui_state import screen_state
+    for harness in ('grok','gemini','agy','shell','acp'):
+        assert screen_state(harness,'Use gpt-6-astra high for this task.\n')=={}
+
+
+def test_custom_status_script_is_not_live_confirmation(monkeypatch):
+    dash=load_dash_module()
+    monkeypatch.setattr(dash,'_pane_identity',lambda *a:{'pane_pid':'10','pane_current_command':'claude'})
+    monkeypatch.setattr(dash,'_process_start',lambda *a:'birth')
+    monkeypatch.setattr(dash,'_proc_cmdline',lambda *a:['claude'])
+    monkeypatch.setattr(dash,'account_for_pid',lambda *a:{'account':'main'})
+    monkeypatch.setattr(dash,'pane_visible_config',lambda *a:{'model':'claude-fable-5','kind':'custom-status'})
+    got=dash.observe_pane('test','%1',{'agent':'claude','pid':123},lambda *a:{})
+    assert got['source']=='status-script' and got['confirmed'] is False
+
+
+def test_assistant_tool_output_cannot_masquerade_as_native_model_confirmation():
+    from tui_state import screen_state
+    text='● Example output from a script\n ⎿ Set model to gpt-5.6-luna\n❯\n'
+    assert screen_state('claude',text)=={}

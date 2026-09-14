@@ -46,9 +46,15 @@ def screen_state(harness, text):
                     out = dict(model=model, effort=effort[1].lower() if effort else '', kind='status')
         return out
     if harness == 'claude':
+        in_response = False
         for line in lines:
             if re.match(r'^\s*●\s', line):
                 out = {}  # A later response makes historical command output stale.
+                in_response = True
+            if re.match(r'^\s*❯\s*/(?:model|effort)\b', line):
+                in_response = False
+            if in_response:
+                continue
             hit = re.match(r'^\s*⎿\s+(?:Set model to|Kept model as|Current model:)\s+(.+)', line)
             if hit and model_id(hit[1]):
                 out = dict(model=model_id(hit[1]), kind='confirmation')
@@ -63,7 +69,7 @@ def screen_state(harness, text):
             if status:
                 # Native confirmations may be newer than a custom status script.
                 if not out:
-                    out = dict(model=status[1].lower(), kind='status')
+                    out = dict(model=status[1].lower(), kind='custom-status')
         return out
     return out
 
@@ -105,17 +111,26 @@ class TranscriptCache:
                 if harness == 'claude' and row.get('type') == 'assistant':
                     msg = row.get('message') or {}
                     if isinstance(msg, dict) and msg.get('model') and msg['model'] != '<synthetic>':
-                        value = dict(model=msg['model'], effort=row.get('effort') or row.get('perTurnEffort') or '')
+                        value = dict(model=msg['model'])
+                        if row.get('effort') or row.get('perTurnEffort'):
+                            value['effort'] = row.get('effort') or row.get('perTurnEffort')
                 elif harness == 'claude' and row.get('type') == 'user':
-                    content = (row.get('message') or {}).get('content')
+                    msg = row.get('message')
+                    content = msg.get('content') if isinstance(msg, dict) else None
                     # Claude persists local command OUTPUT in a tagged user row.
                     if isinstance(content, str) and content.startswith('<local-command-stdout>'):
                         output = content.removeprefix('<local-command-stdout>').split('</local-command-stdout>')[0]
-                        value = screen_state('claude', '⎿ ' + output)
+                        value = screen_state('claude', '\n'.join('⎿ ' + line for line in output.splitlines()))
                 elif harness == 'codex' and row.get('type') == 'turn_context':
                     payload = row.get('payload') or {}
                     if isinstance(payload, dict) and payload.get('model'):
-                        value = dict(model=payload['model'], effort=payload.get('effort') or payload.get('reasoning_effort') or '')
+                        value = dict(model=payload['model'])
+                        if payload.get('effort') or payload.get('reasoning_effort'):
+                            value['effort'] = payload.get('effort') or payload.get('reasoning_effort')
+                if 'model' in value and (not isinstance(value['model'], str) or not re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9._:@/\-\[\]]{0,159}', value['model'])):
+                    value.pop('model')
+                if 'effort' in value and (not isinstance(value['effort'], str) or not re.fullmatch(EFFORT, value['effort'])):
+                    value.pop('effort')
                 if value:
                     if value.get('model') and value['model'] != result.get('model'):
                         result.pop('effort', None)
@@ -150,18 +165,22 @@ class StateTracker:
             for name, evidence in [('conversation', conversation), ('pane', visible)]:
                 fingerprint = tuple((key, evidence.get(key)) for key in ('model', 'effort', 'revision', 'kind'))
                 if not evidence:
-                    if name == 'pane':
+                    if name == 'pane' and entry.get('paneKind') == 'confirmation':
                         entry.pop(name, None)
+                    continue
+                if name == 'pane' and evidence.get('kind') == 'custom-status' and (conversation or value.get('source') in ('conversation', 'pane')):
                     continue
                 if fingerprint == entry.get(name):
                     continue
                 entry[name] = fingerprint
+                if name == 'pane':
+                    entry['paneKind'] = evidence.get('kind')
                 if evidence.get('model') and evidence['model'] != value.get('model'):
                     value['effort'] = ''
                 for field in ('model', 'effort'):
                     if field in evidence:
                         value[field] = evidence[field]
-                value.update(source=name, evidenceAt=now)
+                value.update(source='status-script' if evidence.get('kind') == 'custom-status' else name, evidenceAt=now)
             self.entries[identity] = entry
             self.entries.move_to_end(identity)
             while len(self.entries) > self.max_entries:

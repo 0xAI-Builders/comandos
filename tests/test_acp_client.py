@@ -101,6 +101,44 @@ def test_session_auto_allows_when_no_permission_handler(tmp_path):
     assert any(e["type"] == "permission" and e["decision"] == "allow-once" for e in got)
 
 
+def test_real_stdio_config_options_acknowledge_model_and_effort(tmp_path):
+    log = tmp_path / 'config-options.jsonl'
+    session = acp.open_session(fake_spec(), str(tmp_path), extra_env={
+        'FAKE_ACP_CONFIG_OPTIONS': '1', 'FAKE_ACP_LOG': str(log)})
+    try:
+        session.initialize(); session.new_session()
+        assert session.current_effort == 'high'
+        session.set_effort('low')
+        assert session.current_effort == 'low'
+        session.set_model('fake-2')
+        assert session.current_model == 'fake-2'
+        session.load_session('sess-fake-1')
+        assert session.current_effort == 'low'
+        with pytest.raises(acp.AcpError):
+            session.set_effort('invented')
+    finally:
+        session.close()
+    methods = [json.loads(line)['in'].get('method') for line in log.read_text().splitlines()]
+    assert methods.count('session/set_config_option') == 2
+    assert 'session/set_model' not in methods and 'session/prompt' not in methods
+
+
+def test_config_notifications_update_state_without_event_consumer(tmp_path):
+    session = acp.open_session(fake_spec(), str(tmp_path))
+    try:
+        session.initialize(); session.new_session()
+        session._handle_incoming({'method': 'session/update', 'params': {'sessionId': session.session_id,
+            'update': {'sessionUpdate': 'config_option_update', 'configOptions': [
+                {'id': 'reasoning', 'category': 'thought_level', 'type': 'select', 'currentValue': 'low',
+                 'options': [{'value': 'low'}]}]}}}, None)
+        assert session.current_effort == 'low'
+        session._handle_incoming({'method': 'session/update', 'params': {'sessionId': 'another-session',
+            'update': {'sessionUpdate': 'config_option_update', 'configOptions': []}}}, None)
+        assert session.current_effort == 'low'
+    finally:
+        session.close()
+
+
 def test_registry_declares_every_acp_agent_with_a_runnable_shape():
     registry = providers.load_registry(ROOT / "config/providers.json")
     specs = acp.agent_specs(registry)

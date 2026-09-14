@@ -4,7 +4,9 @@
     const harness = item.agent || 'shell';
     return {toHarness:harness, motor:item.motor || harness, model:item.model || '',
       effort:item.effort || '', harnessAccount:item.harnessAccount || item.account || 'main',
-      motorAccount:item.motorAccount || item.account || 'main', interrupt:false};
+      motorAccount:item.motorAccount || item.account || 'main', interrupt:false,
+      expectedIdentity:item.observedConfig?.identity || undefined,
+      expectedConversationId:item.observedConfig?.conversationId || undefined};
   }
   function route(registry, state) {
     return (registry.matrix || []).find(r => r.harness === state.toHarness && r.motor === state.motor);
@@ -38,9 +40,22 @@
     else if(next.motor === next.toHarness) next.motorAccount = next.harnessAccount;
     return next;
   }
-  function validate(registry, state) {
+  function switchError(registry, state, source) {
+    if(!source) return '';
+    if(source.agent && !['shell','claude','codex','grok','acp'].includes(source.agent))
+      return 'Este CLI no ofrece recuperación exacta. Puedes iniciar una sesión nueva con otro CLI.';
+    const rule = registry.midSessionRoutes?.[route(registry,state)?.id || state.toHarness+':'+state.motor];
+    if(!rule || rule.selectable) return '';
+    const observed = source.observedConfig || {};
+    if(rule.reason?.code === 'acp_effort_unobserved' && observed.harness === 'acp' &&
+       observed.motor === state.motor && observed.effortSource === 'acp-config-options') return '';
+    return rule.reason?.message || 'Este cambio no está disponible en una sesión abierta';
+  }
+  function validate(registry, state, source) {
     const c = choices(registry, state);
     if(!c.route?.selectable) return c.route?.reason?.message || 'Esta combinación no está disponible';
+    const unsupported = switchError(registry,state,source);
+    if(unsupported) return unsupported;
     if(c.models.length && !c.models.some(m => m.id === state.model)) return 'Selecciona un modelo disponible';
     if(state.effort && !c.efforts.includes(state.effort)) return 'Selecciona un esfuerzo compatible';
     const account = state.toHarness === 'acp' ? state.motorAccount : state.harnessAccount;
@@ -52,7 +67,7 @@
   function changed(before, after) {
     return ['toHarness','motor','model','effort','harnessAccount','motorAccount'].some(k => (before[k] || '') !== (after[k] || ''));
   }
-  const api = {draft, route, choices, update, validate, changed};
+  const api = {draft, route, choices, update, validate, changed, switchError};
   if(typeof module !== 'undefined') module.exports = api;
   else root.SessionConfig = api;
 })(typeof window === 'undefined' ? globalThis : window);

@@ -16,6 +16,7 @@ Comandos en el prompt:
 from __future__ import annotations
 
 import argparse
+import fcntl
 import json
 import os
 import readline  # noqa: F401  (historial/edición en input())
@@ -30,7 +31,6 @@ REPO = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
 sys.path.insert(0, os.path.join(REPO, "lib"))
 import acp  # noqa: E402
 import accounts as account_registry  # noqa: E402
-import claude_trust  # noqa: E402
 import providers as provider_registry  # noqa: E402
 
 HOOKS = os.path.expanduser("~/.claude/hooks")
@@ -109,54 +109,106 @@ class Pane:
         models = motor.get("models") or []
         return models[0]["id"] if models else ""
 
-    def connect(self):
+    def connect(self, publish=True):
+        """Prepare a complete connection before replacing the visible session."""
         spec = self.spec()
         if not acp.agent_available(spec):
             raise acp.AcpError(f"{spec.get('label') or self.agent} no está instalado")
-        model = self.model if spec.get("modelVia") != "acp" else ""   # por ACP se fija tras session/new
-        if not self.model and spec.get("transport") == "agy-stream":
-            self.model = model = self.default_model()
-        extra = self.account_env()
-        if self.agent == "claude":
-            claude_trust.ensure_cwd_trusted(self.cwd, config_dir=extra.get("CLAUDE_CONFIG_DIR"))
-        self.session = acp.open_session(spec, self.cwd, model=model, effort=self.effort, danger=self.danger,
-                                        extra_env=extra, permission_handler=self.on_permission)
-        self.session.initialize()
-        if self.resume_id and self.session.supports_load():
-            say(f"↻ reanudando sesión {self.resume_id[:8]}…", "dim")
-            self.session.load_session(self.resume_id, on_event=lambda e: None)
-        else:
-            self.session.new_session()
-        if spec.get("modelVia") == "acp":
-            if self.model and self.session.models:
-                ids = [m.get("modelId") for m in self.session.models]
-                target = self.model if self.model in ids else next((i for i in ids if i and self.model.split("[")[0] in i), "")
-                if target and target != self.session.current_model:
-                    self.session.set_model(target)
-            self.model = self.session.current_model or self.model
-        if self.danger and spec.get("dangerMode") and any(m.get("id") == spec["dangerMode"] for m in self.session.modes):
-            try:
-                self.session.set_mode(spec["dangerMode"])
-            except acp.AcpError as exc:
-                say(f"(modo {spec['dangerMode']} no aplicado: {exc})", "dim")
-        self.publish()
+        requested_model = self.model or (self.default_model() if spec.get("transport") == "agy-stream" else "")
+        model = requested_model if spec.get("modelVia") != "acp" else ""
+        session = acp.open_session(spec, self.cwd, model=model, effort=self.effort, danger=self.danger,
+                                   extra_env=self.account_env(), permission_handler=self.on_permission)
+        try:
+            session.initialize()
+            if self.resume_id:
+                if not session.supports_load():
+                    raise acp.AcpError("el agente no admite reanudación exacta; no se crea otra conversación")
+                session.load_session(self.resume_id, on_event=lambda e: None)
+                if session.session_id != self.resume_id:
+                    raise acp.AcpError("el agente no confirmó la conversación solicitada")
+            else:
+                session.new_session()
+            if spec.get("modelVia") == "acp" and requested_model:
+                ids = [m.get("modelId") for m in session.models]
+                target = requested_model if requested_model in ids else ""
+                if not target:
+                    wanted = provider_registry.model_spec(self.registry, self.agent, requested_model, section="motors")
+                    matches = [mid for mid in ids if mid and wanted and
+                               (provider_registry.model_spec(self.registry, self.agent, mid, section="motors") or {}).get("id") == wanted["id"]]
+                    target = matches[0] if len(matches) == 1 else ""
+                if not target:
+                    raise acp.AcpError("el agente no ofrece el modelo solicitado")
+                if target != session.current_model:
+                    session.set_model(target)
+                if session.current_model != target:
+                    raise acp.AcpError("el agente no confirmó el modelo solicitado")
+            option = session.config_option("thought_level") if hasattr(session, "config_option") else None
+            if self.effort and option:
+                session.set_effort(self.effort)
+            safe_mode = getattr(session, "current_mode", "")
+            if self.danger and spec.get("dangerMode"):
+                mode = spec["dangerMode"]
+                if not any(m.get("id") == mode for m in session.modes):
+                    raise acp.AcpError("el agente no ofrece el modo de permisos solicitado")
+                session.set_mode(mode)
+                if session.current_mode != mode:
+                    raise acp.AcpError("el agente no confirmó el modo de permisos")
+        except Exception:
+            session.close()
+            raise
+        self.session = session
+        self.model = session.current_model or requested_model
+        self._safe_mode = safe_mode if safe_mode != spec.get("dangerMode") else ""
+        self._launch_danger = self.danger
+        if publish:
+            self.publish()
 
-    def reconnect(self, keep_context=True):
-        """Relanza el agente (cambio de motor/cuenta/esfuerzo). Si el agente
-        soporta session/load se retoma la misma conversación; si no, se
-        inyecta un handoff visible con los últimos intercambios."""
+    def reconnect(self, keep_context=True, **changes):
+        """Keep the exact original process until a recoverable target is ready."""
+        if self.busy:
+            raise acp.AcpError("espera a que termine el turno antes de cambiar la configuración")
+        fields = ("agent", "model", "effort", "account", "danger", "resume_id")
+        previous = {key: getattr(self, key) for key in fields}
+        if all(previous.get(key) == value for key, value in changes.items()):
+            return
+        target = dict(previous, **changes)
         old = self.session
-        prev_id = old.session_id if old else ""
-        prev_agent = self.agent
-        if old:
-            old.close()
-        spec = self.spec()
-        self.resume_id = prev_id if (spec.get("resume") and prev_id and prev_agent == self.agent) else ""
-        self.connect()
+        old_spec = self.spec()
+        spec = self.specs.get(target["agent"])
+        if not spec or not acp.agent_available(spec):
+            raise acp.AcpError("el agente destino no está instalado")
+        if not old or not old.session_id or not old.supports_load() or not old_spec.get("resume"):
+            raise acp.AcpError("el origen no ofrece reanudación exacta; crea una sesión nueva")
+        if not spec.get("resume"):
+            raise acp.AcpError("el destino no ofrece reanudación exacta; crea una sesión nueva")
+        if target["agent"] == previous["agent"] and target["account"] != previous["account"]:
+            raise acp.AcpError("cambiar cuenta ACP requiere exportar la conversación; se conserva el origen")
+        provider = spec.get("accountsProvider")
+        if provider:
+            accounts = account_registry.list_accounts(self.registry, provider)
+            if not any(a.get("alias") == target["account"] and a.get("selectable") for a in accounts):
+                raise acp.AcpError("la cuenta destino no tiene login")
+        elif target["account"] != "main":
+            raise acp.AcpError("el destino no admite cuentas múltiples")
+        model = target["model"]
+        if model:
+            chosen = provider_registry.model_spec(self.registry, target["agent"], model, section="motors")
+            if not chosen or target["effort"] and target["effort"] not in chosen.get("efforts", []):
+                raise acp.AcpError("modelo o esfuerzo no admitido por el destino")
+        target["resume_id"] = old.session_id if target["agent"] == previous["agent"] else ""
+        try:
+            for key, value in target.items():
+                setattr(self, key, value)
+            self.connect(publish=False)
+        except Exception:
+            for key, value in previous.items():
+                setattr(self, key, value)
+            self.session = old
+            raise
+        old.close()
+        self.publish()
         if keep_context and not self.resume_id and self.history:
-            handoff = self.handoff_text()
-            say("→ handoff del contexto al nuevo agente…", "dim")
-            self.run_prompt(handoff, record=False)
+            say("La conversación anterior está guardada; /status muestra la nueva sesión. Contexto disponible en memoria.", "dim")
 
     def handoff_text(self) -> str:
         lines = ["[HANDOFF desde ComandOS] Continúas una conversación que llevaba otro agente. Resumen de lo último:"]
@@ -172,18 +224,25 @@ class Pane:
         if pane:
             tmux("set-option", "-p", "-t", pane, "@ccmodel", label)
         try:
-            data = {}
-            if os.path.exists(STATE_FILE):
-                with open(STATE_FILE) as handle:
-                    data = json.load(handle) or {}
-            key = pane or f"pid-{os.getpid()}"
-            data[key] = {"agent": self.agent, "model": self.model, "effort": self.effort, "account": self.account,
-                         "cwd": self.cwd, "sessionId": getattr(self.session, "session_id", ""),
-                         "pid": os.getpid(), "ts": int(time.time())}
-            tmp = STATE_FILE + ".tmp"
-            with open(tmp, "w") as handle:
-                json.dump(data, handle)
-            os.replace(tmp, STATE_FILE)
+            os.makedirs(os.path.dirname(STATE_FILE), mode=0o700, exist_ok=True)
+            with open(STATE_FILE + ".lock", "a") as lock:
+                fcntl.flock(lock, fcntl.LOCK_EX)
+                data = {}
+                if os.path.exists(STATE_FILE):
+                    with open(STATE_FILE) as handle:
+                        data = json.load(handle) or {}
+                key = pane or f"pid-{os.getpid()}"
+                data[key] = {"agent": self.agent, "model": self.model, "effort": self.effort, "account": self.account,
+                             "cwd": self.cwd, "sessionId": getattr(self.session, "session_id", ""),
+                             "pid": os.getpid(), "ts": int(time.time()), "observationVersion": 1,
+                             "observedModel": getattr(self.session, "current_model", ""),
+                             "observedEffort": getattr(self.session, "current_effort", ""),
+                             "effortSource": "acp-config-options" if getattr(self.session, "current_effort", "") else "unconfirmed",
+                             "requestedModel": self.model, "requestedEffort": self.effort}
+                tmp = STATE_FILE + ".tmp"
+                with open(tmp, "w") as handle:
+                    json.dump(data, handle)
+                os.replace(tmp, STATE_FILE)
         except Exception:
             pass
 
@@ -241,17 +300,27 @@ class Pane:
         say("")
         say(f"— {stop} · {time.time() - started:.1f}s · {self.agent} · {self.model}", "dim")
         notify("Stop", self.cwd, {"last_assistant_message": reply[-400:]})
+        self.model = getattr(self.session, "current_model", "") or self.model
+        self.publish()
 
     # ---- comandos
     def command(self, line: str) -> bool:
-        parts = shlex.split(line)
+        try:
+            parts = shlex.split(line)
+        except ValueError as exc:
+            raise acp.AcpError(f"comando inválido: {exc}") from exc
+        if not parts:
+            return True
         cmd, arg = parts[0], (parts[1] if len(parts) > 1 else "")
+        if self.busy and cmd in ("/model", "/effort", "/agent", "/account", "/mode", "/danger"):
+            raise acp.AcpError("espera a que termine el turno")
         if cmd in ("/exit", "/quit", "/q"):
             return False
         if cmd == "/help":
             say(__doc__.split("Comandos en el prompt:")[1], "dim")
         elif cmd == "/status":
-            say(f"agente={self.agent} modelo={self.model or '?'} esfuerzo={self.effort or '-'} cuenta={self.account} "
+            effort = getattr(self.session, "current_effort", "") or f"{self.effort or '-'} (solicitado; sin confirmación)"
+            say(f"agente={self.agent} modelo={self.model or '?'} esfuerzo={effort} cuenta={self.account} "
                 f"danger={self.danger} sesión={getattr(self.session, 'session_id', '')[:12]} cwd={self.cwd}", "cyan")
         elif cmd == "/models":
             live = [m.get("modelId") for m in getattr(self.session, "models", [])]
@@ -263,29 +332,40 @@ class Pane:
             spec = self.spec()
             if spec.get("modelVia") == "acp" and getattr(self.session, "models", None):
                 try:
-                    self.session.set_model(arg); self.model = arg; self.publish()
+                    if arg not in [m.get("modelId") for m in self.session.models]:
+                        raise acp.AcpError("el agente no ofrece ese modelo")
+                    self.session.set_model(arg)
+                    if self.session.current_model != arg:
+                        raise acp.AcpError("el agente no confirmó el modelo")
+                    self.model = self.session.current_model
+                    self.publish()
                     say(f"✓ modelo → {arg}", "grn")
                 except acp.AcpError as exc:
                     say(f"✗ {exc}", "red")
             else:
-                self.model = arg
-                say(f"↻ relanzando {self.agent} con {arg}…", "dim")
-                self.reconnect()
+                self.reconnect(model=arg)
         elif cmd == "/effort":
-            if arg not in EFFORTS:
-                say(f"uso: /effort <{'|'.join(EFFORTS)}>", "yel"); return True
-            self.effort = arg
-            say(f"↻ relanzando {self.agent} con esfuerzo {arg}…", "dim")
-            self.reconnect()
+            option = self.session.config_option("thought_level") if hasattr(self.session, "config_option") else None
+            available = [value.get("value") for value in self.session.option_values(option)] if option and hasattr(self.session, "option_values") else EFFORTS
+            if arg not in available:
+                say(f"uso: /effort <{'|'.join(available)}>", "yel"); return True
+            if option:
+                try:
+                    self.session.set_effort(arg)
+                finally:
+                    self.effort = getattr(self.session, "current_effort", "")
+                    self.publish()
+                say(f"✓ esfuerzo confirmado → {self.effort}", "grn")
+            else:
+                self.reconnect(effort=arg)
+                say("Esfuerzo solicitado al iniciar; este agente no publica su valor activo.", "yel")
         elif cmd == "/agent":
             if arg not in self.specs:
                 say(f"uso: /agent <{'|'.join(self.specs)}>", "yel"); return True
             if arg != self.agent:
-                self.agent, self.model, self.account = arg, "", "main"
-                if self.specs[arg].get("transport") == "agy-stream":
-                    self.model = self.default_model()
-                say(f"↻ cambiando a {arg} (handoff de contexto)…", "dim")
-                self.reconnect()
+                models = (self.registry.get("motors", {}).get(arg) or {}).get("models") or [{}]
+                self.reconnect(agent=arg, model=models[0].get("id", ""),
+                               effort=models[0].get("defaultEffort", ""), account="main")
         elif cmd == "/account":
             provider = self.spec().get("accountsProvider")
             if not provider:
@@ -295,21 +375,37 @@ class Pane:
                 say("cuentas: " + ", ".join(f"{a['alias']} ({a.get('identity') or 'sin login'})" for a in live), "cyan"); return True
             if arg not in [a["alias"] for a in live]:
                 say(f"cuenta sin login: {arg}", "red"); return True
-            self.account = arg
-            say(f"↻ relanzando {self.agent} con cuenta {arg}…", "dim")
-            self.reconnect()
+            self.reconnect(account=arg)
         elif cmd == "/mode":
             try:
-                self.session.set_mode(arg); say(f"✓ modo → {arg}", "grn")
+                self.session.set_mode(arg)
+                if self.session.current_mode != arg:
+                    raise acp.AcpError("el agente no confirmó el modo")
+                self.danger = arg == self.spec().get("dangerMode")
+                if not self.danger:
+                    self._safe_mode = arg
+                self.publish()
+                say(f"✓ modo → {arg}", "grn")
             except acp.AcpError as exc:
                 say(f"✗ {exc}", "red")
         elif cmd == "/danger":
-            self.danger = not self.danger
-            say(f"auto-aprobar: {'ON' if self.danger else 'OFF'}", "yel")
+            desired = not self.danger
             spec = self.spec()
-            if self.danger and spec.get("dangerMode"):
-                try: self.session.set_mode(spec["dangerMode"])
-                except acp.AcpError: pass
+            mode = spec.get("dangerMode")
+            if mode:
+                safe = getattr(self, "_safe_mode", "") or (self.session.current_mode if not self.danger else "")
+                target = mode if desired else safe
+                if not target or not any(m.get("id") == target for m in self.session.modes):
+                    raise acp.AcpError("no se puede restaurar un modo seguro conocido; crea una sesión nueva")
+                self.session.set_mode(target)
+                if self.session.current_mode != target:
+                    raise acp.AcpError("el agente no confirmó el modo de permisos")
+                self._safe_mode = safe
+            elif getattr(self, "_launch_danger", False):
+                raise acp.AcpError("el permiso del proceso requiere una sesión nueva para desactivarlo")
+            self.danger = desired
+            self.publish()
+            say(f"auto-aprobar: {'ON' if self.danger else 'OFF'}", "yel")
         else:
             say(f"comando desconocido: {cmd} (/help)", "yel")
         return True

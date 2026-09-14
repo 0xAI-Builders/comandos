@@ -19,11 +19,6 @@ import accounts
 import capabilities
 import cc_usage
 
-try:
-    import tomllib
-except ImportError:
-    tomllib = None
-
 _ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,79}$")
 _NAME = re.compile(r"^[A-Za-z0-9_][A-Za-z0-9_.:@/-]{0,159}$")
 _FIELDS = {'id', 'name', 'harness', 'motor', 'routeId', 'model', 'effort',
@@ -100,58 +95,39 @@ def delete_profile(db, ident):
 
 
 def _toml(path):
-    if tomllib is None:
-        try:
-            text = Path(path).read_text()
-        except OSError:
-            return {}
-        # Python 3.10: no need to parse unrelated TOML. Refuse array replacement
-        # whenever a skills key might exist; MCP leaf overrides remain safe.
-        return {'_skillsUnparsed': bool(re.search(r'\bskills\b', text))}
-    try:
-        with open(path, 'rb') as f:
-            return tomllib.load(f)
-    except (OSError, ValueError):
-        return {}
+    return capabilities.read_config(Path(path))
 
 
 def _json(path):
-    try:
-        data = json.loads(Path(path).read_text())
-        return data if isinstance(data, dict) else {}
-    except (OSError, ValueError):
-        return {}
+    return capabilities.read_config(Path(path))
 
 
-def _claude_mcp_sources(home, cwd):
-    global_json = home / '.claude.json'
-    if not global_json.exists():
-        global_json = home.parent / '.claude.json'
-    global_data = _json(global_json)
-    servers = dict(global_data.get('mcpServers') or {})
-    local = ((global_data.get('projects') or {}).get(str(Path(cwd).resolve())) or {}).get('mcpServers') or {}
-    if local:
+def _claude_mcp_sources(home, cwd, alias='main'):
+    errors = []
+    global_data = capabilities.read_config(capabilities.claude_user_json(home, alias), errors, 'claude-user')
+    project_data = capabilities.read_config(Path(cwd) / '.mcp.json', errors, 'mcp-json')
+    servers = dict(capabilities._dict(global_data.get('mcpServers')))
+    local = capabilities._dict(capabilities._dict(global_data.get('projects')).get(str(Path(cwd).resolve())))
+    if local.get('mcpServers'):
         raise ValueError('MCPs locales de Claude presentes: selección aislada todavía no soportada')
     for settings in (home / 'settings.json', Path(cwd) / '.claude/settings.json', Path(cwd) / '.claude/settings.local.json'):
-        plugins = _json(settings).get('enabledPlugins') or {}
+        plugins = capabilities.read_config(settings, errors, 'claude-settings').get('enabledPlugins') or {}
         if not isinstance(plugins, dict) or any(plugins.values()):
             raise ValueError('plugins de Claude presentes: selección aislada de MCPs todavía no soportada')
-    servers.update(_json(Path(cwd) / '.mcp.json').get('mcpServers') or {})
+    if errors:
+        raise ValueError('configuración de Claude ilegible: no se puede preservar la selección de MCPs')
+    servers.update(capabilities._dict(project_data.get('mcpServers')))
     return servers
 
 
 def launch_capabilities(harness):
-    skills = harness == 'codex'
-    mcps = harness == 'codex'
     return {
-        'skills': {'status': 'next_launch' if skills else 'unsupported',
-                   'supported': skills, 'reason': 'Se aplica al iniciar una sesión nueva. Las sesiones abiertas conservan su configuración.' if skills else
+        'skills': {'status': 'next_launch' if harness == 'codex' else 'unsupported',
+                   'supported': harness == 'codex', 'reason': 'Se aplica al iniciar una sesión nueva. Las sesiones abiertas conservan su configuración.' if harness == 'codex' else
                        'Este CLI no ofrece selección individual verificada de skills por lanzamiento.'},
-        # Claude's strict MCP override excludes plugin MCPs and can alter variable
-        # expansion. Do not advertise exact selection until those sources can be preserved.
-        'mcps': {'status': 'next_launch' if mcps else ('conditional' if harness == 'claude' else 'unsupported'),
-                 'supported': mcps or harness == 'claude',
-                 'reason': 'Se aplica al iniciar una sesión nueva. Las sesiones abiertas conservan su configuración.' if mcps else
+        'mcps': {'status': 'next_launch' if harness == 'codex' else ('conditional' if harness == 'claude' else 'unsupported'),
+                 'supported': harness in ('codex', 'claude'),
+                 'reason': 'Se aplica al iniciar una sesión nueva. Las sesiones abiertas conservan su configuración.' if harness == 'codex' else
                      ('Selección de servidores JSON por lanzamiento; sin recarga del agente vivo.' if harness == 'claude' else
                       'Selección por lanzamiento no verificada para este CLI.')},
         'hotReload': False,
@@ -159,92 +135,239 @@ def launch_capabilities(harness):
 
 
 def _codex_configs(home, cwd):
+    # Installed Codex reads skills.config only from user and session flag layers.
     paths = [home / 'config.toml']
-    paths += [p / '.codex' / 'config.toml' for p in capabilities._parents_to_root(cwd)]
-    return [_toml(p) for p in paths]
+    errors=[]
+    result=[capabilities.read_config(p,errors,'codex-user') for p in dict.fromkeys(p.resolve() for p in paths)]
+    if errors:
+        raise ValueError('configuración TOML ilegible; no se pueden conservar overrides')
+    return result
 
 
 def _skill_overrides(configs):
-    # Arrays in later config layers replace earlier arrays, matching Codex config.
     result = []
     for cfg in configs:
-        entries = (cfg.get('skills') or {}).get('config')
+        entries = capabilities._dict(cfg.get('skills')).get('config')
         if isinstance(entries, list):
             result = [dict(x) for x in entries if isinstance(x, dict)]
     return result
 
 
-def inventory(registry, harness, alias, cwd):
-    if not os.path.isabs(cwd) or not os.path.isdir(cwd):
-        raise ValueError('cwd inválido')
-    caps = launch_capabilities(harness)
-    base = capabilities.session_capabilities(registry, harness, alias, cwd)
-    try:
-        home = accounts.account_home(registry, harness, alias)
-    except accounts.AccountError:
-        home = None
-    if home and harness == 'claude':
-        try:
-            _claude_mcp_sources(home, cwd)
-        except ValueError as e:
-            caps['mcps'] = {'status': 'unsupported', 'supported': False, 'reason': str(e)}
+def _skill_path(value, base):
+    if not isinstance(value, str):
+        return None
+    path = Path(os.path.expanduser(value))
+    if not path.is_absolute():
+        path = base / path
+    return str(path.resolve())
+
+
+def _skill_roots(ctx):
+    h, home, cwd = ctx['harness'], ctx['home'], ctx['project']
     roots = []
-    configs = _codex_configs(home, cwd) if home and harness == 'codex' else []
-    overrides = _skill_overrides(configs)
-    if any(c.get('_skillsUnparsed') for c in configs):
-        caps['skills'] = {'status': 'unsupported', 'supported': False,
-            'reason': 'Este perfil requiere un lector TOML para conservar overrides existentes de skills.'}
-    if home:
-        roots.append((home / 'skills', 'user', 'skills-directory'))
-        if harness == 'codex':
-            roots.append((Path.home() / '.agents' / 'skills', 'user', 'shared-skills'))
-            for parent in capabilities._parents_to_root(cwd):
-                roots.append((parent / '.agents' / 'skills', 'project', 'shared-skills'))
-                roots.append((parent / '.codex' / 'skills', 'project', 'skills-directory'))
-        else:
-            roots.append((Path(cwd) / ('.' + harness) / 'skills', 'project', 'skills-directory'))
-    skills, seen = [], set()
-    for root, scope, source in roots:
+    def add(path, scope, source, plugin=None):
+        roots.append((Path(path), scope, source, plugin))
+    if home is None or h == 'shell':
+        return roots
+    if h == 'codex':
+        add(home / 'skills', 'user', 'skills-directory')
+        add(Path.home() / '.agents/skills', 'user', 'shared-skills')
+        add(Path('/etc/codex/skills'), 'admin', 'admin-skills')
+        for parent in ctx['parents']:
+            add(parent / '.agents/skills', 'project', 'shared-skills')
+            add(parent / '.codex/skills', 'project', 'skills-directory')
+    elif h == 'claude':
+        add(home / 'skills', 'user', 'skills-directory')
+        for parent in ctx['parents']:
+            add(parent / '.claude/skills', 'project', 'skills-directory')
+    elif h == 'grok':
+        user = ctx['layers'][0]['data'] if ctx['layers'] else {}
+        for vendor in ('claude', 'cursor'):
+            if capabilities._dict(capabilities._dict(user.get('compat')).get(vendor)).get('skills') is not False:
+                add(Path.home() / ('.' + vendor) / 'skills', 'compatible', vendor + '-skills')
+                add(cwd / ('.' + vendor) / 'skills', 'project', vendor + '-skills')
+        add(home / 'skills', 'user', 'skills-directory')
+        for parent in ctx['parents']:
+            add(parent / '.grok/skills', 'project', 'skills-directory')
+        for path in capabilities._list(capabilities._dict(user.get('skills')).get('paths')):
+            if isinstance(path, str):
+                add(Path(path).expanduser() if os.path.isabs(os.path.expanduser(path)) else cwd / path, 'custom', 'grok-skill-path')
+    elif h == 'opencode':
+        for base in (Path.home() / '.claude', Path.home() / '.agents', home):
+            add(base / 'skills', 'user', 'skills-directory')
+        for parent in ctx['parents']:
+            for folder in ('.claude', '.agents', '.opencode'):
+                add(parent / folder / 'skills', 'project', 'skills-directory')
+        if os.environ.get('OPENCODE_CONFIG_DIR'):
+            add(Path(os.path.expanduser(os.environ['OPENCODE_CONFIG_DIR'])) / 'skills', 'custom', 'opencode-custom-directory')
+        for path in capabilities._list(capabilities._dict(ctx['settings'].get('skills')).get('paths')):
+            if isinstance(path,str):
+                add(Path(path).expanduser() if os.path.isabs(os.path.expanduser(path)) else cwd / path, 'custom', 'opencode-skill-path')
+    elif h == 'gemini':
+        for base, scope in ((home, 'user'), (Path.home() / '.agents', 'user'), (cwd / '.gemini', 'project'), (cwd / '.agents', 'project')):
+            add(base / 'skills', scope, 'skills-directory')
+    elif h == 'agy':
+        add(home / 'config/skills', 'user', 'agy-skills')
+        add(cwd / '.agent/skills', 'project', 'agy-legacy-skills')
+        add(cwd / '.agents/skills', 'project', 'agy-skills')
+    for plugin in ctx['plugins']:
+        declared = plugin['manifest'].get('skills', './skills')
+        for relative in [declared] if isinstance(declared, str) else capabilities._list(declared):
+            if not isinstance(relative,str):
+                continue
+            path = (plugin['root'] / relative).resolve()
+            if not path.is_relative_to(plugin['root']):
+                ctx['errors'].append({'source': plugin['source'], 'code':'plugin_path_outside_root'})
+                continue
+            add(path, plugin['scope'], plugin['source'], plugin)
+    # Plugin skills have lower priority than standalone skills in these CLIs.
+    return sorted(roots, key=lambda r: r[3] is None) if h in ('claude','grok','gemini') else roots
+
+
+def _skill_files(root, errors, source):
+    # Follow directory aliases once. Bound recursion and total visited directories
+    # so a symlink cycle or a mistaken broad root cannot hang a dashboard request.
+    pending, seen, found = [(root,0)], set(), []
+    while pending and len(seen) < 2000 and len(found) < 500:
+        path, depth = pending.pop(0)
         try:
-            paths = sorted(root.glob('*/SKILL.md'))[:500]
-            if root.name == 'skills':
-                paths += sorted((root / '.system').glob('*/SKILL.md'))[:100]
-        except OSError:
-            continue
-        for path in paths:
-            real = str(path.resolve())
-            if real in seen:
+            real = path.resolve()
+            if real in seen or not path.is_dir():
                 continue
             seen.add(real)
-            try:
-                with path.open() as f:
-                    raw = f.read(12000)
-            except OSError:
+            if (path / 'SKILL.md').is_file():
+                found.append(path / 'SKILL.md')
                 continue
-            match = re.match(r'^---\r?\n(.*?)\r?\n---', raw, re.S)
-            front = match.group(1) if match else ''
-            name_match = re.search(r'^name:\s*(.+)$', front, re.M)
-            name = name_match.group(1).strip().strip('"\'') if name_match else path.parent.name
-            if not _NAME.fullmatch(name):
+            if depth < 5:
+                pending.extend((p,depth+1) for p in sorted(path.iterdir()) if p.is_dir() and (not p.name.startswith('.') or p.name == '.system'))
+        except (OSError, RuntimeError):
+            errors.append({'source':source, 'code':'skill_directory_unreadable'})
+    if pending:
+        errors.append({'source':source, 'code':'skill_scan_truncated'})
+    return found
+
+
+def _frontmatter(path):
+    try:
+        with path.open(encoding='utf-8') as f:
+            raw = f.read(16000)
+    except (OSError, UnicodeError):
+        return None
+    match = re.match(r'^---\r?\n(.*?)\r?\n---', raw, re.S)
+    if not match:
+        return {}
+    try:
+        import yaml
+        value = yaml.safe_load(match[1])
+        return value if isinstance(value,dict) else {}
+    except ImportError:
+        # Plain scalar frontmatter stays readable without an optional YAML lib.
+        return {m[1]: m[2].strip().strip('"\'') for m in re.finditer(r'^([\w-]+):\s*(.+)$',match[1],re.M)}
+    except Exception:
+        return {}
+
+
+def _skills(ctx, caps):
+    overrides = _skill_overrides([layer['data'] for layer in ctx['layers'] if layer['scope']=='user']) if ctx['harness']=='codex' else []
+    output = {}
+    for root,scope,source,plugin in _skill_roots(ctx):
+        for path in _skill_files(root,ctx['errors'],source):
+            real = str(path.resolve())
+            if real in output:
+                output[real]['sources'] = list(dict.fromkeys(output[real]['sources']+[source]))
+                continue
+            front = _frontmatter(path)
+            if front is None:
+                ctx['errors'].append({'source':source,'code':'skill_unreadable'}); continue
+            name = front.get('name') or path.parent.name
+            if not isinstance(name,str) or not _NAME.fullmatch(name):
                 name = path.parent.name
+            if not _NAME.fullmatch(name):
+                continue
             enabled = True
             for entry in overrides:
-                if entry.get('path') == real or entry.get('name') == name:
-                    enabled = entry.get('enabled', True) is not False
-            skills.append({'id': hashlib.sha256(real.encode()).hexdigest()[:24], 'name': name,
-                'path': real, 'scope': scope, 'source': source, 'enabled': enabled,
-                'configuredEnabled': enabled, 'effectiveNow': None, 'status': 'configured',
-                'automaticInvocation': not bool(re.search(r'^disable-model-invocation:\s*true\s*$', front, re.M)),
-                'toggleable': caps['skills']['supported']})
-    mcps = []
-    for item in base.get('mcps', []):
-        row = dict(item)
-        row.update(id=item['name'], configuredEnabled=item['enabled'], effectiveNow=None,
-                   toggleable=caps['mcps']['supported'] and bool(_NAME.fullmatch(item['name'])))
+                # Codex ignores selectors with both path and name, or neither.
+                if ('path' in entry) == ('name' in entry):
+                    continue
+                selector_name=entry.get('name')
+                if isinstance(selector_name,str):
+                    selector_name=selector_name.strip()
+                if _skill_path(entry.get('path'),ctx['home']) == real or selector_name == name:
+                    enabled = entry.get('enabled',True) is not False
+            if ctx['harness'] in ('gemini','grok'):
+                settings = ctx['layers'][0]['data'] if ctx['harness']=='grok' else ctx['settings']
+                cfg = capabilities._dict(settings.get('skills'))
+                if cfg.get('enabled') is False or name in capabilities._list(cfg.get('disabled')):
+                    enabled=False
+                for ignore in capabilities._list(cfg.get('ignore')):
+                    ignored=_skill_path(ignore,ctx['project'])
+                    if ignored and Path(real).is_relative_to(Path(ignored)):
+                        enabled=False
+            if plugin:
+                enabled = False if plugin['enabled'] is False else enabled if plugin['enabled'] is True else None
+                name=plugin['name']+':'+name if ctx['harness']!='gemini' else name
+            if ctx['harness']=='codex' and '.system' in path.parts and capabilities._dict(capabilities._dict(ctx['settings'].get('skills')).get('bundled')).get('enabled') is False:
+                enabled=False
+            automatic = front.get('disable-model-invocation') not in (True,'true')
+            if ctx['harness']=='codex' and capabilities._dict(ctx['settings'].get('skills')).get('include_instructions') is False:
+                automatic=False
+            # Codex invocation policy is stored in agents/openai.yaml, separate
+            # from installation/enablement and from Claude frontmatter.
+            if ctx['harness']=='codex':
+                policy_path=path.parent/'agents/openai.yaml'
+                if policy_path.is_file():
+                    try:
+                        text=policy_path.read_text(encoding='utf-8')[:16000]
+                        if re.search(r'^\s+allow_implicit_invocation:\s*false\s*(?:#.*)?$',text,re.M):automatic=False
+                    except (OSError,UnicodeError):
+                        ctx['errors'].append({'source':source,'code':'skill_policy_unreadable'})
+            row={'id':hashlib.sha256(real.encode()).hexdigest()[:24], 'name':name,
+                 'path':real,'scope':scope,'source':source,'sources':[source],
+                 'enabled':enabled,'configuredEnabled':enabled,'effectiveNow':None,'runtimeEnabled':None,
+                 'status':'disabled' if enabled is False else 'configured' if enabled is True else 'installed',
+                 'automaticInvocation':automatic,'toggleable':caps['skills']['supported'] and not plugin,
+                 **capabilities.description_metadata('',front.get('description'))}
+            if plugin:row['plugin']=plugin['key']
+            output[real]=row
+    rows=list(output.values())
+    # Codex keeps equal names at distinct paths. Other providers choose one;
+    # preserve the shadowed file in inventory without claiming it is selected.
+    if ctx['harness'] in ('claude','grok','opencode','gemini'):
+        winners={}
+        for row in rows:
+            old=winners.get(row['name'])
+            if old:
+                old.update(status='shadowed',enabled=False,configuredEnabled=False,toggleable=False)
+            winners[row['name']]=row
+    return sorted(rows,key=lambda row:(row['name'].casefold(),row['path']))
+
+
+def inventory(registry, harness, alias, cwd):
+    ctx = capabilities.configuration(registry,harness,alias,cwd)
+    caps = launch_capabilities(harness)
+    if ctx['home'] and harness == 'claude':
+        try:
+            _claude_mcp_sources(ctx['home'],cwd,alias)
+        except ValueError as e:
+            caps['mcps'] = {'status':'unsupported','supported':False,'reason':str(e)}
+    base = capabilities.session_capabilities(registry,harness,alias,cwd,_context=ctx)
+    skills = _skills(ctx,caps)
+    if ctx['errors']:
+        for kind in ('skills','mcps'):
+            caps[kind]={'status':'unsupported','supported':False,'reason':'Inventario incompleto: hay configuración o extensiones ilegibles.'}
+        for row in skills:row['toggleable']=False
+    mcps=[]
+    for item in base['mcps']:
+        row=dict(item)
+        row.update(id=item['name'],configuredEnabled=item['enabled'],effectiveNow=None,
+                   toggleable=caps['mcps']['supported'] and not item.get('plugin') and bool(_NAME.fullmatch(item['name'])))
         mcps.append(row)
-    return {'skills': sorted(skills, key=lambda x: x['name'].casefold()), 'mcps': mcps,
-            'capabilities': caps, 'provenance': 'configuration_files', 'effectiveNow': None,
-            'note': 'Inventario de archivos; no confirma las extensiones cargadas por un proceso vivo.'}
+    status='incomplete' if ctx['errors'] else base['status']
+    if skills and status=='empty':status='configured'
+    return {'harness':harness,'account':alias,'skills':skills,'mcps':mcps,'status':status,
+            'confidence':base['confidence'],'limitations':ctx['limitations'],'errors':ctx['errors'],
+            'capabilities':caps,'provenance':'configuration_files','effectiveNow':None,'runtimeEnabled':None,
+            'note':'Inventario de archivos; no confirma las extensiones cargadas por un proceso vivo.'}
 
 
 def launch_draft(profile):
@@ -287,20 +410,24 @@ def launch_args(profile, registry, cwd, runtime_dir, *, dry_run=False):
         raise ValueError('MCP no disponible en el inventario de esta cuenta y carpeta')
     if any(type(x) is not bool for x in list(skills.values()) + list(mcps.values())):
         raise ValueError('estado de extensión inválido')
+    if any(not skill_rows[x].get('toggleable') for x in skills) or any(not mcp_rows[x].get('toggleable') for x in mcps):
+        raise ValueError('selección individual de esta extensión no soportada')
     result = []
     home = accounts.account_home(registry, harness, profile.get('harnessAccount') or 'main')
     if harness == 'codex':
         if skills:
             entries = _skill_overrides(_codex_configs(home, cwd))
             changed = {skill_rows[ident]['path']: enabled for ident, enabled in skills.items()}
-            entries = [x for x in entries if x.get('path') not in changed]
+            if any(set(x) - {'path', 'name', 'enabled'} or type(x.get('enabled')) is not bool for x in entries):
+                raise ValueError('override de skill existente no soportado; no se puede conservar')
+            entries = [x for x in entries if _skill_path(x.get('path'), home) not in changed]
             entries += [{'path': path, 'enabled': enabled} for path, enabled in changed.items()]
             encoded = ['{' + ','.join(f'{key}={_toml_value(e[key])}' for key in ('path', 'name', 'enabled') if key in e) + '}' for e in entries]
             result += ['-c', 'skills.config=[' + ','.join(encoded) + ']']
         for name, enabled in sorted(mcps.items()):
             result += ['-c', 'mcp_servers.' + json.dumps(name) + '.enabled=' + _toml_value(enabled)]
     elif harness == 'claude' and mcps:
-        servers = _claude_mcp_sources(home, cwd)
+        servers = _claude_mcp_sources(home, cwd, profile.get('harnessAccount') or 'main')
         selected = {name: cfg for name, cfg in servers.items()
                     if mcps.get(name, mcp_rows.get(name, {}).get('enabled', True))}
         # Moving a project declaration changes ${...} expansion and relative paths.

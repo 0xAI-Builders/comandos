@@ -112,7 +112,8 @@ env = { TOKEN = "secret-token" }
     assert "private.test" not in encoded
 
 
-def test_grok_inventory_merges_native_and_compatible_mcp_sources(tmp_path):
+def test_grok_inventory_merges_native_and_compatible_mcp_sources(tmp_path, monkeypatch):
+    monkeypatch.setenv('HOME', str(tmp_path))
     reg = registry(tmp_path)
     home = tmp_path / "grok"
     home.mkdir()
@@ -124,7 +125,7 @@ def test_grok_inventory_merges_native_and_compatible_mcp_sources(tmp_path):
     result = capabilities.session_capabilities(reg, "grok", "main", str(project))
     by_name = {m["name"]: m for m in result["mcps"]}
     assert set(by_name) == {"context7", "jira"}
-    assert by_name["context7"]["sources"] == ["grok-user", "mcp-json"]
+    assert set(by_name["context7"]["sources"]) == {"grok-user", "mcp-json"}
     assert "secret" not in json.dumps(result)
 
 

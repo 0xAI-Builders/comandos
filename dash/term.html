@@ -1640,7 +1640,10 @@
     try {
       const result = await paneRequest(action, pane);
       if (revision !== paneRevision) return;
-      if (action === 'select') paneDialog.close();
+      if (action === 'select') {
+        parent.postMessage({source:'comandos-term',type:'pane-selected',pane:pane.id}, location.origin);
+        paneDialog.close();
+      }
       else {
         pendingPaneClose = null; paneConfirm.hidden = true; paneList.hidden = false;
         renderPaneList(result.panes);

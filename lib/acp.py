@@ -185,6 +185,8 @@ class AcpSession:
         self.auth_methods: list[dict[str, Any]] = []
         self.models: list[dict[str, Any]] = []
         self.current_model = ""
+        self.current_effort = ""
+        self.config_options: list[dict[str, Any]] = []
         self.modes: list[dict[str, Any]] = []
         self.current_mode = ""
         self.commands: list[dict[str, Any]] = []
@@ -235,6 +237,8 @@ class AcpSession:
     def _handle_incoming(self, msg: dict[str, Any], on_event):
         method, params, rid = msg.get("method"), msg.get("params") or {}, msg.get("id")
         if method == "session/update":
+            if self.session_id and params.get("sessionId") and params["sessionId"] != self.session_id:
+                return
             self._session_update(params.get("update") or {}, on_event)
         elif method == "session/request_permission":
             self._permission(params, rid, on_event)
@@ -286,6 +290,12 @@ class AcpSession:
 
     def _session_update(self, update: dict[str, Any], on_event):
         kind = update.get("sessionUpdate")
+        if kind == "config_option_update":
+            self._absorb_config_options(update.get("configOptions") or [])
+        elif kind == "current_mode_update":
+            self.current_mode = update.get("currentModeId") or self.current_mode
+        elif kind == "available_commands_update":
+            self.commands = update.get("availableCommands") or []
         if not on_event:
             return
         if kind in ("agent_message_chunk", "agent_thought_chunk"):
@@ -320,6 +330,55 @@ class AcpSession:
         modes = result.get("modes") or {}
         self.modes = modes.get("availableModes") or []
         self.current_mode = modes.get("currentModeId") or self.current_mode
+        if "configOptions" in result:
+            self._absorb_config_options(result["configOptions"])
+
+    @staticmethod
+    def option_values(option):
+        values = []
+        for item in option.get("options") or []:
+            if "options" in item:
+                values.extend(item["options"])
+            else:
+                values.append(item)
+        return values
+
+    def config_option(self, category):
+        return next((option for option in self.config_options if option.get("category") == category
+                     and option.get("type") == "select"), None)
+
+    def _absorb_config_options(self, options):
+        self.config_options = [dict(option) for option in options if isinstance(option, dict)]
+        self.current_effort = ""
+        for category, attribute in (("model", "current_model"), ("mode", "current_mode"),
+                                    ("thought_level", "current_effort")):
+            option = self.config_option(category)
+            if option:
+                setattr(self, attribute, str(option.get("currentValue") or ""))
+                values = self.option_values(option)
+                if category == "model":
+                    self.models = [{"modelId": item.get("value"), "name": item.get("name", "")} for item in values]
+                elif category == "mode":
+                    self.modes = [{"id": item.get("value"), "name": item.get("name", "")} for item in values]
+
+    def set_config_option(self, config_id, value, timeout=30.0):
+        option = next((o for o in self.config_options if o.get("id") == config_id), None)
+        if not option or option.get("type") != "select" or value not in [o.get("value") for o in self.option_values(option)]:
+            raise AcpError("valor de configuración no ofrecido por el agente")
+        result = self._pump_until(self._request("session/set_config_option", {
+            "sessionId": self.session_id, "configId": config_id, "value": value}), None, timeout)
+        if not isinstance(result.get("configOptions"), list):
+            raise AcpError("el agente no confirmó las opciones de configuración")
+        self._absorb_config_options(result["configOptions"])
+        actual = next((o for o in self.config_options if o.get("id") == config_id), {})
+        if actual.get("currentValue") != value:
+            raise AcpError("el agente confirmó un valor distinto del solicitado")
+
+    def set_effort(self, effort, timeout=30.0):
+        option = self.config_option("thought_level")
+        if not option:
+            raise AcpError("el agente no publica una opción de esfuerzo")
+        self.set_config_option(option["id"], effort, timeout)
 
     def new_session(self, timeout: float = 90.0) -> str:
         result = self._pump_until(self._request("session/new", {"cwd": self.cwd, "mcpServers": []}), None, timeout)
@@ -354,10 +413,16 @@ class AcpSession:
             pass
 
     def set_model(self, model_id: str, timeout: float = 30.0):
+        option = self.config_option("model")
+        if option:
+            return self.set_config_option(option["id"], model_id, timeout)
         self._pump_until(self._request("session/set_model", {"sessionId": self.session_id, "modelId": model_id}), None, timeout)
         self.current_model = model_id
 
     def set_mode(self, mode_id: str, timeout: float = 30.0):
+        option = self.config_option("mode")
+        if option:
+            return self.set_config_option(option["id"], mode_id, timeout)
         self._pump_until(self._request("session/set_mode", {"sessionId": self.session_id, "modeId": mode_id}), None, timeout)
         self.current_mode = mode_id
 
