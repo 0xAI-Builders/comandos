@@ -1,8 +1,12 @@
 #!/usr/bin/env python3
-"""Explicit legacy trust helper and safe automated launch boundaries.
+"""Explicit legacy trust helper, trust inheritance, and safe automated launch boundaries.
 
-Configuration operations must leave provider trust acceptance to the user.
-The helper tests cover explicit calls only; launch tests never invoke it.
+Configuration operations must never invent provider trust acceptance for a cwd.
+Trust may be INHERITED — copied via inherit_cwd_trust() from an account whose
+~/.claude.json or CLAUDE_CONFIG_DIR/.claude.json already has
+hasTrustDialogAccepted for that cwd, to a destination account's config — but
+never granted where no account had already accepted it. The helper tests
+cover explicit calls only; launch tests never invoke it.
 """
 import json
 import sys
@@ -100,6 +104,54 @@ def test_ensure_cwd_trusted_does_not_wipe_corrupt_claude_json(tmp_path):
     (home / ".claude.json").write_text(raw)
     assert claude_trust.ensure_cwd_trusted(str(cwd), home=str(home)) is False
     assert (home / ".claude.json").read_text() == raw
+
+
+def _write_trust(path, cwd):
+    path.parent.mkdir(parents=True, exist_ok=True)
+    data = json.loads(path.read_text()) if path.exists() else {}
+    data.setdefault("projects", {})[cwd] = {"hasTrustDialogAccepted": True}
+    path.write_text(json.dumps(data))
+
+
+def test_inherit_copies_trust_only_when_source_had_it(tmp_path):
+    home = tmp_path / "home"
+    src = tmp_path / "home/.claude-accounts/main"
+    dst = tmp_path / "home/.claude-accounts/relotto"
+    cwd = str(tmp_path / "repo")
+    (tmp_path / "repo").mkdir()
+    for d in (home, src, dst):
+        d.mkdir(parents=True, exist_ok=True)
+    assert claude_trust.inherit_cwd_trust(
+        cwd, source_config_dir=str(src), dest_config_dir=str(dst), home=str(home)
+    ) is False
+    assert not (dst / ".claude.json").exists()
+    _write_trust(src / ".claude.json", cwd)
+    assert claude_trust.inherit_cwd_trust(
+        cwd, source_config_dir=str(src), dest_config_dir=str(dst), home=str(home)
+    ) is True
+    assert json.loads((dst / ".claude.json").read_text())["projects"][cwd]["hasTrustDialogAccepted"] is True
+    assert json.loads((home / ".claude.json").read_text())["projects"][cwd]["hasTrustDialogAccepted"] is True
+
+
+def test_inherit_accepts_home_trust_as_source(tmp_path):
+    home = tmp_path / "home"
+    dst = tmp_path / "home/.claude-accounts/relotto"
+    cwd = str(tmp_path / "repo")
+    (tmp_path / "repo").mkdir()
+    dst.mkdir(parents=True)
+    _write_trust(home / ".claude.json", cwd)
+    assert claude_trust.inherit_cwd_trust(
+        cwd, source_config_dir=None, dest_config_dir=str(dst), home=str(home)
+    ) is True
+
+
+def test_inherit_never_for_home_itself(tmp_path):
+    home = tmp_path / "home"
+    home.mkdir()
+    _write_trust(home / ".claude.json", str(home))
+    assert claude_trust.inherit_cwd_trust(
+        str(home), source_config_dir=None, dest_config_dir=str(home / "x"), home=str(home)
+    ) is False
 
 
 def test_launch_commands_do_not_persist_workspace_trust(tmp_path, monkeypatch):
