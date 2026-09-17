@@ -122,13 +122,19 @@ def test_motor_switch_auto_picks_a_logged_in_account():
     assert callable(mod._pick_motor_account)
 
 
-def test_global_optimization_profiles_apply_through_real_switch_endpoint():
+def test_reparto_applies_through_the_real_allocation_endpoints():
+    """Reparto sustituye a Optimizar: en vez de perfiles de modelos congelados,
+    un plan calculado contra la cuota y aplicado como lote con estado por sesión."""
     html = Path("dash/index.html").read_text()
-    assert 'data-mtab="optimizar"' in html
-    assert 'api("/optimization/default"' in html
-    assert 'api("/model/switch"' in html
-    assert "Confirmar ${keys.length} cambios" in html
-    assert '"/optimization/plans"' in SRC
+    js = Path("dash/reparto.js").read_text()
+    assert 'data-mtab="reparto"' in html and 'data-mtab="optimizar"' not in html
+    for endpoint in ("/allocation/propose", "/allocation/preview", "/allocation/apply",
+                     "/allocation/status", "/allocation/retry", "/allocation/revert"):
+        assert endpoint in js, endpoint
+        assert endpoint in SRC, endpoint
+    # aplicar exige confirmar contra un plan congelado, no un contador de clics
+    assert "plan_stale" in SRC and "plan_stale" in js
+    assert "def allocation_propose" in SRC and "def allocation_apply" in SRC
 
 
 def test_external_motor_switch_locks_all_subagent_slots_and_is_recoverable():
@@ -320,7 +326,10 @@ def test_change_ledger_records_switches_and_offers_undo():
     html = Path("dash/index.html").read_text()
     assert 'id="guard-ledger"' in html
     assert "data-undo=" in html
-    assert '${target&&target.selectable?"":"disabled"}' in html  # Optimizar: nada preseleccionado
+    # Reparto no preselecciona nada destructivo: el botón de aplicar nace inhabilitado
+    # y solo se enciende cuando el plan trae cambios de verdad.
+    js = Path("dash/reparto.js").read_text()
+    assert 'data-apply ' in js and '(n && !S.busy ? "" : "disabled")' in js
 
 
 def test_pane_border_shows_deterministic_switching_and_detecting_states():

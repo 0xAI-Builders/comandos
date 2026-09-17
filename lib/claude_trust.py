@@ -91,3 +91,53 @@ def _stamp_locked(path: str, cwd: str) -> bool:
         handle.write("\n")
     os.replace(tmp, path)
     return True
+
+
+def _ancestors_until_git(cwd: str, home: str) -> list[str]:
+    """Return cwd and its ancestors up to and including the git toplevel.
+
+    Stops at the first ancestor with a `.git` entry — a directory in a normal
+    clone, but a plain FILE in a linked worktree, so this checks existence
+    rather than isdir — or at `home`/filesystem root, whichever comes first.
+    """
+    out, cur = [], os.path.abspath(cwd)
+    home = os.path.abspath(home)
+    while True:
+        out.append(cur)
+        if os.path.exists(os.path.join(cur, ".git")) or cur in (home, os.path.dirname(cur)):
+            return out
+        cur = os.path.dirname(cur)
+
+
+def _trusted_in_file(path: str, cwd: str, home: str) -> bool:
+    try:
+        with open(path) as f:
+            projects = (json.load(f) or {}).get("projects") or {}
+    except Exception:
+        return False
+    return any(
+        bool((projects.get(p) or {}).get("hasTrustDialogAccepted"))
+        for p in _ancestors_until_git(cwd, home)
+    )
+
+
+def cwd_trusted_in(cwd: str, *, config_dir: str | None, home: str) -> bool:
+    """True if hasTrustDialogAccepted is set for cwd (or a git ancestor) in HOME or config_dir."""
+    files = [os.path.join(home, ".claude.json")]
+    if config_dir:
+        files.append(os.path.join(config_dir, ".claude.json"))
+    return any(_trusted_in_file(p, cwd, home) for p in files)
+
+
+def inherit_cwd_trust(cwd: str, *, source_config_dir: str | None, dest_config_dir: str, home: str) -> bool:
+    """Copy cwd's trust acceptance from a source account's config to a destination account's.
+
+    Never invents trust: only stamps dest when the source (HOME or
+    source_config_dir) already accepted it. Never persists trust for HOME.
+    """
+    if os.path.abspath(cwd) == os.path.abspath(home):
+        return False
+    if not cwd_trusted_in(cwd, config_dir=source_config_dir, home=home):
+        return False
+    ensure_cwd_trusted(cwd, config_dir=dest_config_dir, home=home)
+    return True

@@ -10,5 +10,32 @@
   "contextWindows": [
     200000,
     1000000
-  ]
+  ],
+  "dialogPatterns": {
+    "trust": [
+      "trust this folder",
+      "Do you trust",
+      "Accessing workspace",
+      "Conf[ií]as en los archivos",
+      "carpeta de confianza"
+    ],
+    "login": [
+      "(^|\\n)[\\s│┃>]*(please\\s+)?(sign in|log in)\\s+to\\s+(continue|use|proceed)",
+      "(^|\\n)[\\s│┃>]*(sign in|log in|login|authentication)\\s+required",
+      "(^|\\n)[\\s│┃>]*(por favor,?\\s+)?inicia(?:r)? sesi[oó]n para (continuar|usar)",
+      "(^|\\n)[\\s│┃>]*se requiere inicia(?:r)? sesi[oó]n",
+      "(^|\\n)\\s*/login\\b"
+    ],
+    "onboarding": [
+      "Choose the text style",
+      "Elige el estilo de texto",
+      "Choose your theme",
+      "Elige tu tema"
+    ],
+    "error": [
+      "(^|\\n)\\s*error:",
+      "(^|\\n)\\s*fatal:"
+    ]
+  },
+  "verifyAttemptsWithMcp": 180
 }

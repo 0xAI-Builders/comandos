@@ -243,7 +243,7 @@ CATALOG: list[ToolSpec] = [
     T("news_refresh", "news", "Fuerza un ciclo del vigilante de noticias.", target=api("POST", "/news/refresh")),
     T("models_refresh", "news", "Fuerza un ciclo del vigilante de modelos.", target=api("POST", "/models/refresh")),
     # ───────────── nav (tablero) ─────────────
-    T("open_panel", "nav", "Abre un panel del tablero: analytics (con tab), sov, switcher, timeline, wizard, centro.", P(panel=("string", "Panel", ("analytics", "sov", "switcher", "timeline", "wizard", "centro")), tab=("string", "Tab de analytics", ("resumen", "comparar", "optimizar"))), ("panel",), local("ui_panel")),
+    T("open_panel", "nav", "Abre un panel del tablero: analytics (con tab), sov, switcher, timeline, wizard, centro.", P(panel=("string", "Panel", ("analytics", "sov", "switcher", "timeline", "wizard", "centro")), tab=("string", "Tab de analytics", ("resumen", "comparar", "reparto"))), ("panel",), local("ui_panel")),
     T("close_panels", "nav", "Cierra todos los paneles/modales abiertos.", target=ui_call("closeAllPanels")),
     T("show_view", "nav", "Muestra el panel o una terminal: 'panel' o 'term:<sesión>'.", P(view="panel | term:<sesión>"), ("view",), ui_call("showView", "$view")),
     T("switcher_search", "nav", "Abre el conmutador con un texto de búsqueda.", P(query="Texto"), (), ui_call("swOpenWith", "$query")),
@@ -251,7 +251,7 @@ CATALOG: list[ToolSpec] = [
     T("select_session_card", "nav", "Selecciona la fila de una sesión en el panel (centro de control).", P(session="Sesión"), ("session",), ui_call("selectSessionCard", "$session")),
     T("expand_reply", "nav", "Expande/colapsa la respuesta de una sesión en el panel.", P(session="Sesión", on=("boolean", "true=expandir")), ("session",), ui_call("expandReply", "$session", "$on")),
     T("toggle_ssh_chips", "nav", "Expande/colapsa la fila de servidores.", target=ui_click("#ssh-toggle")),
-    T("open_analytics_tab", "nav", "Abre Analytics en una tab concreta.", P(tab=("string", "Tab", ("resumen", "comparar", "optimizar", "proveedores", "alertas", "guardia"))), ("tab",), ui_call("openAnalyticsTab", "$tab")),
+    T("open_analytics_tab", "nav", "Abre Analytics en una tab concreta.", P(tab=("string", "Tab", ("resumen", "comparar", "reparto", "proveedores", "alertas", "guardia"))), ("tab",), ui_call("openAnalyticsTab", "$tab")),
     T("compare_set_window", "nav", "Ventana de días del comparador.", P(days=("integer", "Días")), ("days",), ui_call("compareSetDays", "$days")),
     T("set_split_left", "nav", "Ancho del panel izquierdo en layout ancho (px).", P(px=("integer", "Píxeles")), ("px",), ui_call("setSplitLeft", "$px")),
     T("set_chat_height", "nav", "Alto del chat del operador (px).", P(px=("integer", "Píxeles")), ("px",), ui_call("setOpChatHeight", "$px")),

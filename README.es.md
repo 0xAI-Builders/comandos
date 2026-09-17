@@ -70,6 +70,13 @@ Algunas funciones usan la red solo cuando las utilizas o configuras:
   sobreviven reinicios sin un servicio alojado de ComandOS.
 - UI en **inglés y español** (auto-detectado por `$LANG`, cambiable en Ajustes).
 
+- **Reparto de cuota** (Analytics → Reparto): cada plan es un tanque que muestra lo
+  gastado y lo que tus sesiones vivas añadirán antes de que se renueve, diciendo
+  "llega al reset" o "se acaba en 1d 22h" en vez de un porcentaje a secas. Un clic
+  propone cómo repartirlas entre cuentas, motores, modelos y esfuerzos; arrastra una
+  sesión a otro tanque para corregirlo; al aplicar se reinician conservando la
+  conversación, con progreso por sesión y opción de revertir.
+
 ### Chat del operador
 
 El chat del operador responde en **streaming** (el texto llega por partes) y puede

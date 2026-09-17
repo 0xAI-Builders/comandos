@@ -1905,6 +1905,7 @@
 	  }
 	</style>
 <link rel="stylesheet" href="/workspace.css?v=0774279ce4ae">
+<link rel="stylesheet" href="/reparto.css">
 <script src="/session-config.js"></script>
 
 <div id="panes">
@@ -2247,7 +2248,7 @@
   <nav class="mtabs" role="tablist" aria-label="Secciones de analytics">
     <button class="mtab active" data-mtab="resumen" role="tab" title="Cuota, riesgo de desborde y alertas en una sola vista"><span data-icon="lock" data-size="13"></span> Resumen</button>
     <button class="mtab" data-mtab="comparar" role="tab" title="Qué configuración funciona mejor, por proyecto y proveedor"><span data-icon="database" data-size="13"></span> Comparar</button>
-    <button class="mtab" data-mtab="optimizar" role="tab" title="Aplicar un perfil de ahorro/calidad a sesiones reales"><span data-icon="sprout" data-size="13"></span> Optimizar</button>
+    <button class="mtab" data-mtab="reparto" role="tab" title="Reparte tus sesiones entre cuentas y modelos según la cuota que te queda"><span data-icon="sprout" data-size="13"></span> Reparto</button>
   </nav>
 
   <div class="mtab-pane active" data-mpane="resumen">
@@ -2308,12 +2309,8 @@
     <div id="compare-recent"></div>
   </div>
 
-  <div class="mtab-pane" data-mpane="optimizar">
-    <div class="compare-note">Los perfiles cambian modelos y esfuerzo de verdad. Primero elige sesiones; después confirma la aplicación global.</div>
-    <div id="opt-plans" class="opt-plans"></div>
-    <h3 class="compare-rating-title">Sesiones activas</h3>
-    <div id="opt-sessions"></div>
-    <div class="opt-actions"><button type="button" class="test" id="opt-all" title="Marca todas las sesiones compatibles con el perfil (ninguna viene marcada por defecto)">Seleccionar todas</button><button type="button" class="test" id="opt-default" title="Las sesiones NUEVAS nacerán con este perfil; las existentes no cambian">Usar como default</button><button type="button" class="test" id="opt-apply" title="Encola el cambio en las sesiones marcadas; se aplica al terminar su turno, con confirmación">Aplicar a seleccionadas</button></div>
+  <div class="mtab-pane" data-mpane="reparto">
+    <div id="reparto"></div>
   </div>
 
   <div class="mtab-pane" data-mpane="alertas">
@@ -3814,42 +3811,6 @@ function mdStrip(s){ return (s||"").replace(/\*\*|`|^#{1,6} /g, ""); }
 	    parts.push(`grok: ${fmtTokens(gk.tokens_today || gk.tokens_7d)} ${gk.tokens_today ? tf("hoy", "today") : "7d"} (${tf("medido", "measured")})`);
 	  return parts.join("  —  ");
 	}
-	let OPTIMIZE={plans:[],active:"",selected:"",confirmUntil:0};
-	async function loadOptimize(){
-	  try{const data=await api("/optimization/plans");OPTIMIZE.plans=data.plans||[];OPTIMIZE.active=data.active||"";if(!OPTIMIZE.selected)OPTIMIZE.selected=OPTIMIZE.active||(OPTIMIZE.plans[1]||OPTIMIZE.plans[0]||{}).id||"";renderOptimize();}
-	  catch(e){$("#opt-plans").innerHTML=`<div class="desc">${mdEsc(e.message)}</div>`;}
-	}
-	function optimizeSessions(){const seen=new Set();return (S.list||[]).filter(it=>["claude","codex","grok"].includes(it.agent)&&!seen.has(rowKey(it))&&seen.add(rowKey(it)));}
-	function renderOptimize(){
-	  const plan=OPTIMIZE.plans.find(x=>x.id===OPTIMIZE.selected);
-	  $("#opt-plans").innerHTML=OPTIMIZE.plans.map(p=>`<button type="button" class="opt-plan ${p.id===OPTIMIZE.selected?"on":""}" data-plan="${p.id}"><b>${svg(p.icon||"layers",14)} ${mdEsc(p.label)} ${p.id===OPTIMIZE.active?`· ${tf("DEFAULT","DEFAULT")}`:""}</b><small>${mdEsc(p.intent||"")}</small></button>`).join("");
-	  $("#opt-sessions").innerHTML=optimizeSessions().map(it=>{const target=plan&&plan.variants&&plan.variants[it.agent];const ok=!!(target&&target.selectable);
-	    const shortModel=m=>String(m||"?").replace("claude-","").replace(/\[.*$/,"");
-	    return `<label class="opt-session ${ok?"":"disabled"}" title="${ok?tf("Click para incluir esta sesión en el cambio","Click to include this session in the change"):tf("El perfil no tiene una configuración válida para este harness","Profile has no valid configuration for this harness")}">
-	      <input type="checkbox" data-key="${attrEsc(rowKey(it))}" ${target&&target.selectable?"":"disabled"}>
-	      <span class="opt-check">${svg("check",11)}</span>
-	      ${providerMark(it.agent,it.model||"",16)}
-	      <span class="opt-main"><b>${mdEsc(it.project||it.session)}</b><span>${mdEsc(it.agent)} · ${mdEsc(it.model||tf("detectando…","detecting…"))}${it.effort?` · ${mdEsc(it.effort)}`:""}</span></span>
-	      ${ok?`<span class="opt-diff"><span class="from">${mdEsc(shortModel(it.model))}</span><span class="arrow">${svg("chevron",10)}</span><span class="to">${mdEsc(shortModel(target.model))} · ${mdEsc(target.effort)}</span></span>`:`<span class="opt-diff"><span class="from">${tf("no aplica","n/a")}</span></span>`}
-	    </label>`;}).join("")||`<div class="desc">${tf("No hay sesiones compatibles","No compatible sessions")}</div>`;
-	  const syncApply=()=>{const n=document.querySelectorAll("#opt-sessions input:checked").length;const b=$("#opt-apply");if(!b)return;b.disabled=!n;b.textContent=n?tf(`Aplicar a ${n} ${n===1?"sesión":"sesiones"}`,`Apply to ${n} session${n===1?"":"s"}`):tf("Aplicar a seleccionadas","Apply to selected");OPTIMIZE.confirmUntil=0;b.classList.remove("warn");};
-	  $("#opt-sessions").querySelectorAll("input").forEach(cb=>cb.addEventListener("change",()=>{cb.closest(".opt-session").classList.toggle("on",cb.checked);syncApply();}));
-	  syncApply();
-	  document.querySelectorAll("#opt-plans [data-plan]").forEach(b=>b.addEventListener("click",()=>{OPTIMIZE.selected=b.dataset.plan;OPTIMIZE.confirmUntil=0;renderOptimize();}));
-	}
-	async function applyOptimization(){
-	  const plan=OPTIMIZE.plans.find(x=>x.id===OPTIMIZE.selected);if(!plan)return;
-	  const keys=[...document.querySelectorAll("#opt-sessions input:checked")].map(x=>x.dataset.key);
-	  if(!keys.length)return toast(tf("Selecciona al menos una sesión","Select at least one session"),true);
-	  const button=$("#opt-apply"),now=Date.now();
-	  if(OPTIMIZE.confirmUntil<now){OPTIMIZE.confirmUntil=now+8000;button.textContent=tf(`Confirmar ${keys.length} cambios`,`Confirm ${keys.length} changes`);button.classList.add("warn");return;}
-	  OPTIMIZE.confirmUntil=0;button.disabled=true;let applied=0,failed=0;
-	  for(const key of keys){const it=optimizeSessions().find(x=>rowKey(x)===key),target=it&&plan.variants[it.agent];if(!target)continue;try{const r=await api("/model/switch",{session:it.session,pane:it.pane||"",routeId:target.routeId,model:target.model,effort:target.effort});MOTOR_PENDING.set((r&&r.operationKey)||key,{motor:motorOf(target.model),model:target.model,stageTxt:r.queued?tf("esperando turno","waiting for turn"):tf("aplicando","applying")});applied++;}catch(e){failed++;}}
-	  button.disabled=false;button.textContent=tf("Aplicar a seleccionadas","Apply to selected");button.classList.remove("warn");renderCentro(S.list||[]);toast(tf(`${applied} cambios iniciados${failed?` · ${failed} fallaron`:""}`,`${applied} changes started${failed?` · ${failed} failed`:""}`),!!failed);
-	}
-	$("#opt-apply")?.addEventListener("click",applyOptimization);
-	$("#opt-all")?.addEventListener("click",()=>{const boxes=[...document.querySelectorAll("#opt-sessions input:not(:disabled)")];const all=boxes.length&&boxes.every(b=>b.checked);boxes.forEach(b=>{b.checked=!all;b.dispatchEvent(new Event("change"));});});
-	$("#opt-default")?.addEventListener("click",async()=>{try{const d=await api("/optimization/default",{profile:OPTIMIZE.selected});OPTIMIZE.active=d.active||OPTIMIZE.selected;renderOptimize();toast(tf("Default global guardado para sesiones nuevas","Global default saved for new sessions"));}catch(e){toast(e.message,true);}});
 
 	let GUARD_CACHE=null;
 	async function guardPoll(){
@@ -3939,7 +3900,7 @@ function mdStrip(s){ return (s||"").replace(/\*\*|`|^#{1,6} /g, ""); }
 	        <span class="guard-bar"><i style="width:${Math.max(2,Math.round(Number(r.tokensHour||0)/maxTok*100))}%"></i></span>
 	        <span class="guard-detail">${r.calls10m} ${tf("llamadas/10 min","calls/10 min")} · ${r.subagentFiles} ${tf("subagentes","subagents")} · ${mdEsc(shortModel(r.topModel||""))}${r.action?` — ${mdEsc(r.action)}`:""}</span>
 	      </div></div>`).join(""):`<div class="nf-empty">${tf("Sin actividad Claude en la última hora.","No Claude activity in the last hour.")}</div>`);
-	  $("#guard-projects").querySelectorAll("[data-guard-opt]").forEach(button=>button.addEventListener("click",()=>{OPTIMIZE.selected="ahorro";activateMtab($("#usage .modal-panel"),"optimizar");loadOptimize();}));
+	  $("#guard-projects").querySelectorAll("[data-guard-opt]").forEach(button=>button.addEventListener("click",()=>{activateMtab($("#usage .modal-panel"),"reparto");window.Reparto?.load();}));
 	}
 	guardPoll();setInterval(guardPoll,60000);
 	// el hero del Resumen depende del forecast: repintarlo cuando llegue
@@ -5559,7 +5520,7 @@ ulog("click", `harness-switch:${to}`, "centro");
 	    if(act === "pin"){ const it = nfPriorityItems().find(x => x.key === key); if(it){ const ps = nfPins(); ps.unshift({...it, actions: it.actions, savedAt: Date.now()/1000, reminded: false}); nfSave("cc-nf-pins", ps.slice(0, 20)); toast(tf("Guardada — te recuerdo en unas horas si no la ves","Saved — I'll remind you in a few hours")); } notifPaint(); notifBadge(); return; }
 	    if(act === "unpin"){ nfSave("cc-nf-pins", nfPins().filter(p => p.key !== key)); notifPaint(); notifBadge(); return; }
 	    if(act === "guardia"){ m.classList.add("hidden"); $("#btn-usage").click(); setTimeout(()=>$("#guard-projects")?.scrollIntoView({behavior:"smooth"}), 400); return; }
-	    if(act === "ahorro"){ m.classList.add("hidden"); OPTIMIZE.selected = "ahorro"; $("#btn-usage").click(); setTimeout(()=>{ activateMtab($("#usage .modal-panel"), "optimizar"); loadOptimize(); }, 400); return; }
+	    if(act === "ahorro"){ m.classList.add("hidden"); $("#btn-usage").click(); setTimeout(()=>{ activateMtab($("#usage .modal-panel"), "reparto"); window.Reparto?.load(); }, 400); return; }
 	    if(act === "copiar"){
 	      const it = nfPriorityItems().find(x => x.key === key) || nfPins().find(x => x.key === key);
 	      const u = it && it.url; if(!u) return;
@@ -7806,14 +7767,14 @@ async function setPref(patch, ok){
 // ---------- tabs internos de modales ----------
 // Analytics: 3 tabs visibles, cada uno agrupa varios panes (minimalismo sin
 // perder contenido). Otros modales (Ajustes) siguen 1 tab = 1 pane.
-const MTAB_GROUPS = {resumen:["resumen","guardia","alertas"], comparar:["comparar","proyectos","proveedores"], optimizar:["optimizar"]};
+const MTAB_GROUPS = {resumen:["resumen","guardia","alertas"], comparar:["comparar","proyectos","proveedores"], reparto:["reparto"]};
 function activateMtab(scope, name){
   const group = MTAB_GROUPS[name] || [name];
   scope.querySelectorAll(".mtab").forEach(b=>b.classList.toggle("active", b.dataset.mtab === name));
   scope.querySelectorAll(".mtab-pane").forEach(p=>p.classList.toggle("active", group.includes(p.dataset.mpane)));
   if(name === "resumen") loadGuard();
   if(name === "comparar"){ loadCompare(); loadProvCompare(); }
-  if(name === "optimizar") loadOptimize();
+  if(name === "reparto") window.Reparto?.load();
 }
 function wireMtabs(root=document){
   root.querySelectorAll(".mtab").forEach(b=>{
@@ -9016,4 +8977,5 @@ if("serviceWorker" in navigator)
   navigator.serviceWorker.register("/sw.js").catch(()=>{});
 </script>
 
+<script src="/reparto.js"></script>
 <script src="/workspace.js?v=58ed56822729"></script>

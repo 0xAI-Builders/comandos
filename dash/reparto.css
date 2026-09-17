@@ -1,0 +1,142 @@
+/* Reparto de cuota — tanques, fichas y progreso.
+   Container queries sobre el panel del modal: lo que manda es el ancho del panel,
+   no el de la ventana, porque esta pestaña vive embebida en la app de escritorio. */
+#reparto { container-type: inline-size; container-name: reparto; }
+
+.rp-hint { font-size: 11px; color: var(--faint); margin-bottom: 8px; line-height: 1.45; }
+.rp-note { font-size: 11px; color: var(--dim); line-height: 1.45; }
+.rp-num { font-variant-numeric: tabular-nums; }
+
+/* --- tanques: capa sólida = gastado, capa clara = lo que añaden las sesiones --- */
+.rp-tanks { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-bottom: 10px; }
+.rp-tank { position: relative; height: 140px; border: 1px solid var(--line2);
+  border-radius: 10px 10px 12px 12px; background: var(--panel2); overflow: hidden;
+  transition: box-shadow .12s, background .12s; }
+.rp-tank .rp-base { position: absolute; left: 0; right: 0; bottom: 0; height: var(--n, 0%);
+  background: var(--brand); opacity: .75; z-index: 1; }
+.rp-tank .rp-liq { position: absolute; left: 0; right: 0; bottom: 0; height: var(--h, 0%);
+  background: var(--brand); opacity: .3; z-index: 1;
+  transition: height .35s cubic-bezier(.2,.8,.2,1), background .25s; }
+.rp-tank .rp-liq.warn { background: var(--warn); } .rp-tank .rp-liq.err { background: var(--err); }
+.rp-tank .rp-pre { position: absolute; left: 0; right: 0; bottom: 0; height: var(--h, 0%);
+  border-top: 2px dashed var(--text); opacity: .45; z-index: 2; transition: height .15s ease; }
+.rp-tank .rp-foam { position: absolute; left: -4px; right: -4px; top: -6px; height: 14px;
+  border-radius: 0 0 8px 8px; background: var(--err); opacity: 0; transition: opacity .25s; z-index: 3; }
+.rp-tank.rp-full .rp-foam { opacity: .8; }
+.rp-tank.rp-full { box-shadow: 0 0 0 2px var(--err); }
+.rp-tank .rp-cap { position: absolute; left: 0; right: 0; top: 0; padding: 6px 8px;
+  font-size: 11px; z-index: 4; line-height: 1.3; }
+.rp-tank .rp-cap small { display: block; color: var(--faint); font-size: 10px; }
+.rp-tank .rp-lvl { position: absolute; right: 8px; bottom: 6px; font-size: 15px; font-weight: 600; z-index: 4; }
+.rp-tank .rp-reset { position: absolute; left: 8px; bottom: 7px; font-size: 9.5px; color: var(--faint); z-index: 4; }
+.rp-tank.rp-over { box-shadow: inset 0 0 0 2px var(--brand); background: var(--glow); }
+.rp-tank.rp-unknown { opacity: .75; border-style: dashed; }
+
+/* --- contenedores de fichas, uno por tanque --- */
+.rp-bins { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; }
+.rp-bin { display: flex; flex-direction: column; gap: 4px; min-height: 56px; padding: 6px;
+  border-radius: 8px; border: 1px solid transparent; }
+.rp-bin.rp-over { border-color: var(--brand); background: var(--glow); }
+.rp-bin[data-label]::before { content: attr(data-label); display: none; font-size: 10px;
+  letter-spacing: .12em; text-transform: uppercase; color: var(--dim); padding: 2px 0 4px; }
+
+/* --- ficha: antes tachado → después con selectores --- */
+.rp-tk { display: flex; align-items: flex-start; gap: 6px; padding: 5px 7px; border-radius: 8px;
+  border: 1px solid var(--line2); background: var(--panel); font-size: 11.5px;
+  cursor: grab; user-select: none; touch-action: none;
+  transition: transform .12s, box-shadow .12s, opacity .12s; }
+.rp-tk:hover { transform: translateY(-1px); box-shadow: 0 4px 10px -4px var(--shadow); }
+.rp-tk:active { cursor: grabbing; }
+.rp-tk.rp-lift { opacity: .35; transform: scale(.97); }
+.rp-tk.rp-moved { border-color: var(--brand); border-style: dashed; }
+.rp-tk.rp-armed { outline: 2px solid var(--brand); outline-offset: 1px; }
+.rp-tk.rp-locked { opacity: .65; border-style: solid; border-color: var(--line); cursor: default; }
+.rp-tk .rp-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--faint); flex: none; margin-top: 4px; }
+.rp-tk .rp-dot.working { background: var(--working); }
+.rp-tk .rp-dot.waiting { background: var(--warn); }
+.rp-tk .rp-dot.done { background: var(--done, var(--ok)); }
+.rp-tk .rp-body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; line-height: 1.3; }
+.rp-tk .rp-name { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rp-tk .rp-name .rp-pane { color: var(--faint); font-weight: 400; font-size: 10px; }
+.rp-tk .rp-diff { display: flex; align-items: center; gap: 5px; flex-wrap: wrap; font-size: 10.5px; }
+.rp-tk .rp-old { color: var(--faint); text-decoration: line-through; white-space: nowrap; }
+.rp-tk .rp-arrow { color: var(--faint); }
+.rp-tk .rp-lk { width: 20px; height: 20px; border-radius: 5px; display: grid; place-items: center;
+  color: var(--faint); flex: none; background: none; border: 0; cursor: pointer; }
+.rp-tk .rp-lk.on { color: var(--warn); background: var(--panel2); }
+
+.rp-seg { display: inline-grid; grid-auto-flow: column; border: 1px solid var(--line2);
+  border-radius: 5px; overflow: hidden; background: var(--panel); }
+.rp-seg.rp-chg { border-color: var(--brand); }
+.rp-seg button { padding: 1px 5px; font-size: 9.5px; color: var(--faint); background: none;
+  border: 0; cursor: pointer; font-family: inherit; }
+.rp-seg button.on { background: var(--dim); color: var(--panel); font-weight: 600; }
+.rp-seg.rp-chg button.on { background: var(--brand); color: var(--on-brand); }
+.rp-seg button:active { transform: scale(.93); }
+
+/* --- pie, progreso, barra de destinos --- */
+.rp-foot { display: flex; gap: 8px; align-items: center; margin-top: 12px; flex-wrap: wrap; }
+.rp-foot .rp-sp { flex: 1; }
+.rp-go { position: relative; display: inline-flex; align-items: center; gap: 8px; padding: 8px 14px;
+  border-radius: 8px; background: var(--brand); color: var(--on-brand); font-weight: 600;
+  font-size: 12.5px; border: 0; cursor: pointer; font-family: inherit;
+  transition: transform .1s, box-shadow .15s; box-shadow: 0 1px 0 rgba(0,0,0,.2); }
+.rp-go:hover:not(:disabled) { transform: translateY(-1px); }
+.rp-go:active:not(:disabled) { transform: translateY(1px) scale(.98); box-shadow: none; }
+.rp-go:disabled { opacity: .45; cursor: default; }
+.rp-ghost { display: inline-flex; align-items: center; gap: 6px; padding: 7px 11px; border-radius: 8px;
+  border: 1px solid var(--line2); font-size: 12px; color: var(--dim); background: none;
+  cursor: pointer; font-family: inherit; }
+.rp-ghost:hover { color: var(--text); border-color: var(--text); }
+
+.rp-progress { margin-top: 10px; border: 1px solid var(--line); border-radius: 10px;
+  padding: 10px; background: var(--panel2); }
+.rp-progress .rp-pb { height: 8px; border-radius: 4px; background: var(--panel);
+  border: 1px solid var(--line); overflow: hidden; margin: 6px 0; }
+.rp-progress .rp-pb i { display: block; height: 100%; width: var(--p, 0%); background: var(--brand);
+  transition: width .4s; }
+.rp-steps { display: flex; flex-wrap: wrap; gap: 4px; }
+.rp-steps span { font-size: 10px; padding: 2px 7px; border-radius: 999px; border: 1px solid var(--line2);
+  color: var(--dim); display: inline-flex; align-items: center; gap: 5px; }
+.rp-steps span.lista { border-color: var(--ok); color: var(--ok); }
+.rp-steps span.aplicando { border-color: var(--working); color: var(--working); }
+.rp-steps span.detenida { border-color: var(--err); color: var(--err); }
+.rp-steps button { background: none; border: 0; color: inherit; text-decoration: underline dotted;
+  cursor: pointer; font-family: inherit; font-size: 10px; padding: 0; }
+.rp-done { margin-top: 10px; display: flex; align-items: center; gap: 8px; padding: 8px 10px;
+  border-radius: 8px; background: var(--ok); color: var(--on-brand); font-size: 11.5px; font-weight: 600; }
+
+.rp-dropbar { display: none; }
+.rp-tk .rp-st { font-size: 10px; white-space: nowrap; }
+.rp-tk .rp-st.lista { color: var(--ok); } .rp-tk .rp-st.detenida { color: var(--err); }
+.rp-tk .rp-st.aplicando { color: var(--working); }
+
+@keyframes rp-spin { to { transform: rotate(360deg); } }
+.rp-spin { width: 9px; height: 9px; border: 2px solid var(--line2); border-top-color: var(--working);
+  border-radius: 50%; animation: rp-spin .8s linear infinite; display: inline-block; vertical-align: middle; }
+@media (prefers-reduced-motion: reduce) {
+  .rp-spin { animation: none; }
+  .rp-tank .rp-liq, .rp-tank .rp-pre, .rp-tk, .rp-go, .rp-progress .rp-pb i { transition: none; }
+}
+
+/* --- angosto: el tanque se tumba y aparece la barra de destinos al arrastrar --- */
+@container reparto (max-width: 620px) {
+  .rp-tanks { grid-template-columns: repeat(4, 1fr); gap: 6px; }
+  .rp-tank { height: 92px; }
+  .rp-tank .rp-cap small, .rp-tank .rp-reset { display: none; }
+  .rp-tank .rp-lvl { font-size: 12px; }
+  .rp-bins { grid-template-columns: 1fr; gap: 0; }
+  .rp-bin { border-top: 1px solid var(--line); border-radius: 0; padding: 6px 0; }
+  .rp-bin[data-label]::before { display: block; }
+  #reparto.rp-dragging .rp-dropbar { display: flex; position: sticky; bottom: 0; z-index: 5;
+    gap: 6px; padding: 8px 0 0; margin-top: 8px; background: var(--panel);
+    border-top: 1px solid var(--line2); flex-wrap: wrap; }
+  .rp-dropbar .rp-dz { flex: 1 1 45%; display: flex; flex-direction: column; gap: 2px; padding: 6px;
+    border: 1px dashed var(--line2); border-radius: 8px; font-size: 10.5px; min-width: 0; }
+  .rp-dropbar .rp-dz.rp-over { background: var(--glow); box-shadow: inset 0 0 0 2px var(--brand); }
+  .rp-dropbar .rp-dz b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+}
+@container reparto (max-width: 440px) {
+  .rp-tanks { grid-template-columns: repeat(2, 1fr); }
+  .rp-foot .rp-note { width: 100%; }
+}

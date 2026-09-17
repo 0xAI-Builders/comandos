@@ -875,6 +875,9 @@ LIB_DIR = os.path.join(REPO_ROOT, "lib")
 if LIB_DIR not in sys.path:
     sys.path.insert(0, LIB_DIR)
 import providers as provider_registry
+import claude_trust
+import allocation
+import allocation_batch
 import grok_state
 import pane_snapshot
 import tmux_snapshot
@@ -1746,6 +1749,355 @@ def _snapshot_transcript(origin):
     return matches[0]
 
 
+def _claude_config_dir(alias):
+    """Config dir de una cuenta Claude; None para 'main' (que vive en HOME)."""
+    if not alias or alias == "main":
+        return None
+    spec = (load_provider_registry().get("harnesses") or {}).get("claude") or {}
+    root = os.path.expanduser(spec.get("accountsRoot") or "~/.claude-accounts")
+    return os.path.join(root, alias)
+
+
+def inherit_trust_for_switch(cwd, from_alias, to_alias, harness="claude"):
+    """Copia la aceptación de la carpeta de la cuenta origen a la destino.
+
+    Solo Claude, solo cuando la cuenta cambia de verdad, y solo si el origen ya
+    la tenía aceptada: nunca inventa confianza que el usuario no diera antes.
+
+    Heredar trust es un extra de conveniencia sobre un cambio de cuenta/sesión:
+    nunca debe poder romper ese cambio. Cualquier excepción aquí dentro (o al
+    escribir el ledger) se traga y se reporta como False/no-op.
+    """
+    if harness != "claude" or not cwd or (to_alias or "main") == (from_alias or "main"):
+        return False
+    try:
+        dest = _claude_config_dir(to_alias)
+        if not dest:
+            return False
+        ok = claude_trust.inherit_cwd_trust(cwd, source_config_dir=_claude_config_dir(from_alias),
+                                            dest_config_dir=dest, home=os.path.expanduser("~"))
+    except Exception:
+        return False        # heredar el trust nunca puede impedir el cambio de sesión
+    if ok:
+        try:
+            cc_usage.record_change(USAGE_DB, {
+                "origin": "reparto", "kind": "trust_inherited",
+                "note": f"trust heredado {from_alias or 'main'} -> {to_alias or 'main'} en {cwd}",
+            })
+        except Exception:
+            pass
+    return ok
+
+
+# Un diálogo real ocupa su propia línea, como mucho tras el marco de la TUI; la
+# misma frase dentro de una oración es prosa (un changelog, un README, un log de
+# una librería de auth, una conversación en pantalla). Anclar a principio de línea
+# Y exigir el contexto concreto cierra los dos lados: "note: authentication
+# required for the admin api" no casa por ir a media línea, y "sign in before the
+# deploy" no casa por no llevar el contexto, aunque empiece línea.
+# Solo marco real de TUI. Se cayeron *, ·, •, | y -: son la viñeta, la celda de
+# tabla y el guion de lista más comunes en prosa, así que "- Login required for
+# admin API calls" (una línea de changelog o de un cuerpo de commit) pasaba las
+# dos defensas a la vez. Se conserva ">" porque "> sign in required" es la única
+# pantalla de login que el repo tiene atestiguada, en test_session_route_matrix.
+_LOGIN_LINE = r"(^|\n)[\s│┃>]*"
+
+# El detector de diálogos es una red de seguridad, no la única defensa: _verify
+# exige además prompt de shell, modelo, effort, ambas cuentas y conversación antes
+# de confirmar. Por eso los patrones se eligen ESPECÍFICOS y se aceptan falsos
+# negativos: una frase genérica ("sign in" suelto, aunque vaya anclada) casa con
+# prosa reflowed por el ancho del terminal o con el cuerpo indentado de un git log,
+# y un falso positivo congela el sondeo hasta 90 s sin motivo.
+_DEFAULT_DIALOGS = {"trust": [r"trust this folder", r"Do you trust", r"Accessing workspace"],
+                    "login": [_LOGIN_LINE + r"(please\s+)?(sign in|log in)\s+to\s+(continue|use|proceed)",
+                              _LOGIN_LINE + r"(sign in|log in|login|authentication)\s+required",
+                              _LOGIN_LINE + r"(por favor,?\s+)?inicia(?:r)? sesi[oó]n para (continuar|usar)",
+                              _LOGIN_LINE + r"se requiere inicia(?:r)? sesi[oó]n",
+                              r"(^|\n)\s*/login\b"],
+                    "onboarding": [r"Choose the text style", r"Elige el estilo de texto",
+                                   r"Choose your theme", r"Elige tu tema"],
+                    "error": [r"(^|\n)\s*error:", r"(^|\n)\s*fatal:"]}
+
+def _detectors_cfg():
+    try:
+        with open(os.path.join(REPO_ROOT, "config", "detectors.json")) as f:
+            return json.load(f) or {}
+    except Exception:
+        return {}
+
+
+_DIALOG_CACHE = {"mtime": None, "value": None}
+_DIALOG_CACHE_LOCK = threading.Lock()
+
+
+def _clean_patterns(raw):
+    """Solo cadenas que compilen como regex. Una config mal escrita no puede
+    convertirse en un patrón que casa con todo ni tumbar el bucle de sondeo:
+    un patrón suelto se envuelve en lista, lo que no sea texto se descarta."""
+    out = {}
+    for kind, value in (raw or {}).items():
+        if isinstance(value, str):
+            value = [value]
+        elif not isinstance(value, (list, tuple)):
+            continue
+        good = []
+        for pat in value:
+            if not isinstance(pat, str) or not pat.strip():
+                continue
+            try:
+                re.compile(pat)
+            except re.error:
+                continue
+            good.append(pat)
+        if not good and value:
+            # Había patrones y no sobrevivió ninguno: eso es un error de escritura,
+            # no la intención de apagar la categoría. Se omite la clave para que
+            # el defecto la cubra; apagar una categoría se escribe con [] vacío.
+            continue
+        # Una categoría presente en la config es intención del operador, aunque
+        # quede vacía: se conserva la clave para que el fallback no la resucite.
+        out[kind] = good
+    return out
+
+
+def dialog_patterns():
+    """Patrones de los diálogos de arranque, desde config (en/es).
+
+    Se cachea por mtime: `screen_dialog` corre dentro del bucle de verificación,
+    hasta 180 veces por cambio de sesión, y releer el JSON en cada vuelta era
+    I/O de sobra en el camino caliente.
+    """
+    path = os.path.join(REPO_ROOT, "config", "detectors.json")
+    with _DIALOG_CACHE_LOCK:
+        try:
+            mtime = os.stat(path).st_mtime
+        except OSError:
+            mtime = None
+        if _DIALOG_CACHE["value"] is not None and _DIALOG_CACHE["mtime"] == mtime:
+            return _DIALOG_CACHE["value"]
+        clean = _clean_patterns(_detectors_cfg().get("dialogPatterns"))
+        for kind, fallback in _DEFAULT_DIALOGS.items():
+            clean.setdefault(kind, list(fallback))
+        _DIALOG_CACHE.update(mtime=mtime, value=clean)
+        return clean
+
+def screen_dialog(screen):
+    """Devuelve 'trust' | 'login' | 'onboarding' | 'error' | '' según la pantalla."""
+    pats = dialog_patterns()
+    for kind in ("trust", "login", "onboarding", "error"):
+        for p in pats.get(kind) or []:
+            if re.search(p, screen or "", re.I | re.M):
+                return kind
+    return ""
+
+def verify_attempts(cwd, config_dir=None):
+    """60 intentos (~30 s) normalmente; más cuando el destino carga MCPs."""
+    with_mcp = int(_detectors_cfg().get("verifyAttemptsWithMcp") or 180)
+    if cwd and os.path.exists(os.path.join(cwd, ".mcp.json")):
+        return with_mcp
+    try:
+        with open(os.path.join(config_dir or os.path.expanduser("~"), ".claude.json")) as f:
+            if (json.load(f) or {}).get("mcpServers"):
+                return with_mcp
+    except Exception:
+        pass
+    return 60
+
+
+# ---------------------------------------------------------------- Reparto de cuota
+ALLOCATION_PLANS = {}
+_ALLOCATION_BATCHES = None
+_EFFORT_ORDER = ["low", "medium", "high", "xhigh", "max"]
+
+
+def _batches():
+    global _ALLOCATION_BATCHES
+    if _ALLOCATION_BATCHES is None:
+        _ALLOCATION_BATCHES = allocation_batch.BatchStore(os.path.join(HOOKS, "allocation-batches.json"))
+    return _ALLOCATION_BATCHES
+
+
+def selectable_accounts_by_motor(registry):
+    out = {}
+    for motor in (registry.get("motors") or {}):
+        try:
+            aliases = [a["alias"] for a in account_registry.list_accounts(registry, motor) if a.get("selectable")]
+        except Exception:
+            aliases = []
+        out[motor] = aliases or ["main"]
+    return out
+
+
+def enriched_limits(limits):
+    return allocation.enrich_limits(limits or [], time.time())
+
+
+def _motor_options(registry):
+    """Modelos y efforts válidos por motor, para que la ficha solo ofrezca lo real."""
+    out = {}
+    for motor, spec in (registry.get("motors") or {}).items():
+        models = [m["id"] for m in (spec.get("models") or [])]
+        efforts = sorted({e for m in (spec.get("models") or []) for e in (m.get("efforts") or [])},
+                         key=lambda e: _EFFORT_ORDER.index(e) if e in _EFFORT_ORDER else 99)
+        out[motor] = {"models": models, "efforts": efforts}
+    return out
+
+
+def allocation_inputs():
+    registry = load_provider_registry()
+    motors = registry.get("motors") or {}
+    sessions = [s for s in read_states_cached()
+                if s.get("alive") and (s.get("motor") or s.get("agent")) in motors]
+    return dict(sessions=sessions, limits=usage_provider_limits()["limits"], registry=registry,
+                support=session_change_support(registry), accounts=selectable_accounts_by_motor(registry),
+                tiers=load_model_tiers(), now=time.time())
+
+
+def _build_plan(overrides):
+    inp = allocation_inputs()
+    plan = allocation.propose(inp["sessions"], inp["limits"], inp["registry"], inp["support"],
+                              inp["accounts"], inp["tiers"], now=inp["now"], overrides=overrides)
+    plan["options"] = _motor_options(inp["registry"])
+    estado = {allocation.session_key(s): (s.get("status") or "") for s in inp["sessions"]}
+    for item in plan["items"]:
+        item["status"] = estado.get(item["key"], "")
+    return plan, inp
+
+
+def _valid_overrides(raw):
+    """El cuerpo HTTP no puede reventar el motor: se acepta solo lo que entiende."""
+    out = {}
+    if raw is not None and not isinstance(raw, dict):
+        return {}          # un cuerpo raro se ignora, no revienta ni miente con 400
+    for key, value in (raw or {}).items():
+        if not isinstance(key, str) or not isinstance(value, dict):
+            continue
+        clean = {}
+        if "layer" in value:
+            try:
+                clean["layer"] = max(1, min(3, int(value["layer"])))
+            except (TypeError, ValueError):
+                return None
+        if value.get("locked"):
+            clean["locked"] = True
+        if "to" in value:
+            if not isinstance(value["to"], dict):
+                return None
+            clean["to"] = {k: str(v) for k, v in value["to"].items() if isinstance(k, str)}
+        if clean:
+            out[key] = clean
+    return out
+
+
+def allocation_propose(data):
+    overrides = _valid_overrides(data.get("overrides"))
+    if overrides is None:
+        return 400, {"ok": False, "error": "overrides invalidos"}
+    plan, _ = _build_plan(overrides)
+    plan["overrides"] = overrides
+    ALLOCATION_PLANS[plan["planId"]] = plan
+    while len(ALLOCATION_PLANS) > 20:
+        ALLOCATION_PLANS.pop(next(iter(ALLOCATION_PLANS)))
+    return 200, {"ok": True, "plan": plan}
+
+
+def allocation_preview(data):
+    plan = ALLOCATION_PLANS.get(str(data.get("planId") or ""))
+    if not plan:
+        return 404, {"ok": False, "error": "plan desconocido; vuelve a analizar"}
+    extra = _valid_overrides({str(data.get("key") or ""): data.get("target") or {}})
+    if extra is None:
+        return 400, {"ok": False, "error": "destino invalido"}
+    overrides = dict(plan.get("overrides") or {})
+    overrides.update(extra)
+    tmp, _ = _build_plan(overrides)
+    return 200, {"ok": True, "impact": tmp["impact"], "items": tmp["items"]}
+
+
+def _status_of(opkey, opid):
+    try:
+        return session_operation_status(opkey, opid)
+    except TypeError:
+        return session_operation_status(opkey)
+
+
+def _run_batch_bg(batch_id, wait=False):
+    def go():
+        try:
+            allocation_batch.run_batch(batch_id, _batches(), lambda d: session_configure(d), _status_of,
+                                       concurrency=3)
+        except Exception:
+            pass   # el estado por pane ya queda en el lote; nunca tumbar el hilo
+    if wait:
+        go()
+    else:
+        threading.Thread(target=go, daemon=True).start()
+
+
+def allocation_apply(data, wait=False):
+    plan = ALLOCATION_PLANS.get(str(data.get("planId") or ""))
+    if not plan:
+        return 404, {"ok": False, "error": "plan desconocido; vuelve a analizar"}
+    inp = allocation_inputs()
+    if allocation.plan_hash(inp["sessions"]) != plan["stateHash"]:
+        antes = {i["key"]: i["from"] for i in plan["items"]}
+        vivas = {allocation.session_key(s) for s in inp["sessions"]}
+        cambiadas = [allocation.session_key(s) for s in inp["sessions"]
+                     if allocation.session_key(s) in antes
+                     and any(str(s.get(f) or "") != str(antes[allocation.session_key(s)].get(g) or "")
+                             for f, g in (("model", "model"), ("effort", "effort"),
+                                          ("harnessAccount", "account")))]
+        nuevas = sorted(vivas - set(antes))
+        idas = sorted(set(antes) - vivas)
+        return 409, {"ok": False, "error": "plan_stale",
+                     "changed": sorted(cambiadas) + nuevas + idas}
+    panes = data.get("panes")
+    batch = _batches().create(plan, panes=panes if isinstance(panes, list) else None)
+    _run_batch_bg(batch["batchId"], wait)
+    return 202, {"ok": True, "batchId": batch["batchId"], "total": len(batch["items"])}
+
+
+def allocation_status(batch_id):
+    b = _batches().get(str(batch_id or ""))
+    if not b:
+        return 404, {"ok": False, "error": "lote desconocido"}
+    return 200, dict(ok=True, **allocation_batch.batch_view(b))
+
+
+def allocation_retry(data, wait=False):
+    bid, key = str(data.get("batchId") or ""), str(data.get("key") or "")
+    if not _batches().get(bid):
+        return 404, {"ok": False, "error": "lote desconocido"}
+    def go():
+        try:
+            allocation_batch.retry_item(bid, key, _batches(), lambda d: session_configure(d), _status_of)
+        except Exception:
+            pass
+    if wait:
+        go()
+    else:
+        threading.Thread(target=go, daemon=True).start()
+    return 202, {"ok": True, "batchId": bid, "key": key}
+
+
+def allocation_revert(data, wait=False):
+    b = _batches().get(str(data.get("batchId") or ""))
+    if not b:
+        return 404, {"ok": False, "error": "lote desconocido"}
+    plan = ALLOCATION_PLANS.get(b["planId"])
+    if not plan:
+        return 409, {"ok": False, "error": "el plan original ya no está en memoria"}
+    hechas = {i["key"] for i in b["items"] if i["state"] == "lista"}
+    if not hechas:
+        return 409, {"ok": False, "error": "no hay cambios confirmados que revertir"}
+    inv = allocation.invert(plan)
+    inv["items"] = [dict(i, same=False, locked=False) for i in inv["items"] if i["key"] in hechas]
+    ALLOCATION_PLANS[inv["planId"]] = inv
+    batch = _batches().create(inv, panes=None)
+    _run_batch_bg(batch["batchId"], wait)
+    return 202, {"ok": True, "batchId": batch["batchId"], "total": len(batch["items"])}
+
+
 def session_change_support(registry=None, observed=None):
     """Mid-session adapter policy; new-session availability is separate."""
     registry = registry or load_provider_registry()
@@ -1797,6 +2149,7 @@ class SessionConfiguration:
         pane_cmd = identity['pane_current_command']
         self.frm = self.original.get('agent') or ('shell' if pane_cmd in ('bash', 'zsh', 'sh', 'fish', 'dash') else '')
         self.plan = None
+        self.screen_dialog_kind = ''
 
     def check_identity(self):
         if getattr(self, 'store', None):
@@ -2050,6 +2403,10 @@ class SessionConfiguration:
                 self._copy_conversation(origin, plan[account_key])
         self.snapshot_record = snapshot
         _restore_shell_tty(self.pane)
+        inherit_trust_for_switch(current['pane_current_path'],
+                                 ((snapshot.get('origin') or {}).get('observed') or {}).get('harnessAccount'),
+                                 plan.get('harnessAccount'),
+                                 harness=plan.get('to') or self.frm)
         _send_configuration_command(self.pane, 'env ' + shlex.quote('COMANDOS_OPERATION_ID=' + self.data['requestId']) + ' ' + plan['command'])
 
     def _verify(self, expected, sid='', attempts=60):
@@ -2096,7 +2453,7 @@ class SessionConfiguration:
             if expected.get('motorAccount') and observed.get('motorAccount') != expected['motorAccount']:
                 continue
             screen = tmux('capture-pane', '-p', '-t', self.pane).stdout or ''
-            if re.search(r'trust this folder|Do you trust|Accessing workspace|sign in|log in|login required|error:', screen, re.I):
+            if screen_dialog(screen):
                 continue
             if not re.search(r'(^|\n)\s*[❯›>]|esc to interrupt|ctrl\+c to interrupt', screen, re.I):
                 continue
@@ -2104,7 +2461,9 @@ class SessionConfiguration:
         return None
 
     def verify(self, plan, snapshot):
-        return self._verify(plan, plan.get('expectedSid', ''))
+        cwd = _pane_identity(self.sess, self.pane).get('pane_current_path') or ''
+        return self._verify(plan, plan.get('expectedSid', ''),
+                            attempts=verify_attempts(cwd, _claude_config_dir(plan.get('harnessAccount'))))
 
     def pending_confirmation(self, plan, snapshot):
         if _identity_key(_pane_identity(self.sess, self.pane)) != _identity_key(self.identity):
@@ -2116,8 +2475,12 @@ class SessionConfiguration:
                 _read_environ(info['pid']).get(b'COMANDOS_OPERATION_ID', b'').decode() != self.data['requestId']):
             return None
         screen = tmux('capture-pane', '-p', '-t', self.pane).stdout or ''
-        if re.search(r'(^|\n)\s*(?:error:|fatal:)', screen, re.I):
+        kind = screen_dialog(screen)
+        self.screen_dialog_kind = kind
+        if kind == 'error':
             return None
+        # Un diálogo de arranque (trust/login/bienvenida) no invalida la observación,
+        # pero sí explica por qué el destino no confirma: queda anotado arriba.
         return observe_pane(self.sess, self.pane, info)
 
     def rollback(self, snapshot):
@@ -7919,6 +8282,7 @@ class Handler(http.server.SimpleHTTPRequestHandler):
                 except Exception:
                     pass
             state["alerts"] = cc_usage.list_alerts(USAGE_DB)
+            state["limits"] = enriched_limits(state.get("limits") or prov["limits"])
             recent = cc_usage.recent_interactions(USAGE_DB, 1)
             state["lastInteraction"] = recent[0] if recent else None
             # Conserva el modelo enriquecido del memo en cache hits, filtrando
@@ -7926,6 +8290,10 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             # a conducir opciones fisicas de tmux.
             write_pane_models(_pane_models_for_live_state(panes, state))
             return self._json(200, state)
+        if self.path.startswith("/allocation/status"):
+            q = urllib.parse.parse_qs(urllib.parse.urlsplit(self.path).query)
+            return self._json(*allocation_status(q.get("batchId", [""])[0]))
+
         if self.path.startswith("/ssh"):
             return self._json(200, parse_ssh_config())
         if self.path.startswith("/conf"):
@@ -8112,6 +8480,17 @@ class Handler(http.server.SimpleHTTPRequestHandler):
                 return self._json(404, {"error": "esa ruta ya no existe"})
             _open_url(target_path, env=gui_env())
             return self._json(200, {"ok": True})
+
+        if self.path == "/allocation/propose":
+            return self._json(*allocation_propose(data))
+        if self.path == "/allocation/preview":
+            return self._json(*allocation_preview(data))
+        if self.path == "/allocation/apply":
+            return self._json(*allocation_apply(data))
+        if self.path == "/allocation/retry":
+            return self._json(*allocation_retry(data))
+        if self.path == "/allocation/revert":
+            return self._json(*allocation_revert(data))
 
         if self.path == "/optimization/default":
             try:
@@ -8690,6 +9069,8 @@ class Handler(http.server.SimpleHTTPRequestHandler):
                     record_runtime_config(new_sess, pane_new, route["harness"], route["motor"],
                                           selected.get("model", ""), selected.get("effort", ""),
                                           alias, motor_alias, route["id"], "session-new")
+                if route and route.get("harness") == "claude":
+                    inherit_trust_for_switch(final_cwd, "main", alias, harness="claude")
                 def _send(sess=new_sess, c=cmd):
                     time.sleep(1.5)
                     tmux("send-keys", "-t", "=" + sess + ":", c, "Enter")

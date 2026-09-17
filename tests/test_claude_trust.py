@@ -1,8 +1,12 @@
 #!/usr/bin/env python3
-"""Explicit legacy trust helper and safe automated launch boundaries.
+"""Explicit legacy trust helper, trust inheritance, and safe automated launch boundaries.
 
-Configuration operations must leave provider trust acceptance to the user.
-The helper tests cover explicit calls only; launch tests never invoke it.
+Configuration operations must never invent provider trust acceptance for a cwd.
+Trust may be INHERITED — copied via inherit_cwd_trust() from an account whose
+~/.claude.json or CLAUDE_CONFIG_DIR/.claude.json already has
+hasTrustDialogAccepted for that cwd, to a destination account's config — but
+never granted where no account had already accepted it. The helper tests
+cover explicit calls only; launch tests never invoke it.
 """
 import json
 import sys
@@ -100,6 +104,123 @@ def test_ensure_cwd_trusted_does_not_wipe_corrupt_claude_json(tmp_path):
     (home / ".claude.json").write_text(raw)
     assert claude_trust.ensure_cwd_trusted(str(cwd), home=str(home)) is False
     assert (home / ".claude.json").read_text() == raw
+
+
+def _write_trust(path, cwd):
+    path.parent.mkdir(parents=True, exist_ok=True)
+    data = json.loads(path.read_text()) if path.exists() else {}
+    data.setdefault("projects", {})[cwd] = {"hasTrustDialogAccepted": True}
+    path.write_text(json.dumps(data))
+
+
+def test_inherit_copies_trust_only_when_source_had_it(tmp_path):
+    home = tmp_path / "home"
+    src = tmp_path / "home/.claude-accounts/main"
+    dst = tmp_path / "home/.claude-accounts/relotto"
+    cwd = str(tmp_path / "repo")
+    (tmp_path / "repo").mkdir()
+    for d in (home, src, dst):
+        d.mkdir(parents=True, exist_ok=True)
+    assert claude_trust.inherit_cwd_trust(
+        cwd, source_config_dir=str(src), dest_config_dir=str(dst), home=str(home)
+    ) is False
+    assert not (dst / ".claude.json").exists()
+    _write_trust(src / ".claude.json", cwd)
+    assert claude_trust.inherit_cwd_trust(
+        cwd, source_config_dir=str(src), dest_config_dir=str(dst), home=str(home)
+    ) is True
+    assert json.loads((dst / ".claude.json").read_text())["projects"][cwd]["hasTrustDialogAccepted"] is True
+    assert json.loads((home / ".claude.json").read_text())["projects"][cwd]["hasTrustDialogAccepted"] is True
+
+
+def test_inherit_accepts_home_trust_as_source(tmp_path):
+    home = tmp_path / "home"
+    dst = tmp_path / "home/.claude-accounts/relotto"
+    cwd = str(tmp_path / "repo")
+    (tmp_path / "repo").mkdir()
+    dst.mkdir(parents=True)
+    _write_trust(home / ".claude.json", cwd)
+    assert claude_trust.inherit_cwd_trust(
+        cwd, source_config_dir=None, dest_config_dir=str(dst), home=str(home)
+    ) is True
+
+
+def test_inherit_never_for_home_itself(tmp_path):
+    home = tmp_path / "home"
+    home.mkdir()
+    _write_trust(home / ".claude.json", str(home))
+    assert claude_trust.inherit_cwd_trust(
+        str(home), source_config_dir=None, dest_config_dir=str(home / "x"), home=str(home)
+    ) is False
+
+
+def test_ancestor_walk_stops_at_git_directory_toplevel(tmp_path):
+    """A normal clone's .git is a directory; trust above the toplevel must not leak in."""
+    repo = tmp_path / "repo"
+    (repo / ".git").mkdir(parents=True)
+    deep = repo / "sub" / "deep"
+    deep.mkdir(parents=True)
+    home = tmp_path / "home"
+    home.mkdir()
+    _write_trust(home / ".claude.json", str(repo))
+    assert claude_trust.cwd_trusted_in(str(deep), config_dir=None, home=str(home)) is True
+
+    home2 = tmp_path / "home2"
+    home2.mkdir()
+    _write_trust(home2 / ".claude.json", str(tmp_path))
+    assert claude_trust.cwd_trusted_in(str(deep), config_dir=None, home=str(home2)) is False
+
+
+def test_ancestor_walk_stops_at_git_file_toplevel(tmp_path):
+    """A linked worktree's .git is a plain file (gitdir pointer). os.path.isdir would miss
+    it and walk past the toplevel; this is the regression guard for that line."""
+    repo = tmp_path / "repo"
+    repo.mkdir(parents=True)
+    (repo / ".git").write_text("gitdir: /somewhere\n")
+    deep = repo / "sub" / "deep"
+    deep.mkdir(parents=True)
+    home = tmp_path / "home"
+    home.mkdir()
+    _write_trust(home / ".claude.json", str(repo))
+    assert claude_trust.cwd_trusted_in(str(deep), config_dir=None, home=str(home)) is True
+
+    home2 = tmp_path / "home2"
+    home2.mkdir()
+    _write_trust(home2 / ".claude.json", str(tmp_path))
+    assert claude_trust.cwd_trusted_in(str(deep), config_dir=None, home=str(home2)) is False
+
+
+def test_inherit_cwd_trust_respects_git_toplevel_boundary(tmp_path):
+    """inherit_cwd_trust must honor the same worktree-safe toplevel boundary as cwd_trusted_in."""
+    repo = tmp_path / "repo"
+    repo.mkdir(parents=True)
+    (repo / ".git").write_text("gitdir: /somewhere\n")
+    deep = repo / "sub" / "deep"
+    deep.mkdir(parents=True)
+
+    home = tmp_path / "home"
+    home.mkdir()
+    src = tmp_path / "home/.claude-accounts/main"
+    dst = tmp_path / "home/.claude-accounts/relotto"
+    src.mkdir(parents=True)
+    dst.mkdir(parents=True)
+    _write_trust(src / ".claude.json", str(repo))
+    assert claude_trust.inherit_cwd_trust(
+        str(deep), source_config_dir=str(src), dest_config_dir=str(dst), home=str(home)
+    ) is True
+    assert json.loads((dst / ".claude.json").read_text())["projects"][str(deep)]["hasTrustDialogAccepted"] is True
+
+    home2 = tmp_path / "home2"
+    home2.mkdir()
+    src2 = tmp_path / "src2"
+    dst2 = tmp_path / "dst2"
+    src2.mkdir()
+    dst2.mkdir()
+    _write_trust(src2 / ".claude.json", str(tmp_path))
+    assert claude_trust.inherit_cwd_trust(
+        str(deep), source_config_dir=str(src2), dest_config_dir=str(dst2), home=str(home2)
+    ) is False
+    assert not (dst2 / ".claude.json").exists()
 
 
 def test_launch_commands_do_not_persist_workspace_trust(tmp_path, monkeypatch):
