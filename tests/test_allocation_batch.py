@@ -84,3 +84,45 @@ def test_concurrency_never_exceeds_limit(tmp_path):
     b = store.create(plan(*[item(f"S{i}", f"%{i}") for i in range(8)]), panes=None)
     ab.run_batch(b["batchId"], store, co.configure, co.status_of, poll=0.01, concurrency=3)
     assert peak[0] <= 3
+def test_configure_exception_leaves_item_detenida_and_siblings_finish(tmp_path):
+    store = ab.BatchStore(tmp_path / "b.json")
+    co = FakeCoordinator()
+    def configure(data):
+        if data["session"] == "A":
+            raise RuntimeError("coordinador caído")
+        return co.configure(data)
+    b = store.create(plan(item("A", "%1"), item("B", "%2")), panes=None)
+    result = ab.run_batch(b["batchId"], store, configure, co.status_of, poll=0.01)
+    items = {i["key"]: i for i in ab.batch_view(result)["items"]}
+    assert items["A|%1"]["state"] == "detenida" and "coordinador caído" in items["A|%1"]["error"]
+    assert items["B|%2"]["state"] == "lista"
+
+def test_status_of_exception_leaves_item_detenida(tmp_path):
+    store = ab.BatchStore(tmp_path / "b.json")
+    co = FakeCoordinator()
+    def status_of(opkey, opid):
+        raise RuntimeError("polling caído")
+    b = store.create(plan(item("A", "%1")), panes=None)
+    result = ab.run_batch(b["batchId"], store, co.configure, status_of, poll=0.01)
+    items = {i["key"]: i for i in ab.batch_view(result)["items"]}
+    assert items["A|%1"]["state"] == "detenida" and "polling caído" in items["A|%1"]["error"]
+
+def test_retry_item_refuses_unless_detenida(tmp_path):
+    store = ab.BatchStore(tmp_path / "b.json")
+    co = FakeCoordinator()
+    b = store.create(plan(item("A", "%1"), item("B", "%2", same=True)), panes=None)
+    ab.run_batch(b["batchId"], store, co.configure, co.status_of, poll=0.01)   # A -> lista, B -> omitida (same)
+    calls_before = len(co.calls)
+    ab.retry_item(b["batchId"], "A|%1", store, co.configure, co.status_of, poll=0.01)   # lista: se rechaza
+    ab.retry_item(b["batchId"], "B|%2", store, co.configure, co.status_of, poll=0.01)   # omitida: se rechaza
+    assert len(co.calls) == calls_before
+    view = ab.batch_view(store.get(b["batchId"]))
+    assert {i["key"]: i["state"] for i in view["items"]} == {"A|%1": "lista", "B|%2": "omitida"}
+
+def test_list_returns_isolated_copies(tmp_path):
+    store = ab.BatchStore(tmp_path / "b.json")
+    b = store.create(plan(item("A", "%1")), panes=None)
+    listed = store.list()
+    listed[0]["items"][0]["state"] = "corrupted-from-outside"
+    fresh = store.get(b["batchId"])
+    assert fresh["items"][0]["state"] == "cola"

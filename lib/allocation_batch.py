@@ -57,7 +57,8 @@ class BatchStore:
 
     def list(self):
         with self.lock:
-            return sorted(self._data["batches"].values(), key=lambda b: b["createdAt"], reverse=True)
+            items = [json.loads(json.dumps(b)) for b in self._data["batches"].values()]
+            return sorted(items, key=lambda b: b["createdAt"], reverse=True)
 
     def update_item(self, batch_id, key, **fields):
         with self.lock:
@@ -76,30 +77,33 @@ def _payload(batch_id, it, suffix=""):
 
 
 def _drive(batch_id, it, store, configure, status_of, poll, deadline, suffix=""):
-    store.update_item(batch_id, it["key"], state="aplicando", error="", attempts=it.get("attempts", 0) + 1)
-    code, body = configure(_payload(batch_id, it, suffix))
-    if code != 202:
-        store.update_item(batch_id, it["key"], state="detenida", error=str(body.get("error") or f"HTTP {code}"))
-        return
-    opkey, opid = body.get("operationKey", ""), body.get("operationId", "")
-    store.update_item(batch_id, it["key"], operationKey=opkey, operationId=opid)
-    t0 = time.monotonic()
-    while True:
-        st = status_of(opkey, opid) or {}
-        state = st.get("state", "")
-        if state in _UI_STATE:
-            ui = _UI_STATE[state]
-            err = ""
-            if state == "awaiting_confirmation":
-                err = "esperando confirmación: " + (st.get("screenDialog") or "timeout")
-            elif ui == "detenida":
-                err = str(st.get("error") or state)
-            store.update_item(batch_id, it["key"], state=ui, error=err)
+    try:
+        store.update_item(batch_id, it["key"], state="aplicando", error="", attempts=it.get("attempts", 0) + 1)
+        code, body = configure(_payload(batch_id, it, suffix))
+        if code != 202:
+            store.update_item(batch_id, it["key"], state="detenida", error=str(body.get("error") or f"HTTP {code}"))
             return
-        if time.monotonic() - t0 > deadline:
-            store.update_item(batch_id, it["key"], state="detenida", error="sin respuesta del coordinador")
-            return
-        time.sleep(poll)
+        opkey, opid = body.get("operationKey", ""), body.get("operationId", "")
+        store.update_item(batch_id, it["key"], operationKey=opkey, operationId=opid)
+        t0 = time.monotonic()
+        while True:
+            st = status_of(opkey, opid) or {}
+            state = st.get("state", "")
+            if state in _UI_STATE:
+                ui = _UI_STATE[state]
+                err = ""
+                if state == "awaiting_confirmation":
+                    err = "esperando confirmación: " + (st.get("screenDialog") or "timeout")
+                elif ui == "detenida":
+                    err = str(st.get("error") or state)
+                store.update_item(batch_id, it["key"], state=ui, error=err)
+                return
+            if time.monotonic() - t0 > deadline:
+                store.update_item(batch_id, it["key"], state="detenida", error="sin respuesta del coordinador")
+                return
+            time.sleep(poll)
+    except Exception as exc:
+        store.update_item(batch_id, it["key"], state="detenida", error=str(exc))
 
 
 def run_batch(batch_id, store, configure, status_of, *, concurrency=3, poll=0.5, deadline=600):
@@ -113,6 +117,8 @@ def run_batch(batch_id, store, configure, status_of, *, concurrency=3, poll=0.5,
 def retry_item(batch_id, key, store, configure, status_of, *, poll=0.5, deadline=600):
     batch = store.get(batch_id)
     it = next(i for i in batch["items"] if i["key"] == key)
+    if it["state"] != "detenida":
+        return batch
     _drive(batch_id, it, store, configure, status_of, poll, deadline, suffix=f":retry{it.get('attempts', 0)}")
     return store.get(batch_id)
 
