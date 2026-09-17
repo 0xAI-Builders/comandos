@@ -49,8 +49,8 @@ REGISTRY = {"motors": {
                          {"id": "gpt-5.6-luna", "efforts": ["low", "medium", "high"]}]},
     "grok": {"models": [{"id": "grok-4.6", "efforts": ["low", "medium", "high"]}]}}}
 TIERS = {"patterns": [{"match": "grok-4\\.(6|5)", "tier": "high"}, {"match": "fable|mythos|opus", "tier": "high"},
-                      {"match": "gpt-6|gpt-5\\.6|codex-max", "tier": "high"},
-                      {"match": "sonnet|terra|sol|luna", "tier": "mid"}, {"match": "haiku|mini|spark|nano", "tier": "low"}]}
+                      {"match": "gpt-6|codex-max", "tier": "high"},
+                      {"match": "sonnet|gpt-5\\.6|terra|sol|luna", "tier": "mid"}, {"match": "haiku|mini|spark|nano", "tier": "low"}]}
 
 def test_layer_from_effort_and_status():
     assert al.layer_of({"effort": "xhigh", "status": "waiting"}) == 3

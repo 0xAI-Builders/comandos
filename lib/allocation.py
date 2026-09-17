@@ -64,15 +64,10 @@ def layer_of(session: dict) -> int:
 
 
 def _tier_of(model_id: str, tiers: dict) -> str:
-    tiers_found = []
-    tier_priority = {"low": 0, "mid": 1, "high": 2}
     for pat in tiers.get("patterns") or []:
         if re.search(pat.get("match", ""), model_id, re.I):
-            tiers_found.append(pat.get("tier", "unknown"))
-    if not tiers_found:
-        return "unknown"
-    # Return the tier with the lowest priority (prefer low over mid over high)
-    return min(tiers_found, key=lambda t: tier_priority.get(t, 999))
+            return pat.get("tier", "unknown")
+    return "unknown"
 
 
 def model_for_layer(motor: str, layer: int, registry: dict, tiers: dict) -> str:
