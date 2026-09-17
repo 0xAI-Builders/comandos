@@ -212,9 +212,11 @@
     return '<div class="rp-tank rp-drop ' + (usedAfter >= 100 ? "rp-full " : "") +
       (p.unknown ? "rp-unknown" : "") + '" data-pool="' + esc(p.k) + '" title="' +
       esc(p.label + " · " + verdict) + '">' +
-      '<div class="rp-cap">' + esc(p.label) +
+      // Dos filas: etiqueta y distintivo arriba, veredicto debajo. Antes el
+      // distintivo flotaba y partia el veredicto por la mitad.
+      '<div class="rp-cap"><span class="rp-top"><b>' + esc(p.label) + "</b>" +
         (p.tight ? '<em class="rp-tight ' + (p.tight.full ? "full" : "") + '">' +
-          esc(p.tight.name + " " + p.tight.pct + "%") + "</em>" : "") +
+          esc(p.tight.name + " " + p.tight.pct + "%") + "</em>" : "") + "</span>" +
         '<small data-verdict="' + esc(p.k) + '">' + esc(verdict) +
         (burn == null ? "" : T(" · ritmo ", " · pace ") + '<span data-burn="' + esc(p.k) + '">' +
           burn.toFixed(1) + "x</span>") +
@@ -252,6 +254,15 @@
     return item.session;
   }
 
+  /* El tablero trae los iconos como SVG en linea. El emoji se pinta con su propio
+     color y no respeta `color`, asi que fijada y libre se veian identicas. */
+  function lockIcon() {
+    if (typeof svg === "function") { var m = svg("lock", 13); if (m) return m; }
+    return '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"' +
+      ' stroke-linecap="round"><rect x="4" y="11" width="16" height="10" rx="2"/>' +
+      '<path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>';
+  }
+
   function tileHtml(item) {
     var opts = (S.plan.options || {})[item.to.motor] || {};
     var models = opts.models && opts.models.length ? opts.models : [item.to.model];
@@ -278,7 +289,7 @@
       (S.phase === "curar"
         ? '<button type="button" class="rp-lk ' + (item.locked ? "on" : "") + '" data-lock="' +
           esc(item.key) + '" title="' + (item.locked ? T("soltar: dejar que el reparto la mueva", "unpin: let the split move it")
-            : T("fijar: el reparto no toca esta sesión", "pin: leave this session alone")) + '">🔒</button>'
+            : T("fijar: el reparto no toca esta sesión", "pin: leave this session alone")) + '">' + lockIcon() + "</button>"
         : "") +
       (b && b.state !== "omitida" ? '<span class="rp-st ' + esc(b.state) + '">' + esc(b.state) + "</span>" : "") +
       "</div>";

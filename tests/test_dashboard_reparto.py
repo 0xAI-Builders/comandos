@@ -141,3 +141,35 @@ def test_la_ficha_no_ensena_el_nombre_crudo_de_tmux():
     assert "if (item.project) return item.project" in JS
     assert "esc(nameOf(item))" in JS, "la ficha debe pintar nameOf, no item.session"
     assert "rp-name\">' + esc(item.session)" not in JS
+
+
+def test_las_rejillas_no_se_desbordan():
+    """`1fr` es minmax(auto,1fr) y `auto` no baja del ancho minimo del contenido.
+    Los selectores de modelo y effort son anchos, asi que las columnas de fichas
+    crecian mas que las de tanques y la rejilla se salia por la derecha: los
+    tanques quedaban desalineados respecto a sus propias fichas."""
+    import re
+    for sel in (r"\.rp-tanks", r"\.rp-bins"):
+        for m in re.finditer(sel + r"[^{]*\{[^}]*grid-template-columns:\s*([^;]+);", CSS):
+            cols = m.group(1).strip()
+            if "repeat" not in cols:
+                continue
+            assert "minmax(0" in cols, f"{sel} usa {cols}: debe ser minmax(0, 1fr)"
+    tk = re.search(r"\.rp-tk \{[^}]*\}", CSS).group(0)
+    assert "min-width: 0" in tk, "la ficha tiene que poder encogerse"
+    seg = re.search(r"\.rp-seg \{[^}]*\}", CSS).group(0)
+    assert "flex-wrap: wrap" in seg, "los botones deben partir en varias lineas, no empujar"
+
+
+def test_la_capsula_del_tanque_no_se_solapa():
+    """El distintivo flotaba y su borde cruzaba el veredicto por la mitad."""
+    assert "float: right" not in CSS
+    assert "rp-top" in CSS and "rp-top" in JS
+    assert "linear-gradient" in CSS, "el texto va sobre el liquido y necesita velo"
+
+
+def test_el_candado_no_es_un_emoji():
+    """Un emoji se pinta con su propio color e ignora `color`, asi que fijada y
+    libre se veian identicas."""
+    assert "\U0001F512" not in JS
+    assert "function lockIcon()" in JS and "lockIcon()" in JS
