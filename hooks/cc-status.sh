@@ -2,11 +2,17 @@
 # Resumen para la barra de tmux: que proyectos piden atencion y cuales terminaron.
 # Lo consume status-right en ~/.tmux.conf (se refresca cada 5s).
 STATE="$HOME/.claude/hooks/state"
+# Cache de 20 s: tmux evalua status-right una vez por cliente conectado (hoy 17),
+# asi que sin cache este script (bash+jq) corria 17 veces por refresco.
+CACHE="${XDG_RUNTIME_DIR:-/tmp}/cc-status.cache"
+if [ -f "$CACHE" ] && [ $(( $(date +%s) - $(stat -c %Y "$CACHE") )) -lt 20 ]; then
+  cat "$CACHE"; exit 0
+fi
 now=$(date +%s)
 waiting=""
 done_=""
 files=("$STATE"/*.json)
-[ -e "${files[0]}" ] || { printf ''; exit 0; }
+[ -e "${files[0]}" ] || { : >"$CACHE"; printf ''; exit 0; }
 while IFS= read -r -d '' line; do
   p=${line%%|*}; rest=${line#*|}; s=${rest%%|*}; t=${rest##*|}
   [ -z "$p" ] && continue
@@ -44,4 +50,5 @@ short() {  # $1=lista  ->  "a · b +3"
 out=""
 [ -n "$waiting" ] && out="#[fg=#D08770] $(short "$waiting")#[default]"
 [ -n "$done_" ]   && out="$out  #[fg=#A3BE8C] $(short "$done_")#[default]"
-printf '%b' "$out"
+printf '%b' "$out" >"$CACHE.tmp.$$" && mv -f "$CACHE.tmp.$$" "$CACHE"
+cat "$CACHE"
