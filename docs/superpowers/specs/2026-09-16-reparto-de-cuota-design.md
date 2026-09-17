@@ -101,7 +101,7 @@ El mismo módulo calcula `impact()` para la vista previa en vivo con una sesión
 
 ### Lote sobre el coordinador existente
 
-Cada pane del lote es un `POST /session/configure` interno con `interrupt: true`, `requestId = "{batchId}:{session}:{pane}"` (idempotente: reintentar el lote no duplica), y `expectedIdentity` / `expectedConversationId` del snapshot del plan. Concurrencia 3, sin `max-errors`: un pane detenido no frena a los demás. El estado por pane es el del coordinador (`validating → applying → verifying → confirmed | awaiting_confirmation | failed`), traducido a las cuatro palabras de la UI. `awaiting_confirmation` se muestra como "detenida" con el motivo detectado en pantalla.
+Cada pane del lote es un `POST /session/configure` interno con `interrupt: true` y `requestId = "{batchId}:{session}:{pane}"` (idempotente: reintentar el lote no duplica). La caducidad se vigila dos veces y no hace falta una tercera: el `stateHash` del plan rechaza el lote entero si alguna sesión cambió, y el coordinador vuelve a comprobar la identidad del panel dentro de `apply` antes de escribir nada. Concurrencia 3, sin `max-errors`: un pane detenido no frena a los demás. El estado por pane es el del coordinador (`validating → applying → verifying → confirmed | awaiting_confirmation | failed`), traducido a las cuatro palabras de la UI. `awaiting_confirmation` se muestra como "detenida" con el motivo detectado en pantalla.
 
 El coordinador se toca en tres puntos:
 
