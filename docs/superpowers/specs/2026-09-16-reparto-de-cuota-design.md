@@ -73,7 +73,7 @@ Estilo "antes → después con selectores":
 
 ## Motor de propuesta (`lib/allocation.py`, puro)
 
-Entradas: sesiones vivas (`/state`: session, pane, agent, model, effort, account, status, cwd), cuotas (`limits[]` con `percent`, `resets_at`, `window`, `daily`), matriz de rutas (`provider_registry`), cuentas seleccionables (`list_accounts`).
+Entradas: sesiones vivas (`/state`: session, pane, agent, motor, model, effort, account, harnessAccount, motorAccount, routeId, status, cwd). Una sesión cuenta si su **motor** es un motor conocido, aunque su harness no lo sea (`acp:claude` gasta la suscripción de Claude); si su ruta actual no admite cambio en caliente, entra al plan fijada (`locked`, `same`) con la razón correspondiente, pero su peso sí cuenta para la cuota, cuotas (`limits[]` con `percent`, `resets_at`, `window`, `daily`), matriz de rutas (`provider_registry`), cuentas seleccionables (`list_accounts`).
 
 Salida: `Plan` con `planId`, `stateHash`, `createdAt`, y por pane `{from, to, reason, risk}` más `impact` por cuota (`burnNow`, `burnAfter`, `runsOutIn`, `reachesReset`).
 
@@ -86,7 +86,7 @@ Reglas, en orden:
 5. **Restricción dura.** Ninguna asignación puede dejar una cuota con `burnAfter > 1.0` si existe un candidato que no lo haga. Si no existe, se elige el que menos se pasa y la propuesta lo dice en `reason`.
 6. **La capa 3 no cambia de motor.** Una sesión que el usuario marcó como la más importante se reparte entre las cuentas de su propio motor, no salta a otro. Cambiar de cuenta reparte la misma familia de modelos; cambiar de motor cambia el modelo debajo del trabajo más importante, y eso lo decide el usuario arrastrando la ficha. Las capas 2 y 1 son la válvula de escape del reparto. Si su motor no ofrece ningún candidato seleccionable, se permite el salto.
 7. **La cuota que paga es la del motor.** Una cuota se identifica por `(motor, motorAccount)`, no por la cuenta del harness: en una ruta gateway (`claude:codex`) los tokens los gasta la suscripción de Codex bajo `motorAccount`, que siempre es `main`. Agrupar por la cuenta del harness inventaría cuotas que no existen.
-8. **Una cuota sin sesiones vivas se escala contra la carga media de la flota**, no contra cero: su ritmo actual se midió con una carga que ya no está, y escalarlo desde cero la haría parecer varias veces peor de lo que es, con lo que ninguna sesión se movería nunca a ella.
+8. **Una cuota sin sesiones vivas se escala contra la carga media de las cuotas que hoy llevan sesiones**, no contra cero: su ritmo actual se midió con una carga que ya no está, y escalarlo desde cero la haría parecer varias veces peor de lo que es, con lo que ninguna sesión se movería nunca a ella.
 9. **Razón y riesgo por fila.** `reason` en una línea ("Fable relotto tiene más margen: 65 %, reset en 3d 4h"). `risk`: bajo si solo cambia effort, medio si cambia modelo en el mismo motor, alto si cambia motor o cuenta.
 
 El mismo módulo calcula `impact()` para la vista previa en vivo con una sesión colocada tentativamente. Es la única fuente de las cifras que muestra la UI; el navegador no recalcula por su cuenta.
