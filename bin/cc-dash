@@ -875,6 +875,7 @@ LIB_DIR = os.path.join(REPO_ROOT, "lib")
 if LIB_DIR not in sys.path:
     sys.path.insert(0, LIB_DIR)
 import providers as provider_registry
+import claude_trust
 import grok_state
 import pane_snapshot
 import tmux_snapshot
@@ -1746,6 +1747,30 @@ def _snapshot_transcript(origin):
     return matches[0]
 
 
+def _claude_config_dir(alias):
+    """Config dir de una cuenta Claude; None para 'main' (que vive en HOME)."""
+    if not alias or alias == "main":
+        return None
+    spec = (load_provider_registry().get("harnesses") or {}).get("claude") or {}
+    root = os.path.expanduser(spec.get("accountsRoot") or "~/.claude-accounts")
+    return os.path.join(root, alias)
+
+
+def inherit_trust_for_switch(cwd, from_alias, to_alias, harness="claude"):
+    """Copia la aceptación de la carpeta de la cuenta origen a la destino.
+
+    Solo Claude, solo cuando la cuenta cambia de verdad, y solo si el origen ya
+    la tenía aceptada: nunca inventa confianza que el usuario no diera antes.
+    """
+    if harness != "claude" or not cwd or (to_alias or "main") == (from_alias or "main"):
+        return False
+    dest = _claude_config_dir(to_alias)
+    if not dest:
+        return False
+    return claude_trust.inherit_cwd_trust(cwd, source_config_dir=_claude_config_dir(from_alias),
+                                          dest_config_dir=dest, home=os.path.expanduser("~"))
+
+
 def session_change_support(registry=None, observed=None):
     """Mid-session adapter policy; new-session availability is separate."""
     registry = registry or load_provider_registry()
@@ -2050,6 +2075,10 @@ class SessionConfiguration:
                 self._copy_conversation(origin, plan[account_key])
         self.snapshot_record = snapshot
         _restore_shell_tty(self.pane)
+        inherit_trust_for_switch(current['pane_current_path'],
+                                 ((snapshot.get('origin') or {}).get('observed') or {}).get('harnessAccount'),
+                                 plan.get('harnessAccount'),
+                                 harness=plan.get('to') or self.frm)
         _send_configuration_command(self.pane, 'env ' + shlex.quote('COMANDOS_OPERATION_ID=' + self.data['requestId']) + ' ' + plan['command'])
 
     def _verify(self, expected, sid='', attempts=60):
@@ -8690,6 +8719,8 @@ class Handler(http.server.SimpleHTTPRequestHandler):
                     record_runtime_config(new_sess, pane_new, route["harness"], route["motor"],
                                           selected.get("model", ""), selected.get("effort", ""),
                                           alias, motor_alias, route["id"], "session-new")
+                if route and route.get("harness") == "claude":
+                    inherit_trust_for_switch(final_cwd, "main", alias, harness="claude")
                 def _send(sess=new_sess, c=cmd):
                     time.sleep(1.5)
                     tmux("send-keys", "-t", "=" + sess + ":", c, "Enter")
