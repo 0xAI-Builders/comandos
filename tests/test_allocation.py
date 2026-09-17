@@ -1,3 +1,4 @@
+import json
 import sys
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'lib'))
@@ -75,3 +76,132 @@ def test_governing_limit_prefers_weekly():
     assert al.governing_limit(rows, "claude", "main")["percent"] == 39
     assert al.governing_limit(rows, "codex", "main") is None
     assert al.pool_key("claude", "relotto") == "claude:relotto"
+
+REGISTRY["routes"] = [{"id": "claude:claude", "harness": "claude", "motor": "claude"},
+                      {"id": "claude:codex", "harness": "claude", "motor": "codex"},
+                      {"id": "codex:codex", "harness": "codex", "motor": "codex"},
+                      {"id": "grok:grok", "harness": "grok", "motor": "grok"},
+                      {"id": "acp:claude", "harness": "acp", "motor": "claude"}]
+SUPPORT = {"claude:claude": {"selectable": True, "reason": None},
+           "claude:codex": {"selectable": True, "reason": None},
+           "codex:codex": {"selectable": True, "reason": None},
+           "grok:grok": {"selectable": True, "reason": None},
+           "acp:claude": {"selectable": False, "reason": {"code": "acp_effort_unobserved"}}}
+ACCOUNTS = {"claude": ["main", "relotto"], "codex": ["main"], "grok": ["main"]}
+
+def sess(name, agent, model, effort, account="main", status="waiting", pane="%1"):
+    return dict(session=name, pane=pane, agent=agent, motor=agent, model=model, effort=effort,
+                account=account, harnessAccount=account, motorAccount=account,
+                routeId=f"{agent}:{agent}", status=status, cwd="/tmp/" + name)
+
+LIMITS = [limit("claude", "main", 63.0, 85.5 * 3600, kind="weekly_all"),
+          limit("claude", "relotto", 65.0, 76.5 * 3600, kind="weekly_all"),
+          limit("codex", "main", 1.0, 130.6 * 3600),
+          limit("grok", "main", 6.0, 98.4 * 3600)]
+
+def sessions():
+    return [sess("SAVA", "claude", "claude-fable-5-1", "xhigh", pane="%10"),
+            sess("MRP", "claude", "claude-opus-5", "max", pane="%12"),
+            sess("LifeOS", "claude", "claude-opus-5", "medium", pane="%18"),
+            sess("Chips", "grok", "grok-4.6", "high", status="idle", pane="%60"),
+            sess("CleanWix", "codex", "gpt-6-astra", "high", status="done", pane="%20")]
+
+def run(**kw):
+    return al.propose(sessions(), LIMITS, REGISTRY, SUPPORT, ACCOUNTS, TIERS, now=NOW, **kw)
+
+def test_tier_of_takes_the_first_matching_pattern():
+    # Un modelo que casa con DOS patrones se queda con el tier del primero, no con el más barato.
+    tiers = {"patterns": [{"match": "gpt-6", "tier": "high"}, {"match": "gpt-6|luna", "tier": "low"}]}
+    assert al._tier_of("gpt-6-astra", tiers) == "high"
+    assert al._tier_of("gpt-6-luna", tiers) == "high"
+    assert al._tier_of("otro-luna", tiers) == "low"
+
+def test_plan_is_deterministic():
+    first = json.dumps(run(), sort_keys=True)
+    for _ in range(100):
+        assert json.dumps(run(), sort_keys=True) == first
+
+def test_plan_shape_and_hash():
+    plan = run()
+    assert plan["stateHash"] == al.plan_hash(sessions())
+    assert {i["key"] for i in plan["items"]} == {"SAVA|%10", "MRP|%12", "LifeOS|%18", "Chips|%60", "CleanWix|%20"}
+    item = next(i for i in plan["items"] if i["session"] == "SAVA")
+    assert item["layer"] == 3 and item["to"]["effort"] == "high"
+    assert item["to"]["model"] == "claude-fable-5-1"
+    assert item["risk"] in ("bajo", "medio", "alto", "-") and item["reason"]
+
+def test_strong_sessions_spread_to_account_with_more_margin():
+    plan = run()
+    strong = [i for i in plan["items"] if i["layer"] == 3]
+    accounts = {i["to"]["harnessAccount"] for i in strong}
+    assert accounts == {"main", "relotto"}          # no todas en la misma cuenta
+
+def test_medium_layer_moves_to_codex_when_codex_is_empty():
+    plan = run()
+    lifeos = next(i for i in plan["items"] if i["session"] == "LifeOS")
+    assert lifeos["to"]["motor"] == "codex" and lifeos["to"]["routeId"] == "claude:codex"
+    assert lifeos["to"]["motorAccount"] == "main"   # gateway fuerza main
+    assert lifeos["to"]["effort"] == "medium"
+
+def test_override_layer_and_lock():
+    plan = run(overrides={"LifeOS|%18": {"layer": 3}, "Chips|%60": {"locked": True}})
+    lifeos = next(i for i in plan["items"] if i["session"] == "LifeOS")
+    chips = next(i for i in plan["items"] if i["session"] == "Chips")
+    assert lifeos["layer"] == 3 and lifeos["to"]["effort"] == "high"
+    assert chips["locked"] and chips["same"]
+
+def test_override_to_is_respected_verbatim():
+    plan = run(overrides={"SAVA|%10": {"to": {"harness": "claude", "motor": "claude", "model": "claude-opus-5",
+                                              "effort": "medium", "harnessAccount": "main", "motorAccount": "main",
+                                              "routeId": "claude:claude"}}})
+    sava = next(i for i in plan["items"] if i["session"] == "SAVA")
+    assert sava["to"]["model"] == "claude-opus-5" and sava["to"]["effort"] == "medium"
+
+def test_unselectable_routes_never_proposed():
+    plan = run()
+    assert all(i["to"]["routeId"] != "acp:claude" for i in plan["items"])
+
+def test_hard_constraint_prefers_pool_that_reaches_reset():
+    tight = [limit("claude", "main", 90.0, 85 * 3600, kind="weekly_all"),
+             limit("claude", "relotto", 20.0, 85 * 3600, kind="weekly_all"),
+             limit("codex", "main", 1.0, 130 * 3600), limit("grok", "main", 6.0, 98 * 3600)]
+    plan = al.propose(sessions(), tight, REGISTRY, SUPPORT, ACCOUNTS, TIERS, now=NOW)
+    strong = [i for i in plan["items"] if i["layer"] == 3]
+    assert all(i["to"]["harnessAccount"] == "relotto" for i in strong)
+    assert plan["impact"]["claude:relotto"]["reachesReset"] is True
+
+def test_impact_has_before_and_after_per_pool():
+    plan = run()
+    imp = plan["impact"]["codex:main"]
+    assert imp["n"] >= 1 and imp["burnAfter"] > imp["burnNow"]
+    assert imp["verdict"] in ("llega al reset",) or imp["verdict"].startswith("se acaba en")
+
+def test_invert_sends_every_item_back_to_its_from():
+    plan = run()
+    inv = al.invert(plan)
+    assert inv["planId"] == "rev-" + plan["planId"] and inv is not plan
+    for before, after in zip(plan["items"], inv["items"]):
+        assert after["to"]["model"] == before["from"]["model"]
+        assert after["to"]["effort"] == before["from"]["effort"]
+        assert after["to"]["harnessAccount"] == before["from"]["account"]
+        assert after["reason"] == "revertir"
+    assert plan["items"][0]["to"]["model"]      # el plan original no se toca
+
+def test_layer_three_spreads_across_its_own_accounts_not_to_a_cheaper_motor():
+    # Codex está al 1 % y siempre sería la cuota más barata; la capa 3 igual se queda
+    # en su motor y solo se reparte entre las cuentas de ese motor.
+    plan = run()
+    for item in (i for i in plan["items"] if i["layer"] == 3):
+        assert item["to"]["motor"] == item["from"]["motor"]
+        assert item["to"]["routeId"] == "claude:claude"
+
+def test_empty_account_scales_from_the_fleet_reference_load():
+    # Una cuenta sin sesiones vivas no se escala desde cero (eso la haría parecer
+    # varias veces peor de lo que es y nadie se movería nunca a ella).
+    row = al.enrich_limits([limit("claude", "relotto", 65.0, 76.5 * 3600, kind="weekly_all")], NOW)[0]
+    ref = al._reference_load({"claude:main": 6.2, "codex:main": 1.6, "grok:main": 1.6})
+    assert round(ref, 3) == 3.133
+    empty = al._burn_after(row, 0.0, 1.6, ref)
+    assert round(empty, 3) == round(row["burn"] * 1.6 / ref, 3)
+    assert empty < al._burn_after(row, 0.0, 3.2, ref)        # más carga, más ritmo
+    assert al._burn_after(row, 6.2, 1.6, ref) < empty        # con carga propia manda la suya
