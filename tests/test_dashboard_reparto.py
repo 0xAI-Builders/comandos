@@ -58,7 +58,23 @@ def test_el_tanque_tiene_sus_dos_capas():
 def test_la_ficha_muestra_modelo_y_effort_y_deja_cambiarlos():
     assert "rp-old" in JS and "rp-arrow" in JS, "falta el diff antes → después"
     assert 'seg(item, "model"' in JS and 'seg(item, "effort"' in JS, "faltan los selectores"
-    assert "data-set=" in JS and "data-lock=" in JS
+    assert "data-set-key=" in JS and "data-lock=" in JS
+    # item.key ya es "sesion|pane": un atributo compuesto con delimitador trunca la
+    # clave al leerla y el selector se vuelve un no-op silencioso. Campo y valor
+    # viajan en atributos propios.
+    assert "data-set-field=" in JS and "data-set-value=" in JS
+    assert 'dataset.set.split' not in JS
+
+
+def test_el_candado_se_puede_soltar():
+    """Fijar una ficha no puede esconder el botón que la suelta."""
+    assert 'S.phase === "curar"\n        ? \'<button type="button" class="rp-lk ' in JS
+
+
+def test_aplicando_siempre_ofrece_salida():
+    """Si el sondeo se corta a mitad del lote, la pestaña no puede quedarse sin botones."""
+    assert "data-repoll" in JS and JS.count("data-repoll") >= 2, "el boton necesita su manejador"
+    assert "data-again" in JS
 
 
 def test_el_angosto_usa_container_queries_y_barra_de_destinos():

@@ -134,21 +134,33 @@
         S.batch = b;
         if (b.state === "terminado") { clearInterval(S.poll); S.poll = null; S.phase = "terminado"; }
         render();
-      } catch (e) { clearInterval(S.poll); S.poll = null; S.error = e.message; render(); }
+      } catch (e) {
+        clearInterval(S.poll); S.poll = null;
+        S.error = e.message + " — el lote sigue en marcha en el servidor.";
+        render();
+      }
     }, 800);
   }
 
   async function retry(key) {
-    try { await api("/allocation/retry", { batchId: S.batch.batchId, key: key }); pollBatch(); }
-    catch (e) { S.error = e.message; render(); }
+    if (S.busy || !S.batch) return;
+    S.busy = true; S.error = ""; render();
+    try {
+      await api("/allocation/retry", { batchId: S.batch.batchId, key: key });
+      S.phase = "aplicando"; pollBatch();
+    } catch (e) { S.error = e.message; }
+    S.busy = false; render();
   }
 
   async function revert() {
+    if (S.busy || !S.batch) return;
+    S.busy = true; S.error = ""; render();
     try {
       var r = await api("/allocation/revert", { batchId: S.batch.batchId });
       S.batch = { batchId: r.batchId, items: [], done: 0, total: r.total };
-      S.phase = "aplicando"; pollBatch(); render();
-    } catch (e) { S.error = e.message; render(); }
+      S.phase = "aplicando"; pollBatch();
+    } catch (e) { S.error = e.message; }
+    S.busy = false; render();
   }
 
   /* ---------------- pintado ---------------- */
@@ -179,9 +191,11 @@
     var current = item.to[field];
     var changed = item.to[field] !== item.from[field];
     return '<span class="rp-seg ' + (changed ? "rp-chg" : "") + '">' + options.map(function (o) {
-      return '<button type="button" class="' + (o === current ? "on" : "") + '" data-set="' +
-        esc(item.key) + "|" + esc(field) + "|" + esc(o) + '" title="' + esc(o) + '">' +
-        esc(field === "model" ? short(o) : o) + "</button>";
+      // Tres atributos y no uno compuesto: item.key ya contiene "|" (session|pane),
+      // así que cualquier delimitador colisiona y el chip se vuelve un no-op.
+      return '<button type="button" class="' + (o === current ? "on" : "") + '" data-set-key="' +
+        esc(item.key) + '" data-set-field="' + esc(field) + '" data-set-value="' + esc(o) +
+        '" title="' + esc(o) + '">' + esc(field === "model" ? short(o) : o) + "</button>";
     }).join("") + "</span>";
   }
 
@@ -206,8 +220,11 @@
       '<span class="rp-body"><span class="rp-name">' + esc(item.session) +
         ' <span class="rp-pane">' + esc(item.pane) + "</span></span>" +
         '<span class="rp-diff">' + diff + "</span></span>" +
-      (editable ? '<button type="button" class="rp-lk" data-lock="' + esc(item.key) +
-        '" title="fijar: el reparto no toca esta sesión">🔒</button>' : "") +
+      (S.phase === "curar"
+        ? '<button type="button" class="rp-lk ' + (item.locked ? "on" : "") + '" data-lock="' +
+          esc(item.key) + '" title="' + (item.locked ? "soltar: dejar que el reparto la mueva"
+            : "fijar: el reparto no toca esta sesión") + '">🔒</button>'
+        : "") +
       (b && b.state !== "omitida" ? '<span class="rp-st ' + esc(b.state) + '">' + esc(b.state) + "</span>" : "") +
       "</div>";
   }
@@ -230,7 +247,9 @@
       var burn = root.querySelector('[data-burn="' + (window.CSS && CSS.escape ? CSS.escape(k) : k) + '"]');
       if (burn && a.burnAfter != null) burn.textContent = a.burnAfter.toFixed(1) + "x";
       var v = root.querySelector('[data-verdict="' + (window.CSS && CSS.escape ? CSS.escape(k) : k) + '"]');
-      if (v && a.verdict) v.firstChild.nodeValue = a.verdict + (a.burnAfter != null ? " · ritmo " : "");
+      if (v && a.verdict && v.firstChild && v.firstChild.nodeType === 3) {
+        v.firstChild.nodeValue = a.verdict + (a.burnAfter != null ? " · ritmo " : "");
+      }
       var tank = liq.closest(".rp-tank");
       if (tank) tank.classList.toggle("rp-full", used >= 100);
     });
@@ -276,10 +295,13 @@
     }
     html += '<div class="rp-foot"><span class="rp-note">' + b.done + "/" + b.total +
       (stopped.length ? " · " + stopped.length + " detenidas" : "") + "</span><span class=\"rp-sp\"></span>" +
-      (S.phase === "terminado"
-        ? (ready.length ? '<button type="button" class="rp-ghost" data-revert>Revertir todo</button>' : "") +
-          '<button type="button" class="rp-go" data-again>Volver a analizar</button>'
-        : "") + "</div>";
+      // En "aplicando" siempre hay salida: si el sondeo se cortó, reanudarlo; y
+      // volver a empezar nunca depende de que el lote haya terminado.
+      (S.phase === "aplicando" && !S.poll
+        ? '<button type="button" class="rp-ghost" data-repoll>Reanudar seguimiento</button>' : "") +
+      (S.phase === "terminado" && ready.length
+        ? '<button type="button" class="rp-ghost" data-revert ' + (S.busy ? "disabled" : "") + ">Revertir todo</button>" : "") +
+      '<button type="button" class="rp-go" data-again>Volver a analizar</button></div>';
     return html;
   }
 
@@ -323,17 +345,23 @@
   function targetFor(pool, key) {
     var item = items().filter(function (i) { return i.key === key; })[0];
     if (!item) return null;
-    var parts = pool.split(":");
-    var motor = parts[0], account = parts[1] || "main";
+    var cut = pool.indexOf(":");
+    var motor = pool.slice(0, cut), account = pool.slice(cut + 1) || "main";
     var harness = item.to.harness || item.from.harness || item.from.motor;
-    var gateway = motor !== harness;
-    return { to: {
-      harness: harness, motor: motor,
-      model: item.to.model, effort: item.to.effort,
-      harnessAccount: gateway ? account : account,
-      motorAccount: gateway ? "main" : account,
-      routeId: harness + ":" + motor
-    } };
+    if (motor === harness) {
+      // Ruta nativa: la cuenta del tanque es la del harness y la del motor a la vez.
+      return { to: { harness: harness, motor: motor, model: item.to.model, effort: item.to.effort,
+                     harnessAccount: account, motorAccount: account,
+                     routeId: harness + ":" + motor } };
+    }
+    // Ruta pasarela: el motor gasta siempre con "main", así que un tanque de otra
+    // cuenta no es un destino representable; se ignora en vez de mandar un destino
+    // que el servidor rechazaría. La cuenta del harness no sale nunca del tanque:
+    // es del otro lado de la ruta y se conserva tal cual.
+    if (account !== "main") return null;
+    return { to: { harness: harness, motor: motor, model: item.to.model, effort: item.to.effort,
+                   harnessAccount: item.to.harnessAccount || item.from.account || "main",
+                   motorAccount: "main", routeId: harness + ":" + motor } };
   }
 
   function wire(root) {
@@ -348,18 +376,21 @@
       S.plan = null; S.batch = null; S.overrides = {}; S.armed = null; S.phase = "idle";
       load();
     };
+    var rp = root.querySelector("[data-repoll]");
+    if (rp) rp.onclick = function () { S.error = ""; pollBatch(); render(); };
     var rs = root.querySelector("[data-reset]");
     if (rs) rs.onclick = function () { S.overrides = {}; analyze(); };
 
-    q("[data-set]").forEach(function (b) {
+    q("[data-set-key]").forEach(function (b) {
       b.onclick = function (e) {
         e.stopPropagation();
-        var p = b.dataset.set.split("|");
-        var item = items().filter(function (i) { return i.key === p[0]; })[0];
+        if (S.busy) return;
+        var key = b.dataset.setKey;
+        var item = items().filter(function (i) { return i.key === key; })[0];
         if (!item) return;
         var to = Object.assign({}, item.to);
-        to[p[1]] = p[2];
-        setOverride(p[0], { to: to });
+        to[b.dataset.setField] = b.dataset.setValue;
+        setOverride(key, { to: to });
       };
     });
     q("[data-lock]").forEach(function (b) {
