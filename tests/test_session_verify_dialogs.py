@@ -61,3 +61,70 @@ def test_pending_confirmation_records_which_dialog_stopped_the_start():
     src = Path(__file__).resolve().parents[1].joinpath("bin/cc-dash").read_text()
     assert "self.screen_dialog_kind = kind" in src
     assert "kind == 'error'" in src
+
+
+# --- la config puede venir mal escrita: nunca debe casar con todo ni reventar ---
+
+def _cfg_with(monkeypatch, tmp_path, dialog_patterns):
+    """Redirige REPO_ROOT a un config/detectors.json de pega."""
+    dash = load_dash_module()
+    cfg = tmp_path / "config"
+    cfg.mkdir(exist_ok=True)
+    (cfg / "detectors.json").write_text(json.dumps({"dialogPatterns": dialog_patterns}))
+    monkeypatch.setattr(dash, "REPO_ROOT", str(tmp_path))
+    dash._DIALOG_CACHE.update(mtime=None, value=None)
+    return dash
+
+
+def test_a_bare_string_pattern_is_not_exploded_into_letters(tmp_path, monkeypatch):
+    """`"trust": "Do you trust"` (sin lista) no puede volverse ['D','o',' ',...],
+    que casaría con cualquier pantalla y dejaría el cambio sin confirmar nunca."""
+    dash = _cfg_with(monkeypatch, tmp_path, {"trust": "Do you trust"})
+    assert dash.dialog_patterns()["trust"] == ["Do you trust"]
+    assert dash.screen_dialog("compilando el proyecto...") == ""
+    assert dash.screen_dialog("Do you trust the files?") == "trust"
+
+
+def test_a_non_string_pattern_never_raises(tmp_path, monkeypatch):
+    """`"trust": 5` reventaba con TypeError dentro del bucle de sondeo."""
+    dash = _cfg_with(monkeypatch, tmp_path, {"trust": 5, "login": [7, "sign in"]})
+    assert dash.screen_dialog("texto cualquiera") == ""
+    assert dash.screen_dialog("please sign in") == "login"
+
+
+def test_an_invalid_regex_is_dropped_not_fatal(tmp_path, monkeypatch):
+    dash = _cfg_with(monkeypatch, tmp_path, {"trust": ["(sin cerrar", "Do you trust"]})
+    assert dash.dialog_patterns()["trust"] == ["Do you trust"]
+    assert dash.screen_dialog("Do you trust the files?") == "trust"
+
+
+def test_a_missing_kind_falls_back_per_kind(tmp_path, monkeypatch):
+    """Si la config solo trae 'trust', las otras categorías no desaparecen."""
+    dash = _cfg_with(monkeypatch, tmp_path, {"trust": ["Do you trust"]})
+    assert dash.screen_dialog("error: algo") == "error"
+    assert dash.screen_dialog("please sign in") == "login"
+
+
+def test_patterns_are_cached_between_calls(tmp_path, monkeypatch):
+    """dialog_patterns corre hasta 180 veces por cambio: no puede releer el disco cada vez."""
+    dash = _cfg_with(monkeypatch, tmp_path, {"trust": ["Do you trust"]})
+    reads = []
+    real = dash._detectors_cfg
+    monkeypatch.setattr(dash, "_detectors_cfg", lambda: reads.append(1) or real())
+    dash._DIALOG_CACHE.update(mtime=None, value=None)
+    for _ in range(50):
+        dash.screen_dialog("nada que ver")
+    assert len(reads) == 1, f"releyó la config {len(reads)} veces"
+
+
+def test_onboarding_patterns_are_specific_enough(tmp_path, monkeypatch):
+    """Frases genéricas como "Let's get started" casan con código o transcripciones
+    del propio usuario y bloquearían el sondeo hasta 90 s."""
+    dash = load_dash_module()
+    dash._DIALOG_CACHE.update(mtime=None, value=None)
+    for innocent in ("Let's get started with the migration",
+                     "# Welcome to Claude Code, our internal guide",
+                     "README: getting started"):
+        assert dash.screen_dialog(innocent) == "", innocent
+    assert dash.screen_dialog("Choose the text style that looks best") == "onboarding"
+    assert dash.screen_dialog("Elige el estilo de texto") == "onboarding"

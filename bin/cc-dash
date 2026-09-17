@@ -1799,15 +1799,59 @@ def _detectors_cfg():
     except Exception:
         return {}
 
+
+_DIALOG_CACHE = {"mtime": None, "value": None}
+
+
+def _clean_patterns(raw):
+    """Solo cadenas que compilen como regex. Una config mal escrita no puede
+    convertirse en un patrón que casa con todo ni tumbar el bucle de sondeo:
+    un patrón suelto se envuelve en lista, lo que no sea texto se descarta."""
+    out = {}
+    for kind, value in (raw or {}).items():
+        if isinstance(value, str):
+            value = [value]
+        elif not isinstance(value, (list, tuple)):
+            continue
+        good = []
+        for pat in value:
+            if not isinstance(pat, str) or not pat.strip():
+                continue
+            try:
+                re.compile(pat)
+            except re.error:
+                continue
+            good.append(pat)
+        if good:
+            out[kind] = good
+    return out
+
+
 def dialog_patterns():
-    """Patrones de los diálogos de arranque, desde config (en/es)."""
-    pats = _detectors_cfg().get("dialogPatterns") or {}
-    return {k: list(v) for k, v in pats.items() if v} or _DEFAULT_DIALOGS
+    """Patrones de los diálogos de arranque, desde config (en/es).
+
+    Se cachea por mtime: `screen_dialog` corre dentro del bucle de verificación,
+    hasta 180 veces por cambio de sesión, y releer el JSON en cada vuelta era
+    I/O de sobra en el camino caliente.
+    """
+    path = os.path.join(REPO_ROOT, "config", "detectors.json")
+    try:
+        mtime = os.stat(path).st_mtime
+    except OSError:
+        mtime = None
+    if _DIALOG_CACHE["value"] is not None and _DIALOG_CACHE["mtime"] == mtime:
+        return _DIALOG_CACHE["value"]
+    clean = _clean_patterns(_detectors_cfg().get("dialogPatterns"))
+    for kind, fallback in _DEFAULT_DIALOGS.items():
+        clean.setdefault(kind, list(fallback))
+    _DIALOG_CACHE.update(mtime=mtime, value=clean)
+    return clean
 
 def screen_dialog(screen):
     """Devuelve 'trust' | 'login' | 'onboarding' | 'error' | '' según la pantalla."""
+    pats = dialog_patterns()
     for kind in ("trust", "login", "onboarding", "error"):
-        for p in dialog_patterns().get(kind) or []:
+        for p in pats.get(kind) or []:
             if re.search(p, screen or "", re.I | re.M):
                 return kind
     return ""
@@ -2204,11 +2248,11 @@ class SessionConfiguration:
             return None
         screen = tmux('capture-pane', '-p', '-t', self.pane).stdout or ''
         kind = screen_dialog(screen)
+        self.screen_dialog_kind = kind
         if kind == 'error':
             return None
         # Un diálogo de arranque (trust/login/bienvenida) no invalida la observación,
-        # pero sí explica por qué el destino no confirma: se guarda para el informe.
-        self.screen_dialog_kind = kind
+        # pero sí explica por qué el destino no confirma: queda anotado arriba.
         return observe_pane(self.sess, self.pane, info)
 
     def rollback(self, snapshot):

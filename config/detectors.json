@@ -29,8 +29,8 @@
     "onboarding": [
       "Choose the text style",
       "Elige el estilo de texto",
-      "Welcome to Claude Code",
-      "Let's get started"
+      "Choose your theme",
+      "Elige tu tema"
     ],
     "error": [
       "(^|\\n)\\s*error:",
