@@ -91,3 +91,42 @@ def test_agrupa_por_la_cuota_que_paga_no_por_la_cuenta_del_harness():
 def test_el_plan_caducado_se_explica_en_vez_de_reventar():
     assert "plan_stale" in JS
     assert "Vuelve a analizar" in JS
+
+
+def test_el_sondeo_se_suelta_al_cerrar_el_panel():
+    """Un intervalo huérfano sigue pegándole al servidor con el modal cerrado."""
+    assert "function visible()" in JS and "offsetParent" in JS
+    assert "if (!visible()) { clearInterval(S.poll)" in JS
+    assert 'S.phase === "aplicando" && S.batch && !S.poll) pollBatch()' in JS, \
+        "al reabrir hay que reenganchar el lote en vuelo"
+
+
+def test_dos_analisis_a_la_vez_no_se_pisan():
+    """El más lento no puede sobrescribir un plan más nuevo."""
+    assert "var mine = ++seq" in JS and "if (mine !== seq) return" in JS
+
+
+def test_el_tanque_avisa_de_la_cuota_mas_apretada():
+    """claude main sale al 85 % con su semanal por modelo al 100 %: hay que verlo."""
+    assert "function tightest(" in JS, "falta el cálculo de la fila más tensa"
+    assert "rp-tight" in JS and "rp-tight" in CSS
+    assert "weekly_scoped" in JS
+
+
+def test_el_tactil_puede_hacer_scroll_sobre_las_fichas():
+    """touch-action:none deja el panel inmóvil en el móvil con muchas sesiones."""
+    assert "touch-action: pan-y" in CSS and "touch-action: none" not in CSS
+
+
+def test_los_tanques_siguen_visibles_al_arrastrar():
+    assert "#reparto.rp-dragging .rp-tanks" in CSS and "position: sticky" in CSS
+
+
+def test_la_copia_es_bilingue():
+    """El panel y el motor hablan los dos idiomas del tablero, no medio y medio."""
+    motor = (ROOT / "lib/allocation.py").read_text()
+    assert "def _t(lang" in motor, "el motor necesita su puente de idioma"
+    assert "lasts to reset" in motor and "runs out in" in motor
+    assert "function T(es, en)" in JS
+    for es in ("Analizar", "Aplicar ", "Revertir todo", "Volver a analizar"):
+        assert 'T("' + es in JS, es

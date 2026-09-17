@@ -17,6 +17,12 @@ WEIGHT = {"low": 0.5, "medium": 1.0, "high": 1.6, "xhigh": 2.2, "max": 3.0}
 _HIGH_EFFORTS = {"high", "xhigh", "max"}
 
 
+def _t(lang: str, es: str, en: str) -> str:
+    """Copia bilingue. El idioma viaja como argumento y no como estado del modulo:
+    este fichero es puro y dos peticiones seguidas pueden pedir idiomas distintos."""
+    return en if lang == "en" else es
+
+
 def fmt_duration(seconds: float) -> str:
     seconds = max(0.0, float(seconds))
     if seconds < 3600:
@@ -27,7 +33,7 @@ def fmt_duration(seconds: float) -> str:
     return f"{days}d {rest}h"
 
 
-def enrich_limits(limits: list[dict], now: float) -> list[dict]:
+def enrich_limits(limits: list[dict], now: float, lang: str = "es") -> list[dict]:
     out = []
     for raw in limits:
         row = dict(raw)
@@ -50,7 +56,9 @@ def enrich_limits(limits: list[dict], now: float) -> list[dict]:
         row.update(pace=pace, burn=burn,
                    runsOutIn=None if reaches else runs_out,
                    reachesReset=reaches,
-                   verdict="llega al reset" if reaches else f"se acaba en {fmt_duration(runs_out)}")
+                   verdict=_t(lang, "llega al reset", "lasts to reset") if reaches
+                   else _t(lang, f"se acaba en {fmt_duration(runs_out)}",
+                                 f"runs out in {fmt_duration(runs_out)}"))
         out.append(row)
     return out
 
@@ -204,8 +212,8 @@ def _same(frm: dict, to: dict) -> bool:
             and to["harnessAccount"] == frm["account"] and to["motorAccount"] == frm["motorAccount"])
 
 
-def impact(items: list[dict], limits: list[dict], now: float) -> dict:
-    enriched = enrich_limits(limits, now)
+def impact(items: list[dict], limits: list[dict], now: float, lang: str = "es") -> dict:
+    enriched = enrich_limits(limits, now, lang)
     pools = sorted({pool_key(i["from"]["motor"], i["from"]["motorAccount"]) for i in items}
                    | {_pool_of(i["to"]) for i in items}
                    | {pool_key(r["provider"], r.get("account") or "main") for r in enriched})
@@ -230,14 +238,17 @@ def impact(items: list[dict], limits: list[dict], now: float) -> dict:
             runs_out = (100.0 - float(row["percent"])) / rate_after if rate_after > 0 else None
             reaches = runs_out is None or runs_out >= remaining
             entry.update(usedAfter=used_after, runsOutIn=None if reaches else runs_out, reachesReset=reaches,
-                         verdict="llega al reset" if reaches else f"se acaba en {fmt_duration(runs_out)}")
+                         verdict=_t(lang, "llega al reset", "lasts to reset") if reaches
+                         else _t(lang, f"se acaba en {fmt_duration(runs_out)}",
+                                       f"runs out in {fmt_duration(runs_out)}"))
         out[pool] = entry
     return out
 
 
-def propose(sessions, limits, registry, support, accounts, tiers, *, now, overrides=None) -> dict:
+def propose(sessions, limits, registry, support, accounts, tiers, *, now, overrides=None,
+             lang: str = "es") -> dict:
     overrides = overrides or {}
-    enriched = enrich_limits(limits, now)
+    enriched = enrich_limits(limits, now, lang)
     motors = registry.get("motors") or {}
     # el harness puede no ser un motor (acp, gemini, shell); lo que gasta cuota es el motor
     live = [s for s in sessions if _from(s)["motor"] in motors]
@@ -261,8 +272,10 @@ def propose(sessions, limits, registry, support, accounts, tiers, *, now, overri
             here = dict(harness=frm["harness"], motor=frm["motor"], model=frm["model"], effort=frm["effort"],
                         harnessAccount=frm["account"], motorAccount=frm["motorAccount"], routeId=frm["routeId"])
             to = here if locked else {**here, **dict(ov["to"])}
-            reason = ("esta ruta no admite cambio en caliente" if frozen
-                      else "fijada por ti" if locked else "ajustada por ti")
+            reason = (_t(lang, "esta ruta no admite cambio en caliente",
+                             "this route cannot be switched live") if frozen
+                      else _t(lang, "fijada por ti", "pinned by you") if locked
+                      else _t(lang, "ajustada por ti", "tuned by you"))
         else:
             effort = LAYER_EFFORT[layer]
             scored = []
@@ -283,13 +296,22 @@ def propose(sessions, limits, registry, support, accounts, tiers, *, now, overri
             scored.sort(key=lambda t: t[0])
             _, c, burn_after, row = scored[0]
             to = dict(c, model=model_for_layer(c["motor"], layer, registry, tiers), effort=effort)
-            pct = f"{int(round(float(row['percent'])))} % usado" if row else "sin cuota conocida"
-            reset = f", reset en {fmt_duration(float(row['resets_at']) - now)}" if row else ""
+            pct = (_t(lang, f"{int(round(float(row['percent'])))} % usado",
+                            f"{int(round(float(row['percent'])))} % used")
+                   if row else _t(lang, "sin cuota conocida", "no known quota"))
+            reset = (_t(lang, f", reset en {fmt_duration(float(row['resets_at']) - now)}",
+                              f", resets in {fmt_duration(float(row['resets_at']) - now)}")
+                     if row else "")
             moved = not (to["motor"] == frm["motor"] and to["harnessAccount"] == frm["account"])
-            reason = (f"{to['motor']} {to['harnessAccount']} tiene más margen: {pct}{reset}" if moved
-                      else f"se queda en {to['motor']} {to['harnessAccount']}: {pct}{reset}")
+            where = f"{to['motor']} {to['harnessAccount']}"
+            reason = (_t(lang, f"{where} tiene más margen: {pct}{reset}",
+                               f"{where} has more room: {pct}{reset}") if moved
+                      else _t(lang, f"se queda en {where}: {pct}{reset}",
+                                    f"stays on {where}: {pct}{reset}"))
             if burn_after is not None and burn_after > 1.0:
-                reason += " · ninguna cuota llega al reset con esta carga; es la que menos se pasa"
+                reason += _t(lang,
+                             " · ninguna cuota llega al reset con esta carga; es la que menos se pasa",
+                             " · no quota lasts to reset under this load; this one overshoots least")
         dst = _pool_of(to)  # la asignación ya cuenta para quien venga detrás
         load[src] = load.get(src, 0.0) - WEIGHT.get(frm["effort"], 1.0)
         load[dst] = load.get(dst, 0.0) + WEIGHT.get(to["effort"], 1.0)
@@ -297,13 +319,13 @@ def propose(sessions, limits, registry, support, accounts, tiers, *, now, overri
         items.append(dict(session=s.get("session"), pane=s.get("pane"), key=key, layer=layer,
                           cwd=s.get("cwd") or "",
                           **{"from": frm}, to=to, same=same, locked=locked,
-                          reason="igual" if same and not locked else reason,
+                          reason=_t(lang, "igual", "unchanged") if same and not locked else reason,
                           risk="-" if same else _risk(frm, to)))
     items.sort(key=lambda i: i["key"])
     state_hash = plan_hash(sessions)
     plan_id = hashlib.sha256(f"{state_hash}:{json.dumps(overrides, sort_keys=True)}".encode()).hexdigest()[:12]
     return dict(planId=plan_id, stateHash=state_hash, createdAt=now, items=items,
-                impact=impact(items, limits, now))
+                impact=impact(items, limits, now, lang))
 
 
 def invert(plan: dict) -> dict:

@@ -1929,7 +1929,7 @@ def selectable_accounts_by_motor(registry):
 
 
 def enriched_limits(limits):
-    return allocation.enrich_limits(limits or [], time.time())
+    return allocation.enrich_limits(limits or [], time.time(), ui_lang())
 
 
 def _motor_options(registry):
@@ -1956,7 +1956,8 @@ def allocation_inputs():
 def _build_plan(overrides):
     inp = allocation_inputs()
     plan = allocation.propose(inp["sessions"], inp["limits"], inp["registry"], inp["support"],
-                              inp["accounts"], inp["tiers"], now=inp["now"], overrides=overrides)
+                              inp["accounts"], inp["tiers"], now=inp["now"], overrides=overrides,
+                              lang=ui_lang())
     plan["options"] = _motor_options(inp["registry"])
     estado = {allocation.session_key(s): (s.get("status") or "") for s in inp["sessions"]}
     for item in plan["items"]:

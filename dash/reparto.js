@@ -21,6 +21,10 @@
     error: ""
   };
 
+  /* El tablero define tf(es, en) global segun CC_LANG. Aqui se usa a traves de
+     un puente para que este fichero siga cargando suelto (tests, parseo). */
+  function T(es, en) { return typeof tf === "function" ? tf(es, en) : es; }
+
   function esc(v) {
     return String(v == null ? "" : v).replace(/[&<>"']/g, function (c) {
       return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c];
@@ -30,7 +34,7 @@
     if (sec == null) return "";
     if (sec < 3600) return Math.round(sec / 60) + " min";
     if (sec < 48 * 3600) return Math.round(sec / 3600) + " h";
-    return Math.floor(sec / 86400) + "d " + Math.round((sec % 86400) / 3600) + "h";
+    return Math.floor(sec / 86400) + T("d ", "d ") + Math.round((sec % 86400) / 3600) + "h";
   }
   function poolKey(motor, account) { return motor + ":" + (account || "main"); }
   function short(model) {
@@ -55,16 +59,32 @@
         used: l.percent == null ? 0 : l.percent,
         burn: l.burn, verdict: l.verdict,
         resetsIn: (l.resets_at || 0) - Date.now() / 1000,
-        after: a
+        tight: tightest(k, l), after: a
       };
     });
     // Un destino que el plan conoce pero sin fila de cuota: se muestra, sin cifras.
     Object.keys(impact).forEach(function (k) {
       if (out.some(function (p) { return p.k === k; })) return;
       out.push({ k: k, label: impact[k].label || k, used: 0, burn: null,
-                 verdict: "sin cuota conocida", resetsIn: null, after: impact[k], unknown: true });
+                 verdict: T("sin cuota conocida", "no known quota"), resetsIn: null, after: impact[k], unknown: true });
     });
     return out;
+  }
+
+  /* La fila más apretada del mismo grupo que NO es la que gobierna el tanque:
+     la ventana de 5 h que te frena ahora mismo, o la semanal por modelo que ya
+     se agotó. Sin esto el tanque puede decir 85 % con una cuota al 100 %. */
+  function tightest(k, governing) {
+    var best = null;
+    (S.limits || []).forEach(function (l) {
+      if (poolKey(l.provider, l.account) !== k) return;
+      if (l === governing || l.percent == null) return;
+      if (!best || l.percent > best.percent) best = l;
+    });
+    if (!best || best.percent < (governing.percent == null ? 0 : governing.percent)) return null;
+    var name = best.window === "5h" ? T("5 h", "5 h")
+      : best.kind === "weekly_scoped" ? T("por modelo", "per model") : best.window;
+    return { pct: Math.round(best.percent), name: name, full: best.percent >= 100 };
   }
 
   function items() { return (S.plan && S.plan.items) || []; }
@@ -86,14 +106,23 @@
       S.error = "";
     } catch (e) { S.error = e.message; }
     render();
+    // Volver a la pestaña con un lote a medias reengancha el seguimiento.
+    if (S.phase === "aplicando" && S.batch && !S.poll) pollBatch();
   }
 
+  var seq = 0;
   async function analyze() {
+    var mine = ++seq;
     S.busy = true; render();
     try {
       var r = await api("/allocation/propose", { overrides: S.overrides });
+      if (mine !== seq) return;            // llegó tarde: ya hay un análisis más nuevo
       S.plan = r.plan; S.phase = "curar"; S.error = "";
-    } catch (e) { S.error = e.message; }
+    } catch (e) {
+      if (mine !== seq) return;
+      S.error = e.message;
+    }
+    if (mine !== seq) return;
     S.busy = false; render();
   }
 
@@ -119,16 +148,25 @@
       pollBatch();
     } catch (e) {
       if (/plan_stale/.test(e.message)) {
-        S.error = "Algo cambió en tus sesiones desde que analizamos. Vuelve a analizar.";
+        S.error = T("Algo cambió en tus sesiones desde que analizamos. Vuelve a analizar.",
+             "Something changed in your sessions since we analysed. Analyse again.");
         S.plan = null; S.phase = "idle";
       } else { S.error = e.message; }
     }
     S.busy = false; render();
   }
 
+  function visible() {
+    var el = document.getElementById("reparto");
+    return !!(el && el.offsetParent !== null);
+  }
+
   function pollBatch() {
     clearInterval(S.poll);
     S.poll = setInterval(async function () {
+      // Si el panel dejó de verse (modal cerrado, otra pestaña), se suelta el
+      // intervalo. El lote sigue en el servidor y load() lo retoma al volver.
+      if (!visible()) { clearInterval(S.poll); S.poll = null; return; }
       try {
         var b = await api("/allocation/status?batchId=" + encodeURIComponent(S.batch.batchId));
         S.batch = b;
@@ -175,15 +213,18 @@
       (p.unknown ? "rp-unknown" : "") + '" data-pool="' + esc(p.k) + '" title="' +
       esc(p.label + " · " + verdict) + '">' +
       '<div class="rp-cap">' + esc(p.label) +
+        (p.tight ? '<em class="rp-tight ' + (p.tight.full ? "full" : "") + '">' +
+          esc(p.tight.name + " " + p.tight.pct + "%") + "</em>" : "") +
         '<small data-verdict="' + esc(p.k) + '">' + esc(verdict) +
-        (burn == null ? "" : ' · ritmo <span data-burn="' + esc(p.k) + '">' + burn.toFixed(1) + "x</span>") +
+        (burn == null ? "" : T(" · ritmo ", " · pace ") + '<span data-burn="' + esc(p.k) + '">' +
+          burn.toFixed(1) + "x</span>") +
         "</small></div>" +
       '<div class="rp-base" style="--n:' + p.used + '%"></div>' +
       '<div class="rp-pre" data-pre="' + esc(p.k) + '" style="--h:' + usedAfter + '%"></div>' +
       '<div class="rp-liq ' + sev + '" data-liq="' + esc(p.k) + '" style="--h:' + usedAfter + '%"></div>' +
       '<div class="rp-foam"></div>' +
       '<div class="rp-lvl rp-num" data-lvl="' + esc(p.k) + '">' + Math.round(usedAfter) + "%</div>" +
-      (p.resetsIn == null ? "" : '<div class="rp-reset">reset en ' + esc(fmtDur(p.resetsIn)) + "</div>") +
+      (p.resetsIn == null ? "" : '<div class="rp-reset">' + T("reset en ", "resets in ") + esc(fmtDur(p.resetsIn)) + "</div>") +
       "</div>";
   }
 
@@ -222,8 +263,8 @@
         '<span class="rp-diff">' + diff + "</span></span>" +
       (S.phase === "curar"
         ? '<button type="button" class="rp-lk ' + (item.locked ? "on" : "") + '" data-lock="' +
-          esc(item.key) + '" title="' + (item.locked ? "soltar: dejar que el reparto la mueva"
-            : "fijar: el reparto no toca esta sesión") + '">🔒</button>'
+          esc(item.key) + '" title="' + (item.locked ? T("soltar: dejar que el reparto la mueva", "unpin: let the split move it")
+            : T("fijar: el reparto no toca esta sesión", "pin: leave this session alone")) + '">🔒</button>'
         : "") +
       (b && b.state !== "omitida" ? '<span class="rp-st ' + esc(b.state) + '">' + esc(b.state) + "</span>" : "") +
       "</div>";
@@ -248,7 +289,7 @@
       if (burn && a.burnAfter != null) burn.textContent = a.burnAfter.toFixed(1) + "x";
       var v = root.querySelector('[data-verdict="' + (window.CSS && CSS.escape ? CSS.escape(k) : k) + '"]');
       if (v && a.verdict && v.firstChild && v.firstChild.nodeType === 3) {
-        v.firstChild.nodeValue = a.verdict + (a.burnAfter != null ? " · ritmo " : "");
+        v.firstChild.nodeValue = a.verdict + (a.burnAfter != null ? T(" · ritmo ", " · pace ") : "");
       }
       var tank = liq.closest(".rp-tank");
       if (tank) tank.classList.toggle("rp-full", used >= 100);
@@ -257,20 +298,23 @@
 
   function footHtml() {
     if (S.phase === "idle") {
-      return '<div class="rp-foot"><span class="rp-note">Analiza para ver un reparto propuesto de tus sesiones vivas.</span>' +
+      return '<div class="rp-foot"><span class="rp-note">' +
+        T("Analiza para ver un reparto propuesto de tus sesiones vivas.",
+          "Analyse to see a proposed split of your live sessions.") + '</span>' +
         '<span class="rp-sp"></span><button type="button" class="rp-go" data-analyze ' +
-        (S.busy ? "disabled" : "") + ">" + (S.busy ? "Analizando…" : "Analizar") + "</button></div>";
+        (S.busy ? "disabled" : "") + ">" + (S.busy ? T("Analizando…", "Analysing…") : T("Analizar", "Analyse")) + "</button></div>";
     }
     if (S.phase === "curar") {
       var n = changes(), tuned = Object.keys(S.overrides).length;
-      return '<div class="rp-foot"><span class="rp-note">' + n + " cambios · " +
-        (items().length - n) + " sin cambio" +
-        (tuned ? ' · <b class="warn">' + tuned + " ajustadas por ti</b>" : "") +
-        " · se reinician ahora, conservando la conversación</span>" +
+      return '<div class="rp-foot"><span class="rp-note">' + n + T(" cambios · ", " changes · ") +
+        (items().length - n) + T(" sin cambio", " unchanged") +
+        (tuned ? ' · <b class="warn">' + tuned + T(" ajustadas por ti</b>", " tuned by you</b>") : "") +
+        T(" · se reinician ahora, conservando la conversación</span>",
+             " · they restart now, keeping the conversation</span>") +
         '<span class="rp-sp"></span>' +
-        (tuned ? '<button type="button" class="rp-ghost" data-reset>Propuesta original</button>' : "") +
+        (tuned ? '<button type="button" class="rp-ghost" data-reset>' + T("Propuesta original", "Original proposal") + '</button>' : "") +
         '<button type="button" class="rp-go" data-apply ' + (n && !S.busy ? "" : "disabled") + ">" +
-        (S.busy ? "Aplicando…" : "Aplicar " + n) + "</button></div>";
+        (S.busy ? T("Aplicando…", "Applying…") : T("Aplicar ", "Apply ") + n) + "</button></div>";
     }
     var b = S.batch || { items: [], done: 0, total: 0 };
     var list = (b.items || []).filter(function (i) { return i.state !== "omitida"; });
@@ -279,8 +323,10 @@
     var pct = b.total ? Math.round((b.done / b.total) * 100) : 0;
     var html = '<div class="rp-progress"><div class="rp-note">' +
       (S.phase === "terminado"
-        ? "Listo: " + ready.length + " sesiones reconfiguradas" + (stopped.length ? ", " + stopped.length + " detenidas" : "")
-        : "Aplicando " + b.total + " cambios · reinicio con la conversación conservada") +
+        ? T("Listo: ", "Done: ") + ready.length + T(" sesiones reconfiguradas", " sessions reconfigured") + (stopped.length ? ", " + stopped.length + T(" detenidas", " stopped") : "")
+        : T("Aplicando ", "Applying ") + b.total +
+          T(" cambios · reinicio con la conversación conservada",
+            " changes · restart with the conversation kept")) +
       '</div><div class="rp-pb"><i style="--p:' + pct + '%"></i></div><div class="rp-steps">' +
       list.map(function (i) {
         return '<span class="' + esc(i.state) + '">' +
@@ -294,14 +340,14 @@
       html += '<div class="rp-done">✓ ' + ready.length + " sesiones reconfiguradas</div>";
     }
     html += '<div class="rp-foot"><span class="rp-note">' + b.done + "/" + b.total +
-      (stopped.length ? " · " + stopped.length + " detenidas" : "") + "</span><span class=\"rp-sp\"></span>" +
+      (stopped.length ? " · " + stopped.length + T(" detenidas", " stopped") : "") + "</span><span class=\"rp-sp\"></span>" +
       // En "aplicando" siempre hay salida: si el sondeo se cortó, reanudarlo; y
       // volver a empezar nunca depende de que el lote haya terminado.
       (S.phase === "aplicando" && !S.poll
-        ? '<button type="button" class="rp-ghost" data-repoll>Reanudar seguimiento</button>' : "") +
+        ? '<button type="button" class="rp-ghost" data-repoll>' + T("Reanudar seguimiento", "Resume tracking") + '</button>' : "") +
       (S.phase === "terminado" && ready.length
-        ? '<button type="button" class="rp-ghost" data-revert ' + (S.busy ? "disabled" : "") + ">Revertir todo</button>" : "") +
-      '<button type="button" class="rp-go" data-again>Volver a analizar</button></div>';
+        ? '<button type="button" class="rp-ghost" data-revert ' + (S.busy ? "disabled" : "") + ">" + T("Revertir todo", "Revert all") + "</button>" : "") +
+      '<button type="button" class="rp-go" data-again>' + T("Volver a analizar", "Analyse again") + '</button></div>';
     return html;
   }
 
@@ -327,7 +373,8 @@
         return !P.some(function (p) { return p.k === poolKey(i.to.motor, i.to.motorAccount); });
       });
       if (orphans.length) {
-        html += '<div class="rp-bin" data-label="sin cuota conocida">' + orphans.map(tileHtml).join("") + "</div>";
+        html += '<div class="rp-bin" data-label="' + esc(T("sin cuota conocida", "no known quota")) +
+          '">' + orphans.map(tileHtml).join("") + "</div>";
       }
       html += '<div class="rp-dropbar">' + P.map(function (p) {
         return '<div class="rp-dz rp-drop" data-pool="' + esc(p.k) + '"><b>' + esc(p.label) + "</b><span>" +
