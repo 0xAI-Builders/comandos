@@ -1793,7 +1793,12 @@ def inherit_trust_for_switch(cwd, from_alias, to_alias, harness="claude"):
 # Y exigir el contexto concreto cierra los dos lados: "note: authentication
 # required for the admin api" no casa por ir a media línea, y "sign in before the
 # deploy" no casa por no llevar el contexto, aunque empiece línea.
-_LOGIN_LINE = r"(^|\n)[\s│┃>*·•|-]*"
+# Solo marco real de TUI. Se cayeron *, ·, •, | y -: son la viñeta, la celda de
+# tabla y el guion de lista más comunes en prosa, así que "- Login required for
+# admin API calls" (una línea de changelog o de un cuerpo de commit) pasaba las
+# dos defensas a la vez. Se conserva ">" porque "> sign in required" es la única
+# pantalla de login que el repo tiene atestiguada, en test_session_route_matrix.
+_LOGIN_LINE = r"(^|\n)[\s│┃>]*"
 
 # El detector de diálogos es una red de seguridad, no la única defensa: _verify
 # exige además prompt de shell, modelo, effort, ambas cuentas y conversación antes

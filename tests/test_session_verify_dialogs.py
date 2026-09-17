@@ -1,4 +1,5 @@
 import json
+import re
 import sys
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'lib'))
@@ -153,6 +154,12 @@ def test_login_patterns_do_not_fire_on_ordinary_pane_content():
         "warning: authentication required for endpoint /admin/users",
         "dev: yeah login required for that page now",
         "nota: se requiere iniciar sesión para usar la api de administración",
+        # testigos de la ronda 4: viñetas y tablas de markdown, que NO son marco de TUI
+        "- Login required for admin API calls",
+        "* Login required for team workspaces (previously optional)",
+        "- Sign in to continue using advanced search (new in this release)",
+        "| Login required | for admin panel only |",
+        "• Sign in to use the beta channel",
     ]
     for texto in inocentes:
         assert dash.screen_dialog(texto) == "", texto
@@ -166,7 +173,6 @@ def test_login_patterns_do_not_fire_on_ordinary_pane_content():
         "Inicia sesión para continuar",
         "Se requiere iniciar sesión",
         "┃ Login required",
-        "* sign in to proceed",
     ]
     for texto in reales:
         assert dash.screen_dialog(texto) == "login", texto
@@ -260,3 +266,13 @@ def test_a_dialog_sentence_inside_a_box_is_a_known_accepted_miss():
     dash._DIALOG_CACHE.update(mtime=None, value=None)
     assert dash.screen_dialog("│ You need to log in to use Claude") == ""
     assert dash.screen_dialog("│ Sign in to continue") == "login"
+
+
+def test_only_real_tui_frame_counts_as_decoration():
+    """Las viñetas y celdas de markdown (-, *, |, ·, •) no son marco de terminal:
+    si contaran, "- Login required for admin API calls" pasaría las dos defensas."""
+    dash = load_dash_module()
+    clase = re.search(r"\[([^\]]*)\]", dash._LOGIN_LINE).group(1)
+    for marcador in ("*", "|", "-", "·", "•"):
+        assert marcador not in clase, f"{marcador} sigue contando como marco: {clase}"
+    assert "│" in clase and ">" in clase, "falta marco real de TUI"
