@@ -10,5 +10,32 @@
   "contextWindows": [
     200000,
     1000000
-  ]
+  ],
+  "dialogPatterns": {
+    "trust": [
+      "trust this folder",
+      "Do you trust",
+      "Accessing workspace",
+      "Conf[ií]as en los archivos",
+      "carpeta de confianza"
+    ],
+    "login": [
+      "sign in",
+      "log in",
+      "login required",
+      "iniciar sesi[oó]n",
+      "inicia sesi[oó]n"
+    ],
+    "onboarding": [
+      "Choose the text style",
+      "Elige el estilo de texto",
+      "Welcome to Claude Code",
+      "Let's get started"
+    ],
+    "error": [
+      "(^|\\n)\\s*error:",
+      "(^|\\n)\\s*fatal:"
+    ]
+  },
+  "verifyAttemptsWithMcp": 180
 }

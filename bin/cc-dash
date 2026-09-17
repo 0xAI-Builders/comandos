@@ -1877,6 +1877,7 @@ class SessionConfiguration:
         pane_cmd = identity['pane_current_command']
         self.frm = self.original.get('agent') or ('shell' if pane_cmd in ('bash', 'zsh', 'sh', 'fish', 'dash') else '')
         self.plan = None
+        self.screen_dialog_kind = ''
 
     def check_identity(self):
         if getattr(self, 'store', None):
@@ -2180,7 +2181,7 @@ class SessionConfiguration:
             if expected.get('motorAccount') and observed.get('motorAccount') != expected['motorAccount']:
                 continue
             screen = tmux('capture-pane', '-p', '-t', self.pane).stdout or ''
-            if re.search(r'trust this folder|Do you trust|Accessing workspace|sign in|log in|login required|error:', screen, re.I):
+            if screen_dialog(screen):
                 continue
             if not re.search(r'(^|\n)\s*[❯›>]|esc to interrupt|ctrl\+c to interrupt', screen, re.I):
                 continue
@@ -2188,7 +2189,9 @@ class SessionConfiguration:
         return None
 
     def verify(self, plan, snapshot):
-        return self._verify(plan, plan.get('expectedSid', ''))
+        cwd = _pane_identity(self.sess, self.pane).get('pane_current_path') or ''
+        return self._verify(plan, plan.get('expectedSid', ''),
+                            attempts=verify_attempts(cwd, _claude_config_dir(plan.get('harnessAccount'))))
 
     def pending_confirmation(self, plan, snapshot):
         if _identity_key(_pane_identity(self.sess, self.pane)) != _identity_key(self.identity):
@@ -2200,8 +2203,12 @@ class SessionConfiguration:
                 _read_environ(info['pid']).get(b'COMANDOS_OPERATION_ID', b'').decode() != self.data['requestId']):
             return None
         screen = tmux('capture-pane', '-p', '-t', self.pane).stdout or ''
-        if re.search(r'(^|\n)\s*(?:error:|fatal:)', screen, re.I):
+        kind = screen_dialog(screen)
+        if kind == 'error':
             return None
+        # Un diálogo de arranque (trust/login/bienvenida) no invalida la observación,
+        # pero sí explica por qué el destino no confirma: se guarda para el informe.
+        self.screen_dialog_kind = kind
         return observe_pane(self.sess, self.pane, info)
 
     def rollback(self, snapshot):
