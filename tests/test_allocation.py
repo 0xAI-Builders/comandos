@@ -205,3 +205,54 @@ def test_empty_account_scales_from_the_fleet_reference_load():
     assert round(empty, 3) == round(row["burn"] * 1.6 / ref, 3)
     assert empty < al._burn_after(row, 0.0, 3.2, ref)        # más carga, más ritmo
     assert al._burn_after(row, 6.2, 1.6, ref) < empty        # con carga propia manda la suya
+
+def test_session_on_an_unlisted_account_can_stay_where_it_is():
+    # "vieja" no está en ACCOUNTS: quedarse igual sigue siendo candidato, y con 2 % usado
+    # y 160 h para el reset gana a la cuenta al 95 % que resetea en 20 h.
+    rows = [limit("claude", "main", 95.0, 20 * 3600, kind="weekly_all"),
+            limit("claude", "vieja", 2.0, 160 * 3600, kind="weekly_all")]
+    live = [sess("Vieja", "claude", "claude-fable-5-1", "xhigh", account="vieja", pane="%77")]
+    plan = al.propose(live, rows, REGISTRY, SUPPORT, ACCOUNTS, TIERS, now=NOW)
+    item = plan["items"][0]
+    assert item["layer"] == 3
+    assert item["to"]["harnessAccount"] == "vieja" and item["to"]["motorAccount"] == "vieja"
+    assert item["to"]["routeId"] == "claude:claude"
+    assert item["risk"] == "bajo" and "se queda" in item["reason"]
+
+def test_session_on_a_motor_harness_that_is_not_a_motor_counts_and_never_moves():
+    # acp:claude gasta la suscripción de Claude: pesa en claude:main, pero la ruta no
+    # admite cambio en caliente, así que la propuesta la deja intacta.
+    acp = dict(sess("Terminal", "acp", "claude-opus-5", "high", pane="%80"),
+               motor="claude", routeId="acp:claude")
+    plan = al.propose(sessions() + [acp], LIMITS, REGISTRY, SUPPORT, ACCOUNTS, TIERS, now=NOW)
+    item = next(i for i in plan["items"] if i["session"] == "Terminal")
+    assert item["locked"] and item["same"] and item["risk"] == "-"
+    assert item["reason"] == "esta ruta no admite cambio en caliente"
+    assert item["to"]["routeId"] == "acp:claude" and item["to"]["model"] == "claude-opus-5"
+    assert item["to"]["effort"] == "high"                   # ni el effort se toca
+    sin_acp, con_acp = run()["impact"]["claude:main"], plan["impact"]["claude:main"]
+    assert con_acp["n"] == sin_acp["n"] + 1                 # su peso cuenta en la cuota del motor
+    assert con_acp["burnAfter"] > sin_acp["burnAfter"]
+
+def test_stale_quota_is_used_and_a_pool_without_quota_never_wins():
+    rows = [limit("claude", "main", 40.0, 100 * 3600, kind="weekly_all", stale=True)]  # ni relotto ni grok
+    live = [sess("SAVA", "claude", "claude-fable-5-1", "xhigh", pane="%10"),
+            sess("Chips", "grok", "grok-4.6", "high", status="idle", pane="%60")]
+    plan = al.propose(live, rows, REGISTRY, SUPPORT, ACCOUNTS, TIERS, now=NOW)
+    sava = next(i for i in plan["items"] if i["session"] == "SAVA")
+    chips = next(i for i in plan["items"] if i["session"] == "Chips")
+    assert sava["to"]["harnessAccount"] == "main"           # relotto no tiene cuota: no gana
+    assert "40 % usado" in sava["reason"]                   # la fila stale se usa igual
+    assert "sin cuota conocida" in chips["reason"]          # grok no tiene fila
+    grok = plan["impact"]["grok:main"]
+    assert grok["known"] is False and grok["burnNow"] is None and grok["verdict"] == ""
+    assert grok["reachesReset"] is None and grok["n"] == 1
+
+def test_input_order_does_not_change_the_plan():
+    base = al.propose(sessions(), LIMITS, REGISTRY, SUPPORT, ACCOUNTS, TIERS, now=NOW)
+    want = json.dumps(base, sort_keys=True)
+    for perm in ((4, 3, 2, 1, 0), (3, 0, 4, 2, 1), (1, 4, 0, 3, 2)):
+        rows = sessions()
+        shuffled = [rows[i] for i in perm]
+        got = al.propose(shuffled, LIMITS, REGISTRY, SUPPORT, ACCOUNTS, TIERS, now=NOW)
+        assert json.dumps(got, sort_keys=True) == want

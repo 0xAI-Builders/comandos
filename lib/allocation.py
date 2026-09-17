@@ -166,7 +166,10 @@ def _candidates(s: dict, registry: dict, support: dict, accounts: dict) -> list[
             out.append(dict(harness=harness, motor=motor, routeId=route["id"],
                             harnessAccount=here, motorAccount="main"))
             continue
-        for acct in sorted(accounts.get(motor) or [here]):
+        accts = set(accounts.get(motor) or [])
+        if motor == frm["motor"]:
+            accts.add(here)  # quedarse igual es candidato aunque la cuenta no esté listada
+        for acct in sorted(accts):
             out.append(dict(harness=harness, motor=motor, routeId=route["id"],
                             harnessAccount=acct, motorAccount=acct))
     if not out:  # ruta actual no cambiable en caliente: solo queda quedarse igual
@@ -235,7 +238,9 @@ def impact(items: list[dict], limits: list[dict], now: float) -> dict:
 def propose(sessions, limits, registry, support, accounts, tiers, *, now, overrides=None) -> dict:
     overrides = overrides or {}
     enriched = enrich_limits(limits, now)
-    live = [s for s in sessions if s.get("agent") in (registry.get("motors") or {})]
+    motors = registry.get("motors") or {}
+    # el harness puede no ser un motor (acp, gemini, shell); lo que gasta cuota es el motor
+    live = [s for s in sessions if _from(s)["motor"] in motors]
     layers = {session_key(s): max(1, min(3, int((overrides.get(session_key(s)) or {}).get("layer")
                                                 or layer_of(s)))) for s in live}
     order = sorted(live, key=lambda s: (-layers[session_key(s)], session_key(s)))
@@ -249,13 +254,15 @@ def propose(sessions, limits, registry, support, accounts, tiers, *, now, overri
         ov = overrides.get(key) or {}
         layer = layers[key]
         src = pool_key(frm["motor"], frm["motorAccount"])
-        locked = bool(ov.get("locked"))
+        frozen = not (support.get(frm["routeId"]) or {}).get("selectable")
+        locked = bool(ov.get("locked")) or frozen
         if locked or "to" in ov:
             # el `to` del usuario manda, pero lo que no diga se hereda de donde está
             here = dict(harness=frm["harness"], motor=frm["motor"], model=frm["model"], effort=frm["effort"],
                         harnessAccount=frm["account"], motorAccount=frm["motorAccount"], routeId=frm["routeId"])
             to = here if locked else {**here, **dict(ov["to"])}
-            reason = "fijada por ti" if locked else "ajustada por ti"
+            reason = ("esta ruta no admite cambio en caliente" if frozen
+                      else "fijada por ti" if locked else "ajustada por ti")
         else:
             effort = LAYER_EFFORT[layer]
             scored = []
