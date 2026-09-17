@@ -1787,6 +1787,14 @@ def inherit_trust_for_switch(cwd, from_alias, to_alias, harness="claude"):
     return ok
 
 
+# Un diálogo real ocupa su propia línea, como mucho tras el marco de la TUI; la
+# misma frase dentro de una oración es prosa (un changelog, un README, un log de
+# una librería de auth, una conversación en pantalla). Anclar a principio de línea
+# Y exigir el contexto concreto cierra los dos lados: "note: authentication
+# required for the admin api" no casa por ir a media línea, y "sign in before the
+# deploy" no casa por no llevar el contexto, aunque empiece línea.
+_LOGIN_LINE = r"(^|\n)[\s│┃>*·•|-]*"
+
 # El detector de diálogos es una red de seguridad, no la única defensa: _verify
 # exige además prompt de shell, modelo, effort, ambas cuentas y conversación antes
 # de confirmar. Por eso los patrones se eligen ESPECÍFICOS y se aceptan falsos
@@ -1794,10 +1802,10 @@ def inherit_trust_for_switch(cwd, from_alias, to_alias, harness="claude"):
 # prosa reflowed por el ancho del terminal o con el cuerpo indentado de un git log,
 # y un falso positivo congela el sondeo hasta 90 s sin motivo.
 _DEFAULT_DIALOGS = {"trust": [r"trust this folder", r"Do you trust", r"Accessing workspace"],
-                    "login": [r"(sign in|log in) to (continue|use|proceed)",
-                              r"(sign in|log in|login|authentication) required",
-                              r"inicia(?:r)? sesi[oó]n para (continuar|usar)",
-                              r"se requiere inicia(?:r)? sesi[oó]n",
+                    "login": [_LOGIN_LINE + r"(please\s+)?(sign in|log in)\s+to\s+(continue|use|proceed)",
+                              _LOGIN_LINE + r"(sign in|log in|login|authentication)\s+required",
+                              _LOGIN_LINE + r"(por favor,?\s+)?inicia(?:r)? sesi[oó]n para (continuar|usar)",
+                              _LOGIN_LINE + r"se requiere inicia(?:r)? sesi[oó]n",
                               r"(^|\n)\s*/login\b"],
                     "onboarding": [r"Choose the text style", r"Elige el estilo de texto",
                                    r"Choose your theme", r"Elige tu tema"],

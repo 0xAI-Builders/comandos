@@ -147,18 +147,26 @@ def test_login_patterns_do_not_fire_on_ordinary_pane_content():
         # cuerpo indentado de un git log
         "commit 9fd2\n\n    log into the staging environment\n",
         "Getting started\n\nlogin flows are documented below",
+        # testigos que aportó la revisión: la frase existe, pero a media línea
+        "previously you had to sign in to use offline mode; no longer required",
+        "note: authentication required for the admin api since v3",
+        "warning: authentication required for endpoint /admin/users",
+        "dev: yeah login required for that page now",
+        "nota: se requiere iniciar sesión para usar la api de administración",
     ]
     for texto in inocentes:
         assert dash.screen_dialog(texto) == "", texto
     reales = [
         "Please sign in to continue",
-        "│ You need to log in to use Claude",
+        "│ Sign in to continue",
         "login required",
         "authentication required",
         "> sign in required",   # cadena real que ya fijaba test_session_route_matrix
         "  /login",
         "Inicia sesión para continuar",
         "Se requiere iniciar sesión",
+        "┃ Login required",
+        "* sign in to proceed",
     ]
     for texto in reales:
         assert dash.screen_dialog(texto) == "login", texto
@@ -207,8 +215,10 @@ def test_default_dialogs_are_bilingual_like_the_config():
     assert "Elige" in onboarding, "el fallback de bienvenida no cubre español"
     login = " ".join(dash._DEFAULT_DIALOGS["login"])
     assert "sesi" in login, "el fallback de login no cubre español"
-    # específico, no genérico: "sign in" solo aparece exigiendo su contexto
-    assert "sign in|log in) to (" in login, "el fallback de login volvió a ser genérico"
+    # cada patrón de login lleva las DOS defensas: anclado a línea y con contexto
+    for pat in dash._DEFAULT_DIALOGS["login"]:
+        assert pat.startswith("(^|"), f"patrón de login sin anclar: {pat}"
+        assert any(w in pat for w in ("required", "continue|use|proceed", "sesi", "/login")), pat
 
 
 def test_a_list_whose_patterns_are_all_invalid_falls_back(tmp_path, monkeypatch):
@@ -228,3 +238,25 @@ def test_the_cache_key_is_read_under_the_same_lock_as_the_value(tmp_path, monkey
     cuerpo = src[src.index("def dialog_patterns():"):src.index("def screen_dialog(")]
     assert cuerpo.index("_DIALOG_CACHE_LOCK") < cuerpo.index("os.stat("), (
         "os.stat debe quedar dentro del lock")
+
+
+def test_screen_dialog_is_case_insensitive_and_multiline():
+    """Los patrones se aplican con re.I | re.M: las mayúsculas del inicio de frase
+    y el anclaje por línea dependen de ello."""
+    dash = load_dash_module()
+    dash._DIALOG_CACHE.update(mtime=None, value=None)
+    assert dash.screen_dialog("LOGIN REQUIRED") == "login"
+    assert dash.screen_dialog("salida previa\nDo you trust the files?") == "trust"
+
+
+def test_a_dialog_sentence_inside_a_box_is_a_known_accepted_miss():
+    """Límite aceptado a propósito: una frase dentro de una caja ("│ You need to
+    log in to use Claude") lleva el término a media línea y no se detecta. El coste
+    es un mensaje peor en pending_confirmation, nunca una confirmación de más:
+    _verify exige además prompt de shell, modelo, effort, cuentas y conversación.
+    El coste contrario —un changelog que diga "authentication required" y congele
+    el sondeo 90 s— sí es real, y por eso se elige este lado."""
+    dash = load_dash_module()
+    dash._DIALOG_CACHE.update(mtime=None, value=None)
+    assert dash.screen_dialog("│ You need to log in to use Claude") == ""
+    assert dash.screen_dialog("│ Sign in to continue") == "login"
