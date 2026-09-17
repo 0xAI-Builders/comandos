@@ -876,6 +876,8 @@ if LIB_DIR not in sys.path:
     sys.path.insert(0, LIB_DIR)
 import providers as provider_registry
 import claude_trust
+import allocation
+import allocation_batch
 import grok_state
 import pane_snapshot
 import tmux_snapshot
@@ -1900,6 +1902,200 @@ def verify_attempts(cwd, config_dir=None):
     except Exception:
         pass
     return 60
+
+
+# ---------------------------------------------------------------- Reparto de cuota
+ALLOCATION_PLANS = {}
+_ALLOCATION_BATCHES = None
+_EFFORT_ORDER = ["low", "medium", "high", "xhigh", "max"]
+
+
+def _batches():
+    global _ALLOCATION_BATCHES
+    if _ALLOCATION_BATCHES is None:
+        _ALLOCATION_BATCHES = allocation_batch.BatchStore(os.path.join(HOOKS, "allocation-batches.json"))
+    return _ALLOCATION_BATCHES
+
+
+def selectable_accounts_by_motor(registry):
+    out = {}
+    for motor in (registry.get("motors") or {}):
+        try:
+            aliases = [a["alias"] for a in account_registry.list_accounts(registry, motor) if a.get("selectable")]
+        except Exception:
+            aliases = []
+        out[motor] = aliases or ["main"]
+    return out
+
+
+def enriched_limits(limits):
+    return allocation.enrich_limits(limits or [], time.time())
+
+
+def _motor_options(registry):
+    """Modelos y efforts válidos por motor, para que la ficha solo ofrezca lo real."""
+    out = {}
+    for motor, spec in (registry.get("motors") or {}).items():
+        models = [m["id"] for m in (spec.get("models") or [])]
+        efforts = sorted({e for m in (spec.get("models") or []) for e in (m.get("efforts") or [])},
+                         key=lambda e: _EFFORT_ORDER.index(e) if e in _EFFORT_ORDER else 99)
+        out[motor] = {"models": models, "efforts": efforts}
+    return out
+
+
+def allocation_inputs():
+    registry = load_provider_registry()
+    motors = registry.get("motors") or {}
+    sessions = [s for s in read_states_cached()
+                if s.get("alive") and (s.get("motor") or s.get("agent")) in motors]
+    return dict(sessions=sessions, limits=usage_provider_limits()["limits"], registry=registry,
+                support=session_change_support(registry), accounts=selectable_accounts_by_motor(registry),
+                tiers=load_model_tiers(), now=time.time())
+
+
+def _build_plan(overrides):
+    inp = allocation_inputs()
+    plan = allocation.propose(inp["sessions"], inp["limits"], inp["registry"], inp["support"],
+                              inp["accounts"], inp["tiers"], now=inp["now"], overrides=overrides)
+    plan["options"] = _motor_options(inp["registry"])
+    estado = {allocation.session_key(s): (s.get("status") or "") for s in inp["sessions"]}
+    for item in plan["items"]:
+        item["status"] = estado.get(item["key"], "")
+    return plan, inp
+
+
+def _valid_overrides(raw):
+    """El cuerpo HTTP no puede reventar el motor: se acepta solo lo que entiende."""
+    out = {}
+    if raw is not None and not isinstance(raw, dict):
+        return {}          # un cuerpo raro se ignora, no revienta ni miente con 400
+    for key, value in (raw or {}).items():
+        if not isinstance(key, str) or not isinstance(value, dict):
+            continue
+        clean = {}
+        if "layer" in value:
+            try:
+                clean["layer"] = max(1, min(3, int(value["layer"])))
+            except (TypeError, ValueError):
+                return None
+        if value.get("locked"):
+            clean["locked"] = True
+        if "to" in value:
+            if not isinstance(value["to"], dict):
+                return None
+            clean["to"] = {k: str(v) for k, v in value["to"].items() if isinstance(k, str)}
+        if clean:
+            out[key] = clean
+    return out
+
+
+def allocation_propose(data):
+    overrides = _valid_overrides(data.get("overrides"))
+    if overrides is None:
+        return 400, {"ok": False, "error": "overrides invalidos"}
+    plan, _ = _build_plan(overrides)
+    plan["overrides"] = overrides
+    ALLOCATION_PLANS[plan["planId"]] = plan
+    while len(ALLOCATION_PLANS) > 20:
+        ALLOCATION_PLANS.pop(next(iter(ALLOCATION_PLANS)))
+    return 200, {"ok": True, "plan": plan}
+
+
+def allocation_preview(data):
+    plan = ALLOCATION_PLANS.get(str(data.get("planId") or ""))
+    if not plan:
+        return 404, {"ok": False, "error": "plan desconocido; vuelve a analizar"}
+    extra = _valid_overrides({str(data.get("key") or ""): data.get("target") or {}})
+    if extra is None:
+        return 400, {"ok": False, "error": "destino invalido"}
+    overrides = dict(plan.get("overrides") or {})
+    overrides.update(extra)
+    tmp, _ = _build_plan(overrides)
+    return 200, {"ok": True, "impact": tmp["impact"], "items": tmp["items"]}
+
+
+def _status_of(opkey, opid):
+    try:
+        return session_operation_status(opkey, opid)
+    except TypeError:
+        return session_operation_status(opkey)
+
+
+def _run_batch_bg(batch_id, wait=False):
+    def go():
+        try:
+            allocation_batch.run_batch(batch_id, _batches(), lambda d: session_configure(d), _status_of,
+                                       concurrency=3)
+        except Exception:
+            pass   # el estado por pane ya queda en el lote; nunca tumbar el hilo
+    if wait:
+        go()
+    else:
+        threading.Thread(target=go, daemon=True).start()
+
+
+def allocation_apply(data, wait=False):
+    plan = ALLOCATION_PLANS.get(str(data.get("planId") or ""))
+    if not plan:
+        return 404, {"ok": False, "error": "plan desconocido; vuelve a analizar"}
+    inp = allocation_inputs()
+    if allocation.plan_hash(inp["sessions"]) != plan["stateHash"]:
+        antes = {i["key"]: i["from"] for i in plan["items"]}
+        vivas = {allocation.session_key(s) for s in inp["sessions"]}
+        cambiadas = [allocation.session_key(s) for s in inp["sessions"]
+                     if allocation.session_key(s) in antes
+                     and any(str(s.get(f) or "") != str(antes[allocation.session_key(s)].get(g) or "")
+                             for f, g in (("model", "model"), ("effort", "effort"),
+                                          ("harnessAccount", "account")))]
+        nuevas = sorted(vivas - set(antes))
+        idas = sorted(set(antes) - vivas)
+        return 409, {"ok": False, "error": "plan_stale",
+                     "changed": sorted(cambiadas) + nuevas + idas}
+    panes = data.get("panes")
+    batch = _batches().create(plan, panes=panes if isinstance(panes, list) else None)
+    _run_batch_bg(batch["batchId"], wait)
+    return 202, {"ok": True, "batchId": batch["batchId"], "total": len(batch["items"])}
+
+
+def allocation_status(batch_id):
+    b = _batches().get(str(batch_id or ""))
+    if not b:
+        return 404, {"ok": False, "error": "lote desconocido"}
+    return 200, dict(ok=True, **allocation_batch.batch_view(b))
+
+
+def allocation_retry(data, wait=False):
+    bid, key = str(data.get("batchId") or ""), str(data.get("key") or "")
+    if not _batches().get(bid):
+        return 404, {"ok": False, "error": "lote desconocido"}
+    def go():
+        try:
+            allocation_batch.retry_item(bid, key, _batches(), lambda d: session_configure(d), _status_of)
+        except Exception:
+            pass
+    if wait:
+        go()
+    else:
+        threading.Thread(target=go, daemon=True).start()
+    return 202, {"ok": True, "batchId": bid, "key": key}
+
+
+def allocation_revert(data, wait=False):
+    b = _batches().get(str(data.get("batchId") or ""))
+    if not b:
+        return 404, {"ok": False, "error": "lote desconocido"}
+    plan = ALLOCATION_PLANS.get(b["planId"])
+    if not plan:
+        return 409, {"ok": False, "error": "el plan original ya no está en memoria"}
+    hechas = {i["key"] for i in b["items"] if i["state"] == "lista"}
+    if not hechas:
+        return 409, {"ok": False, "error": "no hay cambios confirmados que revertir"}
+    inv = allocation.invert(plan)
+    inv["items"] = [dict(i, same=False, locked=False) for i in inv["items"] if i["key"] in hechas]
+    ALLOCATION_PLANS[inv["planId"]] = inv
+    batch = _batches().create(inv, panes=None)
+    _run_batch_bg(batch["batchId"], wait)
+    return 202, {"ok": True, "batchId": batch["batchId"], "total": len(batch["items"])}
 
 
 def session_change_support(registry=None, observed=None):
@@ -8086,6 +8282,7 @@ class Handler(http.server.SimpleHTTPRequestHandler):
                 except Exception:
                     pass
             state["alerts"] = cc_usage.list_alerts(USAGE_DB)
+            state["limits"] = enriched_limits(state.get("limits") or prov["limits"])
             recent = cc_usage.recent_interactions(USAGE_DB, 1)
             state["lastInteraction"] = recent[0] if recent else None
             # Conserva el modelo enriquecido del memo en cache hits, filtrando
@@ -8093,6 +8290,10 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             # a conducir opciones fisicas de tmux.
             write_pane_models(_pane_models_for_live_state(panes, state))
             return self._json(200, state)
+        if self.path.startswith("/allocation/status"):
+            q = urllib.parse.parse_qs(urllib.parse.urlsplit(self.path).query)
+            return self._json(*allocation_status(q.get("batchId", [""])[0]))
+
         if self.path.startswith("/ssh"):
             return self._json(200, parse_ssh_config())
         if self.path.startswith("/conf"):
@@ -8279,6 +8480,17 @@ class Handler(http.server.SimpleHTTPRequestHandler):
                 return self._json(404, {"error": "esa ruta ya no existe"})
             _open_url(target_path, env=gui_env())
             return self._json(200, {"ok": True})
+
+        if self.path == "/allocation/propose":
+            return self._json(*allocation_propose(data))
+        if self.path == "/allocation/preview":
+            return self._json(*allocation_preview(data))
+        if self.path == "/allocation/apply":
+            return self._json(*allocation_apply(data))
+        if self.path == "/allocation/retry":
+            return self._json(*allocation_retry(data))
+        if self.path == "/allocation/revert":
+            return self._json(*allocation_revert(data))
 
         if self.path == "/optimization/default":
             try:
