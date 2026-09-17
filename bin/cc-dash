@@ -1761,14 +1761,69 @@ def inherit_trust_for_switch(cwd, from_alias, to_alias, harness="claude"):
 
     Solo Claude, solo cuando la cuenta cambia de verdad, y solo si el origen ya
     la tenía aceptada: nunca inventa confianza que el usuario no diera antes.
+
+    Heredar trust es un extra de conveniencia sobre un cambio de cuenta/sesión:
+    nunca debe poder romper ese cambio. Cualquier excepción aquí dentro (o al
+    escribir el ledger) se traga y se reporta como False/no-op.
     """
     if harness != "claude" or not cwd or (to_alias or "main") == (from_alias or "main"):
         return False
-    dest = _claude_config_dir(to_alias)
-    if not dest:
-        return False
-    return claude_trust.inherit_cwd_trust(cwd, source_config_dir=_claude_config_dir(from_alias),
-                                          dest_config_dir=dest, home=os.path.expanduser("~"))
+    try:
+        dest = _claude_config_dir(to_alias)
+        if not dest:
+            return False
+        ok = claude_trust.inherit_cwd_trust(cwd, source_config_dir=_claude_config_dir(from_alias),
+                                            dest_config_dir=dest, home=os.path.expanduser("~"))
+    except Exception:
+        return False        # heredar el trust nunca puede impedir el cambio de sesión
+    if ok:
+        try:
+            cc_usage.record_change(USAGE_DB, {
+                "origin": "reparto", "kind": "trust_inherited",
+                "note": f"trust heredado {from_alias or 'main'} -> {to_alias or 'main'} en {cwd}",
+            })
+        except Exception:
+            pass
+    return ok
+
+
+_DEFAULT_DIALOGS = {"trust": [r"trust this folder", r"Do you trust", r"Accessing workspace"],
+                    "login": [r"sign in", r"log in", r"login required"],
+                    "onboarding": [r"Choose the text style"],
+                    "error": [r"(^|\n)\s*error:", r"(^|\n)\s*fatal:"]}
+
+def _detectors_cfg():
+    try:
+        with open(os.path.join(REPO_ROOT, "config", "detectors.json")) as f:
+            return json.load(f) or {}
+    except Exception:
+        return {}
+
+def dialog_patterns():
+    """Patrones de los diálogos de arranque, desde config (en/es)."""
+    pats = _detectors_cfg().get("dialogPatterns") or {}
+    return {k: list(v) for k, v in pats.items() if v} or _DEFAULT_DIALOGS
+
+def screen_dialog(screen):
+    """Devuelve 'trust' | 'login' | 'onboarding' | 'error' | '' según la pantalla."""
+    for kind in ("trust", "login", "onboarding", "error"):
+        for p in dialog_patterns().get(kind) or []:
+            if re.search(p, screen or "", re.I | re.M):
+                return kind
+    return ""
+
+def verify_attempts(cwd, config_dir=None):
+    """60 intentos (~30 s) normalmente; más cuando el destino carga MCPs."""
+    with_mcp = int(_detectors_cfg().get("verifyAttemptsWithMcp") or 180)
+    if cwd and os.path.exists(os.path.join(cwd, ".mcp.json")):
+        return with_mcp
+    try:
+        with open(os.path.join(config_dir or os.path.expanduser("~"), ".claude.json")) as f:
+            if (json.load(f) or {}).get("mcpServers"):
+                return with_mcp
+    except Exception:
+        pass
+    return 60
 
 
 def session_change_support(registry=None, observed=None):
