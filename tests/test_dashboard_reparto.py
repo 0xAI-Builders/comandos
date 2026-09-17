@@ -130,3 +130,14 @@ def test_la_copia_es_bilingue():
     assert "function T(es, en)" in JS
     for es in ("Analizar", "Aplicar ", "Revertir todo", "Volver a analizar"):
         assert 'T("' + es in JS, es
+
+
+def test_la_ficha_no_ensena_el_nombre_crudo_de_tmux():
+    """term-3692-1 no dice nada: la ficha usa la etiqueta del tablero, y la
+    carpeta como respaldo antes que el nombre interno."""
+    motor = (ROOT / "lib/allocation.py").read_text()
+    assert 'project=s.get("project")' in motor, "el motor debe arrastrar la etiqueta"
+    assert "function nameOf(item)" in JS
+    assert "if (item.project) return item.project" in JS
+    assert "esc(nameOf(item))" in JS, "la ficha debe pintar nameOf, no item.session"
+    assert "rp-name\">' + esc(item.session)" not in JS

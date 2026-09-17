@@ -240,6 +240,18 @@
     }).join("") + "</span>";
   }
 
+  /* El nombre de tmux (term-3692-1) no identifica nada. Se usa la misma etiqueta
+     que el resto del tablero, y la carpeta como respaldo antes que el nombre crudo. */
+  function nameOf(item) {
+    if (item.project) return item.project;
+    var cwd = String(item.cwd || "").replace(/\/+$/, "");
+    if (cwd) {
+      var parts = cwd.split("/");
+      return parts[parts.length - 1] || cwd;
+    }
+    return item.session;
+  }
+
   function tileHtml(item) {
     var opts = (S.plan.options || {})[item.to.motor] || {};
     var models = opts.models && opts.models.length ? opts.models : [item.to.model];
@@ -256,10 +268,12 @@
     return '<div class="rp-tk ' + (S.overrides[item.key] ? "rp-moved " : "") +
       (item.locked ? "rp-locked " : "") + (S.armed === item.key ? "rp-armed" : "") +
       '" draggable="' + (editable ? "true" : "false") + '" data-key="' + esc(item.key) + '" title="' +
-      esc(item.reason || "") + '">' +
+      esc((item.cwd ? item.cwd + " · " : "") + (item.session || "") + " " + (item.pane || "") +
+          (item.reason ? "\n" + item.reason : "")) + '">' +
       '<span class="rp-dot ' + esc(item.status || "") + '"></span>' +
-      '<span class="rp-body"><span class="rp-name">' + esc(item.session) +
-        ' <span class="rp-pane">' + esc(item.pane) + "</span></span>" +
+      '<span class="rp-body"><span class="rp-name">' + esc(nameOf(item)) +
+        (String(item.project || "").indexOf("\u2AFD") >= 0 ? ""
+          : ' <span class="rp-pane">' + esc(item.pane) + "</span>") + "</span>" +
         '<span class="rp-diff">' + diff + "</span></span>" +
       (S.phase === "curar"
         ? '<button type="button" class="rp-lk ' + (item.locked ? "on" : "") + '" data-lock="' +

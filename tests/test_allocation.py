@@ -256,3 +256,19 @@ def test_input_order_does_not_change_the_plan():
         shuffled = [rows[i] for i in perm]
         got = al.propose(shuffled, LIMITS, REGISTRY, SUPPORT, ACCOUNTS, TIERS, now=NOW)
         assert json.dumps(got, sort_keys=True) == want
+
+
+def test_el_item_lleva_la_etiqueta_legible_de_la_sesion():
+    """El nombre de tmux (term-3692-1) no identifica nada para quien decide.
+    El item arrastra el `project` que el resto del tablero ya muestra."""
+    ss = [dict(sess("term-3692-1", "claude", "claude-opus-5", "high"), project="Signara ⫽2")]
+    plan = al.propose(ss, LIMITS, REGISTRY, SUPPORT, ACCOUNTS, TIERS, now=NOW)
+    it = plan["items"][0]
+    assert it["project"] == "Signara ⫽2"
+    assert it["session"] == "term-3692-1", "el nombre interno se conserva para el coordinador"
+
+
+def test_una_sesion_sin_project_no_revienta_el_item():
+    plan = al.propose([sess("term-9", "claude", "claude-opus-5", "high")],
+                      LIMITS, REGISTRY, SUPPORT, ACCOUNTS, TIERS, now=NOW)
+    assert plan["items"][0]["project"] == ""

@@ -318,6 +318,10 @@ def propose(sessions, limits, registry, support, accounts, tiers, *, now, overri
         same = _same(frm, to)
         items.append(dict(session=s.get("session"), pane=s.get("pane"), key=key, layer=layer,
                           cwd=s.get("cwd") or "",
+                          # Etiqueta que el resto del tablero ya usa para esta sesion
+                          # ("SAVA", "MRP", "PaginasWeb ⫽28"). El nombre interno de tmux
+                          # (term-3692-1) no le dice nada a nadie.
+                          project=s.get("project") or "",
                           **{"from": frm}, to=to, same=same, locked=locked,
                           reason=_t(lang, "igual", "unchanged") if same and not locked else reason,
                           risk="-" if same else _risk(frm, to)))
