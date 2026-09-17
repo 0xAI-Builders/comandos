@@ -128,3 +128,66 @@ def test_onboarding_patterns_are_specific_enough(tmp_path, monkeypatch):
         assert dash.screen_dialog(innocent) == "", innocent
     assert dash.screen_dialog("Choose the text style that looks best") == "onboarding"
     assert dash.screen_dialog("Elige el estilo de texto") == "onboarding"
+
+
+def test_login_patterns_do_not_fire_on_ordinary_pane_content():
+    """"sign in" suelto casaba con prosa, código o una transcripción: un falso
+    positivo congela el sondeo hasta 90 s."""
+    dash = load_dash_module()
+    dash._DIALOG_CACHE.update(mtime=None, value=None)
+    for innocent in ("dile al usuario que debe sign in antes de seguir",
+                     "  await user.login({ retry: true })",
+                     "# TODO: log in the request duration",
+                     "el commit dice: log into the new format"):
+        assert dash.screen_dialog(innocent) == "", innocent
+    for real in ("Please sign in to continue",
+                 "│ sign in to use Claude",
+                 "login required",
+                 "  /login",
+                 "Por favor inicia sesión para continuar"):
+        assert dash.screen_dialog(real) == "login", real
+
+
+def test_an_operator_can_disable_a_kind_by_emptying_it(tmp_path, monkeypatch):
+    """`"trust": []` es intención explícita: el fallback no puede resucitarla."""
+    dash = _cfg_with(monkeypatch, tmp_path, {"trust": [], "login": ["login required"]})
+    assert dash.dialog_patterns()["trust"] == []
+    assert dash.screen_dialog("Do you trust the files in this folder?") == ""
+    assert dash.screen_dialog("login required") == "login"
+
+
+def test_a_kind_with_a_wrong_type_still_falls_back(tmp_path, monkeypatch):
+    """Un tipo equivocado es un error, no una intención: ahí sí vale el defecto."""
+    dash = _cfg_with(monkeypatch, tmp_path, {"trust": {"mal": "escrito"}})
+    assert dash.screen_dialog("Do you trust the files in this folder?") == "trust"
+
+
+def test_a_missing_config_file_falls_back_to_code(tmp_path, monkeypatch):
+    """_detectors_cfg debe degradar, no propagar FileNotFoundError."""
+    dash = load_dash_module()
+    monkeypatch.setattr(dash, "REPO_ROOT", str(tmp_path / "no-existe"))
+    dash._DIALOG_CACHE.update(mtime=None, value=None)
+    assert dash._detectors_cfg() == {}
+    assert dash.screen_dialog("Do you trust the files in this folder?") == "trust"
+    assert dash.screen_dialog("error: algo") == "error"
+
+
+def test_invalid_json_falls_back_to_code(tmp_path, monkeypatch):
+    """Un JSON roto tampoco puede tumbar el bucle de sondeo."""
+    dash = load_dash_module()
+    cfg = tmp_path / "config"
+    cfg.mkdir()
+    (cfg / "detectors.json").write_text('{"dialogPatterns": {"trust": [  <- esto no es JSON')
+    monkeypatch.setattr(dash, "REPO_ROOT", str(tmp_path))
+    dash._DIALOG_CACHE.update(mtime=None, value=None)
+    assert dash._detectors_cfg() == {}
+    assert dash.screen_dialog("Do you trust the files in this folder?") == "trust"
+
+
+def test_default_dialogs_are_bilingual_like_the_config():
+    """El defecto en código es la red de seguridad: no puede ser más pobre que la config."""
+    dash = load_dash_module()
+    onboarding = " ".join(dash._DEFAULT_DIALOGS["onboarding"])
+    assert "Elige" in onboarding, "el fallback de bienvenida no cubre español"
+    login = " ".join(dash._DEFAULT_DIALOGS["login"])
+    assert "sign in" not in login.replace("(sign in|log in|log into)", ""), "login sin anclar en el fallback"

@@ -1787,9 +1787,15 @@ def inherit_trust_for_switch(cwd, from_alias, to_alias, harness="claude"):
     return ok
 
 
+# Los patrones de login van anclados a principio de línea: un "sign in" suelto
+# casaba con prosa, código o una transcripción en el panel, y un falso positivo
+# congela el sondeo hasta 90 s. Un falso negativo solo degrada al resto de
+# comprobaciones de _verify, que tampoco confirmarían una pantalla de login.
 _DEFAULT_DIALOGS = {"trust": [r"trust this folder", r"Do you trust", r"Accessing workspace"],
-                    "login": [r"sign in", r"log in", r"login required"],
-                    "onboarding": [r"Choose the text style"],
+                    "login": [r"(^|\n)[\s│>*·-]*(please\s+)?(sign in|log in|log into)\b",
+                              r"login required", r"(^|\n)\s*/login\b"],
+                    "onboarding": [r"Choose the text style", r"Elige el estilo de texto",
+                                   r"Choose your theme", r"Elige tu tema"],
                     "error": [r"(^|\n)\s*error:", r"(^|\n)\s*fatal:"]}
 
 def _detectors_cfg():
@@ -1801,6 +1807,7 @@ def _detectors_cfg():
 
 
 _DIALOG_CACHE = {"mtime": None, "value": None}
+_DIALOG_CACHE_LOCK = threading.Lock()
 
 
 def _clean_patterns(raw):
@@ -1822,8 +1829,9 @@ def _clean_patterns(raw):
             except re.error:
                 continue
             good.append(pat)
-        if good:
-            out[kind] = good
+        # Una categoría presente en la config es intención del operador, aunque
+        # quede vacía: se conserva la clave para que el fallback no la resucite.
+        out[kind] = good
     return out
 
 
@@ -1839,13 +1847,14 @@ def dialog_patterns():
         mtime = os.stat(path).st_mtime
     except OSError:
         mtime = None
-    if _DIALOG_CACHE["value"] is not None and _DIALOG_CACHE["mtime"] == mtime:
-        return _DIALOG_CACHE["value"]
-    clean = _clean_patterns(_detectors_cfg().get("dialogPatterns"))
-    for kind, fallback in _DEFAULT_DIALOGS.items():
-        clean.setdefault(kind, list(fallback))
-    _DIALOG_CACHE.update(mtime=mtime, value=clean)
-    return clean
+    with _DIALOG_CACHE_LOCK:
+        if _DIALOG_CACHE["value"] is not None and _DIALOG_CACHE["mtime"] == mtime:
+            return _DIALOG_CACHE["value"]
+        clean = _clean_patterns(_detectors_cfg().get("dialogPatterns"))
+        for kind, fallback in _DEFAULT_DIALOGS.items():
+            clean.setdefault(kind, list(fallback))
+        _DIALOG_CACHE.update(mtime=mtime, value=clean)
+        return clean
 
 def screen_dialog(screen):
     """Devuelve 'trust' | 'login' | 'onboarding' | 'error' | '' según la pantalla."""
