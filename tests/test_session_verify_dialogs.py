@@ -89,7 +89,7 @@ def test_a_non_string_pattern_never_raises(tmp_path, monkeypatch):
     """`"trust": 5` reventaba con TypeError dentro del bucle de sondeo."""
     dash = _cfg_with(monkeypatch, tmp_path, {"trust": 5, "login": [7, "sign in"]})
     assert dash.screen_dialog("texto cualquiera") == ""
-    assert dash.screen_dialog("please sign in") == "login"
+    assert dash.screen_dialog("Please sign in to continue") == "login"
 
 
 def test_an_invalid_regex_is_dropped_not_fatal(tmp_path, monkeypatch):
@@ -102,7 +102,7 @@ def test_a_missing_kind_falls_back_per_kind(tmp_path, monkeypatch):
     """Si la config solo trae 'trust', las otras categorías no desaparecen."""
     dash = _cfg_with(monkeypatch, tmp_path, {"trust": ["Do you trust"]})
     assert dash.screen_dialog("error: algo") == "error"
-    assert dash.screen_dialog("please sign in") == "login"
+    assert dash.screen_dialog("Please sign in to continue") == "login"
 
 
 def test_patterns_are_cached_between_calls(tmp_path, monkeypatch):
@@ -131,21 +131,37 @@ def test_onboarding_patterns_are_specific_enough(tmp_path, monkeypatch):
 
 
 def test_login_patterns_do_not_fire_on_ordinary_pane_content():
-    """"sign in" suelto casaba con prosa, código o una transcripción: un falso
-    positivo congela el sondeo hasta 90 s."""
+    """El detector es una red de seguridad, no la única defensa: _verify exige
+    además prompt de shell, modelo, effort, cuentas y conversación. Así que se
+    prefieren patrones específicos y se aceptan falsos negativos; un falso
+    positivo congelaría el sondeo hasta 90 s sin motivo."""
     dash = load_dash_module()
     dash._DIALOG_CACHE.update(mtime=None, value=None)
-    for innocent in ("dile al usuario que debe sign in antes de seguir",
-                     "  await user.login({ retry: true })",
-                     "# TODO: log in the request duration",
-                     "el commit dice: log into the new format"):
-        assert dash.screen_dialog(innocent) == "", innocent
-    for real in ("Please sign in to continue",
-                 "│ sign in to use Claude",
-                 "login required",
-                 "  /login",
-                 "Por favor inicia sesión para continuar"):
-        assert dash.screen_dialog(real) == "login", real
+    inocentes = [
+        "dile al usuario que debe sign in antes de seguir",
+        "  await user.login({ retry: true })",
+        "# TODO: log in the request duration",
+        "el commit dice: log into the new format",
+        # prosa reflowed por el ancho del terminal: la frase cae a principio de línea
+        "the user must\nsign in before the deploy can continue",
+        # cuerpo indentado de un git log
+        "commit 9fd2\n\n    log into the staging environment\n",
+        "Getting started\n\nlogin flows are documented below",
+    ]
+    for texto in inocentes:
+        assert dash.screen_dialog(texto) == "", texto
+    reales = [
+        "Please sign in to continue",
+        "│ You need to log in to use Claude",
+        "login required",
+        "authentication required",
+        "> sign in required",   # cadena real que ya fijaba test_session_route_matrix
+        "  /login",
+        "Inicia sesión para continuar",
+        "Se requiere iniciar sesión",
+    ]
+    for texto in reales:
+        assert dash.screen_dialog(texto) == "login", texto
 
 
 def test_an_operator_can_disable_a_kind_by_emptying_it(tmp_path, monkeypatch):
@@ -190,4 +206,25 @@ def test_default_dialogs_are_bilingual_like_the_config():
     onboarding = " ".join(dash._DEFAULT_DIALOGS["onboarding"])
     assert "Elige" in onboarding, "el fallback de bienvenida no cubre español"
     login = " ".join(dash._DEFAULT_DIALOGS["login"])
-    assert "sign in" not in login.replace("(sign in|log in|log into)", ""), "login sin anclar en el fallback"
+    assert "sesi" in login, "el fallback de login no cubre español"
+    # específico, no genérico: "sign in" solo aparece exigiendo su contexto
+    assert "sign in|log in) to (" in login, "el fallback de login volvió a ser genérico"
+
+
+def test_a_list_whose_patterns_are_all_invalid_falls_back(tmp_path, monkeypatch):
+    """`"trust": [123]` es un error de escritura, no "apaga la categoría": si se
+    tratara como intención, un typo desactivaría en silencio un detector de seguridad.
+    Apagar se escribe con [] vacío, y eso sí se respeta."""
+    dash = _cfg_with(monkeypatch, tmp_path, {"trust": [123, None]})
+    assert dash.screen_dialog("Do you trust the files in this folder?") == "trust"
+    dash2 = _cfg_with(monkeypatch, tmp_path, {"trust": []})
+    assert dash2.screen_dialog("Do you trust the files in this folder?") == ""
+
+
+def test_the_cache_key_is_read_under_the_same_lock_as_the_value(tmp_path, monkeypatch):
+    """El stat fuera del lock permitía cachear un valor correcto bajo una mtime vieja,
+    forzando un recálculo extra en la siguiente llamada."""
+    src = Path(__file__).resolve().parents[1].joinpath("bin/cc-dash").read_text()
+    cuerpo = src[src.index("def dialog_patterns():"):src.index("def screen_dialog(")]
+    assert cuerpo.index("_DIALOG_CACHE_LOCK") < cuerpo.index("os.stat("), (
+        "os.stat debe quedar dentro del lock")

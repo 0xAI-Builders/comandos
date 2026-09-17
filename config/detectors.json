@@ -20,9 +20,10 @@
       "carpeta de confianza"
     ],
     "login": [
-      "(^|\\n)[\\s│>*·-]*(please\\s+)?(sign in|log in|log into)\\b",
-      "login required",
-      "(^|\\n)[\\s│>*·-]*(por favor,?\\s+)?inicia(?:r)? sesi[oó]n\\b",
+      "(sign in|log in) to (continue|use|proceed)",
+      "(sign in|log in|login|authentication) required",
+      "inicia(?:r)? sesi[oó]n para (continuar|usar)",
+      "se requiere inicia(?:r)? sesi[oó]n",
       "(^|\\n)\\s*/login\\b"
     ],
     "onboarding": [

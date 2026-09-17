@@ -1787,13 +1787,18 @@ def inherit_trust_for_switch(cwd, from_alias, to_alias, harness="claude"):
     return ok
 
 
-# Los patrones de login van anclados a principio de línea: un "sign in" suelto
-# casaba con prosa, código o una transcripción en el panel, y un falso positivo
-# congela el sondeo hasta 90 s. Un falso negativo solo degrada al resto de
-# comprobaciones de _verify, que tampoco confirmarían una pantalla de login.
+# El detector de diálogos es una red de seguridad, no la única defensa: _verify
+# exige además prompt de shell, modelo, effort, ambas cuentas y conversación antes
+# de confirmar. Por eso los patrones se eligen ESPECÍFICOS y se aceptan falsos
+# negativos: una frase genérica ("sign in" suelto, aunque vaya anclada) casa con
+# prosa reflowed por el ancho del terminal o con el cuerpo indentado de un git log,
+# y un falso positivo congela el sondeo hasta 90 s sin motivo.
 _DEFAULT_DIALOGS = {"trust": [r"trust this folder", r"Do you trust", r"Accessing workspace"],
-                    "login": [r"(^|\n)[\s│>*·-]*(please\s+)?(sign in|log in|log into)\b",
-                              r"login required", r"(^|\n)\s*/login\b"],
+                    "login": [r"(sign in|log in) to (continue|use|proceed)",
+                              r"(sign in|log in|login|authentication) required",
+                              r"inicia(?:r)? sesi[oó]n para (continuar|usar)",
+                              r"se requiere inicia(?:r)? sesi[oó]n",
+                              r"(^|\n)\s*/login\b"],
                     "onboarding": [r"Choose the text style", r"Elige el estilo de texto",
                                    r"Choose your theme", r"Elige tu tema"],
                     "error": [r"(^|\n)\s*error:", r"(^|\n)\s*fatal:"]}
@@ -1829,6 +1834,11 @@ def _clean_patterns(raw):
             except re.error:
                 continue
             good.append(pat)
+        if not good and value:
+            # Había patrones y no sobrevivió ninguno: eso es un error de escritura,
+            # no la intención de apagar la categoría. Se omite la clave para que
+            # el defecto la cubra; apagar una categoría se escribe con [] vacío.
+            continue
         # Una categoría presente en la config es intención del operador, aunque
         # quede vacía: se conserva la clave para que el fallback no la resucite.
         out[kind] = good
@@ -1843,11 +1853,11 @@ def dialog_patterns():
     I/O de sobra en el camino caliente.
     """
     path = os.path.join(REPO_ROOT, "config", "detectors.json")
-    try:
-        mtime = os.stat(path).st_mtime
-    except OSError:
-        mtime = None
     with _DIALOG_CACHE_LOCK:
+        try:
+            mtime = os.stat(path).st_mtime
+        except OSError:
+            mtime = None
         if _DIALOG_CACHE["value"] is not None and _DIALOG_CACHE["mtime"] == mtime:
             return _DIALOG_CACHE["value"]
         clean = _clean_patterns(_detectors_cfg().get("dialogPatterns"))
