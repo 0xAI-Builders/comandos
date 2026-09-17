@@ -54,6 +54,12 @@ Some features cross the network only when you use or configure them:
 
 - **Live dashboard** (`127.0.0.1:4777`): whatever waits for YOUR answer shows up big,
   with the question's real options as buttons. Respond without switching windows.
+- **Quota sharing** (Analytics → Reparto): each plan is a tank showing what you have
+  spent and what your live sessions will add before it renews, with "reaches the reset"
+  or "runs out in 1d 22h" instead of a bare percentage. One click proposes a
+  redistribution across accounts, motors, models and efforts; drag a session to another
+  tank to overrule it; apply restarts them keeping the conversation, with per-session
+  progress and revert.
 - **Actionable popups**: full text with rendered markdown (tables included),
   1/2/3 buttons, inline reply, Copy, and "View ALL". Never answer blind.
 - **Native app** (GTK + VTE): one tab per session with a status dot
