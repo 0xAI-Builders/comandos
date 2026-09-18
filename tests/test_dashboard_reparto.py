@@ -106,9 +106,12 @@ def test_dos_analisis_a_la_vez_no_se_pisan():
     assert "var mine = ++seq" in JS and "if (mine !== seq) return" in JS
 
 
-def test_el_tanque_avisa_de_la_cuota_mas_apretada():
-    """claude main sale al 85 % con su semanal por modelo al 100 %: hay que verlo."""
-    assert "function tightest(" in JS, "falta el cálculo de la fila más tensa"
+def test_el_tanque_avisa_de_las_otras_cuotas_del_grupo():
+    """claude main sale al 95 % de su semana con el tope por modelo al 100 %: si el
+    cilindro solo enseñara la semana, esa segunda cuota agotada quedaría invisible.
+    Se muestran todas las mediciones del grupo, no solo la peor: estar al 1 % en la
+    ventana de 5 h y al 100 % por modelo son situaciones distintas."""
+    assert "function others(" in JS, "falta el calculo de las otras mediciones"
     assert "rp-tight" in JS and "rp-tight" in CSS
     assert "weekly_scoped" in JS
 
@@ -194,3 +197,30 @@ def test_la_vista_previa_no_toca_lo_gastado():
     assert ".rp-lvl b" in paint, "la previa lee lo gastado para comparar"
     assert 'lvl.textContent = Math.round(used) + "%"' not in paint, \
         "la previa no puede sobrescribir lo gastado con la proyeccion"
+
+
+def test_el_cilindro_dice_cuando_se_renueva_la_cuota():
+    """"reset en 34 h" dice cuanto falta; para planear hace falta cuando."""
+    assert "function fmtWhen(" in JS
+    assert "toLocaleString" in JS and "weekday" in JS
+    assert 'T("se renueva el ", "renews on ")' in JS, "tambien en el globo de ayuda"
+    assert "rp-reset em" in CSS, "la fecha va en su propia linea"
+
+
+def test_cada_medicion_del_cilindro_lleva_su_nombre():
+    """Claude mide tres limites por cuenta (semana, tope por modelo, ventana de
+    5 h) y Codex y Grok solo uno. Sin nombrarlos el numero es indescifrable."""
+    assert "function windowName(" in JS
+    for es, en in (("semana", "week"), ("modelo", "model"), ("5 h", "5 h")):
+        assert 'T("' + es + '", "' + en + '")' in JS, es
+    # El numero grande se etiqueta con lo que mide, no con un "usado" generico.
+    assert "esc(p.unit || " in JS
+    # Se muestran todas las mediciones del grupo, no solo la peor.
+    assert "function others(" in JS and "p.others" in JS
+
+
+def test_hay_glosario_de_las_mediciones():
+    assert "rp-gloss" in JS and "rp-gloss" in CSS
+    assert "presupuesto semanal de la cuenta" in JS
+    assert "tope semanal de un modelo concreto" in JS
+    assert "ventana corta que te frena ahora" in JS

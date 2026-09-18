@@ -36,6 +36,21 @@
     if (sec < 48 * 3600) return Math.round(sec / 3600) + " h";
     return Math.floor(sec / 86400) + T("d ", "d ") + Math.round((sec % 86400) / 3600) + "h";
   }
+  function locale() {
+    return typeof L === "string" && L === "en" ? "en" : (typeof L === "string" ? "es" : undefined);
+  }
+  /* Cuándo se renueva la cuota, en fecha y hora reales: "sáb 20, 19:40".
+     El "en 34 h" dice cuánto falta, esto dice cuándo, que es lo que sirve
+     para planear el día. */
+  function fmtWhen(ts, withYear) {
+    if (!ts) return "";
+    var o = { weekday: "short", day: "numeric", month: "short",
+              hour: "2-digit", minute: "2-digit" };
+    if (withYear) o.year = "numeric";
+    try { return new Date(ts * 1000).toLocaleString(locale(), o); }
+    catch (e) { return new Date(ts * 1000).toLocaleString(); }
+  }
+
   function poolKey(motor, account) { return motor + ":" + (account || "main"); }
   function short(model) {
     return String(model || "").replace("claude-", "").replace("gpt-5.6-", "").replace("gpt-6-", "");
@@ -59,32 +74,45 @@
         used: l.percent == null ? 0 : l.percent,
         burn: l.burn, verdict: l.verdict,
         resetsIn: (l.resets_at || 0) - Date.now() / 1000,
-        tight: tightest(k, l), after: a
+        resetsAt: l.resets_at || null,
+        unit: windowName(l), others: others(k, l), after: a
       };
     });
     // Un destino que el plan conoce pero sin fila de cuota: se muestra, sin cifras.
     Object.keys(impact).forEach(function (k) {
       if (out.some(function (p) { return p.k === k; })) return;
       out.push({ k: k, label: impact[k].label || k, used: 0, burn: null,
-                 verdict: T("sin cuota conocida", "no known quota"), resetsIn: null, after: impact[k], unknown: true });
+                 verdict: T("sin cuota conocida", "no known quota"), resetsIn: null, resetsAt: null,
+                 unit: "", others: [], after: impact[k], unknown: true });
     });
     return out;
   }
 
-  /* La fila más apretada del mismo grupo que NO es la que gobierna el tanque:
-     la ventana de 5 h que te frena ahora mismo, o la semanal por modelo que ya
-     se agotó. Sin esto el tanque puede decir 85 % con una cuota al 100 %. */
-  function tightest(k, governing) {
-    var best = null;
+  /* Cada proveedor mide su límite de forma distinta y con nombres internos que
+     no dicen nada. Se traducen a lo que son:
+       semana  = presupuesto semanal de la cuenta (el que manda el cilindro)
+       modelo  = tope semanal de un modelo concreto, aparte del anterior
+       5 h     = ventana corta que te frena ahora mismo, se renueva sola
+     Claude trae las tres por cuenta; Codex y Grok solo la semanal. */
+  function windowName(l) {
+    if (l.window === "5h") return T("5 h", "5 h");
+    if (l.kind === "weekly_scoped") return T("modelo", "model");
+    if (l.window === "7d") return T("semana", "week");
+    return l.window || "";
+  }
+
+  /* Las mediciones del grupo que NO son la que gobierna el cilindro. Se ven
+     todas, no solo la peor, porque estar al 0 % en las 5 h y al 100 % por
+     modelo son dos situaciones distintas y ambas cambian la decisión. */
+  function others(k, governing) {
+    var out = [];
     (S.limits || []).forEach(function (l) {
       if (poolKey(l.provider, l.account) !== k) return;
       if (l === governing || l.percent == null) return;
-      if (!best || l.percent > best.percent) best = l;
+      out.push({ name: windowName(l), pct: Math.round(l.percent),
+                 full: l.percent >= 100, hot: l.percent >= 85 });
     });
-    if (!best || best.percent < (governing.percent == null ? 0 : governing.percent)) return null;
-    var name = best.window === "5h" ? T("5 h", "5 h")
-      : best.kind === "weekly_scoped" ? T("por modelo", "per model") : best.window;
-    return { pct: Math.round(best.percent), name: name, full: best.percent >= 100 };
+    return out.sort(function (a, b) { return b.pct - a.pct; }).slice(0, 2);
   }
 
   function items() { return (S.plan && S.plan.items) || []; }
@@ -211,12 +239,16 @@
     var verdict = a && a.verdict ? a.verdict : (p.verdict || "");
     return '<div class="rp-tank rp-drop ' + (usedAfter >= 100 ? "rp-full " : "") +
       (p.unknown ? "rp-unknown" : "") + '" data-pool="' + esc(p.k) + '" title="' +
-      esc(p.label + " · " + verdict) + '">' +
+      esc(p.label + " · " + verdict +
+          (p.resetsAt ? "\n" + T("se renueva el ", "renews on ") + fmtWhen(p.resetsAt, true) : "")) +
+      '">' +
       // Dos filas: etiqueta y distintivo arriba, veredicto debajo. Antes el
       // distintivo flotaba y partia el veredicto por la mitad.
       '<div class="rp-cap"><span class="rp-top"><b>' + esc(p.label) + "</b>" +
-        (p.tight ? '<em class="rp-tight ' + (p.tight.full ? "full" : "") + '">' +
-          esc(p.tight.name + " " + p.tight.pct + "%") + "</em>" : "") + "</span>" +
+        (p.others || []).map(function (o) {
+          return '<em class="rp-tight ' + (o.full ? "full" : o.hot ? "hot" : "") + '">' +
+            esc(o.name + " " + o.pct + "%") + "</em>";
+        }).join("") + "</span>" +
         '<small data-verdict="' + esc(p.k) + '">' + esc(verdict) +
         (burn == null ? "" : T(" · ritmo ", " · pace ") + '<span data-burn="' + esc(p.k) + '">' +
           burn.toFixed(1) + "x</span>") +
@@ -226,11 +258,13 @@
       '<div class="rp-liq ' + sev + '" data-liq="' + esc(p.k) + '" style="--h:' + usedAfter + '%"></div>' +
       '<div class="rp-foam"></div>' +
       '<div class="rp-lvl rp-num"><b>' + Math.round(p.used) + "%</b>" +
-        '<span class="rp-lvl-lbl">' + esc(T("usado", "used")) + "</span>" +
+        '<span class="rp-lvl-lbl">' + esc(p.unit || T("usado", "used")) + "</span>" +
         '<span class="rp-proj" data-lvl="' + esc(p.k) + '">' +
           (usedAfter != null && Math.abs(usedAfter - p.used) >= 1
             ? "\u2192 " + Math.round(usedAfter) + "%" : "") + "</span></div>" +
-      (p.resetsIn == null ? "" : '<div class="rp-reset">' + T("reset en ", "resets in ") + esc(fmtDur(p.resetsIn)) + "</div>") +
+      (p.resetsIn == null ? "" : '<div class="rp-reset">' + T("reset en ", "resets in ") +
+        esc(fmtDur(p.resetsIn)) +
+        (p.resetsAt ? '<em>' + esc(fmtWhen(p.resetsAt)) + "</em>" : "") + "</div>") +
       "</div>";
   }
 
@@ -390,9 +424,34 @@
     var root = document.getElementById("reparto");
     if (!root) return;
     var P = pools();
-    var html = '<div class="rp-hint">Cada tanque es una cuota. La capa oscura es lo que ya gastaste; ' +
-      "la clara, hasta dónde llegaría al reset con la carga propuesta. Arrastra una sesión a otro tanque " +
-      "para moverla de cuenta o de motor, o tócala y luego toca el tanque.</div>";
+    // Leyenda de las mediciones: cada proveedor mide distinto y sin nombrarlas el
+    // cilindro es un número suelto. Solo se listan las que existen ahora mismo.
+    var units = {};
+    P.forEach(function (p) {
+      if (p.unit) units[p.unit] = 1;
+      (p.others || []).forEach(function (o) { units[o.name] = 1; });
+    });
+    var GLOSS = {};
+    GLOSS[T("semana", "week")] = T("presupuesto semanal de la cuenta",
+                                   "the account's weekly budget");
+    GLOSS[T("modelo", "model")] = T("tope semanal de un modelo concreto, aparte del anterior",
+                                    "weekly cap of one model, separate from the above");
+    GLOSS[T("5 h", "5 h")] = T("ventana corta que te frena ahora; se renueva sola",
+                               "short window that stops you now; renews on its own");
+    var legend = Object.keys(units).filter(function (u) { return GLOSS[u]; }).map(function (u) {
+      return '<span><b>' + esc(u) + "</b> " + esc(GLOSS[u]) + "</span>";
+    }).join("");
+
+    var html = '<div class="rp-hint">' +
+      T("Cada cilindro es una cuenta. El número grande es su ",
+        "Each cylinder is one account. The big number is its ") +
+      "<b>" + esc(T("semana", "week")) + "</b>" +
+      T("; la capa oscura es lo gastado y la clara, hasta dónde llegaría al reset con la carga propuesta. ",
+        "; the dark layer is what you spent and the light one how far it would go by reset under the proposed load. ") +
+      T("Arrastra una sesión a otro cilindro para moverla de cuenta o de motor, o tócala y luego tócalo.",
+        "Drag a session onto another cylinder to move it between accounts or engines, or tap it then tap the cylinder.") +
+      "</div>" +
+      (legend ? '<div class="rp-gloss">' + legend + "</div>" : "");
     if (S.error) html += '<div class="rp-hint" style="color:var(--err)">' + esc(S.error) + "</div>";
     html += '<div class="rp-tanks">' + P.map(tankHtml).join("") + "</div>";
 

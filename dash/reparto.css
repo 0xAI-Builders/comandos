@@ -3,7 +3,14 @@
    no el de la ventana, porque esta pestaña vive embebida en la app de escritorio. */
 #reparto { container-type: inline-size; container-name: reparto; }
 
-.rp-hint { font-size: 11px; color: var(--faint); margin-bottom: 8px; line-height: 1.45; }
+.rp-hint { font-size: 11px; color: var(--faint); margin-bottom: 6px; line-height: 1.45; }
+.rp-hint b { color: var(--dim); font-weight: 600; }
+/* Glosario de las mediciones: sin esto el numero del cilindro no se sabe de que es. */
+.rp-gloss { display: flex; flex-wrap: wrap; gap: 4px 14px; margin-bottom: 10px;
+  font-size: 10px; color: var(--faint); line-height: 1.5; }
+.rp-gloss b { display: inline-block; min-width: 42px; padding: 0 4px; margin-right: 4px;
+  border-radius: 4px; border: 1px solid var(--line2); color: var(--dim);
+  font-weight: 600; text-align: center; }
 .rp-note { font-size: 11px; color: var(--dim); line-height: 1.45; }
 .rp-num { font-variant-numeric: tabular-nums; }
 
@@ -34,10 +41,13 @@
 .rp-tank .rp-top b { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .rp-tank .rp-cap small { display: block; color: var(--dim); font-size: 10px;
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.rp-tank .rp-tight { margin-left: auto; flex: none; font-style: normal; font-size: 9.5px;
-  padding: 0 4px; border-radius: 4px; border: 1px solid var(--warn); color: var(--warn);
+.rp-tank .rp-tight { flex: none; font-style: normal; font-size: 9px; padding: 0 3px;
+  border-radius: 4px; border: 1px solid var(--line2); color: var(--faint);
   background: var(--panel2); line-height: 1.5; white-space: nowrap; }
+.rp-tank .rp-tight:first-of-type { margin-left: auto; }
+.rp-tank .rp-tight.hot { border-color: var(--warn); color: var(--warn); }
 .rp-tank .rp-tight.full { border-color: var(--err); color: var(--err); font-weight: 600; }
+.rp-tank .rp-top { flex-wrap: wrap; }
 .rp-tank .rp-lvl { position: absolute; right: 8px; bottom: 6px; z-index: 4;
   display: flex; align-items: baseline; gap: 4px; line-height: 1.1; }
 .rp-tank .rp-lvl b { font-size: 15px; font-weight: 600; }
@@ -47,7 +57,11 @@
    previsualizar un arrastre. Vacia cuando no hay diferencia apreciable. */
 .rp-tank .rp-proj { font-size: 10px; font-weight: 600; color: var(--dim); }
 .rp-tank .rp-proj:empty { display: none; }
-.rp-tank .rp-reset { position: absolute; left: 8px; bottom: 7px; font-size: 9.5px; color: var(--faint); z-index: 4; }
+.rp-tank .rp-reset { position: absolute; left: 8px; bottom: 6px; font-size: 9.5px;
+  color: var(--faint); z-index: 4; line-height: 1.35; max-width: 62%; }
+/* La fecha exacta del reset, debajo de cuanto falta. */
+.rp-tank .rp-reset em { display: block; font-style: normal; color: var(--dim);
+  font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .rp-tank.rp-over { box-shadow: inset 0 0 0 2px var(--brand); background: var(--glow); }
 .rp-tank.rp-unknown { opacity: .75; border-style: dashed; }
 
@@ -146,7 +160,9 @@
 @container reparto (max-width: 620px) {
   .rp-tanks { grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; }
   .rp-tank { height: 92px; }
-  .rp-tank .rp-cap small, .rp-tank .rp-reset { display: none; }
+  .rp-tank .rp-cap small { display: none; }
+  .rp-tank .rp-reset { font-size: 9px; }
+  .rp-tank .rp-reset em { display: none; }
   .rp-tank .rp-tight { margin-left: auto; }
   .rp-tank .rp-lvl b { font-size: 12px; }
   .rp-tank .rp-lvl-lbl { display: none; }
