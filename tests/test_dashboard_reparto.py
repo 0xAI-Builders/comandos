@@ -242,3 +242,17 @@ def test_el_plan_arrastra_cuando_se_vio_cada_sesion():
     assert 'item["seenAt"]' in dash
     assert "float(s.get(\"ts\") or 0)" in dash
     assert "except (TypeError, ValueError)" in dash, "un ts corrupto no puede tumbar el plan"
+
+
+def test_analytics_dice_cuando_se_renueva_cada_cuota():
+    """El hero de Resumen solo decia "12h 5m al reset": cuanto falta, no cuando.
+    Para planear el dia hace falta la fecha, y por cuenta."""
+    dash = (ROOT / "dash/index.html").read_text()
+    assert "function fmtStamp(" in dash
+    assert 'weekday:"short", day:"numeric", month:"short"' in dash
+    assert 'hour12:false' in dash, "con la UI en espanol no puede salir reloj de 12 h"
+    assert 'L === "en" ? "en" : "es"' in dash, "la fecha sigue al idioma del tablero"
+    # En la fila y en la cabecera de cada cuenta.
+    assert 'al reset","to reset")}<em>${mdEsc(fmtStamp(l.resets_at))}</em>' in dash
+    assert "qh-gwhen" in dash and 'tf("se renueva","renews")' in dash
+    assert "qh-gsum" in dash, "cada cuenta resume su ventana mas apretada"

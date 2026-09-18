@@ -4444,8 +4444,11 @@ function mdStrip(s){ return (s||"").replace(/\*\*|`|^#{1,6} /g, ""); }
 	function fmtStamp(ts){
 	  if(!ts) return "";
 	  const dt = new Date(ts*1000);
-	  return dt.toLocaleDateString([], {weekday:"short", day:"numeric", month:"short"})
-	    + ", " + dt.toLocaleTimeString([], {hour:"2-digit", minute:"2-digit"});
+	  // El idioma del tablero manda sobre el del sistema: con la UI en espanol la
+	  // fecha no puede salir en ingles ni con reloj de 12 h.
+	  const loc = L === "en" ? "en" : "es";
+	  return dt.toLocaleDateString(loc, {weekday:"short", day:"numeric", month:"short"})
+	    + ", " + dt.toLocaleTimeString(loc, {hour:"2-digit", minute:"2-digit", hour12:false});
 	}
 	// HERO del Resumen: por cuenta/ventana — cuanto TIEMPO queda, si la
 	// guardia predice agotamiento antes del reset, y linea de tiempo visual.
