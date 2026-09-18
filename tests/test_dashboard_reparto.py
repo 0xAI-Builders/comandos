@@ -173,3 +173,24 @@ def test_el_candado_no_es_un_emoji():
     libre se veian identicas."""
     assert "\U0001F512" not in JS
     assert "function lockIcon()" in JS and "lockIcon()" in JS
+
+
+def test_el_numero_grande_del_tanque_es_lo_gastado_no_la_proyeccion():
+    """usedAfter es la proyeccion al reset TOPADA a 100: con codex al 37 % real el
+    tanque mostraba 100 % y se leia como el nivel actual. El numero grande pasa a
+    ser el hecho (lo gastado) y la proyeccion va aparte y marcada con flecha."""
+    assert "Math.round(p.used) + \"%</b>\"" in JS, "el numero grande debe ser p.used"
+    assert 'class="rp-lvl rp-num"><b>' in JS
+    assert "rp-proj" in JS and "rp-proj" in CSS, "la proyeccion necesita su propio hueco"
+    assert 'T("usado", "used")' in JS, "hay que decir de que es el porcentaje"
+    # La proyeccion solo aparece cuando difiere de lo gastado.
+    assert "Math.abs(usedAfter - p.used) >= 1" in JS
+
+
+def test_la_vista_previa_no_toca_lo_gastado():
+    """Arrastrar cambia la proyeccion, nunca lo que ya se gasto."""
+    import re
+    paint = re.search(r"function paintImpact\(impact\) \{.*?\n  \}", JS, re.S).group(0)
+    assert ".rp-lvl b" in paint, "la previa lee lo gastado para comparar"
+    assert 'lvl.textContent = Math.round(used) + "%"' not in paint, \
+        "la previa no puede sobrescribir lo gastado con la proyeccion"

@@ -38,7 +38,15 @@
   padding: 0 4px; border-radius: 4px; border: 1px solid var(--warn); color: var(--warn);
   background: var(--panel2); line-height: 1.5; white-space: nowrap; }
 .rp-tank .rp-tight.full { border-color: var(--err); color: var(--err); font-weight: 600; }
-.rp-tank .rp-lvl { position: absolute; right: 8px; bottom: 6px; font-size: 15px; font-weight: 600; z-index: 4; }
+.rp-tank .rp-lvl { position: absolute; right: 8px; bottom: 6px; z-index: 4;
+  display: flex; align-items: baseline; gap: 4px; line-height: 1.1; }
+.rp-tank .rp-lvl b { font-size: 15px; font-weight: 600; }
+.rp-tank .rp-lvl-lbl { font-size: 8.5px; letter-spacing: .08em; text-transform: uppercase;
+  color: var(--dim); }
+/* La proyeccion al reset: se distingue del hecho y es lo unico que cambia al
+   previsualizar un arrastre. Vacia cuando no hay diferencia apreciable. */
+.rp-tank .rp-proj { font-size: 10px; font-weight: 600; color: var(--dim); }
+.rp-tank .rp-proj:empty { display: none; }
 .rp-tank .rp-reset { position: absolute; left: 8px; bottom: 7px; font-size: 9.5px; color: var(--faint); z-index: 4; }
 .rp-tank.rp-over { box-shadow: inset 0 0 0 2px var(--brand); background: var(--glow); }
 .rp-tank.rp-unknown { opacity: .75; border-style: dashed; }
@@ -140,7 +148,8 @@
   .rp-tank { height: 92px; }
   .rp-tank .rp-cap small, .rp-tank .rp-reset { display: none; }
   .rp-tank .rp-tight { margin-left: auto; }
-  .rp-tank .rp-lvl { font-size: 12px; }
+  .rp-tank .rp-lvl b { font-size: 12px; }
+  .rp-tank .rp-lvl-lbl { display: none; }
   .rp-bins { grid-template-columns: 1fr; gap: 0; }
   .rp-bin { border-top: 1px solid var(--line); border-radius: 0; padding: 6px 0; }
   .rp-bin[data-label]::before { display: block; }

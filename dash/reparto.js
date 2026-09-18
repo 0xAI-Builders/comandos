@@ -225,7 +225,11 @@
       '<div class="rp-pre" data-pre="' + esc(p.k) + '" style="--h:' + usedAfter + '%"></div>' +
       '<div class="rp-liq ' + sev + '" data-liq="' + esc(p.k) + '" style="--h:' + usedAfter + '%"></div>' +
       '<div class="rp-foam"></div>' +
-      '<div class="rp-lvl rp-num" data-lvl="' + esc(p.k) + '">' + Math.round(usedAfter) + "%</div>" +
+      '<div class="rp-lvl rp-num"><b>' + Math.round(p.used) + "%</b>" +
+        '<span class="rp-lvl-lbl">' + esc(T("usado", "used")) + "</span>" +
+        '<span class="rp-proj" data-lvl="' + esc(p.k) + '">' +
+          (usedAfter != null && Math.abs(usedAfter - p.used) >= 1
+            ? "\u2192 " + Math.round(usedAfter) + "%" : "") + "</span></div>" +
       (p.resetsIn == null ? "" : '<div class="rp-reset">' + T("reset en ", "resets in ") + esc(fmtDur(p.resetsIn)) + "</div>") +
       "</div>";
   }
@@ -309,7 +313,13 @@
       var pre = root.querySelector('[data-pre="' + (window.CSS && CSS.escape ? CSS.escape(k) : k) + '"]');
       if (pre) pre.style.setProperty("--h", used + "%");
       var lvl = root.querySelector('[data-lvl="' + (window.CSS && CSS.escape ? CSS.escape(k) : k) + '"]');
-      if (lvl) lvl.textContent = Math.round(used) + "%";
+      if (lvl) {
+        var base = lvl.closest(".rp-tank");
+        var b = base && base.querySelector(".rp-lvl b");
+        var nowPct = b ? parseFloat(b.textContent) : null;
+        lvl.textContent = (nowPct == null || Math.abs(used - nowPct) >= 1)
+          ? "\u2192 " + Math.round(used) + "%" : "";
+      }
       var burn = root.querySelector('[data-burn="' + (window.CSS && CSS.escape ? CSS.escape(k) : k) + '"]');
       if (burn && a.burnAfter != null) burn.textContent = a.burnAfter.toFixed(1) + "x";
       var v = root.querySelector('[data-verdict="' + (window.CSS && CSS.escape ? CSS.escape(k) : k) + '"]');
@@ -381,7 +391,7 @@
     if (!root) return;
     var P = pools();
     var html = '<div class="rp-hint">Cada tanque es una cuota. La capa oscura es lo que ya gastaste; ' +
-      "la clara, lo que tus sesiones añadirán cuando se renueve. Arrastra una sesión a otro tanque " +
+      "la clara, hasta dónde llegaría al reset con la carga propuesta. Arrastra una sesión a otro tanque " +
       "para moverla de cuenta o de motor, o tócala y luego toca el tanque.</div>";
     if (S.error) html += '<div class="rp-hint" style="color:var(--err)">' + esc(S.error) + "</div>";
     html += '<div class="rp-tanks">' + P.map(tankHtml).join("") + "</div>";
