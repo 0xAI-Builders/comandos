@@ -224,3 +224,21 @@ def test_hay_glosario_de_las_mediciones():
     assert "presupuesto semanal de la cuenta" in JS
     assert "tope semanal de un modelo concreto" in JS
     assert "ventana corta que te frena ahora" in JS
+
+
+def test_la_ficha_dice_su_estado_y_cuanto_lleva_quieta():
+    """Dos paneles del mismo proyecto (uno terminado hace 17 h, otro trabajando)
+    se veian identicos salvo por un punto de color, y pasaban por duplicados
+    muertos. Ahora el estado va en palabras y con la antiguedad."""
+    assert "function stateHtml(" in JS and "rp-state" in JS and "rp-state" in CSS
+    for st in ("working", "waiting", "done", "idle"):
+        assert st in JS, st
+    assert "item.seenAt" in JS, "hace falta cuando se vio por ultima vez"
+    assert "rp-quiet" in JS and "rp-quiet" in CSS, "las paradas se apagan un poco"
+
+
+def test_el_plan_arrastra_cuando_se_vio_cada_sesion():
+    dash = (ROOT / "bin/cc-dash").read_text()
+    assert 'item["seenAt"]' in dash
+    assert "float(s.get(\"ts\") or 0)" in dash
+    assert "except (TypeError, ValueError)" in dash, "un ts corrupto no puede tumbar el plan"

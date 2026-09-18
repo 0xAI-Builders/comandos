@@ -1707,8 +1707,14 @@
   .qh-bar.nodata{background:repeating-linear-gradient(90deg,var(--line) 0 6px,transparent 6px 12px)}
   .qh-queda{font-size:11px;color:var(--dim);white-space:nowrap}
   .qh-queda b{font-family:var(--mono);font-size:13px;color:var(--text)}
-  .qh-reset{font-size:10.5px;color:var(--faint);white-space:nowrap}
-  @media (max-width:760px){.qh-sub{grid-template-columns:110px 1fr 70px}.qh-reset,.qh-okchip{display:none}}
+  .qh-reset{font-size:10.5px;color:var(--faint);white-space:nowrap;line-height:1.3}
+  .qh-reset em{display:block;font-style:normal;color:var(--dim);font-weight:600;font-size:10px}
+  .qh-gsum{margin-left:auto;font-size:10.5px;color:var(--dim);white-space:nowrap}
+  .qh-gsum b{font-family:var(--mono);font-size:13px;color:var(--text);margin:0 3px}
+  .qh-gsum i{font-style:normal;color:var(--faint);font-size:9.5px}
+  .qh-gwhen{display:inline-flex;align-items:center;gap:4px;font-size:10px;color:var(--faint);white-space:nowrap}
+  @media (max-width:760px){.qh-sub{grid-template-columns:110px 1fr 70px}.qh-reset,.qh-okchip{display:none}
+    .qh-gwhen{display:none}}
   .qh-item{margin-bottom:6px}
   .qh-item .qh-row{width:100%;cursor:pointer;text-align:left;font:inherit;color:inherit;margin-bottom:0}
   .qh-chev{color:var(--faint);transition:transform .15s;display:inline-flex}
@@ -4432,6 +4438,15 @@ function mdStrip(s){ return (s||"").replace(/\*\*|`|^#{1,6} /g, ""); }
 	  const dt = new Date(ts*1000);
 	  return dt.toLocaleDateString([], {weekday:"short"}) + " " + dt.toLocaleTimeString([], {hour:"2-digit",minute:"2-digit"});
 	}
+	// Fecha completa para los resets: "sab 19 sept, 02:00". fmtWhen se queda en
+	// el dia de la semana y dentro de los proximos 7 dias eso no basta para saber
+	// de que dia habla.
+	function fmtStamp(ts){
+	  if(!ts) return "";
+	  const dt = new Date(ts*1000);
+	  return dt.toLocaleDateString([], {weekday:"short", day:"numeric", month:"short"})
+	    + ", " + dt.toLocaleTimeString([], {hour:"2-digit", minute:"2-digit"});
+	}
 	// HERO del Resumen: por cuenta/ventana — cuanto TIEMPO queda, si la
 	// guardia predice agotamiento antes del reset, y linea de tiempo visual.
 	function renderQuotaHero(state){
@@ -4479,13 +4494,23 @@ function mdStrip(s){ return (s||"").replace(/\*\*|`|^#{1,6} /g, ""); }
 	        <span class="qh-win">${mdEsc(winName(l))}</span>
 	        ${bar}
 	        <span class="qh-queda">${quedaTxt}</span>
-	        <span class="qh-reset">${l.resets_at ? `${fmtLeft(l.resets_at - now)} ${tf("al reset","to reset")}` : ""}</span>
+	        <span class="qh-reset">${l.resets_at ? `${fmtLeft(l.resets_at - now)} ${tf("al reset","to reset")}<em>${mdEsc(fmtStamp(l.resets_at))}</em>` : ""}</span>
 	        ${risky ? `<span class="qh-risk" title="${attrEsc(fc.message||"")}">${svg("zap",11)} ${tf("se agota","dry")} ${mdEsc(fmtWhen(fc.projectedExhaustionAt))}</span>`
 	                : `<span class="qh-okchip">${svg("check",11)}</span>`}
 	      </div>`;
 	    }).join("");
+	    const withPct = groups.get(k).filter(l => l.percent !== null && l.percent !== undefined);
+	    const tightest = withPct.length
+	      ? withPct.reduce((a, b) => Number(a.percent) >= Number(b.percent) ? a : b) : null;
+	    const weekly = groups.get(k).find(l => l.window === "7d" && l.resets_at) || tightest;
+	    const email = groups.get(k).map(l => l.accountEmail).find(Boolean) || "";
+	    const sum = tightest ? `<span class="qh-gsum">${tf("queda","left")}
+	        <b>${Math.max(0, 100 - Number(tightest.percent)).toFixed(0)}%</b>
+	        <i>${mdEsc(winName(tightest))}</i></span>` : "";
+	    const when = weekly && weekly.resets_at
+	      ? `<span class="qh-gwhen">${svg("timer",10)} ${tf("se renueva","renews")} ${mdEsc(fmtStamp(weekly.resets_at))}</span>` : "";
 	    return `<div class="qh-group">
-	      <div class="qh-ghead">${providerMark(prov, "", 14)} <b>${mdEsc(prov)}</b>${acct !== "main" ? ` <span class="qh-acct">${mdEsc(acct)}</span>` : ` <span class="qh-acct qh-main">main</span>`}</div>
+	      <div class="qh-ghead">${providerMark(prov, "", 14)} <b>${mdEsc(prov)}</b>${acct !== "main" ? ` <span class="qh-acct"${email ? ` title="${attrEsc(email)}"` : ""}>${mdEsc(acct)}</span>` : ` <span class="qh-acct qh-main"${email ? ` title="${attrEsc(email)}"` : ""}>main</span>`}${sum}${when}</div>
 	      ${rows}</div>`;
 	  }).join("");
 	  const g = GUARD_CACHE || {};

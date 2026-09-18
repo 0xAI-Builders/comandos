@@ -301,6 +301,22 @@
       '<path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>';
   }
 
+  var STATUS = { working: ["trabajando", "working"], waiting: ["te espera", "waiting on you"],
+                 done: ["terminó", "finished"], idle: ["en reposo", "idle"] };
+
+  /* Sin esto, una sesión que acabó hace 17 h y otra que trabaja ahora se ven
+     idénticas, y dos fichas del mismo proyecto parecen un duplicado muerto.
+     Se dice el estado con palabras y, si lleva más de una hora quieta, cuánto. */
+  function stateHtml(item) {
+    var st = String(item.status || "");
+    var name = STATUS[st] ? T(STATUS[st][0], STATUS[st][1]) : st;
+    var age = item.seenAt ? Date.now() / 1000 - item.seenAt : null;
+    var old = age != null && age >= 3600;
+    if (!name && !old) return "";
+    return '<span class="rp-state ' + esc(st) + (old ? " stale" : "") + '">' + esc(name) +
+      (old ? " · " + esc(fmtDur(age)) : "") + "</span>";
+  }
+
   function tileHtml(item) {
     var opts = (S.plan.options || {})[item.to.motor] || {};
     var models = opts.models && opts.models.length ? opts.models : [item.to.model];
@@ -314,7 +330,8 @@
       ? '<span class="rp-old" style="text-decoration:none">' + esc(item.reason) + "</span>"
       : '<span class="rp-old">' + esc(short(item.from.model) + " · " + item.from.effort) + "</span>" +
         '<span class="rp-arrow">→</span>' + after;
-    return '<div class="rp-tk ' + (S.overrides[item.key] ? "rp-moved " : "") +
+    var quiet = item.seenAt && (Date.now() / 1000 - item.seenAt) >= 3 * 3600;
+    return '<div class="rp-tk ' + (quiet ? "rp-quiet " : "") + (S.overrides[item.key] ? "rp-moved " : "") +
       (item.locked ? "rp-locked " : "") + (S.armed === item.key ? "rp-armed" : "") +
       '" draggable="' + (editable ? "true" : "false") + '" data-key="' + esc(item.key) + '" title="' +
       esc((item.cwd ? item.cwd + " · " : "") + (item.session || "") + " " + (item.pane || "") +
@@ -323,6 +340,7 @@
       '<span class="rp-body"><span class="rp-name">' + esc(nameOf(item)) +
         (String(item.project || "").indexOf("\u2AFD") >= 0 ? ""
           : ' <span class="rp-pane">' + esc(item.pane) + "</span>") + "</span>" +
+        stateHtml(item) +
         '<span class="rp-diff">' + diff + "</span></span>" +
       (S.phase === "curar"
         ? '<button type="button" class="rp-lk ' + (item.locked ? "on" : "") + '" data-lock="' +

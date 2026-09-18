@@ -92,6 +92,16 @@
 .rp-tk .rp-body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; line-height: 1.3; }
 .rp-tk .rp-name { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .rp-tk .rp-name .rp-pane { color: var(--faint); font-weight: 400; font-size: 10px; }
+/* Estado en palabras: el punto de color solo no distingue "terminó hace 17 h"
+   de "trabajando ahora", y eso hacía que dos fichas del mismo proyecto se
+   leyeran como un duplicado muerto. */
+.rp-tk .rp-state { font-size: 9.5px; color: var(--faint); line-height: 1.3; }
+.rp-tk .rp-state.working { color: var(--working); }
+.rp-tk .rp-state.waiting { color: var(--warn); }
+.rp-tk .rp-state.done { color: var(--done, var(--ok)); }
+.rp-tk .rp-state.stale { color: var(--faint); }
+.rp-tk.rp-quiet { opacity: .72; }
+.rp-tk.rp-quiet:hover, .rp-tk.rp-quiet.rp-armed, .rp-tk.rp-quiet.rp-moved { opacity: 1; }
 .rp-tk .rp-diff { display: flex; align-items: center; gap: 5px; flex-wrap: wrap; font-size: 10.5px; }
 .rp-tk .rp-old { color: var(--faint); text-decoration: line-through; white-space: nowrap; }
 .rp-tk .rp-arrow { color: var(--faint); }
