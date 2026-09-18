@@ -1713,6 +1713,9 @@
   .qh-gsum b{font-family:var(--mono);font-size:13px;color:var(--text);margin:0 3px}
   .qh-gsum i{font-style:normal;color:var(--faint);font-size:9.5px}
   .qh-gwhen{display:inline-flex;align-items:center;gap:4px;font-size:10px;color:var(--faint);white-space:nowrap}
+  /* La fecha exacta del reset, dentro de la misma pildora que el "en 11 h". */
+  .uw-reset em{font-style:normal;font-weight:600;color:var(--dim);font-size:10px}
+  .uw-reset em::before{content:"·";margin-right:4px;color:var(--line2);font-weight:400}
   @media (max-width:760px){.qh-sub{grid-template-columns:110px 1fr 70px}.qh-reset,.qh-okchip{display:none}
     .qh-gwhen{display:none}}
   .qh-item{margin-bottom:6px}
@@ -2859,8 +2862,11 @@ function mdStrip(s){ return (s||"").replace(/\*\*|`|^#{1,6} /g, ""); }
 	             `Healthy pace: projected ${projected}% at reset. Keep going.`)};
 	}
 	function limitSubText(l){
+	  // Codex mide tokens pero no turnos: "0 turnos en 7d" seria ruido, no un dato.
 	  const measured = (l.tokens_7d || l.turns_7d)
-	    ? `${fmtTokens(l.tokens_7d || 0)} · ${l.turns_7d || 0} ${tf("turnos en 7d", "turns in 7d")}` : "";
+	    ? [l.tokens_7d ? `${fmtTokens(l.tokens_7d)} ${tf("en 7d", "in 7d")}` : "",
+	       l.turns_7d ? `${l.turns_7d} ${tf("turnos", "turns")}` : ""].filter(Boolean).join(" · ")
+	    : "";
 	  if(l.kind === "measured")
 	    return [measured || tf("sin turnos aún", "no turns yet"),
 	            tf("medido local — abre grok para el % oficial", "measured locally — open grok for the official %")]
@@ -2889,8 +2895,10 @@ function mdStrip(s){ return (s||"").replace(/\*\*|`|^#{1,6} /g, ""); }
 	    const sev = limitSeverity(l);
 	    return `<span class="uw-remain ${sev}">${tf("queda", "left")} <b>${left.toFixed(left % 1 ? 1 : 0)}%</b></span>`;
 	  };
+	  // La fecha exacta iba solo en el globo de ayuda: "en 11 h" dice cuanto falta,
+	  // no cuando. Para planear el dia hace falta el dia y la hora, a la vista.
 	  const resetHtml = l => l.resets_at
-	    ? `<span class="uw-reset" title="${attrEsc(`${tf("resetea", "resets")} ${fmtReset(l.resets_at)}`)}">${svg("timer",11)} ${mdEsc(fmtResetRel(l.resets_at))}</span>` : "";
+	    ? `<span class="uw-reset" title="${attrEsc(`${tf("resetea", "resets")} ${fmtStamp(l.resets_at)}`)}">${svg("timer",11)} ${mdEsc(fmtResetRel(l.resets_at))} <em>${mdEsc(fmtStamp(l.resets_at))}</em></span>` : "";
 	  // Track con marcas en 70% y 90% (umbrales de alerta visibles)
 	  const trackHtml = l => {
 	    if(l.percent === null || l.percent === undefined) return "";

@@ -8292,7 +8292,12 @@ class Handler(http.server.SimpleHTTPRequestHandler):
                 except Exception:
                     pass
             state["alerts"] = cc_usage.list_alerts(USAGE_DB)
-            state["limits"] = enriched_limits(state.get("limits") or prov["limits"])
+            # Los tokens medidos localmente viven en state["windows"] y las filas de
+            # limite vienen del proveedor: aqui es donde coinciden las dos piezas.
+            # Sin esto la tarjeta de Codex salia mas pobre que la de Grok pese a que
+            # el dato existe (codex_weekly_tokens / codex_daily_tokens).
+            state["limits"] = enriched_limits(cc_usage.attach_token_counts(
+                state.get("limits") or prov["limits"], state.get("windows")))
             recent = cc_usage.recent_interactions(USAGE_DB, 1)
             state["lastInteraction"] = recent[0] if recent else None
             # Conserva el modelo enriquecido del memo en cache hits, filtrando

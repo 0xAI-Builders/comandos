@@ -256,3 +256,45 @@ def test_analytics_dice_cuando_se_renueva_cada_cuota():
     assert 'al reset","to reset")}<em>${mdEsc(fmtStamp(l.resets_at))}</em>' in dash
     assert "qh-gwhen" in dash and 'tf("se renueva","renews")' in dash
     assert "qh-gsum" in dash, "cada cuenta resume su ventana mas apretada"
+
+
+def test_las_tarjetas_de_limites_ensenan_la_fecha_del_reset():
+    """El hero y las tarjetas son dos bloques distintos de Resumen. La tarjeta
+    solo decia "en 11 h" y escondia la fecha en el globo de ayuda, asi que la
+    fecha seguia sin verse aunque el hero ya la tuviera."""
+    dash = (ROOT / "dash/index.html").read_text()
+    i = dash.index("const resetHtml")
+    chip = dash[i:i + 400]
+    assert "fmtStamp(l.resets_at)" in chip, "la fecha tiene que estar en el chip, no solo en el title"
+    assert "<em>" in chip
+    assert ".uw-reset em{" in dash
+
+
+def test_codex_declara_su_cuenta():
+    """El tablero agrupa por (proveedor, cuenta); sin el campo, la tarjeta de
+    Codex salia sin cuenta mientras Claude y Grok si la traen."""
+    usage = (ROOT / "bin/cc_usage.py").read_text()
+    i = usage.index('"provider": "codex"')
+    assert '"account": "main"' in usage[i:i + 400]
+
+
+def test_codex_muestra_sus_tokens_medidos():
+    """Codex no reporta tokens en su fila de limite, pero SI se miden aqui
+    (codex_weekly_tokens / codex_daily_tokens). Sin engancharlos, su tarjeta
+    salia mas pobre que la de Grok pese a existir el dato."""
+    usage = (ROOT / "bin/cc_usage.py").read_text()
+    dash = (ROOT / "bin/cc-dash").read_text()
+    assert "def attach_token_counts(" in usage
+    assert "cc_usage.attach_token_counts(" in dash, "hay que llamarlo donde conviven limites y windows"
+    # Nunca pisar lo que el proveedor ya reporto (Grok trae los suyos).
+    i = usage.index("def attach_token_counts(")
+    assert "if value and not row.get(key)" in usage[i:i + 1400]
+
+
+def test_el_subtexto_no_inventa_ceros():
+    """Codex mide tokens pero no turnos: "0 turnos en 7d" es ruido, no un dato."""
+    dash = (ROOT / "dash/index.html").read_text()
+    i = dash.index("function limitSubText(")
+    body = dash[i:i + 700]
+    assert "l.turns_7d ?" in body and "filter(Boolean)" in body
+    assert "${l.turns_7d || 0}" not in body

@@ -892,6 +892,34 @@ def build_usage_state(db_path, live_panes=None, now=None, settings=None, limits=
     }
 
 
+def attach_token_counts(limits, windows):
+    """Pega los tokens medidos localmente a la fila de limite del mismo proveedor.
+
+    Grok trae tokens_7d/tokens_today en su propia fila porque los saca del log del
+    CLI. Codex no, aunque los tokens SI se miden aqui (codex_weekly_tokens y
+    codex_daily_tokens): sin esto su tarjeta salia mas pobre que la de Grok sin
+    que faltara el dato. Solo se rellena lo que este vacio, nunca se pisa lo que
+    el proveedor ya reporto.
+    """
+    by_provider = {}
+    for w in (windows or {}).get("items") or []:
+        if w.get("metric") != "tokens" or not w.get("provider"):
+            continue
+        slot = by_provider.setdefault(w["provider"], {})
+        if w.get("window") == "weekly":
+            slot["tokens_7d"] = w.get("used")
+        elif w.get("window") == "daily":
+            slot["tokens_today"] = w.get("used")
+    for row in limits:
+        extra = by_provider.get(row.get("provider"))
+        if not extra:
+            continue
+        for key, value in extra.items():
+            if value and not row.get(key):
+                row[key] = value
+    return limits
+
+
 RULE_SCOPES = ("session", "project", "provider", "limit")
 
 
@@ -1341,6 +1369,10 @@ def read_codex_rate_limits(sessions_root=None, now=None, max_files=16):
         rows.append({
             "id": lid,
             "provider": "codex",
+            # Codex no expone cuentas, pero el resto del tablero agrupa por
+            # (proveedor, cuenta) y sin este campo su tarjeta salia sin cuenta
+            # mientras Claude y Grok si la traen.
+            "account": "main",
             "kind": kind,
             "label": label,
             "scope": "",
