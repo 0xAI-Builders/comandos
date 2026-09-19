@@ -3874,7 +3874,7 @@ function mdStrip(s){ return (s||"").replace(/\*\*|`|^#{1,6} /g, ""); }
 	      const xe=x(f.projectedExhaustionAt);
 	      series+=`<line x1="${xe}" y1="${y(100)}" x2="${xe}" y2="${H-PB}" stroke="var(--err)" stroke-width="1" stroke-dasharray="2 3" opacity=".7"/>`
 	        +`<circle cx="${xe}" cy="${y(100)}" r="5" fill="var(--err)" stroke="var(--panel)" stroke-width="2"><title>${mdEsc(f.scope)} toca 100% aquí</title></circle>`;
-	      notes+=`<div class="gc-note danger">${svg("zap",11)} <b>${mdEsc(f.scope)}</b> ${tf("toca el 100%","hits 100%")} ${mdEsc(fmtWhen(f.projectedExhaustionAt))} — ${tf("te deja","leaving you")} <b>${Math.round(f.downtimeHours)} h</b> ${tf("sin ese modelo antes del reset","without that model before reset")}</div>`;
+	      notes+=`<div class="gc-note danger">${svg("zap",11)} <b>${mdEsc(f.scope)}</b> ${tf("tocaría el 100%","would hit 100%")} ${mdEsc(fmtStamp(f.projectedExhaustionAt))} — ${tf("te deja","leaving you")} <b>${Math.round(f.downtimeHours)} h</b> ${tf("sin ese modelo antes del reset","without that model before reset")}</div>`;
 	    } else {
 	      notes+=`<div class="gc-note ok">${svg("check",11)} <b>${mdEsc(f.scope)}</b> ${tf("llega al reset con margen","reaches reset with room")} (~${Math.round(endP)}%)</div>`;
 	    }
@@ -3899,7 +3899,7 @@ function mdStrip(s){ return (s||"").replace(/\*\*|`|^#{1,6} /g, ""); }
 	    : `${svg("check",14)} <b>${tf("Todo tranquilo","All calm")}</b> — ${tf("ningún proyecto consume de más","no project is over-consuming")}`
 	  }${nOk ? ` · ${nOk} ${tf("tranquilos","calm")}` : ""}</div>`;
 	  const scopeName=sc=>sc==="General"?tf("Cuota semanal Claude","Claude weekly quota"):sc==="Fable"?tf("Cuota semanal de Fable","Fable weekly quota"):sc;
-	  const forecasts=(d.forecasts||[]).map(f=>`<div class="guard-row ${f.level}"><span class="guard-ico">${svg(f.level==="critical"?"zap":"timer",15)}</span><div class="guard-main"><b>${mdEsc(scopeName(f.scope))} — ${tf("vas al","you're at")} ${Math.round(f.percent)}%</b><span>${mdEsc(f.message)}</span><span class="guard-detail">${tf("resetea","resets")} ${mdEsc(fmtWhen(f.resetAt))}</span>${f.level!=="normal"?`<button type="button" class="test" data-guard-opt>${svg("sprout",11)} ${tf("Ver sesiones y proponer Luna/low","Review sessions and propose Luna/low")}</button>`:""}</div><div class="guard-rate" title="${attrEsc(tf("Horas que te quedarías SIN este modelo antes del reset, al ritmo actual","Hours you'd be WITHOUT this model before reset, at current pace"))}">${f.downtimeHours>0?`${Math.round(f.downtimeHours)} h ${tf("sin modelo","dry")}`:tf("CON MARGEN","ON TRACK")}</div></div>`).join("");
+	  const forecasts=(d.forecasts||[]).map(f=>`<div class="guard-row ${f.level}"><span class="guard-ico">${svg(f.level==="critical"?"zap":"timer",15)}</span><div class="guard-main"><b>${mdEsc(scopeName(f.scope))} — ${tf("vas al","you're at")} ${Math.round(f.percent)}%</b><span>${mdEsc(f.message)}</span><span class="guard-detail">${tf("se renueva","renews")} ${mdEsc(fmtStamp(f.resetAt))}</span>${f.level!=="normal"?`<button type="button" class="test" data-guard-opt>${svg("sprout",11)} ${tf("Ver sesiones y proponer Luna/low","Review sessions and propose Luna/low")}</button>`:""}</div><div class="guard-rate" title="${attrEsc(tf("Horas que te quedarías SIN este modelo antes del reset, al ritmo actual","Hours you'd be WITHOUT this model before reset, at current pace"))}">${f.downtimeHours>0?`${Math.round(f.downtimeHours)} h ${tf("sin modelo","dry")}`:tf("CON MARGEN","ON TRACK")}</div></div>`).join("");
 	  const maxTok=Math.max(1,...rows.map(r=>Number(r.tokensHour||0)));
 	  const human=r=>{
 	    const t=fmtTokens(r.tokensHour);
@@ -4444,7 +4444,9 @@ function mdStrip(s){ return (s||"").replace(/\*\*|`|^#{1,6} /g, ""); }
 	}
 	function fmtWhen(ts){
 	  const dt = new Date(ts*1000);
-	  return dt.toLocaleDateString([], {weekday:"short"}) + " " + dt.toLocaleTimeString([], {hour:"2-digit",minute:"2-digit"});
+	  const loc = L === "en" ? "en" : "es";
+	  return dt.toLocaleDateString(loc, {weekday:"short"}) + " "
+	    + dt.toLocaleTimeString(loc, {hour:"2-digit",minute:"2-digit",hour12:false});
 	}
 	// Fecha completa para los resets: "sab 19 sept, 02:00". fmtWhen se queda en
 	// el dia de la semana y dentro de los proximos 7 dias eso no basta para saber
@@ -4506,7 +4508,7 @@ function mdStrip(s){ return (s||"").replace(/\*\*|`|^#{1,6} /g, ""); }
 	        ${bar}
 	        <span class="qh-queda">${quedaTxt}</span>
 	        <span class="qh-reset">${l.resets_at ? `${fmtLeft(l.resets_at - now)} ${tf("al reset","to reset")}<em>${mdEsc(fmtStamp(l.resets_at))}</em>` : ""}</span>
-	        ${risky ? `<span class="qh-risk" title="${attrEsc(fc.message||"")}">${svg("zap",11)} ${tf("se agota","dry")} ${mdEsc(fmtWhen(fc.projectedExhaustionAt))}</span>`
+	        ${risky ? `<span class="qh-risk" title="${attrEsc(`${fc.message||""} ${tf("Se renueva","Renews")} ${fmtStamp(l.resets_at)}.`)}">${svg("zap",11)} ${tf("se agotaría","would run dry")} ${mdEsc(fmtStamp(fc.projectedExhaustionAt))}</span>`
 	                : `<span class="qh-okchip">${svg("check",11)}</span>`}
 	      </div>`;
 	    }).join("");

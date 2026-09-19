@@ -298,3 +298,24 @@ def test_el_subtexto_no_inventa_ceros():
     body = dash[i:i + 700]
     assert "l.turns_7d ?" in body and "filter(Boolean)" in body
     assert "${l.turns_7d || 0}" not in body
+
+
+def test_la_proyeccion_de_agotamiento_no_se_confunde_con_el_pasado():
+    """"se agota Fri 6:15pm" se lee como que YA se agoto. Es una proyeccion al
+    ritmo actual, y lo util es compararla con la fecha de renovacion."""
+    dash = (ROOT / "dash/index.html").read_text()
+    assert 'tf("se agotaría","would run dry")' in dash, "condicional: es una proyeccion"
+    assert 'tf("se agota","dry")' not in dash
+    assert 'tf("tocaría el 100%","would hit 100%")' in dash
+    # La renovacion va junto a la proyeccion, que es la comparacion que decide.
+    i = dash.index('se agotaría')
+    assert 'tf("Se renueva","Renews")' in dash[i - 400:i + 200]
+    # Y con fecha completa, no solo el dia de la semana.
+    assert "fmtStamp(fc.projectedExhaustionAt)" in dash
+
+
+def test_fmtwhen_tambien_sigue_el_idioma_del_tablero():
+    dash = (ROOT / "dash/index.html").read_text()
+    i = dash.index("function fmtWhen(")
+    body = dash[i:i + 400]
+    assert 'L === "en" ? "en" : "es"' in body and "hour12:false" in body
