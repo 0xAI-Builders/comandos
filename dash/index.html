@@ -1709,6 +1709,7 @@
   .qh-queda b{font-family:var(--mono);font-size:13px;color:var(--text)}
   .qh-reset{font-size:10.5px;color:var(--faint);white-space:nowrap;line-height:1.3}
   .qh-reset em{display:block;font-style:normal;color:var(--dim);font-weight:600;font-size:10px}
+  .qh-reset em::before{content:none}
   .qh-gsum{margin-left:auto;font-size:10.5px;color:var(--dim);white-space:nowrap}
   .qh-gsum b{font-family:var(--mono);font-size:13px;color:var(--text);margin:0 3px}
   .qh-gsum i{font-style:normal;color:var(--faint);font-size:9.5px}
@@ -1716,8 +1717,19 @@
   /* La fecha exacta del reset, dentro de la misma pildora que el "en 11 h". */
   .uw-reset em{font-style:normal;font-weight:600;color:var(--dim);font-size:10px}
   .uw-reset em::before{content:"·";margin-right:4px;color:var(--line2);font-weight:400}
-  @media (max-width:760px){.qh-sub{grid-template-columns:110px 1fr 70px}.qh-reset,.qh-okchip{display:none}
-    .qh-gwhen{display:none}}
+  /* Estrecho: el panel del tablero mide ~600 px porque comparte ventana con las
+     terminales, asi que esta regla es la NORMAL, no la excepcion. Antes ocultaba
+     .qh-reset y .qh-gwhen, que son justo donde vive la fecha de renovacion: se
+     veia "se agotaria" y nunca "se renueva". Se bajan de linea en vez de
+     esconderse; lo unico prescindible es el tic de "todo ok". */
+  @media (max-width:760px){
+    .qh-sub{grid-template-columns:110px 1fr 70px}
+    .qh-okchip{display:none}
+    .qh-reset{grid-column:1 / -1;white-space:normal;text-align:right}
+    .qh-reset em{display:inline}
+    .qh-reset em::before{content:"·";margin:0 4px;color:var(--line2)}
+    .qh-ghead{flex-wrap:wrap}
+    .qh-gwhen{width:100%;margin-top:2px}}
   .qh-item{margin-bottom:6px}
   .qh-item .qh-row{width:100%;cursor:pointer;text-align:left;font:inherit;color:inherit;margin-bottom:0}
   .qh-chev{color:var(--faint);transition:transform .15s;display:inline-flex}
@@ -2850,16 +2862,16 @@ function mdStrip(s){ return (s||"").replace(/\*\*|`|^#{1,6} /g, ""); }
 	  if(pace > 1.05 && projected > 100){
 	    const dryH = ((100 - pct) / pct) * elapsed * winSec / 3600;
 	    return {icon: "zap", cls: pct >= 70 ? "danger" : "warn",
-	      text: tf(`Vas ${Math.round((pace-1)*100)}% más rápido que el reloj: proyección ${projected}% al reset (~se agota en ${fmtH(dryH)}). Mueve lo repetitivo a Luna/Haiku low.`,
-	               `Burning ${Math.round((pace-1)*100)}% faster than the clock: projected ${projected}% at reset (~dry in ${fmtH(dryH)}). Move repetitive work to Luna/Haiku low.`)};
+      text: tf(`Vas ${Math.round((pace-1)*100)}% más rápido que el reloj: proyección ${projected}% al reset. Se agotaría el ${fmtStamp(now + dryH*3600)} y se renueva el ${fmtStamp(l.resets_at)}: ${fmtH(Math.max(0, hoursLeft - dryH))} sin él. Mueve lo repetitivo a Luna/Haiku low.`,
+	               `Burning ${Math.round((pace-1)*100)}% faster than the clock: projected ${projected}% at reset. Would run dry on ${fmtStamp(now + dryH*3600)} and renews on ${fmtStamp(l.resets_at)}: ${fmtH(Math.max(0, hoursLeft - dryH))} without it. Move repetitive work to Luna/Haiku low.`)};
 	  }
 	  if(pace < 0.7)
 	    return {icon: "sprout", cls: "ok",
-	      text: tf(`Vas holgado: proyección ${projected}% al reset con ${fmtH(hoursLeft)} restantes. Hay margen para subir calidad (high/xhigh) sin riesgo.`,
-	               `Comfortable pace: projected ${projected}% at reset with ${fmtH(hoursLeft)} left. Room to raise quality (high/xhigh) safely.`)};
+	      text: tf(`Vas holgado: proyección ${projected}% al reset, que es el ${fmtStamp(l.resets_at)} (${fmtH(hoursLeft)}). Hay margen para subir calidad (high/xhigh) sin riesgo.`,
+	               `Comfortable pace: projected ${projected}% at reset, which is ${fmtStamp(l.resets_at)} (${fmtH(hoursLeft)}). Room to raise quality (high/xhigh) safely.`)};
 	  return {icon: "check", cls: "ok",
-	    text: tf(`Ritmo sano: proyección ${projected}% al reset. Sigue igual.`,
-	             `Healthy pace: projected ${projected}% at reset. Keep going.`)};
+	    text: tf(`Ritmo sano: proyección ${projected}% al reset, que es el ${fmtStamp(l.resets_at)}. Sigue igual.`,
+	             `Healthy pace: projected ${projected}% at reset, which is ${fmtStamp(l.resets_at)}. Keep going.`)};
 	}
 	function limitSubText(l){
 	  // Codex mide tokens pero no turnos: "0 turnos en 7d" seria ruido, no un dato.
