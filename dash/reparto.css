@@ -15,6 +15,20 @@
 .rp-num { font-variant-numeric: tabular-nums; }
 
 /* --- tanques: capa sólida = gastado, capa clara = lo que añaden las sesiones --- */
+/* El criterio de la propuesta, plegado: se consulta cuando hace falta y no
+   compite con los cilindros el resto del tiempo. */
+.rp-how { margin: 0 0 10px; font-size: 10.5px; color: var(--faint); line-height: 1.5; }
+.rp-how > summary { cursor: pointer; color: var(--dim); font-size: 11px;
+  list-style: none; display: inline-flex; align-items: center; gap: 5px;
+  padding: 2px 7px; border: 1px solid var(--line2); border-radius: 999px; }
+.rp-how > summary::-webkit-details-marker { display: none; }
+.rp-how > summary::before { content: "?"; font-weight: 700; color: var(--brand); }
+.rp-how > summary:hover { color: var(--text); border-color: var(--text); }
+.rp-how[open] > summary { margin-bottom: 6px; }
+.rp-how p { margin: 0 0 5px; }
+.rp-how b { color: var(--dim); font-weight: 600; display: block; }
+.rp-how .rp-how-foot { color: var(--dim); border-left: 2px solid var(--line2); padding-left: 7px; }
+
 .rp-tanks { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; margin-bottom: 10px; }
 #reparto.rp-dragging .rp-tanks { position: sticky; top: 0; z-index: 6;
   background: var(--panel); padding-bottom: 6px; }

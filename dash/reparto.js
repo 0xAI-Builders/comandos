@@ -231,6 +231,48 @@
 
   /* ---------------- pintado ---------------- */
 
+  /* Por que propone lo que propone. Va en la pestana y no solo en la
+     documentacion: si no se puede auditar el criterio, la propuesta es un
+     oraculo y no una herramienta. */
+  function metodoHtml() {
+    var pasos = [
+      [T("1. Le pone una capa a cada sesión", "1. It assigns a layer to each session"),
+       T("Por el effort que tiene hoy: alto, extra alto o máximo son capa 3; bajo es capa 1; el resto capa 2. " +
+         "Si la sesión ya terminó o está en reposo, baja una capa. La capa decide el effort propuesto " +
+         "(3 alto, 2 medio, 1 bajo) y el modelo, tomando el de ese nivel en model-tiers. " +
+         "La capa 3 nunca cambia de motor, solo de cuenta.",
+         "By its current effort: high, xhigh or max are layer 3; low is layer 1; the rest layer 2. " +
+         "A finished or idle session drops one layer. The layer sets the proposed effort " +
+         "(3 high, 2 medium, 1 low) and the model, taking that tier from model-tiers. " +
+         "Layer 3 never changes engine, only account.")],
+      [T("2. Calcula el ritmo que dejaría cada destino", "2. It computes the pace each destination would leave"),
+       T("Cada sesión pesa según su effort: bajo 0.5, medio 1, alto 1.6, extra alto 2.2, máximo 3. " +
+         "Mueve ese peso de su cuota actual a la candidata y proyecta el ritmo resultante. " +
+         "Ritmo 1.0 es ir justo para que te dure hasta el reset; por encima, te pasas antes.",
+         "Each session weighs by effort: low 0.5, medium 1, high 1.6, xhigh 2.2, max 3. " +
+         "It moves that weight from its current quota to the candidate and projects the resulting pace. " +
+         "Pace 1.0 is exactly on track to reach reset; above that, you run out early.")],
+      [T("3. Ordena los candidatos y toma el primero", "3. It ranks the candidates and takes the first"),
+       T("Cuota conocida antes que desconocida · ritmo de 1.0 o menos, o sea que te dure hasta el reset · " +
+         "el ritmo más bajo · quedarse donde está · no cambiar de motor · el reset más lejano. " +
+         "Si ninguna cuota te dura hasta el reset con esa carga, lo dice en la ficha y elige la que menos se pasa.",
+         "Known quota before unknown · pace of 1.0 or less, meaning it reaches reset · " +
+         "lowest pace · staying put · not switching engine · furthest reset. " +
+         "If no quota reaches reset under your load, the tile says so and it picks the one that overshoots least.")]
+    ];
+    return '<details class="rp-how"><summary>' +
+      esc(T("¿Cómo se calcula esta propuesta?", "How is this proposal calculated?")) + "</summary>" +
+      pasos.map(function (p) {
+        return "<p><b>" + esc(p[0]) + "</b> " + esc(p[1]) + "</p>";
+      }).join("") +
+      "<p class=\"rp-how-foot\">" +
+      esc(T("Es determinista: con los mismos datos sale siempre la misma propuesta. " +
+            "Lo que fijes con el candado o cambies a mano manda sobre el cálculo.",
+            "It is deterministic: the same data always yields the same proposal. " +
+            "What you pin or change by hand overrides the calculation.")) +
+      "</p></details>";
+  }
+
   function tankHtml(p) {
     var a = p.after;
     var usedAfter = a && a.usedAfter != null ? a.usedAfter : p.used;
@@ -469,7 +511,8 @@
       T("Arrastra una sesión a otro cilindro para moverla de cuenta o de motor, o tócala y luego tócalo.",
         "Drag a session onto another cylinder to move it between accounts or engines, or tap it then tap the cylinder.") +
       "</div>" +
-      (legend ? '<div class="rp-gloss">' + legend + "</div>" : "");
+      (legend ? '<div class="rp-gloss">' + legend + "</div>" : "") +
+      metodoHtml();
     if (S.error) html += '<div class="rp-hint" style="color:var(--err)">' + esc(S.error) + "</div>";
     html += '<div class="rp-tanks">' + P.map(tankHtml).join("") + "</div>";
 

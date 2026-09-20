@@ -319,3 +319,18 @@ def test_fmtwhen_tambien_sigue_el_idioma_del_tablero():
     i = dash.index("function fmtWhen(")
     body = dash[i:i + 400]
     assert 'L === "en" ? "en" : "es"' in body and "hour12:false" in body
+
+
+def test_la_pestana_explica_su_propio_criterio():
+    """Si no se puede auditar como decide, la propuesta es un oraculo y no una
+    herramienta. El metodo va en la pestana, no solo en la documentacion."""
+    assert "function metodoHtml(" in JS and "rp-how" in JS and "rp-how" in CSS
+    assert "metodoHtml()" in JS, "hay que pintarlo, no solo definirlo"
+    # Los tres pasos reales del motor, con sus numeros.
+    for pieza in ("capa 3", "capa 1", "model-tiers", "bajo 0.5", "1.6", "2.2",
+                  "Ritmo 1.0", "reset más lejano", "te dure hasta el reset"):
+        assert pieza in JS, pieza
+    assert "determinista" in JS
+    # Y los pesos citados tienen que ser los que usa el motor de verdad.
+    motor = (ROOT / "lib/allocation.py").read_text()
+    assert '"low": 0.5, "medium": 1.0, "high": 1.6, "xhigh": 2.2, "max": 3.0' in motor
