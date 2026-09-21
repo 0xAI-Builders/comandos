@@ -2254,10 +2254,98 @@ def latest_session_config(db_path, session, pane=""):
     return dict(row) if row else {}
 
 
+CONFIG_RACE_WINDOW = 900  # s: una config registrada poco despues del turno es la misma sesion
+
+
 def _latest_config(con, session, pane, at):
     row = con.execute("""select * from usage_session_configs where tmux_session=? and tmux_pane=? and effective_at<=?
                          order by effective_at desc limit 1""", (session, pane, at)).fetchone()
+    if row:
+        return dict(row)
+    # Carrera: el hook del primer turno llega antes de que el tablero registre la
+    # configuracion del pane (se ha visto con 8 s de diferencia). Una config que
+    # aparece poco despues es la de ese mismo turno, no otra.
+    row = con.execute("""select * from usage_session_configs where tmux_session=? and tmux_pane=? and effective_at<=?
+                         order by effective_at asc limit 1""", (session, pane, at + CONFIG_RACE_WINDOW)).fetchone()
     return dict(row) if row else {}
+
+
+def reconcile_orphan_interactions(db_path, now=None, max_age_days=14):
+    """Atribuye a una configuracion las interacciones que quedaron sin ella.
+
+    Las filas de usage_session_configs solo se escriben cuando el tablero lanza o
+    cambia una sesion. Un pane arrancado por fuera nunca recibe una, y todos sus
+    turnos nacen huerfanos: el 59 % de la evidencia de 14 dias estaba en el cajon
+    "unknown". Se recupera por orden de fiabilidad, y cada via deja su marca en
+    `source`/`confidence` para que quien lea la analitica sepa de donde salio:
+
+      1. config del mismo pane a menos de CONFIG_RACE_WINDOW (carrera)     exact
+      2. modelo y proveedor que traen los propios turnos de la interaccion inferred
+      3. la config mas cercana en el tiempo del mismo pane                 inferred
+      4. solo el proveedor, por el hook que la registro (hook:codex...)   provider_only
+
+    Idempotente: solo toca filas con config_id vacio. Devuelve cuantas resolvio
+    por cada via.
+    """
+    init_db(db_path)
+    ts = int(now if now is not None else time.time())
+    since_ms = (ts - max_age_days * 86400) * 1000
+    counts = {"race": 0, "turn": 0, "pane": 0, "provider": 0}
+    with connect(db_path) as con:
+        # De mas antigua a mas nueva: la config que cree la primera huerfana de un
+        # pane queda fechada en su turno y las siguientes la encuentran por <=.
+        rows = con.execute("""select id,tmux_session,tmux_pane,started_at_ms,source from usage_interactions
+                              where config_id='' and started_at_ms>=? order by started_at_ms""", (since_ms,)).fetchall()
+        for r in rows:
+            session, pane, at = r["tmux_session"], r["tmux_pane"], int(r["started_at_ms"] or 0) // 1000
+            cfg = _latest_config(con, session, pane, at)
+            via = "race" if cfg else ""
+            if not cfg:
+                t = con.execute("""select provider,model,reasoning_effort,harness,motor,route_id,harness_account,motor_account
+                                   from usage_turns where interaction_id=? and model<>'' order by turn_started_at limit 1""",
+                                (r["id"],)).fetchone()
+                if t:
+                    motor = _text(t["motor"]) or _text(t["provider"])
+                    harness = _text(t["harness"]) or motor
+                    cfg = _upsert_config(con, session, pane, at, harness, motor, _text(t["model"]),
+                                         _text(t["reasoning_effort"]), _text(t["harness_account"]) or "unknown",
+                                         _text(t["motor_account"]) or "unknown", _text(t["route_id"]) or f"{harness}:{motor}",
+                                         "backfill:turn", "inferred")
+                    via = "turn"
+            if not cfg:
+                near = con.execute("""select * from usage_session_configs where tmux_session=? and tmux_pane=?
+                                      order by abs(effective_at-?) asc limit 1""", (session, pane, at)).fetchone()
+                if near:
+                    cfg, via = dict(near), "pane"
+            if not cfg:
+                provider = _text(r["source"]).split(":", 1)[1] if ":" in _text(r["source"]) else ""
+                if provider and provider != "hook":
+                    cfg = _upsert_config(con, session, pane, at, provider, provider, "", "", "unknown", "unknown",
+                                         f"{provider}:{provider}", "backfill:provider", "provider_only")
+                    via = "provider"
+            if cfg:
+                # La via se clasifica por el ORIGEN de la config, no por el camino
+                # que la encontro: una config "backfill:provider" creada por la
+                # primera huerfana del pane la reutilizan las siguientes por <=,
+                # y contarlas como carrera inflaria la cifra buena.
+                src = str(cfg.get("source") or "")
+                via = ("provider" if src == "backfill:provider" else "turn" if src == "backfill:turn"
+                       else "pane" if via == "pane" else "race")
+                con.execute("update usage_interactions set config_id=?, confidence=? where id=?",
+                            (cfg["id"], "exact" if via == "race" else cfg.get("confidence") or "inferred", r["id"]))
+                counts[via] += 1
+    return counts
+
+
+def _upsert_config(con, session, pane, at, harness, motor, model, effort, harness_account, motor_account,
+                   route_id, source, confidence):
+    ident = _stable_id([session, pane, at, route_id, model, effort])
+    con.execute("""insert into usage_session_configs
+      (id,tmux_session,tmux_pane,effective_at,harness,motor,model,effort,harness_account,motor_account,route_id,source,confidence)
+      values(?,?,?,?,?,?,?,?,?,?,?,?,?) on conflict(id) do nothing""",
+      (ident, session, pane, at, harness, motor, model, effort, harness_account, motor_account, route_id, source, confidence))
+    return {"id": ident, "harness": harness, "motor": motor, "model": model, "effort": effort,
+            "route_id": route_id, "source": source, "confidence": confidence}
 
 
 def capture_lifecycle(db_path, event):

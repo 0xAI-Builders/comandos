@@ -311,10 +311,49 @@ def _pane_models_for_live_state(live_panes, state):
     return out
 
 
+def ensure_observed_configs():
+    """Registra la configuracion observada de cada pane vivo que no la tenga.
+
+    record_runtime_config solo corre cuando el tablero lanza o cambia una sesion,
+    asi que un pane arrancado desde la terminal nunca recibia fila y todos sus
+    turnos quedaban sin atribuir. El estado ya conoce modelo, effort y ruta de
+    cada pane: basta con volcarlo cuando falta o cuando cambio.
+    """
+    n = 0
+    for s in read_states_cached():
+        if not s.get("alive") or not s.get("model"):
+            continue
+        sess, pane = s.get("session") or "", s.get("pane") or ""
+        if not sess or not pane:
+            continue
+        harness = s.get("harness") or s.get("agent") or ""
+        motor = s.get("motor") or s.get("agent") or ""
+        if not harness or not motor:
+            continue
+        model, effort = s.get("model") or "", s.get("effort") or ""
+        route = s.get("routeId") or f"{harness}:{motor}"
+        prev = cc_usage.latest_session_config(USAGE_DB, sess, pane)
+        if prev and prev.get("model") == model and (prev.get("effort") or "") == effort \
+                and (prev.get("route_id") or "") == route:
+            continue
+        record_runtime_config(sess, pane, harness, motor, model, effort,
+                              s.get("harnessAccount") or s.get("account") or "unknown",
+                              s.get("motorAccount") or "unknown", route, source="observed")
+        n += 1
+    return n
+
+
 def _do_refresh_local_usage():
     global _usage_state_generation
     now = int(time.time())
     env = usage_runtime_env()
+    # Atribucion: primero que cada pane vivo tenga su config, luego recuperar las
+    # interacciones que quedaron huerfanas (carreras, panes arrancados por fuera).
+    try:
+        ensure_observed_configs()
+        cc_usage.reconcile_orphan_interactions(USAGE_DB, now=now)
+    except Exception:
+        pass
     # Poda: turnos fuera de la ventana de retencion (14d) — sin esto la tabla
     # crece sin fin (import es insert-or-replace, nunca borra) y ademas los
     # totales "en 14 dias" quedaban inflados con datos viejos.

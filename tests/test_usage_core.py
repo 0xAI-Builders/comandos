@@ -1045,3 +1045,80 @@ def test_real_model_rejects_synthetic_and_flag_values():
     assert cc_usage._real_model("--effort") == ""
     assert cc_usage._real_model("-x") == ""
     assert cc_usage._real_model(None) == ""
+
+
+def _interaction(db, session, pane, at_s, source):
+    """Un turno que arranca sin config registrada: nace huerfano."""
+    r = cc_usage.capture_lifecycle(db, {"tmux_session": session, "tmux_pane": pane, "status": "working",
+                                        "at_ms": at_s * 1000, "prompt_id": f"p{at_s}", "source": source})
+    cc_usage.capture_lifecycle(db, {"tmux_session": session, "tmux_pane": pane, "status": "done",
+                                    "at_ms": at_s * 1000 + 5000, "prompt_id": f"p{at_s}", "source": source})
+    return r["interaction_id"]
+
+
+def _config_of(db, interaction_id):
+    con = sqlite3.connect(db)
+    con.row_factory = sqlite3.Row
+    row = con.execute("""select c.* from usage_interactions i join usage_session_configs c on c.id=i.config_id
+                         where i.id=?""", (interaction_id,)).fetchone()
+    con.close()
+    return dict(row) if row else None
+
+
+def test_una_config_registrada_segundos_despues_del_turno_se_le_atribuye():
+    """Carrera real vista en produccion: el hook del turno llego 8 s antes de que
+    el tablero registrara la config del pane, y el turno quedo huerfano."""
+    with tempfile.TemporaryDirectory() as d:
+        db = os.path.join(d, "u.sqlite")
+        cc_usage.record_session_config(db, {"tmux_session": "s", "tmux_pane": "%1", "harness": "claude",
+                                            "motor": "claude", "model": "claude-fable-5-1", "effort": "high",
+                                            "effective_at": 1_000_008})
+        r = cc_usage.capture_lifecycle(db, {"tmux_session": "s", "tmux_pane": "%1", "status": "working",
+                                            "at_ms": 1_000_000 * 1000, "prompt_id": "p"})
+        cfg = _config_of(db, r["interaction_id"])
+        assert cfg and cfg["model"] == "claude-fable-5-1"
+
+
+def test_reconcilia_huerfanas_por_orden_de_fiabilidad():
+    with tempfile.TemporaryDirectory() as d:
+        db = os.path.join(d, "u.sqlite")
+        now = 2_000_000
+        # a) pane con config lejana en el tiempo -> la mas cercana del pane (inferred)
+        cc_usage.record_session_config(db, {"tmux_session": "s", "tmux_pane": "%1", "harness": "codex",
+                                            "motor": "codex", "model": "gpt-6-astra", "effort": "high",
+                                            "effective_at": now - 3600})
+        a = _interaction(db, "s", "%1", now - 7 * 3600, "hook:codex")
+        # b) sin config pero los turnos traen modelo -> config inferida del turno
+        b = _interaction(db, "s", "%2", now - 3600, "hook:grok")
+        cc_usage.record_turn(db, {"id": "t1", "provider": "grok", "agent": "grok", "tmux_session": "s",
+                                  "tmux_pane": "%2", "pane_pwd": "/x", "git_root": "/x", "model": "grok-4.6-build",
+                                  "turn_started_at": now - 3600, "turn_finished_at": now - 3590, "total_tokens": 10,
+                                  "source": "grok_cli_log", "confidence": "local", "interaction_id": b})
+        # c) sin nada: solo el proveedor del hook
+        c = _interaction(db, "s", "%3", now - 1800, "hook:claude")
+        # d) hook generico sin proveedor: se queda huerfana, no se inventa nada
+        e = _interaction(db, "s", "%4", now - 900, "hook")
+
+        counts = cc_usage.reconcile_orphan_interactions(db, now=now)
+        assert counts == {"race": 0, "turn": 1, "pane": 1, "provider": 1}
+        assert _config_of(db, a)["model"] == "gpt-6-astra"
+        assert _config_of(db, b)["model"] == "grok-4.6-build" and _config_of(db, b)["confidence"] == "inferred"
+        assert _config_of(db, c)["motor"] == "claude" and _config_of(db, c)["confidence"] == "provider_only"
+        assert _config_of(db, e) is None
+        # Idempotente: segunda pasada no toca nada.
+        assert sum(cc_usage.reconcile_orphan_interactions(db, now=now).values()) == 0
+
+
+def test_una_config_de_backfill_no_pisa_una_real_posterior():
+    """Si luego el tablero registra la config real, los turnos nuevos van a ella."""
+    with tempfile.TemporaryDirectory() as d:
+        db = os.path.join(d, "u.sqlite")
+        now = 3_000_000
+        _interaction(db, "s", "%1", now - 7200, "hook:codex")
+        cc_usage.reconcile_orphan_interactions(db, now=now)
+        cc_usage.record_session_config(db, {"tmux_session": "s", "tmux_pane": "%1", "harness": "codex",
+                                            "motor": "codex", "model": "gpt-6-astra", "effort": "xhigh",
+                                            "effective_at": now - 60})
+        r = cc_usage.capture_lifecycle(db, {"tmux_session": "s", "tmux_pane": "%1", "status": "working",
+                                            "at_ms": now * 1000, "prompt_id": "q", "source": "hook:codex"})
+        assert _config_of(db, r["interaction_id"])["model"] == "gpt-6-astra"
