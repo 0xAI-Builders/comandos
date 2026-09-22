@@ -126,6 +126,21 @@
 .rp-tk .rp-lk.on { color: var(--warn); background: var(--panel2); opacity: 1; }
 .rp-tk .rp-lk svg { width: 13px; height: 13px; }
 
+/* --- perfil del proyecto dentro de la ficha --- */
+.rp-tk .rp-prof { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 6px; margin-top: 2px; }
+.rp-tk .rp-prof-btn { font: inherit; font-size: 9.5px; color: var(--dim); background: var(--panel2);
+  border: 1px dashed var(--line2); border-radius: 999px; padding: 0 7px; cursor: pointer; line-height: 1.7; }
+.rp-tk .rp-prof-btn:hover, .rp-tk .rp-prof.open .rp-prof-btn { color: var(--text); border-style: solid;
+  border-color: var(--brand); }
+.rp-tk .rp-prof em { font-style: normal; font-size: 9.5px; color: var(--faint); }
+.rp-tk .rp-prof em.hot { color: var(--warn); font-weight: 600; }
+.rp-tk .rp-prof-ed { flex-basis: 100%; display: flex; flex-direction: column; gap: 3px; padding: 5px 0 2px;
+  border-top: 1px dashed var(--line2); margin-top: 2px; }
+.rp-tk .rp-prof-row { display: flex; align-items: center; gap: 6px; }
+.rp-tk .rp-prof-row i { font-style: normal; font-size: 9px; letter-spacing: .08em; text-transform: uppercase;
+  color: var(--faint); width: 74px; flex: none; }
+.rp-tk .rp-prof-hint { font-size: 9px; color: var(--faint); }
+
 .rp-seg { display: inline-flex; flex-wrap: wrap; border: 1px solid var(--line2);
   border-radius: 5px; overflow: hidden; background: var(--panel); max-width: 100%; }
 .rp-seg.rp-chg { border-color: var(--brand); }

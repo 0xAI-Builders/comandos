@@ -1985,18 +1985,42 @@ def _motor_options(registry):
 def allocation_inputs():
     registry = load_provider_registry()
     motors = registry.get("motors") or {}
-    sessions = [s for s in read_states_cached()
+    sessions = [dict(s, gitRoot=_git_root_cached(s.get("cwd") or ""))
+                for s in read_states_cached()
                 if s.get("alive") and (s.get("motor") or s.get("agent")) in motors]
+    try:
+        profiles = cc_usage.project_profiles(USAGE_DB)
+        signals = cc_usage.project_signals(USAGE_DB)
+    except Exception:
+        profiles, signals = {}, {}
     return dict(sessions=sessions, limits=usage_provider_limits()["limits"], registry=registry,
                 support=session_change_support(registry), accounts=selectable_accounts_by_motor(registry),
-                tiers=load_model_tiers(), now=time.time())
+                tiers=load_model_tiers(), now=time.time(), profiles=profiles, signals=signals)
+
+
+_GIT_ROOT_CACHE: dict = {}
+
+
+def _git_root_cached(cwd):
+    """git_root_for_path lanza un proceso; con 30 sesiones por propuesta se nota."""
+    if not cwd:
+        return ""
+    hit = _GIT_ROOT_CACHE.get(cwd)
+    if hit and time.time() - hit[1] < 600:
+        return hit[0]
+    try:
+        root = cc_usage.git_root_for_path(cwd) or cwd
+    except Exception:
+        root = cwd
+    _GIT_ROOT_CACHE[cwd] = (root, time.time())
+    return root
 
 
 def _build_plan(overrides):
     inp = allocation_inputs()
     plan = allocation.propose(inp["sessions"], inp["limits"], inp["registry"], inp["support"],
                               inp["accounts"], inp["tiers"], now=inp["now"], overrides=overrides,
-                              lang=ui_lang())
+                              lang=ui_lang(), profiles=inp["profiles"], signals=inp["signals"])
     plan["options"] = _motor_options(inp["registry"])
     estado = {allocation.session_key(s): (s.get("status") or "") for s in inp["sessions"]}
     # Cuando se vio por ultima vez: una sesion terminada hace 17 h se lee como
@@ -2036,6 +2060,35 @@ def _valid_overrides(raw):
         if clean:
             out[key] = clean
     return out
+
+
+def project_profiles_view():
+    """Perfil declarado + señales medidas de cada proyecto con sesiones vivas."""
+    inp = allocation_inputs()
+    roots = {}
+    for sess in inp["sessions"]:
+        root = sess.get("gitRoot") or sess.get("cwd") or ""
+        if not root:
+            continue
+        r = roots.setdefault(root, {"gitRoot": root, "label": sess.get("project") or os.path.basename(root),
+                                    "sessions": 0})
+        r["sessions"] += 1
+    out = []
+    for root, r in sorted(roots.items()):
+        r["profile"] = inp["profiles"].get(root) or None
+        r["signal"] = inp["signals"].get(root) or None
+        out.append(r)
+    return 200, {"ok": True, "projects": out, "vocabulary": cc_usage.PROFILE_VALUES}
+
+
+def project_profile_set(data):
+    root = str(data.get("gitRoot") or "").strip()
+    try:
+        prof = cc_usage.set_project_profile(USAGE_DB, root, value=data.get("value"),
+                                            complexity=data.get("complexity"), autonomy=data.get("autonomy"))
+    except ValueError as e:
+        return 400, {"ok": False, "error": str(e)}
+    return 200, {"ok": True, "profile": prof}
 
 
 def allocation_propose(data):
@@ -8133,7 +8186,7 @@ class Handler(http.server.SimpleHTTPRequestHandler):
     # Endpoints con DATOS o ACCIONES: exigen token. El shell estatico (HTML,
     # sw.js, manifest, iconos) NO — no revela nada (es codigo open-source) y
     # asi la PWA instala y carga sin depender de cookies en el webview movil.
-    API_GET = ("/pomodoro", "/providers", "/optimization/plans", "/proxy", "/model/status", "/sovereignty", "/ui-log/summary", "/state", "/usage/state", "/usage/guard", "/usage/changes", "/usage/provider-compare", "/fs/dirs", "/models/latest", "/news/latest", "/notifs/count", "/usage/analytics", "/usage/interactions", "/usage/experiments", "/opencode/models", "/model-tiers", "/dedication", "/active-tab", "/session-profiles", "/extension-usage", "/session-brain", "/events", "/conf", "/prefs", "/ssh", "/tabs",
+    API_GET = ("/pomodoro", "/providers", "/optimization/plans", "/proxy", "/model/status", "/sovereignty", "/ui-log/summary", "/state", "/usage/state", "/usage/guard", "/usage/changes", "/usage/provider-compare", "/fs/dirs", "/models/latest", "/news/latest", "/notifs/count", "/usage/analytics", "/usage/interactions", "/usage/experiments", "/opencode/models", "/model-tiers", "/dedication", "/active-tab", "/session-profiles", "/extension-usage", "/session-brain", "/project-profiles", "/events", "/conf", "/prefs", "/ssh", "/tabs",
                "/tab-history", "/remote-state", "/remote-qr.png", "/snippets", "/tmux-mouse",
                "/webterm-token", "/operator")
 
@@ -8344,6 +8397,8 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             # a conducir opciones fisicas de tmux.
             write_pane_models(_pane_models_for_live_state(panes, state))
             return self._json(200, state)
+        if self.path.startswith("/project-profiles"):
+            return self._json(*project_profiles_view())
         if self.path.startswith("/allocation/status"):
             q = urllib.parse.parse_qs(urllib.parse.urlsplit(self.path).query)
             return self._json(*allocation_status(q.get("batchId", [""])[0]))
@@ -8535,6 +8590,8 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             _open_url(target_path, env=gui_env())
             return self._json(200, {"ok": True})
 
+        if self.path == "/project-profile":
+            return self._json(*project_profile_set(data))
         if self.path == "/allocation/propose":
             return self._json(*allocation_propose(data))
         if self.path == "/allocation/preview":

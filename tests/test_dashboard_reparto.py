@@ -334,3 +334,32 @@ def test_la_pestana_explica_su_propio_criterio():
     # Y los pesos citados tienen que ser los que usa el motor de verdad.
     motor = (ROOT / "lib/allocation.py").read_text()
     assert '"low": 0.5, "medium": 1.0, "high": 1.6, "xhigh": 2.2, "max": 3.0' in motor
+
+
+def test_la_ficha_lleva_el_perfil_del_proyecto_en_palabras():
+    """Valor, complejidad y autonomía se ven y se cambian desde la ficha, en
+    palabras completas: nada de V/C/A ni siglas."""
+    assert "function profileHtml(" in JS and "profileHtml(item)" in JS
+    assert "rp-prof" in CSS
+    for w in ('"valor", "value"', '"complejidad", "complexity"', '"autonomía", "autonomy"',
+              '"alto", "high"', '"supervisada", "supervised"', '"sola", "runs alone"'):
+        assert w in JS, w
+    assert "data-prof-root" in JS and "data-prof-field" in JS and "data-prof-value" in JS
+    assert 'api("/project-profile"' in JS
+    # Cambiar el perfil recalcula la propuesta entera.
+    i = JS.index("async function setProfile(")
+    assert "await analyze()" in JS[i:i + 700]
+
+
+def test_la_ficha_ensena_las_interrupciones_medidas():
+    assert 'T("te interrumpe ", "interrupts you ")' in JS
+    assert "interruptionsPerHour" in JS
+    assert "measuredComplexity" in JS, "la complejidad medida se ofrece como pista al editar"
+
+
+def test_el_servidor_expone_perfiles_y_los_pasa_al_motor():
+    dash = (ROOT / "bin/cc-dash").read_text()
+    assert "def project_profiles_view(" in dash and "def project_profile_set(" in dash
+    assert '"/project-profiles"' in dash and '"/project-profile"' in dash
+    assert "profiles=inp[\"profiles\"], signals=inp[\"signals\"]" in dash
+    assert "gitRoot=_git_root_cached(" in dash, "cada sesion lleva su raiz git para casar con el perfil"

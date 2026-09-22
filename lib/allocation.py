@@ -63,12 +63,76 @@ def enrich_limits(limits: list[dict], now: float, lang: str = "es") -> list[dict
     return out
 
 
-def layer_of(session: dict) -> int:
+VALUE_RANK = {"alto": 0, "medio": 1, "bajo": 2}
+INTERRUPTIONS_HIGH = 3.0   # esperas por hora a partir de las que un modelo mas pesado se paga solo
+
+
+def profile_for(session: dict, profiles: dict | None) -> dict:
+    """Perfil del proyecto de la sesion: por su raiz git, o por prefijo de ruta si
+    la sesion vive en un subdirectorio. Sin perfil devuelve {}."""
+    if not profiles:
+        return {}
+    root = str(session.get("gitRoot") or session.get("cwd") or "").rstrip("/")
+    if not root:
+        return {}
+    if root in profiles:
+        return dict(profiles[root])
+    best = ""
+    for k in profiles:
+        kk = str(k).rstrip("/")
+        if kk and (root == kk or root.startswith(kk + "/")) and len(kk) > len(best):
+            best = kk
+    return dict(profiles[best]) if best else {}
+
+
+def signal_for(session: dict, signals: dict | None) -> dict:
+    return profile_for(session, signals) if signals else {}
+
+
+def layer_of(session: dict, profile: dict | None = None, signal: dict | None = None) -> int:
+    """Capa 1-3 de la sesion. Sin perfil: por effort y estado, como siempre.
+    Con perfil, el valor del proyecto manda sobre el effort que tenga puesto:
+
+      valor alto + complejidad alta  -> 3 siempre: se queda con lo mejor
+      valor alto + te interrumpe     -> sube una: cada espera evitada vale mas que los tokens
+      complejidad baja               -> tope 2: no necesita lo mas pesado
+      valor bajo                     -> tope 2, y 1 si esta parada: absorbe lo barato
+    """
     effort = str(session.get("effort") or "").lower()
     base = 3 if effort in _HIGH_EFFORTS else 1 if effort == "low" else 2
-    if str(session.get("status") or "") in ("idle", "done"):
+    resting = str(session.get("status") or "") in ("idle", "done")
+    if resting:
         base = max(1, base - 1)
+    prof = profile or {}
+    if not prof:
+        return base
+    value = str(prof.get("value") or "medio")
+    complexity = str(prof.get("complexity") or "media")
+    per_hour = float((signal or {}).get("interruptionsPerHour") or 0.0)
+    if value == "alto" and complexity == "alta":
+        return 3
+    if value == "alto" and per_hour >= INTERRUPTIONS_HIGH:
+        base = min(3, base + 1)
+    if complexity == "baja":
+        base = min(base, 2)
+    if value == "bajo":
+        base = min(base, 1 if resting else 2)
     return base
+
+
+def stale_factor(session: dict, now: float) -> float:
+    """Cuanto pesa HOY una sesion en la cuota. Una que trabaja pesa entera; una
+    parada hace horas apenas gasta hasta que la despierten. Sin marca de tiempo
+    no se descuenta nada, para que el calculo siga siendo reproducible."""
+    ts = session.get("ts")
+    try:
+        ts = float(ts)
+    except (TypeError, ValueError):
+        return 1.0
+    if not ts or str(session.get("status") or "") not in ("idle", "done"):
+        return 1.0
+    age = max(0.0, float(now) - ts)
+    return 0.1 if age >= 24 * 3600 else 0.25 if age >= 3 * 3600 else 1.0
 
 
 def _tier_of(model_id: str, tiers: dict) -> str:
@@ -94,7 +158,11 @@ def pool_key(motor: str, account: str) -> str:
 
 
 def governing_limit(limits: list[dict], motor: str, account: str) -> dict | None:
-    rows = [r for r in limits if r.get("provider") == motor and (r.get("account") or "main") == (account or "main")]
+    """La fila de cuota que manda para (motor, cuenta). Una fila sin porcentaje
+    (Grok medido en local sin limite declarado) no gobierna nada: se trata como
+    cuota desconocida en vez de reventar la propuesta entera con float(None)."""
+    rows = [r for r in limits if r.get("provider") == motor and (r.get("account") or "main") == (account or "main")
+            and r.get("percent") is not None]
     for r in rows:
         if r.get("window") == "7d" and r.get("kind") in ("weekly_all", "window", None) and r.get("kind") != "weekly_scoped":
             return r
@@ -131,11 +199,12 @@ def _pool_of(to: dict) -> str:
     return pool_key(to.get("motor") or "", to.get("motorAccount") or to.get("harnessAccount") or "main")
 
 
-def _load_map(items_to: list[tuple[str, str]]) -> dict:
-    """items_to: [(poolKey, effort)] → {poolKey: peso}."""
+def _load_map(items_to: list[tuple[str, object]]) -> dict:
+    """items_to: [(poolKey, effort | peso)] → {poolKey: peso}. El segundo elemento
+    puede ser el nombre del effort o un peso ya calculado (effort × antigüedad)."""
     load: dict[str, float] = {}
-    for pool, effort in items_to:
-        load[pool] = load.get(pool, 0.0) + WEIGHT.get(effort, 1.0)
+    for pool, w in items_to:
+        load[pool] = load.get(pool, 0.0) + (float(w) if isinstance(w, (int, float)) else WEIGHT.get(w, 1.0))
     return load
 
 
@@ -217,9 +286,9 @@ def impact(items: list[dict], limits: list[dict], now: float, lang: str = "es") 
     pools = sorted({pool_key(i["from"]["motor"], i["from"]["motorAccount"]) for i in items}
                    | {_pool_of(i["to"]) for i in items}
                    | {pool_key(r["provider"], r.get("account") or "main") for r in enriched})
-    load_now = _load_map([(pool_key(i["from"]["motor"], i["from"]["motorAccount"]), i["from"]["effort"])
-                          for i in items])
-    load_after = _load_map([(_pool_of(i["to"]), i["to"]["effort"]) for i in items])
+    load_now = _load_map([(pool_key(i["from"]["motor"], i["from"]["motorAccount"]),
+                           i.get("weightFrom", i["from"]["effort"])) for i in items])
+    load_after = _load_map([(_pool_of(i["to"]), i.get("weightTo", i["to"]["effort"])) for i in items])
     ref_load = _reference_load(load_now)
     out = {}
     for pool in pools:
@@ -246,16 +315,24 @@ def impact(items: list[dict], limits: list[dict], now: float, lang: str = "es") 
 
 
 def propose(sessions, limits, registry, support, accounts, tiers, *, now, overrides=None,
-             lang: str = "es") -> dict:
+             lang: str = "es", profiles: dict | None = None, signals: dict | None = None) -> dict:
     overrides = overrides or {}
     enriched = enrich_limits(limits, now, lang)
     motors = registry.get("motors") or {}
     # el harness puede no ser un motor (acp, gemini, shell); lo que gasta cuota es el motor
     live = [s for s in sessions if _from(s)["motor"] in motors]
+    prof = {session_key(s): profile_for(s, profiles) for s in live}
+    sig = {session_key(s): signal_for(s, signals) for s in live}
     layers = {session_key(s): max(1, min(3, int((overrides.get(session_key(s)) or {}).get("layer")
-                                                or layer_of(s)))) for s in live}
-    order = sorted(live, key=lambda s: (-layers[session_key(s)], session_key(s)))
-    load = _load_map([(pool_key(f["motor"], f["motorAccount"]), f["effort"]) for f in (_from(s) for s in live)])
+                                                or layer_of(s, prof[session_key(s)], sig[session_key(s)]))))
+              for s in live}
+    # Peso de cada sesion hoy: effort × antigüedad. Una parada hace un dia casi no cuenta.
+    stale = {session_key(s): stale_factor(s, now) for s in live}
+    # Las de mas valor se reparten primero: se quedan con la cuota mas fresca.
+    order = sorted(live, key=lambda s: (VALUE_RANK.get(str(prof[session_key(s)].get("value") or "medio"), 1),
+                                        -layers[session_key(s)], session_key(s)))
+    load = _load_map([(pool_key(f["motor"], f["motorAccount"]), WEIGHT.get(f["effort"], 1.0) * stale[k])
+                      for k, f in ((session_key(s), _from(s)) for s in live)])
     load_now = dict(load)
     ref_load = _reference_load(load_now)
     items = []
@@ -278,13 +355,19 @@ def propose(sessions, limits, registry, support, accounts, tiers, *, now, overri
                       else _t(lang, "ajustada por ti", "tuned by you"))
         else:
             effort = LAYER_EFFORT[layer]
+            # "Se queda con lo mejor" tiene que ser verdad: un proyecto de valor alto
+            # y complejo que ya corre en xhigh o max no baja a high por la tabla.
+            pf0 = prof[key]
+            if (layer == 3 and frm["effort"] in _HIGH_EFFORTS
+                    and str(pf0.get("value") or "") == "alto" and str(pf0.get("complexity") or "") == "alta"):
+                effort = frm["effort"]
             scored = []
             for c in _within_layer(_candidates(s, registry, support, accounts), layer, frm):
                 pool = _pool_of(c)
                 row = governing_limit(enriched, *pool.split(":", 1))
                 after = dict(load)
-                after[src] = after.get(src, 0.0) - WEIGHT.get(frm["effort"], 1.0)
-                after[pool] = after.get(pool, 0.0) + WEIGHT.get(effort, 1.0)
+                after[src] = after.get(src, 0.0) - WEIGHT.get(frm["effort"], 1.0) * stale[key]
+                after[pool] = after.get(pool, 0.0) + WEIGHT.get(effort, 1.0) * stale[key]
                 burn_after = _burn_after(row, load_now.get(pool, 0.0), after[pool], ref_load)
                 is_same = c["motor"] == frm["motor"] and c["harnessAccount"] == frm["account"]
                 reset_far = -(float(row["resets_at"]) if row else 0.0)
@@ -313,15 +396,40 @@ def propose(sessions, limits, registry, support, accounts, tiers, *, now, overri
                              " · ninguna cuota llega al reset con esta carga; es la que menos se pasa",
                              " · no quota lasts to reset under this load; this one overshoots least")
         dst = _pool_of(to)  # la asignación ya cuenta para quien venga detrás
-        load[src] = load.get(src, 0.0) - WEIGHT.get(frm["effort"], 1.0)
-        load[dst] = load.get(dst, 0.0) + WEIGHT.get(to["effort"], 1.0)
+        w_from = WEIGHT.get(frm["effort"], 1.0) * stale[key]
+        w_to = WEIGHT.get(to["effort"], 1.0) * stale[key]
+        load[src] = load.get(src, 0.0) - w_from
+        load[dst] = load.get(dst, 0.0) + w_to
         same = _same(frm, to)
+        # Por que esta capa: el perfil se explica en la ficha, no se adivina.
+        pf, sg = prof[key], sig[key]
+        why = []
+        if pf:
+            v, c = str(pf.get("value") or "medio"), str(pf.get("complexity") or "media")
+            if v == "alto" and c == "alta":
+                why.append(_t(lang, "valor alto y complejo: se queda con lo mejor",
+                                    "high value and complex: keeps the best"))
+            elif v == "alto" and float(sg.get("interruptionsPerHour") or 0) >= INTERRUPTIONS_HIGH:
+                why.append(_t(lang, f"valor alto y te interrumpe {sg.get('interruptionsPerHour')}/h: sube de nivel",
+                                    f"high value, interrupts you {sg.get('interruptionsPerHour')}/h: goes up a tier"))
+            elif v == "bajo":
+                why.append(_t(lang, "valor bajo: absorbe lo barato", "low value: takes the cheap tier"))
+            elif c == "baja":
+                why.append(_t(lang, "tarea sencilla: no necesita lo más pesado",
+                                    "simple task: no need for the heaviest"))
+        if stale[key] < 1.0 and not locked:
+            why.append(_t(lang, "parada: casi no pesa en la cuota", "stopped: barely counts against quota"))
+        if why and not (same and not locked):
+            reason = " · ".join(why) + " · " + reason
         items.append(dict(session=s.get("session"), pane=s.get("pane"), key=key, layer=layer,
                           cwd=s.get("cwd") or "",
                           # Etiqueta que el resto del tablero ya usa para esta sesion
                           # ("SAVA", "MRP", "PaginasWeb ⫽28"). El nombre interno de tmux
                           # (term-3692-1) no le dice nada a nadie.
                           project=s.get("project") or "",
+                          gitRoot=s.get("gitRoot") or "",
+                          profile=pf or None, signal=sg or None,
+                          weightFrom=round(w_from, 3), weightTo=round(w_to, 3),
                           **{"from": frm}, to=to, same=same, locked=locked,
                           reason=_t(lang, "igual", "unchanged") if same and not locked else reason,
                           risk="-" if same else _risk(frm, to)))

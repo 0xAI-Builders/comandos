@@ -190,7 +190,7 @@ def init_db(db_path):
         _migrate_db(con)
 
 
-USAGE_SCHEMA_VERSION = 9
+USAGE_SCHEMA_VERSION = 10
 
 
 def _table_columns(con, table):
@@ -229,6 +229,9 @@ def _migrate_db(con):
             _ensure_columns(con, "usage_interactions", {
                 "prompt_id": "text not null default ''",
                 "agent_session_id": "text not null default ''",
+                # v10: cuantas veces se quedo esperando al humano, y de que proyecto es.
+                "waits": "integer not null default 0",
+                "git_root": "text not null default ''",
             })
         if "usage_experiments" in tables:
             _ensure_columns(con, "usage_experiments", {
@@ -263,7 +266,17 @@ def _migrate_db(con):
           started_at_ms integer, first_output_at_ms integer, finished_at_ms integer,
           duration_ms integer, completion_status text not null default 'unknown',
           error_class text not null default '', source text not null, confidence text not null,
-          created_at integer not null
+          created_at integer not null,
+          waits integer not null default 0, git_root text not null default ''
+        );
+        -- Perfil de negocio por proyecto: lo que ningun algoritmo puede deducir del
+        -- codigo. Lo declara el usuario y el reparto lo usa como prioridad.
+        create table if not exists usage_project_profiles (
+          git_root text primary key,
+          value text not null default 'medio',
+          complexity text not null default 'media',
+          autonomy text not null default 'supervisada',
+          updated_at integer not null
         );
         create table if not exists usage_tool_calls (
           id text primary key, interaction_id text not null, sequence integer not null,
@@ -2292,6 +2305,14 @@ def reconcile_orphan_interactions(db_path, now=None, max_age_days=14):
     since_ms = (ts - max_age_days * 86400) * 1000
     counts = {"race": 0, "turn": 0, "pane": 0, "provider": 0}
     with connect(db_path) as con:
+        # Proyecto de cada interaccion, para las que nacieron antes de guardarlo.
+        con.execute("""update usage_interactions set git_root=(
+                         select coalesce(nullif(p.git_root,''), p.pane_pwd) from usage_panes p
+                         where p.tmux_session=usage_interactions.tmux_session and p.tmux_pane=usage_interactions.tmux_pane
+                         order by p.last_seen_at desc limit 1)
+                       where git_root='' and started_at_ms>=? and exists(
+                         select 1 from usage_panes p where p.tmux_session=usage_interactions.tmux_session
+                         and p.tmux_pane=usage_interactions.tmux_pane)""", (since_ms,))
         # De mas antigua a mas nueva: la config que cree la primera huerfana de un
         # pane queda fechada en su turno y las siguientes la encuentran por <=.
         rows = con.execute("""select id,tmux_session,tmux_pane,started_at_ms,source from usage_interactions
@@ -2348,6 +2369,103 @@ def _upsert_config(con, session, pane, at, harness, motor, model, effort, harnes
             "route_id": route_id, "source": source, "confidence": confidence}
 
 
+def _pane_git_root(con, session, pane):
+    row = con.execute("""select git_root, pane_pwd from usage_panes where tmux_session=? and tmux_pane=?
+                         order by last_seen_at desc limit 1""", (session, pane)).fetchone()
+    if not row:
+        return ""
+    return _text(row["git_root"]) or _text(row["pane_pwd"])
+
+
+PROFILE_VALUES = {"value": ("alto", "medio", "bajo"),
+                  "complexity": ("alta", "media", "baja"),
+                  "autonomy": ("sola", "supervisada", "manual")}
+
+
+def set_project_profile(db_path, git_root, value=None, complexity=None, autonomy=None, now=None):
+    """Guarda el perfil de negocio de un proyecto. Solo acepta valores del
+    vocabulario: un cuerpo HTTP no puede meter cualquier cosa en la base."""
+    init_db(db_path)
+    root = _text(git_root)
+    if not root:
+        raise ValueError("git_root vacio")
+    fields = {}
+    for key, val in (("value", value), ("complexity", complexity), ("autonomy", autonomy)):
+        if val is None:
+            continue
+        val = _text(val).lower()
+        if val not in PROFILE_VALUES[key]:
+            raise ValueError(f"{key} invalido: {val!r}")
+        fields[key] = val
+    ts = int(now if now is not None else time.time())
+    with connect(db_path) as con:
+        cur = con.execute("select * from usage_project_profiles where git_root=?", (root,)).fetchone()
+        merged = dict(cur) if cur else {"git_root": root, "value": "medio", "complexity": "media",
+                                         "autonomy": "supervisada"}
+        merged.update(fields)
+        con.execute("""insert into usage_project_profiles(git_root,value,complexity,autonomy,updated_at)
+                       values(?,?,?,?,?) on conflict(git_root) do update set
+                       value=excluded.value, complexity=excluded.complexity, autonomy=excluded.autonomy,
+                       updated_at=excluded.updated_at""",
+                    (root, merged["value"], merged["complexity"], merged["autonomy"], ts))
+    return {"git_root": root, "value": merged["value"], "complexity": merged["complexity"],
+            "autonomy": merged["autonomy"], "updated_at": ts}
+
+
+def project_profiles(db_path):
+    init_db(db_path)
+    with connect(db_path) as con:
+        rows = con.execute("select * from usage_project_profiles").fetchall()
+    return {r["git_root"]: dict(r) for r in rows}
+
+
+def project_signals(db_path, days=7, now=None):
+    """Lo que SI se puede medir de cada proyecto, para que el reparto no dependa
+    solo de lo declarado:
+
+      interruptionsPerHour  veces por hora de trabajo que la sesion se quedo esperandote
+      tokensP50             tokens por turno (mediana) en ese proyecto
+      toolErrorRate         proporcion de llamadas a herramientas que fallaron
+      measuredComplexity    alta/media/baja propuesta a partir de las dos anteriores;
+                            el usuario la corrige en el perfil si no le cuadra
+    """
+    init_db(db_path)
+    ts = int(now if now is not None else time.time())
+    since_ms = (ts - days * 86400) * 1000
+    out = {}
+    with connect(db_path) as con:
+        rows = con.execute("""
+          select i.git_root as root, count(*) as n, sum(i.waits) as waits,
+                 sum(coalesce(i.duration_ms,0)) as dur_ms,
+                 (select count(*) from usage_tool_calls x join usage_interactions j on j.id=x.interaction_id
+                   where j.git_root=i.git_root and j.finished_at_ms>=?) as tools,
+                 (select count(*) from usage_tool_calls x join usage_interactions j on j.id=x.interaction_id
+                   where j.git_root=i.git_root and j.finished_at_ms>=? and x.status='failed') as tool_errors
+          from usage_interactions i
+          where i.finished_at_ms>=? and i.git_root<>''
+          group by i.git_root""", (since_ms, since_ms, since_ms)).fetchall()
+        toks = {}
+        for r in con.execute("""select i.git_root as root, u.total_tokens as t from usage_turns u
+                                join usage_interactions i on i.id=u.interaction_id
+                                where i.finished_at_ms>=? and i.git_root<>'' and u.total_tokens>0""", (since_ms,)):
+            toks.setdefault(r["root"], []).append(int(r["t"]))
+    for r in rows:
+        hours = max(0.25, float(r["dur_ms"] or 0) / 3_600_000)
+        per_hour = float(r["waits"] or 0) / hours
+        tl = sorted(toks.get(r["root"], []))
+        p50 = tl[len(tl) // 2] if tl else None
+        err = (float(r["tool_errors"]) / float(r["tools"])) if r["tools"] else 0.0
+        # Complejidad medida: turnos gordos o herramientas que fallan mucho.
+        measured = ("alta" if (p50 or 0) >= 800_000 or err >= 0.15
+                    else "baja" if p50 is not None and p50 < 150_000 and err < 0.05
+                    else "media")
+        out[r["root"]] = {"interactions": int(r["n"]), "waits": int(r["waits"] or 0),
+                          "hours": round(hours, 2), "interruptionsPerHour": round(per_hour, 2),
+                          "tokensP50": p50, "toolErrorRate": round(err, 3),
+                          "measuredComplexity": measured}
+    return out
+
+
 def capture_lifecycle(db_path, event):
     """Record prompt/settle boundaries without storing prompt/response text."""
     init_db(db_path)
@@ -2363,15 +2481,21 @@ def capture_lifecycle(db_path, event):
         if status == "working":
             ident = _stable_id(["interaction", session, pane, prompt_id or at_ms])
             cfg = _latest_config(con, session, pane, at_ms // 1000)
+            root = _text(data.get("git_root")) or _pane_git_root(con, session, pane)
             con.execute("""insert into usage_interactions
-              (id,tmux_session,tmux_pane,task_id,config_id,prompt_id,agent_session_id,started_at_ms,completion_status,source,confidence,created_at)
-              values(?,?,?,?,?,?,?,?,?,?,?,?) on conflict(id) do nothing""",
+              (id,tmux_session,tmux_pane,task_id,config_id,prompt_id,agent_session_id,started_at_ms,completion_status,source,confidence,created_at,git_root)
+              values(?,?,?,?,?,?,?,?,?,?,?,?,?) on conflict(id) do nothing""",
               (ident,session,pane,_text(data.get("task_id")),cfg.get("id", ""),prompt_id,agent_session_id,at_ms,"unknown",
-               _text(data.get("source")) or "hook",_text(data.get("confidence")) or "exact",at_ms//1000))
+               _text(data.get("source")) or "hook",_text(data.get("confidence")) or "exact",at_ms//1000,root))
             return {"captured": True, "interaction_id": ident}
         # Permission/attention notifications are an intermediate state, not a
         # completed response. Keeping the interaction open preserves latency.
+        # Pero cada una es una interrupcion del humano: eso SI se cuenta, porque
+        # es la medida directa de cuanto depende de ti ese proyecto.
         if status == "waiting":
+            con.execute("""update usage_interactions set waits=waits+1 where id=(
+                             select id from usage_interactions where tmux_session=? and tmux_pane=? and finished_at_ms is null
+                             order by started_at_ms desc limit 1)""", (session, pane))
             return {"captured": True, "pending": True}
         row = None
         if prompt_id:

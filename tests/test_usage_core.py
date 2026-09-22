@@ -1122,3 +1122,55 @@ def test_una_config_de_backfill_no_pisa_una_real_posterior():
         r = cc_usage.capture_lifecycle(db, {"tmux_session": "s", "tmux_pane": "%1", "status": "working",
                                             "at_ms": now * 1000, "prompt_id": "q", "source": "hook:codex"})
         assert _config_of(db, r["interaction_id"])["model"] == "gpt-6-astra"
+
+
+def test_cada_espera_cuenta_como_interrupcion_del_humano():
+    with tempfile.TemporaryDirectory() as d:
+        db = os.path.join(d, "u.sqlite")
+        cc_usage.capture_lifecycle(db, {"tmux_session": "s", "tmux_pane": "%1", "status": "working",
+                                        "at_ms": 1000, "prompt_id": "p", "git_root": "/repo/a"})
+        for _ in range(3):
+            cc_usage.capture_lifecycle(db, {"tmux_session": "s", "tmux_pane": "%1", "status": "waiting", "at_ms": 2000})
+        cc_usage.capture_lifecycle(db, {"tmux_session": "s", "tmux_pane": "%1", "status": "done",
+                                        "at_ms": 3_601_000, "prompt_id": "p"})
+        con = sqlite3.connect(db)
+        waits, root = con.execute("select waits, git_root from usage_interactions").fetchone()
+        con.close()
+        assert waits == 3 and root == "/repo/a"
+        sig = cc_usage.project_signals(db, now=4000)
+        assert sig["/repo/a"]["waits"] == 3
+        assert sig["/repo/a"]["interruptionsPerHour"] == 3.0   # 3 esperas en 1 h de trabajo
+
+
+def test_el_perfil_de_proyecto_solo_acepta_el_vocabulario():
+    with tempfile.TemporaryDirectory() as d:
+        db = os.path.join(d, "u.sqlite")
+        p = cc_usage.set_project_profile(db, "/repo/a", value="alto", now=10)
+        assert p == {"git_root": "/repo/a", "value": "alto", "complexity": "media",
+                     "autonomy": "supervisada", "updated_at": 10}
+        # Actualizacion parcial conserva lo demas.
+        p = cc_usage.set_project_profile(db, "/repo/a", autonomy="sola", now=11)
+        assert p["value"] == "alto" and p["autonomy"] == "sola"
+        assert cc_usage.project_profiles(db)["/repo/a"]["autonomy"] == "sola"
+        import pytest
+        with pytest.raises(ValueError):
+            cc_usage.set_project_profile(db, "/repo/a", value="altisimo")
+        with pytest.raises(ValueError):
+            cc_usage.set_project_profile(db, "", value="alto")
+
+
+def test_la_complejidad_medida_sale_de_tokens_y_errores():
+    with tempfile.TemporaryDirectory() as d:
+        db = os.path.join(d, "u.sqlite")
+        r = cc_usage.capture_lifecycle(db, {"tmux_session": "s", "tmux_pane": "%1", "status": "working",
+                                            "at_ms": 1000, "prompt_id": "p", "git_root": "/repo/pesado"})
+        cc_usage.record_turn(db, {"id": "t1", "provider": "claude", "agent": "claude", "tmux_session": "s",
+                                  "tmux_pane": "%1", "pane_pwd": "/repo/pesado", "git_root": "/repo/pesado",
+                                  "model": "claude-opus-5", "turn_started_at": 1, "turn_finished_at": 2,
+                                  "total_tokens": 900_000, "source": "x", "confidence": "local",
+                                  "interaction_id": r["interaction_id"]})
+        cc_usage.capture_lifecycle(db, {"tmux_session": "s", "tmux_pane": "%1", "status": "done",
+                                        "at_ms": 60_000, "prompt_id": "p"})
+        sig = cc_usage.project_signals(db, now=100)
+        assert sig["/repo/pesado"]["tokensP50"] == 900_000
+        assert sig["/repo/pesado"]["measuredComplexity"] == "alta"

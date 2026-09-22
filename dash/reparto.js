@@ -18,6 +18,7 @@
     drag: null,
     poll: null,
     busy: false,
+    profileOpen: null,  // gitRoot cuyo editor de perfil está abierto
     error: ""
   };
 
@@ -152,6 +153,30 @@
     }
     if (mine !== seq) return;
     S.busy = false; render();
+  }
+
+  /* Perfil de negocio del proyecto: lo que ningún algoritmo saca del código.
+     Tres palabras por proyecto; el reparto las usa como prioridad. */
+  var PROFILE = {
+    value:      { label: ["valor", "value"],           opts: [["alto", "high"], ["medio", "medium"], ["bajo", "low"]] },
+    complexity: { label: ["complejidad", "complexity"], opts: [["alta", "high"], ["media", "medium"], ["baja", "low"]] },
+    autonomy:   { label: ["autonomía", "autonomy"],     opts: [["sola", "runs alone"], ["supervisada", "supervised"], ["manual", "by hand"]] }
+  };
+  function profWord(field, v) {
+    var o = (PROFILE[field].opts.filter(function (x) { return x[0] === v; })[0]) || null;
+    return o ? T(o[0], o[1]) : v;
+  }
+
+  async function setProfile(gitRoot, field, value) {
+    if (S.busy) return;
+    S.busy = true; render();
+    try {
+      var body = { gitRoot: gitRoot }; body[field] = value;
+      await api("/project-profile", body);
+      S.error = "";
+    } catch (e) { S.error = e.message; }
+    S.busy = false;
+    await analyze();   // el perfil cambia la propuesta: se recalcula entera
   }
 
   async function setOverride(key, target) {
@@ -359,6 +384,43 @@
       (old ? " · " + esc(fmtDur(age)) : "") + "</span>";
   }
 
+  /* Perfil del proyecto y lo medido, en palabras. Un clic abre los selectores. */
+  function profileHtml(item) {
+    if (!item.gitRoot) return "";
+    var pf = item.profile || {}, sg = item.signal || {};
+    var words = [];
+    if (pf.value) words.push(T("valor ", "value ") + profWord("value", pf.value));
+    if (pf.complexity) words.push(profWord("complexity", pf.complexity));
+    if (pf.autonomy) words.push(profWord("autonomy", pf.autonomy));
+    var per = sg.interruptionsPerHour;
+    var meas = per != null && per > 0
+      ? '<em class="' + (per >= 3 ? "hot" : "") + '">' + esc(T("te interrumpe ", "interrupts you ") + per + "/h") + "</em>"
+      : "";
+    var open = S.profileOpen === item.gitRoot;
+    var editor = "";
+    if (open && S.phase === "curar") {
+      editor = '<span class="rp-prof-ed">' + Object.keys(PROFILE).map(function (f) {
+        var cur = pf[f] || "";
+        return '<span class="rp-prof-row"><i>' + esc(T(PROFILE[f].label[0], PROFILE[f].label[1])) + "</i>" +
+          '<span class="rp-seg">' + PROFILE[f].opts.map(function (o) {
+            return '<button type="button" class="' + (o[0] === cur ? "on" : "") + '" data-prof-root="' +
+              esc(item.gitRoot) + '" data-prof-field="' + esc(f) + '" data-prof-value="' + esc(o[0]) + '">' +
+              esc(T(o[0], o[1])) + "</button>";
+          }).join("") + "</span></span>";
+      }).join("") +
+      (sg.measuredComplexity ? '<span class="rp-prof-hint">' +
+        esc(T("medida: complejidad " + sg.measuredComplexity, "measured: complexity " + sg.measuredComplexity)) +
+        (sg.tokensP50 ? " · " + esc(Math.round(sg.tokensP50 / 1000) + "K tok/turno") : "") + "</span>" : "") +
+      "</span>";
+    }
+    return '<span class="rp-prof' + (open ? " open" : "") + '">' +
+      '<button type="button" class="rp-prof-btn" data-prof-open="' + esc(item.gitRoot) + '" title="' +
+        esc(T("perfil del proyecto: valor, complejidad y autonomía deseada",
+              "project profile: value, complexity and desired autonomy")) + '">' +
+        (words.length ? esc(words.join(" · ")) : esc(T("sin perfil", "no profile"))) + "</button>" +
+      meas + editor + "</span>";
+  }
+
   function tileHtml(item) {
     var opts = (S.plan.options || {})[item.to.motor] || {};
     var models = opts.models && opts.models.length ? opts.models : [item.to.model];
@@ -383,7 +445,8 @@
         (String(item.project || "").indexOf("\u2AFD") >= 0 ? ""
           : ' <span class="rp-pane">' + esc(item.pane) + "</span>") + "</span>" +
         stateHtml(item) +
-        '<span class="rp-diff">' + diff + "</span></span>" +
+        '<span class="rp-diff">' + diff + "</span>" +
+        profileHtml(item) + "</span>" +
       (S.phase === "curar"
         ? '<button type="button" class="rp-lk ' + (item.locked ? "on" : "") + '" data-lock="' +
           esc(item.key) + '" title="' + (item.locked ? T("soltar: dejar que el reparto la mueva", "unpin: let the split move it")
@@ -593,6 +656,19 @@
         var to = Object.assign({}, item.to);
         to[b.dataset.setField] = b.dataset.setValue;
         setOverride(key, { to: to });
+      };
+    });
+    q("[data-prof-open]").forEach(function (b) {
+      b.onclick = function (e) {
+        e.stopPropagation();
+        S.profileOpen = S.profileOpen === b.dataset.profOpen ? null : b.dataset.profOpen;
+        render();
+      };
+    });
+    q("[data-prof-root]").forEach(function (b) {
+      b.onclick = function (e) {
+        e.stopPropagation();
+        setProfile(b.dataset.profRoot, b.dataset.profField, b.dataset.profValue);
       };
     });
     q("[data-lock]").forEach(function (b) {

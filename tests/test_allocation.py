@@ -272,3 +272,96 @@ def test_una_sesion_sin_project_no_revienta_el_item():
     plan = al.propose([sess("term-9", "claude", "claude-opus-5", "high")],
                       LIMITS, REGISTRY, SUPPORT, ACCOUNTS, TIERS, now=NOW)
     assert plan["items"][0]["project"] == ""
+
+
+# ---------- perfil de proyecto, interrupciones y antigüedad ----------
+
+def _plan(ss, **kw):
+    return al.propose(ss, LIMITS, REGISTRY, SUPPORT, ACCOUNTS, TIERS, now=NOW, **kw)
+
+
+def test_sin_perfil_nada_cambia():
+    """Los fixtures no traen perfil ni marca de tiempo: la propuesta es la de siempre."""
+    a = _plan(sessions())
+    b = _plan(sessions(), profiles={}, signals={})
+    assert a["items"] == b["items"]
+
+
+def test_valor_alto_y_complejo_se_queda_con_lo_mejor_aunque_este_parada():
+    s = dict(sess("big", "claude", "claude-opus-5", "low", status="done"), cwd="/repo/big")
+    assert al.layer_of(s) == 1
+    assert al.layer_of(s, {"value": "alto", "complexity": "alta"}) == 3
+    it = _plan([s], profiles={"/repo/big": {"value": "alto", "complexity": "alta"}})["items"][0]
+    assert it["to"]["effort"] == "high"
+    assert "se queda con lo mejor" in it["reason"]
+
+
+def test_valor_alto_que_interrumpe_sube_de_nivel():
+    s = dict(sess("x", "claude", "claude-opus-5", "medium"), cwd="/repo/x")
+    assert al.layer_of(s, {"value": "alto"}, {"interruptionsPerHour": 1.0}) == 2
+    assert al.layer_of(s, {"value": "alto"}, {"interruptionsPerHour": 4.0}) == 3
+
+
+def test_valor_bajo_absorbe_lo_barato():
+    s = dict(sess("cheap", "claude", "claude-opus-5", "max"), cwd="/repo/cheap")
+    assert al.layer_of(s, {"value": "bajo"}) == 2
+    assert al.layer_of(dict(s, status="idle"), {"value": "bajo"}) == 1
+    it = _plan([s], profiles={"/repo/cheap": {"value": "bajo"}})["items"][0]
+    assert it["to"]["effort"] == "medium" and "valor bajo" in it["reason"]
+
+
+def test_complejidad_baja_no_necesita_lo_mas_pesado():
+    s = dict(sess("simple", "claude", "claude-opus-5", "xhigh"), cwd="/repo/simple")
+    assert al.layer_of(s, {"value": "alto", "complexity": "baja"}) == 2
+
+
+def test_el_perfil_se_hereda_por_prefijo_de_ruta():
+    s = dict(sess("sub", "claude", "claude-opus-5", "high"), cwd="/repo/big/packages/api")
+    assert al.profile_for(s, {"/repo/big": {"value": "alto"}}) == {"value": "alto"}
+    assert al.profile_for(s, {"/repo/bigger": {"value": "alto"}}) == {}   # prefijo de texto no basta
+    assert al.profile_for(dict(s, gitRoot="/repo/big"), {"/repo/big": {"value": "bajo"}}) == {"value": "bajo"}
+
+
+def test_una_sesion_parada_hace_horas_casi_no_pesa():
+    working = dict(sess("w", "claude", "claude-opus-5", "high", status="working"), ts=NOW - 30 * 3600)
+    assert al.stale_factor(working, NOW) == 1.0                       # trabajando: pesa entera
+    assert al.stale_factor(dict(working, status="done"), NOW) == 0.1  # parada > 24 h
+    assert al.stale_factor(dict(working, status="idle", ts=NOW - 4 * 3600), NOW) == 0.25
+    assert al.stale_factor(dict(working, status="idle", ts=NOW - 600), NOW) == 1.0
+    assert al.stale_factor(dict(working, status="done", ts=None), NOW) == 1.0  # sin marca: reproducible
+    it = _plan([dict(working, status="done")])["items"][0]
+    assert it["weightFrom"] == round(al.WEIGHT["high"] * 0.1, 3)
+    assert "parada" in it["reason"]
+
+
+def test_las_de_mas_valor_se_reparten_primero():
+    lo = dict(sess("lo", "claude", "claude-opus-5", "high"), cwd="/lo")
+    hi = dict(sess("hi", "claude", "claude-opus-5", "high"), cwd="/hi")
+    plan = _plan([lo, hi], profiles={"/lo": {"value": "bajo"}, "/hi": {"value": "alto"}})
+    # El orden de reparto no es visible en items (van ordenados por clave), pero si
+    # la consecuencia: la de valor alto conserva su capa y la baja cae a 2.
+    by = {i["session"]: i for i in plan["items"]}
+    assert by["hi"]["to"]["effort"] == "high" and by["lo"]["to"]["effort"] == "medium"
+    assert by["hi"]["profile"]["value"] == "alto"
+
+
+def test_valor_alto_y_complejo_no_baja_de_xhigh():
+    """"Se queda con lo mejor" tiene que ser literal: si ya corre en xhigh no se
+    le propone high por la tabla de capas."""
+    s = dict(sess("big", "claude", "claude-opus-5", "xhigh", status="working"), cwd="/repo/big")
+    it = _plan([s], profiles={"/repo/big": {"value": "alto", "complexity": "alta"}})["items"][0]
+    assert it["to"]["effort"] == "xhigh"
+    # Sin perfil, la tabla de siempre: capa 3 propone high.
+    assert _plan([s])["items"][0]["to"]["effort"] == "high"
+
+
+def test_una_cuota_sin_porcentaje_no_revienta_la_propuesta():
+    """Visto en produccion: Grok medido en local sin limite declarado trae
+    percent=None y la propuesta entera moria en float(None)."""
+    lim = LIMITS + [dict(id="grok:main:7d:measured", provider="grok", account="main", percent=None,
+                         resets_at=NOW + 3600, window="7d", kind="measured")]
+    lim = [l for l in lim if not (l["provider"] == "grok" and l.get("kind") != "measured")]
+    assert al.governing_limit(al.enrich_limits(lim, NOW), "grok", "main") is None
+    plan = al.propose([sess("g", "grok", "grok-4.6", "high")], lim, REGISTRY, SUPPORT, ACCOUNTS, TIERS, now=NOW)
+    assert plan["items"][0]["to"]["motor"] and plan["items"][0]["reason"]  # se propone algo, no se rompe
+    assert plan["impact"]["grok:main"]["known"] is False
