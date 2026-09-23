@@ -4771,24 +4771,26 @@ def operator_rename_tab(sess, new_label):
     new_label = str(new_label or "").strip()[:80]
     if not new_label:
         return "El nombre no puede quedar vacío"
-    tabs_map = load_json_file(TABS_FILE, {})
-    if not isinstance(tabs_map, dict) or sess not in tabs_map:
-        return f"No hay pestaña '{sess}'"
-    tabs_map[sess] = new_label
-    write_json_file(TABS_FILE, tabs_map)
+    # cc-app también escribe app-tabs.json: mismo candado para no perder cambios.
+    with file_lock(TABS_FILE):
+        tabs_map = load_json_file(TABS_FILE, {})
+        if not isinstance(tabs_map, dict) or sess not in tabs_map:
+            return f"No hay pestaña '{sess}'"
+        tabs_map[sess] = new_label
+        write_json_file(TABS_FILE, tabs_map)
     return None
 
 
 def operator_send_back(sess):
-    tabs_map = load_json_file(TABS_FILE, {})
-    if not isinstance(tabs_map, dict) or sess not in tabs_map:
-        return f"No hay pestaña '{sess}'"
-    label = tabs_map.pop(sess)
-    tabs_map[sess] = label
-    write_json_file(TABS_FILE, tabs_map)
+    with file_lock(TABS_FILE):
+        tabs_map = load_json_file(TABS_FILE, {})
+        if not isinstance(tabs_map, dict) or sess not in tabs_map:
+            return f"No hay pestaña '{sess}'"
+        label = tabs_map.pop(sess)
+        tabs_map[sess] = label
+        write_json_file(TABS_FILE, tabs_map)
     try:
-        with open(os.path.join(HOOKS, "app-tab-back.json"), "w") as f:
-            json.dump({"session": sess, "ts": time.time()}, f)
+        write_json_file(os.path.join(HOOKS, "app-tab-back.json"), {"session": sess, "ts": time.time()})
     except Exception:
         pass
     return None
