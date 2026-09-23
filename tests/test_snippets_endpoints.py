@@ -142,3 +142,10 @@ def test_paste_requires_live_session(dash):
 def test_paste_rejects_empty_text(dash):
     status, body = _req(f"{dash}/paste", "POST", {"session": "nope", "text": "   "})
     assert status == 400
+
+
+def test_app_command_without_desktop_app_is_not_ok(dash):
+    # Nadie recoge app-command.json: el endpoint no puede responder ok.
+    status, body = _req(f"{dash}/app/command", "POST", {"command": "help"})
+    assert status == 409
+    assert body["ok"] is False

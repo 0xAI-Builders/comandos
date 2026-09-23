@@ -9389,8 +9389,8 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             args = dict(data.get("args") or {})
             if spec.destructive and args.get("confirm") is not True:
                 return self._json(400, {"error": "requiere confirm=true"})
-            operator_build_dispatcher()._run_app(spec, args)
-            return self._json(200, {"ok": True})
+            out = operator_build_dispatcher()._run_app(spec, args)
+            return self._json(200 if out["ok"] else 409, {"ok": out["ok"], "reply": out["reply"]})
 
         sess = data.get("session", "")
         if not SESSION_RE.match(sess):
