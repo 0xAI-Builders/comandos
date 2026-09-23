@@ -3,7 +3,9 @@ from __future__ import annotations
 
 import json
 import os
+import threading
 import time
+import uuid
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -20,6 +22,8 @@ LOCAL_INTENTS = (
 )
 
 _MISSING = object()
+# cc-app lee y borra un único app-command.json: un escritor a la vez.
+_APP_LOCK = threading.Lock()
 
 
 def substitute(template: Any, args: dict) -> Any:
@@ -88,6 +92,8 @@ class Dispatcher:
         self.default_pane = default_pane
         self.readonly = readonly
         self.context = {'session': default_session, 'pane': default_pane}
+        self.app_wait = 2.0      # lo que la app tiene para recoger su comando
+        self.app_stale = 30.0    # un comando sin recoger más viejo que esto se da por abandonado
 
     def _default_post(self, path, body):
         req = urllib.request.Request(self.base_url + path, data=json.dumps(body).encode(), method="POST",
@@ -130,7 +136,7 @@ class Dispatcher:
             receipt_id = operator_receipts.create(self.receipt_root, name)
         result = self._execute(name, args)
         if receipt_id:
-            status = "failed" if not result.get("ok") else "dispatched" if result.get("pending") or result.get("actions") or spec.target["kind"] == "app" else "confirmed"
+            status = "failed" if not result.get("ok") or result.get("error") else "dispatched" if result.get("pending") or result.get("actions") or spec.target["kind"] == "app" else "confirmed"
             data = result.get("data") or {}
             reference = {k: data[k] for k in ("operationId", "operationKey") if isinstance(data, dict) and k in data}
             operator_receipts.acknowledge(self.receipt_root, {"actionId": receipt_id, "status": status,
@@ -223,22 +229,54 @@ class Dispatcher:
             action = {"type": "ui", "op": "term", "term": {"type": t["type"], **{k: v for k, v in args.items() if k != "confirm"}}}
         return {"ok": True, "pending": True, "reply": "Acción enviada al tablero; falta confirmar su ejecución.", "actions": [action], "data": None}
 
+    def _wait_gone(self, path):
+        end = time.monotonic() + self.app_wait
+        while os.path.exists(path) and time.monotonic() < end:
+            time.sleep(0.02)
+        return not os.path.exists(path)
+
     def _run_app(self, spec, args):
+        # Contrato con cc-app (on_app_command): un solo archivo que la app lee y
+        # borra. Solo es éxito si la app lo recoge; si no, se retira y es fallo.
         path = os.path.join(self.hooks_dir, "app-command.json")
         payload = {"command": spec.target["command"], "args": {k: v for k, v in args.items() if k != "confirm"}, "ts": time.time()}
-        tmp = path + ".tmp"
-        with open(tmp, "w", encoding="utf-8") as f:
-            json.dump(payload, f)
-        os.replace(tmp, path)
-        return {"ok": True, "reply": "Enviado a la app de escritorio.", "actions": [], "data": None}
+        with _APP_LOCK:
+            if not self._wait_gone(path):
+                try:
+                    abandoned = time.time() - os.path.getmtime(path) > self.app_stale
+                except OSError:
+                    abandoned = False
+                if not abandoned:
+                    return _fail("La app de escritorio aún no recogió el comando anterior; no lo piso. ¿Está abierta?")
+                try:
+                    os.remove(path)
+                except FileNotFoundError:
+                    pass
+            tmp = f"{path}.{uuid.uuid4().hex}.tmp"
+            with open(tmp, "w", encoding="utf-8") as f:
+                json.dump(payload, f)
+            os.replace(tmp, path)
+            if not self._wait_gone(path):
+                # Borrar arbitra con la app: solo uno de los dos os.remove gana, y si
+                # gana este la app no lo ejecuta (on_app_command sale al fallar su remove).
+                try:
+                    os.remove(path)
+                    return _fail("La app de escritorio no recogió el comando; ¿está abierta? No se ejecutó.")
+                except FileNotFoundError:
+                    pass
+        return {"ok": True, "reply": "La app de escritorio recogió el comando.", "actions": [], "data": None}
 
     def _run_local(self, spec, args):
         fn = self.local_handlers.get(spec.target["intent"])
         if fn is None:
             return _fail(f"Acción local '{spec.target['intent']}' no disponible.")
         out = dict(fn(args) or {})
+        # Un handler que devuelve error (con o sin ok) no puede acabar en "Hecho."
+        if out.get("error"):
+            out["ok"] = False
+            out.setdefault("reply", str(out["error"]))
         out.setdefault("ok", True)
-        out.setdefault("reply", "Hecho.")
+        out.setdefault("reply", "Hecho." if out["ok"] else "La acción no se completó.")
         out.setdefault("actions", [])
         out.setdefault("data", None)
         if out.get("actions"):
