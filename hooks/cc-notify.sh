@@ -386,11 +386,20 @@ kind="done"; [ "$event" = "Notification" ] && kind="waiting"
 if [ "$kind" = "done" ] && [ "$NOTIFY_ON_DONE" != "1" ]; then exit 0; fi
 if [ "$kind" = "waiting" ] && [ "$NOTIFY_ON_ATTENTION" != "1" ]; then exit 0; fi
 
-if [ "$DESKTOP_NOTIFY" = "1" ]; then
+# Llamada a la Bot API con el token FUERA del argv (ps y /proc/*/cmdline los
+# ve cualquiera): la URL viaja como config de curl por stdin (-K -).
+tg_api() { # $1 = metodo; resto = args extra de curl
+  local method="$1"; shift
+  printf 'url = "https://api.telegram.org/bot%s/%s"\n' "$TG_TOKEN" "$method" \
+    | curl -s -m 5 -K - "$@"
+}
+
+notify_desktop() {
+  [ "$DESKTOP_NOTIFY" = "1" ] || return 0
   # Notificacion nativa ACCIONABLE via cc-notifyd (botones 1/2/3/Enter/Esc y Abrir);
   # si el demonio no responde, cae a notify-send plano.
-  sess="$SESSION_HINT"
-  payload=$(jq -cn --arg t "$title" --arg b "$body" --arg s "$sess" --arg k "$kind" --arg p "$proj" \
+  local payload
+  payload=$(jq -cn --arg t "$title" --arg b "$body" --arg s "$SESSION_HINT" --arg k "$kind" --arg p "$proj" \
     --arg o "${options:-}" --arg f "${full:-}" \
     '{title:$t,body:$b,session:$s,kind:$k,project:$p,options:$o,full:$f}')
   # Solo popups propios (cc-notifyd). Nada de notificaciones GNOME, nunca.
@@ -401,16 +410,17 @@ if [ "$DESKTOP_NOTIFY" = "1" ]; then
       osascript -e "display notification \"$(printf '%s' "$body" | head -c 200 | tr '"' "'")\" with title \"$(printf '%s' "$title" | tr '"' "'")\"" >/dev/null 2>&1
     fi
   fi
-fi
-# Voz local (piper con voz es_MX; fallback spd-say). Si habla, no suena el chime.
-speak=""
-[ "$kind" = "waiting" ] && [ "$SPEAK_ATTENTION" = "1" ] && speak="$proj $T_SPKWAIT"
-[ "$kind" = "done" ] && [ "$SPEAK_DONE" = "1" ] && speak="$proj $T_SPKDONE"
-if [ -n "$speak" ]; then
-  (
+}
+
+notify_voice() {
+  # Voz local (piper con voz es_MX; fallback spd-say). Si habla, no suena el chime.
+  local speak=""
+  [ "$kind" = "waiting" ] && [ "$SPEAK_ATTENTION" = "1" ] && speak="$proj $T_SPKWAIT"
+  [ "$kind" = "done" ] && [ "$SPEAK_DONE" = "1" ] && speak="$proj $T_SPKDONE"
+  if [ -n "$speak" ]; then
     PV="$HOME/.local/share/piper-voices/${PIPER_VOICE}.onnx"
     if command -v piper >/dev/null 2>&1 && [ -f "$PV" ]; then
-      w=$(mktemp --suffix=.wav)
+      w=$(mktemp --suffix=.wav 2>/dev/null || mktemp)
       printf '%s' "$speak" | piper -m "$PV" -f "$w" >/dev/null 2>&1 && play_snd "$w"
       rm -f "$w"
     elif command -v say >/dev/null 2>&1; then      # macOS: voz del sistema
@@ -418,44 +428,50 @@ if [ -n "$speak" ]; then
     elif command -v spd-say >/dev/null 2>&1; then
       spd-say -l "$SPD_LANG" -i $(( VOLUME * 2 - 100 )) "$speak" 2>/dev/null
     fi
-  ) &
-elif [ "$SOUND_ENABLED" = "1" ]; then
-  play_snd "$sound" &
-fi
+  elif [ "$SOUND_ENABLED" = "1" ]; then
+    play_snd "$sound"
+  fi
+}
 
 # Telegram opcional. Con CC_TELEGRAM_BOT_TOKEN (bot dedicado) las notificaciones
 # llevan botones accionables y puedes responderles (reply) para operar la sesion
 # (requiere el servicio cc-telegram corriendo). Sin el, texto plano con el bot normal.
-tg="$HOOKS_DIR/telegram.env"
-if [ "$TELEGRAM_ENABLED" = "1" ] && [ -f "$tg" ]; then
+notify_telegram() {
+  local tg="$HOOKS_DIR/telegram.env"
+  [ "$TELEGRAM_ENABLED" = "1" ] && [ -f "$tg" ] || return 0
   # shellcheck disable=SC1090
   . "$tg"
   TG_TOKEN="${CC_TELEGRAM_BOT_TOKEN:-${TELEGRAM_BOT_TOKEN:-}}"
-  if [ -n "$TG_TOKEN" ] && [ -n "${TELEGRAM_CHAT_ID:-}" ]; then
-    sess="$SESSION_HINT"
-    tg_title=$(sed 's/[&<>]/ /g' <<<"$title")
-    # Texto COMPLETO con markdown renderizado (HTML de Telegram: negritas,
-    # codigo, tablas alineadas en <pre>). Fallback: preview plano.
-    if [ -n "${full:-}" ] && [ -x "$HOOKS_DIR/md2tg.py" ]; then
-      tg_body=$(printf '%s' "$full" | "$HOOKS_DIR/md2tg.py" 2>/dev/null)
-      [ -n "$tg_body" ] && body="$tg_body"
-    fi
-    if [ -n "${CC_TELEGRAM_BOT_TOKEN:-}" ] && [ "$event" = "Notification" ]; then
-      kb='{"inline_keyboard":[[{"text":"1","callback_data":"k|'"$sess"'|1"},{"text":"2","callback_data":"k|'"$sess"'|2"},{"text":"3","callback_data":"k|'"$sess"'|3"}],[{"text":"Enter","callback_data":"k|'"$sess"'|Enter"},{"text":"Esc","callback_data":"k|'"$sess"'|Escape"}]]}'
-      curl -s -m 5 "https://api.telegram.org/bot${TG_TOKEN}/sendMessage" \
-        --data-urlencode chat_id="${TELEGRAM_CHAT_ID}" \
-        --data-urlencode parse_mode="HTML" \
-        --data-urlencode text="<b>${tg_title}</b>
-$body" \
-        --data-urlencode reply_markup="$kb" >/dev/null 2>&1 &
-    else
-      curl -s -m 5 "https://api.telegram.org/bot${TG_TOKEN}/sendMessage" \
-        --data-urlencode chat_id="${TELEGRAM_CHAT_ID}" \
-        --data-urlencode parse_mode="HTML" \
-        --data-urlencode text="<b>${tg_title}</b>
-$body" >/dev/null 2>&1 &
-    fi
+  [ -n "$TG_TOKEN" ] && [ -n "${TELEGRAM_CHAT_ID:-}" ] || return 0
+  local sess="$SESSION_HINT" tg_title tg_body kb
+  tg_title=$(sed 's/[&<>]/ /g' <<<"$title")
+  # Texto COMPLETO con markdown renderizado (HTML de Telegram: negritas,
+  # codigo, tablas alineadas en <pre>). Fallback: preview plano.
+  if [ -n "${full:-}" ] && [ -x "$HOOKS_DIR/md2tg.py" ]; then
+    tg_body=$(printf '%s' "$full" | "$HOOKS_DIR/md2tg.py" 2>/dev/null)
+    [ -n "$tg_body" ] && body="$tg_body"
   fi
-fi
+  if [ -n "${CC_TELEGRAM_BOT_TOKEN:-}" ] && [ "$event" = "Notification" ]; then
+    kb='{"inline_keyboard":[[{"text":"1","callback_data":"k|'"$sess"'|1"},{"text":"2","callback_data":"k|'"$sess"'|2"},{"text":"3","callback_data":"k|'"$sess"'|3"}],[{"text":"Enter","callback_data":"k|'"$sess"'|Enter"},{"text":"Esc","callback_data":"k|'"$sess"'|Escape"}]]}'
+    tg_api sendMessage \
+      --data-urlencode chat_id="${TELEGRAM_CHAT_ID}" \
+      --data-urlencode parse_mode="HTML" \
+      --data-urlencode text="<b>${tg_title}</b>
+$body" \
+      --data-urlencode reply_markup="$kb" >/dev/null 2>&1
+  else
+    tg_api sendMessage \
+      --data-urlencode chat_id="${TELEGRAM_CHAT_ID}" \
+      --data-urlencode parse_mode="HTML" \
+      --data-urlencode text="<b>${tg_title}</b>
+$body" >/dev/null 2>&1
+  fi
+}
+
+# Todo lo lento (POST a cc-notifyd, md2tg, Telegram, voz) corre DESACOPLADO:
+# stdio a /dev/null para que el harness no espere el EOF de nuestros hijos y
+# el hook regrese en milisegundos. La voz va aparte para no retrasar Telegram.
+( notify_voice ) </dev/null >/dev/null 2>&1 &
+( notify_desktop; notify_telegram ) </dev/null >/dev/null 2>&1 &
 
 exit 0

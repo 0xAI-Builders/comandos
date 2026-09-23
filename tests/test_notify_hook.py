@@ -220,3 +220,48 @@ def test_lifecycle_at_ms_has_millisecond_resolution(env):
     assert all(before - 1000 <= s <= int(time.time() * 1000) + 1000 for s in stamps), stamps
     assert any(s % 1000 for s in stamps), f"at_ms sigue truncado a segundos: {stamps}"
     assert rows[0]["tmux_pane"] == "%3" and rows[0]["tmux_session"] == "sess"
+
+
+# ---- Bugs 3 y 4: hook rapido y token fuera del argv ------------------------
+
+def telegram_calls(calls):
+    return [c for c in calls if "api.telegram.org" in (c["stdin"] + " ".join(c["argv"]))]
+
+
+def test_hook_returns_fast_while_notifications_run_detached(env):
+    env.telegram()
+    (env.hooks / "cc-notify.conf").write_text(
+        "SOUND_ENABLED=1\nSPEAK_ATTENTION=1\nSPEAK_DONE=1\nDESKTOP_NOTIFY=1\n"
+        "TELEGRAM_ENABLED=1\nCC_LANG=es\n")
+    # voz lenta que hereda stdout: el harness esperaria su EOF
+    _exe(env.stubs / "spd-say", "#!/usr/bin/env bash\necho hablando; sleep 3\n")
+    proc, elapsed = env.run(
+        {"hook_event_name": "Stop", "cwd": "/tmp/proj"},
+        pane="%3", session="sess", extra={"CURL_SLEEP": "3"})
+    assert proc.returncode == 0
+    assert elapsed < 2.0, f"el hook bloqueo {elapsed:.1f}s (capture_output espera EOF)"
+    assert proc.stdout == ""
+    calls = env.curl_calls(wait_for=2, timeout=15)
+    assert any("127.0.0.1:4778/notify" in " ".join(c["argv"]) for c in calls), calls
+    assert telegram_calls(calls), calls
+
+
+def test_telegram_token_never_appears_in_argv(env):
+    env.telegram()
+    env.run({"hook_event_name": "Notification", "cwd": "/tmp/proj", "message": "permiso"},
+            pane="%3", session="sess")
+    env.run({"hook_event_name": "Stop", "cwd": "/tmp/proj"}, pane="%3", session="sess")
+    calls = env.curl_calls(wait_for=4)
+    tg = telegram_calls(calls)
+    assert len(tg) == 2, calls
+    for call in calls:
+        assert FAKE_TOKEN not in " ".join(call["argv"]), call["argv"]
+    assert all(FAKE_TOKEN in c["stdin"] and "sendMessage" in c["stdin"] for c in tg)
+
+
+def test_plain_bot_token_also_stays_out_of_argv(env):
+    env.telegram(dedicated=False)
+    env.run({"hook_event_name": "Stop", "cwd": "/tmp/proj"})
+    calls = env.curl_calls(wait_for=2)
+    assert telegram_calls(calls)
+    assert all(FAKE_TOKEN not in " ".join(c["argv"]) for c in calls)
