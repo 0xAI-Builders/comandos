@@ -8,9 +8,17 @@
 set -uo pipefail
 TOKEN_FILE="$HOME/.claude/hooks/dash-token"
 
-presented="${1:-}"
+# Mismo criterio que cc-dash (.strip()): sin espacios, \r ni \n en los bordes.
+trim() {
+  local v="$1"
+  v="${v#"${v%%[![:space:]]*}"}"
+  v="${v%"${v##*[![:space:]]}"}"
+  printf '%s' "$v"
+}
+
+presented=$(trim "${1:-}")
 expected=""
-[ -r "$TOKEN_FILE" ] && expected=$(cat "$TOKEN_FILE")
+[ -r "$TOKEN_FILE" ] && expected=$(trim "$(cat "$TOKEN_FILE")")
 if [ -z "$expected" ] || [ "$presented" != "$expected" ]; then
   echo "Acceso denegado al terminal de ComandOS."
   exit 1
