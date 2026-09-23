@@ -16,7 +16,7 @@ Teclas:
   Ctrl+Shift + / - / 0   zoom de letra (pestana actual)
   Ctrl+Q                 salir
 """
-import glob, json, os, re, secrets, shlex, shutil, subprocess, sys, tempfile, threading, time, urllib.request
+import contextlib, glob, json, os, re, secrets, shlex, shutil, subprocess, sys, tempfile, threading, time, urllib.request
 from concurrent.futures import ThreadPoolExecutor
 from urllib.parse import quote, unquote, urlparse
 # Cada pestaña es un VTE que corre `tmux attach`. Si cc-app se lanza DESDE dentro
@@ -1700,6 +1700,17 @@ def ordered_tab_labels(page_keys, labels):
     return out
 
 
+@contextlib.contextmanager
+def _file_lock(path):
+    """Candado compartido con cc-dash: flock exclusivo sobre <archivo>.lock."""
+    with open(path + ".lock", "a") as fh:
+        _fcntl.flock(fh, _fcntl.LOCK_EX)
+        try:
+            yield
+        finally:
+            _fcntl.flock(fh, _fcntl.LOCK_UN)
+
+
 def save_tabs():
     if _TAB_REORDERING:
         return
@@ -1709,10 +1720,12 @@ def save_tabs():
     tmp = None
     try:
         labels = {k: getattr(b, "_label", None) for k, b in tabs.items()}
-        fd, tmp = tempfile.mkstemp(prefix="app-tabs.", suffix=".tmp", dir=os.path.dirname(TABS_FILE))
-        with os.fdopen(fd, "w") as f:
-            json.dump(ordered_tab_labels(current_tab_order(), labels), f)
-        os.replace(tmp, TABS_FILE)
+        data = ordered_tab_labels(current_tab_order(), labels)
+        with _file_lock(TABS_FILE):
+            fd, tmp = tempfile.mkstemp(prefix="app-tabs.", suffix=".tmp", dir=os.path.dirname(TABS_FILE))
+            with os.fdopen(fd, "w") as f:
+                json.dump(data, f)
+            os.replace(tmp, TABS_FILE)
     except Exception:
         pass
     finally:
@@ -1753,18 +1766,24 @@ def archive_tab(key, reason="closed"):
         agent = "codex" if cmd == "node" else "acp" if cmd == "cc-acp" else cmd if cmd in {"claude", "grok", "opencode", "gemini", "agy", "aider", "acp"} else "claude"
     item = {"session": key, "label": label, "cwd": cwd, "agent": agent,
             "reason": reason, "ts": int(time.time())}
-    try:
-        with open(TAB_HISTORY_FILE) as f:
-            hist = json.load(f)
-        if not isinstance(hist, list):
+    with _file_lock(TAB_HISTORY_FILE):
+        try:
+            with open(TAB_HISTORY_FILE) as f:
+                hist = json.load(f)
+            if not isinstance(hist, list):
+                hist = []
+        except Exception:
             hist = []
-    except Exception:
-        hist = []
-    hist = [h for h in hist if not isinstance(h, dict) or h.get("session") != key]
-    tmp = TAB_HISTORY_FILE + ".tmp"
-    with open(tmp, "w") as f:
-        json.dump([item] + hist[:79], f)
-    os.replace(tmp, TAB_HISTORY_FILE)
+        hist = [h for h in hist if not isinstance(h, dict) or h.get("session") != key]
+        fd, tmp = tempfile.mkstemp(prefix="app-tabs-history.", suffix=".tmp",
+                                   dir=os.path.dirname(TAB_HISTORY_FILE))
+        try:
+            with os.fdopen(fd, "w") as f:
+                json.dump([item] + hist[:79], f)
+            os.replace(tmp, TAB_HISTORY_FILE)
+        finally:
+            if os.path.exists(tmp):
+                os.unlink(tmp)
 
 
 
