@@ -5154,10 +5154,27 @@ def _page_for(sess):
     return -1, None
 
 
-def _cur_pane_id():
-    key = getattr(_cur_page(), "_key", None) or "local"
-    r = tmuxc("display-message", "-p", "-t", f"={key}:", "#{pane_id}")
-    return (r.stdout or "").strip()
+def _cur_pane_id(sess=None):
+    """Pane activo de la pestana actual (o de `sess`), o "" si no hay sesion
+    tmux real (xterm-*, sesion muerta). Un target vacio es el pane de OTRA sesion."""
+    page = _cur_page()
+    term = getattr(page, "_term", None)
+    sess = sess or (term_session(term) if term is not None else None) or getattr(page, "_key", None) or "local"
+    if sess.startswith("xterm-"):
+        return ""
+    r = tmuxc("display-message", "-p", "-t", f"={sess}:", "#{pane_id}")
+    pane = (r.stdout or "").strip() if r.returncode == 0 else ""
+    return pane if re.fullmatch(r"%\d+", pane) else ""
+
+
+def _kill_cur_pane(sess=None):
+    pane = _cur_pane_id(sess)
+    return tmuxc("kill-pane", "-t", pane) if pane else None
+
+
+def _select_pane_cmd(a):
+    pane = str(a.get("pane") or "")
+    return tmuxc("select-pane", "-t", pane) if re.fullmatch(r"%\d+", pane) else None
 
 
 def _split_cmd(side, ssh=False):
@@ -5205,9 +5222,9 @@ def set_font_scale(scale):
 APP_COMMANDS = {
     "split": lambda a: _split_cmd(a.get("side", "right")),
     "split_ssh": lambda a: _split_cmd(a.get("side", "right"), ssh=True),
-    "kill_pane": lambda a: tmuxc("kill-pane", "-t", _cur_pane_id()),
+    "kill_pane": lambda a: _kill_cur_pane(a.get("session")),
     "toggle_window": lambda a: feed(_cur_term(), b"\x02l"),
-    "select_pane": lambda a: tmuxc("select-pane", "-t", str(a.get("pane") or "")),
+    "select_pane": lambda a: _select_pane_cmd(a),
     "next_tab": lambda a: _cycle_tab(1),
     "prev_tab": lambda a: _cycle_tab(-1),
     "mru_toggle": lambda a: _mru_toggle(),
