@@ -4578,6 +4578,25 @@ def _authority_matches(pattern, authority):
     return len(hostname) <= 253
 
 
+def _origin_matches_host(origin, host):
+    """True si Origin es exactamente el origen servido: http(s), sin ruta ni
+    userinfo, mismo hostname y mismo puerto (el puerto por defecto del esquema
+    cuenta como ausente en Host, como lo deja nginx/tailscale serve)."""
+    try:
+        o = urllib.parse.urlsplit(origin or "")
+        h = urllib.parse.urlsplit("//" + (host or ""))
+        o_port, h_port = o.port, h.port
+    except ValueError:
+        return False
+    if o.scheme not in ("http", "https") or not o.hostname or not h.hostname:
+        return False
+    if o.path or o.query or o.fragment or "@" in o.netloc:
+        return False
+    default = 80 if o.scheme == "http" else 443
+    return (o.hostname == h.hostname
+            and (o_port or default) == (h_port or default))
+
+
 def _ip_is_loopback(value):
     try:
         address = ipaddress.ip_address((value or "").strip())
@@ -8147,10 +8166,11 @@ class Handler(http.server.SimpleHTTPRequestHandler):
         """Devuelve None si la peticion puede continuar, o (code, obj) si se
         rechaza. Capas:
           (1) Host allowlist -> bloquea DNS-rebinding a 127.0.0.1.
-          (2) Origin allowlist -> bloquea CSRF drive-by: un sitio web puede
+          (2) Origin == Host -> bloquea CSRF drive-by: un sitio web puede
               hacer fetch a 127.0.0.1 (peticion 'simple', sin preflight) y
               llegaria como loopback; pero el navegador SIEMPRE manda Origin
-              en cross-origin, y ahi lo rechazamos.
+              en cross-origin, y solo aceptamos el mismo origen (ni otro
+              *.localhost de devhost ni otro *.ts.net).
           (3) Token para remoto/proxeado (tailscale serve pone X-Forwarded-For).
         Localhost directo no necesita token. Un proxy de desarrollo bajo
         *.localhost tampoco, pero solo cuando el peer y la cadena XFF completa
@@ -8164,11 +8184,11 @@ class Handler(http.server.SimpleHTTPRequestHandler):
         origin_values = self._header_values("Origin")
         if len(origin_values) > 1:
             return 403, {"error": "Origen no permitido"}
-        if origin_values:
-            origin = origin_values[0]
-            oh = urllib.parse.urlparse(origin).netloc
-            if not _authority_matches(HOST_OK_RE, oh):
-                return 403, {"error": "Origen no permitido"}
+        # Con Origin (navegador) exigimos MISMO origen que Host; "null" y
+        # cualquier otro *.localhost / *.ts.net quedan fuera. Sin Origin
+        # (curl de hooks, cc-app, cc-notifyd, cc-telegram) sigue igual.
+        if origin_values and not _origin_matches_host(origin_values[0], host):
+            return 403, {"error": "Origen no permitido"}
         forwarded_values = self._header_values("X-Forwarded-For")
         forwarded_for = ",".join(forwarded_values)
         local_peer = self._peer_is_loopback()
@@ -8179,8 +8199,13 @@ class Handler(http.server.SimpleHTTPRequestHandler):
                              and _xff_is_loopback_chain(forwarded_for))
         if direct_local or trusted_dev_proxy:
             return None
-        if hmac.compare_digest(self._presented_token(), access_token()):
-            return None
+        # compare_digest con str no-ASCII lanza TypeError: comparar bytes.
+        try:
+            presented = self._presented_token().encode("utf-8", "surrogatepass")
+            if hmac.compare_digest(presented, access_token().encode("utf-8")):
+                return None
+        except (TypeError, UnicodeError):
+            pass
         return 401, {"error": "No autorizado (token requerido para acceso remoto)"}
 
     # Endpoints con DATOS o ACCIONES: exigen token. El shell estatico (HTML,
@@ -8188,7 +8213,7 @@ class Handler(http.server.SimpleHTTPRequestHandler):
     # asi la PWA instala y carga sin depender de cookies en el webview movil.
     API_GET = ("/pomodoro", "/providers", "/optimization/plans", "/proxy", "/model/status", "/sovereignty", "/ui-log/summary", "/state", "/usage/state", "/usage/guard", "/usage/changes", "/usage/provider-compare", "/fs/dirs", "/models/latest", "/news/latest", "/notifs/count", "/usage/analytics", "/usage/interactions", "/usage/experiments", "/opencode/models", "/model-tiers", "/dedication", "/active-tab", "/session-profiles", "/extension-usage", "/session-brain", "/project-profiles", "/events", "/conf", "/prefs", "/ssh", "/tabs",
                "/tab-history", "/remote-state", "/remote-qr.png", "/snippets", "/tmux-mouse",
-               "/webterm-token", "/operator")
+               "/webterm-token", "/operator", "/allocation/status")
 
     def do_GET(self):
         host_values = self._header_values("Host")
