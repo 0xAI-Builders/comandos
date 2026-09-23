@@ -201,168 +201,206 @@ def _ensure_columns(con, table, columns):
     present = _table_columns(con, table)
     for name, ddl in columns.items():
         if name not in present:
-            con.execute(f"alter table {table} add column {name} {ddl}")
+            try:
+                con.execute(f"alter table {table} add column {name} {ddl}")
+            except sqlite3.OperationalError as exc:
+                # Otro proceso la agrego entre el pragma y el ALTER: ya esta.
+                if "duplicate column" not in str(exc).lower():
+                    raise
+
+
+def _execute_statements(con, script):
+    """Como executescript pero SIN su COMMIT implicito (que soltaria el lock
+    de BEGIN IMMEDIATE a media migracion)."""
+    buf = ""
+    for line in script.splitlines(keepends=True):
+        buf += line
+        if sqlite3.complete_statement(buf):
+            con.execute(buf)
+            buf = ""
 
 
 def _migrate_db(con):
-    """Idempotent additive migration from populated legacy databases."""
+    """Idempotent additive migration from populated legacy databases.
+
+    Varios hooks abren la DB a la vez: la migracion corre dentro de BEGIN
+    IMMEDIATE (un solo escritor) y re-lee user_version YA con el lock tomado,
+    asi el segundo proceso ve la version nueva y no repite los ALTER TABLE."""
     current = int(con.execute("pragma user_version").fetchone()[0])
     if current >= USAGE_SCHEMA_VERSION:
         return
-    with con:
-        _ensure_columns(con, "usage_turns", {
-            "harness": "text not null default ''",
-            "motor": "text not null default ''",
-            "route_id": "text not null default ''",
-            "harness_account": "text not null default 'unknown'",
-            "motor_account": "text not null default 'unknown'",
-            "interaction_id": "text not null default ''",
-            "experiment_run_id": "text not null default ''",
-            "tool_profile": "text not null default ''",
-            "duration_ms": "integer",
-            "outcome": "text not null default 'unknown'",
-            "reasoning_tokens": "integer",
+    if con.in_transaction:
+        con.commit()
+    saved_isolation = con.isolation_level
+    con.isolation_level = None   # transaccion manual explicita
+    try:
+        con.execute("begin immediate")
+        try:
+            current = int(con.execute("pragma user_version").fetchone()[0])
+            if current < USAGE_SCHEMA_VERSION:
+                _migrate_schema(con)
+            con.execute("commit")
+        except BaseException:
+            con.execute("rollback")
+            raise
+    finally:
+        con.isolation_level = saved_isolation
+
+
+def _migrate_schema(con):
+    _ensure_columns(con, "usage_turns", {
+        "harness": "text not null default ''",
+        "motor": "text not null default ''",
+        "route_id": "text not null default ''",
+        "harness_account": "text not null default 'unknown'",
+        "motor_account": "text not null default 'unknown'",
+        "interaction_id": "text not null default ''",
+        "experiment_run_id": "text not null default ''",
+        "tool_profile": "text not null default ''",
+        "duration_ms": "integer",
+        "outcome": "text not null default 'unknown'",
+        "reasoning_tokens": "integer",
+    })
+    tables = {row[0] for row in con.execute("select name from sqlite_master where type='table'")}
+    # v4 adds correlation identifiers without retaining prompt contents.
+    if "usage_interactions" in tables:
+        _ensure_columns(con, "usage_interactions", {
+            "prompt_id": "text not null default ''",
+            "agent_session_id": "text not null default ''",
+            # v10: cuantas veces se quedo esperando al humano, y de que proyecto es.
+            "waits": "integer not null default 0",
+            "git_root": "text not null default ''",
         })
-        tables = {row[0] for row in con.execute("select name from sqlite_master where type='table'")}
-        # v4 adds correlation identifiers without retaining prompt contents.
-        if "usage_interactions" in tables:
-            _ensure_columns(con, "usage_interactions", {
-                "prompt_id": "text not null default ''",
-                "agent_session_id": "text not null default ''",
-                # v10: cuantas veces se quedo esperando al humano, y de que proyecto es.
-                "waits": "integer not null default 0",
-                "git_root": "text not null default ''",
-            })
-        if "usage_experiments" in tables:
-            _ensure_columns(con, "usage_experiments", {
-                "project_id": "text not null default ''",
-                "primary_metric": "text not null default 'outcome'",
-                "min_pairs": "integer not null default 10",
-            })
-        if "usage_experiment_runs" in tables:
-            _ensure_columns(con, "usage_experiment_runs", {
-                "task_id": "text not null default ''",
-                "project_id": "text not null default ''",
-                "launch_order": "integer not null default 0",
-            })
-        con.executescript("""
-        create table if not exists usage_session_configs (
-          id text primary key, tmux_session text not null, tmux_pane text not null,
-          effective_at integer not null, harness text not null, motor text not null,
-          model text not null, effort text not null default '',
-          harness_account text not null default 'unknown', motor_account text not null default 'unknown',
-          route_id text not null, source text not null, confidence text not null
-        );
-        create table if not exists usage_tasks (
-          id text primary key, task_type text not null default 'unclassified',
-          type_source text not null default 'manual', type_confidence text not null default 'exact',
-          label text not null default '', design text not null default 'observational',
-          created_at integer not null, updated_at integer not null
-        );
-        create table if not exists usage_interactions (
-          id text primary key, tmux_session text not null, tmux_pane text not null,
-          task_id text not null default '', config_id text not null default '',
-          prompt_id text not null default '', agent_session_id text not null default '',
-          started_at_ms integer, first_output_at_ms integer, finished_at_ms integer,
-          duration_ms integer, completion_status text not null default 'unknown',
-          error_class text not null default '', source text not null, confidence text not null,
-          created_at integer not null,
-          waits integer not null default 0, git_root text not null default ''
-        );
-        -- Perfil de negocio por proyecto: lo que ningun algoritmo puede deducir del
-        -- codigo. Lo declara el usuario y el reparto lo usa como prioridad.
-        create table if not exists usage_project_profiles (
-          git_root text primary key,
-          value text not null default 'medio',
-          complexity text not null default 'media',
-          autonomy text not null default 'supervisada',
-          updated_at integer not null
-        );
-        create table if not exists usage_tool_calls (
-          id text primary key, interaction_id text not null, sequence integer not null,
-          tool_name text not null, tool_family text not null default '',
-          started_at_ms integer, finished_at_ms integer, duration_ms integer,
-          status text not null default 'unknown', error_class text not null default '',
-          confidence text not null, foreign key(interaction_id) references usage_interactions(id) on delete cascade
-        );
-        create table if not exists usage_ratings (
-          interaction_id text primary key, rated_at integer not null,
-          outcome text not null default 'unknown', rating integer, note text not null default '',
-          foreign key(interaction_id) references usage_interactions(id) on delete cascade
-        );
-        create table if not exists usage_experiments (
-          id text primary key, label text not null, task_type text not null,
-          status text not null, design text not null default 'paired',
-          project_id text not null default '', primary_metric text not null default 'outcome',
-          min_pairs integer not null default 10,
-          created_at integer not null, updated_at integer not null
-        );
-        create table if not exists usage_experiment_variants (
-          experiment_id text not null, variant_index integer not null,
-          label text not null default '', harness text not null, motor text not null,
-          model text not null, effort text not null default '', route_id text not null,
-          harness_account text not null default 'unknown', motor_account text not null default 'unknown',
-          primary key(experiment_id,variant_index),
-          foreign key(experiment_id) references usage_experiments(id) on delete cascade
-        );
-        create table if not exists usage_experiment_runs (
-          id text primary key, experiment_id text not null, interaction_id text not null default '',
-          task_id text not null default '', project_id text not null default '',
-          variant_index integer not null, harness text not null, motor text not null,
-          model text not null, effort text not null default '', route_id text not null,
-          harness_account text not null default 'unknown', motor_account text not null default 'unknown',
-          tmux_session text not null default '', tmux_pane text not null default '',
-          launch_order integer not null default 0,
-          status text not null default 'planned', started_at integer, finished_at integer,
-          foreign key(experiment_id) references usage_experiments(id) on delete cascade
-        );
-        create table if not exists usage_changes (
-          id text primary key, created_at integer not null,
-          origin text not null default 'manual', kind text not null default 'switch',
-          tmux_session text not null default '', tmux_pane text not null default '',
-          project text not null default '',
-          before_model text not null default '', before_effort text not null default '',
-          before_route text not null default '',
-          after_model text not null default '', after_effort text not null default '',
-          after_route text not null default '',
-          status text not null default 'applied', note text not null default ''
-        );
-        create index if not exists idx_usage_changes_created on usage_changes(created_at);
-        create table if not exists focus_blocks (
-          id text primary key, mode text not null, project text not null default '',
-          tmux_session text not null default '', tmux_pane text not null default '',
-          planned_minutes integer not null, cycle_index integer not null default 1,
-          cycle_total integer not null default 1, started_at_ms integer not null,
-          ended_at_ms integer, status text not null default 'running',
-          interruptions integer not null default 0, source text not null default 'comandos'
-        );
-        create table if not exists focus_settings (
-          key text primary key, value text not null
-        );
-        create index if not exists idx_focus_blocks_started on focus_blocks(started_at_ms);
-        create index if not exists idx_focus_blocks_project on focus_blocks(project, started_at_ms);
-        create index if not exists idx_usage_turns_finished on usage_turns(turn_finished_at);
-        create index if not exists idx_usage_turns_route_finished on usage_turns(route_id, turn_finished_at);
-        create index if not exists idx_usage_turns_interaction on usage_turns(interaction_id);
-        create index if not exists idx_session_configs_pane_time on usage_session_configs(tmux_session, tmux_pane, effective_at);
-        create index if not exists idx_interactions_config_time on usage_interactions(config_id, finished_at_ms);
-        create index if not exists idx_interactions_prompt on usage_interactions(tmux_session, tmux_pane, prompt_id);
-        create index if not exists idx_tasks_type_time on usage_tasks(task_type, created_at);
-        create index if not exists idx_experiment_variants_experiment on usage_experiment_variants(experiment_id, variant_index);
-        create index if not exists idx_experiment_runs_experiment on usage_experiment_runs(experiment_id, variant_index);
-        """)
-        con.execute("""update usage_turns set harness=case when harness='' then agent else harness end""")
-        con.execute("""update usage_turns set motor=case
-          when motor!='' then motor
-          when lower(model) like 'grok-%' then 'grok'
-          when lower(model) like 'gpt-%' or lower(model) like 'codex%' then 'codex'
-          when harness in ('codex','grok') then harness
-          else 'claude' end""")
-        con.execute("""update usage_turns set route_id=harness||':'||motor where route_id=''""")
-        _ensure_columns(con, "usage_tool_calls", {"skill_name": "text not null default ''"})
-        con.execute("create index if not exists idx_usage_tools_interaction on usage_tool_calls(interaction_id)")
-        con.execute("create index if not exists idx_usage_tools_time on usage_tool_calls(coalesce(finished_at_ms,started_at_ms))")
-        con.execute(f"pragma user_version={USAGE_SCHEMA_VERSION}")
+    if "usage_experiments" in tables:
+        _ensure_columns(con, "usage_experiments", {
+            "project_id": "text not null default ''",
+            "primary_metric": "text not null default 'outcome'",
+            "min_pairs": "integer not null default 10",
+        })
+    if "usage_experiment_runs" in tables:
+        _ensure_columns(con, "usage_experiment_runs", {
+            "task_id": "text not null default ''",
+            "project_id": "text not null default ''",
+            "launch_order": "integer not null default 0",
+        })
+    _execute_statements(con, """
+    create table if not exists usage_session_configs (
+      id text primary key, tmux_session text not null, tmux_pane text not null,
+      effective_at integer not null, harness text not null, motor text not null,
+      model text not null, effort text not null default '',
+      harness_account text not null default 'unknown', motor_account text not null default 'unknown',
+      route_id text not null, source text not null, confidence text not null
+    );
+    create table if not exists usage_tasks (
+      id text primary key, task_type text not null default 'unclassified',
+      type_source text not null default 'manual', type_confidence text not null default 'exact',
+      label text not null default '', design text not null default 'observational',
+      created_at integer not null, updated_at integer not null
+    );
+    create table if not exists usage_interactions (
+      id text primary key, tmux_session text not null, tmux_pane text not null,
+      task_id text not null default '', config_id text not null default '',
+      prompt_id text not null default '', agent_session_id text not null default '',
+      started_at_ms integer, first_output_at_ms integer, finished_at_ms integer,
+      duration_ms integer, completion_status text not null default 'unknown',
+      error_class text not null default '', source text not null, confidence text not null,
+      created_at integer not null,
+      waits integer not null default 0, git_root text not null default ''
+    );
+    -- Perfil de negocio por proyecto: lo que ningun algoritmo puede deducir del
+    -- codigo. Lo declara el usuario y el reparto lo usa como prioridad.
+    create table if not exists usage_project_profiles (
+      git_root text primary key,
+      value text not null default 'medio',
+      complexity text not null default 'media',
+      autonomy text not null default 'supervisada',
+      updated_at integer not null
+    );
+    create table if not exists usage_tool_calls (
+      id text primary key, interaction_id text not null, sequence integer not null,
+      tool_name text not null, tool_family text not null default '',
+      started_at_ms integer, finished_at_ms integer, duration_ms integer,
+      status text not null default 'unknown', error_class text not null default '',
+      confidence text not null, foreign key(interaction_id) references usage_interactions(id) on delete cascade
+    );
+    create table if not exists usage_ratings (
+      interaction_id text primary key, rated_at integer not null,
+      outcome text not null default 'unknown', rating integer, note text not null default '',
+      foreign key(interaction_id) references usage_interactions(id) on delete cascade
+    );
+    create table if not exists usage_experiments (
+      id text primary key, label text not null, task_type text not null,
+      status text not null, design text not null default 'paired',
+      project_id text not null default '', primary_metric text not null default 'outcome',
+      min_pairs integer not null default 10,
+      created_at integer not null, updated_at integer not null
+    );
+    create table if not exists usage_experiment_variants (
+      experiment_id text not null, variant_index integer not null,
+      label text not null default '', harness text not null, motor text not null,
+      model text not null, effort text not null default '', route_id text not null,
+      harness_account text not null default 'unknown', motor_account text not null default 'unknown',
+      primary key(experiment_id,variant_index),
+      foreign key(experiment_id) references usage_experiments(id) on delete cascade
+    );
+    create table if not exists usage_experiment_runs (
+      id text primary key, experiment_id text not null, interaction_id text not null default '',
+      task_id text not null default '', project_id text not null default '',
+      variant_index integer not null, harness text not null, motor text not null,
+      model text not null, effort text not null default '', route_id text not null,
+      harness_account text not null default 'unknown', motor_account text not null default 'unknown',
+      tmux_session text not null default '', tmux_pane text not null default '',
+      launch_order integer not null default 0,
+      status text not null default 'planned', started_at integer, finished_at integer,
+      foreign key(experiment_id) references usage_experiments(id) on delete cascade
+    );
+    create table if not exists usage_changes (
+      id text primary key, created_at integer not null,
+      origin text not null default 'manual', kind text not null default 'switch',
+      tmux_session text not null default '', tmux_pane text not null default '',
+      project text not null default '',
+      before_model text not null default '', before_effort text not null default '',
+      before_route text not null default '',
+      after_model text not null default '', after_effort text not null default '',
+      after_route text not null default '',
+      status text not null default 'applied', note text not null default ''
+    );
+    create index if not exists idx_usage_changes_created on usage_changes(created_at);
+    create table if not exists focus_blocks (
+      id text primary key, mode text not null, project text not null default '',
+      tmux_session text not null default '', tmux_pane text not null default '',
+      planned_minutes integer not null, cycle_index integer not null default 1,
+      cycle_total integer not null default 1, started_at_ms integer not null,
+      ended_at_ms integer, status text not null default 'running',
+      interruptions integer not null default 0, source text not null default 'comandos'
+    );
+    create table if not exists focus_settings (
+      key text primary key, value text not null
+    );
+    create index if not exists idx_focus_blocks_started on focus_blocks(started_at_ms);
+    create index if not exists idx_focus_blocks_project on focus_blocks(project, started_at_ms);
+    create index if not exists idx_usage_turns_finished on usage_turns(turn_finished_at);
+    create index if not exists idx_usage_turns_route_finished on usage_turns(route_id, turn_finished_at);
+    create index if not exists idx_usage_turns_interaction on usage_turns(interaction_id);
+    create index if not exists idx_session_configs_pane_time on usage_session_configs(tmux_session, tmux_pane, effective_at);
+    create index if not exists idx_interactions_config_time on usage_interactions(config_id, finished_at_ms);
+    create index if not exists idx_interactions_prompt on usage_interactions(tmux_session, tmux_pane, prompt_id);
+    create index if not exists idx_tasks_type_time on usage_tasks(task_type, created_at);
+    create index if not exists idx_experiment_variants_experiment on usage_experiment_variants(experiment_id, variant_index);
+    create index if not exists idx_experiment_runs_experiment on usage_experiment_runs(experiment_id, variant_index);
+    """)
+    con.execute("""update usage_turns set harness=case when harness='' then agent else harness end""")
+    con.execute("""update usage_turns set motor=case
+      when motor!='' then motor
+      when lower(model) like 'grok-%' then 'grok'
+      when lower(model) like 'gpt-%' or lower(model) like 'codex%' then 'codex'
+      when harness in ('codex','grok') then harness
+      else 'claude' end""")
+    con.execute("""update usage_turns set route_id=harness||':'||motor where route_id=''""")
+    _ensure_columns(con, "usage_tool_calls", {"skill_name": "text not null default ''"})
+    con.execute("create index if not exists idx_usage_tools_interaction on usage_tool_calls(interaction_id)")
+    con.execute("create index if not exists idx_usage_tools_time on usage_tool_calls(coalesce(finished_at_ms,started_at_ms))")
+    con.execute(f"pragma user_version={USAGE_SCHEMA_VERSION}")
 
 
 def git_root_for_path(path, run=None):

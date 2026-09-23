@@ -48,6 +48,67 @@ def test_populated_v1_migrates_without_row_loss(tmp_path):
     assert {"prompt_id", "agent_session_id"}.issubset(columns)
 
 
+def _legacy_db(path):
+    with sqlite3.connect(path) as con:
+        con.execute(LEGACY_TURNS)
+        con.execute(
+            "insert into usage_turns values(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            ("1", "claude", "claude", "s", "%1", "/x", "/x", "claude-opus-5", "high", 1, 2,
+             1, 2, 0, 0, 3, 0, "legacy", "exact", "{}"),
+        )
+        con.execute("pragma user_version=1")
+
+
+def _init_db_worker(args):
+    db, barrier_path = args
+    import time as _t
+    from pathlib import Path as _P
+    while not _P(barrier_path).exists():
+        _t.sleep(0.001)
+    try:
+        cc_usage.init_db(db)
+        return ""
+    except Exception as exc:  # noqa: BLE001 - el test reporta el error exacto
+        return f"{type(exc).__name__}: {exc}"
+
+
+def test_concurrent_hooks_migrate_legacy_db_without_duplicate_column(tmp_path):
+    """Varios hooks abren una DB vieja a la vez: la migracion no puede fallar
+    con 'duplicate column name' ni perder el evento de ningun proceso."""
+    import multiprocessing
+
+    for attempt in range(3):
+        db = tmp_path / f"usage{attempt}.sqlite"
+        _legacy_db(db)
+        barrier = tmp_path / f"go{attempt}"
+        ctx = multiprocessing.get_context("fork")
+        with ctx.Pool(8) as pool:
+            pending = pool.map_async(_init_db_worker, [(str(db), str(barrier))] * 8)
+            import time as _t
+            _t.sleep(0.3)
+            barrier.write_text("go")
+            errors = [e for e in pending.get(timeout=60) if e]
+        assert not errors, errors
+        with sqlite3.connect(db) as con:
+            assert con.execute("pragma user_version").fetchone()[0] == cc_usage.USAGE_SCHEMA_VERSION
+            assert con.execute("select route_id from usage_turns").fetchone()[0] == "claude:claude"
+
+
+def test_ensure_columns_tolerates_column_added_by_another_process(tmp_path):
+    db = tmp_path / "usage.sqlite"
+    con = sqlite3.connect(db)
+    con.execute("create table t(a text)")
+    real = cc_usage._table_columns
+    # Simula la carrera: otro proceso agrega la columna despues de leer el esquema.
+    cc_usage._table_columns = lambda c, table: {"a"}
+    try:
+        con.execute("alter table t add column b text")
+        cc_usage._ensure_columns(con, "t", {"b": "text"})
+    finally:
+        cc_usage._table_columns = real
+    assert {r[1] for r in con.execute("pragma table_info(t)")} == {"a", "b"}
+
+
 def test_lifecycle_waiting_stays_open_and_terminal_correlates_prompt(tmp_path):
     db = str(tmp_path / "usage.sqlite")
     cc_usage.record_session_config(db, {
