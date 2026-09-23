@@ -8,6 +8,17 @@ trap 'rm -rf "$TMP"' EXIT
 export HOME="$TMP/home"
 mkdir -p "$HOME/.claude/hooks"
 
+# tmux falso: los adaptadores nunca deben hablar con el servidor tmux real.
+unset TMUX TMUX_PANE
+mkdir -p "$TMP/stubs"
+cat > "$TMP/stubs/tmux" <<'FAKE'
+#!/usr/bin/env bash
+if [ "$1" = "display-message" ]; then printf '%s\n' "${FAKE_TMUX_SESSION:-}"; exit 0; fi
+exit 1
+FAKE
+chmod +x "$TMP/stubs/tmux"
+export PATH="$TMP/stubs:$PATH"
+
 cat > "$HOME/.claude/hooks/cc-notify.sh" <<'FAKE'
 #!/usr/bin/env bash
 python3 - "$@" <<'PY'
@@ -84,3 +95,33 @@ args = json.loads(open(sys.argv[1]).read().splitlines()[-1])
 assert args[:6] == ["--agent", "codex", "--event", "done", "--cwd", "/tmp/proj"], args
 assert args[args.index("--full") + 1] == "legacy done", args
 PY
+
+# Bajo tmux cc-notify.sh escribe state/<proj>--<sesion>--<pane>.json: el dedupe
+# de ambos adaptadores tiene que mirar ESA clave o Codex notifica dos veces.
+rm -f "$HOME/.claude/hooks/state/proj.json" "$HOME/notify.jsonl"
+now="$(date +%s)"
+printf '{"agent":"codex","status":"done","ts":%s}\n' "$now" \
+  > "$HOME/.claude/hooks/state/proj--mysess--7.json"
+FAKE_TMUX_SESSION=mysess TMUX_PANE=%7 "$ROOT/adapters/codex-notify.sh" "$legacy_payload"
+if [ -e "$HOME/notify.jsonl" ]; then
+  echo "legacy notify ignoro el estado pane-aware y duplico la notificacion" >&2
+  exit 1
+fi
+printf '%s' "$payload_stop" | FAKE_TMUX_SESSION=mysess TMUX_PANE=%7 "$ROOT/adapters/codex-hooks.sh"
+if [ -e "$HOME/notify.jsonl" ]; then
+  echo "codex-hooks Stop ignoro el estado pane-aware y duplico la notificacion" >&2
+  exit 1
+fi
+# Otro pane de la misma sesion no hereda el dedupe
+FAKE_TMUX_SESSION=mysess TMUX_PANE=%8 "$ROOT/adapters/codex-notify.sh" "$legacy_payload"
+[ -e "$HOME/notify.jsonl" ] || { echo "el dedupe de un pane silencio a otro pane" >&2; exit 1; }
+# Sin sesion tmux valida, cc-notify cae al nombre del proyecto: misma clave aqui
+rm -f "$HOME/notify.jsonl"
+printf '{"agent":"codex","status":"done","ts":%s}\n' "$now" \
+  > "$HOME/.claude/hooks/state/proj--proj--9.json"
+FAKE_TMUX_SESSION='' TMUX_PANE=%9 "$ROOT/adapters/codex-notify.sh" "$legacy_payload"
+if [ -e "$HOME/notify.jsonl" ]; then
+  echo "fallback de sesion distinto al de cc-notify.sh" >&2
+  exit 1
+fi
+echo "test_codex_adapters: OK"
