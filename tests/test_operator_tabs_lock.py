@@ -1,4 +1,5 @@
 """Renombrar y mandar al final desde el operador comparten candado con cc-app."""
+import importlib.util
 import json
 import threading
 from importlib.machinery import SourceFileLoader
@@ -13,7 +14,9 @@ ROOT = Path(__file__).resolve().parents[1]
 def dash(tmp_path, monkeypatch):
     monkeypatch.setenv("HOME", str(tmp_path))
     (tmp_path / ".claude" / "hooks").mkdir(parents=True)
-    mod = SourceFileLoader("ccdash_tabs_lock", str(ROOT / "bin" / "cc-dash")).load_module()
+    loader = SourceFileLoader("ccdash_tabs_lock", str(ROOT / "bin" / "cc-dash"))
+    mod = importlib.util.module_from_spec(importlib.util.spec_from_loader(loader.name, loader))
+    loader.exec_module(mod)
     monkeypatch.setattr(mod, "TABS_FILE", str(tmp_path / "app-tabs.json"))
     monkeypatch.setattr(mod, "HOOKS", str(tmp_path))
     return mod
