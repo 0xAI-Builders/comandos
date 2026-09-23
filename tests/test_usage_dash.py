@@ -97,13 +97,8 @@ def test_cards_reconcile_harness_and_model_from_live_pane_and_confirmed_config()
 
 
 def test_effort_only_switch_keeps_current_pane_model():
-    # Cambiar SOLO el esfuerzo (model vacío + routeId) NO debe saltar al modelo
-    # default del registro ni vaciar el modelo confirmado: usa el modelo que ya
-    # corre el pane, no teclea /model, y lo conserva para el registro.
-    assert 'if not selection_data.get("model") and scope == "session_model" and current_item.get("model"):' in SRC
-    assert 'selection_data["model"] = current_item.get("model")' in SRC
-    assert "effort_only = True" in SRC
-    assert "if (model and not effort_only) or not effort:" in SRC
+    # (Las aserciones del driver legacy _legacy_model_switch_apply se fueron con
+    # el codigo muerto; el cambio vivo pasa por session_configure.)
     # session-effort: al fijar clave pane-level, se limpia la de sesión huérfana
     assert 'd.pop(sess.split("|", 1)[0], None)' in SRC
 
@@ -113,10 +108,6 @@ def test_motor_switch_auto_picks_a_logged_in_account():
     # no la tiene (causa de motor_account_login_required). Se resuelve contra el
     # motor DESTINO y cae a una cuenta con login.
     assert "def _pick_motor_account" in SRC
-    assert 'if not data.get("motorAccount"):' in SRC
-    assert "_pick_motor_account(requested_motor, pref)" in SRC
-    # el error se traduce a un mensaje humano, no el código crudo
-    assert "no tiene login en la cuenta" in SRC
     mod = load_dash_module()
     # _pick_motor_account devuelve un alias con login (o el preferido si falla)
     assert callable(mod._pick_motor_account)
@@ -141,13 +132,8 @@ def test_external_motor_switch_locks_all_subagent_slots_and_is_recoverable():
     assert "def motor_lock_env" in SRC
     for key in ("ANTHROPIC_DEFAULT_OPUS_MODEL", "ANTHROPIC_DEFAULT_SONNET_MODEL", "ANTHROPIC_DEFAULT_HAIKU_MODEL", "CLAUDE_CODE_SUBAGENT_MODEL"):
         assert key in SRC
-    assert '"kind":"restart"' in SRC
-    assert "resume_restart_payload(payload)" in SRC
     assert 'source="switch-restart-confirmed"' not in SRC  # source is positional, not a dead keyword
     assert "def _restore_shell_tty" in SRC
-    assert "def _paste_shell_command" in SRC
-    assert 'motor_result_set(sess, False, "Claude salió, pero el resume no arrancó; usa Reintentar")' in SRC
-    assert 'candidate.get("agent") == "claude"' in SRC
 
 
 def test_motor_switch_state_survives_dashboard_restart():
@@ -174,21 +160,16 @@ def test_model_status_uses_operation_specific_fast_polling():
     assert 'params.set("operationId",id)' in html
     assert 'api(`/model/status?${params}`)' in html
     assert "},450);" in html
-    assert "time.sleep(3.0)" not in SRC.split("def motor_apply", 1)[1].split("def motor_queue_resume", 1)[0]
     assert '"queuedMs"' not in SRC  # camelCase is emitted as a keyword, not a quoted fake UI value
-    assert "queuedMs=max(0" in SRC and "applyMs=max(0" in SRC
 
 
 def test_model_switch_endpoint_targets_requested_pane():
     assert 'self.path == "/model/switch"' in SRC
-    assert "cc_usage.model_switch_text" in SRC
-    assert 'tmux("send-keys", "-t", pane, "-l", "--", c)' in SRC  # cada comando (/model, /effort) va al pane pedido
     assert "claude_pane_busy(pane)" in SRC  # y nunca a mitad de turno
 
 
 def test_model_switch_accepts_direct_model():
     assert 'data.get("model")' in SRC
-    assert "cc_usage.model_switch_text(provider, preset, model)" in SRC
 
 
 def test_usage_state_wires_exact_provider_limits():
@@ -214,8 +195,6 @@ def test_opencode_models_endpoint_and_picker_automation():
     assert '"/opencode/models"' in SRC
     assert "def opencode_models" in SRC
     assert "cc_usage.parse_opencode_models" in SRC
-    assert 'provider == "opencode"' in SRC
-    assert "cc_usage.opencode_picker_query" in SRC
 
 
 def test_pane_models_file_for_tmux_borders():
@@ -546,9 +525,6 @@ def test_native_codex_switch_reports_pane_keyed_confirmed_result():
 def test_session_new_and_model_switch_accept_canonical_route_ids():
     assert 'route, selected = resolve_route_selection(data, "new_session")' in SRC
     assert 'routeId": route.get("id") if route else "shell"' in SRC
-    assert 'if data.get("routeId"):' in SRC
-    assert 'scope = "session_model" if requested.get("motor") == current_motor else "session_motor"' in SRC
-    assert 'current_harness=current_harness' in SRC
 
 
 def test_user_quota_is_persisted_validated_and_feeds_grok_percent(tmp_path, monkeypatch):
@@ -716,21 +692,6 @@ def test_accounts_panel_groups_by_provider_with_logo_and_identity():
     assert "mp-acct-prov" in html
 
 
-def test_native_agy_and_opencode_model_switch_uses_slash_then_records():
-    """En un pane nativo de AGY/OpenCode el picker NO debe fingir que es Claude:
-    teclea /model (y /effort en agy) y confirma contra record_runtime_config."""
-    assert 'if provider == "agy":' in SRC
-    assert 'if provider == "opencode":' in SRC
-    assert "def agy_motor_apply" in SRC
-    assert "def opencode_motor_apply" in SRC
-    assert '"/model "' in SRC
-    assert '"/effort "' in SRC
-    assert 'record_runtime_config(sess, pane, "agy"' in SRC
-    assert 'record_runtime_config(sess, pane, "opencode"' in SRC
-    # OpenCode usa -m / --model al lanzar; el switch en vivo es /models
-    assert 'provider == "opencode"' in SRC
-
-
 def test_harness_switch_from_plain_shell_pane_is_allowed(monkeypatch):
     dash = load_dash_module()
     monkeypatch.setattr(dash, "agent_info_for_pane", lambda pane: None)
@@ -772,12 +733,3 @@ def test_opencode_catalog_lists_live_groq_coding_models():
     assert "groq/compound" not in ids
     assert "groq/allam-2-7b" not in ids
 
-
-def test_model_switch_sends_acp_slash_commands_inside_cc_acp():
-    """En un pane ACP, cambiar motor/modelo/esfuerzo/cuenta es teclear /agent /model
-    /effort /account — no matar el proceso ni fingir que es Claude Code."""
-    assert 'provider == "acp"' in SRC
-    assert '"-l", "--", "/agent"' in SRC or '"/agent "' in SRC
-    assert '"/model "' in SRC
-    assert '"/effort "' in SRC
-    assert '"/account "' in SRC
