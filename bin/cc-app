@@ -903,6 +903,8 @@ def exit_copy_mode(term):
         r = tmuxc("display-message", "-p", "-t", f"={sess}:", "#{pane_in_mode}")
         if r.stdout.strip() == "1":
             tmuxc("send-keys", "-t", f"={sess}:", "-X", "cancel")
+            return True
+    return False
 
 
 def open_url(url, parent=None, timestamp=0):
@@ -4919,35 +4921,41 @@ def show_help(*_):
     close_ref[0] = show_modal_panel(w, on_key=on_help_key)
 
 
-def _stop_agent_on_ctrl_c(term):
-    """Grok y Codex atrapan SIGINT y dejan hijos en otra sesión. ^C los mata."""
-    sess = term_session(term)
-    if not sess:
-        return False
-    info = tmuxc("display-message", "-p", "-t", "=" + sess + ":", "#{pane_pid}")
-    pid = (info.stdout or "").strip()
-    if info.returncode != 0 or not pid.isdigit():
-        return False
+def _agent_cleanup_worker(pane_pid):
     try:
-        records = agent_stop.interrupt_agent_tree(int(pid))
+        agent_stop.cleanup_after_exit(pane_pid)
     except Exception as ex:
-        print(f"ctrl+c agent stop: {ex}")
-        return False
-    if not records:
-        return False
-    pending = list(records)
+        print(f"ctrl+c agent cleanup: {ex}")
 
-    def finish():
-        try:
-            agent_stop.kill_survivors(pending)
-        except Exception as ex:
-            print(f"ctrl+c agent kill: {ex}")
-        return False
 
-    # Un instante para que el SIGINT cierre lo que sí lo respeta; lo que
-    # sigue vivo (el propio CLI, que atrapa SIGINT y SIGTERM) se remata.
-    GLib.timeout_add(400, finish)
+def _arm_agent_cleanup(term):
+    """Doble Ctrl+C: si el CLI en primer plano es grok/codex y sale, limpiar
+    sus hijos despegados. Todo lo de /proc va en un hilo."""
+    tty = getattr(term, "_tty", None)
+    if not tty:
+        return False
+    r = tmuxc("list-clients", "-F",
+              "#{client_tty}|#{client_key_table}|#{client_prefix}|#{pane_in_mode}|#{pane_pid}")
+    state = agent_stop.parse_client_state(r.stdout if r.returncode == 0 else "", tty)
+    if agent_stop.client_blocks_stop(state):
+        return False
+    threading.Thread(target=_agent_cleanup_worker, args=(state["pane_pid"],), daemon=True).start()
     return True
+
+
+def handle_ctrl_c(term, copy_context, now):
+    """Ctrl+C en una terminal. True = consumido (copia); False = el ^C llega al CLI.
+    Un solo Ctrl+C no hace nada extra; ver lib/agent_stop.py."""
+    action = agent_stop.ctrl_c_action(term.get_has_selection(), copy_context, now,
+                                      getattr(term, "_last_ctrl_c", None))
+    term._last_ctrl_c = now if action == "pass" and not copy_context else None
+    if action == "copy":
+        term.copy_clipboard_format(Vte.Format.TEXT)
+        term.unselect_all()
+        return True
+    if action == "arm":
+        _arm_agent_cleanup(term)
+    return False
 
 
 def on_key(w, e):
@@ -4958,26 +4966,25 @@ def on_key(w, e):
         show_help(); return True
     # Clipboard natural cuando el foco esta en una terminal:
     #   Ctrl+V pega; Ctrl+C copia si hay seleccion (si no, interrumpe como siempre).
-    #   En Grok o Codex, Ctrl+C para el proceso y los hijos que se abrieron aparte.
+    #   En Grok o Codex, un doble Ctrl+C que cierra el CLI limpia sus hijos despegados.
     fw = win.get_focus()
     # La seleccion con mouse deja el pane en copy-mode (highlight visible).
     # El PRIMER keypress real despues de soltar lo saca: el teclado nunca se
     # atora y la tecla llega a la shell como si nada.
     MODS = (Gdk.KEY_Control_L, Gdk.KEY_Control_R, Gdk.KEY_Shift_L, Gdk.KEY_Shift_R,
             Gdk.KEY_Alt_L, Gdk.KEY_Alt_R, Gdk.KEY_Super_L, Gdk.KEY_Super_R)
+    copy_context = False
     if isinstance(fw, Vte.Terminal) and getattr(fw, "_sel_flag", False) \
             and e.keyval not in MODS:
         fw._sel_flag = False
-        exit_copy_mode(fw)
+        copy_context = exit_copy_mode(fw)
     if ctrl and isinstance(fw, Vte.Terminal):
         if e.keyval in (Gdk.KEY_v, Gdk.KEY_V):
             exit_copy_mode(fw)     # si habia highlight de tmux, salir antes de pegar
             fw.paste_clipboard()
             return True
-        if e.keyval in (Gdk.KEY_c, Gdk.KEY_C) and not shift and _stop_agent_on_ctrl_c(fw):
-            # El ^C también llega a la terminal. Si había selección, parar
-            # gana: en estos CLI copiar no puede tragarse la interrupción.
-            return False
+        if e.keyval in (Gdk.KEY_c, Gdk.KEY_C) and not shift:
+            return handle_ctrl_c(fw, copy_context, time.monotonic())
         if e.keyval in (Gdk.KEY_c, Gdk.KEY_C) and fw.get_has_selection():
             fw.copy_clipboard_format(Vte.Format.TEXT)
             fw.unselect_all()
