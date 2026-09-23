@@ -94,6 +94,7 @@ URL = f"{BASE_URL}/?app=1&v={_DASH_V}"
 CC_REPO = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
 sys.path.insert(0, os.path.join(CC_REPO, "lib"))
 import tmux_snapshot as layout_snapshot
+import agent_stop
 from pane_snapshot import PaneInspector
 from session_tabs import ordered_tab_keys
 TERM_HTML = os.path.join(CC_REPO, "dash", "term.html")
@@ -4918,6 +4919,37 @@ def show_help(*_):
     close_ref[0] = show_modal_panel(w, on_key=on_help_key)
 
 
+def _stop_agent_on_ctrl_c(term):
+    """Grok y Codex atrapan SIGINT y dejan hijos en otra sesión. ^C los mata."""
+    sess = term_session(term)
+    if not sess:
+        return False
+    info = tmuxc("display-message", "-p", "-t", "=" + sess + ":", "#{pane_pid}")
+    pid = (info.stdout or "").strip()
+    if info.returncode != 0 or not pid.isdigit():
+        return False
+    try:
+        records = agent_stop.interrupt_agent_tree(int(pid))
+    except Exception as ex:
+        print(f"ctrl+c agent stop: {ex}")
+        return False
+    if not records:
+        return False
+    pending = list(records)
+
+    def finish():
+        try:
+            agent_stop.kill_survivors(pending)
+        except Exception as ex:
+            print(f"ctrl+c agent kill: {ex}")
+        return False
+
+    # Un instante para que el SIGINT cierre lo que sí lo respeta; lo que
+    # sigue vivo (el propio CLI, que atrapa SIGINT y SIGTERM) se remata.
+    GLib.timeout_add(400, finish)
+    return True
+
+
 def on_key(w, e):
     ctrl = e.state & Gdk.ModifierType.CONTROL_MASK
     shift = e.state & Gdk.ModifierType.SHIFT_MASK
@@ -4925,7 +4957,8 @@ def on_key(w, e):
     if e.keyval == Gdk.KEY_F1:
         show_help(); return True
     # Clipboard natural cuando el foco esta en una terminal:
-    #   Ctrl+V pega; Ctrl+C copia si hay seleccion (si no, interrumpe como siempre)
+    #   Ctrl+V pega; Ctrl+C copia si hay seleccion (si no, interrumpe como siempre).
+    #   En Grok o Codex, Ctrl+C para el proceso y los hijos que se abrieron aparte.
     fw = win.get_focus()
     # La seleccion con mouse deja el pane en copy-mode (highlight visible).
     # El PRIMER keypress real despues de soltar lo saca: el teclado nunca se
@@ -4941,6 +4974,10 @@ def on_key(w, e):
             exit_copy_mode(fw)     # si habia highlight de tmux, salir antes de pegar
             fw.paste_clipboard()
             return True
+        if e.keyval in (Gdk.KEY_c, Gdk.KEY_C) and not shift and _stop_agent_on_ctrl_c(fw):
+            # El ^C también llega a la terminal. Si había selección, parar
+            # gana: en estos CLI copiar no puede tragarse la interrupción.
+            return False
         if e.keyval in (Gdk.KEY_c, Gdk.KEY_C) and fw.get_has_selection():
             fw.copy_clipboard_format(Vte.Format.TEXT)
             fw.unselect_all()
