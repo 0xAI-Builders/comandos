@@ -127,3 +127,85 @@ console.log(JSON.stringify({duringSlow,requests,frames:frames.length}));
         {'session': 'fixture', 'delta': 24, 'col': 14, 'row': 8},
     ]
     assert result['frames'] == 0
+
+
+def test_keystrokes_typed_while_reconnecting_are_queued_bounded_and_flushed_on_open():
+    result = run_js(['createInputQueue', 'inputFrame', 'sendInput', 'flushPendingInput'], r'''
+const enc = new TextEncoder();
+const errors = [];
+function showErr(message) { errors.push(message); }
+let clock = 1000;
+const pendingInput = createInputQueue(8, 15000, () => clock);
+let ws = {readyState: 3, sent: [], send(frame) { this.sent.push(Buffer.from(frame).toString()); }};
+function socketIsOpen() { return ws.readyState === 1; }
+const queued = sendInput('ab', {queue: true});
+const mouse = sendInput('\x1b[<0;1;1M');           // clicks/pegados no se encolan
+const overflow = sendInput('0123456789', {queue: true});
+ws.readyState = 1;
+flushPendingInput(ws);
+const flushed = [...ws.sent];
+ws.readyState = 3;
+sendInput('old', {queue: true});
+clock += 20000;
+ws.readyState = 1;
+flushPendingInput(ws);
+console.log(JSON.stringify({queued, mouse, overflow, flushed, after: ws.sent.length, errors}));
+''')
+    assert result['queued'] is True
+    assert result['mouse'] is False and result['overflow'] is False
+    assert result['flushed'] == ['0ab']
+    assert result['after'] == 1                   # lo viejo se descarta, no se envía
+    assert len(result['errors']) >= 3
+
+
+def test_ctrl_stays_armed_when_the_key_could_not_be_sent():
+    result = run_js(['controlByte', 'setCtrlArmed', 'sendTerminalData'], r'''
+let ctrlArmed = false, pasting = false, accept = false;
+const sent = [];
+const document = {querySelector() { return null; }};
+function sendInput(data) { if (!accept) return false; sent.push(data); return true; }
+setCtrlArmed(true);
+sendTerminalData('c');
+const stillArmed = ctrlArmed;
+accept = true;
+sendTerminalData('c');
+console.log(JSON.stringify({stillArmed, armedAfter: ctrlArmed, sent}));
+''')
+    assert result == {'stillArmed': True, 'armedAfter': False, 'sent': ['\x03']}
+
+
+def test_composer_keeps_draft_until_terminal_output_acknowledges_it():
+    result = run_js(['createAckTracker', 'createMobileDraftController'], r'''
+const timers = [];
+const acks = createAckTracker(cb => { timers.push(cb); return timers.length; }, id => { timers[id - 1] = null; });
+let value = '', failures = 0;
+const socket = {};
+const draft = createMobileDraftController({
+  read: () => value, write: text => { value = text; }, changed: () => {},
+  send: () => acks.wait(socket, 4000),
+  failed: () => { failures += 1; },
+});
+(async () => {
+  value = 'ls -la';
+  draft.submit(true);
+  const pendingValue = value;
+  const doubleSubmit = draft.submit(true);
+  acks.output(socket);
+  await new Promise(r => setTimeout(r, 0));
+  const ackedValue = value;
+  value = 'rm -rf build';
+  draft.submit(true);
+  timers.filter(Boolean).forEach(cb => cb());      // sin salida: half-open
+  await new Promise(r => setTimeout(r, 0));
+  const timedOut = value;
+  draft.submit(true);
+  acks.closed(socket);
+  await new Promise(r => setTimeout(r, 0));
+  console.log(JSON.stringify({pendingValue, doubleSubmit, ackedValue, timedOut, closed: value, failures}));
+})();
+''')
+    assert result['pendingValue'] == 'ls -la'
+    assert result['doubleSubmit'] is False
+    assert result['ackedValue'] == ''
+    assert result['timedOut'] == 'rm -rf build' and result['closed'] == 'rm -rf build'
+    assert result['failures'] == 2

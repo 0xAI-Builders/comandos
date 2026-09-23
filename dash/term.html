@@ -581,6 +581,55 @@
   let connectionDown = false;
   const enc = new TextEncoder();
   const dec = new TextDecoder();
+  // Teclas escritas mientras el WS se reabre (rotar el movil cambia columnas
+  // y reconecta) se guardan y salen al abrir. Acotado en bytes y en edad.
+  const pendingInput = createInputQueue(4096, 15000, () => Date.now());
+  // El composer solo se vacia cuando la terminal responde tras el envio.
+  const inputAcks = createAckTracker(setTimeout, clearTimeout);
+
+  function createInputQueue(maxBytes, maxAgeMs, now) {
+    const sizer = new TextEncoder();
+    let items = [], bytes = 0, since = 0;
+    return {
+      push(data) {
+        const size = sizer.encode(data).length;
+        if (bytes + size > maxBytes) return false;
+        if (!items.length) since = now();
+        items.push(data);
+        bytes += size;
+        return true;
+      },
+      drain() {
+        const out = {items, stale: items.length > 0 && now() - since > maxAgeMs};
+        items = [];
+        bytes = 0;
+        return out;
+      },
+    };
+  }
+
+  function createAckTracker(setTimer, clearTimer) {
+    let waiters = [];
+    function settle(socket, ok) {
+      const done = waiters.filter(w => w.socket === socket);
+      waiters = waiters.filter(w => w.socket !== socket);
+      done.forEach(w => { clearTimer(w.timer); w.resolve(ok); });
+    }
+    return {
+      wait(socket, ms) {
+        return new Promise(resolve => {
+          const waiter = {socket, resolve, timer: null};
+          waiter.timer = setTimer(() => {
+            waiters = waiters.filter(w => w !== waiter);
+            resolve(false);
+          }, ms);
+          waiters.push(waiter);
+        });
+      },
+      output(socket) { settle(socket, true); },
+      closed(socket) { settle(socket, false); },
+    };
+  }
 
   function socketIsOpen() {
     return ws !== null && ws.readyState === 1;
@@ -603,20 +652,40 @@
     }
   }
 
-  const sendInput = (data) => {
-    if (!socketIsOpen()) {
-      showErr('Terminal desconectada. El borrador se conserva; vuelve a enviar al conectar.');
-      return false;
-    }
+  function inputFrame(data) {
     const buf = enc.encode(data);
     const out = new Uint8Array(buf.length + 1);
     out[0] = 0x30; // '0' = INPUT (client→server)
     out.set(buf, 1);
-    try { ws.send(out); return true; } catch (_) {
+    return out;
+  }
+
+  // options.queue: teclas; si el WS esta cerrado se encolan en vez de perderse.
+  function sendInput(data, options) {
+    const queue = !!(options && options.queue);
+    if (!socketIsOpen()) {
+      if (queue && pendingInput.push(data)) return true;
+      showErr(queue ? 'Terminal desconectada y demasiado texto en espera. No se ha enviado.'
+        : 'Terminal desconectada. El borrador se conserva; vuelve a enviar al conectar.');
+      return false;
+    }
+    try { ws.send(inputFrame(data)); return true; } catch (_) {
       showErr('No se pudo enviar. El borrador se conserva.');
       return false;
     }
-  };
+  }
+
+  function flushPendingInput(socket) {
+    const {items, stale} = pendingInput.drain();
+    if (!items.length) return;
+    if (stale) {
+      showErr('Se descartó lo tecleado durante la desconexión: era demasiado antiguo.');
+      return;
+    }
+    try { items.forEach(data => socket.send(inputFrame(data))); } catch (_) {
+      showErr('No se pudo enviar lo tecleado durante la reconexión.');
+    }
+  }
   let lastResize = '';
   function sendResize(size) {
     if (ws === null || ws.readyState !== 1) return;
@@ -681,12 +750,16 @@
         columns: term.cols,
         rows: term.rows,
       }));
+      flushPendingInput(socket);
       setTimeout(scheduleFit, 30);
     });
     socket.addEventListener('message', ev => {
-      if (ws === socket) handleSocketMessage(ev.data);
+      if (ws !== socket) return;
+      inputAcks.output(socket);
+      handleSocketMessage(ev.data);
     });
     socket.addEventListener('close', ev => {
+      inputAcks.closed(socket);
       if (ws !== socket) return;
       dbg(`WS close code=${ev.code} reason="${ev.reason||''}" clean=${ev.wasClean}`);
       socketCloseCleanup();
@@ -760,17 +833,17 @@
     if (ctrlArmed && !pasting) {
       const converted = controlByte(data);
       if (converted !== null) {
-        setCtrlArmed(false);
-        sendInput(converted);
+        // Ctrl solo se consume si la tecla salio o quedo en cola.
+        if (sendInput(converted, {queue: true}) !== false) setCtrlArmed(false);
         return;
       }
     }
-    sendInput(data);
+    sendInput(data, {queue: true});
   }
 
   function sendToolbarKey(name) {
     const data = TOOLBAR_KEYS[name];
-    if (data) sendInput(data);
+    if (data) sendInput(data, {queue: true});
     focusTerminal();
   }
 
@@ -1263,19 +1336,29 @@
   }
 
   function createMobileDraftController(options) {
-    let composing = false;
+    let composing = false, pending = false;
     const changed = () => options.changed(options.read());
     return {
       compositionStart() { composing = true; },
       compositionEnd() { composing = false; changed(); },
       input() { changed(); },
       submit(enter) {
-        if (composing) return false;
+        if (composing || pending) return false;
         const text = options.read();
         if (!text && !enter) return false;
-        if (!options.send(text, !!enter)) return false;
-        options.write('');
-        changed();
+        const sent = options.send(text, !!enter);
+        if (!sent) return false;
+        // Half-open: ws.send no falla aunque la red este muerta. El borrador
+        // se vacia solo con acuse (salida de la terminal); nunca se reenvia solo.
+        const settle = ok => {
+          pending = false;
+          if (!ok) { options.failed?.(); return; }
+          if (options.read() === text) { options.write(''); changed(); }
+        };
+        if (typeof sent.then === 'function') {
+          pending = true;
+          sent.then(settle, () => settle(false));
+        } else settle(true);
         return true;
       },
     };
@@ -1365,7 +1448,12 @@
         else sessionStorage.removeItem(draftStorageKey);
       } catch (_) {}
     },
-    send: (text, enter) => sendInput(terminalPastePayload(text, term.modes.bracketedPasteMode, enter)),
+    send: (text, enter) => {
+      const socket = ws;
+      if (!sendInput(terminalPastePayload(text, term.modes.bracketedPasteMode, enter))) return false;
+      return inputAcks.wait(socket, 4000);
+    },
+    failed: () => showErr('La terminal no confirmó el envío. El borrador se conserva; comprueba antes de reenviar.'),
   });
   draftElement.addEventListener('compositionstart', mobileDraft.compositionStart);
   draftElement.addEventListener('compositionend', mobileDraft.compositionEnd);
