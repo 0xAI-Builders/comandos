@@ -168,7 +168,7 @@ TABS_META_FILE = os.path.join(HOOKS, "app-tabs-meta.json")
 APP_TAB_MODELS_FILE = os.path.join(HOOKS, "app-tab-models.json")
 TAB_HISTORY_FILE = os.path.join(HOOKS, "app-tabs-history.json")
 SNIPPETS_FILE = os.path.join(HOOKS, "snippets.json")
-SNIPPET_ID_RE = re.compile(r"^[a-f0-9]{16}$")
+SNIPPET_ID_RE = re.compile(r"^[a-f0-9]{16}\Z")
 CONF_PATH = os.path.join(HOOKS, "cc-notify.conf")
 USAGE_DB = cc_usage.usage_db_path(HOOKS)
 USAGE_ENV_FILE = os.path.join(HOOKS, "usage.env")
@@ -5234,8 +5234,8 @@ def focus_session(sess, win="claude"):
 
 ALLOWED_KEYS = {"Enter", "Escape", "Up", "Down", "Tab", "y", "n",
                 "1", "2", "3", "4", "5", "6", "7", "8", "9"}
-SESSION_RE = re.compile(r"^[A-Za-z0-9._-]{1,80}$")
-PANE_RE = re.compile(r"^%\d{1,7}$")
+SESSION_RE = re.compile(r"^[A-Za-z0-9._-]{1,80}\Z")   # \Z: `$` acepta "\n" final
+PANE_RE = re.compile(r"^%\d{1,7}\Z")
 
 
 def operator_tabs_payload():
@@ -7254,7 +7254,7 @@ def write_conf_key(key, val):
         f.write("\n".join(lines) + "\n")
 
 
-SSH_HOST_RE = re.compile(r"^[A-Za-z0-9._-]{1,60}$")
+SSH_HOST_RE = re.compile(r"^[A-Za-z0-9._-]{1,60}\Z")
 
 
 def parse_ssh_config():
@@ -7288,9 +7288,9 @@ def parse_ssh_config():
 
 # Valores de una entrada ssh: SIN saltos de linea ni control chars (evita que
 # un hostname/identity inyecte directivas arbitrarias como ProxyCommand = RCE).
-SSH_HOSTNAME_RE = re.compile(r"^[A-Za-z0-9._:\-\[\]]{1,255}$")
-SSH_USER_RE = re.compile(r"^[A-Za-z0-9._@\-]{1,64}$")
-SSH_PATH_RE = re.compile(r"^[A-Za-z0-9._/~\-]{1,255}$")
+SSH_HOSTNAME_RE = re.compile(r"^[A-Za-z0-9._:\-\[\]]{1,255}\Z")
+SSH_USER_RE = re.compile(r"^[A-Za-z0-9._@\-]{1,64}\Z")
+SSH_PATH_RE = re.compile(r"^[A-Za-z0-9._/~\-]{1,255}\Z")
 
 
 def ssh_add(d):
@@ -8768,7 +8768,7 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             agent = str(data.get("agent", ""))[:16]
             ev = str(data.get("event", ""))
             cwd = str(data.get("cwd", ""))[:300]
-            if not re.match(r"^[a-z][a-z0-9_-]{1,15}$", agent):
+            if not re.fullmatch(r"[a-z][a-z0-9_-]{1,15}", agent):
                 return self._json(400, {"error": "agent invalido"})
             if ev not in ("working", "waiting", "done", "end"):
                 return self._json(400, {"error": "event debe ser working|waiting|done|end"})
@@ -9227,7 +9227,7 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             alias = str(data.get("account", "main"))[:40]
             if not cwd.startswith("/") or not os.path.isdir(cwd):
                 return self._json(400, {"error": "cwd invalido"})
-            if not re.match(r"^[A-Za-z0-9._-]+$", alias):
+            if not re.fullmatch(r"[A-Za-z0-9._-]+", alias):
                 return self._json(400, {"error": "alias invalido"})
             if alias != "main" and not os.path.isdir(
                     os.path.expanduser(f"~/.claude-accounts/{alias}")):
