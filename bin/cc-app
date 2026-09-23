@@ -1945,16 +1945,17 @@ def snapshot_layouts(wait=False):
         keys = ["local"] + [k for k in list(tabs) if k.startswith("term-")]
         previous = layout_snapshot.read_snapshot(LAYOUT_SNAPSHOT_FILE)["sessions"]
         inspector = PaneInspector()
-        data = dict(previous)
+        # Solo pestanas abiertas; si tmux no responde (apagado) se conserva lo previo.
+        r = tmuxc("list-sessions", "-F", "#{session_name}")
+        live = set(r.stdout.split()) if r.returncode == 0 else None
+        data = {}
         for key in keys:
             try:
                 captured = layout_snapshot.capture_session(tmuxc, key, inspector)
-                if any(p.get("agent") in {"claude", "codex", "grok"} and not p.get("resume_id")
-                       for w in captured["windows"] for p in w["panes"]):
-                    raise RuntimeError("agent identity not ready")
-                data[key] = captured
+                # Un agente aun sin id hereda el previo solo en su mismo pane.
+                data[key] = layout_snapshot.carry_resume_ids(captured, previous.get(key))
             except Exception as exc:
-                if key in previous:
+                if key in previous and (live is None or key in live):
                     data[key] = previous[key]
                 print(f"snapshot {key}: {exc}", file=sys.stderr)
         layout_snapshot.write_snapshot(LAYOUT_SNAPSHOT_FILE, data)

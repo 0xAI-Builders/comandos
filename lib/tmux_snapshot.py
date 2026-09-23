@@ -68,6 +68,27 @@ def capture_session(tmux, session, describe_pane):
     return {'windows': windows, 'captured_at': int(time.time())}
 
 
+_AGENTS = {'claude', 'codex', 'grok'}
+_PANE_PLACE = {'id', 'index', 'cwd', 'pid', 'command', 'active'}
+
+
+def carry_resume_ids(captured, previous):
+    """An agent without an id yet inherits the saved one only for the same pane process."""
+    old = {p.get('id'): p for w in (previous or {}).get('windows', []) for p in w.get('panes', [])}
+    for window in captured['windows']:
+        for pane in window['panes']:
+            if pane.get('agent') not in _AGENTS or pane.get('resume_id'):
+                continue
+            prev = old.get(pane.get('id'))
+            if not prev or not prev.get('resume_id'):
+                continue
+            if all(prev.get(k) == pane.get(k) for k in ('pid', 'command', 'agent')):
+                for key, value in prev.items():
+                    if key not in _PANE_PLACE:
+                        pane.setdefault(key, value)
+    return captured
+
+
 def _cwd(pane):
     path = pane.get('cwd') or str(Path.home())
     return path if os.path.isdir(path) else str(Path.home())

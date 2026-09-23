@@ -282,3 +282,27 @@ def test_restore_failure_preserves_a_workload_that_already_started(tmux, tmp_pat
     assert "exec sleep 901" in checked(
         tmux, "display-message", "-p", "-t", session + ":0.0", "#{pane_start_command}",
     )
+
+
+def _session(*panes):
+    return {'windows': [{'panes': [dict(p) for p in panes]}]}
+
+
+def test_agent_without_id_keeps_previous_id_only_for_the_same_pane_process():
+    previous = _session(
+        {'id': '%1', 'pid': 10, 'command': 'codex', 'agent': 'codex', 'resume_id': 'old-codex', 'flags': ['-m', 'x']},
+        {'id': '%2', 'pid': 20, 'command': 'grok', 'agent': 'grok', 'resume_id': 'old-grok'},
+        {'id': '%3', 'pid': 30, 'command': 'claude', 'agent': 'claude', 'resume_id': 'old-claude'},
+    )
+    captured = _session(
+        {'id': '%1', 'pid': 10, 'command': 'codex', 'agent': 'codex'},            # mismo proceso: hereda
+        {'id': '%2', 'pid': 99, 'command': 'grok', 'agent': 'grok'},              # pane respawneado: sin id
+        {'id': '%3', 'pid': 30, 'command': 'codex', 'agent': 'codex'},            # otro agente: sin id
+        {'id': '%4', 'pid': 40, 'command': 'claude', 'agent': 'claude', 'resume_id': 'fresh'},
+    )
+    panes = tmux_snapshot.carry_resume_ids(captured, previous)['windows'][0]['panes']
+    assert panes[0]['resume_id'] == 'old-codex' and panes[0]['flags'] == ['-m', 'x']
+    assert 'resume_id' not in panes[1]
+    assert 'resume_id' not in panes[2]
+    assert panes[3]['resume_id'] == 'fresh'
+    assert tmux_snapshot.carry_resume_ids(_session({'id': '%1', 'pid': 1, 'command': 'grok', 'agent': 'grok'}), None)
