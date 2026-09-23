@@ -206,8 +206,67 @@ def should_accept_event(
     return candidate_event == "UserPromptSubmit"
 
 
-def main() -> int:
-    """Read one JSON object from stdin and write normalized JSON when supported."""
+REJECTED_EXIT = 3
+
+
+def accept_and_record(path: str, candidate: Mapping[str, Any] | None) -> bool:
+    """Apply ``should_accept_event`` against the event persisted at ``path``.
+
+    The file holds only the correlation fields of the last accepted event
+    (never details). It is updated under an exclusive lock so two concurrent
+    hooks of the same pane cannot both win. I/O problems fail open.
+    """
+
+    try:
+        import fcntl
+        import os
+
+        fd = os.open(path, os.O_RDWR | os.O_CREAT, 0o600)
+    except (ImportError, OSError):
+        return True
+    with os.fdopen(fd, "r+", encoding="utf-8") as handle:
+        try:
+            fcntl.flock(handle, fcntl.LOCK_EX)
+            raw = handle.read()
+        except (OSError, UnicodeError):
+            return True
+        try:
+            current = json.loads(raw) if raw.strip() else None
+        except ValueError:
+            current = None
+        if not should_accept_event(current, candidate):
+            return False
+        record = {
+            key: candidate[key]
+            for key in ("event", "sessionId", "promptId")
+            if isinstance(candidate, Mapping) and candidate.get(key)
+        }
+        try:
+            handle.seek(0)
+            handle.truncate()
+            json.dump(record, handle, separators=(",", ":"))
+        except OSError:
+            pass
+    return True
+
+
+def main(argv: list[str] | None = None) -> int:
+    """Read one JSON object from stdin and write normalized JSON when supported.
+
+    ``--accept PATH``: stdin is an already normalized event; exit 0 when it
+    may replace the pane's current event (and record it), ``REJECTED_EXIT``
+    when it is a late/out-of-order event that must be dropped.
+    """
+
+    args = sys.argv[1:] if argv is None else argv
+    if len(args) == 2 and args[0] == "--accept":
+        try:
+            candidate = json.load(sys.stdin)
+        except (json.JSONDecodeError, OSError, UnicodeError, ValueError):
+            return 0
+        if not isinstance(candidate, Mapping):
+            return 0
+        return 0 if accept_and_record(args[1], candidate) else REJECTED_EXIT
 
     try:
         payload = json.load(sys.stdin)

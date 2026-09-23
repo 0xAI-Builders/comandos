@@ -24,6 +24,12 @@ STATE = os.path.expanduser("~/.claude/hooks/state")
 ALLOWED_KEYS = {"Enter", "Escape", "Up", "Down", "Tab", "y", "n",
                 "1", "2", "3", "4", "5", "6", "7", "8", "9"}
 SESSION_RE = re.compile(r"^[A-Za-z0-9._-]{1,80}$")
+PANE_RE = re.compile(r"^%\d{1,7}$")          # el mismo que cc-dash
+PANE_NUM_RE = re.compile(r"^\d{1,7}$")       # pane compacto en callback_data
+TOKEN_RE = re.compile(r"^[0-9a-f]{8,32}$")
+# Destinos que escribe cc-notify.sh: <token>.json (botones que no caben en los
+# 64 bytes de callback_data) y msg-<message_id>.json (para rutear los reply).
+TARGETS = os.path.expanduser("~/.claude/hooks/tg-targets")
 HOST_RE = re.compile(r"^[A-Za-z0-9._-]{1,60}$")
 PROJ_IN_MSG = re.compile(r"\[([^\]]{1,80})\]")
 
@@ -71,12 +77,53 @@ def live_sessions():
     return {l for l in r.stdout.splitlines() if l} if r.returncode == 0 else set()
 
 
-def send_text_to_session(sess, text, window=""):
+def load_target(name):
+    """{session, pane} guardado por cc-notify.sh, o None."""
+    try:
+        with open(os.path.join(TARGETS, f"{name}.json")) as f:
+            d = json.load(f)
+    except (OSError, ValueError):
+        return None
+    if not isinstance(d, dict):
+        return None
+    return {"session": str(d.get("session") or ""), "pane": str(d.get("pane") or "")}
+
+
+def pane_alive(pane):
+    """tmux 3.2a devuelve rc=0 con targets muertos: hay que comparar stdout."""
+    if not PANE_RE.fullmatch(pane or ""):
+        return False
+    r = tmux("display-message", "-p", "-t", pane, "#{pane_id}")
+    return r.returncode == 0 and r.stdout.strip() == pane
+
+
+def resolve_target(sess, pane=""):
+    """(target tmux, error). Con pane: SOLO ese pane (si murio, error; nunca
+    cae al pane activo de la sesion, que puede ser otro agente)."""
+    if pane:
+        if not PANE_RE.fullmatch(pane):
+            return None, "Pane invalido"
+        if not pane_alive(pane):
+            return None, f"El pane {pane} ya no existe"
+        return pane, None
+    if not SESSION_RE.match(sess or ""):
+        return None, "Nombre de sesion invalido"
+    if tmux("has-session", "-t", f"={sess}").returncode != 0:
+        return None, f"No hay sesion '{sess}'. Usa /ls para ver las vivas"
+    return f"={sess}:", None
+
+
+def send_text_to_session(sess, text, window="", pane_id=""):
     if not SESSION_RE.match(sess):
         return "Nombre de sesion invalido"
-    if tmux("has-session", "-t", f"={sess}").returncode != 0:
-        return f"No hay sesion '{sess}'. Usa /ls para ver las vivas"
-    pane = f"={sess}:{window}" if window else f"={sess}:"
+    if pane_id:
+        pane, err = resolve_target(sess, pane_id)
+        if err:
+            return err
+    else:
+        if tmux("has-session", "-t", f"={sess}").returncode != 0:
+            return f"No hay sesion '{sess}'. Usa /ls para ver las vivas"
+        pane = f"={sess}:{window}" if window else f"={sess}:"
     r = tmux("send-keys", "-t", pane, "-l", "--", text)
     if r.returncode != 0:
         return r.stderr.strip() or "tmux fallo"
@@ -84,13 +131,31 @@ def send_text_to_session(sess, text, window=""):
     return None
 
 
-def send_key_to_session(sess, key):
+def send_key_to_session(sess, key, pane=""):
     if key not in ALLOWED_KEYS or not SESSION_RE.match(sess):
         return "Tecla o sesion invalida"
-    if tmux("has-session", "-t", f"={sess}").returncode != 0:
-        return f"No hay sesion '{sess}'"
-    r = tmux("send-keys", "-t", f"={sess}:", key)
+    target, err = resolve_target(sess, pane)
+    if err:
+        return err
+    r = tmux("send-keys", "-t", target, key)
     return None if r.returncode == 0 else (r.stderr.strip() or "tmux fallo")
+
+
+def parse_key_callback(data):
+    """callback_data de los botones -> (sesion, pane, tecla) o None.
+      k|sesion|tecla        formato viejo (pane activo de la sesion)
+      k|sesion|tecla|N      pane %N exacto
+      t|token|tecla         destino guardado localmente (no cabia en 64 bytes)"""
+    parts = (data or "").split("|")
+    if len(parts) == 3 and parts[0] == "k":
+        return parts[1], "", parts[2]
+    if len(parts) == 4 and parts[0] == "k" and PANE_NUM_RE.fullmatch(parts[3]):
+        return parts[1], "%" + parts[3], parts[2]
+    if len(parts) == 3 and parts[0] == "t" and TOKEN_RE.fullmatch(parts[1]):
+        t = load_target(parts[1])
+        if t:
+            return t["session"], t["pane"], parts[2]
+    return None
 
 
 def capture(sess, window="", lines=30):
@@ -155,9 +220,13 @@ def handle_update(token, chat_id, allowed_user, allowed_id, u):
         cq = u["callback_query"]
         parts = (cq.get("data") or "").split("|")
         note = "?"
-        if len(parts) == 3 and parts[0] == "k":
-            err = send_key_to_session(parts[1], parts[2])
-            note = err or f"{parts[2]} enviado a {parts[1]}"
+        target = parse_key_callback(cq.get("data"))
+        if target:
+            sess, pane, key = target
+            err = send_key_to_session(sess, key, pane)
+            note = err or f"{key} enviado a {sess}{' ' + pane if pane else ''}"
+        elif parts[0] in ("k", "t"):
+            note = "Boton invalido o vencido"
         elif len(parts) == 2 and parts[0] == "c" and HOST_RE.match(parts[1]):
             try:
                 r = dash("/ssh-connect", {"host": parts[1]})
@@ -236,8 +305,15 @@ def handle_update(token, chat_id, allowed_user, allowed_id, u):
         out = capture(sess, window="shell", lines=30)
         return reply(out or "(sin salida)", pre=True)
 
-    # Reply a una notificacion -> rutear al proyecto citado
-    quoted = (msg.get("reply_to_message") or {}).get("text") or ""
+    # Reply a una notificacion -> a la sesion+pane REALES que la mandaron
+    # (cc-notify.sh guarda msg-<id>.json); si no hay registro, al [proyecto].
+    replied = msg.get("reply_to_message") or {}
+    mid = replied.get("message_id")
+    t = load_target(f"msg-{mid}") if isinstance(mid, int) else None
+    if t and SESSION_RE.match(t["session"]):
+        err = send_text_to_session(t["session"], text, pane_id=t["pane"])
+        return reply(err or f"Enviado a {t['session']}{' ' + t['pane'] if t['pane'] else ''}")
+    quoted = replied.get("text") or ""
     m = PROJ_IN_MSG.search(quoted)
     if m:
         sess = session_name(m.group(1))

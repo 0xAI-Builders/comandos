@@ -148,22 +148,28 @@ cc_register_claude_hooks() {
   fi
   local tmp
   tmp=$(mktemp)
-  if jq --arg cmd "$cmd" --arg tool_cmd "$tool_cmd" '
+  # "timeout" (segundos): un hook colgado nunca frena al agente. cc-notify.sh
+  # regresa en milisegundos (lo lento va desacoplado); la telemetria de tools
+  # corre en cada llamada. Solo toca entradas PROPIAS y respeta uno manual.
+  if jq --arg cmd "$cmd" --arg tool_cmd "$tool_cmd" \
+      --argjson notify_timeout 15 --argjson tool_timeout 5 '
       def norm: sub("^~"; env.HOME);
-      def ensure($ev; $command):
+      def ensure($ev; $command; $timeout):
         .hooks[$ev] = ((.hooks[$ev] // []) as $arr
           | if ($arr | map((.hooks // [])[] | (.command // "") | norm) | index($command | norm)) != null
-            then $arr
-            else $arr + [{"hooks": [{"type": "command", "command": $command}]}]
+            then $arr | map(.hooks = ((.hooks // []) | map(
+                   if ((.command // "") | norm) == ($command | norm) and (has("timeout") | not)
+                   then . + {"timeout": $timeout} else . end)))
+            else $arr + [{"hooks": [{"type": "command", "command": $command, "timeout": $timeout}]}]
             end);
       def remove($ev; $command):
         .hooks[$ev] = ((.hooks[$ev] // [])
           | map(.hooks = ((.hooks // []) | map(select(((.command // "") | norm) != ($command | norm)))))
           | map(select((.hooks | length) > 0)));
       .hooks //= {}
-      | ensure("UserPromptSubmit"; $cmd) | ensure("Stop"; $cmd)
-      | ensure("Notification"; $cmd)     | ensure("SessionEnd"; $cmd)
-      | ensure("PreToolUse"; $tool_cmd) | ensure("PostToolUse"; $tool_cmd)
+      | ensure("UserPromptSubmit"; $cmd; $notify_timeout) | ensure("Stop"; $cmd; $notify_timeout)
+      | ensure("Notification"; $cmd; $notify_timeout)     | ensure("SessionEnd"; $cmd; $notify_timeout)
+      | ensure("PreToolUse"; $tool_cmd; $tool_timeout) | ensure("PostToolUse"; $tool_cmd; $tool_timeout)
       | remove("PostToolUseFailure"; $tool_cmd)
     ' "$settings" > "$tmp" 2>/dev/null; then
     mv "$tmp" "$settings"

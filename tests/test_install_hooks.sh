@@ -123,4 +123,31 @@ register_line=$(grep -n '^cc_register_claude_hooks ' "$ROOT/install.sh" | cut -d
 [ -n "$deps_line" ] && [ -n "$register_line" ] && [ "$register_line" -gt "$deps_line" ] \
   || { echo "order: Claude hooks are registered before WSL dependencies"; exit 1; }
 
+# Case 8: los hooks propios llevan "timeout" (segundos) para que un hook
+# colgado nunca frene al agente; se agrega tambien a entradas propias viejas
+# sin timeout, respeta un timeout puesto a mano y no toca hooks ajenos.
+timeout_of() { # $1=settings $2=evento $3=comando
+  jq -r --arg cmd "$3" --arg ev "$2" \
+    '[.hooks[$ev][]? | (.hooks // [])[] | select(.command == $cmd) | .timeout] | .[0] // "none"' "$1"
+}
+S="$TMP/timeout-fresh.json"
+CC_CLAUDE_SETTINGS="$S" cc_register_claude_hooks "$CMD"
+for ev in $EVENTS; do
+  [ "$(timeout_of "$S" "$ev" "$CMD")" = "15" ] || { echo "timeout: $ev sin timeout 15"; exit 1; }
+done
+for ev in $TOOL_EVENTS; do
+  [ "$(timeout_of "$S" "$ev" "$TOOL_CMD")" = "5" ] || { echo "timeout: $ev tool sin timeout 5"; exit 1; }
+done
+S="$TMP/timeout-old.json"
+jq -n --arg cmd "$CMD" --arg tool "$TOOL_CMD" '{hooks:{
+  Stop:[{hooks:[{type:"command",command:$cmd}]}],
+  Notification:[{hooks:[{type:"command",command:$cmd,timeout:99}]}],
+  PreToolUse:[{hooks:[{type:"command",command:"/otro/hook.sh"}]},{hooks:[{type:"command",command:$tool}]}]}}' > "$S"
+CC_CLAUDE_SETTINGS="$S" cc_register_claude_hooks "$CMD"
+[ "$(timeout_of "$S" Stop "$CMD")" = "15" ] || { echo "timeout: entrada vieja sin actualizar"; exit 1; }
+[ "$(timeout_of "$S" Notification "$CMD")" = "99" ] || { echo "timeout: piso un timeout manual"; exit 1; }
+[ "$(timeout_of "$S" PreToolUse "$TOOL_CMD")" = "5" ] || { echo "timeout: tool vieja sin timeout"; exit 1; }
+[ "$(timeout_of "$S" PreToolUse /otro/hook.sh)" = "none" ] || { echo "timeout: toco un hook ajeno"; exit 1; }
+[ "$(count_cmd "$S" Stop)" = "1" ] || { echo "timeout: duplico la entrada vieja"; exit 1; }
+
 echo "test_install_hooks: OK"

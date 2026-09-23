@@ -152,6 +152,14 @@ turn_text() {
 proj=$(basename "${cwd:-$PWD}")
 proj_file=$(printf '%s' "$proj" | tr -c 'A-Za-z0-9._-' '-' | head -c 80)
 now=$(date +%s)
+# Milisegundos para el lifecycle (los tool-events ya van en ms: con segundos
+# un working/done podia ordenarse mal contra las tools del mismo segundo).
+# macOS: date sin %N imprime una N literal -> caemos a segundos*1000.
+now_ms=$(date +%s%N 2>/dev/null)
+case "$now_ms" in
+  ''|*[!0-9]*) now_ms=$(( now * 1000 )) ;;
+  *) now_ms=$(( now_ms / 1000000 )) ;;
+esac
 PANE_HINT=""
 SESSION_HINT=""
 if printf '%s' "${TMUX_PANE:-}" | grep -Eq '^%[0-9]+$' && command -v tmux >/dev/null 2>&1; then
@@ -167,30 +175,66 @@ if [ -n "$SESSION_HINT" ] && [ -n "$PANE_HINT" ]; then
   state_key="${proj_file}--${SESSION_HINT}--${PANE_HINT#%}"
 fi
 STATE_FILE="$STATE_DIR/$state_key.json"
+# Evento Grok vigente de este pane (solo IDs de correlacion). Un Stop tardio
+# del prompt A no puede pisar el "working" del prompt B.
+GROK_CURRENT="$STATE_DIR/.$state_key.grok"
+if [ "$AGENT" = "grok" ] && [ -n "${normalized:-}" ]; then
+  grok_rc=0
+  printf '%s' "$normalized" | python3 "$adapter" --accept "$GROK_CURRENT" >/dev/null 2>&1 || grok_rc=$?
+  [ "$grok_rc" = "3" ] && exit 0
+fi
 
 usage_lifecycle() { # $1=status
   local script="$HOME/.local/bin/cc_usage.py"
   [ -r "$script" ] || return 0
   jq -cn --arg status "$1" --arg harness "$AGENT" --arg session "$SESSION_HINT" \
     --arg pane "$PANE_HINT" --arg prompt "$PROMPT_ID" --arg agent_session "$AGENT_SESSION_ID" \
-    --arg source "hook:$AGENT" --argjson at "$((now * 1000))" \
+    --arg source "hook:$AGENT" --argjson at "$now_ms" \
     '{status:$status,harness:$harness,tmux_session:$session,tmux_pane:$pane,prompt_id:$prompt,agent_session_id:$agent_session,source:$source,confidence:"exact",at_ms:$at}' \
     | python3 "$script" lifecycle >/dev/null 2>&1 &
 }
 
+# Append al timeline + recorte bajo lock: sin el, un append que cae entre el
+# `tail` y el `mv` de otro hook se pierde (y un .tmp fijo lo pisan dos hooks).
+events_append_locked() { # $1 = linea JSON
+  printf '%s\n' "$1" >> "$EVENTS" 2>/dev/null
+  if [ "$(wc -l < "$EVENTS" 2>/dev/null || echo 0)" -gt 2000 ]; then
+    local etmp
+    etmp=$(mktemp "$EVENTS.XXXXXX" 2>/dev/null) || return 0
+    if tail -n 500 "$EVENTS" > "$etmp" 2>/dev/null; then
+      mv -f "$etmp" "$EVENTS"
+    else
+      rm -f "$etmp"
+    fi
+  fi
+}
+
+events_append() { # $1 = linea JSON
+  if command -v flock >/dev/null 2>&1; then
+    ( flock -w 3 9 || true; events_append_locked "$1" ) 9>>"$EVENTS.lock"
+  else   # macOS sin util-linux: best effort como antes
+    events_append_locked "$1"
+  fi
+}
+
 write_state() { # $1=status $2=detalle $3=opciones (labels \x1f). LAST=respuesta previa
-  jq -n --arg p "$proj" --arg s "$1" --arg d "$2" --arg c "$cwd" --arg o "${3:-}" \
+  # tmp en el MISMO dir + mv (rename atomico): los lectores (tablero, tmux,
+  # otros hooks) nunca ven el archivo truncado a medio escribir.
+  local stmp
+  stmp=$(mktemp "$STATE_DIR/.${state_key}.XXXXXX" 2>/dev/null) || return 0
+  if jq -n --arg p "$proj" --arg s "$1" --arg d "$2" --arg c "$cwd" --arg o "${3:-}" \
     --arg L "${LAST:-}" --arg a "$AGENT" --arg sess "$SESSION_HINT" --arg pane "$PANE_HINT" \
     --argjson t "$now" \
     '{project:$p,status:$s,detail:$d,cwd:$c,ts:$t,options:$o,last:$L,agent:$a,session:$sess}
-     + (if $pane != "" then {pane:$pane} else {} end)' > "$STATE_FILE" 2>/dev/null
-  # el timeline solo necesita una probadita, no la respuesta entera
-  jq -cn --arg p "$proj" --arg s "$1" --arg d "$(printf '%s' "$2" | head -c 280)" --argjson t "$now" \
-    '{project:$p,status:$s,detail:$d,ts:$t}' >> "$EVENTS" 2>/dev/null
-  # Mantener el timeline acotado
-  if [ "$(wc -l < "$EVENTS" 2>/dev/null || echo 0)" -gt 2000 ]; then
-    tail -n 500 "$EVENTS" > "$EVENTS.tmp" && mv "$EVENTS.tmp" "$EVENTS"
+     + (if $pane != "" then {pane:$pane} else {} end)' > "$stmp" 2>/dev/null; then
+    chmod 644 "$stmp" 2>/dev/null
+    mv -f "$stmp" "$STATE_FILE"
+  else
+    rm -f "$stmp"
   fi
+  # el timeline solo necesita una probadita, no la respuesta entera
+  events_append "$(jq -cn --arg p "$proj" --arg s "$1" --arg d "$(printf '%s' "$2" | head -c 280)" \
+    --argjson t "$now" '{project:$p,status:$s,detail:$d,ts:$t}' 2>/dev/null)"
   usage_capture "$1" >/dev/null 2>&1 || true
   usage_lifecycle "$1" >/dev/null 2>&1 || true
 }
@@ -253,7 +297,7 @@ case "$event" in
     ;;
   SessionEnd)
     usage_lifecycle "end" >/dev/null 2>&1 || true
-    rm -f "$STATE_FILE"
+    rm -f "$STATE_FILE" "$GROK_CURRENT"
     exit 0
     ;;
   GrokError)
@@ -342,13 +386,23 @@ kind="done"; [ "$event" = "Notification" ] && kind="waiting"
 if [ "$kind" = "done" ] && [ "$NOTIFY_ON_DONE" != "1" ]; then exit 0; fi
 if [ "$kind" = "waiting" ] && [ "$NOTIFY_ON_ATTENTION" != "1" ]; then exit 0; fi
 
-if [ "$DESKTOP_NOTIFY" = "1" ]; then
+# Llamada a la Bot API con el token FUERA del argv (ps y /proc/*/cmdline los
+# ve cualquiera): la URL viaja como config de curl por stdin (-K -).
+tg_api() { # $1 = metodo; resto = args extra de curl
+  local method="$1"; shift
+  printf 'url = "https://api.telegram.org/bot%s/%s"\n' "$TG_TOKEN" "$method" \
+    | curl -s -m 5 -K - "$@"
+}
+
+notify_desktop() {
+  [ "$DESKTOP_NOTIFY" = "1" ] || return 0
   # Notificacion nativa ACCIONABLE via cc-notifyd (botones 1/2/3/Enter/Esc y Abrir);
   # si el demonio no responde, cae a notify-send plano.
-  sess="$SESSION_HINT"
-  payload=$(jq -cn --arg t "$title" --arg b "$body" --arg s "$sess" --arg k "$kind" --arg p "$proj" \
-    --arg o "${options:-}" --arg f "${full:-}" \
-    '{title:$t,body:$b,session:$s,kind:$k,project:$p,options:$o,full:$f}')
+  local payload
+  payload=$(jq -cn --arg t "$title" --arg b "$body" --arg s "$SESSION_HINT" --arg k "$kind" --arg p "$proj" \
+    --arg o "${options:-}" --arg f "${full:-}" --arg pane "$PANE_HINT" \
+    '{title:$t,body:$b,session:$s,kind:$k,project:$p,options:$o,full:$f}
+     + (if $pane != "" then {pane:$pane} else {} end)')
   # Solo popups propios (cc-notifyd). Nada de notificaciones GNOME, nunca.
   if ! curl -s -m 2 -X POST http://127.0.0.1:4778/notify \
       -H 'Content-Type: application/json' -d "$payload" >/dev/null 2>&1; then
@@ -357,16 +411,17 @@ if [ "$DESKTOP_NOTIFY" = "1" ]; then
       osascript -e "display notification \"$(printf '%s' "$body" | head -c 200 | tr '"' "'")\" with title \"$(printf '%s' "$title" | tr '"' "'")\"" >/dev/null 2>&1
     fi
   fi
-fi
-# Voz local (piper con voz es_MX; fallback spd-say). Si habla, no suena el chime.
-speak=""
-[ "$kind" = "waiting" ] && [ "$SPEAK_ATTENTION" = "1" ] && speak="$proj $T_SPKWAIT"
-[ "$kind" = "done" ] && [ "$SPEAK_DONE" = "1" ] && speak="$proj $T_SPKDONE"
-if [ -n "$speak" ]; then
-  (
+}
+
+notify_voice() {
+  # Voz local (piper con voz es_MX; fallback spd-say). Si habla, no suena el chime.
+  local speak=""
+  [ "$kind" = "waiting" ] && [ "$SPEAK_ATTENTION" = "1" ] && speak="$proj $T_SPKWAIT"
+  [ "$kind" = "done" ] && [ "$SPEAK_DONE" = "1" ] && speak="$proj $T_SPKDONE"
+  if [ -n "$speak" ]; then
     PV="$HOME/.local/share/piper-voices/${PIPER_VOICE}.onnx"
     if command -v piper >/dev/null 2>&1 && [ -f "$PV" ]; then
-      w=$(mktemp --suffix=.wav)
+      w=$(mktemp --suffix=.wav 2>/dev/null || mktemp)
       printf '%s' "$speak" | piper -m "$PV" -f "$w" >/dev/null 2>&1 && play_snd "$w"
       rm -f "$w"
     elif command -v say >/dev/null 2>&1; then      # macOS: voz del sistema
@@ -374,44 +429,104 @@ if [ -n "$speak" ]; then
     elif command -v spd-say >/dev/null 2>&1; then
       spd-say -l "$SPD_LANG" -i $(( VOLUME * 2 - 100 )) "$speak" 2>/dev/null
     fi
-  ) &
-elif [ "$SOUND_ENABLED" = "1" ]; then
-  play_snd "$sound" &
-fi
+  elif [ "$SOUND_ENABLED" = "1" ]; then
+    play_snd "$sound"
+  fi
+}
+
+# Destinos de Telegram (los lee cc-telegram): <token>.json para botones cuyo
+# callback_data no cabe en los 64 bytes de la Bot API, y msg-<message_id>.json
+# para que un reply llegue a la sesion+pane REALES y no al "[proyecto]".
+TG_TARGETS="$HOOKS_DIR/tg-targets"
+
+tg_target_write() { # $1 = nombre del destino (sin .json)
+  mkdir -p "$TG_TARGETS" 2>/dev/null && chmod 700 "$TG_TARGETS" 2>/dev/null
+  local ttmp
+  ttmp=$(mktemp "$TG_TARGETS/.XXXXXX" 2>/dev/null) || return 1
+  if jq -cn --arg s "$SESSION_HINT" --arg p "$PANE_HINT" '{session:$s,pane:$p}' > "$ttmp" 2>/dev/null; then
+    mv -f "$ttmp" "$TG_TARGETS/$1.json"
+  else
+    rm -f "$ttmp"; return 1
+  fi
+}
+
+# callback_data de un boton: k|sesion|tecla|N (pane %N) si la sesion es valida
+# y cabe en 64 bytes; si no, t|token|tecla con el destino guardado localmente.
+tg_callback() { # $1 = tecla (usa TG_CB_TOKEN precalculado)
+  if [ -n "${TG_CB_TOKEN:-}" ]; then
+    printf 't|%s|%s' "$TG_CB_TOKEN" "$1"
+  elif [ -n "$PANE_HINT" ]; then
+    printf 'k|%s|%s|%s' "$SESSION_HINT" "$1" "${PANE_HINT#%}"
+  else
+    printf 'k|%s|%s' "$SESSION_HINT" "$1"
+  fi
+}
+
+tg_keyboard() {
+  TG_CB_TOKEN=""
+  local longest="k|$SESSION_HINT|Escape"
+  [ -n "$PANE_HINT" ] && longest="$longest|${PANE_HINT#%}"
+  if ! printf '%s' "$SESSION_HINT" | grep -Eq '^[A-Za-z0-9._-]{1,80}$' \
+      || [ "$(printf '%s' "$longest" | wc -c)" -gt 64 ]; then
+    TG_CB_TOKEN=$(od -An -N5 -tx1 /dev/urandom 2>/dev/null | tr -d ' \n')
+    tg_target_write "$TG_CB_TOKEN" || return 1
+  fi
+  jq -cn --arg a "$(tg_callback 1)" --arg b "$(tg_callback 2)" --arg c "$(tg_callback 3)" \
+    --arg e "$(tg_callback Enter)" --arg x "$(tg_callback Escape)" \
+    '{inline_keyboard:[[{text:"1",callback_data:$a},{text:"2",callback_data:$b},{text:"3",callback_data:$c}],
+                       [{text:"Enter",callback_data:$e},{text:"Esc",callback_data:$x}]]}'
+}
 
 # Telegram opcional. Con CC_TELEGRAM_BOT_TOKEN (bot dedicado) las notificaciones
 # llevan botones accionables y puedes responderles (reply) para operar la sesion
 # (requiere el servicio cc-telegram corriendo). Sin el, texto plano con el bot normal.
-tg="$HOOKS_DIR/telegram.env"
-if [ "$TELEGRAM_ENABLED" = "1" ] && [ -f "$tg" ]; then
+notify_telegram() {
+  local tg="$HOOKS_DIR/telegram.env"
+  [ "$TELEGRAM_ENABLED" = "1" ] && [ -f "$tg" ] || return 0
   # shellcheck disable=SC1090
   . "$tg"
   TG_TOKEN="${CC_TELEGRAM_BOT_TOKEN:-${TELEGRAM_BOT_TOKEN:-}}"
-  if [ -n "$TG_TOKEN" ] && [ -n "${TELEGRAM_CHAT_ID:-}" ]; then
-    sess="$SESSION_HINT"
-    tg_title=$(sed 's/[&<>]/ /g' <<<"$title")
-    # Texto COMPLETO con markdown renderizado (HTML de Telegram: negritas,
-    # codigo, tablas alineadas en <pre>). Fallback: preview plano.
-    if [ -n "${full:-}" ] && [ -x "$HOOKS_DIR/md2tg.py" ]; then
-      tg_body=$(printf '%s' "$full" | "$HOOKS_DIR/md2tg.py" 2>/dev/null)
-      [ -n "$tg_body" ] && body="$tg_body"
-    fi
-    if [ -n "${CC_TELEGRAM_BOT_TOKEN:-}" ] && [ "$event" = "Notification" ]; then
-      kb='{"inline_keyboard":[[{"text":"1","callback_data":"k|'"$sess"'|1"},{"text":"2","callback_data":"k|'"$sess"'|2"},{"text":"3","callback_data":"k|'"$sess"'|3"}],[{"text":"Enter","callback_data":"k|'"$sess"'|Enter"},{"text":"Esc","callback_data":"k|'"$sess"'|Escape"}]]}'
-      curl -s -m 5 "https://api.telegram.org/bot${TG_TOKEN}/sendMessage" \
-        --data-urlencode chat_id="${TELEGRAM_CHAT_ID}" \
-        --data-urlencode parse_mode="HTML" \
-        --data-urlencode text="<b>${tg_title}</b>
-$body" \
-        --data-urlencode reply_markup="$kb" >/dev/null 2>&1 &
-    else
-      curl -s -m 5 "https://api.telegram.org/bot${TG_TOKEN}/sendMessage" \
-        --data-urlencode chat_id="${TELEGRAM_CHAT_ID}" \
-        --data-urlencode parse_mode="HTML" \
-        --data-urlencode text="<b>${tg_title}</b>
-$body" >/dev/null 2>&1 &
-    fi
+  [ -n "$TG_TOKEN" ] && [ -n "${TELEGRAM_CHAT_ID:-}" ] || return 0
+  local tg_title tg_body kb resp mid
+  tg_title=$(sed 's/[&<>]/ /g' <<<"$title")
+  # Texto COMPLETO con markdown renderizado (HTML de Telegram: negritas,
+  # codigo, tablas alineadas en <pre>). Fallback: preview plano.
+  if [ -n "${full:-}" ] && [ -x "$HOOKS_DIR/md2tg.py" ]; then
+    tg_body=$(printf '%s' "$full" | "$HOOKS_DIR/md2tg.py" 2>/dev/null)
+    [ -n "$tg_body" ] && body="$tg_body"
   fi
-fi
+  kb=""
+  if [ -n "${CC_TELEGRAM_BOT_TOKEN:-}" ] && [ "$event" = "Notification" ]; then
+    kb=$(tg_keyboard 2>/dev/null) || kb=""
+  fi
+  if [ -n "$kb" ]; then
+    resp=$(tg_api sendMessage \
+      --data-urlencode chat_id="${TELEGRAM_CHAT_ID}" \
+      --data-urlencode parse_mode="HTML" \
+      --data-urlencode text="<b>${tg_title}</b>
+$body" \
+      --data-urlencode reply_markup="$kb" 2>/dev/null)
+  else
+    resp=$(tg_api sendMessage \
+      --data-urlencode chat_id="${TELEGRAM_CHAT_ID}" \
+      --data-urlencode parse_mode="HTML" \
+      --data-urlencode text="<b>${tg_title}</b>
+$body" 2>/dev/null)
+  fi
+  # Con el bot dedicado, recordar a que sesion+pane pertenece el mensaje: un
+  # reply desde Telegram tiene que llegar a ESE agente.
+  if [ -n "${CC_TELEGRAM_BOT_TOKEN:-}" ]; then
+    mid=$(jq -r '.result.message_id // empty' <<<"$resp" 2>/dev/null)
+    case "$mid" in ''|*[!0-9]*) ;; *) tg_target_write "msg-$mid" ;; esac
+    find "$TG_TARGETS" -maxdepth 1 -type f -mtime +7 -delete 2>/dev/null
+  fi
+  return 0
+}
+
+# Todo lo lento (POST a cc-notifyd, md2tg, Telegram, voz) corre DESACOPLADO:
+# stdio a /dev/null para que el harness no espere el EOF de nuestros hijos y
+# el hook regrese en milisegundos. La voz va aparte para no retrasar Telegram.
+( notify_voice ) </dev/null >/dev/null 2>&1 &
+( notify_desktop; notify_telegram ) </dev/null >/dev/null 2>&1 &
 
 exit 0
