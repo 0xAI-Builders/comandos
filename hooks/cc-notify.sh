@@ -178,19 +178,47 @@ usage_lifecycle() { # $1=status
     | python3 "$script" lifecycle >/dev/null 2>&1 &
 }
 
+# Append al timeline + recorte bajo lock: sin el, un append que cae entre el
+# `tail` y el `mv` de otro hook se pierde (y un .tmp fijo lo pisan dos hooks).
+events_append_locked() { # $1 = linea JSON
+  printf '%s\n' "$1" >> "$EVENTS" 2>/dev/null
+  if [ "$(wc -l < "$EVENTS" 2>/dev/null || echo 0)" -gt 2000 ]; then
+    local etmp
+    etmp=$(mktemp "$EVENTS.XXXXXX" 2>/dev/null) || return 0
+    if tail -n 500 "$EVENTS" > "$etmp" 2>/dev/null; then
+      mv -f "$etmp" "$EVENTS"
+    else
+      rm -f "$etmp"
+    fi
+  fi
+}
+
+events_append() { # $1 = linea JSON
+  if command -v flock >/dev/null 2>&1; then
+    ( flock -w 3 9 || true; events_append_locked "$1" ) 9>>"$EVENTS.lock"
+  else   # macOS sin util-linux: best effort como antes
+    events_append_locked "$1"
+  fi
+}
+
 write_state() { # $1=status $2=detalle $3=opciones (labels \x1f). LAST=respuesta previa
-  jq -n --arg p "$proj" --arg s "$1" --arg d "$2" --arg c "$cwd" --arg o "${3:-}" \
+  # tmp en el MISMO dir + mv (rename atomico): los lectores (tablero, tmux,
+  # otros hooks) nunca ven el archivo truncado a medio escribir.
+  local stmp
+  stmp=$(mktemp "$STATE_DIR/.${state_key}.XXXXXX" 2>/dev/null) || return 0
+  if jq -n --arg p "$proj" --arg s "$1" --arg d "$2" --arg c "$cwd" --arg o "${3:-}" \
     --arg L "${LAST:-}" --arg a "$AGENT" --arg sess "$SESSION_HINT" --arg pane "$PANE_HINT" \
     --argjson t "$now" \
     '{project:$p,status:$s,detail:$d,cwd:$c,ts:$t,options:$o,last:$L,agent:$a,session:$sess}
-     + (if $pane != "" then {pane:$pane} else {} end)' > "$STATE_FILE" 2>/dev/null
-  # el timeline solo necesita una probadita, no la respuesta entera
-  jq -cn --arg p "$proj" --arg s "$1" --arg d "$(printf '%s' "$2" | head -c 280)" --argjson t "$now" \
-    '{project:$p,status:$s,detail:$d,ts:$t}' >> "$EVENTS" 2>/dev/null
-  # Mantener el timeline acotado
-  if [ "$(wc -l < "$EVENTS" 2>/dev/null || echo 0)" -gt 2000 ]; then
-    tail -n 500 "$EVENTS" > "$EVENTS.tmp" && mv "$EVENTS.tmp" "$EVENTS"
+     + (if $pane != "" then {pane:$pane} else {} end)' > "$stmp" 2>/dev/null; then
+    chmod 644 "$stmp" 2>/dev/null
+    mv -f "$stmp" "$STATE_FILE"
+  else
+    rm -f "$stmp"
   fi
+  # el timeline solo necesita una probadita, no la respuesta entera
+  events_append "$(jq -cn --arg p "$proj" --arg s "$1" --arg d "$(printf '%s' "$2" | head -c 280)" \
+    --argjson t "$now" '{project:$p,status:$s,detail:$d,ts:$t}' 2>/dev/null)"
   usage_capture "$1" >/dev/null 2>&1 || true
   usage_lifecycle "$1" >/dev/null 2>&1 || true
 }
