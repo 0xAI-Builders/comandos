@@ -8133,17 +8133,57 @@ def _legacy_model_switch_apply(sess, pane, target, data):
                             "contextWarning": ctx_warning or None})
 
 
+def _guard_request(method):
+    """Envuelve do_GET/do_POST: ninguna excepcion de un endpoint deja la
+    conexion sin respuesta. TimeoutExpired (tmux/subprocess colgado) -> 504,
+    lo demas -> 500 JSON + traza en el journal."""
+    def guarded(self):
+        self._response_started = False
+        try:
+            return method(self)
+        except (BrokenPipeError, ConnectionResetError):
+            self.close_connection = True
+        except subprocess.TimeoutExpired as exc:
+            self._fail(504, "Tiempo de espera agotado", exc)
+        except Exception as exc:
+            self._fail(500, "Error interno del tablero", exc)
+    guarded.__name__ = method.__name__
+    guarded.__doc__ = method.__doc__
+    return guarded
+
+
 class Handler(http.server.SimpleHTTPRequestHandler):
     # HTTP/1.0 (el default) bufferiza el SSE en WebKitGTK: el chat se queda
     # en "trabajando" hasta que el modelo termina, o nunca pinta. 1.1 + close
     # deja pasar cada flush() al getReader()/XHR.onprogress.
     protocol_version = "HTTP/1.1"
+    # Timeout de socket: un cliente colgado (o un keep-alive ocioso) no
+    # retiene un hilo del servidor para siempre.
+    timeout = 30
 
     def __init__(self, *a, **kw):
         super().__init__(*a, directory=DASH, **kw)
 
     def log_message(self, *a):
         pass
+
+    def send_response(self, *a, **kw):
+        self._response_started = True
+        super().send_response(*a, **kw)
+
+    def _fail(self, code, message, exc):
+        import traceback
+        # Sin query string: puede traer ?token=.
+        path = (self.path or "").partition("?")[0]
+        sys.stderr.write(f"cc-dash {self.command} {path}: {exc!r}\n")
+        traceback.print_exc(file=sys.stderr)
+        if getattr(self, "_response_started", False):
+            self.close_connection = True   # respuesta a medias: cortar
+            return
+        try:
+            self._json(code, {"error": message}, close=True)
+        except OSError:
+            self.close_connection = True
 
     def _no_store(self):
         self.send_header("Cache-Control", "no-store")
@@ -8569,11 +8609,15 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             n = int(self.headers.get("Content-Length", 0))
             if n < 0:
                 raise ValueError("Content-Length negativo")
+            # El tope se aplica ANTES de leer: nunca se bufferiza un cuerpo enorme.
             if n > 20_000_000:
                 return self._json(413, {"error": "Payload demasiado grande"}, close=True)
             data = json.loads(self.rfile.read(n) or b"{}")
         except Exception:
             return self._json(400, {"error": "JSON invalido"}, close=True)
+        if not isinstance(data, dict):
+            # Los endpoints hacen data.get(...): una lista reventaba con AttributeError.
+            return self._json(400, {"error": "El cuerpo debe ser un objeto JSON"})
 
         if self.path == "/session/recover":
             code, body = session_recover(data)
@@ -9647,6 +9691,12 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             return self._json(200, {"ok": True})
 
         return self._json(404, {"error": "Ruta desconocida"})
+
+
+# Despacho protegido (ver _guard_request). Se aplica fuera de la clase para que
+# do_GET/do_POST sigan siendo los cuerpos reales de los endpoints.
+Handler.do_GET = _guard_request(Handler.do_GET)
+Handler.do_POST = _guard_request(Handler.do_POST)
 
 
 def main():

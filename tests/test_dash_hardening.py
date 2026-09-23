@@ -206,3 +206,70 @@ def test_ui_log_rotation_skips_corrupt_lines_instead_of_aborting(dash, tmp_path,
     lines = log.read_text().splitlines()
     assert len(lines) <= 20000
     assert json.loads(lines[-1])["k"] == "click"
+
+
+# ---- ruta de peticiones: nada inesperado tumba la conexion sin respuesta ----
+@pytest.fixture
+def server(dash):
+    import http.server
+    import threading
+    srv = http.server.ThreadingHTTPServer(("127.0.0.1", 0), dash.Handler)
+    thread = threading.Thread(target=srv.serve_forever, daemon=True)
+    thread.start()
+    yield srv
+    srv.shutdown()
+    srv.server_close()
+    thread.join(timeout=2)
+
+
+def _request(srv, method, path, body=None):
+    import http.client
+    import json
+    client = http.client.HTTPConnection(*srv.server_address, timeout=5)
+    try:
+        client.request(method, path, body=body,
+                       headers={"Content-Type": "application/json"})
+        response = client.getresponse()
+        raw = response.read()
+        return response.status, (json.loads(raw) if raw else None)
+    finally:
+        client.close()
+
+
+def test_tmux_timeout_on_request_path_answers_504(dash, server, monkeypatch):
+    def hang(*_a, **_k):
+        raise dash.subprocess.TimeoutExpired("tmux", 5)
+    monkeypatch.setattr(dash, "read_states_cached", hang)
+    status, body = _request(server, "GET", "/state")
+    assert status == 504 and body["error"]
+
+
+def test_unexpected_exception_answers_500_and_server_keeps_serving(
+        dash, server, monkeypatch, capsys):
+    calls = []
+
+    def boom(*_a, **_k):
+        calls.append(1)
+        if len(calls) == 1:
+            raise KeyError("x")
+        return {"ok": True}
+    monkeypatch.setattr(dash, "read_states_cached", boom)
+    assert _request(server, "GET", "/state?token=secreto")[0] == 500
+    assert _request(server, "GET", "/state") == (200, {"ok": True})
+    assert "secreto" not in capsys.readouterr().err
+
+
+@pytest.mark.parametrize("body", ["[]", "[1, 2]", '"texto"', "42", "null"])
+def test_post_with_non_object_json_is_400(dash, server, body):
+    status, payload = _request(server, "POST", "/send", body=body)
+    assert status == 400 and payload["error"]
+
+
+def test_post_exception_answers_500(dash, server, monkeypatch):
+    monkeypatch.setattr(dash, "ui_log_append", lambda *_a: {}["nope"])
+    status, payload = _request(server, "POST", "/ui-log", body='{"events": []}')
+    assert status == 500 and payload["error"]
+
+
+def test_handler_has_socket_timeout(dash):
+    assert dash.Handler.timeout and dash.Handler.timeout <= 60
