@@ -192,3 +192,31 @@ def test_grok_late_stop_does_not_overwrite_newer_prompt(env):
     env.run(grok("SessionEnd", "b"))
     assert not state.exists()
     assert not list(env.state.iterdir()), "SessionEnd debe limpiar tambien el evento vigente"
+
+
+# ---- Bug 9: at_ms del lifecycle con resolucion de milisegundos -------------
+
+def lifecycle_rows(env, wait_for, timeout=10):
+    deadline = time.monotonic() + timeout
+    while True:
+        rows = []
+        if env.usage_log.exists():
+            rows = [json.loads(l.split(" ", 1)[1]) for l in env.usage_log.read_text().splitlines()
+                    if l.startswith("lifecycle ")]
+        if len(rows) >= wait_for or time.monotonic() > deadline:
+            return rows
+        time.sleep(0.05)
+
+
+def test_lifecycle_at_ms_has_millisecond_resolution(env):
+    env.usage_script()
+    before = int(time.time() * 1000)
+    for _ in range(3):
+        env.run({"hook_event_name": "UserPromptSubmit", "cwd": "/tmp/proj"},
+                pane="%3", session="sess")
+    rows = lifecycle_rows(env, 3)
+    assert len(rows) == 3
+    stamps = [r["at_ms"] for r in rows]
+    assert all(before - 1000 <= s <= int(time.time() * 1000) + 1000 for s in stamps), stamps
+    assert any(s % 1000 for s in stamps), f"at_ms sigue truncado a segundos: {stamps}"
+    assert rows[0]["tmux_pane"] == "%3" and rows[0]["tmux_session"] == "sess"

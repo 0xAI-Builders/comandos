@@ -152,6 +152,14 @@ turn_text() {
 proj=$(basename "${cwd:-$PWD}")
 proj_file=$(printf '%s' "$proj" | tr -c 'A-Za-z0-9._-' '-' | head -c 80)
 now=$(date +%s)
+# Milisegundos para el lifecycle (los tool-events ya van en ms: con segundos
+# un working/done podia ordenarse mal contra las tools del mismo segundo).
+# macOS: date sin %N imprime una N literal -> caemos a segundos*1000.
+now_ms=$(date +%s%N 2>/dev/null)
+case "$now_ms" in
+  ''|*[!0-9]*) now_ms=$(( now * 1000 )) ;;
+  *) now_ms=$(( now_ms / 1000000 )) ;;
+esac
 PANE_HINT=""
 SESSION_HINT=""
 if printf '%s' "${TMUX_PANE:-}" | grep -Eq '^%[0-9]+$' && command -v tmux >/dev/null 2>&1; then
@@ -181,7 +189,7 @@ usage_lifecycle() { # $1=status
   [ -r "$script" ] || return 0
   jq -cn --arg status "$1" --arg harness "$AGENT" --arg session "$SESSION_HINT" \
     --arg pane "$PANE_HINT" --arg prompt "$PROMPT_ID" --arg agent_session "$AGENT_SESSION_ID" \
-    --arg source "hook:$AGENT" --argjson at "$((now * 1000))" \
+    --arg source "hook:$AGENT" --argjson at "$now_ms" \
     '{status:$status,harness:$harness,tmux_session:$session,tmux_pane:$pane,prompt_id:$prompt,agent_session_id:$agent_session,source:$source,confidence:"exact",at_ms:$at}' \
     | python3 "$script" lifecycle >/dev/null 2>&1 &
 }
