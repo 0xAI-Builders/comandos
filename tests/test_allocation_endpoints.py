@@ -91,11 +91,30 @@ def test_status_y_retry_de_un_lote_desconocido(tmp_path, monkeypatch):
     assert dash.allocation_revert({"batchId": "noexiste"})[0] == 404
 
 
+def _aplicado(dash, batch_id, cambios=None):
+    """Estado vivo tras aplicar: cada pane 'lista' muestra su `to` (y cambios manuales encima)."""
+    b = dash._batches().get(batch_id)
+    to = {i["key"]: i["to"] for i in b["items"] if i["state"] == "lista"}
+    out = []
+    for s in sessions():
+        k = f"{s['session']}|{s['pane']}"
+        if k in to:
+            t = to[k]
+            s = dict(s, agent=t.get("harness") or t["motor"], motor=t["motor"], model=t["model"],
+                     effort=t["effort"], harnessAccount=t["harnessAccount"], account=t["harnessAccount"],
+                     motorAccount=t["motorAccount"], routeId=t["routeId"])
+        s.update((cambios or {}).get(k, {}))
+        out.append(dict(s, alive=True))
+    return out
+
+
 def test_revert_deshace_solo_lo_confirmado(tmp_path, monkeypatch):
     dash = load_dash_module(); llamadas = _wire(dash, monkeypatch, tmp_path)
     pid = dash.allocation_propose({})[1]["plan"]["planId"]
     res = dash.allocation_apply({"planId": pid}, wait=True)[1]
     ida = len(llamadas)
+    vivas = _aplicado(dash, res["batchId"])
+    monkeypatch.setattr(dash, "read_states_cached", lambda *a, **k: vivas)
     code, rev = dash.allocation_revert({"batchId": res["batchId"]}, wait=True)
     assert code == 202
     vuelta = llamadas[ida:]
@@ -104,6 +123,68 @@ def test_revert_deshace_solo_lo_confirmado(tmp_path, monkeypatch):
     for c in vuelta:
         antes = origen[f"{c['session']}|{c['pane']}"]
         assert (c["model"], c["effort"], c["harnessAccount"]) != (antes["model"], antes["effort"], antes["harnessAccount"])
+
+
+def test_revert_se_niega_mientras_el_lote_sigue_aplicando(tmp_path, monkeypatch):
+    dash = load_dash_module(); llamadas = _wire(dash, monkeypatch, tmp_path)
+    pid = dash.allocation_propose({})[1]["plan"]["planId"]
+    res = dash.allocation_apply({"planId": pid}, wait=True)[1]
+    b = dash._batches().get(res["batchId"])
+    listas = [i["key"] for i in b["items"] if i["state"] == "lista"]
+    assert len(listas) >= 2
+    dash._batches().update_item(res["batchId"], listas[0], state="aplicando")
+    ida = len(llamadas)
+    code, body = dash.allocation_revert({"batchId": res["batchId"]}, wait=True)
+    assert code == 409 and "aplicando" in body["error"]
+    assert len(llamadas) == ida
+
+
+def test_revert_no_pisa_un_cambio_manual_posterior(tmp_path, monkeypatch):
+    dash = load_dash_module(); llamadas = _wire(dash, monkeypatch, tmp_path)
+    pid = dash.allocation_propose({})[1]["plan"]["planId"]
+    res = dash.allocation_apply({"planId": pid}, wait=True)[1]
+    b = dash._batches().get(res["batchId"])
+    listas = sorted(i["key"] for i in b["items"] if i["state"] == "lista")
+    tocada = listas[0]
+    vivas = _aplicado(dash, res["batchId"], {tocada: {"model": "modelo-elegido-a-mano"}})
+    monkeypatch.setattr(dash, "read_states_cached", lambda *a, **k: vivas)
+    ida = len(llamadas)
+    code, rev = dash.allocation_revert({"batchId": res["batchId"]}, wait=True)
+    assert code == 202
+    revertidas = {f"{c['session']}|{c['pane']}" for c in llamadas[ida:]}
+    assert tocada not in revertidas and revertidas == set(listas[1:])
+    assert tocada in {s["key"] for s in rev["skipped"]}
+
+
+def test_revert_funciona_tras_reiniciar_sin_el_plan_en_memoria(tmp_path, monkeypatch):
+    dash = load_dash_module(); llamadas = _wire(dash, monkeypatch, tmp_path)
+    pid = dash.allocation_propose({})[1]["plan"]["planId"]
+    res = dash.allocation_apply({"planId": pid}, wait=True)[1]
+    vivas = _aplicado(dash, res["batchId"])
+    monkeypatch.setattr(dash, "read_states_cached", lambda *a, **k: vivas)
+    dash.ALLOCATION_PLANS.clear()     # reinicio: la RAM se pierde, el lote persistido no
+    ida = len(llamadas)
+    code, rev = dash.allocation_revert({"batchId": res["batchId"]}, wait=True)
+    assert code == 202 and len(llamadas) > ida
+
+
+def test_apply_dos_veces_el_mismo_plan_no_lanza_dos_lotes(tmp_path, monkeypatch):
+    dash = load_dash_module(); llamadas = _wire(dash, monkeypatch, tmp_path)
+    pid = dash.allocation_propose({})[1]["plan"]["planId"]
+    monkeypatch.setattr(dash, "_run_batch_bg", lambda bid, wait=False: None)   # lote "en curso"
+    code1, uno = dash.allocation_apply({"planId": pid})
+    code2, otro = dash.allocation_apply({"planId": pid})
+    assert code1 == 202 and code2 == 202 and uno["batchId"] == otro["batchId"]
+    assert len(dash._batches().list()) == 1
+
+
+def test_apply_de_un_plan_ya_aplicado_se_rechaza(tmp_path, monkeypatch):
+    dash = load_dash_module(); llamadas = _wire(dash, monkeypatch, tmp_path)
+    pid = dash.allocation_propose({})[1]["plan"]["planId"]
+    assert dash.allocation_apply({"planId": pid}, wait=True)[0] == 202
+    ida = len(llamadas)
+    code, body = dash.allocation_apply({"planId": pid}, wait=True)
+    assert code == 409 and len(llamadas) == ida and len(dash._batches().list()) == 1
 
 
 def test_limits_salen_enriquecidos(tmp_path, monkeypatch):
