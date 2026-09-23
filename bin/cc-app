@@ -342,11 +342,18 @@ def snip_load():
 
 
 def snip_save(items):
-    tmp = SNIPPETS_FILE + ".tmp"
+    # Mismo candado y escritura atómica que cc-dash: los dos escriben este archivo.
     os.makedirs(os.path.dirname(SNIPPETS_FILE), exist_ok=True)
-    with open(tmp, "w") as f:
-        json.dump(items, f)
-    os.replace(tmp, SNIPPETS_FILE)
+    with _file_lock(SNIPPETS_FILE):
+        fd, tmp = tempfile.mkstemp(prefix=".snippets.json.", suffix=".tmp",
+                                   dir=os.path.dirname(SNIPPETS_FILE))
+        try:
+            with os.fdopen(fd, "w") as f:
+                json.dump(items, f)
+            os.replace(tmp, SNIPPETS_FILE)
+        finally:
+            if os.path.exists(tmp):
+                os.unlink(tmp)
 
 
 SNIP_LOG_FILE = "/tmp/cc-app-snip.log"
@@ -400,19 +407,21 @@ def snip_paste(sess, text):
                        capture_output=True, text=True, timeout=5)
     if r.returncode != 0:
         return f"No hay sesion tmux '{sess}'"
-    r = subprocess.run(["tmux", "load-buffer", "-b", "comandos-snip", "-"],
+    # Buffer propio por pegado: con uno fijo, dos pegados a la vez se cruzan de pane.
+    buf = "comandos-snip-" + secrets.token_hex(8)
+    r = subprocess.run(["tmux", "load-buffer", "-b", buf, "-"],
                        input=text, capture_output=True, text=True, timeout=5)
     if r.returncode != 0:
-        subprocess.run(["tmux", "delete-buffer", "-b", "comandos-snip"],
+        subprocess.run(["tmux", "delete-buffer", "-b", buf],
                        capture_output=True, text=True, timeout=5)
         return r.stderr.strip() or "load-buffer fallo"
     err = None
-    r = subprocess.run(["tmux", "paste-buffer", "-p", "-b", "comandos-snip", "-t", pane_target],
+    r = subprocess.run(["tmux", "paste-buffer", "-p", "-d", "-b", buf, "-t", pane_target],
                        capture_output=True, text=True, timeout=5)
     if r.returncode != 0:
         err = r.stderr.strip() or "paste-buffer fallo"
-    subprocess.run(["tmux", "delete-buffer", "-b", "comandos-snip"],
-                   capture_output=True, text=True, timeout=5)
+        subprocess.run(["tmux", "delete-buffer", "-b", buf],
+                       capture_output=True, text=True, timeout=5)
     return err
 
 

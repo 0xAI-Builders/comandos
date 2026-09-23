@@ -45,3 +45,20 @@ def test_paste_uses_bracketed_paste_and_no_enter():
     assert "-p" in body, "must use bracketed paste (-p)"
     assert "Enter" not in body, "snip_paste must NOT send Enter"
     assert "send-keys" not in body, "snip_paste must NOT use send-keys"
+
+
+def test_paste_uses_unique_buffer_per_call():
+    # Un buffer fijo compartido deja que dos pegados simultáneos se crucen de pane.
+    m = re.search(r"def\s+snip_paste\s*\([\s\S]{0,2500}?\n(?=def\s|class\s|\Z)", SRC)
+    body = m.group(0)
+    assert '"comandos-snip"' not in body
+    assert "secrets.token_hex" in body or "uuid" in body
+    assert '"-d"' in body
+
+
+def test_snip_save_is_atomic_under_shared_lock():
+    m = re.search(r"def\s+snip_save\s*\([\s\S]{0,1500}?\n(?=def\s|class\s|\Z)|def\s+snip_save\s*\([\s\S]*?\n\n\n", SRC)
+    body = m.group(0)
+    assert 'SNIPPETS_FILE + ".tmp"' not in body
+    assert "_file_lock(SNIPPETS_FILE)" in body
+    assert "mkstemp" in body
