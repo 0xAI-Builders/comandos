@@ -828,7 +828,7 @@ def test_tab_metadata_round_trip_preserves_exact_restore_identity():
 
 def test_tab_metadata_concurrent_updates_do_not_drop_entries(tmp_path):
     ns = load_functions(
-        "load_json_file", "write_json_file", "read_tab_metadata",
+        "load_json_file", "write_file_atomic", "write_json_file", "read_tab_metadata",
         "write_tab_metadata",
         extra={
             "json": json,

@@ -25,6 +25,7 @@ import json, os, glob, re, shlex, shutil, sys, subprocess, threading, time, webb
 import urllib.parse, urllib.request
 import http.server, socketserver
 import tempfile
+import contextlib, fcntl
 import cc_usage
 
 
@@ -1208,22 +1209,17 @@ PROXY_ENV_SINCE = os.path.expanduser("~/.claude/hooks/proxy-env-since.json")
 def _proxy_env_mark(cfg_dir, on):
     """Registra DESDE cuANDO el settings.json de ese config-dir tiene el env del
     proxy: los claude arrancados antes no lo traen (el env se lee al arrancar)."""
+    key = os.path.realpath(os.path.expanduser(cfg_dir))
     try:
-        try:
-            with open(PROXY_ENV_SINCE) as f:
-                d = json.load(f)
-        except Exception:
-            d = {}
-        key = os.path.realpath(os.path.expanduser(cfg_dir))
-        if on:
-            d.setdefault(key, time.time())
-        else:
-            d.pop(key, None)
-        os.makedirs(os.path.dirname(PROXY_ENV_SINCE), exist_ok=True)
-        tmp = PROXY_ENV_SINCE + ".tmp"
-        with open(tmp, "w") as f:
-            json.dump(d, f)
-        os.replace(tmp, PROXY_ENV_SINCE)
+        with file_lock(PROXY_ENV_SINCE):
+            d = load_json_file(PROXY_ENV_SINCE, {})
+            if not isinstance(d, dict):
+                d = {}
+            if on:
+                d.setdefault(key, time.time())
+            else:
+                d.pop(key, None)
+            write_json_file(PROXY_ENV_SINCE, d)
     except Exception:
         pass
 
@@ -1255,25 +1251,23 @@ def _proxied(pid, env):
     return started >= float(since)
 
 
+def _proxy_env_mutator(on, port):
+    def mutate(st):
+        env = st.get("env") if isinstance(st.get("env"), dict) else {}
+        if on:
+            env["ANTHROPIC_BASE_URL"] = f"http://127.0.0.1:{port}"
+        else:
+            env.pop("ANTHROPIC_BASE_URL", None)
+        st["env"] = env
+        if not env:
+            st.pop("env", None)
+    return mutate
+
+
 def _proxy_env_write(path, on, port):
+    """Cuentas secundarias: si su settings.json no parsea se deja intacto."""
     try:
-        with open(path) as f:
-            st = json.load(f)
-    except Exception:
-        st = {}
-    env = st.get("env") or {}
-    if on:
-        env["ANTHROPIC_BASE_URL"] = f"http://127.0.0.1:{port}"
-    else:
-        env.pop("ANTHROPIC_BASE_URL", None)
-    st["env"] = env
-    if not env:
-        st.pop("env", None)
-    try:
-        tmp = path + ".tmp"
-        with open(tmp, "w") as f:
-            json.dump(st, f, indent=2, ensure_ascii=False)
-        os.replace(tmp, path)
+        update_json_object(path, _proxy_env_mutator(on, port))
         _proxy_env_mark(os.path.dirname(path), on)
     except Exception:
         pass
@@ -2777,24 +2771,8 @@ def proxy_set_enabled(on):
         os.path.join(a["dir"], "settings.json") for a in claude_accounts() if a["alias"] != "main"]
     for path in paths[1:]:
         _proxy_env_write(path, on, port)
-    path = paths[0]
-    try:
-        with open(path) as f:
-            st = json.load(f)
-    except Exception:
-        st = {}
-    env = st.get("env") or {}
-    if on:
-        env["ANTHROPIC_BASE_URL"] = f"http://127.0.0.1:{port}"
-    else:
-        env.pop("ANTHROPIC_BASE_URL", None)
-    st["env"] = env
-    if not env:
-        st.pop("env", None)
-    tmp = path + ".tmp"
-    with open(tmp, "w") as f:
-        json.dump(st, f, indent=2, ensure_ascii=False)
-    os.replace(tmp, path)
+    # La cuenta main sí propaga el error: un settings.json ilegible no se pisa.
+    update_json_object(paths[0], _proxy_env_mutator(on, port))
 
 
 def claude_pane_busy(pane):
@@ -3480,17 +3458,8 @@ def motor_set_global(motor, model=None):
     defaults = {"claude": "claude-fable-5[1m]", "codex": "gpt-5.6-sol[1m]", "grok": "grok-4.6"}
     if model not in allowed:
         model = prov.get("model") or defaults.get(motor, "")
-    path = os.path.expanduser("~/.claude/settings.json")
-    try:
-        with open(path) as f:
-            st = json.load(f)
-    except Exception:
-        st = {}
-    st["model"] = model
-    tmp = path + ".tmp"
-    with open(tmp, "w") as f:
-        json.dump(st, f, indent=2, ensure_ascii=False)
-    os.replace(tmp, path)
+    update_json_object(os.path.expanduser("~/.claude/settings.json"),
+                       lambda st: st.__setitem__("model", model))
     return model
 
 
@@ -3752,11 +3721,7 @@ def toggle_skill(path, enable):
     fm = re.sub(r"\n?disable-model-invocation:.*", "", fm)
     if not enable:
         fm += "\ndisable-model-invocation: true"
-    new = "---\n" + fm + "\n---" + txt[m.end(3):]
-    tmp = real + ".tmp"
-    with open(tmp, "w") as f:
-        f.write(new)
-    os.replace(tmp, real)
+    write_file_atomic(real, "---\n" + fm + "\n---" + txt[m.end(3):])
     return None
 
 
@@ -3764,17 +3729,18 @@ def toggle_project_mcp(cwd, name, enable):
     sdir = os.path.join(cwd, ".claude")
     os.makedirs(sdir, exist_ok=True)
     spath = os.path.join(sdir, "settings.local.json")
-    data = _read_json_quiet(spath)
-    dis = set(data.get("disabledMcpjsonServers") or [])
-    if enable:
-        dis.discard(name)
-    else:
-        dis.add(name)
-    data["disabledMcpjsonServers"] = sorted(dis)
-    tmp = spath + ".tmp"
-    with open(tmp, "w") as f:
-        json.dump(data, f, indent=2)
-    os.replace(tmp, spath)
+
+    def mutate(data):
+        dis = set(data.get("disabledMcpjsonServers") or [])
+        if enable:
+            dis.discard(name)
+        else:
+            dis.add(name)
+        data["disabledMcpjsonServers"] = sorted(dis)
+    try:
+        update_json_object(spath, mutate)
+    except RuntimeError as exc:
+        return str(exc)
     return None
 
 
@@ -4809,19 +4775,75 @@ def load_json_file(path, default):
         return default
 
 
-def write_json_file(path, data):
+def lock_path_for(path):
+    # Candado sidecar para leer-modificar-escribir. cc-app puede tomar el mismo
+    # (fcntl.flock LOCK_EX sobre "<archivo>.lock") para app-tabs.json.
+    return path + ".lock"
+
+
+@contextlib.contextmanager
+def file_lock(path):
+    """flock exclusivo sobre <path>.lock. Es por descripcion de archivo:
+    excluye tanto otros procesos como otros hilos de este. No es reentrante."""
+    lock = lock_path_for(path)
+    os.makedirs(os.path.dirname(lock) or ".", exist_ok=True)
+    fd = os.open(lock, os.O_RDWR | os.O_CREAT, 0o600)
+    try:
+        fcntl.flock(fd, fcntl.LOCK_EX)
+        yield
+    finally:
+        os.close(fd)
+
+
+def write_file_atomic(path, text, mode=None):
+    """Escribe via mkstemp en el MISMO dir + fsync + os.replace: un lector nunca
+    ve el archivo a medias y dos escritores no comparten un '.tmp' fijo.
+    Conserva los permisos del archivo previo (nuevos: 0600 salvo `mode`)."""
     directory = os.path.dirname(path) or "."
+    os.makedirs(directory, exist_ok=True)
+    if mode is None:
+        try:
+            mode = os.stat(path).st_mode & 0o7777
+        except FileNotFoundError:
+            mode = 0o600
     fd, tmp = tempfile.mkstemp(
-        prefix=os.path.basename(path) + ".", suffix=".tmp", dir=directory)
+        prefix="." + os.path.basename(path) + ".", suffix=".tmp", dir=directory)
     try:
         with os.fdopen(fd, "w") as f:
-            json.dump(data, f)
+            f.write(text)
+            f.flush()
+            os.fsync(f.fileno())
+        os.chmod(tmp, mode)
         os.replace(tmp, path)
     finally:
         try:
             os.unlink(tmp)
         except FileNotFoundError:
             pass
+
+
+def write_json_file(path, data, indent=None, ensure_ascii=True, mode=None):
+    write_file_atomic(path, json.dumps(data, indent=indent, ensure_ascii=ensure_ascii), mode=mode)
+
+
+def update_json_object(path, mutate, indent=2):
+    """Leer-modificar-escribir un JSON ajeno (settings.json de Claude Code,
+    settings.local.json de un proyecto) bajo candado. Si existe pero no parsea
+    (a medio escribir, o roto a mano) NO se toca: pisarlo con {} borraria hooks
+    y permisos. Solo un archivo ausente arranca de {}."""
+    with file_lock(path):
+        try:
+            with open(path) as f:
+                data = json.load(f)
+        except FileNotFoundError:
+            data = {}
+        except (OSError, ValueError) as exc:
+            raise RuntimeError(f"{path} ilegible, no lo modifico: {exc}") from exc
+        if not isinstance(data, dict):
+            raise RuntimeError(f"{path} no es un objeto JSON, no lo modifico")
+        result = mutate(data)
+        write_json_file(path, data, indent=indent, ensure_ascii=False)
+        return result
 
 
 def snippet_validate(name, body, tags):
@@ -9290,23 +9312,13 @@ class Handler(http.server.SimpleHTTPRequestHandler):
                     raise RuntimeError("Claude settings only")
                 with open(os.path.expanduser("~/.claude/settings.json")) as f:
                     hooks = json.load(f).get("hooks") or {}
-                sp = os.path.join(d, "settings.json")
-                try:
-                    with open(sp) as f:
-                        st = json.load(f)
-                except Exception:
-                    st = {}
-                changed = False
-                if hooks and not st.get("hooks"):
-                    st["hooks"] = hooks
-                    changed = True
-                # los avisos van por los popups con tema de ComandOS, no los nativos de GNOME
-                if st.get("preferredNotifChannel") != "notifications_disabled":
+                def seed(st):
+                    if hooks and not st.get("hooks"):
+                        st["hooks"] = hooks
+                    # los avisos van por los popups con tema de ComandOS, no los nativos de GNOME
                     st["preferredNotifChannel"] = "notifications_disabled"
-                    changed = True
-                if changed:
-                    with open(sp, "w") as f:
-                        json.dump(st, f, indent=2, ensure_ascii=False)
+                # Si el settings.json de la cuenta no parsea, se deja intacto.
+                update_json_object(os.path.join(d, "settings.json"), seed)
             except Exception:
                 pass
             cwd = str(data.get("cwd") or os.path.expanduser("~"))
