@@ -25,6 +25,7 @@ import json, os, glob, re, shlex, shutil, sys, subprocess, threading, time, webb
 import urllib.parse, urllib.request
 import http.server, socketserver
 import tempfile
+import contextlib, fcntl
 import cc_usage
 
 
@@ -69,19 +70,26 @@ def ui_log_append(events):
                      "c": str(e.get("c") or "")[:80], "d": int(e.get("d") or 0), "s": str(e.get("s") or "")[:80]})
     if not keep:
         return 0
-    with open(UI_LOG, "a") as f:
-        for e in keep:
-            f.write(json.dumps(e, ensure_ascii=False) + "\n")
-    try:
-        if os.path.getsize(UI_LOG) > 2_000_000:
-            cutoff = now - 30 * 86400
-            with open(UI_LOG) as f:
-                lines = [ln for ln in f if ln.strip()]
-            fresh = [ln for ln in lines[-20000:] if json.loads(ln).get("ts", 0) >= cutoff]
-            with open(UI_LOG, "w") as f:
-                f.writelines(fresh)
-    except Exception:
-        pass
+    # Candado: una rotacion concurrente no debe perder lo que otro hilo anexa.
+    with file_lock(UI_LOG):
+        with open(UI_LOG, "a") as f:
+            for e in keep:
+                f.write(json.dumps(e, ensure_ascii=False) + "\n")
+        try:
+            if os.path.getsize(UI_LOG) > 2_000_000:
+                cutoff = now - 30 * 86400
+                with open(UI_LOG) as f:
+                    lines = [ln for ln in f if ln.strip()]
+                fresh = []
+                for ln in lines[-20000:]:
+                    try:
+                        if json.loads(ln).get("ts", 0) >= cutoff:
+                            fresh.append(ln)
+                    except ValueError:
+                        pass
+                write_file_atomic(UI_LOG, "".join(fresh))
+        except Exception:
+            pass
     return len(keep)
 
 
@@ -168,7 +176,7 @@ TABS_META_FILE = os.path.join(HOOKS, "app-tabs-meta.json")
 APP_TAB_MODELS_FILE = os.path.join(HOOKS, "app-tab-models.json")
 TAB_HISTORY_FILE = os.path.join(HOOKS, "app-tabs-history.json")
 SNIPPETS_FILE = os.path.join(HOOKS, "snippets.json")
-SNIPPET_ID_RE = re.compile(r"^[a-f0-9]{16}$")
+SNIPPET_ID_RE = re.compile(r"^[a-f0-9]{16}\Z")
 CONF_PATH = os.path.join(HOOKS, "cc-notify.conf")
 USAGE_DB = cc_usage.usage_db_path(HOOKS)
 USAGE_ENV_FILE = os.path.join(HOOKS, "usage.env")
@@ -548,10 +556,7 @@ def set_user_sub(provider, monthly, currency, display=None):
             rate = float(display.get("usdRate") or 0)
             data["display"] = {"currency": cur,
                                "usdRate": round(rate, 4) if rate > 0 else None}
-        tmp = SUBS_FILE + ".tmp"
-        with open(tmp, "w") as fh:
-            json.dump(data, fh, indent=1)
-        os.replace(tmp, SUBS_FILE)
+        write_json_file(SUBS_FILE, data, indent=1)
         return data
 
 
@@ -565,10 +570,7 @@ def set_user_quota(provider, tokens_7d):
             data[provider] = {"tokens_7d": tokens, "set_at": int(time.time())}
         else:
             data.pop(provider, None)
-        tmp = QUOTAS_FILE + ".tmp"
-        with open(tmp, "w") as fh:
-            json.dump(data, fh, indent=1)
-        os.replace(tmp, QUOTAS_FILE)
+        write_json_file(QUOTAS_FILE, data, indent=1)
     return data.get(provider)
 
 
@@ -688,10 +690,7 @@ def _model_watch_cycle(force=False):
             try:
                 snap = _read_json_quiet(MODEL_WATCH_FILE) or {}
                 snap["heartbeatAt"] = int(time.time())
-                tmp = MODEL_WATCH_FILE + ".tmp"
-                with open(tmp, "w") as fh:
-                    json.dump(snap, fh, indent=1)
-                os.replace(tmp, MODEL_WATCH_FILE)
+                write_json_file(MODEL_WATCH_FILE, snap, indent=1)
             except Exception:
                 pass
             return result
@@ -702,10 +701,7 @@ def _model_watch_cycle(force=False):
             snap = _read_json_quiet(MODEL_WATCH_FILE) or {}
             snap["heartbeatAt"] = int(time.time())
             snap.setdefault("versions", versions)
-            tmp = MODEL_WATCH_FILE + ".tmp"
-            with open(tmp, "w") as fh:
-                json.dump(snap, fh, indent=1)
-            os.replace(tmp, MODEL_WATCH_FILE)
+            write_json_file(MODEL_WATCH_FILE, snap, indent=1)
         except Exception:
             pass
     except Exception:
@@ -1015,10 +1011,7 @@ def optimization_set_default(profile):
     if not any(plan.get("id") == profile for plan in catalog["plans"]):
         raise ValueError("perfil desconocido")
     os.makedirs(os.path.dirname(OPTIMIZATION_STATE), exist_ok=True)
-    tmp = OPTIMIZATION_STATE + ".tmp"
-    with open(tmp, "w") as f:
-        json.dump({"profile": profile, "updatedAt": int(time.time())}, f)
-    os.replace(tmp, OPTIMIZATION_STATE)
+    write_json_file(OPTIMIZATION_STATE, {"profile": profile, "updatedAt": int(time.time())})
     return optimization_plans()
 
 
@@ -1208,22 +1201,17 @@ PROXY_ENV_SINCE = os.path.expanduser("~/.claude/hooks/proxy-env-since.json")
 def _proxy_env_mark(cfg_dir, on):
     """Registra DESDE cuANDO el settings.json de ese config-dir tiene el env del
     proxy: los claude arrancados antes no lo traen (el env se lee al arrancar)."""
+    key = os.path.realpath(os.path.expanduser(cfg_dir))
     try:
-        try:
-            with open(PROXY_ENV_SINCE) as f:
-                d = json.load(f)
-        except Exception:
-            d = {}
-        key = os.path.realpath(os.path.expanduser(cfg_dir))
-        if on:
-            d.setdefault(key, time.time())
-        else:
-            d.pop(key, None)
-        os.makedirs(os.path.dirname(PROXY_ENV_SINCE), exist_ok=True)
-        tmp = PROXY_ENV_SINCE + ".tmp"
-        with open(tmp, "w") as f:
-            json.dump(d, f)
-        os.replace(tmp, PROXY_ENV_SINCE)
+        with file_lock(PROXY_ENV_SINCE):
+            d = load_json_file(PROXY_ENV_SINCE, {})
+            if not isinstance(d, dict):
+                d = {}
+            if on:
+                d.setdefault(key, time.time())
+            else:
+                d.pop(key, None)
+            write_json_file(PROXY_ENV_SINCE, d)
     except Exception:
         pass
 
@@ -1255,48 +1243,26 @@ def _proxied(pid, env):
     return started >= float(since)
 
 
+def _proxy_env_mutator(on, port):
+    def mutate(st):
+        env = st.get("env") if isinstance(st.get("env"), dict) else {}
+        if on:
+            env["ANTHROPIC_BASE_URL"] = f"http://127.0.0.1:{port}"
+        else:
+            env.pop("ANTHROPIC_BASE_URL", None)
+        st["env"] = env
+        if not env:
+            st.pop("env", None)
+    return mutate
+
+
 def _proxy_env_write(path, on, port):
+    """Cuentas secundarias: si su settings.json no parsea se deja intacto."""
     try:
-        with open(path) as f:
-            st = json.load(f)
-    except Exception:
-        st = {}
-    env = st.get("env") or {}
-    if on:
-        env["ANTHROPIC_BASE_URL"] = f"http://127.0.0.1:{port}"
-    else:
-        env.pop("ANTHROPIC_BASE_URL", None)
-    st["env"] = env
-    if not env:
-        st.pop("env", None)
-    try:
-        tmp = path + ".tmp"
-        with open(tmp, "w") as f:
-            json.dump(st, f, indent=2, ensure_ascii=False)
-        os.replace(tmp, path)
+        update_json_object(path, _proxy_env_mutator(on, port))
         _proxy_env_mark(os.path.dirname(path), on)
     except Exception:
         pass
-
-
-def _resume_flags(argv):
-    """Flags del claude vivo que vale la pena conservar al reanudar (sin --resume/-c)."""
-    flags, skip = [], 0
-    rest = argv[1:]
-    for i, a in enumerate(rest):
-        if skip:
-            skip -= 1
-            continue
-        if a in ("--resume", "-r", "--continue", "-c", "--session-id"):
-            if a in ("--resume", "-r", "--session-id"):
-                skip = 1
-            continue
-        if a.startswith("-"):
-            flags.append(a)
-            if a in ("--model", "--effort", "--permission-mode", "--add-dir"):
-                skip = 1
-                flags.append(rest[i + 1] if i + 1 < len(rest) else "")
-    return [f for f in flags if f]
 
 
 def motor_lock_env(motor, model):
@@ -1324,115 +1290,6 @@ def _send_shell_line(pane, command):
     if r.returncode != 0:
         raise RuntimeError(r.stderr.strip() or "tmux send-keys fallo")
     tmux("send-keys", "-t", pane, "Enter")
-
-
-def _paste_shell_command(pane, command):
-    error = snippet_paste_to_pane(pane, command, tmux_stdin)
-    if error:
-        raise RuntimeError(error)
-    tmux("send-keys", "-t", pane, "Enter")
-
-
-def _claude_restart_resume(pane, pid, cmd, after_cmds=(), queued=False, sess=None, gen=None, config=None):
-    """/exit + relanzar `cmd` (claude --resume …) en el MISMO pane; luego teclea after_cmds
-    cuando el prompt vuelve. Si queued, espera primero a que termine el turno actual."""
-    def _go():
-        if queued:
-            for _ in range(1350):
-                time.sleep(2.0)
-                if sess and gen and not motor_gen_ok(sess, gen):
-                    return   # cancelado o superado por un click mas nuevo
-                if not claude_pane_busy(pane):
-                    break
-            else:
-                return
-            time.sleep(1.0)
-        if sess and gen and not motor_gen_ok(sess, gen):
-            return
-        tmux("send-keys", "-t", pane, "C-u")
-        time.sleep(0.15)
-        tmux("send-keys", "-t", pane, "-l", "--", "/exit")
-        tmux("send-keys", "-t", pane, "Enter")
-        for _ in range(40):          # esperar a que el proceso muera (max 20 s)
-            time.sleep(0.5)
-            try:
-                os.kill(int(pid), 0)
-            except Exception:
-                break
-        else:
-            if sess:
-                motor_result_set(sess, False, "Claude no cerró a tiempo; la conversación original sigue intacta")
-            return
-        time.sleep(0.4)
-        try:
-            _restore_shell_tty(pane)
-            _send_shell_line(pane, cmd)
-        except Exception as exc:
-            if sess:
-                motor_result_set(sess, False, f"no se pudo relanzar Claude: {exc}")
-            return
-        live = None
-        for _ in range(80):
-            time.sleep(0.5)
-            candidate = agent_info_for_pane(pane)
-            if candidate and candidate.get("agent") == "claude" and int(candidate.get("pid") or 0) != int(pid):
-                live = candidate
-                break
-        if not live:
-            if sess:
-                motor_result_set(sess, False, "Claude salió, pero el resume no arrancó; usa Reintentar")
-            return
-        if after_cmds:
-            time.sleep(0.8)
-            for c in after_cmds:
-                _send_shell_line(pane, c)
-                time.sleep(0.5)
-        if config:
-            record_runtime_config(config["session"], pane, config["harness"], config["motor"],
-                                  config["model"], config.get("effort", ""), config.get("harness_account", "unknown"),
-                                  config.get("motor_account", "unknown"), config["route_id"], "switch-restart-confirmed")
-        if sess:
-            motor_result_set(sess, True, f"{config.get('model','')} · {config.get('effort','')}" if config else cmd.split(" claude ")[-1][:120],
-                             harness=config.get("harness") if config else None, motor=config.get("motor") if config else None,
-                             model=config.get("model") if config else None, effort=config.get("effort") if config else None)
-        if sess and gen:
-            motor_queue_pop(sess, gen)
-    threading.Thread(target=_go, daemon=True).start()
-
-
-def resume_restart_payload(payload):
-    info = _claude_info_for(payload["sess"], payload.get("pane", "")) or {}
-    pid = info.get("pid")
-    if pid:
-        _claude_restart_resume(payload["pane"], pid, payload["restart_cmd"],
-                               after_cmds=payload.get("after_cmds") or (), queued=bool(payload.get("queued")),
-                               sess=payload["key"], gen=payload["gen"], config=payload.get("config"))
-        return
-    # The old CLI may already have exited before cc-dash restarted.
-    try:
-        _restore_shell_tty(payload["pane"])
-        _send_shell_line(payload["pane"], payload["restart_cmd"])
-    except Exception as exc:
-        motor_result_set(payload["key"], False, f"no se pudo recuperar el resume: {exc}")
-        return
-    motor_stage(payload["key"], "recuperando conversación y motor", "recover",
-                model=(payload.get("config") or {}).get("model"))
-    def verify():
-        for _ in range(80):
-            time.sleep(0.5)
-            live = agent_info_for_pane(payload["pane"])
-            if live and live.get("agent") == "claude":
-                config = payload.get("config") or {}
-                if config:
-                    record_runtime_config(config["session"], payload["pane"], config["harness"], config["motor"],
-                                          config["model"], config.get("effort", ""), config.get("harness_account", "unknown"),
-                                          config.get("motor_account", "unknown"), config["route_id"], "switch-restart-recovered")
-                motor_result_set(payload["key"], True, f"{config.get('model','')} · {config.get('effort','')}",
-                                 harness=config.get("harness"), motor=config.get("motor"), model=config.get("model"), effort=config.get("effort"))
-                motor_queue_pop(payload["key"], payload["gen"])
-                return
-        motor_result_set(payload["key"], False, "no se pudo recuperar Claude después del reinicio")
-    threading.Thread(target=verify, daemon=True).start()
 
 
 # ---------- HANDOFF entre harnesses (Claude Code ↔ Codex CLI ↔ Grok Build) ----------
@@ -1475,11 +1332,7 @@ def pane_resume_set(sess, pane, harness, sid, account="main"):
         row[str(harness)] = {"sid": str(sid), "account": str(account or "main"),
                              "at": int(time.time())}
         data[key] = row
-        tmp = PANE_RESUME_FILE + ".tmp"
-        os.makedirs(os.path.dirname(PANE_RESUME_FILE), exist_ok=True)
-        with open(tmp, "w") as fh:
-            json.dump(data, fh)
-        os.replace(tmp, PANE_RESUME_FILE)
+        write_json_file(PANE_RESUME_FILE, data)
 
 
 def acp_state_for_pane(pane):
@@ -2836,24 +2689,8 @@ def proxy_set_enabled(on):
         os.path.join(a["dir"], "settings.json") for a in claude_accounts() if a["alias"] != "main"]
     for path in paths[1:]:
         _proxy_env_write(path, on, port)
-    path = paths[0]
-    try:
-        with open(path) as f:
-            st = json.load(f)
-    except Exception:
-        st = {}
-    env = st.get("env") or {}
-    if on:
-        env["ANTHROPIC_BASE_URL"] = f"http://127.0.0.1:{port}"
-    else:
-        env.pop("ANTHROPIC_BASE_URL", None)
-    st["env"] = env
-    if not env:
-        st.pop("env", None)
-    tmp = path + ".tmp"
-    with open(tmp, "w") as f:
-        json.dump(st, f, indent=2, ensure_ascii=False)
-    os.replace(tmp, path)
+    # La cuenta main sí propaga el error: un settings.json ilegible no se pisa.
+    update_json_object(paths[0], _proxy_env_mutator(on, port))
 
 
 def claude_pane_busy(pane):
@@ -2895,11 +2732,6 @@ def model_switch_cancel(sess, pane):
     return None
 
 
-def motor_gen_ok(sess, gen):
-    with _MOTOR_GEN_LOCK:
-        return MOTOR_GEN.get(sess, 0) == gen
-
-
 MOTOR_QUEUE_FILE = os.path.expanduser("~/.claude/hooks/motor-queue.json")
 MOTOR_RESULT_FILE = os.path.expanduser("~/.claude/hooks/motor-results.json")
 _MOTOR_RESULT_LOCK = threading.Lock()
@@ -2917,452 +2749,12 @@ def _motor_result_load():
 def _motor_result_write():
     try:
         os.makedirs(os.path.dirname(MOTOR_RESULT_FILE), exist_ok=True)
-        tmp = MOTOR_RESULT_FILE + ".tmp"
-        with open(tmp, "w") as f:
-            json.dump(MOTOR_RESULT, f)
-        os.replace(tmp, MOTOR_RESULT_FILE)
+        write_json_file(MOTOR_RESULT_FILE, MOTOR_RESULT)
     except Exception:
         pass
 
 
 MOTOR_RESULT = _motor_result_load()   # operationKey -> durable stage/result
-
-
-def _motor_queue_write(d):
-    try:
-        os.makedirs(os.path.dirname(MOTOR_QUEUE_FILE), exist_ok=True)
-        tmp = MOTOR_QUEUE_FILE + ".tmp"
-        with open(tmp, "w") as f:
-            json.dump(d, f)
-        os.replace(tmp, MOTOR_QUEUE_FILE)
-    except Exception:
-        pass
-
-
-def motor_queue_put(sess, payload):
-    """Cola persistente: un cambio encolado sobrevive reinicios de cc-dash."""
-    try:
-        with open(MOTOR_QUEUE_FILE) as f:
-            d = json.load(f)
-    except Exception:
-        d = {}
-    d[sess] = payload
-    _motor_queue_write(d)
-
-
-def motor_queue_pop(sess, gen):
-    try:
-        with open(MOTOR_QUEUE_FILE) as f:
-            d = json.load(f)
-    except Exception:
-        return
-    if sess in d and d[sess].get("gen", gen) == gen:
-        d.pop(sess, None)
-        _motor_queue_write(d)
-
-
-def grok_motor_apply(payload):
-    pane, sess = payload["pane"], payload["sess"]
-    opkey = payload.get("key") or f"{sess}|{pane}"
-    gen = payload["gen"]
-    model, effort = payload.get("model") or "", payload.get("effort") or ""
-    try:
-        if payload.get("interrupt") and grok_pane_busy(sess, pane):
-            motor_stage(opkey, "interrumpiendo el turno Grok (Escape)")
-            tmux("send-keys", "-t", pane, "Escape")
-            time.sleep(1.2)
-        if grok_pane_busy(sess, pane):
-            motor_stage(opkey, "esperando a que Grok termine el turno")
-        for _ in range(1350):
-            if not motor_gen_ok(opkey, gen):
-                return
-            if not grok_pane_busy(sess, pane):
-                time.sleep(0.5)
-                if not grok_pane_busy(sess, pane):
-                    break
-            time.sleep(2.0)
-        else:
-            motor_result_set(opkey, False, "Grok nunca quedo libre (45 min)")
-            return
-        info = agent_info_for_pane(pane)
-        if not info or info.get("agent") != "grok":
-            motor_result_set(opkey, False, "el pane ya no contiene Grok")
-            return
-        current = grok_metadata_for_pid(info.get("pid"))
-        if model:
-            command = "/model " + model + ((" " + effort) if effort else "")
-        elif effort:
-            command = "/effort " + effort
-        else:
-            motor_result_set(opkey, False, "modelo o esfuerzo requeridos")
-            return
-        motor_stage(opkey, f"tecleando {command}")
-        tmux("send-keys", "-t", pane, "C-u")
-        time.sleep(0.15)
-        r = tmux("send-keys", "-t", pane, "-l", "--", command)
-        if r.returncode != 0:
-            motor_result_set(opkey, False, r.stderr.strip() or "tmux fallo")
-            return
-        tmux("send-keys", "-t", pane, "Enter")
-        confirm_started = time.time()
-        motor_stage(opkey, "confirmando modelo y esfuerzo en summary.json", "confirm", model=model, effort=effort)
-        for attempt in range(80):
-            if not motor_gen_ok(opkey, gen):
-                return
-            time.sleep(0.12 if attempt < 40 else 0.4)
-            now = grok_metadata_for_pid(info.get("pid"))
-            if (not model or now.get("model") == model) and (not effort or now.get("effort") == effort):
-                motor_result_set(opkey, True, f"{now.get('model','')} · {now.get('effort','')}",
-                                 harness="grok", motor="grok", model=now.get("model", ""), effort=now.get("effort", ""),
-                                 confirmMs=int((time.time() - confirm_started) * 1000))
-                record_runtime_config(sess, pane, "grok", "grok", now.get("model", ""), now.get("effort", ""),
-                                      payload.get("harness_account", "unknown"), payload.get("motor_account", payload.get("harness_account", "unknown")), payload.get("route_id", "grok:grok"), "switch-confirmed")
-                if now.get("effort"):
-                    session_effort_set(opkey, now.get("effort"))
-                return
-        motor_result_set(opkey, False,
-                         f"Grok no confirmo el cambio; sigue {current.get('model','?')} · {current.get('effort','?')}")
-    finally:
-        motor_queue_pop(opkey, gen)
-
-
-def _native_slash_motor_apply(payload, harness, slash_cmds):
-    """Cambio de modelo/esfuerzo en un CLI nativo (agy/opencode): espera idle,
-    teclea slash commands, registra el resultado. Sin fingir que es Claude."""
-    pane, sess = payload["pane"], payload["sess"]
-    opkey = payload.get("key") or f"{sess}|{pane}"
-    gen = payload["gen"]
-    model, effort = payload.get("model") or "", payload.get("effort") or ""
-    try:
-        if payload.get("interrupt") and harness_pane_busy(sess, pane, harness):
-            motor_stage(opkey, f"interrumpiendo el turno {harness} (Escape)")
-            tmux("send-keys", "-t", pane, "Escape")
-            time.sleep(1.0)
-        if harness_pane_busy(sess, pane, harness):
-            motor_stage(opkey, f"esperando a que {harness} quede libre", "wait_idle")
-        for _ in range(1350):
-            if not motor_gen_ok(opkey, gen):
-                return
-            if not harness_pane_busy(sess, pane, harness):
-                time.sleep(0.4)
-                if not harness_pane_busy(sess, pane, harness):
-                    break
-            time.sleep(2.0)
-        else:
-            motor_result_set(opkey, False, f"{harness} nunca quedó libre (45 min)")
-            return
-        info = agent_info_for_pane(pane)
-        if not info or info.get("agent") != harness:
-            motor_result_set(opkey, False, f"el pane ya no contiene {harness}")
-            return
-        for command in slash_cmds:
-            motor_stage(opkey, f"tecleando {command}", "apply")
-            err = _tmux_slash(pane, command)
-            if err:
-                motor_result_set(opkey, False, err)
-                return
-            time.sleep(0.6)
-        record_runtime_config(sess, pane, "agy" if harness == "agy" else harness,
-                              "agy" if harness == "agy" else harness, model, effort,
-                              payload.get("harness_account", "main"),
-                              payload.get("motor_account", "main"),
-                              payload.get("route_id", f"{harness}:{harness}"),
-                              "switch-confirmed")
-        if effort:
-            session_effort_set(opkey, effort)
-        motor_result_set(opkey, True, f"{harness} · {model} · {effort}".strip(" ·"),
-                         harness=harness, motor=harness, model=model, effort=effort)
-    finally:
-        motor_queue_pop(opkey, gen)
-
-
-def agy_motor_apply(payload):
-    model, effort = payload.get("model") or "", payload.get("effort") or ""
-    cmds = []
-    if model:
-        cmds.append("/model " + model)
-    if effort:
-        cmds.append("/effort " + effort)
-    if not cmds:
-        motor_result_set(payload.get("key") or payload["sess"], False, "modelo o esfuerzo requeridos")
-        return
-    _native_slash_motor_apply(payload, "agy", cmds)
-
-
-def opencode_motor_apply(payload):
-    """OpenCode busca por NOMBRE en /models; luego registra el modelo elegido."""
-    pane, sess = payload["pane"], payload["sess"]
-    opkey = payload.get("key") or f"{sess}|{pane}"
-    gen = payload["gen"]
-    model = payload.get("model") or ""
-    query = payload.get("query") or ""
-    try:
-        if payload.get("interrupt") and harness_pane_busy(sess, pane, "opencode"):
-            motor_stage(opkey, "interrumpiendo OpenCode (Escape)")
-            tmux("send-keys", "-t", pane, "Escape")
-            time.sleep(0.8)
-        if harness_pane_busy(sess, pane, "opencode"):
-            motor_stage(opkey, "esperando a que OpenCode quede libre", "wait_idle")
-        for _ in range(1350):
-            if not motor_gen_ok(opkey, gen):
-                return
-            if not harness_pane_busy(sess, pane, "opencode"):
-                time.sleep(0.4)
-                if not harness_pane_busy(sess, pane, "opencode"):
-                    break
-            time.sleep(2.0)
-        else:
-            motor_result_set(opkey, False, "OpenCode nunca quedó libre (45 min)")
-            return
-        info = agent_info_for_pane(pane)
-        if not info or info.get("agent") != "opencode":
-            motor_result_set(opkey, False, "el pane ya no contiene OpenCode")
-            return
-        motor_stage(opkey, f"tecleando /models → {query or model}", "apply")
-        for keys, pause in (
-            (("Escape",), 0.35), (("C-u",), 0.25),
-            (("-l", "--", "/models"), 0.5), (("Enter",), 1.0),
-            (("-l", "--", query or model), 0.8), (("Enter",), 0),
-        ):
-            r = tmux("send-keys", "-t", pane, *keys)
-            if r.returncode != 0:
-                motor_result_set(opkey, False, r.stderr.strip() or "tmux fallo")
-                return
-            if pause:
-                time.sleep(pause)
-        record_runtime_config(sess, pane, "opencode", "opencode", model, "",
-                              payload.get("harness_account", "main"),
-                              payload.get("motor_account", "main"),
-                              payload.get("route_id", "opencode:opencode"),
-                              "switch-confirmed")
-        motor_result_set(opkey, True, f"opencode · {model}",
-                         harness="opencode", motor="opencode", model=model, effort="")
-    finally:
-        motor_queue_pop(opkey, gen)
-
-
-def _tmux_slash(pane, command):
-    tmux("send-keys", "-t", pane, "C-u")
-    time.sleep(0.12)
-    r = tmux("send-keys", "-t", pane, "-l", "--", command)
-    if r.returncode != 0:
-        return r.stderr.strip() or "tmux fallo"
-    tmux("send-keys", "-t", pane, "Enter")
-    return None
-
-
-def acp_motor_apply(payload):
-    """Cambio de motor/modelo/esfuerzo/cuenta DENTRO de cc-acp: slash commands,
-    no relanzar el pane. /agent relanza el subproceso ACP; el pane sigue vivo."""
-    pane, sess = payload["pane"], payload["sess"]
-    opkey = payload.get("key") or f"{sess}|{pane}"
-    gen = payload["gen"]
-    want_motor = str(payload.get("motor") or "")
-    want_model = str(payload.get("model") or "")
-    want_effort = str(payload.get("effort") or "")
-    want_account = str(payload.get("motor_account") or payload.get("account") or "")
-    try:
-        if payload.get("interrupt") and harness_pane_busy(sess, pane, "acp"):
-            motor_stage(opkey, "interrumpiendo el turno ACP (Escape)")
-            tmux("send-keys", "-t", pane, "Escape")
-            time.sleep(1.0)
-        if harness_pane_busy(sess, pane, "acp"):
-            motor_stage(opkey, "esperando a que ACP quede libre", "wait_idle")
-        for _ in range(1350):
-            if not motor_gen_ok(opkey, gen):
-                return
-            if not harness_pane_busy(sess, pane, "acp"):
-                time.sleep(0.4)
-                if not harness_pane_busy(sess, pane, "acp"):
-                    break
-            time.sleep(2.0)
-        else:
-            motor_result_set(opkey, False, "ACP nunca quedó libre (45 min)")
-            return
-        info = agent_info_for_pane(pane)
-        if not info or info.get("agent") != "acp":
-            motor_result_set(opkey, False, "el pane ya no contiene ACP")
-            return
-        current = acp_state_for_pane(pane)
-        cmds = list(payload.get("cmds") or [])
-        if not cmds:
-            if want_motor and want_motor != current.get("agent"):
-                cmds.append("/agent " + want_motor)
-            if want_model and want_model != current.get("model"):
-                cmds.append("/model " + want_model)
-            if want_effort and want_effort != current.get("effort"):
-                cmds.append("/effort " + want_effort)
-            if want_account and want_account != (current.get("account") or "main"):
-                cmds.append("/account " + want_account)
-        if not cmds:
-            motor_result_set(opkey, True, "ACP ya está en ese setup",
-                             harness="acp", motor=current.get("agent") or want_motor,
-                             model=current.get("model") or want_model, effort=current.get("effort") or want_effort)
-            return
-        for command in cmds:
-            if not motor_gen_ok(opkey, gen):
-                return
-            motor_stage(opkey, f"tecleando {command}", "apply")
-            err = _tmux_slash(pane, command)
-            if err:
-                motor_result_set(opkey, False, err)
-                return
-            if command.startswith("/agent "):
-                dest = command.split(None, 1)[1]
-                for _ in range(50):
-                    time.sleep(0.3)
-                    if acp_state_for_pane(pane).get("agent") == dest:
-                        break
-            else:
-                time.sleep(0.8)
-        confirm_started = time.time()
-        motor_stage(opkey, "confirmando en acp-panes.json", "confirm",
-                    model=want_model, effort=want_effort)
-        for attempt in range(80):
-            if not motor_gen_ok(opkey, gen):
-                return
-            time.sleep(0.15 if attempt < 40 else 0.4)
-            now = acp_state_for_pane(pane)
-            motor_ok = (not want_motor) or now.get("agent") == want_motor
-            model_ok = (not want_model) or now.get("model") == want_model
-            effort_ok = (not want_effort) or now.get("effort") == want_effort
-            account_ok = (not want_account) or now.get("account") == want_account
-            if motor_ok and model_ok and effort_ok and account_ok:
-                motor_result_set(opkey, True, f"acp:{now.get('agent','')} · {now.get('model','')} · {now.get('effort','')}",
-                                 harness="acp", motor=now.get("agent") or want_motor,
-                                 model=now.get("model") or want_model, effort=now.get("effort") or want_effort,
-                                 confirmMs=int((time.time() - confirm_started) * 1000))
-                record_runtime_config(sess, pane, "acp", now.get("agent") or want_motor,
-                                      now.get("model") or want_model, now.get("effort") or want_effort,
-                                      payload.get("harness_account", "main"),
-                                      now.get("account") or want_account or "main",
-                                      payload.get("route_id") or f"acp:{now.get('agent') or want_motor}",
-                                      "switch-confirmed")
-                if now.get("effort") or want_effort:
-                    session_effort_set(opkey, now.get("effort") or want_effort)
-                return
-        motor_result_set(opkey, False, "ACP no confirmó el cambio; reintenta")
-    finally:
-        motor_queue_pop(opkey, gen)
-
-
-def motor_apply(payload):
-    """Teclea /model y /effort en el pane con certeza: espera al prompt (anti-
-    carrera con doble check), confirma en el pane y reintenta; restaura los
-    defaults de settings.json; reporta a MOTOR_RESULT; limpia la cola."""
-    pane, cmds, provider = payload["pane"], payload["cmds"], payload["provider"]
-    saved, sess, effort = payload.get("saved"), payload["sess"], payload.get("effort")
-    gen, interrupt = payload["gen"], payload.get("interrupt")
-    opkey = payload.get("key") or sess
-    if provider == "grok":
-        return grok_motor_apply(payload)
-    if provider == "acp":
-        return acp_motor_apply(payload)
-    if provider == "agy":
-        return agy_motor_apply(payload)
-    if provider == "opencode":
-        return opencode_motor_apply(payload)
-    op_started = time.time()
-    apply_started = op_started
-    try:
-        if interrupt and provider == "claude" and claude_pane_busy(pane):
-            motor_stage(opkey, "interrumpiendo el turno (Escape)")
-            tmux("send-keys", "-t", pane, "Escape")
-            time.sleep(1.5)
-        if provider == "claude":
-            if claude_pane_busy(pane):
-                motor_stage(opkey, "esperando a que termine el turno", "wait_idle")
-            deadline = time.monotonic() + 2700
-            while time.monotonic() < deadline:
-                if not motor_gen_ok(opkey, gen):
-                    return   # cancelado o superado por un click mas nuevo
-                if not claude_pane_busy(pane):
-                    time.sleep(0.18)
-                    if not claude_pane_busy(pane):
-                        break
-                time.sleep(0.4)
-            else:
-                motor_result_set(opkey, False, "la sesion nunca quedo libre (45 min)")
-                return
-            if not motor_gen_ok(opkey, gen):
-                return
-        apply_started = time.time()
-        for i, c in enumerate(cmds):
-            if i:
-                motor_stage(opkey, "esperando el prompt para el siguiente ajuste", "wait_prompt")
-                for attempt in range(60):
-                    if not claude_pane_busy(pane):
-                        break
-                    time.sleep(0.1 if attempt < 30 else 0.3)
-            marker = ("Set model to" if c.startswith("/model ") else
-                      "Set effort level" if c.startswith("/effort ") else "")
-            motor_stage(opkey, f"tecleando {c}", "apply", command=c.split()[0])
-            sent = False
-            for attempt in range(3):
-                if not motor_gen_ok(opkey, gen):
-                    return
-                if provider == "claude":
-                    tmux("send-keys", "-t", pane, "C-u")   # limpiar texto a medio escribir sin interrumpir nada
-                    time.sleep(0.15)
-                before = tmux("capture-pane", "-p", "-t", pane, "-S", "-220").stdout
-                r = tmux("send-keys", "-t", pane, "-l", "--", c)
-                if r.returncode != 0:
-                    motor_result_set(opkey, False, f"tmux fallo con {c}")
-                    return
-                tmux("send-keys", "-t", pane, "Enter")
-                if provider != "claude" or not marker:
-                    sent = True
-                    break
-                motor_stage(opkey, f"confirmando {c.split(chr(32))[0]} en el pane", "confirm", model=payload.get("model"), effort=effort)
-                confirmed, failure = claude_command_confirm(pane, c, before, 15)
-                if confirmed:
-                    sent = True
-                    break
-                if failure:
-                    motor_result_set(opkey, False, failure)
-                    return
-                motor_stage(opkey, f"no entro {c.split(chr(32))[0]}: reintento {attempt + 2}/3")
-                for _ in range(60):
-                    if not claude_pane_busy(pane):
-                        break
-                    time.sleep(2.0)
-            if not sent:
-                motor_result_set(opkey, False, f"no se confirmo {c} en el pane")
-                return
-        motor_result_set(opkey, True, " · ".join(cmds),
-                         harness=payload.get("harness", "claude"), motor=payload.get("motor", "claude"),
-                         model=payload.get("model", ""), effort=effort or "",
-                         queuedMs=max(0, int((apply_started - op_started) * 1000)),
-                         applyMs=max(0, int((time.time() - apply_started) * 1000)))
-        if payload.get("route_id"):
-            record_runtime_config(sess, pane, payload.get("harness", "claude"), payload.get("motor", "claude"),
-                                  payload.get("model", ""), effort or "", payload.get("harness_account", "unknown"),
-                                  payload.get("motor_account", "unknown"), payload["route_id"], "switch-confirmed")
-        if effort and provider == "claude":
-            session_effort_set(opkey, effort)
-        if provider == "claude" and saved:
-            time.sleep(4.0 + 3.5 * (len(cmds) - 1))
-            path = os.path.expanduser("~/.claude/settings.json")
-            try:
-                with open(path) as f:
-                    st = json.load(f)
-                changed = False
-                for k, v in saved.items():
-                    if st.get(k) != v:
-                        changed = True
-                        if v is None:
-                            st.pop(k, None)
-                        else:
-                            st[k] = v
-                if changed:
-                    tmp = path + ".tmp"
-                    with open(tmp, "w") as f:
-                        json.dump(st, f, indent=2, ensure_ascii=False)
-                    os.replace(tmp, path)
-            except Exception:
-                pass
-    finally:
-        motor_queue_pop(opkey, gen)
 
 
 def motor_queue_resume():
@@ -3500,10 +2892,7 @@ def session_effort_set(sess, effort):
         d.pop(sess.split("|", 1)[0], None)
     try:
         os.makedirs(os.path.dirname(SESSION_EFFORT), exist_ok=True)
-        tmp = SESSION_EFFORT + ".tmp"
-        with open(tmp, "w") as f:
-            json.dump(d, f)
-        os.replace(tmp, SESSION_EFFORT)
+        write_json_file(SESSION_EFFORT, d)
     except Exception:
         pass
 
@@ -3539,17 +2928,8 @@ def motor_set_global(motor, model=None):
     defaults = {"claude": "claude-fable-5[1m]", "codex": "gpt-5.6-sol[1m]", "grok": "grok-4.6"}
     if model not in allowed:
         model = prov.get("model") or defaults.get(motor, "")
-    path = os.path.expanduser("~/.claude/settings.json")
-    try:
-        with open(path) as f:
-            st = json.load(f)
-    except Exception:
-        st = {}
-    st["model"] = model
-    tmp = path + ".tmp"
-    with open(tmp, "w") as f:
-        json.dump(st, f, indent=2, ensure_ascii=False)
-    os.replace(tmp, path)
+    update_json_object(os.path.expanduser("~/.claude/settings.json"),
+                       lambda st: st.__setitem__("model", model))
     return model
 
 
@@ -3811,11 +3191,7 @@ def toggle_skill(path, enable):
     fm = re.sub(r"\n?disable-model-invocation:.*", "", fm)
     if not enable:
         fm += "\ndisable-model-invocation: true"
-    new = "---\n" + fm + "\n---" + txt[m.end(3):]
-    tmp = real + ".tmp"
-    with open(tmp, "w") as f:
-        f.write(new)
-    os.replace(tmp, real)
+    write_file_atomic(real, "---\n" + fm + "\n---" + txt[m.end(3):])
     return None
 
 
@@ -3823,17 +3199,18 @@ def toggle_project_mcp(cwd, name, enable):
     sdir = os.path.join(cwd, ".claude")
     os.makedirs(sdir, exist_ok=True)
     spath = os.path.join(sdir, "settings.local.json")
-    data = _read_json_quiet(spath)
-    dis = set(data.get("disabledMcpjsonServers") or [])
-    if enable:
-        dis.discard(name)
-    else:
-        dis.add(name)
-    data["disabledMcpjsonServers"] = sorted(dis)
-    tmp = spath + ".tmp"
-    with open(tmp, "w") as f:
-        json.dump(data, f, indent=2)
-    os.replace(tmp, spath)
+
+    def mutate(data):
+        dis = set(data.get("disabledMcpjsonServers") or [])
+        if enable:
+            dis.discard(name)
+        else:
+            dis.add(name)
+        data["disabledMcpjsonServers"] = sorted(dis)
+    try:
+        update_json_object(spath, mutate)
+    except RuntimeError as exc:
+        return str(exc)
     return None
 
 
@@ -4004,42 +3381,6 @@ def _claude_all_panes():
         out.append({"sess": tm.partition(":")[0], "pane": p_id, "sid": sid, "pid": pid,
                     "cwd": d.get("cwd") or "", "startedAt": (d.get("startedAt") or 0) / 1000.0})
     return out
-
-
-def _claude_info_for(sess, pane=""):
-    """El claude de ESE pane. Con splits hay varios claude en una misma sesion
-    tmux: el registro (<cfg>/sessions/*.json, campo tmux 'ses:@w.%p') dice en
-    que pane vive cada uno. Sin pane (o sin match) cae al mas reciente."""
-    best, best_ts = None, -1
-    files = []
-    for base in [os.path.expanduser("~/.claude/sessions")] + glob.glob(os.path.expanduser("~/.claude-accounts/*/sessions")):
-        try:
-            files += [os.path.join(base, n) for n in os.listdir(base) if n.endswith(".json")]
-        except OSError:
-            continue
-    for fp in files:
-        try:
-            with open(fp) as f:
-                d = json.load(f)
-        except Exception:
-            continue
-        pid, tm, sid = d.get("pid"), d.get("tmux") or "", d.get("sessionId")
-        if not (isinstance(pid, int) and isinstance(sid, str) and sid):
-            continue
-        if tm.partition(":")[0] != sess:
-            continue
-        try:
-            os.kill(pid, 0)
-        except Exception:
-            continue
-        p_id = tm.rpartition(".")[2] if "." in tm else ""
-        info = {"sid": sid, "pid": pid, "pane": p_id if p_id.startswith("%") else "",
-                "startedAt": (d.get("startedAt") or 0) / 1000.0}
-        if pane and info["pane"] == pane:
-            return info          # match exacto de pane: ese es
-        if info["startedAt"] > best_ts:
-            best, best_ts = info, info["startedAt"]
-    return best
 
 
 def _transcript_path(sid):
@@ -4534,10 +3875,7 @@ def write_pane_models(panes):
     with _pane_model_lock:
         if file_text != _pane_model_state["file_text"]:
             try:
-                tmp = PANE_MODELS_FILE + ".tmp"
-                with open(tmp, "w") as f:
-                    f.write(file_text)
-                os.replace(tmp, PANE_MODELS_FILE)
+                write_file_atomic(PANE_MODELS_FILE, file_text)
             except OSError:
                 pass
             else:
@@ -4569,13 +3907,11 @@ def write_pane_models(panes):
 
 # Catalogo de modelos de OpenCode (unico agente con seleccion de PROVIDER
 # desde la UI). `opencode models --verbose` es lento: cache generoso.
-_oc_models_cache = {"at": 0, "data": []}
+_oc_models_cache = {"at": 0, "data": [], "refresh": None}
+_oc_models_lock = threading.Lock()
 
 
-def opencode_models(force=False):
-    now = time.time()
-    if not force and _oc_models_cache["data"] and now - _oc_models_cache["at"] < 900:
-        return _oc_models_cache["data"]
+def _opencode_models_fetch():
     binary = shutil.which("opencode") or os.path.expanduser("~/.opencode/bin/opencode")
     # --refresh: opencode CACHEA la lista de providers; sin esto, las keys
     # recien pegadas en providers.env no aparecen hasta reiniciar el CLI.
@@ -4585,11 +3921,39 @@ def opencode_models(force=False):
              'set -a; . "$HOME/.claude/hooks/providers.env" 2>/dev/null; set +a; '
              f'"{binary}" models --verbose --refresh'],
             capture_output=True, text=True, timeout=60)
-        data = cc_usage.parse_opencode_models(r.stdout)
+        return cc_usage.parse_opencode_models(r.stdout)
     except Exception:
-        data = []
+        return []
+
+
+def _opencode_models_refresh(done):
+    try:
+        data = _opencode_models_fetch()
+        if data:
+            with _oc_models_lock:
+                _oc_models_cache.update({"at": time.time(), "data": data})
+    finally:
+        with _oc_models_lock:
+            _oc_models_cache["refresh"] = None
+        done.set()
+
+
+def opencode_models(force=False, wait=8):
+    """Stale-while-revalidate: el CLI tarda hasta 60 s y NO debe retener un
+    hilo HTTP. Con cache (aunque vieja) responde al instante y refresca en
+    segundo plano; en frio espera como mucho `wait` segundos."""
+    with _oc_models_lock:
+        data = _oc_models_cache["data"]
+        if not force and data and time.time() - _oc_models_cache["at"] < 900:
+            return data
+        done = _oc_models_cache["refresh"]
+        if done is None:
+            done = _oc_models_cache["refresh"] = threading.Event()
+            threading.Thread(target=_opencode_models_refresh, args=(done,),
+                             daemon=True).start()
     if data:
-        _oc_models_cache.update({"at": now, "data": data})
+        return data
+    done.wait(wait)
     return _oc_models_cache["data"]
 
 
@@ -4635,6 +3999,25 @@ def _authority_matches(pattern, authority):
     else:
         hostname = authority.rpartition(":")[0] if ":" in authority else authority
     return len(hostname) <= 253
+
+
+def _origin_matches_host(origin, host):
+    """True si Origin es exactamente el origen servido: http(s), sin ruta ni
+    userinfo, mismo hostname y mismo puerto (el puerto por defecto del esquema
+    cuenta como ausente en Host, como lo deja nginx/tailscale serve)."""
+    try:
+        o = urllib.parse.urlsplit(origin or "")
+        h = urllib.parse.urlsplit("//" + (host or ""))
+        o_port, h_port = o.port, h.port
+    except ValueError:
+        return False
+    if o.scheme not in ("http", "https") or not o.hostname or not h.hostname:
+        return False
+    if o.path or o.query or o.fragment or "@" in o.netloc:
+        return False
+    default = 80 if o.scheme == "http" else 443
+    return (o.hostname == h.hostname
+            and (o_port or default) == (h_port or default))
 
 
 def _ip_is_loopback(value):
@@ -4766,6 +4149,41 @@ def tailscale_serve_status_text():
     return r.stdout if r.returncode == 0 else ""
 
 
+_remote_state_cache = {"at": 0.0, "data": None, "refreshing": False}
+_remote_state_lock = threading.Lock()
+
+
+def _remote_state_refresh():
+    try:
+        data = remote_state()
+        with _remote_state_lock:
+            _remote_state_cache.update({"at": time.time(), "data": data})
+    except Exception:
+        pass
+    finally:
+        with _remote_state_lock:
+            _remote_state_cache["refreshing"] = False
+
+
+def remote_state_cached(max_age=15):
+    """GET /remote-state lo sondea el UI: `tailscale status/serve` puede tardar
+    hasta 24 s. Se sirve la ultima foto y se refresca en segundo plano; solo
+    la primera vez (sin foto) se calcula en linea. Las acciones POST siguen
+    llamando a remote_state() para devolver el estado recien cambiado."""
+    with _remote_state_lock:
+        data = _remote_state_cache["data"]
+        stale = time.time() - _remote_state_cache["at"] >= max_age
+        if data is not None and stale and not _remote_state_cache["refreshing"]:
+            _remote_state_cache["refreshing"] = True
+            threading.Thread(target=_remote_state_refresh, daemon=True).start()
+    if data is not None:
+        return data
+    data = remote_state()
+    with _remote_state_lock:
+        _remote_state_cache.update({"at": time.time(), "data": data})
+    return data
+
+
 def remote_state():
     host = tailscale_host()
     token = access_token()
@@ -4778,6 +4196,9 @@ def remote_state():
         "qrAvailable": shutil.which("qrencode") is not None,
         "serveStatus": serve,
     })
+    # Tras /remote-on etc. el siguiente GET ya ve el estado nuevo.
+    with _remote_state_lock:
+        _remote_state_cache.update({"at": time.time(), "data": status})
     return status
 
 
@@ -4849,19 +4270,75 @@ def load_json_file(path, default):
         return default
 
 
-def write_json_file(path, data):
+def lock_path_for(path):
+    # Candado sidecar para leer-modificar-escribir. cc-app puede tomar el mismo
+    # (fcntl.flock LOCK_EX sobre "<archivo>.lock") para app-tabs.json.
+    return path + ".lock"
+
+
+@contextlib.contextmanager
+def file_lock(path):
+    """flock exclusivo sobre <path>.lock. Es por descripcion de archivo:
+    excluye tanto otros procesos como otros hilos de este. No es reentrante."""
+    lock = lock_path_for(path)
+    os.makedirs(os.path.dirname(lock) or ".", exist_ok=True)
+    fd = os.open(lock, os.O_RDWR | os.O_CREAT, 0o600)
+    try:
+        fcntl.flock(fd, fcntl.LOCK_EX)
+        yield
+    finally:
+        os.close(fd)
+
+
+def write_file_atomic(path, text, mode=None):
+    """Escribe via mkstemp en el MISMO dir + fsync + os.replace: un lector nunca
+    ve el archivo a medias y dos escritores no comparten un '.tmp' fijo.
+    Conserva los permisos del archivo previo (nuevos: 0600 salvo `mode`)."""
     directory = os.path.dirname(path) or "."
+    os.makedirs(directory, exist_ok=True)
+    if mode is None:
+        try:
+            mode = os.stat(path).st_mode & 0o7777
+        except FileNotFoundError:
+            mode = 0o600
     fd, tmp = tempfile.mkstemp(
-        prefix=os.path.basename(path) + ".", suffix=".tmp", dir=directory)
+        prefix="." + os.path.basename(path) + ".", suffix=".tmp", dir=directory)
     try:
         with os.fdopen(fd, "w") as f:
-            json.dump(data, f)
+            f.write(text)
+            f.flush()
+            os.fsync(f.fileno())
+        os.chmod(tmp, mode)
         os.replace(tmp, path)
     finally:
         try:
             os.unlink(tmp)
         except FileNotFoundError:
             pass
+
+
+def write_json_file(path, data, indent=None, ensure_ascii=True, mode=None):
+    write_file_atomic(path, json.dumps(data, indent=indent, ensure_ascii=ensure_ascii), mode=mode)
+
+
+def update_json_object(path, mutate, indent=2):
+    """Leer-modificar-escribir un JSON ajeno (settings.json de Claude Code,
+    settings.local.json de un proyecto) bajo candado. Si existe pero no parsea
+    (a medio escribir, o roto a mano) NO se toca: pisarlo con {} borraria hooks
+    y permisos. Solo un archivo ausente arranca de {}."""
+    with file_lock(path):
+        try:
+            with open(path) as f:
+                data = json.load(f)
+        except FileNotFoundError:
+            data = {}
+        except (OSError, ValueError) as exc:
+            raise RuntimeError(f"{path} ilegible, no lo modifico: {exc}") from exc
+        if not isinstance(data, dict):
+            raise RuntimeError(f"{path} no es un objeto JSON, no lo modifico")
+        result = mutate(data)
+        write_json_file(path, data, indent=indent, ensure_ascii=False)
+        return result
 
 
 def snippet_validate(name, body, tags):
@@ -4984,16 +4461,18 @@ def remember_tab(sess, label=None, cwd="", agent="", reason="closed"):
         "reason": reason[:32],
         "ts": int(time.time()),
     }
-    hist = [h for h in read_tab_history() if h.get("session") != sess]
-    write_json_file(TAB_HISTORY_FILE, [item] + hist[:79])
+    with file_lock(TAB_HISTORY_FILE):
+        hist = [h for h in read_tab_history() if h.get("session") != sess]
+        write_json_file(TAB_HISTORY_FILE, [item] + hist[:79])
 
 
 def write_app_tab(sess, label):
-    tabs = load_json_file(TABS_FILE, {})
-    if not isinstance(tabs, dict):
-        tabs = {}
-    tabs[sess] = label or sess
-    write_json_file(TABS_FILE, tabs)
+    with file_lock(TABS_FILE):
+        tabs = load_json_file(TABS_FILE, {})
+        if not isinstance(tabs, dict):
+            tabs = {}
+        tabs[sess] = label or sess
+        write_json_file(TABS_FILE, tabs)
 
 
 TAB_KINDS = {"project", "scratch", "shell", "ssh", "ssh-tab"}
@@ -5076,24 +4555,24 @@ def register_app_tab(sess, label=None, kind="", host="", cwd=""):
     dueno de sus etiquetas)."""
     if sess == "local":
         return  # GTK already owns the pinned home tab outside this registry.
-    tabs = load_json_file(TABS_FILE, {})
-    if not isinstance(tabs, dict):
-        tabs = {}
-    if sess not in tabs:
-        tabs[sess] = (label or sess)[:80]
-        write_json_file(TABS_FILE, tabs)
+    with file_lock(TABS_FILE):
+        tabs = load_json_file(TABS_FILE, {})
+        if not isinstance(tabs, dict):
+            tabs = {}
+        if sess not in tabs:
+            tabs[sess] = (label or sess)[:80]
+            write_json_file(TABS_FILE, tabs)
     meta = (write_tab_metadata(sess, kind, host=host, cwd=cwd)
             if kind in TAB_KINDS else tab_metadata_for_session(sess))
     if meta and not read_tab_metadata().get(sess):
         meta = write_tab_metadata(
             sess, meta["kind"], host=meta.get("host", ""), cwd=meta.get("cwd", ""))
     try:
-        with open(TAB_OPEN_FILE, "w") as f:
-            event = {"session": sess, "label": (label or sess)[:80],
-                     "ts": time.time()}
-            if meta:
-                event["meta"] = meta
-            json.dump(event, f)
+        event = {"session": sess, "label": (label or sess)[:80],
+                 "ts": time.time()}
+        if meta:
+            event["meta"] = meta
+        write_json_file(TAB_OPEN_FILE, event)
     except OSError:
         pass
 
@@ -5116,14 +4595,15 @@ def close_app_tab(sess, ephemeral=False):
         if r.returncode == 0:
             cwd = r.stdout.strip()
         remember_tab(sess, label, cwd, state_agent(sess), reason="closed")
-    tabs_map = load_json_file(TABS_FILE, {})
-    if isinstance(tabs_map, dict) and sess in tabs_map:
-        tabs_map.pop(sess, None)
-        write_json_file(TABS_FILE, tabs_map)
+    with file_lock(TABS_FILE):
+        tabs_map = load_json_file(TABS_FILE, {})
+        if isinstance(tabs_map, dict) and sess in tabs_map:
+            tabs_map.pop(sess, None)
+            write_json_file(TABS_FILE, tabs_map)
     remove_tab_metadata(sess)
     try:
-        with open(os.path.join(HOOKS, "app-tab-close.json"), "w") as f:
-            json.dump({"session": sess, "ts": time.time()}, f)
+        write_json_file(os.path.join(HOOKS, "app-tab-close.json"),
+                        {"session": sess, "ts": time.time()})
     except Exception:
         pass
     return None
@@ -5274,8 +4754,8 @@ def focus_session(sess, win="claude"):
 
 ALLOWED_KEYS = {"Enter", "Escape", "Up", "Down", "Tab", "y", "n",
                 "1", "2", "3", "4", "5", "6", "7", "8", "9"}
-SESSION_RE = re.compile(r"^[A-Za-z0-9._-]{1,80}$")
-PANE_RE = re.compile(r"^%\d{1,7}$")
+SESSION_RE = re.compile(r"^[A-Za-z0-9._-]{1,80}\Z")   # \Z: `$` acepta "\n" final
+PANE_RE = re.compile(r"^%\d{1,7}\Z")
 
 
 def operator_tabs_payload():
@@ -6073,19 +5553,23 @@ def tmux_stdin(*args, stdin=None, timeout=5):
 def snippet_paste_to_pane(pane, text, tmux_fn):
     """Pega texto en `pane` usando bracketed paste. NUNCA envia Enter.
 
-    Secuencia: load-buffer (via stdin) → paste-buffer -p (bracketed) → delete-buffer.
-    El shell moderno (bash 4+, zsh) recibe el texto como un bloque unico y
-    espera al Enter del usuario para ejecutar."""
-    buf = "comandos-snip"
+    Secuencia: load-buffer (via stdin) → paste-buffer -p -d (bracketed, y lo
+    borra al pegar). El buffer es unico por llamada: con un nombre fijo dos
+    pegados simultaneos podian caer en el pane equivocado. El shell moderno
+    (bash 4+, zsh) recibe el texto como un bloque unico y espera al Enter."""
+    import uuid
+    buf = "comandos-snip-" + uuid.uuid4().hex[:12]
     r = tmux_fn("load-buffer", "-b", buf, "-", stdin=text)
     if r.returncode != 0:
         return r.stderr.strip() or "load-buffer fallo"
-    err = None
-    r = tmux_fn("paste-buffer", "-p", "-b", buf, "-t", pane)
-    if r.returncode != 0:
-        err = r.stderr.strip() or "paste-buffer fallo"
-    tmux_fn("delete-buffer", "-b", buf)
-    return err
+    pasted = False
+    try:
+        r = tmux_fn("paste-buffer", "-p", "-d", "-b", buf, "-t", pane)
+        pasted = r.returncode == 0
+    finally:
+        if not pasted:
+            tmux_fn("delete-buffer", "-b", buf)
+    return None if pasted else (r.stderr.strip() or "paste-buffer fallo")
 
 
 def tmux_paste(sess, text, pane=None):
@@ -6726,10 +6210,7 @@ def write_app_tab_models(items):
                         "panes": detail.get(session, [])[:6]}
               for session, labels in grouped.items()}
     try:
-        tmp = APP_TAB_MODELS_FILE + ".tmp"
-        with open(tmp, "w") as f:
-            json.dump(public, f)
-        os.replace(tmp, APP_TAB_MODELS_FILE)
+        write_json_file(APP_TAB_MODELS_FILE, public)
     except Exception:
         pass
 
@@ -7290,89 +6771,88 @@ def play_test(kind):
 
 
 def write_conf_key(key, val):
-    lines = []
-    try:
-        with open(CONF_PATH) as f:
-            lines = f.read().splitlines()
-    except FileNotFoundError:
-        pass
-    hit = False
-    for i, l in enumerate(lines):
-        s = l.strip()
-        if not s.startswith("#") and "=" in s and s.split("=")[0].strip() == key:
-            lines[i] = f"{key}={val}"
-            hit = True
-    if not hit:
-        lines.append(f"{key}={val}")
-    with open(CONF_PATH, "w") as f:
-        f.write("\n".join(lines) + "\n")
+    with file_lock(CONF_PATH):
+        lines = []
+        try:
+            with open(CONF_PATH) as f:
+                lines = f.read().splitlines()
+        except FileNotFoundError:
+            pass
+        hit = False
+        for i, l in enumerate(lines):
+            s = l.strip()
+            if not s.startswith("#") and "=" in s and s.split("=")[0].strip() == key:
+                lines[i] = f"{key}={val}"
+                hit = True
+        if not hit:
+            lines.append(f"{key}={val}")
+        write_file_atomic(CONF_PATH, "\n".join(lines) + "\n")
 
 
-SSH_HOST_RE = re.compile(r"^[A-Za-z0-9._-]{1,60}$")
+SSH_HOST_RE = re.compile(r"^[A-Za-z0-9._-]{1,60}\Z")
 
 
-def parse_ssh_config():
-    """Hosts de ~/.ssh/config (la fuente de verdad estandar de SSH)."""
+def parse_ssh_config(text=None):
+    """Hosts de ~/.ssh/config (la fuente de verdad estandar de SSH), o de
+    `text` si se pasa (para validar una reescritura antes de hacerla)."""
     path = os.path.expanduser("~/.ssh/config")
     hosts, cur = [], None
-    try:
-        with open(path) as f:
-            for raw in f:
-                line = raw.strip()
-                if not line or line.startswith("#"):
-                    continue
-                parts = line.split(None, 1)
-                if len(parts) < 2:
-                    continue
-                k, v = parts[0].lower(), parts[1].strip()
-                if k == "host":
-                    cur = None
-                    for name in v.split():
-                        if "*" not in name and "?" not in name:
-                            cur = {"host": name}
-                            hosts.append(cur)
-                elif cur is not None and k in ("hostname", "user", "port"):
-                    cur[k] = v
-                elif cur is not None and k == "identityfile":
-                    cur["identity"] = v
-    except FileNotFoundError:
-        pass
+    if text is None:
+        try:
+            with open(path) as f:
+                text = f.read()
+        except FileNotFoundError:
+            return hosts
+    for raw in text.splitlines():
+        line = raw.strip()
+        if not line or line.startswith("#"):
+            continue
+        parts = line.split(None, 1)
+        if len(parts) < 2:
+            continue
+        k, v = parts[0].lower(), parts[1].strip()
+        if k == "host":
+            cur = None
+            for name in v.split():
+                if "*" not in name and "?" not in name:
+                    cur = {"host": name}
+                    hosts.append(cur)
+        elif cur is not None and k in ("hostname", "user", "port"):
+            cur[k] = v
+        elif cur is not None and k == "identityfile":
+            cur["identity"] = v
     return hosts
 
 
 # Valores de una entrada ssh: SIN saltos de linea ni control chars (evita que
 # un hostname/identity inyecte directivas arbitrarias como ProxyCommand = RCE).
-SSH_HOSTNAME_RE = re.compile(r"^[A-Za-z0-9._:\-\[\]]{1,255}$")
-SSH_USER_RE = re.compile(r"^[A-Za-z0-9._@\-]{1,64}$")
-SSH_PATH_RE = re.compile(r"^[A-Za-z0-9._/~\-]{1,255}$")
+SSH_HOSTNAME_RE = re.compile(r"^[A-Za-z0-9._:\-\[\]]{1,255}\Z")
+SSH_USER_RE = re.compile(r"^[A-Za-z0-9._@\-]{1,64}\Z")
+SSH_PATH_RE = re.compile(r"^[A-Za-z0-9._/~\-]{1,255}\Z")
 
 
-def ssh_add(d):
+def _ssh_block(d):
+    """Valida una entrada y devuelve (host, lineas del bloque, error)."""
     host = d.get("host", "").strip()
     hostname = d.get("hostname", "").strip()
     user = d.get("user", "").strip()
     port = str(d.get("port", "")).strip()
     identity = d.get("identity", "").strip()
     if not SSH_HOST_RE.match(host):
-        return "Alias invalido (letras, numeros, . _ -)"
-    # Rechazo explicito de saltos de linea y control chars (defensa extra
-    # ante el '$' de re que tolera un \n final): ni una directiva inyectada.
+        return host, None, "Alias invalido (letras, numeros, . _ -)"
+    # Rechazo explicito de saltos de linea y control chars: ni una directiva
+    # inyectada (ProxyCommand = RCE).
     for v in (hostname, user, port, identity):
         if any(c in v for c in "\r\n\x00") or any(ord(c) < 32 for c in v):
-            return "Caracteres no permitidos"
+            return host, None, "Caracteres no permitidos"
     if not SSH_HOSTNAME_RE.fullmatch(hostname):
-        return "Hostname/IP invalido"
+        return host, None, "Hostname/IP invalido"
     if user and not SSH_USER_RE.fullmatch(user):
-        return "Usuario invalido"
+        return host, None, "Usuario invalido"
     if port and not (port.isdigit() and 1 <= int(port) <= 65535):
-        return "Puerto invalido"
+        return host, None, "Puerto invalido"
     if identity and not SSH_PATH_RE.fullmatch(identity):
-        return "Ruta de llave invalida"
-    if any(h["host"] == host for h in parse_ssh_config()):
-        return f"'{host}' ya existe en ~/.ssh/config"
-    sshdir = os.path.expanduser("~/.ssh")
-    os.makedirs(sshdir, mode=0o700, exist_ok=True)
-    path = os.path.join(sshdir, "config")
+        return host, None, "Ruta de llave invalida"
     block = [f"\nHost {host}", f"    HostName {hostname}"]
     if user:
         block.append(f"    User {user}")
@@ -7380,11 +6860,78 @@ def ssh_add(d):
         block.append(f"    Port {port}")
     if identity:
         block.append(f"    IdentityFile {identity}")
-    existed = os.path.exists(path)
-    with open(path, "a") as f:
-        f.write("\n".join(block) + "\n")
-    if not existed:
-        os.chmod(path, 0o600)
+    return host, block, None
+
+
+def _ssh_config_path():
+    return os.path.join(os.path.expanduser("~/.ssh"), "config")
+
+
+def _ssh_config_read(path):
+    try:
+        with open(path) as f:
+            return f.read()
+    except FileNotFoundError:
+        return None
+
+
+def _ssh_without_host(text, host):
+    """Quita el bloque 'Host <host>' (solo bloques de un nombre): (texto, error)."""
+    out, skip, found = [], False, False
+    for l in text.splitlines():
+        s = l.strip()
+        if s.lower().startswith("host "):
+            names = s.split()[1:]
+            if host in names:
+                found = True
+                if len(names) > 1:
+                    return None, "Ese host comparte linea con otros; editalo a mano"
+                skip = True
+                continue
+            skip = False
+        if not skip:
+            out.append(l)
+    if not found:
+        return None, "No existe"
+    return "\n".join(out).rstrip() + "\n", None
+
+
+def _ssh_with_block(text, block):
+    return (text or "") + "\n".join(block) + "\n"
+
+
+def ssh_add(d):
+    host, block, err = _ssh_block(d)
+    if err:
+        return err
+    os.makedirs(os.path.expanduser("~/.ssh"), mode=0o700, exist_ok=True)
+    path = _ssh_config_path()
+    with file_lock(path):
+        text = _ssh_config_read(path)
+        if any(h["host"] == host for h in parse_ssh_config(text or "")):
+            return f"'{host}' ya existe en ~/.ssh/config"
+        # Nuevo: 0600 (write_file_atomic conserva el modo de uno existente).
+        write_file_atomic(path, _ssh_with_block(text, block))
+    return None
+
+
+def ssh_update(orig, d):
+    """Editar = quitar + agregar en UNA reescritura atomica: si el alta no
+    valida, ~/.ssh/config queda exactamente como estaba."""
+    host, block, err = _ssh_block(d)
+    if err:
+        return err
+    path = _ssh_config_path()
+    with file_lock(path):
+        text = _ssh_config_read(path)
+        if text is None:
+            return "No hay ~/.ssh/config"
+        rest, err = _ssh_without_host(text, orig)
+        if err:
+            return err
+        if any(h["host"] == host for h in parse_ssh_config(rest)):
+            return f"'{host}' ya existe en ~/.ssh/config"
+        write_file_atomic(path, _ssh_with_block(rest, block))
     return None
 
 
@@ -7447,30 +6994,15 @@ def ssh_key_setup(host):
 
 def ssh_remove(host):
     """Quita el bloque 'Host <host>' de ~/.ssh/config (solo bloques de un nombre)."""
-    path = os.path.expanduser("~/.ssh/config")
-    try:
-        with open(path) as f:
-            lines = f.read().splitlines()
-    except FileNotFoundError:
-        return "No hay ~/.ssh/config"
-    out, skip, found = [], False, False
-    for l in lines:
-        s = l.strip()
-        if s.lower().startswith("host "):
-            names = s.split()[1:]
-            if host in names:
-                found = True
-                if len(names) > 1:
-                    return "Ese host comparte linea con otros; editalo a mano"
-                skip = True
-                continue
-            skip = False
-        if not skip:
-            out.append(l)
-    if not found:
-        return "No existe"
-    with open(path, "w") as f:
-        f.write("\n".join(out).rstrip() + "\n")
+    path = _ssh_config_path()
+    with file_lock(path):
+        text = _ssh_config_read(path)
+        if text is None:
+            return "No hay ~/.ssh/config"
+        rest, err = _ssh_without_host(text, host)
+        if err:
+            return err
+        write_file_atomic(path, rest)
     return None
 
 
@@ -7856,285 +7388,23 @@ def model_switch_apply(sess, pane, target, data):
     return session_configure(dict(data, session=sess, pane=pane))
 
 
-def _legacy_model_switch_apply(sess, pane, target, data):
-    """Misma lógica que POST /model/switch. Devuelve (status, body)."""
-    def _json(code, body):
-        return code, body
-    provider = str(data.get("provider") or data.get("agent") or state_agent(sess))[:32]
-    preset = str(data.get("preset") or "diario")[:32]
-    model = str(data.get("model") or "")[:120]
-    effort = str(data.get("effort") or "")[:16]
-    route = None
-    current_motor = ""
-    effort_only = False   # cambio de solo esfuerzo: no re-teclear /model
-    if data.get("routeId"):
-        info = agent_info_for_pane(pane)
-        current_harness = str((info or {}).get("agent") or state_agent(sess) or "")
-        current_item = next((i for i in read_states_cached() if i.get("session") == sess and i.get("pane") == pane), {})
-        current_motor = str(current_item.get("motor") or "") \
-            or provider_registry.engine_for_model(load_provider_registry(), str(current_item.get("model") or "")) \
-            or ("" if current_harness == "acp" else current_harness)
-        if current_harness == "acp" and current_motor in ("", "acp"):
-            current_motor = str((acp_state_for_pane(pane) or {}).get("agent") or "claude")
-        requested = provider_registry.route_for(load_provider_registry(), str(data.get("routeId"))) or {}
-        scope = "session_model" if requested.get("motor") == current_motor else "session_motor"
-        selection_data = dict(data)
-        selection_data.setdefault("harnessAccount", current_item.get("account") or "main")
-        # Cuenta del MOTOR: si el usuario NO la eligió, resolverla contra
-        # el motor DESTINO (no heredar la del harness cuando el motor
-        # cambia). Preferencia: mismo motor -> su cuenta actual; motor ==
-        # harness (nativo) -> cuenta del harness; cruzado -> 'main' (la que
-        # soporta el gateway). SIEMPRE cae a una cuenta con login real, así
-        # cambiar de motor no revienta con motor_account_login_required.
-        if not data.get("motorAccount"):
-            requested_motor = requested.get("motor")
-            if requested_motor == current_motor:
-                pref = current_item.get("motorAccount") or "main"
-            elif requested_motor == current_harness:
-                pref = current_item.get("account") or "main"
-            else:
-                pref = "main"
-            selection_data["motorAccount"] = _pick_motor_account(requested_motor, pref)
-        # Cambio de SOLO esfuerzo (no mandan modelo, mismo motor): usar el
-        # modelo que YA corre el pane, NO el default del registro. Sin esto
-        # resolve_route_selection rellenaba model="" con models[0] (Fable
-        # 5.1) y cambiar el effort de Fable 5 [1m] saltaba a otro modelo
-        # de 200k reventando el contexto — el "no jala usar Fable 5 normal".
-        if not selection_data.get("model") and scope == "session_model" and current_item.get("model"):
-            selection_data["model"] = current_item.get("model")
+def _guard_request(method):
+    """Envuelve do_GET/do_POST: ninguna excepcion de un endpoint deja la
+    conexion sin respuesta. TimeoutExpired (tmux/subprocess colgado) -> 504,
+    lo demas -> 500 JSON + traza en el journal."""
+    def guarded(self):
+        self._response_started = False
         try:
-            route, selected = resolve_route_selection(selection_data, scope, current_harness=current_harness)
-        except provider_registry.ProviderRegistryError as e:
-            # Mensaje HUMANO en vez del código crudo: el usuario debe saber
-            # QUÉ cuenta y motor, y qué hacer.
-            _mot = requested.get("motor") or "?"
-            _acct = selection_data.get("motorAccount") or "main"
-            _human = {
-                "motor_account_login_required":
-                    f"El motor {_mot} no tiene login en la cuenta «{_acct}». Elige otra en la fila «cuenta» del selector, o inicia sesión con «+ cuenta».",
-                "motor_account_gateway_not_ready":
-                    f"Por ahora el gateway solo usa la cuenta «main» del motor {_mot}; elige main para ese motor.",
-                "harness_account_login_required":
-                    f"La cuenta «{selection_data.get('harnessAccount') or 'main'}» de este harness necesita login.",
-            }.get(str(e))
-            return _json(409, {"error": _human or str(e), "code": str(e)})
-        provider = str(route.get("driver") or current_harness)
-        model, effort = selected["model"], selected["effort"]
-        # Si el modelo resuelto es el MISMO que ya corre el pane, es un
-        # cambio de SOLO esfuerzo: NO tecleamos /model (sería redundante y,
-        # vía alias de familia, podría saltar de versión) pero SÍ
-        # conservamos `model` real para registrarlo (vaciarlo dejaba la
-        # config en model='' y la card mostraba un modelo viejo/erróneo).
-        if model and current_item.get("model") and \
-                provider_registry._model_key(model) == provider_registry._model_key(current_item.get("model")):
-            effort_only = True
-    if tmux("has-session", "-t", target).returncode != 0:
-        return _json(404, {"error": f"No hay sesion tmux '{sess}'"})
-    if provider == "acp":
-        info = agent_info_for_pane(pane)
-        if not info or info.get("agent") != "acp":
-            return _json(409, {"error": "ese pane no contiene ACP"})
-        opkey = f"{sess}|{pane}" if PANE_RE.match(pane) else sess
-        gen = motor_gen_bump(opkey)
-        queued = harness_pane_busy(sess, pane, "acp") and not bool(data.get("interrupt"))
-        live = acp_state_for_pane(pane)
-        dest_motor = str((route.get("motor") if route else "") or data.get("motor") or live.get("agent") or "claude")
-        payload = {"key": opkey, "pane": pane, "cmds": [], "provider": "acp",
-                   "sess": sess, "model": model, "effort": effort, "motor": dest_motor,
-                   "route_id": route.get("id") if route else f"acp:{dest_motor}",
-                   "harness": "acp",
-                   "harness_account": (selected.get("harnessAccount") if route else "main"),
-                   "motor_account": (selected.get("motorAccount") if route else (live.get("account") or "main")),
-                   "gen": gen, "interrupt": bool(data.get("interrupt")), "ts": time.time()}
-        motor_queue_put(opkey, payload)
-        threading.Thread(target=motor_apply, args=(payload,), daemon=True).start()
-        return _json(202 if queued else 200,
-                          {"ok": True, "queued": queued, "operationKey": opkey,
-                           "model": model, "effort": effort})
-    if provider == "grok":
-        info = agent_info_for_pane(pane)
-        if not info or info.get("agent") != "grok":
-            return _json(409, {"error": "ese pane no contiene Grok"})
-        env = _read_environ(info.get("pid"))
-        home = env.get(b"GROK_HOME", b"").decode("utf-8", "replace") or os.path.expanduser("~/.grok")
-        catalog = {m["id"]: m for m in (grok_state.models(home) or (load_provider_registry()["harnesses"]["grok"].get("models") or []))}
-        current = grok_metadata_for_pid(info.get("pid"))
-        requested_model = model or current.get("model") or ""
-        if requested_model not in catalog:
-            return _json(400, {"error": f"modelo Grok no disponible: {requested_model}"})
-        allowed = catalog[requested_model].get("efforts") or []
-        if effort and effort not in allowed:
-            return _json(400, {"error": f"{requested_model} no admite esfuerzo {effort}; usa {', '.join(allowed)}"})
-        opkey = f"{sess}|{pane}"
-        gen = motor_gen_bump(opkey)
-        queued = grok_pane_busy(sess, pane) and not bool(data.get("interrupt"))
-        payload = {"key": opkey, "pane": pane, "cmds": [], "provider": "grok",
-                   "sess": sess, "model": model, "effort": effort, "route_id": "grok:grok",
-                   "harness": "grok", "motor": "grok",
-                   "harness_account": (selected.get("harnessAccount") if route else account_for_pid(info.get("pid"), "grok").get("account", "unknown")),
-                   "motor_account": (selected.get("motorAccount") if route else account_for_pid(info.get("pid"), "grok").get("account", "unknown")), "gen": gen,
-                   "interrupt": bool(data.get("interrupt")), "ts": time.time()}
-        motor_queue_put(opkey, payload)
-        threading.Thread(target=motor_apply, args=(payload,), daemon=True).start()
-        return _json(202 if queued else 200,
-                          {"ok": True, "queued": queued, "operationKey": opkey,
-                           "model": requested_model, "effort": effort or current.get("effort")})
-    if provider == "codex" and model in CODEX_MODEL_DIGITS:
-        # El picker de codex es de DOS pasos numerados (modelo →
-        # reasoning): un digito selecciona y avanza solo.
-        seq = (
-            (("Escape",), 0.35), (("C-u",), 0.25),
-            (("-l", "--", "/model"), 0.5), (("Enter",), 1.2),
-            (("-l", "--", CODEX_MODEL_DIGITS[model]), 0.9),
-            (("-l", "--", CODEX_EFFORT_DIGITS.get(effort, "2")), 0.4),
-            (("C-u",), 0),
-        )
-        for keys, pause in seq:
-            r = tmux("send-keys", "-t", pane, *keys)
-            if r.returncode != 0:
-                return _json(500, {"error": r.stderr.strip() or "tmux fallo"})
-            if pause:
-                time.sleep(pause)
-        chosen_effort = effort or "medium"
-        opkey = f"{sess}|{pane}"
-        motor_stage(opkey, "aplicando modelo en Codex CLI")
-        codex_account = (selected.get("harnessAccount") if route else (next((i.get("account") for i in read_states_cached()
-                               if i.get("session") == sess and i.get("pane") == pane), None) or "main"))
-        codex_motor_account = selected.get("motorAccount") if route else codex_account
-        threading.Thread(target=confirm_codex_native,
-                         args=(opkey, sess, pane, model, chosen_effort,
-                               route.get("id") if route else "codex:codex", codex_account, codex_motor_account), daemon=True).start()
-        return _json(202, {"ok": True, "operationKey": opkey,
-                                "command": f"/model → {model} {chosen_effort}",
-                                "model": model, "effort": chosen_effort})
-    if provider == "agy":
-        info = agent_info_for_pane(pane)
-        if not info or info.get("agent") != "agy":
-            return _json(409, {"error": "ese pane no contiene Antigravity"})
-        opkey = f"{sess}|{pane}"
-        gen = motor_gen_bump(opkey)
-        queued = harness_pane_busy(sess, pane, "agy") and not bool(data.get("interrupt"))
-        payload = {"key": opkey, "pane": pane, "cmds": [], "provider": "agy",
-                   "sess": sess, "model": model, "effort": effort,
-                   "route_id": route.get("id") if route else "agy:agy",
-                   "harness": "agy", "motor": "agy",
-                   "harness_account": (selected.get("harnessAccount") if route else "main"),
-                   "motor_account": (selected.get("motorAccount") if route else "main"),
-                   "gen": gen, "interrupt": bool(data.get("interrupt")), "ts": time.time()}
-        motor_queue_put(opkey, payload)
-        threading.Thread(target=motor_apply, args=(payload,), daemon=True).start()
-        return _json(202 if queued else 200,
-                          {"ok": True, "queued": queued, "operationKey": opkey,
-                           "model": model, "effort": effort})
-    if provider == "opencode":
-        # OpenCode: su picker /models busca por NOMBRE mostrado. La
-        # secuencia limpia estado (Escape+C-u) y teclea la busqueda.
-        info = agent_info_for_pane(pane)
-        if not info or info.get("agent") != "opencode":
-            return _json(409, {"error": "ese pane no contiene OpenCode"})
-        model_provider = model.split("/", 1)[0] if "/" in model else ""
-        query = cc_usage.opencode_picker_query(
-            str(data.get("model_name") or model.rsplit("/", 1)[-1]),
-            model_provider)
-        opkey = f"{sess}|{pane}"
-        gen = motor_gen_bump(opkey)
-        queued = harness_pane_busy(sess, pane, "opencode") and not bool(data.get("interrupt"))
-        payload = {"key": opkey, "pane": pane, "cmds": [], "provider": "opencode",
-                   "sess": sess, "model": model, "effort": "", "query": query,
-                   "route_id": route.get("id") if route else "opencode:opencode",
-                   "harness": "opencode", "motor": "opencode",
-                   "harness_account": (selected.get("harnessAccount") if route else "main"),
-                   "motor_account": (selected.get("motorAccount") if route else "main"),
-                   "gen": gen, "interrupt": bool(data.get("interrupt")), "ts": time.time()}
-        motor_queue_put(opkey, payload)
-        threading.Thread(target=motor_apply, args=(payload,), daemon=True).start()
-        return _json(202 if queued else 200,
-                          {"ok": True, "queued": queued, "operationKey": opkey,
-                           "command": f"/models → {query}", "model": model})
-    EFFORTS = ("low", "medium", "high", "xhigh", "max")
-    if effort and effort not in EFFORTS:
-        return _json(400, {"error": f"effort invalido: {effort}"})
-    cmds = []
-    if (model and not effort_only) or not effort:
-        cmds.append(cc_usage.model_switch_text(provider, preset, model))
-    if effort and provider == "claude":
-        cmds.append(f"/effort {effort}")   # Claude Code lo manda como output_config.effort; el proxy lo traduce a reasoning de Codex
-    # `/model X` y `/effort X` en Claude Code tambien se GUARDAN como default de
-    # sesiones nuevas. El cambio es de ESTA sesion: restaurar los defaults.
-    saved = None
-    if provider == "claude":
-        try:
-            with open(os.path.expanduser("~/.claude/settings.json")) as f:
-                st0 = json.load(f)
-            saved = {k: st0.get(k) for k in ("model", "effortLevel", "modelSettings")}
-        except Exception:
-            saved = None
-    queued = bool(provider == "claude" and claude_pane_busy(pane))
-    interrupt = bool(data.get("interrupt"))
-    opkey = f"{sess}|{pane}" if PANE_RE.match(pane) else sess
-    gen = motor_gen_bump(opkey)
-    ctx_warning = context_shrink_warning(sess, pane, model) if model else ""
-    target_motor = route.get("motor") if route else (provider_registry.engine_for_model(load_provider_registry(), model) or "claude")
-    if provider == "claude" and model:
-        info = _claude_info_for(sess, str(data.get("pane") or ""))
-        pid = info.get("pid") if info else None
-        env = _read_environ(pid) if pid else {}
-        cross_motor = bool(route and current_motor and target_motor != current_motor)
-        needs_proxy = target_motor in ("codex", "grok") and pid and not _proxied(pid, env)
-        lock_missing = target_motor in ("codex", "grok") and any(env.get(key.encode(), b"").decode("utf-8", "replace") != model for key in motor_lock_env(target_motor, model))
-        if pid and (cross_motor or needs_proxy or lock_missing):
-            if target_motor in ("codex", "grok") and not proxy_alive():
-                return _json(409, {"error": "El gateway local no responde; abre Analytics → Guardia para repararlo."})
-            cfg_dir = env.get(b"CLAUDE_CONFIG_DIR", b"").decode("utf-8", "replace") or os.path.expanduser("~/.claude")
-            launch_env = {"CLAUDE_CONFIG_DIR": cfg_dir}
-            if target_motor in ("codex", "grok"):
-                port = int(load_proxy_cfg().get("port") or 18765)
-                launch_env["ANTHROPIC_BASE_URL"] = f"http://127.0.0.1:{port}"
-                launch_env.update(motor_lock_env(target_motor, model))
-            prefix = " ".join(f"{key}={shlex.quote(str(value))}" for key, value in launch_env.items()) + " "
-            cleaned, skip = [], False
-            raw = _resume_flags(_proc_cmdline(pid))
-            for i, f in enumerate(raw):
-                if f in ("--model", "--effort"):
-                    skip = True
-                    continue
-                if skip:
-                    skip = False
-                    continue
-                cleaned.append(f)
-            cmd = (prefix + "claude --resume " + shlex.quote(info["sid"]) + " --model " + shlex.quote(model)
-                   + (" --effort " + shlex.quote(effort) if effort else "")
-                   + "".join(" " + shlex.quote(f) for f in cleaned))
-            config = {"session":sess,"harness":"claude","motor":target_motor,"model":model,"effort":effort or "",
-                      "harness_account":selected.get("harnessAccount") if route else account_for_pid(pid,"claude").get("account","unknown"),
-                      "motor_account":selected.get("motorAccount") if route else "unknown",
-                      "route_id":route.get("id") if route else f"claude:{target_motor}"}
-            restart_payload = {"kind":"restart","key":opkey,"sess":sess,"pane":pane,"restart_cmd":cmd,
-                               "after_cmds":[],"queued":queued,"gen":gen,"ts":time.time(),"config":config}
-            motor_queue_put(opkey, restart_payload)
-            motor_stage(opkey, "preparando continuidad y bloqueo de motor", "prepare", model=model, effort=effort)
-            if data.get("interrupt") and claude_pane_busy(pane):
-                tmux("send-keys", "-t", pane, "Escape")
-                time.sleep(1.2)
-            _claude_restart_resume(pane, pid, cmd, queued=queued, sess=opkey, gen=gen, config=config)
-            return _json(202 if queued else 200, {"ok": True, "queued": queued, "restart": True, "operationKey": opkey,
-                                    "model":model,"effort":effort or None,"contextWarning":ctx_warning or None,
-                                    "note":"La conversación se conserva y todos los subagentes quedan fijados al motor elegido."})
-
-    payload = {"key": opkey, "pane": pane, "cmds": cmds, "provider": provider, "saved": saved,
-               "sess": sess, "effort": effort, "model": model, "gen": gen, "interrupt": interrupt,
-               "route_id": route.get("id") if route else f"claude:{provider_registry.engine_for_model(load_provider_registry(), model) or 'claude'}",
-               "harness": "claude", "motor": route.get("motor") if route else (provider_registry.engine_for_model(load_provider_registry(), model) or "claude"),
-               "harness_account": (selected.get("harnessAccount") if route else (next((i.get("account") for i in read_states_cached() if i.get("session")==sess and i.get("pane")==pane), None) or "unknown")),
-               "motor_account": (selected.get("motorAccount") if route else "unknown"), "ts": time.time()}
-    motor_queue_put(opkey, payload)   # persistente: sobrevive reinicios de cc-dash
-    threading.Thread(target=motor_apply, args=(payload,), daemon=True).start()
-    if queued:
-        return _json(202, {"ok": True, "queued": True, "operationKey": opkey, "command": " · ".join(cmds), "effort": effort or None,
-                                "contextWarning": ctx_warning or None,
-                                "note": "La sesion esta a mitad de turno: el cambio se aplica solo al terminar"})
-    return _json(200, {"ok": True, "operationKey": opkey, "command": " · ".join(cmds), "effort": effort or None,
-                            "contextWarning": ctx_warning or None})
+            return method(self)
+        except (BrokenPipeError, ConnectionResetError):
+            self.close_connection = True
+        except subprocess.TimeoutExpired as exc:
+            self._fail(504, "Tiempo de espera agotado", exc)
+        except Exception as exc:
+            self._fail(500, "Error interno del tablero", exc)
+    guarded.__name__ = method.__name__
+    guarded.__doc__ = method.__doc__
+    return guarded
 
 
 class Handler(http.server.SimpleHTTPRequestHandler):
@@ -8142,12 +7412,33 @@ class Handler(http.server.SimpleHTTPRequestHandler):
     # en "trabajando" hasta que el modelo termina, o nunca pinta. 1.1 + close
     # deja pasar cada flush() al getReader()/XHR.onprogress.
     protocol_version = "HTTP/1.1"
+    # Timeout de socket: un cliente colgado (o un keep-alive ocioso) no
+    # retiene un hilo del servidor para siempre.
+    timeout = 30
 
     def __init__(self, *a, **kw):
         super().__init__(*a, directory=DASH, **kw)
 
     def log_message(self, *a):
         pass
+
+    def send_response(self, *a, **kw):
+        self._response_started = True
+        super().send_response(*a, **kw)
+
+    def _fail(self, code, message, exc):
+        import traceback
+        # Sin query string: puede traer ?token=.
+        path = (self.path or "").partition("?")[0]
+        sys.stderr.write(f"cc-dash {self.command} {path}: {exc!r}\n")
+        traceback.print_exc(file=sys.stderr)
+        if getattr(self, "_response_started", False):
+            self.close_connection = True   # respuesta a medias: cortar
+            return
+        try:
+            self._json(code, {"error": message}, close=True)
+        except OSError:
+            self.close_connection = True
 
     def _no_store(self):
         self.send_header("Cache-Control", "no-store")
@@ -8220,10 +7511,11 @@ class Handler(http.server.SimpleHTTPRequestHandler):
         """Devuelve None si la peticion puede continuar, o (code, obj) si se
         rechaza. Capas:
           (1) Host allowlist -> bloquea DNS-rebinding a 127.0.0.1.
-          (2) Origin allowlist -> bloquea CSRF drive-by: un sitio web puede
+          (2) Origin == Host -> bloquea CSRF drive-by: un sitio web puede
               hacer fetch a 127.0.0.1 (peticion 'simple', sin preflight) y
               llegaria como loopback; pero el navegador SIEMPRE manda Origin
-              en cross-origin, y ahi lo rechazamos.
+              en cross-origin, y solo aceptamos el mismo origen (ni otro
+              *.localhost de devhost ni otro *.ts.net).
           (3) Token para remoto/proxeado (tailscale serve pone X-Forwarded-For).
         Localhost directo no necesita token. Un proxy de desarrollo bajo
         *.localhost tampoco, pero solo cuando el peer y la cadena XFF completa
@@ -8237,11 +7529,11 @@ class Handler(http.server.SimpleHTTPRequestHandler):
         origin_values = self._header_values("Origin")
         if len(origin_values) > 1:
             return 403, {"error": "Origen no permitido"}
-        if origin_values:
-            origin = origin_values[0]
-            oh = urllib.parse.urlparse(origin).netloc
-            if not _authority_matches(HOST_OK_RE, oh):
-                return 403, {"error": "Origen no permitido"}
+        # Con Origin (navegador) exigimos MISMO origen que Host; "null" y
+        # cualquier otro *.localhost / *.ts.net quedan fuera. Sin Origin
+        # (curl de hooks, cc-app, cc-notifyd, cc-telegram) sigue igual.
+        if origin_values and not _origin_matches_host(origin_values[0], host):
+            return 403, {"error": "Origen no permitido"}
         forwarded_values = self._header_values("X-Forwarded-For")
         forwarded_for = ",".join(forwarded_values)
         local_peer = self._peer_is_loopback()
@@ -8252,8 +7544,13 @@ class Handler(http.server.SimpleHTTPRequestHandler):
                              and _xff_is_loopback_chain(forwarded_for))
         if direct_local or trusted_dev_proxy:
             return None
-        if hmac.compare_digest(self._presented_token(), access_token()):
-            return None
+        # compare_digest con str no-ASCII lanza TypeError: comparar bytes.
+        try:
+            presented = self._presented_token().encode("utf-8", "surrogatepass")
+            if hmac.compare_digest(presented, access_token().encode("utf-8")):
+                return None
+        except (TypeError, UnicodeError):
+            pass
         return 401, {"error": "No autorizado (token requerido para acceso remoto)"}
 
     # Endpoints con DATOS o ACCIONES: exigen token. El shell estatico (HTML,
@@ -8261,7 +7558,7 @@ class Handler(http.server.SimpleHTTPRequestHandler):
     # asi la PWA instala y carga sin depender de cookies en el webview movil.
     API_GET = ("/pomodoro", "/providers", "/optimization/plans", "/proxy", "/model/status", "/sovereignty", "/ui-log/summary", "/state", "/usage/state", "/usage/guard", "/usage/changes", "/usage/provider-compare", "/fs/dirs", "/models/latest", "/news/latest", "/notifs/count", "/usage/analytics", "/usage/interactions", "/usage/experiments", "/opencode/models", "/model-tiers", "/dedication", "/active-tab", "/session-profiles", "/extension-usage", "/session-brain", "/project-profiles", "/events", "/conf", "/prefs", "/ssh", "/tabs",
                "/tab-history", "/remote-state", "/remote-qr.png", "/snippets", "/tmux-mouse",
-               "/webterm-token", "/operator")
+               "/webterm-token", "/operator", "/allocation/status")
 
     def do_GET(self):
         host_values = self._header_values("Host")
@@ -8519,9 +7816,9 @@ class Handler(http.server.SimpleHTTPRequestHandler):
                 out.append(it)
             return self._json(200, out[:40])
         if self.path.startswith("/remote-state"):
-            return self._json(200, remote_state())
+            return self._json(200, remote_state_cached())
         if self.path.startswith("/remote-qr.png"):
-            st = remote_state()
+            st = remote_state_cached()
             url = st.get("urls", {}).get("dashboard", "")
             if not url:
                 return self._json(400, {"error": "No pude leer el host de Tailscale"})
@@ -8567,11 +7864,15 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             n = int(self.headers.get("Content-Length", 0))
             if n < 0:
                 raise ValueError("Content-Length negativo")
+            # El tope se aplica ANTES de leer: nunca se bufferiza un cuerpo enorme.
             if n > 20_000_000:
                 return self._json(413, {"error": "Payload demasiado grande"}, close=True)
             data = json.loads(self.rfile.read(n) or b"{}")
         except Exception:
             return self._json(400, {"error": "JSON invalido"}, close=True)
+        if not isinstance(data, dict):
+            # Los endpoints hacen data.get(...): una lista reventaba con AttributeError.
+            return self._json(400, {"error": "El cuerpo debe ser un objeto JSON"})
 
         if self.path == "/session/recover":
             code, body = session_recover(data)
@@ -8732,8 +8033,7 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             if mode == "focus":
                 try: os.remove(FOCUS_QUEUE)
                 except OSError: pass
-            with open(FOCUS_FILE, "w") as f:
-                json.dump(st, f)
+            write_json_file(FOCUS_FILE, st)
             return self._json(200, {"ok": True, "focus": st,
                                     "analytics": cc_usage.focus_analytics(USAGE_DB, 7)})
         if self.path == "/conf-set":
@@ -8816,7 +8116,7 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             agent = str(data.get("agent", ""))[:16]
             ev = str(data.get("event", ""))
             cwd = str(data.get("cwd", ""))[:300]
-            if not re.match(r"^[a-z][a-z0-9_-]{1,15}$", agent):
+            if not re.fullmatch(r"[a-z][a-z0-9_-]{1,15}", agent):
                 return self._json(400, {"error": "agent invalido"})
             if ev not in ("working", "waiting", "done", "end"):
                 return self._json(400, {"error": "event debe ser working|waiting|done|end"})
@@ -8885,13 +8185,9 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             return self._json(200, {"ok": True})
 
         if self.path == "/ssh-update":
-            orig = data.get("orig", "")
-            err = ssh_remove(orig)
+            err = ssh_update(str(data.get("orig", "")), data)
             if err:
                 return self._json(400, {"error": err})
-            err = ssh_add(data)
-            if err:
-                return self._json(400, {"error": f"Se quito '{orig}' pero fallo el alta: {err}"})
             return self._json(200, {"ok": True})
 
         if self.path == "/prefs-set":
@@ -9082,10 +8378,11 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             err = snippet_validate(name, body, tags)
             if err:
                 return self._json(400, {"error": err})
-            items = read_snippets()
-            item = snippet_new(name, body, tags)
-            items.insert(0, item)
-            write_snippets(items)
+            with file_lock(SNIPPETS_FILE):
+                items = read_snippets()
+                item = snippet_new(name, body, tags)
+                items.insert(0, item)
+                write_snippets(items)
             return self._json(200, {"item": item})
 
         if self.path == "/snippets/update":
@@ -9098,22 +8395,26 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             err = snippet_validate(name, body, tags)
             if err:
                 return self._json(400, {"error": err})
-            items = read_snippets()
-            new_items, updated = snippet_update(items, id_, name, body, tags)
+            with file_lock(SNIPPETS_FILE):
+                items = read_snippets()
+                new_items, updated = snippet_update(items, id_, name, body, tags)
+                if updated is not None:
+                    write_snippets(new_items)
             if updated is None:
                 return self._json(404, {"error": "snippet no encontrado"})
-            write_snippets(new_items)
             return self._json(200, {"item": updated})
 
         if self.path == "/snippets/delete":
             id_ = str(data.get("id", ""))
             if not SNIPPET_ID_RE.match(id_):
                 return self._json(400, {"error": "id invalido"})
-            items = read_snippets()
-            new_items, removed = snippet_delete(items, id_)
+            with file_lock(SNIPPETS_FILE):
+                items = read_snippets()
+                new_items, removed = snippet_delete(items, id_)
+                if removed:
+                    write_snippets(new_items)
             if not removed:
                 return self._json(404, {"error": "snippet no encontrado"})
-            write_snippets(new_items)
             return self._json(200, {"ok": True})
 
         if self.path == "/session-new":
@@ -9275,7 +8576,7 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             alias = str(data.get("account", "main"))[:40]
             if not cwd.startswith("/") or not os.path.isdir(cwd):
                 return self._json(400, {"error": "cwd invalido"})
-            if not re.match(r"^[A-Za-z0-9._-]+$", alias):
+            if not re.fullmatch(r"[A-Za-z0-9._-]+", alias):
                 return self._json(400, {"error": "alias invalido"})
             if alias != "main" and not os.path.isdir(
                     os.path.expanduser(f"~/.claude-accounts/{alias}")):
@@ -9338,23 +8639,13 @@ class Handler(http.server.SimpleHTTPRequestHandler):
                     raise RuntimeError("Claude settings only")
                 with open(os.path.expanduser("~/.claude/settings.json")) as f:
                     hooks = json.load(f).get("hooks") or {}
-                sp = os.path.join(d, "settings.json")
-                try:
-                    with open(sp) as f:
-                        st = json.load(f)
-                except Exception:
-                    st = {}
-                changed = False
-                if hooks and not st.get("hooks"):
-                    st["hooks"] = hooks
-                    changed = True
-                # los avisos van por los popups con tema de ComandOS, no los nativos de GNOME
-                if st.get("preferredNotifChannel") != "notifications_disabled":
+                def seed(st):
+                    if hooks and not st.get("hooks"):
+                        st["hooks"] = hooks
+                    # los avisos van por los popups con tema de ComandOS, no los nativos de GNOME
                     st["preferredNotifChannel"] = "notifications_disabled"
-                    changed = True
-                if changed:
-                    with open(sp, "w") as f:
-                        json.dump(st, f, indent=2, ensure_ascii=False)
+                # Si el settings.json de la cuenta no parsea, se deja intacto.
+                update_json_object(os.path.join(d, "settings.json"), seed)
             except Exception:
                 pass
             cwd = str(data.get("cwd") or os.path.expanduser("~"))
@@ -9663,6 +8954,12 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             return self._json(200, {"ok": True})
 
         return self._json(404, {"error": "Ruta desconocida"})
+
+
+# Despacho protegido (ver _guard_request). Se aplica fuera de la clase para que
+# do_GET/do_POST sigan siendo los cuerpos reales de los endpoints.
+Handler.do_GET = _guard_request(Handler.do_GET)
+Handler.do_POST = _guard_request(Handler.do_POST)
 
 
 def main():

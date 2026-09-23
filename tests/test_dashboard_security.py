@@ -196,3 +196,101 @@ def test_security_gate_enforces_rfc_hostname_total_length_boundary(
     assert security_gate(dash, monkeypatch, host=valid) is None
     assert security_gate(dash, monkeypatch, host=too_long) == (
         403, {"error": "Host no permitido"})
+
+
+# CSRF: un Origin presente debe ser el MISMO origen que el Host. Antes bastaba
+# con que cayera en la allowlist (*.localhost, *.ts.net), asi que cualquier
+# proyecto devhost o sitio del tailnet podia teclear en los agentes.
+@pytest.mark.parametrize("host,origin", [
+    ("127.0.0.1:4777", "http://evil.localhost"),
+    ("127.0.0.1:4777", "http://x.ts.net"),
+    ("127.0.0.1:4777", "https://x.tail63a117.ts.net"),
+    ("127.0.0.1:4777", "null"),
+    ("127.0.0.1:4777", "http://127.0.0.1:4778"),
+    ("127.0.0.1:4777", "http://localhost:4777"),
+    ("127.0.0.1:4777", "ftp://127.0.0.1:4777"),
+    ("127.0.0.1:4777", "http://127.0.0.1:4777/path"),
+    ("127.0.0.1:4777", "http://user@127.0.0.1:4777"),
+    ("localhost:4777", "http://evil.localhost:4777"),
+    ("comandos-perezos.localhost", "http://other.localhost"),
+    ("zion.tail63a117.ts.net", "https://evil.tail63a117.ts.net"),
+])
+def test_security_gate_rejects_cross_origin_even_inside_allowlist(
+        dash, monkeypatch, host, origin):
+    assert security_gate(dash, monkeypatch, host=host, origin=origin) == (
+        403, {"error": "Origen no permitido"})
+    # El token no convierte un cross-origin en legitimo.
+    assert security_gate(dash, monkeypatch, host=host, origin=origin,
+                         token="correct-token")[0] == 403
+
+
+@pytest.mark.parametrize("host,origin", [
+    ("127.0.0.1:4777", "http://127.0.0.1:4777"),
+    ("localhost:4777", "http://LOCALHOST:4777"),
+    ("[::1]:4777", "http://[::1]:4777"),
+    ("comandos-perezos.localhost", "http://comandos-perezos.localhost"),
+    ("comandos-perezos.localhost:80", "http://comandos-perezos.localhost"),
+])
+def test_security_gate_allows_same_origin_locally(dash, monkeypatch, host, origin):
+    assert security_gate(dash, monkeypatch, host=host, origin=origin) is None
+
+
+def test_security_gate_same_origin_tailnet_still_needs_token(dash, monkeypatch):
+    host, origin = "zion.tail63a117.ts.net", "https://zion.tail63a117.ts.net"
+    assert security_gate(dash, monkeypatch, host=host, origin=origin,
+                         xff="100.64.0.2")[0] == 401
+    assert security_gate(dash, monkeypatch, host=host, origin=origin,
+                         xff="100.64.0.2", token="correct-token") is None
+
+
+def test_security_gate_without_origin_keeps_local_clients_tokenless(dash, monkeypatch):
+    # curl de los hooks, cc-app, cc-notifyd, cc-telegram: sin Origin.
+    assert security_gate(dash, monkeypatch, host="127.0.0.1:4777") is None
+
+
+@pytest.mark.parametrize("token", ["ñandú", "é" * 43, "tok\udcff"])
+def test_security_gate_non_ascii_token_is_unauthorized_not_crash(
+        dash, monkeypatch, token):
+    monkeypatch.setattr(dash, "access_token", lambda: "correct-token")
+    handler = object.__new__(dash.Handler)
+    handler.client_address = ("203.0.113.8", 1)
+    handler.path = "/state"
+    handler.headers = Message()
+    handler.headers["Host"] = "zion.tail63a117.ts.net"
+    monkeypatch.setattr(handler, "_presented_token", lambda: token, raising=False)
+    assert handler._security_gate()[0] == 401
+
+
+def test_allocation_status_requires_token_remotely(dash):
+    assert any("/allocation/status".startswith(p) for p in dash.Handler.API_GET)
+
+
+def _serve(dash):
+    server = http.server.ThreadingHTTPServer(("127.0.0.1", 0), dash.Handler)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    return server, thread
+
+
+def test_cross_origin_no_cors_post_to_send_is_rejected_before_typing(
+        dash, monkeypatch):
+    typed = []
+    monkeypatch.setattr(dash, "tmux", lambda *a, **k: typed.append(a))
+    monkeypatch.setattr(dash, "tmux_stdin", lambda *a, **k: typed.append(a))
+    server, thread = _serve(dash)
+    port = server.server_address[1]
+    client = http.client.HTTPConnection("127.0.0.1", port, timeout=3)
+    try:
+        client.request("POST", "/send", body='{"session":"x","text":"rm -rf ~"}',
+                       headers={"Host": f"127.0.0.1:{port}",
+                                "Origin": "http://evil.localhost",
+                                "Content-Type": "text/plain"})
+        response = client.getresponse()
+        assert response.status == 403
+        response.read()
+    finally:
+        client.close()
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=2)
+    assert typed == []

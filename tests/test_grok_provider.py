@@ -52,8 +52,6 @@ def test_active_pid_resolves_exact_summary(tmp_path):
 def test_backend_has_native_grok_launch_account_and_confirmed_switch_driver():
     assert '"grok":     "grok --continue 2>/dev/null || grok"' in DASH
     assert 'elif agent == "grok"' in DASH
-    assert 'provider == "grok"' in DASH
-    assert 'def grok_motor_apply' in DASH
     assert 'grok_state.models(home)' in DASH
     assert 'summary.json' in DASH
     assert 'operationKey' in DASH
