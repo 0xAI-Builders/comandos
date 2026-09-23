@@ -167,6 +167,14 @@ if [ -n "$SESSION_HINT" ] && [ -n "$PANE_HINT" ]; then
   state_key="${proj_file}--${SESSION_HINT}--${PANE_HINT#%}"
 fi
 STATE_FILE="$STATE_DIR/$state_key.json"
+# Evento Grok vigente de este pane (solo IDs de correlacion). Un Stop tardio
+# del prompt A no puede pisar el "working" del prompt B.
+GROK_CURRENT="$STATE_DIR/.$state_key.grok"
+if [ "$AGENT" = "grok" ] && [ -n "${normalized:-}" ]; then
+  grok_rc=0
+  printf '%s' "$normalized" | python3 "$adapter" --accept "$GROK_CURRENT" >/dev/null 2>&1 || grok_rc=$?
+  [ "$grok_rc" = "3" ] && exit 0
+fi
 
 usage_lifecycle() { # $1=status
   local script="$HOME/.local/bin/cc_usage.py"
@@ -281,7 +289,7 @@ case "$event" in
     ;;
   SessionEnd)
     usage_lifecycle "end" >/dev/null 2>&1 || true
-    rm -f "$STATE_FILE"
+    rm -f "$STATE_FILE" "$GROK_CURRENT"
     exit 0
     ;;
   GrokError)

@@ -263,3 +263,40 @@ def test_official_cli_snake_case_event_values_are_accepted(wire, canonical):
     values = {"notificationType": "permission_prompt"} if canonical == "Notification" else {}
     actual = GROK_HOOKS.normalize(payload(wire, **values))
     assert actual and actual["event"] == canonical
+
+
+def test_accept_and_record_rejects_late_stop_and_persists_current(tmp_path):
+    current = tmp_path / "current.grok"
+    submit_b = GROK_HOOKS.normalize(payload("UserPromptSubmit", sessionId="s1", promptId="b"))
+    late_stop_a = GROK_HOOKS.normalize(payload("Stop", sessionId="s1", promptId="a"))
+    stop_b = GROK_HOOKS.normalize(payload("Stop", sessionId="s1", promptId="b"))
+
+    assert GROK_HOOKS.accept_and_record(str(current), submit_b)
+    assert not GROK_HOOKS.accept_and_record(str(current), late_stop_a)
+    assert json.loads(current.read_text())["promptId"] == "b"
+    assert GROK_HOOKS.accept_and_record(str(current), stop_b)
+    stored = json.loads(current.read_text())
+    assert stored == {"event": "Stop", "sessionId": "s1", "promptId": "b"}
+
+
+def test_cli_accept_mode_uses_exit_code(tmp_path):
+    current = tmp_path / "current.grok"
+
+    def accept(event, prompt):
+        normalized = GROK_HOOKS.normalize(payload(event, sessionId="s1", promptId=prompt))
+        return subprocess.run(
+            [sys.executable, str(ADAPTER_PATH), "--accept", str(current)],
+            input=json.dumps(normalized), text=True, capture_output=True, check=False)
+
+    assert accept("UserPromptSubmit", "b").returncode == 0
+    rejected = accept("Stop", "a")
+    assert rejected.returncode == 3
+    assert rejected.stdout == ""
+    assert accept("Stop", "b").returncode == 0
+
+
+def test_cli_accept_mode_fails_open_on_garbage(tmp_path):
+    result = subprocess.run(
+        [sys.executable, str(ADAPTER_PATH), "--accept", str(tmp_path / "nope" / "x")],
+        input="not-json", text=True, capture_output=True, check=False)
+    assert result.returncode == 0

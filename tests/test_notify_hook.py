@@ -169,3 +169,26 @@ def test_events_trim_keeps_concurrent_appends(env):
     assert len(rows) <= 2000
     leftovers = [p.name for p in env.hooks.glob("events.jsonl.*") if p.name != "events.jsonl.lock"]
     assert not leftovers, f"quedo un temporal del recorte: {leftovers}"
+
+
+# ---- Bug 8: Grok, un Stop tardio del prompt A no pisa el working de B ------
+
+def grok(event, prompt, **extra):
+    return {"hookEventName": event, "sessionId": "gs1", "promptId": prompt,
+            "cwd": "/tmp/gproj", **extra}
+
+
+def test_grok_late_stop_does_not_overwrite_newer_prompt(env):
+    (env.hooks / "cc-notify.conf").write_text(
+        "SOUND_ENABLED=0\nSPEAK_ATTENTION=0\nSPEAK_DONE=0\nDESKTOP_NOTIFY=0\nTELEGRAM_ENABLED=0\n")
+    env.run(grok("UserPromptSubmit", "b"))
+    state = env.state / "gproj.json"
+    assert json.loads(state.read_text())["status"] == "working"
+    env.run(grok("Stop", "a", lastAssistantMessage="viejo"))
+    assert json.loads(state.read_text())["status"] == "working", "el Stop tardio de A piso a B"
+    env.run(grok("Stop", "b", lastAssistantMessage="nuevo"))
+    after = json.loads(state.read_text())
+    assert after["status"] == "done"
+    env.run(grok("SessionEnd", "b"))
+    assert not state.exists()
+    assert not list(env.state.iterdir()), "SessionEnd debe limpiar tambien el evento vigente"
