@@ -5692,7 +5692,7 @@ def operator_agent_stream(text, *, model, tabs, memory, active, convo, dispatche
         conv.append({"role": "user", "content": text})
     want = operator_chat.model_entry(model)["model"]
     order = [want] + [m["model"] for m in operator_chat.MODELS if m["model"] != want]
-    actions, notes = [], []
+    actions, notes, failed = [], [], []
     used_model, fallback_notice = None, ''
     for _round in range(max_rounds):
         family, events, err = None, None, ""
@@ -5771,6 +5771,8 @@ def operator_agent_stream(text, *, model, tabs, memory, active, convo, dispatche
                 yield {"t": "action", **a}
             note = str(out.get("reply") or "ok")
             notes.append(note)
+            if not out.get("ok") or out.get("error"):
+                failed.append(f'{c["name"]}: {note}')
             yield {"t": "tool_result", "name": c["name"], "ok": bool(out.get("ok")), "pending": bool(out.get("pending")), "reply": note}
             results.append((c, note))
         if family == "openai":
@@ -5778,7 +5780,12 @@ def operator_agent_stream(text, *, model, tabs, memory, active, convo, dispatche
                 conv.append({"role": "tool", "tool_call_id": c["id"], "content": note})
         else:
             conv.append({"role": "user", "content": [{"type": "tool_result", "tool_use_id": c["id"], "content": note} for c, note in results]})
-    yield {"t": "final", "reply": fallback_notice + (notes[-1] if notes else "Listo."), "actions": actions}
+    # Sin rondas: el último resultado no puede tapar un fallo anterior.
+    reply = notes[-1] if notes else "Listo."
+    missing = [f for f in failed if not f.endswith(reply)]
+    if missing:
+        reply += "\nFallaron: " + "; ".join(missing)
+    yield {"t": "final", "ok": not failed, "reply": fallback_notice + reply, "actions": actions}
 
 
 def operator_agent_turn(text, *, model, tabs, memory, active, convo, dispatcher, **_ignored):
@@ -5852,11 +5859,18 @@ def operator_optimization_apply(profile, sessions):
     plan = next((p for p in plans if profile in (p.get("id"), p.get("name"), p.get("label"))), None)
     if not plan:
         return {"ok": False, "reply": "Perfil desconocido: " + ", ".join(str(p.get("id", "")) for p in plans)}
-    done = []
+    if not sessions:
+        return {"ok": False, "reply": "Nada que aplicar: indica las sesiones."}
+    done, fallos = [], 0
     for sess in sessions:
         err = model_switch_for_session(sess, plan)
+        fallos += bool(err)
         done.append(f"{sess}: {'ok' if not err else err}")
-    return {"reply": "\n".join(done) or "Nada que aplicar"}
+    if fallos:
+        # Parcial también es fallo: el usuario pidió todas.
+        cabeza = f"Aplicado en {len(sessions) - fallos} de {len(sessions)} sesiones."
+        return {"ok": False, "reply": cabeza + "\n" + "\n".join(done)}
+    return {"ok": True, "reply": "\n".join(done)}
 
 
 def operator_snippet_send(snip_id, sess):

@@ -292,3 +292,42 @@ def test_handle_chat_uses_dispatcher_not_legacy_callbacks():
 def test_sse_frame_helper_formats_events():
     ns = _load({"operator_sse_frame"})
     assert ns["operator_sse_frame"]({"t": "delta", "text": "ho\nla"}) == b'data: {"t": "delta", "text": "ho\\nla"}\n\n'
+
+
+def _optimizacion(errores):
+    ns = _load({"operator_optimization_apply"})
+    ns["optimization_plans"] = lambda: {"plans": [{"id": "ahorro"}]}
+    ns["model_switch_for_session"] = lambda sess, plan: errores.get(sess)
+    return ns["operator_optimization_apply"]
+
+
+def test_optimizacion_con_sesiones_fallidas_no_es_exito():
+    todo_mal = _optimizacion({"s1": "No hay sesión tmux 's1'"})("ahorro", ["s1"])
+    assert todo_mal["ok"] is False and "No hay sesión" in todo_mal["reply"]
+    parcial = _optimizacion({"s2": "HTTP 409"})("ahorro", ["s1", "s2"])
+    assert parcial["ok"] is False and "1 de 2" in parcial["reply"] and "HTTP 409" in parcial["reply"]
+    bien = _optimizacion({})("ahorro", ["s1", "s2"])
+    assert bien.get("ok", True) is True
+    assert _optimizacion({})("ahorro", [])["ok"] is False
+
+
+def test_rondas_agotadas_con_una_herramienta_fallida_no_es_exito():
+    ns = _load({"operator_agent_stream", "_llm_poison", "_run_tool_batch"})
+    ronda = [0]
+    def stream(*a, **k):
+        ronda[0] += 1
+        name = "model_switch" if ronda[0] == 1 else "list_tabs"
+        return ("anthropic", iter([{"t": "tool_call", "id": str(ronda[0]), "name": name, "input": {}},
+                                   {"t": "done", "stop": "tool_use"}]))
+    ns["operator_provider_stream"] = stream
+    ns["operator_tools"] = types.SimpleNamespace(agent_system_prompt=lambda *a, **k: "SYS")
+    ns["operator_chat"] = _fake_chat()
+    def run(name, args):
+        if name == "model_switch":
+            return {"ok": False, "reply": "No pude (model_switch): pane ocupado", "actions": []}
+        return {"ok": True, "reply": "[]", "actions": []}
+    events = list(ns["operator_agent_stream"]("x", model="haiku", tabs=[], memory="", active=None, convo={"messages": []},
+                                              dispatcher=types.SimpleNamespace(run=run), max_rounds=2))
+    final = events[-1]
+    assert final["t"] == "final" and final["ok"] is False
+    assert "pane ocupado" in final["reply"]
