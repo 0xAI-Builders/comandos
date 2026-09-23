@@ -2610,18 +2610,53 @@ def current_cwd():
 
 
 TERM_N = [0]
+_TERM_N_LOCK = threading.Lock()
+
+
+def _create_term_session(cwd):
+    """Crea term-<pid>-<n> sin chocar con sesiones vivas de corridas previas
+    (el pid se repite). Devuelve el nombre solo si tmux confirma; si no, None."""
+    for _ in range(50):
+        with _TERM_N_LOCK:
+            TERM_N[0] += 1
+            sess = f"term-{os.getpid() % 10000}-{TERM_N[0]}"
+        if subprocess.run(["tmux", "has-session", "-t", "=" + sess],
+                          capture_output=True, timeout=5).returncode == 0:
+            continue
+        tmux = ["tmux", "new-session", "-d", "-P", "-F", "#{session_name}", "-s", sess, "-c", cwd]
+        try:
+            r = subprocess.run(["systemd-run", "--user", "--scope", "--collect", "--quiet", *tmux],
+                               capture_output=True, text=True, timeout=12)
+        except FileNotFoundError:
+            r = subprocess.run(tmux, capture_output=True, text=True, timeout=12)
+        if r.returncode == 0 and (r.stdout or "").strip() == sess:
+            return sess
+        if subprocess.run(["tmux", "has-session", "-t", "=" + sess],
+                          capture_output=True, timeout=5).returncode != 0:
+            return None   # fallo real, no una colision
+    return None
 
 
 def new_local_tab(*_):
     """Nueva pestana de terminal en el MISMO directorio donde esta el cursor."""
     cwd = current_cwd()
-    TERM_N[0] += 1
-    sess = f"term-{os.getpid() % 10000}-{TERM_N[0]}"
-    subprocess.run(
-        ["systemd-run", "--user", "--scope", "--collect", "--quiet",
-         "tmux", "new-session", "-d", "-s", sess, "-c", cwd],
-        capture_output=True, timeout=12)
-    open_tab(sess, "claude", label=os.path.basename(cwd) or "term")
+
+    def done(sess):
+        if sess:
+            open_tab(sess, "claude", label=os.path.basename(cwd) or "term")
+        else:
+            notify_popup("Nueva terminal" if ES else "New terminal",
+                         "tmux no pudo crear la sesion" if ES else "tmux could not create the session")
+        return False
+
+    def work():
+        try:
+            sess = _create_term_session(cwd)
+        except Exception as ex:
+            print(f"new_local_tab: {ex}")
+            sess = None
+        GLib.idle_add(done, sess)
+    threading.Thread(target=work, daemon=True).start()
 
 
 def _ensure_cc_webterm():
@@ -2681,6 +2716,7 @@ def open_xterm_tab(sess="local"):
 
 
 WIN_RE = re.compile(r"^[A-Za-z0-9_-]{1,32}$")
+SESSION_RE = re.compile(r"^[A-Za-z0-9._-]{1,80}$")   # el mismo que cc-dash
 
 
 def select_win(sess, winname):
@@ -2706,6 +2742,9 @@ def open_tab(sess, winname, label=None):
     (claude/shell/ssh) se muestra."""
     if not WIN_RE.match(winname or ""):
         winname = "claude"
+    if not SESSION_RE.match(sess or ""):
+        print(f"open_tab: sesion invalida {sess!r}")
+        return
     key = sess
     if ssh_host_from_session(sess):
         tmuxc("set-option", "-t", sess, "mouse", "off")
@@ -2715,7 +2754,8 @@ def open_tab(sess, winname, label=None):
         tabs[key]._term.grab_focus()
         return
     select_win(sess, winname)
-    cmd = (f"tmux attach -t '={sess}' || {{ echo '[sesion terminada — cierra esta pestana con la x]'; exec cat; }}")
+    target = shlex.quote("=" + sess)
+    cmd = (f"tmux attach -t {target} || {{ echo '[sesion terminada — cierra esta pestana con la x]'; exec cat; }}")
     box = make_term(cmd)
     box._key = key
     box._term._session_hint = sess
