@@ -737,19 +737,36 @@ def new_session_dialog(*_):
     box.add(entry)
     err = Gtk.Label(xalign=0); err.get_style_context().add_class("dim-error")
     box.add(err)
-    dlg.show_all()
-    while dlg.run() == Gtk.ResponseType.OK:
-        name = entry.get_text().strip().replace(".", "-").replace(":", "-")
-        if not name:
-            continue
-        res, e = http_post("/new", {"session": name})
+    busy = [False]
+
+    def done(name, res, e):
+        busy[0] = False
+        dlg.set_response_sensitive(Gtk.ResponseType.OK, True)
         if e:
             err.set_text("⚠ " + e)   # ahora el error se VE, no falla en silencio
-            continue
+            return False
+        dlg.destroy()
         # el server pudo resolver a la sesion real (claude en pestana term-*)
         open_tab((res or {}).get("session") or name, "claude")
-        break
-    dlg.destroy()
+        return False
+
+    def on_response(_d, rid):
+        if rid != Gtk.ResponseType.OK:
+            if not busy[0]:
+                dlg.destroy()
+            return
+        name = entry.get_text().strip().replace(".", "-").replace(":", "-")
+        if not name or busy[0]:
+            return
+        busy[0] = True
+        dlg.set_response_sensitive(Gtk.ResponseType.OK, False)
+        err.set_text("Abriendo…" if ES else "Opening…")
+        # /new puede tardar hasta 15 s: en un hilo, la ventana sigue viva.
+        threading.Thread(target=lambda: GLib.idle_add(done, name, *http_post("/new", {"session": name})),
+                         daemon=True).start()
+    dlg.connect("response", on_response)
+    dlg.set_modal(True)
+    dlg.show_all()
 
 
 def term_session(term):
@@ -846,53 +863,63 @@ def copy_tmux_selection_to_clipboard(pane):
 
 
 def notify_popup(title, body):
-    """Feedback visible via el demonio de popups (se autocierra en 12s)."""
-    try:
-        req = urllib.request.Request(
-            "http://127.0.0.1:4778/notify",
-            data=json.dumps({"title": title, "body": body, "kind": "done",
-                             "project": title, "session": "local"}).encode(),
-            headers={"Content-Type": "application/json"})
-        urllib.request.urlopen(req, timeout=3)
-    except Exception:
-        pass
+    """Feedback visible via el demonio de popups (se autocierra en 12s).
+    En un hilo: el demonio puede tardar hasta 3 s y nunca frena GTK."""
+    def send():
+        try:
+            req = urllib.request.Request(
+                "http://127.0.0.1:4778/notify",
+                data=json.dumps({"title": title, "body": body, "kind": "done",
+                                 "project": title, "session": "local"}).encode(),
+                headers={"Content-Type": "application/json"})
+            urllib.request.urlopen(req, timeout=3)
+        except Exception:
+            pass
+    threading.Thread(target=send, daemon=True).start()
 
 
 def export_claude_reply(term, fmt):
     """Guarda la ultima respuesta de Claude de esta sesion como .txt o PDF
     (lo genera cc-dash en ~/Descargas, lo abre, y AVISA donde quedo)."""
-    sess = term_session(term)
-    if not sess:
-        return
-    res, err = http_post("/export", {"session": sess, "format": fmt}, timeout=45)
-    if err:
-        notify_popup("No se pudo guardar" if ES else "Could not save", err)
-    else:
-        notify_popup("Respuesta guardada" if ES else "Reply saved", (res or {}).get("path", ""))
+    def work():
+        sess = term_session(term)
+        if not sess:
+            return
+        res, err = http_post("/export", {"session": sess, "format": fmt}, timeout=45)
+        if err:
+            notify_popup("No se pudo guardar" if ES else "Could not save", err)
+        else:
+            notify_popup("Respuesta guardada" if ES else "Reply saved", (res or {}).get("path", ""))
+    threading.Thread(target=work, daemon=True).start()
 
 
 def copy_claude_reply(term):
     """Copia al clipboard la ULTIMA respuesta de Claude de esta sesion (el
     texto completo que guardan los hooks), sin andar seleccionando a mano."""
-    sess = term_session(term)
-    if not sess:
-        return
-    try:
-        with urllib.request.urlopen("http://127.0.0.1:4777/state", timeout=3) as r:
-            items = json.loads(r.read().decode())
-    except Exception:
-        return
-    for it in items:
-        if it.get("session") == sess and (it.get("detail") or it.get("last")):
-            txt = it.get("detail") or it["last"]
-            Gtk.Clipboard.get(Gdk.SELECTION_CLIPBOARD).set_text(txt, -1)
-            notify_popup("Respuesta copiada" if ES else "Reply copied",
-                         (f"{len(txt)} caracteres al portapapeles ({it.get('project')})" if ES else
-                          f"{len(txt)} characters copied ({it.get('project')})"))
+    def found(txt, project):
+        Gtk.Clipboard.get(Gdk.SELECTION_CLIPBOARD).set_text(txt, -1)
+        notify_popup("Respuesta copiada" if ES else "Reply copied",
+                     (f"{len(txt)} caracteres al portapapeles ({project})" if ES else
+                      f"{len(txt)} characters copied ({project})"))
+        return False
+
+    def work():
+        sess = term_session(term)
+        if not sess:
             return
-    notify_popup("Sin respuesta guardada" if ES else "No reply captured",
-                 "Esta sesion aun no tiene una respuesta capturada por los hooks" if ES else
-                 "This session has no hook-captured reply yet")
+        try:
+            with urllib.request.urlopen("http://127.0.0.1:4777/state", timeout=3) as r:
+                items = json.loads(r.read().decode())
+        except Exception:
+            return
+        for it in items:
+            if it.get("session") == sess and (it.get("detail") or it.get("last")):
+                GLib.idle_add(found, it.get("detail") or it["last"], it.get("project"))
+                return
+        notify_popup("Sin respuesta guardada" if ES else "No reply captured",
+                     "Esta sesion aun no tiene una respuesta capturada por los hooks" if ES else
+                     "This session has no hook-captured reply yet")
+    threading.Thread(target=work, daemon=True).start()
 
 
 def exit_copy_mode(term):
@@ -2004,12 +2031,17 @@ def restore_saved_layout(sess):
 
 
 def finish_startup_restore():
-    global _LAYOUT_RESTORE_READY
-    try:
-        restore_tabs()
-    finally:
+    def ready():
+        global _LAYOUT_RESTORE_READY
         _LAYOUT_RESTORE_READY = True
-    save_tabs()
+        save_tabs()
+    # El snapshot y save_tabs esperan a que el hilo de restauracion termine:
+    # nunca se guarda un arranque parcial.
+    try:
+        restore_tabs(on_done=ready)
+    except Exception as e:
+        print(f"restore_tabs: {e}")
+        ready()
     return False
 
 
@@ -2152,74 +2184,99 @@ def _send_resume(sess, cmd):
     return False
 
 
-def restore_tabs():
+def _restore_one(sess, label, snap):
+    """Hilo: revive la sesion si murio. Devuelve (sess, ventana, label, resume)."""
+    cmd = None
+    if subprocess.run(["tmux", "has-session", "-t", "=" + sess],
+                      capture_output=True, timeout=5).returncode != 0:
+        ssh_host = ssh_host_from_session(sess)
+        if sess.startswith("term-") and restore_saved_layout(sess):
+            pass
+        elif sess.startswith("term-"):
+            # terminal scratch: revivir en SU cwd y retomar el agente
+            # exacto (claude --resume <id> / codex resume <id>) que
+            # corria antes del apagado, segun el snapshot periodico.
+            snap = snap if isinstance(snap, dict) else {}
+            cwd = snap.get("cwd") or ""
+            if not (isinstance(cwd, str) and os.path.isdir(cwd)):
+                cwd = os.path.expanduser("~")
+            subprocess.run(
+                ["systemd-run", "--user", "--scope", "--collect", "--quiet",
+                 "tmux", "new-session", "-d", "-s", sess, "-c", cwd],
+                capture_output=True, timeout=12)
+            cmd = resume_command(snap)
+        elif ssh_host and sess.startswith("ssh-"):
+            http_post("/ssh-connect", {"host": ssh_host}, timeout=20)
+        elif ssh_host:
+            res, e = http_post("/ssh-new-tab", {"host": ssh_host}, timeout=20)
+            if e:
+                raise RuntimeError(e)
+            if isinstance(res, dict) and res.get("session"):
+                sess = res["session"]
+                label = res.get("label") or label
+        else:
+            http_post("/new", {"session": sess})
+    current = tmuxc("display-message", "-p", "-t", "=" + sess + ":", "#{window_index}")
+    return sess, current.stdout.strip() or "claude", label, cmd
+
+
+def restore_tabs(on_done=None):
     """Al abrir la app, reabre las pestanas de la vez pasada (con su nombre);
     si una sesion murio (p.ej. reinicio), la revive (claude --continue /
-    reconexion ssh)."""
+    reconexion ssh). Lo lento (tmux, systemd-run, cc-dash) va en un hilo y
+    cada pestana se abre en GTK, en orden, por idle_add."""
+    def finish():
+        if on_done:
+            on_done()
+        return False
     try:
         with open(TABS_FILE) as f:
             data = json.load(f)
     except Exception:
-        return False
+        return finish()
     if isinstance(data, list):    # formato viejo: lista de claves sin etiqueta
         data = {k: None for k in data if isinstance(k, str)}
     if not isinstance(data, dict):
-        return False
-    snaps = load_tab_snapshot()
-    for key, label in data.items():
-        if not isinstance(key, str) or not key:
-            continue
-        # Pestana experimental xterm.js — no es sesion tmux, no revive nada,
-        # solo remonta la WebView contra cc-webterm.
-        if key.startswith("xterm-"):
-            if key in tabs:
-                continue
+        return finish()
+    items = [(k, v) for k, v in data.items() if isinstance(k, str) and k]
+    already = set(tabs)
+
+    def open_xterm(key):
+        if key not in tabs:
             try:
                 open_xterm_tab(key[len("xterm-"):] or "local")
             except Exception as e:
                 print(f"no pude restaurar {key}: {e}")
-            continue
-        # claves viejas "sesion:ventana" colapsan a la sesion (una pestana por sesion)
-        sess = key.partition(":")[0]
-        if sess in tabs:
-            continue
-        try:
-            if subprocess.run(["tmux", "has-session", "-t", "=" + sess],
-                              capture_output=True, timeout=5).returncode != 0:
-                ssh_host = ssh_host_from_session(sess)
-                if sess.startswith("term-") and restore_saved_layout(sess):
-                    pass
-                elif sess.startswith("term-"):
-                    # terminal scratch: revivir en SU cwd y retomar el agente
-                    # exacto (claude --resume <id> / codex resume <id>) que
-                    # corria antes del apagado, segun el snapshot periodico.
-                    snap = snaps.get(sess) if isinstance(snaps, dict) else None
-                    snap = snap if isinstance(snap, dict) else {}
-                    cwd = snap.get("cwd") or ""
-                    if not (isinstance(cwd, str) and os.path.isdir(cwd)):
-                        cwd = os.path.expanduser("~")
-                    subprocess.run(
-                        ["systemd-run", "--user", "--scope", "--collect", "--quiet",
-                         "tmux", "new-session", "-d", "-s", sess, "-c", cwd],
-                        capture_output=True, timeout=12)
-                    cmd = resume_command(snap)
-                    if cmd:
-                        GLib.timeout_add(1500, _send_resume, sess, cmd)
-                elif ssh_host and sess.startswith("ssh-"):
-                    http_post("/ssh-connect", {"host": ssh_host}, timeout=20)
-                elif ssh_host:
-                    res, e = http_post("/ssh-new-tab", {"host": ssh_host}, timeout=20)
-                    if e:
-                        raise RuntimeError(e)
-                    if isinstance(res, dict) and res.get("session"):
-                        sess = res["session"]
-                        label = res.get("label") or label
-                else:
-                    http_post("/new", {"session": sess})
-            current = tmuxc("display-message", "-p", "-t", "=" + sess + ":", "#{window_index}")
-            open_tab(sess, current.stdout.strip() or "claude", label=label if isinstance(label, str) and label else None)
-        except Exception as e:
-            print(f"no pude restaurar {key}: {e}")
+        return False
+
+    def open_restored(sess, win_name, label, cmd):
+        if sess not in tabs:
+            open_tab(sess, win_name, label=label if isinstance(label, str) and label else None)
+        if cmd:
+            GLib.timeout_add(1500, lambda: (threading.Thread(target=_send_resume, args=(sess, cmd),
+                                                             daemon=True).start(), False)[1])
+        return False
+
+    def work():
+        snaps = load_tab_snapshot()
+        seen = set(already)
+        for key, label in items:
+            # Pestana experimental xterm.js — no es sesion tmux, no revive nada,
+            # solo remonta la WebView contra cc-webterm.
+            if key.startswith("xterm-"):
+                GLib.idle_add(open_xterm, key)
+                continue
+            # claves viejas "sesion:ventana" colapsan a la sesion (una pestana por sesion)
+            sess = key.partition(":")[0]
+            if sess in seen:
+                continue
+            seen.add(sess)
+            try:
+                GLib.idle_add(open_restored, *_restore_one(sess, label, snaps.get(sess) if isinstance(snaps, dict) else None))
+            except Exception as e:
+                print(f"no pude restaurar {key}: {e}")
+        GLib.idle_add(finish)
+    threading.Thread(target=work, daemon=True).start()
     return False
 
 
@@ -2689,49 +2746,66 @@ def _ensure_cc_webterm():
     subprocess.Popen([bin_path], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
 
+_XTERM_PENDING = set()
+
+
 def open_xterm_tab(sess="local"):
     """Pestana EXPERIMENTAL con xterm.js dentro de WebKit2WebView, que shape las
     ligaduras de JetBrainsMono (VTE no las shape). Reusa cc-webterm (ttyd en
-    127.0.0.1:4779) como backend PTY vía WebSocket."""
+    127.0.0.1:4779) como backend PTY vía WebSocket. Arrancar cc-webterm y
+    pedir el token va en un hilo; la pestana se arma en GTK por idle_add."""
     if not WIN_RE.match(sess or ""):
         sess = "local"
     key = f"xterm-{sess}"
     if key in tabs:
         nb.set_current_page(nb.page_num(tabs[key]))
         return
-    _ensure_cc_webterm()
+    if key in _XTERM_PENDING:
+        return
+    _XTERM_PENDING.add(key)
     theme_name = next((k for k, v in THEMES.items() if v is THEME), "noche")
-    token = ""
-    try:
-        with urllib.request.urlopen(BASE_URL + "/webterm-token", timeout=2) as response:
-            token = json.loads(response.read().decode()).get("token") or ""
-    except Exception:
-        pass
-    uri = (f"file://{TERM_HTML}?auth={quote(token, safe='')}&"
-           f"arg={quote(sess, safe='')}&theme={quote(theme_name, safe='')}")
 
-    wv = WebKit2.WebView()
-    st = wv.get_settings()
-    # file:// necesita permiso explícito para leer TTF y .js del mismo repo.
-    try: st.set_property("allow-file-access-from-file-urls", True)
-    except Exception: pass
-    try: st.set_property("allow-universal-access-from-file-urls", True)
-    except Exception: pass
-    st.set_property("enable-write-console-messages-to-stdout", True)
-    wv.load_uri(uri)
+    def build(token):
+        _XTERM_PENDING.discard(key)
+        if key in tabs:
+            return False
+        uri = (f"file://{TERM_HTML}?auth={quote(token, safe='')}&"
+               f"arg={quote(sess, safe='')}&theme={quote(theme_name, safe='')}")
 
-    box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
-    box.pack_start(wv, True, True, 0)
-    box._term = None          # no es VTE — los handlers que lo usan lo ignoran
-    box._webview = wv
-    box._key = key
-    box._label = f"xterm · {sess}"
-    idx = nb.append_page(box, tab_label(box._label, key))
-    nb.set_tab_reorderable(box, True)
-    box.show_all()
-    nb.set_current_page(idx)
-    tabs[key] = box
-    save_tabs()
+        wv = WebKit2.WebView()
+        st = wv.get_settings()
+        # file:// necesita permiso explícito para leer TTF y .js del mismo repo.
+        try: st.set_property("allow-file-access-from-file-urls", True)
+        except Exception: pass
+        try: st.set_property("allow-universal-access-from-file-urls", True)
+        except Exception: pass
+        st.set_property("enable-write-console-messages-to-stdout", True)
+        wv.load_uri(uri)
+
+        box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
+        box.pack_start(wv, True, True, 0)
+        box._term = None          # no es VTE — los handlers que lo usan lo ignoran
+        box._webview = wv
+        box._key = key
+        box._label = f"xterm · {sess}"
+        idx = nb.append_page(box, tab_label(box._label, key))
+        nb.set_tab_reorderable(box, True)
+        box.show_all()
+        nb.set_current_page(idx)
+        tabs[key] = box
+        save_tabs()
+        return False
+
+    def work():
+        token = ""
+        try:
+            _ensure_cc_webterm()
+            with urllib.request.urlopen(BASE_URL + "/webterm-token", timeout=2) as response:
+                token = json.loads(response.read().decode()).get("token") or ""
+        except Exception:
+            pass
+        GLib.idle_add(build, token)
+    threading.Thread(target=work, daemon=True).start()
 
 
 WIN_RE = re.compile(r"^[A-Za-z0-9_-]{1,32}$")

@@ -42,7 +42,7 @@ def test_complete_layout_restores_before_legacy_single_pane_fallback():
 def test_app_captures_layout_on_normal_exit_and_restores_local_before_spawn():
     assert SOURCE.index('restore_saved_layout("local")') < SOURCE.index('hub = make_term(')
     assert 'finally:\n    snapshot_layouts(wait=True)' in SOURCE
-    restore=next(n for n in ast.parse(SOURCE).body if isinstance(n,ast.FunctionDef) and n.name=='restore_tabs')
+    restore=next(n for n in ast.parse(SOURCE).body if isinstance(n,ast.FunctionDef) and n.name=='_restore_one')
     text=ast.get_source_segment(SOURCE,restore)
     assert 'restore_saved_layout(sess)' in text
 
