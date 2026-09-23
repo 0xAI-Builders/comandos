@@ -31,14 +31,57 @@ def test_paste_calls_load_paste_delete_in_order():
     err = ns["snippet_paste_to_pane"]("=demo:", "git status\n", fake_tmux)
     assert err is None
     verbs = [c[0][0] for c in calls]
-    assert verbs == ["load-buffer", "paste-buffer", "delete-buffer"]
+    # paste-buffer -d borra el buffer al pegar: no hace falta delete-buffer
+    assert verbs == ["load-buffer", "paste-buffer"]
     # load-buffer receives text via stdin, not argv
     assert calls[0][1] == "git status\n"
-    # paste-buffer uses -p (bracketed) and -b comandos-snip -t <pane>
+    # paste-buffer uses -p (bracketed), -d and the SAME unique buffer -t <pane>
     args = calls[1][0]
-    assert "-p" in args
-    assert "-b" in args and "comandos-snip" in args
+    assert "-p" in args and "-d" in args
+    buf = args[args.index("-b") + 1]
+    assert buf.startswith("comandos-snip-") and buf != "comandos-snip-"
+    assert calls[0][0][calls[0][0].index("-b") + 1] == buf
     assert "-t" in args and "=demo:" in args
+
+
+def test_concurrent_pastes_use_distinct_buffers():
+    """Un nombre fijo compartido hacia que dos pegados simultaneos cayeran en
+    el pane equivocado (load A, load B, paste B en A)."""
+    import threading
+    loads = []
+    lock = threading.Lock()
+
+    def fake_tmux(*args, stdin=None, timeout=5):
+        if args[0] == "load-buffer":
+            with lock:
+                loads.append(args[args.index("-b") + 1])
+        return types.SimpleNamespace(returncode=0, stdout="", stderr="")
+
+    ns = load_functions("snippet_paste_to_pane")
+    threads = [threading.Thread(target=ns["snippet_paste_to_pane"],
+                                args=(f"%{i}", f"t{i}", fake_tmux)) for i in range(8)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+    assert len(set(loads)) == 8
+
+
+def test_paste_deletes_buffer_when_paste_raises():
+    calls = []
+
+    def fake_tmux(*args, stdin=None, timeout=5):
+        calls.append(args[0])
+        if args[0] == "paste-buffer":
+            raise __import__("subprocess").TimeoutExpired("tmux", timeout)
+        return types.SimpleNamespace(returncode=0, stdout="", stderr="")
+
+    ns = load_functions("snippet_paste_to_pane")
+    try:
+        ns["snippet_paste_to_pane"]("=demo:", "x", fake_tmux)
+    except Exception:
+        pass
+    assert calls == ["load-buffer", "paste-buffer", "delete-buffer"]
 
 
 def test_paste_returns_error_and_still_deletes_buffer_when_paste_fails():

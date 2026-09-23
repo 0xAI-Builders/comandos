@@ -6017,19 +6017,23 @@ def tmux_stdin(*args, stdin=None, timeout=5):
 def snippet_paste_to_pane(pane, text, tmux_fn):
     """Pega texto en `pane` usando bracketed paste. NUNCA envia Enter.
 
-    Secuencia: load-buffer (via stdin) → paste-buffer -p (bracketed) → delete-buffer.
-    El shell moderno (bash 4+, zsh) recibe el texto como un bloque unico y
-    espera al Enter del usuario para ejecutar."""
-    buf = "comandos-snip"
+    Secuencia: load-buffer (via stdin) → paste-buffer -p -d (bracketed, y lo
+    borra al pegar). El buffer es unico por llamada: con un nombre fijo dos
+    pegados simultaneos podian caer en el pane equivocado. El shell moderno
+    (bash 4+, zsh) recibe el texto como un bloque unico y espera al Enter."""
+    import uuid
+    buf = "comandos-snip-" + uuid.uuid4().hex[:12]
     r = tmux_fn("load-buffer", "-b", buf, "-", stdin=text)
     if r.returncode != 0:
         return r.stderr.strip() or "load-buffer fallo"
-    err = None
-    r = tmux_fn("paste-buffer", "-p", "-b", buf, "-t", pane)
-    if r.returncode != 0:
-        err = r.stderr.strip() or "paste-buffer fallo"
-    tmux_fn("delete-buffer", "-b", buf)
-    return err
+    pasted = False
+    try:
+        r = tmux_fn("paste-buffer", "-p", "-d", "-b", buf, "-t", pane)
+        pasted = r.returncode == 0
+    finally:
+        if not pasted:
+            tmux_fn("delete-buffer", "-b", buf)
+    return None if pasted else (r.stderr.strip() or "paste-buffer fallo")
 
 
 def tmux_paste(sess, text, pane=None):
