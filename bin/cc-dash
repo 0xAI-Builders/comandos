@@ -9463,6 +9463,14 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             key = data.get("key", "")
             if key not in ALLOWED_KEYS:
                 return self._json(400, {"error": "Tecla no permitida"})
+            # Pane pedido explicitamente (botones de Telegram/popups): si no es
+            # valido o ya murio, error; NUNCA caer al pane activo de la sesion,
+            # que puede ser otro agente.
+            req_pane = str(data.get("pane") or "")
+            if req_pane and not PANE_RE.fullmatch(req_pane):
+                return self._json(400, {"error": "Pane invalido"})
+            if req_pane and pane != req_pane:
+                return self._json(404, {"error": f"El pane {req_pane} ya no existe"})
             if tmux("has-session", "-t", target).returncode != 0:
                 return self._json(404, {"error": f"No hay sesion tmux '{sess}'"})
             r = tmux("send-keys", "-t", pane, key)

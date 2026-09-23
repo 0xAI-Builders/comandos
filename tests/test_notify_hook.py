@@ -265,3 +265,74 @@ def test_plain_bot_token_also_stays_out_of_argv(env):
     calls = env.curl_calls(wait_for=2)
     assert telegram_calls(calls)
     assert all(FAKE_TOKEN not in " ".join(c["argv"]) for c in calls)
+
+
+# ---- Bugs 1 y 5: botones de Telegram con pane y callback_data seguro ------
+
+def reply_markup(call):
+    for arg in call["argv"]:
+        if arg.startswith("reply_markup="):
+            return json.loads(arg[len("reply_markup="):])
+    return None
+
+
+def callbacks(markup):
+    return [b["callback_data"] for row in markup["inline_keyboard"] for b in row]
+
+
+def waiting(env, cwd="/tmp/proj", **kw):
+    env.run({"hook_event_name": "Notification", "cwd": cwd, "message": "permiso"}, **kw)
+    tg = telegram_calls(env.curl_calls(wait_for=2))
+    assert len(tg) == 1, tg
+    return tg[0]
+
+
+def test_telegram_buttons_carry_the_pane(env):
+    env.telegram()
+    markup = reply_markup(waiting(env, pane="%12", session="sess"))
+    assert callbacks(markup) == ["k|sess|1|12", "k|sess|2|12", "k|sess|3|12",
+                                 "k|sess|Enter|12", "k|sess|Escape|12"]
+
+
+def test_notifyd_payload_carries_the_pane(env):
+    env.telegram()
+    env.run({"hook_event_name": "Stop", "cwd": "/tmp/proj"}, pane="%12", session="sess")
+    calls = env.curl_calls(wait_for=2)
+    notifyd = [c for c in calls if "127.0.0.1:4778/notify" in " ".join(c["argv"])]
+    assert notifyd
+    argv = notifyd[0]["argv"]
+    payload = json.loads(argv[argv.index("-d") + 1])
+    assert payload["session"] == "sess" and payload["pane"] == "%12"
+
+
+def test_long_session_falls_back_to_short_local_token(env):
+    env.telegram()
+    sess = "s" * 80
+    markup = reply_markup(waiting(env, pane="%1234567", session=sess))
+    datas = callbacks(markup)
+    assert all(len(d.encode()) <= 64 for d in datas), datas
+    assert all(d.startswith("t|") for d in datas), datas
+    token = datas[0].split("|")[1]
+    assert {d.split("|")[1] for d in datas} == {token}
+    target = json.loads((env.hooks / "tg-targets" / f"{token}.json").read_text())
+    assert target == {"session": sess, "pane": "%1234567"}
+
+
+def test_unsafe_project_name_does_not_break_waiting_notification(env):
+    env.telegram()
+    call = waiting(env, cwd='/tmp/pro"j x')
+    markup = reply_markup(call)   # json.loads falla si el nombre rompe el JSON
+    datas = callbacks(markup)
+    assert len(datas) == 5 and all(len(d.encode()) <= 64 for d in datas)
+
+
+def test_sent_message_id_maps_to_real_session_and_pane(env):
+    env.telegram()
+    env.run({"hook_event_name": "Stop", "cwd": "/tmp/proj"}, pane="%12", session="real-sess",
+            extra={"CURL_OUT": '{"ok":true,"result":{"message_id":777}}'})
+    target = env.hooks / "tg-targets" / "msg-777.json"
+    deadline = time.monotonic() + 10
+    while not target.exists() and time.monotonic() < deadline:
+        time.sleep(0.05)
+    data = json.loads(target.read_text())
+    assert data["session"] == "real-sess" and data["pane"] == "%12"
