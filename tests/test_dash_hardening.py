@@ -111,3 +111,98 @@ def test_update_json_object_serializes_concurrent_read_modify_write(dash, tmp_pa
     for t in threads:
         t.join()
     assert json.load(open(path)) == {f"k{i}": i for i in range(16)}
+
+
+# ---- ~/.ssh/config: editar es UNA reescritura atomica ----
+@pytest.fixture
+def ssh_home(tmp_path, monkeypatch):
+    home = tmp_path / "home"
+    (home / ".ssh").mkdir(parents=True)
+    monkeypatch.setenv("HOME", str(home))
+    config = home / ".ssh" / "config"
+    config.write_text("Host prod\n    HostName 203.0.113.10\n    User root\n\n"
+                      "Host other\n    HostName 203.0.113.11\n")
+    config.chmod(0o600)
+    return config
+
+
+def test_ssh_update_with_invalid_new_entry_keeps_original(dash, ssh_home):
+    before = ssh_home.read_text()
+    err = dash.ssh_update("prod", {"host": "prod", "hostname": "bad host"})
+    assert err
+    assert ssh_home.read_text() == before
+
+
+def test_ssh_update_to_existing_alias_keeps_original(dash, ssh_home):
+    before = ssh_home.read_text()
+    assert dash.ssh_update("prod", {"host": "other", "hostname": "203.0.113.12"})
+    assert ssh_home.read_text() == before
+
+
+def test_ssh_update_rewrites_entry_in_place_and_keeps_mode(dash, ssh_home):
+    assert dash.ssh_update("prod", {"host": "prod2", "hostname": "203.0.113.20",
+                                    "port": "2222"}) is None
+    hosts = {h["host"]: h for h in dash.parse_ssh_config()}
+    assert set(hosts) == {"other", "prod2"}
+    assert hosts["prod2"] == {"host": "prod2", "hostname": "203.0.113.20", "port": "2222"}
+    assert ssh_home.stat().st_mode & 0o777 == 0o600
+
+
+def test_ssh_add_and_remove_are_atomic_and_private(dash, ssh_home):
+    ssh_home.unlink()
+    assert dash.ssh_add({"host": "new", "hostname": "203.0.113.30"}) is None
+    assert ssh_home.stat().st_mode & 0o777 == 0o600
+    assert dash.ssh_add({"host": "new", "hostname": "203.0.113.31"})
+    assert dash.ssh_remove("new") is None
+    assert dash.parse_ssh_config() == []
+    assert [p.name for p in ssh_home.parent.iterdir() if p.name.endswith(".tmp")] == []
+
+
+# ---- archivos propios: leer-modificar-escribir bajo candado ----
+def test_concurrent_app_tab_writes_do_not_drop_entries(dash, tmp_path, monkeypatch):
+    import json
+    import threading
+    tabs = tmp_path / "app-tabs.json"
+    monkeypatch.setattr(dash, "TABS_FILE", str(tabs))
+    real_load = dash.load_json_file
+
+    def slow_load(path, default):
+        data = real_load(path, default)
+        __import__("time").sleep(0.002)
+        return data
+    monkeypatch.setattr(dash, "load_json_file", slow_load)
+    barrier = threading.Barrier(12)
+
+    def add(i):
+        barrier.wait()
+        dash.write_app_tab(f"s{i}", f"S{i}")
+    threads = [threading.Thread(target=add, args=(i,)) for i in range(12)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+    assert json.loads(tabs.read_text()) == {f"s{i}": f"S{i}" for i in range(12)}
+
+
+def test_write_conf_key_is_atomic_and_preserves_other_keys(dash, tmp_path, monkeypatch):
+    conf = tmp_path / "cc-notify.conf"
+    conf.write_text("# comentario\nVOLUME=40\nCC_LANG=es\n")
+    monkeypatch.setattr(dash, "CONF_PATH", str(conf))
+    dash.write_conf_key("VOLUME", "70")
+    assert conf.read_text() == "# comentario\nVOLUME=70\nCC_LANG=es\n"
+    assert [p.name for p in tmp_path.iterdir() if p.name.endswith(".tmp")] == []
+
+
+def test_ui_log_rotation_skips_corrupt_lines_instead_of_aborting(dash, tmp_path, monkeypatch):
+    import json
+    import time as _time
+    log = tmp_path / "ui-events.jsonl"
+    now = _time.time()
+    good = json.dumps({"ts": now, "k": "old"}) + "\n"
+    log.write_text(good * 60000 + "{corrupt\n")
+    assert log.stat().st_size > 2_000_000
+    monkeypatch.setattr(dash, "UI_LOG", str(log))
+    dash.ui_log_append([{"ts": now, "k": "click"}])
+    lines = log.read_text().splitlines()
+    assert len(lines) <= 20000
+    assert json.loads(lines[-1])["k"] == "click"

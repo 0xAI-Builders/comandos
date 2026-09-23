@@ -70,19 +70,26 @@ def ui_log_append(events):
                      "c": str(e.get("c") or "")[:80], "d": int(e.get("d") or 0), "s": str(e.get("s") or "")[:80]})
     if not keep:
         return 0
-    with open(UI_LOG, "a") as f:
-        for e in keep:
-            f.write(json.dumps(e, ensure_ascii=False) + "\n")
-    try:
-        if os.path.getsize(UI_LOG) > 2_000_000:
-            cutoff = now - 30 * 86400
-            with open(UI_LOG) as f:
-                lines = [ln for ln in f if ln.strip()]
-            fresh = [ln for ln in lines[-20000:] if json.loads(ln).get("ts", 0) >= cutoff]
-            with open(UI_LOG, "w") as f:
-                f.writelines(fresh)
-    except Exception:
-        pass
+    # Candado: una rotacion concurrente no debe perder lo que otro hilo anexa.
+    with file_lock(UI_LOG):
+        with open(UI_LOG, "a") as f:
+            for e in keep:
+                f.write(json.dumps(e, ensure_ascii=False) + "\n")
+        try:
+            if os.path.getsize(UI_LOG) > 2_000_000:
+                cutoff = now - 30 * 86400
+                with open(UI_LOG) as f:
+                    lines = [ln for ln in f if ln.strip()]
+                fresh = []
+                for ln in lines[-20000:]:
+                    try:
+                        if json.loads(ln).get("ts", 0) >= cutoff:
+                            fresh.append(ln)
+                    except ValueError:
+                        pass
+                write_file_atomic(UI_LOG, "".join(fresh))
+        except Exception:
+            pass
     return len(keep)
 
 
@@ -549,10 +556,7 @@ def set_user_sub(provider, monthly, currency, display=None):
             rate = float(display.get("usdRate") or 0)
             data["display"] = {"currency": cur,
                                "usdRate": round(rate, 4) if rate > 0 else None}
-        tmp = SUBS_FILE + ".tmp"
-        with open(tmp, "w") as fh:
-            json.dump(data, fh, indent=1)
-        os.replace(tmp, SUBS_FILE)
+        write_json_file(SUBS_FILE, data, indent=1)
         return data
 
 
@@ -566,10 +570,7 @@ def set_user_quota(provider, tokens_7d):
             data[provider] = {"tokens_7d": tokens, "set_at": int(time.time())}
         else:
             data.pop(provider, None)
-        tmp = QUOTAS_FILE + ".tmp"
-        with open(tmp, "w") as fh:
-            json.dump(data, fh, indent=1)
-        os.replace(tmp, QUOTAS_FILE)
+        write_json_file(QUOTAS_FILE, data, indent=1)
     return data.get(provider)
 
 
@@ -689,10 +690,7 @@ def _model_watch_cycle(force=False):
             try:
                 snap = _read_json_quiet(MODEL_WATCH_FILE) or {}
                 snap["heartbeatAt"] = int(time.time())
-                tmp = MODEL_WATCH_FILE + ".tmp"
-                with open(tmp, "w") as fh:
-                    json.dump(snap, fh, indent=1)
-                os.replace(tmp, MODEL_WATCH_FILE)
+                write_json_file(MODEL_WATCH_FILE, snap, indent=1)
             except Exception:
                 pass
             return result
@@ -703,10 +701,7 @@ def _model_watch_cycle(force=False):
             snap = _read_json_quiet(MODEL_WATCH_FILE) or {}
             snap["heartbeatAt"] = int(time.time())
             snap.setdefault("versions", versions)
-            tmp = MODEL_WATCH_FILE + ".tmp"
-            with open(tmp, "w") as fh:
-                json.dump(snap, fh, indent=1)
-            os.replace(tmp, MODEL_WATCH_FILE)
+            write_json_file(MODEL_WATCH_FILE, snap, indent=1)
         except Exception:
             pass
     except Exception:
@@ -1016,10 +1011,7 @@ def optimization_set_default(profile):
     if not any(plan.get("id") == profile for plan in catalog["plans"]):
         raise ValueError("perfil desconocido")
     os.makedirs(os.path.dirname(OPTIMIZATION_STATE), exist_ok=True)
-    tmp = OPTIMIZATION_STATE + ".tmp"
-    with open(tmp, "w") as f:
-        json.dump({"profile": profile, "updatedAt": int(time.time())}, f)
-    os.replace(tmp, OPTIMIZATION_STATE)
+    write_json_file(OPTIMIZATION_STATE, {"profile": profile, "updatedAt": int(time.time())})
     return optimization_plans()
 
 
@@ -1469,11 +1461,7 @@ def pane_resume_set(sess, pane, harness, sid, account="main"):
         row[str(harness)] = {"sid": str(sid), "account": str(account or "main"),
                              "at": int(time.time())}
         data[key] = row
-        tmp = PANE_RESUME_FILE + ".tmp"
-        os.makedirs(os.path.dirname(PANE_RESUME_FILE), exist_ok=True)
-        with open(tmp, "w") as fh:
-            json.dump(data, fh)
-        os.replace(tmp, PANE_RESUME_FILE)
+        write_json_file(PANE_RESUME_FILE, data)
 
 
 def acp_state_for_pane(pane):
@@ -2836,10 +2824,7 @@ def _motor_result_load():
 def _motor_result_write():
     try:
         os.makedirs(os.path.dirname(MOTOR_RESULT_FILE), exist_ok=True)
-        tmp = MOTOR_RESULT_FILE + ".tmp"
-        with open(tmp, "w") as f:
-            json.dump(MOTOR_RESULT, f)
-        os.replace(tmp, MOTOR_RESULT_FILE)
+        write_json_file(MOTOR_RESULT_FILE, MOTOR_RESULT)
     except Exception:
         pass
 
@@ -2850,10 +2835,7 @@ MOTOR_RESULT = _motor_result_load()   # operationKey -> durable stage/result
 def _motor_queue_write(d):
     try:
         os.makedirs(os.path.dirname(MOTOR_QUEUE_FILE), exist_ok=True)
-        tmp = MOTOR_QUEUE_FILE + ".tmp"
-        with open(tmp, "w") as f:
-            json.dump(d, f)
-        os.replace(tmp, MOTOR_QUEUE_FILE)
+        write_json_file(MOTOR_QUEUE_FILE, d)
     except Exception:
         pass
 
@@ -3274,10 +3256,7 @@ def motor_apply(payload):
                         else:
                             st[k] = v
                 if changed:
-                    tmp = path + ".tmp"
-                    with open(tmp, "w") as f:
-                        json.dump(st, f, indent=2, ensure_ascii=False)
-                    os.replace(tmp, path)
+                    write_json_file(path, st, indent=2, ensure_ascii=False)
             except Exception:
                 pass
     finally:
@@ -3419,10 +3398,7 @@ def session_effort_set(sess, effort):
         d.pop(sess.split("|", 1)[0], None)
     try:
         os.makedirs(os.path.dirname(SESSION_EFFORT), exist_ok=True)
-        tmp = SESSION_EFFORT + ".tmp"
-        with open(tmp, "w") as f:
-            json.dump(d, f)
-        os.replace(tmp, SESSION_EFFORT)
+        write_json_file(SESSION_EFFORT, d)
     except Exception:
         pass
 
@@ -4441,10 +4417,7 @@ def write_pane_models(panes):
     with _pane_model_lock:
         if file_text != _pane_model_state["file_text"]:
             try:
-                tmp = PANE_MODELS_FILE + ".tmp"
-                with open(tmp, "w") as f:
-                    f.write(file_text)
-                os.replace(tmp, PANE_MODELS_FILE)
+                write_file_atomic(PANE_MODELS_FILE, file_text)
             except OSError:
                 pass
             else:
@@ -4966,16 +4939,18 @@ def remember_tab(sess, label=None, cwd="", agent="", reason="closed"):
         "reason": reason[:32],
         "ts": int(time.time()),
     }
-    hist = [h for h in read_tab_history() if h.get("session") != sess]
-    write_json_file(TAB_HISTORY_FILE, [item] + hist[:79])
+    with file_lock(TAB_HISTORY_FILE):
+        hist = [h for h in read_tab_history() if h.get("session") != sess]
+        write_json_file(TAB_HISTORY_FILE, [item] + hist[:79])
 
 
 def write_app_tab(sess, label):
-    tabs = load_json_file(TABS_FILE, {})
-    if not isinstance(tabs, dict):
-        tabs = {}
-    tabs[sess] = label or sess
-    write_json_file(TABS_FILE, tabs)
+    with file_lock(TABS_FILE):
+        tabs = load_json_file(TABS_FILE, {})
+        if not isinstance(tabs, dict):
+            tabs = {}
+        tabs[sess] = label or sess
+        write_json_file(TABS_FILE, tabs)
 
 
 TAB_KINDS = {"project", "scratch", "shell", "ssh", "ssh-tab"}
@@ -5058,24 +5033,24 @@ def register_app_tab(sess, label=None, kind="", host="", cwd=""):
     dueno de sus etiquetas)."""
     if sess == "local":
         return  # GTK already owns the pinned home tab outside this registry.
-    tabs = load_json_file(TABS_FILE, {})
-    if not isinstance(tabs, dict):
-        tabs = {}
-    if sess not in tabs:
-        tabs[sess] = (label or sess)[:80]
-        write_json_file(TABS_FILE, tabs)
+    with file_lock(TABS_FILE):
+        tabs = load_json_file(TABS_FILE, {})
+        if not isinstance(tabs, dict):
+            tabs = {}
+        if sess not in tabs:
+            tabs[sess] = (label or sess)[:80]
+            write_json_file(TABS_FILE, tabs)
     meta = (write_tab_metadata(sess, kind, host=host, cwd=cwd)
             if kind in TAB_KINDS else tab_metadata_for_session(sess))
     if meta and not read_tab_metadata().get(sess):
         meta = write_tab_metadata(
             sess, meta["kind"], host=meta.get("host", ""), cwd=meta.get("cwd", ""))
     try:
-        with open(TAB_OPEN_FILE, "w") as f:
-            event = {"session": sess, "label": (label or sess)[:80],
-                     "ts": time.time()}
-            if meta:
-                event["meta"] = meta
-            json.dump(event, f)
+        event = {"session": sess, "label": (label or sess)[:80],
+                 "ts": time.time()}
+        if meta:
+            event["meta"] = meta
+        write_json_file(TAB_OPEN_FILE, event)
     except OSError:
         pass
 
@@ -5098,14 +5073,15 @@ def close_app_tab(sess, ephemeral=False):
         if r.returncode == 0:
             cwd = r.stdout.strip()
         remember_tab(sess, label, cwd, state_agent(sess), reason="closed")
-    tabs_map = load_json_file(TABS_FILE, {})
-    if isinstance(tabs_map, dict) and sess in tabs_map:
-        tabs_map.pop(sess, None)
-        write_json_file(TABS_FILE, tabs_map)
+    with file_lock(TABS_FILE):
+        tabs_map = load_json_file(TABS_FILE, {})
+        if isinstance(tabs_map, dict) and sess in tabs_map:
+            tabs_map.pop(sess, None)
+            write_json_file(TABS_FILE, tabs_map)
     remove_tab_metadata(sess)
     try:
-        with open(os.path.join(HOOKS, "app-tab-close.json"), "w") as f:
-            json.dump({"session": sess, "ts": time.time()}, f)
+        write_json_file(os.path.join(HOOKS, "app-tab-close.json"),
+                        {"session": sess, "ts": time.time()})
     except Exception:
         pass
     return None
@@ -6694,10 +6670,7 @@ def write_app_tab_models(items):
                         "panes": detail.get(session, [])[:6]}
               for session, labels in grouped.items()}
     try:
-        tmp = APP_TAB_MODELS_FILE + ".tmp"
-        with open(tmp, "w") as f:
-            json.dump(public, f)
-        os.replace(tmp, APP_TAB_MODELS_FILE)
+        write_json_file(APP_TAB_MODELS_FILE, public)
     except Exception:
         pass
 
@@ -7258,53 +7231,56 @@ def play_test(kind):
 
 
 def write_conf_key(key, val):
-    lines = []
-    try:
-        with open(CONF_PATH) as f:
-            lines = f.read().splitlines()
-    except FileNotFoundError:
-        pass
-    hit = False
-    for i, l in enumerate(lines):
-        s = l.strip()
-        if not s.startswith("#") and "=" in s and s.split("=")[0].strip() == key:
-            lines[i] = f"{key}={val}"
-            hit = True
-    if not hit:
-        lines.append(f"{key}={val}")
-    with open(CONF_PATH, "w") as f:
-        f.write("\n".join(lines) + "\n")
+    with file_lock(CONF_PATH):
+        lines = []
+        try:
+            with open(CONF_PATH) as f:
+                lines = f.read().splitlines()
+        except FileNotFoundError:
+            pass
+        hit = False
+        for i, l in enumerate(lines):
+            s = l.strip()
+            if not s.startswith("#") and "=" in s and s.split("=")[0].strip() == key:
+                lines[i] = f"{key}={val}"
+                hit = True
+        if not hit:
+            lines.append(f"{key}={val}")
+        write_file_atomic(CONF_PATH, "\n".join(lines) + "\n")
 
 
 SSH_HOST_RE = re.compile(r"^[A-Za-z0-9._-]{1,60}\Z")
 
 
-def parse_ssh_config():
-    """Hosts de ~/.ssh/config (la fuente de verdad estandar de SSH)."""
+def parse_ssh_config(text=None):
+    """Hosts de ~/.ssh/config (la fuente de verdad estandar de SSH), o de
+    `text` si se pasa (para validar una reescritura antes de hacerla)."""
     path = os.path.expanduser("~/.ssh/config")
     hosts, cur = [], None
-    try:
-        with open(path) as f:
-            for raw in f:
-                line = raw.strip()
-                if not line or line.startswith("#"):
-                    continue
-                parts = line.split(None, 1)
-                if len(parts) < 2:
-                    continue
-                k, v = parts[0].lower(), parts[1].strip()
-                if k == "host":
-                    cur = None
-                    for name in v.split():
-                        if "*" not in name and "?" not in name:
-                            cur = {"host": name}
-                            hosts.append(cur)
-                elif cur is not None and k in ("hostname", "user", "port"):
-                    cur[k] = v
-                elif cur is not None and k == "identityfile":
-                    cur["identity"] = v
-    except FileNotFoundError:
-        pass
+    if text is None:
+        try:
+            with open(path) as f:
+                text = f.read()
+        except FileNotFoundError:
+            return hosts
+    for raw in text.splitlines():
+        line = raw.strip()
+        if not line or line.startswith("#"):
+            continue
+        parts = line.split(None, 1)
+        if len(parts) < 2:
+            continue
+        k, v = parts[0].lower(), parts[1].strip()
+        if k == "host":
+            cur = None
+            for name in v.split():
+                if "*" not in name and "?" not in name:
+                    cur = {"host": name}
+                    hosts.append(cur)
+        elif cur is not None and k in ("hostname", "user", "port"):
+            cur[k] = v
+        elif cur is not None and k == "identityfile":
+            cur["identity"] = v
     return hosts
 
 
@@ -7315,32 +7291,28 @@ SSH_USER_RE = re.compile(r"^[A-Za-z0-9._@\-]{1,64}\Z")
 SSH_PATH_RE = re.compile(r"^[A-Za-z0-9._/~\-]{1,255}\Z")
 
 
-def ssh_add(d):
+def _ssh_block(d):
+    """Valida una entrada y devuelve (host, lineas del bloque, error)."""
     host = d.get("host", "").strip()
     hostname = d.get("hostname", "").strip()
     user = d.get("user", "").strip()
     port = str(d.get("port", "")).strip()
     identity = d.get("identity", "").strip()
     if not SSH_HOST_RE.match(host):
-        return "Alias invalido (letras, numeros, . _ -)"
-    # Rechazo explicito de saltos de linea y control chars (defensa extra
-    # ante el '$' de re que tolera un \n final): ni una directiva inyectada.
+        return host, None, "Alias invalido (letras, numeros, . _ -)"
+    # Rechazo explicito de saltos de linea y control chars: ni una directiva
+    # inyectada (ProxyCommand = RCE).
     for v in (hostname, user, port, identity):
         if any(c in v for c in "\r\n\x00") or any(ord(c) < 32 for c in v):
-            return "Caracteres no permitidos"
+            return host, None, "Caracteres no permitidos"
     if not SSH_HOSTNAME_RE.fullmatch(hostname):
-        return "Hostname/IP invalido"
+        return host, None, "Hostname/IP invalido"
     if user and not SSH_USER_RE.fullmatch(user):
-        return "Usuario invalido"
+        return host, None, "Usuario invalido"
     if port and not (port.isdigit() and 1 <= int(port) <= 65535):
-        return "Puerto invalido"
+        return host, None, "Puerto invalido"
     if identity and not SSH_PATH_RE.fullmatch(identity):
-        return "Ruta de llave invalida"
-    if any(h["host"] == host for h in parse_ssh_config()):
-        return f"'{host}' ya existe en ~/.ssh/config"
-    sshdir = os.path.expanduser("~/.ssh")
-    os.makedirs(sshdir, mode=0o700, exist_ok=True)
-    path = os.path.join(sshdir, "config")
+        return host, None, "Ruta de llave invalida"
     block = [f"\nHost {host}", f"    HostName {hostname}"]
     if user:
         block.append(f"    User {user}")
@@ -7348,11 +7320,78 @@ def ssh_add(d):
         block.append(f"    Port {port}")
     if identity:
         block.append(f"    IdentityFile {identity}")
-    existed = os.path.exists(path)
-    with open(path, "a") as f:
-        f.write("\n".join(block) + "\n")
-    if not existed:
-        os.chmod(path, 0o600)
+    return host, block, None
+
+
+def _ssh_config_path():
+    return os.path.join(os.path.expanduser("~/.ssh"), "config")
+
+
+def _ssh_config_read(path):
+    try:
+        with open(path) as f:
+            return f.read()
+    except FileNotFoundError:
+        return None
+
+
+def _ssh_without_host(text, host):
+    """Quita el bloque 'Host <host>' (solo bloques de un nombre): (texto, error)."""
+    out, skip, found = [], False, False
+    for l in text.splitlines():
+        s = l.strip()
+        if s.lower().startswith("host "):
+            names = s.split()[1:]
+            if host in names:
+                found = True
+                if len(names) > 1:
+                    return None, "Ese host comparte linea con otros; editalo a mano"
+                skip = True
+                continue
+            skip = False
+        if not skip:
+            out.append(l)
+    if not found:
+        return None, "No existe"
+    return "\n".join(out).rstrip() + "\n", None
+
+
+def _ssh_with_block(text, block):
+    return (text or "") + "\n".join(block) + "\n"
+
+
+def ssh_add(d):
+    host, block, err = _ssh_block(d)
+    if err:
+        return err
+    os.makedirs(os.path.expanduser("~/.ssh"), mode=0o700, exist_ok=True)
+    path = _ssh_config_path()
+    with file_lock(path):
+        text = _ssh_config_read(path)
+        if any(h["host"] == host for h in parse_ssh_config(text or "")):
+            return f"'{host}' ya existe en ~/.ssh/config"
+        # Nuevo: 0600 (write_file_atomic conserva el modo de uno existente).
+        write_file_atomic(path, _ssh_with_block(text, block))
+    return None
+
+
+def ssh_update(orig, d):
+    """Editar = quitar + agregar en UNA reescritura atomica: si el alta no
+    valida, ~/.ssh/config queda exactamente como estaba."""
+    host, block, err = _ssh_block(d)
+    if err:
+        return err
+    path = _ssh_config_path()
+    with file_lock(path):
+        text = _ssh_config_read(path)
+        if text is None:
+            return "No hay ~/.ssh/config"
+        rest, err = _ssh_without_host(text, orig)
+        if err:
+            return err
+        if any(h["host"] == host for h in parse_ssh_config(rest)):
+            return f"'{host}' ya existe en ~/.ssh/config"
+        write_file_atomic(path, _ssh_with_block(rest, block))
     return None
 
 
@@ -7415,30 +7454,15 @@ def ssh_key_setup(host):
 
 def ssh_remove(host):
     """Quita el bloque 'Host <host>' de ~/.ssh/config (solo bloques de un nombre)."""
-    path = os.path.expanduser("~/.ssh/config")
-    try:
-        with open(path) as f:
-            lines = f.read().splitlines()
-    except FileNotFoundError:
-        return "No hay ~/.ssh/config"
-    out, skip, found = [], False, False
-    for l in lines:
-        s = l.strip()
-        if s.lower().startswith("host "):
-            names = s.split()[1:]
-            if host in names:
-                found = True
-                if len(names) > 1:
-                    return "Ese host comparte linea con otros; editalo a mano"
-                skip = True
-                continue
-            skip = False
-        if not skip:
-            out.append(l)
-    if not found:
-        return "No existe"
-    with open(path, "w") as f:
-        f.write("\n".join(out).rstrip() + "\n")
+    path = _ssh_config_path()
+    with file_lock(path):
+        text = _ssh_config_read(path)
+        if text is None:
+            return "No hay ~/.ssh/config"
+        rest, err = _ssh_without_host(text, host)
+        if err:
+            return err
+        write_file_atomic(path, rest)
     return None
 
 
@@ -8706,8 +8730,7 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             if mode == "focus":
                 try: os.remove(FOCUS_QUEUE)
                 except OSError: pass
-            with open(FOCUS_FILE, "w") as f:
-                json.dump(st, f)
+            write_json_file(FOCUS_FILE, st)
             return self._json(200, {"ok": True, "focus": st,
                                     "analytics": cc_usage.focus_analytics(USAGE_DB, 7)})
         if self.path == "/conf-set":
@@ -8859,13 +8882,9 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             return self._json(200, {"ok": True})
 
         if self.path == "/ssh-update":
-            orig = data.get("orig", "")
-            err = ssh_remove(orig)
+            err = ssh_update(str(data.get("orig", "")), data)
             if err:
                 return self._json(400, {"error": err})
-            err = ssh_add(data)
-            if err:
-                return self._json(400, {"error": f"Se quito '{orig}' pero fallo el alta: {err}"})
             return self._json(200, {"ok": True})
 
         if self.path == "/prefs-set":
@@ -9056,10 +9075,11 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             err = snippet_validate(name, body, tags)
             if err:
                 return self._json(400, {"error": err})
-            items = read_snippets()
-            item = snippet_new(name, body, tags)
-            items.insert(0, item)
-            write_snippets(items)
+            with file_lock(SNIPPETS_FILE):
+                items = read_snippets()
+                item = snippet_new(name, body, tags)
+                items.insert(0, item)
+                write_snippets(items)
             return self._json(200, {"item": item})
 
         if self.path == "/snippets/update":
@@ -9072,22 +9092,26 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             err = snippet_validate(name, body, tags)
             if err:
                 return self._json(400, {"error": err})
-            items = read_snippets()
-            new_items, updated = snippet_update(items, id_, name, body, tags)
+            with file_lock(SNIPPETS_FILE):
+                items = read_snippets()
+                new_items, updated = snippet_update(items, id_, name, body, tags)
+                if updated is not None:
+                    write_snippets(new_items)
             if updated is None:
                 return self._json(404, {"error": "snippet no encontrado"})
-            write_snippets(new_items)
             return self._json(200, {"item": updated})
 
         if self.path == "/snippets/delete":
             id_ = str(data.get("id", ""))
             if not SNIPPET_ID_RE.match(id_):
                 return self._json(400, {"error": "id invalido"})
-            items = read_snippets()
-            new_items, removed = snippet_delete(items, id_)
+            with file_lock(SNIPPETS_FILE):
+                items = read_snippets()
+                new_items, removed = snippet_delete(items, id_)
+                if removed:
+                    write_snippets(new_items)
             if not removed:
                 return self._json(404, {"error": "snippet no encontrado"})
-            write_snippets(new_items)
             return self._json(200, {"ok": True})
 
         if self.path == "/session-new":
