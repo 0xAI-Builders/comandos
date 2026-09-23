@@ -34,11 +34,11 @@ def write_executable(path, body):
     path.chmod(0o755)
 
 
-def run_attach(tmp_path, presented, session="demo"):
+def run_attach(tmp_path, presented, session="demo", stored="correct-token"):
     home = tmp_path / "home"
     hooks = home / ".claude" / "hooks"
     hooks.mkdir(parents=True)
-    (hooks / "dash-token").write_text("correct-token")
+    (hooks / "dash-token").write_text(stored)
     fake_bin = tmp_path / "bin"
     fake_bin.mkdir()
     log = tmp_path / "tmux.log"
@@ -75,6 +75,18 @@ def test_attach_uses_session_after_valid_dashboard_token(tmp_path):
     assert result.returncode == 0
     assert "has-session -t =project-demo" in log
     assert "attach -t =project-demo" in log
+
+
+def test_attach_trims_token_whitespace_like_the_dashboard(tmp_path):
+    # cc-dash hace .strip(); con "\r\n" o espacios finales el attach rechazaba.
+    result, log = run_attach(tmp_path, "correct-token", "project-demo", stored=" correct-token \r\n")
+    assert result.returncode == 0
+    assert "attach -t =project-demo" in log
+
+
+def test_attach_rejects_blank_token_file(tmp_path):
+    result, log = run_attach(tmp_path, "", "project-demo", stored=" \n\t")
+    assert result.returncode != 0 and log == ""
 
 
 def test_terminal_websocket_passes_token_before_session():
