@@ -273,3 +273,59 @@ def test_post_exception_answers_500(dash, server, monkeypatch):
 
 def test_handler_has_socket_timeout(dash):
     assert dash.Handler.timeout and dash.Handler.timeout <= 60
+
+
+# ---- llamadas lentas fuera del hilo HTTP ----
+def test_opencode_models_serves_stale_cache_and_refreshes_in_background(dash, monkeypatch):
+    import threading
+    import time as _time
+    started, release = threading.Event(), threading.Event()
+
+    def slow_fetch():
+        started.set()
+        release.wait(5)
+        return [{"provider": "nuevo", "models": []}]
+    monkeypatch.setattr(dash, "_opencode_models_fetch", slow_fetch)
+    monkeypatch.setitem(dash._oc_models_cache, "data", [{"provider": "viejo", "models": []}])
+    monkeypatch.setitem(dash._oc_models_cache, "at", 0)
+    t0 = _time.monotonic()
+    assert dash.opencode_models() == [{"provider": "viejo", "models": []}]
+    assert _time.monotonic() - t0 < 1
+    assert started.wait(2)
+    release.set()
+    for _ in range(100):
+        if dash._oc_models_cache["data"][0]["provider"] == "nuevo":
+            break
+        _time.sleep(0.02)
+    assert dash.opencode_models() == [{"provider": "nuevo", "models": []}]
+
+
+def test_opencode_models_cold_cache_waits_only_briefly(dash, monkeypatch):
+    import threading
+    import time as _time
+    release = threading.Event()
+    monkeypatch.setattr(dash, "_opencode_models_fetch", lambda: (release.wait(5), [])[1])
+    monkeypatch.setitem(dash._oc_models_cache, "data", [])
+    monkeypatch.setitem(dash._oc_models_cache, "at", 0)
+    t0 = _time.monotonic()
+    assert dash.opencode_models(wait=0.2) == []
+    assert _time.monotonic() - t0 < 1.5
+    release.set()
+
+
+def test_remote_state_get_uses_cache_instead_of_pinning_threads(dash, monkeypatch):
+    import time as _time
+    calls = []
+
+    def slow_state():
+        calls.append(1)
+        _time.sleep(0.3)
+        return {"host": "zion", "n": len(calls)}
+    monkeypatch.setattr(dash, "remote_state", slow_state)
+    monkeypatch.setitem(dash._remote_state_cache, "data", None)
+    first = dash.remote_state_cached()
+    t0 = _time.monotonic()
+    for _ in range(5):
+        assert dash.remote_state_cached() == first
+    assert _time.monotonic() - t0 < 0.2
+    assert len(calls) == 1

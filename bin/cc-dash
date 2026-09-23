@@ -4449,13 +4449,11 @@ def write_pane_models(panes):
 
 # Catalogo de modelos de OpenCode (unico agente con seleccion de PROVIDER
 # desde la UI). `opencode models --verbose` es lento: cache generoso.
-_oc_models_cache = {"at": 0, "data": []}
+_oc_models_cache = {"at": 0, "data": [], "refresh": None}
+_oc_models_lock = threading.Lock()
 
 
-def opencode_models(force=False):
-    now = time.time()
-    if not force and _oc_models_cache["data"] and now - _oc_models_cache["at"] < 900:
-        return _oc_models_cache["data"]
+def _opencode_models_fetch():
     binary = shutil.which("opencode") or os.path.expanduser("~/.opencode/bin/opencode")
     # --refresh: opencode CACHEA la lista de providers; sin esto, las keys
     # recien pegadas en providers.env no aparecen hasta reiniciar el CLI.
@@ -4465,11 +4463,39 @@ def opencode_models(force=False):
              'set -a; . "$HOME/.claude/hooks/providers.env" 2>/dev/null; set +a; '
              f'"{binary}" models --verbose --refresh'],
             capture_output=True, text=True, timeout=60)
-        data = cc_usage.parse_opencode_models(r.stdout)
+        return cc_usage.parse_opencode_models(r.stdout)
     except Exception:
-        data = []
+        return []
+
+
+def _opencode_models_refresh(done):
+    try:
+        data = _opencode_models_fetch()
+        if data:
+            with _oc_models_lock:
+                _oc_models_cache.update({"at": time.time(), "data": data})
+    finally:
+        with _oc_models_lock:
+            _oc_models_cache["refresh"] = None
+        done.set()
+
+
+def opencode_models(force=False, wait=8):
+    """Stale-while-revalidate: el CLI tarda hasta 60 s y NO debe retener un
+    hilo HTTP. Con cache (aunque vieja) responde al instante y refresca en
+    segundo plano; en frio espera como mucho `wait` segundos."""
+    with _oc_models_lock:
+        data = _oc_models_cache["data"]
+        if not force and data and time.time() - _oc_models_cache["at"] < 900:
+            return data
+        done = _oc_models_cache["refresh"]
+        if done is None:
+            done = _oc_models_cache["refresh"] = threading.Event()
+            threading.Thread(target=_opencode_models_refresh, args=(done,),
+                             daemon=True).start()
     if data:
-        _oc_models_cache.update({"at": now, "data": data})
+        return data
+    done.wait(wait)
     return _oc_models_cache["data"]
 
 
@@ -4665,6 +4691,41 @@ def tailscale_serve_status_text():
     return r.stdout if r.returncode == 0 else ""
 
 
+_remote_state_cache = {"at": 0.0, "data": None, "refreshing": False}
+_remote_state_lock = threading.Lock()
+
+
+def _remote_state_refresh():
+    try:
+        data = remote_state()
+        with _remote_state_lock:
+            _remote_state_cache.update({"at": time.time(), "data": data})
+    except Exception:
+        pass
+    finally:
+        with _remote_state_lock:
+            _remote_state_cache["refreshing"] = False
+
+
+def remote_state_cached(max_age=15):
+    """GET /remote-state lo sondea el UI: `tailscale status/serve` puede tardar
+    hasta 24 s. Se sirve la ultima foto y se refresca en segundo plano; solo
+    la primera vez (sin foto) se calcula en linea. Las acciones POST siguen
+    llamando a remote_state() para devolver el estado recien cambiado."""
+    with _remote_state_lock:
+        data = _remote_state_cache["data"]
+        stale = time.time() - _remote_state_cache["at"] >= max_age
+        if data is not None and stale and not _remote_state_cache["refreshing"]:
+            _remote_state_cache["refreshing"] = True
+            threading.Thread(target=_remote_state_refresh, daemon=True).start()
+    if data is not None:
+        return data
+    data = remote_state()
+    with _remote_state_lock:
+        _remote_state_cache.update({"at": time.time(), "data": data})
+    return data
+
+
 def remote_state():
     host = tailscale_host()
     token = access_token()
@@ -4677,6 +4738,9 @@ def remote_state():
         "qrAvailable": shutil.which("qrencode") is not None,
         "serveStatus": serve,
     })
+    # Tras /remote-on etc. el siguiente GET ya ve el estado nuevo.
+    with _remote_state_lock:
+        _remote_state_cache.update({"at": time.time(), "data": status})
     return status
 
 
@@ -8561,9 +8625,9 @@ class Handler(http.server.SimpleHTTPRequestHandler):
                 out.append(it)
             return self._json(200, out[:40])
         if self.path.startswith("/remote-state"):
-            return self._json(200, remote_state())
+            return self._json(200, remote_state_cached())
         if self.path.startswith("/remote-qr.png"):
-            st = remote_state()
+            st = remote_state_cached()
             url = st.get("urls", {}).get("dashboard", "")
             if not url:
                 return self._json(400, {"error": "No pude leer el host de Tailscale"})
