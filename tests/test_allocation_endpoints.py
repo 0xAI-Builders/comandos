@@ -70,7 +70,7 @@ def test_apply_lanza_el_lote_y_status_lo_cuenta(tmp_path, monkeypatch):
     assert code == 200 and st["state"] == "terminado"
     assert all(i["state"] in ("lista", "omitida") for i in st["items"])
     assert llamadas and all(c["interrupt"] is True for c in llamadas)
-    assert all(c["requestId"].startswith(res["batchId"] + ":") for c in llamadas)
+    assert all(c["requestId"].startswith(res["batchId"] + "-") for c in llamadas)
 
 
 def test_apply_rechaza_un_plan_caducado(tmp_path, monkeypatch):
@@ -112,3 +112,26 @@ def test_limits_salen_enriquecidos(tmp_path, monkeypatch):
     semanal = next(f for f in filas if f["window"] == "7d")
     assert semanal["burn"] and semanal["verdict"]
     assert semanal["verdict"].startswith(("llega al reset", "se acaba en"))
+
+
+class _Validado(Exception):
+    pass
+
+
+def test_payload_del_lote_pasa_la_validacion_real_de_session_configure(tmp_path, monkeypatch):
+    # Sin mock de session_configure: la validación de sesión/pane/requestId es la de verdad.
+    dash = load_dash_module()
+    def store():
+        raise _Validado()
+    monkeypatch.setattr(dash, "session_operation_store", store)
+    ab = dash.allocation_batch
+    it = dict(key="SAVA|%10", session="SAVA", pane="%10", attempts=0,
+              to=dict(harness="claude", motor="claude", model="m", effort="high",
+                      harnessAccount="main", motorAccount="main", routeId="claude:claude"))
+    for attempt in (0, 1, 2):
+        payload = ab._payload("a1b2c3d4e5f6", it, attempt)
+        try:
+            code, body = dash.session_configure(payload)
+        except _Validado:
+            continue
+        raise AssertionError(f"session_configure rechazó el payload: {code} {body} ({payload['requestId']})")

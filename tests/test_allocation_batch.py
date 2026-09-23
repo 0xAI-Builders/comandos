@@ -37,7 +37,8 @@ def test_batch_runs_all_items_with_request_ids_and_interrupt(tmp_path):
     assert view["state"] == "terminado" and view["total"] == 3 and view["done"] == 3
     states = {i["key"]: i["state"] for i in view["items"]}
     assert states == {"A|%1": "lista", "B|%2": "lista", "C|%3": "omitida"}
-    assert {c["requestId"] for c in co.calls} == {f"{b['batchId']}:A:%1", f"{b['batchId']}:B:%2"}
+    assert {c["requestId"] for c in co.calls} == {ab.request_id(b["batchId"], "A", "%1"),
+                                                 ab.request_id(b["batchId"], "B", "%2")}
     assert all(c["interrupt"] is True and c["toHarness"] == "claude" and c["motor"] == "codex" for c in co.calls)
 
 def test_rejected_and_parked_items_are_detenida_with_reason(tmp_path):
@@ -55,7 +56,7 @@ def test_panes_subset_and_rerun_is_idempotent(tmp_path):
     b = store.create(plan(item("A", "%1"), item("B", "%2")), panes=["A|%1"])
     ab.run_batch(b["batchId"], store, co.configure, co.status_of, poll=0.01)
     ab.run_batch(b["batchId"], store, co.configure, co.status_of, poll=0.01)   # segunda pasada: nada nuevo
-    assert [c["requestId"] for c in co.calls] == [f"{b['batchId']}:A:%1"]
+    assert [c["requestId"] for c in co.calls] == [ab.request_id(b["batchId"], "A", "%1")]
     view = ab.batch_view(store.get(b["batchId"]))
     assert {i["key"]: i["state"] for i in view["items"]} == {"A|%1": "lista", "B|%2": "omitida"}
 
@@ -67,7 +68,7 @@ def test_retry_item_calls_coordinator_again(tmp_path):
     co.fail.clear()
     ab.retry_item(b["batchId"], "A|%1", store, co.configure, co.status_of, poll=0.01)
     assert ab.batch_view(store.get(b["batchId"]))["items"][0]["state"] == "lista"
-    assert len(co.calls) == 2 and co.calls[1]["requestId"].endswith(":retry1")
+    assert len(co.calls) == 2 and co.calls[1]["requestId"].endswith("-r1")
 
 def test_concurrency_never_exceeds_limit(tmp_path):
     store = ab.BatchStore(tmp_path / "b.json")
@@ -126,3 +127,41 @@ def test_list_returns_isolated_copies(tmp_path):
     listed[0]["items"][0]["state"] = "corrupted-from-outside"
     fresh = store.get(b["batchId"])
     assert fresh["items"][0]["state"] == "cola"
+
+# El coordinador (session_configure) solo acepta requestId [A-Za-z0-9_-]{8,100}.
+REQUEST_ID_RE = __import__("re").compile(r"[A-Za-z0-9_-]{8,100}")
+
+def test_request_ids_pasan_el_validador_del_coordinador_incluido_retry(tmp_path):
+    store = ab.BatchStore(tmp_path / "b.json")
+    co = FakeCoordinator(fail={"A|%1"})
+    b = store.create(plan(item("A", "%1"), item("proyecto.largo-con_guiones", "%123")), panes=None)
+    ab.run_batch(b["batchId"], store, co.configure, co.status_of, poll=0.01)
+    ab.retry_item(b["batchId"], "A|%1", store, co.configure, co.status_of, poll=0.01)
+    ab.retry_item(b["batchId"], "A|%1", store, co.configure, co.status_of, poll=0.01)
+    ids = [c["requestId"] for c in co.calls]
+    assert len(ids) == 4 and len(set(ids)) == 4, ids
+    assert all(REQUEST_ID_RE.fullmatch(r) for r in ids), ids
+
+def test_request_id_es_determinista_por_item():
+    assert ab.request_id("abc123abc123", "A", "%1") == ab.request_id("abc123abc123", "A", "%1")
+    assert ab.request_id("abc123abc123", "A", "%1") != ab.request_id("abc123abc123", "A", "%2")
+    assert ab.request_id("abc123abc123", "A", "%1", 1) != ab.request_id("abc123abc123", "A", "%1")
+
+def test_respuesta_200_de_una_peticion_ya_confirmada_no_es_fallo(tmp_path):
+    # Reenviar el mismo requestId devuelve 200 con el estado terminal: dedupe, no error.
+    store = ab.BatchStore(tmp_path / "b.json")
+    b = store.create(plan(item("A", "%1")), panes=None)
+    configure = lambda d: (200, {"ok": True, "pending": False, "state": "confirmed",
+                                 "operationKey": "A|%1", "operationId": d["requestId"]})
+    ab.run_batch(b["batchId"], store, configure, lambda *a: {"state": "confirmed"}, poll=0.01)
+    assert ab.batch_view(store.get(b["batchId"]))["items"][0]["state"] == "lista"
+
+def test_items_en_vuelo_al_reiniciar_quedan_detenidos(tmp_path):
+    # Un lote a medias de un proceso muerto no puede quedarse "aplicando" para siempre.
+    store = ab.BatchStore(tmp_path / "b.json")
+    b = store.create(plan(item("A", "%1"), item("B", "%2")), panes=None)
+    store.update_item(b["batchId"], "A|%1", state="aplicando")
+    otra = ab.BatchStore(tmp_path / "b.json")
+    view = ab.batch_view(otra.get(b["batchId"]))
+    assert view["state"] == "terminado"
+    assert all(i["state"] == "detenida" and "reinicio" in i["error"] for i in view["items"])
