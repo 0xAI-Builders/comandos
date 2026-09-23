@@ -250,6 +250,11 @@
       var r = await api("/allocation/revert", { batchId: S.batch.batchId });
       S.batch = { batchId: r.batchId, items: [], done: 0, total: r.total };
       S.phase = "aplicando"; pollBatch();
+      // Los panes que cambiaron a mano después del reparto no se pisan.
+      if (r.skipped && r.skipped.length) {
+        S.error = T("No revertidas (cambiaron después): ", "Not reverted (changed afterwards): ") +
+          r.skipped.map(function (s) { return s.key; }).join(", ");
+      }
     } catch (e) { S.error = e.message; }
     S.busy = false; render();
   }

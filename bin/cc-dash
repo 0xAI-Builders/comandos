@@ -2136,25 +2136,53 @@ def _run_batch_bg(batch_id, wait=False):
         threading.Thread(target=go, daemon=True).start()
 
 
+_ALLOCATION_APPLY_LOCK = threading.Lock()
+
+
+def _batch_for_plan(plan_id):
+    """El lote más reciente de un plan (doble clic, reintento del navegador)."""
+    for b in _batches().list():
+        if b.get("planId") == plan_id:
+            return b
+    return None
+
+
+def _reuse_or_refuse(plan_id):
+    """Un plan en curso devuelve su lote; uno ya aplicado no se relanza."""
+    prev = _batch_for_plan(plan_id)
+    if not prev:
+        return None
+    view = allocation_batch.batch_view(prev)
+    if view["state"] != "terminado":
+        return 202, {"ok": True, "batchId": prev["batchId"], "total": view["total"], "reused": True}
+    if any(i["state"] == "lista" for i in prev["items"]):
+        return 409, {"ok": False, "error": "este plan ya se aplicó; vuelve a analizar", "batchId": prev["batchId"]}
+    return None
+
+
 def allocation_apply(data, wait=False):
     plan = ALLOCATION_PLANS.get(str(data.get("planId") or ""))
     if not plan:
         return 404, {"ok": False, "error": "plan desconocido; vuelve a analizar"}
-    inp = allocation_inputs()
-    if allocation.plan_hash(inp["sessions"]) != plan["stateHash"]:
-        antes = {i["key"]: i["from"] for i in plan["items"]}
-        vivas = {allocation.session_key(s) for s in inp["sessions"]}
-        cambiadas = [allocation.session_key(s) for s in inp["sessions"]
-                     if allocation.session_key(s) in antes
-                     and any(str(s.get(f) or "") != str(antes[allocation.session_key(s)].get(g) or "")
-                             for f, g in (("model", "model"), ("effort", "effort"),
-                                          ("harnessAccount", "account")))]
-        nuevas = sorted(vivas - set(antes))
-        idas = sorted(set(antes) - vivas)
-        return 409, {"ok": False, "error": "plan_stale",
-                     "changed": sorted(cambiadas) + nuevas + idas}
-    panes = data.get("panes")
-    batch = _batches().create(plan, panes=panes if isinstance(panes, list) else None)
+    with _ALLOCATION_APPLY_LOCK:
+        hit = _reuse_or_refuse(plan["planId"])
+        if hit:
+            return hit
+        inp = allocation_inputs()
+        if allocation.plan_hash(inp["sessions"]) != plan["stateHash"]:
+            antes = {i["key"]: i["from"] for i in plan["items"]}
+            vivas = {allocation.session_key(s) for s in inp["sessions"]}
+            cambiadas = [allocation.session_key(s) for s in inp["sessions"]
+                         if allocation.session_key(s) in antes
+                         and any(str(s.get(f) or "") != str(antes[allocation.session_key(s)].get(g) or "")
+                                 for f, g in (("model", "model"), ("effort", "effort"),
+                                              ("harnessAccount", "account")))]
+            nuevas = sorted(vivas - set(antes))
+            idas = sorted(set(antes) - vivas)
+            return 409, {"ok": False, "error": "plan_stale",
+                         "changed": sorted(cambiadas) + nuevas + idas}
+        panes = data.get("panes")
+        batch = _batches().create(plan, panes=panes if isinstance(panes, list) else None)
     _run_batch_bg(batch["batchId"], wait)
     return 202, {"ok": True, "batchId": batch["batchId"], "total": len(batch["items"])}
 
@@ -2182,22 +2210,53 @@ def allocation_retry(data, wait=False):
     return 202, {"ok": True, "batchId": bid, "key": key}
 
 
+def _still_applied(live, to):
+    """El pane sigue en el `to` que puso el lote? Un campo vivo vacío no cuenta
+    como cambio (no todos los agentes reportan effort o cuenta)."""
+    pares = ((live.get("motor") or live.get("agent"), to.get("motor")), (live.get("model"), to.get("model")),
+             (live.get("effort"), to.get("effort")),
+             (live.get("harnessAccount") or live.get("account"), to.get("harnessAccount")))
+    return all(not v or str(v) == str(w or "") for v, w in pares)
+
+
 def allocation_revert(data, wait=False):
-    b = _batches().get(str(data.get("batchId") or ""))
+    bid = str(data.get("batchId") or "")
+    b = _batches().get(bid)
     if not b:
         return 404, {"ok": False, "error": "lote desconocido"}
-    plan = ALLOCATION_PLANS.get(b["planId"])
-    if not plan:
-        return 409, {"ok": False, "error": "el plan original ya no está en memoria"}
-    hechas = {i["key"] for i in b["items"] if i["state"] == "lista"}
-    if not hechas:
-        return 409, {"ok": False, "error": "no hay cambios confirmados que revertir"}
-    inv = allocation.invert(plan)
-    inv["items"] = [dict(i, same=False, locked=False) for i in inv["items"] if i["key"] in hechas]
-    ALLOCATION_PLANS[inv["planId"]] = inv
-    batch = _batches().create(inv, panes=None)
+    # Con items aún aplicando, lo que se confirme después quedaría sin revertir
+    # (y dos interrupciones en el mismo pane).
+    if allocation_batch.batch_view(b)["state"] != "terminado":
+        return 409, {"ok": False, "error": "el lote sigue aplicando; espera a que termine para revertir"}
+    with _ALLOCATION_APPLY_LOCK:
+        hit = _reuse_or_refuse("rev-" + bid)
+        if hit:
+            return hit
+        hechas = [i for i in b["items"] if i["state"] == "lista"]
+        if not hechas:
+            return 409, {"ok": False, "error": "no hay cambios confirmados que revertir"}
+        # Se revierte desde el lote persistido (from/to), no desde el plan en RAM,
+        # y solo los panes que siguen como los dejó el lote: un cambio manual
+        # posterior no se pisa.
+        inp = allocation_inputs()
+        vivas = {allocation.session_key(s): s for s in inp["sessions"]}
+        items, skipped = [], []
+        for it in hechas:
+            live = vivas.get(it["key"])
+            if not live:
+                skipped.append({"key": it["key"], "reason": "el pane ya no existe"})
+            elif not _still_applied(live, it["to"]):
+                skipped.append({"key": it["key"], "reason": "cambió después del reparto; no se pisa"})
+            else:
+                items.append(it)
+        if not items:
+            return 409, {"ok": False, "error": "nada que revertir: los panes cambiaron después del reparto",
+                         "skipped": skipped}
+        inv = allocation.invert({"planId": bid, "stateHash": allocation.plan_hash(inp["sessions"]), "items": items})
+        inv["items"] = [dict(i, same=False, locked=False) for i in inv["items"]]
+        batch = _batches().create(inv, panes=None)
     _run_batch_bg(batch["batchId"], wait)
-    return 202, {"ok": True, "batchId": batch["batchId"], "total": len(batch["items"])}
+    return 202, {"ok": True, "batchId": batch["batchId"], "total": len(batch["items"]), "skipped": skipped}
 
 
 def session_change_support(registry=None, observed=None):
@@ -5633,7 +5692,7 @@ def operator_agent_stream(text, *, model, tabs, memory, active, convo, dispatche
         conv.append({"role": "user", "content": text})
     want = operator_chat.model_entry(model)["model"]
     order = [want] + [m["model"] for m in operator_chat.MODELS if m["model"] != want]
-    actions, notes = [], []
+    actions, notes, failed = [], [], []
     used_model, fallback_notice = None, ''
     for _round in range(max_rounds):
         family, events, err = None, None, ""
@@ -5712,6 +5771,8 @@ def operator_agent_stream(text, *, model, tabs, memory, active, convo, dispatche
                 yield {"t": "action", **a}
             note = str(out.get("reply") or "ok")
             notes.append(note)
+            if not out.get("ok") or out.get("error"):
+                failed.append(f'{c["name"]}: {note}')
             yield {"t": "tool_result", "name": c["name"], "ok": bool(out.get("ok")), "pending": bool(out.get("pending")), "reply": note}
             results.append((c, note))
         if family == "openai":
@@ -5719,7 +5780,12 @@ def operator_agent_stream(text, *, model, tabs, memory, active, convo, dispatche
                 conv.append({"role": "tool", "tool_call_id": c["id"], "content": note})
         else:
             conv.append({"role": "user", "content": [{"type": "tool_result", "tool_use_id": c["id"], "content": note} for c, note in results]})
-    yield {"t": "final", "reply": fallback_notice + (notes[-1] if notes else "Listo."), "actions": actions}
+    # Sin rondas: el último resultado no puede tapar un fallo anterior.
+    reply = notes[-1] if notes else "Listo."
+    missing = [f for f in failed if not f.endswith(reply)]
+    if missing:
+        reply += "\nFallaron: " + "; ".join(missing)
+    yield {"t": "final", "ok": not failed, "reply": fallback_notice + reply, "actions": actions}
 
 
 def operator_agent_turn(text, *, model, tabs, memory, active, convo, dispatcher, **_ignored):
@@ -5793,11 +5859,18 @@ def operator_optimization_apply(profile, sessions):
     plan = next((p for p in plans if profile in (p.get("id"), p.get("name"), p.get("label"))), None)
     if not plan:
         return {"ok": False, "reply": "Perfil desconocido: " + ", ".join(str(p.get("id", "")) for p in plans)}
-    done = []
+    if not sessions:
+        return {"ok": False, "reply": "Nada que aplicar: indica las sesiones."}
+    done, fallos = [], 0
     for sess in sessions:
         err = model_switch_for_session(sess, plan)
+        fallos += bool(err)
         done.append(f"{sess}: {'ok' if not err else err}")
-    return {"reply": "\n".join(done) or "Nada que aplicar"}
+    if fallos:
+        # Parcial también es fallo: el usuario pidió todas.
+        cabeza = f"Aplicado en {len(sessions) - fallos} de {len(sessions)} sesiones."
+        return {"ok": False, "reply": cabeza + "\n" + "\n".join(done)}
+    return {"ok": True, "reply": "\n".join(done)}
 
 
 def operator_snippet_send(snip_id, sess):
