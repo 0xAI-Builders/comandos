@@ -27,3 +27,7 @@ Los artefactos privados de lanzamiento y recuperación se conservan mientras pue
 Las pruebas de Python cubren selección, revisiones, bloqueo compartido con el coordinador, identidad del proceso, recuperación e inventario. Los procesos de prueba usan configuraciones y sockets tmux aislados; no llaman a modelos reales.
 
 `tests/e2e_pane_extensions.cjs` comprueba el estante con APIs simuladas en el runtime de Chrome del Mac. `tests/e2e_remote_workspace.cjs` comprueba el dashboard completo en cuatro tamaños. No ejecutar las pruebas de navegador en el equipo local: esta instalación reserva esa automatización para el Mac.
+
+Para validar este cambio, usar las pruebas `test_extension_launch.py`, `test_pane_extensions.py`, `test_pane_extensions_api.py`, `test_extension_coordinator.py`, `test_extension_observations.py`, `test_native_extension_metadata.py`, `test_extension_desktop.py` y `test_extension_tmux.py`. Cubren el contrato nuevo y sus conexiones directas. Las pruebas antiguas de perfiles globales no sustituyen esta validación.
+
+La comprobación remota integrada puede limitarse al estante con `node tests/e2e_remote_workspace.cjs --extensions-only`. Usa el HTML actual de ComandOS y verifica el espacio de la terminal, el logo/modelo/esfuerzo, el cierre y el área visible después del zoom. El contrato actual de zoom ajusta la app al área visible; la antigua expectativa de mantener la altura completa dejó de ser válida.

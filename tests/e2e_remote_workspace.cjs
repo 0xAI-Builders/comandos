@@ -7,7 +7,8 @@ const chrome = '/home/john/.local/share/comandos-browser/runtime/bin/chrome';
 assert(fs.existsSync(chrome), 'Run browser tests on the Mac host.');
 const {chromium} = require(process.env.PLAYWRIGHT_CORE || 'playwright-core');
 const root = path.resolve(__dirname, '..');
-const baseline = process.argv[2];
+const extensionsOnly = process.argv.includes('--extensions-only');
+const baseline = extensionsOnly ? null : process.argv[2];
 const output = process.env.QA_OUTPUT || '/tmp/comandos-parity-qa/shots';
 fs.mkdirSync(output, {recursive:true});
 const registry = {harnesses:{codex:{label:'Codex',accounts:[{alias:'main',selectable:true}]}},
@@ -20,6 +21,27 @@ const items = initialTabs.flatMap((t,i)=>[0,1].map(p=>({
   model:'gpt-6-astra',effort:'high',account:'main',cwd:'/tmp/fixture',alive:true,
   status:p?'waiting':'working',detail:'Fixture',ts:Math.floor(Date.now()/1000),
 })));
+async function checkExtensionShelf(page, check, cdp) {
+  await page.evaluate(()=>showView('term:local',true));
+  const termBefore=await page.locator('#term-area').boundingBox();
+  const pillBefore=await page.locator('.cx-motor').first().innerHTML();
+  await page.evaluate(()=>openPaneExtensions('local','%0','codex'));
+  const shelf=page.frameLocator('#pane-extensions-frame');
+  await shelf.getByRole('button',{name:'Cerrar estante',exact:true}).waitFor();
+  const term=await page.locator('#term-area').boundingBox(),frame=await page.locator('#pane-extensions-frame').boundingBox();
+  check(term.y+term.height<=frame.y+1,'shelf resizes terminal without covering input');
+  check(await page.locator('.cx-motor').first().innerHTML()===pillBefore,'shelf preserves provider/model/effort pill');
+  await cdp.send('Emulation.setPageScaleFactor',{pageScaleFactor:1.5});
+  await page.waitForTimeout(500);
+  const visible=await page.evaluate(()=>({top:visualViewport.offsetTop,height:visualViewport.height}));
+  const zoomFrame=await page.locator('#pane-extensions-frame').boundingBox();
+  check(zoomFrame.y+zoomFrame.height<=visible.top+visible.height+2,'shelf fits current visible viewport after zoom');
+  await cdp.send('Emulation.setPageScaleFactor',{pageScaleFactor:1});await page.waitForTimeout(300);
+  await shelf.getByRole('button',{name:'Cerrar estante',exact:true}).click();
+  await page.waitForFunction(()=>!document.getElementById('pane-extensions-frame'));
+  const restored=await page.locator('#term-area').boundingBox();
+  check(Math.abs(restored.height-termBefore.height)<2,'closing shelf restores terminal height');
+}
 (async()=>{
   const browser = await chromium.launch({headless:true,executablePath:chrome,chromiumSandbox:true});
   try {
@@ -80,6 +102,13 @@ const items = initialTabs.flatMap((t,i)=>[0,1].map(p=>({
         await page.evaluate(()=>showView('term:local',true));
         await page.waitForFunction(()=>!!openTerms.get('local').frame?.contentDocument.querySelector('.xterm-screen'));
         await page.waitForTimeout(700);
+        if(extensionsOnly){
+          const cdp=await context.newCDPSession(page);
+          await checkExtensionShelf(page,check,cdp);
+          check(errors.length===0,'no page errors: '+errors.join('; '));
+          console.log(JSON.stringify({name,scope:'pane-extensions',failures,errors}));
+          await context.close();assert.deepEqual(failures,[],name);continue;
+        }
         if(variant==='fixed'&&touch){
           const terminal=page.frames().find(f=>f.url().includes('/term/'));
           const sent=()=>terminal.evaluate(()=>window.__sent.map(bytes=>new TextDecoder().decode(new Uint8Array(bytes).slice(1))));
@@ -178,21 +207,13 @@ const items = initialTabs.flatMap((t,i)=>[0,1].map(p=>({
         if(touch){
           const beforeZoom=await page.locator('#panes').evaluate(e=>e.clientHeight);
           await cdp.send('Emulation.setPageScaleFactor',{pageScaleFactor:1.5});await page.waitForTimeout(500);
-          check(await page.locator('#panes').evaluate(e=>e.clientHeight)===beforeZoom,'pinch does not reflow layout');
+          const visibleHeight=await page.evaluate(()=>visualViewport.height);
+          check(await page.locator('#panes').evaluate(e=>e.clientHeight)<=visibleHeight+1,'pinch fits layout into visible viewport');
           await cdp.send('Emulation.setPageScaleFactor',{pageScaleFactor:1});await page.waitForTimeout(300);
         }
         await page.evaluate(()=>showView('term:local',true));
         if(variant==='fixed'){
-          const termBefore=await page.locator('#term-area').boundingBox();
-          await page.evaluate(()=>openPaneExtensions('local','%0','codex'));
-          const shelf=page.frameLocator('#pane-extensions-frame');
-          await shelf.getByRole('button',{name:'Cerrar estante',exact:true}).waitFor();
-          const term=await page.locator('#term-area').boundingBox(),frame=await page.locator('#pane-extensions-frame').boundingBox();
-          check(term.y+term.height<=frame.y+1,'shelf resizes terminal without covering input');
-          await shelf.getByRole('button',{name:'Cerrar estante',exact:true}).click();
-          await page.waitForFunction(()=>!document.getElementById('pane-extensions-frame'));
-          const restored=await page.locator('#term-area').boundingBox();
-          check(Math.abs(restored.height-termBefore.height)<2,'closing shelf restores terminal height');
+          await checkExtensionShelf(page,check,cdp);
         }
         await page.screenshot({path:path.join(output,name+'.png')});
         check(errors.length===0,'no page errors: '+errors.join('; '));

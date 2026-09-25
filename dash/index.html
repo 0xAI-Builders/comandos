@@ -732,7 +732,7 @@
   #motor-pop .mp-foot{margin:10px 4px 0;font-family:var(--mono);font-size:10px;color:var(--dim);display:flex;gap:6px;align-items:center;flex-wrap:wrap;line-height:1.35}
   #motor-pop .mp-foot .ok{color:var(--ok)} #motor-pop .mp-foot .bad{color:var(--err)}
   .cx-motor{display:inline-flex;gap:5px;flex-wrap:wrap}
-  :root{--pane-shelf-height:clamp(260px,55dvh,520px)}
+  :root{--pane-shelf-height:clamp(220px,calc(var(--app-height,100dvh) * .55),520px)}
   body.pane-extensions-open,body.app.pane-extensions-open{height:calc(var(--app-height,100dvh) - var(--pane-shelf-height));overflow:hidden}
   .cx-block > .cx-advice{grid-area:advice;margin:0;max-width:none}
   .cx-block > .cx-acts{grid-area:acts;margin:0;justify-self:end}
