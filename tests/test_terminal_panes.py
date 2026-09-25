@@ -120,3 +120,33 @@ def test_foreign_existing_pane_cannot_be_closed(panes):
         execute({'session':'fixture','action':'close','pane':foreign,'identity':own['identity']})
     assert tmux('has-session','-t','=other').returncode == 0
     assert snapshots == []
+
+
+@pytest.mark.parametrize('direction,flag', [('right', 'horizontal'), ('down', 'vertical')])
+def test_split_opens_new_pane_beside_confirmed_pane(panes, direction, flag):
+    execute, tmux, snapshots = panes
+    before = execute({'session':'fixture'})['panes']
+    target = before[0]
+    result = execute({'session':'fixture','action':'split','direction':direction,
+                      'pane':target['id'],'identity':target['identity']})
+    assert len(result['panes']) == len(before) + 1
+    new = [p for p in result['panes'] if p['id'] not in {b['id'] for b in before}]
+    assert len(new) == 1 and result['opened'] == new[0]['id'] and new[0]['active']
+    assert snapshots == []
+
+
+def test_split_rejects_unknown_direction_and_stale_identity(panes):
+    execute, tmux, snapshots = panes
+    before = execute({'session':'fixture'})['panes']
+    target = before[0]
+    for direction, identity in [('diagonal', target['identity']), ('right', 'old')]:
+        with pytest.raises(ValueError):
+            execute({'session':'fixture','action':'split','direction':direction,
+                     'pane':target['id'],'identity':identity})
+    assert execute({'session':'fixture'})['panes'] == before
+
+
+def test_listing_reports_each_pane_folder(panes, tmp_path):
+    execute, tmux, snapshots = panes
+    listing = execute({'session': 'fixture'})['panes']
+    assert all(p['path'] for p in listing)
