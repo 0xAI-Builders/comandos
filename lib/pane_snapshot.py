@@ -58,12 +58,13 @@ class PaneInspector:
         except OSError:
             return []
         values = {'--model', '-m', '--effort', '--permission-mode', '--add-dir', '--settings', '--mcp-config',
-                  '--sandbox', '-s', '--ask-for-approval', '-a', '--config', '-c', '--profile', '-p'}
+                  '--variant', '--agent', '--sandbox', '-s', '--ask-for-approval', '-a', '--config', '-c', '--profile', '-p'}
         switches = {'--dangerously-skip-permissions', '--dangerously-bypass-approvals-and-sandbox',
                     '--allow-dangerously-skip-permissions', '--danger', '--full-auto', '--no-alt-screen',
                     '--strict-mcp-config', '--disable-slash-commands'}
         # -c/-p mean something different in other CLIs (continue/print).
         exe = Path(args[0]).name if args else ''
+        if exe == 'cc-acp': values.discard('--agent')
         if exe != 'codex':
             values -= {'-c', '--config', '-p', '--profile', '-s', '-a'}
         out, i = [], 1
@@ -77,6 +78,19 @@ class PaneInspector:
                     out.append(arg)
                 i += 1
         return out
+
+    def native_metadata(self, pid, harness):
+        try:
+            started=(self.proc/str(pid)/'stat').read_text().rsplit(')',1)[1].split()[19]
+            path=self.home/'.claude/hooks/native-processes'/f'{pid}.json'
+            if path.stat().st_size>16384: return {}
+            data=_json(path,{})
+            if data.get('pid')!=pid or data.get('start')!=started or data.get('harness')!=harness:
+                return {}
+            if not re.fullmatch(r'[A-Za-z0-9_-]{1,256}',str(data.get('sessionId') or '')) or data.get('parentId'):
+                return {}
+            return {key:data.get(key) for key in ('sessionId','model','effort','busy','updatedAt')}
+        except (OSError,ValueError,IndexError,AttributeError): return {}
 
     def __call__(self, pane):
         if pane.get('command') in _SHELLS:
@@ -115,6 +129,32 @@ class PaneInspector:
                 return {**self.claude[pid], 'flags': self.flags(pid)} if pid in self.claude else {'agent': 'claude'}
             if exe in ('grok', 'grok-linux-x86_64', 'grok-linux-aarch64'):
                 return {**self.grok[pid], 'flags': self.flags(pid)} if pid in self.grok else {'agent': 'grok'}
+            if exe in ('opencode','agy'):
+                result = {'agent':exe, 'flags':self.flags(pid), 'processPid':pid}
+                flag_names = ('--session','-s') if exe == 'opencode' else ('--conversation',)
+                explicit = next((args[i+1] for i,a in enumerate(args[:-1]) if a in flag_names), '')
+                explicit = explicit or next((a.split('=',1)[1] for a in args if a.startswith(tuple(f+'=' for f in flag_names))), '')
+                if explicit and not re.fullmatch(r'[A-Za-z0-9_-]{1,256}',explicit): explicit=''
+                if exe == 'opencode':
+                    metadata = self.native_metadata(pid,exe)
+                    sid = metadata.get('sessionId') or explicit or ''
+                    if sid:
+                        result.update(resume_id=sid, nativeMetadata=metadata if metadata.get('sessionId')==sid else {},
+                            transcriptPath=str(self.home/'.local/share/opencode/opencode.db'))
+                else:
+                    candidates = {}
+                    for fd in (p/'fd').glob('*'):
+                        try: target=os.readlink(fd)
+                        except OSError: continue
+                        match=re.search(r'/antigravity-cli/(?:conversations/([A-Za-z0-9_-]+)\.db|presence/([A-Za-z0-9_-]+)\.lock)$',target)
+                        if match:
+                            sid=match[1] or match[2]
+                            candidates[sid]=target.split('/antigravity-cli/',1)[0]+'/antigravity-cli/conversations/'+sid+'.db'
+                    metadata=self.native_metadata(pid,exe)
+                    sid=next(iter(candidates)) if len(candidates)==1 else (metadata.get('sessionId') or explicit) if not candidates else ''
+                    if sid:
+                        result.update(resume_id=sid,nativeMetadata=metadata if metadata.get('sessionId')==sid else {},transcriptPath=candidates.get(sid,str(self.home/'.gemini/antigravity-cli/conversations'/f'{sid}.db')))
+                return result
             if exe == 'codex':
                 sid = None
                 candidates = []
@@ -137,8 +177,9 @@ class PaneInspector:
                                 candidates.append((fd.stat().st_mtime_ns, match.group(1)))
                         except (OSError, ValueError, AttributeError):
                             continue
-                if candidates:
-                    sid = max(candidates)[1]
+                roots={ident for _,ident in candidates}
+                if len(roots)>1:return {'agent':'codex'}
+                if roots:sid=next(iter(roots))
                 if not sid and 'resume' in args:
                     i = args.index('resume') + 1
                     if i < len(args) and re.fullmatch(r'[0-9a-f-]{36}', args[i]):

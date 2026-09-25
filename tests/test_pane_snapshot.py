@@ -206,3 +206,40 @@ def test_codex_metadata_cache_invalidates_atomic_replacement(tmp_path):
     replacement.write_text(json.dumps({'type': 'turn_context', 'payload': {'model': 'other'}}) + '\n')
     replacement.replace(path)
     assert cache.read(1, 'root', path)['model'] == 'other'
+
+
+def test_agy_conversation_belongs_to_foreground_process_fds(tmp_path):
+    m=module();root=tmp_path/'proc';root.mkdir();home=tmp_path/'home';home.mkdir()
+    proc(root,1,0,['zsh']);p=proc(root,2,1,['agy']);child=proc(root,3,2,['agy'])
+    sid='11111111-1111-1111-1111-111111111111';other='22222222-2222-2222-2222-222222222222'
+    path=home/'.gemini/antigravity-cli/conversations'/f'{sid}.db';path.parent.mkdir(parents=True);path.touch()
+    delegated=path.with_name(other+'.db');delegated.touch()
+    (p/'fd/4').symlink_to(path);(child/'fd/5').symlink_to(delegated)
+    info=m.PaneInspector(home=home,proc_root=root)({'id':'%1','pid':1,'command':'agy'})
+    assert info['agent']=='agy' and info['resume_id']==sid
+    assert info['transcriptPath']==str(path)
+
+
+def test_opencode_exact_session_flag_is_preserved_without_prompt(tmp_path):
+    m=module();root=tmp_path/'proc';root.mkdir();home=tmp_path/'home';home.mkdir()
+    proc(root,1,0,['opencode','--session','ses_exact','--model','provider/model','--variant','high','secret prompt'])
+    info=m.PaneInspector(home=home,proc_root=root)({'id':'%1','pid':1,'command':'opencode'})
+    assert info['resume_id']=='ses_exact'
+    assert info['flags']==['--model','provider/model','--variant','high']
+
+
+def test_opencode_pid_reuse_does_not_trust_old_native_metadata(tmp_path):
+    m=module();root=tmp_path/'proc';root.mkdir();home=tmp_path/'home';home.mkdir()
+    proc(root,1,0,['opencode'])
+    path=home/'.claude/hooks/native-processes/1.json';path.parent.mkdir(parents=True)
+    path.write_text(json.dumps({'pid':1,'start':'stale','harness':'opencode','sessionId':'ses_wrong'}))
+    info=m.PaneInspector(home=home,proc_root=root)({'id':'%1','pid':1,'command':'opencode'})
+    assert info['agent']=='opencode' and not info.get('resume_id')
+
+
+def test_ambiguous_root_rollouts_never_choose_latest_conversation(tmp_path):
+    m=module();root=tmp_path/'proc';root.mkdir();home=tmp_path/'home';home.mkdir()
+    p=proc(root,1,0,['codex'])
+    for i,sid in enumerate(['11111111-1111-1111-1111-111111111111','22222222-2222-2222-2222-222222222222']):
+        (p/'fd'/str(i+3)).symlink_to(rollout(tmp_path,sid))
+    assert not m.PaneInspector(home=home,proc_root=root)({'id':'%1','pid':1,'command':'codex'}).get('resume_id')

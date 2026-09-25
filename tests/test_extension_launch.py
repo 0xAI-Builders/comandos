@@ -164,7 +164,7 @@ def test_namespace_launch_verifies_mount_evidence_and_auth_path_is_original(fx):
             if valid and output.exists():break
             time.sleep(.02)
         assert valid
-        seen=json.loads(output.read_text());assert 'disabled_mcp_servers = ["docs", "off"]' in seen['config']
+        seen=json.loads(output.read_text());assert m._parse_toml(seen['config'])['disabled_mcp_servers']==['docs','off']
         assert seen['home']==str(cwd.parent)
         assert 'disabled_mcp_servers' not in (homes['grok']/'config.toml').read_text()
     finally:
@@ -289,3 +289,26 @@ def test_agy_project_mcp_is_filtered_in_private_project_mount(fx):
     mount=next(r for r in data['mounts'] if r['target']==str(path))
     assert 'project-docs' not in json.loads(Path(mount['source']).read_text())['mcpServers']
     assert 'project-docs' in path.read_text()
+
+
+def test_default_python_runtime_can_prepare_all_adapters_without_optional_packages(tmp_path):
+    script='''
+import json,os,sys
+from pathlib import Path
+sys.path[:0]=[sys.argv[1]+'/lib',sys.argv[1]+'/bin']
+import extension_launch as m
+root=Path(os.environ['HOME']);cwd=root/'project';cwd.mkdir();runtime=root/'runtime'
+registry={'harnesses':{}}
+for h in ['claude','codex','grok','opencode','agy']:
+ home=root/('.'+h);home.mkdir()
+ registry['harnesses'][h]={'defaultHome':str(home),'capabilities':{'accounts':False}}
+ if h in ('codex','grok'):(home/'config.toml').write_text('[mcp_servers.docs]\\ncommand="echo"\\n')
+ if h=='agy':
+  (home/'config').mkdir();(home/'config/mcp_config.json').write_text('{"mcpServers":{}}');(home/'config/skills.json').write_text('{}')
+ launch=m.prepare_launch(registry,h,'main',str(cwd),{},str(runtime),'fixture-'+h)
+ m.wrap_command('echo fixture',launch)
+print('all-runtime-adapters-ok')
+'''
+    result=subprocess.run(['python3','-c',script,str(ROOT)],env={**os.environ,'HOME':str(tmp_path)},capture_output=True,text=True)
+    assert result.returncode==0,result.stderr
+    assert result.stdout.strip()=='all-runtime-adapters-ok'

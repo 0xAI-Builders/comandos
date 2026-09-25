@@ -915,6 +915,9 @@ import allocation
 import allocation_batch
 import grok_state
 import pane_snapshot
+import pane_extensions as pane_extension_state
+import extension_launch
+import extension_observations
 import tmux_snapshot
 import session_operations
 import tui_state
@@ -1348,6 +1351,10 @@ def acp_state_for_pane(pane):
 def harness_pane_busy(sess, pane, harness):
     if harness in ("", "shell"):
         return False
+    if harness in ('opencode','agy'):
+        info=agent_info_for_pane(pane) or {}
+        metadata=pane_snapshot.PaneInspector().native_metadata(info.get('pid',0),harness)
+        if type(metadata.get('busy')) is bool: return metadata['busy']
     if harness == "claude":
         return claude_pane_busy(pane)
     return grok_pane_busy(sess, pane)
@@ -1564,7 +1571,168 @@ def session_operation_store():
     return _SESSION_OPERATIONS
 
 
-def _configuration_command(harness, motor, model, effort, account, resume='', flags=()):
+def _extension_store():
+    return pane_extension_state.ExtensionStore(session_operation_store().path)
+
+
+def _canonical_extension_draft(inventory,desired):
+    # New catalog entries in an existing draft are opt-in. Unknown and deleted
+    # rows are omitted; unsupported configured values cannot be overwritten.
+    return {kind:{row['id']:(desired.get(kind,{}).get(row['id'],False) if row['toggleable'] else row['enabled'])
+                  for row in inventory[kind] if type(row['enabled']) is bool}
+            for kind in ('mcps','skills')}
+
+
+def _extension_target(query):
+    sess,pane=str(query.get('session') or ''),str(query.get('pane') or '')
+    if not SESSION_RE.fullmatch(sess) or not PANE_RE.fullmatch(pane):
+        raise ValueError('sesión y panel exactos requeridos')
+    identity=_pane_identity(sess,pane)
+    operation=session_operation_store().latest_for_target(sess,pane)
+    if not operation or operation['pane_key']!=_identity_key(identity) or operation['state'] in ('confirmed','failed','rolled_back'): operation=None
+    destination=((operation or {}).get('snapshot') or {}).get('destination') or {}
+    info=agent_info_for_pane(pane) or {}
+    observed=observe_pane(sess,pane,info) if info else {}
+    harness=info.get('agent') or query.get('harness') or ''
+    if harness not in extension_launch.SUPPORTED:
+        raise ValueError('elige un CLI compatible para este panel')
+    if info and query.get('harness') and query['harness']!=harness:
+        raise ValueError('el CLI del panel cambió')
+    if not info and identity['pane_current_command'] not in ('bash','zsh','sh','fish','dash'):
+        if not operation: raise ValueError('hay un proceso sin identificar en el panel')
+    account=observed.get('harnessAccount') or ('main' if not info else 'unknown')
+    if account=='unknown' and operation:account=destination.get('harnessAccount') or 'unknown'
+    if account=='unknown': raise ValueError('no se identificó la cuenta del proceso')
+    inv=extension_launch.inventory(load_provider_registry(),harness,account,identity['pane_current_path'])
+    bundle=extension_launch.launch_from_pid(info['pid']) if info.get('pid') else None
+    loaded=bundle['selection'] if bundle and bundle['harness']==harness else None
+    defaults=loaded or {k:{r['id']:r['enabled'] for r in inv[k] if type(r['enabled']) is bool} for k in ('mcps','skills')}
+    sid=observed.get('conversationId') or ''
+    if operation and operation['request'].get('extensionDraftKey'):
+        state=_extension_store().require_revision(operation['request']['extensionDraftKey'],operation['request'].get('revision'))
+    else: state=_extension_store().state(_identity_key(identity),sid,harness,defaults)
+    state=dict(state,desired=_canonical_extension_draft(inv,state['desired']))
+    return dict(identity=identity,info=info,observed=observed,harness=harness,account=account,inventory=inv,
+                bundle=bundle,loaded=loaded,draft=state,conversationId=sid,operationActive=bool(operation))
+
+
+def _extension_operation(identity,sess,pane):
+    row=session_operation_store().latest_for_target(sess,pane)
+    if not row or row['pane_key']!=_identity_key(identity): return None
+    row=refresh_session_confirmation(session_operation_store(),row)
+    result=row.get('result') or {}
+    return {'id':row['id'],'operationId':row['id'],'state':row['state'],
+            'pending':row['state'] not in ('confirmed','failed','rolled_back'),
+            'recoveryAllowed':row['state'] in ('recovery_required','awaiting_confirmation'),
+            'error':result.get('error') or '', 'rolledBack':bool(result.get('rolledBack'))}
+
+
+def pane_extensions_state(query):
+    target=_extension_target(query)
+    identity,info=target['identity'],target['info']
+    harness=target['harness'];sid=target['conversationId']
+    source=''
+    if info and sid:
+        try:
+            snap=pane_snapshot.PaneInspector()({'id':query['pane'],'pid':int(identity['pane_pid']),'command':identity['pane_current_command']})
+            source=_snapshot_transcript(snap)
+            if harness=='grok': source=os.path.join(os.path.dirname(source),'events.jsonl')
+            elif harness=='agy': source=os.path.join(os.path.dirname(os.path.dirname(source)),'brain',sid,'.system_generated/logs/transcript_full.jsonl')
+        except (OSError,ValueError): pass
+    # Internal paths are needed only for read-file skill attribution, never sent.
+    usage_inventory=target['inventory']
+    if source:
+        try: _,usage_inventory=extension_launch._internal_inventory(load_provider_registry(),harness,target['account'],identity['pane_current_path'])
+        except (OSError,ValueError): pass
+    usage=extension_observations.conversation_usage(harness,sid,source,usage_inventory)
+    operation=_extension_operation(identity,query['session'],query['pane'])
+    supported=(not info or bool(sid)) and not target.get('operationActive')
+    if not info and identity['pane_current_command'] not in ('bash','zsh','sh','fish','dash'):supported=False
+    reason='' if supported else 'La conversación exacta todavía no está identificada; el agente sigue abierto.'
+    return {'ok':True,'session':query['session'],'pane':query['pane'],'identity':_identity_key(identity),
+            'conversationId':sid,'harness':harness,'account':target['account'],'inventory':target['inventory'],
+            'desired':target['draft']['desired'],'loaded':target['loaded'],'revision':target['draft']['revision'],
+            'operation':operation,'usage':usage,'templates':_extension_store().templates(),
+            'busy':bool(info and harness_pane_busy(query['session'],query['pane'],harness)),
+            'applySupported':supported,'reason':reason}
+
+
+def _extension_guards(data,target):
+    if data.get('expectedIdentity')!=_identity_key(target['identity']) or 'expectedConversationId' not in data or data['expectedConversationId']!=target['conversationId']:
+        raise pane_extension_state.ExtensionConflict('cambió el panel o la conversación; vuelve a cargar el estante')
+
+
+def _extension_template_name(row):
+    if row.get('group'):return 'plugin-group:'+row['plugin']
+    if row.get('plugin'):return 'plugin-skill:'+row['plugin']+':'+row['name']
+    if row.get('scope') in ('project','local'):return 'project:'+row['name']
+    return row['name']
+
+
+def pane_extensions_write(action,data):
+    common={'session','pane','harness','expectedIdentity','expectedConversationId','revision'}
+    fields={'':{'desired'},'/apply':{'requestId','interrupt'},'/template':{'name','templateId'},'/cancel':{'operationId'},'/recover':{'operationId'}}
+    if action not in fields or set(data)-common-fields[action]:
+        return 400,{'ok':False,'error':'campos de extensiones inválidos'}
+    try:
+        if action=='/apply' and data.get('requestId'):
+            old=session_operation_store().get(str(data['requestId']))
+            if old:
+                posted={k:v for k,v in data.items() if k in common|{'requestId','interrupt'}}
+                prior={k:v for k,v in old['request'].items() if k in common|{'requestId','interrupt'}}
+                if posted!=prior:raise pane_extension_state.ExtensionConflict('requestId ya se usó con otra configuración')
+                return session_configure(old['request'])
+        target=_extension_target(data);_extension_guards(data,target)
+        store=_extension_store();draft=target['draft'];inv=target['inventory']
+        if action=='':
+            extension_launch._normalize(inv,data.get('desired'))
+            desired=_canonical_extension_draft(inv,data['desired'])
+            store.save(draft['key'],data.get('revision'),desired)
+            return 200,pane_extensions_state(data)
+        if action=='/apply':
+            if target['info'] and not target['conversationId']:
+                raise ValueError('no se identificó la conversación exacta; el agente sigue abierto')
+            if type(data.get('interrupt',False)) is not bool: raise ValueError('interrupt inválido')
+            request={k:v for k,v in data.items() if k in common|{'requestId','interrupt'}}
+            request.update(extensionsOnly=True,extensionDraftKey=draft['key'],toHarness=target['harness'])
+            return session_configure(request)
+        if action=='/template':
+            draft=store.require_revision(draft['key'],data.get('revision'))
+            draft['desired']=_canonical_extension_draft(inv,draft['desired'])
+            if bool(data.get('name'))==bool(data.get('templateId')): raise ValueError('indica nombre o plantilla')
+            if data.get('name'):
+                portable={k:{_extension_template_name(r):draft['desired'][k][r['id']] for r in inv[k] if r['id'] in draft['desired'][k] and r.get('toggleable')} for k in ('mcps','skills')}
+                return 200,{'ok':True,'template':store.save_template(data['name'],portable)}
+            template=next((r for r in store.templates() if r['id']==data['templateId']),None)
+            if not template: raise ValueError('plantilla no encontrada')
+            desired={k:dict(draft['desired'][k]) for k in ('mcps','skills')};missing={k:[] for k in desired};unavailable={k:[] for k in desired}
+            for kind in desired:
+                rows={_extension_template_name(r):r for r in inv[kind]}
+                for name,enabled in template['selection'][kind].items():
+                    row=rows.get(name)
+                    if not row: missing[kind].append(name)
+                    elif not row['toggleable']: unavailable[kind].append(name)
+                    else: desired[kind][row['id']]=enabled
+            # Removed inventory entries are never resurrected by a template.
+            desired={k:{r['id']:desired[k].get(r['id'],r['enabled']) for r in inv[k] if type(r['enabled']) is bool} for k in desired}
+            store.save(draft['key'],data['revision'],extension_launch._normalize(inv,desired))
+            return 200,{**pane_extensions_state(data),'missing':missing,'unavailable':unavailable}
+        row=session_operation_store().get(str(data.get('operationId') or ''))
+        if not row or row['pane_key']!=draft['identity'] or (row['request'].get('session'),row['request'].get('pane'))!=(data['session'],data['pane']):
+            raise pane_extension_state.ExtensionConflict('la operación no pertenece a este panel')
+        if action=='/cancel':
+            if not session_operation_store().cancel_waiting(row['id']): raise pane_extension_state.ExtensionConflict('la operación ya empezó; usa recuperación')
+            return 200,{'ok':True,'cancelled':True,'operationId':row['id']}
+        return session_recover({'operationId':row['id']})
+    except (pane_extension_state.ExtensionConflict,session_operations.OperationConflict) as exc:
+        return 409,{'ok':False,'error':str(exc)}
+    except (ValueError,RuntimeError) as exc:
+        return 409,{'ok':False,'error':str(exc)}
+    except (OSError,KeyError,TypeError):
+        return 503,{'ok':False,'error':'No se pudo consultar el estado de extensiones; el panel se conserva.'}
+
+
+def _configuration_command(harness, motor, model, effort, account, resume='', flags=(), *, preserve_model_flags=False):
     """Build one launch containing the complete draft. No fallback to latest."""
     binary = _harness_bin('acp' if harness == 'acp' else harness)
     if not provider_registry.which(binary):
@@ -1591,7 +1759,7 @@ def _configuration_command(harness, motor, model, effort, account, resume='', fl
         if account != 'main':
             argv.extend(['--account', account])
     if resume:
-        argv.extend(['resume', resume] if harness == 'codex' else ['--resume', resume])
+        argv.extend(['resume', resume] if harness == 'codex' else ['--session',resume] if harness=='opencode' else ['--conversation',resume] if harness=='agy' else ['--resume', resume])
     if model:
         argv.extend(['-m' if harness == 'codex' else '--model', model])
     if effort:
@@ -1601,20 +1769,20 @@ def _configuration_command(harness, motor, model, effort, account, resume='', fl
     i = 0
     while i < len(flags):
         flag = flags[i]
-        if flag in ('--model', '-m', '--effort'):
+        if not preserve_model_flags and flag in ('--model', '-m', '--effort'):
             i += 2
             continue
-        if flag.split('=', 1)[0] in ('--model', '--effort'):
+        if not preserve_model_flags and flag.split('=', 1)[0] in ('--model', '--effort'):
             i += 1
             continue
         if flag in ('-c', '--config') and i + 1 < len(flags):
-            if flags[i + 1].split('=', 1)[0].strip() in ('model', 'model_reasoning_effort'):
+            if not preserve_model_flags and flags[i + 1].split('=', 1)[0].strip() in ('model', 'model_reasoning_effort'):
                 i += 2
                 continue
             argv.extend([flag, flags[i + 1]])
             i += 2
             continue
-        if flag.startswith('--config=') and flag.split('=', 2)[1].strip() in ('model', 'model_reasoning_effort'):
+        if not preserve_model_flags and flag.startswith('--config=') and flag.split('=', 2)[1].strip() in ('model', 'model_reasoning_effort'):
             i += 1
             continue
         argv.append(flag)
@@ -1624,6 +1792,10 @@ def _configuration_command(harness, motor, model, effort, account, resume='', fl
 
 def _snapshot_transcript(origin):
     agent = origin.get('agent')
+    if agent in ('opencode','agy'):
+        path=origin.get('transcriptPath') or ''
+        if not path or not os.path.isfile(path): raise ValueError('no se encontró el historial exacto del proceso')
+        return path
     if agent not in ('claude', 'codex', 'grok'):
         return ''
     sid = origin.get('resume_id') or ''
@@ -2153,6 +2325,40 @@ def _stop_owned_startup(pid, started):
     return False
 
 
+def _preserve_extension_plan(adapter,plan):
+    """Carry verified selections through existing model/account configuration."""
+    prior=(plan.get('returnOrigin') or {}).get('extensionLaunch')
+    previous=(plan.get('returnOrigin') or {}).get('observed') or plan['previous']
+    if plan.get('sameConversation') and adapter.original.get('pid'):
+        prior=extension_launch.launch_from_pid(adapter.original['pid'])
+        if _read_environ(adapter.original['pid']).get(b'COMANDOS_EXTENSION_MANIFEST') and not prior:
+            raise ValueError('no se pudo verificar el lanzamiento original; el agente sigue abierto')
+    if not prior or prior['harness']!=plan['to']:return
+    if plan.get('unchanged'):
+        plan['extensionLaunch']=prior
+        return
+    registry=load_provider_registry();cwd=adapter.identity['pane_current_path']
+    source=extension_launch.inventory(registry,plan['to'],previous.get('harnessAccount') or 'main',cwd)
+    dest=extension_launch.inventory(registry,plan['to'],plan['harnessAccount'],cwd)
+    choices={kind:{} for kind in ('mcps','skills')}
+    for kind in choices:
+        before={r['id']:r for r in source[kind]};after={r['id']:r for r in dest[kind]}
+        for ident,enabled in prior['selection'][kind].items():
+            row=after.get(ident)
+            if row is None and ident in before:
+                original=before[ident]
+                matches=[r for r in dest[kind] if (r['name'],r.get('scope'),r.get('plugin'))==(original['name'],original.get('scope'),original.get('plugin'))]
+                if len(matches)==1:row=matches[0]
+            if row is None:
+                if enabled:raise ValueError('una extensión activa no existe en la cuenta destino; revisa el estante')
+                continue
+            choices[kind][row['id']]=enabled
+    launch=extension_launch.prepare_launch(registry,plan['to'],plan['harnessAccount'],cwd,choices,
+        os.path.join(HOOKS,'extension-launches'),adapter.data['requestId'])
+    plan['extensionLaunch']=launch
+    plan['command']=extension_launch.wrap_command(plan['command'],launch)
+
+
 class SessionConfiguration:
     def __init__(self, data, identity):
         self.data, self.identity = data, identity
@@ -2249,6 +2455,7 @@ class SessionConfiguration:
             ('motor', 'model', 'effort', 'harnessAccount', 'motorAccount'))
         self.plan['continuity'] = {'continuity': 'resumed' if same_conversation or saved_origin else 'new-conversation',
                                    'handoffRequired': self.frm != 'shell' and not same_conversation and not saved_origin}
+        _preserve_extension_plan(self,self.plan)
         return self.plan
 
     def wait_idle(self):
@@ -2290,6 +2497,7 @@ class SessionConfiguration:
         origin['agent_pid'] = self.original.get('pid')
         origin['agent_start'] = self.original_start
         origin['identity'] = self.identity
+        origin['extensionLaunch']=extension_launch.launch_from_pid(self.original['pid']) if self.original.get('pid') else None
         if plan.get('returnOrigin'):
             prior = plan['returnOrigin']
             account = plan['motorAccount'] if plan['to'] == 'acp' else plan['harnessAccount']
@@ -2310,6 +2518,10 @@ class SessionConfiguration:
                 plan['command'] = _configuration_command(plan['to'], plan['motor'], plan['model'], plan['effort'],
                     target_account, sid, origin.get('flags') or [])
                 plan['expectedSid'] = sid
+            if origin.get('extensionLaunch'):
+                origin['resume_command']=extension_launch.wrap_command(origin['resume_command'],origin['extensionLaunch'])
+            if plan.get('extensionLaunch') and plan.get('sameConversation'):
+                plan['command']=extension_launch.wrap_command(plan['command'],plan['extensionLaunch'])
             handoff_dir = os.path.join(HOOKS, 'session-handoffs')
             os.makedirs(handoff_dir, mode=0o700, exist_ok=True)
             path = os.path.join(handoff_dir, self.data['requestId'] + '.md')
@@ -2437,6 +2649,8 @@ class SessionConfiguration:
                 marker = _read_environ(info['pid']).get(b'COMANDOS_OPERATION_ID', b'').decode('utf-8', 'replace')
                 if marker != self.data['requestId']:
                     continue
+            launch=expected.get('extensionLaunch')
+            if launch and not extension_launch.verify_launch(info['pid'],launch):continue
             observed = observe_pane(self.sess, self.pane, info)
             if getattr(self, 'snapshot_record', None) and not getattr(self, 'in_recovery', False):
                 pin = {'pid': info['pid'], 'start': _process_start(info['pid']),
@@ -2505,7 +2719,7 @@ class SessionConfiguration:
             raise RuntimeError('el panel cambió; el snapshot conserva la recuperación exacta')
         live = agent_info_for_pane(self.pane) or {}
         original_observed = origin.get('observed') or {}
-        expected = dict(original_observed, to=self.frm)
+        expected = dict(original_observed, to=self.frm, extensionLaunch=origin.get('extensionLaunch'))
         sid = original_observed.get('conversationId') or ''
         if live.get('pid') == self.original.get('pid') and self.frm != 'shell' and _process_start(live['pid']) == origin.get('agent_start', ''):
             observed = self._verify(expected, sid)
@@ -2541,6 +2755,99 @@ class SessionConfiguration:
         return observed
 
 
+class PaneExtensionConfiguration(SessionConfiguration):
+    """Extension-only change: resume exact native state without guessing a model."""
+    def prepare(self):
+        target=_extension_target(self.data)
+        _extension_guards(self.data,target)
+        draft=_extension_store().require_revision(self.data['extensionDraftKey'],self.data.get('revision'))
+        if (draft['identity'],draft['conversation'],draft['harness'])!=(_identity_key(self.identity),target['conversationId'],target['harness']):
+            raise ValueError('el borrador no pertenece a este panel y conversación')
+        draft['desired']=_canonical_extension_draft(target['inventory'],draft['desired'])
+        if self.frm not in extension_launch.SUPPORTED|{'shell'}:
+            raise ValueError('CLI no compatible con extensiones por proceso')
+        sid=target['conversationId']
+        if self.frm!='shell' and not sid:
+            raise ValueError('no se encontró la conversación exacta; el agente sigue abierto')
+        inspector=pane_snapshot.PaneInspector()
+        origin=inspector({'id':self.pane,'pid':int(self.identity['pane_pid']),'command':self.identity['pane_current_command']}) if self.frm!='shell' else {}
+        if self.frm!='shell' and origin.get('resume_id')!=sid:
+            raise ValueError('la conversación cambió durante la preparación')
+        if self.frm!='shell': _snapshot_transcript(origin)
+        previous=target['observed'];harness=target['harness'];account=target['account']
+        launch=extension_launch.prepare_launch(load_provider_registry(),harness,account,self.identity['pane_current_path'],draft['desired'],os.path.join(HOOKS,'extension-launches'),self.data['requestId'])
+        flags=origin.get('flags') or []
+        # Runtime model metadata, if observed, takes precedence over old launch
+        # flags. Otherwise retain the flags verbatim and leave model unknown.
+        model=previous.get('model') if previous.get('confirmed') else ''
+        effort=previous.get('effort') if previous.get('confirmed') else ''
+        motor=previous.get('motor') or harness
+        command=_configuration_command(harness,motor,model or '',effort or '',account,sid,flags,preserve_model_flags=not bool(model))
+        command=extension_launch.wrap_command(command,launch)
+        self.plan=dict(to=harness,motor=motor,model=model or '',effort=effort or '',harnessAccount=account,
+                       motorAccount=previous.get('motorAccount') or account,command=command,previous=previous,
+                       routeId=harness+':'+motor,expectedSid=sid,sameConversation=self.frm!='shell',
+                       extensionsOnly=True,extensionLaunch=launch,unchanged=bool(target['bundle'] and target['loaded']==launch['selection']),
+                       continuity={'continuity':'resumed' if sid else 'new-conversation','handoffRequired':False})
+        if self.plan['unchanged']: self.plan['extensionLaunch']=target['bundle']
+        return self.plan
+
+    def snapshot(self,plan):
+        inspector=pane_snapshot.PaneInspector()
+        layout=tmux_snapshot.capture_session(tmux,self.sess,inspector)
+        origin=next(p for w in layout['windows'] for p in w['panes'] if p['id']==self.pane)
+        observed=observe_pane(self.sess,self.pane,self.original,inspector) if self.original else {}
+        sid=origin.get('resume_id') or ''
+        if self.frm!='shell':
+            if origin.get('agent')!=self.frm or not sid or sid!=plan['expectedSid'] or observed.get('conversationId')!=sid:
+                raise ValueError('la conversación cambió durante la espera; el origen sigue abierto')
+            if observed.get('harnessAccount')!=plan['harnessAccount']:
+                raise ValueError('la cuenta original cambió durante la espera')
+        origin.update(observed=observed,agent_pid=self.original.get('pid'),agent_start=self.original_start,identity=self.identity)
+        if self.frm!='shell':
+            origin['transcriptPath']=_snapshot_transcript(origin)
+            bundle=extension_launch.launch_from_pid(self.original['pid'])
+            if _read_environ(self.original['pid']).get(b'COMANDOS_EXTENSION_MANIFEST') and not bundle:
+                raise ValueError('el lanzamiento original no se pudo verificar; no se detiene')
+            origin['extensionLaunch']=bundle
+            model=observed.get('model') if observed.get('confirmed') else ''
+            effort=observed.get('effort') if observed.get('confirmed') else ''
+            command=_configuration_command(self.frm,observed.get('motor') or self.frm,model or '',effort or '',
+                observed['harnessAccount'],sid,origin.get('flags') or [],preserve_model_flags=not bool(model))
+            origin['resume_command']=extension_launch.wrap_command(command,bundle) if bundle else command
+        self.snapshot_record={'session':self.sess,'layout':layout,'origin':origin,'destination':dict(plan)}
+        return self.snapshot_record
+
+    def _verify(self,expected,sid='',attempts=60):
+        for _ in range(attempts):
+            if attempts>1: time.sleep(.5)
+            if _identity_key(_pane_identity(self.sess,self.pane))!=_identity_key(self.identity):
+                raise RuntimeError('el panel cambió durante la verificación')
+            info=agent_info_for_pane(self.pane) or {}
+            if info.get('agent')!=expected['to']: continue
+            recovering=getattr(self,'in_recovery',False)
+            launch=(getattr(self,'snapshot_record',{}).get('origin') or {}).get('extensionLaunch') if recovering else expected.get('extensionLaunch')
+            if launch and not extension_launch.verify_launch(info['pid'],launch): continue
+            if not recovering and not expected.get('unchanged') and _read_environ(info['pid']).get(b'COMANDOS_OPERATION_ID',b'').decode()!=self.data['requestId']: continue
+            observed=observe_pane(self.sess,self.pane,info)
+            if getattr(self,'snapshot_record',None) and not recovering:
+                pin={'pid':info['pid'],'start':_process_start(info['pid']),'conversationId':observed['conversationId']}
+                old=self.snapshot_record.get('destinationProcess')
+                if old and (old.get('pid')!=pin['pid'] or old.get('start')!=pin['start'] or old.get('conversationId') and old['conversationId']!=pin['conversationId']): raise RuntimeError('el proceso destino cambió durante la verificación')
+                if old!=pin:
+                    self.snapshot_record['destinationProcess']=pin
+                    if not getattr(self,'refreshing',False):self.store.stage(self.data['requestId'],'verifying',snapshot=self.snapshot_record)
+            if not observed.get('conversationId') or sid and observed['conversationId']!=sid: continue
+            if expected.get('harnessAccount') and observed.get('harnessAccount')!=expected['harnessAccount']: continue
+            if screen_dialog(tmux('capture-pane','-p','-t',self.pane).stdout or ''):continue
+            return dict(observed,extensionsConfirmed=bool(launch))
+        return None
+
+    def rollback(self,snapshot):
+        self.snapshot_record=snapshot
+        return super().rollback(snapshot)
+
+
 def refresh_session_confirmation(store, row):
     """One read of an owned pending target; never send terminal input on polling."""
     if not row or row['state'] != 'awaiting_confirmation' or not row.get('snapshot'):
@@ -2548,7 +2855,7 @@ def refresh_session_confirmation(store, row):
     snapshot = row['snapshot']
     before_snapshot = json.dumps(snapshot, sort_keys=True)
     try:
-        adapter = SessionConfiguration(row['request'], snapshot['origin']['identity'])
+        adapter = (PaneExtensionConfiguration if row['request'].get('extensionsOnly') else SessionConfiguration)(row['request'], snapshot['origin']['identity'])
         adapter.store, adapter.plan = store, snapshot['destination']
         adapter.snapshot_record, adapter.refreshing = snapshot, True
         # Validate the pinned process before observing any post-startup session.
@@ -2599,10 +2906,15 @@ def session_configure(data):
                 **result, 'ok': result.get('ok', True), 'pending': previous['state'] not in ('confirmed', 'failed', 'rolled_back', 'recovery_required'),
                 'operationKey': opkey, 'operationId': request_id, 'state': previous['state']}
         identity = _pane_identity(sess, pane)
-        adapter = SessionConfiguration(data, identity)
+        adapter = (PaneExtensionConfiguration if data.get('extensionsOnly') else SessionConfiguration)(data, identity)
         adapter.store = store
         if not store.claim(request_id, _identity_key(identity), data):
             return 202, {'ok': True, 'pending': True, 'operationKey': opkey, 'operationId': request_id}
+        if data.get('extensionsOnly'):
+            try: _extension_store().require_revision(data['extensionDraftKey'],data.get('revision'))
+            except ValueError:
+                store.stage(request_id,'failed',result={'ok':False,'error':'la selección cambió; vuelve a cargarla'})
+                raise
     except (ValueError, RuntimeError) as exc:
         return 409, {'ok': False, 'error': str(exc), 'operationKey': opkey}
     def notify(stage, result):
@@ -2612,7 +2924,7 @@ def session_configure(data):
             motor_result_set(opkey, bool(result.get('ok')), result.get('error') or 'configuración confirmada',
                              operationId=request_id, state=stage, **{k: observed.get(k) for k in ('harness', 'motor', 'model', 'effort')},
                              rolledBack=result.get('rolledBack', False), recoveryRequired=result.get('recoveryRequired', False))
-            if result.get('ok'):
+            if result.get('ok') and observed.get('confirmed'):
                 record_runtime_config(sess, pane, observed['harness'], observed['motor'], observed['model'],
                     observed.get('effort', ''), observed.get('harnessAccount', 'unknown'), observed.get('motorAccount', 'unknown'),
                     adapter.plan['routeId'], 'switch-observed')
@@ -2644,7 +2956,7 @@ def session_recover(data):
         return 409, {'ok': False, 'error': str(exc)}
     def recover():
         try:
-            adapter = SessionConfiguration(request, identity)
+            adapter = (PaneExtensionConfiguration if request.get('extensionsOnly') else SessionConfiguration)(request, identity)
             adapter.original = {'pid': origin.get('agent_pid'), 'agent': origin.get('agent') or 'shell'}
             adapter.frm = origin.get('agent') or 'shell'
             adapter.plan = snapshot['destination']
@@ -6295,6 +6607,10 @@ def observe_pane(sess, pane, info=None, inspector=None):
         if metadata.get('sessionId') == result['conversationId']:
             conversation = dict(model=metadata.get('model') or '', effort=metadata.get('effort') or '',
                                 revision=metadata.get('lastActiveAt') or '')
+    elif agent in ('opencode','agy'):
+        metadata=snap.get('nativeMetadata') or {}
+        if metadata.get('sessionId')==result['conversationId']:
+            conversation=dict(model=metadata.get('model') or '',effort=metadata.get('effort') or '',revision=metadata.get('updatedAt') or '')
     elif agent == 'acp':
         metadata = acp_state_for_pane(pane)
         # CLI arguments are requests; only the matching process's protocol
@@ -7558,7 +7874,7 @@ class Handler(http.server.SimpleHTTPRequestHandler):
     # Endpoints con DATOS o ACCIONES: exigen token. El shell estatico (HTML,
     # sw.js, manifest, iconos) NO — no revela nada (es codigo open-source) y
     # asi la PWA instala y carga sin depender de cookies en el webview movil.
-    API_GET = ("/pomodoro", "/providers", "/optimization/plans", "/proxy", "/model/status", "/sovereignty", "/ui-log/summary", "/state", "/usage/state", "/usage/guard", "/usage/changes", "/usage/provider-compare", "/fs/dirs", "/models/latest", "/news/latest", "/notifs/count", "/usage/analytics", "/usage/interactions", "/usage/experiments", "/opencode/models", "/model-tiers", "/dedication", "/active-tab", "/session-profiles", "/extension-usage", "/session-brain", "/project-profiles", "/events", "/conf", "/prefs", "/ssh", "/tabs",
+    API_GET = ("/pane-extensions", "/pomodoro", "/providers", "/optimization/plans", "/proxy", "/model/status", "/sovereignty", "/ui-log/summary", "/state", "/usage/state", "/usage/guard", "/usage/changes", "/usage/provider-compare", "/fs/dirs", "/models/latest", "/news/latest", "/notifs/count", "/usage/analytics", "/usage/interactions", "/usage/experiments", "/opencode/models", "/model-tiers", "/dedication", "/active-tab", "/session-profiles", "/extension-usage", "/session-brain", "/project-profiles", "/events", "/conf", "/prefs", "/ssh", "/tabs",
                "/tab-history", "/remote-state", "/remote-qr.png", "/snippets", "/tmux-mouse",
                "/webterm-token", "/operator", "/allocation/status")
 
@@ -7574,6 +7890,10 @@ class Handler(http.server.SimpleHTTPRequestHandler):
 
     def _do_GET(self):
         import urllib.parse
+        if self.path.startswith("/pane-extensions"):
+            query={k:v[-1] for k,v in urllib.parse.parse_qs(urllib.parse.urlsplit(self.path).query).items()}
+            try: return self._json(200,pane_extensions_state(query))
+            except (ValueError,RuntimeError): return self._json(409,{"ok":False,"error":"No se pudo identificar el panel y su conversación."})
         if self.path.startswith("/webterm-token"):
             return self._json(200, {"token": access_token()})
         if self.path.startswith("/state"):
@@ -7875,6 +8195,9 @@ class Handler(http.server.SimpleHTTPRequestHandler):
         if not isinstance(data, dict):
             # Los endpoints hacen data.get(...): una lista reventaba con AttributeError.
             return self._json(400, {"error": "El cuerpo debe ser un objeto JSON"})
+
+        if self.path in ("/pane-extensions","/pane-extensions/apply","/pane-extensions/template","/pane-extensions/cancel","/pane-extensions/recover"):
+            return self._json(*pane_extensions_write(self.path[len("/pane-extensions"):],data))
 
         if self.path == "/session/recover":
             code, body = session_recover(data)

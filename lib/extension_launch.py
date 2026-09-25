@@ -30,12 +30,40 @@ RECEIPT_HASH_ENV = 'COMANDOS_EXTENSION_RECEIPT_SHA256'
 HELPER = Path(__file__).resolve().parents[1] / 'bin/cc-extension-session'
 
 
-def _read(path):
-    import extension_catalog as catalog
+def _parse_toml(text):
     try:
-        return catalog.read_config(path)
-    except (OSError, catalog.CatalogError):
+        import tomllib
+        return tomllib.loads(text)
+    except ImportError:
+        binary=shutil.which('python3.11')
+        if not binary: raise ValueError('Lector TOML no disponible.')
+        result=subprocess.run([binary,'-I','-c','import json,sys,tomllib; print(json.dumps(tomllib.loads(sys.stdin.read())))'],
+                              input=text,text=True,capture_output=True,timeout=3)
+        if result.returncode: raise ValueError('Configuración TOML no soportada.')
+        return json.loads(result.stdout)
+
+
+def _read(path):
+    path=Path(path)
+    try:
+        if not path.exists():return {}
+        if path.stat().st_size>4_000_000:raise ValueError('too large')
+        text=path.read_text()
+        data=_parse_toml(text) if path.suffix=='.toml' else capabilities._jsonc(text)
+        if not isinstance(data,dict):raise ValueError('object required')
+        return data
+    except (OSError,ValueError,subprocess.SubprocessError):
         raise ValueError('Configuración ilegible; no se puede preparar el lanzamiento aislado.') from None
+
+
+def _proxy_entry(kind,name):
+    launcher=str(Path.home()/'.local/bin/cc-extensions')
+    if kind=='opencode':return {'type':'local','command':[launcher,'serve',name],'enabled':True}
+    result={'command':launcher,'args':['serve',name]}
+    if kind=='claude':result['type']='stdio'
+    if kind=='agy':result['disabled']=False
+    if kind in ('codex','grok'):result['startup_timeout_sec']=45
+    return result
 
 
 def _private(path, data):
@@ -173,8 +201,7 @@ def prepare_launch(registry, harness, account, cwd, selection, runtime_dir, oper
             raise ValueError('Falta un archivo de configuración montable; no se modifica el archivo global.')
         source = file('mount-'+str(len(mounts))+target.suffix,data)
         mounts.append({'source':source,'target':str(target.resolve()),'sha256':hashlib.sha256(Path(source).read_bytes()).hexdigest()})
-    import extension_catalog as catalog
-    synthetic = {r['name']:catalog.native_entry(harness,r['name'],str(Path.home()/'.local/bin/cc-extensions'),{})
+    synthetic = {r['name']:_proxy_entry(harness,r['name'])
                  for r in inv['mcps'] if r.get('synthetic') and chosen['mcps'][r['id']] is True}
     if harness == 'codex':
         for name,spec in synthetic.items(): args += ['-c','mcp_servers.'+name+'='+_toml(spec)]
@@ -212,7 +239,6 @@ def prepare_launch(registry, harness, account, cwd, selection, runtime_dir, oper
         permission['skill'].update({row['name']:'allow' if enabled else 'deny' for row,enabled in selected_skills})
         env['OPENCODE_CONFIG_CONTENT'] = json.dumps(overlay,separators=(',',':'))
     elif harness == 'grok':
-        import tomlkit
         # Project config has precedence; cover each existing contributing config.
         for layer in ctx['layers']:
             target = layer['path']
@@ -226,7 +252,7 @@ def prepare_launch(registry, harness, account, cwd, selection, runtime_dir, oper
             cfg = data.setdefault('skills',{})
             names = {r['name']:v for r,v in selected_skills}
             cfg['disabled'] = sorted((set(cfg.get('disabled',[]))-set(names))|{n for n,v in names.items() if not v})
-            mount(target,tomlkit.dumps(data).encode())
+            mount(target,('\n'.join(json.dumps(k)+'='+_toml(v) for k,v in data.items())+'\n').encode())
         if not mounts: raise ValueError('Falta config.toml para el montaje aislado de Grok.')
         args += ['--leader-socket',str(private/'leader.sock')]
     elif harness == 'agy':
@@ -390,7 +416,6 @@ def launch_from_pid(pid):
 
 def _resolve_command(data, command):
     """Resolve existing environment/extension overrides without executing the CLI."""
-    import tomllib
     command = list(command)
     env = dict(os.environ)
     if command and command[0] == 'env':
@@ -424,12 +449,12 @@ def _resolve_command(data, command):
         for index,word in enumerate(command):
             value = command[index+1] if word in ('-c','--config') and index+1<len(command) else word[len('--config='):] if word.startswith('--config=') else ''
             if value.startswith('skills.config='):
-                try: old = tomllib.loads(value)['skills']['config']
+                try: old = _parse_toml(value)['skills']['config']
                 except (ValueError,KeyError): raise ValueError('Override previo de skills inválido.') from None
         if old:
             for index,word in enumerate(extra):
                 if word.startswith('skills.config='):
-                    rules = tomllib.loads(word)['skills']['config']
+                    rules = _parse_toml(word)['skills']['config']
                     count = data['codexSelectedSkillCount']
                     before, selected = (rules[:-count],rules[-count:]) if count else (rules,[])
                     extra[index] = 'skills.config='+_toml(before+old+selected)
