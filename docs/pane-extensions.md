@@ -1,6 +1,6 @@
 # Extensiones por panel
 
-El botón **MCPs · Skills**, junto al logo, modelo y esfuerzo, abre un estante bajo las terminales. El encabezado identifica la sesión y el panel al que se aplica la selección. Elegir otro panel abre su propia selección; cerrar el estante conserva las terminales.
+El botón **MCPs · Skills**, junto al logo, modelo y esfuerzo, abre un estante bajo las terminales. El encabezado identifica la sesión y el panel al que se aplica la selección. Abrir el botón de otro panel muestra su propia selección; cerrar el estante conserva las terminales.
 
 Pulsa una burbuja o arrástrala entre **Seleccionadas** y **Disponibles**. Cada edición guarda un borrador de ese panel y conversación. **Aplicar y reanudar** prepara la configuración y un punto de recuperación antes de cerrar el agente. Si está trabajando, **Aplicar al terminar** espera; **Interrumpir y aplicar ahora** solicita el cambio inmediato. La espera se puede cancelar antes de que empiece el reinicio.
 
