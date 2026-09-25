@@ -1,0 +1,85 @@
+#!/usr/bin/env python3.11
+"""Manage the private shared MCP catalog and portable skills."""
+import argparse
+import asyncio
+import json
+from pathlib import Path
+import sys
+
+sys.path.insert(0,str(Path(__file__).resolve().parents[1]/'lib'))
+from extension_catalog import (CatalogError,catalog_path,import_catalog,locked,read_config,
+                               save_json,state_dir,sync_configs,sync_skills,targets,reconcile,save_snapshot,replace_config,parse_config)
+
+
+def main():
+    parser=argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--home',type=Path,default=Path.home())
+    sub=parser.add_subparsers(dest='action',required=True)
+    sub.add_parser('import')
+    sub.add_parser('sync')
+    sub.add_parser('status')
+    check=sub.add_parser('check');check.add_argument('names',nargs='*')
+    serve=sub.add_parser('serve');serve.add_argument('name')
+    args=parser.parse_args();home=args.home
+    path=catalog_path(home)
+    if args.action=='import':
+        with locked(home):
+            if path.exists():raise CatalogError('Catalog already exists; refusing to overwrite it')
+            catalog=import_catalog(home)
+            from extension_auth import import_credentials
+            imported=import_credentials(home,catalog)
+            save_json(path,catalog)
+            save_snapshot(home,catalog,str(home/'.local/bin/cc-extensions'))
+        print(json.dumps({'servers':len(catalog['servers']),'credentials_imported':imported}))
+        return
+    catalog=read_config(path)
+    if catalog.get('version')!=1:raise CatalogError('Shared catalog missing or unsupported')
+    if args.action=='serve':
+        from extension_proxy import serve
+        serve(home,args.name,catalog)
+    elif args.action=='sync':
+        with locked(home):
+            original=path.read_bytes();catalog=parse_config(path,original);inputs={}
+            revised=reconcile(home,catalog,str(home/'.local/bin/cc-extensions'),observed_inputs=inputs)
+            if revised!=catalog:
+                catalog=revised
+                replace_config(home,path,original,(json.dumps(catalog,ensure_ascii=False,indent=2)+'\n').encode())
+            from extension_auth import import_credentials
+            import_credentials(home,catalog)
+            observed={}
+            changed=sync_configs(home,catalog,str(home/'.local/bin/cc-extensions'),observed=observed,expected_inputs=inputs)
+            skills=sync_skills(home)
+            save_snapshot(home,catalog,str(home/'.local/bin/cc-extensions'),expected_targets=observed)
+        print(json.dumps({'configurations_changed':len(changed),'skill_links_changed':len(skills)}))
+    elif args.action=='status':
+        from extension_auth import load_credentials
+        credentials=load_credentials(home)
+        print(json.dumps({'servers':[{'name':n,'enabled':s.get('enabled',True),'credential_saved':n in credentials,
+                            'transport':'stdio' if s.get('command') else s.get('transport','http')}
+                           for n,s in sorted(catalog['servers'].items())],
+                          'targets':[str(t['path']) for t in targets(home)]},indent=2))
+    elif args.action=='check':
+        from extension_proxy import check
+        names=args.names or sorted(catalog['servers'])
+        if any(n not in catalog['servers'] for n in names):raise CatalogError('Unknown server name')
+        async def run():
+            semaphore=asyncio.Semaphore(4)
+            async def one(n):
+                async with semaphore:
+                    result=await check(home,n,catalog['servers'][n])
+                    print(json.dumps(result),flush=True)
+                    return result
+            return await asyncio.gather(*(one(n) for n in names))
+        results=asyncio.run(run())
+        save_json(state_dir(home)/'last-check.json',results)
+        if any(r['status']=='failed' for r in results):
+            raise SystemExit(1)
+
+
+if __name__=='__main__':
+    try:main()
+    except BaseException as exc:
+        if isinstance(exc,(KeyboardInterrupt,SystemExit)):raise
+        # Do not print exception groups or upstream response bodies containing auth.
+        print(str(exc) if isinstance(exc,CatalogError) else 'Extension operation failed: '+type(exc).__name__,file=sys.stderr)
+        sys.exit(1)
