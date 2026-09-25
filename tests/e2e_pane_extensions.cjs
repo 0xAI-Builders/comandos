@@ -48,7 +48,8 @@ const server=http.createServer(async(req,res)=>{
   await doc.waitFor();assert.equal(await page.locator('.bubble').count(),4);
   assert(await page.locator('[data-id="locked"]').isDisabled());
   assert.equal(await web.locator('small').textContent(),'sin dato');
-  await doc.click();await page.waitForFunction(()=>document.querySelector('[data-id="docs"]').dataset.on==='false');
+  await doc.focus();await page.keyboard.press('Space');await page.waitForFunction(()=>document.querySelector('[data-id="docs"]').dataset.on==='false');
+  assert.equal(await page.evaluate(()=>document.activeElement.dataset.id),'docs');
   assert.equal(state.desired.mcps.docs,false);assert.equal(state.loaded.mcps.docs,true);assert.equal(sibling.desired.mcps.docs,true);
   assert.equal(await page.locator('.bubble .change').count(),1);
   // Drag an available bubble into selected. Real pointer events, no DOM mutation.
@@ -63,7 +64,8 @@ const server=http.createServer(async(req,res)=>{
   await page.getByRole('button',{name:'Cancelar espera',exact:true}).click();await page.waitForFunction(()=>!document.querySelector('[data-id="docs"]').disabled);
   await page.getByRole('button',{name:'Interrumpir y aplicar ahora',exact:true}).click();
   await page.getByRole('button',{name:'Cancelar espera',exact:true}).waitFor();assert.equal(posts.at(-1).body.interrupt,true);
-  state.operation.state='recovery_required';await page.getByRole('button',{name:'Recuperar sesión anterior',exact:true}).waitFor();
+  state.operation.state='recovery_required';state.operation.error='El destino no confirmó la conversación <exacta>.';await page.getByRole('button',{name:'Recuperar sesión anterior',exact:true}).waitFor();
+  assert((await page.getByRole('status').textContent()).includes('El destino no confirmó la conversación <exacta>.'));
   await page.getByRole('button',{name:'Recuperar sesión anterior',exact:true}).click();await page.getByRole('status').filter({hasText:'Se recuperó'}).waitFor();
   state.operation=null;state.loaded=null;await page.reload();await page.getByText('Carga sin verificar',{exact:true}).waitFor();assert.equal(await page.locator('.bubble .change').count(),0);
   await page.locator('#ext-search').fill('web');assert.equal(await page.locator('.bubble').count(),1);await page.locator('#ext-search').fill('');

@@ -131,6 +131,10 @@
     }
     render() {
       const focus=document.activeElement,id=focus?.id,position=focus?.selectionStart,value=focus?.value;
+      const button=focus?.closest?.('button');
+      const focusKey=button&&this.root.contains(button)?Object.fromEntries(['kind','id','filter','template','action'].filter(k=>button.dataset[k]!=null).map(k=>[k,button.dataset[k]])):null;
+      const restoreKey=focusKey||(!id?this.pendingFocus:null);
+      this.pendingFocus=this.sending?restoreKey:null;
       const scrolls=[...this.root.querySelectorAll('.field,.templates')].map(x=>x.scrollTop);
       const s=this.state;
       if(!s){this.root.innerHTML=`<section class="shelf"><header><strong>Extensiones · ${esc(this.target.session)} · ${esc(this.target.pane)}</strong><span class="spacer"></span><button data-action="close" aria-label="Cerrar estante">×</button></header><div class="loading" role="status">${esc(this.error||'Consultando este panel…')}${this.error?'<button data-action="refresh">Reintentar</button>':''}</div>${!this.target.harness?this.harnessPicker():''}</section>`;return;}
@@ -139,7 +143,8 @@
       const visible=items.filter(x=>(this.filter==='all'||this.filter===x.kind)&&x.row.name.toLowerCase().includes(this.query.toLowerCase()));
       const unused=items.filter(x=>x.on&&x.row.toggleable&&s.usage?.counts?.[x.kind]?.[x.row.id]===0).length;
       const excluded=items.filter(x=>x.row.toggleable!==true);
-      const notice=this.error||this.message||(opState?stages[opState]||opState:'')||s.reason||(!s.loaded?'La configuración del proceso actual aún no está verificada. Aplica la selección para comprobarla.':'');
+      const operationNotice=opState?[stages[opState]||opState,op.error].filter(Boolean).join(' '):'';
+      const notice=this.error||this.message||operationNotice||s.reason||(!s.loaded?'La configuración del proceso actual aún no está verificada. Aplica la selección para comprobarla.':'');
       this.root.innerHTML=`<section class="shelf"><header><span class="label">Extensiones</span><strong>${esc(this.target.session)} · ${esc(this.target.pane)} · ${esc(harnesses.find(x=>x[0]===s.harness)?.[1]||s.harness)}</strong><span class="muted">Solo este panel</span><span class="spacer"></span><span class="muted">${d?pending?`+${d.add} / −${d.remove} pendientes`:'Sin cambios':'Carga sin verificar'}</span>${pending?`<button data-action="discard" ${locked?'disabled':''}>Deshacer</button>`:''}<button class="go" data-action="apply" ${locked||s.applySupported===false||(!pending&&s.loaded)?'disabled':''}>${active(s)?'Aplicando…':!s.conversationId?'Iniciar con este set':s.busy?'Aplicar al terminar':'Aplicar y reanudar'}</button><button class="close" data-action="close" aria-label="Cerrar estante">×</button></header>
       <div class="notice ${this.error||['failed','recovery_required'].includes(opState)?'error':''}" role="status">${esc(notice)}${this.stale?'<button data-action="refresh">Actualizar panel</button>':''}${['validating','waiting','snapshot'].includes(opState)?'<button data-action="cancel">Cancelar espera</button>':''}${['recovery_required','awaiting_confirmation'].includes(opState)?'<button data-action="recover">Recuperar sesión anterior</button>':''}${s.busy&&!locked&&s.applySupported!==false?'<button data-action="interrupt">Interrumpir y aplicar ahora</button>':''}</div>
       ${!s.conversationId?this.harnessPicker():''}
@@ -147,7 +152,8 @@
       <div class="body"><aside class="templates"><div class="label">Plantillas</div>${(s.templates||[]).map(t=>`<button data-template="${esc(t.id)}" ${locked?'disabled':''}>${esc(t.name)}</button>`).join('')}<form><input id="template-name" value="${esc(this.templateName)}" placeholder="Nombre del set" aria-label="Nombre de la plantilla" maxlength="80" required ${locked?'disabled':''}><button type="submit" ${locked?'disabled':''}>+ Guardar set</button></form><p class="muted">Disponibles entre agentes. Se cargan solo cuando las eliges.</p></aside>${[true,false].map(on=>`<div class="zone ${on?'on':'off'}" data-zone="${on?'on':'off'}"><div class="label">${on?'Seleccionadas':'Disponibles'} · ${visible.filter(x=>x.on===on).length}</div><span class="muted">${on?'Selección guardada para este panel':'Fuera de la selección'}</span><div class="field">${visible.filter(x=>x.on===on).map(x=>this.bubble(x.row,x.kind,on)).join('')||'<div class="empty">Ninguna con este filtro.</div>'}</div></div>`).join('')}</div>
       <footer><span>${s.inventory.mcps.length} MCPs + ${s.inventory.skills.length} skills</span><span>Tokens: sin medición</span><span>${s.usage?.complete?'Uso registrado en esta conversación':'Uso parcial: ausencia de datos ≠ sin uso'}</span>${excluded.length?`<details><summary>${excluded.length} no editables</summary>${excluded.map(x=>`<p><b>${esc(x.row.name)}</b> · ${esc(x.row.reason||'Gestionada fuera de este panel')}</p>`).join('')}</details>`:''}</footer></section>`;
       this.root.querySelectorAll('.field,.templates').forEach((x,i)=>x.scrollTop=scrolls[i]||0);
-      if(id){const next=document.getElementById(id);if(next){if(id==='template-name')next.value=value;next.focus();if(typeof position==='number'&&next.setSelectionRange)try{next.setSelectionRange(position,position);}catch(_){}}}
+      if(id){const next=document.getElementById(id);if(next){if(id==='template-name')next.value=value;next.focus({preventScroll:true});if(typeof position==='number'&&next.setSelectionRange)try{next.setSelectionRange(position,position);}catch(_){}}}
+      else if(restoreKey&&Object.keys(restoreKey).length){const next=[...this.root.querySelectorAll('button')].find(el=>Object.entries(restoreKey).every(([k,v])=>el.dataset[k]===v));if(next&&!next.disabled)next.focus({preventScroll:true});}
     }
     harnessPicker() {return `<div class="toolbar"><label for="ext-harness">CLI para iniciar</label><select id="ext-harness" ${this.sending?'disabled':''}><option value="">Elige un CLI…</option>${harnesses.map(([h,n])=>`<option value="${h}" ${this.target.harness===h?'selected':''}>${n}</option>`).join('')}</select></div>`;}
   }
