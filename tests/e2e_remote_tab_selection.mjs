@@ -132,7 +132,7 @@ try{
     await until(`document.getElementById('history-text').textContent.includes('line 299')`);
     const typography=await evaluate(`(()=>{const s=getComputedStyle(document.getElementById('history-text'));return {font:s.fontSize,wrap:s.whiteSpace,scale:visualViewport.scale};})()`);
     if(variant==='fixed'){
-      assert.deepEqual(typography,{font:'11px',wrap:'pre',scale:1});
+      assert.deepEqual(typography,{font:'11px',wrap:'pre-wrap',scale:1});
       const point=await evaluate(`(()=>{const e=document.getElementById('history-text');e.scrollTop=0;
         window.__touch=[];for(const type of ['touchstart','touchmove','touchend'])document.addEventListener(type,event=>__touch.push({type,prevented:event.defaultPrevented}),{passive:true});
         const range=document.createRange();range.setStart(e.firstChild,2);range.setEnd(e.firstChild,3);const r=range.getBoundingClientRect();return {x:r.x+r.width/2,y:r.y+r.height/2};})()`);

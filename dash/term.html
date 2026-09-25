@@ -52,13 +52,15 @@
   #term-toolbar button { box-sizing: border-box; flex: 0 0 auto; min-width: 44px; height: 44px; padding: 0 10px;
     border: 1px solid var(--term-line2); border-radius: 4px; background:var(--term-panel2); color:var(--term-text);
     font: 700 12px 'JetBrainsMono Nerd Font Mono', monospace; }
+  #term-toolbar button.key-hot { min-width: 64px; font-weight: 700; border-color:var(--term-brand); }
   #term-toolbar button.on { background:var(--term-brand); border-color:var(--term-brand); color:var(--term-bg); }
   [hidden] { display:none !important; }
   #term-toolbar button:disabled { opacity: .55; }
   #selection-toolbar { grid-row:2 / 4; padding:6px; border-top:1px solid var(--term-line2); background:var(--term-panel); }
-  .selection-row { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:6px; }
-  .selection-row + .selection-row { margin-top:6px; }
-  #selection-toolbar button,#selection-edge { min-width:0; min-height:44px; border:1px solid var(--term-line2);
+  .selection-row { display:grid; grid-template-columns:repeat(5,minmax(0,1fr)); gap:6px; }
+  @media (max-width:600px) { .selection-row { grid-template-columns:repeat(3,minmax(0,1fr)); } }
+  #selection-toolbar button.primary { background:var(--term-brand); border-color:var(--term-brand); color:var(--term-bg); }
+  #selection-toolbar button { min-width:0; min-height:44px; border:1px solid var(--term-line2);
     border-radius:4px; background:var(--term-panel2); color:var(--term-text); font:600 14px sans-serif; touch-action:manipulation; }
   #selection-toolbar button:disabled { opacity:.5; }
   #pane-dialog { box-sizing:border-box; width:min(460px,calc(100vw - 20px)); max-height:80dvh; overflow:auto;
@@ -69,8 +71,10 @@
     padding:8px 12px; background:var(--term-panel2); color:var(--term-text); font:14px sans-serif; touch-action:manipulation; }
   #pane-dialog button:disabled { opacity:.5; }
   #pane-list { display:grid; gap:8px; margin:10px 0; }
-  .pane-option { display:flex; gap:8px; min-width:0; }
-  .pane-option > button:first-child { flex:1; min-width:0; overflow-wrap:anywhere; text-align:left; }
+  .pane-option { display:flex; flex-wrap:wrap; gap:8px; min-width:0; padding-bottom:8px; border-bottom:1px solid var(--term-line2); }
+  .pane-option > button:first-child { flex:1 1 100%; min-width:0; overflow-wrap:anywhere; text-align:left; }
+  .pane-option > button:not(:first-child) { flex:1 1 0; min-width:0; }
+  .pane-option .pane-path { display:block; margin-top:2px; font:12px/1.3 monospace; color:var(--term-dim); overflow-wrap:anywhere; }
   .pane-option [aria-pressed="true"] { border-color:var(--term-brand)!important; }
   #pane-dialog .danger { color:#ff9b9b; border-color:#a64c55; }
   #pane-dialog p { font:14px/1.4 sans-serif; }
@@ -100,15 +104,15 @@
   #history-controls { display:flex; flex-wrap:wrap; gap:6px; align-items:center; flex:none; font:13px sans-serif; }
   #history-pane { flex:1; min-width:90px; max-width:100%; }
   #history-status { font:12px/1.3 sans-serif; color:var(--term-dim); margin:6px 0; flex:none; }
-  #history-text { margin:0; padding:10px; flex:1; min-height:0; overflow:auto; white-space:pre;
-    overflow-wrap:normal; width:100%; box-sizing:border-box; resize:none; border:1px solid var(--term-line2);
+  #history-text { margin:0; padding:10px; flex:1; min-height:0; overflow:auto; white-space:pre-wrap;
+    overflow-wrap:anywhere; width:100%; box-sizing:border-box; resize:none; border:1px solid var(--term-line2);
     border-radius:4px; color:var(--term-text); background:var(--term-bg); font:16px/1.45 monospace; user-select:text; -webkit-user-select:text;
     touch-action:manipulation; -webkit-touch-callout:default; overscroll-behavior:contain; -webkit-overflow-scrolling:touch; }
   #history-text::selection { background:var(--term-brand); color:var(--term-bg); }
   #term-toolbar button,#history-controls button { touch-action:manipulation; }
   @media(pointer:coarse){
     /* Editable controls below 16px trigger automatic focus zoom on iOS. */
-    #history-pane,#selection-edge,#paste-text,.xterm .xterm-helper-textarea { font-size:16px!important; }
+    #history-pane,#paste-text,.xterm .xterm-helper-textarea { font-size:16px!important; }
     #pane-dialog { margin:auto auto max(10px,env(safe-area-inset-bottom)); }
   }
   #err {
@@ -134,10 +138,11 @@
 <div id="term-shell">
   <div id="term"></div>
   <div id="term-toolbar" role="toolbar" aria-label="Controles de terminal" hidden>
+    <button type="button" data-key="escape" class="key-hot">Esc</button>
+    <button type="button" data-key="ctrlc" class="key-hot" title="Interrumpir (Ctrl+C)" aria-label="Enviar Ctrl+C">Ctrl+C</button>
     <button type="button" data-action="mode" aria-pressed="false">Seleccionar</button>
     <button type="button" data-action="panes">Paneles</button>
     <button type="button" data-key="backspace" title="Borrar un carácter en la terminal (Backspace)" aria-label="Borrar un carácter en la terminal">⌫</button>
-    <button type="button" data-key="escape">Esc</button>
     <button type="button" data-action="history" aria-pressed="false">Historial</button>
     <button type="button" data-action="copy">Copiar</button>
     <button type="button" data-action="paste">Pegar</button>
@@ -155,20 +160,13 @@
     <button type="button" id="draft-insert" title="Insertar texto sin Enter">Insertar</button>
     <button type="submit" id="draft-send" title="Enviar texto y Enter">Enviar ↵</button>
   </form>
-  <div id="selection-toolbar" role="toolbar" aria-label="Ajustar selección de texto" hidden>
+  <div id="selection-toolbar" role="toolbar" aria-label="Seleccionar y copiar texto" hidden>
     <div class="selection-row">
-      <button type="button" id="selection-close">Volver</button>
-      <button type="button" id="selection-copy">Copiar</button>
-      <button type="button" id="selection-all">Todo</button>
-      <select id="selection-edge" aria-label="Extremo de la selección que ajustan las flechas">
-        <option value="start">Inicio</option><option value="end" selected>Fin</option>
-      </select>
-    </div>
-    <div class="selection-row">
-      <button type="button" data-selection-key="left" aria-label="Mover selección un carácter a la izquierda">←</button>
-      <button type="button" data-selection-key="up" aria-label="Mover selección una línea arriba">↑</button>
-      <button type="button" data-selection-key="down" aria-label="Mover selección una línea abajo">↓</button>
-      <button type="button" data-selection-key="right" aria-label="Mover selección un carácter a la derecha">→</button>
+      <button type="button" id="selection-close">← Volver a la terminal</button>
+      <button type="button" id="selection-copy" class="primary">Copiar selección</button>
+      <button type="button" id="selection-all">Copiar todo</button>
+      <button type="button" data-selection-line="up" aria-label="Agregar la línea de arriba a la selección">+ Línea arriba</button>
+      <button type="button" data-selection-line="down" aria-label="Agregar la línea de abajo a la selección">+ Línea abajo</button>
     </div>
   </div>
   <section id="terminal-history" hidden aria-label="Historial seleccionable">
@@ -178,7 +176,7 @@
       <button type="button" id="history-bottom">Final</button>
     </div>
     <p id="history-status" role="status"></p>
-    <textarea id="history-text" readonly wrap="off" inputmode="none" spellcheck="false" aria-label="Texto del panel. Selecciona con el dedo o ajusta Inicio y Fin con las flechas de abajo."></textarea>
+    <textarea id="history-text" readonly wrap="soft" inputmode="none" spellcheck="false" aria-label="Texto del panel. Toca una línea para seleccionarla y otra para extender, o ajusta Inicio y Fin con las flechas de abajo."></textarea>
   </section>
 </div>
 <div id="err"></div>
@@ -798,7 +796,7 @@
   term.onResize(sendResize);
 
   const TOOLBAR_KEYS = Object.freeze({
-    escape: '\x1b', backspace: '\x7f', tab: '\t', left: '\x1b[D', up: '\x1b[A',
+    escape: '\x1b', ctrlc: '\x03', backspace: '\x7f', tab: '\t', left: '\x1b[D', up: '\x1b[A',
     down: '\x1b[B', right: '\x1b[C',
   });
   let ctrlArmed = false;
@@ -841,10 +839,10 @@
     sendInput(data, {queue: true});
   }
 
-  function sendToolbarKey(name) {
+  function sendToolbarKey(name, refocus = true) {
     const data = TOOLBAR_KEYS[name];
     if (data) sendInput(data, {queue: true});
-    focusTerminal();
+    if (refocus) focusTerminal();
   }
 
   function pasteTerminalText(text) {
@@ -933,13 +931,19 @@
   }
 
   applyInteractionState(interactionState);
+  // En touch, Esc/Ctrl+C no deben abrir el teclado si estaba cerrado: el
+  // teclado encoge el viewport y tapa la terminal que se quiere ver.
+  let toolbarRefocus = true;
   toolbar.addEventListener('pointerdown', e => {
     if (e.pointerType !== 'touch') e.preventDefault();
+    const focused = document.activeElement;
+    toolbarRefocus = e.pointerType !== 'touch'
+      || (!!focused && (focused === term.textarea || focused.id === 'mobile-draft'));
   });
   toolbar.addEventListener('click', e => {
     const button = e.target.closest('button');
     if (!button) return;
-    if (button.dataset.key) sendToolbarKey(button.dataset.key);
+    if (button.dataset.key) sendToolbarKey(button.dataset.key, toolbarRefocus);
     else if (button.dataset.action === 'ctrl') {
       setCtrlArmed(!ctrlArmed);
       if (typeof mobileDraftMode !== 'undefined' && mobileDraftMode) setMobileDraftMode(false);
@@ -1381,7 +1385,7 @@
         options.render(snapshot);
         options.status(snapshot.local
           ? 'Buffer local. El historial de tmux no está disponible.'
-          : 'Ajusta Inicio o Fin con las flechas de abajo. También puedes seleccionar con el dedo.');
+          : 'Toca una línea para empezar y otra para marcar hasta dónde. Luego, Copiar selección.');
         return true;
       } catch (error) {
         if (active && current === revision) options.status('No pude cargar el historial: ' + error.message);
@@ -1401,37 +1405,39 @@
     };
   }
 
-  function moveTextSelection(text, start, end, edge, direction) {
+  // Seleccion a toques: un toque toma la linea completa; otro toque en otra
+  // linea extiende desde la primera hasta esa (sin arrastrar asas diminutas).
+  function tapLineSelection(text, caret, anchor) {
+    caret = Math.max(0, Math.min(text.length, caret));
+    const lineStart = caret ? text.lastIndexOf('\n', caret - 1) + 1 : 0;
+    const newline = text.indexOf('\n', caret);
+    const line = {start: lineStart, end: newline < 0 ? text.length : newline};
+    if (!anchor) return {...line, anchor: line};
+    return {start: Math.min(anchor.start, line.start), end: Math.max(anchor.end, line.end), anchor};
+  }
+
+  // Una linea completa mas por arriba (up) o por abajo (down) de la seleccion.
+  function extendSelectionByLine(text, start, end, direction) {
     start = Math.max(0, Math.min(text.length, start));
     end = Math.max(start, Math.min(text.length, end));
-    const position = edge === 'start' ? start : end;
-    const segments = typeof Intl.Segmenter === 'function'
-      ? new Intl.Segmenter(undefined, {granularity:'grapheme'}).segment(text) : null;
-    let next = position;
-    if (direction === 'left' && position > 0) {
-      next = segments ? segments.containing(position - 1).index
-        : position - (Array.from(text.slice(0, position)).pop()?.length || 1);
-    } else if (direction === 'right' && position < text.length) {
-      const part = segments?.containing(position);
-      next = part ? part.index + part.segment.length : position + String.fromCodePoint(text.codePointAt(position)).length;
-    } else if (direction === 'up' || direction === 'down') {
-      const lineStart = position ? text.lastIndexOf('\n', position - 1) + 1 : 0;
-      const column = position - lineStart;
-      if (direction === 'up') {
-        const previousEnd = Math.max(0, lineStart - 1);
-        const previousStart = lineStart > 1 ? text.lastIndexOf('\n', lineStart - 2) + 1 : 0;
-        next = Math.min(previousEnd, previousStart + column);
-      } else {
-        const newline = text.indexOf('\n', position);
-        if (newline < 0) next = text.length;
-        else {
-          const followingEnd = text.indexOf('\n', newline + 1);
-          next = Math.min(followingEnd < 0 ? text.length : followingEnd, newline + 1 + column);
-        }
-      }
-      if (next < text.length && segments) next = segments.containing(next).index;
+    if (direction === 'up') {
+      const lineStart = start ? text.lastIndexOf('\n', start - 1) + 1 : 0;
+      start = lineStart === start && start > 0 ? text.lastIndexOf('\n', start - 2) + 1 : lineStart;
+    } else {
+      const newline = text.indexOf('\n', end);
+      const next = newline === end ? text.indexOf('\n', end + 1) : newline;
+      end = next < 0 ? text.length : next;
     }
-    return edge === 'start' ? {start:Math.min(next, end), end} : {start, end:Math.max(start, next)};
+    return {start, end};
+  }
+
+  // Nombre legible de un panel: su carpeta y lo que corre, sin ids de tmux.
+  function paneDisplay(pane, index) {
+    const title = pane.title || '';
+    const kind = !title || ['zsh', 'bash', 'sh', 'fish', 'dash'].includes(title) ? 'terminal' : title;
+    const path = pane.path || '';
+    const folder = path === '~' || path === '/' ? path : path.replace(/\/+$/, '').split('/').pop();
+    return {path, label: folder ? `${index + 1}. ${folder} · ${kind}` : `Panel ${index + 1} · ${title || 'Terminal'}`};
   }
 
   const draftElement = document.getElementById('mobile-draft');
@@ -1504,8 +1510,8 @@
   const historyText = document.getElementById('history-text');
   const historyPane = document.getElementById('history-pane');
   const selectionToolbar = document.getElementById('selection-toolbar');
-  const selectionEdge = document.getElementById('selection-edge');
   let historyReady = false;
+  let tapSelection = null;   // {start,end,anchor} de la ultima seleccion por toques
   function syncHistoryTypography() {
     const screen = document.querySelector('.xterm-screen');
     const cellHeight = screen?.getBoundingClientRect().height / term.rows;
@@ -1563,7 +1569,8 @@
       for (const pane of snapshot.panes || []) {
         const option = document.createElement('option');
         option.value = pane.id;
-        option.textContent = pane.id + (pane.title ? ' · ' + pane.title : '');
+        const shown = paneDisplay(pane, (snapshot.panes || []).indexOf(pane));
+        option.textContent = shown.label + (shown.path ? ` — ${shown.path}` : '');
         option.selected = pane.id === snapshot.pane;
         historyPane.appendChild(option);
       }
@@ -1572,6 +1579,8 @@
       const start = end ? historyText.value.lastIndexOf('\n', end - 1) + 1 : 0;
       historyText.focus({preventScroll:true});
       historyText.setSelectionRange(start, end, 'forward');
+      // La ultima linea queda como ancla: tocar una linea de arriba selecciona hasta el final.
+      tapSelection = {start, end, anchor: {start, end}};
       historyText.scrollTop = historyText.scrollHeight;
       updateSelectionControls();
     },
@@ -1627,13 +1636,16 @@
     const copied = await copyTerminalSelection();
     document.getElementById('history-status').textContent = copied ? 'Copiado.' : 'No se pudo copiar. Usa Copiar en el menú del navegador.';
   });
-  document.getElementById('selection-all').addEventListener('click', () => {
+  document.getElementById('selection-all').addEventListener('click', async () => {
     historyText.focus({preventScroll:true});
     historyText.setSelectionRange(0, historyText.value.length);
+    tapSelection = null;
     updateSelectionControls();
+    const copied = await copyTerminalSelection();
+    document.getElementById('history-status').textContent = copied ? 'Todo copiado.' : 'No se pudo copiar. Usa Copiar en el menú del navegador.';
   });
   function updateSelectionControls() {
-    for (const button of selectionToolbar.querySelectorAll('[data-selection-key],#selection-all'))
+    for (const button of selectionToolbar.querySelectorAll('[data-selection-line],#selection-all'))
       button.disabled = !historyReady || !historyText.value;
     document.getElementById('selection-copy').disabled = !historyReady || historyText.selectionStart === historyText.selectionEnd;
   }
@@ -1641,21 +1653,40 @@
   selectionToolbar.addEventListener('pointerdown', event => {
     if (event.target.closest('button')) event.preventDefault();
   });
+  function describeSelection() {
+    const lines = historyText.value.slice(historyText.selectionStart, historyText.selectionEnd).split('\n').length;
+    document.getElementById('history-status').textContent =
+      `${lines} ${lines === 1 ? 'línea seleccionada' : 'líneas seleccionadas'} · toca otra línea para extender o pulsa Copiar selección`;
+  }
   selectionToolbar.addEventListener('click', event => {
-    const direction = event.target.closest('[data-selection-key]')?.dataset.selectionKey;
+    const direction = event.target.closest('[data-selection-line]')?.dataset.selectionLine;
     if (!direction || !historyReady) return;
-    const range = moveTextSelection(historyText.value, historyText.selectionStart,
-      historyText.selectionEnd, selectionEdge.value, direction);
+    const range = extendSelectionByLine(historyText.value, historyText.selectionStart,
+      historyText.selectionEnd, direction);
     historyText.focus({preventScroll:true});
-    historyText.setSelectionRange(range.start, range.end, selectionEdge.value === 'start' ? 'backward' : 'forward');
-    const offset = selectionEdge.value === 'start' ? range.start : range.end;
+    historyText.setSelectionRange(range.start, range.end);
+    // La siguiente linea tocada extiende desde esta nueva seleccion.
+    tapSelection = {...range, anchor: {...range}};
+    const offset = direction === 'up' ? range.start : range.end;
     const line = historyText.value.slice(0, offset).split('\n').length - 1;
     const lineHeight = parseFloat(getComputedStyle(historyText).lineHeight) || 22;
     const top = line * lineHeight;
     if (top < historyText.scrollTop || top + lineHeight > historyText.scrollTop + historyText.clientHeight)
       historyText.scrollTop = Math.max(0, top - historyText.clientHeight / 2);
     updateSelectionControls();
-    document.getElementById('history-status').textContent = `${range.end - range.start} caracteres · Ajustando ${selectionEdge.value === 'start' ? 'Inicio' : 'Fin'}`;
+    describeSelection();
+  });
+  historyText.addEventListener('click', () => {
+    if (!historyReady) return;
+    // Si el usuario arrastro asas nativas, respetar su seleccion.
+    if (historyText.selectionStart !== historyText.selectionEnd) { tapSelection = null; return; }
+    const caret = historyText.selectionStart;
+    // Tocar dentro de la seleccion actual empieza una nueva; fuera, la extiende.
+    const inside = tapSelection && caret >= tapSelection.start && caret <= tapSelection.end;
+    tapSelection = tapLineSelection(historyText.value, caret, inside ? null : tapSelection?.anchor);
+    historyText.setSelectionRange(tapSelection.start, tapSelection.end);
+    updateSelectionControls();
+    describeSelection();
   });
   historyText.addEventListener('select', updateSelectionControls);
   historyText.addEventListener('selectionchange', updateSelectionControls);
@@ -1665,12 +1696,13 @@
   const paneStatus = document.getElementById('pane-status');
   const paneConfirm = document.getElementById('pane-confirm');
   let paneBusy = false, paneRevision = 0, pendingPaneClose = null;
-  async function paneRequest(action, pane) {
+  async function paneRequest(action, pane, direction) {
     if (!arg || !accessTokenParam) throw new Error('Abre la terminal desde ComandOS para administrar sus paneles.');
     const response = await fetch('/terminal-panes', {
       method:'POST', cache:'no-store',
       headers:{'Content-Type':'application/json','X-Comandos-Token':accessTokenParam},
-      body:JSON.stringify({session:arg, action, ...(pane ? {pane:pane.id,identity:pane.identity} : {})}),
+      body:JSON.stringify({session:arg, action, ...(pane ? {pane:pane.id,identity:pane.identity} : {}),
+        ...(direction ? {direction} : {})}),
       signal:AbortSignal.timeout(10000),
     });
     const result = await response.json();
@@ -1687,9 +1719,17 @@
     paneList.replaceChildren();
     panes.forEach((pane, index) => {
       const row = document.createElement('div'); row.className = 'pane-option';
-      const label = `Panel ${index + 1} · ${pane.title || 'Terminal'}`;
+      const shown = paneDisplay(pane, index);
+      const label = shown.label;
       const select = document.createElement('button'); select.type = 'button';
-      select.textContent = label + (pane.active ? ' · Activo' : '');
+      const name = document.createElement('strong');
+      name.textContent = label + (pane.active ? ' · Activo' : '');
+      select.append(name);
+      if (shown.path) {
+        const where = document.createElement('small'); where.className = 'pane-path';
+        where.textContent = shown.path;
+        select.append(where);
+      }
       select.setAttribute('aria-pressed', String(!!pane.active));
       select.addEventListener('click', () => void applyPaneAction('select', pane));
       const close = document.createElement('button'); close.type = 'button'; close.className = 'danger';
@@ -1701,10 +1741,18 @@
         document.getElementById('pane-confirm-label').textContent = `¿Cerrar ${label}?`;
         paneList.hidden = true; paneConfirm.hidden = false;
       });
-      row.append(select, close); paneList.appendChild(row);
+      const splits = [['right', 'Dividir →', 'Abrir split a la derecha de'],
+                      ['down', 'Dividir ↓', 'Abrir split debajo de']].map(([direction, text, aria]) => {
+        const button = document.createElement('button'); button.type = 'button';
+        button.textContent = text;
+        button.setAttribute('aria-label', `${aria} ${label}`);
+        button.addEventListener('click', () => void applyPaneAction('split', pane, direction));
+        return button;
+      });
+      row.append(select, ...splits, close); paneList.appendChild(row);
     });
     paneStatus.textContent = panes.length === 1
-      ? 'Queda un panel. La sesión permanece abierta.' : 'Elige un panel para activarlo o cerrar su split.';
+      ? 'Un solo panel. Divídelo para abrir un split.' : 'Elige un panel para activarlo, dividirlo o cerrar su split.';
   }
   async function openPaneDialog() {
     if (paneBusy) return;
@@ -1720,16 +1768,18 @@
       if (revision === paneRevision && paneDialog.open) paneStatus.textContent = error.message;
     }
   }
-  async function applyPaneAction(action, pane) {
+  async function applyPaneAction(action, pane, direction) {
     if (paneBusy || !pane) return;
     const revision = ++paneRevision;
     setPaneBusy(true);
-    paneStatus.textContent = action === 'close' ? 'Guardando copia y cerrando el split…' : 'Activando panel…';
+    paneStatus.textContent = action === 'close' ? 'Guardando copia y cerrando el split…'
+      : action === 'split' ? 'Abriendo split…' : 'Activando panel…';
     try {
-      const result = await paneRequest(action, pane);
+      const result = await paneRequest(action, pane, direction);
       if (revision !== paneRevision) return;
-      if (action === 'select') {
-        parent.postMessage({source:'comandos-term',type:'pane-selected',pane:pane.id}, location.origin);
+      if (action === 'select' || action === 'split') {
+        const selected = action === 'split' ? result.opened : pane.id;
+        if (selected) parent.postMessage({source:'comandos-term',type:'pane-selected',pane:selected}, location.origin);
         paneDialog.close();
       }
       else {

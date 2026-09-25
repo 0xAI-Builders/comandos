@@ -1,5 +1,5 @@
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover, interactive-widget=resizes-content">
 <title>ComandOS</title>
 <link rel="manifest" href="/manifest.webmanifest">
 <meta name="theme-color" content="#0A0D13">
@@ -1286,7 +1286,10 @@
   /* ---------- app combinada (panel + terminales, como el escritorio) ---------- */
   /* Solo activa cuando entras por el tailnet (WEBTERM). El body se vuelve la
      app: barra de pestanas arriba, y debajo el panel o una terminal. */
-  body.app{height:var(--app-height,100dvh);overflow:hidden;display:block}
+  /* clip (no hidden): un contenedor clip NO se puede scrollear ni por focus ni
+     por scrollIntoView; con hidden la app quedaba desplazada sin forma de volver */
+  body.app{position:fixed;top:var(--app-top,0px);left:var(--app-left,0px);width:var(--app-width,100%);
+    height:var(--app-height,100dvh);margin:0;overflow:hidden;overflow:clip;display:block}
   /* En la app las pestanas YA son la navegacion: la lista de sesiones sobra */
   #app-navigation{display:none}
   body.app #app-navigation{display:flex;align-items:stretch;min-width:0;min-height:0;height:44px;
@@ -1331,7 +1334,7 @@
   #splitter{display:none}
   /* --- ANGOSTO (celular): tabs arriba a todo lo ancho; panel O terminal a
          pantalla completa, se cambia con las tabs --- */
-  body.app #panes{height:100%;width:100%;min-width:0;min-height:0;overflow:hidden;display:grid;
+  body.app #panes{height:100%;width:100%;min-width:0;min-height:0;overflow:hidden;overflow:clip;display:grid;
     grid-template-columns:minmax(0,1fr);grid-template-rows:44px minmax(0,1fr);
     padding-top:env(safe-area-inset-top);padding-bottom:env(safe-area-inset-bottom)}
   body.app #app-navigation{grid-column:1;grid-row:1;position:relative;inset:auto}
@@ -3347,6 +3350,10 @@ function mdStrip(s){ return (s||"").replace(/\*\*|`|^#{1,6} /g, ""); }
 	    const payload = NS.harness === "shell" ? {cwd,agent:"shell"} : {cwd,routeId:NS.routeId,model:NS.model,effort:NS.effort,harnessAccount:NS.harnessAccount,motorAccount:NS.motorAccount};
 	    const r = await api("/session-new", {...payload, profileId:NS.profileId || undefined, danger: $("#ns-danger").classList.contains("on")});
 	    NS.intoPane=null; $("#newsess").classList.add("hidden");
+	    // cc-dash la abre en la app en segundo plano; quien la creo quiere ir a ella
+	    if(inApp()) openInApp(r.session, "claude", r.label);
+	    else if(WEBTERM) openTerm(r.session, r.label);
+	    else await api("/focus", {session: r.session}).catch(()=>{});
 	    toast(`${r.label} ${tf("creada", "created")}${r.worktree ? " · ⎇ worktree" : ""}`);
 	    tick();
 	  }catch(err){
@@ -6166,17 +6173,41 @@ function appEnabled(){ return WEBTERM; }
 
 function currentViewportHeight(){
   const viewport = window.visualViewport;
-  // Pinch zoom magnifies the existing layout; only the keyboard resizes it.
-  if(viewport && viewport.scale > 1.01)
-    return Math.round(document.documentElement.clientHeight || window.innerHeight);
-  return Math.round(viewport?.height || window.innerHeight || document.documentElement.clientHeight);
+  // La app ocupa la zona VISIBLE aun con zoom: en tablet un pellizco dejo el
+  // zoom en 1.05 (Chrome lo conserva al recargar e ignora maximum-scale con
+  // "forzar zoom") y las pestanas quedaban arriba, fuera de vista y sin forma
+  // de desplazarse hasta ellas (la barra solo acepta gesto horizontal).
+  // Nunca mas alta que el area visible: si sobra, el navegador scrollea la
+  // raiz y las pestanas quedan fuera de pantalla (Chrome Android tras el teclado).
+  const heights = [viewport?.height, window.innerHeight, document.documentElement.clientHeight]
+    .filter(h => h > 0);
+  return Math.round(heights.length ? Math.min(...heights) : 0);
 }
+// La app ocupa exactamente el viewport: cualquier scroll de la raiz es un
+// desplazamiento accidental (focus del teclado) que el usuario no puede deshacer.
+function pinAppScroll(){
+  if(!document.body.classList.contains("app")) return;
+  if(window.scrollX || window.scrollY) window.scrollTo(0, 0);
+  const panes = document.getElementById("panes");
+  if(panes && (panes.scrollTop || panes.scrollLeft)) panes.scrollTop = panes.scrollLeft = 0;
+}
+let appViewportSettle = 0;
 function updateAppViewport(){
   appViewportFrame = 0;
-  document.documentElement.style.setProperty("--app-height", `${currentViewportHeight()}px`);
+  const root = document.documentElement.style, vv = window.visualViewport;
+  root.setProperty("--app-height", `${currentViewportHeight()}px`);
+  // Con zoom la zona visible se corre dentro del layout: la app la sigue.
+  root.setProperty("--app-top", `${Math.round(vv?.offsetTop || 0)}px`);
+  root.setProperty("--app-left", `${Math.round(vv?.offsetLeft || 0)}px`);
+  root.setProperty("--app-width", vv?.width ? `${Math.round(vv.width)}px` : "100%");
+  pinAppScroll();
 }
 function scheduleAppViewport(){
   if(!appViewportFrame) appViewportFrame = requestAnimationFrame(updateAppViewport);
+  // Al cerrar el teclado Android reporta la altura final despues del ultimo
+  // resize: se vuelve a medir cuando ya se asento.
+  clearTimeout(appViewportSettle);
+  appViewportSettle = setTimeout(updateAppViewport, 350);
 }
 function shouldSplitLayout(width, height, coarse){
   if(coarse) return width > height && width >= 748;
@@ -7004,6 +7035,8 @@ function initApp(){
     applyAppLayout();
   };
   window.visualViewport?.addEventListener("resize", updateLayout);
+  window.visualViewport?.addEventListener("scroll", scheduleAppViewport);
+  window.addEventListener("scroll", pinAppScroll, {passive:true});
   window.addEventListener("resize", updateLayout);
   window.addEventListener("orientationchange", updateLayout);
   updateLayout();

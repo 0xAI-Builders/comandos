@@ -19,7 +19,9 @@ def test_remote_tabs_include_desktop_home_without_resurrecting_closed_tabs(dash,
     ]
 
 
-def test_pinch_zoom_does_not_shrink_the_terminal_layout():
+def test_pinch_zoom_fits_the_app_to_the_visible_area():
+    # Antes el zoom mantenia el layout completo y habia que desplazarse; en
+    # tablet no se podia volver arriba y las pestanas quedaban fuera de vista.
     fn = extract_js_function(HTML, 'currentViewportHeight')
     result = run_node_json(f'''
 const window={{innerHeight:844,visualViewport:{{height:422,scale:2}}}};
@@ -29,7 +31,7 @@ const zoom=currentViewportHeight();
 window.visualViewport={{height:490,scale:1}};
 console.log(JSON.stringify({{zoom,keyboard:currentViewportHeight()}}));
 ''')
-    assert result == {'zoom':844, 'keyboard':490}
+    assert result == {'zoom':422, 'keyboard':490}
 
 
 def test_home_close_is_rejected_before_any_state_mutation(dash, monkeypatch):

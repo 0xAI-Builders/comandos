@@ -3,35 +3,38 @@ import subprocess
 from pathlib import Path
 from test_remote_ui import extract_js_function
 
+SOURCE = Path('dash/term.html').read_text()
 
-def selection_js(body):
-    source = Path('dash/term.html').read_text()
-    code = extract_js_function(source, 'moveTextSelection')
+
+def run_js(names, body):
+    code = '\n'.join(extract_js_function(SOURCE, name) for name in names)
     return json.loads(subprocess.check_output(['node', '-e', code + '\n' + body], text=True))
 
 
-def test_bottom_arrows_adjust_only_selected_edge_and_preserve_emoji():
-    result = selection_js('''
+def test_line_buttons_add_whole_lines_above_and_below():
+    result = run_js(['extendSelectionByLine'], '''
 const text='one\\nA🙂B\\nlast';
-const left=moveTextSelection(text,5,8,'end','left');
-const emoji=moveTextSelection(text,left.start,left.end,'end','left');
-const up=moveTextSelection(text,4,8,'start','up');
-const crossing=moveTextSelection(text,4,5,'start','right');
-console.log(JSON.stringify({left,emoji,up,crossing}));
+const slice=r=>text.slice(r.start,r.end);
+const up=extendSelectionByLine(text,9,13,'up');
+const upAgain=extendSelectionByLine(text,up.start,up.end,'up');
+const down=extendSelectionByLine(text,0,3,'down');
+const top=extendSelectionByLine(text,0,3,'up');
+const bottom=extendSelectionByLine(text,9,13,'down');
+console.log(JSON.stringify([slice(up),slice(upAgain),slice(down),slice(top),slice(bottom)]));
 ''')
-    assert result['left'] == {'start':5,'end':7}
-    assert result['emoji'] == {'start':5,'end':5}
-    assert result['up'] == {'start':0,'end':8}
-    assert result['crossing'] == {'start':5,'end':5}
+    assert result == ['A🙂B\nlast', 'one\nA🙂B\nlast', 'one\nA🙂B', 'one', 'last']
 
 
-def test_navigation_bounds_empty_text_and_short_lines():
-    result = selection_js('''
+def test_pane_names_use_folder_and_hide_tmux_ids():
+    result = run_js(['paneDisplay'], '''
 console.log(JSON.stringify([
- moveTextSelection('',0,0,'end','down'),
- moveTextSelection('abcd\\nx\\nlast',0,4,'end','down'),
- moveTextSelection('text',0,4,'end','right'),
- moveTextSelection('text',0,4,'start','left')
+  paneDisplay({id:'%78',title:'claude',path:'~/codebase/0xJesus/ComandOS'},0),
+  paneDisplay({id:'%79',title:'zsh',path:'~'},1),
+  paneDisplay({id:'%80',title:'node'},2),
 ]));
 ''')
-    assert result == [{'start':0,'end':0},{'start':0,'end':6},{'start':0,'end':4},{'start':0,'end':4}]
+    assert result == [
+        {'path': '~/codebase/0xJesus/ComandOS', 'label': '1. ComandOS · claude'},
+        {'path': '~', 'label': '2. ~ · terminal'},
+        {'path': '', 'label': 'Panel 3 · node'},
+    ]
