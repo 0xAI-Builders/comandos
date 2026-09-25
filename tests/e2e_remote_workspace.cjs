@@ -54,6 +54,7 @@ const items = initialTabs.flatMap((t,i)=>[0,1].map(p=>({
           let data={};
           if(p==='/state')data=items;
           if(p==='/providers')data=registry;
+          if(p==='/pane-extensions')data={ok:true,identity:'fixture-pane',conversationId:'exact',harness:'codex',inventory:{mcps:[],skills:[]},desired:{mcps:{},skills:{}},loaded:null,revision:1,operation:null,usage:{counts:{},complete:false},templates:[],busy:false,applySupported:true};
           if(p==='/tabs')data=tabs;
           if(p==='/prefs')data={favorites};
           if(p==='/prefs-set'){
@@ -181,6 +182,18 @@ const items = initialTabs.flatMap((t,i)=>[0,1].map(p=>({
           await cdp.send('Emulation.setPageScaleFactor',{pageScaleFactor:1});await page.waitForTimeout(300);
         }
         await page.evaluate(()=>showView('term:local',true));
+        if(variant==='fixed'){
+          const termBefore=await page.locator('#term-area').boundingBox();
+          await page.evaluate(()=>openPaneExtensions('local','%0','codex'));
+          const shelf=page.frameLocator('#pane-extensions-frame');
+          await shelf.getByRole('button',{name:'Cerrar estante',exact:true}).waitFor();
+          const term=await page.locator('#term-area').boundingBox(),frame=await page.locator('#pane-extensions-frame').boundingBox();
+          check(term.y+term.height<=frame.y+1,'shelf resizes terminal without covering input');
+          await shelf.getByRole('button',{name:'Cerrar estante',exact:true}).click();
+          await page.waitForFunction(()=>!document.getElementById('pane-extensions-frame'));
+          const restored=await page.locator('#term-area').boundingBox();
+          check(Math.abs(restored.height-termBefore.height)<2,'closing shelf restores terminal height');
+        }
         await page.screenshot({path:path.join(output,name+'.png')});
         check(errors.length===0,'no page errors: '+errors.join('; '));
         console.log(JSON.stringify({name,geometry,scroll,failures,errors}));

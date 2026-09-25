@@ -162,11 +162,11 @@
     if(!session||!/^%\d+$/.test(pane))return;
     if(window.webkit?.messageHandlers?.centro){window.webkit.messageHandlers.centro.postMessage(JSON.stringify({type:'extensions',session,pane,harness}));return;}
     let frame=document.getElementById('pane-extensions-frame');
-    if(!frame){frame=document.createElement('iframe');frame.id='pane-extensions-frame';frame.title='Extensiones del panel seleccionado';Object.assign(frame.style,{position:'fixed',left:'0',right:'0',bottom:'0',width:'100%',height:'55vh',minHeight:'290px',border:'0',zIndex:1000,boxShadow:'0 -12px 40px #0007'});document.body.append(frame);}
+    if(!frame){frame=document.createElement('iframe');frame.id='pane-extensions-frame';frame.title='Extensiones del panel seleccionado';Object.assign(frame.style,{position:'fixed',left:'0',right:'0',bottom:'0',width:'100%',height:'var(--pane-shelf-height,55vh)',border:'0',zIndex:1000,boxShadow:'0 -12px 40px #0007'});document.body.append(frame);document.body.classList.add('pane-extensions-open');window.dispatchEvent(new Event('resize'));}
     const target={session,pane};if(harness&&harness!=='shell')target.harness=harness;
     frame.src='/extensions.html?'+new URLSearchParams(target);
   };
-  window.addEventListener('message',event=>{const frame=document.getElementById('pane-extensions-frame');if(event.origin===location.origin&&event.source===frame?.contentWindow&&event.data?.type==='comandos-extensions-close')frame.remove();});
+  window.addEventListener('message',event=>{const frame=document.getElementById('pane-extensions-frame');if(event.origin===location.origin&&event.source===frame?.contentWindow&&event.data?.type==='comandos-extensions-close'){frame.remove();document.body.classList.remove('pane-extensions-open');window.dispatchEvent(new Event('resize'));}});
   const root=document.getElementById('extensions');
   if(root){const query=new URLSearchParams(location.search),target={session:query.get('session')||'',pane:query.get('pane')||''};if(query.get('harness'))target.harness=query.get('harness');new Shelf(root,target);}
 })();
