@@ -26,7 +26,7 @@ const root={innerHTML:'',addEventListener(){},contains(){return false},querySele
  assert.doesNotMatch(root.innerHTML,/loading-spinner/);
  const retry=shelf.refresh();
  assert.match(root.innerHTML,/Cargando MCPs y skills/);
- const state={inventory:{mcps:[{id:'removed',name:'Removed MCP',enabled:false,toggleable:false,reason:'Desactivado en el catálogo compartido'},{id:'optional',name:'Optional MCP',enabled:false,toggleable:true},{id:'unknown',name:'Unknown MCP',enabled:null,toggleable:false}],skills:[]},desired:{mcps:{removed:false,optional:false},skills:{}},loaded:null,harness:'codex',conversationId:'c',templates:[],busy:false};
+ const state={inventory:{mcps:[{id:'removed',name:'Removed MCP',enabled:false,toggleable:false,reason:'Desactivado en el catálogo compartido'},{id:'optional',name:'Optional MCP',enabled:false,toggleable:true,origin:{id:'repo:source',label:'source/repo'},size:{tokens:1000,tokenizer:'cl100k_base',basis:'tool-definitions'}},{id:'unknown',name:'Unknown MCP',enabled:null,toggleable:false}],skills:[]},desired:{mcps:{removed:false,optional:false},skills:{}},loaded:null,harness:'codex',conversationId:'c',templates:[],busy:false};
  pending.shift()({ok:true,json:async()=>state});await retry;
  assert.match(root.innerHTML,/shelf-enter/);
  assert.doesNotMatch(root.innerHTML,/terminar el turno/);
@@ -40,6 +40,16 @@ const root={innerHTML:'',addEventListener(){},contains(){return false},querySele
  assert.doesNotMatch(root.innerHTML,/data-action="interrupt"|terminar el turno/);
  const available=root.innerHTML.split('data-zone="off"')[1].split('<footer>')[0];
  assert.match(available,/Optional MCP/);
+ assert.match(available,/source\/repo/);
+ assert.match(available,/1000 tokens/);
+ assert.match(available,/--bubble-size:88px/);
+ assert.match(root.innerHTML,/cl100k_base/);
+ const large=shelf.bubble({...state.inventory.mcps[1],size:{tokens:2250}},'mcps',false);
+ assert.match(large,/--bubble-size:132px/);
+ const unknownSize=shelf.bubble({...state.inventory.mcps[1],size:{tokens:null}},'mcps',false);
+ assert.match(unknownSize,/Sin medir/);
+ shelf.closedGroups.add('off:repo:source');shelf.render();
+ assert.match(root.innerHTML,/data-group="off:repo:source" ><summary/);
  assert.doesNotMatch(available,/Removed MCP|Unknown MCP/);
  assert.match(available,/Disponibles.*?1/);
  assert.match(root.innerHTML.split('<footer>')[1],/Removed MCP/);

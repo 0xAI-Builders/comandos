@@ -20,6 +20,8 @@ from mcp.shared.exceptions import McpError
 
 from extension_auth import SharedAuth, load_credentials
 from extension_catalog import CatalogError
+import extension_metadata
+import threading
 
 
 def resolved_env(spec):
@@ -56,12 +58,21 @@ async def upstream(home,name,spec):
         yield session,initialized
 
 
-def make_server(name,spec,session,initialized):
+def make_server(name,spec,session,initialized,home=None):
     server=Server('comandos-'+name,version='1',instructions=initialized.instructions)
     pairs=[(types.ListToolsRequest,types.ListToolsResult),(types.CallToolRequest,types.CallToolResult),
            (types.ListResourcesRequest,types.ListResourcesResult),(types.ListResourceTemplatesRequest,types.ListResourceTemplatesResult),
            (types.ReadResourceRequest,types.ReadResourceResult),(types.ListPromptsRequest,types.ListPromptsResult),
            (types.GetPromptRequest,types.GetPromptResult),(types.CompleteRequest,types.CompleteResult)]
+    capture=extension_metadata.ToolListCapture()
+    measuring=threading.Lock()
+    def measure(tools):
+        if home is None or not measuring.acquire(blocking=False):return
+        def work():
+            try:extension_metadata.record_mcp_size(home,name,spec,tools)
+            except Exception:pass  # Measurement must not break a live MCP connection.
+            finally:measuring.release()
+        threading.Thread(target=work,daemon=True).start()
     allowed=spec.get('enabled_tools');denied=set(spec.get('disabled_tools',[]))
     def permitted(tool):return tool not in denied and (allowed is None or tool in allowed)
     for request_type,result_type in pairs:
@@ -80,6 +91,11 @@ def make_server(name,spec,session,initialized):
                     raise McpError(types.ErrorData(code=-32603,message='Upstream request failed for '+name+': '+type(exc).__name__)) from None
                 if isinstance(result,types.ListToolsResult):
                     result.tools=[t for t in result.tools if permitted(t.name)]
+                    if home is not None:
+                        params=getattr(req,'params',None)
+                        rows=capture.add(getattr(params,'cursor',None),result.nextCursor,
+                                         [t.model_dump(by_alias=True,exclude_none=True) for t in result.tools])
+                        if rows is not None:measure(rows)
                 return types.ServerResult(result)
             return forward
         server.request_handlers[request_type]=handler_for(result_type)
@@ -88,7 +104,7 @@ def make_server(name,spec,session,initialized):
 
 async def serve_http(home,name,spec):
     async with upstream(home,name,spec) as (session,initialized):
-        server=make_server(name,spec,session,initialized)
+        server=make_server(name,spec,session,initialized,home)
         # Do not claim unsupported server-initiated sampling or subscriptions.
         caps=types.ServerCapabilities(
             tools=types.ToolsCapability() if initialized.capabilities.tools else None,

@@ -25,8 +25,9 @@ def main():
         subprocess.run(['uv','venv','--python','python3.11',str(venv)],check=True)
     subprocess.run(['uv','pip','install','--python',str(python),'-r',str(source/'requirements-extensions.txt')],check=True)
     dest=home/'.local/share/comandos/extensions'
-    for part,names in [('bin',['cc-extensions']),('lib',['extension_catalog.py','extension_auth.py','extension_proxy.py'])]:
+    for part,names in [('bin',['cc-extensions']),('lib',['extension_catalog.py','extension_auth.py','extension_proxy.py','extension_metadata.py'])]:
         for name in names:write(dest/part/name,(source/part/name).read_bytes())
+    subprocess.run([str(python),str(dest/'lib/extension_metadata.py'),'--warm'],check=True)
     launcher=home/'.local/bin/cc-extensions'
     expected=('#!/bin/sh\nexec '+shlex.quote(str(python))+' '+shlex.quote(str(dest/'bin/cc-extensions'))+' "$@"\n').encode()
     if launcher.exists() and launcher.read_bytes()!=expected:

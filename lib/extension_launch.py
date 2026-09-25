@@ -20,6 +20,7 @@ import uuid
 
 import capabilities
 import session_profiles as profiles
+import extension_metadata
 
 SUPPORTED = {'claude', 'codex', 'grok', 'opencode', 'agy'}
 MARKER = 'COMANDOS_EXTENSION_OPERATION_ID'
@@ -147,8 +148,34 @@ def _internal_inventory(registry, harness, account, cwd):
 
 def inventory(registry, harness, account, cwd):
     """Sanitized catalog; raw MCP IDs, namespaced skill IDs, plugin groups explicit."""
-    _, inv = _internal_inventory(registry,harness,account,cwd)
-    fields = ('id','name','enabled','toggleable','reason','scope','source','plugin','group')
+    ctx, inv = _internal_inventory(registry,harness,account,cwd)
+    skill_details = extension_metadata.skill_metadata(inv['skills'], Path.home())
+    for row in inv['skills']:
+        row.update(skill_details[row['id']])
+    shared = _read(Path.home()/'.config/comandos/extensions/catalog.json').get('servers', {})
+    native = {}
+    key = 'mcp_servers' if harness in ('codex','grok') else 'mcp' if harness == 'opencode' else 'mcpServers'
+    for layer in ctx['layers']:
+        if layer.get('path'):
+            try:definitions = _read(layer['path']).get(key, {})
+            except ValueError:continue  # Configuration errors already make the inventory incomplete.
+            if isinstance(definitions,dict):native.update(definitions)
+    for row in inv['mcps']:
+        scope = row.get('scope','unknown')
+        source = row.get('source','unknown')
+        label = {'shared':'Catálogo compartido','project':'Configuración del proyecto','user':'Configuración de la cuenta','local':'Configuración local'}.get(scope,'Configuración: '+source)
+        row['origin'] = ({'id':'plugin:'+row['plugin'],'label':row['plugin'],'kind':'plugin'} if row.get('plugin') else
+                         {'id':'config:'+scope+':'+source,'label':label,'kind':'configuration'})
+        row['size'] = extension_metadata.unknown_size('tool-definitions')
+        spec = native.get(row['name'], {})
+        if not isinstance(spec,dict):spec = {}
+        command = spec.get('command')
+        argv = command if isinstance(command,list) else [command,*(spec.get('args',[]) if isinstance(spec.get('args',[]),list) else [])]
+        is_shared = row.get('synthetic') or argv == [str(Path.home()/'.local/bin/cc-extensions'),'serve',row['name']]
+        if is_shared and not row.get('plugin') and row['name'] in shared:
+            row['origin'] = {'id':'config:shared','label':'Catálogo compartido','kind':'configuration'}
+            row['size'] = extension_metadata.mcp_size(Path.home(),row['name'],shared[row['name']])
+    fields = ('id','name','enabled','toggleable','reason','scope','source','plugin','group','origin','size')
     return {**inv, **{kind:[{k:row[k] for k in fields if k in row} for row in inv[kind]] for kind in ('mcps','skills')}}
 
 

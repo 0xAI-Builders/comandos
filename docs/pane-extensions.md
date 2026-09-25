@@ -35,3 +35,13 @@ Las pruebas de Python cubren selección, revisiones, bloqueo compartido con el c
 Para validar este cambio, usar las pruebas `test_extension_launch.py`, `test_pane_extensions.py`, `test_pane_extensions_api.py`, `test_extension_coordinator.py`, `test_extension_observations.py`, `test_native_extension_metadata.py`, `test_extension_desktop.py` y `test_extension_tmux.py`. Cubren el contrato nuevo y sus conexiones directas. Las pruebas antiguas de perfiles globales no sustituyen esta validación.
 
 La comprobación remota integrada puede limitarse al estante con `node tests/e2e_remote_workspace.cjs --extensions-only`. Usa el HTML actual de ComandOS y verifica el espacio de la terminal, el logo/modelo/esfuerzo, el cierre y el área visible después del zoom. El contrato actual de zoom ajusta la app al área visible; la antigua expectativa de mantener la altura completa dejó de ser válida.
+
+## Procedencia y tamaño de las burbujas
+
+Los grupos plegables usan procedencia registrada: repositorio GitHub del registro de instalación de skills o identificador del plugin. El registro se aplica únicamente al archivo instalado bajo el directorio compartido, resolviendo enlaces simbólicos. Una skill de proyecto con el mismo nombre no hereda ese origen. Si falta procedencia, aparece **Origen no registrado**. Los MCPs sin plugin se agrupan por la configuración que los declara, incluido el catálogo compartido.
+
+El tamaño usa tokens de referencia **cl100k_base**, con tiktoken 0.12.0. En skills cuenta el archivo principal completo, incluido su frontmatter; no suma archivos auxiliares, referencias ni recursos. En MCPs cuenta JSON canónico de nombres, descripciones y esquemas de entrada/salida de las herramientas observadas. No representa consumo por turno, tokens facturados ni contexto efectivamente cargado. El área de la burbuja sigue una escala fija, limitada a diámetros de 76–152 px para mantener legibilidad. **Sin medir** usa 88 px y nunca equivale a cero.
+
+Las listas MCP se miden pasivamente al atravesar el proxy compartido, solo tras completar la paginación. Los servidores stdio que pasan directamente al CLI y los procesos ya abiertos sin esta captura pueden seguir sin medición. No se arranca ni reinicia un MCP para medirlo. Solo se guarda el recuento, las huellas de configuración/contenido y la fecha; la medición caduca al cambiar la configuración o después de 24 horas.
+
+El instalador de extensiones prepara el tokenizador y su caché. El inventario no descarga archivos de codificación; si falta el tokenizador o su caché verificada, muestra **Sin medir**. Cerrar un grupo se conserva durante las actualizaciones de ese panel.

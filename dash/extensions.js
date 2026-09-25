@@ -30,6 +30,8 @@
   class Shelf {
     constructor(root, target) {
       this.root=root;this.target=target;this.state=null;this.filter='all';this.query='';this.sending=false;this.error='';this.message='';this.generation=0;this.timer=null;this.stale=false;this.templateName='';
+      this.closedGroups=new Set();
+      root.addEventListener('toggle',e=>{const key=e.target.dataset?.group;if(!key)return;if(e.target.open)this.closedGroups.delete(key);else this.closedGroups.add(key);},true);
       root.addEventListener('click', e=>this.click(e));
       root.addEventListener('input', e=>{if(e.target.id==='ext-search'){this.query=e.target.value;this.render();}else if(e.target.id==='template-name')this.templateName=e.target.value;});
       root.addEventListener('change', e=>{if(e.target.id==='ext-harness')this.choose(e.target.value);});
@@ -127,8 +129,25 @@
       const unknown=typeof this.state.desired[kind]?.[row.id]!=='boolean';
       const changed=this.state.loaded && !unknown && on!==this.state.loaded[kind]?.[row.id];
       const disabled=this.locked()||row.toggleable!==true||unknown;
-      const label=`${row.name} · ${kind==='mcps'?'MCP':'Skill'} · ${use}${row.reason?' · '+row.reason:''}`;
-      return `<button class="bubble ${kind} ${on?'':'off'}" data-kind="${kind}" data-id="${esc(row.id)}" data-on="${on}" ${disabled?'disabled':''} title="${esc(label)}" aria-label="${esc((on?'Quitar ':'Añadir ')+label)}" aria-pressed="${on}"><span class="name">${esc(row.name)}</span><small>${unknown?'estado sin dato':use}</small>${changed?`<span class="change">${on?'+':'−'}</span>`:''}</button>`;
+      const tokens=Number.isInteger(row.size?.tokens)&&row.size.tokens>=0?row.size.tokens:null;
+      const sizeText=tokens===null?'Sin medir':`${tokens} tokens`;
+      const diameter=tokens===null?88:Math.round(Math.max(76,Math.min(152,88*Math.sqrt(tokens/1000))));
+      const basis=kind==='skills'?'archivo de instrucciones':'definiciones de herramientas';
+      const label=`${sizeText} · ${basis} · cl100k_base · ${row.name} · ${kind==='mcps'?'MCP':'Skill'} · ${use}${row.reason?' · '+row.reason:''}`;
+      return `<button style="--bubble-size:${diameter}px" class="bubble ${kind} ${on?'':'off'}" data-kind="${kind}" data-id="${esc(row.id)}" data-on="${on}" ${disabled?'disabled':''} title="${esc(label)}" aria-label="${esc((on?'Quitar ':'Añadir ')+label)}" aria-pressed="${on}"><span class="name">${esc(row.name)}</span><small>${sizeText}</small>${changed?`<span class="change">${on?'+':'−'}</span>`:''}</button>`;
+    }
+    groups(items,on) {
+      if(!items.length)return '<div class="empty">Ninguna con este filtro.</div>';
+      const groups=new Map();
+      for(const item of items){
+        const origin=item.row.origin||{id:'unknown',label:'Origen no registrado'};
+        if(!groups.has(origin.id))groups.set(origin.id,{origin,items:[]});
+        groups.get(origin.id).items.push(item);
+      }
+      return [...groups.values()].sort((a,b)=>a.origin.label.localeCompare(b.origin.label)).map(group=>{
+        const key=(on?'on:':'off:')+group.origin.id;
+        return `<details class="origin-group" data-group="${esc(key)}" ${this.closedGroups.has(key)?'':'open'}><summary>${esc(group.origin.label)} <span>${group.items.length}</span></summary><div class="origin-items">${group.items.sort((a,b)=>a.row.name.localeCompare(b.row.name)).map(x=>this.bubble(x.row,x.kind,on)).join('')}</div></details>`;
+      }).join('');
     }
     render() {
       const focus=document.activeElement,id=focus?.id,position=focus?.selectionStart,value=focus?.value;
@@ -152,8 +171,8 @@
       <div class="notice ${this.error||['failed','recovery_required'].includes(opState)?'error':''}" role="status">${esc(notice)}${this.stale?'<button data-action="refresh">Actualizar panel</button>':''}${['validating','waiting','snapshot'].includes(opState)?'<button data-action="cancel">Cancelar espera</button>':''}${['recovery_required','awaiting_confirmation'].includes(opState)?'<button data-action="recover">Recuperar sesión anterior</button>':''}${s.busy&&!locked&&s.applySupported!==false?'<button data-action="interrupt">Interrumpir turno y aplicar</button>':''}</div>
       ${!s.conversationId?this.harnessPicker():''}
       <div class="toolbar"><input id="ext-search" type="search" placeholder="Buscar extensión…" aria-label="Buscar extensión" value="${esc(this.query)}">${[['all','Todo'],['mcps','MCPs'],['skills','Skills']].map(([k,l])=>`<button data-filter="${k}" class="${this.filter===k?'active':''}" aria-pressed="${this.filter===k}">${l}</button>`).join('')}<button data-action="unused" ${locked||!unused?'disabled':''}>Apagar ${unused} sin uso</button><span class="spacer"></span><span class="muted gesture">Toca o arrastra · azul MCP · ámbar skill</span></div>
-      <div class="body"><aside class="templates"><div class="label">Plantillas</div>${(s.templates||[]).map(t=>`<button data-template="${esc(t.id)}" ${locked?'disabled':''}>${esc(t.name)}</button>`).join('')}<form><input id="template-name" value="${esc(this.templateName)}" placeholder="Nombre del set" aria-label="Nombre de la plantilla" maxlength="80" required ${locked?'disabled':''}><button type="submit" data-action="save-template" ${locked?'disabled':''}>+ Guardar set</button></form><p class="muted">Disponibles entre agentes. Se cargan solo cuando las eliges.</p></aside>${[true,false].map(on=>`<div class="zone ${on?'on':'off'}" data-zone="${on?'on':'off'}"><div class="label">${on?'Seleccionadas':'Disponibles'} · ${visible.filter(x=>x.on===on).length}</div><span class="muted">${on?'Selección guardada para este panel':'Puedes añadirlas a este panel'}</span><div class="field">${visible.filter(x=>x.on===on).map(x=>this.bubble(x.row,x.kind,on)).join('')||'<div class="empty">Ninguna con este filtro.</div>'}</div></div>`).join('')}</div>
-      <footer><span>${s.inventory.mcps.length} MCPs + ${s.inventory.skills.length} skills</span><span>Tokens: sin medición</span><span>${s.usage?.complete?'Uso registrado en esta conversación':'Uso parcial: ausencia de datos ≠ sin uso'}</span>${excluded.length?`<details><summary>${excluded.length} excluidas o gestionadas aparte</summary>${excluded.map(x=>`<p><b>${esc(x.row.name)}</b> · ${esc(x.row.reason||'Gestionada fuera de este panel')}</p>`).join('')}</details>`:''}</footer></section>`;
+      <div class="body"><aside class="templates"><div class="label">Plantillas</div>${(s.templates||[]).map(t=>`<button data-template="${esc(t.id)}" ${locked?'disabled':''}>${esc(t.name)}</button>`).join('')}<form><input id="template-name" value="${esc(this.templateName)}" placeholder="Nombre del set" aria-label="Nombre de la plantilla" maxlength="80" required ${locked?'disabled':''}><button type="submit" data-action="save-template" ${locked?'disabled':''}>+ Guardar set</button></form><p class="muted">Disponibles entre agentes. Se cargan solo cuando las eliges.</p></aside>${[true,false].map(on=>`<div class="zone ${on?'on':'off'}" data-zone="${on?'on':'off'}"><div class="label">${on?'Seleccionadas':'Disponibles'} · ${visible.filter(x=>x.on===on).length}</div><span class="muted">${on?'Selección guardada para este panel':'Puedes añadirlas a este panel'}</span><div class="field">${this.groups(visible.filter(x=>x.on===on),on)}</div></div>`).join('')}</div>
+      <footer><span>${s.inventory.mcps.length} MCPs + ${s.inventory.skills.length} skills</span><span title="Tamaño del archivo principal de la skill o de las definiciones MCP medidas. No representa consumo por turno ni contexto cargado.">Tamaño: tokens · cl100k_base · Sin medir: tamaño neutro</span><span>${s.usage?.complete?'Uso registrado en esta conversación':'Uso parcial: ausencia de datos ≠ sin uso'}</span>${excluded.length?`<details><summary>${excluded.length} excluidas o gestionadas aparte</summary>${excluded.map(x=>`<p><b>${esc(x.row.name)}</b> · ${esc(x.row.reason||'Gestionada fuera de este panel')}</p>`).join('')}</details>`:''}</footer></section>`;
       this.root.querySelectorAll('.field,.templates').forEach((x,i)=>x.scrollTop=scrolls[i]||0);
       if(id){const next=document.getElementById(id);if(next){if(id==='template-name')next.value=value;next.focus({preventScroll:true});if(typeof position==='number'&&next.setSelectionRange)try{next.setSelectionRange(position,position);}catch(_){}}}
       else if(restoreKey&&Object.keys(restoreKey).length){const next=[...this.root.querySelectorAll('button')].find(el=>Object.entries(restoreKey).every(([k,v])=>el.dataset[k]===v));if(next&&!next.disabled)next.focus({preventScroll:true});}

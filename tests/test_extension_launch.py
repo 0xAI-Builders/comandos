@@ -345,3 +345,17 @@ def test_review_opencode_unsupported_scope_rejected(fx,source):
     m=mod();registry,homes,cwd,runtime=fx
     with pytest.raises(ValueError,match='compatible'):
         m.capture_opencode_environment(source,runtime,m.inventory(registry,'opencode','main',str(cwd)))
+
+
+def test_size_metadata_does_not_break_incomplete_inventory(fx):
+    registry, homes, cwd, _ = fx
+    (homes['codex']/'config.toml').write_text('broken = [')
+    inv = mod().inventory(registry,'codex','main',str(cwd))
+    assert inv['status'] == 'incomplete'
+
+
+def test_size_metadata_keeps_malformed_native_entry_unavailable(fx):
+    registry, homes, cwd, _ = fx
+    (homes['claude']/'.claude.json').write_text(json.dumps({'mcpServers':{'bad':None}}))
+    inv = mod().inventory(registry,'claude','main',str(cwd))
+    assert inv['status'] == 'incomplete' or all(not r['toggleable'] for r in inv['mcps'] if r['name']=='bad')
