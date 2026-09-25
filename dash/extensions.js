@@ -157,16 +157,65 @@
     }
     harnessPicker() {return `<div class="toolbar"><label for="ext-harness">CLI para iniciar</label><select id="ext-harness" ${this.sending?'disabled':''}><option value="">Elige un CLI…</option>${harnesses.map(([h,n])=>`<option value="${h}" ${this.target.harness===h?'selected':''}>${n}</option>`).join('')}</select></div>`;}
   }
+  // The dashboard shelf height is the user's: drag the top edge, persisted per browser.
+  const SHELF_KEY='cc_pane_shelf_height',SHELF_MIN=180,TERMINAL_MIN=120,SHELF_STEP=24;
+  const rootStyle=()=>document.documentElement.style;
+  const shelfFrame=()=>document.getElementById('pane-extensions-frame');
+  const savedShelfHeight=()=>{try{return parseInt(localStorage.getItem(SHELF_KEY),10)||0;}catch(_){return 0;}};
+  const shelfLimit=()=>{
+    const heights=[window.visualViewport?.height,window.innerHeight,document.documentElement.clientHeight].filter(h=>h>0);
+    return Math.max(SHELF_MIN,(heights.length?Math.min(...heights):SHELF_MIN+TERMINAL_MIN)-TERMINAL_MIN);
+  };
+  function setShelfHeight(px,save) {
+    const height=Math.round(Math.max(SHELF_MIN,Math.min(px,shelfLimit())));
+    rootStyle().setProperty('--pane-shelf-height',height+'px');
+    document.getElementById('pane-extensions-grip')?.setAttribute('aria-valuenow',height);
+    if(save)try{localStorage.setItem(SHELF_KEY,String(height));}catch(_){}
+  }
+  function restoreShelfHeight() {
+    const saved=savedShelfHeight();
+    if(saved)setShelfHeight(saved,false);else rootStyle().removeProperty('--pane-shelf-height');
+    const grip=document.getElementById('pane-extensions-grip'),frame=shelfFrame();
+    if(grip&&frame){grip.setAttribute('aria-valuemax',Math.round(shelfLimit()));grip.setAttribute('aria-valuenow',Math.round(frame.getBoundingClientRect().height));}
+  }
+  function shelfGrip() {
+    let grip=document.getElementById('pane-extensions-grip');
+    if(grip)return grip;
+    grip=document.createElement('div');grip.id='pane-extensions-grip';grip.tabIndex=0;grip.title='Arrastra para cambiar la altura · doble clic restablece';
+    for(const [k,v] of Object.entries({role:'separator','aria-orientation':'horizontal','aria-label':'Altura del estante de extensiones','aria-valuemin':SHELF_MIN}))grip.setAttribute(k,v);
+    let start=null,last=0;
+    const current=()=>shelfFrame()?.getBoundingClientRect().height||SHELF_MIN;
+    const refit=force=>{const now=performance.now();if(force||now-last>100){last=now;window.dispatchEvent(new Event('resize'));}};
+    grip.addEventListener('pointerdown',e=>{if(e.button!==0)return;e.preventDefault();grip.setPointerCapture(e.pointerId);start={y:e.clientY,height:current()};document.body.classList.add('pane-extensions-resizing');});
+    grip.addEventListener('pointermove',e=>{if(!start)return;setShelfHeight(start.height+start.y-e.clientY,false);refit(false);});
+    const end=()=>{if(!start)return;start=null;document.body.classList.remove('pane-extensions-resizing');setShelfHeight(current(),true);refit(true);};
+    for(const type of ['pointerup','pointercancel','lostpointercapture'])grip.addEventListener(type,end);
+    grip.addEventListener('keydown',e=>{
+      const next={ArrowUp:current()+SHELF_STEP,ArrowDown:current()-SHELF_STEP,Home:shelfLimit(),End:SHELF_MIN}[e.key];
+      if(next===undefined)return;e.preventDefault();setShelfHeight(next,true);refit(true);
+    });
+    grip.addEventListener('dblclick',()=>{try{localStorage.removeItem(SHELF_KEY);}catch(_){}restoreShelfHeight();refit(true);});
+    document.body.append(grip);
+    return grip;
+  }
+  function closeFrame() {
+    shelfFrame()?.remove();document.getElementById('pane-extensions-grip')?.remove();
+    document.body.classList.remove('pane-extensions-open','pane-extensions-resizing');window.dispatchEvent(new Event('resize'));
+  }
+  // A smaller window must never push the shelf over the terminals; a larger one restores the saved height.
+  const resizeShelf=()=>{if(shelfFrame()&&savedShelfHeight()&&!document.body.classList.contains('pane-extensions-resizing'))setShelfHeight(savedShelfHeight(),false);};
+  window.addEventListener('resize',resizeShelf);
+  window.visualViewport?.addEventListener('resize',resizeShelf);
   // Dashboard and desktop load the exact same page; bubbles never enter terminal panes.
   window.openPaneExtensions=(session,pane,harness='')=>{
     if(!session||!/^%\d+$/.test(pane))return;
     if(window.webkit?.messageHandlers?.centro){window.webkit.messageHandlers.centro.postMessage(JSON.stringify({type:'extensions',session,pane,harness}));return;}
     let frame=document.getElementById('pane-extensions-frame');
-    if(!frame){frame=document.createElement('iframe');frame.id='pane-extensions-frame';frame.title='Extensiones del panel seleccionado';Object.assign(frame.style,{position:'fixed',left:'var(--app-left,0px)',top:'calc(var(--app-top,0px) + var(--app-height,100dvh) - var(--pane-shelf-height,55vh))',width:'var(--app-width,100%)',height:'var(--pane-shelf-height,55vh)',border:'0',zIndex:1000,boxShadow:'0 -12px 40px #0007'});document.body.append(frame);document.body.classList.add('pane-extensions-open');window.dispatchEvent(new Event('resize'));}
+    if(!frame){frame=document.createElement('iframe');frame.id='pane-extensions-frame';frame.title='Extensiones del panel seleccionado';Object.assign(frame.style,{position:'fixed',left:'var(--app-left,0px)',top:'calc(var(--app-top,0px) + var(--app-height,100dvh) - var(--pane-shelf-height,55vh))',width:'var(--app-width,100%)',height:'var(--pane-shelf-height,55vh)',border:'0',zIndex:1000,boxShadow:'0 -12px 40px #0007'});document.body.append(frame);shelfGrip();restoreShelfHeight();document.body.classList.add('pane-extensions-open');window.dispatchEvent(new Event('resize'));}
     const target={session,pane};if(harness&&harness!=='shell')target.harness=harness;
     frame.src='/extensions.html?'+new URLSearchParams(target);
   };
-  window.addEventListener('message',event=>{const frame=document.getElementById('pane-extensions-frame');if(event.origin===location.origin&&event.source===frame?.contentWindow&&event.data?.type==='comandos-extensions-close'){frame.remove();document.body.classList.remove('pane-extensions-open');window.dispatchEvent(new Event('resize'));}});
+  window.addEventListener('message',event=>{const frame=document.getElementById('pane-extensions-frame');if(event.origin===location.origin&&event.source===frame?.contentWindow&&event.data?.type==='comandos-extensions-close')closeFrame();});
   const root=document.getElementById('extensions');
   if(root){const query=new URLSearchParams(location.search),target={session:query.get('session')||'',pane:query.get('pane')||''};if(query.get('harness'))target.harness=query.get('harness');new Shelf(root,target);}
 })();

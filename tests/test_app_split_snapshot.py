@@ -74,10 +74,59 @@ def test_snapshot_agent_without_id_does_not_freeze_the_whole_session():
     assert written['term-a']['windows'] == fresh['windows'] and written['term-a']['carried'] is True
 
 
-def test_snapshot_prunes_closed_tabs_and_dead_sessions_but_survives_tmux_down():
+def test_snapshot_prunes_closed_tabs_but_preserves_open_tabs_after_tmux_crash():
     previous = {'term-closed': {'x': 1}, 'term-dead': {'x': 2}, 'local': {'x': 3}}
     fail = RuntimeError('no session')
     written = _snapshot_ns(previous, {'local': fail, 'term-dead': fail}, ['local'])
-    assert written == {'local': {'x': 3}}
+    assert written == {'local': {'x': 3}, 'term-dead': {'x': 2}}
     written = _snapshot_ns(previous, {'local': fail, 'term-dead': fail}, None)
     assert written == {'local': {'x': 3}, 'term-dead': {'x': 2}}
+
+
+def test_restarted_tmux_with_only_local_keeps_other_open_tab_layouts():
+    saved = {'windows': [{'panes': [{'id': '%15'}, {'id': '%84'}]}]}
+    local = {'windows': [{'panes': [{'id': '%0'}]}]}
+    written = _snapshot_ns({'term-sava': saved},
+                           {'local': local, 'term-sava': RuntimeError('no session')},
+                           ['local'])
+    assert written['term-sava'] == saved
+
+
+def test_local_reconnect_restores_under_snapshot_lock():
+    calls = []
+    class Lock:
+        def __enter__(self): calls.append('lock')
+        def __exit__(self, *args): calls.append('unlock')
+    ns = {'_LAYOUT_LOCK': Lock(), 'restore_saved_layout': lambda s: calls.append(s)}
+    load('prepare_local_terminal', ns)()
+    assert calls == ['lock', 'local', 'unlock']
+    assert 'before_spawn=prepare_local_terminal' in SOURCE
+
+
+def _terminal_spawn_fixture(prepare):
+    calls = []
+    tree = ast.parse(SOURCE)
+    make_term = next(n for n in tree.body if isinstance(n, ast.FunctionDef) and n.name == 'make_term')
+    spawn = next(n for n in ast.walk(make_term) if isinstance(n, ast.FunctionDef) and n.name == 'spawn')
+    ns = {'before_spawn': prepare, 'term': SimpleNamespace(spawn_sync=lambda *a: calls.append('spawn')),
+          'Vte': SimpleNamespace(PtyFlags=SimpleNamespace(DEFAULT=0)),
+          'GLib': SimpleNamespace(SpawnFlags=SimpleNamespace(DEFAULT=0), timeout_add=lambda *a: calls.append('retry')),
+          'os': __import__('os'), 'argv_sh': 'tmux new-session -A -s local',
+          'print': lambda *a, **k: None}
+    exec(compile(ast.Module(body=[spawn], type_ignores=[]), '<terminal-spawn>', 'exec'), ns)
+    return ns['spawn'], calls
+
+
+def test_every_terminal_reconnect_runs_preparation_before_spawning():
+    prepared = []
+    spawn, calls = _terminal_spawn_fixture(lambda: prepared.append(len(calls)))
+    spawn(); spawn()
+    assert prepared == [0, 1]
+    assert calls == ['spawn', 'spawn']
+
+
+def test_failed_local_restore_retries_without_creating_an_empty_session():
+    def fail(): raise RuntimeError('snapshot restoration failed')
+    spawn, calls = _terminal_spawn_fixture(fail)
+    spawn()
+    assert calls == ['retry']

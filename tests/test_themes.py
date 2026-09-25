@@ -158,8 +158,8 @@ def native_theme_namespace():
 
 
 def native_apply_namespace():
-    assignments = {"PALETTE", "PAL_DIA", "PAL_CALIDO", "PAL_BRUNO", "PAL_UBUNTU", "THEMES", "APP_CSS"}
-    functions = {"theme_css", "_build_hb_css", "apply_theme", "_apply_tmux_theme"}
+    assignments = {"PALETTE", "PAL_DIA", "PAL_CALIDO", "PAL_BRUNO", "PAL_UBUNTU", "THEMES", "APP_CSS", "_SHELF_HANDLE"}
+    functions = {"theme_css", "_build_hb_css", "apply_theme", "_apply_tmux_theme", "_shelf_separator_css"}
     selected = []
     for node in ast.parse(APP).body:
         if isinstance(node, ast.Assign):
@@ -386,6 +386,7 @@ def test_real_native_apply_theme_recolors_every_vte_gtk_provider_and_tmux_role()
     assert b"#1A1A1A" in providers[0].loaded[0]
     assert b"#E4AE49" in providers[1].loaded[0]
     assert b"border-left:1px solid #333333" in providers[2].loaded[0]
+    assert b"paned.cc-shelf-paned > separator:hover{ background-color:#E4AE49;" in providers[2].loaded[0]
     assert tmux_calls == [
         ("set-option", "-g", "status-style", "bg=#222224,fg=#AAAAAA"),
         ("set-option", "-g", "window-status-style", "bg=#222224,fg=#AAAAAA"),

@@ -1,0 +1,567 @@
+<!doctype html>
+<!--
+  PROTOTIPO DESECHABLE — no es código de producción.
+  Pregunta: ¿cuál es la forma más fácil, divertida e interactiva de prender/apagar
+  MCPs y Skills por pane en ComandOS?
+  Tres variantes en la misma pantalla, cambiables con ?variant=A|B|C, la barra de
+  abajo o las flechas ← →. Datos simulados en memoria (nombres reales, tokens
+  estimados). Nada se conecta a ComandOS.
+-->
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Prototipo · extensiones por pane</title>
+<style>
+:root{
+  --bg:#0A0D13;--panel:#121722;--panel2:#161C29;--line:#222A3A;--line2:#2E3852;
+  --text:#EAF0FB;--dim:#9AA6BF;--faint:#5E6980;--brand:#8B7CFF;--onBrand:#080B11;
+  --waiting:#FFAE1A;--working:#7AA5FF;--done:#2EE59D;--err:#FF7580;--code:#A3C0FF;--bar:#0D1119;
+  --claude:#B69CFF;--codex:#2EE59D;--mcp:#7AA5FF;--skill:#FFAE1A;
+  --mono:"JetBrainsMono Nerd Font Mono","JetBrainsMono Nerd Font","JetBrains Mono","Cascadia Code","DejaVu Sans Mono",monospace;
+}
+*{box-sizing:border-box}
+html,body{margin:0;height:100%;background:var(--bg);color:var(--text);font:13px/1.45 var(--mono);overflow:hidden}
+button{font:inherit;color:inherit;cursor:pointer}
+svg.i{width:14px;height:14px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;flex:none}
+
+/* ---------- chrome de ComandOS ---------- */
+.top{height:38px;display:flex;align-items:center;gap:14px;padding:0 14px;background:var(--bar);border-bottom:1px solid var(--line)}
+.brand{letter-spacing:.16em;font-weight:700;font-size:12px;color:var(--brand)}
+.tabs{display:flex;gap:4px}
+.tab{padding:5px 12px;border-radius:8px;color:var(--dim);font-size:12.5px;display:flex;align-items:center;gap:7px}
+.tab.on{background:var(--panel2);color:var(--text);border:1px solid var(--line2)}
+.dot{width:7px;height:7px;border-radius:50%;display:inline-block}
+.grid{position:absolute;inset:38px 0 0 0;display:grid;grid-template-columns:1.25fr 1fr;grid-template-rows:1fr 1fr;gap:3px;background:var(--line);padding:0}
+.pane{position:relative;background:var(--bg);overflow:hidden;transition:box-shadow .15s}
+.pane.big{grid-row:1 / span 2}
+.pane.sel{box-shadow:inset 0 0 0 2px var(--brand)}
+.pane.drop-hot{box-shadow:inset 0 0 0 2px var(--brand),inset 0 0 40px rgba(139,124,255,.25)}
+.term{position:absolute;inset:30px 0 0 0;padding:10px 14px;color:var(--dim);white-space:pre-wrap;font-size:12.5px;overflow:hidden}
+.term .p{color:var(--done)} .term .c{color:var(--code)} .term .w{color:var(--text)}
+.pills{position:absolute;top:5px;left:10px;right:10px;display:flex;gap:6px;align-items:center;z-index:5}
+.pill{display:flex;align-items:center;gap:6px;padding:2px 11px;border-radius:999px;background:var(--bg);border:1.5px solid var(--line2);box-shadow:0 1px 4px rgba(0,0,0,.55);font-size:11.5px;white-space:nowrap}
+.pill.model b{font-weight:700}
+.pill.ext{border-color:rgba(139,124,255,.55);transition:transform .12s,border-color .12s}
+.pill.ext:hover{transform:translateY(-1px);border-color:var(--brand)}
+.pill.ext.open{background:var(--brand);color:var(--onBrand);border-color:var(--brand)}
+.pill.ext .pend{background:var(--waiting);color:var(--onBrand);border-radius:999px;padding:0 6px;font-weight:700}
+.pill.shell{border-style:dashed;color:var(--dim)}
+.status{margin-left:auto;font-size:11px;color:var(--faint)}
+
+.tok{font-variant-numeric:tabular-nums}
+.sw{position:relative;width:30px;height:17px;border-radius:999px;background:var(--line2);flex:none;transition:background .18s}
+.sw::after{content:"";position:absolute;top:2px;left:2px;width:13px;height:13px;border-radius:50%;background:var(--dim);transition:transform .18s cubic-bezier(.3,1.6,.5,1),background .18s}
+.sw.on{background:rgba(139,124,255,.35)} .sw.on::after{transform:translateX(13px);background:var(--brand)}
+.tpl{display:inline-flex;align-items:center;gap:5px;padding:3px 10px;border-radius:999px;border:1px solid var(--line2);background:var(--panel2);font-size:11.5px;color:var(--dim);transition:all .12s}
+.tpl:hover{color:var(--text);border-color:var(--brand)}
+.tpl.cur{color:var(--onBrand);background:var(--brand);border-color:var(--brand)}
+.tpl.add{border-style:dashed}
+.btn{display:inline-flex;align-items:center;gap:6px;padding:6px 12px;border-radius:9px;border:1px solid var(--line2);background:var(--panel2);font-size:12px}
+.btn:hover{border-color:var(--dim)}
+.btn.go{background:var(--brand);color:var(--onBrand);border-color:var(--brand);font-weight:700}
+.btn.go:disabled{opacity:.35;cursor:default}
+.btn.ghost{background:transparent}
+.label{font-size:10.5px;letter-spacing:.16em;color:var(--faint);text-transform:uppercase}
+input.q{background:var(--bg);border:1px solid var(--line2);border-radius:8px;color:var(--text);padding:5px 9px;font:inherit;font-size:12px;outline:none;width:100%}
+input.q:focus{border-color:var(--brand)}
+
+/* aplicando */
+.applying{position:absolute;inset:30px 0 0 0;background:rgba(10,13,19,.82);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;z-index:30;backdrop-filter:blur(2px)}
+.spin{width:26px;height:26px;border:2.5px solid var(--line2);border-top-color:var(--brand);border-radius:50%;animation:sp .8s linear infinite}
+@keyframes sp{to{transform:rotate(360deg)}}
+.toast{position:fixed;left:50%;top:52px;transform:translateX(-50%);background:var(--panel2);border:1px solid var(--done);color:var(--text);padding:8px 14px;border-radius:10px;z-index:200;box-shadow:0 8px 24px rgba(0,0,0,.5);animation:tin .25s ease-out}
+@keyframes tin{from{opacity:0;transform:translate(-50%,-8px)}}
+
+/* ---------- A: interruptores ---------- */
+.popA{position:absolute;top:34px;left:10px;width:min(430px,calc(100% - 20px));max-height:calc(100% - 44px);display:flex;flex-direction:column;background:var(--panel);border:1px solid var(--line2);border-radius:14px;box-shadow:0 18px 50px rgba(0,0,0,.6);z-index:20;animation:pop .16s ease-out;transform-origin:30px 0}
+@keyframes pop{from{opacity:0;transform:scale(.96) translateY(-4px)}}
+.popA header{padding:12px 14px 10px;border-bottom:1px solid var(--line)}
+.meter{height:9px;border-radius:999px;background:var(--bar);border:1px solid var(--line);overflow:hidden;position:relative;margin:8px 0 4px}
+.meter .now{position:absolute;inset:0 auto 0 0;background:rgba(139,124,255,.25);transition:width .35s}
+.meter .next{position:absolute;inset:0 auto 0 0;background:var(--brand);transition:width .35s cubic-bezier(.3,1.3,.5,1)}
+.big-n{font-size:20px;font-weight:700}
+.popA .tabsA{display:flex;gap:4px;margin-top:10px}
+.popA [data-unused]{white-space:nowrap;flex:none}
+.popA .tabsA button{flex:1;padding:5px;border-radius:8px;border:1px solid var(--line);background:transparent;color:var(--dim);font-size:12px}
+.popA .tabsA button.on{background:var(--panel2);color:var(--text);border-color:var(--line2)}
+.rows{overflow:auto;padding:4px 6px;flex:1}
+.row{display:flex;align-items:center;gap:10px;padding:7px 8px;border-radius:9px;cursor:pointer;transition:background .1s}
+.row:hover{background:var(--panel2)}
+.row.off .nm{color:var(--faint);text-decoration:line-through;text-decoration-color:rgba(154,166,191,.35)}
+.row .nm{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.row .ds{display:block;font-size:11px;color:var(--faint);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;text-decoration:none}
+.costbar{width:54px;height:5px;border-radius:9px;background:var(--bar);overflow:hidden;flex:none}
+.costbar i{display:block;height:100%;background:var(--mcp)}
+.use{font-size:10.5px;padding:1px 6px;border-radius:999px;flex:none}
+.use.y{color:var(--done);background:rgba(46,229,157,.1)} .use.n{color:var(--faint);background:rgba(94,105,128,.12)}
+.row .tk{width:48px;text-align:right;color:var(--dim);font-size:11.5px;flex:none}
+.popA footer{padding:10px 12px;border-top:1px solid var(--line);display:flex;align-items:center;gap:8px}
+.diff{font-size:11.5px;color:var(--dim);flex:1}
+.diff b{color:var(--done)}
+
+/* ---------- B: arrastrar ---------- */
+.strip{position:absolute;top:30px;left:0;right:0;display:flex;flex-wrap:wrap;gap:5px;padding:6px 10px 8px;background:linear-gradient(var(--panel),rgba(18,23,34,.92));border-bottom:1px solid var(--line);z-index:6;max-height:48%;overflow:auto}
+.strip.empty::after{content:"Suelta aquí MCPs o skills";color:var(--faint);font-size:11.5px;padding:4px}
+.chip{display:inline-flex;align-items:center;gap:5px;height:24px;padding:0 9px;border-radius:7px;font-size:11.5px;border:1px solid;touch-action:none;user-select:none;cursor:grab;transition:transform .12s,opacity .12s;white-space:nowrap}
+.chip:hover{transform:translateY(-1px)}
+.chip.mcp{border-color:rgba(122,165,255,.55);background:rgba(122,165,255,.10);color:#CFE0FF}
+.chip.skill{border-color:rgba(255,174,26,.45);background:rgba(255,174,26,.08);color:#FFE2AE}
+.chip .k{opacity:.6;font-size:10.5px}
+.chip.new{animation:land .35s cubic-bezier(.3,1.6,.5,1)}
+@keyframes land{from{transform:scale(.4);opacity:0}}
+.chip.unused{opacity:.55;border-style:dashed}
+.chip.in{opacity:.3;pointer-events:none}
+.dragghost{position:fixed;z-index:500;pointer-events:none;transform:translate(-50%,-50%) rotate(-4deg) scale(1.08);box-shadow:0 10px 26px rgba(0,0,0,.6)}
+.gauge{position:absolute;right:10px;bottom:10px;width:120px;z-index:6;font-size:11px;color:var(--dim);text-align:right}
+.gauge .tube{height:8px;border-radius:999px;background:var(--bar);border:1px solid var(--line2);overflow:hidden;margin-top:3px}
+.gauge .tube i{display:block;height:100%;background:linear-gradient(90deg,var(--brand),var(--mcp));transition:width .4s cubic-bezier(.3,1.3,.5,1)}
+.applyB{position:absolute;right:10px;bottom:44px;z-index:7;animation:pop .2s ease-out}
+.shelf{position:fixed;left:0;right:0;bottom:0;height:34vh;background:var(--panel);border-top:1px solid var(--line2);box-shadow:0 -14px 40px rgba(0,0,0,.55);z-index:40;display:flex;flex-direction:column;animation:up .22s ease-out}
+.shelf.drop-hot{box-shadow:inset 0 0 0 2px var(--err),0 -14px 40px rgba(0,0,0,.55)}
+@keyframes up{from{transform:translateY(100%)}}
+.shelf header{display:flex;align-items:center;gap:10px;padding:10px 14px;border-bottom:1px solid var(--line)}
+.shelf .body{display:flex;gap:18px;padding:10px 14px;overflow:auto;flex:1}
+.shelf .col{min-width:0;flex:1}
+.shelf .col .wrap{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px}
+.cart{display:flex;flex-direction:column;gap:2px;width:128px;padding:8px 10px;border-radius:10px;border:1px solid var(--line2);background:var(--panel2);cursor:grab;touch-action:none;user-select:none}
+.cart:hover{border-color:var(--brand)}
+.cart b{font-size:12px} .cart span{font-size:10.5px;color:var(--faint)}
+.poof{position:fixed;z-index:500;pointer-events:none;color:var(--err);font-size:11px;transform:translate(-50%,-50%);animation:poof .5s ease-out forwards}
+@keyframes poof{to{opacity:0;transform:translate(-50%,-160%) scale(1.3)}}
+.hint{font-size:11.5px;color:var(--faint)}
+
+/* ---------- C: burbujas ---------- */
+.board{position:absolute;inset:30px 0 0 0;background:radial-gradient(ellipse at 50% 35%,#161C2E,var(--bg) 70%);z-index:20;display:flex;flex-direction:column;animation:pop .18s ease-out}
+.board .hd{display:flex;align-items:center;gap:8px;padding:8px 12px;flex-wrap:wrap}
+.board .count{position:absolute;left:50%;top:44%;transform:translate(-50%,-50%);text-align:center;pointer-events:none;opacity:.14}
+.board .count .n{font-size:64px;font-weight:800;letter-spacing:-.03em}
+.field{flex:1;position:relative;display:flex;flex-wrap:wrap;align-content:center;justify-content:center;gap:10px;padding:10px 18px;overflow:auto}
+.bub{border-radius:50%;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;cursor:pointer;user-select:none;position:relative;transition:transform .15s;animation:float 5s ease-in-out infinite;padding:4px;line-height:1.15}
+.bub:hover{transform:scale(1.07)}
+.bub.mcp{background:radial-gradient(circle at 35% 30%,rgba(122,165,255,.55),rgba(122,165,255,.14) 70%);border:1.5px solid rgba(122,165,255,.7)}
+.bub.skill{background:radial-gradient(circle at 35% 30%,rgba(255,174,26,.5),rgba(255,174,26,.12) 70%);border:1.5px solid rgba(255,174,26,.65)}
+.bub.unused{filter:saturate(.35) brightness(.8);border-style:dashed}
+.bub .bn{font-size:11px;font-weight:700;overflow:hidden;text-overflow:ellipsis;max-width:92%;white-space:nowrap}
+.bub .bt{font-size:10px;opacity:.75}
+.bub.popping{animation:popb .32s ease-in forwards}
+@keyframes popb{40%{transform:scale(1.25)}to{transform:scale(0);opacity:0}}
+.bub.falling{animation:fall .6s cubic-bezier(.5,0,.9,.5) forwards}
+@keyframes fall{to{transform:translateY(420px) rotate(40deg);opacity:0}}
+@keyframes float{50%{translate:0 -4px}}
+.tray{border-top:1px dashed var(--line2);padding:8px 12px;display:flex;flex-wrap:wrap;gap:6px;align-items:center;min-height:44px;background:rgba(13,17,25,.7)}
+.tray .mini{width:24px;height:24px;border-radius:50%;border:1px dashed var(--faint);display:inline-flex;align-items:center;justify-content:center;font-size:9px;color:var(--faint);cursor:pointer;transition:transform .12s}
+.tray .mini:hover{transform:scale(1.25);color:var(--text);border-color:var(--text)}
+.board .ft{display:flex;align-items:center;gap:8px;padding:8px 12px;border-top:1px solid var(--line)}
+.bigtok{font-size:18px;font-weight:800}
+
+
+/* ---------- D: estante + burbujas ---------- */
+.fieldD{flex:1;min-height:0;display:flex;flex-wrap:wrap;align-content:center;justify-content:center;gap:8px;padding:10px 14px 50px;overflow:hidden}
+.zone .bub{touch-action:none;cursor:grab}
+.bub.new{animation:land .4s cubic-bezier(.3,1.6,.5,1)}
+.shelfbubs{gap:6px!important;align-items:center}
+.shelfbubs .bub{filter:saturate(.45) brightness(.85);border-style:dashed;animation:none}
+.shelfbubs .bub:hover{filter:none;transform:scale(1.12)}
+.cart.curcart{border-color:var(--brand);box-shadow:inset 0 0 0 1px var(--brand)}
+.dragghost.bub{animation:none}
+
+/* ---------- barra del prototipo ---------- */
+.proto{position:fixed;left:50%;top:5px;transform:translateX(-50%);z-index:900;display:flex;align-items:center;gap:6px;padding:5px 6px;border-radius:999px;background:#F4F1E8;color:#111;box-shadow:0 6px 24px rgba(0,0,0,.6);font-size:12px}
+.proto{padding:2px 4px}
+.proto button{border:0;background:#111;color:#F4F1E8;border-radius:999px;width:24px;height:24px}
+.proto .lbl{padding:0 10px;font-weight:700;min-width:210px;text-align:center}
+.proto .st{width:auto;padding:0 10px;background:#ddd;color:#111}
+.state{position:fixed;left:50%;transform:translateX(-50%);top:42px;z-index:900;background:#F4F1E8;color:#111;border-radius:10px;padding:10px 12px;font-size:11px;white-space:pre;max-height:50vh;overflow:auto;box-shadow:0 6px 24px rgba(0,0,0,.6)}
+body.shelf-open .grid{bottom:34vh}
+body.shelf-d .grid{bottom:46vh}
+.shelf.shelfD{height:46vh}
+.shelfD .body{gap:14px}
+.zone{display:flex;flex-direction:column;min-width:0;border:1px dashed transparent;border-radius:12px;padding:6px 8px;transition:border-color .12s,background .12s}
+.zone.on{flex:1.6;background:radial-gradient(ellipse at 50% 45%,#161D30,transparent 75%)}
+.zone.off{flex:1}
+.zone.drop-hot{border-color:var(--brand);background:rgba(139,124,255,.08)}
+.zone .fieldD{flex:1;padding:6px 4px}
+.grid{transition:bottom .22s ease-out}
+</style>
+</head>
+<body>
+<div class="top">
+  <span class="brand">COMANDOS</span>
+  <div class="tabs">
+    <span class="tab on"><span class="dot" style="background:var(--working)"></span>Merauto + Lola</span>
+    <span class="tab"><span class="dot" style="background:var(--done)"></span>PaginasWeb</span>
+    <span class="tab"><span class="dot" style="background:var(--faint)"></span>ComandOS</span>
+  </div>
+  <span class="hint" style="margin-left:auto">prototipo · datos simulados · tokens estimados</span>
+</div>
+<div class="grid" id="grid"></div>
+<div id="layer"></div>
+<div class="proto" id="proto">
+  <button id="prev" title="Variante anterior (←)">&larr;</button>
+  <span class="lbl" id="vlabel"></span>
+  <button id="next" title="Variante siguiente (→)">&rarr;</button>
+  <button class="st" id="stbtn">estado</button>
+</div>
+<div class="state" id="state" hidden></div>
+
+<script>
+/* ================= datos simulados ================= */
+const MCPS = [
+  ["supabase",20,"Base de datos, auth y storage de Supabase"],
+  ["clickup",30,"Tareas, listas y comentarios de ClickUp"],
+  ["chrome-bg",26,"Navegador remoto en el Mac mini"],
+  ["gmail",14,"Buscar, leer y redactar correo"],
+  ["telegram",17,"Leer y enviar mensajes de Telegram"],
+  ["whatsapp",38,"Chats, grupos y envíos de WhatsApp"],
+  ["x-suite",33,"Publicar y leer en X"],
+  ["meta-ads",22,"Campañas y anuncios de Meta"],
+  ["linear",24,"Issues y proyectos de Linear"],
+  ["atlassian",25,"Jira y Confluence"],
+  ["qcdr-search",4,"Búsqueda web privada"],
+  ["mcp-image",1,"Generar y editar imágenes"],
+  ["screenwright",3,"Grabar demos con subtítulos"],
+  ["mobbin",5,"Referencias de UI móviles"],
+].map(([n,t,d])=>({id:"mcp:"+n,name:n,kind:"mcp",tools:t,tok:Math.round(t*280+300),desc:d}));
+const SKILLS = [
+  ["tdd",120,"Red-green-refactor"],["diagnose",110,"Diagnóstico de bugs difíciles"],["research",95,"Investigar con fuentes primarias"],
+  ["superpowers:brainstorming",140,"Idea → diseño aprobado"],["superpowers:writing-plans",120,"Plan de implementación"],
+  ["superpowers:systematic-debugging",115,"Depurar con método"],["frontend-design",130,"Diseño visual intencional"],
+  ["kill-ai-slop",150,"Quitar el look genérico de IA"],["grill-design",100,"Iterar UI con prototipos"],["prototype",95,"Prototipos desechables"],
+  ["merauto-ticket-close",160,"Cierre de tickets de Merauto"],["lola-ads-loop",150,"Ads de Lola en Meta"],
+  ["copywriting",140,"Copy de marketing"],["humanizar-texto-es",130,"Quitar tono de IA en español"],
+  ["devhost",110,"Proyectos locales por nombre"],["gmail",70,"Correo vía MCP"],["telegram",70,"Mensajería vía MCP"],
+  ["scarlett-pm",120,"Tareas en Scarlett PM"],["technical-writing",130,"Documentos técnicos"],["unreal-mcp",170,"Unreal Engine en vivo"],
+  ["handoff",60,"Traspaso entre agentes"],["caveman",80,"Modo ultra breve"],
+].map(([n,t,d])=>({id:"skill:"+n,name:n,kind:"skill",tok:t,desc:d}));
+const ALL = [...MCPS,...SKILLS];
+const BY = Object.fromEntries(ALL.map(x=>[x.id,x]));
+const ids = (...names)=>names.map(n=>BY["mcp:"+n]?"mcp:"+n:"skill:"+n);
+
+let TEMPLATES = [
+  {id:"all",name:"Todo",ids:null},
+  {id:"code",name:"Solo código",ids:ids("tdd","diagnose","superpowers:systematic-debugging","superpowers:writing-plans","research")},
+  {id:"front",name:"Frontend",ids:ids("chrome-bg","mcp-image","mobbin","frontend-design","kill-ai-slop","grill-design","prototype")},
+  {id:"merauto",name:"Merauto",ids:ids("supabase","clickup","chrome-bg","merauto-ticket-close","tdd","diagnose")},
+  {id:"lola",name:"Lola ads",ids:ids("meta-ads","whatsapp","telegram","lola-ads-loop","copywriting","humanizar-texto-es")},
+];
+const tplIds = t => new Set(t.ids || ALL.map(x=>x.id));
+
+const allSet = () => new Set(ALL.map(x=>x.id));
+const PANES = [
+  {id:"p1",big:true,project:"Merauto",agent:"claude",model:"opus 4.7",running:true,live:allSet(),staged:null,
+   usage:{"mcp:supabase":14,"mcp:clickup":6,"mcp:chrome-bg":3,"skill:merauto-ticket-close":2,"skill:tdd":1},
+   term:[["p","~/codebase/Merauto ❯ "],["w","claude"],["","\n\n"],["c","● "],["w","Revisando el ticket CU-4812 en ClickUp…\n"],["","  ⎿ supabase.query  (3 filas)\n  ⎿ clickup.get_task CU-4812\n\n"],["c","● "],["w","La migración 0142 ya corrió en develop. Falta el Word de cierre.\n"],["","\n> "]]},
+  {id:"p2",project:"Lola",agent:"codex",model:"gpt-5.5 high",running:true,live:allSet(),staged:null,
+   usage:{"mcp:meta-ads":9,"mcp:whatsapp":5,"skill:lola-ads-loop":3,"skill:copywriting":1},
+   term:[["p","~/PaginasWeb ❯ "],["w","codex"],["","\n\n"],["c","› "],["w","EXP-002: comparando CTR de creativos…\n"],["","  meta-ads.insights  ok\n  whatsapp.list_chats  ok\n"]]},
+  {id:"p3",project:"ComandOS",agent:null,model:"",running:false,live:allSet(),staged:null,usage:{},
+   term:[["p","~/codebase/ComandOS ❯ "],["w","█"]]},
+];
+const P = id => PANES.find(p=>p.id===id);
+const cur = p => p.staged || p.live;
+const sum = set => [...set].reduce((a,id)=>a+(BY[id]?.tok||0),0);
+const fmt = n => n>=1000 ? "~"+(n/1000).toFixed(n>=10000?0:1)+"k" : "~"+n;
+const eq = (a,b)=> a.size===b.size && [...a].every(x=>b.has(x));
+function stage(p,set){ p.staged = eq(set,p.live) ? null : set; }
+function toggle(p,id,on){ const s=new Set(cur(p)); (on ?? !s.has(id)) ? s.add(id) : s.delete(id); stage(p,s); }
+function diffOf(p){ if(!p.staged) return {add:[],rem:[],delta:0};
+  const add=[...p.staged].filter(x=>!p.live.has(x)), rem=[...p.live].filter(x=>!p.staged.has(x));
+  return {add,rem,delta:sum(p.staged)-sum(p.live)}; }
+function matchTpl(p){ const s=cur(p); return TEMPLATES.find(t=>eq(tplIds(t),s)); }
+const unused = (p,set)=>[...set].filter(id=>!p.usage[id]);
+
+/* ================= iconos ================= */
+const ICON = {
+  puzzle:'<path d="M19.4 13a2 2 0 1 0 0-4H18V6a2 2 0 0 0-2-2h-3v1.4a2 2 0 1 1-4 0V4H6a2 2 0 0 0-2 2v3h1.4a2 2 0 1 1 0 4H4v3a2 2 0 0 0 2 2h3v-1.4a2 2 0 1 1 4 0V18h3a2 2 0 0 0 2-2v-3z"/>',
+  plug:'<path d="M9 2v6M15 2v6M6 8h12v3a6 6 0 0 1-12 0zM12 17v5"/>',
+  wand:'<path d="M15 4V2M15 16v-2M8 9h2M20 9h2M17.8 11.8 19 13M17.8 6.2 19 5M3 21l9-9M12.2 6.2 11 5"/>',
+  search:'<circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/>',
+  x:'<path d="M18 6 6 18M6 6l12 12"/>', zap:'<path d="M13 2 3 14h9l-1 8 10-12h-9z"/>',
+  play:'<path d="m6 3 14 9-14 9z"/>', save:'<path d="M5 3h11l3 3v15H5zM8 3v5h7M8 21v-7h8v7"/>', shake:'<path d="M4 8l4-4M4 16l4 4M20 8l-4-4M20 16l-4 4M9 12h6"/>',
+};
+const ic = (n,s)=>`<svg class="i" viewBox="0 0 24 24" ${s?`style="width:${s}px;height:${s}px"`:""}>${ICON[n]}</svg>`;
+
+/* ================= estado de UI ================= */
+const VARIANTS = {A:"A · Interruptores con costo",B:"B · Arrastrar fichas",C:"C · Burbujas",D:"D · Estante + burbujas"};
+let V = new URLSearchParams(location.search).get("variant") || "A";
+if(!VARIANTS[V]) V="A";
+let open = null;          // pane con el panel abierto (A y C) o foco del estante (B)
+let tabA = "mcp", q = "", saving = false;
+
+/* ================= render común ================= */
+function paneHTML(p){
+  const s=cur(p), d=diffOf(p), n=[...s];
+  const m=n.filter(x=>x.startsWith("mcp:")).length, k=n.length-m;
+  const pend = d.add.length+d.rem.length;
+  const model = p.running
+    ? `<span class="pill model"><span class="dot" style="background:var(--${p.agent})"></span><b>${p.agent}</b> · ${p.model}</span>`
+    : `<span class="pill shell">${ic("play",11)} Iniciar IA</span>`;
+  const ext = `<button class="pill ext ${open===p.id?"open":""}" data-ext="${p.id}" title="MCPs y skills de este pane">
+      ${ic("puzzle",12)} ${m} MCP · ${k} skills · <span class="tok">${fmt(sum(s))}</span>
+      ${pend?`<span class="pend">${pend}</span>`:""}</button>`;
+  const term = p.term.map(([c,t])=>`<span class="${c}">${t}</span>`).join("");
+  return `<div class="pane ${p.big?"big":""} ${V==="D"&&open===p.id?"sel":""}" data-pane="${p.id}">
+    <div class="pills">${model}${ext}<span class="status">${p.project}${p.running?"":" · sin agente"}</span></div>
+    <div class="term">${term}</div>
+    ${p.applying?`<div class="applying"><div class="spin"></div><div>Reiniciando ${p.agent} con el nuevo set…</div><div class="hint">la conversación se conserva</div></div>`:""}
+    ${V==="A"&&open===p.id?popA(p):""}
+    ${V==="B"?stripB(p):""}
+    ${V==="C"&&open===p.id?boardC(p):""}
+
+  </div>`;
+}
+function render(){
+  document.getElementById("grid").innerHTML = PANES.map(paneHTML).join("");
+  document.getElementById("layer").innerHTML = V==="B" && open ? shelfB() : V==="D" && open ? shelfD() : "";
+  document.body.classList.toggle("shelf-open", (V==="B"||V==="D") && !!open);
+  document.body.classList.toggle("shelf-d", V==="D" && !!open);
+  if(V==="D" && open){ requestAnimationFrame(fitD); setTimeout(fitD,260); }
+  document.getElementById("vlabel").textContent = VARIANTS[V];
+  renderState();
+  const qi=document.querySelector("input.q[data-focus]"); if(qi){qi.focus();qi.setSelectionRange(qi.value.length,qi.value.length);}
+}
+function renderState(){
+  const el=document.getElementById("state"); if(el.hidden) return;
+  el.textContent = PANES.map(p=>{const d=diffOf(p);
+    return `${p.id} ${p.project} · ${p.running?p.agent:"sin agente"}\n  cargado: ${p.live.size} (${fmt(sum(p.live))})`+
+      (p.staged?`\n  pendiente: +${d.add.length} −${d.rem.length} → ${fmt(sum(p.staged))} (${d.delta>0?"+":""}${d.delta} tok)`:"\n  sin cambios")+
+      `\n  plantilla: ${matchTpl(p)?.name||"—"}`;}).join("\n\n") + `\n\nvariante: ${V} · abierto: ${open||"—"}`;
+}
+function templatesRow(p){
+  const m=matchTpl(p);
+  return TEMPLATES.map(t=>`<button class="tpl ${m&&m.id===t.id?"cur":""}" data-tpl="${t.id}" data-p="${p.id}">${t.name} <span class="tok" style="opacity:.7">${fmt(sum(tplIds(t)))}</span></button>`).join("")
+    + (saving===p.id
+      ? `<input class="q" data-savein="${p.id}" data-focus placeholder="Nombre y Enter" style="width:150px">`
+      : `<button class="tpl add" data-save="${p.id}" title="Guardar el set actual como plantilla">${ic("save",11)} Guardar</button>`);
+}
+function applyBtn(p,label){
+  const d=diffOf(p), pend=d.add.length+d.rem.length;
+  if(!p.running) return `<button class="btn go" data-apply="${p.id}">${ic("play",12)} ${label||"Iniciar Claude con este set"}</button>`;
+  return `<button class="btn go" data-apply="${p.id}" ${pend?"":"disabled"}>${ic("zap",12)} Aplicar${pend?` ${pend}`:""}</button>`;
+}
+function diffText(p){
+  const d=diffOf(p); if(!p.staged) return p.running?"Sin cambios. Lo que cambies se aplica reiniciando el agente, con la misma conversación.":"Elige el set antes de lanzar el agente.";
+  const sign=d.delta<0?`<b>${fmt(-d.delta)} menos</b>`:`<span style="color:var(--waiting)">${fmt(d.delta)} más</span>`;
+  return `+${d.add.length} / −${d.rem.length} · ${sign} por turno`;
+}
+
+/* ================= A: interruptores ================= */
+function popA(p){
+  const s=cur(p), now=sum(p.live), next=sum(s), max=sum(allSet());
+  const list=(tabA==="mcp"?MCPS:SKILLS).filter(x=>!q||x.name.includes(q)||x.desc.toLowerCase().includes(q))
+    .sort((a,b)=>(p.usage[b.id]||0)-(p.usage[a.id]||0)||b.tok-a.tok);
+  const maxTok=Math.max(...(tabA==="mcp"?MCPS:SKILLS).map(x=>x.tok));
+  const un=unused(p,s).length;
+  return `<div class="popA" data-stop>
+    <header>
+      <div style="display:flex;align-items:baseline;gap:10px">
+        <span class="big-n tok">${fmt(next)}</span><span class="hint">tokens por turno en MCPs y skills</span>
+        <button class="btn ghost" data-close style="margin-left:auto;padding:3px 6px">${ic("x")}</button>
+      </div>
+      <div class="meter"><div class="now" style="width:${now/max*100}%"></div><div class="next" style="width:${next/max*100}%"></div></div>
+      <div style="display:flex;flex-wrap:wrap;gap:5px;margin-top:8px">${templatesRow(p)}</div>
+      <div style="display:flex;gap:6px;margin-top:10px;align-items:center">
+        <input class="q" data-q ${document.activeElement?.dataset?.q!==undefined?"data-focus":""} placeholder="Buscar…" value="${q}">
+        <button class="btn" data-unused="${p.id}" ${un?"":"disabled"} title="Apaga todo lo que esta sesión no ha usado">${ic("zap",12)} Apagar ${un} sin uso</button>
+      </div>
+      <div class="tabsA"><button data-tab="mcp" class="${tabA==="mcp"?"on":""}">${ic("plug",12)} MCPs · ${[...s].filter(x=>x.startsWith("mcp:")).length}/${MCPS.length}</button>
+        <button data-tab="skill" class="${tabA==="skill"?"on":""}">${ic("wand",12)} Skills · ${[...s].filter(x=>x.startsWith("skill:")).length}/${SKILLS.length}</button></div>
+    </header>
+    <div class="rows">${list.map(x=>{const on=s.has(x.id),u=p.usage[x.id];
+      return `<div class="row ${on?"":"off"}" data-row="${x.id}" data-p="${p.id}">
+        <span class="sw ${on?"on":""}"></span>
+        <span class="nm">${x.name}<span class="ds">${x.desc}</span></span>
+        <span class="use ${u?"y":"n"}">${u?u+"× hoy":"sin uso"}</span>
+        <span class="costbar"><i style="width:${x.tok/maxTok*100}%;background:var(--${x.kind})"></i></span>
+        <span class="tk tok">${fmt(x.tok)}</span></div>`;}).join("")}</div>
+    <footer><span class="diff">${diffText(p)}</span>${applyBtn(p)}</footer>
+  </div>`;
+}
+
+/* ================= B: arrastrar ================= */
+function chip(x,p,extra=""){ const u=p&&!p.usage[x.id]&&p.running;
+  return `<span class="chip ${x.kind} ${u?"unused":""} ${extra}" data-chip="${x.id}" ${p?`data-from="${p.id}"`:""} title="${x.desc} · ${fmt(x.tok)}">${ic(x.kind==="mcp"?"plug":"wand",11)}${x.name}<span class="k tok">${fmt(x.tok)}</span></span>`; }
+let justLanded = new Set();
+function stripB(p){
+  const s=[...cur(p)].map(id=>BY[id]).sort((a,b)=>a.kind.localeCompare(b.kind)||b.tok-a.tok);
+  const pct=Math.min(100,sum(cur(p))/sum(allSet())*100), d=diffOf(p);
+  return `<div class="strip ${s.length?"":"empty"}" data-strip="${p.id}">${s.map(x=>chip(x,p,justLanded.has(p.id+x.id)?"new":"")).join("")}</div>
+    <div class="gauge"><span class="tok">${fmt(sum(cur(p)))}</span> por turno<div class="tube"><i style="width:${pct}%"></i></div></div>
+    ${(p.staged||!p.running)?`<div class="applyB">${applyBtn(p, "Iniciar con este set")}</div>`:""}`;
+}
+function shelfB(){
+  const p=P(open), s=cur(p);
+  const col=(title,list)=>`<div class="col"><div class="label">${title}</div><div class="wrap">${list.map(x=>chip(x,null,s.has(x.id)?"in":"")).join("")}</div></div>`;
+  return `<div class="shelf" data-shelf>
+    <header><span class="label">Estante</span>
+      <span class="hint">Arrastra fichas a cualquier pane. Saca una ficha de un pane y suéltala aquí para quitarla. Arrastra una plantilla sobre un pane para cambiar todo el set.</span>
+      <button class="btn ghost" data-close style="margin-left:auto;padding:3px 6px">${ic("x")}</button></header>
+    <div class="body">
+      <div style="flex:none"><div class="label">Plantillas</div><div style="display:flex;flex-direction:column;gap:6px;margin-top:6px">
+        ${TEMPLATES.map(t=>`<div class="cart" data-cart="${t.id}"><b>${t.name}</b><span>${tplIds(t).size} fichas · ${fmt(sum(tplIds(t)))}</span></div>`).join("")}</div></div>
+      ${col("MCPs",MCPS)}${col("Skills",SKILLS)}
+    </div></div>`;
+}
+let drag=null;
+function startDrag(e,el){
+  e.preventDefault();
+  const ghost=el.cloneNode(true); ghost.classList.add("dragghost"); ghost.classList.remove("in","new");
+  document.body.appendChild(ghost);
+  drag={el,ghost,chip:el.dataset.chip,cart:el.dataset.cart,from:el.dataset.from,x:e.clientX,y:e.clientY};
+  moveDrag(e);
+}
+function targetAt(x,y){
+  drag.ghost.style.display="none"; const t=document.elementFromPoint(x,y); drag.ghost.style.display="";
+  return {pane:t?.closest("[data-pane]"),shelf:t?.closest("[data-shelf]")};
+}
+function moveDrag(e){
+  if(!drag) return; drag.ghost.style.left=e.clientX+"px"; drag.ghost.style.top=e.clientY+"px";
+  if(V==="D"){ document.querySelectorAll(".drop-hot").forEach(n=>n.classList.remove("drop-hot"));
+    const z=zoneAt(e.clientX,e.clientY); if(z && (drag.cart ? z.dataset.zone==="on" : (z.dataset.zone==="on")!==!!drag.from)) z.classList.add("drop-hot"); return; }
+  document.querySelectorAll(".drop-hot").forEach(n=>n.classList.remove("drop-hot"));
+  const {pane,shelf}=targetAt(e.clientX,e.clientY);
+  if(pane && pane.dataset.pane!==drag.from) pane.classList.add("drop-hot");
+  else if(shelf && drag.from) shelf.classList.add("drop-hot");
+}
+function endDrag(e){
+  if(drag && V==="D") return endDragD(e);
+  if(!drag) return; const {pane,shelf}=targetAt(e.clientX,e.clientY); const d=drag; drag=null; d.ghost.remove();
+  document.querySelectorAll(".drop-hot").forEach(n=>n.classList.remove("drop-hot"));
+  const moved=Math.hypot(e.clientX-d.x,e.clientY-d.y)>6;
+  if(!moved){ // clic sin arrastrar: en el estante añade al pane enfocado; en un pane, quita
+    if(d.chip && !d.from && open){ toggle(P(open),d.chip,true); land(open,d.chip); }
+    else if(d.chip && d.from){ if(V==="D"){ d.el.classList.add("popping"); setTimeout(()=>{toggle(P(d.from),d.chip,false); render();},300); return; }
+      toggle(P(d.from),d.chip,false); poof(e,"−"+BY[d.chip].name); }
+    return render();
+  }
+  const to=pane?.dataset.pane;
+  if(d.cart && to){ stage(P(to),tplIds(TEMPLATES.find(t=>t.id===d.cart))); open=to; justLanded=new Set([...cur(P(to))].map(id=>to+id)); }
+  else if(d.chip && to && to!==d.from){ toggle(P(to),d.chip,true); land(to,d.chip); if(d.from && !e.altKey) toggle(P(d.from),d.chip,false); }
+  else if(d.chip && d.from && (!pane||shelf)){ toggle(P(d.from),d.chip,false); poof(e,"−"+BY[d.chip].name+" "+fmt(BY[d.chip].tok)); }
+  render(); setTimeout(()=>{justLanded=new Set();},400);
+}
+function land(pid,id){ justLanded=new Set([pid+id]); }
+function poof(e,txt){ const n=document.createElement("div"); n.className="poof"; n.textContent=txt; n.style.left=e.clientX+"px"; n.style.top=e.clientY+"px"; document.body.appendChild(n); setTimeout(()=>n.remove(),520); }
+
+/* ================= C: burbujas ================= */
+function boardC(p){
+  const s=cur(p), on=ALL.filter(x=>s.has(x.id)).sort((a,b)=>b.tok-a.tok), off=ALL.filter(x=>!s.has(x.id));
+  const size=x=> x.kind==="mcp" ? 46+Math.sqrt(x.tok)*0.62 : 40+Math.sqrt(x.tok)*1.3;
+  const un=unused(p,s).length;
+  return `<div class="board" data-stop>
+    <div class="hd">${templatesRow(p)}<button class="btn ghost" data-close style="margin-left:auto;padding:3px 6px">${ic("x")}</button></div>
+    <div class="count"><div class="n tok">${fmt(sum(s))}</div><div>tokens por turno</div></div>
+    <div class="field">${on.map((x,i)=>{const z=size(x);
+      return `<div class="bub ${x.kind} ${p.running&&!p.usage[x.id]?"unused":""}" data-bub="${x.id}" data-p="${p.id}" style="width:${z}px;height:${z}px;animation-delay:${-(i*0.37)%5}s" title="${x.desc}">
+        <span class="bn">${x.name.replace("superpowers:","")}</span><span class="bt tok">${fmt(x.tok)}${p.usage[x.id]?` · ${p.usage[x.id]}×`:""}</span></div>`;}).join("")
+      || `<div class="hint">Nada cargado: el agente arranca ligerísimo. Toca una bolita de abajo para traerla.</div>`}</div>
+    <div class="tray"><span class="label" style="margin-right:4px">Apagadas</span>${off.map(x=>`<span class="mini" data-mini="${x.id}" data-p="${p.id}" title="${x.name} · ${fmt(x.tok)}" style="border-color:var(--${x.kind})">${x.name.replace("superpowers:","").slice(0,2)}</span>`).join("") || `<span class="hint">ninguna</span>`}</div>
+    <div class="ft"><span class="bigtok tok">${fmt(sum(s))}</span><span class="diff">${diffText(p)}</span>
+      <button class="btn" data-shake="${p.id}" ${un&&p.running?"":"disabled"}>${ic("zap",12)} Apagar las ${un} que no ha usado</button>${applyBtn(p)}</div>
+  </div>`;
+}
+
+
+/* ================= D: estante + burbujas ================= */
+const bubSize = x => x.kind==="mcp" ? 46+Math.sqrt(x.tok)*0.62 : 40+Math.sqrt(x.tok)*1.3;
+function bubD(x,p,scale,extra=""){ const z=Math.round(bubSize(x)*scale), u=p&&p.running&&!p.usage[x.id];
+  const lbl=x.name.replace("superpowers:","");
+  return `<div class="bub ${x.kind} ${u?"unused":""} ${extra}" data-chip="${x.id}" ${p?`data-from="${p.id}"`:""} style="width:${z}px;height:${z}px;animation-delay:${-(x.tok%37)/7}s" title="${x.desc} · ${fmt(x.tok)}">
+    ${z>=34?`<span class="bn" style="font-size:${Math.max(8.5,11*scale)}px">${lbl}</span>`:""}${z>=48?`<span class="bt tok">${fmt(x.tok)}${p&&p.usage[x.id]?` · ${p.usage[x.id]}×`:""}</span>`:""}</div>`; }
+function fitD(){ // encoge las burbujas de cada pane hasta que quepan en su tablero
+  document.querySelectorAll(".fieldD").forEach(f=>{
+    const bubs=[...f.querySelectorAll(".bub")]; if(!bubs.length) return;
+    const base=bubs.map(b=>parseFloat(b.style.width));
+    // align-content:center desborda hacia arriba y abajo: scrollHeight no lo ve, se mide el alto real.
+    const over=()=>{const r=bubs.map(b=>b.getBoundingClientRect()); return Math.max(...r.map(x=>x.bottom))-Math.min(...r.map(x=>x.top)) > f.clientHeight-(f.closest(".zone")?14:60);};
+    for(let k=1,i=0; i<14 && over(); i++){
+      k*=0.9; bubs.forEach((b,j)=>{const z=base[j]*k; b.style.width=b.style.height=z+"px";
+        const bn=b.querySelector(".bn"), bt=b.querySelector(".bt"); if(bn) bn.style.display=z<34?"none":""; if(bt) bt.style.display=z<50?"none":"";});
+    }
+  });
+}
+function zoneAt(x,y){ drag.ghost.style.display="none"; const t=document.elementFromPoint(x,y); drag.ghost.style.display=""; return t?.closest("[data-zone]"); }
+function endDragD(e){
+  const z=zoneAt(e.clientX,e.clientY)?.dataset.zone;
+  const d=drag; drag=null; d.ghost.remove(); document.querySelectorAll(".drop-hot").forEach(n=>n.classList.remove("drop-hot"));
+  const p=P(open), moved=Math.hypot(e.clientX-d.x,e.clientY-d.y)>6;
+  if(d.cart){ if(!moved || z==="on"){ stage(p,tplIds(TEMPLATES.find(t=>t.id===d.cart))); justLanded=new Set([...cur(p)].map(id=>p.id+id)); render(); setTimeout(()=>{justLanded=new Set();},450);} return; }
+  const loaded=!!d.from;
+  const toOff = loaded && (!moved || z==="off"), toOn = !loaded && (!moved || z==="on");
+  if(toOff){ d.el.classList.add("popping"); setTimeout(()=>{ toggle(p,d.chip,false); justLanded=new Set(["off"+d.chip]); render(); setTimeout(()=>{justLanded=new Set();},450); },280); }
+  else if(toOn){ toggle(p,d.chip,true); justLanded=new Set([p.id+d.chip]); render(); setTimeout(()=>{justLanded=new Set();},450); }
+}
+function shelfD(){
+  const p=P(open), s=cur(p), on=ALL.filter(x=>s.has(x.id)).sort((a,b)=>b.tok-a.tok);
+  const off=ALL.filter(x=>!s.has(x.id)).sort((a,b)=>a.kind.localeCompare(b.kind)||b.tok-a.tok), un=unused(p,s).length;
+  return `<div class="shelf shelfD" data-shelf>
+    <header><span class="label">Extensiones</span>
+      <span class="hint"><b style="color:var(--text)">${p.project}</b> · ${p.running?`${p.agent} · ${p.model}`:"sin agente"}</span>
+      <span style="margin-left:auto" class="bigtok tok">${fmt(sum(s))}</span><span class="diff" style="flex:none">${p.staged?diffText(p):"por turno"}</span>
+      <button class="btn" data-shake="${p.id}" ${un&&p.running?"":"disabled"}>${ic("zap",12)} Apagar las ${un} que no ha usado</button>
+      ${(p.staged||!p.running)?applyBtn(p,"Iniciar con este set"):""}
+      <button class="btn ghost" data-close style="padding:3px 6px">${ic("x")}</button></header>
+    <div class="body">
+      <div style="flex:none;overflow:auto"><div class="label">Plantillas</div><div style="display:flex;flex-direction:column;gap:6px;margin-top:6px">
+        ${TEMPLATES.map(t=>`<div class="cart ${matchTpl(p)?.id===t.id?"curcart":""}" data-cart="${t.id}"><b>${t.name}</b><span>${tplIds(t).size} · ${fmt(sum(tplIds(t)))}</span></div>`).join("")}
+        ${saving===p.id?`<input class="q" data-savein="${p.id}" data-focus placeholder="Nombre y Enter">`:`<button class="tpl add" data-save="${p.id}">${ic("save",11)} Guardar set</button>`}</div></div>
+      <div class="zone on" data-zone="on"><div class="label">Cargadas · ${on.length}</div>
+        <div class="fieldD">${on.map(x=>bubD(x,p,1,justLanded.has(p.id+x.id)?"new":"")).join("") || `<div class="hint">Nada cargado: el agente arranca ligerísimo. Toca burbujas de la derecha.</div>`}</div></div>
+      <div class="zone off" data-zone="off"><div class="label">Apagadas · ${off.length}</div>
+        <div class="fieldD shelfbubs">${off.map(x=>bubD(x,null,x.kind==="mcp"?.62:.9,justLanded.has("off"+x.id)?"new":"")).join("") || `<div class="hint">todo cargado</div>`}</div></div>
+    </div></div>`;
+}
+/* ================= acciones ================= */
+function applyPane(pid){
+  const p=P(pid), d=diffOf(p);
+  if(!p.running){ p.running=true; p.agent="claude"; p.model="opus 4.7"; p.live=new Set(cur(p)); p.staged=null;
+    p.term=[["p","~/codebase/ComandOS ❯ "],["w","claude"],["","\n\n"],["c","● "],["w",`Listo. Arranqué con ${p.live.size} extensiones (${fmt(sum(p.live))} por turno).\n`],["","\n> "]];
+    open=null; toast(`Claude iniciado con ${fmt(sum(p.live))} por turno`); return render(); }
+  if(!p.staged) return;
+  open=null; p.applying=true; render();
+  setTimeout(()=>{ p.live=p.staged; p.staged=null; p.applying=false;
+    toast(d.delta<0?`${p.project}: ${fmt(-d.delta)} tokens menos por turno. Conversación intacta.`:`${p.project}: cambios aplicados. Conversación intacta.`); render(); },2200);
+}
+function toast(t){ const n=document.createElement("div"); n.className="toast"; n.textContent=t; document.body.appendChild(n); setTimeout(()=>n.remove(),2600); }
+function setVariant(v){ V=v; open=null; saving=false; const u=new URL(location); u.searchParams.set("variant",v); history.replaceState(null,"",u); render(); }
+
+document.addEventListener("click",e=>{
+  const t=e.target.closest("[data-ext],[data-close],[data-tpl],[data-save],[data-row],[data-tab],[data-unused],[data-apply],[data-bub],[data-mini],[data-shake]");
+  if(!t){ if(V==="D" && open) return;
+    if(V!=="B" && open && !e.target.closest("[data-stop]")){ open=null; saving=false; render(); } return; }
+  const ds=t.dataset;
+  if(ds.ext){ open = open===ds.ext ? null : ds.ext; saving=false; q=""; return render(); }
+  if(ds.close!==undefined){ open=null; saving=false; return render(); }
+  if(ds.tpl){ stage(P(ds.p),tplIds(TEMPLATES.find(x=>x.id===ds.tpl))); return render(); }
+  if(ds.save){ saving=ds.save; return render(); }
+  if(ds.row){ toggle(P(ds.p),ds.row); return render(); }
+  if(ds.tab){ tabA=ds.tab; return render(); }
+  if(ds.unused){ const p=P(ds.unused); const s=new Set(cur(p)); unused(p,s).forEach(id=>s.delete(id)); stage(p,s); return render(); }
+  if(ds.apply){ return applyPane(ds.apply); }
+  if(ds.bub){ t.classList.add("popping"); setTimeout(()=>{toggle(P(ds.p),ds.bub,false); render();},300); return; }
+  if(ds.mini){ toggle(P(ds.p),ds.mini,true); return render(); }
+  if(ds.shake){ const p=P(ds.shake), s=new Set(cur(p)), un=unused(p,s);
+    un.forEach(id=>document.querySelector(`[data-bub="${CSS.escape(id)}"],[data-from="${p.id}"][data-chip="${CSS.escape(id)}"]`)?.classList.add("falling"));
+    setTimeout(()=>{un.forEach(id=>s.delete(id)); stage(p,s); render();},620); return; }
+});
+document.addEventListener("input",e=>{ if(e.target.dataset.q!==undefined){ q=e.target.value.toLowerCase(); render(); } });
+document.addEventListener("keydown",e=>{
+  const inp=e.target.closest("input,textarea,[contenteditable]");
+  if(inp && inp.dataset.savein && e.key==="Enter"){ const name=inp.value.trim(); const p=P(inp.dataset.savein);
+    if(name){ TEMPLATES.push({id:"u"+Date.now(),name,ids:[...cur(p)]}); toast(`Plantilla "${name}" guardada`); } saving=false; return render(); }
+  if(inp){ if(e.key==="Escape"){ saving=false; render(); } return; }
+  if(e.key==="ArrowRight"||e.key==="ArrowLeft"){ const k=Object.keys(VARIANTS), i=k.indexOf(V);
+    setVariant(k[(i+(e.key==="ArrowRight"?1:k.length-1))%k.length]); }
+  if(e.key==="Escape"){ open=null; saving=false; render(); }
+});
+document.addEventListener("pointerdown",e=>{ if(V!=="B"&&V!=="D") return; const el=e.target.closest("[data-chip],[data-cart]"); if(el) startDrag(e,el); });
+document.addEventListener("pointermove",moveDrag);
+document.addEventListener("pointerup",endDrag);
+document.getElementById("prev").onclick=()=>{const k=Object.keys(VARIANTS);setVariant(k[(k.indexOf(V)+k.length-1)%k.length]);};
+document.getElementById("next").onclick=()=>{const k=Object.keys(VARIANTS);setVariant(k[(k.indexOf(V)+1)%k.length]);};
+document.getElementById("stbtn").onclick=()=>{const s=document.getElementById("state"); s.hidden=!s.hidden; renderState();};
+render();
+</script>
+</body>
+</html>

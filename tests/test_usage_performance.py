@@ -106,6 +106,9 @@ def test_usage_cache_refreshes_after_import_finishes(monkeypatch):
         return 1
 
     monkeypatch.setattr(dash, 'usage_runtime_env', lambda: {})
+    # This cache test must not inspect live panes or reconcile the user's DB.
+    monkeypatch.setattr(dash, 'ensure_observed_configs', lambda: None)
+    monkeypatch.setattr(dash.cc_usage, 'reconcile_orphan_interactions', lambda *a, **k: 0)
     monkeypatch.setattr(dash.cc_usage, 'build_usage_state', build)
     monkeypatch.setattr(dash.cc_usage, 'prune_old_turns', lambda *a, **k: 0)
     monkeypatch.setattr(dash.cc_usage, 'record_local_codex_threads', import_codex)

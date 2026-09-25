@@ -25,6 +25,8 @@ from urllib.parse import quote, unquote, urlparse
 # nada". Limpiarlo aquí, una vez, blinda al app pase lo que pase con quien lo lance.
 os.environ.pop("TMUX", None)
 os.environ.pop("TMUX_PANE", None)
+# This is an interactive terminal, even when launched from an automation CLI.
+os.environ.pop("NO_COLOR", None)
 # macOS no tiene GTK/VTE: despachamos a la app nativa (PyObjC + WKWebView) ANTES
 # de tocar `gi`. os.execv reemplaza el proceso pasando argv intacto; el symlink
 # de ~/.local/bin ya resolvio a este archivo real dentro del repo, asi que el
@@ -246,6 +248,23 @@ paned separator { background: @LINE@; min-width: 2px; }
 .help-desc { color: @DIM@; font-size: 12.5px; }
 .help-hint { color: @FAINT@; }
 """
+
+
+_SHELF_HANDLE = 6  # alto del separador del estante de extensiones (px)
+
+
+def _shelf_separator_css():
+    """El separador del estante sí se ve: es el asa para cambiarle la altura.
+    Más específico que la regla que vuelve invisible al del Paned principal."""
+    return (
+        b"paned.cc-paned paned.cc-shelf-paned > separator{"
+        b" min-height:" + str(_SHELF_HANDLE).encode() + b"px;background-image:none;border:0;box-shadow:none;"
+        b" background-color:" + THEME["line"].encode() + b";"
+        b"}"
+        b"paned.cc-paned paned.cc-shelf-paned > separator:hover{"
+        b" background-color:" + THEME["brand"].encode() + b";"
+        b"}"
+    )
 
 
 def theme_css(t):
@@ -633,7 +652,7 @@ def _bg_rgba():
     return c
 
 
-def make_term(argv_sh):
+def make_term(argv_sh, before_spawn=None):
     term = Vte.Terminal()
     term.set_font(Pango.FontDescription(FONT))
     term.set_colors(rgba(THEME["fg"]), _bg_rgba(), [rgba(p) for p in THEME["pal"]])
@@ -693,6 +712,13 @@ def make_term(argv_sh):
     term.connect("drag-data-received", _on_drop)
 
     def spawn(*_):
+        if before_spawn is not None:
+            try:
+                before_spawn()
+            except Exception as e:
+                print(f"terminal recovery failed; retaining snapshot: {e}")
+                GLib.timeout_add(800, spawn)
+                return False
         try:
             res = term.spawn_sync(Vte.PtyFlags.DEFAULT, os.path.expanduser("~"),
                                   ["/bin/sh", "-c", argv_sh], [],
@@ -2000,9 +2026,8 @@ def snapshot_layouts(wait=False):
         keys = ["local"] + [k for k in list(tabs) if k.startswith("term-")]
         previous = layout_snapshot.read_snapshot(LAYOUT_SNAPSHOT_FILE)["sessions"]
         inspector = PaneInspector()
-        # Solo pestanas abiertas; si tmux no responde (apagado) se conserva lo previo.
-        r = tmuxc("list-sessions", "-F", "#{session_name}")
-        live = set(r.stdout.split()) if r.returncode == 0 else None
+        # Las pestañas abiertas conservan su respaldo aunque tmux vuelva vacío
+        # tras un crash. Solo cerrar la pestaña elimina su entrada de keys.
         data = {}
         for key in keys:
             try:
@@ -2010,7 +2035,7 @@ def snapshot_layouts(wait=False):
                 # Un agente aun sin id hereda el previo solo en su mismo pane.
                 data[key] = layout_snapshot.carry_resume_ids(captured, previous.get(key))
             except Exception as exc:
-                if key in previous and (live is None or key in live):
+                if key in previous:
                     data[key] = previous[key]
                 print(f"snapshot {key}: {exc}", file=sys.stderr)
         layout_snapshot.write_snapshot(LAYOUT_SNAPSHOT_FILE, data)
@@ -2037,6 +2062,12 @@ def restore_saved_layout(sess):
         return False
     layout_snapshot.restore_session(tmuxc, sess, saved, exact_resume_command)
     return True
+
+
+def prepare_local_terminal():
+    """Recover local on every reconnect, before new-session can replace it."""
+    with _LAYOUT_LOCK:
+        restore_saved_layout("local")
 
 
 def finish_startup_restore():
@@ -3266,7 +3297,7 @@ def apply_theme(name):
             b" border-left:1px solid " + THEME["line"].encode() + b";"
             b" border-radius:0;"
             b"}"
-        ))
+        ) + _shelf_separator_css())
     except Exception as e:
         print(f"apply_theme CSS reload err: {e}")
     for button, icon_name, icon_size in list(globals().get("_THEMED_ICON_BUTTONS", [])):
@@ -3314,7 +3345,7 @@ try:
     restore_saved_layout("local")
 except Exception as exc:
     print(f"no pude restaurar local: {exc}", file=sys.stderr)
-hub = make_term("tmux new-session -A -s local -c ~")
+hub = make_term("tmux new-session -A -s local -c ~", before_spawn=prepare_local_terminal)
 # Aplica el tema al tmux status ya en el arranque (idempotente).
 GLib.timeout_add(500, lambda: (_apply_tmux_theme(), False)[1])
 hub._key = "local"   # la pestana ⌂ opera la sesion tmux "local": sin esto, al pararte
@@ -3547,7 +3578,55 @@ def _extension_pill(sess, pane, harness=""):
     return button
 
 
-_EXTENSION_SHELF = {"view": None, "target": None}
+_EXTENSION_SHELF = {"view": None, "target": None, "save": 0}
+# El estante vive bajo las terminales en un Paned vertical: su separador se
+# arrastra y la altura elegida se recuerda entre aperturas y reinicios.
+SHELF_HEIGHT_FILE = os.path.expanduser("~/.claude/hooks/app-extension-shelf.json")
+_SHELF_MIN, _SHELF_TERMINAL_MIN = 180, 160
+
+
+def _shelf_height(total, saved):
+    """Altura del estante dentro de `total` px: la guardada o ~48 % por defecto,
+    sin bajar del mínimo usable ni tapar las terminales."""
+    wanted = saved if saved > 0 else max(270, min(520, int(total * .48)))
+    return max(_SHELF_MIN, min(int(wanted), total - _SHELF_TERMINAL_MIN))
+
+
+def _load_shelf_height():
+    try:
+        with open(SHELF_HEIGHT_FILE) as f:
+            return int(json.load(f).get("height") or 0)
+    except Exception:
+        return 0
+
+
+def _save_shelf_height():
+    _EXTENSION_SHELF["save"] = 0
+    view = _EXTENSION_SHELF.get("view")
+    if view is None or not view.get_visible():
+        return False
+    height = view.get_allocated_height()
+    if height < _SHELF_MIN:
+        return False
+    try:
+        os.makedirs(os.path.dirname(SHELF_HEIGHT_FILE), exist_ok=True)
+        tmp = SHELF_HEIGHT_FILE + ".tmp"
+        with open(tmp, "w") as f:
+            json.dump({"height": height}, f)
+        os.replace(tmp, SHELF_HEIGHT_FILE)
+    except Exception:
+        pass
+    return False
+
+
+def _queue_shelf_height_save(*_):
+    """notify::position llega en cada movimiento del arrastre: escribir una vez al soltar."""
+    view = _EXTENSION_SHELF.get("view")
+    if view is None or not view.get_visible():
+        return
+    if _EXTENSION_SHELF.get("save"):
+        GLib.source_remove(_EXTENSION_SHELF["save"])
+    _EXTENSION_SHELF["save"] = GLib.timeout_add(350, _save_shelf_height)
 
 
 def _close_extension_shelf(*_):
@@ -3585,11 +3664,14 @@ def _open_extension_shelf(sess, pane, harness=""):
         manager.connect("script-message-received::extensions", _extension_message)
         view = WebKit2.WebView.new_with_user_content_manager(manager)
         view.set_no_show_all(True)
-        _terminal_column.pack_end(view, False, True, 0)
+        view.set_size_request(-1, _SHELF_MIN)
+        _shelf_paned.pack2(view, False, False)
         _EXTENSION_SHELF["view"] = view
     view = _EXTENSION_SHELF["view"]
-    _, height = win.get_size()
-    view.set_size_request(-1, max(270, min(520, int(height * .48))))
+    if not view.get_visible():
+        # Solo al abrir: si ya está abierto, re-pulsar no mueve lo que el usuario arrastró.
+        total = _shelf_paned.get_allocated_height()
+        _shelf_paned.set_position(total - _shelf_height(total, _load_shelf_height()) - _SHELF_HANDLE)
     if _EXTENSION_SHELF["target"] != target:
         query = "session=" + quote(sess, safe="") + "&pane=" + quote(pane, safe="")
         if target[2]:
@@ -4475,7 +4557,12 @@ paned.get_style_context().add_class("cc-paned")
 paned.set_wide_handle(False)
 paned.pack1(wv, True, False)
 _terminal_column = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=0)
-_terminal_column.pack_start(nb, True, True, 0)
+_shelf_paned = Gtk.Paned(orientation=Gtk.Orientation.VERTICAL)
+_shelf_paned.get_style_context().add_class("cc-shelf-paned")
+_shelf_paned.set_wide_handle(True)
+_shelf_paned.pack1(nb, True, False)
+_shelf_paned.connect("notify::position", _queue_shelf_height_save)
+_terminal_column.pack_start(_shelf_paned, True, True, 0)
 paned.pack2(_terminal_column, True, False)
 nb.connect("switch-page", _close_extension_shelf)
 nb.get_style_context().add_class("cc-notebook")
@@ -4523,7 +4610,7 @@ _PANED_CSS.load_from_data((
     b" border-left:1px solid " + THEME["line"].encode() + b";"
     b" border-radius:0;"
     b"}"
-))
+) + _shelf_separator_css())
 Gtk.StyleContext.add_provider_for_screen(
     Gdk.Screen.get_default(), _PANED_CSS, Gtk.STYLE_PROVIDER_PRIORITY_USER)
 PANE_POSITION_FILE = os.path.expanduser("~/.claude/hooks/app-pane-position.json")

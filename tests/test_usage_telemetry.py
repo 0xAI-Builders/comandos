@@ -81,7 +81,9 @@ def test_concurrent_hooks_migrate_legacy_db_without_duplicate_column(tmp_path):
         db = tmp_path / f"usage{attempt}.sqlite"
         _legacy_db(db)
         barrier = tmp_path / f"go{attempt}"
-        ctx = multiprocessing.get_context("fork")
+        # Hooks are independent processes. Forking the threaded suite can inherit
+        # locked discovery/logging state and deadlock before reaching SQLite.
+        ctx = multiprocessing.get_context("spawn")
         with ctx.Pool(8) as pool:
             pending = pool.map_async(_init_db_worker, [(str(db), str(barrier))] * 8)
             import time as _t

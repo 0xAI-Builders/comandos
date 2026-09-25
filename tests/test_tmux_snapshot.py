@@ -155,8 +155,8 @@ def test_roundtrip_preserves_geometry_and_conversations_after_panes_are_swapped(
         duration = 900 + int(metadata[pane_id]["conversation"].split("-")[-1])
         start_command = checked(tmux, "display-message", "-p", "-t", new_id, "#{pane_start_command}")
         argv = shlex.split(start_command)
-        assert argv[:2] == ["/bin/sh", "-ilc"]
-        assert argv[2].split(";", 1)[0] == f"exec sleep {duration}"
+        assert argv[:5] == ["env", "-u", "NO_COLOR", "/bin/sh", "-ilc"]
+        assert argv[5].split(";", 1)[0] == f"exec sleep {duration}"
 
     if zoomed:
         checked(tmux, "resize-pane", "-Z", "-t", session + ":0")
@@ -242,6 +242,37 @@ def test_failed_write_preserves_current_generation_without_leaving_partial_files
         tmux_snapshot.write_snapshot(path, {"unserializable": object()})
     assert path.read_bytes() == original_bytes
     assert sorted(p.name for p in tmp_path.iterdir()) == ["layouts.json"]
+
+
+def test_snapshot_keeps_minute_history_after_current_and_backup_are_replaced(tmux, tmp_path, monkeypatch):
+    session, metadata, _ = make_split_session(tmux, tmp_path)
+    saved = tmux_snapshot.capture_session(tmux, session, lambda p: metadata[p['id']])
+    path = tmp_path / 'layouts.json'
+    monkeypatch.setattr(tmux_snapshot.time, 'time', lambda: 6000)
+    tmux_snapshot.write_snapshot(path, {session: saved})
+    for stamp in (6005, 6010, 6065):
+        monkeypatch.setattr(tmux_snapshot.time, 'time', lambda: stamp)
+        tmux_snapshot.write_snapshot(path, {})
+    history = list(path.with_name(path.name + '.history').glob('*.json'))
+    assert any(json.loads(p.read_text())['sessions'] == {session: saved} for p in history)
+
+
+def test_restored_interactive_process_does_not_inherit_automation_no_color(tmux, tmp_path):
+    session, metadata, _ = make_split_session(tmux, tmp_path)
+    saved = tmux_snapshot.capture_session(tmux, session, lambda p: metadata[p['id']])
+    checked(tmux, 'kill-session', '-t', session)
+    checked(tmux, 'set-environment', '-g', 'NO_COLOR', '1')
+    mapping = tmux_snapshot.restore_session(tmux, session, saved, lambda p: 'exec sleep 999')
+    import time
+    for pane in mapping.values():
+        pid = checked(tmux, 'display-message', '-p', '-t', pane, '#{pane_pid}')
+        deadline = time.monotonic() + 2
+        while time.monotonic() < deadline:
+            env = Path(f'/proc/{pid}/environ').read_bytes().split(b'\0')
+            if not any(v.startswith(b'NO_COLOR=') for v in env):
+                break
+            time.sleep(.02)
+        assert not any(v.startswith(b'NO_COLOR=') for v in env)
 
 
 def test_snapshot_rejects_structurally_incomplete_json_and_uses_complete_backup(tmux, tmp_path):

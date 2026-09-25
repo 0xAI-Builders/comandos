@@ -157,9 +157,11 @@ def restore_session(tmux, session, snapshot, resume_command):
         shell = os.environ.get('SHELL') or '/bin/sh'
         for pane_id, saved in starts:
             cmd = resume_command(saved)
-            argv = [shell, '-il']
+            # Recovery can be invoked by an automation process with NO_COLOR=1.
+            # That setting must not disable highlighting in the user's terminal.
+            argv = ['env', '-u', 'NO_COLOR', shell, '-il']
             if cmd:
-                argv = [shell, '-ilc', cmd + '; exec ' + shlex.quote(shell) + ' -il']
+                argv = ['env', '-u', 'NO_COLOR', shell, '-ilc', cmd + '; exec ' + shlex.quote(shell) + ' -il']
             _checked(tmux, 'respawn-pane', '-k', '-t', pane_id, '-c', _cwd(saved), *argv)
             started += 1
         return mapping
@@ -214,7 +216,7 @@ def read_snapshot(path):
 
 
 def write_snapshot(path, sessions):
-    """Atomically replace the snapshot, retaining one valid previous generation."""
+    """Keep a previous generation plus seven days of independent minute history."""
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
     data = {'version': 2, 'saved_at': int(time.time()), 'sessions': sessions}
@@ -234,6 +236,20 @@ def write_snapshot(path, sessions):
             except (ValueError, AttributeError):
                 valid = False
             if valid:
+                history = path.with_name(path.name + '.history')
+                history.mkdir(mode=0o700, exist_ok=True)
+                stamp = int(old.get('saved_at', time.time())) // 60 * 60
+                archived = history / f'{stamp:012d}.json'
+                try:
+                    # Exclusive creation: later captures cannot overwrite this minute.
+                    os.link(path, archived)
+                except FileExistsError:
+                    pass
+                else:
+                    cutoff = int(time.time()) - 7 * 86400
+                    for entry in history.glob('*.json'):
+                        if entry.stem.isdigit() and int(entry.stem) < cutoff:
+                            entry.unlink(missing_ok=True)
                 # Link the old inode; the main path remains present until replace.
                 bak = path.with_name(path.name + '.bak')
                 stage = Path(tmp + '.bak')

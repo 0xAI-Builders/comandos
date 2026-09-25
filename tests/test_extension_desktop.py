@@ -10,13 +10,18 @@ SOURCE = Path('bin/cc-app').read_text()
 
 def fixture():
     calls = []
-    view = NS(hide=lambda: calls.append('hide'), load_uri=lambda uri: calls.append(uri),
-              show=lambda: calls.append('show'), set_size_request=lambda *args: None)
+    state = {'visible': False}
+    view = NS(hide=lambda: (calls.append('hide'), state.update(visible=False)),
+              load_uri=lambda uri: calls.append(uri),
+              show=lambda: (calls.append('show'), state.update(visible=True)),
+              get_visible=lambda: state['visible'], set_size_request=lambda *args: None)
+    paned = NS(get_allocated_height=lambda: 900, set_position=lambda px: calls.append(('position', px)))
     ns = {'_EXTENSION_SHELF': {'view': view, 'target': None}, 're': re, 'quote': quote,
           'urlparse': urlparse, 'BASE_URL': 'http://127.0.0.1:4777', '_DASH_V': 'test',
           '_pane_geometry': lambda sess: {'%4': ()} if sess == 'term-alpha' else {},
-          'tabs': {}, 'win': NS(get_size=lambda: (1400,900))}
-    names={'_open_extension_shelf','_close_extension_shelf','_extension_message'}
+          'tabs': {}, '_shelf_paned': paned, '_SHELF_HANDLE': 6,
+          '_load_shelf_height': lambda: 0, '_SHELF_MIN': 180, '_SHELF_TERMINAL_MIN': 160}
+    names={'_open_extension_shelf','_close_extension_shelf','_extension_message','_shelf_height'}
     nodes=[n for n in ast.parse(SOURCE).body if isinstance(n,ast.FunctionDef) and n.name in names]
     exec(compile(ast.Module(body=nodes,type_ignores=[]),'<cc-app>','exec'),ns)
     return ns, calls, view
@@ -28,7 +33,30 @@ def test_shelf_rejects_missing_or_foreign_pane_and_encodes_exact_target():
         ns['_open_extension_shelf'](session,pane)
     assert calls == []
     ns['_open_extension_shelf']('term-alpha','%4','codex')
-    assert calls == ['http://127.0.0.1:4777/extensions.html?session=term-alpha&pane=%254&harness=codex&v=test','show']
+    assert calls == [('position', 900 - 432 - 6),
+                     'http://127.0.0.1:4777/extensions.html?session=term-alpha&pane=%254&harness=codex&v=test','show']
+
+
+def test_shelf_height_honours_saved_drag_within_usable_bounds():
+    ns,_,_=fixture()
+    height=ns['_shelf_height']
+    assert height(900, 0) == 432              # default ~48 %
+    assert height(900, 300) == 300            # what the user dragged
+    assert height(900, 50) == 180             # never below the usable minimum
+    assert height(900, 2000) == 900 - 160     # never covers the terminals
+
+
+def test_reopening_an_open_shelf_keeps_the_dragged_height():
+    ns,calls,_=fixture()
+    ns['_open_extension_shelf']('term-alpha','%4','codex')
+    calls.clear()
+    ns['_open_extension_shelf']('term-alpha','%4','claude')
+    assert not any(isinstance(c, tuple) for c in calls)
+    ns['_close_extension_shelf']()
+    calls.clear()
+    ns['_load_shelf_height']=lambda: 300
+    ns['_open_extension_shelf']('term-alpha','%4','codex')
+    assert calls[0] == ('position', 900 - 300 - 6)
 
 
 def test_close_stops_page_polling_and_does_not_destroy_the_terminal():

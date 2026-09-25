@@ -2,6 +2,8 @@
 
 El botón **MCPs · Skills**, junto al logo, modelo y esfuerzo, abre un estante bajo las terminales. El encabezado identifica la sesión y el panel al que se aplica la selección. Abrir el botón de otro panel muestra su propia selección; cerrar el estante conserva las terminales.
 
+Para cambiar la altura del estante, arrastra su borde superior. En el dashboard también responde al teclado: ↑/↓ en pasos de 24 px, Inicio al máximo y Fin al mínimo; con doble clic vuelve a la altura por defecto. Nunca baja de 180 px ni tapa las terminales. La altura se recuerda: en la app de escritorio en `~/.claude/hooks/app-extension-shelf.json` y en el dashboard en el `localStorage` de cada navegador. Si vuelves a pulsar el botón con el estante abierto, la altura no cambia.
+
 Pulsa una burbuja o arrástrala entre **Seleccionadas** y **Disponibles**. Cada edición guarda un borrador de ese panel y conversación. **Aplicar y reanudar** prepara la configuración y un punto de recuperación antes de cerrar el agente. Si está trabajando, **Aplicar al terminar** espera; **Interrumpir y aplicar ahora** solicita el cambio inmediato. La espera se puede cancelar antes de que empiece el reinicio.
 
 Las plantillas guardan una selección con nombre. Se cargan cuando las eliges, entre CLIs compatibles, y muestran las extensiones que faltan o no son editables. No se asignan automáticamente a un proyecto.
