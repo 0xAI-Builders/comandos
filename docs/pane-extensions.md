@@ -20,6 +20,8 @@ Se incluyen Claude, Codex, Grok, OpenCode y Antigravity. Las selecciones se apli
 
 El reinicio requiere una conversación exacta, una cuenta identificada y un panel cuya identidad siga siendo la misma. Nunca se toma la conversación más reciente de una carpeta. OpenCode puede identificar una conversación iniciada sin `--session` mediante el plugin de ComandOS; un proceso anterior a esa actualización puede necesitar iniciarse de nuevo con el plugin actualizado. Las declaraciones que un CLI no permite aislar se muestran como no editables o impiden la preparación antes de detener el origen.
 
+Si el modelo o esfuerzo cambian mientras la operación espera, se cancela antes de cerrar el agente: vuelve a aplicar desde el estado actualizado. OpenCode conserva los permisos por proceso admitidos; las rutas de configuración externas y las extensiones de un overlay que el inventario no pueda verificar impiden el reinicio.
+
 Los artefactos privados de lanzamiento y recuperación se conservan mientras puedan ser necesarios. Contienen configuración sensible: no deben subirse a Git ni compartirse. La API del estante devuelve nombres, selecciones, estados y recuentos; no devuelve comandos, variables de entorno ni contenido de conversaciones.
 
 ## Comprobación
