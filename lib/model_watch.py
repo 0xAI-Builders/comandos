@@ -2,7 +2,7 @@
 
 Fuentes (subscription-only, cero API keys):
   - claude: strings del binario versionado (~/.local/share/claude/versions/N)
-  - codex:  strings del binario vendor (los ids del picker viajan en el binario)
+  - codex:  catálogo local del CLI; binario vendor como respaldo sin verificar
   - grok:   `grok models` (salida de texto del CLI)
 
 El watcher NUNCA edita config/providers.json solo: reporta novedades para que
@@ -30,7 +30,7 @@ _CLAUDE_RE = re.compile(r"claude-(?:fable|opus|sonnet|haiku|mythos)-\d(?:-\d)?"
 # Sufijo con nombre abierto (sol, luna, terra, astra, mini, max…): OpenAI
 # bautiza cada generación y una lista cerrada se queda ciega (Astra no cabía).
 _CODEX_RE = re.compile(r"gpt-\d+(?:\.\d+)?(?:-codex)?(?:-[a-z]{2,12})?$")
-_GROK_RE = re.compile(r"grok-[\w.]+$")
+_GROK_RE = re.compile(r"grok-[\w.-]+$")
 
 
 def _run(cmd, timeout=20, env=None):
@@ -91,15 +91,43 @@ def _codex_binary():
     return os.path.realpath(real)
 
 
+def _codex_catalog():
+    """Visible picker IDs from the CLI cache; None means no usable catalog.
+
+    This is local discovery evidence, not an authorization or inference probe.
+    Never copy cache identity, credentials, or arbitrary model metadata.
+    """
+    home = os.environ.get("CODEX_HOME") or os.path.expanduser("~/.codex")
+    try:
+        with open(os.path.join(home, "models_cache.json"), "rb") as fh:
+            raw = fh.read(4 * 1024 * 1024 + 1)
+        if len(raw) > 4 * 1024 * 1024:
+            return None
+        data = json.loads(raw)
+        rows = data.get("models")
+        if not isinstance(rows, list):
+            return None
+        return sorted({row["slug"] for row in rows if isinstance(row, dict)
+                       and row.get("visibility") == "list"
+                       and isinstance(row.get("slug"), str)
+                       and _CODEX_RE.fullmatch(row["slug"])})
+    except (OSError, ValueError, AttributeError, RecursionError):
+        return None
+
+
 def discover_models(grok_home=None):
     found = {"claude": set(), "codex": set(), "grok": set()}
     cb = _claude_binary()
     if cb:
         found["claude"] = _binary_ids(
             cb, rb"claude-(?:fable|opus|sonnet|haiku|mythos)-[\w.\[\]-]{1,24}", _CLAUDE_RE)
-    xb = _codex_binary()
-    if xb:
-        found["codex"] = _binary_ids(xb, rb"gpt-\d[\w.-]{1,24}", _CODEX_RE)
+    catalog = _codex_catalog()
+    if catalog is not None:
+        found["codex"] = set(catalog)
+    else:
+        xb = _codex_binary()
+        if xb:
+            found["codex"] = _binary_ids(xb, rb"gpt-\d[\w.-]{1,24}", _CODEX_RE)
     grok_exe = _which("grok")
     if grok_exe:
         env = dict(os.environ)
@@ -212,7 +240,8 @@ def watch_models(hooks_dir, registry_path, grok_home=None, now=None):
     discovered = discover_models(grok_home)
     registry = registry_model_ids(registry_path)
     reg_norm = {p: {_norm(m) for m in ids} for p, ids in registry.items()}
-    prev_seen = {p: set(v) for p, v in (prev.get("discovered") or {}).items()}
+    prev_seen = {p: set(v.get("models") or [])
+                 for p, v in (prev.get("newSince") or {}).items()}
     # techo por familia segun el registry: solo es NOTICIA lo que supera
     # (o estrena familia); los modelos viejos embebidos en el binario no.
     reg_ceiling = {}
@@ -231,11 +260,16 @@ def watch_models(hooks_dir, registry_path, grok_home=None, now=None):
                 continue
             fam, ver = _family_ver(m)
             ceil = reg_ceiling.get((prov, fam))
-            if ceil is not None and ver <= ceil:
+            # A sibling in the same GPT/Grok generation is also new: Astra
+            # must not hide Sol/Luna, nor the base Grok hide its Fast variant.
+            if ceil is not None and (ver < ceil or
+                                      (ver == ceil and fam not in ("gpt", "grok"))):
                 continue
-            cur = best_per_family.get(fam)
+            variant = re.sub(r"^(?:gpt|grok)-\d+(?:\.\d+)?", "", _norm(m))
+            key = (fam, variant) if fam in ("gpt", "grok") else (fam, "")
+            cur = best_per_family.get(key)
             if cur is None or ver > cur[0]:
-                best_per_family[fam] = (ver, m)
+                best_per_family[key] = (ver, m)
         pend = sorted(m for _v, m in best_per_family.values())
         if pend:
             pending[prov] = pend

@@ -642,18 +642,20 @@ def fs_mkdir(path):
 
 # ---- Watcher de modelos: siempre saber lo MAS RECIENTE de cada CLI ----
 MODEL_WATCH_FILE = os.path.join(HOOKS, "model-watch.json")
-_model_watch_state = {"versions": {}, "last_full": 0.0}
+_model_watch_state = {"versions": {}, "last_full": 0.0, "catalog": None}
 
 
 def _model_watch_notify(news, versions):
     for prov, models in news.items():
         body = ", ".join(models[:4]) + ("…" if len(models) > 4 else "")
+        detail = ("detectados en el binario; disponibilidad sin verificar" if prov == "claude"
+                  else "detectados en el CLI; los catálogos locales actualizan el selector")
         try:
             urllib.request.urlopen(urllib.request.Request(
                 "http://127.0.0.1:4778/notify",
                 data=json.dumps({"title": f"Modelos nuevos de {prov} detectados",
                                  "kind": "waiting", "project": "modelos",
-                                 "body": f"{body} (CLI {versions.get(prov, '?')}) — pide agregarlos al registry"}).encode(),
+                                 "body": f"{body} (CLI {versions.get(prov, '?')}) — {detail}"}).encode(),
                 headers={"Content-Type": "application/json"}), timeout=3)
         except Exception:
             pass
@@ -661,15 +663,18 @@ def _model_watch_notify(news, versions):
 
 def _model_watch_cycle(force=False):
     """Chequeo barato de versiones cada vuelta; escaneo COMPLETO de binarios
-    solo si cambio una version o pasaron 6 h. Novedades -> popup."""
+    al cambiar versión/catálogo local o cada 6 h. Novedades -> popup."""
     try:
         versions = model_watch_lib.installed_versions()
-        changed = versions != _model_watch_state["versions"]
+        catalog = model_catalog_lib.catalog_signature()
+        changed = (versions != _model_watch_state["versions"] or
+                   catalog != _model_watch_state.get("catalog"))
         due = time.time() - _model_watch_state["last_full"] > 6 * 3600
         if force or changed or due:
             result = model_watch_lib.watch_models(
                 HOOKS, PROVIDERS_FILE, grok_home=os.path.expanduser("~/.grok"))
             _model_watch_state["last_full"] = time.time()
+            _model_watch_state["catalog"] = model_catalog_lib.catalog_signature()
             if result.get("news"):
                 _model_watch_notify(result["news"], versions)
             # noticias de skills/MCPs (patrón Radar): mismas vueltas de 6h
@@ -929,6 +934,7 @@ import accounts as account_registry
 import capabilities as capability_inventory
 import session_profiles as session_profile_store
 import model_watch as model_watch_lib
+import model_catalog as model_catalog_lib
 import news_watch as news_watch_lib
 import operator_catalog
 import operator_dispatch
@@ -943,11 +949,14 @@ _provider_registry_cache = {"mtime": None, "data": None}
 
 def load_provider_registry():
     try:
-        mtime = os.path.getmtime(PROVIDERS_FILE)
+        mtime = os.stat(PROVIDERS_FILE).st_mtime_ns
     except OSError:
         mtime = None
+    mtime = (mtime, model_catalog_lib.catalog_signature())
     if _provider_registry_cache["data"] is None or _provider_registry_cache["mtime"] != mtime:
-        _provider_registry_cache["data"] = provider_registry.load_registry(PROVIDERS_FILE)
+        registry = provider_registry.load_registry(PROVIDERS_FILE)
+        _provider_registry_cache["data"] = provider_registry.validate_registry(
+            model_catalog_lib.hydrate_registry(registry))
         _provider_registry_cache["mtime"] = mtime
     return _provider_registry_cache["data"]
 
@@ -1652,6 +1661,7 @@ def pane_extensions_state(query):
     return {'ok':True,'session':query['session'],'pane':query['pane'],'identity':_identity_key(identity),
             'conversationId':sid,'harness':harness,'account':target['account'],'inventory':target['inventory'],
             'desired':target['draft']['desired'],'loaded':target['loaded'],'revision':target['draft']['revision'],
+            'configurationStatus':extension_launch.configuration_status(info.get('pid'),verified=target['loaded'] is not None),
             'operation':operation,'usage':usage,'templates':_extension_store().templates(),
             'busy':bool(info and harness_pane_busy(query['session'],query['pane'],harness)),
             'applySupported':supported,'reason':reason}

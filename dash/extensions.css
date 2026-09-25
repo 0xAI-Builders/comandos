@@ -25,3 +25,5 @@
   .zone{height:auto;min-height:150px;margin-bottom:8px}
   .field{flex:none;max-height:320px}
 }
+
+.origin-group>summary button{font-size:9px;padding:3px 6px;margin-left:6px}

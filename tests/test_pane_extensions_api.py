@@ -130,3 +130,14 @@ def test_template_keeps_project_skill_separate_from_personal_name(boundary):
     code,result=dash.pane_extensions_write('/template',{**payload(state),'name':'Scoped'})
     assert code==200
     assert result['template']['selection']['skills']=={'design':True,'project:design':False}
+
+
+def test_external_process_is_informational_without_claiming_loaded(boundary,monkeypatch):
+    dash,identity,store,inv=boundary
+    monkeypatch.setattr(dash,'agent_info_for_pane',lambda pane:{'agent':'codex','pid':123})
+    monkeypatch.setattr(dash,'observe_pane',lambda *args:{'harnessAccount':'main','conversationId':''})
+    monkeypatch.setattr(dash.extension_launch,'launch_from_pid',lambda pid:None)
+    monkeypatch.setattr(dash.extension_launch,'_process_env',lambda pid:{})
+    state=dash.pane_extensions_state({'session':'test','pane':'%1','harness':'codex'})
+    assert state['configurationStatus']=='external'
+    assert state['loaded'] is None

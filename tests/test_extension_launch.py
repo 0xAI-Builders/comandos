@@ -359,3 +359,15 @@ def test_size_metadata_keeps_malformed_native_entry_unavailable(fx):
     (homes['claude']/'.claude.json').write_text(json.dumps({'mcpServers':{'bad':None}}))
     inv = mod().inventory(registry,'claude','main',str(cwd))
     assert inv['status'] == 'incomplete' or all(not r['toggleable'] for r in inv['mcps'] if r['name']=='bad')
+
+
+def test_configuration_status_distinguishes_external_from_failed_verification(monkeypatch):
+    m=mod()
+    assert m.configuration_status(None) == 'not_started'
+    monkeypatch.setattr(m,'_process_env',lambda pid:{})
+    assert m.configuration_status(123) == 'external'
+    monkeypatch.setattr(m,'_process_env',lambda pid:{m.MANIFEST_ENV:'/private/manifest'})
+    assert m.configuration_status(123) == 'unverified'
+    assert m.configuration_status(123,verified=True) == 'verified'
+    monkeypatch.setattr(m,'_process_env',lambda pid:(_ for _ in ()).throw(PermissionError()))
+    assert m.configuration_status(123) == 'unknown'

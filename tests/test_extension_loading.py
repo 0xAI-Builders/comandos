@@ -26,10 +26,12 @@ const root={innerHTML:'',addEventListener(){},contains(){return false},querySele
  assert.doesNotMatch(root.innerHTML,/loading-spinner/);
  const retry=shelf.refresh();
  assert.match(root.innerHTML,/Cargando MCPs y skills/);
- const state={inventory:{mcps:[{id:'removed',name:'Removed MCP',enabled:false,toggleable:false,reason:'Desactivado en el catálogo compartido'},{id:'optional',name:'Optional MCP',enabled:false,toggleable:true,origin:{id:'repo:source',label:'source/repo'},size:{tokens:1000,tokenizer:'cl100k_base',basis:'tool-definitions'}},{id:'unknown',name:'Unknown MCP',enabled:null,toggleable:false}],skills:[]},desired:{mcps:{removed:false,optional:false},skills:{}},loaded:null,harness:'codex',conversationId:'c',templates:[],busy:false};
+ const state={inventory:{mcps:[{id:'removed',name:'Removed MCP',enabled:false,toggleable:false,reason:'Desactivado en el catálogo compartido'},{id:'optional',name:'Optional MCP',enabled:false,toggleable:true,origin:{id:'repo:source',label:'source/repo'},size:{tokens:1000,tokenizer:'cl100k_base',basis:'tool-definitions'}},{id:'unknown',name:'Unknown MCP',enabled:null,toggleable:false}],skills:[]},desired:{mcps:{removed:false,optional:false},skills:{}},loaded:null,harness:'codex',conversationId:'c',templates:[],busy:false,configurationStatus:'external'};
  pending.shift()({ok:true,json:async()=>state});await retry;
  assert.match(root.innerHTML,/shelf-enter/);
- assert.doesNotMatch(root.innerHTML,/terminar el turno/);
+ assert.doesNotMatch(root.innerHTML,/terminar el turno|Aún no hemos comprobado/);
+ assert.match(root.innerHTML,/Estado del proceso/);
+ assert.match(root.innerHTML,/<div class="notice " role="status"><\/div>/);
  assert.match(root.innerHTML,/Aplicar y reanudar/);
  assert.doesNotMatch(root.innerHTML,/data-action="interrupt"/);
  shelf.state={...state,busy:true};shelf.render();
@@ -53,6 +55,9 @@ const root={innerHTML:'',addEventListener(){},contains(){return false},querySele
  assert.doesNotMatch(available,/Removed MCP|Unknown MCP/);
  assert.match(available,/Disponibles.*?1/);
  assert.match(root.innerHTML.split('<footer>')[1],/Removed MCP/);
+ shelf.state={...state,configurationStatus:'unverified'};shelf.render();
+ assert.match(root.innerHTML,/No se pudo verificar la configuración aplicada/);
+ shelf.state=state;shelf.render();
  const poll=shelf.refresh();
  assert.doesNotMatch(root.innerHTML,/Cargando MCPs y skills/);
  pending.shift()({ok:true,json:async()=>state});await poll;

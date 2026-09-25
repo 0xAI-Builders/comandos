@@ -11,7 +11,7 @@ Las plantillas guardan una selección con nombre. Se cargan cuando las eliges, e
 ## Qué significa el estado
 
 - **Seleccionadas** es el borrador guardado. Los signos `+` y `−` comparan ese borrador con una configuración de proceso verificada.
-- **Carga sin verificar** significa que aún no hay evidencia suficiente del proceso actual. Guardar un borrador no confirma una carga.
+- **Selección guardada** no confirma qué cargó el proceso. **Estado del proceso** distingue un agente iniciado fuera del selector de una configuración aplicada que no pudo verificarse. Solo esta última muestra una alerta.
 - La verificación comprueba la configuración del proceso lanzado, su identidad y la conversación que retoma. No confirma que cada servidor MCP haya logrado conectarse a su proveedor.
 - Si falla el destino, la operación intenta restaurar la conversación y selección anteriores. Una recuperación pendiente conserva el punto de recuperación y bloquea nuevos cambios en ese panel.
 - **Sin dato** significa que no se puede establecer el uso. Solo un historial completo puede establecer **sin uso**. Los datos parciales conservan las llamadas observadas; no se estiman ahorros de tokens.
@@ -45,3 +45,7 @@ El tamaño usa tokens de referencia **cl100k_base**, con tiktoken 0.12.0. En ski
 Las listas MCP se miden pasivamente al atravesar el proxy compartido, solo tras completar la paginación. Los servidores stdio que pasan directamente al CLI y los procesos ya abiertos sin esta captura pueden seguir sin medición. No se arranca ni reinicia un MCP para medirlo. Solo se guarda el recuento, las huellas de configuración/contenido y la fecha; la medición caduca al cambiar la configuración o después de 24 horas.
 
 El instalador de extensiones prepara el tokenizador y su caché. El inventario no descarga archivos de codificación; si falta el tokenizador o su caché verificada, muestra **Sin medir**. Cerrar un grupo se conserva durante las actualizaciones de ese panel.
+
+## Selección por lotes
+
+**Añadir grupo** y **Quitar grupo** cambian las extensiones editables del origen indicado. **Seleccionar todo** y **Quitar todo** afectan las filas editables; con búsqueda o filtro activo se llaman **Seleccionar visibles** y **Quitar visibles** y respetan ese filtro. Los elementos bloqueados o de estado desconocido permanecen intactos. Cada lote guarda una sola revisión del borrador, con las mismas comprobaciones de identidad y conversación que una edición individual. No reinicia ni aplica automáticamente la selección.

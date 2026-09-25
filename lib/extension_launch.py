@@ -475,6 +475,17 @@ def verify_launch(pid, launch):
         return False
 
 
+def configuration_status(pid, verified=False):
+    """Ordinary external processes are not failed managed launches."""
+    if verified:return 'verified'
+    if not pid:return 'not_started'
+    try:
+        env = _process_env(pid)
+        return 'unverified' if env.get(MANIFEST_ENV) or env.get(MARKER) else 'external'
+    except (OSError, ValueError, TypeError):
+        return 'unknown'
+
+
 def launch_from_pid(pid):
     """Reconstruct a sanitized bundle only after live evidence verifies it."""
     try:
