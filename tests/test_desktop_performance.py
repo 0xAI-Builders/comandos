@@ -94,7 +94,7 @@ def model_ui():
           '_STATE_UI': {'verified': ('green', 'v'), 'detecting': ('gray', '?'),
                         'changing': ('yellow', '>')}, '_esc': str, 'ES': False}
     load({'_refresh_tab_models', '_place_pills', '_pane_pill', '_shell_pill',
-          '_pill_row_y', '_attach_model_bar'}, ns)
+          '_pill_row_y', '_attach_model_bar', '_extension_pill'}, ns)
     for key, box in tabs.items():
         box._term = Widget()
         box.children = [box._term]

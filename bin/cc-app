@@ -3481,6 +3481,7 @@ def _shell_pill(sess, pane_id):
                        else "Pick CLI, engine and account: starts in THIS terminal (Ctrl+Shift+A)")
     b.connect("clicked", lambda *_, s=sess, pn=pane_id: open_ai_session_here(s, pn))
     pill.pack_start(b, False, False, 0)
+    pill.pack_start(_extension_pill(sess, pane_id), False, False, 0)
     return pill
 
 
@@ -3533,7 +3534,70 @@ def _pane_pill(sess, p):
     b.set_tooltip_text("Cambiar motor / modelo / cuenta de ESTE pane" if ES else "Switch this pane's motor/model/account")
     b.connect("clicked", lambda *_, s=sess, pn=(p.get("pane") or ""): _dash_js(f"openMotorFor({json.dumps(s)},{json.dumps(pn)})"))
     pill.pack_start(b, False, False, 0)
+    pill.pack_start(_extension_pill(sess, p.get("pane") or "", harness), False, False, 0)
     return pill
+
+
+def _extension_pill(sess, pane, harness=""):
+    button = Gtk.Button(label="MCPs · Skills")
+    button.set_relief(Gtk.ReliefStyle.NONE)
+    button.get_style_context().add_class("pill-btn")
+    button.set_tooltip_text("Extensiones de este panel" if ES else "This pane's extensions")
+    button.connect("clicked", lambda *_: _open_extension_shelf(sess, pane, harness))
+    return button
+
+
+_EXTENSION_SHELF = {"view": None, "target": None}
+
+
+def _close_extension_shelf(*_):
+    view = _EXTENSION_SHELF.get("view")
+    if view is not None:
+        view.hide()
+        view.load_uri("about:blank")  # Stop inventory polling while collapsed.
+    _EXTENSION_SHELF["target"] = None
+    return False
+
+
+def _extension_message(_manager, result):
+    view = _EXTENSION_SHELF.get("view")
+    if view is None:
+        return
+    uri = urlparse(view.get_uri() or "")
+    expected = urlparse(BASE_URL)
+    if (uri.scheme, uri.netloc, uri.path) != (expected.scheme, expected.netloc, "/extensions.html"):
+        return
+    if result.get_js_value().to_string() == "close":
+        _close_extension_shelf()
+
+
+def _open_extension_shelf(sess, pane, harness=""):
+    if not isinstance(sess, str) or not isinstance(pane, str) or not re.fullmatch(r"%\d+", pane):
+        return False
+    if pane not in _pane_geometry(sess):
+        return False
+    target = (sess, pane, harness if harness in ("claude", "codex", "grok", "opencode", "agy") else "")
+    if sess in tabs:
+        nb.set_current_page(nb.page_num(tabs[sess]))
+    if _EXTENSION_SHELF["view"] is None:
+        manager = WebKit2.UserContentManager()
+        manager.register_script_message_handler("extensions")
+        manager.connect("script-message-received::extensions", _extension_message)
+        view = WebKit2.WebView.new_with_user_content_manager(manager)
+        view.set_no_show_all(True)
+        _terminal_column.pack_end(view, False, True, 0)
+        _EXTENSION_SHELF["view"] = view
+    view = _EXTENSION_SHELF["view"]
+    _, height = win.get_size()
+    view.set_size_request(-1, max(270, min(520, int(height * .48))))
+    if _EXTENSION_SHELF["target"] != target:
+        query = "session=" + quote(sess, safe="") + "&pane=" + quote(pane, safe="")
+        if target[2]:
+            query += "&harness=" + target[2]
+        view.load_uri(BASE_URL + "/extensions.html?" + query + "&v=" + _DASH_V)
+        _EXTENSION_SHELF["target"] = target
+    view.show()
+    return False
 
 
 def _pill_row_y(m_t, top, chh):
@@ -3958,8 +4022,8 @@ def _mosaic_close():
         box.destroy()
     except Exception:
         pass
-    nb.show()
-    paned.pack2(nb, True, False)
+    _terminal_column.show()
+    paned.pack2(_terminal_column, True, False)
     try:
         paned.set_position(int(_MOSAIC.get("paned_pos") or 0) or paned.get_position() or 700)
     except Exception:
@@ -4040,8 +4104,9 @@ def _mosaic_open():
         _MOSAIC["cells"].append(cell)
         cells.append((cell, label, sess))
     outer.pack_start(grid, True, True, 0)
-    paned.remove(nb)
-    nb.hide()
+    _close_extension_shelf()
+    paned.remove(_terminal_column)
+    _terminal_column.hide()
     paned.pack2(outer, True, False)
     outer.show_all()
     _MOSAIC["paned_pos"] = paned.get_position()
@@ -4347,6 +4412,9 @@ def open_web_tab(url, label=""):
 def on_msg(mgr, res):
     try:
         d = json.loads(res.get_js_value().to_string())
+        if d.get("type") == "extensions":
+            GLib.idle_add(_open_extension_shelf, d.get("session", ""), d.get("pane", ""), d.get("harness", ""))
+            return
         if d.get("theme"):
             apply_theme(d["theme"])
             return
@@ -4406,7 +4474,10 @@ paned = Gtk.Paned(orientation=Gtk.Orientation.HORIZONTAL)
 paned.get_style_context().add_class("cc-paned")
 paned.set_wide_handle(False)
 paned.pack1(wv, True, False)
-paned.pack2(nb, True, False)
+_terminal_column = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=0)
+_terminal_column.pack_start(nb, True, True, 0)
+paned.pack2(_terminal_column, True, False)
+nb.connect("switch-page", _close_extension_shelf)
 nb.get_style_context().add_class("cc-notebook")
 # El separator del Paned de Adwaita se pinta con un gradiente hardcoded que
 # ignora todos nuestros overrides. Aproximación funcional: hacerlo INVISIBLE

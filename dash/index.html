@@ -731,7 +731,7 @@
   #motor-pop .mp-acct input{font-family:var(--mono);font-size:11px;padding:5px 8px;border:1px solid var(--brand);border-radius:8px;background:var(--bg);color:var(--text);width:150px}
   #motor-pop .mp-foot{margin:10px 4px 0;font-family:var(--mono);font-size:10px;color:var(--dim);display:flex;gap:6px;align-items:center;flex-wrap:wrap;line-height:1.35}
   #motor-pop .mp-foot .ok{color:var(--ok)} #motor-pop .mp-foot .bad{color:var(--err)}
-  .cx-motor{display:inline-flex}
+  .cx-motor{display:inline-flex;gap:5px;flex-wrap:wrap}
   .cx-block > .cx-advice{grid-area:advice;margin:0;max-width:none}
   .cx-block > .cx-acts{grid-area:acts;margin:0;justify-self:end}
   .cx-block > .cx-extra{grid-area:extra;margin-top:8px;padding-top:12px;border-top:1px solid var(--line)}
@@ -4892,6 +4892,11 @@ function mdStrip(s){ return (s||"").replace(/\*\*|`|^#{1,6} /g, ""); }
 	  btn.onclick = ()=>{ if(btn.disabled) return; ulog("click", "motor-session", "centro");
 	    if(isShell){ nsOpenForPane(it.session, it.pane || "", it.cwd || ""); return; }
 	    motorPopOpen(btn, {mode: "session", item: it, model}); };
+	  let extensions = el.querySelector('.extension-pill');
+	  if(!extensions){ extensions=document.createElement('button'); extensions.type='button'; extensions.className='motor-pill extension-pill'; extensions.textContent='MCPs · Skills'; el.append(extensions); }
+	  extensions.title='Extensiones de este panel';
+	  extensions.setAttribute('aria-label',`Extensiones de ${it.project||it.session}, panel ${it.pane||''}`);
+	  extensions.onclick=()=>window.openPaneExtensions(it.session,it.pane||'',it.agent||'');
 	}
 	let MPOP = null;
 	// Puentes para la barra de modelo de cc-app: abren el picker PROBADO del
@@ -9028,4 +9033,5 @@ if("serviceWorker" in navigator)
 </script>
 
 <script src="/reparto.js"></script>
+<script src="/extensions.js"></script>
 <script src="/workspace.js?v=58ed56822729"></script>

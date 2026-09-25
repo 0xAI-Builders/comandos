@@ -67,8 +67,9 @@ function renderSessionConfig() {
     context.draft=SessionConfig.update(registry,context.draft,el.name,el.type==='checkbox'?el.checked:el.value);
     context.error=''; context.requestId=null; renderSessionConfig();
   }));
-  pop.querySelector('[data-sc=profile]').onclick=()=>openSessionProfiles(item);
-  pop.querySelector('[data-sc=usage]').onclick=()=>openExtensionUsage(item);
+  const extensions=()=>{motorPopClose();window.openPaneExtensions(item.session,item.pane||'',item.agent||'');};
+  pop.querySelector('[data-sc=profile]').onclick=extensions;
+  pop.querySelector('[data-sc=usage]').onclick=extensions;
   const recover=pop.querySelector('[data-recover]');
   if(recover)recover.onclick=async()=>{recover.disabled=true;try{
     const r=await api('/session/recover',{operationId:context.recovery.operationId});
