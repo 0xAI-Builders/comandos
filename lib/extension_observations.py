@@ -61,12 +61,18 @@ def conversation_usage(harness, conversation_id, source, inventory, *, max_bytes
 
     def call(name, args=None, ident=None, server=None):
         nonlocal complete
+        if not server and (not isinstance(name, str) or not name):
+            complete = False
+            return
         args = _arguments(args)
         kind, target = '', ''
         if server:
             kind, target = 'mcps', server
         elif isinstance(name, str) and name.startswith('mcp__') and len(name.split('__')) >= 3:
             kind, target = 'mcps', name.split('__', 2)[1]
+        elif isinstance(name, str) and name.startswith('mcp__'):
+            complete = False
+            return
         elif name in ('Skill', 'skill'):
             kind, target = 'skills', args.get('skill') or args.get('name') or ''
         elif name == 'call_mcp_tool':
@@ -77,9 +83,18 @@ def conversation_usage(harness, conversation_id, source, inventory, *, max_bytes
             if len(matches) == 1:
                 kind, target = 'skills', matches[0]['name']
         elif harness == 'opencode' and isinstance(name, str):
-            target = next((s for s in server_names if name.startswith(re.sub(r'[^A-Za-z0-9_-]', '_', s) + '_')), '')
+            matches = [s for s in server_names if name.startswith(re.sub(r'[^A-Za-z0-9_-]', '_', s) + '_')]
+            if len(matches) > 1:
+                complete = False
+                return
+            target = matches[0] if matches else ''
             kind = 'mcps' if target else ''
         if not kind or not isinstance(target, str) or not target:
+            if kind:
+                complete = False
+            return
+        if len([r for r in rows[kind] if r['name'] == target]) > 1:
+            complete = False
             return
         dedup = (kind, target, str(ident)) if ident is not None else None
         if dedup and dedup in seen:
@@ -103,7 +118,11 @@ def conversation_usage(harness, conversation_id, source, inventory, *, max_bytes
                     turns = 1  # A recorded part proves this conversation has begun.
                     r = json.loads(raw)
                     if r.get('type') == 'tool':
-                        call(r.get('tool'), (r.get('state') or {}).get('input'), r.get('callID') or ident)
+                        state = r.get('state') or {}
+                        if state.get('status') not in ('running', 'completed', 'error'):
+                            complete = False
+                            continue
+                        call(r.get('tool'), state.get('input'), r.get('callID') or ident)
         else:
             if signature[1] > max_bytes:
                 complete = False

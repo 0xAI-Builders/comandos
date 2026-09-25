@@ -2,6 +2,7 @@
 import json
 import sqlite3
 import sys
+import pytest
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'lib'))
@@ -59,7 +60,7 @@ def test_opencode_sqlite_filters_conversation_and_skill_calls(tmp_path):
     with sqlite3.connect(p) as db:
         db.execute('create table part (id text, session_id text, data text)')
         for ident, sid, tool, inp in [('a','exact','docs_search',{}),('b','elsewhere','other_search',{}),('c','exact','skill',{'name':'tdd'})]:
-            db.execute('insert into part values (?,?,?)',(ident,sid,json.dumps({'type':'tool','tool':tool,'callID':ident,'state':{'input':inp}})))
+            db.execute('insert into part values (?,?,?)',(ident,sid,json.dumps({'type':'tool','tool':tool,'callID':ident,'state':{'status':'completed','input':inp}})))
     result = usage('opencode','exact',p)
     assert result['counts']['mcps']['docs'] == 1
     assert result['counts']['mcps']['other'] == 0
@@ -100,3 +101,34 @@ def test_grok_completed_mcp_call_counts_but_partial_coverage_stays_unknown(tmp_p
     result=usage('grok','exact',p)
     assert result['counts']['mcps']['docs']==1
     assert result['counts']['mcps']['other'] is None
+
+
+@pytest.mark.parametrize('block', [
+    {'type':'tool_use'},
+    {'type':'tool_use','name':'Skill','input':{}},
+    {'type':'tool_use','name':'Skill','input':{'skill':[]}},
+    {'type':'tool_use','name':'mcp__'},
+])
+def test_incomplete_claude_tool_records_keep_positive_counts_without_false_zeros(tmp_path, block):
+    p=write(tmp_path/'session', [{'type':'user'}, {'type':'assistant','message':{'content':[
+        {'type':'tool_use','id':'observed','name':'mcp__docs__search'}, block]}}])
+    result=usage('claude','exact',p)
+    assert result['counts']['mcps']['docs']==1
+    assert result['counts']['mcps']['other'] is None
+    assert not result['complete']
+
+
+@pytest.mark.parametrize('part', [
+    {'type':'tool'},
+    {'type':'tool','tool':'skill','state':{'status':'completed','input':{}}},
+    {'type':'tool','tool':'docs_search','state':{'status':'pending','input':{}}},
+    {'type':'tool','tool':'docs_search','state':{'input':{}}},
+])
+def test_incomplete_opencode_records_do_not_prove_invocation_or_zero(tmp_path, part):
+    p=tmp_path/'opencode.db'
+    with sqlite3.connect(p) as db:
+        db.execute('create table part (id text, session_id text, data text)')
+        db.execute('insert into part values (?,?,?)', ('a','exact',json.dumps(part)))
+    result=usage('opencode','exact',p)
+    assert not result['complete']
+    assert result['counts']['mcps']['docs'] is None
