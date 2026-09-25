@@ -323,7 +323,7 @@ def capture_opencode_environment(source, runtime_dir, inventory, managed=False):
         if not isinstance(content,dict): raise ValueError()
         known={row['id'] for row in inventory['mcps']}
         if set(content.get('mcp',{}))-known: raise ValueError()
-        if content.get('plugin') or (content.get('skills') and not managed): raise ValueError()
+        if content.get('plugin') or ((content.get('skills') or content.get('mcp')) and not managed): raise ValueError()
         permission=json.loads(values.get('OPENCODE_PERMISSION','{}'))
         if not isinstance(permission,(dict,str)): raise ValueError()
     except (ValueError,TypeError):

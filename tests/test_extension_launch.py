@@ -340,7 +340,7 @@ def test_review_opencode_private_environment_receipt_and_second_apply(fx,monkeyp
             proc.terminate();proc.wait(timeout=5)
 
 
-@pytest.mark.parametrize('source',[{b'OPENCODE_CONFIG':b'/other'},{b'OPENCODE_CONFIG_DIR':b'/other'},{b'OPENCODE_CONFIG_CONTENT':b'{"mcp":{"unknown":{"enabled":true}}}'},{b'OPENCODE_CONFIG_CONTENT':b'{"plugin":["unknown"]}'},{b'OPENCODE_CONFIG_CONTENT':b'{"skills":{"paths":["/unknown"]}}'}])
+@pytest.mark.parametrize('source',[{b'OPENCODE_CONFIG':b'/other'},{b'OPENCODE_CONFIG_DIR':b'/other'},{b'OPENCODE_CONFIG_CONTENT':b'{"mcp":{"unknown":{"enabled":true}}}'},{b'OPENCODE_CONFIG_CONTENT':b'{"mcp":{"docs":{"command":["/private-server"]}}}'},{b'OPENCODE_CONFIG_CONTENT':b'{"plugin":["unknown"]}'},{b'OPENCODE_CONFIG_CONTENT':b'{"skills":{"paths":["/unknown"]}}'}])
 def test_review_opencode_unsupported_scope_rejected(fx,source):
     m=mod();registry,homes,cwd,runtime=fx
     with pytest.raises(ValueError,match='compatible'):
