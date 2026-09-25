@@ -130,7 +130,7 @@ let ctrlArmed = false;
 let pasting = false;
 let interactionState = {{known:false, busy:false, selecting:false}};
 const TOOLBAR_KEYS = Object.freeze({{
-  escape: "\x1b", tab: "\t", left: "\x1b[D", up: "\x1b[A",
+  escape: "\x1b", ctrlc: "\x03", tab: "\t", left: "\x1b[D", up: "\x1b[A",
   down: "\x1b[B", right: "\x1b[C",
 }});
 const modeButton = {{
@@ -247,7 +247,7 @@ function finishDialog(submitter, canceled = false) {{
 
 def test_terminal_touch_toolbar_ctrl_clipboard_focus_and_confirmed_mode():
     result = run_terminal_toolbar("""
-const keys = ["escape", "tab", "left", "up", "down", "right"].map(name => {
+const keys = ["escape", "ctrlc", "tab", "left", "up", "down", "right"].map(name => {
   sendToolbarKey(name);
   return sent.at(-1);
 });
@@ -280,7 +280,7 @@ console.log(JSON.stringify({
 }));
 """)
 
-    assert result["keys"] == ["\x1b", "\t", "\x1b[D", "\x1b[A", "\x1b[B", "\x1b[C"]
+    assert result["keys"] == ["\x1b", "\x03", "\t", "\x1b[D", "\x1b[A", "\x1b[B", "\x1b[C"]
     assert result["ctrlA"] == "\x01"
     assert result["ctrlBracket"] == "\x1b"
     assert result["composition"] == "á"
@@ -289,7 +289,7 @@ console.log(JSON.stringify({
     assert result["pasted"] == ["line one\nline two", "manual text"]
     assert "line one\nline two" not in result["sent"]
     assert result["dialogShown"] == 1
-    assert result["focusCalls"] == 7
+    assert result["focusCalls"] == 8
     assert result["pendingLabel"] == "Seleccionar"
     assert result["confirmedLabel"] == "Interactuar"
     assert result["posted"] == [{
@@ -1035,10 +1035,11 @@ console.log(JSON.stringify({{closed,open:{{disabled:button.disabled,label:button
 def test_app_viewport_updates_are_coalesced_per_animation_frame():
     functions = "\n\n".join(
         extract_js_function(HTML, name)
-        for name in ("currentViewportHeight", "updateAppViewport", "scheduleAppViewport")
+        for name in ("currentViewportHeight", "pinAppScroll", "updateAppViewport", "scheduleAppViewport")
     )
     result = run_node_json(f"""
 let appViewportFrame = 0;
+let appViewportSettle = 0;
 let nextFrame = 1;
 const frames = new Map();
 const writes = [];
@@ -1047,9 +1048,11 @@ const style = {{
 }};
 const document = {{
   documentElement: {{clientHeight: 844, style}},
+  body: {{classList: {{contains: () => false}}}},
 }};
 const window = {{visualViewport: {{height: 420}}, innerHeight: 844}};
 function requestAnimationFrame(callback) {{ const id = nextFrame++; frames.set(id, callback); return id; }}
+const setTimeout = () => 0, clearTimeout = () => {{}};
 {functions}
 for(let i = 0; i < 50; i++) scheduleAppViewport();
 const queuedBeforeFlush = frames.size;
@@ -1059,7 +1062,7 @@ console.log(JSON.stringify({{queuedBeforeFlush, appViewportFrame, writes}}));
     assert result == {
         "queuedBeforeFlush": 1,
         "appViewportFrame": 0,
-        "writes": [["--app-height", "420px"]],
+        "writes": [["--app-height", "420px"], ["--app-top", "0px"], ["--app-left", "0px"], ["--app-width", "100%"]],
     }
 
 
@@ -2008,7 +2011,8 @@ def test_chrome_touch_drag_scrolls_toolbar_without_terminal_prevent_default():
     assert result["prevented"]
     assert not any(result["prevented"])
     assert result["preventCalls"] == []
-    assert result["activeTag"] == "TEXTAREA"
+    # Tocar Esc con el teclado cerrado no lo abre (no enfoca el textarea).
+    assert result["activeTag"] != "TEXTAREA"
     assert result["dialogFocus"] == {
         "manual": {"activeTag": "TEXTAREA", "open": False},
         "cancel": {"activeTag": "TEXTAREA", "open": False},
@@ -3417,3 +3421,52 @@ if __name__ == "__main__":
     test_remote_buttons_reflect_actual_backend_state()
     test_remote_routes_are_never_served_from_stale_shell_cache()
     test_dashboard_declares_standard_favicon_to_avoid_remote_404_noise()
+
+
+def test_tap_line_selection_selects_line_then_extends_to_second_tap():
+    fn = extract_js_function(TERM_HTML, "tapLineSelection")
+    result = run_node_json(fn + r"""
+const text = "uno\ndos dos\ntres\ncuatro";
+const first = tapLineSelection(text, 5, null);          // toque en "dos dos"
+const down = tapLineSelection(text, 20, first.anchor);    // toque en "cuatro"
+const up = tapLineSelection(text, 1, first.anchor);       // toque en "uno"
+const last = tapLineSelection(text, text.length, null);   // final sin salto
+console.log(JSON.stringify({
+  first: text.slice(first.start, first.end), down: text.slice(down.start, down.end),
+  up: text.slice(up.start, up.end), last: text.slice(last.start, last.end),
+  anchorKept: down.anchor.start === first.anchor.start && down.anchor.end === first.anchor.end,
+}));
+""")
+    assert result == {"first": "dos dos", "down": "dos dos\ntres\ncuatro",
+                      "up": "uno\ndos dos", "last": "cuatro", "anchorKept": True}
+
+
+def test_app_height_never_exceeds_visible_area_and_root_scroll_is_pinned():
+    functions = "\n\n".join(
+        extract_js_function(HTML, name) for name in ("currentViewportHeight", "pinAppScroll"))
+    result = run_node_json(f"""
+const panes = {{scrollTop: 42, scrollLeft: 0}};
+const document = {{
+  documentElement: {{clientHeight: 650}},
+  body: {{classList: {{contains: c => c === "app"}}}},
+  getElementById: id => id === "panes" ? panes : null,
+}};
+const scrolls = [];
+const window = {{visualViewport: {{height: 692, scale: 1}}, innerHeight: 650, scrollX: 0, scrollY: 42,
+  scrollTo(x, y) {{ scrolls.push([x, y]); this.scrollY = y; }}}};
+{functions}
+const height = currentViewportHeight();
+pinAppScroll();
+console.log(JSON.stringify({{height, scrolls, panesTop: panes.scrollTop}}));
+""")
+    # Chrome Android puede reportar un visualViewport mas alto que el area real:
+    # si --app-height sobra, la raiz se desplaza y las pestanas quedan fuera.
+    assert result == {"height": 650, "scrolls": [[0, 0]], "panesTop": 0}
+
+
+def test_dashboard_viewport_blocks_pinch_zoom_that_hides_tabs():
+    # Medido en tablet Android: un pellizco dejo el zoom en 1.05 con la vista
+    # corrida 36px; Chrome lo restaura al recargar y las pestanas no se veian.
+    meta = HTML.split('<meta name="viewport" content="', 1)[1].split('"', 1)[0]
+    assert "maximum-scale=1" in meta and "user-scalable=no" in meta
+    assert "interactive-widget=resizes-content" in meta

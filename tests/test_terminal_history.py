@@ -34,3 +34,15 @@ def test_foreign_pane_cannot_be_captured():
 def test_invalid_history_requests_are_rejected(data):
     with pytest.raises(ValueError):
         capture(fake_tmux([]), data)
+
+
+def test_panes_carry_a_friendly_folder_path(monkeypatch):
+    monkeypatch.setenv("HOME", "/home/dev")
+    def run(*args):
+        if args[0] == "list-panes":
+            return SimpleNamespace(returncode=0, stdout="%1\t1\t0\t0\t40\t24\tnode\t/home/dev/codebase/App\n"
+                                                        "%2\t0\t41\t0\t39\t24\tzsh\t/srv/data\n")
+        return SimpleNamespace(returncode=0, stdout="x\n")
+    result = capture(run, {"session": "term-1"})
+    assert [(p["id"], p["title"], p["path"]) for p in result["panes"]] == [
+        ("%1", "node", "~/codebase/App"), ("%2", "zsh", "/srv/data")]

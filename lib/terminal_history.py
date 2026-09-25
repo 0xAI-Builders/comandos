@@ -1,5 +1,14 @@
 """Bounded, read-only pane history for native browser text selection."""
+import os
 import re
+
+
+def friendly_path(path):
+    """Carpeta legible para la UI: el home se muestra como ~."""
+    home = os.path.expanduser("~").rstrip("/")
+    if home and (path == home or path.startswith(home + "/")):
+        return "~" + path[len(home):]
+    return path
 
 
 def capture(tmux, data):
@@ -10,17 +19,20 @@ def capture(tmux, data):
     if isinstance(lines, bool) or not isinstance(lines, int) or not 1 <= lines <= 5000:
         raise ValueError("El historial admite entre 1 y 5000 líneas")
     result = tmux("list-panes", "-t", "=" + session, "-F",
-                  "#{pane_id}\t#{pane_active}\t#{pane_left}\t#{pane_top}\t#{pane_width}\t#{pane_height}\t#{pane_current_command}")
+                  "#{pane_id}\t#{pane_active}\t#{pane_left}\t#{pane_top}\t#{pane_width}\t#{pane_height}\t#{pane_current_command}\t#{pane_current_path}")
     if result.returncode:
         raise ValueError("No se encuentra la sesión")
     panes = []
     for row in result.stdout.splitlines():
-        fields = row.split("\t", 6)
-        if len(fields) != 7:
+        fields = row.split("\t", 7)
+        if len(fields) == 7:
+            fields.append("")
+        if len(fields) != 8:
             continue
-        pane, active, left, top, width, height, title = fields
+        pane, active, left, top, width, height, title, path = fields
         panes.append(dict(id=pane, active=active == "1", left=int(left), top=int(top),
-                          width=int(width), height=int(height), title=title[:100]))
+                          width=int(width), height=int(height), title=title[:100],
+                          path=friendly_path(path)[:300]))
     selected = None
     if data.get("pane"):
         selected = next((p for p in panes if p["id"] == data["pane"]), None)
