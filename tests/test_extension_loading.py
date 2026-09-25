@@ -26,9 +26,14 @@ const root={innerHTML:'',addEventListener(){},contains(){return false},querySele
  assert.doesNotMatch(root.innerHTML,/loading-spinner/);
  const retry=shelf.refresh();
  assert.match(root.innerHTML,/Cargando MCPs y skills/);
- const state={inventory:{mcps:[],skills:[]},desired:{mcps:{},skills:{}},loaded:null,harness:'codex',conversationId:'c',templates:[]};
+ const state={inventory:{mcps:[{id:'removed',name:'Removed MCP',enabled:false,toggleable:false,reason:'Desactivado en el catálogo compartido'},{id:'optional',name:'Optional MCP',enabled:false,toggleable:true},{id:'unknown',name:'Unknown MCP',enabled:null,toggleable:false}],skills:[]},desired:{mcps:{removed:false,optional:false},skills:{}},loaded:null,harness:'codex',conversationId:'c',templates:[]};
  pending.shift()({ok:true,json:async()=>state});await retry;
  assert.match(root.innerHTML,/shelf-enter/);
+ const available=root.innerHTML.split('data-zone="off"')[1].split('<footer>')[0];
+ assert.match(available,/Optional MCP/);
+ assert.doesNotMatch(available,/Removed MCP|Unknown MCP/);
+ assert.match(available,/Disponibles.*?1/);
+ assert.match(root.innerHTML.split('<footer>')[1],/Removed MCP/);
  const poll=shelf.refresh();
  assert.doesNotMatch(root.innerHTML,/Cargando MCPs y skills/);
  pending.shift()({ok:true,json:async()=>state});await poll;

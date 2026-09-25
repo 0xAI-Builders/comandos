@@ -6,7 +6,7 @@
 /* Keep the panel visible while inventory is fetched; animate only its first result. */
 .loading{display:flex;align-items:center;justify-content:center;gap:12px;flex:1;color:var(--dim)}
 .loading-spinner{width:20px;height:20px;flex:none;border:2px solid var(--line2);border-top-color:var(--brand);border-radius:50%;animation:shelf-spin .8s linear infinite}
-.shelf-enter{animation:shelf-enter .18s ease-out both}
+.shelf-enter .body{animation:shelf-enter .12s ease-out both}
 @keyframes shelf-spin{to{transform:rotate(360deg)}}
-@keyframes shelf-enter{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:translateY(0)}}
-@media(prefers-reduced-motion:reduce){.loading-spinner,.shelf-enter{animation:none}}
+@keyframes shelf-enter{from{opacity:.35}to{opacity:1}}
+@media(prefers-reduced-motion:reduce){.loading-spinner,.shelf-enter .body{animation:none}}
