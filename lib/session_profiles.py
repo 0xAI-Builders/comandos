@@ -360,7 +360,7 @@ def inventory(registry, harness, alias, cwd):
     for item in base['mcps']:
         row=dict(item)
         row.update(id=item['name'],configuredEnabled=item['enabled'],effectiveNow=None,
-                   toggleable=caps['mcps']['supported'] and not item.get('plugin') and bool(_NAME.fullmatch(item['name'])))
+                   toggleable=caps['mcps']['supported'] and not item.get('plugin') and bool(_NAME.fullmatch(item['name'])) and not (harness == 'codex' and '.' in item['name']))
         mcps.append(row)
     status='incomplete' if ctx['errors'] else base['status']
     if skills and status=='empty':status='configured'
@@ -425,7 +425,7 @@ def launch_args(profile, registry, cwd, runtime_dir, *, dry_run=False):
             encoded = ['{' + ','.join(f'{key}={_toml_value(e[key])}' for key in ('path', 'name', 'enabled') if key in e) + '}' for e in entries]
             result += ['-c', 'skills.config=[' + ','.join(encoded) + ']']
         for name, enabled in sorted(mcps.items()):
-            result += ['-c', 'mcp_servers.' + json.dumps(name) + '.enabled=' + _toml_value(enabled)]
+            result += ['-c', 'mcp_servers.' + name + '.enabled=' + _toml_value(enabled)]
     elif harness == 'claude' and mcps:
         servers = _claude_mcp_sources(home, cwd, profile.get('harnessAccount') or 'main')
         selected = {name: cfg for name, cfg in servers.items()

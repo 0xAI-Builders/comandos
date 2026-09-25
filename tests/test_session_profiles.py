@@ -56,7 +56,7 @@ def test_codex_profile_overrides_are_process_local_and_preserve_existing(tmp_pat
     args = mod.launch_args(profile, registry(tmp_path), str(tmp_path), str(tmp_path / 'runtime'))
     assert args[0] == '-c'
     assert any('skills.config=' in x and 'unlisted' in x and str(skill) in x for x in args)
-    assert 'mcp_servers."docs".enabled=false' in args
+    assert 'mcp_servers.docs.enabled=false' in args
     assert config.read_bytes() == before
     assert row['effectiveNow'] is None
     assert row['toggleable'] is True
@@ -225,7 +225,7 @@ def test_session_new_launches_saved_profile_flags_without_mutating_configuration
     assert result['profileEffectiveNow'] is None
     command = next(args[3] for args in seen if args[0]=='send-keys')
     assert 'COMANDOS_SESSION_PROFILE=' in command
-    assert 'mcp_servers."docs".enabled=false' in shlex.split(command)
+    assert 'mcp_servers.docs.enabled=false' in shlex.split(command)
     assert config.read_text() == '[mcp_servers.docs]\ncommand="echo"\n'
 
 
