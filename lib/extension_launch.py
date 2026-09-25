@@ -310,6 +310,50 @@ def wrap_command(command, launch):
     return shlex.join([str(HELPER),'--manifest',launch['manifest'],'--',*words])
 
 
+OPENCODE_ENV_KEYS = ('OPENCODE_CONFIG_CONTENT','OPENCODE_PERMISSION','OPENCODE_CONFIG','OPENCODE_CONFIG_DIR')
+
+
+def capture_opencode_environment(source, runtime_dir, inventory, managed=False):
+    """Capture only supported CLI overrides; returned reference contains no values."""
+    values={key:source[key.encode()].decode() for key in OPENCODE_ENV_KEYS if key.encode() in source}
+    if values.get('OPENCODE_CONFIG') or values.get('OPENCODE_CONFIG_DIR'):
+        raise ValueError('OpenCode usa un catálogo alternativo no compatible; el agente sigue abierto')
+    try:
+        content=json.loads(values.get('OPENCODE_CONFIG_CONTENT','{}'))
+        if not isinstance(content,dict): raise ValueError()
+        known={row['id'] for row in inventory['mcps']}
+        if set(content.get('mcp',{}))-known: raise ValueError()
+        if content.get('plugin') or (content.get('skills') and not managed): raise ValueError()
+        permission=json.loads(values.get('OPENCODE_PERMISSION','{}'))
+        if not isinstance(permission,(dict,str)): raise ValueError()
+    except (ValueError,TypeError):
+        raise ValueError('OpenCode contiene overrides no compatibles; el agente sigue abierto') from None
+    directory=Path(runtime_dir);directory.mkdir(mode=0o700,parents=True,exist_ok=True)
+    if directory.stat().st_uid!=os.getuid() or directory.stat().st_mode & 0o077:
+        raise ValueError('Directorio de entorno no privado')
+    path=directory/('environment-'+uuid.uuid4().hex+'.json')
+    _private(path,{'version':1,'values':values})
+    return {'path':str(path),'sha256':hashlib.sha256(path.read_bytes()).hexdigest()}
+
+
+def wrap_environment(command, reference):
+    return shlex.join([str(HELPER),'--environment-file',reference['path'],'--environment-sha256',reference['sha256'],'--',*shlex.split(command)])
+
+
+def run_environment(path, digest, command):
+    path=Path(path);stat=path.stat();parent=path.parent.stat()
+    if path.is_symlink() or stat.st_uid!=os.getuid() or stat.st_mode & 0o077 or parent.st_uid!=os.getuid() or parent.st_mode & 0o077:
+        raise ValueError('Entorno privado inválido')
+    raw=path.read_bytes()
+    if hashlib.sha256(raw).hexdigest()!=digest: raise ValueError('Entorno privado modificado')
+    data=json.loads(raw);values=data['values']
+    if data['version']!=1 or set(values)-set(OPENCODE_ENV_KEYS): raise ValueError('Entorno incompatible')
+    env=dict(os.environ)
+    for key in OPENCODE_ENV_KEYS: env.pop(key,None)
+    env.update(values)
+    os.execvpe(command[0],command,env)
+
+
 def _load_manifest(path, bundle=None):
     path = Path(path)
     stat = path.stat()
@@ -495,7 +539,7 @@ def run_manifest(path, command):
     argv = [*command,*extra]
     digest = hashlib.sha256(Path(path).read_bytes()).hexdigest()
     receipt = Path(path).parent / ('receipt-'+uuid.uuid4().hex+'.json')
-    receipt_env = {key:env[key] for key in data['env']}
+    receipt_env = {key:env.get(key) for key in set(data['env']) | (set(OPENCODE_ENV_KEYS) if data['bundle']['harness']=='opencode' else set())}
     _private(receipt,{'manifestSha256':digest,'argv':argv,'env':receipt_env,'artifacts':artifacts})
     env.update({MARKER:data['bundle']['operationId'],MANIFEST_ENV:str(path),DIGEST_ENV:digest,
                 RECEIPT_ENV:str(receipt),RECEIPT_HASH_ENV:hashlib.sha256(receipt.read_bytes()).hexdigest()})
@@ -507,9 +551,12 @@ def main(argv=None):
     import argparse
     parser=argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--manifest');parser.add_argument('--namespace-proof')
+    parser.add_argument('--environment-file');parser.add_argument('--environment-sha256')
     parser.add_argument('command',nargs=argparse.REMAINDER)
     args=parser.parse_args(argv)
     try:
+        if args.environment_file:
+            run_environment(args.environment_file,args.environment_sha256,args.command[1:] if args.command[:1]==['--'] else args.command)
         if args.namespace_proof:
             proof=json.loads(Path(args.namespace_proof).read_text())
             _namespace(proof['mounts'])

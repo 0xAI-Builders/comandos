@@ -2340,7 +2340,7 @@ def _preserve_extension_plan(adapter,plan):
     registry=load_provider_registry();cwd=adapter.identity['pane_current_path']
     source=extension_launch.inventory(registry,plan['to'],previous.get('harnessAccount') or 'main',cwd)
     dest=extension_launch.inventory(registry,plan['to'],plan['harnessAccount'],cwd)
-    choices={kind:{} for kind in ('mcps','skills')}
+    choices={kind:{row['id']:False for row in dest[kind] if row['toggleable']} for kind in ('mcps','skills')}
     for kind in choices:
         before={r['id']:r for r in source[kind]};after={r['id']:r for r in dest[kind]}
         for ident,enabled in prior['selection'][kind].items():
@@ -2522,6 +2522,15 @@ class SessionConfiguration:
                 origin['resume_command']=extension_launch.wrap_command(origin['resume_command'],origin['extensionLaunch'])
             if plan.get('extensionLaunch') and plan.get('sameConversation'):
                 plan['command']=extension_launch.wrap_command(plan['command'],plan['extensionLaunch'])
+            if self.frm=='opencode':
+                environment=extension_launch.capture_opencode_environment(_read_environ(self.original['pid']),os.path.join(HOOKS,'extension-launches'),extension_launch.inventory(load_provider_registry(),'opencode',account,self.identity['pane_current_path']),managed=bool(origin.get('extensionLaunch')))
+                origin['opencodeEnvironment']=environment
+                origin['resume_command']=extension_launch.wrap_environment(origin['resume_command'],environment)
+                if plan.get('sameConversation') and plan['to']=='opencode':
+                    plan['command']=extension_launch.wrap_environment(plan['command'],environment)
+            return_environment=(plan.get('returnOrigin') or {}).get('opencodeEnvironment')
+            if return_environment and plan['to']=='opencode':
+                plan['command']=extension_launch.wrap_environment(plan['command'],return_environment)
             handoff_dir = os.path.join(HOOKS, 'session-handoffs')
             os.makedirs(handoff_dir, mode=0o700, exist_ok=True)
             path = os.path.join(handoff_dir, self.data['requestId'] + '.md')
@@ -2776,6 +2785,9 @@ class PaneExtensionConfiguration(SessionConfiguration):
         if self.frm!='shell': _snapshot_transcript(origin)
         previous=target['observed'];harness=target['harness'];account=target['account']
         launch=extension_launch.prepare_launch(load_provider_registry(),harness,account,self.identity['pane_current_path'],draft['desired'],os.path.join(HOOKS,'extension-launches'),self.data['requestId'])
+        environment=None
+        if self.frm=='opencode':
+            environment=extension_launch.capture_opencode_environment(_read_environ(self.original['pid']),os.path.join(HOOKS,'extension-launches'),target['inventory'],managed=bool(target['bundle']))
         flags=origin.get('flags') or []
         # Runtime model metadata, if observed, takes precedence over old launch
         # flags. Otherwise retain the flags verbatim and leave model unknown.
@@ -2784,7 +2796,8 @@ class PaneExtensionConfiguration(SessionConfiguration):
         motor=previous.get('motor') or harness
         command=_configuration_command(harness,motor,model or '',effort or '',account,sid,flags,preserve_model_flags=not bool(model))
         command=extension_launch.wrap_command(command,launch)
-        self.plan=dict(to=harness,motor=motor,model=model or '',effort=effort or '',harnessAccount=account,
+        if environment: command=extension_launch.wrap_environment(command,environment)
+        self.plan=dict(opencodeEnvironment=environment,to=harness,motor=motor,model=model or '',effort=effort or '',harnessAccount=account,
                        motorAccount=previous.get('motorAccount') or account,command=command,previous=previous,
                        routeId=harness+':'+motor,expectedSid=sid,sameConversation=self.frm!='shell',
                        extensionsOnly=True,extensionLaunch=launch,unchanged=bool(target['bundle'] and target['loaded']==launch['selection']),
@@ -2801,6 +2814,12 @@ class PaneExtensionConfiguration(SessionConfiguration):
         if self.frm!='shell':
             if origin.get('agent')!=self.frm or not sid or sid!=plan['expectedSid'] or observed.get('conversationId')!=sid:
                 raise ValueError('la conversación cambió durante la espera; el origen sigue abierto')
+            if any(observed.get(key)!=plan['previous'].get(key) for key in ('model','effort','motor','confirmed')):
+                raise ValueError('la configuración cambió durante la espera; el origen sigue abierto')
+            if plan.get('opencodeEnvironment'):
+                current=extension_launch.capture_opencode_environment(_read_environ(self.original['pid']),os.path.join(HOOKS,'extension-launches'),extension_launch.inventory(load_provider_registry(),'opencode',plan['harnessAccount'],self.identity['pane_current_path']),managed=bool(extension_launch.launch_from_pid(self.original['pid'])))
+                if current['sha256']!=plan['opencodeEnvironment']['sha256']:
+                    raise ValueError('la configuración OpenCode cambió durante la espera; el origen sigue abierto')
             if observed.get('harnessAccount')!=plan['harnessAccount']:
                 raise ValueError('la cuenta original cambió durante la espera')
         origin.update(observed=observed,agent_pid=self.original.get('pid'),agent_start=self.original_start,identity=self.identity)
@@ -2815,6 +2834,9 @@ class PaneExtensionConfiguration(SessionConfiguration):
             command=_configuration_command(self.frm,observed.get('motor') or self.frm,model or '',effort or '',
                 observed['harnessAccount'],sid,origin.get('flags') or [],preserve_model_flags=not bool(model))
             origin['resume_command']=extension_launch.wrap_command(command,bundle) if bundle else command
+            if plan.get('opencodeEnvironment'):
+                origin['opencodeEnvironment']=plan['opencodeEnvironment']
+                origin['resume_command']=extension_launch.wrap_environment(origin['resume_command'],plan['opencodeEnvironment'])
         self.snapshot_record={'session':self.sess,'layout':layout,'origin':origin,'destination':dict(plan)}
         return self.snapshot_record
 

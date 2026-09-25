@@ -131,3 +131,50 @@ def test_foreign_draft_key_cannot_reconfigure_this_pane(rig):
     a.data.update(extensionDraftKey=foreign['key'],revision=foreign['revision'])
     result=run_operation(b.store,a.data['requestId'],a)
     assert not result['ok'] and b.events==[]
+
+
+def test_review_queued_model_change_is_rejected_before_exit(rig):
+    b=rig;a=adapter(b)
+    b.state.update(model='gpt-5.5',effort='high',confirmed=True)
+    plan=a.prepare()
+    b.state.update(model='gpt-6-astra',effort='low')
+    with pytest.raises(ValueError,match='configuración'):
+        a.snapshot(plan)
+    assert b.events==[]
+
+
+def test_review_preserved_selection_defaults_new_destination_items_off(rig,monkeypatch):
+    b=rig;d=b.dash;b.configure_source('codex')
+    prior={'selection':{'mcps':{'docs':False},'skills':{}},'harness':'codex','manifest':'old-private','operationId':'old-op'}
+    monkeypatch.setattr(d.extension_launch,'launch_from_pid',lambda pid:prior)
+    inv={'mcps':[dict(id='docs',name='docs',enabled=True,toggleable=True),dict(id='new',name='new',enabled=True,toggleable=True)],'skills':[]}
+    monkeypatch.setattr(d.extension_launch,'inventory',lambda *a:inv)
+    a=b.adapter(toHarness='codex',motor='codex',model='gpt-6-astra',effort='low')
+    assert a.prepare()['extensionLaunch']['selection']['mcps']=={'docs':False,'new':False}
+
+
+def test_review_opencode_live_environment_survives_destination_and_rollback(rig,monkeypatch,tmp_path):
+    import os, subprocess, sys
+    b=rig;d=b.dash;a=adapter(b,'opencode')
+    content=json.dumps({'model':'fixture/model','permission':{'edit':'deny'}})
+    source=subprocess.Popen([sys.executable,'-c','import time; time.sleep(30)'],env=dict(os.environ,OPENCODE_CONFIG_CONTENT=content,OPENCODE_PERMISSION='{"bash":"deny"}'))
+    try:
+        monkeypatch.setattr(d,'_read_environ',lambda pid:dict(v.split(b'=',1) for v in Path(f'/proc/{source.pid}/environ').read_bytes().split(b'\0') if b'=' in v))
+        plan=a.prepare();snapshot=a.snapshot(plan)
+        assert content not in json.dumps(snapshot)
+        for index,command in enumerate((plan['command'],snapshot['origin']['resume_command'])):
+            words=shlex.split(command)
+            assert '--environment-file' in words
+            path=Path(words[words.index('--environment-file')+1])
+            assert path.stat().st_mode & 0o777==0o600
+            out=tmp_path/f'env-{index}.json'
+            script='import json,os,sys; open(sys.argv[1],"w").write(json.dumps({k:v for k,v in os.environ.items() if k.startswith("OPENCODE_")}))'
+            run=subprocess.run([*words[:words.index('--')+1],sys.executable,'-c',script,str(out)],env=dict(os.environ,OPENCODE_PERMISSION='{"bash":"allow"}',OPENCODE_CONFIG_DIR='/wrong'),capture_output=True)
+            assert run.returncode==0
+            env=json.loads(out.read_text())
+            assert env['OPENCODE_CONFIG_CONTENT']==content
+            assert env['OPENCODE_PERMISSION']=='{"bash":"deny"}'
+            assert 'OPENCODE_CONFIG_DIR' not in env
+        assert b.events==[]
+    finally:
+        source.terminate();source.wait(timeout=5)

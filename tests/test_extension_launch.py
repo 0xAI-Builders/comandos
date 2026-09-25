@@ -312,3 +312,36 @@ print('all-runtime-adapters-ok')
     result=subprocess.run(['python3','-c',script,str(ROOT)],env={**os.environ,'HOME':str(tmp_path)},capture_output=True,text=True)
     assert result.returncode==0,result.stderr
     assert result.stdout.strip()=='all-runtime-adapters-ok'
+
+
+def test_review_opencode_private_environment_receipt_and_second_apply(fx,monkeypatch):
+    m=mod();registry,homes,cwd,runtime=fx
+    inv=m.inventory(registry,'opencode','main',str(cwd))
+    source={b'OPENCODE_CONFIG_CONTENT':b'{"model":"fixture/model","permission":{"edit":"deny"}}',b'OPENCODE_PERMISSION':b'{"bash":"deny"}',b'AUTH_TOKEN':b'never-copy'}
+    ref=m.capture_opencode_environment(source,runtime,inv)
+    assert 'never-copy' not in Path(ref['path']).read_text()
+    monkeypatch.setenv('OPENCODE_PERMISSION','{"bash":"allow"}')
+    command=shlex.join([sys.executable,'-c','import time;time.sleep(20)'])
+    for index in range(2):
+        launch=m.prepare_launch(registry,'opencode','main',str(cwd),{'mcps':{'docs':False},'skills':{}},runtime,'env-'+str(index))
+        proc=subprocess.Popen(shlex.split(m.wrap_environment(m.wrap_command(command,launch),ref)))
+        try:
+            for _ in range(100):
+                if m.verify_launch(proc.pid,launch):break
+                time.sleep(.02)
+            assert m.verify_launch(proc.pid,launch)
+            env=m._process_env(proc.pid)
+            assert env['OPENCODE_PERMISSION']=='{"bash":"deny"}'
+            content=json.loads(env['OPENCODE_CONFIG_CONTENT'])
+            assert content['model']=='fixture/model' and content['permission']['edit']=='deny'
+            assert content['mcp']['docs']['enabled'] is False
+            ref=m.capture_opencode_environment({k.encode():v.encode() for k,v in env.items()},runtime,inv,managed=True)
+        finally:
+            proc.terminate();proc.wait(timeout=5)
+
+
+@pytest.mark.parametrize('source',[{b'OPENCODE_CONFIG':b'/other'},{b'OPENCODE_CONFIG_DIR':b'/other'},{b'OPENCODE_CONFIG_CONTENT':b'{"mcp":{"unknown":{"enabled":true}}}'},{b'OPENCODE_CONFIG_CONTENT':b'{"plugin":["unknown"]}'},{b'OPENCODE_CONFIG_CONTENT':b'{"skills":{"paths":["/unknown"]}}'}])
+def test_review_opencode_unsupported_scope_rejected(fx,source):
+    m=mod();registry,homes,cwd,runtime=fx
+    with pytest.raises(ValueError,match='compatible'):
+        m.capture_opencode_environment(source,runtime,m.inventory(registry,'opencode','main',str(cwd)))
