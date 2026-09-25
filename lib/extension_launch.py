@@ -200,8 +200,9 @@ def prepare_launch(registry, harness, account, cwd, selection, runtime_dir, oper
             else: settings['skillOverrides'][row['name']] = 'on' if enabled else 'off'
         args += ['--settings',file('settings.json',settings),'--strict-mcp-config','--mcp-config',file('mcp.json',{'mcpServers':servers})]
     elif harness == 'opencode':
-        try: overlay = json.loads(os.environ.get('OPENCODE_CONFIG_CONTENT','{}'))
-        except ValueError: raise ValueError('Overlay OpenCode inválido.') from None
+        # Only selected extensions belong in this overlay. The caller's complete
+        # environment is merged at execution, after env -u/assignments resolve.
+        overlay = {}
         overlay = capabilities._deep_merge(overlay,{'mcp':{n:{'enabled':enabled} for n,enabled in selected_mcps.items()}})
         overlay['mcp'].update(synthetic)
         if isinstance(overlay.get('permission'),str): overlay['permission']={'*':overlay['permission']}
@@ -235,6 +236,13 @@ def prepare_launch(registry, harness, account, cwd, selection, runtime_dir, oper
         for name,enabled in selected_mcps.items():
             if name in data['mcpServers']: data['mcpServers'][name]['disabled'] = not enabled
         mount(home/'config/mcp_config.json',data)
+        for layer in ctx['layers']:
+            if layer['scope']=='project' and layer['path'].exists():
+                project_data=_read(layer['path'])
+                project_data['mcpServers']={n:spec for n,spec in project_data.get('mcpServers',{}).items() if chosen['mcps'].get(n) is not False}
+                for name,enabled in selected_mcps.items():
+                    if name in project_data['mcpServers']: project_data['mcpServers'][name]['disabled']=not enabled
+                mount(layer['path'],project_data)
         data = _read(home/'config/skills.json')
         names = {r['name']:v for r,v in selected_skills}
         data['exclude'] = sorted((set(data.get('exclude',[]))-set(names))|{n for n,v in names.items() if not v})

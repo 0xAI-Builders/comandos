@@ -268,3 +268,24 @@ def test_globally_disabled_catalog_blocks_stale_enabled_native_declaration(fx):
     launch=m.prepare_launch(registry,'codex','main',str(cwd),{},str(runtime),'global-off')
     data=json.loads(Path(launch['manifest']).read_text())
     assert 'mcp_servers.docs.enabled=false' in data['args']
+
+
+def test_opencode_command_overlay_wins_over_parent_unrelated_settings(fx,monkeypatch):
+    m=mod();registry,homes,cwd,runtime=fx
+    monkeypatch.setenv('OPENCODE_CONFIG_CONTENT','{"model":"parent","permission":{"bash":"allow"}}')
+    launch=m.prepare_launch(registry,'opencode','main',str(cwd),{},str(runtime),'precedence')
+    data=json.loads(Path(launch['manifest']).read_text())
+    _,_,env,_=m._resolve_command(data,['env','OPENCODE_CONFIG_CONTENT={"model":"session","permission":{"bash":"deny"}}','opencode'])
+    overlay=json.loads(env['OPENCODE_CONFIG_CONTENT'])
+    assert overlay['model']=='session' and overlay['permission']['bash']=='deny'
+
+
+def test_agy_project_mcp_is_filtered_in_private_project_mount(fx):
+    m=mod();registry,homes,cwd,runtime=fx
+    path=cwd/'.agents/mcp_config.json';path.parent.mkdir(parents=True)
+    path.write_text(json.dumps({'mcpServers':{'project-docs':{'command':'fixture'}}}))
+    launch=m.prepare_launch(registry,'agy','main',str(cwd),{'mcps':{'project-docs':False}},str(runtime),'project')
+    data=json.loads(Path(launch['manifest']).read_text())
+    mount=next(r for r in data['mounts'] if r['target']==str(path))
+    assert 'project-docs' not in json.loads(Path(mount['source']).read_text())['mcpServers']
+    assert 'project-docs' in path.read_text()
