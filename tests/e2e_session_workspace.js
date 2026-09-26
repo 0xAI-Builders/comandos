@@ -5,6 +5,7 @@ const {loadPlaywright}=require('./e2e_mobile_remote');
 const root=path.resolve(__dirname,'..');
 const registry={harnesses:{claude:{label:'Claude Code',accounts:[{alias:'main',selectable:true}]},codex:{label:'Codex',accounts:[{alias:'work',selectable:true,motorSelectable:true}]}},motors:{claude:{label:'Claude',models:[{id:'opus',name:'Opus',efforts:['high'],defaultEffort:'high'}]},codex:{label:'Codex',models:[{id:'gpt-6-astra',name:'Astra',efforts:['high','ultra'],defaultEffort:'high'}]}},matrix:[{id:'claude:claude',harness:'claude',motor:'claude',selectable:true},{id:'codex:codex',harness:'codex',motor:'codex',selectable:true}]};
 const items=[{session:'test',pane:'%1',agent:'claude',motor:'claude',model:'opus',effort:'high',account:'main',cwd:'/tmp',project:'Proyecto',alive:true,status:'idle'},{session:'test',pane:'%2',agent:'codex',motor:'codex',model:'gpt-6-astra',effort:'ultra',account:'work',cwd:'/tmp',project:'Proyecto',alive:true,status:'working'}];
+for(const item of items){item.harnessAccount=item.account;item.motorAccount=item.account;item.configConfirmed=true;item.observedConfig={harness:item.agent,motor:item.motor,model:item.model,effort:item.effort,harnessAccount:item.account,motorAccount:item.account,confirmed:true,identity:'identity-'+item.pane,conversationId:'thread-'+item.pane};}
 const mcpDescription='Busca documentación técnica. <img src=x onerror="window.mcpDescriptionExecuted=true">';
 const mcps=[{id:'docs',name:'docs',description:mcpDescription,descriptionSource:'configuration',enabled:true,toggleable:true,scope:'user'},
   {id:'unknown',name:'unknown',description:'',descriptionSource:'unavailable',enabled:true,toggleable:true,scope:'user'}];
@@ -25,7 +26,9 @@ async function main(){
       if(['/tabs','/tab-history','/events','/ssh'].includes(url.pathname))out=[];
       if(url.pathname==='/operator')out={id:'chat',messages:[],conversations:[],models:[]};
       if(url.pathname==='/session-brain')out={skills:[],mcps,accounts:[]};
-      if(url.pathname==='/session/configure')out={ok:true,queued:true,operationKey:'test|%1'};
+      if(url.pathname==='/session-config-history')out={items:[],previous:null,scope:'project',provenance:'confirmed-operations'};
+      if(url.pathname==='/model/status')out={stage:'waiting',operationKey:'test|%1'};
+      if(url.pathname==='/session/configure')out={ok:true,queued:true,operationId:'workspace-operation',operationKey:'test|%1',state:'waiting'};
       if(url.pathname==='/session-profiles'){
         if(req.method==='POST'){profile={...data,id:'profile-test'};out={ok:true,profile};}
         else out={profiles:profile?[profile]:[],inventory:{skills:[{id:'design',name:'design-research',enabled:true,toggleable:true}],mcps},capabilities:{skills:{supported:true,reason:'Al iniciar'},mcps:{supported:true}}};
@@ -56,18 +59,27 @@ async function main(){
     assert.equal(await page.locator('.overview-card').count(),2);
     await page.screenshot({path:'/tmp/comandos-overview-mobile.png'});
     await page.locator('.overview-card [data-config]').first().click();
-    await page.locator('#motor-pop [name=toHarness]').selectOption('codex');
+    await page.waitForFunction(()=>MPOP&&!MPOP.statusLoading&&!MPOP.historyLoading);
+    const choose=async(field,value)=>{
+      await page.locator(`#motor-pop [data-word="${field}"]`).click();
+      await page.locator(`#motor-pop [data-choice="${field}"][data-value="${value}"]`).click();
+    };
+    await choose('toHarness','codex');
     assert.equal(posts.filter(p=>p.path==='/session/configure').length,0);
-    assert(await page.locator('#motor-pop .sc-apply').isDisabled());
-    await page.locator('#motor-pop [name=harnessAccount]').selectOption('work');
-    await page.locator('#motor-pop [name=effort]').selectOption('ultra');
-    assert.equal(await page.locator('#motor-pop .sc-apply').count(),1);
-    assert.equal(await page.locator('#motor-pop .mp-cli-go').count(),0);
+    await choose('harnessAccount','work');
+    await choose('effort','ultra');
+    assert.equal(await page.locator('#motor-pop [data-confirm]').count(),1);
+    assert.equal(posts.filter(p=>p.path==='/session/configure').length,0);
     await page.screenshot({path:'/tmp/comandos-selector-mobile.png'});
-    await page.locator('#motor-pop .sc-apply').click();
-    await page.waitForFunction(()=>!document.querySelector('#motor-pop').classList.contains('open'));
+    await page.locator('#motor-pop [data-confirm]').click();
+    await page.waitForFunction(()=>MOTOR_PENDING.has('test|%1'));
+    assert(await page.locator('#motor-pop').isVisible());
+    assert(await page.locator('#motor-pop [data-word=model]').isDisabled());
     const changes=posts.filter(p=>p.path==='/session/configure');assert.equal(changes.length,1);
     assert.equal(changes[0].data.harnessAccount,'work');assert.equal(changes[0].data.toHarness,'codex');assert.equal(changes[0].data.effort,'ultra');
+    assert.equal(changes[0].data.session,'test');assert.equal(changes[0].data.pane,'%1');
+    assert.equal(changes[0].data.expectedIdentity,'identity-%1');assert.equal(changes[0].data.expectedConversationId,'thread-%1');
+    await page.locator('#motor-pop .mp-close').click();
     await page.locator('#open-session-profiles').click();
     await page.locator('.sc-extensions .mcp-description').first().waitFor();
     assert.equal(await page.locator('.sc-extensions .mcp-description').first().innerText(),mcpDescription);
@@ -114,7 +126,7 @@ async function main(){
     await page.waitForFunction(()=>!document.querySelector('#centro .cx-model')?.textContent.includes('ultra'));
     assert.doesNotMatch(await page.locator('#centro .motor-pill').innerText(),/ultra/);
     assert.deepEqual(errors,[]);
-    console.log('PASS: mobile chat persistence, overview, single combined switch, profiles launch, observed extension analytics; no page errors.');
+    console.log('PASS: mobile chat persistence, overview, confirmed route switch with exact pane pins and pending controls, profiles launch, observed extension analytics; no page errors.');
   }finally{await browser.close();await new Promise(resolve=>server.close(resolve));}
 }
 main().catch(e=>{console.error(e);process.exitCode=1;});

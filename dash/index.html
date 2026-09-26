@@ -1935,9 +1935,9 @@
 	    #content{padding-bottom:env(safe-area-inset-bottom)}
 	  }
 	</style>
-<link rel="stylesheet" href="/workspace.css?v=0774279ce4ae">
+<link rel="stylesheet" href="/workspace.css?v=3fa7f1d32d65">
 <link rel="stylesheet" href="/reparto.css">
-<script src="/session-config.js"></script>
+<script src="/session-config.js?v=7f3232b0a624"></script>
 
 <div id="panes">
 <nav id="app-navigation" aria-label="Pestañas de sesiones">
@@ -4795,7 +4795,7 @@ function mdStrip(s){ return (s||"").replace(/\*\*|`|^#{1,6} /g, ""); }
 	      }
 	      if(r.stage!==undefined&&r.ok===undefined){
 	        const pend=MOTOR_PENDING.get(key);
-	        if(pend&&pend.stageTxt!==sessionStageLabel(r)){pend.stageTxt=sessionStageLabel(r);pend.stageCode=r.stageCode||"";renderCentro(S.list||[]);if(MPOP&&MPOP.ctx.mode==="session"&&motorTargetKey(MPOP.ctx.item)===key)motorPopRender();}
+	        if(pend&&(pend.stageTxt!==sessionStageLabel(r)||pend.stageCode!==(r.stageCode||r.stage||r.state))){pend.stageTxt=sessionStageLabel(r);pend.stageCode=r.stageCode||r.stage||r.state||"";renderCentro(S.list||[]);if(MPOP&&MPOP.ctx.mode==="session"&&motorTargetKey(MPOP.ctx.item)===key)motorPopRender();}
 	        continue;
 	      }
 	      SWITCH_SEEN.set(key,revision);
@@ -4814,6 +4814,7 @@ function mdStrip(s){ return (s||"").replace(/\*\*|`|^#{1,6} /g, ""); }
 	        tick();
 	      }else toast(tf(`✗ ${name}: el cambio NO entró (${r.detail}) — reinténtalo`,`✗ ${name}: switch did NOT apply (${r.detail}) — retry`),true);
 	      MOTOR_PENDING.delete(key);
+      if(it && typeof scSessionResult === "function") scSessionResult(it,r);
 	      if(MPOP&&MPOP.ctx.mode==="session"&&motorTargetKey(MPOP.ctx.item)===key&&it){MPOP.ctx.item=it;MPOP.ctx.model=it.model||"";MPOP.staged=null;motorPopRender();}
 	      renderCentro(S.list||[]);
 	    }
@@ -4968,7 +4969,7 @@ function mdStrip(s){ return (s||"").replace(/\*\*|`|^#{1,6} /g, ""); }
 	  setTimeout(()=> document.addEventListener("click", motorPopOutside, true), 0);
 	  document.addEventListener("keydown", motorPopKey);
 	}
-	function motorPopClose(){ const pop = $("#motor-pop"); pop.classList.remove("open"); MPOP = null;
+	function motorPopClose(){ const pop = $("#motor-pop"); pop.classList.remove("open","sc-direct"); pop.onkeydown=null; MPOP = null;
 	  document.removeEventListener("click", motorPopOutside, true); document.removeEventListener("keydown", motorPopKey); }
 	function motorPopOutside(e){ const pop = $("#motor-pop"); if(!pop.contains(e.target) && !(MPOP && MPOP.anchor.contains(e.target))) motorPopClose(); }
 	function motorPopKey(e){ if(e.key === "Escape") motorPopClose(); }
@@ -7663,6 +7664,9 @@ function applyQ(){
 // ---------- iconos ----------
 // SVG monolínea estilo Lucide/Termius, hereda color con currentColor.
 const ICON = {
+  "chevron-left": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2.4\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"m15 18-6-6 6-6\"/></svg>",
+  "chevron-right": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2.4\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"m9 18 6-6-6-6\"/></svg>",
+  "chevron-down": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2.4\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"m6 9 6 6 6-6\"/></svg>",
   bell:      '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></svg>',
   volumeOn:  '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M15.5 8.5a5 5 0 0 1 0 7"/><path d="M19 5a10 10 0 0 1 0 14"/></svg>',
   volumeOff: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><line x1="22" y1="9" x2="16" y2="15"/><line x1="16" y1="9" x2="22" y2="15"/></svg>',
@@ -9074,4 +9078,5 @@ if("serviceWorker" in navigator)
 
 <script src="/reparto.js"></script>
 <script src="/extensions.js"></script>
-<script src="/workspace.js?v=58ed56822729"></script>
+<script src="/session-controls.js?v=fef689ef2baa"></script>
+<script src="/workspace.js?v=b0f9e32aaaf8"></script>

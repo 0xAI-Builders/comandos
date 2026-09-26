@@ -3,6 +3,7 @@ import hashlib
 from contextlib import contextmanager
 import json
 import os
+import re
 from pathlib import Path
 import sqlite3
 import time
@@ -105,6 +106,53 @@ class OperationStore:
                              "AND json_extract(request,'$.pane')=? ORDER BY updated DESC LIMIT 1", (session, pane)).fetchone()
         return self.get(row['id']) if row else None
 
+    @staticmethod
+    def config_history(path, cwd, pane_key):
+        """Read confirmed project configurations without creating or recovering a store."""
+        response = dict(items=[], previous=None, scope='project', provenance='confirmed-operations')
+        if not isinstance(cwd, str) or not cwd or not Path(path).is_file():
+            return response
+        db = sqlite3.connect(Path(path).resolve().as_uri() + '?mode=ro', uri=True)
+        db.row_factory = sqlite3.Row
+        groups, previous_seen = {}, False
+        try:
+            rows = db.execute("SELECT pane_key,request,snapshot,result,updated FROM session_operations "
+                              "WHERE state='confirmed' ORDER BY updated DESC,id ASC")
+            for row in rows:
+                try:
+                    request, snapshot, result = (json.loads(row[k] or '{}') for k in ('request', 'snapshot', 'result'))
+                    if not all(isinstance(value, dict) for value in (request, snapshot, result)):
+                        continue
+                    origin = snapshot.get('origin')
+                    if not isinstance(origin, dict) or origin.get('cwd') != cwd:
+                        continue
+                    if request.get('extensionsOnly') or result.get('unchanged') or result.get('ok') is not True:
+                        continue
+                    config = _history_config(result.get('observed'))
+                    if config is None:
+                        continue
+                    key = json.dumps(config, sort_keys=True, separators=(',', ':'))
+                    if key not in groups:
+                        groups[key] = dict(config=config, count=0, lastUsed=row['updated'])
+                    groups[key]['count'] += 1
+                    if not previous_seen and row['pane_key'] == pane_key:
+                        previous_seen = True
+                        identity = origin.get('identity')
+                        if not isinstance(identity, dict):
+                            continue
+                        identity_key = '|'.join(str(identity.get(k, '')) for k in
+                            ('socket_path', 'pid', 'server_start', 'session_id', 'pane_id', 'pane_pid'))
+                        previous = _history_config(origin.get('observed'))
+                        if identity_key == pane_key and previous is not None:
+                            response['previous'] = dict(config=previous, count=1, lastUsed=row['updated'])
+                except (ValueError, TypeError):
+                    continue
+        finally:
+            db.close()
+        response['items'] = [item for key, item in sorted(groups.items(),
+            key=lambda pair: (-pair[1]['count'], -pair[1]['lastUsed'], pair[0]))[:20]]
+        return response
+
     def claim_recovery(self, operation_id):
         with self.connect() as db:
             changed = db.execute("UPDATE session_operations SET state='recovering',owner=?,updated=? "
@@ -125,6 +173,26 @@ class OperationStore:
                                                     'recoveryRequired': state == 'recovery_required'})
             except PermissionError:
                 pass
+
+
+def _history_config(observed):
+    """Only bounded identifiers from a confirmed observation can leave the store."""
+    if not isinstance(observed, dict) or observed.get('confirmed') is not True:
+        return None
+    config = {}
+    for target, source in (('toHarness', 'harness'), ('motor', 'motor'), ('model', 'model'),
+                           ('effort', 'effort'), ('harnessAccount', 'harnessAccount'), ('motorAccount', 'motorAccount')):
+        value = observed.get(source, '' if source == 'effort' else None)
+        if not isinstance(value, str) or value == 'unknown':
+            return None
+        if value == '' and source == 'effort':
+            config[target] = value
+            continue
+        pattern = r'[A-Za-z0-9][A-Za-z0-9_.:/-]{0,159}' if source == 'model' else r'[A-Za-z0-9][A-Za-z0-9_.-]{0,79}'
+        if not re.fullmatch(pattern, value):
+            return None
+        config[target] = value
+    return config
 
 
 def run_operation(store, operation_id, adapter, notify=lambda stage, result: None):

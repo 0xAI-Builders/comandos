@@ -51,3 +51,46 @@ def test_acp_keeps_named_motor_account_separate_from_local_harness():
     assert result['d']['harnessAccount']=='main'
     assert result['d']['motorAccount']=='work'
     assert not result['error']
+
+
+def test_direct_options_skip_unavailable_models_and_accounts():
+    result = run_js(REGISTRY + """
+      registry.motors.codex.models.push({id:'future',soon:true,efforts:['high']});
+      registry.harnesses.codex.accounts.push({alias:'logged-out',selectable:false});
+      const d=S.draft({agent:'codex',model:'gpt-6-astra',effort:'high',account:'work'});
+      console.log(JSON.stringify({models:S.fieldOptions(registry,d,'model'),
+        next:S.cycle(registry,d,'model',1),accounts:S.fieldOptions(registry,d,'harnessAccount'),
+        invalid:S.validate(registry,{...d,model:'future'})}));
+    """)
+    assert result['models'][1]['disabled']
+    assert result['next'] is None
+    assert result['accounts'][1]['disabled']
+    assert result['invalid']
+
+
+def test_recommendations_keep_live_identity_and_filter_incompatible_configurations():
+    result = run_js(REGISTRY + """
+      const d=S.draft({agent:'codex',model:'gpt-6-astra',effort:'high',account:'work',
+        observedConfig:{identity:{pid:99},conversationId:'live-conversation'}});
+      const config={...d,effort:'ultra',expectedConversationId:'old',interrupt:true};
+      const rows=[{config,count:3,lastUsed:3},{config,count:1,lastUsed:1},
+        {config:{...config,harnessAccount:'logged-out'},count:10,lastUsed:5},
+        {config:d,count:20,lastUsed:4}];
+      console.log(JSON.stringify(S.recommendations(registry,d,rows,{agent:'codex'})));
+    """)
+    assert len(result) == 1
+    assert result[0]['config']['expectedConversationId'] == 'live-conversation'
+    assert result[0]['config']['expectedIdentity'] == {'pid': 99}
+    assert result[0]['config']['interrupt'] is False
+
+
+def test_direct_changes_require_confirmation_only_for_route_or_explicit_interruption():
+    result = run_js(REGISTRY + """
+      const d=S.draft({agent:'codex',model:'gpt-6-astra',effort:'high',account:'work'});
+      console.log(JSON.stringify({effort:S.requiresConfirmation(d,{...d,effort:'ultra'}),
+        account:S.requiresConfirmation(d,{...d,harnessAccount:'other'}),
+        cli:S.requiresConfirmation(d,{...d,toHarness:'claude'}),
+        motor:S.requiresConfirmation(d,{...d,motor:'claude'}),
+        interrupt:S.requiresConfirmation(d,{...d,interrupt:true})}));
+    """)
+    assert result == dict(effort=False, account=False, cli=True, motor=True, interrupt=True)

@@ -25,6 +25,7 @@ import json, os, glob, re, shlex, shutil, sys, subprocess, threading, time, webb
 import urllib.parse, urllib.request
 import http.server, socketserver
 import tempfile
+import sqlite3
 import contextlib, fcntl
 import cc_usage
 
@@ -1578,6 +1579,15 @@ def session_operation_store():
             _SESSION_OPERATIONS = session_operations.OperationStore(os.path.join(HOOKS, 'session-operations.sqlite3'))
             _SESSION_OPERATIONS.recover_abandoned()
     return _SESSION_OPERATIONS
+
+
+def session_config_history(query):
+    sess, pane = query.get('session', ''), query.get('pane', '')
+    if not SESSION_RE.fullmatch(sess) or not PANE_RE.fullmatch(pane):
+        raise ValueError('sesión y panel exactos requeridos')
+    identity = _pane_identity(sess, pane)
+    path = _SESSION_OPERATIONS.path if _SESSION_OPERATIONS is not None else os.path.join(HOOKS, 'session-operations.sqlite3')
+    return session_operations.OperationStore.config_history(path, identity.get('pane_current_path'), _identity_key(identity))
 
 
 def _extension_store():
@@ -7906,7 +7916,7 @@ class Handler(http.server.SimpleHTTPRequestHandler):
     # Endpoints con DATOS o ACCIONES: exigen token. El shell estatico (HTML,
     # sw.js, manifest, iconos) NO — no revela nada (es codigo open-source) y
     # asi la PWA instala y carga sin depender de cookies en el webview movil.
-    API_GET = ("/pane-extensions", "/pomodoro", "/providers", "/optimization/plans", "/proxy", "/model/status", "/sovereignty", "/ui-log/summary", "/state", "/usage/state", "/usage/guard", "/usage/changes", "/usage/provider-compare", "/fs/dirs", "/models/latest", "/news/latest", "/notifs/count", "/usage/analytics", "/usage/interactions", "/usage/experiments", "/opencode/models", "/model-tiers", "/dedication", "/active-tab", "/session-profiles", "/extension-usage", "/session-brain", "/project-profiles", "/events", "/conf", "/prefs", "/ssh", "/tabs",
+    API_GET = ("/session-config-history", "/pane-extensions", "/pomodoro", "/providers", "/optimization/plans", "/proxy", "/model/status", "/sovereignty", "/ui-log/summary", "/state", "/usage/state", "/usage/guard", "/usage/changes", "/usage/provider-compare", "/fs/dirs", "/models/latest", "/news/latest", "/notifs/count", "/usage/analytics", "/usage/interactions", "/usage/experiments", "/opencode/models", "/model-tiers", "/dedication", "/active-tab", "/session-profiles", "/extension-usage", "/session-brain", "/project-profiles", "/events", "/conf", "/prefs", "/ssh", "/tabs",
                "/tab-history", "/remote-state", "/remote-qr.png", "/snippets", "/tmux-mouse",
                "/webterm-token", "/operator", "/allocation/status")
 
@@ -7922,6 +7932,14 @@ class Handler(http.server.SimpleHTTPRequestHandler):
 
     def _do_GET(self):
         import urllib.parse
+        if urllib.parse.urlsplit(self.path).path == "/session-config-history":
+            query = urllib.parse.parse_qs(urllib.parse.urlsplit(self.path).query, keep_blank_values=True)
+            if any(len(query.get(key, [])) != 1 for key in ('session', 'pane')):
+                return self._json(400, {"error": "sesión y panel exactos requeridos"})
+            try:
+                return self._json(200, session_config_history({k: v[0] for k, v in query.items()}))
+            except (ValueError, OSError, sqlite3.Error):
+                return self._json(400, {"error": "No se pudo consultar el historial del panel."})
         if self.path.startswith("/pane-extensions"):
             query={k:v[-1] for k,v in urllib.parse.parse_qs(urllib.parse.urlsplit(self.path).query).items()}
             try: return self._json(200,pane_extensions_state(query))
