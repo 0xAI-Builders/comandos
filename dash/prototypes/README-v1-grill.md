@@ -397,3 +397,24 @@ Verification of this mockup:
 Final mobile checks confirmed the completion banner advances the fixture from level 8 to level 9 and dispatches one `level-up` cue. This check intercepted the cue instead of playing it. The clock's progress button remains reachable by scrolling. The mobile header was compacted to one row, and completed blocks retain the chosen duration for the next block's input. Historical achievement checks also retain the three-day achievement after the current streak ends.
 
 This remains a throwaway design round. It does not fix the production Pomodoro synchronization defects recorded above or implement durable progression, real cross-device timer control or background notifications. Those remain requirements for implementation after the design verdict.
+
+
+### Accepted: Regla de tiempo; asset and animation refinement
+
+The user selected B, Regla de tiempo: "MWE gusto regla de tiempo hermano". Use the horizontal ruler and adjacent timer controls as the Pomodoro layout reference. The prototype now defaults to B when `round=pomodoro` has no explicit variant, and labels B as selected in the picker. Explicit A–E comparison links remain available. This selection approves the layout direction; it does not settle all proposed XP formulas, daily targets, sounds or remaining timer policies.
+
+The user then asked about assets and animations. The first B prototype had only the existing line-clock animation and game sounds. The refinement adds six original vector assets in an arcade pixel style: clock, XP crystal, first-block shield, 100-minute trophy, consistency flame and level medal. Their source is `/home/someguy/codebase/0xJesus/ComandOS/.worktrees/comandos-v1-grill/dash/prototypes/assets/pomodoro-arcade.svg`. This is an original SVG symbol sheet, not emoji or third-party game artwork.
+
+Selected layout: `https://nodo-01.tail63a117.ts.net:8444/prototypes/prototype-v1-grill.html?round=pomodoro&variant=B`
+
+Asset/motion review gallery: `https://nodo-01.tail63a117.ts.net:8444/prototypes/prototype-v1-grill.html?round=pomodoro&variant=B&view=assets`
+
+The gallery is a prototype review surface, accessible from the mockup picker; it is not a proposed production navigation section. It shows all six assets in motion and offers an explicitly simulated completion and sound preview. Exact artwork and motion remain subject to the user's verdict.
+
+The selected ruler now has visible minute ticks and a grip-style thumb, while remaining a native range control for pointer, touch and keyboard use. The clock asset appears beside the remaining time. Focus/break selection, presets and manual minute entry stay directly accessible. A compact XP strip sits between the ruler and terminal and opens Analytics.
+
+All six icon assets loop while displayed, with distinct movement: clock breathing with stepped hand rotation while running, floating XP crystal, gently moving shield, glowing trophy, moving flame and glowing level medal. Pausing stops the hands while retaining the icon's gentle motion. XP bars have a repeating highlight that does not change their actual fill amount. A completion or level-up displays a brief spark effect alongside the relevant continuously animated icon and the existing optional sound. Fixed asset bounds preserve the layout. Reduced-motion preferences receive static equivalents.
+
+Validation used Chrome on the remote Mac mini. The original SVG loaded with the correct image MIME type and rendered in desktop/mobile screenshots. The selected timer, Analytics and asset gallery were checked at 1440×1000, 1024×768, 390×844, 844×390 and 320×640 without document or workspace horizontal overflow. Browser interaction checks passed for ruler value changes, running hand animation, looping paused icon, completion reward, single recorded completion and the six-item gallery, with no fixture JavaScript errors. Existing fixed-clock timer/XP checks still passed. No production timer, notifications or analytics data changed.
+
+A final 320 px browser check confirmed the focus/break selector switches between 25-minute focus and 5-minute break presets, the header stays within the viewport, and the mockup picker's asset-gallery button opens the review surface.
