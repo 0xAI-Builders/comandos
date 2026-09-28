@@ -132,4 +132,19 @@ The user answered "Si" to the concrete question: when Lola is placed next to Com
 
 The workspace arrangement is shared. Manual grouping, separation, reordering and split-layout edits from either device must be reflected on the other. Each screen adapts the shared arrangement to its available space. Automatic responsive stacking must preserve the shared tab identities, membership and order; it must not overwrite the user's arrangement merely because the phone is narrower. The previous suggestion of independently remembered device arrangements is superseded.
 
-This is an accepted product requirement, not a claim that live synchronization exists in the prototype. The startup/recovery requirement applies to the latest shared arrangement. Active tab/pane focus and its synchronization remain a separate decision: ask whether selecting Lola on the phone should leave ComandOS active on the computer before assuming that shared arrangement also means shared focus.
+This is an accepted product requirement, not a claim that live synchronization exists in the prototype. The startup/recovery requirement applies to the latest shared arrangement. The follow-up below resolves active tab/pane focus separately from the shared arrangement.
+
+
+### Confirmed: independent active tab and pane on each device
+
+The user answered "Si asi es" to keeping ComandOS selected on the computer when Lola is selected from the phone. Share the workspace arrangement, while each device retains its own active tab and pane. Selecting a different tab or pane on one device must not redirect keyboard input on the other. This is an accepted behavior requirement; the prototype and current tmux integration do not establish that it is implemented.
+
+### Recovery preparation: current code evidence
+
+Read-only code review on September 28, 2026 identified these limits for the next design round. No running sessions, backup contents or live recovery operations were inspected or changed.
+
+- Linux periodically captures per-session layouts and resume metadata, with a previous valid generation and seven days of per-minute history. The normal reader tries the current generation and its previous copy. Sources: `/home/someguy/codebase/0xJesus/ComandOS/bin/cc-app:2019` and `/home/someguy/codebase/0xJesus/ComandOS/lib/tmux_snapshot.py:205`.
+- Recovering a closed tab through `/recover-tab` can create a new session from its directory and agent if the old session is gone. This route does not read a layout snapshot or pass an exact conversation ID. Reopening the tab must not be described as guaranteed exact recovery. Source: `/home/someguy/codebase/0xJesus/ComandOS/bin/cc-dash:9117`.
+- The remote pane-close path saves recovery data before termination. The native Linux context-menu action calls `kill-pane` directly. Aligning their recovery behavior is an implementation gap to address, not an already completed fix. Sources: `/home/someguy/codebase/0xJesus/ComandOS/bin/cc-dash:5326`, `/home/someguy/codebase/0xJesus/ComandOS/lib/terminal_panes.py:65` and `/home/someguy/codebase/0xJesus/ComandOS/bin/cc-app:1239`.
+
+The next recovery decision is whether the historical recovery flow should support rescuing selected panes/tabs while leaving the rest of the current workspace in place, in addition to restoring an entire prior arrangement. Exact restoration of a prior workspace remains the user's primary requirement.
