@@ -81,3 +81,9 @@ Deterministic identification proposal (not yet accepted): manual title takes pre
 User accepted move-only drag behavior (no duplicate view of the same tab). User suggested a visual identifier when a tab contains two whole tabs. Round 3, ?round=tabs&variant=A, explores a combined tab with an orientation glyph and a count explicitly labeled tabs, distinct from its inner pane count. Alternatives compare a layout miniature, member labels, expandable membership and a second member row. Indicator design and the exact combined-tab presentation await the user's verdict.
 
 The mock supports moving an individual tab into a group via drag/drop or explicit touch buttons, separating it back into the strip, and resizing two side-by-side members. Reordering views is simulated without touching real processes. Narrow view stacks whole tabs while retaining group membership. General nested layouts, actual restore, and group termination are not implemented or validated by this prototype.
+
+### Accepted feedback: count followed by tabs; drag/drop as direct manipulation
+
+User liked the number followed by "tabs" and the drag/drop interaction. User explicitly rejected the "Colocar / Servidor / Izquierda / Derecha / Arriba / Abajo" controls. Those controls were a proposed touch alternative in the prototype, not existing production UI. Remove them from the proposed product flow.
+
+The prototype now uses mouse drag/drop and touch/pen hold-and-drag. Direction targets appear only during a drag. Reset belongs to a clearly marked mockup-control area. Real touch-device ergonomics remain for human validation; browser event simulation does not prove physical-device behavior.
