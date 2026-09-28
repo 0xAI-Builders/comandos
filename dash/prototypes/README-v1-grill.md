@@ -222,3 +222,12 @@ The user clarified Congelado as a pending dependency that we cannot resolve ours
 The user explicitly requires these states at both session and individual split-pane level. A session can contain several panes, so scope must be visible when assigning a state. Automatic runtime activity remains a separate concern; an agent's permission prompt or waiting-for-input event does not establish the business state Esperando respuesta by itself.
 
 Next open decision: does assigning an organizational state to a session apply it to all its panes, or does the session retain a separate manual state? Proposed for the next question, not yet approved: marking the whole session applies to all panes; individual pane changes remain possible, and differing pane states produce a mixed session summary. Quick-terminal defaults and the remaining state transitions are still on the grilling agenda.
+
+
+### Confirmed: no organizational-state inheritance
+
+The user rejected the proposed bulk assignment: "No, no debenm reciri o heredar ese estaod todos los panes". Assigning an organizational state to a session affects that session only. Its panes retain their own states; newly created panes must not inherit the session's mark.
+
+Maintain an explicit state at each scope. A pane's individual mark must not overwrite an explicit session mark, and a session-level assignment must not overwrite any pane mark. Any optional summary of child activity is supplementary and must not replace the session's own organizational state. The earlier proposal to assign one session state to every pane is rejected.
+
+This decision concerns organizational metadata, not process execution or automatic work detection. Quick creation still needs the next decision: whether the primary fast action opens an AI conversation or a shell for commands. Location defaults, manual-state transitions and the visual controls remain on the grilling agenda.
