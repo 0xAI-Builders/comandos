@@ -350,3 +350,50 @@ The user specifies "sondiso de videojuego". Pomodoro's sound direction is video-
 Recommended treatment: short, original, soft arcade/8-bit-style electronic cues, with a distinct meaning for each event. Proposed mapping: an ascending two-note cue on confirmed start/resume; a short descending cue on confirmed pause; a brief level-complete-style melody when a focus block completes; a different ready cue when the break ends. Do not play a completion cue for a cancelled or skipped block.
 
 Keep the sound-preview control, adjustable volume and mute from the preceding proposal. Completion remains visible as well as audible. Cue playback follows confirmed timer events and must be deduplicated across clients under the eventual playback-device policy. The policy for which device sounds remains to be settled. The request concerns Pomodoro sound; it does not add sound to every application interaction. No audio asset, playback behavior or production timer was changed in this design step.
+
+
+### Requested: Pomodoro analytics and personal gamification
+
+The user approved proceeding with the Pomodoro exploration and explicitly requested their Pomodoro analytics, then added gamification. Include both in the 1.0 design. A new interactive round now explores these requirements within the current ComandOS shell, with the same controls on desktop and remote.
+
+Timer: `https://nodo-01.tail63a117.ts.net:8444/prototypes/prototype-v1-grill.html?round=pomodoro&variant=A`
+
+Analytics and progression: `https://nodo-01.tail63a117.ts.net:8444/prototypes/prototype-v1-grill.html?round=pomodoro&variant=A&view=analytics`
+
+The five structural variants share the same in-memory timer and records:
+
+- A, Reloj a mano: a clock opened from the header over the terminal; close it to reclaim the terminal space.
+- B, Regla de tiempo: a horizontal time ruler and controls above the terminal.
+- C, Panel de foco: a persistent side panel for the clock and daily progress.
+- D, Reloj flotante: a draggable clock that can be minimized into the header.
+- E, Mesa de foco: a bottom tray with the clock, controls and progress.
+
+The dial responds to pointer/touch dragging and keyboard arrows, with editable minutes and presets as alternatives. Controls start, pause, resume, extend or cancel a simulated block. The clock stays visible in the header while inspecting analytics. Project attribution is chosen before a block and stays fixed during it. The picker exposes loading, empty, error and offline scenarios, platform/resolution controls and a clearly labeled simulated finish in three seconds. Reload resets this prototype; it neither persists nor synchronizes a real timer across devices.
+
+Proposed analytics: completed focus blocks, registered focus minutes, cancelled blocks, completion rate, daily bars, project totals and a history that distinguishes focus from breaks and completed from cancelled. Period and project filters work; selecting a day narrows the history. Registered focus minutes include elapsed time before cancellation but exclude pauses and breaks. This measures timer time, not human attention. The data and project examples are fictitious, and new simulated completions update the example history.
+
+Proposed game rules for the user's review:
+
+- Award 10 XP per whole registered focus minute in a completed block. Breaks and cancelled blocks grant no XP; cancellation keeps elapsed time in analytics and does not deduct existing points.
+- Start at level 1 and advance one level per 1,000 XP. A newly recorded completion can advance the level, with a visible announcement and its own optional sound.
+- Start the editable daily target at 100 completed focus minutes. The user can change it directly. This is a suggested default, not an approved goal or a claim about the user's habits.
+- Show achievements for the first completed block, 100 completed focus minutes and three consecutive days with a completed block. Show the current day streak without erasing accumulated XP or achievements after a break in the streak.
+- Personal progression uses all projects and the entire example history, independently of analytics filters. Deduplicate completion by block identity before awarding XP. No ranking or competition with other users is introduced.
+
+These formulas, achievements and the preferred visual variant remain proposals. The user has requested gamification, but has not yet selected this exact reward model or layout.
+
+Audio uses the pinned UISFX 0.4.0 arcade pack with short cues for start/resume, pause, completion, break completion and level-up. The code is vendored with its MIT notice in `/home/someguy/codebase/0xJesus/ComandOS/.worktrees/comandos-v1-grill/dash/prototypes/vendor`. The tarball integrity matched the SHA-512 published in the sound skill's inspected reference. Audio is synthesized locally after a trusted user opt-in; no remote audio download or user preference persistence is needed for this prototype. Preview buttons, volume and mute are available. The one-shot adapter rejects audio loops, stale async outcomes and synthetic opt-ins, and stops playback on hidden state/navigation. Icon animation remains a separate continuous visual behavior.
+
+Current data-model observation: `/home/someguy/codebase/0xJesus/ComandOS/bin/cc_usage.py:2220` computes completed focus minutes by summing planned minutes and returns daily totals plus a recent history. The existing focus analytics test passed against a temporary database when invoked directly; pytest is unavailable in the current Python environment. Accurate active-time and pause metrics in the proposed analytics require additional production recording and timer fixes. Do not rename planned minutes as measured active minutes or interpret mockup XP as existing user data.
+
+Verification of this mockup:
+
+- Remote Chrome on the Mac mini rendered A–E and Analytics at 1440×1000, 1024×768, 390×844, 844×390 and 320×640 without document, workspace or clock-control horizontal overflow. The remote browser was initially at capacity; validation proceeded after a slot became available. No local browser was started.
+- Browser checks passed for start/pause/resume/extension, cancellation, a single recorded completion, awarding 250 XP for a simulated 25-minute completed focus block, filters, loading/empty/error/offline states, keyboard dial changes, synthetic touch-dial interaction, dragging the floating clock, switching to the current-interface reference and returning, and remote controls. The fixture error collector remained empty.
+- Desktop clock and desktop/mobile Analytics screenshots were inspected. An oversized progress icon found in screenshot review was corrected to 16 px and rechecked in the browser. Human verification of physical touch and audible playback remains pending.
+- Ten audio-adapter lifecycle checks passed against the copied adapter, including the explicitly enabled one-shot level-up cue. The pinned UISFX synthesis/unlock/cleanup contract check passed without an audio device. These are automated checks, not a listening review.
+- A fixed-clock Node simulation verified elapsed-time accounting across pause/resume, extension, cancellation, one-time completion, XP calculation, no XP for breaks, offline command blocking and input bounds.
+
+Final mobile checks confirmed the completion banner advances the fixture from level 8 to level 9 and dispatches one `level-up` cue. This check intercepted the cue instead of playing it. The clock's progress button remains reachable by scrolling. The mobile header was compacted to one row, and completed blocks retain the chosen duration for the next block's input. Historical achievement checks also retain the three-day achievement after the current streak ends.
+
+This remains a throwaway design round. It does not fix the production Pomodoro synchronization defects recorded above or implement durable progression, real cross-device timer control or background notifications. Those remain requirements for implementation after the design verdict.
