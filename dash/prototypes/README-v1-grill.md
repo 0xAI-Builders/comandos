@@ -49,3 +49,11 @@ Next unresolved decisions: opening destination, minimal context needed when retu
 On opening ComandOS, the user wants the exact previous workspace restored. Backup and recovery are among the product's most valuable capabilities and must be a primary 1.0 acceptance area. Exact restoration is a requirement to define and test, not a claim that every process can survive a machine crash. Scope still needs to cover selected pane/tab, geometry, conversations, scroll position, unsent drafts, recovery history and unsupported restoration cases.
 
 Undecided: what recap helps a human resume work, whether AI-generated summaries add value beyond harness-native history/memory, and whether projects or individual sessions should structure navigation. Do not record either navigation alternative as accepted.
+
+### September 28: dynamic workspace and all four re-entry needs
+
+User confirmed that switching work causes all four difficulties: locating the right terminal, recalling intent, understanding progress while away, and identifying the next human decision. No ranking among the four was given.
+
+User explicitly rejected the assumption of stable spatial memory: sessions are reordered and splits are opened and closed frequently. Restoration must preserve the latest user-chosen arrangement. Context must follow session identity across moves and view changes; do not use position as the primary identity or automatically reorder the workspace on activity.
+
+Still unresolved: meaning of closing a split (hide/detach versus stop process); presentation and timing of a recap; project grouping; treatment of background sessions. The user has not yet approved AI-generated summaries or a particular navigation layout.
