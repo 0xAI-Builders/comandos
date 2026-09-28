@@ -75,3 +75,9 @@ Existing code has reorderable native notebook tabs and a separate native mosaic 
 Open decisions: whether dragging moves or duplicates a view; destination/merge gestures; removing a workspace region versus terminating a terminal pane; limits and behavior on small viewports. Earlier decision that closing a terminal split ends its session does not settle the meaning of removing a region containing multiple tabs.
 
 Deterministic identification proposal (not yet accepted): manual title takes precedence; otherwise use a bounded literal excerpt of the first user prompt; fall back to directory/process when no prompt exists. Show last user prompt, last response, and event-derived status as distinct source-backed fields. A generated harness title or AI recap is not inherently deterministic and must be identified as such if used. A native title explicitly assigned by the user can be treated as manual metadata when provenance is known.
+
+### Confirmed: moving tabs, with a visible combined-tab indicator
+
+User accepted move-only drag behavior (no duplicate view of the same tab). User suggested a visual identifier when a tab contains two whole tabs. Round 3, ?round=tabs&variant=A, explores a combined tab with an orientation glyph and a count explicitly labeled tabs, distinct from its inner pane count. Alternatives compare a layout miniature, member labels, expandable membership and a second member row. Indicator design and the exact combined-tab presentation await the user's verdict.
+
+The mock supports moving an individual tab into a group via drag/drop or explicit touch buttons, separating it back into the strip, and resizing two side-by-side members. Reordering views is simulated without touching real processes. Narrow view stacks whole tabs while retaining group membership. General nested layouts, actual restore, and group termination are not implemented or validated by this prototype.
