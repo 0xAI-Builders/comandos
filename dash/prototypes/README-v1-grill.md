@@ -43,3 +43,9 @@ User decisions, replacing earlier unconfirmed assumptions:
 Working objective, pending wording approval: a Linux terminal for operating multiple AI projects, making it easy to resume and switch work while preserving technical state and mental context, under human control.
 
 Next unresolved decisions: opening destination, minimal context needed when returning to a project, and the relationship between a project and its multiple agent sessions/panes. No A–E layout has been selected. Previous task-first/orchestration recommendations are not accepted decisions.
+
+### Confirmed: startup continuity and recovery
+
+On opening ComandOS, the user wants the exact previous workspace restored. Backup and recovery are among the product's most valuable capabilities and must be a primary 1.0 acceptance area. Exact restoration is a requirement to define and test, not a claim that every process can survive a machine crash. Scope still needs to cover selected pane/tab, geometry, conversations, scroll position, unsent drafts, recovery history and unsupported restoration cases.
+
+Undecided: what recap helps a human resume work, whether AI-generated summaries add value beyond harness-native history/memory, and whether projects or individual sessions should structure navigation. Do not record either navigation alternative as accepted.
