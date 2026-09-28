@@ -238,3 +238,12 @@ This decision concerns organizational metadata, not process execution or automat
 The user chose two buttons: "Creo que debe haber dos botones uno de termianl y el otro como esta hoy". Terminal opens a quick shell for commands without requiring the session-creation form. Nueva sesión preserves the existing folder, agent and account flow. This supersedes the recommendation to make an immediately opened AI conversation the primary quick action.
 
 Both actions belong in desktop and remote. The shell's default working directory remains the next decision: the active pane's directory or the dedicated quick-terminal directory proposed earlier. Recommendation pending approval: inherit the active pane's directory and use the proposed `/home/someguy/codebase/0xJesus/Terminal` only when there is no usable active directory. No directory was created and no production creation behavior was changed.
+
+
+### Confirmed: a dated directory for each quick terminal
+
+The user chose a new directory inside Terminal for every quick terminal: "que cree Dentro de Terminal una carpeta con nomrbe T-<fecha human reabdale pero con guion> asi porfavor". Each click on Terminal creates a directory under `/home/someguy/codebase/0xJesus/Terminal` and opens a shell there, without a folder-selection form. This supersedes the recommendation to inherit the active pane's working directory.
+
+The concrete naming convention is `T-YYYY-MM-DD-HH-mm-ss`, using local time in `America/Mexico_City`, with zero-padded fields and a 24-hour clock. An illustrative path is `/home/someguy/codebase/0xJesus/Terminal/T-2026-09-28-14-35-09`; this is an example, not a directory created during the grilling. If the name already exists, creation must reserve a fresh directory with the next available numeric suffix, starting with `-2`, without reusing or overwriting the existing directory. Concurrent creation must preserve this guarantee.
+
+Create the parent directory on demand if it is absent. Desktop and remote use the same creation behavior and host-local time. Nueva sesión retains its existing folder, agent and account flow. This decision does not introduce automatic directory deletion. No directory, terminal, process or production creation behavior was changed in this design step.
