@@ -103,4 +103,15 @@ Open `https://nodo-01.tail63a117.ts.net:8444/prototypes/prototype-v1-grill.html?
 
 Verification uses Chrome on the remote Mac mini. All five initial arrangements were checked at 1920×1080, 1024×768, 390×844, 844×390 and 320×640 without page-level horizontal overflow. Browser PointerEvent checks covered nested docking, member movement, detaching, divider resizing, cancellation, preserved unique tab identities and touch-style dragging. Screenshots were inspected on desktop and phone widths. Physical touch-device ergonomics still require the user's verdict.
 
-This is disposable UI code on the prototype branch. It does not implement production terminal reparenting, backup/restore of the nested tree, multi-client tmux focus isolation or group termination. Refreshing resets the example. No live sessions are modified. The adaptive layout rule and five arrangements remain proposals pending human review.
+This is disposable UI code on the prototype branch. It does not implement production terminal reparenting, backup/restore of the nested tree, multi-client tmux focus isolation or group termination. Refreshing resets the example. No live sessions are modified. The following verdict records acceptance of the interaction. The example arrangements are not a requirement to use a fixed template.
+
+
+### Accepted verdict: flexible tab docking
+
+On September 28, 2026, the user approved round 4: "ME ENCANTA!!! Justo asi". Use prototype commit `f634552` as the visual and interaction reference for implementation.
+
+Accepted direction: current ComandOS shell, direct tab dragging to nested edge targets with destination preview, resize from shared separators, detach by dragging back to the strip, count followed by "tabs", and adaptation to narrow screens while keeping the tab order. Preserve each tab's inner panes and conversations. Distribution must not require directional placement controls or a sizing form. The five starting arrangements demonstrate free placement; they are not five mandatory templates or a newly imposed default on restored workspaces.
+
+This accepts the design for the 1.0 plan. It does not establish that production persistence, recovery or remote/native terminal behavior have been implemented or verified. Preserve the prototype as the agreed reference while continuing the release grilling.
+
+Next semantic decisions: whether closing a composite tab terminates all member sessions and what confirmation it needs; whether desktop and remote remember separate screen arrangements while sharing the same sessions. Exact backup/restore scope and deterministic context identification also remain open.
