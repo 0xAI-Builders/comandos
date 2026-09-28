@@ -418,3 +418,25 @@ All six icon assets loop while displayed, with distinct movement: clock breathin
 Validation used Chrome on the remote Mac mini. The original SVG loaded with the correct image MIME type and rendered in desktop/mobile screenshots. The selected timer, Analytics and asset gallery were checked at 1440×1000, 1024×768, 390×844, 844×390 and 320×640 without document or workspace horizontal overflow. Browser interaction checks passed for ruler value changes, running hand animation, looping paused icon, completion reward, single recorded completion and the six-item gallery, with no fixture JavaScript errors. Existing fixed-clock timer/XP checks still passed. No production timer, notifications or analytics data changed.
 
 A final 320 px browser check confirmed the focus/break selector switches between 25-minute focus and 5-minute break presets, the header stays within the viewport, and the mockup picker's asset-gallery button opens the review surface.
+
+
+### Rejected: homemade arcade assets; new artist-made pixel-art round
+
+Jesús rejected the original SVG artwork as very ugly and requested beautiful open-source pixel art. The previously accepted B ruler layout remains selected. The rejected symbol sheet has been removed from the prototype; the preceding entry is historical, not an approved artwork decision.
+
+Five asset directions now appear in the same mockup: Shikashi fantasy, La Red animated arcade, 7Soul classic RPG, Quintino alchemy, and Shikashi garden. Arcade is the recommended starting proposal, not a user-approved selection. Its gems and coins play the artist's original sprite frames, with Shikashi's hourglass and chest providing the missing timer/achievement symbols. Other sets add continuous CSS motion to static original artwork. The UI explicitly distinguishes those two animation sources. Motion does not imply real timer progress, and reduced-motion preferences disable it.
+
+Compare the five sets: https://nodo-01.tail63a117.ts.net:8444/prototypes/prototype-v1-grill.html?round=pomodoro&variant=B&view=assets&art=arcade
+
+Applied to the ruler: https://nodo-01.tail63a117.ts.net:8444/prototypes/prototype-v1-grill.html?round=pomodoro&variant=B&art=arcade
+
+The artwork selector is a prototype review control. It changes timer, rewards and Analytics immediately, preserves the in-memory timer, and writes only the artwork query parameter to the current URL. It does not introduce a production theme setting. The five prior layout variants remain available for reference. All assets are served locally; no image CDN request is needed when opening the mockup. Original pixels use native/integer scaling, with no raster smoothing. Visible credits link to each selected artist and license. The full source and license record is /home/someguy/codebase/0xJesus/ComandOS/.worktrees/comandos-v1-grill/dash/prototypes/assets/pixel-packs/CREDITS.md.
+
+The current Shikashi page specifies CC BY 4.0 and credits Matt Firth and game-icons.net; its older bundled notes are retained. La Red and Quintino explicitly publish CC0 assets. The 7Soul compilation says CC0, and the author's description declares public domain while DeviantArt metadata still displays CC BY 3.0; attribution and both references are preserved. The paid current 7Soul pack was not downloaded. Kenney's open UI pack was inspected but omitted because its available symbols do not fit this round's rewards.
+
+No production timer, tmux session, notification, real analytics record, sound policy or XP rule changed.
+
+
+Validation for the artist-made round used Chrome on the remote Mac mini, through the isolated prototype server. All 17 referenced PNGs decoded and returned image/png. Five artwork sets across timer, Analytics and gallery were checked at 1440×1000, 1024×768, 390×844, 844×390 and 320×640: 75 view/size combinations, with no horizontal document or stage overflow and no fixture JavaScript errors. Desktop timer/gallery, mobile timer/gallery and the garden achievement strip were inspected in screenshots.
+
+The browser verified the ruler input, preserving the running timer and block identity while switching artwork, continuous clock motion during pause, original coin-frame progression, simulated completion rewards and single completion recording. A first two-sample sprite check returned identical offsets; the follow-up waited for the animation to be ready and visible, then observed six samples including offsets -64, 0, -16, -32 and -48 px. No sprite code change was needed. Fixed-clock timer/XP checks passed unchanged. Per-file hashes match the downloaded original assets; 18 retained original files, including the author's notes, total 141,934 bytes. The Tailscale URL returned the updated gallery with HTTP 200. Physical touch and sound listening still require the user's review; this round did not alter audio behavior or fix the production timer.
