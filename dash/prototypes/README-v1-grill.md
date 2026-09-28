@@ -87,3 +87,20 @@ The mock supports moving an individual tab into a group via drag/drop or explici
 User liked the number followed by "tabs" and the drag/drop interaction. User explicitly rejected the "Colocar / Servidor / Izquierda / Derecha / Arriba / Abajo" controls. Those controls were a proposed touch alternative in the prototype, not existing production UI. Remove them from the proposed product flow.
 
 The prototype now uses mouse drag/drop and touch/pen hold-and-drag. Direction targets appear only during a drag. Reset belongs to a clearly marked mockup-control area. Real touch-device ergonomics remain for human validation; browser event simulation does not prove physical-device behavior.
+
+### Round 4: nested distribution through direct dragging
+
+User requested more flexible drag/drop and a mock closer to the current ComandOS interface. This supersedes the flat group distribution in round 3. Keep the accepted count followed by "tabs" and omit directional placement controls.
+
+Open `https://nodo-01.tail63a117.ts.net:8444/prototypes/prototype-v1-grill.html?round=dock&variant=A`. Existing `round=tabs` links now open this iteration too. Five initial arrangements share the same interaction: side-by-side tabs, a main region with stacked auxiliaries, four tabs, wide stacked tabs, and a single tab from which to build a layout.
+
+- Drag a whole tab from the top strip to an edge. Drag a member's header to move only that member. Inner terminal panes travel with their tab.
+- Preview the destination before release. Inner edges divide that region; the outer workspace edge divides the whole workspace. Release outside a target or press Escape to cancel.
+- Drag a member back to the top strip to separate it. Top-level groups can be reordered without duplicating their tabs.
+- Drag the shared separator to resize. Keyboard arrows on a focused separator also work; there is no size slider or positioning form.
+- Narrow widths stack tabs in tree order. The stored horizontal orientation returns when width permits. Minimum pane space produces scrolling rather than scaling terminal text down indefinitely.
+- The sidebar embeds the current dashboard assets against fixture APIs and stays mounted during layout changes. Terminal output is simulated. On a narrow screen the sidebar opens from the menu and has a return control.
+
+Verification uses Chrome on the remote Mac mini. All five initial arrangements were checked at 1920×1080, 1024×768, 390×844, 844×390 and 320×640 without page-level horizontal overflow. Browser PointerEvent checks covered nested docking, member movement, detaching, divider resizing, cancellation, preserved unique tab identities and touch-style dragging. Screenshots were inspected on desktop and phone widths. Physical touch-device ergonomics still require the user's verdict.
+
+This is disposable UI code on the prototype branch. It does not implement production terminal reparenting, backup/restore of the nested tree, multi-client tmux focus isolation or group termination. Refreshing resets the example. No live sessions are modified. The adaptive layout rule and five arrangements remain proposals pending human review.
