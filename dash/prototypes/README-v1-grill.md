@@ -187,3 +187,26 @@ Reuse sessions that are still alive. Reconnect to the corresponding conversation
 Backups remain internal support for continuity. This instruction removes the manual historical-recovery UI from the active release design; it does not authorize deleting existing backup data. The accepted drag/drop distribution, group-close confirmation and independent device focus remain unchanged.
 
 The approved docking prototype is active again. Existing links with `round=recovery` now open `round=dock&variant=A`. The discarded preview can be inspected in prototype commit `290e081`; it is retained only as historical design evidence. No production startup, tmux process, session or backup was changed by this design update. Production verification must cover normal reopen, remote reconnect and recovery after an interrupted application run before claiming complete automatic restoration.
+
+
+### Requested next block: tab states and quick terminals
+
+The user wants to keep tab favorites and add organizational states such as Resuelto and Congelado. Automatic work-in-progress indication is desirable only when work can be detected deterministically. The meaning of Congelado is not settled: marking work for later versus actually pausing/interruption is the first grilling question. No default answer has been accepted.
+
+The user requests removing the visible Mosaico button now that nested tab grouping is the accepted distribution. This does not by itself authorize deleting the underlying implementation or changing its shortcut.
+
+Nueva sesión must support a fast path that does not always ask for a folder. The user proposed inheriting the current working directory or using a dedicated quick-terminal directory. `/home/someguy/codebase/0xJesus/Terminal` is a candidate under the existing project root; it did not exist when checked and was not created. The default location and whether a quick terminal starts a shell or an AI conversation remain decisions, not implementation assumptions.
+
+Working model proposed for review: keep favorite marking independent from a manual organizational state, and expose observed runtime activity separately. A completed agent turn is evidence of turn completion, not evidence that the user's task is Resuelto. Do not silently infer resolution from an agent response or overwrite a manual state based only on process liveness.
+
+### Current facts for the tab-state and quick-terminal grilling
+
+Read-only code inspection found:
+
+- Favorites are shared preferences per session. Native and remote clients use individual `/prefs-set` updates and order LOCAL, favorites, then other tabs. Sources: `/home/someguy/codebase/0xJesus/ComandOS/lib/session_tabs.py:4`, `/home/someguy/codebase/0xJesus/ComandOS/bin/cc-app:1718`, `/home/someguy/codebase/0xJesus/ComandOS/dash/index.html:6814`.
+- Current activity combines hook events and terminal-text heuristics. It can default to idle without a hook, and an alive process is not proof of an active turn. Hook adapters provide useful events, but their availability and correlation must be verified per harness before calling the indicator deterministic. Sources: `/home/someguy/codebase/0xJesus/ComandOS/bin/cc-dash:6846`, `/home/someguy/codebase/0xJesus/ComandOS/bin/cc-dash:6914`, `/home/someguy/codebase/0xJesus/ComandOS/hooks/cc-notify.sh:284`.
+- Existing `/pause` sends SIGSTOP/SIGCONT to a selected agent PID for the session. The UI calls that action "Agente congelado". It is a real process action, not a persisted organizational label, and does not establish a whole-tab pause contract across multiple panes. Sources: `/home/someguy/codebase/0xJesus/ComandOS/bin/cc-dash:8473`, `/home/someguy/codebase/0xJesus/ComandOS/dash/index.html:3530`.
+- The Linux primary plus button opens the folder/agent/account assistant. Ctrl+T and the secondary menu already create a shell using a session-derived cwd, with a personal-directory fallback. Sources: `/home/someguy/codebase/0xJesus/ComandOS/bin/cc-app:3923`, `/home/someguy/codebase/0xJesus/ComandOS/bin/cc-app:2756`.
+- The remote tab-strip plus calls `/tab-new`, which creates a shell in the personal directory and does not inherit the selected pane's cwd. `/session-new` accepts an explicit existing absolute directory and `agent: shell`. Sources: `/home/someguy/codebase/0xJesus/ComandOS/bin/cc-dash:8982`, `/home/someguy/codebase/0xJesus/ComandOS/bin/cc-dash:8795`.
+
+These are code observations, not results of exercising live sessions. No production buttons, process state, preferences or creation behavior were changed during this grilling step.
