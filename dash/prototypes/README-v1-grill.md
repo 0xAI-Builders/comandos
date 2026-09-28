@@ -123,4 +123,13 @@ The user answered the group-close question with "Deberia preguntar porfavor". Cl
 
 The user also confirmed "Si tambien deberia poder hacerse desde el celular porfavor". Mobile must support reorganizing tabs, grouping, separating and resizing through the accepted direct manipulation. Do not treat mobile as a view-only client.
 
-That answer confirms mobile editing, but does not clearly choose shared arrangement versus a separate remembered arrangement per device. Clarify with a concrete example before recording either as accepted. The earlier recommendation of separate per-device arrangements is not an approved decision.
+The initial answer confirmed mobile editing. The follow-up below resolves synchronization and supersedes the earlier recommendation of separate per-device arrangements.
+
+
+### Confirmed: one shared arrangement across devices
+
+The user answered "Si" to the concrete question: when Lola is placed next to ComandOS from the phone, should that same arrangement appear on the computer, adapted to each screen's size?
+
+The workspace arrangement is shared. Manual grouping, separation, reordering and split-layout edits from either device must be reflected on the other. Each screen adapts the shared arrangement to its available space. Automatic responsive stacking must preserve the shared tab identities, membership and order; it must not overwrite the user's arrangement merely because the phone is narrower. The previous suggestion of independently remembered device arrangements is superseded.
+
+This is an accepted product requirement, not a claim that live synchronization exists in the prototype. The startup/recovery requirement applies to the latest shared arrangement. Active tab/pane focus and its synchronization remain a separate decision: ask whether selecting Lola on the phone should leave ComandOS active on the computer before assuming that shared arrangement also means shared focus.
