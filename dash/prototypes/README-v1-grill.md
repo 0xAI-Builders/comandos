@@ -170,3 +170,5 @@ No real backup data is fetched, no process is restarted, and no production recov
 
 
 Round 5 verification: the five variants rendered in Chrome on the remote Mac mini at 1440×1000, 390×844, 844×390 and 320×640 without document or preview-content horizontal overflow; the action footer remained inside the preview. Browser interaction checks passed for cancel/reopen, incomplete-copy blocking, conversation details, Escape, simulated recovery, detecting panes absent from an older copy, confirmation/cancellation of a simulated close, loading/empty/error/offline states, and returning from the current-interface reference. No JavaScript errors were reported by the fixture error collector during those checks. Real recovery remains untested and unimplemented by this mockup.
+
+Desktop screenshot inspection passed. The final mobile screenshot request timed out in the remote browser service after all layout and interaction checks had returned successfully; a final mobile image was not inspected. Physical phone validation remains part of the user's review.
