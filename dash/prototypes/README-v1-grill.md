@@ -57,3 +57,11 @@ User confirmed that switching work causes all four difficulties: locating the ri
 User explicitly rejected the assumption of stable spatial memory: sessions are reordered and splits are opened and closed frequently. Restoration must preserve the latest user-chosen arrangement. Context must follow session identity across moves and view changes; do not use position as the primary identity or automatically reorder the workspace on activity.
 
 Still unresolved: meaning of closing a split (hide/detach versus stop process); presentation and timing of a recap; project grouping; treatment of background sessions. The user has not yet approved AI-generated summaries or a particular navigation layout.
+
+### Confirmed: closing a split ends its session
+
+User explicitly chose termination on closing a split. Do not implement hide/detach as the default meaning of close. Scope termination to the selected pane's process; preserve other panes. Historical recovery and what exactly remains after an intentional close still need definition.
+
+User considers flexible placement/mixed projects existing behavior. Preserve that workflow. Current next design question is how to identify the work in each pane easily; introducing a new project navigation hierarchy is not requested.
+
+Round 2 prototype: same HTML route with ?round=panes&variant=A. Five alternatives for pane identity: persistent task header, contextual reveal, selected-pane inspector, work overview, inline context note. Names and summaries are fictitious. No decision yet on automatic title/summary generation. Simulated pane closing removes that pane; simulated reorder keeps identity/context attached. Compare desktop and remote modes.
