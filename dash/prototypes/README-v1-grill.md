@@ -65,3 +65,13 @@ User explicitly chose termination on closing a split. Do not implement hide/deta
 User considers flexible placement/mixed projects existing behavior. Preserve that workflow. Current next design question is how to identify the work in each pane easily; introducing a new project navigation hierarchy is not requested.
 
 Round 2 prototype: same HTML route with ?round=panes&variant=A. Five alternatives for pane identity: persistent task header, contextual reveal, selected-pane inspector, work overview, inline context note. Names and summaries are fictitious. No decision yet on automatic title/summary generation. Simulated pane closing removes that pane; simulated reorder keeps identity/context attached. Compare desktop and remote modes.
+
+### New requirement: split the workspace by dragging whole tabs
+
+User wants drag-and-drop of an existing tab to show multiple whole tabs simultaneously, in addition to splitting terminal panes. A tab must retain its own inner pane layout and underlying conversations. This is a requested capability for the release plan, not permission to replace live session infrastructure during grilling.
+
+Existing code has reorderable native notebook tabs and a separate native mosaic view. Proposed design must distinguish workspace regions containing tabs from terminal panes running processes. Preserve identities, inner pane layouts, focus, and region layout across restoration. Desktop and remote must expose equivalent operations, with a usable touch alternative.
+
+Open decisions: whether dragging moves or duplicates a view; destination/merge gestures; removing a workspace region versus terminating a terminal pane; limits and behavior on small viewports. Earlier decision that closing a terminal split ends its session does not settle the meaning of removing a region containing multiple tabs.
+
+Deterministic identification proposal (not yet accepted): manual title takes precedence; otherwise use a bounded literal excerpt of the first user prompt; fall back to directory/process when no prompt exists. Show last user prompt, last response, and event-derived status as distinct source-backed fields. A generated harness title or AI recap is not inherently deterministic and must be identified as such if used. A native title explicitly assigned by the user can be treated as manual metadata when provenance is known.
