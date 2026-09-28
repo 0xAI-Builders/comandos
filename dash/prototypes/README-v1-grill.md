@@ -29,3 +29,17 @@ Branch fix/extension-selection-responsive contains a failing-then-passing regres
 ## Round 1
 
 Open decision: overall organization, variants A–E. Baseline is a reference, not an alternative redesign. No user verdict yet. Provider logs are a proposal, explicitly labeled. Group and token examples in the prototype are illustrative, not measured production metadata.
+
+## Product grilling — September 27, 2026
+
+User decisions, replacing earlier unconfirmed assumptions:
+
+- Product foundation: a powerful Linux terminal that serves as an interface for humans to operate AI.
+- Ease of operation is the primary experience requirement.
+- ComandOS has no mandate to autonomously operate the user's agents. Insights may be generated automatically; this does not authorize configuration changes or execution.
+- Core success scenario: open ComandOS and easily continue prompting across N projects while preserving mental context when switching.
+- The desktop-to-phone journey proposed earlier is not the primary acceptance scenario. Desktop/remote capability parity remains a requirement from prior decisions.
+
+Working objective, pending wording approval: a Linux terminal for operating multiple AI projects, making it easy to resume and switch work while preserving technical state and mental context, under human control.
+
+Next unresolved decisions: opening destination, minimal context needed when returning to a project, and the relationship between a project and its multiple agent sessions/panes. No A–E layout has been selected. Previous task-first/orchestration recommendations are not accepted decisions.
