@@ -307,3 +307,37 @@ Remaining release-review agenda, distinguishing design agreement from implementa
 - Terminal operation on desktop and remote: keyboard, clipboard, scrolling, touch gestures and responsive layout, including the accepted tab docking and quick-terminal creation behavior.
 - Continuity: implement and validate the accepted automatic restoration contract, shared arrangement and independent per-device focus through reopen, disconnect and interrupted startup scenarios.
 - Analytics, remaining utilities and settings: choose what supports the core workflow; complete access/security behavior and the user's end-to-end release tests. Approval of a mockup is not completion of these checks.
+
+
+### Confirmed: keep Pomodoro and redesign it for direct manipulation
+
+The user explicitly retains Pomodoro as a useful tool for 1.0 and requests better UX/UI, an animated icon, sound, direct manipulation and working behavior. This supersedes the recommendation to remove it. Keep the timer in the release plan. The existing requirement to review desktop and remote together applies to this feature too.
+
+Proposed interaction for the next visual round:
+
+- Keep a compact animated clock and remaining time visible in the app header. Its movement loops while visible, with distinct focus, break and paused treatments; the animation must not falsify the remaining time or running state.
+- Open a small clock control from that indicator. Drag a visible handle around its rim to choose the duration; provide keyboard adjustment and a directly editable minute value as alternatives to precise dragging.
+- Expose start, pause/resume and finish beside the clock. While running, adjusting time must update the shared timer and show the resulting remaining time. Duration adjustment must not accidentally start the timer.
+- Play a short completion cue alongside a visible completion state. Include mute/volume and an explicit sound-preview action. The requested looping icons do not imply looping audio or a ticking sound throughout the session.
+- Keep cycle configuration and statistics secondary to starting and controlling the clock. The specific layout, gestures and treatment remain proposals for visual review, not a completed mockup or an approved final design.
+
+Reliability acceptance requirements proposed for this retained feature: a single authoritative timer state across desktop and remote; start, pause, resume, extension and cancellation reflected in both; recover the correct time after reload/reconnection; finish a block even if its initiating page closes; avoid duplicate completion records/alerts from multiple clients; surface command failures instead of showing a successful local-only action. Sound must respect the user's setting and platform playback permissions, with a visible fallback. Verify the sound on the actual target device before claiming that it is audible there. Whether notifications from other agents should be deferred is still a separate product decision.
+
+### Pomodoro diagnostic evidence: reproducible client divergence
+
+An isolated diagnostic now executes the Pomodoro JavaScript extracted from the actual dashboard in two Node VM contexts. A fixed clock and simulated API keep it deterministic. It does not run a browser or contact the live timer, notification service or user data. Diagnostic source: `/home/someguy/codebase/0xJesus/ComandOS/.worktrees/comandos-v1-grill/dash/prototypes/prototype-pomodoro-sync-repro.cjs`.
+
+Run against the current production checkout source:
+
+```sh
+/home/someguy/.nvm/versions/node/v22.19.0/bin/node /home/someguy/codebase/0xJesus/ComandOS/.worktrees/comandos-v1-grill/dash/prototypes/prototype-pomodoro-sync-repro.cjs /home/someguy/codebase/0xJesus/ComandOS/dash/index.html
+```
+
+Observed before any fix:
+
+- Initial synchronization succeeds: both clients have the same 25-minute deadline.
+- Clicking the actual five-minute extension handler leaves the initiating client at 30 minutes, the other client at 25 minutes and the simulated API at 25 minutes. The extension sends no API request.
+- Cancelling from the initiating client clears the simulated backend timer. After synchronization, the other client still has an active countdown.
+- The diagnostic exits with status 1 because the shared-deadline and shared-cancellation expectations fail. This is expected evidence of existing defects, not a passing regression check.
+
+These results confirm failures in the client-side behavior under the stated simulation. They do not test real network delivery, browser suspension, native popovers, sound playback or the user's exact reported symptom. A clarification asking whether opening/start, completion sound or cross-device behavior fails is pending. No production fix has been applied; matching that symptom and repairing the real flow remain required before claiming Pomodoro works.
