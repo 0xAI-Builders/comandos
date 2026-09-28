@@ -210,3 +210,15 @@ Read-only code inspection found:
 - The remote tab-strip plus calls `/tab-new`, which creates a shell in the personal directory and does not inherit the selected pane's cwd. `/session-new` accepts an explicit existing absolute directory and `agent: shell`. Sources: `/home/someguy/codebase/0xJesus/ComandOS/bin/cc-dash:8982`, `/home/someguy/codebase/0xJesus/ComandOS/bin/cc-dash:8795`.
 
 These are code observations, not results of exercising live sessions. No production buttons, process state, preferences or creation behavior were changed during this grilling step.
+
+
+### Confirmed: organizational blockers at session and pane scope
+
+The user clarified Congelado as a pending dependency that we cannot resolve ourselves, and requested a separate Esperando respuesta state for work blocked on a response. These are organizational meanings. They do not authorize mapping either label to the existing process-pause action.
+
+- Congelado: an unresolved dependency prevents progress and cannot be resolved by us at that point.
+- Esperando respuesta: progress depends specifically on receiving a response from someone else.
+
+The user explicitly requires these states at both session and individual split-pane level. A session can contain several panes, so scope must be visible when assigning a state. Automatic runtime activity remains a separate concern; an agent's permission prompt or waiting-for-input event does not establish the business state Esperando respuesta by itself.
+
+Next open decision: does assigning an organizational state to a session apply it to all its panes, or does the session retain a separate manual state? Proposed for the next question, not yet approved: marking the whole session applies to all panes; individual pane changes remain possible, and differing pane states produce a mixed session summary. Quick-terminal defaults and the remaining state transitions are still on the grilling agenda.
