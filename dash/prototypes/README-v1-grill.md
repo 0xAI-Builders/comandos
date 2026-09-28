@@ -247,3 +247,16 @@ The user chose a new directory inside Terminal for every quick terminal: "que cr
 The concrete naming convention is `T-YYYY-MM-DD-HH-mm-ss`, using local time in `America/Mexico_City`, with zero-padded fields and a 24-hour clock. An illustrative path is `/home/someguy/codebase/0xJesus/Terminal/T-2026-09-28-14-35-09`; this is an example, not a directory created during the grilling. If the name already exists, creation must reserve a fresh directory with the next available numeric suffix, starting with `-2`, without reusing or overwriting the existing directory. Concurrent creation must preserve this guarantee.
 
 Create the parent directory on demand if it is absent. Desktop and remote use the same creation behavior and host-local time. Nueva sesión retains its existing folder, agent and account flow. This decision does not introduce automatic directory deletion. No directory, terminal, process or production creation behavior was changed in this design step.
+
+
+### Confirmed: a new prompt clears Resuelto; display states with icons
+
+Asked whether a pane marked Resuelto should retain that mark after a new prompt, the user chose automatic reopening: "Se quita y se pione trabajandon pero en luigar de palarbas podemos usar simbolos iconos? (no emojis)". A newly accepted prompt clears Resuelto on that pane and displays Trabajando. This supersedes the recommendation to retain Resuelto until a manual change. Draft typing, focus changes, process liveness and reconnecting are not new prompts. The transition needs a verified submission/start signal for the corresponding pane and conversation.
+
+The transition does not change sibling panes or an independent session mark. This decision covers Resuelto; it does not yet define automatic clearing of Congelado or Esperando respuesta. A completed turn is not, by itself, evidence that the task is resolved. The state to show after completion remains the next grilling question.
+
+The user requests symbols/icons instead of visible state words, explicitly excluding emoji. Proposed visual mapping for review: a rotating segmented ring for Trabajando, an outlined circle with a check for Resuelto, a snowflake for Congelado, and a speech bubble with a small clock for Esperando respuesta. Favorite retains an independent star. Use a consistent vector stroke style across desktop and remote; shape must distinguish states without relying only on color. Provide a static working indicator when reduced motion is requested.
+
+Proposed interaction: the compact tab/pane indicator shows the icon; its state name appears on hover or keyboard focus, and tapping/clicking opens a state menu with icons and text labels. Give each control an accessible name that includes its state and scope. The mobile flow must not depend on hover. Exact icon artwork and controls remain subject to visual review.
+
+Recommended next decision: after a verified turn completion, display a neutral ready indicator until the user explicitly marks Resuelto. This recommendation is not yet approved. Only the design log changed in this step; production status detection and UI remain unchanged.
