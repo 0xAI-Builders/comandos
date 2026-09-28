@@ -231,3 +231,10 @@ The user rejected the proposed bulk assignment: "No, no debenm reciri o heredar 
 Maintain an explicit state at each scope. A pane's individual mark must not overwrite an explicit session mark, and a session-level assignment must not overwrite any pane mark. Any optional summary of child activity is supplementary and must not replace the session's own organizational state. The earlier proposal to assign one session state to every pane is rejected.
 
 This decision concerns organizational metadata, not process execution or automatic work detection. Quick creation still needs the next decision: whether the primary fast action opens an AI conversation or a shell for commands. Location defaults, manual-state transitions and the visual controls remain on the grilling agenda.
+
+
+### Confirmed: separate Terminal and Nueva sesión buttons
+
+The user chose two buttons: "Creo que debe haber dos botones uno de termianl y el otro como esta hoy". Terminal opens a quick shell for commands without requiring the session-creation form. Nueva sesión preserves the existing folder, agent and account flow. This supersedes the recommendation to make an immediately opened AI conversation the primary quick action.
+
+Both actions belong in desktop and remote. The shell's default working directory remains the next decision: the active pane's directory or the dedicated quick-terminal directory proposed earlier. Recommendation pending approval: inherit the active pane's directory and use the proposed `/home/someguy/codebase/0xJesus/Terminal` only when there is no usable active directory. No directory was created and no production creation behavior was changed.
