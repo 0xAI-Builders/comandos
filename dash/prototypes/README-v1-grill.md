@@ -262,20 +262,22 @@ Proposed interaction: the compact tab/pane indicator shows the icon; its state n
 Recommended next decision: after a verified turn completion, display a neutral ready indicator until the user explicitly marks Resuelto. This recommendation is not yet approved. Only the design log changed in this step; production status detection and UI remain unchanged.
 
 
-### Requested: animated state icons
+### Confirmed: continuously animated state icons
 
-The user asks for animation on the proposed icons: "se podra que esos iconos tengan animacion?". Include animated vector icons in the design exploration, preserving the no-emoji requirement. The specific motion treatments below are recommendations for review, not an approved or implemented visual result.
+The user first requested animated icons, then explicitly required continuous loops: "Las nimacione deben correr en loop viejo vitas todo el timepo jej eporfavoors". All displayed state icons and the enabled favorite star animate continuously while visible, without requiring hover, focus, clicks or a state change. This supersedes the recommendation to reserve looping for Trabajando and animate other indicators only once. Preserve the no-emoji requirement.
+
+The loop behavior is confirmed. The specific motion treatments below are proposals for visual review, not an implemented result.
 
 | Indicator | Proposed motion |
 | --- | --- |
 | Trabajando | The segmented ring rotates continuously while verified activity is current. |
-| Resuelto | Draw the check once when the user marks the item resolved, then keep it still. |
-| Congelado | Reveal the snowflake once when assigned, then keep it still. |
-| Esperando respuesta | Briefly move the small clock hand when assigned, then keep it still. |
-| Favorito | Briefly enlarge and fill the star when enabled, then keep it still. |
+| Resuelto | Keep the check visible with a gentle repeating pulse. |
+| Congelado | Keep the snowflake visible with a slow repeating shimmer along its branches. |
+| Esperando respuesta | Keep the speech bubble visible while its small clock hands move in a loop. |
+| Favorito | Keep the enabled star visible with a soft repeating shimmer. |
 
-Reserve ongoing motion for active work so that an external blocker does not look like an agent is running. One-time animations belong to actual state changes, not routine rerenders, reconnects or tab focus. Preserve fixed icon bounds so animation does not move tab labels, controls or pane geometry. Desktop and remote share the same state meanings and motion rules.
+Distinguish the states by icon shape and motion pattern; animation alone no longer signifies active work. Keep the identifying shape visible throughout each cycle, without flashing or disappearing. Preserve fixed icon bounds so animation does not move tab labels, controls or pane geometry. Routine rerenders must not restart the loops. Desktop and remote share the same state meanings and motion rules.
 
-Provide static versions for reduced-motion preferences and suspend animation in hidden views. Animation is presentation, not evidence of activity: missing or stale signals must not leave an indefinite working spinner. No percentage or time-to-completion claim is implied by the ring. These are design requirements to validate in the later prototype and implementation; no performance result is claimed here.
+The default presentation uses continuous loops. Retain static versions for reduced-motion preferences and suspend animation in hidden views. Animation is presentation, not evidence of activity: missing or stale signals must not leave an indefinite Trabajando state. No percentage or time-to-completion claim is implied by the ring. These are design requirements to validate in the later prototype and implementation; no performance result is claimed here.
 
-The question about the neutral state after a completed turn remains unanswered. The animation request does not approve automatic Resuelto or alter the previously accepted Resuelto-to-Trabajando transition.
+The question about the neutral state after a completed turn remains unanswered. The continuous-animation decision does not approve automatic Resuelto or alter the previously accepted Resuelto-to-Trabajando transition. Do not repeat the rejected still-icon treatment when proposing the eventual post-turn indicator. Only the design log changed in this step.
