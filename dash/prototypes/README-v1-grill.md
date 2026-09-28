@@ -1,5 +1,7 @@
 # ComandOS 1.0 — prototype and human review
 
+> Current direction: automatic restoration of the latest workspace on open. Manual recovery and its preview were removed from the active design. See "Confirmed: automatic restoration of the latest state" below.
+
 This branch is a disposable design source, not production. Launch:
 
 ```
@@ -172,3 +174,16 @@ No real backup data is fetched, no process is restarted, and no production recov
 Round 5 verification: the five variants rendered in Chrome on the remote Mac mini at 1440×1000, 390×844, 844×390 and 320×640 without document or preview-content horizontal overflow; the action footer remained inside the preview. Browser interaction checks passed for cancel/reopen, incomplete-copy blocking, conversation details, Escape, simulated recovery, detecting panes absent from an older copy, confirmation/cancellation of a simulated close, loading/empty/error/offline states, and returning from the current-interface reference. No JavaScript errors were reported by the fixture error collector during those checks. Real recovery remains untested and unimplemented by this mockup.
 
 Desktop screenshot inspection passed. The final mobile screenshot request timed out in the remote browser service after all layout and interaction checks had returned successfully; a final mobile image was not inspected. Physical phone validation remains part of the user's review.
+
+
+### Confirmed: automatic restoration of the latest state
+
+The user superseded the manual recovery exploration: "Mejor olvidemos recuperacion simplemente deberia recuperarse completmante el etado ultimo cada vez que abrimos commandOs porfavor". Opening ComandOS must automatically restore the latest complete workspace, without choosing a backup, opening a recovery preview or confirming the normal startup flow.
+
+The restoration requirement covers open tabs and their order, tab groups and nested splits, proportions, each tab's inner panes, session and conversation identity, working context and configuration, reading position and unfinished input. The shared arrangement adapts to the current screen; active tab and pane remain local to each device. These are acceptance requirements, not claims about current implementation coverage.
+
+Reuse sessions that are still alive. Reconnect to the corresponding conversation when a process must be resumed. A closed pane that is absent from the latest saved workspace stays closed. Saving and restoration must preserve the last valid complete state; a partially initialized or empty startup must not replace it. If part of the state cannot be resumed, do not silently substitute a new or unrelated conversation and call it a complete restoration.
+
+Backups remain internal support for continuity. This instruction removes the manual historical-recovery UI from the active release design; it does not authorize deleting existing backup data. The accepted drag/drop distribution, group-close confirmation and independent device focus remain unchanged.
+
+The approved docking prototype is active again. Existing links with `round=recovery` now open `round=dock&variant=A`. The discarded preview can be inspected in prototype commit `290e081`; it is retained only as historical design evidence. No production startup, tmux process, session or backup was changed by this design update. Production verification must cover normal reopen, remote reconnect and recovery after an interrupted application run before claiming complete automatic restoration.
