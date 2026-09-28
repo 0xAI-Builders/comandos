@@ -341,3 +341,12 @@ Observed before any fix:
 - The diagnostic exits with status 1 because the shared-deadline and shared-cancellation expectations fail. This is expected evidence of existing defects, not a passing regression check.
 
 These results confirm failures in the client-side behavior under the stated simulation. They do not test real network delivery, browser suspension, native popovers, sound playback or the user's exact reported symptom. A clarification asking whether opening/start, completion sound or cross-device behavior fails is pending. No production fix has been applied; matching that symptom and repairing the real flow remain required before claiming Pomodoro works.
+
+
+### Confirmed: video-game sound direction for Pomodoro
+
+The user specifies "sondiso de videojuego". Pomodoro's sound direction is video-game effects. Exact timbre and samples are still to be heard and reviewed; this does not establish approval of a particular game soundtrack or sound library.
+
+Recommended treatment: short, original, soft arcade/8-bit-style electronic cues, with a distinct meaning for each event. Proposed mapping: an ascending two-note cue on confirmed start/resume; a short descending cue on confirmed pause; a brief level-complete-style melody when a focus block completes; a different ready cue when the break ends. Do not play a completion cue for a cancelled or skipped block.
+
+Keep the sound-preview control, adjustable volume and mute from the preceding proposal. Completion remains visible as well as audible. Cue playback follows confirmed timer events and must be deduplicated across clients under the eventual playback-device policy. The policy for which device sounds remains to be settled. The request concerns Pomodoro sound; it does not add sound to every application interaction. No audio asset, playback behavior or production timer was changed in this design step.
