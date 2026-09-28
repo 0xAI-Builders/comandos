@@ -148,3 +148,25 @@ Read-only code review on September 28, 2026 identified these limits for the next
 - The remote pane-close path saves recovery data before termination. The native Linux context-menu action calls `kill-pane` directly. Aligning their recovery behavior is an implementation gap to address, not an already completed fix. Sources: `/home/someguy/codebase/0xJesus/ComandOS/bin/cc-dash:5326`, `/home/someguy/codebase/0xJesus/ComandOS/lib/terminal_panes.py:65` and `/home/someguy/codebase/0xJesus/ComandOS/bin/cc-app:1239`.
 
 The next recovery decision is whether the historical recovery flow should support rescuing selected panes/tabs while leaving the rest of the current workspace in place, in addition to restoring an entire prior arrangement. Exact restoration of a prior workspace remains the user's primary requirement.
+
+
+### Accepted: preview before recovery
+
+The user answered "Me encanta lo de la vista previa". Recovery must show a preview before applying changes. This explicitly approves the preview; it does not yet settle selective recovery of individual panes/tabs versus recovery of the entire workspace.
+
+Round 5 explores the preview inside the accepted shell at `https://nodo-01.tail63a117.ts.net:8444/prototypes/prototype-v1-grill.html?round=recovery&variant=A`:
+
+- A: choose a time and compare Actual / Copia in the same workspace area.
+- B: compare the current and saved arrangements side by side, stacked on narrow screens.
+- C: select a snapshot by its layout thumbnail.
+- D: inspect a tab/pane list with conversation details.
+- E: start from the list of changes, with the layout alongside it.
+
+All use invented copies at 08:45, 08:50 and 09:05. These are not the user's actual backups. The preview distinguishes conversations already open, conversations that can resume, and missing conversation data. Opening and cancelling a preview leave the example workspace unchanged. Applying an available copy updates only in-memory example data. Loading, empty, error and offline states are available in the mockup picker.
+
+The incomplete example blocks recovery and explains the missing conversation. Replacing a previously recovered example with an older copy can remove a pane; the preview lists it and asks for explicit confirmation before the simulated close. Both policies are proposals for review. Partial recovery, treatment of current panes absent from a copy and historical retention still require product decisions.
+
+No real backup data is fetched, no process is restarted, and no production recovery endpoint is called. Conversation excerpts are fixtures. This prototype is for choosing a preview interaction, not evidence of exact production recovery.
+
+
+Round 5 verification: the five variants rendered in Chrome on the remote Mac mini at 1440×1000, 390×844, 844×390 and 320×640 without document or preview-content horizontal overflow; the action footer remained inside the preview. Browser interaction checks passed for cancel/reopen, incomplete-copy blocking, conversation details, Escape, simulated recovery, detecting panes absent from an older copy, confirmation/cancellation of a simulated close, loading/empty/error/offline states, and returning from the current-interface reference. No JavaScript errors were reported by the fixture error collector during those checks. Real recovery remains untested and unimplemented by this mockup.
