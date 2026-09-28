@@ -114,4 +114,13 @@ Accepted direction: current ComandOS shell, direct tab dragging to nested edge t
 
 This accepts the design for the 1.0 plan. It does not establish that production persistence, recovery or remote/native terminal behavior have been implemented or verified. Preserve the prototype as the agreed reference while continuing the release grilling.
 
-Next semantic decisions: whether closing a composite tab terminates all member sessions and what confirmation it needs; whether desktop and remote remember separate screen arrangements while sharing the same sessions. Exact backup/restore scope and deterministic context identification also remain open.
+Subsequent decisions and remaining questions are recorded below. Exact backup/restore scope and deterministic context identification also remain open.
+
+
+### Confirmed: group-close confirmation and mobile arrangement
+
+The user answered the group-close question with "Deberia preguntar porfavor". Closing a composite tab must ask for confirmation before terminating its member sessions, showing the affected tabs and sessions. Cancel leaves the group and its sessions intact. Separating a tab by dragging it back to the strip does not terminate it.
+
+The user also confirmed "Si tambien deberia poder hacerse desde el celular porfavor". Mobile must support reorganizing tabs, grouping, separating and resizing through the accepted direct manipulation. Do not treat mobile as a view-only client.
+
+That answer confirms mobile editing, but does not clearly choose shared arrangement versus a separate remembered arrangement per device. Clarify with a concrete example before recording either as accepted. The earlier recommendation of separate per-device arrangements is not an approved decision.
