@@ -281,3 +281,29 @@ Distinguish the states by icon shape and motion pattern; animation alone no long
 The default presentation uses continuous loops. Retain static versions for reduced-motion preferences and suspend animation in hidden views. Animation is presentation, not evidence of activity: missing or stale signals must not leave an indefinite Trabajando state. No percentage or time-to-completion claim is implied by the ring. These are design requirements to validate in the later prototype and implementation; no performance result is claimed here.
 
 The question about the neutral state after a completed turn remains unanswered. The continuous-animation decision does not approve automatic Resuelto or alter the previously accepted Resuelto-to-Trabajando transition. Do not repeat the rejected still-icon treatment when proposing the eventual post-turn indicator. Only the design log changed in this step.
+
+
+### Next grilling block: Pomodoro usefulness and remaining release review
+
+The user asks what remains to review and says they have never used Pomodoro and that it does not work well. No specific failing interaction or expected/actual result was supplied. This turn examines product scope and existing behavior; it does not diagnose or fix the reported failure.
+
+Read-only code observations:
+
+- The panel combines timed focus, breaks, automatic cycles, a notification queue and focus statistics. Sources: `/home/someguy/codebase/0xJesus/ComandOS/dash/index.html:5701` and `/home/someguy/codebase/0xJesus/ComandOS/dash/index.html:5804`.
+- A dedicated Pomodoro button occupies the native header beside notifications and settings; the web header also exposes it. Sources: `/home/someguy/codebase/0xJesus/ComandOS/bin/cc-app:3992` and `/home/someguy/codebase/0xJesus/ComandOS/dash/index.html:1978`.
+- While a saved focus deadline is active, the notification daemon queues a notification when both its session and its project differ from the focused session/project. That route returns before producing a popup or sound. The check does not inspect notification kind or focus/break mode. This is a code observation, not evidence that the user's live notifications are currently suppressed. Source: `/home/someguy/codebase/0xJesus/ComandOS/bin/cc-notifyd:969`.
+- Timer state is held both in the page and in the backend. The UI's five-minute extension changes local values; the inspected handler does not send a backend update. Active local timers are not reconciled by the `FOCUS && !POMO.t` restoration branch. Sources: `/home/someguy/codebase/0xJesus/ComandOS/dash/index.html:5757` and `/home/someguy/codebase/0xJesus/ComandOS/dash/index.html:5872`.
+- Completion attempts to notify a loopback address from browser code. That address refers to the browsing device, so the remote delivery path needs its own validation. Source: `/home/someguy/codebase/0xJesus/ComandOS/dash/index.html:5815`.
+
+The latter observations identify paths worth testing if the feature is retained. They do not establish the cause of the user's unspecified failure. No live timer, focus settings, queue or notification service was changed, and no browser reproduction was performed.
+
+Recommendation pending the user's choice: remove Pomodoro from the 1.0 product scope and visible interface, then review notifications as their own feature. The user has not authorized this removal yet. Alternatives for the grilling are a simple optional reminder timer or an explicitly requested concentration mode. Neither alternative is approved. A decision to retire the timer must also address existing notification suppression; merely hiding its button is not sufficient. Preserve historical data unless separately authorized otherwise.
+
+Remaining release-review agenda, distinguishing design agreement from implementation and verification:
+
+- Returning to work: settle deterministic pane/session identification and the minimum context shown when switching.
+- State transitions and notifications: settle the post-turn indicator, blocker transitions, permission/error alerts, cross-device delivery and opening the exact affected pane. The proposed neutral post-turn state is still unanswered.
+- AI and extensions: complete review of model synchronization, provider controls/logs, selection versus actual loaded tools, global/category selection and measured loading performance.
+- Terminal operation on desktop and remote: keyboard, clipboard, scrolling, touch gestures and responsive layout, including the accepted tab docking and quick-terminal creation behavior.
+- Continuity: implement and validate the accepted automatic restoration contract, shared arrangement and independent per-device focus through reopen, disconnect and interrupted startup scenarios.
+- Analytics, remaining utilities and settings: choose what supports the core workflow; complete access/security behavior and the user's end-to-end release tests. Approval of a mockup is not completion of these checks.
