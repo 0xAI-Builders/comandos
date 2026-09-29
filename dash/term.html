@@ -204,6 +204,7 @@
 <script src="../assets/xterm/addon-web-links.js"></script>
 <script src="../assets/xterm/addon-canvas.js"></script>
 <script src="../assets/opentype/opentype.min.js"></script>
+<script src="../device-drafts.js"></script>
 <script src="../assets/xterm/addon-ligatures-web.js"></script>
 <script>
 (function () {
@@ -1463,6 +1464,30 @@
   let mobileDraftMode = false;
   const draftStorageKey = 'comandos:terminal-draft:' + arg;
   try { draftElement.value = sessionStorage.getItem(draftStorageKey) || ''; } catch (_) {}
+  // Borrador y punto de lectura POR DISPOSITIVO en el servidor (W4): vuelven
+  // al compositor tras cerrar/reabrir, nunca se teclean en la terminal.
+  const deviceId = (() => { try { return localStorage.getItem('comandos.deviceId') || ''; } catch (_) { return ''; } })();
+  async function loadDeviceState() {
+    const r = await fetch('/workspace/client?deviceId=' + encodeURIComponent(deviceId),
+      {cache:'no-store', headers:{'X-Comandos-Token':accessTokenParam}, signal:AbortSignal.timeout(8000)});
+    if (!r.ok) throw new Error('Estado del dispositivo no disponible');
+    return r.json();
+  }
+  async function saveDeviceState(patch) {
+    const r = await fetch('/workspace/client', {method:'POST', cache:'no-store',
+      headers:{'Content-Type':'application/json','X-Comandos-Token':accessTokenParam},
+      body:JSON.stringify({deviceId, ...patch}), signal:AbortSignal.timeout(8000)});
+    if (!r.ok) throw new Error('No se guardó el borrador');
+  }
+  const deviceStateReady = !!(window.ComandosDeviceDrafts && deviceId && arg && accessTokenParam);
+  const deviceDrafts = deviceStateReady ? ComandosDeviceDrafts.createDrafts({
+    key: 'tab:' + arg, load: loadDeviceState, save: saveDeviceState,
+    read: () => draftElement.value, write: text => { draftElement.value = text; },
+    select: (start, end) => { try { draftElement.setSelectionRange(start, end); } catch (_) {} },
+  }) : null;
+  const readingAnchor = deviceStateReady ? ComandosDeviceDrafts.createAnchor({
+    key: 'tab:' + arg, load: loadDeviceState, save: saveDeviceState }) : null;
+  let readingAnchorChecked = false;
   const mobileDraft = createMobileDraftController({
     read: () => draftElement.value,
     write: text => { draftElement.value = text; },
@@ -1471,6 +1496,7 @@
         if (text) sessionStorage.setItem(draftStorageKey, text);
         else sessionStorage.removeItem(draftStorageKey);
       } catch (_) {}
+      deviceDrafts?.changed(text, draftElement.selectionStart, draftElement.selectionEnd);
     },
     send: (text, enter) => {
       const socket = ws;
@@ -1478,6 +1504,9 @@
       return inputAcks.wait(socket, 4000);
     },
     failed: () => showErr('La terminal no confirmó el envío. El borrador se conserva; comprueba antes de reenviar.'),
+  });
+  void deviceDrafts?.restore().then(state => {
+    try { if (state === 'restored') sessionStorage.setItem(draftStorageKey, draftElement.value); } catch (_) {}
   });
   draftElement.addEventListener('compositionstart', mobileDraft.compositionStart);
   draftElement.addEventListener('compositionend', mobileDraft.compositionEnd);
@@ -1601,6 +1630,20 @@
       tapSelection = {start, end, anchor: {start, end}};
       historyText.scrollTop = historyText.scrollHeight;
       updateSelectionControls();
+      // Tras reabrir, volver UNA vez al punto de lectura guardado; si esa
+      // línea ya no está en el historial disponible, decirlo sin saltar.
+      if (readingAnchor && !readingAnchorChecked) {
+        readingAnchorChecked = true;
+        void readingAnchor.find(historyText.value).then(found => {
+          if (found.state === 'found') {
+            const before = historyText.value.slice(0, found.index).split('\n').length - 1;
+            historyText.scrollTop = before * historyLineHeight();
+          } else if (found.state === 'missing') {
+            document.getElementById('history-status').textContent =
+              'Tu punto de lectura anterior ya no está en el historial disponible. Se muestra lo más reciente.';
+          }
+        });
+      }
     },
     status: message => { document.getElementById('history-status').textContent = message; },
   });
@@ -1650,6 +1693,17 @@
   document.getElementById('selection-close').addEventListener('click', closeTerminalHistory);
   document.getElementById('history-refresh').addEventListener('click', () => terminalHistory.refresh());
   document.getElementById('history-bottom').addEventListener('click', () => { historyText.scrollTop = historyText.scrollHeight; });
+  function historyLineHeight() {
+    return parseFloat(getComputedStyle(historyText).lineHeight) || 16;
+  }
+  historyText.addEventListener('scroll', () => {
+    if (!readingAnchor || !historyReady) return;
+    const top = Math.floor(historyText.scrollTop / historyLineHeight());
+    const lines = historyText.value.split('\n');
+    const index = lines.slice(0, top).reduce((n, line) => n + line.length + 1, 0);
+    const ratio = historyText.scrollHeight ? historyText.scrollTop / historyText.scrollHeight : 0;
+    readingAnchor.remember(historyText.value, Math.min(index, historyText.value.length), Math.min(1, ratio));
+  }, {passive:true});
   document.getElementById('selection-copy').addEventListener('click', async () => {
     const copied = await copyTerminalSelection();
     document.getElementById('history-status').textContent = copied ? 'Copiado.' : 'No se pudo copiar. Usa Copiar en el menú del navegador.';

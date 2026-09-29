@@ -14,6 +14,9 @@ SCHEMA = 1
 MAX_DEPTH = 64
 MAX_ID = 200
 MAX_CLIENT_BYTES = 256 * 1024
+MAX_DRAFTS = 64
+MAX_DRAFT_CHARS = 20000
+MAX_ANCHORS = 128
 PHASES = ("restoring", "ready", "failed")
 
 
@@ -190,27 +193,34 @@ class WorkspaceStore:
 
     # ---- per-device state ----------------------------------------------
     def save_client(self, device_id, state):
+        """Merge one device's state. ``draftsPatch``/``anchorsPatch`` change
+        single keys (None removes one) so frequent small saves never race a
+        whole-dict rewrite from another tab of the same device."""
         _ident(device_id, "deviceId")
         if not isinstance(state, dict):
             raise ValueError("Estado de cliente inválido")
-        # Fields a request omits keep their saved value: saving focus must
-        # never erase that device's drafts or reading anchors.
-        previous = self.client(device_id) or {}
-        clean = {key: state[key] if key in state else previous.get(key, default)
-                 for key, default in (("activeTabId", None), ("activePaneKey", None),
-                                      ("drafts", {}), ("readingAnchors", {}))}
-        clean["drafts"] = clean["drafts"] or {}
-        clean["readingAnchors"] = clean["readingAnchors"] or {}
-        for key in ("activeTabId", "activePaneKey"):
-            if clean[key] is not None:
-                _ident(clean[key], key)
-        if not isinstance(clean["drafts"], dict) or not isinstance(clean["readingAnchors"], dict):
-            raise ValueError("Estado de cliente inválido")
-        encoded = _canonical(clean)
-        if len(encoded.encode()) > MAX_CLIENT_BYTES:
-            raise ValueError("Estado de cliente demasiado grande")
         self.conn.execute("BEGIN IMMEDIATE")
         try:
+            # Fields a request omits keep their saved value: saving focus must
+            # never erase that device's drafts or reading anchors.
+            previous = self.client(device_id) or {}
+            clean = {key: state[key] if key in state else previous.get(key, default)
+                     for key, default in (("activeTabId", None), ("activePaneKey", None),
+                                          ("drafts", {}), ("readingAnchors", {}))}
+            clean["drafts"] = dict(clean["drafts"] or {})
+            clean["readingAnchors"] = dict(clean["readingAnchors"] or {})
+            for key in ("activeTabId", "activePaneKey"):
+                if clean[key] is not None:
+                    _ident(clean[key], key)
+            if not isinstance(clean["drafts"], dict) or not isinstance(clean["readingAnchors"], dict):
+                raise ValueError("Estado de cliente inválido")
+            if "draftsPatch" in state:
+                _patch(clean["drafts"], state["draftsPatch"], _draft_entry, MAX_DRAFTS)
+            if "anchorsPatch" in state:
+                _patch(clean["readingAnchors"], state["anchorsPatch"], _anchor_entry, MAX_ANCHORS)
+            encoded = _canonical(clean)
+            if len(encoded.encode()) > MAX_CLIENT_BYTES:
+                raise ValueError("Estado de cliente demasiado grande")
             self.conn.execute("INSERT OR REPLACE INTO workspace_clients VALUES (?, ?, ?)",
                               (device_id, encoded, time.time()))
             self.conn.execute("COMMIT")
@@ -236,6 +246,53 @@ class WorkspaceStore:
         except BaseException:
             self.conn.execute("ROLLBACK")
             raise
+
+
+# ---- per-device drafts and reading anchors ----------------------------------
+
+def _stamp(value):
+    at = value.get("updatedAt")
+    if isinstance(at, bool) or not isinstance(at, (int, float)) or not math.isfinite(at):
+        return time.time() * 1000
+    return at
+
+
+def _draft_entry(value):
+    text = value.get("text")
+    if not isinstance(text, str) or len(text) > MAX_DRAFT_CHARS:
+        raise ValueError("Borrador inválido o demasiado largo")
+    entry = {"text": text, "updatedAt": _stamp(value)}
+    for key in ("selStart", "selEnd"):
+        pos = value.get(key)
+        if isinstance(pos, int) and not isinstance(pos, bool) and 0 <= pos <= len(text):
+            entry[key] = pos
+    return entry
+
+
+def _anchor_entry(value):
+    text, ratio = value.get("text"), value.get("ratio")
+    if not isinstance(text, str) or len(text) > 300:
+        raise ValueError("Ancla de lectura inválida")
+    entry = {"text": text, "updatedAt": _stamp(value)}
+    if isinstance(ratio, (int, float)) and not isinstance(ratio, bool) and 0 <= ratio <= 1:
+        entry["ratio"] = float(ratio)
+    return entry
+
+
+def _patch(target, patch, make, limit):
+    if not isinstance(patch, dict):
+        raise ValueError("Cambio inválido")
+    for key, value in patch.items():
+        _ident(key, "clave")
+        if value is None:
+            target.pop(key, None)
+        elif isinstance(value, dict):
+            target[key] = make(value)
+        else:
+            raise ValueError("Cambio inválido")
+    # Bounded: the least recently updated entries go first.
+    for key in sorted(target, key=lambda k: target[k].get("updatedAt", 0))[:max(0, len(target) - limit)]:
+        target.pop(key)
 
 
 # ---- closing a whole group -------------------------------------------------
