@@ -773,6 +773,82 @@ def news_edition_payload(edition_id):
     return (200, found) if found else (404, {"error": "Edición no encontrada"})
 
 
+# ---- N4: Web Push al Android (suscripción y prueba son acciones explícitas) ----
+# El envío automático lo conecta el integrador con push_dispatch(events, clients,
+# policy=<política N2>); sin pywebpush /push/key responde "no disponible".
+_PUSH_LOCAL = threading.local()
+_PUSH_TEST_LAST = {}
+PUSH_TEST_INTERVAL_S = 10.0
+
+
+def push_conn():
+    conn = getattr(_PUSH_LOCAL, "conn", None)
+    if conn is None:
+        conn = app_state.connect()
+        app_state.migrate(conn)
+        _PUSH_LOCAL.conn = conn
+    return conn
+
+
+def _push_send(subscription, payload):
+    import web_push
+    return web_push.send_push(subscription, payload)
+
+
+def push_key_payload():
+    import web_push
+    ok, reason = web_push.available()
+    if not ok:
+        return 503, {"available": False, "error": reason}
+    return 200, {"available": True, "publicKey": web_push.load_or_create_vapid().public_key}
+
+
+def push_subscription_write(method, data):
+    import web_push
+    ok, reason = web_push.available()
+    if not ok:
+        return 503, {"ok": False, "error": reason}
+    conn = push_conn()
+    if method == "DELETE":
+        return 200, {"ok": True, "removed": web_push.remove_subscription(conn, str(data.get("endpoint") or ""))}
+    try:
+        sid = web_push.save_subscription(conn, data.get("subscription"),
+                                         device_id=str(data.get("deviceId") or "") or None,
+                                         user_agent=str(data.get("userAgent") or "") or None)
+    except ValueError as exc:
+        return 400, {"ok": False, "error": str(exc)}
+    return 200, {"ok": True, "id": sid}
+
+
+def push_test(data):
+    import web_push
+    ok, reason = web_push.available()
+    if not ok:
+        return 503, {"ok": False, "error": reason}
+    endpoint = str(data.get("endpoint") or "")
+    if not web_push.find_subscription(push_conn(), endpoint):
+        return 404, {"ok": False, "error": "Este dispositivo no tiene una suscripción activa."}
+    now = time.monotonic()
+    if now - _PUSH_TEST_LAST.get(endpoint, -1e9) < PUSH_TEST_INTERVAL_S:
+        return 429, {"ok": False, "error": "Espera unos segundos antes de otra prueba."}
+    try:
+        result = web_push.run_test(push_conn(), endpoint, _push_send)
+    except LookupError as exc:
+        return 404, {"ok": False, "error": str(exc)}
+    _PUSH_TEST_LAST[endpoint] = now
+    return 200, result
+
+
+def push_dispatch(events, clients, policy=None, now_ms=None):
+    """Send due pushes for N1 events; `policy(event, clients, now_ms)` is the
+    shared N2 policy (default: D5, no visible client for 2 min)."""
+    import web_push
+    if not web_push.available()[0]:
+        return []
+    return web_push.send_due_push(push_conn(), int(now_ms or time.time() * 1000),
+                                  policy or web_push.default_policy, events, clients, sender=_push_send)
+
+
 def _news_editions_loop():
     import news_editions
     global _news_scheduler
@@ -8204,6 +8280,8 @@ class Handler(http.server.SimpleHTTPRequestHandler):
 
         if self.path.startswith("/news/latest"):
             return self._json(200, _read_json_quiet(os.path.join(HOOKS, "news-watch.json")) or {})
+        if urllib.parse.urlsplit(self.path).path == "/push/key":
+            return self._json(*push_key_payload())
         if urllib.parse.urlsplit(self.path).path == "/news/editions":
             return self._json(200, news_editions_payload())
         if urllib.parse.urlsplit(self.path).path == "/news/edition":
@@ -8376,6 +8454,23 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             cid = (query.get("id") or [""])[0]
             return self._json(200, operator_snapshot(cid or None))
         return super().do_GET()
+
+    def do_DELETE(self):
+        gate = self._security_gate()
+        if gate:
+            return self._json(*gate, close=True)
+        try:
+            n = int(self.headers.get("Content-Length", 0))
+            if n < 0 or n > 64_000:
+                return self._json(413, {"error": "Payload demasiado grande"}, close=True)
+            data = json.loads(self.rfile.read(n) or b"{}")
+        except Exception:
+            return self._json(400, {"error": "JSON invalido"}, close=True)
+        if not isinstance(data, dict):
+            return self._json(400, {"error": "El cuerpo debe ser un objeto JSON"})
+        if self.path == "/push/subscription":
+            return self._json(*push_subscription_write("DELETE", data))
+        return self._json(404, {"error": "No encontrado"})
 
     def do_POST(self):
         gate = self._security_gate()
@@ -8817,6 +8912,11 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             state["credential_health"] = {h["provider"]: h for h in health}
             state["credential_health"].update(prov["health"])
             return self._json(200, {"ok": True, "counts": counts, "state": state})
+
+        if self.path == "/push/subscription":
+            return self._json(*push_subscription_write("POST", data))
+        if self.path == "/push/test":
+            return self._json(*push_test(data))
 
         if self.path == "/news/refresh":
             try:

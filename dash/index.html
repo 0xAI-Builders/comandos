@@ -2159,6 +2159,14 @@
     <div class="set"><div class="desc">UN solo volumen para todo ComandOS. Estos botones suenan
       EXACTAMENTE igual que las notificaciones reales (mismo reproductor y volumen) — si algo
       suena distinto a esto, NO viene de ComandOS.</div></div>
+    <div class="set" id="push-settings"><label>Avisos en este dispositivo (push)</label>
+      <div class="desc" id="push-status" aria-live="polite">Comprobando…</div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        <button class="test" id="push-enable" type="button">Activar avisos en este dispositivo</button>
+        <button class="test" id="push-test" type="button" hidden>Enviar aviso de prueba</button>
+        <button class="test" id="push-disable" type="button" hidden>Desactivar</button>
+      </div>
+      <div class="desc">Solo llegan si ningún CommandOS está visible desde hace 2 minutos. Con la pantalla bloqueada se ve el proyecto y un título breve; el detalle, al abrir la app. El sonido lo decide Android.</div></div>
 
     <h3 style="margin-top:24px">Idioma / Language</h3>
     <div class="set" style="display:flex;gap:8px">
@@ -9110,3 +9118,4 @@ if("serviceWorker" in navigator)
 <script src="/vendor/markdown-it-15.0.2.umd.min.js"></script>
 <script src="/vendor/purify-3.4.16.min.js"></script>
 <script src="/news-reader.js" data-autoinstall></script>
+<script src="/push-settings.js" data-autoinstall></script>
