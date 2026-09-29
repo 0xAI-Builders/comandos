@@ -975,6 +975,20 @@
   pasteDialog.addEventListener('close', focusTerminal);
   window.addEventListener('message', handleTerminalMessage);
   if (parent !== window) parent.postMessage({source:'comandos-term', type:'ready'}, location.origin);
+  // N2 presencia: una tecla o toque REAL en la terminal cuenta como interacción
+  // humana del dispositivo (el tablero la reporta en POST /presence, 5 s de throttle).
+  if (parent !== window) {
+    let lastInteractionPost = 0;
+    const postInteraction = e => {
+      if (!e.isTrusted) return;
+      const t = Date.now();
+      if (t - lastInteractionPost < 5000) return;
+      lastInteractionPost = t;
+      parent.postMessage({source:'comandos-term', type:'user-interaction'}, location.origin);
+    };
+    document.addEventListener('keydown', postInteraction, true);
+    document.addEventListener('pointerdown', postInteraction, true);
+  }
 
   // Teclado MOVIL: el borrador nativo procesa beforeinput y composición.
   // Solo Insertar/Enviar produce bytes; el teclado directo queda en xterm.
