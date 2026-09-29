@@ -877,3 +877,11 @@ Jesús corrige: el modal solo aparece para armar cadenas; los comandos deben est
 Ronda 5 en el mismo archivo (`?round=lado&l=A..E`): A Pila, catálogo compacto arriba y terminales abajo con separador; B Acordeón, grupos plegables con un solo abierto y terminal más alta; C Al workspace, barra solo catálogo y terminales como tabs; D Cajón, barra solo catálogo y terminales en cajón inferior; E Losetas de tres por fila con explicación y chips de argumentos al pie de la barra al pasar por encima. En todas, un clic escribe sin Enter en el pane seleccionado y los chips de argumento son un clic.
 
 Verificado en la Mac mini con chrome-bg a 1440×1000 y 390×844: clic en chip escribe `/effort max` sin abrir nada; Cadenas abre el mosaico, dos clics añaden dos pasos sin tocar el pane, guardar y cerrar; el acordeón abre el grupo tocado; las losetas muestran la explicación al pie; móvil sin desbordamiento, con el catálogo corto de alto en A. Sin veredicto todavía.
+
+## Fase 2 · propuesta de Jesús y ronda 6: comandos por CLI · 2026-09-29
+
+Jesús propone agrupar los comandos por CLI instalado en vez de por tema (modelo, esfuerzo, conversación…): tocar un CLI despliega sus opciones. Se acepta como dirección porque el catálogo del repo ya está fijado por versión instalada de cada CLI y porque resuelve la terminal rápida vacía: dentro de cada CLI, lo primero es cómo arrancarlo ahí. El CLI detectado en el pane seleccionado se abre solo y se marca; los demás muestran "instalado" o "sin verificar" (Antigravity, cuyos comandos vivos no están confirmados en 1.1.25). El reparto de la barra sigue siendo la pila de la ronda 5 hasta que se responda Q8.
+
+Ronda 6 en el mismo archivo (`?round=cli&c=A..E`): A acordeón por CLI con lista plana; B pestañas por CLI con monograma; C acordeón por CLI con grupos como subtítulos; D solo el CLI del pane con un selector para ver otro; E tarjetas por CLI con píldoras, las que llevan argumento abren sus opciones debajo. Los monogramas y colores por CLI son marcadores de laboratorio, no los iconos de proveedor del producto.
+
+Límite: al construir esta ronda el navegador de la Mac mini estaba ocupado por dos sesiones ajenas; sintaxis JS comprobada, sin verificación visual remota todavía. Sin veredicto.
