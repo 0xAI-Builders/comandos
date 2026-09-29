@@ -1984,6 +1984,7 @@
 	    <div id="pomo-panel" class="hidden" role="dialog" aria-label="Pomodoro"></div>
 	    <button class="hdr-btn" id="btn-notif" aria-label="Notificaciones" title="Notificaciones — todo local: avisos, pomodoros y cola de foco"><span data-icon="bell" data-size="16"></span><b class="nbadge hidden" id="notif-badge">0</b></button>
 	    <div id="notif-panel" class="hidden" role="dialog" aria-label="Notificaciones"></div>
+	    <button class="hdr-btn" id="btn-news" aria-label="Novedades" title="Novedades — tres ediciones diarias con fuentes"><span data-icon="sparkles" data-size="16"></span></button>
 	    <button class="hdr-btn" id="btn-settings">Ajustes</button>
   </div>
 </header>
@@ -2159,6 +2160,14 @@
     <div class="set"><div class="desc">UN solo volumen para todo ComandOS. Estos botones suenan
       EXACTAMENTE igual que las notificaciones reales (mismo reproductor y volumen) — si algo
       suena distinto a esto, NO viene de ComandOS.</div></div>
+    <div class="set" id="push-settings"><label>Avisos en este dispositivo (push)</label>
+      <div class="desc" id="push-status" aria-live="polite">Comprobando…</div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        <button class="test" id="push-enable" type="button">Activar avisos en este dispositivo</button>
+        <button class="test" id="push-test" type="button" hidden>Enviar aviso de prueba</button>
+        <button class="test" id="push-disable" type="button" hidden>Desactivar</button>
+      </div>
+      <div class="desc">Solo llegan si ningún CommandOS está visible desde hace 2 minutos. Con la pantalla bloqueada se ve el proyecto y un título breve; el detalle, al abrir la app. El sonido lo decide Android.</div></div>
 
     <h3 style="margin-top:24px">Idioma / Language</h3>
     <div class="set" style="display:flex;gap:8px">
@@ -6876,7 +6885,8 @@ function closeTerm(sess){
 const WS_DEVICE = (() => {
   try{
     let id = localStorage.getItem("comandos.deviceId");
-    if(!id || !/^web-[A-Za-z0-9-]{8,64}$/.test(id)){
+    // Misma clave que push-settings.js: un único id por navegador.
+    if(!id || !/^[A-Za-z0-9_.:-]{8,120}$/.test(id)){
       id = "web-" + (crypto.randomUUID ? crypto.randomUUID() : Date.now().toString(36) + Math.random().toString(36).slice(2));
       localStorage.setItem("comandos.deviceId", id);
     }
@@ -8979,3 +8989,7 @@ if("serviceWorker" in navigator)
 <script src="/work-marks.js"></script>
 <script src="/ui-sounds.js"></script>
 <script src="/pomodoro.js"></script>
+<script src="/vendor/markdown-it-15.0.2.umd.min.js"></script>
+<script src="/vendor/purify-3.4.16.min.js"></script>
+<script src="/news-reader.js" data-autoinstall></script>
+<script src="/push-settings.js" data-autoinstall></script>
