@@ -1,170 +1,196 @@
-<!doctype html><html lang="es"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>ComandOS · Laboratorio fase 2 · barra</title>
-<!-- THROWAWAY. Fase 2, ronda 2: composición de la barra izquierda = Comandos del pane seleccionado + Terminales rápidas.
-     Cinco composiciones estructuralmente distintas sobre el mismo mock. Un clic inserta el comando letra por letra SIN Enter.
-     Catálogo tomado de docs/tui-command-map.md (versiones instaladas). Nada real se ejecuta. ?variant=A..E&sel=claude|codex -->
+<!doctype html><html lang="es"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>ComandOS · Laboratorio · Barra de comandos</title>
+<!-- THROWAWAY. Fase 2, ronda 2 (rehecha): la barra izquierda = Comandos del pane seleccionado + Terminales rápidas.
+     Cinco composiciones dentro del marco del producto. Direct manipulation: clic inserta letra por letra SIN Enter; arrastrar un
+     comando a cualquier pane lo escribe ahí; arrastrar a Cadenas lo añade como paso; los pasos se reordenan arrastrando.
+     Arte pixel: Shikashi (CC BY 4.0), karsiori (CC0), Zoedoz (CC0) desde assets/pixel-packs. Catálogo: docs/tui-command-map.md.
+     Nada real se ejecuta. ?variant=A..E&sel=1|2 -->
 <style>
-:root{color-scheme:dark;--bg:#101218;--panel:#171b24;--line:#2a303e;--text:#e7eaf2;--dim:#949db0;--brand:#ad9cff;--green:#8aceac;--amber:#e6ba75;--red:#e08a8a}
-*{box-sizing:border-box}html,body{height:100%}body{margin:0;background:#080a10;color:var(--text);font:13px/1.45 system-ui,-apple-system,Segoe UI,Inter,sans-serif}
-button{font:inherit;cursor:pointer;background:#1f2432;color:var(--text);border:1px solid #3a4256;border-radius:6px;padding:5px 10px}button:hover{background:#28304a}button.primary{background:var(--brand);color:#12111a;border-color:var(--brand);font-weight:600}button.ghost{background:transparent;border-color:transparent;color:var(--dim)}button.ghost:hover{color:var(--text);background:#1f2432}
-input{font:inherit;background:#0e1118;color:var(--text);border:1px solid var(--line);border-radius:6px;padding:6px 8px;width:100%}
-.app{height:100vh;display:grid;grid-template-rows:38px minmax(0,1fr);background:var(--bg)}
-.top{display:flex;align-items:center;gap:10px;padding:0 12px;border-bottom:1px solid var(--line);font-size:12px;color:var(--dim);overflow:hidden}
-.top b{color:var(--text)}.top .tabs{display:flex;gap:6px;min-width:0;overflow:hidden}.top .tab{padding:3px 10px;border:1px solid var(--line);border-radius:6px;white-space:nowrap}.top .tab.on{background:var(--panel);color:var(--text);border-color:#3a4256}.top .tab.qt{color:var(--brand)}
-.top .acts{margin-left:auto;display:flex;gap:6px}.top .acts button{padding:3px 9px;font-size:12px}
-.body{display:grid;min-height:0}
-/* workspace */
-.ws{display:grid;grid-template-rows:minmax(0,1fr);min-height:0}
-.panes{display:grid;grid-template-columns:1fr 1fr;min-height:0}
-.pane{display:flex;flex-direction:column;min-height:0;border-right:1px solid var(--line);position:relative}.pane:last-child{border-right:0}
-.pane.sel{box-shadow:inset 0 0 0 2px var(--brand)}
-.pane-head{display:flex;align-items:center;gap:8px;padding:5px 10px;border-bottom:1px solid var(--line);font-size:11px;color:var(--dim)}.pane-head b{color:var(--text)}.pane-head .sel-tag{margin-left:auto;color:var(--brand)}
-.term{flex:1;min-height:0;overflow:auto;padding:10px 12px;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px;line-height:1.5;background:#0b0d13;white-space:pre-wrap}
-.term .u{color:#c9d1e6}.term .a{color:#9aa4bd}.term .m{color:var(--green)}.term .s{color:#5f6779}.term .d{color:var(--amber)}
-.prompt{padding:6px 12px;border-top:1px solid var(--line);background:#0b0d13;font-family:ui-monospace,Menlo,monospace;font-size:12px;display:flex;align-items:center;gap:8px}
-.prompt .in{flex:1;min-height:18px;color:#e7eaf2}.prompt .in::after{content:"▍";animation:blink .9s infinite}.prompt .hint{font:11px system-ui;color:var(--dim)}.prompt .hint.on{color:var(--amber)}
-@keyframes blink{50%{opacity:.2}}
-/* sidebar shared bits */
-.sb{background:var(--panel);border-right:1px solid var(--line);display:flex;flex-direction:column;min-height:0;min-width:0}
-.sb-head{padding:8px 12px;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:8px;font-size:11px;color:var(--dim)}.sb-head b{color:var(--text);font-size:12px}
-.ver{font-size:10px;padding:1px 6px;border-radius:999px;border:1px solid #2f5a44;color:var(--green)}.ver.warn{border-color:#6a5530;color:var(--amber)}
-.search{padding:8px 10px;border-bottom:1px solid var(--line)}
-.cat{flex:1;min-height:0;overflow:auto}
-.grp{padding:8px 12px 2px;font-size:10px;text-transform:uppercase;letter-spacing:.06em;color:var(--dim)}
-.cmd{display:grid;grid-template-columns:auto 1fr;gap:2px 10px;padding:6px 12px;cursor:pointer;border-left:2px solid transparent}.cmd:hover{background:#1d2230;border-left-color:var(--brand)}
-.cmd code{font-family:ui-monospace,Menlo,monospace;font-size:12px;color:var(--text)}.cmd small{grid-column:2;color:var(--dim);font-size:11px}.cmd .uv{grid-column:2;font-size:10px;color:var(--amber)}
-.cmd .opts{grid-column:2;display:flex;flex-wrap:wrap;gap:4px;margin-top:2px}.cmd .opts button{font-size:10px;padding:2px 6px;background:#12151d}
-.chain{padding:8px 12px;border-top:1px solid var(--line);font-size:12px}.chain .steps{display:grid;gap:4px;margin:6px 0}.chain .step{display:flex;gap:8px;align-items:center;padding:4px 6px;border:1px solid var(--line);border-radius:6px}.chain .step.done{opacity:.5}.chain .step.cur{border-color:var(--brand)}.chain .step code{font-family:ui-monospace,Menlo,monospace;font-size:11px}.chain .step .k{font-size:10px;color:var(--dim);min-width:34px}
-.tabs2{display:flex;gap:2px;padding:6px 8px 0;border-bottom:1px solid var(--line);font-size:11px;overflow:auto}.tabs2 .t{padding:5px 10px;border:1px solid var(--line);border-bottom:0;border-radius:6px 6px 0 0;color:var(--dim);white-space:nowrap;cursor:pointer}.tabs2 .t.on{color:var(--text);background:#0b0d13}.tabs2 .t.plus{color:var(--brand)}
-.mini{flex:1;min-height:0;overflow:auto;padding:8px 10px;font-family:ui-monospace,Menlo,monospace;font-size:11.5px;line-height:1.5;background:#0b0d13;white-space:pre-wrap;color:#c9d1e6}.mini .s{color:#5f6779}.mini .a{color:#9aa4bd}
-.divider{height:6px;cursor:row-resize;background:linear-gradient(var(--line),var(--line)) center/40px 2px no-repeat;border-top:1px solid var(--line)}
-/* ---- A: pila ---- */
-.vA .body{grid-template-columns:340px minmax(0,1fr)}.vA .sb-cmds{flex:1 1 55%;min-height:0;display:flex;flex-direction:column}.vA .sb-terms{flex:1 1 45%;min-height:0;display:flex;flex-direction:column}
-/* ---- B: terminal primero, paleta flotante ---- */
-.vB .body{grid-template-columns:360px minmax(0,1fr)}.vB .sb-terms{flex:1;min-height:0;display:flex;flex-direction:column}
-.vB .pal-btn{position:absolute;left:12px;bottom:12px;z-index:3}
-.overlay{position:absolute;inset:0;background:rgba(8,10,16,.6);z-index:4;display:flex;align-items:flex-start;justify-content:center;padding-top:60px}
-.overlay .pal{width:min(560px,94%);max-height:70vh;background:var(--panel);border:1px solid #3a4256;border-radius:12px;display:flex;flex-direction:column;box-shadow:0 20px 60px rgba(0,0,0,.6)}
-/* ---- C: solo comandos, terminales al workspace ---- */
-.vC .body{grid-template-columns:260px minmax(0,1fr)}.vC .cmd{grid-template-columns:1fr;padding:5px 12px}.vC .cmd small{grid-column:1}.vC .cmd .opts,.vC .cmd .uv{grid-column:1}
-.vC .ws{grid-template-rows:auto minmax(0,1fr)}.vC .ws-tabs{display:flex;gap:4px;padding:6px 8px;border-bottom:1px solid var(--line);font-size:11px}.vC .ws-tabs .t{padding:4px 10px;border:1px solid var(--line);border-radius:6px;color:var(--dim)}.vC .ws-tabs .t.on{color:var(--text);background:var(--panel)}.vC .ws-tabs .t.qt{color:var(--brand)}
-/* ---- D: cajón inferior ---- */
-.vD .body{grid-template-columns:300px minmax(0,1fr)}.vD .ws{grid-template-rows:minmax(0,1fr) auto}.drawer{border-top:1px solid var(--line);background:var(--panel);display:flex;flex-direction:column;height:220px;min-height:0}.drawer.min{height:30px}.drawer.min .mini{display:none}.drawer .tabs2 .t.close{margin-left:auto;border:0}
-/* ---- E: tabs planas ---- */
-.vE .body{grid-template-columns:320px minmax(0,1fr)}.vE .cmd{padding:10px 12px}.vE .cmd code{font-size:13px}.vE .sb>.tabs2{padding-top:8px}
-/* picker */
-.picker{position:fixed;right:14px;bottom:14px;z-index:50;width:300px;background:#f2f3f8;color:#151824;border-radius:12px;box-shadow:0 12px 40px rgba(0,0,0,.55);font-size:12px;user-select:none}
-.picker .grab{cursor:grab;padding:8px 12px;display:flex;align-items:center;gap:8px;border-bottom:1px solid #d5d8e3;font-weight:600}.picker .grab span{margin-left:auto;font-weight:400;color:#6a7086;font-size:11px}
-.picker .row{display:flex;align-items:center;gap:6px;padding:8px 12px}.picker .row.wrap{flex-wrap:wrap}.picker .name{flex:1;text-align:center;font-weight:600}.picker .name small{display:block;font-weight:400;color:#4d5368}
-.picker button{background:#fff;color:#151824;border:1px solid #c9cddc;padding:4px 8px;font-size:11px}.picker button.on{background:#151824;color:#fff;border-color:#151824}
-.picker .lab{font-size:10px;text-transform:uppercase;letter-spacing:.06em;color:#6a7086;width:100%;margin-top:2px}.picker .desc{padding:0 12px 10px;color:#4d5368;font-size:11px}
-@media(max-width:820px){.vA .body,.vB .body,.vC .body,.vD .body,.vE .body{grid-template-columns:1fr}.body{grid-template-rows:auto minmax(0,1fr)}.sb{border-right:0;border-bottom:1px solid var(--line);max-height:52vh}.panes{grid-template-columns:1fr}.pane:not(.sel){display:none}.top .acts{display:none}
- .picker{width:calc(100% - 20px);right:10px;left:10px;bottom:10px}.picker.collapsed .body>*:not(.row:first-child){display:none}.picker .grab span::after{content:" · toca para plegar"}.mob-only{display:inline-flex}}
-.mob-only{display:none}
+:root{color-scheme:dark;--bg:#101218;--panel:#171b24;--panel2:#121722;--line:#2a303e;--text:#eaf0fb;--dim:#949db0;--brand:#ad9cff;--brand-ink:#0a0d13;--green:#8aceac;--amber:#e6ba75;--red:#e08a8a;--r:12px}
+*{box-sizing:border-box}html,body{height:100%}body{margin:0;background:#080a10;color:var(--text);font:13px/1.45 system-ui,-apple-system,"Segoe UI",Inter,sans-serif}
+button{font:inherit;cursor:pointer;background:#1c2130;color:var(--text);border:1px solid #303748;border-radius:10px;padding:8px 12px;min-height:36px;display:inline-flex;align-items:center;gap:8px}button:hover{background:#242b3d;border-color:#3d465c}
+button.primary{background:var(--brand);color:var(--brand-ink);border-color:var(--brand);font-weight:700;min-height:44px}button.primary:hover{background:#bfb2ff}
+button.ghost{background:transparent;border-color:transparent;color:var(--dim)}button.ghost:hover{color:var(--text);background:#1c2130}
+button.pill{border-radius:999px;min-height:30px;padding:4px 12px;font-size:12px}
+input{font:inherit;background:var(--panel2);color:var(--text);border:1px solid var(--line);border-radius:10px;padding:10px 12px 10px 38px;width:100%;min-height:40px}input:focus{outline:2px solid var(--brand);outline-offset:-1px}
+.px{image-rendering:pixelated;image-rendering:crisp-edges;display:inline-block;flex:none}
+.ic{width:32px;height:32px;background:url(assets/pixel-packs/shikashi/icons.png) no-repeat;background-size:512px 867px}.ic.s24{width:24px;height:24px;transform:scale(.75);transform-origin:top left;margin-right:-8px;margin-bottom:-8px}
+.ic.s20{transform:scale(.625);transform-origin:center;width:20px;height:20px}
+.hour{width:42px;height:42px;background:url(assets/pixel-packs/zoedoz/hourglass.png) 0 0 no-repeat;animation:hour 1.5s steps(15) infinite}@keyframes hour{to{background-position-x:-630px}}
+.chest{width:40px;height:25px;background:url(assets/pixel-packs/karsiori-chests/golden.png) 0 0 no-repeat;animation:chest 2.4s steps(1,end) infinite}
+@keyframes chest{0%,12%{background-position-x:0}18%{background-position-x:-40px}27%{background-position-x:-80px}36%{background-position-x:-120px}45%,80%{background-position-x:-160px}87%{background-position-x:-80px}100%{background-position-x:0}}
+.brew{width:33px;height:35px;background:url(assets/pixel-packs/karsiori/clock.png) 0 0 no-repeat;animation:brew 1.2s steps(12) infinite}@keyframes brew{to{background-position-x:-396px}}
+.hour.sm,.brew.sm{transform:scale(.6);transform-origin:center}
+/* lab frame */
+.lab{display:flex;align-items:center;gap:12px;padding:10px 16px;font-size:13px}.lab b{font-size:14px}.lab span{color:var(--dim)}
+.device{margin:0 14px 14px;border:1px solid var(--line);border-radius:14px;overflow:hidden;background:var(--bg);height:calc(100vh - 66px);display:grid;grid-template-rows:30px 52px 44px minmax(0,1fr) 40px}
+.chrome{display:flex;align-items:center;padding:0 12px;font-size:11px;color:var(--dim);background:#0d0f16;border-bottom:1px solid var(--line)}.chrome b{color:var(--text);font-weight:600}.chrome span{margin-left:auto}
+.top{display:flex;align-items:center;gap:10px;padding:0 12px;border-bottom:1px solid var(--line)}.top .burger{width:36px;height:36px;justify-content:center;padding:0}.top h1{font-size:15px;margin:0}.top .right{margin-left:auto;display:flex;gap:8px}
+.tabs{display:flex;align-items:stretch;border-bottom:1px solid var(--line);padding:0 4px;overflow:hidden}.tab{display:flex;align-items:center;gap:6px;padding:0 14px;font-size:13px;color:var(--dim);border-bottom:2px solid transparent;cursor:pointer;white-space:nowrap}.tab.on{color:var(--text);background:var(--panel);border-bottom-color:var(--brand)}.tab small{font-size:11px}.tab.qt{color:var(--green)}
+.body{display:grid;min-height:0;grid-template-columns:var(--sbw,360px) minmax(0,1fr)}
+.strip{display:flex;align-items:center;gap:10px;padding:0 12px;border-top:1px solid var(--line);font-size:12px;color:var(--dim)}.strip .right{margin-left:auto;display:flex;gap:8px}
+/* main */
+main{display:flex;flex-direction:column;min-height:0;padding:10px 12px;gap:10px;position:relative}
+.crumb{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--dim)}.crumb b{color:var(--text)}.crumb .right{margin-left:auto;display:flex;gap:6px}
+.panes{display:grid;grid-template-columns:1fr 1fr;gap:10px;min-height:0;flex:1}
+.pane{display:flex;flex-direction:column;min-height:0;border:1px solid var(--line);border-radius:var(--r);background:var(--panel);overflow:hidden;transition:box-shadow .15s}
+.pane.sel{box-shadow:0 0 0 2px var(--brand)}.pane.drop{box-shadow:0 0 0 2px var(--green);background:#16221d}
+.pane-head{display:flex;align-items:center;gap:8px;padding:8px 12px;border-bottom:1px solid var(--line);font-size:12px;color:var(--dim)}.pane-head b{color:var(--text)}.pane-head .tag{margin-left:auto;font-size:11px;color:var(--brand)}
+.term{flex:1;min-height:80px;overflow:auto;padding:10px 12px;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px;line-height:1.55;white-space:pre-wrap}
+.term .u{color:#c9d1e6}.term .a{color:#a9b2c8}.term .m{color:var(--green)}.term .s{color:#6b7389}.term .d{color:var(--amber)}
+.prompt{display:flex;align-items:center;gap:8px;padding:8px 12px;border-top:1px solid var(--line);background:var(--panel2);font-family:ui-monospace,Menlo,monospace;font-size:12.5px;min-height:44px}
+.prompt .in{flex:1;min-width:0;white-space:nowrap;overflow:hidden}.prompt .in::after{content:"▍";animation:blink .9s infinite}.prompt .hint{font:11px system-ui;color:var(--amber);display:flex;gap:6px}.prompt .hint button{min-height:28px;padding:2px 8px;border-radius:8px}
+@keyframes blink{50%{opacity:.15}}
+/* sidebar */
+aside{display:flex;flex-direction:column;min-height:0;min-width:0;border-right:1px solid var(--line);background:var(--panel2);position:relative}
+.sb-head{display:flex;align-items:center;gap:10px;padding:10px 14px;border-bottom:1px solid var(--line)}.sb-head h2{font-size:14px;margin:0;flex:1}.sb-head small{display:block;color:var(--dim);font-size:11px;font-weight:400}
+.pill{font-size:11px;padding:3px 9px;border-radius:999px;border:1px solid #2f5a44;color:var(--green);display:inline-flex;gap:5px;align-items:center;white-space:nowrap}.pill.warn{border-color:#6a5530;color:var(--amber)}
+.search{padding:10px 12px;position:relative}.search .ic{position:absolute;left:18px;top:14px;pointer-events:none}
+.cat{flex:1;min-height:0;overflow:auto;padding:0 12px 12px;display:flex;flex-direction:column;gap:10px}
+.grp{flex:none;border:1px solid var(--line);border-radius:var(--r);background:var(--panel);overflow:hidden}
+.grp-h{display:flex;align-items:center;gap:8px;padding:8px 12px;font-weight:600;font-size:12.5px;border-bottom:1px solid var(--line)}.grp-h small{color:var(--dim);font-weight:400;margin-left:auto}
+.cmd{display:grid;grid-template-columns:1fr auto;gap:2px 8px;padding:9px 12px;cursor:pointer;border-top:1px solid #1e2330;position:relative}.cmd:first-of-type{border-top:0}.cmd:hover{background:#1d2333}.cmd:active{background:#232a3d}
+.cmd code{font-family:ui-monospace,Menlo,monospace;font-size:13px;color:var(--text)}.cmd code em{color:var(--dim);font-style:normal}.cmd small{grid-column:1;color:var(--dim);font-size:11.5px}
+.cmd .grab{color:#4a5166;font-size:14px;align-self:center;cursor:grab}.cmd .uv{grid-column:1;font-size:10.5px;color:var(--amber)}
+.cmd .opts{grid-column:1/-1;display:flex;flex-wrap:wrap;gap:5px;margin-top:4px}.cmd .opts button{min-height:26px;padding:2px 9px;font-size:11.5px;border-radius:999px;background:#12161f}
+.cmd.dragging{opacity:.4}
+/* chains */
+.chains{flex:none;padding:0 0 12px;display:grid;gap:8px}.chains.drop .chain-new{border-color:var(--green);background:#16221d}
+.chain{border:1px solid var(--line);border-radius:var(--r);background:var(--panel);padding:10px 12px}.chain-h{display:flex;align-items:center;gap:8px;font-weight:600}.chain-h small{color:var(--dim);font-weight:400}.chain-h .right{margin-left:auto}
+.steps{display:grid;gap:6px;margin:8px 0 0}.step{display:flex;align-items:center;gap:8px;padding:6px 8px;border:1px solid var(--line);border-radius:8px;background:var(--panel2);font-family:ui-monospace,Menlo,monospace;font-size:11.5px;cursor:grab}.step .k{font:10.5px system-ui;color:var(--dim);min-width:34px}.step.done{opacity:.45;text-decoration:line-through}.step.cur{border-color:var(--brand);box-shadow:0 0 0 1px var(--brand)}.step .grab{margin-left:auto;color:#4a5166}
+.chain-new{border-style:dashed;color:var(--dim);text-align:center;padding:14px;border-radius:var(--r);border:1px dashed var(--line)}
+.chain-run{display:flex;align-items:center;gap:10px;margin-top:10px}
+/* terminals */
+.tt{display:flex;align-items:flex-end;gap:4px;padding:8px 10px 0;border-bottom:1px solid var(--line);overflow:auto}.tt .t{display:flex;align-items:center;gap:6px;padding:7px 12px;border:1px solid var(--line);border-bottom:0;border-radius:10px 10px 0 0;color:var(--dim);font-size:12px;white-space:nowrap;cursor:pointer;background:var(--panel2)}.tt .t.on{color:var(--text);background:#0c0f16}.tt .t.plus{color:var(--brand);font-weight:700}
+.mini{flex:1;min-height:0;overflow:auto;padding:10px 12px;font-family:ui-monospace,Menlo,monospace;font-size:11.5px;line-height:1.55;background:#0c0f16;white-space:pre-wrap;color:#c9d1e6}.mini .s{color:#6b7389}.mini .a{color:#a9b2c8}.mini .in::after{content:"▍";animation:blink .9s infinite}
+.divider{height:8px;cursor:row-resize;border-top:1px solid var(--line);background:linear-gradient(#3a4256,#3a4256) center/44px 3px no-repeat;border-radius:3px}
+.sec{display:flex;flex-direction:column;min-height:0}
+/* variants */
+.vA aside{--sbw:360px}.vA .sec-cmds{flex:1 1 58%}.vA .sec-terms{flex:1 1 42%}
+.vB aside{--sbw:380px}.vB .sec-terms{flex:1}.vB .fab{position:absolute;left:12px;bottom:12px;z-index:3;border-radius:999px;padding:8px 16px 8px 10px;min-height:44px;box-shadow:0 8px 24px rgba(0,0,0,.5)}
+.sheet{position:absolute;inset:auto 0 0 0;height:78%;background:var(--panel2);border-top:1px solid var(--line);border-radius:14px 14px 0 0;z-index:4;display:flex;flex-direction:column;box-shadow:0 -12px 40px rgba(0,0,0,.5);animation:up .18s ease-out}@keyframes up{from{transform:translateY(20px);opacity:0}}
+.vC aside{--sbw:290px}.vC .cmd{grid-template-columns:1fr auto}
+.vD aside{--sbw:320px}.drawer{border:1px solid var(--line);border-radius:var(--r);background:var(--panel);display:flex;flex-direction:column;height:220px;min-height:0;overflow:hidden}.drawer.min{height:44px}.drawer.min .mini{display:none}.drawer .tt{border-bottom:1px solid var(--line)}.drawer .tt .close{margin-left:auto;border:0;background:transparent;color:var(--dim);padding:6px 10px}
+.vE aside{--sbw:340px}.vE .tt.top{padding-top:8px}.vE .cmd{padding:12px 12px}.vE .cmd code{font-size:14px}.vE .cmd small{font-size:12px}
+/* picker (laboratorio) */
+.picker{position:fixed;right:18px;bottom:18px;z-index:50;width:390px;background:#1a1d27;border:1px solid #3a4256;color:var(--text);border-radius:14px;box-shadow:0 14px 44px rgba(0,0,0,.6);font-size:12px;user-select:none}
+.picker .grab{cursor:grab;padding:10px 14px;display:flex;align-items:center;gap:8px;border-bottom:1px solid var(--line);font-weight:600;font-size:13px}.picker .grab span{margin-left:auto;font-weight:400;color:var(--dim);font-size:11px}.picker .grab button{min-height:26px;padding:0 8px}
+.picker .vs{display:grid;grid-template-columns:repeat(5,1fr);gap:6px;padding:10px 12px}.picker .v{border:1px solid #303748;border-radius:10px;padding:7px 4px;text-align:center;cursor:pointer;background:#141722}.picker .v b{display:block;font-size:14px}.picker .v small{color:var(--dim);font-size:10.5px}.picker .v.on{border-color:var(--brand);background:#221f3a}.picker .v.on b{color:var(--brand)}
+.picker .row{display:flex;align-items:center;gap:6px;padding:0 12px 10px;flex-wrap:wrap}.picker .lab2{font-size:10px;text-transform:uppercase;letter-spacing:.06em;color:var(--dim);width:100%}.picker .row button{min-height:28px;padding:3px 9px;font-size:11px;border-radius:8px}.picker .row button.on{background:var(--brand);color:var(--brand-ink);border-color:var(--brand)}
+.picker .desc{padding:0 12px 10px;color:var(--dim)}
+.mob{display:none}
+@media(max-width:900px){.lab span{display:none}.device{margin:0;border-radius:0;height:calc(100vh - 40px);grid-template-rows:48px 40px minmax(0,1fr) 36px}.chrome{display:none}.top .right,.crumb .right{display:none}
+ .body{grid-template-columns:1fr!important;grid-template-rows:minmax(0,52%) minmax(0,1fr)}aside{border-right:0;border-bottom:1px solid var(--line)}.panes{grid-template-columns:1fr}.pane:not(.sel){display:none}.mob{display:inline-flex}
+ .picker{width:calc(100% - 20px);right:10px;left:10px;bottom:10px}.picker.collapsed>*:not(.grab){display:none}.picker .vs{grid-template-columns:repeat(5,1fr)}.picker .v small{display:none}}
 </style>
-<div class="app" id="app">
-  <div class="top"><b>ComandOS</b><span>·</span><span>3</span><div class="tabs"><span class="tab on">ComandOS</span><span class="tab">Lola</span><span class="tab">MRP</span><span id="ws-qtabs"></span></div><div class="acts"><button class="ghost">Terminal</button><button class="ghost">Nueva sesión</button><button class="ghost">Analytics</button></div></div>
+<div class="lab"><b>Grill · Barra izquierda</b><span>Comandos del pane seleccionado + Terminales rápidas · clic inserta sin Enter · arrastra un comando a un pane o a Cadenas</span></div>
+<div class="device" id="app">
+  <div class="chrome"><b>ComandOS</b><span>Desktop · prototipo</span></div>
+  <div class="top"><button class="ghost burger">☰</button><h1>ComandOS</h1><div class="right"><button>Analytics</button><button>Remoto</button><button>Servidores</button></div></div>
+  <div class="tabs" id="tabs"></div>
   <div class="body" id="body"></div>
+  <div class="strip"><span>🔔</span><span>Avisos por proyecto</span><div class="right"><button class="pill">Ver avisos</button><button class="pill">Novedades</button></div></div>
 </div>
 <div class="picker" id="picker">
-  <div class="grab" id="grab">Barra <span>arrastra · ←/→ cambia</span></div>
-  <div class="body">
-  <div class="row"><button id="prev">←</button><div class="name" id="vname"></div><button id="next">→</button></div>
+  <div class="grab" id="grab">Barra izquierda · <span id="vtitle" style="margin-left:0;color:var(--text)"></span><span>arrastra · ←/→</span><button class="ghost" id="fold">–</button></div>
+  <div class="vs" id="vs"></div>
   <div class="desc" id="vdesc"></div>
-  <div class="row wrap"><span class="lab">Pane seleccionado</span><span id="sels"></span></div>
-  <div class="row wrap"><span class="lab">Catálogo</span><button data-cat="ok">verificado</button><button data-cat="drift">binario cambió</button></div>
-  <div class="row wrap"><span class="lab">Simular</span><button data-sim="enter">Enter en el pane</button><button data-sim="esc">Esc (borrar línea)</button><button data-sim="reset">Reiniciar</button></div>
-  </div>
+  <div class="row"><span class="lab2">Pane seleccionado</span><button data-sel="1">Pane 1 · Codex</button><button data-sel="2">Pane 2 · Claude Code</button><span class="lab2">Catálogo</span><button data-cat="ok">verificado</button><button data-cat="drift">binario cambió</button><span class="lab2">Simular</span><button data-sim="enter">Enter</button><button data-sim="esc">Esc</button><button data-sim="reset">Reiniciar</button></div>
 </div>
 <script>
-// ---------- catálogo (de docs/tui-command-map.md, versiones instaladas) ----------
+// ---- iconos pixel (col,fila en la hoja Shikashi de 32 px) ----
+const I={book:[7,4],brain:[3,1],up:[0,2],cycle:[6,2],fork:[4,2],key:[9,11],map:[12,13],scope:[7,10],lens:[8,10],gems:[14,12],tent:[3,4],chain:[2,11],bolt:[8,0],fire:[2,4],cast:[0,21],spark:[5,0],bomb:[12,10],scroll:[10,13],letter:[9,13],purse:[6,12],hourg:[15,10],drop:[10,0]};
+const ic=(k,s='')=>{const [c,r]=I[k];return `<i class="px ic ${s}" style="background-position:${-c*32}px ${-r*32}px"></i>`};
+// ---- catálogo (docs/tui-command-map.md) ----
 const CAT={
- claude:{ver:'2.1.268',groups:[
-  ['Modelo y esfuerzo',[['/model ','Cambia el modelo de esta conversación. Sin argumento abre el selector.',['claude-fable-5-1','claude-opus-5-5','claude-sonnet-5-5']],['/effort ','Nivel de esfuerzo de razonamiento.',['low','medium','high','max']],['/fast','Salida rápida con Opus.'],['/plan','Modo plan: propone antes de tocar código.']]],
-  ['Conversación',[['/resume','Elige una conversación anterior para reanudar.'],['/fork','Bifurca esta conversación en otra.'],['/compact','Resume el contexto para liberar ventana.'],['/clear','Limpia el historial de esta sesión.'],['/exit','Sale del CLI (el pane vuelve a la shell).']]],
-  ['Cuenta',[['/login','Inicia sesión en esta terminal (no cambia otras).'],['/logout','Cierra la sesión de esta terminal.'],['/cost','Consumo de esta conversación.']]],
-  ['Contexto',[['/context','Qué ocupa la ventana ahora.'],['/add-dir ','Añade una carpeta al contexto.'],['/mcp','Servidores MCP conectados.'],['/agents','Subagentes disponibles.']]]]},
- codex:{ver:'0.154.0',groups:[
-  ['Modelo y esfuerzo',[['/model','Selector numerado de modelo y esfuerzo (dos pasos).'],['/plan','Modo plan.']]],
-  ['Conversación',[['/resume','Reanuda una conversación.'],['/fork','Bifurca.'],['/compact','Compacta contexto.'],['/new','Conversación nueva.'],['/exit','Sale del CLI.']]],
-  ['Cuenta',[['/logout','Cierra sesión.']]],
-  ['Contexto',[['/review','Revisión de cambios.'],['/skills','Skills disponibles.'],['/hooks','Hooks configurados.'],['/cd ','Cambia de carpeta.']]]]},
- grok:{ver:'1.0.25',groups:[
-  ['Modelo y esfuerzo',[['/model ','Alias /m. Cambia el modelo.',['grok-5','grok-5-mini']],['/effort ','Esfuerzo.',['low','high']],['/plan','Modo plan.']]],
-  ['Conversación',[['/resume','Reanuda.'],['/fork','Bifurca.'],['/rewind','Alias /undo.'],['/new','Nueva.'],['/exit','Sale.']]],
-  ['Cuenta',[['/login','Inicia sesión.'],['/logout','Cierra sesión.'],['/usage','Cuota semanal.']]],
-  ['Contexto',[['/context','Ventana actual.'],['/compact','Compacta.'],['/skills','Skills.'],['/mcps','MCPs.']]]]}};
-const SHELL=[['claude --resume <id> --model <modelo>','Reanuda una conversación de Claude con otro modelo (arranque).'],['CLAUDE_CONFIG_DIR=~/.claude-accounts/<cuenta> claude','Arranca Claude con otra cuenta en esta terminal.'],['codex resume <id>','Reanuda una conversación de Codex.'],['grok','Arranca Grok Build aquí.']];
-const CHAINS=[{name:'Pasar este pane a Codex',steps:[['pane','/exit'],['shell','codex --model gpt-5.5-codex'],['pane','/resume']]},{name:'Claude con la cuenta relotto',steps:[['pane','/exit'],['shell','CLAUDE_CONFIG_DIR=~/.claude-accounts/relotto claude --resume 8f2c… --model claude-fable-5-1']]}];
+ claude:{name:'Claude Code',ver:'2.1.268',groups:[
+  {t:'Modelo y esfuerzo',i:'brain',cmds:[['/model ','Cambia el modelo de esta conversación; sin argumento abre el selector.',['claude-fable-5-1','claude-opus-5-5','claude-sonnet-5-5']],['/effort ','Nivel de razonamiento.',['low','medium','high','max']],['/fast','Salida rápida con Opus.'],['/plan','Modo plan: propone antes de tocar código.']]},
+  {t:'Conversación',i:'cycle',cmds:[['/resume','Elige una conversación anterior y la reanuda.'],['/fork','Bifurca esta conversación en otra.'],['/compact','Resume el contexto para liberar ventana.'],['/clear','Limpia el historial de la sesión.'],['/exit','Sale del CLI; el pane vuelve a la shell.']]},
+  {t:'Cuenta',i:'key',cmds:[['/login','Inicia sesión solo en esta terminal.'],['/logout','Cierra la sesión de esta terminal.'],['/cost','Consumo de esta conversación.']]},
+  {t:'Contexto y herramientas',i:'map',cmds:[['/context','Qué ocupa la ventana ahora.'],['/add-dir ','Añade una carpeta al contexto.'],['/mcp','Servidores MCP conectados.'],['/agents','Subagentes disponibles.']]}]},
+ codex:{name:'Codex',ver:'0.154.0',groups:[
+  {t:'Modelo y esfuerzo',i:'brain',cmds:[['/model','Selector numerado: modelo y luego esfuerzo.'],['/plan','Modo plan.']]},
+  {t:'Conversación',i:'cycle',cmds:[['/resume','Reanuda una conversación.'],['/fork','Bifurca.'],['/compact','Compacta el contexto.'],['/new','Conversación nueva.'],['/exit','Sale del CLI.']]},
+  {t:'Cuenta',i:'key',cmds:[['/logout','Cierra sesión.']]},
+  {t:'Contexto y herramientas',i:'map',cmds:[['/review','Revisión de cambios.'],['/skills','Skills disponibles.'],['/hooks','Hooks configurados.'],['/cd ','Cambia de carpeta.']]}]}};
+const SHELL={t:'Arranque (shell)',i:'fire',cmds:[['claude --resume <id> --model <modelo>','Reanuda Claude con otro modelo desde la shell.'],['CLAUDE_CONFIG_DIR=~/.claude-accounts/<cuenta> claude','Arranca Claude con otra cuenta en esta terminal.'],['codex resume <id>','Reanuda una conversación de Codex.'],['grok','Arranca Grok Build aquí.']]};
+let CHAINS=[{name:'Pasar este pane a Codex',steps:[['pane','/exit'],['shell','codex --model gpt-5.5-codex'],['pane','/resume']]},{name:'Claude con la cuenta relotto',steps:[['pane','/exit'],['shell','CLAUDE_CONFIG_DIR=~/.claude-accounts/relotto claude --resume 8f2c… --model claude-fable-5-1']]}];
 const VARIANTS=[
- {k:'A',name:'Pila: comandos arriba, terminales abajo',desc:'Catálogo con búsqueda arriba; terminales rápidas en tabs abajo con separador de altura. Cadenas al pie del catálogo.'},
- {k:'B',name:'Terminal primero, paleta flotante',desc:'La barra es una terminal rápida con tabs. Los comandos son una paleta que aparece con el botón o la tecla / y se cierra al insertar.'},
- {k:'C',name:'Solo comandos; terminales al workspace',desc:'Barra estrecha de comandos y cadenas. Las terminales rápidas abren como tabs normales del workspace, no en la barra.'},
- {k:'D',name:'Comandos a la izquierda, cajón abajo',desc:'La barra solo tiene comandos. Las terminales rápidas viven en un cajón inferior a todo lo ancho, plegable, con tabs.'},
- {k:'E',name:'Todo en tabs planas',desc:'Una sola tira de tabs: Comandos · Cadenas · cada terminal. Cada tab llena la barra; objetivos grandes para el dedo.'},
-];
-// ---------- estado ----------
-const url=new URL(location.href);let V=url.searchParams.get('variant')||'A', SEL=url.searchParams.get('sel')||'claude', CATST='ok', tab='cmds', termTab=0, palOpen=false, drawerMin=false, chainRun=null, q='';
-const PANES={claude:{h:'claude',model:'claude-fable-5-1 · high · main',lines:[['s','$ claude --model claude-fable-5-1 --effort high'],['a','Claude Code v2.1.268'],['u','> revisa el flaky de test_session_config_history'],['a','Listo. El test asume orden de dict; propongo…']],input:''},
-             codex:{h:'codex',model:'gpt-5.5-codex · high · main',lines:[['s','$ codex'],['a','codex-cli 0.154.0'],['u','> corre pytest -q'],['a','13 passed.']],input:''}};
-const TERMS=[{name:'2026-09-29-1432',lines:[['s','~/comandos-terminales/2026-09-29-1432 $'],['a','(terminal rápida · carpeta fechada)']]},{name:'2026-09-29-1440',lines:[['s','~/comandos-terminales/2026-09-29-1440 $ git status'],['a','nothing to commit']]}];
-const $=id=>document.getElementById(id);const esc=s=>s.replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
-// ---------- piezas ----------
-function catalogHTML(compact){const c=CAT[SEL];const drift=CATST==='drift';
-  const head=`<div class="sb-head"><b>Comandos</b><span>${SEL} ${c.ver}</span><span class="ver ${drift?'warn':''}">${drift?'binario 2.1.270 · sin verificar':'verificado'}</span></div>`;
-  const search=`<div class="search"><input id="q" placeholder="Buscar comando…" value="${esc(q)}"></div>`;
-  const rows=c.groups.map(([g,cmds])=>{const f=cmds.filter(([n,d])=>!q||n.includes(q)||d.toLowerCase().includes(q.toLowerCase()));if(!f.length)return'';
-    return `<div class="grp">${g}</div>`+f.map(([n,d,opts],i)=>`<div class="cmd" data-cmd="${esc(n)}"><code>${esc(n.trim())}${n.endsWith(' ')?' <span style="color:var(--dim)">…</span>':''}</code><small>${d}</small>${drift&&i===0?'<span class="uv">sin verificar en 2.1.270</span>':''}${opts?`<span class="opts">${opts.map(o=>`<button data-cmd="${esc(n+o)}">${o}</button>`).join('')}</span>`:''}</div>`).join('')}).join('');
-  const shell=`<div class="grp">Arranque (shell, en una terminal rápida)</div>`+SHELL.filter(([n,d])=>!q||n.includes(q)).map(([n,d])=>`<div class="cmd" data-cmd="${esc(n)}" data-shell="1"><code>${esc(n)}</code><small>${d}</small></div>`).join('');
-  return head+search+`<div class="cat">${rows}${shell}</div>`;}
-function chainsHTML(){return `<div class="chain"><b>Cadenas guardadas</b> <span style="color:var(--dim);font-size:11px">~/.config/comandos/cadenas/*.md</span>${CHAINS.map((ch,i)=>chainRun&&chainRun.i===i?runningChain(ch):`<div class="step" style="margin-top:6px"><span>${ch.name}</span><button class="ghost" style="margin-left:auto" data-chain="${i}">Correr</button></div>`).join('')}</div>`}
-function runningChain(ch){return `<div style="margin-top:6px"><b>${ch.name}</b><div class="steps">${ch.steps.map(([k,c],j)=>`<div class="step ${j<chainRun.step?'done':j===chainRun.step?'cur':''}"><span class="k">${k==='pane'?'pane':'shell'}</span><code>${esc(c)}</code></div>`).join('')}</div><div style="display:flex;gap:6px"><button class="primary" data-chain-next="1">${chainRun.step>=ch.steps.length?'Terminada':'Siguiente ('+(chainRun.step+1)+'/'+ch.steps.length+')'}</button><button class="ghost" data-chain-stop="1">Parar</button></div><small style="color:var(--dim)">Cada paso se inserta sin Enter; tú confirmas.</small></div>`}
-function termsHTML(){return `<div class="tabs2">${TERMS.map((t,i)=>`<span class="t ${i===termTab?'on':''}" data-term="${i}">⌁ ${t.name.slice(11)}</span>`).join('')}<span class="t plus" data-term="new">+</span></div><div class="mini">${TERMS[termTab].lines.map(([c,l])=>`<div class="${c}">${esc(l)}</div>`).join('')}<div class="s">${TERMS[termTab].input?esc(TERMS[termTab].input):''}<span class="in" style="display:inline"></span>▍</div></div>`}
-function paneHTML(k){const p=PANES[k];return `<div class="pane ${k===SEL?'sel':''}" data-pane="${k}"><div class="pane-head"><b>${p.h}</b><span>${p.model}</span>${k===SEL?'<span class="sel-tag">seleccionado</span>':''}</div><div class="term">${p.lines.map(([c,l])=>`<div class="${c}">${esc(l)}</div>`).join('')}</div><div class="prompt"><span>›</span><span class="in">${esc(p.input)}</span><span class="hint ${p.input?'on':''}">${p.input?'Enter ejecuta · Esc borra':''}</span>${p.input?'<button class="mob-only" data-sim="enter">Enter</button>':''}</div></div>`}
-function workspaceHTML(){if(V==='C'){return `<div class="ws"><div class="ws-tabs"><span class="t on">sesión 2 · splits</span>${TERMS.map(t=>`<span class="t qt">⌁ ${t.name.slice(11)}</span>`).join('')}</div><div class="panes">${paneHTML('claude')}${paneHTML('codex')}</div></div>`}
-  if(V==='D'){return `<div class="ws"><div class="panes">${paneHTML('claude')}${paneHTML('codex')}</div><div class="drawer ${drawerMin?'min':''}"><div class="tabs2">${TERMS.map((t,i)=>`<span class="t ${i===termTab?'on':''}" data-term="${i}">⌁ ${t.name.slice(11)}</span>`).join('')}<span class="t plus" data-term="new">+</span><span class="t close" data-drawer="1">${drawerMin?'▴ terminales':'▾'}</span></div><div class="mini">${TERMS[termTab].lines.map(([c,l])=>`<div class="${c}">${esc(l)}</div>`).join('')}<div class="s">▍</div></div></div></div>`}
-  return `<div class="ws"><div class="panes">${paneHTML('claude')}${paneHTML('codex')}</div></div>`}
-function sidebarHTML(){
-  if(V==='A')return `<div class="sb"><div class="sb-cmds">${catalogHTML()}${chainsHTML()}</div><div class="divider"></div><div class="sb-terms">${termsHTML()}</div></div>`;
-  if(V==='B')return `<div class="sb" style="position:relative"><div class="sb-terms">${termsHTML()}</div><button class="pal-btn primary" data-pal="1">Comandos  /</button>${palOpen?`<div class="overlay" data-pal-close="1"><div class="pal" onclick="event.stopPropagation()">${catalogHTML()}${chainsHTML()}</div></div>`:''}</div>`;
-  if(V==='C')return `<div class="sb">${catalogHTML(true)}${chainsHTML()}<div class="chain"><button class="primary" style="width:100%" data-term="new">+ Terminal rápida (en el workspace)</button></div></div>`;
-  if(V==='D')return `<div class="sb">${catalogHTML()}${chainsHTML()}</div>`;
-  if(V==='E')return `<div class="sb"><div class="tabs2"><span class="t ${tab==='cmds'?'on':''}" data-tab="cmds">Comandos</span><span class="t ${tab==='chains'?'on':''}" data-tab="chains">Cadenas</span>${TERMS.map((t,i)=>`<span class="t ${tab==='t'+i?'on':''}" data-tab="t${i}">⌁ ${t.name.slice(11)}</span>`).join('')}<span class="t plus" data-term="new">+</span></div>${tab==='cmds'?catalogHTML():tab==='chains'?chainsHTML():`<div class="mini" style="flex:1">${TERMS[+tab.slice(1)].lines.map(([c,l])=>`<div class="${c}">${esc(l)}</div>`).join('')}<div class="s">▍</div></div>`}</div>`;
-}
-function render(){$('app').className='app v'+V;$('body').innerHTML=sidebarHTML()+workspaceHTML();
-  $('ws-qtabs').innerHTML=V==='C'?TERMS.map(t=>`<span class="tab qt">⌁ ${t.name.slice(11)}</span>`).join(''):'';
-  const v=VARIANTS.find(x=>x.k===V);$('vname').innerHTML=`${v.k}<small>${v.name}</small>`;$('vdesc').textContent=v.desc;
-  $('sels').innerHTML=Object.keys(PANES).map(k=>`<button data-sel="${k}" class="${k===SEL?'on':''}">${k}</button>`).join('');
-  document.querySelectorAll('[data-cat]').forEach(b=>b.classList.toggle('on',b.dataset.cat===CATST));
+ {k:'A',n:'Pila',name:'Pila: comandos arriba, terminales abajo',desc:'Catálogo con búsqueda arriba y terminales rápidas en tabs abajo, con separador de altura. Cadenas al pie del catálogo.'},
+ {k:'B',n:'Terminal',name:'Terminal primero, libro flotante',desc:'La barra es una terminal rápida. El libro de comandos sube como hoja al pulsar el botón o la tecla / y se cierra al insertar.'},
+ {k:'C',n:'Solo cmds',name:'Solo comandos; terminales en el workspace',desc:'Barra estrecha con catálogo y cadenas. Cada terminal rápida es una tab normal del workspace, junto a los proyectos.'},
+ {k:'D',n:'Cajón',name:'Comandos a la izquierda, cajón abajo',desc:'La barra solo lleva comandos. Las terminales rápidas viven en un cajón inferior del workspace, plegable, con tabs.'},
+ {k:'E',n:'Tabs',name:'Todo en tabs planas',desc:'Una tira de tabs con iconos: Comandos · Cadenas · cada terminal. Cada tab llena la barra; filas grandes para el dedo.'}];
+// ---- estado ----
+const url=new URL(location.href);let V=url.searchParams.get('variant')||'A',SEL=url.searchParams.get('sel')||'2',CATST='ok',q='',tab='cmds',termTab=0,sheet=false,drawerMin=false,run=null,wsTab='s',dragCmd=null;
+const PANES={1:{h:'codex',title:'Interfaz',who:'Codex · Pane 1',lines:[['s','$ codex'],['a','codex-cli 0.154.0 · gpt-5.5-codex · high'],['u','› Diseñemos las notificaciones.'],['a','Estoy comparando las propuestas dentro de la interfaz actual.'],['m','✓ Se conserva el contexto del pane.']],input:''},
+             2:{h:'claude',title:'Pruebas',who:'Claude Code · Pane 2',lines:[['s','$ claude --model claude-fable-5-1 --effort high'],['a','Claude Code v2.1.268'],['u','› revisa el flaky de test_session_config_history'],['a','Listo. El test asume orden de dict; propongo fijarlo…']],input:''}};
+const TERMS=[{name:'14:32',dir:'2026-09-29-1432',lines:[['s','~/comandos-terminales/2026-09-29-1432 $']],input:''},{name:'14:40',dir:'2026-09-29-1440',lines:[['s','~/comandos-terminales/2026-09-29-1440 $ git status'],['a','nothing to commit, working tree clean'],['s','~/comandos-terminales/2026-09-29-1440 $']],input:''}];
+const $=id=>document.getElementById(id);const esc=s=>String(s).replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
+// ---- piezas ----
+function catalog(){const c=CAT[PANES[SEL].h];const drift=CATST==='drift';const Q=q.toLowerCase();
+  const head=`<div class="sb-head">${ic('book')}<h2>Comandos<small>${c.name} ${c.ver} · Pane ${SEL}</small></h2><span class="pill ${drift?'warn':''}">${drift?ic('bomb','s20')+'binario 2.1.270':ic('spark','s20')+'verificado'}</span></div>`;
+  const search=`<div class="search">${ic('lens')}<input id="q" placeholder="Buscar comando…" value="${esc(q)}"></div>`;
+  const groups=[...c.groups,SHELL].map((g,gi)=>{const rows=g.cmds.filter(([n,d])=>!Q||n.toLowerCase().includes(Q)||d.toLowerCase().includes(Q));if(!rows.length)return'';
+    return `<div class="grp"><div class="grp-h">${ic(g.i,'s24')}${g.t}<small>${rows.length}</small></div>${rows.map(([n,d,opts],i)=>`<div class="cmd" draggable="true" data-cmd="${esc(n)}" data-kind="${g===SHELL?'shell':'pane'}"><code>${esc(n.trim())}${n.endsWith(' ')?' <em>…</em>':''}</code><span class="grab" title="arrastra a un pane o a Cadenas">⠿</span><small>${d}</small>${drift&&gi===0&&i===0?'<span class="uv">sin verificar en 2.1.270 · el binario cambió</span>':''}${opts?`<span class="opts">${opts.map(o=>`<button data-cmd="${esc(n+o)}" data-kind="pane">${o}</button>`).join('')}</span>`:''}</div>`).join('')}</div>`}).join('');
+  return head+search+`<div class="cat">${groups}${chains()}</div>`}
+function chains(){return `<div class="chains" id="chains"><div class="grp-h" style="border:0;padding:4px 0">${ic('chain','s24')}Cadenas<small>~/.config/comandos/cadenas</small></div>${CHAINS.map((ch,i)=>run&&run.i===i?running(ch):`<div class="chain"><div class="chain-h">${ch.name}<small>${ch.steps.length} pasos</small><button class="pill right" data-run="${i}">Correr</button></div><div class="steps">${ch.steps.map(([k,c],j)=>`<div class="step" draggable="true" data-step="${i}:${j}"><span class="k">${k}</span>${esc(c)}<span class="grab">⠿</span></div>`).join('')}</div></div>`).join('')}<div class="chain-new" id="chain-new">Suelta un comando aquí para empezar una cadena nueva</div></div>`}
+function running(ch){const done=run.step>=ch.steps.length;return `<div class="chain" style="border-color:var(--brand)"><div class="chain-h">${ch.name}<small>${done?'completa':`paso ${run.step+1} de ${ch.steps.length}`}</small>${done?'<i class="px chest right"></i>':'<i class="px hour sm right"></i>'}</div><div class="steps">${ch.steps.map(([k,c],j)=>`<div class="step ${j<run.step?'done':j===run.step?'cur':''}"><span class="k">${k}</span>${esc(c)}</div>`).join('')}</div><div class="chain-run">${done?`<button class="primary" data-run-stop="1">${ic('spark','s20')}Cerrar</button>`:`<button class="primary" data-run-next="1">${ic('cast','s20')}Siguiente</button><button class="ghost" data-run-stop="1">Parar</button>`}<small style="color:var(--dim)">${done?'Los pasos se insertaron; tú diste cada Enter.':'Inserta el paso sin Enter; tú confirmas.'}</small></div></div>`}
+function termTabs(extra=''){return `<div class="tt">${TERMS.map((t,i)=>`<span class="t ${i===termTab?'on':''}" data-term="${i}">${ic('bolt','s20')}${t.name}</span>`).join('')}<span class="t plus" data-term="new">+ Terminal</span>${extra}</div>`}
+function mini(t){return `<div class="mini" data-dropterm="1">${t.lines.map(([c,l])=>`<div class="${c}">${esc(l)}</div>`).join('')}<div class="s">~/comandos-terminales/${t.dir} $ <span class="in" style="color:#e7eaf2">${esc(t.input)}</span></div></div>`}
+function pane(k){const p=PANES[k];const on=k===SEL;return `<div class="pane ${on?'sel':''}" data-pane="${k}"><div class="pane-head">${on?'<i class="px brew sm"></i>':ic('scroll','s20')}<b>${p.title}</b><span>${p.who}</span>${on?'<span class="tag">pane seleccionado</span>':''}</div><div class="term">${p.lines.map(([c,l])=>`<div class="${c}">${esc(l)}</div>`).join('')}</div><div class="prompt"><span style="color:var(--brand)">›</span><span class="in">${esc(p.input)}</span>${p.input?`<span class="hint">Enter ejecuta · Esc borra<button class="mob" data-sim="enter">${ic('cast','s20')}Enter</button></span>`:''}</div></div>`}
+function workspace(){const crumb=`<div class="crumb"><b>ComandOS</b>/<span>${wsTab==='s'?'Interfaz':'Terminal '+TERMS[+wsTab.slice(1)].name}</span><div class="right"><button class="pill">MCPs · Skills</button><button class="pill">☼</button></div></div>`;
+  if(V==='C'&&wsTab!=='s'){const t=TERMS[+wsTab.slice(1)];return `<main>${crumb}<div class="pane sel" style="flex:1">${'<div class="pane-head">'+ic('bolt','s20')+'<b>Terminal rápida</b><span>'+t.dir+'</span></div>'}${mini(t)}</div></main>`}
+  if(V==='D')return `<main>${crumb}<div class="panes">${pane('1')}${pane('2')}</div><div class="drawer ${drawerMin?'min':''}">${termTabs(`<button class="close" data-drawer="1">${drawerMin?'▴ mostrar':'▾ plegar'}</button>`)}${mini(TERMS[termTab])}</div></main>`;
+  return `<main>${crumb}<div class="panes">${pane('1')}${pane('2')}</div></main>`}
+function sidebar(){
+  if(V==='A')return `<aside><div class="sec sec-cmds">${catalog()}</div><div class="divider" title="arrastra para cambiar la altura"></div><div class="sec sec-terms">${termTabs()}${mini(TERMS[termTab])}</div></aside>`;
+  if(V==='B')return `<aside><div class="sec sec-terms">${termTabs()}${mini(TERMS[termTab])}</div><button class="fab primary" data-sheet="1">${ic('book','s24')}Comandos <kbd style="opacity:.7">/</kbd></button>${sheet?`<div class="sheet">${catalog()}</div>`:''}</aside>`;
+  if(V==='C')return `<aside>${catalog()}<div style="padding:10px 12px;border-top:1px solid var(--line)"><button class="primary" style="width:100%" data-term="new">${ic('bolt','s20')}Terminal rápida en el workspace</button></div></aside>`;
+  if(V==='D')return `<aside>${catalog()}</aside>`;
+  if(V==='E')return `<aside><div class="tt top"><span class="t ${tab==='cmds'?'on':''}" data-tab="cmds">${ic('book','s20')}Comandos</span><span class="t ${tab==='chains'?'on':''}" data-tab="chains">${ic('chain','s20')}Cadenas</span>${TERMS.map((t,i)=>`<span class="t ${tab==='t'+i?'on':''}" data-tab="t${i}">${ic('bolt','s20')}${t.name}</span>`).join('')}<span class="t plus" data-term="new">+</span></div>${tab==='cmds'?catalog().replace(chains(),''):tab==='chains'?`<div class="cat">${chains()}</div>`:mini(TERMS[+tab.slice(1)])}</aside>`}
+function render(){$('app').className='device v'+V;$('body').innerHTML=sidebar()+workspace();
+  $('tabs').innerHTML=`<span class="tab on">ComandOS <small>2 panes</small></span><span class="tab">Lola <small>1 pane</small></span><span class="tab">MRP <small>1 pane</small></span>`+(V==='C'?TERMS.map((t,i)=>`<span class="tab qt ${wsTab==='t'+i?'on':''}" data-ws="t${i}">${ic('bolt','s20')}${t.name}</span>`).join('')+`<span class="tab" data-ws="s" style="display:none"></span>`:'');
+  if(V==='C')document.querySelector('.tab.on:not(.qt)')?.setAttribute('data-ws','s');
+  const v=VARIANTS.find(x=>x.k===V);$('vtitle').textContent=v.k+' · '+v.name;$('vdesc').textContent=v.desc;
+  $('vs').innerHTML=VARIANTS.map(x=>`<div class="v ${x.k===V?'on':''}" data-v="${x.k}"><b>${x.k}</b><small>${x.n}</small></div>`).join('');
+  document.querySelectorAll('[data-sel]').forEach(b=>b.classList.toggle('on',b.dataset.sel===SEL));document.querySelectorAll('[data-cat]').forEach(b=>b.classList.toggle('on',b.dataset.cat===CATST));
   url.searchParams.set('variant',V);url.searchParams.set('sel',SEL);history.replaceState(null,'',url);
-  const qi=$('q');if(qi){qi.oninput=e=>{q=e.target.value;const pos=qi.selectionStart;render();const n=$('q');if(n){n.focus();n.setSelectionRange(pos,pos)}}}}
-// ---------- tecleo letra por letra, sin Enter ----------
+  const qi=$('q');if(qi)qi.oninput=e=>{q=e.target.value;const p=qi.selectionStart;render();const n=$('q');if(n){n.focus();n.setSelectionRange(p,p)}};
+  wireDnD();}
+// ---- inserción letra por letra, sin Enter ----
 let typing=null;
-function typeInto(target,text){if(typing)clearInterval(typing);let i=0;const obj=target==='shell'?TERMS[termTab]:PANES[SEL];obj.input='';
-  typing=setInterval(()=>{obj.input=text.slice(0,++i);render();if(i>=text.length){clearInterval(typing);typing=null}},28);}
-function pressEnter(){const p=PANES[SEL];if(!p.input)return;p.lines.push(['u','> '+p.input]);const t=p.input.trim();
-  if(t.startsWith('/model ')&&t.length>7)p.lines.push(['m','Set model to '+t.slice(7)]);else if(t.startsWith('/effort ')&&t.length>8)p.lines.push(['m','Set effort level to '+t.slice(8)]);else if(t==='/exit'){p.lines.push(['s','$']);}else p.lines.push(['a','(respuesta nativa del CLI)']);
-  p.input='';if(chainRun)chainRun.step++;render();}
-// ---------- eventos ----------
-document.addEventListener('click',e=>{const el=e.target.closest('[data-cmd],[data-pane],[data-term],[data-tab],[data-pal],[data-pal-close],[data-drawer],[data-chain],[data-chain-next],[data-chain-stop],[data-sel],[data-cat],[data-sim]');if(!el)return;const d=el.dataset;
-  if(d.cmd!==undefined){typeInto(d.shell?'shell':'pane',d.cmd);if(V==='B'){palOpen=false;render()}return}
+function typeInto(obj,text,after){if(typing)clearInterval(typing);let i=0;obj.input='';typing=setInterval(()=>{obj.input=text.slice(0,++i);render();if(i>=text.length){clearInterval(typing);typing=null;after&&after()}},26)}
+function insert(cmd,kind,target){const obj=kind==='shell'?(target||TERMS[termTab]):(target||PANES[SEL]);if(kind==='shell'&&V==='C'){wsTab='t'+termTab}typeInto(obj,cmd);if(V==='B'){sheet=false}}
+function pressEnter(){const p=PANES[SEL];if(!p.input)return;const t=p.input.trim();p.lines.push(['u','› '+t]);
+  if(t.startsWith('/model ')&&t.length>7)p.lines.push(['m','Set model to '+t.slice(7)]);else if(t.startsWith('/effort ')&&t.length>8)p.lines.push(['m','Set effort level to '+t.slice(8)]);else if(t==='/exit')p.lines.push(['s','$']);else p.lines.push(['a','(respuesta nativa del CLI)']);
+  p.input='';if(run){run.step++}render()}
+// ---- drag & drop directo ----
+function wireDnD(){
+  document.querySelectorAll('.cmd[draggable]').forEach(el=>{el.addEventListener('dragstart',e=>{dragCmd={cmd:el.dataset.cmd,kind:el.dataset.kind};el.classList.add('dragging');e.dataTransfer.effectAllowed='copy';e.dataTransfer.setData('text/plain',el.dataset.cmd)});el.addEventListener('dragend',()=>{dragCmd=null;el.classList.remove('dragging')})});
+  document.querySelectorAll('.pane').forEach(el=>{el.addEventListener('dragover',e=>{if(dragCmd){e.preventDefault();el.classList.add('drop')}});el.addEventListener('dragleave',()=>el.classList.remove('drop'));el.addEventListener('drop',e=>{e.preventDefault();if(!dragCmd)return;SEL=el.dataset.pane;typeInto(PANES[SEL],dragCmd.cmd)})});
+  const ch=$('chains');if(ch){ch.addEventListener('dragover',e=>{if(dragCmd){e.preventDefault();ch.classList.add('drop')}});ch.addEventListener('dragleave',()=>ch.classList.remove('drop'));ch.addEventListener('drop',e=>{e.preventDefault();if(!dragCmd)return;const last=CHAINS[CHAINS.length-1];if(last&&last.name==='Cadena nueva')last.steps.push([dragCmd.kind,dragCmd.cmd]);else CHAINS.push({name:'Cadena nueva',steps:[[dragCmd.kind,dragCmd.cmd]]});dragCmd=null;render()})}
+  document.querySelectorAll('.step[draggable]').forEach(el=>{el.addEventListener('dragstart',e=>{e.dataTransfer.setData('text/step',el.dataset.step);e.stopPropagation()});el.addEventListener('dragover',e=>{if(e.dataTransfer.types.includes('text/step'))e.preventDefault()});el.addEventListener('drop',e=>{const from=e.dataTransfer.getData('text/step');if(!from)return;e.preventDefault();e.stopPropagation();const [ci,fj]=from.split(':').map(Number),[cj,tj]=el.dataset.step.split(':').map(Number);if(ci!==cj)return;const s=CHAINS[ci].steps;const [m]=s.splice(fj,1);s.splice(tj,0,m);render()})});
+  const dv=document.querySelector('.divider');if(dv){dv.onpointerdown=e=>{const cmds=document.querySelector('.sec-cmds'),terms=document.querySelector('.sec-terms');const h0=cmds.getBoundingClientRect().height,y0=e.clientY;dv.setPointerCapture(e.pointerId);dv.onpointermove=ev=>{const h=Math.max(120,h0+ev.clientY-y0);cmds.style.flex='0 0 '+h+'px';terms.style.flex='1 1 auto'};dv.onpointerup=()=>{dv.onpointermove=null}}}}
+// ---- eventos ----
+document.addEventListener('click',e=>{const el=e.target.closest('[data-cmd],[data-pane],[data-term],[data-tab],[data-sheet],[data-drawer],[data-run],[data-run-next],[data-run-stop],[data-sel],[data-cat],[data-sim],[data-v],[data-ws]');if(!el)return;const d=el.dataset;
+  if(d.cmd!==undefined){insert(d.cmd,d.kind);return}
   if(d.pane){SEL=d.pane;render();return}
-  if(d.term!==undefined){if(d.term==='new'){const n='2026-09-29-'+(1500+TERMS.length*7);TERMS.push({name:n,lines:[['s',`~/comandos-terminales/${n} $`]]});termTab=TERMS.length-1;if(V==='E')tab='t'+termTab;if(V==='D')drawerMin=false}else{termTab=+d.term;if(V==='E')tab='t'+termTab}render();return}
+  if(d.term!==undefined){if(d.term==='new'){const n=new Date(Date.now()+TERMS.length*8*6e4);const hh=String(14+Math.floor((48+TERMS.length*8)/60)).padStart(2,'0'),mm=String((48+TERMS.length*8)%60).padStart(2,'0');TERMS.push({name:`${hh}:${mm}`,dir:`2026-09-29-${hh}${mm}`,lines:[['s',`~/comandos-terminales/2026-09-29-${hh}${mm} $`]],input:''});termTab=TERMS.length-1;if(V==='E')tab='t'+termTab;if(V==='D')drawerMin=false;if(V==='C')wsTab='t'+termTab}else{termTab=+d.term;if(V==='E')tab='t'+termTab}render();return}
+  if(d.ws){wsTab=d.ws;render();return}
   if(d.tab){tab=d.tab;render();return}
-  if(d.pal){palOpen=true;render();return}if(d.palClose){palOpen=false;render();return}
+  if(d.sheet){sheet=true;render();setTimeout(()=>$('q')&&$('q').focus(),0);return}
   if(d.drawer){drawerMin=!drawerMin;render();return}
-  if(d.chain!==undefined){chainRun={i:+d.chain,step:0};if(V==='E')tab='chains';render();return}
-  if(d.chainNext){const ch=CHAINS[chainRun.i];if(chainRun.step>=ch.steps.length){chainRun=null;render();return}const [k,c]=ch.steps[chainRun.step];typeInto(k==='pane'?'pane':'shell',c);if(k==='shell'){setTimeout(()=>{if(chainRun){chainRun.step++;render()}},c.length*28+200)}return}
-  if(d.chainStop){chainRun=null;render();return}
-  if(d.sel){SEL=d.sel;render();return}
-  if(d.cat){CATST=d.cat;render();return}
-  if(d.sim==='enter')pressEnter();if(d.sim==='esc'){PANES[SEL].input='';render()}if(d.sim==='reset')location.reload();
-});
-document.addEventListener('keydown',e=>{if(/input|textarea/i.test(e.target.tagName))return;if(e.key==='ArrowLeft')$('prev').click();if(e.key==='ArrowRight')$('next').click();if(e.key==='Enter')pressEnter();if(e.key==='Escape'){PANES[SEL].input='';palOpen=false;render()}if(e.key==='/'&&V==='B'){palOpen=true;render();e.preventDefault();setTimeout(()=>$('q')&&$('q').focus(),0)}});
-function setV(k){V=k;palOpen=false;chainRun=null;tab='cmds';render()}
-$('prev').onclick=()=>setV(VARIANTS[(VARIANTS.findIndex(v=>v.k===V)+4)%5].k);$('next').onclick=()=>setV(VARIANTS[(VARIANTS.findIndex(v=>v.k===V)+1)%5].k);
-(function drag(){const p=$('picker'),g=$('grab');let sx,sy,ox,oy,on=false;g.addEventListener('pointerdown',e=>{on=true;sx=e.clientX;sy=e.clientY;const r=p.getBoundingClientRect();ox=r.left;oy=r.top;g.setPointerCapture(e.pointerId)});
+  if(d.run!==undefined){run={i:+d.run,step:0};if(V==='E')tab='chains';render();return}
+  if(d.runNext){const ch=CHAINS[run.i];const [k,c]=ch.steps[run.step];if(k==='pane')typeInto(PANES[SEL],c);else{if(V==='C')wsTab='t'+termTab;typeInto(TERMS[termTab],c,()=>{run&&run.step++;render()})}return}
+  if(d.runStop){run=null;render();return}
+  if(d.sel){SEL=d.sel;render();return}if(d.cat){CATST=d.cat;render();return}if(d.v){V=d.v;sheet=false;run=null;tab='cmds';wsTab='s';render();return}
+  if(d.sim==='enter')pressEnter();if(d.sim==='esc'){PANES[SEL].input='';render()}if(d.sim==='reset')location.reload();});
+document.addEventListener('keydown',e=>{if(/input|textarea/i.test(e.target.tagName))return;if(e.key==='ArrowLeft'||e.key==='ArrowRight'){const i=VARIANTS.findIndex(v=>v.k===V);V=VARIANTS[(i+(e.key==='ArrowRight'?1:4))%5].k;sheet=false;run=null;tab='cmds';wsTab='s';render()}
+  if(e.key==='Enter')pressEnter();if(e.key==='Escape'){PANES[SEL].input='';sheet=false;render()}if(e.key==='/'&&V==='B'){sheet=true;render();e.preventDefault();setTimeout(()=>$('q')&&$('q').focus(),0)}});
+$('fold').onclick=e=>{e.stopPropagation();$('picker').classList.toggle('collapsed')};
+(function drag(){const p=$('picker'),g=$('grab');let sx,sy,ox,oy,on=false;g.addEventListener('pointerdown',e=>{if(e.target.tagName==='BUTTON')return;on=true;sx=e.clientX;sy=e.clientY;const r=p.getBoundingClientRect();ox=r.left;oy=r.top;g.setPointerCapture(e.pointerId)});
  g.addEventListener('pointermove',e=>{if(!on)return;p.style.left=(ox+e.clientX-sx)+'px';p.style.top=(oy+e.clientY-sy)+'px';p.style.right='auto';p.style.bottom='auto'});
- g.addEventListener('pointerup',e=>{on=false;if(Math.abs(e.clientX-sx)<4&&Math.abs(e.clientY-sy)<4&&innerWidth<=820)p.classList.toggle('collapsed')});if(innerWidth<=820)p.classList.add('collapsed');})();
+ g.addEventListener('pointerup',e=>{on=false;if(Math.abs(e.clientX-sx)<4&&Math.abs(e.clientY-sy)<4&&innerWidth<=900)p.classList.toggle('collapsed')});if(innerWidth<=900)p.classList.add('collapsed');})();
 render();
 </script>
 </html>
