@@ -1,0 +1,170 @@
+<!doctype html><html lang="es"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>ComandOS · Laboratorio fase 2 · barra</title>
+<!-- THROWAWAY. Fase 2, ronda 2: composición de la barra izquierda = Comandos del pane seleccionado + Terminales rápidas.
+     Cinco composiciones estructuralmente distintas sobre el mismo mock. Un clic inserta el comando letra por letra SIN Enter.
+     Catálogo tomado de docs/tui-command-map.md (versiones instaladas). Nada real se ejecuta. ?variant=A..E&sel=claude|codex -->
+<style>
+:root{color-scheme:dark;--bg:#101218;--panel:#171b24;--line:#2a303e;--text:#e7eaf2;--dim:#949db0;--brand:#ad9cff;--green:#8aceac;--amber:#e6ba75;--red:#e08a8a}
+*{box-sizing:border-box}html,body{height:100%}body{margin:0;background:#080a10;color:var(--text);font:13px/1.45 system-ui,-apple-system,Segoe UI,Inter,sans-serif}
+button{font:inherit;cursor:pointer;background:#1f2432;color:var(--text);border:1px solid #3a4256;border-radius:6px;padding:5px 10px}button:hover{background:#28304a}button.primary{background:var(--brand);color:#12111a;border-color:var(--brand);font-weight:600}button.ghost{background:transparent;border-color:transparent;color:var(--dim)}button.ghost:hover{color:var(--text);background:#1f2432}
+input{font:inherit;background:#0e1118;color:var(--text);border:1px solid var(--line);border-radius:6px;padding:6px 8px;width:100%}
+.app{height:100vh;display:grid;grid-template-rows:38px minmax(0,1fr);background:var(--bg)}
+.top{display:flex;align-items:center;gap:10px;padding:0 12px;border-bottom:1px solid var(--line);font-size:12px;color:var(--dim);overflow:hidden}
+.top b{color:var(--text)}.top .tabs{display:flex;gap:6px;min-width:0;overflow:hidden}.top .tab{padding:3px 10px;border:1px solid var(--line);border-radius:6px;white-space:nowrap}.top .tab.on{background:var(--panel);color:var(--text);border-color:#3a4256}.top .tab.qt{color:var(--brand)}
+.top .acts{margin-left:auto;display:flex;gap:6px}.top .acts button{padding:3px 9px;font-size:12px}
+.body{display:grid;min-height:0}
+/* workspace */
+.ws{display:grid;grid-template-rows:minmax(0,1fr);min-height:0}
+.panes{display:grid;grid-template-columns:1fr 1fr;min-height:0}
+.pane{display:flex;flex-direction:column;min-height:0;border-right:1px solid var(--line);position:relative}.pane:last-child{border-right:0}
+.pane.sel{box-shadow:inset 0 0 0 2px var(--brand)}
+.pane-head{display:flex;align-items:center;gap:8px;padding:5px 10px;border-bottom:1px solid var(--line);font-size:11px;color:var(--dim)}.pane-head b{color:var(--text)}.pane-head .sel-tag{margin-left:auto;color:var(--brand)}
+.term{flex:1;min-height:0;overflow:auto;padding:10px 12px;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px;line-height:1.5;background:#0b0d13;white-space:pre-wrap}
+.term .u{color:#c9d1e6}.term .a{color:#9aa4bd}.term .m{color:var(--green)}.term .s{color:#5f6779}.term .d{color:var(--amber)}
+.prompt{padding:6px 12px;border-top:1px solid var(--line);background:#0b0d13;font-family:ui-monospace,Menlo,monospace;font-size:12px;display:flex;align-items:center;gap:8px}
+.prompt .in{flex:1;min-height:18px;color:#e7eaf2}.prompt .in::after{content:"▍";animation:blink .9s infinite}.prompt .hint{font:11px system-ui;color:var(--dim)}.prompt .hint.on{color:var(--amber)}
+@keyframes blink{50%{opacity:.2}}
+/* sidebar shared bits */
+.sb{background:var(--panel);border-right:1px solid var(--line);display:flex;flex-direction:column;min-height:0;min-width:0}
+.sb-head{padding:8px 12px;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:8px;font-size:11px;color:var(--dim)}.sb-head b{color:var(--text);font-size:12px}
+.ver{font-size:10px;padding:1px 6px;border-radius:999px;border:1px solid #2f5a44;color:var(--green)}.ver.warn{border-color:#6a5530;color:var(--amber)}
+.search{padding:8px 10px;border-bottom:1px solid var(--line)}
+.cat{flex:1;min-height:0;overflow:auto}
+.grp{padding:8px 12px 2px;font-size:10px;text-transform:uppercase;letter-spacing:.06em;color:var(--dim)}
+.cmd{display:grid;grid-template-columns:auto 1fr;gap:2px 10px;padding:6px 12px;cursor:pointer;border-left:2px solid transparent}.cmd:hover{background:#1d2230;border-left-color:var(--brand)}
+.cmd code{font-family:ui-monospace,Menlo,monospace;font-size:12px;color:var(--text)}.cmd small{grid-column:2;color:var(--dim);font-size:11px}.cmd .uv{grid-column:2;font-size:10px;color:var(--amber)}
+.cmd .opts{grid-column:2;display:flex;flex-wrap:wrap;gap:4px;margin-top:2px}.cmd .opts button{font-size:10px;padding:2px 6px;background:#12151d}
+.chain{padding:8px 12px;border-top:1px solid var(--line);font-size:12px}.chain .steps{display:grid;gap:4px;margin:6px 0}.chain .step{display:flex;gap:8px;align-items:center;padding:4px 6px;border:1px solid var(--line);border-radius:6px}.chain .step.done{opacity:.5}.chain .step.cur{border-color:var(--brand)}.chain .step code{font-family:ui-monospace,Menlo,monospace;font-size:11px}.chain .step .k{font-size:10px;color:var(--dim);min-width:34px}
+.tabs2{display:flex;gap:2px;padding:6px 8px 0;border-bottom:1px solid var(--line);font-size:11px;overflow:auto}.tabs2 .t{padding:5px 10px;border:1px solid var(--line);border-bottom:0;border-radius:6px 6px 0 0;color:var(--dim);white-space:nowrap;cursor:pointer}.tabs2 .t.on{color:var(--text);background:#0b0d13}.tabs2 .t.plus{color:var(--brand)}
+.mini{flex:1;min-height:0;overflow:auto;padding:8px 10px;font-family:ui-monospace,Menlo,monospace;font-size:11.5px;line-height:1.5;background:#0b0d13;white-space:pre-wrap;color:#c9d1e6}.mini .s{color:#5f6779}.mini .a{color:#9aa4bd}
+.divider{height:6px;cursor:row-resize;background:linear-gradient(var(--line),var(--line)) center/40px 2px no-repeat;border-top:1px solid var(--line)}
+/* ---- A: pila ---- */
+.vA .body{grid-template-columns:340px minmax(0,1fr)}.vA .sb-cmds{flex:1 1 55%;min-height:0;display:flex;flex-direction:column}.vA .sb-terms{flex:1 1 45%;min-height:0;display:flex;flex-direction:column}
+/* ---- B: terminal primero, paleta flotante ---- */
+.vB .body{grid-template-columns:360px minmax(0,1fr)}.vB .sb-terms{flex:1;min-height:0;display:flex;flex-direction:column}
+.vB .pal-btn{position:absolute;left:12px;bottom:12px;z-index:3}
+.overlay{position:absolute;inset:0;background:rgba(8,10,16,.6);z-index:4;display:flex;align-items:flex-start;justify-content:center;padding-top:60px}
+.overlay .pal{width:min(560px,94%);max-height:70vh;background:var(--panel);border:1px solid #3a4256;border-radius:12px;display:flex;flex-direction:column;box-shadow:0 20px 60px rgba(0,0,0,.6)}
+/* ---- C: solo comandos, terminales al workspace ---- */
+.vC .body{grid-template-columns:260px minmax(0,1fr)}.vC .cmd{grid-template-columns:1fr;padding:5px 12px}.vC .cmd small{grid-column:1}.vC .cmd .opts,.vC .cmd .uv{grid-column:1}
+.vC .ws{grid-template-rows:auto minmax(0,1fr)}.vC .ws-tabs{display:flex;gap:4px;padding:6px 8px;border-bottom:1px solid var(--line);font-size:11px}.vC .ws-tabs .t{padding:4px 10px;border:1px solid var(--line);border-radius:6px;color:var(--dim)}.vC .ws-tabs .t.on{color:var(--text);background:var(--panel)}.vC .ws-tabs .t.qt{color:var(--brand)}
+/* ---- D: cajón inferior ---- */
+.vD .body{grid-template-columns:300px minmax(0,1fr)}.vD .ws{grid-template-rows:minmax(0,1fr) auto}.drawer{border-top:1px solid var(--line);background:var(--panel);display:flex;flex-direction:column;height:220px;min-height:0}.drawer.min{height:30px}.drawer.min .mini{display:none}.drawer .tabs2 .t.close{margin-left:auto;border:0}
+/* ---- E: tabs planas ---- */
+.vE .body{grid-template-columns:320px minmax(0,1fr)}.vE .cmd{padding:10px 12px}.vE .cmd code{font-size:13px}.vE .sb>.tabs2{padding-top:8px}
+/* picker */
+.picker{position:fixed;right:14px;bottom:14px;z-index:50;width:300px;background:#f2f3f8;color:#151824;border-radius:12px;box-shadow:0 12px 40px rgba(0,0,0,.55);font-size:12px;user-select:none}
+.picker .grab{cursor:grab;padding:8px 12px;display:flex;align-items:center;gap:8px;border-bottom:1px solid #d5d8e3;font-weight:600}.picker .grab span{margin-left:auto;font-weight:400;color:#6a7086;font-size:11px}
+.picker .row{display:flex;align-items:center;gap:6px;padding:8px 12px}.picker .row.wrap{flex-wrap:wrap}.picker .name{flex:1;text-align:center;font-weight:600}.picker .name small{display:block;font-weight:400;color:#4d5368}
+.picker button{background:#fff;color:#151824;border:1px solid #c9cddc;padding:4px 8px;font-size:11px}.picker button.on{background:#151824;color:#fff;border-color:#151824}
+.picker .lab{font-size:10px;text-transform:uppercase;letter-spacing:.06em;color:#6a7086;width:100%;margin-top:2px}.picker .desc{padding:0 12px 10px;color:#4d5368;font-size:11px}
+@media(max-width:820px){.vA .body,.vB .body,.vC .body,.vD .body,.vE .body{grid-template-columns:1fr}.body{grid-template-rows:auto minmax(0,1fr)}.sb{border-right:0;border-bottom:1px solid var(--line);max-height:52vh}.panes{grid-template-columns:1fr}.pane:not(.sel){display:none}.top .acts{display:none}
+ .picker{width:calc(100% - 20px);right:10px;left:10px;bottom:10px}.picker.collapsed .body>*:not(.row:first-child){display:none}.picker .grab span::after{content:" · toca para plegar"}.mob-only{display:inline-flex}}
+.mob-only{display:none}
+</style>
+<div class="app" id="app">
+  <div class="top"><b>ComandOS</b><span>·</span><span>3</span><div class="tabs"><span class="tab on">ComandOS</span><span class="tab">Lola</span><span class="tab">MRP</span><span id="ws-qtabs"></span></div><div class="acts"><button class="ghost">Terminal</button><button class="ghost">Nueva sesión</button><button class="ghost">Analytics</button></div></div>
+  <div class="body" id="body"></div>
+</div>
+<div class="picker" id="picker">
+  <div class="grab" id="grab">Barra <span>arrastra · ←/→ cambia</span></div>
+  <div class="body">
+  <div class="row"><button id="prev">←</button><div class="name" id="vname"></div><button id="next">→</button></div>
+  <div class="desc" id="vdesc"></div>
+  <div class="row wrap"><span class="lab">Pane seleccionado</span><span id="sels"></span></div>
+  <div class="row wrap"><span class="lab">Catálogo</span><button data-cat="ok">verificado</button><button data-cat="drift">binario cambió</button></div>
+  <div class="row wrap"><span class="lab">Simular</span><button data-sim="enter">Enter en el pane</button><button data-sim="esc">Esc (borrar línea)</button><button data-sim="reset">Reiniciar</button></div>
+  </div>
+</div>
+<script>
+// ---------- catálogo (de docs/tui-command-map.md, versiones instaladas) ----------
+const CAT={
+ claude:{ver:'2.1.268',groups:[
+  ['Modelo y esfuerzo',[['/model ','Cambia el modelo de esta conversación. Sin argumento abre el selector.',['claude-fable-5-1','claude-opus-5-5','claude-sonnet-5-5']],['/effort ','Nivel de esfuerzo de razonamiento.',['low','medium','high','max']],['/fast','Salida rápida con Opus.'],['/plan','Modo plan: propone antes de tocar código.']]],
+  ['Conversación',[['/resume','Elige una conversación anterior para reanudar.'],['/fork','Bifurca esta conversación en otra.'],['/compact','Resume el contexto para liberar ventana.'],['/clear','Limpia el historial de esta sesión.'],['/exit','Sale del CLI (el pane vuelve a la shell).']]],
+  ['Cuenta',[['/login','Inicia sesión en esta terminal (no cambia otras).'],['/logout','Cierra la sesión de esta terminal.'],['/cost','Consumo de esta conversación.']]],
+  ['Contexto',[['/context','Qué ocupa la ventana ahora.'],['/add-dir ','Añade una carpeta al contexto.'],['/mcp','Servidores MCP conectados.'],['/agents','Subagentes disponibles.']]]]},
+ codex:{ver:'0.154.0',groups:[
+  ['Modelo y esfuerzo',[['/model','Selector numerado de modelo y esfuerzo (dos pasos).'],['/plan','Modo plan.']]],
+  ['Conversación',[['/resume','Reanuda una conversación.'],['/fork','Bifurca.'],['/compact','Compacta contexto.'],['/new','Conversación nueva.'],['/exit','Sale del CLI.']]],
+  ['Cuenta',[['/logout','Cierra sesión.']]],
+  ['Contexto',[['/review','Revisión de cambios.'],['/skills','Skills disponibles.'],['/hooks','Hooks configurados.'],['/cd ','Cambia de carpeta.']]]]},
+ grok:{ver:'1.0.25',groups:[
+  ['Modelo y esfuerzo',[['/model ','Alias /m. Cambia el modelo.',['grok-5','grok-5-mini']],['/effort ','Esfuerzo.',['low','high']],['/plan','Modo plan.']]],
+  ['Conversación',[['/resume','Reanuda.'],['/fork','Bifurca.'],['/rewind','Alias /undo.'],['/new','Nueva.'],['/exit','Sale.']]],
+  ['Cuenta',[['/login','Inicia sesión.'],['/logout','Cierra sesión.'],['/usage','Cuota semanal.']]],
+  ['Contexto',[['/context','Ventana actual.'],['/compact','Compacta.'],['/skills','Skills.'],['/mcps','MCPs.']]]]}};
+const SHELL=[['claude --resume <id> --model <modelo>','Reanuda una conversación de Claude con otro modelo (arranque).'],['CLAUDE_CONFIG_DIR=~/.claude-accounts/<cuenta> claude','Arranca Claude con otra cuenta en esta terminal.'],['codex resume <id>','Reanuda una conversación de Codex.'],['grok','Arranca Grok Build aquí.']];
+const CHAINS=[{name:'Pasar este pane a Codex',steps:[['pane','/exit'],['shell','codex --model gpt-5.5-codex'],['pane','/resume']]},{name:'Claude con la cuenta relotto',steps:[['pane','/exit'],['shell','CLAUDE_CONFIG_DIR=~/.claude-accounts/relotto claude --resume 8f2c… --model claude-fable-5-1']]}];
+const VARIANTS=[
+ {k:'A',name:'Pila: comandos arriba, terminales abajo',desc:'Catálogo con búsqueda arriba; terminales rápidas en tabs abajo con separador de altura. Cadenas al pie del catálogo.'},
+ {k:'B',name:'Terminal primero, paleta flotante',desc:'La barra es una terminal rápida con tabs. Los comandos son una paleta que aparece con el botón o la tecla / y se cierra al insertar.'},
+ {k:'C',name:'Solo comandos; terminales al workspace',desc:'Barra estrecha de comandos y cadenas. Las terminales rápidas abren como tabs normales del workspace, no en la barra.'},
+ {k:'D',name:'Comandos a la izquierda, cajón abajo',desc:'La barra solo tiene comandos. Las terminales rápidas viven en un cajón inferior a todo lo ancho, plegable, con tabs.'},
+ {k:'E',name:'Todo en tabs planas',desc:'Una sola tira de tabs: Comandos · Cadenas · cada terminal. Cada tab llena la barra; objetivos grandes para el dedo.'},
+];
+// ---------- estado ----------
+const url=new URL(location.href);let V=url.searchParams.get('variant')||'A', SEL=url.searchParams.get('sel')||'claude', CATST='ok', tab='cmds', termTab=0, palOpen=false, drawerMin=false, chainRun=null, q='';
+const PANES={claude:{h:'claude',model:'claude-fable-5-1 · high · main',lines:[['s','$ claude --model claude-fable-5-1 --effort high'],['a','Claude Code v2.1.268'],['u','> revisa el flaky de test_session_config_history'],['a','Listo. El test asume orden de dict; propongo…']],input:''},
+             codex:{h:'codex',model:'gpt-5.5-codex · high · main',lines:[['s','$ codex'],['a','codex-cli 0.154.0'],['u','> corre pytest -q'],['a','13 passed.']],input:''}};
+const TERMS=[{name:'2026-09-29-1432',lines:[['s','~/comandos-terminales/2026-09-29-1432 $'],['a','(terminal rápida · carpeta fechada)']]},{name:'2026-09-29-1440',lines:[['s','~/comandos-terminales/2026-09-29-1440 $ git status'],['a','nothing to commit']]}];
+const $=id=>document.getElementById(id);const esc=s=>s.replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
+// ---------- piezas ----------
+function catalogHTML(compact){const c=CAT[SEL];const drift=CATST==='drift';
+  const head=`<div class="sb-head"><b>Comandos</b><span>${SEL} ${c.ver}</span><span class="ver ${drift?'warn':''}">${drift?'binario 2.1.270 · sin verificar':'verificado'}</span></div>`;
+  const search=`<div class="search"><input id="q" placeholder="Buscar comando…" value="${esc(q)}"></div>`;
+  const rows=c.groups.map(([g,cmds])=>{const f=cmds.filter(([n,d])=>!q||n.includes(q)||d.toLowerCase().includes(q.toLowerCase()));if(!f.length)return'';
+    return `<div class="grp">${g}</div>`+f.map(([n,d,opts],i)=>`<div class="cmd" data-cmd="${esc(n)}"><code>${esc(n.trim())}${n.endsWith(' ')?' <span style="color:var(--dim)">…</span>':''}</code><small>${d}</small>${drift&&i===0?'<span class="uv">sin verificar en 2.1.270</span>':''}${opts?`<span class="opts">${opts.map(o=>`<button data-cmd="${esc(n+o)}">${o}</button>`).join('')}</span>`:''}</div>`).join('')}).join('');
+  const shell=`<div class="grp">Arranque (shell, en una terminal rápida)</div>`+SHELL.filter(([n,d])=>!q||n.includes(q)).map(([n,d])=>`<div class="cmd" data-cmd="${esc(n)}" data-shell="1"><code>${esc(n)}</code><small>${d}</small></div>`).join('');
+  return head+search+`<div class="cat">${rows}${shell}</div>`;}
+function chainsHTML(){return `<div class="chain"><b>Cadenas guardadas</b> <span style="color:var(--dim);font-size:11px">~/.config/comandos/cadenas/*.md</span>${CHAINS.map((ch,i)=>chainRun&&chainRun.i===i?runningChain(ch):`<div class="step" style="margin-top:6px"><span>${ch.name}</span><button class="ghost" style="margin-left:auto" data-chain="${i}">Correr</button></div>`).join('')}</div>`}
+function runningChain(ch){return `<div style="margin-top:6px"><b>${ch.name}</b><div class="steps">${ch.steps.map(([k,c],j)=>`<div class="step ${j<chainRun.step?'done':j===chainRun.step?'cur':''}"><span class="k">${k==='pane'?'pane':'shell'}</span><code>${esc(c)}</code></div>`).join('')}</div><div style="display:flex;gap:6px"><button class="primary" data-chain-next="1">${chainRun.step>=ch.steps.length?'Terminada':'Siguiente ('+(chainRun.step+1)+'/'+ch.steps.length+')'}</button><button class="ghost" data-chain-stop="1">Parar</button></div><small style="color:var(--dim)">Cada paso se inserta sin Enter; tú confirmas.</small></div>`}
+function termsHTML(){return `<div class="tabs2">${TERMS.map((t,i)=>`<span class="t ${i===termTab?'on':''}" data-term="${i}">⌁ ${t.name.slice(11)}</span>`).join('')}<span class="t plus" data-term="new">+</span></div><div class="mini">${TERMS[termTab].lines.map(([c,l])=>`<div class="${c}">${esc(l)}</div>`).join('')}<div class="s">${TERMS[termTab].input?esc(TERMS[termTab].input):''}<span class="in" style="display:inline"></span>▍</div></div>`}
+function paneHTML(k){const p=PANES[k];return `<div class="pane ${k===SEL?'sel':''}" data-pane="${k}"><div class="pane-head"><b>${p.h}</b><span>${p.model}</span>${k===SEL?'<span class="sel-tag">seleccionado</span>':''}</div><div class="term">${p.lines.map(([c,l])=>`<div class="${c}">${esc(l)}</div>`).join('')}</div><div class="prompt"><span>›</span><span class="in">${esc(p.input)}</span><span class="hint ${p.input?'on':''}">${p.input?'Enter ejecuta · Esc borra':''}</span>${p.input?'<button class="mob-only" data-sim="enter">Enter</button>':''}</div></div>`}
+function workspaceHTML(){if(V==='C'){return `<div class="ws"><div class="ws-tabs"><span class="t on">sesión 2 · splits</span>${TERMS.map(t=>`<span class="t qt">⌁ ${t.name.slice(11)}</span>`).join('')}</div><div class="panes">${paneHTML('claude')}${paneHTML('codex')}</div></div>`}
+  if(V==='D'){return `<div class="ws"><div class="panes">${paneHTML('claude')}${paneHTML('codex')}</div><div class="drawer ${drawerMin?'min':''}"><div class="tabs2">${TERMS.map((t,i)=>`<span class="t ${i===termTab?'on':''}" data-term="${i}">⌁ ${t.name.slice(11)}</span>`).join('')}<span class="t plus" data-term="new">+</span><span class="t close" data-drawer="1">${drawerMin?'▴ terminales':'▾'}</span></div><div class="mini">${TERMS[termTab].lines.map(([c,l])=>`<div class="${c}">${esc(l)}</div>`).join('')}<div class="s">▍</div></div></div></div>`}
+  return `<div class="ws"><div class="panes">${paneHTML('claude')}${paneHTML('codex')}</div></div>`}
+function sidebarHTML(){
+  if(V==='A')return `<div class="sb"><div class="sb-cmds">${catalogHTML()}${chainsHTML()}</div><div class="divider"></div><div class="sb-terms">${termsHTML()}</div></div>`;
+  if(V==='B')return `<div class="sb" style="position:relative"><div class="sb-terms">${termsHTML()}</div><button class="pal-btn primary" data-pal="1">Comandos  /</button>${palOpen?`<div class="overlay" data-pal-close="1"><div class="pal" onclick="event.stopPropagation()">${catalogHTML()}${chainsHTML()}</div></div>`:''}</div>`;
+  if(V==='C')return `<div class="sb">${catalogHTML(true)}${chainsHTML()}<div class="chain"><button class="primary" style="width:100%" data-term="new">+ Terminal rápida (en el workspace)</button></div></div>`;
+  if(V==='D')return `<div class="sb">${catalogHTML()}${chainsHTML()}</div>`;
+  if(V==='E')return `<div class="sb"><div class="tabs2"><span class="t ${tab==='cmds'?'on':''}" data-tab="cmds">Comandos</span><span class="t ${tab==='chains'?'on':''}" data-tab="chains">Cadenas</span>${TERMS.map((t,i)=>`<span class="t ${tab==='t'+i?'on':''}" data-tab="t${i}">⌁ ${t.name.slice(11)}</span>`).join('')}<span class="t plus" data-term="new">+</span></div>${tab==='cmds'?catalogHTML():tab==='chains'?chainsHTML():`<div class="mini" style="flex:1">${TERMS[+tab.slice(1)].lines.map(([c,l])=>`<div class="${c}">${esc(l)}</div>`).join('')}<div class="s">▍</div></div>`}</div>`;
+}
+function render(){$('app').className='app v'+V;$('body').innerHTML=sidebarHTML()+workspaceHTML();
+  $('ws-qtabs').innerHTML=V==='C'?TERMS.map(t=>`<span class="tab qt">⌁ ${t.name.slice(11)}</span>`).join(''):'';
+  const v=VARIANTS.find(x=>x.k===V);$('vname').innerHTML=`${v.k}<small>${v.name}</small>`;$('vdesc').textContent=v.desc;
+  $('sels').innerHTML=Object.keys(PANES).map(k=>`<button data-sel="${k}" class="${k===SEL?'on':''}">${k}</button>`).join('');
+  document.querySelectorAll('[data-cat]').forEach(b=>b.classList.toggle('on',b.dataset.cat===CATST));
+  url.searchParams.set('variant',V);url.searchParams.set('sel',SEL);history.replaceState(null,'',url);
+  const qi=$('q');if(qi){qi.oninput=e=>{q=e.target.value;const pos=qi.selectionStart;render();const n=$('q');if(n){n.focus();n.setSelectionRange(pos,pos)}}}}
+// ---------- tecleo letra por letra, sin Enter ----------
+let typing=null;
+function typeInto(target,text){if(typing)clearInterval(typing);let i=0;const obj=target==='shell'?TERMS[termTab]:PANES[SEL];obj.input='';
+  typing=setInterval(()=>{obj.input=text.slice(0,++i);render();if(i>=text.length){clearInterval(typing);typing=null}},28);}
+function pressEnter(){const p=PANES[SEL];if(!p.input)return;p.lines.push(['u','> '+p.input]);const t=p.input.trim();
+  if(t.startsWith('/model ')&&t.length>7)p.lines.push(['m','Set model to '+t.slice(7)]);else if(t.startsWith('/effort ')&&t.length>8)p.lines.push(['m','Set effort level to '+t.slice(8)]);else if(t==='/exit'){p.lines.push(['s','$']);}else p.lines.push(['a','(respuesta nativa del CLI)']);
+  p.input='';if(chainRun)chainRun.step++;render();}
+// ---------- eventos ----------
+document.addEventListener('click',e=>{const el=e.target.closest('[data-cmd],[data-pane],[data-term],[data-tab],[data-pal],[data-pal-close],[data-drawer],[data-chain],[data-chain-next],[data-chain-stop],[data-sel],[data-cat],[data-sim]');if(!el)return;const d=el.dataset;
+  if(d.cmd!==undefined){typeInto(d.shell?'shell':'pane',d.cmd);if(V==='B'){palOpen=false;render()}return}
+  if(d.pane){SEL=d.pane;render();return}
+  if(d.term!==undefined){if(d.term==='new'){const n='2026-09-29-'+(1500+TERMS.length*7);TERMS.push({name:n,lines:[['s',`~/comandos-terminales/${n} $`]]});termTab=TERMS.length-1;if(V==='E')tab='t'+termTab;if(V==='D')drawerMin=false}else{termTab=+d.term;if(V==='E')tab='t'+termTab}render();return}
+  if(d.tab){tab=d.tab;render();return}
+  if(d.pal){palOpen=true;render();return}if(d.palClose){palOpen=false;render();return}
+  if(d.drawer){drawerMin=!drawerMin;render();return}
+  if(d.chain!==undefined){chainRun={i:+d.chain,step:0};if(V==='E')tab='chains';render();return}
+  if(d.chainNext){const ch=CHAINS[chainRun.i];if(chainRun.step>=ch.steps.length){chainRun=null;render();return}const [k,c]=ch.steps[chainRun.step];typeInto(k==='pane'?'pane':'shell',c);if(k==='shell'){setTimeout(()=>{if(chainRun){chainRun.step++;render()}},c.length*28+200)}return}
+  if(d.chainStop){chainRun=null;render();return}
+  if(d.sel){SEL=d.sel;render();return}
+  if(d.cat){CATST=d.cat;render();return}
+  if(d.sim==='enter')pressEnter();if(d.sim==='esc'){PANES[SEL].input='';render()}if(d.sim==='reset')location.reload();
+});
+document.addEventListener('keydown',e=>{if(/input|textarea/i.test(e.target.tagName))return;if(e.key==='ArrowLeft')$('prev').click();if(e.key==='ArrowRight')$('next').click();if(e.key==='Enter')pressEnter();if(e.key==='Escape'){PANES[SEL].input='';palOpen=false;render()}if(e.key==='/'&&V==='B'){palOpen=true;render();e.preventDefault();setTimeout(()=>$('q')&&$('q').focus(),0)}});
+function setV(k){V=k;palOpen=false;chainRun=null;tab='cmds';render()}
+$('prev').onclick=()=>setV(VARIANTS[(VARIANTS.findIndex(v=>v.k===V)+4)%5].k);$('next').onclick=()=>setV(VARIANTS[(VARIANTS.findIndex(v=>v.k===V)+1)%5].k);
+(function drag(){const p=$('picker'),g=$('grab');let sx,sy,ox,oy,on=false;g.addEventListener('pointerdown',e=>{on=true;sx=e.clientX;sy=e.clientY;const r=p.getBoundingClientRect();ox=r.left;oy=r.top;g.setPointerCapture(e.pointerId)});
+ g.addEventListener('pointermove',e=>{if(!on)return;p.style.left=(ox+e.clientX-sx)+'px';p.style.top=(oy+e.clientY-sy)+'px';p.style.right='auto';p.style.bottom='auto'});
+ g.addEventListener('pointerup',e=>{on=false;if(Math.abs(e.clientX-sx)<4&&Math.abs(e.clientY-sy)<4&&innerWidth<=820)p.classList.toggle('collapsed')});if(innerWidth<=820)p.classList.add('collapsed');})();
+render();
+</script>
+</html>
