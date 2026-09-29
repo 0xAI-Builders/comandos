@@ -148,7 +148,7 @@ def test_intake_maps_hook_events_without_inventing_permissions():
     assert n(hook(hookEvent="UserPromptSubmit"))["kind"] == "prompt_accepted"
     assert n(hook(hookEvent="Stop"))["kind"] == "turn_completed"
     assert n(hook(hookEvent="Notification"))["kind"] == "input_requested"
-    assert n(hook(hookEvent="Notification", notificationType="idle_prompt"))["kind"] == "input_requested"
+    assert n(hook(hookEvent="Notification", notificationType="idle_prompt")) is None
     assert n(hook(hookEvent="Notification", notificationType="permission_prompt"))["kind"] == "permission_requested"
     assert n(hook(hookEvent="PermissionRequest", agent="codex", requestId="call-9"))["kind"] == "permission_requested"
     assert n(hook(hookEvent="GrokError", agent="grok"))["kind"] == "turn_failed"

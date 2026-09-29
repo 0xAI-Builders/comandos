@@ -107,6 +107,32 @@ def test_push_waits_until_no_client_was_visible_for_two_minutes():
     assert nd.route_event(ev("news_edition"), gone, PREFS, NOW)["push"] is False
 
 
+
+def test_push_only_for_events_after_the_last_visible_moment():
+    gone = [client("phone", visible=False, hidden_since=NOW - 3 * 60_000)]
+    # Seen on screen before the phone was put away: never pushed later.
+    assert nd.route_event(ev("permission_requested", at=NOW - 10 * 60_000), gone, PREFS, NOW)["push"] is False
+    assert nd.route_event(ev("turn_failed", at=NOW - 3 * 60_000 - 1), gone, PREFS, NOW)["push"] is False
+    # Arrived while nobody was looking.
+    assert nd.route_event(ev("turn_failed", at=NOW - 3 * 60_000), gone, PREFS, NOW)["push"] is True
+    assert nd.route_event(ev("turn_failed", at=NOW - 60_000), gone, PREFS, NOW)["push"] is True
+    policy = nd.push_policy(PREFS)
+    assert policy(ev("turn_failed", at=NOW - 10 * 60_000), gone, NOW) is False
+
+
+
+def test_an_open_but_unattended_window_does_not_block_the_push():
+    # Desktop window left open (never minimised) while Jesús is away.
+    away = [client("desktop-zion", visible=True, seen=NOW, interaction=NOW - 10 * 60_000)]
+    assert nd.route_event(ev("permission_requested", at=NOW - 60_000), away, PREFS, NOW)["push"] is True
+    # Someone touched it a moment ago: they are there.
+    here = [client("desktop-zion", visible=True, seen=NOW, interaction=NOW - 30_000)]
+    assert nd.route_event(ev("permission_requested", at=NOW - 10_000), here, PREFS, NOW)["push"] is False
+    # Visible, never touched since it connected: not a person looking.
+    never = [client("desktop-zion", visible=True, seen=NOW, interaction=None)]
+    assert nd.route_event(ev("permission_requested", at=NOW - 10_000), never, PREFS, NOW - 0)["push"] is True
+
+
 # ---- grouping, pending and news -------------------------------------------------
 
 def test_bursts_in_one_project_share_a_group_for_ten_seconds():
@@ -266,3 +292,16 @@ def test_event_store_accepts_the_new_producer_kinds(conn):
     page = nd.list_notices(conn, 0, 10, NOW)
     assert [n["kind"] for n in page["notices"]] == ["announcement", "usage_alert"]
     assert page["notices"][0]["project"] is None
+
+
+def test_claude_idle_and_auth_notices_are_not_requests(tmp_path):
+    for ntype in ("idle_prompt", "auth_success"):
+        out = run_intake(tmp_path, hook("Notification", notificationType=ntype), "--claim-sound", "desktop-x")
+        assert out.returncode == 0 and out.stdout.strip() == ""
+    conn = app_state.connect(tmp_path / "state.sqlite3")
+    app_state.migrate(conn)
+    page = nd.list_notices(conn, 0, 50, NOW)
+    assert page["notices"] == [] and page["pending"] == []
+    # A real elicitation still asks for input.
+    out = run_intake(tmp_path, hook("Notification", notificationType="elicitation_dialog"), "--claim-sound", "desktop-x")
+    assert out.stdout.strip() == "play"

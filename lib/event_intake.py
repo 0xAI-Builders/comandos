@@ -39,6 +39,9 @@ HOOK_KINDS = {
     "SessionEnd": "session_ended",
 }
 PERMISSION_NOTIFICATIONS = frozenset({"permission_prompt"})
+# Claude's reminders that it is still idle after a finished turn, and login
+# confirmations: neither asks the user for anything, so they are no notice (D5).
+IGNORED_NOTIFICATIONS = frozenset({"idle_prompt", "auth_success"})
 LEGACY_KINDS = {"done": "turn_completed", "waiting": "input_requested", "working": "prompt_accepted",
                 "error": "turn_failed", "cancelled": "turn_cancelled"}
 LEGACY_MARKER = "events.legacy_import"
@@ -71,6 +74,8 @@ def normalize_hook(payload):
     hook_event = payload.get("hookEvent")
     kind = HOOK_KINDS.get(hook_event)
     if kind is None:
+        return None
+    if hook_event == "Notification" and payload.get("notificationType") in IGNORED_NOTIFICATIONS:
         return None
     if kind == "input_requested" and payload.get("notificationType") in PERMISSION_NOTIFICATIONS:
         kind = "permission_requested"

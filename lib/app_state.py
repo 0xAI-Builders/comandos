@@ -352,6 +352,10 @@ def migrate(conn):
         _backup(conn, current)
     conn.execute("BEGIN IMMEDIATE")
     try:
+        # Another process or thread may have migrated while we waited for the
+        # write lock: apply only what is still missing.
+        applied = {row[0] for row in conn.execute("SELECT version FROM schema_migrations")}
+        pending = [m for m in pending if m[0] not in applied]
         for version, name, sql in pending:
             for statement in _statements(sql):
                 conn.execute(statement)

@@ -110,6 +110,23 @@ def test_closing_a_tab_keeps_the_rest_of_the_arrangement(dash, server, monkeypat
     assert "term-1" not in after["tabs"]
 
 
+
+def test_an_unreadable_registry_never_collapses_the_arrangement(dash, server):
+    _, current = call(server, "GET", "/workspace")
+    document = {k: current[k] for k in ("schema", "groups", "tabs")}
+    document["groups"] = [current["groups"][0], {"id": "g-work", "tree": {
+        "type": "split", "axis": "x", "ratio": 0.4,
+        "first": {"type": "tab", "tabId": "alpha"}, "second": {"type": "tab", "tabId": "term-1"}}}]
+    call(server, "POST", "/workspace", {"requestId": "arr", "expectedRevision": 1, "document": document})
+    Path(dash.TABS_FILE).write_text('{"alpha": "Alp')          # corrupt, not "no tabs"
+    for _ in range(2):
+        status, body = call(server, "GET", "/workspace")
+        assert status == 200 and body["revision"] == 2
+        assert body["groups"][1]["id"] == "g-work" and set(body["tabs"]) == {"local", "alpha", "term-1"}
+    Path(dash.TABS_FILE).write_text(json.dumps({"alpha": "Alpha", "term-1": "Uno"}))
+    assert call(server, "GET", "/workspace")[1]["groups"][1]["id"] == "g-work"
+
+
 def test_client_focus_is_per_device(server):
     call(server, "GET", "/workspace")
     assert call(server, "POST", "/workspace/client",

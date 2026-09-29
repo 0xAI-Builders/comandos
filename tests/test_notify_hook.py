@@ -322,7 +322,8 @@ def test_claude_hook_records_identity_and_keeps_old_timeline(env):
              "message": "Claude is waiting for your input", "notification_type": "idle_prompt"},
             pane="%12", session="sess")
     evs = v2_events(env)
-    assert [e["kind"] for e in evs] == ["prompt_accepted", "permission_requested", "input_requested"]
+    # idle_prompt is Claude's "still idle" reminder: no request, so no v2 event (D5).
+    assert [e["kind"] for e in evs] == ["prompt_accepted", "permission_requested"]
     first = evs[0]
     assert (first["sessionKey"], first["paneId"], first["conversationId"]) == ("sess", "%12", "conv-1")
     assert first["harness"] == "claude" and first["correlation"] == "local"

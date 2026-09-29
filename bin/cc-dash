@@ -733,9 +733,6 @@ def _model_watch_loop():
         time.sleep(1800)    # versiones cada 30 min; binarios al cambiar o 6h
 
 
-threading.Thread(target=_model_watch_loop, daemon=True).start()
-
-
 # ---- N5: ediciones de novedades (tres al día, con fuentes) ----
 # Leer nunca genera: /news/editions y /news/edition solo consultan SQLite. El
 # scheduler arranca en main() y queda inerte sin HOOKS/news-editions.json.
@@ -828,9 +825,9 @@ def _play_local_sound(path):
     return False
 
 
-def _desktop_notice_sound(event_id):
+def _desktop_notice_sound(event_id, db_file=None):
     import notification_delivery
-    conn = notices_conn()
+    conn = app_state.connect(db_file) if db_file else notices_conn()
     now = notices_now()
     for device in (DESKTOP_DEVICE, notification_delivery.LOCAL_SPEAKER):
         if notification_delivery.claim_sound(conn, event_id, device, now)["play"]:
@@ -6817,8 +6814,25 @@ def workspace_store():
     return store
 
 
+class _RegistryUnreadable(Exception):
+    """app-tabs.json exists but cannot be read: not the same as "no tabs"."""
+
+
+def _tab_registry():
+    try:
+        with open(TABS_FILE) as f:
+            d = json.load(f)
+    except FileNotFoundError:
+        return {}
+    except (OSError, ValueError) as exc:
+        raise _RegistryUnreadable(str(exc))
+    if not isinstance(d, dict):
+        raise _RegistryUnreadable("app-tabs.json no es un objeto")
+    return {k: v for k, v in d.items() if isinstance(v, str) and v}
+
+
 def workspace_inventory():
-    labels = tab_labels()
+    labels = _tab_registry()
     out = [("local", "⌂ local")]
     for sess in ordered_tab_keys(labels, read_prefs().get("favorites", [])):
         if sess not in HIDDEN_SESSIONS and SESSION_RE.fullmatch(sess):
@@ -6840,7 +6854,12 @@ def workspace_sync(reason="auto"):
     store = workspace_store()
     for _ in range(3):
         current = store.current() or {"revision": 0, "document": workspace_state.empty_document()}
-        inventory = workspace_inventory()
+        try:
+            inventory = workspace_inventory()
+        except _RegistryUnreadable:
+            # A registry we cannot read says nothing about which tabs exist:
+            # keep the stored arrangement instead of fitting it to nothing.
+            return current
         wanted = workspace_state.reconcile(current["document"], inventory, workspace_panes(inventory))
         if wanted == current["document"] and current["revision"]:
             return current
@@ -6889,12 +6908,17 @@ def _pomodoro_emit(conn, event):
     Its sound is claimed afterwards (own transaction), once, by one device."""
     stored = event_store.append_event(conn, event)
     if not stored.get("duplicate"):
-        threading.Timer(1.0, lambda: _safe_desktop_sound(stored["eventId"])).start()
+        # Claim against the SAME database file that holds the event, whatever
+        # the environment says later; a daemon never outlives the server.
+        db_file = conn.execute("PRAGMA database_list").fetchone()[2]
+        timer = threading.Timer(1.0, lambda: _safe_desktop_sound(stored["eventId"], db_file))
+        timer.daemon = True
+        timer.start()
 
 
-def _safe_desktop_sound(event_id):
+def _safe_desktop_sound(event_id, db_file=None):
     try:
-        _desktop_notice_sound(event_id)
+        _desktop_notice_sound(event_id, db_file)
     except Exception as exc:
         print(f"notice sound {event_id}: {exc}", file=sys.stderr)
 
@@ -10112,6 +10136,8 @@ def main():
     port = ports[0]
     PORT = port
     socketserver.TCPServer.allow_reuse_address = True
+    # Background loops start with the server, never on import (tests import cc-dash).
+    threading.Thread(target=_model_watch_loop, daemon=True).start()
     threading.Thread(target=_news_editions_loop, daemon=True).start()
     threading.Thread(target=_notices_push_loop, daemon=True).start()
     with socketserver.ThreadingTCPServer(("127.0.0.1", port), Handler) as srv:

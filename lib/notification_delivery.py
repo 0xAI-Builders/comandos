@@ -17,6 +17,7 @@ import event_store
 LOCAL_SPEAKER = "local-speaker"   # the hook's own machine when nobody is visible
 PRESENCE_STALE_MS = 90_000        # a visible client must have reported recently
 PUSH_AFTER_MS = 120_000           # D5: push when no client was visible for 2 min
+ATTENDED_MS = 120_000             # a visible client counts as watched until 2 min after its last interaction
 HISTORY_WINDOW = 500              # events scanned for pending requests
 
 CATEGORIES = {
@@ -98,15 +99,30 @@ def sound_device(clients, now_ms):
     return None
 
 
-def _nobody_visible_since(clients, now_ms):
+def _last_visible_ms(clients):
+    """Last moment a person could have been looking at some client.
+
+    A visible client only counts while someone interacted with it within
+    ATTENDED_MS: a desktop window left open on an empty desk is not a reader."""
     last = 0
     for c in clients or []:
         if c.get("visible") and c.get("connected", True) is not False:
-            last = max(last, int(c.get("lastSeenAt") or 0))
+            seen = int(c.get("lastSeenAt") or 0)
         else:
             # Hidden clients count until the moment they were hidden.
-            last = max(last, int(c.get("hiddenSince") or c.get("lastSeenAt") or 0))
-    return now_ms - last >= PUSH_AFTER_MS
+            seen = int(c.get("hiddenSince") or c.get("lastSeenAt") or 0)
+        attended = int(c.get("lastInteractionAt") or 0) + ATTENDED_MS
+        last = max(last, min(seen, attended))
+    return last
+
+
+def _pushable(event, clients, now_ms):
+    """Nobody has looked for PUSH_AFTER_MS, and the event arrived after the
+    last moment someone could see it: what was already on a screen never
+    reaches the phone later."""
+    last = _last_visible_ms(clients)
+    at = event.get("occurredAtMs") or event.get("receivedAtMs") or now_ms
+    return now_ms - last >= PUSH_AFTER_MS and int(at) >= last
 
 
 def route_event(event, clients, prefs, now_ms, focus_active=False):
@@ -119,7 +135,7 @@ def route_event(event, clients, prefs, now_ms, focus_active=False):
                 float={"show": info["notice"] and category != "info", "ms": prefs.get("floatMs", 6000)},
                 sound=bool(sound),
                 soundDevice=sound_device(clients, now_ms) if sound else None,
-                push=category in PUSH_CATEGORIES and _nobody_visible_since(clients, now_ms))
+                push=category in PUSH_CATEGORIES and _pushable(event, clients, now_ms))
 
 
 def group_keys(events, prefs):

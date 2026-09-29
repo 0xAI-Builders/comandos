@@ -14,11 +14,15 @@ REAL_STATE = Path(os.environ.get("XDG_STATE_HOME") or Path.home() / ".local/stat
 
 
 def _fingerprint():
-    try:
-        st = REAL_STATE.stat()
-    except FileNotFoundError:
-        return None
-    return (st.st_size, st.st_mtime_ns)
+    # The -wal file holds writes not yet checkpointed into the main file.
+    out = []
+    for path in (REAL_STATE, REAL_STATE.with_name(REAL_STATE.name + "-wal")):
+        try:
+            st = path.stat()
+            out.append((st.st_size, st.st_mtime_ns))
+        except FileNotFoundError:
+            out.append(None)
+    return tuple(out)
 
 
 def pytest_sessionstart(session):

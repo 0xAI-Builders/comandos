@@ -117,3 +117,24 @@ def test_installer_runs_twice_on_a_temporary_home(tmp_path):
     for name in ("notifications.js", "device-drafts.js", "pomodoro.js", "work-marks.js", "quick-terminal.js",
                  "workspace-dock.js", "news-reader.js", "push-settings.js"):
         assert (home / ".claude/hooks/dash" / name).exists(), name
+
+
+def test_parallel_first_runs_all_succeed(tmp_path):
+    import threading
+    db = tmp_path / "state.sqlite3"
+    errors, versions = [], []
+    barrier = threading.Barrier(6)
+
+    def run():
+        try:
+            conn = app_state.connect(db)
+            barrier.wait()
+            versions.append(app_state.migrate(conn))
+        except Exception as exc:          # noqa: BLE001
+            errors.append(repr(exc))
+    threads = [threading.Thread(target=run) for _ in range(6)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+    assert errors == [] and versions == [9] * 6

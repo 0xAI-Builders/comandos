@@ -75,6 +75,19 @@ def _text(value):
     return str(value).strip()[:MAX_TEXT]
 
 
+def _destination(value, what):
+    """Project/session/pane as the event log will accept them (no control chars)."""
+    text = _text(value)
+    if any(ord(c) < 32 for c in text):
+        raise Invalid("invalid_" + what, f"{what} inválido")
+    return text
+
+
+def _event_ident(value):
+    # Legacy or imported rows may hold anything: drop what the log would refuse.
+    return value if value and not any(ord(c) < 32 for c in value) else None
+
+
 def _int(value, what):
     if isinstance(value, bool) or not isinstance(value, int):
         raise Invalid("invalid_" + what, f"{what} inválido")
@@ -202,13 +215,13 @@ class PomodoroStore:
         self._bump(settled=True)
         if record is not None and block["mode"] == "focus" and self.emit:
             minutes = block["targetMs"] // MINUTE_MS
-            project = block["project"] or "sin proyecto"
+            project = _event_ident(block["project"]) or "sin proyecto"
             self.emit(self.conn, {
                 "eventId": f"pomodoro:{block['blockId']}:completed",
                 "source": "pomodoro", "kind": "focus_completed",
                 "evidence": "confirmed", "correlation": "source",
-                "projectKey": block["project"], "sessionKey": block["sessionKey"],
-                "paneKey": block["paneKey"],
+                "projectKey": _event_ident(block["project"]), "sessionKey": _event_ident(block["sessionKey"]),
+                "paneKey": _event_ident(block["paneKey"]),
                 "occurredAtMs": ended, "receivedAtMs": now_ms,
                 "title": "Pomodoro completado",
                 "excerpt": f"{minutes} min de foco · {project}",
@@ -291,8 +304,8 @@ class PomodoroStore:
         self.conn.execute(
             f"INSERT INTO pomodoro_blocks ({_BLOCK_COLUMNS}, updated_at_ms) "
             "VALUES (?, ?, 'running', ?, 0, ?, ?, ?, NULL, ?, ?, ?, ?, ?, 'comandos', ?)",
-            (block_id, mode, target, now, now + target, now, _text(request.get("project")),
-             _text(request.get("sessionKey")), _text(request.get("paneKey")),
+            (block_id, mode, target, now, now + target, now, _destination(request.get("project"), "project"),
+             _destination(request.get("sessionKey"), "sessionKey"), _destination(request.get("paneKey"), "paneKey"),
              _opt_int(request.get("cycleIndex"), 1, 99), _opt_int(request.get("cycleTotal"), 1, 99), now))
         self._bump(block_id, keep_block=False)
 

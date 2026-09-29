@@ -123,3 +123,36 @@ def test_focus_end_plays_on_the_desktop_speaker_only_when_it_wins(server, monkey
     call(srv, "POST", "/presence", {"deviceId": "phone", "visible": True, "canPlayAudio": True, "interaction": True})
     assert dash._desktop_notice_sound("pomodoro:b2:completed") is False and len(played) == 1
     assert dash.DESKTOP_DEVICE.startswith("desktop-")
+
+
+def test_importing_cc_dash_starts_no_background_loop(server):
+    import threading
+    _, dash = server
+    targets = {getattr(t, "_target", None) for t in threading.enumerate()}
+    assert dash._model_watch_loop not in targets
+
+
+def test_focus_end_sound_is_a_daemon_bound_to_the_emitting_database(server, monkeypatch, tmp_path):
+    _, dash = server
+    timers = []
+
+    class FakeTimer:
+        def __init__(self, delay, fn):
+            self.fn, self.daemon = fn, False
+            timers.append(self)
+
+        def start(self):
+            pass
+    monkeypatch.setattr(dash.threading, "Timer", FakeTimer)
+    claimed = []
+    monkeypatch.setattr(dash, "_desktop_notice_sound", lambda eid, path=None: claimed.append((eid, path)))
+    conn = dash.notices_conn()
+    db_file = conn.execute("PRAGMA database_list").fetchone()[2]
+    conn.execute("BEGIN IMMEDIATE")
+    dash._pomodoro_emit(conn, {"eventId": "pomodoro:z:completed", "source": "pomodoro", "kind": "focus_completed",
+                               "evidence": "confirmed", "correlation": "source", "occurredAtMs": 1, "receivedAtMs": 1})
+    conn.execute("COMMIT")
+    monkeypatch.setenv("COMANDOS_STATE_DB", str(tmp_path / "somewhere-else.sqlite3"))
+    assert timers and timers[0].daemon is True
+    timers[0].fn()
+    assert claimed == [("pomodoro:z:completed", db_file)]

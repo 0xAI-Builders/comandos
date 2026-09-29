@@ -399,3 +399,24 @@ def test_completed_focus_lands_in_the_real_event_log_once(tmp_path):
     events = event_store.list_events(store.conn)
     assert [e["kind"] for e in events] == ["focus_completed"]
     assert events[0]["eventId"].startswith("pomodoro:") and events[0]["paneKey"] == "pane-a"
+
+
+def test_control_characters_in_the_destination_are_rejected_at_start(env):
+    store, clock, events, _ = env
+    for field in ("project", "sessionKey", "paneKey"):
+        with pytest.raises(pomodoro.Invalid):
+            start(store, rid="bad-" + field, **{field: "a\x01b"})
+    assert store.snapshot()["block"] is None
+
+
+def test_a_bad_stored_destination_never_jams_completion(tmp_path):
+    import event_store
+    clock = Clock()
+    store = open_store(tmp_path / "state.sqlite3", clock, lambda conn, event: event_store.append_event(conn, event))
+    start(store)
+    store.conn.execute("UPDATE pomodoro_blocks SET session_key = 's\x01x', project = 'p\tq'")  # legacy/imported row
+    clock.now += 25 * MIN + 1
+    assert store.settle_due()
+    assert store.snapshot()["block"]["status"] == "completed"
+    event = event_store.list_events(store.conn)[0]
+    assert event["kind"] == "focus_completed" and event["sessionKey"] is None
