@@ -821,3 +821,13 @@ Jesús says the project/session labels and grouping are not the concern. The fiv
 MCPs and skills keep their existing per-pane control. Remove the duplicate entry from the sidebar inspector. The `sidebar` prototype no longer renders CommandOS chat. Production chat routes and processes have not been removed during this design turn; their retirement belongs in the release implementation, with stored history preserved.
 
 Configuring AI is now a candidate purpose for the sidebar. The user requests a grounded plan for harness, account and model changes, rather than another navigation classification. Verified code findings, proposed control behavior, acceptance criteria and the next human decision are in /home/someguy/codebase/0xJesus/ComandOS/.worktrees/comandos-v1-grill/design/sidebar-controls-plan.md. No new visual direction or execution policy is approved yet.
+
+## Correction: keep CommandOS chat · 2026-09-29
+
+While preparing the implementation handoff, Jesús explicitly reverses the removal: "PERO haz una pequeña modifiacion la parte de chat no la quites mejor porfavor SI DEJALA". Keep the existing CommandOS chat, its routes and saved conversations. This supersedes the preceding removal decision and any task to retire it. Chat is restored in the sidebar prototype; its duplicate MCP/skills inspector action stays removed. A future chat redesign belongs to the second design phase. Telegram remains excluded.
+
+## Implementation package and second-phase handoff · 2026-09-29
+
+Jesús asks to implement the agreed blocks first and continue the remaining grilling in a second phase. The master plan is /home/someguy/codebase/0xJesus/ComandOS/.worktrees/comandos-v1-grill/docs/superpowers/plans/2026-09-29-commandos-v1/README.md. It indexes five implementation subplans, records dependencies, and separates approved requirements from technical proposals and six remaining policy decisions. This planning delivery does not implement the release.
+
+The second-phase handoff is /tmp/comandos-v1-fase-2-handoff.md. It points to the existing findings for sidebar/AI controls, top bar, general Analytics, remote entry, servers, settings and possible chat redesign. Chat stays. Telegram retirement remains a first-phase requirement.

@@ -1,17 +1,17 @@
 # Barra lateral para operar la IA
 
-La propuesta es dedicar la barra a controlar la IA del pane seleccionado. Jesús descarta organizar esta ronda alrededor de las etiquetas proyecto, sesión o pane. El chat de CommandOS queda excluido del diseño del producto. MCPs y skills mantienen su acceso en cada split pane. Configurar IA es una posibilidad que el usuario quiere evaluar, todavía no una función aprobada para la barra.
+La propuesta es dedicar la barra a controlar la IA del pane seleccionado. Jesús descarta organizar esta ronda alrededor de las etiquetas proyecto, sesión o pane. El chat de CommandOS se conserva por la corrección posterior de Jesús al separar la implementación en fases. MCPs y skills mantienen su acceso en cada split pane. Configurar IA es una posibilidad que el usuario quiere evaluar, todavía no una función aprobada para la barra.
 
 Este documento es una propuesta para Jesús y una guía de comprobación para quien implemente los controles. Define alcance y criterios de fiabilidad. No declara reparados los cambios de modelo, cuenta o harness, ni autoriza una migración de conversaciones en vivo.
 
 ## Qué está decidido
 
-- Retirar el chat propio de CommandOS del diseño, incluida su futura ronda de grilling. Esto no afecta las conversaciones de los agentes dentro de las terminales.
+- Conservar el chat propio de CommandOS. La petición posterior "SI DEJALA" revoca su retirada. Su posible rediseño permanece fuera de la primera fase.
 - Evitar otro selector de MCPs y skills en la barra; el control pertenece al pane.
 - Dejar de comparar la jerarquía de proyectos y sesiones como objetivo de esta ronda.
 - Conservar las decisiones previas sobre terminales, restauración, docking y adaptación remota.
 
-La retirada del chat ya se refleja en la ronda `sidebar` del prototipo. Su implementación de producción, rutas de operador y procesos asociados siguen pendientes de retirada. No se borró el historial guardado. Las capturas de la comparación anterior son históricas y todavía muestran el chat.
+El chat está restaurado en la ronda `sidebar` del prototipo. Se conservan su implementación de producción, rutas de operador e historial. La captura sin chat y la comprobación al final de este documento son evidencia histórica de la propuesta revocada.
 
 ## Qué hace el código inspeccionado
 
@@ -57,7 +57,7 @@ Debajo habría una explicación breve de la operación solo mientras haga falta:
 
 Cuota, consumo o contexto podrían ocupar una fila secundaria cuando exista una medición atribuible a ese pane o cuenta. No convertir una estimación de tokens, una cuota de cuenta o una ventana declarada en consumo observado. El usuario aún no eligió qué métricas merecen espacio.
 
-En escritorio la terminal permanecería junto a la barra. En el celular se abriría el mismo conjunto de controles con espacio suficiente y regreso claro a la terminal. La colocación exacta espera el veredicto funcional. No se incluyen chat, otro selector de extensiones ni acciones globales por rellenar espacio.
+En escritorio la terminal permanecería junto a la barra. En el celular se abriría el mismo conjunto de controles con espacio suficiente y regreso claro a la terminal. La colocación exacta espera el veredicto funcional. Se conserva el chat existente. No se añade otro selector de extensiones ni acciones globales por rellenar espacio.
 
 ## Condiciones para confiar en el control
 
@@ -83,9 +83,9 @@ En escritorio la terminal permanecería junto a la barra. En el celular se abrir
 
 ## Próxima decisión
 
-Resolver si la barra debe seguir al pane seleccionado y concentrar allí sus controles de IA. Recomendación: sí, con destino visible y operaciones pendientes ligadas al pane original. Después se eligen los controles esenciales, el comportamiento al cambiar de foco, la política de aplicación y finalmente su presentación visual.
+Retomar la barra contextual al pane como dirección de partida. Jesús pidió separar la implementación ya acordada de este diseño pendiente; su respuesta no aprueba todavía una composición ni una política completa. Elegir primero los controles esenciales y la política de aplicación; después, su presentación visual. El chat se conserva. El índice de implementación está en /home/someguy/codebase/0xJesus/ComandOS/.worktrees/comandos-v1-grill/docs/superpowers/plans/2026-09-29-commandos-v1/README.md.
 
-## Comprobación de la retirada en el prototipo
+## Comprobación histórica de la retirada, revocada
 
 Los tres scripts inline pasan la comprobación de sintaxis. Chrome remoto en la Mac mini comprobó las cinco variantes a 390×844: sin chat ni selector duplicado de MCPs en la barra, con el acceso del pane conservado y sin desbordamiento horizontal ni errores registrados. La variante E también se comprobó a 1440×1000. La ruta Tailscale devuelve HTTP 200 con la retirada aplicada.
 
