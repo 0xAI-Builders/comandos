@@ -163,7 +163,9 @@ def notice(event, clients, prefs, now_ms, read, group, focus_active=False):
             "sessionKey": event.get("sessionKey"), "paneKey": event.get("paneKey"), "paneId": event.get("paneId"),
             "title": event.get("title") or "", "excerpt": event.get("excerpt") or "",
             "occurredAtMs": event.get("occurredAtMs"), "read": event["eventId"] in read,
-            "float": route["float"], "group": group}
+            "float": route["float"], "group": group,
+            "editionId": (event.get("sourceEventId") or "")[len("news-edition:"):]
+            if str(event.get("sourceEventId") or "").startswith("news-edition:") else None}
 
 
 # ---- durable state -------------------------------------------------------------

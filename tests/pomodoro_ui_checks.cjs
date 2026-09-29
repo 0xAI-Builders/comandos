@@ -150,7 +150,7 @@ async function readySounds(storage = memoryStorage(), log = []) {
   });
 
   // ---- view discipline ---------------------------------------------------
-  function loadView(snapshot, played) {
+  function loadView(snapshot, played, extra = {}) {
     const posts = [];
     let now = snapshot.serverNowMs;
     const timers = [];
@@ -170,7 +170,7 @@ async function readySounds(storage = memoryStorage(), log = []) {
       getElementById: id => (id === 'pomo-panel' ? panel : id === 'btn-pomo' ? button : id === 'pomodoro-analytics' ? analytics : null),
       addEventListener() {},
     };
-    const state = { snapshot };
+    const state = Object.assign({ snapshot }, extra);
     const context = {
       console, document, URLSearchParams, Date: class extends Date { static now() { return now; } },
       setTimeout: (fn, ms) => { timers.push({ fn, ms }); return timers.length; }, clearTimeout() {}, setInterval() { return 0; },
@@ -183,6 +183,10 @@ async function readySounds(storage = memoryStorage(), log = []) {
           return { status: 200, json: async () => res };
         }
         if (body && body.settings) return { status: 200, json: async () => ({ ok: true, settings: body.settings }) };
+        if (String(url) === '/notices/sound') {
+          state.claims = (state.claims || []).concat([body]);
+          return { status: 200, json: async () => ({ play: state.soundPlay !== false, cue: 'complete' }) };
+        }
         if (!body) gets.push(url);
         if (String(url).startsWith('/pomodoro/report')) return { status: 200, json: async () => state.report };
         return { status: 200, json: async () => state.snapshot };
@@ -248,6 +252,17 @@ async function readySounds(storage = memoryStorage(), log = []) {
     assert.deepEqual(played, [['focus-complete', 'pomodoro:b1:completed']]);
     assert.equal(v.ui.state.mode, 'break', 'suggests the break without starting it (manual cycles)');
     assert.equal(v.posts.filter(p => p.action).length, 0);
+  });
+
+  await check('a focus end sounds only on the device that wins the shared claim', async () => {
+    const played = [];
+    const done = { revision: 4, serverNowMs: T0 + 25 * MIN + 2000, settings: {}, block: Object.assign({}, running.block, { status: 'completed', activeMs: 25 * MIN, endedAtMs: T0 + 25 * MIN, deadlineMs: null, resumedAtMs: null }) };
+    const v = loadView(done, played, { soundPlay: false });
+    await settle();
+    v.ui.render(); v.ui.render();
+    await settle();
+    assert.deepEqual(played, [], 'another device plays this sound');
+    assert.deepEqual(v.state.claims.map(c => c.eventId), ['pomodoro:b1:completed']);
   });
 
   await check('an old completion after reload is not replayed', async () => {

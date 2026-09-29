@@ -238,6 +238,14 @@
     style: P.DEFAULT_STYLE,
   };
   const sounds = () => (window.uiSounds && typeof window.uiSounds.play === 'function' ? window.uiSounds : null);
+  async function claimSound(eventId) {
+    let deviceId = '';
+    try { deviceId = window.localStorage.getItem('comandos.deviceId') || ''; } catch (e) { deviceId = ''; }
+    try {
+      const r = await transport('POST', '/notices/sound', { eventId, deviceId });
+      return !!(r && r.body && r.body.play);
+    } catch (e) { return false; }
+  }
   const client = P.createClient({ transport, onChange: () => render() });
 
   function selectedTarget() {
@@ -313,8 +321,16 @@
     const prog = v.snapshot && v.snapshot.progress;
     const levelUp = prog && prog.lastLevelUp && prog.lastLevelUp.blockId === b.blockId ? prog.lastLevelUp : null;
     if (v.serverNowMs - (b.endedAtMs || 0) < 90 * 1000) {
-      if (levelUp) sounds()?.play('level-up', { eventId: `pomodoro:level:${prog.policyVersion}:${levelUp.level}` });
-      else sounds()?.play(b.mode === 'focus' ? 'focus-complete' : 'break-complete', { eventId: `pomodoro:${b.blockId}:completed` });
+      if (b.mode === 'focus') {
+        // The end of a focus block is a shared notice (N2/D5): it sounds once,
+        // on the device the server picks, never on every open tab and device.
+        const eventId = `pomodoro:${b.blockId}:completed`;
+        claimSound(eventId).then(play => {
+          if (!play) return;
+          if (levelUp) sounds()?.play('level-up', { eventId: `pomodoro:level:${prog.policyVersion}:${levelUp.level}` });
+          else sounds()?.play('focus-complete', { eventId });
+        });
+      } else sounds()?.play('break-complete', { eventId: `pomodoro:${b.blockId}:completed` });
     }
     const xp = prog && prog.xpPerMinute ? Math.floor(b.activeMs / MIN) * prog.xpPerMinute : 0;
     ui.banner = b.mode === 'focus'

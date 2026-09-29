@@ -100,3 +100,26 @@ def test_model_news_and_usage_producers_go_through_the_event_log(server, monkeyp
     kinds = [n["kind"] for n in call(srv, "GET", "/notices?after=0")[1]["notices"]]
     assert kinds == ["announcement", "usage_alert"]
     assert posted and all(p["kind"] != "waiting" for p in posted)
+
+
+def test_a_published_edition_becomes_one_news_notice_with_its_id(server):
+    srv, dash = server
+    edition = {"id": "2026-09-29@15:00", "slot": "15:00", "status": "published", "storyCount": 7}
+    dash._news_edition_notice(edition)
+    dash._news_edition_notice(edition)          # same edition twice: one notice
+    notices = call(srv, "GET", "/notices?after=0")[1]["notices"]
+    assert [(n["kind"], n["editionId"], n["project"]) for n in notices] == [("news_edition", "2026-09-29@15:00", None)]
+
+
+def test_focus_end_plays_on_the_desktop_speaker_only_when_it_wins(server, monkeypatch):
+    srv, dash = server
+    played = []
+    monkeypatch.setattr(dash, "_play_local_sound", lambda path: played.append(path))
+    record(dash, "focus_completed", "pomodoro:b1:completed")
+    # Nobody visible: this machine is the fallback speaker.
+    assert dash._desktop_notice_sound("pomodoro:b1:completed") is True and len(played) == 1
+    assert dash._desktop_notice_sound("pomodoro:b1:completed") is False      # claimed once
+    record(dash, "focus_completed", "pomodoro:b2:completed")
+    call(srv, "POST", "/presence", {"deviceId": "phone", "visible": True, "canPlayAudio": True, "interaction": True})
+    assert dash._desktop_notice_sound("pomodoro:b2:completed") is False and len(played) == 1
+    assert dash.DESKTOP_DEVICE.startswith("desktop-")

@@ -129,6 +129,7 @@ def test_completion_is_written_to_the_event_log(dash):
     spec = importlib.util.spec_from_loader(loader.name, loader)
     fresh = importlib.util.module_from_spec(spec)
     loader.exec_module(fresh)           # the fixture stubs _pomodoro_emit; this one is real
+    fresh._play_local_sound = lambda path: None      # never sound on the test machine
     conn = app_state.connect()
     app_state.migrate(conn)
     conn.execute("BEGIN IMMEDIATE")

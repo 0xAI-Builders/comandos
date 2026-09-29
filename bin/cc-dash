@@ -405,7 +405,7 @@ _limits_cache = {"at": 0, "limits": [], "health": {}}
 _limits_refreshing = False
 
 
-def notice_emit(kind, title, excerpt="", project=None):
+def notice_emit(kind, title, excerpt="", project=None, source_event_id=None):
     """Record a non-turn notice (model/news announcement, usage alert) in the
     N1 event log so the strip, floats, sound and push share one policy."""
     try:
@@ -417,7 +417,8 @@ def notice_emit(kind, title, excerpt="", project=None):
             event_store.append_event(conn, {
                 "eventId": f"{kind}:{now}:{secrets.token_hex(4)}", "source": "comandos", "kind": kind,
                 "evidence": "confirmed", "correlation": "unknown", "occurredAtMs": now, "receivedAtMs": now,
-                "projectKey": project, "title": str(title or "")[:200], "excerpt": str(excerpt or "")[:500]})
+                "projectKey": project, "title": str(title or "")[:200], "excerpt": str(excerpt or "")[:500],
+                "sourceEventId": source_event_id})
             conn.execute("COMMIT")
         except BaseException:
             conn.execute("ROLLBACK")
@@ -426,6 +427,14 @@ def notice_emit(kind, title, excerpt="", project=None):
             conn.close()
     except Exception as exc:
         print(f"notice_emit {kind}: {exc}", file=sys.stderr)
+
+
+def _news_edition_notice(edition):
+    """A readable edition is one news notice (never a waiting request)."""
+    eid = str((edition or {}).get("id") or "")
+    if eid:
+        notice_emit("news_edition", f"Edición de noticias {edition.get('slot') or ''}".strip(),
+                    "Nueva edición con fuentes", source_event_id="news-edition:" + eid)
 
 
 def usage_alert_send(message, title=None, kind="info", project=None):
@@ -805,6 +814,31 @@ def notices_now():
     return int(time.time() * 1000)
 
 
+# The desktop's own speaker (same device id as the hook and cc-app): events
+# no hook sees, like a Pomodoro focus end, still sound here when it wins.
+DESKTOP_DEVICE = "desktop-" + re.sub(r"[^A-Za-z0-9_.-]", "-", os.uname().nodename or "local")[:60]
+DESKTOP_NOTICE_SOUND = "/usr/share/sounds/freedesktop/stereo/complete.oga"
+
+
+def _play_local_sound(path):
+    for player in (["paplay", path], ["pw-play", path], ["afplay", path]):
+        if shutil.which(player[0]) and os.path.exists(path):
+            subprocess.Popen(player, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
+            return True
+    return False
+
+
+def _desktop_notice_sound(event_id):
+    import notification_delivery
+    conn = notices_conn()
+    now = notices_now()
+    for device in (DESKTOP_DEVICE, notification_delivery.LOCAL_SPEAKER):
+        if notification_delivery.claim_sound(conn, event_id, device, now)["play"]:
+            _play_local_sound(DESKTOP_NOTICE_SOUND)
+            return True
+    return False
+
+
 def _notices_push_loop():
     """Push unread notices when no client was visible for 2 min (D5), through
     the same route_event policy the strip, floats and sounds use."""
@@ -901,7 +935,8 @@ def _news_editions_loop():
         conn = app_state.connect()
         app_state.migrate(conn)
         return conn
-    _news_scheduler = news_editions.EditionScheduler(connect, news_editions_config_path(), news_watch_lib)
+    _news_scheduler = news_editions.EditionScheduler(connect, news_editions_config_path(), news_watch_lib,
+                                                     notify=_news_edition_notice)
     time.sleep(120)
     while True:
         try:
@@ -6850,8 +6885,18 @@ def _pomodoro_log(message):
 
 
 def _pomodoro_emit(conn, event):
-    """Hand the completion to the N1 event log inside the same transaction."""
-    event_store.append_event(conn, event)
+    """Hand the completion to the N1 event log inside the same transaction.
+    Its sound is claimed afterwards (own transaction), once, by one device."""
+    stored = event_store.append_event(conn, event)
+    if not stored.get("duplicate"):
+        threading.Timer(1.0, lambda: _safe_desktop_sound(stored["eventId"])).start()
+
+
+def _safe_desktop_sound(event_id):
+    try:
+        _desktop_notice_sound(event_id)
+    except Exception as exc:
+        print(f"notice sound {event_id}: {exc}", file=sys.stderr)
 
 
 POMODORO_POLICY = focus_progress.POLICY_V1   # D2; activación sin puntos retroactivos

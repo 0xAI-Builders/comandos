@@ -1935,7 +1935,7 @@
 	    #content{padding-bottom:env(safe-area-inset-bottom)}
 	  }
 	</style>
-<link rel="stylesheet" href="/workspace.css?v=3fa7f1d32d65">
+<link rel="stylesheet" href="/workspace.css?v=v1n2notices">
 <link rel="stylesheet" href="/reparto.css">
 <script src="/session-config.js?v=7f3232b0a624"></script>
 <script src="/workspace-layout.js"></script>
@@ -8975,6 +8975,15 @@ if("serviceWorker" in navigator)
 // nunca cambia de pestaña, foco, borrador ni selección. Abrir usa el mismo
 // camino que el resto del tablero y jamás crea una terminal para una sesión
 // que ya no existe (el aviso muestra "El panel ya no existe").
+// Pide a la terminal embebida que enfoque un pane SOLO en este navegador.
+function selectPaneInFrame(sess, pane){
+  const o = openTerms.get(sess), frame = o && o.frame;
+  if(!frame) return;
+  const post = () => frame.contentWindow?.postMessage({source: "comandos", type: "select-pane", pane}, location.origin);
+  let ready = false;
+  try{ ready = frame.contentDocument?.readyState === "complete" && frame.contentWindow.location.href !== "about:blank"; }catch(_){}
+  if(ready) post(); else frame.addEventListener("load", post, {once: true});
+}
 (function(){
   if(!window.ComandosNotices || ONLY_PANEL) return;
   const N = window.ComandosNotices;
@@ -8997,8 +9006,20 @@ if("serviceWorker" in navigator)
     },
     openSource: n => {
       const s = n.sessionKey, label = (openTerms.get(s) || {}).label || n.project || s;
-      if(inApp()) openInApp(s, "claude", label);
-      else if(appEnabled()) openTerm(s, label);
+      const pane = /^%\d+$/.test(n.paneId || "") ? n.paneId : null;
+      if(inApp()){
+        openInApp(s, "claude", label);
+        // El escritorio sigue el pane compartido: seleccionarlo por identidad.
+        if(pane) api("/terminal-panes", {session: s, action: "list"}).then(r => {
+          const p = (r.panes || []).find(x => x.id === pane);
+          if(!p) throw new Error("Ese panel ya no existe. El aviso sigue en la franja.");
+          return api("/terminal-panes", {session: s, action: "select", pane: p.id, identity: p.identity});
+        }).catch(err => toast(err.message, true));
+      }
+      else if(appEnabled()){
+        openTerm(s, label);
+        if(pane) selectPaneInFrame(s, pane);
+      }
       else api("/focus", {session: s}).catch(err => toast(err.message, true));
     },
     openNews: n => {

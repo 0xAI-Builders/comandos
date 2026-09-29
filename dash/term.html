@@ -389,6 +389,10 @@
       applyInteractionState(data);
       return true;
     }
+    if (data.type === 'select-pane' && typeof data.pane === 'string' && /^%\d+$/.test(data.pane)) {
+      void selectPaneForThisClient(data.pane);
+      return true;
+    }
     if (data.type === 'toolbar') {
       const t = data.term || {};
       if (t.type === 'toolbar' && TOOLBAR_KEYS[t.key]) { sendToolbarKey(t.key); return true; }
@@ -1710,6 +1714,18 @@
   const paneStatus = document.getElementById('pane-status');
   const paneConfirm = document.getElementById('pane-confirm');
   let paneBusy = false, paneRevision = 0, pendingPaneClose = null;
+  // Abrir un aviso lleva al pane exacto SOLO en este dispositivo (foco por
+  // cliente): se revalida la identidad y se teclean las teclas de foco aquí.
+  async function selectPaneForThisClient(paneId) {
+    for (let i = 0; i < 20 && !socketIsOpen(); i++) await new Promise(r => setTimeout(r, 250));
+    try {
+      const listing = await paneRequest('list');
+      const pane = listing.panes.find(p => p.id === paneId);
+      if (!pane) { showErr('Ese panel ya no existe. El aviso sigue en la franja.'); return; }
+      const result = await paneRequest('select', pane);
+      if (typeof result.clientKeys === 'string') sendInput(result.clientKeys);
+    } catch (error) { showErr(error.message); }
+  }
   async function paneRequest(action, pane, direction) {
     if (!arg || !accessTokenParam) throw new Error('Abre la terminal desde ComandOS para administrar sus paneles.');
     const response = await fetch('/terminal-panes', {
