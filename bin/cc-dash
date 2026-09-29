@@ -7816,6 +7816,56 @@ def model_switch_apply(sess, pane, target, data):
     return session_configure(dict(data, session=sess, pane=pane))
 
 
+# ---- N1: eventos con identidad (lib/event_store.py) ----------------------
+# Los hooks escriben directo en el estado SQLite (lib/event_intake.py); aqui
+# se listan, se importa una vez el timeline viejo y los productores internos
+# (Pomodoro, noticias) pueden registrar por POST autenticado.
+import event_store
+import event_intake
+import turn_state
+
+_EVENTS_V2_LEGACY = {"done": False}
+
+
+def events_v2_list(query):
+    """Pagina N1 por secuencia local. ?after=<seq>&limit=<n>[&turns=1]."""
+    def num(name, default):
+        raw = (query.get(name) or [str(default)])[0]
+        if not re.fullmatch(r"[0-9]{1,15}", raw or ""):
+            raise ValueError(f"{name} inválido")
+        return int(raw)
+    after, limit = num("after", 0), num("limit", 100)
+    conn = workspace_store().conn
+    if not _EVENTS_V2_LEGACY["done"]:
+        event_intake.import_legacy(conn, EVENTS)
+        _EVENTS_V2_LEGACY["done"] = True
+    events = event_store.list_events(conn, after, limit)
+    out = {"events": events, "nextAfter": events[-1]["sequence"] if events else after,
+           "latest": event_store.latest_sequence(conn)}
+    if (query.get("turns") or [""])[0] == "1":
+        latest = out["latest"]
+        recent = event_store.list_events(conn, max(0, latest - 2000), event_store.MAX_PAGE)
+        while recent and recent[-1]["sequence"] < latest:
+            more = event_store.list_events(conn, recent[-1]["sequence"], event_store.MAX_PAGE)
+            if not more:
+                break
+            recent.extend(more)
+        out["turns"] = turn_state.turns_from_events(recent)
+    return out
+
+
+def events_v2_record(data):
+    """Registro de un productor interno (hook o evento ya normalizado)."""
+    conn = workspace_store().conn
+    if not _EVENTS_V2_LEGACY["done"]:
+        event_intake.import_legacy(conn, EVENTS)
+        _EVENTS_V2_LEGACY["done"] = True
+    stored = event_intake.record(conn, data)
+    if stored is None:
+        return 202, {"ignored": True}
+    return 200, {"event": stored}
+
+
 def _guard_request(method):
     """Envuelve do_GET/do_POST: ninguna excepcion de un endpoint deja la
     conexion sin respuesta. TimeoutExpired (tmux/subprocess colgado) -> 504,
@@ -7980,6 +8030,19 @@ class Handler(http.server.SimpleHTTPRequestHandler):
         except (TypeError, UnicodeError):
             pass
         return 401, {"error": "No autorizado (token requerido para acceso remoto)"}
+
+    def _internal_producer(self):
+        """Hooks/servicios del mismo equipo: loopback directo, sin navegador
+        (sin Origin), sin proxy y con el token local en X-Comandos-Token."""
+        if not self._peer_is_loopback() or self._header_values("X-Forwarded-For") \
+                or self._header_values("Origin"):
+            return False
+        presented = self.headers.get("X-Comandos-Token", "").strip()
+        try:
+            return hmac.compare_digest(presented.encode("utf-8", "surrogatepass"),
+                                       access_token().encode("utf-8"))
+        except (TypeError, UnicodeError):
+            return False
 
     # Endpoints con DATOS o ACCIONES: exigen token. El shell estatico (HTML,
     # sw.js, manifest, iconos) NO — no revela nada (es codigo open-source) y
@@ -8282,6 +8345,11 @@ class Handler(http.server.SimpleHTTPRequestHandler):
                     return self._bytes(200, "image/png", f.read())
             except Exception as e:
                 return self._json(500, {"error": str(e)})
+        if urllib.parse.urlsplit(self.path).path == "/events/v2":
+            try:
+                return self._json(200, events_v2_list(urllib.parse.parse_qs(urllib.parse.urlsplit(self.path).query)))
+            except ValueError as exc:
+                return self._json(400, {"error": str(exc)})
         if self.path.startswith("/events"):
             evs = []
             try:
@@ -8344,6 +8412,14 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             except (ValueError, TypeError, KeyError) as exc:
                 return self._json(400, {"error": str(exc) or "Workspace inválido"})
             return self._json(200, workspace_payload(saved))
+
+        if self.path == "/events/v2":
+            if not self._internal_producer():
+                return self._json(403, {"error": "Solo productores internos de este equipo"})
+            try:
+                return self._json(*events_v2_record(data))
+            except (ValueError, TypeError) as exc:
+                return self._json(400, {"error": str(exc) or "Evento inválido"})
 
         if self.path == "/workspace/client":
             try:

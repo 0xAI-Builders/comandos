@@ -73,6 +73,8 @@ play_snd() { # $1 = archivo
 #                --cwd DIR [--msg TXT] [--full TXT] [--options "a\x1fb"]
 AGENT=claude
 PROMPT_ID=""; AGENT_SESSION_ID=""
+# Identidad para eventos N1 (lib/event_intake.py): turno, request y tipo de aviso.
+TURN_ID=""; REQUEST_ID=""; NOTIFICATION_TYPE=""; HOOK_EVENT_ARG=""
 full_arg=""; options_arg=""
 if [ "${1:-}" = "--agent" ] || [ "${1:-}" = "--event" ]; then
   event=""; cwd=""; msg=""; transcript=""
@@ -84,6 +86,11 @@ if [ "${1:-}" = "--agent" ] || [ "${1:-}" = "--event" ]; then
       --msg)     msg="$2"; shift 2 ;;
       --full)    full_arg="$2"; shift 2 ;;
       --options) options_arg="$2"; shift 2 ;;
+      --session-id) AGENT_SESSION_ID="$2"; shift 2 ;;
+      --turn-id) TURN_ID="$2"; shift 2 ;;
+      --request-id) REQUEST_ID="$2"; shift 2 ;;
+      --hook-event) HOOK_EVENT_ARG="$2"; shift 2 ;;
+      --notification-type) NOTIFICATION_TYPE="$2"; shift 2 ;;
       *) shift ;;
     esac
   done
@@ -119,6 +126,8 @@ else
     export COMANDOS_USAGE_REASONING_EFFORT=$(jq -r '.effort // ""' <<<"$normalized")
     PROMPT_ID=$(jq -r '.promptId // ""' <<<"$normalized")
     AGENT_SESSION_ID=$(jq -r '.sessionId // ""' <<<"$normalized")
+    # Grok normaliza la cancelacion a "idle": el evento N1 la conserva.
+    [ "$(jq -r '.event // ""' <<<"$normalized")" = "StopCancelled" ] && HOOK_EVENT_ARG=GrokCancelled
   else
     event=$(jq -r '.hook_event_name // "Stop"' <<<"$input" 2>/dev/null)
     cwd=$(jq -r '.cwd // ""' <<<"$input" 2>/dev/null)
@@ -126,6 +135,8 @@ else
     transcript=$(jq -r '.transcript_path // ""' <<<"$input" 2>/dev/null)
     PROMPT_ID=$(jq -r '.prompt_id // .promptId // ""' <<<"$input" 2>/dev/null)
     AGENT_SESSION_ID=$(jq -r '.session_id // .sessionId // ""' <<<"$input" 2>/dev/null)
+    TURN_ID=$(jq -r '.turn_id // .turnId // "" | strings' <<<"$input" 2>/dev/null)
+    NOTIFICATION_TYPE=$(jq -r '.notification_type // "" | strings' <<<"$input" 2>/dev/null)
   fi
 fi
 case "$AGENT" in
@@ -165,6 +176,8 @@ SESSION_HINT=""
 if printf '%s' "${TMUX_PANE:-}" | grep -Eq '^%[0-9]+$' && command -v tmux >/dev/null 2>&1; then
   PANE_HINT="$TMUX_PANE"
   SESSION_HINT=$(tmux display-message -p -t "$PANE_HINT" '#S' 2>/dev/null || true)
+  # pid del proceso del pane: con su tick de arranque distingue un %N reusado.
+  PANE_PID=$(tmux display-message -p -t "$PANE_HINT" '#{pane_pid}' 2>/dev/null || true)
 fi
 if ! printf '%s' "$SESSION_HINT" | grep -Eq '^[A-Za-z0-9._-]{1,80}$'; then
   SESSION_HINT=$(printf '%s' "$proj" | tr '.:' '--' | head -c 60)
@@ -183,6 +196,26 @@ if [ "$AGENT" = "grok" ] && [ -n "${normalized:-}" ]; then
   printf '%s' "$normalized" | python3 "$adapter" --accept "$GROK_CURRENT" >/dev/null 2>&1 || grok_rc=$?
   [ "$grok_rc" = "3" ] && exit 0
 fi
+
+# Evento N1 con identidad (sesion/pane/proceso/conversacion/turno/request):
+# lo persiste lib/event_intake.py directo en el estado SQLite, asi funciona
+# aunque cc-dash este caido. Nunca rompe el hook ni el timeline de /events.
+EVENT_INTAKE="$(dirname "$(readlink -f "$0")")/../lib/event_intake.py"
+event_v2() { # $1=titulo $2=extracto
+  [ -r "$EVENT_INTAKE" ] && command -v python3 >/dev/null 2>&1 || return 0
+  local tmo=""
+  command -v timeout >/dev/null 2>&1 && tmo="timeout 4"
+  jq -cn --arg hook "${HOOK_EVENT_ARG:-$event}" --arg agent "$AGENT" --arg cwd "${cwd:-}" \
+    --arg project "$proj" --arg session "$([ -n "$PANE_HINT" ] && printf '%s' "$SESSION_HINT")" \
+    --arg pane "$PANE_HINT" --arg pid "${PANE_PID:-}" --arg conv "$AGENT_SESSION_ID" \
+    --arg turn "$TURN_ID" --arg prompt "$PROMPT_ID" --arg req "$REQUEST_ID" \
+    --arg ntype "$NOTIFICATION_TYPE" --arg title "${1:-}" --arg excerpt "$(printf '%s' "${2:-}" | head -c 500)" \
+    --argjson at "$now_ms" \
+    '{hookEvent:$hook,agent:$agent,cwd:$cwd,project:$project,session:$session,pane:$pane,
+      panePid:$pid,conversationId:$conv,turnId:$turn,promptId:$prompt,requestId:$req,
+      notificationType:$ntype,title:$title,excerpt:$excerpt,occurredAtMs:$at}' 2>/dev/null \
+    | $tmo python3 "$EVENT_INTAKE" record >/dev/null 2>&1 || true
+}
 
 usage_lifecycle() { # $1=status
   local script="$HOME/.local/bin/cc_usage.py"
@@ -288,14 +321,17 @@ case "$event" in
                   then .detail else (.last//"") end' \
            "$STATE_FILE" 2>/dev/null)
     write_state "working" ""
+    event_v2 "$AGENT_NAME" ""
     exit 0
     ;;
   GrokIdle)
     LAST=$(jq -r '.detail // .last // ""' "$STATE_FILE" 2>/dev/null)
     write_state "idle" "${msg:-}"
+    [ "$HOOK_EVENT_ARG" = "GrokCancelled" ] && event_v2 "$AGENT_NAME" "${msg:-}"
     exit 0
     ;;
   SessionEnd)
+    event_v2 "$AGENT_NAME" ""
     usage_lifecycle "end" >/dev/null 2>&1 || true
     rm -f "$STATE_FILE" "$GROK_CURRENT"
     exit 0
@@ -307,6 +343,7 @@ case "$event" in
     urgency="critical"
     sound="$SOUND_ATTENTION"
     write_state "error" "$(printf '%s' "$body" | head -c 60000)"
+    event_v2 "$AGENT_NAME error" "$body"
     ;;
   Notification)
     # Anti-spam: si ya estaba "waiting" hace poco, refresca estado pero no re-notifica
@@ -352,6 +389,7 @@ $preview"
     urgency="critical"
     sound="$SOUND_ATTENTION"
     write_state "waiting" "$(printf '%s' "${full:-$body}" | head -c 60000)" "$options"
+    event_v2 "$AGENT_NAME $T_ATTN" "$body"
     if [ "$prev_s" = "waiting" ] && [ $(( now - ${prev_t:-0} )) -lt 600 ]; then
       exit 0
     fi
@@ -371,6 +409,7 @@ $preview"
     urgency="normal"
     sound="$SOUND_DONE"
     write_state "done" "$(printf '%s' "${full:-$body}" | head -c 60000)"
+    event_v2 "$AGENT_NAME $T_DONE" "$body"
     ;;
 esac
 

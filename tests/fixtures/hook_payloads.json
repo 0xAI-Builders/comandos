@@ -1,0 +1,33 @@
+{
+  "_note": "Sanitized, synthetic payload shapes read by adapters/*.sh and hooks/cc-notify.sh in this repo. Not captured from live sessions (hooks were not activated on real sessions). 'intake' is what cc-notify.sh forwards to lib/event_intake.py; 'identities' lists which identities the harness supplies.",
+  "claude": {
+    "identities": {"conversation": "session_id", "turn": null, "request": null, "notificationType": "notification_type"},
+    "payloads": {
+      "UserPromptSubmit": {"hook_event_name": "UserPromptSubmit", "session_id": "00000000-0000-0000-0000-000000000001", "transcript_path": "/home/user/.claude/projects/x/s.jsonl", "cwd": "/home/user/proj", "prompt": "<redacted>"},
+      "Notification": {"hook_event_name": "Notification", "session_id": "00000000-0000-0000-0000-000000000001", "cwd": "/home/user/proj", "message": "Claude needs your permission to use Bash", "notification_type": "permission_prompt"},
+      "Stop": {"hook_event_name": "Stop", "session_id": "00000000-0000-0000-0000-000000000001", "cwd": "/home/user/proj", "stop_hook_active": false}
+    },
+    "intake": {"hookEvent": "Notification", "agent": "claude", "project": "proj", "session": "proj", "pane": "%3", "conversationId": "00000000-0000-0000-0000-000000000001", "notificationType": "permission_prompt", "occurredAtMs": 1000},
+    "expected": {"kind": "permission_requested", "correlation": "local", "turnId": null, "requestId": null}
+  },
+  "codex": {
+    "identities": {"conversation": "session_id", "turn": "turn_id", "request": "request_id|approval_id|call_id|tool_use_id", "notificationType": null},
+    "payloads": {
+      "UserPromptSubmit": {"hook_event_name": "UserPromptSubmit", "session_id": "thread-0001", "turn_id": "turn-0001", "cwd": "/home/user/proj"},
+      "PermissionRequest": {"hook_event_name": "PermissionRequest", "session_id": "thread-0001", "turn_id": "turn-0001", "tool_name": "Bash", "call_id": "call-0001", "command": "<redacted>"},
+      "Stop": {"hook_event_name": "Stop", "session_id": "thread-0001", "turn_id": "turn-0001", "last_assistant_message": "<redacted>"},
+      "notify:agent-turn-complete": {"type": "agent-turn-complete", "thread-id": "thread-0001", "turn-id": "turn-0001", "cwd": "/home/user/proj", "last-assistant-message": "<redacted>"}
+    },
+    "intake": {"hookEvent": "PermissionRequest", "agent": "codex", "project": "proj", "session": "proj", "pane": "%4", "conversationId": "thread-0001", "turnId": "turn-0001", "requestId": "call-0001", "occurredAtMs": 1000},
+    "expected": {"kind": "permission_requested", "correlation": "source", "turnId": "turn-0001", "requestId": "call-0001"}
+  },
+  "grok": {
+    "identities": {"conversation": "sessionId", "turn": "promptId", "request": null, "notificationType": "notificationType"},
+    "payloads": {
+      "UserPromptSubmit": {"hookEventName": "UserPromptSubmit", "sessionId": "gs-0001", "promptId": "p-0001", "cwd": "/home/user/proj"},
+      "StopCancelled": {"hookEventName": "StopCancelled", "sessionId": "gs-0001", "promptId": "p-0001", "cwd": "/home/user/proj"}
+    },
+    "intake": {"hookEvent": "GrokCancelled", "agent": "grok", "project": "proj", "session": "proj", "pane": "%5", "conversationId": "gs-0001", "promptId": "p-0001", "occurredAtMs": 1000},
+    "expected": {"kind": "turn_cancelled", "correlation": "source", "turnId": "p-0001", "requestId": null}
+  }
+}
