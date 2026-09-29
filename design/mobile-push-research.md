@@ -1,6 +1,6 @@
 # Mobile Web Push design facts
 
-Verified 2026-09-29. Research for product discussion; nothing implemented or tested on a phone. The user's phone platform remains unknown.
+Verified 2026-09-29. Research for product discussion; nothing implemented or tested on a phone. Jesús confirmed Android as his phone platform. The iOS findings remain reference material, not an extra installation requirement for his device.
 
 ## Verified capabilities
 
