@@ -182,3 +182,16 @@ def test_report_accepts_local_dates(dash):
     code, report = get(dash, "/pomodoro/report?fromDate=2033-05-01&toDate=2033-05-03")
     assert code == 200 and [d["date"] for d in report["byDay"]] == ["2033-05-01", "2033-05-02", "2033-05-03"]
     assert get(dash, "/pomodoro/report?fromDate=mayo")[0] == 400
+
+
+def test_snapshot_carries_ledger_progress_after_a_real_completion(dash):
+    _, started = dash.pomodoro_post({"requestId": "a", "expectedRevision": 0, "action": "start",
+                                     "mode": "focus", "targetMs": 25 * MIN})
+    code, snap = get(dash)
+    assert snap["progress"]["xp"] == 0 and snap["progress"]["policyVersion"] == "v1"
+    dash.test_clock.now = started["block"]["deadlineMs"]
+    dash.pomodoro_store().settle_due()
+    dash.pomodoro_store().settle_due()
+    progress = get(dash)[1]["progress"]
+    assert progress["xp"] == 250 and progress["level"] == 1 and progress["todayMinutes"] == 25
+    assert progress["dailyGoalMinutes"] == 100

@@ -919,6 +919,7 @@ import session_operations
 import app_state
 import workspace_state
 import pomodoro
+import focus_progress
 import tui_state
 _TUI_TRANSCRIPTS = tui_state.TranscriptCache()
 _TUI_STATES = tui_state.StateTracker()
@@ -6594,8 +6595,11 @@ def _pomodoro_emit(conn, event):
     append_event(conn, event)
 
 
+POMODORO_POLICY = focus_progress.POLICY_V1   # D2; activación sin puntos retroactivos
+
+
 def _pomodoro_rewards():
-    return None
+    return lambda conn, record, now_ms: focus_progress.award(conn, record, POMODORO_POLICY, now_ms)
 
 
 def pomodoro_store():
@@ -6603,6 +6607,7 @@ def pomodoro_store():
     if store is None:
         conn = app_state.connect()
         app_state.migrate(conn)
+        focus_progress.ensure_policy(conn, POMODORO_POLICY, POMODORO_CLOCK())
         store = pomodoro.PomodoroStore(conn, lambda: POMODORO_CLOCK(), emit=_pomodoro_emit,
                                        rewards=_pomodoro_rewards(), log=_pomodoro_log)
         _POMODORO_LOCAL.store = store
@@ -6632,7 +6637,8 @@ def pomodoro_settings():
 def pomodoro_payload(state=None):
     state = state or pomodoro_store().snapshot()
     out = dict(state)
-    out.update(queue=focus_queue(), settings=pomodoro_settings())
+    out.update(queue=focus_queue(), settings=pomodoro_settings(),
+               progress=focus_progress.ledger_progress(pomodoro_store().conn, POMODORO_POLICY, state["serverNowMs"]))
     return out
 
 

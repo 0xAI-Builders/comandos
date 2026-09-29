@@ -253,6 +253,21 @@ async function readySounds(storage = memoryStorage(), log = []) {
     assert.deepEqual(played, []);
   });
 
+  await check('a level-up completion plays one level-up cue instead of the completion cue', async () => {
+    const played = [];
+    const endedAtMs = T0 + 25 * MIN;
+    const snap = { revision: 9, serverNowMs: endedAtMs + 3000, settings: {},
+      progress: { policyVersion: 'v1', xpPerMinute: 10, xpPerLevel: 1000, xp: 1000, level: 2, levelPct: 0, xpToNextLevel: 1000, todayMinutes: 100, dailyGoalMinutes: 100, achievements: [], lastLevelUp: { blockId: 'b1', level: 2, awardedAtMs: endedAtMs } },
+      block: Object.assign({}, running.block, { status: 'completed', activeMs: 25 * MIN, endedAtMs, deadlineMs: null, resumedAtMs: null }) };
+    const v = loadView(snap, played);
+    await settle();
+    v.panel.classList.remove('hidden');
+    v.ui.render(); v.ui.render();
+    assert.deepEqual(played, [['level-up', 'pomodoro:level:v1:2']]);
+    assert.ok(v.ui.state.banner.includes('+250 XP') && v.ui.state.banner.includes('Nivel 2'));
+    assert.ok(v.panel.innerHTML.includes('100 / 100 min'), 'daily goal from the server progress');
+  });
+
   await check('analytics filters query the report and totals come from its records', async () => {
     const v = loadView(JSON.parse(JSON.stringify(running)), []);
     await settle();

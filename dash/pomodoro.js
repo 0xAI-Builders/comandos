@@ -302,12 +302,17 @@
     ui.seenCompletion = b.blockId;
     const recent = v.serverNowMs - (b.endedAtMs || 0) < 10 * MIN;
     if (first && !recent) return;          // an old completion is not news after a reload
+    const prog = v.snapshot && v.snapshot.progress;
+    const levelUp = prog && prog.lastLevelUp && prog.lastLevelUp.blockId === b.blockId ? prog.lastLevelUp : null;
     if (v.serverNowMs - (b.endedAtMs || 0) < 90 * 1000) {
-      sounds()?.play(b.mode === 'focus' ? 'focus-complete' : 'break-complete', { eventId: `pomodoro:${b.blockId}:completed` });
+      if (levelUp) sounds()?.play('level-up', { eventId: `pomodoro:level:${prog.policyVersion}:${levelUp.level}` });
+      else sounds()?.play(b.mode === 'focus' ? 'focus-complete' : 'break-complete', { eventId: `pomodoro:${b.blockId}:completed` });
     }
+    const xp = prog && prog.xpPerMinute ? Math.floor(b.activeMs / MIN) * prog.xpPerMinute : 0;
     ui.banner = b.mode === 'focus'
-      ? t(`Bloque completado · ${Math.round(b.activeMs / MIN)} min en ${b.project || 'sin proyecto'}`, `Block complete · ${Math.round(b.activeMs / MIN)} min`)
+      ? t(`Bloque completado · ${Math.round(b.activeMs / MIN)} min en ${b.project || 'sin proyecto'}`, `Block complete · ${Math.round(b.activeMs / MIN)} min`) + (xp ? ` · +${xp} XP` : '') + (levelUp ? t(` · ¡Nivel ${levelUp.level}!`, ` · Level ${levelUp.level}!`) : '')
       : t('Descanso terminado · listo para continuar', 'Break over · ready to continue');
+    ui.bannerLevel = !!levelUp;
     if (b.mode === 'focus') ui.mode = 'break';           // D3: manual cycles, suggest the break only
     else ui.mode = 'focus';
   }
@@ -351,13 +356,44 @@
         ${[15, 25, 50].map(n => `<button type="button" data-pm-preset="${n}" ${disabled}>${n} min</button>`).join('')}
         <label>${t('Min', 'Min')} <input type="number" data-pm-minutes min="1" max="180" value="${minutes}" aria-label="${t('Minutos', 'Minutes')}" ${disabled}></label>
       </div>
-      ${ui.banner ? `<div class="pm-banner" role="status">${esc(ui.banner)}</div>` : ''}
+      ${ui.banner ? `<div class="pm-banner" role="status">${ui.bannerLevel ? P.assetHtml('level', ui.style) : ''}<span>${esc(ui.banner)}</span></div>` : ''}
+      ${miniHtml(v)}
       ${err}
       <button type="button" class="pm-link" data-pm-analytics>${icon('bars', 12)} ${t('Ver mi historial y progreso', 'See my history and progress')}</button>
       ${soundHtml()}
       ${styleHtml()}
       <div data-pm-extra></div>`;
   }
+
+  function miniHtml(v) {
+    const g = v.snapshot && v.snapshot.progress;
+    if (!g) return '';
+    const goal = Math.min(100, (g.todayMinutes / Math.max(1, g.dailyGoalMinutes)) * 100);
+    return `<div class="pm-milestone">
+        <div class="pm-mini-level">${P.assetHtml('level', ui.style)}<div><b>${t('Nivel', 'Level')} ${g.level}</b><small>${g.xp.toLocaleString('es-MX')} XP</small></div></div>
+        <div class="pm-mini-track">
+          <div class="pm-progress" role="progressbar" aria-label="${t('Progreso al siguiente nivel', 'Progress to next level')}" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${Math.round(g.levelPct)}"><span style="width:${g.levelPct}%"></span></div>
+          <p><span>${g.xpToNextLevel} ${t('XP para subir', 'XP to level up')}</span><span>${g.todayMinutes} / ${g.dailyGoalMinutes} min ${t('hoy', 'today')}</span></p>
+          <div class="pm-progress goal" aria-hidden="true"><span style="width:${goal.toFixed(1)}%"></span></div>
+        </div>
+      </div>`;
+  }
+
+  window.ComandosPomodoroProgress = function (slot, snapshot) {
+    const g = snapshot && snapshot.progress;
+    if (!g) { slot.innerHTML = ''; return; }
+    const goal = Math.min(100, (g.todayMinutes / Math.max(1, g.dailyGoalMinutes)) * 100);
+    slot.innerHTML = `<section class="pm-game">
+        <div class="pm-game-level">${P.assetHtml('level', ui.style)}<div><div class="pm-kicker">${t('Tu progreso · todos los proyectos', 'Your progress · all projects')}</div>
+          <h4>${t('Nivel', 'Level')} ${g.level} <small>· ${g.xp.toLocaleString('es-MX')} XP</small></h4></div></div>
+        <div class="pm-progress"><span style="width:${g.levelPct}%"></span></div>
+        <small>${g.xpToNextLevel} XP ${t('para el nivel', 'to level')} ${g.level + 1} · ${g.xpPerMinute} XP ${t('por minuto de foco medido', 'per measured focus minute')}</small>
+        <div class="pm-badges">${(g.achievements || []).map(a => `<span class="${a.unlocked ? '' : 'locked'}" title="${a.unlocked ? t('Logro conseguido', 'Achievement unlocked') : t('Logro pendiente', 'Pending')}">${P.assetHtml(a.asset, ui.style)}${esc(a.title)}</span>`).join('')}</div>
+        <div class="pm-goal-head">${P.assetHtml('crystal', ui.style)}<b>${t('Meta de hoy', 'Today')}: ${g.todayMinutes} / ${g.dailyGoalMinutes} min</b></div>
+        <div class="pm-progress goal"><span style="width:${goal.toFixed(1)}%"></span></div>
+        <p class="pma-note">${g.streakDays} ${t('días seguidos con un bloque completado. Tu XP y tus logros se conservan al descansar. Solo cuentan bloques terminados desde que se activó la política', 'days in a row. XP and achievements are kept. Only blocks finished since the policy started count')} ${esc(g.policyVersion)}.</p>
+      </section>`;
+  };
 
   function soundHtml() {
     const snd = sounds();

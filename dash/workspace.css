@@ -272,3 +272,26 @@ html.pm-page-hidden .pm-asset,html.pm-page-hidden .pm-pixel{animation-play-state
 #pomodoro-analytics h4{margin:4px 0 0;font-size:12px;display:flex;gap:8px;align-items:center}
 #pomodoro-analytics h4 button{font:11px var(--mono);border:1px solid var(--line2);border-radius:8px;background:none;color:var(--dim);min-height:28px}
 @media (max-width:520px){#pomodoro-analytics .pma-row{grid-template-columns:1fr auto}#pomodoro-analytics .pma-row span:nth-child(2){grid-column:1/-1;order:-1}}
+/* Progreso personal (política v1): nivel, XP, meta diaria y logros */
+.pm-milestone{display:grid;grid-template-columns:auto minmax(0,1fr);gap:8px 14px;align-items:center;border:1px solid var(--line);border-radius:10px;padding:8px 12px}
+.pm-mini-level{display:flex;align-items:center;gap:8px}
+.pm-mini-level>div{display:flex;flex-direction:column;gap:2px}
+.pm-mini-level small,.pm-mini-track p{font:10.5px var(--mono);color:var(--dim)}
+.pm-mini-track p{display:flex;justify-content:space-between;gap:8px;margin:4px 0}
+.pm-progress{position:relative;height:7px;border-radius:4px;background:var(--bg);border:1px solid var(--line);overflow:hidden}
+.pm-progress>span{position:relative;display:block;height:100%;background:var(--brand);overflow:hidden}
+.pm-progress.goal>span{background:var(--done)}
+.pm-progress>span:after{content:"";position:absolute;inset:0;background:linear-gradient(100deg,transparent 20%,#ffffff55 50%,transparent 80%);transform:translateX(-100%);animation:pm-xp-shine 4s ease-in-out infinite}
+@keyframes pm-xp-shine{55%,100%{transform:translateX(100%)}}
+#pomo-panel .pm-banner{display:flex;align-items:center;gap:10px}
+.pm-game{display:flex;flex-direction:column;gap:8px;border:1px solid var(--line);border-radius:12px;padding:12px}
+.pm-game-level{display:flex;align-items:center;gap:10px}
+.pm-game-level h4{margin:2px 0 0;font-size:15px}
+.pm-game-level .pm-asset.pm-variable{--pixel-scale:2;width:80px;height:80px}
+.pm-game>small{font:10.5px var(--mono);color:var(--dim)}
+.pm-badges{display:flex;flex-wrap:wrap;gap:8px}
+.pm-badges>span{display:flex;align-items:center;gap:8px;min-height:48px;padding:4px 10px;border:1px solid var(--line);border-radius:10px;font-size:12px}
+.pm-badges .locked .pm-asset{filter:grayscale(1);opacity:.55}
+.pm-goal-head{display:flex;align-items:center;gap:8px;font-size:12px}
+@container pomodoro (max-width:430px){.pm-milestone{grid-template-columns:1fr}}
+@media (prefers-reduced-motion:reduce){.pm-progress>span:after{animation:none}}
