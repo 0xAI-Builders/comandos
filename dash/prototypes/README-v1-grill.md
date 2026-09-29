@@ -501,3 +501,10 @@ The loops remain visible in idle, running, paused and completed states per the u
 
 
 Remote Mac Chrome verification: all six styles across timer, Analytics and gallery fit at 1440×1000, 1024×768, 390×844, 844×390 and 320×640 (90 combinations), without horizontal overflow or fixture JavaScript errors. Real style-card clicks preserved the active timer identity/end time, XP and history. Sampling rendered frame positions observed all 15 hourglass frames in both header and gallery, all five chest frames, and all four fire frames; the hourglass container itself had no outer animation. The main clock kept advancing in idle, running, paused and completed mock states. Desktop and mobile screenshots were visually inspected. All 33 retained source-file hashes matched; the three new sheets have 15, five and four distinct original pixel frames. JavaScript syntax and diff checks passed.
+
+
+### Accepted: expressive sprite direction; move on to notifications
+
+Jesús approves the latest motion round: "ME gusta me gusta adelante contnuemos grill me porfaovr ya nos quedamos muchi ahi". Accept the demonstrated falling-sand/flip, opening chest and changing fire direction in the mockup and move the grilling to the next product area. Do not spend another round choosing Pomodoro artwork without a new request. This acceptance does not establish production timer reliability, settle remaining timer policies or approve the still-proposed XP formulas.
+
+Next topic: notifications and attention across desktop and remote. Turn-completion notifications are already part of the user's stated product objective; do not ask whether they should exist again. The next unresolved preference is which device should produce an audible alert when more than one client is open. Proposed starting policy: sound on the device with the most recent explicit user interaction, retain the event on both clients, and never change the active pane automatically. This is a recommendation awaiting the user's answer, not an approved behavior. Away-from-device delivery and handling of permission/error events remain subsequent questions.
