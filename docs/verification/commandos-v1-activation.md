@@ -31,9 +31,10 @@ registro `docs/verification/commandos-v1.md`. Nada de este documento se ha ejecu
 ## Paso 0 — base de estado contaminada por pruebas (obligatorio)
 
 Durante la implementación, pruebas que ejecutaban código de cc-dash sin base aislada crearon
-`~/.local/state/comandos/app-state.sqlite3` en la ruta real (129 eventos de ensayo `announcement`, un workspace con
+`~/.local/state/comandos/app-state.sqlite3` en la ruta real (131 eventos de ensayo `announcement`, el último a las 17:03 del 29-sep, un workspace con
 solo `local`, cinco backups `app-state.sqlite3.pre-migration-v*`). La app actual no usa ese archivo. Desde el commit
-que añade `tests/conftest.py`, la suite aísla la base y falla si la ruta real cambia.
+que añade `tests/conftest.py` (61db013 incluido), la suite aísla la base y falla si la ruta real cambia, y cc-dash
+ya no arranca hilos al importarse.
 
 Antes de activar, **apartar (no borrar)** esos archivos para arrancar limpio, con la app parada:
 

@@ -34,7 +34,7 @@ cc-app candidato (GTK sobre Broadway, HOME/tmux/estado aislados); **Jesús** = a
 | N3 Telegram retirado | 2a37444 | Sí | test_telegram_retirement (systemctl simulado) | — | activación en R3 |
 | N4 Push Android | 0aa1665 | Sí | test_web_push, test_push_endpoints, sw_push_checks, push_settings_checks | — | **pendiente en Android físico** |
 | N5 Ediciones | 5bafe51, 9259fc1, 243cfbd, df7b1cb | Sí | test_news_editions, test_news_endpoints, news_reader_checks | pendiente | pendiente (sin configurar: no inventa noticias) |
-| R1 Integración | c2e7509 | — | suite completa: **2225 passed, 22 failed (los 22 preexistentes de main: browser_config_migration 12, extension_auth 9, extension_proxy 1), 7 skipped**; test_js_parses OK; migraciones 6/6 | — | — |
+| R1 Integración | c2e7509, 61db013 | — | suite completa tras revisión final: **2240 passed, 22 failed (los 22 preexistentes de main: browser_config_migration 12, extension_auth 9, extension_proxy 1), 7 skipped**; test_js_parses OK; migraciones 6/6 | — | — |
 
 Excluido de la suite completa: `tests/test_extension_catalog.py` (no colecciona en Python 3.10, sin `tomllib`) y los E2E
 reales de `tests/test_acp_client.py` (solo con `COMANDOS_E2E=1`, usan suscripciones reales). Ninguna prueba contacta
@@ -50,10 +50,29 @@ los servicios reales (4777–4780): las referencias a esos puertos son cadenas o
 - **Proxy de ensayo:** el proxy del candidato enviaba `/terminal-panes` a ttyd por prefijo `/term`; corregido en el
   arnés (no afecta al producto: la ruta ya existía en producción).
 
+## Revisión final (revisor en contexto nuevo, opus)
+
+Veredicto inicial "arreglar primero": 6 hallazgos importantes (+1 reclasificado), todos corregidos en `61db013`
+con una prueba que falló antes del arreglo:
+
+| Hallazgo | Arreglo | Prueba |
+| --- | --- | --- |
+| Pruebas escribían la base real | aislamiento por prueba + guarda de sesión; sin hilos al importar cc-dash; temporizador del sonido Pomodoro daemon y ligado a su base | conftest, test_importing_cc_dash_starts_no_background_loop, test_focus_end_sound_is_a_daemon_bound_to_the_emitting_database |
+| Primer arranque en paralelo fallaba al migrar | relectura de versiones dentro de `BEGIN IMMEDIATE` | test_parallel_first_runs_all_succeed |
+| Caracteres de control en el destino Pomodoro bloqueaban el fin | rechazo al iniciar; saneado al completar | test_pomodoro (2 nuevas) |
+| `idle_prompt` de Claude sonaba y quedaba pendiente | no genera aviso (tampoco `auth_success`) | test_claude_idle_and_auth_notices_are_not_requests |
+| Push de eventos ya vistos en pantalla | solo eventos posteriores al último momento visible | test_push_only_for_events_after_the_last_visible_moment |
+| Ventana de escritorio abierta bloqueaba el push | visible = interacción explícita en los últimos 2 min | test_an_open_but_unattended_window_does_not_block_the_push |
+| `app-tabs.json` ilegible colapsaba el arreglo (reclasificado) | se conserva el arreglo guardado | test_an_unreadable_registry_never_collapses_the_arrangement |
+
+Menores aplazados (sin cambio en v1): fuga de temporal `NOTICE_OUT` en el hook, DELETE sin `_guard_request`,
+`bindings` escribibles por el cliente en `POST /workspace`, mensaje de cierre de grupo tras error de red, base de
+estado 0644, crecimiento sin poda de lecturas/entregas/eventos, 4778 fijo en cc-app/model-watch, ventana de
+DNS-rebinding en noticias.
+
 ## Pendiente antes de activar (R2/R3)
 
 - Recorrido humano con Jesús (tabla de R2 del plan 05), incluidos Android físico (permiso, pantalla bloqueada,
   toque al origen) y escucha real de sonidos.
 - Decisión sobre el tamaño de ventana tmux entre móvil y escritorio.
-- Revisión final de código (en curso) y correcciones.
 - Activación según `docs/verification/commandos-v1-activation.md`.
