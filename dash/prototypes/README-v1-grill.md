@@ -625,3 +625,40 @@ Interaction checks: six notices preserved the current pane, draft, caret and inp
 Screenshots were generated on the Mac mini at /tmp/comandos-notification-projects-mobile-20260929.png and /tmp/comandos-notification-projects-desktop-20260929.png, then copied into /home/someguy/codebase/0xJesus/ComandOS/.worktrees/comandos-v1-grill/design/shots/notification-projects. The browser page and temporary port forward were released afterward. These checks establish the prototype behavior at the listed dimensions, not production notification delivery or every possible device.
 
 Next verdict pending: which representation inside each project is easiest to operate. The separate Telegram delivery-policy question remains unanswered.
+
+
+## Notification purpose reopened · 2026-09-29
+
+Jesús asks to rethink the feature because the mockup shows information absent from the current notifications, and AI-related notices can become distractions. The next visual vote inside project groups is on hold. The preference for grouping by project remains historical feedback; it does not settle the new interruption policy or establish a production event contract.
+
+The working question is when CommandOS should interrupt the user and what information justifies doing so. The earlier prototype's request identity, exact source pane and count of unresolved permissions are simulated. Its layout checks do not validate those concepts against production.
+
+### Verified code and live data
+
+Read-only checks used the installed hooks and services, plus GET requests to `http://127.0.0.1:4777/events`, `/state`, `/usage/guard`, `/news/latest`, `/models/latest`, `/notifs/count` and `/prefs`. The installed hook, dashboard executable and popup daemon resolve to the corresponding main-repository source files. No notification was sent and no settings, sessions or services were changed. File-state counts are not counts of active panes, and recorded events are not receipts of delivered notifications.
+
+| Finding | Evidence | Consequence for the design |
+|---|---|---|
+| The live history response has only `project`, `status`, `detail`, `ts` in every returned event. | GET `/events`: 80 records inspected; /home/someguy/codebase/0xJesus/ComandOS/hooks/cc-notify.sh:235 writes exactly this structure. | The history cannot guarantee exact pane navigation, request identity, resolved permissions or structured test failures. Do not present extracted prose as verified structured events. |
+| Current state records contain session, pane and more response text, but history drops those identifiers. | /home/someguy/codebase/0xJesus/ComandOS/hooks/cc-notify.sh:220; historical navigation falls back to a current session by project in /home/someguy/codebase/0xJesus/ComandOS/dash/index.html:5624. | Identity needs to survive the whole event lifecycle before the earlier mockup actions become a production promise. |
+| A `waiting` event is broader than a permission request. The hook reads generic notifications and can extract a question or use a generic waiting-for-input body. | /home/someguy/codebase/0xJesus/ComandOS/hooks/cc-notify.sh:312. | Do not relabel every waiting event as a confirmed pending permission. A completed turn also does not prove a task is resolved. |
+| The priority list combines usage forecasts, session suggestions, detected models and external news, including bounties/hackathons. Turn completion and waiting history are under the secondary section. | /home/someguy/codebase/0xJesus/ComandOS/dash/index.html:5363, :5512 and :5632; backend count in /home/someguy/codebase/0xJesus/ComandOS/bin/cc-dash:8039. | The badge represents heterogeneous content rather than a reliable count of requests needing the human. |
+| Model discovery and skills/MCP news use `kind: waiting` when posted directly to the popup daemon. Waiting popups have no automatic close timer. | /home/someguy/codebase/0xJesus/ComandOS/bin/cc-dash:649 and :683; /home/someguy/codebase/0xJesus/ComandOS/bin/cc-notifyd:890. | Non-blocking discovery content receives the presentation used for human attention. This is a concrete classification problem, independent of layout. Actual popup delivery was not triggered in the audit. |
+| Saving a link schedules a reminder after three hours; explicit snooze schedules another after one hour. | /home/someguy/codebase/0xJesus/ComandOS/dash/index.html:3301 and :5580. | Saving content carries an interruption side effect. Consider keeping reminders an explicit separate action. |
+| Sound and Telegram dispatch independently from the desktop-popup route. The Pomodoro gate lives in the popup daemon. | /home/someguy/codebase/0xJesus/ComandOS/hooks/cc-notify.sh:418, :483 and :526; /home/someguy/codebase/0xJesus/ComandOS/bin/cc-notifyd:970. | Suppressing popups during focus does not establish a shared quiet policy for sound and Telegram. |
+| Some session suggestions are heuristics using elapsed time, recent calls and model/context metrics. | /home/someguy/codebase/0xJesus/ComandOS/bin/cc-dash:6787. | Suspected stalls, forecasts and savings advice need uncertainty labels. They are not all confirmed execution failures or generated summaries. |
+| Telegram actions route text or terminal keys; the callback path does not verify a current pending-request identity. | /home/someguy/codebase/0xJesus/ComandOS/bin/cc-telegram:219 and :309. | Do not describe generic remote key buttons as verified approval actions for a specific pending request. |
+
+Configuration observed during the audit: desktop delivery from the hook disabled, popup daemon display enabled, sound enabled at volume 12, turn-completion and attention filters enabled, Telegram outgoing alerts disabled, voice disabled. Source: /home/someguy/.claude/hooks/cc-notify.conf. The three local services are active. A running Telegram service does not establish enabled outgoing alerts. Other producers post directly to the popup daemon, so `DESKTOP_NOTIFY=0` does not establish silence across the application.
+
+### Proposed purpose and choices, not approved
+
+Proposed purpose: notify the human when work warrants their attention, while letting them inspect other activity without an interruption. Use facts supplied by the harness or measured system state; optional AI summaries must remain identified as summaries.
+
+Separate three roles for discussion:
+
+- Attention: a verified request for human input or a confirmed condition that blocks work. A possible stall or forecast must retain its uncertainty. Sound, popup and external delivery still need a single explicit policy; no default has been approved in this reopening.
+- Activity: completed turns and other progress, inspectable by project. Preserve the requested ability to know when a turn finishes. Decide next whether background completions should alert by default, be silent, or use a one-shot watch. Do not silently remove this product requirement.
+- Discovery: new models, MCPs, skills, external news and optional advice. Recommendation: available on demand without automatic sound, popups, urgent badge or reminders created merely by saving an item. Alternatives are an explicit scheduled digest or keeping a silent section in the same center. A separate destination adds navigation and may reduce discovery.
+
+First pending decision: where discovery and recommendations should live. Only after that decision, settle completion alerts, verified human requests, critical technical alerts, focus and cross-device delivery. No timers, escalation thresholds or permanent channel defaults are approved by this entry. Telegram remains a delivery channel to evaluate against the same policy, rather than an independent reason to interrupt.
