@@ -508,3 +508,35 @@ Remote Mac Chrome verification: all six styles across timer, Analytics and galle
 Jesús approves the latest motion round: "ME gusta me gusta adelante contnuemos grill me porfaovr ya nos quedamos muchi ahi". Accept the demonstrated falling-sand/flip, opening chest and changing fire direction in the mockup and move the grilling to the next product area. Do not spend another round choosing Pomodoro artwork without a new request. This acceptance does not establish production timer reliability, settle remaining timer policies or approve the still-proposed XP formulas.
 
 Next topic: notifications and attention across desktop and remote. Turn-completion notifications are already part of the user's stated product objective; do not ask whether they should exist again. The next unresolved preference is which device should produce an audible alert when more than one client is open. Proposed starting policy: sound on the device with the most recent explicit user interaction, retain the event on both clients, and never change the active pane automatically. This is a recommendation awaiting the user's answer, not an approved behavior. Away-from-device delivery and handling of permission/error events remain subsequent questions.
+
+
+### Accepted: notification audio follows the most recent interaction
+
+Jesús accepts the proposed starting notification policy and explicitly asks for a grill-design round. Sound should be directed to the device with the most recent explicit human interaction; the event remains available on desktop and remote. Opening the notice takes the user to its exact source pane. Arrival alone must not change the active pane. This supersedes the preceding entry's pending-answer status for this policy. Delivery while away, background browser limits, unavailable-device fallback and lock-screen privacy still need their own decisions and implementation verification.
+
+### Notifications, round 1: placement and operation beside the terminal
+
+The question is where notices should appear while the user keeps working. Five structural alternatives share the existing prototype route and current dashboard sidebar, with recreated terminal chrome and fixture events. They preserve the previously accepted terminal direction. No layout has won yet.
+
+| Variant | Desktop | Narrow remote view | Tradeoff to judge |
+|---|---|---|---|
+| A, Bandeja lateral | Persistent inbox next to the terminal | Inbox below the terminal; opening an event reveals its pane | Pending work remains visible, using workspace area. |
+| B, Aviso flotante | Compact incoming notice; bell opens history | Notice above the lower edge; history opens as a bottom sheet | Direct access with less permanent UI, but a notice temporarily overlays content. |
+| C, Franja inferior | Horizontal row of notices under the terminal | Swipe horizontally through the same cards | Keeps multiple events close, using vertical room. |
+| D, En cada pestaña | Project tabs signal attention; current-project notices sit above the panes | Scrollable project tabs and the same contextual notices | Locates events in the workspace; the bell provides the full grouped history. |
+| E, Centro de avisos | Full notification view, grouped by project | Same view with compact filter controls | More reading space; leaves the terminal view until an event or Back is chosen. |
+
+Start: https://nodo-01.tail63a117.ts.net:8444/prototypes/prototype-v1-grill.html?round=notifications&variant=A
+
+Use variants A–E in the bottom-right draggable picker. Arrows remain visible when its scenario controls are collapsed. The plus button exposes simulated turn completion, permission requests, errors, a six-event burst, other-device activity, a closed pane and reset. The existing state selector exposes full, empty, loading, failed-update and disconnected views. These are simulations, not injected real agent events.
+
+The fixture identifies each source by stable pane id, project, pane label and agent. One event action opens that pane. A Back control restores the preceding pane and its in-memory draft. Incoming events retain the active pane, draft text and text selection. Reading a permission notice leaves its request pending; the in-pane example's explicit Allow once or Reject acts on that event only. These buttons do not execute commands or approve a live harness request. Closed panes retain their event and do not create replacements. Offline mode preserves event content and prevents opening a source or acting on its permission until the simulated reconnection. Turn completion is not an automatic Resuelto mark. These detailed treatments are review proposals, not new approved product policy.
+
+Optional sounds reuse the already vendored UISFX 0.4.0 and app-owned adapter at /home/someguy/codebase/0xJesus/ComandOS/.worktrees/comandos-v1-grill/dash/prototypes/prototype-ui-sounds.js. This notification round starts muted, uses a trusted gesture to opt in, keeps the choice only in the current visit and uses short one-shot cues. The other-device scenario checks a local routing model; no actual sound or event is delivered between machines. No native/browser notification permission is requested, no OS notification is sent, and no channel account is connected. Physical playback and remote delivery require later human and production checks.
+
+Design tree after this round: choose placement first; then refine content density and direct actions within the chosen layout, event priorities and interruption rules, grouping during bursts, reading/retention behavior, and delivery/privacy/fallback across devices. Pomodoro's quiet-mode relationship remains a later decision. The prototype does not establish those policies merely by illustrating them. No production notification daemon, live pane, provider setting or timer is changed.
+
+
+Verification for this notification round: the first remote Mac Chrome pass loaded all five layouts at 1440×1000 and 390×844 without fixture JavaScript errors or horizontal document overflow. Screenshots exposed picker overlap on mobile and a reset state that made D too similar to A; the source was adjusted to reserve picker space and open D contextually. The final browser pass could not start: the Mac broker repeatedly reported both browser sessions occupied. No local browser or other browser runtime was used as a fallback. Final rendering, input-focus preservation and the full responsive state matrix remain unverified after those adjustments.
+
+Independent execution of the current fixture state code passed source-pane targeting, draft-state retention, return navigation, event-specific permission decisions, read-versus-pending separation, closed-pane preservation, disconnected actions, empty-state arrival and simulated sound destination. The ten existing tests of the vendored sound adapter passed, as did the nine bundled adapter contract checks. No sound was played during automation. Current inline script syntax and diff checks passed; the Tailscale route returns the new round. These checks do not prove real cross-device delivery or real harness approvals. The next user verdict concerns layout, not release readiness.

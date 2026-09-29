@@ -75,3 +75,10 @@ Jesús reports that the clock appears still and asks for more expressive origina
 | [ollieMarsh, animated cauldron](https://makinggamesinc.itch.io/cauldron-pixel-art) | Paid download, $1 minimum, nine frames. | Omit; not purchased and redistribution terms were not established. |
 
 This revises the earlier note saying no animated hourglass was found. The shared hourglass and other new artwork are proposals for review, not a recorded user acceptance. The six styles remain selectable; unrelated static symbols remain clearly labeled.
+
+
+### Notification placement round
+
+The reference is the current ComandOS sidebar served by the isolated fixture, alongside the already accepted terminal workspace direction. Five alternatives compare placement of the same notice content: side inbox, floating notice, bottom strip, contextual tab/pane indicators and a full notification center. No external visual references or stock illustrations were used in this round. The line icons are inline SVG; the existing optional UISFX controller supplies local one-shot sound previews.
+
+The approved most-recent-device sound policy is represented in fixture state only. Reliable event identity, real delivery and synchronization still require production work. In particular, the production focus queue must preserve the source pane identity if a later notification is expected to return to that exact pane. Notification suppression during Pomodoro remains an unresolved product choice.
