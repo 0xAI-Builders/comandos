@@ -1,0 +1,14 @@
+{
+  "name": "uisfx",
+  "version": "0.4.0",
+  "license": "MIT (code, see uisfx-LICENSE.txt); audio dedication CC0-1.0 upstream",
+  "files": {
+    "uisfx-0.4.0.js": "d64edf28f823b2a52a38e8df41023d31fe62de04e822e0569f4cd2e00ddfa579",
+    "uisfx-LICENSE.txt": "a00c54416ff315e8684c696432a3cbcb9e26550b1bf319e3bb7dfc6f2685e6fa"
+  },
+  "tarball": "https://registry.npmjs.org/uisfx/-/uisfx-0.4.0.tgz",
+  "tarballIntegrity": "sha512-W891N75C09cvpaNeChP+7BiP0Yp5VSbrIcRgZvzpFUT3o/2DxZqROmUcX50oxeyMnY4Hqxu4jEfjndVUpmheEQ==",
+  "repository": "https://github.com/romainsimon/uisfx",
+  "copiedFrom": "dash/prototypes/vendor of the comandos-v1-grill design worktree (same bytes)",
+  "runtime": "Local Web Audio synthesis; no CDN or remote audio fetch."
+}

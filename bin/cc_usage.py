@@ -2217,6 +2217,22 @@ def focus_block_finish(db_path, block_id, status="completed", ended_at_ms=None):
     return {"id": _text(block_id), "status": status, "updated": cur.rowcount > 0}
 
 
+def focus_legacy_rows(db_path):
+    """Every pre-1.0 focus block, oldest first, for the Pomodoro history mapping.
+
+    Read-only: a missing database yields [] and is not created. The durations
+    are planned minutes, never measured focus.
+    """
+    if not os.path.exists(db_path):
+        return []
+    with connect(db_path) as con:
+        try:
+            return _rows(con.execute("""select id,mode,project,tmux_session,tmux_pane,planned_minutes,
+              started_at_ms,ended_at_ms,status from focus_blocks order by started_at_ms, id"""))
+        except sqlite3.OperationalError:
+            return []
+
+
 def focus_analytics(db_path, days=7, now=None):
     init_db(db_path)
     days = max(1, min(90, int(days)))
@@ -2248,7 +2264,7 @@ def focus_analytics(db_path, days=7, now=None):
 
 
 def set_focus_settings(db_path, values):
-    allowed = {"focusMinutes", "shortBreakMinutes", "longBreakMinutes", "cycles", "autoBreak", "dailyGoalMinutes"}
+    allowed = {"focusMinutes", "shortBreakMinutes", "longBreakMinutes", "cycles", "autoBreak", "dailyGoalMinutes", "style"}
     init_db(db_path)
     with connect(db_path) as con:
         for key, value in (values or {}).items():

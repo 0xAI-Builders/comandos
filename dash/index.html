@@ -1980,7 +1980,7 @@
   </div>
   <div class="hdr-primary">
 	    <button class="hdr-btn" id="btn-pomo" role="timer" aria-label="Pomodoro"
-	      title="Cockpit de foco — todo local"><span data-icon="timer" data-size="16"></span><span class="pomo-mini"></span></button>
+	      title="Pomodoro compartido entre dispositivos"><span data-icon="timer" data-size="16"></span><span class="pomo-mini"></span></button>
 	    <div id="pomo-panel" class="hidden" role="dialog" aria-label="Pomodoro"></div>
 	    <button class="hdr-btn" id="btn-notif" aria-label="Notificaciones" title="Notificaciones — todo local: avisos, pomodoros y cola de foco"><span data-icon="bell" data-size="16"></span><b class="nbadge hidden" id="notif-badge">0</b></button>
 	    <div id="notif-panel" class="hidden" role="dialog" aria-label="Notificaciones"></div>
@@ -2283,6 +2283,7 @@
     <button class="mtab active" data-mtab="resumen" role="tab" title="Cuota, riesgo de desborde y alertas en una sola vista"><span data-icon="lock" data-size="13"></span> Resumen</button>
     <button class="mtab" data-mtab="comparar" role="tab" title="Qué configuración funciona mejor, por proyecto y proveedor"><span data-icon="database" data-size="13"></span> Comparar</button>
     <button class="mtab" data-mtab="reparto" role="tab" title="Reparte tus sesiones entre cuentas y modelos según la cuota que te queda"><span data-icon="sprout" data-size="13"></span> Reparto</button>
+    <button class="mtab" data-mtab="pomodoro" role="tab" title="Tiempo de foco medido por bloque, con filtros de fechas y proyecto"><span data-icon="timer" data-size="13"></span> Pomodoro</button>
   </nav>
 
   <div class="mtab-pane active" data-mpane="resumen">
@@ -2345,6 +2346,9 @@
 
   <div class="mtab-pane" data-mpane="reparto">
     <div id="reparto"></div>
+  </div>
+  <div class="mtab-pane" data-mpane="pomodoro">
+    <div id="pomodoro-analytics" aria-live="polite"></div>
   </div>
 
   <div class="mtab-pane" data-mpane="alertas">
@@ -5676,247 +5680,7 @@ ulog("click", `harness-switch:${to}`, "centro");
 	  if(m.contains(e.target) || (e.target.closest && e.target.closest("#btn-notif"))) return;
 	  m.classList.add("hidden");
 	});
-	const POMO = {t:null,end:0,mins:25,project:"",mode:"focus",breakMins:5,longBreakMins:15,cycles:4,cycleIndex:1,autoBreak:false,analytics:null,settings:null};
-	function pomoHeader(text="",queued=0){
-	  const b=$("#btn-pomo");if(!b)return;
-	  b.innerHTML=svg(POMO.mode==="break"?"coffee":"timer",16)+`<span class="pomo-mini">${mdEsc(text||(queued?String(queued):""))}</span>`;
-	}
-	function pomoLog(){
-	  try{ return JSON.parse(localStorage.getItem("cc-pomos") || "[]"); }catch(e){ return []; }
-	}
-	function pomoDay(offset){
-	  const d = new Date(); d.setDate(d.getDate() - offset);
-	  return d.toISOString().slice(0, 10);
-	}
-	function pomoToday(){ return pomoLog().filter(x => x.date === pomoDay(0)); }
-	function pomoSaveSettings(){api("/pomodoro",{settings:{focusMinutes:POMO.mins,shortBreakMinutes:POMO.breakMins,longBreakMinutes:POMO.longBreakMins,cycles:POMO.cycles,autoBreak:POMO.autoBreak}}).catch(()=>{});}
-	function pomoStats(){
-	  if(POMO.analytics){
-	    const days=(POMO.analytics.byDay||[]).map(d=>({date:d.date,n:Number(d.blocks||0),minutes:Number(d.minutes||0)}));
-	    let streak=0;for(let i=days.length-1;i>=0;i--){if(days[i].n>0)streak++;else if(i===days.length-1)continue;else break;}
-	    return {days,streak,todayN:Number(POMO.analytics.today?.blocks||0),todayMin:Number(POMO.analytics.today?.minutes||0)};
-	  }
-	  const log = pomoLog();
-	  const days = [];
-	  for(let i = 6; i >= 0; i--){
-	    const date = pomoDay(i);
-	    days.push({date, n: log.filter(x => x.date === date).length});
-	  }
-	  let streak = 0;
-	  for(let i = 0; i < 365; i++){
-	    const n = log.filter(x => x.date === pomoDay(i)).length;
-	    if(n > 0) streak++;
-	    else if(i === 0) continue;   // hoy sin pomos aun no rompe la racha
-	    else break;
-	  }
-	  const today = pomoToday();
-	  return {days, streak,
-	          todayN: today.length,
-	          todayMin: today.reduce((a, x) => a + (x.mins || 0), 0)};
-	}
-	function pomoRender(){
-	  const m = $("#pomo-panel");
-	  const hb = $("#btn-pomo");
-	  if(hb && POMO.t && POMO.mode === "focus"){ const n = (POMO.queue || []).length; pomoHeader("",n); hb.title = n ? tf(`${n} avisos esperan al descanso`, `${n} alerts wait for your break`) : hb.title; }
-	  if(m.classList.contains("hidden")) return;
-	  const st = pomoStats();
-	  const it = pickSel(S.list || []);
-	  const proj = POMO.t ? POMO.project : (it ? (it.project || it.session) : "");
-	  const total = (POMO.t ? (POMO._runMins || POMO.mins) : POMO.mins) * 60000;
-	  const left = POMO.t ? Math.max(0, POMO.end - Date.now()) : total;
-	  const R = 64, C = 2 * Math.PI * R;
-	  const off = C * (1 - left / total);
-	  const mm = Math.floor(left / 60000), ss = Math.floor(left % 60000 / 1000);
-	  const dias = ["D", "L", "M", "X", "J", "V", "S"];
-	  const maxN = Math.max(1, ...st.days.map(d => d.n));
-	  m.innerHTML = `
-	    <div class="pp-ring">
-	      <svg width="150" height="150" viewBox="0 0 150 150">
-	        <circle class="bgc" cx="75" cy="75" r="${R}" stroke-width="9"/>
-	        <circle class="fgc" cx="75" cy="75" r="${R}" stroke-width="9"
-	          stroke-dasharray="${C.toFixed(1)}" stroke-dashoffset="${off.toFixed(1)}"/>
-	      </svg>
-	      <div class="pp-time"><b>${mm}:${String(ss).padStart(2, "0")}</b>
-	        <small title="${attrEsc(proj)}">${mdEsc(proj || "—")}</small></div>
-	    </div>
-	    ${POMO.t ? `<div class="pp-durs pp-live-actions"><button type="button" id="pp-extend">${svg("plus",12)} 5′</button><button type="button" id="pp-skip">${svg("skip",12)} ${tf("saltar","skip")}</button></div>` : `<div class="pp-durs">` +
-	      [15, 25, 50].map(n => `<button type="button" class="${POMO.mins === n ? "on" : ""}"
-	        data-min="${n}">${svg("timer",12)} ${n}′</button>`).join("") + `</div>
-	    <div class="pp-durs pp-breaks">` +
-	      [5, 10, 15].map(n => `<button type="button" class="${POMO.breakMins === n ? "on" : ""}"
-	        data-break="${n}">${svg("coffee",12)} ${n}′</button>`).join("") + `</div>
-	    <div class="pp-durs pp-cycles">`+[1,2,4].map(n=>`<button type="button" data-cycles="${n}" class="${POMO.cycles===n?"on":""}">${n}×</button>`).join("")+`<button type="button" id="pp-auto" class="${POMO.autoBreak?"on":""}">${svg("refresh",12)} auto</button></div>`}
-	    ${POMO.t?`<div class="pp-cycle">${POMO.mode==="focus"?tf("Foco","Focus"):tf("Descanso","Break")} · ${Math.min(POMO.cycleIndex,POMO.cycles)}/${POMO.cycles}</div>`:""}
-	    <button type="button" class="pp-go ${POMO.t ? "stop" : ""}" id="pp-go">
-	      ${POMO.t ? svg("close",14)+" "+tf("Terminar", "Finish")
-	               : svg("play",14)+" "+tf("Enfocar", "Focus")}</button>
-	    ${POMO.t ? "" : `<button type="button" class="pp-go pp-break-go" id="pp-break">${svg("coffee",14)} ${tf("Descanso", "Break")} ${POMO.breakMins}′</button>`}
-	    ${(!POMO.t || POMO.mode === "break") ? pomoQueueHtml() : ""}
-	    <div class="pp-tiles">
-	      <div class="pp-tile"><b>${st.todayN}</b><small>${tf("hoy", "today")}</small></div>
-	      <div class="pp-tile"><b>${st.todayMin}′</b><small>min</small></div>
-	      <div class="pp-tile"><b>${st.streak}</b><small>${tf("racha", "streak")}</small></div>
-	      <div class="pp-tile"><b>${POMO.analytics?.completionRate==null?"—":Math.round(POMO.analytics.completionRate*100)+"%"}</b><small>${tf("completado","complete")}</small></div>
-	    </div>
-	    <button type="button" class="pp-link" id="pp-analytics">${tf("ver analytics completos (Dedicación) →", "full analytics (Dedication) →")}</button>
-	    <div class="pp-bars">${st.days.map((d, i) => `
-	      <div class="pp-bar ${i === 6 ? "today" : ""}" title="${d.date}: ${d.n} 🍅">
-	        <span style="height:${Math.round(100 * d.n / maxN)}%"></span>
-	        <small>${dias[new Date(d.date + "T12:00").getDay()]}</small>
-	      </div>`).join("")}</div>`;
-	  m.querySelectorAll(".pp-durs button[data-min]").forEach(b =>
-	    b.addEventListener("click", ()=>{ POMO.mins = Number(b.dataset.min); pomoSaveSettings(); pomoRender(); }));
-	  m.querySelectorAll(".pp-durs button[data-break]").forEach(b =>
-	    b.addEventListener("click", ()=>{ POMO.breakMins = Number(b.dataset.break); pomoSaveSettings(); pomoRender(); }));
-	  m.querySelectorAll("[data-cycles]").forEach(b=>b.addEventListener("click",()=>{POMO.cycles=Number(b.dataset.cycles);POMO.cycleIndex=1;pomoSaveSettings();pomoRender();}));
-	  m.querySelector("#pp-auto")?.addEventListener("click",()=>{POMO.autoBreak=!POMO.autoBreak;pomoSaveSettings();pomoRender();});
-	  m.querySelector("#pp-extend")?.addEventListener("click",()=>{POMO.end+=5*60000;POMO._runMins=(POMO._runMins||POMO.mins)+5;pomoRender();});
-	  m.querySelector("#pp-skip")?.addEventListener("click",()=>pomoFinish(true,true));
-	  m.querySelector("#pp-break")?.addEventListener("click", ()=>{
-	    pomoStart(POMO.breakMins, "break"); pomoRender();
-	  });
-	  m.querySelector("#pp-analytics")?.addEventListener("click", ()=>{
-	    m.classList.add("hidden"); $("#btn-usage").click();
-	  });
-	  m.querySelectorAll(".pp-open").forEach(b => b.addEventListener("click", async ()=>{
-	    const it = (S.list || []).find(i => i.session === b.dataset.session); if(!it) return;
-	    try{ toast(await openSession(it, "claude")); }catch(err){ toast(err.message, true); }
-	  }));
-	  m.querySelector("#pp-ack")?.addEventListener("click", async ()=>{
-	    try{ await api("/pomodoro", {ack: true}); }catch(e){}
-	    POMO.queue = []; POMO.lastFocus = null; pomoRender();
-	  });
-	  m.querySelector("#pp-go").addEventListener("click", ()=>{
-	    if(POMO.t){ pomoFinish(false); toast(tf("Pomodoro cancelado", "Pomodoro cancelled")); }
-	    else pomoStart(POMO.mins);
-	    pomoRender();
-	  });
-	}
-	async function pomoQueueLoad(){
-	  try{ const r = await api("/pomodoro"); POMO.queue = (r && r.queue) || []; }catch(e){ POMO.queue = POMO.queue || []; }
-	  return POMO.queue;
-	}
-	function pomoQueueHtml(){
-	  const q = POMO.queue || [];
-	  const bits = [];
-	  const lf = POMO.lastFocus;
-	  if(lf && lf.session){
-	    const live = (S.list || []).find(i => i.session === lf.session);
-	    if(live && Number(live.contextPct) >= 50) bits.push(`<div class="pp-smart">▲ ${mdEsc(lf.project)}: ${tf("contexto al", "context at")} ${Math.round(live.contextPct)}% — ${tf("considera /compact", "consider /compact")}</div>`);
-	    if(live && live.status === "done") bits.push(`<div class="pp-smart ok">✓ ${mdEsc(lf.project)} ${tf("terminó durante tu bloque — lista para revisar", "finished during your block — ready to review")}</div>`);
-	  }
-	  if(q.length){
-	    bits.push(`<div class="pp-qh">${tf("Mientras te enfocabas", "While you focused")} · ${q.length}</div>`);
-	    for(const e of q.slice(-8)){
-	      const sess = (S.list || []).find(i => i.session === e.session);
-	      bits.push(`<div class="pp-q"><div class="pp-qt"><b>${mdEsc(e.project || e.title || "")}</b> <small>${mdEsc(e.kind || "")}</small></div>
-	        <div class="pp-qb">${mdHtml(e.full || e.body || "")}</div>
-	        ${sess ? `<button type="button" class="pp-open" data-session="${attrEsc(e.session)}">${tf("Abrir", "Open")}</button>` : ""}</div>`);
-	    }
-	    bits.push(`<button type="button" class="pp-link" id="pp-ack">${tf("Vaciar la cola", "Clear the queue")}</button>`);
-	  }
-	  return bits.join("");
-	}
-	function pomoFinish(done,skipped=false){
-	  clearInterval(POMO.t); POMO.t = null;
-	  api("/pomodoro", {stop:true,status:skipped?"skipped":done?"completed":"cancelled"}).then(r=>{
-	    POMO.queue=(r&&r.queue)||[];POMO.analytics=r.analytics||POMO.analytics;
-	    if(POMO.mode==="focus")POMO.lastFocus={project:POMO.project,session:POMO.session,done};
-	    pomoRender();
-	  }).catch(()=>{});
-	  const b = $("#btn-pomo");
-	  b.classList.remove("running"); pomoHeader();
-	  b.setAttribute("aria-label", "Pomodoro");
-	  $("#pomo-panel").classList.remove("break");
-	  if(done && POMO.mode === "break"){
-	    toast(`☕ ${tf("descanso terminado — a darle", "break over — back to it")}`);
-	    fetch("http://127.0.0.1:4778/notify", {method: "POST",
-	      headers: {"Content-Type": "application/json"},
-	      body: JSON.stringify({title: "Pomodoro", kind: "done", project: "Pomodoro",
-	        body: `☕ ${tf("descanso terminado — a darle", "break over — back to it")}`})}).catch(()=>{});
-	    POMO.cycleIndex=Math.min(POMO.cycles,POMO.cycleIndex+1);
-	    if(POMO.autoBreak&&POMO.cycleIndex<=POMO.cycles)setTimeout(()=>pomoStart(POMO.mins,"focus"),500);
-	    pomoRender(); return;
-	  }
-	  if(done){
-	    const log = pomoLog();
-	    log.push({date: pomoDay(0), mins: POMO.mins, project: POMO.project});
-	    localStorage.setItem("cc-pomos", JSON.stringify(log.slice(-500)));
-	    dedTs = 0;
-	    toast(`🍅 ${POMO.mins} min ${tf("completados en", "done on")} ${POMO.project || "?"}`);
-	    fetch("http://127.0.0.1:4778/notify", {method: "POST",
-	      headers: {"Content-Type": "application/json"},
-	      body: JSON.stringify({title: "Pomodoro", kind: "done",
-	        project: POMO.project || "Pomodoro",
-	        body: `🍅 ${POMO.mins} min ${tf("completados", "completed")} — ${tf("descansa tantito", "take a short break")}`})
-	    }).catch(()=>{});
-	  }
-	  if(done&&!skipped&&POMO.mode==="focus"&&POMO.autoBreak){
-	    const rest=POMO.cycleIndex>=POMO.cycles?POMO.longBreakMins:POMO.breakMins;
-	    setTimeout(()=>pomoStart(rest,"break"),500);
-	  }
-	  pomoRender();
-	}
-	function pomoStart(mins, mode){
-	  const it = pickSel(S.list || []);
-	  POMO.mode = mode || "focus";
-	  if(POMO.mode === "focus") POMO.mins = mins;
-	  POMO.project = it ? (it.project || it.session) : "";
-	  POMO._runMins = mins;
-	  POMO.end = Date.now() + mins * 60000;
-	  POMO._qt = setInterval(()=>{ if(POMO.t && POMO.mode === "focus") pomoQueueLoad().then(()=>pomoRender()); else clearInterval(POMO._qt); }, 20000);
-	  POMO.session = it ? it.session : ""; POMO.pane=it?it.pane||"":"";
-	  POMO.ctxStart = it ? Number(it.contextPct) || 0 : 0;
-	  api("/pomodoro", {mode:POMO.mode,project:POMO.project,session:POMO.session,pane:POMO.pane,mins,cycleIndex:POMO.cycleIndex,cycleTotal:POMO.cycles}).then(r=>{POMO.analytics=r.analytics||POMO.analytics;}).catch(()=>{});
-	  $("#pomo-panel").classList.toggle("break", POMO.mode === "break");
-	  const b = $("#btn-pomo");
-	  b.classList.add("running");
-	  const tick = ()=>{
-	    const left = POMO.end - Date.now();
-	    if(left <= 0) return pomoFinish(true);
-	    const mm = Math.floor(left/60000), ss = Math.floor(left%60000/1000);
-	    pomoHeader(`${mm}:${String(ss).padStart(2,"0")}`);
-	    b.setAttribute("aria-label", `Pomodoro: ${mm} minutos ${ss} segundos restantes`);
-	    pomoRender();
-	  };
-	  clearInterval(POMO.t); POMO.t = setInterval(tick, 1000); tick();
-	  toast(`🍅 ${mins} min → ${POMO.project || tf("sin proyecto", "no project")}`);
-	}
-	// Un foco en curso vive en el backend (focus.json): cualquier vista (tablero,
-	// popover de la app, celular) lo retoma al cargar en vez de mostrar 25:00.
-	let FOCUS = null;
-	async function pomoSync(){
-	  try{
-	    const r = await api("/pomodoro"); FOCUS = (r && r.focus) || null;
-	    POMO.analytics=r.analytics||POMO.analytics;POMO.settings=r.settings||POMO.settings;
-	    if(!POMO.t&&POMO.settings){POMO.mins=Number(POMO.settings.focusMinutes||POMO.mins);POMO.breakMins=Number(POMO.settings.shortBreakMinutes||POMO.breakMins);POMO.longBreakMins=Number(POMO.settings.longBreakMinutes||POMO.longBreakMins);POMO.cycles=Number(POMO.settings.cycles||POMO.cycles);POMO.autoBreak=!!POMO.settings.autoBreak;}
-	    if(FOCUS && !POMO.t){
-	      const mins = Number(FOCUS.mins)||Math.max(1, Math.round((FOCUS.until - FOCUS.startedAt) / 60));
-	      POMO.mode=FOCUS.mode||"focus";if(POMO.mode==="focus")POMO.mins=mins;POMO._runMins=mins;POMO.project=FOCUS.project||"";POMO.session=FOCUS.session||"";POMO.pane=FOCUS.pane||"";POMO.cycleIndex=Number(FOCUS.cycleIndex||1);POMO.cycles=Number(FOCUS.cycleTotal||POMO.cycles);
-	      POMO.end = FOCUS.until * 1000; POMO.queue = (r && r.queue) || [];
-	      const b = $("#btn-pomo"); b.classList.add("running");
-	      const tick = ()=>{ const left = POMO.end - Date.now(); if(left <= 0) return pomoFinish(true);
-	        const mm = Math.floor(left/60000), ss = Math.floor(left%60000/1000); pomoHeader(`${mm}:${String(ss).padStart(2,"0")}`); pomoRender(); };
-	      POMO.t = setInterval(tick, 1000); tick();
-	      POMO._qt = setInterval(()=>{ if(POMO.t && POMO.mode === "focus") pomoQueueLoad().then(()=>pomoRender()); else clearInterval(POMO._qt); }, 20000);
-	    }
-	  }catch(e){}
-	}
-	pomoSync(); setInterval(pomoSync, 15000);
-	$("#btn-pomo").addEventListener("click", e => {
-	  const m = $("#pomo-panel");
-	  if(!m.classList.contains("hidden")) return m.classList.add("hidden");
-	  const r = e.currentTarget.getBoundingClientRect();
-	  m.style.top = (r.height ? r.bottom + 8 : 8) + "px";
-	  if(r.height){ m.style.left = Math.max(8, Math.min(r.left, window.innerWidth - 296)) + "px"; m.style.right = "auto"; }
-	  else { m.style.left = "auto"; m.style.right = "12px"; }   // disparador oculto (app): pegado a la derecha
-	  m.classList.remove("hidden");
-	  pomoRender();
-	});
-	document.addEventListener("click", e => {
-	  if(!e.target.closest("#pomo-panel") && !e.target.closest("#btn-pomo"))
-	    $("#pomo-panel")?.classList.add("hidden");
-	});
+	// Pomodoro: dash/pomodoro.js (autoridad en el backend: GET/POST /pomodoro).
 	function fmtMin(m){
 	  return m >= 90 ? `${(m/60).toFixed(1)} h` : `${Math.round(m)} min`;
 	}
@@ -8005,6 +7769,7 @@ function activateMtab(scope, name){
   if(name === "resumen") loadGuard();
   if(name === "comparar"){ loadCompare(); loadProvCompare(); }
   if(name === "reparto") window.Reparto?.load();
+  if(name === "pomodoro") window.ComandosPomodoro?.loadAnalytics?.();
 }
 function wireMtabs(root=document){
   root.querySelectorAll(".mtab").forEach(b=>{
@@ -9212,3 +8977,5 @@ if("serviceWorker" in navigator)
 <script src="/session-controls.js?v=fef689ef2baa"></script>
 <script src="/workspace.js?v=b0f9e32aaaf8"></script>
 <script src="/work-marks.js"></script>
+<script src="/ui-sounds.js"></script>
+<script src="/pomodoro.js"></script>

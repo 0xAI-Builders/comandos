@@ -225,3 +225,113 @@ body.ws-dragging .termpane{pointer-events:none}
 .wm-item.on::after{content:"";margin-left:auto;width:6px;height:6px;border-radius:50%;background:var(--brand)}
 .wm-sep{height:1px;margin:4px 6px;background:var(--line)}
 @media (pointer:fine){.wm-item{min-height:34px}}
+/* ---- Pomodoro 1.0: Regla de tiempo, estilos pixel y audio opcional ------------
+   El reloj de arena es decorativo; el número manda. Sprites a escala entera. */
+#pomo-panel.pm-v1{width:min(560px,calc(100vw - 16px));max-width:none;gap:12px;padding:16px;container-type:inline-size;container-name:pomodoro}
+body.only-panel #pomo-panel.pm-v1{width:100%!important}
+#pomo-panel .pm-head{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap}
+#pomo-panel .pm-kicker{font:700 9.5px var(--mono);letter-spacing:.14em;text-transform:uppercase;color:var(--dim)}
+#pomo-panel .pm-context strong{display:block;font-size:13px;max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#pomo-panel .pm-modes,#pomo-panel .pm-presets,#pomo-panel .pm-actions,#pomo-panel .pm-audio{display:flex;gap:6px;flex-wrap:wrap;align-items:center}
+#pomo-panel button{font:700 11.5px var(--mono);min-height:34px;padding:0 12px;border-radius:9px;border:1px solid var(--line2);background:none;color:var(--dim);cursor:pointer}
+#pomo-panel button:hover:not(:disabled){color:var(--text);border-color:var(--text)}
+#pomo-panel button.on,#pomo-panel button[aria-pressed="true"]{color:var(--brand);border-color:var(--brand);background:color-mix(in srgb,var(--brand) 10%,transparent)}
+#pomo-panel button.primary{background:var(--brand);border-color:var(--brand);color:var(--panel)}
+#pomo-panel button:disabled{opacity:.55;cursor:default}
+#pomo-panel .pm-row-clock{display:grid;grid-template-columns:auto minmax(150px,1fr);gap:12px 18px;align-items:center}
+#pomo-panel .pm-row-clock>.pm-actions{grid-column:1/-1}
+#pomo-panel .pm-ruler-clock{display:flex;align-items:center;gap:8px}
+#pomo-panel .pm-time{font:800 30px var(--mono);font-variant-numeric:tabular-nums;letter-spacing:.02em;line-height:1.05}
+#pomo-panel.break .pm-time{color:var(--done)}
+#pomo-panel .pm-ruler-clock small{font:10.5px var(--mono);color:var(--dim)}
+#pomo-panel .pm-ruler-assembly{min-width:0}
+#pomo-panel .pm-ruler{appearance:none;-webkit-appearance:none;width:100%;height:9px;margin:10px 0 6px;border:1px solid var(--line2);border-radius:3px;cursor:ew-resize;touch-action:none;
+  background:linear-gradient(to right,var(--brand) 0%,var(--brand) var(--pm-ruler-fill,27%),var(--bg) var(--pm-ruler-fill,27%),var(--bg) 100%)}
+#pomo-panel .pm-ruler::-webkit-slider-thumb{appearance:none;-webkit-appearance:none;width:22px;height:30px;border-radius:3px;border:2px solid var(--text);cursor:grab;
+  background:repeating-linear-gradient(90deg,var(--brand) 0,var(--brand) 3px,var(--panel) 3px,var(--panel) 5px)}
+#pomo-panel .pm-ruler::-moz-range-thumb{width:18px;height:26px;border-radius:3px;border:2px solid var(--text);background:var(--brand);cursor:grab}
+#pomo-panel .pm-ruler:focus-visible{outline:2px solid var(--brand);outline-offset:4px}
+#pomo-panel .pm-ruler-labels{display:flex;justify-content:space-between;font:10px var(--mono);color:var(--faint,var(--dim))}
+#pomo-panel .pm-ruler-caption{font-size:10.5px;color:var(--dim);margin-top:6px}
+#pomo-panel .pm-presets label{display:flex;align-items:center;gap:6px;font:11px var(--mono);color:var(--dim)}
+#pomo-panel .pm-presets input{width:64px;min-height:34px;border-radius:9px;border:1px solid var(--line2);background:var(--bg);color:var(--text);font:700 12px var(--mono);padding:0 8px}
+#pomo-panel .pm-banner{border:1px solid var(--done);color:var(--done);border-radius:10px;padding:8px 12px;font-size:12px}
+#pomo-panel .pm-error{border:1px solid #ff6b6b;color:#ff9b9b;border-radius:10px;padding:8px 12px;font-size:12px;display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+#pomo-panel .pm-audio label{display:flex;align-items:center;gap:6px;font:11px var(--mono);color:var(--dim)}
+#pomo-panel .pm-sound-options summary{font:11px var(--mono);color:var(--dim);cursor:pointer;min-height:28px}
+#pomo-panel .pm-sound-options[open]{display:flex;flex-wrap:wrap;gap:6px}
+#pomo-panel .pm-art-controls{display:flex;flex-wrap:wrap;gap:8px 12px;align-items:center;border-top:1px solid var(--line);padding-top:10px}
+#pomo-panel .pm-art-controls label{display:flex;gap:6px;align-items:center;font:11px var(--mono);color:var(--dim)}
+#pomo-panel .pm-art-controls select{min-height:34px;border-radius:9px;border:1px solid var(--line2);background:var(--bg);color:var(--text);font:12px var(--mono)}
+#pomo-panel .pm-art-controls small{flex-basis:100%;font-size:10px;color:var(--dim)}
+#pomo-panel .pm-art-controls a{color:inherit}
+#pomo-panel .pm-art-samples{display:flex;gap:4px;align-items:center}
+@container pomodoro (max-width:430px){
+  #pomo-panel .pm-row-clock{grid-template-columns:1fr}
+  #pomo-panel .pm-ruler-clock{justify-content:center}
+  #pomo-panel .pm-actions button,#pomo-panel .pm-presets button{flex:1 1 auto;min-height:44px}
+  #pomo-panel .pm-ruler::-webkit-slider-thumb{width:28px;height:36px}
+}
+/* Sprites: original frames, integer scale, fixed slots (layout never jumps). */
+.pm-asset{--pixel-scale:1;position:relative;display:inline-block;width:32px;height:32px;flex:none;overflow:visible;image-rendering:pixelated;vertical-align:middle;animation:pm-asset-breathe 4s steps(3,end) infinite}
+.pm-pixel{display:block;width:calc(var(--native)*1px);height:calc(var(--native)*1px);background-repeat:no-repeat;image-rendering:pixelated;transform-origin:0 0;transform:scale(calc(var(--pixel-scale)*var(--pixel-multiplier)));pointer-events:none}
+.pm-framed{animation:none}
+.pm-framed>.pm-pixel{animation:pm-pixel-frames 1.2s steps(var(--frames),end) infinite}
+.pm-asset.pm-variable{width:40px;height:40px;animation:none}
+.pm-variable>.pm-pixel{position:absolute;left:50%;top:50%;width:calc(var(--frame-width)*1px);height:calc(var(--frame-height)*1px);transform-origin:center;transform:translate(-50%,-50%) scale(var(--pixel-scale));animation-duration:var(--strip-duration)!important}
+.pm-asset-clock.pm-variable{--pixel-scale:2;width:84px;height:84px}
+.pm-art-samples .pm-asset{--pixel-scale:1;width:40px;height:40px}
+.pm-motion-chest>.pm-pixel{animation-name:pm-chest-frames;animation-timing-function:steps(1,end)}
+#btn-pomo .pm-asset-clock.pm-header-clock{--pixel-scale:1;width:24px;height:24px;margin:-9px -2px;animation:none}
+@keyframes pm-pixel-frames{from{background-position-x:0}to{background-position-x:var(--strip-end)}}
+@keyframes pm-asset-breathe{50%{transform:translateY(-2px);filter:brightness(1.12)}}
+@keyframes pm-chest-frames{0%,12%{background-position-x:0}18%{background-position-x:-40px}27%{background-position-x:-80px}36%{background-position-x:-120px}45%,72%{background-position-x:-160px}81%{background-position-x:-120px}87%{background-position-x:-80px}93%{background-position-x:-40px}99%,100%{background-position-x:0}}
+html.pm-page-hidden .pm-asset,html.pm-page-hidden .pm-pixel{animation-play-state:paused!important}
+@media (prefers-reduced-motion:reduce){.pm-asset,.pm-pixel{animation:none!important}}
+#pomo-panel .pm-link{border:none;min-height:30px;padding:0;color:var(--dim);font:11px var(--mono);text-align:left}
+/* Analytics › Pomodoro (vista acotada; no cambia el resto de Analytics) */
+#pomodoro-analytics{display:flex;flex-direction:column;gap:12px}
+#pomodoro-analytics .pma-head p,#pomodoro-analytics .pma-note,#pomodoro-analytics .pma-empty{font-size:12px;color:var(--dim);margin:0;line-height:1.5}
+#pomodoro-analytics .pma-filters{display:flex;flex-wrap:wrap;gap:8px 12px;align-items:end}
+#pomodoro-analytics .pma-filters label{display:flex;flex-direction:column;gap:4px;font:10.5px var(--mono);color:var(--dim)}
+#pomodoro-analytics select,#pomodoro-analytics input{min-height:36px;border-radius:9px;border:1px solid var(--line2);background:var(--bg);color:var(--text);font:12px var(--mono);padding:0 8px}
+#pomodoro-analytics .pma-tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(96px,1fr));gap:8px}
+#pomodoro-analytics .pma-tiles div{border:1px solid var(--line);border-radius:10px;padding:10px;display:flex;flex-direction:column;gap:2px;background:var(--bg)}
+#pomodoro-analytics .pma-tiles b{font:800 18px var(--mono)}
+#pomodoro-analytics .pma-tiles small{font:9.5px var(--mono);color:var(--dim);text-transform:uppercase;letter-spacing:.06em}
+#pomodoro-analytics .pma-bars{display:flex;gap:4px;align-items:end;height:110px;overflow-x:auto;padding-bottom:2px}
+#pomodoro-analytics .pma-bars button{flex:1 0 18px;height:100%;display:flex;flex-direction:column;justify-content:end;align-items:center;gap:3px;border:1px solid transparent;border-radius:6px;background:none;cursor:pointer;padding:2px}
+#pomodoro-analytics .pma-bars button.on{border-color:var(--brand)}
+#pomodoro-analytics .pma-bars span{display:block;width:100%;min-height:2px;border-radius:3px;background:var(--brand)}
+#pomodoro-analytics .pma-bars small{font:9px var(--mono);color:var(--dim)}
+#pomodoro-analytics .pma-projects div,#pomodoro-analytics .pma-row{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:2px 10px;padding:6px 0;border-bottom:1px solid var(--line);font-size:12px}
+#pomodoro-analytics .pma-projects small{grid-column:1/-1;color:var(--dim);font:10.5px var(--mono)}
+#pomodoro-analytics .pma-row{grid-template-columns:92px minmax(0,1fr) auto auto;font:11.5px var(--mono)}
+#pomodoro-analytics .pma-row.break{color:var(--dim)}
+#pomodoro-analytics .pma-row.cancelled span:nth-child(3){color:#ff9b9b}
+#pomodoro-analytics h4{margin:4px 0 0;font-size:12px;display:flex;gap:8px;align-items:center}
+#pomodoro-analytics h4 button{font:11px var(--mono);border:1px solid var(--line2);border-radius:8px;background:none;color:var(--dim);min-height:28px}
+@media (max-width:520px){#pomodoro-analytics .pma-row{grid-template-columns:1fr auto}#pomodoro-analytics .pma-row span:nth-child(2){grid-column:1/-1;order:-1}}
+/* Progreso personal (política v1): nivel, XP, meta diaria y logros */
+.pm-milestone{display:grid;grid-template-columns:auto minmax(0,1fr);gap:8px 14px;align-items:center;border:1px solid var(--line);border-radius:10px;padding:8px 12px}
+.pm-mini-level{display:flex;align-items:center;gap:8px}
+.pm-mini-level>div{display:flex;flex-direction:column;gap:2px}
+.pm-mini-level small,.pm-mini-track p{font:10.5px var(--mono);color:var(--dim)}
+.pm-mini-track p{display:flex;justify-content:space-between;gap:8px;margin:4px 0}
+.pm-progress{position:relative;height:7px;border-radius:4px;background:var(--bg);border:1px solid var(--line);overflow:hidden}
+.pm-progress>span{position:relative;display:block;height:100%;background:var(--brand);overflow:hidden}
+.pm-progress.goal>span{background:var(--done)}
+.pm-progress>span:after{content:"";position:absolute;inset:0;background:linear-gradient(100deg,transparent 20%,#ffffff55 50%,transparent 80%);transform:translateX(-100%);animation:pm-xp-shine 4s ease-in-out infinite}
+@keyframes pm-xp-shine{55%,100%{transform:translateX(100%)}}
+#pomo-panel .pm-banner{display:flex;align-items:center;gap:10px}
+.pm-game{display:flex;flex-direction:column;gap:8px;border:1px solid var(--line);border-radius:12px;padding:12px}
+.pm-game-level{display:flex;align-items:center;gap:10px}
+.pm-game-level h4{margin:2px 0 0;font-size:15px}
+.pm-game-level .pm-asset.pm-variable{--pixel-scale:2;width:80px;height:80px}
+.pm-game>small{font:10.5px var(--mono);color:var(--dim)}
+.pm-badges{display:flex;flex-wrap:wrap;gap:8px}
+.pm-badges>span{display:flex;align-items:center;gap:8px;min-height:48px;padding:4px 10px;border:1px solid var(--line);border-radius:10px;font-size:12px}
+.pm-badges .locked .pm-asset{filter:grayscale(1);opacity:.55}
+.pm-goal-head{display:flex;align-items:center;gap:8px;font-size:12px}
+@container pomodoro (max-width:430px){.pm-milestone{grid-template-columns:1fr}}
+@media (prefers-reduced-motion:reduce){.pm-progress>span:after{animation:none}}

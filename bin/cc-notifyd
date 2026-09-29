@@ -966,32 +966,9 @@ class Handler(http.server.BaseHTTPRequestHandler):
             d = json.loads(self.rfile.read(n) or b"{}")
         except Exception:
             self.send_response(400); self.end_headers(); return
-        # Foco (pomodoro): tú decides cuándo te interrumpen. Si hay un bloque
-        # activo y el aviso NO es de la sesión enfocada, se guarda en la cola
-        # (sin popup ni sonido) y el tablero lo muestra al llegar el descanso.
-        try:
-            with open(os.path.expanduser("~/.claude/hooks/focus.json")) as f:
-                focus = json.load(f)
-            active = float(focus.get("until") or 0) > time.time()
-        except Exception:
-            focus, active = None, False
-        if active and str(d.get("session", "")) != str(focus.get("session", "")) \
-                and str(d.get("project", "")) != str(focus.get("project", "")):
-            try:
-                with open(os.path.expanduser("~/.claude/hooks/focus-queue.jsonl"), "a") as f:
-                    f.write(json.dumps({"ts": time.time(), "title": str(d.get("title", ""))[:200],
-                                        "body": str(d.get("body", ""))[:400], "full": str(d.get("full", ""))[:60000],
-                                        "session": str(d.get("session", "")), "kind": str(d.get("kind", "done")),
-                                        "project": str(d.get("project", ""))[:80]}, ensure_ascii=False) + "\n")
-            except OSError:
-                pass
-            out = b'{"ok": true, "queued": true}'
-            self.send_response(200)
-            self.send_header("Content-Type", "application/json")
-            self.send_header("Content-Length", str(len(out)))
-            self.end_headers()
-            self.wfile.write(out)
-            return
+        # Pomodoro ya no filtra avisos aquí: la política de avisos durante un
+        # foco (D5) vive en la ruta de notificaciones de CommandOS, no en un
+        # filtro oculto que leía el antiguo focus.json.
         # Popups flotantes: SOLO si se piden (POPUPS=1). Por defecto los avisos
         # viven dentro del tablero (pila superior derecha + campana).
         if _conf_value("POPUPS", "0") != "1":

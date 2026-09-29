@@ -1174,3 +1174,16 @@ def test_la_complejidad_medida_sale_de_tokens_y_errores():
         sig = cc_usage.project_signals(db, now=100)
         assert sig["/repo/pesado"]["tokensP50"] == 900_000
         assert sig["/repo/pesado"]["measuredComplexity"] == "alta"
+
+
+def test_focus_legacy_rows_export_planned_history_for_the_pomodoro_mapping(tmp_path):
+    db = str(tmp_path / "usage.sqlite")
+    assert cc_usage.focus_legacy_rows(str(tmp_path / "missing.sqlite")) == []
+    block = cc_usage.focus_block_start(db, {"mode": "focus", "project": "Lola", "tmux_session": "s",
+                                            "tmux_pane": "%2", "planned_minutes": 25, "started_at_ms": 1000})
+    cc_usage.focus_block_finish(db, block["id"], "completed", 1_501_000)
+    cc_usage.focus_block_start(db, {"mode": "break", "planned_minutes": 5, "started_at_ms": 2_000_000})
+    rows = cc_usage.focus_legacy_rows(db)
+    assert [(r["id"], r["mode"], r["status"], r["planned_minutes"]) for r in rows] == [
+        (block["id"], "focus", "completed", 25), (rows[1]["id"], "break", "running", 5)]
+    assert rows[0]["project"] == "Lola" and rows[0]["ended_at_ms"] == 1_501_000
