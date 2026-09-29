@@ -1,0 +1,1758 @@
+[
+ {
+  "name": "dock a tab to the right of a tab in another group",
+  "doc": {
+   "schema": 1,
+   "groups": [
+    {
+     "id": "ga",
+     "tree": {
+      "type": "tab",
+      "tabId": "a"
+     }
+    },
+    {
+     "id": "gb",
+     "tree": {
+      "type": "tab",
+      "tabId": "b"
+     }
+    },
+    {
+     "id": "gw",
+     "tree": {
+      "type": "split",
+      "axis": "x",
+      "ratio": 0.6,
+      "first": {
+       "type": "tab",
+       "tabId": "c"
+      },
+      "second": {
+       "type": "tab",
+       "tabId": "d"
+      }
+     }
+    }
+   ],
+   "tabs": {
+    "a": {
+     "session": "a",
+     "paneKeys": [
+      "pk-a"
+     ]
+    },
+    "b": {
+     "session": "b",
+     "paneKeys": [
+      "pk-b"
+     ]
+    },
+    "c": {
+     "session": "c",
+     "paneKeys": [
+      "pk-c"
+     ]
+    },
+    "d": {
+     "session": "d",
+     "paneKeys": [
+      "pk-d"
+     ]
+    }
+   }
+  },
+  "op": "move",
+  "args": [
+   "a",
+   "d",
+   "right"
+  ],
+  "expect": {
+   "schema": 1,
+   "groups": [
+    {
+     "id": "gb",
+     "tree": {
+      "type": "tab",
+      "tabId": "b"
+     }
+    },
+    {
+     "id": "gw",
+     "tree": {
+      "type": "split",
+      "axis": "x",
+      "ratio": 0.6,
+      "first": {
+       "type": "tab",
+       "tabId": "c"
+      },
+      "second": {
+       "type": "split",
+       "axis": "x",
+       "ratio": 0.5,
+       "first": {
+        "type": "tab",
+        "tabId": "d"
+       },
+       "second": {
+        "type": "tab",
+        "tabId": "a"
+       }
+      }
+     }
+    }
+   ],
+   "tabs": {
+    "b": {
+     "session": "b",
+     "paneKeys": [
+      "pk-b"
+     ]
+    },
+    "c": {
+     "session": "c",
+     "paneKeys": [
+      "pk-c"
+     ]
+    },
+    "d": {
+     "session": "d",
+     "paneKeys": [
+      "pk-d"
+     ]
+    },
+    "a": {
+     "session": "a",
+     "paneKeys": [
+      "pk-a"
+     ]
+    }
+   }
+  }
+ },
+ {
+  "name": "dock above a tab puts the moved tab first",
+  "doc": {
+   "schema": 1,
+   "groups": [
+    {
+     "id": "ga",
+     "tree": {
+      "type": "tab",
+      "tabId": "a"
+     }
+    },
+    {
+     "id": "gb",
+     "tree": {
+      "type": "tab",
+      "tabId": "b"
+     }
+    },
+    {
+     "id": "gw",
+     "tree": {
+      "type": "split",
+      "axis": "x",
+      "ratio": 0.6,
+      "first": {
+       "type": "tab",
+       "tabId": "c"
+      },
+      "second": {
+       "type": "tab",
+       "tabId": "d"
+      }
+     }
+    }
+   ],
+   "tabs": {
+    "a": {
+     "session": "a",
+     "paneKeys": [
+      "pk-a"
+     ]
+    },
+    "b": {
+     "session": "b",
+     "paneKeys": [
+      "pk-b"
+     ]
+    },
+    "c": {
+     "session": "c",
+     "paneKeys": [
+      "pk-c"
+     ]
+    },
+    "d": {
+     "session": "d",
+     "paneKeys": [
+      "pk-d"
+     ]
+    }
+   }
+  },
+  "op": "move",
+  "args": [
+   "b",
+   "c",
+   "top"
+  ],
+  "expect": {
+   "schema": 1,
+   "groups": [
+    {
+     "id": "ga",
+     "tree": {
+      "type": "tab",
+      "tabId": "a"
+     }
+    },
+    {
+     "id": "gw",
+     "tree": {
+      "type": "split",
+      "axis": "x",
+      "ratio": 0.6,
+      "first": {
+       "type": "split",
+       "axis": "y",
+       "ratio": 0.5,
+       "first": {
+        "type": "tab",
+        "tabId": "b"
+       },
+       "second": {
+        "type": "tab",
+        "tabId": "c"
+       }
+      },
+      "second": {
+       "type": "tab",
+       "tabId": "d"
+      }
+     }
+    }
+   ],
+   "tabs": {
+    "a": {
+     "session": "a",
+     "paneKeys": [
+      "pk-a"
+     ]
+    },
+    "b": {
+     "session": "b",
+     "paneKeys": [
+      "pk-b"
+     ]
+    },
+    "c": {
+     "session": "c",
+     "paneKeys": [
+      "pk-c"
+     ]
+    },
+    "d": {
+     "session": "d",
+     "paneKeys": [
+      "pk-d"
+     ]
+    }
+   }
+  }
+ },
+ {
+  "name": "outer edge wraps the whole group",
+  "doc": {
+   "schema": 1,
+   "groups": [
+    {
+     "id": "ga",
+     "tree": {
+      "type": "tab",
+      "tabId": "a"
+     }
+    },
+    {
+     "id": "gb",
+     "tree": {
+      "type": "tab",
+      "tabId": "b"
+     }
+    },
+    {
+     "id": "gw",
+     "tree": {
+      "type": "split",
+      "axis": "x",
+      "ratio": 0.6,
+      "first": {
+       "type": "tab",
+       "tabId": "c"
+      },
+      "second": {
+       "type": "tab",
+       "tabId": "d"
+      }
+     }
+    }
+   ],
+   "tabs": {
+    "a": {
+     "session": "a",
+     "paneKeys": [
+      "pk-a"
+     ]
+    },
+    "b": {
+     "session": "b",
+     "paneKeys": [
+      "pk-b"
+     ]
+    },
+    "c": {
+     "session": "c",
+     "paneKeys": [
+      "pk-c"
+     ]
+    },
+    "d": {
+     "session": "d",
+     "paneKeys": [
+      "pk-d"
+     ]
+    }
+   }
+  },
+  "op": "move",
+  "args": [
+   "a",
+   "group:gw",
+   "bottom"
+  ],
+  "expect": {
+   "schema": 1,
+   "groups": [
+    {
+     "id": "gb",
+     "tree": {
+      "type": "tab",
+      "tabId": "b"
+     }
+    },
+    {
+     "id": "gw",
+     "tree": {
+      "type": "split",
+      "axis": "y",
+      "ratio": 0.5,
+      "first": {
+       "type": "split",
+       "axis": "x",
+       "ratio": 0.6,
+       "first": {
+        "type": "tab",
+        "tabId": "c"
+       },
+       "second": {
+        "type": "tab",
+        "tabId": "d"
+       }
+      },
+      "second": {
+       "type": "tab",
+       "tabId": "a"
+      }
+     }
+    }
+   ],
+   "tabs": {
+    "b": {
+     "session": "b",
+     "paneKeys": [
+      "pk-b"
+     ]
+    },
+    "c": {
+     "session": "c",
+     "paneKeys": [
+      "pk-c"
+     ]
+    },
+    "d": {
+     "session": "d",
+     "paneKeys": [
+      "pk-d"
+     ]
+    },
+    "a": {
+     "session": "a",
+     "paneKeys": [
+      "pk-a"
+     ]
+    }
+   }
+  }
+ },
+ {
+  "name": "move within a group collapses the old parent",
+  "doc": {
+   "schema": 1,
+   "groups": [
+    {
+     "id": "gw",
+     "tree": {
+      "type": "split",
+      "axis": "x",
+      "ratio": 0.6,
+      "first": {
+       "type": "tab",
+       "tabId": "c"
+      },
+      "second": {
+       "type": "split",
+       "axis": "y",
+       "ratio": 0.3,
+       "first": {
+        "type": "tab",
+        "tabId": "d"
+       },
+       "second": {
+        "type": "tab",
+        "tabId": "e"
+       }
+      }
+     }
+    }
+   ],
+   "tabs": {
+    "c": {
+     "session": "c",
+     "paneKeys": [
+      "pk-c"
+     ]
+    },
+    "d": {
+     "session": "d",
+     "paneKeys": [
+      "pk-d"
+     ]
+    },
+    "e": {
+     "session": "e",
+     "paneKeys": [
+      "pk-e"
+     ]
+    }
+   }
+  },
+  "op": "move",
+  "args": [
+   "e",
+   "c",
+   "left"
+  ],
+  "expect": {
+   "schema": 1,
+   "groups": [
+    {
+     "id": "gw",
+     "tree": {
+      "type": "split",
+      "axis": "x",
+      "ratio": 0.6,
+      "first": {
+       "type": "split",
+       "axis": "x",
+       "ratio": 0.5,
+       "first": {
+        "type": "tab",
+        "tabId": "e"
+       },
+       "second": {
+        "type": "tab",
+        "tabId": "c"
+       }
+      },
+      "second": {
+       "type": "tab",
+       "tabId": "d"
+      }
+     }
+    }
+   ],
+   "tabs": {
+    "e": {
+     "session": "e",
+     "paneKeys": [
+      "pk-e"
+     ]
+    },
+    "c": {
+     "session": "c",
+     "paneKeys": [
+      "pk-c"
+     ]
+    },
+    "d": {
+     "session": "d",
+     "paneKeys": [
+      "pk-d"
+     ]
+    }
+   }
+  }
+ },
+ {
+  "name": "moving a whole group into another",
+  "doc": {
+   "schema": 1,
+   "groups": [
+    {
+     "id": "ga",
+     "tree": {
+      "type": "tab",
+      "tabId": "a"
+     }
+    },
+    {
+     "id": "gb",
+     "tree": {
+      "type": "tab",
+      "tabId": "b"
+     }
+    },
+    {
+     "id": "gw",
+     "tree": {
+      "type": "split",
+      "axis": "x",
+      "ratio": 0.6,
+      "first": {
+       "type": "tab",
+       "tabId": "c"
+      },
+      "second": {
+       "type": "tab",
+       "tabId": "d"
+      }
+     }
+    }
+   ],
+   "tabs": {
+    "a": {
+     "session": "a",
+     "paneKeys": [
+      "pk-a"
+     ]
+    },
+    "b": {
+     "session": "b",
+     "paneKeys": [
+      "pk-b"
+     ]
+    },
+    "c": {
+     "session": "c",
+     "paneKeys": [
+      "pk-c"
+     ]
+    },
+    "d": {
+     "session": "d",
+     "paneKeys": [
+      "pk-d"
+     ]
+    }
+   }
+  },
+  "op": "move",
+  "args": [
+   "group:gw",
+   "a",
+   "bottom"
+  ],
+  "expect": {
+   "schema": 1,
+   "groups": [
+    {
+     "id": "ga",
+     "tree": {
+      "type": "split",
+      "axis": "y",
+      "ratio": 0.5,
+      "first": {
+       "type": "tab",
+       "tabId": "a"
+      },
+      "second": {
+       "type": "split",
+       "axis": "x",
+       "ratio": 0.6,
+       "first": {
+        "type": "tab",
+        "tabId": "c"
+       },
+       "second": {
+        "type": "tab",
+        "tabId": "d"
+       }
+      }
+     }
+    },
+    {
+     "id": "gb",
+     "tree": {
+      "type": "tab",
+      "tabId": "b"
+     }
+    }
+   ],
+   "tabs": {
+    "a": {
+     "session": "a",
+     "paneKeys": [
+      "pk-a"
+     ]
+    },
+    "c": {
+     "session": "c",
+     "paneKeys": [
+      "pk-c"
+     ]
+    },
+    "d": {
+     "session": "d",
+     "paneKeys": [
+      "pk-d"
+     ]
+    },
+    "b": {
+     "session": "b",
+     "paneKeys": [
+      "pk-b"
+     ]
+    }
+   }
+  }
+ },
+ {
+  "name": "target inside the moved subtree is rejected",
+  "doc": {
+   "schema": 1,
+   "groups": [
+    {
+     "id": "ga",
+     "tree": {
+      "type": "tab",
+      "tabId": "a"
+     }
+    },
+    {
+     "id": "gb",
+     "tree": {
+      "type": "tab",
+      "tabId": "b"
+     }
+    },
+    {
+     "id": "gw",
+     "tree": {
+      "type": "split",
+      "axis": "x",
+      "ratio": 0.6,
+      "first": {
+       "type": "tab",
+       "tabId": "c"
+      },
+      "second": {
+       "type": "tab",
+       "tabId": "d"
+      }
+     }
+    }
+   ],
+   "tabs": {
+    "a": {
+     "session": "a",
+     "paneKeys": [
+      "pk-a"
+     ]
+    },
+    "b": {
+     "session": "b",
+     "paneKeys": [
+      "pk-b"
+     ]
+    },
+    "c": {
+     "session": "c",
+     "paneKeys": [
+      "pk-c"
+     ]
+    },
+    "d": {
+     "session": "d",
+     "paneKeys": [
+      "pk-d"
+     ]
+    }
+   }
+  },
+  "op": "move",
+  "args": [
+   "group:gw",
+   "c",
+   "left"
+  ],
+  "error": true
+ },
+ {
+  "name": "target equal to source is rejected",
+  "doc": {
+   "schema": 1,
+   "groups": [
+    {
+     "id": "ga",
+     "tree": {
+      "type": "tab",
+      "tabId": "a"
+     }
+    },
+    {
+     "id": "gb",
+     "tree": {
+      "type": "tab",
+      "tabId": "b"
+     }
+    },
+    {
+     "id": "gw",
+     "tree": {
+      "type": "split",
+      "axis": "x",
+      "ratio": 0.6,
+      "first": {
+       "type": "tab",
+       "tabId": "c"
+      },
+      "second": {
+       "type": "tab",
+       "tabId": "d"
+      }
+     }
+    }
+   ],
+   "tabs": {
+    "a": {
+     "session": "a",
+     "paneKeys": [
+      "pk-a"
+     ]
+    },
+    "b": {
+     "session": "b",
+     "paneKeys": [
+      "pk-b"
+     ]
+    },
+    "c": {
+     "session": "c",
+     "paneKeys": [
+      "pk-c"
+     ]
+    },
+    "d": {
+     "session": "d",
+     "paneKeys": [
+      "pk-d"
+     ]
+    }
+   }
+  },
+  "op": "move",
+  "args": [
+   "a",
+   "a",
+   "left"
+  ],
+  "error": true
+ },
+ {
+  "name": "outer edge of the only group containing the source alone is rejected",
+  "doc": {
+   "schema": 1,
+   "groups": [
+    {
+     "id": "ga",
+     "tree": {
+      "type": "tab",
+      "tabId": "a"
+     }
+    },
+    {
+     "id": "gb",
+     "tree": {
+      "type": "tab",
+      "tabId": "b"
+     }
+    },
+    {
+     "id": "gw",
+     "tree": {
+      "type": "split",
+      "axis": "x",
+      "ratio": 0.6,
+      "first": {
+       "type": "tab",
+       "tabId": "c"
+      },
+      "second": {
+       "type": "tab",
+       "tabId": "d"
+      }
+     }
+    }
+   ],
+   "tabs": {
+    "a": {
+     "session": "a",
+     "paneKeys": [
+      "pk-a"
+     ]
+    },
+    "b": {
+     "session": "b",
+     "paneKeys": [
+      "pk-b"
+     ]
+    },
+    "c": {
+     "session": "c",
+     "paneKeys": [
+      "pk-c"
+     ]
+    },
+    "d": {
+     "session": "d",
+     "paneKeys": [
+      "pk-d"
+     ]
+    }
+   }
+  },
+  "op": "move",
+  "args": [
+   "a",
+   "group:ga",
+   "left"
+  ],
+  "error": true
+ },
+ {
+  "name": "unknown edge is rejected",
+  "doc": {
+   "schema": 1,
+   "groups": [
+    {
+     "id": "ga",
+     "tree": {
+      "type": "tab",
+      "tabId": "a"
+     }
+    },
+    {
+     "id": "gb",
+     "tree": {
+      "type": "tab",
+      "tabId": "b"
+     }
+    },
+    {
+     "id": "gw",
+     "tree": {
+      "type": "split",
+      "axis": "x",
+      "ratio": 0.6,
+      "first": {
+       "type": "tab",
+       "tabId": "c"
+      },
+      "second": {
+       "type": "tab",
+       "tabId": "d"
+      }
+     }
+    }
+   ],
+   "tabs": {
+    "a": {
+     "session": "a",
+     "paneKeys": [
+      "pk-a"
+     ]
+    },
+    "b": {
+     "session": "b",
+     "paneKeys": [
+      "pk-b"
+     ]
+    },
+    "c": {
+     "session": "c",
+     "paneKeys": [
+      "pk-c"
+     ]
+    },
+    "d": {
+     "session": "d",
+     "paneKeys": [
+      "pk-d"
+     ]
+    }
+   }
+  },
+  "op": "move",
+  "args": [
+   "a",
+   "d",
+   "middle"
+  ],
+  "error": true
+ },
+ {
+  "name": "detach the last leaf of a group into a new strip entry",
+  "doc": {
+   "schema": 1,
+   "groups": [
+    {
+     "id": "ga",
+     "tree": {
+      "type": "tab",
+      "tabId": "a"
+     }
+    },
+    {
+     "id": "gb",
+     "tree": {
+      "type": "tab",
+      "tabId": "b"
+     }
+    },
+    {
+     "id": "gw",
+     "tree": {
+      "type": "split",
+      "axis": "x",
+      "ratio": 0.6,
+      "first": {
+       "type": "tab",
+       "tabId": "c"
+      },
+      "second": {
+       "type": "tab",
+       "tabId": "d"
+      }
+     }
+    }
+   ],
+   "tabs": {
+    "a": {
+     "session": "a",
+     "paneKeys": [
+      "pk-a"
+     ]
+    },
+    "b": {
+     "session": "b",
+     "paneKeys": [
+      "pk-b"
+     ]
+    },
+    "c": {
+     "session": "c",
+     "paneKeys": [
+      "pk-c"
+     ]
+    },
+    "d": {
+     "session": "d",
+     "paneKeys": [
+      "pk-d"
+     ]
+    }
+   }
+  },
+  "op": "detach",
+  "args": [
+   "d",
+   0
+  ],
+  "expect": {
+   "schema": 1,
+   "groups": [
+    {
+     "id": "group-d",
+     "tree": {
+      "type": "tab",
+      "tabId": "d"
+     }
+    },
+    {
+     "id": "ga",
+     "tree": {
+      "type": "tab",
+      "tabId": "a"
+     }
+    },
+    {
+     "id": "gb",
+     "tree": {
+      "type": "tab",
+      "tabId": "b"
+     }
+    },
+    {
+     "id": "gw",
+     "tree": {
+      "type": "tab",
+      "tabId": "c"
+     }
+    }
+   ],
+   "tabs": {
+    "d": {
+     "session": "d",
+     "paneKeys": [
+      "pk-d"
+     ]
+    },
+    "a": {
+     "session": "a",
+     "paneKeys": [
+      "pk-a"
+     ]
+    },
+    "b": {
+     "session": "b",
+     "paneKeys": [
+      "pk-b"
+     ]
+    },
+    "c": {
+     "session": "c",
+     "paneKeys": [
+      "pk-c"
+     ]
+    }
+   }
+  }
+ },
+ {
+  "name": "detach a group reorders the strip",
+  "doc": {
+   "schema": 1,
+   "groups": [
+    {
+     "id": "ga",
+     "tree": {
+      "type": "tab",
+      "tabId": "a"
+     }
+    },
+    {
+     "id": "gb",
+     "tree": {
+      "type": "tab",
+      "tabId": "b"
+     }
+    },
+    {
+     "id": "gw",
+     "tree": {
+      "type": "split",
+      "axis": "x",
+      "ratio": 0.6,
+      "first": {
+       "type": "tab",
+       "tabId": "c"
+      },
+      "second": {
+       "type": "tab",
+       "tabId": "d"
+      }
+     }
+    }
+   ],
+   "tabs": {
+    "a": {
+     "session": "a",
+     "paneKeys": [
+      "pk-a"
+     ]
+    },
+    "b": {
+     "session": "b",
+     "paneKeys": [
+      "pk-b"
+     ]
+    },
+    "c": {
+     "session": "c",
+     "paneKeys": [
+      "pk-c"
+     ]
+    },
+    "d": {
+     "session": "d",
+     "paneKeys": [
+      "pk-d"
+     ]
+    }
+   }
+  },
+  "op": "detach",
+  "args": [
+   "group:gw",
+   0
+  ],
+  "expect": {
+   "schema": 1,
+   "groups": [
+    {
+     "id": "gw",
+     "tree": {
+      "type": "split",
+      "axis": "x",
+      "ratio": 0.6,
+      "first": {
+       "type": "tab",
+       "tabId": "c"
+      },
+      "second": {
+       "type": "tab",
+       "tabId": "d"
+      }
+     }
+    },
+    {
+     "id": "ga",
+     "tree": {
+      "type": "tab",
+      "tabId": "a"
+     }
+    },
+    {
+     "id": "gb",
+     "tree": {
+      "type": "tab",
+      "tabId": "b"
+     }
+    }
+   ],
+   "tabs": {
+    "c": {
+     "session": "c",
+     "paneKeys": [
+      "pk-c"
+     ]
+    },
+    "d": {
+     "session": "d",
+     "paneKeys": [
+      "pk-d"
+     ]
+    },
+    "a": {
+     "session": "a",
+     "paneKeys": [
+      "pk-a"
+     ]
+    },
+    "b": {
+     "session": "b",
+     "paneKeys": [
+      "pk-b"
+     ]
+    }
+   }
+  }
+ },
+ {
+  "name": "detach a single-tab group reorders it",
+  "doc": {
+   "schema": 1,
+   "groups": [
+    {
+     "id": "ga",
+     "tree": {
+      "type": "tab",
+      "tabId": "a"
+     }
+    },
+    {
+     "id": "gb",
+     "tree": {
+      "type": "tab",
+      "tabId": "b"
+     }
+    },
+    {
+     "id": "gw",
+     "tree": {
+      "type": "split",
+      "axis": "x",
+      "ratio": 0.6,
+      "first": {
+       "type": "tab",
+       "tabId": "c"
+      },
+      "second": {
+       "type": "tab",
+       "tabId": "d"
+      }
+     }
+    }
+   ],
+   "tabs": {
+    "a": {
+     "session": "a",
+     "paneKeys": [
+      "pk-a"
+     ]
+    },
+    "b": {
+     "session": "b",
+     "paneKeys": [
+      "pk-b"
+     ]
+    },
+    "c": {
+     "session": "c",
+     "paneKeys": [
+      "pk-c"
+     ]
+    },
+    "d": {
+     "session": "d",
+     "paneKeys": [
+      "pk-d"
+     ]
+    }
+   }
+  },
+  "op": "detach",
+  "args": [
+   "a",
+   2
+  ],
+  "expect": {
+   "schema": 1,
+   "groups": [
+    {
+     "id": "gb",
+     "tree": {
+      "type": "tab",
+      "tabId": "b"
+     }
+    },
+    {
+     "id": "ga",
+     "tree": {
+      "type": "tab",
+      "tabId": "a"
+     }
+    },
+    {
+     "id": "gw",
+     "tree": {
+      "type": "split",
+      "axis": "x",
+      "ratio": 0.6,
+      "first": {
+       "type": "tab",
+       "tabId": "c"
+      },
+      "second": {
+       "type": "tab",
+       "tabId": "d"
+      }
+     }
+    }
+   ],
+   "tabs": {
+    "b": {
+     "session": "b",
+     "paneKeys": [
+      "pk-b"
+     ]
+    },
+    "a": {
+     "session": "a",
+     "paneKeys": [
+      "pk-a"
+     ]
+    },
+    "c": {
+     "session": "c",
+     "paneKeys": [
+      "pk-c"
+     ]
+    },
+    "d": {
+     "session": "d",
+     "paneKeys": [
+      "pk-d"
+     ]
+    }
+   }
+  }
+ },
+ {
+  "name": "detach to the end with an out-of-range index",
+  "doc": {
+   "schema": 1,
+   "groups": [
+    {
+     "id": "ga",
+     "tree": {
+      "type": "tab",
+      "tabId": "a"
+     }
+    },
+    {
+     "id": "gb",
+     "tree": {
+      "type": "tab",
+      "tabId": "b"
+     }
+    },
+    {
+     "id": "gw",
+     "tree": {
+      "type": "split",
+      "axis": "x",
+      "ratio": 0.6,
+      "first": {
+       "type": "tab",
+       "tabId": "c"
+      },
+      "second": {
+       "type": "tab",
+       "tabId": "d"
+      }
+     }
+    }
+   ],
+   "tabs": {
+    "a": {
+     "session": "a",
+     "paneKeys": [
+      "pk-a"
+     ]
+    },
+    "b": {
+     "session": "b",
+     "paneKeys": [
+      "pk-b"
+     ]
+    },
+    "c": {
+     "session": "c",
+     "paneKeys": [
+      "pk-c"
+     ]
+    },
+    "d": {
+     "session": "d",
+     "paneKeys": [
+      "pk-d"
+     ]
+    }
+   }
+  },
+  "op": "detach",
+  "args": [
+   "c",
+   99
+  ],
+  "expect": {
+   "schema": 1,
+   "groups": [
+    {
+     "id": "ga",
+     "tree": {
+      "type": "tab",
+      "tabId": "a"
+     }
+    },
+    {
+     "id": "gb",
+     "tree": {
+      "type": "tab",
+      "tabId": "b"
+     }
+    },
+    {
+     "id": "gw",
+     "tree": {
+      "type": "tab",
+      "tabId": "d"
+     }
+    },
+    {
+     "id": "group-c",
+     "tree": {
+      "type": "tab",
+      "tabId": "c"
+     }
+    }
+   ],
+   "tabs": {
+    "a": {
+     "session": "a",
+     "paneKeys": [
+      "pk-a"
+     ]
+    },
+    "b": {
+     "session": "b",
+     "paneKeys": [
+      "pk-b"
+     ]
+    },
+    "d": {
+     "session": "d",
+     "paneKeys": [
+      "pk-d"
+     ]
+    },
+    "c": {
+     "session": "c",
+     "paneKeys": [
+      "pk-c"
+     ]
+    }
+   }
+  }
+ },
+ {
+  "name": "resize a nested split",
+  "doc": {
+   "schema": 1,
+   "groups": [
+    {
+     "id": "gw",
+     "tree": {
+      "type": "split",
+      "axis": "x",
+      "ratio": 0.6,
+      "first": {
+       "type": "tab",
+       "tabId": "c"
+      },
+      "second": {
+       "type": "split",
+       "axis": "y",
+       "ratio": 0.3,
+       "first": {
+        "type": "tab",
+        "tabId": "d"
+       },
+       "second": {
+        "type": "tab",
+        "tabId": "e"
+       }
+      }
+     }
+    }
+   ],
+   "tabs": {
+    "c": {
+     "session": "c",
+     "paneKeys": [
+      "pk-c"
+     ]
+    },
+    "d": {
+     "session": "d",
+     "paneKeys": [
+      "pk-d"
+     ]
+    },
+    "e": {
+     "session": "e",
+     "paneKeys": [
+      "pk-e"
+     ]
+    }
+   }
+  },
+  "op": "resize",
+  "args": [
+   "gw",
+   [
+    "second"
+   ],
+   0.75
+  ],
+  "expect": {
+   "schema": 1,
+   "groups": [
+    {
+     "id": "gw",
+     "tree": {
+      "type": "split",
+      "axis": "x",
+      "ratio": 0.6,
+      "first": {
+       "type": "tab",
+       "tabId": "c"
+      },
+      "second": {
+       "type": "split",
+       "axis": "y",
+       "ratio": 0.75,
+       "first": {
+        "type": "tab",
+        "tabId": "d"
+       },
+       "second": {
+        "type": "tab",
+        "tabId": "e"
+       }
+      }
+     }
+    }
+   ],
+   "tabs": {
+    "c": {
+     "session": "c",
+     "paneKeys": [
+      "pk-c"
+     ]
+    },
+    "d": {
+     "session": "d",
+     "paneKeys": [
+      "pk-d"
+     ]
+    },
+    "e": {
+     "session": "e",
+     "paneKeys": [
+      "pk-e"
+     ]
+    }
+   }
+  }
+ },
+ {
+  "name": "resize clamps to usable bounds",
+  "doc": {
+   "schema": 1,
+   "groups": [
+    {
+     "id": "ga",
+     "tree": {
+      "type": "tab",
+      "tabId": "a"
+     }
+    },
+    {
+     "id": "gb",
+     "tree": {
+      "type": "tab",
+      "tabId": "b"
+     }
+    },
+    {
+     "id": "gw",
+     "tree": {
+      "type": "split",
+      "axis": "x",
+      "ratio": 0.6,
+      "first": {
+       "type": "tab",
+       "tabId": "c"
+      },
+      "second": {
+       "type": "tab",
+       "tabId": "d"
+      }
+     }
+    }
+   ],
+   "tabs": {
+    "a": {
+     "session": "a",
+     "paneKeys": [
+      "pk-a"
+     ]
+    },
+    "b": {
+     "session": "b",
+     "paneKeys": [
+      "pk-b"
+     ]
+    },
+    "c": {
+     "session": "c",
+     "paneKeys": [
+      "pk-c"
+     ]
+    },
+    "d": {
+     "session": "d",
+     "paneKeys": [
+      "pk-d"
+     ]
+    }
+   }
+  },
+  "op": "resize",
+  "args": [
+   "gw",
+   [],
+   0.99
+  ],
+  "expect": {
+   "schema": 1,
+   "groups": [
+    {
+     "id": "ga",
+     "tree": {
+      "type": "tab",
+      "tabId": "a"
+     }
+    },
+    {
+     "id": "gb",
+     "tree": {
+      "type": "tab",
+      "tabId": "b"
+     }
+    },
+    {
+     "id": "gw",
+     "tree": {
+      "type": "split",
+      "axis": "x",
+      "ratio": 0.9,
+      "first": {
+       "type": "tab",
+       "tabId": "c"
+      },
+      "second": {
+       "type": "tab",
+       "tabId": "d"
+      }
+     }
+    }
+   ],
+   "tabs": {
+    "a": {
+     "session": "a",
+     "paneKeys": [
+      "pk-a"
+     ]
+    },
+    "b": {
+     "session": "b",
+     "paneKeys": [
+      "pk-b"
+     ]
+    },
+    "c": {
+     "session": "c",
+     "paneKeys": [
+      "pk-c"
+     ]
+    },
+    "d": {
+     "session": "d",
+     "paneKeys": [
+      "pk-d"
+     ]
+    }
+   }
+  }
+ },
+ {
+  "name": "resize on a leaf path is rejected",
+  "doc": {
+   "schema": 1,
+   "groups": [
+    {
+     "id": "ga",
+     "tree": {
+      "type": "tab",
+      "tabId": "a"
+     }
+    },
+    {
+     "id": "gb",
+     "tree": {
+      "type": "tab",
+      "tabId": "b"
+     }
+    },
+    {
+     "id": "gw",
+     "tree": {
+      "type": "split",
+      "axis": "x",
+      "ratio": 0.6,
+      "first": {
+       "type": "tab",
+       "tabId": "c"
+      },
+      "second": {
+       "type": "tab",
+       "tabId": "d"
+      }
+     }
+    }
+   ],
+   "tabs": {
+    "a": {
+     "session": "a",
+     "paneKeys": [
+      "pk-a"
+     ]
+    },
+    "b": {
+     "session": "b",
+     "paneKeys": [
+      "pk-b"
+     ]
+    },
+    "c": {
+     "session": "c",
+     "paneKeys": [
+      "pk-c"
+     ]
+    },
+    "d": {
+     "session": "d",
+     "paneKeys": [
+      "pk-d"
+     ]
+    }
+   }
+  },
+  "op": "resize",
+  "args": [
+   "gw",
+   [
+    "first"
+   ],
+   0.4
+  ],
+  "error": true
+ }
+]
