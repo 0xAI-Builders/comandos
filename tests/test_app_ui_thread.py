@@ -88,7 +88,7 @@ def test_copy_reply_fetches_state_in_a_thread_and_sets_clipboard_on_idle():
         def read(self):
             return body
     fetched = []
-    ns = {"threading": d.threading, "GLib": d.GLib, "ES": True, "json": json,
+    ns = {"threading": d.threading, "GLib": d.GLib, "ES": True, "json": json, "BASE_URL": "http://127.0.0.1:4777",
           "term_session": lambda t: "term-1", "notify_popup": lambda *a: None,
           "urllib": SimpleNamespace(request=SimpleNamespace(urlopen=lambda *a, **k: (fetched.append(a), Resp())[1])),
           "Gtk": SimpleNamespace(Clipboard=SimpleNamespace(get=lambda sel: SimpleNamespace(set_text=lambda t, n: clip.append(t)))),

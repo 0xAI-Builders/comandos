@@ -12,6 +12,8 @@ SOURCE = Path('bin/cc-app').read_text()
 
 
 def load(names, ns):
+    # tab_hb resolves a tab's strip label (None while docked in a group page).
+    names = set(names) | {"tab_hb"}
     nodes = [n for n in ast.parse(SOURCE).body
              if isinstance(n, ast.FunctionDef) and n.name in names]
     exec(compile(ast.Module(body=nodes, type_ignores=[]), '<cc-app>', 'exec'), ns)
@@ -177,7 +179,7 @@ def poll_ui(iterations=20, fail_notifications=False):
             data = {'favorites': [str(ticks[0])], 'theme': f'theme-{ticks[0]}', 'font_size': 12 + ticks[0]}
         return io.BytesIO(json.dumps(data).encode())
 
-    ns = {'urllib': NS(request=NS(urlopen=urlopen)), 'json': json,
+    ns = {'urllib': NS(request=NS(urlopen=urlopen)), 'json': json, 'BASE_URL': 'http://127.0.0.1:4777',
           'GLib': NS(idle_add=lambda *args: pending.append(args)),
           '_FAVORITE_GENERATION': 0, '_LIVE_PREF_KEYS': ('theme', 'font_size'),
           'update_dots': lambda *args: state_updates.append(args),

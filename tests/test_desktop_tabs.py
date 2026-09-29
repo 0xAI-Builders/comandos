@@ -50,10 +50,13 @@ def test_tab_labels_are_saved_in_visual_notebook_order():
     }
 
 
-def test_notebook_tabs_are_reorderable_and_saved_after_drag():
+def test_tab_order_comes_from_workspace_drags_and_is_saved():
     src = SRC
 
-    assert "nb.set_tab_reorderable(box, True)" in src
+    # Native notebook reordering is replaced by the shared workspace drag
+    # (the same gesture and document as the remote client).
+    assert "nb.set_tab_reorderable(box, True)" not in src
+    assert "def ws_drag_source(widget, key)" in src
     assert "nb.set_tab_reorderable(hub, False)" in src
     assert 'nb.connect("page-reordered", on_tab_reordered)' in src
     assert "def current_tab_order()" in src
@@ -211,7 +214,8 @@ def test_ctrl_o_is_not_captured_by_the_app():
 
 
 def test_dashboard_url_is_cache_busted_on_app_start():
-    assert 'BASE_URL = "http://127.0.0.1:4777"' in SRC
+    # Isolated candidates point the app at their own dashboard.
+    assert 'BASE_URL = os.environ.get("COMANDOS_DASH_URL") or "http://127.0.0.1:4777"' in SRC
     assert '_DASH_V' in SRC
     assert 'URL = f"{BASE_URL}/?app=1&v={_DASH_V}"' in SRC
 

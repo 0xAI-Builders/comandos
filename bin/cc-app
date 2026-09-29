@@ -82,7 +82,7 @@ except ValueError:
 gi.require_version("Vte", "2.91")
 from gi.repository import Gtk, WebKit2, Vte, GLib, Gdk, GdkPixbuf, Gio, Pango
 
-BASE_URL = "http://127.0.0.1:4777"
+BASE_URL = os.environ.get("COMANDOS_DASH_URL") or "http://127.0.0.1:4777"
 # Cache-bust del HTML/JS: WebKitGTK conserva versiones viejas entre reinicios
 # y el Centro (datos nuevos) podía convivir con un renderer de cards antiguo.
 _DASH_FILE = os.path.join(os.path.dirname(os.path.dirname(os.path.realpath(__file__))), "dash", "index.html")
@@ -99,6 +99,8 @@ import tmux_snapshot as layout_snapshot
 import agent_stop
 from pane_snapshot import PaneInspector
 from session_tabs import ordered_tab_keys
+import gtk_workspace
+import workspace_layout
 TERM_HTML = os.path.join(CC_REPO, "dash", "term.html")
 # Familia unificada de iconos — los mismos SVG Lucide que usa el dashboard.
 _ICONS_DIR = os.path.join(CC_REPO, "dash", "icons")
@@ -164,7 +166,7 @@ FONT = f"{FONT_FAMILY} {FONT_SIZE}"
 def _ui_lang():
     """Idioma resuelto por cc-dash (CC_LANG en cc-notify.conf, o auto por $LANG)."""
     try:
-        with urllib.request.urlopen("http://127.0.0.1:4777/conf", timeout=2) as r:
+        with urllib.request.urlopen(BASE_URL + "/conf", timeout=2) as r:
             l = json.loads(r.read().decode()).get("_lang")
             if l in ("es", "en"):
                 return l
@@ -217,6 +219,9 @@ notebook > header > tabs > arrow {
 .mosaic-ph { color: @FAINT@; font-size: 18px; }
 .mosaic-cell-title { padding: 1px 4px; }
 .mosaic-zoom { background: @BG@; border: 2px solid @BRAND@; border-radius: 12px; }
+.ws-leaf-head { background: @BAR@; border-bottom: 1px solid @LINE@; padding: 3px 10px; color: @FAINT@; }
+.ws-leaf.focused .ws-leaf-head { color: @TEXT@; box-shadow: inset 0 2px 0 @BRAND@; }
+paned.ws-paned > separator { background: @LINE@; }
 notebook stack { background: @BG@; }
 .termwrap { background: @BG@; }
 .tabplus { color: @DIM@; padding: 4px 8px; margin: 0 1px; border: none; background: none;
@@ -285,7 +290,7 @@ def fetch_prefs():
     """Lee TODAS las prefs de cc-dash. Blocking pero con timeout corto — solo
     se usa al arrancar. Fallback a defaults si cc-dash aún no responde."""
     try:
-        with urllib.request.urlopen("http://127.0.0.1:4777/prefs", timeout=2) as r:
+        with urllib.request.urlopen(BASE_URL + "/prefs", timeout=2) as r:
             return json.loads(r.read().decode())
     except Exception:
         return {}
@@ -326,7 +331,7 @@ def tmuxc(*args):
 
 def http_post(path, payload, timeout=15):
     req = urllib.request.Request(
-        "http://127.0.0.1:4777" + path,
+        BASE_URL + path,
         data=json.dumps(payload).encode(),
         headers={"Content-Type": "application/json"})
     try:
@@ -943,7 +948,7 @@ def copy_claude_reply(term):
         if not sess:
             return
         try:
-            with urllib.request.urlopen("http://127.0.0.1:4777/state", timeout=3) as r:
+            with urllib.request.urlopen(BASE_URL + "/state", timeout=3) as r:
                 items = json.loads(r.read().decode())
         except Exception:
             return
@@ -1650,6 +1655,14 @@ _FAVORITE_GENERATION = 0
 _FAVORITE_REQUEST_LOCK = threading.Lock()
 
 
+def tab_hb(box):
+    """Strip label of a tab, or None while it is docked inside a group page."""
+    page_num = getattr(nb, "page_num", None)
+    if box is None or (page_num is not None and page_num(box) < 0):
+        return None
+    return nb.get_tab_label(box)
+
+
 def notebook_pages():
     for i in range(nb.get_n_pages()):
         yield nb.get_nth_page(i)
@@ -1658,9 +1671,12 @@ def notebook_pages():
 def current_tab_order():
     out = []
     for page in notebook_pages():
-        key = getattr(page, "_key", None)
-        if key in tabs:
-            out.append(key)
+        # A docked group holds several tabs: all of them stay registered.
+        view = globals().get("WS_VIEW")
+        keys = view.member_keys(page) if view is not None else [getattr(page, "_key", None)]
+        for key in keys:
+            if key in tabs and key not in out:
+                out.append(key)
     return out
 
 
@@ -1668,6 +1684,8 @@ def enforce_tab_order():
     global _TAB_REORDERING
     if _TAB_REORDERING:
         return
+    if globals().get("_WS", {}).get("doc") is not None:
+        return   # el workspace compartido decide el orden (igual en remoto)
     _TAB_REORDERING = True
     try:
         pages = {getattr(p, "_key", None): p for p in notebook_pages()}
@@ -1684,7 +1702,7 @@ def enforce_tab_order():
 
 def refresh_favorite_buttons():
     for key, page in tabs.items():
-        button = getattr(nb.get_tab_label(page), "_favorite", None)
+        button = getattr(tab_hb(page), "_favorite", None)
         if button is None:
             continue
         favorite = key in TAB_FAVORITES
@@ -1740,7 +1758,7 @@ def toggle_tab_favorite(key):
     def persist():
         with _FAVORITE_REQUEST_LOCK:
             try:
-                request = urllib.request.Request("http://127.0.0.1:4777/prefs-set",
+                request = urllib.request.Request(BASE_URL + "/prefs-set",
                     data=json.dumps({"favorite": {"session": key, "enabled": not before}}).encode(),
                     headers={"Content-Type": "application/json"}, method="POST")
                 with urllib.request.urlopen(request, timeout=5) as response:
@@ -2387,6 +2405,7 @@ def tab_label(text, key=None, closable=True):
     hb._micon = micon
     hb._model = model_lbl
     hb._text_box = lbl_box
+    globals().get("ws_drag_source", lambda *a: None)(lbl_box, key)
     if key and key != "local":
         favorite = Gtk.Button(label="★" if key in TAB_FAVORITES else "☆")
         favorite.set_relief(Gtk.ReliefStyle.NONE)
@@ -2481,7 +2500,7 @@ def update_dots(states, items=None, notif_count=None):
         STATE_ITEMS.clear()
         STATE_ITEMS.update({it.get("session"): it for it in items if it.get("session")})
     for key, box in tabs.items():
-        hb = nb.get_tab_label(box)
+        hb = tab_hb(box)
         dot = getattr(hb, "_dot", None)
         if dot is None:
             continue
@@ -2573,13 +2592,13 @@ def poll_state_loop():
     last_prefs = None
     while True:
         try:
-            with urllib.request.urlopen("http://127.0.0.1:4777/state", timeout=3) as r:
+            with urllib.request.urlopen(BASE_URL + "/state", timeout=3) as r:
                 items = json.loads(r.read().decode())
             states = {it["session"]: it.get("status", "idle")
                       for it in items if it.get("session")}
             # Fetch the shared notification count off the GTK thread as well.
             try:
-                with urllib.request.urlopen("http://127.0.0.1:4777/notifs/count", timeout=2) as r:
+                with urllib.request.urlopen(BASE_URL + "/notifs/count", timeout=2) as r:
                     nc = int(json.loads(r.read().decode()).get("count", 0))
             except Exception:
                 nc = 0
@@ -2591,7 +2610,7 @@ def poll_state_loop():
         # y tema). Antes solo se leian al arrancar la app.
         try:
             favorite_generation = _FAVORITE_GENERATION
-            with urllib.request.urlopen("http://127.0.0.1:4777/prefs", timeout=3) as r:
+            with urllib.request.urlopen(BASE_URL + "/prefs", timeout=3) as r:
                 p = json.loads(r.read().decode())
             _queue_poll_update(apply_tab_favorites, p.get("favorites", []), favorite_generation)
             snap = {k: p.get(k) for k in _LIVE_PREF_KEYS}
@@ -2705,7 +2724,7 @@ def close_tab(key, confirm=True):
     if box is not None:
         if getattr(box, "_term", None) is not None:
             box._term._respawn = False
-        nb.remove_page(nb.page_num(box))
+        ws_forget(key, box)
     save_tabs()
     # Scratch (term-*) con puro shell ocioso: cerrar la pestana MATA la sesion
     # (adios sesiones fantasma). Si algo corre adentro (vite, claude, ssh...),
@@ -2803,7 +2822,7 @@ def open_xterm_tab(sess="local"):
         sess = "local"
     key = f"xterm-{sess}"
     if key in tabs:
-        nb.set_current_page(nb.page_num(tabs[key]))
+        ws_select(key)
         return
     if key in _XTERM_PENDING:
         return
@@ -2834,7 +2853,7 @@ def open_xterm_tab(sess="local"):
         box._key = key
         box._label = f"xterm · {sess}"
         idx = nb.append_page(box, tab_label(box._label, key))
-        nb.set_tab_reorderable(box, True)
+        nb.set_tab_reorderable(box, False)
         box.show_all()
         nb.set_current_page(idx)
         tabs[key] = box
@@ -2888,8 +2907,7 @@ def open_tab(sess, winname, label=None):
         tmuxc("set-option", "-t", sess, "mouse", "off")
     if key in tabs:
         select_win(sess, winname)
-        nb.set_current_page(nb.page_num(tabs[key]))
-        tabs[key]._term.grab_focus()
+        ws_select(key)
         return
     select_win(sess, winname)
     target = shlex.quote("=" + sess)
@@ -2900,7 +2918,7 @@ def open_tab(sess, winname, label=None):
     _attach_model_bar(box, sess)
     box._label = label or saved_tab_label(sess) or sess
     idx = nb.append_page(box, tab_label(box._label, key))
-    nb.set_tab_reorderable(box, True)
+    nb.set_tab_reorderable(box, False)
     box.show_all()
     nb.set_current_page(idx)
     box._term.grab_focus()
@@ -2910,7 +2928,7 @@ def open_tab(sess, winname, label=None):
 
 def set_tab_label(box, text):
     box._label = text
-    hb = nb.get_tab_label(box)
+    hb = tab_hb(box)
     if hb is not None and getattr(hb, "_text", None) is not None:
         hb._text.set_text(text)
     save_tabs()
@@ -3150,7 +3168,7 @@ def open_switcher(*_):
 def tab_page_label(page):
     if getattr(page, "_label", None):
         return page._label
-    hb = nb.get_tab_label(page)
+    hb = tab_hb(page)
     txt = getattr(hb, "_text", None)
     if txt is not None:
         return txt.get_text()
@@ -3310,8 +3328,8 @@ def apply_theme(name):
             button.set_image(_themed_icon_image(icon_name, icon_size))
         except Exception:
             pass
-    for i in range(nb.get_n_pages()):
-        t = getattr(nb.get_nth_page(i), "_term", None)
+    for box in list(tabs.values()) + [hub]:
+        t = getattr(box, "_term", None)
         if t:
             t.set_colors(rgba(THEME["fg"]), rgba(THEME["bg"]),
                          [rgba(p) for p in THEME["pal"]])
@@ -3358,6 +3376,349 @@ hub._key = "local"   # la pestana ⌂ opera la sesion tmux "local": sin esto, al
 nb.append_page(hub, tab_label("⌂ local", closable=False))
 nb.set_tab_reorderable(hub, False)
 nb.connect("page-reordered", on_tab_reordered)
+
+
+# ---- Workspace compartido (bloque W): grupos de tabs acoplados, la MISMA
+# distribucion que el remoto. cc-dash (/workspace) es la autoridad; aqui se
+# reparentan las terminales existentes (nunca se recrean) y se arrastran tabs
+# completas a bordes con vista previa, igual que en dash/workspace-dock.js.
+_WS = {"revision": 0, "doc": None, "drag": None, "target": None, "posting": False, "press": None}
+
+
+def ws_widget(key):
+    return hub if key == "local" else tabs.get(key)
+
+
+def ws_tab_label(key, text):
+    if key.startswith("group:"):
+        hb = tab_label(text, key=None, closable=False)
+        hb._set_group_text = hb._text.set_text
+        hb._group = key[6:]
+    else:
+        hb = tab_label(text or key, key=key, closable=key != "local")
+    hb.show_all()
+    return hb
+
+
+def ws_header(key, box):
+    ev = Gtk.EventBox()
+    ev.get_style_context().add_class("ws-leaf-head")
+    row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
+    grip = Gtk.Label(label="⠿")
+    grip.get_style_context().add_class("dim-label")
+    row.pack_start(grip, False, False, 0)
+    name = Gtk.Label(label=getattr(box, "_label", key), xalign=0)
+    name.set_ellipsize(Pango.EllipsizeMode.END)
+    row.pack_start(name, True, True, 0)
+    ev.add(row)
+    ev.set_tooltip_text("Arrastra para mover esta tab" if ES else "Drag to move this tab")
+    ev.connect("button-press-event", lambda *_: (ws_select(key), False)[1])
+    ws_drag_source(ev, key)
+    return ev
+
+
+def ws_forget(key, box):
+    """Drop a closed tab: plain page removed, docked member taken out."""
+    page = WS_VIEW.page_of(box)
+    if isinstance(page, gtk_workspace.GroupPage):
+        leaf = page.leaves.pop(key, None)
+        page.members.pop(key, None)
+        if leaf is not None and box.get_parent() is leaf:
+            leaf.remove(box)
+        page._shape = None
+        if WS_VIEW.doc is not None:
+            WS_VIEW.apply(WS_VIEW.doc)
+    elif page is not None and nb.page_num(page) >= 0:
+        nb.remove_page(nb.page_num(page))
+
+
+def ws_select(key):
+    if not WS_VIEW.select(key):
+        box = ws_widget(key)
+        if box is not None and nb.page_num(box) >= 0:
+            nb.set_current_page(nb.page_num(box))
+
+
+WS_VIEW = gtk_workspace.WorkspaceView(nb, ws_widget, ws_tab_label, ws_header)
+
+
+def ws_apply(state):
+    if not isinstance(state, dict) or not isinstance(state.get("groups"), list):
+        return False
+    if _WS["drag"] is not None or _WS["posting"]:
+        return False           # nunca mover la distribucion bajo un gesto
+    doc = {"schema": state.get("schema", 1), "groups": state["groups"], "tabs": state.get("tabs", {})}
+    if "bindings" in state:
+        doc["bindings"] = state["bindings"]
+    _WS["doc"], _WS["revision"] = doc, state.get("revision", 0)
+    try:
+        WS_VIEW.apply(doc)
+    except Exception as exc:
+        print(f"workspace apply: {exc}", file=sys.stderr)
+    return False
+
+
+def ws_poll_loop():
+    while True:
+        try:
+            with urllib.request.urlopen(BASE_URL + "/workspace", timeout=3) as r:
+                state = json.loads(r.read().decode())
+            if state.get("revision") != _WS["revision"] and _LAYOUT_RESTORE_READY:
+                GLib.idle_add(ws_apply, state)
+        except Exception:
+            pass
+        time.sleep(2)
+
+
+def ws_commit(doc, focus=None):
+    """POST a new arrangement; the server's answer (or its conflict) wins."""
+    _WS["posting"] = True
+    _WS["doc"] = doc
+    WS_VIEW.apply(doc)
+    if focus:
+        ws_select(focus)
+    payload = {"requestId": secrets.token_hex(12), "expectedRevision": _WS["revision"], "document": doc}
+
+    def work():
+        req = urllib.request.Request(BASE_URL + "/workspace", data=json.dumps(payload).encode(),
+                                     headers={"Content-Type": "application/json"})
+        state, error = None, None
+        try:
+            with urllib.request.urlopen(req, timeout=5) as r:
+                state = json.loads(r.read().decode())
+        except urllib.error.HTTPError as e:
+            try:
+                body = json.loads(e.read().decode())
+            except Exception:
+                body = {}
+            state, error = body.get("current"), body.get("error") or str(e)
+        except Exception as e:
+            error = str(e)
+
+        def done():
+            _WS["posting"] = False
+            if state:
+                _WS["revision"] = -1          # fuerza aplicar la respuesta
+                ws_apply(state)
+            if error:
+                notify_popup("Distribución" if ES else "Layout",
+                             ("Otro dispositivo cambió la distribución; se muestra la actual."
+                              if ES else "Another device changed the layout; showing the current one.")
+                             if state else error)
+            return False
+        GLib.idle_add(done)
+    threading.Thread(target=work, daemon=True).start()
+
+
+def ws_resized(group_id, path, ratio):
+    if _WS["doc"] is None:
+        return
+    try:
+        doc = workspace_layout.resize_split(_WS["doc"], group_id, path, ratio)
+    except ValueError:
+        return
+    ws_commit(doc)
+
+
+WS_VIEW.on_resize = ws_resized
+
+
+# -- arrastre -------------------------------------------------------------
+def _ws_source_of(widget, key):
+    if key:
+        return key
+    for page in notebook_pages():
+        label = nb.get_tab_label(page)
+        if label is not None and (label is widget or widget.is_ancestor(label)):
+            if isinstance(page, gtk_workspace.GroupPage):
+                return "group:" + page.group_id
+            return getattr(page, "_key", None)
+    return None
+
+
+def ws_drag_source(widget, key):
+    """Own gesture on the button's implicit grab (no GTK DnD): works on X11,
+    Wayland and Broadway alike. Press, move >7 px, release; Escape cancels."""
+    widget.add_events(Gdk.EventMask.BUTTON_PRESS_MASK | Gdk.EventMask.BUTTON_RELEASE_MASK
+                      | Gdk.EventMask.POINTER_MOTION_MASK)
+    widget.connect("button-press-event", lambda w, e: _ws_press(w, e, key))
+    widget.connect("motion-notify-event", _ws_pointer_move)
+    widget.connect("button-release-event", _ws_release)
+
+
+def _ws_press(widget, event, key):
+    if event.button == 1 and event.type == Gdk.EventType.BUTTON_PRESS and _WS["doc"] is not None:
+        _WS["press"] = {"widget": widget, "key": key, "x": event.x_root, "y": event.y_root}
+    return False   # el notebook sigue cambiando de pestana con el clic
+
+
+def _ws_layer_point(widget, event):
+    pos = widget.translate_coordinates(_ws_layer, int(event.x), int(event.y))
+    return pos if pos is not None else (-1, -1)
+
+
+def _ws_pointer_move(widget, event):
+    press = _WS.get("press")
+    if not press or press["widget"] is not widget:
+        return False
+    if _WS["drag"] is None:
+        if ((event.x_root - press["x"]) ** 2 + (event.y_root - press["y"]) ** 2) < 49:
+            return False
+        _ws_drag_begin(_ws_source_of(widget, press["key"]))
+        if _WS["drag"] is None:
+            return False
+    x, y = _ws_layer_point(widget, event)
+    _WS["target"] = _ws_target(x, y)
+    _ws_layer.queue_draw()
+    return True
+
+
+def _ws_release(widget, event):
+    press, _WS["press"] = _WS.get("press"), None
+    if _WS["drag"] is None or not press or press["widget"] is not widget:
+        return False
+    x, y = _ws_layer_point(widget, event)
+    _ws_finish(_ws_target(x, y))
+    return True
+
+
+def ws_cancel_drag():
+    if _WS["drag"] is None:
+        return False
+    _WS["press"] = None
+    _ws_drag_end()
+    return True
+
+
+def _ws_moved_ids(source):
+    doc = _WS["doc"] or {}
+    if source and source.startswith("group:"):
+        group = next((g for g in doc.get("groups", []) if g["id"] == source[6:]), None)
+        return gtk_workspace.tab_ids(group["tree"]) if group else []
+    return [source] if source else []
+
+
+def _ws_drag_begin(source):
+    if _WS["doc"] is None or not source:
+        return
+    _WS["drag"] = source
+    _WS["target"] = None
+    _ws_layer.show()
+
+
+def _ws_drag_end():
+    _WS["drag"] = None
+    _WS["target"] = None
+    _ws_layer.hide()
+
+
+def _ws_rect(widget):
+    alloc = widget.get_allocation()
+    pos = widget.translate_coordinates(_ws_layer, 0, 0)
+    if pos is None:
+        return None
+    return (pos[0], pos[1], alloc.width, alloc.height)
+
+
+def _ws_layout():
+    entries, bottoms = [], []
+    for page in notebook_pages():
+        label = nb.get_tab_label(page)
+        rect = _ws_rect(label) if label is not None and label.get_mapped() else None
+        if rect:
+            entries.append((page, rect))
+            bottoms.append(rect[1] + rect[3])
+    width = _ws_layer.get_allocated_width()
+    strip_h = (max(bottoms) + 6) if bottoms else 0
+    page = nb.get_nth_page(nb.get_current_page())
+    area = _ws_rect(page) if page is not None else None
+    leaves, active, active_tabs = {}, None, []
+    if isinstance(page, gtk_workspace.GroupPage):
+        active = page.group_id
+        active_tabs = list(page.members)
+        for key, leaf in page.leaves.items():
+            rect = _ws_rect(leaf)
+            if rect:
+                leaves[key] = rect
+    elif page is not None and area:
+        key = getattr(page, "_key", None)
+        group = next((g for g in (_WS["doc"] or {}).get("groups", [])
+                      if key in gtk_workspace.tab_ids(g["tree"])), None)
+        if group:
+            active, active_tabs = group["id"], gtk_workspace.tab_ids(group["tree"])
+            leaves[key] = area
+    return {"strip": (0, 0, width, strip_h), "entries": entries, "area": area or (0, strip_h, width, 1),
+            "leaves": leaves, "active": active, "activeTabs": active_tabs}
+
+
+def _ws_target(x, y):
+    layout = _ws_layout()
+    raw = layout["entries"]
+    layout["entries"] = [(None, r) for _p, r in raw]
+    target = gtk_workspace.dock_target(layout, x, y, _ws_moved_ids(_WS["drag"]))
+    if target and target["kind"] == "bar":
+        # Posicion en el documento: antes del grupo de la pagina en ese lugar.
+        pages = [p for p, _r in raw]
+        idx = target["index"]
+        target["docIndex"] = _ws_doc_index(pages[idx] if idx < len(pages) else None)
+        rx = raw[idx][1][0] if idx < len(raw) else (raw[-1][1][0] + raw[-1][1][2] if raw else 0)
+        target["rect"] = (rx - 3, 0, 6, layout["strip"][3])
+    return target
+
+
+def _ws_doc_index(page):
+    groups = (_WS["doc"] or {}).get("groups", [])
+    if page is None:
+        return len(groups)
+    if isinstance(page, gtk_workspace.GroupPage):
+        gid = page.group_id
+    else:
+        key = getattr(page, "_key", None)
+        gid = next((g["id"] for g in groups if key in gtk_workspace.tab_ids(g["tree"])), None)
+    return next((i for i, g in enumerate(groups) if g["id"] == gid), len(groups))
+
+
+def _ws_finish(target):
+    source = _WS["drag"]
+    _ws_drag_end()
+    if not target or not source or _WS["doc"] is None:
+        return
+    try:
+        if target["kind"] == "bar":
+            doc = workspace_layout.detach_tab(_WS["doc"], source, target["docIndex"])
+        else:
+            doc = workspace_layout.move_tab(_WS["doc"], source, target["target"], target["edge"])
+    except ValueError:
+        return   # soltar sobre si mismo o sin cambio: nada que guardar
+    ws_commit(doc, None if source.startswith("group:") else source)
+
+
+def _ws_draw(widget, cr):
+    target = _WS["target"]
+    if not target:
+        return False
+    x, y, w, h = target["rect"]
+    brand = Gdk.RGBA()
+    brand.parse(THEME.get("brand") or "#8B7CF6")
+    cr.set_source_rgba(brand.red, brand.green, brand.blue, 0.18 if target["kind"] == "dock" else 0.9)
+    cr.rectangle(x, y, w, h)
+    cr.fill_preserve()
+    cr.set_source_rgba(brand.red, brand.green, brand.blue, 0.95)
+    cr.set_line_width(2)
+    cr.stroke()
+    return False
+
+
+_ws_overlay = Gtk.Overlay()
+_ws_overlay.add(nb)
+_ws_layer = Gtk.DrawingArea()
+_ws_layer.set_no_show_all(True)
+_ws_layer.connect("draw", _ws_draw)
+_ws_overlay.add_overlay(_ws_layer)
+_ws_overlay.set_overlay_pass_through(_ws_layer, True)   # solo pinta la vista previa
+hub._label = "⌂ local"
+ws_drag_source(nb.get_tab_label(hub)._text_box, None)
+threading.Thread(target=ws_poll_loop, daemon=True).start()
 
 # La pestana ACTIVA de la app: el tablero la usa para que el Centro de Control sea siempre
 # el operador de la sesion en la que estas parado.
@@ -3662,7 +4023,7 @@ def _open_extension_shelf(sess, pane, harness=""):
         return False
     target = (sess, pane, harness if harness in ("claude", "codex", "grok", "opencode", "agy") else "")
     if sess in tabs:
-        nb.set_current_page(nb.page_num(tabs[sess]))
+        ws_select(sess)
     if _EXTENSION_SHELF["view"] is None:
         manager = WebKit2.UserContentManager()
         manager.register_script_message_handler("extensions")
@@ -3770,7 +4131,7 @@ def _refresh_tab_models():
     for key, box in pages:
         session = str(key).partition(":")[0]
         info = models.get(session) if isinstance(models, dict) else None
-        hb = nb.get_tab_label(box)
+        hb = tab_hb(box)
         label = getattr(hb, "_model", None)
         # la pestana ⌂ local NO lleva sufijo de modelo (infla el tab strip);
         # SEMANTICA: logo del proveedor + modelo corto (no "Claude · fable")
@@ -4403,7 +4764,7 @@ _mosaic_btn = _icon_btn("grid",
                         "Mosaico: TODAS las sesiones en una pantalla (Ctrl+G)" if ES
                         else "Mosaic: ALL sessions on one screen (Ctrl+G)",
                         _mosaic_toggle, size=17)
-_headerbar.pack_end(_mosaic_btn)
+# El boton Mosaico visible se retiro (veredicto v1); Ctrl+G y SIGUSR2 siguen.
 _headerbar.pack_end(_plus)
 
 
@@ -4478,7 +4839,7 @@ def open_web_tab(url, label=""):
     sin salir de la app. Cerrable como cualquier pestaña."""
     key = f"web:{url[:120]}"
     if key in tabs:
-        nb.set_current_page(nb.page_num(tabs[key]))
+        ws_select(key)
         return False
     wv2 = WebKit2.WebView()
     wv2.load_uri(url)
@@ -4489,7 +4850,7 @@ def open_web_tab(url, label=""):
     box._key = key
     box._label = ("🌐 " + (label or url.split("/")[2]))[:40]
     idx = nb.append_page(box, tab_label(box._label, key))
-    nb.set_tab_reorderable(box, True)
+    nb.set_tab_reorderable(box, False)
     box.show_all()
     nb.set_current_page(idx)
     tabs[key] = box
@@ -4565,7 +4926,7 @@ _terminal_column = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=0)
 _shelf_paned = Gtk.Paned(orientation=Gtk.Orientation.VERTICAL)
 _shelf_paned.get_style_context().add_class("cc-shelf-paned")
 _shelf_paned.set_wide_handle(True)
-_shelf_paned.pack1(nb, True, False)
+_shelf_paned.pack1(_ws_overlay, True, False)
 _shelf_paned.connect("notify::position", _queue_shelf_height_save)
 _terminal_column.pack_start(_shelf_paned, True, True, 0)
 paned.pack2(_terminal_column, True, False)
@@ -5265,6 +5626,8 @@ def handle_ctrl_c(term, copy_context, now):
 
 
 def on_key(w, e):
+    if e.keyval == Gdk.KEY_Escape and ws_cancel_drag():
+        return True
     ctrl = e.state & Gdk.ModifierType.CONTROL_MASK
     shift = e.state & Gdk.ModifierType.SHIFT_MASK
     # Ayuda: F1. Nunca '?': Shift+/ tiene que escribir el signo en el chat.
@@ -5455,7 +5818,7 @@ def _cur_term():
 def _page_for(sess):
     for i in range(nb.get_n_pages()):
         p = nb.get_nth_page(i)
-        if getattr(p, "_key", None) == sess:
+        if getattr(p, "_key", None) == sess or sess in getattr(p, "members", {}):
             return i, p
     return -1, None
 
