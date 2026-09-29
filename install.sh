@@ -73,6 +73,10 @@ done
 # remoto los carga via cc-dash en /icons y /assets.
 ln -sfn "$REPO/dash/icons" "$HOOKS/dash/icons"
 ln -sfn "$REPO/assets" "$HOOKS/dash/assets"
+# N5/N4: lector de novedades, ajustes de push y dependencias vendorizadas
+# (versión y sha256 en dash/vendor/vendored.json; nada se carga de un CDN).
+for f in news-reader.js push-settings.js; do ln -sf "$REPO/dash/$f" "$HOOKS/dash/$f"; done
+ln -sfn "$REPO/dash/vendor" "$HOOKS/dash/vendor"
 [ -f "$HOOKS/cc-notify.conf" ] || cp "$REPO/hooks/cc-notify.conf.example" "$HOOKS/cc-notify.conf"
 [ -f "$HOOKS/telegram.env" ]   || cp "$REPO/hooks/telegram.env.example"   "$HOOKS/telegram.env"
 # Secretos (token de bot, config): solo el dueno (0600)

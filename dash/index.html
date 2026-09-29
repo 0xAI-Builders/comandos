@@ -1982,6 +1982,7 @@
 	    <div id="pomo-panel" class="hidden" role="dialog" aria-label="Pomodoro"></div>
 	    <button class="hdr-btn" id="btn-notif" aria-label="Notificaciones" title="Notificaciones — todo local: avisos, pomodoros y cola de foco"><span data-icon="bell" data-size="16"></span><b class="nbadge hidden" id="notif-badge">0</b></button>
 	    <div id="notif-panel" class="hidden" role="dialog" aria-label="Notificaciones"></div>
+	    <button class="hdr-btn" id="btn-news" aria-label="Novedades" title="Novedades — tres ediciones diarias con fuentes"><span data-icon="sparkles" data-size="16"></span></button>
 	    <button class="hdr-btn" id="btn-settings">Ajustes</button>
   </div>
 </header>
@@ -9106,3 +9107,6 @@ if("serviceWorker" in navigator)
 <script src="/extensions.js"></script>
 <script src="/session-controls.js?v=fef689ef2baa"></script>
 <script src="/workspace.js?v=b0f9e32aaaf8"></script>
+<script src="/vendor/markdown-it-15.0.2.umd.min.js"></script>
+<script src="/vendor/purify-3.4.16.min.js"></script>
+<script src="/news-reader.js" data-autoinstall></script>

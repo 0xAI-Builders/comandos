@@ -185,3 +185,86 @@ body.ws-dragging .termpane{pointer-events:none}
 .apptab .ws-count[hidden]{display:none}
 .apptab[data-ws-source]{touch-action:pan-x}
 .apptab.ws-unavailable .lbl{opacity:.55;text-decoration:line-through dotted}
+
+/* ---- N5 lector de novedades: edición continua B, terminal opcional a la izquierda ---- */
+#news-reader{position:fixed;inset:0;z-index:11000;display:flex;flex-direction:column;background:var(--bg);color:var(--text);font-family:var(--sans);--read-size:16px}
+#news-reader[hidden]{display:none}
+html.nr-open,html.nr-open body{overflow:hidden}
+#news-reader button{font:inherit;color:inherit;background:var(--panel2);border:1px solid var(--line);border-radius:7px;min-height:38px;padding:6px 10px;cursor:pointer}
+#news-reader button:focus-visible,#news-reader select:focus-visible,#news-reader a:focus-visible{outline:2px solid var(--brand);outline-offset:2px}
+.nr-header{display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:8px 12px;border-bottom:1px solid var(--line);flex:none}
+.nr-header .nr-title{font-size:14px;margin-right:auto}
+.nr-edition-pick{min-height:38px;max-width:min(320px,60vw);background:var(--panel2);color:var(--text);border:1px solid var(--line);border-radius:7px;padding:4px 8px;font:inherit;font-size:12px}
+.nr-terminal-toggle.on{border-color:var(--brand)!important;color:var(--brand)}
+.nr-font{display:flex;gap:2px}
+.nr-font button{min-width:38px}
+.nr-mobile-switch{display:none;gap:2px}
+.nr-mobile-switch button[aria-pressed=true]{border-color:var(--brand);color:var(--brand)}
+.nr-stage{flex:1;min-height:0;display:grid;grid-template-columns:minmax(0,1fr);grid-template-rows:minmax(0,1fr)}
+.nr-reader{display:flex;flex-direction:column;min-width:0;min-height:0}
+.nr-filters{display:flex;gap:5px;overflow-x:auto;padding:8px 14px;border-bottom:1px solid var(--line);flex:none;scrollbar-width:thin}
+.nr-filters button{white-space:nowrap;font-size:12px!important;background:transparent!important;border-color:transparent!important}
+.nr-filters button.on{border-color:var(--brand)!important;color:var(--brand)}
+.nr-filters i{font-style:normal;color:var(--dim);font-size:10px;margin-left:5px}
+.nr-reader-body{flex:1;min-height:0;overflow:auto;outline:0;overscroll-behavior:contain}
+.nr-edition{max-width:850px;margin:auto;padding:24px clamp(16px,4vw,46px) 48px;box-sizing:border-box}
+.nr-state,.nr-empty,.nr-message{color:var(--dim);font-size:14px;line-height:1.7;padding:24px 0}
+.nr-message{padding:16px}
+.nr-edition-head{border-bottom:1px solid var(--line2);padding:6px 0 18px;margin-bottom:8px}
+.nr-edition-head>small{font:10px var(--mono);color:var(--dim);letter-spacing:.1em;text-transform:uppercase}
+.nr-edition-head h1{font:normal clamp(26px,3vw,36px)/1.15 Georgia,serif;margin:10px 0 12px}
+.nr-edition-head p{color:var(--dim);font-size:14px;line-height:1.7;margin:0}
+.nr-notes{margin-top:10px;font-size:12px;color:var(--dim)}
+.nr-notes summary,.nr-sources summary,.nr-more summary{cursor:pointer;min-height:38px;display:flex;align-items:center;gap:6px}
+.nr-edition-index{display:flex;gap:6px;flex-wrap:wrap;padding:14px 0}
+.nr-edition-index button{font-size:11px!important;background:transparent!important;max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.nr-edition-story{border-bottom:1px solid var(--line);padding:22px 0;scroll-margin-top:8px}
+.nr-kicker{font:10px var(--mono);letter-spacing:.1em;text-transform:uppercase;color:var(--brand)}
+.nr-edition-story>h2{font:normal 26px/1.3 Georgia,serif;margin:10px 0}
+.nr-markdown{font-size:var(--read-size);line-height:1.75;color:var(--text);overflow-wrap:anywhere}
+.nr-markdown a{color:var(--brand)}
+.nr-markdown .nr-host{font:11px var(--mono);color:var(--waiting)}
+.nr-markdown pre{background:var(--panel);border:1px solid var(--line);border-radius:7px;padding:12px;overflow:auto;font:12px/1.6 var(--mono)}
+.nr-markdown code{font-family:var(--mono);font-size:.9em}
+.nr-markdown blockquote{border-left:3px solid var(--line2);margin:12px 0;padding:2px 14px;color:var(--dim)}
+.nr-table-wrap{overflow-x:auto;margin:12px 0;border:1px solid var(--line);border-radius:7px}
+.nr-table-wrap table{border-collapse:collapse;min-width:100%;font-size:13px}
+.nr-table-wrap th,.nr-table-wrap td{border-bottom:1px solid var(--line);padding:7px 10px;text-align:left;white-space:nowrap}
+.nr-bounty-facts{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px;margin:12px 0;font-size:12px}
+.nr-bounty-facts div{border:1px solid var(--line);border-radius:7px;padding:7px 9px}
+.nr-bounty-facts dt{color:var(--dim);font-size:10px;text-transform:uppercase;letter-spacing:.06em}
+.nr-bounty-facts dd{margin:3px 0 0;overflow-wrap:anywhere}
+.nr-sources{margin:10px 0;font-size:12px}
+.nr-sources ul{margin:0;padding-left:18px}
+.nr-sources li{padding:6px 0;overflow-wrap:anywhere}
+.nr-sources li a{color:var(--brand)}
+.nr-sources li small{display:block;color:var(--dim)}
+.nr-save[aria-pressed=true]{border-color:var(--brand)!important;color:var(--brand)}
+.nr-terminal{min-width:0;min-height:0;display:flex;flex-direction:column;background:var(--bg)}
+.nr-terminal[hidden]{display:none}
+.nr-terminal-host{flex:1;min-height:0;display:flex}
+.nr-term-frame{flex:1;width:100%;height:100%;border:0;background:var(--bg)}
+.nr-edition-divider{background:var(--line);cursor:col-resize;touch-action:none;position:relative;outline:0}
+.nr-edition-divider[hidden]{display:none}
+.nr-edition-divider::after{content:"";position:absolute;left:3px;right:3px;top:44%;bottom:44%;border-radius:4px;background:var(--line2)}
+.nr-edition-divider:hover,.nr-edition-divider:focus-visible,.nr-edition-divider.dragging{background:var(--brand)}
+/* Terminal a la izquierda, edición a la derecha (veredicto de Jesús). */
+.nr-with-terminal .nr-stage{grid-template-columns:minmax(0,1fr) 10px minmax(0,var(--nr-share,58%))}
+.nr-with-terminal .nr-terminal{grid-column:1;grid-row:1}
+.nr-with-terminal .nr-edition-divider{grid-column:2;grid-row:1}
+.nr-with-terminal .nr-reader{grid-column:3;grid-row:1}
+.nr-with-terminal .nr-edition{padding:14px 18px 28px}
+.nr-with-terminal .nr-edition-story>h2{font-size:23px}
+@media (max-width:560px){
+  .nr-header{padding:6px 8px;gap:6px}
+  .nr-close-label{display:none}
+  .nr-edition{padding:16px 16px 32px}
+  .nr-edition-head h1{font-size:27px}
+  .nr-edition-story>h2{font-size:23px}
+  /* Mismo orden horizontal: Terminal | Novedades, a ancho completo con swipe. */
+  .nr-with-terminal .nr-stage{grid-template-columns:100% 0 100%;overflow-x:auto;scroll-snap-type:x mandatory;overscroll-behavior-x:contain}
+  .nr-with-terminal .nr-terminal,.nr-with-terminal .nr-reader{scroll-snap-align:start;scroll-snap-stop:always}
+  .nr-with-terminal .nr-edition-divider{visibility:hidden;pointer-events:none}
+  .nr-with-terminal .nr-mobile-switch{display:flex}
+  .nr-with-terminal .nr-title{display:none}
+}
