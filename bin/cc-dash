@@ -57,7 +57,7 @@ HOOKS = os.path.expanduser("~/.claude/hooks")
 PORT = 4777
 STATE = os.path.join(HOOKS, "state")
 UI_LOG = os.path.join(HOOKS, "ui-events.jsonl")     # registro LOCAL de uso de la interfaz (clicks, pantallas, tiempos)
-FOCUS_FILE = os.path.join(HOOKS, "focus.json")          # pomodoro en curso: {project, session, until}
+FOCUS_FILE = os.path.join(HOOKS, "focus.json")          # autoridad anterior: se adopta y renombra una vez
 FOCUS_QUEUE = os.path.join(HOOKS, "focus-queue.jsonl")  # avisos encolados por cc-notifyd mientras te enfocas
 
 
@@ -130,17 +130,6 @@ def ui_log_summary(days=7):
             "paths": [{"path": k, "n": v} for k, v in fmt(pairs)[:15] if v >= 2],
             "screens": [{"name": k, "seconds": v} for k, v in fmt(screens)[:15]],
             "sessions": [{"name": k, "n": v} for k, v in fmt(sessions)[:10]]}
-
-
-def focus_state():
-    try:
-        with open(FOCUS_FILE) as f:
-            d = json.load(f)
-        if float(d.get("until") or 0) > time.time():
-            return d
-    except Exception:
-        pass
-    return None
 
 
 def focus_queue():
@@ -929,6 +918,7 @@ import tmux_snapshot
 import session_operations
 import app_state
 import workspace_state
+import pomodoro
 import tui_state
 _TUI_TRANSCRIPTS = tui_state.TranscriptCache()
 _TUI_STATES = tui_state.StateTracker()
@@ -6576,6 +6566,143 @@ def workspace_payload(state):
     return doc
 
 
+# ---- Pomodoro: una sola autoridad (app-state), un solo scheduler ----------
+# El bloque, su revisión y su finalización viven en lib/pomodoro.py. Los
+# clientes (tablero, popover de cc-app, remoto) solo pintan el tiempo con
+# serverNowMs. focus.json deja de escribirse: se adopta una vez y se renombra.
+POMODORO_CLOCK = lambda: int(time.time() * 1000)   # las pruebas lo sustituyen
+_POMODORO_LOCAL = threading.local()
+_POMODORO_WAKE = threading.Event()
+_POMODORO_SCHEDULER = {"thread": None}
+_POMODORO_EMIT_WARNED = []
+
+
+def _pomodoro_log(message):
+    sys.stderr.write(message.rstrip() + "\n")
+
+
+def _pomodoro_emit(conn, event):
+    """Hand the completion to the N1 event log inside the same transaction."""
+    try:
+        from event_store import append_event
+    except ImportError:
+        if not _POMODORO_EMIT_WARNED:
+            _POMODORO_EMIT_WARNED.append(True)
+            _pomodoro_log("cc-dash pomodoro: event_store no disponible; focus_completed no se registra como evento")
+        return
+    append_event(conn, event)
+
+
+def _pomodoro_rewards():
+    return None
+
+
+def pomodoro_store():
+    store = getattr(_POMODORO_LOCAL, "store", None)
+    if store is None:
+        conn = app_state.connect()
+        app_state.migrate(conn)
+        store = pomodoro.PomodoroStore(conn, lambda: POMODORO_CLOCK(), emit=_pomodoro_emit,
+                                       rewards=_pomodoro_rewards(), log=_pomodoro_log)
+        _POMODORO_LOCAL.store = store
+    return store
+
+
+def pomodoro_adopt_legacy():
+    """Adopt a live block from the former focus.json authority, then retire it."""
+    store = pomodoro_store()
+    try:
+        with open(FOCUS_FILE) as f:
+            data = json.load(f)
+    except (OSError, ValueError):
+        return False
+    adopted = store.import_legacy_focus(data)
+    try:
+        os.replace(FOCUS_FILE, f"{FOCUS_FILE}.migrated-{int(time.time())}")
+    except OSError:
+        pass
+    return adopted
+
+
+def pomodoro_settings():
+    return cc_usage.read_focus_settings(USAGE_DB)
+
+
+def pomodoro_payload(state=None):
+    state = state or pomodoro_store().snapshot()
+    out = dict(state)
+    out.update(queue=focus_queue(), settings=pomodoro_settings())
+    return out
+
+
+def pomodoro_scheduler_loop(stop=None):
+    """Single backend scheduler: settles due blocks at start-up and on time."""
+    stop = stop or threading.Event()
+    try:
+        pomodoro_adopt_legacy()
+    except Exception as exc:
+        _pomodoro_log(f"cc-dash pomodoro: no se pudo adoptar focus.json: {exc!r}")
+    while not stop.is_set():
+        delay = 30.0
+        try:
+            store = pomodoro_store()
+            store.settle_due()
+            deadline = store.next_deadline_ms()
+            if deadline is not None:
+                delay = min(delay, max(0.05, (deadline - POMODORO_CLOCK()) / 1000 + 0.02))
+        except Exception as exc:   # la próxima vuelta reintenta; nunca muere el hilo
+            _pomodoro_log(f"cc-dash pomodoro scheduler: {exc!r}")
+            delay = 2.0
+        _POMODORO_WAKE.wait(delay)
+        _POMODORO_WAKE.clear()
+
+
+def start_pomodoro_scheduler():
+    if _POMODORO_SCHEDULER["thread"] is None:
+        thread = threading.Thread(target=pomodoro_scheduler_loop, name="pomodoro-scheduler", daemon=True)
+        _POMODORO_SCHEDULER["thread"] = thread
+        thread.start()
+    return _POMODORO_SCHEDULER["thread"]
+
+
+def _pomodoro_legacy_command(data):
+    """Translate the pre-1.0 body ({mins, mode} / {stop}) used by the operator."""
+    rid = "legacy-" + secrets.token_hex(16)
+    if data.get("stop"):
+        return {"requestId": rid, "expectedRevision": None, "action": "cancel"}
+    try:
+        mins = int(data.get("mins") or 25)
+    except (TypeError, ValueError):
+        mins = 0
+    return {"requestId": rid, "expectedRevision": None, "action": "start",
+            "mode": str(data.get("mode") or "focus"), "targetMs": mins * 60000,
+            "project": data.get("project"), "sessionKey": data.get("session"),
+            "paneKey": data.get("pane"), "cycleIndex": data.get("cycleIndex"),
+            "cycleTotal": data.get("cycleTotal")}
+
+
+def pomodoro_post(data):
+    """POST /pomodoro -> (status, body). Commands carry requestId/expectedRevision."""
+    if data.get("settings") is not None:
+        if not isinstance(data.get("settings"), dict):
+            return 400, {"ok": False, "error": "settings inválido"}
+        return 200, {"ok": True, "settings": cc_usage.set_focus_settings(USAGE_DB, data["settings"])}
+    if data.get("ack"):
+        try:
+            os.remove(FOCUS_QUEUE)
+        except OSError:
+            pass
+        return 200, {"ok": True}
+    command = data if "action" in data else _pomodoro_legacy_command(data)
+    try:
+        result = pomodoro_store().command(command)
+    except pomodoro.PomodoroError as exc:
+        return exc.status, exc.payload()
+    finally:
+        _POMODORO_WAKE.set()
+    return 200, result
+
+
 def session_labels():
     """Etiquetas para DISPLAY (cards, switcher): pestanas + historial de
     sesiones vivas. Solo aporta nombres bonitos; jamas decide que es una tab."""
@@ -8045,9 +8172,7 @@ class Handler(http.server.SimpleHTTPRequestHandler):
         if self.path.startswith("/dedication"):
             return self._json(200, dedication_stats())
         if self.path == "/pomodoro":
-            return self._json(200, {"focus": focus_state(), "queue": focus_queue(),
-                                    "analytics": cc_usage.focus_analytics(USAGE_DB, 7),
-                                    "settings": cc_usage.read_focus_settings(USAGE_DB)})
+            return self._json(200, pomodoro_payload())
         if self.path == "/sovereignty":
             return self._json(200, sovereignty_report())
         if self.path.startswith("/model/status"):
@@ -8477,43 +8602,7 @@ class Handler(http.server.SimpleHTTPRequestHandler):
         if self.path == "/ui-log":
             return self._json(200, {"ok": True, "n": ui_log_append(data.get("events") or [])})
         if self.path == "/pomodoro":
-            if data.get("settings") is not None:
-                settings = cc_usage.set_focus_settings(USAGE_DB, data.get("settings") or {})
-                return self._json(200, {"ok": True, "settings": settings})
-            if data.get("stop"):
-                current = focus_state() or {}
-                status = str(data.get("status") or "cancelled")
-                if current.get("blockId"):
-                    try: cc_usage.focus_block_finish(USAGE_DB, current["blockId"], status)
-                    except ValueError as e: return self._json(400, {"error": str(e)})
-                try: os.remove(FOCUS_FILE)
-                except OSError: pass
-                return self._json(200, {"ok": True, "queue": focus_queue(),
-                                        "analytics": cc_usage.focus_analytics(USAGE_DB, 7)})
-            if data.get("ack"):
-                try: os.remove(FOCUS_QUEUE)
-                except OSError: pass
-                return self._json(200, {"ok": True})
-            mins = max(1, min(180, int(data.get("mins") or 25)))
-            mode = str(data.get("mode") or "focus")
-            block = cc_usage.focus_block_start(USAGE_DB, {
-                "mode": mode, "project": data.get("project"),
-                "tmux_session": data.get("session"), "tmux_pane": data.get("pane"),
-                "planned_minutes": mins, "cycle_index": data.get("cycleIndex"),
-                "cycle_total": data.get("cycleTotal"),
-            })
-            st = {"blockId": block["id"], "mode": mode,
-                  "project": str(data.get("project") or "")[:120], "session": str(data.get("session") or "")[:120],
-                  "pane": str(data.get("pane") or "")[:32], "until": time.time() + mins * 60,
-                  "startedAt": time.time(), "mins": mins,
-                  "cycleIndex": max(1, int(data.get("cycleIndex") or 1)),
-                  "cycleTotal": max(1, int(data.get("cycleTotal") or 1))}
-            if mode == "focus":
-                try: os.remove(FOCUS_QUEUE)
-                except OSError: pass
-            write_json_file(FOCUS_FILE, st)
-            return self._json(200, {"ok": True, "focus": st,
-                                    "analytics": cc_usage.focus_analytics(USAGE_DB, 7)})
+            return self._json(*pomodoro_post(data))
         if self.path == "/conf-set":
             key, val = data.get("key", ""), str(data.get("value", ""))
             ok = (key == "VOLUME" and val.isdigit() and 0 <= int(val) <= 100) or \
@@ -9450,6 +9539,7 @@ def main():
     PORT = port
     socketserver.TCPServer.allow_reuse_address = True
     with socketserver.ThreadingTCPServer(("127.0.0.1", port), Handler) as srv:
+        start_pomodoro_scheduler()
         url = f"http://127.0.0.1:{port}"
         print(f"Centro Claude corriendo en {url}  (Ctrl+C para salir)")
         restore_requested_webterm()
