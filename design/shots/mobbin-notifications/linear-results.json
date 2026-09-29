@@ -1,0 +1,12 @@
+{
+  "query": "Linear inbox notifications list with unread issues and preview of the selected issue",
+  "screens": [
+    {
+      "id": "cef36326-d8ec-4c6f-acd4-a9f1e1060d33",
+      "image_url": "https://mobbin.com/api/mcp/short/gLBb8mrw",
+      "mobbin_url": "https://mobbin.com/screens/cef36326-d8ec-4c6f-acd4-a9f1e1060d33",
+      "app_name": "Linear",
+      "platform": "web"
+    }
+  ]
+}

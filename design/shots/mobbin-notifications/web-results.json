@@ -1,0 +1,33 @@
+{
+  "query": "Notification inbox with unread updates, filters and actions to open the source task",
+  "screens": [
+    {
+      "id": "8f7ead49-4c06-4459-b340-dbfd6a8f7834",
+      "image_url": "https://mobbin.com/api/mcp/short/sUDJBE0E",
+      "mobbin_url": "https://mobbin.com/screens/8f7ead49-4c06-4459-b340-dbfd6a8f7834",
+      "app_name": "Klaviyo",
+      "platform": "web"
+    },
+    {
+      "id": "b71d21b5-1078-44a4-adb3-9583531a6059",
+      "image_url": "https://mobbin.com/api/mcp/short/5dbDwHJL",
+      "mobbin_url": "https://mobbin.com/screens/b71d21b5-1078-44a4-adb3-9583531a6059",
+      "app_name": "Basecamp",
+      "platform": "web"
+    },
+    {
+      "id": "2c6b438e-5b00-44f2-aa82-e3a05ed47c67",
+      "image_url": "https://mobbin.com/api/mcp/short/DQT96dAd",
+      "mobbin_url": "https://mobbin.com/screens/2c6b438e-5b00-44f2-aa82-e3a05ed47c67",
+      "app_name": "Canny",
+      "platform": "web"
+    },
+    {
+      "id": "05899178-5ec3-4a5e-831e-703561fd25ec",
+      "image_url": "https://mobbin.com/api/mcp/short/ln66DWYo",
+      "mobbin_url": "https://mobbin.com/screens/05899178-5ec3-4a5e-831e-703561fd25ec",
+      "app_name": "Tana",
+      "platform": "web"
+    }
+  ]
+}

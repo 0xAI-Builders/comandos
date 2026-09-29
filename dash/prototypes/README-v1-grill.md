@@ -553,3 +553,50 @@ The bottom strip retains the notification history and its existing filters. A co
 The prototype shows one incoming float at a time, retains every simulated event in history and currently closes floats only through explicit interaction. Duration, stacking and severity-specific persistence are still design decisions. Proposed next rule for discussion: ordinary completion floats disappear after a short interval while permission/error floats persist until opened or dismissed; hiding is separate from answering a permission. This is not yet implemented or approved.
 
 Current syntax and state checks passed, including rendering both components, preserving unread history on float dismissal, displaying a new float with the strip collapsed and opening the correct source pane. The Mac browser broker again reported both sessions occupied, so final desktop/mobile rendering of this combination remains unverified. No local browser fallback was used. No live notification delivery or production state changed.
+
+### Notification process audit for the grill, 2026-09-28 Mexico City
+
+The production notification channels operate independently. The chosen bottom strip and floating notices need a shared event identity and delivery policy to preserve the original pane and coordinate Telegram with desktop and remote clients. The user asks to inspect the existing process before deciding that policy. This entry records code findings, runtime observations and proposals separately.
+
+Runtime observations: the dashboard, notification daemon and Telegram receiver services report active/running through `systemctl --user show`. Their installed executables resolve to the audited checkout and match its files. The settings in /home/someguy/.claude/hooks/cc-notify.conf have `DESKTOP_NOTIFY=0`, `POPUPS=1`, `TELEGRAM_ENABLED=0`, `SOUND_ENABLED=1` and `VOLUME=12`. Both speech settings are disabled; completion and attention event filters are enabled. Thus the desktop channel is disabled despite its popup-style flag. Telegram outbound turn and quota alerts are disabled, but the receiving bot has its own service and does not consult that switch.
+
+The dedicated bot credentials exist in /home/someguy/.claude/hooks/telegram.env. Read-only Bot API requests returned `getMe.ok=true`, `is_bot=true` and no configured webhook. Incoming authorization currently uses a configured username plus chat; a numeric allowed-user ID is absent. These checks establish API authentication and local service status, not successful end-to-end delivery or command execution. No notification, command or sound was triggered, and no credentials are recorded here.
+
+The hook writes current state per session and pane, then independently dispatches sound and desktop/Telegram delivery. Working and session-end events update state silently; completed turns and attention requests can notify. Telegram sends available response content and can attach generic terminal-key buttons to attention requests. Source: /home/someguy/codebase/0xJesus/ComandOS/hooks/cc-notify.sh, state writing at line 220 and channel dispatch at line 526. Quota alerts use a separate sender with the same channel switches: /home/someguy/codebase/0xJesus/ComandOS/bin/cc-dash:421.
+
+Telegram already supports replies into the originating pane, terminal-key buttons, session listings, output capture, command execution and server connections. It validates the sender and chat, and refuses an explicit dead pane. However, a live pane is sufficient for an old button to act; the callback has no current-request check, consumption or expiry. A reply without a stored destination falls back to the session inferred from the quoted project. Sources: /home/someguy/codebase/0xJesus/ComandOS/bin/cc-telegram:92, line 200 and line 308. This prevents a claim that every old notification safely addresses the original pending request. The sender also lacks a durable retry queue and a visible delivery-failure state: /home/someguy/codebase/0xJesus/ComandOS/hooks/cc-notify.sh:483.
+
+The bell mixes usage alerts, recommendations, model and tool news with grouped turn history. Completed and waiting turns sit under the collapsed secondary section and do not contribute to its badge. The event history stores project, status, detail and timestamp, omitting session and pane. Opening a historical turn therefore finds a current session by project. Sources: /home/someguy/codebase/0xJesus/ComandOS/dash/index.html:5500 and line 5625; /home/someguy/codebase/0xJesus/ComandOS/hooks/cc-notify.sh:235. This differs from native popups, which retain the pane. Those popups are local to the host; the dashboard transition code leaves presentation to the daemon. No last-active-device sound arbitration or remote Web Push reception was found.
+
+Pomodoro queues selected notices inside the local popup daemon. Its gate does not control the independently dispatched sound or Telegram channel, and the queued record omits the pane. Sources: /home/someguy/codebase/0xJesus/ComandOS/bin/cc-notifyd:969 and /home/someguy/codebase/0xJesus/ComandOS/hooks/cc-notify.sh:529. The selected visual mockup does not repair these production behaviors.
+
+Proposed process for review: record each event durably with its project, session, pane, turn and actionable-request identity before routing it to any channel. Give the bottom strip, floats and Telegram the same event and shared read/action state. Keep reading or hiding separate from answering. Validate an actionable request when responding, consume it once and invalidate its actions everywhere; reject stale or missing destinations. Preserve Telegram's remote operation while separating its incoming-control setting from outgoing alerts. Prefer numeric sender identity for authorization. Track send failures and retries so a delivery failure remains visible.
+
+The accepted sound destination remains the device with the most recent explicit interaction. Telegram escalation, Pomodoro exceptions and burst handling still require user decisions. Recommended next choice: use Telegram when no CommandOS client is active, and escalate an unattended request after a defined delay. Always mirroring enabled events is the alternative with simpler delivery rules but more repeated alerts. The recommendation requires reliable device activity and a durable scheduler; neither exists in the audited flow. No inactivity threshold or escalation delay is approved by this entry.
+
+### Requested: external references to complement the chosen interactions
+
+Jesús asks to research Mobbin and use 0xai-design-research to find useful complements across the grilled UX/UI topics. Preserve accepted decisions while evaluating specific additions against product references. This request does not select a new layout or authorize replacing the chosen designs with another product's interface.
+
+Research findings and evidence are recorded in /home/someguy/codebase/0xJesus/ComandOS/.worktrees/comandos-v1-grill/design/references.md. Mobbin fails during MCP initialization; official product documentation and images provide the available comparison. No new mockup or production behavior changed in this research round. The Telegram delivery-policy question remains unanswered.
+
+
+## Notification detail grill · 2026-09-29
+
+Review URL: https://nodo-01.tail63a117.ts.net:8444/prototypes/prototype-v1-grill.html?round=notification-detail&variant=C
+
+The accepted bottom strip plus floating arrival notice remains the frame for all five new alternatives. The earlier `round=notifications&variant=C` remains available. This round compares ordering and handling inside the strip, not its placement:
+
+| Variant | Interaction | Tradeoff |
+|---|---|---|
+| A · Por tiempo | Compact chronological rows; open the source pane directly. | No separate overview of pending permissions. |
+| B · Por proyecto | Project columns on desktop, stacked groups on mobile. | More scanning across projects. |
+| C · Primero tu respuesta | Pending permissions separate from other activity. | Recommended for review, not accepted yet. Priority is deterministic from event state. |
+| D · Vista previa | Select an event for inline detail, then open its pane. | Adds a step before navigation; mobile provides a return-to-list action. |
+| E · Uno a uno | One large event with previous/next controls. | Easier to inspect one event, less overall visibility. |
+
+All variants share the same fixture, unread counts, pending permissions, filters, optional sound, closed-pane scenario and loading/empty/error/offline states. Reading all notices never resolves pending permissions. Permission decisions remain in the destination pane. The five direct variant buttons remain visible when the draggable review picker is collapsed. No real process, notification channel or Telegram command is modified.
+
+Mobbin was recovered through the existing `cc-extensions serve mobbin` shared-auth transport. Three real searches returned eight downloaded original images, all inspected. Relevance and rejected results are recorded in /home/someguy/codebase/0xJesus/ComandOS/.worktrees/comandos-v1-grill/design/references.md. The built-in MCP connection is not claimed to have recovered. No additional audit agents or local browsers were started.
+
+Validation at this point: all three nonempty inline scripts pass Node syntax checking; the Tailscale review URL returns HTTP 200 and includes the new round. Remote browser verification is pending: the Mac broker reported both workers occupied on three attempts. No local browser fallback was used. This is not a claim of verified responsive behavior. Human verdict remains pending.
