@@ -791,3 +791,11 @@ Jesús explicitly decides "dejemoslo fuera totalmente" after considering whether
 The implementation scope includes removing CommandOS Telegram settings and setup, notification delivery, bot replies and terminal-command routing, and CommandOS-specific runtime wiring. Existing personal Telegram conversations, the user's account and integrations belonging to other products are outside that scope. During this grilling turn only the design record changes; the live integration has not been disabled or removed.
 
 Desktop and remote CommandOS remain the product interfaces. The decision does not choose a replacement external channel or establish that notifications arrive with the app closed or a phone locked. That behavior remains a separate product requirement to resolve.
+
+## Confirmed: phone push when CommandOS is not being viewed · 2026-09-29
+
+Jesús requests phone push notifications when he is not viewing CommandOS, in response to the question about background use and a locked phone. Treat delivery outside the visible app as a release requirement. Telegram remains excluded. Preserve configurable visual/sound behavior and the requirement to avoid distraction. Platform requirements, OS-controlled sound and delivery limitations must be reflected honestly in the design and physical-device acceptance tests.
+
+The current source at /home/someguy/codebase/0xJesus/ComandOS/dash/manifest.webmanifest and /home/someguy/codebase/0xJesus/ComandOS/dash/sw.js provides an installable shell and fetch/offline handling. The worker has no push or notificationclick handler. The notify function at /home/someguy/codebase/0xJesus/ComandOS/dash/index.html:7373 uses page-side Notification when the document is hidden; it does not establish closed-app mobile delivery. The inspected dashboard, backend, hooks and config code contained no PushManager subscription or VAPID sender implementation. No real push subscription was created or notification sent during this review.
+
+The phone platform question is pending: iPhone, Android or both. Platform evidence and implementation constraints are recorded in /home/someguy/codebase/0xJesus/ComandOS/.worktrees/comandos-v1-grill/design/mobile-push-research.md. This requirement does not silently select alert content, thresholds for absence or a custom sound capability that the phone cannot provide.

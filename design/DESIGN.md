@@ -18,6 +18,8 @@ Las [referencias](references.md) y la [prueba visual](proof.html) registran el a
 
 Telegram queda excluido por completo del diseño de CommandOS, incluidos ajustes, envíos y comandos del bot. La decisión y el alcance de la retirada están en /home/someguy/codebase/0xJesus/ComandOS/.worktrees/comandos-v1-grill/dash/prototypes/README-v1-grill.md, apartado "Confirmed: remove Telegram from CommandOS entirely". La retirada de la integración existente corresponde a la implementación posterior al grilling.
 
+El diseño requiere push al celular cuando el usuario no esté viendo CommandOS, incluido en segundo plano o con la pantalla bloqueada. El requisito y la evidencia del código actual están en el mismo registro, apartado "Confirmed: phone push when CommandOS is not being viewed". Los requisitos de instalación, permisos y sonido están documentados en /home/someguy/codebase/0xJesus/ComandOS/.worktrees/comandos-v1-grill/design/mobile-push-research.md. La entrega real en el teléfono sigue pendiente de implementar y probar.
+
 ## Lector de noticias aprobado
 
 La base elegida es B, Edición continua, con la opción de mostrar la terminal. Las demás variantes se conservan como referencias. Viven en /home/someguy/codebase/0xJesus/ComandOS/.worktrees/comandos-v1-grill/dash/prototypes/prototype-v1-grill.html, bajo `round=news-reader`. El historial de decisiones y la verificación se conservan en /home/someguy/codebase/0xJesus/ComandOS/.worktrees/comandos-v1-grill/dash/prototypes/README-v1-grill.md.
