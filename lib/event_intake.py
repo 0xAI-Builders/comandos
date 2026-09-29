@@ -225,8 +225,11 @@ def open_state(path=None, busy_ms=1500):
 
 
 def main(argv):
-    if argv[1:] != ["record"]:
-        print("uso: event_intake.py record < evento.json", file=sys.stderr)
+    # `record --claim-sound <deviceId>` also prints "play" when this machine
+    # wins the single sound claim of the shared notice policy (N2).
+    claim = argv[3] if argv[1:3] == ["record", "--claim-sound"] and len(argv) == 4 else None
+    if argv[1:] != ["record"] and claim is None:
+        print("uso: event_intake.py record [--claim-sound deviceId] < evento.json", file=sys.stderr)
         return 2
     try:
         payload = json.loads(sys.stdin.read() or "{}")
@@ -234,7 +237,14 @@ def main(argv):
             return 1
         conn = open_state()
         try:
-            record(conn, payload)
+            stored = record(conn, payload)
+            if claim and stored and not stored.get("duplicate"):
+                import notification_delivery
+                now = int(time.time() * 1000)
+                for device in (claim, notification_delivery.LOCAL_SPEAKER):
+                    if notification_delivery.claim_sound(conn, stored["eventId"], device, now)["play"]:
+                        print("play")
+                        break
         finally:
             conn.close()
     except (ValueError, sqlite3.Error, OSError) as exc:

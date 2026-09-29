@@ -405,10 +405,34 @@ _limits_cache = {"at": 0, "limits": [], "health": {}}
 _limits_refreshing = False
 
 
-def usage_alert_send(message, title=None, kind="waiting", project=None):
+def notice_emit(kind, title, excerpt="", project=None):
+    """Record a non-turn notice (model/news announcement, usage alert) in the
+    N1 event log so the strip, floats, sound and push share one policy."""
+    try:
+        conn = app_state.connect()
+        app_state.migrate(conn)
+        now = int(time.time() * 1000)
+        conn.execute("BEGIN IMMEDIATE")
+        try:
+            event_store.append_event(conn, {
+                "eventId": f"{kind}:{now}:{secrets.token_hex(4)}", "source": "comandos", "kind": kind,
+                "evidence": "confirmed", "correlation": "unknown", "occurredAtMs": now, "receivedAtMs": now,
+                "projectKey": project, "title": str(title or "")[:200], "excerpt": str(excerpt or "")[:500]})
+            conn.execute("COMMIT")
+        except BaseException:
+            conn.execute("ROLLBACK")
+            raise
+        finally:
+            conn.close()
+    except Exception as exc:
+        print(f"notice_emit {kind}: {exc}", file=sys.stderr)
+
+
+def usage_alert_send(message, title=None, kind="info", project=None):
     """Entrega una alerta de uso por los MISMOS canales que las notificaciones
     normales: el popup PROPIO de ComandOS (cc-notifyd; jamas el popup plano
     de GNOME). Telegram ya no forma parte de ComandOS."""
+    notice_emit("usage_alert", title or "Límite de uso", message, project or "Uso")
     conf = read_conf()
     if conf.get("DESKTOP_NOTIFY", "1") == "1":
         try:
@@ -626,11 +650,13 @@ def _model_watch_notify(news, versions):
         body = ", ".join(models[:4]) + ("…" if len(models) > 4 else "")
         detail = ("detectados en el binario; disponibilidad sin verificar" if prov == "claude"
                   else "detectados en el CLI; los catálogos locales actualizan el selector")
+        notice_emit("announcement", f"Modelos nuevos de {prov} detectados",
+                    f"{body} (CLI {versions.get(prov, '?')}) — {detail}")
         try:
             urllib.request.urlopen(urllib.request.Request(
                 "http://127.0.0.1:4778/notify",
                 data=json.dumps({"title": f"Modelos nuevos de {prov} detectados",
-                                 "kind": "waiting", "project": "modelos",
+                                 "kind": "info", "project": "modelos",
                                  "body": f"{body} (CLI {versions.get(prov, '?')}) — {detail}"}).encode(),
                 headers={"Content-Type": "application/json"}), timeout=3)
         except Exception:
@@ -659,10 +685,11 @@ def _model_watch_cycle(force=False):
                 fresh = nres.get("news") or []
                 if fresh:
                     top = fresh[0]
+                    notice_emit("announcement", f"Noticias de skills/MCPs ({len(fresh)})", top.get("title", "")[:140])
                     urllib.request.urlopen(urllib.request.Request(
                         "http://127.0.0.1:4778/notify",
                         data=json.dumps({"title": f"Noticias de skills/MCPs ({len(fresh)})",
-                                         "kind": "waiting", "project": "noticias",
+                                         "kind": "info", "project": "noticias",
                                          "body": top.get("title", "")[:140]}).encode(),
                         headers={"Content-Type": "application/json"}), timeout=3)
             except Exception:
@@ -753,6 +780,50 @@ def news_edition_payload(edition_id):
 _PUSH_LOCAL = threading.local()
 _PUSH_TEST_LAST = {}
 PUSH_TEST_INTERVAL_S = 10.0
+
+# ---- N2: shared notice policy (lib/notification_delivery.py) ----------------
+_NOTICES_LOCAL = threading.local()
+NOTICE_PUSH_INTERVAL_S = 15
+
+
+def notices_conn():
+    conn = getattr(_NOTICES_LOCAL, "conn", None)
+    if conn is None:
+        conn = app_state.connect()
+        app_state.migrate(conn)
+        _NOTICES_LOCAL.conn = conn
+    return conn
+
+
+def notices_focus_active():
+    """D5: during an active focus block only permissions sound."""
+    import notification_delivery
+    return notification_delivery.focus_block_active(notices_conn())
+
+
+def notices_now():
+    return int(time.time() * 1000)
+
+
+def _notices_push_loop():
+    """Push unread notices when no client was visible for 2 min (D5), through
+    the same route_event policy the strip, floats and sounds use."""
+    import notification_delivery
+    import web_push
+    time.sleep(30)
+    while True:
+        try:
+            if web_push.available()[0]:
+                conn = notices_conn()
+                now = notices_now()
+                window = event_store.list_events(conn, max(0, event_store.latest_sequence(conn) - 200), 200)
+                read = {r[0] for r in conn.execute("SELECT event_id FROM notice_reads")}
+                policy = notification_delivery.push_policy(notification_delivery.load_prefs(conn),
+                                                           notices_focus_active(), read)
+                push_dispatch(window, notification_delivery.clients(conn, now), policy, now)
+        except Exception as exc:
+            print(f"notices push: {exc}", file=sys.stderr)
+        time.sleep(NOTICE_PUSH_INTERVAL_S)
 
 
 def push_conn():
@@ -8437,7 +8508,7 @@ class Handler(http.server.SimpleHTTPRequestHandler):
     # Endpoints con DATOS o ACCIONES: exigen token. El shell estatico (HTML,
     # sw.js, manifest, iconos) NO — no revela nada (es codigo open-source) y
     # asi la PWA instala y carga sin depender de cookies en el webview movil.
-    API_GET = ("/session-config-history", "/pane-extensions", "/pomodoro", "/providers", "/optimization/plans", "/proxy", "/model/status", "/sovereignty", "/ui-log/summary", "/state", "/usage/state", "/usage/guard", "/usage/changes", "/usage/provider-compare", "/fs/dirs", "/models/latest", "/news/latest", "/news/edition", "/push/", "/notifs/count", "/usage/analytics", "/usage/interactions", "/usage/experiments", "/opencode/models", "/model-tiers", "/dedication", "/active-tab", "/session-profiles", "/extension-usage", "/session-brain", "/project-profiles", "/events", "/conf", "/prefs", "/ssh", "/tabs", "/workspace",
+    API_GET = ("/session-config-history", "/pane-extensions", "/pomodoro", "/providers", "/optimization/plans", "/proxy", "/model/status", "/sovereignty", "/ui-log/summary", "/state", "/usage/state", "/usage/guard", "/usage/changes", "/usage/provider-compare", "/fs/dirs", "/models/latest", "/news/latest", "/news/edition", "/push/", "/notifs/count", "/usage/analytics", "/usage/interactions", "/usage/experiments", "/opencode/models", "/model-tiers", "/dedication", "/active-tab", "/session-profiles", "/extension-usage", "/session-brain", "/project-profiles", "/events", "/conf", "/prefs", "/ssh", "/tabs", "/workspace", "/notices",
                "/tab-history", "/remote-state", "/remote-qr.png", "/snippets", "/tmux-mouse",
                "/webterm-token", "/operator", "/allocation/status")
     API_GET += ("/work-marks",)  # E1; /events/v2 queda cubierto por /events
@@ -8700,6 +8771,21 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             return self._json(200, {"mouse": "on" if enabled else "off"})
         if urllib.parse.urlsplit(self.path).path == "/workspace":
             return self._json(200, workspace_payload(workspace_sync()))
+        if urllib.parse.urlsplit(self.path).path in ("/notices", "/notices/prefs"):
+            import notification_delivery
+            query = urllib.parse.parse_qs(urllib.parse.urlsplit(self.path).query)
+            conn = notices_conn()
+            if self.path.startswith("/notices/prefs"):
+                return self._json(200, notification_delivery.load_prefs(conn))
+            try:
+                after = int((query.get("after") or ["0"])[0])
+                limit = int((query.get("limit") or ["100"])[0])
+                page = notification_delivery.list_notices(conn, after, limit, notices_now(),
+                                                          (query.get("deviceId") or [None])[0],
+                                                          notices_focus_active())
+            except ValueError as exc:
+                return self._json(400, {"error": str(exc)})
+            return self._json(200, page)
         if urllib.parse.urlsplit(self.path).path == "/workspace/close-group":
             query = urllib.parse.parse_qs(urllib.parse.urlsplit(self.path).query)
             state = workspace_sync()
@@ -8841,6 +8927,34 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             except (ValueError, TypeError, KeyError) as exc:
                 return self._json(400, {"error": str(exc) or "Workspace inválido"})
             return self._json(200, workspace_payload(saved))
+
+        if self.path in ("/presence", "/notices/read", "/notices/sound", "/notices/prefs"):
+            import notification_delivery
+            conn = notices_conn()
+            try:
+                if self.path == "/presence":
+                    notification_delivery.record_presence(
+                        conn, data.get("deviceId"), data.get("visible") is True, data.get("canPlayAudio") is True,
+                        data.get("interaction") is True, notices_now(), kind=str(data.get("kind") or "web"))
+                    return self._json(200, {"ok": True})
+                if self.path == "/notices/read":
+                    ids = data.get("eventIds")
+                    if data.get("all") is True:
+                        project = data.get("project")
+                        recent = max(0, event_store.latest_sequence(conn) - 500)
+                        ids = [n["eventId"] for n in notification_delivery.list_notices(
+                            conn, recent, 500, notices_now())["notices"]
+                            if not project or n.get("project") == project]
+                    if not isinstance(ids, list):
+                        return self._json(400, {"error": "eventIds inválido"})
+                    return self._json(200, {"ok": True, "read": notification_delivery.mark_read(conn, ids, notices_now())})
+                if self.path == "/notices/sound":
+                    return self._json(200, notification_delivery.claim_sound(
+                        conn, str(data.get("eventId") or ""), str(data.get("deviceId") or ""), notices_now(),
+                        notices_focus_active()))
+                return self._json(200, notification_delivery.save_prefs(conn, data))
+            except (ValueError, TypeError) as exc:
+                return self._json(400, {"error": str(exc)})
 
         if self.path == "/workspace/close-group":
             expected = data.get("expectedRevision")
@@ -9954,6 +10068,7 @@ def main():
     PORT = port
     socketserver.TCPServer.allow_reuse_address = True
     threading.Thread(target=_news_editions_loop, daemon=True).start()
+    threading.Thread(target=_notices_push_loop, daemon=True).start()
     with socketserver.ThreadingTCPServer(("127.0.0.1", port), Handler) as srv:
         start_pomodoro_scheduler()
         url = f"http://127.0.0.1:{port}"

@@ -3672,6 +3672,33 @@ def _ws_restore_focus(res):
     _WS["focus_saved"] = key
 
 
+# Presencia del escritorio para la politica compartida de avisos (N2): la
+# interaccion solo cuenta con teclas/clics reales en la ventana; el latido
+# periodico nunca la marca. El hook de este equipo usa el mismo deviceId.
+_PRESENCE = {"last": 0.0, "visible": True}
+
+
+def report_presence(interaction=False):
+    now = time.monotonic()
+    if interaction and now - _PRESENCE["last"] < 5:
+        return False
+    if interaction:
+        _PRESENCE["last"] = now
+    body = {"deviceId": WS_DEVICE, "kind": "desktop", "visible": _PRESENCE["visible"],
+            "canPlayAudio": True, "interaction": bool(interaction)}
+    _in_background(lambda: _dash_call("/presence", body, timeout=3), lambda res: None)
+    return False
+
+
+def _presence_window_state(_win, event):
+    iconified = bool(event.new_window_state & Gdk.WindowState.ICONIFIED)
+    if _PRESENCE["visible"] == (not iconified):
+        return False
+    _PRESENCE["visible"] = not iconified
+    report_presence()
+    return False
+
+
 def _ws_save_focus(*_):
     page = nb.get_nth_page(nb.get_current_page())
     key = getattr(page, "_key", None)
@@ -6275,7 +6302,17 @@ _cmd_mon = _cmd_file.monitor_file(Gio.FileMonitorFlags.NONE, None)
 _cmd_mon.connect("changed", lambda m, f, o, ev: on_app_command(f.get_path())
                  if f is not None and ev in (Gio.FileMonitorEvent.CREATED, Gio.FileMonitorEvent.CHANGES_DONE_HINT) else None)
 
+# Antes de on_key: si on_key consume la tecla, la emision se detiene.
+win.connect("key-press-event", lambda *_: report_presence(interaction=True) and False)
 win.connect("key-press-event", on_key)
+# Los clics los consume VTE antes de llegar a la ventana: capturarlos arriba
+# sin reclamarlos (el gesto no roba el evento).
+_presence_clicks = Gtk.GestureMultiPress.new(win)
+_presence_clicks.set_propagation_phase(Gtk.PropagationPhase.CAPTURE)
+_presence_clicks.set_button(0)
+_presence_clicks.connect("pressed", lambda *_: report_presence(interaction=True))
+win.connect("window-state-event", _presence_window_state)
+GLib.timeout_add_seconds(30, lambda: (report_presence(), True)[1])
 win.connect("destroy", Gtk.main_quit)
 win.show_all()
 hub._term.grab_focus()

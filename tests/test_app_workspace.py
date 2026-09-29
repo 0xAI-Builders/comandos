@@ -118,3 +118,31 @@ def test_desktop_saves_focus_per_device_only_when_it_changes():
     save = load('_ws_save_focus', ns)
     save(); save()
     assert posts == [('/workspace/client', {'deviceId': 'desktop-x', 'activeTabId': 'alpha'})]
+
+
+def test_desktop_presence_marks_interaction_only_for_explicit_input_and_throttles():
+    posts = []
+    clock = [1000.0]
+    ns = {'_PRESENCE': {'last': 0.0, 'visible': True}, 'WS_DEVICE': 'desktop-x',
+          'time': SimpleNamespace(monotonic=lambda: clock[0]),
+          '_dash_call': lambda path, payload=None, timeout=15: posts.append((path, payload)) or (200, {}),
+          '_in_background': lambda work, done: done(work())}
+    report = load('report_presence', ns)
+    report(interaction=True)
+    report(interaction=True)                 # throttled
+    clock[0] += 6
+    report(interaction=False)                # heartbeat, never an interaction
+    assert posts == [('/presence', {'deviceId': 'desktop-x', 'kind': 'desktop', 'visible': True,
+                                    'canPlayAudio': True, 'interaction': True}),
+                     ('/presence', {'deviceId': 'desktop-x', 'kind': 'desktop', 'visible': True,
+                                    'canPlayAudio': True, 'interaction': False})]
+
+
+def test_hook_and_desktop_share_one_device_id():
+    import re
+    import subprocess
+    node = 'my host.local'
+    bash = subprocess.run(['bash', '-c', "printf '%s' \"$1\" | tr -c 'A-Za-z0-9_.-' '-' | cut -c1-60", '_', node],
+                          capture_output=True, text=True).stdout.rstrip('\n')
+    assert 'desktop-' + bash == 'desktop-' + re.sub(r"[^A-Za-z0-9_.-]", "-", node)[:60]
+    assert "tr -c 'A-Za-z0-9_.-' '-' | cut -c1-60" in Path('hooks/cc-notify.sh').read_text()

@@ -18,6 +18,8 @@ KINDS = frozenset({
     "prompt_accepted", "turn_started", "input_requested", "permission_requested",
     "turn_completed", "turn_cancelled", "turn_failed", "pane_closed",
     "session_ended", "focus_completed", "news_edition",
+    # N2: producers that are not agent turns (never a waiting request).
+    "announcement", "usage_alert",
 })
 EVIDENCE = frozenset({"confirmed", "inferred", "historical", "unknown"})
 CORRELATION = frozenset({"source", "local", "unknown"})

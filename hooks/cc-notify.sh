@@ -200,6 +200,11 @@ fi
 # lo persiste lib/event_intake.py directo en el estado SQLite, asi funciona
 # aunque cc-dash este caido. Nunca rompe el hook ni el timeline de /events.
 EVENT_INTAKE="$(dirname "$(readlink -f "$0")")/../lib/event_intake.py"
+# Sonido/voz SOLO si la politica compartida de avisos (N2) elige esta maquina:
+# el ultimo dispositivo usado suena, una sola vez por evento. Sin registro de
+# eventos disponible se conserva el comportamiento anterior (legacy).
+NOTICE_DEVICE="desktop-$(printf '%s' "$(uname -n 2>/dev/null)" | tr -c 'A-Za-z0-9_.-' '-' | cut -c1-60)"
+NOTICE_PLAY="legacy"
 event_v2() { # $1=titulo $2=extracto
   [ -r "$EVENT_INTAKE" ] && command -v python3 >/dev/null 2>&1 || return 0
   local tmo=""
@@ -213,8 +218,11 @@ event_v2() { # $1=titulo $2=extracto
     '{hookEvent:$hook,agent:$agent,cwd:$cwd,project:$project,session:$session,pane:$pane,
       panePid:$pid,conversationId:$conv,turnId:$turn,promptId:$prompt,requestId:$req,
       notificationType:$ntype,title:$title,excerpt:$excerpt,occurredAtMs:$at}' 2>/dev/null \
-    | $tmo python3 "$EVENT_INTAKE" record >/dev/null 2>&1 || true
+    | $tmo python3 "$EVENT_INTAKE" record --claim-sound "$NOTICE_DEVICE" 2>/dev/null > "$NOTICE_OUT" \
+    && NOTICE_PLAY=$(cat "$NOTICE_OUT" 2>/dev/null) || NOTICE_PLAY="legacy"
+  rm -f "$NOTICE_OUT"
 }
+NOTICE_OUT=$(mktemp 2>/dev/null || echo "/tmp/cc-notice-$$")
 
 usage_lifecycle() { # $1=status
   local script="$HOME/.local/bin/cc_usage.py"
@@ -445,6 +453,7 @@ notify_desktop() {
 
 notify_voice() {
   # Voz local (piper con voz es_MX; fallback spd-say). Si habla, no suena el chime.
+  case "$NOTICE_PLAY" in play|legacy) ;; *) return 0 ;; esac
   local speak=""
   [ "$kind" = "waiting" ] && [ "$SPEAK_ATTENTION" = "1" ] && speak="$proj $T_SPKWAIT"
   [ "$kind" = "done" ] && [ "$SPEAK_DONE" = "1" ] && speak="$proj $T_SPKDONE"
