@@ -227,6 +227,26 @@ body.nr-lab .viewport{padding:8px 12px 160px}body.nr-lab .device{height:calc(100
  .nr-B.nr-with-terminal .nr-header>strong{display:none}
  .nr-B.nr-with-terminal .nr-header .nr-menu{margin-right:auto}
 }
+/* Existing notification design: brief Android notice with an expandable preview. Fixture only. */
+body.nf-lab .lab #pp-launch{display:inline-flex;align-items:center;min-height:40px;flex:none}
+@media(max-width:620px){body.nf-lab .lab:has(#pp-launch) button:not(#pp-launch){display:none}body.nf-lab .lab:has(#pp-launch)>strong{flex:1;min-width:0}}
+.pp-dialog{width:min(780px,calc(100vw - 32px));max-height:calc(100dvh - 32px);padding:0;border:1px solid #343947;border-radius:18px;background:#121722;color:#eaf0fb;overflow:auto;box-shadow:0 24px 80px #0008}
+.pp-dialog::backdrop{background:#060810ce}
+.pp-dialog button{min-height:44px;font:inherit;cursor:pointer}
+.pp-head{display:flex;gap:12px;align-items:center;padding:20px 22px;border-bottom:1px solid #2e3543}
+.pp-head div{flex:1;min-width:0}.pp-head h2{font-size:18px;margin:0 0 5px}.pp-head p{font-size:12px;color:#aab1c0;margin:0;line-height:1.5}
+.pp-close{width:44px;flex:none;display:grid;place-items:center;border:1px solid #394151;border-radius:10px;background:transparent;color:inherit}
+.pp-layout{display:grid;grid-template-columns:minmax(0,1.15fr) minmax(0,1fr)}
+.pp-phone{padding:28px 16px 24px;background:#1c2026;min-width:0}
+.pp-clock{display:block;font-size:40px;font-weight:300;line-height:1.2;color:#d8dde4;letter-spacing:-1px;margin:0 8px 4px}.pp-day{display:block;color:#b6bdc7;font-size:12px;margin:0 8px 24px}
+.pp-notification{background:#30353d;border:1px solid #474d56;border-radius:22px;color:#f0f2f5;overflow:hidden;font-family:system-ui,sans-serif;box-shadow:0 6px 20px #0002}
+.pp-app{display:flex;align-items:center;gap:8px;padding:7px 10px 0 16px;font-size:12px;color:#c9cdd6}.pp-app>span{display:flex;align-items:center;gap:7px;flex:1}.pp-app .nf-icon{width:16px;height:16px;color:#cec3f4}
+.pp-expand{display:grid;place-items:center;flex:none;background:transparent;border:0;color:inherit;width:44px;border-radius:50%}.pp-expand svg{width:18px;height:18px;transition:transform .16s}.pp-expand[aria-expanded=true] svg{transform:rotate(180deg)}
+.pp-content{display:block;width:100%;background:transparent;border:0;text-align:left;color:inherit;padding:0 16px 16px}.pp-content strong{display:block;font-size:16px;line-height:1.4;margin:0 0 4px;overflow-wrap:anywhere}.pp-state{display:block;font-size:14px;line-height:1.5;color:#e0e3e9}.pp-excerpt{display:block;margin:10px 0 0;padding-top:10px;border-top:1px solid #535962;font-size:14px;line-height:1.55;color:#e0e3e9;overflow-wrap:anywhere}.pp-excerpt[hidden]{display:none}
+.pp-content:focus-visible,.pp-expand:focus-visible{outline:2px solid #c8b9f6;outline-offset:-3px}.pp-phone>p{font-size:12px;line-height:1.6;color:#b6bdc7;margin:18px 8px 0}
+.pp-controls{padding:24px;min-width:0}.pp-controls h3{font-size:14px;margin:0 0 12px}.pp-types{display:grid;gap:8px}.pp-types button{text-align:left;display:flex;align-items:center;gap:9px;border:1px solid #353e4f;border-radius:9px;padding:10px 12px;background:#1a202b;color:inherit;font-size:13px}.pp-types button[aria-pressed=true]{border-color:#b6a2ea;background:#30283f}.pp-controls p{font-size:12px;line-height:1.7;color:#aab1c0;margin:20px 0 0}.pp-demo{padding:13px 22px;border-top:1px solid #2e3543;font-size:11px;line-height:1.6;color:#aab1c0}.pp-demo a{color:#c5b4f5}
+@media(max-width:620px){.pp-dialog{width:calc(100vw - 16px);max-height:calc(100dvh - 16px);border-radius:14px}.pp-layout{grid-template-columns:minmax(0,1fr)}.pp-head{padding:14px 16px}.pp-head h2{font-size:16px}.pp-phone{padding:18px 12px}.pp-clock{font-size:30px}.pp-day{margin-bottom:16px}.pp-controls{padding:18px 16px}.pp-controls p{margin-top:12px}.pp-types{grid-template-columns:repeat(3,minmax(0,1fr));gap:6px}.pp-types button{font-size:11px;line-height:1.4;padding:8px;justify-content:center;text-align:center;flex-direction:column}.pp-demo{padding:12px 16px}}
+@media(prefers-reduced-motion:reduce){.pp-expand svg{transition:none}}
 </style>
 <div class="lab"><strong>ComandOS · Revisión 1.0</strong><small>Mockup interactivo · datos de ejemplo · ninguna acción modifica tus sesiones</small><button onclick="setVariant('actual')">Ver interfaz actual</button><button onclick="go('map')">Mapa completo</button></div>
 <div class="viewport"><div class="device" id="device"><div class="chrome" id="chrome"></div><div id="app" class="app"></div></div></div>
@@ -478,6 +498,21 @@ const nfSeed=[
  {id:'n3',pane:'co-tests',kind:'error',title:'El comando terminó con error',text:'Fallaron 2 pruebas de sincronización.',age:'Hace 3 min',seen:false}
 ];
 const nf={pane:'co-ui',previous:null,open:true,filter:'all',sidebar:false,events:structuredClone(nfSeed),seq:3,drafts:{},closed:[],toast:'n1',lastDevice:innerWidth<700?'remote':'desktop',message:'',peek:null,variant:null,soundRouted:null};
+const pp={enabled:new URLSearchParams(location.search).get('preview')==='android',visible:new URLSearchParams(location.search).get('preview')==='android',event:'n2',expanded:new URLSearchParams(location.search).get('expanded')==='1'};
+function ppSelect(id){pp.event=id;pp.expanded=false;ppRender();document.querySelector(`[data-pp-event="${id}"]`)?.focus({preventScroll:true});}
+function ppExpand(){pp.expanded=!pp.expanded;ppRender();document.querySelector('.pp-expand')?.focus({preventScroll:true});}
+function ppClose(){pp.visible=false;document.querySelector('#pp-dialog')?.close();document.querySelector('#pp-launch')?.focus({preventScroll:true});}
+function ppOpen(){pp.visible=true;ppRender();}
+function ppOpenSource(){const id=pp.event;pp.visible=false;document.querySelector('#pp-dialog')?.close();nfOpen(id);}
+function ppRender(){
+ if(!pp.enabled||!notificationRound)return;
+ let launch=document.querySelector('#pp-launch');if(!launch){launch=document.createElement('button');launch.id='pp-launch';launch.textContent='Preview push';launch.onclick=ppOpen;document.querySelector('.lab').append(launch);}
+ if(!pp.visible)return;
+ let dialog=document.querySelector('#pp-dialog');if(!dialog){dialog=document.createElement('dialog');dialog.id='pp-dialog';dialog.className='pp-dialog';dialog.setAttribute('aria-labelledby','pp-title');dialog.addEventListener('cancel',()=>{pp.visible=false;});document.body.append(dialog);}
+ const e=nf.events.find(x=>x.id===pp.event)||nfSeed.find(x=>x.id===pp.event),p=nfPane(e.pane);
+ dialog.innerHTML=`<header class="pp-head"><div><h2 id="pp-title">Push breve, con preview</h2><p>Así proponemos leer el aviso en Android.</p></div><button class="pp-close" onclick="ppClose()" aria-label="Cerrar preview">${nfIcon('close')}</button></header><div class="pp-layout"><section class="pp-phone" aria-label="Simulación de aviso Android"><time class="pp-clock">17:42</time><span class="pp-day">Martes, 29 de septiembre · ejemplo</span><article class="pp-notification"><header class="pp-app"><span>${nfIcon('terminal')} CommandOS · ahora</span><button class="pp-expand" aria-expanded="${pp.expanded}" aria-controls="pp-excerpt" aria-label="${pp.expanded?'Contraer':'Desplegar'} preview" onclick="ppExpand()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg></button></header><button class="pp-content" onclick="ppOpenSource()" aria-label="Abrir ${esc(p.project+' · '+p.name)}"><strong>${esc(p.project+' · '+p.name)}</strong><span class="pp-state">${esc(e.title)}</span><span class="pp-excerpt" id="pp-excerpt" ${pp.expanded?'':'hidden'}>${esc(e.text)}</span></button></article><p>Flecha: despliega la preview.<br>Toca el aviso: abre su pane.</p></section><section class="pp-controls"><h3>Prueba otro aviso</h3><div class="pp-types">${[['n2','done','Turno terminado'],['n1','waiting','Pide respuesta'],['n3','error','Error']].map(([id,icon,label])=>`<button data-pp-event="${id}" aria-pressed="${pp.event===id}" onclick="ppSelect('${id}')">${nfIcon(icon)} ${label}</button>`).join('')}</div><p>Leer la preview conserva tu pane actual. Una solicitud pendiente se responde al abrir su pane.</p><p>En el celular, el sonido y la apariencia final los controla Android y el navegador.</p></section></div><footer class="pp-demo">Simulación con datos de ejemplo. No envía push ni solicita permisos. <a href="https://web.dev/articles/push-notifications-overview" target="_blank" rel="noreferrer">Base técnica de Web Push</a></footer>`;
+ if(!dialog.open)dialog.showModal();
+}
 const nfPane=id=>nfPanes.find(p=>p.id===id);
 const nfItems=()=>demoState==='empty'?[]:nf.events;
 const nfPending=e=>e.needsAction&&!e.resolved;
@@ -525,6 +560,7 @@ function renderNotifications(){
  nfPaintSound();nfUpdatePicker();if(notificationDetailRound)ndPicker();if(notificationProjectRound)npPicker();document.querySelector('#verdict').textContent=verdict;
  document.querySelector('.lab strong').textContent='Notificaciones · diseño en revisión';
  document.querySelector('.lab small').textContent='Exploración visual anterior · los permisos y destinos por pane son simulados. Primero revisamos qué merece interrumpirte.';
+ ppRender();
 }
 if(notificationRound){if(innerWidth<700)platform='remote';Object.assign(variants,{A:['A · Bandeja lateral','Los avisos permanecen junto a la terminal. En celular, la bandeja ocupa la parte inferior.'],B:['B · Aviso flotante','Un aviso breve lleva al pane en un toque. La campana conserva el historial.'],C:['C · Franja + flotantes · elegida','Base elegida: historial en la franja inferior y un aviso flotante al llegar algo nuevo. Cerrar el flotante conserva el aviso.'],D:['D · En cada pestaña','Cada proyecto señala lo pendiente. El detalle aparece en el pane y la campana reúne todo.'],E:['E · Centro de avisos','Revisa todo en una vista amplia por proyecto y vuelve al pane desde cada aviso.']});if(variant==='actual'&&!new URLSearchParams(location.search).has('variant'))variant='C';}
 

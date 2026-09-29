@@ -206,3 +206,7 @@ Ruta con ambas vistas: https://nodo-01.tail63a117.ts.net:8444/prototypes/prototy
 La terminal queda a la izquierda y la edición a la derecha. Esta indicación sustituye la propuesta anterior de terminal a la derecha o debajo. Hasta 560 px se propone mantener ambas vistas con ancho completo y navegación horizontal mediante botones o desplazamiento. Es una adaptación del prototipo para revisión, sin una nueva búsqueda de referencias. Las seis capturas de Mobbin ya inspeccionadas siguen siendo la base del lector. La ruta de revisión conserva B y `terminal=1`.
 
 Veredicto del 2026-09-29: Jesús aprobó el mockup corregido, incluida la navegación móvil descrita. Queda elegida la edición continua con terminal opcional a la izquierda. La frecuencia de avisos sigue pendiente.
+
+### Aviso breve en Android con preview
+
+El usuario pide un aviso breve y una preview. Se agrega una simulación de contenido expandible sobre la ronda de notificaciones existente, conservando la agrupación por proyecto. No se hace una nueva búsqueda de Mobbin ni se atribuye a sus capturas una apariencia nativa de Android. La presentación del sistema es aproximada; las capacidades y límites de Web Push proceden de las fuentes oficiales ya verificadas en /home/someguy/codebase/0xJesus/ComandOS/.worktrees/comandos-v1-grill/design/mobile-push-research.md. La propuesta concreta y sus pruebas están en /home/someguy/codebase/0xJesus/ComandOS/.worktrees/comandos-v1-grill/design/android-push-preview.md.

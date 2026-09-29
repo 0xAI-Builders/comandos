@@ -803,3 +803,7 @@ The phone platform question is pending: iPhone, Android or both. Platform eviden
 ## Confirmed: Android phone for push delivery · 2026-09-29
 
 Jesús confirms Android. Validate mobile push on his actual Android phone with a compatible browser, including permission, background and locked-screen receipt, and opening the source item. The preceding phone-platform question is resolved. The Android flow does not inherit iOS Home Screen installation requirements. Recommended setup is an explicit activation control, the browser permission prompt and a user-triggered test notification. Browser choice and Android version remain unknown; no installation, permission, subscription or successful delivery is claimed by this design decision. Notification content on the lock screen remains to be designed.
+
+## Brief notice and preview requested · 2026-09-29
+
+Jesús replies "Breve hermano y preview". Preserve a brief notification and provide a concrete preview for review. The existing notification mockup now proposes a collapsed Android-style notice with an expandable excerpt. The full proposal, limitations, review route and verification are recorded in /home/someguy/codebase/0xJesus/ComandOS/.worktrees/comandos-v1-grill/design/android-push-preview.md. This is a fixture refinement, not native push implementation or approval of every expansion detail.
