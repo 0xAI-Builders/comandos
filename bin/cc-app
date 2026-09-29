@@ -2780,6 +2780,50 @@ def new_local_tab(*_):
     threading.Thread(target=work, daemon=True).start()
 
 
+# Terminal rápida (E2): shell pelona en una carpeta fechada NUEVA que elige
+# cc-dash (/terminal/quick, el mismo backend que el remoto). No hereda el cwd
+# del pane activo. El requestId se conserva hasta el éxito: un reintento
+# devuelve la MISMA terminal y nunca abre dos shells.
+_QUICK_TERMINAL_PENDING = [None]
+_QUICK_TERMINAL_BUSY = [False]
+
+
+def request_quick_terminal(make_id=None):
+    """Corre en hilo. Devuelve (resultado, error)."""
+    rid = _QUICK_TERMINAL_PENDING[0]
+    if not rid:
+        rid = make_id() if make_id else "gtk-" + secrets.token_hex(12)
+        _QUICK_TERMINAL_PENDING[0] = rid
+    result, err = http_post("/terminal/quick", {"requestId": rid}, timeout=30)
+    if isinstance(result, dict) and result.get("tabId"):
+        if _QUICK_TERMINAL_PENDING[0] == rid:
+            _QUICK_TERMINAL_PENDING[0] = None
+        return result, None
+    return None, err or ("sin respuesta de cc-dash" if ES else "no answer from cc-dash")
+
+
+def open_quick_terminal(*_):
+    if _QUICK_TERMINAL_BUSY[0]:
+        return
+    _QUICK_TERMINAL_BUSY[0] = True
+
+    def done(result, err):
+        _QUICK_TERMINAL_BUSY[0] = False
+        if result:
+            open_tab(result["tabId"], "claude", label=result.get("label") or result["tabId"])
+        else:
+            notify_popup("Terminal", err)
+        return False
+
+    def work():
+        try:
+            result, err = request_quick_terminal()
+        except Exception as ex:
+            result, err = None, str(ex)
+        GLib.idle_add(done, result, err)
+    threading.Thread(target=work, daemon=True).start()
+
+
 def _ensure_cc_webterm():
     """Arranca cc-webterm si no responde en 127.0.0.1:4779. Idempotente."""
     try:
@@ -3941,6 +3985,10 @@ _plus = _icon_btn(
     _open_wizard)
 _plus.connect("button-press-event",
               lambda w, e: (show_new_tab_menu(w) or True) if e.button == 3 else False)
+_quick_term_btn = _icon_btn(
+    "terminal",
+    "Terminal en carpeta nueva fechada" if ES else "Terminal in a new dated folder",
+    open_quick_terminal)
 _help = _icon_btn(
     "help",
     "Ver todos los atajos (F1)" if ES else "All shortcuts (F1)",
@@ -4405,6 +4453,7 @@ _mosaic_btn = _icon_btn("grid",
                         _mosaic_toggle, size=17)
 _headerbar.pack_end(_mosaic_btn)
 _headerbar.pack_end(_plus)
+_headerbar.pack_end(_quick_term_btn)
 
 
 def _cycle_page(delta):

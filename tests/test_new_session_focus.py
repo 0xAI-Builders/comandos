@@ -17,3 +17,11 @@ def test_wizard_navigates_to_created_session():
     assert 'openInApp(r.session' in after
     assert 'openTerm(r.session' in after
     assert '"/focus", {session: r.session}' in after
+
+
+def test_tab_bar_plus_opens_the_same_wizard_and_terminal_is_separate():
+    init = HTML.split("function initTabNavigation(){", 1)[1].split("\n}\n", 1)[0]
+    plus = init.split('const newBtn = document.getElementById("tab-new");', 1)[1].split("const termBtn", 1)[0]
+    assert 'showView("panel")' in plus and 'getElementById("btn-newsess").click()' in plus
+    terminal = init.split("const termBtn", 1)[1]
+    assert "quickTerm.open()" in terminal and "/tab-new" not in terminal

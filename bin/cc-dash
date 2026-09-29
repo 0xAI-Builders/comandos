@@ -5058,6 +5058,62 @@ def ensure_shell_window(sess, cwd):
     tmux("new-window", "-d", "-t", "=" + sess, "-n", "shell", "-c", wcwd)
 
 
+# ---- Terminal rápida (E2): shell pelona en carpeta fechada propia ----------
+import quick_terminal as quick_terminal_lib  # noqa: E402
+
+_QUICK_TERMINAL_LOCAL = threading.local()
+
+
+def quick_terminal_conn():
+    conn = getattr(_QUICK_TERMINAL_LOCAL, "conn", None)
+    if conn is None:
+        conn = app_state.connect()
+        app_state.migrate(conn)
+        _QUICK_TERMINAL_LOCAL.conn = conn
+    return conn
+
+
+def quick_terminal_exists(sess):
+    return tmux("has-session", "-t", "=" + sess).returncode == 0
+
+
+def quick_terminal_launch(sess, cwd, pane_key):
+    """Solo una shell: sin agente, sin heredar el cwd del pane activo."""
+    r = subprocess.run(scope_cmd(["tmux", "new-session", "-d", "-s", sess, "-c", cwd,
+                                  "-P", "-F", "#{pane_id}"]),
+                       capture_output=True, text=True, timeout=15)
+    if r.returncode != 0:
+        raise RuntimeError((r.stderr or "tmux falló").strip())
+    pane = (r.stdout or "").strip()
+    if pane.startswith("%"):
+        tmux("set-option", "-p", "-t", pane, "@comandos-pane-key", pane_key)
+
+
+def quick_terminal_register(sess, label, cwd):
+    register_app_tab(sess, label, kind="scratch", cwd=cwd)
+    try:
+        workspace_sync(reason="user")
+    except Exception as exc:
+        print(f"workspace quick terminal {sess}: {exc}", file=sys.stderr)
+
+
+def quick_terminal_request(data):
+    """POST /terminal/quick {requestId} -> (status, {tabId, paneKey, cwd, label})."""
+    try:
+        out = quick_terminal_lib.open_quick_terminal(
+            quick_terminal_conn(), data.get("requestId"),
+            base=quick_terminal_lib.default_base(),
+            launch=quick_terminal_launch, exists=quick_terminal_exists,
+            register=quick_terminal_register)
+    except quick_terminal_lib.QuickTerminalError as exc:
+        status = {"request": 400, "busy": 409, "folder": 500, "launch": 502}[exc.code]
+        body = {"error": str(exc), "code": exc.code, "retryable": exc.retryable}
+        if exc.cwd:
+            body["cwd"] = exc.cwd
+        return status, body
+    return 200, out
+
+
 def focus_session(sess, win="claude"):
     """Lleva al usuario a la sesion. Si la app ComandOS esta abierta, le avisa
     (app-focus.json) para que enfoque/abra LA pestana de esa sesion — sin mover
@@ -9081,6 +9137,9 @@ class Handler(http.server.SimpleHTTPRequestHandler):
                 tmux("send-keys", "-t", "=" + sess + ":", c, "Enter")
             threading.Thread(target=_send, daemon=True).start()
             return self._json(200, {"ok": True, "session": new_sess, "cmd": cmd})
+
+        if self.path == "/terminal/quick":
+            return self._json(*quick_terminal_request(data))
 
         if self.path == "/tab-new":
             # Boton + del remoto: terminal scratch nueva, visible en AMBOS lados
