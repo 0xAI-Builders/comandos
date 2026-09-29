@@ -53,3 +53,17 @@ Per-file SHA-256 and size records are in /home/someguy/codebase/0xJesus/ComandOS
 - lared: `5903e06b9a7be1c7f4452fae18bed3403645b37b53d24e2ff08007df2c6718da`
 - 7soul: `82167b463d20fdc2c0cb641e061503bb77816558087270e50eb66ad34cf75658`
 - quintino: `88450f5eddf2380b36e8eac84e3abb18a053755f947ad6d456c8e1f0295ab39f`
+
+
+## Alquimia with original frame animation
+
+Artist: **karsiori**.
+
+- Source and explicit CC0 license statement: https://karsiori.itch.io/pixel-art-potion-pack-animated
+- License: https://creativecommons.org/publicdomain/zero/1.0/
+- The free archive downloaded through the artist's itch.io page has upload id 9132289. Its SHA-256 and each original source-member name are recorded in /home/someguy/codebase/0xJesus/ComandOS/.worktrees/comandos-v1-grill/dash/prototypes/assets/pixel-packs/manifest.json.
+- Six unchanged horizontal PNG sprite sheets are vendored. No pixels were painted, generated, recolored or resampled. CSS selects the original frames at the artist's suggested preview rate of 10 fps, with the frame window centered in a fixed icon slot.
+- Clock role: purple Bubbly Brew Bottle Rising, 18×35 pixels, **22 actual frames** in the downloaded sheet. The artist page and older pack notes list seven for this item; the downloaded 396-pixel-wide sheet and 22 separate source sprites establish the count used here.
+- XP: blue Small Elixir, 15×30, seven frames. First block: teal Small Vial, 14×24, nine frames. 100 minutes: purple Large Jar, 18×34, 24 frames. Consistency: gold/purple Encased Potion, 14×25, eight frames. Level: gold Glowing Potion, 24×39, 12 frames.
+- The animated focus bottle accompanies the numeric timer; its decorative liquid does not indicate remaining time. The previous Quintino hourglass is not presented as a frame-animated asset.
+- Earlier Quintino provenance remains above as the record for the previous static-art proposal.

@@ -440,3 +440,28 @@ No production timer, tmux session, notification, real analytics record, sound po
 Validation for the artist-made round used Chrome on the remote Mac mini, through the isolated prototype server. All 17 referenced PNGs decoded and returned image/png. Five artwork sets across timer, Analytics and gallery were checked at 1440×1000, 1024×768, 390×844, 844×390 and 320×640: 75 view/size combinations, with no horizontal document or stage overflow and no fixture JavaScript errors. Desktop timer/gallery, mobile timer/gallery and the garden achievement strip were inspected in screenshots.
 
 The browser verified the ruler input, preserving the running timer and block identity while switching artwork, continuous clock motion during pause, original coin-frame progression, simulated completion rewards and single completion recording. A first two-sample sprite check returned identical offsets; the follow-up waited for the animation to be ready and visible, then observed six samples including offsets -64, 0, -16, -32 and -48 px. No sprite code change was needed. Fixed-clock timer/XP checks passed unchanged. Per-file hashes match the downloaded original assets; 18 retained original files, including the author's notes, total 141,934 bytes. The Tailscale URL returned the updated gallery with HTTP 200. Physical touch and sound listening still require the user's review; this round did not alter audio behavior or fix the production timer.
+
+
+### Accepted: Alquimia artwork for Pomodoro
+
+Jesús selected Alquimia: "Alquimia esta bien porfavor". Use Quintino Pixels' CC0 assets as the Pomodoro artwork reference: purple hourglass, potions, key, coin and level emblem. Preserve the approved B, Regla de tiempo, layout, continuous visual loops and optional videogame audio. Quintino's original icons are static; the existing prototype adds their continuous motion with CSS.
+
+The mockup now defaults to Alquimia when there is no valid explicit artwork query parameter. The selector and comparison gallery mark it as chosen, replacing the earlier Arcade recommendation. Explicit links to other artwork sets still work for comparison. The timer, rewards and Analytics share this selection. This acceptance settles the art direction, not all proposed XP rules or timer transition policies, and does not deploy production changes.
+
+Selected ruler: https://nodo-01.tail63a117.ts.net:8444/prototypes/prototype-v1-grill.html?round=pomodoro&variant=B&art=alchemy
+
+Selected artwork gallery: https://nodo-01.tail63a117.ts.net:8444/prototypes/prototype-v1-grill.html?round=pomodoro&variant=B&view=assets&art=alchemy
+
+
+### Alquimia refinement: actual animated sprites, not movement of static icons
+
+The user followed the Alquimia selection by explicitly asking for open assets with sprite frames that genuinely change the drawing. The earlier Quintino set is static, so its CSS movement does not satisfy this requirement. The updated Alquimia preview uses six CC0 sprite sheets by karsiori: moving bubbles, liquid and glints, with a stationary asset container. This is a new concrete artwork proposal within the accepted Alquimia direction, pending visual review.
+
+Gallery: https://nodo-01.tail63a117.ts.net:8444/prototypes/prototype-v1-grill.html?round=pomodoro&variant=B&view=assets&art=alchemy
+
+The focus icon is now an animated purple potion beside the numeric timer, replacing the static hourglass. Do not claim an animated hourglass was found. The liquid is decorative and does not encode elapsed/remaining minutes. All six sprites loop at ten original frames per second, with seven to 24 frames per animation. Their native frame sizes differ, so fixed slots center the native pixels and use integer scaling. Reduced motion stops the frame animation. The gallery displays per-item frame counts and offers "Ver los fotogramas originales" to inspect the unchanged horizontal sheets.
+
+Artwork credits now link to karsiori and CC0. The previous five-style comparison remains available; Alquimia is the chosen direction and the default. Timer semantics, XP rules and audio behavior are unchanged. No production state or sessions were modified.
+
+
+Validation used Chrome on the remote Mac mini. All six sheets decoded with the expected original dimensions, and every sprite produced several different frame offsets while its container had no animation. The source images also contain distinct pixel data across frames, confirming that these are actual artwork sequences. Focus, Analytics and the gallery, including the expanded frame-strip viewer, fit at 1440×1000, 1024×768, 390×844, 844×390 and 320×640 without horizontal document/stage overflow. Desktop and mobile screenshots were inspected. Simulated completion displayed the animated reward, with no fixture JavaScript errors. The six unchanged sheets total 45,315 bytes; their hashes match the downloaded originals. The accepted-layout and default-art selection were preserved. The gallery's selected-art section has a direct fragment link for mobile review.

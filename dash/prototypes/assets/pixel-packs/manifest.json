@@ -90,6 +90,50 @@
       "file": "quintino/icon20.png",
       "sha256": "a1cacb5beec18b433657f4df68606ce7d0ba14205fc0566c0bb2fd3ffcb87aea",
       "bytes": 517
+    },
+    {
+      "file": "karsiori/clock.png",
+      "sourceFile": "Bubbly Brew Bottle Rising/PURPLE/Bubbly Brew Bottle Rising - PURPLE - Spritesheet.png",
+      "sha256": "036d51a0b6afe4fa51820726ff1172ca7e0adcf7ed0c828b36f3302faf7b1b16",
+      "bytes": 17727
+    },
+    {
+      "file": "karsiori/crystal.png",
+      "sourceFile": "Small Elixir/BLUE/Small Elixir - BLUE - Spritesheet.png",
+      "sha256": "6405b3e57c97c4f928cdfe28ee5be2e54758ef8b19cded856ce21476fbc18e18",
+      "bytes": 3624
+    },
+    {
+      "file": "karsiori/first.png",
+      "sourceFile": "Small Vial/TEAL/Small Vial - TEAL - Spritesheet.png",
+      "sha256": "d94bb087b7131b774691903793c8f68b3bb69422b39733e7c93490178e4aa81f",
+      "bytes": 3826
+    },
+    {
+      "file": "karsiori/hundred.png",
+      "sourceFile": "Large Jar/PURPLE/Large Jar - PURPLE - Spritesheet.png",
+      "sha256": "8b10bb023519370d38f58bce941034ebf6c7ad1a471326ba608fd8078bf634f7",
+      "bytes": 13924
+    },
+    {
+      "file": "karsiori/streak.png",
+      "sourceFile": "Encased Potion/GOLD_PURPLE/Encased Potion - GOLD_PURPLE - Spritesheet.png",
+      "sha256": "17b313bfd104d3cfdc19b8dccec53d785fb3d73cb34512ead4ea2b977b886cd4",
+      "bytes": 1535
+    },
+    {
+      "file": "karsiori/level.png",
+      "sourceFile": "Glowing Potion/GOLD/Glowing Potion - GOLD - Spritesheet.png",
+      "sha256": "ad64b985faff0958834f1dd6189b7fe4c7f1267805781999197fbb5b66d344bf",
+      "bytes": 4679
+    }
+  ],
+  "sources": [
+    {
+      "artist": "karsiori",
+      "url": "https://karsiori.itch.io/pixel-art-potion-pack-animated",
+      "license": "CC0-1.0",
+      "archiveSha256": "9b5d0f181c8dad22ad80864683806b6cdc2e155b920ed1ec73a26ec096b83e0c"
     }
   ]
 }
