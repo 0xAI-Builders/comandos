@@ -15,4 +15,45 @@ Base: main `c0c68cf`. Rama: `implementation/comandos-v1`. Entorno de pruebas: `/
 
 ## Evidencia por bloque
 
-(se completa al cerrar cada bloque)
+Leyenda: **Impl** = implementado y en commit; **Auto** = pruebas automáticas ejecutadas en esta rama;
+**Nav** = comprobado en Chrome de la Mac mini (chrome-bg) sobre el candidato aislado; **Esc** = comprobado en el
+cc-app candidato (GTK sobre Broadway, HOME/tmux/estado aislados); **Jesús** = aceptación humana (pendiente = R2).
+
+| Bloque | Commits | Impl | Auto | Nav / Esc | Jesús |
+| --- | --- | --- | --- | --- | --- |
+| W1 Documento y restauración | c0a810b | Sí | test_workspace_state, test_workspace_endpoints, test_tmux_snapshot | Esc: arreglo compartido visible | pendiente |
+| W2 Acoplar, desacoplar, redimensionar | 52cbff5, 3ef0b8a, 8474636, 7731619 | Sí | workspace_layout (py+node), workspace_dock_checks, test_gtk_workspace, test_app_workspace | Nav: 1440×1000, 820×1180, 390×844, 320×568, 667×375, táctil (hold 180 ms vs swipe), Escape; iframes sin recarga y PIDs de pane constantes. Esc: acoplar (rev 9), desacoplar, redimensionar (rev 11) | pendiente |
+| W3 Foco por dispositivo y cierres | da2ec26, c2e7509 | Sí | test_workspace_clients (2 PTY reales en tmux privado), test_workspace_close, test_terminal_panes, test_app_workspace | Nav: abrir aviso seleccionó `%1` solo en ese navegador (tecleo cayó en `%1` con `%5` activo compartido); diálogo de cierre de grupo lista miembros y LOCAL se queda; Cancelar conserva todo. Esc: confirmación de grupo GTK con la misma lista | pendiente |
+| W4 Borrador y lectura | 6060a8e | Sí | test_workspace_reopen, device_drafts_checks 6/6 | pendiente (cerrar/reabrir con Jesús) | pendiente |
+| E1 Marcas | f36044c | Sí | test_work_marks*, work_marks_checks | pendiente | pendiente (icono neutral y transición) |
+| E2 Terminal rápida | 733aa14 | Sí | test_quick_terminal* (incl. tmux privado real) | botón visible | pendiente |
+| E3/E4 Extensiones y chat | ccb53e9, 9500ce5 | Sí | test_extension_batches/loading, operator/session suites | pendiente | pendiente |
+| P1–P4 Pomodoro | c23b2e5 … 141926a | Sí | test_pomodoro*, test_focus_progress, pomodoro_sync 9/9, pomodoro_ui 15/15 | reloj visible en cabecera | pendiente (escucha real de sonidos) |
+| N1 Eventos | fd0d52f | Sí | test_event_store, test_turn_state, test_events_endpoints | — | — |
+| N2 Avisos | 2b6bdc1, 3084b8d, 95b35f5 | Sí | test_notification_delivery 31, test_notice_endpoints 7, notification_ui_checks 19/19 | Nav: float + franja por proyecto; llegada no cambió foco ni selección de un borrador (3–8); float oculto a los 6 s; ráfaga "2 turnos terminados en Relotto" en 390×844. Esc: presencia `desktop-<host>` con interacción explícita | pendiente (sonido real, D5 en uso) |
+| N3 Telegram retirado | 2a37444 | Sí | test_telegram_retirement (systemctl simulado) | — | activación en R3 |
+| N4 Push Android | 0aa1665 | Sí | test_web_push, test_push_endpoints, sw_push_checks, push_settings_checks | — | **pendiente en Android físico** |
+| N5 Ediciones | 5bafe51, 9259fc1, 243cfbd, df7b1cb | Sí | test_news_editions, test_news_endpoints, news_reader_checks | pendiente | pendiente (sin configurar: no inventa noticias) |
+| R1 Integración | c2e7509 | — | suite completa: **2225 passed, 22 failed (los 22 preexistentes de main: browser_config_migration 12, extension_auth 9, extension_proxy 1), 7 skipped**; test_js_parses OK; migraciones 6/6 | — | — |
+
+Excluido de la suite completa: `tests/test_extension_catalog.py` (no colecciona en Python 3.10, sin `tomllib`) y los E2E
+reales de `tests/test_acp_client.py` (solo con `COMANDOS_E2E=1`, usan suscripciones reales). Ninguna prueba contacta
+los servicios reales (4777–4780): las referencias a esos puertos son cadenas o `urlopen` sustituido.
+
+## Medidas y hallazgos de integración
+
+- **Tamaño de ventana tmux (W3):** con `window-size latest` (config actual), al conectarse/reconectarse el móvil
+  (60×30) la ventana compartida baja a 60×29 hasta que el escritorio (200×50) escribe; con `ignore-size` el
+  escritorio conserva 200×49 pero el móvil ve un recorte. Se mantiene `latest` en v1; **decisión para Jesús en R2**.
+- **Panel web del cc-app bajo Broadway:** la columna del panel se ve estrecha en el candidato aislado, igual con el
+  dashboard de `main` servido al mismo cc-app: artefacto previo del WebKit bajo Broadway, no de esta rama.
+- **Proxy de ensayo:** el proxy del candidato enviaba `/terminal-panes` a ttyd por prefijo `/term`; corregido en el
+  arnés (no afecta al producto: la ruta ya existía en producción).
+
+## Pendiente antes de activar (R2/R3)
+
+- Recorrido humano con Jesús (tabla de R2 del plan 05), incluidos Android físico (permiso, pantalla bloqueada,
+  toque al origen) y escucha real de sonidos.
+- Decisión sobre el tamaño de ventana tmux entre móvil y escritorio.
+- Revisión final de código (en curso) y correcciones.
+- Activación según `docs/verification/commandos-v1-activation.md`.
