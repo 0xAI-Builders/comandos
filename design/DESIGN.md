@@ -8,7 +8,7 @@ Se conservan las familias sans y mono del producto. Las acciones principales tie
 
 Solo **Aplicar cambios** ejecuta el borrador de configuración. Los controles de cuenta, CLI, modelo y esfuerzo no envían operaciones al seleccionarse. Las opciones incompatibles explican el motivo. La recuperación aparece en el mismo selector cuando hay una operación pendiente de restauración.
 
-El chat oculto conserva el estado y libera espacio. El resumen de sesiones renderiza tarjetas, no terminales. La selección remota utiliza texto del panel en una vista estable. La entrada táctil conserva composición, autocorrección y borradores antes del envío explícito.
+El chat propio de CommandOS queda excluido del diseño de la versión 1.0. Su retirada de producción sigue pendiente. El resumen de sesiones renderiza tarjetas, no terminales. La selección remota utiliza texto del panel en una vista estable. La entrada táctil conserva composición, autocorrección y borradores antes del envío explícito.
 
 Las métricas distinguen configuración de uso observado. No se muestran estimaciones de ahorro como resultados medidos. Las limitaciones de cada CLI forman parte del editor de perfiles para evitar controles que aparenten cambios en caliente.
 
@@ -16,11 +16,9 @@ Las [referencias](references.md) y la [prueba visual](proof.html) registran el a
 
 ## Barra lateral en revisión
 
-La ronda `sidebar` compara cinco estructuras dentro del mismo marco: árbol de proyectos, sesiones compactas, riel de proyectos, favoritos con búsqueda y lista con inspector. A es la recomendación inicial para comparar; ninguna variante tiene aprobación. La pregunta es cómo ubicar y retomar un pane sin confundir proyecto, sesión y terminal.
+La comparación basada en proyectos, sesiones y panes queda archivada. Jesús pide definir la utilidad de la barra y elimina el chat del producto. MCPs y skills conservan su acceso por split pane. La opción en evaluación es configurar la IA del pane seleccionado, con controles en el lugar y evidencia de lo que quedó activo.
 
-La barra usa fondo `#131720`, texto secundario `#AAB1C0`, selección `#302C42` y acento `#AD9CFF`, con las fuentes del sistema ya disponibles. No se descargan tipografías ni assets. La selección tiene fondo y borde, además del estado accesible. Los favoritos y algunos estados usan animaciones en loop; respetan movimiento reducido y se pausan al ocultar la página.
-
-En escritorio la barra se puede plegar y ajustar de 250 a 440 px. Hasta 700 px de ancho del marco, navegación y terminal alternan dentro del área de trabajo. El selector A–E pertenece al laboratorio, queda fuera de la app y pasa al flujo del documento en pantallas bajas. El alcance, las propuestas y las comprobaciones están en /home/someguy/codebase/0xJesus/ComandOS/.worktrees/comandos-v1-grill/design/sidebar-grill.md.
+La función contextual, el contenido esencial y la política de aplicación todavía requieren veredicto. El análisis del código, los límites de los comandos nativos y las pruebas propuestas están en /home/someguy/codebase/0xJesus/ComandOS/.worktrees/comandos-v1-grill/design/sidebar-controls-plan.md. Las referencias visuales anteriores documentan investigación; no implican aprobación de la jerarquía.
 
 ## Canales de notificación vigentes
 

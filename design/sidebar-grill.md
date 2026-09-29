@@ -1,5 +1,7 @@
 # Barra lateral: proyectos, sesiones y panes
 
+> Comparación archivada. Jesús descartó la jerarquía como criterio para esta ronda y retiró el chat del diseño. La planificación vigente está en /home/someguy/codebase/0xJesus/ComandOS/.worktrees/comandos-v1-grill/design/sidebar-controls-plan.md. Las capturas y comprobaciones siguientes documentan la propuesta anterior; no son una elección aprobada.
+
 Esta ronda compara cómo encontrar y retomar trabajo desde la barra izquierda. Mantiene los mismos panes, favoritos, borradores y acciones de ejemplo al cambiar de propuesta. Ninguna variante está elegida todavía.
 
 Revisión: https://nodo-01.tail63a117.ts.net:8444/prototypes/prototype-v1-grill.html?round=sidebar&variant=A

@@ -813,3 +813,11 @@ Jesús replies "Breve hermano y preview". Preserve a brief notification and prov
 After questioning where the Android preview appears, Jesús asks to continue. Keep the brief preview direction and project-based notification grouping. The Android image represents the phone's system notification area or lock screen; the dialog inside the prototype is only a review frame. Delivery, permissions and physical-phone acceptance remain unimplemented.
 
 The next round follows the remaining-section inventory and compares the left sidebar with five alternatives at `round=sidebar`. No sidebar variant is approved yet. Mobbin research, prototype interactions, limitations and remote-browser verification are recorded in /home/someguy/codebase/0xJesus/ComandOS/.worktrees/comandos-v1-grill/design/sidebar-grill.md. This round chooses navigation structure; it does not finish all sidebar tools or implement the release.
+
+## Sidebar purpose correction and chat removal · 2026-09-29
+
+Jesús says the project/session labels and grouping are not the concern. The five navigation alternatives do not settle what the sidebar should do and are archived as an unselected exploration. He explicitly removes CommandOS chat from the product design and its remaining grill inventory. This does not remove the AI conversations running inside terminal panes or authorize deleting their history.
+
+MCPs and skills keep their existing per-pane control. Remove the duplicate entry from the sidebar inspector. The `sidebar` prototype no longer renders CommandOS chat. Production chat routes and processes have not been removed during this design turn; their retirement belongs in the release implementation, with stored history preserved.
+
+Configuring AI is now a candidate purpose for the sidebar. The user requests a grounded plan for harness, account and model changes, rather than another navigation classification. Verified code findings, proposed control behavior, acceptance criteria and the next human decision are in /home/someguy/codebase/0xJesus/ComandOS/.worktrees/comandos-v1-grill/design/sidebar-controls-plan.md. No new visual direction or execution policy is approved yet.
