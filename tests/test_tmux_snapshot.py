@@ -337,3 +337,37 @@ def test_agent_without_id_keeps_previous_id_only_for_the_same_pane_process():
     assert 'resume_id' not in panes[2]
     assert panes[3]['resume_id'] == 'fresh'
     assert tmux_snapshot.carry_resume_ids(_session({'id': '%1', 'pid': 1, 'command': 'grok', 'agent': 'grok'}), None)
+
+
+def test_capture_records_process_start_time_for_pane_identity(tmux, tmp_path):
+    session, metadata, _ = make_split_session(tmux, tmp_path)
+    snapshot = tmux_snapshot.capture_session(tmux, session, lambda pane: metadata[pane["id"]])
+    for window in snapshot["windows"]:
+        for pane in window["panes"]:
+            assert pane["start"] == tmux_snapshot.process_start_time(pane["pid"])
+            assert isinstance(pane["start"], int) and pane["start"] > 0
+
+
+def test_reused_pid_with_other_start_time_does_not_inherit_conversation():
+    previous = _session({'id': '%1', 'pid': 10, 'start': 111, 'command': 'codex', 'agent': 'codex', 'resume_id': 'old'})
+    captured = _session({'id': '%1', 'pid': 10, 'start': 222, 'command': 'codex', 'agent': 'codex'})
+    assert 'resume_id' not in tmux_snapshot.carry_resume_ids(captured, previous)['windows'][0]['panes'][0]
+
+
+def test_pane_keys_follow_the_process_and_its_exact_conversation():
+    previous = _session(
+        {'id': '%1', 'index': 0, 'pid': 10, 'start': 1, 'cwd': '/a', 'key': 'k-live'},
+        {'id': '%2', 'index': 1, 'pid': 20, 'start': 2, 'cwd': '/b', 'agent': 'codex', 'resume_id': 'conv', 'key': 'k-conv'},
+        {'id': '%3', 'index': 2, 'pid': 30, 'start': 3, 'cwd': '/c', 'key': 'k-shell'},
+    )
+    captured = _session(
+        {'id': '%1', 'index': 0, 'pid': 10, 'start': 1, 'cwd': '/a'},                       # same process
+        {'id': '%9', 'index': 1, 'pid': 90, 'start': 9, 'cwd': '/b', 'agent': 'codex', 'resume_id': 'conv'},  # resumed
+        {'id': '%3', 'index': 2, 'pid': 31, 'start': 4, 'cwd': '/c'},                       # %3 reused by another process
+    )
+    panes = tmux_snapshot.carry_pane_keys(captured, previous)['windows'][0]['panes']
+    assert panes[0]['key'] == 'k-live'
+    assert panes[1]['key'] == 'k-conv'
+    assert panes[2]['key'] not in {'k-live', 'k-conv', 'k-shell'}
+    fresh = tmux_snapshot.carry_pane_keys(_session({'id': '%1', 'pid': 1, 'start': 1}), None)
+    assert fresh['windows'][0]['panes'][0]['key']

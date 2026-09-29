@@ -2033,7 +2033,8 @@ def snapshot_layouts(wait=False):
             try:
                 captured = layout_snapshot.capture_session(tmuxc, key, inspector)
                 # Un agente aun sin id hereda el previo solo en su mismo pane.
-                data[key] = layout_snapshot.carry_resume_ids(captured, previous.get(key))
+                data[key] = layout_snapshot.carry_pane_keys(
+                    layout_snapshot.carry_resume_ids(captured, previous.get(key)), previous.get(key))
             except Exception as exc:
                 if key in previous:
                     data[key] = previous[key]
@@ -2244,7 +2245,11 @@ def _restore_one(sess, label, snap):
                 ["systemd-run", "--user", "--scope", "--collect", "--quiet",
                  "tmux", "new-session", "-d", "-s", sess, "-c", cwd],
                 capture_output=True, timeout=12)
-            cmd = resume_command(snap)
+            # Solo la conversacion exacta: sin id el pane queda en shell y su
+            # lugar se informa como no disponible (nunca --continue/--last).
+            cmd = exact_resume_command(snap)
+            if not cmd and snap.get("agent"):
+                print(f"restore {sess}: conversacion exacta no disponible; queda shell", file=sys.stderr)
         elif ssh_host and sess.startswith("ssh-"):
             http_post("/ssh-connect", {"host": ssh_host}, timeout=20)
         elif ssh_host:

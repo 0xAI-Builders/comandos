@@ -6,6 +6,7 @@ import re
 import shlex
 import tempfile
 import time
+import uuid
 
 _LEAF = re.compile(r'(\d+x\d+,\d+,\d+),(\d+)(?=[,}\]]|$)')
 
@@ -32,6 +33,15 @@ def remap_layout(layout, panes):
     return f'{checksum:04x},{body}'
 
 
+def process_start_time(pid):
+    """Kernel start tick of ``pid``: with the pid it identifies one process."""
+    try:
+        with open(f'/proc/{int(pid)}/stat') as f:
+            return int(f.read().rsplit(')', 1)[1].split()[19])
+    except (OSError, ValueError, IndexError):
+        return None
+
+
 def capture_session(tmux, session, describe_pane):
     """Read a complete stable session; fail instead of publishing a partial layout."""
     fmt = '\t'.join('#{' + x + '}' for x in (
@@ -52,7 +62,7 @@ def capture_session(tmux, session, describe_pane):
         for row in _checked(tmux, 'list-panes', '-t', wid, '-F', pfmt).splitlines():
             pid, idx, cwd, process, command, selected = row.split('\t')
             pane = dict(id=pid, index=int(idx), cwd=cwd, pid=int(process),
-                        command=command, active=selected == '1')
+                        start=process_start_time(process), command=command, active=selected == '1')
             pane.update(describe_pane(pane))
             window['panes'].append(pane)
         leaf_ids = {'%' + m.group(2) for m in _LEAF.finditer(layout)}
@@ -69,7 +79,7 @@ def capture_session(tmux, session, describe_pane):
 
 
 _AGENTS = {'claude', 'codex', 'grok'}
-_PANE_PLACE = {'id', 'index', 'cwd', 'pid', 'command', 'active'}
+_PANE_PLACE = {'id', 'index', 'cwd', 'pid', 'start', 'command', 'active'}
 
 
 def carry_resume_ids(captured, previous):
@@ -82,10 +92,35 @@ def carry_resume_ids(captured, previous):
             prev = old.get(pane.get('id'))
             if not prev or not prev.get('resume_id'):
                 continue
-            if all(prev.get(k) == pane.get(k) for k in ('pid', 'command', 'agent')):
+            # A reused pid is another process: compare start ticks when both exist.
+            same_start = None in (prev.get('start'), pane.get('start')) or prev['start'] == pane['start']
+            if same_start and all(prev.get(k) == pane.get(k) for k in ('pid', 'command', 'agent')):
                 for key, value in prev.items():
                     if key not in _PANE_PLACE:
                         pane.setdefault(key, value)
+    return captured
+
+
+def carry_pane_keys(captured, previous):
+    """Give every pane a logical key that follows its process or conversation.
+
+    A pane keeps its key while the same process (pid + start tick) runs in
+    it, or when a restored pane resumed the same exact conversation. A reused
+    pane id with another process gets a new key and inherits nothing.
+    """
+    old = [p for w in (previous or {}).get('windows', []) for p in w.get('panes', []) if p.get('key')]
+    by_process = {(p.get('id'), p.get('pid'), p.get('start')): p['key'] for p in old}
+    by_conversation = {(p.get('agent'), p['resume_id']): p['key'] for p in old if p.get('resume_id')}
+    used = set()
+    for window in captured['windows']:
+        for pane in window['panes']:
+            key = by_process.get((pane.get('id'), pane.get('pid'), pane.get('start')))
+            if not key and pane.get('resume_id'):
+                key = by_conversation.get((pane.get('agent'), pane['resume_id']))
+            if not key or key in used:
+                key = 'pane-' + uuid.uuid4().hex
+            pane['key'] = key
+            used.add(key)
     return captured
 
 

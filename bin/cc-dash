@@ -17,6 +17,7 @@ Endpoints:
 Solo escucha en 127.0.0.1. Todas las llamadas a tmux van sin shell (sin inyeccion).
 """
 import base64
+import hashlib
 import shlex
 import html as html_mod
 import hmac, secrets
@@ -926,6 +927,8 @@ import extension_launch
 import extension_observations
 import tmux_snapshot
 import session_operations
+import app_state
+import workspace_state
 import tui_state
 _TUI_TRANSCRIPTS = tui_state.TranscriptCache()
 _TUI_STATES = tui_state.StateTracker()
@@ -4956,6 +4959,10 @@ def close_app_tab(sess, ephemeral=False):
             write_json_file(TABS_FILE, tabs_map)
     remove_tab_metadata(sess)
     try:
+        workspace_sync(reason="user")
+    except Exception as exc:
+        print(f"workspace close {sess}: {exc}", file=sys.stderr)
+    try:
         write_json_file(os.path.join(HOOKS, "app-tab-close.json"),
                         {"session": sess, "ts": time.time()})
     except Exception:
@@ -6508,6 +6515,67 @@ def tab_labels():
     return out
 
 
+_WORKSPACE_LOCAL = threading.local()
+
+
+def workspace_store():
+    """One SQLite connection per request thread; migrations run on first use.
+    The first workspace_sync imports app-tabs.json without modifying it."""
+    store = getattr(_WORKSPACE_LOCAL, "store", None)
+    if store is None:
+        conn = app_state.connect()
+        app_state.migrate(conn)
+        store = workspace_state.WorkspaceStore(conn)
+        # The registry (app-tabs.json) is the inventory: it only changes on an
+        # explicit open/close, never because tmux is momentarily empty.
+        store.set_phase("ready")
+        _WORKSPACE_LOCAL.store = store
+    return store
+
+
+def workspace_inventory():
+    labels = tab_labels()
+    out = [("local", "⌂ local")]
+    for sess in ordered_tab_keys(labels, read_prefs().get("favorites", [])):
+        if sess not in HIDDEN_SESSIONS and SESSION_RE.fullmatch(sess):
+            out.append((sess, labels[sess] or sess))
+    return out
+
+
+LAYOUT_SNAPSHOT_FILE = os.path.join(HOOKS, "app-sessions-v2.json")
+
+
+def workspace_panes(inventory):
+    """Pane keys and process identity captured by the app's layout snapshot."""
+    sessions = tmux_snapshot.read_snapshot(LAYOUT_SNAPSHOT_FILE)["sessions"]
+    return {tab: workspace_state.pane_bindings(sessions.get(tab)) for tab, _ in inventory}
+
+
+def workspace_sync(reason="auto"):
+    """Fit the stored arrangement to the tab registry; returns the current state."""
+    store = workspace_store()
+    for _ in range(3):
+        current = store.current() or {"revision": 0, "document": workspace_state.empty_document()}
+        inventory = workspace_inventory()
+        wanted = workspace_state.reconcile(current["document"], inventory, workspace_panes(inventory))
+        if wanted == current["document"] and current["revision"]:
+            return current
+        digest = hashlib.sha256(json.dumps(wanted, sort_keys=True).encode()).hexdigest()[:24]
+        try:
+            return store.commit(current["revision"], wanted, f"sync-{current['revision']}-{digest}", reason=reason)
+        except workspace_state.Conflict:
+            continue
+        except (workspace_state.EmptyInventory, workspace_state.NotReady):
+            return current
+    return store.current()
+
+
+def workspace_payload(state):
+    doc = dict(state["document"])
+    doc.update(revision=state["revision"], ready=workspace_store().phase == "ready")
+    return doc
+
+
 def session_labels():
     """Etiquetas para DISPLAY (cards, switcher): pestanas + historial de
     sesiones vivas. Solo aporta nombres bonitos; jamas decide que es una tab."""
@@ -7916,7 +7984,7 @@ class Handler(http.server.SimpleHTTPRequestHandler):
     # Endpoints con DATOS o ACCIONES: exigen token. El shell estatico (HTML,
     # sw.js, manifest, iconos) NO — no revela nada (es codigo open-source) y
     # asi la PWA instala y carga sin depender de cookies en el webview movil.
-    API_GET = ("/session-config-history", "/pane-extensions", "/pomodoro", "/providers", "/optimization/plans", "/proxy", "/model/status", "/sovereignty", "/ui-log/summary", "/state", "/usage/state", "/usage/guard", "/usage/changes", "/usage/provider-compare", "/fs/dirs", "/models/latest", "/news/latest", "/notifs/count", "/usage/analytics", "/usage/interactions", "/usage/experiments", "/opencode/models", "/model-tiers", "/dedication", "/active-tab", "/session-profiles", "/extension-usage", "/session-brain", "/project-profiles", "/events", "/conf", "/prefs", "/ssh", "/tabs",
+    API_GET = ("/session-config-history", "/pane-extensions", "/pomodoro", "/providers", "/optimization/plans", "/proxy", "/model/status", "/sovereignty", "/ui-log/summary", "/state", "/usage/state", "/usage/guard", "/usage/changes", "/usage/provider-compare", "/fs/dirs", "/models/latest", "/news/latest", "/notifs/count", "/usage/analytics", "/usage/interactions", "/usage/experiments", "/opencode/models", "/model-tiers", "/dedication", "/active-tab", "/session-profiles", "/extension-usage", "/session-brain", "/project-profiles", "/events", "/conf", "/prefs", "/ssh", "/tabs", "/workspace",
                "/tab-history", "/remote-state", "/remote-qr.png", "/snippets", "/tmux-mouse",
                "/webterm-token", "/operator", "/allocation/status")
 
@@ -8166,6 +8234,15 @@ class Handler(http.server.SimpleHTTPRequestHandler):
                 code = 404 if err.startswith("No hay sesion") else 500
                 return self._json(code, {"error": err})
             return self._json(200, {"mouse": "on" if enabled else "off"})
+        if urllib.parse.urlsplit(self.path).path == "/workspace":
+            return self._json(200, workspace_payload(workspace_sync()))
+        if urllib.parse.urlsplit(self.path).path == "/workspace/client":
+            query = urllib.parse.parse_qs(urllib.parse.urlsplit(self.path).query)
+            device = (query.get("deviceId") or [""])[0]
+            try:
+                return self._json(200, workspace_store().client(device) or {})
+            except ValueError as exc:
+                return self._json(400, {"error": str(exc)})
         if self.path.startswith("/tabs"):
             # Las MISMAS pestanas abiertas en la app de escritorio (app-tabs.json)
             # para que el movil muestre exactamente lo mismo. Solo sesiones vivas.
@@ -8248,6 +8325,32 @@ class Handler(http.server.SimpleHTTPRequestHandler):
 
         if self.path in ("/pane-extensions","/pane-extensions/apply","/pane-extensions/template","/pane-extensions/cancel","/pane-extensions/recover"):
             return self._json(*pane_extensions_write(self.path[len("/pane-extensions"):],data))
+
+        if self.path == "/workspace":
+            document = data.get("document")
+            expected = data.get("expectedRevision")
+            if not isinstance(expected, int) or isinstance(expected, bool):
+                return self._json(400, {"error": "expectedRevision inválido"})
+            store = workspace_store()
+            current = workspace_sync()
+            try:
+                workspace_state.validate_document(document)
+                # Layout edits arrange existing tabs; opening/closing has its own routes.
+                if set(document["tabs"]) != set(current["document"]["tabs"]):
+                    return self._json(400, {"error": "La distribución no coincide con las tabs abiertas"})
+                saved = store.commit(expected, document, data.get("requestId"), reason="user")
+            except workspace_state.Conflict as exc:
+                return self._json(409, {"error": str(exc), "current": workspace_payload(exc.current)})
+            except (ValueError, TypeError, KeyError) as exc:
+                return self._json(400, {"error": str(exc) or "Workspace inválido"})
+            return self._json(200, workspace_payload(saved))
+
+        if self.path == "/workspace/client":
+            try:
+                state = workspace_store().save_client(data.get("deviceId"), data)
+            except ValueError as exc:
+                return self._json(400, {"error": str(exc)})
+            return self._json(200, state)
 
         if self.path == "/session/recover":
             code, body = session_recover(data)

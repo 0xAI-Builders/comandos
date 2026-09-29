@@ -63,6 +63,7 @@ def _snapshot_ns(previous, captures, live):
               read_snapshot=lambda p: {'sessions': previous},
               capture_session=capture,
               carry_resume_ids=lambda cap, prev: dict(cap, carried=prev is not None),
+              carry_pane_keys=lambda cap, prev: cap,
               write_snapshot=lambda p, data: written.update(data))}
     load('snapshot_layouts', ns)(wait=True)
     return written
@@ -130,3 +131,11 @@ def test_failed_local_restore_retries_without_creating_an_empty_session():
     spawn, calls = _terminal_spawn_fixture(fail)
     spawn()
     assert calls == ['retry']
+
+
+def test_single_pane_fallback_never_resumes_latest_conversation():
+    restore = next(n for n in ast.parse(SOURCE).body if isinstance(n, ast.FunctionDef) and n.name == '_restore_one')
+    text = ast.get_source_segment(SOURCE, restore)
+    # Without an exact id the pane stays a shell and its place is reported unavailable.
+    assert 'cmd = exact_resume_command(snap)' in text
+    assert 'cmd = resume_command(snap)' not in text
