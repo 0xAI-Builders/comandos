@@ -751,3 +751,27 @@ Corrected screenshots were captured on the Mac mini, transferred and inspected: 
 ## Approved: edition with terminal on the left · 2026-09-29
 
 Jesús approves the corrected mockup with "GENIAL! Aprobado". The approved design is B, Edición continua, with an optional terminal always on the left and the edition on the right. On narrow mobile screens the views retain that horizontal order and use full-width pages, reached through Terminal / Novedades or horizontal scrolling. Switching preserves the draft and reading position. This resolves the preceding placement and mobile-navigation review. Notification cadence and production implementation remain separate pending work.
+
+## Three daily editions and remaining grill inventory · 2026-09-29
+
+Jesús requests three news summaries per day and asks to finish the grilling. Frequency is now confirmed. The proposed 08:00 / 14:00 / 20:00 America/Mexico_City schedule has no answer yet; it is not approved or configured. Do not treat news-summary frequency as the policy for turn events, attention requests or Telegram. No collection job, reminder or external delivery was activated.
+
+Jesús identifies the left sidebar, top bar, Analytics, remote access, servers and chat as remaining sections. Read-only inspection of /home/someguy/codebase/0xJesus/ComandOS/dash/index.html and /home/someguy/codebase/0xJesus/ComandOS/dash/workspace.js confirms their current controls. The inventory below describes review work, not verified production behavior or newly accepted designs.
+
+| Review area | Scope still to settle |
+| --- | --- |
+| Left sidebar | Project/session/pane hierarchy, identification and return context, favorites and state visibility, session actions, overview, current Hoy insights, profiles, tools usage, chat allocation, collapse and resizing. |
+| Top bar | Essential global controls, counters, search/switcher, tabs overflow, quick Terminal versus Nueva sesión placement, shortcuts and access to the already chosen Pomodoro/notifications designs. |
+| Analytics | Useful overview, project/time filters, provider tokens/costs, plan limits, comparisons, ratings, Reparto recommendations, alerts and integration of the selected Pomodoro statistics. |
+| Remote access | Entry and connection controls, links/QR, connected/disconnected feedback, reconnecting, touch keyboard/clipboard/scroll, and shared layout with independent device focus. |
+| Servers | SSH inventory, add/edit/remove, connection flow, clear destination identity, errors and local/remote context. |
+| CommandOS chat | Purpose relative to pane terminals, target session/pane, known context, input and history, model controls, stop, results of actions and visible failure handling. |
+| AI controls and extensions | Finish previously explored controls: models/accounts/providers, catalog synchronization, provider logs, deterministic recommendations; global/category MCP and skill selection, selected versus loaded versus used, apply behavior and loading performance. |
+| Settings and utilities | Appearance, language, terminal typography/cursor, volume, notification settings, snippets, privacy/Soberanía, and removal or relocation of duplicated entry points. |
+| Terminal interaction | Complete keyboard, clipboard, selection, scrollback, search, touch controls and the final presentation of pane identity and states, within the accepted docking behavior. |
+
+Keep accepted directions: nested tab drag/drop with preview and mobile support; group-close confirmation; shared arrangement with independent device focus; automatic latest-state restoration; separate quick Terminal and Nueva sesión actions; organizational session/pane states without inheritance; looping non-emoji indicators; Pomodoro ruler, gamification and selectable animated styles; lower notification strip with floating notices and project-grouping feedback; approved continuous news edition with terminal on the left.
+
+Focused details remain open inside those directions: exact deterministic return context, neutral state after a turn, transitions out of organizational blockers, Pomodoro preference scope and complete sprite coverage, notification detail and verified event identity, Telegram routing and interruptions, news-edition hours and research scope/budget. Approval of those directions must not be represented as implementation or release verification.
+
+Recommended next order: sidebar, top bar, chat, Analytics, remote access, servers, remaining AI/extensions controls, settings/utilities, then a complete terminal workflow and cross-device review. Use the existing mockup and real references for each visual round, preserve accepted decisions, and compare desktop and remote throughout. Implementation verification afterward must cover restoration, reconnecting, latency/memory and human end-to-end acceptance; it is a separate release gate from finishing this design grill.
