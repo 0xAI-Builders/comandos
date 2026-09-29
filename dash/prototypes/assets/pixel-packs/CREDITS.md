@@ -78,3 +78,14 @@ Artist: **karsiori**.
 - Free archive upload id 9281968. Archive SHA-256, original archive member names, sizes and file hashes are in /home/someguy/codebase/0xJesus/ComandOS/.worktrees/comandos-v1-grill/dash/prototypes/assets/pixel-packs/manifest.json.
 - Six unchanged horizontal sheets from GEM 1, 2, 3, 4, 5 and 9: purple, turquoise, light green, blue, red and gold. The actual sheet widths establish 10, 10, 11, 11, 11 and 10 frames respectively. Frame windows are 18×30, 23×27, 28×28, 20×30, 19×22 and 27×26 pixels.
 - The prototype plays the artist's original images at 10 fps with fixed icon slots. No pixels were repainted, generated or resampled. The additional style does not replace the five earlier visual options.
+
+
+## Expressive clock, chest and fire animations
+
+The previous entries describe earlier design rounds. The common clock now uses an actual animated hourglass in all six styles and in the header; it replaces the static clocks, subtle potion/gem clock roles and slow line icon. Other potion and gem roles remain.
+
+- **Zoedoz**, Animated Hourglass: https://opengameart.org/content/animated-hourglass — **CC0 1.0**, https://creativecommons.org/publicdomain/zero/1.0/. Original source: https://opengameart.org/sites/default/files/hourglass_2.png. Unchanged 630×42 PNG, 15 distinct 42×42 frames showing falling sand and a flip. The accompanying Aseprite source specifies 100 ms per frame; playback preserves that 1.5-second cycle.
+- **karsiori**, FREE Pixel Art Chest Pack - Animated: https://karsiori.itch.io/pixel-art-chest-pack-animated — **CC0 1.0**, https://creativecommons.org/publicdomain/zero/1.0/. Free archive upload id 8554113. The unchanged Golden Chest 1 sheet has five distinct 40×25 frames (closed state plus four opening frames). The prototype plays those frames forward, holds the open position, and closes by reversing them in a three-second loop. This sequencing is ours; the original pixels are unchanged. Used for the 100-minute reward in Arcade, Fantasía and RPG clásico.
+- **ArlanTR**, Campfire pixel art animated: https://opengameart.org/content/campfire-pixel-art-animated — **CC0 1.0**, https://creativecommons.org/publicdomain/zero/1.0/. Original source: https://opengameart.org/sites/default/files/campfire-sprite-sheet.png. Unchanged 128×32 PNG with four distinct 32×32 frames, played at 8 fps. Used for consistency in Fantasía and RPG clásico.
+
+All three animations appear together in the review gallery, with artist links. The hourglass loops decoratively in idle, running, paused and completed states, as requested for visible icons; sand level does not encode remaining minutes. The numeric timer and state label remain authoritative. System reduced-motion preferences stop the animations. No paid assets were purchased or copied. Hashes and original source identifiers are recorded in /home/someguy/codebase/0xJesus/ComandOS/.worktrees/comandos-v1-grill/dash/prototypes/assets/pixel-packs/manifest.json.

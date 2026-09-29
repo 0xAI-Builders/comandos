@@ -59,3 +59,19 @@ Jesús pidió conservar varios estilos intercambiables, incluidos los que ya hab
 | [Perfil de karsiori](https://karsiori.itch.io/) | Catálogo de packs del artista y enlaces a gemas, flores y árboles. | Sí: descubrimiento de las fuentes; no se copiaron otras ilustraciones. |
 
 Las tarjetas distinguen seis sprites originales, combinación de sprites/iconos, o iconos estáticos con movimiento CSS. No se presenta el movimiento CSS como animación dibujada. Convertir Fantasía, RPG clásico y Jardín a sprites originales completos sigue pendiente de diseño. La preferencia global de producto se propone para desktop y remoto; el prototipo guarda solo el estilo en el navegador y no sincroniza equipos.
+
+
+### Visible action, rather than subtle glints, for Pomodoro
+
+Jesús reports that the clock appears still and asks for more expressive original animations. Inspection reproduced the mismatch: Fantasía, Arcade, RPG clásico and Jardín still used static clock art with outer CSS movement; the separate 20 px header hand did animate, but its idle revolution took 24 seconds. Chrome on the remote Mac confirmed changing transforms and reduced motion disabled. This was an artwork/visibility problem in the mockup; no evidence ties it to tmux.
+
+| Source | Verified evidence | Decision |
+|---|---|---|
+| [Zoedoz, Animated Hourglass](https://opengameart.org/content/animated-hourglass) | CC0; unchanged 15-frame PNG plus Aseprite source establishing 42×42 geometry and 100 ms timing. Frames show sand falling and the glass turning over. | Use as the common clock in all styles and the header. |
+| [karsiori, animated chests](https://karsiori.itch.io/pixel-art-chest-pack-animated) | Explicit CC0; free ZIP contains Golden Chest 1, five distinct original frames. | Use in Arcade, Fantasía and RPG clásico; show opening/holding/closing in the review gallery. |
+| [ArlanTR, animated campfire](https://opengameart.org/content/campfire-pixel-art-animated) | CC0; four distinct original 32×32 frames. | Replace the static fire in Fantasía and RPG clásico; include in the motion review. |
+| [William.Thompsonj and Sharm, LPC Clock Animation](https://opengameart.org/content/lpc-clock-animation) | CC BY 3.0 / GPL 3.0 options; original sheet inspected. Tall pendulum clock; movement concentrated at the base. | Omit: the hourglass communicates motion more clearly at small UI sizes. |
+| [Robert Brooks, animated sand timers](https://gamedeveloperstudio.itch.io/animated-sand-timers) | Paid download, £5 minimum, turn sequence and 15 states. | Omit; not an open/free pack and not purchased. |
+| [ollieMarsh, animated cauldron](https://makinggamesinc.itch.io/cauldron-pixel-art) | Paid download, $1 minimum, nine frames. | Omit; not purchased and redistribution terms were not established. |
+
+This revises the earlier note saying no animated hourglass was found. The shared hourglass and other new artwork are proposals for review, not a recorded user acceptance. The six styles remain selectable; unrelated static symbols remain clearly labeled.

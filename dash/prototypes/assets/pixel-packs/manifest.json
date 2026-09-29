@@ -162,6 +162,24 @@
       "sourceFile": "GEM 9/GEM 9 - GOLD - Spritesheet.png",
       "sha256": "241ccde9c43efccc8bc448d31c1df85a67e31374f53147f914c0b3dd5eb1e58f",
       "bytes": 4257
+    },
+    {
+      "file": "zoedoz/hourglass.png",
+      "sourceFile": "https://opengameart.org/sites/default/files/hourglass_2.png",
+      "sha256": "eb7385877b3a7e39fc56fd17ba53fbb7f5d0ea4cbbae13b074986f23671a444d",
+      "bytes": 3307
+    },
+    {
+      "file": "karsiori-chests/golden.png",
+      "sourceFile": "Pixel Chest Pack/Golden Chest 1/Golden Chest 1 - SpriteSheet.png",
+      "sha256": "97e29a4a6ebc48e0418813196088f7b8d831042e9d8adcbe90034fdc55608b68",
+      "bytes": 3573
+    },
+    {
+      "file": "arlantr/campfire.png",
+      "sourceFile": "https://opengameart.org/sites/default/files/campfire-sprite-sheet.png",
+      "sha256": "61f57d25731b06c1923f0bef1d8579deb106419b4acbfa1735f7d1e2c5f42758",
+      "bytes": 963
     }
   ],
   "sources": [
@@ -176,6 +194,24 @@
       "url": "https://karsiori.itch.io/free-pixel-art-gem-pack",
       "license": "CC0-1.0",
       "archiveSha256": "cb72c6994fb45128c400db2b5922f0a0827e6ae6f2737bcbbc132a48ddf05a41"
+    },
+    {
+      "artist": "Zoedoz",
+      "url": "https://opengameart.org/content/animated-hourglass",
+      "license": "CC0-1.0",
+      "sourceFile": "https://opengameart.org/sites/default/files/hourglass_2.png"
+    },
+    {
+      "artist": "karsiori",
+      "url": "https://karsiori.itch.io/pixel-art-chest-pack-animated",
+      "license": "CC0-1.0",
+      "archiveSha256": "f5f4c390d233434297609b01a20e7ab6d2d7e3f1ac05abe410b603de78a304f5"
+    },
+    {
+      "artist": "ArlanTR",
+      "url": "https://opengameart.org/content/campfire-pixel-art-animated",
+      "license": "CC0-1.0",
+      "sourceFile": "https://opengameart.org/sites/default/files/campfire-sprite-sheet.png"
     }
   ]
 }

@@ -483,3 +483,21 @@ No real sessions, provider configurations, production timer state, sound opt-in 
 
 
 Validation for the selectable catalog used Chrome on the remote Mac mini. Clicking each of the six actual style cards updated the menu/card selection and namespaced preference while preserving the running block id, end time, XP and history. A second tab restored the chosen style, received a subsequent style change, and an explicit preview URL did not overwrite the saved preference. Six styles across timer, Analytics and gallery passed at 1440×1000, 1024×768, 390×844, 844×390 and 320×640, for 90 style/view/size combinations without horizontal overflow or fixture JavaScript errors. Desktop/mobile catalog and crystal screenshots were inspected. All six gems showed multiple frame offsets. Source-sheet dimensions and pixel differences were checked; the six unchanged new sheets total 22,651 bytes. All 30 retained source-file hashes match their downloaded originals. Isolated checks covered initial/default selection, stale stored ids, explicit preview precedence, invalid URL fallback and denied browser storage without losing the live selection.
+
+
+### Refinement requested: visibly changing clock and artwork
+
+Jesús rejected the limited motion and reported that the clock seemed still. The previous main clocks in four styles were static PNGs with outer CSS movement. The header used a separate 20 px line icon whose idle hand took 24 seconds per revolution. A remote-browser check confirmed that its transform changed, so it was not a missing animation rule. Potion and gem sequences did change original pixels, but their action was subtle.
+
+The prototype now uses Zoedoz's CC0 hourglass as a common time symbol in every style and in the header. Its 15 original 42×42 frames show falling sand and a complete flip in 1.5 seconds. The main ruler shows the native artwork at 2× scale; the header uses 1×. This supersedes the earlier statement that an animated hourglass had not been found and the prior clock-specific potion/gem descriptions. The theme's other assets are preserved, except existing static chests in Arcade/Fantasía/RPG clásico now use karsiori's opening chest and static fire in Fantasía/RPG clásico now uses ArlanTR's animated fire. The three new original PNGs total 7,843 bytes. No pixels were generated or redrawn.
+
+The gallery starts with an immediate comparison of falling sand/flip, opening/closing chest, and changing flames. Original-frame counts and source links are visible. The shared hourglass is an updated design proposal for review, not a newly approved user decision. Alquimia remains the first-use theme and B remains the chosen ruler layout. All six themes remain available; labels accurately report animated/static counts.
+
+Review the motion: https://nodo-01.tail63a117.ts.net:8444/prototypes/prototype-v1-grill.html?round=pomodoro&variant=B&view=assets&art=alchemy#pm-motion-review
+
+Review the clock in context: https://nodo-01.tail63a117.ts.net:8444/prototypes/prototype-v1-grill.html?round=pomodoro&variant=B&art=alchemy
+
+The loops remain visible in idle, running, paused and completed states per the user's continuous-animation preference. The falling sand is decorative, not a visualization of the remaining Pomodoro duration; the number and status label show that state. Reduced motion retains a static frame. No live-session, production timer, audio or progression behavior changed.
+
+
+Remote Mac Chrome verification: all six styles across timer, Analytics and gallery fit at 1440×1000, 1024×768, 390×844, 844×390 and 320×640 (90 combinations), without horizontal overflow or fixture JavaScript errors. Real style-card clicks preserved the active timer identity/end time, XP and history. Sampling rendered frame positions observed all 15 hourglass frames in both header and gallery, all five chest frames, and all four fire frames; the hourglass container itself had no outer animation. The main clock kept advancing in idle, running, paused and completed mock states. Desktop and mobile screenshots were visually inspected. All 33 retained source-file hashes matched; the three new sheets have 15, five and four distinct original pixel frames. JavaScript syntax and diff checks passed.
