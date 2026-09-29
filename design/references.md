@@ -204,3 +204,5 @@ Ruta con ambas vistas: https://nodo-01.tail63a117.ts.net:8444/prototypes/prototy
 ### Corrección de Jesús: terminal siempre a la izquierda
 
 La terminal queda a la izquierda y la edición a la derecha. Esta indicación sustituye la propuesta anterior de terminal a la derecha o debajo. Hasta 560 px se propone mantener ambas vistas con ancho completo y navegación horizontal mediante botones o desplazamiento. Es una adaptación del prototipo para revisión, sin una nueva búsqueda de referencias. Las seis capturas de Mobbin ya inspeccionadas siguen siendo la base del lector. La ruta de revisión conserva B y `terminal=1`.
+
+Veredicto del 2026-09-29: Jesús aprobó el mockup corregido, incluida la navegación móvil descrita. Queda elegida la edición continua con terminal opcional a la izquierda. La frecuencia de avisos sigue pendiente.
