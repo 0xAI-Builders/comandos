@@ -144,7 +144,60 @@
     return { refresh, send, retry, discard, view, accept, serverNow, snapshot: () => confirmed };
   }
 
-  return { MIN, MIN_TARGET_MS, MAX_TARGET_MS, elapsedMs, remainingMs, fmt, deltaForRemaining, createClient, newRequestId };
+  /* ---- Art: six styles, original artist frames (assets/pomodoro, see CREDITS.md).
+   * The hourglass is decorative in every style: its sand never encodes the
+   * remaining time; the number does. Changing style never touches the block. */
+  const ASSET_ROOT = '/assets/pomodoro/';
+  const cell = (col, row) => ({ file: 'shikashi/icons.png', x: col * 32, y: row * 32 });
+  const soul = name => ({ file: '7soul/' + name + '.png', x: 1, y: 1 });
+  const strip = (name, frames) => ({ file: 'lared/' + name + '.png', native: 16, frames });
+  const anim = (file, width, height, frames, fps, motion) => ({ file, width, height, frames, fps, motion });
+  const HOURGLASS = anim('zoedoz/hourglass.png', 42, 42, 15, 10);
+  const CHEST = anim('karsiori-chests/golden.png', 40, 25, 5, 5 / 3, 'chest');
+  const CAMPFIRE = anim('arlantr/campfire.png', 32, 32, 4, 8);
+  const ART_SOURCES = {
+    zoedoz: { author: 'Zoedoz', url: 'https://opengameart.org/content/animated-hourglass', license: 'CC0', licenseUrl: 'https://creativecommons.org/publicdomain/zero/1.0/' },
+    karsioriChests: { author: 'karsiori', url: 'https://karsiori.itch.io/pixel-art-chest-pack-animated', license: 'CC0', licenseUrl: 'https://creativecommons.org/publicdomain/zero/1.0/' },
+    arlantr: { author: 'ArlanTR', url: 'https://opengameart.org/content/campfire-pixel-art-animated', license: 'CC0', licenseUrl: 'https://creativecommons.org/publicdomain/zero/1.0/' },
+    karsioriGems: { author: 'karsiori', url: 'https://karsiori.itch.io/free-pixel-art-gem-pack', license: 'CC0', licenseUrl: 'https://creativecommons.org/publicdomain/zero/1.0/' },
+    karsiori: { author: 'karsiori', url: 'https://karsiori.itch.io/pixel-art-potion-pack-animated', license: 'CC0', licenseUrl: 'https://creativecommons.org/publicdomain/zero/1.0/' },
+    shikashi: { author: 'Matt Firth (shikashipx) + game-icons.net', url: 'https://shikashipx.itch.io/shikashis-fantasy-icons-pack', license: 'CC BY 4.0', licenseUrl: 'https://creativecommons.org/licenses/by/4.0/' },
+    lared: { author: 'La Red Games', url: 'https://laredgames.itch.io/gems-coins-free', license: 'CC0', licenseUrl: 'https://creativecommons.org/publicdomain/zero/1.0/' },
+    soul: { author: 'Henrique Lazarini (7Soul1)', url: 'https://opengameart.org/content/496-pixel-art-icons-for-medievalfantasy-rpg', license: 'Dominio público / atribución conservada', licenseUrl: 'https://www.deviantart.com/7soul1/art/420-Pixel-Art-Icons-for-RPG-129892453' },
+  };
+  const STYLES = {
+    alchemy: { title: 'Alquimia', sources: ['karsiori', 'zoedoz'], assets: { clock: HOURGLASS, crystal: anim('karsiori/crystal.png', 15, 30, 7, 10), first: anim('karsiori/first.png', 14, 24, 9, 10), hundred: anim('karsiori/hundred.png', 18, 34, 24, 10), streak: anim('karsiori/streak.png', 14, 25, 8, 10), level: anim('karsiori/level.png', 24, 39, 12, 10) } },
+    arcade: { title: 'Arcade', sources: ['lared', 'zoedoz', 'karsioriChests'], assets: { clock: HOURGLASS, crystal: strip('spr_coin_strip4', 4), first: strip('MonedaP', 5), hundred: CHEST, streak: strip('spr_coin_roj', 4), level: strip('MonedaD', 5) } },
+    shikashi: { title: 'Fantasía', sources: ['shikashi', 'zoedoz', 'karsioriChests', 'arlantr'], assets: { clock: HOURGLASS, crystal: cell(15, 12), first: cell(8, 13), hundred: CHEST, streak: CAMPFIRE, level: cell(7, 12) } },
+    soul: { title: 'RPG clásico', sources: ['soul', 'zoedoz', 'karsioriChests', 'arlantr'], assets: { clock: HOURGLASS, crystal: soul('I_Crystal01'), first: soul('Ac_Medal04'), hundred: CHEST, streak: CAMPFIRE, level: soul('Ac_Medal01') } },
+    garden: { title: 'Jardín', sources: ['shikashi', 'zoedoz'], assets: { clock: HOURGLASS, crystal: cell(14, 12), first: cell(3, 12), hundred: cell(4, 12), streak: cell(5, 12), level: cell(8, 21) } },
+    crystals: { title: 'Cristales', sources: ['karsioriGems', 'zoedoz'], assets: { clock: HOURGLASS, crystal: anim('karsiori-gems/crystal.png', 23, 27, 10, 10), first: anim('karsiori-gems/first.png', 28, 28, 11, 10), hundred: anim('karsiori-gems/hundred.png', 20, 30, 11, 10), streak: anim('karsiori-gems/streak.png', 19, 22, 11, 10), level: anim('karsiori-gems/level.png', 27, 26, 10, 10) } },
+  };
+  const STYLE_ORDER = ['alchemy', 'arcade', 'shikashi', 'soul', 'garden', 'crystals'];
+  const DEFAULT_STYLE = 'alchemy';
+
+  function styleOf(id) { return Object.prototype.hasOwnProperty.call(STYLES, id) ? id : DEFAULT_STYLE; }
+
+  function assetHtml(name, style, extra = '') {
+    const set = styleOf(style);
+    const a = STYLES[set].assets[name] || STYLES[set].assets.clock;
+    const native = a.native || 32;
+    const variable = !!a.width;
+    const vars = [`background-image:url('${ASSET_ROOT}${a.file}')`, `background-position:-${a.x || 0}px -${a.y || 0}px`, `--native:${native}`, `--pixel-multiplier:${32 / native}`];
+    if (variable) vars.push(`--frame-width:${a.width}`, `--frame-height:${a.height}`, `--strip-duration:${(a.frames / a.fps).toFixed(3)}s`);
+    if (a.frames) vars.push(`--frames:${a.frames}`, `--strip-end:-${a.frames * (a.width || native)}px`);
+    const cls = ['pm-asset', 'pm-asset-' + name, a.frames ? 'pm-framed' : '', variable ? 'pm-variable' : '', a.motion ? 'pm-motion-' + a.motion : '', extra].filter(Boolean).join(' ');
+    return `<span class="${cls}" aria-hidden="true" data-art="${set}" data-asset="${name}"><span class="pm-pixel" style="${vars.join(';')}"></span></span>`;
+  }
+
+  function artFiles() {
+    const out = new Set();
+    for (const set of Object.values(STYLES)) for (const a of Object.values(set.assets)) out.add(a.file);
+    return [...out].sort();
+  }
+
+  return { MIN, MIN_TARGET_MS, MAX_TARGET_MS, elapsedMs, remainingMs, fmt, deltaForRemaining, createClient, newRequestId,
+    STYLES, STYLE_ORDER, DEFAULT_STYLE, ART_SOURCES, styleOf, assetHtml, artFiles };
 });
 
 /* ---------------------------------------------------------------------------
@@ -179,7 +232,9 @@
     seenCompletion: null,
     banner: '',
     rulerPreview: null,
+    style: P.DEFAULT_STYLE,
   };
+  const sounds = () => (window.uiSounds && typeof window.uiSounds.play === 'function' ? window.uiSounds : null);
   const client = P.createClient({ transport, onChange: () => render() });
 
   function selectedTarget() {
@@ -196,6 +251,7 @@
     const f = Number(settings.focusMinutes), b = Number(settings.shortBreakMinutes);
     if (f >= 1 && f <= 180) ui.draft.focus = f;
     if (b >= 1 && b <= 180) ui.draft.break = b;
+    ui.style = P.styleOf(settings.style);
   }
 
   let saveTimer = null;
@@ -234,8 +290,7 @@
     const mini = v.live ? P.fmt(v.remainingMs) : '';
     b.classList.toggle('running', v.status === 'running');
     b.classList.toggle('paused', v.status === 'paused');
-    const iconName = v.block && v.live && v.block.mode === 'break' ? 'coffee' : 'timer';
-    const html = `${icon(iconName, 16)}<span class="pomo-mini">${esc(mini)}</span>`;
+    const html = `${P.assetHtml('clock', ui.style, 'pm-header-clock')}<span class="pomo-mini">${esc(mini)}</span>`;
     if (b.dataset.pmHtml !== html) { b.innerHTML = html; b.dataset.pmHtml = html; }
     b.setAttribute('aria-label', v.live ? `Pomodoro: ${mini} ${stateLabel(v)}` : 'Pomodoro');
   }
@@ -247,6 +302,9 @@
     ui.seenCompletion = b.blockId;
     const recent = v.serverNowMs - (b.endedAtMs || 0) < 10 * MIN;
     if (first && !recent) return;          // an old completion is not news after a reload
+    if (v.serverNowMs - (b.endedAtMs || 0) < 90 * 1000) {
+      sounds()?.play(b.mode === 'focus' ? 'focus-complete' : 'break-complete', { eventId: `pomodoro:${b.blockId}:completed` });
+    }
     ui.banner = b.mode === 'focus'
       ? t(`Bloque completado · ${Math.round(b.activeMs / MIN)} min en ${b.project || 'sin proyecto'}`, `Block complete · ${Math.round(b.activeMs / MIN)} min`)
       : t('Descanso terminado · listo para continuar', 'Break over · ready to continue');
@@ -274,7 +332,7 @@
         </div>
       </div>
       <div class="pm-row-clock">
-        <div class="pm-ruler-clock"><span data-pm-art></span>
+        <div class="pm-ruler-clock">${P.assetHtml('clock', ui.style)}
           <div><div class="pm-time" data-pm-time>${timeText(v)}</div><small data-pm-label>${esc(stateLabel(v))}</small></div></div>
         <div class="pm-ruler-assembly">
           <input class="pm-ruler" data-pm-ruler type="range" min="1" max="90" step="1" value="${Math.min(90, minutes)}"
@@ -295,7 +353,35 @@
       </div>
       ${ui.banner ? `<div class="pm-banner" role="status">${esc(ui.banner)}</div>` : ''}
       ${err}
+      ${soundHtml()}
+      ${styleHtml()}
       <div data-pm-extra></div>`;
+  }
+
+  function soundHtml() {
+    const snd = sounds();
+    if (!snd) return '';
+    const on = snd.isEnabled();
+    const vol = Math.round(snd.getVolume() * 100);
+    const previews = [['focus-start', t('Inicio', 'Start')], ['focus-pause', t('Pausa', 'Pause')], ['focus-complete', t('Completado', 'Complete')], ['break-complete', t('Descanso', 'Break')], ['level-up', t('Subir de nivel', 'Level up')]];
+    return `<div class="pm-audio">
+        <button type="button" data-pm-sound aria-pressed="${on}">${icon('bell', 13)} ${on ? t('Sonido activado', 'Sound on') : t('Activar sonido', 'Enable sound')}</button>
+        <label>${t('Volumen', 'Volume')} <input type="range" data-pm-volume min="0" max="100" value="${vol}" aria-label="${t('Volumen de efectos', 'Effects volume')}"></label>
+        <button type="button" data-pm-preview="focus-complete">${t('Escuchar final', 'Hear the end')}</button>
+      </div>
+      <details class="pm-sound-options"><summary>${t('Probar sonidos de videojuego', 'Try the game sounds')}</summary>
+        ${previews.map(([cue, label]) => `<button type="button" data-pm-preview="${cue}">${label}</button>`).join('')}
+      </details>`;
+  }
+
+  function styleHtml() {
+    const set = P.STYLES[ui.style];
+    const credit = set.sources.map(k => { const a = P.ART_SOURCES[k]; return `<a href="${a.url}" target="_blank" rel="noopener">${esc(a.author)}</a> · <a href="${a.licenseUrl}" target="_blank" rel="noopener">${esc(a.license)}</a>`; }).join(' / ');
+    return `<div class="pm-art-controls">
+        <label>${t('Estilo', 'Style')} <select data-pm-style aria-label="${t('Estilo de Pomodoro (toda la app)', 'Pomodoro style (whole app)')}">${P.STYLE_ORDER.map(k => `<option value="${k}" ${k === ui.style ? 'selected' : ''}>${esc(P.STYLES[k].title)}</option>`).join('')}</select></label>
+        <span class="pm-art-samples">${['crystal', 'first', 'hundred', 'streak', 'level'].map(n => P.assetHtml(n, ui.style)).join('')}</span>
+        <small>${t('Arte', 'Art')}: ${credit}</small>
+      </div>`;
   }
 
   function render() {
@@ -329,9 +415,8 @@
   async function command(action, fields) {
     ui.banner = '';
     const res = await client.send(action, fields);
-    if (res.ok && typeof window.ComandosPomodoroConfirmed === 'function') {
-      try { window.ComandosPomodoroConfirmed(action, res); } catch (e) { /* optional */ }
-    }
+    const cue = { start: 'focus-start', resume: 'focus-resume', pause: 'focus-pause' }[action];
+    if (res.ok && cue) sounds()?.play(cue, { eventId: 'pomodoro-cmd:' + res.request.requestId });
     if (!res.ok && res.error && !res.error.retryable) say(res.error.message, true);
     scheduleRefresh();
     return res;
@@ -388,6 +473,29 @@
     }
     const num = panel.querySelector('[data-pm-minutes]');
     if (num) num.addEventListener('change', () => setMinutes(num.value, true));
+    panel.querySelector('[data-pm-sound]')?.addEventListener('click', e => {
+      e.stopPropagation();
+      const snd = sounds(); if (!snd) return;
+      const next = !snd.isEnabled();
+      snd.setEnabled(next);
+      if (next) snd.unlock(e);
+      render();
+    });
+    panel.querySelector('[data-pm-volume]')?.addEventListener('input', e => { sounds()?.setVolume(Number(e.target.value) / 100); });
+    panel.querySelectorAll('[data-pm-preview]').forEach(btn => btn.addEventListener('click', e => {
+      e.stopPropagation(); sounds()?.unlock(e); sounds()?.preview(btn.dataset.pmPreview);
+    }));
+    panel.querySelector('[data-pm-style]')?.addEventListener('change', async e => {
+      const style = P.styleOf(e.target.value);
+      const previous = ui.style;
+      ui.style = style; render();
+      try {
+        const r = await transport('POST', '/pomodoro', { settings: { style } });
+        if (r.status !== 200) throw new Error((r.body && r.body.error) || 'no guardado');
+        applySettings(r.body.settings);
+      } catch (err) { ui.style = previous; say(t('No se pudo guardar el estilo', 'Could not save the style'), true); }
+      render();
+    });
   }
 
   let refreshTimer = null;
@@ -422,13 +530,16 @@
       if (!e.target.closest || e.target.closest('#pomo-panel') || e.target.closest('#btn-pomo')) return;
       document.getElementById('pomo-panel')?.classList.add('hidden');
     });
-    document.addEventListener('visibilitychange', () => { if (!document.hidden) { client.refresh(); scheduleRefresh(); } });
+    document.addEventListener('visibilitychange', () => {
+      document.documentElement.classList.toggle('pm-page-hidden', document.hidden);
+      if (!document.hidden) { client.refresh(); scheduleRefresh(); }
+    });
     setInterval(() => { if (!document.hidden) tick(); }, 1000);
     client.refresh().then(scheduleRefresh);
   }
 
   window.pomoRender = () => { render(); client.refresh(); };
-  window.ComandosPomodoro.ui = { client, render, state: ui, command };
+  window.ComandosPomodoro.ui = { client, render, state: ui, command, setMinutes, startBlock };
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init);
   else init();
 })();

@@ -6575,6 +6575,7 @@ _POMODORO_LOCAL = threading.local()
 _POMODORO_WAKE = threading.Event()
 _POMODORO_SCHEDULER = {"thread": None}
 _POMODORO_EMIT_WARNED = []
+POMODORO_STYLES = ("alchemy", "arcade", "shikashi", "soul", "garden", "crystals")
 
 
 def _pomodoro_log(message):
@@ -6684,9 +6685,13 @@ def _pomodoro_legacy_command(data):
 def pomodoro_post(data):
     """POST /pomodoro -> (status, body). Commands carry requestId/expectedRevision."""
     if data.get("settings") is not None:
-        if not isinstance(data.get("settings"), dict):
+        settings = data.get("settings")
+        if not isinstance(settings, dict):
             return 400, {"ok": False, "error": "settings inválido"}
-        return 200, {"ok": True, "settings": cc_usage.set_focus_settings(USAGE_DB, data["settings"])}
+        # D3: un estilo global para toda la app (seis estilos aprobados).
+        if "style" in settings and settings["style"] not in POMODORO_STYLES:
+            return 400, {"ok": False, "error": "Estilo de Pomodoro desconocido"}
+        return 200, {"ok": True, "settings": cc_usage.set_focus_settings(USAGE_DB, settings)}
     if data.get("ack"):
         try:
             os.remove(FOCUS_QUEUE)

@@ -2248,7 +2248,7 @@ def focus_analytics(db_path, days=7, now=None):
 
 
 def set_focus_settings(db_path, values):
-    allowed = {"focusMinutes", "shortBreakMinutes", "longBreakMinutes", "cycles", "autoBreak", "dailyGoalMinutes"}
+    allowed = {"focusMinutes", "shortBreakMinutes", "longBreakMinutes", "cycles", "autoBreak", "dailyGoalMinutes", "style"}
     init_db(db_path)
     with connect(db_path) as con:
         for key, value in (values or {}).items():

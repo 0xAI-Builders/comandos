@@ -3987,7 +3987,7 @@ def _panel_popover(btn, panel, width, height):
             pop._pv.load_uri(f"{BASE_URL}/?panel={panel}&v={_DASH_V}")
             pop._loaded = True
         else:
-            # NO recargar: el pomodoro en curso vive en esta página. Solo refrescar.
+            # El Pomodoro vive en el backend (GET/POST /pomodoro); refrescar basta.
             pop._pv.run_javascript("try{typeof pomoRender==='function'&&pomoRender();typeof notifRender==='function'&&notifRender()}catch(e){}", None, None, None)
         pop.show_all()
         pop.popup()
@@ -3995,7 +3995,7 @@ def _panel_popover(btn, panel, width, height):
 
 
 _pomo_btn = _icon_btn("timer", "Pomodoro" if ES else "Pomodoro", lambda *_: None)   # cronometro Lucide (el jitomate dibujado no gusto)
-_pomo_btn.connect("clicked", _panel_popover(_pomo_btn, "pomo", 320, 560))
+_pomo_btn.connect("clicked", _panel_popover(_pomo_btn, "pomo", 520, 640))   # Regla de tiempo
 _notif_btn = _icon_btn("bell", "Notificaciones" if ES else "Notifications", lambda *_: None)
 _notif_btn.connect("clicked", _panel_popover(_notif_btn, "notif", 400, 600))
 _notif_badge = Gtk.Label(label="")

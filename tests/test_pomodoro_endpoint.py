@@ -136,3 +136,16 @@ def test_missing_event_store_is_a_logged_noop(tmp_path, monkeypatch, capsys):
     module._pomodoro_emit(conn, {"kind": "focus_completed"})
     module._pomodoro_emit(conn, {"kind": "focus_completed"})
     assert capsys.readouterr().err.count("event_store no disponible") == 1
+
+
+def test_style_is_one_global_setting_and_never_touches_the_block(dash):
+    _, started = dash.pomodoro_post({"requestId": "a", "expectedRevision": 0, "action": "start",
+                                     "mode": "focus", "targetMs": 25 * MIN})
+    assert get(dash)[1]["settings"].get("style") in (None, "alchemy")
+    code, body = dash.pomodoro_post({"settings": {"style": "crystals"}})
+    assert code == 200 and body["settings"]["style"] == "crystals"
+    assert get(dash)[1]["settings"]["style"] == "crystals"
+    code, body = dash.pomodoro_post({"settings": {"style": "vaporwave"}})
+    assert code == 400
+    snap = get(dash)[1]
+    assert snap["revision"] == started["revision"] and snap["block"] == started["block"]
