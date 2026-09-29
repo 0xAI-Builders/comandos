@@ -158,7 +158,8 @@ async function readySounds(storage = memoryStorage(), log = []) {
       const classes = new Set();
       return {
         innerHTML: '', style: {}, dataset: {}, classList: { add: c => classes.add(c), remove: c => classes.delete(c), contains: c => classes.has(c), toggle: (c, v) => (v === undefined ? !classes.has(c) : v) ? classes.add(c) : classes.delete(c) },
-        setAttribute() {}, addEventListener() {}, querySelectorAll: () => [], querySelector: () => null, contains: () => false,
+        setAttribute() {}, addEventListener() {}, querySelectorAll: () => [], contains: () => false,
+        children: {}, querySelector(sel) { return sel === '.pomo-mini' ? (this.children[sel] ||= { textContent: '' }) : null; },
         getBoundingClientRect: () => ({ height: 30, bottom: 40, left: 10 }),
       };
     };
@@ -222,6 +223,7 @@ async function readySounds(storage = memoryStorage(), log = []) {
     assert.equal(cmd[0].action, 'extend');
     assert.equal(cmd[0].deltaMs, 10 * MIN, '5 min spent + 30 remaining = 35 min target');
     assert.equal(cmd[0].expectedRevision, 3);
+    assert.equal(v.ui.client.snapshot().settings.style, 'crystals', 'a command answer keeps settings/progress from the last GET');
   });
 
   await check('style comes from the global setting and renders the shared hourglass', async () => {
@@ -230,7 +232,11 @@ async function readySounds(storage = memoryStorage(), log = []) {
     v.ui.render();
     assert.equal(v.ui.state.style, 'crystals');
     assert.ok(v.button.innerHTML.includes('zoedoz/hourglass.png'));
-    assert.ok(v.button.innerHTML.includes('20:00'), 'header shows the server-based remaining time');
+    assert.equal(v.button.querySelector('.pomo-mini').textContent, '20:00', 'header shows the server-based remaining time');
+    const built = v.button.innerHTML;
+    v.setNow(T0 + 6 * MIN); v.ui.render();
+    assert.equal(v.button.querySelector('.pomo-mini').textContent, '19:00');
+    assert.equal(v.button.innerHTML, built, 'the animated sprite is not rebuilt every tick');
   });
 
   await check('a completed block plays its cue once, with the server event id', async () => {

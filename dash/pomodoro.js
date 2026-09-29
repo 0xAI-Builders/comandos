@@ -57,7 +57,10 @@
     function accept(snap, localAt) {
       if (!snap || typeof snap.revision !== 'number') return false;
       if (confirmed && snap.revision < confirmed.revision) return false;   // out-of-order answer
-      confirmed = snap;
+      // Command answers carry only revision/block: keep the last settings/progress.
+      const carry = {};
+      for (const k of ['settings', 'progress', 'queue']) if (confirmed && snap[k] === undefined && confirmed[k] !== undefined) carry[k] = confirmed[k];
+      confirmed = Object.assign({}, snap, carry);
       if (typeof snap.serverNowMs === 'number') offset = snap.serverNowMs - localAt;
       return true;
     }
@@ -290,8 +293,13 @@
     const mini = v.live ? P.fmt(v.remainingMs) : '';
     b.classList.toggle('running', v.status === 'running');
     b.classList.toggle('paused', v.status === 'paused');
-    const html = `${P.assetHtml('clock', ui.style, 'pm-header-clock')}<span class="pomo-mini">${esc(mini)}</span>`;
-    if (b.dataset.pmHtml !== html) { b.innerHTML = html; b.dataset.pmHtml = html; }
+    // Build once per style: rewriting the sprite every second would restart its animation.
+    if (b.dataset.pmStyle !== ui.style) {
+      b.innerHTML = `${P.assetHtml('clock', ui.style, 'pm-header-clock')}<span class="pomo-mini"></span>`;
+      b.dataset.pmStyle = ui.style;
+    }
+    const miniEl = b.querySelector && b.querySelector('.pomo-mini');
+    if (miniEl && miniEl.textContent !== mini) miniEl.textContent = mini;
     b.setAttribute('aria-label', v.live ? `Pomodoro: ${mini} ${stateLabel(v)}` : 'Pomodoro');
   }
 
@@ -429,7 +437,7 @@
     header(v);
     const panel = document.getElementById('pomo-panel');
     if (!panel || panel.classList.contains('hidden')) return;
-    if (panel.contains(document.activeElement) && document.activeElement.matches('[data-pm-ruler],[data-pm-minutes]') && ui.rulerPreview != null) return;
+    if (ui.dragging) { tick(); return; }   // never rebuild the ruler under the user's finger
     panel.classList.add('pm-v1');
     panel.classList.toggle('break', !!(v.block && v.live && v.block.mode === 'break'));
     panel.innerHTML = panelHtml(v);
@@ -501,12 +509,14 @@
     const ruler = panel.querySelector('[data-pm-ruler]');
     if (ruler) {
       ruler.addEventListener('input', () => {
+        ui.dragging = true;
         ruler.style.setProperty('--pm-ruler-fill', ((Number(ruler.value) - 1) / 89 * 100).toFixed(1) + '%');
         const v = client.view();
         if (v.live) setMinutes(ruler.value, false);
         else { ui.draft[ui.mode] = Number(ruler.value); ui.rulerPreview = null; tick(); const n = panel.querySelector('[data-pm-minutes]'); if (n) n.value = ruler.value; }
       });
-      ruler.addEventListener('change', () => setMinutes(ruler.value, true));
+      ruler.addEventListener('change', () => { ui.dragging = false; setMinutes(ruler.value, true); });
+      ruler.addEventListener('blur', () => { if (ui.dragging) { ui.dragging = false; render(); } });
     }
     const num = panel.querySelector('[data-pm-minutes]');
     if (num) num.addEventListener('change', () => setMinutes(num.value, true));
