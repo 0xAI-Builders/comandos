@@ -1701,8 +1701,10 @@
     const response = await fetch('/terminal-panes', {
       method:'POST', cache:'no-store',
       headers:{'Content-Type':'application/json','X-Comandos-Token':accessTokenParam},
+      // 'select' moves only this device's focus: tmux answers with keys that
+      // this client types in-band (remote attaches use -f active-pane).
       body:JSON.stringify({session:arg, action, ...(pane ? {pane:pane.id,identity:pane.identity} : {}),
-        ...(direction ? {direction} : {})}),
+        ...(direction ? {direction} : {}), ...(action === 'select' ? {scope:'client'} : {})}),
       signal:AbortSignal.timeout(10000),
     });
     const result = await response.json();
@@ -1778,6 +1780,13 @@
       const result = await paneRequest(action, pane, direction);
       if (revision !== paneRevision) return;
       if (action === 'select' || action === 'split') {
+        let focus = result;
+        if (action === 'split') {
+          const opened = result.panes.find(p => p.id === result.opened);
+          focus = opened ? await paneRequest('select', opened) : {};
+        }
+        if (revision !== paneRevision) return;
+        if (typeof focus.clientKeys === 'string' && !sendInput(focus.clientKeys)) return;
         const selected = action === 'split' ? result.opened : pane.id;
         if (selected) parent.postMessage({source:'comandos-term',type:'pane-selected',pane:selected}, location.origin);
         paneDialog.close();

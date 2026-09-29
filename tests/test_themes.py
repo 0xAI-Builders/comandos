@@ -369,6 +369,9 @@ def test_real_native_apply_theme_recolors_every_vte_gtk_provider_and_tmux_role()
         "_HB_CSS": providers[1],
         "_PANED_CSS": providers[2],
         "nb": Notebook([Page(terminal) for terminal in terminals]),
+        # Docked terminals are not notebook pages: the theme walks the registry.
+        "tabs": {str(i): Page(terminal) for i, terminal in enumerate(terminals)},
+        "hub": object(),
         "rgba": lambda color: color,
         "tmuxc": lambda *args: tmux_calls.append(args),
     })

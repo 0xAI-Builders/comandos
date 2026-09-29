@@ -999,7 +999,7 @@ const openTerms=new Map([['prod',{{frame:null}}]]);
 const termInteraction=new Map([['prod',{{mouse:'on'}}]]);
 const S={{sel:'prod',list:[]}};
 const document={{body:{{classList:{{contains(){{return true;}}}}}},getElementById(){{return {{classList:{{toggle(){{}}}}}};}}}};
-function ensureFrame(){{}}function restoreInactiveTermInteractions(){{}}function syncTermInteraction(){{}}
+function ensureFrame(){{}}function saveDeviceFocus(){{}}function restoreInactiveTermInteractions(){{}}function syncTermInteraction(){{}}
 function inApp(){{return true;}}function render(){{}}function renderTabbar(){{renders++;}}
 function revealActiveTab(){{reveals++;}}
 {show}

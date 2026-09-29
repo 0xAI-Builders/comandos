@@ -58,11 +58,14 @@ def capture_session(tmux, session, describe_pane):
         window['automatic_rename'] = _checked(tmux, 'show-options', '-wAv', '-t', wid, 'automatic-rename') or 'off'
         window['window_size'] = _checked(tmux, 'show-options', '-wAv', '-t', wid, 'window-size') or 'latest'
         pfmt = '\t'.join('#{' + x + '}' for x in (
-            'pane_id', 'pane_index', 'pane_current_path', 'pane_pid', 'pane_current_command', 'pane_active'))
+            'pane_id', 'pane_index', 'pane_current_path', 'pane_pid', 'pane_current_command', 'pane_active',
+            '@comandos-pane-key'))
         for row in _checked(tmux, 'list-panes', '-t', wid, '-F', pfmt).splitlines():
-            pid, idx, cwd, process, command, selected = row.split('\t')
+            pid, idx, cwd, process, command, selected, tagged = (row.split('\t') + [''])[:7]
             pane = dict(id=pid, index=int(idx), cwd=cwd, pid=int(process),
                         start=process_start_time(process), command=command, active=selected == '1')
+            if tagged:
+                pane['tagged_key'] = tagged
             pane.update(describe_pane(pane))
             window['panes'].append(pane)
         leaf_ids = {'%' + m.group(2) for m in _LEAF.finditer(layout)}
@@ -79,7 +82,7 @@ def capture_session(tmux, session, describe_pane):
 
 
 _AGENTS = {'claude', 'codex', 'grok'}
-_PANE_PLACE = {'id', 'index', 'cwd', 'pid', 'start', 'command', 'active'}
+_PANE_PLACE = {'id', 'index', 'cwd', 'pid', 'start', 'command', 'active', 'tagged_key'}
 
 
 def carry_resume_ids(captured, previous):
@@ -114,7 +117,8 @@ def carry_pane_keys(captured, previous):
     used = set()
     for window in captured['windows']:
         for pane in window['panes']:
-            key = by_process.get((pane.get('id'), pane.get('pid'), pane.get('start')))
+            # A launcher that tagged the pane (@comandos-pane-key) owns its key.
+            key = pane.get('tagged_key') or by_process.get((pane.get('id'), pane.get('pid'), pane.get('start')))
             if not key and pane.get('resume_id'):
                 key = by_conversation.get((pane.get('agent'), pane['resume_id']))
             if not key or key in used:

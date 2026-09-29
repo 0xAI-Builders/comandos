@@ -114,7 +114,10 @@ def _statements(sql):
 def migrate(conn):
     """Apply pending migrations in one transaction; copy the file first."""
     current = schema_version(conn)
-    pending = [m for m in sorted(MIGRATIONS) if m[0] > current]
+    # Versions are assigned per feature ahead of time, so a lower one can land
+    # after a higher one was applied: run every version not yet recorded.
+    applied = {row[0] for row in conn.execute("SELECT version FROM schema_migrations")}
+    pending = [m for m in sorted(MIGRATIONS) if m[0] not in applied]
     if not pending:
         return current
     if _has_user_tables(conn):

@@ -93,6 +93,18 @@ def test_failed_migration_rolls_back(tmp_path, monkeypatch):
     assert not conn.execute("SELECT 1 FROM sqlite_master WHERE name='good_part'").fetchone()
 
 
+def test_migrations_merged_late_are_applied_below_the_current_version(tmp_path, monkeypatch):
+    # Branches assign versions ahead of time; a database may reach v7 before
+    # v2..v6 land. Those must still run instead of being skipped.
+    conn = app_state.connect(tmp_path / "state.sqlite3")
+    monkeypatch.setattr(app_state, "MIGRATIONS", [m for m in app_state.MIGRATIONS if m[0] in (1, 7)])
+    app_state.migrate(conn)
+    monkeypatch.setattr(app_state, "MIGRATIONS", app_state.MIGRATIONS + [(3, "late", "CREATE TABLE late_table (x)")])
+    app_state.migrate(conn)
+    assert conn.execute("SELECT 1 FROM sqlite_master WHERE name='late_table'").fetchone()
+    assert {r[0] for r in conn.execute("SELECT version FROM schema_migrations")} >= {1, 3, 7}
+
+
 def test_first_start_has_no_document(store):
     assert store.current() is None
 

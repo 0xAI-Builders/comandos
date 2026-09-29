@@ -150,3 +150,24 @@ def test_listing_reports_each_pane_folder(panes, tmp_path):
     execute, tmux, snapshots = panes
     listing = execute({'session': 'fixture'})['panes']
     assert all(p['path'] for p in listing)
+
+
+def test_client_scoped_select_leaves_shared_focus_and_returns_in_band_keys(panes):
+    run, tmux, _ = panes
+    listing = run({'session': 'fixture'})['panes']
+    target = next(p for p in listing if not p['active'])
+    before = tmux('display-message', '-p', '-t', '=fixture:', '#{pane_id}').stdout.strip()
+    result = run({'session': 'fixture', 'action': 'select', 'scope': 'client',
+                  'pane': target['id'], 'identity': target['identity']})
+    # The shared (desktop) focus is untouched; the caller types the keys itself.
+    assert tmux('display-message', '-p', '-t', '=fixture:', '#{pane_id}').stdout.strip() == before
+    assert result['clientKeys'] == '\x1b[4242;%d~' % target['index']
+    keys = tmux('list-keys', '-T', 'root').stdout
+    assert 'User%d' % (900 + target['index']) in keys and 'select-pane -t :.%d' % target['index'] in keys
+
+
+def test_client_scoped_select_rejects_stale_identity(panes):
+    run, tmux, _ = panes
+    target = run({'session': 'fixture'})['panes'][0]
+    with pytest.raises(ValueError):
+        run({'session': 'fixture', 'action': 'select', 'scope': 'client', 'pane': target['id'], 'identity': 'x'})

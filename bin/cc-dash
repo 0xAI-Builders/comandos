@@ -5373,16 +5373,23 @@ def operator_toggle_shell(sess):
 
 
 def operator_close_split(sess):
+    """Same guarded close as Paneles: snapshot first, exact identity, last pane kept."""
     if not sess:
         return "No hay pestaña activa"
-    sess, target, pane = operator_pane(sess)
-    r = tmux("list-panes", "-t", target)
-    n = len([l for l in (r.stdout or "").splitlines() if l])
-    if n <= 1:
-        return "No hay split que cerrar"
-    r = tmux("kill-pane", "-t", pane)
-    if r.returncode != 0:
-        return r.stderr.strip() or "tmux falló"
+    sess, _target, pane = operator_pane(sess)
+    pane_id = tmux("display-message", "-p", "-t", pane, "#{pane_id}").stdout.strip()
+    if not PANE_RE.match(pane_id):
+        return "No se encuentra el panel"
+    import terminal_panes
+    try:
+        listing = terminal_panes.execute(tmux, _pane_identity, save_closed_pane_snapshot, {"session": sess})
+        entry = next((p for p in listing["panes"] if p["id"] == pane_id), None)
+        if not entry:
+            return "El panel ya no existe"
+        terminal_panes.execute(tmux, _pane_identity, save_closed_pane_snapshot,
+                               {"session": sess, "action": "close", "pane": pane_id, "identity": entry["identity"]})
+    except (ValueError, TypeError) as exc:
+        return str(exc)
     return None
 
 
@@ -6624,6 +6631,15 @@ def workspace_sync(reason="auto"):
         except (workspace_state.EmptyInventory, workspace_state.NotReady):
             return current
     return store.current()
+
+
+def workspace_session_identity(sess):
+    """tmux's own id for a session name; a recreated session gets a new one."""
+    if sess == "local" or not SESSION_RE.fullmatch(sess or ""):
+        return "local" if sess == "local" else None
+    r = tmux("display-message", "-p", "-t", "=" + sess + ":", "#{session_id}")
+    value = (r.stdout or "").strip() if r.returncode == 0 else ""
+    return value if re.fullmatch(r"\$\d+", value) else None
 
 
 def workspace_payload(state):
@@ -8292,6 +8308,15 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             return self._json(200, {"mouse": "on" if enabled else "off"})
         if urllib.parse.urlsplit(self.path).path == "/workspace":
             return self._json(200, workspace_payload(workspace_sync()))
+        if urllib.parse.urlsplit(self.path).path == "/workspace/close-group":
+            query = urllib.parse.parse_qs(urllib.parse.urlsplit(self.path).query)
+            state = workspace_sync()
+            try:
+                preview = workspace_state.close_group_preview(
+                    state["document"], (query.get("groupId") or [""])[0], workspace_session_identity)
+            except ValueError as exc:
+                return self._json(404, {"error": str(exc)})
+            return self._json(200, dict(preview, revision=state["revision"]))
         if urllib.parse.urlsplit(self.path).path == "/workspace/client":
             query = urllib.parse.parse_qs(urllib.parse.urlsplit(self.path).query)
             device = (query.get("deviceId") or [""])[0]
@@ -8400,6 +8425,30 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             except (ValueError, TypeError, KeyError) as exc:
                 return self._json(400, {"error": str(exc) or "Workspace inválido"})
             return self._json(200, workspace_payload(saved))
+
+        if self.path == "/workspace/close-group":
+            expected = data.get("expectedRevision")
+            members = data.get("members")
+            if not isinstance(expected, int) or isinstance(expected, bool) or not isinstance(members, list):
+                return self._json(400, {"error": "Solicitud de cierre inválida"})
+            workspace_sync()
+            try:
+                result = workspace_state.close_group(
+                    workspace_store(), data.get("groupId"), expected, members, data.get("requestId"),
+                    workspace_session_identity, lambda sess: close_app_tab(sess))
+            except workspace_state.Conflict as exc:
+                return self._json(409, {"error": "El workspace cambió. Revisa la lista antes de cerrar",
+                                        "current": workspace_payload(exc.current)})
+            except (ValueError, TypeError) as exc:
+                return self._json(400, {"error": str(exc)})
+            if result.get("closed") and not result.get("replayed"):
+                # One aggregated signal: per-member writes overwrite each other.
+                try:
+                    write_json_file(os.path.join(HOOKS, "app-tab-close.json"),
+                                    {"session": result["closed"][-1], "sessions": result["closed"], "ts": time.time()})
+                except Exception:
+                    pass
+            return self._json(200, result)
 
         if self.path == "/workspace/client":
             try:

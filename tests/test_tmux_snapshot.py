@@ -371,3 +371,13 @@ def test_pane_keys_follow_the_process_and_its_exact_conversation():
     assert panes[2]['key'] not in {'k-live', 'k-conv', 'k-shell'}
     fresh = tmux_snapshot.carry_pane_keys(_session({'id': '%1', 'pid': 1, 'start': 1}), None)
     assert fresh['windows'][0]['panes'][0]['key']
+
+
+def test_pane_key_option_set_by_the_launcher_wins(tmux, tmp_path):
+    checked(tmux, "new-session", "-d", "-s", "quick", "-c", str(tmp_path))
+    pane = checked(tmux, "display-message", "-p", "-t", "quick:", "#{pane_id}")
+    checked(tmux, "set-option", "-p", "-t", pane, "@comandos-pane-key", "pane-qfixed")
+    captured = tmux_snapshot.capture_session(tmux, "quick", lambda p: {})
+    assert captured["windows"][0]["panes"][0]["tagged_key"] == "pane-qfixed"
+    keyed = tmux_snapshot.carry_pane_keys(captured, None)
+    assert keyed["windows"][0]["panes"][0]["key"] == "pane-qfixed"

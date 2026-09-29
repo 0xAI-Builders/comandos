@@ -124,3 +124,52 @@ def test_client_focus_is_per_device(server):
 
 def test_workspace_requires_the_security_gate(dash):
     assert any("/workspace".startswith(p) for p in dash.Handler.API_GET)
+
+
+def test_group_close_previews_then_closes_only_confirmed_members(dash, server, monkeypatch):
+    _, current = call(server, "GET", "/workspace")
+    document = {k: current[k] for k in ("schema", "groups", "tabs")}
+    document["groups"] = [current["groups"][0], {"id": "g-work", "tree": {
+        "type": "split", "axis": "x", "ratio": 0.5,
+        "first": {"type": "tab", "tabId": "alpha"}, "second": {"type": "tab", "tabId": "term-1"}}}]
+    call(server, "POST", "/workspace", {"requestId": "g", "expectedRevision": 1, "document": document})
+    ids = {"alpha": "$4", "term-1": "$5"}
+    monkeypatch.setattr(dash, "workspace_session_identity", lambda s: ids.get(s))
+    closed = []
+    monkeypatch.setattr(dash, "close_app_tab", lambda s: closed.append(s))
+    status, preview = call(server, "GET", "/workspace/close-group?groupId=g-work")
+    assert status == 200 and [m["label"] for m in preview["members"]] == ["Alpha", "Uno"]
+    body = {"requestId": "close-1", "groupId": "g-work", "expectedRevision": preview["revision"],
+            "members": preview["members"]}
+    ids["term-1"] = "$6"                 # recreated between preview and confirm
+    status, refused = call(server, "POST", "/workspace/close-group", body)
+    assert status == 400 and closed == []
+    ids["term-1"] = "$5"
+    status, result = call(server, "POST", "/workspace/close-group", dict(body, requestId="close-2"))
+    assert status == 200 and result["closed"] == ["alpha", "term-1"] and closed == ["alpha", "term-1"]
+    status, stale = call(server, "POST", "/workspace/close-group", dict(body, requestId="close-3", expectedRevision=1))
+    assert status == 409
+
+
+def test_operator_split_close_uses_the_guarded_pane_route(dash, monkeypatch):
+    calls = []
+    fake = type(sys)("terminal_panes")
+
+    def execute(tmux, identify, save, data):
+        calls.append(dict(data))
+        if data.get("action", "list") == "list":
+            return {"ok": True, "panes": [{"id": "%4", "identity": "v4"}, {"id": "%5", "identity": "v5"}]}
+        return {"ok": True}
+    fake.execute = execute
+    monkeypatch.setitem(sys.modules, "terminal_panes", fake)
+    monkeypatch.setattr(dash, "operator_pane", lambda s, p=None: ("alpha", "=alpha", "=alpha:"))
+    monkeypatch.setattr(dash, "tmux", lambda *a, **k: dash.subprocess.CompletedProcess(a, 0, "%5\n", ""))
+    assert dash.operator_close_split("alpha") is None
+    assert calls[-1] == {"session": "alpha", "action": "close", "pane": "%5", "identity": "v5"}
+
+    def refuse(tmux, identify, save, data):
+        if data.get("action", "list") == "list":
+            return {"ok": True, "panes": [{"id": "%5", "identity": "v5"}]}
+        raise ValueError("El último panel permanece abierto")
+    fake.execute = refuse
+    assert dash.operator_close_split("alpha") == "El último panel permanece abierto"

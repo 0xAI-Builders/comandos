@@ -193,12 +193,14 @@ class WorkspaceStore:
         _ident(device_id, "deviceId")
         if not isinstance(state, dict):
             raise ValueError("Estado de cliente inválido")
-        clean = {
-            "activeTabId": state.get("activeTabId"),
-            "activePaneKey": state.get("activePaneKey"),
-            "drafts": state.get("drafts") or {},
-            "readingAnchors": state.get("readingAnchors") or {},
-        }
+        # Fields a request omits keep their saved value: saving focus must
+        # never erase that device's drafts or reading anchors.
+        previous = self.client(device_id) or {}
+        clean = {key: state[key] if key in state else previous.get(key, default)
+                 for key, default in (("activeTabId", None), ("activePaneKey", None),
+                                      ("drafts", {}), ("readingAnchors", {}))}
+        clean["drafts"] = clean["drafts"] or {}
+        clean["readingAnchors"] = clean["readingAnchors"] or {}
         for key in ("activeTabId", "activePaneKey"):
             if clean[key] is not None:
                 _ident(clean[key], key)
@@ -225,6 +227,86 @@ class WorkspaceStore:
     def meta(self, key):
         row = self.conn.execute("SELECT value FROM workspace_meta WHERE key = ?", (key,)).fetchone()
         return row[0] if row else None
+
+    def set_meta(self, key, value):
+        self.conn.execute("BEGIN IMMEDIATE")
+        try:
+            self.conn.execute("INSERT OR REPLACE INTO workspace_meta VALUES (?, ?)", (key, value))
+            self.conn.execute("COMMIT")
+        except BaseException:
+            self.conn.execute("ROLLBACK")
+            raise
+
+
+# ---- closing a whole group -------------------------------------------------
+
+PROTECTED_SESSIONS = {"local"}
+
+
+def _group(document, group_id):
+    for group in document.get("groups", []):
+        if group.get("id") == group_id:
+            return group
+    raise ValueError("El grupo ya no existe")
+
+
+def close_group_preview(document, group_id, session_identity):
+    """The fixed list a person confirms: every member and its live identity."""
+    members = []
+    for tab_id in tab_ids(_group(document, group_id)["tree"]):
+        tab = document["tabs"].get(tab_id) or {}
+        session = tab.get("session") or tab_id
+        members.append({"tabId": tab_id, "session": session, "label": tab.get("label") or session,
+                        "sessionId": session_identity(session), "kept": session in PROTECTED_SESSIONS})
+    return {"groupId": group_id, "members": members}
+
+
+def close_group(store, group_id, expected_revision, identities, request_id, session_identity, close_tab):
+    """Close exactly the confirmed members of a group, one by one.
+
+    Nothing closes unless the revision, member set and every live session
+    identity still match what was confirmed. A failure after a close stops
+    there and reports what really closed; nothing is undone or compensated.
+    ``close_tab(session)`` returns an error string or None.
+    """
+    _ident(request_id, "requestId")
+    key = "close-group:" + request_id
+    seen = store.meta(key)
+    if seen:
+        return json.loads(seen)
+    state = store.current()
+    if not state or state["revision"] != expected_revision:
+        raise Conflict(state)
+    document = state["document"]
+    confirmed = {m.get("tabId"): m for m in identities if isinstance(m, dict)}
+    order = tab_ids(_group(document, group_id)["tree"])
+    if set(order) != set(confirmed) or len(confirmed) != len(identities):
+        raise ValueError("Las pestañas del grupo cambiaron. Revisa la lista antes de cerrar")
+    for tab_id in order:
+        member = confirmed[tab_id]
+        session = (document["tabs"].get(tab_id) or {}).get("session") or tab_id
+        live = session_identity(session)
+        if member.get("session") != session or not live or live != member.get("sessionId"):
+            raise ValueError(f"«{member.get('label') or session}» cambió. No se ha cerrado nada")
+    result = {"ok": True, "closed": [], "remaining": [], "kept": [], "error": None}
+    pending = [confirmed[t]["session"] for t in order]
+    while pending:
+        session = pending.pop(0)
+        if session in PROTECTED_SESSIONS:
+            result["kept"].append(session)
+            continue
+        try:
+            error = close_tab(session)
+        except Exception as exc:  # report, never compensate
+            error = str(exc) or "Error al cerrar"
+        if error:
+            result.update(ok=False, error=error,
+                          remaining=[session] + [s for s in pending if s not in PROTECTED_SESSIONS])
+            result["kept"] += [s for s in pending if s in PROTECTED_SESSIONS]
+            break
+        result["closed"].append(session)
+    store.set_meta(key, json.dumps(result))
+    return result
 
 
 # ---- restore by identity ---------------------------------------------------

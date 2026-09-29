@@ -2374,6 +2374,19 @@
  </div>
 </div>
 
+<div id="groupclose" class="modal" role="dialog" aria-modal="true" aria-labelledby="groupclose-title">
+ <div class="modal-panel" style="max-width:460px">
+  <h3 id="groupclose-title" style="margin:0 0 6px">¿Cerrar este grupo de pestañas?</h3>
+  <div class="desc" style="margin-bottom:8px">Se cierran aquí y en el escritorio. Sus sesiones tmux siguen vivas y puedes recuperarlas en Recientes.</div>
+  <ul id="groupclose-list" style="margin:0 0 10px;padding-left:20px"></ul>
+  <div id="groupclose-status" class="desc" role="status" aria-live="polite" style="margin-bottom:10px"></div>
+  <div style="display:flex;gap:8px;justify-content:flex-end">
+    <button type="button" class="test" data-close="groupclose">Cancelar</button>
+    <button type="button" class="test warn" id="groupclose-yes">Cerrar pestañas</button>
+  </div>
+ </div>
+</div>
+
 <div id="sovereignty" class="modal" aria-label="Soberanía" role="dialog" aria-modal="true">
  <div class="modal-panel sov-panel">
   <button type="button" class="modal-close" data-close="sovereignty" aria-label="cerrar"><span data-icon="close"></span></button>
@@ -6845,6 +6858,7 @@ function renderTabbar(){
     const t = take(key);
     t._target = entry ? entry.target : key;
     t._session = entry ? entry.session : key.replace(/^term:/, "");
+    t._group = entry && entry.groupId || null;
     if(entry) t.dataset.wsSource = entry.source; else delete t.dataset.wsSource;
     if(!t.querySelector(".lbl") || t._closable !== closable){
       t._closable = closable;
@@ -6865,7 +6879,7 @@ function renderTabbar(){
       }
       const x = t.querySelector(".x");
       if(x){
-        x.onclick = e => { e.stopPropagation(); askCloseTab(t._session); };
+        x.onclick = e => { e.stopPropagation(); t._group ? askCloseGroup(t._group) : askCloseTab(t._session); };
       }
     }
     t.className = "apptab" + (selected === key ? " on" : "");
@@ -6880,7 +6894,7 @@ function renderTabbar(){
     const color = colors[status] || "var(--faint)";
     dot.style.background = color; dot.style.color = color;
     const x = t.querySelector(".x");
-    if(x) x.title = tf("Cerrar pestaña", "Close tab");
+    if(x) x.title = t._group ? tf("Cerrar grupo", "Close group") : tf("Cerrar pestaña", "Close tab");
     const favorite = t.querySelector(".tab-fav");
     if(favorite) updateFavoriteButton(favorite, t._session, label);
     const count = t.querySelector(".ws-count");
@@ -6997,7 +7011,7 @@ function showView(key, reveal=false){
   let shown = key.startsWith("term:") ? key.slice(5)
             : (split ? (activeTerm && openTerms.has(activeTerm) ? activeTerm : [...openTerms.keys()][0]) : null);
   const visible = shown ? (window.WorkspaceDock?.visibleTabs(shown) || [shown]) : [];
-  if(shown){ activeTerm = shown; for(const sess of visible) ensureFrame(sess); }
+  if(shown){ activeTerm = shown; for(const sess of visible) ensureFrame(sess); saveDeviceFocus(shown); }
   restoreInactiveTermInteractions(shown);
   document.getElementById("view-panel").classList.toggle("on", split || key === "panel");
   document.getElementById("term-area").classList.toggle("on", split ? !!shown : key.startsWith("term:"));
@@ -7035,6 +7049,49 @@ function askCloseTab(sess){
     tabsPollTs = 0;  // refrescar el espejo ya
   };
 }
+// Cerrar un grupo: lista FIJA de pestañas confirmada por la persona. El
+// servidor revalida revisión e identidad de cada sesión; si algo cambió no
+// cierra nada, y si falla a mitad informa qué se cerró de verdad.
+async function askCloseGroup(groupId){
+  let preview;
+  try{ preview = await api("/workspace/close-group?groupId=" + encodeURIComponent(groupId)); }
+  catch(e){ toast(e.message, true); return; }
+  const m = $("#groupclose"), list = $("#groupclose-list"), status = $("#groupclose-status");
+  const yes = $("#groupclose-yes");
+  const closing = preview.members.filter(x => !x.kept);
+  list.replaceChildren(...preview.members.map(x => {
+    const li = document.createElement("li");
+    li.textContent = x.label + (x.kept ? tf(" — se queda abierta", " — stays open") : "");
+    return li;
+  }));
+  status.textContent = "";
+  yes.textContent = tf(`Cerrar ${closing.length} pestañas`, `Close ${closing.length} tabs`);
+  yes.disabled = !closing.length;
+  const requestId = "close-" + Date.now().toString(36) + "-" + Math.random().toString(36).slice(2, 10);
+  m.classList.add("open");
+  yes.onclick = async ()=>{
+    yes.disabled = true;
+    status.textContent = tf("Cerrando…", "Closing…");
+    let result;
+    try{
+      const tok = authToken();
+      const r = await fetch("/workspace/close-group", {method:"POST",
+        headers:{"Content-Type":"application/json", ...(tok ? {"X-Comandos-Token": tok} : {})},
+        body: JSON.stringify({requestId, groupId, expectedRevision: preview.revision, members: preview.members})});
+      result = await r.json().catch(()=>({}));
+      if(!r.ok) throw new Error(result.error || r.statusText);
+    }catch(e){
+      yes.disabled = false;
+      status.textContent = e.message + tf(" No se cerró nada.", " Nothing was closed.");
+      return;
+    }
+    for(const sess of result.closed || []) closeTerm(sess);
+    tabsPollTs = 0;
+    if(result.ok){ m.classList.remove("open"); return; }
+    status.textContent = tf(`Se cerraron ${result.closed.length}; quedan abiertas: ${result.remaining.join(", ")}. ${result.error}`,
+      `Closed ${result.closed.length}; still open: ${result.remaining.join(", ")}. ${result.error}`);
+  };
+}
 function openTerm(sess, label){
   if(!appEnabled() || !sess) return;
   // mirrored=true + registro server-side: /tabs es LA fuente de verdad, asi
@@ -7050,6 +7107,38 @@ function closeTerm(sess){
   cleanupTermInteraction(sess);
   if(activeTerm === sess) activeTerm = [...openTerms.keys()][0] || null;
   showView(activeView === "term:"+sess ? "panel" : activeView);
+}
+// Foco POR DISPOSITIVO: cada navegador recuerda su tab activa en el servidor
+// (/workspace/client) sin tocar la distribución compartida ni a otros equipos.
+const WS_DEVICE = (() => {
+  try{
+    let id = localStorage.getItem("comandos.deviceId");
+    if(!id || !/^web-[A-Za-z0-9-]{8,64}$/.test(id)){
+      id = "web-" + (crypto.randomUUID ? crypto.randomUUID() : Date.now().toString(36) + Math.random().toString(36).slice(2));
+      localStorage.setItem("comandos.deviceId", id);
+    }
+    return id;
+  }catch(_){ return null; }
+})();
+let wsFocusTimer = 0, wsFocusSaved = null, wsFocusRestored = false;
+function saveDeviceFocus(sess){
+  if(!WS_DEVICE || !wsFocusRestored || !sess || sess === wsFocusSaved) return;
+  clearTimeout(wsFocusTimer);
+  wsFocusTimer = setTimeout(() => {
+    wsFocusSaved = sess;
+    api("/workspace/client", {deviceId: WS_DEVICE, activeTabId: sess}).catch(() => { wsFocusSaved = null; });
+  }, 800);
+}
+async function restoreDeviceFocus(){
+  if(wsFocusRestored) return;
+  wsFocusRestored = true;
+  if(!WS_DEVICE || activeView.startsWith("term:")) return;   // no robar una elección ya hecha
+  try{
+    const mine = await api("/workspace/client?deviceId=" + encodeURIComponent(WS_DEVICE));
+    wsFocusSaved = mine.activeTabId || null;
+    if(mine.activeTabId && openTerms.has(mine.activeTabId) && !activeView.startsWith("term:"))
+      activeTerm = mine.activeTabId;
+  }catch(e){}
 }
 async function loadDesktopTabs(){
   // Las MISMAS pestanas abiertas en la app de escritorio (lazy).
@@ -7069,6 +7158,7 @@ async function loadDesktopTabs(){
     if(!activeTerm && tabs[0])
       activeTerm = tabs[0].session;
     try{ window.WorkspaceDock?.adopt(await api("/workspace")); }catch(e){}
+    await restoreDeviceFocus();
     showView(activeView);
   }catch(e){}
 }

@@ -25,6 +25,14 @@ if [ -z "$expected" ] || [ "$presented" != "$expected" ]; then
 fi
 shift
 
+# Remote clients keep their own active pane (tmux >= 3.2): a phone choosing a
+# split never moves the pane the desktop is typing into.
+attach_flags=()
+if [[ "$(tmux -V 2>/dev/null)" =~ ([0-9]+)\.([0-9]+) ]] &&
+   (( BASH_REMATCH[1] > 3 || (BASH_REMATCH[1] == 3 && BASH_REMATCH[2] >= 2) )); then
+  attach_flags=(-f active-pane)
+fi
+
 pick() {
   local -a sels=()
   local s i=0
@@ -41,7 +49,7 @@ pick() {
   printf "Numero (o Enter para shell libre): "
   read -r n
   if [[ "$n" =~ ^[0-9]+$ ]] && [ "$n" -ge 1 ] && [ "$n" -le "${#sels[@]}" ]; then
-    exec tmux attach -t "=${sels[$((n-1))]}"
+    exec tmux attach ${attach_flags[@]+"${attach_flags[@]}"} -t "=${sels[$((n-1))]}"
   fi
   exec "$SHELL"
 }
@@ -49,7 +57,7 @@ pick() {
 sess="${1:-}"
 if [ -n "$sess" ] && [[ "$sess" =~ ^[A-Za-z0-9._-]{1,80}$ ]]; then
   if tmux has-session -t "=$sess" 2>/dev/null; then
-    exec tmux attach -t "=$sess"
+    exec tmux attach ${attach_flags[@]+"${attach_flags[@]}"} -t "=$sess"
   fi
   echo "La sesion '$sess' ya no existe."; echo
 fi

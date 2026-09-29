@@ -82,7 +82,8 @@
       const ids = tabsOf(g), focus = focusOf(g);
       return {key: 'group:' + g.id, target: 'term:' + sessionOf(focus), group: g, tabs: ids,
               label: label(ids[0]), count: ids.length, session: sessionOf(ids[0]),
-              closable: ids.length === 1 && sessionOf(ids[0]) !== 'local',
+              closable: ids.length > 1 || sessionOf(ids[0]) !== 'local',
+              groupId: ids.length > 1 ? g.id : null,
               source: ids.length === 1 ? ids[0] : 'group:' + g.id, live: ids.some(live)};
     });
   }

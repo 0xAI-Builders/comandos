@@ -1242,8 +1242,8 @@ def on_term_button(term, event):
         item("Split arriba" if ES else "Split up", lambda: split(["-v", "-b"]))
     item("Alternar ventana 1/2     Ctrl-b l" if ES else "Toggle window 1/2        Ctrl-b l", lambda: feed(term, b"\x02l"))
     item("Cerrar ESTE split" if ES else "Close THIS split",
-         lambda: tmuxc("kill-pane", "-t", pane_id),
-         sensitive=bool(pane_id) and npanes > 1)
+         lambda: close_split_guarded(cur_sess, pane_id),
+         sensitive=bool(pane_id) and npanes > 1 and bool(cur_sess))
     menu.append(Gtk.SeparatorMenuItem())
     item("Iniciar sesión de IA aquí…" if ES else "Start AI session here…",
          lambda: open_ai_session_here(cur_sess or str(key or "").partition(":")[0], pane_id))
@@ -2382,7 +2382,7 @@ def _apply_tab_rename_css(entry):
         _TAB_RENAME_CSS, Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION)
 
 
-def tab_label(text, key=None, closable=True):
+def tab_label(text, key=None, closable=True, on_close=None):
     hb = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
     dot = Gtk.Label()
     dot.set_markup(f'<span size="8500" foreground="{DOT_IDLE}">●</span>')
@@ -2485,7 +2485,7 @@ def tab_label(text, key=None, closable=True):
         b.set_always_show_image(True)
         b.set_relief(Gtk.ReliefStyle.NONE)
         b.get_style_context().add_class("tabclose")
-        b.connect("clicked", lambda *_: close_tab(key))
+        b.connect("clicked", lambda *_: on_close() if on_close else close_tab(key))
         hb.pack_start(b, False, False, 0)
     hb.show_all()
     return hb
@@ -3435,7 +3435,8 @@ def ws_widget(key):
 
 def ws_tab_label(key, text):
     if key.startswith("group:"):
-        hb = tab_label(text, key=None, closable=False)
+        group_id = key[6:]
+        hb = tab_label(text, key=None, closable=True, on_close=lambda: close_group_guarded(group_id))
         hb._set_group_text = hb._text.set_text
         hb._group = key[6:]
     else:
@@ -3499,6 +3500,35 @@ def ws_apply(state):
         WS_VIEW.apply(doc)
     except Exception as exc:
         print(f"workspace apply: {exc}", file=sys.stderr)
+    if not _WS.get("focus_restored"):
+        _WS["focus_restored"] = True
+        _in_background(lambda: _dash_call("/workspace/client?deviceId=" + WS_DEVICE, timeout=3), _ws_restore_focus)
+    return False
+
+
+# Foco POR DISPOSITIVO: el escritorio recuerda su tab activa sin tocar la
+# distribucion compartida ni el foco de otros equipos.
+WS_DEVICE = "desktop-" + re.sub(r"[^A-Za-z0-9_.-]", "-", os.uname().nodename or "local")[:60]
+
+
+def _ws_restore_focus(res):
+    status, mine = res
+    key = mine.get("activeTabId") if status == 200 else None
+    current = nb.get_nth_page(nb.get_current_page())
+    # Solo al arrancar y sin pisar una eleccion ya hecha fuera de "local".
+    if key and key in tabs and getattr(current, "_key", None) in (None, "local"):
+        ws_select(key)
+    _WS["focus_saved"] = key
+
+
+def _ws_save_focus(*_):
+    page = nb.get_nth_page(nb.get_current_page())
+    key = getattr(page, "_key", None)
+    if not key or not _WS.get("focus_restored") or key == _WS.get("focus_saved"):
+        return False
+    _WS["focus_saved"] = key
+    _in_background(lambda: _dash_call("/workspace/client", {"deviceId": WS_DEVICE, "activeTabId": key}, timeout=3),
+                   lambda res: res[0] == 200 or _WS.update(focus_saved=None))
     return False
 
 
@@ -3552,6 +3582,93 @@ def ws_commit(doc, focus=None):
             return False
         GLib.idle_add(done)
     threading.Thread(target=work, daemon=True).start()
+
+
+def _dash_call(path, payload=None, timeout=15):
+    """(status, body) from cc-dash; never raises."""
+    data = None if payload is None else json.dumps(payload).encode()
+    req = urllib.request.Request(BASE_URL + path, data=data, headers={"Content-Type": "application/json"})
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as r:
+            return r.status, json.loads(r.read().decode() or "{}")
+    except urllib.error.HTTPError as e:
+        try:
+            return e.code, json.loads(e.read().decode() or "{}")
+        except Exception:
+            return e.code, {"error": str(e)}
+    except Exception as e:
+        return 0, {"error": str(e)}
+
+
+def _in_background(work, done):
+    """Run ``work()`` off the UI thread, then ``done(result)`` on it."""
+    def run():
+        result = work()
+        GLib.idle_add(lambda: (done(result), False)[1])
+    threading.Thread(target=run, daemon=True).start()
+
+
+def close_group_guarded(group_id):
+    """Confirmar la lista FIJA de pestañas del grupo y cerrar solo esas.
+
+    El servidor revalida revision e identidad de cada sesion; las pestañas
+    cerradas llegan por app-tab-close.json, el mismo camino que el remoto.
+    """
+    title = "Cerrar grupo" if ES else "Close group"
+
+    def confirm(res):
+        status, preview = res
+        if status != 200:
+            notify_popup(title, preview.get("error") or "No se pudo preparar el cierre")
+            return
+        members = preview.get("members") or []
+        closing = [m for m in members if not m.get("kept")]
+        lines = "\n".join("• " + str(m.get("label")) + ((" — se queda abierta" if ES else " — stays open") if m.get("kept") else "")
+                          for m in members)
+        if not closing or not _confirm_must_answer(
+                primary=(f"¿Cerrar {len(closing)} pestañas de este grupo?" if ES else f"Close {len(closing)} tabs in this group?"),
+                secondary=lines + ("\n\nLas sesiones tmux siguen vivas en Recientes." if ES else "\n\ntmux sessions stay alive in Recents."),
+                yes_label=("Cerrar" if ES else "Close"), no_label=("Cancelar" if ES else "Cancel")):
+            return
+        body = {"requestId": secrets.token_hex(12), "groupId": group_id,
+                "expectedRevision": preview.get("revision"), "members": members}
+        _in_background(lambda: _dash_call("/workspace/close-group", body), report)
+
+    def report(res):
+        status, result = res
+        if status != 200:
+            notify_popup(title, (result.get("error") or "No se cerró nada") + (" No se cerró nada." if ES else " Nothing was closed."))
+        elif not result.get("ok"):
+            notify_popup(title, (f"Se cerraron {len(result.get('closed', []))}; quedan: {', '.join(result.get('remaining', []))}. "
+                                 if ES else f"Closed {len(result.get('closed', []))}; still open: {', '.join(result.get('remaining', []))}. ")
+                         + str(result.get("error") or ""))
+    _in_background(lambda: _dash_call("/workspace/close-group?groupId=" + quote(group_id, safe="")), confirm)
+
+
+def close_split_guarded(sess, pane_id):
+    """Cerrar un split por identidad comprobada, con copia previa (igual que el remoto)."""
+    title = "Cerrar split" if ES else "Close split"
+
+    def confirm(res):
+        status, listing = res
+        pane = next((p for p in listing.get("panes") or [] if p.get("id") == pane_id), None) if status == 200 else None
+        if not pane:
+            notify_popup(title, listing.get("error") or ("El panel ya no existe" if ES else "The pane is gone"))
+            return
+        if not _confirm_must_answer(
+                primary=(f"¿Cerrar el split «{pane.get('title') or pane_id}»?" if ES else f"Close split “{pane.get('title') or pane_id}”?"),
+                secondary=("Termina el proceso de ese panel. Se guarda una copia antes; los demás paneles siguen abiertos."
+                           if ES else "Ends that pane's process. A copy is saved first; other panes stay open."),
+                yes_label=("Cerrar" if ES else "Close"), no_label=("Cancelar" if ES else "Cancel")):
+            return
+        body = {"session": sess, "action": "close", "pane": pane_id, "identity": pane.get("identity")}
+        _in_background(lambda: _dash_call("/terminal-panes", body), report)
+
+    def report(res):
+        status, result = res
+        if status != 200:
+            notify_popup(title, result.get("error") or ("No se cerró" if ES else "Not closed"))
+    _in_background(lambda: _dash_call("/terminal-panes", {"session": sess, "action": "list"}), confirm)
 
 
 def ws_resized(group_id, path, ratio):
@@ -4224,6 +4341,7 @@ def _refresh_tab_models():
 
 
 nb.connect("switch-page", lambda *_: GLib.idle_add(_report_active_tab))
+nb.connect("switch-page", lambda *_: GLib.timeout_add(800, _ws_save_focus))
 _attach_model_bar(hub, "local")
 GLib.timeout_add_seconds(2, _refresh_tab_models)
 
@@ -5812,11 +5930,15 @@ def on_tab_close_request(_mon, _f, _other, event):
         return
     try:
         with open(CLOSE_FILE) as fh:
-            sess = json.load(fh).get("session", "")
+            data = json.load(fh)
     except Exception:
         return
-    if sess and sess in tabs:
-        close_tab(sess, confirm=False)
+    # Un cierre de grupo deja la lista completa: cada miembro escribe el
+    # archivo y el monitor puede ver solo la ultima escritura.
+    sessions = data.get("sessions") if isinstance(data.get("sessions"), list) else [data.get("session", "")]
+    for sess in sessions:
+        if isinstance(sess, str) and sess and sess in tabs:
+            close_tab(sess, confirm=False)
 
 
 _close_mon = Gio.File.new_for_path(CLOSE_FILE).monitor_file(Gio.FileMonitorFlags.NONE, None)
@@ -5886,8 +6008,25 @@ def _cur_pane_id(sess=None):
 
 
 def _kill_cur_pane(sess=None):
+    """Cerrar el split actual por el camino guardado (copia previa + identidad)."""
     pane = _cur_pane_id(sess)
-    return tmuxc("kill-pane", "-t", pane) if pane else None
+    if not pane:
+        return None
+    r = tmuxc("display-message", "-p", "-t", pane, "#{session_name}")
+    owner = (r.stdout or "").strip() if r.returncode == 0 else ""
+    if not owner:
+        return None
+
+    def work():
+        status, listing = _dash_call("/terminal-panes", {"session": owner, "action": "list"})
+        entry = next((p for p in listing.get("panes") or [] if p.get("id") == pane), None) if status == 200 else None
+        if not entry:
+            return 400, {"error": listing.get("error") or "El panel ya no existe"}
+        return _dash_call("/terminal-panes", {"session": owner, "action": "close", "pane": pane,
+                                              "identity": entry.get("identity")})
+    _in_background(work, lambda res: res[0] == 200 or notify_popup(
+        "Cerrar split" if ES else "Close split", res[1].get("error") or "No se cerró"))
+    return pane
 
 
 def _select_pane_cmd(a):

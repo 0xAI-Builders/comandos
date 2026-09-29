@@ -36,6 +36,28 @@ def _inventory(tmux, identify, session):
     return panes
 
 
+# Remote clients attach with `-f active-pane`, so a plain `select-pane` from
+# the server only moves the shared (desktop) focus. A client moves its own
+# focus by typing a user key bound in its own context; tmux 3.2 does not
+# expand formats in the binding target, so each pane index gets its own key.
+FOCUS_KEY_BASE = 900   # user-keys[990+] are already taken on this machine
+FOCUS_KEY_COUNT = 32
+
+
+def focus_key(index):
+    return '\x1b[4242;%d~' % index
+
+
+def ensure_focus_keys(tmux):
+    args = []
+    for i in range(FOCUS_KEY_COUNT):
+        args += ['set-option', '-s', 'user-keys[%d]' % (FOCUS_KEY_BASE + i), focus_key(i), ';',
+                 'bind-key', '-n', 'User%d' % (FOCUS_KEY_BASE + i), 'select-pane', '-t', ':.%d' % i, ';']
+    result = tmux(*args[:-1])
+    if result.returncode:
+        raise ValueError('No se pudo preparar el foco del dispositivo')
+
+
 def _public(panes):
     return [{key: value for key, value in pane.items() if not key.startswith('_')}
             for pane in panes]
@@ -50,6 +72,7 @@ def execute(tmux, identify, save_snapshot, data):
     action = data.get('action', 'list')
     if action not in ('list', 'select', 'close', 'split'):
         raise ValueError('Acción de panel inválida')
+    client_scope = action == 'select' and data.get('scope') == 'client'
     split_flag = None
     if action == 'split':
         split_flag = {'right': '-h', 'down': '-v'}.get(data.get('direction'))
@@ -70,6 +93,11 @@ def execute(tmux, identify, save_snapshot, data):
             fresh = _inventory(tmux, identify, session)
             if len(fresh) <= 1 or not any(p['id'] == pane['id'] and p['identity'] == pane['identity'] for p in fresh):
                 raise ValueError('El panel cambió mientras se guardaba. No se ha cerrado')
+        if client_scope:
+            if not 0 <= pane['index'] < FOCUS_KEY_COUNT:
+                raise ValueError('Este panel no admite foco por dispositivo')
+            ensure_focus_keys(tmux)
+            return {'ok': True, 'panes': _public(panes), 'clientKeys': focus_key(pane['index'])}
         identity = pane['_identity']
         checks = []
         for key in ('pid', 'session_id', 'pane_id', 'pane_pid'):
