@@ -2390,11 +2390,11 @@
 <div id="groupclose" class="modal" role="dialog" aria-modal="true" aria-labelledby="groupclose-title">
  <div class="modal-panel" style="max-width:460px">
   <h3 id="groupclose-title" style="margin:0 0 6px">¿Cerrar este grupo de pestañas?</h3>
-  <div class="desc" style="margin-bottom:8px">Se cierran aquí y en el escritorio. Sus sesiones tmux siguen vivas y puedes recuperarlas en Recientes.</div>
+  <div id="groupclose-desc" class="desc" style="margin-bottom:8px">Se cierran aquí y en el escritorio. Sus sesiones tmux siguen vivas y puedes recuperarlas en Recientes.</div>
   <ul id="groupclose-list" style="margin:0 0 10px;padding-left:20px"></ul>
   <div id="groupclose-status" class="desc" role="status" aria-live="polite" style="margin-bottom:10px"></div>
   <div style="display:flex;gap:8px;justify-content:flex-end">
-    <button type="button" class="test" data-close="groupclose">Cancelar</button>
+    <button type="button" class="test" id="groupclose-cancel" data-close="groupclose">Cancelar</button>
     <button type="button" class="test warn" id="groupclose-yes">Cerrar pestañas</button>
   </div>
  </div>
@@ -6820,6 +6820,10 @@ async function askCloseGroup(groupId){
   const m = $("#groupclose"), list = $("#groupclose-list"), status = $("#groupclose-status");
   const yes = $("#groupclose-yes");
   const closing = preview.members.filter(x => !x.kept);
+  $("#groupclose-title").textContent = tf("¿Cerrar este grupo de pestañas?", "Close this group of tabs?");
+  $("#groupclose-desc").textContent = tf("Se cierran aquí y en el escritorio. Sus sesiones tmux siguen vivas y puedes recuperarlas en Recientes.",
+    "They close here and on the desktop. Their tmux sessions stay alive in Recents.");
+  $("#groupclose-cancel").textContent = tf("Cancelar", "Cancel");
   list.replaceChildren(...preview.members.map(x => {
     const li = document.createElement("li");
     li.textContent = x.label + (x.kept ? tf(" — se queda abierta", " — stays open") : "");
