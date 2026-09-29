@@ -2282,6 +2282,7 @@
     <button class="mtab active" data-mtab="resumen" role="tab" title="Cuota, riesgo de desborde y alertas en una sola vista"><span data-icon="lock" data-size="13"></span> Resumen</button>
     <button class="mtab" data-mtab="comparar" role="tab" title="Qué configuración funciona mejor, por proyecto y proveedor"><span data-icon="database" data-size="13"></span> Comparar</button>
     <button class="mtab" data-mtab="reparto" role="tab" title="Reparte tus sesiones entre cuentas y modelos según la cuota que te queda"><span data-icon="sprout" data-size="13"></span> Reparto</button>
+    <button class="mtab" data-mtab="pomodoro" role="tab" title="Tiempo de foco medido por bloque, con filtros de fechas y proyecto"><span data-icon="timer" data-size="13"></span> Pomodoro</button>
   </nav>
 
   <div class="mtab-pane active" data-mpane="resumen">
@@ -2344,6 +2345,9 @@
 
   <div class="mtab-pane" data-mpane="reparto">
     <div id="reparto"></div>
+  </div>
+  <div class="mtab-pane" data-mpane="pomodoro">
+    <div id="pomodoro-analytics" aria-live="polite"></div>
   </div>
 
   <div class="mtab-pane" data-mpane="alertas">
@@ -7660,6 +7664,7 @@ function activateMtab(scope, name){
   if(name === "resumen") loadGuard();
   if(name === "comparar"){ loadCompare(); loadProvCompare(); }
   if(name === "reparto") window.Reparto?.load();
+  if(name === "pomodoro") window.ComandosPomodoro?.loadAnalytics?.();
 }
 function wireMtabs(root=document){
   root.querySelectorAll(".mtab").forEach(b=>{

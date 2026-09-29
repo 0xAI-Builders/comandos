@@ -149,3 +149,36 @@ def test_style_is_one_global_setting_and_never_touches_the_block(dash):
     assert code == 400
     snap = get(dash)[1]
     assert snap["revision"] == started["revision"] and snap["block"] == started["block"]
+
+
+def test_report_endpoint_filters_and_rejects_bad_ranges(dash):
+    _, started = dash.pomodoro_post({"requestId": "a", "expectedRevision": 0, "action": "start",
+                                     "mode": "focus", "targetMs": 25 * MIN, "project": "ComandOS"})
+    dash.test_clock.now += 10 * MIN
+    dash.pomodoro_post({"requestId": "b", "expectedRevision": None, "action": "cancel"})
+    code, report = get(dash, "/pomodoro/report")
+    assert code == 200 and report["measured"]["cancelled"]["activeMs"] == 10 * MIN
+    assert len(report["byDay"]) == 7 and report["range"]["timezone"] == "America/Mexico_City"
+    code, other = get(dash, "/pomodoro/report?project=Lola")
+    assert code == 200 and other["measured"]["activeMs"] == 0
+    assert get(dash, "/pomodoro/report?from=10&to=5")[0] == 400
+    assert get(dash, "/pomodoro/report?from=x")[0] == 400
+
+
+def test_scheduler_maps_legacy_usage_history_once(dash):
+    import cc_usage
+    block = cc_usage.focus_block_start(dash.USAGE_DB, {"mode": "focus", "planned_minutes": 25,
+                                                       "started_at_ms": T0 - 3600_000})
+    cc_usage.focus_block_finish(dash.USAGE_DB, block["id"], "completed", T0 - 2100_000)
+    stop = threading.Event()
+    stop.set()   # run only the start-up work
+    dash.pomodoro_scheduler_loop(stop)
+    dash.pomodoro_scheduler_loop(stop)
+    code, report = get(dash, "/pomodoro/report")
+    assert report["legacy"]["completedBlocks"] == 1 and report["measured"]["activeMs"] == 0
+
+
+def test_report_accepts_local_dates(dash):
+    code, report = get(dash, "/pomodoro/report?fromDate=2033-05-01&toDate=2033-05-03")
+    assert code == 200 and [d["date"] for d in report["byDay"]] == ["2033-05-01", "2033-05-02", "2033-05-03"]
+    assert get(dash, "/pomodoro/report?fromDate=mayo")[0] == 400

@@ -248,3 +248,27 @@ body.only-panel #pomo-panel.pm-v1{width:100%!important}
 @keyframes pm-chest-frames{0%,12%{background-position-x:0}18%{background-position-x:-40px}27%{background-position-x:-80px}36%{background-position-x:-120px}45%,72%{background-position-x:-160px}81%{background-position-x:-120px}87%{background-position-x:-80px}93%{background-position-x:-40px}99%,100%{background-position-x:0}}
 html.pm-page-hidden .pm-asset,html.pm-page-hidden .pm-pixel{animation-play-state:paused!important}
 @media (prefers-reduced-motion:reduce){.pm-asset,.pm-pixel{animation:none!important}}
+#pomo-panel .pm-link{border:none;min-height:30px;padding:0;color:var(--dim);font:11px var(--mono);text-align:left}
+/* Analytics › Pomodoro (vista acotada; no cambia el resto de Analytics) */
+#pomodoro-analytics{display:flex;flex-direction:column;gap:12px}
+#pomodoro-analytics .pma-head p,#pomodoro-analytics .pma-note,#pomodoro-analytics .pma-empty{font-size:12px;color:var(--dim);margin:0;line-height:1.5}
+#pomodoro-analytics .pma-filters{display:flex;flex-wrap:wrap;gap:8px 12px;align-items:end}
+#pomodoro-analytics .pma-filters label{display:flex;flex-direction:column;gap:4px;font:10.5px var(--mono);color:var(--dim)}
+#pomodoro-analytics select,#pomodoro-analytics input{min-height:36px;border-radius:9px;border:1px solid var(--line2);background:var(--bg);color:var(--text);font:12px var(--mono);padding:0 8px}
+#pomodoro-analytics .pma-tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(96px,1fr));gap:8px}
+#pomodoro-analytics .pma-tiles div{border:1px solid var(--line);border-radius:10px;padding:10px;display:flex;flex-direction:column;gap:2px;background:var(--bg)}
+#pomodoro-analytics .pma-tiles b{font:800 18px var(--mono)}
+#pomodoro-analytics .pma-tiles small{font:9.5px var(--mono);color:var(--dim);text-transform:uppercase;letter-spacing:.06em}
+#pomodoro-analytics .pma-bars{display:flex;gap:4px;align-items:end;height:110px;overflow-x:auto;padding-bottom:2px}
+#pomodoro-analytics .pma-bars button{flex:1 0 18px;height:100%;display:flex;flex-direction:column;justify-content:end;align-items:center;gap:3px;border:1px solid transparent;border-radius:6px;background:none;cursor:pointer;padding:2px}
+#pomodoro-analytics .pma-bars button.on{border-color:var(--brand)}
+#pomodoro-analytics .pma-bars span{display:block;width:100%;min-height:2px;border-radius:3px;background:var(--brand)}
+#pomodoro-analytics .pma-bars small{font:9px var(--mono);color:var(--dim)}
+#pomodoro-analytics .pma-projects div,#pomodoro-analytics .pma-row{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:2px 10px;padding:6px 0;border-bottom:1px solid var(--line);font-size:12px}
+#pomodoro-analytics .pma-projects small{grid-column:1/-1;color:var(--dim);font:10.5px var(--mono)}
+#pomodoro-analytics .pma-row{grid-template-columns:92px minmax(0,1fr) auto auto;font:11.5px var(--mono)}
+#pomodoro-analytics .pma-row.break{color:var(--dim)}
+#pomodoro-analytics .pma-row.cancelled span:nth-child(3){color:#ff9b9b}
+#pomodoro-analytics h4{margin:4px 0 0;font-size:12px;display:flex;gap:8px;align-items:center}
+#pomodoro-analytics h4 button{font:11px var(--mono);border:1px solid var(--line2);border-radius:8px;background:none;color:var(--dim);min-height:28px}
+@media (max-width:520px){#pomodoro-analytics .pma-row{grid-template-columns:1fr auto}#pomodoro-analytics .pma-row span:nth-child(2){grid-column:1/-1;order:-1}}

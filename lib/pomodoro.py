@@ -14,6 +14,8 @@ import hashlib
 import json
 import time
 import uuid
+from datetime import datetime, timedelta
+from zoneinfo import ZoneInfo
 
 MINUTE_MS = 60_000
 MIN_TARGET_MS = MINUTE_MS           # existing product limit: 1..180 minutes
@@ -23,6 +25,10 @@ ACTIONS = ("start", "pause", "resume", "extend", "cancel")
 LIVE = ("running", "paused")
 REQUEST_TTL_MS = 7 * 24 * 3600_000
 MAX_TEXT = 160
+REPORT_TZ = "America/Mexico_City"
+MAX_REPORT_DAYS = 400
+HISTORY_LIMIT = 200
+LEGACY_STATUS = {"completed": "completed", "cancelled": "cancelled", "skipped": "skipped"}
 
 
 class PomodoroError(Exception):
@@ -369,3 +375,141 @@ class PomodoroStore:
             return True
 
         return self._write(run)
+
+    # ---- former cc_usage focus_blocks history (planned minutes only) --------
+    def import_legacy_history(self, rows, now_ms=None):
+        """Map pre-1.0 rows as ``legacy-planned`` records. Idempotent.
+
+        Their duration was only planned: ``active_ms`` stays NULL so reports
+        never present it as measured focus. Rows whose id already belongs to
+        a block owned here (an adopted live block) are skipped.
+        """
+        now = self.clock() if now_ms is None else now_ms
+
+        def run():
+            added = 0
+            for row in rows or ():
+                block_id = _text(row.get("id"))
+                if not block_id:
+                    continue
+                if self.conn.execute("SELECT 1 FROM pomodoro_blocks WHERE block_id = ?", (block_id,)).fetchone():
+                    continue
+                mode = row.get("mode") if row.get("mode") in MODES else "focus"
+                try:
+                    planned = max(0, int(row.get("planned_minutes") or 0)) * MINUTE_MS
+                    started = int(row.get("started_at_ms"))
+                except (TypeError, ValueError):
+                    continue
+                ended = row.get("ended_at_ms")
+                cur = self.conn.execute(
+                    "INSERT INTO pomodoro_records (block_id, mode, status, target_ms, active_ms, planned_ms, "
+                    "started_at_ms, ended_at_ms, project, session_key, pane_key, provenance, recorded_at_ms) "
+                    "VALUES (?, ?, ?, ?, NULL, ?, ?, ?, ?, ?, ?, 'legacy-planned', ?) "
+                    "ON CONFLICT(block_id) DO NOTHING",
+                    (block_id, mode, LEGACY_STATUS.get(row.get("status"), "unknown"), planned, planned, started,
+                     int(ended) if isinstance(ended, (int, float)) else None, _text(row.get("project")),
+                     _text(row.get("tmux_session")), _text(row.get("tmux_pane")), now))
+                added += cur.rowcount
+            return added
+
+        return self._write(run)
+
+
+def _record_dict(row):
+    (block_id, mode, status, target, active, planned, started, ended, project, session_key, pane_key,
+     provenance) = row
+    return {"blockId": block_id, "mode": mode, "status": status, "targetMs": target, "activeMs": active,
+            "plannedMs": planned, "startedAtMs": started, "endedAtMs": ended, "project": project,
+            "sessionKey": session_key, "paneKey": pane_key, "provenance": provenance}
+
+
+_RECORD_COLUMNS = ("block_id, mode, status, target_ms, active_ms, planned_ms, started_at_ms, ended_at_ms, "
+                   "project, session_key, pane_key, provenance")
+
+
+def local_day(ms, tz=REPORT_TZ):
+    return datetime.fromtimestamp(ms / 1000, ZoneInfo(tz)).date().isoformat()
+
+
+def records(conn, from_ms=None, to_ms=None, project=None):
+    sql = f"SELECT {_RECORD_COLUMNS} FROM pomodoro_records WHERE 1 = 1"
+    args = []
+    if from_ms is not None:
+        sql += " AND started_at_ms >= ?"
+        args.append(int(from_ms))
+    if to_ms is not None:
+        sql += " AND started_at_ms < ?"
+        args.append(int(to_ms))
+    if project is not None:
+        sql += " AND project = ?"
+        args.append(project)
+    sql += " ORDER BY started_at_ms DESC, block_id"
+    return [_record_dict(r) for r in conn.execute(sql, args).fetchall()]
+
+
+def focus_report(conn, from_ms, to_ms, project=None, tz=REPORT_TZ):
+    """Measured Pomodoro activity in [from_ms, to_ms) by local start day.
+
+    Measured focus counts active time only (pauses never, breaks apart).
+    Legacy history appears separately with its planned minutes.
+    """
+    from_ms, to_ms = int(from_ms), int(to_ms)
+    if to_ms <= from_ms:
+        raise ValueError("rango vacío")
+    zone = ZoneInfo(tz)
+    rows = records(conn, from_ms, to_ms, project)
+    projects = sorted({r[0] for r in conn.execute(
+        "SELECT DISTINCT project FROM pomodoro_records WHERE started_at_ms >= ? AND started_at_ms < ? "
+        "AND project != ''", (from_ms, to_ms))})
+    measured = [r for r in rows if r["provenance"] == "measured" and r["mode"] == "focus"]
+    legacy = [r for r in rows if r["provenance"] != "measured" and r["mode"] == "focus"]
+    breaks = [r for r in rows if r["provenance"] == "measured" and r["mode"] == "break"]
+
+    def bucket(items):
+        return {"blocks": len(items), "activeMs": sum(r["activeMs"] or 0 for r in items),
+                "plannedMs": sum(r["plannedMs"] for r in items)}
+
+    completed = [r for r in measured if r["status"] == "completed"]
+    cancelled = [r for r in measured if r["status"] == "cancelled"]
+    legacy_done = [r for r in legacy if r["status"] == "completed"]
+    first = datetime.fromtimestamp(from_ms / 1000, zone).date()
+    last = datetime.fromtimestamp((to_ms - 1) / 1000, zone).date()
+    days = {}
+    day = first
+    while day <= last and len(days) < MAX_REPORT_DAYS:
+        days[day.isoformat()] = {"date": day.isoformat(), "activeMs": 0, "completed": 0, "cancelled": 0,
+                                 "legacyPlannedMs": 0}
+        day += timedelta(days=1)
+    by_project = {}
+    for r in measured + legacy_done:
+        key = local_day(r["startedAtMs"], tz)
+        d = days.get(key)
+        p = by_project.setdefault(r["project"] or "", {"project": r["project"] or "", "activeMs": 0,
+                                                        "completed": 0, "cancelled": 0, "legacyPlannedMs": 0})
+        for target in (d, p):
+            if target is None:
+                continue
+            if r["provenance"] == "measured":
+                target["activeMs"] += r["activeMs"] or 0
+                target[r["status"]] = target.get(r["status"], 0) + 1
+            else:
+                target["legacyPlannedMs"] += r["plannedMs"]
+    terminal = len(completed) + len(cancelled)
+    return {
+        "range": {"fromMs": from_ms, "toMs": to_ms, "timezone": tz},
+        "project": project,
+        "projects": projects,
+        "measured": {
+            "completed": bucket(completed), "cancelled": bucket(cancelled),
+            "activeMs": sum(r["activeMs"] or 0 for r in completed + cancelled),
+            "plannedMs": sum(r["plannedMs"] for r in completed + cancelled),
+            "completionRate": (len(completed) / terminal) if terminal else None,
+        },
+        "legacy": {"blocks": len(legacy), "completedBlocks": len(legacy_done),
+                   "plannedMs": sum(r["plannedMs"] for r in legacy_done),
+                   "note": "Historial anterior: solo minutos planeados, sin pausas medidas."},
+        "breaks": {"blocks": len(breaks), "activeMs": sum(r["activeMs"] or 0 for r in breaks)},
+        "byDay": list(days.values()),
+        "byProject": sorted(by_project.values(), key=lambda x: (-x["activeMs"], -x["legacyPlannedMs"], x["project"])),
+        "history": rows[:HISTORY_LIMIT],
+    }

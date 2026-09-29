@@ -6643,6 +6643,10 @@ def pomodoro_scheduler_loop(stop=None):
         pomodoro_adopt_legacy()
     except Exception as exc:
         _pomodoro_log(f"cc-dash pomodoro: no se pudo adoptar focus.json: {exc!r}")
+    try:   # historial previo: minutos planeados, marcados como tales
+        pomodoro_store().import_legacy_history(cc_usage.focus_legacy_rows(USAGE_DB))
+    except Exception as exc:
+        _pomodoro_log(f"cc-dash pomodoro: no se pudo mapear el historial anterior: {exc!r}")
     while not stop.is_set():
         delay = 30.0
         try:
@@ -6664,6 +6668,32 @@ def start_pomodoro_scheduler():
         _POMODORO_SCHEDULER["thread"] = thread
         thread.start()
     return _POMODORO_SCHEDULER["thread"]
+
+
+def pomodoro_report_query(path):
+    """GET /pomodoro/report?from=<ms>&to=<ms>&project=<name> (default: 7 local days)."""
+    query = urllib.parse.parse_qs(urllib.parse.urlsplit(path).query)
+    now = POMODORO_CLOCK()
+    zone = pomodoro.ZoneInfo(pomodoro.REPORT_TZ)
+    today = pomodoro.datetime.fromtimestamp(now / 1000, zone).replace(hour=0, minute=0, second=0, microsecond=0)
+    default_from = int((today - pomodoro.timedelta(days=6)).timestamp() * 1000)
+    default_to = int((today + pomodoro.timedelta(days=1)).timestamp() * 1000)
+    def day_ms(text, plus_days=0):
+        day = pomodoro.datetime.strptime(text, "%Y-%m-%d").replace(tzinfo=zone)
+        return int((day + pomodoro.timedelta(days=plus_days)).timestamp() * 1000)
+    try:
+        start = int((query.get("from") or [default_from])[0])
+        end = int((query.get("to") or [default_to])[0])
+        if query.get("fromDate"):   # días locales de America/Mexico_City, fin inclusivo
+            start = day_ms(query["fromDate"][0])
+        if query.get("toDate"):
+            end = day_ms(query["toDate"][0], 1)
+        if end - start > pomodoro.MAX_REPORT_DAYS * 86_400_000:
+            raise ValueError("rango demasiado largo")
+        project = (query.get("project") or [None])[0]
+        return 200, pomodoro.focus_report(pomodoro_store().conn, start, end, project or None)
+    except (TypeError, ValueError) as exc:
+        return 400, {"error": str(exc) or "Rango inválido"}
 
 
 def _pomodoro_legacy_command(data):
@@ -8176,6 +8206,8 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             return self._json(200, active)
         if self.path.startswith("/dedication"):
             return self._json(200, dedication_stats())
+        if self.path.startswith("/pomodoro/report"):
+            return self._json(*pomodoro_report_query(self.path))
         if self.path == "/pomodoro":
             return self._json(200, pomodoro_payload())
         if self.path == "/sovereignty":
