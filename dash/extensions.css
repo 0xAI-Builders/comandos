@@ -27,3 +27,8 @@
 }
 
 .origin-group>summary button{font-size:9px;padding:3px 6px;margin-left:6px}
+
+/* Global selection: every editable extension, independent of search and filter. */
+.selection-toolbar{display:flex;gap:8px;align-items:center;flex-wrap:wrap;flex:none;padding:6px 14px;border-bottom:1px solid var(--line)}
+.selection-toolbar strong{font-size:11px;font-variant-numeric:tabular-nums}
+@media(max-width:600px){.selection-toolbar{padding:6px 10px}.selection-toolbar>.muted:last-child{display:none}}

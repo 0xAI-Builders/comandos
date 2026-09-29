@@ -5,6 +5,10 @@ const registry={harnesses:{codex:{label:'Codex',accounts:[{alias:'main',selectab
 const source={session:'fixture',pane:'%7',project:'ComandOS · prueba aislada',cwd:'/tmp',agent:'codex',motor:'codex',model:'gpt-6-astra',effort:'high',account:'main',harnessAccount:'main',motorAccount:'main',alive:true,status:'idle',observedConfig:{identity:{pid:42},conversationId:'fixture-source'}};
 let items=[{...source}],posts=[],operation=null,sequence=0;
 const config={toHarness:'codex',motor:'codex',model:'gpt-6-sol',effort:'medium',harnessAccount:'main',motorAccount:'main'};
+const extensionRows=kind=>Array.from({length:18},(_,i)=>({id:kind+i,name:(kind==='skills'?'Skill ':'MCP ')+i,toggleable:true,origin:{id:i%2?'matt':'local',label:i%2?'mattpocock':'Local'},size:{tokens:200+i*200}}));
+const inventory={mcps:extensionRows('mcps'),skills:extensionRows('skills')};
+let extDesired=Object.fromEntries(Object.entries(inventory).map(([k,v])=>[k,Object.fromEntries(v.map((r,i)=>[r.id,i<3]))]));
+const extLoaded=structuredClone(extDesired);
 const server=http.createServer((req,res)=>{
   const url=new URL(req.url,'http://fixture');let filename=path.join(root,url.pathname.startsWith('/assets/')?'':'dash',url.pathname==='/'?'index.html':url.pathname);
   if(filename.startsWith(root+path.sep)&&fs.existsSync(filename)&&fs.statSync(filename).isFile()){
@@ -19,6 +23,10 @@ const server=http.createServer((req,res)=>{
       if(data.action==='confirm'&&operation){const d=posts.filter(p=>p.path==='/session/configure').at(-1).data;operation={...operation,state:'confirmed',ok:true,detail:'confirmado',harness:d.toHarness,motor:d.motor,model:d.model,effort:d.effort,harnessAccount:d.harnessAccount,motorAccount:d.motorAccount,identity:{pid:84},conversationId:'fixture-destination',ts:Date.now()};delete operation.stage;delete operation.stageCode;items[0]={...items[0],agent:d.toHarness,motor:d.motor,model:d.model,effort:d.effort,account:d.harnessAccount,harnessAccount:d.harnessAccount,motorAccount:d.motorAccount,observedConfig:{identity:{pid:84},conversationId:'fixture-destination'}};}
       if(data.action==='fail'&&operation){operation={...operation,ok:false,state:'failed',detail:'Fallo de prueba',ts:Date.now()};delete operation.stage;delete operation.stageCode;}
       out={posts,operation,registry,items};
+    }
+    if(url.pathname==='/pane-extensions'){
+      if(data.desired)extDesired=data.desired;
+      out={inventory,desired:extDesired,loaded:extLoaded,identity:'fixture-identity',conversationId:'fixture-source',revision:posts.length,harness:'codex',busy:false,configurationStatus:'verified',templates:[],usage:{counts:{mcps:{mcps0:0},skills:{}},complete:false}};
     }
     if(url.pathname==='/state')out=items;
     if(url.pathname==='/providers')out=registry;
