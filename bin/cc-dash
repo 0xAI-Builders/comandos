@@ -419,7 +419,7 @@ _limits_refreshing = False
 def usage_alert_send(message, title=None, kind="waiting", project=None):
     """Entrega una alerta de uso por los MISMOS canales que las notificaciones
     normales: el popup PROPIO de ComandOS (cc-notifyd; jamas el popup plano
-    de GNOME) y/o Telegram, segun lo que este prendido."""
+    de GNOME). Telegram ya no forma parte de ComandOS."""
     conf = read_conf()
     if conf.get("DESKTOP_NOTIFY", "1") == "1":
         try:
@@ -433,21 +433,6 @@ def usage_alert_send(message, title=None, kind="waiting", project=None):
                 headers={"Content-Type": "application/json"}), timeout=2)
         except Exception:
             pass
-    if conf.get("TELEGRAM_ENABLED") == "1":
-        tg = cc_usage.load_usage_config([os.path.join(HOOKS, "telegram.env")])
-        token = tg.get("CC_TELEGRAM_BOT_TOKEN") or tg.get("TELEGRAM_BOT_TOKEN")
-        chat = tg.get("TELEGRAM_CHAT_ID")
-        if token and chat:
-            try:
-                body = urllib.parse.urlencode({
-                    "chat_id": chat, "parse_mode": "HTML",
-                    "text": f"<b>ComandOS — Límite de uso</b>\n{message}",
-                }).encode()
-                urllib.request.urlopen(urllib.request.Request(
-                    f"https://api.telegram.org/bot{token}/sendMessage",
-                    data=body), timeout=5)
-            except Exception:
-                pass
 
 
 def alert_thresholds():
@@ -3906,7 +3891,7 @@ def sovereignty_report():
     for name, label, kind in (("prefs.json", "Preferencias del tablero", "json"), ("snippets.json", "Snippets", "json"),
                               ("app-tabs.json", "Pestañas de la app", "json"), ("focus.json", "Pomodoro en curso", "json"),
                               ("focus-queue.jsonl", "Avisos encolados en foco", "jsonl"), ("pane-models.txt", "Modelo por pane (tmux)", "txt"),
-                              ("dash-token", "Token de acceso remoto", "secret"), ("telegram.env", "Credenciales Telegram", "secret"),
+                              ("dash-token", "Token de acceso remoto", "secret"), ("telegram.env", "Credenciales de Telegram retiradas (sin uso)", "secret"),
                               ("providers.env", "Credenciales de proveedores", "secret"), ("cc-notify.conf", "Configuración de avisos", "conf")):
         fi = finfo(os.path.join(HOOKS, name), label, kind)
         if fi:
@@ -3937,7 +3922,6 @@ def sovereignty_report():
     except OSError:
         pass
     outbound = [
-        {"label": "Telegram (avisos al celular)", "on": conf.get("TELEGRAM_ENABLED", "0") == "1", "how": "bot de Telegram, solo si TELEGRAM_ENABLED=1"},
         {"label": "Acceso remoto (tailnet)", "on": os.path.exists(os.path.join(HOOKS, "webterm-enabled")), "how": "tailscale serve — solo tu tailnet, nunca Funnel"},
         {"label": "Proveedores de IA (los agentes)", "on": True, "how": "Claude/Codex/etc. hablan con su API: eso es el agente, no ComandOS"},
         {"label": "Notificaciones nativas del escritorio", "on": conf.get("NATIVE_NOTIFY", "0") == "1", "how": "GNOME, en esta máquina"},
@@ -7136,7 +7120,7 @@ def usage_live_panes():
 
 
 # Claves de cc-notify.conf editables desde la interfaz
-CONF_KEYS = {"DESKTOP_NOTIFY", "SOUND_ENABLED", "TELEGRAM_ENABLED", "NOTIFY_MODEL_TIER", "AUTO_WORKTREE",
+CONF_KEYS = {"DESKTOP_NOTIFY", "SOUND_ENABLED", "NOTIFY_MODEL_TIER", "AUTO_WORKTREE",
              "NOTIFY_ON_DONE", "NOTIFY_ON_ATTENTION", "SPEAK_ATTENTION", "SPEAK_DONE",
              "VOLUME", "CC_LANG"}
 CONF_DEFAULTS = {"VOLUME": "60", "CC_LANG": "auto"}
@@ -8043,7 +8027,7 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             return 403, {"error": "Origen no permitido"}
         # Con Origin (navegador) exigimos MISMO origen que Host; "null" y
         # cualquier otro *.localhost / *.ts.net quedan fuera. Sin Origin
-        # (curl de hooks, cc-app, cc-notifyd, cc-telegram) sigue igual.
+        # (curl de hooks, cc-app, cc-notifyd) sigue igual.
         if origin_values and not _origin_matches_host(origin_values[0], host):
             return 403, {"error": "Origen no permitido"}
         forwarded_values = self._header_values("X-Forwarded-For")
@@ -8706,7 +8690,7 @@ class Handler(http.server.SimpleHTTPRequestHandler):
         if self.path == "/event":
             # Puerta universal de agentes: cualquier CLI/plugin (opencode,
             # scripts propios...) reporta eventos y dispara el MISMO pipeline
-            # (estado + popup + voz + telegram) via cc-notify.sh --agent.
+            # (estado + evento + popup + voz) via cc-notify.sh --agent.
             agent = str(data.get("agent", ""))[:16]
             ev = str(data.get("event", ""))
             cwd = str(data.get("cwd", ""))[:300]
@@ -9421,7 +9405,7 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             key = data.get("key", "")
             if key not in ALLOWED_KEYS:
                 return self._json(400, {"error": "Tecla no permitida"})
-            # Pane pedido explicitamente (botones de Telegram/popups): si no es
+            # Pane pedido explicitamente (botones de popups): si no es
             # valido o ya murio, error; NUNCA caer al pane activo de la sesion,
             # que puede ser otro agente.
             req_pane = str(data.get("pane") or "")

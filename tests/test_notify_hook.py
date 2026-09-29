@@ -2,7 +2,8 @@
 """Pruebas de comportamiento de hooks/cc-notify.sh.
 
 Todo corre en un HOME temporal con stubs de curl/tmux en el PATH: nunca se
-toca ~/.claude, el servidor tmux por defecto, cc-notifyd ni Telegram real.
+toca ~/.claude, el servidor tmux por defecto ni cc-notifyd real. Telegram ya
+no es un canal: las pruebas verifican que ni con credenciales viejas se usa.
 """
 import json
 import os
@@ -226,17 +227,19 @@ def test_lifecycle_at_ms_has_millisecond_resolution(env):
     assert rows[0]["tmux_pane"] == "%3" and rows[0]["tmux_session"] == "sess"
 
 
-# ---- Bugs 3 y 4: hook rapido y token fuera del argv ------------------------
+# ---- Hook rapido; Telegram retirado (N3) -----------------------------------
 
 def telegram_calls(calls):
     return [c for c in calls if "api.telegram.org" in (c["stdin"] + " ".join(c["argv"]))]
 
 
+def notifyd_calls(calls):
+    return [c for c in calls if "127.0.0.1:4778/notify" in " ".join(c["argv"])]
+
+
 def test_hook_returns_fast_while_notifications_run_detached(env):
-    env.telegram()
     (env.hooks / "cc-notify.conf").write_text(
-        "SOUND_ENABLED=1\nSPEAK_ATTENTION=1\nSPEAK_DONE=1\nDESKTOP_NOTIFY=1\n"
-        "TELEGRAM_ENABLED=1\nCC_LANG=es\n")
+        "SOUND_ENABLED=1\nSPEAK_ATTENTION=1\nSPEAK_DONE=1\nDESKTOP_NOTIFY=1\nCC_LANG=es\n")
     # voz lenta que hereda stdout: el harness esperaria su EOF
     _exe(env.stubs / "spd-say", "#!/usr/bin/env bash\necho hablando; sleep 3\n")
     proc, elapsed = env.run(
@@ -245,101 +248,42 @@ def test_hook_returns_fast_while_notifications_run_detached(env):
     assert proc.returncode == 0
     assert elapsed < 2.0, f"el hook bloqueo {elapsed:.1f}s (capture_output espera EOF)"
     assert proc.stdout == ""
-    calls = env.curl_calls(wait_for=2, timeout=15)
-    assert any("127.0.0.1:4778/notify" in " ".join(c["argv"]) for c in calls), calls
-    assert telegram_calls(calls), calls
+    calls = env.curl_calls(wait_for=1, timeout=15)
+    assert notifyd_calls(calls), calls
 
 
-def test_telegram_token_never_appears_in_argv(env):
+def test_old_telegram_credentials_are_never_used(env):
     env.telegram()
+    (env.hooks / "cc-notify.conf").write_text(
+        "SOUND_ENABLED=0\nSPEAK_ATTENTION=0\nSPEAK_DONE=0\nDESKTOP_NOTIFY=1\nTELEGRAM_ENABLED=1\n")
     env.run({"hook_event_name": "Notification", "cwd": "/tmp/proj", "message": "permiso"},
             pane="%3", session="sess")
     env.run({"hook_event_name": "Stop", "cwd": "/tmp/proj"}, pane="%3", session="sess")
-    calls = env.curl_calls(wait_for=4)
-    tg = telegram_calls(calls)
-    assert len(tg) == 2, calls
-    for call in calls:
-        assert FAKE_TOKEN not in " ".join(call["argv"]), call["argv"]
-    assert all(FAKE_TOKEN in c["stdin"] and "sendMessage" in c["stdin"] for c in tg)
-
-
-def test_plain_bot_token_also_stays_out_of_argv(env):
-    env.telegram(dedicated=False)
-    env.run({"hook_event_name": "Stop", "cwd": "/tmp/proj"})
     calls = env.curl_calls(wait_for=2)
-    assert telegram_calls(calls)
-    assert all(FAKE_TOKEN not in " ".join(c["argv"]) for c in calls)
-
-
-# ---- Bugs 1 y 5: botones de Telegram con pane y callback_data seguro ------
-
-def reply_markup(call):
-    for arg in call["argv"]:
-        if arg.startswith("reply_markup="):
-            return json.loads(arg[len("reply_markup="):])
-    return None
-
-
-def callbacks(markup):
-    return [b["callback_data"] for row in markup["inline_keyboard"] for b in row]
-
-
-def waiting(env, cwd="/tmp/proj", **kw):
-    env.run({"hook_event_name": "Notification", "cwd": cwd, "message": "permiso"}, **kw)
-    tg = telegram_calls(env.curl_calls(wait_for=2))
-    assert len(tg) == 1, tg
-    return tg[0]
-
-
-def test_telegram_buttons_carry_the_pane(env):
-    env.telegram()
-    markup = reply_markup(waiting(env, pane="%12", session="sess"))
-    assert callbacks(markup) == ["k|sess|1|12", "k|sess|2|12", "k|sess|3|12",
-                                 "k|sess|Enter|12", "k|sess|Escape|12"]
+    time.sleep(0.3)
+    calls = env.curl_calls()
+    assert len(notifyd_calls(calls)) == 2
+    assert telegram_calls(calls) == []
+    assert all(FAKE_TOKEN not in c["stdin"] + " ".join(c["argv"]) for c in calls)
+    assert not (env.hooks / "tg-targets").exists()
 
 
 def test_notifyd_payload_carries_the_pane(env):
-    env.telegram()
     env.run({"hook_event_name": "Stop", "cwd": "/tmp/proj"}, pane="%12", session="sess")
-    calls = env.curl_calls(wait_for=2)
-    notifyd = [c for c in calls if "127.0.0.1:4778/notify" in " ".join(c["argv"])]
+    calls = env.curl_calls(wait_for=1)
+    notifyd = notifyd_calls(calls)
     assert notifyd
     argv = notifyd[0]["argv"]
     payload = json.loads(argv[argv.index("-d") + 1])
     assert payload["session"] == "sess" and payload["pane"] == "%12"
 
 
-def test_long_session_falls_back_to_short_local_token(env):
-    env.telegram()
-    sess = "s" * 80
-    markup = reply_markup(waiting(env, pane="%1234567", session=sess))
-    datas = callbacks(markup)
-    assert all(len(d.encode()) <= 64 for d in datas), datas
-    assert all(d.startswith("t|") for d in datas), datas
-    token = datas[0].split("|")[1]
-    assert {d.split("|")[1] for d in datas} == {token}
-    target = json.loads((env.hooks / "tg-targets" / f"{token}.json").read_text())
-    assert target == {"session": sess, "pane": "%1234567"}
-
-
 def test_unsafe_project_name_does_not_break_waiting_notification(env):
-    env.telegram()
-    call = waiting(env, cwd='/tmp/pro"j x')
-    markup = reply_markup(call)   # json.loads falla si el nombre rompe el JSON
-    datas = callbacks(markup)
-    assert len(datas) == 5 and all(len(d.encode()) <= 64 for d in datas)
-
-
-def test_sent_message_id_maps_to_real_session_and_pane(env):
-    env.telegram()
-    env.run({"hook_event_name": "Stop", "cwd": "/tmp/proj"}, pane="%12", session="real-sess",
-            extra={"CURL_OUT": '{"ok":true,"result":{"message_id":777}}'})
-    target = env.hooks / "tg-targets" / "msg-777.json"
-    deadline = time.monotonic() + 10
-    while not target.exists() and time.monotonic() < deadline:
-        time.sleep(0.05)
-    data = json.loads(target.read_text())
-    assert data["session"] == "real-sess" and data["pane"] == "%12"
+    env.run({"hook_event_name": "Notification", "cwd": '/tmp/pro"j x', "message": "permiso"})
+    notifyd = notifyd_calls(env.curl_calls(wait_for=1))
+    argv = notifyd[0]["argv"]
+    payload = json.loads(argv[argv.index("-d") + 1])   # falla si el nombre rompe el JSON
+    assert payload["project"] == 'pro"j x' and payload["kind"] == "waiting"
 
 
 # ---- N1: el hook conserva la identidad que antes se perdia -----------------

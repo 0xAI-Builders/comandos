@@ -45,8 +45,9 @@ Algunas funciones usan la red solo cuando las utilizas o configuras:
   u OpenAI cuando existen las credenciales correspondientes.
 - El acceso remoto mediante Tailscale Serve es opcional y permanece dentro de
   la configuración de tailnet que tú controlas.
-- El control por Telegram es opcional; al activarlo, el contenido de las
-  notificaciones, respuestas y comandos pasa por la API de bots de Telegram.
+- ComandOS ya no incluye un bot de Telegram: los avisos no pasan por la API
+  de bots de Telegram. Al actualizar, un `telegram.env` antiguo queda intacto
+  en disco; bórralo tú si ya no lo usas.
 - La voz se reproduce localmente una vez instalada; `cc-doctor --fix` puede
   descargar un modelo de voz opcional de Piper cuando le pides reparar la voz.
 
@@ -65,7 +66,6 @@ Algunas funciones usan la red solo cuando las utilizas o configuras:
 - **Servidores SSH**: CRUD sobre `~/.ssh/config`, conexión de un click, detecta
   túneles multiplexados vivos (reconexión sin password).
 - **Snippets**: guardá comandos shell reutilizables (una línea o scripts multilínea) y pegalos en la sesión activa con **Ctrl+Shift+K**. Bracketed paste — nada se ejecuta hasta que aprietes Enter.
-- **Telegram**: botones opcionales en las notificaciones, responder por reply, `/ls /out /run`.
 - **Estado local-first**: tmux, archivos JSON/de configuración y SQLite local
   sobreviven reinicios sin un servicio alojado de ComandOS.
 - UI en **inglés y español** (auto-detectado por `$LANG`, cambiable en Ajustes).
@@ -177,7 +177,6 @@ segundo login.
 | `bin/cc-dash` | Motor: tablero + acciones sobre tmux/ssh (127.0.0.1:4777) |
 | `bin/cc-app` | App nativa: tablero + pestañas de terminal |
 | `bin/cc-notifyd` | Demonio de popups accionables |
-| `bin/cc-telegram` | Puente Telegram |
 | `hooks/cc-notify.sh` | Hook de Claude Code: estado + notificaciones |
 | `bin/ccx` | Una sesión tmux por proyecto (`ccx nombre`, `ccx -a codex nombre`) |
 | `bin/cc-agents` | Conecta Codex / OpenCode / Gemini / Antigravity |

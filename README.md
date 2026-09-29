@@ -45,8 +45,9 @@ Some features cross the network only when you use or configure them:
   when matching credentials are configured.
 - Remote access through Tailscale Serve is optional and stays inside the
   tailnet configuration you control.
-- Telegram control is optional; when enabled, notification content, replies,
-  and commands pass through the Telegram Bot API.
+- ComandOS no longer includes a Telegram bot: notifications do not pass
+  through the Telegram Bot API. Upgrading keeps any old `telegram.env` on disk
+  untouched; delete it yourself if you no longer need it.
 - Voice playback is local after installation; `cc-doctor --fix` may download
   an optional Piper voice model when you ask it to repair voice support.
 
@@ -71,7 +72,6 @@ Some features cross the network only when you use or configure them:
 - **SSH manager**: CRUD over `~/.ssh/config`, one-click connect, detects live
   multiplexed tunnels (no-password reconnect).
 - **Snippets**: save reusable shell commands (one-liners or multi-line scripts) and paste them into the active session with **Ctrl+Shift+K**. Bracketed paste — nothing runs until you press Enter.
-- **Telegram**: optional buttons on notifications, reply to answer, `/ls /out /run`.
 - **Local-first state**: tmux, JSON/configuration files, and local SQLite survive
   restarts without a hosted ComandOS service.
 - UI in **English and Spanish** (auto-detected from `$LANG`, switchable in Settings).
@@ -169,7 +169,6 @@ is no second login prompt.
 | `bin/cc-dash` | Engine: dashboard + tmux/ssh actions (127.0.0.1:4777) |
 | `bin/cc-app` | Native app: dashboard + terminal tabs |
 | `bin/cc-notifyd` | Actionable popup daemon |
-| `bin/cc-telegram` | Telegram bridge |
 | `hooks/cc-notify.sh` | Claude Code hook: state + notifications |
 | `bin/ccx` | One tmux session per project (`ccx name`, `ccx -a codex name`) |
 | `bin/cc-agents` | Connect Codex / OpenCode / Gemini / Antigravity |

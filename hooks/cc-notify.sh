@@ -10,7 +10,7 @@
 # Estado por proyecto:  ~/.claude/hooks/state/<proyecto>.json  (lo leen tmux y el dashboard)
 # Timeline de eventos:  ~/.claude/hooks/events.jsonl
 # Config editable:      ~/.claude/hooks/cc-notify.conf  (sonidos, canales on/off)
-# Telegram opcional:    ~/.claude/hooks/telegram.env
+# Eventos N1:           estado SQLite de ComandOS via lib/event_intake.py
 
 HOOKS_DIR="$HOME/.claude/hooks"
 STATE_DIR="$HOOKS_DIR/state"
@@ -24,7 +24,6 @@ SOUND_DONE="/usr/share/sounds/freedesktop/stereo/message.oga"
 SOUND_ATTENTION="/usr/share/sounds/freedesktop/stereo/window-attention.oga"
 DESKTOP_NOTIFY=1
 SOUND_ENABLED=1
-TELEGRAM_ENABLED=1
 NOTIFY_ON_DONE=1
 NOTIFY_ON_ATTENTION=1
 SPEAK_ATTENTION=1
@@ -68,7 +67,7 @@ play_snd() { # $1 = archivo
 
 # ---- Entrada: hook de Claude Code (JSON por stdin) o MODO ADAPTADOR ----
 # Cualquier agente (codex, opencode, gemini, agy...) puede disparar el mismo
-# pipeline (estado + popup + voz + telegram) con flags:
+# pipeline (estado + evento + popup + voz) con flags:
 #   cc-notify.sh --agent codex --event done|waiting|working|end \
 #                --cwd DIR [--msg TXT] [--full TXT] [--options "a\x1fb"]
 AGENT=claude
@@ -413,7 +412,7 @@ $preview"
     ;;
 esac
 
-# El preview corto (popup colapsado, telegram) va SIN markdown ni markup
+# El preview corto (popup colapsado) va SIN markdown ni markup
 # peligroso. El texto COMPLETO ($full) viaja CRUDO: el popup lo renderiza con
 # Pango y el tablero con su mini-markdown (cada uno escapa lo suyo).
 mdclean() { sed -e 's/\*\*//g' -e 's/`//g' -e 's/^#\{1,6\} //g' \
@@ -424,14 +423,6 @@ body=$(mdclean <<<"$body")
 kind="done"; [ "$event" = "Notification" ] && kind="waiting"
 if [ "$kind" = "done" ] && [ "$NOTIFY_ON_DONE" != "1" ]; then exit 0; fi
 if [ "$kind" = "waiting" ] && [ "$NOTIFY_ON_ATTENTION" != "1" ]; then exit 0; fi
-
-# Llamada a la Bot API con el token FUERA del argv (ps y /proc/*/cmdline los
-# ve cualquiera): la URL viaja como config de curl por stdin (-K -).
-tg_api() { # $1 = metodo; resto = args extra de curl
-  local method="$1"; shift
-  printf 'url = "https://api.telegram.org/bot%s/%s"\n' "$TG_TOKEN" "$method" \
-    | curl -s -m 5 -K - "$@"
-}
 
 notify_desktop() {
   [ "$DESKTOP_NOTIFY" = "1" ] || return 0
@@ -473,99 +464,10 @@ notify_voice() {
   fi
 }
 
-# Destinos de Telegram (los lee cc-telegram): <token>.json para botones cuyo
-# callback_data no cabe en los 64 bytes de la Bot API, y msg-<message_id>.json
-# para que un reply llegue a la sesion+pane REALES y no al "[proyecto]".
-TG_TARGETS="$HOOKS_DIR/tg-targets"
-
-tg_target_write() { # $1 = nombre del destino (sin .json)
-  mkdir -p "$TG_TARGETS" 2>/dev/null && chmod 700 "$TG_TARGETS" 2>/dev/null
-  local ttmp
-  ttmp=$(mktemp "$TG_TARGETS/.XXXXXX" 2>/dev/null) || return 1
-  if jq -cn --arg s "$SESSION_HINT" --arg p "$PANE_HINT" '{session:$s,pane:$p}' > "$ttmp" 2>/dev/null; then
-    mv -f "$ttmp" "$TG_TARGETS/$1.json"
-  else
-    rm -f "$ttmp"; return 1
-  fi
-}
-
-# callback_data de un boton: k|sesion|tecla|N (pane %N) si la sesion es valida
-# y cabe en 64 bytes; si no, t|token|tecla con el destino guardado localmente.
-tg_callback() { # $1 = tecla (usa TG_CB_TOKEN precalculado)
-  if [ -n "${TG_CB_TOKEN:-}" ]; then
-    printf 't|%s|%s' "$TG_CB_TOKEN" "$1"
-  elif [ -n "$PANE_HINT" ]; then
-    printf 'k|%s|%s|%s' "$SESSION_HINT" "$1" "${PANE_HINT#%}"
-  else
-    printf 'k|%s|%s' "$SESSION_HINT" "$1"
-  fi
-}
-
-tg_keyboard() {
-  TG_CB_TOKEN=""
-  local longest="k|$SESSION_HINT|Escape"
-  [ -n "$PANE_HINT" ] && longest="$longest|${PANE_HINT#%}"
-  if ! printf '%s' "$SESSION_HINT" | grep -Eq '^[A-Za-z0-9._-]{1,80}$' \
-      || [ "$(printf '%s' "$longest" | wc -c)" -gt 64 ]; then
-    TG_CB_TOKEN=$(od -An -N5 -tx1 /dev/urandom 2>/dev/null | tr -d ' \n')
-    tg_target_write "$TG_CB_TOKEN" || return 1
-  fi
-  jq -cn --arg a "$(tg_callback 1)" --arg b "$(tg_callback 2)" --arg c "$(tg_callback 3)" \
-    --arg e "$(tg_callback Enter)" --arg x "$(tg_callback Escape)" \
-    '{inline_keyboard:[[{text:"1",callback_data:$a},{text:"2",callback_data:$b},{text:"3",callback_data:$c}],
-                       [{text:"Enter",callback_data:$e},{text:"Esc",callback_data:$x}]]}'
-}
-
-# Telegram opcional. Con CC_TELEGRAM_BOT_TOKEN (bot dedicado) las notificaciones
-# llevan botones accionables y puedes responderles (reply) para operar la sesion
-# (requiere el servicio cc-telegram corriendo). Sin el, texto plano con el bot normal.
-notify_telegram() {
-  local tg="$HOOKS_DIR/telegram.env"
-  [ "$TELEGRAM_ENABLED" = "1" ] && [ -f "$tg" ] || return 0
-  # shellcheck disable=SC1090
-  . "$tg"
-  TG_TOKEN="${CC_TELEGRAM_BOT_TOKEN:-${TELEGRAM_BOT_TOKEN:-}}"
-  [ -n "$TG_TOKEN" ] && [ -n "${TELEGRAM_CHAT_ID:-}" ] || return 0
-  local tg_title tg_body kb resp mid
-  tg_title=$(sed 's/[&<>]/ /g' <<<"$title")
-  # Texto COMPLETO con markdown renderizado (HTML de Telegram: negritas,
-  # codigo, tablas alineadas en <pre>). Fallback: preview plano.
-  if [ -n "${full:-}" ] && [ -x "$HOOKS_DIR/md2tg.py" ]; then
-    tg_body=$(printf '%s' "$full" | "$HOOKS_DIR/md2tg.py" 2>/dev/null)
-    [ -n "$tg_body" ] && body="$tg_body"
-  fi
-  kb=""
-  if [ -n "${CC_TELEGRAM_BOT_TOKEN:-}" ] && [ "$event" = "Notification" ]; then
-    kb=$(tg_keyboard 2>/dev/null) || kb=""
-  fi
-  if [ -n "$kb" ]; then
-    resp=$(tg_api sendMessage \
-      --data-urlencode chat_id="${TELEGRAM_CHAT_ID}" \
-      --data-urlencode parse_mode="HTML" \
-      --data-urlencode text="<b>${tg_title}</b>
-$body" \
-      --data-urlencode reply_markup="$kb" 2>/dev/null)
-  else
-    resp=$(tg_api sendMessage \
-      --data-urlencode chat_id="${TELEGRAM_CHAT_ID}" \
-      --data-urlencode parse_mode="HTML" \
-      --data-urlencode text="<b>${tg_title}</b>
-$body" 2>/dev/null)
-  fi
-  # Con el bot dedicado, recordar a que sesion+pane pertenece el mensaje: un
-  # reply desde Telegram tiene que llegar a ESE agente.
-  if [ -n "${CC_TELEGRAM_BOT_TOKEN:-}" ]; then
-    mid=$(jq -r '.result.message_id // empty' <<<"$resp" 2>/dev/null)
-    case "$mid" in ''|*[!0-9]*) ;; *) tg_target_write "msg-$mid" ;; esac
-    find "$TG_TARGETS" -maxdepth 1 -type f -mtime +7 -delete 2>/dev/null
-  fi
-  return 0
-}
-
-# Todo lo lento (POST a cc-notifyd, md2tg, Telegram, voz) corre DESACOPLADO:
-# stdio a /dev/null para que el harness no espere el EOF de nuestros hijos y
-# el hook regrese en milisegundos. La voz va aparte para no retrasar Telegram.
+# Todo lo lento (POST a cc-notifyd, voz) corre DESACOPLADO: stdio a /dev/null
+# para que el harness no espere el EOF de nuestros hijos y el hook regrese en
+# milisegundos. La voz va aparte para no retrasar el popup.
 ( notify_voice ) </dev/null >/dev/null 2>&1 &
-( notify_desktop; notify_telegram ) </dev/null >/dev/null 2>&1 &
+( notify_desktop ) </dev/null >/dev/null 2>&1 &
 
 exit 0

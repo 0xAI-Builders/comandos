@@ -37,7 +37,8 @@ def test_privacy_claims_are_precise():
     assert "local sqlite" in README.lower()
     assert "~/.ssh/config" in README
     assert "openssh" in README.lower()
-    assert "telegram" in README.lower()
+    assert "no longer includes a telegram bot" in README.lower()
+    assert "ya no incluye un bot de telegram" in README_ES.lower()
     assert "tailscale" in README.lower()
 
 

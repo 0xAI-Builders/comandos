@@ -183,7 +183,7 @@ CATALOG: list[ToolSpec] = [
     # ───────────── prefs / settings ─────────────
     T("get_conf", "prefs", "Configuración (volumen, notificaciones, idioma, worktrees…).", target=api("GET", "/conf"), readonly=True),
     T("get_prefs", "prefs", "Preferencias (tema, fuente, cursor, favoritos) y fuentes instaladas.", target=api("GET", "/prefs"), readonly=True),
-    T("set_pref", "prefs", "Switch de configuración on/off.", P(key=("string", "Clave", ("AUTO_WORKTREE", "NOTIFY_ON_DONE", "NOTIFY_ON_ATTENTION", "SOUND_ENABLED", "DESKTOP_NOTIFY", "TELEGRAM_ENABLED", "SPEAK_DONE", "SPEAK_ATTENTION")), on=("boolean", "true=on")), ("key", "on"), local("pref")),
+    T("set_pref", "prefs", "Switch de configuración on/off.", P(key=("string", "Clave", ("AUTO_WORKTREE", "NOTIFY_ON_DONE", "NOTIFY_ON_ATTENTION", "SOUND_ENABLED", "DESKTOP_NOTIFY", "SPEAK_DONE", "SPEAK_ATTENTION")), on=("boolean", "true=on")), ("key", "on"), local("pref")),
     T("set_voice", "prefs", "Voz que anuncia el proyecto (SPEAK_DONE + SPEAK_ATTENTION).", P(on=("boolean", "true=on")), ("on",), local("voice")),
     T("set_volume", "prefs", "Volumen de voz y chime 0-100.", P(percent=("integer", "0-100")), ("percent",), api("POST", "/conf-set", {"key": "VOLUME", "value": "$percent"})),
     T("set_language", "prefs", "Idioma del tablero: auto, es, en.", P(lang=("string", "Idioma", ("auto", "es", "en"))), ("lang",), local("lang")),
