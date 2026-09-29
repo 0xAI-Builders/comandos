@@ -38,4 +38,8 @@ if [ -f "$state" ]; then
   fi
 fi
 
-exec "$HOME/.claude/hooks/cc-notify.sh" --agent codex --event done --cwd "$cwd" --full "$last"
+# thread-id/turn-id: el mismo turno avisado por hook y por notify es UN evento N1.
+thread=$(printf '%s' "$payload" | jq -r '."thread-id" // "" | strings' 2>/dev/null)
+turn=$(printf '%s' "$payload" | jq -r '."turn-id" // "" | strings' 2>/dev/null)
+exec "$HOME/.claude/hooks/cc-notify.sh" --agent codex --event done --cwd "$cwd" --full "$last" \
+  --hook-event Stop --session-id "$thread" --turn-id "$turn"

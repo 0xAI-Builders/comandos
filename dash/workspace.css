@@ -185,3 +185,43 @@ body.ws-dragging .termpane{pointer-events:none}
 .apptab .ws-count[hidden]{display:none}
 .apptab[data-ws-source]{touch-action:pan-x}
 .apptab.ws-unavailable .lbl{opacity:.55;text-decoration:line-through dotted}
+
+/* ---- E1 work marks: indicator + scope menu (dash/work-marks.js) ---------- */
+.wm-ind{flex:none;display:inline-flex;align-items:center;gap:1px;width:auto;min-width:22px;height:22px;
+  padding:0 2px;margin:0 2px 0 0;border:0;border-radius:6px;background:transparent;color:var(--faint);
+  cursor:pointer;line-height:0;vertical-align:middle}
+.wm-ind:hover,.wm-ind[aria-expanded="true"]{background:color-mix(in srgb,var(--text) 9%,transparent)}
+.wm-ind:focus-visible,.wm-item:focus-visible{outline:2px solid var(--brand);outline-offset:1px}
+.wm-icon{flex:none;display:block;overflow:visible}
+.wm-ind .wm-favorite,.wm-item .wm-favorite{color:var(--waiting)}
+.wm-ind[data-wm-state="resolved"],.wm-item .wm-resolved{color:var(--done)}
+.wm-ind[data-wm-state="frozen"],.wm-item .wm-frozen{color:#7CC4FF}
+.wm-ind[data-wm-state="awaiting_reply"],.wm-item .wm-awaiting_reply{color:var(--waiting)}
+.wm-ind[data-wm-state="working"],.wm-item .wm-working{color:var(--working)}
+.wm-ind[data-wm-state="none"] .wm-ring{stroke-dasharray:2 3}
+.wm-favorite path{fill:currentColor;fill-opacity:.25}
+/* Continuous loops; transforms stay inside the fixed 24x24 box. */
+.wm-animated .wm-spin{transform-box:view-box;transform-origin:12px 12px;animation:wm-spin 1.4s linear infinite}
+.wm-animated .wm-frozen .wm-spin{animation-duration:9s}
+.wm-animated .wm-draw{stroke-dasharray:1;animation:wm-draw 2.6s ease-in-out infinite}
+.wm-animated .wm-dot{animation:wm-dot 1.5s ease-in-out infinite}
+.wm-animated .wm-d2{animation-delay:.2s}.wm-animated .wm-d3{animation-delay:.4s}
+.wm-animated .wm-twinkle{transform-box:view-box;transform-origin:12px 12px;animation:wm-twinkle 2.4s ease-in-out infinite}
+.wm-working .wm-track{opacity:.25}
+@keyframes wm-spin{to{transform:rotate(360deg)}}
+@keyframes wm-draw{0%{stroke-dashoffset:1}40%,80%{stroke-dashoffset:0}100%{stroke-dashoffset:-1}}
+@keyframes wm-dot{0%,100%{opacity:.25}40%{opacity:1}}
+@keyframes wm-twinkle{0%,100%{transform:scale(1);opacity:1}50%{transform:scale(.82);opacity:.7}}
+/* Hidden tab, off-screen indicator or reduced motion: no loops. */
+.wm-paused .wm-ind *,.wm-ind.wm-offscreen *{animation-play-state:paused!important}
+@media (prefers-reduced-motion:reduce){.wm-ind *,.wm-item *{animation:none!important}
+  .wm-draw{stroke-dasharray:none}}
+.wm-menu{position:fixed;z-index:1000;min-width:210px;padding:4px;border:1px solid var(--line);border-radius:10px;
+  background:var(--panel);color:var(--text);box-shadow:0 8px 24px rgba(0,0,0,.28)}
+.wm-item{display:flex;align-items:center;gap:10px;width:100%;min-height:44px;padding:0 12px;border:0;border-radius:7px;
+  background:transparent;color:inherit;font:inherit;text-align:left;cursor:pointer}
+.wm-item:hover,.wm-item:focus{background:color-mix(in srgb,var(--text) 9%,transparent)}
+.wm-item.on{font-weight:600}
+.wm-item.on::after{content:"";margin-left:auto;width:6px;height:6px;border-radius:50%;background:var(--brand)}
+.wm-sep{height:1px;margin:4px 6px;background:var(--line)}
+@media (pointer:fine){.wm-item{min-height:34px}}

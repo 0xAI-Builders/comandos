@@ -244,7 +244,7 @@ def test_security_gate_same_origin_tailnet_still_needs_token(dash, monkeypatch):
 
 
 def test_security_gate_without_origin_keeps_local_clients_tokenless(dash, monkeypatch):
-    # curl de los hooks, cc-app, cc-notifyd, cc-telegram: sin Origin.
+    # curl de los hooks, cc-app, cc-notifyd: sin Origin.
     assert security_gate(dash, monkeypatch, host="127.0.0.1:4777") is None
 
 

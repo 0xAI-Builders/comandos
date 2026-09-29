@@ -419,7 +419,7 @@ _limits_refreshing = False
 def usage_alert_send(message, title=None, kind="waiting", project=None):
     """Entrega una alerta de uso por los MISMOS canales que las notificaciones
     normales: el popup PROPIO de ComandOS (cc-notifyd; jamas el popup plano
-    de GNOME) y/o Telegram, segun lo que este prendido."""
+    de GNOME). Telegram ya no forma parte de ComandOS."""
     conf = read_conf()
     if conf.get("DESKTOP_NOTIFY", "1") == "1":
         try:
@@ -433,21 +433,6 @@ def usage_alert_send(message, title=None, kind="waiting", project=None):
                 headers={"Content-Type": "application/json"}), timeout=2)
         except Exception:
             pass
-    if conf.get("TELEGRAM_ENABLED") == "1":
-        tg = cc_usage.load_usage_config([os.path.join(HOOKS, "telegram.env")])
-        token = tg.get("CC_TELEGRAM_BOT_TOKEN") or tg.get("TELEGRAM_BOT_TOKEN")
-        chat = tg.get("TELEGRAM_CHAT_ID")
-        if token and chat:
-            try:
-                body = urllib.parse.urlencode({
-                    "chat_id": chat, "parse_mode": "HTML",
-                    "text": f"<b>ComandOS — Límite de uso</b>\n{message}",
-                }).encode()
-                urllib.request.urlopen(urllib.request.Request(
-                    f"https://api.telegram.org/bot{token}/sendMessage",
-                    data=body), timeout=5)
-            except Exception:
-                pass
 
 
 def alert_thresholds():
@@ -3906,7 +3891,7 @@ def sovereignty_report():
     for name, label, kind in (("prefs.json", "Preferencias del tablero", "json"), ("snippets.json", "Snippets", "json"),
                               ("app-tabs.json", "Pestañas de la app", "json"), ("focus.json", "Pomodoro en curso", "json"),
                               ("focus-queue.jsonl", "Avisos encolados en foco", "jsonl"), ("pane-models.txt", "Modelo por pane (tmux)", "txt"),
-                              ("dash-token", "Token de acceso remoto", "secret"), ("telegram.env", "Credenciales Telegram", "secret"),
+                              ("dash-token", "Token de acceso remoto", "secret"), ("telegram.env", "Credenciales de Telegram retiradas (sin uso)", "secret"),
                               ("providers.env", "Credenciales de proveedores", "secret"), ("cc-notify.conf", "Configuración de avisos", "conf")):
         fi = finfo(os.path.join(HOOKS, name), label, kind)
         if fi:
@@ -3937,7 +3922,6 @@ def sovereignty_report():
     except OSError:
         pass
     outbound = [
-        {"label": "Telegram (avisos al celular)", "on": conf.get("TELEGRAM_ENABLED", "0") == "1", "how": "bot de Telegram, solo si TELEGRAM_ENABLED=1"},
         {"label": "Acceso remoto (tailnet)", "on": os.path.exists(os.path.join(HOOKS, "webterm-enabled")), "how": "tailscale serve — solo tu tailnet, nunca Funnel"},
         {"label": "Proveedores de IA (los agentes)", "on": True, "how": "Claude/Codex/etc. hablan con su API: eso es el agente, no ComandOS"},
         {"label": "Notificaciones nativas del escritorio", "on": conf.get("NATIVE_NOTIFY", "0") == "1", "how": "GNOME, en esta máquina"},
@@ -7208,7 +7192,7 @@ def usage_live_panes():
 
 
 # Claves de cc-notify.conf editables desde la interfaz
-CONF_KEYS = {"DESKTOP_NOTIFY", "SOUND_ENABLED", "TELEGRAM_ENABLED", "NOTIFY_MODEL_TIER", "AUTO_WORKTREE",
+CONF_KEYS = {"DESKTOP_NOTIFY", "SOUND_ENABLED", "NOTIFY_MODEL_TIER", "AUTO_WORKTREE",
              "NOTIFY_ON_DONE", "NOTIFY_ON_ATTENTION", "SPEAK_ATTENTION", "SPEAK_DONE",
              "VOLUME", "CC_LANG"}
 CONF_DEFAULTS = {"VOLUME": "60", "CC_LANG": "auto"}
@@ -7888,6 +7872,90 @@ def model_switch_apply(sess, pane, target, data):
     return session_configure(dict(data, session=sess, pane=pane))
 
 
+# ---- N1: eventos con identidad (lib/event_store.py) ----------------------
+# Los hooks escriben directo en el estado SQLite (lib/event_intake.py); aqui
+# se listan, se importa una vez el timeline viejo y los productores internos
+# (Pomodoro, noticias) pueden registrar por POST autenticado.
+import event_store
+import event_intake
+import turn_state
+
+_EVENTS_V2_LEGACY = {"done": False}
+
+
+def events_v2_list(query):
+    """Pagina N1 por secuencia local. ?after=<seq>&limit=<n>[&turns=1]."""
+    def num(name, default):
+        raw = (query.get(name) or [str(default)])[0]
+        if not re.fullmatch(r"[0-9]{1,15}", raw or ""):
+            raise ValueError(f"{name} inválido")
+        return int(raw)
+    after, limit = num("after", 0), num("limit", 100)
+    conn = workspace_store().conn
+    if not _EVENTS_V2_LEGACY["done"]:
+        event_intake.import_legacy(conn, EVENTS)
+        _EVENTS_V2_LEGACY["done"] = True
+    events = event_store.list_events(conn, after, limit)
+    out = {"events": events, "nextAfter": events[-1]["sequence"] if events else after,
+           "latest": event_store.latest_sequence(conn)}
+    if (query.get("turns") or [""])[0] == "1":
+        out["turns"] = events_v2_turns(conn)
+    return out
+
+
+def events_v2_turns(conn, window=2000):
+    """Estado de turno por pane a partir de los ultimos ``window`` eventos."""
+    latest = event_store.latest_sequence(conn)
+    recent, after = [], max(0, latest - window)
+    while True:
+        page = event_store.list_events(conn, after, event_store.MAX_PAGE)
+        if not page:
+            break
+        recent.extend(page)
+        after = page[-1]["sequence"]
+    return turn_state.turns_from_events(recent)
+
+
+import work_marks
+
+
+def work_marks_payload():
+    """Marcas E1 + mapa pane->paneKey (W1) + actividad observada (N1)."""
+    store = workspace_store()
+    current = store.current() or {"document": workspace_state.empty_document()}
+    panes = [{"paneKey": key, "session": b.get("session"), "paneId": b.get("paneId")}
+             for key, b in (current["document"].get("bindings") or {}).items() if isinstance(b, dict)]
+    turns = events_v2_turns(store.conn)
+    activity = {k: {"state": t.get("state"), "paneKey": t.get("paneKey"),
+                    "session": t.get("sessionKey"), "paneId": t.get("paneId")}
+                for k, t in turns.items()}
+    return {"marks": work_marks.list_marks(store.conn), "panes": panes, "activity": activity}
+
+
+def work_marks_write(data):
+    store = workspace_store()
+    try:
+        row = work_marks.set_mark(store.conn, data.get("scope"), data.get("key"),
+                                  data.get("value"), data.get("expectedRevision"))
+    except work_marks.Conflict as exc:
+        return 409, {"error": str(exc), "current": exc.current}
+    except (ValueError, TypeError) as exc:
+        return 400, {"error": str(exc) or "Marca inválida"}
+    return 200, {"mark": row}
+
+
+def events_v2_record(data):
+    """Registro de un productor interno (hook o evento ya normalizado)."""
+    conn = workspace_store().conn
+    if not _EVENTS_V2_LEGACY["done"]:
+        event_intake.import_legacy(conn, EVENTS)
+        _EVENTS_V2_LEGACY["done"] = True
+    stored = event_intake.record(conn, data)
+    if stored is None:
+        return 202, {"ignored": True}
+    return 200, {"event": stored}
+
+
 def _guard_request(method):
     """Envuelve do_GET/do_POST: ninguna excepcion de un endpoint deja la
     conexion sin respuesta. TimeoutExpired (tmux/subprocess colgado) -> 504,
@@ -8031,7 +8099,7 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             return 403, {"error": "Origen no permitido"}
         # Con Origin (navegador) exigimos MISMO origen que Host; "null" y
         # cualquier otro *.localhost / *.ts.net quedan fuera. Sin Origin
-        # (curl de hooks, cc-app, cc-notifyd, cc-telegram) sigue igual.
+        # (curl de hooks, cc-app, cc-notifyd) sigue igual.
         if origin_values and not _origin_matches_host(origin_values[0], host):
             return 403, {"error": "Origen no permitido"}
         forwarded_values = self._header_values("X-Forwarded-For")
@@ -8053,12 +8121,26 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             pass
         return 401, {"error": "No autorizado (token requerido para acceso remoto)"}
 
+    def _internal_producer(self):
+        """Hooks/servicios del mismo equipo: loopback directo, sin navegador
+        (sin Origin), sin proxy y con el token local en X-Comandos-Token."""
+        if not self._peer_is_loopback() or self._header_values("X-Forwarded-For") \
+                or self._header_values("Origin"):
+            return False
+        presented = self.headers.get("X-Comandos-Token", "").strip()
+        try:
+            return hmac.compare_digest(presented.encode("utf-8", "surrogatepass"),
+                                       access_token().encode("utf-8"))
+        except (TypeError, UnicodeError):
+            return False
+
     # Endpoints con DATOS o ACCIONES: exigen token. El shell estatico (HTML,
     # sw.js, manifest, iconos) NO — no revela nada (es codigo open-source) y
     # asi la PWA instala y carga sin depender de cookies en el webview movil.
     API_GET = ("/session-config-history", "/pane-extensions", "/pomodoro", "/providers", "/optimization/plans", "/proxy", "/model/status", "/sovereignty", "/ui-log/summary", "/state", "/usage/state", "/usage/guard", "/usage/changes", "/usage/provider-compare", "/fs/dirs", "/models/latest", "/news/latest", "/notifs/count", "/usage/analytics", "/usage/interactions", "/usage/experiments", "/opencode/models", "/model-tiers", "/dedication", "/active-tab", "/session-profiles", "/extension-usage", "/session-brain", "/project-profiles", "/events", "/conf", "/prefs", "/ssh", "/tabs", "/workspace",
                "/tab-history", "/remote-state", "/remote-qr.png", "/snippets", "/tmux-mouse",
                "/webterm-token", "/operator", "/allocation/status")
+    API_GET += ("/work-marks",)  # E1; /events/v2 queda cubierto por /events
 
     def do_GET(self):
         host_values = self._header_values("Host")
@@ -8363,6 +8445,13 @@ class Handler(http.server.SimpleHTTPRequestHandler):
                     return self._bytes(200, "image/png", f.read())
             except Exception as e:
                 return self._json(500, {"error": str(e)})
+        if urllib.parse.urlsplit(self.path).path == "/work-marks":
+            return self._json(200, work_marks_payload())
+        if urllib.parse.urlsplit(self.path).path == "/events/v2":
+            try:
+                return self._json(200, events_v2_list(urllib.parse.parse_qs(urllib.parse.urlsplit(self.path).query)))
+            except ValueError as exc:
+                return self._json(400, {"error": str(exc)})
         if self.path.startswith("/events"):
             evs = []
             try:
@@ -8449,6 +8538,17 @@ class Handler(http.server.SimpleHTTPRequestHandler):
                 except Exception:
                     pass
             return self._json(200, result)
+
+        if self.path == "/work-marks":
+            return self._json(*work_marks_write(data))
+
+        if self.path == "/events/v2":
+            if not self._internal_producer():
+                return self._json(403, {"error": "Solo productores internos de este equipo"})
+            try:
+                return self._json(*events_v2_record(data))
+            except (ValueError, TypeError) as exc:
+                return self._json(400, {"error": str(exc) or "Evento inválido"})
 
         if self.path == "/workspace/client":
             try:
@@ -8695,7 +8795,7 @@ class Handler(http.server.SimpleHTTPRequestHandler):
         if self.path == "/event":
             # Puerta universal de agentes: cualquier CLI/plugin (opencode,
             # scripts propios...) reporta eventos y dispara el MISMO pipeline
-            # (estado + popup + voz + telegram) via cc-notify.sh --agent.
+            # (estado + evento + popup + voz) via cc-notify.sh --agent.
             agent = str(data.get("agent", ""))[:16]
             ev = str(data.get("event", ""))
             cwd = str(data.get("cwd", ""))[:300]
@@ -9413,7 +9513,7 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             key = data.get("key", "")
             if key not in ALLOWED_KEYS:
                 return self._json(400, {"error": "Tecla no permitida"})
-            # Pane pedido explicitamente (botones de Telegram/popups): si no es
+            # Pane pedido explicitamente (botones de popups): si no es
             # valido o ya murio, error; NUNCA caer al pane activo de la sesion,
             # que puede ser otro agente.
             req_pane = str(data.get("pane") or "")

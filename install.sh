@@ -8,6 +8,8 @@ HOOKS="$HOME/.claude/hooks"
 
 # shellcheck source=lib/platform.sh
 . "$REPO/lib/platform.sh"
+# shellcheck source=lib/retire-telegram.sh
+. "$REPO/lib/retire-telegram.sh"
 
 # Instala los paquetes que ComandOS necesita en Ubuntu WSL (auto-fix con confirmación).
 _cc_wsl_install_deps() {
@@ -64,9 +66,9 @@ for f in "$REPO"/bin/*; do ln -sf "$f" "$BIN/$(basename "$f")"; done
 chmod +x "$REPO"/bin/* "$REPO"/hooks/cc-notify.sh "$REPO"/hooks/cc-status.sh "$REPO"/hooks/cc-usage-tool.sh "$REPO"/adapters/grok-hooks.py
 
 # Hooks + dashboard
-for f in cc-notify.sh cc-status.sh cc-usage-tool.sh md2tg.py; do ln -sf "$REPO/hooks/$f" "$HOOKS/$f"; done
+for f in cc-notify.sh cc-status.sh cc-usage-tool.sh; do ln -sf "$REPO/hooks/$f" "$HOOKS/$f"; done
 ln -sf "$REPO/adapters/grok-hooks.py" "$BIN/grok-hooks.py"
-for f in index.html sw.js manifest.webmanifest icon-192.png icon-512.png term.html session-config.js session-controls.js workspace.js workspace-layout.js workspace-dock.js quick-terminal.js workspace.css reparto.js reparto.css extensions.html extensions.js extensions.css; do
+for f in index.html sw.js manifest.webmanifest icon-192.png icon-512.png term.html session-config.js session-controls.js workspace.js workspace-layout.js workspace-dock.js quick-terminal.js work-marks.js workspace.css reparto.js reparto.css extensions.html extensions.js extensions.css; do
   ln -sf "$REPO/dash/$f" "$HOOKS/dash/$f"
 done
 # Iconos Lucide y assets bundleados (xterm.js, fuentes): el terminal web
@@ -74,9 +76,8 @@ done
 ln -sfn "$REPO/dash/icons" "$HOOKS/dash/icons"
 ln -sfn "$REPO/assets" "$HOOKS/dash/assets"
 [ -f "$HOOKS/cc-notify.conf" ] || cp "$REPO/hooks/cc-notify.conf.example" "$HOOKS/cc-notify.conf"
-[ -f "$HOOKS/telegram.env" ]   || cp "$REPO/hooks/telegram.env.example"   "$HOOKS/telegram.env"
-# Secretos (token de bot, config): solo el dueno (0600)
-chmod 600 "$HOOKS/telegram.env" "$HOOKS/cc-notify.conf" 2>/dev/null || true
+# Config de avisos: solo el dueno (0600)
+chmod 600 "$HOOKS/cc-notify.conf" 2>/dev/null || true
 
 # WSL instala jq de forma asistida; haz ese preflight antes de registrar. En
 # las demas plataformas jq es un requisito externo y el helper avisa si falta.
@@ -178,27 +179,26 @@ PLIST
   linux-wsl-ubuntu)
     # Dependencias y systemd ya se validaron antes de registrar hooks.
     # Configura los servicios de usuario (mismo flujo que linux-native).
-    for s in cc-dash cc-notifyd cc-proxy cc-telegram; do
+    for s in cc-dash cc-notifyd cc-proxy; do
       ln -sf "$REPO/systemd/$s.service" "$HOME/.config/systemd/user/$s.service"
     done
     systemctl --user daemon-reload
     systemctl --user enable --now cc-dash.service cc-notifyd.service 2>/dev/null || true
-    grep -q "^CC_TELEGRAM_BOT_TOKEN=." "$HOOKS/telegram.env" 2>/dev/null \
-      && systemctl --user enable --now cc-telegram.service 2>/dev/null || true
+    [ "${COMANDOS_RETIRE_TELEGRAM:-0}" = "1" ] && cc_retire_telegram
     # Shortcut en el menú Inicio de Windows (native .lnk + .ico).
     "$BIN/cc-winstart" 2>&1 | sed 's/^/  /' || \
       echo "  (no pude publicar en Start Menu; correlo a mano: cc-winstart)"
     ;;
   linux-native|linux-other)
     [ "$CC_PLAT" = "linux-other" ] && echo "  (distro Linux no probada; sigo con el flujo Linux estándar)"
-    for s in cc-dash cc-notifyd cc-proxy cc-telegram; do
+    for s in cc-dash cc-notifyd cc-proxy; do
       ln -sf "$REPO/systemd/$s.service" "$HOME/.config/systemd/user/$s.service"
     done
     systemctl --user daemon-reload
     systemctl --user enable --now cc-dash.service cc-notifyd.service 2>/dev/null || true
-    # cc-telegram solo si hay token configurado
-    grep -q "^CC_TELEGRAM_BOT_TOKEN=." "$HOOKS/telegram.env" 2>/dev/null \
-      && systemctl --user enable --now cc-telegram.service 2>/dev/null || true
+    # Telegram ya no forma parte de ComandOS. La migracion que detiene la
+    # unidad vieja se activa solo al instalar el candidato aprobado (R3).
+    [ "${COMANDOS_RETIRE_TELEGRAM:-0}" = "1" ] && cc_retire_telegram
     ;;
 esac
 
@@ -211,7 +211,6 @@ echo "Agentes conectados: corre 'cc-agents' para ver el estado."
 echo "Dependencias sugeridas: tmux jq xclip wmctrl piper (voz) kitty (terminal)."
 echo "Para el celular (seguro): tailscale + qrencode + ttyd, y corre cc-mobile."
 echo "Terminal REAL en el celular: instala ttyd y corre cc-webterm (lo enruta cc-mobile)."
-echo "Para operar por Telegram: llena ~/.claude/hooks/telegram.env y reinicia cc-telegram."
 
 echo ""
 echo "Diagnóstico:  cc-doctor      (o cc-doctor --fix para arreglos)"

@@ -34,6 +34,12 @@ codex_state_file() { # $1 = cwd
 }
 state=$(codex_state_file "$cwd")
 
+# Identidad que Codex suministra: conversacion (session_id) y turno (turn_id).
+# Se conserva para los eventos N1; antes se perdia al llamar a cc-notify.sh.
+session_id=$(jq_get '.session_id // .sessionId // .thread_id // "" | strings')
+turn_id=$(jq_get '.turn_id // .turnId // "" | strings')
+ids=(--session-id "$session_id" --turn-id "$turn_id")
+
 recent_codex_done() {
   [ -f "$state" ] || return 1
   local now
@@ -47,12 +53,12 @@ recent_codex_done() {
 
 case "$event" in
   UserPromptSubmit)
-    exec "$notify" --agent codex --event working --cwd "$cwd"
+    exec "$notify" --agent codex --event working --cwd "$cwd" --hook-event UserPromptSubmit "${ids[@]}"
     ;;
   Stop)
     recent_codex_done && exit 0
     full=$(jq_get '.last_assistant_message // ."last-assistant-message" // .message // ""')
-    exec "$notify" --agent codex --event done --cwd "$cwd" --full "$full"
+    exec "$notify" --agent codex --event done --cwd "$cwd" --full "$full" --hook-event Stop "${ids[@]}"
     ;;
   PermissionRequest)
     tool=$(jq_get '
@@ -72,6 +78,11 @@ case "$event" in
       | map(select(type == "string" and length > 0))
       | first // ""
     ')
+    request_id=$(jq_get '
+      [.request_id?, .requestId?, .approval_id?, .call_id?, .tool_use_id?, .tool_call?.id?]
+      | map(select(type == "string" and length > 0))
+      | first // ""
+    ')
     msg="Codex necesita permiso"
     [ -n "$tool" ] && msg="$msg: $tool"
     full="$msg"
@@ -79,7 +90,8 @@ case "$event" in
 Command: $command"
     [ -n "$reason" ] && full="$full
 Reason: $reason"
-    exec "$notify" --agent codex --event waiting --cwd "$cwd" --msg "$msg" --full "$full"
+    exec "$notify" --agent codex --event waiting --cwd "$cwd" --msg "$msg" --full "$full" \
+      --hook-event PermissionRequest --request-id "$request_id" "${ids[@]}"
     ;;
 esac
 

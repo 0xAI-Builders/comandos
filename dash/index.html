@@ -2142,7 +2142,6 @@
     <div class="set switch"><label>Voz (anuncia el proyecto)</label><button id="sw-voice" role="switch"></button></div>
     <div class="set switch"><label>Chime (suena si la voz esta apagada)</label><button class="cfg" data-key="SOUND_ENABLED" role="switch"></button></div>
     <div class="set switch"><label>Popups de escritorio</label><button class="cfg" data-key="DESKTOP_NOTIFY" role="switch"></button></div>
-    <div class="set switch"><label>Telegram</label><button class="cfg" data-key="TELEGRAM_ENABLED" role="switch"></button></div>
     <div class="set" style="display:flex;gap:8px;flex-wrap:wrap">
       <button class="test" id="test-chime">Probar atencion</button>
       <button class="test" id="test-done">Probar terminado</button>
@@ -2356,7 +2355,7 @@
       <button type="button" class="test alert-th" data-th="85">85%</button>
       <button type="button" class="test alert-th" data-th="95">95%</button>
     </div>
-    <div class="desc" style="margin:-4px 0 8px">Llegan por popup propio y/o Telegram, según Ajustes. La <span data-icon="bell" style="display:inline-flex;vertical-align:-2px"></span> de cada proyecto/pane agrega presupuestos de tokens por día.</div>
+    <div class="desc" style="margin:-4px 0 8px">Llegan por popup propio, según Ajustes. La <span data-icon="bell" style="display:inline-flex;vertical-align:-2px"></span> de cada proyecto/pane agrega presupuestos de tokens por día.</div>
     <div id="alert-rules"></div>
     <div id="usage-alerts"></div>
   </div>
@@ -2530,7 +2529,7 @@ const T_EN = {
   "Avisar al terminar": "Notify when done", "Avisar al pedir atencion": "Notify on attention",
   "Voz (anuncia el proyecto)": "Voice (announces the project)",
   "Chime (suena si la voz esta apagada)": "Chime (plays if voice is off)",
-  "Popups de escritorio": "Desktop popups", "Telegram": "Telegram",
+  "Popups de escritorio": "Desktop popups",
   "Probar atencion": "Test attention", "Probar terminado": "Test done", "Probar voz": "Test voice",
   "Tablero": "Dashboard", "Notificaciones del navegador": "Browser notifications",
   "UN solo volumen para todo ComandOS. Estos botones suenan EXACTAMENTE igual que las notificaciones reales (mismo reproductor y volumen) — si algo suena distinto a esto, NO viene de ComandOS.":
@@ -5337,7 +5336,7 @@ ulog("click", `harness-switch:${to}`, "centro");
 	      <div class="sov-arrow">→</div>
 	      <div class="sov-node here"><b>${tf("Esta máquina", "This machine")}</b><small>~/.claude/hooks · sqlite · jsonl · json<br>${fmtBytes(total)} ${tf("en", "in")} ${d.stores.length} ${tf("almacenes", "stores")}</small></div>
 	      <div class="sov-arrow">→</div>
-	      <div class="sov-node"><b>${tf("Tablero y app", "Dashboard & app")}</b><small>127.0.0.1:4777 · cc-app (WebKitGTK)<br>${tf("popups con tema · Telegram solo si lo activas", "themed popups · Telegram only if enabled")}</small></div>
+	      <div class="sov-node"><b>${tf("Tablero y app", "Dashboard & app")}</b><small>127.0.0.1:4777 · cc-app (WebKitGTK)<br>${tf("popups con tema", "themed popups")}</small></div>
 	    </div>
 	    <div class="sov-h">${tf("Canales de salida", "Outbound channels")}</div>
 	    <div class="sov-out">${(d.outbound || []).map(c => `<div class="sov-ch ${c.on ? "on" : "off"}"><span class="st">${c.on ? tf("ACTIVO", "ON") : tf("APAGADO", "OFF")}</span><span>${mdEsc(c.label)}</span><small>${mdEsc(c.how)}</small></div>`).join("")}</div>
@@ -9212,3 +9211,4 @@ if("serviceWorker" in navigator)
 <script src="/extensions.js"></script>
 <script src="/session-controls.js?v=fef689ef2baa"></script>
 <script src="/workspace.js?v=b0f9e32aaaf8"></script>
+<script src="/work-marks.js"></script>

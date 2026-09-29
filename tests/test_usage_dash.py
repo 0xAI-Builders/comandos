@@ -333,12 +333,12 @@ def test_alert_rules_endpoint_and_evaluation():
     assert 'state["alert_rules"]' in SRC
 
 
-def test_limit_alerts_notify_by_desktop_and_telegram():
+def test_limit_alerts_notify_by_desktop_only():
     assert "def usage_alert_send" in SRC
     # Popups PROPIOS de ComandOS (cc-notifyd), jamas notify-send
     assert "127.0.0.1:4778/notify" in SRC
     assert "notify-send" not in SRC
-    assert "TELEGRAM_ENABLED" in SRC
+    assert "TELEGRAM_ENABLED" not in SRC and "api.telegram.org" not in SRC
     assert "cc_usage.limit_threshold_alerts" in SRC
     assert "cc_usage.record_alert_once" in SRC
     assert 'state["alerts"] = cc_usage.list_alerts(USAGE_DB)' in SRC
@@ -451,7 +451,7 @@ if __name__ == "__main__":
     test_tab_close_endpoint_delegates_with_explicit_ephemeral_flag()
     test_alert_rules_endpoint_and_evaluation()
     test_codex_dropdown_drives_numbered_picker()
-    test_limit_alerts_notify_by_desktop_and_telegram()
+    test_limit_alerts_notify_by_desktop_only()
     test_cc_dash_imports_usage_module()
     test_usage_state_endpoint_exists_and_is_authenticated()
     test_usage_live_panes_records_pane_pwd_and_git_root()

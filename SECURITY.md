@@ -20,9 +20,8 @@ Layered protections, all on by default:
 | A tailnet peer (or anyone reaching the port) operating the dashboard | **Access token** (`~/.claude/hooks/dash-token`, `0600`, compared with `hmac.compare_digest`). Local *direct* clients don't need it; remote/proxied requests do. Delivered via `X-Comandos-Token` header (from localStorage), `Authorization: Bearer`, or `?token=` query. The static shell (HTML/JS/icons/manifest) is served without a token — it holds no secrets; only data (`/state`) and actions are gated. Cookie-independent so it works in mobile/PWA webviews. |
 | `~/.ssh/config` injection (`ProxyCommand` → RCE on connect) | `hostname`/`user`/`port`/`identity` are validated; newlines and control chars are rejected. |
 | Popup spoofing / approval social-engineering (`cc-notifyd`) | Loopback-only + Origin-gated; concurrent popups capped. |
-| Telegram takeover | Identity is checked by **numeric user id** (`TELEGRAM_ALLOWED_USER_ID`, immutable) and chat id — on messages **and** button callbacks. Fails **closed** if unconfigured. |
 | Web terminal (embedded) | `ttyd` binds to loopback and is exposed tailnet-only as `/term`, with `:8443` as a fallback. The browser passes the dashboard token as a launch capability, and `cc-webterm-attach` validates it before opening tmux. There is no second password prompt; WireGuard/tailnet policy remains the network boundary. |
-| Secrets on disk | `telegram.env`, `cc-notify.conf`, `dash-token` are `chmod 600`. |
+| Secrets on disk | `cc-notify.conf`, `dash-token` are `chmod 600`. The Telegram bot was retired; an old `telegram.env` is left untouched. |
 
 The dashboard renderer (`mdHtml`) is XSS-safe: agent/hook text is HTML-escaped
 first and only ever placed into element *content* (never an attribute or an
@@ -30,7 +29,7 @@ first and only ever placed into element *content* (never an attribute or an
 
 ## What is intentionally powerful
 
-`/send`, `/key`, and Telegram `/run` are **designed** to type into your agents
+`/send` and `/key` are **designed** to type into your agents
 and run commands — that is the product. They are all behind the auth gate.
 Anyone with your access token can drive agents through the dashboard/API and
 open an interactive terminal when the optional web terminal is enabled. The
