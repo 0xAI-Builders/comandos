@@ -783,3 +783,11 @@ Asked whether an ordinary completed turn should produce a visual notice or also 
 Recommended realization for the next review: settings by event type with Visual and Visual + sonido, brief soft game-like cues, adjustable volume, an explicit preview and a quick mute control. Prevent overlapping sounds and repeated playback for duplicate deliveries of the same event. Combine nearby ordinary completions into a compact notice while keeping individual events accessible. Unresolved human requests must remain visible and actionable when arrivals are grouped. Do not repeat a cue indefinitely while a request is pending. Exact cues, grouping interval and default mode per event type remain proposals, not approved or measured behavior. No audio was played or production notification preference changed.
 
 Next policy decision: Telegram delivery while CommandOS is inactive versus mirroring events during active use. Recommend inactive-only delivery as the starting mode, with an explicit always-deliver option. Inactivity criteria, fallback and escalation delays remain unselected; no Telegram operation is authorized or performed by this design record.
+
+## Confirmed: remove Telegram from CommandOS entirely · 2026-09-29
+
+Jesús explicitly decides "dejemoslo fuera totalmente" after considering whether Telegram belongs in the product. Remove Telegram from the CommandOS design entirely. It is not a deferred release feature, optional delivery channel or fallback. This supersedes the preceding Telegram routing, mirroring and escalation proposals.
+
+The implementation scope includes removing CommandOS Telegram settings and setup, notification delivery, bot replies and terminal-command routing, and CommandOS-specific runtime wiring. Existing personal Telegram conversations, the user's account and integrations belonging to other products are outside that scope. During this grilling turn only the design record changes; the live integration has not been disabled or removed.
+
+Desktop and remote CommandOS remain the product interfaces. The decision does not choose a replacement external channel or establish that notifications arrive with the app closed or a phone locked. That behavior remains a separate product requirement to resolve.
