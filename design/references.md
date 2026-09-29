@@ -199,3 +199,8 @@ Prototipo: /home/someguy/codebase/0xJesus/ComandOS/.worktrees/comandos-v1-grill/
 Jesús eligió B y pidió poder ver la terminal. Se conserva la edición continua y se agrega un control para compartir el espacio. Se reutilizan las seis capturas verificadas; no hubo otra búsqueda. El contexto de trabajo junto al documento observado en Mintlify sirve como referencia parcial. La terminal debajo del lector en móvil, el separador y la conservación del ancla de lectura son decisiones propias del prototipo, pendientes de la revisión de ese detalle.
 
 Ruta con ambas vistas: https://nodo-01.tail63a117.ts.net:8444/prototypes/prototype-v1-grill.html?round=news-reader&variant=B&terminal=1. Evidencia visual local: /home/someguy/codebase/0xJesus/ComandOS/.worktrees/comandos-v1-grill/design/shots/news-reader/comandos-edition-terminal-desktop.png y /home/someguy/codebase/0xJesus/ComandOS/.worktrees/comandos-v1-grill/design/shots/news-reader/comandos-edition-terminal-mobile.png. Las comprobaciones y el alcance están en /home/someguy/codebase/0xJesus/ComandOS/.worktrees/comandos-v1-grill/dash/prototypes/README-v1-grill.md.
+
+
+### Corrección de Jesús: terminal siempre a la izquierda
+
+La terminal queda a la izquierda y la edición a la derecha. Esta indicación sustituye la propuesta anterior de terminal a la derecha o debajo. Hasta 560 px se propone mantener ambas vistas con ancho completo y navegación horizontal mediante botones o desplazamiento. Es una adaptación del prototipo para revisión, sin una nueva búsqueda de referencias. Las seis capturas de Mobbin ya inspeccionadas siguen siendo la base del lector. La ruta de revisión conserva B y `terminal=1`.
