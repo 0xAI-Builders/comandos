@@ -21,7 +21,12 @@ shelf.batch(true,'matt');assert.equal(calls.length,1);assert.equal(calls[0].path
 assert.deepEqual(calls.pop().data.desired,{mcps:{m:false},skills:{a:true,b:false,blocked:false}});
 shelf.batch(true);assert.deepEqual(calls.pop().data.desired,{mcps:{m:true},skills:{a:true,b:true,blocked:false}});
 shelf.filter='skills';shelf.query='Alpha';shelf.batch(true);
+assert.deepEqual(calls.pop().data.desired,{mcps:{m:true},skills:{a:true,b:true,blocked:false}});
+shelf.batch(true,null,true);
 assert.deepEqual(calls.pop().data.desired,{mcps:{m:false},skills:{a:true,b:false,blocked:false}});
+shelf.state.desired={mcps:{m:true},skills:{a:true,b:true,blocked:false}};
+shelf.batch(false);assert.deepEqual(calls.pop().data.desired,{mcps:{m:false},skills:{a:false,b:false,blocked:false}});
+shelf.state.desired={mcps:{m:false},skills:{a:false,b:false,blocked:false}};
 shelf.batch(false);assert.equal(calls.length,0);
 shelf.sending=true;shelf.batch(true);assert.equal(calls.length,0);
 shelf.sending=false;shelf.stale=true;shelf.batch(true);assert.equal(calls.length,0);

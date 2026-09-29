@@ -46,15 +46,20 @@
       clearTimeout(this.timer);
       if(this.sending){this.schedule();return;}
       if(!this.state){this.error='';this.render();}
-      const generation=this.generation;
+      const generation=this.generation;let same=false;
       try {
         const next=await request('/pane-extensions?'+new URLSearchParams(this.target));
         if(generation!==this.generation)return;
         if(this.state && (this.state.identity!==next.identity || this.state.conversationId!==next.conversationId) && !active(this.state)) {
           this.stale=true;this.error='El panel cambió de conversación. Actualiza antes de editar.';
-        } else {this.state=next;this.stale=false;this.error='';}
+        } else {
+          // Same answer as the last one: keep the DOM (open groups, scroll, focus).
+          const signature=JSON.stringify(next);
+          same=!!this.state&&!this.stale&&!this.error&&!this.message&&signature===this.signature;
+          this.state=next;this.signature=signature;this.stale=false;this.error='';
+        }
       } catch(e) {if(generation===this.generation)this.error=e.message;}
-      if(generation===this.generation){this.render();this.schedule();}
+      if(generation===this.generation){if(!same)this.render();this.schedule();}
     }
     schedule() {clearTimeout(this.timer);this.timer=setTimeout(()=>this.refresh(),active(this.state)?2000:12000);}
     locked() {return this.sending||this.stale||active(this.state);}
@@ -69,9 +74,18 @@
         if(missing.length) this.message='Plantilla cargada. No disponibles en este CLI: '+missing.map(x=>typeof x==='string'?x:(x.name||x.id)).join(', ');
         else if(suffix==='/template'&&extra.name)this.message='Plantilla guardada.';
         if(suffix==='/apply')this.state.operation={...data,state:data.state||'validating'};
+        // Saves answer with the whole panel state: reuse it (one request per batch).
+        else if(data.inventory&&data.desired&&typeof data.revision==='number'&&data.identity===this.state.identity&&data.conversationId===this.state.conversationId){
+          const {missing,unavailable,template,...next}=data;
+          this.state=next;this.signature=JSON.stringify(next);this.fresh=true;
+        }
       } catch(e) {if(generation===this.generation)this.error=e.message;}
       finally {
-        if(generation===this.generation){const failure=this.error;this.sending=false;await this.refresh();if(failure){this.error=failure;this.render();}}
+        if(generation===this.generation){
+          const failure=this.error;this.sending=false;
+          if(this.fresh&&!failure){this.fresh=false;this.render();this.schedule();}
+          else {this.fresh=false;await this.refresh();if(failure){this.error=failure;this.render();}}
+        }
       }
     }
     toggle(kind,id,on) {
@@ -81,16 +95,16 @@
       const desired=JSON.parse(JSON.stringify(this.state.desired));desired[kind][id]=on;
       this.mutate('',{desired});
     }
-    batchItems(group=null) {
+    batchItems(group=null, visibleOnly=false) {
       if(!this.state)return [];
       return ['mcps','skills'].flatMap(kind=>(this.state.inventory[kind]||[]).map(row=>({kind,row})))
         .filter(({kind,row})=>row.toggleable===true&&typeof this.state.desired[kind]?.[row.id]==='boolean'
-          &&(this.filter==='all'||this.filter===kind)&&row.name.toLowerCase().includes(this.query.toLowerCase())
+          &&(!visibleOnly||((this.filter==='all'||this.filter===kind)&&row.name.toLowerCase().includes(this.query.toLowerCase())))
           &&(group===null||(row.origin?.id||'unknown')===group));
     }
-    batch(on,group=null) {
+    batch(on,group=null,visibleOnly=false) {
       if(this.locked()||!this.state)return;
-      const items=this.batchItems(group).filter(({kind,row})=>this.state.desired[kind][row.id]!==on);
+      const items=this.batchItems(group,visibleOnly).filter(({kind,row})=>this.state.desired[kind][row.id]!==on);
       if(!items.length)return;
       const desired=JSON.parse(JSON.stringify(this.state.desired));
       for(const {kind,row} of items)desired[kind][row.id]=on;
@@ -99,7 +113,7 @@
     click(e) {
       if(this.dragged){this.dragged=false;return;}
       const button=e.target.closest('button');if(!button||button.disabled)return;
-      if(button.dataset.batch){e.preventDefault();return this.batch(button.dataset.batch==='on',button.dataset.batchGroup??null);}
+      if(button.dataset.batch){e.preventDefault();return this.batch(button.dataset.batch==='on',button.dataset.batchGroup??null,button.dataset.batchScope==='visible');}
       if(button.dataset.kind)return this.toggle(button.dataset.kind,button.dataset.id,button.dataset.on!=='true');
       if(button.dataset.filter){this.filter=button.dataset.filter;this.render();return;}
       if(button.dataset.template)return this.mutate('/template',{templateId:button.dataset.template});
@@ -162,13 +176,13 @@
       }
       return [...groups.values()].sort((a,b)=>a.origin.label.localeCompare(b.origin.label)).map(group=>{
         const key=(on?'on:':'off:')+group.origin.id;
-        return `<details class="origin-group" data-group="${esc(key)}" ${this.closedGroups.has(key)?'':'open'}><summary>${esc(group.origin.label)} <span>${group.items.length}</span> <button type="button" data-batch="${on?'off':'on'}" data-batch-group="${esc(group.origin.id)}" ${this.locked()||!this.batchItems(group.origin.id).some(x=>this.state.desired[x.kind][x.row.id]!==!on)?'disabled':''}>${on?'Quitar grupo':'Añadir grupo'}</button></summary><div class="origin-items">${group.items.sort((a,b)=>a.row.name.localeCompare(b.row.name)).map(x=>this.bubble(x.row,x.kind,on)).join('')}</div></details>`;
+        return `<details class="origin-group" data-group="${esc(key)}" ${this.closedGroups.has(key)?'':'open'}><summary>${esc(group.origin.label)} <span>${group.items.length}</span> <button type="button" data-batch="${on?'off':'on'}" data-batch-group="${esc(group.origin.id)}" ${this.locked()||!this.batchItems(group.origin.id).some(x=>this.state.desired[x.kind][x.row.id]!==!on)?'disabled':''}>${on?'Quitar categoría':'Añadir categoría'}</button></summary><div class="origin-items">${group.items.sort((a,b)=>a.row.name.localeCompare(b.row.name)).map(x=>this.bubble(x.row,x.kind,on)).join('')}</div></details>`;
       }).join('');
     }
     render() {
       const focus=document.activeElement,id=focus?.id,position=focus?.selectionStart,value=focus?.value;
       const button=focus?.closest?.('button');
-      const focusKey=button&&this.root.contains(button)?Object.fromEntries(['kind','id','filter','template','action','batch','batchGroup'].filter(k=>button.dataset[k]!=null).map(k=>[k,button.dataset[k]])):null;
+      const focusKey=button&&this.root.contains(button)?Object.fromEntries(['kind','id','filter','template','action','batch','batchGroup','batchScope'].filter(k=>button.dataset[k]!=null).map(k=>[k,button.dataset[k]])):null;
       const restoreKey=focusKey||(!id?this.pendingFocus:null);
       this.pendingFocus=this.sending?restoreKey:null;
       const scrolls=[...this.root.querySelectorAll('.field,.templates')].map(x=>x.scrollTop);
@@ -180,19 +194,24 @@
       const items=['mcps','skills'].flatMap(kind=>(s.inventory[kind]||[]).map(row=>({row,kind,on:s.desired[kind]?.[row.id]===true})));
       const visible=items.filter(x=>(x.on||(x.row.toggleable===true&&s.desired[x.kind]?.[x.row.id]===false))&&(this.filter==='all'||this.filter===x.kind)&&x.row.name.toLowerCase().includes(this.query.toLowerCase()));
       const unused=items.filter(x=>x.on&&x.row.toggleable&&s.usage?.counts?.[x.kind]?.[x.row.id]===0).length;
-      const excluded=items.filter(x=>x.row.toggleable!==true);
+      const excluded=items.filter(x=>x.row.toggleable!==true||typeof s.desired[x.kind]?.[x.row.id]!=='boolean')
+        .map(x=>({...x,reason:x.row.toggleable!==true?(x.row.reason||'Gestionada fuera de este panel'):'Estado desconocido en este panel; se conserva sin cambios.'}));
       const operationNotice=opState?[stages[opState]||opState,op.error].filter(Boolean).join(' '):'';
       const configuration=s.configurationStatus||(s.loaded?'verified':'unknown');
       const processNote=configuration==='external'?'Este proceso se inició fuera del selector de extensiones. La selección guardada se aplica desde los controles de este panel.':configuration==='not_started'?'La selección se usará si eliges Iniciar con este set.':configuration==='verified'?'Configuración comprobada en este proceso.':'La selección está guardada; no hay una comprobación válida de la configuración de este proceso.';
-      const notice=this.error||this.message||operationNotice||s.reason||(configuration==='unverified'?'No se pudo verificar la configuración aplicada a este proceso.':'');
+      const inventoryNote=s.inventory?.status==='incomplete'?'Inventario incompleto: las extensiones no editables se conservan sin cambios.':'';
+      const notice=this.error||(this.sending&&!opState?'Guardando selección…':'')||this.message||operationNotice||s.reason||inventoryNote||(configuration==='unverified'?'No se pudo verificar la configuración aplicada a este proceso.':'');
       const candidates=this.batchItems();
-      const batchScope=this.filter==='all'&&!this.query?'todo':'visibles';
+      const selected=candidates.filter(x=>s.desired[x.kind][x.row.id]).length;
+      const filtered=this.filter!=='all'||!!this.query,shown=this.batchItems(null,true);
+      const selection=selected===0?'Ninguna seleccionada':selected===candidates.length?'Todas seleccionadas':'Selección parcial';
       this.root.innerHTML=`<section class="shelf${enter?' shelf-enter':''}"><header><span class="label">Extensiones</span><strong>${esc(this.target.session)} · ${esc(this.target.pane)} · ${esc(harnesses.find(x=>x[0]===s.harness)?.[1]||s.harness)}</strong><span class="muted">Solo este panel</span><span class="spacer"></span><span class="muted">${d?pending?`+${d.add} / −${d.remove} pendientes`:'Sin cambios':'Selección guardada'}</span>${pending?`<button data-action="discard" ${locked?'disabled':''}>Deshacer</button>`:''}<button class="go" data-action="apply" ${locked||s.applySupported===false||(!pending&&s.loaded)?'disabled':''}>${active(s)?'Aplicando…':!s.conversationId?'Iniciar con este set':s.busy?'Aplicar al terminar':'Aplicar y reanudar'}</button><button class="close" data-action="close" aria-label="Cerrar estante">×</button></header>
       <div class="notice ${this.error||['failed','recovery_required'].includes(opState)?'error':''}" role="status">${esc(notice)}${this.stale?'<button data-action="refresh">Actualizar panel</button>':''}${['validating','waiting','snapshot'].includes(opState)?'<button data-action="cancel">Cancelar espera</button>':''}${['recovery_required','awaiting_confirmation'].includes(opState)?'<button data-action="recover">Recuperar sesión anterior</button>':''}${s.busy&&!locked&&s.applySupported!==false?'<button data-action="interrupt">Interrumpir turno y aplicar</button>':''}</div>
       ${!s.conversationId?this.harnessPicker():''}
-      <div class="toolbar"><input id="ext-search" type="search" placeholder="Buscar extensión…" aria-label="Buscar extensión" value="${esc(this.query)}">${[['all','Todo'],['mcps','MCPs'],['skills','Skills']].map(([k,l])=>`<button data-filter="${k}" class="${this.filter===k?'active':''}" aria-pressed="${this.filter===k}">${l}</button>`).join('')}<button data-batch="on" ${locked||!candidates.some(x=>s.desired[x.kind][x.row.id]===false)?'disabled':''}>Seleccionar ${batchScope}</button><button data-batch="off" ${locked||!candidates.some(x=>s.desired[x.kind][x.row.id]===true)?'disabled':''}>Quitar ${batchScope}</button><button data-action="unused" ${locked||!unused?'disabled':''}>Apagar ${unused} sin uso</button><span class="spacer"></span><span class="muted gesture">Toca o arrastra · azul MCP · ámbar skill</span></div>
-      <div class="body"><aside class="templates"><div class="label">Plantillas</div>${(s.templates||[]).map(t=>`<button data-template="${esc(t.id)}" ${locked?'disabled':''}>${esc(t.name)}</button>`).join('')}<form><input id="template-name" value="${esc(this.templateName)}" placeholder="Nombre del set" aria-label="Nombre de la plantilla" maxlength="80" required ${locked?'disabled':''}><button type="submit" data-action="save-template" ${locked?'disabled':''}>+ Guardar set</button></form><p class="muted">Disponibles entre agentes. Se cargan solo cuando las eliges.</p></aside>${[true,false].map(on=>`<div class="zone ${on?'on':'off'}" data-zone="${on?'on':'off'}"><div class="label">${on?'Seleccionadas':'Disponibles'} · ${visible.filter(x=>x.on===on).length}</div><span class="muted">${on?'Selección guardada para este panel':'Puedes añadirlas a este panel'}</span><div class="field">${this.groups(visible.filter(x=>x.on===on),on)}</div></div>`).join('')}</div>
-      <footer><details class="process-state"><summary>Estado del proceso</summary><p>${esc(processNote)}</p></details><span>${s.inventory.mcps.length} MCPs + ${s.inventory.skills.length} skills</span><span title="Tamaño del archivo principal de la skill o de las definiciones MCP medidas. No representa consumo por turno ni contexto cargado.">Tamaño: tokens · cl100k_base · Sin medir: tamaño neutro</span><span>${s.usage?.complete?'Uso registrado en esta conversación':'Uso parcial: ausencia de datos ≠ sin uso'}</span>${excluded.length?`<details><summary>${excluded.length} excluidas o gestionadas aparte</summary>${excluded.map(x=>`<p><b>${esc(x.row.name)}</b> · ${esc(x.row.reason||'Gestionada fuera de este panel')}</p>`).join('')}</details>`:''}</footer></section>`;
+      <div class="toolbar"><input id="ext-search" type="search" placeholder="Buscar extensión…" aria-label="Buscar extensión" value="${esc(this.query)}">${[['all','Todo'],['mcps','MCPs'],['skills','Skills']].map(([k,l])=>`<button data-filter="${k}" class="${this.filter===k?'active':''}" aria-pressed="${this.filter===k}">${l}</button>`).join('')}${filtered?`<button data-batch="on" data-batch-scope="visible" ${locked||!shown.some(x=>!s.desired[x.kind][x.row.id])?'disabled':''}>Añadir resultados (${shown.length})</button><button data-batch="off" data-batch-scope="visible" ${locked||!shown.some(x=>s.desired[x.kind][x.row.id])?'disabled':''}>Quitar resultados</button>`:''}<span class="spacer"></span><span class="muted gesture">Toca o arrastra · azul MCP · ámbar skill</span></div>
+      <div class="selection-toolbar" aria-label="Selección global"><strong role="status">${selection} · ${selected} de ${candidates.length}</strong>${excluded.length?`<span class="muted">${excluded.length} fuera del lote · detalle al pie</span>`:''}<button data-batch="on" ${locked||selected===candidates.length?'disabled':''}>Seleccionar todos</button><button data-batch="off" ${locked||selected===0?'disabled':''}>Quitar todos</button><span class="muted">Todos los MCPs y skills editables, incluidos los ocultos por filtros. El uso registrado no cambia la selección.</span></div>
+      <div class="body"><aside class="templates"><div class="label">Plantillas</div>${(s.templates||[]).map(t=>`<button data-template="${esc(t.id)}" ${locked?'disabled':''}>${esc(t.name)}</button>`).join('')}<form><input id="template-name" value="${esc(this.templateName)}" placeholder="Nombre del set" aria-label="Nombre de la plantilla" maxlength="80" required ${locked?'disabled':''}><button type="submit" data-action="save-template" ${locked?'disabled':''}>+ Guardar set</button></form><p class="muted">Disponibles entre agentes. Se cargan solo cuando las eliges.</p></aside>${[true,false].map(on=>`<div class="zone ${on?'on':'off'}" data-zone="${on?'on':'off'}"><div class="label">${on?'Seleccionadas':'Sin seleccionar'} · ${visible.filter(x=>x.on===on).length}</div><span class="muted">${on?'Selección guardada para este panel':'Puedes añadirlas a este panel'}</span><div class="field">${this.groups(visible.filter(x=>x.on===on),on)}</div></div>`).join('')}</div>
+      <footer>${unused?`<details><summary>Uso registrado</summary><p>Quita únicamente las extensiones con cero usos registrados. No incluye las que no tienen datos.</p><button data-action="unused" ${locked?'disabled':''}>Quitar ${unused} con cero usos</button></details>`:''}<details class="process-state"><summary>Estado del proceso</summary><p>${esc(processNote)}</p></details><span>${s.inventory.mcps.length} MCPs + ${s.inventory.skills.length} skills</span><span title="Tamaño del archivo principal de la skill o de las definiciones MCP medidas. No representa consumo por turno ni contexto cargado.">Tamaño: tokens · cl100k_base · Sin medir: tamaño neutro</span><span>${s.usage?.complete?'Uso registrado en esta conversación':'Uso parcial: ausencia de datos ≠ sin uso'}</span>${excluded.length?`<details><summary>${excluded.length} excluidas o gestionadas aparte</summary>${excluded.map(x=>`<p><b>${esc(x.row.name)}</b> · ${esc(x.reason)}</p>`).join('')}</details>`:''}</footer></section>`;
       this.root.querySelectorAll('.field,.templates').forEach((x,i)=>x.scrollTop=scrolls[i]||0);
       if(id){const next=document.getElementById(id);if(next){if(id==='template-name')next.value=value;next.focus({preventScroll:true});if(typeof position==='number'&&next.setSelectionRange)try{next.setSelectionRange(position,position);}catch(_){}}}
       else if(restoreKey&&Object.keys(restoreKey).length){const next=[...this.root.querySelectorAll('button')].find(el=>Object.entries(restoreKey).every(([k,v])=>el.dataset[k]===v));if(next&&!next.disabled)next.focus({preventScroll:true});}

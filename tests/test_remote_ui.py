@@ -994,6 +994,7 @@ def test_view_refresh_never_reveals_tabs_but_explicit_selection_does():
     show = extract_js_function(HTML, "showView")
     result = run_node_json(f"""
 let activeTerm='prod', activeView='panel', activeTermTs=0, reveals=0, renders=0;
+const window={{}};  // no WorkspaceDock loaded: showView falls back to the single tab
 const openTerms=new Map([['prod',{{frame:null}}]]);
 const termInteraction=new Map([['prod',{{mouse:'on'}}]]);
 const S={{sel:'prod',list:[]}};
@@ -3342,15 +3343,16 @@ def test_tabs_endpoint_is_exact_mirror_no_history_resurrection():
 
 def test_remote_tabs_have_full_desktop_parity():
     # TODA tab abierta en remoto se registra en el escritorio (openTerm ->
-    # /tab-register, mirrored=true) y el + crea terminal en AMBOS lados.
+    # /tab-register, mirrored=true) y el boton Terminal crea la shell en AMBOS
+    # lados (/terminal/quick registra la tab en app-tabs.json).
     # Sin esto el remoto acumulaba tabs locales que el escritorio no veia.
     html = open("dash/index.html").read()
     assert 'api("/tab-register", {session: sess, label: label || sess})' in html
     assert 'addTermTab(sess, label, true);' in html
-    assert 'api("/tab-new", {})' in html
-    assert '"Nueva terminal (se abre también en el escritorio)"' in html
+    assert "ComandosQuickTerminal.createQuickTerminal" in html
+    assert '"Terminal en carpeta nueva fechada (se abre también en el escritorio)"' in html
     src = open("bin/cc-dash").read()
-    assert '"/tab-register"' in src and '"/tab-new"' in src
+    assert '"/tab-register"' in src and '"/tab-new"' in src and '"/terminal/quick"' in src
     assert "def register_app_tab" in src
     assert "app-tab-open.json" in src
 
