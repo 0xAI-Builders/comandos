@@ -1,0 +1,16 @@
+{
+  "_nota": "Copiar a ~/.claude/hooks/news-editions.json para activar las tres ediciones diarias (D4). La clave NO va aquí: se lee de la variable de entorno nombrada en apiKeyEnv. Sin precios no se genera nada (el tope de gasto depende de ellos). Cambiar enabled a true solo con el modelo real configurado.",
+  "enabled": false,
+  "summarizer": {
+    "kind": "anthropic-messages",
+    "model": "REEMPLAZAR-por-el-id-del-modelo-economico",
+    "apiKeyEnv": "ANTHROPIC_API_KEY",
+    "inputUsdPerMTok": 1,
+    "outputUsdPerMTok": 5
+  },
+  "policy": {
+    "slots": ["09:00", "15:00", "21:00"],
+    "budgetUsd": 0.25,
+    "maxSources": 25
+  }
+}

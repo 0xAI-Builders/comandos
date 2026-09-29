@@ -458,3 +458,31 @@ def test_scheduler_is_inert_without_configuration(tmp_path):
                                 fetch=lambda *a: calls.append("fetch"), summarize=lambda *a: calls.append("sum"))
     assert sched.tick() == {"built": None, "configured": False, "reason": "sin configurar"}
     assert calls == []
+
+
+def test_configured_scheduler_builds_with_injected_doubles(tmp_path):
+    cfg = tmp_path / "news-editions.json"
+    cfg.write_text(json.dumps(CONFIG))
+    db = tmp_path / "sched.sqlite3"
+
+    def connect():
+        c = app_state.connect(db)
+        app_state.migrate(c)
+        return c
+    published = []
+    now = {"t": ms(2026, 9, 29, 8, 50)}
+    sched = ne.EditionScheduler(connect, cfg, None, env={"X_KEY": "k"}, now=lambda: now["t"],
+                                fetch=FakeFetch([item("https://example.com/a", "Nota A")]),
+                                summarize=FakeSummarize(), notify=published.append)
+    assert sched.tick()["built"] is None                 # before 09:00
+    now["t"] = ms(2026, 9, 29, 9, 0)
+    assert sched.tick()["built"] == "2026-09-29@09:00"
+    assert [e["id"] for e in published] == ["2026-09-29@09:00"]
+    assert sched.tick()["built"] is None                 # never twice
+
+
+def test_example_config_is_disabled_until_edited():
+    example = Path(__file__).resolve().parents[1] / "config" / "news-editions.example.json"
+    status = ne.config_status(ne.load_config(example), env={"ANTHROPIC_API_KEY": "k"})
+    assert status == {"configured": False, "reason": "desactivado"}
+    assert ne.policy_from_config(ne.load_config(example))["slots"] == ["09:00", "15:00", "21:00"]
