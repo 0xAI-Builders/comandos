@@ -889,3 +889,7 @@ Jesús reportó la ronda rota. Causas encontradas al recuperar el navegador de l
 ## Aprobado: acordeón por CLI · 2026-09-29
 
 Jesús aprueba la variante A de la ronda 6: un acordeón por CLI instalado, con versión, el CLI del pane seleccionado abierto y marcado, los comandos de arranque primero y después la lista plana de comandos con explicación y chips de argumento a un clic. Las variantes B a E quedan archivadas en el mismo archivo. Pendientes en el mismo nivel: reparto de la barra en móvil, columnas del mosaico de cadenas por CLI, comportamiento cuando el destino es una terminal rápida sin CLI, y la anatomía de cada fila.
+
+## Cadenas con el mismo acordeón por CLI · 2026-09-29
+
+Jesús pide que el modal de Cadenas tenga el mismo efecto. El mosaico por temas se sustituye por el acordeón por CLI: cada CLI es una fila con versión y estado, el del pane abre solo, dentro van primero los comandos de arranque como paso de shell y después sus comandos en tres columnas, cada uno con "+ cadena" y asa de arrastre; la barra de ranuras sigue abajo. Verificado en la Mac mini a 1440×1000: abrir Codex desde el acordeón, añadir un arranque y dos comandos, tres ranuras ocupadas, el pane no se toca.
