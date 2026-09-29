@@ -141,3 +141,47 @@ html.gtkapp #motor-pop.sc-direct.inline{width:100vw;max-height:none;height:100dv
 .sc-extension-link .sc-btn{min-height:34px;font-size:11px}
 @media(pointer:coarse){.sc-direct .sc-word,.sc-direct .sc-cycle{min-height:42px}.sc-direct .sc-cycle{min-width:34px}.sc-effort{padding-top:16px;padding-bottom:12px}.sc-effort input::-webkit-slider-thumb{width:22px;height:22px}}
 @media(max-width:380px){.sc-direct-body{padding:16px 12px}.sc-sentence{font-size:16px}.sc-word{font-size:13px}.sc-word-options{min-width:190px;max-width:calc(100vw - 60px)}}
+
+/* ---- Shared workspace: whole tabs docked in a tree (workspace-dock.js) ---- */
+body.app #term-area:has(> .ws-tree:not([hidden])){overflow-x:hidden;overflow-y:auto;overscroll-behavior:contain}
+.ws-tree{position:relative;width:100%;min-height:100%}
+.ws-tree[hidden]{display:none}
+.ws-tree>.ws-leaf,.ws-tree>.ws-split{height:100%}
+.ws-split{display:grid;width:100%;height:100%;min-width:0;min-height:0}
+.ws-slot{min-width:0;min-height:0;display:flex}
+.ws-slot>*{flex:1 1 auto;min-width:0;min-height:0}
+.ws-leaf{display:flex;flex-direction:column;min-width:0;min-height:0;background:var(--bg);
+  outline:1px solid var(--line);outline-offset:-1px}
+.ws-leaf.focused{outline-color:var(--brand)}
+.ws-leaf.single{outline:0}
+.ws-leaf.single>.ws-leaf-head{display:none}
+.ws-leaf-head{flex:none;display:flex;align-items:center;gap:8px;height:28px;padding:0 10px;
+  font:600 11px var(--mono);color:var(--dim);background:var(--panel);border-bottom:1px solid var(--line);
+  cursor:grab;user-select:none;touch-action:none;white-space:nowrap;overflow:hidden}
+.ws-leaf.focused>.ws-leaf-head{color:var(--text)}
+.ws-leaf-head b{overflow:hidden;text-overflow:ellipsis;font-weight:600}
+.ws-grip{color:var(--faint)}
+.ws-body{position:relative;flex:1 1 auto;min-height:0}
+.ws-missing{margin:0;padding:18px;color:var(--dim);font:12px var(--sans)}
+.ws-divider{background:var(--line);touch-action:none;position:relative;z-index:2}
+.ws-divider:not([data-stacked]){cursor:col-resize}
+.ws-split[data-axis="y"]>.ws-divider:not([data-stacked]){cursor:row-resize}
+.ws-divider::before{content:"";position:absolute;inset:0 -6px}
+.ws-split[data-axis="y"]>.ws-divider::before{inset:-6px 0}
+.ws-divider:hover,.ws-divider:focus-visible{background:var(--brand);outline:0}
+.ws-divider[data-stacked]{background:var(--line);cursor:default}
+body.ws-dragging{user-select:none}
+body.ws-dragging .termpane{pointer-events:none}
+.ws-ghost{position:fixed;z-index:60;transform:translate(10px,10px);pointer-events:none;padding:5px 10px;
+  border-radius:6px;background:var(--panel2);border:1px solid var(--brand);color:var(--text);font:600 11px var(--mono);
+  box-shadow:0 8px 24px rgb(0 0 0 / .35);white-space:nowrap}
+.ws-preview{position:fixed;z-index:55;pointer-events:none;display:grid;place-items:center;
+  background:color-mix(in srgb,var(--brand) 18%,transparent);border:2px solid var(--brand);border-radius:6px;
+  color:var(--text);font:600 12px var(--sans);text-align:center;padding:6px}
+.ws-preview[hidden]{display:none}
+.ws-preview.bar{background:var(--brand);border:0;font-size:0;padding:0}
+.apptab .ws-count{flex:none;padding:1px 6px;border-radius:9px;background:var(--line);color:var(--text);
+  font:600 10px var(--mono)}
+.apptab .ws-count[hidden]{display:none}
+.apptab[data-ws-source]{touch-action:pan-x}
+.apptab.ws-unavailable .lbl{opacity:.55;text-decoration:line-through dotted}

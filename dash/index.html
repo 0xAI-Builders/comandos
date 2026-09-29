@@ -1938,6 +1938,8 @@
 <link rel="stylesheet" href="/workspace.css?v=3fa7f1d32d65">
 <link rel="stylesheet" href="/reparto.css">
 <script src="/session-config.js?v=7f3232b0a624"></script>
+<script src="/workspace-layout.js"></script>
+<script src="/workspace-dock.js"></script>
 
 <div id="panes">
 <nav id="app-navigation" aria-label="Pestañas de sesiones">
@@ -6144,7 +6146,10 @@ function wireActions(el, it){
 }
 // El terminal web solo esta enrutado cuando entras por el tailnet (https +
 // no es localhost). En la app nativa y en el navegador local se usa la de aqui.
-const WEBTERM = location.protocol === "https:" && !/^(127\.|localhost|::1)/.test(location.hostname);
+const LOOPBACK = /^(127\.|localhost|::1)/.test(location.hostname);
+// Verification of an isolated candidate only: a browser test injects this
+// global before the page loads; it is never persisted and needs a loopback origin.
+const WEBTERM = (location.protocol === "https:" && !LOOPBACK) || (LOOPBACK && window.__COMANDOS_DEV_WEBTERM === true);
 const TERM_BASE = WEBTERM ? `${location.origin}/term` : "";
 const TERM_FALLBACK_BASE = WEBTERM ? `https://${location.hostname}:8443` : "";
 const TERM_PRIMARY_ATTEMPTS = 3;
@@ -6818,8 +6823,11 @@ function orderedTermTabs(){
 function renderTabbar(){
   const bar = document.getElementById("tabbar");
   const split = document.body.classList.contains("split");
-  const selected = split && activeView === "panel" && activeTerm
+  const entries = window.WorkspaceDock?.stripEntries();
+  let selected = split && activeView === "panel" && activeTerm
     ? "term:" + activeTerm : activeView;
+  if(entries && String(selected).startsWith("term:"))
+    selected = entries.find(e => WorkspaceDock.isSelected(e))?.key || selected;
   // Preserve nodes while polling: rebuilding the scroll container cancels
   // touch momentum, loses pointer targets and resets horizontal position.
   const existing = new Map([...bar.children].map(el => [el.dataset.tabKey, el]));
@@ -6831,27 +6839,31 @@ function renderTabbar(){
     wanted.push(el);
     return el;
   };
-  const mk = (label, key, closable, status) => {
+  const mk = (label, key, closable, status, entry) => {
     const t = take(key);
-    if(!t.querySelector(".lbl")){
-      t.innerHTML = '<span class="dot"></span><span class="lbl"></span>' +
+    t._target = entry ? entry.target : key;
+    t._session = entry ? entry.session : key.replace(/^term:/, "");
+    if(entry) t.dataset.wsSource = entry.source; else delete t.dataset.wsSource;
+    if(!t.querySelector(".lbl") || t._closable !== closable){
+      t._closable = closable;
+      t.innerHTML = '<span class="dot"></span><span class="lbl"></span><span class="ws-count" hidden></span>' +
         (closable ? '<button type="button" class="tab-fav"></button><span class="x">×</span>' : '');
-      t.onclick = () => showView(key, true);
+      t.onclick = () => showView(t._target, true);
       t.onkeydown = e => {
         if(e.target !== t) return;
-        if(e.key === "Enter" || e.key === " "){ e.preventDefault(); showView(key, true); }
+        if(e.key === "Enter" || e.key === " "){ e.preventDefault(); showView(t._target, true); }
       };
       const favorite = t.querySelector(".tab-fav");
       if(favorite){
         favorite.onclick = e => {
           e.stopPropagation();
-          const session = key.replace(/^term:/, "");
+          const session = t._session;
           setSessionFavorite(session, !S.favs.has(session)).catch(err => toast(err.message, true));
         };
       }
       const x = t.querySelector(".x");
       if(x){
-        x.onclick = e => { e.stopPropagation(); askCloseTab(key.replace(/^term:/, "")); };
+        x.onclick = e => { e.stopPropagation(); askCloseTab(t._session); };
       }
     }
     t.className = "apptab" + (selected === key ? " on" : "");
@@ -6868,9 +6880,20 @@ function renderTabbar(){
     const x = t.querySelector(".x");
     if(x) x.title = tf("Cerrar pestaña", "Close tab");
     const favorite = t.querySelector(".tab-fav");
-    if(favorite) updateFavoriteButton(favorite, key.replace(/^term:/, ""), label);
+    if(favorite) updateFavoriteButton(favorite, t._session, label);
+    const count = t.querySelector(".ws-count");
+    count.hidden = !(entry && entry.count > 1);
+    if(entry && entry.count > 1) count.textContent = entry.count + " tabs";
+    t.classList.toggle("ws-unavailable", !!entry && !entry.live);
   };
-  for(const [sess, o] of orderedTermTabs()){
+  if(entries){
+    for(const e of entries){
+      const it = (S.list||[]).find(i => i.session === e.session && i.alive) ||
+        (S.list||[]).find(i => i.session === e.session);
+      mk(e.label, e.key, e.closable, it?.status, e);
+    }
+  }
+  else for(const [sess, o] of orderedTermTabs()){
     const it = (S.list||[]).find(i => i.session === sess && i.alive) ||
       (S.list||[]).find(i => i.session === sess);
     mk(o.label || it?.project || sess, "term:"+sess, sess !== "local", it?.status);
@@ -6957,12 +6980,14 @@ function showView(key, reveal=false){
   // en split la terminal visible por defecto es la ultima activa (o la 1a)
   let shown = key.startsWith("term:") ? key.slice(5)
             : (split ? (activeTerm && openTerms.has(activeTerm) ? activeTerm : [...openTerms.keys()][0]) : null);
-  if(shown){ activeTerm = shown; ensureFrame(shown); }
+  const visible = shown ? (window.WorkspaceDock?.visibleTabs(shown) || [shown]) : [];
+  if(shown){ activeTerm = shown; for(const sess of visible) ensureFrame(sess); }
   restoreInactiveTermInteractions(shown);
   document.getElementById("view-panel").classList.toggle("on", split || key === "panel");
   document.getElementById("term-area").classList.toggle("on", split ? !!shown : key.startsWith("term:"));
   for(const [sess, o] of openTerms)
-    if(o.frame) o.frame.classList.toggle("on", sess === shown);
+    if(o.frame) o.frame.classList.toggle("on", visible.includes(sess));
+  window.WorkspaceDock?.render(shown);
   if(shown && (shown !== previousTerm || termInteraction.get(shown)?.mouse == null))
     syncTermInteraction(shown);
   if(!inApp() && activeTerm && (activeTerm !== previousTerm || String(S.sel || "").split("|")[0] !== activeTerm)){
@@ -7027,6 +7052,7 @@ async function loadDesktopTabs(){
     for(const [key,o] of ordered) openTerms.set(key,o);
     if(!activeTerm && tabs[0])
       activeTerm = tabs[0].session;
+    try{ window.WorkspaceDock?.adopt(await api("/workspace")); }catch(e){}
     showView(activeView);
   }catch(e){}
 }
