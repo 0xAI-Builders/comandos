@@ -2160,6 +2160,7 @@
     <div class="set"><div class="desc">UN solo volumen para todo ComandOS. Estos botones suenan
       EXACTAMENTE igual que las notificaciones reales (mismo reproductor y volumen) — si algo
       suena distinto a esto, NO viene de ComandOS.</div></div>
+    <div class="set" id="notice-settings"><label>Avisos de proyectos</label><div class="desc">Cargando preferencias…</div></div>
     <div class="set" id="push-settings"><label>Avisos en este dispositivo (push)</label>
       <div class="desc" id="push-status" aria-live="polite">Comprobando…</div>
       <div style="display:flex;gap:8px;flex-wrap:wrap">
@@ -5532,7 +5533,6 @@ ulog("click", `harness-switch:${to}`, "centro");
 	  try{ MODEL_NEWS = await api("/models/latest"); }catch(e){}
 	  try{ window.NEWS_FEED = await api("/news/latest"); }catch(e){}
 	  try{ nfHydrate(await api("/prefs")); }catch(e){}
-	  try{ NF_CACHE.evs = await api("/events"); }catch(e){}
 	  try{ const r = await api("/pomodoro"); NF_CACHE.queue = (r && r.queue) || []; }catch(e){}
 	  notifPaint();
 	}
@@ -5565,29 +5565,18 @@ ulog("click", `harness-switch:${to}`, "centro");
 	             <button type="button" class="nf2-act quiet" data-act="snooze" data-id="${attrEsc(it.key)}" data-key="${attrEsc(it.key)}" title="${attrEsc(tf("Recordarme en 1 hora (te aviso con popup)","Remind me in 1 hour (popup)"))}">${svg("timer",11)} 1h</button>
 `}
 	      </div></div>`;
-	  // lo demas: turnos agrupados
-	  const turns = [];
-	  const seen = new Set();
-	  for(const e of evs.slice(-60)){
-	    if(!(e.status === "waiting" || e.status === "done")) continue;
-	    const k = `${e.project}|${e.status}`;
-	    if(seen.has(k)) continue; seen.add(k);
-	    turns.push(e);
-	  }
-	  const nW = turns.filter(t => t.status === "waiting").length;
-	  const nD = turns.filter(t => t.status === "done").length;
 	  m.innerHTML = `<div class="nf-h"><span class="chip">${svg("bell", 12)} ${tf("Notificaciones", "Notifications")}</span>
 	      ${prio.length ? `<button type="button" class="nf2-clearall" id="nf-clearall" title="${attrEsc(tf("Marca TODAS como leídas de un golpe","Mark ALL as read at once"))}">${svg("check",11)} ${tf("Limpiar todo","Clear all")} (${prio.length})</button>` : ""}
 	      <span class="nf-local">${tf("100 % local", "100% local")}</span></div>
 	    ${queue.length ? `<div class="nf-sec">${tf("Encoladas durante tu foco", "Queued during your focus")} · ${queue.length}</div>` : ""}
 	    ${prio.length ? prio.map(it => card(it)).join("")
 	      : `<div class="nf-empty">${svg("check",13)} ${tf("Nada urgente. Desbordes, sugerencias, modelos y skills aparecerán aquí.", "Nothing urgent. Overflows, suggestions, models and skills will show here.")}</div>`}
-	    ${(nW + nD) ? `<details class="nf2-rest"><summary>${tf(`Lo demás: ${nD} turnos terminados · ${nW} esperan respuesta`, `The rest: ${nD} turns done · ${nW} awaiting you`)}</summary>
-	      ${turns.sort((a,b)=>(b.ts||0)-(a.ts||0)).slice(0,30).map(e => { const li=(S.list||[]).find(x=>x.session===e.session)||(S.list||[]).find(x=>x.project===e.project); return `<div class="nf2-turn" data-session="${attrEsc(e.session||"")}" data-project="${attrEsc(e.project||"")}">
-	        <span class="nf2-dot ${e.status}"></span><b title="${attrEsc(li?.cwd||"")}">${mdEsc(shortPath(li?.cwd) || e.project || "")}</b>
-	        <span>${e.status === "waiting" ? tf("espera tu respuesta","waiting for you") : tf("listo","done")} · ${agoTxt(e.ts)}</span>
-	        <button type="button" class="nf2-open">${tf("Abrir","Open")}</button></div>`;}).join("")}</details>` : ""}
+	    <button type="button" class="nf2-act quiet" id="nf-to-strip">${svg("bell",11)} ${tf("Turnos, permisos y errores: en la franja de avisos por proyecto", "Turns, permissions and errors: in the per-project notice strip")}</button>
 	    ${pins.length ? `<div class="nf-sec">${svg("snippet",11)} ${tf("Guardadas","Saved")} · ${pins.length}</div>` + pins.map(p => card(p, true)).join("") : ""}`;
+	  $("#nf-to-strip")?.addEventListener("click", e=>{
+	    e.stopPropagation(); m.classList.add("hidden");
+	    const n = window.ComandosNotices?.instance; if(n){ n.controller.setCollapsed(false); n.stripEl.querySelector(".nt-toggle")?.focus({preventScroll:true}); }
+	  });
 	  $("#nf-clearall")?.addEventListener("click", e=>{
 	    e.stopPropagation();
 	    const st = nfStore("cc-nf-dismiss");
@@ -7368,24 +7357,11 @@ document.addEventListener("visibilitychange", ()=>{
   if(document.hidden){ ulog("screen", "tablero-visible", "", (Date.now() - ULOG.visibleSince) / 1000); ulogScreenEnd(); ulogFlush(); }
   else ULOG.visibleSince = Date.now();
 });
-// ---------- avisos del tablero: pila superior derecha, con tema. Sustituyen a los popups flotantes.
-const ALERTS = new Map();   // session -> elemento
-function alertPush(it){
-  const box = $("#toasts"); if(!box) return;
-  const old = ALERTS.get(it.session); if(old) old.remove();
-  const a = document.createElement("div");
-  a.className = `alert ${it.status}`;
-  const st = {waiting: tf("espera tu respuesta", "waiting for you"), done: tf("listo", "done")}[it.status] || it.status;
-  a.innerHTML = `<div class="at"><b>${mdEsc(it.project || it.session)}</b><span class="st">${st}</span><button type="button" class="ax" aria-label="cerrar">×</button></div>
-    ${it.detail ? `<div class="ab">${mdHtml(it.detail)}</div>` : ""}
-    <div class="aa"><button type="button" class="sec vt">${tf("Ver todo", "View all")}</button><button type="button" class="go">${tf("Abrir", "Open")}</button></div>`;
-  a.querySelector(".ax").addEventListener("click", ()=>{ a.remove(); ALERTS.delete(it.session); });
-  a.querySelector(".go").addEventListener("click", async ()=>{ try{ toast(await openSession(it, "claude")); }catch(err){ toast(err.message, true); } alertResolve(it.session); });
-  a.querySelector(".vt").addEventListener("click", ()=>{ a.remove(); ALERTS.delete(it.session); $("#btn-notif")?.click(); });
-  box.prepend(a); ALERTS.set(it.session, a);
-  if(it.status !== "waiting") setTimeout(()=>{ if(ALERTS.get(it.session) === a){ a.remove(); ALERTS.delete(it.session); alertLayout(); } }, 12000);
-  alertLayout();
-}
+// ---------- avisos de eventos: franja por proyecto + flotante (dash/notifications.js, N2).
+// La antigua pila superior derecha ya no pinta avisos de eventos; #toasts queda
+// solo para los toast(msg, err) genéricos de las acciones del tablero.
+const ALERTS = new Map();   // session -> elemento (compatibilidad: siempre vacío)
+function alertPush(it){ window.ComandosNotices?.instance?.controller.poll(); }
 // Solo UNA tarjeta visible (la más reciente); el resto se resume en "y N más → campana".
 function alertLayout(){
   const box = $("#toasts"); if(!box) return;
@@ -8993,3 +8969,52 @@ if("serviceWorker" in navigator)
 <script src="/vendor/purify-3.4.16.min.js"></script>
 <script src="/news-reader.js" data-autoinstall></script>
 <script src="/push-settings.js" data-autoinstall></script>
+<script src="/notifications.js"></script>
+<script>
+// N2: franja de avisos por proyecto + aviso flotante de llegada. La llegada
+// nunca cambia de pestaña, foco, borrador ni selección. Abrir usa el mismo
+// camino que el resto del tablero y jamás crea una terminal para una sesión
+// que ya no existe (el aviso muestra "El panel ya no existe").
+(function(){
+  if(!window.ComandosNotices || ONLY_PANEL) return;
+  const N = window.ComandosNotices;
+  const liveSession = s => !!s && (S.liveSess instanceof Set ? S.liveSess.has(s) : openTerms.has(s));
+  N.install({
+    api, deviceId: WS_DEVICE || "",
+    host: document.getElementById("panes"),
+    defaultCollapsed: !!(window.matchMedia && matchMedia("(max-width:560px)").matches),
+    isSessionLive: liveSession,
+    describe: n => {
+      if(N.isNews(n)) return "Noticias";
+      const parts = [n.project || n.projectKey || "General"];
+      const tab = n.sessionKey ? openTerms.get(n.sessionKey) : null;
+      const name = (tab && tab.label) || n.sessionKey;
+      if(name && name !== parts[0]) parts.push(name);
+      const it = (S.list || []).find(x => x.session === n.sessionKey && (!n.paneId || x.pane === n.paneId));
+      if(it && it.agent) parts.push(it.agent);
+      if(n.paneId) parts.push("pane " + n.paneId);
+      return parts.join(" · ");
+    },
+    openSource: n => {
+      const s = n.sessionKey, label = (openTerms.get(s) || {}).label || n.project || s;
+      if(inApp()) openInApp(s, "claude", label);
+      else if(appEnabled()) openTerm(s, label);
+      else api("/focus", {session: s}).catch(err => toast(err.message, true));
+    },
+    openNews: n => {
+      const id = n.editionId || undefined;
+      if(window.ComandosNews && typeof window.ComandosNews.open === "function") window.ComandosNews.open(id);
+      else if(window.NewsReader && window.NewsReader.instance) window.NewsReader.instance.open(id);
+      else document.getElementById("btn-news")?.click();
+    },
+    onError: err => toast((err && err.message) || String(err), true),
+  });
+  // Teclas/toques reales dentro de una terminal embebida (term.html) también son interacción humana.
+  window.addEventListener("message", e => {
+    const d = e.data;
+    if(e.origin !== location.origin || !d || d.source !== "comandos-term" || d.type !== "user-interaction") return;
+    if(![...openTerms.values()].some(o => o.frame && o.frame.contentWindow === e.source)) return;
+    N.instance?.presence?.onGesture({isTrusted: true});
+  });
+})();
+</script>

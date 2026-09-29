@@ -417,3 +417,101 @@ html.nr-open,html.nr-open body{overflow:hidden}
   .nr-with-terminal .nr-mobile-switch{display:flex}
   .nr-with-terminal .nr-title{display:none}
 }
+
+/* ===== N2 · Avisos: franja inferior por proyecto + aviso flotante de llegada =====
+   (dash/notifications.js). La franja vive bajo la terminal; el flotante se
+   apoya sobre ella, dentro del área de trabajo, y se ve aunque esté colapsada.
+   Monocromo + un acento por estado: atención, error, uso. */
+#notices{position:relative;z-index:6;min-width:0;flex:none;background:var(--panel);border-top:1px solid var(--line2);font-family:var(--sans);color:var(--text)}
+body.app #panes{grid-template-rows:44px minmax(0,1fr) auto}
+body.app #notices{grid-column:1;grid-row:3}
+@media (min-width:748px){
+  body.app.split #panes{grid-template-rows:44px minmax(0,1fr) auto;grid-template-areas:"panel split tabs" "panel split term" "panel split notices"}
+  body.app.split #notices{grid-area:notices}
+}
+#notices .nt-icon{width:15px;height:15px;flex:none}
+#notices button{font:inherit;color:inherit;cursor:pointer}
+#notices button:focus-visible{outline:2px solid var(--brand);outline-offset:2px}
+.nt-head{display:flex;align-items:center;gap:8px;min-height:40px;padding:3px 10px;min-width:0}
+.nt-toggle{display:inline-flex;align-items:center;gap:6px;background:none;border:0;padding:6px 4px;min-height:36px;font-size:12px;font-weight:600;flex:none}
+.nt-toggle>.nt-icon:last-child{transition:transform .15s;opacity:.7}
+.nt-strip.collapsed .nt-toggle>.nt-icon:last-child{transform:rotate(180deg)}
+.nt-count{min-width:18px;height:18px;padding:0 5px;border-radius:9px;background:var(--brand);color:var(--on-brand,#000);font:700 10px/18px var(--mono);text-align:center}
+.nt-meta{font:10.5px var(--mono);color:var(--dim);white-space:nowrap;flex:none}
+.nt-filters{display:flex;gap:4px;overflow-x:auto;min-width:0;flex:1;scrollbar-width:none}
+.nt-filters::-webkit-scrollbar{display:none}
+.nt-filters button{flex:none;min-height:30px;padding:3px 9px;border:1px solid var(--line);border-radius:99px;background:none;font-size:11px;color:var(--dim);white-space:nowrap}
+.nt-filters button.on{border-color:var(--brand);color:var(--text)}
+.nt-strip.collapsed .nt-meta{flex:1}
+.nt-read-all{flex:none;margin-left:auto;min-height:30px;padding:3px 10px;border:1px solid var(--line2);border-radius:8px;background:none;font-size:11px}
+.nt-read-all:disabled{opacity:.45;cursor:default}
+.nt-body{max-height:min(250px,40vh);display:flex;flex-direction:column;border-top:1px solid var(--line);min-height:0}
+.nt-status{padding:6px 12px;font-size:11px;color:var(--dim)}
+.nt-groups{flex:1;min-height:0;overflow:auto;display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:0 14px;padding:0 12px 6px;overscroll-behavior:contain}
+.nt-group{min-width:0}
+.nt-group-head{position:sticky;top:0;z-index:1;display:flex;align-items:center;gap:8px;background:var(--panel);padding:7px 0 5px;border-bottom:1px solid var(--line2)}
+.nt-group-head h3{margin:0;font-size:12px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.nt-group-meta{font:10px var(--mono);color:var(--dim);white-space:nowrap}
+.nt-group-meta em,.nt-row small em{font-style:normal;color:var(--waiting)}
+.nt-group-read{margin-left:auto;width:30px;height:30px;display:inline-flex;align-items:center;justify-content:center;border:0;background:none;color:var(--dim);border-radius:6px}
+.nt-group-read:hover{color:var(--text)}
+.nt-row{display:flex;align-items:center;gap:4px;border-bottom:1px solid var(--line);min-width:0}
+.nt-row.read{opacity:.62}
+.nt-row.pending{opacity:1}
+.nt-open{display:flex;align-items:center;gap:9px;flex:1;min-width:0;min-height:44px;padding:5px 2px;border:0;background:none;text-align:left}
+.nt-type{width:24px;height:24px;flex:none;display:inline-flex;align-items:center;justify-content:center;border-radius:6px;color:var(--dim);background:color-mix(in srgb,var(--text) 6%,transparent)}
+.cat-attention .nt-type{color:var(--waiting);background:color-mix(in srgb,var(--waiting) 14%,transparent)}
+.cat-error .nt-type{color:var(--err);background:color-mix(in srgb,var(--err) 14%,transparent)}
+.cat-usage .nt-type{color:var(--warn);background:color-mix(in srgb,var(--warn) 14%,transparent)}
+.nt-copy{display:flex;flex-direction:column;gap:2px;flex:1;min-width:0}
+.nt-copy strong{font-size:11.5px;font-weight:550;overflow-wrap:anywhere}
+.nt-copy small{font-size:10px;color:var(--dim);overflow-wrap:anywhere}
+.nt-open time{font:9.5px var(--mono);color:var(--faint);white-space:nowrap;flex:none}
+.nt-read{width:34px;height:34px;flex:none;display:inline-flex;align-items:center;justify-content:center;border:0;background:none;color:var(--faint);border-radius:6px}
+.nt-read:disabled{cursor:default}
+.nt-dot{display:block;width:8px;height:8px;border-radius:50%;background:var(--brand)}
+.nt-empty{display:flex;align-items:center;gap:10px;padding:14px 14px;color:var(--dim);font-size:11.5px}
+.nt-empty p{margin:0}
+.nt-gone{margin:8px 12px 2px;padding:9px 11px;border:1px solid var(--line2);border-left:3px solid var(--warn);border-radius:8px;font-size:11.5px}
+.nt-gone p{margin:4px 0;color:var(--dim);overflow-wrap:anywhere}
+.nt-gone small{display:block;color:var(--faint);margin-bottom:6px}
+.nt-gone button{min-height:32px;padding:3px 10px;border:1px solid var(--line2);border-radius:7px;background:none;font-size:11px}
+.nt-foot{padding:4px 12px;border-top:1px solid var(--line);font-size:10px;color:var(--faint);flex:none}
+/* Aviso flotante: uno a la vez, sobre la franja, dentro del área de trabajo. */
+.nt-float-slot{position:absolute;right:12px;bottom:calc(100% + 10px);width:min(360px,calc(100% - 24px));pointer-events:none;z-index:7}
+.nt-float{pointer-events:auto;display:flex;align-items:flex-start;gap:9px;padding:11px 12px;border:1px solid var(--line2);border-left:3px solid var(--brand);border-radius:10px;background:var(--panel2);box-shadow:var(--shadow,0 10px 30px #0008);animation:nt-float-in .18s ease-out;max-height:40vh;overflow:auto}
+.nt-float.cat-attention{border-left-color:var(--waiting)}
+.nt-float.cat-error{border-left-color:var(--err)}
+.nt-float.cat-usage{border-left-color:var(--warn)}
+.nt-float-open{display:flex;flex-direction:column;align-items:flex-start;gap:3px;flex:1;min-width:0;padding:0;border:0;background:none;text-align:left;line-height:1.35}
+.nt-float-origin{font-size:10px;color:var(--dim);overflow-wrap:anywhere}
+.nt-float-open strong{font-size:12.5px;font-weight:600;overflow-wrap:anywhere}
+.nt-float-open b{display:inline-flex;align-items:center;gap:5px;margin-top:3px;font-size:10.5px;font-weight:600;color:var(--brand)}
+.nt-float-open em{font-style:normal;font-size:10.5px;color:var(--warn);margin-top:3px}
+.nt-float-close{flex:none;width:34px;height:34px;margin:-6px -6px 0 0;display:inline-flex;align-items:center;justify-content:center;border:0;background:none;color:var(--dim);border-radius:7px}
+.nt-float-close:hover{color:var(--text)}
+@keyframes nt-float-in{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+@media (prefers-reduced-motion:reduce){.nt-float{animation:none}.nt-toggle>.nt-icon:last-child{transition:none}}
+/* Ajustes > Notificaciones: modo por tipo, volumen, silencio y preview. */
+.nt-settings{display:flex;flex-direction:column;gap:8px}
+.nt-set-line{display:flex;flex-wrap:wrap;align-items:center;gap:10px}
+.nt-set-mute{display:inline-flex;align-items:center;gap:6px;font-size:12px}
+.nt-set-vol{display:flex;align-items:center;gap:10px;font-size:12px}
+.nt-set-vol input{flex:1;max-width:260px}
+.nt-set-rows{display:flex;flex-direction:column;gap:4px}
+.nt-set-row{display:grid;grid-template-columns:minmax(0,1fr) auto auto;align-items:center;gap:8px;padding:3px 0;border-bottom:1px solid var(--line)}
+.nt-set-type{display:inline-flex;align-items:center;gap:7px;font-size:12px;min-width:0}
+.nt-set-type .nt-icon{width:14px;height:14px;color:var(--dim)}
+.nt-set-row select{min-height:32px;background:var(--panel2);color:var(--text);border:1px solid var(--line2);border-radius:7px;padding:2px 6px;font-size:12px}
+/* Celular: la franja desliza en horizontal, un proyecto por página. */
+@media (max-width:560px){
+  .nt-head{flex-wrap:wrap;padding:3px 8px;gap:4px 8px}
+  .nt-filters{order:3;flex-basis:100%}
+  .nt-body{max-height:min(270px,46vh)}
+  .nt-groups{display:flex;overflow-x:auto;overflow-y:hidden;scroll-snap-type:x mandatory;gap:10px;padding:0 8px 6px;overscroll-behavior-x:contain}
+  .nt-group{flex:0 0 calc(100% - 28px);scroll-snap-align:start;overflow-y:auto;max-height:100%}
+  .nt-float-slot{right:8px;width:calc(100% - 16px)}
+  .nt-read,.nt-group-read,.nt-filters button,.nt-read-all{min-height:40px;min-width:40px}
+  .nt-set-row{grid-template-columns:1fr auto;}
+  .nt-set-row .nt-set-type{grid-column:1/-1}
+}
