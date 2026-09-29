@@ -113,3 +113,39 @@ def test_bad_pagination_and_bad_event(server):
 def test_old_events_endpoint_still_serves_the_timeline(server):
     status, body = call(server, "GET", "/events")
     assert status == 200 and body[0]["project"] == "old"
+
+
+# ---- E1: /work-marks ------------------------------------------------------
+
+def test_work_marks_are_behind_the_token_gate(dash):
+    assert "/work-marks" in dash.Handler.API_GET
+
+
+def test_work_marks_round_trip_with_revisions(server):
+    status, body = call(server, "GET", "/work-marks")
+    assert status == 200 and body["marks"] == []
+    status, saved = call(server, "POST", "/work-marks",
+                         {"scope": "pane", "key": "pk1", "value": "frozen", "expectedRevision": 0})
+    assert status == 200 and saved["mark"]["mark"] == "frozen" and saved["mark"]["revision"] == 1
+    status, fav = call(server, "POST", "/work-marks",
+                       {"scope": "pane", "key": "pk1", "value": {"favorite": True}, "expectedRevision": 1})
+    assert status == 200 and fav["mark"] == {**fav["mark"], "mark": "frozen", "favorite": True}
+    status, conflict = call(server, "POST", "/work-marks",
+                            {"scope": "pane", "key": "pk1", "value": "none", "expectedRevision": 1})
+    assert status == 409 and conflict["current"]["revision"] == 2
+    assert call(server, "POST", "/work-marks",
+                {"scope": "tab", "key": "x", "value": "none", "expectedRevision": 0})[0] == 400
+    _, after = call(server, "GET", "/work-marks")
+    assert [(m["scope"], m["key"], m["mark"], m["favorite"]) for m in after["marks"]] == [
+        ("pane", "pk1", "frozen", True)]
+
+
+def test_work_marks_report_activity_without_assigning_a_mark(server):
+    call(server, "POST", "/work-marks", {"scope": "session", "key": "sess", "value": "resolved",
+                                         "expectedRevision": 0})
+    call(server, "POST", "/events/v2", hook("UserPromptSubmit", occurredAtMs=900), TOKEN)
+    call(server, "POST", "/events/v2", hook(), TOKEN)
+    _, body = call(server, "GET", "/work-marks")
+    assert body["activity"]["tmux:sess:%3"]["state"] == "completed"
+    # the confirmed prompt reopened Resuelto; finishing assigned nothing
+    assert [(m["key"], m["mark"]) for m in body["marks"]] == [("sess", "none")]

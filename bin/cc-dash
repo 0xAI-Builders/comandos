@@ -7843,15 +7843,49 @@ def events_v2_list(query):
     out = {"events": events, "nextAfter": events[-1]["sequence"] if events else after,
            "latest": event_store.latest_sequence(conn)}
     if (query.get("turns") or [""])[0] == "1":
-        latest = out["latest"]
-        recent = event_store.list_events(conn, max(0, latest - 2000), event_store.MAX_PAGE)
-        while recent and recent[-1]["sequence"] < latest:
-            more = event_store.list_events(conn, recent[-1]["sequence"], event_store.MAX_PAGE)
-            if not more:
-                break
-            recent.extend(more)
-        out["turns"] = turn_state.turns_from_events(recent)
+        out["turns"] = events_v2_turns(conn)
     return out
+
+
+def events_v2_turns(conn, window=2000):
+    """Estado de turno por pane a partir de los ultimos ``window`` eventos."""
+    latest = event_store.latest_sequence(conn)
+    recent, after = [], max(0, latest - window)
+    while True:
+        page = event_store.list_events(conn, after, event_store.MAX_PAGE)
+        if not page:
+            break
+        recent.extend(page)
+        after = page[-1]["sequence"]
+    return turn_state.turns_from_events(recent)
+
+
+import work_marks
+
+
+def work_marks_payload():
+    """Marcas E1 + mapa pane->paneKey (W1) + actividad observada (N1)."""
+    store = workspace_store()
+    current = store.current() or {"document": workspace_state.empty_document()}
+    panes = [{"paneKey": key, "session": b.get("session"), "paneId": b.get("paneId")}
+             for key, b in (current["document"].get("bindings") or {}).items() if isinstance(b, dict)]
+    turns = events_v2_turns(store.conn)
+    activity = {k: {"state": t.get("state"), "paneKey": t.get("paneKey"),
+                    "session": t.get("sessionKey"), "paneId": t.get("paneId")}
+                for k, t in turns.items()}
+    return {"marks": work_marks.list_marks(store.conn), "panes": panes, "activity": activity}
+
+
+def work_marks_write(data):
+    store = workspace_store()
+    try:
+        row = work_marks.set_mark(store.conn, data.get("scope"), data.get("key"),
+                                  data.get("value"), data.get("expectedRevision"))
+    except work_marks.Conflict as exc:
+        return 409, {"error": str(exc), "current": exc.current}
+    except (ValueError, TypeError) as exc:
+        return 400, {"error": str(exc) or "Marca inválida"}
+    return 200, {"mark": row}
 
 
 def events_v2_record(data):
@@ -8050,6 +8084,7 @@ class Handler(http.server.SimpleHTTPRequestHandler):
     API_GET = ("/session-config-history", "/pane-extensions", "/pomodoro", "/providers", "/optimization/plans", "/proxy", "/model/status", "/sovereignty", "/ui-log/summary", "/state", "/usage/state", "/usage/guard", "/usage/changes", "/usage/provider-compare", "/fs/dirs", "/models/latest", "/news/latest", "/notifs/count", "/usage/analytics", "/usage/interactions", "/usage/experiments", "/opencode/models", "/model-tiers", "/dedication", "/active-tab", "/session-profiles", "/extension-usage", "/session-brain", "/project-profiles", "/events", "/conf", "/prefs", "/ssh", "/tabs", "/workspace",
                "/tab-history", "/remote-state", "/remote-qr.png", "/snippets", "/tmux-mouse",
                "/webterm-token", "/operator", "/allocation/status")
+    API_GET += ("/work-marks",)  # E1; /events/v2 queda cubierto por /events
 
     def do_GET(self):
         host_values = self._header_values("Host")
@@ -8345,6 +8380,8 @@ class Handler(http.server.SimpleHTTPRequestHandler):
                     return self._bytes(200, "image/png", f.read())
             except Exception as e:
                 return self._json(500, {"error": str(e)})
+        if urllib.parse.urlsplit(self.path).path == "/work-marks":
+            return self._json(200, work_marks_payload())
         if urllib.parse.urlsplit(self.path).path == "/events/v2":
             try:
                 return self._json(200, events_v2_list(urllib.parse.parse_qs(urllib.parse.urlsplit(self.path).query)))
@@ -8412,6 +8449,9 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             except (ValueError, TypeError, KeyError) as exc:
                 return self._json(400, {"error": str(exc) or "Workspace inválido"})
             return self._json(200, workspace_payload(saved))
+
+        if self.path == "/work-marks":
+            return self._json(*work_marks_write(data))
 
         if self.path == "/events/v2":
             if not self._internal_producer():

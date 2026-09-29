@@ -1,0 +1,81 @@
+// Pure behaviour of the web work-marks indicator (no browser).
+const assert = require('node:assert/strict');
+const path = require('node:path');
+const wm = require(path.join(__dirname, '..', 'dash/work-marks.js'));
+
+// The human mark wins over activity; finishing a turn shows the neutral icon.
+assert.deepEqual(wm.display('frozen', 'working'), {icon: 'frozen', label: 'Congelado', animated: true, mark: 'frozen'});
+assert.equal(wm.display('none', 'working').icon, 'working');
+assert.equal(wm.display('none', 'working').label, 'Trabajando');
+for (const finished of ['completed', 'cancelled', 'failed', null, undefined]) {
+  const d = wm.display('none', finished);
+  assert.equal(d.icon, 'none', `finished=${finished} must stay neutral`);
+  assert.equal(d.animated, false);
+}
+assert.equal(wm.display('bogus', null).icon, 'none', 'unknown marks fall back to neutral');
+
+// Every state has an SVG with a fixed box and no emoji.
+const emoji = /[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}]/u;
+for (const name of [...wm.MARKS, 'working', 'favorite']) {
+  const svg = wm.iconSvg(name);
+  assert.match(svg, /^<svg[^>]* width="16" height="16" viewBox="0 0 24 24"/);
+  assert.match(svg, /aria-hidden="true"/);
+  assert.ok(!emoji.test(svg), `${name} icon must not use emoji`);
+}
+assert.notEqual(wm.iconSvg('resolved'), wm.iconSvg('frozen'), 'states have distinct shapes');
+
+// Rows resolve to the pane scope only when the W1 binding is unambiguous.
+const panes = [{paneKey: 'pk1', session: 's', paneId: '%1'}, {paneKey: 'pk2', session: 's', paneId: '%2'},
+  {paneKey: 'dupA', session: 't', paneId: '%9'}, {paneKey: 'dupB', session: 't', paneId: '%9'}];
+assert.deepEqual(wm.targetForRow('s|%2', panes), {scope: 'pane', key: 'pk2', session: 's', paneId: '%2'});
+assert.deepEqual(wm.targetForRow('s', panes), {scope: 'session', key: 's', session: 's', paneId: null});
+assert.equal(wm.targetForRow('t|%9', panes).scope, 'session', 'ambiguous pane ids never guess a paneKey');
+assert.equal(wm.targetForRow('', panes), null);
+
+// Activity: exact pane, then tmux id; a tab is working if any pane is.
+const activity = {'pane:pk1': {state: 'working', session: 's'}, 'tmux:s:%2': {state: 'completed', session: 's'}};
+assert.equal(wm.activityFor({scope: 'pane', key: 'pk1', session: 's', paneId: '%1'}, activity), 'working');
+assert.equal(wm.activityFor({scope: 'pane', key: 'pk2', session: 's', paneId: '%2'}, activity), 'completed');
+assert.equal(wm.activityFor({scope: 'session', key: 's'}, activity), 'working');
+assert.equal(wm.activityFor({scope: 'session', key: 'other'}, activity), null);
+
+// Menu: four radio marks + an independent favorite toggle per scope.
+const row = {mark: 'awaiting_reply', favorite: true};
+const pane = wm.menuItems('pane', row, false);
+assert.deepEqual(pane.map(i => [i.kind, i.value, i.checked]), [
+  ['mark', 'none', false], ['mark', 'resolved', false], ['mark', 'frozen', false],
+  ['mark', 'awaiting_reply', true], ['favorite', false, true]]);
+const session = wm.menuItems('session', row, false);
+assert.deepEqual(session.at(-1), {kind: 'favorite', value: true, label: 'Favorito', checked: false},
+  'a tab uses its existing session favorite, not the pane flag');
+
+// Keyboard navigation wraps.
+assert.equal(wm.nextIndex('ArrowDown', 4, 5), 0);
+assert.equal(wm.nextIndex('ArrowUp', 0, 5), 4);
+assert.equal(wm.nextIndex('End', 1, 5), 4);
+assert.equal(wm.nextIndex('Home', 3, 5), 0);
+assert.equal(wm.nextIndex('x', 2, 5), 2);
+
+(async () => {
+  // A stale revision adopts the server's current value instead of overwriting it.
+  const calls = [];
+  let reply = {status: 200, body: {marks: [{scope: 'pane', key: 'pk1', mark: 'frozen', favorite: false, revision: 3}],
+    panes, activity: {}}};
+  global.fetch = async (url, opt) => {
+    calls.push({url, body: opt && opt.body ? JSON.parse(opt.body) : null});
+    return {status: reply.status, json: async () => reply.body};
+  };
+  await wm.load();
+  reply = {status: 409, body: {error: 'Revisión desactualizada',
+    current: {scope: 'pane', key: 'pk1', mark: 'resolved', favorite: true, revision: 4}}};
+  await assert.rejects(wm.setMark('pane', 'pk1', 'none'));
+  assert.deepEqual(calls.at(-1).body, {scope: 'pane', key: 'pk1', value: 'none', expectedRevision: 3});
+  reply = {status: 200, body: {mark: {scope: 'pane', key: 'pk1', mark: 'none', favorite: true, revision: 5}}};
+  const saved = await wm.setMark('pane', 'pk1', 'none');
+  assert.equal(saved.revision, 5);
+  assert.equal(calls.at(-1).body.expectedRevision, 4, 'retry uses the adopted revision');
+  reply = {status: 200, body: {mark: {scope: 'session', key: 'new', mark: 'frozen', favorite: false, revision: 1}}};
+  await wm.setMark('session', 'new', 'frozen');
+  assert.equal(calls.at(-1).body.expectedRevision, 0, 'a new scope starts at revision 0');
+  console.log('work marks checks passed');
+})().catch(err => { console.error(err); process.exit(1); });

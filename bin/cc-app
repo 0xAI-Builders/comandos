@@ -99,6 +99,7 @@ import tmux_snapshot as layout_snapshot
 import agent_stop
 from pane_snapshot import PaneInspector
 from session_tabs import ordered_tab_keys
+import work_marks as work_mark_state
 TERM_HTML = os.path.join(CC_REPO, "dash", "term.html")
 # Familia unificada de iconos — los mismos SVG Lucide que usa el dashboard.
 _ICONS_DIR = os.path.join(CC_REPO, "dash", "icons")
@@ -1257,6 +1258,7 @@ def on_term_button(term, event):
     mi.set_submenu(sub)
     menu.append(mi)
     menu.append(Gtk.SeparatorMenuItem())
+    append_work_mark_menu(menu, cur_sess, pane_id)
     key = getattr(box, "_key", None)
     item("Renombrar pestana..." if ES else "Rename tab...", lambda: rename_tab(key), sensitive=key is not None)
     item("Cerrar pestana" if ES else "Close tab", lambda: close_tab(key), sensitive=key is not None)
@@ -1749,6 +1751,149 @@ def toggle_tab_favorite(key):
             except Exception:
                 GLib.idle_add(finish, None, True)
     threading.Thread(target=persist, daemon=True).start()
+
+
+# ---- E1: marcas de trabajo (las mismas que la web, via cc-dash /work-marks) ----
+WORK_MARKS = {"rows": {}, "panes": [], "fetching": False}
+_WORK_MARK_PIXBUFS = {}
+
+
+def work_mark_row(scope, key):
+    return WORK_MARKS["rows"].get((scope, key)) or {
+        "scope": scope, "key": key, "mark": "none", "favorite": False, "revision": 0}
+
+
+def _work_mark_pixbuf(name):
+    if name not in _WORK_MARK_PIXBUFS:
+        loader = GdkPixbuf.PixbufLoader.new_with_type("svg")
+        loader.write(work_mark_state.icon_svg(name, size=14).encode())
+        loader.close()
+        _WORK_MARK_PIXBUFS[name] = loader.get_pixbuf()
+    return _WORK_MARK_PIXBUFS[name]
+
+
+def paint_tab_mark(hb, key):
+    """Icono de la marca de sesion en la etiqueta; sin marca no dibuja nada."""
+    image = getattr(hb, "_work_mark", None)
+    if image is None:
+        return
+    mark = work_mark_row("session", key)["mark"]
+    if getattr(image, "_mark", None) == mark:
+        return
+    image._mark = mark
+    if mark == "none":
+        image.hide()
+        return
+    try:
+        image.set_from_pixbuf(_work_mark_pixbuf(mark))
+    except Exception:
+        image.hide()
+        return
+    name = work_mark_state.LABELS[mark][0 if ES else 1]
+    image.set_tooltip_text(("Marca de la pestaña: " if ES else "Tab mark: ") + name)
+    image.show()
+
+
+def _paint_all_tab_marks():
+    for key, box in tabs.items():
+        paint_tab_mark(nb.get_tab_label(box), key)
+    return False
+
+
+def apply_work_marks(payload):
+    payload = payload if isinstance(payload, dict) else {}
+    WORK_MARKS["rows"] = {(r.get("scope"), r.get("key")): r for r in payload.get("marks") or []
+                          if isinstance(r, dict)}
+    WORK_MARKS["panes"] = [p for p in payload.get("panes") or [] if isinstance(p, dict)]
+    return _paint_all_tab_marks()
+
+
+def adopt_work_mark(row):
+    if isinstance(row, dict) and row.get("scope") and row.get("key"):
+        WORK_MARKS["rows"][(row["scope"], row["key"])] = row
+    return _paint_all_tab_marks()
+
+
+def start_work_marks_fetch():
+    if WORK_MARKS["fetching"]:
+        return
+    WORK_MARKS["fetching"] = True
+
+    def run():
+        try:
+            with urllib.request.urlopen(BASE_URL + "/work-marks", timeout=3) as r:
+                payload = json.loads(r.read().decode())
+            GLib.idle_add(apply_work_marks, payload)
+        except Exception:
+            pass
+        finally:
+            WORK_MARKS["fetching"] = False
+    threading.Thread(target=run, daemon=True).start()
+
+
+def set_work_mark(scope, key, value):
+    """POST con la revision conocida; si otro cliente cambio la marca, se
+    adopta la actual (nunca se pisa) y se avisa."""
+    body = {"scope": scope, "key": key, "value": value,
+            "expectedRevision": work_mark_row(scope, key)["revision"]}
+    title = "Marcas" if ES else "Marks"
+
+    def run():
+        request = urllib.request.Request(BASE_URL + "/work-marks", data=json.dumps(body).encode(),
+                                         headers={"Content-Type": "application/json"}, method="POST")
+        try:
+            with urllib.request.urlopen(request, timeout=5) as response:
+                GLib.idle_add(adopt_work_mark, json.loads(response.read().decode()).get("mark"))
+        except urllib.error.HTTPError as exc:
+            try:
+                answer = json.loads(exc.read().decode())
+            except Exception:
+                answer = {}
+            if exc.code == 409 and isinstance(answer.get("current"), dict):
+                GLib.idle_add(adopt_work_mark, answer["current"])
+                message = ("Otro dispositivo cambió esta marca; se muestra la actual." if ES
+                           else "Another device changed this mark; showing the current one.")
+            else:
+                message = answer.get("error") or str(exc)
+            GLib.idle_add(notify_popup, title, message)
+        except Exception as exc:
+            GLib.idle_add(notify_popup, title, str(exc))
+    threading.Thread(target=run, daemon=True).start()
+
+
+def append_work_mark_menu(menu, session, pane_id):
+    """Submenu Marca: la pestana (sesion) y, si W1 lo identifica, este pane."""
+    sections = []
+    if session and session != "local":
+        sections.append(("session", session, "Esta pestaña", "This tab"))
+    pane_key = work_mark_state.pane_key_for(WORK_MARKS["panes"], session, pane_id) if pane_id else None
+    if pane_key:
+        sections.append(("pane", pane_key, "Este pane", "This pane"))
+    if not sections:
+        return
+    sub = Gtk.Menu()
+    for i, (scope, key, es, en) in enumerate(sections):
+        if i:
+            sub.append(Gtk.SeparatorMenuItem())
+        header = Gtk.MenuItem(label=es if ES else en)
+        header.set_sensitive(False)
+        sub.append(header)
+        row = work_mark_row(scope, key)
+        for mark in work_mark_state.MARKS:
+            item = Gtk.CheckMenuItem(label=work_mark_state.LABELS[mark][0 if ES else 1])
+            item.set_draw_as_radio(True)
+            item.set_active(row["mark"] == mark)
+            item.connect("activate", lambda _w, s=scope, k=key, m=mark: set_work_mark(s, k, m))
+            sub.append(item)
+        if scope == "pane":
+            fav = Gtk.CheckMenuItem(label=work_mark_state.LABELS["favorite"][0 if ES else 1])
+            fav.set_active(bool(row["favorite"]))
+            fav.connect("activate", lambda _w, k=key, v=not row["favorite"]:
+                        set_work_mark("pane", k, {"favorite": v}))
+            sub.append(fav)
+    root = Gtk.MenuItem(label="Marca" if ES else "Mark")
+    root.set_submenu(sub)
+    menu.append(root)
 
 
 def ordered_tab_labels(page_keys, labels):
@@ -2369,6 +2514,10 @@ def tab_label(text, key=None, closable=True):
     dot = Gtk.Label()
     dot.set_markup(f'<span size="8500" foreground="{DOT_IDLE}">●</span>')
     hb.pack_start(dot, False, False, 0)
+    work_mark = Gtk.Image()
+    work_mark.set_no_show_all(True)
+    hb.pack_start(work_mark, False, False, 0)
+    hb._work_mark = work_mark
     lbl = Gtk.Label(label=text)
     # EventBox permite recibir clicks (Label no los captura por default).
     # Doble-click = renombrar inline; sin bloquear el single-click que
@@ -2469,6 +2618,8 @@ def tab_label(text, key=None, closable=True):
         b.connect("clicked", lambda *_: close_tab(key))
         hb.pack_start(b, False, False, 0)
     hb.show_all()
+    if key:
+        paint_tab_mark(hb, key)
     return hb
 
 
@@ -5589,6 +5740,7 @@ win.show_all()
 hub._term.grab_focus()
 GLib.timeout_add(600, finish_startup_restore)
 GLib.timeout_add_seconds(5, lambda: (threading.Thread(target=snapshot_layouts, daemon=True).start(), True)[1])
+GLib.timeout_add_seconds(5, lambda: (start_work_marks_fetch(), True)[1])
 GLib.timeout_add_seconds(30, lambda: (threading.Thread(target=snapshot_tabs, daemon=True).start(), True)[1])
 GLib.timeout_add_seconds(8, lambda: (threading.Thread(target=snapshot_tabs, daemon=True).start(), False)[1])
 threading.Thread(target=poll_state_loop, daemon=True).start()

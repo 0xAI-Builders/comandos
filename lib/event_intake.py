@@ -24,6 +24,7 @@ import time
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import app_state  # noqa: E402
 import event_store  # noqa: E402
+import work_marks  # noqa: E402
 from tmux_snapshot import process_start_time  # noqa: E402
 
 HOOK_KINDS = {
@@ -148,7 +149,8 @@ def record(connection, payload):
 
 def after_append(connection, event):
     """Consumers that must change atomically with the event (E1 marks)."""
-    return None
+    if not event.get("duplicate"):
+        work_marks.apply_turn_event(connection, event)
 
 
 def import_legacy(connection, path):
