@@ -67,3 +67,14 @@ Artist: **karsiori**.
 - XP: blue Small Elixir, 15×30, seven frames. First block: teal Small Vial, 14×24, nine frames. 100 minutes: purple Large Jar, 18×34, 24 frames. Consistency: gold/purple Encased Potion, 14×25, eight frames. Level: gold Glowing Potion, 24×39, 12 frames.
 - The animated focus bottle accompanies the numeric timer; its decorative liquid does not indicate remaining time. The previous Quintino hourglass is not presented as a frame-animated asset.
 - Earlier Quintino provenance remains above as the record for the previous static-art proposal.
+
+
+## Cristales style
+
+Artist: **karsiori**.
+
+- Source and explicit CC0 license: https://karsiori.itch.io/free-pixel-art-gem-pack
+- License: https://creativecommons.org/publicdomain/zero/1.0/
+- Free archive upload id 9281968. Archive SHA-256, original archive member names, sizes and file hashes are in /home/someguy/codebase/0xJesus/ComandOS/.worktrees/comandos-v1-grill/dash/prototypes/assets/pixel-packs/manifest.json.
+- Six unchanged horizontal sheets from GEM 1, 2, 3, 4, 5 and 9: purple, turquoise, light green, blue, red and gold. The actual sheet widths establish 10, 10, 11, 11, 11 and 10 frames respectively. Frame windows are 18×30, 23×27, 28×28, 20×30, 19×22 and 27×26 pixels.
+- The prototype plays the artist's original images at 10 fps with fixed icon slots. No pixels were repainted, generated or resampled. The additional style does not replace the five earlier visual options.

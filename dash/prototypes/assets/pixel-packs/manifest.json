@@ -126,6 +126,42 @@
       "sourceFile": "Glowing Potion/GOLD/Glowing Potion - GOLD - Spritesheet.png",
       "sha256": "ad64b985faff0958834f1dd6189b7fe4c7f1267805781999197fbb5b66d344bf",
       "bytes": 4679
+    },
+    {
+      "file": "karsiori-gems/clock.png",
+      "sourceFile": "GEM 1/GEM 1 - PURPLE - Spritesheet.png",
+      "sha256": "412f387dc5dc869ae94d251e06d48f6c1b244de80738e89a0d8bacaae5c70a68",
+      "bytes": 3199
+    },
+    {
+      "file": "karsiori-gems/crystal.png",
+      "sourceFile": "GEM 2/GEM 2 - TURQUOISE - Spritesheet.png",
+      "sha256": "38c8e2b49e3c9babb190516423481170e1c7d0e4514ccc099feafc9a22854e7f",
+      "bytes": 4240
+    },
+    {
+      "file": "karsiori-gems/first.png",
+      "sourceFile": "GEM 3/GEM 3 - LIGHT GREEN - Spritesheet.png",
+      "sha256": "fd566c70ec2d6ccdc6c5308f073c24dbcc905c306bca83b5fcc200015d389441",
+      "bytes": 4731
+    },
+    {
+      "file": "karsiori-gems/hundred.png",
+      "sourceFile": "GEM 4/GEM 4 - BLUE - Spritesheet.png",
+      "sha256": "9de084b3d95d84077194db8319599a88f28420600c058fd2c9594ac5340af095",
+      "bytes": 3602
+    },
+    {
+      "file": "karsiori-gems/streak.png",
+      "sourceFile": "GEM 5/GEM 5 - RED - Spritesheet.png",
+      "sha256": "1ae1771f25c81228e4e4c95650012dea8d42a00ce516661eca2ecbdae81a5511",
+      "bytes": 2622
+    },
+    {
+      "file": "karsiori-gems/level.png",
+      "sourceFile": "GEM 9/GEM 9 - GOLD - Spritesheet.png",
+      "sha256": "241ccde9c43efccc8bc448d31c1df85a67e31374f53147f914c0b3dd5eb1e58f",
+      "bytes": 4257
     }
   ],
   "sources": [
@@ -134,6 +170,12 @@
       "url": "https://karsiori.itch.io/pixel-art-potion-pack-animated",
       "license": "CC0-1.0",
       "archiveSha256": "9b5d0f181c8dad22ad80864683806b6cdc2e155b920ed1ec73a26ec096b83e0c"
+    },
+    {
+      "artist": "karsiori",
+      "url": "https://karsiori.itch.io/free-pixel-art-gem-pack",
+      "license": "CC0-1.0",
+      "archiveSha256": "cb72c6994fb45128c400db2b5922f0a0827e6ae6f2737bcbbc132a48ddf05a41"
     }
   ]
 }
