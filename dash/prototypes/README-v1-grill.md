@@ -583,15 +583,15 @@ Research findings and evidence are recorded in /home/someguy/codebase/0xJesus/Co
 
 ## Notification detail grill · 2026-09-29
 
-Review URL: https://nodo-01.tail63a117.ts.net:8444/prototypes/prototype-v1-grill.html?round=notification-detail&variant=C
+Review URL: https://nodo-01.tail63a117.ts.net:8444/prototypes/prototype-v1-grill.html?round=notification-detail&variant=B
 
 The accepted bottom strip plus floating arrival notice remains the frame for all five new alternatives. The earlier `round=notifications&variant=C` remains available. This round compares ordering and handling inside the strip, not its placement:
 
 | Variant | Interaction | Tradeoff |
 |---|---|---|
 | A · Por tiempo | Compact chronological rows; open the source pane directly. | No separate overview of pending permissions. |
-| B · Por proyecto | Project columns on desktop, stacked groups on mobile. | More scanning across projects. |
-| C · Primero tu respuesta | Pending permissions separate from other activity. | Recommended for review, not accepted yet. Priority is deterministic from event state. |
+| B · Por proyecto · chosen | Project columns on desktop, stacked groups on mobile. | Selected by Jesús: "por proyecto me gusta". |
+| C · Primero tu respuesta | Pending permissions separate from other activity. | Earlier recommendation, not selected. Priority is deterministic from event state. |
 | D · Vista previa | Select an event for inline detail, then open its pane. | Adds a step before navigation; mobile provides a return-to-list action. |
 | E · Uno a uno | One large event with previous/next controls. | Easier to inspect one event, less overall visibility. |
 
@@ -599,4 +599,29 @@ All variants share the same fixture, unread counts, pending permissions, filters
 
 Mobbin was recovered through the existing `cc-extensions serve mobbin` shared-auth transport. Three real searches returned eight downloaded original images, all inspected. Relevance and rejected results are recorded in /home/someguy/codebase/0xJesus/ComandOS/.worktrees/comandos-v1-grill/design/references.md. The built-in MCP connection is not claimed to have recovered. No additional audit agents or local browsers were started.
 
-Validation at this point: all three nonempty inline scripts pass Node syntax checking; the Tailscale review URL returns HTTP 200 and includes the new round. Remote browser verification is pending: the Mac broker reported both workers occupied on three attempts. No local browser fallback was used. This is not a claim of verified responsive behavior. Human verdict remains pending.
+Initial validation before the user verdict: all three nonempty inline scripts pass Node syntax checking; the Tailscale review URL returns HTTP 200 and includes the new round. Remote browser verification is pending: the Mac broker reported both workers occupied on three attempts. No local browser fallback was used. This is not a claim of verified responsive behavior. Human verdict remains pending.
+
+
+## Project grouping accepted; next round inside each project · 2026-09-29
+
+Jesús selected B, Por proyecto: "por proyecto me gusta". Preserve the accepted lower notification strip with floating arrivals, now grouped by project. This decision does not approve the separate C priority layout, a default sub-grouping by pane, or Telegram routing. The notification-detail round now defaults to B and labels it chosen.
+
+New review URL: https://nodo-01.tail63a117.ts.net:8444/prototypes/prototype-v1-grill.html?round=notification-projects&variant=B
+
+The next frontier is how to present several events within each project. Five alternatives preserve project grouping:
+
+- A: all event rows, each opening its source pane.
+- B: collapsible stacks per pane with latest event, unread count and an independent pending-permission count. Recommended for review, not yet selected.
+- C: pane tabs inside each project, one pane history visible at a time.
+- D: each event includes its description and an explicit open-pane action.
+- E: independent event-type filters inside each project.
+
+The fixture has nine events across three projects and four panes. A review control adds six events to the same pane. Individual events remain in memory when groups collapse; reading events does not resolve requests. The permission example in the UI pane now uses its own fixture command instead of the migration fixture command. All actions remain simulated; no production session or Telegram message is touched.
+
+The remote Mac browser became available. Checks covered 1440×900, 820×1180, 390×844, 667×375 and 320×568. Each of the five variants rendered the three project groups without horizontal document/group overflow. An overlap between the comparison picker and the app footer was reproduced and fixed. Short screens scroll the workspace and strip together so their content does not overlap. Desktop and mobile screenshots were inspected. Syntax checks passed for all three scripts, and the remote browser console reported no errors.
+
+Interaction checks: six notices preserved the current pane, draft, caret and input focus; expanding a pane revealed its history; marking all read left both pending permissions active; changing a project's type filter did not filter another project; pane tabs changed the displayed history; opening a Lola notice selected its exact pane and remembered the previous pane; a closed pane retained its notice; an offline open did not navigate; loading, empty, error and offline states rendered their expected feedback. The prior notification-detail route was checked and defaults to the selected B.
+
+Screenshots were generated on the Mac mini at /tmp/comandos-notification-projects-mobile-20260929.png and /tmp/comandos-notification-projects-desktop-20260929.png, then copied into /home/someguy/codebase/0xJesus/ComandOS/.worktrees/comandos-v1-grill/design/shots/notification-projects. The browser page and temporary port forward were released afterward. These checks establish the prototype behavior at the listed dimensions, not production notification delivery or every possible device.
+
+Next verdict pending: which representation inside each project is easiest to operate. The separate Telegram delivery-policy question remains unanswered.
