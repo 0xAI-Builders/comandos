@@ -56,15 +56,26 @@ def _kind(title):
     return "noticia"
 
 
-def _mk(source, title, url, at):
+def _mk(source, title, url, at, published=None):
+    """`at` keeps its historical meaning (sort key, may be discovery time);
+    `publishedAt` is set only when the source API states it."""
     title = (title or "").strip()
     if not title or not url:
         return None
-    return {"source": source, "kind": _kind(title), "title": title[:180],
+    item = {"source": source, "kind": _kind(title), "title": title[:180],
             "url": url, "at": int(at or time.time())}
+    if published:
+        item["publishedAt"] = int(published)
+    return item
 
 
-def fetch_searxng(now):
+def _fail(errors, source, exc):
+    # A failed request is not "no news": callers that pass `errors` see it.
+    if errors is not None:
+        errors.append({"source": source, "error": str(exc)[:200] or type(exc).__name__})
+
+
+def fetch_searxng(now, errors=None):
     out = []
     for q in ('"claude code" skill', '"claude" mcp server',
               "model context protocol server nuevo"):
@@ -76,12 +87,13 @@ def fetch_searxng(now):
                 it = _mk("searxng", r.get("title"), r.get("url"), now)
                 if it:
                     out.append(it)
-        except Exception:
+        except Exception as exc:
+            _fail(errors, "searxng", exc)
             continue
     return out
 
 
-def fetch_hn(now):
+def fetch_hn(now, errors=None):
     out = []
     for q in ('"claude code" skill', '"claude" skills', 'mcp server'):
         try:
@@ -94,15 +106,17 @@ def fetch_hn(now):
                 if not re.search(r"claude|anthropic|\bmcp\b|model context", title, re.I):
                     continue
                 url = h.get("url") or f"https://news.ycombinator.com/item?id={h.get('objectID')}"
-                it = _mk("hackernews", title, url, h.get("created_at_i"))
+                it = _mk("hackernews", title, url, h.get("created_at_i"),
+                         published=h.get("created_at_i"))
                 if it:
                     out.append(it)
-        except Exception:
+        except Exception as exc:
+            _fail(errors, "hackernews", exc)
             continue
     return out
 
 
-def fetch_reddit(now):
+def fetch_reddit(now, errors=None):
     out = []
     for sub in ("ClaudeAI", "ClaudeCode", "mcp"):
         try:
@@ -115,15 +129,16 @@ def fetch_reddit(now):
                     continue
                 it = _mk(f"r/{sub}", title,
                          "https://reddit.com" + (p.get("permalink") or ""),
-                         p.get("created_utc"))
+                         p.get("created_utc"), published=p.get("created_utc"))
                 if it:
                     out.append(it)
-        except Exception:
+        except Exception as exc:
+            _fail(errors, "reddit", exc)
             continue
     return out
 
 
-def fetch_github(now):
+def fetch_github(now, errors=None):
     """Commits recientes de los repos oficiales: skills de Anthropic y
     servers del Model Context Protocol. API pública sin auth (60 req/h)."""
     out = []
@@ -140,16 +155,18 @@ def fetch_github(now):
                     at = int(datetime.fromisoformat(when.replace("Z", "+00:00")).timestamp())
                 except Exception:
                     at = now
-                it = _mk(f"github/{repo.split('/')[0]}", msg, c.get("html_url"), at)
+                it = _mk(f"github/{repo.split('/')[0]}", msg, c.get("html_url"), at,
+                         published=at if at != now else None)
                 if it:
                     it["kind"] = kind
                     out.append(it)
-        except Exception:
+        except Exception as exc:
+            _fail(errors, "github", exc)
             continue
     return out
 
 
-def fetch_devpost(now):
+def fetch_devpost(now, errors=None):
     """Hackathones ONLINE abiertos — port de LifeOS radar scrapeDevpost
     (1 pagina basta para novedades)."""
     out = []
@@ -171,12 +188,12 @@ def fetch_devpost(now):
                               "participants": h.get("registrations_count"),
                               "deadline": h.get("submission_period_dates")}
                 out.append(it)
-    except Exception:
-        pass
+    except Exception as exc:
+        _fail(errors, "devpost", exc)
     return out
 
 
-def fetch_superteam(now):
+def fetch_superteam(now, errors=None):
     """Bounties de Superteam Earn — port del index del Radar (sin el fetch
     de detalle por slug: para NOTICIA basta el listado)."""
     out = []
@@ -195,12 +212,12 @@ def fetch_superteam(now):
                 it["kind"] = "bounty"
                 it["meta"] = {"prize": prize, "deadline": it0.get("deadline")}
                 out.append(it)
-    except Exception:
-        pass
+    except Exception as exc:
+        _fail(errors, "superteam", exc)
     return out
 
 
-def fetch_dorahacks(now):
+def fetch_dorahacks(now, errors=None):
     out = []
     try:
         data = _get_json("https://dorahacks.io/api/hackathon/?page=1", timeout=15, browser=True)
@@ -217,9 +234,30 @@ def fetch_dorahacks(now):
                 it["meta"] = {"prize": h.get("bounty_prize") or h.get("prize_pool"),
                               "deadline": end}
                 out.append(it)
-    except Exception:
-        pass
+    except Exception as exc:
+        _fail(errors, "dorahacks", exc)
     return out
+
+
+FETCHERS = (fetch_searxng, fetch_hn, fetch_reddit, fetch_github,
+            fetch_devpost, fetch_superteam, fetch_dorahacks)
+
+
+def collect(now=None):
+    """All sources for an edition, with per-source failures kept apart from
+    empty answers. Never raises."""
+    ts = int(now if now is not None else time.time())
+    items, failures = [], []
+    for fn in FETCHERS:
+        try:
+            items.extend(fn(ts, errors=failures))
+        except Exception as exc:  # a fetcher bug must not stop the others
+            _fail(failures, fn.__name__.replace("fetch_", ""), exc)
+    # One entry per source even when several of its queries failed.
+    unique = {}
+    for f in failures:
+        unique.setdefault(f["source"], f)
+    return {"items": items, "failures": list(unique.values())}
 
 
 def _history_append(hooks_dir, items, ts):
