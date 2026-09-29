@@ -662,3 +662,65 @@ Separate three roles for discussion:
 - Discovery: new models, MCPs, skills, external news and optional advice. Recommendation: available on demand without automatic sound, popups, urgent badge or reminders created merely by saving an item. Alternatives are an explicit scheduled digest or keeping a silent section in the same center. A separate destination adds navigation and may reduce discovery.
 
 First pending decision: where discovery and recommendations should live. Only after that decision, settle completion alerts, verified human requests, critical technical alerts, focus and cross-device delivery. No timers, escalation thresholds or permanent channel defaults are approved by this entry. Telegram remains a delivery channel to evaluate against the same policy, rather than an independent reason to interrupt.
+
+
+## News summaries and reliable turn events · 2026-09-29
+
+Jesús explicitly wants to retain and strengthen notifications about AI news, models, MCPs and skills, add comfortable rendered-Markdown summaries, and include bounties. This supersedes the preceding recommendation to make discovery available only on demand without automatic alerts. Delivery cadence remains undecided; existing alerts must not be removed as an assumed preference. He also asks to consult his deep-research skill and questions the reliability of turn notifications.
+
+### Verified collection and research capabilities
+
+The collector at /home/someguy/codebase/0xJesus/ComandOS/lib/news_watch.py stores source, category, title, URL and timestamp, with extra opportunity metadata where available. It fetches search results, HN, Reddit, GitHub commits and opportunity listings. It does not fetch and synthesize article bodies into a sourced Markdown report. Several sources assign discovery time to the item timestamp, so that value must not be presented as a verified publication date. URL deduplication does not establish that multiple articles about the same announcement are distinct stories. Source failures can return empty lists without a per-source health result.
+
+The existing renderer in /home/someguy/codebase/0xJesus/ComandOS/dash/index.html, function `mdHtml`, supports response previews and strips Markdown link destinations. A news reader needs tested, safe source links as well as readable Markdown; the existing preview renderer alone does not meet that requirement.
+
+The consulted skill is /home/someguy/.claude/skills/synced/f2f85f47-6328-47ad-affe-4d661dbc2d5f_591de498-3462-4235-8db5-843cc3293a43/deep-research/SKILL.md. It specifies coordinated research followed by a narrative report. It is an instruction workflow, not an installed background news service. No research-agent run was started during this inspection.
+
+A bounded read-only call to `moneyhacktracker.scan_hackathons` used the three JSON sources with `headless=false`, deadline sorting and a four-item limit. It returned four Devpost records. This verifies a response from the scanner, not successful coverage of every requested platform, eligibility, prize value or open status for each opportunity. No browser runtime was launched. The displayed participant counts must not be converted into a claimed probability of winning.
+
+### Proposed reading experience, pending review
+
+- Retain the accepted bottom strip and incoming floating notices. A news notice opens its article in CommandOS with one action. It has its own news category rather than pretending a harness is waiting for human input. Group execution events by project; general industry news need not be assigned to an arbitrary project.
+- Offer a short summary first and a full Markdown reading view on demand. Each story identifies what changed, supported practical implications, publication date when known, last verification and clickable sources. Distinguish an announced model from one available in the user's account. Never infer capability or price from a model identifier alone.
+- Keep the same content, filters and actions on desktop and remote/mobile. Use a comfortable reading column, adjustable text size, scrollable tables/code where needed, previous/next story and a direct return to the preceding terminal. Preserve reading position across devices. Saving a story and requesting a reminder should be separate actions.
+- Group repeated coverage under one story while retaining its sources and meaningful updates. Cache completed summaries so opening the reader does not wait for research. Show stale, partial or failed updates honestly while keeping the last readable edition available.
+- Use the deep-research workflow for richer reports and explicit deeper investigation. Routine collection and summary generation need a bounded queue, concurrency limits and a visible cost/time budget. Reading an existing summary must not launch a new research job. Exact cadence and research budgets are not selected.
+- Opportunity entries should distinguish bounties from hackathons and expose sourced reward, deadline with timezone where known, eligibility, expected deliverable and original listing. Unknown fields remain unknown; expired opportunities leave the open-opportunity view. Following a topic and alerting on a deadline are proposed explicit controls, not newly enabled reminders.
+
+### Deterministic turn processing: evidence and required contract
+
+Codex registrations in /home/someguy/.codex/hooks.json point `UserPromptSubmit`, `PermissionRequest` and `Stop` to /home/someguy/codebase/0xJesus/ComandOS/adapters/codex-hooks.sh. A legacy notification adapter is also configured in /home/someguy/.codex/config.toml. Registration alone does not prove that the running harness emits each hook.
+
+The Codex lifecycle adapter forwards status and text but drops payload turn/session/request identities. Its `recent_codex_done` filter uses the current pane state and a 15-second window, not a turn identifier. The historical event sink and generic waiting classification limitations are documented in the preceding audit. These are verified design gaps; no particular missed real notification was reproduced in this inspection.
+
+Proposal: preserve harness identity, session, pane generation, turn and request identity whenever the source provides them; add a persistent local event identity and receipt sequence. Source identities and locally assigned correlation must remain distinguishable. Store events before delivery, process retries idempotently, and prevent late events from overwriting a newer turn. Track started, awaiting input, completed, cancelled and failed separately where supported. A turn completion does not mark a session or pane Resuelto. Permission actions require a still-current request, and ordinary reading must not consume it.
+
+When a harness lacks a confirmed event or correlation, show an unknown or inferred state with its evidence rather than claiming an exact permission or completion. Pane closure, process death and lost connectivity require reconciliation; terminal silence is not proof of turn completion. The implementation owner must verify capabilities against each installed harness and test duplicate events, reordered events, two rapid turns, simultaneous panes in one project, cancellation, pending input, restart and pane reuse. No universal guarantee follows from the present hooks or prototype.
+
+The pending grill question asks whether notifications should arrive as grouped summaries plus followed topics, one notice per new item, or a daily summary. Recommendation: grouped summaries with individual notices for explicitly followed topics, while the reader always offers the latest collected content. No timing, exception list or delivery-channel change is approved yet. This entry records product direction and audit findings only; production code, services, settings and the visual prototype are unchanged.
+
+## News reader visual grill · 2026-09-29
+
+Jesús asks to see the proposal through grill-design. The new round compares five reading structures in the existing prototype shell. The notification cadence question remains open. All variants share five clearly fictional stories, covering models, MCPs, skills, bounties and AI research. No announcement, source document, model, bounty reward or deadline in this fixture is presented as verified current news.
+
+Review URL: https://nodo-01.tail63a117.ts.net:8444/prototypes/prototype-v1-grill.html?round=news-reader&variant=A
+
+| Variant | Desktop | Mobile | Tradeoff |
+|---|---|---|---|
+| A, Lista + lector | Story list beside the full article. | List and article alternate with a back control. | Recommended starting point for comfortable reading; the terminal is one action away. |
+| B, Edición continua | One edition with an index, summaries and expandable articles. | The same edition scrolls vertically. | Easy to browse as a publication; revisiting a particular article can require more scrolling. |
+| C, Junto a la terminal | Terminal and reader share the workspace. | Reader occupies the workspace; closing returns to the preserved draft. | Keeps work visible on desktop but reduces the reading width. |
+| D, Temas desplegables | Topic groups with expandable stories. | The same groups stack vertically. | Category scanning is direct; full articles require expansion. |
+| E, Una por una | One article with progress and previous/next controls. | The same sequence and navigation. | Concentrates on one story; less overview of the edition. |
+
+The existing sidebar is embedded against fixture APIs. Project tabs, terminal return, bottom notifications and an optional simulated floating arrival remain available. Reader controls save a story, follow a topic, filter, change text size, show sample sources and open a prepared deeper explanation. All mutations are in memory. Saving does not create a reminder. No real research, notification, permission decision, installation or model call is performed. Reading position survives local rerenders; cross-device synchronization and persistence across reloads are not implemented.
+
+Mobbin research used two searches and six downloaded images, all inspected. Findings and adoption decisions are recorded in /home/someguy/codebase/0xJesus/ComandOS/.worktrees/comandos-v1-grill/design/references.md. The full HTML remains at /home/someguy/codebase/0xJesus/ComandOS/.worktrees/comandos-v1-grill/dash/prototypes/prototype-v1-grill.html. Screenshots are in /home/someguy/codebase/0xJesus/ComandOS/.worktrees/comandos-v1-grill/design/shots/news-reader.
+
+Remote Chrome checks covered all five variants at 1440×1000, 820×1180, 390×844, 320×568 and 667×375. There was no horizontal document overflow. Initial checks found the picker overlapping the app on short screens; it now enters document flow at heights up to 650 px, and the repeated short-screen checks show no overlap. The mobile edition introduction was shortened after inspecting its screenshot. Topic groups begin collapsed to make the category structure visible. Desktop and mobile screenshots were captured for every variant and inspected.
+
+Eighteen checks of the fixture passed for arrival preserving draft/focus/selection, save preserving reading position, save/follow state, saved filtering, font size, expanded research, terminal return, Markdown tables/lists/quotes/code, loading/offline/error/empty states, bounty metadata, topic expansion, next-story navigation and runtime errors. Four additional mobile checks passed for opening the list, opening an article, showing the sidebar and returning from it. The browser console reported no errors or warnings in the checked final view. These checks establish prototype behavior, not production news collection or harness notification reliability.
+
+The Mac browser initially had an expired session, and screenshot calls after variant switches stalled. Those waits were cancelled; navigating directly to each variant allowed all screenshots to complete. No local browser was started. No visual winner or notification frequency has been selected. The next verdict is which reading structure, or combination of parts, feels easiest to use.
+
+Final checks: all three inline scripts pass Node syntax checking and the Tailscale review URL returns HTTP 200 with the new reader. The visual proof at /home/someguy/codebase/0xJesus/ComandOS/.worktrees/comandos-v1-grill/design/proof.html was opened in remote Chrome; all 16 images loaded, including the 10 reader captures, without horizontal overflow. The prior project-notification round still renders without recorded fixture errors. The owned browser page, temporary proof server and both temporary Mac port forwards were closed after verification. The persistent Tailscale prototype service remains available.
