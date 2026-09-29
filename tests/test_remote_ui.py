@@ -994,6 +994,7 @@ def test_view_refresh_never_reveals_tabs_but_explicit_selection_does():
     show = extract_js_function(HTML, "showView")
     result = run_node_json(f"""
 let activeTerm='prod', activeView='panel', activeTermTs=0, reveals=0, renders=0;
+const window={{}};  // no WorkspaceDock loaded: showView falls back to the single tab
 const openTerms=new Map([['prod',{{frame:null}}]]);
 const termInteraction=new Map([['prod',{{mouse:'on'}}]]);
 const S={{sel:'prod',list:[]}};
