@@ -14,7 +14,15 @@ Las métricas distinguen configuración de uso observado. No se muestran estimac
 
 Las [referencias](references.md) y la [prueba visual](proof.html) registran el alcance de la revisión.
 
-## Canales de notificación
+## Barra lateral en revisión
+
+La ronda `sidebar` compara cinco estructuras dentro del mismo marco: árbol de proyectos, sesiones compactas, riel de proyectos, favoritos con búsqueda y lista con inspector. A es la recomendación inicial para comparar; ninguna variante tiene aprobación. La pregunta es cómo ubicar y retomar un pane sin confundir proyecto, sesión y terminal.
+
+La barra usa fondo `#131720`, texto secundario `#AAB1C0`, selección `#302C42` y acento `#AD9CFF`, con las fuentes del sistema ya disponibles. No se descargan tipografías ni assets. La selección tiene fondo y borde, además del estado accesible. Los favoritos y algunos estados usan animaciones en loop; respetan movimiento reducido y se pausan al ocultar la página.
+
+En escritorio la barra se puede plegar y ajustar de 250 a 440 px. Hasta 700 px de ancho del marco, navegación y terminal alternan dentro del área de trabajo. El selector A–E pertenece al laboratorio, queda fuera de la app y pasa al flujo del documento en pantallas bajas. El alcance, las propuestas y las comprobaciones están en /home/someguy/codebase/0xJesus/ComandOS/.worktrees/comandos-v1-grill/design/sidebar-grill.md.
+
+## Canales de notificación vigentes
 
 Telegram queda excluido por completo del diseño de CommandOS, incluidos ajustes, envíos y comandos del bot. La decisión y el alcance de la retirada están en /home/someguy/codebase/0xJesus/ComandOS/.worktrees/comandos-v1-grill/dash/prototypes/README-v1-grill.md, apartado "Confirmed: remove Telegram from CommandOS entirely". La retirada de la integración existente corresponde a la implementación posterior al grilling.
 

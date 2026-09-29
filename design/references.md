@@ -210,3 +210,26 @@ Veredicto del 2026-09-29: Jesús aprobó el mockup corregido, incluida la navega
 ### Aviso breve en Android con preview
 
 El usuario pide un aviso breve y una preview. Se agrega una simulación de contenido expandible sobre la ronda de notificaciones existente, conservando la agrupación por proyecto. No se hace una nueva búsqueda de Mobbin ni se atribuye a sus capturas una apariencia nativa de Android. La presentación del sistema es aproximada; las capacidades y límites de Web Push proceden de las fuentes oficiales ya verificadas en /home/someguy/codebase/0xJesus/ComandOS/.worktrees/comandos-v1-grill/design/mobile-push-research.md. La propuesta concreta y sus pruebas están en /home/someguy/codebase/0xJesus/ComandOS/.worktrees/comandos-v1-grill/design/android-push-preview.md.
+
+## Barra lateral izquierda · 29 de septiembre de 2026
+
+La pregunta es cómo encontrar y retomar proyectos, sesiones y panes. Se mantienen el marco del producto, los mismos datos de ejemplo y los controles en escritorio y móvil. Las cinco estructuras dentro de la app responden al pedido de grill-design; sustituyen propuestas visuales separadas para que Jesús pueda probarlas en contexto. No se agrega branding, mascota, biblioteca ni tipografía.
+
+Se consultó MCP Mobbin mediante /home/someguy/.local/bin/cc-extensions. El primer cliente no pudo importar el SDK de MCP y se detuvo antes de consultar el servicio. Se recuperó usando el runtime ya instalado en /home/someguy/.local/share/comandos/extensions-venv/bin/python. Se pausó el diseño dependiente hasta obtener resultados reales; no se sustituyó Mobbin por capturas inventadas ni búsqueda en el navegador.
+
+Se ejecutaron dos búsquedas `search_screens` en modo standard, con tres resultados cada una: web para barras de proyectos con jerarquía, favoritos y búsqueda; iOS para navegación de proyectos y recientes. Se descargaron e inspeccionaron las seis imágenes originales. Las referencias móviles aportan patrones de navegación, no una afirmación de comportamiento nativo de Android.
+
+| Pantalla | Observación en la imagen | Uso en la propuesta |
+| --- | --- | --- |
+| [Shopify · editor](https://mobbin.com/screens/012c4dd5-9848-48f4-aa91-83515555ee60) | Explorador jerárquico, grupos plegables y riel estrecho de iconos. | Parcial para A y C. En ComandOS las entidades son proyecto, sesión y pane; no archivos de una tienda. |
+| [Dropbox Dash](https://mobbin.com/screens/e049b7be-84e1-41bb-bccb-3e83eae2b21d) | Carpetas indentadas junto al documento y fila seleccionada visible. | Parcial para la pertenencia y la selección única. No se importan sus acciones de documentos. |
+| [v0 · web](https://mobbin.com/screens/cd2fab36-5aa9-4ea9-97cb-e4fc0d7bb08b) | Conversación y explorador separados del área de edición. | Parcial para separar navegación, contexto y chat. Se descartan tres columnas permanentes por su costo de ancho. |
+| [v0 · iOS](https://mobbin.com/screens/e9617000-59b8-4777-802a-1b34fcb3bc25) | Menú que separa Website, Chat y Project y contiene una acción de favorito. | Referencia parcial del alcance de las acciones. La captura no demuestra una barra de proyectos. |
+| [Perplexity · Projects](https://mobbin.com/screens/6ebe52a4-df58-438d-aa38-f3a8ac54da75) | Proyectos fijados, búsqueda y acciones por fila. | Favoritos y búsqueda en D; filas táctiles. No se copian emojis ni assets. |
+| [Lifesum · Favorites](https://mobbin.com/screens/ff1fa58b-09db-4b96-9708-6ca980be542d) | Favoritos de recetas, categorías y ordenación. | Descartada. No aporta una jerarquía útil para sesiones de terminal. |
+
+La adaptación a sesiones, el inspector del pane, los recientes basados en selección explícita y la conservación del borrador son hipótesis propias de ComandOS. Las referencias no prueban esas capacidades. A es una recomendación para evaluar y no un veredicto del usuario.
+
+Inventario de fuentes: /home/someguy/codebase/0xJesus/ComandOS/.worktrees/comandos-v1-grill/design/shots/mobbin-sidebar/results.json. Imágenes originales: /home/someguy/codebase/0xJesus/ComandOS/.worktrees/comandos-v1-grill/design/shots/mobbin-sidebar. Se conservan como evidencia de investigación, no como assets de la interfaz.
+
+Capturas del mockup: /home/someguy/codebase/0xJesus/ComandOS/.worktrees/comandos-v1-grill/design/shots/sidebar. Se generaron con Chrome remoto en la Mac mini y se transfirieron explícitamente. Alcance y pruebas: /home/someguy/codebase/0xJesus/ComandOS/.worktrees/comandos-v1-grill/design/sidebar-grill.md. Ruta de revisión: https://nodo-01.tail63a117.ts.net:8444/prototypes/prototype-v1-grill.html?round=sidebar&variant=A.

@@ -807,3 +807,9 @@ Jesús confirms Android. Validate mobile push on his actual Android phone with a
 ## Brief notice and preview requested · 2026-09-29
 
 Jesús replies "Breve hermano y preview". Preserve a brief notification and provide a concrete preview for review. The existing notification mockup now proposes a collapsed Android-style notice with an expandable excerpt. The full proposal, limitations, review route and verification are recorded in /home/someguy/codebase/0xJesus/ComandOS/.worktrees/comandos-v1-grill/design/android-push-preview.md. This is a fixture refinement, not native push implementation or approval of every expansion detail.
+
+## Continuing the grill: left sidebar · 2026-09-29
+
+After questioning where the Android preview appears, Jesús asks to continue. Keep the brief preview direction and project-based notification grouping. The Android image represents the phone's system notification area or lock screen; the dialog inside the prototype is only a review frame. Delivery, permissions and physical-phone acceptance remain unimplemented.
+
+The next round follows the remaining-section inventory and compares the left sidebar with five alternatives at `round=sidebar`. No sidebar variant is approved yet. Mobbin research, prototype interactions, limitations and remote-browser verification are recorded in /home/someguy/codebase/0xJesus/ComandOS/.worktrees/comandos-v1-grill/design/sidebar-grill.md. This round chooses navigation structure; it does not finish all sidebar tools or implement the release.
