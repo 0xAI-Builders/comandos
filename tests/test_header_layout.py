@@ -51,6 +51,7 @@ def test_ssh_functions_untouched_and_styles_cover_new_buttons():
     for fn in ("async function loadSsh(", "async function openSshTab(", "async function connectHost(", "async function setupSshKey(", "function toggleSshManager("):
         assert fn in HTML, fn
     assert "--hdr-key" in CSS and "#btn-servers" in CSS
+    assert "max-height:calc(100dvh - 16px);overflow:auto" in CSS[CSS.index("#menu-panel{"):]
     for bid in ("btn-servers", "btn-terminal", "btn-newsess", "btn-menu"):
         assert f'html[data-btn-style="consola"] header #{bid}{{--face:' in CSS, bid
 
@@ -135,6 +136,18 @@ mb.fire('click');
 for(const f of docL.keydown) f({key:'Escape'});
 assert.equal(menu.classList.contains('hidden'), true);
 assert.equal(mb.focused, true);
+// lo que abre otra vista cierra el menú (Ajustes, Analytics, tarjetas, perfiles); el volumen no
+const closers = ['#toggle-overview', '#open-session-profiles', '#open-extension-usage', '#btn-sov', '#btn-theme', '#limits-strip .pill'];
+const inMenu = sel => ({target:{closest:q => q.split(',').includes(sel) ? {} : null}});
+for(const sel of closers){
+  mb.fire('click'); assert.equal(menu.classList.contains('hidden'), false);
+  menu.fire('click', inMenu(sel));
+  assert.equal(menu.classList.contains('hidden'), true, sel);
+  assert.equal(mb.getAttribute('aria-expanded'), 'false');
+}
+mb.fire('click'); menu.fire('click', inMenu('#vol-top'));
+assert.equal(menu.classList.contains('hidden'), false);
+for(const f of docL.keydown) f({key:'Escape'});
 // Servidores: alterna el panel, abre la fila SSH real y la recarga
 sb.fire('click');
 assert.equal(sp.classList.contains('hidden'), false);

@@ -55,6 +55,7 @@ async function main(){
     await page.locator('#toggle-chat').click();
     assert.equal(await page.locator('#op-in').inputValue(),'borrador á🙂');
     await page.evaluate(({registry,items})=>{PROVIDERS=registry;S.list=items;}, {registry,items});
+    await page.locator('#btn-menu').click();   // H1: vive en ☰
     await page.locator('#toggle-overview').click();
     assert.equal(await page.locator('.overview-card').count(),2);
     await page.screenshot({path:'/tmp/comandos-overview-mobile.png'});
@@ -80,6 +81,7 @@ async function main(){
     assert.equal(changes[0].data.session,'test');assert.equal(changes[0].data.pane,'%1');
     assert.equal(changes[0].data.expectedIdentity,'identity-%1');assert.equal(changes[0].data.expectedConversationId,'thread-%1');
     await page.locator('#motor-pop .mp-close').click();
+    await page.locator('#btn-menu').click();   // H1: vive en ☰
     await page.locator('#open-session-profiles').click();
     await page.locator('.sc-extensions .mcp-description').first().waitFor();
     assert.equal(await page.locator('.sc-extensions .mcp-description').first().innerText(),mcpDescription);
@@ -93,6 +95,7 @@ async function main(){
     await page.waitForFunction(()=>NS.profileId==='profile-test');
     assert.equal(posts.find(p=>p.path==='/session-profile-apply').data.cwd,'/tmp');
     await page.locator('#ns-cancel').click();
+    await page.locator('#btn-menu').click();   // H1: vive en ☰
     await page.locator('#open-extension-usage').click();
     await page.waitForSelector('.sc-table');
     assert.match(await page.locator('.sc-table').innerText(),/design-research/);

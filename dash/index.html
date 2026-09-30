@@ -7236,9 +7236,10 @@ function initHeaderPopovers(){
     menu.style.left = Math.max(8, Math.min(r.left, innerWidth - menu.offsetWidth - 8)) + "px";
   };
   menuBtn.addEventListener("click", () => setMenu(menu.classList.contains("hidden")));
-  // las acciones que abren otra vista cierran el menú; Apariencia y volumen no
+  // lo que abre otra vista (modal, cajón, tarjetas) cierra el menú: el menú
+  // (z 60) quedaría encima de Ajustes o Analytics; solo el volumen lo deja abierto
   menu.addEventListener("click", e => {
-    if(e.target.closest && e.target.closest("#toggle-overview,#open-session-profiles,#open-extension-usage,#btn-sov")) setMenu(false);
+    if(e.target.closest && e.target.closest("#toggle-overview,#open-session-profiles,#open-extension-usage,#btn-sov,#btn-theme,#limits-strip .pill")) setMenu(false);
   });
   document.addEventListener("click", e => {
     if(menu.classList.contains("hidden")) return;

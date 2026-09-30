@@ -63,7 +63,7 @@ async function main(){
    await page.waitForTimeout(600);
    await page.locator('#view-panel').screenshot({path:path.join(output,`${baseline?'before':'after'}-${mode}.png`)});
    snapshots[mode]=await page.evaluate(()=>({width:document.querySelector('#view-panel').clientWidth,
-     ids:['command-sidebar','side-top','workspace-tools','toggle-overview','open-session-profiles','open-extension-usage','session-overview','newsess'].filter(id=>document.getElementById(id)),
+     ids:['command-sidebar','side-top','toggle-overview','open-session-profiles','open-extension-usage','session-overview','newsess'].filter(id=>document.getElementById(id)),
      clis:[...document.querySelectorAll('#command-sidebar .cs-cli')].map(e=>e.dataset.cli),
      here:[...document.querySelectorAll('#command-sidebar .cs-cli.here')].map(e=>e.dataset.cli),
      target:document.querySelector('#command-sidebar .cs-target')?.textContent||'',
@@ -94,10 +94,12 @@ async function main(){
     if(desktop){desktopTab={session:'alpha',pane:'%2'};await page.waitForFunction(()=>ACTIVE_TAB.pane==='%2');}
     else await page.evaluate(()=>{remotePaneFocus.set('alpha',{pane:'%2',ts:Date.now()});render(S.list);});
     await page.waitForFunction(()=>[...document.querySelectorAll('#command-sidebar .cs-cli.here')].map(e=>e.dataset.cli).join()==='codex');
+    await page.locator('#btn-menu').click();   // H1: las herramientas de sesión viven en ☰
     await page.locator('#toggle-overview').click();
     assert.equal(await page.locator('.overview-card').count(),4,mode+' global inventory available');
     await page.evaluate(()=>{S.sel='';activeTerm=null;ACTIVE_TAB={session:''};render([]);});
-    assert(await page.locator('#open-session-profiles').isVisible(),mode+' empty inventory retains profiles');
+    await page.locator('#btn-menu').click();
+    assert(await page.locator('#open-session-profiles').isVisible(),mode+' ☰ opens and shows profiles');
     assert.equal(await page.locator('#command-sidebar .cs-cli').count(),5,mode+' catalog stays without a target');
    }
    assert.deepEqual(errors,[],mode+' no JavaScript errors');

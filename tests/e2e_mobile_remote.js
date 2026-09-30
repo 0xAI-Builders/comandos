@@ -1544,9 +1544,16 @@ async function waitForThemePropagation(opened, name) {
 }
 
 async function clickVisibleThemeControl(opened) {
+  // H1: Apariencia vive en el menú ☰ de la cabecera.
   const button = opened.page.locator("#btn-theme");
-  if (await button.isVisible()) {
+  const menu = opened.page.locator("#btn-menu");
+  const openMenuAndClick = async () => {
+    await menu.click();
+    await button.waitFor({state: "visible", timeout: POLL_TIMEOUT_MS});
     await button.click();
+  };
+  if (await menu.isVisible()) {
+    await openMenuAndClick();
     return;
   }
   const panelLabel = opened.page.locator(".apptab .lbl", {hasText: "⌂ Panel"}).first();
@@ -1554,8 +1561,8 @@ async function clickVisibleThemeControl(opened) {
   assertThat(await panelLabel.textContent() === "⌂ Panel",
     "mobile panel tab label did not resolve exactly");
   await panelLabel.click();
-  await button.waitFor({state: "visible", timeout: POLL_TIMEOUT_MS});
-  await button.click();
+  await menu.waitFor({state: "visible", timeout: POLL_TIMEOUT_MS});
+  await openMenuAndClick();
 
   const terminalLabel = opened.page.locator(".apptab .lbl", {hasText: opened.session}).first();
   await terminalLabel.waitFor({state: "visible", timeout: POLL_TIMEOUT_MS});
