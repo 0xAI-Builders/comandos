@@ -4842,14 +4842,11 @@ def _attach_model_bar(box, sess):
     box.pack_start(ov, True, True, 0)
     box.reorder_child(ov, pos)
     box._pill_overlay = ov
-    # Marco redondeado por pane (prototipo aprobado: borde 1 px, verde el activo).
-    frames = Gtk.DrawingArea()
-    frames.connect("draw", lambda w, cr, b=box: _draw_pane_frames(b, cr))
-    ov.add_overlay(frames)
-    ov.set_overlay_pass_through(frames, True)
-    frames.show()
-    box._frame_layer = frames
+    # Sin capa de marcos encima de la VTE: un DrawingArea tiene ventana propia y
+    # se comía el scroll y el teclado de los panes (regresión 30-sep). El marco
+    # se pinta en la propia VTE (draw después del contenido), que no toca la entrada.
     box._frames = []
+    term.connect_after("draw", lambda w, cr, b=box: _draw_pane_frames(b, cr))
     box._pill_sess = sess
     box._pill_sig = ""
     box._pills = []
@@ -5226,8 +5223,7 @@ def _place_pills(box, panes, geo=None):
         w = width * cw - 4
         h = (height + (1 if top >= 1 else 0)) * chh - 4
         box._frames.append((x, y, w, h, active))
-    if getattr(box, "_frame_layer", None) is not None:
-        box._frame_layer.queue_draw()
+    term.queue_draw()
     placed = set()
     for p in panes[:6]:
         g = geo.get(p.get("pane") or "")

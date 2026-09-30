@@ -51,6 +51,7 @@ class Widget:
     def get_allocated_width(self): return 1200
     def get_children(self): return self.children
     def connect(self, signal, callback): self.signals[signal] = callback
+    def connect_after(self, signal, callback): self.signals['after-' + signal] = callback
     def add(self, widget): self.children.append(widget)
     def pack_start(self, widget, *args): self.children.append(widget)
     def pack_end(self, widget, *args): self.children.append(widget)
@@ -92,7 +93,7 @@ def model_ui():
                    get_tab_label=lambda b: labels[id(b)]),
           '_svg_image': svg, '_pane_geometry': get_geometry,
           '_PANE_CMD': {'%0': 'codex'}, '_SHELLS': {'zsh'},
-          'Gtk': NS(Box=Widget, Overlay=Widget, Label=Widget, Button=Widget, Image=Widget, Separator=Widget, EventBox=Widget, DrawingArea=Widget,
+          'Gtk': NS(Box=Widget, Overlay=Widget, Label=Widget, Button=Widget, Image=Widget, Separator=Widget, EventBox=Widget,
                     CssProvider=lambda: NS(load_from_data=lambda d: None), StyleContext=NS(add_provider_for_screen=lambda *a: None), STYLE_PROVIDER_PRIORITY_APPLICATION=600,
                     Orientation=NS(HORIZONTAL=1, VERTICAL=2), Align=NS(START=1, CENTER=2), ReliefStyle=NS(NONE=1)),
           'Pango': NS(EllipsizeMode=NS(END=3)), 'STATE_CACHE': {}, 'AI_SPRITES': 'comandos', '_BADGE_CSS': {},
@@ -126,7 +127,7 @@ def test_unchanged_models_and_identical_allocations_do_not_redraw():
             callback(ui.current._term, NS(width=1200, height=800))
         ui.refresh()
     assert ui.counts['svg'] == 3
-    assert ui.current._pill_overlay.calls['add_overlay'] == 2  # the frames layer + one card
+    assert ui.current._pill_overlay.calls['add_overlay'] == 1  # one card; frames are painted on the VTE
     assert sum(label._model.calls['set_text'] for label in ui.labels.values()
                if hasattr(label, '_model')) == 19
     assert ui.counts['geometry'] == 10  # Keep querying real geometry, once per tick.
