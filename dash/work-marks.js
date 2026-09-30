@@ -35,6 +35,22 @@
     favorite: '<path class="wm-twinkle" d="m12 3.6 2.6 5.3 5.8.8-4.2 4.1 1 5.8L12 16.9l-5.2 2.7 1-5.8-4.2-4.1 5.8-.8z"/>',
   };
 
+  // Canal de la IA (grill 30-sep): semáforo pixel 8-bit, mismos dibujos que
+  // lib/work_marks.py AI_ICONS (paridad probada). La marca humana va aparte, como sticker.
+  const AI_ICONS = {
+    work: "<g class=\"ai-gear\" fill=\"#4ade80\"><rect x=\"8\" y=\"1\" width=\"4\" height=\"4\"/><rect x=\"8\" y=\"15\" width=\"4\" height=\"4\"/><rect x=\"1\" y=\"8\" width=\"4\" height=\"4\"/><rect x=\"15\" y=\"8\" width=\"4\" height=\"4\"/><rect x=\"3\" y=\"3\" width=\"3\" height=\"3\"/><rect x=\"14\" y=\"3\" width=\"3\" height=\"3\"/><rect x=\"3\" y=\"14\" width=\"3\" height=\"3\"/><rect x=\"14\" y=\"14\" width=\"3\" height=\"3\"/><rect x=\"5\" y=\"5\" width=\"10\" height=\"10\"/></g><rect x=\"8\" y=\"8\" width=\"4\" height=\"4\" fill=\"#0b1119\"/>",
+    need: "<rect x=\"2\" y=\"2\" width=\"16\" height=\"12\" fill=\"#f5b83d\"/><rect x=\"6\" y=\"14\" width=\"4\" height=\"4\" fill=\"#f5b83d\"/><g class=\"ai-bang\" fill=\"#1a1300\"><rect x=\"9\" y=\"4\" width=\"2\" height=\"5\"/><rect x=\"9\" y=\"10\" width=\"2\" height=\"2\"/></g>",
+    done: "<rect x=\"5\" y=\"2\" width=\"2\" height=\"16\" fill=\"#9aa6bf\"/><g class=\"ai-flag\" fill=\"#4ade80\"><rect x=\"7\" y=\"3\" width=\"10\" height=\"7\"/></g>",
+    error: "<rect x=\"2\" y=\"2\" width=\"16\" height=\"16\" fill=\"#f87171\"/><g class=\"ai-x\" fill=\"#2a0a0e\"><rect x=\"5\" y=\"5\" width=\"3\" height=\"3\"/><rect x=\"12\" y=\"5\" width=\"3\" height=\"3\"/><rect x=\"8\" y=\"8\" width=\"4\" height=\"4\"/><rect x=\"5\" y=\"12\" width=\"3\" height=\"3\"/><rect x=\"12\" y=\"12\" width=\"3\" height=\"3\"/></g>",
+    idle: "<rect x=\"6\" y=\"6\" width=\"8\" height=\"8\" fill=\"none\" stroke=\"#5d6b7e\" stroke-width=\"2\"/>",
+  };
+  const AI_LABELS = {work: ['Trabajando', 'Working'], need: ['Te necesita', 'Needs you'], done: ['Terminó', 'Finished'],
+    error: ['Error', 'Error'], idle: ['Quieta', 'Idle']};
+  const AI_OF = {working: 'work', awaiting_permission: 'need', awaiting_input: 'need', waiting: 'need',
+    completed: 'done', done: 'done', failed: 'error', error: 'error'};
+  const STICKERS = {frozen: 'Aparcado', awaiting_reply: 'Esperando', resolved: 'Hecho'};
+  const URGENCY = ['awaiting_permission', 'awaiting_input', 'failed', 'working', 'completed'];
+
   // ---- pure helpers (tested in Node) --------------------------------------
   const lang = () => (typeof tf === 'function' ? (tf('es', 'en') === 'en' ? 1 : 0) : 0);
   function label(name, l = lang()) { return (LABELS[name] || [name, name])[l]; }
@@ -43,6 +59,17 @@
     return `<svg class="wm-icon wm-${name}" width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" ` +
       `stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" ` +
       `aria-hidden="true" focusable="false">${body}</svg>`;
+  }
+  function aiIconSvg(name, size = 20) {
+    const body = AI_ICONS[name] || AI_ICONS.idle;
+    return `<svg class="ai-icon ai-${name in AI_ICONS ? name : 'idle'}" width="${size}" height="${size}" viewBox="0 0 20 20" ` +
+      `shape-rendering="crispEdges" aria-hidden="true" focusable="false">${body}</svg>`;
+  }
+  /** Dos canales: lo que pone la IA (semáforo) y lo que pones tú (sticker); la IA sugiere «Hecho». */
+  function channels(mark, activityState) {
+    const m = MARKS.includes(mark) ? mark : 'none';
+    const ai = AI_OF[activityState] || 'idle';
+    return {ai, sticker: STICKERS[m] || null, mark: m, suggest: ai === 'done' && m === 'none'};
   }
   const ACTIVE = new Set(['working']);
   /** What an indicator shows: the human mark wins; otherwise live activity; otherwise neutral. */
@@ -69,8 +96,9 @@
       const hit = a['pane:' + target.key] || (target.paneId && a[`tmux:${target.session}:${target.paneId}`]);
       return hit ? hit.state : null;
     }
-    // A tab is "working" when any of its panes is.
-    return Object.values(a).some(x => x && x.session === target.key && x.state === 'working') ? 'working' : null;
+    // A tab shows its most urgent pane: te necesita > error > trabajando > terminó.
+    const states = Object.values(a).filter(x => x && x.session === target.key).map(x => x.state);
+    return URGENCY.find(s => states.includes(s)) || null;
   }
   function menuItems(scope, row, sessionFavorite) {
     const items = MARKS.map(m => ({kind: 'mark', value: m, label: label(m), checked: row.mark === m}));
@@ -144,19 +172,39 @@
   }
   function paint(button, target) {
     const row = rowOf(target.scope, target.key);
-    const d = display(row.mark, activityFor(target, W.activity));
+    const c = channels(row.mark, activityFor(target, W.activity));
     const fav = target.scope === 'pane' && row.favorite;
-    const signature = [d.icon, fav, d.label].join('|');
+    const signature = [c.ai, c.sticker, c.suggest, fav].join('|');
     button._wmTarget = target;
     if (button._wmSignature === signature) return;
     button._wmSignature = signature;
-    button.innerHTML = iconSvg(d.icon) + (fav ? iconSvg('favorite', 12) : '');
-    button.classList.toggle('wm-animated', d.animated || fav);
-    button.dataset.wmState = d.icon;
-    const title = `${(SCOPE_LABELS[target.scope] || SCOPE_LABELS.session)[lang()]}: ${d.label}` +
+    button.innerHTML = aiIconSvg(c.ai) + (fav ? iconSvg('favorite', 12) : '');
+    button.classList.toggle('wm-animated', c.ai !== 'idle' || fav);
+    button.dataset.wmState = c.ai;
+    const aiLabel = AI_LABELS[c.ai][lang()];
+    const title = `IA: ${aiLabel}` + (c.sticker ? ` · ${(SCOPE_LABELS[target.scope] || SCOPE_LABELS.session)[lang()]}: ${c.sticker}` : '') +
       (fav ? ` · ${label('favorite')}` : '');
     button.setAttribute('aria-label', title);
     button.title = title;
+    // Tu canal: sticker después del nombre y, si la IA terminó sin preguntar, el chip «¿Hecho? ✓».
+    const host = button.parentNode;
+    if (!host) return;
+    let extra = host.querySelector(':scope > .wm-extra');
+    if (!extra) {
+      extra = document.createElement('span');
+      extra.className = 'wm-extra';
+      const name = button._wmBefore;
+      host.insertBefore(extra, name && name.parentNode === host ? name.nextSibling : null);
+      extra.addEventListener('click', e => {
+        const chip = e.target.closest('[data-wm-suggest]');
+        if (!chip) return;
+        e.stopPropagation(); e.preventDefault();
+        const t = button._wmTarget;
+        setMark(t.scope, t.key, 'resolved');
+      });
+    }
+    extra.innerHTML = (c.sticker ? `<span class="wm-sticker wm-st-${row.mark}">${c.sticker}</span>` : '') +
+      (c.suggest ? `<button type="button" class="wm-suggest" data-wm-suggest title="La IA terminó y no preguntó nada">¿Hecho? ✓</button>` : '');
   }
   function indicator(host, target, before) {
     let button = host.querySelector(':scope > .wm-ind');
@@ -173,6 +221,7 @@
         }
       });
       host.insertBefore(button, before || null);
+      button._wmBefore = before || null;
       watchVisibility(button);
     }
     paint(button, target);
@@ -183,6 +232,7 @@
       const session = tab._session;
       if (!session || session === 'local' || !String(tab.dataset.tabKey || '').startsWith('term:')) return;
       indicator(tab, {scope: 'session', key: session, session}, tab.querySelector('.lbl'));
+      tab.dataset.wmInd = '1';   // una sola señal: el semáforo pixel reemplaza el punto de color viejo
     });
     document.querySelectorAll('.row[data-rk]').forEach(row => {
       const target = targetForRow(row.dataset.rk, W.panes);
@@ -281,6 +331,6 @@
     if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init); else init();
   }
 
-  return {MARKS, ICONS, iconSvg, display, targetForRow, activityFor, menuItems, nextIndex, indexMarks, label,
+  return {MARKS, ICONS, iconSvg, display, channels, aiIconSvg, AI_ICONS, STICKERS, targetForRow, activityFor, menuItems, nextIndex, indexMarks, label,
           load, setMark, decorate, adopt};
 });

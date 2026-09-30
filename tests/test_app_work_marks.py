@@ -13,7 +13,7 @@ SOURCE = ROOT.joinpath("bin", "cc-app").read_text()
 sys.path.insert(0, str(ROOT / "lib"))
 import work_marks  # noqa: E402
 
-NAMES = ["work_mark_row", "paint_tab_mark", "_paint_all_tab_marks", "apply_work_marks", "adopt_work_mark",
+NAMES = ["work_mark_row", "paint_tab_mark", "_paint_tab_sticker", "_paint_all_tab_marks", "apply_work_marks", "adopt_work_mark",
          "set_work_mark", "append_work_mark_menu", "tab_indicator_display", "tab_indicator_menu", "_mark_menu_item"]
 
 
@@ -33,6 +33,8 @@ class Widget:
     def show(self): self.shown = True
     def set_from_pixbuf(self, p): self.pixbuf = p; self.writes += 1
     def set_tooltip_text(self, t): self.tooltip = t
+    def set_text(self, t): self.label = t
+    def get_style_context(self): return SimpleNamespace(add_class=lambda c: None, remove_class=lambda c: None)
     def add(self, child): self.children.append(child)
     def show_all(self): self.shown = True
     def popup_at_widget(self, *a): self.popped = True
@@ -82,6 +84,7 @@ def load(responses):
     }
     label._work_mark = Widget()
     label._dot = label._work_mark
+    label._sticker, label._suggest = Widget(), Widget()
     label.animated = []
     ns["time"] = SimpleNamespace(monotonic=lambda: 0.0)
     tree = ast.parse(SOURCE)
@@ -92,35 +95,39 @@ def load(responses):
 
 
 def test_marks_from_the_endpoint_paint_the_tab_indicator():
+    """Two channels (grill 30-sep): the indicator is the AI pixel semáforo; the
+    human mark is a sticker after the name; finished-and-unmarked suggests Hecho."""
     ns, _, _, image = load([])
+    ns["STATE_CACHE"]["sess"] = "working"
     ns["apply_work_marks"]({"marks": [{"scope": "session", "key": "sess", "mark": "frozen", "favorite": False,
                                        "revision": 2}], "panes": []})
-    assert image.pixbuf == "pix:frozen:#7CC4FF:0" and "Congelado" in image.tooltip
-    assert image.animated == ["frozen"], "a visible mark loops continuously"
+    assert image.pixbuf == "pix:ai:work:None:0" and "Trabajando" in image.tooltip
+    assert image.animated == ["ai:work"], "working loops continuously"
+    hb = ns["tab_hb"](None)
+    assert hb._sticker.label == "Aparcado" and hb._sticker.shown is True
+    assert hb._suggest.shown is False
+    ns["STATE_CACHE"]["sess"] = "done"
     ns["apply_work_marks"]({"marks": [], "panes": []})
-    assert image.pixbuf == "pix:none:#4B5568:0", "without a mark the tab shows the neutral ready icon"
-    assert image.shown is not False
+    assert image.pixbuf == "pix:ai:done:None:0"
+    assert hb._sticker.shown is False and hb._suggest.shown is True
 
 
-def test_indicator_precedence_matches_the_web():
+def test_indicator_shows_what_the_ai_knows():
     display = load([])[0]["tab_indicator_display"]
-    # A human mark wins over activity; activity shows the working ring; otherwise
-    # the neutral ring keeps the status colour (waiting stays visible).
-    assert display("frozen", "working") == ("frozen", "#7CC4FF", True)
-    assert display("none", "working") == ("working", "#7AA5FF", True)
-    assert display("none", "waiting") == ("none", "#D08770", False)
-    assert display("none", "") == ("none", "#4B5568", False)
-    assert display("resolved", "") == ("resolved", "#2EE59D", True)
+    assert display("frozen", "working") == ("ai:work", None, True), "the human mark no longer hides the AI state"
+    assert display("none", "waiting") == ("ai:need", None, True)
+    assert display("none", "done") == ("ai:done", None, True)
+    assert display("none", "") == ("ai:idle", None, False)
 
 
 def test_activity_changes_repaint_the_same_indicator_without_a_mark():
     ns, _, _, image = load([])
     ns["STATE_CACHE"]["sess"] = "working"
     ns["_paint_all_tab_marks"]()
-    assert image.pixbuf == "pix:working:#7AA5FF:0" and "Trabajando" in image.tooltip
+    assert image.pixbuf == "pix:ai:work:None:0" and "Trabajando" in image.tooltip
     ns["STATE_CACHE"]["sess"] = "waiting"
     ns["_paint_all_tab_marks"]()
-    assert image.pixbuf == "pix:none:#D08770:0"
+    assert image.pixbuf == "pix:ai:need:None:0" and "Te necesita" in image.tooltip
 
 
 def test_set_sends_known_revision_and_adopts_a_newer_mark():
@@ -130,14 +137,14 @@ def test_set_sends_known_revision_and_adopts_a_newer_mark():
     ns["set_work_mark"]("session", "sess", "resolved")
     assert posted == [{"scope": "session", "key": "sess", "value": "resolved", "expectedRevision": 4}]
     assert ns["work_mark_row"]("session", "sess")["mark"] == "awaiting_reply"
-    assert image.pixbuf == "pix:awaiting_reply:#FFAE1A:0" and popups and "Otro dispositivo" in popups[0]
+    assert ns["tab_hb"](None)._sticker.label == "Esperando" and popups and "Otro dispositivo" in popups[0]
 
 
 def test_set_success_updates_the_label():
     ok = {"scope": "session", "key": "sess", "mark": "resolved", "favorite": False, "revision": 1}
     ns, posted, popups, image = load([(200, {"mark": ok})])
     ns["set_work_mark"]("session", "sess", "resolved")
-    assert posted[0]["expectedRevision"] == 0 and not popups and image.pixbuf == "pix:resolved:#2EE59D:0"
+    assert posted[0]["expectedRevision"] == 0 and not popups and ns["tab_hb"](None)._sticker.label == "Hecho"
     writes = image.writes
     ns["_paint_all_tab_marks"]()
     assert image.writes == writes, "an unchanged indicator is not rewritten"

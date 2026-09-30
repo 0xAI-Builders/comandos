@@ -79,3 +79,20 @@ assert.equal(wm.nextIndex('x', 2, 5), 2);
   assert.equal(calls.at(-1).body.expectedRevision, 0, 'a new scope starts at revision 0');
   console.log('work marks checks passed');
 })().catch(err => { console.error(err); process.exit(1); });
+
+// ---- Dos canales (grill 30-sep): la IA pone hechos (semáforo pixel), tú pones marcas (sticker).
+assert.deepEqual(wm.channels('none', 'working'), {ai: 'work', sticker: null, mark: 'none', suggest: false});
+assert.deepEqual(wm.channels('frozen', 'working'), {ai: 'work', sticker: 'Aparcado', mark: 'frozen', suggest: false});
+assert.deepEqual(wm.channels('none', 'completed'), {ai: 'done', sticker: null, mark: 'none', suggest: true});
+assert.equal(wm.channels('resolved', 'completed').suggest, false, 'already marked Hecho: no suggestion');
+assert.equal(wm.channels('none', 'awaiting_permission').ai, 'need');
+assert.equal(wm.channels('none', 'failed').ai, 'error');
+assert.equal(wm.channels('none', null).ai, 'idle');
+for (const name of ['work', 'need', 'done', 'error', 'idle']) {
+  const svg = wm.aiIconSvg(name, 20);
+  assert.match(svg, /shape-rendering="crispEdges"/);
+  assert.ok(!emoji.test(svg), `${name} pixel icon must not use emoji`);
+}
+// A session shows its most urgent pane: need > error > work > done > idle.
+assert.equal(wm.activityFor({scope: 'session', key: 's'}, {a: {session: 's', state: 'completed'}, b: {session: 's', state: 'awaiting_input'}}), 'awaiting_input');
+console.log('two-channel checks ok');

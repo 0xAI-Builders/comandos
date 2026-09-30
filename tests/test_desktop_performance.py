@@ -231,7 +231,7 @@ def test_ui_updates_keep_fresh_state_without_network_or_unchanged_widget_writes(
           'work_mark_row': lambda scope, key: {'mark': 'none'},
           '_indicator_pixbuf': lambda icon, color, frame=0: (icon, color, frame),
           '_indicator_animate': lambda hb: None}
-    load({'update_dots', 'set_notif_badge', '_paint_all_tab_marks', 'paint_tab_mark', 'tab_indicator_display'}, ns)
+    load({'update_dots', 'set_notif_badge', '_paint_all_tab_marks', 'paint_tab_mark', '_paint_tab_sticker', 'tab_indicator_display'}, ns)
     ns['update_dots']({'s': 'working'}, [{'session': 's', 'ts': 1}])
     ns['update_dots']({'s': 'working'}, [{'session': 's', 'ts': 2}])
     assert network == []

@@ -95,6 +95,64 @@ def icon_svg(name, color=None, size=16, phase=None):
             f'stroke-linecap="round" stroke-linejoin="round">{body}</svg>')
 
 
+# ---- Canal de la IA (grill 30-sep): hechos verificables, iconos pixel 8-bit ----
+# Separado de la marca humana (que va como sticker). Cuadrícula de 20 px sin
+# antialias; las animaciones van a saltos, como el reloj de arena pixel.
+AI_STATES = ("work", "need", "done", "error", "idle")
+AI_LABELS = {"work": ("Trabajando", "Working"), "need": ("Te necesita", "Needs you"),
+             "done": ("Terminó", "Finished"), "error": ("Error", "Error"), "idle": ("Quieta", "Idle")}
+AI_COLORS = {"work": "#4ade80", "need": "#f5b83d", "done": "#4ade80", "error": "#f87171", "idle": "#5d6b7e"}
+_G, _A, _R, _D = AI_COLORS["work"], AI_COLORS["need"], AI_COLORS["error"], AI_COLORS["idle"]
+AI_ICONS = {
+    "work": (f'<g class="ai-gear" fill="{_G}"><rect x="8" y="1" width="4" height="4"/><rect x="8" y="15" width="4" height="4"/>'
+             f'<rect x="1" y="8" width="4" height="4"/><rect x="15" y="8" width="4" height="4"/><rect x="3" y="3" width="3" height="3"/>'
+             f'<rect x="14" y="3" width="3" height="3"/><rect x="3" y="14" width="3" height="3"/><rect x="14" y="14" width="3" height="3"/>'
+             f'<rect x="5" y="5" width="10" height="10"/></g><rect x="8" y="8" width="4" height="4" fill="#0b1119"/>'),
+    "need": (f'<rect x="2" y="2" width="16" height="12" fill="{_A}"/><rect x="6" y="14" width="4" height="4" fill="{_A}"/>'
+             '<g class="ai-bang" fill="#1a1300"><rect x="9" y="4" width="2" height="5"/><rect x="9" y="10" width="2" height="2"/></g>'),
+    "done": (f'<rect x="5" y="2" width="2" height="16" fill="#9aa6bf"/><g class="ai-flag" fill="{_G}">'
+             '<rect x="7" y="3" width="10" height="7"/></g>'),
+    "error": (f'<rect x="2" y="2" width="16" height="16" fill="{_R}"/><g class="ai-x" fill="#2a0a0e"><rect x="5" y="5" width="3" height="3"/>'
+              '<rect x="12" y="5" width="3" height="3"/><rect x="8" y="8" width="4" height="4"/><rect x="5" y="12" width="3" height="3"/>'
+              '<rect x="12" y="12" width="3" height="3"/></g>'),
+    "idle": f'<rect x="6" y="6" width="8" height="8" fill="none" stroke="{_D}" stroke-width="2"/>',
+}
+AI_CYCLE_S = {"work": 1.0, "need": 0.6, "done": 1.4, "error": 0.8}
+AI_STEPS = {"work": 8, "need": 2, "done": 3, "error": 2}
+_AI_OF = {"working": "work", "awaiting_permission": "need", "awaiting_input": "need", "waiting": "need",
+          "completed": "done", "done": "done", "failed": "error", "error": "error"}
+# Marca humana como sticker (nombres de las bandejas aprobadas).
+STICKERS = {"frozen": "Aparcado", "awaiting_reply": "Esperando", "resolved": "Hecho"}
+
+
+def ai_status(state):
+    """Estado de turno (N1 o /state del escritorio) → semáforo de la IA."""
+    return _AI_OF.get(state or "", "idle")
+
+
+def ai_frame_index(name, seconds):
+    cycle, steps = AI_CYCLE_S.get(name), AI_STEPS.get(name, 1)
+    return 0 if not cycle else int((seconds % cycle) / cycle * steps) % steps
+
+
+def ai_icon_svg(name, size=20, phase=None):
+    """SVG pixel del semáforo; ``phase`` [0, 1) hornea ese paso del bucle."""
+    body = AI_ICONS.get(name, AI_ICONS["idle"])
+    steps = AI_STEPS.get(name)
+    if phase is not None and steps:
+        k = int((phase % 1.0) * steps) % steps
+        if name == "work":
+            body = body.replace('class="ai-gear"', f'transform="rotate({k * 45} 10 10)"', 1)
+        elif name == "need":
+            body = body.replace('class="ai-bang"', f'transform="translate(0 {-3 if k else 0})"', 1)
+        elif name == "done":
+            body = body.replace('class="ai-flag"', f'transform="translate(0 {(0, -1, 1)[k]})"', 1)
+        elif name == "error":
+            body = body.replace('class="ai-x"', f'opacity="{1 if k == 0 else 0.25}"', 1)
+    return (f'<svg xmlns="http://www.w3.org/2000/svg" width="{size}" height="{size}" viewBox="0 0 20 20" '
+            f'shape-rendering="crispEdges">{body}</svg>')
+
+
 def pane_key_for(panes, session, pane_id):
     """W1 paneKey of tmux pane ``pane_id`` in ``session``; None when ambiguous."""
     hits = [p.get("paneKey") for p in panes or []

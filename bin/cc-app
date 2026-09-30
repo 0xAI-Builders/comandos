@@ -199,6 +199,11 @@ notebook > header > tabs > tab button {
 }
 notebook > header > tabs > tab button:hover { color: @TEXT@; }
 notebook > header > tabs > tab button.tabfav { font-size: 15px; min-width: 20px; }
+notebook > header > tabs > tab label.tab-sticker { font-size: 8px; font-weight: 800; padding: 1px 5px; border-radius: 5px; margin: 0 2px; }
+notebook > header > tabs > tab label.tab-sticker.st-frozen { background: #1e3a5f; color: #9cd0ff; }
+notebook > header > tabs > tab label.tab-sticker.st-resolved { background: #1f5134; color: #b9ffd4; }
+notebook > header > tabs > tab label.tab-sticker.st-awaiting_reply { background: #5a4415; color: #ffe2a3; }
+notebook > header > tabs > tab button.tab-suggest { font-size: 9px; padding: 0 6px; min-height: 0; border: 1px dashed #4ade80; border-radius: 999px; color: #4ade80; box-shadow: none; background: none; }
 notebook > header > tabs > tab button.tabfav.favorite { color: @BRAND@; }
 /* Flechas de scroll de tabs: sin esto quedan pegadas a la primera pestana */
 /* Flechas nativas del notebook OCULTAS: navegacion por los botones
@@ -1894,11 +1899,19 @@ _INDICATOR = {"source": None, "t0": None}
 
 
 def _indicator_pixbuf(icon, color, frame=0):
-    """Frame ``frame`` of the icon's loop, rendered once and cached."""
+    """Frame ``frame`` of the icon's loop, rendered once and cached. ``ai:<n>``
+    is the AI pixel semáforo (grill 30-sep); the rest are the E1 line icons."""
     key = (icon, color, frame)
     if key not in _INDICATOR_PIXBUFS:
-        n = work_mark_state.frame_count(icon)
         loader = GdkPixbuf.PixbufLoader.new_with_type("svg")
+        if icon.startswith("ai:"):
+            name = icon[3:]
+            steps = work_mark_state.AI_STEPS.get(name)
+            loader.write(work_mark_state.ai_icon_svg(name, 16, phase=frame / steps if steps else None).encode())
+            loader.close()
+            _INDICATOR_PIXBUFS[key] = loader.get_pixbuf()
+            return _INDICATOR_PIXBUFS[key]
+        n = work_mark_state.frame_count(icon)
         loader.write(work_mark_state.icon_svg(icon, color=color, size=14,
                                               phase=None if n <= 1 else frame / n).encode())
         loader.close()
@@ -1907,14 +1920,10 @@ def _indicator_pixbuf(icon, color, frame=0):
 
 
 def tab_indicator_display(mark, state):
-    """(icon, colour, animated) for a tab: same precedence as the web's
-    display(): the human mark, else the working ring while a turn runs, else
-    the neutral ready ring in the status colour (waiting stays visible)."""
-    if mark in work_mark_state.MARKS and mark != "none":
-        return mark, work_mark_state.ICON_COLORS[mark], True
-    if state == "working":
-        return "working", work_mark_state.ICON_COLORS["working"], True
-    return "none", DOT_COLORS.get(state, DOT_IDLE), False
+    """(icon, colour, animated): el semáforo pixel de lo que sabe la IA. La
+    marca humana ya no lo tapa: va aparte como sticker (dos canales, grill 30-sep)."""
+    ai = work_mark_state.ai_status(state)
+    return "ai:" + ai, None, ai != "idle"
 
 
 def paint_tab_mark(hb, key):
@@ -1923,7 +1932,9 @@ def paint_tab_mark(hb, key):
     image = getattr(hb, "_dot", None)
     if image is None:
         return
-    icon, color, animated = tab_indicator_display(work_mark_row("session", key)["mark"], STATE_CACHE.get(key, ""))
+    mark = work_mark_row("session", key)["mark"]
+    icon, color, animated = tab_indicator_display(mark, STATE_CACHE.get(key, ""))
+    _paint_tab_sticker(hb, mark, icon == "ai:done")
     if getattr(image, "_ind", None) == (icon, color):
         return
     image._ind, image._frame = (icon, color), 0
@@ -1932,13 +1943,28 @@ def paint_tab_mark(hb, key):
         image.set_from_pixbuf(_indicator_pixbuf(icon, color, 0))
     except Exception:
         return
-    name = work_mark_state.LABELS[icon][0 if ES else 1]
-    scope = ("Marca de la pestaña: " if ES else "Tab mark: ") if icon in work_mark_state.MARKS and icon != "none" \
-        else ("Estado: " if ES else "State: ")
-    image.set_tooltip_text(scope + name)
+    image.set_tooltip_text("IA: " + work_mark_state.AI_LABELS[icon[3:]][0 if ES else 1])
     image.show()
     if animated:
         _indicator_animate(hb)
+
+
+def _paint_tab_sticker(hb, mark, finished):
+    """Tu canal: sticker con tu marca y, si la IA terminó sin marca, «¿Hecho? ✓»."""
+    sticker, suggest = getattr(hb, "_sticker", None), getattr(hb, "_suggest", None)
+    text = work_mark_state.STICKERS.get(mark)
+    if sticker is not None:
+        if text:
+            sticker.set_text(text)
+            ctx = sticker.get_style_context()
+            for m in work_mark_state.STICKERS:
+                ctx.remove_class("st-" + m)
+            ctx.add_class("st-" + mark)
+            sticker.show()
+        else:
+            sticker.hide()
+    if suggest is not None:
+        (suggest.show if finished and not text else suggest.hide)()
 
 
 def _animations_enabled():
@@ -1967,9 +1993,10 @@ def _indicator_tick():
             continue
         image = getattr(hb, "_dot", None)
         icon = getattr(hb, "_ind_icon", None)
-        if image is not None and icon in work_mark_state.CYCLE_S:
+        ai = icon[3:] if isinstance(icon, str) and icon.startswith("ai:") else None
+        if image is not None and (icon in work_mark_state.CYCLE_S or ai in work_mark_state.AI_CYCLE_S):
             looping = True
-            frame = work_mark_state.frame_index(icon, t)
+            frame = work_mark_state.ai_frame_index(ai, t) if ai else work_mark_state.frame_index(icon, t)
             if getattr(image, "_frame", 0) != frame:
                 image._frame = frame
                 image.set_from_pixbuf(_indicator_pixbuf(icon, image._ind[1], frame))
@@ -2784,6 +2811,22 @@ def tab_label(text, key=None, closable=True, on_close=None):
     hb._text_box = lbl_box
     globals().get("ws_drag_source", lambda *a: None)(lbl_box, key)
     if key and key != "local":
+        # Tu canal (grill 30-sep): sticker con tu marca y «¿Hecho? ✓» cuando la IA terminó.
+        sticker = Gtk.Label(label="")
+        sticker.get_style_context().add_class("tab-sticker")
+        sticker.set_no_show_all(True)
+        hb.pack_start(sticker, False, False, 0)
+        hb._sticker = sticker
+        suggest = Gtk.Button(label="¿Hecho? ✓" if ES else "Done? ✓")
+        suggest.set_relief(Gtk.ReliefStyle.NONE)
+        suggest.set_focus_on_click(False)
+        suggest.get_style_context().add_class("tab-suggest")
+        suggest.set_tooltip_text("La IA terminó y no preguntó nada: márcala como hecha" if ES
+                                 else "The AI finished without asking: mark it done")
+        suggest.set_no_show_all(True)
+        suggest.connect("clicked", lambda *_: set_work_mark("session", key, "resolved"))
+        hb.pack_start(suggest, False, False, 0)
+        hb._suggest = suggest
         favorite = Gtk.Button(label="☆")
         favorite.set_relief(Gtk.ReliefStyle.NONE)
         favorite.set_focus_on_click(False)

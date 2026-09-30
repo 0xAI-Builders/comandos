@@ -185,3 +185,28 @@ def test_frame_index_quantizes_a_clock_into_the_icon_cycle():
     assert wm.frame_index("working", wm.CYCLE_S["working"] / 2) == n // 2
     assert wm.frame_count("frozen") > wm.frame_count("working"), "a slow loop needs more steps to stay smooth"
     assert wm.frame_count("none") == 1
+
+
+def test_ai_status_uses_pixel_8bit_icons_that_move():
+    """Grill 30-sep: lo que pone la IA va en su propio canal con íconos pixel
+    8-bit (engrane, globo «!», bandera, X, cuadro); trabajando se mueve."""
+    import work_marks as wm
+    assert wm.ai_status("working") == "work"
+    assert wm.ai_status("awaiting_permission") == wm.ai_status("awaiting_input") == wm.ai_status("waiting") == "need"
+    assert wm.ai_status("completed") == wm.ai_status("done") == "done"
+    assert wm.ai_status("failed") == wm.ai_status("error") == "error"
+    assert wm.ai_status(None) == wm.ai_status("ended") == wm.ai_status("cancelled") == "idle"
+    for name in wm.AI_ICONS:
+        svg = wm.ai_icon_svg(name, 20)
+        assert 'shape-rendering="crispEdges"' in svg and "<rect" in svg
+    frames = {wm.ai_icon_svg("work", 20, phase=p / 8) for p in range(8)}
+    assert len(frames) == 8, "the gear turns in eight pixel steps"
+    assert wm.ai_icon_svg("idle", 20, phase=0.5) == wm.ai_icon_svg("idle", 20), "idle is still"
+    assert wm.STICKERS == {"frozen": "Aparcado", "awaiting_reply": "Esperando", "resolved": "Hecho"}
+
+
+def test_ai_pixel_icons_are_identical_on_web_and_desktop():
+    import work_marks as wm
+    js = (ROOT / "dash" / "work-marks.js").read_text()
+    for name, body in wm.AI_ICONS.items():
+        assert json.dumps(body) in js, f"{name}: dash/work-marks.js must carry the same pixel drawing"
