@@ -14,7 +14,11 @@ Las métricas distinguen configuración de uso observado. No se muestran estimac
 
 Las [referencias](references.md) y la [prueba visual](proof.html) registran el alcance de la revisión.
 
-## Barra lateral en revisión
+## Barra lateral en revisión (superada)
+
+Esta sección quedó superada el 2026-09-29 por "Barra izquierda: comandos por CLI y terminales rápidas": el chat se retira y la barra no configura la IA, ofrece los comandos nativos de cada CLI.
+
+### Texto original
 
 La comparación basada en proyectos, sesiones y panes queda archivada. Jesús pide definir la utilidad de la barra. Su corrección posterior conserva el chat del producto. MCPs y skills conservan su acceso por split pane. La opción en evaluación es configurar la IA del pane seleccionado, con controles en el lugar y evidencia de lo que quedó activo.
 
@@ -47,3 +51,13 @@ La barra deja de orquestar cambios de harness, modelo o cuenta. Muestra, siempre
 Debajo del acordeón viven las terminales rápidas en tabs, cada una con su carpeta fechada, con un separador de altura. El chat de ComandOS se retira y su lugar lo ocupan esas terminales. Las cadenas de comandos se arman en un modal centrado de mosaico, abierto desde el botón Cadenas: arrastrar o tocar añade pasos, los pasos se reordenan arrastrando, se guardan en archivos de texto y se corren paso a paso con "Siguiente", sin esperas automáticas. La observación de lo que quedó activo sigue siendo el contrato de docs/tui-command-map.md.
 
 Arte y tono: iconos pixel de Shikashi para grupos y acciones, monogramas por CLI como marcador de laboratorio (en producción, los iconos de proveedor existentes), poción de karsiori en el pane seleccionado, reloj de arena y cofre en las cadenas.
+
+## Cabecera ordenada y Servidores
+
+Aprobado el 2026-09-29 (ronda 9, variante A). Dos filas: en la primera ☰, los contadores esperan/listos/trabajando, Terminal y + Nueva sesión, y a la derecha ⌘K, snippets, Analytics, Remoto, Servidores, Novedades, el Pomodoro en miniatura, Ajustes y la hora; en la segunda el número seguido de las tabs. La fila permanente de servidores SSH desaparece de la cabecera. Bajo 1200 px de ancho del panel, los botones del sistema muestran solo icono con tooltip.
+
+Servidores se conserva exactamente como hoy: el botón de la primera fila muestra la misma fila de chips por host con su estado, "gestionar", conectar e instalar llave. Los controles que salen de la barra izquierda y de la cabecera (Apariencia, Soberanía, volumen, límites, Notificaciones, Todas las sesiones, Perfiles, Uso de herramientas) se recomiendan dentro del menú ☰, pendiente de veredicto (D8 del subplan 06).
+
+## Cierre de la fase 2
+
+El grilling de la segunda fase terminó el 2026-09-29 con la orden de implementar lo aprobado. El plan de implementación es /home/someguy/codebase/0xJesus/ComandOS/.worktrees/comandos-v1-grill/docs/superpowers/plans/2026-09-29-commandos-v1/06-barra-comandos-cabecera.md. Analytics/Reparto, entrada remota, ajustes y contexto de retorno no se grillaron y no tienen diseño aprobado.

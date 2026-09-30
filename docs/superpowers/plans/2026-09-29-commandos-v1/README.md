@@ -12,7 +12,7 @@
 
 Este paquete es un plan para otro agente. No implementa el release ni cambia sesiones, servicios, preferencias, credenciales o conversaciones reales. La palabra 1.0 identifica el objetivo de producto de Jesús; no autoriza rebajar la versión publicada ni sobrescribir tags existentes.
 
-El usuario decidió implementar primero lo acordado y continuar el diseño restante en una segunda fase. La barra contextual y la robustez completa de cambio de harness/cuenta/modelo quedan en esa segunda fase. El chat propio se conserva por la corrección más reciente de Jesús. Telegram sí se retira en la primera fase.
+El usuario decidió implementar primero lo acordado y continuar el diseño restante en una segunda fase. La primera fase se implementó en `implementation/comandos-v1` y está en `main` (`b5dc4ed`), con activación R2/R3 pendiente de Jesús. La segunda fase se grilló el 2026-09-29 y su plan es el subplan 06: la barra izquierda pasa a ser un catálogo de comandos por CLI con cadenas y terminales rápidas, el chat de CommandOS se retira (esto revoca E4) y la cabecera pasa a la variante Ordenada. Telegram sigue retirado.
 
 Los planes distinguen tres cosas: requisitos aprobados, decisiones técnicas propuestas y preferencias humanas sin resolver. Las últimas bloquean solo su activación concreta. No se inventan respuestas ni se omite el requisito del release.
 
@@ -38,7 +38,8 @@ Los planes distinguen tres cosas: requisitos aprobados, decisiones técnicas pro
 | Checkout de referencia, rama main | /home/someguy/codebase/0xJesus/ComandOS |
 | Worktree de diseño y este paquete | /home/someguy/codebase/0xJesus/ComandOS/.worktrees/comandos-v1-grill |
 | Historial de decisiones, leer los veredictos posteriores | /home/someguy/codebase/0xJesus/ComandOS/.worktrees/comandos-v1-grill/dash/prototypes/README-v1-grill.md |
-| Mockup, solo referencia visual | /home/someguy/codebase/0xJesus/ComandOS/.worktrees/comandos-v1-grill/dash/prototypes/prototype-v1-grill.html |
+| Mockup fase 1, solo referencia visual | /home/someguy/codebase/0xJesus/ComandOS/.worktrees/comandos-v1-grill/dash/prototypes/prototype-v1-grill.html |
+| Mockup fase 2, composición aprobada sin parámetros | /home/someguy/codebase/0xJesus/ComandOS/.worktrees/comandos-v1-grill/dash/prototypes/prototype-v2-barra.html |
 | Fuentes de diseño investigadas | /home/someguy/codebase/0xJesus/ComandOS/.worktrees/comandos-v1-grill/design/references.md |
 | Planificación de la barra pendiente | /home/someguy/codebase/0xJesus/ComandOS/.worktrees/comandos-v1-grill/design/sidebar-controls-plan.md |
 | Handoff de la segunda fase, fuera del repo | /tmp/comandos-v1-fase-2-handoff.md |
@@ -80,6 +81,7 @@ El entorno y su archivo de dependencias son rutas propuestas que se crean al eje
 | P | /home/someguy/codebase/0xJesus/ComandOS/.worktrees/comandos-v1-grill/docs/superpowers/plans/2026-09-29-commandos-v1/03-pomodoro.md | N1 para eventos de finalización | Temporizador fiable, regla, arte y métricas. |
 | N | /home/someguy/codebase/0xJesus/ComandOS/.worktrees/comandos-v1-grill/docs/superpowers/plans/2026-09-29-commandos-v1/04-avisos-push-noticias.md | W para destino exacto | Eventos, avisos, lector, resúmenes y push Android. |
 | R | /home/someguy/codebase/0xJesus/ComandOS/.worktrees/comandos-v1-grill/docs/superpowers/plans/2026-09-29-commandos-v1/05-integracion-release.md | Bloques anteriores | Candidato probado con Jesús y guía de activación/reversión. |
+| F (fase 2) | /home/someguy/codebase/0xJesus/ComandOS/.worktrees/comandos-v1-grill/docs/superpowers/plans/2026-09-29-commandos-v1/06-barra-comandos-cabecera.md | main con la fase 1 (`b5dc4ed`); E2 para las terminales rápidas | Barra de comandos por CLI, tecleo sin Enter, cadenas, retiro del chat, cabecera Ordenada. Checkout propio `.worktrees/comandos-v1-fase2`. |
 
 Orden recomendado de tareas: W1 a W4, N1, E1 a E4, P1, N2, P2 a P4, N3 a N5 y R1 a R3. N2 crea el adaptador de audio que P2 reutiliza. P4 se activa al cerrar D2. R no permite declarar terminado un bloque requerido que siga desactivado por falta de una decisión.
 
@@ -106,7 +108,12 @@ N1 crea las tablas de eventos antes de que P1 las use. E1 y los demás módulos 
 | Prompt aceptado quita Resuelto; iconos no emoji en loop | E1 | Historial: new prompt clears Resuelto; continuously animated state icons. |
 | Terminal y Nueva sesión separadas; carpeta fechada por shell | E2 | Historial: a dated directory for each quick terminal. |
 | Seleccionar/quitar todo, categorías reales, selección/carga/uso distintos | E3 | Pedido directo y corrección sin integrar del worktree de extensiones. |
-| Conservar chat propio; MCPs/skills en pane | E4 | Corrección más reciente de Jesús: "SI DEJALA". |
+| Conservar chat propio; MCPs/skills en pane | E4 | Corrección "SI DEJALA", **revocada el 2026-09-29**: el chat se sustituye por terminales rápidas (subplan 06, S2/S4). MCPs/skills siguen en el pane. |
+| Comandos por CLI instalado, con explicación y versión verificada; yolo primero; todo plegable | 06 · C1, C2, S1 | Historial: "Aprobado: acordeón por CLI", "Corrección: todo plegable y arranque YOLO primero". |
+| Un clic escribe letra por letra sin Enter | 06 · T1, S1 | Historial: respuesta Q1 de fase 2. |
+| Fila de dos líneas con chips | 06 · S1 | Historial: "Aprobado: fila de dos líneas". |
+| Cadenas guardadas plegables y tarjeta corriendo con Siguiente | 06 · K1, K2, S1, S3 | Historial: "Aprobado: cadena corriendo como tarjeta", "Cadenas con el mismo acordeón por CLI". |
+| Cabecera Ordenada sin fila SSH permanente; Servidores intacto | 06 · H1 | Historial: "Aprobado: barra superior ordenada", "Veredicto: Servidores se conserva como hoy". |
 | Pomodoro operativo, regla de tiempo, sonidos de videojuego | P1, P2 | Historial: Regla de tiempo y video-game sound direction. |
 | Analytics de Pomodoro y gamificación | P3, P4 | Historial: Pomodoro analytics and personal gamification. |
 | Seis estilos, Alquimia inicial, sprites reales y loops | P2 | Historial: selectable styles; expressive sprite direction. |
@@ -133,11 +140,11 @@ Los ejemplos de mapas, XP, minutos objetivo, avisos, nombres de modelos y notici
 
 Estas decisiones quedan en la cola de revisión, no convierten todo el paquete en trabajo bloqueado. Consultarlas con una propuesta concreta al llegar al bloque; mientras tanto continuar con tareas independientes. No resolverlas por silencio ni usar una espera como aprobación.
 
-## Segunda fase, fuera de esta implementación
+## Segunda fase
 
-La barra contextual al pane es el punto de partida para continuar; faltan composición y política de cambio. Se aplazan el rediseño completo de IA/cuentas/harnesses, barra superior, Analytics general/Reparto, entrada remota y servidores, ajustes/utilidades y contexto de retorno. Las mejoras remotas necesarias para los acuerdos de W/N sí pertenecen a esta fase.
+Grillada y cerrada el 2026-09-29 (historial desde "Fase 2 · propuesta de Jesús y ronda 6" hasta "Cierre del grilling de fase 2"). Se implementa con el subplan 06. La política de cambios de IA dejó de ser una función orquestada: la barra ofrece los comandos nativos de cada CLI y el usuario los ejecuta. Servidores no se rediseña. Sin grillar y fuera de toda implementación: Analytics general/Reparto, entrada remota/reconexión, ajustes y utilidades, contexto de retorno.
 
-Conservar el chat existente. No reintroducir Telegram, recuperación histórica manual ni el árbol de proyectos como requisito de la barra. El handoff conserva las preguntas y hallazgos, sin crear un segundo conjunto de decisiones.
+No reintroducir Telegram, recuperación histórica manual, el árbol de proyectos ni el chat de CommandOS. El handoff conserva las preguntas y hallazgos, sin crear un segundo conjunto de decisiones.
 
 ## Entrega del agente implementador
 
