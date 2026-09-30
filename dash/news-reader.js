@@ -208,7 +208,7 @@
     const primary = typeof TERM_BASE !== "undefined" && base === TERM_BASE;
     const theme = typeof curTheme !== "undefined" ? curTheme : "";
     frame.src = primary
-      ? `${base}/?auth=${encodeURIComponent(token)}&arg=${encodeURIComponent(session)}&theme=${encodeURIComponent(theme)}`
+      ? `${base}/?auth=${encodeURIComponent(token)}&arg=${encodeURIComponent(session)}&theme=${encodeURIComponent(theme)}&btn=${encodeURIComponent(document.documentElement.dataset.btnStyle || "sutil")}`
       : `${base}/?arg=${encodeURIComponent(token)}&arg=${encodeURIComponent(session)}`;
     host.replaceChildren(frame);
   }

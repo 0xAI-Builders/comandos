@@ -6,6 +6,7 @@
 <title>ComandOS · terminal</title>
 <link rel="icon" href="../icon-192.png">
 <link rel="stylesheet" href="../assets/xterm/xterm.css">
+<link rel="stylesheet" href="/buttons.css?v=1">
 <!-- Cargamos la fuente bundleada por @font-face para que WebKit la use aun si
      fontconfig del sistema no la conoce. -->
 <style>
@@ -212,6 +213,16 @@
   const arg    = params.get('arg') || '';
   const accessTokenParam = params.get('auth') || '';
   const theme  = (params.get('theme') || 'noche').toLowerCase();
+  const BUTTON_STYLES = ['sutil', 'arcade', 'tecla', 'pixel', 'consola'];
+  function applyButtonStyle(style) {
+    if (!BUTTON_STYLES.includes(style)) return false;
+    const root = document.documentElement;
+    if (root && root.dataset) root.dataset.btnStyle = style;
+    return true;
+  }
+  let inherited = '';
+  try { inherited = parent !== window ? parent.document.documentElement.dataset.btnStyle || '' : ''; } catch (_) { /* otro origen */ }
+  applyButtonStyle(params.get('btn') || inherited || 'sutil');
   const debug  = params.get('debug') === '1';
 
   const dbgEl = document.getElementById('dbg');
@@ -382,6 +393,7 @@
     const data = event.data;
     if (event.origin !== location.origin || event.source !== parent ||
         !data || data.source !== 'comandos') return false;
+    if (data.type === 'button-style') return applyButtonStyle(data.style);
     if (data.type === 'theme') {
       if (!THEMES[data.theme]) return false;
       return applyTerminalTheme(data.theme);

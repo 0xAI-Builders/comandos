@@ -278,5 +278,7 @@
   };
   window.addEventListener('message',event=>{const frame=document.getElementById('pane-extensions-frame');if(event.origin===location.origin&&event.source===frame?.contentWindow&&event.data?.type==='comandos-extensions-close')closeFrame();});
   const root=document.getElementById('extensions');
+  // Mismo estilo de botones que el resto de ComandOS (pref compartida button_style).
+  request('/prefs').then(p=>{const s=p&&p.button_style;if(['sutil','arcade','tecla','pixel','consola'].includes(s))document.documentElement.dataset.btnStyle=s;}).catch(()=>{});
   if(root){const query=new URLSearchParams(location.search),target={session:query.get('session')||'',pane:query.get('pane')||''};if(query.get('harness'))target.harness=query.get('harness');new Shelf(root,target);}
 })();

@@ -1673,7 +1673,30 @@ def button_style_css(style, theme):
                                              ("cc-key-news", "#7c4dff"), ("cc-key-term", "#56627a"),
                                              ("cc-key-plus", "#2f7de0"), ("cc-key-settings", "#56627a")))),
     }
-    return (base + styles.get(style, styles["sutil"])).encode()
+    # El resto de los botones de la app (pestañas, diálogos, píldoras de pane,
+    # atajos…): misma superficie 3D sin cambiar su tamaño. Hundirse = sombra
+    # interior (sin mover márgenes, así las listas no bailan). Fuera quedan
+    # los controles de ventana y las flechas de scroll.
+    gen = "button:not(.cc-key):not(.cc-winctl):not(.titlebutton)"
+    generic = {
+        "sutil": (f"{gen}{{border:1px solid {line};box-shadow:0 2px 0 {theme.get('line2', line)};}}"
+                  f"{gen}:active,{gen}:checked{{box-shadow:inset 0 2px 0 rgba(0,0,0,0.3);}}"),
+        "arcade": (f"{gen}{{border:0;border-radius:999px;background-image:radial-gradient(circle at 50% 30%,shade({face},1.4),{face} 65%);"
+                   f"box-shadow:0 0 0 2px {edge},0 3px 0 2px {edge};}}"
+                   f"{gen}:active,{gen}:checked{{box-shadow:0 0 0 2px {edge},inset 0 3px 0 rgba(0,0,0,0.35);}}"),
+        "tecla": (f"{gen}{{border:0;border-radius:8px;background-image:linear-gradient(to bottom,shade({face},1.25),{face});"
+                  f"box-shadow:inset 0 1px 0 rgba(255,255,255,0.14),0 3px 0 {edge};}}"
+                  f"{gen}:active,{gen}:checked{{box-shadow:inset 0 3px 0 rgba(0,0,0,0.35);}}"),
+        "pixel": (f"{gen}{{border:2px solid #000;border-radius:0;background-image:none;background-color:{face};"
+                  f"box-shadow:inset 2px 2px 0 rgba(255,255,255,0.16),inset -2px -2px 0 rgba(0,0,0,0.3),3px 3px 0 rgba(0,0,0,0.55);}}"
+                  f"{gen}:active,{gen}:checked{{box-shadow:inset 3px 3px 0 rgba(0,0,0,0.35);}}"),
+        "consola": (f"{gen}{{border:0;border-radius:12px;background-image:linear-gradient(to bottom,shade({face},1.35),{face});"
+                    f"box-shadow:0 3px 0 {edge},inset 0 2px 0 rgba(255,255,255,0.25);}}"
+                    f"{gen}:active,{gen}:checked{{box-shadow:inset 0 3px 0 rgba(0,0,0,0.35);}}"),
+    }
+    reset = "scrollbar button{border:0;box-shadow:none;background-image:none;}"
+    key = style if style in styles else "sutil"
+    return (base + styles[key] + generic[key] + reset).encode()
 
 
 _KEY_CSS = Gtk.CssProvider()
@@ -5048,6 +5071,8 @@ _maximize = _icon_btn("maximize", "Maximizar" if ES else "Maximize",
 _close = _icon_btn("close", "Cerrar" if ES else "Close",
                    lambda *_: Gtk.main_quit())
 _close.get_style_context().add_class("cc-close-btn")
+for _winctl in (_minimize, _maximize, _close):
+    _winctl.get_style_context().add_class("cc-winctl")   # controles de ventana: fuera del estilo 3D
 
 # pack_end packs right-to-left — el primero queda más a la derecha.
 _headerbar.pack_end(_close)
