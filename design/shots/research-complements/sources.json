@@ -1,0 +1,83 @@
+[
+  {
+    "file": "linear-inbox.avif",
+    "url": "https://webassets.linear.app/images/ornj730p/production/b442b340278740de70919c868dce1afca4335fe7-3600x2080.png?w=1440&q=95&auto=format&dpr=2",
+    "bytes": 54868,
+    "mime": "image/avif",
+    "local_path": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/comandos-v1-grill/design/shots/research-complements/linear-inbox.avif"
+  },
+  {
+    "file": "linear-inbox-display.avif",
+    "url": "https://webassets.linear.app/images/ornj730p/production/2decf1f92f20b31e8a917d8e8c8c7e819ea1d8c3-1324x897.png?w=1440&q=95&auto=format&dpr=2",
+    "bytes": 65703,
+    "mime": "image/avif",
+    "local_path": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/comandos-v1-grill/design/shots/research-complements/linear-inbox-display.avif"
+  },
+  {
+    "file": "vscode-editor-grid.png",
+    "url": "https://code.visualstudio.com/assets/docs/configure/custom-layout/grid-editor-layout.png",
+    "bytes": 351969,
+    "mime": "image/png",
+    "local_path": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/comandos-v1-grill/design/shots/research-complements/vscode-editor-grid.png"
+  },
+  {
+    "file": "raycast-agent-chat.png",
+    "url": "https://manual.raycast.com/_next/image?url=https%3A%2F%2Ffz1sd71lwhbqy6sh.public.blob.vercel-storage.com%2Fraycast%2Fimages%2Fapp%2Fai%2Fmac-agents-aichat.png&w=828&q=75",
+    "bytes": 71627,
+    "mime": "image/png",
+    "local_path": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/comandos-v1-grill/design/shots/research-complements/raycast-agent-chat.png"
+  },
+  {
+    "file": "ticktick-focus-desktop.png",
+    "error": "HTTPError",
+    "local_path": null
+  },
+  {
+    "file": "ticktick-focus-mobile.png",
+    "error": "HTTPError",
+    "local_path": null
+  },
+  {
+    "file": "carbon-selection.png",
+    "error": "HTTPError",
+    "local_path": null
+  },
+  {
+    "file": "carbon-batch-actions.png",
+    "error": "HTTPError",
+    "local_path": null
+  },
+  {
+    "file": "linear-inbox-original.png",
+    "url": "https://webassets.linear.app/images/ornj730p/production/b442b340278740de70919c868dce1afca4335fe7-3600x2080.png",
+    "bytes": 2038039,
+    "mime": "image/png",
+    "local_path": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/comandos-v1-grill/design/shots/research-complements/linear-inbox-original.png"
+  },
+  {
+    "file": "linear-inbox-display-original.png",
+    "url": "https://webassets.linear.app/images/ornj730p/production/2decf1f92f20b31e8a917d8e8c8c7e819ea1d8c3-1324x897.png",
+    "bytes": 556200,
+    "mime": "image/png",
+    "local_path": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/comandos-v1-grill/design/shots/research-complements/linear-inbox-display-original.png"
+  },
+  {
+    "file": "raycast-agent-settings.png",
+    "url": "https://manual.raycast.com/_next/image?url=https%3A%2F%2Ffz1sd71lwhbqy6sh.public.blob.vercel-storage.com%2Fraycast%2Fimages%2Fapp%2Fai%2Fmac-agents-settings.png&w=828&q=75",
+    "bytes": 97343,
+    "mime": "image/png",
+    "local_path": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/comandos-v1-grill/design/shots/research-complements/raycast-agent-settings.png"
+  },
+  {
+    "file": "carbon-batch-browser.png",
+    "local_path": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/comandos-v1-grill/design/shots/research-complements/carbon-batch-browser.png",
+    "source_page": "https://carbondesignsystem.com/components/data-table/usage/",
+    "kind": "remote_browser_element_screenshot"
+  },
+  {
+    "file": "linear-inbox-documentation-desktop.jpeg",
+    "local_path": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/comandos-v1-grill/design/shots/research-complements/linear-inbox-documentation-desktop.jpeg",
+    "source_page": "https://linear.app/docs/inbox",
+    "kind": "remote_browser_documentation_screenshot"
+  }
+]

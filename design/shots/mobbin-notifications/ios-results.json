@@ -1,0 +1,26 @@
+{
+  "query": "Notifications inbox with unread activity and filters to switch between all updates and mentions",
+  "screens": [
+    {
+      "id": "3c451683-6c3d-4c76-be6a-0a129143ba3a",
+      "image_url": "https://mobbin.com/api/mcp/short/dgiVIDtT",
+      "mobbin_url": "https://mobbin.com/screens/3c451683-6c3d-4c76-be6a-0a129143ba3a",
+      "app_name": "Mindtrip",
+      "platform": "ios"
+    },
+    {
+      "id": "2f976b2e-5bd9-4b99-ab34-12988fd7d200",
+      "image_url": "https://mobbin.com/api/mcp/short/zOm3wFsy",
+      "mobbin_url": "https://mobbin.com/screens/2f976b2e-5bd9-4b99-ab34-12988fd7d200",
+      "app_name": "LinkedIn",
+      "platform": "ios"
+    },
+    {
+      "id": "8db45ea4-7352-4edf-bd49-6f68e0b8c791",
+      "image_url": "https://mobbin.com/api/mcp/short/9kcca3q7",
+      "mobbin_url": "https://mobbin.com/screens/8db45ea4-7352-4edf-bd49-6f68e0b8c791",
+      "app_name": "Mesh",
+      "platform": "ios"
+    }
+  ]
+}

@@ -1,0 +1,150 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>PROTOTIPO · Semáforos de la IA</title>
+<!-- PROTOTIPO DESECHABLE (grill-design, bloque 3). Íconos más llamativos para lo que pone la IA
+     (Trabajando animado). Sin emoji: SVG + CSS. -->
+<style>
+:root{--bg:#0b1119;--panel:#101824;--panel2:#141e2c;--line:#223044;--line2:#2e3852;--ink:#e6edf5;--mut:#8a98ab;--dim:#5d6b7e;--acc:#8b7cf6;--green:#4ade80;--amber:#f5b83d;--red:#f87171;--blue:#60a5fa}
+*{box-sizing:border-box}html,body{margin:0;background:#070b11;color:var(--ink);font:13px/1.4 system-ui,sans-serif}
+button{font:inherit;color:inherit;background:none;border:0;cursor:pointer}
+.frame{margin:18px auto;max-width:1100px;border:1px solid var(--line);border-radius:14px;overflow:hidden;background:var(--bg)}
+.top{display:flex;align-items:center;height:44px;padding:0 12px;border-bottom:1px solid var(--line);background:var(--panel)}.top b{letter-spacing:1.5px;font-size:12px}
+.bar{display:flex;overflow-x:auto;border-bottom:1px solid var(--line);background:var(--panel);min-height:46px}
+.tab{flex:none;display:flex;align-items:center;gap:8px;padding:0 13px;height:46px;border-right:1px solid var(--line);white-space:nowrap;color:var(--mut);position:relative;overflow:hidden}
+.tab.cur{color:var(--ink);box-shadow:inset 0 -2px var(--acc);background:var(--panel2)}
+.ic{width:20px;height:20px;flex:none;display:grid;place-items:center;position:relative}
+.ic svg{width:20px;height:20px;overflow:visible}
+.body{padding:18px}
+.grid{display:grid;grid-template-columns:repeat(5,1fr);gap:12px}
+.cell{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:16px 10px;text-align:center}
+.cell .big{width:64px;height:64px;margin:0 auto 10px;display:grid;place-items:center}
+.cell .big .ic,.cell .big .ic svg{width:56px;height:56px}
+.cell b{display:block}.cell small{color:var(--mut)}
+.sizes{display:flex;gap:18px;align-items:center;margin-top:16px;color:var(--mut)}
+.light .frame{--bg:#f4f6f9;--panel:#fff;--panel2:#eef1f5;--line:#d6dce5;--ink:#141a22;--mut:#566273}
+/* ---------- A · Pixel 8-bit ---------- */
+.vA .ic svg{shape-rendering:crispEdges}
+.vA .work .gear{transform-origin:10px 10px;animation:stepspin 1s steps(8) infinite}
+.vA .need .bang{animation:bounce .6s steps(2) infinite}
+.vA .done .flag{transform-origin:6px 17px;animation:wave 1.4s steps(3) infinite}
+.vA .error .x{animation:blink 0.8s steps(1) infinite}
+@keyframes stepspin{to{transform:rotate(360deg)}}@keyframes bounce{50%{transform:translateY(-3px)}}
+@keyframes wave{50%{transform:skewY(-8deg)}}@keyframes blink{50%{opacity:.25}}
+/* ---------- B · Insignias con brillo ---------- */
+.vB .ic{border-radius:50%}
+.vB .work{background:radial-gradient(circle,#4ade8033,transparent 70%)}
+.vB .work .ring{transform-origin:10px 10px;animation:spin 1.1s linear infinite}
+.vB .work .core{animation:breathe 1.1s ease-in-out infinite;transform-origin:10px 10px}
+.vB .need{animation:halo 1.3s ease-out infinite;border-radius:50%}
+.vB .need .bell{transform-origin:10px 3px;animation:ring 1.3s ease-in-out infinite}
+.vB .done .chk{stroke-dasharray:14;animation:draw 2.4s ease-in-out infinite}
+.vB .error .tri{transform-origin:10px 10px;animation:shake 1.6s ease-in-out infinite}
+@keyframes spin{to{transform:rotate(360deg)}}@keyframes breathe{50%{transform:scale(.7)}}
+@keyframes halo{0%{box-shadow:0 0 0 0 #f5b83d99}80%,100%{box-shadow:0 0 0 9px #f5b83d00}}
+@keyframes ring{0%,50%,100%{transform:rotate(0)}10%{transform:rotate(16deg)}20%{transform:rotate(-14deg)}30%{transform:rotate(10deg)}40%{transform:rotate(-6deg)}}
+@keyframes draw{0%{stroke-dashoffset:14}30%,80%{stroke-dashoffset:0}100%{stroke-dashoffset:0}}
+@keyframes shake{0%,70%,100%{transform:translateX(0)}75%{transform:translateX(-2px)}80%{transform:translateX(2px)}85%{transform:translateX(-2px)}90%{transform:translateX(1px)}}
+/* ---------- C · Ecualizador ---------- */
+.vC .work rect{animation:eq .9s ease-in-out infinite;transform-origin:center bottom;transform-box:fill-box}
+.vC .work rect:nth-child(2){animation-delay:-.3s}.vC .work rect:nth-child(3){animation-delay:-.6s}.vC .work rect:nth-child(4){animation-delay:-.15s}
+.vC .need .dot{animation:typing 1.2s infinite}.vC .need .dot:nth-child(3){animation-delay:.2s}.vC .need .dot:nth-child(4){animation-delay:.4s}
+.vC .done .chk{stroke-dasharray:14;animation:draw 2.4s ease-in-out infinite}
+.vC .error .tri{transform-origin:10px 10px;animation:shake 1.6s ease-in-out infinite}
+@keyframes eq{0%,100%{transform:scaleY(.3)}50%{transform:scaleY(1)}}@keyframes typing{0%,60%,100%{opacity:.25;transform:translateY(0)}30%{opacity:1;transform:translateY(-2px)}}
+/* ---------- D · Luz que barre la pestaña ---------- */
+.vD .tab.s-work::after{content:"";position:absolute;inset:0;background:linear-gradient(100deg,transparent 30%,#4ade8026 50%,transparent 70%);background-size:250% 100%;animation:sweep 1.6s linear infinite;pointer-events:none}
+.vD .tab.s-need{box-shadow:inset 0 -3px var(--amber),inset 0 0 0 1px #f5b83d55;animation:tabpulse 1.3s ease-in-out infinite}
+.vD .tab.s-error{box-shadow:inset 0 -3px var(--red)}
+.vD .tab.s-done{box-shadow:inset 0 -3px var(--green)}
+.vD .work .ring{transform-origin:10px 10px;animation:spin 1.1s linear infinite}
+.vD .need .bell{transform-origin:10px 3px;animation:ring 1.3s ease-in-out infinite}
+@keyframes sweep{from{background-position:150% 0}to{background-position:-50% 0}}@keyframes tabpulse{50%{background:#2a2410}}
+/* ---------- E · LEDs de arcade ---------- */
+.vE .led{animation:chase 1s steps(1) infinite}
+.vE .work .led:nth-child(2){animation-delay:.25s}.vE .work .led:nth-child(3){animation-delay:.5s}.vE .work .led:nth-child(4){animation-delay:.75s}
+.vE .need .led{animation:allblink .7s steps(1) infinite}
+.vE .error .led{animation:allblink .35s steps(1) infinite}
+.vE .done .led{animation:none}
+@keyframes chase{0%,24%{opacity:1}25%,100%{opacity:.18}}@keyframes allblink{50%{opacity:.2}}
+@media (prefers-reduced-motion:reduce){*{animation:none!important}}
+.picker{position:fixed;right:14px;bottom:14px;z-index:99;width:450px;background:#17122a;color:#ece8ff;border:1px solid #3b3170;border-radius:14px;box-shadow:0 18px 50px #000c;padding:10px;font-size:13px;user-select:none}
+.picker .drag{cursor:move;display:flex;gap:8px;align-items:center;margin-bottom:8px}.picker .drag b{margin-right:auto}
+.picker .nav{display:grid;grid-template-columns:30px 1fr 30px;gap:6px}
+.picker .nav button,.picker .opts button,.picker .st button{border:1px solid #3b3170;border-radius:7px;height:30px}
+.picker .name{border:1px solid #8b7cf6;background:#241c44;border-radius:7px;display:flex;align-items:center;padding:0 10px;font-weight:600}
+.picker .opts{display:grid;grid-template-columns:repeat(5,1fr);gap:4px;margin-top:6px}
+.picker .opts button.on,.picker .st button.on{background:#8b7cf6;color:#12091f}
+.picker .st{display:flex;gap:6px;margin-top:8px}.picker .st button{padding:0 8px}
+.picker .desc{margin-top:8px;color:#c9c1f4;font-size:12px}
+@media (max-width:720px){.grid{grid-template-columns:repeat(2,1fr)}.picker{width:calc(100% - 20px);right:10px}}
+</style>
+</head>
+<body>
+<div class="frame" id="frame"></div>
+<div class="picker" id="picker"></div>
+<script>
+const G='#4ade80',A='#f5b83d',R='#f87171',D='#5d6b7e';
+const SETS={
+ A:{ // pixel 8-bit
+  work:`<svg viewBox="0 0 20 20"><g class="gear" fill="${G}"><rect x="8" y="1" width="4" height="4"/><rect x="8" y="15" width="4" height="4"/><rect x="1" y="8" width="4" height="4"/><rect x="15" y="8" width="4" height="4"/><rect x="3" y="3" width="3" height="3"/><rect x="14" y="3" width="3" height="3"/><rect x="3" y="14" width="3" height="3"/><rect x="14" y="14" width="3" height="3"/><rect x="5" y="5" width="10" height="10"/></g><rect x="8" y="8" width="4" height="4" fill="#0b1119"/></svg>`,
+  need:`<svg viewBox="0 0 20 20"><rect x="2" y="2" width="16" height="12" fill="${A}"/><rect x="6" y="14" width="4" height="4" fill="${A}"/><g class="bang" fill="#1a1300"><rect x="9" y="4" width="2" height="5"/><rect x="9" y="10" width="2" height="2"/></g></svg>`,
+  done:`<svg viewBox="0 0 20 20"><rect x="5" y="2" width="2" height="16" fill="#9aa6bf"/><g class="flag" fill="${G}"><rect x="7" y="3" width="10" height="7"/></g></svg>`,
+  error:`<svg viewBox="0 0 20 20"><rect x="2" y="2" width="16" height="16" fill="${R}"/><g class="x" fill="#2a0a0e"><rect x="5" y="5" width="3" height="3"/><rect x="12" y="5" width="3" height="3"/><rect x="8" y="8" width="4" height="4"/><rect x="5" y="12" width="3" height="3"/><rect x="12" y="12" width="3" height="3"/></g></svg>`,
+  idle:`<svg viewBox="0 0 20 20"><rect x="6" y="6" width="8" height="8" fill="none" stroke="${D}" stroke-width="2"/></svg>`},
+ B:{ // insignias con brillo
+  work:`<svg viewBox="0 0 20 20"><circle class="ring" cx="10" cy="10" r="8" fill="none" stroke="${G}" stroke-width="2.5" stroke-dasharray="30 20" stroke-linecap="round"/><circle class="core" cx="10" cy="10" r="3.2" fill="${G}"/></svg>`,
+  need:`<svg viewBox="0 0 20 20"><circle cx="10" cy="10" r="9" fill="${A}"/><path class="bell" d="M6.5 13h7l-1-1.5V9a2.5 2.5 0 0 0-5 0v2.5zM9 14.2a1 1 0 0 0 2 0" fill="#1a1300"/></svg>`,
+  done:`<svg viewBox="0 0 20 20"><circle cx="10" cy="10" r="9" fill="#14532d" stroke="${G}" stroke-width="1.5"/><path class="chk" d="M6 10.5l2.7 2.7L14.5 7" fill="none" stroke="${G}" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>`,
+  error:`<svg viewBox="0 0 20 20"><path class="tri" d="M10 2l8.5 15h-17z" fill="${R}"/><path d="M10 7v5M10 14.5v.5" stroke="#2a0a0e" stroke-width="2" stroke-linecap="round"/></svg>`,
+  idle:`<svg viewBox="0 0 20 20"><circle cx="10" cy="10" r="6" fill="none" stroke="${D}" stroke-width="2" stroke-dasharray="2 3"/></svg>`},
+ C:{ // ecualizador
+  work:`<svg viewBox="0 0 20 20"><g fill="${G}"><rect x="2" y="3" width="3" height="15" rx="1"/><rect x="6.5" y="3" width="3" height="15" rx="1"/><rect x="11" y="3" width="3" height="15" rx="1"/><rect x="15.5" y="3" width="3" height="15" rx="1"/></g></svg>`,
+  need:`<svg viewBox="0 0 20 20"><path d="M2 4h16v10H8l-4 3v-3H2z" fill="${A}"/><circle class="dot" cx="6.5" cy="9" r="1.4" fill="#1a1300"/><circle class="dot" cx="10" cy="9" r="1.4" fill="#1a1300"/><circle class="dot" cx="13.5" cy="9" r="1.4" fill="#1a1300"/></svg>`,
+  done:`<svg viewBox="0 0 20 20"><path class="chk" d="M4 10.5l4 4L16.5 6" fill="none" stroke="${G}" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg>`,
+  error:`<svg viewBox="0 0 20 20"><path class="tri" d="M10 2l8.5 15h-17z" fill="${R}"/><path d="M10 7v5M10 14.5v.5" stroke="#2a0a0e" stroke-width="2" stroke-linecap="round"/></svg>`,
+  idle:`<svg viewBox="0 0 20 20"><g fill="${D}"><rect x="2" y="14" width="3" height="4" rx="1"/><rect x="6.5" y="14" width="3" height="4" rx="1"/><rect x="11" y="14" width="3" height="4" rx="1"/><rect x="15.5" y="14" width="3" height="4" rx="1"/></g></svg>`},
+ D:{ // luz que barre (ícono + la pestaña entera)
+  work:`<svg viewBox="0 0 20 20"><circle class="ring" cx="10" cy="10" r="7.5" fill="none" stroke="${G}" stroke-width="2.5" stroke-dasharray="26 22" stroke-linecap="round"/></svg>`,
+  need:`<svg viewBox="0 0 20 20"><path class="bell" d="M4.5 14h11l-1.5-2V8.5a4 4 0 0 0-8 0V12zM8.5 15.5a1.5 1.5 0 0 0 3 0" fill="${A}"/></svg>`,
+  done:`<svg viewBox="0 0 20 20"><path d="M4 10.5l4 4L16.5 6" fill="none" stroke="${G}" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg>`,
+  error:`<svg viewBox="0 0 20 20"><path d="M10 2l8.5 15h-17z" fill="${R}"/><path d="M10 7v5M10 14.5v.5" stroke="#2a0a0e" stroke-width="2" stroke-linecap="round"/></svg>`,
+  idle:`<svg viewBox="0 0 20 20"><circle cx="10" cy="10" r="5" fill="none" stroke="${D}" stroke-width="2"/></svg>`},
+ E:{ // LEDs de arcade (4 luces)
+  work:led([G,G,G,G]),need:led([A,A,A,A]),done:led([G,G,G,G]),error:led([R,R,R,R]),idle:led([D,D,D,D],true)},
+};
+function led(c,off){return `<svg viewBox="0 0 20 20">${c.map((x,i)=>`<circle class="led" cx="${4+i*4}" cy="10" r="1.8" fill="${x}" ${off?'opacity=".45"':''} style="filter:drop-shadow(0 0 2px ${x})"/>`).join('')}</svg>`;}
+const V=[
+ {k:'A',n:'Pixel 8-bit',d:'Íconos pixel art como el reloj: engrane que gira a saltos (Trabajando), globo «!» que rebota (Te necesita), bandera que ondea (Terminó), calavera-X que parpadea (Error).'},
+ {k:'B',n:'Insignias con brillo',d:'Insignias redondas y rellenas: anillo que gira con núcleo que respira (Trabajando), campana que suena con halo ámbar (Te necesita), palomita que se dibuja (Terminó), triángulo que tiembla (Error).'},
+ {k:'C',n:'Ecualizador',d:'Barras que suben y bajan como música mientras la IA trabaja; globo con puntos «escribiendo» cuando te necesita; palomita que se dibuja al terminar.'},
+ {k:'D',n:'La pestaña entera se ilumina',d:'Además del ícono, la pestaña completa: una luz barre la pestaña mientras trabaja, late en ámbar cuando te necesita, subrayado verde/rojo al terminar o fallar. Se ve desde lejos.'},
+ {k:'E',n:'LEDs de arcade',d:'Cuatro luces tipo máquina de arcade: corren en fila (Trabajando), parpadean todas en ámbar (Te necesita), fijas en verde (Terminó), parpadeo rápido rojo (Error).'},
+];
+const TABS=[['ComandOS ⎇','work'],['SAVA','need'],['PaginasWeb','done'],['RWAAirbnb','error'],['MRP','work'],['Merauto','idle'],['Signara','need'],['Kleis','idle']];
+const LBL={work:['Trabajando','la IA está en su turno'],need:['Te necesita','permiso o pregunta'],done:['Terminó','turno completo'],error:['Error','algo falló'],idle:['Quieta','sin actividad']};
+const P=new URLSearchParams(location.search);
+const S={i:Math.max(0,V.findIndex(v=>v.k===P.get('variant'))),light:false};
+const $=s=>document.querySelector(s);
+function ic(st){return `<span class="ic ${st}">${SETS[V[S.i].k][st]}</span>`;}
+function render(){const v=V[S.i];document.body.classList.toggle('light',S.light);
+  $('#frame').className='frame v'+v.k;
+  $('#frame').innerHTML=`<div class="top"><b>● COMANDOS</b></div>
+   <div class="bar">${TABS.map(([l,st],i)=>`<div class="tab s-${st} ${i===0?'cur':''}">${ic(st)}${l}</div>`).join('')}</div>
+   <div class="body"><div class="grid">${['work','need','done','error','idle'].map(st=>`<div class="cell"><div class="big">${ic(st)}</div><b>${LBL[st][0]}</b><small>${LBL[st][1]}</small></div>`).join('')}</div>
+   <div class="sizes">Tamaño real en la pestaña: ${ic('work')} ${ic('need')} ${ic('done')} ${ic('error')} ${ic('idle')}</div></div>`;
+  $('#picker').innerHTML=`<div class="drag" data-h><b>Grill · Semáforos de la IA</b><span style="color:#8f86c2;font-size:11px">←/→</span></div>
+  <div class="nav"><button data-s="-1">←</button><div class="name">${v.k} · ${v.n}</div><button data-s="1">→</button></div>
+  <div class="opts">${V.map((x,i)=>`<button class="${i===S.i?'on':''}" data-v="${i}">${x.k}</button>`).join('')}</div><div class="desc">${v.d}</div>
+  <div class="st"><button class="${S.light?'on':''}" data-t="light">Tema claro</button></div>`;}
+document.addEventListener('click',e=>{const t=e.target.closest('[data-s],[data-v],[data-t]');if(!t)return;const d=t.dataset;
+  if(d.s)S.i=(S.i+ +d.s+V.length)%V.length;else if(d.v)S.i=+d.v;else S.light=!S.light;history.replaceState(null,'','?variant='+V[S.i].k);render();});
+document.addEventListener('keydown',e=>{if(e.key==='ArrowRight'||e.key==='ArrowLeft'){S.i=(S.i+(e.key==='ArrowRight'?1:4))%5;history.replaceState(null,'','?variant='+V[S.i].k);render();}});
+(function(){const pk=$('#picker');let sx,sy,ox,oy;pk.addEventListener('pointerdown',e=>{if(!e.target.closest('[data-h]'))return;const r=pk.getBoundingClientRect();sx=e.clientX;sy=e.clientY;ox=r.left;oy=r.top;
+ const mv=ev=>{pk.style.left=ox+ev.clientX-sx+'px';pk.style.top=oy+ev.clientY-sy+'px';pk.style.right='auto';pk.style.bottom='auto'};const up=()=>{removeEventListener('pointermove',mv);removeEventListener('pointerup',up)};addEventListener('pointermove',mv);addEventListener('pointerup',up)})})();
+render();
+</script>
+</body>
+</html>

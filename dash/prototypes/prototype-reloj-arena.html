@@ -1,0 +1,132 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>PROTOTIPO · Reloj de arena</title>
+<!-- PROTOTIPO DESECHABLE (grill-design, bloque 5). Assets reales de terceros, solo para comparar. -->
+<style>
+:root{--bg:#0b1119;--panel:#101824;--panel2:#141e2c;--line:#223044;--ink:#e6edf5;--mut:#8a98ab;--dim:#5d6b7e;--acc:#8b7cf6;--green:#4ade80;--amber:#f5b83d}
+.light{--bg:#f4f6f9;--panel:#ffffff;--panel2:#eef1f5;--line:#d6dce5;--ink:#141a22;--mut:#566273;--dim:#8a95a4}
+*{box-sizing:border-box}html,body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.45 system-ui,sans-serif}
+button{font:inherit;color:inherit;background:none;border:0;cursor:pointer}
+.stage{max-width:1100px;margin:0 auto;padding:18px 16px 220px}
+h2{font-size:13px;color:var(--dim);letter-spacing:.8px;text-transform:uppercase;margin:22px 0 8px}
+/* cabecera como la app */
+.hdr{display:flex;align-items:center;gap:6px;height:48px;padding:0 12px;border:1px solid var(--line);border-radius:12px;background:var(--panel)}
+.hdr .brand{font:700 12px system-ui;letter-spacing:1.5px;margin-right:auto;display:flex;gap:8px;align-items:center}
+.hdr .brand i{width:9px;height:9px;border-radius:50%;background:var(--green)}
+.ib{width:36px;height:36px;border-radius:9px;display:grid;place-items:center;position:relative}
+.ib:hover{background:var(--panel2)}
+.ib svg{width:18px;height:18px;stroke:currentColor;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+.hg{image-rendering:pixelated;display:block;object-fit:contain}
+.ib .hg{width:22px;height:22px}
+.ib.big .hg{width:26px;height:26px}
+.paused .hg{animation-play-state:paused!important;filter:saturate(.55)}
+.flip{animation:flip var(--cycle,6s) steps(1,end) infinite}
+.flip-smooth{animation:flipS var(--cycle,6s) ease-in-out infinite}
+@keyframes flipS{0%,86%{transform:rotate(0)}100%{transform:rotate(180deg)}}
+@keyframes flip{0%{transform:rotate(0)}100%{transform:rotate(0)}}
+.badge{position:absolute;top:-5px;right:-7px;min-width:17px;height:17px;padding:0 4px;border-radius:9px;background:var(--amber);color:#1a1300;font:700 10px/17px system-ui;text-align:center}
+.row{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:14px}
+/* popover pomodoro */
+.pomo{border:1px solid var(--line);border-radius:14px;background:var(--panel);padding:16px;display:grid;grid-template-columns:120px 1fr;gap:16px;align-items:center}
+.pomo .big{width:112px;height:112px;display:grid;place-items:center;background:var(--panel2);border-radius:12px}
+.pomo .big .hg{width:92px;height:92px}
+.pomo h3{margin:0 0 4px;font-size:30px;font-variant-numeric:tabular-nums}
+.pomo p{margin:0;color:var(--mut)}
+.bar{height:8px;border-radius:4px;background:var(--panel2);margin-top:10px;overflow:hidden}.bar b{display:block;height:100%;width:38%;background:var(--acc)}
+/* tira de tamaños */
+.sizes{display:flex;gap:18px;align-items:flex-end;border:1px solid var(--line);border-radius:14px;background:var(--panel);padding:16px}
+.sizes figure{margin:0;text-align:center;color:var(--dim);font-size:11px}
+.sizes figure div{display:grid;place-items:center;background:var(--panel2);border-radius:8px;margin-bottom:6px}
+.lic{border:1px solid var(--line);border-radius:14px;background:var(--panel);padding:14px 16px}
+.lic dl{display:grid;grid-template-columns:150px 1fr;margin:0}.lic dt,.lic dd{margin:0;padding:6px 0;border-bottom:1px solid var(--line)}
+.lic dt{color:var(--dim)}.ok{color:var(--green)}.warn{color:var(--amber)}.bad{color:#f87171}
+.lic a{color:var(--acc)}
+/* picker */
+.picker{position:fixed;right:14px;bottom:14px;z-index:9;width:430px;background:#17122a;color:#ece8ff;border:1px solid #3b3170;border-radius:14px;box-shadow:0 18px 50px #000c;padding:10px;font-size:13px;user-select:none}
+.picker .drag{cursor:move;display:flex;gap:8px;align-items:center;margin-bottom:8px}.picker .drag b{margin-right:auto}
+.picker .nav{display:grid;grid-template-columns:30px 1fr 30px;gap:6px}
+.picker .nav button,.picker .opts button{border:1px solid #3b3170;border-radius:7px;height:30px}
+.picker .name{border:1px solid #8b7cf6;background:#241c44;border-radius:7px;display:flex;align-items:center;padding:0 10px;font-weight:600}
+.picker .opts{display:grid;grid-template-columns:repeat(6,1fr);gap:4px;margin-top:6px}
+.picker .opts button.on{background:#8b7cf6;color:#12091f}
+.picker .desc{margin-top:8px;color:#c9c1f4;font-size:12px}
+.picker .states{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}.picker .states button{border:1px solid #3b3170;border-radius:7px;padding:4px 8px}
+.picker .states button.on{background:#8b7cf6;color:#12091f}
+@media (max-width:600px){.picker{width:calc(100% - 20px);right:10px}.pomo{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<div class="stage" id="stage"></div>
+<div class="picker" id="picker"></div>
+<script>
+const DAV={src:'assets/hourglass/davitheoles-clean.gif',author:'Davitheoles',url:'https://davitheoles.itch.io/inverted-hourglass'};
+const ALX={src:'assets/hourglass/alexti-clean.gif',author:'Alexti_dev',url:'https://alexti-dev.itch.io/hourglass-sandglass'};
+// Ronda 2: A y B te gustaron; ¿cómo se usan?
+const V = [
+ {k:'A', n:'Solo A · sci-fi en todo', hdr:DAV, big:DAV, d:'Davitheoles en la cabecera y en el Pomodoro abierto. Un solo estilo, gira al acabar cada vuelta.'},
+ {k:'B', n:'Solo B · madera en todo', hdr:ALX, big:ALX, d:'Alexti en la cabecera y en el Pomodoro abierto. Cálido; en la cabecera se ve alto y delgado.'},
+ {k:'C', n:'A chico + B grande', hdr:DAV, big:ALX, d:'Cabecera con A (se lee mejor a 22 px); al abrir el Pomodoro, el reloj de madera grande.'},
+ {k:'D', n:'Foco = B · Descanso = A', hdr:ALX, big:ALX, brk:DAV, d:'El reloj cambia con el modo: madera mientras trabajas, sci-fi que gira en el descanso. Prueba el botón Descanso.'},
+ {k:'E', n:'Elegible en Ajustes', hdr:DAV, big:DAV, alt:ALX, d:'Ambos disponibles como estilo en Ajustes → Pomodoro (A por defecto). Aquí se muestran lado a lado como en el selector.'},
+];
+const P = new URLSearchParams(location.search);
+const S = {i:Math.max(0,V.findIndex(v=>v.k===P.get('variant'))), paused:false, light:false, breakMode:false};
+const I = {bell:'<svg viewBox="0 0 24 24"><path d="M6 8a6 6 0 1 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.9 1.9 0 0 0 3.4 0"/></svg>',
+ spark:'<svg viewBox="0 0 24 24"><path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8z"/><path d="M19 3v4M17 5h4"/></svg>',
+ gear:'<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M4.2 4.2l2.1 2.1M17.7 17.7l2.1 2.1M2 12h3M19 12h3M4.2 19.8l2.1-2.1M17.7 6.3l2.1-2.1"/></svg>',
+ term:'<svg viewBox="0 0 24 24"><path d="m5 8 4 4-4 4M12 17h7"/></svg>', plus:'<svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>'};
+function assetFor(v, slot){
+  if(S.breakMode && v.brk) return v.brk;
+  return slot==='big' ? v.big : v.hdr;
+}
+function img(v, cls='', slot='hdr'){
+  const a=assetFor(v, slot); return `<img class="hg ${cls}" src="${a.src}" alt="">`;
+  if(v.anim==='sheet') return `<span class="hg sheet ${cls}" style="background:url(${v.src}) 0 0/auto 100% no-repeat;image-rendering:pixelated"></span>`;
+  return `<img class="hg ${v.anim==='flip'?'flip-smooth':''} ${cls}" src="${v.src}" alt="">`;
+}
+function render(){
+  const v=V[S.i]; document.body.classList.toggle('light',S.light);
+  const mode = S.breakMode?'Descanso':'Foco';
+  document.getElementById('stage').innerHTML = `
+  <h2>Cabecera de escritorio (tamaño real)</h2>
+  <div class="hdr ${S.paused?'paused':''}"><span class="brand"><i></i>COMANDOS</span>
+    <button class="ib">${I.term}</button><button class="ib">${I.plus}</button>
+    <button class="ib big" title="Pomodoro">${img(v)}</button><button class="ib">${I.spark}</button>
+    <button class="ib">${I.bell}<span class="badge">4</span></button><button class="ib">${I.gear}</button></div>
+  <h2>Cabecera remota / móvil</h2>
+  <div class="hdr ${S.paused?'paused':''}" style="max-width:390px"><span class="brand">&nbsp;</span>
+    <button class="ib">${img(v)}</button><button class="ib">${I.bell}<span class="badge">4</span></button><button class="ib">${I.spark}</button></div>
+  <h2>Pomodoro abierto</h2>
+  <div class="row"><div class="pomo ${S.paused?'paused':''}"><div class="big">${img(v,"","big")}</div>${v.alt?`<div class="big">${`<img class="hg" src="${v.alt.src}" alt="">`}</div>`:""}
+    <div><p>${mode} · ${S.paused?'en pausa':'corriendo'}</p><h3>${S.breakMode?'04:12':'18:37'}</h3><p>Regla de tiempo · sesión ComandOS</p><div class="bar"><b></b></div></div></div>
+   <div class="sizes ${S.paused?'paused':''}">${[16,22,32,48,96].map(px=>`<figure><div style="width:${px+14}px;height:${px+14}px">${img(v).replace('class="hg','style="width:'+px+'px;height:'+px+'px" class="hg')}</div>${px}px</figure>`).join('')}</div></div>
+  <h2>Licencia y origen</h2>
+  <div class="lic"><dl><dt>A · ${DAV.author}</dt><dd class="warn">Permiso del autor («úsalo como quieras, crédito porfa»). Se acredita en README.</dd>
+   <dt>B · ${ALX.author}</dt><dd class="bad">Sin licencia publicada: antes de meterlo al repo público hay que pedir permiso por escrito.</dd></dl></div>`;
+  document.querySelectorAll('.sheet').forEach(el=>{ // hoja 15 cuadros horizontales (actual)
+    let f=0; clearInterval(el._t); const w=el.clientWidth||22;
+    el.style.backgroundSize=`auto 100%`; el._t=setInterval(()=>{ if(S.paused) return; f=(f+1)%15; el.style.backgroundPosition=`${-f*w}px 0`; },100);
+  });
+  picker();
+}
+function picker(){
+  const v=V[S.i], pk=document.getElementById('picker');
+  pk.innerHTML=`<div class="drag" data-h><b>Grill · Reloj de arena · ronda 2</b><span style="color:#8f86c2;font-size:11px">←/→</span></div>
+  <div class="nav"><button data-s="-1">←</button><div class="name">${v.k} · ${v.n}</div><button data-s="1">→</button></div>
+  <div class="opts">${V.map((x,i)=>`<button class="${i===S.i?'on':''}" data-i="${i}">${x.k}</button>`).join('')}</div>
+  <div class="desc">${v.d}</div>
+  <div class="states">${[['paused','En pausa'],['breakMode','Descanso'],['light','Tema claro']].map(([k,l])=>`<button class="${S[k]?'on':''}" data-t="${k}">${l}</button>`).join('')}</div>`;
+}
+document.addEventListener('click',e=>{const t=e.target.closest('[data-s],[data-i],[data-t]');if(!t)return;
+ if(t.dataset.s) S.i=(S.i+ +t.dataset.s+V.length)%V.length; else if(t.dataset.i) S.i=+t.dataset.i; else S[t.dataset.t]=!S[t.dataset.t];
+ history.replaceState(null,'','?variant='+V[S.i].k); render();});
+document.addEventListener('keydown',e=>{if(e.key==='ArrowRight'||e.key==='ArrowLeft'){S.i=(S.i+(e.key==='ArrowRight'?1:V.length-1))%V.length;history.replaceState(null,'','?variant='+V[S.i].k);render();}});
+(function(){const pk=document.getElementById('picker');let sx,sy,ox,oy;pk.addEventListener('pointerdown',e=>{if(!e.target.closest('[data-h]'))return;const r=pk.getBoundingClientRect();sx=e.clientX;sy=e.clientY;ox=r.left;oy=r.top;
+ const mv=ev=>{pk.style.left=ox+ev.clientX-sx+'px';pk.style.top=oy+ev.clientY-sy+'px';pk.style.right='auto';pk.style.bottom='auto'};const up=()=>{removeEventListener('pointermove',mv);removeEventListener('pointerup',up)};addEventListener('pointermove',mv);addEventListener('pointerup',up)})})();
+render();
+</script>
+</body>
+</html>

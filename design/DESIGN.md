@@ -8,8 +8,56 @@ Se conservan las familias sans y mono del producto. Las acciones principales tie
 
 Solo **Aplicar cambios** ejecuta el borrador de configuración. Los controles de cuenta, CLI, modelo y esfuerzo no envían operaciones al seleccionarse. Las opciones incompatibles explican el motivo. La recuperación aparece en el mismo selector cuando hay una operación pendiente de restauración.
 
-El chat oculto conserva el estado y libera espacio. El resumen de sesiones renderiza tarjetas, no terminales. La selección remota utiliza texto del panel en una vista estable. La entrada táctil conserva composición, autocorrección y borradores antes del envío explícito.
+El chat propio de CommandOS se conserva por la corrección más reciente de Jesús. Su posible rediseño queda para una revisión posterior. El resumen de sesiones renderiza tarjetas, no terminales. La selección remota utiliza texto del panel en una vista estable. La entrada táctil conserva composición, autocorrección y borradores antes del envío explícito.
 
 Las métricas distinguen configuración de uso observado. No se muestran estimaciones de ahorro como resultados medidos. Las limitaciones de cada CLI forman parte del editor de perfiles para evitar controles que aparenten cambios en caliente.
 
 Las [referencias](references.md) y la [prueba visual](proof.html) registran el alcance de la revisión.
+
+## Barra lateral en revisión (superada)
+
+Esta sección quedó superada el 2026-09-29 por "Barra izquierda: comandos por CLI y terminales rápidas": el chat se retira y la barra no configura la IA, ofrece los comandos nativos de cada CLI.
+
+### Texto original
+
+La comparación basada en proyectos, sesiones y panes queda archivada. Jesús pide definir la utilidad de la barra. Su corrección posterior conserva el chat del producto. MCPs y skills conservan su acceso por split pane. La opción en evaluación es configurar la IA del pane seleccionado, con controles en el lugar y evidencia de lo que quedó activo.
+
+La función contextual, el contenido esencial y la política de aplicación todavía requieren veredicto. El análisis del código, los límites de los comandos nativos y las pruebas propuestas están en /home/someguy/codebase/0xJesus/ComandOS/.worktrees/comandos-v1-grill/design/sidebar-controls-plan.md. Las referencias visuales anteriores documentan investigación; no implican aprobación de la jerarquía.
+
+## Canales de notificación vigentes
+
+Telegram queda excluido por completo del diseño de CommandOS, incluidos ajustes, envíos y comandos del bot. La decisión y el alcance de la retirada están en /home/someguy/codebase/0xJesus/ComandOS/.worktrees/comandos-v1-grill/dash/prototypes/README-v1-grill.md, apartado "Confirmed: remove Telegram from CommandOS entirely". La retirada de la integración existente corresponde a la implementación posterior al grilling.
+
+El diseño requiere push al celular cuando el usuario no esté viendo CommandOS, incluido en segundo plano o con la pantalla bloqueada. El requisito y la evidencia del código actual están en el mismo registro, apartado "Confirmed: phone push when CommandOS is not being viewed". Los requisitos de instalación, permisos y sonido están documentados en /home/someguy/codebase/0xJesus/ComandOS/.worktrees/comandos-v1-grill/design/mobile-push-research.md. La entrega real en el teléfono sigue pendiente de implementar y probar.
+
+## Lector de noticias aprobado
+
+La base elegida es B, Edición continua, con la opción de mostrar la terminal. Las demás variantes se conservan como referencias. Viven en /home/someguy/codebase/0xJesus/ComandOS/.worktrees/comandos-v1-grill/dash/prototypes/prototype-v1-grill.html, bajo `round=news-reader`. El historial de decisiones y la verificación se conservan en /home/someguy/codebase/0xJesus/ComandOS/.worktrees/comandos-v1-grill/dash/prototypes/README-v1-grill.md.
+
+El lector conserva el marco oscuro y la barra lateral actual con datos simulados. El cuerpo del artículo usa 16 px ajustables entre 14 y 22, interlineado 1.75 y una columna de hasta 760 px. Tablas y código pueden desplazarse dentro del artículo. Los filtros horizontales conservan sus controles en móvil. A muestra lista y detalle en escritorio; en móvil alterna ambos con un botón de regreso. C mantiene la terminal junto al lector en escritorio y permite volver a ella desde móvil. B recorre una edición, D despliega temas y E avanza entre artículos.
+
+Colores medidos del prototipo: texto de artículo `#D7DCE8`, secundario `#AAB1C0`, acento `#AD9CFF`, fondo `#141821`. Sus contrastes respectivos sobre ese fondo son 12.93:1, 8.25:1 y 7.59:1. Son tokens de la implementación, no valores extraídos de las capturas de Mobbin. El lector usa las fuentes disponibles en el sistema y no descarga tipografías.
+
+Los controles A-E pertenecen al laboratorio. Permanecen separados del área de la app y se pueden arrastrar en pantallas de altura normal. Con altura de hasta 650 px pasan debajo de la app en el flujo del documento para que no tapen los controles de lectura. El contenido, la investigación ampliada, los avisos y las fuentes son ejemplos. La posición de lectura, los guardados y los temas seguidos duran la visita; no existe sincronización real entre dispositivos en este prototipo.
+
+En B, Ver terminal abre la terminal siempre a la izquierda y la edición a la derecha, por indicación de Jesús. En anchuras superiores a 560 px ambas comparten la pantalla; el separador se puede arrastrar o ajustar con flechas. Hasta 560 px cada vista conserva el ancho de la pantalla y se pasa entre ellas con los botones Terminal / Novedades o desplazamiento horizontal, manteniendo ese orden. Ampliar permite usar la terminal sola. Ocultar terminal devuelve el espacio a la edición y conserva el borrador. Mostrar y ocultar mantienen un ancla de lectura para compensar el cambio de ancho. La edición es la vista inicial; `terminal=1` permite compartir un ejemplo con la terminal abierta. Jesús aprobó esta distribución y su adaptación móvil el 2026-09-29. También pidió tres resúmenes de novedades al día. Los horarios, la política de avisos y la implementación en producción siguen pendientes.
+
+## Barra izquierda: comandos por CLI y terminales rápidas
+
+Decidido el 2026-09-29 en la fase 2 del grilling; historial en /home/someguy/codebase/0xJesus/ComandOS/.worktrees/comandos-v1-grill/dash/prototypes/README-v1-grill.md y prototipo en /home/someguy/codebase/0xJesus/ComandOS/.worktrees/comandos-v1-grill/dash/prototypes/prototype-v2-barra.html.
+
+La barra deja de orquestar cambios de harness, modelo o cuenta. Muestra, siempre visible, un acordeón con los CLI instalados y su versión; el CLI detectado en el pane seleccionado se abre solo y lleva la etiqueta "en este pane". Dentro de cada CLI, primero los comandos de arranque para la terminal rápida y después sus comandos nativos, cada uno con una explicación de una línea y chips para sus argumentos. Un clic escribe el comando letra por letra en el prompt del pane seleccionado sin Enter; el usuario confirma con Enter o lo borra con Esc. El catálogo es curado en el repositorio y verificado contra el binario instalado; lo no verificado se marca.
+
+Debajo del acordeón viven las terminales rápidas en tabs, cada una con su carpeta fechada, con un separador de altura. El chat de ComandOS se retira y su lugar lo ocupan esas terminales. Las cadenas de comandos se arman en un modal centrado de mosaico, abierto desde el botón Cadenas: arrastrar o tocar añade pasos, los pasos se reordenan arrastrando, se guardan en archivos de texto y se corren paso a paso con "Siguiente", sin esperas automáticas. La observación de lo que quedó activo sigue siendo el contrato de docs/tui-command-map.md.
+
+Arte y tono: iconos pixel de Shikashi para grupos y acciones, monogramas por CLI como marcador de laboratorio (en producción, los iconos de proveedor existentes), poción de karsiori en el pane seleccionado, reloj de arena y cofre en las cadenas.
+
+## Cabecera ordenada y Servidores
+
+Aprobado el 2026-09-29 (ronda 9, variante A). Dos filas: en la primera ☰, los contadores esperan/listos/trabajando, Terminal y + Nueva sesión, y a la derecha ⌘K, snippets, Analytics, Remoto, Servidores, Novedades, el Pomodoro en miniatura, Ajustes y la hora; en la segunda el número seguido de las tabs. La fila permanente de servidores SSH desaparece de la cabecera. Bajo 1200 px de ancho del panel, los botones del sistema muestran solo icono con tooltip.
+
+Servidores se conserva exactamente como hoy: el botón de la primera fila muestra la misma fila de chips por host con su estado, "gestionar", conectar e instalar llave. Los controles que salen de la barra izquierda y de la cabecera (Apariencia, Soberanía, volumen, límites, Notificaciones, Todas las sesiones, Perfiles, Uso de herramientas) se recomiendan dentro del menú ☰, pendiente de veredicto (D8 del subplan 06).
+
+## Cierre de la fase 2
+
+El grilling de la segunda fase terminó el 2026-09-29 con la orden de implementar lo aprobado. El plan de implementación es /home/someguy/codebase/0xJesus/ComandOS/.worktrees/comandos-v1-grill/docs/superpowers/plans/2026-09-29-commandos-v1/06-barra-comandos-cabecera.md. Analytics/Reparto, entrada remota, ajustes y contexto de retorno no se grillaron y no tienen diseño aprobado.

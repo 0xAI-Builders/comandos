@@ -1,0 +1,130 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>PROTOTIPO · Orden de pestañas y favoritos</title>
+<!-- PROTOTIPO DESECHABLE (grill-design, bloque 3). Tus 16 sesiones reales; todo en memoria. -->
+<style>
+:root{--bg:#0b1119;--panel:#101824;--panel2:#141e2c;--line:#223044;--line2:#2e3852;--ink:#e6edf5;--mut:#8a98ab;--dim:#5d6b7e;--acc:#8b7cf6;--green:#4ade80;--amber:#f5b83d;--red:#f87171}
+*{box-sizing:border-box}html,body{margin:0;background:var(--bg);color:var(--ink);font:13px/1.4 system-ui,sans-serif}
+button{font:inherit;color:inherit;background:none;border:0;cursor:pointer}
+.app{position:fixed;inset:0;display:grid;grid-template-rows:44px auto 1fr}
+.top{display:flex;align-items:center;gap:8px;padding:0 12px;border-bottom:1px solid var(--line);background:var(--panel)}
+.top b{letter-spacing:1.5px;font-size:12px;margin-right:auto}
+.k{height:32px;min-width:32px;padding:0 10px;border:1px solid var(--line);border-radius:9px;background:var(--panel2);box-shadow:0 2px 0 var(--line2);display:inline-flex;align-items:center;gap:6px;color:var(--mut)}
+.k:active{transform:translateY(2px);box-shadow:none}.k.on{color:var(--green);border-color:#1f5134}
+.bar{display:flex;align-items:stretch;border-bottom:1px solid var(--line);background:var(--panel);min-height:40px;overflow-x:auto;scrollbar-width:thin}
+.tab{display:flex;align-items:center;gap:7px;padding:0 12px;border-right:1px solid var(--line);white-space:nowrap;color:var(--mut);cursor:pointer;position:relative;user-select:none}
+.tab.cur{color:var(--ink);box-shadow:inset 0 -2px var(--acc);background:var(--panel2)}
+.tab .st{width:10px;height:10px;border-radius:50%;flex:none;border:2px dotted var(--dim)}
+.st.work{border:2px solid var(--green);border-right-color:transparent;animation:spin 1s linear infinite}
+.st.wait{border:0;background:radial-gradient(circle,var(--amber) 40%,transparent 45%);animation:pulse 1.2s infinite}
+.st.frozen{border:0;background:#60a5fa;clip-path:polygon(50% 0,60% 40%,100% 50%,60% 60%,50% 100%,40% 60%,0 50%,40% 40%)}
+.st.done{border:2px solid var(--green);border-radius:3px}
+@keyframes spin{to{transform:rotate(360deg)}}@keyframes pulse{50%{opacity:.35}}
+.star{color:var(--dim);font-size:13px}.star.on{color:var(--amber);animation:tw 2.4s infinite}@keyframes tw{50%{filter:brightness(1.6)}}
+.tab small{color:var(--dim)}
+.pinned{min-width:44px;justify-content:center;padding:0 10px}
+.grp{display:flex;align-items:center;gap:6px;padding:0 10px;font:600 11px system-ui;color:var(--acc);text-transform:uppercase;letter-spacing:.6px;border-right:1px solid var(--line);background:#161230;white-space:nowrap}
+.divider{width:3px;background:var(--acc);opacity:.6}
+.work{padding:18px 20px;color:#b9c6d6;font:13px/1.6 ui-monospace,monospace;overflow:auto}
+.menu{position:fixed;z-index:30;min-width:230px;background:var(--panel);border:1px solid var(--line2);border-radius:12px;box-shadow:0 18px 40px #000b;padding:6px}
+.menu h6{margin:6px 8px 4px;font:600 10px system-ui;color:var(--dim);text-transform:uppercase;letter-spacing:.8px}
+.menu button{display:flex;align-items:center;gap:10px;width:100%;padding:8px 10px;border-radius:8px;text-align:left}
+.menu button:hover{background:var(--panel2)}.menu button.on{color:var(--green)}
+.menu .sep{height:1px;background:var(--line);margin:6px 4px}
+.sortpop{position:absolute;right:12px;top:48px}
+.favrow{display:flex;gap:6px;padding:6px 10px;border-bottom:1px solid var(--line);background:#12101f;overflow-x:auto}
+.favrow .chip{display:flex;align-items:center;gap:6px;padding:4px 10px;border:1px solid #3b3170;border-radius:999px;color:var(--ink);white-space:nowrap}
+.hint{margin:0 0 12px;color:var(--mut)}
+.picker{position:fixed;right:14px;bottom:14px;z-index:40;width:450px;background:#17122a;color:#ece8ff;border:1px solid #3b3170;border-radius:14px;box-shadow:0 18px 50px #000c;padding:10px;font-size:13px;user-select:none}
+.picker .drag{cursor:move;display:flex;gap:8px;align-items:center;margin-bottom:8px}.picker .drag b{margin-right:auto}
+.picker .nav{display:grid;grid-template-columns:30px 1fr 30px;gap:6px}
+.picker .nav button,.picker .opts button{border:1px solid #3b3170;border-radius:7px;height:30px}
+.picker .name{border:1px solid #8b7cf6;background:#241c44;border-radius:7px;display:flex;align-items:center;padding:0 10px;font-weight:600}
+.picker .opts{display:grid;grid-template-columns:repeat(5,1fr);gap:4px;margin-top:6px}
+.picker .opts button.on{background:#8b7cf6;color:#12091f}
+.picker .desc{margin-top:8px;color:#c9c1f4;font-size:12px}
+@media (max-width:700px){.picker{width:calc(100% - 20px);right:10px}}
+</style>
+</head>
+<body>
+<div class="app" id="app"></div>
+<div class="picker" id="picker"></div>
+<script>
+// Tus sesiones reales (app-tabs.json) con proyecto, favoritos y actividad simulados.
+const T = [
+ ['local','local','',0,''],['term-1932-1','Merauto','Merauto',42,''],['term-3692-1','Signara','Signara',180,''],
+ ['term-r15136','LimpiezaDigital','Lola',300,''],['term-r23327','RWAAirbnb','Solana',95,'frozen'],['term-r51223','Kleis','Kleis',600,''],
+ ['term-4209-1','SAVA','SAVA',8,'wait'],['term-7275-1','MRP','MRP',3,'work'],['term-r96546','TranscriptRealTime','Signara',900,''],
+ ['term-6339-9','Relotto','Relotto',55,''],['term-r6140','Dashboard','ComandOS',1200,''],['term-r26549','FerLongoria','Lola',400,''],
+ ['term-r26572','NinjaCatBot','Solana',700,''],['term-r26583','Cobbler','Lola',2000,''],['term-r49461','ComandOS ⎇','ComandOS',1,'work'],['term-r42573','PaginasWeb','Lola',20,'done']
+].map(([id,label,project,mins,st],i)=>({id,label,project,mins,st,manual:i,fav:['term-r49461','term-r42573'].includes(id)}));
+const V=[
+ {k:'A',n:'Botón «Ordenar» (una vez)',d:'Un botón en la barra ofrece: Manual (arrastrar) · Favoritos primero · Actividad reciente · Por proyecto. Aplica UNA vez y guarda ese orden; después sigues arrastrando. Favoritos: estrella + «Favoritos primero».'},
+ {k:'B',n:'Orden automático fijo',d:'Eliges en Ajustes un orden que se mantiene solo: favoritos a la izquierda y el resto por actividad reciente. Las tabs se reacomodan cuando algo trabaja o termina (sin arrastrar).'},
+ {k:'C',n:'Favoritas fijadas',d:'Como las pestañas fijadas de Chrome: tus favoritas quedan a la izquierda, compactas y siempre visibles, separadas por una línea. El resto en orden manual. Atajo Ctrl+1…9 para las favoritas.'},
+ {k:'D',n:'Agrupadas por proyecto',d:'La barra se divide por proyecto con una etiqueta de color (Lola, Signara, ComandOS…). Dentro de cada grupo, favoritas primero. Arrastras grupos completos.'},
+ {k:'E',n:'Fila de favoritas + barra',d:'Una fila delgada arriba solo con favoritas (chips con su estado) y abajo la barra normal. Las favoritas no se pierden aunque tengas 20 tabs.'},
+];
+const S={i:Math.max(0,V.findIndex(v=>v.k===new URLSearchParams(location.search).get('variant'))),cur:'term-r49461',sort:'manual',menu:null,sortOpen:false};
+const $=s=>document.querySelector(s);
+const ago=m=>m<60?`${m} min`:`${Math.round(m/60)} h`;
+function ordered(){
+  const v=V[S.i].k, loc=T.filter(t=>t.id==='local'), rest=T.filter(t=>t.id!=='local');
+  const by={manual:(a,b)=>a.manual-b.manual,fav:(a,b)=>(b.fav-a.fav)||(a.manual-b.manual),recent:(a,b)=>a.mins-b.mins,project:(a,b)=>a.project.localeCompare(b.project)||(b.fav-a.fav)};
+  if(v==='A') return loc.concat(rest.slice().sort(by[S.sort]));
+  if(v==='B') return loc.concat(rest.slice().sort((a,b)=>(b.fav-a.fav)||(a.mins-b.mins)));
+  if(v==='C'||v==='E') return loc.concat(rest.filter(t=>t.fav)).concat(rest.filter(t=>!t.fav).sort(by.manual));
+  if(v==='D') return loc.concat(rest.slice().sort(by.project));
+}
+function tab(t,extra=''){return `<div class="tab ${t.id===S.cur?'cur':''} ${extra}" data-tab="${t.id}" title="Clic derecho: estado y favorito">
+  <span class="st ${t.st}"></span>${extra.includes('pinned')?'':`<span>${t.label}</span>`}${t.id==='local'?'':`<span class="star ${t.fav?'on':''}" data-fav="${t.id}">${t.fav?'★':'☆'}</span>`}${V[S.i].k==='B'&&t.id!=='local'?`<small>${ago(t.mins)}</small>`:''}</div>`;}
+function bar(){
+  const v=V[S.i].k, list=ordered();
+  if(v==='C'){const favs=list.filter(t=>t.fav),other=list.filter(t=>!t.fav);
+    return `<div class="bar">${favs.map((t,i)=>tab(t,'').replace('<span>'+t.label,'<span>'+(i+1)+' · '+t.label)).join('')}<div class="divider"></div>${other.map(t=>tab(t)).join('')}</div>`;}
+  if(v==='D'){let out='',last=null;for(const t of list){if(t.project!==last&&t.id!=='local'){out+=`<div class="grp">${t.project}</div>`;last=t.project;}out+=tab(t);}return `<div class="bar">${out}</div>`;}
+  if(v==='E'){const favs=T.filter(t=>t.fav);return `<div><div class="favrow">${favs.map(t=>`<button class="chip" data-tab="${t.id}"><span class="st ${t.st}"></span>★ ${t.label}</button>`).join('')}</div><div class="bar">${list.map(t=>tab(t)).join('')}</div></div>`;}
+  return `<div class="bar">${list.map(t=>tab(t)).join('')}</div>`;
+}
+function render(){
+  const v=V[S.i], cur=T.find(t=>t.id===S.cur);
+  $('#app').innerHTML=`<div class="top"><b>● COMANDOS</b>${v.k==='A'?`<button class="k" data-act="sort">⇅ Ordenar: ${{manual:'Manual',fav:'Favoritos primero',recent:'Actividad reciente',project:'Por proyecto'}[S.sort]}</button>`:''}
+   ${v.k==='B'?`<span class="k on">⇅ Auto: favoritos + actividad</span>`:''}<button class="k">&gt;_</button><button class="k">＋</button></div>
+   ${bar()}
+   <div class="work"><p class="hint">Estás en <b style="color:var(--ink)">${cur.label}</b> · al abrir ComandOS vuelves aquí.</p>
+   <p class="hint">Clic en ☆ para favorito · <b>clic derecho en cualquier pestaña</b> para cambiar su estado (Trabajando, Esperando, Congelado, Resuelto) y favorito.</p>
+   <span style="color:var(--green)">❯</span> sigue con el bloque 3…</div>
+   ${S.sortOpen?`<div class="menu sortpop"><h6>Ordenar pestañas una vez</h6>${[['manual','Manual (arrastrar)'],['fav','★ Favoritos primero'],['recent','⏱ Actividad reciente'],['project','▦ Por proyecto']].map(([k,l])=>`<button class="${S.sort===k?'on':''}" data-sort="${k}">${l}</button>`).join('')}</div>`:''}
+   ${S.menu?menuHtml():''}`;
+  picker();
+}
+function menuHtml(){const t=T.find(x=>x.id===S.menu.id);
+  return `<div class="menu" style="left:${S.menu.x}px;top:${S.menu.y}px"><h6>${t.label} · estado</h6>
+  ${[['','Sin marca'],['work','Trabajando (lo pone el agente)'],['wait','Esperando respuesta'],['frozen','Congelado'],['done','Resuelto']].map(([k,l])=>`<button class="${t.st===k?'on':''}" data-st="${k}"><span class="st ${k}"></span>${l}</button>`).join('')}
+  <div class="sep"></div><button data-fav="${t.id}">${t.fav?'★ Quitar de favoritas':'☆ Marcar favorita'}</button></div>`;}
+function picker(){const v=V[S.i];
+  $('#picker').innerHTML=`<div class="drag" data-h><b>Grill · Orden y favoritos</b><span style="color:#8f86c2;font-size:11px">←/→</span></div>
+  <div class="nav"><button data-s="-1">←</button><div class="name">${v.k} · ${v.n}</div><button data-s="1">→</button></div>
+  <div class="opts">${V.map((x,i)=>`<button class="${i===S.i?'on':''}" data-i="${i}">${x.k}</button>`).join('')}</div><div class="desc">${v.d}</div>`;}
+document.addEventListener('click',e=>{
+  const t=e.target.closest('[data-s],[data-i],[data-act],[data-sort],[data-fav],[data-st],[data-tab]');
+  if(!t){if(S.menu||S.sortOpen){S.menu=null;S.sortOpen=false;render();}return;}
+  const d=t.dataset;
+  if(d.s)S.i=(S.i+ +d.s+V.length)%V.length;else if(d.i)S.i=+d.i;else if(d.act==='sort')S.sortOpen=!S.sortOpen;
+  else if(d.sort){S.sort=d.sort;S.sortOpen=false;}
+  else if(d.fav){const x=T.find(y=>y.id===d.fav);x.fav=!x.fav;S.menu=null;}
+  else if(d.st!==undefined){T.find(y=>y.id===S.menu.id).st=d.st;S.menu=null;}
+  else if(d.tab){S.cur=d.tab;S.menu=null;}
+  history.replaceState(null,'','?variant='+V[S.i].k);render();});
+document.addEventListener('contextmenu',e=>{const t=e.target.closest('[data-tab]');if(!t||t.dataset.tab==='local')return;e.preventDefault();S.menu={id:t.dataset.tab,x:Math.min(e.clientX,innerWidth-250),y:e.clientY};render();});
+document.addEventListener('keydown',e=>{if(e.key==='ArrowRight'||e.key==='ArrowLeft'){S.i=(S.i+(e.key==='ArrowRight'?1:4))%5;render();}
+  if(e.ctrlKey&&/^[1-9]$/.test(e.key)&&V[S.i].k==='C'){const f=ordered().filter(t=>t.fav)[+e.key-1];if(f){e.preventDefault();S.cur=f.id;render();}}});
+(function(){const pk=$('#picker');let sx,sy,ox,oy;pk.addEventListener('pointerdown',e=>{if(!e.target.closest('[data-h]'))return;const r=pk.getBoundingClientRect();sx=e.clientX;sy=e.clientY;ox=r.left;oy=r.top;
+ const mv=ev=>{pk.style.left=ox+ev.clientX-sx+'px';pk.style.top=oy+ev.clientY-sy+'px';pk.style.right='auto';pk.style.bottom='auto'};const up=()=>{removeEventListener('pointermove',mv);removeEventListener('pointerup',up)};addEventListener('pointermove',mv);addEventListener('pointerup',up)})})();
+render();
+</script>
+</body>
+</html>

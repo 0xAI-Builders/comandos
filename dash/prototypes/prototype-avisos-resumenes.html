@@ -1,0 +1,301 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>PROTOTIPO · Avisos y Resúmenes</title>
+<!-- PROTOTIPO DESECHABLE (grill-design). Todo vive en memoria; nada toca ComandOS real. -->
+<style>
+:root{--bg:#0b1119;--panel:#101824;--panel2:#141e2c;--line:#223044;--ink:#e6edf5;--mut:#8a98ab;--dim:#5d6b7e;
+--acc:#8b7cf6;--green:#4ade80;--amber:#f5b83d;--red:#f87171;--blue:#60a5fa;--r:10px}
+*{box-sizing:border-box}html,body{margin:0;height:100%;background:#070b11;color:var(--ink);font:14px/1.45 system-ui,-apple-system,"Segoe UI",sans-serif}
+button{font:inherit;color:inherit;background:none;border:0;cursor:pointer}
+.app{position:fixed;inset:0;display:grid;grid-template-rows:48px 1fr;background:var(--bg)}
+/* top bar */
+.top{display:flex;align-items:center;gap:8px;padding:0 12px;border-bottom:1px solid var(--line);background:var(--panel)}
+.brand{font-weight:700;letter-spacing:.2px;margin-right:auto}
+.ib{width:36px;height:36px;border-radius:9px;display:grid;place-items:center;border:1px solid var(--line);position:relative}
+.ib:hover{background:var(--panel2)}.ib.on{border-color:var(--acc);background:#1b1733}
+.ib svg{width:18px;height:18px;stroke:currentColor;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+.badge{position:absolute;top:-6px;right:-8px;min-width:18px;height:18px;padding:0 5px;border-radius:9px;background:var(--amber);color:#1a1300;font:700 11px/18px system-ui;text-align:center}
+.badge.dot{min-width:9px;width:9px;height:9px;padding:0;top:-2px;right:-2px;background:var(--acc)}
+/* body */
+.body{display:grid;grid-template-columns:232px 1fr;min-height:0}
+.side{border-right:1px solid var(--line);background:var(--panel);padding:10px;overflow:auto}
+.side h4{margin:10px 4px 6px;font:600 11px system-ui;color:var(--dim);letter-spacing:.8px;text-transform:uppercase}
+.sess{display:flex;gap:8px;align-items:center;padding:7px 8px;border-radius:8px;color:var(--mut)}
+.sess.cur{background:var(--panel2);color:var(--ink)}.sess i{width:8px;height:8px;border-radius:50%;background:var(--dim);flex:none}
+.sess i.w{background:var(--green)}.sess i.a{background:var(--amber)}
+.main{display:grid;grid-template-rows:38px 1fr auto;min-width:0;min-height:0;position:relative}
+.tabs{display:flex;border-bottom:1px solid var(--line);background:var(--panel)}
+.tab{padding:0 14px;display:flex;align-items:center;gap:6px;color:var(--mut);border-right:1px solid var(--line)}
+.tab.cur{color:var(--ink);box-shadow:inset 0 -2px var(--acc)}.tab small{color:var(--dim)}
+.work{position:relative;min-height:0;display:flex;overflow:hidden}
+.term{flex:1;min-width:0;padding:14px 16px;font:13px/1.55 ui-monospace,Menlo,monospace;color:#b9c6d6;background:#0a0f16;overflow:auto}
+.term .p{color:var(--green)}.term .d{color:var(--dim)}
+.split{width:6px;cursor:col-resize;background:var(--line)}
+/* reader */
+.reader{flex:1.35;min-width:0;display:flex;flex-direction:column;background:var(--bg)}
+.rhead{display:flex;align-items:center;gap:8px;padding:10px 16px;border-bottom:1px solid var(--line);flex-wrap:wrap}
+.rhead b{font-size:16px;margin-right:auto}
+.chip{padding:5px 10px;border-radius:8px;border:1px solid var(--line);color:var(--mut);font-size:13px;white-space:nowrap}
+.chip.on{border-color:var(--green);color:var(--ink)}.chip.zero{opacity:.4}
+.btn{padding:6px 11px;border:1px solid var(--line);border-radius:8px;color:var(--ink);font-size:13px;white-space:nowrap}
+.btn:hover{background:var(--panel2)}.btn.pri{border-color:var(--acc);background:#1b1733}
+.rbody{flex:1;overflow:auto;padding:18px 28px 40px}
+.kick{font:600 11px system-ui;letter-spacing:.9px;color:var(--dim);text-transform:uppercase}
+.rtitle{font-size:30px;margin:4px 0 6px;font-weight:500}
+.prov{display:flex;flex-wrap:wrap;gap:6px 14px;align-items:center;color:var(--mut);font-size:13px;margin:6px 0 14px}
+.prov .m{color:var(--ink)}.prov .ok{color:var(--green)}.prov .bad{color:var(--amber)}
+.story{border-top:1px solid var(--line);padding:16px 0}
+.story h3{margin:4px 0 6px;font-size:19px;font-weight:500}.story p{margin:0;color:#c3cedb}
+.ai{display:inline-block;font:600 10px system-ui;letter-spacing:.6px;padding:2px 6px;border-radius:5px;background:#1b1733;color:#b9aefc;margin-left:6px;vertical-align:2px}
+.src{margin-top:6px;font-size:12px;color:var(--dim)}.src a{color:var(--blue)}
+.idx{display:flex;gap:6px;flex-wrap:wrap;margin:10px 0 4px}
+/* details sheet */
+.det{border:1px solid var(--line);border-radius:var(--r);background:var(--panel);padding:12px 14px;margin:0 0 14px;font-size:13px}
+.det table{width:100%;border-collapse:collapse}.det td{padding:4px 0;border-bottom:1px solid #1a2535;vertical-align:top}
+.det td:first-child{color:var(--dim);width:170px}
+.det .f{color:var(--amber)}
+/* notices common */
+.nrow{display:grid;grid-template-columns:22px 1fr auto;gap:8px;padding:8px 10px;border-radius:8px;align-items:start}
+.nrow:hover{background:var(--panel2)}.nrow.unread .t{font-weight:650}
+.nrow .ic{width:20px;height:20px;border-radius:6px;display:grid;place-items:center;font:700 11px system-ui}
+.ic.done{background:#12281b;color:var(--green)}.ic.need{background:#2e2410;color:var(--amber)}.ic.use{background:#10213a;color:var(--blue)}
+.ic.news{background:#1b1733;color:#b9aefc}.ic.err{background:#2d1414;color:var(--red)}
+.nrow .t{font-size:13px}.nrow .x{font-size:12px;color:var(--mut);margin-top:2px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.nrow .w{font-size:11px;color:var(--dim);white-space:nowrap}.nrow .go{font-size:12px;color:var(--blue)}
+.meter{height:6px;border-radius:3px;background:#1a2535;margin-top:5px;position:relative;max-width:260px}
+.meter b{position:absolute;inset:0 auto 0 0;border-radius:3px;background:var(--blue)}
+.meter i{position:absolute;top:-3px;bottom:-3px;width:2px;background:var(--amber)}
+.grp{margin-bottom:6px}.grp>h5{margin:8px 10px 2px;font:600 12px system-ui;color:var(--mut);display:flex;gap:8px;align-items:center}
+.grp>h5 span{color:var(--dim);font-weight:500}
+.empty{padding:30px;text-align:center;color:var(--dim)}
+.handle{height:14px;display:grid;place-items:center;cursor:ns-resize;touch-action:none}
+.handle::before{content:"";width:44px;height:4px;border-radius:2px;background:#3a4a60}
+.nhead{display:flex;align-items:center;gap:8px;padding:4px 12px 8px}
+.nhead b{margin-right:auto}
+.tabsx{display:flex;gap:4px;padding:0 10px 6px;overflow:auto}
+/* variants containers */
+.drawer{border-top:1px solid var(--line);background:var(--panel);display:flex;flex-direction:column;min-height:0}
+.drawer .list{overflow:auto;padding:0 6px 8px}
+.cols{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:8px;padding:0 8px 10px;overflow:auto}
+.cols .grp{border:1px solid var(--line);border-radius:var(--r);background:var(--bg)}
+.sidep{position:absolute;top:0;right:0;bottom:0;background:var(--panel);border-left:1px solid var(--line);display:flex;flex-direction:column;box-shadow:-20px 0 40px #0008;z-index:5}
+.sidep .grip{position:absolute;left:-4px;top:0;bottom:0;width:8px;cursor:ew-resize}
+.pop{position:absolute;top:52px;right:60px;width:440px;max-height:70vh;background:var(--panel);border:1px solid var(--line);border-radius:12px;box-shadow:0 20px 50px #000a;display:flex;flex-direction:column;z-index:20}
+.pop .list{overflow:auto;padding:0 6px 8px}
+.float{position:absolute;right:16px;bottom:16px;width:340px;background:var(--panel2);border:1px solid var(--line);border-left:3px solid var(--green);border-radius:10px;padding:10px 12px;box-shadow:0 10px 30px #0009;z-index:15;font-size:13px}
+/* resumen list variants */
+.rlist{display:flex;flex-direction:column;gap:2px}
+.rrow{display:grid;grid-template-columns:70px 1fr auto;gap:10px;padding:9px 10px;border-radius:8px;align-items:center;cursor:pointer}
+.rrow:hover,.rrow.cur{background:var(--panel2)}.rrow .h{font-weight:650}.rrow .s{font-size:12px;color:var(--mut)}
+.st{font-size:11px;padding:2px 7px;border-radius:6px;border:1px solid var(--line);white-space:nowrap}
+.st.ok{color:var(--green);border-color:#1f5134}.st.part{color:var(--amber);border-color:#5a4415}.st.no{color:var(--red);border-color:#5a2020}.st.sch{color:var(--dim)}
+.rail{width:250px;border-right:1px solid var(--line);overflow:auto;padding:8px;flex:none;background:var(--panel)}
+.timeline{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;margin:4px 0 16px}
+.slot{border:1px solid var(--line);border-radius:var(--r);padding:10px;background:var(--panel);cursor:pointer}
+.slot.cur{border-color:var(--acc)}.slot .h{font-size:18px}.slot .s{font-size:12px;color:var(--mut)}
+.tbl{width:100%;border-collapse:collapse;font-size:13px}.tbl th{text-align:left;color:var(--dim);font-weight:600;padding:6px 8px;border-bottom:1px solid var(--line)}
+.tbl td{padding:8px;border-bottom:1px solid #1a2535}.tbl tr:hover td{background:var(--panel2);cursor:pointer}
+/* picker */
+.picker{position:fixed;right:14px;bottom:14px;z-index:100;width:430px;background:#17122a;border:1px solid #3b3170;border-radius:14px;box-shadow:0 18px 50px #000c;padding:10px;font-size:13px;user-select:none}
+.picker .drag{cursor:move;display:flex;align-items:center;gap:8px;margin-bottom:8px}
+.picker .drag b{margin-right:auto}.picker .row{display:grid;grid-template-columns:82px 28px 1fr 28px;gap:6px;align-items:center;margin-top:6px}
+.picker .row label{color:#b9aefc;font-weight:600}.picker .nav{height:28px;border:1px solid #3b3170;border-radius:7px}
+.picker .name{height:28px;border:1px solid #3b3170;border-radius:7px;display:flex;align-items:center;padding:0 8px;overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
+.picker .row.act .name{border-color:#8b7cf6;background:#241c44}
+.picker .states{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px}.picker .states button{border:1px solid #3b3170;border-radius:7px;padding:4px 8px}
+.picker .states button.on{background:#8b7cf6;color:#12091f}
+.picker .desc{color:#c9c1f4;margin-top:8px;font-size:12px;line-height:1.4}
+.picker.min .body2{display:none}
+@media (max-width:820px){.body{grid-template-columns:1fr}.side{display:none}.pop{right:8px;left:8px;width:auto}.picker{width:calc(100% - 20px);right:10px}.rail{display:none}.timeline{grid-template-columns:repeat(2,1fr)}}
+</style>
+</head>
+<body>
+<div class="app" id="app"></div>
+<div class="picker" id="picker"></div>
+<script>
+// ---------------------------------------------------------------- datos (copiados de tu ComandOS real, 29-sep)
+const NOW = new Date(2026,8,29,21,34);
+const ago = m => m<1?'ahora':m<60?`hace ${m} min`:`hace ${Math.floor(m/60)} h`;
+const NOTICES = [
+ {id:1,k:'need',proj:'ComandOS',pane:'Codex · pane 2',t:'Codex necesita tu permiso',x:'Quiere ejecutar: systemctl --user restart cc-dash',m:1,unread:true},
+ {id:2,k:'use',proj:'Cuota',pane:'',t:'Claude: 70% de tu ventana de 5 h',x:'Umbral de aviso: 70%. La ventana se reinicia a las 23:40 (en 2 h 06 min).',m:4,unread:true,pct:70,th:70},
+ {id:3,k:'done',proj:'PaginasWeb',pane:'Claude · pane 1',t:'Claude terminó',x:'Aprobados los tres tal cual. Los envío uno por uno: antes de cada envío guardo envio_pendiente en el registro…',m:6,unread:true},
+ {id:4,k:'news',proj:'Resúmenes',pane:'',t:'Resumen de las 20:42 listo',x:'23 noticias · 10 bounties · 8 MCPs · resumido con OpenCode longcat-2.5 (gratis)',m:52,unread:true},
+ {id:5,k:'done',proj:'ComandOS',pane:'Claude · pane 1',t:'Claude terminó',x:'Remoto arreglado: los CSS/JS ya no se bloquean por el filtro de token. 141 tests en verde.',m:9,unread:false},
+ {id:6,k:'use',proj:'Modelo',pane:'term-4209-1',t:'Esta sesión cambió a un modelo caro',x:'term-4209-1 ahora usa Opus 5.5 ($$$). Antes: Fable 5.1.',m:61,unread:false},
+ {id:7,k:'done',proj:'MRP',pane:'Codex · pane 1',t:'Codex terminó',x:'Migración de almacén validada contra RADEK; quedan 2 campos sin mapear.',m:75,unread:false},
+ {id:8,k:'err',proj:'Resúmenes',pane:'',t:'El resumen de las 21:00 no se generó',x:'El servicio se reinició a mitad de la generación (21:04). No se reintenta.',m:30,unread:true},
+ {id:9,k:'done',proj:'PaginasWeb',pane:'Claude · pane 2',t:'Claude terminó',x:'Landing de Relotto: hero y precios listos para revisar.',m:95,unread:false},
+];
+const KIND = {need:['!','Te necesita'],done:['✓','Terminó'],use:['%','Uso'],news:['✦','Resúmenes'],err:['×','Falla']};
+const RES = [
+ {id:'21:00',day:'Hoy',st:'no',stl:'No se generó',why:'El servicio se reinició a mitad de la generación (21:04).',n:0},
+ {id:'20:42',day:'Hoy',st:'part',stl:'Parcial',n:23,src:25,fail:2,model:'OpenCode · longcat-2.5-preview-free',cost:'$0.00',dur:'14 min',start:'20:42',end:'20:56',unread:2,
+  cats:{Modelos:0,MCPs:8,Skills:4,Bounties:10,IA:1},fails:['dorahacks: no respondió','reddit: no respondió','searxng: no respondió','2 artículos: demasiadas redirecciones']},
+ {id:'20:27',day:'Hoy',st:'part',stl:'Parcial',n:19,src:25,fail:2,model:'OpenCode · longcat-2.5-preview-free',cost:'$0.00',dur:'15 min',start:'20:27',end:'20:42',unread:0},
+ {id:'09:00',day:'Hoy',st:'no',stl:'No se generó',why:'No estaba configurado a esa hora.',n:0},
+ {id:'09:00 ',day:'Mañana',st:'sch',stl:'Programado',n:0},
+];
+const STORIES = [
+ ['Bounties','Bounty de Hisa: 5,002 USDG por crear un video explicativo','Superteam abre un bounty de 5,002 USDG para un video corto que explique Hisa. Cierra el 30 de septiembre a las 16:59 (hora de México).','superteam.fun'],
+ ['MCPs','Postgres MCP server con archivo de contexto que el agente puede ampliar','Un servidor MCP para Postgres guarda notas del esquema en un archivo que el propio agente actualiza; en la prueba afinó una consulta lenta en tres servidores.','github.com'],
+ ['Skills','Anthropic actualiza su skill de frontend-design para evitar diseños genéricos','La skill agrega reglas contra layouts repetidos y paletas por defecto, con ejemplos antes/después.','github.com/anthropics'],
+ ['Bounties','Road to Colosseum Hackathon: construye tu MVP','Premio de 8,000 USDG para MVPs en Solana; inscripción abierta y demo al cierre.','superteam.fun'],
+];
+// ---------------------------------------------------------------- variantes
+const AV = [
+ {k:'A',n:'Cajón abajo · arrastrable',d:'La campana abre un cajón pegado abajo. Lo arrastras desde la barrita para hacerlo más alto; doble clic lo lleva a casi toda la pantalla. Agrupa por proyecto en columnas (lo aprobado).'},
+ {k:'B',n:'Panel lateral derecho',d:'La campana abre un panel a la derecha, encima del trabajo. Ancho arrastrable desde su borde. Lista vertical por proyecto; la terminal sigue visible a la izquierda.'},
+ {k:'C',n:'Desplegable de la campana',d:'Como la campana de GitHub/Slack: un recuadro colgando de la campana, tamaño fijo, con “Ver todos” para ampliarlo a pantalla completa.'},
+ {k:'D',n:'Pestaña “Avisos”',d:'Avisos se abre como una pestaña más del espacio de trabajo, a toda la altura. Puedes acoplarla junto a una terminal como cualquier pane.'},
+ {k:'E',n:'Cajón con pestañas por tipo',d:'Cajón abajo redimensionable, separado en pestañas: Te necesita · Terminó · Uso · Resúmenes. Cada tipo con su propio contador.'},
+];
+const RV = [
+ {k:'A',n:'Lista desde ✨',d:'El ✨ abre un desplegable con los resúmenes del día (una fila por hora, con modelo, noticias y estado). Tocar una fila abre el lector.'},
+ {k:'B',n:'Columna de resúmenes',d:'Dentro del lector, una columna izquierda lista todos los resúmenes como un correo; el resumen elegido se lee a la derecha.'},
+ {k:'C',n:'Línea del día',d:'Arriba del lector, tarjetas por hora (09:00 · 15:00 · 21:00 · mañana) con su estado. Los detalles del elegido se despliegan debajo.'},
+ {k:'D',n:'Tabla de resúmenes',d:'Una vista “Resúmenes” en tabla: hora, estado, noticias, fuentes, modelo, costo, duración. Clic en una fila abre el resumen.'},
+ {k:'E',n:'Anterior / siguiente',d:'El lector muestra un resumen a la vez con ← anterior · siguiente →. Los detalles viven en una hoja plegable bajo el título.'},
+];
+const P = new URLSearchParams(location.search);
+const S = {av:Math.max(0,AV.findIndex(v=>v.k===P.get('avisos'))),rv:Math.max(0,RV.findIndex(v=>v.k===P.get('resumenes'))),
+  focus:P.get('focus')==='resumenes'?'rv':'av',open:true,reader:true,terminal:true,empty:false,float:true,det:false,cur:'20:42',
+  h:260,w:420,tabx:'need',popAll:false,list:false};
+// ---------------------------------------------------------------- helpers
+const $ = s=>document.querySelector(s);
+const esc = s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const I = {bell:'<svg viewBox="0 0 24 24"><path d="M6 8a6 6 0 1 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.9 1.9 0 0 0 3.4 0"/></svg>',
+ spark:'<svg viewBox="0 0 24 24"><path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8z"/><path d="M19 3v4M17 5h4"/></svg>',
+ glass:'<svg viewBox="0 0 24 24"><path d="M6 2h12M6 22h12M7 2c0 6 10 6 10 10S7 16 7 22M17 2c0 6-10 6-10 10s10 4 10 10"/></svg>',
+ gear:'<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg>'};
+const list = () => S.empty?[]:NOTICES;
+const unread = () => list().filter(n=>n.unread).length;
+function row(n){
+  const [g,label]=KIND[n.k];
+  const meter = n.pct!=null?`<div class="meter" title="${n.pct}% usado · aviso al ${n.th}%"><b style="width:${n.pct}%"></b><i style="left:${n.th}%"></i></div>`:'';
+  const where = n.pane?`${esc(n.proj)} · ${esc(n.pane)}`:esc(n.proj);
+  const act = n.k==='news'||n.k==='err'&&n.proj==='Resúmenes'?'Abrir resumen':n.pane?'Ir al pane':'';
+  return `<div class="nrow ${n.unread?'unread':''}" data-n="${n.id}"><div class="ic ${n.k}" title="${label}">${g}</div>
+   <div><div class="t">${esc(n.t)}</div><div class="x">${where?`<b style="font-weight:500;color:#aab7c7">${where}</b> — `:''}${esc(n.x)}</div>${meter}</div>
+   <div style="text-align:right"><div class="w">${ago(n.m)}</div>${act?`<button class="go" data-go="${n.id}">${act} →</button>`:''}</div></div>`;
+}
+function groups(items){
+  const by={};items.forEach(n=>(by[n.proj]=by[n.proj]||[]).push(n));
+  return Object.entries(by).map(([p,ns])=>`<div class="grp"><h5>${esc(p)} <span>${ns.filter(n=>n.unread).length?ns.filter(n=>n.unread).length+' sin leer':ns.length}</span></h5>${ns.map(row).join('')}</div>`).join('');
+}
+const emptyHtml = '<div class="empty">Nada pendiente. Aquí aparecerán permisos, turnos terminados, cuota y resúmenes.</div>';
+function nhead(extra=''){return `<div class="nhead"><b>Avisos</b><span style="color:var(--dim);font-size:12px">${unread()} sin leer</span>${extra}<button class="btn" data-act="readall">Marcar leídos</button><button class="btn" data-act="close">✕</button></div>`}
+// ---------------------------------------------------------------- avisos
+function avisos(){
+  if(!S.open) return {bottom:'',over:''};
+  const v=AV[S.av].k, items=list();
+  if(v==='A') return {bottom:`<div class="drawer" style="height:${S.h}px"><div class="handle" data-resize="h" title="Arrastra para cambiar la altura · doble clic: maximizar"></div>${nhead('<button class="btn" data-act="max">⤢</button>')}<div class="cols">${items.length?groups(items):emptyHtml}</div></div>`,over:''};
+  if(v==='B') return {bottom:'',over:`<div class="sidep" style="width:${S.w}px"><div class="grip" data-resize="w"></div>${nhead()}<div class="list" style="overflow:auto;padding:0 6px">${items.length?groups(items):emptyHtml}</div></div>`};
+  if(v==='C') return {bottom:'',over:`<div class="pop" ${S.popAll?'style="top:56px;left:250px;right:12px;width:auto;max-height:calc(100vh - 70px)"':''}>${nhead(`<button class="btn" data-act="popall">${S.popAll?'Reducir':'Ver todos'}</button>`)}<div class="list">${items.length?(S.popAll?groups(items):items.slice(0,6).map(row).join('')):emptyHtml}</div></div>`};
+  if(v==='D') return {bottom:'',over:''};
+  if(v==='E'){const tabs=Object.entries({need:'Te necesita',done:'Terminó',use:'Uso',news:'Resúmenes'});
+    const sel=items.filter(n=>S.tabx==='news'?(n.k==='news'||n.proj==='Resúmenes'):S.tabx==='need'?(n.k==='need'||n.k==='err'&&n.proj!=='Resúmenes'):n.k===S.tabx);
+    return {bottom:`<div class="drawer" style="height:${S.h}px"><div class="handle" data-resize="h"></div>${nhead('<button class="btn" data-act="max">⤢</button>')}
+    <div class="tabsx">${tabs.map(([k,l])=>{const c=items.filter(n=>(k==='news'?(n.k==='news'||n.proj==='Resúmenes'):k==='need'?n.k==='need':n.k===k)&&n.unread).length;return `<button class="chip ${S.tabx===k?'on':''}" data-tabx="${k}">${l}${c?` <b style="color:var(--amber)">${c}</b>`:''}</button>`}).join('')}</div>
+    <div class="list">${sel.length?sel.map(row).join(''):emptyHtml}</div></div>`,over:''};}
+}
+// ---------------------------------------------------------------- resúmenes
+function cur(){return RES.find(r=>r.id===S.cur)||RES[1]}
+function prov(r){
+  if(r.st==='no') return `<div class="prov"><span class="st no">No se generó</span><span>${esc(r.why)}</span></div>`;
+  if(r.st==='sch') return `<div class="prov"><span class="st sch">Programado</span><span>Se generará mañana a las 09:00.</span></div>`;
+  return `<div class="prov"><span>Resumido con <span class="m">${esc(r.model)}</span></span><span class="ok">${r.cost} (gratis)</span><span>${r.n} noticias</span><span>${r.src-r.fail} de ${r.src} fuentes</span><span>${r.dur}</span>${r.fail?`<button class="bad" data-act="det">${r.fail} fuentes fallaron ▸</button>`:''}<button class="btn" data-act="det">${S.det?'Ocultar detalles':'Detalles del resumen'}</button></div>
+  ${S.det?details(r):''}`;
+}
+function details(r){
+  return `<div class="det"><table>
+  <tr><td>Modelo</td><td>${esc(r.model)} · vía ACP · sin API key</td></tr>
+  <tr><td>Costo</td><td>${r.cost}</td></tr>
+  <tr><td>Programado · inicio · fin</td><td>${r.id} · ${r.start} · ${r.end} (${r.dur})</td></tr>
+  <tr><td>Estado</td><td>${r.stl}${r.st==='part'?' — alcanzó el límite de tiempo antes de leer todo':''}</td></tr>
+  <tr><td>Fuentes que respondieron</td><td>superteam 10 · github 6 · hackernews 4 · devpost 2 · anthropic 1 …</td></tr>
+  <tr><td>Fallaron</td><td class="f">${(r.fails||['—']).map(esc).join('<br>')}</td></tr>
+  <tr><td>Por tema</td><td>${Object.entries(r.cats||{}).map(([k,v])=>`${k} ${v}`).join(' · ')}</td></tr></table></div>`;
+}
+function storiesHtml(r){
+  if(r.st!=='ok'&&r.st!=='part') return '<div class="empty">Este resumen no tiene noticias.</div>';
+  const cats=r.cats||{};
+  return `<div class="idx">${Object.entries(cats).map(([k,v],i)=>`<button class="chip ${v?'':'zero'}">${i+1}. ${k} <small>${v}</small></button>`).join('')}</div>`+
+   STORIES.map(([c,t,x,s])=>`<div class="story"><div class="kick">${c}</div><h3>${esc(t)}</h3><p>${esc(x)} <span class="ai">RESUMEN IA</span></p><div class="src">Fuente: <a>${s}</a></div></div>`).join('');
+}
+function rrow(r){return `<div class="rrow ${r.id===S.cur?'cur':''}" data-res="${r.id}"><div class="h">${r.id.trim()}<div class="s">${r.day}</div></div>
+ <div><div>${r.n?`${r.n} noticias · ${r.src-r.fail}/${r.src} fuentes`:esc(r.why||'Se generará a su hora')}</div><div class="s">${r.model?esc(r.model.replace('OpenCode · ',''))+' · '+r.dur+' · '+r.cost:''}</div></div>
+ <span class="st ${r.st}">${r.stl}${r.unread?' · '+r.unread+' sin leer':''}</span></div>`}
+function readerHead(extra=''){
+  return `<div class="rhead"><b>Resúmenes</b>${extra}${['Todo','Modelos','MCPs','Skills','Bounties','IA','Guardados','Siguiendo'].map((f,i)=>{const c=(cur().cats||{})[f];return `<button class="chip ${i?'':'on'} ${c===0?'zero':''}">${f}${c!=null?` <small>${c}</small>`:''}</button>`}).join('')}
+  <button class="btn" data-act="term">${S.terminal?'Ocultar terminal':'Ver terminal'}</button><button class="btn" data-act="noreader">Volver</button></div>`;
+}
+function reader(){
+  const v=RV[S.rv].k, r=cur();
+  const title=`<div class="kick">${r.day} · ${r.id.trim()}</div><div class="rtitle">Resumen de las ${r.id.trim()}</div>`;
+  if(v==='A') return `<div class="reader">${readerHead(`<button class="btn pri" data-act="list">Resúmenes ▾</button>`)}<div class="rbody">${S.list?`<div class="det rlist">${RES.map(rrow).join('')}</div>`:''}${title}${prov(r)}${storiesHtml(r)}</div></div>`;
+  if(v==='B') return `<div class="rail"><div class="kick" style="margin:6px 8px">Resúmenes</div><div class="rlist">${RES.map(rrow).join('')}</div></div><div class="reader">${readerHead()}<div class="rbody">${title}${prov(r)}${storiesHtml(r)}</div></div>`;
+  if(v==='C') return `<div class="reader">${readerHead()}<div class="rbody"><div class="timeline">${RES.slice(0,4).map(x=>`<div class="slot ${x.id===S.cur?'cur':''}" data-res="${x.id}"><div class="h">${x.id.trim()}</div><div class="s">${x.day}</div><div style="margin:6px 0"><span class="st ${x.st}">${x.stl}</span></div><div class="s">${x.n?x.n+' noticias · '+(x.model||'').replace('OpenCode · ',''):esc(x.why||'')}</div></div>`).join('')}</div>${title}${prov(r)}${storiesHtml(r)}</div></div>`;
+  if(v==='D') return `<div class="reader">${readerHead()}<div class="rbody">${S.list?`<table class="tbl"><tr><th>Hora</th><th>Estado</th><th>Noticias</th><th>Fuentes</th><th>Modelo</th><th>Costo</th><th>Duración</th></tr>${RES.map(x=>`<tr data-res="${x.id}"><td>${x.day} ${x.id.trim()}</td><td><span class="st ${x.st}">${x.stl}</span></td><td>${x.n||'—'}</td><td>${x.src?x.src-x.fail+'/'+x.src:'—'}</td><td>${x.model?esc(x.model.replace('OpenCode · ','')):'—'}</td><td>${x.cost||'—'}</td><td>${x.dur||'—'}</td></tr>`).join('')}</table>`:`<button class="btn" data-act="list" style="margin-bottom:12px">← Todos los resúmenes</button>${title}${prov(r)}${storiesHtml(r)}`}</div></div>`;
+  const i=RES.indexOf(r);
+  return `<div class="reader">${readerHead(`<button class="btn" data-step="-1" ${i<=0?'disabled style="opacity:.3"':''}>← Anterior</button><button class="btn" data-step="1" ${i>=RES.length-1?'disabled style="opacity:.3"':''}>Siguiente →</button>`)}<div class="rbody">${title}<div class="kick" style="margin-bottom:6px">${i+1} de ${RES.length}</div>${prov(r)}${storiesHtml(r)}</div></div>`;
+}
+function term(){return `<div class="term" style="${S.reader?'flex:1':''}"><div class="d">ComandOS / pane 1 · Claude</div><br><span class="p">❯</span> revisa el remoto y deja todo funcionando<br><br>Remoto arreglado: los CSS/JS ya no se bloquean…<br><span class="d">141 passed in 146.25s</span><br><br><span class="p">❯</span> <span style="background:#b9c6d6;color:#0a0f16"> </span></div>`}
+// ---------------------------------------------------------------- render
+function render(){
+  const av=avisos(), dAV=AV[S.av].k==='D'&&S.open;
+  const floatN = S.float && !S.empty ? NOTICES[0] : null;
+  $('#app').innerHTML=`<div class="top"><span class="brand">ComandOS</span>
+   <button class="ib" title="Pomodoro">${I.glass}</button>
+   <button class="ib ${S.reader?'on':''}" data-act="reader" title="Resúmenes">${I.spark}${cur()&&RES[1].unread&&!S.empty?'<span class="badge dot"></span>':''}</button>
+   <button class="ib ${S.open?'on':''}" data-act="bell" title="Avisos">${I.bell}${unread()?`<span class="badge">${unread()}</span>`:''}</button>
+   <button class="ib">${I.gear}</button></div>
+  <div class="body"><div class="side"><h4>Sesiones</h4>${[['ComandOS','w',1],['PaginasWeb','a'],['MRP',''],['Relotto',''],['term-4209-1','']].map(([n,c,cu])=>`<div class="sess ${cu?'cur':''}"><i class="${c}"></i>${n}</div>`).join('')}<h4>Favoritos</h4><div class="sess">★ Lola</div></div>
+  <div class="main"><div class="tabs"><div class="tab ${dAV?'':'cur'}">ComandOS <small>2 panes</small></div><div class="tab">PaginasWeb</div><div class="tab">MRP</div>${dAV?`<div class="tab cur">Avisos <small>${unread()}</small> <button data-act="close">✕</button></div>`:''}</div>
+   <div class="work">${dAV?`<div class="term" style="flex:.8">${term().replace(/^<div class="term"[^>]*>|<\/div>$/g,'')}</div><div class="split"></div><div style="flex:1.2;overflow:auto;background:var(--panel);padding:8px">${nhead()}${list().length?groups(list()):emptyHtml}</div>`
+     :`${S.terminal||!S.reader?term():''}${S.reader?(S.terminal?'<div class="split"></div>':'')+reader():''}`}
+     ${av.over}${floatN&&!S.open?`<div class="float"><div style="display:flex;gap:8px;align-items:center"><b style="margin-right:auto">⚠ ${esc(floatN.t)}</b><button data-act="nofloat">✕</button></div><div style="color:var(--mut);margin-top:3px">${esc(floatN.proj)} · ${esc(floatN.pane)} — ${esc(floatN.x)}</div><button class="go" style="margin-top:6px;color:var(--blue)" data-go="1">Ir al pane →</button></div>`:''}</div>
+   ${av.bottom}</div></div>`;
+  picker();
+}
+function picker(){
+  const pk=$('#picker'); if(!pk.dataset.init){pk.dataset.init=1;drag(pk);}
+  const a=AV[S.av], r=RV[S.rv];
+  pk.innerHTML=`<div class="drag" data-handle><b>Grill · Avisos y Resúmenes</b><span style="color:#8f86c2;font-size:11px">←/→ cambia</span><button class="btn" data-act="min">${pk.classList.contains('min')?'▴':'▾'}</button></div>
+  <div class="body2"><div class="row ${S.focus==='av'?'act':''}"><label data-focus="av">Q1 Avisos</label><button class="nav" data-nav="av:-1">←</button><div class="name" data-focus="av">${a.k} · ${a.n}</div><button class="nav" data-nav="av:1">→</button></div>
+  <div class="row ${S.focus==='rv'?'act':''}"><label data-focus="rv">Q2 Resúmenes</label><button class="nav" data-nav="rv:-1">←</button><div class="name" data-focus="rv">${r.k} · ${r.n}</div><button class="nav" data-nav="rv:1">→</button></div>
+  <div class="desc">${S.focus==='av'?esc(a.d):esc(r.d)}</div>
+  <div class="states">${[['open','Avisos abiertos'],['reader','Lector abierto'],['terminal','Terminal visible'],['empty','Sin avisos'],['float','Aviso flotante']].map(([k,l])=>`<button class="${S[k]?'on':''}" data-toggle="${k}">${l}</button>`).join('')}</div></div>`;
+}
+function drag(pk){let sx,sy,ox,oy;pk.addEventListener('pointerdown',e=>{if(!e.target.closest('[data-handle]')||e.target.closest('button'))return;const r=pk.getBoundingClientRect();sx=e.clientX;sy=e.clientY;ox=r.left;oy=r.top;
+  const mv=ev=>{pk.style.left=ox+ev.clientX-sx+'px';pk.style.top=oy+ev.clientY-sy+'px';pk.style.right='auto';pk.style.bottom='auto'};const up=()=>{removeEventListener('pointermove',mv);removeEventListener('pointerup',up)};addEventListener('pointermove',mv);addEventListener('pointerup',up)})}
+function sync(){const q=new URLSearchParams({avisos:AV[S.av].k,resumenes:RV[S.rv].k});history.replaceState(null,'','?'+q)}
+document.addEventListener('click',e=>{
+  const t=e.target.closest('[data-act],[data-nav],[data-toggle],[data-focus],[data-res],[data-step],[data-tabx],[data-go]');if(!t)return;
+  const d=t.dataset;
+  if(d.nav){const[w,s]=d.nav.split(':');S.focus=w;S[w]=(S[w]+ +s+5)%5;S.list=false;sync();}
+  else if(d.focus){S.focus=d.focus}
+  else if(d.toggle){S[d.toggle]=!S[d.toggle]}
+  else if(d.res){S.cur=d.res;S.list=false;S.reader=true}
+  else if(d.step){const i=RES.indexOf(cur())+ +d.step;if(RES[i])S.cur=RES[i].id}
+  else if(d.tabx){S.tabx=d.tabx}
+  else if(d.go){const n=NOTICES.find(x=>x.id==d.go);n.unread=false;if(n.k==='news'||n.proj==='Resúmenes'){S.reader=true;S.cur=n.k==='err'?'21:00':'20:42'}S.open=false}
+  else switch(d.act){case'bell':S.open=!S.open;break;case'close':S.open=false;break;case'readall':NOTICES.forEach(n=>n.unread=false);break;
+   case'max':S.h=S.h>innerHeight*.6?260:innerHeight-150;break;case'reader':S.reader=!S.reader;break;case'noreader':S.reader=false;break;
+   case'term':S.terminal=!S.terminal;break;case'det':S.det=!S.det;break;case'list':S.list=!S.list;break;case'popall':S.popAll=!S.popAll;break;
+   case'nofloat':S.float=false;break;case'min':$('#picker').classList.toggle('min');break}
+  render();
+});
+document.addEventListener('dblclick',e=>{if(e.target.closest('[data-resize="h"]')){S.h=S.h>innerHeight*.6?260:innerHeight-150;render()}});
+document.addEventListener('pointerdown',e=>{const h=e.target.closest('[data-resize]');if(!h)return;e.preventDefault();const k=h.dataset.resize,s0=k==='h'?e.clientY:e.clientX,v0=k==='h'?S.h:S.w;
+  const mv=ev=>{if(k==='h')S.h=Math.max(90,Math.min(innerHeight-110,v0+s0-ev.clientY));else S.w=Math.max(300,Math.min(innerWidth-300,v0+s0-ev.clientX));
+   const el=k==='h'?h.parentElement:h.parentElement;el.style[k==='h'?'height':'width']=(k==='h'?S.h:S.w)+'px'};
+  const up=()=>{removeEventListener('pointermove',mv);removeEventListener('pointerup',up)};addEventListener('pointermove',mv);addEventListener('pointerup',up)});
+document.addEventListener('keydown',e=>{if(e.target.closest('input,textarea'))return;if(e.key==='ArrowRight'||e.key==='ArrowLeft'){S[S.focus]=(S[S.focus]+(e.key==='ArrowRight'?1:4))%5;S.list=false;sync();render()}});
+render();
+</script>
+</body>
+</html>

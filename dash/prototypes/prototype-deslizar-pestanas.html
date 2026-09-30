@@ -1,0 +1,177 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>PROTOTIPO · Deslizar pestañas fuera de vista</title>
+<!-- PROTOTIPO DESECHABLE (grill-design, bloque 3). Reordenar deslizando cuando no caben todas las
+     pestañas + estado por bandejas al arrastrar hacia abajo (ya decidido). Todo en memoria. -->
+<style>
+:root{--bg:#0b1119;--panel:#101824;--panel2:#141e2c;--line:#223044;--line2:#2e3852;--ink:#e6edf5;--mut:#8a98ab;--dim:#5d6b7e;--acc:#8b7cf6;--green:#4ade80;--amber:#f5b83d;--red:#f87171;--blue:#60a5fa}
+*{box-sizing:border-box}html,body{margin:0;background:#070b11;color:var(--ink);font:13px/1.4 system-ui,sans-serif;overscroll-behavior:none}
+button{font:inherit;color:inherit;background:none;border:0;cursor:pointer}
+.frame{margin:18px auto;max-width:1100px;border:1px solid var(--line);border-radius:14px;overflow:hidden;background:var(--bg);position:relative}
+.frame.phone{max-width:390px}
+.top{display:flex;align-items:center;gap:8px;height:44px;padding:0 12px;border-bottom:1px solid var(--line);background:var(--panel)}
+.top b{letter-spacing:1.5px;font-size:12px;margin-right:auto}
+.k{height:30px;padding:0 10px;border:1px solid var(--line);border-radius:9px;background:var(--panel2);box-shadow:0 3px 0 var(--line2);color:var(--mut);white-space:nowrap}
+.k:active{transform:translateY(2px);box-shadow:none}
+.barwrap{position:relative;border-bottom:1px solid var(--line);background:var(--panel)}
+.bar{display:flex;overflow-x:auto;scrollbar-width:none;min-height:42px;position:relative;scroll-behavior:auto}
+.bar::-webkit-scrollbar{display:none}
+.fade{position:absolute;top:0;bottom:0;width:28px;pointer-events:none;z-index:3}
+.fade.l{left:0;background:linear-gradient(90deg,var(--panel),transparent)}.fade.r{right:0;background:linear-gradient(270deg,var(--panel),transparent)}
+.tab{flex:none;display:flex;align-items:center;gap:7px;padding:0 12px;height:42px;border-right:1px solid var(--line);white-space:nowrap;color:var(--mut);background:var(--panel);user-select:none;touch-action:none;cursor:grab;
+  transition:transform .22s cubic-bezier(.3,1.4,.5,1),max-width .25s,padding .25s,font-size .25s}
+.tab.cur{color:var(--ink);box-shadow:inset 0 -2px var(--acc);background:var(--panel2)}
+.tab.src{opacity:.25}
+.ai{width:11px;height:11px;border-radius:50%;flex:none;border:2px dotted var(--dim)}
+.ai.work{border:0;position:relative;background:conic-gradient(from 0deg,transparent 0 35%,#4ade8033 50%,#4ade80 92%,transparent 92%);-webkit-mask:radial-gradient(circle,transparent 2.5px,#000 3px);mask:radial-gradient(circle,transparent 2.5px,#000 3px);animation:comet 1.15s cubic-bezier(.55,.1,.45,.9) infinite}
+.ai.need{border:0;background:var(--amber);animation:ping 1.2s infinite}
+@keyframes comet{to{transform:rotate(360deg)}}@keyframes ping{50%{opacity:.35}}
+.stk{font:800 9px system-ui;padding:2px 5px;border-radius:5px;transform:rotate(-6deg);text-transform:uppercase}
+.stk.parked{background:#1e3a5f;color:#9cd0ff}.stk.done{background:#1f5134;color:#b9ffd4}.stk.waiting{background:#5a4415;color:#ffe2a3}
+.stk.pop{animation:stamp .35s cubic-bezier(.2,1.8,.4,1)}@keyframes stamp{0%{transform:rotate(-6deg) scale(2.2);opacity:0}}
+/* pestaña levantada que sigue al dedo */
+.float{position:fixed;z-index:80;pointer-events:none;display:flex;align-items:center;gap:7px;padding:0 12px;height:42px;border-radius:10px;background:#1b2438;color:var(--ink);box-shadow:0 14px 30px #000c,0 0 0 2px var(--acc);transform:translate(-50%,-50%) scale(1.06) rotate(-2deg);white-space:nowrap}
+/* marca de inserción */
+.caret{position:absolute;top:4px;bottom:4px;width:3px;margin-left:-1.5px;border-radius:2px;background:var(--acc);box-shadow:0 0 10px var(--acc);z-index:4;pointer-events:none;transition:left .12s}
+/* B: la barra se encoge para mostrar TODAS */
+.bar.compact{overflow:hidden}
+.bar.compact .tab{flex:1 1 0;min-width:0;max-width:140px;padding:0 5px;font-size:10px;gap:4px;justify-content:center}
+.bar.compact .tab span.t{overflow:hidden;text-overflow:ellipsis}
+.bar.compact .stk{display:none}
+/* E: la barra se vuelve varias filas */
+.bar.wrap{flex-wrap:wrap;overflow:visible}
+.bar.wrap .tab{border-bottom:1px solid var(--line)}
+/* C: minimapa */
+.mini{display:flex;gap:2px;padding:6px 8px;background:#0e1420;border-bottom:1px solid var(--line)}
+.mini i{flex:1;height:18px;border-radius:4px;background:var(--panel2);border:1px solid var(--line);font:700 8px/16px system-ui;color:var(--dim);text-align:center;font-style:normal;overflow:hidden;white-space:nowrap}
+.mini i.view{background:#1c2540;border-color:#3b4a74}.mini i.hl{background:var(--acc);color:#12091f}
+/* D: zonas en los extremos */
+.edge{position:absolute;top:0;bottom:0;width:84px;z-index:5;display:grid;place-items:center;font:700 11px system-ui;color:var(--ink);background:#241c44e6;border:2px dashed var(--acc)}
+.edge.l{left:0;border-radius:0 12px 12px 0}.edge.r{right:0;border-radius:12px 0 0 12px}.edge.hl{background:var(--acc);color:#12091f}
+/* bandejas de estado (decidido) */
+.trays{position:absolute;left:50%;bottom:22px;transform:translateX(-50%);display:flex;gap:10px;z-index:60}
+.tray{width:112px;height:70px;border:2px dashed var(--line2);border-radius:14px;background:#0f1622f0;display:grid;place-items:center;text-align:center;font-weight:700;color:var(--mut);transition:transform .1s}
+.tray.hl{transform:scale(1.1);border-style:solid;color:var(--ink)}
+.tray.parked.hl{border-color:var(--blue)}.tray.done.hl{border-color:var(--green)}.tray.waiting.hl{border-color:var(--amber)}.tray.none.hl{border-color:var(--red)}
+.phone .tray{width:78px;height:62px;font-size:11px}
+.body{height:330px;padding:16px;color:var(--mut);position:relative}
+.body b{color:var(--ink)}
+.hint{max-width:720px;margin:0 0 8px}
+.toast{position:absolute;left:50%;top:100px;transform:translateX(-50%);background:#1f5134;color:#d9ffe7;padding:7px 12px;border-radius:10px;font-weight:700;z-index:90}
+.picker{position:fixed;right:14px;bottom:14px;z-index:99;width:450px;background:#17122a;color:#ece8ff;border:1px solid #3b3170;border-radius:14px;box-shadow:0 18px 50px #000c;padding:10px;font-size:13px;user-select:none}
+.picker .drag{cursor:move;display:flex;gap:8px;align-items:center;margin-bottom:8px}.picker .drag b{margin-right:auto}
+.picker .nav{display:grid;grid-template-columns:30px 1fr 30px;gap:6px}
+.picker .nav button,.picker .opts button,.picker .st button{border:1px solid #3b3170;border-radius:7px;height:30px}
+.picker .name{border:1px solid #8b7cf6;background:#241c44;border-radius:7px;display:flex;align-items:center;padding:0 10px;font-weight:600}
+.picker .opts{display:grid;grid-template-columns:repeat(5,1fr);gap:4px;margin-top:6px}
+.picker .opts button.on,.picker .st button.on{background:#8b7cf6;color:#12091f}
+.picker .st{display:flex;gap:6px;margin-top:8px;flex-wrap:wrap}.picker .st button{padding:0 8px}
+.picker .desc{margin-top:8px;color:#c9c1f4;font-size:12px}
+@media (max-width:640px){.picker{width:calc(100% - 20px);right:10px}.frame{margin:8px}}
+</style>
+</head>
+<body>
+<div class="frame" id="frame"></div>
+<div class="picker" id="picker"></div>
+<script>
+const BASE=['ComandOS ⎇','PaginasWeb','SAVA','MRP','Merauto','Signara','LimpiezaDigital','RWAAirbnb','Kleis','Relotto','TranscriptRealTime','Dashboard','FerLongoria','NinjaCatBot','Cobbler',
+ 'Lola-Landing','Chips','Scarlett','0xAiBuilders','Samuel','QCDR','Threads0x','Solana-Bot','Radek-Docs','Superteam','Hisa-Video','Colosseum','Metaverso','Relotto-API'];
+const AI={0:'work',2:'need',3:'work',5:'need'};
+function makeTabs(n){return [{id:'local',label:'local',ai:'',mark:''}].concat(BASE.slice(0,n-1).map((l,i)=>({id:'t'+i,label:l,ai:AI[i]||'',mark:i===6?'parked':i===8?'done':''})));}
+const V=[
+ {k:'A',n:'Auto-desplazar en los bordes',d:'Lleva la pestaña al borde de la barra: se desliza sola, más rápido cuanto más te acercas al borde. Un «tic» suena en cada posición que pasas.'},
+ {k:'B',n:'La barra se encoge',d:'Al levantar la pestaña, TODAS las pestañas se encogen para caber en el ancho (como vista de pájaro). Sueltas donde quieras y la barra vuelve a su tamaño.'},
+ {k:'C',n:'Minimapa',d:'Al levantar la pestaña aparece arriba un minimapa con todas las posiciones (la zona visible resaltada). Deslizas sobre el minimapa hasta el lugar y sueltas.'},
+ {k:'D',n:'Imanes en los extremos',d:'Al levantar aparecen dos imanes: «⇤ Al principio» y «Al final ⇥». Para lo lejano, suéltala en el imán; para lo cercano, deslízala con auto-desplazamiento.'},
+ {k:'E',n:'Varias filas al arrastrar',d:'Mientras arrastras, la barra se abre en varias filas y se ven todas a la vez; al soltar vuelve a ser una sola fila.'},
+];
+const P=new URLSearchParams(location.search);
+const S={i:Math.max(0,V.findIndex(v=>v.k===P.get('variant'))),phone:P.get('phone')==='1',n:P.get('n')==='16'?16:30,cur:'t0',toast:''};
+let TABS=makeTabs(S.n);
+const $=s=>document.querySelector(s);
+let audio=null;function beep(f=880,d=.04,v=.035){try{audio=audio||new AudioContext();const o=audio.createOscillator(),g=audio.createGain();o.type='square';o.frequency.value=f;g.gain.value=v;o.connect(g).connect(audio.destination);o.start();o.stop(audio.currentTime+d);}catch(e){}}
+function tabHtml(t,i){return `<div class="tab ${t.id===S.cur?'cur':''}" data-i="${i}"><span class="ai ${t.ai}"></span><span class="t">${t.label}</span>${t.mark?`<span class="stk ${t.mark} ${t._pop?'pop':''}">${{parked:'Aparcado',done:'Hecho',waiting:'Esperando'}[t.mark]}</span>`:''}</div>`;}
+function render(){
+  TABS.forEach(t=>{t._pop2=t._pop;});
+  $('#frame').className='frame'+(S.phone?' phone':'');
+  $('#frame').innerHTML=`<div class="top"><b>● COMANDOS</b><button class="k">⇅ Ordenar una vez</button></div>
+   <div class="barwrap" id="barwrap"><div class="fade l"></div><div class="bar" id="bar">${TABS.map(tabHtml).join('')}</div><div class="fade r"></div></div>
+   <div class="body" id="body"><p class="hint"><b>Reordenar:</b> ${V[S.i].d}</p>
+   <p class="hint"><b>Estado (decidido):</b> arrastra la pestaña <b>hacia abajo</b> y suéltala en una bandeja: Aparcar · Esperando · Hecho · Quitar. En el celular: mantén presionada ½ s y arrastra.</p>
+   <p class="hint">Hay <b>${TABS.length}</b> pestañas; no caben todas. Prueba mover «ComandOS» (la primera) hasta el final, y «Relotto-API» al principio.</p>${S.toast?`<div class="toast">${S.toast}</div>`:''}</div>`;
+  TABS.forEach(t=>t._pop=false);
+  const cur=$('#bar .cur');if(cur&&!render.scrolled){render.scrolled=1;}
+  wire();picker();
+}
+function picker(){const v=V[S.i];
+  $('#picker').innerHTML=`<div class="drag" data-h><b>Grill · Deslizar fuera de vista</b><span style="color:#8f86c2;font-size:11px">←/→</span></div>
+  <div class="nav"><button data-s="-1">←</button><div class="name">${v.k} · ${v.n}</div><button data-s="1">→</button></div>
+  <div class="opts">${V.map((x,i)=>`<button class="${i===S.i?'on':''}" data-v="${i}">${x.k}</button>`).join('')}</div><div class="desc">${v.d}</div>
+  <div class="st"><button class="${S.phone?'on':''}" data-t="phone">Celular 390 px</button><button class="${S.n===30?'on':''}" data-t="n">30 pestañas</button></div>`;}
+function toast(m){S.toast=m;render();clearTimeout(toast.t);toast.t=setTimeout(()=>{S.toast='';render();},1300);}
+function wire(){
+  const bar=$('#bar'),wrap=$('#barwrap'),body=$('#body');
+  bar.querySelectorAll('.tab').forEach(el=>el.addEventListener('pointerdown',e=>{
+    if(e.button>0)return;const from=+el.dataset.i;const t=TABS[from];const sx=e.clientX,sy=e.clientY;const touch=e.pointerType==='touch';
+    let lifted=false,flt=null,caret=null,trays=null,mini=null,edges=null,target=from,raf=0,lastX=sx,lastY=sy,lastTick=-1,holdOk=!touch;
+    const hold=touch?setTimeout(()=>{holdOk=true;navigator.vibrate&&navigator.vibrate(15);lift();},450):null;
+    function lift(){ if(lifted||from===0)return; lifted=true; el.classList.add('src'); beep(520,.03);
+      flt=document.createElement('div');flt.className='float';flt.innerHTML=el.innerHTML;document.body.appendChild(flt);
+      caret=document.createElement('div');caret.className='caret';bar.appendChild(caret);
+      const k=V[S.i].k;
+      if(k==='B'){bar.classList.add('compact');}
+      if(k==='E'){bar.classList.add('wrap');}
+      if(k==='C'){mini=document.createElement('div');mini.className='mini';mini.innerHTML=TABS.map((x,j)=>`<i data-m="${j}">${j}</i>`).join('');wrap.prepend(mini);}
+      if(k==='D'){edges=document.createElement('div');edges.innerHTML='<div class="edge l" data-e="first">⇤ Al principio</div><div class="edge r" data-e="last">Al final ⇥</div>';wrap.appendChild(edges);}
+      trays=document.createElement('div');trays.className='trays';trays.style.display='none';
+      trays.innerHTML=[['parked','❄ Aparcar'],['waiting','⏳ Esperando'],['done','✓ Hecho'],['none','✕ Quitar']].map(([k,l])=>`<div class="tray ${k}" data-tray="${k}">${l}</div>`).join('');body.appendChild(trays);
+      raf=requestAnimationFrame(tick);}
+    function trayAt(x,y){if(!trays)return null;const d=[...trays.children].find(c=>{const r=c.getBoundingClientRect();return x>r.left-10&&x<r.right+10&&y>r.top-10&&y<r.bottom+10;});return d?d.dataset.tray:null;}
+    function tick(){ // auto-desplazamiento + cálculo de destino en cada frame
+      if(!lifted)return;const k=V[S.i].k;const br=bar.getBoundingClientRect();
+      const down=lastY>br.bottom+30;trays.style.display=down?'flex':'none';
+      [...trays.children].forEach(c=>c.classList.toggle('hl',c.dataset.tray===trayAt(lastX,lastY)));
+      if(!down&&(k==='A'||k==='D')&&!bar.classList.contains('compact')){const zone=56;
+        if(lastX<br.left+zone)bar.scrollLeft-=Math.ceil(((br.left+zone-lastX)/zone)*18);
+        else if(lastX>br.right-zone)bar.scrollLeft+=Math.ceil(((lastX-(br.right-zone))/zone)*18);}
+      let t2=target;
+      if(k==='C'&&mini){const cells=[...mini.children];const r0=mini.getBoundingClientRect();
+        const vis=[...bar.children].filter(c=>c.classList.contains('tab')).map(c=>c.getBoundingClientRect());
+        cells.forEach((c,j)=>c.classList.toggle('view',vis[j]&&vis[j].right>br.left&&vis[j].left<br.right));
+        if(lastY<r0.bottom+6&&lastY>r0.top-20){const c=cells.find(c=>{const r=c.getBoundingClientRect();return lastX>=r.left&&lastX<=r.right;});if(c){t2=+c.dataset.m;const tabEl=bar.children[t2];tabEl&&(bar.scrollLeft+=tabEl.getBoundingClientRect().left-br.left-br.width/2);}}
+        cells.forEach((c,j)=>c.classList.toggle('hl',j===t2));}
+      if(k==='D'&&edges){const e=[...edges.children].find(x=>{const r=x.getBoundingClientRect();return lastX>r.left&&lastX<r.right&&lastY>r.top-30&&lastY<r.bottom+30;});
+        [...edges.children].forEach(x=>x.classList.toggle('hl',x===e));if(e)t2=e.dataset.e==='first'?1:TABS.length-1;}
+      if(t2===target||k!=='C'){const tabs=[...bar.querySelectorAll('.tab')];let best=null;
+        for(const [j,te] of tabs.entries()){const r=te.getBoundingClientRect();if(k==='E'&&!(lastY>=r.top&&lastY<=r.bottom))continue;if(lastX>=r.left&&lastX<=r.right){best=j+(lastX>r.left+r.width/2?1:0);break;}}
+        if(best!=null&&!(k==='D'&&edges&&[...edges.children].some(x=>x.classList.contains('hl'))))t2=Math.max(1,Math.min(TABS.length,best));}
+      if(t2!==target){target=t2;if(target!==lastTick){lastTick=target;beep(700+((target*37)%300),.018,.02);}}
+      const ref=bar.children[Math.min(target,TABS.length-1)];if(ref){const r=ref.getBoundingClientRect(),br2=bar.getBoundingClientRect();const x=target>=TABS.length?r.right:r.left;caret.style.left=(x-br2.left+bar.scrollLeft)+'px';caret.style.top=(r.top-br2.top+4)+'px';caret.style.height=(r.height-8)+'px';}
+      raf=requestAnimationFrame(tick);}
+    const mv=ev=>{lastX=ev.clientX;lastY=ev.clientY;
+      if(!lifted){if(touch&&!holdOk){if(Math.hypot(ev.clientX-sx,ev.clientY-sy)>10)clearTimeout(hold);return;}if(Math.hypot(ev.clientX-sx,ev.clientY-sy)>6)lift();}
+      if(flt){flt.style.left=ev.clientX+'px';flt.style.top=ev.clientY+'px';}};
+    const up=ev=>{removeEventListener('pointermove',mv);removeEventListener('pointerup',up);clearTimeout(hold);cancelAnimationFrame(raf);
+      if(!lifted){S.cur=t.id;render();return;}
+      const tray=trayAt(ev.clientX,ev.clientY);flt.remove();
+      if(tray&&lastY>bar.getBoundingClientRect().bottom+30){t.mark=tray==='none'?'':tray;t._pop=true;beep(660,.05);setTimeout(()=>beep(990,.08),60);
+        toast(tray==='done'?'¡Hecho! · '+t.label:tray==='none'?'Marca quitada':'Marcado: '+{parked:'Aparcado',waiting:'Esperando'}[tray]);return;}
+      if(ev.clientY>bar.getBoundingClientRect().bottom+30){render();return;}
+      let to=target;if(to>from)to--;const [x]=TABS.splice(from,1);TABS.splice(Math.max(1,to),0,x);beep(520,.04);
+      const keep=bar.scrollLeft;render();const nb=$('#bar');nb.scrollLeft=keep;const moved=nb.children[Math.max(1,to)];moved&&moved.scrollIntoView({inline:'nearest',block:'nearest'});};
+    addEventListener('pointermove',mv);addEventListener('pointerup',up);
+  }));
+}
+document.addEventListener('click',e=>{const t=e.target.closest('[data-s],[data-v],[data-t]');if(!t)return;const d=t.dataset;
+  if(d.s)S.i=(S.i+ +d.s+V.length)%V.length;else if(d.v)S.i=+d.v;else if(d.t==='phone')S.phone=!S.phone;else if(d.t==='n'){S.n=S.n===30?16:30;TABS=makeTabs(S.n);}
+  history.replaceState(null,'',`?variant=${V[S.i].k}${S.phone?'&phone=1':''}${S.n===16?'&n=16':''}`);render();});
+document.addEventListener('keydown',e=>{if(e.key==='ArrowRight'||e.key==='ArrowLeft'){S.i=(S.i+(e.key==='ArrowRight'?1:4))%5;render();}});
+(function(){const pk=$('#picker');let sx,sy,ox,oy;pk.addEventListener('pointerdown',e=>{if(!e.target.closest('[data-h]'))return;const r=pk.getBoundingClientRect();sx=e.clientX;sy=e.clientY;ox=r.left;oy=r.top;
+ const mv=ev=>{pk.style.left=ox+ev.clientX-sx+'px';pk.style.top=oy+ev.clientY-sy+'px';pk.style.right='auto';pk.style.bottom='auto'};const up=()=>{removeEventListener('pointermove',mv);removeEventListener('pointerup',up)};addEventListener('pointermove',mv);addEventListener('pointerup',up)})})();
+render();
+</script>
+</body>
+</html>

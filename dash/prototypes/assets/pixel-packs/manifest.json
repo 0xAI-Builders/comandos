@@ -1,0 +1,217 @@
+{
+  "retrieved": "2026-09-28",
+  "files": [
+    {
+      "file": "shikashi/icons.png",
+      "sha256": "e5dced4f6e04f7f79101f189f95124a0dba93546e464d76af8af6b72f1d670e8",
+      "bytes": 114704
+    },
+    {
+      "file": "shikashi/AUTHOR-NOTES.txt",
+      "sha256": "25232ffafacb8ddd7b00013128ec09bd097d48f3906f6e1e11e8aaab45cb13a3",
+      "bytes": 3649
+    },
+    {
+      "file": "7soul/I_Clock.png",
+      "sha256": "2c237aec33e9669c35817a755474160ecfc969db1c6dec5b238ba93ac75ae45e",
+      "bytes": 1583
+    },
+    {
+      "file": "7soul/I_Crystal01.png",
+      "sha256": "c0287b8c4926ea738638a42a257846f6679c05cd4742ce4aec9ca21f90cc2808",
+      "bytes": 3462
+    },
+    {
+      "file": "7soul/Ac_Medal01.png",
+      "sha256": "49084bf84a86de7bf63169a2a13e45d73e02d519962a8ff86af5f57c440e8e48",
+      "bytes": 3267
+    },
+    {
+      "file": "7soul/Ac_Medal04.png",
+      "sha256": "29c7a8cfeaa08a3be5a434928a54058af57fb6090ecbbcb897e4d9131aa1d792",
+      "bytes": 3360
+    },
+    {
+      "file": "7soul/I_Chest01.png",
+      "sha256": "b3a1efc58fe22471ea0d3e1d0e0cab07253ca91b7a8ea2aca9381c0ccc26637a",
+      "bytes": 3232
+    },
+    {
+      "file": "7soul/S_Fire03.png",
+      "sha256": "9aeb3edb65180e6ce492b3609e8eb4b5fcd2c3d8e67769b4571787caa4c40ccd",
+      "bytes": 3207
+    },
+    {
+      "file": "lared/MonedaD.png",
+      "sha256": "643abe68755a7bf4f211e336c3481f0967f6b5b668ae67a16b6da1ff7638d638",
+      "bytes": 663
+    },
+    {
+      "file": "lared/MonedaP.png",
+      "sha256": "c5589ab34f61197e66954f448c78e15084208ae71a28930326b0b284523896ac",
+      "bytes": 579
+    },
+    {
+      "file": "lared/spr_coin_roj.png",
+      "sha256": "ca46e1df2c7109f3403a678745fb1cf798fbb62e41745c8043c3698d643dff7f",
+      "bytes": 540
+    },
+    {
+      "file": "lared/spr_coin_strip4.png",
+      "sha256": "a4081f35fd724eab0dce1061f9325e866d91ee286a7aa5cdca14ba2e19085dfa",
+      "bytes": 459
+    },
+    {
+      "file": "quintino/icon4.png",
+      "sha256": "0255fda3c1378e38060afaf1224bdeec990529c2b239451765569b8728dc5b30",
+      "bytes": 571
+    },
+    {
+      "file": "quintino/icon7.png",
+      "sha256": "ac7e24fbedd0811e004dc4a65ef4956aead3d520d062cbd4cdf38790f02cfeb1",
+      "bytes": 596
+    },
+    {
+      "file": "quintino/icon9.png",
+      "sha256": "62b845edd8ec34a97230794193b9588fe74d7e73e2240689157fdc3b7a20853c",
+      "bytes": 556
+    },
+    {
+      "file": "quintino/icon13.png",
+      "sha256": "2d82e7bee566dd51a1d556bb9f8177b758259815f64d62a801089ff60f19e5c9",
+      "bytes": 575
+    },
+    {
+      "file": "quintino/icon17.png",
+      "sha256": "a86bd253860fdf1734df4220a916059d0d410cefdfb8ed2db56aa1cdf182386f",
+      "bytes": 414
+    },
+    {
+      "file": "quintino/icon20.png",
+      "sha256": "a1cacb5beec18b433657f4df68606ce7d0ba14205fc0566c0bb2fd3ffcb87aea",
+      "bytes": 517
+    },
+    {
+      "file": "karsiori/clock.png",
+      "sourceFile": "Bubbly Brew Bottle Rising/PURPLE/Bubbly Brew Bottle Rising - PURPLE - Spritesheet.png",
+      "sha256": "036d51a0b6afe4fa51820726ff1172ca7e0adcf7ed0c828b36f3302faf7b1b16",
+      "bytes": 17727
+    },
+    {
+      "file": "karsiori/crystal.png",
+      "sourceFile": "Small Elixir/BLUE/Small Elixir - BLUE - Spritesheet.png",
+      "sha256": "6405b3e57c97c4f928cdfe28ee5be2e54758ef8b19cded856ce21476fbc18e18",
+      "bytes": 3624
+    },
+    {
+      "file": "karsiori/first.png",
+      "sourceFile": "Small Vial/TEAL/Small Vial - TEAL - Spritesheet.png",
+      "sha256": "d94bb087b7131b774691903793c8f68b3bb69422b39733e7c93490178e4aa81f",
+      "bytes": 3826
+    },
+    {
+      "file": "karsiori/hundred.png",
+      "sourceFile": "Large Jar/PURPLE/Large Jar - PURPLE - Spritesheet.png",
+      "sha256": "8b10bb023519370d38f58bce941034ebf6c7ad1a471326ba608fd8078bf634f7",
+      "bytes": 13924
+    },
+    {
+      "file": "karsiori/streak.png",
+      "sourceFile": "Encased Potion/GOLD_PURPLE/Encased Potion - GOLD_PURPLE - Spritesheet.png",
+      "sha256": "17b313bfd104d3cfdc19b8dccec53d785fb3d73cb34512ead4ea2b977b886cd4",
+      "bytes": 1535
+    },
+    {
+      "file": "karsiori/level.png",
+      "sourceFile": "Glowing Potion/GOLD/Glowing Potion - GOLD - Spritesheet.png",
+      "sha256": "ad64b985faff0958834f1dd6189b7fe4c7f1267805781999197fbb5b66d344bf",
+      "bytes": 4679
+    },
+    {
+      "file": "karsiori-gems/clock.png",
+      "sourceFile": "GEM 1/GEM 1 - PURPLE - Spritesheet.png",
+      "sha256": "412f387dc5dc869ae94d251e06d48f6c1b244de80738e89a0d8bacaae5c70a68",
+      "bytes": 3199
+    },
+    {
+      "file": "karsiori-gems/crystal.png",
+      "sourceFile": "GEM 2/GEM 2 - TURQUOISE - Spritesheet.png",
+      "sha256": "38c8e2b49e3c9babb190516423481170e1c7d0e4514ccc099feafc9a22854e7f",
+      "bytes": 4240
+    },
+    {
+      "file": "karsiori-gems/first.png",
+      "sourceFile": "GEM 3/GEM 3 - LIGHT GREEN - Spritesheet.png",
+      "sha256": "fd566c70ec2d6ccdc6c5308f073c24dbcc905c306bca83b5fcc200015d389441",
+      "bytes": 4731
+    },
+    {
+      "file": "karsiori-gems/hundred.png",
+      "sourceFile": "GEM 4/GEM 4 - BLUE - Spritesheet.png",
+      "sha256": "9de084b3d95d84077194db8319599a88f28420600c058fd2c9594ac5340af095",
+      "bytes": 3602
+    },
+    {
+      "file": "karsiori-gems/streak.png",
+      "sourceFile": "GEM 5/GEM 5 - RED - Spritesheet.png",
+      "sha256": "1ae1771f25c81228e4e4c95650012dea8d42a00ce516661eca2ecbdae81a5511",
+      "bytes": 2622
+    },
+    {
+      "file": "karsiori-gems/level.png",
+      "sourceFile": "GEM 9/GEM 9 - GOLD - Spritesheet.png",
+      "sha256": "241ccde9c43efccc8bc448d31c1df85a67e31374f53147f914c0b3dd5eb1e58f",
+      "bytes": 4257
+    },
+    {
+      "file": "zoedoz/hourglass.png",
+      "sourceFile": "https://opengameart.org/sites/default/files/hourglass_2.png",
+      "sha256": "eb7385877b3a7e39fc56fd17ba53fbb7f5d0ea4cbbae13b074986f23671a444d",
+      "bytes": 3307
+    },
+    {
+      "file": "karsiori-chests/golden.png",
+      "sourceFile": "Pixel Chest Pack/Golden Chest 1/Golden Chest 1 - SpriteSheet.png",
+      "sha256": "97e29a4a6ebc48e0418813196088f7b8d831042e9d8adcbe90034fdc55608b68",
+      "bytes": 3573
+    },
+    {
+      "file": "arlantr/campfire.png",
+      "sourceFile": "https://opengameart.org/sites/default/files/campfire-sprite-sheet.png",
+      "sha256": "61f57d25731b06c1923f0bef1d8579deb106419b4acbfa1735f7d1e2c5f42758",
+      "bytes": 963
+    }
+  ],
+  "sources": [
+    {
+      "artist": "karsiori",
+      "url": "https://karsiori.itch.io/pixel-art-potion-pack-animated",
+      "license": "CC0-1.0",
+      "archiveSha256": "9b5d0f181c8dad22ad80864683806b6cdc2e155b920ed1ec73a26ec096b83e0c"
+    },
+    {
+      "artist": "karsiori",
+      "url": "https://karsiori.itch.io/free-pixel-art-gem-pack",
+      "license": "CC0-1.0",
+      "archiveSha256": "cb72c6994fb45128c400db2b5922f0a0827e6ae6f2737bcbbc132a48ddf05a41"
+    },
+    {
+      "artist": "Zoedoz",
+      "url": "https://opengameart.org/content/animated-hourglass",
+      "license": "CC0-1.0",
+      "sourceFile": "https://opengameart.org/sites/default/files/hourglass_2.png"
+    },
+    {
+      "artist": "karsiori",
+      "url": "https://karsiori.itch.io/pixel-art-chest-pack-animated",
+      "license": "CC0-1.0",
+      "archiveSha256": "f5f4c390d233434297609b01a20e7ab6d2d7e3f1ac05abe410b603de78a304f5"
+    },
+    {
+      "artist": "ArlanTR",
+      "url": "https://opengameart.org/content/campfire-pixel-art-animated",
+      "license": "CC0-1.0",
+      "sourceFile": "https://opengameart.org/sites/default/files/campfire-sprite-sheet.png"
+    }
+  ]
+}

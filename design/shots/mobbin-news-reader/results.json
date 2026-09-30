@@ -1,0 +1,54 @@
+[
+  {
+    "query": "Article reading view with a list of saved articles beside the full article and reading controls",
+    "screens": [
+      {
+        "id": "7771ec75-2458-4381-9cbe-f0cb87d4b027",
+        "image_url": "https://mobbin.com/api/mcp/short/l4ZBoDWi",
+        "mobbin_url": "https://mobbin.com/screens/7771ec75-2458-4381-9cbe-f0cb87d4b027",
+        "app_name": "GetYourGuide",
+        "platform": "web"
+      },
+      {
+        "id": "b409b4ea-993e-4cb5-ae9e-8aaab0558700",
+        "image_url": "https://mobbin.com/api/mcp/short/wpNbM4Zg",
+        "mobbin_url": "https://mobbin.com/screens/b409b4ea-993e-4cb5-ae9e-8aaab0558700",
+        "app_name": "Mintlify",
+        "platform": "web"
+      },
+      {
+        "id": "602ae92b-9bf8-49dd-9e44-7632bab04bf0",
+        "image_url": "https://mobbin.com/api/mcp/short/uOK0dk1j",
+        "mobbin_url": "https://mobbin.com/screens/602ae92b-9bf8-49dd-9e44-7632bab04bf0",
+        "app_name": "Microsoft Copilot",
+        "platform": "web"
+      }
+    ]
+  },
+  {
+    "query": "News summary reader showing a daily briefing with story headlines, article text and source links",
+    "screens": [
+      {
+        "id": "d4ff9a4c-6714-4e65-8de5-2efe0640ca77",
+        "image_url": "https://mobbin.com/api/mcp/short/DqOwjwYQ",
+        "mobbin_url": "https://mobbin.com/screens/d4ff9a4c-6714-4e65-8de5-2efe0640ca77",
+        "app_name": "Public",
+        "platform": "ios"
+      },
+      {
+        "id": "4873615d-9df3-4992-b758-d6dac2cad573",
+        "image_url": "https://mobbin.com/api/mcp/short/CllfuxST",
+        "mobbin_url": "https://mobbin.com/screens/4873615d-9df3-4992-b758-d6dac2cad573",
+        "app_name": "Perplexity",
+        "platform": "ios"
+      },
+      {
+        "id": "9328b77e-e61b-482e-ba68-35852db74f05",
+        "image_url": "https://mobbin.com/api/mcp/short/c7OKNerf",
+        "mobbin_url": "https://mobbin.com/screens/9328b77e-e61b-482e-ba68-35852db74f05",
+        "app_name": "LinkedIn",
+        "platform": "ios"
+      }
+    ]
+  }
+]
