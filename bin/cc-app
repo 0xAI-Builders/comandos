@@ -4834,7 +4834,9 @@ def _pane_pill(sess, p):
         pill.pack_start(ai, False, False, 0)
         pill._ai = ai
     name = Gtk.Label()
-    name.set_markup(f'<span foreground="{fg}" weight="bold">{_esc(sess)}</span>')
+    box = tabs.get(sess) if isinstance(tabs, dict) else None
+    title = getattr(box, "_label", None) or sess          # el nombre de la pestaña, no la clave tmux
+    name.set_markup(f'<span foreground="{fg}" weight="bold">{_esc(title)}</span>')
     name.set_ellipsize(Pango.EllipsizeMode.END)
     name.set_max_width_chars(18)
     pill.pack_start(name, False, False, 0)

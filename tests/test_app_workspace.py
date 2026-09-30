@@ -201,7 +201,7 @@ def test_desktop_pane_card_has_no_yes_no_and_shows_semaforo_session_model_and_bu
     the card is semáforo + session | logo + model + ✓ | «IA» and «MCPs · Skills»."""
     assert 'def pane_answer' not in SOURCE and '_answer_button' not in SOURCE and 'pill-yes' not in SOURCE
     src = SOURCE.split('def _pane_pill(sess, p):')[1].split('\ndef ')[0]
-    assert '_pane_card_ai(sess)' in src and '_esc(sess)' in src, 'semáforo + session name first'
+    assert '_pane_card_ai(sess)' in src and 'getattr(box, "_label", None) or sess' in src, 'semáforo + tab name (not the tmux key) first'
     assert '_card_button("settings", "IA"' in src and '_extension_pill(sess' in src
     assert 'add_class("pane-card")' in src
     ext = SOURCE.split('def _extension_pill(sess, pane, harness=""):')[1].split('\ndef ')[0]
