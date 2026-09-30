@@ -32,6 +32,9 @@ class Widget:
     def hide(self): self.shown = False
     def show(self): self.shown = True
     def set_from_pixbuf(self, p): self.pixbuf = p; self.writes += 1
+    def set_from_surface(self, p): self.pixbuf = p; self.writes += 1
+    def get_scale_factor(self): return 1
+    def get_window(self): return None
     def set_tooltip_text(self, t): self.tooltip = t
     def set_text(self, t): self.label = t
     def get_style_context(self): return SimpleNamespace(add_class=lambda c: None, remove_class=lambda c: None)
@@ -77,10 +80,12 @@ def load(responses):
         "WORK_MARKS": {"rows": {}, "panes": [], "fetching": False}, "work_mark_state": work_marks,
         "Gtk": fake_gtk(), "tabs": {"sess": "box"}, "nb": SimpleNamespace(get_tab_label=lambda box: label), "tab_hb": lambda box: label,
         "_work_mark_pixbuf": lambda name: "pix:" + name,
-        "_indicator_pixbuf": lambda icon, color, frame=0: f"pix:{icon}:{color}:{frame}",
+        "_indicator_pixbuf": lambda icon, color, frame=0, scale=1: f"pix:{icon}:{color}:{frame}",
+        "AI_SPRITES": "comandos",
         "_indicator_animate": lambda hb: hb._dot.animated.append(hb._ind_icon),
         "STATE_CACHE": {}, "DOT_COLORS": {"waiting": "#D08770", "working": "#81A1C1"}, "DOT_IDLE": "#4B5568",
         "TAB_FAVORITES": set(), "toggle_tab_favorite": lambda key: None,
+        "Gdk": SimpleNamespace(cairo_surface_create_from_pixbuf=lambda pb, scale, win: pb),
     }
     label._work_mark = Widget()
     label._dot = label._work_mark
@@ -88,8 +93,8 @@ def load(responses):
     label.animated = []
     ns["time"] = SimpleNamespace(monotonic=lambda: 0.0)
     tree = ast.parse(SOURCE)
-    nodes = [n for n in tree.body if isinstance(n, ast.FunctionDef) and n.name in NAMES]
-    assert len(nodes) == len(NAMES)
+    nodes = [n for n in tree.body if isinstance(n, ast.FunctionDef) and n.name in NAMES + ["_set_indicator_frame"]]
+    assert len(nodes) == len(NAMES) + 1
     exec(compile(ast.Module(body=nodes, type_ignores=[]), "<app>", "exec"), ns)
     return ns, posted, popups, label._work_mark
 

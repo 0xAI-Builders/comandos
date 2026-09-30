@@ -35,15 +35,17 @@
     favorite: '<path class="wm-twinkle" d="m12 3.6 2.6 5.3 5.8.8-4.2 4.1 1 5.8L12 16.9l-5.2 2.7 1-5.8-4.2-4.1 5.8-.8z"/>',
   };
 
-  // Canal de la IA (grill 30-sep): semáforo pixel 8-bit, mismos dibujos que
-  // lib/work_marks.py AI_ICONS (paridad probada). La marca humana va aparte, como sticker.
-  const AI_ICONS = {
-    work: "<g class=\"ai-gear\" fill=\"#4ade80\"><rect x=\"8\" y=\"1\" width=\"4\" height=\"4\"/><rect x=\"8\" y=\"15\" width=\"4\" height=\"4\"/><rect x=\"1\" y=\"8\" width=\"4\" height=\"4\"/><rect x=\"15\" y=\"8\" width=\"4\" height=\"4\"/><rect x=\"3\" y=\"3\" width=\"3\" height=\"3\"/><rect x=\"14\" y=\"3\" width=\"3\" height=\"3\"/><rect x=\"3\" y=\"14\" width=\"3\" height=\"3\"/><rect x=\"14\" y=\"14\" width=\"3\" height=\"3\"/><rect x=\"5\" y=\"5\" width=\"10\" height=\"10\"/></g><rect x=\"8\" y=\"8\" width=\"4\" height=\"4\" fill=\"#0b1119\"/>",
-    need: "<rect x=\"2\" y=\"2\" width=\"16\" height=\"12\" fill=\"#f5b83d\"/><rect x=\"6\" y=\"14\" width=\"4\" height=\"4\" fill=\"#f5b83d\"/><g class=\"ai-bang\" fill=\"#1a1300\"><rect x=\"9\" y=\"4\" width=\"2\" height=\"5\"/><rect x=\"9\" y=\"10\" width=\"2\" height=\"2\"/></g>",
-    done: "<rect x=\"5\" y=\"2\" width=\"2\" height=\"16\" fill=\"#9aa6bf\"/><g class=\"ai-flag\" fill=\"#4ade80\"><rect x=\"7\" y=\"3\" width=\"10\" height=\"7\"/></g>",
-    error: "<rect x=\"2\" y=\"2\" width=\"16\" height=\"16\" fill=\"#f87171\"/><g class=\"ai-x\" fill=\"#2a0a0e\"><rect x=\"5\" y=\"5\" width=\"3\" height=\"3\"/><rect x=\"12\" y=\"5\" width=\"3\" height=\"3\"/><rect x=\"8\" y=\"8\" width=\"4\" height=\"4\"/><rect x=\"5\" y=\"12\" width=\"3\" height=\"3\"/><rect x=\"12\" y=\"12\" width=\"3\" height=\"3\"/></g>",
-    idle: "<rect x=\"6\" y=\"6\" width=\"8\" height=\"8\" fill=\"none\" stroke=\"#5d6b7e\" stroke-width=\"2\"/>",
+  // Canal de la IA (grill 30-sep): sprites pixel del MISMO personaje por estado,
+  // los mismos datos que lib/work_marks.py AI_SETS (paridad probada). La marca humana va aparte, como sticker.
+  const AI_STATES = ['work', 'need', 'done', 'error', 'idle'];
+  const AI_SETS = {
+    comandos: {title: ['ComandOS bot', 'ComandOS bot'], px: 48, tab: 24,
+      frames: {work: 2, need: 2, done: 2, error: 2, idle: 2}, fps: {work: 5, need: 4, done: 3, error: 3}, credit: 'Asset propio del proyecto'},
+    kit: {title: ['Burbujas (Kicked-in-Teeth)', 'Bubbles (Kicked-in-Teeth)'], px: 16, tab: 16,
+      frames: {work: 3, need: 3, done: 3, error: 3, idle: 3}, fps: {work: 5, need: 5, done: 5, error: 5}, credit: 'Kicked-in-Teeth · CC-BY-SA'},
   };
+  const DEFAULT_AI_SET = 'comandos';
+  const AI_SPRITE_DIR = '/icons/semaforos';
   const AI_LABELS = {work: ['Trabajando', 'Working'], need: ['Te necesita', 'Needs you'], done: ['Terminó', 'Finished'],
     error: ['Error', 'Error'], idle: ['Quieta', 'Idle']};
   const AI_OF = {working: 'work', awaiting_permission: 'need', awaiting_input: 'need', waiting: 'need',
@@ -60,10 +62,27 @@
       `stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" ` +
       `aria-hidden="true" focusable="false">${body}</svg>`;
   }
-  function aiIconSvg(name, size = 20) {
-    const body = AI_ICONS[name] || AI_ICONS.idle;
-    return `<svg class="ai-icon ai-${name in AI_ICONS ? name : 'idle'}" width="${size}" height="${size}" viewBox="0 0 20 20" ` +
-      `shape-rendering="crispEdges" aria-hidden="true" focusable="false">${body}</svg>`;
+  const aiSet = name => (Object.prototype.hasOwnProperty.call(AI_SETS, name) ? name : DEFAULT_AI_SET);
+  /** Set activo: html[data-ai-set] (pref ai_sprites) o el default. */
+  function currentAiSet() {
+    const d = typeof document !== 'undefined' && document.documentElement && document.documentElement.dataset;
+    return aiSet(d && d.aiSet);
+  }
+  /** Tira del estado: archivo, tamaño nativo, cuadros y ciclo (0 = quieto). Igual que ai_sprite() en Python. */
+  function aiSprite(state, setName) {
+    const id = aiSet(setName), s = AI_SETS[id];
+    state = AI_STATES.includes(state) ? state : 'idle';
+    const frames = s.frames[state] || 1, fps = s.fps[state];
+    return {file: `${AI_SPRITE_DIR}/${id}/${state}.png`, px: s.px, tab: s.tab, frames, cycle: fps && frames > 1 ? frames / fps : 0};
+  }
+  /** <span> con la tira como fondo; workspace.css lo anima a saltos (steps). */
+  function aiIconSvg(name, size, setName) {
+    const sp = aiSprite(name, setName || currentAiSet());
+    size = size || sp.tab;
+    const k = size / sp.px, w = +(sp.frames * sp.px * k).toFixed(2);
+    const state = AI_STATES.includes(name) ? name : 'idle';
+    return `<span class="ai-icon ai-sprite ai-${state}" style="width:${size}px;height:${size}px;background-image:url(${sp.file});` +
+      `background-size:${w}px ${size}px;--ai-w:${w}px;--ai-frames:${sp.frames};--ai-cycle:${sp.cycle}s" role="img" aria-label="${AI_LABELS[state][lang()]}"></span>`;
   }
   /** Dos canales: lo que pone la IA (semáforo) y lo que pones tú (sticker); la IA sugiere «Hecho». */
   function channels(mark, activityState) {
@@ -174,7 +193,7 @@
     const row = rowOf(target.scope, target.key);
     const c = channels(row.mark, activityFor(target, W.activity));
     const fav = target.scope === 'pane' && row.favorite;
-    const signature = [c.ai, c.sticker, c.suggest, fav].join('|');
+    const signature = [c.ai, c.sticker, c.suggest, fav, currentAiSet()].join('|');
     button._wmTarget = target;
     if (button._wmSignature === signature) return;
     button._wmSignature = signature;
@@ -339,6 +358,6 @@
     if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init); else init();
   }
 
-  return {MARKS, ICONS, iconSvg, display, channels, aiIconSvg, AI_ICONS, STICKERS, targetForRow, activityFor, menuItems, nextIndex, indexMarks, label,
-          load, setMark, decorate, adopt};
+  return {MARKS, ICONS, iconSvg, display, channels, aiIconSvg, aiSprite, AI_SETS, AI_STATES, DEFAULT_AI_SET, aiSet, currentAiSet, STICKERS, targetForRow, activityFor, menuItems, nextIndex, indexMarks, label,
+          load, setMark, decorate, adopt, paint};
 });

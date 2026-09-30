@@ -87,3 +87,16 @@ def test_desktop_styles_every_button_but_window_controls():
         css = ns["button_style_css"](style, theme)
         assert b"button:not(.cc-key):not(.cc-winctl)" in css
     assert 'add_class("cc-winctl")' in APP
+
+
+def test_ai_sprites_pref_defaults_to_the_comandos_bot_and_only_accepts_shipped_sets(dash, tmp_path, monkeypatch):
+    """Grill 30-sep: the tab semáforo character is chosen in Ajustes → Apariencia."""
+    monkeypatch.setattr(dash, "PREFS_PATH", str(tmp_path / "prefs.json"))
+    assert dash.read_prefs()["ai_sprites"] == "comandos"
+    dash.update_prefs({"ai_sprites": "kit"})
+    assert dash.read_prefs()["ai_sprites"] == "kit"
+    dash.update_prefs({"ai_sprites": "../etc"})
+    assert dash.read_prefs()["ai_sprites"] == "kit"
+    assert 'id="ai-set-gallery"' in INDEX and "applyAiSet(p.ai_sprites" in INDEX
+    app = (ROOT / "bin" / "cc-app").read_text()
+    assert 'd.get("aiSprites") in work_mark_state.AI_SETS' in app and "def apply_ai_sprites" in app

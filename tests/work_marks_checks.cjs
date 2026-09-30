@@ -89,10 +89,14 @@ assert.equal(wm.channels('none', 'awaiting_permission').ai, 'need');
 assert.equal(wm.channels('none', 'failed').ai, 'error');
 assert.equal(wm.channels('none', null).ai, 'idle');
 for (const name of ['work', 'need', 'done', 'error', 'idle']) {
-  const svg = wm.aiIconSvg(name, 20);
-  assert.match(svg, /shape-rendering="crispEdges"/);
-  assert.ok(!emoji.test(svg), `${name} pixel icon must not use emoji`);
+  const html = wm.aiIconSvg(name);
+  assert.match(html, new RegExp(`class="ai-icon ai-sprite ai-${name}"`));
+  assert.ok(html.includes(`/icons/semaforos/comandos/${name}.png`), `${name}: default set is the ComandOS bot`);
+  assert.ok(html.includes('width:24px;height:24px'), `${name}: 48 px strip shown at 24 px (integer scale)`);
+  assert.ok(!emoji.test(html), `${name} sprite icon must not use emoji`);
 }
+assert.ok(wm.aiIconSvg('need', 16, 'kit').includes('/icons/semaforos/kit/need.png'), 'Kicked-in-Teeth bubbles selectable');
+assert.equal(wm.aiSprite('idle').cycle, 0, 'idle is still'); assert.equal(wm.aiSprite('work').cycle, 0.4, '2 frames at 5 fps');
 // A session shows its most urgent pane: need > error > work > done > idle.
 assert.equal(wm.activityFor({scope: 'session', key: 's'}, {a: {session: 's', state: 'completed'}, b: {session: 's', state: 'awaiting_input'}}), 'awaiting_input');
 console.log('two-channel checks ok');

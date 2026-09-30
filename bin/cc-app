@@ -1900,19 +1900,53 @@ _INDICATOR_PIXBUFS = {}
 _INDICATOR = {"source": None, "t0": None}
 
 
-def _indicator_pixbuf(icon, color, frame=0):
+AI_SPRITES = (PREFS.get("ai_sprites") if isinstance(PREFS, dict) else None) or work_mark_state.DEFAULT_AI_SET
+_AI_STRIPS = {}
+
+
+def _ai_strip(state):
+    """Tira PNG del estado para el set activo (dash/icons/semaforos/<set>/), cacheada."""
+    key = (AI_SPRITES, state)
+    if key not in _AI_STRIPS:
+        rel = work_mark_state.ai_sprite(state, AI_SPRITES)["file"].lstrip("/")
+        _AI_STRIPS[key] = GdkPixbuf.Pixbuf.new_from_file(os.path.join(CC_REPO, "dash", rel))
+    return _AI_STRIPS[key]
+
+
+def ai_frame_pixbuf(state, frame, scale=1):
+    """Cuadro ``frame`` del semáforo, recortado de la tira y escalado a píxel
+    duro (NEAREST) al tamaño de pestaña × factor HiDPI."""
+    sp = work_mark_state.ai_sprite(state, AI_SPRITES)
+    strip = _ai_strip(state)
+    px = sp["px"]
+    frame = frame % max(1, sp["frames"])
+    cell = strip.new_subpixbuf(frame * px, 0, px, px)
+    size = sp["tab"] * scale
+    return cell if size == px else cell.scale_simple(size, size, GdkPixbuf.InterpType.NEAREST)
+
+
+def apply_ai_sprites(set_name=None):
+    """Cambia el set de semáforos (Ajustes) y repinta todas las pestañas."""
+    global AI_SPRITES
+    AI_SPRITES = work_mark_state.ai_set(set_name or AI_SPRITES)
+    _INDICATOR_PIXBUFS.clear()
+    for key, box in tabs.items():
+        hb = tab_hb(box)
+        image = getattr(hb, "_dot", None) if hb is not None else None
+        if image is not None:
+            image._ind = None
+            paint_tab_mark(hb, key)
+
+
+def _indicator_pixbuf(icon, color, frame=0, scale=1):
     """Frame ``frame`` of the icon's loop, rendered once and cached. ``ai:<n>``
-    is the AI pixel semáforo (grill 30-sep); the rest are the E1 line icons."""
-    key = (icon, color, frame)
+    is the AI sprite semáforo (grill 30-sep); the rest are the E1 line icons."""
+    key = (icon, color, frame, scale)
     if key not in _INDICATOR_PIXBUFS:
-        loader = GdkPixbuf.PixbufLoader.new_with_type("svg")
         if icon.startswith("ai:"):
-            name = icon[3:]
-            steps = work_mark_state.AI_STEPS.get(name)
-            loader.write(work_mark_state.ai_icon_svg(name, 16, phase=frame / steps if steps else None).encode())
-            loader.close()
-            _INDICATOR_PIXBUFS[key] = loader.get_pixbuf()
+            _INDICATOR_PIXBUFS[key] = ai_frame_pixbuf(icon[3:], frame, scale)
             return _INDICATOR_PIXBUFS[key]
+        loader = GdkPixbuf.PixbufLoader.new_with_type("svg")
         n = work_mark_state.frame_count(icon)
         loader.write(work_mark_state.icon_svg(icon, color=color, size=14,
                                               phase=None if n <= 1 else frame / n).encode())
@@ -1921,11 +1955,22 @@ def _indicator_pixbuf(icon, color, frame=0):
     return _INDICATOR_PIXBUFS[key]
 
 
+def _set_indicator_frame(image, icon, color, frame):
+    """Pone el cuadro en la imagen; los sprites van como superficie con el
+    factor de escala de la pantalla para que no se vean borrosos en HiDPI."""
+    if icon.startswith("ai:"):
+        scale = max(1, image.get_scale_factor())
+        pb = _indicator_pixbuf(icon, color, frame, scale)
+        image.set_from_surface(Gdk.cairo_surface_create_from_pixbuf(pb, scale, image.get_window()))
+    else:
+        image.set_from_pixbuf(_indicator_pixbuf(icon, color, frame))
+
+
 def tab_indicator_display(mark, state):
     """(icon, colour, animated): el semáforo pixel de lo que sabe la IA. La
     marca humana ya no lo tapa: va aparte como sticker (dos canales, grill 30-sep)."""
     ai = work_mark_state.ai_status(state)
-    return "ai:" + ai, None, ai != "idle"
+    return "ai:" + ai, None, bool(work_mark_state.ai_sprite(ai, AI_SPRITES)["cycle"])
 
 
 def paint_tab_mark(hb, key):
@@ -1942,7 +1987,7 @@ def paint_tab_mark(hb, key):
     image._ind, image._frame = (icon, color), 0
     hb._ind_icon = icon
     try:
-        image.set_from_pixbuf(_indicator_pixbuf(icon, color, 0))
+        _set_indicator_frame(image, icon, color, 0)
     except Exception:
         return
     image.set_tooltip_text("IA: " + work_mark_state.AI_LABELS[icon[3:]][0 if ES else 1])
@@ -1996,12 +2041,12 @@ def _indicator_tick():
         image = getattr(hb, "_dot", None)
         icon = getattr(hb, "_ind_icon", None)
         ai = icon[3:] if isinstance(icon, str) and icon.startswith("ai:") else None
-        if image is not None and (icon in work_mark_state.CYCLE_S or ai in work_mark_state.AI_CYCLE_S):
+        if image is not None and (icon in work_mark_state.CYCLE_S or (ai and work_mark_state.ai_sprite(ai, AI_SPRITES)["cycle"])):
             looping = True
-            frame = work_mark_state.ai_frame_index(ai, t) if ai else work_mark_state.frame_index(icon, t)
+            frame = work_mark_state.ai_frame_index(ai, t, AI_SPRITES) if ai else work_mark_state.frame_index(icon, t)
             if getattr(image, "_frame", 0) != frame:
                 image._frame = frame
-                image.set_from_pixbuf(_indicator_pixbuf(icon, image._ind[1], frame))
+                _set_indicator_frame(image, icon, image._ind[1], frame)
         star = getattr(hb, "_favorite_image", None)
         if star is not None and key in TAB_FAVORITES:
             looping = True
@@ -5784,6 +5829,9 @@ def on_msg(mgr, res):
             return
         if d.get("buttonStyle") in ("sutil", "arcade", "tecla", "pixel", "consola"):
             GLib.idle_add(apply_button_style, d["buttonStyle"])
+            return
+        if d.get("aiSprites") in work_mark_state.AI_SETS:
+            GLib.idle_add(apply_ai_sprites, d["aiSprites"])
             return
         if d.get("theme"):
             apply_theme(d["theme"])
