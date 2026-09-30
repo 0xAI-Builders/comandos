@@ -56,6 +56,8 @@ Arte y tono: iconos pixel de Shikashi para grupos y acciones, monogramas por CLI
 
 Aprobado el 2026-09-29 (ronda 9, variante A). Dos filas: en la primera ☰, los contadores esperan/listos/trabajando, Terminal y + Nueva sesión, y a la derecha ⌘K, snippets, Analytics, Remoto, Servidores, Novedades, el Pomodoro en miniatura, Ajustes y la hora; en la segunda el número seguido de las tabs. La fila permanente de servidores SSH desaparece de la cabecera. Bajo 1200 px de ancho del panel, los botones del sistema muestran solo icono con tooltip.
 
+Reconciliación con lo entregado en main el 29–30 de septiembre (posterior a la ronda 9): los botones de cabecera ya son de un solo tamaño con cinco estilos 3D y etiqueta oculta, así que la cabecera ordenada los reutiliza tal cual y todo botón nuevo sigue ese sistema; la campana se queda en la fila 1 porque es lo que abre el cajón de avisos; el reloj de arena de Davitheoles sigue en el botón del Pomodoro; Resúmenes abre el lector junto a la terminal con la barra de comandos visible.
+
 Servidores se conserva exactamente como hoy: el botón de la primera fila muestra la misma fila de chips por host con su estado, "gestionar", conectar e instalar llave. Los controles que salen de la barra izquierda y de la cabecera (Apariencia, Soberanía, volumen, límites, Notificaciones, Todas las sesiones, Perfiles, Uso de herramientas) se recomiendan dentro del menú ☰, pendiente de veredicto (D8 del subplan 06).
 
 ## Cierre de la fase 2

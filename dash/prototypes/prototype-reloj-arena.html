@@ -62,18 +62,13 @@ h2{font-size:13px;color:var(--dim);letter-spacing:.8px;text-transform:uppercase;
 <div class="stage" id="stage"></div>
 <div class="picker" id="picker"></div>
 <script>
-const DAV={src:'assets/hourglass/davitheoles-clean.gif',author:'Davitheoles',url:'https://davitheoles.itch.io/inverted-hourglass'};
-const ALX={src:'assets/hourglass/alexti-clean.gif',author:'Alexti_dev',url:'https://alexti-dev.itch.io/hourglass-sandglass'};
+const OWN={src:'assets/hourglass/comandos-clean.gif',author:'ComandOS (propio)',url:'assets/hourglass/comandos/README.md'};
 // Ronda 2: A y B te gustaron; ¿cómo se usan?
-const V = [
- {k:'A', n:'Solo A · sci-fi en todo', hdr:DAV, big:DAV, d:'Davitheoles en la cabecera y en el Pomodoro abierto. Un solo estilo, gira al acabar cada vuelta.'},
- {k:'B', n:'Solo B · madera en todo', hdr:ALX, big:ALX, d:'Alexti en la cabecera y en el Pomodoro abierto. Cálido; en la cabecera se ve alto y delgado.'},
- {k:'C', n:'A chico + B grande', hdr:DAV, big:ALX, d:'Cabecera con A (se lee mejor a 22 px); al abrir el Pomodoro, el reloj de madera grande.'},
- {k:'D', n:'Foco = B · Descanso = A', hdr:ALX, big:ALX, brk:DAV, d:'El reloj cambia con el modo: madera mientras trabajas, sci-fi que gira en el descanso. Prueba el botón Descanso.'},
- {k:'E', n:'Elegible en Ajustes', hdr:DAV, big:DAV, alt:ALX, d:'Ambos disponibles como estilo en Ajustes → Pomodoro (A por defecto). Aquí se muestran lado a lado como en el selector.'},
+ const V = [
+ {k:'F', n:'Propio · latón y ámbar (ComandOS)', hdr:OWN, big:OWN, d:'Nuestro reloj: vidrio generado con gpt-image, arena y giro pintados por código. 27 cuadros 32×32 con el mismo contrato que el motor actual (0–20 llenado, 21–26 giro). Latón + vidrio pálido + ámbar: combina con temas claros y oscuros. Licencia nuestra.'},
 ];
 const P = new URLSearchParams(location.search);
-const S = {i:Math.max(0,V.findIndex(v=>v.k===P.get('variant'))), paused:false, light:false, breakMode:false};
+const S = {i:Math.max(0,V.findIndex(v=>v.k===(P.get('variant')||'F'))), paused:false, light:false, breakMode:false};
 const I = {bell:'<svg viewBox="0 0 24 24"><path d="M6 8a6 6 0 1 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.9 1.9 0 0 0 3.4 0"/></svg>',
  spark:'<svg viewBox="0 0 24 24"><path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8z"/><path d="M19 3v4M17 5h4"/></svg>',
  gear:'<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M4.2 4.2l2.1 2.1M17.7 17.7l2.1 2.1M2 12h3M19 12h3M4.2 19.8l2.1-2.1M17.7 6.3l2.1-2.1"/></svg>',
@@ -104,8 +99,8 @@ function render(){
     <div><p>${mode} · ${S.paused?'en pausa':'corriendo'}</p><h3>${S.breakMode?'04:12':'18:37'}</h3><p>Regla de tiempo · sesión ComandOS</p><div class="bar"><b></b></div></div></div>
    <div class="sizes ${S.paused?'paused':''}">${[16,22,32,48,96].map(px=>`<figure><div style="width:${px+14}px;height:${px+14}px">${img(v).replace('class="hg','style="width:'+px+'px;height:'+px+'px" class="hg')}</div>${px}px</figure>`).join('')}</div></div>
   <h2>Licencia y origen</h2>
-  <div class="lic"><dl><dt>A · ${DAV.author}</dt><dd class="warn">Permiso del autor («úsalo como quieras, crédito porfa»). Se acredita en README.</dd>
-   <dt>B · ${ALX.author}</dt><dd class="bad">Sin licencia publicada: antes de meterlo al repo público hay que pedir permiso por escrito.</dd></dl></div>`;
+  <div class="lic"><dl><dt>F · ComandOS</dt><dd style="color:#7ee787">Propio: generado + pintado por nosotros. Sin condiciones.</dd>
+   </dl></div>`;
   document.querySelectorAll('.sheet').forEach(el=>{ // hoja 15 cuadros horizontales (actual)
     let f=0; clearInterval(el._t); const w=el.clientWidth||22;
     el.style.backgroundSize=`auto 100%`; el._t=setInterval(()=>{ if(S.paused) return; f=(f+1)%15; el.style.backgroundPosition=`${-f*w}px 0`; },100);
@@ -114,7 +109,7 @@ function render(){
 }
 function picker(){
   const v=V[S.i], pk=document.getElementById('picker');
-  pk.innerHTML=`<div class="drag" data-h><b>Grill · Reloj de arena · ronda 2</b><span style="color:#8f86c2;font-size:11px">←/→</span></div>
+  pk.innerHTML=`<div class="drag" data-h><b>Grill · Reloj de arena · decidido: F</b><span style="color:#8f86c2;font-size:11px">←/→</span></div>
   <div class="nav"><button data-s="-1">←</button><div class="name">${v.k} · ${v.n}</div><button data-s="1">→</button></div>
   <div class="opts">${V.map((x,i)=>`<button class="${i===S.i?'on':''}" data-i="${i}">${x.k}</button>`).join('')}</div>
   <div class="desc">${v.d}</div>
