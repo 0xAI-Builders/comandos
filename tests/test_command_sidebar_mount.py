@@ -100,7 +100,9 @@ def test_sidebar_is_wired_with_quick_terminal_and_builder_hooks():
     mount = _js_function("mountCommandSidebar")
     assert mount.index("if(ONLY_PANEL) return;") < mount.index("createCommandSidebar(")   # webviews ?panel= de GTK
     assert "ComandosCommandSidebar.createCommandSidebar(" in mount
-    assert "openBuilder: () => window.chainBuilder && window.chainBuilder.open()" in mount
+    # escritorio: el modal centrado lo abre GTK (?panel=chains); remoto: overlay in-page
+    assert 'postMessage(JSON.stringify({headerAction: "chains"}))' in mount
+    assert "if(window.chainBuilder) window.chainBuilder.open();" in mount
     assert "newTerm:" in mount and "quickTerminalInstance()" in mount
     # una sola instancia: el remoto (initTabNavigation) la crea solo si no existe (H1)
     assert "if(!window.quickTerminal && window.ComandosQuickTerminal)" in _js_function("initTabNavigation")

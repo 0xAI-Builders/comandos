@@ -34,25 +34,28 @@ const catalog = JSON.parse(fs.readFileSync(process.cwd() + '/tests/fixtures/comm
   assert.equal(JSON.parse(store.get('comandos.commands.open')).includes('codex'), true);
   // R4: todo CLI, bloque de arranque y grupo está en el DOM aunque esté plegado
   assert.equal(root.querySelectorAll('.cs-cli').length, 5);
-  assert.equal(root.querySelectorAll('.cs-cli[data-cli="grok"] .grp').length, 4);
+  // ronda 6 A aprobada: lista plana, sin subtítulos de grupo
+  assert.equal(root.querySelectorAll('.cs-cli[data-cli="grok"] .grp').length, 0);
+  assert.equal(root.querySelectorAll('.cs-cli[data-cli="grok"] .cmds').length, 1);
+  assert.equal(root.querySelectorAll('.cs-cli[data-cli="grok"] .cmds .cmd').length > 4, true);
   assert.equal(root.querySelector('.cs-cli[data-cli="grok"]').classList.contains('open'), false);
   assert.equal(root.querySelector('.cs-cli.here .launch.normal').classList.contains('open'), false);
   assert.equal(root.querySelector('.cs-cli[data-cli="opencode"] .launch.yolo').textContent.includes('sin flag'), true);
   // 2) un clic teclea sin Enter en el pane capturado, con requestId
-  root.click('.cs-cli.here .grp .cmd');
+  root.click('.cs-cli.here .cmds .cmd');
   await sb.state.typing;
   const typed = calls.filter(c => c[0] === '/pane/type');
   assert.deepEqual(typed[0][1], { session: 'demo', pane: '%2', text: '/model', requestId: 'id-1' });
   assert.equal(calls.some(c => c[0] === '/send'), false);
   // segundo clic con un tecleo en vuelo: no llama y avisa
-  root.click('.cs-cli.here .grp .cmd'); const inflight = calls.length;
-  root.click('.cs-cli.here .grp .cmd');
+  root.click('.cs-cli.here .cmds .cmd'); const inflight = calls.length;
+  root.click('.cs-cli.here .cmds .cmd');
   assert.equal(calls.length, inflight); assert.equal(toasts.at(-1)[0], 'Espera a que termine de escribir');
   await sb.state.typing;
   // 3) chips de argumento
   root.click('.cs-cli[data-cli="claude"] .cli-h'); root.click('.cs-cli[data-cli="claude"] .opts button');
   await sb.state.typing; assert.equal(calls.at(-1)[1].text, '/model claude-fable-5-1');
-  assert.equal(root.querySelector('.cs-cli[data-cli="claude"] .grp .cmd code').textContent, '/model …');
+  assert.equal(root.querySelector('.cs-cli[data-cli="claude"] .cmds .cmd code').textContent, '/model …');
   // 4) cadena guardada: correr fija el destino; Siguiente avanza solo con 200; pane cerrado no salta de paso
   yoloStep2 = '/model gpt-6.1';                                                  // editado a mano en disco
   root.click('.cs-saved-item[data-run="yolo"] button'); await tick(); await tick();
@@ -75,20 +78,29 @@ const catalog = JSON.parse(fs.readFileSync(process.cwd() + '/tests/fixtures/comm
   assert.equal(root.querySelector('.cs-saved-item.error button'), null);
   // 6) terminal rápida sin CLI: comandos /… atenuados, arranques activos; al arrancar se recuerda el CLI
   target = { session: 'term-q1', pane: '%7', kind: 'term', title: 'Terminal 14:32' };
-  sb.render(); const before = calls.length; root.click('.cs-cli[data-cli="claude"] .grp .cmd'); assert.equal(calls.length, before);   // atenuado: no teclea
-  assert.equal(root.querySelector('.cs-cli[data-cli="claude"] .grp .cmd').classList.contains('dis'), true);
+  sb.render(); const before = calls.length; root.click('.cs-cli[data-cli="claude"] .cmds .cmd'); assert.equal(calls.length, before);   // atenuado: no teclea
+  assert.equal(root.querySelector('.cs-cli[data-cli="claude"] .cmds .cmd').classList.contains('dis'), true);
   root.click('.cs-cli[data-cli="claude"] .launch.yolo .cmd'); await sb.state.typing;
   assert.equal(store.get('comandos.commands.preferred.%7'), 'claude');
   // 7) el CLI sale del pane: la barra deja de marcar "en este pane"
   target = { session: 'demo', pane: '%2', kind: 'pane', title: 'demo %2' };
   sb.applyCatalog({ cliInPane: '', target: { session: 'demo', pane: '%2' }, catalog, versionsAt: 2 });
   assert.equal(root.querySelector('.cs-cli.here'), null);
-  assert.equal(root.querySelector('.cs-cli[data-cli="codex"] .grp .cmd').classList.contains('dis'), true);
+  assert.equal(root.querySelector('.cs-cli[data-cli="codex"] .cmds .cmd').classList.contains('dis'), true);
   // 8) drift y missing
   const drift = JSON.parse(JSON.stringify(catalog)); drift.clis[1].version.status = 'drift'; drift.clis[4].version.status = 'missing';
   sb.applyCatalog({ cliInPane: 'codex', target: { session: 'demo', pane: '%2' }, catalog: drift, versionsAt: 3 });
   assert.equal(root.querySelector('.cs-cli[data-cli="codex"]').classList.contains('drift'), true);
   assert.equal(root.querySelector('.cs-cli[data-cli="codex"]').textContent.includes('el CLI confirma'), true);
+  // 8b) drift pero con todos los comandos detectados en el binario: verificado, sin ámbar
+  const det = JSON.parse(JSON.stringify(drift)); det.clis[1].detected = { found: 12, total: 12 };
+  sb.applyCatalog({ cliInPane: 'codex', target: { session: 'demo', pane: '%2' }, catalog: det, versionsAt: 4 });
+  assert.equal(root.querySelector('.cs-cli[data-cli="codex"]').classList.contains('drift'), false);
+  assert.equal(root.querySelector('.cs-cli[data-cli="codex"] .ver').textContent.includes('12 de 12 en el binario'), true);
+  det.clis[1].detected = { found: 11, total: 12 };
+  sb.applyCatalog({ cliInPane: 'codex', target: { session: 'demo', pane: '%2' }, catalog: det, versionsAt: 5 });
+  assert.equal(root.querySelector('.cs-cli[data-cli="codex"]').classList.contains('drift'), true);
+  assert.equal(root.querySelector('.cs-cli[data-cli="codex"] .ver').textContent.includes('11 de 12 en el binario'), true);
   assert.equal(root.querySelector('.cs-cli[data-cli="agy"] .launch .cmd').classList.contains('dis'), true);
 
   // extra) la búsqueda filtra filas sin tocar state.open
@@ -174,7 +186,7 @@ const catalog = JSON.parse(fs.readFileSync(process.cwd() + '/tests/fixtures/comm
     const rowsN = rootN.querySelectorAll('.cmd');
     assert.equal(rowsN.length > 0, true);
     assert.equal(rowsN.every(r => r.classList.contains('dis')), true);           // arranques incluidos
-    rootN.click('.launch.yolo .cmd'); rootN.click('.grp .cmd');
+    rootN.click('.launch.yolo .cmd'); rootN.click('.cmds .cmd');
     assert.equal(sbN.insert('/model'), null); assert.equal(sbN.insert('codex', 'shell'), null);
     assert.equal(sbN.startChain('yolo'), null);
     assert.equal(callsN.some(c => c[0] === '/pane/type'), false);

@@ -692,6 +692,15 @@ def _model_watch_cycle_locked(force=False):
                    catalog != _model_watch_state.get("catalog"))
         due = time.time() - _model_watch_state["last_full"] > 6 * 3600
         if force or changed or due:
+            # comandos presentes en cada binario (barra de comandos): se calienta
+            # aquí para que la primera petición no lea cientos de MB
+            try:
+                with _CLI_CATALOG_LOCK:
+                    if _CLI_CATALOG["catalog"] is None:
+                        _CLI_CATALOG["catalog"] = cli_catalog.load_catalog()
+                    cli_catalog.detected_commands(_CLI_CATALOG["catalog"])
+            except Exception:
+                pass
             result = model_watch_lib.watch_models(
                 HOOKS, PROVIDERS_FILE, grok_home=os.path.expanduser("~/.grok"))
             _model_watch_state["last_full"] = time.time()
@@ -1363,9 +1372,15 @@ def cli_catalog_payload(refresh=False):
                 for a in account_registry.list_accounts(registry, cli["id"]) if a.get("alias") != "main"]
         except Exception:
             accounts[cli["id"]] = []
+    try:
+        with _CLI_CATALOG_LOCK:
+            detected = cli_catalog.detected_commands(catalog)
+    except Exception:
+        detected = None
     view = cli_catalog.catalog_view(catalog, danger_flags=load_agent_roles().get("dangerFlags") or {},
                                     versions=derived["versions"], accounts=accounts,
-                                    models=derived["models"], new_models=derived["new_models"])
+                                    models=derived["models"], new_models=derived["new_models"],
+                                    detected=detected)
     return view, derived["at"]
 
 

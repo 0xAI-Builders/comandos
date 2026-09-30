@@ -30,7 +30,7 @@ def test_builder_never_types_into_a_pane():
 def test_builder_is_loaded_and_mounted_after_the_sidebar():
     html = (ROOT / "dash" / "index.html").read_text(encoding="utf-8")
     sidebar = html.index('<script src="/command-sidebar.js')
-    builder = html.index('<script src="/chain-builder.js?v=1"></script>')
+    builder = html.index('<script src="/chain-builder.js?v=')
     assert builder > sidebar
     start = html.index("function mountChainBuilder(")
     body = html[start:html.index("\n}\n", start)]
@@ -65,5 +65,26 @@ def test_sidebar_hydrates_icons_after_every_render():
 def test_builder_touch_rules_share_the_sidebar_specificity():
     css = (ROOT / "dash" / "workspace.css").read_text()
     assert ":is(#command-sidebar,.chain-only) .cmd{padding-block:11px}" in css
-    assert ":is(#command-sidebar,.chain-only) :is(.launch,.grp){border-top" in css
+    assert ":is(#command-sidebar,.chain-only) :is(.launch,.cmds){border-top" in css
     assert ".chain-only .cmd .add{min-height:34px}" in css
+
+
+def test_desktop_opens_the_chain_modal_as_a_centered_gtk_window():
+    """Mockup aprobado: el modal Cadenas va centrado sobre la app. El tablero del
+    escritorio es la columna izquierda, así que la página ?panel=chains se abre
+    en una ventana GTK modal centrada y avisa por el puente al cerrar/guardar/correr."""
+    html = (ROOT / "dash" / "index.html").read_text(encoding="utf-8")
+    page = html[html.index("function mountChainPage("):html.index("function mountChainBuilder(")]
+    assert 'ONLY_PANEL !== "chains"' in page
+    assert 'onClose: () => tell({chainModal: "close"})' in page
+    assert 'tell({chainModal: o && o.run ? "run" : "saved", slug: chain.slug})' in page
+    assert ".then(() => window.chainBuilder.open())" in page
+    assert 'if(ONLY_PANEL==="chains") return;' in html
+    assert 'html[data-only-panel="chains"] body.only-panel > .backdrop[data-mclose]{display:flex!important' in html
+    assert ':not(.backdrop){display:none !important}' in html
+    app = (ROOT / "bin" / "cc-app").read_text(encoding="utf-8")
+    assert 'HEADER_ACTIONS["chains"] = open_chain_modal' in app
+    assert 'set_position(Gtk.WindowPosition.CENTER_ON_PARENT)' in app[app.index("def open_chain_modal("):app.index("def _chain_modal_msg(")]
+    assert 'if d.get("chainModal") in ("close", "saved", "run"):' in app
+    js = (ROOT / "dash" / "chain-builder.js").read_text(encoding="utf-8")
+    assert "const userClose = () => { if (close()) onClose(); };" in js

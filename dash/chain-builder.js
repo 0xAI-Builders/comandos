@@ -22,6 +22,8 @@
   function createChainBuilder(opts) {
     const { api, root: host, catalog = () => null, chains = () => [], onSaved = () => {},
       toast = () => {}, hydrate = () => {} } = opts;
+    // CLI detectado en el pane destino: se marca «en este pane» y abre solo (mockup aprobado)
+    const hereCli = () => { try { return typeof opts.here === 'function' ? String(opts.here() || '') : ''; } catch (_) { return ''; } };
     const Sidebar = sidebarModule();
     const esc = Sidebar.esc;
     const doc = opts.doc || host.ownerDocument || (typeof document !== 'undefined' ? document : null);
@@ -39,9 +41,9 @@
     function renderBody() {
       const body = $('.cb-body');
       if (!body) return;
-      const list = clis();
+      const list = clis(), here = hereCli();
       body.innerHTML = list.length
-        ? list.map(c => Sidebar.cliHTML(c, { mode: 'build', open: open_ })).join('')
+        ? list.map(c => Sidebar.cliHTML(c, { mode: 'build', open: open_, here: c.id === here })).join('')
         : '<div class="cb-empty">El catálogo de comandos aún no cargó. Cierra y vuelve a abrir.</div>';
       try { hydrate(body); } catch (_) {}
     }
@@ -109,7 +111,7 @@
       else {
         open_.add(key);
         const cli = clis().find(c => c.id === key);   // al abrir un CLI se abren su arranque yolo y sus grupos
-        if (cli) { open_.add(`${key}:yolo`); (cli.groups || []).forEach((_, n) => open_.add(`${key}:${n}`)); }
+        if (cli) open_.add(`${key}:yolo`);
       }
       renderBody();
       if (keepFocus) {   // el repintado suelta el foco: se devuelve al mismo encabezado
@@ -152,7 +154,11 @@
     }
 
     // ---------- abrir / cerrar ----------
-    const onKey = e => { if (e && e.key === 'Escape') close(); };
+    // Cierre pedido por el usuario (Esc, Cerrar, fondo): avisa a quien aloja el modal
+    // (la ventana del escritorio se oculta con ese aviso). open() cierra sin avisar.
+    const onClose = typeof opts.onClose === 'function' ? opts.onClose : () => {};
+    const userClose = () => { if (close()) onClose(); };
+    const onKey = e => { if (e && e.key === 'Escape') userClose(); };
 
     function close() {
       if (!backdrop) return false;
@@ -178,6 +184,8 @@
       state.steps = chain ? chain.steps.map(s => ({ kind: kindOf(s.kind), text: String(s.text) })) : [];
       state.dragging = null; editSlug = chain ? chain.slug : null;
       open_ = new Set(); error = '';
+      const here = hereCli();
+      if (here && clis().some(c => c.id === here)) { open_.add(here); open_.add(`${here}:yolo`); }
 
       backdrop = doc.createElement('div');
       backdrop.className = 'backdrop';
@@ -205,10 +213,10 @@
     function wire(el) {
       el.addEventListener('click', e => {
         const t = e.target;
-        if (t === el) return void close();               // solo el fondo cierra; el modal no traga clics
+        if (t === el) return void userClose();           // solo el fondo cierra; el modal no traga clics
         if (!t || typeof t.closest !== 'function') return;
         let n;
-        if (t.closest('[data-close]')) return void close();
+        if (t.closest('[data-close]')) return void userClose();
         if (t.closest('[data-save]')) return void save(false);
         if (t.closest('[data-run]')) return void save(true);
         if ((n = t.closest('[data-move]'))) {

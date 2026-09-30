@@ -18,7 +18,7 @@ Teclas:
 """
 import contextlib, glob, json, os, re, secrets, shlex, shutil, subprocess, sys, tempfile, threading, time, urllib.request
 from concurrent.futures import ThreadPoolExecutor
-from urllib.parse import quote, unquote, urlparse
+from urllib.parse import quote, unquote, urlencode, urlparse
 # Cada pestaña es un VTE que corre `tmux attach`. Si cc-app se lanza DESDE dentro
 # de una sesión tmux (p.ej. un dev relanzándolo en su terminal), $TMUX se hereda y
 # TODOS los attach fallan con "sessions should be nested with care" → "no se ve
@@ -6043,6 +6043,62 @@ def open_web_modal(url, label=""):
     return False
 
 
+# Modal «Cadenas» del escritorio (fase 2, mockup aprobado: modal centrado). El
+# tablero es solo la columna izquierda del paned, así que su overlay no puede
+# cubrir las terminales VTE: aquí la misma página (?panel=chains) se abre en una
+# ventana modal centrada sobre la app. Un solo WebView, se oculta al cerrar.
+_CHAINMODAL = {"win": None, "wv": None}
+
+
+def open_chain_modal(*_):
+    if _CHAINMODAL["win"] is None:
+        dlg = Gtk.Window(type=Gtk.WindowType.TOPLEVEL)
+        dlg.set_transient_for(win)
+        dlg.set_modal(True)
+        dlg.set_decorated(False)
+        dlg.get_style_context().add_class("mosaic-zoom")
+        wv2 = WebKit2.WebView.new_with_user_content_manager(ucm)   # mismo puente «centro»
+        try:
+            wv2.get_settings().set_property("enable-write-console-messages-to-stdout", True)
+        except Exception:
+            pass
+        dlg.add(wv2)
+        dlg.connect("key-press-event",
+                    lambda _w, ev: (dlg.hide(), True)[1] if ev.keyval == Gdk.KEY_Escape else False)
+        dlg.connect("delete-event", lambda *_: (dlg.hide(), True)[1])
+        _CHAINMODAL.update(win=dlg, wv=wv2)
+    w, h = win.get_size()
+    _CHAINMODAL["win"].set_default_size(min(1040, max(640, w - 120)), min(700, max(420, h - 90)))
+    _CHAINMODAL["win"].set_position(Gtk.WindowPosition.CENTER_ON_PARENT)
+    page = _cur_page()
+    sess = ""
+    try:
+        term = getattr(page, "_term", None)
+        sess = (term_session(term) if term is not None else None) or getattr(page, "_key", None) or ""
+    except Exception:
+        sess = ""
+    pane = _cur_pane_id(sess) if sess and not sess.startswith("xterm-") else ""
+    q = urlencode({"panel": "chains", "v": _DASH_V, "session": sess, "pane": pane})
+    _CHAINMODAL["wv"].load_uri(f"{BASE_URL}/?{q}")
+    _CHAINMODAL["win"].show_all()
+    return False
+
+
+def _chain_modal_msg(d):
+    """Mensajes {chainModal: close|saved|run, slug} de la página ?panel=chains."""
+    what = d.get("chainModal")
+    slug = re.sub(r"[^a-z0-9-]", "", str(d.get("slug") or ""))[:80]
+    # guardar también cierra el constructor (como el overlay del remoto)
+    if _CHAINMODAL["win"] is not None:
+        _CHAINMODAL["win"].hide()
+    if what in ("saved", "run"):
+        tail = f".then(()=>window.commandSidebar.startChain({json.dumps(slug)}))" if what == "run" and slug else ""
+        _dash_js(f"window.commandSidebar&&window.commandSidebar.refresh(){tail}")
+
+
+HEADER_ACTIONS["chains"] = open_chain_modal
+
+
 def open_web_tab(url, label=""):
     """Navegador DENTRO de ComandOS: una pestaña WebKit para leer noticias
     sin salir de la app. Cerrable como cualquier pestaña."""
@@ -6090,6 +6146,9 @@ def on_msg(mgr, res):
             return
         if d.get("headerAction") in HEADER_ACTIONS:
             GLib.idle_add(HEADER_ACTIONS[d["headerAction"]])
+            return
+        if d.get("chainModal") in ("close", "saved", "run"):
+            GLib.idle_add(_chain_modal_msg, d)
             return
         if d.get("theme"):
             apply_theme(d["theme"])

@@ -28,7 +28,8 @@ const tick = () => new Promise(r => setImmediate(r));
     if (mode === 'fail') throw new Error('No se pudo guardar la cadena: OSError');
     return { ok: true, chain: { slug: body.slug || 'mi-cadena', name: body.name, steps: body.steps } };
   };
-  const b = createChainBuilder({ api, root: doc.body, catalog: () => catalog, chains: () => chainsList,
+  let here = 'codex';
+  const b = createChainBuilder({ api, root: doc.body, catalog: () => catalog, chains: () => chainsList, here: () => here,
     onSaved: (chain, o) => { saved.push([chain, o]); }, toast: (m, e) => toasts.push([m, e]) });
   const bd = () => doc.body.querySelector('.backdrop[data-mclose]');
   const q = sel => bd().querySelector(sel);
@@ -47,20 +48,28 @@ const tick = () => new Promise(r => setImmediate(r));
   assert.ok(qa('.cmd[data-add]').length > 20);
   assert.equal(q('.cs-cli[data-cli="codex"] .cmd .add').textContent, '+ cadena');
   assert.equal(qa('.cmd.dis').length, 0);                              // construir no exige destino ni CLI en el pane
+  // el CLI del pane abre solo y se marca (mockup aprobado); los demás plegados, sin subtítulos de grupo
+  assert.equal(q('.cs-cli[data-cli="codex"]').classList.contains('here'), true);
+  assert.equal(q('.cs-cli[data-cli="codex"]').classList.contains('open'), true);
+  assert.equal(q('.cs-cli[data-cli="codex"] .launch.yolo').classList.contains('open'), true);
+  assert.equal(q('.cs-cli[data-cli="claude"]').classList.contains('open'), false);
+  assert.equal(qa('.grp').length, 0);
   assert.equal(doc.activeElement, q('.m-name'));
   assert.equal(calls.length, 0);
   assert.equal(b.state.name, ''); assert.deepEqual(b.state.steps, []); assert.equal(b.state.dragging, null);
   assert.equal(q('.slots .step'), null);
 
-  // 2) abrir el CLI Codex y añadir: un clic añade un paso (kind por fila) y no teclea nada
+  // 2) plegar y reabrir el CLI Codex (todo es plegable, también el del pane) y añadir:
+  //    un clic añade un paso (kind por fila) y no teclea nada
+  click('.cs-cli[data-cli="codex"] .cli-h');
   assert.equal(q('.cs-cli[data-cli="codex"]').classList.contains('open'), false);
   click('.cs-cli[data-cli="codex"] .cli-h');
   assert.equal(q('.cs-cli[data-cli="codex"]').classList.contains('open'), true);
   assert.equal(q('.cs-cli[data-cli="codex"] .launch.yolo').classList.contains('open'), true);
   click('.cs-cli[data-cli="codex"] .launch.yolo .cmd');
-  bd().dispatch('click', qa('.cs-cli[data-cli="codex"] .grp .cmd')[0]);   // /model
+  bd().dispatch('click', qa('.cs-cli[data-cli="codex"] .cmds .cmd')[0]);   // /model
   bd().dispatch('click', q('.cs-cli[data-cli="claude"] .cmd .opts button'));  // chip: se abre solo con el arranque claude
-  bd().dispatch('click', qa('.cs-cli[data-cli="claude"] .grp .cmd .add')[0]); // «+ cadena» de /model  (con espacio final)
+  bd().dispatch('click', qa('.cs-cli[data-cli="claude"] .cmds .cmd .add')[0]); // «+ cadena» de /model  (con espacio final)
   assert.deepEqual(b.state.steps.map(s => [s.kind, s.text]), [
     ['shell', YOLO], ['pane', '/model'], ['pane', '/model claude-fable-5-1'], ['pane', '/model ']]);
   assert.equal(calls.length, 0);                                       // ni API ni /pane/type
@@ -118,7 +127,7 @@ const tick = () => new Promise(r => setImmediate(r));
 
   // 5) Guardar: POST /chains {name, steps} (sin slug), cierra y onSaved(chain, {run:false})
   bd().dispatch('click', qa('.cs-cli[data-cli="codex"] .launch.yolo .cmd')[0]);
-  bd().dispatch('click', qa('.cs-cli[data-cli="codex"] .grp .cmd')[0]);
+  bd().dispatch('click', qa('.cs-cli[data-cli="codex"] .cmds .cmd')[0]);
   click('[data-save]'); await tick(); await tick();
   assert.deepEqual(calls, [['/chains', { name: 'Mi cadena', steps: [{ kind: 'shell', text: YOLO }, { kind: 'pane', text: '/model' }] }]]);
   assert.equal(bd(), null);
@@ -129,7 +138,7 @@ const tick = () => new Promise(r => setImmediate(r));
   // 6) Correr: guarda y avisa con {run: true}; error del servidor se queda en el modal
   calls.length = 0; b.open();
   q('.m-name').value = 'otra'; bd().dispatch('input', q('.m-name'), {});
-  bd().dispatch('click', qa('.cs-cli[data-cli="codex"] .grp .cmd')[0]);
+  bd().dispatch('click', qa('.cs-cli[data-cli="codex"] .cmds .cmd')[0]);
   mode = 'fail'; click('[data-run]'); await tick(); await tick();
   assert.equal(calls.length, 1);
   assert.equal(q('.m-error').textContent, 'No se pudo guardar la cadena: OSError');

@@ -106,3 +106,55 @@ def test_model_commands_are_marked_argsfrom_models_in_the_json():
         assert cmd["argsFrom"] == "models" and cmd["args"]
     codex = next(x for x in cat["clis"] if x["id"] == "codex")
     assert all("argsFrom" not in c for g in codex["groups"] for c in g["commands"])
+
+
+# ---- comandos detectados de verdad en el binario instalado ----
+
+def _elf(*names):
+    return b"\x7fELF" + b"\0" * 20 + b" ".join(n.encode() for n in names) + b"\0"
+
+
+def test_native_binary_resolves_node_wrapper_to_platform_package(tmp_path):
+    pkg = tmp_path / "node_modules" / "@openai"
+    (pkg / "codex" / "bin").mkdir(parents=True)
+    wrapper = pkg / "codex" / "bin" / "codex.js"
+    wrapper.write_bytes(b"#!/usr/bin/env node\nconsole.log(1)\n")
+    native = pkg / "codex-linux-x64" / "vendor" / "x86_64-unknown-linux-musl" / "bin" / "codex"
+    native.parent.mkdir(parents=True)
+    native.write_bytes(_elf("/model"))
+    assert cli_catalog.native_binary(str(wrapper)) == str(native)
+    elf = tmp_path / "claude"
+    elf.write_bytes(_elf("/model"))
+    assert cli_catalog.native_binary(str(elf)) == str(elf)
+    assert cli_catalog.native_binary("") is None
+    assert cli_catalog.native_binary(str(tmp_path / "missing")) is None
+
+
+def test_detected_commands_reads_slash_names_from_each_binary(tmp_path):
+    cat = cli_catalog.load_catalog()
+    claude = tmp_path / "claude"
+    claude.write_bytes(_elf("/model", "/compact", "/effort"))
+    which = lambda b: str(claude) if b == "claude" else ""
+    det = cli_catalog.detected_commands(cat, which=which)
+    assert det["claude"] == {"/model", "/compact", "/effort"}
+    assert det["codex"] is None                                  # no instalado: no se afirma nada
+    # cache por (ruta, mtime, tamaño): el mismo archivo no se relee
+    det2 = cli_catalog.detected_commands(cat, which=which)
+    assert det2["claude"] == det["claude"]
+
+
+def test_view_only_keeps_detected_commands_and_is_flat_when_asked():
+    cat = cli_catalog.load_catalog()
+    det = {"claude": {"/model", "/compact"}, "codex": None}
+    view = cli_catalog.catalog_view(cat, danger_flags=DANGER, versions=VERSIONS, accounts={}, detected=det)
+    claude = next(c for c in view["clis"] if c["id"] == "claude")
+    names = [c["text"].split()[0] for g in claude["groups"] for c in g["commands"]]
+    assert names == ["/model", "/compact"] or sorted(names) == ["/compact", "/model"]
+    assert claude["detected"] == {"found": 2, "total": len(names) + claude["detectedMissing"]}
+    codex = next(c for c in view["clis"] if c["id"] == "codex")
+    assert codex["detected"] is None                             # sin binario legible: catálogo completo
+    assert sum(len(g["commands"]) for g in codex["groups"]) == sum(
+        len(g.get("commands", [])) for g in next(c for c in cat["clis"] if c["id"] == "codex")["groups"])
+    # sin `detected` no cambia nada
+    full = cli_catalog.catalog_view(cat, danger_flags=DANGER, versions=VERSIONS, accounts={})
+    assert "detected" not in next(c for c in full["clis"] if c["id"] == "claude")

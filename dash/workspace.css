@@ -687,8 +687,8 @@ button.wm-suggest{font:600 10px system-ui;padding:2px 7px;border-radius:999px;bo
 :is(#command-sidebar,.chain-only) .cs-cli.missing .nm{color:var(--dim)}
 /* Plegado por CSS; mientras se busca (.searching) se muestra todo lo que coincide. */
 :is(#command-sidebar:not(.searching),.chain-only) .cs-cli:not(.open)>:not(.cli-h),#command-sidebar .cs-saved:not(.open)>:not(.cli-h){display:none}
-:is(#command-sidebar,.chain-only) :is(.launch,.grp){border-top:1px solid var(--line)}
-:is(#command-sidebar:not(.searching),.chain-only) :is(.launch,.grp):not(.open)>:not(.lab3){display:none}
+:is(#command-sidebar,.chain-only) :is(.launch,.cmds){border-top:1px solid var(--line)}
+:is(#command-sidebar:not(.searching),.chain-only) .launch:not(.open)>:not(.lab3){display:none}
 :is(#command-sidebar,.chain-only) .lab3{display:flex;align-items:center;gap:6px;min-height:32px;padding:0 10px;font-size:10.5px;text-transform:uppercase;letter-spacing:.06em;color:var(--dim);cursor:pointer;user-select:none}
 :is(#command-sidebar,.chain-only) .launch.yolo{background:color-mix(in srgb,var(--waiting) 6%,var(--panel))}
 :is(#command-sidebar,.chain-only) .launch.yolo .lab3{color:var(--waiting)}
@@ -737,9 +737,12 @@ button.wm-suggest{font:600 10px system-ui;padding:2px 7px;border-radius:999px;bo
 .chain-only .m-name{flex:1;min-width:0;box-sizing:border-box;min-height:38px;padding:6px 10px;border:1px solid var(--line);border-radius:8px;background:var(--panel2);color:var(--text);font:inherit}
 .chain-only .m-name:focus{outline:none;border-color:var(--brand)}
 .chain-only .m-head .x{min-height:38px;padding:0 12px;flex:none}
-.chain-only .cb-body{flex:1 1 auto;min-height:0;overflow:auto;overscroll-behavior:contain;display:grid;grid-template-columns:minmax(0,1fr);gap:10px;align-content:start;align-items:start;padding:12px 14px}
-@media (min-width:900px){.chain-only .cb-body{grid-template-columns:repeat(3,minmax(0,1fr))}}
-.chain-only .cb-body > .cb-empty{grid-column:1/-1}
+/* Mosaico en tres columnas sin huecos (tablero B aprobado): multicolumna, cada
+   CLI es un bloque indivisible; el abierto ocupa su columna y los demás fluyen. */
+.chain-only .cb-body{flex:1 1 auto;min-height:0;overflow:auto;overscroll-behavior:contain;padding:12px 14px;column-gap:10px;columns:1}
+@media (min-width:900px){.chain-only .cb-body{columns:3}}
+.chain-only .cb-body > .cs-cli{display:inline-block;width:100%;box-sizing:border-box;break-inside:avoid;margin:0 0 10px;vertical-align:top}
+.chain-only .cb-body > .cb-empty{column-span:all}
 .chain-only .cb-empty{padding:8px 4px;color:var(--dim);font-size:12px}
 .chain-only .cmd.dis{opacity:.6}
 .chain-only .cmd .add{grid-column:2;grid-row:1;align-self:start;min-height:26px;padding:0 9px;font-size:11px;white-space:nowrap}

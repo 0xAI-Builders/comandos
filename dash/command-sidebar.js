@@ -64,34 +64,41 @@
       + rows + note + '</div>';
   }
 
-  function groupHTML(cli, grp, n, o) {
-    const key = `${cli.id}:${n}`;
-    const cmds = Array.isArray(grp.commands) ? grp.commands : [];
-    const empty = o.q && !cmds.some(c => hits(c, o.q));
-    return `<div class="grp${o.open.has(key) ? ' open' : ''}"${empty ? ' hidden' : ''}>`
-      + `<div class="lab3" data-toggle="${esc(key)}"${toggleAttrs(o.open.has(key))}><span data-icon="${esc(grp.icon)}" data-size="12"></span> ${esc(grp.title)}${chev}</div>`
-      + cmds.map(c => rowHTML(c, { mode: o.mode, kind: 'pane', dis: o.noCli, q: o.q })).join('') + '</div>';
+  // Lista plana (ronda 6 A aprobada): los grupos del catálogo solo ordenan; no
+  // se pintan subtítulos ni se pliegan. Solo llegan los comandos detectados en
+  // el binario (cli.detected); si nada quedó, se dice.
+  function commandsHTML(cli, o) {
+    const cmds = (Array.isArray(cli.groups) ? cli.groups : []).flatMap(g => Array.isArray(g.commands) ? g.commands : []);
+    const rows = cmds.map(c => rowHTML(c, { mode: o.mode, kind: 'pane', dis: o.noCli, q: o.q })).join('');
+    const d = cli.detected;
+    const none = !cmds.length && d && d.total
+      ? `<div class="note"${o.q ? ' hidden' : ''}>ninguno de los ${d.total} comandos del catálogo está en este binario</div>` : '';
+    return `<div class="cmds">${rows}${none}</div>`;
   }
 
-  // o: {mode, open: Set, here, noCli, noTarget, q}. Todo CLI, arranque y grupo se pinta
+  // o: {mode, open: Set, here, noCli, noTarget, q}. Todo CLI y arranque se pinta
   // siempre; la clase .open solo decide la visibilidad por CSS.
   function cliHTML(cli, opts = {}) {
     const o = { mode: opts.mode === 'build' ? 'build' : 'run', open: opts.open || new Set(), q: String(opts.q || '').trim(),
       noCli: opts.mode === 'build' ? false : !!opts.noCli, noTarget: opts.mode === 'build' ? false : !!opts.noTarget };
     const v = cli.version || {};
-    const st = STATUS_TEXT[v.status] !== undefined ? v.status : 'ok';
+    // Versión distinta a la del catálogo pero todos los comandos presentes en
+    // el binario: verificado de verdad, sin ámbar. Si falta alguno, sigue ámbar.
+    const d = cli.detected && cli.detected.total ? cli.detected : null;
+    const st0 = STATUS_TEXT[v.status] !== undefined ? v.status : 'ok';
+    const st = (st0 === 'drift' || st0 === 'unverified') && d && d.found === d.total ? 'ok' : st0;
     const ver = [v.installed ? `v${v.installed}` : '', STATUS_TEXT[st]].filter(Boolean).join(' · ');
     const groups = Array.isArray(cli.groups) ? cli.groups : [];
     const launch = cli.launch || {};
     const empty = o.q && ![...(launch.yolo || []), ...(launch.normal || [])].some(text => hits({ text }, o.q))
       && !groups.some(g => (g.commands || []).some(c => hits(c, o.q)));
+    const det = d ? ` · ${d.found} de ${d.total} en el binario` : '';
     const cls = ['cs-cli', o.open.has(cli.id) ? 'open' : '', opts.here ? 'here' : '', st !== 'ok' ? st : ''].filter(Boolean).join(' ');
     return `<div class="${cls}" data-cli="${esc(cli.id)}"${empty ? ' hidden' : ''}>`
       + `<div class="cli-h" data-toggle="${esc(cli.id)}"${toggleAttrs(o.open.has(cli.id))}><span class="nm">${esc(cli.label || cli.id)}</span>`
-      + `<span class="ver" title="catálogo v${esc(v.pinned)}">${esc(ver)}</span>`
+      + `<span class="ver" title="catálogo v${esc(v.pinned)}${det ? ' · comandos detectados en el binario' : ''}">${esc(ver + det)}</span>`
       + (opts.here ? '<span class="here-tag">en este pane</span>' : '') + chev + '</div>'
-      + launchHTML(cli, 'yolo', o) + launchHTML(cli, 'normal', o)
-      + groups.map((g, n) => groupHTML(cli, g, n, o)).join('') + '</div>';
+      + launchHTML(cli, 'yolo', o) + launchHTML(cli, 'normal', o) + commandsHTML(cli, o) + '</div>';
   }
 
   function createCommandSidebar(opts) {
@@ -139,7 +146,6 @@
         const cli = clis().find(c => c.id === id);
         if (cli) {
           state.open.add(cli.id); state.open.add(`${cli.id}:yolo`);
-          (cli.groups || []).forEach((_, n) => state.open.add(`${cli.id}:${n}`));
         }
         state.firstRender = false;
         changed = true;
