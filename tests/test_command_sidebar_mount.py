@@ -101,7 +101,8 @@ def test_sidebar_is_wired_with_quick_terminal_and_builder_hooks():
     assert "ComandosCommandSidebar.createCommandSidebar(" in mount
     assert "openBuilder: () => window.chainBuilder && window.chainBuilder.open()" in mount
     assert "newTerm:" in mount and "quickTerminalInstance()" in mount
-    assert "if(quickTerm) window.quickTerminal = quickTerm;" in HTML
+    # una sola instancia: el remoto (initTabNavigation) la crea solo si no existe (H1)
+    assert "if(!window.quickTerminal && window.ComandosQuickTerminal)" in _js_function("initTabNavigation")
     assert "mountCommandSidebar();" in HTML
     render = _js_function("render")
     assert "syncCommandSidebar();" in render

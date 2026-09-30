@@ -46,12 +46,15 @@ def test_quick_terminal_client_reuses_request_until_success():
     assert out.stdout.strip() == "ok"
 
 
-def test_web_tab_bar_separates_terminal_from_new_session():
+def test_web_header_separates_terminal_from_new_session():
     html = Path("dash/index.html").read_text()
+    head = html.split('<header class="hdr-ordered"', 1)[1].split("</header>", 1)[0]
+    assert 'id="btn-terminal"' in head and 'id="btn-newsess"' in head   # H1: fila 1 de la cabecera
     bar = html.split('<nav id="app-navigation"', 1)[1].split("</nav>", 1)[0]
-    assert 'id="tab-terminal"' in bar and 'id="tab-new"' in bar
+    assert 'id="tab-terminal"' not in bar and 'id="tab-new"' not in bar
     init = html.split("function initTabNavigation(){", 1)[1].split("\n}\n", 1)[0]
-    assert '"/tab-new"' not in init                 # "+" no longer opens a scratch shell in ~
-    assert "nsOpen()" in init                         # #btn-newsess salió del panel (S2); vuelve en H1
     assert "ComandosQuickTerminal.createQuickTerminal" in init
+    actions = html.split("function initHeaderActions(){", 1)[1].split("\n}\n", 1)[0]
+    assert '"/tab-new"' not in actions               # "+" no longer opens a scratch shell in ~
+    assert "nsOpen()" in actions and "quickTerminalInstance()" in actions
     assert '<script src="/quick-terminal.js"></script>' in html

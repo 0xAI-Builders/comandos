@@ -1839,58 +1839,71 @@
   <button type="button" id="tab-prev" class="tab-nav-btn tab-step" aria-label="Desplazar pestañas a la izquierda">‹</button>
   <div id="tabbar" role="tablist" aria-label="Terminales"></div>
   <button type="button" id="tab-next" class="tab-nav-btn tab-step" aria-label="Desplazar pestañas a la derecha">›</button>
-  <button type="button" id="tab-terminal" class="tab-nav-btn" aria-label="Terminal" title="Terminal"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m5 8 4 4-4 4"/><path d="M12 17h7"/></svg></button>
-  <button type="button" id="tab-new" class="tab-nav-btn" aria-label="Nueva sesión" title="Nueva sesión">+</button>
   <button type="button" id="tab-sort" class="tab-nav-btn" aria-label="Ordenar pestañas una vez" title="Ordenar pestañas una vez" aria-haspopup="menu"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 4v16M3 8l4-4 4 4M17 20V4M13 16l4 4 4-4"/></svg></button>
   <button type="button" id="tab-open" class="tab-nav-btn" aria-label="Ver todas las sesiones" title="Ver todas las sesiones"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="m12 3 9 5-9 5-9-5 9-5Zm-9 9 9 5 9-5M3 16l9 5 9-5"/></svg></button>
 </nav>
 <div id="view-panel" class="on">
 <div id="topbar">
-<header>
+<header class="hdr-ordered">
   <!-- Brand vive en el HeaderBar de cc-app (arriba a la izquierda). Fuera de
        la app (browser mobile) puede hacer falta — si algún día se necesita,
        reponer este div. -->
-
+  <!-- Cabecera «Ordenada» (H1, grill 29-sep): fila 1 = ☰, contadores, Terminal,
+       Nueva sesión | búsqueda … Servidores, Resúmenes, campana, Pomodoro, Ajustes,
+       reloj. La fila 2 son las pestañas (#app-navigation). -->
+  <button class="hdr-btn" id="btn-menu" aria-label="Más" title="Más" aria-haspopup="dialog" aria-expanded="false" aria-controls="menu-panel"><span data-icon="menu" data-size="17"></span><span class="hdr-lbl">Más</span></button>
   <div class="counts">
-    <span class="pill hot"><b id="n-waiting">0</b> <span>esperan</span></span>
-    <span class="pill ok"><b id="n-done">0</b> <span>listos</span></span>
-    <span class="pill run"><b id="n-working">0</b> <span>trabajando</span></span>
-    <span id="limits-strip" class="hidden" hidden title="Límites del plan — click para el detalle"></span>
+    <span class="pill hot"><b id="n-waiting">0</b> <span class="cnt-long">esperan</span><span class="cnt-short">esp.</span></span>
+    <span class="pill ok"><b id="n-done">0</b> <span class="cnt-long">listos</span><span class="cnt-short">list.</span></span>
+    <span class="pill run"><b id="n-working">0</b> <span class="cnt-long">trabajando</span><span class="cnt-short">trab.</span></span>
   </div>
+  <button class="hdr-btn" id="btn-terminal" aria-label="Terminal" title="Terminal rápida en una carpeta nueva"><span data-icon="terminal" data-size="17"></span><span class="hdr-lbl">Terminal</span></button>
+  <button class="hdr-btn primary" id="btn-newsess" aria-label="Nueva sesión" title="Nueva sesión"><span data-icon="plus" data-size="17"></span><span class="hdr-lbl">Nueva sesión</span></button>
   <div class="hdr-right">
-    <span id="snd-ctl" title="Volumen global (voz y chime). El icono silencia o activa el sonido.">
-      <button class="hdr-btn" id="btn-mute" aria-label="mute"></button>
-      <input type="range" id="vol-top" min="0" max="100" value="60">
-    </span>
-	    <button class="hdr-btn" id="btn-switch" aria-label="switch" title="Saltar a cualquier sesión (Ctrl+K)"><span data-icon="search" data-size="16"></span></button>
-	    <button class="hdr-btn" id="btn-snippets" aria-label="snippets" title="Snippets (Ctrl+Shift+K)"><span data-icon="snippet" data-size="16"></span></button>
-	    <button class="hdr-btn" id="btn-theme" aria-label="Apariencia" title="Elegir apariencia"></button>
-	    <button class="hdr-btn" id="btn-sov" aria-label="Soberanía" title="Soberanía — qué se guarda en tu máquina y qué sale de ella"><span data-icon="lock" data-size="16"></span></button>
+	    <button class="hdr-btn" id="btn-switch" aria-label="switch" title="Saltar a cualquier sesión (Ctrl+K)"><span data-icon="search" data-size="16"></span><span class="hdr-lbl">Buscar</span></button>
+	    <button class="hdr-btn" id="btn-snippets" aria-label="snippets" title="Snippets (Ctrl+Shift+K)"><span data-icon="snippet" data-size="16"></span><span class="hdr-lbl">Snippets</span></button>
 	    <button class="hdr-btn" id="btn-usage" aria-label="Analytics" title="Analytics de harnesses, motores y foco"><span data-icon="database" data-size="17"></span><span class="hdr-lbl">Analytics</span></button>
 	    <button class="hdr-btn" id="btn-remote" aria-label="Remoto" title="Remoto — continuar desde celular/tablet"><span data-icon="smartphone" data-size="17"></span><span class="hdr-lbl">Remoto</span></button>
-    <span id="clock">--:--</span>
-  </div>
-  <div class="hdr-primary">
+	    <button class="hdr-btn" id="btn-servers" aria-label="Servidores" title="Servidores" aria-expanded="false" aria-controls="servers-panel"><span data-icon="server" data-size="17"></span><span class="hdr-lbl">Servidores</span></button>
+    <div class="hdr-primary">
+	    <button class="hdr-btn" id="btn-news" aria-label="Resúmenes" title="Resúmenes — tres al día, con fuentes y la IA que los escribió"><span data-icon="sparkles" data-size="16"></span></button>
+	    <button class="hdr-btn" id="btn-notif" aria-label="Notificaciones" title="Notificaciones — todo local: avisos, pomodoros y cola de foco"><span data-icon="bell" data-size="16"></span><b class="nbadge hidden" id="notif-badge">0</b></button>
+	    <div id="notif-panel" class="hidden" role="dialog" aria-label="Notificaciones"></div>
 	    <button class="hdr-btn" id="btn-pomo" role="timer" aria-label="Pomodoro"
 	      title="Pomodoro compartido entre dispositivos"><span data-icon="timer" data-size="16"></span><span class="pomo-mini"></span></button>
 	    <div id="pomo-panel" class="hidden" role="dialog" aria-label="Pomodoro"></div>
-	    <button class="hdr-btn" id="btn-notif" aria-label="Notificaciones" title="Notificaciones — todo local: avisos, pomodoros y cola de foco"><span data-icon="bell" data-size="16"></span><b class="nbadge hidden" id="notif-badge">0</b></button>
-	    <div id="notif-panel" class="hidden" role="dialog" aria-label="Notificaciones"></div>
-	    <button class="hdr-btn" id="btn-news" aria-label="Resúmenes" title="Resúmenes — tres al día, con fuentes y la IA que los escribió"><span data-icon="sparkles" data-size="16"></span></button>
 	    <button class="hdr-btn" id="btn-settings" aria-label="Ajustes" title="Ajustes"><span data-icon="settings" data-size="17"></span><span class="hdr-lbl">Ajustes</span></button>
+    </div>
+    <span id="clock">--:--</span>
   </div>
 </header>
 
+<!-- ☰ Más: controles que salieron de la cabecera, con sus ids y handlers de
+     siempre. Vive en <body> (initHeaderPopovers) como #notif-panel. -->
+<div id="menu-panel" class="hidden" role="dialog" aria-label="Más">
+  <div class="mp-row"><button class="hdr-btn" id="btn-theme" aria-label="Apariencia" title="Elegir apariencia"></button><label for="btn-theme">Apariencia</label></div>
+  <div class="mp-row"><button class="hdr-btn" id="btn-sov" aria-label="Soberanía" title="Soberanía — qué se guarda en tu máquina y qué sale de ella"><span data-icon="lock" data-size="16"></span></button><label for="btn-sov">Soberanía</label></div>
+  <div class="mp-row">
+    <span id="snd-ctl" title="Volumen global (voz y chime). El icono silencia o activa el sonido.">
+      <button class="hdr-btn" id="btn-mute" aria-label="mute"></button>
+      <input type="range" id="vol-top" min="0" max="100" value="60" aria-label="Volumen">
+    </span>
+  </div>
+  <div class="mp-row mp-limits"><span id="limits-strip" class="hidden" hidden title="Límites del plan — click para el detalle"></span></div>
+  <div class="mp-tools"><button id="toggle-overview" aria-pressed="false">Todas las sesiones</button><button id="open-session-profiles">Perfiles</button><button id="open-extension-usage">Uso de herramientas</button></div>
+</div>
+</div>
+
+<div id="content">
+<!-- Servidores (H1): la fila SSH de siempre, sin cambios; #btn-servers la muestra. -->
+<div id="servers-panel" class="hidden">
 <div id="ssh-bar">
   <button class="lbl" id="ssh-toggle" type="button" aria-expanded="false" title="Mostrar todos los servidores"><span data-icon="server" data-size="12"></span> <span id="ssh-count">Servidores</span> <span data-icon="chevron" data-size="12" class="chev"></span></button>
   <span id="ssh-chips"></span>
   <button id="ssh-manage" title="Agregar, editar o borrar (viven en ~/.ssh/config)">gestionar</button>
 </div>
 </div>
-
-<div id="content">
 <div id="side-top">
-<div id="workspace-tools"><button id="toggle-overview" aria-pressed="false">Todas las sesiones</button><button id="open-session-profiles">Perfiles</button><button id="open-extension-usage">Uso de herramientas</button></div>
 <div id="session-overview" hidden></div>
 
 <div id="newsess" class="hidden" role="dialog" aria-modal="true" aria-label="Nueva sesión">
@@ -2338,6 +2351,7 @@ const $ = s => document.querySelector(s);
 let L = "es";
 const T_EN = {
   "esperan": "waiting", "listos": "done", "trabajando": "working",
+  "esp.": "wait.", "list.": "done", "trab.": "work.",
   "Esperan tu respuesta": "Waiting for your answer", "Sesiones": "Sessions",
 	  "Servidores": "Servers", "gestionar": "manage", "Ajustes": "Settings",
 	  "Uso": "Usage",
@@ -3191,8 +3205,6 @@ function mdStrip(s){ return (s||"").replace(/\*\*|`|^#{1,6} /g, ""); }
 	    if(smChanged) nfSave("cc-nf-snooze-meta", sm);
 	  }catch(e){}
 	}, 120000);
-	// #btn-newsess vuelve en la cabecera (H1); mientras tanto #tab-new llama nsOpen().
-	$("#btn-newsess")?.addEventListener("click", ()=>{ NS.intoPane=null; nsOpen(); });
 	$("#ns-cancel").addEventListener("click", ()=> { NS.intoPane=null; $("#newsess").classList.add("hidden"); });
 	$("#newsess").addEventListener("click", e => {
 	  if(e.target.id === "newsess") $("#newsess").classList.add("hidden");
@@ -6009,15 +6021,6 @@ function initTabNavigation(){
   document.getElementById("tab-next").onclick = () => bar.scrollBy({left:bar.clientWidth * .8, behavior:"smooth"});
   document.getElementById("tab-panel").onclick = () => showView(activeView === "panel" && activeTerm ? "term:"+activeTerm : "panel");
   document.getElementById("tab-open").onclick = swOpen;
-  // "+" = Nueva sesión (formulario de siempre). "Terminal" = shell pelona en
-  // carpeta fechada nueva (/terminal/quick); nunca hereda el cwd del pane activo.
-  const newBtn = document.getElementById("tab-new");
-  newBtn.title = tf("Nueva sesión: carpeta, agente y cuenta", "New session: folder, agent and account");
-  newBtn.setAttribute("aria-label", newBtn.title);
-  newBtn.onclick = () => {  // el formulario vive en el panel: mostrarlo primero
-    if(activeView !== "panel") showView("panel");
-    NS.intoPane = null; nsOpen();
-  };
   // «Ordenar una vez» (grill 30-sep): el servidor ordena el acomodo compartido
   // UNA vez; escritorio y remoto ven el mismo orden. Deshacer vuelve al anterior.
   const sortBtn = document.getElementById("tab-sort");
@@ -6050,18 +6053,12 @@ function initTabNavigation(){
     document.body.appendChild(sortMenu);
     setTimeout(() => document.addEventListener("click", function close(){ sortMenu?.remove(); sortMenu = null; document.removeEventListener("click", close); }), 0);
   };
-  const termBtn = document.getElementById("tab-terminal");
-  termBtn.title = tf("Terminal en carpeta nueva fechada (se abre también en el escritorio)", "Terminal in a new dated folder (also opens on desktop)");
-  termBtn.setAttribute("aria-label", tf("Terminal", "Terminal"));
-  const quickTerm = window.ComandosQuickTerminal && ComandosQuickTerminal.createQuickTerminal({
-    api, openTerm, toast, storage: window.sessionStorage,
-    onOpened: () => { tabsPollTs = 0; }});
-  if(quickTerm) window.quickTerminal = quickTerm;   // la barra de comandos reutiliza esta instancia
-  termBtn.onclick = async () => {
-    if(!quickTerm) return toast(tf("Terminal rápida no disponible", "Quick terminal unavailable"), true);
-    termBtn.setAttribute("aria-busy", "true"); termBtn.disabled = true;
-    try{ await quickTerm.open(); } finally { termBtn.disabled = false; termBtn.removeAttribute("aria-busy"); }
-  };
+  // «Terminal» vive en la cabecera (#btn-terminal, H1) y comparte esta
+  // instancia con la barra de comandos; en el remoto abre la tab web.
+  if(!window.quickTerminal && window.ComandosQuickTerminal)
+    window.quickTerminal = ComandosQuickTerminal.createQuickTerminal({
+      api, openTerm, toast, storage: window.sessionStorage,
+      onOpened: () => { tabsPollTs = 0; }});
 }
 // Attachea el iframe de una terminal solo cuando de verdad se abre (lazy):
 // asi mostramos las MISMAS tabs del escritorio sin attachear 11 clientes tmux.
@@ -6688,6 +6685,7 @@ const ICON = {
   timer:     '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="13" r="8"/><path d="M12 9v4l2.5 2M9 2h6M12 5V2"/></svg>',
   coffee:    '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 8h12v7a4 4 0 0 1-4 4H8a4 4 0 0 1-4-4V8zM16 10h2a3 3 0 0 1 0 6h-2M6 2v2M10 2v2M14 2v2"/></svg>',
   skip:      '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m5 4 10 8-10 8V4zM19 5v14"/></svg>',
+  menu:      '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6h16M4 12h16M4 18h16"/></svg>',
   smartphone:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="14" height="20" x="5" y="2" rx="2" ry="2"/><path d="M12 18h.01"/></svg>',
   settings:  '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12.2 2h-.4a2 2 0 0 0-2 2v.2a2 2 0 0 1-1 1.7l-.4.2a2 2 0 0 1-2 0l-.2-.1a2 2 0 0 0-2.7.7l-.2.4a2 2 0 0 0 .7 2.7l.2.1a2 2 0 0 1 1 1.7v.5a2 2 0 0 1-1 1.7l-.2.1a2 2 0 0 0-.7 2.7l.2.4a2 2 0 0 0 2.7.7l.2-.1a2 2 0 0 1 2 0l.4.2a2 2 0 0 1 1 1.7V20a2 2 0 0 0 2 2h.4a2 2 0 0 0 2-2v-.2a2 2 0 0 1 1-1.7l.4-.2a2 2 0 0 1 2 0l.2.1a2 2 0 0 0 2.7-.7l.2-.4a2 2 0 0 0-.7-2.7l-.2-.1a2 2 0 0 1-1-1.7v-.5a2 2 0 0 1 1-1.7l.2-.1a2 2 0 0 0 .7-2.7l-.2-.4a2 2 0 0 0-2.7-.7l-.2.1a2 2 0 0 1-2 0l-.4-.2a2 2 0 0 1-1-1.7V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg>',
   brain:     '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5a3 3 0 1 0-5.997.125 4 4 0 0 0-2.526 5.77 4 4 0 0 0 .556 6.588A4 4 0 1 0 12 18Z"/><path d="M12 5a3 3 0 1 1 5.997.125 4 4 0 0 1 2.526 5.77 4 4 0 0 1-.556 6.588A4 4 0 1 1 12 18Z"/><path d="M15 13a4.5 4.5 0 0 1-3-4 4.5 4.5 0 0 1-3 4"/></svg>',
@@ -7199,6 +7197,68 @@ function toggleSshManager(){
   }
 }
 $("#ssh-manage").addEventListener("click", toggleSshManager);
+// Cabecera «Ordenada» (H1). «+ Nueva sesión» y «Terminal» salieron de la fila
+// de pestañas: la cabecera se ve también en el escritorio y en la app, así que
+// se cablean aquí y no en initTabNavigation (solo remoto).
+function initHeaderActions(){
+  const newBtn = $("#btn-newsess");
+  newBtn.title = tf("Nueva sesión: carpeta, agente y cuenta", "New session: folder, agent and account");
+  newBtn.setAttribute("aria-label", tf("Nueva sesión", "New session"));
+  newBtn.addEventListener("click", () => {
+    // en el remoto angosto el formulario vive en el panel: mostrarlo primero
+    if(document.body.classList.contains("app") && activeView !== "panel") showView("panel");
+    NS.intoPane = null; nsOpen();
+  });
+  const termBtn = $("#btn-terminal");
+  termBtn.title = tf("Terminal en carpeta nueva fechada (se abre también en el escritorio)", "Terminal in a new dated folder (also opens on desktop)");
+  termBtn.addEventListener("click", async () => {
+    const quickTerm = quickTerminalInstance();   // una sola instancia: la de la barra de comandos
+    if(!quickTerm) return toast(tf("Terminal rápida no disponible", "Quick terminal unavailable"), true);
+    termBtn.setAttribute("aria-busy", "true"); termBtn.disabled = true;
+    try{ await quickTerm.open(); } finally { termBtn.disabled = false; termBtn.removeAttribute("aria-busy"); }
+  });
+  $("#btn-menu").title = tf("Más", "More"); $("#btn-menu").setAttribute("aria-label", tf("Más", "More"));
+  $("#btn-servers").title = tf("Servidores", "Servers");
+}
+// ☰ es un popover como #notif-panel (clic afuera o Escape lo cierran).
+// Servidores solo muestra/oculta la fila SSH de siempre: #ssh-bar, loadSsh y
+// cc-ssh-open no cambian; al abrir se ven todos los chips y «gestionar».
+function initHeaderPopovers(){
+  const menu = $("#menu-panel"), menuBtn = $("#btn-menu");
+  const servers = $("#servers-panel"), serversBtn = $("#btn-servers");
+  if(menu.parentNode !== document.body) document.body.appendChild(menu);
+  const setMenu = open => {
+    menu.classList.toggle("hidden", !open);
+    menuBtn.setAttribute("aria-expanded", String(open));
+    if(!open) return;
+    const r = menuBtn.getBoundingClientRect();
+    menu.style.top = (r.height ? r.bottom + 8 : 8) + "px";
+    menu.style.left = Math.max(8, Math.min(r.left, innerWidth - menu.offsetWidth - 8)) + "px";
+  };
+  menuBtn.addEventListener("click", () => setMenu(menu.classList.contains("hidden")));
+  // las acciones que abren otra vista cierran el menú; Apariencia y volumen no
+  menu.addEventListener("click", e => {
+    if(e.target.closest && e.target.closest("#toggle-overview,#open-session-profiles,#open-extension-usage,#btn-sov")) setMenu(false);
+  });
+  document.addEventListener("click", e => {
+    if(menu.classList.contains("hidden")) return;
+    const path = (e.composedPath && e.composedPath()) || [];
+    if(path.includes(menu) || path.includes(menuBtn)) return;
+    if(menu.contains(e.target) || menuBtn.contains(e.target)) return;
+    setMenu(false);
+  });
+  document.addEventListener("keydown", e => {
+    if(e.key !== "Escape" || menu.classList.contains("hidden")) return;
+    setMenu(false); menuBtn.focus();
+  });
+  serversBtn.addEventListener("click", () => {
+    const open = !servers.classList.toggle("hidden");
+    serversBtn.setAttribute("aria-expanded", String(open));
+    if(open){ $("#ssh-bar").classList.add("open"); $("#ssh-toggle").setAttribute("aria-expanded", "true"); loadSsh(); }
+  });
+}
+initHeaderActions();
+initHeaderPopovers();
 $("#srv-cancel").addEventListener("click", ()=>{ $("#srv-form").reset(); fillSrvForm({}); });
 $("#srv-form").addEventListener("submit", async e=>{
   e.preventDefault();

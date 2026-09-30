@@ -40,7 +40,8 @@ def test_web_offers_every_style_and_header_buttons_are_icons_of_one_size():
     for style in STYLES:
         assert f'"{style}"' in INDEX
         assert f'html[data-btn-style="{style}"]' in CSS or style == "sutil"
-    for bid, icon in (("btn-usage", "database"), ("btn-remote", "smartphone"), ("btn-settings", "settings")):
+    for bid, icon in (("btn-usage", "database"), ("btn-remote", "smartphone"), ("btn-settings", "settings"),
+                      ("btn-servers", "server"), ("btn-terminal", "terminal"), ("btn-newsess", "plus"), ("btn-menu", "menu")):
         tag = INDEX.split(f'id="{bid}"')[1].split("</button>")[0]
         assert f'data-icon="{icon}"' in tag and 'class="hdr-lbl"' in tag
     assert (ROOT / "dash" / "icons" / "smartphone.svg").is_file()

@@ -19,9 +19,9 @@ def test_wizard_navigates_to_created_session():
     assert '"/focus", {session: r.session}' in after
 
 
-def test_tab_bar_plus_opens_the_same_wizard_and_terminal_is_separate():
-    init = HTML.split("function initTabNavigation(){", 1)[1].split("\n}\n", 1)[0]
-    plus = init.split('const newBtn = document.getElementById("tab-new");', 1)[1].split("const termBtn", 1)[0]
-    assert 'showView("panel")' in plus and "nsOpen()" in plus   # #btn-newsess salió del panel (S2)
-    terminal = init.split("const termBtn", 1)[1]
-    assert "quickTerm.open()" in terminal and "/tab-new" not in terminal
+def test_header_plus_opens_the_same_wizard_and_terminal_is_separate():
+    actions = HTML.split("function initHeaderActions(){", 1)[1].split("\n}\n", 1)[0]
+    plus = actions.split('$("#btn-newsess")', 1)[1].split("const termBtn", 1)[0]
+    assert 'showView("panel")' in plus and "nsOpen()" in plus   # H1: + Nueva sesión en la cabecera
+    terminal = actions.split("const termBtn", 1)[1]
+    assert ".open()" in terminal and "/tab-new" not in terminal
