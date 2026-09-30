@@ -287,11 +287,14 @@
 
     const emit = () => { try { onChange(state); } catch (e) { /* rendering never breaks the poll */ } };
 
-    // Nothing to attend: one quiet line, so an empty strip never takes the
-    // height of the chat. Opening it by hand shows the history.
+    // Nothing that needs a person: one quiet line, so the strip never takes
+    // the height of the chat or the sessions. Unread news, finished turns and
+    // usage only count in the badge (D5: visual); a pending request, an
+    // unread error or attention opens it. Opening it by hand shows the history.
+    const NEEDS = new Set(['attention', 'error']);
     function quiet() {
       return state.loaded && !state.error && !state.unavailable && !state.opened && state.filter === 'all'
-        && !state.notices.some(n => !n.read || state.pending.has(n.eventId));
+        && !state.notices.some(n => state.pending.has(n.eventId) || (!n.read && NEEDS.has(n.category)));
     }
 
     function view() {

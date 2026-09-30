@@ -487,9 +487,14 @@ function fakeDom() {
     assert.equal(busy.c.view().collapsed, false, 'something to attend opens it');
     assert.match(N.renderStrip(busy.c.view()), /nt-foot/, 'the permission hint only when a request is pending');
     const news = harness();
-    news.server.notices.push(notice({ kind: 'announcement', category: 'news' }));
+    news.server.notices.push(notice({ kind: 'announcement', category: 'news' }), notice({ category: 'done' }));
     await news.c.poll();
+    assert.equal(news.c.view().collapsed, true, 'unread news or finished turns only count in the badge');
+    assert.match(N.renderStrip(news.c.view()), /nt-count">2</, 'the badge still says how many are new');
     assert.ok(!/nt-foot/.test(N.renderStrip(news.c.view())), 'no permission hint without a pending request');
+    news.server.notices.push(notice({ kind: 'turn_failed', category: 'error' }));
+    await news.c.poll();
+    assert.equal(news.c.view().collapsed, false, 'an unread error opens it');
     busy.c.setCollapsed(true);
     assert.equal(busy.c.view().collapsed, true, 'an explicit collapse wins');
   });
