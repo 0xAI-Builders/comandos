@@ -206,3 +206,66 @@ def test_desktop_pane_card_has_no_yes_no_and_shows_semaforo_session_model_and_bu
     assert 'add_class("pane-card")' in src
     ext = SOURCE.split('def _extension_pill(sess, pane, harness=""):')[1].split('\ndef ')[0]
     assert '_card_button("sparkles", "MCPs · Skills"' in ext
+
+
+class _Notebook:
+    def __init__(self, pages):
+        self.pages, self.current = list(pages), 0
+    def get_n_pages(self): return len(self.pages)
+    def get_nth_page(self, i): return self.pages[i]
+    def get_current_page(self): return self.current
+    def set_current_page(self, i): self.current = i
+    def page_num(self, page): return self.pages.index(page)
+    def prev_page(self): self.current = max(0, self.current - 1)
+    def next_page(self): self.current = min(len(self.pages) - 1, self.current + 1)
+    def get_tab_label(self, page): return SimpleNamespace(page=page)
+
+
+def _drag_ns(pages, current):
+    nb = _Notebook(pages)
+    nb.current = current
+    layer = SimpleNamespace(show=lambda: None, hide=lambda: None, queue_draw=lambda: None,
+                            get_allocated_width=lambda: 1000, get_allocated_height=lambda: 600)
+    entries = [(p, (i * 100, 0, 100, 30)) for i, p in enumerate(pages)]
+    ns = {'nb': nb, '_WS': {'doc': {'groups': []}, 'drag': None, 'target': None, 'press': None},
+          '_ws_layer': layer, 'GLib': SimpleNamespace(timeout_add=lambda ms, fn: 1),
+          'notebook_pages': lambda: list(pages), 'gtk_workspace': SimpleNamespace(GroupPage=type('G', (), {})),
+          '_ws_layout': lambda: {'strip': (0, 0, 1000, 30), 'entries': entries},
+          '_ws_target': lambda x, y: {'kind': 'bar'}, 'ws_strip_edge_step': lambda x, w, zone=56: 0}
+    for name in ('_ws_source_page', '_ws_drag_begin', '_ws_drag_end', '_ws_edge_tick'):
+        load(name, ns)
+    return ns, nb
+
+
+def test_drag_begin_returns_to_the_view_you_were_looking_at_and_lifts_the_tab():
+    """Fix 4 (30-sep): the click on tab B already switched the notebook to B; the
+    drag must show A again so B can be dropped INTO A's area (group them)."""
+    a, b = SimpleNamespace(_key='A'), SimpleNamespace(_key='B')
+    ns, nb = _drag_ns([a, b], current=1)          # notebook switched to B on press
+    ns['_ws_drag_begin']('B', press_page=0)
+    assert nb.current == 0 and ns['_WS']['drag_page'] == 0
+    assert ns['_WS']['source_label'].page is b, 'the lifted tab is covered on the strip and drawn as a ghost'
+    ns['_ws_drag_end']()
+    assert ns['_WS']['source_label'] is None and ns['_WS']['drag'] is None
+
+
+def test_hovering_another_tab_while_dragging_reveals_it_after_two_ticks():
+    a, b, c = (SimpleNamespace(_key=k) for k in 'ABC')
+    ns, nb = _drag_ns([a, b, c], current=0)
+    ns['_ws_drag_begin']('B', press_page=0)
+    ns['_WS']['pointer'] = (250, 10)             # over C
+    assert ns['_ws_edge_tick']() is True and nb.current == 0, 'first tick only arms the dwell'
+    ns['_ws_edge_tick']()
+    assert nb.current == 2, 'second tick over the same tab switches the view: now B can be docked into C'
+    ns['_WS']['pointer'] = (150, 10)             # over the dragged tab itself: never switches
+    ns['_ws_edge_tick'](); ns['_ws_edge_tick']()
+    assert nb.current == 2
+    ns['_WS']['pointer'] = (250, 300)            # below the strip: no dwell
+    assert ns['_ws_edge_tick']() is True and ns['_WS']['dwell'] is None
+
+
+def test_bar_target_is_a_tab_sized_slot_and_the_layer_draws_ghost_and_cover():
+    src = SOURCE
+    assert 'target["slot"] = True' in src and 'def _ws_draw_ghost' in src and 'def _ws_draw_lifted' in src
+    draw = src.split('def _ws_draw(widget, cr):')[1].split('\n\n\n')[0]
+    assert '_ws_draw_lifted(cr)' in draw and '_ws_draw_ghost(cr)' in draw and 'cr.set_dash([5, 4])' in draw

@@ -4235,7 +4235,10 @@ def ws_drag_source(widget, key):
 
 def _ws_press(widget, event, key):
     if event.button == 1 and event.type == Gdk.EventType.BUTTON_PRESS and _WS["doc"] is not None:
-        _WS["press"] = {"widget": widget, "key": key, "x": event.x_root, "y": event.y_root}
+        # La página ANTES de que el notebook cambie por el clic: si esto acaba en
+        # arrastre, esa es la vista donde se quiere soltar (fix 4, grill 30-sep).
+        _WS["press"] = {"widget": widget, "key": key, "x": event.x_root, "y": event.y_root,
+                        "page": nb.get_current_page()}
     return False   # el notebook sigue cambiando de pestana con el clic
 
 
@@ -4251,7 +4254,7 @@ def _ws_pointer_move(widget, event):
     if _WS["drag"] is None:
         if ((event.x_root - press["x"]) ** 2 + (event.y_root - press["y"]) ** 2) < 49:
             return False
-        _ws_drag_begin(_ws_source_of(widget, press["key"]))
+        _ws_drag_begin(_ws_source_of(widget, press["key"]), press.get("page"))
         if _WS["drag"] is None:
             return False
     x, y = _ws_layer_point(widget, event)
@@ -4302,30 +4305,67 @@ def _ws_edge_tick():
         _WS["edge_timer"] = None
         return False
     x, y = _WS.get("pointer") or (-1, -1)
-    strip_h = _ws_layout()["strip"][3]
+    layout = _ws_layout()
+    strip_h = layout["strip"][3]
     step = ws_strip_edge_step(x, _ws_layer.get_allocated_width()) if 0 <= y <= strip_h + 12 else 0
     if step:
         (nb.prev_page if step < 0 else nb.next_page)()
         _WS["target"] = _ws_target(x, y)
         _ws_layer.queue_draw()
+        return True
+    # Posar el puntero ~½ s sobre otra pestaña la muestra: así se puede soltar
+    # la arrastrada dentro de CUALQUIER tab (agrupar), no solo en la que veías.
+    over = next((page for page, (ex, ey, ew, eh) in layout["entries"]
+                 if ex <= x <= ex + ew and ey <= y <= ey + eh), None) if 0 <= y <= strip_h else None
+    if over is not None and over is not _ws_source_page(_WS["drag"]) and over is not nb.get_nth_page(nb.get_current_page()):
+        if _WS.get("dwell") is over:
+            nb.set_current_page(nb.page_num(over))
+            _WS["dwell"] = None
+            _WS["target"] = _ws_target(x, y)
+            _ws_layer.queue_draw()
+        else:
+            _WS["dwell"] = over
+    else:
+        _WS["dwell"] = None
     return True
 
 
-def _ws_drag_begin(source):
+def _ws_source_page(source):
+    """Página del notebook de la pestaña/grupo que se arrastra."""
+    for page in notebook_pages():
+        if isinstance(page, gtk_workspace.GroupPage):
+            if source == "group:" + page.group_id:
+                return page
+        elif getattr(page, "_key", None) == source:
+            return page
+    return None
+
+
+def _ws_drag_begin(source, press_page=None):
     if _WS["doc"] is None or not source:
         return
     _WS["drag"] = source
     _WS["target"] = None
+    _WS["dwell"] = None
+    # Volver a la vista que tenías al presionar: el clic ya había cambiado a la
+    # pestaña arrastrada y soltarla sobre su propia área no acomoda nada.
+    if press_page is not None and 0 <= press_page < nb.get_n_pages() and press_page != nb.get_current_page():
+        nb.set_current_page(press_page)
     _WS["drag_page"] = nb.get_current_page()
+    page = _ws_source_page(source)
+    label = nb.get_tab_label(page) if page is not None else None
+    _WS["source_label"] = label           # la capa la tapa: en la barra queda solo su sombra
     if not _WS.get("edge_timer"):
         _WS["edge_timer"] = GLib.timeout_add(260, _ws_edge_tick)
     _ws_layer.show()
 
 
 def _ws_drag_end():
+    _WS["source_label"] = None
     _WS["drag"] = None
     _WS["target"] = None
     _WS["trays"] = None
+    _WS["dwell"] = None
     _ws_layer.hide()
 
 
@@ -4406,7 +4446,11 @@ def _ws_target(x, y):
         idx = target["index"]
         target["docIndex"] = _ws_doc_index(pages[idx] if idx < len(pages) else None)
         rx = raw[idx][1][0] if idx < len(raw) else (raw[-1][1][0] + raw[-1][1][2] if raw else 0)
-        target["rect"] = (rx - 3, 0, 6, layout["strip"][3])
+        src = _WS.get("source_label")
+        sw = src.get_allocation().width if src is not None else 0
+        sw = sw if sw > 12 else 96
+        target["rect"] = (rx - sw / 2, 2, sw, max(8, layout["strip"][3] - 8))
+        target["slot"] = True
     return target
 
 
@@ -4470,21 +4514,96 @@ def _ws_draw_trays(cr, target):
         cr.show_text(text)
 
 
+def _ws_rounded(cr, x, y, w, h, r):
+    r = max(0, min(r, w / 2, h / 2))
+    cr.new_sub_path()
+    cr.arc(x + w - r, y + r, r, -1.5708, 0)
+    cr.arc(x + w - r, y + h - r, r, 0, 1.5708)
+    cr.arc(x + r, y + h - r, r, 1.5708, 3.1416)
+    cr.arc(x + r, y + r, r, 3.1416, 4.7124)
+    cr.close_path()
+
+
+def _ws_draw_ghost(cr):
+    """Fantasma (grill 30-sep, variante C): copia de la pestaña arrastrada, un
+    poco girada y con sombra, siguiendo al puntero."""
+    label, pointer = _WS.get("source_label"), _WS.get("pointer")
+    if label is None or not pointer:
+        return
+    alloc = label.get_allocation()
+    w, h = max(24, alloc.width), max(16, alloc.height)
+    px, py = pointer
+    cr.save()
+    cr.translate(px, py)
+    cr.rotate(-0.045)
+    cr.translate(-w / 2, -h / 2)
+    cr.set_source_rgba(0, 0, 0, 0.35)                      # sombra
+    _ws_rounded(cr, 2, 5, w + 10, h + 6, 9)
+    cr.fill()
+    bar = Gdk.RGBA(); bar.parse(THEME.get("bar") or "#161B22")
+    brand = Gdk.RGBA(); brand.parse(THEME.get("brand") or "#8B7CF6")
+    cr.set_source_rgba(bar.red, bar.green, bar.blue, 0.97)
+    _ws_rounded(cr, 0, 0, w + 10, h + 6, 9)
+    cr.fill_preserve()
+    cr.set_source_rgba(brand.red, brand.green, brand.blue, 0.9)
+    cr.set_line_width(1.5)
+    cr.stroke()
+    cr.translate(5, 3)
+    cr.push_group()
+    try:
+        label.draw(cr)
+    except Exception:
+        pass
+    cr.pop_group_to_source()
+    cr.paint_with_alpha(0.95)
+    cr.restore()
+
+
+def _ws_draw_lifted(cr):
+    """La pestaña arrastrada se «levanta» de la barra: la capa la cubre con el
+    color de la barra y deja una sombra tenue donde estaba."""
+    label = _WS.get("source_label")
+    rect = _ws_rect(label) if label is not None else None
+    if not rect:
+        return
+    x, y, w, h = rect
+    bar = Gdk.RGBA(); bar.parse(THEME.get("bar") or "#161B22")
+    cr.set_source_rgba(bar.red, bar.green, bar.blue, 0.86)
+    cr.rectangle(x - 1, y - 1, w + 2, h + 2)
+    cr.fill()
+    cr.set_source_rgba(0, 0, 0, 0.18)
+    _ws_rounded(cr, x + 4, y + 4, max(0, w - 8), max(0, h - 8), 7)
+    cr.fill()
+
+
 def _ws_draw(widget, cr):
     target = _WS["target"]
+    if _WS["drag"] is not None:
+        _ws_draw_lifted(cr)
     if _WS.get("trays"):
         _ws_draw_trays(cr, target)
-    if not target or target.get("kind") == "mark":
-        return False
-    x, y, w, h = target["rect"]
-    brand = Gdk.RGBA()
-    brand.parse(THEME.get("brand") or "#8B7CF6")
-    cr.set_source_rgba(brand.red, brand.green, brand.blue, 0.18 if target["kind"] == "dock" else 0.9)
-    cr.rectangle(x, y, w, h)
-    cr.fill_preserve()
-    cr.set_source_rgba(brand.red, brand.green, brand.blue, 0.95)
-    cr.set_line_width(2)
-    cr.stroke()
+    if target and target.get("kind") != "mark":
+        x, y, w, h = target["rect"]
+        brand = Gdk.RGBA()
+        brand.parse(THEME.get("brand") or "#8B7CF6")
+        if target.get("slot"):                              # ranura punteada donde caerá
+            cr.set_source_rgba(brand.red, brand.green, brand.blue, 0.14)
+            _ws_rounded(cr, x, y, w, h, 8)
+            cr.fill_preserve()
+            cr.set_source_rgba(brand.red, brand.green, brand.blue, 0.9)
+            cr.set_line_width(2)
+            cr.set_dash([5, 4])
+            cr.stroke()
+            cr.set_dash([])
+        else:                                                # mitad del área donde se acopla
+            cr.set_source_rgba(brand.red, brand.green, brand.blue, 0.18)
+            cr.rectangle(x, y, w, h)
+            cr.fill_preserve()
+            cr.set_source_rgba(brand.red, brand.green, brand.blue, 0.95)
+            cr.set_line_width(2)
+            cr.stroke()
+    if _WS["drag"] is not None:
+        _ws_draw_ghost(cr)
     return False
 
 
