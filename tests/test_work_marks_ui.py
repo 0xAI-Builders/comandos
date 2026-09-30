@@ -1,4 +1,5 @@
 """Runs the Node behaviour checks of dash/work-marks.js and verifies it ships."""
+import re
 import shutil
 import subprocess
 from pathlib import Path
@@ -19,7 +20,7 @@ def test_work_marks_node_checks():
 
 def test_dashboard_loads_and_installer_links_the_script():
     html = (ROOT / "dash" / "index.html").read_text()
-    assert '<script src="/work-marks.js"></script>' in html
+    assert re.search(r'<script src="/work-marks.js(\?v=[^"]*)?"></script>', html), 'the dashboard loads work-marks.js (cache-busted)'
     install = (ROOT / "install.sh").read_text()
     assert " work-marks.js " in install
 
