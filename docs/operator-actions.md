@@ -204,7 +204,7 @@ Generado desde `lib/operator_catalog.py`. Un control de la UX sin fila aquí es 
 
 | Tool | Qué hace | Parámetros | Cómo se ejecuta |
 |---|---|---|---|
-| `open_panel` | Abre un panel del tablero: analytics (con tab), sov, switcher, timeline, wizard, centro. | panel, tab | local:ui_panel |
+| `open_panel` | Abre un panel del tablero: analytics (con tab), sov, switcher, wizard. | panel, tab | local:ui_panel |
 | `close_panels` | Cierra todos los paneles/modales abiertos. | — | ui:call closeAllPanels |
 | `show_view` | Muestra el panel o una terminal: 'panel' o 'term:<sesión>'. | view | ui:call showView |
 | `switcher_search` | Abre el conmutador con un texto de búsqueda. | query | ui:call swOpenWith |
@@ -274,7 +274,6 @@ Generado desde `lib/operator_catalog.py`. Un control de la UX sin fila aquí es 
 | `memory_read` 👁 | Lee la memoria completa del operador. | — | local:memory_read |
 | `memory_replace` ⚠ confirm | Reescribe la memoria completa (para borrar o corregir). | text, confirm | local:memory_replace |
 | `new_conversation` | Empieza una conversación nueva del operador. | — | ui:click #op-new |
-| `set_chat_model` | Modelo del chat: haiku, gpt-5.3-codex-spark, grok-4.5. | model | POST /operator/model |
 | `copy_last_reply` | Copia la última respuesta del chat. | — | local:copy_reply |
 | `copy_session_reply` | Copia la última respuesta de la IA de una sesión. | tab | local:copy_session |
 
@@ -288,4 +287,3 @@ Generado desde `lib/operator_catalog.py`. Un control de la UX sin fila aquí es 
 | `extension_usage` | Llamadas observadas del panel; scope=session incluye sus paneles y scope=all todas las sesiones. | GET /extension-usage |
 | `show_chat` | Oculta o muestra el chat conservando el borrador. | UI setChatVisible |
 | `open_session_profiles` | Abre el editor de perfiles de inicio. | UI openSessionProfiles |
-| `operator_action_results` | Consulta acciones enviadas, confirmadas y fallidas. | GET /operator/action-results |

@@ -25,24 +25,18 @@ def test_cc_dash_imports_usage_module():
     assert "import cc_usage" in SRC
 
 
-def test_operator_chat_endpoints_are_authenticated():
-    assert "import operator_chat" in SRC
+def test_operator_chat_is_retired():
+    # S4: the chat backend left; one 410 branch per verb answers every /operator* route.
+    for gone in ("import operator_chat", "import operator_tools", "import operator_stream",
+                 "operator_handle_chat", "operator_agent_turn", "operator_agent_stream",
+                 "operator_claude_token", "_llm_poison", "https://api.anthropic.com/v1/messages",
+                 'self.path == "/operator/chat"', 'self.path == "/operator/new"', 'self.path == "/operator/model"'):
+        assert gone not in SRC, gone
     api_get = SRC.split("API_GET = ", 1)[1].split("def do_GET", 1)[0]
-    assert '"/operator"' in api_get
-    assert 'self.path == "/operator/chat"' in SRC
-    assert 'self.path == "/operator/new"' in SRC
-    assert "operator_handle_chat" in SRC
-    assert "operator_send_back" in SRC
-    assert "import operator_tools" in SRC
-    assert "operator_agent_turn" in SRC
-    assert 'self.path == "/operator/model"' in SRC
-    assert "operator_agent_stream" in SRC
+    assert '"/operator"' not in api_get
+    assert SRC.count('self.path.startswith("/operator")') == 2
+    assert "OPERATOR_RETIRED" in SRC
     assert "comandos-operator" not in SRC
-    assert "claudeAiOauth" in SRC
-    assert "oauth-2025-04-20" in SRC
-    assert "operator_claude_token" in SRC
-    assert "_llm_poison" in SRC
-    assert "https://api.anthropic.com/v1/messages" in SRC
 
 
 def test_usage_state_endpoint_exists_and_is_authenticated():

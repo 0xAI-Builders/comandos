@@ -3364,12 +3364,13 @@ def test_ssh_privacy_note_states_local_only_storage():
     assert "nunca guarda passwords" in html
 
 
-def test_operator_chat_streams_over_sse():
+def test_operator_chat_stream_is_retired():
     dash = open("bin/cc-dash").read()
-    assert '"/operator/chat/stream"' in dash and "text/event-stream" in dash
+    # Cliente retirado en S2, backend en S4: /operator* responde 410.
+    assert '"/operator/chat/stream"' not in dash and "text/event-stream" not in dash
     assert 'protocol_version = "HTTP/1.1"' in dash
-    assert "/operator/chat/stream" in SW
-    # El cliente del chat se retiró del tablero (S2); el backend se retira en S4.
+    # El service worker sigue sin cachear /operator (un 410 tampoco se guarda).
+    assert '"/operator"' in SW
     assert "/operator/chat/stream" not in HTML and "opStreamXhr" not in HTML
 
 

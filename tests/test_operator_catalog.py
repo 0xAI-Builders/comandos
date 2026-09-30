@@ -35,21 +35,18 @@ def test_every_tool_has_group_description_and_valid_target():
             assert "confirm" in t.params and "confirm" in t.required, t.name
 
 
-# set_chat_model → POST /operator/model (ya existe en main). Este worktree
-# tiene un cc-dash desactualizado sin rutas /operator/*. No tocamos
-# bin/cc-dash aquí; la aserción se re-habilita sola cuando la ruta aparezca.
-_STALE_BASELINE_API_PATHS = frozenset({"/operator/model"})
-
-
 def test_api_targets_point_to_real_cc_dash_paths():
     for t in cat.CATALOG:
         if t.target["kind"] != "api":
             continue
         path = t.target["path"]
-        quoted = f'"{path}"'
-        if quoted not in DASH and path in _STALE_BASELINE_API_PATHS:
-            continue  # ausente solo por baseline stale del worktree vs main
-        assert quoted in DASH, (t.name, path)
+        assert f'"{path}"' in DASH, (t.name, path)
+
+
+def test_no_tool_targets_the_retired_operator_routes():
+    # S4: /operator* answers 410; set_chat_model and operator_action_results left.
+    for t in cat.CATALOG:
+        assert not str(t.target.get("path", "")).startswith("/operator"), t.name
 
 
 def test_ui_targets_point_to_real_selectors_or_functions():
@@ -93,7 +90,7 @@ def test_minimum_coverage_per_group():
         counts[t.group] = counts.get(t.group, 0) + 1
     floor = {"sessions": 20, "panes": 10, "models": 18, "usage": 16, "pomodoro": 7,
              "prefs": 18, "notifs": 6, "remote": 12, "snippets": 5, "fs": 4,
-             "news": 4, "nav": 13, "term": 5, "app": 26, "chat": 6}   # nav 14→13: S2 quitó las filas de sesión y la actividad reciente
+             "news": 4, "nav": 13, "term": 5, "app": 26, "chat": 5}   # nav 14→13: S2 quitó las filas de sesión y la actividad reciente; chat 6→5: S4 retiró /operator
     for g, n in floor.items():
         assert counts.get(g, 0) >= n, (g, counts.get(g, 0))
 
@@ -102,3 +99,12 @@ def test_operator_actions_doc_lists_every_tool():
     doc = (ROOT / "docs" / "operator-actions.md").read_text()
     for t in cat.CATALOG:
         assert f"`{t.name}`" in doc, t.name
+
+
+def test_open_panel_offers_no_panel_whose_ui_is_gone():
+    # S2 quitó la actividad reciente (timeline) y el centro del tablero.
+    spec = cat.by_name("open_panel")
+    panels = spec.params["panel"]["enum"]
+    assert "timeline" not in panels and "centro" not in panels
+    assert "timeline" not in spec.description and "centro" not in spec.description
+    assert panels == ["analytics", "sov", "switcher", "wizard"]

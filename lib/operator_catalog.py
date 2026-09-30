@@ -87,7 +87,6 @@ CATALOG: list[ToolSpec] = [
     T("list_session_profiles", "sessions", "Lista perfiles de inicio y capacidades de skills/MCPs. Por defecto usa carpeta, CLI y cuenta del panel seleccionado; harness/account explícitos consultan otro destino de perfil.", P(session="Sesión exacta", pane=PANE, cwd="Carpeta", harness="CLI", account="Cuenta"), ("session",), api("GET", "/session-profiles", query={"cwd":"$cwd", "harness":"$harness", "account":"$account"}), readonly=True),
     T("extension_usage", "usage", "Uso observado de skills y MCPs del panel seleccionado. scope=session incluye sus paneles; scope=all consulta todas las sesiones. Ausencia de eventos no demuestra ausencia de uso; tokens/costes pueden ser desconocidos.", P(session="Sesión opcional", pane=PANE, scope=("string", "Ámbito", ("selected", "session", "all")), days=("integer", "Días, máximo 90")), (), api("GET", "/extension-usage", query={"session":"$session", "pane":"$pane", "days":"$days"}), readonly=True),
     T("open_session_profiles", "sessions", "Abre el editor de perfiles de inicio; las preferencias se aplican a sesiones nuevas.", target=ui_call("openSessionProfiles")),
-    T("operator_action_results", "chat", "Consulta el registro durable de acciones del chat, incluidas acciones enviadas y fallos.", target=api("GET", "/operator/action-results"), readonly=True),
     # ───────────── sessions / tabs ─────────────
     T("list_tabs", "sessions", "Lista las pestañas abiertas (mismas que el escritorio).", target=api("GET", "/tabs"), readonly=True),
     T("list_sessions", "sessions", "Estado de todas las sesiones/agentes: status, proyecto, último mensaje.", target=api("GET", "/state"), readonly=True),
@@ -241,7 +240,7 @@ CATALOG: list[ToolSpec] = [
     T("news_refresh", "news", "Fuerza un ciclo del vigilante de noticias.", target=api("POST", "/news/refresh")),
     T("models_refresh", "news", "Fuerza un ciclo del vigilante de modelos.", target=api("POST", "/models/refresh")),
     # ───────────── nav (tablero) ─────────────
-    T("open_panel", "nav", "Abre un panel del tablero: analytics (con tab), sov, switcher, timeline, wizard, centro.", P(panel=("string", "Panel", ("analytics", "sov", "switcher", "timeline", "wizard", "centro")), tab=("string", "Tab de analytics", ("resumen", "comparar", "reparto"))), ("panel",), local("ui_panel")),
+    T("open_panel", "nav", "Abre un panel del tablero: analytics (con tab), sov, switcher, wizard.", P(panel=("string", "Panel", ("analytics", "sov", "switcher", "wizard")), tab=("string", "Tab de analytics", ("resumen", "comparar", "reparto"))), ("panel",), local("ui_panel")),
     T("close_panels", "nav", "Cierra todos los paneles/modales abiertos.", target=ui_call("closeAllPanels")),
     T("show_view", "nav", "Muestra el panel o una terminal: 'panel' o 'term:<sesión>'.", P(view="panel | term:<sesión>"), ("view",), ui_call("showView", "$view")),
     T("switcher_search", "nav", "Abre el conmutador con un texto de búsqueda.", P(query="Texto"), (), ui_call("swOpenWith", "$query")),
@@ -295,7 +294,6 @@ CATALOG: list[ToolSpec] = [
     T("remember", "chat", "Guarda un hecho en la memoria del operador.", P(fact="Hecho"), ("fact",), local("remember")),
     T("memory_read", "chat", "Lee la memoria completa del operador.", target=local("memory_read"), readonly=True),
     T("memory_replace", "chat", "Reescribe la memoria completa (para borrar o corregir).", P(text="Texto completo"), ("text",), local("memory_replace"), destructive=True),
-    T("set_chat_model", "chat", "Modelo del chat: haiku, gpt-5.3-codex-spark, grok-4.5.", P(model=("string", "Modelo", ("haiku", "gpt-5.3-codex-spark", "grok-4.5"))), ("model",), api("POST", "/operator/model", {"model": "$model"})),
     T("copy_last_reply", "chat", "Copia la última respuesta del chat.", target=local("copy_reply")),
     T("copy_session_reply", "chat", "Copia la última respuesta de la IA de una sesión.", P(tab=TAB), ("tab",), local("copy_session")),
 ]

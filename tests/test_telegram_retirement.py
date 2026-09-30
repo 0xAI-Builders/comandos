@@ -131,5 +131,5 @@ def test_hook_and_dashboard_sources_have_no_telegram_channel():
     assert "api.telegram.org" not in notify + dash
     assert "TELEGRAM_ENABLED" not in notify + dash + html + conf
     assert "telegram.env" not in notify
-    # the operator chat is kept
-    assert "operator_chat" in dash and (ROOT / "lib" / "operator_chat.py").exists()
+    # the operator chat was retired later too (S4)
+    assert "operator_chat" not in dash and not (ROOT / "lib" / "operator_chat.py").exists()
