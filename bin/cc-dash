@@ -8591,11 +8591,24 @@ class Handler(http.server.SimpleHTTPRequestHandler):
                "/webterm-token", "/operator", "/allocation/status")
     API_GET += ("/work-marks",)  # E1; /events/v2 queda cubierto por /events
 
+    PUBLIC_ASSET_RE = re.compile(r"^/[A-Za-z0-9_-]+(?:/[A-Za-z0-9_-]+)*\.(?:css|js)$")
+
+    def _public_asset(self):
+        """The page's own CSS/JS (workspace.css, pomodoro.js…) share a prefix
+        with API routes; remote browsers load them before any token exists."""
+        import urllib.parse
+        path = urllib.parse.urlsplit(self.path).path
+        if not self.PUBLIC_ASSET_RE.match(path):
+            return False
+        root = os.path.realpath(DASH)
+        full = os.path.realpath(os.path.join(root, path.lstrip("/")))
+        return full.startswith(root + os.sep) and os.path.isfile(full)
+
     def do_GET(self):
         host_values = self._header_values("Host")
         if len(host_values) != 1 or not _authority_matches(HOST_OK_RE, host_values[0]):
             return self._json(403, {"error": "Host no permitido"})
-        if any(self.path.startswith(p) for p in self.API_GET):
+        if any(self.path.startswith(p) for p in self.API_GET) and not self._public_asset():
             gate = self._security_gate()
             if gate:
                 return self._json(*gate)

@@ -294,3 +294,55 @@ def test_cross_origin_no_cors_post_to_send_is_rejected_before_typing(
         server.server_close()
         thread.join(timeout=2)
     assert typed == []
+
+
+def _serve(dash):
+    server = http.server.ThreadingHTTPServer(("127.0.0.1", 0), dash.Handler)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    return server, thread
+
+
+@pytest.mark.parametrize("asset", ["/workspace.css?v=v1n2drawer", "/workspace.js?v=abc", "/workspace-dock.js",
+                                   "/workspace-layout.js", "/pomodoro.js", "/work-marks.js"])
+def test_remote_static_assets_are_not_shadowed_by_api_prefixes(dash, monkeypatch, tmp_path, asset):
+    """Tailscale Serve proxies with X-Forwarded-For; the page's own CSS/JS must
+    load before the browser has any token, or the remote UI renders empty."""
+    monkeypatch.setattr(dash, "DASH", str(tmp_path))
+    monkeypatch.setattr(dash, "access_token", lambda: "correct-token")
+    name = asset.split("?")[0].lstrip("/")
+    (tmp_path / name).write_text("/* asset */")
+    server, thread = _serve(dash)
+    client = http.client.HTTPConnection(*server.server_address, timeout=2)
+    try:
+        client.request("GET", asset, headers={"X-Forwarded-For": "100.64.0.9",
+                                              "Host": "nodo-01.tail63a117.ts.net"})
+        response = client.getresponse()
+        assert response.status == 200
+        assert response.read() == b"/* asset */"
+    finally:
+        client.close()
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=2)
+
+
+@pytest.mark.parametrize("path", ["/workspace", "/workspace/state", "/pomodoro", "/work-marks",
+                                  "/pomodoro.js/../pomodoro", "/notices"])
+def test_remote_api_paths_still_require_the_token(dash, monkeypatch, tmp_path, path):
+    monkeypatch.setattr(dash, "DASH", str(tmp_path))
+    monkeypatch.setattr(dash, "access_token", lambda: "correct-token")
+    (tmp_path / "pomodoro.js").write_text("/* asset */")
+    server, thread = _serve(dash)
+    client = http.client.HTTPConnection(*server.server_address, timeout=2)
+    try:
+        client.request("GET", path, headers={"X-Forwarded-For": "100.64.0.9",
+                                             "Host": "nodo-01.tail63a117.ts.net"})
+        response = client.getresponse()
+        assert response.status == 401
+        response.read()
+    finally:
+        client.close()
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=2)
