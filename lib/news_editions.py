@@ -234,7 +234,7 @@ def run_due(conn, now_ms, policy, *, fetch, summarize, clock=None, notify=None):
         return {"built": None}
     edition = build_edition(conn, job, fetch, summarize, policy,
                             clock=clock or _clock_from(now_ms))
-    if notify and edition and edition["status"] in READABLE:
+    if notify and edition and edition["status"] in ("published", "partial", "empty", "failed"):
         try:
             notify(edition)
         except Exception:
@@ -499,6 +499,26 @@ def list_editions(conn, limit=30, until_ms=None):
     query += " ORDER BY scheduled_at_ms DESC LIMIT ?"
     args.append(max(1, min(int(limit), 200)))
     return [_enrich(conn, _edition_row(r)) for r in conn.execute(query, args).fetchall()]
+
+
+def next_scheduled(conn, now_ms):
+    row = conn.execute(f"SELECT {_EDITION_COLS} FROM news_editions WHERE status = 'scheduled' "
+                       "AND scheduled_at_ms > ? ORDER BY scheduled_at_ms LIMIT 1", (now_ms,)).fetchone()
+    return _edition_row(row) if row else None
+
+
+def notice_text(edition):
+    """(título, cuerpo) del único aviso por resumen: qué trae y quién lo escribió."""
+    slot = edition.get("slot") or ""
+    if edition.get("status") in READABLE:
+        names = [m.split(":", 1)[-1].split("/")[-1] for m in (edition.get("models") or {})]
+        who = " y ".join([", ".join(names[:-1]), names[-1]] if len(names) > 1 else names)
+        body = f"{edition.get('storyCount') or 0} noticias" + (f" · resumido con {who}" if who else "")
+        return f"Resumen de las {slot} listo", body
+    notes = edition.get("notes") or []
+    reason = notes[0] if notes else ("Las fuentes no trajeron novedades." if edition.get("status") == "empty"
+                                     else "Revisa los detalles del resumen.")
+    return f"El resumen de las {slot} no se generó", reason
 
 
 def latest_readable(conn):

@@ -430,11 +430,12 @@ def notice_emit(kind, title, excerpt="", project=None, source_event_id=None):
 
 
 def _news_edition_notice(edition):
-    """A readable edition is one news notice (never a waiting request)."""
+    """One visual notice per summary, ready or not (never a waiting request)."""
+    import news_editions
     eid = str((edition or {}).get("id") or "")
     if eid:
-        notice_emit("news_edition", f"Edición de noticias {edition.get('slot') or ''}".strip(),
-                    "Nueva edición con fuentes", source_event_id="news-edition:" + eid)
+        title, body = news_editions.notice_text(edition)
+        notice_emit("news_edition", title, body, source_event_id="news-edition:" + eid)
 
 
 def usage_alert_send(message, title=None, kind="info", project=None):
@@ -762,8 +763,14 @@ def news_editions_payload():
     policy = news_editions.policy_from_config(config)
     conn = news_conn()
     latest = news_editions.latest_readable(conn)
-    editions = news_editions.list_editions(conn, 30, until_ms=int(time.time() * 1000))
+    now_ms = int(time.time() * 1000)
+    editions = news_editions.list_editions(conn, 30, until_ms=now_ms)
+    summarizer = (config or {}).get("summarizer") if isinstance((config or {}).get("summarizer"), dict) else {}
+    steps = summarizer.get("steps") if summarizer.get("kind") == "chain" else [summarizer] if summarizer else []
+    chain = [f"{st.get('agent') or st.get('kind')}:{st.get('model') or 'predeterminado'}"
+             for st in steps if isinstance(st, dict)]
     return {**status, "latest": latest["id"] if latest else None, "editions": editions,
+            "next": news_editions.next_scheduled(conn, now_ms), "chain": chain,
             "policy": {k: policy[k] for k in ("timezone", "slots", "maxSources", "budgetUsd")}}
 
 

@@ -734,3 +734,29 @@ def test_each_story_keeps_the_model_that_summarized_it(conn):
     assert got["edition"]["models"] == {"opencode:free": 1, "claude:opus": 1}
     assert got["edition"]["notes"].count("opencode falló: caído") == 1
     assert got["edition"]["job"]["startedAt"] and got["edition"]["job"]["finishedAt"]
+
+
+def test_notice_text_says_what_the_summary_brings_and_who_wrote_it():
+    ok = {"id": "2026-09-29@15:00", "slot": "15:00", "status": "partial", "storyCount": 23,
+          "models": {"opencode:opencode/longcat-2.5-preview-free": 20, "claude:claude-opus-5-5": 3}}
+    assert ne.notice_text(ok) == ("Resumen de las 15:00 listo",
+                                  "23 noticias · resumido con longcat-2.5-preview-free y claude-opus-5-5")
+    bad = {"id": "2026-09-29@21:00", "slot": "21:00", "status": "failed", "storyCount": 0, "models": {},
+           "notes": ["3 fuente(s) no respondieron: dorahacks, reddit, searxng."]}
+    assert ne.notice_text(bad) == ("El resumen de las 21:00 no se generó",
+                                   "3 fuente(s) no respondieron: dorahacks, reddit, searxng.")
+
+
+def test_failed_summaries_also_notify(conn):
+    policy = ne.default_policy()
+    ne.schedule_editions(conn, date(2026, 9, 29), policy)
+    seen = []
+    ne.run_due(conn, ms(2026, 9, 29, 9, 1), policy, fetch=FakeFetch([]), summarize=FakeSummarize(),
+               notify=seen.append)
+    assert [e["status"] for e in seen] == ["empty"]
+
+
+def test_next_scheduled_summary(conn):
+    policy = ne.default_policy()
+    ne.schedule_editions(conn, date(2026, 9, 29), policy)
+    assert ne.next_scheduled(conn, ms(2026, 9, 29, 10))["id"] == "2026-09-29@15:00"
