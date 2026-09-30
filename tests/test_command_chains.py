@@ -62,3 +62,22 @@ def test_slug_with_trailing_newline_is_rejected(tmp_path):
         cc.delete_chain(tmp_path, "a\n")
     with pytest.raises(cc.ChainError):
         cc.save_chain(tmp_path, "A", STEPS, slug="a\n")
+
+
+def test_failed_write_leaves_no_tmp_file(tmp_path):
+    with pytest.raises(UnicodeError):
+        cc.save_chain(tmp_path, "a\ud800b", [{"kind": "shell", "text": "x"}])
+    assert list(tmp_path.glob("*.tmp")) == []
+
+
+def test_unwritable_dir_raises_oserror_without_tmp(tmp_path):
+    import os
+    if os.geteuid() == 0:
+        pytest.skip("root ignora los permisos")
+    tmp_path.chmod(0o500)
+    try:
+        with pytest.raises(OSError):
+            cc.save_chain(tmp_path, "x", [{"kind": "shell", "text": "x"}])
+        assert list(tmp_path.glob("*.tmp")) == []
+    finally:
+        tmp_path.chmod(0o700)

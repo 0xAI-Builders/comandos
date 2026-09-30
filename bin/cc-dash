@@ -9671,6 +9671,8 @@ class Handler(http.server.SimpleHTTPRequestHandler):
                                                   data.get("steps"), slug=data.get("slug") or None)
             except command_chains.ChainError as exc:
                 return self._json(400, {"error": str(exc)})
+            except (OSError, UnicodeError) as exc:
+                return self._json(500, {"error": f"No se pudo guardar la cadena: {exc.__class__.__name__}"})
             return self._json(200, {"ok": True, "chain": chain})
 
         if self.path == "/chains/delete":
@@ -9678,6 +9680,8 @@ class Handler(http.server.SimpleHTTPRequestHandler):
                 deleted = command_chains.delete_chain(command_chains.default_dir(), data.get("slug"))
             except command_chains.ChainError as exc:
                 return self._json(400, {"error": str(exc)})
+            except (OSError, UnicodeError) as exc:
+                return self._json(500, {"error": f"No se pudo borrar la cadena: {exc.__class__.__name__}"})
             return self._json(200, {"ok": True, "deleted": deleted})
 
         if self.path == "/snippets":

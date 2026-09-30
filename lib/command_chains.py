@@ -110,8 +110,15 @@ def save_chain(directory, name, steps, slug=None):
             slug, n = f"{base}-{n}", n + 1
     path = _path(directory, slug)
     tmp = path.with_suffix(".md.tmp")
-    tmp.write_text(body, encoding="utf-8")
-    os.replace(tmp, path)
+    try:
+        tmp.write_text(body, encoding="utf-8")
+        os.replace(tmp, path)
+    except BaseException:
+        try:
+            tmp.unlink()
+        except OSError:
+            pass
+        raise
     return {"slug": slug, "name": str(name).strip(), "steps": _check_steps(steps)}
 
 
