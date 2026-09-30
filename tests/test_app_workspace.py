@@ -96,22 +96,37 @@ def test_close_signal_with_a_list_closes_every_listed_tab(tmp_path):
     assert closed == [('a', False), ('b', False)]
 
 
-def test_desktop_restores_its_own_focus_once_without_overriding_a_choice():
+def test_desktop_reopens_on_the_last_tab_unless_the_user_already_picked_one():
+    """Grill 30-sep: «cuando cargo ComandOS no me pone la última sesión». The
+    restore used to run only when the current tab was local, but restore_tabs
+    leaves the LAST restored tab selected, so it never ran."""
     selected = []
-    page = SimpleNamespace(_key='local')
-    ns = {'_WS': {}, 'tabs': {'alpha': 1}, 'ws_select': selected.append,
+    page = SimpleNamespace(_key='beta')           # restore_tabs left another tab selected
+    ns = {'_WS': {}, '_PRESENCE': {'last': 0.0}, 'tabs': {'alpha': 1, 'beta': 1}, 'ws_select': selected.append,
           'nb': SimpleNamespace(get_nth_page=lambda i: page, get_current_page=lambda: 0)}
     load('_ws_restore_focus', ns)((200, {'activeTabId': 'alpha'}))
-    assert selected == ['alpha']
-    page._key = 'beta'
+    assert selected == ['alpha'] and ns['_WS']['focus_ready'] is True
+    ns['_WS'] = {}
+    ns['_PRESENCE']['last'] = 123.0               # a real click/key already chose a tab
     load('_ws_restore_focus', ns)((200, {'activeTabId': 'alpha'}))
-    assert selected == ['alpha']
+    assert selected == ['alpha'], "a choice made by the person is never overridden"
+
+
+def test_focus_is_not_saved_until_the_restore_answered():
+    posts = []
+    page = SimpleNamespace(_key='beta')
+    ns = {'_WS': {'focus_restored': True}, 'WS_DEVICE': 'desktop-x',
+          'nb': SimpleNamespace(get_nth_page=lambda i: page, get_current_page=lambda: 0),
+          '_dash_call': lambda path, payload=None, timeout=15: posts.append((path, payload)) or (200, {}),
+          '_in_background': lambda work, done: done(work())}
+    load('_ws_save_focus', ns)()
+    assert posts == [], "the tab restore_tabs happened to leave selected must not overwrite the saved focus"
 
 
 def test_desktop_saves_focus_per_device_only_when_it_changes():
     posts = []
     page = SimpleNamespace(_key='alpha')
-    ns = {'_WS': {'focus_restored': True}, 'WS_DEVICE': 'desktop-x',
+    ns = {'_WS': {'focus_restored': True, 'focus_ready': True}, 'WS_DEVICE': 'desktop-x',
           'nb': SimpleNamespace(get_nth_page=lambda i: page, get_current_page=lambda: 0),
           '_dash_call': lambda path, payload=None, timeout=15: posts.append((path, payload)) or (200, {}),
           '_in_background': lambda work, done: done(work())}

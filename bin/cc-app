@@ -3884,13 +3884,17 @@ WS_DEVICE = "desktop-" + re.sub(r"[^A-Za-z0-9_.-]", "-", os.uname().nodename or 
 
 
 def _ws_restore_focus(res):
+    """Al arrancar vuelve a la última tab de este equipo. restore_tabs deja
+    seleccionada la ÚLTIMA tab restaurada (no local), así que la condición no
+    puede mirar la tab actual: solo se respeta una elección real de la persona
+    (clic o tecla desde que abrió la app)."""
     status, mine = res
     key = mine.get("activeTabId") if status == 200 else None
-    current = nb.get_nth_page(nb.get_current_page())
-    # Solo al arrancar y sin pisar una eleccion ya hecha fuera de "local".
-    if key and key in tabs and getattr(current, "_key", None) in (None, "local"):
+    chose = (_PRESENCE.get("last") or 0) > 0
+    if key and key in tabs and not chose:
         ws_select(key)
     _WS["focus_saved"] = key
+    _WS["focus_ready"] = True
 
 
 # Presencia del escritorio para la politica compartida de avisos (N2): la
@@ -3923,8 +3927,8 @@ def _presence_window_state(_win, event):
 def _ws_save_focus(*_):
     page = nb.get_nth_page(nb.get_current_page())
     key = getattr(page, "_key", None)
-    if not key or not _WS.get("focus_restored") or key == _WS.get("focus_saved"):
-        return False
+    if not key or not _WS.get("focus_ready") or key == _WS.get("focus_saved"):
+        return False   # antes de la respuesta del restore, la tab actual es la de restore_tabs, no la tuya
     _WS["focus_saved"] = key
     _in_background(lambda: _dash_call("/workspace/client", {"deviceId": WS_DEVICE, "activeTabId": key}, timeout=3),
                    lambda res: res[0] == 200 or _WS.update(focus_saved=None))

@@ -6912,8 +6912,12 @@ async function restoreDeviceFocus(){
   try{
     const mine = await api("/workspace/client?deviceId=" + encodeURIComponent(WS_DEVICE));
     wsFocusSaved = mine.activeTabId || null;
-    if(mine.activeTabId && openTerms.has(mine.activeTabId) && !activeView.startsWith("term:"))
+    // La primera vista es la última sesión de este dispositivo, también en el
+    // celular: cambiar solo activeTerm dejaba la vista en el panel.
+    if(mine.activeTabId && openTerms.has(mine.activeTabId) && !activeView.startsWith("term:")){
       activeTerm = mine.activeTabId;
+      activeView = "term:" + mine.activeTabId;
+    }
   }catch(e){}
 }
 async function loadDesktopTabs(){

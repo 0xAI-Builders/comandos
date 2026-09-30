@@ -3486,3 +3486,25 @@ def test_mobile_toolbar_answers_agent_prompts_with_si_and_no():
     table = TERM_HTML[start:TERM_HTML.index("});", start) + 3]
     result = run_node_json(table + "\nconsole.log(JSON.stringify({yes: TOOLBAR_KEYS.yes, no: TOOLBAR_KEYS.no}));")
     assert result == {"yes": "\r", "no": "\x1b"}
+
+
+def test_remote_opens_on_the_last_session_of_this_device():
+    """Grill 30-sep: al cargar ComandOS la primera vista es la última sesión,
+    también en el celular (antes solo cambiaba activeTerm y se quedaba en el panel)."""
+    fn = extract_js_function(HTML, "restoreDeviceFocus")
+    result = run_node_json(f"""
+let wsFocusRestored = false, wsFocusSaved = null, activeView = "panel", activeTerm = "local";
+const WS_DEVICE = "web-1";
+const openTerms = new Map([["local", {{}}], ["term-r49461", {{}}]]);
+async function api(path) {{ return {{activeTabId: "term-r49461"}}; }}
+{fn}
+(async () => {{
+  await restoreDeviceFocus();
+  const first = {{activeView, activeTerm}};
+  wsFocusRestored = false; activeView = "term:local"; activeTerm = "local";
+  await restoreDeviceFocus();
+  console.log(JSON.stringify({{first, chosen: {{activeView, activeTerm}}}}));
+}})();
+""")
+    assert result["first"] == {"activeView": "term:term-r49461", "activeTerm": "term-r49461"}
+    assert result["chosen"] == {"activeView": "term:local", "activeTerm": "local"}, "never steals a choice"
