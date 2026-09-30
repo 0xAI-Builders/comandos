@@ -5690,17 +5690,14 @@ def hourglass_sheet_frames(sheet_width, sheet_height, scale=1.0):
 
 
 def hourglass_frame(block, now_ms, flip_start_ms):
-    """Cuadro del reloj: 0-20 según lo transcurrido del bloque, goteo si corre, 21-26 al terminar."""
+    """Cuadro del reloj (grill 30-sep: siempre animado con sus sprites): la arena cae
+    cuadro a cuadro y el vidrio se voltea, en bucle; flip_start_ms repite el giro al
+    terminar un bloque. Igual que P.hourglassFrame en dash/pomodoro.js."""
     if flip_start_ms is not None and 0 <= now_ms - flip_start_ms < 6 * 110:
         return 21 + int((now_ms - flip_start_ms) // 110)
-    if not block or block.get("status") not in ("running", "paused") or not block.get("targetMs"):
-        return 0
-    delta = max(0, now_ms - (block.get("resumedAtMs") or 0)) if block["status"] == "running" else 0
-    elapsed = min(block["targetMs"], (block.get("activeMs") or 0) + delta)
-    base = min(20, int(elapsed / block["targetMs"] * 20))
-    if block["status"] != "running":
-        return base
-    return min(20, base + 1) if int(now_ms // 450) % 3 == 0 else base
+    fill = 21 * 350
+    t = now_ms % (fill + 6 * 110)
+    return int(t // 350) if t < fill else 21 + int((t - fill) // 110)
 
 
 _HOURGLASS = {"frames": [], "dim": [], "index": -1, "image": None, "source": None,

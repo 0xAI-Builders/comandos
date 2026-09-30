@@ -159,14 +159,15 @@
   const HOURGLASS = anim('comandos/hourglass.png', 32, 32, 27, 10, 'progress');
   const FILL_LAST = 20, FLIP_FIRST = 21, FLIP_FRAMES = 6, FLIP_STEP_MS = 110, DRIP_MS = 450;
 
-  /** Frame of the hourglass: the sand follows the block; flipStartMs plays the end flip. */
+  const LOOP_FILL_MS = 350, LOOP_MS = (FILL_LAST + 1) * LOOP_FILL_MS + FLIP_FRAMES * FLIP_STEP_MS;
+  /** Frame of the hourglass (grill 30-sep: always animated with its sprites): the sand
+   * falls frame by frame and the glass flips, in a loop; flipStartMs replays the flip
+   * when a block ends. The time left is the number next to it. */
   function hourglassFrame(block, nowMs, flipStartMs) {
     if (flipStartMs != null && nowMs >= flipStartMs && nowMs - flipStartMs < FLIP_FRAMES * FLIP_STEP_MS)
       return FLIP_FIRST + Math.floor((nowMs - flipStartMs) / FLIP_STEP_MS);
-    if (!block || !LIVE.includes(block.status) || !block.targetMs) return 0;
-    const base = Math.min(FILL_LAST, Math.floor(elapsedMs(block, nowMs) / block.targetMs * FILL_LAST));
-    if (block.status !== 'running') return base;
-    return Math.floor(nowMs / DRIP_MS) % 3 === 0 ? Math.min(FILL_LAST, base + 1) : base;
+    const t = ((nowMs % LOOP_MS) + LOOP_MS) % LOOP_MS, fill = (FILL_LAST + 1) * LOOP_FILL_MS;
+    return t < fill ? Math.floor(t / LOOP_FILL_MS) : FLIP_FIRST + Math.floor((t - fill) / FLIP_STEP_MS);
   }
   const CHEST = anim('karsiori-chests/golden.png', 40, 25, 5, 5 / 3, 'chest');
   const CAMPFIRE = anim('arlantr/campfire.png', 32, 32, 4, 8);
@@ -494,10 +495,11 @@
     }
   }
 
-  // The sand follows the block: repaint only when the frame changes.
+  // The hourglass is always animated; reduced motion keeps it on its first frame.
+  const reducedMotion = () => { try { return matchMedia('(prefers-reduced-motion: reduce)').matches; } catch (e) { return false; } };
   function paintSand() {
     const v = client.view();
-    const x = `-${P.hourglassFrame(v.live ? v.block : null, v.serverNowMs, ui.flipAt) * 32}px`;
+    const x = reducedMotion() ? '-0px' : `-${P.hourglassFrame(v.live ? v.block : null, v.serverNowMs, ui.flipAt) * 32}px`;
     document.querySelectorAll('.pm-motion-progress>.pm-pixel').forEach(el => {   // re-rendered sprites included
       if (el.style.backgroundPositionX !== x) el.style.backgroundPositionX = x;
     });

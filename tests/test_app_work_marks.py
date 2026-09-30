@@ -176,8 +176,8 @@ def test_context_menu_offers_tab_and_identified_pane_only():
     assert none.children == []
 
 
-def test_header_hourglass_is_the_own_strip_and_follows_the_block():
-    """Grill 30-sep: our own 27-frame 32 px strip; the sand is the real time (C)."""
+def test_header_hourglass_is_the_own_strip_and_always_animates():
+    """Grill 30-sep: our own turquoise 27-frame 32 px strip, always animated."""
     ns = {"CC_REPO": str(ROOT), "os": __import__("os"), "GdkPixbuf": None, "HOURGLASS_FRAME_PX": 32}
     tree = ast.parse(SOURCE)
     nodes = [n for n in tree.body if isinstance(n, ast.FunctionDef) and n.name in ("hourglass_sheet_frames", "hourglass_frame")]
@@ -188,8 +188,10 @@ def test_header_hourglass_is_the_own_strip_and_follows_the_block():
     f = ns["hourglass_frame"]
     block = lambda status, active: {"status": status, "targetMs": 25 * 60000, "activeMs": active, "resumedAtMs": 0}
     assert f(None, 0, None) == 0
-    assert f(block("paused", 12.5 * 60000), 0, None) == 10
-    assert sorted(f(block("running", 5 * 60000), t, None) for t in (0, 450, 900)) == [4, 4, 5]
+    assert f(None, 350 * 10, None) == 10, "always animated, like the web"
+    assert f(block("paused", 5 * 60000), 350 * 10, None) == 10
+    assert [f(None, 21 * 350 + d, None) for d in (0, 110, 550)] == [21, 22, 26]
+    assert f(None, 21 * 350 + 6 * 110, None) == 0, "loops"
     assert [f(None, 1000 + d, 1000) for d in (0, 110, 550)] == [21, 22, 26]
     assert (ROOT / "assets" / "pomodoro" / "comandos" / "hourglass.png").is_file()
 

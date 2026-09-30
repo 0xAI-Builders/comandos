@@ -231,17 +231,14 @@ async function readySounds(storage = memoryStorage(), log = []) {
     assert.equal(v.ui.client.snapshot().settings.style, 'crystals', 'a command answer keeps settings/progress from the last GET');
   });
 
-  await check('the sand is the real time: fill frames 0-20, drip, freeze on pause, flip 21-26 at the end', () => {
+  await check('the hourglass is always animated: sand falls 0-20 every 350 ms, flips 21-26, loops; a block end replays the flip', () => {
     const b = (status, activeMs) => ({ status, targetMs: 25 * MIN, activeMs, resumedAtMs: 0 });
-    assert.equal(P.hourglassFrame(null, 0, null), 0, 'idle rests on the first frame');
-    assert.equal(P.hourglassFrame(b('paused', 0), 0, null), 0);
-    assert.equal(P.hourglassFrame(b('paused', 12.5 * MIN), 0, null), 10, 'half the block, half the fill');
-    assert.equal(P.hourglassFrame(b('paused', 25 * MIN), 0, null), 20);
-    const drip = [0, 450, 900].map(t => P.hourglassFrame(b('running', 5 * MIN), t, null));
-    assert.deepEqual(drip.sort(), [4, 4, 5], 'a running clock drips one frame ahead now and then');
-    assert.equal(P.hourglassFrame(b('paused', 5 * MIN), 450 * 7, null), 4, 'paused never drips');
-    assert.deepEqual([0, 110, 220, 330, 440, 550].map(d => P.hourglassFrame(null, 1000 + d, 1000)), [21, 22, 23, 24, 25, 26]);
-    assert.equal(P.hourglassFrame(null, 1000 + 700, 1000), 0, 'after the flip it rests');
+    assert.equal(P.hourglassFrame(null, 0, null), 0);
+    assert.equal(P.hourglassFrame(null, 350 * 10, null), 10, 'the sand keeps falling with no Pomodoro');
+    assert.equal(P.hourglassFrame(b('paused', 5 * MIN), 350 * 10, null), 10, 'the same animation when paused or running');
+    assert.deepEqual([0, 110, 550].map(d => P.hourglassFrame(null, 21 * 350 + d, null)), [21, 22, 26], 'flip at the end of the fill');
+    assert.equal(P.hourglassFrame(null, 21 * 350 + 6 * 110, null), 0, 'then it loops');
+    assert.deepEqual([0, 110, 220, 330, 440, 550].map(d => P.hourglassFrame(null, 1000 + d, 1000)), [21, 22, 23, 24, 25, 26], 'a block end replays the flip');
   });
 
   await check('style comes from the global setting and renders the shared hourglass', async () => {
