@@ -1,0 +1,507 @@
+{
+  "version": 1,
+  "source": "docs/tui-command-map.md",
+  "clis": [
+    {
+      "id": "claude",
+      "label": "Claude Code",
+      "binary": "claude",
+      "pinnedVersion": "2.1.268",
+      "verified": true,
+      "launch": {
+        "resume": "--resume <id>",
+        "extra": [
+          "{bin} {danger} --model claude-fable-5-1 --effort max"
+        ]
+      },
+      "groups": [
+        {
+          "title": "Modelo y esfuerzo",
+          "icon": "brain",
+          "commands": [
+            {
+              "text": "/model ",
+              "description": "Cambia el modelo de esta conversación; sin argumento abre el selector.",
+              "args": [
+                "claude-fable-5-1",
+                "claude-opus-5-5",
+                "claude-sonnet-5-5"
+              ]
+            },
+            {
+              "text": "/effort ",
+              "description": "Nivel de razonamiento.",
+              "args": [
+                "low",
+                "medium",
+                "high",
+                "max"
+              ]
+            },
+            {
+              "text": "/fast",
+              "description": "Salida rápida con Opus."
+            },
+            {
+              "text": "/plan",
+              "description": "Modo plan: propone antes de tocar código."
+            }
+          ]
+        },
+        {
+          "title": "Conversación",
+          "icon": "cycle",
+          "commands": [
+            {
+              "text": "/resume",
+              "description": "Elige una conversación anterior y la reanuda."
+            },
+            {
+              "text": "/fork",
+              "description": "Bifurca esta conversación en otra."
+            },
+            {
+              "text": "/compact",
+              "description": "Resume el contexto para liberar ventana."
+            },
+            {
+              "text": "/clear",
+              "description": "Limpia el historial de la sesión."
+            },
+            {
+              "text": "/exit",
+              "description": "Sale del CLI; el pane vuelve a la shell."
+            }
+          ]
+        },
+        {
+          "title": "Cuenta",
+          "icon": "key",
+          "commands": [
+            {
+              "text": "/login",
+              "description": "Inicia sesión solo en esta terminal."
+            },
+            {
+              "text": "/logout",
+              "description": "Cierra la sesión de esta terminal."
+            },
+            {
+              "text": "/cost",
+              "description": "Consumo de esta conversación."
+            }
+          ]
+        },
+        {
+          "title": "Contexto y herramientas",
+          "icon": "map",
+          "commands": [
+            {
+              "text": "/context",
+              "description": "Qué ocupa la ventana ahora."
+            },
+            {
+              "text": "/add-dir ",
+              "description": "Añade una carpeta al contexto."
+            },
+            {
+              "text": "/mcp",
+              "description": "Servidores MCP conectados."
+            },
+            {
+              "text": "/agents",
+              "description": "Subagentes disponibles."
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "codex",
+      "label": "Codex",
+      "binary": "codex",
+      "pinnedVersion": "0.154.0",
+      "verified": true,
+      "launch": {
+        "resume": "resume <id>",
+        "extra": [
+          "{bin} --full-auto"
+        ]
+      },
+      "groups": [
+        {
+          "title": "Modelo y esfuerzo",
+          "icon": "brain",
+          "commands": [
+            {
+              "text": "/model",
+              "description": "Selector numerado: modelo y luego esfuerzo."
+            },
+            {
+              "text": "/plan",
+              "description": "Modo plan."
+            }
+          ]
+        },
+        {
+          "title": "Conversación",
+          "icon": "cycle",
+          "commands": [
+            {
+              "text": "/resume",
+              "description": "Reanuda una conversación."
+            },
+            {
+              "text": "/fork",
+              "description": "Bifurca."
+            },
+            {
+              "text": "/compact",
+              "description": "Compacta el contexto."
+            },
+            {
+              "text": "/new",
+              "description": "Conversación nueva."
+            },
+            {
+              "text": "/exit",
+              "description": "Sale del CLI."
+            }
+          ]
+        },
+        {
+          "title": "Cuenta",
+          "icon": "key",
+          "commands": [
+            {
+              "text": "/logout",
+              "description": "Cierra sesión."
+            }
+          ]
+        },
+        {
+          "title": "Contexto y herramientas",
+          "icon": "map",
+          "commands": [
+            {
+              "text": "/review",
+              "description": "Revisión de cambios."
+            },
+            {
+              "text": "/skills",
+              "description": "Skills disponibles."
+            },
+            {
+              "text": "/hooks",
+              "description": "Hooks configurados."
+            },
+            {
+              "text": "/cd ",
+              "description": "Cambia de carpeta."
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "grok",
+      "label": "Grok Build",
+      "binary": "grok",
+      "pinnedVersion": "1.0.25",
+      "verified": true,
+      "launch": {
+        "resume": "--resume <id>",
+        "extra": []
+      },
+      "groups": [
+        {
+          "title": "Modelo y esfuerzo",
+          "icon": "brain",
+          "commands": [
+            {
+              "text": "/model ",
+              "description": "Alias /m. Cambia el modelo.",
+              "args": [
+                "grok-5",
+                "grok-5-mini"
+              ]
+            },
+            {
+              "text": "/effort ",
+              "description": "Esfuerzo.",
+              "args": [
+                "low",
+                "high"
+              ]
+            },
+            {
+              "text": "/plan",
+              "description": "Modo plan."
+            },
+            {
+              "text": "/auto",
+              "description": "Modo automático."
+            }
+          ]
+        },
+        {
+          "title": "Conversación",
+          "icon": "cycle",
+          "commands": [
+            {
+              "text": "/resume",
+              "description": "Reanuda."
+            },
+            {
+              "text": "/fork",
+              "description": "Bifurca."
+            },
+            {
+              "text": "/rewind",
+              "description": "Alias /undo."
+            },
+            {
+              "text": "/new",
+              "description": "Nueva."
+            },
+            {
+              "text": "/exit",
+              "description": "Sale."
+            }
+          ]
+        },
+        {
+          "title": "Cuenta",
+          "icon": "key",
+          "commands": [
+            {
+              "text": "/login",
+              "description": "Inicia sesión."
+            },
+            {
+              "text": "/logout",
+              "description": "Cierra sesión."
+            },
+            {
+              "text": "/usage",
+              "description": "Cuota semanal."
+            }
+          ]
+        },
+        {
+          "title": "Contexto y herramientas",
+          "icon": "map",
+          "commands": [
+            {
+              "text": "/context",
+              "description": "Ventana actual."
+            },
+            {
+              "text": "/compact",
+              "description": "Compacta."
+            },
+            {
+              "text": "/skills",
+              "description": "Skills."
+            },
+            {
+              "text": "/mcps",
+              "description": "MCPs."
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "opencode",
+      "label": "OpenCode",
+      "binary": "opencode",
+      "pinnedVersion": "1.17.18",
+      "verified": true,
+      "launch": {
+        "resume": "--session <id>",
+        "extra": [],
+        "yoloNote": "sin flag de arranque conocido; el modo se cambia dentro con /agents"
+      },
+      "groups": [
+        {
+          "title": "Modelo",
+          "icon": "brain",
+          "commands": [
+            {
+              "text": "/models",
+              "description": "Alias /mo. Elige modelo."
+            },
+            {
+              "text": "/variants",
+              "description": "Variantes del modelo."
+            },
+            {
+              "text": "/agents",
+              "description": "Agente activo."
+            }
+          ]
+        },
+        {
+          "title": "Conversación",
+          "icon": "cycle",
+          "commands": [
+            {
+              "text": "/new",
+              "description": "Alias /clear. Nueva."
+            },
+            {
+              "text": "/sessions",
+              "description": "Alias /resume. Reanuda."
+            },
+            {
+              "text": "/fork",
+              "description": "Bifurca."
+            },
+            {
+              "text": "/undo",
+              "description": "Deshace."
+            },
+            {
+              "text": "/exit",
+              "description": "Sale."
+            }
+          ]
+        },
+        {
+          "title": "Cuenta",
+          "icon": "key",
+          "commands": [
+            {
+              "text": "/connect",
+              "description": "Conecta un proveedor."
+            },
+            {
+              "text": "/org",
+              "description": "Cambia de organización."
+            }
+          ]
+        },
+        {
+          "title": "Contexto",
+          "icon": "map",
+          "commands": [
+            {
+              "text": "/compact",
+              "description": "Alias /summarize."
+            },
+            {
+              "text": "/skills",
+              "description": "Skills."
+            },
+            {
+              "text": "/mcps",
+              "description": "MCPs."
+            },
+            {
+              "text": "/help",
+              "description": "Ayuda."
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "agy",
+      "label": "Antigravity",
+      "binary": "agy",
+      "pinnedVersion": "1.1.25",
+      "verified": false,
+      "launch": {
+        "resume": "--conversation <id>",
+        "extra": []
+      },
+      "groups": [
+        {
+          "title": "Modelo",
+          "icon": "brain",
+          "commands": [
+            {
+              "text": "/model",
+              "description": "Modelo."
+            },
+            {
+              "text": "/effort ",
+              "description": "Esfuerzo.",
+              "args": [
+                "low",
+                "high"
+              ]
+            },
+            {
+              "text": "/plan",
+              "description": "Plan."
+            }
+          ]
+        },
+        {
+          "title": "Conversación",
+          "icon": "cycle",
+          "commands": [
+            {
+              "text": "/clear",
+              "description": "Alias /new."
+            },
+            {
+              "text": "/fork",
+              "description": "Alias /branch."
+            },
+            {
+              "text": "/resume",
+              "description": "Alias /switch."
+            },
+            {
+              "text": "/rewind",
+              "description": "Alias /undo."
+            },
+            {
+              "text": "/exit",
+              "description": "Sale."
+            }
+          ]
+        },
+        {
+          "title": "Cuenta",
+          "icon": "key",
+          "commands": [
+            {
+              "text": "/logout",
+              "description": "Cierra sesión."
+            },
+            {
+              "text": "/usage",
+              "description": "Alias /quota."
+            }
+          ]
+        },
+        {
+          "title": "Contexto",
+          "icon": "map",
+          "commands": [
+            {
+              "text": "/add-dir ",
+              "description": "Añade carpeta."
+            },
+            {
+              "text": "/mcp",
+              "description": "MCPs."
+            },
+            {
+              "text": "/skills",
+              "description": "Skills."
+            },
+            {
+              "text": "/context",
+              "description": "Ventana."
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
