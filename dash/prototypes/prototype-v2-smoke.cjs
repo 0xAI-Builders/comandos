@@ -5,6 +5,6 @@ function el(){const e={style:{},dataset:{},children:[],classList:{add(){},remove
 const results=[];
 function run(round,key,val){global.window=global;global.innerWidth=1440;global.innerHeight=1000;global.location={href:'http://x/p.html?round='+round+'&'+key+'='+val+'&sel=2'};global.history={replaceState(){}};global.crypto={randomUUID(){return'u'}};global.KeyboardEvent=class{};global.MouseEvent=class{};global.DragEvent=class{};global.PointerEvent=class{};global.DataTransfer=class{};
  global.document={documentElement:el(),body:el(),getElementById(){return el()},querySelector(){return el()},querySelectorAll(){return[]},createElement(){return el()},addEventListener(){},dispatchEvent(){}};
- try{new Function(js)();results.push([round,val,'ok'])}catch(e){results.push([round,val,'FAIL '+e.message])}}
+ try{new Function(js+'\n;render();render();')();results.push([round,val,'ok'])}catch(e){results.push([round,val,'FAIL '+e.message])}}
 for(const v of 'ABCDE'){run('top','top',v)}for(const v of 'ABCDE'){run('run','u',v)}for(const v of 'ABCDE'){run('fila','r',v)}for(const v of 'ABCDE'){run('cli','c',v)}for(const v of 'ABCDE'){run('lado','l',v)}for(const v of 'ABCDE'){run('tablero','t',v)}for(const v of 'ABCDE'){run('modal','modal',v)}for(const v of 'ABCDE'){run('barra','variant',v)}
 console.log(results.map(r=>r.join(' ')).join('\n'));process.exit(results.some(r=>r[2]!=='ok')?1:0)
