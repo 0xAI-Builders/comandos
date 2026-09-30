@@ -9,7 +9,7 @@
 // data-add y un botón «+ cadena».
 (function (root) {
   'use strict';
-  const KEY_OPEN = 'comandos.commands.open', KEY_PREF = 'comandos.commands.preferred.';
+  const KEY_OPEN = 'comandos.commands.open.v2', KEY_PREF = 'comandos.commands.preferred.';
   const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   const STATUS_TEXT = { ok: '', drift: 'sin verificar · el CLI confirma', missing: 'no instalado', unverified: 'sin verificar' };
   const CONTROL_RE = /[\x00-\x1f\x7f]/;
@@ -166,32 +166,16 @@
       state.cliInPane = payload.cliInPane || '';
       state.catalogTarget = payload.target || null;
       let changed = false;
+      // Todos los CLI arrancan cerrados (pedido de Jesús, 30-sep): solo
+      // «Cadenas guardadas» se abre la primera vez; el CLI del pane se marca
+      // con su badge, pero no se despliega solo.
       if (state.firstRender && state.catalog) {
-        const t = target();
-        const id = hereCli() || (t ? read(prefKey(t)) || '' : '');
         state.open.add('saved');
-        const cli = clis().find(c => c.id === id);
-        if (cli) {
-          state.open.add(cli.id); state.open.add(`${cli.id}:yolo`);
-          if (!narrow()) state.open.add(`${cli.id}:normal`);
-        }
         state.firstRender = false;
         changed = true;
       }
-      // Destino nuevo (también con estado abierto persistido): el CLI detectado
-      // en el pane se abre solo; sin CLI, el último arrancado ahí. Solo añade;
-      // nunca pliega nada.
       const t = target();
       const applied = state.catalogTarget || (t ? { session: t.session, pane: t.pane } : null);
-      if (applied && !sameTarget(applied, state.appliedTarget) && state.catalog) {
-        const key = t && sameTarget(t, applied) ? (t.paneKey || t.pane) : applied.pane;
-        const id = state.cliInPane || (key ? read(KEY_PREF + key) || '' : '');
-        const cli = id ? clis().find(c => c.id === id) : null;
-        if (cli && !(state.open.has(cli.id) && state.open.has(`${cli.id}:yolo`))) {
-          state.open.add(cli.id); state.open.add(`${cli.id}:yolo`); changed = true;
-          if (!narrow()) state.open.add(`${cli.id}:normal`);
-        }
-      }
       state.appliedTarget = applied ? { session: applied.session, pane: applied.pane } : null;
       if (changed) writeOpen();
       render();

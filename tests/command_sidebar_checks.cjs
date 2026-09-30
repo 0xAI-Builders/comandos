@@ -25,13 +25,18 @@ const catalog = JSON.parse(fs.readFileSync(process.cwd() + '/tests/fixtures/comm
   const sb = createCommandSidebar({ api, root, storage, makeId: () => 'id-' + (++ids), getTarget: () => target, focusTarget: () => {}, openBuilder: () => {}, toast: (m, e) => toasts.push([m, e]), terminals: () => [] });
   await sb.refresh();
   assert.equal(calls[0][0], '/commands/catalog?session=demo&pane=%252');
-  // 1) el CLI del pane abre solo, marcado, con yolo primero y todo plegable
+  // 1) todo CLI arranca cerrado; el del pane va marcado, con yolo primero y plegable
   assert.equal(root.querySelector('.cs-cli.here').dataset.cli, 'codex');
+  assert.equal(root.querySelectorAll('.cs-cli.open').length, 0);
+  assert.deepEqual(JSON.parse(store.get('comandos.commands.open.v2')), ['saved']);
   assert.equal(root.querySelector('.cs-cli.here .launch').classList.contains('yolo'), true);
   assert.equal(root.querySelector('.cs-cli.here .launch.yolo .cmd').dataset.cmd, 'codex --dangerously-bypass-approvals-and-sandbox');
+  root.click('.cs-cli.here .cli-h'); assert.equal(root.querySelector('.cs-cli.here').classList.contains('open'), true);
   root.click('.cs-cli.here .cli-h'); assert.equal(root.querySelector('.cs-cli.here').classList.contains('open'), false);
   root.click('.cs-cli.here .cli-h'); assert.equal(root.querySelector('.cs-cli.here').classList.contains('open'), true);
-  assert.equal(JSON.parse(store.get('comandos.commands.open')).includes('codex'), true);
+  // abierto: se ve la lista entera del catálogo de ese CLI
+  assert.equal(root.querySelectorAll('.cs-cli.here .cmds .cmd').length, catalog.clis.find(c => c.id === 'codex').groups[0].commands.length);
+  assert.equal(JSON.parse(store.get('comandos.commands.open.v2')).includes('codex'), true);
   // R4: todo CLI, bloque de arranque y grupo está en el DOM aunque esté plegado
   assert.equal(root.querySelectorAll('.cs-cli').length, 5);
   // ronda 6 A aprobada: lista plana, sin subtítulos de grupo
@@ -138,22 +143,21 @@ const catalog = JSON.parse(fs.readFileSync(process.cwd() + '/tests/fixtures/comm
   assert.equal(root.querySelector('.cs-search'), searchEl);
   root.input('.cs-search', '');
   assert.equal(root.querySelectorAll('.cmd[hidden]').length, 0);
-  // fix 3: con estado abierto ya persistido, una terminal rápida con CLI recordado lo abre (solo añade)
-  const store3 = new Map([['comandos.commands.open', JSON.stringify(['saved', 'codex'])], ['comandos.commands.preferred.term-q2:%8', 'grok']]);
+  // cambiar de destino nunca abre CLIs: el estado abierto es solo lo que el usuario abrió
+  const store3 = new Map([['comandos.commands.open.v2', JSON.stringify(['saved', 'codex'])], ['comandos.commands.preferred.term-q2:%8', 'grok']]);
   const storage3 = { getItem: k => store3.get(k) ?? null, setItem: (k, v) => store3.set(k, v), removeItem: k => store3.delete(k) };
   let target3 = { session: 'demo', pane: '%2', kind: 'pane', title: 'demo %2' };
   const root3 = mkRoot();
   const sb3 = createCommandSidebar({ api, root: root3, storage: storage3, makeId: () => 'z', getTarget: () => target3, toast: () => {} });
   sb3.applyCatalog({ cliInPane: 'codex', target: { session: 'demo', pane: '%2' }, catalog, versionsAt: 1 });
   assert.equal(root3.querySelector('.cs-cli[data-cli="grok"]').classList.contains('open'), false);
-  // V1: con estado persistido, el CLI detectado en el pane se abre solo (con su arranque yolo)
-  assert.equal(root3.querySelector('.cs-cli[data-cli="codex"] .launch.yolo').classList.contains('open'), true);
+  assert.equal(root3.querySelector('.cs-cli[data-cli="codex"]').classList.contains('open'), true);
   target3 = { session: 'term-q2', pane: '%8', paneKey: 'term-q2:%8', kind: 'term', title: 'Terminal' };
   sb3.applyCatalog({ cliInPane: '', target: { session: 'term-q2', pane: '%8' }, catalog, versionsAt: 1 });
+  assert.equal(root3.querySelector('.cs-cli[data-cli="grok"]').classList.contains('open'), false);
+  assert.deepEqual(JSON.parse(store3.get('comandos.commands.open.v2')).sort(), ['codex', 'saved']);
+  root3.click('.cs-cli[data-cli="grok"] .cli-h');
   assert.equal(root3.querySelector('.cs-cli[data-cli="grok"]').classList.contains('open'), true);
-  assert.equal(root3.querySelector('.cs-cli[data-cli="grok"] .launch.yolo').classList.contains('open'), true);
-  assert.equal(root3.querySelector('.cs-cli[data-cli="codex"]').classList.contains('open'), true);
-  assert.deepEqual(JSON.parse(store3.get('comandos.commands.open')).sort(), ['codex', 'codex:normal', 'codex:yolo', 'grok', 'grok:normal', 'grok:yolo', 'saved']);
   // el usuario lo pliega: repetir el catálogo del mismo destino no lo reabre
   root3.click('.cs-cli[data-cli="grok"] .cli-h');
   sb3.applyCatalog({ cliInPane: '', target: { session: 'term-q2', pane: '%8' }, catalog, versionsAt: 2 });
@@ -218,7 +222,7 @@ const catalog = JSON.parse(fs.readFileSync(process.cwd() + '/tests/fixtures/comm
     await sbK.refresh();
     const H = key => rootK.querySelector(`.cs-cli[data-cli="${key}"] .cli-h`);
     assert.equal(H('grok').getAttribute('role'), 'button'); assert.equal(H('grok').getAttribute('tabindex'), '0');
-    assert.equal(H('grok').getAttribute('aria-expanded'), 'false'); assert.equal(H('codex').getAttribute('aria-expanded'), 'true');
+    assert.equal(H('grok').getAttribute('aria-expanded'), 'false'); assert.equal(H('codex').getAttribute('aria-expanded'), 'false');
     for (const n of rootK.querySelectorAll('[data-toggle]')) assert.equal(n.getAttribute('role') === 'button' && n.getAttribute('tabindex') === '0' && (n.getAttribute('aria-expanded') === 'true' || n.getAttribute('aria-expanded') === 'false'), true, n.dataset.toggle);
     let prevented = 0;
     rootK.dispatch('keydown', H('grok'), { key: 'Enter', preventDefault() { prevented++; } });
@@ -230,6 +234,7 @@ const catalog = JSON.parse(fs.readFileSync(process.cwd() + '/tests/fixtures/comm
     rootK.dispatch('keydown', H('grok'), { key: 'a' }); rootK.dispatch('keydown', H('grok'), { key: 'Enter', isComposing: true });
     rootK.dispatch('keydown', H('grok').querySelector('.nm'), { key: 'Enter' });        // solo el encabezado mismo
     assert.equal(H('grok').getAttribute('aria-expanded'), 'false');
+    rootK.dispatch('keydown', H('codex'), { key: 'Enter' });                    // abrir el CLI abre también sus arranques
     const lab = rootK.querySelector('.cs-cli[data-cli="codex"] .launch.normal .lab3');
     assert.equal(lab.getAttribute('aria-expanded'), 'true');
     rootK.dispatch('keydown', lab, { key: 'Enter' });
