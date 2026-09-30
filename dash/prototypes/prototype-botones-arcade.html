@@ -100,7 +100,7 @@ function btns(){return [
  ['term','Terminal','gray',false],['chart','Analytics','blue',true],['phone','Remoto','green',true,S.remote],
  ['hg','Pomodoro','amber',false],['bell','Avisos','red',false,false,5],['spark','Resúmenes','purple',false],['gear','Ajustes','gray',true]];}
 function btn([ic,label,color,hasText,on,badge]){
-  const icon=ic==='hg'?`<img id="hgimg" src="assets/hourglass/dav/${String(hg).padStart(2,'0')}.png" alt="">`:svg(ic);
+  const icon=ic==='hg'?`<img id="hgimg" src="assets/hourglass/comandos/${String(hg).padStart(2,'0')}.png" alt="">`:svg(ic);
   return `<button class="k ${hasText?'txt':''} ${on?'on':''}" data-c="${color}" title="${label}" data-btn="${label}">${icon}${hasText?`<span class="lbl">${label}</span>`:''}${badge?`<span class="badge">${badge}</span>`:''}</button>`;}
 function render(){
   document.body.classList.toggle('light',S.light);
@@ -131,7 +131,7 @@ document.addEventListener('click',e=>{const t=e.target.closest('[data-s],[data-i
 document.addEventListener('pointerdown',e=>{const b=e.target.closest('.k');if(b)b.classList.add('press');});
 document.addEventListener('pointerup',()=>document.querySelectorAll('.k.press').forEach(b=>b.classList.remove('press')));
 document.addEventListener('keydown',e=>{if(e.key==='ArrowRight'||e.key==='ArrowLeft'){S.i=(S.i+(e.key==='ArrowRight'?1:V.length-1))%V.length;render();}});
-setInterval(()=>{hg=(hg+1)%21;document.querySelectorAll('#hgimg').forEach(i=>i.src=`assets/hourglass/dav/${String(hg).padStart(2,'0')}.png`);},900);
+setInterval(()=>{hg=(hg+1)%21;document.querySelectorAll('#hgimg').forEach(i=>i.src=`assets/hourglass/comandos/${String(hg).padStart(2,'0')}.png`);},900);
 (function(){const pk=document.getElementById('picker');let sx,sy,ox,oy;pk.addEventListener('pointerdown',e=>{if(!e.target.closest('[data-h]')||e.target.closest('button'))return;const r=pk.getBoundingClientRect();sx=e.clientX;sy=e.clientY;ox=r.left;oy=r.top;
  const mv=ev=>{pk.style.left=ox+ev.clientX-sx+'px';pk.style.top=oy+ev.clientY-sy+'px';pk.style.right='auto';pk.style.bottom='auto'};const up=()=>{removeEventListener('pointermove',mv);removeEventListener('pointerup',up)};addEventListener('pointermove',mv);addEventListener('pointerup',up)})})();
 render();

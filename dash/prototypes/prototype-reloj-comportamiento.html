@@ -44,8 +44,8 @@ h2{font-size:13px;color:var(--dim);letter-spacing:.8px;text-transform:uppercase;
 <div class="picker" id="picker"></div>
 <script>
 // Cuadros reales: A (Davitheoles) 0-20 llenado + 21-26 giro; B (Alexti) 0-4 chorrito en bucle.
-const A = {name:'A · Davitheoles', fill:[...Array(21).keys()], flip:[21,22,23,24,25,26], dir:'assets/hourglass/dav/'};
-const B = {name:'B · Alexti', loop:[0,1,2,3,4], dir:'assets/hourglass/alx/'};
+const A = {name:'A · ComandOS (propio)', fill:[...Array(21).keys()], flip:[21,22,23,24,25,26], dir:'assets/hourglass/comandos/'};
+const B = {name:'B · ComandOS (propio)', loop:[0,5,10,15,20], dir:'assets/hourglass/comandos/'};
 const V = [
  {k:'A', n:'Bucle continuo', d:'Mientras corre, la animación se repite a su velocidad natural (como hoy). En pausa se congela; al terminar no hace nada especial.'},
  {k:'B', n:'Arena = tiempo real', d:'El cuadro depende de cuánto va de la sesión: la arena avanza de verdad hasta el final y ahí da el giro. B (sin cuadros de nivel) solo gotea y se vacía con un fundido.'},
