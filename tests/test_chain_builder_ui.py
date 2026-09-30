@@ -39,3 +39,31 @@ def test_builder_is_loaded_and_mounted_after_the_sidebar():
     assert "commandSidebar.state.catalog" in body and "commandSidebar.state.chains" in body
     assert "commandSidebar.refresh()" in body and "commandSidebar.startChain(" in body
     assert "mountChainBuilder();" in html[html.index("function mountCommandSidebar("):start]
+
+
+def test_every_icon_used_by_the_sidebar_and_builder_exists_in_the_icon_map():
+    import json
+    import re
+    html = (ROOT / "dash" / "index.html").read_text(encoding="utf-8")
+    block = html[html.index("const ICON = {"):html.index("const svg = (name")]
+    have = set(re.findall(r'^\s{2}"?([\w-]+)"?\s*:', block, re.M))
+    used = set()
+    for f in ("command-sidebar.js", "chain-builder.js"):
+        used |= set(re.findall(r'data-icon="([\w-]+)"', (ROOT / "dash" / f).read_text()))
+    cat = json.loads((ROOT / "config" / "cli-commands.json").read_text())
+    used |= {g["icon"] for c in cat["clis"] for g in c["groups"]}
+    assert {"brain", "cycle", "key", "map"} <= used
+    assert used - have == set(), sorted(used - have)
+
+
+def test_sidebar_hydrates_icons_after_every_render():
+    html = (ROOT / "dash" / "index.html").read_text(encoding="utf-8")
+    mount = html[html.index("function mountCommandSidebar("):html.index("function mountChainBuilder(")]
+    assert "hydrate: hydrateIcons" in mount
+
+
+def test_builder_touch_rules_share_the_sidebar_specificity():
+    css = (ROOT / "dash" / "workspace.css").read_text()
+    assert ":is(#command-sidebar,.chain-only) .cmd{padding-block:11px}" in css
+    assert ":is(#command-sidebar,.chain-only) :is(.launch,.grp){border-top" in css
+    assert ".chain-only .cmd .add{min-height:34px}" in css

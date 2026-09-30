@@ -659,7 +659,7 @@ button.wm-suggest{font:600 10px system-ui;padding:2px 7px;border-radius:999px;bo
 :is(#command-sidebar,.chain-only) .cs-cli.missing .nm{color:var(--dim)}
 /* Plegado por CSS; mientras se busca (.searching) se muestra todo lo que coincide. */
 :is(#command-sidebar:not(.searching),.chain-only) .cs-cli:not(.open)>:not(.cli-h),#command-sidebar .cs-saved:not(.open)>:not(.cli-h){display:none}
-#command-sidebar :is(.launch,.grp){border-top:1px solid var(--line)}
+:is(#command-sidebar,.chain-only) :is(.launch,.grp){border-top:1px solid var(--line)}
 :is(#command-sidebar:not(.searching),.chain-only) :is(.launch,.grp):not(.open)>:not(.lab3){display:none}
 :is(#command-sidebar,.chain-only) .lab3{display:flex;align-items:center;gap:6px;min-height:32px;padding:0 10px;font-size:10.5px;text-transform:uppercase;letter-spacing:.06em;color:var(--dim);cursor:pointer;user-select:none}
 :is(#command-sidebar,.chain-only) .launch.yolo{background:color-mix(in srgb,var(--waiting) 6%,var(--panel))}
@@ -696,7 +696,7 @@ button.wm-suggest{font:600 10px system-ui;padding:2px 7px;border-radius:999px;bo
 #command-sidebar .cs-terms .lab3{flex-basis:100%;padding:0;min-height:22px;cursor:default}
 #command-sidebar .cs-terms .t{display:inline-flex;align-items:center;gap:5px;min-height:34px;padding:0 10px;font:12px var(--mono);max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 #command-sidebar .cs-terms .t.cur{border-color:var(--brand);color:var(--brand)}
-@media(pointer:coarse){#command-sidebar .cmd{padding-block:11px}#command-sidebar .cmd .opts button{min-height:34px}}
+@media(pointer:coarse){:is(#command-sidebar,.chain-only) .cmd{padding-block:11px}:is(#command-sidebar,.chain-only) .cmd .opts button{min-height:34px}}
 /* Constructor de cadenas (S3, dash/chain-builder.js): .backdrop[data-mclose] > .modal.chain-only.
    .modal global (index.html) es una capa fixed oculta hasta .open: aquí se neutraliza. Las filas y el
    acordeón comparten reglas con la barra (:is(#command-sidebar,.chain-only)); los botones heredan el
@@ -739,4 +739,4 @@ button.wm-suggest{font:600 10px system-ui;padding:2px 7px;border-radius:999px;bo
   .backdrop[data-mclose] > .modal.chain-only{width:100%;height:100%;border-radius:0;border-width:0}
   .chain-only .m-head h2{display:none}
 }
-@media(pointer:coarse){.chain-only .cmd{padding-block:11px}.chain-only .cmd .opts button{min-height:34px}.chain-only .slots .step .ctl button{min-height:34px;min-width:36px}}
+@media(pointer:coarse){.chain-only .cmd .add{min-height:34px}.chain-only .slots .step .ctl button{min-height:34px;min-width:36px}}

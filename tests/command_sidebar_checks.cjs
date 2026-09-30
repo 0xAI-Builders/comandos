@@ -7,7 +7,7 @@ const fs = require('node:fs');
 const mod = require(process.cwd() + '/dash/command-sidebar.js');
 const { createCommandSidebar } = mod;
 
-const { mkRoot } = require('./dom_stub.cjs');
+const { mkRoot, doc } = require('./dom_stub.cjs');
 
 // ---------- checks ----------
 const catalog = JSON.parse(fs.readFileSync(process.cwd() + '/tests/fixtures/command-catalog.json'));
@@ -183,6 +183,39 @@ const catalog = JSON.parse(fs.readFileSync(process.cwd() + '/tests/fixtures/comm
     assert.match(html, /<button type="button" data-cmd="\/model claude-opus-5-5" data-kind="pane">claude-opus-5-5<\/button>/);
     assert.equal((html.match(/class="new"/g) || []).length, 1);
     assert.equal(/class="new"/.test(mod.rowHTML({ text: '/model ', description: '', args: ['a'] }, {})), false);
+  }
+  // teclado: los encabezados plegables son role=button con tabindex y aria-expanded; Enter/Espacio los operan
+  {
+    const rootK = mkRoot(), hyd = [];
+    const sbK = createCommandSidebar({ api, root: rootK, storage: null, makeId: () => 'k', getTarget: () => ({ session: 'demo', pane: '%2', kind: 'pane', title: 'demo %2' }),
+      toast: () => {}, hydrate: el => hyd.push(el) });
+    await sbK.refresh();
+    const H = key => rootK.querySelector(`.cs-cli[data-cli="${key}"] .cli-h`);
+    assert.equal(H('grok').getAttribute('role'), 'button'); assert.equal(H('grok').getAttribute('tabindex'), '0');
+    assert.equal(H('grok').getAttribute('aria-expanded'), 'false'); assert.equal(H('codex').getAttribute('aria-expanded'), 'true');
+    for (const n of rootK.querySelectorAll('[data-toggle]')) assert.equal(n.getAttribute('role') === 'button' && n.getAttribute('tabindex') === '0' && (n.getAttribute('aria-expanded') === 'true' || n.getAttribute('aria-expanded') === 'false'), true, n.dataset.toggle);
+    let prevented = 0;
+    rootK.dispatch('keydown', H('grok'), { key: 'Enter', preventDefault() { prevented++; } });
+    assert.equal(rootK.querySelector('.cs-cli[data-cli="grok"]').classList.contains('open'), true);
+    assert.equal(H('grok').getAttribute('aria-expanded'), 'true'); assert.equal(prevented, 1);
+    assert.equal(doc.activeElement, H('grok'));                                  // el foco vuelve al encabezado repintado
+    rootK.dispatch('keydown', H('grok'), { key: ' ' });
+    assert.equal(H('grok').getAttribute('aria-expanded'), 'false');
+    rootK.dispatch('keydown', H('grok'), { key: 'a' }); rootK.dispatch('keydown', H('grok'), { key: 'Enter', isComposing: true });
+    rootK.dispatch('keydown', H('grok').querySelector('.nm'), { key: 'Enter' });        // solo el encabezado mismo
+    assert.equal(H('grok').getAttribute('aria-expanded'), 'false');
+    const lab = rootK.querySelector('.cs-cli[data-cli="codex"] .launch.normal .lab3');
+    assert.equal(lab.getAttribute('aria-expanded'), 'false');
+    rootK.dispatch('keydown', lab, { key: 'Enter' });
+    assert.equal(rootK.querySelector('.cs-cli[data-cli="codex"] .launch.normal .lab3').getAttribute('aria-expanded'), 'true');
+    assert.equal(rootK.querySelector('.cs-saved .cli-h').getAttribute('role'), 'button');
+    // hydrate corre sobre la raíz tras el primer pintado, tras cada repintado del cuerpo y con la búsqueda
+    const n0 = hyd.length; assert.ok(n0 >= 1); assert.equal(hyd.every(x => x === rootK), true);
+    rootK.click('.cs-cli[data-cli="claude"] .cli-h'); assert.equal(hyd.length, n0 + 1);
+    rootK.input('.cs-search', 'model'); assert.equal(hyd.length, n0 + 2);
+    sbK.render(); assert.equal(hyd.length, n0 + 3);
+    const sbH = createCommandSidebar({ api, root: mkRoot(), storage: null, makeId: () => 'h', getTarget: () => null, toast: () => {}, hydrate: () => { throw new Error('boom'); } });
+    await sbH.refresh();                                                     // un hydrate que falla no rompe el pintado
   }
   console.log('command-sidebar checks ok');
 })().catch(e => { console.error(e); process.exit(1); });

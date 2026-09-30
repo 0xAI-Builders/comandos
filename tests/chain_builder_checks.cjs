@@ -185,5 +185,54 @@ const tick = () => new Promise(r => setImmediate(r));
     const b3 = createChainBuilder({ api, root: doc.body, catalog: () => null, toast: () => {} });
     b3.open(); assert.ok(q('.cb-empty')); assert.equal(qa('.cs-cli').length, 0); b3.close();
   }
+  // 11) teclado: el acordeón se abre con Enter/Espacio y aria-expanded lo refleja; sin ratón se puede añadir un paso
+  {
+    const b4 = createChainBuilder({ api, root: doc.body, catalog: () => catalog, chains: () => [], toast: () => {} });
+    b4.open();
+    const H = () => q('.cs-cli[data-cli="grok"] .cli-h');
+    assert.equal(H().getAttribute('role'), 'button'); assert.equal(H().getAttribute('tabindex'), '0'); assert.equal(H().getAttribute('aria-expanded'), 'false');
+    bd().dispatch('keydown', H(), { key: 'Enter' });
+    assert.equal(H().getAttribute('aria-expanded'), 'true'); assert.equal(doc.activeElement, H());
+    assert.equal(q('.cs-cli[data-cli="grok"] .launch.yolo .lab3').getAttribute('aria-expanded'), 'true');
+    bd().dispatch('keydown', H(), { key: ' ' }); assert.equal(H().getAttribute('aria-expanded'), 'false');
+    bd().dispatch('keydown', H(), { key: 'x' }); assert.equal(H().getAttribute('aria-expanded'), 'false');
+    b4.close();
+  }
+  // 12) guardado en vuelo que sobrevive a close(): no arma el Correr cancelado, no cierra el modal reabierto y no permite un 2.º POST
+  {
+    const saved5 = [], toasts5 = [], calls5 = [];
+    let rel; const gate = new Promise(r => { rel = r; });
+    const api5 = async (path, body) => { calls5.push(body); await gate; return { ok: true, chain: { slug: 'x', name: body.name, steps: body.steps } }; };
+    const b5 = createChainBuilder({ api: api5, root: doc.body, catalog: () => catalog, chains: () => [], onSaved: (c, o) => { saved5.push([c.slug, o]); }, toast: (m, e) => toasts5.push([m, e]) });
+    b5.open(); q('.m-name').value = 'x'; bd().dispatch('input', q('.m-name'), {});
+    bd().dispatch('click', qa('.cmd[data-add]')[0]);
+    click('[data-run]'); assert.equal(calls5.length, 1);
+    b5.close();                                                             // cancela el Correr
+    b5.open();                                                              // reabre mientras el POST sigue en vuelo
+    assert.equal(q('[data-save]').hasAttribute('disabled'), true);           // botones bloqueados
+    q('.m-name').value = 'y'; bd().dispatch('input', q('.m-name'), {});
+    bd().dispatch('click', qa('.cmd[data-add]')[0]);
+    click('[data-save]'); click('[data-run]'); assert.equal(calls5.length, 1);   // ningún segundo POST
+    rel(); await tick(); await tick(); await tick();
+    assert.ok(bd());                                                        // el modal reabierto sigue abierto
+    assert.deepEqual(saved5, [['x', { run: false }]]);                       // refresca, pero no corre
+    assert.equal(q('[data-save]').hasAttribute('disabled'), false);
+    b5.close();
+    // fallo con el modal ya cerrado: toast (no hay .m-error visible) y sin onSaved
+    let rel2; const gate2 = new Promise(r => { rel2 = r; });
+    const b6 = createChainBuilder({ api: async () => { await gate2; throw new Error('disco lleno'); }, root: doc.body, catalog: () => catalog, chains: () => [],
+      onSaved: () => saved5.push('no'), toast: (m, e) => toasts5.push([m, e]) });
+    b6.open(); q('.m-name').value = 'z'; bd().dispatch('input', q('.m-name'), {}); bd().dispatch('click', qa('.cmd[data-add]')[0]);
+    click('[data-save]'); b6.close(); rel2(); await tick(); await tick();
+    assert.deepEqual(toasts5, [['disco lleno', true]]); assert.equal(saved5.length, 1);
+  }
+  // 13) añadir un paso inválido usa .m-error (un toast quedaría bajo el modal)
+  {
+    const t7 = [];
+    const b7 = createChainBuilder({ api, root: doc.body, catalog: () => ({ clis: [{ id: 'z', label: 'Z', binary: 'z', version: { status: 'ok' }, launch: { yolo: ['a\nb'], normal: [] }, groups: [] }] }), chains: () => [], toast: (m, e) => t7.push([m, e]) });
+    b7.open(); bd().dispatch('click', qa('.cmd[data-add]')[0]);
+    assert.deepEqual(b7.state.steps, []); assert.match(q('.m-error').textContent, /no se puede añadir/); assert.equal(t7.length, 0);
+    b7.close();
+  }
   console.log('chain-builder checks ok');
 })().catch(e => { console.error(e); process.exit(1); });

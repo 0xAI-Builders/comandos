@@ -84,7 +84,7 @@
     // ---------- pasos ----------
     function add(kind, text) {
       text = String(text ?? '');
-      if (!text.trim() || CONTROL_RE.test(text)) { toast('Ese comando no se puede añadir', true); return; }
+      if (!text.trim() || CONTROL_RE.test(text)) { show('Ese comando no se puede añadir'); return; }   // .m-error: un toast queda bajo el modal
       state.steps.push({ kind: kindOf(kind), text });
       clearError();
       renderSlots();
@@ -104,7 +104,7 @@
       clearError();
       renderSlots();
     }
-    function toggle(key) {
+    function toggle(key, keepFocus) {
       if (open_.has(key)) { open_.delete(key); }
       else {
         open_.add(key);
@@ -112,9 +112,16 @@
         if (cli) { open_.add(`${key}:yolo`); (cli.groups || []).forEach((_, n) => open_.add(`${key}:${n}`)); }
       }
       renderBody();
+      if (keepFocus) {   // el repintado suelta el foco: se devuelve al mismo encabezado
+        const h = [...backdrop.querySelectorAll('[data-toggle]')].find(x => x.dataset.toggle === key);
+        if (h && h.focus) h.focus();
+      }
     }
 
     // ---------- guardar ----------
+    // `saving` es de la instancia: sobrevive a close()/open(), así un modal reabierto
+    // no lanza un segundo POST mientras el primero sigue en vuelo. Al resolver, si el
+    // modal que lo pidió ya no es el actual, no se cierra nada ni se corre la cadena.
     async function save(run) {
       if (saving || !backdrop) return null;
       const name = state.name.trim();
@@ -122,16 +129,24 @@
       if (!state.steps.length) { show('Añade al menos un paso'); return null; }
       const body = { name, steps: state.steps.map(s => ({ kind: s.kind, text: s.text })) };
       if (editSlug) body.slug = editSlug;
+      const mine = backdrop;
       clearError();
-      setBusy(true);
-      let res;
+      saving = true; setBusy(true);
+      let res, failure = '';
       try { res = await api('/chains', body); }
-      catch (err) { setBusy(false); show((err && err.message) || 'No se pudo guardar la cadena'); return null; }
-      const chain = res && res.chain;
-      if (!chain || !chain.slug) { setBusy(false); show('Respuesta inválida del servidor'); return null; }
+      catch (err) { failure = (err && err.message) || 'No se pudo guardar la cadena'; }
       saving = false;
-      close();
-      try { await onSaved(chain, { run: !!run }); }
+      const same = backdrop === mine;
+      const chain = res && res.chain;
+      if (!failure && !(chain && chain.slug)) failure = 'Respuesta inválida del servidor';
+      if (failure) {
+        setBusy(false);
+        if (same) show(failure); else toast(failure, true);   // sin modal visible, el aviso va por toast
+        return null;
+      }
+      if (same) close();
+      setBusy(false);
+      try { await onSaved(chain, { run: same && !!run }); }
       catch (err) { toast((err && err.message) || 'No se pudo refrescar las cadenas', true); }
       return chain;
     }
@@ -143,7 +158,7 @@
       if (!backdrop) return false;
       doc.removeEventListener('keydown', onKey);
       const el = backdrop; backdrop = null;
-      state.dragging = null; saving = false;
+      state.dragging = null;
       if (el.remove) el.remove(); else if (el.parentNode) el.parentNode.removeChild(el);
       const back = prevFocus; prevFocus = null;
       try { if (back && back.focus) back.focus(); } catch (_) {}
@@ -162,7 +177,7 @@
       state.name = chain ? String(chain.name || chain.slug) : '';
       state.steps = chain ? chain.steps.map(s => ({ kind: kindOf(s.kind), text: String(s.text) })) : [];
       state.dragging = null; editSlug = chain ? chain.slug : null;
-      open_ = new Set(); error = ''; saving = false;
+      open_ = new Set(); error = '';
 
       backdrop = doc.createElement('div');
       backdrop.className = 'backdrop';
@@ -178,6 +193,7 @@
         + '<button type="button" data-run title="Guarda la cadena y la corre en el pane de destino">Correr</button></div></div></div>';
       wire(backdrop);
       renderBody(); renderSlots(); renderMsg();
+      if (saving) setBusy(true);   // un guardado anterior sigue en vuelo
       host.appendChild(backdrop);
       doc.addEventListener('keydown', onKey);
       const input = $('.m-name');
@@ -203,6 +219,12 @@
         if (t.closest('[data-del]')) return void remove(stepIndex(t));
         if ((n = t.closest('[data-add]'))) return void add(n.dataset.kind, n.dataset.add);
         if ((n = t.closest('[data-toggle]'))) return void toggle(n.dataset.toggle);
+      });
+      el.addEventListener('keydown', e => {
+        const t = e.target, n = t && typeof t.closest === 'function' ? t.closest('[data-toggle]') : null;
+        if (!n || n !== t || !Sidebar.isToggleKey(e)) return;
+        if (e.preventDefault) e.preventDefault();
+        toggle(n.dataset.toggle, true);
       });
       el.addEventListener('input', e => {
         const t = e.target;

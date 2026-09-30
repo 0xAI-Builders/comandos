@@ -15,6 +15,10 @@
   const CONTROL_RE = /[\x00-\x1f\x7f]/;
   const WAIT = 'Espera a que termine de escribir';
   const chev = '<span class="chev" data-icon="chevron" data-size="12"></span>';
+  // Los encabezados plegables son <div> (sin el estilo 3D de los botones) pero se
+  // operan con teclado: role=button, foco con Tab, Enter/Espacio (isToggleKey).
+  const toggleAttrs = open => ` role="button" tabindex="0" aria-expanded="${open ? 'true' : 'false'}"`;
+  const isToggleKey = e => !!e && (e.key === 'Enter' || e.key === ' ' || e.key === 'Spacebar') && !e.isComposing;
 
   // La consulta llega cruda (con espacios); aquí se parte en palabras y cada
   // una debe aparecer en el texto, la descripción o algún argumento.
@@ -56,7 +60,7 @@
       ? `<div class="note"${o.q ? ' hidden' : ''}>${esc((cli.launch && cli.launch.yoloNote) || 'sin flag yolo')}</div>` : '';
     const empty = o.q && !list.some(text => hits({ text }, o.q));
     return `<div class="launch ${which}${o.open.has(key) ? ' open' : ''}"${empty ? ' hidden' : ''}>`
-      + `<div class="lab3" data-toggle="${esc(key)}">${which === 'yolo' ? 'Arranque yolo' : 'Arranque normal'}${chev}</div>`
+      + `<div class="lab3" data-toggle="${esc(key)}"${toggleAttrs(o.open.has(key))}>${which === 'yolo' ? 'Arranque yolo' : 'Arranque normal'}${chev}</div>`
       + rows + note + '</div>';
   }
 
@@ -65,7 +69,7 @@
     const cmds = Array.isArray(grp.commands) ? grp.commands : [];
     const empty = o.q && !cmds.some(c => hits(c, o.q));
     return `<div class="grp${o.open.has(key) ? ' open' : ''}"${empty ? ' hidden' : ''}>`
-      + `<div class="lab3" data-toggle="${esc(key)}"><span data-icon="${esc(grp.icon)}" data-size="12"></span> ${esc(grp.title)}${chev}</div>`
+      + `<div class="lab3" data-toggle="${esc(key)}"${toggleAttrs(o.open.has(key))}><span data-icon="${esc(grp.icon)}" data-size="12"></span> ${esc(grp.title)}${chev}</div>`
       + cmds.map(c => rowHTML(c, { mode: o.mode, kind: 'pane', dis: o.noCli, q: o.q })).join('') + '</div>';
   }
 
@@ -83,7 +87,7 @@
       && !groups.some(g => (g.commands || []).some(c => hits(c, o.q)));
     const cls = ['cs-cli', o.open.has(cli.id) ? 'open' : '', opts.here ? 'here' : '', st !== 'ok' ? st : ''].filter(Boolean).join(' ');
     return `<div class="${cls}" data-cli="${esc(cli.id)}"${empty ? ' hidden' : ''}>`
-      + `<div class="cli-h" data-toggle="${esc(cli.id)}"><span class="nm">${esc(cli.label || cli.id)}</span>`
+      + `<div class="cli-h" data-toggle="${esc(cli.id)}"${toggleAttrs(o.open.has(cli.id))}><span class="nm">${esc(cli.label || cli.id)}</span>`
       + `<span class="ver" title="catálogo v${esc(v.pinned)}">${esc(ver)}</span>`
       + (opts.here ? '<span class="here-tag">en este pane</span>' : '') + chev + '</div>'
       + launchHTML(cli, 'yolo', o) + launchHTML(cli, 'normal', o)
@@ -92,7 +96,7 @@
 
   function createCommandSidebar(opts) {
     const { api, root: el, storage, makeId, getTarget, focusTarget = () => {}, openBuilder = () => {},
-      toast = () => {}, terminals = () => [], newTerm = () => {} } = opts;
+      toast = () => {}, terminals = () => [], newTerm = () => {}, hydrate = () => {} } = opts;
     const state = { catalog: null, cliInPane: '', catalogTarget: null, chains: [], open: new Set(), run: null,
       typing: null, q: '', firstRender: true, appliedTarget: null };
 
@@ -234,10 +238,14 @@
 
     function stop() { state.run = null; render(); }
 
-    function toggle(key) {
+    function toggle(key, keepFocus) {
       state.open.has(key) ? state.open.delete(key) : state.open.add(key);
       writeOpen();
       render();
+      if (keepFocus) {   // el repintado del cuerpo suelta el foco: se devuelve al mismo encabezado
+        const h = [...el.querySelectorAll('[data-toggle]')].find(n => n.dataset.toggle === key);
+        if (h && h.focus) h.focus();
+      }
     }
 
     function targetTitle() {
@@ -256,7 +264,7 @@
         : `<div class="cs-saved-item" data-run="${esc(c.slug)}"><span class="nm">${esc(c.name || c.slug)}</span>`
           + `<small>${(c.steps || []).length} pasos</small><button type="button">Correr</button></div>`).join('');
       return `<div class="cs-saved${state.open.has('saved') ? ' open' : ''}">`
-        + `<div class="cli-h" data-toggle="saved"><span class="nm">Cadenas guardadas</span><span class="n">${state.chains.length}</span>${chev}</div>`
+        + `<div class="cli-h" data-toggle="saved"${toggleAttrs(state.open.has('saved'))}><span class="nm">Cadenas guardadas</span><span class="n">${state.chains.length}</span>${chev}</div>`
         + (items || '<div class="cs-empty">Sin cadenas guardadas</div>') + '</div>';
     }
 
@@ -304,6 +312,7 @@
         el.innerHTML = headHTML() + `<div class="cs-body">${bodyHTML()}</div>`;
       }
       try { el.classList && el.classList.toggle('searching', !!state.q.trim()); } catch (_) {}
+      try { hydrate(el); } catch (_) {}   // pinta los data-icon del marcado recién puesto
     }
 
     el.addEventListener('click', e => {
@@ -331,6 +340,12 @@
       if (t.closest('button') && (n = t.closest('.cs-saved-item[data-run]'))) return void startChain(n.dataset.run);
       if ((n = t.closest('[data-toggle]'))) return void toggle(n.dataset.toggle);
     });
+    el.addEventListener('keydown', e => {
+      const t = e.target, n = t && typeof t.closest === 'function' ? t.closest('[data-toggle]') : null;
+      if (!n || n !== t || !isToggleKey(e)) return;
+      if (e.preventDefault) e.preventDefault();   // Espacio no debe desplazar la lista
+      toggle(n.dataset.toggle, true);
+    });
     const isSearch = t => !!(t && t.classList && t.classList.contains('cs-search'));
     const search = t => { state.q = String(t.value ?? ''); render(); };
     el.addEventListener('input', e => { if (isSearch(e.target) && !e.isComposing) search(e.target); });
@@ -339,6 +354,6 @@
     return { refresh, render, insert, startChain, next, stop, applyCatalog, get state() { return state; } };
   }
 
-  root.ComandosCommandSidebar = { createCommandSidebar, rowHTML, cliHTML, esc };
-  if (typeof module !== 'undefined' && module.exports) module.exports = { createCommandSidebar, rowHTML, cliHTML, esc };
+  root.ComandosCommandSidebar = { createCommandSidebar, rowHTML, cliHTML, esc, isToggleKey };
+  if (typeof module !== 'undefined' && module.exports) module.exports = { createCommandSidebar, rowHTML, cliHTML, esc, isToggleKey };
 })(typeof window !== 'undefined' ? window : globalThis);
