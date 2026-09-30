@@ -97,7 +97,7 @@ def model_ui():
           '_PV_ICON': {'codex': 'openai'}, '_PV_HEX': {'codex': '#aaa'},
           '_STATE_UI': {'verified': ('green', 'v'), 'detecting': ('gray', '?'),
                         'changing': ('yellow', '>')}, '_esc': str, 'ES': False}
-    load({'_refresh_tab_models', '_place_pills', '_pane_pill', '_shell_pill',
+    load({'_refresh_tab_models', '_place_pills', '_pane_pill', '_answer_button', 'pane_answer', '_shell_pill',
           '_pill_row_y', '_attach_model_bar', '_extension_pill'}, ns)
     for key, box in tabs.items():
         box._term = Widget()

@@ -232,7 +232,15 @@
       const session = tab._session;
       if (!session || session === 'local' || !String(tab.dataset.tabKey || '').startsWith('term:')) return;
       indicator(tab, {scope: 'session', key: session, session}, tab.querySelector('.lbl'));
-      tab.dataset.wmInd = '1';   // una sola señal: el semáforo pixel reemplaza el punto de color viejo
+      tab.dataset.wmInd = '1';
+      if (!tab._wmContext) {                 // paridad con escritorio: clic derecho = menú de estado
+        tab._wmContext = true;
+        tab.addEventListener('contextmenu', e => {
+          const button = tab.querySelector(':scope > .wm-ind');
+          if (!button) return;
+          e.preventDefault(); e.stopPropagation(); openMenu(button);
+        });
+      }   // una sola señal: el semáforo pixel reemplaza el punto de color viejo
     });
     document.querySelectorAll('.row[data-rk]').forEach(row => {
       const target = targetForRow(row.dataset.rk, W.panes);

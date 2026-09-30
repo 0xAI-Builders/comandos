@@ -1330,6 +1330,8 @@ def _build_hb_css():
     b".pane-pill.pp-shell label{font-size:11px;}"
     b".pill-btn{padding:2px 5px;margin:0;background:rgba(148,148,148,0.12);"
     b" border:1px solid rgba(148,148,148,0.55);border-radius:999px;min-height:0;}"
+    b".pill-btn.pill-yes{color:#4ade80;border-color:#1f7a44;font-weight:800;}"
+    b".pill-btn.pill-no{color:#f87171;border-color:#8a2a35;font-weight:800;}"
     b".pill-btn:hover{border-color:" + THEME["fg"].encode() + b";"
     b" background:rgba(148,148,148,0.28);}"
     b"window,window.background,window.solid-csd,window.csd{"
@@ -4198,6 +4200,7 @@ def _ws_pointer_move(widget, event):
         if _WS["drag"] is None:
             return False
     x, y = _ws_layer_point(widget, event)
+    _WS["pointer"] = (x, y)
     _WS["target"] = _ws_target(x, y)
     _ws_layer.queue_draw()
     return True
@@ -4228,11 +4231,39 @@ def _ws_moved_ids(source):
     return [source] if source else []
 
 
+def ws_strip_edge_step(x, width, zone=56):
+    """-1/0/1: arrastrando cerca del borde de la barra, las pestañas corren (paridad con remoto)."""
+    if x < zone:
+        return -1
+    if x > width - zone:
+        return 1
+    return 0
+
+
+def _ws_edge_tick():
+    """Mientras se arrastra en la franja de pestañas cerca de un borde, avanza una
+    pestaña cada tick; GtkNotebook solo desplaza sus tabs cambiando de página."""
+    if _WS["drag"] is None:
+        _WS["edge_timer"] = None
+        return False
+    x, y = _WS.get("pointer") or (-1, -1)
+    strip_h = _ws_layout()["strip"][3]
+    step = ws_strip_edge_step(x, _ws_layer.get_allocated_width()) if 0 <= y <= strip_h + 12 else 0
+    if step:
+        (nb.prev_page if step < 0 else nb.next_page)()
+        _WS["target"] = _ws_target(x, y)
+        _ws_layer.queue_draw()
+    return True
+
+
 def _ws_drag_begin(source):
     if _WS["doc"] is None or not source:
         return
     _WS["drag"] = source
     _WS["target"] = None
+    _WS["drag_page"] = nb.get_current_page()
+    if not _WS.get("edge_timer"):
+        _WS["edge_timer"] = GLib.timeout_add(260, _ws_edge_tick)
     _ws_layer.show()
 
 
@@ -4338,7 +4369,12 @@ def _ws_doc_index(page):
 
 def _ws_finish(target):
     source = _WS["drag"]
+    start_page = _WS.get("drag_page")
     _ws_drag_end()
+    if not target or target.get("kind") == "mark":
+        # sin mover pestañas: vuelve a la que tenías si el borde hizo correr la barra
+        if start_page is not None and start_page != nb.get_current_page():
+            nb.set_current_page(start_page)
     if not target or not source or _WS["doc"] is None:
         return
     if target["kind"] == "mark":             # soltada en una bandeja: tu marca
@@ -4570,6 +4606,26 @@ def _shell_pill(sess, pane_id):
     return pill
 
 
+def pane_answer(pane, yes):
+    """Sí = Enter (confirma la opción resaltada, «Yes» por defecto en Claude Code
+    y Codex); No = Esc (la rechaza). Igual que la barra de la terminal remota."""
+    if pane:
+        tmuxc("send-keys", "-t", pane, "Enter" if yes else "Escape")
+
+
+def _answer_button(text, pane, yes):
+    button = Gtk.Button(label=text)
+    button.set_relief(Gtk.ReliefStyle.NONE)
+    button.get_style_context().add_class("pill-btn")
+    button.get_style_context().add_class("pill-yes" if yes else "pill-no")
+    button.set_tooltip_text(("Sí: confirma la opción resaltada del agente (Enter)" if yes
+                             else "No: rechaza la pregunta del agente (Esc)") if ES else
+                            ("Yes: confirm the agent's highlighted option (Enter)" if yes
+                             else "No: reject the agent's question (Esc)"))
+    button.connect("clicked", lambda *_: pane_answer(pane, yes))
+    return button
+
+
 def _pane_pill(sess, p):
     """Pildora MINIMALISTA: logo(s) de marca + modelo + glifo de certeza +
     engrane. Sin texto redundante: el logo ES la identidad; el tooltip
@@ -4619,6 +4675,8 @@ def _pane_pill(sess, p):
     b.set_tooltip_text("Cambiar motor / modelo / cuenta de ESTE pane" if ES else "Switch this pane's motor/model/account")
     b.connect("clicked", lambda *_, s=sess, pn=(p.get("pane") or ""): _dash_js(f"openMotorFor({json.dumps(s)},{json.dumps(pn)})"))
     pill.pack_start(b, False, False, 0)
+    pill.pack_start(_answer_button("Sí", p.get("pane") or "", True), False, False, 0)
+    pill.pack_start(_answer_button("No", p.get("pane") or "", False), False, False, 0)
     pill.pack_start(_extension_pill(sess, p.get("pane") or "", harness), False, False, 0)
     return pill
 

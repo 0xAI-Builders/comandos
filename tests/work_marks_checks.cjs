@@ -96,3 +96,9 @@ for (const name of ['work', 'need', 'done', 'error', 'idle']) {
 // A session shows its most urgent pane: need > error > work > done > idle.
 assert.equal(wm.activityFor({scope: 'session', key: 's'}, {a: {session: 's', state: 'completed'}, b: {session: 's', state: 'awaiting_input'}}), 'awaiting_input');
 console.log('two-channel checks ok');
+// Paridad con escritorio: clic derecho en la pestaña remota abre el menú de estado.
+{
+  const src = require('node:fs').readFileSync(require('node:path').join(__dirname, '..', 'dash/work-marks.js'), 'utf8');
+  assert.match(src, /addEventListener\('contextmenu'/, 'right click on a remote tab opens the state menu');
+  console.log('remote right-click check ok');
+}

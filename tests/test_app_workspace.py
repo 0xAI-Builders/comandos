@@ -187,3 +187,21 @@ def test_desktop_trays_appear_below_the_strip_and_win_over_docking():
     m, (x, y, w, h) = rects[2]
     assert hit(rects, x + w / 2, y + h / 2, strip_bottom=40) == 'resolved'
     assert hit(rects, x + w / 2, 20, strip_bottom=40) is None, "not while still on the strip"
+
+
+def test_desktop_drag_scrolls_the_strip_at_its_edges():
+    """Paridad con remoto (grill 30-sep): al arrastrar cerca del borde de la
+    barra, las pestañas corren solas."""
+    step = load('ws_strip_edge_step', {})
+    assert step(10, 1000) == -1 and step(990, 1000) == 1 and step(500, 1000) == 0
+
+
+def test_desktop_pane_pill_answers_yes_and_no_like_the_remote_toolbar():
+    sent = []
+    ns = {'tmuxc': lambda *a: sent.append(a) or SimpleNamespace(returncode=0)}
+    answer = load('pane_answer', ns)
+    answer('%12', True)
+    answer('%12', False)
+    assert sent == [('send-keys', '-t', '%12', 'Enter'), ('send-keys', '-t', '%12', 'Escape')]
+    src = SOURCE.split('def _pane_pill(sess, p):')[1].split('\ndef ')[0]
+    assert '_answer_button("Sí"' in src and '_answer_button("No"' in src and 'pane_answer(pane, yes)' in SOURCE
