@@ -12,7 +12,9 @@
 
 ## Restricciones globales
 
-- Base: `main` en `b5dc4ed` (incluye la fase 1: terminales rápidas E2 `733aa14`, avisos N2, Pomodoro). Verificar con `git -C /home/someguy/codebase/0xJesus/ComandOS log --oneline -1 main` antes de crear el checkout; no asumir que sigue siendo HEAD.
+- Base: `main` en `0561687` (2026-09-30). Incluye la fase 1 (terminales rápidas E2 `733aa14`, avisos, Pomodoro, push, ediciones) **y el grill de fidelidad del 29–30 de septiembre ya implementado en main**: botones de cabecera de un solo tamaño con cinco estilos 3D (`3a172dc`, `b452cd1`), reloj de arena de Davitheoles con el tiempo real del Pomodoro (`afaf580`), avisos en un cajón que abre la campana (`9db3c1f`, `1e995a1`), Resúmenes junto a la terminal (`c47fcdf`), semáforos 8-bit, bandejas y «Ordenar una vez» en las tabs (`cf75733`, `71bee81`, `ae9e47b`), Sí/No en la barra móvil y en las píldoras de pane (`c11fd8a`, `15f1d6d`). Todas las líneas de este plan están resueltas contra `0561687`; verificar con `git -C /home/someguy/codebase/0xJesus/ComandOS log --oneline -1 main` antes de crear el checkout y, si main avanzó, volver a resolver los anclajes con `grep -n` antes de editar.
+- Conservar intactas esas entregas del 29–30: `dash/buttons.css` y `html[data-btn-style]` (`tests/test_button_styles.py`), las reglas de cabecera `--hdr-key`/`.hdr-lbl` de `dash/workspace.css:584–624`, `#btn-pomo` con el reloj que pinta `dash/pomodoro.js:331`, `#btn-notif` + `#notif-badge` que alternan el cajón (`window.ComandosNotices.instance.toggleStrip()`), `#btn-news` (Resúmenes, `dash/news-reader.js` se monta en `#panes` y reparte ancho con `#term-area`), `#tab-sort` ⇅ en la fila de tabs, stickers y bandejas de `work-marks.js`/`workspace-dock.js`. Todo botón nuevo de cabecera lleva `class="hdr-btn"`, `data-icon` y `<span class="hdr-lbl">` para heredar el estilo elegido.
+- Todo archivo nuevo bajo `dash/` se añade a la lista de symlinks de `install.sh:71–80`; sin esa línea el dashboard instalado (`~/.claude/hooks/dash`) responde 404. La puerta de token ya sirve `*.css`/`*.js` reales sin cambios (`PUBLIC_ASSET_RE`, `bin/cc-dash:8675–8692`).
 - Checkout aislado propuesto: /home/someguy/codebase/0xJesus/ComandOS/.worktrees/comandos-v1-fase2 en la rama `implementation/comandos-v1-fase2`. Todas las rutas de cambios apuntan ahí. No trabajar en el checkout principal ni en `.worktrees/comandos-v1-implementation` (candidato de fase 1 pendiente de activación R2/R3).
 - Un clic **nunca** envía Enter. Ninguna ruta nueva puede llamar a `tmux send-keys … Enter`. El usuario da Enter en la terminal.
 - Nada automático: sin esperas por "terminó", sin detección de turno para avanzar una cadena, sin cambios de modelo/cuenta/harness orquestados. Un paso avanza solo con Siguiente.
@@ -45,10 +47,11 @@ git -C /home/someguy/codebase/0xJesus/ComandOS status --short
 git -C /home/someguy/codebase/0xJesus/ComandOS worktree list
 git -C /home/someguy/codebase/0xJesus/ComandOS worktree add -b implementation/comandos-v1-fase2 /home/someguy/codebase/0xJesus/ComandOS/.worktrees/comandos-v1-fase2 main
 cd /home/someguy/codebase/0xJesus/ComandOS/.worktrees/comandos-v1-fase2
-~/.local/bin/pytest -q tests/test_quick_terminal.py tests/test_tui_state.py
+~/.local/bin/pytest -q tests/test_quick_terminal.py tests/test_tui_state.py tests/test_button_styles.py tests/test_dashboard_security.py
+~/.local/bin/pytest -q tests/ 2>&1 | tail -3 > /tmp/claude-1000/comandos-fase2-baseline.txt
 ```
 
-Esperado: ambas suites pasan (línea base). `tests/conftest.py` aísla la base SQLite en `COMANDOS_STATE_DB`.
+Esperado: las cuatro suites pasan. La corrida completa fija la **línea base** de fallos preexistentes (main lleva pruebas de extensiones que requieren el paquete `mcp`, commit `d56c874`); anotar esa línea en el registro de aceptación y comparar contra ella en V1. `tests/conftest.py` aísla la base SQLite en `COMANDOS_STATE_DB`.
 
 - [ ] Crear /home/someguy/codebase/0xJesus/ComandOS/.worktrees/comandos-v1-fase2/docs/verification/commandos-v1-fase2.md con el encabezado `# CommandOS fase 2 — registro de aceptación` y una tabla `| Tarea | Commit | Pruebas | Navegador (Mac mini) | Revisión humana |`. Se rellena al cerrar cada tarea.
 
@@ -314,11 +317,11 @@ git commit -m "feat: curated per-CLI command catalog verified against installed 
 ### Tarea C2: ruta `GET /commands/catalog` con CLI del pane y versiones en caché
 
 **Archivos:**
-- Modificar: `bin/cc-dash` (imports junto a `import tui_state` en la línea 1151; `API_GET` en 8582; `do_GET` en 8585; junto a `agent_info_for_pane` en 1260)
+- Modificar: `bin/cc-dash` (imports junto a `import tui_state` en la línea 1175; `API_GET` en 8670–8673; el cuerpo de rutas GET es `_do_GET` en 8698 — `do_GET` 8688 solo aplica la puerta; `agent_info_for_pane` en 1284)
 - Crear: `tests/test_commands_catalog_endpoint.py`
 
 **Interfaces:**
-- Consume: `cli_catalog.load_catalog/installed_versions/catalog_view` (C1), `load_agent_roles()` (`bin/cc-dash:3793`), `load_provider_registry()` (`:1173`), `accounts.list_accounts/account_environment`, `agent_info_for_pane(pane)` (`:1260`).
+- Consume: `cli_catalog.load_catalog/installed_versions/catalog_view` (C1), `load_agent_roles()` (`bin/cc-dash:3817`), `load_provider_registry()` (`:1197`), `account_registry.list_accounts/account_environment` (`lib/accounts.py`, importado en `:1180`), `agent_info_for_pane(pane)` (`:1284`).
 - Produce: `GET /commands/catalog?session=<s>&pane=<%n>[&refresh=1]` → `{ "cliInPane": "codex"|"" , "target": {"session","pane"}, "catalog": <catalog_view> , "versionsAt": <epoch> }`. Token requerido (añadir `/commands/catalog` a `API_GET`).
 
 - [ ] **Paso 1: prueba de la ruta** en `tests/test_commands_catalog_endpoint.py`, siguiendo el arranque de servidor de `tests/test_snippets_endpoints.py` (fixture `dash` con `HOME` en `tmp_path`, puerto libre, token leído de `~/.claude/hooks/dash-token`):
@@ -348,7 +351,7 @@ Esperado: FAIL con 404 en `/commands/catalog`.
 
 - [ ] **Paso 3: implementar en `bin/cc-dash`**
 
-Junto a los imports de la línea 1151:
+Junto a los imports de la línea 1175:
 
 ```python
 import cli_catalog
@@ -378,7 +381,7 @@ def cli_catalog_payload(refresh=False):
     return view, _CLI_CATALOG["at"]
 ```
 
-(`bin/cc-dash:1156` ya importa `lib/accounts.py` como `account_registry`; sustituir `accounts_lib` por `account_registry` en el bloque anterior.) En `do_GET`, antes del `else` final de rutas:
+(`bin/cc-dash:1180` ya importa `lib/accounts.py` como `account_registry`; sustituir `accounts_lib` por `account_registry` en el bloque anterior.) En `_do_GET` (:8698), junto a `GET /snippets` (:9013):
 
 ```python
         if self.path.startswith("/commands/catalog"):
@@ -392,7 +395,7 @@ def cli_catalog_payload(refresh=False):
                                     "catalog": view, "versionsAt": at})
 ```
 
-Añadir `"/commands/catalog"` a la tupla `API_GET` (línea 8582).
+Añadir `"/commands/catalog"` a la tupla `API_GET` (líneas 8670–8672).
 
 - [ ] **Paso 4: correr las pruebas**
 
@@ -413,11 +416,11 @@ git commit -m "feat: serve the per-CLI command catalog with the pane's CLI and c
 **Archivos:**
 - Crear: `lib/pane_typing.py`
 - Crear: `tests/test_pane_typing.py`
-- Modificar: `bin/cc-dash` (ruta POST junto a `/send` en la línea 9966; import junto a la línea 1151)
+- Modificar: `bin/cc-dash` (ruta POST junto a `/send` en la línea 10050; import junto a la línea 1175)
 - Crear: `tests/test_pane_type_endpoint.py`
 
 **Interfaces:**
-- Consume: `tmux(*args)` de `bin/cc-dash:6188` (patrón `send-keys -t <pane> -l -- <texto>` ya usado en `_send_shell_line` `:1521` y `_pane_exit_current` `:1762`), resolución de pane de `/send` (`:9851–9966`: `sess` validado con `SESSION_RE`, `pane` exacto verificado con `display-message -p -t <pane> #{pane_id}`).
+- Consume: `tmux(*args)` de `bin/cc-dash:6222` (patrón `send-keys -t <pane> -l -- <texto>` ya usado en `_send_shell_line` `:1545` y en `_pane_exit_current`), resolución de pane de `do_POST` (`sess` validado con `SESSION_RE` en `:9935–9937`; `target`/`pane` resueltos en `:10013–10024`, con el pane exacto verificado mediante `display-message -p -t <pane> #{pane_id}`).
 - Produce: `pane_typing.type_literal(tmux_fn, pane, text, *, sleep=time.sleep, delay=0.022, budget=1.2) -> dict`, `pane_typing.PaneTypingLocks.acquire(pane) -> bool / release(pane)`, y `POST /pane/type {session, pane, text, requestId}` → 200 `{ok, typed, durationMs, requestId}`; 400 texto inválido; 404 sesión/pane inexistente; 409 `typing_in_progress`; misma `requestId` repetida → mismo resultado sin volver a teclear.
 
 - [ ] **Paso 1: pruebas de la biblioteca** en `tests/test_pane_typing.py`:
@@ -566,14 +569,14 @@ Esperado: FAIL con 404 en `/pane/type`.
 
 - [ ] **Paso 7: implementar la ruta en `bin/cc-dash`**
 
-Junto a los imports (línea 1151): `import pane_typing`; `bin/cc-dash` no importa `collections` (línea 25), añadir `import collections` y
+Junto a los imports (línea 1175): `import pane_typing`; `bin/cc-dash` no importa `collections` (línea 25), añadir `import collections` y
 
 ```python
 _PANE_TYPING_LOCKS = pane_typing.PaneTypingLocks()
 _PANE_TYPING_RESULTS = collections.OrderedDict()   # requestId -> (status, body); 256 entradas
 ```
 
-Justo antes de `if self.path == "/send":` (línea 9966), donde `sess`, `target` y `pane` ya están resueltos como en `/send`:
+Justo antes de `if self.path == "/send":` (línea 10050), donde `sess`, `target` y `pane` ya están resueltos (`:10013–10024`):
 
 ```python
         if self.path == "/pane/type":
@@ -822,7 +825,7 @@ git commit -m "feat: store command chains as editable markdown files"
 ### Tarea K2: rutas `/chains`
 
 **Archivos:**
-- Modificar: `bin/cc-dash` (import junto a 1151; `API_GET` 8582; `do_GET` 8585; `do_POST` junto a `/snippets` 9536–9569)
+- Modificar: `bin/cc-dash` (import junto a 1175; `API_GET` 8670–8672; `_do_GET` 8698 junto a `GET /snippets` 9013; `do_POST` junto a `/snippets` 9620, `/snippets/update` 9634 y `/snippets/delete` 9653)
 - Crear: `tests/test_chains_endpoints.py`
 
 **Interfaces:**
@@ -848,14 +851,14 @@ def test_chain_save_rejects_bad_steps_with_400(dash):
 
 - [ ] **Paso 2: correr para ver el fallo** — Run: `~/.local/bin/pytest -q tests/test_chains_endpoints.py` — Esperado: FAIL 404.
 
-- [ ] **Paso 3: implementar**. Import `command_chains` junto a 1151. En `do_GET`:
+- [ ] **Paso 3: implementar**. Import `command_chains` junto a 1175. En `_do_GET`:
 
 ```python
         if self.path == "/chains":
             return self._json(200, {"chains": command_chains.list_chains(command_chains.default_dir())})
 ```
 
-En `do_POST`, junto a las rutas `/snippets*` (antes de la validación de `session` de la línea 9851, porque estas rutas no llevan sesión):
+En `do_POST`, junto a las rutas `/snippets*` (antes de la validación de `session` de la línea 9935, porque estas rutas no llevan sesión):
 
 ```python
         if self.path == "/chains":
@@ -894,7 +897,7 @@ git commit -m "feat: list, save and delete command chains over HTTP"
 - Crear: `tests/test_command_sidebar_ui.py`
 
 **Interfaces:**
-- Consume: respuesta de `GET /commands/catalog` (C2), `GET /chains` (K2), `POST /pane/type` (T1) a través de `api(path, body)` (`dash/index.html:2653`), `storage` (localStorage) y `makeId()`.
+- Consume: respuesta de `GET /commands/catalog` (C2), `GET /chains` (K2), `POST /pane/type` (T1) a través de `api(path, body)` (`dash/index.html:2659`), `storage` (localStorage) y `makeId()`.
 - Produce: `createCommandSidebar({api, root, storage, makeId, getTarget, focusTarget, openBuilder, toast, terminals})` con `refresh()`, `render()`, `insert(text, kind)`, `startChain(slug)`, `next()`, `stop()`, `state` (solo lectura). `getTarget()` devuelve `{session, pane, kind: 'pane'|'term', title}`; `terminals()` devuelve la lista de terminales rápidas abiertas `[{tabId, paneKey, session, pane, label, cwd}]`; `focusTarget(target)` selecciona el pane/tab en el workspace.
 
 Estructura del DOM que pinta (ids/clases que S2 y las pruebas usan):
@@ -1029,10 +1032,17 @@ Cada función de HTML (`headHTML`, `savedHTML`, `runnerHTML`, `cliHTML`, `launch
 
 - [ ] **Paso 5: correr** — Run: `~/.local/bin/pytest -q tests/test_command_sidebar_ui.py` — Esperado: PASS y salida `command-sidebar checks ok`.
 
+- [ ] **Paso 5b: registrar el archivo en la instalación**: añadir `command-sidebar.js` a la lista `for f in …` de `install.sh:71` (la que ya contiene `quick-terminal.js`). Añadir a `tests/test_command_sidebar_ui.py`:
+
+```python
+def test_install_links_the_module():
+    assert "command-sidebar.js" in (ROOT / "install.sh").read_text()
+```
+
 - [ ] **Paso 6: commit**
 
 ```bash
-git add dash/command-sidebar.js tests/command_sidebar_checks.cjs tests/fixtures/command-catalog.json tests/test_command_sidebar_ui.py
+git add dash/command-sidebar.js tests/command_sidebar_checks.cjs tests/fixtures/command-catalog.json tests/test_command_sidebar_ui.py install.sh
 git commit -m "feat: command sidebar module with per-CLI accordion, chains runner and quick-terminal targets"
 ```
 
@@ -1041,14 +1051,15 @@ git commit -m "feat: command sidebar module with per-CLI accordion, chains runne
 ### Tarea S2: montar la barra en `dash/index.html` y retirar el contenido anterior
 
 **Archivos:**
-- Modificar: `dash/index.html` (`#side-top` 1999–2083, `#op-split` 2084, `#op-chat` 2085–2112, `render()` 7035–7270, `renderSidebarInsights` 7681–7697 y su llamada 8295, chat JS 8553–8952, `initOpChatSplit` 6070, script tags donde se carga `dash/quick-terminal.js`)
+- Modificar: `dash/index.html` (`#side-top` 2003–2086, `#op-split` 2087, `#op-chat` 2088–2115, `render()` 7082–7316, `renderSidebarInsights` 7762–7778 y su llamada 8377, `renderEvents` 7342, chat JS 8636–9034, `initOpChatSplit` 6081–6123, el handler de `#tab-new` 6720–6727, el script tag de `quick-terminal.js` 1945)
+- Modificar: `install.sh:71` (lista de symlinks), `tests/test_usage_ui.py:214–220`, `tests/test_dashboard_layout.py:104`, `tests/test_quick_terminal_client.py:50–56`
 - Modificar: `dash/workspace.js` (`setChatVisible` 140–147, `initSessionWorkspace` 148–164, `openOperatorActions` 166, `opApplyActions` 176–220)
 - Modificar: `dash/workspace.css` (reglas de `#op-chat`, `html.chat-hidden`, `@container sidebar`)
 - Modificar: `tests/e2e_sidebar_parity.js` y `tests/test_sidebar_parity.py`
 - Modificar: `tests/test_js_parses.sh` no cambia; debe seguir pasando.
 
 **Interfaces:**
-- Consume: `createCommandSidebar` (S1), `createQuickTerminal` (`dash/quick-terminal.js`), `openTerm(tabId, label)` (`index.html:6860`), estado de pane activo (`.active-pane`, variable que `render()` usa para `#op-target` en 7038–7039), `WorkspaceDock.stripEntries()` para listar terminales rápidas (`kind === 'scratch'` con `paneKey` `pane-q…`).
+- Consume: `createCommandSidebar` (S1), `createQuickTerminal` (`dash/quick-terminal.js`, instanciado en `initTabNavigation` `:6762`), `openTerm(tabId, label)` (localizar con `grep -n "function openTerm" dash/index.html`), estado de pane activo (el dato con el que `render()` escribe `#op-target` en `:7085–7086`), `WorkspaceDock.stripEntries()` para listar terminales rápidas (`kind === 'scratch'` con `paneKey` `pane-q…`). El cajón de avisos (`N.install({host: #panes})`, `:9059–9127`) y el lector de Resúmenes (`#news-reader` montado en `#panes`) no dependen de nada dentro de `#content`; no se tocan.
 - Produce: `#command-sidebar` como único contenido de `#content`; `window.commandSidebar` para que la cabecera (H1) y GTK puedan llamar `refresh()`.
 
 - [ ] **Paso 1: escribir la prueba de texto** en `tests/test_command_sidebar_mount.py` (patrón grep de `tests/test_snippets_ui.py`):
@@ -1074,15 +1085,15 @@ def test_workspace_js_has_no_chat_helpers():
 
 - [ ] **Paso 2: correr para ver el fallo** — Run: `~/.local/bin/pytest -q tests/test_command_sidebar_mount.py` — Esperado: FAIL.
 
-- [ ] **Paso 3: sustituir el contenido de `#content`**. Dentro de `#side-top` conservar únicamente `#newsess` (2025–2071); eliminar `section#centro-wrap`, `section#sessions-wrap` (incluido `#workspace-tools`, `#session-overview`, `#rows`), `section#sidebar-insights`, `section#recent-wrap`, `#tl-wrap`; eliminar `#op-split` y `section#op-chat`. Añadir tras `#newsess`:
+- [ ] **Paso 3: sustituir el contenido de `#content`**. Dentro de `#side-top` (:2003–2086) conservar únicamente el diálogo `#newsess` (:2029–2076); eliminar `section#centro-wrap` (:2004), `section#sessions-wrap` (:2007, incluidos `#btn-newsess`, `#workspace-tools`, `#session-overview`, `#rows`), `section#sidebar-insights` (:2014), `section#recent-wrap` (:2077), `#tl-wrap` (:2082); eliminar `#op-split` (:2087) y `section#op-chat` (:2088–2115). Añadir tras `#newsess`:
 
 ```html
 <div id="command-sidebar" aria-label="Comandos por CLI"></div>
 ```
 
-Cargar el módulo junto a `quick-terminal.js`: `<script src="command-sidebar.js"></script>`.
+Cargar el módulo justo después de `quick-terminal.js` (:1945): `<script src="/command-sidebar.js?v=1"></script>` (misma forma que los demás script tags de la página). Añadir `command-sidebar.js` a `install.sh:71` si S1 no lo hizo. Como `#tab-new` (:6720–6727) hacía `getElementById("btn-newsess").click()` y ese botón desaparece, cambiar ese handler para llamar `nsOpen()` directamente (H1 moverá el botón a la cabecera con el mismo id `btn-newsess`).
 
-- [ ] **Paso 4: retirar el JS del chat y de las secciones**: borrar el bloque 8553–8952 (`OP`, `opRender`… `initOpChatSplit()`), `initOpChatSplit` (6070), `renderSidebarInsights` (7681–7697) y su `setInterval`/llamada en 8295–8296, `tickRecent`/`renderRecent` (7395–7401), `renderEvents` (7295) y el handler de `#tl-toggle` (8258), `renderCentro` (3466) y `renderBrain` (3664) **solo si ningún otro código los usa** (`grep -n "renderCentro\|renderBrain" dash/*.js bin/cc-app`; `bin/cc-app` tiene un handler `centro` en la línea 5428: comprobar qué mensajes espera y conservar lo que use). En `render(list)` (7035): eliminar la construcción de `.row` en `#rows` y las líneas 7038–7039 (`#op-target`), conservar los contadores 7254–7257 y las llamadas `refreshDesktopTabs()`/`renderTabbar()` 7266–7267. En `dash/workspace.js` quitar `setChatVisible`, `openOperatorActions`, `opApplyActions` y las referencias de `initSessionWorkspace` a `#workspace-tools`, `#op-hide`, `#op-action-history`, `#op-in`; dejar `openExtensionUsage`, `openSessionProfiles` y `renderSessionOverview` (los reutiliza H1 desde ☰).
+- [ ] **Paso 4: retirar el JS del chat y de las secciones**: borrar el bloque 8636–9034 (`const OP` … la llamada `initOpChatSplit()`), `initOpChatSplit` (6081–6123), `renderSidebarInsights` (7762–7778) y su llamada con `setInterval` en 8377, `renderEvents` (7342) y el handler de `#tl-toggle`, `tickRecent`/`renderRecent`, `renderCentro`/`renderBrain` y `favBtn` (localizar cada una con `grep -n`), **solo si ningún otro código las usa** (`grep -n "<nombre>" dash/*.js bin/cc-app`). El handler `centro` de `bin/cc-app` (`on_msg` :5769) recibe mensajes del web (`extensions`, `reader`, `buttonStyle`, `theme`, `openUrl`, `rename`, y `open_tab` por defecto) y no depende de la tarjeta Centro; no tocarlo. En `render(list)` (:7082–7316): eliminar la construcción de `.row` en `#rows` y las líneas :7085–7086 (`#op-target`), conservar los contadores `#n-waiting/#n-done/#n-working` (:7301–7304) y las llamadas `refreshDesktopTabs()`/`renderTabbar()` (:7313–7314). En `dash/workspace.js` quitar `setChatVisible`, `openOperatorActions`, `opApplyActions` y las referencias de `initSessionWorkspace` a `#workspace-tools`, `#op-hide`, `#op-action-history`, `#op-in`; dejar `openExtensionUsage`, `openSessionProfiles` y `renderSessionOverview` (los reutiliza H1 desde ☰).
 
 - [ ] **Paso 5: montar el módulo** al final del script principal (junto a la creación del `quickTerminal` existente):
 
@@ -1101,17 +1112,19 @@ commandSidebar.refresh();
 
 - [ ] **Paso 6: CSS** en `dash/workspace.css`: borrar reglas de `#op-chat`, `html.chat-hidden`, `#op-split`; añadir estilos de `#command-sidebar` reutilizando tokens existentes (`--panel`, `--line`, `--dim`, `--brand`, `--amber`): `.cs-cli` tarjeta con borde, `.cli-h` 40 px, `.launch.yolo .lab3` en ámbar, `.cmd` grid `1fr auto` dos líneas, `.cmd.dis{opacity:.45;pointer-events:none}`, `.cs-runner .cs-next{min-height:44px}`, `.cs-terms` al pie con `border-top`. En el bloque `@container sidebar (max-width:760px)` mantener una sola columna; en `html.only-panel` (móvil) el módulo ocupa todo `#content` con scroll.
 
+- [ ] **Paso 6b: actualizar las pruebas que fijaban ids del chat y del Centro**: en `tests/test_usage_ui.py:214–220` sustituir las aserciones de `btn-newsess` en la etiqueta de sesiones y de `id="op-chat"` después de `#tl-wrap` por `assert 'id="command-sidebar"' in HTML`; en `tests/test_dashboard_layout.py:104` cambiar `$("#centro-wrap")` por `$("#command-sidebar")`; en `tests/test_quick_terminal_client.py:50–56` cambiar la aserción `getElementById("btn-newsess").click()` por `nsOpen()` (los ids `tab-terminal`/`tab-new` siguen ahí hasta H1).
+
 - [ ] **Paso 7: actualizar `tests/e2e_sidebar_parity.js`** para el nuevo contrato (stubs de `/commands/catalog`, `/chains`, `/pane/type`; asserts: `#command-sidebar .cs-cli` × 5, `.cs-cli.here` según el `agent` del stub, clic en `.cmd` produce un POST a `/pane/type` y ninguno a `/send`, `.cs-terms` visible, sin desbordamiento horizontal en 390/320, ids iguales desktop/remoto). Mantener el skip de `tests/test_sidebar_parity.py` (aquí no hay Chrome local por política).
 
 - [ ] **Paso 8: correr**
 
-Run: `~/.local/bin/pytest -q tests/test_command_sidebar_mount.py tests/test_command_sidebar_ui.py tests/test_quick_terminal_client.py tests/test_app_quick_terminal.py && bash tests/test_js_parses.sh`
+Run: `~/.local/bin/pytest -q tests/test_command_sidebar_mount.py tests/test_command_sidebar_ui.py tests/test_quick_terminal_client.py tests/test_app_quick_terminal.py tests/test_usage_ui.py tests/test_dashboard_layout.py tests/test_dashboard_security.py tests/test_button_styles.py tests/test_remote_ui.py && bash tests/test_js_parses.sh`
 Esperado: PASS; `test_js_parses.sh` sin errores de sintaxis.
 
 - [ ] **Paso 9: commit**
 
 ```bash
-git add dash/index.html dash/workspace.js dash/workspace.css tests/test_command_sidebar_mount.py tests/e2e_sidebar_parity.js
+git add dash/index.html dash/workspace.js dash/workspace.css install.sh tests/test_command_sidebar_mount.py tests/e2e_sidebar_parity.js tests/test_usage_ui.py tests/test_dashboard_layout.py tests/test_quick_terminal_client.py
 git commit -m "feat: replace the sessions sidebar and chat with the per-CLI command sidebar"
 ```
 
@@ -1136,6 +1149,8 @@ Reglas: un clic en un comando **añade** un paso y no teclea nada; arrastrar reo
 
 - [ ] **Paso 3: implementar `dash/chain-builder.js`** con el envoltorio UMD; el HTML del acordeón reutiliza las mismas funciones de fila que `command-sidebar.js` exporta (`ComandosCommandSidebar.rowHTML`, `cliHTML`) con la opción `{mode: 'build'}` que cambia `data-cmd` por `data-add` y añade el botón "+ cadena". Montaje en `index.html`: `window.chainBuilder = ComandosChainBuilder.createChainBuilder({ api, root: document.body, catalog: () => commandSidebar.state.catalog, onSaved: (chain, o) => { commandSidebar.refresh().then(() => { if (o.run) commandSidebar.startChain(chain.slug); }); }, toast });`
 
+- [ ] **Paso 3b: instalación y carga**: añadir `chain-builder.js` a `install.sh:71` y cargarlo con `<script src="/chain-builder.js?v=1"></script>` justo después de `command-sidebar.js`; añadir a `tests/test_chain_builder_ui.py` la aserción `assert "chain-builder.js" in (ROOT / "install.sh").read_text()`.
+
 - [ ] **Paso 4: CSS**: `.modal.chain-only{width:min(1040px,100%);height:min(700px,100%)}`, columnas `grid-template-columns:repeat(3,minmax(0,1fr))` ≥ 900 px y una columna en móvil, `.slots` fija al pie con scroll horizontal.
 
 - [ ] **Paso 5: correr** — Run: `~/.local/bin/pytest -q tests/test_chain_builder_ui.py tests/test_command_sidebar_ui.py && bash tests/test_js_parses.sh` — Esperado: PASS.
@@ -1143,7 +1158,7 @@ Reglas: un clic en un comando **añade** un paso y no teclea nada; arrastrar reo
 - [ ] **Paso 6: commit**
 
 ```bash
-git add dash/chain-builder.js tests/chain_builder_checks.cjs tests/test_chain_builder_ui.py dash/index.html dash/workspace.css
+git add dash/chain-builder.js tests/chain_builder_checks.cjs tests/test_chain_builder_ui.py dash/index.html dash/workspace.css install.sh
 git commit -m "feat: chain builder modal that assembles command chains without typing into the pane"
 ```
 
@@ -1152,34 +1167,38 @@ git commit -m "feat: chain builder modal that assembles command chains without t
 ### Tarea S4: retirar el backend del chat sin borrar datos
 
 **Archivos:**
-- Modificar: `bin/cc-dash` (rutas `/operator*` en 8934, 8937, 9074, 9100, 9127, 9138, 9145; helpers 5396–6149; `API_GET` 8582)
-- Eliminar: `lib/operator_chat.py`, `lib/operator_stream.py`, `lib/operator_receipts.py` (y cualquier `lib/operator_*.py`), `tests/test_operator_chat.py`, `tests/test_operator_stream.py`
-- Modificar: pruebas que importen esos módulos (`grep -ln "operator_" tests/`)
+- Modificar: `bin/cc-dash` (rutas GET `/operator/action-results` :9015 y `startswith("/operator")` :9018; rutas POST `/operator/action-result` :9158, `/operator/chat/stream` :9184, `/operator/chat` :9211, `/operator/new` :9222, `/operator/model` :9229; bloque de helpers `operator_*` :5430–6221; `import operator_receipts` en :5924, :9016, :9159; `"/operator"` en `API_GET` :8672)
+- Eliminar: `lib/operator_chat.py`, `lib/operator_stream.py`, `tests/test_operator_chat.py`, `tests/test_operator_stream.py`
+- **Conservar**: `lib/operator_catalog.py`, `lib/operator_dispatch.py` (usa `operator_receipts` en su línea 135), `lib/operator_receipts.py`, `tests/test_operator_dispatch.py`, `tests/test_operator_recovery.py` y la ruta `POST /app/command` (`bin/cc-dash:9924`), porque el puente de acciones de la app (`app-command.json`, `bin/cc-app:6931`) sigue usándolos y no forma parte del chat.
 - Crear: `tests/test_operator_retired.py`
 
 **Interfaces:**
-- Consume: nada. **Produce:** `/operator*` responde 410 `{"error": "El chat de CommandOS se retiró; usa la barra de comandos", "code": "retired"}` desde una sola rama; ningún módulo `operator_*` cargado por `bin/cc-dash`. Los archivos de conversaciones en disco (localizar la ruta con `grep -n "operator" bin/cc-dash | grep -i "path\|json\|db"` antes de tocar nada) no se abren ni se borran.
+- Consume: nada. **Produce:** toda ruta `/operator*` responde 410 `{"error": "El chat de CommandOS se retiró; usa la barra de comandos", "code": "retired"}` desde una sola rama en `_do_GET` y otra en `do_POST`; `bin/cc-dash` no importa `operator_chat` ni `operator_stream`; `operator_pane` (`:5507`) conserva su nombre porque `tmux_paste` (`:6259`) lo usa. Los archivos de conversaciones bajo `operator_store_root()` (`:5468`; leer la ruta que devuelve antes de tocar nada) no se abren ni se borran.
 
-- [ ] **Paso 1: prueba**:
+- [ ] **Paso 1: prueba** en `tests/test_operator_retired.py` (mismo fixture `dash` que C2):
 
 ```python
-def test_operator_routes_are_gone_but_answer_410(dash):
+from pathlib import Path
+
+def test_operator_routes_answer_410(dash):
     for path in ("/operator?id=x", "/operator/action-results"):
         assert dash.get_status(path) == 410
     for path in ("/operator/chat", "/operator/chat/stream", "/operator/new", "/operator/model", "/operator/action-result"):
         assert dash.post_status(path, {}) == 410
 
-def test_no_operator_module_is_loaded():
-    from pathlib import Path
+def test_app_command_bridge_survives(dash):
+    assert dash.post_status("/app/command", {}) != 410
+
+def test_no_chat_module_is_loaded():
     src = (Path(__file__).resolve().parents[1] / "bin" / "cc-dash").read_text()
-    assert "import operator_" not in src and "operator_chat" not in src and "operator_stream" not in src
+    assert "operator_chat" not in src and "operator_stream" not in src and "operator_handle_chat" not in src
 ```
 
-- [ ] **Paso 2: correr para ver el fallo** — Esperado: FAIL (200/401/404 en lugar de 410).
+- [ ] **Paso 2: correr para ver el fallo** — Run: `~/.local/bin/pytest -q tests/test_operator_retired.py` — Esperado: FAIL (200/401/404 en lugar de 410).
 
-- [ ] **Paso 3: implementar**: en `do_GET` y `do_POST` añadir al principio de la cadena de rutas `if self.path.startswith("/operator"): return self._json(410, {...})`; borrar los handlers y helpers 5396–6149 **excepto** `operator_pane` (`:5473`, lo usan `tmux_paste` y otras rutas: renombrar a `resolve_pane_target` y actualizar los 6 usos listados por `grep -n "operator_pane(" bin/cc-dash`); quitar `"/operator"` de `API_GET`; borrar los módulos y pruebas indicados; `grep -rn "operator_" bin lib dash tests` debe devolver solo `resolve_pane_target` y esta prueba. Si `lib/operator_receipts.py` lo usa alguna otra ruta (`/session/configure` guarda recibos), conservar únicamente esa dependencia y anotarlo en el registro.
+- [ ] **Paso 3: implementar**: al principio de la cadena de rutas de `_do_GET` (:8698) y de `do_POST` (después de leer `data`, :9041–9059) añadir `if self.path.startswith("/operator"): return self._json(410, {"error": "El chat de CommandOS se retiró; usa la barra de comandos", "code": "retired"})`; borrar los siete handlers listados; quitar `"/operator"` de `API_GET` (:8672). Dentro del bloque :5430–6221 borrar solo las funciones cuyos únicos llamadores eran esas rutas o el propio chat: comprobar cada nombre con `grep -n "<nombre>(" bin/cc-dash lib/*.py bin/cc-app` y borrar únicamente cuando el único uso sea su definición o una función que también se borra (`operator_snapshot`, `operator_set_model`, `operator_handle_chat`, `operator_handle_chat_stream`, `_operator_request_context`, `operator_sse_frame`, `operator_build_dispatcher`, `operator_snippet_send`, `_operator_http_error` son los candidatos; `operator_pane`, `operator_store_root`, `operator_tabs_payload` y cualquier función que use `/app/command` se quedan). Borrar los módulos y pruebas de chat indicados. Después: `grep -rn "operator_chat\|operator_stream" bin lib dash tests` debe devolver vacío.
 
-- [ ] **Paso 4: correr** — Run: `~/.local/bin/pytest -q tests/test_operator_retired.py tests/test_snippets_paste.py tests/test_session_route_matrix.py` — Esperado: PASS.
+- [ ] **Paso 4: correr** — Run: `~/.local/bin/pytest -q tests/test_operator_retired.py tests/test_operator_dispatch.py tests/test_operator_recovery.py tests/test_snippets_paste.py tests/test_session_route_matrix.py tests/test_dashboard_security.py` — Esperado: PASS.
 
 - [ ] **Paso 5: commit**
 
@@ -1193,14 +1212,17 @@ git commit -m "refactor: retire the CommandOS operator chat; conversations on di
 ### Tarea H1: cabecera "Ordenada" y botón Servidores
 
 **Archivos:**
-- Modificar: `dash/index.html` (`<header>` 1958–1990, `#ssh-bar` 1992–1996, CSS 250–259, IIFE 8025–8031, `nav#app-navigation` 1946–1955, `initTabNavigation` 6700–6726, `renderTabbar` 6599)
-- Modificar: `dash/workspace.css` (`@container sidebar`)
+- Modificar: `dash/index.html` (`<header>` :1960–1993; `nav#app-navigation` :1948–1957; `#ssh-bar` :1995–2000 y su CSS en :250–259 y :1923; IIFE de `#ssh-toggle` :8107–8113; `initTabNavigation` :6711–6770 con el handler de `#tab-new` :6720–6727, el de `#tab-terminal` :6759, `createQuickTerminal(` :6762 y `termBtn.onclick` :6765; el mapa `ICON` :7615–7640 para añadir el icono `menu`)
+- Modificar: `dash/workspace.css` (bloque de cabecera :584–624; añadir caras `consola` para los ids nuevos junto a :617–623)
 - Crear: `tests/test_header_layout.py`
-- Modificar: `bin/cc-app` solo si `_dash_click` (≈4793) apunta a un id que deja de existir (no debe: todos los ids se conservan).
+- Modificar: `tests/test_quick_terminal_client.py:50–56` (ids del botón Terminal), `tests/test_button_styles.py` (añadir los ids nuevos a la comprobación de `data-icon` + `hdr-lbl`)
+- `bin/cc-app`: sin cambios previstos. `_dash_click` (:5062) solo se usa con `btn-notif` (:5221) y `btn-settings` (:5230), ids que se conservan; la cabecera GTK tiene sus propios botones nativos (`_plus`, `_quick_term_btn`, `_sort_btn`, `_news_btn`, `_pomo_btn`).
 
 **Interfaces:**
-- Consume: `quickTerminal.open()` (`dash/quick-terminal.js`), `nsOpen()` (`index.html:3260`), `loadSsh()` y `toggleSshManager` (8032, 8072) sin cambios, `renderSessionOverview`, `openSessionProfiles`, `openExtensionUsage` (`dash/workspace.js`).
-- Produce: fila 1 `header.hdr-ordered` con, en este orden: `#btn-menu` (☰), `.counts` (`#n-waiting/#n-done/#n-working`), `#btn-terminal` (Terminal), `#btn-newsess` (`+ Nueva sesión`, `class="primary"`), y `.hdr-right`: `#btn-switch`, `#btn-snippets`, `#btn-usage`, `#btn-remote`, `#btn-servers` (nuevo, `title="Servidores"`), `#btn-news`, `#btn-pomo` (+ `#pomo-panel`), `#btn-settings`, `#clock`. Fila 2: `#app-navigation` con el número y las tabs (ya entregado por W2), sin `#tab-terminal` ni `#tab-new` (pasan a la fila 1; conservar `#tab-panel` para móvil y `#tab-open`). `#menu-panel` (☰) contiene, como filas con los ids existentes: `#btn-theme` (Apariencia), `#btn-sov` (Soberanía), `#snd-ctl` (volumen/silencio), `#limits-strip`, `#btn-notif` (+ `#notif-panel`, `#notif-badge`), `#toggle-overview` (Todas las sesiones), `#open-session-profiles` (Perfiles), `#open-extension-usage` (Uso de herramientas), `#tl-toggle` (Actividad reciente, si H1 conserva `renderEvents`; si S2 lo borró, omitir). `#ssh-bar` sale de `#topbar` y se coloca como panel `hidden` bajo la cabecera que `#btn-servers` alterna; su contenido, funciones y `localStorage cc-ssh-open` no cambian.
+- Consume: `quickTerminal.open()` (instancia creada en `:6762`), `nsOpen()`, `loadSsh()` (:8114), `toggleSshManager` (:8154) sin cambios, `renderSessionOverview`, `openSessionProfiles`, `openExtensionUsage` (`dash/workspace.js`), el sistema de estilos `html[data-btn-style]` + `header .hdr-btn` (`workspace.css:584–624`), `window.ComandosNotices.instance.toggleStrip()` (handler de `#btn-notif` :5670).
+- Produce: fila 1 `header.hdr-ordered`, todos `class="hdr-btn"` con `data-icon` y `<span class="hdr-lbl">`, en este orden: `#btn-menu` (☰, icono `menu`), `.counts` (`#n-waiting`/`#n-done`/`#n-working`), `#btn-terminal` (icono `terminal`), `#btn-newsess` (`+ Nueva sesión`, icono `plus`, clase `primary`), y `.hdr-right`: `#btn-switch`, `#btn-snippets`, `#btn-usage`, `#btn-remote`, `#btn-servers` (nuevo, icono `server`, `title="Servidores"`, `aria-expanded`), `#btn-news`, `#btn-notif` (+ `#notif-badge`, `#notif-panel`), `#btn-pomo` (+ `#pomo-panel`), `#btn-settings`, `#clock`. Fila 2: `#app-navigation` con `#tab-panel`, `#tab-prev`, `#tabbar`, `#tab-next`, `#tab-sort`, `#tab-open`; `#tab-terminal` y `#tab-new` desaparecen (pasan a la fila 1). `#menu-panel` (☰, `class="hidden" role="dialog"`) contiene, con sus ids y handlers actuales: `#btn-theme` (Apariencia), `#btn-sov` (Soberanía), `#snd-ctl` (`#btn-mute`, `#vol-top`), `#limits-strip`, `#toggle-overview` (Todas las sesiones), `#open-session-profiles` (Perfiles), `#open-extension-usage` (Uso de herramientas). `#ssh-bar` sale de `#topbar` y vive dentro de `<div id="servers-panel" class="hidden">` justo bajo la cabecera; `#btn-servers` lo alterna. Contenido, funciones y `localStorage cc-ssh-open` de Servidores no cambian.
+
+Reconciliación con el grill del 29 (posterior al mockup de la ronda 9): la campana `#btn-notif` se queda en la fila 1 porque desde `9db3c1f` es lo único que abre el cajón de avisos; los botones ya son de un solo tamaño con etiqueta oculta (`.hdr-lbl`), así que la regla "solo icono bajo 1600 px" del mockup ya está cubierta por el sistema de estilos y no se reimplementa.
 
 - [ ] **Paso 1: prueba de texto** `tests/test_header_layout.py`:
 
@@ -1209,50 +1231,69 @@ from pathlib import Path
 import re
 ROOT = Path(__file__).resolve().parents[1]
 HTML = (ROOT / "dash" / "index.html").read_text(encoding="utf-8")
+CSS = (ROOT / "dash" / "workspace.css").read_text(encoding="utf-8")
 
 def test_row_one_order_and_servers_button():
     head = HTML[HTML.index('<header class="hdr-ordered"'):HTML.index('</header>')]
-    order = [m for m in re.findall(r'id="(btn-menu|n-waiting|btn-terminal|btn-newsess|btn-switch|btn-snippets|btn-usage|btn-remote|btn-servers|btn-news|btn-pomo|btn-settings|clock)"', head)]
-    assert order == ["btn-menu", "n-waiting", "btn-terminal", "btn-newsess", "btn-switch", "btn-snippets", "btn-usage", "btn-remote", "btn-servers", "btn-news", "btn-pomo", "btn-settings", "clock"]
-    assert 'id="ssh-bar"' in HTML and 'id="ssh-chips"' in HTML and 'id="ssh-manage"' in HTML   # Servidores intacto
+    order = re.findall(r'id="(btn-menu|n-waiting|btn-terminal|btn-newsess|btn-switch|btn-snippets|btn-usage|btn-remote|btn-servers|btn-news|btn-notif|btn-pomo|btn-settings|clock)"', head)
+    assert order == ["btn-menu", "n-waiting", "btn-terminal", "btn-newsess", "btn-switch", "btn-snippets", "btn-usage", "btn-remote", "btn-servers", "btn-news", "btn-notif", "btn-pomo", "btn-settings", "clock"]
+    for tag_id, icon in (("btn-menu", "menu"), ("btn-terminal", "terminal"), ("btn-newsess", "plus"), ("btn-servers", "server")):
+        tag = head[head.index(f'id="{tag_id}"') - 40: head.index(f'id="{tag_id}"') + 260]
+        assert 'class="hdr-btn' in tag and f'data-icon="{icon}"' in tag and 'class="hdr-lbl"' in tag, tag_id
     topbar = HTML[HTML.index('<div id="topbar">'):HTML.index('<div id="content">')]
-    assert 'id="ssh-bar"' not in topbar                                                          # ya no es fila permanente
+    assert 'id="ssh-bar"' not in topbar                       # ya no es fila permanente
+    assert 'id="servers-panel"' in HTML and 'id="ssh-bar"' in HTML and 'id="ssh-chips"' in HTML and 'id="ssh-manage"' in HTML
+
+def test_tabs_row_keeps_sort_and_drops_terminal_buttons():
+    nav = HTML[HTML.index('<nav id="app-navigation"'):HTML.index('</nav>')]
+    assert 'id="tab-sort"' in nav and 'id="tab-panel"' in nav
+    assert 'id="tab-terminal"' not in nav and 'id="tab-new"' not in nav
 
 def test_relocated_controls_keep_their_ids_inside_the_menu():
-    menu = HTML[HTML.index('id="menu-panel"'):HTML.index('id="menu-panel"') + 4000]
-    for i in ("btn-theme", "btn-sov", "btn-mute", "vol-top", "limits-strip", "btn-notif", "toggle-overview", "open-session-profiles", "open-extension-usage"):
+    start = HTML.index('id="menu-panel"'); menu = HTML[start:start + 6000]
+    for i in ("btn-theme", "btn-sov", "btn-mute", "vol-top", "limits-strip", "toggle-overview", "open-session-profiles", "open-extension-usage"):
         assert f'id="{i}"' in menu, i
 
-def test_ssh_functions_untouched():
+def test_ssh_functions_untouched_and_styles_cover_new_buttons():
     for fn in ("async function loadSsh(", "async function openSshTab(", "async function connectHost(", "async function setupSshKey(", "function toggleSshManager("):
         assert fn in HTML, fn
+    assert "--hdr-key" in CSS and "#btn-servers" in CSS
 ```
 
-- [ ] **Paso 2: correr para ver el fallo** — Esperado: FAIL.
+- [ ] **Paso 2: correr para ver el fallo** — Run: `~/.local/bin/pytest -q tests/test_header_layout.py` — Esperado: FAIL.
 
-- [ ] **Paso 3: implementar el HTML**: reescribir `<header>` 1958–1990 como `<header class="hdr-ordered">` con el orden anterior; mover `#tab-terminal`/`#tab-new` a `#btn-terminal`/`#btn-newsess` (mismos handlers: `quickTerminal.open()` y `nsOpen()`; actualizar `initTabNavigation` 6716–6726 para que use los nuevos ids y no falle si los viejos no existen); crear `<div id="menu-panel" class="hidden" role="dialog" aria-label="Más">` con los controles reubicados; mover `<div id="ssh-bar">` justo después de `</header>` dentro de un `<div id="servers-panel" class="hidden">`. Handler:
+- [ ] **Paso 3: implementar el HTML**: reescribir `<header>` (:1960–1993) como `<header class="hdr-ordered">` con el orden anterior, reutilizando los botones existentes tal cual (mismos ids, `data-icon`, `hdr-lbl`, `title`) y añadiendo:
+
+```html
+<button class="hdr-btn" id="btn-menu" aria-label="Más" title="Más" aria-haspopup="dialog"><span data-icon="menu" data-size="17"></span><span class="hdr-lbl">Más</span></button>
+<button class="hdr-btn" id="btn-terminal" aria-label="Terminal" title="Terminal rápida en una carpeta nueva"><span data-icon="terminal" data-size="17"></span><span class="hdr-lbl">Terminal</span></button>
+<button class="hdr-btn primary" id="btn-newsess" aria-label="Nueva sesión" title="Nueva sesión"><span data-icon="plus" data-size="17"></span><span class="hdr-lbl">Nueva sesión</span></button>
+<button class="hdr-btn" id="btn-servers" aria-label="Servidores" title="Servidores" aria-expanded="false"><span data-icon="server" data-size="17"></span><span class="hdr-lbl">Servidores</span></button>
+```
+
+Añadir al mapa `ICON` (:7615–7640) la entrada `menu` (tres líneas horizontales, mismo formato que `smartphone`). Quitar `#tab-terminal` (:1953) y `#tab-new` (:1954) del `nav`. En `initTabNavigation` (:6711–6770): el handler de `#tab-new` (:6720–6727) pasa a `#btn-newsess` llamando `nsOpen()`; `termBtn` (:6759, :6765) pasa a `document.getElementById("btn-terminal")`; `createQuickTerminal` (:6762) no cambia. Crear `<div id="menu-panel" class="hidden" role="dialog" aria-label="Más">` justo después de `</header>` con los controles reubicados (mover los nodos existentes, no duplicarlos). Mover `<div id="ssh-bar">` (:1995–2000) a `<div id="servers-panel" class="hidden">` después de `#menu-panel`. Handlers:
 
 ```js
 $('#btn-servers').addEventListener('click', () => {
-  const p = $('#servers-panel'); const open = p.classList.toggle('hidden') === false;
+  const p = $('#servers-panel'); const open = !p.classList.toggle('hidden');
   $('#btn-servers').setAttribute('aria-expanded', String(open));
   if (open) { $('#ssh-bar').classList.add('open'); loadSsh(); }
 });
 $('#btn-menu').addEventListener('click', () => $('#menu-panel').classList.toggle('hidden'));
 ```
 
-`#ssh-bar.open` fuerza mostrar todos los chips y "gestionar" (regla existente `#ssh-bar:not(.open) …`), sin tocar `loadSsh` ni la IIFE del toggle.
+`#ssh-bar.open` muestra todos los chips y "gestionar" por la regla existente `#ssh-bar:not(.open) …` (:258–259); `loadSsh` (:8114) y la IIFE de `#ssh-toggle` (:8107–8113) no se tocan.
 
-- [ ] **Paso 4: CSS**: `.hdr-ordered{display:flex;align-items:center;gap:8px;flex-wrap:nowrap}`; `.hdr-right .lbl{display:none}` bajo `@container sidebar (max-width:1200px)` y `title` en cada botón; `#servers-panel` con el `max-width:1360px` que ya usa `#ssh-bar`; `#menu-panel` como popover bajo ☰ (`position:absolute; z-index` igual a `#notif-panel`). Móvil (`max-width:640px`): contadores abreviados (`esperan`→`esp.`) y `+ Nueva sesión` solo icono.
+- [ ] **Paso 4: CSS** en `dash/workspace.css`: `.hdr-ordered{display:flex;align-items:center;gap:8px;flex-wrap:nowrap}` y `.hdr-ordered .hdr-right{margin-left:auto}` dentro del bloque de cabecera (:584–624) para que los botones nuevos hereden `--hdr-key` y `.hdr-lbl`; en las caras `consola` (:617–623) añadir `#btn-servers`, `#btn-terminal`, `#btn-newsess` y `#btn-menu` con un color por función; `#servers-panel` con el `max-width:1360px` que ya usa `#ssh-bar` (`index.html:250`); `#menu-panel` como popover bajo ☰ (`position:absolute; z-index` igual a `#notif-panel`). En `@media (max-width:640px)` (`index.html:1916` y siguientes): contadores abreviados (`esperan`→`esp.`) y `#btn-newsess` sin etiqueta visible (ya lo está por `.hdr-lbl`).
 
-- [ ] **Paso 5: GTK**: comprobar `grep -n "_dash_click(" bin/cc-app` y que cada id citado sigue en el DOM (`btn-settings`, `btn-pomo`, `btn-notif` viven ahora en `#menu-panel` o `.hdr-right`; `_dash_click` hace `click()` por id y no depende de visibilidad). Si algún id cambió, ajustar solo esa cadena en `bin/cc-app`.
+- [ ] **Paso 5: pruebas existentes**: en `tests/test_quick_terminal_client.py:50–56` cambiar `tab-terminal` por `btn-terminal` y `tab-new` por `btn-newsess`; en `tests/test_button_styles.py` añadir `("btn-servers","server"),("btn-terminal","terminal"),("btn-newsess","plus"),("btn-menu","menu")` a la lista de `data-icon` + `hdr-lbl`. `tests/test_remote_ui.py:1839` (`id="btn-remote"`) sigue verde sin cambios.
 
-- [ ] **Paso 6: correr** — Run: `~/.local/bin/pytest -q tests/test_header_layout.py tests/test_command_sidebar_mount.py tests/test_app_quick_terminal.py && bash tests/test_js_parses.sh` — Esperado: PASS.
+- [ ] **Paso 6: correr** — Run: `~/.local/bin/pytest -q tests/test_header_layout.py tests/test_button_styles.py tests/test_quick_terminal_client.py tests/test_command_sidebar_mount.py tests/test_app_quick_terminal.py tests/test_remote_ui.py tests/test_operator_dispatch.py && bash tests/test_js_parses.sh` — Esperado: PASS.
 
 - [ ] **Paso 7: commit**
 
 ```bash
-git add dash/index.html dash/workspace.css tests/test_header_layout.py bin/cc-app
+git add dash/index.html dash/workspace.css tests/test_header_layout.py tests/test_button_styles.py tests/test_quick_terminal_client.py
 git commit -m "feat: ordered two-row header with Servidores opening the existing SSH bar"
 ```
 
@@ -1263,11 +1304,11 @@ git commit -m "feat: ordered two-row header with Servidores opening the existing
 **Archivos:**
 - Modificar: `docs/verification/commandos-v1-fase2.md`
 
-- [ ] **Paso 1: suite completa** — Run: `~/.local/bin/pytest -q tests/ 2>&1 | tail -5 && bash tests/test_js_parses.sh` — Esperado: solo los 22 fallos preexistentes de main (`browser_config_migration` 12, `extension_auth` 9, `extension_proxy` 1) según /home/someguy/codebase/0xJesus/ComandOS/docs/verification/commandos-v1.md; cualquier otro fallo bloquea.
+- [ ] **Paso 1: suite completa** — Run: `~/.local/bin/pytest -q tests/ 2>&1 | tail -5 && bash tests/test_js_parses.sh` — Esperado: exactamente los mismos fallos que la línea base registrada en Preparación (`/tmp/claude-1000/comandos-fase2-baseline.txt`); cualquier fallo nuevo bloquea.
 
 - [ ] **Paso 2: arrancar un cc-dash de ensayo** con `HOME` y `TMUX_TMPDIR` aislados en un puerto libre (mismo arranque que el fixture `dash`), crear una sesión tmux privada `demo` con `claude` **no** lanzado (una shell) y exponerlo: `/home/someguy/.local/bin/cc-browser-expose start <puerto>`.
 
-- [ ] **Paso 3: en la Mac mini con `chrome-bg`** (`new_page` → `http://127.0.0.1:<puerto>/`), a 1440×1000 y 390×844: capturar la barra (acordeón con 5 CLI, yolo primero), clic en un arranque yolo y comprobar con `tmux capture-pane` en el socket privado que el texto está en el prompt y no se ejecutó; plegar y reabrir el primer CLI; abrir Cadenas, armar dos pasos, guardar, correr con Siguiente dos veces (capturar el pane entre pasos); cabecera: ☰ abre el menú con Apariencia/Soberanía/volumen; Servidores abre la fila SSH real; sin desbordamiento horizontal en móvil; consola sin errores (`list_console_messages`). Guardar capturas con `take_screenshot` (ruta de la Mac) y transferirlas con `scp` a `docs/verification/shots/fase2/`, citando ruta absoluta local.
+- [ ] **Paso 3: en la Mac mini con `chrome-bg`** (`new_page` → `http://127.0.0.1:<puerto>/`), a 1440×1000 y 390×844: capturar la barra (acordeón con 5 CLI, yolo primero), clic en un arranque yolo y comprobar con `tmux capture-pane` en el socket privado que el texto está en el prompt y no se ejecutó; plegar y reabrir el primer CLI; abrir Cadenas, armar dos pasos, guardar, correr con Siguiente dos veces (capturar el pane entre pasos); cabecera: ☰ abre el menú con Apariencia/Soberanía/volumen; Servidores abre la fila SSH real; la campana sigue abriendo el cajón de avisos; el reloj de arena sigue en `#btn-pomo`; cambiar el estilo de botones en Ajustes → Apariencia restyla también los botones nuevos; Resúmenes abre el lector con la barra de comandos visible; sin desbordamiento horizontal en móvil; consola sin errores (`list_console_messages`). Guardar capturas con `take_screenshot` (ruta de la Mac) y transferirlas con `scp` a `docs/verification/shots/fase2/`, citando ruta absoluta local.
 
 - [ ] **Paso 4: cerrar** la sesión tmux de ensayo (`kill-server` solo en el socket privado), `cc-browser-expose stop <puerto>`, `close_page`.
 
@@ -1280,7 +1321,7 @@ git commit -m "feat: ordered two-row header with Servidores opening the existing
 | ID | Decisión pendiente de Jesús | Recomendación implementada | Momento de preguntar |
 | --- | --- | --- | --- |
 | D7 | Terminales rápidas al pie de la barra: lista de destinos que enfoca la tab (E2 ya las hizo tabs del workspace) o terminal embebida como en el mockup. | Lista de destinos con "+ nueva"; una terminal embebida duplicaría el pane. | Demostración S2. |
-| D8 | Dónde viven Todas las sesiones, Perfiles, Uso de herramientas, Apariencia, Soberanía, volumen, límites y el panel de Notificaciones al salir de la barra y de la cabecera. | Menú ☰ de la fila 1 con los ids existentes. | Demostración H1. |
+| D8 | Dónde viven Todas las sesiones, Perfiles, Uso de herramientas, Apariencia, Soberanía, volumen y límites al salir de la barra y de la cabecera. | Menú ☰ de la fila 1 con los ids existentes. La campana no entra aquí: se queda en la fila 1 porque abre el cajón de avisos (decisión del 29-sep). | Demostración H1. |
 | D9 | Un clic con texto ya escrito en el prompt: añadir al final (implementado) o limpiar antes. | Añadir; limpiar borraría lo que el usuario escribió. | Demostración S1. |
 | D10 | Retirar el código del chat (rutas 410 y módulos) o solo esconderlo. | Retirar código; conservar conversaciones en disco. | Antes de S4. |
 
@@ -1289,3 +1330,4 @@ git commit -m "feat: ordered two-row header with Servidores opening the existing
 - Cobertura de la especificación: catálogo por CLI con versión y "en este pane" (C1, C2, S1); todo plegable y yolo primero (S1); fila de dos líneas con chips (S1 `rowHTML`); clic escribe letra por letra sin Enter (T1, S1); cadenas guardadas y tarjeta corriendo con Siguiente/Parar (K1, K2, S1); modal Cadenas con el mismo acordeón (S3); chat sustituido por terminales rápidas (S2, S4); cabecera Ordenada sin fila SSH permanente y Servidores intacto (H1); drift/missing/unverified (C1, S1); móvil (S2 paso 6, H1 paso 4, V1).
 - Nombres consistentes: `createCommandSidebar`, `applyCatalog`, `startChain`, `next`, `stop`, `insert`; `type_literal`, `PaneTypingLocks`, `TypingError`; `list_chains`, `save_chain`, `delete_chain`, `ChainError`; `catalog_view`, `installed_versions`, `version_status`; rutas `/commands/catalog`, `/pane/type`, `/chains`, `/chains/delete`.
 - Foco de revisión: 1 y 2 en T1; 3 en S1 (punto 7); 4 en K1 y S1 (punto 5); 5 en S1 (punto 4) y T1 (`pane_gone`).
+- Reconciliación con main `0561687` (grill de fidelidad del 29–30): el sistema de botones 3D, el reloj de arena, el cajón de avisos tras la campana, Resúmenes en `#panes`, `#tab-sort`, stickers y bandejas se conservan sin cambios (restricciones globales, H1); los archivos nuevos entran en `install.sh` (S1, S3); `/app/command` y `lib/operator_dispatch/catalog/receipts` sobreviven al retiro del chat (S4); las pruebas que fijaban `#op-chat`, `#centro-wrap`, `#tab-new`/`#tab-terminal` se actualizan en S2 y H1.
