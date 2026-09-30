@@ -32,7 +32,8 @@
     const d = [['left', (x - rect.left) / rect.width], ['right', (rect.right - x) / rect.width],
                ['top', (y - rect.top) / rect.height], ['bottom', (rect.bottom - y) / rect.height]];
     d.sort((a, b) => a[1] - b[1]);
-    return d[0][1] >= 0 && d[0][1] <= fraction ? d[0][0] : null;
+    // Dentro del pane siempre hay objetivo: el borde más cercano (el centro ya no es tierra de nadie).
+    return d[0][1] >= 0 && d[0][1] <= Math.max(fraction, 0.5) ? d[0][0] : null;
   }
   function outerEdge(rect, x, y, px = OUTER_PX) {
     const d = [['left', x - rect.left], ['right', rect.right - x], ['top', y - rect.top], ['bottom', rect.bottom - y]];

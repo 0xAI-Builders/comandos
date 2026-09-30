@@ -6,7 +6,7 @@ const rect = {left: 0, top: 0, right: 200, bottom: 100, width: 200, height: 100}
 assert.equal(dock.edgeFor(rect, 10, 50), 'left');
 assert.equal(dock.edgeFor(rect, 195, 50), 'right');
 assert.equal(dock.edgeFor(rect, 100, 5), 'top');
-assert.equal(dock.edgeFor(rect, 100, 50), null, 'centre is not a drop target');
+assert.equal(dock.edgeFor(rect, 100, 48), 'top', 'centre docks beside the nearest edge (fix 4, 30-sep)');
 assert.equal(dock.edgeFor(rect, 300, 50), null, 'outside the rect');
 assert.equal(dock.outerEdge(rect, 3, 50), 'left');
 assert.equal(dock.outerEdge(rect, 100, 50), null);

@@ -87,10 +87,10 @@ def dock_target(layout, x, y, moved):
         if not _inside(rect, x, y) or tab in moved:
             continue
         rx, ry, rw, rh = rect
-        edge, frac = _nearest([("left", (x - rx) / rw), ("right", (rx + rw - x) / rw),
-                               ("top", (y - ry) / rh), ("bottom", (ry + rh - y) / rh)])
-        if frac > EDGE_FRACTION:
-            return None
+        # Soltar en CUALQUIER punto del pane lo coloca junto a él, por el borde
+        # más cercano (fix 4, 30-sep): el centro ya no es tierra de nadie.
+        edge, _frac = _nearest([("left", (x - rx) / rw), ("right", (rx + rw - x) / rw),
+                                ("top", (y - ry) / rh), ("bottom", (ry + rh - y) / rh)])
         return {"kind": "dock", "target": tab, "edge": edge, "rect": _half(rect, edge)}
     return None
 

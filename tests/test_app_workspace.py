@@ -231,7 +231,8 @@ def _drag_ns(pages, current):
           '_ws_layer': layer, 'GLib': SimpleNamespace(timeout_add=lambda ms, fn: 1),
           'notebook_pages': lambda: list(pages), 'gtk_workspace': SimpleNamespace(GroupPage=type('G', (), {})),
           '_ws_layout': lambda: {'strip': (0, 0, 1000, 30), 'entries': entries},
-          '_ws_target': lambda x, y: {'kind': 'bar'}, 'ws_strip_edge_step': lambda x, w, zone=56: 0}
+          '_ws_target': lambda x, y: {'kind': 'bar'}, 'ws_strip_edge_step': lambda x, w, zone=56: 0,
+          '_ws_grab': lambda on: None, '_ws_button_still_down': lambda: True, '_ws_finish': lambda t: None}
     for name in ('_ws_source_page', '_ws_drag_begin', '_ws_drag_end', '_ws_edge_tick'):
         load(name, ns)
     return ns, nb
@@ -269,3 +270,20 @@ def test_bar_target_is_a_tab_sized_slot_and_the_layer_draws_ghost_and_cover():
     assert 'target["slot"] = True' in src and 'def _ws_draw_ghost' in src and 'def _ws_draw_lifted' in src
     draw = src.split('def _ws_draw(widget, cr):')[1].split('\n\n\n')[0]
     assert '_ws_draw_lifted(cr)' in draw and '_ws_draw_ghost(cr)' in draw and 'cr.set_dash([5, 4])' in draw
+
+
+def test_a_lost_release_ends_the_drag_instead_of_leaving_it_stuck():
+    """The real bug of 30-sep: dragging a docked leaf's header and switching page unmapped
+    the pressed widget, the release never arrived and _WS['drag'] stayed set, so the
+    workspace stopped syncing. The tick now finishes the drag when button 1 is up."""
+    a, b = SimpleNamespace(_key='A'), SimpleNamespace(_key='B')
+    ns, nb = _drag_ns([a, b], current=0)
+    finished = []
+    ns['_ws_finish'] = lambda t: finished.append(t) or ns['_ws_drag_end']()
+    ns['_ws_drag_begin']('B', press_page=0)
+    ns['_WS']['pointer'] = (50, 10)
+    ns['_ws_button_still_down'] = lambda: False
+    assert ns['_ws_edge_tick']() is False
+    assert finished == [{'kind': 'bar'}] and ns['_WS']['drag'] is None
+    src = SOURCE
+    assert 'win.connect("button-release-event", _ws_window_release)' in src and 'seat.grab(win.get_window()' in src

@@ -75,8 +75,11 @@ def test_drop_near_a_leaf_edge_docks_beside_it():
     assert t == {"kind": "dock", "target": "b", "edge": "right", "rect": (750, 40, 250, 600)}
 
 
-def test_drop_in_leaf_centre_is_not_a_target():
-    assert gw.dock_target(layout(), 750, 340, ["c"]) is None
+def test_drop_in_leaf_centre_docks_beside_its_nearest_edge():
+    """Fix 4 (30-sep): dropping anywhere on a pane places the tab next to it."""
+    t = gw.dock_target(layout(), 750, 330, ["c"])
+    assert t["kind"] == "dock" and t["target"] == "b" and t["edge"] == "top"
+    assert gw.dock_target(layout(), 700, 340, ["c"])["edge"] == "left"
 
 
 def test_outer_edge_wraps_the_active_group():

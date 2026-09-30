@@ -184,26 +184,32 @@ Gtk.Settings.get_default().set_property("gtk-application-prefer-dark-theme", Tru
 
 APP_CSS = """
 notebook > header { background: @BAR@; border: none; box-shadow: none; }
-/* Pestañas = .apptab del remoto (fix 5, grill 30-sep): 44 px de alto, 12 px de
-   aire, mono 11 px con espaciado, tinte de marca al pasar y al estar activa,
-   transiciones de 150 ms. Un solo look en escritorio y remoto. */
+/* Pestañas = las del prototipo aprobado (prototype-iguales.html, 30-sep):
+   44 px, sans 600, modelo como chip mono chico, separador de 1 px entre
+   pestañas, activa con fondo levantado + línea de acento, ★ y ✕ solo al
+   pasar el cursor. Transiciones de 150 ms. */
 notebook > header > tabs > tab {
   background: transparent; color: @DIM@; padding: 0 12px; margin: 0; min-height: 40px;
-  font-family: 'Ubuntu Sans Mono', 'JetBrainsMono Nerd Font Mono', 'JetBrainsMono Nerd Font', 'JetBrainsMono NF', 'JetBrains Mono', 'Cascadia Code', 'Fira Code', 'DejaVu Sans Mono', monospace; font-size: 11px;
-  letter-spacing: 0.2px; border: none; border-radius: 0; box-shadow: none;
+  font-family: 'Ubuntu Sans', 'Inter', 'Ubuntu', 'Cantarell', sans-serif; font-size: 12px;
+  border: none; border-right: 1px solid @LINE@; border-radius: 0; box-shadow: none;
   transition: color 150ms ease, background-color 150ms ease, box-shadow 150ms ease;
 }
 notebook > header > tabs > tab:hover { color: @TEXT@; background-color: alpha(@BRAND@, 0.06); }
 notebook > header > tabs > tab:checked {
-  color: @TEXT@; background-color: alpha(@BRAND@, 0.09); box-shadow: inset 0 -2px 0 0 @BRAND@;
+  color: @TEXT@; background-color: alpha(@LINE2@, 0.45); box-shadow: inset 0 -2px 0 0 @BRAND@;
 }
 notebook > header > tabs > tab label.tab-name { font-weight: 600; }
-.tab-model { color: @BRAND@; font-family: monospace; font-size: 9px; }
+.tab-model { color: @DIM@; font-family: 'Ubuntu Sans Mono', 'JetBrains Mono', monospace; font-size: 10px; font-weight: 600;
+  padding: 1px 6px; border: 1px solid @LINE2@; border-radius: 5px; }
 notebook > header > tabs > tab button {
   color: @FAINT@; padding: 0; margin: 0; min-height: 14px; min-width: 14px;
-  border: none; background: none;
+  border: none; background: none; background-image: none; box-shadow: none; opacity: 0;
+  transition: opacity 150ms ease, color 120ms ease;
 }
+notebook > header > tabs > tab:hover button, notebook > header > tabs > tab button.favorite,
+notebook > header > tabs > tab button.tab-suggest { opacity: 1; }
 notebook > header > tabs > tab button:hover { color: @TEXT@; }
+notebook > header > tabs > tab button.tabclose:hover { color: #ffffff; background-color: #FF6B6B; border-radius: 5px; }
 notebook > header > tabs > tab button.tabfav { font-size: 15px; min-width: 20px; }
 notebook > header > tabs > tab label.tab-sticker { font-size: 8px; font-weight: 800; padding: 1px 5px; border-radius: 5px; margin: 0 2px; }
 notebook > header > tabs > tab label.tab-sticker.st-frozen { background: #1e3a5f; color: #9cd0ff; }
@@ -1691,7 +1697,7 @@ def button_style_css(style, theme):
     # atajos…): misma superficie 3D sin cambiar su tamaño. Hundirse = sombra
     # interior (sin mover márgenes, así las listas no bailan). Fuera quedan
     # los controles de ventana y las flechas de scroll.
-    gen = "button:not(.cc-key):not(.cc-winctl):not(.titlebutton)"
+    gen = "button:not(.cc-key):not(.cc-winctl):not(.titlebutton):not(.tabfav):not(.tabclose):not(.tab-suggest):not(.tabnav)"
     generic = {
         "sutil": (f"{gen}{{border:1px solid {line};box-shadow:0 2px 0 {theme.get('line2', line)};}}"
                   f"{gen}:active,{gen}:checked{{box-shadow:inset 0 2px 0 rgba(0,0,0,0.3);}}"),
@@ -4251,7 +4257,21 @@ def _ws_press(widget, event, key):
 
 def _ws_layer_point(widget, event):
     pos = widget.translate_coordinates(_ws_layer, int(event.x), int(event.y))
-    return pos if pos is not None else (-1, -1)
+    return pos if pos is not None else _ws_layer_point_root(event.x_root, event.y_root)
+
+
+def _ws_layer_point_root(x_root, y_root):
+    """Punto de pantalla → coordenadas de la capa (sirve aunque el widget de
+    origen ya no esté mapeado: la pestaña acoplada cuya página se ocultó)."""
+    gdk_win = win.get_window()
+    if gdk_win is None:
+        return (-1, -1)
+    try:
+        _ok, wx, wy = gdk_win.get_origin()
+    except Exception:
+        return (-1, -1)
+    off = _ws_layer.translate_coordinates(win, 0, 0) or (0, 0)
+    return (x_root - wx - off[0], y_root - wy - off[1])
 
 
 def _ws_pointer_move(widget, event):
@@ -4278,6 +4298,49 @@ def _ws_release(widget, event):
     x, y = _ws_layer_point(widget, event)
     _ws_finish(_ws_target(x, y))
     return True
+
+
+def _ws_window_motion(widget, event):
+    """Con el agarre en la ventana, el movimiento llega aquí aunque el widget
+    presionado se haya ocultado (cambio de página al posar o auto-desplazar)."""
+    if _WS["drag"] is None:
+        return False
+    x, y = _ws_layer_point_root(event.x_root, event.y_root)
+    _WS["pointer"] = (x, y)
+    _WS["target"] = _ws_target(x, y)
+    _ws_layer.queue_draw()
+    return True
+
+
+def _ws_window_release(widget, event):
+    if _WS["drag"] is None or event.button != 1:
+        return False
+    _WS["press"] = None
+    x, y = _ws_layer_point_root(event.x_root, event.y_root)
+    _ws_finish(_ws_target(x, y))
+    return True
+
+
+def _ws_grab(on):
+    """Agarre del puntero en la ventana durante el arrastre: los eventos no
+    dependen del widget de origen (fix 4, 30-sep)."""
+    try:
+        seat = Gdk.Display.get_default().get_default_seat()
+        if on:
+            seat.grab(win.get_window(), Gdk.SeatCapabilities.POINTER, False, None, None, None, None)
+        else:
+            seat.ungrab()
+    except Exception:
+        pass
+
+
+def _ws_button_still_down():
+    try:
+        seat = Gdk.Display.get_default().get_default_seat()
+        _w, _x, _y, mask = win.get_window().get_device_position(seat.get_pointer())
+        return bool(mask & Gdk.ModifierType.BUTTON1_MASK)
+    except Exception:
+        return True
 
 
 def ws_cancel_drag():
@@ -4309,6 +4372,14 @@ def _ws_edge_tick():
     """Mientras se arrastra en la franja de pestañas cerca de un borde, avanza una
     pestaña cada tick; GtkNotebook solo desplaza sus tabs cambiando de página."""
     if _WS["drag"] is None:
+        _WS["edge_timer"] = None
+        return False
+    if not _ws_button_still_down():
+        # El release se perdió (widget de origen desmontado, grab roto): cerrar
+        # el arrastre donde está el puntero en vez de dejarlo pegado.
+        x, y = _WS.get("pointer") or (-1, -1)
+        _WS["press"] = None
+        _ws_finish(_ws_target(x, y))
         _WS["edge_timer"] = None
         return False
     x, y = _WS.get("pointer") or (-1, -1)
@@ -4365,9 +4436,11 @@ def _ws_drag_begin(source, press_page=None):
     if not _WS.get("edge_timer"):
         _WS["edge_timer"] = GLib.timeout_add(260, _ws_edge_tick)
     _ws_layer.show()
+    _ws_grab(True)
 
 
 def _ws_drag_end():
+    _ws_grab(False)
     _WS["source_label"] = None
     _WS["drag"] = None
     _WS["target"] = None
@@ -7142,6 +7215,9 @@ _cmd_mon.connect("changed", lambda m, f, o, ev: on_app_command(f.get_path())
 # Antes de on_key: si on_key consume la tecla, la emision se detiene.
 win.connect("key-press-event", lambda *_: report_presence(interaction=True) and False)
 win.connect("key-press-event", on_key)
+win.add_events(Gdk.EventMask.POINTER_MOTION_MASK | Gdk.EventMask.BUTTON_RELEASE_MASK)
+win.connect("motion-notify-event", _ws_window_motion)
+win.connect("button-release-event", _ws_window_release)
 # Los clics los consume VTE antes de llegar a la ventana: capturarlos arriba
 # sin reclamarlos (el gesto no roba el evento).
 _presence_clicks = Gtk.GestureMultiPress.new(win)
