@@ -589,6 +589,14 @@ body.inapp header.hdr-ordered #btn-servers{grid-column:1/-1;width:auto;justify-s
 body.inapp header.hdr-ordered #btn-servers .hdr-lbl{position:static;width:auto;height:auto;clip:auto;overflow:visible}
 body.inapp header.hdr-ordered #clock{grid-column:1/-1;text-align:center;font:600 12px/1 var(--mono);letter-spacing:.5px;order:1;margin:2px 0 0}
 body.inapp header.hdr-ordered #notif-panel,body.inapp header.hdr-ordered #pomo-panel{grid-column:1/-1}
+/* Columna angosta (divisor movido a la izquierda): 2 columnas y el Pomodoro solo con su reloj, sin encimarse. */
+@container sidebar (max-width:300px){
+  body.inapp header.hdr-ordered{grid-template-columns:repeat(2,minmax(0,1fr))}
+  body.inapp header.hdr-ordered #btn-pomo .pomo-mini{display:none}
+}
+@container sidebar (max-width:190px){
+  body.inapp header.hdr-ordered{grid-template-columns:minmax(0,1fr)}
+}
 #servers-panel{flex:none;width:100%;max-width:1360px;margin:0 auto;box-sizing:border-box;padding-top:8px;border-bottom:1px solid var(--line)}
 @container sidebar (max-width:760px){#view-panel #servers-panel #ssh-bar{padding-left:12px;padding-right:12px}}
 #menu-panel{position:fixed;z-index:60;min-width:230px;max-width:calc(100vw - 16px);max-height:calc(100dvh - 16px);overflow:auto;box-sizing:border-box;padding:8px;display:flex;flex-direction:column;gap:6px;
