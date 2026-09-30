@@ -67,9 +67,9 @@ const tick = () => new Promise(r => setImmediate(r));
   assert.equal(q('.cs-cli[data-cli="codex"]').classList.contains('open'), true);
   assert.equal(q('.cs-cli[data-cli="codex"] .launch.yolo').classList.contains('open'), true);
   click('.cs-cli[data-cli="codex"] .launch.yolo .cmd');
-  bd().dispatch('click', qa('.cs-cli[data-cli="codex"] .cmds .cmd')[0]);   // /model
-  bd().dispatch('click', q('.cs-cli[data-cli="claude"] .cmd .opts button'));  // chip: se abre solo con el arranque claude
-  bd().dispatch('click', qa('.cs-cli[data-cli="claude"] .cmds .cmd .add')[0]); // «+ cadena» de /model  (con espacio final)
+  bd().dispatch('click', q('.cs-cli[data-cli="codex"] .cmds .cmd[data-add="/model"]'));   // /model
+  bd().dispatch('click', q('.cs-cli[data-cli="claude"] .cmd[data-add="/model "] .opts button'));  // chip: se abre solo con el arranque claude
+  bd().dispatch('click', q('.cs-cli[data-cli="claude"] .cmds .cmd[data-add="/model "] .add')); // «+ cadena» de /model  (con espacio final)
   assert.deepEqual(b.state.steps.map(s => [s.kind, s.text]), [
     ['shell', YOLO], ['pane', '/model'], ['pane', '/model claude-fable-5-1'], ['pane', '/model ']]);
   assert.equal(calls.length, 0);                                       // ni API ni /pane/type
@@ -127,7 +127,7 @@ const tick = () => new Promise(r => setImmediate(r));
 
   // 5) Guardar: POST /chains {name, steps} (sin slug), cierra y onSaved(chain, {run:false})
   bd().dispatch('click', qa('.cs-cli[data-cli="codex"] .launch.yolo .cmd')[0]);
-  bd().dispatch('click', qa('.cs-cli[data-cli="codex"] .cmds .cmd')[0]);
+  bd().dispatch('click', q('.cs-cli[data-cli="codex"] .cmds .cmd[data-add="/model"]'));
   click('[data-save]'); await tick(); await tick();
   assert.deepEqual(calls, [['/chains', { name: 'Mi cadena', steps: [{ kind: 'shell', text: YOLO }, { kind: 'pane', text: '/model' }] }]]);
   assert.equal(bd(), null);
@@ -138,7 +138,7 @@ const tick = () => new Promise(r => setImmediate(r));
   // 6) Correr: guarda y avisa con {run: true}; error del servidor se queda en el modal
   calls.length = 0; b.open();
   q('.m-name').value = 'otra'; bd().dispatch('input', q('.m-name'), {});
-  bd().dispatch('click', qa('.cs-cli[data-cli="codex"] .cmds .cmd')[0]);
+  bd().dispatch('click', q('.cs-cli[data-cli="codex"] .cmds .cmd[data-add="/model"]'));
   mode = 'fail'; click('[data-run]'); await tick(); await tick();
   assert.equal(calls.length, 1);
   assert.equal(q('.m-error').textContent, 'No se pudo guardar la cadena: OSError');

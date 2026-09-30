@@ -1,4 +1,5 @@
-"""Catálogo curado de comandos por CLI, verificado contra el binario instalado.
+"""Comandos de cada CLI, tal como los lista su propio menú `/`, verificados
+contra el binario instalado. Lo genera tools/cli-commands/build.py.
 
 El catálogo nunca teclea nada: solo describe. Los arranques yolo salen de
 config/agent-roles.json; las cuentas, de los directorios reales de cuentas.
@@ -103,6 +104,13 @@ def _catalog_slash_names(cli):
             if c.get("text", "").startswith("/")}
 
 
+def _name_in_binary(slash_name, data):
+    """`/btw` cuenta si el binario contiene `/btw` o `btw`: los CLI en Rust y Go
+    guardan el nombre sin barra. La lista ya viene del menú del propio CLI; esto
+    solo detecta comandos retirados tras una actualización."""
+    return slash_name.encode() in data or slash_name.lstrip("/").encode() in data
+
+
 def detected_commands(catalog, which=None):
     """{cli_id: {'/model', ...}} con los comandos del catálogo presentes en el
     binario; None cuando el CLI no está o su ejecutable no se puede leer."""
@@ -131,7 +139,7 @@ def detected_commands(catalog, which=None):
         except OSError:
             out[cli["id"]] = None
             continue
-        found = frozenset(n for n in _catalog_slash_names(cli) if n.encode() in data)
+        found = frozenset(n for n in _catalog_slash_names(cli) if _name_in_binary(n, data))
         _DETECT_CACHE[cli["id"]] = (key, found)
         out[cli["id"]] = set(found)
     return out

@@ -62,3 +62,29 @@ Guardar y Correr, nota al pie. Lista plana por CLI (ronda 6 A) y solo comandos
 presentes en el binario. En el escritorio el modal es una ventana GTK centrada.
 Fuera de alcance de esta pasada: la cabecera superior (botones 3D aprobados en el
 grill de fase 1, que trabaja la otra sesión).
+
+## Comandos tal como los lista cada CLI (30-sep, noche)
+
+Jesús pidió la lista de comandos con las descripciones directas de cada CLI, sin
+categorías propias. Cada CLI se abrió en un tmux privado (`-L cs-probe`, carpetas ya
+confiadas, sin Enter) y se leyó su propio menú `/` por prefijos
+(`tools/cli-commands/scrape_prefix.py`); en Claude, donde el buscador es difuso, se
+tecleó cada nombre y se leyó su fila exacta (`verify_names.py`). Quedan solo los
+comandos de fábrica: la descripción debe existir en el binario
+(`builtin_filter.py`), así se excluyen skills y plugins del usuario.
+
+| CLI | Versión | Comandos |
+|---|---|---|
+| Claude Code | 2.1.286 | 99 |
+| Codex | 0.159.2 | 55 |
+| Grok | 1.0.44 | 88 (`/m` es alias de `/model`, `/t` de `/theme`) |
+| OpenCode | 1.18.33 | 17 |
+| Antigravity | 1.2.14 | 42 (las descripciones largas llegan con «...» como las muestra el CLI) |
+
+Las listas crudas viven en `tools/cli-commands/scraped/`; `tools/cli-commands/build.py`
+genera `config/cli-commands.json` (una lista plana por CLI, orden alfabético, texto en
+inglés tal cual). Lo único añadido son los chips de argumentos ya verificados de
+`/model` y `/effort`, y se quita el estado de sesión capturado («(currently …)»). La
+detección en el binario acepta el nombre con o sin barra, porque Codex (Rust) y
+Antigravity (Go) lo guardan sin ella. En la barra, las descripciones largas se cortan
+a dos líneas y la completa queda en el `title`.

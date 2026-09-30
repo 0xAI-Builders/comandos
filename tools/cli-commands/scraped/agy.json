@@ -1,0 +1,176 @@
+{
+ "cli": "agy",
+ "version": "1.2.14",
+ "scrapedAt": "2026-09-30",
+ "from": "menú / del propio CLI (tmux privado)",
+ "commands": [
+  [
+   "add-dir",
+   "Add a directory to the workspace"
+  ],
+  [
+   "agents",
+   "List available custom agents"
+  ],
+  [
+   "agy-customizations",
+   "Comprehensive guide and reference for the Antigravity Customization System. Use to explain how customizations work, their loading priority, discovery mechanisms, an..."
+  ],
+  [
+   "antigravity-guide",
+   "Provides a comprehensive guide, quick reference, and sitemap for Google Antigravity (AGY), including the Antigravity CLI (agy), Antigravity 2.0, Antigravity IDE,..."
+  ],
+  [
+   "artifact",
+   "View and review artifacts"
+  ],
+  [
+   "automation",
+   "Interactive guide to design and create a scheduled background automation. Use this skill when the user wants to create an automated or recurring scheduled task ..."
+  ],
+  [
+   "boost",
+   "Invoke the Boost multi-agent orchestrator for complex tasks."
+  ],
+  [
+   "browser",
+   "Invoke a browser agent for web tasks."
+  ],
+  [
+   "btw",
+   "Ask a side question without interrupting the current task"
+  ],
+  [
+   "changelog",
+   "Show release notes and changes"
+  ],
+  [
+   "clear",
+   "Clear conversation and start a new one"
+  ],
+  [
+   "config",
+   "Open settings panel"
+  ],
+  [
+   "context",
+   "Visualize current context usage"
+  ],
+  [
+   "diff",
+   "View uncommitted changes and per-turn diffs"
+  ],
+  [
+   "effort",
+   "Set the reasoning effort"
+  ],
+  [
+   "exit",
+   "Exit the CLI"
+  ],
+  [
+   "feedback",
+   "Submit qualitative feedback to improve the agent"
+  ],
+  [
+   "fork",
+   "Create a branch of the current conversation at this point, optionally specifying a project ID to fork into"
+  ],
+  [
+   "goal",
+   "Run until the specified goal is completely finished."
+  ],
+  [
+   "grill-me",
+   "Interview me to align on a plan."
+  ],
+  [
+   "help",
+   "Show available commands and keybindings"
+  ],
+  [
+   "hooks",
+   "Manage hook configurations for tool events"
+  ],
+  [
+   "keybindings",
+   "Set custom keybindings"
+  ],
+  [
+   "learn",
+   "Reflect on recent successes or corrections to capture reusable skills or rules."
+  ],
+  [
+   "logout",
+   "Log out"
+  ],
+  [
+   "mcp",
+   "Manage MCP servers"
+  ],
+  [
+   "migrate-workflows",
+   "Automatically migrate legacy workflows to modern skills across global and workspace configurations. Scans for existing workflows, creates target SKILL.md files, ..."
+  ],
+  [
+   "model",
+   "Set a model, or run a single prompt on another model"
+  ],
+  [
+   "open",
+   "Open a file or view opened/edited files"
+  ],
+  [
+   "permissions",
+   "Manage tool permissions"
+  ],
+  [
+   "plan",
+   "Plan carefully before executing a task."
+  ],
+  [
+   "remote-control",
+   "Turn on remote control for this session (off to disable)"
+  ],
+  [
+   "rename",
+   "Rename the current conversation"
+  ],
+  [
+   "resume",
+   "Browse and resume past conversations"
+  ],
+  [
+   "rewind",
+   "Rewind conversation to a previous message"
+  ],
+  [
+   "skills",
+   "List available skills"
+  ],
+  [
+   "statusline",
+   "Toggle the statusline"
+  ],
+  [
+   "tasks",
+   "View background tasks"
+  ],
+  [
+   "teamwork-preview",
+   "Invoke a team of agents to autonomously tackle large projects."
+  ],
+  [
+   "title",
+   "Toggle custom terminal window title"
+  ],
+  [
+   "usage",
+   "View model quota usage"
+  ],
+  [
+   "voice",
+   "Dictate a prompt using your microphone"
+  ]
+ ]
+}

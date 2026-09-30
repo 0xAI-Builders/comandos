@@ -42,20 +42,20 @@ const catalog = JSON.parse(fs.readFileSync(process.cwd() + '/tests/fixtures/comm
   assert.equal(root.querySelector('.cs-cli.here .launch.normal').classList.contains('open'), true);   // escritorio: abierto (móvil lo pliega)
   assert.equal(root.querySelector('.cs-cli[data-cli="opencode"] .launch.yolo').textContent.includes('sin flag'), true);
   // 2) un clic teclea sin Enter en el pane capturado, con requestId
-  root.click('.cs-cli.here .cmds .cmd');
+  root.click('.cs-cli.here .cmds .cmd[data-cmd="/model"]');
   await sb.state.typing;
   const typed = calls.filter(c => c[0] === '/pane/type');
   assert.deepEqual(typed[0][1], { session: 'demo', pane: '%2', text: '/model', requestId: 'id-1' });
   assert.equal(calls.some(c => c[0] === '/send'), false);
   // segundo clic con un tecleo en vuelo: no llama y avisa
-  root.click('.cs-cli.here .cmds .cmd'); const inflight = calls.length;
-  root.click('.cs-cli.here .cmds .cmd');
+  root.click('.cs-cli.here .cmds .cmd[data-cmd="/model"]'); const inflight = calls.length;
+  root.click('.cs-cli.here .cmds .cmd[data-cmd="/model"]');
   assert.equal(calls.length, inflight); assert.equal(toasts.at(-1)[0], 'Espera a que termine de escribir');
   await sb.state.typing;
   // 3) chips de argumento
-  root.click('.cs-cli[data-cli="claude"] .cli-h'); root.click('.cs-cli[data-cli="claude"] .opts button');
+  root.click('.cs-cli[data-cli="claude"] .cli-h'); root.click('.cs-cli[data-cli="claude"] .cmd[data-cmd="/model "] .opts button');
   await sb.state.typing; assert.equal(calls.at(-1)[1].text, '/model claude-fable-5-1');
-  assert.equal(root.querySelector('.cs-cli[data-cli="claude"] .cmds .cmd code').textContent, '/model …');
+  assert.equal(root.querySelector('.cs-cli[data-cli="claude"] .cmds .cmd[data-cmd="/model "] code').textContent, '/model …');
   // 4) cadena guardada: correr fija el destino; Siguiente avanza solo con 200; pane cerrado no salta de paso
   yoloStep2 = '/model gpt-6.1';                                                  // editado a mano en disco
   root.click('.cs-saved-item[data-run="yolo"] button'); await tick(); await tick();
@@ -118,7 +118,7 @@ const catalog = JSON.parse(fs.readFileSync(process.cwd() + '/tests/fixtures/comm
   root.input('.cs-search', 'claude fable');
   assert.equal(sb.state.q, 'claude fable');
   const hitsCF = root.querySelectorAll('.cmd').filter(r => !r.hasAttribute('hidden')).map(r => r.dataset.cmd);
-  assert.deepEqual(hitsCF, ['claude --dangerously-skip-permissions --model claude-fable-5-1 --effort max', '/model ']);
+  assert.deepEqual(hitsCF, ['claude --dangerously-skip-permissions --model claude-fable-5-1 --effort max', '/claude-api', '/model ']);
   root.input('.cs-search', 'model ');
   assert.equal(sb.state.q, 'model ');
   assert.equal(root.querySelector('.cs-search').value, 'model ');

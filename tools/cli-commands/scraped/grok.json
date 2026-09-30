@@ -1,0 +1,364 @@
+{
+ "cli": "grok",
+ "version": "1.0.44",
+ "scrapedAt": "2026-09-30",
+ "from": "menú / del propio CLI (tmux privado)",
+ "commands": [
+  [
+   "agents",
+   "Manage agent definitions"
+  ],
+  [
+   "agents-dashboard",
+   "Open the Agent Dashboard"
+  ],
+  [
+   "always-approve",
+   "Toggle always-approve mode (skip all permission prompts)"
+  ],
+  [
+   "auto",
+   "Toggle Auto-review (classifier approves safe tools)"
+  ],
+  [
+   "btw",
+   "Ask a side question without interrupting"
+  ],
+  [
+   "changelog",
+   "View release notes for the current version"
+  ],
+  [
+   "clear",
+   "Start a new session"
+  ],
+  [
+   "compact",
+   "Compact conversation history"
+  ],
+  [
+   "compact-mode",
+   "Toggle compact UI (less padding, more content)"
+  ],
+  [
+   "config",
+   "Open the settings modal"
+  ],
+  [
+   "config-agents",
+   "Manage agent definitions"
+  ],
+  [
+   "context",
+   "View context usage"
+  ],
+  [
+   "context-window",
+   "Set the context window for the current model"
+  ],
+  [
+   "copy",
+   "Copy last response to clipboard or file (/copy [N] [file])"
+  ],
+  [
+   "cost",
+   "View usage"
+  ],
+  [
+   "dashboard",
+   "Open the Agent Dashboard"
+  ],
+  [
+   "deep-research",
+   "Research with bounded parallel agents, cross-check evidence, and write a cited report"
+  ],
+  [
+   "delete",
+   "Delete this session"
+  ],
+  [
+   "docs",
+   "Open How-to Guides or online Build docs"
+  ],
+  [
+   "doctor",
+   "Check this session and show available fixes"
+  ],
+  [
+   "dream",
+   "Consolidate memory now (merge observations into topics)"
+  ],
+  [
+   "edit-prompt",
+   "Open an external editor for an empty prompt; use the command palette to preserve a draft"
+  ],
+  [
+   "effort",
+   "Set reasoning effort for the current model"
+  ],
+  [
+   "exit",
+   "Quit the application"
+  ],
+  [
+   "export",
+   "Export the current conversation to a file or clipboard"
+  ],
+  [
+   "feedback",
+   "Send feedback about the current session"
+  ],
+  [
+   "find",
+   "Search the conversation scrollback"
+  ],
+  [
+   "flush",
+   "Save this session's memory to disk now"
+  ],
+  [
+   "fork",
+   "Branch the current session into a peer agent"
+  ],
+  [
+   "guides",
+   "Open How-to Guides or online Build docs"
+  ],
+  [
+   "help",
+   "Browse commands and keyboard shortcuts"
+  ],
+  [
+   "history",
+   "Search prompt history"
+  ],
+  [
+   "home",
+   "Return to the welcome screen"
+  ],
+  [
+   "hooks",
+   "View hooks"
+  ],
+  [
+   "howto",
+   "Open How-to Guides or online Build docs"
+  ],
+  [
+   "imagine",
+   "Generate an image from a text description"
+  ],
+  [
+   "imagine-video",
+   "Generate a video from a text description"
+  ],
+  [
+   "import-claude",
+   "Open the Claude settings import modal"
+  ],
+  [
+   "jump",
+   "Jump to a turn in the conversation"
+  ],
+  [
+   "log",
+   "View the conversation transcript in your pager ($PAGER)"
+  ],
+  [
+   "login",
+   "Log in or re-authenticate with your account"
+  ],
+  [
+   "logout",
+   "Log out and return to the login screen"
+  ],
+  [
+   "loop",
+   "Run a prompt on a recurring interval"
+  ],
+  [
+   "m",
+   "Switch the active model"
+  ],
+  [
+   "marketplace",
+   "View marketplace"
+  ],
+  [
+   "mcps",
+   "Show MCP server status"
+  ],
+  [
+   "memory",
+   "Browse, view, and manage your memories"
+  ],
+  [
+   "minimal",
+   "Switch this session to minimal (scrollback-native) mode, back with /fullscreen"
+  ],
+  [
+   "multiline",
+   "Toggle multiline input mode (swap Enter and Shift+Enter)"
+  ],
+  [
+   "new",
+   "Start a new session"
+  ],
+  [
+   "onboarding",
+   "Quick tips to get the most out of Grok Build"
+  ],
+  [
+   "personas",
+   "Manage personas (create, edit, delete)"
+  ],
+  [
+   "plan",
+   "Enter plan mode"
+  ],
+  [
+   "plan-view",
+   "View the current plan"
+  ],
+  [
+   "plugins",
+   "View plugins"
+  ],
+  [
+   "preferences",
+   "Open the settings modal"
+  ],
+  [
+   "privacy",
+   "Open coding data, retention, and training settings"
+  ],
+  [
+   "queue",
+   "List the prompts queued behind the running turn"
+  ],
+  [
+   "quit",
+   "Quit the application"
+  ],
+  [
+   "recap",
+   "Summarize the session so far"
+  ],
+  [
+   "release-notes",
+   "View release notes for the current version"
+  ],
+  [
+   "remember",
+   "Save a memory note"
+  ],
+  [
+   "rename",
+   "Rename the current session"
+  ],
+  [
+   "resume",
+   "Resume a previous session"
+  ],
+  [
+   "rewind",
+   "Rewind to a previous turn"
+  ],
+  [
+   "session-info",
+   "Show session info"
+  ],
+  [
+   "sessions",
+   "Open the Agent Dashboard"
+  ],
+  [
+   "settings",
+   "Open the settings modal"
+  ],
+  [
+   "show-plan",
+   "View the current plan"
+  ],
+  [
+   "skills",
+   "View skills"
+  ],
+  [
+   "summarize",
+   "Summarize the session so far"
+  ],
+  [
+   "t",
+   "Switch the color theme"
+  ],
+  [
+   "tasks",
+   "List background tasks, subagents, and scheduled tasks"
+  ],
+  [
+   "terminal-check",
+   "Check this session and show available fixes"
+  ],
+  [
+   "theme",
+   "Switch the color theme"
+  ],
+  [
+   "timeline",
+   "Toggle the timeline sidebar"
+  ],
+  [
+   "timestamps",
+   "Toggle message timestamps on/off"
+  ],
+  [
+   "title",
+   "Rename the current session"
+  ],
+  [
+   "tour",
+   "Quick tips to get the most out of Grok Build"
+  ],
+  [
+   "transcript",
+   "View the conversation transcript in your pager ($PAGER)"
+  ],
+  [
+   "tutorial",
+   "Quick tips to get the most out of Grok Build"
+  ],
+  [
+   "undo",
+   "Rewind to a previous turn"
+  ],
+  [
+   "usage",
+   "View usage"
+  ],
+  [
+   "view-plan",
+   "View the current plan"
+  ],
+  [
+   "vim-mode",
+   "Toggle vim-style scrollback keybindings (j/k, h/l, g/G, y/Y, …)"
+  ],
+  [
+   "voice",
+   "Toggle dictation (Ctrl+Space/F8; Esc/Enter to stop)"
+  ],
+  [
+   "welcome",
+   "Return to the welcome screen"
+  ],
+  [
+   "workflow",
+   "Launch a saved workflow, list runs, or manage a run (pause, resume, stop, save)"
+  ],
+  [
+   "workflows",
+   "Browse installed workflows"
+  ]
+ ]
+}

@@ -1,12 +1,12 @@
 {
   "version": 1,
-  "source": "docs/tui-command-map.md",
+  "source": "tools/cli-commands/scraped (menú / de cada CLI)",
   "clis": [
     {
       "id": "claude",
       "label": "Claude Code",
       "binary": "claude",
-      "pinnedVersion": "2.1.268",
+      "pinnedVersion": "2.1.286",
       "verified": true,
       "launch": {
         "resume": "--resume <id>",
@@ -16,22 +16,120 @@
       },
       "groups": [
         {
-          "title": "Modelo y esfuerzo",
-          "icon": "brain",
+          "title": "",
+          "icon": "",
           "commands": [
             {
-              "text": "/model ",
-              "description": "Cambia el modelo de esta conversación; sin argumento abre el selector.",
-              "argsFrom": "models",
-              "args": [
-                "claude-fable-5-1",
-                "claude-opus-5-5",
-                "claude-sonnet-5-5"
-              ]
+              "text": "/add-dir ",
+              "description": "Add a new working directory"
+            },
+            {
+              "text": "/advisor",
+              "description": "Let Claude consult a stronger model at key moments"
+            },
+            {
+              "text": "/agents",
+              "description": "(removed) Ask Claude to create/manage subagents, or edit .claude/agents/"
+            },
+            {
+              "text": "/artifact-capabilities",
+              "description": "Runtime capabilities a published Artifact page can be granted — behavior static HTML cannot provide on its own, such as the page reading live or connected data, remembering what people do on it (a poll, a sign-up sheet, a checklist, a document edited in place — it saves new versions of itself), keeping state shared across viewers,"
+            },
+            {
+              "text": "/artifact-diagramming",
+              "description": "Diagramming know-how for Artifacts - when a picture earns its place, how to draw one that shows the real mechanism, and the inline-SVG mechanics that keep it legible in both themes."
+            },
+            {
+              "text": "/artifacts",
+              "description": "Browse your published and shared artifacts"
+            },
+            {
+              "text": "/auto-mode-setup",
+              "description": "Teach auto mode about your environment, plus optional rule tweaks"
+            },
+            {
+              "text": "/autocompact",
+              "description": "Set how full the context gets before auto-summarizing"
+            },
+            {
+              "text": "/autofix-pr",
+              "description": "Monitor and autofix any issues with the current PR"
+            },
+            {
+              "text": "/background",
+              "description": "Send this session to the background and free the terminal"
+            },
+            {
+              "text": "/batch",
+              "description": "Research and plan a large-scale change, then execute it in parallel across 5–30 isolated worktree agents that each open a PR."
+            },
+            {
+              "text": "/branch",
+              "description": "Create a branch of the current conversation at this point"
+            },
+            {
+              "text": "/btw",
+              "description": "Ask a quick side question without interrupting the main conversation"
+            },
+            {
+              "text": "/bug",
+              "description": "Report a bug or share your conversation"
+            },
+            {
+              "text": "/cd",
+              "description": "Move this session to a new working directory"
+            },
+            {
+              "text": "/chrome",
+              "description": "Open Claude in Chrome settings"
+            },
+            {
+              "text": "/claude-api",
+              "description": "Reference for the Claude API / Anthropic SDK — model ids, pricing, params, streaming, tool use, MCP, agents, caching, token counting, model migration. TRIGGER — read BEFORE opening the target file; don't skip because it \"looks like a one-liner\" — whenever: the prompt names Claude/Anthropic in any form (Claude, Anthropic, Fable, Opus,"
+            },
+            {
+              "text": "/claude-in-chrome",
+              "description": "Automates your Chrome browser to interact with web pages - clicking elements, filling forms, capturing screenshots, reading console logs, and navigating sites. Opens pages in new tabs within your existing Chrome session. Requires site-level permissions before executing (configured in the extension)."
+            },
+            {
+              "text": "/clear",
+              "description": "Start a new session with empty context; previous session stays on disk (resumable with /resume)"
+            },
+            {
+              "text": "/color",
+              "description": "Set the prompt bar color for this session"
+            },
+            {
+              "text": "/compact",
+              "description": "Free up context by summarizing the conversation so far"
+            },
+            {
+              "text": "/config",
+              "description": "Open settings"
+            },
+            {
+              "text": "/context",
+              "description": "Visualize current context usage as a colored grid"
+            },
+            {
+              "text": "/copy",
+              "description": "Copy Claude's last response to clipboard (or /copy N for the Nth-latest)"
+            },
+            {
+              "text": "/design-login",
+              "description": "Authorize design-system access for /design-sync with your claude.ai account"
+            },
+            {
+              "text": "/diff",
+              "description": "Toggle the diff panel showing uncommitted changes"
+            },
+            {
+              "text": "/doctor",
+              "description": "Health-check the user's Claude Code setup and fix issues: diagnose installation health — what the `claude doctor` terminal diagnostics cover — from local data (duplicate or leftover installs, PATH, unparseable settings files, broken or colliding agent definitions, skills whose frontmatter fails to parse); find unused skills, MCP servers,"
             },
             {
               "text": "/effort ",
-              "description": "Nivel de razonamiento.",
+              "description": "Set effort level for model usage",
               "args": [
                 "low",
                 "medium",
@@ -40,78 +138,294 @@
               ]
             },
             {
-              "text": "/fast",
-              "description": "Salida rápida con Opus."
+              "text": "/exit",
+              "description": "Exit the CLI"
             },
             {
-              "text": "/plan",
-              "description": "Modo plan: propone antes de tocar código."
-            }
-          ]
-        },
-        {
-          "title": "Conversación",
-          "icon": "cycle",
-          "commands": [
+              "text": "/export",
+              "description": "Export the current conversation to a file or clipboard"
+            },
             {
-              "text": "/resume",
-              "description": "Elige una conversación anterior y la reanuda."
+              "text": "/extra-usage",
+              "description": "Renamed to /usage-credits"
+            },
+            {
+              "text": "/fast",
+              "description": "Toggle fast mode (Opus 5.5)"
+            },
+            {
+              "text": "/feedback",
+              "description": "Send feedback to Anthropic or report a bug"
+            },
+            {
+              "text": "/fewer-permission-prompts",
+              "description": "Scan your transcripts for common read-only Bash and MCP tool calls, then add a prioritized allowlist to project .claude/settings.json to reduce permission prompts."
+            },
+            {
+              "text": "/focus",
+              "description": "Toggle focus view: just your prompt, summary, and response"
             },
             {
               "text": "/fork",
-              "description": "Bifurca esta conversación en otra."
+              "description": "Copy this conversation into a new background session and keep working here"
             },
             {
-              "text": "/compact",
-              "description": "Resume el contexto para liberar ventana."
+              "text": "/goal",
+              "description": "Set a goal Claude checks before stopping"
             },
             {
-              "text": "/clear",
-              "description": "Limpia el historial de la sesión."
+              "text": "/help",
+              "description": "Show help and available commands"
             },
             {
-              "text": "/exit",
-              "description": "Sale del CLI; el pane vuelve a la shell."
-            }
-          ]
-        },
-        {
-          "title": "Cuenta",
-          "icon": "key",
-          "commands": [
+              "text": "/hooks",
+              "description": "View hook configurations for tool events"
+            },
+            {
+              "text": "/ide",
+              "description": "Manage IDE integrations and show status"
+            },
+            {
+              "text": "/import",
+              "description": "Import config from another AI coding agent"
+            },
+            {
+              "text": "/init",
+              "description": "Initialize a new CLAUDE.md file with codebase documentation"
+            },
+            {
+              "text": "/insights",
+              "description": "Generate a report analyzing your Claude Code sessions"
+            },
+            {
+              "text": "/install-github-app",
+              "description": "Set up Claude GitHub Actions for a repository"
+            },
+            {
+              "text": "/install-slack-app",
+              "description": "Install the Claude Slack app"
+            },
+            {
+              "text": "/keybindings",
+              "description": "Open your keyboard shortcuts file"
+            },
+            {
+              "text": "/list-agents",
+              "description": "List subagents, teammates, and other Claude sessions you can message"
+            },
             {
               "text": "/login",
-              "description": "Inicia sesión solo en esta terminal."
+              "description": "Sign in with your Anthropic account"
             },
             {
               "text": "/logout",
-              "description": "Cierra la sesión de esta terminal."
+              "description": "Sign out from your Anthropic account"
             },
             {
-              "text": "/cost",
-              "description": "Consumo de esta conversación."
-            }
-          ]
-        },
-        {
-          "title": "Contexto y herramientas",
-          "icon": "map",
-          "commands": [
-            {
-              "text": "/context",
-              "description": "Qué ocupa la ventana ahora."
-            },
-            {
-              "text": "/add-dir ",
-              "description": "Añade una carpeta al contexto."
+              "text": "/loop",
+              "description": "Run a prompt or slash command on a recurring interval (e.g. /loop 5m /foo). Omit the interval to let the model self-pace."
             },
             {
               "text": "/mcp",
-              "description": "Servidores MCP conectados."
+              "description": "Manage MCP servers"
             },
             {
-              "text": "/agents",
-              "description": "Subagentes disponibles."
+              "text": "/memory",
+              "description": "Edit CLAUDE.md files and memory settings"
+            },
+            {
+              "text": "/mobile",
+              "description": "Show QR code to download the Claude mobile app"
+            },
+            {
+              "text": "/model ",
+              "description": "Set the AI model for Claude Code",
+              "argsFrom": "models",
+              "args": [
+                "claude-fable-5-1",
+                "claude-opus-5-5",
+                "claude-sonnet-5-5"
+              ]
+            },
+            {
+              "text": "/output-style",
+              "description": "List output styles or switch to one"
+            },
+            {
+              "text": "/passes",
+              "description": "Share a free week of Claude Code with friends"
+            },
+            {
+              "text": "/permissions",
+              "description": "Manage allow and deny tool permission rules"
+            },
+            {
+              "text": "/plan",
+              "description": "Enable plan mode or view the current session plan"
+            },
+            {
+              "text": "/powerup",
+              "description": "Discover Claude Code features through quick interactive lessons"
+            },
+            {
+              "text": "/privacy-settings",
+              "description": "View and update your privacy settings"
+            },
+            {
+              "text": "/radio",
+              "description": "Listen to Claude FM lo-fi radio"
+            },
+            {
+              "text": "/rate-limit-options",
+              "description": "Manage usage limits and upgrade options"
+            },
+            {
+              "text": "/recap",
+              "description": "Generate a one-line session recap now"
+            },
+            {
+              "text": "/release-notes",
+              "description": "View release notes"
+            },
+            {
+              "text": "/reload-plugins",
+              "description": "Activate pending plugin changes in the current session"
+            },
+            {
+              "text": "/reload-skills",
+              "description": "Pick up skills added or changed on disk during this session"
+            },
+            {
+              "text": "/remote-env",
+              "description": "Choose the default environment for cloud agents"
+            },
+            {
+              "text": "/rename",
+              "description": "Rename the current conversation"
+            },
+            {
+              "text": "/resume",
+              "description": "Resume a previous conversation"
+            },
+            {
+              "text": "/rewind",
+              "description": "Restore the code and/or conversation to a previous point"
+            },
+            {
+              "text": "/run",
+              "description": "Launch and drive this project's app to see a change working. Use when asked to run, start, or screenshot the app, or to confirm a change works in the real app (not just tests). First looks for a project skill that already covers launching the app; otherwise falls back to built-in patterns per project type (CLI, server, TUI, Electron,"
+            },
+            {
+              "text": "/sandbox",
+              "description": "◯ sandbox disabled (⏎ to configure)"
+            },
+            {
+              "text": "/schedule",
+              "description": "Create, update, list, or run scheduled cloud agents (routines) that execute on a cron schedule."
+            },
+            {
+              "text": "/scroll-speed",
+              "description": "Adjust mouse wheel scroll speed"
+            },
+            {
+              "text": "/security-review",
+              "description": "Complete a security review of the pending changes on the current branch"
+            },
+            {
+              "text": "/setup-bedrock",
+              "description": "Reconfigure Amazon Bedrock authentication, region, or model pins"
+            },
+            {
+              "text": "/setup-vertex",
+              "description": "Reconfigure Google Vertex AI authentication, project, region, or model pins"
+            },
+            {
+              "text": "/simplify",
+              "description": "Review the changed code for reuse, simplification, efficiency, and altitude cleanups, then apply the fixes. Quality only — it does not hunt for bugs; use /code-review for that."
+            },
+            {
+              "text": "/skill-doctor",
+              "description": "Show which loaded skills are unused and costing context"
+            },
+            {
+              "text": "/skills",
+              "description": "List available skills"
+            },
+            {
+              "text": "/slides",
+              "description": "Make a new Slides deck artifact from a brief"
+            },
+            {
+              "text": "/status",
+              "description": "Show Claude Code status including version, model, account, API connectivity, and tool statuses"
+            },
+            {
+              "text": "/statusline",
+              "description": "Set up Claude Code's status line UI"
+            },
+            {
+              "text": "/stickers",
+              "description": "Order Claude Code stickers"
+            },
+            {
+              "text": "/subtask",
+              "description": "Send a subagent off with your full context; its result comes back here"
+            },
+            {
+              "text": "/tasks",
+              "description": "View and manage everything running in the background"
+            },
+            {
+              "text": "/team-onboarding",
+              "description": "Help teammates ramp on Claude Code with a guide from your usage"
+            },
+            {
+              "text": "/teleport",
+              "description": "Send this session to the cloud, or resume one from claude.ai"
+            },
+            {
+              "text": "/terminal-setup",
+              "description": "Install Shift+Enter key binding for newlines"
+            },
+            {
+              "text": "/theme",
+              "description": "Change the theme"
+            },
+            {
+              "text": "/tui",
+              "description": "Set the terminal UI renderer (default | fullscreen)"
+            },
+            {
+              "text": "/update-config",
+              "description": "Use this skill to configure the Claude Code harness via settings.json. Automated behaviors (\"from now on when X\", \"each time X\", \"whenever X\", \"before/after X\") require hooks configured in settings.json - the harness executes these, not Claude, so memory/preferences cannot fulfill them. Also use for: permissions (\"allow X\", \"add"
+            },
+            {
+              "text": "/upgrade",
+              "description": "Upgrade to Max for higher rate limits and more Opus"
+            },
+            {
+              "text": "/usage",
+              "description": "Show session cost, plan usage, and activity stats"
+            },
+            {
+              "text": "/usage-credits",
+              "description": "Configure usage credits or request them from your admin when you hit a limit"
+            },
+            {
+              "text": "/verify",
+              "description": "Verify that a code change actually does what it's supposed to by exercising it end-to-end and observing behavior — drive the affected flow, not just tests or typecheck. Run before committing nontrivial changes; bootstraps this repo's project verify skill if none exists yet. Don't invoke it on a diff that only touches tests, docs, or"
+            },
+            {
+              "text": "/voice",
+              "description": "Toggle voice mode"
+            },
+            {
+              "text": "/web-setup",
+              "description": "Set up cloud sessions with your GitHub account"
+            },
+            {
+              "text": "/workflows",
+              "description": "Browse running and completed workflows"
             }
           ]
         }
@@ -121,7 +435,7 @@
       "id": "codex",
       "label": "Codex",
       "binary": "codex",
-      "pinnedVersion": "0.154.0",
+      "pinnedVersion": "0.159.2",
       "verified": true,
       "launch": {
         "resume": "resume <id>",
@@ -131,74 +445,228 @@
       },
       "groups": [
         {
-          "title": "Modelo y esfuerzo",
-          "icon": "brain",
+          "title": "",
+          "icon": "",
           "commands": [
             {
-              "text": "/model",
-              "description": "Selector numerado: modelo y luego esfuerzo."
+              "text": "/agents",
+              "description": "open the agent command center"
             },
             {
-              "text": "/plan",
-              "description": "Modo plan."
-            }
-          ]
-        },
-        {
-          "title": "Conversación",
-          "icon": "cycle",
-          "commands": [
-            {
-              "text": "/resume",
-              "description": "Reanuda una conversación."
+              "text": "/approve",
+              "description": "approve one retry of a recent auto-review denial"
             },
             {
-              "text": "/fork",
-              "description": "Bifurca."
+              "text": "/archive",
+              "description": "archive this session"
             },
             {
-              "text": "/compact",
-              "description": "Compacta el contexto."
-            },
-            {
-              "text": "/new",
-              "description": "Conversación nueva."
-            },
-            {
-              "text": "/exit",
-              "description": "Sale del CLI."
-            }
-          ]
-        },
-        {
-          "title": "Cuenta",
-          "icon": "key",
-          "commands": [
-            {
-              "text": "/logout",
-              "description": "Cierra sesión."
-            }
-          ]
-        },
-        {
-          "title": "Contexto y herramientas",
-          "icon": "map",
-          "commands": [
-            {
-              "text": "/review",
-              "description": "Revisión de cambios."
-            },
-            {
-              "text": "/skills",
-              "description": "Skills disponibles."
-            },
-            {
-              "text": "/hooks",
-              "description": "Hooks configurados."
+              "text": "/btw",
+              "description": "start a side conversation in an ephemeral fork"
             },
             {
               "text": "/cd ",
-              "description": "Cambia de carpeta."
+              "description": "change the current working directory"
+            },
+            {
+              "text": "/clear",
+              "description": "clear the terminal and start a new chat"
+            },
+            {
+              "text": "/compact",
+              "description": "summarize conversation to prevent hitting the context limit"
+            },
+            {
+              "text": "/copy",
+              "description": "copy the last response or part of it"
+            },
+            {
+              "text": "/daemon",
+              "description": "Manage the local background server"
+            },
+            {
+              "text": "/delete",
+              "description": "permanently delete this session"
+            },
+            {
+              "text": "/diff",
+              "description": "show git diff (including untracked files)"
+            },
+            {
+              "text": "/exit",
+              "description": "exit Codex"
+            },
+            {
+              "text": "/experimental",
+              "description": "toggle experimental features"
+            },
+            {
+              "text": "/export",
+              "description": "export the conversation as markdown"
+            },
+            {
+              "text": "/fast",
+              "description": "2x speed, increased usage"
+            },
+            {
+              "text": "/feedback",
+              "description": "send logs to maintainers"
+            },
+            {
+              "text": "/fork",
+              "description": "fork the current chat"
+            },
+            {
+              "text": "/goal",
+              "description": "set or view the goal for a long-running task"
+            },
+            {
+              "text": "/hooks",
+              "description": "view and manage lifecycle hooks"
+            },
+            {
+              "text": "/ide",
+              "description": "include current selection, open files, and other context from your IDE"
+            },
+            {
+              "text": "/import",
+              "description": "import setup, this project, and recent chats from Claude Code"
+            },
+            {
+              "text": "/init",
+              "description": "create an AGENTS.md file with instructions for Codex"
+            },
+            {
+              "text": "/keymap",
+              "description": "remap TUI shortcuts"
+            },
+            {
+              "text": "/logout",
+              "description": "log out of Codex"
+            },
+            {
+              "text": "/mcp",
+              "description": "list configured MCP tools; use /mcp verbose for details"
+            },
+            {
+              "text": "/memories",
+              "description": "configure memory use and generation"
+            },
+            {
+              "text": "/mention",
+              "description": "mention a file"
+            },
+            {
+              "text": "/model",
+              "description": "choose what model and reasoning effort to use"
+            },
+            {
+              "text": "/new",
+              "description": "start a new chat during a conversation"
+            },
+            {
+              "text": "/permissions",
+              "description": "choose what Codex is allowed to do"
+            },
+            {
+              "text": "/pets",
+              "description": "choose or hide the terminal pet"
+            },
+            {
+              "text": "/plan",
+              "description": "switch to Plan mode"
+            },
+            {
+              "text": "/plugins",
+              "description": "browse plugins"
+            },
+            {
+              "text": "/ps",
+              "description": "list background terminals"
+            },
+            {
+              "text": "/pwd",
+              "description": "show the current working directory"
+            },
+            {
+              "text": "/quit",
+              "description": "exit Codex"
+            },
+            {
+              "text": "/raw",
+              "description": "toggle raw scrollback mode for copy-friendly terminal selection"
+            },
+            {
+              "text": "/recap",
+              "description": "summarize the current conversation now"
+            },
+            {
+              "text": "/rename",
+              "description": "rename the current thread"
+            },
+            {
+              "text": "/resume",
+              "description": "resume a saved chat"
+            },
+            {
+              "text": "/review",
+              "description": "review my current changes and find issues"
+            },
+            {
+              "text": "/side",
+              "description": "start a side conversation in an ephemeral fork"
+            },
+            {
+              "text": "/skills",
+              "description": "use skills to improve how Codex performs specific tasks"
+            },
+            {
+              "text": "/status",
+              "description": "show current session configuration and token usage"
+            },
+            {
+              "text": "/statusline",
+              "description": "configure which items appear in the status line"
+            },
+            {
+              "text": "/stop",
+              "description": "stop all background terminals"
+            },
+            {
+              "text": "/subagents",
+              "description": "switch between this session's subagents"
+            },
+            {
+              "text": "/theme",
+              "description": "choose a syntax highlighting theme"
+            },
+            {
+              "text": "/title",
+              "description": "configure which items appear in the terminal title"
+            },
+            {
+              "text": "/tui",
+              "description": "choose the TUI mode for the next launch"
+            },
+            {
+              "text": "/usage",
+              "description": "view account usage or use a usage limit reset"
+            },
+            {
+              "text": "/vim",
+              "description": "toggle Vim mode for the composer"
+            },
+            {
+              "text": "/voice",
+              "description": "start or stop voice; use /voice settings to choose a voice"
+            },
+            {
+              "text": "/warnings",
+              "description": "view retained warnings and diagnostic details"
+            },
+            {
+              "text": "/worktree",
+              "description": "start or continue a conversation in a new worktree"
             }
           ]
         }
@@ -208,7 +676,7 @@
       "id": "grok",
       "label": "Grok Build",
       "binary": "grok",
-      "pinnedVersion": "1.0.25",
+      "pinnedVersion": "1.0.44",
       "verified": true,
       "launch": {
         "resume": "--resume <id>",
@@ -216,12 +684,204 @@
       },
       "groups": [
         {
-          "title": "Modelo y esfuerzo",
-          "icon": "brain",
+          "title": "",
+          "icon": "",
           "commands": [
             {
+              "text": "/agents",
+              "description": "Manage agent definitions"
+            },
+            {
+              "text": "/agents-dashboard",
+              "description": "Open the Agent Dashboard"
+            },
+            {
+              "text": "/always-approve",
+              "description": "Toggle always-approve mode (skip all permission prompts)"
+            },
+            {
+              "text": "/auto",
+              "description": "Toggle Auto-review (classifier approves safe tools)"
+            },
+            {
+              "text": "/btw",
+              "description": "Ask a side question without interrupting"
+            },
+            {
+              "text": "/changelog",
+              "description": "View release notes for the current version"
+            },
+            {
+              "text": "/clear",
+              "description": "Start a new session"
+            },
+            {
+              "text": "/compact",
+              "description": "Compact conversation history"
+            },
+            {
+              "text": "/compact-mode",
+              "description": "Toggle compact UI (less padding, more content)"
+            },
+            {
+              "text": "/config",
+              "description": "Open the settings modal"
+            },
+            {
+              "text": "/config-agents",
+              "description": "Manage agent definitions"
+            },
+            {
+              "text": "/context",
+              "description": "View context usage"
+            },
+            {
+              "text": "/context-window",
+              "description": "Set the context window for the current model"
+            },
+            {
+              "text": "/copy",
+              "description": "Copy last response to clipboard or file (/copy [N] [file])"
+            },
+            {
+              "text": "/cost",
+              "description": "View usage"
+            },
+            {
+              "text": "/dashboard",
+              "description": "Open the Agent Dashboard"
+            },
+            {
+              "text": "/deep-research",
+              "description": "Research with bounded parallel agents, cross-check evidence, and write a cited report"
+            },
+            {
+              "text": "/delete",
+              "description": "Delete this session"
+            },
+            {
+              "text": "/docs",
+              "description": "Open How-to Guides or online Build docs"
+            },
+            {
+              "text": "/doctor",
+              "description": "Check this session and show available fixes"
+            },
+            {
+              "text": "/dream",
+              "description": "Consolidate memory now (merge observations into topics)"
+            },
+            {
+              "text": "/edit-prompt",
+              "description": "Open an external editor for an empty prompt; use the command palette to preserve a draft"
+            },
+            {
+              "text": "/effort ",
+              "description": "Set reasoning effort for the current model",
+              "args": [
+                "low",
+                "high"
+              ]
+            },
+            {
+              "text": "/exit",
+              "description": "Quit the application"
+            },
+            {
+              "text": "/export",
+              "description": "Export the current conversation to a file or clipboard"
+            },
+            {
+              "text": "/feedback",
+              "description": "Send feedback about the current session"
+            },
+            {
+              "text": "/find",
+              "description": "Search the conversation scrollback"
+            },
+            {
+              "text": "/flush",
+              "description": "Save this session's memory to disk now"
+            },
+            {
+              "text": "/fork",
+              "description": "Branch the current session into a peer agent"
+            },
+            {
+              "text": "/guides",
+              "description": "Open How-to Guides or online Build docs"
+            },
+            {
+              "text": "/help",
+              "description": "Browse commands and keyboard shortcuts"
+            },
+            {
+              "text": "/history",
+              "description": "Search prompt history"
+            },
+            {
+              "text": "/home",
+              "description": "Return to the welcome screen"
+            },
+            {
+              "text": "/hooks",
+              "description": "View hooks"
+            },
+            {
+              "text": "/howto",
+              "description": "Open How-to Guides or online Build docs"
+            },
+            {
+              "text": "/imagine",
+              "description": "Generate an image from a text description"
+            },
+            {
+              "text": "/imagine-video",
+              "description": "Generate a video from a text description"
+            },
+            {
+              "text": "/import-claude",
+              "description": "Open the Claude settings import modal"
+            },
+            {
+              "text": "/jump",
+              "description": "Jump to a turn in the conversation"
+            },
+            {
+              "text": "/log",
+              "description": "View the conversation transcript in your pager ($PAGER)"
+            },
+            {
+              "text": "/login",
+              "description": "Log in or re-authenticate with your account"
+            },
+            {
+              "text": "/logout",
+              "description": "Log out and return to the login screen"
+            },
+            {
+              "text": "/loop",
+              "description": "Run a prompt on a recurring interval"
+            },
+            {
+              "text": "/marketplace",
+              "description": "View marketplace"
+            },
+            {
+              "text": "/mcps",
+              "description": "Show MCP server status"
+            },
+            {
+              "text": "/memory",
+              "description": "Browse, view, and manage your memories"
+            },
+            {
+              "text": "/minimal",
+              "description": "Switch this session to minimal (scrollback-native) mode, back with /fullscreen"
+            },
+            {
               "text": "/model ",
-              "description": "Alias /m. Cambia el modelo.",
+              "description": "Switch the active model",
               "argsFrom": "models",
               "args": [
                 "grok-4.6",
@@ -229,86 +889,164 @@
               ]
             },
             {
-              "text": "/effort ",
-              "description": "Esfuerzo.",
-              "args": [
-                "low",
-                "high"
-              ]
-            },
-            {
-              "text": "/plan",
-              "description": "Modo plan."
-            },
-            {
-              "text": "/auto",
-              "description": "Modo automático."
-            }
-          ]
-        },
-        {
-          "title": "Conversación",
-          "icon": "cycle",
-          "commands": [
-            {
-              "text": "/resume",
-              "description": "Reanuda."
-            },
-            {
-              "text": "/fork",
-              "description": "Bifurca."
-            },
-            {
-              "text": "/rewind",
-              "description": "Alias /undo."
+              "text": "/multiline",
+              "description": "Toggle multiline input mode (swap Enter and Shift+Enter)"
             },
             {
               "text": "/new",
-              "description": "Nueva."
+              "description": "Start a new session"
             },
             {
-              "text": "/exit",
-              "description": "Sale."
-            }
-          ]
-        },
-        {
-          "title": "Cuenta",
-          "icon": "key",
-          "commands": [
-            {
-              "text": "/login",
-              "description": "Inicia sesión."
+              "text": "/onboarding",
+              "description": "Quick tips to get the most out of Grok Build"
             },
             {
-              "text": "/logout",
-              "description": "Cierra sesión."
+              "text": "/personas",
+              "description": "Manage personas (create, edit, delete)"
             },
             {
-              "text": "/usage",
-              "description": "Cuota semanal."
-            }
-          ]
-        },
-        {
-          "title": "Contexto y herramientas",
-          "icon": "map",
-          "commands": [
-            {
-              "text": "/context",
-              "description": "Ventana actual."
+              "text": "/plan",
+              "description": "Enter plan mode"
             },
             {
-              "text": "/compact",
-              "description": "Compacta."
+              "text": "/plan-view",
+              "description": "View the current plan"
+            },
+            {
+              "text": "/plugins",
+              "description": "View plugins"
+            },
+            {
+              "text": "/preferences",
+              "description": "Open the settings modal"
+            },
+            {
+              "text": "/privacy",
+              "description": "Open coding data, retention, and training settings"
+            },
+            {
+              "text": "/queue",
+              "description": "List the prompts queued behind the running turn"
+            },
+            {
+              "text": "/quit",
+              "description": "Quit the application"
+            },
+            {
+              "text": "/recap",
+              "description": "Summarize the session so far"
+            },
+            {
+              "text": "/release-notes",
+              "description": "View release notes for the current version"
+            },
+            {
+              "text": "/remember",
+              "description": "Save a memory note"
+            },
+            {
+              "text": "/rename",
+              "description": "Rename the current session"
+            },
+            {
+              "text": "/resume",
+              "description": "Resume a previous session"
+            },
+            {
+              "text": "/rewind",
+              "description": "Rewind to a previous turn"
+            },
+            {
+              "text": "/session-info",
+              "description": "Show session info"
+            },
+            {
+              "text": "/sessions",
+              "description": "Open the Agent Dashboard"
+            },
+            {
+              "text": "/settings",
+              "description": "Open the settings modal"
+            },
+            {
+              "text": "/show-plan",
+              "description": "View the current plan"
             },
             {
               "text": "/skills",
-              "description": "Skills."
+              "description": "View skills"
             },
             {
-              "text": "/mcps",
-              "description": "MCPs."
+              "text": "/summarize",
+              "description": "Summarize the session so far"
+            },
+            {
+              "text": "/tasks",
+              "description": "List background tasks, subagents, and scheduled tasks"
+            },
+            {
+              "text": "/terminal-check",
+              "description": "Check this session and show available fixes"
+            },
+            {
+              "text": "/theme",
+              "description": "Switch the color theme"
+            },
+            {
+              "text": "/timeline",
+              "description": "Toggle the timeline sidebar"
+            },
+            {
+              "text": "/timestamps",
+              "description": "Toggle message timestamps on/off"
+            },
+            {
+              "text": "/title",
+              "description": "Rename the current session"
+            },
+            {
+              "text": "/tour",
+              "description": "Quick tips to get the most out of Grok Build"
+            },
+            {
+              "text": "/transcript",
+              "description": "View the conversation transcript in your pager ($PAGER)"
+            },
+            {
+              "text": "/tutorial",
+              "description": "Quick tips to get the most out of Grok Build"
+            },
+            {
+              "text": "/undo",
+              "description": "Rewind to a previous turn"
+            },
+            {
+              "text": "/usage",
+              "description": "View usage"
+            },
+            {
+              "text": "/view-plan",
+              "description": "View the current plan"
+            },
+            {
+              "text": "/vim-mode",
+              "description": "Toggle vim-style scrollback keybindings (j/k, h/l, g/G, y/Y, …)"
+            },
+            {
+              "text": "/voice",
+              "description": "Toggle dictation (Ctrl+Space/F8; Esc/Enter to stop)"
+            },
+            {
+              "text": "/welcome",
+              "description": "Return to the welcome screen"
+            },
+            {
+              "text": "/workflow",
+              "description": "Launch a saved workflow, list runs, or manage a run (pause, resume, stop, save)"
+            },
+            {
+              "text": "/workflows",
+              "description": "Browse installed workflows"
             }
           ]
         }
@@ -318,7 +1056,7 @@
       "id": "opencode",
       "label": "OpenCode",
       "binary": "opencode",
-      "pinnedVersion": "1.17.18",
+      "pinnedVersion": "1.18.33",
       "verified": true,
       "launch": {
         "resume": "--session <id>",
@@ -327,82 +1065,76 @@
       },
       "groups": [
         {
-          "title": "Modelo",
-          "icon": "brain",
+          "title": "",
+          "icon": "",
           "commands": [
-            {
-              "text": "/models",
-              "description": "Alias /mo. Elige modelo."
-            },
-            {
-              "text": "/variants",
-              "description": "Variantes del modelo."
-            },
             {
               "text": "/agents",
-              "description": "Agente activo."
-            }
-          ]
-        },
-        {
-          "title": "Conversación",
-          "icon": "cycle",
-          "commands": [
-            {
-              "text": "/new",
-              "description": "Alias /clear. Nueva."
+              "description": "Switch agent"
             },
             {
-              "text": "/sessions",
-              "description": "Alias /resume. Reanuda."
+              "text": "/connect",
+              "description": "Connect provider"
             },
             {
-              "text": "/fork",
-              "description": "Bifurca."
+              "text": "/debug",
+              "description": "View debug info"
             },
             {
-              "text": "/undo",
-              "description": "Deshace."
+              "text": "/diff",
+              "description": "Open diff viewer"
+            },
+            {
+              "text": "/editor",
+              "description": "Open editor"
             },
             {
               "text": "/exit",
-              "description": "Sale."
-            }
-          ]
-        },
-        {
-          "title": "Cuenta",
-          "icon": "key",
-          "commands": [
-            {
-              "text": "/connect",
-              "description": "Conecta un proveedor."
-            },
-            {
-              "text": "/org",
-              "description": "Cambia de organización."
-            }
-          ]
-        },
-        {
-          "title": "Contexto",
-          "icon": "map",
-          "commands": [
-            {
-              "text": "/compact",
-              "description": "Alias /summarize."
-            },
-            {
-              "text": "/skills",
-              "description": "Skills."
-            },
-            {
-              "text": "/mcps",
-              "description": "MCPs."
+              "description": "Exit the app"
             },
             {
               "text": "/help",
-              "description": "Ayuda."
+              "description": "Help"
+            },
+            {
+              "text": "/init",
+              "description": "guided AGENTS.md setup"
+            },
+            {
+              "text": "/mcps",
+              "description": "Toggle MCPs"
+            },
+            {
+              "text": "/models",
+              "description": "Switch model"
+            },
+            {
+              "text": "/move",
+              "description": "Move to another project dir"
+            },
+            {
+              "text": "/new",
+              "description": "New session"
+            },
+            {
+              "text": "/review",
+              "description": "review changes [commit|branch|pr], defaults to uncommitted"
+            },
+            {
+              "text": "/sessions",
+              "description": "Switch session"
+            },
+            {
+              "text": "/skills",
+              "description": "Skills"
+            },
+            {
+              "text": "/status",
+              "description": "View status"
+            },
+            {
+              "text": "/themes",
+              "description": "Switch theme"
             }
           ]
         }
@@ -412,94 +1144,188 @@
       "id": "agy",
       "label": "Antigravity",
       "binary": "agy",
-      "pinnedVersion": "1.1.25",
-      "verified": false,
+      "pinnedVersion": "1.2.14",
+      "verified": true,
       "launch": {
         "resume": "--conversation <id>",
         "extra": []
       },
       "groups": [
         {
-          "title": "Modelo",
-          "icon": "brain",
+          "title": "",
+          "icon": "",
           "commands": [
             {
-              "text": "/model",
-              "description": "Modelo."
+              "text": "/add-dir ",
+              "description": "Add a directory to the workspace"
+            },
+            {
+              "text": "/agents",
+              "description": "List available custom agents"
+            },
+            {
+              "text": "/agy-customizations",
+              "description": "Comprehensive guide and reference for the Antigravity Customization System. Use to explain how customizations work, their loading priority, discovery mechanisms, an..."
+            },
+            {
+              "text": "/antigravity-guide",
+              "description": "Provides a comprehensive guide, quick reference, and sitemap for Google Antigravity (AGY), including the Antigravity CLI (agy), Antigravity 2.0, Antigravity IDE,..."
+            },
+            {
+              "text": "/artifact",
+              "description": "View and review artifacts"
+            },
+            {
+              "text": "/automation",
+              "description": "Interactive guide to design and create a scheduled background automation. Use this skill when the user wants to create an automated or recurring scheduled task ..."
+            },
+            {
+              "text": "/boost",
+              "description": "Invoke the Boost multi-agent orchestrator for complex tasks."
+            },
+            {
+              "text": "/browser",
+              "description": "Invoke a browser agent for web tasks."
+            },
+            {
+              "text": "/btw",
+              "description": "Ask a side question without interrupting the current task"
+            },
+            {
+              "text": "/changelog",
+              "description": "Show release notes and changes"
+            },
+            {
+              "text": "/clear",
+              "description": "Clear conversation and start a new one"
+            },
+            {
+              "text": "/config",
+              "description": "Open settings panel"
+            },
+            {
+              "text": "/context",
+              "description": "Visualize current context usage"
+            },
+            {
+              "text": "/diff",
+              "description": "View uncommitted changes and per-turn diffs"
             },
             {
               "text": "/effort ",
-              "description": "Esfuerzo.",
+              "description": "Set the reasoning effort",
               "args": [
                 "low",
                 "high"
               ]
             },
             {
-              "text": "/plan",
-              "description": "Plan."
-            }
-          ]
-        },
-        {
-          "title": "Conversación",
-          "icon": "cycle",
-          "commands": [
+              "text": "/exit",
+              "description": "Exit the CLI"
+            },
             {
-              "text": "/clear",
-              "description": "Alias /new."
+              "text": "/feedback",
+              "description": "Submit qualitative feedback to improve the agent"
             },
             {
               "text": "/fork",
-              "description": "Alias /branch."
+              "description": "Create a branch of the current conversation at this point, optionally specifying a project ID to fork into"
             },
             {
-              "text": "/resume",
-              "description": "Alias /switch."
+              "text": "/goal",
+              "description": "Run until the specified goal is completely finished."
             },
             {
-              "text": "/rewind",
-              "description": "Alias /undo."
+              "text": "/grill-me",
+              "description": "Interview me to align on a plan."
             },
             {
-              "text": "/exit",
-              "description": "Sale."
-            }
-          ]
-        },
-        {
-          "title": "Cuenta",
-          "icon": "key",
-          "commands": [
+              "text": "/help",
+              "description": "Show available commands and keybindings"
+            },
+            {
+              "text": "/hooks",
+              "description": "Manage hook configurations for tool events"
+            },
+            {
+              "text": "/keybindings",
+              "description": "Set custom keybindings"
+            },
+            {
+              "text": "/learn",
+              "description": "Reflect on recent successes or corrections to capture reusable skills or rules."
+            },
             {
               "text": "/logout",
-              "description": "Cierra sesión."
-            },
-            {
-              "text": "/usage",
-              "description": "Alias /quota."
-            }
-          ]
-        },
-        {
-          "title": "Contexto",
-          "icon": "map",
-          "commands": [
-            {
-              "text": "/add-dir ",
-              "description": "Añade carpeta."
+              "description": "Log out"
             },
             {
               "text": "/mcp",
-              "description": "MCPs."
+              "description": "Manage MCP servers"
+            },
+            {
+              "text": "/migrate-workflows",
+              "description": "Automatically migrate legacy workflows to modern skills across global and workspace configurations. Scans for existing workflows, creates target SKILL.md files, ..."
+            },
+            {
+              "text": "/model",
+              "description": "Set a model, or run a single prompt on another model"
+            },
+            {
+              "text": "/open",
+              "description": "Open a file or view opened/edited files"
+            },
+            {
+              "text": "/permissions",
+              "description": "Manage tool permissions"
+            },
+            {
+              "text": "/plan",
+              "description": "Plan carefully before executing a task."
+            },
+            {
+              "text": "/remote-control",
+              "description": "Turn on remote control for this session (off to disable)"
+            },
+            {
+              "text": "/rename",
+              "description": "Rename the current conversation"
+            },
+            {
+              "text": "/resume",
+              "description": "Browse and resume past conversations"
+            },
+            {
+              "text": "/rewind",
+              "description": "Rewind conversation to a previous message"
             },
             {
               "text": "/skills",
-              "description": "Skills."
+              "description": "List available skills"
             },
             {
-              "text": "/context",
-              "description": "Ventana."
+              "text": "/statusline",
+              "description": "Toggle the statusline"
+            },
+            {
+              "text": "/tasks",
+              "description": "View background tasks"
+            },
+            {
+              "text": "/teamwork-preview",
+              "description": "Invoke a team of agents to autonomously tackle large projects."
+            },
+            {
+              "text": "/title",
+              "description": "Toggle custom terminal window title"
+            },
+            {
+              "text": "/usage",
+              "description": "View model quota usage"
+            },
+            {
+              "text": "/voice",
+              "description": "Dictate a prompt using your microphone"
             }
           ]
         }

@@ -1,0 +1,76 @@
+{
+ "cli": "opencode",
+ "version": "1.18.33",
+ "scrapedAt": "2026-09-30",
+ "from": "menú / del propio CLI (tmux privado)",
+ "commands": [
+  [
+   "agents",
+   "Switch agent"
+  ],
+  [
+   "connect",
+   "Connect provider"
+  ],
+  [
+   "debug",
+   "View debug info"
+  ],
+  [
+   "diff",
+   "Open diff viewer"
+  ],
+  [
+   "editor",
+   "Open editor"
+  ],
+  [
+   "exit",
+   "Exit the app"
+  ],
+  [
+   "help",
+   "Help"
+  ],
+  [
+   "init",
+   "guided AGENTS.md setup"
+  ],
+  [
+   "mcps",
+   "Toggle MCPs"
+  ],
+  [
+   "models",
+   "Switch model"
+  ],
+  [
+   "move",
+   "Move to another project dir"
+  ],
+  [
+   "new",
+   "New session"
+  ],
+  [
+   "review",
+   "review changes [commit|branch|pr], defaults to uncommitted"
+  ],
+  [
+   "sessions",
+   "Switch session"
+  ],
+  [
+   "skills",
+   "Skills"
+  ],
+  [
+   "status",
+   "View status"
+  ],
+  [
+   "themes",
+   "Switch theme"
+  ]
+ ]
+}

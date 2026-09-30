@@ -51,8 +51,7 @@ def test_every_icon_used_by_the_sidebar_and_builder_exists_in_the_icon_map():
     for f in ("command-sidebar.js", "chain-builder.js"):
         used |= set(re.findall(r'data-icon="([\w-]+)"', (ROOT / "dash" / f).read_text()))
     cat = json.loads((ROOT / "config" / "cli-commands.json").read_text())
-    used |= {g["icon"] for c in cat["clis"] for g in c["groups"]}
-    assert {"brain", "cycle", "key", "map"} <= used
+    used |= {g["icon"] for c in cat["clis"] for g in c["groups"] if g.get("icon")}
     assert used - have == set(), sorted(used - have)
 
 

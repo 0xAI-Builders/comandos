@@ -47,7 +47,7 @@
     const hidden = hits(cmd, opts.q) ? '' : ' hidden';
     return `<div class="cmd${dis}" ${attr}="${esc(text)}" data-kind="${kind}"${hidden}>`
       + `<code>${esc(text)}${text.endsWith(' ') ? '<em>…</em>' : ''}</code>`
-      + (cmd.description ? `<small>${esc(cmd.description)}</small>` : '')
+      + (cmd.description ? `<small title="${esc(cmd.description)}">${esc(cmd.description)}</small>` : '')
       + (chips ? `<span class="opts">${chips}</span>` : '') + add + '</div>';
   }
 

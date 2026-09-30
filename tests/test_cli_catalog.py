@@ -10,19 +10,31 @@ DANGER = {"claude": "--dangerously-skip-permissions", "codex": "--dangerously-by
           "opencode": "", "grok": "--always-approve", "agy": "--dangerously-skip-permissions"}
 VERSIONS = {"claude": "2.1.268", "codex": "0.154.0", "grok": "1.0.25", "opencode": "1.17.18", "agy": "1.1.25"}
 
-def test_catalog_file_matches_repo_danger_flags_and_map_versions():
+def test_catalog_file_is_each_cli_menu_verbatim():
+    """El catálogo es el menú `/` de cada CLI tal cual (tools/cli-commands/scraped):
+    una lista plana, sin categorías ni descripciones propias, a la versión capturada."""
+    sys.path.insert(0, str(ROOT / "tools" / "cli-commands"))
+    import build
     cat = cli_catalog.load_catalog()
     roles = json.loads((ROOT / "config" / "agent-roles.json").read_text())["dangerFlags"]
     ids = [c["id"] for c in cat["clis"]]
     assert ids == ["claude", "codex", "grok", "opencode", "agy"]
     assert set(ids) <= set(roles)
-    text = (ROOT / "docs" / "tui-command-map.md").read_text()
     for cli in cat["clis"]:
-        assert cli["pinnedVersion"] in text, cli["id"]
-        for grp in cli["groups"]:
-            for cmd in grp["commands"]:
-                assert cmd["text"].strip() in text, (cli["id"], cmd["text"])
-                assert "\n" not in cmd["text"] and cmd["description"]
+        src = json.loads((ROOT / "tools" / "cli-commands" / "scraped" / f"{cli['id']}.json").read_text())
+        menu = {}
+        for name, desc in src["commands"]:
+            name = build.ALIASES.get((cli["id"], name), name)
+            if name:
+                menu[name] = build.clean(desc)
+        assert cli["pinnedVersion"] == src["version"], cli["id"]
+        assert len(cli["groups"]) == 1 and cli["groups"][0]["title"] == "", cli["id"]
+        cmds = cli["groups"][0]["commands"]
+        assert [c["text"].strip()[1:] for c in cmds] == sorted(menu), cli["id"]
+        for cmd in cmds:
+            assert cmd["description"] == menu[cmd["text"].strip()[1:]], (cli["id"], cmd["text"])
+    assert build.build(json.loads(cli_catalog.CATALOG_FILE.read_text())) == cat
+
 
 def test_yolo_launches_come_first_and_use_danger_flag():
     cat = cli_catalog.load_catalog()
