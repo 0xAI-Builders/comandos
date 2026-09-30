@@ -1174,6 +1174,7 @@ import pomodoro
 import focus_progress
 import tui_state
 import cli_catalog
+import command_chains
 import pane_typing
 _PANE_TYPING_LOCKS = pane_typing.PaneTypingLocks()
 _PANE_TYPING_RESULTS = collections.OrderedDict()   # requestId -> (status, body); 256 entradas
@@ -8704,7 +8705,7 @@ class Handler(http.server.SimpleHTTPRequestHandler):
     # sw.js, manifest, iconos) NO — no revela nada (es codigo open-source) y
     # asi la PWA instala y carga sin depender de cookies en el webview movil.
     API_GET = ("/session-config-history", "/pane-extensions", "/pomodoro", "/providers", "/optimization/plans", "/proxy", "/model/status", "/sovereignty", "/ui-log/summary", "/state", "/usage/state", "/usage/guard", "/usage/changes", "/usage/provider-compare", "/fs/dirs", "/models/latest", "/news/latest", "/news/edition", "/push/", "/notifs/count", "/usage/analytics", "/usage/interactions", "/usage/experiments", "/opencode/models", "/model-tiers", "/dedication", "/active-tab", "/session-profiles", "/extension-usage", "/session-brain", "/project-profiles", "/events", "/conf", "/prefs", "/ssh", "/tabs", "/workspace", "/notices",
-               "/tab-history", "/remote-state", "/remote-qr.png", "/snippets", "/tmux-mouse", "/commands/catalog",
+               "/tab-history", "/remote-state", "/remote-qr.png", "/snippets", "/tmux-mouse", "/commands/catalog", "/chains",
                "/webterm-token", "/operator", "/allocation/status")
     API_GET += ("/work-marks",)  # E1; /events/v2 queda cubierto por /events
 
@@ -9057,6 +9058,8 @@ class Handler(http.server.SimpleHTTPRequestHandler):
                                     "catalog": view, "versionsAt": at})
         if self.path == "/snippets":
             return self._json(200, read_snippets())
+        if self.path == "/chains":
+            return self._json(200, {"chains": command_chains.list_chains(command_chains.default_dir())})
         if self.path.startswith("/operator/action-results"):
             import operator_receipts
             return self._json(200, {"actions": operator_receipts.recent(operator_store_root())})
@@ -9661,6 +9664,21 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             if err:
                 return self._json(400, {"error": err})
             return self._json(200, {"ok": True, "session": sess})
+
+        if self.path == "/chains":
+            try:
+                chain = command_chains.save_chain(command_chains.default_dir(), data.get("name"),
+                                                  data.get("steps"), slug=data.get("slug") or None)
+            except command_chains.ChainError as exc:
+                return self._json(400, {"error": str(exc)})
+            return self._json(200, {"ok": True, "chain": chain})
+
+        if self.path == "/chains/delete":
+            try:
+                deleted = command_chains.delete_chain(command_chains.default_dir(), data.get("slug"))
+            except command_chains.ChainError as exc:
+                return self._json(400, {"error": str(exc)})
+            return self._json(200, {"ok": True, "deleted": deleted})
 
         if self.path == "/snippets":
             name = str(data.get("name", ""))
