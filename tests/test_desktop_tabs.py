@@ -325,7 +325,10 @@ def test_shell_panes_get_a_visible_start_ai_pill_and_ctrl_shift_a():
     assert 'open_ai_session_here(cur_sess or str(key or "").partition(":")[0], pane_id)' in src
     assert "if ctrl and shift and e.keyval in (Gdk.KEY_A, Gdk.KEY_a):" in src
     assert "console.error('dash_js: '" in src
-    assert 'tf("Iniciar IA aquí","Start AI here")' in Path("dash/index.html").read_text()
+    # En el tablero la tarjeta Centro (con su «Iniciar IA aquí») se retiró en
+    # S2: los arranques por CLI de la barra de comandos cubren ese caso, y GTK
+    # sigue abriendo el asistente con window.openAiHere.
+    assert "window.openAiHere = (sess, pane, cwd) => nsOpenForPane(sess, pane, cwd);" in Path("dash/index.html").read_text()
 
 
 def test_pills_sit_on_the_reserved_tmux_border_row_not_on_content():

@@ -3368,31 +3368,19 @@ def test_operator_chat_streams_over_sse():
     dash = open("bin/cc-dash").read()
     assert '"/operator/chat/stream"' in dash and "text/event-stream" in dash
     assert 'protocol_version = "HTTP/1.1"' in dash
-    assert "/operator/chat/stream" in HTML and "opStreamXhr" in HTML and "op-tool" in HTML
     assert "/operator/chat/stream" in SW
-    assert "if(d.messages && !OP.ac)" in HTML
-    assert 'tf("Escribe un mensaje"' in HTML
-
-
-def test_operator_chat_renders_markdown_and_wait_caret():
-    assert "mdHtml(m.text" in HTML
-    assert "op-wait" in HTML
-    assert "op-load" in HTML and "op-scan" in HTML
-    assert "op-md" in HTML
-    assert "op-bubble" not in HTML
-    assert "<kbd>F1</kbd>" in HTML
-    assert 'data-act="copy"' in HTML and 'data-act="stop"' in HTML
+    # El cliente del chat se retiró del tablero (S2); el backend se retira en S4.
+    assert "/operator/chat/stream" not in HTML and "opStreamXhr" not in HTML
 
 
 def test_operator_generic_ui_actions_and_globals_exist():
     for fn in ("opFavorite", "setPollSeconds", "setBrowserNotifications", "setLimitStyle", "nfDismiss",
-               "nfPin", "nfUnpin", "nfSnooze", "setTimeline", "closeAllPanels", "swOpenWith",
-               "nsOpenPrefilled", "selectSessionCard", "expandReply", "openAnalyticsTab",
-               "compareSetDays", "setSplitLeft", "setOpChatHeight", "reloadDashboard", "focusVisibleTerm"):
+               "nfPin", "nfUnpin", "nfSnooze", "closeAllPanels", "swOpenWith",
+               "nsOpenPrefilled", "openAnalyticsTab",
+               "compareSetDays", "setSplitLeft", "reloadDashboard", "focusVisibleTerm"):
         assert f"window.{fn} = " in HTML, fn
-    for op in ('a.op === "click"', 'a.op === "call"', 'a.op === "term"'):
-        assert op in HTML, op
-    assert 'a.type === "pref"' in HTML and 'a.type === "voice"' in HTML and 'a.type === "notify_pos"' in HTML
+    for gone in ("setTimeline", "selectSessionCard", "expandReply", "setOpChatHeight"):
+        assert f"window.{gone} = " not in HTML, gone
 
 
 def test_app_command_endpoint_exists():

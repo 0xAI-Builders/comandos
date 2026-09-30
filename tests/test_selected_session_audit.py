@@ -75,23 +75,6 @@ assert.equal(C.draft({}).expectedIdentity,undefined);
     subprocess.run(['node', '-e', script], check=True)
 
 
-@pytest.mark.parametrize('active', [True,False])
-def test_chat_missing_local_card_cannot_fall_back_to_desktop_or_clear_draft(active):
-    source = extract_js_function(HTML, 'opSend')
-    script = f"""
-const assert=require('node:assert/strict'), S={{list:[],sel:'local|%missing'}}, OP={{ac:null}};
-const notices=[];
-function pickSel(){{return null;}}
-function sidebarActiveTab(){{return {json.dumps({'session':'local','pane':'%missing'} if active else {})};}}
-function toast(t){{notices.push(t);}}
-function tf(es){{return es;}}
-function $(){{throw new Error('must preserve draft and avoid sending');}}
-{source}
-(async()=>{{assert.equal(await opSend('estado'),false);assert.equal(OP.ac,null);assert.equal(notices.length,1);}})().catch(e=>{{console.error(e);process.exitCode=1;}});
-"""
-    subprocess.run(['node', '-e', script], check=True)
-
-
 def test_remote_terminal_focus_updates_selected_pane_without_desktop_focus():
     source = extract_js_function(HTML, 'rememberRemotePaneFocus')
     script = f"""

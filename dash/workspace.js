@@ -137,85 +137,12 @@ function renderSessionOverview(list) {
   });
 }
 
-function setChatVisible(visible) {
-  document.documentElement.classList.toggle('chat-hidden',!visible);
-  try{localStorage.setItem('cc-chat-visible',visible?'1':'0');}catch(e){}
-  const button=document.querySelector('#toggle-chat');
-  button.textContent=visible?'Ocultar chat':'Abrir chat';button.setAttribute('aria-expanded',String(visible));
-  if(visible)document.querySelector('#op-in')?.focus({preventScroll:true});
-  window.dispatchEvent(new Event('resize'));
-}
 function initSessionWorkspace() {
-  let visible=true;try{visible=localStorage.getItem('cc-chat-visible')!=='0';}catch(e){}
-  document.documentElement.classList.toggle('chat-hidden',!visible);
-  const button=document.querySelector('#toggle-chat');button.textContent=visible?'Ocultar chat':'Abrir chat';button.setAttribute('aria-expanded',String(visible));
-  button.onclick=()=>setChatVisible(document.documentElement.classList.contains('chat-hidden'));
-  document.querySelector('#op-hide').onclick=()=>setChatVisible(false);
-  document.querySelector('#op-action-history').onclick=openOperatorActions;
   document.querySelector('#open-session-profiles').onclick=()=>openSessionProfiles();
   document.querySelector('#open-extension-usage').onclick=()=>openExtensionUsage();
   document.querySelector('#toggle-overview').onclick=e=>{const b=document.querySelector('#session-overview');b.hidden=!b.hidden;e.currentTarget.setAttribute('aria-pressed',String(!b.hidden));renderSessionOverview(S.list||[]);};
-  const input=document.querySelector('#op-in');
-  try{input.value=localStorage.getItem('cc-chat-draft')||'';}catch(e){}
-  input.addEventListener('input',()=>{try{localStorage.setItem('cc-chat-draft',input.value);}catch(e){}});
-  input.addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey&&!e.isComposing){e.preventDefault();document.querySelector('#op-form').requestSubmit();}});
   document.querySelector('#ns-profile-open').onclick=()=>openSessionProfiles();
   document.querySelector('#ns-profile-clear').onclick=()=>{delete NS.profileId;document.querySelector('#ns-profile-note').textContent='Sin perfil';};
 }
 
-async function openOperatorActions() {
-  const body=scDialog('Resultados de acciones');
-  try {
-    const data=await api('/operator/action-results');
-    const labels={pending:'Sin confirmar',dispatched:'Enviada; consulta el resultado',confirmed:'Confirmada',failed:'Fallida'};
-    body.innerHTML=`<p class="sc-note">Las acciones enviadas pueden seguir en curso. Revisa su resultado antes de repetirlas.</p><table class="sc-table"><thead><tr><th>Acción</th><th>Estado</th><th>Hora</th></tr></thead><tbody>${(data.actions||[]).map(a=>`<tr><td>${mdEsc(a.tool)}<br><small>${mdEsc(a.detail||'')}</small></td><td>${mdEsc(labels[a.status]||a.status)}</td><td>${new Date(a.updated*1000).toLocaleTimeString()}</td></tr>`).join('')}</tbody></table>`;
-  }catch(e){body.textContent=e.message;}
-}
-
-const opExecutedActions=new Map();
-async function opApplyActions(actions) {
-  for(const a of actions||[]) {
-    if(a.actionId&&opExecutedActions.has(a.actionId))continue;
-    if(a.actionId)opExecutedActions.set(a.actionId,true);
-    if(opExecutedActions.size>2000)opExecutedActions.delete(opExecutedActions.keys().next().value);
-    let status='dispatched',detail='Acción enviada; efecto final sin confirmar.';
-    try {
-      if(a.type==='ui'&&a.op==='click') {
-        const el=document.querySelector(a.selector);
-        if(!el||el.disabled)throw new Error('El control no está disponible en esta vista');
-        el.click();
-      }else if(a.type==='ui'&&a.op==='call') {
-        const fn=window[a.fn];
-        if(typeof fn!=='function')throw new Error('Esta función no está disponible: '+a.fn);
-        const result=fn(...(a.args||[]));
-        if(result&&typeof result.then==='function'){await result;status='confirmed';detail='Función completada.';}
-      }else if(a.type==='ui'&&a.target==='theme') {
-        const theme=a.theme||a.value;
-        if(!theme)throw new Error('Falta el tema');
-        selectTheme(theme);status='confirmed';detail='Tema aplicado.';
-      }else if((a.type==='ui'&&a.target==='lang')||a.type==='lang') {
-        const lang=a.lang||a.value,button=document.querySelector(`.lang-btn[data-lang="${CSS.escape(lang||'')}"]`);
-        if(!button)throw new Error('Idioma no disponible');button.click();
-      }else if(a.type==='ui'&&a.op==='term') {
-        const session=a.term?.session||activeTerm,frame=openTerms.get(session)?.frame;
-        if(!frame?.contentWindow)throw new Error('Abre la terminal de destino primero');
-        frame.contentWindow.postMessage({source:'comandos',type:'toolbar',term:a.term},location.origin);
-      }else if(a.type==='pref'||a.type==='volume') {
-        await api('/conf-set',{key:a.key||'VOLUME',value:a.type==='pref'?(a.on?'1':'0'):String(a.value)});
-        await loadConf();status='confirmed';detail='Preferencia guardada.';
-      }else {
-        opApplyActionsLegacy([a]);
-      }
-    }catch(e){status='failed';detail=e.message||String(e);toast(detail,true);}
-    if(a.actionId) {
-      try{await api('/operator/action-result',{actionId:a.actionId,status,detail});}
-      catch(e){toast('No se pudo guardar el resultado de la acción. Revisa antes de repetirla.',true);}
-    }
-    for(const message of OP.messages||[]) {
-      const tool=(message.tools||[]).find(t=>t.name===a.toolName&&t.ok===null);
-      if(tool){tool.ok=status==='confirmed'?true:status==='failed'?false:null;tool.reply=detail;}
-    }
-    opRenderLive();
-  }
-}
 initSessionWorkspace();

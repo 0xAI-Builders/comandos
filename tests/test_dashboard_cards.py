@@ -28,30 +28,14 @@ def run_node(script: str):
     subprocess.run(["node", "-e", script], check=True, text=True)
 
 
-def test_all_session_states_render_as_uniform_rows():
-    run_node(textwrap.dedent(f"""
-        const assert = require("assert");
-        {js_function("itemKind")}
-
-        assert.equal(itemKind({{status: "waiting", agent: "codex"}}), "row");
-        assert.equal(itemKind({{status: "done", agent: "codex", detail: "Final answer"}}), "row");
-        assert.equal(itemKind({{status: "done", agent: "codex", last: "Final answer"}}), "row");
-        assert.equal(itemKind({{status: "done", agent: "claude", detail: "Final answer"}}), "row");
-        assert.equal(itemKind({{status: "working", agent: "codex"}}), "row");
-    """))
-
-
-def test_renderer_uses_one_row_container_and_inline_expansion():
+def test_session_rows_left_the_sidebar():
+    # S2: the left panel is the command sidebar; the session rows (and their
+    # renderer) are gone. render() keeps counters and the tab bar refresh.
+    assert 'id="rows"' not in HTML
+    for gone in ("function rowEl(", "function itemKind(", "ROW_ORDER", "function wireActions("):
+        assert gone not in HTML, gone
     render = js_function("render")
-    row = js_function("rowEl")
-
-    assert "const container = rows;" in render
-    assert "rowEl(it)" in render
-    assert "ROW_ORDER = {waiting:-1" in HTML
-    assert "style.order =" in render
-    assert 'class="rxp"' in row
-    assert 'class="xp hidden"' in row
-    assert 'el.classList.toggle("open")' in row
+    assert "counts.waiting" in render and "renderTabbar();" in render
 
 
 def test_cards_and_urgent_section_are_removed():
@@ -65,6 +49,5 @@ def test_cards_and_urgent_section_are_removed():
 
 
 if __name__ == "__main__":
-    test_all_session_states_render_as_uniform_rows()
-    test_renderer_uses_one_row_container_and_inline_expansion()
+    test_session_rows_left_the_sidebar()
     test_cards_and_urgent_section_are_removed()

@@ -53,5 +53,5 @@ def test_native_and_cross_engine_routes_have_explicit_backend_ids():
     # el picker decide por harness vivo (acp/opencode/agy inclusive), no el triple legado
     assert "function liveHarnesses()" in HTML
     assert "tileAction(item" in HTML
-    assert "routeId: s.routeId" in HTML
+    assert "routeId: s2.routeId" in HTML   # sugerencia aplicada desde el cajón (la tarjeta Centro se retiró en S2)
     assert 'Harness' in HTML and 'Motor' in HTML and 'Pensamiento' in HTML

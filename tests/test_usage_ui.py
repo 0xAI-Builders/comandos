@@ -82,11 +82,6 @@ def test_motor_picker_is_visible_for_every_matrix_harness():
     assert "matrixHarnesses" in HTML
     assert "function liveHarnesses()" in HTML or "function switchableHarnesses()" in HTML or \
            "((PROVIDERS||{}).matrixHarnesses)" in HTML
-    # visibilidad del pill: cualquier harness de la matriz, no el triple legado
-    render = HTML.split("function renderMotor", 1)[1][:2200]
-    assert "liveHarnesses()" in render or "matrixHarnesses" in render
-    assert "acp" in render or "liveHarnesses()" in render
-    assert "it.alive" in render
     # el driver del /model/switch es el harness vivo, no "siempre claude"
     assert "const driver = item.agent" in HTML
 
@@ -99,13 +94,13 @@ def test_switch_result_updates_harness_motor_model_and_effort_everywhere():
     poll = poll.split("},450);", 1)[0]
     script = """
 const assert=require('node:assert/strict');
-let MOTOR_STATUS_BUSY=false, MPOP=null, ticks=0, renders=0, reply;
+let MOTOR_STATUS_BUSY=false, MPOP=null, ticks=0, reply;
 const target={session:'local',pane:'%0',agent:'claude',motor:'claude',model:'old',effort:'high',account:'old'};
 const other={session:'signara',pane:'%21',model:'untouched'};
 const beforeOther=JSON.stringify(other), S={list:[target,other]};
 const MOTOR_PENDING=new Map(), SWITCH_SEEN=new Map();
 const rowKey=i=>i.session+'|'+i.pane, motorTargetKey=rowKey;
-const toast=()=>{}, tick=()=>ticks++, renderCentro=()=>renders++, tf=es=>es;
+const toast=()=>{}, tick=()=>ticks++, tf=es=>es;
 async function api(path){
   const url=new URL(path,'http://test');
   assert.equal(url.pathname,'/model/status');
@@ -136,12 +131,10 @@ async function poll(){
     assert.equal(JSON.stringify(other),beforeOther);
     assert.equal(MOTOR_STATUS_BUSY,false);
   }
-  assert.equal(ticks,2);assert.equal(renders,2);
+  assert.equal(ticks,2);
 })().catch(e=>{console.error(e);process.exitCode=1;});
 """
     subprocess.run(['node', '-e', script], check=True)
-    # las filas del sidebar también leen it.agent/it.motor/it.effort
-    assert "harness=it.agent||\"shell\",motor=it.motor||motorOf(agentModel)||harness" in HTML.replace(" ", "")
 
 
 def test_effort_only_switch_does_not_resend_model():
@@ -153,9 +146,11 @@ def test_effort_only_switch_does_not_resend_model():
     assert "sameModel?st.model:st.model" not in HTML
 
 
-def test_session_cards_have_usage_chip_container():
-    assert 'class="usage-chip hidden"' in HTML
-    assert "usageChipText" in HTML
+def test_usage_chip_text_survives_without_session_rows():
+    # Las filas de sesión del panel se retiraron (S2); la vista de uso sigue
+    # pintando el modelo observado con usageChipText.
+    assert 'id="rows"' not in HTML and 'class="usage-chip hidden"' not in HTML
+    assert "usageChipText(p)" in HTML
 
 
 def test_usage_ui_exposes_model_selector_with_preset_names():
@@ -206,22 +201,16 @@ def test_header_has_no_search_nor_open_project():
         r'(?=[^>]*\btitle="[^"]*Ctrl\+K)[^>]*>', HTML
     )
     assert switch_button
-    sessions_label = re.search(
-        r'<div class="sec-label[^"]*"[^>]*>.*?</div>', HTML, re.S
-    )
-    assert sessions_label
-    assert 'id="sessions-title"' in sessions_label.group(0)
-    assert 'id="btn-newsess"' in sessions_label.group(0)
+    # La cabecera "Sesiones" y su + salieron del panel con la barra de comandos
+    # (S2); "Nueva sesión" vuelve a la cabecera en H1 con el id btn-newsess.
+    assert 'id="sessions-title"' not in HTML
 
 
-def test_operator_chat_dock_lives_below_recent_activity():
-    assert 'id="op-chat"' in HTML
-    assert 'id="tl-toggle"' in HTML
-    assert HTML.index('id="tl-wrap"') < HTML.index('id="op-chat"')
-    assert 'Dile a ComandOS' in HTML
-    assert 'id="op-model"' in HTML
-    assert "op-compose" in HTML
-    assert 'opStreamXhr("/operator/chat/stream"' in HTML
+def test_command_sidebar_replaces_the_operator_chat_dock():
+    assert 'id="command-sidebar"' in HTML
+    for gone in ('id="op-chat"', 'id="tl-toggle"', 'id="tl-wrap"', 'Dile a ComandOS', 'id="op-model"', "op-compose",
+                 'opStreamXhr("/operator/chat/stream"'):
+        assert gone not in HTML, gone
     assert "nsOpen()" in HTML
     assert "Elegí un snippet" not in HTML
     assert "creá uno nuevo" not in HTML
@@ -229,10 +218,11 @@ def test_operator_chat_dock_lives_below_recent_activity():
 
 
 def test_recent_closed_sessions_are_recoverable():
-    assert 'id="recent-wrap"' in HTML
+    # La sección "Recientes (cerradas)" salió del panel (S2); recuperar sigue
+    # en el conmutador Ctrl+K, que lee /tab-history y llama /recover-tab.
+    assert 'id="recent-wrap"' not in HTML and "renderRecent" not in HTML
     assert 'api("/tab-history")' in HTML
     assert '"/recover-tab"' in HTML.replace("'", '"')
-    assert "renderRecent" in HTML
 
 
 def test_switcher_closes_on_outside_click():

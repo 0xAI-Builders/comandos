@@ -875,28 +875,6 @@
   .cx-acts .danger:hover{border-color:#FF6B6B;color:#FF6B6B}
   .cx-note{font-family:var(--mono);font-size:9.5px;color:var(--faint);margin-top:6px}
   @media (prefers-reduced-motion:reduce){.cx-hero canvas.f2{display:none!important}}
-  /* Sesiones: tarjetas con jerarquía — identidad / estado / último mensaje / acciones */
-  #rows{display:flex;flex-direction:column;gap:8px}
-  /* Pantalla ancha: dos columnas de tarjetas — el espacio horizontal se usa de verdad */
-  @media (min-width:1360px){
-    #rows{display:grid;grid-template-columns:1fr 1fr;gap:8px;align-items:start}
-  }
-  #sidebar-insights{display:block}
-  .side-kpis{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:10px}
-  .side-kpi{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:10px 11px;display:flex;flex-direction:column;gap:2px;min-width:0}
-  .side-kpi .v{font-family:var(--mono);font-size:18px;font-weight:800;color:var(--text);font-variant-numeric:tabular-nums}
-  .side-kpi .l{font-family:var(--mono);font-size:9.5px;color:var(--dim);text-transform:uppercase;letter-spacing:.06em}
-  .side-link{margin-left:auto;font-family:var(--mono);font-size:10px;color:var(--brand);border:1px solid var(--line2);border-radius:7px;padding:3px 8px;background:none}
-  .side-link:hover{border-color:var(--brand);background:color-mix(in srgb,var(--brand) 9%,transparent)}
-  /* Hoy · proyectos: minimal. Nombre, horas y una pista fina de 4px con
-     relleno plano. Sin card, sin divisores, sin porcentajes. */
-  #side-projects{display:flex;flex-direction:column;gap:2px;padding:2px 0 0;overflow:visible}
-  .side-proj{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:6px 10px;align-items:baseline;padding:7px 0}
-  .side-proj .n{font-size:11.5px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--text)}
-  .side-proj .m{font-family:var(--mono);font-size:10.5px;color:var(--dim);font-variant-numeric:tabular-nums}
-  .side-proj .bar{grid-column:1/-1;height:4px;border-radius:4px;background:color-mix(in srgb,var(--line2) 45%,transparent);overflow:hidden}
-  .side-proj .bar i{display:block;height:100%;border-radius:4px;background:var(--brand);min-width:6px;transition:width .35s ease}
-  #side-projects .desc{padding:8px 0;color:var(--dim);font-size:11px}
 
   .row{display:grid;grid-template-columns:auto auto auto minmax(0,1fr) auto;grid-template-areas:
       "fav dot name state ago"
@@ -968,96 +946,6 @@
     font-family:var(--mono);font-size:12.5px;line-height:2}
   .empty code{color:var(--done)}
 
-  /* ---------- timeline ---------- */
-  #tl-wrap{max-width:1360px;margin:0 auto;padding:10px 18px 50px}
-  #tl-toggle{font-family:var(--mono);font-size:10.5px;color:var(--faint);
-    letter-spacing:.14em;text-transform:uppercase;padding:8px 0}
-  #tl-toggle:hover{color:var(--dim)}
-  /* Shared sidebar layout and split visibility live in workspace.css. */
-  #op-split{display:none}
-  html.only-panel #op-chat{display:none}
-  #op-chat{display:flex;flex-direction:column;min-width:0;margin:0 auto;max-width:1360px;
-    padding:4px 18px 12px;min-height:160px}
-  #op-head{display:flex;align-items:center;gap:8px;margin-bottom:6px}
-  #op-head .chip{margin:0}
-  #op-meta{font-family:var(--mono);font-size:10px;color:var(--faint);margin-left:2px}
-  #op-head .op-btns{margin-left:auto;display:flex;gap:4px}
-  #op-head .op-btns button{width:28px;height:28px;border:1px solid var(--line);border-radius:7px;
-    background:none;color:var(--dim);display:inline-flex;align-items:center;justify-content:center;cursor:pointer}
-  #op-head .op-btns #op-stop{width:auto;padding:0 8px;font-family:var(--mono);font-size:10px}
-  #op-head .op-btns button:hover{color:var(--text);border-color:var(--brand)}
-  /* Chat = log de consola (Invariant: estructura, no burbujas). Un acento: brand. */
-  #op-msgs{flex:1;min-height:80px;overflow-y:auto;display:flex;flex-direction:column;gap:0;padding:4px 0 8px}
-  .op-msg{-webkit-user-select:text;user-select:text;padding:12px 0;border-top:1px solid var(--line);
-    display:grid;grid-template-columns:72px 1fr;gap:8px 16px;align-items:start}
-  .op-msg:first-child{border-top:0}
-  .op-who{font-family:var(--mono);font-size:10.5px;color:var(--faint);letter-spacing:.12em;
-    text-transform:uppercase;padding-top:3px;user-select:none}
-  .op-msg.user .op-who{color:var(--dim)}
-  .op-msg.bot .op-who{color:var(--brand)}
-  .op-body{min-width:0;display:flex;flex-direction:column;gap:8px}
-  .op-msg.user .op-text{white-space:pre-wrap;color:var(--text);font-family:var(--sans);font-size:13.5px;line-height:1.5}
-  .op-msg.bot .op-text{color:var(--text);font-family:var(--sans);font-size:14px;line-height:1.55}
-  .op-md .mdh{display:block;color:var(--text);font-weight:650;margin:12px 0 4px;font-size:14px}
-  .op-md hr{border:none;border-top:1px solid var(--line);margin:10px 0}
-  .op-md i{color:var(--dim)}
-  .op-md code,.op-md pre{font-family:var(--mono);font-size:12.5px;color:var(--code);background:var(--panel2);padding:1px 5px;border-radius:4px}
-  .op-md pre{display:block;padding:10px 12px;margin:8px 0;overflow-x:auto;white-space:pre-wrap;line-height:1.45;border:1px solid var(--line);border-radius:8px}
-  .op-md u{text-decoration-color:var(--brand)}
-  .op-md table{border-collapse:collapse;margin:8px 0;font-size:12.5px;display:block;overflow-x:auto;max-width:100%}
-  .op-md th,.op-md td{border-bottom:1px solid var(--line);padding:6px 12px 6px 0;text-align:left}
-  .op-md th{color:var(--dim);font-weight:650;font-family:var(--mono);font-size:11px;letter-spacing:.06em}
-  .op-load{grid-column:2;position:relative;padding:14px 0 10px;min-height:48px}
-  .op-scan{display:block;height:2px;background:var(--brand);transform-origin:0 50%;
-    animation:opScan 1.35s cubic-bezier(.4,0,.2,1) infinite;margin-bottom:12px}
-  @keyframes opScan{0%{transform:scaleX(.08);opacity:.3}40%{transform:scaleX(1);opacity:1}100%{transform:scaleX(1);opacity:.15}}
-  .op-wait{display:inline-block;width:7px;height:13px;margin-left:4px;vertical-align:-2px;
-    background:var(--brand);animation:opCaret 1.05s steps(1) infinite}
-  @keyframes opCaret{50%{opacity:0}}
-  @media (prefers-reduced-motion:reduce){
-    .op-scan{animation:none;opacity:.7;transform:scaleX(.4)}
-    .op-wait{animation:none;opacity:.55}
-  }
-  .op-load b{display:block;font-family:var(--sans);font-size:14px;font-weight:600;color:var(--text)}
-  .op-load .op-load-meta{font-family:var(--mono);font-size:11px;color:var(--faint);margin-top:3px}
-  .op-empty{color:var(--faint);font-family:var(--sans);font-size:13.5px;line-height:1.5;padding:20px 0}
-  #op-form{display:flex;flex-direction:column;gap:8px;flex:none;padding:12px 0 0;border-top:1px solid var(--line);background:var(--bg)}
-  #op-compose{display:flex;align-items:stretch;gap:8px}
-  #op-in{flex:1;width:100%;background:var(--panel);border:1px solid var(--line);border-radius:8px;
-    color:var(--text);font-family:var(--sans);font-size:14px;padding:10px 12px;min-height:44px}
-  #op-in:focus{outline:none;border-color:var(--brand)}
-  #op-go,#op-stop,#op-stop-in{flex:none;font-family:var(--sans);font-size:13px;font-weight:650;
-    padding:0 14px;border-radius:8px;cursor:pointer;min-width:88px}
-  #op-go{background:var(--brand);color:var(--on-brand);border:1px solid var(--brand)}
-  #op-go:hover{filter:brightness(1.07)}
-  #op-stop,#op-stop-in{background:transparent;color:var(--err);border:1px solid color-mix(in srgb,var(--err) 55%,var(--line))}
-  #op-stop:hover,#op-stop-in:hover{background:color-mix(in srgb,var(--err) 14%,transparent)}
-  #op-stop.hidden,#op-stop-in.hidden{display:none}
-  #op-head .op-btns #op-stop{width:auto;min-width:0;padding:0 10px;font-size:11px;border-radius:7px}
-  #op-model-wrap .mdl-btn{max-width:180px}
-  #op-hint{font-family:var(--mono);font-size:10.5px;color:var(--faint)}
-  .op-acts{display:flex;flex-wrap:wrap;gap:6px;user-select:none}
-  .op-acts button{font-family:var(--sans);font-size:12px;color:var(--dim);border:1px solid var(--line);
-    border-radius:8px;padding:6px 11px;background:var(--bg);cursor:pointer}
-  .op-acts button:hover{color:var(--text);border-color:var(--brand)}
-  .op-acts button[data-act="stop"]{color:var(--err);border-color:color-mix(in srgb,var(--err) 45%,var(--line))}
-  #op-list{display:none;flex-direction:column;gap:2px;margin:0 0 8px;max-height:140px;overflow-y:auto}
-  #op-list.open{display:flex}
-  #op-list button{text-align:left;background:none;border:0;color:var(--dim);font-family:var(--mono);
-    font-size:11px;padding:6px 8px;border-radius:6px;cursor:pointer}
-  #op-list button:hover,#op-list button.on{background:var(--line);color:var(--text)}
-  .op-tools{display:flex;flex-direction:column;gap:4px;font-family:var(--mono);font-size:11.5px}
-  .op-tool{color:var(--dim);display:flex;gap:8px;align-items:baseline}
-  .op-tool::before{content:"";width:6px;height:6px;border-radius:1px;background:var(--line2);flex:none;transform:translateY(-1px)}
-  .op-tool.run{color:var(--working)} .op-tool.run::before{background:var(--working)}
-  .op-tool.ok{color:var(--done)} .op-tool.ok::before{background:var(--done)}
-  .op-tool.bad{color:var(--err)} .op-tool.bad::before{background:var(--err)}
-  #timeline{border-left:1px solid var(--line);margin:6px 0 0 4px;padding-left:14px;
-    display:flex;flex-direction:column;gap:5px}
-  .ev{font-family:var(--mono);font-size:11.5px;color:var(--dim);display:flex;gap:10px;min-width:0}
-  .ev time{color:var(--faint);font-variant-numeric:tabular-nums;flex:none}
-  .ev .evdot{flex:none;align-self:center;width:6px;height:6px;border-radius:50%}
-  .ev .txt{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 
   /* ---------- drawers ---------- */
   .drawer{position:fixed;top:0;right:0;bottom:0;width:380px;max-width:94vw;z-index:20;
@@ -1390,7 +1278,6 @@
     body.app.split #splitter:hover::after,body.app.dragging #splitter::after{background:var(--brand);
       box-shadow:0 -10px 0 var(--brand),0 10px 0 var(--brand)}
     body.app.split #view-panel .sec,body.app.split #view-panel #ssh-bar,
-    body.app.split #view-panel #tl-wrap{max-width:none;padding-left:14px;padding-right:14px}
     /* en el app tambien se ve el path (era display:none y nadie veia la carpeta) */
   }
   /* ---------- toasts ---------- */
@@ -1919,7 +1806,7 @@
 	    .brand{font-size:12px;letter-spacing:.1em}
 	    #q{width:100%}
 	    .hdr-right{width:100%;gap:6px}
-	    .sec,#ssh-bar,#tl-wrap{padding-left:12px;padding-right:12px}
+	    .sec,#ssh-bar{padding-left:12px;padding-right:12px}
 	    #ssh-bar{flex-wrap:wrap;overflow:visible}
 	    .row .name{flex-basis:140px}
 	    /* el PATH es el identificador humano: SIEMPRE visible bajo el nombre,
@@ -1936,13 +1823,14 @@
 	    #content{padding-bottom:env(safe-area-inset-bottom)}
 	  }
 	</style>
-<link rel="stylesheet" href="/workspace.css?v=v1ordenar">
+<link rel="stylesheet" href="/workspace.css?v=barra1">
 <link rel="stylesheet" href="/buttons.css?v=2">
 <link rel="stylesheet" href="/reparto.css">
 <script src="/session-config.js?v=7f3232b0a624"></script>
 <script src="/workspace-layout.js"></script>
 <script src="/workspace-dock.js?v=bandejas2"></script>
 <script src="/quick-terminal.js"></script>
+<script src="/command-sidebar.js?v=1"></script>
 
 <div id="panes">
 <nav id="app-navigation" aria-label="Pestañas de sesiones">
@@ -2001,30 +1889,8 @@
 
 <div id="content">
 <div id="side-top">
-<section class="sec hidden" id="centro-wrap">
-  <div id="centro"></div>
-</section>
-<section class="sec" id="sessions-wrap">
-  <div class="sec-label"><span class="chip" id="sessions-title">Sesiones</span>
-    <button type="button" id="btn-newsess" class="ns-plus" title="Nueva sesión (elige carpeta, agente y cuenta)" aria-label="Nueva sesión"></button>
-  </div>
-  <div id="workspace-tools"><button id="toggle-chat" aria-controls="op-chat" aria-expanded="true">Ocultar chat</button><button id="toggle-overview" aria-pressed="false">Todas las sesiones</button><button id="open-session-profiles">Perfiles</button><button id="open-extension-usage">Uso de herramientas</button></div>
-  <div id="session-overview" hidden></div><div id="rows"></div>
-</section>
-<section class="sec" id="sidebar-insights">
-  <div class="sec-label"><span class="chip">Hoy</span><button type="button" id="side-usage" class="side-link">Analytics →</button></div>
-  <div class="side-kpis">
-    <div class="side-kpi"><span class="v" id="side-time">—</span><span class="l">en foco</span></div>
-    <div class="side-kpi"><span class="v" id="side-panes">—</span><span class="l">agentes activos</span></div>
-  </div>
-  <div id="side-projects"></div>
-  <div class="side-keys" title="Atajos completos: F1">
-    <span><kbd>Ctrl+Tab</kbd> última tab</span>
-    <span><kbd>Ctrl+K</kbd> saltar</span>
-    <span><kbd>Ctrl+PgDn</kbd> siguiente</span>
-    <span><kbd>F1</kbd> ayuda</span>
-  </div>
-</section>
+<div id="workspace-tools"><button id="toggle-overview" aria-pressed="false">Todas las sesiones</button><button id="open-session-profiles">Perfiles</button><button id="open-extension-usage">Uso de herramientas</button></div>
+<div id="session-overview" hidden></div>
 
 <div id="newsess" class="hidden" role="dialog" aria-modal="true" aria-label="Nueva sesión">
   <div class="ns-card">
@@ -2074,45 +1940,8 @@
   </div>
 </div>
 
-<section class="sec hidden" id="recent-wrap">
-  <div class="sec-label"><span class="chip">Recientes (cerradas)</span></div>
-  <div id="recent"></div>
-</section>
-
-<div id="tl-wrap">
-  <button id="tl-toggle">Ver actividad reciente</button>
-  <div id="timeline" class="hidden"></div>
-</div>
+<div id="command-sidebar" aria-label="Comandos por CLI"></div>
 </div><!-- /#side-top -->
-<div id="op-split" role="separator" aria-orientation="horizontal" aria-label="Ajustar altura del chat"></div>
-<section id="op-chat" aria-label="Chat de ComandOS">
-  <div id="op-head">
-    <span class="chip">CHAT</span>
-    <span class="mdl-wrap" id="op-model-wrap">
-      <button type="button" class="mdl-btn" id="op-model" aria-haspopup="listbox" aria-expanded="false"
-        title="Cambiar modelo del chat">
-        <span class="mdl-cur" id="op-model-cur">Haiku</span><span class="mdl-caret">▾</span>
-      </button>
-    </span>
-    <div class="op-btns">
-      <button type="button" id="op-stop" class="hidden" title="Parar respuesta" aria-label="Parar">Parar</button>
-      <button type="button" id="op-action-history" title="Resultados de acciones" aria-label="Resultados de acciones">✓</button>
-      <button type="button" id="op-hide" title="Ocultar chat" aria-label="Ocultar chat">−</button>
-      <button type="button" id="op-hist" title="Conversaciones guardadas" aria-label="Conversaciones"><span data-icon="bars" data-size="13"></span></button>
-      <button type="button" id="op-new" title="Nueva conversación" aria-label="Nueva conversación"><span data-icon="plus" data-size="13"></span></button>
-    </div>
-  </div>
-  <div id="op-list" hidden></div>
-  <div id="op-msgs"></div>
-  <form id="op-form">
-    <div id="op-compose">
-      <textarea id="op-in" rows="2" autocomplete="off" spellcheck="true" placeholder="Dile a ComandOS… · Shift+Enter para nueva línea" maxlength="4000"></textarea>
-      <button type="button" id="op-stop-in" class="hidden" title="Parar respuesta">Parar</button>
-      <button type="submit" id="op-go" title="Enviar">Enviar</button>
-    </div>
-    <div id="op-target" aria-live="polite"></div><div id="op-hint">Haiku · barato · rápido</div>
-  </form>
-</section>
 </div>
 </div><!-- /#view-panel -->
 <div id="splitter" role="separator" aria-orientation="vertical" aria-label="Ajustar panel"></div>
@@ -2502,7 +2331,6 @@ const S = {
 	  usageSelected: null,
 	};
 const $ = s => document.querySelector(s);
-const rows = $("#rows");
 
 // ---------- i18n ----------
 // El markup y los literales viven en espanol; T_EN los traduce cuando L==="en".
@@ -2573,7 +2401,7 @@ function applyI18n(){
     "#servers label, #servers h3, #servers .desc, #servers .test, #srv-cancel, " +
 	    "#remote label, #remote h3, #remote .desc, #remote .test, #remote-no-qr, " +
 	    "#usage label, #usage h3, #usage .desc, #usage .test, " +
-	    ".sec-label, #ssh-bar .lbl, #ssh-manage, #btn-usage, #btn-remote, #btn-settings, #tl-toggle, .pill span")
+	    ".sec-label, #ssh-bar .lbl, #ssh-manage, #btn-usage, #btn-remote, #btn-settings, .pill span")
     .forEach(e => { const k = e.textContent.trim(); if(T_EN[k]) e.textContent = T_EN[k]; });
   const ph = (sel, v) => { const e = $(sel); if(e) e.placeholder = v; };
   ph("#q", "search session");
@@ -2670,7 +2498,6 @@ async function api(path, body){
 }
 
 // ---------- helpers ----------
-const ROW_ORDER = {waiting:-1, done:0, working:1, idle:2, dead:4};
 let LABEL = {waiting:"Esperando respuesta", done:"Termino", working:"Trabajando",
                idle:"Viva, sin actividad", dead:"Apagada"};
 function agoTxt(ts){
@@ -3363,7 +3190,8 @@ function mdStrip(s){ return (s||"").replace(/\*\*|`|^#{1,6} /g, ""); }
 	    if(smChanged) nfSave("cc-nf-snooze-meta", sm);
 	  }catch(e){}
 	}, 120000);
-	$("#btn-newsess").addEventListener("click", ()=>{ NS.intoPane=null; nsOpen(); });
+	// #btn-newsess vuelve en la cabecera (H1); mientras tanto #tab-new llama nsOpen().
+	$("#btn-newsess")?.addEventListener("click", ()=>{ NS.intoPane=null; nsOpen(); });
 	$("#ns-cancel").addEventListener("click", ()=> { NS.intoPane=null; $("#newsess").classList.add("hidden"); });
 	$("#newsess").addEventListener("click", e => {
 	  if(e.target.id === "newsess") $("#newsess").classList.add("hidden");
@@ -3407,28 +3235,6 @@ function mdStrip(s){ return (s||"").replace(/\*\*|`|^#{1,6} /g, ""); }
 	    } else toast(err.message, true);
 	  }
 	});
-	const CENTRO_VIEW = {sessionId:"", item:null};
-	// Centro de control de la sesion seleccionada + sus controles.
-	let brainCache = {key:null, data:null, expires:0};
-	const brainPending = new Map();
-	function brainKey(it){ return it ? `${rowKey(it)}|${it.agent||"shell"}|${it.harnessAccount||it.account||"unknown"}|${it.cwd||""}|${it.motor||""}|${it.motorAccount||"unknown"}|${it.observedConfig?.identity||""}` : ""; }
-	async function loadBrain(it){
-	  const key = brainKey(it);
-	  if(brainCache.key === key && brainCache.data && brainCache.expires > Date.now()) return brainCache.data;
-	  if(brainPending.has(key)) return brainPending.get(key);
-	  brainCache = {key, data:null, expires:0};
-	  const request = (async()=>{
-	    try{
-	      const params = new URLSearchParams({cwd:it.cwd||"",session:it.session||"",pane:it.pane||"",harness:it.agent||"shell",account:it.harnessAccount||it.account||"unknown"});
-	      const data = await api(`/session-brain?${params}`);
-	      if(brainCache.key === key) brainCache = {key, data, expires:Date.now()+10000};
-	      return data;
-	    }catch(error){ return {skills:[],mcps:[],status:"unknown",limitations:[error.message],mcpDetection:{status:"unknown"}}; }
-	    finally{ brainPending.delete(key); }
-	  })();
-	  brainPending.set(key, request);
-	  return request;
-	}
 	let ACTIVE_TAB = {session: "", ts: 0};
 	setInterval(async ()=>{
 	  if(!inApp()) return; // Remote selection belongs to this browser, not GTK focus.
@@ -3441,11 +3247,7 @@ function mdStrip(s){ return (s||"").replace(/\*\*|`|^#{1,6} /g, ""); }
 	      ACTIVE_TAB = {...d, ts: Date.now() / 1000};
 	      const key = d.session + (d.pane ? "|" + d.pane : "");
 	      S.sel = key; S.selTs = Date.now();
-	      document.querySelectorAll("#rows .row").forEach(r => r.classList.toggle("active-pane", r.dataset.rk === key));
-	      render(S.list || []);   // actualiza Centro + lista de panes de la pestaña
-	      // NO scrollIntoView aquí: la fila activa puede ocultarse porque ya está
-	      // en el Centro; WebKit desplaza #rows cientos de px hacia arriba al
-	      // intentar scrollear un display:none (sidebar queda aparentemente vacío).
+	      render(S.list || []);   // nuevo destino de la barra de comandos
 	    } else if(d && d.session){ ACTIVE_TAB = {...ACTIVE_TAB, ...d}; }
 	  }catch(e){}
 	}, 1000);
@@ -3468,288 +3270,6 @@ function mdStrip(s){ return (s||"").replace(/\*\*|`|^#{1,6} /g, ""); }
 	      (!selected.includes("|") ? items.find(it => it.session === selected) : null) || null;
 	  }
 	  return items.find(it => it.session === "local") || items[0] || null;
-	}
-	function renderCentro(list){
-	  const wrap = $("#centro-wrap"), box = $("#centro");
-	  if(!box) return;
-	  const it = pickSel(list);
-	  wrap.classList.toggle("hidden", !it);
-	  if(!it){
-	    CENTRO_VIEW.sessionId = "";
-	    CENTRO_VIEW.item = null;
-	    box.replaceChildren();
-	    delete box.dataset.sig;
-	    return;
-	  }
-	  const st = it.status || "idle";
-	  const model = shortModel(it.model || (!it.alive ? usageForItem(it)?.model : "") || "");   // transcript = lo que corre AHORA
-	  const tier = tierOf(model);
-	  const tst = tierStyleOf(tier);
-	  // clave por sesion|pane: un SPLIT distinto de la misma sesion ES otra card
-	  const sameSession = CENTRO_VIEW.sessionId === rowKey(it);
-	  CENTRO_VIEW.item = it;
-	  if(!sameSession){
-	    CENTRO_VIEW.sessionId = rowKey(it);
-	    box.dataset.sig = rowKey(it);
-	    box.innerHTML = `
-	      <div class="cx-hero" data-st="${attrEsc(st)}">
-	        <span class="cx-name"></span><span class="cx-sub" aria-live="polite"></span>
-	        <span class="cx-path"></span>
-	      </div>
-	      <div class="cx-cols">
-	        <div class="cx-block">
-	          <div class="cx-row"><span class="nm cx-model"></span></div>
-	          <div class="cx-motor hidden"></div>
-	          <div class="cx-advice"></div>
-	          <div class="cx-acts">
-	            <button type="button" class="cx-open">${svg("layers",13)} ${t("Abrir")}</button>
-	            <button type="button" class="cx-stop hidden" title="${tf("Interrumpe el turno actual (Escape): la sesión queda en el prompt, lista para cambiar de motor o darle otra orden", "Interrupt the current turn (Escape): back to the prompt, ready to switch engines or take another order")}">■ ${tf("Detener", "Stop")}</button>
-	            <button type="button" class="cx-more" aria-expanded="false">${tf("Más", "More")} ▾</button>
-	          </div>
-	          <div class="cx-extra hidden">
-	            <div class="cx-tabs" role="tablist">
-	              <button type="button" class="on" data-pane="ses" role="tab">${svg("terminal",13)} ${tf("Sesión", "Session")}</button>
-	              <button type="button" data-pane="mcps" role="tab">${svg("plug",13)} MCPs</button>
-	              <button type="button" data-pane="skills" role="tab">${svg("sparkles",13)} Skills</button>
-	            </div>
-	            <div class="cx-pane" data-pane="ses">
-	              <div class="cx-acts">
-	                <button type="button" class="cx-pause">${svg("pause",13)} ${tf("Pausar", "Pause")}</button>
-	                <button type="button" class="cx-resume hidden">${svg("play",13)} ${tf("Reanudar", "Resume")}</button>
-	                <button type="button" class="cx-kill danger">${svg("close",13)} ${tf("Matar", "Kill")}</button>
-	              </div>
-	              <div class="cx-row" style="margin-top:10px"><span class="nm cx-acct"></span></div>
-	            </div>
-	            <div class="cx-pane hidden" data-pane="mcps"><div class="cx-scroll cx-mcps"></div></div>
-	            <div class="cx-pane hidden" data-pane="skills"><div class="cx-scroll cx-skills"></div></div>
-	            <div class="cx-note">${tf("Elige las herramientas en Perfiles. Los cambios se aplican al iniciar una sesión nueva.", "Choose tools in Profiles. Changes apply when starting a new session.")}</div>
-	          </div>
-	        </div>
-	      </div>`;
-	    box.querySelectorAll(".cx-tabs button").forEach(tab =>
-	      tab.addEventListener("click", ()=>{
-	        box.querySelectorAll(".cx-tabs button").forEach(other => other.classList.remove("on"));
-	        tab.classList.add("on");
-	        box.querySelectorAll(".cx-pane").forEach(pane =>
-	          pane.classList.toggle("hidden", pane.dataset.pane !== tab.dataset.pane));
-	      }));
-	    const moreButton = box.querySelector(".cx-more");
-	    moreButton.addEventListener("click", ()=>{
-	      const extra = box.querySelector(".cx-extra");
-	      const open = extra.classList.toggle("hidden") === false;
-	      moreButton.textContent = open ? tf("Menos ▴", "Less ▴") : tf("Más ▾", "More ▾");
-	      moreButton.setAttribute("aria-expanded", String(open));
-	    });
-	    box.querySelector(".cx-stop").addEventListener("click", async ()=>{
-	      const live = CENTRO_VIEW.item; if(!live) return;
-	      ulog("click", "cx-stop", "centro");
-	      try{ await api("/model/switch-cancel", {session: live.session});
-	        await api("/key", {session: live.session, pane: live.pane || undefined, key: "Escape"});
-	        MOTOR_PENDING.delete(live.session);
-	        toast(tf(`${live.project}: turno interrumpido — al prompt`, `${live.project}: turn interrupted — back at the prompt`)); }
-	      catch(err){ toast(err.message, true); }
-	    });
-	    box.querySelector(".cx-open").addEventListener("click", async ()=>{
-	      const live = CENTRO_VIEW.item;
-	      if(!live) return;
-	      try{ toast(await openSession(CENTRO_VIEW.item, "claude")); }catch(err){ toast(err.message, true); }
-	    });
-	    const pauseButton = box.querySelector(".cx-pause");
-	    const resumeButton = box.querySelector(".cx-resume");
-	    pauseButton.addEventListener("click", async ()=>{
-	      const live = CENTRO_VIEW.item;
-	      if(!live) return;
-	      try{
-	        await api("/pause", {session:live.session, on:true});
-	        pauseButton.classList.add("hidden");
-	        resumeButton.classList.remove("hidden");
-	        toast(tf("Agente congelado", "Agent frozen"));
-	      }catch(err){ toast(err.message, true); }
-	    });
-	    resumeButton.addEventListener("click", async ()=>{
-	      const live = CENTRO_VIEW.item;
-	      if(!live) return;
-	      try{
-	        await api("/pause", {session:live.session, on:false});
-	        resumeButton.classList.add("hidden");
-	        pauseButton.classList.remove("hidden");
-	        toast(tf("Agente reanudado", "Agent resumed"));
-	      }catch(err){ toast(err.message, true); }
-	    });
-	    box.querySelector(".cx-kill").addEventListener("click", async ()=>{
-	      const live = CENTRO_VIEW.item;
-	      if(!live) return;
-	      try{
-	        await api("/kill", {session:live.session});
-	        toast(tf(`${live.project} eliminada`, `${live.project} killed`));
-	        tick();
-	      }catch(err){ toast(err.message, true); }
-	    });
-	  }
-	  box.dataset.sig = rowKey(it);
-	  box.querySelector(".cx-hero").dataset.st = st;
-	  box.querySelector(".cx-name").textContent = it.project || it.session;
-	  const cxp = box.querySelector(".cx-path");
-	  if(cxp) cxp.innerHTML = it.cwd ? `<a href="#" class="pathlink" data-path="${attrEsc(it.cwd)}" title="${attrEsc(it.cwd)} — ${tf("click: abrir carpeta","click: open folder")}">${mdEsc(shortPath(it.cwd))}</a>` : "";
-	  const stTxt = {waiting:tf("espera tu respuesta", "waiting for you"),
-	                 working:tf("trabajando", "working"), done:tf("listo", "done"),
-	                 idle:tf("descansando", "idle"), dead:tf("apagada", "dead")}[st] || st;
-	  box.querySelector(".cx-sub").textContent = stTxt +
-	    (it.contextPct ? ` · ctx ${it.contextPct}%` : "");
-	  renderAdvice(box, it);
-	  const modelElement = box.querySelector(".cx-model");
-	  const cardMotor=it.motor||motorOf(model)||it.agent;
-	  modelElement.innerHTML = model ? providerMark(cardMotor, model, 13) + `<span>${mdEsc(nsHarness(it.agent).label||it.agent)} → ${mdEsc(engineLabel(cardMotor))} · ${mdEsc(model)}${it.effort ? " · " + mdEsc(it.effort) : ""}${tst && tst.symbol ? " " + tst.symbol : ""}${it.configConfirmed===false?" · "+tf("sin confirmar","unconfirmed"):""}</span>` :
-	    tf("modelo aun no detectado", "model not detected yet");
-	  renderMotor(box, it, model);
-	  if(MPOP && MPOP.ctx.mode === "session" && motorTargetKey(MPOP.ctx.item) === rowKey(it) &&
-	      (MPOP.ctx.model !== model || MPOP.ctx.item.effort !== it.effort)){
-	    MPOP.ctx.item = it; MPOP.ctx.model = model;
-	    if(!MOTOR_PENDING.has(rowKey(it))) MPOP.staged = null;
-	    motorPopRender();
-	  }
-	  modelElement.style.color = tst && tst.css || "";
-	  box.querySelector(".cx-acct").textContent =
-	    `${tf("cuentas", "accounts")}: ${it.harnessAccount||it.account||"unknown"}` +
-	    ((it.motorAccount&&it.motorAccount!==(it.harnessAccount||it.account))?` → ${it.motorAccount}`:"") +
-	    (it.modelSource?` · ${it.modelSource}`:"");
-	  renderBrain(box, it);
-	}
-	// LA linea sabia: UN problema a la vez, el mas importante primero.
-	// Prioridad: loop > contexto > quema > cache > MCPs pesados > CLAUDE.md largo.
-	function renderAdvice(box, it){
-	  const el = box.querySelector(".cx-advice");
-	  if(!el) return;
-	  const s = it.suggestion;
-	  if(s){
-	    el.classList.remove("hidden"); el.classList.add("cx-suggest");
-	    el.innerHTML = `<span class="sg-ico">${svg(s.icon||"sparkles",13)}</span><span class="sg-txt">${mdEsc(s.text)}</span>
-	      ${s.confidence?`<span class="sg-conf ${s.confidence==="medida"?"ok":""}" title="${s.confidence==="medida"?tf("Basada en telemetría local real","Based on real local telemetry"):tf("Regla general, aún sin latencia medida para esa configuración","Rule of thumb; no measured latency for that configuration yet")}">${mdEsc(s.confidence)}</span>`:""}
-	      <button type="button" class="sg-go" title="${attrEsc(s.kind==="switch"
-	        ? `Encola el cambio a ${s.model} · ${s.effort}; se aplica al terminar el turno, sin interrumpir, y puedes deshacerlo en Analytics → Resumen`
-	        : s.kind==="key" ? "Envía Escape a esa sesión: corta el turno actual, la conversación y el proceso siguen vivos"
-	        : "Envía /compact a esta sesión para reducir el contexto")}">${mdEsc(s.button||"Aplicar")}</button>`;
-	    el.querySelector(".sg-go").addEventListener("click", async e=>{
-	      e.stopPropagation();
-	      try{
-	        if(s.kind === "key"){
-	          await api("/key", {session: it.session, pane: it.pane || "", key: s.key || "Escape"});
-	          toast(tf("Escape enviado — el turno se interrumpe sin matar la sesión", "Escape sent — turn interrupted without killing the session"));
-	        }else if(s.kind === "send"){
-	          await api("/send", {session: it.session, pane: it.pane || "", text: s.command});
-	          toast(tf("Comando enviado a la sesión", "Command sent to the session"));
-	        }else{
-	          const r = await api("/model/switch", {session: it.session, pane: it.pane || "", routeId: s.routeId, model: s.model, effort: s.effort});
-	          MOTOR_PENDING.set((r && r.operationKey) || rowKey(it), {model: s.model, stageTxt: r.queued ? tf("esperando turno","waiting for turn") : tf("aplicando","applying")});
-	          renderCentro(S.list || []);
-	          toast(tf(`Cambio encolado → ${s.model}`, `Switch queued → ${s.model}`));
-	          if(r && r.contextWarning) toast(r.contextWarning, true);
-	        }
-	      }catch(err){ toast(err.message, true); }
-	    });
-	    return;
-	  }
-	  el.classList.remove("cx-suggest");
-	  let msg = it.why || "";
-	  if(!msg){
-	    const d = (brainCache.key === brainKey(it)) && brainCache.data;
-	    if(d){
-	      const act = (d.mcps || []).filter(m => m.enabled);
-	      const tot = act.reduce((a, m) => a + (m.est_tokens || 0), 0);
-	      if(act.length > 7)
-	        msg = tf(`${act.length} MCPs configurados. Revisa el uso observado en Herramientas.`,
-	                 `${act.length} MCPs configured. Review observed use under Tools.`);
-	      else if(d.claudeMd && d.claudeMd.lines > 200)
-	        msg = tf(`${d.claudeMd.name}: ${d.claudeMd.lines} líneas de instrucciones. Revisa si todas son necesarias.`,
-	                 `${d.claudeMd.name}: ${d.claudeMd.lines} lines of instructions. Review whether they are all needed.`);
-	    }
-	  }
-	  el.textContent = msg ? "⚠ " + msg : "";
-	  el.classList.toggle("hidden", !msg);
-	}
-	async function renderBrain(box, it){
-	  if(!it.cwd) return;
-	  const requestedKey = rowKey(it), requestedBrain = brainKey(it);
-	  const d = await loadBrain(it);
-	  if(!d || box.dataset.sig !== requestedKey ||
-	     brainKey(CENTRO_VIEW.item) !== requestedBrain) return;
-	  it = CENTRO_VIEW.item;
-	  const row = (kind, x) => `
-	    <div class="cx-row ${x.enabled ? "" : "off"}">
-	      <button type="button" role="switch" aria-checked="${x.enabled}"
-	        aria-label="${attrEsc(x.name)}" class="sw ${x.enabled ? "on" : ""}" ${x.toggleable ? "" : "disabled"}
-	        data-kind="${kind}" data-name="${attrEsc(x.name)}" data-path="${attrEsc(x.path || "")}"
-	        data-on="${x.enabled ? 1 : 0}"
-	        title="${x.toggleable ? tf("Configurar en un perfil de inicio", "Configure in a launch profile") : tf("Consulta el origen; configura las opciones disponibles en Perfiles", "Check the source; configure available options in Profiles")}"></button>
-	      <span class="nm" title="${attrEsc(x.name)}">${mdEsc(x.name)}${x.description||kind==='mcp'?`<small class="mcp-description">${mdEsc(x.description||tf('Este servidor no tiene una descripción disponible.','No description is available for this server.'))}</small>`:''}</span>
-	      ${kind==="mcp"?`<span class="tok">${mdEsc(x.source||x.scope||"")}</span>`:""}
-	      <span class="tok">${x.enabled === true ? "Configurada" : x.enabled === false ? "Desactivada en config" : "Configuración sin confirmar"} · estado vivo sin confirmar</span>
-	    </div>`;
-	  const mcps = d.mcps || [], skills = d.skills || [];
-	  const tot = arr => arr.filter(x => x.enabled).reduce((a, x) => a + (x.est_tokens || 0), 0);
-	  renderAdvice(box, it);
-	  const acctRow = box.querySelector(".cx-acct");
-	  const accountSignature = JSON.stringify([requestedBrain,d.harness,d.accounts || []]);
-	  const existingAccounts = box.querySelector(".cx-accs");
-	  if(existingAccounts && existingAccounts.dataset.signature !== accountSignature) existingAccounts.remove();
-	  if(acctRow && (d.accounts || []).length > 1 && !box.querySelector(".cx-accs")){
-	    const div = document.createElement("div");
-	    div.className = "cx-accs";
-	    div.dataset.signature = accountSignature;
-	    div.innerHTML = `<div class="cx-title">${tf("nueva sesion aqui con", "new session here as")}</div>
-	      <div class="cx-accs-chips">` +
-	      d.accounts.map(a => `<button type="button" class="cx-newacct" data-acct="${attrEsc(a.alias)}"
-	        ${a.selectable ? "" : "disabled aria-disabled=\"true\""}
-	        title="${attrEsc(a.identity || ({login_required:tf("requiere login","login required"),unsupported_auth:tf("auth no compatible","unsupported auth")}[a.state] || a.alias))}">${providerMark(d.extensionProvider||d.harness||it.agent||"claude","",12)} ${mdEsc(a.alias)}</button>`).join("") + `</div>`;
-	    const acctLine = acctRow.closest(".cx-row") || acctRow;
-	    acctLine.parentElement.insertBefore(div, acctLine.nextSibling);
-	    div.querySelectorAll("[data-acct]").forEach(b => b.addEventListener("click", async ()=>{
-	      try{
-	        const live = CENTRO_VIEW.item;
-	        if(!live || brainKey(live) !== requestedBrain) return;
-	        NS.harness=live.agent||"claude"; NS.motor=motorOf(live.model)||NS.harness;
-	        NS.harnessAccount=NS.harness==="acp"?"main":b.dataset.acct;
-	        NS.motorAccount=NS.harness==="acp"||NS.motor===NS.harness?b.dataset.acct:"main";
-	        NS.model=live.model||""; NS.effort=live.effort||"";
-	        $("#ns-cwd").value=live.cwd||""; await nsOpen();
-	        toast(tf("Configura la sesión nueva con esa cuenta", "Configure the new session with that account"));
-	      }catch(err){ toast(err.message, true); }
-	    }));
-	  }
-	  const tabM = box.querySelector('.cx-tabs [data-pane="mcps"]');
-	  const tabS = box.querySelector('.cx-tabs [data-pane="skills"]');
-	  const fmtK = n => n >= 1000 ? (n/1000).toFixed(1) + "k" : String(n);
-	  if(tabM){
-	    const tm = (d.mcps || []).filter(x => x.enabled).reduce((a, x) => a + (x.est_tokens || 0), 0);
-	    tabM.innerHTML = `MCPs <b>${mcps.filter(x=>x.enabled).length}</b>`;
-	  }
-	  if(tabS){
-	    const ts2 = (d.skills || []).filter(x => x.enabled).reduce((a, x) => a + (x.est_tokens || 0), 0);
-	    tabS.innerHTML = `Skills <b>${skills.filter(x=>x.enabled).length}</b>`;
-	  }
-	  box.querySelector(".cx-mcps").innerHTML =
-	    (mcps.map(x => row("mcp", x)).join("") || `<div class="cx-note">${providerMark(d.harness||it.agent||"claude","",13)} ${d.mcpDetection?.status==="empty"?tf(`sin MCPs configurados para ${d.harness||it.agent}`,`no MCPs configured for ${d.harness||it.agent}`):tf("detección MCP no disponible","MCP detection unavailable")}</div>`) +
-	    `<div class="cx-total">${mcps.filter(x=>x.enabled).length} configurados · llamadas observadas en Uso de herramientas</div>`;
-	  box.querySelector(".cx-skills").innerHTML =
-	    (skills.map(x => row("skill", x)).join("") || `<div class="cx-note">${d.status==='unknown'?tf("detección de skills no disponible", "skill detection unavailable"):tf("sin skills configuradas", "no skills configured")}</div>`) +
-	    `<div class="cx-total">${skills.filter(x=>x.enabled).length} configuradas · llamadas observadas en Uso de herramientas</div>`;
-	  if(d.limitations?.length){
-	    for(const selector of [".cx-mcps", ".cx-skills"]){
-	      const note = document.createElement("div"); note.className = "cx-note";
-	      note.textContent = d.limitations.join(" · "); box.querySelector(selector).appendChild(note);
-	    }
-	  }
-	  box.querySelectorAll(".sw[data-kind]").forEach(b => b.addEventListener("click", async ()=>{
-      const live = CENTRO_VIEW.item;
-      if(!live || rowKey(live) !== box.dataset.sig || brainKey(live) !== requestedBrain) return;
-      await openSessionProfiles(live);
-    }));
-	}
-	// Color estable por alias de cuenta (hash -> hue): sin lista fija.
-	function acctColor(a){
-	  let h = 0;
-	  for(const c of String(a)) h = (h * 31 + c.charCodeAt(0)) % 360;
-	  return `hsl(${h},65%,70%)`;
 	}
 	function modelMenuEl(session, pane, provider, current){
 	  const cur = shortModel(current) || tf("modelo", "model");
@@ -4831,7 +4351,7 @@ function mdStrip(s){ return (s||"").replace(/\*\*|`|^#{1,6} /g, ""); }
 	      }
 	      if(r.stage!==undefined&&r.ok===undefined){
 	        const pend=MOTOR_PENDING.get(key);
-	        if(pend&&(pend.stageTxt!==sessionStageLabel(r)||pend.stageCode!==(r.stageCode||r.stage||r.state))){pend.stageTxt=sessionStageLabel(r);pend.stageCode=r.stageCode||r.stage||r.state||"";renderCentro(S.list||[]);if(MPOP&&MPOP.ctx.mode==="session"&&motorTargetKey(MPOP.ctx.item)===key)motorPopRender();}
+	        if(pend&&(pend.stageTxt!==sessionStageLabel(r)||pend.stageCode!==(r.stageCode||r.stage||r.state))){pend.stageTxt=sessionStageLabel(r);pend.stageCode=r.stageCode||r.stage||r.state||"";if(MPOP&&MPOP.ctx.mode==="session"&&motorTargetKey(MPOP.ctx.item)===key)motorPopRender();}
 	        continue;
 	      }
 	      SWITCH_SEEN.set(key,revision);
@@ -4852,7 +4372,6 @@ function mdStrip(s){ return (s||"").replace(/\*\*|`|^#{1,6} /g, ""); }
 	      MOTOR_PENDING.delete(key);
       if(it && typeof scSessionResult === "function") scSessionResult(it,r);
 	      if(MPOP&&MPOP.ctx.mode==="session"&&motorTargetKey(MPOP.ctx.item)===key&&it){MPOP.ctx.item=it;MPOP.ctx.model=it.model||"";MPOP.staged=null;motorPopRender();}
-	      renderCentro(S.list||[]);
 	    }
 	  }finally{MOTOR_STATUS_BUSY=false;}
 	},450);
@@ -4913,42 +4432,6 @@ function mdStrip(s){ return (s||"").replace(/\*\*|`|^#{1,6} /g, ""); }
 	  if(el.dataset.bound) return; el.dataset.bound = "1";
 	  el.addEventListener("click", ()=>{ ulog("click", "motor-global", "header"); motorPopOpen(el, {mode: "global"}); });
 	}
-	function renderMotor(box, it, model){
-	  const el = box.querySelector(".cx-motor"); if(!el) return;
-	  const isShell = !it || !it.agent || it.agent === "shell";
-	  const show = it && it.alive && (liveHarnesses().includes(it.agent) || isShell);
-	  el.classList.toggle("hidden", !show);
-	  if(!show) return;
-	  let btn = el.querySelector(".motor-pill");
-	  if(!btn){ el.innerHTML = '<button type="button" class="motor-pill" aria-haspopup="dialog"></button>'; btn = el.querySelector(".motor-pill"); }
-	  const targetKey = motorTargetKey(it);
-	  const pend = MOTOR_PENDING.get(targetKey);
-	  // Only the operation endpoint can confirm completion, including account/effort-only changes.
-	  const p2 = MOTOR_PENDING.get(targetKey);
-	  // Route validation decides which destinations need a gateway; native changes do not.
-	  const stopBtn = box.querySelector(".cx-stop");
-	  if(stopBtn) stopBtn.classList.toggle("hidden", !(it.alive && liveHarnesses().includes(it.agent) && (it.status === "working" || MOTOR_PENDING.has(targetKey))));
-	  const eff = p2 && p2.effort ? p2.effort : (it.observedConfig ? (it.effort || "") : (it.effort || effortFor(targetKey, model)));
-	  const currentHarnessMotor = currentMotorOf(it, model);
-	  if(isShell && !p2){
-	    btn.innerHTML = `<span class="mp-prov">▶</span><span class="mp-model">${mdEsc(tf("Iniciar IA aquí","Start AI here"))}</span><span class="mp-caret">▾</span>`;
-	  } else {
-	    motorPill(btn, p2 ? p2.motor : currentHarnessMotor, p2 ? p2.model : model, p2 || false, p2 ? "" : (eff || tf("esta sesión", "this session")));
-	    btn.insertAdjacentHTML("afterbegin", `<span class="mp-action">${tf("Configurar IA", "Configure AI")}</span>`);
-	  }
-	  btn.disabled = false;
-	  btn.setAttribute("aria-label", tf("Configurar IA: CLI, motor, modelo y cuenta", "Configure AI: CLI, engine, model and account"));
-	  btn.title = it.status === "working" ? tf("Está trabajando: el cambio se encola, o usa ■ detener y cambiar YA", "Working: the switch queues, or use ■ stop & switch NOW") :
-	    tf("Cambiar harness, motor, esfuerzo o cuenta de ESTA sesión", "Switch THIS session's harness, engine, effort or account");
-	  btn.onclick = ()=>{ if(btn.disabled) return; ulog("click", "motor-session", "centro");
-	    if(isShell){ nsOpenForPane(it.session, it.pane || "", it.cwd || ""); return; }
-	    motorPopOpen(btn, {mode: "session", item: it, model}); };
-	  let extensions = el.querySelector('.extension-pill');
-	  if(!extensions){ extensions=document.createElement('button'); extensions.type='button'; extensions.className='motor-pill extension-pill'; extensions.textContent='MCPs · Skills'; el.append(extensions); }
-	  extensions.title='Extensiones de este panel';
-	  extensions.setAttribute('aria-label',`Extensiones de ${it.project||it.session}, panel ${it.pane||''}`);
-	  extensions.onclick=()=>window.openPaneExtensions(it.session,it.pane||'',it.agent||'');
-	}
 	let MPOP = null;
 	// Puentes para la barra de modelo de cc-app: abren el picker PROBADO del
 	// tablero para esa sesión/pane exactos (nunca un flujo paralelo a medias).
@@ -4987,8 +4470,9 @@ function mdStrip(s){ return (s||"").replace(/\*\*|`|^#{1,6} /g, ""); }
 	  pop.classList.add("open"); // Measure its rendered width before clamping to the viewport.
 	  if(inApp()){
 	    pop.classList.add("inline");
-	    $("#centro-wrap").appendChild(pop);
+	    $("#command-sidebar").before(pop);   // arriba de la barra, dentro de #side-top
 	    pop.style.left = ""; pop.style.top = "";
+	    requestAnimationFrame(() => pop.scrollIntoView({block: "nearest"}));
 	  }else{
 	    pop.classList.remove("inline");
 	    document.body.appendChild(pop);
@@ -5232,14 +4716,14 @@ ulog("click", `harness-switch:${to}`, "centro");
 	      MOTOR_PENDING.set(opkey, {motor: to, model: "", effort: "", since: Date.now(), queued: !!(r&&r.queued),
 	        stageTxt: r && r.queued ? tf("en cola: espera fin de turno","queued: waiting for turn") : tf("cambiando de CLI…","switching CLI…")});
 	      toast(tf(`Cambiando a ${to} — handoff del contexto en curso`, `Switching to ${to} — context handoff in progress`));
-	      motorPopClose(); renderCentro(S.list || []);
+	      motorPopClose();
 	    }catch(err){ toast(err.message, true); MPOP.harnessArm = null; motorPopRender(); }
 	  }));
 	  const mpc = pop.querySelector(".mp-cancel");
 	  if(mpc) mpc.addEventListener("click", async ()=>{
 	    ulog("click", "motor-cancel", "centro");
 	    try{ await api("/model/switch-cancel", {session: item.session, pane: item.pane || ""}); MOTOR_PENDING.delete(pendingKey);
-	      toast(tf("Cambio en cola cancelado", "Queued switch cancelled")); motorPopRender(); renderCentro(S.list || []); }
+	      toast(tf("Cambio en cola cancelado", "Queued switch cancelled")); motorPopRender(); }
 	    catch(err){ toast(err.message, true); }
 	  });
 	  pop.querySelectorAll(".mp-acct .ac[data-alias]").forEach(b => b.addEventListener("click", async ()=>{
@@ -5322,7 +4806,7 @@ ulog("click", `harness-switch:${to}`, "centro");
 		        MOTOR_PENDING.set(opkey, {motor: st.prov, model: destModel || "", effort: destEffort || "", since: Date.now(), queued: !!(r&&r.queued),
 		          stageTxt: r && r.queued ? tf("en cola: espera fin de turno","queued: waiting for turn") : tf("cambiando de CLI…","switching CLI…")});
 		        toast(tf(`Cambiando a ${engineLabel(st.prov)} — cierra esta TUI y arranca la otra`, `Switching to ${engineLabel(st.prov)} — closes this TUI and starts the other`));
-		        motorPopClose(); renderCentro(S.list || []); return;
+		        motorPopClose(); return;
 		      }
 		      const sameModel = st.prov === curProv && motorKey(st.model) === motorKey(curModel);
 	      const driver = item.agent;
@@ -5338,7 +4822,7 @@ ulog("click", `harness-switch:${to}`, "centro");
 	      MOTOR_PENDING.set(opkey, {motor: st.prov, model: sameModel ? "" : st.model, effort: st.effort, since: Date.now(), queued: !!(r && r.queued), stageTxt: r && r.queued ? tf("en cola: esperando el fin del turno", "queued: waiting for the turn to end") : tf("preparando cambio…", "preparing switch…")});
 	      toast(`${item.project} → ${engineLabel(st.prov)} · ${motorName(st.prov, st.model)}${st.effort ? " · " + st.effort : ""}`);
 	      if(r && r.contextWarning) toast(r.contextWarning, true);
-	      MPOP.staged = null; MPOP.effortTouched = false; motorPopRender(); renderCentro(S.list || []);
+	      MPOP.staged = null; MPOP.effortTouched = false; motorPopRender();
 	    }catch(err){ toast(err.message, true); }
 	  });
 	}
@@ -5806,131 +5290,7 @@ async function refreshFavorites(){
     if(version === favoriteVersion) applyFavorites(prefs.favorites);
   }catch(_){}finally{ favoriteReadPending = false; }
 }
-function favBtn(it, el){
-  const b = el.querySelector(".fav");
-  updateFavoriteButton(b, it.session, it.project || it.session);
-  b.onclick = e => {
-    e.stopPropagation();
-    setSessionFavorite(it.session, !S.favs.has(it.session)).catch(err => toast(err.message, true));
-  };
-}
 
-// Persistencia de labels custom: sobrevive reload del tablero. cc-app los
-// guarda aparte en TABS_FILE (para su propia UI de pestañas).
-const LABEL_KEY = "cc-dash-labels";
-function loadLabels(){ try{ return JSON.parse(localStorage.getItem(LABEL_KEY) || "{}"); }catch(_){ return {}; } }
-function saveLabel(sess, label){
-  const all = loadLabels();
-  if(label) all[sess] = label; else delete all[sess];
-  try{ localStorage.setItem(LABEL_KEY, JSON.stringify(all)); }catch(_){}
-}
-function applyCustomLabel(el, it){
-  const saved = loadLabels()[it.session];
-  if(!saved) return;
-  const t = el.querySelector("h2, .name");
-  if(t) t.textContent = saved;
-}
-function wireRename(el, it){
-  const btn = el.querySelector(".ren");
-  if(!btn) return;
-  const target = el.querySelector("h2, .name");
-  if(!target) return;
-  btn.addEventListener("click", e=>{
-    e.stopPropagation();
-    if(target.querySelector("input")) return;   // ya editando
-    const cur = target.textContent || it.project || "";
-    const input = document.createElement("input");
-    input.type = "text"; input.value = cur;
-    input.className = "ren-input";
-    input.style.cssText = "font:inherit;color:var(--text);background:var(--bg);border:1px solid var(--brand);border-radius:5px;padding:1px 6px;min-width:120px;max-width:100%";
-    target.textContent = "";
-    target.appendChild(input);
-    input.select();
-    input.focus();
-    const finish = (save)=>{
-      const v = input.value.trim();
-      if(save && v && v !== cur){
-        target.textContent = v;
-        saveLabel(it.session, v);
-        if(inApp()){
-          try{ window.webkit.messageHandlers.centro.postMessage(
-            JSON.stringify({type:"rename", session: it.session, label: v})); }catch(_){}
-        }
-        toast(tf(`Renombrada a "${v}"`, `Renamed to "${v}"`));
-      } else {
-        target.textContent = cur;
-      }
-    };
-    input.addEventListener("keydown", ev=>{
-      if(ev.key === "Enter"){ ev.preventDefault(); finish(true); }
-      else if(ev.key === "Escape"){ ev.preventDefault(); finish(false); }
-    });
-    input.addEventListener("blur", ()=> finish(true));
-    input.addEventListener("click", ev=> ev.stopPropagation());
-  });
-}
-
-function wireActions(el, it){
-  favBtn(it, el);
-  applyCustomLabel(el, it);
-  wireRename(el, it);
-  const cp = el.querySelector(".cp");
-  if(cp) cp.addEventListener("click", async e=>{
-    e.stopPropagation();
-    const t = el._detail || "";
-    if(!t) return toast(tf("Esta sesion no tiene respuesta guardada", "This session has no saved reply"), true);
-    (await copyText(t)) ? toast(tf(`Respuesta de ${it.project} copiada`, `${it.project}\u0027s reply copied`))
-                        : toast(tf("No pude copiar", "Could not copy"), true);
-  });
-  const wireExport = (sel, fmt) => {
-    const b = el.querySelector(sel);
-    if(b) b.addEventListener("click", async e=>{
-      e.stopPropagation();
-      try{
-        const r = await api("/export", {session: el.dataset.session, format: fmt});
-        toast(tf(`Guardado: ${r.path}`, `Saved: ${r.path}`));
-      }catch(err){ toast(err.message, true); }
-    });
-  };
-  wireExport(".xtxt", "txt"); wireExport(".xpdf", "pdf");
-  // el.dataset.pane se refresca en cada render: si claude corre en un pane
-  // concreto (pestana term-*, split), las teclas van exactamente ahi
-  const pane = () => el.dataset.pane || undefined;
-  const form = el.querySelector(".send");
-  if(form) form.addEventListener("submit", async e=>{
-    e.preventDefault();
-    const inp = form.querySelector("input"); const text = inp.value.trim();
-    if(!text) return;
-    try{ await api("/send", {session: el.dataset.session, text, pane: pane()}); inp.value="";
-         toast(tf(`Enviado a ${it.project}`, `Sent to ${it.project}`)); }
-    catch(err){ toast(err.message, true); }
-  });
-  el.querySelectorAll(".keys button").forEach(b=>{
-    b.addEventListener("click", async e=>{
-      e.stopPropagation();
-      try{ await api("/key", {session: el.dataset.session, key: b.dataset.key, pane: pane()});
-           toast(`${b.dataset.key} → ${it.project}`); }
-      catch(err){ toast(err.message, true); }
-    });
-  });
-  const wire = (sel, win) => {
-    const b = el.querySelector(sel);
-    if(b) b.addEventListener("click", async e=>{
-      e.stopPropagation();
-      try{ toast(await openSession(it, win)); }catch(err){ toast(err.message, true); }
-    });
-  };
-  wire(".go", "claude"); wire(".up", "claude");
-  // Terminal REAL (ttyd por /term): solo tiene sentido por el tailnet (https).
-  const term = el.querySelector(".term");
-  if(term){
-    term.classList.toggle("hidden", !WEBTERM);
-    term.addEventListener("click", e=>{
-      e.stopPropagation();
-      openTerm(el.dataset.session);   // abre/enfoca su pestana de terminal
-    });
-  }
-}
 // El terminal web solo esta enrutado cuando entras por el tailnet (https +
 // no es localhost). En la app nativa y en el navegador local se usa la de aqui.
 const LOOPBACK = /^(127\.|localhost|::1)/.test(location.hostname);
@@ -5971,7 +5331,6 @@ const termInteraction = new Map(); // session -> actual tmux mouse + temporary s
 let termInteractionSeq = 0;
 let termPageHidden = false;
 const SPLIT_KEY = "cc-split-left";
-const OP_H_KEY = "cc-op-chat-h";
 let appViewportFrame = 0;
 
 function appEnabled(){ return WEBTERM; }
@@ -6054,72 +5413,6 @@ function setSplitLeft(px, save, bounds){
 function restoreSplitLeft(){
   const raw = parseInt(localStorage.getItem(SPLIT_KEY) || "", 10);
   setSplitLeft(Number.isFinite(raw) ? raw : 380, false);
-}
-function setOpChatH(px, save){
-  const content = document.getElementById("content");
-  const h = content?.clientHeight || 0;
-  const min = 160;
-  const max = Math.max(min, h ? Math.round(h * 0.9) : 2400);
-  const fallback = h ? Math.round(h * 0.72) : 420;
-  const v = Math.max(min, Math.min(max, Math.round(Number(px) || fallback)));
-  if(content) content.style.setProperty("--op-chat-h", v + "px");
-  document.documentElement.style.setProperty("--op-chat-h", v + "px");
-  if(save) try{ localStorage.setItem(OP_H_KEY, String(v)); }catch(e){}
-  return v;
-}
-function restoreOpChatH(){
-  const content = document.getElementById("content");
-  const h = content?.clientHeight || 0;
-  const raw = parseInt(localStorage.getItem(OP_H_KEY) || "", 10);
-  // Un valor guardado antes del layout (o un drag accidental a un sello de
-  // 280px) deja el chat inutilizable. Si es < 36% del panel, se tira.
-  const stale = !Number.isFinite(raw) || (h >= 400 && raw < h * 0.36);
-  // Persist only an explicit drag. Startup measures can precede the final header
-  // and tab layout; saving them made the same sidebar differ between clients.
-  setOpChatH(stale ? (h ? h * 0.68 : 420) : raw, false);
-}
-function initOpChatSplit(){
-  const split = document.getElementById("op-split");
-  const content = document.getElementById("content");
-  if(!split || !content || split._wired) return;
-  split._wired = true;
-  restoreOpChatH();
-  requestAnimationFrame(() => requestAnimationFrame(restoreOpChatH));
-  setTimeout(restoreOpChatH, 250);
-  let pointerId = null;
-  let lastPx = null;
-  const move = e => {
-    if(pointerId === null || (e.pointerId !== undefined && e.pointerId !== pointerId)) return;
-    const r = content.getBoundingClientRect();
-    if(!r.height) return;
-    lastPx = setOpChatH(r.bottom - e.clientY, false);
-  };
-  const stop = e => {
-    if(pointerId === null || (e.pointerId !== undefined && e.pointerId !== pointerId)) return;
-    const ended = pointerId;
-    if(e.type === "pointerup" && Number.isFinite(e.clientY)) move(e);
-    pointerId = null;
-    document.documentElement.classList.remove("op-drag");
-    window.removeEventListener("pointermove", move);
-    window.removeEventListener("pointerup", stop);
-    window.removeEventListener("pointercancel", stop);
-    try{ split.releasePointerCapture(ended); }catch(_){}
-    if(lastPx !== null) setOpChatH(lastPx, true);
-  };
-  split.addEventListener("pointerdown", e => {
-    if(e.button !== undefined && e.button !== 0) return;
-    if(pointerId !== null) return;
-    pointerId = e.pointerId;
-    lastPx = null;
-    document.documentElement.classList.add("op-drag");
-    try{ split.setPointerCapture(e.pointerId); }catch(_){}
-    window.addEventListener("pointermove", move);
-    window.addEventListener("pointerup", stop);
-    window.addEventListener("pointercancel", stop);
-    move(e);
-    e.preventDefault();
-  });
-  window.addEventListener("resize", restoreOpChatH);
 }
 function initSplitDrag(){
   const splitter = document.getElementById("splitter");
@@ -6722,7 +6015,7 @@ function initTabNavigation(){
   newBtn.setAttribute("aria-label", newBtn.title);
   newBtn.onclick = () => {  // el formulario vive en el panel: mostrarlo primero
     if(activeView !== "panel") showView("panel");
-    document.getElementById("btn-newsess").click();
+    NS.intoPane = null; nsOpen();
   };
   // «Ordenar una vez» (grill 30-sep): el servidor ordena el acomodo compartido
   // UNA vez; escritorio y remoto ven el mismo orden. Deshacer vuelve al anterior.
@@ -6762,6 +6055,7 @@ function initTabNavigation(){
   const quickTerm = window.ComandosQuickTerminal && ComandosQuickTerminal.createQuickTerminal({
     api, openTerm, toast, storage: window.sessionStorage,
     onOpened: () => { tabsPollTs = 0; }});
+  if(quickTerm) window.quickTerminal = quickTerm;   // la barra de comandos reutiliza esta instancia
   termBtn.onclick = async () => {
     if(!quickTerm) return toast(tf("Terminal rápida no disponible", "Quick terminal unavailable"), true);
     termBtn.setAttribute("aria-busy", "true"); termBtn.disabled = true;
@@ -7001,99 +6295,84 @@ function initApp(){
   loadDesktopTabs();
 }
 
-// ---------- fila compacta ----------
+// ---------- identidad de fila (sesión|pane) ----------
 function rowKey(it){ return it.session + (it.pane ? "|" + it.pane : ""); }
-function rowEl(it){
-  const el = document.createElement("div");
-  el.className = "row"; el.dataset.session = it.session; el.dataset.rk = rowKey(it); el.dataset.kind = "row";
-  el.setAttribute("tabindex", "0");
-  el.innerHTML = `
-    <button type="button" class="fav" title="${t('Favorito')}">★</button>
-    <span class="dot"></span>
-    <span class="ident"><span class="name"></span>
-	    <span class="abadge hidden"></span>
-	    <span class="usage-chip hidden"></span>
-	    <span class="exttag hidden">${t("suelta")}</span></span>
-    <span class="rpath"></span>
-    <span class="rst"></span>
-    <span class="rprev"></span>
-    <span class="ago"></span>
-    <span class="acts">
-      <button type="button" class="cp" title="${t('Copiar la respuesta completa de Claude')}">${svg("copySmall",14)}</button>
-      <button type="button" class="ren" title="${t('Renombrar pestaña')}">${svg("pencil",14)}</button>
-      <button type="button" class="term hidden" title="${t('Abrir la terminal REAL de esta sesion')}">${svg("terminal",14)}</button>
-      <button type="button" class="go">${t("Abrir")}</button>
-      <button type="button" class="up hidden">${t("Revivir")}</button>
-      <button type="button" class="kill" title="${t('Matar la sesion tmux (y lo que corra dentro)')}">${svg("x",14)}</button>
-      <button type="button" class="xp hidden" aria-label="${t('Responder desde aqui')}"
-        aria-expanded="false" title="${t('Responder desde aqui')}">▾</button>
-    </span>
-    <div class="rxp">
-      <p class="preview"></p>
-      <div class="opts hidden"></div>
-      <form class="send">
-        <input type="text" autocomplete="off" spellcheck="false" placeholder="${t('Responde aqui y Enter')}">
-        <button type="submit">${t("Enviar")}</button>
-      </form>
-      <div class="keys">
-        <button type="button" data-key="1">1</button>
-        <button type="button" data-key="2">2</button>
-        <button type="button" data-key="3">3</button>
-        <button type="button" data-key="Enter">Enter</button>
-        <button type="button" data-key="Escape">Esc</button>
-      </div>
-    </div>`;
-  el.querySelector(".name").textContent = it.project;
-  const kill = el.querySelector(".kill");
-  const killIcon = kill.innerHTML;   // guardamos el SVG del ícono
-  kill.addEventListener("click", async e=>{
-    e.stopPropagation();
-    if(!kill.classList.contains("arm")){
-      kill.classList.add("arm"); kill.textContent = tf("¿Matar?", "Kill?");
-      setTimeout(()=>{ kill.classList.remove("arm"); kill.innerHTML = killIcon; }, 3000);
-      return;
-    }
-    try{ await api("/kill", {session: el.dataset.session});
-         toast(tf(`${it.project} eliminada`, `${it.project} killed`)); tick(); }
-    catch(err){ toast(err.message, true); }
-  });
-  wireActions(el, it);
-  const xp = el.querySelector(".xp");
-  xp.addEventListener("click", e=>{
-    e.stopPropagation();
-    el.classList.toggle("open");
-    const _open = el.classList.contains("open");
-    xp.textContent = _open ? "▴" : "▾";
-    xp.setAttribute("aria-expanded", _open);
-    render(S.list || []);   // llena .rxp (pregunta/opciones) al instante
-  });
-  el.addEventListener("click", e=>{
-    if(e.target.closest("button") || e.target.closest(".rxp")) return;
-    // Seleccionar card/pane NO cambia la pestaña ni la sesión del terminal.
-    // Para eso existe el botón explícito "Abrir" del Centro.
-    S.sel = rowKey(it); S.selTs = Date.now(); render(S.list || []);
-  });
-  return el;
+
+// ---------- barra de comandos (S1, dash/command-sidebar.js) ----------
+// Destino = el pane seleccionado (el mismo dato que antes pintaba el chat en
+// "Destino: …"). Las terminales rápidas son sesiones tmux "term-q…".
+function isQuickTermSession(sess){ return String(sess || "").startsWith("term-q"); }
+function activePaneTarget(){
+  const it = pickSel(S.list || []);
+  if(!it || !it.session) return null;
+  const label = openTerms.get(it.session)?.label || it.project || it.session;
+  return {session: it.session, pane: it.pane || "", kind: isQuickTermSession(it.session) ? "term" : "pane",
+          title: `${label} · ${it.pane || "panel"}`};
+}
+function quickTermEntries(){
+  const seen = new Set(), out = [];
+  for(const it of S.list || []){
+    if(!it.alive || !isQuickTermSession(it.session) || seen.has(it.session)) continue;
+    seen.add(it.session);
+    out.push({tabId: it.session, session: it.session, pane: it.pane || "",
+              label: openTerms.get(it.session)?.label || it.project || it.session});
+  }
+  return out;
+}
+function openTabAnywhere(sess, label){
+  if(!sess) return;
+  if(inApp()) openInApp(sess, "claude", label);
+  else openTerm(sess, label || sess);
+}
+function quickTerminalInstance(){
+  // En el remoto la crea initTabNavigation; en la app de escritorio no hay
+  // barra de pestañas web, así que se crea aquí y abre la tab en GTK.
+  if(!window.quickTerminal && window.ComandosQuickTerminal)
+    window.quickTerminal = ComandosQuickTerminal.createQuickTerminal({
+      api, openTerm: openTabAnywhere, toast, storage: window.sessionStorage,
+      onOpened: () => { tabsPollTs = 0; }});
+  return window.quickTerminal || null;
+}
+const CS = {targetKey: null, agentSeen: null, busy: null, again: false};
+// cliInPane solo vale para el destino con el que se pidió el catálogo: se
+// refresca en cada cambio de destino y cuando /state cambia el agente del pane.
+function refreshCommandSidebar(){
+  const cs = window.commandSidebar; if(!cs) return;
+  if(CS.busy){ CS.again = true; return; }
+  CS.busy = Promise.resolve().then(() => cs.refresh()).catch(err => toast(err.message, true))
+    .finally(() => { CS.busy = null; if(CS.again){ CS.again = false; refreshCommandSidebar(); } });
+}
+const CS_CLIS = new Set(["claude", "codex", "grok", "opencode", "agy"]);
+function syncCommandSidebar(){
+  const cs = window.commandSidebar; if(!cs) return;
+  const t = activePaneTarget();
+  const key = t ? t.session + "|" + t.pane : "";
+  const it = t && (S.list || []).find(x => x.alive && x.session === t.session && (x.pane || "") === t.pane);
+  const agent = it && CS_CLIS.has(it.agent) ? it.agent : "";
+  if(key !== CS.targetKey){ CS.targetKey = key; CS.agentSeen = agent; refreshCommandSidebar(); return; }
+  if(agent === CS.agentSeen) return;
+  CS.agentSeen = agent;
+  if(agent !== (cs.state.cliInPane || "")) refreshCommandSidebar();
+}
+function mountCommandSidebar(){
+  const root = $("#command-sidebar");
+  if(!root || window.commandSidebar || !window.ComandosCommandSidebar) return;
+  window.commandSidebar = ComandosCommandSidebar.createCommandSidebar({
+    api, root, storage: localStorage,
+    makeId: () => "ct-" + Date.now().toString(36) + "-" + Math.random().toString(36).slice(2, 8),
+    getTarget: () => activePaneTarget(),
+    focusTarget: t => openTabAnywhere(t.tabId || t.session, t.title),
+    openBuilder: () => window.chainBuilder && window.chainBuilder.open(),
+    toast, terminals: quickTermEntries,
+    newTerm: () => { const q = quickTerminalInstance(); return q ? q.open() : toast(tf("Terminal rápida no disponible", "Quick terminal unavailable"), true); }});
+  syncCommandSidebar();
 }
 
 // ---------- render ----------
-function itemKind(it){ return "row"; }   // cards eliminadas: una sola estructura
-
 function render(list){
   if(!inApp()) rememberRemotePaneFocus(list);
   if(typeof renderSessionOverview === "function") renderSessionOverview(list);
-  const opTarget=document.querySelector("#op-target"), opItem=pickSel(list||[]);
-  if(opTarget)opTarget.textContent=opItem?`Destino: ${opItem.project||opItem.session} · ${opItem.pane||"panel"}`:"Sin sesión seleccionada";
   S.list = list;
-  // La sesion de la pestana ACTIVA de la app siempre encabeza la lista: si estas
-  // parado en "local", su card es lo primero que ves.
-  const active = sidebarActiveTab();
-  const act = active.session || pickSel(list)?.session || "";
-  const activePanes = list.filter(x => x.alive && x.session === act && x.pane);
-  if(act) list = [...list].sort((a, b) => (b.session === act ? 1 : 0) - (a.session === act ? 1 : 0));
-  // La sesión que el Centro ya muestra NO se repite como fila: su tarjeta ES el Centro
-  const shownIt = (typeof pickSel === "function" && pickSel(list)) || null;
-  const shown = shownIt ? rowKey(shownIt) : "";
   const seen = new Set();
   const counts = {waiting:0, done:0, working:0};
   for(const it of list){
@@ -7101,203 +6380,13 @@ function render(list){
     if(seen.has(rk)) continue;   // /state puede duplicar sesiones (los splits son claves distintas)
     seen.add(rk);
     if(counts[it.status] !== undefined) counts[it.status]++;
-    const kind = itemKind(it);
-    const container = rows;
-    let el = document.querySelector(`.row[data-rk="${CSS.escape(rk)}"]`);
-    if(el && el.dataset.kind !== kind){ el.remove(); el = null; }
-    if(!el){ el = rowEl(it); container.appendChild(el); }
-    // Both clients show splits of their active session. The overview is global.
-    el.style.display = (activePanes.length >= 2 && it.alive && it.pane && it.session === act) ? "" : "none";
-    const ext = !!it.external;
-    const ab = el.querySelector(".abadge");
-    if(ab){
-      const agentModel = it.model || (!it.alive ? usageForItem(it)?.model : "") || "";
-      const harness=it.agent||"shell",motor=it.motor||motorOf(agentModel)||harness;
-      const harnessLabel=(nsHarness(harness).label||harness).replace(" Code","");
-      ab.innerHTML=providerMark(harness,"",11)+`<span>${mdEsc(harnessLabel)} → ${mdEsc(engineLabel(motor))}</span>`;
-      ab.dataset.a=harness;
-      ab.classList.toggle("hidden",!harness);
-      let ac = el.querySelector(".acct-chip");
-      if(!ac){
-        ac = document.createElement("span");
-        ac.className = "abadge acct-chip hidden";
-        ab.after(ac);
-      }
-      const harnessAcct=it.harnessAccount||it.account||"unknown",motorAcct=it.motorAccount||"unknown";
-      const acct=motorAcct!=="unknown"&&motorAcct!==harnessAcct?`${harnessAcct}→${motorAcct}`:harnessAcct;
-      const showAcct=acct!=="unknown"&&acct!=="main";
-      ac.classList.toggle("hidden", !showAcct);
-      if(showAcct){
-        ac.textContent = acct;
-        const c = acctColor(acct);
-        ac.style.color = c; ac.style.borderColor = c;
-        ac.title = it.accountEmail || acct;
-      }
-      if(it.accountEmail) ab.title = it.accountEmail;
-    }
-	    el.dataset.pane = it.pane || "";
-	    el._detail = it.detail || it.last || "";
-	    el.dataset.search = `${it.project} ${it.cwd||""}`.toLowerCase();
-	    const uchip = el.querySelector(".usage-chip");
-	    if(uchip){
-	      // Modelo: turnos medidos (usage) y, si aun no hay, el modelo REAL que
-	      // respondio en el transcript (it.model) — nunca "no detectado" si hubo turno.
-	      const u = (it.model ? {model: it.model, effort: it.effort || "", confidence: it.configConfirmed===false?"unconfirmed":it.modelSource||"observed"} : null) || (!it.alive?usageForItem(it):null);
-	      const utxt = usageChipText(u) + (u?.model && it.configConfirmed===false ? " · "+tf("sin confirmar","unconfirmed") : "");
-	      const tst = tierStyleOf(tierOf(shortModel(u?.model || "")));
-	      uchip.innerHTML = providerMark(it.motor||it.agent, u?.model || "", 11) +
-	        `<span>${utxt}${(tst && tst.symbol) ? ` ${tst.symbol}` : ""}</span>`;
-	      uchip.classList.toggle("hidden", !utxt);
-	      uchip.style.color = (tst && tst.css) || "";
-	      uchip.title = usageChipTitle(u) + ((tst && tst.label) ? ` — ${tst.label}` : "");
-	    }
-	    const mcur = el.querySelector(".mdl-cur");
-	    if(mcur){
-	      const um = shortModel(it.model || (!it.alive ? usageForItem(it)?.model : "") || "");
-	      // Semaforo de costo: color + $ segun el tier del modelo actual
-	      const tst = tierStyleOf(tierOf(um));
-	      mcur.style.color = (tst && tst.css) || "";
-	      let tsym = el.querySelector(".tier-sym");
-	      if(!tsym){
-	        tsym = document.createElement("span");
-	        tsym.className = "tier-sym";
-	        mcur.after(tsym);
-	      }
-	      tsym.textContent = (tst && tst.symbol) || "";
-	      tsym.style.color = (tst && tst.css) || "";
-	      if(tst && tst.label && um) mcur.title = um + " — " + tst.label;
-	      if(um && mcur.classList.contains("pending")){
-	        // El cambio pedido ya se refleja en un turno real: dejar de marcarlo
-	        if(um.toLowerCase().includes(mcur.textContent.trim().toLowerCase())){
-	          mcur.textContent = um;
-	          mcur.classList.remove("pending");
-	        }
-	      } else if(um){
-	        mcur.textContent = um;
-	      }
-	    }
-	    updateFavoriteButton(el.querySelector(".fav"), it.session, it.project || it.session);
-    el.querySelector(".ago").textContent = agoTxt(it.ts);
-    {
-      el.className = `row s-${it.status}` + (ext ? " ext" : "") +
-        (el.classList.contains("open") ? " open" : "");
-      el.classList.toggle("active-pane", rk === shown);
-      el.querySelector(".exttag").classList.toggle("hidden", !ext);
-      const rp = el.querySelector(".rpath");
-      rp.innerHTML = it.cwd ? `<a href="#" class="pathlink" data-path="${attrEsc(it.cwd)}" title="${attrEsc(it.cwd)} — ${tf("click: abrir carpeta","click: open folder")}">${mdEsc(shortPath(it.cwd))}</a>` : "";
-      el.querySelector(".name").title = it.cwd || "";
-      el.querySelector(".rst").textContent = ({waiting:tf("espera tu respuesta", "waiting for you"),
-        working:tf("trabajando", "working"), done:tf("listo", "done"), idle:tf("descansando", "idle"),
-        dead:tf("apagada", "dead")})[it.status] || it.status || "";
-      if(it.session.startsWith("ssh-") && it.alive){
-        el.classList.toggle("sshoff", it.sshConnected === false);
-        el.querySelector(".rprev").textContent = !it.sshConnected
-          ? t("SIN conexion: abre la pestana y teclea el password (o corre cc-keys)")
-          : it.sshMux ? t("Tunel vivo (sin password) — Abrir reconecta al instante")
-          : t("Conectado");
-      } else {
-        el.querySelector(".rprev").textContent = mdStrip(it.detail) ||
-          (it.status==="working" ? t("Trabajando...") : it.status==="dead" ? t("Revivir para retomar") : "");
-        el.querySelector(".rprev").title = mdStrip(it.detail);
-      }
-      const readOnlyHistory = it.operable === false;
-      el.querySelectorAll('.up,.go,.kill,.ren,.term').forEach(button=>{button.disabled=readOnlyHistory;});
-      el.querySelector(".up").classList.toggle("hidden", readOnlyHistory || it.alive || ext);
-      el.querySelector(".go").classList.toggle("hidden", readOnlyHistory || ext || (!it.alive && !inApp()));
-      el.querySelector(".kill").classList.toggle("hidden", !it.alive || ext);
-      // Responder inline (.rxp): la fila expandible sustituye a las cards.
-      // canSend: hay un agente VIVO al que hablarle; si murio, la pregunta
-      // queda visible y el camino es Revivir (nunca respondas al vacio).
-      const canSend = !readOnlyHistory && it.alive && !ext && !it.zombie;
-      const answerable = canSend && (it.status === "waiting" || it.status === "done");
-      const xp = el.querySelector(".xp");
-      if(xp){
-        xp.classList.toggle("hidden", !answerable);
-        if(!it.alive && el.classList.contains("open")){
-          el.classList.remove("open"); xp.textContent = "▾";
-        }
-      }
-      if(el.classList.contains("open")){
-        el.querySelector(".preview").innerHTML =
-          mdHtml(it.detail || it.last || t("Esperando input o permiso"));
-        const opts = el.querySelector(".opts");
-        const optsStr = (canSend && it.options) ? it.options : "";
-        if(el.dataset.opts !== optsStr){
-          el.dataset.opts = optsStr;
-          opts.innerHTML = "";
-          optsStr.split("\u001f").filter(Boolean).slice(0, 4).forEach((lab, i)=>{
-            const b = document.createElement("button");
-            b.type = "button";
-            b.textContent = `${i + 1} · ${lab}`;
-            b.addEventListener("click", async e=>{
-              e.stopPropagation();
-              try{
-                await api("/key", {session: el.dataset.session, key: String(i + 1),
-                                   pane: el.dataset.pane || undefined});
-                setTimeout(()=> api("/key", {session: el.dataset.session, key: "Enter",
-                                             pane: el.dataset.pane || undefined}).catch(()=>{}), 300);
-                toast(`${lab} → ${it.project}`);
-              }catch(err){ toast(err.message, true); }
-            });
-            opts.appendChild(b);
-          });
-        }
-        opts.classList.toggle("hidden", !optsStr);
-        el.querySelector(".send").classList.toggle("hidden", !canSend);
-        el.querySelector(".keys").classList.toggle("hidden", !canSend || !!optsStr);
-      }
-      // Orden visual: 1) la sesion de la pestana ACTIVA de la app, 2) favoritas,
-      // 3) vivas por estado (esperan → listos → trabajando → resto), muertas al
-      // final, y dentro de cada grupo las mas recientes arriba (edad real, sin mod).
-      const ageOf = x => Math.min(999, Math.max(0, Math.floor((Date.now()/1000 - (x.ts || 0)) / 60)));
-      const siblings = list.filter(x => x.alive && x.session === it.session && x.pane);
-      const isSplit = siblings.length >= 2;
-      if(isSplit){
-        // Todos los panes de la misma sesión forman UN BLOQUE contiguo. Antes
-        // el split waiting estaba arriba y el idle 1,350px abajo: parecía que
-        // solo existía una card.
-        const sorted = [...siblings].sort((a,b) => Number((a.pane||"%0").slice(1)) - Number((b.pane||"%0").slice(1)));
-        const idx = Math.max(0, sorted.findIndex(x => rowKey(x) === rk));
-        const bestState = Math.min(...siblings.map(x => ROW_ORDER[x.status] ?? 9));
-        const newest = Math.min(...siblings.map(ageOf));
-        const groupFav = siblings.some(x => S.favs.has(rowKey(x)) || S.favs.has(x.session));
-        const activeGroup = act === it.session;
-        el.style.order = (activeGroup ? -10000000 : 0) + (groupFav ? -1000000 : 0) +
-          bestState * 100000 + newest * 100 + idx;
-      }else{
-        const ageMin = ageOf(it);
-        el.style.order = ((act === it.session) ? -10000000 : 0) +
-          (S.favs.has(it.session) ? -1000000 : 0) +
-          (it.alive ? 0 : 5000000) +
-          (ROW_ORDER[it.status] ?? 9) * 100000 + ageMin * 100;
-      }
-    }
-    // Transiciones → aviso en la pila superior derecha del tablero (con tema).
-    // Durante un foco de pomodoro, solo la sesión enfocada avisa; el resto se
-    // encola (cc-notifyd) y aparece en el descanso.
-    {
-      const prev = S.prev.get(it.session);
-      const became = prev !== undefined && prev !== it.status && (it.status === "waiting" || it.status === "done") && it.alive && !ext;
-      // Los avisos visuales son SOLO los popups arrastrables de cc-notifyd (el
-      // hook ya los dispara): la pila interna duplicaba cada señal. La campana
-      // 🔔 y su badge siguen como historial.
-      if(prev !== it.status && it.status !== "waiting" && it.status !== "done") alertClear(it.session);
-    }
+    // Los avisos visuales son SOLO los popups de cc-notifyd (el hook ya los
+    // dispara); la campana 🔔 y su badge siguen como historial.
+    const prev = S.prev.get(it.session);
+    if(prev !== it.status && it.status !== "waiting" && it.status !== "done") alertClear(it.session);
     S.prev.set(it.session, it.status);
   }
-  document.querySelectorAll("#rows [data-session]").forEach(el=>{
-    if(!seen.has(el.dataset.rk || el.dataset.session)) el.remove();
-  });
-  // Controls must remain reachable when there is only one pane or chat is hidden.
-  $("#sessions-wrap").classList.remove("hidden");
-  const st = $("#sessions-title"); if(st) st.textContent = activePanes.length > 1 ? `Panes · ${activePanes.length}` : "Sesiones";
-  renderCentro(list);
-  if(!rows.querySelector(".row") && !rows.querySelector(".empty")){
-    rows.innerHTML = `<div class="empty">${tf("Sin sesiones. Abre una arriba con", "No sessions. Open one above with")}
-      <code>${tf("abrir proyecto", "open project")}</code>${tf(", o en cualquier terminal:", ", or in any terminal:")} <code>ccx ${tf("nombre", "name")}</code></div>`;
-  } else if(rows.querySelector(".row")) {
-    rows.querySelector(".empty")?.remove();
-  }
+  syncCommandSidebar();
   $("#n-waiting").textContent = counts.waiting;
   if(typeof notifBadge === "function") notifBadge();
   $("#n-done").textContent = counts.done;
@@ -7308,7 +6397,6 @@ function render(list){
   const sshConn = new Set(list.filter(i => i.sshConnected === true).map(i => i.session));
   document.querySelectorAll(".ssh-chip").forEach(ch =>
     ch.classList.toggle("live", sshConn.has("ssh-" + ch.textContent)));
-  applyQ();
   if(document.body.classList.contains("app")){
     refreshDesktopTabs();
     renderTabbar();  // refresca dots/labels
@@ -7338,29 +6426,12 @@ function favicon(color){
   l.href = c.toDataURL();
 }
 
-// ---------- timeline ----------
-function renderEvents(evs){
-  const tl = $("#timeline");
-  tl.innerHTML = "";
-  const C = {waiting:"var(--waiting)", done:"var(--done)", working:"var(--working)"};
-  for(const e of evs.slice().reverse().slice(0, 40)){
-    const d = new Date(e.ts*1000);
-    const hh = String(d.getHours()).padStart(2,"0"), mm = String(d.getMinutes()).padStart(2,"0");
-    const div = document.createElement("div"); div.className = "ev";
-    div.innerHTML = `<time>${hh}:${mm}</time><span class="evdot"></span><span class="txt"></span>`;
-    div.querySelector(".evdot").style.background = C[e.status] || "var(--faint)";
-    div.querySelector(".txt").textContent =
-      `${e.project} — ${LABEL[e.status]?.toLowerCase() || e.status}${e.detail ? ": " + mdStrip(e.detail) : ""}`;
-    tl.appendChild(div);
-  }
-}
-
 // ---------- toasts ----------
 // ---------- registro LOCAL de uso: cada click, cada pantalla, cuánto tiempo. Nada sale de la máquina. ----------
 const ULOG = {buf: [], screens: new Map(), visibleSince: Date.now()};
 function ulog(k, n, c, d){
   if(!n) return;
-  const sel = (typeof CENTRO_VIEW !== "undefined" && CENTRO_VIEW.item) ? CENTRO_VIEW.item.session : "";
+  const sel = (typeof activePaneTarget === "function" && activePaneTarget()?.session) || "";
   ULOG.buf.push({ts: Date.now() / 1000, k, n: String(n).slice(0, 80), c: String(c || "").slice(0, 80), d: Math.round(d || 0), s: sel});
   if(ULOG.buf.length >= 40) ulogFlush();
 }
@@ -7388,7 +6459,7 @@ function ulogNameOf(el){
 }
 document.addEventListener("click", e => {
   const n = ulogNameOf(e.target); if(!n) return;
-  const where = e.target.closest(".modal") ? "modal:" + (e.target.closest(".modal").id || "") : e.target.closest("#notif-panel") ? "campana" : e.target.closest("#pomo-panel") ? "pomodoro" : e.target.closest("#centro") ? "centro" : e.target.closest("#rows") ? "sesiones" : e.target.closest("header") ? "header" : "tablero";
+  const where = e.target.closest(".modal") ? "modal:" + (e.target.closest(".modal").id || "") : e.target.closest("#notif-panel") ? "campana" : e.target.closest("#pomo-panel") ? "pomodoro" : e.target.closest("#command-sidebar") ? "comandos" : e.target.closest("header") ? "header" : "tablero";
   ulog("click", n, where);
 }, true);
 // pantallas: cuánto tiempo pasas en cada modal / panel, y con la pestaña visible
@@ -7437,42 +6508,6 @@ function toast(msg, err){
 }
 
 // ---------- loop ----------
-	// Recientes (cerradas): historial de pestañas recuperable con un click
-	let recentTs = 0;
-	async function tickRecent(force=false){
-	  const now = Date.now();
-	  if(!force && now - recentTs < 30000) return;
-	  recentTs = now;
-	  try{ renderRecent(await api("/tab-history")); }catch(e){}
-	}
-	function renderRecent(items){
-	  const host = $("#recent");
-	  if(!host) return;
-	  // SOLO sesiones realmente muertas: las vivas ya salen en Sesiones
-	  // (cerrar una tab de la app deja la sesion tmux viva → no va aqui)
-	  items = (items || [])
-	    .filter(i => i.reason !== "recovered" && !i.alive)
-	    .slice(0, 8);
-	  $("#recent-wrap").classList.toggle("hidden", !items.length);
-	  host.innerHTML = items.map(i => `
-	    <div class="rrow">
-	      <b>${mdEsc(i.label || i.session)}</b>
-	      <span class="rpath">${mdEsc(shortPath(i.cwd || ""))}</span>
-	      <span class="ago">${agoTxt(i.ts)}</span>
-	      <button type="button" class="test rec-open" data-session="${attrEsc(i.session)}"
-	        data-label="${attrEsc(i.label || i.session)}" data-cwd="${attrEsc(i.cwd || "")}"
-	        data-agent="${attrEsc(i.agent || "claude")}">${tf("Recuperar", "Recover")}</button>
-	    </div>`).join("");
-	  host.querySelectorAll(".rec-open").forEach(b => b.addEventListener("click", async ()=>{
-	    try{
-	      const r = await api("/recover-tab", {session: b.dataset.session, label: b.dataset.label,
-	                                           cwd: b.dataset.cwd, agent: b.dataset.agent});
-	      toast(tf(`${b.dataset.label} recuperada`, `${b.dataset.label} recovered`));
-	      if(inApp()) openInApp((r && r.session) || b.dataset.session, "claude");
-	      tickRecent(true);
-	    }catch(err){ toast(err.message, true); }
-	  }));
-	}
 let statePollInFlight = false;
 	async function tick(){
 	  if(statePollInFlight) return;
@@ -7480,11 +6515,7 @@ let statePollInFlight = false;
 	  statePollInFlight = true;
 	  try{ render(await api("/state")); }catch(e){}finally{ statePollInFlight = false; }
 	  tickUsage();
-	  tickRecent();
 	}
-async function tickEvents(){
-  try{ renderEvents(await api("/events")); }catch(e){}
-}
 let timer = null;
 function remotePollSeconds(){
   let s = +S.cfg.poll || 2;
@@ -7583,15 +6614,6 @@ document.addEventListener("keydown", e=>{
 $("#sw-in").addEventListener("input", swFill);
 $("#sw-ov").addEventListener("click", e=>{ if(e.target.id === "sw-ov") swClose(); });
 $("#btn-switch").addEventListener("click", swOpen);
-
-// ---------- buscador ----------
-function applyQ(){
-  const q = S.q.trim().toLowerCase();
-  document.querySelectorAll("[data-session]").forEach(c=>{
-    c.classList.toggle("hidden", !!q && !(c.dataset.search||"").includes(q));
-  });
-}
-// (buscador de sesion eliminado a peticion del usuario; Ctrl+K sigue vivo)
 
 // ---------- iconos ----------
 // SVG monolínea estilo Lucide/Termius, hereda color con currentColor.
@@ -7757,25 +6779,6 @@ $("#btn-theme").addEventListener("click",()=>{
   $("#settings").classList.add("open");activateMtab($("#settings .modal-panel"),"appearance");renderThemeGallery();renderButtonStyleGallery();
   setTimeout(()=>$("#theme-gallery [aria-checked=\"true\"]")?.focus(),0);
 });
-
-// ---------- analytics compactos del sidebar compartido ----------
-async function renderSidebarInsights(){
-  try{
-    const [d,u] = await Promise.all([api("/dedication"), api("/usage/state")]);
-    const today = (d.days || [])[0] || {projects:[]};
-    const projects = (today.projects || []).slice().sort((a,b)=>Number(b.minutes||0)-Number(a.minutes||0));
-    const total = projects.reduce((n,x)=>n+Number(x.minutes||0),0);
-    const panes = (u.providers || []).reduce((n,x)=>n+Number(x.active_panes||0),0);
-    const tm = $("#side-time"), pn = $("#side-panes");
-    if(tm) tm.textContent = fmtMin(total);
-    if(pn) pn.textContent = String(panes);
-    const top = projects.slice(0,3), max = Math.max(1,...top.map(x=>Number(x.minutes||0)));
-    const box = $("#side-projects");
-    if(box) box.innerHTML = top.length ? top.map(x=>{const m=Number(x.minutes||0), share=total>0?Math.round(m/total*100):0; return `<div class="side-proj">
-      <span class="n" title="${attrEsc(x.path||x.name||"")}">${mdEsc(x.name||"")}</span><span class="m">${fmtMin(m)}</span>
-      <span class="bar" role="progressbar" aria-valuenow="${share}" aria-valuemin="0" aria-valuemax="100"><i style="width:${Math.max(4,Math.round(m/max*100))}%"></i></span></div>`;}).join("") : `<div class="desc">Sin turnos medidos hoy.</div>`;
-  }catch(e){}
-}
 
 // ---------- favoritos ----------
 async function loadPrefs(){
@@ -8337,13 +7340,6 @@ poll.addEventListener("input", ()=>{
   S.cfg.poll = +poll.value; $("#poll-v").textContent = poll.value; saveCfg(); arm();
 });
 $("#poll-v").textContent = S.cfg.poll;
-$("#tl-toggle").addEventListener("click", ()=>{
-  const tl = $("#timeline");
-  tl.classList.toggle("hidden");
-  $("#tl-toggle").textContent = tl.classList.contains("hidden")
-    ? t("Ver actividad reciente") : t("Ocultar actividad");
-  if(!tl.classList.contains("hidden")) tickEvents();
-});
 window.addEventListener("message", handleTermFrameMessage);
 window.addEventListener("pagehide", restoreAllTermInteractions);
 window.addEventListener("pageshow", handleTermInteractionsPageShow);
@@ -8352,9 +7348,6 @@ setInterval(()=>{
   $("#clock").textContent =
     `${String(d.getHours()).padStart(2,"0")}:${String(d.getMinutes()).padStart(2,"0")}`;
 }, 1000);
-setInterval(()=>{
-  if(!document.hidden && !$("#timeline").classList.contains("hidden")) tickEvents();
-}, 15000);
 
 document.querySelectorAll(".lang-btn").forEach(b=>{
   b.addEventListener("click", async ()=>{
@@ -8372,13 +7365,11 @@ document.querySelectorAll(".lang-btn").forEach(b=>{
     LABEL = {waiting: "waiting for you", done: "finished", working: "working",
              idle: "alive, idle", dead: "off"};
   initApp();   // barra de pestanas + terminales embebidas (si es tailnet)
+  mountCommandSidebar();
   await loadRemote();
   loadPrefs().then(tick);
-  renderSidebarInsights(); setInterval(renderSidebarInsights, 60000);
-  const su = $("#side-usage"); if(su && !su._wired){ su._wired=true; su.addEventListener("click", ()=>$("#btn-usage")?.click()); }
   loadSsh();
   loadConf();
-  tickEvents();
   arm();
 })();
 
@@ -8633,187 +7624,10 @@ document.getElementById("snip-q").addEventListener("input", (e) => {
 });
 document.getElementById("snip-new").addEventListener("click", () => openSnipEditor(null));
 
-// ---------- chat operador (tablero izquierdo) ----------
-const OP = {id: "", messages: [], conversations: [], models: [],
-  model: "haiku", effort: "", modelName: "Haiku", ac: null};
-
-function opEsc(s){
-  return String(s||"").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"}[c]));
-}
-function opBusy(on){
-  $("#op-stop")?.classList.toggle("hidden", !on);
-  $("#op-stop-in")?.classList.toggle("hidden", !on);
-  $("#op-go")?.classList.toggle("hidden", !!on);
-  if(!on){
-    if(OP.tick){ clearInterval(OP.tick); OP.tick = 0; }
-    OP.t0 = 0;
-  }
-}
-function opTick(){
-  if(!OP.t0) return;
-  const el = document.querySelector(".op-t");
-  if(el) el.textContent = ((performance.now() - OP.t0) / 1000).toFixed(1) + "s";
-}
-function opSyncModel(){
-  const cur = $("#op-model-cur");
-  if(cur) cur.textContent = OP.modelName || OP.model || "local";
-  const hint = $("#op-hint");
-  if(hint) hint.textContent = `${OP.modelName || OP.model} · ${tf("barato · rápido","cheap · fast")}`;
-}
-function opApplyPayload(d){
-  if(!d) return;
-  OP.id = d.id || OP.id;
-  if(d.messages && !OP.ac) OP.messages = d.messages;
-  if(d.conversations) OP.conversations = d.conversations;
-  if(d.model) OP.model = d.model;
-  if("effort" in (d||{})) OP.effort = d.effort || "";
-  if(d.modelName) OP.modelName = d.modelName;
-  if(d.models) OP.models = d.models;
-  opSyncModel();
-}
-function opRender(){
-  const box = $("#op-msgs");
-  if(!box) return;
-  const stickToBottom=box.scrollHeight-box.clientHeight-box.scrollTop<64, oldScroll=box.scrollTop;
-  const empty = tf(
-    "Dile «pásate a Relotto», «lista» o «sesión nueva». El modelo se cambia arriba.",
-    "Say “switch to Relotto”, “list” or “new session”. Switch the model above."
-  );
-  const msgs = OP.messages || [];
-  const elapsed = OP.t0 ? ((performance.now() - OP.t0) / 1000).toFixed(1) + "s" : "0.0s";
-  const loadHtml = `<div class="op-load" role="status" aria-live="polite">
-      <span class="op-scan" aria-hidden="true"></span>
-      <b>${tf("Trabajando","Working")}</b>
-      <div class="op-load-meta">${opEsc(OP.modelName || OP.model || "local")} · <span class="op-t">${elapsed}</span></div>
-    </div>`;
-  box.innerHTML = msgs.map((m,i) => {
-      const live = OP.ac && i === msgs.length - 1 && m.role !== "user";
-      const tools = (m.tools||[]).length
-        ? `<div class="op-tools">${(m.tools||[]).map(x => `<div class="op-tool ${x.ok===false?"bad":x.ok?"ok":"run"}">${opEsc(opToolLine(x.name, x.args))}${x.reply?` — ${opEsc(String(x.reply).slice(0,80))}`:""}</div>`).join("")}</div>`
-        : "";
-      const who = m.role === "user" ? tf("tú","you") : (OP.modelName || "ComandOS");
-      const body = m.role === "user" ? opEsc(m.text||"") : mdHtml(m.text||"");
-      const caret = live && m.text ? `<span class="op-wait" aria-hidden="true"></span>` : "";
-      const textBlock = live && !m.text ? loadHtml
-        : `<div class="op-text${m.role==="user"?"":" op-md"}">${body}${caret}</div>`;
-      const acts = `<div class="op-acts">
-        ${live ? `<button type="button" data-act="stop">${tf("Parar","Stop")}</button>` : ""}
-        ${(m.text||"").trim() ? `<button type="button" data-act="copy" data-i="${i}">${tf("Copiar","Copy")}</button>
-        <button type="button" data-act="paste" data-i="${i}">${tf("Usar como prompt","Use as prompt")}</button>` : ""}
-      </div>`;
-      return `<div class="op-msg ${m.role==="user"?"user":"bot"}" data-i="${i}">
-      <div class="op-who">${opEsc(who)}</div>
-      <div class="op-body">${tools}${textBlock}${acts}</div>
-    </div>`;
-  }).join("") || `<div class="op-empty">${opEsc(empty)}</div>`;
-  box.querySelectorAll(".op-acts button").forEach(b => b.addEventListener("click", async ev => {
-    ev.stopPropagation();
-    if(b.dataset.act === "stop"){ opStop(); return; }
-    const msg = (OP.messages||[])[Number(b.dataset.i)];
-    const t = String(msg && msg.text || "");
-    if(!t) return;
-    if(b.dataset.act === "copy"){
-      const ok = await copyText(t);
-      toast(ok ? tf("Copiado","Copied") : tf("No pude copiar","Could not copy"), !ok);
-    } else {
-      const inp = $("#op-in");
-      if(inp){ inp.value = t; inp.focus(); }
-    }
-  }));
-  box.scrollTop = stickToBottom ? box.scrollHeight : oldScroll;
-  const list = $("#op-list");
-  if(list){
-    list.innerHTML = (OP.conversations||[]).map(c =>
-      `<button type="button" data-id="${opEsc(c.id)}" class="${c.id===OP.id?"on":""}">${opEsc(c.title||tf("Conversación","Conversation"))}</button>`
-    ).join("");
-    list.querySelectorAll("button").forEach(b => b.addEventListener("click", () => opLoad(b.dataset.id)));
-  }
-}
-function opClick(sel){
-  try{ $(sel)?.click(); }catch(e){}
-}
-function opApplyActionsLegacy(actions){
-  for(const a of (actions||[])){
-    if(a.type === "ui" && a.op === "click"){
-      const el = document.querySelector(a.selector);
-      if(el) el.click(); else toast(tf("No encuentro el control ", "Control not found ") + a.selector, true);
-      continue;
-    }
-    if(a.type === "ui" && a.op === "call"){
-      const fn = window[a.fn];
-      if(typeof fn === "function"){ try{ fn(...(a.args||[])); }catch(e){ toast(String(e.message||e), true); } }
-      else toast(tf("Acción desconocida ", "Unknown action ") + a.fn, true);
-      continue;
-    }
-    if(a.type === "ui" && a.op === "term"){
-      const sess = a.term?.session || activeTerm || [...openTerms.keys()][0];
-      const frame = sess && openTerms.get(sess)?.frame;
-      if(frame?.contentWindow) frame.contentWindow.postMessage({source:"comandos", type:"toolbar", term:a.term}, location.origin);
-      else toast(tf("No hay terminal abierta", "No terminal open"), true);
-      continue;
-    }
-    if(a.type === "pref"){ api("/conf-set", {key:a.key, value:a.on?"1":"0"}).then(loadConf).catch(e=>toast(e.message,true)); continue; }
-    if(a.type === "voice"){ Promise.all([api("/conf-set",{key:"SPEAK_DONE",value:a.on?"1":"0"}), api("/conf-set",{key:"SPEAK_ATTENTION",value:a.on?"1":"0"})]).then(loadConf).catch(e=>toast(e.message,true)); continue; }
-    if(a.type === "notify_pos"){ document.querySelector(`[data-npos="${a.corner || a.value}"]`)?.click(); continue; }
-    if(a.type === "open_wizard"){
-      try{ nsOpen(); }catch(e){}
-    }
-    if(a.type === "rename" && a.session && a.label && inApp()){
-      try{ window.webkit.messageHandlers.centro.postMessage(JSON.stringify({type:"rename", session:a.session, label:a.label})); }catch(e){}
-    }
-    if(a.type === "send_back" && a.session && inApp()){
-      try{ window.webkit.messageHandlers.centro.postMessage(JSON.stringify({type:"send_back", session:a.session})); }catch(e){}
-    }
-    if(a.type === "ui"){
-      const t = a.target;
-      if(t === "settings") opClick("#btn-settings");
-      else if(t === "analytics") openAnalyticsTab(a.tab);
-      else if(t === "notif") opClick("#btn-notif");
-      else if(t === "pomo") opClick("#btn-pomo");
-      else if(t === "snippets") opClick("#btn-snippets");
-      else if(t === "remote") opClick("#btn-remote");
-      else if(t === "mute"){ if($("#btn-mute")?.dataset.on === "1") opClick("#btn-mute"); }
-      else if(t === "unmute"){ if($("#btn-mute")?.dataset.on !== "1") opClick("#btn-mute"); }
-      else if(t === "switcher") swOpen();
-      else if(t === "sov") $("#btn-sov")?.click();
-      else if(t === "servers") opClick("#ssh-manage");
-      else if(t === "timeline") setTimeline(true);
-      else if(t === "wizard") nsOpen();
-      else if(t === "centro") document.getElementById("centro")?.scrollIntoView({behavior:"smooth"});
-      else if(t === "theme" && a.value){ try{ selectTheme(a.value); }catch(e){} }
-      if(a.tab && t === "settings"){
-        const root = $("#settings .modal-panel");
-        if(root) try{ activateMtab(root, a.tab); }catch(e){}
-      }
-    }
-    if(a.type === "volume"){
-      api("/conf-set", {key:"VOLUME", value:String(a.value)}).then(()=>loadConf()).catch(err => toast(err.message, true));
-    }
-    if(a.type === "lang" && a.value){
-      const b = document.querySelector(`.lang-btn[data-lang="${a.value}"]`);
-      if(b) b.click();
-    }
-    if(a.type === "notify_pos" && a.value){
-      const b = document.querySelector(`[data-npos="${a.value}"]`);
-      if(b) b.click();
-    }
-    if(a.type === "copy_reply"){
-      const last = [...(OP.messages||[])].reverse().find(m => m.role !== "user");
-      if(last?.text) copyText(last.text).then(ok => toast(ok ? tf("Copiado","Copied") : tf("No pude copiar","Could not copy"), !ok));
-    }
-    if(a.type === "copy_session" && a.session){
-      const it = (S.list||[]).find(x => x.session === a.session);
-      const t = it?.detail || it?.last || "";
-      if(t) copyText(t).then(ok => toast(ok ? tf("Copiado","Copied") : tf("No pude copiar","Could not copy"), !ok));
-      else toast(tf("Esa sesión no tiene respuesta guardada","This session has no saved reply"), true);
-    }
-    if(a.type === "export" && a.session){
-      api("/export", {session: a.session, format: a.fmt || "txt"})
-        .then(r => toast(tf(`Guardado: ${r.path}`, `Saved: ${r.path}`)))
-        .catch(err => toast(err.message, true));
-    }
-  }
-}
+// ---------- funciones de UI globales ----------
+// Las anuncia lib/operator_catalog.py (y su prueba exige que existan). El chat
+// que las aplicaba se retiró (S2); las que dependían del chat, la actividad
+// reciente o las filas de sesión se quitaron del catálogo y de aquí.
 window.opFavorite = async (session, on) => {
   await setSessionFavorite(session, on);
 };
@@ -8824,7 +7638,6 @@ window.nfDismiss = (id) => document.querySelector(`.nf2-x[data-id="${CSS.escape(
 window.nfPin = (id) => document.querySelector(`[data-act="pin"][data-id="${CSS.escape(id)}"]`)?.click();
 window.nfUnpin = (id) => document.querySelector(`[data-act="unpin"][data-id="${CSS.escape(id)}"]`)?.click();
 window.nfSnooze = (id) => document.querySelector(`[data-act="snooze"][data-id="${CSS.escape(id)}"]`)?.click();
-window.setTimeline = (on) => { const open = $("#timeline") && !$("#timeline").classList.contains("hidden"); if(!!on !== !!open) $("#tl-toggle")?.click(); };
 window.closeAllPanels = () => { document.querySelectorAll(".modal.open").forEach(m => m.classList.remove("open")); closeModelMenus(); if(typeof motorPopClose === "function") motorPopClose(); };
 window.swOpenWith = (q) => { swOpen(); const i = $("#sw-in"); if(i){ i.value = q||""; i.dispatchEvent(new Event("input", {bubbles:true})); } };
 window.nsOpenPrefilled = (cwd, harness, motor, model, effort, danger) => {
@@ -8835,203 +7648,14 @@ window.nsOpenPrefilled = (cwd, harness, motor, model, effort, danger) => {
     if(typeof danger === "boolean"){ const d = $("#ns-danger"); if(d && d.classList.contains("on") !== danger) d.click(); }
   });
 };
-window.selectSessionCard = (session) => document.querySelector(`.row[data-session="${CSS.escape(session)}"]`)?.click();
-window.expandReply = (session, on) => { const row = document.querySelector(`.row[data-session="${CSS.escape(session)}"]`); const open = row?.classList.contains("open"); if(row && !!on !== !!open) row.querySelector(".xp")?.click(); };
 window.openAnalyticsTab = (tab) => { $("#btn-usage")?.click(); const root = $("#usage .modal-panel"); if(root) activateMtab(root, tab || "resumen"); };
 window.compareSetDays = (n) => { const s = $("#compare-days"); if(s){ s.value = String(n); s.dispatchEvent(new Event("change", {bubbles:true})); } };
 window.setSplitLeft = ((orig) => function(px, save, bounds){
   if(arguments.length >= 2) return orig(px, save, bounds);
   localStorage.setItem("cc-split-left", String(px)); restoreSplitLeft(); applyAppLayout();
 })(setSplitLeft);
-window.setOpChatHeight = (px) => { localStorage.setItem("cc-op-chat-h", String(px)); restoreOpChatH(); };
 window.reloadDashboard = () => location.reload();
 window.focusVisibleTerm = () => { const f = activeTerm && openTerms.get(activeTerm)?.frame; f?.contentWindow?.postMessage({source:"comandos", type:"toolbar", term:{type:"focus"}}, location.origin); };
-async function opLoad(id){
-  try{
-    if(id) opStop();
-    const q = id ? `?id=${encodeURIComponent(id)}` : "";
-    const d = await api("/operator" + q);
-    if(id) OP.ac = null;
-    opApplyPayload(d);
-    opRender();
-  }catch(e){ /* el chat no debe tumbar el tablero */ }
-}
-function opStop(){
-  try{ OP.ac?.abort(); }catch(e){}
-  OP.ac = null;
-  opBusy(false);
-  opRender();
-}
-function opToolLine(name, args){
-  const short = Object.entries(args||{}).filter(([k])=>k!=="confirm")
-    .map(([k,v])=>`${k}=${typeof v==="string"?v:JSON.stringify(v)}`).join(", ");
-  return short ? `${name} ${short}` : name;
-}
-let opLiveRaf = 0;
-function opRenderLive(){ if(!opLiveRaf) opLiveRaf = requestAnimationFrame(() => { opLiveRaf = 0; opRender(); }); }
-function opParseSseChunk(buf){
-  const evs = [];
-  let i;
-  while((i = buf.indexOf("\n\n")) >= 0){
-    const frame = buf.slice(0, i); buf = buf.slice(i+2);
-    const line = frame.split("\n").find(l => l.startsWith("data:"));
-    if(!line) continue;
-    try{ evs.push(JSON.parse(line.slice(5).trim())); }catch(e){}
-  }
-  return [buf, evs];
-}
-function opHumanErr(s){
-  const t = String(s||"");
-  if(/401|Unauthorized|Login rechazado/i.test(t))
-    return tf("La sesión de Claude caducó. Entra otra vez al CLI y reintenta.","Claude login expired. Sign in again and retry.");
-  return t;
-}
-function opApplyEvent(live, ev){
-  if(ev.t === "delta"){ live.text += ev.text; opRenderLive(); }
-  else if(ev.t === "tool"){ live.tools.push({name:ev.name, args:ev.args, ok:null}); opRenderLive(); }
-  else if(ev.t === "tool_result"){ const x = [...(live.tools||[])].reverse().find(z => z.name===ev.name && z.ok===null); if(x){ x.ok = ev.pending ? null : ev.ok; x.reply = ev.reply; } opRenderLive(); }
-  else if(ev.t === "action"){ void opApplyActions([ev]); }
-  else if(ev.t === "error"){ live.text += (live.text?"\n":"") + opHumanErr(ev.text); opRenderLive(); }
-  else if(ev.t === "final"){ if(!live.text) live.text = opHumanErr(ev.reply); }
-  else if(ev.t === "payload"){
-    const {messages, ...meta} = ev;
-    opApplyPayload(meta);
-  }
-}
-function opStreamXhr(url, headers, body, signal, onEv){
-  return new Promise((resolve, reject) => {
-    const xhr = new XMLHttpRequest();
-    xhr.open("POST", url);
-    Object.keys(headers).forEach(k => xhr.setRequestHeader(k, headers[k]));
-    let buf = "", seen = 0;
-    const pump = () => {
-      const t = xhr.responseText || "";
-      if(t.length <= seen) return;
-      buf += t.slice(seen); seen = t.length;
-      let evs; [buf, evs] = opParseSseChunk(buf);
-      evs.forEach(onEv);
-    };
-    xhr.onprogress = pump;
-    xhr.onload = () => { pump(); if(xhr.status >= 400) reject(new Error(opHumanErr((()=>{ try{ return JSON.parse(xhr.responseText).error; }catch(e){ return xhr.statusText; } })()))); else resolve(); };
-    xhr.onerror = () => reject(new Error(tf("No pude hablar con ComandOS","Could not talk to ComandOS")));
-    xhr.onabort = () => reject(Object.assign(new Error("abort"), {name:"AbortError"}));
-    if(signal) signal.addEventListener("abort", () => { try{ xhr.abort(); }catch(e){} });
-    xhr.send(body);
-  });
-}
-async function opSend(text){
-  const t = String(text||"").trim();
-  if(!t){
-    toast(tf("Escribe un mensaje","Write a message"), true);
-    $("#op-in")?.focus();
-    return false;
-  }
-  if(OP.ac){
-    toast(tf("Espera o dale Parar","Wait or hit Stop"), true);
-    return false;
-  }
-  const selected = pickSel(S.list || []);
-  if((sidebarActiveTab().session || S.sel) && !selected){
-    toast(tf("El panel seleccionado ya no está disponible. Actualiza la sesión antes de enviar.", "Selected pane is unavailable. Refresh the session before sending."), true);
-    return false;
-  }
-  OP.ac = new AbortController();
-  const inp = $("#op-in");
-  if(inp) inp.value = "";
-  try{localStorage.removeItem("cc-chat-draft");}catch(e){}
-  OP.messages = [...(OP.messages||[]), {role:"user", text:t}];
-  const live = {role:"assistant", text:"", tools:[]};
-  OP.messages.push(live);
-  OP.t0 = performance.now();
-  if(OP.tick) clearInterval(OP.tick);
-  OP.tick = setInterval(opTick, 100);
-  opRender();
-  opBusy(true);
-  try{
-    const headers = {"Content-Type":"application/json"};
-    const tok = authToken(); if(tok) headers["X-Comandos-Token"] = tok;
-    const body = JSON.stringify({id: OP.id, text: t, model: OP.model, effort: OP.effort, session:selected?.session, pane:selected?.pane});
-    await opStreamXhr("/operator/chat/stream", headers, body, OP.ac.signal, ev => opApplyEvent(live, ev));
-    if(!live.text) live.text = tf("No llegó una respuesta confirmada. Consulta el estado antes de repetir una acción.","No confirmed response arrived. Check status before repeating an action.");
-  }catch(e){
-    live.text = e.name === "AbortError" ? tf("Paré la respuesta.","Stopped.") : opHumanErr(e.message || tf("No pude hablar con ComandOS","Could not talk to ComandOS"));
-  } finally {
-    OP.ac = null;
-    opBusy(false);
-    opRender();
-    $("#op-in")?.focus();
-  }
-  return true;
-}
-function opOpenModelMenu(){
-  const btn = $("#op-model");
-  const menu = $("#mdl-menu");
-  if(!btn || !menu) return;
-  const items = OP.models && OP.models.length ? OP.models : [
-    {id:"haiku", model:"haiku", effort:"", name:"Haiku", intent:"Claude · barato · rápido"}
-  ];
-  menu.innerHTML = `<div class="mdl-head">${tf("Modelo del chat","Chat model")}</div>` +
-    items.map(m => `<button type="button" class="mdl-opt" role="option"
-      data-model="${opEsc(m.model)}" data-effort="${opEsc(m.effort||"")}" data-name="${opEsc(m.name)}">
-      <i style="background:var(--done)"></i>
-      <b>${opEsc(m.name)}</b><span>${opEsc(m.intent||"")}</span></button>`).join("");
-  menu.classList.remove("hidden");
-  positionModelMenu(btn);
-  mdlMenuBtn = btn;
-  btn.setAttribute("aria-expanded", "true");
-  menu.querySelectorAll(".mdl-opt").forEach(o => o.addEventListener("click", async e => {
-    e.stopPropagation();
-    closeModelMenus();
-    try{
-      const d = await api("/operator/model", {model: o.dataset.model, effort: o.dataset.effort || ""});
-      opApplyPayload(d);
-      toast(tf(`Modelo: ${d.modelName || d.model}`, `Model: ${d.modelName || d.model}`));
-    }catch(err){ toast(err.message, true); }
-  }));
-}
-$("#op-form")?.addEventListener("submit", e => {
-  e.preventDefault();
-  opSend($("#op-in")?.value || "");
-});
-$("#op-in")?.addEventListener("keydown", e => {
-  if(e.key === "Enter" && !e.shiftKey && !e.repeat){
-    e.preventDefault();
-    e.stopPropagation();
-    $("#op-form")?.dispatchEvent(new Event("submit", {cancelable:true, bubbles:true}));
-  }
-});
-$("#op-chat")?.addEventListener("pointerdown", e => {
-  if(e.target.closest("button, a, #op-list, #op-in")) return;
-  $("#op-in")?.focus();
-});
-$("#op-stop")?.addEventListener("click", opStop);
-$("#op-stop-in")?.addEventListener("click", opStop);
-$("#op-model")?.addEventListener("click", e => {
-  e.stopPropagation();
-  const menu = $("#mdl-menu");
-  if(menu && !menu.classList.contains("hidden") && mdlMenuBtn === $("#op-model")){
-    closeModelMenus();
-    return;
-  }
-  opOpenModelMenu();
-});
-$("#op-new")?.addEventListener("click", async () => {
-  try{
-    const d = await api("/operator/new", {});
-    opApplyPayload(d);
-    OP.messages = d.messages || [];
-    opRender();
-    $("#op-in")?.focus();
-  }catch(e){ toast(e.message, true); }
-});
-$("#op-hist")?.addEventListener("click", () => {
-  const list = $("#op-list");
-  if(!list) return;
-  const open = list.classList.toggle("open");
-  list.hidden = !open;
-});
-opLoad();
-initOpChatSplit();
 document.addEventListener("keydown", (e) => {
   if (e.ctrlKey && e.shiftKey && (e.key === "K" || e.key === "k")) {
     e.preventDefault();
@@ -9046,8 +7670,8 @@ if("serviceWorker" in navigator)
 
 <script src="/reparto.js"></script>
 <script src="/extensions.js"></script>
-<script src="/session-controls.js?v=fef689ef2baa"></script>
-<script src="/workspace.js?v=b0f9e32aaaf8"></script>
+<script src="/session-controls.js?v=d1adf7533f88"></script>
+<script src="/workspace.js?v=5ef84088e7bd"></script>
 <script src="/work-marks.js?v=semaforo2"></script>
 <script src="/ui-sounds.js"></script>
 <script src="/pomodoro.js?v=sonido1"></script>

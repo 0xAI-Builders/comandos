@@ -65,7 +65,6 @@ async function scApply(context, confirmed=false) {
     MOTOR_PENDING.set(r.operationKey||motorTargetKey(item),{operationId:r.operationId,motor:request.motor,
       model:request.model,effort:request.effort,since:Date.now(),queued:!!r.queued,
       stageCode:r.state||'validating',stageTxt:'Cambio solicitado; comprobando sesión…'});
-    renderCentro(S.list||[]);
   } catch(e) {context.error=e.message;}
   finally {context.sending=false;scRefresh(context);}
 }
@@ -110,7 +109,7 @@ async function scCancelPending(context, interrupt=false) {
       if(MPOP===context)await scApply(context,true);
     } else {context.draft={...context.original};context.confirmation=null;}
   } catch(e){context.error=e.message;}
-  finally{context.sending=false;scRefresh(context);renderCentro(S.list||[]);}
+  finally{context.sending=false;scRefresh(context);}
 }
 function scRecommendations(context) {
   return SessionConfig.recommendations(PROVIDERS||{},context.original,context.history?.items,context.ctx.item);

@@ -101,25 +101,10 @@ def test_ssh_connection_list_is_an_independent_touch_scroller():
 
 
 def test_motor_picker_is_inline_and_contained_in_gtk_sidebar():
-    assert '$("#centro-wrap").appendChild(pop)' in INDEX
+    assert '$("#command-sidebar").before(pop)' in INDEX
     assert 'pop.classList.add("inline")' in INDEX
     assert 'html.gtkapp #motor-pop.inline' in INDEX
     assert 'box-sizing:border-box' in rule("#motor-pop")
     assert 'minmax(260px,1fr)' in rule("#motor-pop .mp-grid")
     assert 'box-sizing:border-box' in rule(".mtile")
     assert 'min-width:0' in rule(".mtile")
-
-
-def test_selecting_card_does_not_focus_or_change_terminal_session():
-    handler = INDEX.split('el.addEventListener("click", e=>{', 1)[1].split('});', 1)[0]
-    assert "S.sel = rowKey(it)" in handler
-    assert "openSession" not in handler
-    assert 'botón explícito "Abrir"' in handler
-
-
-def test_operator_chat_rejects_stale_tiny_height():
-    assert "raw < h * 0.36" in INDEX
-    assert "requestAnimationFrame(() => requestAnimationFrame(restoreOpChatH))" in INDEX
-    assert "if(d.messages && !OP.ac)" in INDEX
-    assert 'tf("Escribe un mensaje"' in INDEX
-    assert 'Espera o dale Parar' in INDEX

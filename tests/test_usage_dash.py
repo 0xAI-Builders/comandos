@@ -92,8 +92,9 @@ def test_cards_reconcile_harness_and_model_from_live_pane_and_confirmed_config()
     assert "claude_pane_model(pane)" in SRC
     assert "cc_usage.latest_session_config" in SRC
     assert 'item["modelSource"] = observed.get("source", "unconfirmed")' in SRC
-    html = Path("dash/index.html").read_text()
-    assert "harnessLabel" in html and "→ ${mdEsc(engineLabel(motor))}" in html
+    # Las filas del panel se retiraron (S2); la vista "Todas las sesiones" pinta harness → modelo.
+    ws = Path("dash/workspace.js").read_text()
+    assert "${mdEsc(it.agent||'shell')} → ${mdEsc(it.model||'modelo sin confirmar')}" in ws
 
 
 def test_effort_only_switch_keeps_current_pane_model():
@@ -287,7 +288,7 @@ def test_pane_suggestions_are_deterministic_with_one_executable_action():
     assert "Posible loop: 120 llamadas" in looping["suggestion"]["text"]
 
     html = Path("dash/index.html").read_text()
-    assert "cx-suggest" in html and 'class="sg-go"' in html
+    assert 'id: "aplicar"' in html and 'act === "aplicar"' in html   # se aplica desde el cajón (Centro retirado en S2)
 
 
 def test_defensive_wizard_never_creates_shell_from_unavailable_route():

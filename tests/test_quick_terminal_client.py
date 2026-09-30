@@ -52,6 +52,6 @@ def test_web_tab_bar_separates_terminal_from_new_session():
     assert 'id="tab-terminal"' in bar and 'id="tab-new"' in bar
     init = html.split("function initTabNavigation(){", 1)[1].split("\n}\n", 1)[0]
     assert '"/tab-new"' not in init                 # "+" no longer opens a scratch shell in ~
-    assert 'getElementById("btn-newsess").click()' in init
+    assert "nsOpen()" in init                         # #btn-newsess salió del panel (S2); vuelve en H1
     assert "ComandosQuickTerminal.createQuickTerminal" in init
     assert '<script src="/quick-terminal.js"></script>' in html
