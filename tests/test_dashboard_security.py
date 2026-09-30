@@ -346,3 +346,26 @@ def test_remote_api_paths_still_require_the_token(dash, monkeypatch, tmp_path, p
         server.shutdown()
         server.server_close()
         thread.join(timeout=2)
+
+
+def test_remote_assets_load_from_the_installed_symlink_layout(dash, monkeypatch, tmp_path):
+    """install.sh links each dash file into ~/.claude/hooks/dash."""
+    repo, installed = tmp_path / "repo", tmp_path / "installed"
+    repo.mkdir(); installed.mkdir()
+    (repo / "workspace.css").write_text("/* linked */")
+    (installed / "workspace.css").symlink_to(repo / "workspace.css")
+    monkeypatch.setattr(dash, "DASH", str(installed))
+    monkeypatch.setattr(dash, "access_token", lambda: "correct-token")
+    server, thread = _serve(dash)
+    client = http.client.HTTPConnection(*server.server_address, timeout=2)
+    try:
+        client.request("GET", "/workspace.css?v=x", headers={"X-Forwarded-For": "100.64.0.9",
+                                                              "Host": "nodo-01.tail63a117.ts.net"})
+        response = client.getresponse()
+        assert response.status == 200
+        assert response.read() == b"/* linked */"
+    finally:
+        client.close()
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=2)

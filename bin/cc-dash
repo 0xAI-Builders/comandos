@@ -8600,9 +8600,9 @@ class Handler(http.server.SimpleHTTPRequestHandler):
         path = urllib.parse.urlsplit(self.path).path
         if not self.PUBLIC_ASSET_RE.match(path):
             return False
-        root = os.path.realpath(DASH)
-        full = os.path.realpath(os.path.join(root, path.lstrip("/")))
-        return full.startswith(root + os.sep) and os.path.isfile(full)
+        # The regex already forbids "..": the check stays lexical because
+        # install.sh links each dash file from the repo into DASH.
+        return os.path.isfile(os.path.join(DASH, path.lstrip("/")))
 
     def do_GET(self):
         host_values = self._header_values("Host")
