@@ -4247,18 +4247,27 @@ def dedication_stats(days=7, gap_min=15):
     return data
 
 
-_TIER_LAST = {}
+_TIER_LAST = {}          # (sesion, pane) -> nivel visto; la alerta es por pane
+_TIER_ALERTED = {}       # (sesion, pane) -> ultimo aviso (ts): un aviso por hora
+TIER_ALERT_COOLDOWN_S = 3600
 
 
-def _maybe_tier_alert(sess, agent, model, tier):
-    """Aviso UNA vez cuando una sesion CAMBIA al nivel de alerta (caro)."""
+def _maybe_tier_alert(sess, agent, model, tier, pane=""):
+    """Aviso UNA vez cuando un pane CAMBIA al nivel de alerta (caro). Se
+    sigue por pane: una sesion con tres panes en modelos distintos no
+    "cambia" de nivel en cada sondeo (eso produjo 770 avisos en dos horas)."""
     if not sess or not tier:
         return
-    prev = _TIER_LAST.get(sess)
-    _TIER_LAST[sess] = tier
+    key = (sess, pane or "")
+    prev = _TIER_LAST.get(key)
+    _TIER_LAST[key] = tier
     cfg = load_model_tiers()
     if prev is None or prev == tier or tier != (cfg.get("alertTier") or "high"):
         return
+    now = time.time()
+    if now - _TIER_ALERTED.get(key, 0.0) < TIER_ALERT_COOLDOWN_S:
+        return
+    _TIER_ALERTED[key] = now
     if read_conf().get("NOTIFY_MODEL_TIER", "1") == "0":
         return
     sym = tier_style(tier).get("symbol") or ""
@@ -4307,7 +4316,7 @@ def _pane_model_values(panes):
         sym = st.get("symbol") or ""
         if model:
             _maybe_tier_alert(pane.get("tmux_session") or pane.get("session") or "",
-                              agent, model, tier)
+                              agent, model, tier, pane=pane_id)
         color = PANE_MODEL_COLORS.get(agent, "244")
         if switching:
             target = (str(pending.get("model") or "").replace("claude-", "")
