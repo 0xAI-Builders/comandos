@@ -174,3 +174,16 @@ def test_operator_tab_reorder_commits_the_shared_arrangement():
           '_page_for': lambda s: (-1, None), 'nb': None, 'save_tabs': lambda: None}
     assert load('tab_reorder', ns)("b", 1) is True
     assert commits == [(["g-local", "g-b", "g-a"], "b")]
+
+
+def test_desktop_trays_appear_below_the_strip_and_win_over_docking():
+    """Grill 30-sep: arrastrar una pestaña hacia abajo muestra 4 bandejas de estado."""
+    ns = {}
+    rects = load('ws_tray_rects', ns)(1200, 800)
+    assert [m for m, _r in rects] == ['frozen', 'awaiting_reply', 'resolved', 'none']
+    xs = [r[0] for _m, r in rects]
+    assert xs == sorted(xs) and all(r[1] + r[3] < 800 for _m, r in rects), "centred row near the bottom"
+    hit = load('ws_tray_at', ns)
+    m, (x, y, w, h) = rects[2]
+    assert hit(rects, x + w / 2, y + h / 2, strip_bottom=40) == 'resolved'
+    assert hit(rects, x + w / 2, 20, strip_bottom=40) is None, "not while still on the strip"

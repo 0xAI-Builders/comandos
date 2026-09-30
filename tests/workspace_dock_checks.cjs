@@ -25,3 +25,15 @@ assert.equal(narrow.a.height, 440);
 assert.equal(narrow.b.height, 880, 'rows are shared by measured height, not halves');
 assert.equal(dock.measure({type: 'tab', tabId: 'a'}, 1400).height, 240);
 console.log('workspace dock geometry checks passed');
+
+// ---- Grill 30-sep: reordenar deslizando con auto-desplazamiento y bandejas de estado.
+{
+  const rect = {left: 100, right: 700, top: 0, bottom: 44};
+  assert.equal(dock.edgeScroll(400, rect), 0, 'no scroll away from the edges');
+  assert.ok(dock.edgeScroll(105, rect) < -10, 'fast to the left at the very edge');
+  assert.ok(dock.edgeScroll(150, rect) < 0 && dock.edgeScroll(150, rect) > dock.edgeScroll(105, rect), 'slower farther from the edge');
+  assert.ok(dock.edgeScroll(695, rect) > 10);
+  assert.deepEqual(dock.TRAYS.map(t => t.mark), ['frozen', 'awaiting_reply', 'resolved', 'none']);
+  assert.deepEqual(dock.TRAYS.map(t => t.label), ['Aparcar', 'Esperando', 'Hecho', 'Quitar']);
+  console.log('edge scroll and trays checks ok');
+}

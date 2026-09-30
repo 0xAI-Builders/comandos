@@ -4239,6 +4239,7 @@ def _ws_drag_begin(source):
 def _ws_drag_end():
     _WS["drag"] = None
     _WS["target"] = None
+    _WS["trays"] = None
     _ws_layer.hide()
 
 
@@ -4281,8 +4282,35 @@ def _ws_layout():
             "leaves": leaves, "active": active, "activeTabs": active_tabs}
 
 
+WS_TRAYS = (("frozen", "Aparcar"), ("awaiting_reply", "Esperando"), ("resolved", "Hecho"), ("none", "Quitar"))
+
+
+def ws_tray_rects(width, height, w=112, h=70, gap=12, bottom=80):
+    """Bandejas de estado (grill 30-sep): fila centrada cerca del fondo del área."""
+    total = len(WS_TRAYS) * w + (len(WS_TRAYS) - 1) * gap if "WS_TRAYS" in globals() else 4 * w + 3 * gap
+    x0, y = max(0, (width - total) / 2), max(0, height - bottom - h)
+    marks = [m for m, _l in WS_TRAYS] if "WS_TRAYS" in globals() else ["frozen", "awaiting_reply", "resolved", "none"]
+    return [(m, (x0 + i * (w + gap), y, w, h)) for i, m in enumerate(marks)]
+
+
+def ws_tray_at(rects, x, y, strip_bottom):
+    if y < strip_bottom + 30:
+        return None
+    return next((m for m, (rx, ry, rw, rh) in rects if rx - 8 <= x <= rx + rw + 8 and ry - 8 <= y <= ry + rh + 8), None)
+
+
 def _ws_target(x, y):
     layout = _ws_layout()
+    source = _WS["drag"]
+    _WS["trays"] = None
+    if source and not source.startswith("group:") and source != "local":
+        strip_bottom = layout["strip"][3]
+        if y >= strip_bottom + 30:          # hacia abajo: bandejas de estado
+            rects = ws_tray_rects(_ws_layer.get_allocated_width(), _ws_layer.get_allocated_height())
+            _WS["trays"] = rects
+            mark = ws_tray_at(rects, x, y, strip_bottom)
+            if mark:
+                return {"kind": "mark", "mark": mark, "rect": dict(rects)[mark]}
     raw = layout["entries"]
     layout["entries"] = [(None, r) for _p, r in raw]
     target = gtk_workspace.dock_target(layout, x, y, _ws_moved_ids(_WS["drag"]))
@@ -4313,6 +4341,9 @@ def _ws_finish(target):
     _ws_drag_end()
     if not target or not source or _WS["doc"] is None:
         return
+    if target["kind"] == "mark":             # soltada en una bandeja: tu marca
+        set_work_mark("session", source, target["mark"])
+        return
     try:
         if target["kind"] == "bar":
             doc = workspace_layout.detach_tab(_WS["doc"], source, target["docIndex"])
@@ -4323,9 +4354,36 @@ def _ws_finish(target):
     ws_commit(doc, None if source.startswith("group:") else source)
 
 
+def _ws_draw_trays(cr, target):
+    hot = target.get("mark") if target and target.get("kind") == "mark" else None
+    colors = {"frozen": (0.38, 0.65, 0.98), "awaiting_reply": (0.96, 0.72, 0.24),
+              "resolved": (0.29, 0.87, 0.5), "none": (0.97, 0.44, 0.44)}
+    labels = dict(WS_TRAYS)
+    for mark, (x, y, w, h) in _WS.get("trays") or []:
+        r, g, b = colors[mark]
+        cr.set_source_rgba(0.06, 0.09, 0.13, 0.94)
+        cr.rectangle(x, y, w, h)
+        cr.fill()
+        cr.set_source_rgba(r, g, b, 1.0 if mark == hot else 0.55)
+        cr.set_line_width(3 if mark == hot else 2)
+        cr.set_dash([] if mark == hot else [6, 4])
+        cr.rectangle(x, y, w, h)
+        cr.stroke()
+        cr.set_dash([])
+        cr.select_font_face("Sans", 0, 1)
+        cr.set_font_size(13)
+        text = labels[mark]
+        ext = cr.text_extents(text)
+        cr.set_source_rgba(0.9, 0.93, 0.96, 1.0 if mark == hot else 0.75)
+        cr.move_to(x + (w - ext.width) / 2, y + h / 2 + ext.height / 2)
+        cr.show_text(text)
+
+
 def _ws_draw(widget, cr):
     target = _WS["target"]
-    if not target:
+    if _WS.get("trays"):
+        _ws_draw_trays(cr, target)
+    if not target or target.get("kind") == "mark":
         return False
     x, y, w, h = target["rect"]
     brand = Gdk.RGBA()

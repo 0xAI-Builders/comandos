@@ -16,6 +16,18 @@
   const DRAG_PX = 7, HOLD_MS = 180;
 
   // ---- pure helpers (tested in Node) --------------------------------------
+  // Grill 30-sep: al deslizar una pestaña cerca del borde de la barra, la barra
+  // corre sola (más rápido cuanto más cerca del borde).
+  const SCROLL_ZONE = 56, SCROLL_MAX = 18;
+  function edgeScroll(x, rect, zone = SCROLL_ZONE, max = SCROLL_MAX) {
+    if (x < rect.left + zone) return -Math.ceil(Math.min(1, (rect.left + zone - x) / zone) * max);
+    if (x > rect.right - zone) return Math.ceil(Math.min(1, (x - (rect.right - zone)) / zone) * max);
+    return 0;
+  }
+  // Bandejas de estado al arrastrar una pestaña hacia abajo (grill 30-sep).
+  const TRAYS = [{mark: 'frozen', label: 'Aparcar', glyph: '❄'}, {mark: 'awaiting_reply', label: 'Esperando', glyph: '⏳'},
+    {mark: 'resolved', label: 'Hecho', glyph: '✓'}, {mark: 'none', label: 'Quitar', glyph: '✕'}];
+
   function edgeFor(rect, x, y, fraction = EDGE_FRACTION) {
     const d = [['left', (x - rect.left) / rect.width], ['right', (rect.right - x) / rect.width],
                ['top', (y - rect.top) / rect.height], ['bottom', (rect.bottom - y) / rect.height]];
@@ -44,7 +56,7 @@
     return r;
   }
 
-  if (typeof document === 'undefined') return {edgeFor, outerEdge, measure, previewRect};
+  if (typeof document === 'undefined') return {edgeScroll, TRAYS, edgeFor, outerEdge, measure, previewRect};
 
   // ---- browser state -------------------------------------------------------
   const L = () => window.WorkspaceLayout;
@@ -207,6 +219,12 @@
   }
 
   // ---- gestures ---------------------------------------------------------------
+  function trayAt(x, y) {
+    const box = W.gesture && W.gesture.trays;
+    if (!box || box.hidden) return null;
+    const hit = [...box.children].find(el => { const r = el.getBoundingClientRect(); return x >= r.left - 8 && x <= r.right + 8 && y >= r.top - 8 && y <= r.bottom + 8; });
+    return hit ? hit.dataset.mark : null;
+  }
   function target(x, y, source) {
     const moved = source.startsWith('group:') ? tabsOf(groups().find(g => 'group:' + g.id === source) || {tree: {type: 'tab', tabId: ''}})
       : [source];
@@ -243,6 +261,24 @@
     d.preview = Object.assign(document.createElement('div'), {className: 'ws-preview'});
     d.preview.hidden = true;
     document.body.append(d.ghost, d.preview);
+    if (!d.source.startsWith('group:') && d.source !== 'local' && typeof window !== 'undefined' && window.WorkMarks) {
+      d.trays = Object.assign(document.createElement('div'), {className: 'ws-trays'});
+      d.trays.hidden = true;
+      d.trays.innerHTML = TRAYS.map(t => `<div class="ws-tray ws-tray-${t.mark}" data-mark="${t.mark}"><b>${t.glyph}</b>${tf(t.label, t.label)}</div>`).join('');
+      document.body.append(d.trays);
+    }
+    const scroll = () => {                       // auto-desplazamiento mientras se arrastra
+      const g = W.gesture;
+      if (!g || !g.active || g !== d) return;
+      const strip = document.getElementById('tabbar'), sr = strip && strip.getBoundingClientRect();
+      if (sr && g.ly >= sr.top - 20 && g.ly <= sr.bottom + 20) {
+        const dx = edgeScroll(g.lx, sr);
+        if (dx) { strip.scrollLeft += dx; g.target = target(g.lx, g.ly, g.source); paintTarget(g); }
+      }
+      g.raf = requestAnimationFrame(scroll);
+    };
+    d.lx = d.x; d.ly = d.y;
+    d.raf = requestAnimationFrame(scroll);
     moveGhost(d.x, d.y);
   }
   function moveGhost(x, y) { const d = W.gesture; if (d && d.ghost) { d.ghost.style.left = x + 'px'; d.ghost.style.top = y + 'px'; } }
@@ -287,9 +323,20 @@
     }
     e.preventDefault();
     moveGhost(e.clientX, e.clientY);
-    d.target = target(e.clientX, e.clientY, d.source);
-    d.preview.hidden = !d.target;
-    if (d.target) {
+    d.lx = e.clientX; d.ly = e.clientY;
+    if (d.trays) {                               // hacia abajo de la barra aparecen las bandejas
+      const sr = document.getElementById('tabbar').getBoundingClientRect();
+      d.trays.hidden = e.clientY < sr.bottom + 30;
+    }
+    const mark = trayAt(e.clientX, e.clientY);
+    d.target = mark ? {kind: 'mark', mark} : target(e.clientX, e.clientY, d.source);
+    paintTarget(d);
+  }
+  function paintTarget(d) {
+    if (d.trays) [...d.trays.children].forEach(el => el.classList.toggle('hl', !!d.target && d.target.kind === 'mark' && el.dataset.mark === d.target.mark));
+    const show = !!d.target && d.target.kind !== 'mark';
+    d.preview.hidden = !show;
+    if (show) {
       const r = d.target.rect;
       Object.assign(d.preview.style, {left: r.left + 'px', top: r.top + 'px', width: r.width + 'px', height: r.height + 'px'});
       d.preview.textContent = d.target.label;
@@ -301,7 +348,8 @@
     if (!d || d.pointer !== e.pointerId) return;
     clearTimeout(d.timer);
     try { d.el.releasePointerCapture(e.pointerId); } catch (_) {}
-    d.ghost && d.ghost.remove(); d.preview && d.preview.remove();
+    d.ghost && d.ghost.remove(); d.preview && d.preview.remove(); d.trays && d.trays.remove();
+    if (d.raf) cancelAnimationFrame(d.raf);
     document.body.classList.remove('ws-dragging');
     W.gesture = null;
     if (!d.active) return;
@@ -312,6 +360,11 @@
       return;
     }
     if (cancel || !d.target) return;
+    if (d.target.kind === 'mark') {             // soltada en una bandeja: tu marca, con su sello
+      Promise.resolve(window.WorkMarks.setMark('session', d.source, d.target.mark))
+        .then(() => window.WorkMarks.decorate && window.WorkMarks.decorate()).catch(() => {});
+      return;
+    }
     const next = d.target.kind === 'bar' ? apply('detachTab', d.source, d.target.index)
       : apply('moveTab', d.source, d.target.target, d.target.edge);
     if (next) commit(next, d.source.startsWith('group:') ? null : d.source);
@@ -353,6 +406,6 @@
   }
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init); else init();
 
-  return {edgeFor, outerEdge, measure, previewRect, adopt, stripEntries, isSelected, visibleTabs, render, layout,
+  return {edgeScroll, TRAYS, edgeFor, outerEdge, measure, previewRect, adopt, stripEntries, isSelected, visibleTabs, render, layout,
           get doc() { return W.doc; }, get revision() { return W.revision; }};
 });

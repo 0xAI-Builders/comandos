@@ -646,3 +646,11 @@ html[data-btn-style="consola"] header #btn-pomo{color:#1c1300}
 @keyframes wm-stamp{0%{transform:rotate(-6deg) scale(2.2);opacity:0}}
 button.wm-suggest{font:600 10px system-ui;padding:2px 7px;border-radius:999px;border:1px dashed var(--done,#4ade80)!important;color:var(--done,#4ade80);background:transparent;cursor:pointer;white-space:nowrap}
 #tabbar .apptab[data-wm-ind] > .dot{display:none}
+/* Bandejas de estado al arrastrar una pestaña hacia abajo (grill 30-sep). */
+.ws-trays{position:fixed;left:50%;bottom:84px;transform:translateX(-50%);display:flex;gap:12px;z-index:12000;pointer-events:none}
+.ws-trays[hidden]{display:none}
+.ws-tray{width:112px;height:72px;border:2px dashed var(--line2);border-radius:14px;background:color-mix(in srgb,var(--panel) 92%,transparent);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;font:700 12px var(--sans);color:var(--dim);transition:transform .1s;box-shadow:0 10px 24px #0008}
+.ws-tray b{font-size:18px}
+.ws-tray.hl{transform:scale(1.1);border-style:solid;color:var(--text)}
+.ws-tray-frozen.hl{border-color:#60a5fa}.ws-tray-awaiting_reply.hl{border-color:#f5b83d}.ws-tray-resolved.hl{border-color:#4ade80}.ws-tray-none.hl{border-color:#f87171}
+@media (max-width:560px){.ws-tray{width:76px;height:62px;font-size:11px}.ws-trays{gap:6px;bottom:96px}}
