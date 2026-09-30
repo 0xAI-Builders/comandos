@@ -400,6 +400,7 @@ def test_real_native_apply_theme_recolors_every_vte_gtk_provider_and_tmux_role()
         ("set-option", "-g", "message-style", "bg=#E4AE49,fg=#222224"),
         ("set-option", "-g", "pane-border-status", "top"),
         ("set-option", "-g", "pane-border-format", " "),
+        ("set-option", "-g", "status", "off"),
     ]
 
 

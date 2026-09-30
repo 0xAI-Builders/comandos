@@ -97,7 +97,7 @@ def model_ui():
                     CssProvider=lambda: NS(load_from_data=lambda d: None), StyleContext=NS(add_provider_for_screen=lambda *a: None), STYLE_PROVIDER_PRIORITY_APPLICATION=600,
                     Orientation=NS(HORIZONTAL=1, VERTICAL=2), Align=NS(START=1, CENTER=2), ReliefStyle=NS(NONE=1)),
           'Pango': NS(EllipsizeMode=NS(END=3)), 'STATE_CACHE': {}, 'AI_SPRITES': 'comandos', '_BADGE_CSS': {},
-          'Gdk': NS(Screen=NS(get_default=lambda: None)), 'Align': NS(CENTER=2), '_PANE_BOX': {}, '_draw_pane_frames': lambda b, cr: False,
+          'Gdk': NS(Screen=NS(get_default=lambda: None)), 'Align': NS(CENTER=2), '_PANE_BOX': {'%0': (30, True)}, '_draw_pane_frames': lambda b, cr: False, '_pane_geo_soon': lambda b: None,
           'work_mark_state': __import__('work_marks'), 'work_mark_row': lambda scope, key: {'mark': 'none'},
           'tab_indicator_display': lambda mark, state: ('ai:idle', None, False),
           '_set_indicator_frame': lambda image, icon, color, frame: None,
@@ -105,7 +105,7 @@ def model_ui():
           '_PV_ICON': {'codex': 'openai'}, '_PV_HEX': {'codex': '#aaa'},
           '_STATE_UI': {'verified': ('green', 'v'), 'detecting': ('gray', '?'),
                         'changing': ('yellow', '>')}, '_esc': str, 'ES': False}
-    load({'_refresh_tab_models', '_place_pills', '_pane_pill', '_pane_card_keys', '_card_button', '_pane_card_ai', '_motor_badge', '_shell_pill',
+    load({'_refresh_tab_models', '_place_pills', '_pane_frames', '_card_rect', '_reposition_pills', '_pane_pill', '_pane_card_keys', '_card_button', '_pane_card_ai', '_motor_badge', '_shell_pill',
           '_pill_row_y', '_attach_model_bar', '_extension_pill'}, ns)
     for key, box in tabs.items():
         box._term = Widget()
@@ -141,10 +141,18 @@ def test_live_model_status_geometry_padding_and_theme_still_update():
     ui.refresh()
     assert ui.labels[id(ui.current)]._model.text == 'new-model'
     assert ui.current._pills[0] is not pill
+    # Resizing panes only MOVES the existing card (no rebuild, no delay while dragging).
     for change in (lambda: ui.geometry.update({'%0': (0, 20, 120)}),
                    lambda: setattr(ui.current._term, 'height', 24),
-                   lambda: setattr(ui.current._term, 'margin_top', 16),
-                   lambda: ui.ns['THEME'].update(fg='#fff', dim='#999'),
+                   lambda: setattr(ui.current._term, 'margin_top', 16)):
+        pill = ui.current._pills[0]
+        before = pill.calls['set_margin_top'] + pill.calls['set_size_request']
+        change()
+        ui.refresh()
+        assert ui.current._pills[0] is pill
+        assert pill.calls['set_margin_top'] + pill.calls['set_size_request'] > before
+    # Theme and pane content changes still rebuild.
+    for change in (lambda: ui.ns['THEME'].update(fg='#fff', dim='#999'),
                    lambda: ui.ns['_PANE_CMD'].update({'%0': 'zsh'})):
         pill = ui.current._pills[0]
         change()
