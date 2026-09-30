@@ -66,6 +66,7 @@ class TabStripNotebook(Gtk.Notebook):
             item.remove(old)
         self._labels[child] = tab_label
         if item is not None and tab_label is not None:
+            self._inset(tab_label)
             item.add(tab_label)
             tab_label.show()
 
@@ -77,6 +78,13 @@ class TabStripNotebook(Gtk.Notebook):
         widget.show()
 
     # ---- sincronía con las páginas ----------------------------------------
+    @staticmethod
+    def _inset(label):
+        # GTK3: un EventBox no aplica «padding» de CSS; el aire de 12 px del
+        # prototipo va como margen de la etiqueta.
+        label.set_margin_start(12)
+        label.set_margin_end(12)
+
     def _make_item(self, page):
         item = Gtk.EventBox()
         item.set_visible_window(True)
@@ -108,6 +116,7 @@ class TabStripNotebook(Gtk.Notebook):
         parent = label.get_parent()
         if parent is not None:
             parent.remove(label)
+        self._inset(label)
         item.add(label)
         self._labels[page] = label
         self._items[page] = item

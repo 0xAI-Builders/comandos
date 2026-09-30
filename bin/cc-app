@@ -2890,6 +2890,7 @@ def tab_label(text, key=None, closable=True, on_close=None):
     if key and key != "local":
         # Tu canal (grill 30-sep): sticker con tu marca y «¿Hecho? ✓» cuando la IA terminó.
         sticker = Gtk.Label(label="")
+        sticker.set_valign(Gtk.Align.CENTER)
         sticker.get_style_context().add_class("tab-sticker")
         sticker.set_no_show_all(True)
         hb.pack_start(sticker, False, False, 0)
@@ -2901,6 +2902,7 @@ def tab_label(text, key=None, closable=True, on_close=None):
         suggest.set_tooltip_text("La IA terminó y no preguntó nada: márcala como hecha" if ES
                                  else "The AI finished without asking: mark it done")
         suggest.set_no_show_all(True)
+        suggest.set_valign(Gtk.Align.CENTER)
         suggest.connect("clicked", lambda *_: set_work_mark("session", key, "resolved"))
         hb.pack_start(suggest, False, False, 0)
         hb._suggest = suggest
@@ -2912,6 +2914,7 @@ def tab_label(text, key=None, closable=True, on_close=None):
             favorite.get_style_context().add_class("favorite")
         favorite.set_tooltip_text(("Quitar de favoritos" if key in TAB_FAVORITES else "Marcar como favorita") if ES
                                   else ("Remove from favorites" if key in TAB_FAVORITES else "Add to favorites"))
+        favorite.set_valign(Gtk.Align.CENTER)
         favorite.connect("clicked", lambda *_: toggle_tab_favorite(key))
         hb.pack_start(favorite, False, False, 0)
         hb._favorite = favorite
@@ -2988,6 +2991,7 @@ def tab_label(text, key=None, closable=True, on_close=None):
         b.set_always_show_image(True)
         b.set_relief(Gtk.ReliefStyle.NONE)
         b.get_style_context().add_class("tabclose")
+        b.set_valign(Gtk.Align.CENTER)
         b.connect("clicked", lambda *_: on_close() if on_close else close_tab(key))
         hb.pack_start(b, False, False, 0)
     hb.show_all()
@@ -4855,7 +4859,7 @@ def _attach_model_bar(box, sess):
     # se comía el scroll y el teclado de los panes (regresión 30-sep). El marco
     # se pinta en la propia VTE (draw después del contenido), que no toca la entrada.
     box._frames = []
-    term.connect_after("draw", lambda w, cr, b=box: _draw_pane_frames(b, cr))
+    ov.connect_after("draw", lambda w, cr, b=box: _draw_pane_frames(b, cr))
     box._pill_sess = sess
     box._pill_sig = ""
     box._pills = []
@@ -5225,8 +5229,10 @@ def _place_pills(box, panes, geo=None):
         box._pill_sig = ""      # fuente aun no lista: reintenta al siguiente tick
         return
     m_l = term.get_margin_start(); m_t = term.get_margin_top()
-    # Marcos de los panes (todos, con o sin IA): alrededor del área tmux del pane,
-    # incluyendo el renglón de riel donde va la Tarjeta.
+    # Marcos de los panes (prototipo: borde 1 px, radio 10, verde el activo).
+    # Van en la capa Overlay, NO sobre las celdas: en los márgenes de la VTE y
+    # en la columna/renglón de hueco que tmux deja entre panes, para no cruzar
+    # texto ni la barra de estado. Un pane pegado a otro reparte ese hueco.
     box._frames = []
     for pane_id, g3 in geo.items():
         left, top, width = g3[:3]
@@ -5234,12 +5240,12 @@ def _place_pills(box, panes, geo=None):
         if height <= 0 or width < 8:
             continue
         row = top - 1 if top >= 1 else 0
-        x = left * cw + 3                      # coordenadas de la VTE (el draw no incluye márgenes)
-        y = row * chh + 3
-        w = width * cw - 6
-        h = (height + (1 if top >= 1 else 0)) * chh - 6
-        box._frames.append((x, y, w, h, active))
-    term.queue_draw()
+        x0 = m_l + left * cw - (4 if left == 0 else 3)
+        x1 = m_l + (left + width) * cw + 3
+        y0 = m_t + row * chh + 2
+        y1 = m_t + (top + height) * chh - 1
+        box._frames.append((x0, y0, x1 - x0, y1 - y0, active))
+    ov.queue_draw()
     placed = set()
     for p in panes[:6]:
         g = geo.get(p.get("pane") or "")
@@ -5257,7 +5263,7 @@ def _place_pills(box, panes, geo=None):
         # renglón de borde de tmux, así que es TRANSPARENTE al ratón: arrastrar ese
         # borde sigue redimensionando los panes. Solo sus dos botones reciben clic
         # (van en su propia capa, encima, al canto derecho).
-        card_w = max(120, int(width * cw) - 26)
+        card_w = max(120, int(width * cw) - 16)
         pill.set_size_request(card_w, -1)
         # anclada al INICIO de cada pane, SOBRE el renglon de titulo tmux
         # que va vacio (riel reservado): no tapa contenido y la posicion es
@@ -5266,8 +5272,8 @@ def _place_pills(box, panes, geo=None):
         pill.set_valign(Gtk.Align.START)
         # Sobre el renglón de borde tmux (vacío). Sin -3: ese offset metía la
         # pildora en la statusline del TUI (Grok/Claude) y el titulo se veía detrás.
-        card_y = _pill_row_y(m_t, top, chh) + 8
-        card_x = max(0, int(m_l + left * cw) + 13)
+        card_y = _pill_row_y(m_t, top, chh) + 7
+        card_x = max(0, int(m_l + left * cw) + (6 if left == 0 else 7))
         pill.set_margin_top(card_y)
         pill.set_margin_start(card_x)
         ov.add_overlay(pill)
