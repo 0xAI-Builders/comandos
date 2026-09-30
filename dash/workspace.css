@@ -646,34 +646,34 @@ button.wm-suggest{font:600 10px system-ui;padding:2px 7px;border-radius:999px;bo
 #command-sidebar .cs-search:focus{outline:none;border-color:var(--brand)}
 #command-sidebar .cs-body{display:flex;flex-direction:column;gap:8px;min-width:0}
 #command-sidebar.typing .cs-body{cursor:progress}
-#command-sidebar :is(.cs-cli,.cs-saved){flex:none;border:1px solid var(--line);border-radius:10px;background:var(--panel);overflow:hidden;min-width:0}
-#command-sidebar .cli-h{display:flex;align-items:center;gap:8px;min-height:40px;box-sizing:border-box;padding:0 10px;cursor:pointer;font-weight:600;font-size:12.5px;user-select:none}
-#command-sidebar .cli-h:hover{background:var(--panel2)}
-#command-sidebar .cli-h .nm{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-#command-sidebar .cli-h .ver,#command-sidebar .cli-h .n{font:400 11px var(--mono);color:var(--dim);min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-#command-sidebar .cli-h .here-tag{font-size:10.5px;font-weight:600;color:var(--brand);border:1px solid color-mix(in srgb,var(--brand) 55%,var(--line));border-radius:999px;padding:1px 7px;white-space:nowrap}
-#command-sidebar .chev{margin-left:auto;color:var(--dim);flex:none;transition:transform .15s}
-#command-sidebar .open>.cli-h .chev,#command-sidebar .open>.lab3 .chev{transform:rotate(180deg)}
-#command-sidebar .cs-cli.here{border-color:color-mix(in srgb,var(--brand) 55%,var(--line))}
-#command-sidebar .cs-cli:is(.drift,.unverified) .ver{color:var(--waiting)}
-#command-sidebar .cs-cli.missing .nm{color:var(--dim)}
+#command-sidebar :is(.cs-saved),:is(#command-sidebar,.chain-only) .cs-cli{flex:none;border:1px solid var(--line);border-radius:10px;background:var(--panel);overflow:hidden;min-width:0}
+:is(#command-sidebar,.chain-only) .cli-h{display:flex;align-items:center;gap:8px;min-height:40px;box-sizing:border-box;padding:0 10px;cursor:pointer;font-weight:600;font-size:12.5px;user-select:none}
+:is(#command-sidebar,.chain-only) .cli-h:hover{background:var(--panel2)}
+:is(#command-sidebar,.chain-only) .cli-h .nm{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+:is(#command-sidebar,.chain-only) .cli-h .ver,#command-sidebar .cli-h .n{font:400 11px var(--mono);color:var(--dim);min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+:is(#command-sidebar,.chain-only) .cli-h .here-tag{font-size:10.5px;font-weight:600;color:var(--brand);border:1px solid color-mix(in srgb,var(--brand) 55%,var(--line));border-radius:999px;padding:1px 7px;white-space:nowrap}
+:is(#command-sidebar,.chain-only) .chev{margin-left:auto;color:var(--dim);flex:none;transition:transform .15s}
+:is(#command-sidebar,.chain-only) .open>.cli-h .chev,:is(#command-sidebar,.chain-only) .open>.lab3 .chev{transform:rotate(180deg)}
+:is(#command-sidebar,.chain-only) .cs-cli.here{border-color:color-mix(in srgb,var(--brand) 55%,var(--line))}
+:is(#command-sidebar,.chain-only) .cs-cli:is(.drift,.unverified) .ver{color:var(--waiting)}
+:is(#command-sidebar,.chain-only) .cs-cli.missing .nm{color:var(--dim)}
 /* Plegado por CSS; mientras se busca (.searching) se muestra todo lo que coincide. */
-#command-sidebar:not(.searching) .cs-cli:not(.open)>:not(.cli-h),#command-sidebar .cs-saved:not(.open)>:not(.cli-h){display:none}
+:is(#command-sidebar:not(.searching),.chain-only) .cs-cli:not(.open)>:not(.cli-h),#command-sidebar .cs-saved:not(.open)>:not(.cli-h){display:none}
 #command-sidebar :is(.launch,.grp){border-top:1px solid var(--line)}
-#command-sidebar:not(.searching) :is(.launch,.grp):not(.open)>:not(.lab3){display:none}
-#command-sidebar .lab3{display:flex;align-items:center;gap:6px;min-height:32px;padding:0 10px;font-size:10.5px;text-transform:uppercase;letter-spacing:.06em;color:var(--dim);cursor:pointer;user-select:none}
-#command-sidebar .launch.yolo{background:color-mix(in srgb,var(--waiting) 6%,var(--panel))}
-#command-sidebar .launch.yolo .lab3{color:var(--waiting)}
-#command-sidebar .note{padding:4px 10px 8px;font-size:11px;color:var(--dim)}
-#command-sidebar .cmd{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:2px 8px;padding:8px 10px;border-top:1px solid var(--line);cursor:pointer;min-width:0}
-#command-sidebar .cmd:hover{background:var(--panel2)}
-#command-sidebar .cmd code{font:12.5px var(--mono);color:var(--text);overflow-wrap:anywhere;min-width:0}
-#command-sidebar .cmd code em{color:var(--dim);font-style:normal}
-#command-sidebar .cmd small{grid-column:1;color:var(--dim);font-size:11.5px;line-height:1.35;overflow-wrap:anywhere}
-#command-sidebar .cmd .opts{grid-column:1/-1;display:flex;flex-wrap:wrap;gap:5px;margin-top:4px;min-width:0}
-#command-sidebar .cmd .opts button{min-height:26px;padding:2px 9px;font:11.5px var(--mono);border-radius:999px;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-#command-sidebar .cmd .opts button.new{border-color:var(--warn);box-shadow:inset 0 0 0 1px color-mix(in srgb,var(--warn) 45%,transparent)}
-#command-sidebar .cmd .opts button.new::after{content:"nuevo";margin-left:6px;font:600 9.5px var(--mono);text-transform:uppercase;color:var(--warn)}
+:is(#command-sidebar:not(.searching),.chain-only) :is(.launch,.grp):not(.open)>:not(.lab3){display:none}
+:is(#command-sidebar,.chain-only) .lab3{display:flex;align-items:center;gap:6px;min-height:32px;padding:0 10px;font-size:10.5px;text-transform:uppercase;letter-spacing:.06em;color:var(--dim);cursor:pointer;user-select:none}
+:is(#command-sidebar,.chain-only) .launch.yolo{background:color-mix(in srgb,var(--waiting) 6%,var(--panel))}
+:is(#command-sidebar,.chain-only) .launch.yolo .lab3{color:var(--waiting)}
+:is(#command-sidebar,.chain-only) .note{padding:4px 10px 8px;font-size:11px;color:var(--dim)}
+:is(#command-sidebar,.chain-only) .cmd{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:2px 8px;padding:8px 10px;border-top:1px solid var(--line);cursor:pointer;min-width:0}
+:is(#command-sidebar,.chain-only) .cmd:hover{background:var(--panel2)}
+:is(#command-sidebar,.chain-only) .cmd code{font:12.5px var(--mono);color:var(--text);overflow-wrap:anywhere;min-width:0}
+:is(#command-sidebar,.chain-only) .cmd code em{color:var(--dim);font-style:normal}
+:is(#command-sidebar,.chain-only) .cmd small{grid-column:1;color:var(--dim);font-size:11.5px;line-height:1.35;overflow-wrap:anywhere}
+:is(#command-sidebar,.chain-only) .cmd .opts{grid-column:1/-1;display:flex;flex-wrap:wrap;gap:5px;margin-top:4px;min-width:0}
+:is(#command-sidebar,.chain-only) .cmd .opts button{min-height:26px;padding:2px 9px;font:11.5px var(--mono);border-radius:999px;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+:is(#command-sidebar,.chain-only) .cmd .opts button.new{border-color:var(--warn);box-shadow:inset 0 0 0 1px color-mix(in srgb,var(--warn) 45%,transparent)}
+:is(#command-sidebar,.chain-only) .cmd .opts button.new::after{content:"nuevo";margin-left:6px;font:600 9.5px var(--mono);text-transform:uppercase;color:var(--warn)}
 #command-sidebar .cmd.dis{opacity:.45;pointer-events:none}
 #command-sidebar .cs-saved-item{display:flex;align-items:center;gap:8px;padding:7px 10px;border-top:1px solid var(--line);min-width:0}
 #command-sidebar .cs-saved-item .nm{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12.5px}
@@ -697,3 +697,46 @@ button.wm-suggest{font:600 10px system-ui;padding:2px 7px;border-radius:999px;bo
 #command-sidebar .cs-terms .t{display:inline-flex;align-items:center;gap:5px;min-height:34px;padding:0 10px;font:12px var(--mono);max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 #command-sidebar .cs-terms .t.cur{border-color:var(--brand);color:var(--brand)}
 @media(pointer:coarse){#command-sidebar .cmd{padding-block:11px}#command-sidebar .cmd .opts button{min-height:34px}}
+/* Constructor de cadenas (S3, dash/chain-builder.js): .backdrop[data-mclose] > .modal.chain-only.
+   .modal global (index.html) es una capa fixed oculta hasta .open: aquí se neutraliza. Las filas y el
+   acordeón comparten reglas con la barra (:is(#command-sidebar,.chain-only)); los botones heredan el
+   estilo 3D global de buttons.css. */
+.backdrop[data-mclose]{position:fixed;inset:0;z-index:12000;display:flex;align-items:center;justify-content:center;padding:18px;box-sizing:border-box;background:rgba(6,8,14,.72)}
+.backdrop[data-mclose] > .modal.chain-only{position:relative;inset:auto;z-index:auto;display:flex;flex-direction:column;align-items:stretch;justify-content:flex-start;overflow:hidden;padding:0;-webkit-user-select:text;user-select:text;width:min(1040px,100%);height:min(700px,100%);box-sizing:border-box;background:var(--panel);color:var(--text);border:1px solid var(--line2);border-radius:14px;box-shadow:0 24px 60px #000b}
+.chain-only [hidden]{display:none!important}
+.chain-only .m-head{display:flex;align-items:center;gap:10px;flex:none;padding:10px 14px;border-bottom:1px solid var(--line)}
+.chain-only .m-head h2{margin:0;font-size:14px;white-space:nowrap}
+.chain-only .m-name{flex:1;min-width:0;box-sizing:border-box;min-height:38px;padding:6px 10px;border:1px solid var(--line);border-radius:8px;background:var(--panel2);color:var(--text);font:inherit}
+.chain-only .m-name:focus{outline:none;border-color:var(--brand)}
+.chain-only .m-head .x{min-height:38px;padding:0 12px;flex:none}
+.chain-only .cb-body{flex:1 1 auto;min-height:0;overflow:auto;overscroll-behavior:contain;display:grid;grid-template-columns:minmax(0,1fr);gap:10px;align-content:start;align-items:start;padding:12px 14px}
+@media (min-width:900px){.chain-only .cb-body{grid-template-columns:repeat(3,minmax(0,1fr))}}
+.chain-only .cb-body > .cb-empty{grid-column:1/-1}
+.chain-only .cb-empty{padding:8px 4px;color:var(--dim);font-size:12px}
+.chain-only .cmd.dis{opacity:.6}
+.chain-only .cmd .add{grid-column:2;grid-row:1;align-self:start;min-height:26px;padding:0 9px;font-size:11px;white-space:nowrap}
+.chain-only .cb-msg:empty{display:none}
+.chain-only .m-error{margin:0 14px 8px;padding:7px 10px;border:1px solid color-mix(in srgb,var(--err) 60%,var(--line));border-radius:8px;color:var(--err);font-size:12px;overflow-wrap:anywhere}
+.chain-only .m-foot{flex:none;display:flex;flex-direction:column;gap:8px;padding:10px 14px;border-top:1px solid var(--line);background:var(--panel2)}
+.chain-only .slots{display:flex;gap:8px;min-height:88px;overflow-x:auto;overflow-y:hidden;padding:2px 2px 8px;scrollbar-width:thin}
+.chain-only .slots > .cb-empty{align-self:center}
+.chain-only .slots .step{flex:none;width:176px;box-sizing:border-box;display:grid;grid-template-columns:minmax(0,1fr) auto;align-content:start;gap:3px 6px;padding:6px 8px;border:1px solid var(--line);border-radius:8px;background:var(--panel);cursor:grab}
+.chain-only .slots .step.dragging{opacity:.45}
+.chain-only .slots .step.over{border-color:var(--brand);box-shadow:0 0 0 1px var(--brand)}
+.chain-only .slots .step[data-kind=shell] .k{color:var(--waiting)}
+.chain-only .slots .step .k{font:10.5px var(--mono);color:var(--dim);text-transform:uppercase;letter-spacing:.04em}
+.chain-only .slots .step .k b{color:var(--brand);font-weight:700}
+.chain-only .slots .step .grab{color:var(--dim);font-size:14px;line-height:1}
+.chain-only .slots .step code{grid-column:1/-1;font:12px var(--mono);color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.chain-only .slots .step .ctl{grid-column:1/-1;display:flex;gap:4px}
+.chain-only .slots .step .ctl button{min-height:26px;min-width:30px;padding:0 6px;font-size:12px}
+.chain-only .slots .step .ctl [data-del]{margin-left:auto}
+.chain-only .cb-actions{display:flex;align-items:center;gap:8px}
+.chain-only .cb-count{margin-right:auto;color:var(--dim);font-size:12px}
+.chain-only .cb-actions button{min-height:38px;padding:0 16px}
+@media (max-width:899px){
+  .backdrop[data-mclose]{padding:0}
+  .backdrop[data-mclose] > .modal.chain-only{width:100%;height:100%;border-radius:0;border-width:0}
+  .chain-only .m-head h2{display:none}
+}
+@media(pointer:coarse){.chain-only .cmd{padding-block:11px}.chain-only .cmd .opts button{min-height:34px}.chain-only .slots .step .ctl button{min-height:34px;min-width:36px}}

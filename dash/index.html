@@ -1831,6 +1831,7 @@
 <script src="/workspace-dock.js?v=bandejas2"></script>
 <script src="/quick-terminal.js"></script>
 <script src="/command-sidebar.js?v=2"></script>
+<script src="/chain-builder.js?v=1"></script>
 
 <div id="panes">
 <nav id="app-navigation" aria-label="Pestañas de sesiones">
@@ -6376,7 +6377,23 @@ function mountCommandSidebar(){
     openBuilder: () => window.chainBuilder && window.chainBuilder.open(),
     toast, terminals: quickTermEntries,
     newTerm: () => { const q = quickTerminalInstance(); return q ? q.open() : toast(tf("Terminal rápida no disponible", "Quick terminal unavailable"), true); }});
+  mountChainBuilder();
   syncCommandSidebar();
+}
+// Modal «Cadenas» (S3, dash/chain-builder.js): arma cadenas con el mismo catálogo
+// que la barra; guardar refresca la lista y Correr la arranca en el destino.
+function mountChainBuilder(){
+  if(ONLY_PANEL) return;
+  if(window.chainBuilder || !window.ComandosChainBuilder || !window.commandSidebar) return;
+  window.chainBuilder = ComandosChainBuilder.createChainBuilder({
+    api, root: document.body, toast, hydrate: hydrateIcons,
+    catalog: () => window.commandSidebar.state.catalog,
+    chains: () => window.commandSidebar.state.chains,
+    onSaved: async (chain, o) => {
+      try{ await window.commandSidebar.refresh(); }
+      catch(err){ toast((err && err.message) || tf("No se pudo refrescar las cadenas", "Could not refresh the chains"), true); return; }
+      if(o && o.run) window.commandSidebar.startChain(chain.slug);
+    }});
 }
 
 // ---------- render ----------
