@@ -194,7 +194,7 @@ notebook > header { background: @BAR@; border: none; box-shadow: none; }
 .tabstrip-tabs { background: @BAR@; }
 .strip-tab {
   background-color: @BAR@; color: @DIM@; padding: 0 12px; min-height: 44px;
-  font-family: 'Ubuntu Sans', 'Inter', sans-serif; font-size: 13px;
+  font-family: 'Ubuntu', sans-serif; font-size: 13px;
   border-right: 1px solid @LINE@;
   transition: color 150ms ease, background-color 150ms ease, box-shadow 150ms ease;
 }
@@ -202,7 +202,7 @@ notebook > header { background: @BAR@; border: none; box-shadow: none; }
 .strip-tab.cur { color: @TEXT@; background-color: mix(@BAR@, @LINE2@, 0.35); box-shadow: inset 0 -2px 0 0 @BRAND@; }
 .strip-tab label { color: inherit; }
 .strip-tab label.tab-name { font-weight: 600; }
-.strip-tab label.tab-model, .tab-model { color: @FAINT@; font-family: 'Ubuntu Sans Mono', 'JetBrains Mono', monospace; font-size: 10px; font-weight: 600; }
+.strip-tab label.tab-model, .tab-model { color: @FAINT@; font-family: 'DejaVu Sans Mono', monospace; font-size: 10px; font-weight: 600; }
 .strip-tab button {
   color: @FAINT@; padding: 0; margin: 0; min-height: 14px; min-width: 14px;
   border: none; background: none; background-image: none; box-shadow: none; opacity: 0;
@@ -243,7 +243,7 @@ notebook > header > tabs > arrow {
 /* Grupo: cada terminal lleva su propia Tarjeta y marco (como una pestaña sola);
    la cabecera de hoja queda como asa fina para arrastrarla fuera del grupo. */
 .ws-leaf-head { background: @BG@; padding: 0 12px; min-height: 22px; color: @FAINT@;
-  font-family: 'Ubuntu Sans', 'Inter', sans-serif; font-size: 11px; font-weight: 600; }
+  font-family: 'Ubuntu', sans-serif; font-size: 11px; font-weight: 600; }
 .ws-leaf.focused .ws-leaf-head { color: @TEXT@; }
 paned.ws-paned > separator { background: @BG@; min-width: 8px; min-height: 8px; }
 notebook stack { background: @BG@; }
@@ -1340,7 +1340,7 @@ def _build_hb_css():
     b" box-shadow:0 2px 0 " + THEME["line"].encode() + b";}"
     b".pane-card{border:0;border-radius:9px 9px 0 0;box-shadow:none;padding:0 12px;min-height:0;}"
     b".pane-card{background-color:mix(" + THEME.get("bar", THEME["bg"]).encode() + b"," + THEME.get("line2", THEME["line"]).encode() + b",0.35);}"
-    b".pane-card label{font-size:11px;}"
+    b".pane-card label,.pane-card-keys label{font-family:'Ubuntu',sans-serif;font-size:11px;}"
     b".pane-card separator{background:" + THEME["line"].encode() + b";min-width:1px;margin:8px 0;}"
     b".pp-logo{min-width:18px;min-height:18px;border-radius:5px;padding:0;}"
     b".pane-pill label{color:" + THEME["fg"].encode() + b"; font-size:11px;"
@@ -1354,7 +1354,7 @@ def _build_hb_css():
     b".pill-btn{padding:2px 5px;margin:0;background:rgba(148,148,148,0.12);"
     b" border:1px solid rgba(148,148,148,0.55);border-radius:999px;min-height:0;}"
     b".pane-card .pill-btn,.pane-card-keys .pill-btn{padding:0 14px;min-height:19px;border-radius:7px;margin:0;color:" + THEME.get("dim", "#8a98ab").encode() + b";}"
-    b".pane-card .pill-btn label,.pane-card-keys .pill-btn label{font-size:10px;font-weight:600;color:" + THEME.get("dim", "#8a98ab").encode() + b";}"
+    b".pane-card .pill-btn label,.pane-card-keys .pill-btn label{font-size:11px;font-weight:600;color:" + THEME.get("dim", "#8a98ab").encode() + b";}"
     b".pane-card .pill-btn:hover label,.pane-card-keys .pill-btn:hover label{color:" + THEME["fg"].encode() + b";}"
     b".pp-logo{min-width:14px;min-height:14px;border-radius:4px;}"
     b".pill-btn:hover{border-color:" + THEME["fg"].encode() + b";"
@@ -5010,7 +5010,7 @@ def _pane_pill(sess, p, keys=True):
     if state == "changing":
         lab.set_markup(f'<span foreground="{fg}" weight="bold">{_esc("→ " + (p.get("target") or "…"))}</span>')
     elif state == "verified":
-        lab.set_markup(f'<span foreground="{fg}" weight="bold">{_esc(p.get("model"))}</span>'
+        lab.set_markup(f'<span foreground="{fg}" weight="bold" font_family="DejaVu Sans Mono">{_esc(p.get("model"))}</span>'
                        + (f'<span foreground="{dim}"> {_esc(p.get("effort"))}</span>' if p.get("effort") else ""))
     else:
         lab.set_markup(f'<span foreground="{dim}">…</span>')

@@ -17,8 +17,10 @@
     --brand:#8B7CFF; --on-brand:#080B11; --waiting:#FFAE1A; --done:#2EE59D; --working:#7AA5FF;
     --err:#FF7580; --warn:#FFAE1A; --ok:#2EE59D;
     --glow:#141B2E; --code:#A3C0FF; --shadow:rgba(0,0,0,.35);
-    --mono:'JetBrainsMono Nerd Font','JetBrains Mono',ui-monospace,Menlo,Consolas,monospace;
-    --sans:'Inter',system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;
+    /* Mismas familias que los prototipos aprobados (system-ui / ui-monospace):
+       en este escritorio resuelven a Ubuntu y DejaVu Sans Mono. */
+    --mono:ui-monospace,'DejaVu Sans Mono',Menlo,Consolas,monospace;
+    --sans:system-ui,'Ubuntu',-apple-system,'Segoe UI',Roboto,sans-serif;
   }
   /* Día Mineral: canvas slate descansado, superficies tintadas y límites claros. */
   :root[data-theme="dia"]{
@@ -1833,7 +1835,7 @@
 	    #content{padding-bottom:env(safe-area-inset-bottom)}
 	  }
 	</style>
-<link rel="stylesheet" href="/workspace.css?v=pila7">
+<link rel="stylesheet" href="/workspace.css?v=fuentes1">
 <link rel="stylesheet" href="/buttons.css?v=2">
 <link rel="stylesheet" href="/reparto.css">
 <script src="/session-config.js?v=7f3232b0a624"></script>
