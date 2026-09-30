@@ -3472,3 +3472,17 @@ def test_dashboard_viewport_blocks_pinch_zoom_that_hides_tabs():
     meta = HTML.split('<meta name="viewport" content="', 1)[1].split('"', 1)[0]
     assert "maximum-scale=1" in meta and "user-scalable=no" in meta
     assert "interactive-widget=resizes-content" in meta
+
+
+def test_mobile_toolbar_answers_agent_prompts_with_si_and_no():
+    """Grill 30-sep: quick Sí / No next to Esc and Ctrl+C. Sí confirms the
+    highlighted option (Enter; «Yes» by default in Claude Code and Codex);
+    No rejects it (Esc)."""
+    bar = TERM_HTML.split('id="term-toolbar"', 1)[1].split("</div>", 1)[0]
+    order = [bar.index(f'data-key="{k}"') for k in ("escape", "ctrlc", "yes", "no")]
+    assert order == sorted(order), "Sí / No sit right after Esc and Ctrl+C"
+    assert ">Sí<" in bar and ">No<" in bar
+    start = TERM_HTML.index("  const TOOLBAR_KEYS")
+    table = TERM_HTML[start:TERM_HTML.index("});", start) + 3]
+    result = run_node_json(table + "\nconsole.log(JSON.stringify({yes: TOOLBAR_KEYS.yes, no: TOOLBAR_KEYS.no}));")
+    assert result == {"yes": "\r", "no": "\x1b"}

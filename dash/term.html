@@ -6,7 +6,7 @@
 <title>ComandOS · terminal</title>
 <link rel="icon" href="../icon-192.png">
 <link rel="stylesheet" href="../assets/xterm/xterm.css">
-<link rel="stylesheet" href="/buttons.css?v=1">
+<link rel="stylesheet" href="/buttons.css?v=2">
 <!-- Cargamos la fuente bundleada por @font-face para que WebKit la use aun si
      fontconfig del sistema no la conoce. -->
 <style>
@@ -54,6 +54,10 @@
     border: 1px solid var(--term-line2); border-radius: 4px; background:var(--term-panel2); color:var(--term-text);
     font: 700 12px 'JetBrainsMono Nerd Font Mono', monospace; }
   #term-toolbar button.key-hot { min-width: 64px; font-weight: 700; border-color:var(--term-brand); }
+  /* Respuesta rápida a los agentes: Sí (Enter) verde, No (Esc) rojo. */
+  #term-toolbar button.key-yes, #term-toolbar button.key-no { min-width: 56px; font-weight: 800; }
+  #term-toolbar button.key-yes { color:#4ade80; border-color:#1f7a44; }
+  #term-toolbar button.key-no { color:#f87171; border-color:#8a2a35; }
   #term-toolbar button.on { background:var(--term-brand); border-color:var(--term-brand); color:var(--term-bg); }
   [hidden] { display:none !important; }
   #term-toolbar button:disabled { opacity: .55; }
@@ -141,6 +145,8 @@
   <div id="term-toolbar" role="toolbar" aria-label="Controles de terminal" hidden>
     <button type="button" data-key="escape" class="key-hot">Esc</button>
     <button type="button" data-key="ctrlc" class="key-hot" title="Interrumpir (Ctrl+C)" aria-label="Enviar Ctrl+C">Ctrl+C</button>
+    <button type="button" data-key="yes" class="key-yes" title="Sí: confirma la opción resaltada del agente (Enter)" aria-label="Responder sí (Enter)">Sí</button>
+    <button type="button" data-key="no" class="key-no" title="No: rechaza la pregunta del agente (Esc)" aria-label="Responder no (Esc)">No</button>
     <button type="button" data-action="mode" aria-pressed="false">Seleccionar</button>
     <button type="button" data-action="panes">Paneles</button>
     <button type="button" data-key="backspace" title="Borrar un carácter en la terminal (Backspace)" aria-label="Borrar un carácter en la terminal">⌫</button>
@@ -813,7 +819,7 @@
   term.onResize(sendResize);
 
   const TOOLBAR_KEYS = Object.freeze({
-    escape: '\x1b', ctrlc: '\x03', backspace: '\x7f', tab: '\t', left: '\x1b[D', up: '\x1b[A',
+    escape: '\x1b', ctrlc: '\x03', yes: '\r', no: '\x1b', backspace: '\x7f', tab: '\t', left: '\x1b[D', up: '\x1b[A',
     down: '\x1b[B', right: '\x1b[C',
   });
   let ctrlArmed = false;
