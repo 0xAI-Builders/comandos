@@ -91,13 +91,17 @@ def model_ui():
                    get_tab_label=lambda b: labels[id(b)]),
           '_svg_image': svg, '_pane_geometry': get_geometry,
           '_PANE_CMD': {'%0': 'codex'}, '_SHELLS': {'zsh'},
-          'Gtk': NS(Box=Widget, Overlay=Widget, Label=Widget, Button=Widget,
-                    Orientation=NS(HORIZONTAL=1), Align=NS(START=1), ReliefStyle=NS(NONE=1)),
+          'Gtk': NS(Box=Widget, Overlay=Widget, Label=Widget, Button=Widget, Image=Widget, Separator=Widget,
+                    Orientation=NS(HORIZONTAL=1, VERTICAL=2), Align=NS(START=1), ReliefStyle=NS(NONE=1)),
+          'Pango': NS(EllipsizeMode=NS(END=3)), 'STATE_CACHE': {}, 'AI_SPRITES': 'comandos',
+          'work_mark_state': __import__('work_marks'), 'work_mark_row': lambda scope, key: {'mark': 'none'},
+          'tab_indicator_display': lambda mark, state: ('ai:idle', None, False),
+          '_set_indicator_frame': lambda image, icon, color, frame: None,
           'THEME': {'fg': '#eee', 'dim': '#aaa', 'brand': '#abc'},
           '_PV_ICON': {'codex': 'openai'}, '_PV_HEX': {'codex': '#aaa'},
           '_STATE_UI': {'verified': ('green', 'v'), 'detecting': ('gray', '?'),
                         'changing': ('yellow', '>')}, '_esc': str, 'ES': False}
-    load({'_refresh_tab_models', '_place_pills', '_pane_pill', '_answer_button', 'pane_answer', '_shell_pill',
+    load({'_refresh_tab_models', '_place_pills', '_pane_pill', '_card_button', '_pane_card_ai', '_shell_pill',
           '_pill_row_y', '_attach_model_bar', '_extension_pill'}, ns)
     for key, box in tabs.items():
         box._term = Widget()
@@ -111,14 +115,14 @@ def model_ui():
 def test_unchanged_models_and_identical_allocations_do_not_redraw():
     ui = model_ui()
     ui.refresh()
-    assert ui.counts['svg'] == 21  # 19 tab icons and two icons in the active pill.
+    assert ui.counts['svg'] == 22  # 19 tab icons and three in the active card (motor, «IA», «MCPs · Skills»).
     for _ in range(9):
         ui.stamp[0] += 1  # cc-dash replaces the file even when its payload is unchanged.
         callback = ui.current._term.signals.get('size-allocate')
         if callback:
             callback(ui.current._term, NS(width=1200, height=800))
         ui.refresh()
-    assert ui.counts['svg'] == 21
+    assert ui.counts['svg'] == 22
     assert ui.current._pill_overlay.calls['add_overlay'] == 1
     assert sum(label._model.calls['set_text'] for label in ui.labels.values()
                if hasattr(label, '_model')) == 19
@@ -153,10 +157,10 @@ def test_dim_theme_change_updates_tab_icons_without_rebuilding_fixed_color_pills
     pill = ui.current._pills[0]
     ui.ns['THEME']['dim'] = '#777'
     ui.refresh()
-    assert ui.counts['svg'] == 40  # 21 initially, then the 19 dim-colored tab icons.
+    assert ui.counts['svg'] == 41  # 22 initially, then the 19 dim-colored tab icons.
     assert ui.current._pills[0] is pill  # _pane_pill uses a fixed #8A8F98 for dim.
     ui.refresh()
-    assert ui.counts['svg'] == 40
+    assert ui.counts['svg'] == 41
 
 
 def poll_ui(iterations=20, fail_notifications=False):
@@ -230,7 +234,8 @@ def test_ui_updates_keep_fresh_state_without_network_or_unchanged_widget_writes(
           '_notif_badge': badge, 'ES': True, 'work_mark_state': work_marks,
           'work_mark_row': lambda scope, key: {'mark': 'none'},
           '_indicator_pixbuf': lambda icon, color, frame=0: (icon, color, frame),
-          '_indicator_animate': lambda hb: None}
+          '_set_indicator_frame': lambda image, icon, color, frame: image.set_from_pixbuf((icon, color, frame)),
+          'AI_SPRITES': 'comandos', '_indicator_animate': lambda hb: None}
     load({'update_dots', 'set_notif_badge', '_paint_all_tab_marks', 'paint_tab_mark', '_paint_tab_sticker', 'tab_indicator_display'}, ns)
     ns['update_dots']({'s': 'working'}, [{'session': 's', 'ts': 1}])
     ns['update_dots']({'s': 'working'}, [{'session': 's', 'ts': 2}])

@@ -95,34 +95,48 @@ def icon_svg(name, color=None, size=16, phase=None):
             f'stroke-linecap="round" stroke-linejoin="round">{body}</svg>')
 
 
-# ---- Canal de la IA (grill 30-sep): hechos verificables, iconos pixel 8-bit ----
-# Separado de la marca humana (que va como sticker). Cuadrícula de 20 px sin
-# antialias; las animaciones van a saltos, como el reloj de arena pixel.
+# ---- Canal de la IA (grill 30-sep): hechos verificables, sprites pixel ----
+# Separado de la marca humana (que va como sticker). Cada estado es una tira
+# horizontal de cuadros del MISMO personaje (dash/icons/semaforos/<set>/<estado>.png);
+# la animación va a saltos, como el reloj de arena pixel.
 AI_STATES = ("work", "need", "done", "error", "idle")
 AI_LABELS = {"work": ("Trabajando", "Working"), "need": ("Te necesita", "Needs you"),
              "done": ("Terminó", "Finished"), "error": ("Error", "Error"), "idle": ("Quieta", "Idle")}
 AI_COLORS = {"work": "#4ade80", "need": "#f5b83d", "done": "#4ade80", "error": "#f87171", "idle": "#5d6b7e"}
-_G, _A, _R, _D = AI_COLORS["work"], AI_COLORS["need"], AI_COLORS["error"], AI_COLORS["idle"]
-AI_ICONS = {
-    "work": (f'<g class="ai-gear" fill="{_G}"><rect x="8" y="1" width="4" height="4"/><rect x="8" y="15" width="4" height="4"/>'
-             f'<rect x="1" y="8" width="4" height="4"/><rect x="15" y="8" width="4" height="4"/><rect x="3" y="3" width="3" height="3"/>'
-             f'<rect x="14" y="3" width="3" height="3"/><rect x="3" y="14" width="3" height="3"/><rect x="14" y="14" width="3" height="3"/>'
-             f'<rect x="5" y="5" width="10" height="10"/></g><rect x="8" y="8" width="4" height="4" fill="#0b1119"/>'),
-    "need": (f'<rect x="2" y="2" width="16" height="12" fill="{_A}"/><rect x="6" y="14" width="4" height="4" fill="{_A}"/>'
-             '<g class="ai-bang" fill="#1a1300"><rect x="9" y="4" width="2" height="5"/><rect x="9" y="10" width="2" height="2"/></g>'),
-    "done": (f'<rect x="5" y="2" width="2" height="16" fill="#9aa6bf"/><g class="ai-flag" fill="{_G}">'
-             '<rect x="7" y="3" width="10" height="7"/></g>'),
-    "error": (f'<rect x="2" y="2" width="16" height="16" fill="{_R}"/><g class="ai-x" fill="#2a0a0e"><rect x="5" y="5" width="3" height="3"/>'
-              '<rect x="12" y="5" width="3" height="3"/><rect x="8" y="8" width="4" height="4"/><rect x="5" y="12" width="3" height="3"/>'
-              '<rect x="12" y="12" width="3" height="3"/></g>'),
-    "idle": f'<rect x="6" y="6" width="8" height="8" fill="none" stroke="{_D}" stroke-width="2"/>',
+# Sets elegibles (Ajustes → Apariencia). ``px``: cuadro nativo; ``tab``: tamaño en la
+# pestaña (múltiplo entero del nativo o el nativo, para píxel duro); ``frames``/``fps``
+# por estado. Quieta no se anima: una pestaña dormida no gasta cuadros.
+AI_SETS = {
+    "comandos": {"title": ("ComandOS bot", "ComandOS bot"), "px": 48, "tab": 24,
+                 "frames": {"work": 2, "need": 2, "done": 2, "error": 2, "idle": 2},
+                 "fps": {"work": 5, "need": 4, "done": 3, "error": 3},
+                 "credit": "Asset propio del proyecto"},
+    "kit": {"title": ("Burbujas (Kicked-in-Teeth)", "Bubbles (Kicked-in-Teeth)"), "px": 16, "tab": 16,
+            "frames": {"work": 3, "need": 3, "done": 3, "error": 3, "idle": 3},
+            "fps": {"work": 5, "need": 5, "done": 5, "error": 5},
+            "credit": "Kicked-in-Teeth · CC-BY-SA"},
 }
-AI_CYCLE_S = {"work": 1.0, "need": 0.6, "done": 1.4, "error": 0.8}
-AI_STEPS = {"work": 8, "need": 2, "done": 3, "error": 2}
+DEFAULT_AI_SET = "comandos"
+AI_SPRITE_DIR = "/icons/semaforos"
 _AI_OF = {"working": "work", "awaiting_permission": "need", "awaiting_input": "need", "waiting": "need",
           "completed": "done", "done": "done", "failed": "error", "error": "error"}
 # Marca humana como sticker (nombres de las bandejas aprobadas).
 STICKERS = {"frozen": "Aparcado", "awaiting_reply": "Esperando", "resolved": "Hecho"}
+
+
+def ai_set(name):
+    """Set de sprites válido (cae al default)."""
+    return name if name in AI_SETS else DEFAULT_AI_SET
+
+
+def ai_sprite(state, set_name=None):
+    """Tira del estado: ruta web, tamaño nativo, cuadros y ciclo en segundos
+    (0 = quieto). Escritorio y remoto pintan lo mismo a partir de esto."""
+    s = AI_SETS[ai_set(set_name)]
+    state = state if state in AI_STATES else "idle"
+    frames, fps = s["frames"].get(state, 1), s["fps"].get(state)
+    return {"file": f"{AI_SPRITE_DIR}/{ai_set(set_name)}/{state}.png", "px": s["px"], "tab": s["tab"],
+            "frames": frames, "cycle": (frames / fps) if fps and frames > 1 else 0}
 
 
 def ai_status(state):
@@ -130,27 +144,22 @@ def ai_status(state):
     return _AI_OF.get(state or "", "idle")
 
 
-def ai_frame_index(name, seconds):
-    cycle, steps = AI_CYCLE_S.get(name), AI_STEPS.get(name, 1)
-    return 0 if not cycle else int((seconds % cycle) / cycle * steps) % steps
+def ai_frame_index(name, seconds, set_name=None):
+    sp = ai_sprite(name, set_name)
+    return 0 if not sp["cycle"] else int((seconds % sp["cycle"]) / sp["cycle"] * sp["frames"]) % sp["frames"]
 
 
-def ai_icon_svg(name, size=20, phase=None):
-    """SVG pixel del semáforo; ``phase`` [0, 1) hornea ese paso del bucle."""
-    body = AI_ICONS.get(name, AI_ICONS["idle"])
-    steps = AI_STEPS.get(name)
-    if phase is not None and steps:
-        k = int((phase % 1.0) * steps) % steps
-        if name == "work":
-            body = body.replace('class="ai-gear"', f'transform="rotate({k * 45} 10 10)"', 1)
-        elif name == "need":
-            body = body.replace('class="ai-bang"', f'transform="translate(0 {-3 if k else 0})"', 1)
-        elif name == "done":
-            body = body.replace('class="ai-flag"', f'transform="translate(0 {(0, -1, 1)[k]})"', 1)
-        elif name == "error":
-            body = body.replace('class="ai-x"', f'opacity="{1 if k == 0 else 0.25}"', 1)
-    return (f'<svg xmlns="http://www.w3.org/2000/svg" width="{size}" height="{size}" viewBox="0 0 20 20" '
-            f'shape-rendering="crispEdges">{body}</svg>')
+def ai_icon_html(name, size=None, set_name=None):
+    """<span> con la tira como fondo; el CSS lo anima a saltos (steps)."""
+    sp = ai_sprite(name, set_name)
+    size = size or sp["tab"]
+    k = size / sp["px"]
+    cls = "ai-icon ai-sprite ai-" + (name if name in AI_STATES else "idle")
+    style = (f"width:{size}px;height:{size}px;background-image:url({sp['file']});"
+             f"background-size:{sp['frames'] * sp['px'] * k:g}px {size}px;--ai-w:{sp['frames'] * sp['px'] * k:g}px;"
+             f"--ai-frames:{sp['frames']};--ai-cycle:{sp['cycle']:g}s")
+    label = AI_LABELS.get(name, AI_LABELS["idle"])[0]
+    return f'<span class="{cls}" style="{style}" role="img" aria-label="{label}"></span>'
 
 
 def pane_key_for(panes, session, pane_id):

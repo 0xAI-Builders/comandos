@@ -1,18 +1,24 @@
-# Fase 1 · pendientes de cierre en el escritorio (30-sep-2026)
+# Fase 1 · cierre en el escritorio (30-sep-2026)
 
-Decisiones de Jesús tras ver el escritorio real (captura 30-sep 08:39) y el
-mockup `dash/prototypes/prototype-desktop-unificado.html` (rama del grill).
-No están programadas: otro agente trabaja la fase 2 en paralelo y estos
-fixes esperan su turno para no chocar.
+Decisiones de Jesús tras ver el escritorio real (captura 30-sep 08:39) y los
+mockups `prototype-desktop-unificado.html` / `prototype-iguales.html` (rama
+del grill). **Programadas el mismo día en la rama `fix/fase1-cierre-desktop`
+(fusionada a `main`)**; abajo, cada punto dice cómo quedó.
 
-## 1. Quitar «Sí» y «No» de la píldora de cada pane
+## 1. Quitar «Sí» y «No» de la píldora de cada pane — hecho
 
 La píldora `fable-5-1 ✓ · ⚙ · Sí · No · MCPs · Skills` no debe llevar Sí/No.
 Quitarlos de `_pane_pill` (`bin/cc-app`, `_answer_button`). Los Sí/No de la
 barra táctil de la terminal remota (`dash/term.html`) se quedan: ahí sí
 tienen sentido porque en el celular no hay Enter/Esc a la mano.
 
-## 2. Botones de acción a la izquierda, iguales al remoto
+## 2. Botones de acción a la izquierda, iguales al remoto — hecho
+
+Cómo quedó: la barra GTK conserva marca, ‹ › y controles de ventana; la
+cabecera web del tablero (la misma de remoto, mismo CSS y botones 3D) muestra
+en la app Terminal, Nueva sesión, Ordenar, Analytics, Remoto, Servidores,
+Resúmenes, campana, Pomodoro y Ajustes. Terminal / Nueva sesión / Ordenar
+piden la acción al GTK por el puente (`headerAction`).
 
 Variante **A** del mockup: la barra de ventana queda solo con la marca y los
 controles de ventana; `>_ + ⇅ Analytics Remoto reloj campana ✨ Ajustes` van
@@ -20,7 +26,16 @@ arriba de la barra lateral, en el mismo orden que en remoto (hoy están arriba
 a la derecha en `_headerbar.pack_end`). Mismo tamaño para todos, mismo estilo
 3D elegido en Ajustes.
 
-## 3. Misma calidad de componentes en escritorio y remoto
+## 3. Misma calidad de componentes en escritorio y remoto — hecho (camino b)
+
+Cómo quedó: cabecera de pane «Tarjeta» (semáforo + sesión | logo + modelo + ✓
+| «IA» y «MCPs · Skills»); pestañas GTK con el CSS de `.apptab` (44 px,
+tinte de marca, transiciones 150 ms); arrastre con fantasma real de la
+pestaña, ranura punteada del tamaño de la pestaña, auto-desplazamiento en los
+bordes, bandejas de estado y **soltar dentro de cualquier otra pestaña**
+(la vista vuelve a la que veías al presionar; posar el puntero ½ s sobre otra
+pestaña la muestra). El camino a) —mover la tira de pestañas a la vista web—
+queda como mejora futura, no como pendiente de fase 1.
 
 Por qué hoy el escritorio se ve peor: **la barra lateral y los paneles son
 web (WebKit, mismo CSS que el remoto), pero las pestañas, la barra de ventana,
@@ -51,7 +66,10 @@ arrastre de pestañas exactamente como el mockup aprobado, ligero y rápido.
 variantes Actual / A / B; se eligió **A**. Falta verlo en pantalla (chrome-bg
 desconectado al momento de hacerlo).
 
-## 4. Semáforos de pestaña: «ComandOS bot» por default (30-sep-2026)
+## 4. Semáforos de pestaña: «ComandOS bot» por default — hecho
+
+Sprites en `dash/icons/semaforos/{comandos,kit}/`, pref `ai_sprites` en
+Ajustes → Apariencia, GTK y web pintan la misma tira.
 
 Decidido en el grill `prototype-iguales.html` (rama del grill): los iconos
 actuales de `lib/work_marks.py` / `dash/work-marks.js` se sustituyen por el
@@ -68,7 +86,10 @@ Al programar: mover la tira a `dash/icons/semaforos/comandos/`, servirla en
 done 3, error 3), en vez de SVG inline. En GTK el `_paint_tab_sticker` ya
 dibuja imágenes en la pestaña; usar la misma tira.
 
-## 5. Reloj de arena propio (30-sep-2026)
+## 5. Reloj de arena propio — hecho
+
+`assets/pomodoro/comandos/hourglass.png` sustituye a Davitheoles en
+`dash/pomodoro.js`, `bin/cc-app`, manifest, créditos y README.
 
 Sustituir la tira de Davitheoles (`assets/pomodoro/davitheoles/hourglass.png`)
 por la nuestra: `dash/prototypes/assets/hourglass/comandos/hourglass.png`

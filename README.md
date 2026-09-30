@@ -184,7 +184,7 @@ If it saves you time, buy me a coffee — it keeps the project alive:
 
 ## Art credits
 
-The Pomodoro hourglass is [Inverted hourglass](https://davitheoles.itch.io/inverted-hourglass) by **Davitheoles**, used with credit as the author allows. The rest of the pixel art and its licenses are listed in [assets/pomodoro/CREDITS.md](./assets/pomodoro/CREDITS.md).
+The Pomodoro hourglass and the tab status robot are ComandOS' own pixel art (see [assets/pomodoro/CREDITS.md](./assets/pomodoro/CREDITS.md)). The rest of the pixel art and its licenses are listed in [assets/pomodoro/CREDITS.md](./assets/pomodoro/CREDITS.md).
 
 ## License
 

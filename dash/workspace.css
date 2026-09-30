@@ -575,7 +575,9 @@ header.hdr-ordered .hdr-primary{margin-left:0}
 header.hdr-ordered .counts{display:flex!important;flex:none;align-items:center;gap:6px;flex-wrap:wrap;min-width:0;max-width:100%}
 header.hdr-ordered .cnt-short{display:none}
 header.hdr-ordered :is(#btn-switch,#btn-snippets){display:inline-flex!important}
-body.inapp header.hdr-ordered :is(#btn-terminal,#btn-newsess){display:none}   /* en la app viven en la barra GTK (_quick_term_btn, _plus), como Pomodoro y Resúmenes */
+/* En la app la cabecera es la misma que en remoto (fix 2, grill 30-sep): Terminal, Nueva sesión,
+   Resúmenes, campana, Pomodoro y Ajustes viven aquí; Ordenar solo aparece dentro de la app. */
+body:not(.inapp) #btn-sort{display:none}
 #servers-panel{flex:none;width:100%;max-width:1360px;margin:0 auto;box-sizing:border-box;padding-top:8px;border-bottom:1px solid var(--line)}
 @container sidebar (max-width:760px){#view-panel #servers-panel #ssh-bar{padding-left:12px;padding-right:12px}}
 #menu-panel{position:fixed;z-index:60;min-width:230px;max-width:calc(100vw - 16px);max-height:calc(100dvh - 16px);overflow:auto;box-sizing:border-box;padding:8px;display:flex;flex-direction:column;gap:6px;
@@ -597,6 +599,7 @@ body.inapp header.hdr-ordered :is(#btn-terminal,#btn-newsess){display:none}   /*
 .btn-style-card{display:flex;align-items:center;gap:12px;text-align:left;padding:12px;border:1px solid var(--line);border-radius:12px;background:var(--panel);color:var(--text);cursor:pointer}
 .btn-style-card[aria-checked=true]{border-color:var(--brand);box-shadow:inset 0 0 0 1px var(--brand)}
 .btn-style-card small{display:block;color:var(--dim);font-size:11px;margin-top:2px}
+.ai-set-demo{display:inline-flex;align-items:flex-end;gap:6px;flex:none;padding:4px 6px;border-radius:8px;background:var(--panel2)}
 .btn-style-demo{display:flex;gap:10px;padding:6px 4px 10px;flex:none}
 .demo-key{color:var(--dim);cursor:pointer}
 
@@ -633,18 +636,13 @@ html[data-btn-style="consola"] header #btn-pomo{color:#1c1300}
 .pm-where{display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin:10px 0 4px;padding:8px 10px;border:1px solid var(--line);border-radius:9px;background:var(--panel2);font-size:12px;color:var(--dim)}
 .pm-where b{color:var(--text)}
 .pm-where .pm-link{background:none;border:0;color:var(--brand);text-decoration:underline;cursor:pointer;padding:0;font:inherit}
-/* ===== Semáforo de la IA pixel 8-bit + sticker tuyo (grill 30-sep) ===== */
+/* ===== Semáforo de la IA por sprites + sticker tuyo (grill 30-sep) ===== */
 .ai-icon{display:block;flex:none;image-rendering:pixelated}
-.wm-animated .ai-work .ai-gear{transform-box:view-box;transform-origin:10px 10px;animation:ai-gear 1s steps(8) infinite}
-.wm-animated .ai-need .ai-bang{animation:ai-bang .6s steps(1) infinite}
-.wm-animated .ai-done .ai-flag{animation:ai-flag 1.4s steps(1) infinite}
-.wm-animated .ai-error .ai-x{animation:ai-x .8s steps(1) infinite}
-@keyframes ai-gear{to{transform:rotate(360deg)}}
-@keyframes ai-bang{50%{transform:translateY(-3px)}}
-@keyframes ai-flag{33%{transform:translateY(-1px)}66%{transform:translateY(1px)}}
-@keyframes ai-x{50%{opacity:.25}}
-.wm-offscreen .ai-icon *,html.pm-page-hidden .ai-icon *{animation-play-state:paused!important}
-@media (prefers-reduced-motion:reduce){.ai-icon *{animation:none!important}}
+.ai-sprite{background-repeat:no-repeat;background-position:0 0;animation:ai-strip var(--ai-cycle,0s) steps(var(--ai-frames,1)) infinite}
+.ai-sprite[style*="--ai-cycle:0s"]{animation:none}
+@keyframes ai-strip{to{background-position-x:calc(-1 * var(--ai-w))}}
+.wm-offscreen .ai-sprite,html.pm-page-hidden .ai-sprite{animation-play-state:paused!important}
+@media (prefers-reduced-motion:reduce){.ai-sprite{animation:none!important}}
 .wm-extra{display:inline-flex;align-items:center;gap:5px;flex:none}
 .wm-extra:empty{display:none}
 .wm-sticker{font:800 9px/1 system-ui;letter-spacing:.4px;padding:3px 5px;border-radius:5px;transform:rotate(-6deg);text-transform:uppercase;white-space:nowrap}

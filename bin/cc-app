@@ -184,14 +184,20 @@ Gtk.Settings.get_default().set_property("gtk-application-prefer-dark-theme", Tru
 
 APP_CSS = """
 notebook > header { background: @BAR@; border: none; box-shadow: none; }
+/* Pestañas = .apptab del remoto (fix 5, grill 30-sep): 44 px de alto, 12 px de
+   aire, mono 11 px con espaciado, tinte de marca al pasar y al estar activa,
+   transiciones de 150 ms. Un solo look en escritorio y remoto. */
 notebook > header > tabs > tab {
-  background: transparent; color: @DIM@; padding: 5px 12px; margin: 0;
-  font-family: 'JetBrainsMono Nerd Font Mono', 'JetBrainsMono Nerd Font', 'JetBrainsMono NF', 'JetBrains Mono', 'Cascadia Code', 'Fira Code', 'DejaVu Sans Mono', monospace; font-size: 11px;
-  border: none; box-shadow: none;
+  background: transparent; color: @DIM@; padding: 0 12px; margin: 0; min-height: 40px;
+  font-family: 'Ubuntu Sans Mono', 'JetBrainsMono Nerd Font Mono', 'JetBrainsMono Nerd Font', 'JetBrainsMono NF', 'JetBrains Mono', 'Cascadia Code', 'Fira Code', 'DejaVu Sans Mono', monospace; font-size: 11px;
+  letter-spacing: 0.2px; border: none; border-radius: 0; box-shadow: none;
+  transition: color 150ms ease, background-color 150ms ease, box-shadow 150ms ease;
 }
+notebook > header > tabs > tab:hover { color: @TEXT@; background-color: alpha(@BRAND@, 0.06); }
 notebook > header > tabs > tab:checked {
-  color: @TEXT@; box-shadow: inset 0 -2px 0 0 @BRAND@;
+  color: @TEXT@; background-color: alpha(@BRAND@, 0.09); box-shadow: inset 0 -2px 0 0 @BRAND@;
 }
+notebook > header > tabs > tab label.tab-name { font-weight: 600; }
 .tab-model { color: @BRAND@; font-family: monospace; font-size: 9px; }
 notebook > header > tabs > tab button {
   color: @FAINT@; padding: 0; margin: 0; min-height: 14px; min-width: 14px;
@@ -1317,9 +1323,10 @@ def _build_hb_css():
     return (
     b".pane-pill{background:" + THEME["bg"].encode() + b";"
     b" background-clip:padding-box;opacity:1;"
-    b" border-radius:999px;padding:3px 12px;"
+    b" border-radius:10px;padding:3px 10px;"
     b" border:1.5px solid " + THEME["line"].encode() + b";"
     b" box-shadow:0 1px 4px rgba(0,0,0,0.55);}"
+    b".pane-card separator{background:" + THEME["line"].encode() + b";min-width:1px;margin:3px 0;}"
     b".pane-pill label{color:" + THEME["fg"].encode() + b"; font-size:11.5px;"
     b" background:transparent;}"
     b".pane-pill.pp-claude,.pane-pill.pp-codex,.pane-pill.pp-grok{"
@@ -1330,8 +1337,8 @@ def _build_hb_css():
     b".pane-pill.pp-shell label{font-size:11px;}"
     b".pill-btn{padding:2px 5px;margin:0;background:rgba(148,148,148,0.12);"
     b" border:1px solid rgba(148,148,148,0.55);border-radius:999px;min-height:0;}"
-    b".pill-btn.pill-yes{color:#4ade80;border-color:#1f7a44;font-weight:800;}"
-    b".pill-btn.pill-no{color:#f87171;border-color:#8a2a35;font-weight:800;}"
+    b".pane-card .pill-btn{padding:2px 8px;border-radius:8px;}"
+    b".pane-card .pill-btn label{font-size:11px;font-weight:700;}"
     b".pill-btn:hover{border-color:" + THEME["fg"].encode() + b";"
     b" background:rgba(148,148,148,0.28);}"
     b"window,window.background,window.solid-csd,window.csd{"
@@ -1900,19 +1907,53 @@ _INDICATOR_PIXBUFS = {}
 _INDICATOR = {"source": None, "t0": None}
 
 
-def _indicator_pixbuf(icon, color, frame=0):
+AI_SPRITES = (PREFS.get("ai_sprites") if isinstance(PREFS, dict) else None) or work_mark_state.DEFAULT_AI_SET
+_AI_STRIPS = {}
+
+
+def _ai_strip(state):
+    """Tira PNG del estado para el set activo (dash/icons/semaforos/<set>/), cacheada."""
+    key = (AI_SPRITES, state)
+    if key not in _AI_STRIPS:
+        rel = work_mark_state.ai_sprite(state, AI_SPRITES)["file"].lstrip("/")
+        _AI_STRIPS[key] = GdkPixbuf.Pixbuf.new_from_file(os.path.join(CC_REPO, "dash", rel))
+    return _AI_STRIPS[key]
+
+
+def ai_frame_pixbuf(state, frame, scale=1):
+    """Cuadro ``frame`` del semáforo, recortado de la tira y escalado a píxel
+    duro (NEAREST) al tamaño de pestaña × factor HiDPI."""
+    sp = work_mark_state.ai_sprite(state, AI_SPRITES)
+    strip = _ai_strip(state)
+    px = sp["px"]
+    frame = frame % max(1, sp["frames"])
+    cell = strip.new_subpixbuf(frame * px, 0, px, px)
+    size = sp["tab"] * scale
+    return cell if size == px else cell.scale_simple(size, size, GdkPixbuf.InterpType.NEAREST)
+
+
+def apply_ai_sprites(set_name=None):
+    """Cambia el set de semáforos (Ajustes) y repinta todas las pestañas."""
+    global AI_SPRITES
+    AI_SPRITES = work_mark_state.ai_set(set_name or AI_SPRITES)
+    _INDICATOR_PIXBUFS.clear()
+    for key, box in tabs.items():
+        hb = tab_hb(box)
+        image = getattr(hb, "_dot", None) if hb is not None else None
+        if image is not None:
+            image._ind = None
+            paint_tab_mark(hb, key)
+
+
+def _indicator_pixbuf(icon, color, frame=0, scale=1):
     """Frame ``frame`` of the icon's loop, rendered once and cached. ``ai:<n>``
-    is the AI pixel semáforo (grill 30-sep); the rest are the E1 line icons."""
-    key = (icon, color, frame)
+    is the AI sprite semáforo (grill 30-sep); the rest are the E1 line icons."""
+    key = (icon, color, frame, scale)
     if key not in _INDICATOR_PIXBUFS:
-        loader = GdkPixbuf.PixbufLoader.new_with_type("svg")
         if icon.startswith("ai:"):
-            name = icon[3:]
-            steps = work_mark_state.AI_STEPS.get(name)
-            loader.write(work_mark_state.ai_icon_svg(name, 16, phase=frame / steps if steps else None).encode())
-            loader.close()
-            _INDICATOR_PIXBUFS[key] = loader.get_pixbuf()
+            _INDICATOR_PIXBUFS[key] = ai_frame_pixbuf(icon[3:], frame, scale)
             return _INDICATOR_PIXBUFS[key]
+        loader = GdkPixbuf.PixbufLoader.new_with_type("svg")
         n = work_mark_state.frame_count(icon)
         loader.write(work_mark_state.icon_svg(icon, color=color, size=14,
                                               phase=None if n <= 1 else frame / n).encode())
@@ -1921,11 +1962,22 @@ def _indicator_pixbuf(icon, color, frame=0):
     return _INDICATOR_PIXBUFS[key]
 
 
+def _set_indicator_frame(image, icon, color, frame):
+    """Pone el cuadro en la imagen; los sprites van como superficie con el
+    factor de escala de la pantalla para que no se vean borrosos en HiDPI."""
+    if icon.startswith("ai:"):
+        scale = max(1, image.get_scale_factor())
+        pb = _indicator_pixbuf(icon, color, frame, scale)
+        image.set_from_surface(Gdk.cairo_surface_create_from_pixbuf(pb, scale, image.get_window()))
+    else:
+        image.set_from_pixbuf(_indicator_pixbuf(icon, color, frame))
+
+
 def tab_indicator_display(mark, state):
     """(icon, colour, animated): el semáforo pixel de lo que sabe la IA. La
     marca humana ya no lo tapa: va aparte como sticker (dos canales, grill 30-sep)."""
     ai = work_mark_state.ai_status(state)
-    return "ai:" + ai, None, ai != "idle"
+    return "ai:" + ai, None, bool(work_mark_state.ai_sprite(ai, AI_SPRITES)["cycle"])
 
 
 def paint_tab_mark(hb, key):
@@ -1942,7 +1994,7 @@ def paint_tab_mark(hb, key):
     image._ind, image._frame = (icon, color), 0
     hb._ind_icon = icon
     try:
-        image.set_from_pixbuf(_indicator_pixbuf(icon, color, 0))
+        _set_indicator_frame(image, icon, color, 0)
     except Exception:
         return
     image.set_tooltip_text("IA: " + work_mark_state.AI_LABELS[icon[3:]][0 if ES else 1])
@@ -1996,12 +2048,21 @@ def _indicator_tick():
         image = getattr(hb, "_dot", None)
         icon = getattr(hb, "_ind_icon", None)
         ai = icon[3:] if isinstance(icon, str) and icon.startswith("ai:") else None
-        if image is not None and (icon in work_mark_state.CYCLE_S or ai in work_mark_state.AI_CYCLE_S):
+        if image is not None and (icon in work_mark_state.CYCLE_S or (ai and work_mark_state.ai_sprite(ai, AI_SPRITES)["cycle"])):
             looping = True
-            frame = work_mark_state.ai_frame_index(ai, t) if ai else work_mark_state.frame_index(icon, t)
+            frame = work_mark_state.ai_frame_index(ai, t, AI_SPRITES) if ai else work_mark_state.frame_index(icon, t)
             if getattr(image, "_frame", 0) != frame:
                 image._frame = frame
-                image.set_from_pixbuf(_indicator_pixbuf(icon, image._ind[1], frame))
+                _set_indicator_frame(image, icon, image._ind[1], frame)
+        for pill in getattr(box, "_pills", []) or []:
+            card_ai = getattr(pill, "_ai", None)
+            card_icon = getattr(card_ai, "_ai_icon", "") if card_ai is not None else ""
+            if card_icon.startswith("ai:") and work_mark_state.ai_sprite(card_icon[3:], AI_SPRITES)["cycle"]:
+                looping = True
+                frame = work_mark_state.ai_frame_index(card_icon[3:], t, AI_SPRITES)
+                if getattr(card_ai, "_frame", 0) != frame:
+                    card_ai._frame = frame
+                    _set_indicator_frame(card_ai, card_icon, None, frame)
         star = getattr(hb, "_favorite_image", None)
         if star is not None and key in TAB_FAVORITES:
             looping = True
@@ -2775,7 +2836,7 @@ def _apply_tab_rename_css(entry):
 
 
 def tab_label(text, key=None, closable=True, on_close=None):
-    hb = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
+    hb = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
     # E1: one 14 px indicator per tab (mark / working ring / neutral ring); it
     # replaces the coloured dot and keeps fixed bounds while it animates.
     dot = Gtk.Image.new_from_pixbuf(_indicator_pixbuf("none", DOT_IDLE, 0))
@@ -2794,6 +2855,7 @@ def tab_label(text, key=None, closable=True, on_close=None):
             return True   # the tab itself is selected by its name, not by the indicator
         dot_box.connect("button-press-event", _open_state_menu)
     lbl = Gtk.Label(label=text)
+    lbl.get_style_context().add_class("tab-name")
     # EventBox permite recibir clicks (Label no los captura por default).
     # Doble-click = renombrar inline; sin bloquear el single-click que
     # GtkNotebook usa para cambiar de pestaña.
@@ -4180,7 +4242,10 @@ def ws_drag_source(widget, key):
 
 def _ws_press(widget, event, key):
     if event.button == 1 and event.type == Gdk.EventType.BUTTON_PRESS and _WS["doc"] is not None:
-        _WS["press"] = {"widget": widget, "key": key, "x": event.x_root, "y": event.y_root}
+        # La página ANTES de que el notebook cambie por el clic: si esto acaba en
+        # arrastre, esa es la vista donde se quiere soltar (fix 4, grill 30-sep).
+        _WS["press"] = {"widget": widget, "key": key, "x": event.x_root, "y": event.y_root,
+                        "page": nb.get_current_page()}
     return False   # el notebook sigue cambiando de pestana con el clic
 
 
@@ -4196,7 +4261,7 @@ def _ws_pointer_move(widget, event):
     if _WS["drag"] is None:
         if ((event.x_root - press["x"]) ** 2 + (event.y_root - press["y"]) ** 2) < 49:
             return False
-        _ws_drag_begin(_ws_source_of(widget, press["key"]))
+        _ws_drag_begin(_ws_source_of(widget, press["key"]), press.get("page"))
         if _WS["drag"] is None:
             return False
     x, y = _ws_layer_point(widget, event)
@@ -4247,30 +4312,67 @@ def _ws_edge_tick():
         _WS["edge_timer"] = None
         return False
     x, y = _WS.get("pointer") or (-1, -1)
-    strip_h = _ws_layout()["strip"][3]
+    layout = _ws_layout()
+    strip_h = layout["strip"][3]
     step = ws_strip_edge_step(x, _ws_layer.get_allocated_width()) if 0 <= y <= strip_h + 12 else 0
     if step:
         (nb.prev_page if step < 0 else nb.next_page)()
         _WS["target"] = _ws_target(x, y)
         _ws_layer.queue_draw()
+        return True
+    # Posar el puntero ~½ s sobre otra pestaña la muestra: así se puede soltar
+    # la arrastrada dentro de CUALQUIER tab (agrupar), no solo en la que veías.
+    over = next((page for page, (ex, ey, ew, eh) in layout["entries"]
+                 if ex <= x <= ex + ew and ey <= y <= ey + eh), None) if 0 <= y <= strip_h else None
+    if over is not None and over is not _ws_source_page(_WS["drag"]) and over is not nb.get_nth_page(nb.get_current_page()):
+        if _WS.get("dwell") is over:
+            nb.set_current_page(nb.page_num(over))
+            _WS["dwell"] = None
+            _WS["target"] = _ws_target(x, y)
+            _ws_layer.queue_draw()
+        else:
+            _WS["dwell"] = over
+    else:
+        _WS["dwell"] = None
     return True
 
 
-def _ws_drag_begin(source):
+def _ws_source_page(source):
+    """Página del notebook de la pestaña/grupo que se arrastra."""
+    for page in notebook_pages():
+        if isinstance(page, gtk_workspace.GroupPage):
+            if source == "group:" + page.group_id:
+                return page
+        elif getattr(page, "_key", None) == source:
+            return page
+    return None
+
+
+def _ws_drag_begin(source, press_page=None):
     if _WS["doc"] is None or not source:
         return
     _WS["drag"] = source
     _WS["target"] = None
+    _WS["dwell"] = None
+    # Volver a la vista que tenías al presionar: el clic ya había cambiado a la
+    # pestaña arrastrada y soltarla sobre su propia área no acomoda nada.
+    if press_page is not None and 0 <= press_page < nb.get_n_pages() and press_page != nb.get_current_page():
+        nb.set_current_page(press_page)
     _WS["drag_page"] = nb.get_current_page()
+    page = _ws_source_page(source)
+    label = nb.get_tab_label(page) if page is not None else None
+    _WS["source_label"] = label           # la capa la tapa: en la barra queda solo su sombra
     if not _WS.get("edge_timer"):
         _WS["edge_timer"] = GLib.timeout_add(260, _ws_edge_tick)
     _ws_layer.show()
 
 
 def _ws_drag_end():
+    _WS["source_label"] = None
     _WS["drag"] = None
     _WS["target"] = None
     _WS["trays"] = None
+    _WS["dwell"] = None
     _ws_layer.hide()
 
 
@@ -4351,7 +4453,11 @@ def _ws_target(x, y):
         idx = target["index"]
         target["docIndex"] = _ws_doc_index(pages[idx] if idx < len(pages) else None)
         rx = raw[idx][1][0] if idx < len(raw) else (raw[-1][1][0] + raw[-1][1][2] if raw else 0)
-        target["rect"] = (rx - 3, 0, 6, layout["strip"][3])
+        src = _WS.get("source_label")
+        sw = src.get_allocation().width if src is not None else 0
+        sw = sw if sw > 12 else 96
+        target["rect"] = (rx - sw / 2, 2, sw, max(8, layout["strip"][3] - 8))
+        target["slot"] = True
     return target
 
 
@@ -4415,21 +4521,96 @@ def _ws_draw_trays(cr, target):
         cr.show_text(text)
 
 
+def _ws_rounded(cr, x, y, w, h, r):
+    r = max(0, min(r, w / 2, h / 2))
+    cr.new_sub_path()
+    cr.arc(x + w - r, y + r, r, -1.5708, 0)
+    cr.arc(x + w - r, y + h - r, r, 0, 1.5708)
+    cr.arc(x + r, y + h - r, r, 1.5708, 3.1416)
+    cr.arc(x + r, y + r, r, 3.1416, 4.7124)
+    cr.close_path()
+
+
+def _ws_draw_ghost(cr):
+    """Fantasma (grill 30-sep, variante C): copia de la pestaña arrastrada, un
+    poco girada y con sombra, siguiendo al puntero."""
+    label, pointer = _WS.get("source_label"), _WS.get("pointer")
+    if label is None or not pointer:
+        return
+    alloc = label.get_allocation()
+    w, h = max(24, alloc.width), max(16, alloc.height)
+    px, py = pointer
+    cr.save()
+    cr.translate(px, py)
+    cr.rotate(-0.045)
+    cr.translate(-w / 2, -h / 2)
+    cr.set_source_rgba(0, 0, 0, 0.35)                      # sombra
+    _ws_rounded(cr, 2, 5, w + 10, h + 6, 9)
+    cr.fill()
+    bar = Gdk.RGBA(); bar.parse(THEME.get("bar") or "#161B22")
+    brand = Gdk.RGBA(); brand.parse(THEME.get("brand") or "#8B7CF6")
+    cr.set_source_rgba(bar.red, bar.green, bar.blue, 0.97)
+    _ws_rounded(cr, 0, 0, w + 10, h + 6, 9)
+    cr.fill_preserve()
+    cr.set_source_rgba(brand.red, brand.green, brand.blue, 0.9)
+    cr.set_line_width(1.5)
+    cr.stroke()
+    cr.translate(5, 3)
+    cr.push_group()
+    try:
+        label.draw(cr)
+    except Exception:
+        pass
+    cr.pop_group_to_source()
+    cr.paint_with_alpha(0.95)
+    cr.restore()
+
+
+def _ws_draw_lifted(cr):
+    """La pestaña arrastrada se «levanta» de la barra: la capa la cubre con el
+    color de la barra y deja una sombra tenue donde estaba."""
+    label = _WS.get("source_label")
+    rect = _ws_rect(label) if label is not None else None
+    if not rect:
+        return
+    x, y, w, h = rect
+    bar = Gdk.RGBA(); bar.parse(THEME.get("bar") or "#161B22")
+    cr.set_source_rgba(bar.red, bar.green, bar.blue, 0.86)
+    cr.rectangle(x - 1, y - 1, w + 2, h + 2)
+    cr.fill()
+    cr.set_source_rgba(0, 0, 0, 0.18)
+    _ws_rounded(cr, x + 4, y + 4, max(0, w - 8), max(0, h - 8), 7)
+    cr.fill()
+
+
 def _ws_draw(widget, cr):
     target = _WS["target"]
+    if _WS["drag"] is not None:
+        _ws_draw_lifted(cr)
     if _WS.get("trays"):
         _ws_draw_trays(cr, target)
-    if not target or target.get("kind") == "mark":
-        return False
-    x, y, w, h = target["rect"]
-    brand = Gdk.RGBA()
-    brand.parse(THEME.get("brand") or "#8B7CF6")
-    cr.set_source_rgba(brand.red, brand.green, brand.blue, 0.18 if target["kind"] == "dock" else 0.9)
-    cr.rectangle(x, y, w, h)
-    cr.fill_preserve()
-    cr.set_source_rgba(brand.red, brand.green, brand.blue, 0.95)
-    cr.set_line_width(2)
-    cr.stroke()
+    if target and target.get("kind") != "mark":
+        x, y, w, h = target["rect"]
+        brand = Gdk.RGBA()
+        brand.parse(THEME.get("brand") or "#8B7CF6")
+        if target.get("slot"):                              # ranura punteada donde caerá
+            cr.set_source_rgba(brand.red, brand.green, brand.blue, 0.14)
+            _ws_rounded(cr, x, y, w, h, 8)
+            cr.fill_preserve()
+            cr.set_source_rgba(brand.red, brand.green, brand.blue, 0.9)
+            cr.set_line_width(2)
+            cr.set_dash([5, 4])
+            cr.stroke()
+            cr.set_dash([])
+        else:                                                # mitad del área donde se acopla
+            cr.set_source_rgba(brand.red, brand.green, brand.blue, 0.18)
+            cr.rectangle(x, y, w, h)
+            cr.fill_preserve()
+            cr.set_source_rgba(brand.red, brand.green, brand.blue, 0.95)
+            cr.set_line_width(2)
+            cr.stroke()
+    if _WS["drag"] is not None:
+        _ws_draw_ghost(cr)
     return False
 
 
@@ -4606,30 +4787,38 @@ def _shell_pill(sess, pane_id):
     return pill
 
 
-def pane_answer(pane, yes):
-    """Sí = Enter (confirma la opción resaltada, «Yes» por defecto en Claude Code
-    y Codex); No = Esc (la rechaza). Igual que la barra de la terminal remota."""
-    if pane:
-        tmuxc("send-keys", "-t", pane, "Enter" if yes else "Escape")
-
-
-def _answer_button(text, pane, yes):
-    button = Gtk.Button(label=text)
+def _card_button(icon, text, tooltip, on_click):
+    """Botón de la tarjeta: icono + texto corto; toma el estilo 3D de Ajustes."""
+    button = Gtk.Button()
+    hb = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=5)
+    hb.pack_start(_svg_image(icon, 12, THEME.get("fg", "#ECECEC")), False, False, 0)
+    hb.pack_start(Gtk.Label(label=text), False, False, 0)
+    button.add(hb)
     button.set_relief(Gtk.ReliefStyle.NONE)
     button.get_style_context().add_class("pill-btn")
-    button.get_style_context().add_class("pill-yes" if yes else "pill-no")
-    button.set_tooltip_text(("Sí: confirma la opción resaltada del agente (Enter)" if yes
-                             else "No: rechaza la pregunta del agente (Esc)") if ES else
-                            ("Yes: confirm the agent's highlighted option (Enter)" if yes
-                             else "No: reject the agent's question (Esc)"))
-    button.connect("clicked", lambda *_: pane_answer(pane, yes))
+    button.set_tooltip_text(tooltip)
+    button.connect("clicked", on_click)
     return button
 
 
+def _pane_card_ai(sess):
+    """Semáforo de la IA de esta sesión dentro de la tarjeta (mismo sprite que la pestaña)."""
+    icon, _, animated = tab_indicator_display(work_mark_row("session", sess)["mark"], STATE_CACHE.get(sess, ""))
+    image = Gtk.Image()
+    image._ind, image._frame = (icon, None), 0
+    try:
+        _set_indicator_frame(image, icon, None, 0)
+    except Exception:
+        return None
+    image.set_tooltip_text("IA: " + work_mark_state.AI_LABELS[icon[3:]][0 if ES else 1])
+    image._ai_icon = icon
+    return image
+
+
 def _pane_pill(sess, p):
-    """Pildora MINIMALISTA: logo(s) de marca + modelo + glifo de certeza +
-    engrane. Sin texto redundante: el logo ES la identidad; el tooltip
-    carga todo el detalle (harness→motor, cuentas, pane, estado)."""
+    """Tarjeta del pane (grill 30-sep, igual que el remoto): semáforo + sesión |
+    logo + modelo + ✓ | «IA» y «MCPs · Skills». Sin texto redundante: el logo
+    ES la identidad; el tooltip carga el detalle (harness→motor, cuentas, pane)."""
     harness, motor = p.get("harness") or "?", p.get("motor") or "?"
     state = p.get("state") or "detecting"
     scol, sglyph = _STATE_UI.get(state, _STATE_UI["detecting"])
@@ -4637,8 +4826,19 @@ def _pane_pill(sess, p):
     dim = "#8A8F98"
     pill = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
     pill.get_style_context().add_class("pane-pill")
+    pill.get_style_context().add_class("pane-card")
     pill.get_style_context().add_class(f"pp-{motor if motor in _PV_HEX else 'x'}")
     pill.set_valign(Gtk.Align.START)
+    ai = _pane_card_ai(sess) if sess and sess != "local" else None
+    if ai is not None:
+        pill.pack_start(ai, False, False, 0)
+        pill._ai = ai
+    name = Gtk.Label()
+    name.set_markup(f'<span foreground="{fg}" weight="bold">{_esc(sess)}</span>')
+    name.set_ellipsize(Pango.EllipsizeMode.END)
+    name.set_max_width_chars(18)
+    pill.pack_start(name, False, False, 0)
+    pill.pack_start(Gtk.Separator(orientation=Gtk.Orientation.VERTICAL), False, False, 2)
     if motor != harness and harness in _PV_ICON:
         pill.pack_start(_svg_image(_PV_ICON[harness], 12, dim), False, False, 0)
     pill.pack_start(_svg_image(_PV_ICON.get(motor, "layers"), 15, fg), False, False, 0)
@@ -4651,8 +4851,8 @@ def _pane_pill(sess, p):
     else:
         lab.set_markup(f'<span foreground="{dim}">…</span>')
     pill.pack_start(lab, False, False, 0)
-    # UNICO acento de color en toda la pildora: el estado. Verde=confia,
-    # ambar=espera, gris=aun no se sabe. Cero carga cognitiva extra.
+    # UNICO acento de color en la tarjeta además del semáforo: el estado del
+    # motor. Verde=confia, ambar=espera, gris=aun no se sabe.
     st = Gtk.Label()
     st.set_markup(f'<span foreground="{scol}" weight="bold">{sglyph}</span>')
     pill.pack_start(st, False, False, 0)
@@ -4668,26 +4868,18 @@ def _pane_pill(sess, p):
                           + {"verified": " · verificado en el proceso vivo",
                              "changing": " · cambio de motor en curso",
                              "detecting": " · detectando, aun sin confirmar"}.get(state, ""))
-    b = Gtk.Button()
-    b.add(_svg_image("settings", 12, dim))
-    b.set_relief(Gtk.ReliefStyle.NONE)
-    b.get_style_context().add_class("pill-btn")
-    b.set_tooltip_text("Cambiar motor / modelo / cuenta de ESTE pane" if ES else "Switch this pane's motor/model/account")
-    b.connect("clicked", lambda *_, s=sess, pn=(p.get("pane") or ""): _dash_js(f"openMotorFor({json.dumps(s)},{json.dumps(pn)})"))
-    pill.pack_start(b, False, False, 0)
-    pill.pack_start(_answer_button("Sí", p.get("pane") or "", True), False, False, 0)
-    pill.pack_start(_answer_button("No", p.get("pane") or "", False), False, False, 0)
+    pill.pack_start(Gtk.Separator(orientation=Gtk.Orientation.VERTICAL), False, False, 2)
+    pill.pack_start(_card_button("settings", "IA",
+                                 "Cambiar motor / modelo / cuenta de ESTE pane" if ES else "Switch this pane's motor/model/account",
+                                 lambda *_, s=sess, pn=(p.get("pane") or ""): _dash_js(f"openMotorFor({json.dumps(s)},{json.dumps(pn)})")),
+                    False, False, 0)
     pill.pack_start(_extension_pill(sess, p.get("pane") or "", harness), False, False, 0)
     return pill
 
 
 def _extension_pill(sess, pane, harness=""):
-    button = Gtk.Button(label="MCPs · Skills")
-    button.set_relief(Gtk.ReliefStyle.NONE)
-    button.get_style_context().add_class("pill-btn")
-    button.set_tooltip_text("Extensiones de este panel" if ES else "This pane's extensions")
-    button.connect("clicked", lambda *_: _open_extension_shelf(sess, pane, harness))
-    return button
+    return _card_button("sparkles", "MCPs · Skills", "Extensiones de este panel" if ES else "This pane's extensions",
+                        lambda *_: _open_extension_shelf(sess, pane, harness))
 
 
 _EXTENSION_SHELF = {"view": None, "target": None, "save": 0}
@@ -4918,7 +5110,9 @@ def _refresh_tab_models():
         geo_now = _pane_geometry(session)   # tambien refresca _PANE_CMD
         sig = (json.dumps(panes or [], sort_keys=True) + "|" + json.dumps(sorted(geo_now.items()))
                + "|" + json.dumps(sorted((k, _PANE_CMD.get(k, "")) for k in geo_now))
-               + "|" + json.dumps(metrics) + "|" + json.dumps([THEME.get("fg"), THEME.get("brand")]))
+               + "|" + json.dumps(metrics) + "|" + json.dumps([THEME.get("fg"), THEME.get("brand")])
+               + "|" + work_mark_state.ai_status(STATE_CACHE.get(session, "")) + "|" + AI_SPRITES
+               + "|" + work_mark_row("session", session)["mark"])
         if sig != getattr(box, "_pill_sig", ""):
             box._pill_sig = sig
             _place_pills(box, panes or [], geo_now)
@@ -5110,7 +5304,7 @@ def _panel_popover(btn, panel, width, height):
 # La arena ES el tiempo del bloque (cuadros 0-20), con un goteo de +1 cuadro
 # mientras corre; en pausa se congela atenuado y al terminar gira (21-26).
 # Mismo cálculo que P.hourglassFrame en dash/pomodoro.js.
-HOURGLASS_SHEET = os.path.join(CC_REPO, "assets", "pomodoro", "davitheoles", "hourglass.png")
+HOURGLASS_SHEET = os.path.join(CC_REPO, "assets", "pomodoro", "comandos", "hourglass.png")
 HOURGLASS_FRAME_PX, HOURGLASS_FPS = 32, 9
 
 
@@ -5209,7 +5403,8 @@ def _hourglass_button(tooltip):
     b.get_style_context().add_class("tabplus")
     b.set_relief(Gtk.ReliefStyle.NONE)
     b.set_tooltip_text(tooltip)
-    _HOURGLASS["source"] = GLib.timeout_add(1000 // HOURGLASS_FPS, _hourglass_tick)
+    # El reloj visible es el de la cabecera web (mismo asset); este botón solo
+    # queda para el atajo, así que no arranca el ticker de cuadros.
     return b
 
 
@@ -5264,19 +5459,15 @@ for _winctl in (_minimize, _maximize, _close):
 _headerbar.pack_end(_close)
 _headerbar.pack_end(_maximize)
 _headerbar.pack_end(_minimize)
-# Separador sutil entre controles de ventana y actions de app.
-_hb_sep = Gtk.Box(); _hb_sep.set_size_request(8, 1)
-_headerbar.pack_end(_hb_sep)
-# Ajustes · Notificaciones · Pomodoro — pegados a los controles de ventana.
+# Fix 2 (grill 30-sep, escritorio = remoto): Ajustes · campana · Resúmenes ·
+# Pomodoro · Terminal · Nueva sesión · Ordenar ya NO van en la barra de
+# ventana: viven en la cabecera web del tablero, a la izquierda, con el mismo
+# CSS que el remoto (workspace.css, botones 3D de Ajustes). La barra GTK queda
+# con la marca, ‹ › y los controles de ventana. Los botones GTK siguen
+# existiendo para los atajos y el puente (HEADER_ACTIONS), sin empaquetarse.
 for _key, _cls in ((_settings_btn, "settings"), (_notif_btn, "notif"), (_news_btn, "news"), (_pomo_btn, "pomo")):
     _key.get_style_context().add_class("cc-key")
     _key.get_style_context().add_class("cc-key-" + _cls)
-_headerbar.pack_end(_settings_btn)
-_headerbar.pack_end(_notif_wrap)
-_headerbar.pack_end(_news_btn)
-_headerbar.pack_end(_pomo_btn)
-_hb_sep2 = Gtk.Box(); _hb_sep2.set_size_request(8, 1)
-_headerbar.pack_end(_hb_sep2)
 # Solo el "+" (nueva sesión). Copiar/pestañas/buscar/snippets/ayuda siguen
 # disponibles por atajos y menús, pero NO en la barra (el usuario no los usa).
 # ---- Modo MOSAICO (Ctrl+G): TODAS las sesiones en un grid de terminales
@@ -5665,16 +5856,20 @@ def _sort_menu(button):
         undo.connect("activate", lambda _w: _sort_tabs({"restore": _SORT["prev"]}))
         menu.append(undo)
     menu.show_all()
-    menu.popup_at_widget(button, Gdk.Gravity.SOUTH_WEST, Gdk.Gravity.NORTH_WEST, None)
+    if button is None:
+        menu.popup_at_pointer(None)
+    else:
+        menu.popup_at_widget(button, Gdk.Gravity.SOUTH_WEST, Gdk.Gravity.NORTH_WEST, None)
 
 
 _sort_btn = _icon_btn("arrow-up-down", "Ordenar pestañas una vez" if ES else "Sort tabs once", lambda b: _sort_menu(b))
 for _key, _cls in ((_plus, "plus"), (_quick_term_btn, "term"), (_sort_btn, "sort")):
     _key.get_style_context().add_class("cc-key")
     _key.get_style_context().add_class("cc-key-" + _cls)
-_headerbar.pack_end(_plus)
-_headerbar.pack_end(_quick_term_btn)
-_headerbar.pack_end(_sort_btn)
+# Acciones que la cabecera web pide al escritorio por el puente (mismo botón,
+# misma función que el atajo de teclado).
+HEADER_ACTIONS = {"quickTerminal": open_quick_terminal, "newSession": _open_wizard,
+                  "sortMenu": lambda *_: _sort_menu(None)}
 
 
 def _cycle_page(delta):
@@ -5784,6 +5979,12 @@ def on_msg(mgr, res):
             return
         if d.get("buttonStyle") in ("sutil", "arcade", "tecla", "pixel", "consola"):
             GLib.idle_add(apply_button_style, d["buttonStyle"])
+            return
+        if d.get("aiSprites") in work_mark_state.AI_SETS:
+            GLib.idle_add(apply_ai_sprites, d["aiSprites"])
+            return
+        if d.get("headerAction") in HEADER_ACTIONS:
+            GLib.idle_add(HEADER_ACTIONS[d["headerAction"]])
             return
         if d.get("theme"):
             apply_theme(d["theme"])

@@ -3,10 +3,10 @@
   "copiedFrom": "dash/prototypes/assets/pixel-packs (design worktree comandos-v1-grill)",
   "files": [
     {
-      "file": "davitheoles/hourglass.png",
-      "sourceFile": "https://davitheoles.itch.io/inverted-hourglass (Inverted Hourglass.zip → original(32x32)/Inverted hourglass1-27.png, appended left to right)",
-      "sha256": "ff68c4878e5ebc0375263cc86821dab0bc884757856c9b08b764e6cc689be163",
-      "bytes": 1852
+      "file": "comandos/hourglass.png",
+      "sourceFile": "own asset (30-sep-2026): glass generated with gpt-image-2.5-flare, sand and flip painted by scratchpad hourglass.py; see dash/prototypes/assets/hourglass/comandos/README.md",
+      "sha256": "a12cb32c866be293e1fc8590e9bd0c1033da41828bc9ea18b4302a36abeda4cb",
+      "bytes": 2349
     },
     {
       "file": "karsiori-chests/golden.png",

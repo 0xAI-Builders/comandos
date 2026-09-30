@@ -7448,6 +7448,7 @@ PREFS_DEFAULTS = {
     "terminal_opacity": 100,       # 0..100 — 100 = opaco
     "ligatures": True,
     "button_style": "sutil",       # botones de la cabecera: sutil | arcade | tecla | pixel | consola
+    "ai_sprites": "comandos",      # semáforo de las pestañas: comandos (bot propio) | kit (burbujas CC-BY-SA)
 }
 _CURSOR_SHAPES = ("block", "ibeam", "underline")
 
@@ -7551,6 +7552,8 @@ def update_prefs(data):
             prefs["theme"] = data["theme"]
         if data.get("button_style") in ("sutil", "arcade", "tecla", "pixel", "consola"):
             prefs["button_style"] = data["button_style"]
+        if data.get("ai_sprites") in ("comandos", "kit"):
+            prefs["ai_sprites"] = data["ai_sprites"]
         # Tipografía y estilo de terminal — cada campo se valida por su tipo.
         if isinstance(data.get("font_family"), str):
             prefs["font_family"] = data["font_family"][:120].strip() or PREFS_DEFAULTS["font_family"]

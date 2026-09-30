@@ -32,6 +32,9 @@ class Widget:
     def hide(self): self.shown = False
     def show(self): self.shown = True
     def set_from_pixbuf(self, p): self.pixbuf = p; self.writes += 1
+    def set_from_surface(self, p): self.pixbuf = p; self.writes += 1
+    def get_scale_factor(self): return 1
+    def get_window(self): return None
     def set_tooltip_text(self, t): self.tooltip = t
     def set_text(self, t): self.label = t
     def get_style_context(self): return SimpleNamespace(add_class=lambda c: None, remove_class=lambda c: None)
@@ -77,10 +80,12 @@ def load(responses):
         "WORK_MARKS": {"rows": {}, "panes": [], "fetching": False}, "work_mark_state": work_marks,
         "Gtk": fake_gtk(), "tabs": {"sess": "box"}, "nb": SimpleNamespace(get_tab_label=lambda box: label), "tab_hb": lambda box: label,
         "_work_mark_pixbuf": lambda name: "pix:" + name,
-        "_indicator_pixbuf": lambda icon, color, frame=0: f"pix:{icon}:{color}:{frame}",
+        "_indicator_pixbuf": lambda icon, color, frame=0, scale=1: f"pix:{icon}:{color}:{frame}",
+        "AI_SPRITES": "comandos",
         "_indicator_animate": lambda hb: hb._dot.animated.append(hb._ind_icon),
         "STATE_CACHE": {}, "DOT_COLORS": {"waiting": "#D08770", "working": "#81A1C1"}, "DOT_IDLE": "#4B5568",
         "TAB_FAVORITES": set(), "toggle_tab_favorite": lambda key: None,
+        "Gdk": SimpleNamespace(cairo_surface_create_from_pixbuf=lambda pb, scale, win: pb),
     }
     label._work_mark = Widget()
     label._dot = label._work_mark
@@ -88,8 +93,8 @@ def load(responses):
     label.animated = []
     ns["time"] = SimpleNamespace(monotonic=lambda: 0.0)
     tree = ast.parse(SOURCE)
-    nodes = [n for n in tree.body if isinstance(n, ast.FunctionDef) and n.name in NAMES]
-    assert len(nodes) == len(NAMES)
+    nodes = [n for n in tree.body if isinstance(n, ast.FunctionDef) and n.name in NAMES + ["_set_indicator_frame"]]
+    assert len(nodes) == len(NAMES) + 1
     exec(compile(ast.Module(body=nodes, type_ignores=[]), "<app>", "exec"), ns)
     return ns, posted, popups, label._work_mark
 
@@ -171,8 +176,8 @@ def test_context_menu_offers_tab_and_identified_pane_only():
     assert none.children == []
 
 
-def test_header_hourglass_is_davitheoles_and_follows_the_block():
-    """Grill 29-sep: Davitheoles' 27 original 32 px frames; the sand is the real time (C)."""
+def test_header_hourglass_is_the_own_strip_and_follows_the_block():
+    """Grill 30-sep: our own 27-frame 32 px strip; the sand is the real time (C)."""
     ns = {"CC_REPO": str(ROOT), "os": __import__("os"), "GdkPixbuf": None, "HOURGLASS_FRAME_PX": 32}
     tree = ast.parse(SOURCE)
     nodes = [n for n in tree.body if isinstance(n, ast.FunctionDef) and n.name in ("hourglass_sheet_frames", "hourglass_frame")]
@@ -186,7 +191,7 @@ def test_header_hourglass_is_davitheoles_and_follows_the_block():
     assert f(block("paused", 12.5 * 60000), 0, None) == 10
     assert sorted(f(block("running", 5 * 60000), t, None) for t in (0, 450, 900)) == [4, 4, 5]
     assert [f(None, 1000 + d, 1000) for d in (0, 110, 550)] == [21, 22, 26]
-    assert (ROOT / "assets" / "pomodoro" / "davitheoles" / "hourglass.png").is_file()
+    assert (ROOT / "assets" / "pomodoro" / "comandos" / "hourglass.png").is_file()
 
 
 def test_clicking_the_tab_indicator_opens_the_state_menu_with_icons_and_text():

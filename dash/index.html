@@ -213,7 +213,6 @@
   .hdr-right{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-left:auto;order:2}
   #snd-ctl,#btn-switch,#btn-snippets,#btn-danger,#btn-sov,#btn-term{display:none !important}   /* Remoto SI se queda (pedido 26-ago) */
   .hdr-primary{display:flex;align-items:center;gap:8px;order:3;flex:none}
-  body.inapp .hdr-primary{display:none}   /* en la app viven en la barra GTK, junto a minimizar/maximizar */
   .counts{order:1}
   #limits-strip{display:none !important}   /* los límites del plan viven en Uso, no en el header */
   /* Buscador DE SESIONES: vive junto al titulo de la seccion, no en el header */
@@ -1823,7 +1822,7 @@
 	    #content{padding-bottom:env(safe-area-inset-bottom)}
 	  }
 	</style>
-<link rel="stylesheet" href="/workspace.css?v=barra1">
+<link rel="stylesheet" href="/workspace.css?v=cabecera4">
 <link rel="stylesheet" href="/buttons.css?v=2">
 <link rel="stylesheet" href="/reparto.css">
 <script src="/session-config.js?v=7f3232b0a624"></script>
@@ -1859,6 +1858,7 @@
   </div>
   <button class="hdr-btn" id="btn-terminal" aria-label="Terminal" title="Terminal rápida en una carpeta nueva"><span data-icon="terminal" data-size="17"></span><span class="hdr-lbl">Terminal</span></button>
   <button class="hdr-btn primary" id="btn-newsess" aria-label="Nueva sesión" title="Nueva sesión"><span data-icon="plus" data-size="17"></span><span class="hdr-lbl">Nueva sesión</span></button>
+  <button class="hdr-btn" id="btn-sort" aria-label="Ordenar pestañas una vez" title="Ordenar pestañas una vez" aria-haspopup="menu"><span data-icon="arrow-up-down" data-size="17"></span></button>
   <div class="hdr-right">
 	    <button class="hdr-btn" id="btn-switch" aria-label="switch" title="Saltar a cualquier sesión (Ctrl+K)"><span data-icon="search" data-size="16"></span><span class="hdr-lbl">Buscar</span></button>
 	    <button class="hdr-btn" id="btn-snippets" aria-label="snippets" title="Snippets (Ctrl+Shift+K)"><span data-icon="snippet" data-size="16"></span><span class="hdr-lbl">Snippets</span></button>
@@ -1979,6 +1979,8 @@
     <div id="theme-gallery" class="theme-gallery" role="radiogroup" aria-label="Temas"></div>
     <div class="set"><label>Botones de la cabecera</label><div class="desc">Mismo tamaño para todos; elige cómo se ven y cómo se hunden al presionarlos.</div></div>
     <div id="button-style-gallery" class="btn-style-gallery" role="radiogroup" aria-label="Estilo de botones"></div>
+    <div class="set"><label>Semáforo de las pestañas</label><div class="desc">El personaje que dice si la IA trabaja, te necesita, terminó o falló. Igual en escritorio y remoto.</div></div>
+    <div id="ai-set-gallery" class="btn-style-gallery ai-set-gallery" role="radiogroup" aria-label="Semáforo de las pestañas"></div>
   </div>
 
   <!-- ========= Notificaciones + Idioma ========= -->
@@ -6694,6 +6696,7 @@ const ICON = {
   key:       '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m15.5 7.5 2.3 2.3a1 1 0 0 0 1.4 0l2.1-2.1a1 1 0 0 0 0-1.4L19 4"/><path d="m21 2-9.6 9.6"/><circle cx="7.5" cy="15.5" r="5.5"/></svg>',
   map:       '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.1 5.55a2 2 0 0 0 1.8 0l3.66-1.83A1 1 0 0 1 21 4.62v12.76a1 1 0 0 1-.55.9l-4.55 2.27a2 2 0 0 1-1.8 0l-4.2-2.1a2 2 0 0 0-1.8 0l-3.66 1.83A1 1 0 0 1 3 19.38V6.62a1 1 0 0 1 .55-.9l4.55-2.27a2 2 0 0 1 1.8 0z"/><path d="M15 5.76v15"/><path d="M9 3.24v15"/></svg>',
   x:         '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18M6 6l12 12"/></svg>',
+  "arrow-up-down": '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 4v16M3 8l4-4 4 4M17 20V4M13 16l4 4 4-4"/></svg>',
 };
 const svg = (name, sz=14) =>
   ICON[name] ? `<span class="ico" style="width:${sz}px;height:${sz}px;display:inline-flex;align-items:center;justify-content:center;vertical-align:-2px">${ICON[name]}</span>` : "";
@@ -6791,6 +6794,29 @@ async function selectButtonStyle(style){
   try{ await api("/prefs-set", {button_style: style}); }
   catch(e){ applyButtonStyle(previous, true); toast(e.message, true); }
 }
+// ---------- semáforo de pestañas: set de sprites (pref ai_sprites) ----------
+let curAiSet = "comandos";
+function applyAiSet(id, tellApp){
+  const wm = window.ComandosWorkMarks; if(!wm) return;
+  id = wm.aiSet(id); curAiSet = id;
+  document.documentElement.dataset.aiSet = id;
+  renderAiSetGallery();
+  document.querySelectorAll("[data-wm-state]").forEach(b => { if(b._wmTarget) try{ wm.paint(b, b._wmTarget); }catch(e){} });
+  if(tellApp && inApp()) window.webkit.messageHandlers.centro.postMessage(JSON.stringify({aiSprites: id}));
+}
+function renderAiSetGallery(){
+  const g = $("#ai-set-gallery"), wm = window.ComandosWorkMarks; if(!g || !wm) return;
+  const l = tf("es", "en") === "en" ? 1 : 0;
+  g.innerHTML = Object.entries(wm.AI_SETS).map(([id, set]) => `<button type="button" class="btn-style-card ai-set-card" role="radio" aria-checked="${id===curAiSet}" data-ai-set-id="${id}">
+    <span class="ai-set-demo wm-animated">${wm.AI_STATES.map(st => wm.aiIconSvg(st, set.tab, id)).join("")}</span>
+    <span><b>${mdEsc(set.title[l])}</b><small>${mdEsc(set.credit)}</small></span></button>`).join("");
+  g.querySelectorAll("[data-ai-set-id]").forEach(b => b.addEventListener("click", () => selectAiSet(b.dataset.aiSetId)));
+}
+async function selectAiSet(id){
+  const previous = curAiSet; applyAiSet(id, true);
+  try{ await api("/prefs-set", {ai_sprites: id}); }
+  catch(e){ applyAiSet(previous, true); toast(e.message, true); }
+}
 function renderThemeGallery(){
   const gallery=$("#theme-gallery");if(!gallery)return;
   gallery.innerHTML=THEME_SEQ.map((id,index)=>{const m=THEME_META[id];return `<button type="button" class="theme-card" role="radio" aria-checked="${id===curTheme}" data-theme-id="${id}" data-index="${index}">
@@ -6807,7 +6833,7 @@ async function selectTheme(name){
   catch(e){applyTheme(previous,true);toast(e.message,true);}
 }
 $("#btn-theme").addEventListener("click",()=>{
-  $("#settings").classList.add("open");activateMtab($("#settings .modal-panel"),"appearance");renderThemeGallery();renderButtonStyleGallery();
+  $("#settings").classList.add("open");activateMtab($("#settings .modal-panel"),"appearance");renderThemeGallery();renderButtonStyleGallery();renderAiSetGallery();
   setTimeout(()=>$("#theme-gallery [aria-checked=\"true\"]")?.focus(),0);
 });
 
@@ -6820,6 +6846,7 @@ async function loadPrefs(){
     if(version === favoriteVersion) applyFavorites(p.favorites);
     applyTheme(p.theme || "noche", true);   // sincroniza tambien la app al abrir
     applyButtonStyle(p.button_style || "sutil", true);
+    applyAiSet(p.ai_sprites || "comandos", true);
     hydrateTerminalPrefs(p);
   }catch(e){}
 }
@@ -7202,6 +7229,13 @@ $("#ssh-manage").addEventListener("click", toggleSshManager);
 // de pestañas: la cabecera se ve también en el escritorio y en la app, así que
 // se cablean aquí y no en initTabNavigation (solo remoto).
 function initHeaderActions(){
+  // Dentro de la app de escritorio estas tres acciones son del GTK (terminal VTE,
+  // asistente nativo, menú de orden de las pestañas GTK): se piden por el puente.
+  const toApp = action => e => { if(!inApp()) return; e.stopImmediatePropagation(); e.preventDefault();
+    window.webkit.messageHandlers.centro.postMessage(JSON.stringify({headerAction: action})); };
+  $("#btn-terminal").addEventListener("click", toApp("quickTerminal"), true);
+  $("#btn-newsess").addEventListener("click", toApp("newSession"), true);
+  $("#btn-sort").addEventListener("click", toApp("sortMenu"), true);
   const newBtn = $("#btn-newsess");
   newBtn.title = tf("Nueva sesión: carpeta, agente y cuenta", "New session: folder, agent and account");
   newBtn.setAttribute("aria-label", tf("Nueva sesión", "New session"));
@@ -7766,7 +7800,7 @@ if("serviceWorker" in navigator)
 <script src="/extensions.js"></script>
 <script src="/session-controls.js?v=d1adf7533f88"></script>
 <script src="/workspace.js?v=5ef84088e7bd"></script>
-<script src="/work-marks.js?v=semaforo2"></script>
+<script src="/work-marks.js?v=semaforo3"></script>
 <script src="/ui-sounds.js"></script>
 <script src="/pomodoro.js?v=sonido1"></script>
 <script src="/vendor/markdown-it-15.0.2.umd.min.js"></script>
