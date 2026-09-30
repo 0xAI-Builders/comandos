@@ -608,3 +608,16 @@ def test_article_reader_follows_up_to_eight_redirects():
     ok, text, err = ne.read_article("https://a.example/0", open=opener, resolver=lambda host: True)
     assert ok and "final text" in text, err
     assert ne.default_policy()["maxSeconds"] >= 1200
+
+
+def test_the_summary_agent_runs_with_silent_hooks(monkeypatch):
+    import acp
+    seen = {}
+
+    class Session:
+        def new_session(self): pass
+    monkeypatch.setattr(acp, "open_session", lambda spec, cwd, **kw: seen.update(kw) or Session())
+    monkeypatch.setattr(acp, "agent_specs", lambda registry: {"opencode": {"command": ["opencode", "acp"]}})
+    ne._default_acp_open("opencode", "m")
+    assert seen["extra_env"] == {"COMANDOS_SILENT_AGENT": "1"}
+    assert seen["permission_handler"] is ne.deny_agent_tools

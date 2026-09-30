@@ -4,6 +4,9 @@ import { homedir } from 'node:os';
 import { join } from 'node:path';
 
 export const Comandos = async ({ directory, client }) => {
+  // Agents ComandOS itself launches (e.g. the news summarizer over ACP) are
+  // not the user's sessions: no events, no process record.
+  if (process.env.COMANDOS_SILENT_AGENT === '1') return {};
   const root = join(homedir(), '.claude/hooks/native-processes');
   let start = '';
   try { start = (await readFile(`/proc/${process.pid}/stat`, 'utf8')).split(')').slice(1).join(')').trim().split(/\s+/)[19]; } catch {}

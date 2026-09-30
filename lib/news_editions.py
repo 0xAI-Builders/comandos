@@ -739,7 +739,9 @@ def _default_acp_open(agent, model):
         raise RuntimeError(f"agente ACP desconocido: {agent}")
     cwd = os.path.join(os.environ.get("XDG_STATE_HOME") or os.path.expanduser("~/.local/state"), "comandos", "news-acp")
     os.makedirs(cwd, mode=0o700, exist_ok=True)
-    session = acp.open_session(spec, cwd, model=model, permission_handler=deny_agent_tools)
+    # The summarizer is not one of Jesús's sessions: its hooks stay silent.
+    session = acp.open_session(spec, cwd, model=model, permission_handler=deny_agent_tools,
+                               extra_env={"COMANDOS_SILENT_AGENT": "1"})
     session.new_session()
     return session
 
