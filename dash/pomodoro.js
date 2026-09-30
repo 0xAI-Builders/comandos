@@ -193,6 +193,15 @@
 
   function styleOf(id) { return Object.prototype.hasOwnProperty.call(STYLES, id) ? id : DEFAULT_STYLE; }
 
+  /** Dónde sonará el fin del bloque, para decírselo a la persona antes de empezar. */
+  function soundWhere(sound, myDevice, localOn) {
+    if (!sound || !sound.enabled) return { where: 'ningún dispositivo (el aviso de foco es solo visual)', canEnableHere: false };
+    const d = sound.device;
+    if (d && d === myDevice) return { where: 'este dispositivo', canEnableHere: false };
+    const where = d === sound.desktopDevice || d === 'local-speaker' ? 'la compu' : d ? 'otro dispositivo' : 'ningún dispositivo';
+    return { where, canEnableHere: !localOn };
+  }
+
   function assetHtml(name, style, extra = '') {
     const set = styleOf(style);
     const a = STYLES[set].assets[name] || STYLES[set].assets.clock;
@@ -212,7 +221,7 @@
   }
 
   return { MIN, MIN_TARGET_MS, MAX_TARGET_MS, elapsedMs, remainingMs, fmt, deltaForRemaining, createClient, newRequestId,
-    STYLES, STYLE_ORDER, DEFAULT_STYLE, ART_SOURCES, styleOf, assetHtml, artFiles, hourglassFrame };
+    STYLES, STYLE_ORDER, DEFAULT_STYLE, ART_SOURCES, styleOf, assetHtml, artFiles, hourglassFrame, soundWhere };
 });
 
 /* ---------------------------------------------------------------------------
@@ -254,6 +263,9 @@
   async function claimSound(eventId) {
     let deviceId = '';
     try { deviceId = window.localStorage.getItem('comandos.deviceId') || ''; } catch (e) { deviceId = ''; }
+    // Solo reclama quien de verdad puede sonar: si no, el sonido queda «ya sonó» sin oírse.
+    const snd = sounds();
+    if (!deviceId || !snd || !snd.isReady()) return false;
     try {
       const r = await transport('POST', '/notices/sound', { eventId, deviceId });
       return !!(r && r.body && r.body.play);
@@ -439,7 +451,12 @@
     const on = snd.isEnabled();
     const vol = Math.round(snd.getVolume() * 100);
     const previews = [['focus-start', t('Inicio', 'Start')], ['focus-pause', t('Pausa', 'Pause')], ['focus-complete', t('Completado', 'Complete')], ['break-complete', t('Descanso', 'Break')], ['level-up', t('Subir de nivel', 'Level up')]];
-    return `<div class="pm-audio">
+    let myDevice = '';
+    try { myDevice = window.localStorage.getItem('comandos.deviceId') || ''; } catch (e) { myDevice = ''; }
+    const route = P.soundWhere((client.view().snapshot || {}).sound, myDevice, on);
+    return `<div class="pm-where" role="status">${icon('bell', 13)} ${t('Al terminar sonará en', 'When it ends it rings on')}: <b>${esc(route.where)}</b>${route.canEnableHere
+        ? ` · <button type="button" data-pm-sound class="pm-link">${t('que suene aquí', 'ring here')}</button>` : ''}</div>
+      <div class="pm-audio">
         <button type="button" data-pm-sound aria-pressed="${on}">${icon('bell', 13)} ${on ? t('Sonido activado', 'Sound on') : t('Activar sonido', 'Enable sound')}</button>
         <label>${t('Volumen', 'Volume')} <input type="range" data-pm-volume min="0" max="100" value="${vol}" aria-label="${t('Volumen de efectos', 'Effects volume')}"></label>
         <button type="button" data-pm-preview="focus-complete">${t('Escuchar final', 'Hear the end')}</button>

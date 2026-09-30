@@ -197,3 +197,28 @@ def test_snapshot_carries_ledger_progress_after_a_real_completion(dash):
     progress = get(dash)[1]["progress"]
     assert progress["xp"] == 250 and progress["level"] == 1 and progress["todayMinutes"] == 25
     assert progress["dailyGoalMinutes"] == 100
+
+
+def test_payload_says_where_the_end_will_sound(dash):
+    """Grill 30-sep: «nunca escuché la notificación» — the panel shows which
+    device will ring when the focus block ends."""
+    code, body = get(dash)
+    assert code == 200
+    sound = body["sound"]
+    assert set(sound) >= {"enabled", "device", "desktopDevice"}
+    assert sound["desktopDevice"] == dash.DESKTOP_DEVICE
+
+
+def test_focus_end_on_this_machine_is_the_game_jingle_at_the_notice_volume(dash, monkeypatch):
+    played = []
+    monkeypatch.setattr(dash, "_play_local_sound", lambda path, volume=None: played.append((path, volume)) or True)
+    import notification_delivery
+    monkeypatch.setattr(notification_delivery, "claim_sound", lambda conn, e, d, now, *a: {"play": d == dash.DESKTOP_DEVICE, "cue": "complete"})
+    monkeypatch.setattr(notification_delivery, "load_prefs", lambda conn: {"volume": 0.8})
+    assert dash._desktop_notice_sound("pomodoro:b1:completed") is True
+    path, volume = played[0]
+    assert path.endswith("pomodoro-complete.wav") and Path(path).is_file()
+    assert volume == 0.8
+    played.clear()
+    dash._desktop_notice_sound("event-other")
+    assert played[0][0] == dash.DESKTOP_NOTICE_SOUND

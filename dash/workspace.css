@@ -622,3 +622,7 @@ html[data-btn-style="consola"] header #btn-usage{--face:#2f7de0;--edge:#133f78}
 .btn-style-card .btn-style-demo[data-btn-style="consola"]>.demo-key.demo-key.on{--face:#22a35a;--edge:#0f5a2f}
 html[data-btn-style="consola"] header #btn-pomo{color:#1c1300}
 @media (prefers-reduced-motion:reduce){header .hdr-btn,.demo-key{transition:none}}
+/* Pomodoro: dónde sonará el final (grill 30-sep). */
+.pm-where{display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin:10px 0 4px;padding:8px 10px;border:1px solid var(--line);border-radius:9px;background:var(--panel2);font-size:12px;color:var(--dim)}
+.pm-where b{color:var(--text)}
+.pm-where .pm-link{background:none;border:0;color:var(--brand);text-decoration:underline;cursor:pointer;padding:0;font:inherit}

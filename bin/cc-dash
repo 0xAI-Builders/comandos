@@ -823,10 +823,21 @@ def notices_now():
 # no hook sees, like a Pomodoro focus end, still sound here when it wins.
 DESKTOP_DEVICE = "desktop-" + re.sub(r"[^A-Za-z0-9_.-]", "-", os.uname().nodename or "local")[:60]
 DESKTOP_NOTICE_SOUND = "/usr/share/sounds/freedesktop/stereo/complete.oga"
+# Fin del Pomodoro en esta máquina: jingle 8-bit propio (grill 30-sep: el
+# tintineo del sistema era de 1 s y casi no se oía).
+POMODORO_END_SOUND = os.path.join(os.path.dirname(os.path.dirname(os.path.realpath(__file__))),
+                                  "assets", "sounds", "pomodoro-complete.wav")
 
 
-def _play_local_sound(path):
-    for player in (["paplay", path], ["pw-play", path], ["afplay", path]):
+def _play_local_sound(path, volume=None):
+    """volume 0..1 (preferencias de avisos). pipewire-pulse ignora el --volume
+    de paplay, así que pw-play va primero cuando hay que atenuar."""
+    players = [["paplay", path], ["pw-play", path], ["afplay", path]]
+    if volume is not None:
+        v = max(0.0, min(1.0, float(volume)))
+        players = [["pw-play", f"--volume={v:.2f}", path], ["paplay", f"--volume={int(v * 65536)}", path],
+                   ["afplay", "-v", f"{v:.2f}", path]]
+    for player in players:
         if shutil.which(player[0]) and os.path.exists(path):
             subprocess.Popen(player, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
             return True
@@ -837,9 +848,14 @@ def _desktop_notice_sound(event_id, db_file=None):
     import notification_delivery
     conn = app_state.connect(db_file) if db_file else notices_conn()
     now = notices_now()
+    pomodoro = event_id.startswith("pomodoro:")
     for device in (DESKTOP_DEVICE, notification_delivery.LOCAL_SPEAKER):
         if notification_delivery.claim_sound(conn, event_id, device, now)["play"]:
-            _play_local_sound(DESKTOP_NOTICE_SOUND)
+            if pomodoro:
+                volume = notification_delivery.load_prefs(conn).get("volume", 0.6)
+                _play_local_sound(POMODORO_END_SOUND, volume)
+            else:
+                _play_local_sound(DESKTOP_NOTICE_SOUND)
             return True
     return False
 
@@ -6984,8 +7000,22 @@ def pomodoro_payload(state=None):
     state = state or pomodoro_store().snapshot()
     out = dict(state)
     out.update(queue=focus_queue(), settings=pomodoro_settings(),
-               progress=focus_progress.ledger_progress(pomodoro_store().conn, POMODORO_POLICY, state["serverNowMs"]))
+               progress=focus_progress.ledger_progress(pomodoro_store().conn, POMODORO_POLICY, state["serverNowMs"]),
+               sound=pomodoro_sound_route())
     return out
+
+
+def pomodoro_sound_route():
+    """Dónde sonará el fin del bloque ahora mismo (misma regla D5/D6 que los avisos)."""
+    import notification_delivery
+    try:
+        conn = notices_conn()
+        prefs = notification_delivery.load_prefs(conn)
+        enabled = prefs["modes"].get("focus") == "sound" and not prefs.get("muted")
+        device = notification_delivery.sound_device(notification_delivery.clients(conn, notices_now()), notices_now())
+    except Exception:
+        enabled, device = False, None
+    return {"enabled": bool(enabled), "device": device if enabled else None, "desktopDevice": DESKTOP_DEVICE}
 
 
 def pomodoro_scheduler_loop(stop=None):

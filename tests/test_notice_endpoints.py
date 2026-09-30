@@ -114,7 +114,7 @@ def test_a_published_edition_becomes_one_news_notice_with_its_id(server):
 def test_focus_end_plays_on_the_desktop_speaker_only_when_it_wins(server, monkeypatch):
     srv, dash = server
     played = []
-    monkeypatch.setattr(dash, "_play_local_sound", lambda path: played.append(path))
+    monkeypatch.setattr(dash, "_play_local_sound", lambda path, volume=None: played.append(path))
     record(dash, "focus_completed", "pomodoro:b1:completed")
     # Nobody visible: this machine is the fallback speaker.
     assert dash._desktop_notice_sound("pomodoro:b1:completed") is True and len(played) == 1

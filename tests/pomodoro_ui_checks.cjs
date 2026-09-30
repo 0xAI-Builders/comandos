@@ -192,7 +192,8 @@ async function readySounds(storage = memoryStorage(), log = []) {
         return { status: 200, json: async () => state.snapshot };
       },
       crypto: { randomUUID: () => 'req-' + posts.length },
-      uiSounds: { play: (cue, o) => { played.push([cue, o && o.eventId]); return {}; }, isEnabled: () => false, getVolume: () => 0.6, setEnabled() {}, unlock() {}, preview() {}, setVolume() {} },
+      uiSounds: { play: (cue, o) => { played.push([cue, o && o.eventId]); return {}; }, isEnabled: () => state.audio !== false, isReady: () => state.audio !== false, getVolume: () => 0.6, setEnabled() {}, unlock() {}, preview() {}, setVolume() {} },
+      localStorage: { getItem: k => (k === 'comandos.deviceId' ? 'web-test' : null), setItem() {} },
     };
     context.window = context; context.self = context;
     vm.createContext(context);
@@ -276,6 +277,28 @@ async function readySounds(storage = memoryStorage(), log = []) {
     await settle();
     assert.deepEqual(played, [], 'another device plays this sound');
     assert.deepEqual(v.state.claims.map(c => c.eventId), ['pomodoro:b1:completed']);
+  });
+
+  await check('the panel says where the end will ring (grill 30-sep: «nunca escuché»)', () => {
+    const me = 'web-me', desk = 'desktop-zion';
+    const line = (sound, localOn) => P.soundWhere(sound, me, localOn);
+    assert.deepEqual(line({ enabled: true, device: desk, desktopDevice: desk }, false), { where: 'la compu', canEnableHere: true });
+    assert.deepEqual(line({ enabled: true, device: 'local-speaker', desktopDevice: desk }, false), { where: 'la compu', canEnableHere: true });
+    assert.deepEqual(line({ enabled: true, device: me, desktopDevice: desk }, true), { where: 'este dispositivo', canEnableHere: false });
+    assert.deepEqual(line({ enabled: true, device: 'web-other', desktopDevice: desk }, true), { where: 'otro dispositivo', canEnableHere: false });
+    assert.deepEqual(line({ enabled: true, device: null, desktopDevice: desk }, false), { where: 'ningún dispositivo', canEnableHere: true });
+    assert.deepEqual(line({ enabled: false, device: null, desktopDevice: desk }, true), { where: 'ningún dispositivo (el aviso de foco es solo visual)', canEnableHere: false });
+  });
+
+  await check('a device that cannot play never claims the end sound (it would be lost)', async () => {
+    const played = [];
+    const done = { revision: 4, serverNowMs: T0 + 25 * MIN + 2000, settings: {}, block: Object.assign({}, running.block, { status: 'completed', activeMs: 25 * MIN, endedAtMs: T0 + 25 * MIN, deadlineMs: null, resumedAtMs: null }) };
+    const v = loadView(done, played, { audio: false });
+    await settle();
+    v.ui.render(); v.ui.render();
+    await settle();
+    assert.equal((v.state.claims || []).length, 0, 'no claim from a muted/locked device');
+    assert.deepEqual(played, []);
   });
 
   await check('an old completion after reload is not replayed', async () => {
