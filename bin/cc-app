@@ -1338,6 +1338,7 @@ def _build_hb_css():
     b" border-radius:8px;padding:0 10px;min-height:21px;"
     b" border:1px solid " + THEME.get("line2", THEME["line"]).encode() + b";"
     b" box-shadow:0 2px 0 " + THEME["line"].encode() + b";}"
+    b".pane-card{border:0;border-radius:9px 9px 0 0;box-shadow:none;padding:0 12px;min-height:0;}"
     b".pane-card{background-color:mix(" + THEME.get("bar", THEME["bg"]).encode() + b"," + THEME.get("line2", THEME["line"]).encode() + b",0.35);}"
     b".pane-card label{font-size:11px;}"
     b".pane-card separator{background:" + THEME["line"].encode() + b";min-width:1px;margin:8px 0;}"
@@ -1352,7 +1353,7 @@ def _build_hb_css():
     b".pane-pill.pp-shell label{font-size:11px;}"
     b".pill-btn{padding:2px 5px;margin:0;background:rgba(148,148,148,0.12);"
     b" border:1px solid rgba(148,148,148,0.55);border-radius:999px;min-height:0;}"
-    b".pane-card .pill-btn,.pane-card-keys .pill-btn{padding:0 9px;min-height:17px;border-radius:6px;margin:0;color:" + THEME.get("dim", "#8a98ab").encode() + b";}"
+    b".pane-card .pill-btn,.pane-card-keys .pill-btn{padding:0 14px;min-height:19px;border-radius:7px;margin:0;color:" + THEME.get("dim", "#8a98ab").encode() + b";}"
     b".pane-card .pill-btn label,.pane-card-keys .pill-btn label{font-size:10px;font-weight:600;color:" + THEME.get("dim", "#8a98ab").encode() + b";}"
     b".pane-card .pill-btn:hover label,.pane-card-keys .pill-btn:hover label{color:" + THEME["fg"].encode() + b";}"
     b".pp-logo{min-width:14px;min-height:14px;border-radius:4px;}"
@@ -5258,14 +5259,19 @@ def _pane_frames(term, geo, m_l, m_t, cw, chh, focused=True):
         at_bottom = rows_total and top + height >= rows_total
         y1 = bottom + (3 if at_bottom else 0)
         frames.append((x0, y0, x1 - x0, y1 - y0, active and focused))
-        rows[pane_id] = (x0, rail, x1 - x0)
+        rows[pane_id] = (x0, rail, x1 - x0, y0)
     return frames, rows
 
 
 def _card_rect(rows, pane_id, chh):
-    fx, rail_y, fw = rows[pane_id]
-    card_w = max(120, int(fw) - 12)
-    return max(0, int(fx) + 6), int(rail_y + 1), card_w
+    """Cabecera B (grill 30-sep): franja pegada arriba del marco, a todo su ancho,
+    desde el borde superior del marco hasta donde empieza el contenido."""
+    fx, rail_y, fw, fy = rows[pane_id]
+    top = int(fy) + 1
+    return int(fx) + 1, top, max(120, int(fw) - 2), max(18, int(rail_y + chh) - top)
+
+
+KEY_H = 19     # alto de «IA» / «MCPs · Skills» en la cabecera
 
 
 def _reposition_pills(box, geo):
@@ -5298,13 +5304,13 @@ def _reposition_pills(box, geo):
             w.set_margin_top(_pill_row_y(m_t, top, chh))
             w.set_margin_start(max(0, int(m_l + left * cw + cw)))
             continue
-        cx, cy, cwid = _card_rect(rows, pid, chh)
+        cx, cy, cwid, chgt = _card_rect(rows, pid, chh)
         if kind == "card":
-            w.set_size_request(cwid, -1)
+            w.set_size_request(cwid, chgt)
             w.set_margin_start(cx); w.set_margin_top(cy)
         elif kind == "keys":
             w.set_margin_start(max(cx, cx + cwid - int(getattr(w, "_kw", 0) or 0) - 8))
-            w.set_margin_top(cy + 2)
+            w.set_margin_top(cy + max(0, (chgt - KEY_H) // 2))
     ov.queue_draw()
     return True
 
@@ -5374,8 +5380,8 @@ def _place_pills(box, panes, geo=None):
         # (van en su propia capa, encima, al canto derecho).
         if (p.get("pane") or "") not in box._card_rows:
             continue
-        card_x, card_y, card_w = _card_rect(box._card_rows, p.get("pane") or "", chh)
-        pill.set_size_request(card_w, -1)
+        card_x, card_y, card_w, card_h = _card_rect(box._card_rows, p.get("pane") or "", chh)
+        pill.set_size_request(card_w, card_h)
         pill._pane_id, pill._kind = p.get("pane") or "", "card"
         # anclada al INICIO de cada pane, SOBRE el renglon de titulo tmux
         # que va vacio (riel reservado): no tapa contenido y la posicion es
@@ -5390,13 +5396,13 @@ def _place_pills(box, panes, geo=None):
         ov.set_overlay_pass_through(pill, True)
         pill.show_all()
         box._pills.append(pill)
-        keys = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)   # 6 px entre «IA» y «MCPs · Skills»
+        keys = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=10)  # 10 px entre «IA» y «MCPs · Skills»
         keys.get_style_context().add_class("pane-card-keys")
         for key in _pane_card_keys(sess_now, p, p.get("harness") or ""):
             keys.pack_start(key, False, False, 0)
         keys.set_halign(Gtk.Align.START)
         keys.set_valign(Gtk.Align.START)
-        keys.set_margin_top(card_y + 2)
+        keys.set_margin_top(card_y + max(0, (card_h - KEY_H) // 2))
         ov.add_overlay(keys)                 # primero en la jerarquía: así el ancho ya trae el CSS aplicado
         keys.show_all()
         kw = keys.get_preferred_width()[1] if hasattr(keys, "get_preferred_width") else 0
