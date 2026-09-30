@@ -5,6 +5,18 @@ import asyncio
 import json
 from pathlib import Path
 import sys
+import os
+
+# The MCP proxy needs the `mcp` package. Whatever interpreter launched us (system
+# python3.11, a symlink, another agent CLI), fall back to the extensions venv that
+# ships it instead of failing every server with ModuleNotFoundError.
+try:
+    import mcp  # noqa: F401
+except ModuleNotFoundError:
+    _venv=Path.home()/'.local/share/comandos/extensions-venv/bin/python'
+    if _venv.exists() and Path(sys.executable).resolve()!=_venv.resolve() and not os.environ.get('CC_EXTENSIONS_REEXEC'):
+        os.environ['CC_EXTENSIONS_REEXEC']='1'
+        os.execv(str(_venv),[str(_venv),str(Path(__file__).resolve()),*sys.argv[1:]])
 
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]/'lib'))
 from extension_catalog import (CatalogError,catalog_path,import_catalog,locked,read_config,
