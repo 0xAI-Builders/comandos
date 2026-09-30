@@ -1173,6 +1173,7 @@ import workspace_state
 import pomodoro
 import focus_progress
 import tui_state
+import cli_catalog
 _TUI_TRANSCRIPTS = tui_state.TranscriptCache()
 _TUI_STATES = tui_state.StateTracker()
 _GROK_METADATA = tui_state.GrokMetadataCache()
@@ -1279,6 +1280,34 @@ def grok_metadata_for_pid(pid):
     raw = env.get(b"GROK_HOME", b"").decode("utf-8", "replace")
     home = os.path.realpath(os.path.expanduser(raw or "~/.grok"))
     return _GROK_METADATA.read(int(pid), home) if pid else {}
+
+
+_CLI_CATALOG = {"catalog": None, "versions": {}, "at": 0.0}
+_CLI_CATALOG_TTL = 1800.0
+
+
+def cli_catalog_payload(refresh=False):
+    """Catalogo por CLI + versiones instaladas en cache (`--version` de cinco
+    binarios tarda segundos: solo se re-ejecuta al vencer el TTL o con refresh)."""
+    now = time.time()
+    if _CLI_CATALOG["catalog"] is None:
+        _CLI_CATALOG["catalog"] = cli_catalog.load_catalog()
+    if refresh or now - _CLI_CATALOG["at"] > _CLI_CATALOG_TTL:
+        _CLI_CATALOG["versions"] = cli_catalog.installed_versions(_CLI_CATALOG["catalog"])
+        _CLI_CATALOG["at"] = now
+    registry = load_provider_registry()
+    accounts = {}
+    for cli in _CLI_CATALOG["catalog"]["clis"]:
+        try:
+            accounts[cli["id"]] = [
+                {"alias": a["alias"], "env": account_registry.account_environment(registry, cli["id"], a["alias"])}
+                for a in account_registry.list_accounts(registry, cli["id"]) if a.get("alias") != "main"]
+        except Exception:
+            accounts[cli["id"]] = []
+    view = cli_catalog.catalog_view(_CLI_CATALOG["catalog"],
+                                    danger_flags=load_agent_roles().get("dangerFlags") or {},
+                                    versions=_CLI_CATALOG["versions"], accounts=accounts)
+    return view, _CLI_CATALOG["at"]
 
 
 def agent_info_for_pane(pane):
@@ -8668,7 +8697,7 @@ class Handler(http.server.SimpleHTTPRequestHandler):
     # sw.js, manifest, iconos) NO — no revela nada (es codigo open-source) y
     # asi la PWA instala y carga sin depender de cookies en el webview movil.
     API_GET = ("/session-config-history", "/pane-extensions", "/pomodoro", "/providers", "/optimization/plans", "/proxy", "/model/status", "/sovereignty", "/ui-log/summary", "/state", "/usage/state", "/usage/guard", "/usage/changes", "/usage/provider-compare", "/fs/dirs", "/models/latest", "/news/latest", "/news/edition", "/push/", "/notifs/count", "/usage/analytics", "/usage/interactions", "/usage/experiments", "/opencode/models", "/model-tiers", "/dedication", "/active-tab", "/session-profiles", "/extension-usage", "/session-brain", "/project-profiles", "/events", "/conf", "/prefs", "/ssh", "/tabs", "/workspace", "/notices",
-               "/tab-history", "/remote-state", "/remote-qr.png", "/snippets", "/tmux-mouse",
+               "/tab-history", "/remote-state", "/remote-qr.png", "/snippets", "/tmux-mouse", "/commands/catalog",
                "/webterm-token", "/operator", "/allocation/status")
     API_GET += ("/work-marks",)  # E1; /events/v2 queda cubierto por /events
 
@@ -9010,6 +9039,15 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             except FileNotFoundError:
                 pass
             return self._json(200, evs)
+        if self.path.startswith("/commands/catalog"):
+            q = urllib.parse.parse_qs(urllib.parse.urlparse(self.path).query)
+            sess = (q.get("session") or [""])[0][:80]
+            pane = (q.get("pane") or [""])[0]
+            info = agent_info_for_pane(pane) if PANE_RE.match(pane or "") else None
+            view, at = cli_catalog_payload(refresh=(q.get("refresh") or ["0"])[0] == "1")
+            return self._json(200, {"cliInPane": (info or {}).get("agent", "") or "",
+                                    "target": {"session": sess, "pane": pane},
+                                    "catalog": view, "versionsAt": at})
         if self.path == "/snippets":
             return self._json(200, read_snippets())
         if self.path.startswith("/operator/action-results"):
