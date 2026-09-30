@@ -1702,6 +1702,28 @@ def enforce_tab_order():
         _TAB_REORDERING = False
 
 
+def _paint_favorite_button(button, favorite):
+    """Enabled star = the looping twinkle of the web; disabled = outline glyph."""
+    if favorite:
+        image = getattr(button, "_star", None)
+        if image is None:
+            image = button._star = Gtk.Image.new_from_pixbuf(_indicator_pixbuf("favorite", None, 0))
+        image._frame = 0
+        button.set_image(image)
+        button.set_always_show_image(True)
+        button.set_label("")
+        button._favorite_image = image
+    else:
+        button.set_image(None)
+        button.set_label("☆")
+        button._favorite_image = None
+    hb = button.get_parent()
+    if hb is not None:
+        hb._favorite_image = button._favorite_image
+        if favorite:
+            _indicator_animate(hb)
+
+
 def refresh_favorite_buttons():
     for key, page in tabs.items():
         button = getattr(tab_hb(page), "_favorite", None)
@@ -1711,7 +1733,7 @@ def refresh_favorite_buttons():
         signature = (favorite, key not in _FAVORITE_PENDING, ES)
         if getattr(button, "_favorite_signature", None) == signature:
             continue
-        button.set_label("★" if favorite else "☆")
+        _paint_favorite_button(button, favorite)
         style = button.get_style_context()
         (style.add_class if favorite else style.remove_class)("favorite")
         button.set_sensitive(key not in _FAVORITE_PENDING)
@@ -1782,34 +1804,105 @@ def work_mark_row(scope, key):
 
 
 def _work_mark_pixbuf(name):
-    if name not in _WORK_MARK_PIXBUFS:
+    """Resting frame of a mark (context menus)."""
+    return _indicator_pixbuf(name, None, 0)
+
+
+_INDICATOR_PIXBUFS = {}
+_INDICATOR = {"source": None, "t0": None}
+
+
+def _indicator_pixbuf(icon, color, frame=0):
+    """Frame ``frame`` of the icon's loop, rendered once and cached."""
+    key = (icon, color, frame)
+    if key not in _INDICATOR_PIXBUFS:
+        n = work_mark_state.frame_count(icon)
         loader = GdkPixbuf.PixbufLoader.new_with_type("svg")
-        loader.write(work_mark_state.icon_svg(name, size=14).encode())
+        loader.write(work_mark_state.icon_svg(icon, color=color, size=14,
+                                              phase=None if n <= 1 else frame / n).encode())
         loader.close()
-        _WORK_MARK_PIXBUFS[name] = loader.get_pixbuf()
-    return _WORK_MARK_PIXBUFS[name]
+        _INDICATOR_PIXBUFS[key] = loader.get_pixbuf()
+    return _INDICATOR_PIXBUFS[key]
+
+
+def tab_indicator_display(mark, state):
+    """(icon, colour, animated) for a tab: same precedence as the web's
+    display(): the human mark, else the working ring while a turn runs, else
+    the neutral ready ring in the status colour (waiting stays visible)."""
+    if mark in work_mark_state.MARKS and mark != "none":
+        return mark, work_mark_state.ICON_COLORS[mark], True
+    if state == "working":
+        return "working", work_mark_state.ICON_COLORS["working"], True
+    return "none", DOT_COLORS.get(state, DOT_IDLE), False
 
 
 def paint_tab_mark(hb, key):
-    """Icono de la marca de sesion en la etiqueta; sin marca no dibuja nada."""
-    image = getattr(hb, "_work_mark", None)
+    """One indicator per tab (the old status dot): mark, activity or neutral.
+    Animated icons loop continuously while the window is visible (E1)."""
+    image = getattr(hb, "_dot", None)
     if image is None:
         return
-    mark = work_mark_row("session", key)["mark"]
-    if getattr(image, "_mark", None) == mark:
+    icon, color, animated = tab_indicator_display(work_mark_row("session", key)["mark"], STATE_CACHE.get(key, ""))
+    if getattr(image, "_ind", None) == (icon, color):
         return
-    image._mark = mark
-    if mark == "none":
-        image.hide()
-        return
+    image._ind, image._frame = (icon, color), 0
+    hb._ind_icon = icon
     try:
-        image.set_from_pixbuf(_work_mark_pixbuf(mark))
+        image.set_from_pixbuf(_indicator_pixbuf(icon, color, 0))
     except Exception:
-        image.hide()
         return
-    name = work_mark_state.LABELS[mark][0 if ES else 1]
-    image.set_tooltip_text(("Marca de la pestaña: " if ES else "Tab mark: ") + name)
+    name = work_mark_state.LABELS[icon][0 if ES else 1]
+    scope = ("Marca de la pestaña: " if ES else "Tab mark: ") if icon in work_mark_state.MARKS and icon != "none" \
+        else ("Estado: " if ES else "State: ")
+    image.set_tooltip_text(scope + name)
     image.show()
+    if animated:
+        _indicator_animate(hb)
+
+
+def _animations_enabled():
+    try:
+        return bool(Gtk.Settings.get_default().get_property("gtk-enable-animations"))
+    except Exception:
+        return True
+
+
+def _indicator_animate(hb):
+    """Start the single ticker that advances every looping indicator; it stops
+    itself when nothing loops any more."""
+    if _INDICATOR["source"] is None:
+        _INDICATOR["t0"] = _INDICATOR["t0"] or time.monotonic()
+        _INDICATOR["source"] = GLib.timeout_add(int(work_mark_state.FRAME_S * 1000), _indicator_tick)
+
+
+def _indicator_tick():
+    if not _PRESENCE.get("visible", True) or not _animations_enabled():
+        return True                      # hidden or reduced motion: rest on the current frame
+    t = time.monotonic() - _INDICATOR["t0"]
+    looping = False
+    for key, box in tabs.items():
+        hb = tab_hb(box)
+        if hb is None:
+            continue
+        image = getattr(hb, "_dot", None)
+        icon = getattr(hb, "_ind_icon", None)
+        if image is not None and icon in work_mark_state.CYCLE_S:
+            looping = True
+            frame = work_mark_state.frame_index(icon, t)
+            if getattr(image, "_frame", 0) != frame:
+                image._frame = frame
+                image.set_from_pixbuf(_indicator_pixbuf(icon, image._ind[1], frame))
+        star = getattr(hb, "_favorite_image", None)
+        if star is not None and key in TAB_FAVORITES:
+            looping = True
+            frame = work_mark_state.frame_index("favorite", t)
+            if getattr(star, "_frame", 0) != frame:
+                star._frame = frame
+                star.set_from_pixbuf(_indicator_pixbuf("favorite", None, frame))
+    if not looping:
+        _INDICATOR["source"] = None
+        return False
+    return True
 
 
 def _paint_all_tab_marks():
@@ -2529,13 +2622,11 @@ def _apply_tab_rename_css(entry):
 
 def tab_label(text, key=None, closable=True, on_close=None):
     hb = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
-    dot = Gtk.Label()
-    dot.set_markup(f'<span size="8500" foreground="{DOT_IDLE}">●</span>')
+    # E1: one 14 px indicator per tab (mark / working ring / neutral ring); it
+    # replaces the coloured dot and keeps fixed bounds while it animates.
+    dot = Gtk.Image.new_from_pixbuf(_indicator_pixbuf("none", DOT_IDLE, 0))
     hb.pack_start(dot, False, False, 0)
-    work_mark = Gtk.Image()
-    work_mark.set_no_show_all(True)
-    hb.pack_start(work_mark, False, False, 0)
-    hb._work_mark = work_mark
+    hb._work_mark = dot
     lbl = Gtk.Label(label=text)
     # EventBox permite recibir clicks (Label no los captura por default).
     # Doble-click = renombrar inline; sin bloquear el single-click que
@@ -2556,7 +2647,7 @@ def tab_label(text, key=None, closable=True, on_close=None):
     hb._text_box = lbl_box
     globals().get("ws_drag_source", lambda *a: None)(lbl_box, key)
     if key and key != "local":
-        favorite = Gtk.Button(label="★" if key in TAB_FAVORITES else "☆")
+        favorite = Gtk.Button(label="☆")
         favorite.set_relief(Gtk.ReliefStyle.NONE)
         favorite.set_focus_on_click(False)
         favorite.get_style_context().add_class("tabfav")
@@ -2567,6 +2658,8 @@ def tab_label(text, key=None, closable=True, on_close=None):
         favorite.connect("clicked", lambda *_: toggle_tab_favorite(key))
         hb.pack_start(favorite, False, False, 0)
         hb._favorite = favorite
+        if key in TAB_FAVORITES:
+            _paint_favorite_button(favorite, True)
 
     def begin_rename(*_):
         if getattr(hb, "_editing", False) or key is None:
@@ -2650,15 +2743,7 @@ def update_dots(states, items=None, notif_count=None):
     if items is not None:
         STATE_ITEMS.clear()
         STATE_ITEMS.update({it.get("session"): it for it in items if it.get("session")})
-    for key, box in tabs.items():
-        hb = tab_hb(box)
-        dot = getattr(hb, "_dot", None)
-        if dot is None:
-            continue
-        c = DOT_COLORS.get(states.get(key, ""), DOT_IDLE)
-        if getattr(dot, "_state_color", None) != c:
-            dot.set_markup(f'<span size="8500" foreground="{c}">●</span>')
-            dot._state_color = c
+    _paint_all_tab_marks()
     return False
 
 
@@ -4699,7 +4784,59 @@ def _panel_popover(btn, panel, width, height):
     return go
 
 
-_pomo_btn = _icon_btn("timer", "Pomodoro" if ES else "Pomodoro", lambda *_: None)   # cronometro Lucide (el jitomate dibujado no gusto)
+# P2: the common time symbol is Zoedoz's CC0 hourglass, 15 original 42×42
+# frames (falling sand and a flip in 1.5 s), the same sheet the web header
+# animates. Shown at 0.5× with nearest-neighbour scaling so the pixels stay
+# whole; the sand is decorative and never encodes remaining time.
+HOURGLASS_SHEET = os.path.join(CC_REPO, "assets", "pomodoro", "zoedoz", "hourglass.png")
+HOURGLASS_FRAME_PX, HOURGLASS_FPS = 42, 10
+
+
+def hourglass_sheet_frames(sheet_width, sheet_height, scale=1.0):
+    """Source rectangles (x, y, w, h) of each native frame in the strip."""
+    n = max(1, sheet_width // HOURGLASS_FRAME_PX)
+    return [(i * HOURGLASS_FRAME_PX, 0, HOURGLASS_FRAME_PX, min(HOURGLASS_FRAME_PX, sheet_height)) for i in range(n)]
+
+
+_HOURGLASS = {"frames": [], "index": 0, "image": None, "source": None}
+
+
+def _hourglass_frames(scale=0.5):
+    if not _HOURGLASS["frames"]:
+        try:
+            sheet = GdkPixbuf.Pixbuf.new_from_file(HOURGLASS_SHEET)
+            px = int(HOURGLASS_FRAME_PX * scale)
+            for (x, y, w, h) in hourglass_sheet_frames(sheet.get_width(), sheet.get_height()):
+                _HOURGLASS["frames"].append(sheet.new_subpixbuf(x, y, w, h).scale_simple(px, px, GdkPixbuf.InterpType.NEAREST))
+        except Exception as exc:
+            print(f"hourglass: {exc}", file=sys.stderr)
+    return _HOURGLASS["frames"]
+
+
+def _hourglass_tick():
+    frames = _HOURGLASS["frames"]
+    if frames and _PRESENCE.get("visible", True) and _animations_enabled():
+        _HOURGLASS["index"] = (_HOURGLASS["index"] + 1) % len(frames)
+        _HOURGLASS["image"].set_from_pixbuf(frames[_HOURGLASS["index"]])
+    return True
+
+
+def _hourglass_button(tooltip):
+    frames = _hourglass_frames()
+    if not frames:
+        return _icon_btn("timer", tooltip, lambda *_: None)
+    b = Gtk.Button()
+    _HOURGLASS["image"] = Gtk.Image.new_from_pixbuf(frames[0])
+    b.set_image(_HOURGLASS["image"])
+    b.set_always_show_image(True)
+    b.get_style_context().add_class("tabplus")
+    b.set_relief(Gtk.ReliefStyle.NONE)
+    b.set_tooltip_text(tooltip)
+    _HOURGLASS["source"] = GLib.timeout_add(1000 // HOURGLASS_FPS, _hourglass_tick)
+    return b
+
+
+_pomo_btn = _hourglass_button("Pomodoro" if ES else "Pomodoro")
 _pomo_btn.connect("clicked", _panel_popover(_pomo_btn, "pomo", 520, 640))   # Regla de tiempo
 _notif_btn = _icon_btn("bell", "Notificaciones" if ES else "Notifications", lambda *_: None)
 _notif_btn.connect("clicked", _panel_popover(_notif_btn, "notif", 400, 600))

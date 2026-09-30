@@ -14,13 +14,14 @@ sys.path.insert(0, str(ROOT / "lib"))
 import work_marks  # noqa: E402
 
 NAMES = ["work_mark_row", "paint_tab_mark", "_paint_all_tab_marks", "apply_work_marks", "adopt_work_mark",
-         "set_work_mark", "append_work_mark_menu"]
+         "set_work_mark", "append_work_mark_menu", "tab_indicator_display"]
 
 
 class Widget:
     def __init__(self, label=None):
         self.label, self.children, self.active, self.sensitive = label, [], None, True
         self.handlers, self.submenu, self.shown, self.pixbuf, self.tooltip = {}, None, None, None, None
+        self.animated, self.writes = [], 0
 
     def append(self, child): self.children.append(child)
     def set_sensitive(self, v): self.sensitive = v
@@ -30,7 +31,7 @@ class Widget:
     def set_submenu(self, m): self.submenu = m
     def hide(self): self.shown = False
     def show(self): self.shown = True
-    def set_from_pixbuf(self, p): self.pixbuf = p
+    def set_from_pixbuf(self, p): self.pixbuf = p; self.writes += 1
     def set_tooltip_text(self, t): self.tooltip = t
 
 
@@ -65,8 +66,14 @@ def load(responses):
         "WORK_MARKS": {"rows": {}, "panes": [], "fetching": False}, "work_mark_state": work_marks,
         "Gtk": fake_gtk(), "tabs": {"sess": "box"}, "nb": SimpleNamespace(get_tab_label=lambda box: label), "tab_hb": lambda box: label,
         "_work_mark_pixbuf": lambda name: "pix:" + name,
+        "_indicator_pixbuf": lambda icon, color, frame=0: f"pix:{icon}:{color}:{frame}",
+        "_indicator_animate": lambda hb: hb._dot.animated.append(hb._ind_icon),
+        "STATE_CACHE": {}, "DOT_COLORS": {"waiting": "#D08770", "working": "#81A1C1"}, "DOT_IDLE": "#4B5568",
     }
     label._work_mark = Widget()
+    label._dot = label._work_mark
+    label.animated = []
+    ns["time"] = SimpleNamespace(monotonic=lambda: 0.0)
     tree = ast.parse(SOURCE)
     nodes = [n for n in tree.body if isinstance(n, ast.FunctionDef) and n.name in NAMES]
     assert len(nodes) == len(NAMES)
@@ -74,13 +81,36 @@ def load(responses):
     return ns, posted, popups, label._work_mark
 
 
-def test_marks_from_the_endpoint_paint_the_tab_label():
+def test_marks_from_the_endpoint_paint_the_tab_indicator():
     ns, _, _, image = load([])
     ns["apply_work_marks"]({"marks": [{"scope": "session", "key": "sess", "mark": "frozen", "favorite": False,
                                        "revision": 2}], "panes": []})
-    assert image.shown is True and image.pixbuf == "pix:frozen" and "Congelado" in image.tooltip
+    assert image.pixbuf == "pix:frozen:#7CC4FF:0" and "Congelado" in image.tooltip
+    assert image.animated == ["frozen"], "a visible mark loops continuously"
     ns["apply_work_marks"]({"marks": [], "panes": []})
-    assert image.shown is False, "without a mark the tab shows no icon"
+    assert image.pixbuf == "pix:none:#4B5568:0", "without a mark the tab shows the neutral ready icon"
+    assert image.shown is not False
+
+
+def test_indicator_precedence_matches_the_web():
+    display = load([])[0]["tab_indicator_display"]
+    # A human mark wins over activity; activity shows the working ring; otherwise
+    # the neutral ring keeps the status colour (waiting stays visible).
+    assert display("frozen", "working") == ("frozen", "#7CC4FF", True)
+    assert display("none", "working") == ("working", "#7AA5FF", True)
+    assert display("none", "waiting") == ("none", "#D08770", False)
+    assert display("none", "") == ("none", "#4B5568", False)
+    assert display("resolved", "") == ("resolved", "#2EE59D", True)
+
+
+def test_activity_changes_repaint_the_same_indicator_without_a_mark():
+    ns, _, _, image = load([])
+    ns["STATE_CACHE"]["sess"] = "working"
+    ns["_paint_all_tab_marks"]()
+    assert image.pixbuf == "pix:working:#7AA5FF:0" and "Trabajando" in image.tooltip
+    ns["STATE_CACHE"]["sess"] = "waiting"
+    ns["_paint_all_tab_marks"]()
+    assert image.pixbuf == "pix:none:#D08770:0"
 
 
 def test_set_sends_known_revision_and_adopts_a_newer_mark():
@@ -90,14 +120,17 @@ def test_set_sends_known_revision_and_adopts_a_newer_mark():
     ns["set_work_mark"]("session", "sess", "resolved")
     assert posted == [{"scope": "session", "key": "sess", "value": "resolved", "expectedRevision": 4}]
     assert ns["work_mark_row"]("session", "sess")["mark"] == "awaiting_reply"
-    assert image.pixbuf == "pix:awaiting_reply" and popups and "Otro dispositivo" in popups[0]
+    assert image.pixbuf == "pix:awaiting_reply:#FFAE1A:0" and popups and "Otro dispositivo" in popups[0]
 
 
 def test_set_success_updates_the_label():
     ok = {"scope": "session", "key": "sess", "mark": "resolved", "favorite": False, "revision": 1}
     ns, posted, popups, image = load([(200, {"mark": ok})])
     ns["set_work_mark"]("session", "sess", "resolved")
-    assert posted[0]["expectedRevision"] == 0 and not popups and image.pixbuf == "pix:resolved"
+    assert posted[0]["expectedRevision"] == 0 and not popups and image.pixbuf == "pix:resolved:#2EE59D:0"
+    writes = image.writes
+    ns["_paint_all_tab_marks"]()
+    assert image.writes == writes, "an unchanged indicator is not rewritten"
 
 
 def test_context_menu_offers_tab_and_identified_pane_only():
@@ -119,3 +152,17 @@ def test_context_menu_offers_tab_and_identified_pane_only():
     none = Widget()
     ns["append_work_mark_menu"](none, "local", None)
     assert none.children == []
+
+
+def test_header_hourglass_uses_the_fifteen_original_frames():
+    """P2: the desktop header shows Zoedoz's animated hourglass (15 × 42 px), not a flat icon."""
+    ns = {"CC_REPO": str(ROOT), "os": __import__("os"), "GdkPixbuf": None, "HOURGLASS_FRAME_PX": 42}
+    tree = ast.parse(SOURCE)
+    nodes = [n for n in tree.body if isinstance(n, ast.FunctionDef) and n.name in ("hourglass_sheet_frames",)]
+    assert nodes, "cc-app defines hourglass_sheet_frames"
+    exec(compile(ast.Module(body=nodes, type_ignores=[]), "<app>", "exec"), ns)
+    frames = ns["hourglass_sheet_frames"](630, 42)
+    assert len(frames) == 15 and frames[0] == (0, 0, 42, 42) and frames[-1] == (588, 0, 42, 42)
+    assert ns["hourglass_sheet_frames"](630, 42, scale=0.5)[1] == (42, 0, 42, 42), "source rects are native pixels"
+    path = ROOT / "assets" / "pomodoro" / "zoedoz" / "hourglass.png"
+    assert path.is_file(), "the production asset ships with the app"

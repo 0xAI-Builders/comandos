@@ -162,3 +162,26 @@ def test_hook_intake_applies_marks_atomically_with_the_event(conn):
     assert stored["paneKey"] == "pk1"
     assert wm.get_mark(conn, "pane", "pk1")["mark"] == "none"
     assert len(event_store.list_events(conn)) == 1
+
+
+# ---- animation phases baked into standalone SVGs (desktop parity with the web loops) ----
+
+def test_animated_icons_change_with_the_phase_and_static_ones_do_not():
+    for name in wm.ANIMATED:
+        frames = {wm.icon_svg(name, phase=i / 8) for i in range(8)}
+        assert len(frames) >= 4, name          # resolved holds its check drawn for 40 % of the loop
+        assert wm.icon_svg(name, phase=0) != wm.icon_svg(name, phase=0.2), name
+        assert wm.CYCLE_S[name] > 0
+    assert wm.icon_svg("none", phase=0.5) == wm.icon_svg("none")
+    assert wm.icon_svg("resolved", phase=0.0) == wm.icon_svg("resolved", phase=1.0), "phase wraps"
+    assert "wm-spin" not in wm.icon_svg("working", phase=0.25) and "rotate(90" in wm.icon_svg("working", phase=0.25)
+
+
+def test_frame_index_quantizes_a_clock_into_the_icon_cycle():
+    n = wm.frame_count("working")
+    assert n >= 8
+    assert wm.frame_index("working", 0.0) == 0
+    assert wm.frame_index("working", wm.CYCLE_S["working"]) == 0, "one full cycle wraps"
+    assert wm.frame_index("working", wm.CYCLE_S["working"] / 2) == n // 2
+    assert wm.frame_count("frozen") > wm.frame_count("working"), "a slow loop needs more steps to stay smooth"
+    assert wm.frame_count("none") == 1

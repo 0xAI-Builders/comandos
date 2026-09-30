@@ -9,6 +9,8 @@ import threading
 from types import SimpleNamespace as NS
 
 SOURCE = Path('bin/cc-app').read_text()
+sys.path.insert(0, str(Path('lib').resolve()))
+import work_marks  # noqa: E402
 
 
 def load(names, ns):
@@ -220,19 +222,23 @@ def test_ui_updates_keep_fresh_state_without_network_or_unchanged_widget_writes(
     dot, badge = Widget(), Widget()
     box = Widget()
     network = []
+    hb = NS(_dot=dot)
     ns = {'STATE_CACHE': {}, 'STATE_ITEMS': {},
           'urllib': NS(request=NS(urlopen=lambda *a, **k: network.append(a))),
-          'json': json, 'tabs': {'s': box}, 'nb': NS(get_tab_label=lambda _: NS(_dot=dot)),
+          'json': json, 'tabs': {'s': box}, 'nb': NS(get_tab_label=lambda _: hb),
           'DOT_COLORS': {'working': 'green', 'waiting': 'yellow'}, 'DOT_IDLE': 'gray',
-          '_notif_badge': badge}
-    load({'update_dots', 'set_notif_badge'}, ns)
+          '_notif_badge': badge, 'ES': True, 'work_mark_state': work_marks,
+          'work_mark_row': lambda scope, key: {'mark': 'none'},
+          '_indicator_pixbuf': lambda icon, color, frame=0: (icon, color, frame),
+          '_indicator_animate': lambda hb: None}
+    load({'update_dots', 'set_notif_badge', '_paint_all_tab_marks', 'paint_tab_mark', 'tab_indicator_display'}, ns)
     ns['update_dots']({'s': 'working'}, [{'session': 's', 'ts': 1}])
     ns['update_dots']({'s': 'working'}, [{'session': 's', 'ts': 2}])
     assert network == []
     assert ns['STATE_ITEMS']['s']['ts'] == 2
-    assert dot.calls['set_markup'] == 1
+    assert dot.calls['set_from_pixbuf'] == 1
     ns['update_dots']({'s': 'waiting'}, [])
-    assert dot.calls['set_markup'] == 2
+    assert dot.calls['set_from_pixbuf'] == 2
     assert ns['STATE_ITEMS'] == {}
     ns['set_notif_badge'](3)
     ns['set_notif_badge'](3)
@@ -302,10 +308,14 @@ def test_failed_ui_callback_does_not_discard_other_updates_or_wedge_queue(capsys
 
 def test_unchanged_favorites_skip_widget_updates_but_pending_changes_still_apply():
     button = Widget()
+    button.get_parent = lambda: None
     ns = {'tabs': {'s': Widget()}, 'nb': NS(get_tab_label=lambda _: NS(_favorite=button)),
           'TAB_FAVORITES': {'s'}, '_FAVORITE_PENDING': {}, '_FAVORITE_GENERATION': 0,
-          'ES': False, 'save_tabs': lambda: None}
-    load({'refresh_favorite_buttons', 'apply_tab_favorites'}, ns)
+          'ES': False, 'save_tabs': lambda: None,
+          'Gtk': NS(Image=NS(new_from_pixbuf=lambda p: Widget())),
+          '_indicator_pixbuf': lambda icon, color, frame=0: (icon, color, frame),
+          '_indicator_animate': lambda hb: None}
+    load({'refresh_favorite_buttons', 'apply_tab_favorites', '_paint_favorite_button'}, ns)
     ns['apply_tab_favorites'](['s'], 0)
     initial = dict(button.calls)
     ns['apply_tab_favorites'](['s'], 0)

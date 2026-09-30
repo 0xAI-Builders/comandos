@@ -16,9 +16,9 @@ import time
 MARKS = ("none", "resolved", "frozen", "awaiting_reply")
 LABELS = {"none": ("Sin marca", "No mark"), "resolved": ("Resuelto", "Resolved"),
           "frozen": ("Congelado", "Frozen"), "awaiting_reply": ("Esperando respuesta", "Awaiting reply"),
-          "favorite": ("Favorito", "Favorite")}
-# Same shapes as dash/work-marks.js (parity is tested); the desktop app draws
-# them static, the web animates them.
+          "favorite": ("Favorito", "Favorite"), "working": ("Trabajando", "Working")}
+# Same shapes as dash/work-marks.js (parity is tested). The web animates them
+# with CSS; the desktop bakes the same loops into per-phase SVG frames.
 ICONS = {
     "none": '<circle class="wm-ring" cx="12" cy="12" r="6.5"/>',
     "resolved": '<circle cx="12" cy="12" r="9"/><path class="wm-draw" pathLength="1" d="m7.5 12.4 3 3 6-6.6"/>',
@@ -34,9 +34,62 @@ ICON_COLORS = {"none": "#5E6980", "resolved": "#2EE59D", "frozen": "#7CC4FF",
                "awaiting_reply": "#FFAE1A", "working": "#7AA5FF", "favorite": "#FFAE1A"}
 
 
-def icon_svg(name, color=None, size=16):
-    """Standalone SVG document for one state (desktop tab labels and menus)."""
+# Loop lengths of dash/workspace.css (wm-spin 1.4 s, frozen 9 s, wm-draw 2.6 s,
+# wm-dot 1.5 s, wm-twinkle 2.4 s). "none" is the neutral ready indicator: static.
+CYCLE_S = {"working": 1.4, "frozen": 9.0, "resolved": 2.6, "awaiting_reply": 1.5, "favorite": 2.4}
+ANIMATED = tuple(CYCLE_S)
+FRAME_S = 0.08                      # one desktop tick; frames are cached per icon
+MAX_FRAMES = 48
+
+
+def frame_count(name):
+    cycle = CYCLE_S.get(name)
+    return 1 if not cycle else max(8, min(MAX_FRAMES, round(cycle / FRAME_S)))
+
+
+def frame_index(name, seconds):
+    """Frame to show ``seconds`` into the loop (wraps every CYCLE_S)."""
+    cycle = CYCLE_S.get(name)
+    if not cycle:
+        return 0
+    n = frame_count(name)
+    return int(((seconds % cycle) / cycle) * n) % n
+
+
+def _ease(t):
+    return t * t * (3 - 2 * t)   # ease-in-out, like the CSS keyframes
+
+
+def _phase_body(name, body, phase):
+    """Bake one moment of the CSS loop into the static markup."""
+    p = phase % 1.0
+    if name in ("working", "frozen"):
+        return body.replace('class="wm-spin"', f'transform="rotate({p * 360:.1f} 12 12)"', 1)
+    if name == "resolved":                       # 0→1, 40–80 % held at 0, →-1
+        off = 1 - _ease(p / 0.4) if p < 0.4 else (0 if p < 0.8 else -_ease((p - 0.8) / 0.2))
+        return body.replace('class="wm-draw"', f'stroke-dasharray="1" stroke-dashoffset="{off:.3f}"', 1)
+    if name == "awaiting_reply":                # three dots, 0.2 s apart on a 1.5 s loop
+        out = body
+        for i, cls in enumerate(("wm-d1", "wm-d2", "wm-d3")):
+            q = (p - i * 0.2 / CYCLE_S[name]) % 1.0
+            alpha = 0.25 + 0.75 * (_ease(q / 0.4) if q < 0.4 else 1 - _ease((q - 0.4) / 0.6))
+            out = out.replace(f'class="wm-dot {cls}"', f'opacity="{alpha:.3f}"', 1)
+        return out
+    if name == "favorite":                      # 1 → .82 → 1, opacity 1 → .7 → 1
+        k = _ease(p * 2 if p < 0.5 else 2 - p * 2)
+        scale, alpha = 1 - 0.18 * k, 1 - 0.3 * k
+        return body.replace('class="wm-twinkle"', f'transform="translate(12 12) scale({scale:.3f}) translate(-12 -12)" opacity="{alpha:.3f}"', 1)
+    return body
+
+
+def icon_svg(name, color=None, size=16, phase=None):
+    """Standalone SVG document for one state (desktop tab labels and menus).
+
+    ``phase`` in [0, 1) renders that moment of the icon's loop; None is the
+    resting frame. Static icons ignore it."""
     body = ICONS.get(name, ICONS["none"])
+    if phase is not None and name in CYCLE_S:
+        body = _phase_body(name, body, phase)
     return (f'<svg xmlns="http://www.w3.org/2000/svg" width="{size}" height="{size}" viewBox="0 0 24 24" '
             f'fill="none" stroke="{color or ICON_COLORS.get(name, ICON_COLORS["none"])}" stroke-width="1.8" '
             f'stroke-linecap="round" stroke-linejoin="round">{body}</svg>')
