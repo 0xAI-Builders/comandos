@@ -931,3 +931,30 @@ Jesús aprueba la variante A de la ronda 9: dos filas; en la primera ☰, contad
 La barra superior ordenada quita la fila permanente de SSH; el botón Servidores hereda su función. Hechos del código: los hosts viven en ~/.ssh/config (`parse_ssh_config`, `ssh_add`, `ssh_update`, `ssh_remove` en bin/cc-dash); conectar crea la sesión tmux `ssh-<host>` y `ssh_state` distingue ssh vivo, master multiplexado listo sin password y sin conexión; `ssh_connect` verifica la autenticación y avisa cuando hará falta password; `ssh_key_setup` instala la llave. Cinco interfaces en el mismo archivo (`?round=ssh&s=A..E`): A popover bajo el botón con estado real, Conectar y ⋯; B cada servidor conectado como tab de proyecto y el botón solo abre el gestor; C cajón lateral derecho con tarjetas y acciones Conectar, Terminal aquí, Instalar llave, Editar, Borrar; D los servidores como sección del acordeón con chips `ssh host`, `ssh -O check` y `ssh-copy-id` que se escriben en la terminal rápida; E modal con tabla. En todas, Conectar abre el host como tab. Los tres hosts, estados y tiempos son datos de ejemplo.
 
 Verificado en la Mac mini a 1440×1000: la barra superior cabe sin recorte con iconos y tooltip por debajo de 1600 px; A muestra popover, B tabs de conectados, C cajón dentro de la app, E modal; D escribe `ssh macmini` en la terminal rápida; Conectar en A cierra el popover y añade la tab. Smoke sin navegador: 45 variantes. Sin veredicto.
+
+## Veredicto: Servidores se conserva como hoy · 2026-09-29
+
+Jesús: "Me gusta como está hoy en día servidores, eso no lo toques". Las cinco interfaces de la ronda 10 (`?round=ssh&s=A..E`) quedan archivadas sin elegir. La gestión de servidores SSH del producto no se rediseña: se conservan la fila de chips por host con su estado, gestionar, conectar, instalar llave y la creación de la tab `ssh-<host>` tal como existen en /home/someguy/codebase/0xJesus/ComandOS/bin/cc-dash y /home/someguy/codebase/0xJesus/ComandOS/dash/index.html. La barra superior ordenada (ronda 9) quita solo la posición permanente de esa fila; el botón Servidores de la primera fila abre exactamente la interfaz actual, no una nueva. Los datos de host, estado y tiempos del mockup eran de ejemplo.
+
+## Cierre del grilling de fase 2 · 2026-09-29
+
+Jesús: "yo creo que ya con lo que llevamos terminaría grill y lo implementaría". El grilling de la segunda fase termina aquí y lo aprobado pasa a implementación. La composición final vive en el laboratorio sin parámetros: /home/someguy/codebase/0xJesus/ComandOS/.worktrees/comandos-v1-grill/dash/prototypes/prototype-v2-barra.html (equivale a `?round=top&top=A`; local http://localhost:4797/prototypes/prototype-v2-barra.html, remoto https://nodo-01.tail63a117.ts.net:8444/prototypes/prototype-v2-barra.html).
+
+Decisiones que se implementan, en el orden en que se tomaron:
+
+1. Política de cambios de IA (harness, modelo, cuenta, handoff): no hay flujos orquestados ni cadenas de teclas automáticas. La barra izquierda muestra los comandos disponibles por CLI instalado, con explicación, y sincronizados con la versión instalada. Fuente: /home/someguy/codebase/0xJesus/ComandOS/docs/tui-command-map.md y la comprobación del binario; un catálogo con versión distinta se marca "sin verificar" en ámbar pero sigue siendo clicable.
+2. Un clic inserta el comando letra por letra en el pane seleccionado, sin Enter; el usuario pulsa Enter. El destino se muestra siempre (pane o terminal rápida) y se fija al pulsar.
+3. Cadenas de comandos: el usuario las arma y guarda; se corren paso a paso con Siguiente. Ninguna espera automática ni detección de "terminó" para avanzar.
+4. El chat de CommandOS se sustituye por terminales rápidas, cada una en su carpeta con fecha; "iniciar conversación" desaparece; el resto de la barra izquierda se elimina. Esto revoca la corrección anterior de conservar el chat (E4 del plan de fase 1). Telegram sigue retirado.
+5. Composición: comandos siempre abiertos en la barra; el modal solo para armar cadenas (Cadenas, botón en la cabecera de la barra), con el mismo acordeón por CLI, tres columnas y ranuras abajo, donde un clic añade a la cadena y no toca el pane.
+6. Acordeón por CLI (ronda 6 A): fila por CLI con versión y estado, el del pane seleccionado abierto y marcado "en este pane"; todo plegable, incluido el primero; dentro, primero "arrancar en modo yolo · sin permisos" en ámbar con los flags de /home/someguy/codebase/0xJesus/ComandOS/config/agent-roles.json, después arranque normal, después los comandos.
+7. Fila de dos líneas (ronda 7 A): comando, explicación de una línea, chips de argumento a un clic.
+8. Cadena corriendo como tarjeta fija bajo la cabecera (ronda 8 A): pasos hechos/actual/pendientes, Siguiente grande, Parar; reloj de arena mientras corre y cofre al completar. Cadenas guardadas como sección plegable encima de los CLI, con Correr por cadena.
+9. Barra superior ordenada (ronda 9 A): dos filas; arriba ☰, contadores esperan/listos/trabajando, Terminal, Nueva sesión y a la derecha ⌘K, snippets, Analytics, Remoto, Servidores, Novedades, Pomodoro mini, Ajustes, reloj; abajo el número y las tabs. Sin fila SSH permanente.
+10. Servidores: sin cambios (veredicto anterior).
+
+Recomendaciones implementadas en el mockup sin veredicto explícito, que la implementación adopta salvo objeción: móvil usa la misma pila con el bloque de arranque normal plegado; una terminal rápida sin CLI muestra los comandos `/…` atenuados y solo arranques activos, y recuerda el último CLI arrancado ahí; un binario con versión distinta a la del mapa muestra el catálogo en ámbar con nota "el CLI confirma".
+
+Ramas de la agenda de fase 2 que no se grillaron y quedan fuera de esta implementación: Analytics general/Reparto, entrada remota/reconexión, ajustes y utilidades, retomar contexto al volver a un proyecto. No se presume nada sobre ellas.
+
+El plan de implementación está en /home/someguy/codebase/0xJesus/ComandOS/.worktrees/comandos-v1-grill/docs/superpowers/plans/2026-09-29-commandos-v1/README.md, subplan 06.
