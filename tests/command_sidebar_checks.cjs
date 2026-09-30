@@ -31,7 +31,10 @@ function makeEl(tag, attrs, parent) {
     for (const [k, v] of Object.entries(node.attrs)) if (k.startsWith('data-')) d[k.slice(5).replace(/-([a-z])/g, (_, c) => c.toUpperCase())] = v;
     return d;
   } });
-  Object.defineProperty(node, 'textContent', { get() { return node.children.map(c => c.nodeType === 3 ? c.text : c.textContent).join(''); } });
+  Object.defineProperty(node, 'textContent', { configurable: true,
+    get() { return node.children.map(c => c.nodeType === 3 ? c.text : c.textContent).join(''); },
+    set(v) { node.children = [{ nodeType: 3, text: String(v) }]; } });
+  Object.defineProperty(node, 'innerHTML', { configurable: true, set(v) { if (typeof v !== 'string') throw new Error('innerHTML no es string'); parse(v, node); } });
   Object.defineProperty(node, 'value', { get() { return node.attrs.value ?? ''; }, set(v) { node.attrs.value = String(v); } });
   node.getAttribute = k => (k in node.attrs ? node.attrs[k] : null);
   node.hasAttribute = k => k in node.attrs;
@@ -116,11 +119,12 @@ function mkRoot() {
   const listeners = {};
   let html = '';
   root.renders = 0;
-  Object.defineProperty(root, 'innerHTML', { get: () => html, set(v) { if (typeof v !== 'string') throw new Error('innerHTML no es string'); html = v; root.renders++; parse(v, root); } });
+  Object.defineProperty(root, 'innerHTML', { configurable: true, get: () => html, set(v) { if (typeof v !== 'string') throw new Error('innerHTML no es string'); html = v; root.renders++; parse(v, root); } });
   root.addEventListener = (type, fn) => { (listeners[type] ||= []).push(fn); };
-  const dispatch = (type, target) => { for (const fn of listeners[type] || []) fn({ type, target, preventDefault() {}, stopPropagation() {} }); };
+  const dispatch = (type, target, extra = {}) => { for (const fn of listeners[type] || []) fn({ type, target, preventDefault() {}, stopPropagation() {}, ...extra }); };
+  root.dispatch = dispatch;
   root.click = sel => { const t = root.querySelector(sel); if (!t) throw new Error('sin elemento para clic: ' + sel); dispatch('click', t); };
-  root.input = (sel, value) => { const t = root.querySelector(sel); t.value = value; dispatch('input', t); };
+  root.input = (sel, value, extra) => { const t = root.querySelector(sel); t.value = value; dispatch('input', t, extra); return t; };
   return root;
 }
 
@@ -205,12 +209,54 @@ const catalog = JSON.parse(fs.readFileSync(process.cwd() + '/tests/fixtures/comm
 
   // extra) la búsqueda filtra filas sin tocar state.open
   const openBefore = [...sb.state.open].sort().join();
+  const searchEl = root.querySelector('.cs-search'), rendersBefore = root.renders;
   root.input('.cs-search', 'compact');
   const visible = root.querySelectorAll('.cmd').filter(r => !r.hasAttribute('hidden'));
   assert.ok(visible.length >= 3 && visible.every(r => /compact/i.test(r.textContent)));
   assert.equal(root.querySelector('.cs-cli[data-cli="codex"] .launch.yolo').hasAttribute('hidden'), true);
   assert.equal([...sb.state.open].sort().join(), openBefore);
+  // fix 1: la consulta conserva los espacios y filtra por palabras
+  root.input('.cs-search', 'claude fable');
+  assert.equal(sb.state.q, 'claude fable');
+  const hitsCF = root.querySelectorAll('.cmd').filter(r => !r.hasAttribute('hidden')).map(r => r.dataset.cmd);
+  assert.deepEqual(hitsCF, ['claude --dangerously-skip-permissions --model claude-fable-5-1 --effort max', '/model ']);
+  root.input('.cs-search', 'model ');
+  assert.equal(sb.state.q, 'model ');
+  assert.equal(root.querySelector('.cs-search').value, 'model ');
+  // fix 2: el input de búsqueda es el mismo nodo; solo se repinta .cs-body
+  assert.equal(root.querySelector('.cs-search'), searchEl);
+  assert.equal(root.renders, rendersBefore);
+  sb.render(); root.click('.cs-cli.here .cli-h'); root.click('.cs-cli.here .cli-h');
+  assert.equal(root.querySelector('.cs-search'), searchEl);
+  // …y no se filtra a mitad de una composición (IME, teclas muertas): se aplica al terminar
+  const firstCli = root.querySelector('.cs-cli');
+  root.input('.cs-search', 'resum', { isComposing: true });
+  assert.equal(root.querySelector('.cs-cli'), firstCli);
+  assert.equal(sb.state.q, 'model ');
+  root.dispatch('compositionend', searchEl);
+  assert.equal(sb.state.q, 'resum');
+  assert.notEqual(root.querySelector('.cs-cli'), firstCli);
+  assert.equal(root.querySelector('.cs-search'), searchEl);
   root.input('.cs-search', '');
+  assert.equal(root.querySelectorAll('.cmd[hidden]').length, 0);
+  // fix 3: con estado abierto ya persistido, una terminal rápida con CLI recordado lo abre (solo añade)
+  const store3 = new Map([['comandos.commands.open', JSON.stringify(['saved', 'codex'])], ['comandos.commands.preferred.term-q2:%8', 'grok']]);
+  const storage3 = { getItem: k => store3.get(k) ?? null, setItem: (k, v) => store3.set(k, v), removeItem: k => store3.delete(k) };
+  let target3 = { session: 'demo', pane: '%2', kind: 'pane', title: 'demo %2' };
+  const root3 = mkRoot();
+  const sb3 = createCommandSidebar({ api, root: root3, storage: storage3, makeId: () => 'z', getTarget: () => target3, toast: () => {} });
+  sb3.applyCatalog({ cliInPane: 'codex', target: { session: 'demo', pane: '%2' }, catalog, versionsAt: 1 });
+  assert.equal(root3.querySelector('.cs-cli[data-cli="grok"]').classList.contains('open'), false);
+  target3 = { session: 'term-q2', pane: '%8', paneKey: 'term-q2:%8', kind: 'term', title: 'Terminal' };
+  sb3.applyCatalog({ cliInPane: '', target: { session: 'term-q2', pane: '%8' }, catalog, versionsAt: 1 });
+  assert.equal(root3.querySelector('.cs-cli[data-cli="grok"]').classList.contains('open'), true);
+  assert.equal(root3.querySelector('.cs-cli[data-cli="grok"] .launch.yolo').classList.contains('open'), true);
+  assert.equal(root3.querySelector('.cs-cli[data-cli="codex"]').classList.contains('open'), true);
+  assert.deepEqual(JSON.parse(store3.get('comandos.commands.open')).sort(), ['codex', 'grok', 'grok:yolo', 'saved']);
+  // el usuario lo pliega: repetir el catálogo del mismo destino no lo reabre
+  root3.click('.cs-cli[data-cli="grok"] .cli-h');
+  sb3.applyCatalog({ cliInPane: '', target: { session: 'term-q2', pane: '%8' }, catalog, versionsAt: 2 });
+  assert.equal(root3.querySelector('.cs-cli[data-cli="grok"]').classList.contains('open'), false);
   // extra) terminales rápidas: foco y nueva
   const focused = [], root2 = mkRoot();
   const sb2 = createCommandSidebar({ api, root: root2, storage, makeId: () => 'x', getTarget: () => ({ session: 'term-q1', pane: '%7', paneKey: 'term-q1:%7', kind: 'term', title: 'T' }),

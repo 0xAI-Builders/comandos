@@ -16,10 +16,13 @@
   const WAIT = 'Espera a que termine de escribir';
   const chev = '<span class="chev" data-icon="chevron" data-size="12"></span>';
 
+  // La consulta llega cruda (con espacios); aquí se parte en palabras y cada
+  // una debe aparecer en el texto, la descripción o algún argumento.
   function hits(cmd, q) {
-    if (!q) return true;
-    const needle = q.toLowerCase();
-    return String(cmd.text || '').toLowerCase().includes(needle) || String(cmd.description || '').toLowerCase().includes(needle);
+    const words = String(q || '').toLowerCase().split(/\s+/).filter(Boolean);
+    if (!words.length) return true;
+    const hay = [cmd.text, cmd.description, ...(Array.isArray(cmd.args) ? cmd.args : [])].map(x => String(x || '')).join(' ').toLowerCase();
+    return words.every(w => hay.includes(w));
   }
 
   // Fila de dos líneas: comando (con «…» si espera argumento) y descripción;
@@ -66,7 +69,7 @@
   // o: {mode, open: Set, here, noCli, q}. Todo CLI, arranque y grupo se pinta
   // siempre; la clase .open solo decide la visibilidad por CSS.
   function cliHTML(cli, opts = {}) {
-    const o = { mode: opts.mode === 'build' ? 'build' : 'run', open: opts.open || new Set(), q: opts.q || '',
+    const o = { mode: opts.mode === 'build' ? 'build' : 'run', open: opts.open || new Set(), q: String(opts.q || '').trim(),
       noCli: opts.mode === 'build' ? false : !!opts.noCli };
     const v = cli.version || {};
     const st = STATUS_TEXT[v.status] !== undefined ? v.status : 'ok';
@@ -88,7 +91,7 @@
     const { api, root: el, storage, makeId, getTarget, focusTarget = () => {}, openBuilder = () => {},
       toast = () => {}, terminals = () => [], newTerm = () => {} } = opts;
     const state = { catalog: null, cliInPane: '', catalogTarget: null, chains: [], open: new Set(), run: null,
-      typing: null, q: '', firstRender: true };
+      typing: null, q: '', firstRender: true, appliedTarget: null };
 
     const read = k => { try { return storage ? storage.getItem(k) : null; } catch (_) { return null; } };
     const write = (k, v) => { try { if (storage) storage.setItem(k, v); } catch (_) {} };
@@ -121,6 +124,7 @@
       state.catalog = payload.catalog || null;
       state.cliInPane = payload.cliInPane || '';
       state.catalogTarget = payload.target || null;
+      let changed = false;
       if (state.firstRender && state.catalog) {
         const t = target();
         const id = hereCli() || (t ? read(prefKey(t)) || '' : '');
@@ -131,8 +135,21 @@
           (cli.groups || []).forEach((_, n) => state.open.add(`${cli.id}:${n}`));
         }
         state.firstRender = false;
-        writeOpen();
+        changed = true;
       }
+      // Terminal rápida que vuelve: si el destino cambió y no se detecta CLI,
+      // abre el último CLI arrancado ahí (solo añade; nunca pliega nada).
+      const t = target();
+      const applied = state.catalogTarget || (t ? { session: t.session, pane: t.pane } : null);
+      if (applied && !sameTarget(applied, state.appliedTarget) && !state.cliInPane && state.catalog) {
+        const key = t && sameTarget(t, applied) ? (t.paneKey || t.pane) : applied.pane;
+        const cli = key ? clis().find(c => c.id === read(KEY_PREF + key)) : null;
+        if (cli && !(state.open.has(cli.id) && state.open.has(`${cli.id}:yolo`))) {
+          state.open.add(cli.id); state.open.add(`${cli.id}:yolo`); changed = true;
+        }
+      }
+      state.appliedTarget = applied ? { session: applied.session, pane: applied.pane } : null;
+      if (changed) writeOpen();
       render();
     }
 
@@ -217,10 +234,12 @@
       render();
     }
 
-    function headHTML() {
+    function targetTitle() {
       const t = target();
-      const title = t ? (t.title || `${t.session} ${t.pane}`) : 'Sin destino';
-      return `<div class="cs-head"><div class="cs-target">${esc(title)}</div>`
+      return t ? (t.title || `${t.session} ${t.pane}`) : 'Sin destino';
+    }
+    function headHTML() {
+      return `<div class="cs-head"><div class="cs-target">${esc(targetTitle())}</div>`
         + '<button type="button" class="cs-chains" data-open-builder><span data-icon="layers" data-size="12"></span> Cadenas</button>'
         + `<input class="cs-search" type="search" placeholder="Buscar comando" value="${esc(state.q)}"></div>`;
     }
@@ -259,22 +278,26 @@
         + '<button type="button" class="t plus" data-new-term><span data-icon="plus" data-size="12"></span> Terminal</button></div>';
     }
 
-    function render() {
+    function bodyHTML() {
       const here = hereCli();
-      el.innerHTML = headHTML() + savedHTML() + runnerHTML()
+      return savedHTML() + runnerHTML()
         + clis().map(c => cliHTML(c, { mode: 'run', open: state.open, here: !!here && c.id === here, noCli: !here, q: state.q })).join('')
         + termsHTML();
-      try { el.classList && el.classList.toggle('searching', !!state.q); } catch (_) {}
     }
 
-    function renderKeepingSearch(input) {
-      const pos = typeof input.selectionStart === 'number' ? input.selectionStart : null;
-      render();
-      const s = el.querySelector('.cs-search');
-      if (s && typeof s.focus === 'function') {
-        s.focus();
-        if (pos !== null && typeof s.setSelectionRange === 'function') s.setSelectionRange(pos, pos);
+    // La cabecera (con el input de búsqueda) se pinta una sola vez; después solo
+    // se actualiza el título del destino y se repinta .cs-body, así el input
+    // conserva foco, selección y composición (IME, teclas muertas).
+    function render() {
+      const head = el.querySelector('.cs-head'), body = el.querySelector('.cs-body');
+      if (head && body) {
+        const tgt = head.querySelector('.cs-target');
+        if (tgt) tgt.textContent = targetTitle();
+        body.innerHTML = bodyHTML();
+      } else {
+        el.innerHTML = headHTML() + `<div class="cs-body">${bodyHTML()}</div>`;
       }
+      try { el.classList && el.classList.toggle('searching', !!state.q.trim()); } catch (_) {}
     }
 
     el.addEventListener('click', e => {
@@ -298,10 +321,10 @@
       if (t.closest('button') && (n = t.closest('.cs-saved-item[data-run]'))) return void startChain(n.dataset.run);
       if ((n = t.closest('[data-toggle]'))) return void toggle(n.dataset.toggle);
     });
-    el.addEventListener('input', e => {
-      const t = e.target;
-      if (t && t.classList && t.classList.contains('cs-search')) { state.q = String(t.value || '').trim(); renderKeepingSearch(t); }
-    });
+    const isSearch = t => !!(t && t.classList && t.classList.contains('cs-search'));
+    const search = t => { state.q = String(t.value ?? ''); render(); };
+    el.addEventListener('input', e => { if (isSearch(e.target) && !e.isComposing) search(e.target); });
+    el.addEventListener('compositionend', e => { if (isSearch(e.target)) search(e.target); });
 
     return { refresh, render, insert, startChain, next, stop, applyCatalog, get state() { return state; } };
   }
