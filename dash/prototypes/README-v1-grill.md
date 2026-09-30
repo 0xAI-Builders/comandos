@@ -909,3 +909,7 @@ Límite: el navegador de la Mac mini estuvo ocupado por dos sesiones ajenas dura
 ## Aprobado: fila de dos líneas · 2026-09-29
 
 Jesús aprueba la fila A: comando, explicación de una línea debajo y chips de argumento. B a E quedan archivadas. Los tres estados del picker (destino terminal rápida, binario cambiado, móvil con arranque normal plegado) siguen siendo la recomendación implementada, no un veredicto explícito.
+
+## Fase 2 · ronda 8: la cadena corriendo y las guardadas · 2026-09-29
+
+Con el acordeón y la fila aprobados falta dónde vive una cadena mientras corre paso a paso y dónde están las guardadas. Cinco lugares en el mismo archivo (`?round=run&u=A..E`): A tarjeta fija bajo la cabecera de la barra, con las guardadas como sección plegable encima de los CLI; B franja flotante sobre el pane destino; C barrita bajo el prompt del pane, donde Enter ejecuta y pre-escribe el siguiente paso sin botón, con las guardadas colgando del botón Cadenas; D tab junto a las terminales rápidas; E aviso persistente en la franja inferior. En todas, cada paso se escribe sin Enter y el usuario confirma; reloj de arena mientras corre y cofre al completar. Smoke sin navegador: 35 variantes pasan. Verificación visual en la Mac mini pendiente por sesiones ajenas. Sin veredicto.
