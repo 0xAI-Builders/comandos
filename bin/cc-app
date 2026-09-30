@@ -224,6 +224,8 @@ notebook > header > tabs > arrow {
   min-width: 0; min-height: 0; padding: 0; margin: 0; opacity: 0;
   -gtk-icon-source: none;
 }
+.strip-actions { padding: 0 6px 0 8px; border-left: 1px solid @LINE@; }
+.strip-actions button.cc-key { min-width: 32px; min-height: 32px; margin: 5px 3px 7px; }
 .tabnav { color: @TEXT@; padding: 4px 10px; margin: 2px 3px; border: 1px solid @LINE@;
   background: none; border-radius: 10px; min-width: 38px; min-height: 34px; -gtk-icon-effect: none; }
 .tabnav:hover { color: @TEXT@; background: @LINE@; }
@@ -1665,7 +1667,7 @@ def button_style_css(style, theme):
     face, line, text, dim, bar = (theme.get(k, "#222A3A") for k in ("line", "line", "text", "dim", "bar"))
     face = theme.get("line2", face)
     edge = theme.get("bg", "#0A0D13")
-    sel = "headerbar.cc-headerbar button.cc-key"
+    sel = "button.cc-key"      # teclas de acción: cabecera y lado derecho de la barra de pestañas
     base = (f"{sel}{{min-width:34px;min-height:34px;padding:0;margin:4px 3px 6px;"
             f"background-image:none;background-color:{face};color:{text};border:0;}}")
     styles = {
@@ -5993,9 +5995,17 @@ for _b in (_tab_prev, _tab_next):
     _b.get_style_context().add_class("tabnav")
     _b.show_all()
 # FLANQUEANDO el tab strip (donde el pulgar ya los busca), no escondidos
-# en el headerbar: action widgets del notebook, izquierda y derecha.
+# en el headerbar: action widgets del notebook, izquierda y derecha. A la
+# derecha, junto a ›, viven Terminal · Nueva sesión · Ordenar (prototipo
+# aprobado 30-sep: esas tres acciones van al lado derecho de la barra de
+# pestañas; el resto en la rejilla del tablero).
 nb.set_action_widget(_tab_prev, Gtk.PackType.START)
-nb.set_action_widget(_tab_next, Gtk.PackType.END)
+_strip_actions = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=0)
+_strip_actions.get_style_context().add_class("strip-actions")
+for _b in (_quick_term_btn, _plus, _sort_btn, _tab_next):
+    _strip_actions.pack_start(_b, False, False, 0)
+_strip_actions.show_all()
+nb.set_action_widget(_strip_actions, Gtk.PackType.END)
 _headerbar.show_all()
 
 # Puente tablero -> app: las tarjetas piden abrir pestanas aqui

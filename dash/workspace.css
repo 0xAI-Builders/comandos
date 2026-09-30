@@ -575,9 +575,19 @@ header.hdr-ordered .hdr-primary{margin-left:0}
 header.hdr-ordered .counts{display:flex!important;flex:none;align-items:center;gap:6px;flex-wrap:wrap;min-width:0;max-width:100%}
 header.hdr-ordered .cnt-short{display:none}
 header.hdr-ordered :is(#btn-switch,#btn-snippets){display:inline-flex!important}
-/* En la app la cabecera es la misma que en remoto (fix 2, grill 30-sep): Terminal, Nueva sesión,
-   Resúmenes, campana, Pomodoro y Ajustes viven aquí; Ordenar solo aparece dentro de la app. */
-body:not(.inapp) #btn-sort{display:none}
+/* Escritorio = prototipo aprobado (prototype-iguales.html, 30-sep): dentro de la app la
+   cabecera del tablero es una REJILLA de 4 columnas con Analytics · Remoto · Pomodoro ·
+   Avisos / Resúmenes · Ajustes y el reloj centrado debajo. Sin ☰, contadores, Buscar ni
+   Snippets (siguen por atajo: Ctrl+K, Ctrl+Shift+K). Terminal, Nueva sesión y Ordenar viven
+   a la DERECHA de la barra de pestañas GTK. Servidores queda como chip bajo la rejilla. */
+body.inapp header.hdr-ordered{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;padding:10px 12px;align-items:stretch}
+body.inapp header.hdr-ordered .hdr-right,body.inapp header.hdr-ordered .hdr-primary{display:contents}
+body.inapp header.hdr-ordered :is(#btn-menu,.counts,#btn-terminal,#btn-newsess,#btn-switch,#btn-snippets){display:none!important}
+body.inapp header.hdr-ordered .hdr-btn{width:100%;min-width:0;padding:0}
+body.inapp header.hdr-ordered #btn-servers{grid-column:1/-1;width:auto;justify-self:start;padding:0 10px;height:28px;font:600 10px/1 var(--sans);letter-spacing:.8px;text-transform:uppercase;order:2}
+body.inapp header.hdr-ordered #btn-servers .hdr-lbl{position:static;width:auto;height:auto;clip:auto;overflow:visible}
+body.inapp header.hdr-ordered #clock{grid-column:1/-1;text-align:center;font:600 12px var(--mono);letter-spacing:.5px;order:1}
+body.inapp header.hdr-ordered #notif-panel,body.inapp header.hdr-ordered #pomo-panel{grid-column:1/-1}
 #servers-panel{flex:none;width:100%;max-width:1360px;margin:0 auto;box-sizing:border-box;padding-top:8px;border-bottom:1px solid var(--line)}
 @container sidebar (max-width:760px){#view-panel #servers-panel #ssh-bar{padding-left:12px;padding-right:12px}}
 #menu-panel{position:fixed;z-index:60;min-width:230px;max-width:calc(100vw - 16px);max-height:calc(100dvh - 16px);overflow:auto;box-sizing:border-box;padding:8px;display:flex;flex-direction:column;gap:6px;

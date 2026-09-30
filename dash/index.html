@@ -1861,7 +1861,6 @@
   </div>
   <button class="hdr-btn" id="btn-terminal" aria-label="Terminal" title="Terminal rápida en una carpeta nueva"><span data-icon="terminal" data-size="17"></span><span class="hdr-lbl">Terminal</span></button>
   <button class="hdr-btn primary" id="btn-newsess" aria-label="Nueva sesión" title="Nueva sesión"><span data-icon="plus" data-size="17"></span><span class="hdr-lbl">Nueva sesión</span></button>
-  <button class="hdr-btn" id="btn-sort" aria-label="Ordenar pestañas una vez" title="Ordenar pestañas una vez" aria-haspopup="menu"><span data-icon="arrow-up-down" data-size="17"></span></button>
   <div class="hdr-right">
 	    <button class="hdr-btn" id="btn-switch" aria-label="switch" title="Saltar a cualquier sesión (Ctrl+K)"><span data-icon="search" data-size="16"></span><span class="hdr-lbl">Buscar</span></button>
 	    <button class="hdr-btn" id="btn-snippets" aria-label="snippets" title="Snippets (Ctrl+Shift+K)"><span data-icon="snippet" data-size="16"></span><span class="hdr-lbl">Snippets</span></button>
@@ -7269,7 +7268,6 @@ function initHeaderActions(){
     window.webkit.messageHandlers.centro.postMessage(JSON.stringify({headerAction: action})); };
   $("#btn-terminal").addEventListener("click", toApp("quickTerminal"), true);
   $("#btn-newsess").addEventListener("click", toApp("newSession"), true);
-  $("#btn-sort").addEventListener("click", toApp("sortMenu"), true);
   const newBtn = $("#btn-newsess");
   newBtn.title = tf("Nueva sesión: carpeta, agente y cuenta", "New session: folder, agent and account");
   newBtn.setAttribute("aria-label", tf("Nueva sesión", "New session"));

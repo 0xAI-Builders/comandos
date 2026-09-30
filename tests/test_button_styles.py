@@ -115,6 +115,12 @@ def test_desktop_header_actions_live_in_the_web_header_like_the_remote():
     assert 'd.get("headerAction") in HEADER_ACTIONS' in app
     assert "body.inapp .hdr-primary{display:none}" not in INDEX
     assert "body.inapp header.hdr-ordered :is(#btn-terminal,#btn-newsess){display:none}" not in CSS
-    assert 'id="btn-sort"' in INDEX and "body:not(.inapp) #btn-sort{display:none}" in CSS
-    for action in ("quickTerminal", "newSession", "sortMenu"):
+    # Prototipo aprobado: Terminal · Nueva sesión · Ordenar a la derecha de la barra de pestañas GTK;
+    # en la app la cabecera web es la rejilla de 4 columnas sin ☰, contadores ni búsqueda.
+    assert "nb.set_action_widget(_strip_actions, Gtk.PackType.END)" in app
+    assert "for _b in (_quick_term_btn, _plus, _sort_btn, _tab_next):" in app
+    assert "body.inapp header.hdr-ordered{display:grid;grid-template-columns:repeat(4,1fr)" in CSS
+    assert "body.inapp header.hdr-ordered :is(#btn-menu,.counts,#btn-terminal,#btn-newsess,#btn-switch,#btn-snippets){display:none!important}" in CSS
+    assert 'id="btn-sort"' not in INDEX
+    for action in ("quickTerminal", "newSession"):
         assert f'toApp("{action}")' in INDEX
