@@ -527,6 +527,41 @@ function fakeDom() {
     assert.equal(inst.rootEl.classList.contains('nt-hidden'), true);
   });
 
+  await check('drawer: drag handle, max/restore and close; rows say what happened', () => {
+    const html = N.renderStrip({ notices: [notice({ excerpt: 'Remoto arreglado: 141 tests en verde' })], loaded: true });
+    assert.match(html, /class="nt-grip"[^>]*role="separator"/, 'a visible handle to drag the height');
+    assert.match(html, /data-nt-act="max"/, 'maximize / restore button');
+    assert.match(html, /data-nt-act="close"/, 'close button');
+    assert.match(html, /nt-excerpt[^>]*>Remoto arreglado: 141 tests en verde</, 'the row shows what happened');
+    assert.equal(N.clampHeight(20, 900), 96, 'never smaller than a couple of rows');
+    assert.equal(N.clampHeight(5000, 900), 900 - 140, 'never covers the top bar');
+    assert.equal(N.clampHeight(300, 900), 300);
+  });
+
+  await check('drawer height is remembered per device and double click maximizes', async () => {
+    const dom = fakeDom();
+    const host = dom.el('div'); dom.doc.body.appendChild(host);
+    const server = fakeServer(); const store = new Map();
+    const storage = { getItem: k => (store.has(k) ? store.get(k) : null), setItem: (k, v) => store.set(k, String(v)) };
+    const opts = { doc: dom.doc, host, transport: server.transport, deviceId: 'web-h', sync: true,
+      setInterval: () => 0, clearInterval() {}, sounds: fakeSounds(), isVisible: () => true,
+      isSessionLive: () => true, openSource() {}, storage, presence: false, win: { innerHeight: 900 } };
+    const inst = N.mount(opts);
+    assert.equal(inst.height, N.DEFAULT_HEIGHT);
+    inst.setHeight(420);
+    assert.equal(store.get('comandos.notices.height'), '420');
+    inst.toggleMax();
+    assert.equal(inst.height, 760, 'maximized to the viewport');
+    inst.toggleMax();
+    assert.equal(inst.height, 420, 'restored');
+    const again = N.mount({ ...opts, host: dom.el('div') });
+    assert.equal(again.height, 420, 'same device keeps its height');
+    inst.toggleStrip(true);
+    const btn = dom.el('button'); btn.setAttribute('data-nt-act', 'close'); inst.rootEl.appendChild(btn);
+    for (const fn of inst.rootEl.listeners.click || []) fn({ target: { closest: () => btn } });
+    assert.equal(inst.hidden, true, 'close hides the drawer');
+  });
+
   console.log(JSON.stringify(results.filter(r => !r.ok), null, 2));
   const failed = results.filter(r => !r.ok).length;
   console.log(`${results.length - failed}/${results.length} notification UI checks passed`);

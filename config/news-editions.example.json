@@ -2,9 +2,38 @@
   "_nota": "Copiar a ~/.claude/hooks/news-editions.json para activar las tres ediciones diarias (D4). Con kind \"acp\" el resumen lo hace un agente local por ACP (p. ej. OpenCode con un modelo gratuito): sin clave ni precios. Con kind \"anthropic-messages\"/\"openai-chat\" la clave se lee de la variable de entorno nombrada en apiKeyEnv y hacen falta precios para el tope de gasto.",
   "enabled": false,
   "summarizer": {
-    "kind": "acp",
-    "agent": "opencode",
-    "model": "opencode/longcat-2.5-preview-free"
+    "kind": "chain",
+    "steps": [
+      {
+        "agent": "opencode",
+        "model": "opencode/longcat-2.5-preview-free",
+        "timeoutSeconds": 180
+      },
+      {
+        "agent": "agy",
+        "timeoutSeconds": 180
+      },
+      {
+        "agent": "claude",
+        "model": "claude-opus-5-5",
+        "timeoutSeconds": 180
+      },
+      {
+        "agent": "codex",
+        "model": "gpt-5.5",
+        "timeoutSeconds": 180
+      },
+      {
+        "agent": "grok",
+        "model": "grok-4.6",
+        "timeoutSeconds": 180
+      },
+      {
+        "agent": "opencode",
+        "model": "openrouter/qwen/qwen3-next-80b-a3b-instruct:free",
+        "timeoutSeconds": 180
+      }
+    ]
   },
   "policy": {
     "slots": [

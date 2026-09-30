@@ -448,7 +448,15 @@ body.app #notices{grid-column:1;grid-row:3}
 .nt-strip.collapsed .nt-meta{flex:1}
 .nt-read-all{flex:none;margin-left:auto;min-height:30px;padding:3px 10px;border:1px solid var(--line2);border-radius:8px;background:none;font-size:11px}
 .nt-read-all:disabled{opacity:.45;cursor:default}
-.nt-body{max-height:min(168px,28vh);display:flex;flex-direction:column;border-top:1px solid var(--line);min-height:0}
+.nt-body{height:var(--nt-h,260px);display:flex;flex-direction:column;border-top:1px solid var(--line);min-height:0}
+/* Cajón de avisos: se jala desde la agarradera; doble clic maximiza. */
+.nt-grip{height:12px;display:flex;align-items:center;justify-content:center;cursor:ns-resize;touch-action:none;outline-offset:-2px}
+.nt-grip::before{content:"";width:44px;height:4px;border-radius:2px;background:var(--line2);transition:background .15s}
+.nt-grip:hover::before,.nt-grip:focus-visible::before{background:var(--brand)}
+.nt-icon-btn{flex:none;width:30px;height:30px;display:inline-flex;align-items:center;justify-content:center;border:1px solid var(--line2);border-radius:8px;background:none;color:var(--dim)}
+.nt-icon-btn:hover{color:var(--text)}
+.nt-read-all+.nt-icon-btn{margin-left:0}
+.nt-excerpt{font-size:11px;color:var(--muted,var(--dim));line-height:1.35;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;overflow-wrap:anywhere}
 .nt-status{padding:6px 12px;font-size:11px;color:var(--dim)}
 .nt-groups{flex:1;min-height:0;overflow:auto;display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:0 14px;padding:0 12px 6px;overscroll-behavior:contain}
 .nt-group{min-width:0}
@@ -510,7 +518,8 @@ body.app #notices{grid-column:1;grid-row:3}
 @media (max-width:560px){
   .nt-head{flex-wrap:wrap;padding:3px 8px;gap:4px 8px}
   .nt-filters{order:3;flex-basis:100%}
-  .nt-body{max-height:min(270px,46vh)}
+  .nt-grip{height:20px}
+  .nt-icon-btn{width:40px;height:40px}
   .nt-groups{display:flex;overflow-x:auto;overflow-y:hidden;scroll-snap-type:x mandatory;gap:10px;padding:0 8px 6px;overscroll-behavior-x:contain}
   .nt-group{flex:0 0 calc(100% - 28px);scroll-snap-align:start;overflow-y:auto;max-height:100%}
   .nt-float-slot{right:8px;width:calc(100% - 16px)}

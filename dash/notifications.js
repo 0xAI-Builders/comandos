@@ -56,6 +56,13 @@
   const LIVE_LIMIT = 50;
   const KEEP = 500;
   const GONE_TEXT = 'El panel ya no existe';
+  // The drawer's height is dragged by hand and remembered per device.
+  const DEFAULT_HEIGHT = 260, MIN_HEIGHT = 96, TOP_RESERVE = 140;
+  const HEIGHT_KEY = 'comandos.notices.height';
+  function clampHeight(px, viewport) {
+    const max = Math.max(MIN_HEIGHT, (Number(viewport) || 800) - TOP_RESERVE);
+    return Math.round(Math.max(MIN_HEIGHT, Math.min(max, Number(px) || DEFAULT_HEIGHT)));
+  }
 
   // ---------- pure helpers ----------
   const isNews = n => !!n && (n.category === 'news' || NEWS_KINDS.includes(n.kind));
@@ -137,6 +144,8 @@
     arrow: '<path d="M4 12h16m-6-6 6 6-6 6"/>',
     read: '<path d="m3 12 5 5L18 7M13 17l8-8"/>',
     chevron: '<path d="m6 9 6 6 6-6"/>',
+    grow: '<path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7"/>',
+    shrink: '<path d="M4 14h6v6M20 10h-6V4M14 10l7-7M3 21l7-7"/>',
   };
   function icon(name) {
     return `<svg class="nt-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${SHAPES[name] || SHAPES.bell}</svg>`;
@@ -159,7 +168,8 @@
     return `<article class="nt-row cat-${cat}${n.read ? ' read' : ''}${pend ? ' pending' : ''}" data-nt-event="${esc(n.eventId)}">`
       + `<button type="button" class="nt-open" data-nt-act="open" data-nt-id="${esc(n.eventId)}" data-nt-focus="open:${esc(n.eventId)}" aria-label="Abrir ${esc(origin)}: ${esc(n.title)}">`
       + `<span class="nt-type">${icon(cat)}</span><span class="nt-copy"><strong>${esc(n.title)}</strong>`
-      + `<small>${esc(origin)}${pend ? ' · <em>Pendiente · se responde en su terminal</em>' : ''}</small></span>`
+      + `<small>${esc(origin)}${pend ? ' · <em>Pendiente · se responde en su terminal</em>' : ''}</small>`
+      + `${n.excerpt ? `<span class="nt-excerpt">${esc(n.excerpt)}</span>` : ''}</span>`
       + `<time>${esc(relTime(n.occurredAtMs, v.now))}</time></button>`
       + `<button type="button" class="nt-read" data-nt-act="read" data-nt-id="${esc(n.eventId)}" data-nt-focus="read:${esc(n.eventId)}" ${n.read ? 'disabled aria-label="Leído"' : `aria-label="Marcar leído: ${esc(n.title)}" title="Marcar leído"`}>${n.read ? icon('read') : '<i class="nt-dot"></i>'}</button>`
       + '</article>';
@@ -208,11 +218,15 @@
         + (pendingN ? '<footer class="nt-foot"><span>Leer no resuelve permisos: se responden en su terminal.</span></footer>' : '') + '</div>';
     }
     return `<section class="nt-strip${collapsed ? ' collapsed' : ''}" aria-label="Avisos por proyecto">`
+      + (collapsed ? '' : '<div class="nt-grip" role="separator" aria-orientation="horizontal" tabindex="0" data-nt-focus="grip" '
+        + 'aria-label="Altura de los avisos: arrastra, usa ↑/↓ o doble clic para maximizar" title="Arrastra para cambiar la altura · doble clic: maximizar"></div>')
       + '<header class="nt-head">'
       + `<button type="button" class="nt-toggle" data-nt-act="toggle" data-nt-focus="toggle" aria-expanded="${!collapsed}" aria-controls="nt-body">${icon('bell')}<span>Avisos</span>${attend ? `<span class="nt-count">${attend}</span>` : ''}${icon('chevron')}</button>`
       + `<small class="nt-meta">${unread} nuevo${unread === 1 ? '' : 's'} · ${pendingN} pendiente${pendingN === 1 ? '' : 's'}</small>`
       + (collapsed ? '' : `<div class="nt-filters" role="group" aria-label="Filtrar avisos por tipo">${filters}</div>`)
       + `<button type="button" class="nt-read-all" data-nt-act="read-all" data-nt-focus="read-all" ${unread ? '' : 'disabled'}>Marcar leídos</button>`
+      + (collapsed ? '' : `<button type="button" class="nt-icon-btn" data-nt-act="max" data-nt-focus="max" aria-label="${v.maximized ? 'Restaurar altura' : 'Maximizar'}" title="${v.maximized ? 'Restaurar altura' : 'Maximizar'}">${icon(v.maximized ? 'shrink' : 'grow')}</button>`
+        + `<button type="button" class="nt-icon-btn" data-nt-act="close" data-nt-focus="close" aria-label="Cerrar avisos" title="Cerrar">${icon('close')}</button>`)
       + '</header>' + body + '</section>';
   }
 
@@ -592,6 +606,25 @@
     host.appendChild(rootEl);
     if (doc.body && doc.body.classList) doc.body.classList.add('nt-mounted');
 
+    const viewport = () => (win && win.innerHeight) || 800;
+    let height = clampHeight(read(HEIGHT_KEY) || DEFAULT_HEIGHT, viewport());
+    let restoreTo = null;
+    function applyHeight() {
+      if (rootEl.style && rootEl.style.setProperty) rootEl.style.setProperty('--nt-h', height + 'px');
+    }
+    function setHeight(px, { remember = true } = {}) {
+      height = clampHeight(px, viewport());
+      if (remember) write(HEIGHT_KEY, String(height));
+      applyHeight();
+      return height;
+    }
+    function toggleMax() {
+      const max = clampHeight(Infinity, viewport());
+      if (restoreTo != null && height >= max) { const back = restoreTo; restoreTo = null; setHeight(back); }
+      else { restoreTo = height; setHeight(max, { remember: false }); }
+      schedule();
+    }
+    applyHeight();
     const stored = read('comandos.notices.collapsed');
     let queued = false, lastSettings = '';
     const controller = createController({
@@ -613,7 +646,7 @@
       const v = controller.view();
       const active = doc.activeElement;
       const keep = active && rootEl.contains(active) ? focusKeyOf(active) : null;
-      stripEl.innerHTML = hidden ? '' : renderStrip({ ...v, collapsed: false });
+      stripEl.innerHTML = hidden ? '' : renderStrip({ ...v, collapsed: false, maximized: restoreTo != null });
       floatEl.innerHTML = renderFloat(v);
       rootEl.classList.toggle('nt-hidden', hidden);
       rootEl.classList.toggle('nt-collapsed', false);
@@ -658,7 +691,8 @@
       const f = t.getAttribute('data-nt-filter');
       if (f) { controller.setFilter(f); return; }
       const act = t.getAttribute('data-nt-act'), id = t.getAttribute('data-nt-id');
-      if (act === 'toggle') { hidden = true; controller.state.opened = false; render(); }
+      if (act === 'toggle' || act === 'close') { hidden = true; controller.state.opened = false; render(); }
+      else if (act === 'max') toggleMax();
       else if (act === 'open') controller.open(id);
       else if (act === 'read') controller.markRead([id]);
       else if (act === 'read-all') controller.markAllRead(null);
@@ -666,6 +700,24 @@
       else if (act === 'float-open') controller.openFloat();
       else if (act === 'float-close') controller.dismissFloat();
       else if (act === 'gone-close') controller.closeUnavailable();
+    });
+
+    const onGrip = e => !!(e.target && e.target.closest && e.target.closest('.nt-grip'));
+    rootEl.addEventListener('pointerdown', e => {
+      if (!onGrip(e) || !win || !win.addEventListener) return;
+      e.preventDefault();
+      const startY = e.clientY, startH = height;
+      restoreTo = null;
+      const move = ev => setHeight(startH + (startY - ev.clientY), { remember: false });
+      const up = () => { win.removeEventListener('pointermove', move); win.removeEventListener('pointerup', up); setHeight(height); schedule(); };
+      win.addEventListener('pointermove', move);
+      win.addEventListener('pointerup', up);
+    });
+    rootEl.addEventListener('dblclick', e => { if (onGrip(e)) toggleMax(); });
+    rootEl.addEventListener('keydown', e => {
+      if (!onGrip(e)) return;
+      if (e.key === 'ArrowUp' || e.key === 'ArrowDown') { e.preventDefault(); restoreTo = null; setHeight(height + (e.key === 'ArrowUp' ? 32 : -32)); }
+      else if (e.key === 'Enter') { e.preventDefault(); toggleMax(); }
     });
 
     const settingsBox = doc.getElementById && doc.getElementById('notice-settings');
@@ -721,6 +773,8 @@
         return !hidden;
       },
       get hidden() { return hidden; },
+      get height() { return height; },
+      setHeight, toggleMax,
       destroy() { if (pollTimer != null) stopEvery(pollTimer); stopEvery(clock); if (presence) presence.stop(); if (rootEl.parent || rootEl.parentNode) (rootEl.parentNode || rootEl.parent).removeChild && (rootEl.parentNode || rootEl.parent).removeChild(rootEl); },
     };
   }
@@ -738,7 +792,7 @@
   return {
     GROUP_NEWS, GROUP_GENERAL, FILTERS, TYPES, DEFAULT_PREFS, CATEGORIES,
     isNews, groupKeyOf, groupNotices, matchesFilter, normalizePrefs, relTime,
-    renderStrip, renderFloat, renderSettings, floatSummary,
+    renderStrip, renderFloat, renderSettings, floatSummary, clampHeight, DEFAULT_HEIGHT,
     createController, createPresence, mount, install,
     get instance() { return module_instance; },
   };

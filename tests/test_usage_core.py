@@ -1187,3 +1187,15 @@ def test_focus_legacy_rows_export_planned_history_for_the_pomodoro_mapping(tmp_p
     assert [(r["id"], r["mode"], r["status"], r["planned_minutes"]) for r in rows] == [
         (block["id"], "focus", "completed", 25), (rows[1]["id"], "break", "running", 5)]
     assert rows[0]["project"] == "Lola" and rows[0]["ended_at_ms"] == 1_501_000
+
+
+def test_limit_alert_reads_as_plain_language():
+    from datetime import datetime
+    now = datetime(2026, 9, 29, 21, 34).timestamp()
+    alert = {"provider": "claude", "label": "Sesion 5h", "percent": 70.4, "threshold": 70,
+             "resets_at": int(datetime(2026, 9, 29, 23, 40).timestamp())}
+    title, body = cc_usage.limit_alert_text(alert, now=now)
+    assert title == "Claude: llevas 70% de tu sesión de 5 h"
+    assert body == "Te aviso al pasar el 70%. Se reinicia a las 23:40 (en 2 h 06 min)."
+    alert["resets_at"] = None
+    assert cc_usage.limit_alert_text(alert, now=now)[1] == "Te aviso al pasar el 70%."

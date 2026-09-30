@@ -27,7 +27,8 @@ def test_two_panes_of_one_session_on_different_tiers_alert_once():
         alert("sava", "claude", "opus-5-5", "high", pane="%12")
     assert sent == [], "a pane that never changed tier is not an alert"
     alert("sava", "claude", "opus-5-5", "high", pane="%11")   # %11 really switched to the expensive tier
-    assert len(sent) == 1 and "%11" not in sent[0][0] and "sava" in sent[0][0]
+    assert len(sent) == 1 and "%11" not in sent[0][0] and sent[0][1]["project"] == "sava"
+    assert "opus-5-5" in sent[0][0] and sent[0][1]["title"] == "Modelo caro en uso"
     for _ in range(5):
         alert("sava", "claude", "opus-5-5", "high", pane="%11")
     assert len(sent) == 1, "staying on the tier never re-alerts"

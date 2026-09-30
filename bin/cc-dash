@@ -466,7 +466,8 @@ def _check_limit_alerts(limits):
     for alert in cc_usage.limit_threshold_alerts(limits, thresholds=alert_thresholds()):
         try:
             if cc_usage.record_alert_once(USAGE_DB, alert):
-                usage_alert_send(alert["message"])
+                title, body = cc_usage.limit_alert_text(alert)
+                usage_alert_send(body, title=title, project="Cuota")
         except Exception:
             pass
 
@@ -4272,11 +4273,12 @@ def _maybe_tier_alert(sess, agent, model, tier, pane=""):
         return
     sym = tier_style(tier).get("symbol") or ""
     lbl = tier_style(tier).get("label") or tier
-    msg = (f"{sess}: {agent or 'agente'} ahora usa {model} {sym} (nivel {lbl})"
-           if ui_lang() == "es" else
-           f"{sess}: {agent or 'agent'} now uses {model} {sym} ({lbl} tier)")
+    es = ui_lang() == "es"
+    msg = (f"{agent or 'El agente'} de esta sesión cambió a {model} {sym}: gasta tu cuota más rápido."
+           if es else f"{agent or 'The agent'} in this session switched to {model} {sym}: it uses quota faster.")
+    title = f"Modelo {lbl} en uso" if es else f"{lbl} model in use"
     threading.Thread(target=usage_alert_send, args=(msg,),
-                     kwargs={"title": "Modelo", "kind": "done",
+                     kwargs={"title": title, "kind": "done",
                              "project": sess}, daemon=True).start()
 
 

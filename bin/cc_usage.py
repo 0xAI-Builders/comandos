@@ -1143,6 +1143,29 @@ def limit_threshold_alerts(limits, thresholds=(70, 85, 95), now=None):
     return alerts
 
 
+_WINDOW_WORDS = {"sesion 5h": "sesión de 5 h", "sesión 5h": "sesión de 5 h", "semana": "semana",
+                 "semanal": "semana", "weekly": "semana"}
+
+
+def limit_alert_text(alert, now=None):
+    """(título, cuerpo) en lenguaje llano para una alerta de cuota."""
+    now = time.time() if now is None else now
+    provider = str(alert.get("provider") or "").strip()
+    who = provider[:1].upper() + provider[1:] if provider else "Tu plan"
+    raw = str(alert.get("label") or "").strip()
+    window = _WINDOW_WORDS.get(raw.lower(), raw.lower() or "cuota")
+    pct = _as_float(alert.get("percent"))
+    title = f"{who}: llevas {pct:.0f}% de tu {window}"
+    body = f"Te aviso al pasar el {alert.get('threshold')}%."
+    resets = _as_int(alert.get("resets_at"))
+    if resets and resets > now:
+        left = int(resets - now) // 60
+        at = time.strftime("%H:%M", time.localtime(resets))
+        span = f"{left // 60} h {left % 60:02d} min" if left >= 60 else f"{left} min"
+        body += f" Se reinicia a las {at} (en {span})."
+    return title, body
+
+
 def calculate_alerts(state, settings=None):
     settings = settings or {}
     alerts = []
