@@ -43,7 +43,7 @@
         ? `<button type="button" data-flat class="new" aria-label="${esc(a)} (nuevo)" title="nuevo" ${attr}="${esc(withArg(a))}" data-kind="${kind}">${esc(a)}</button>`
         : `<button type="button" data-flat ${attr}="${esc(withArg(a))}" data-kind="${kind}">${esc(a)}</button>`).join('');
     const add = mode === 'build' ? `<button type="button" data-flat class="add" data-add="${esc(text)}" data-kind="${kind}">+ cadena</button>` : '';
-    const dis = opts.dis ? ' dis' : '';
+    const dis = (opts.dis ? ' dis' : '') + (opts.cls ? ' ' + opts.cls : '');
     const hidden = hits(cmd, opts.q) ? '' : ' hidden';
     return `<div class="cmd${dis}" ${attr}="${esc(text)}" data-kind="${kind}"${hidden}>`
       + `<code>${esc(text)}${text.endsWith(' ') ? '<em>…</em>' : ''}</code>`
@@ -69,20 +69,31 @@
     const m = MONO[id] || ['#1c2130', '#eaf0fb', String(id || '?').slice(0, 1).toUpperCase()];
     return `<span class="mono" style="background:${m[0]};color:${m[1]}">${esc(m[2])}</span>`;
   }
-  function launchHTML(cli, which, o) {
-    const key = `${cli.id}:${which}`;
-    const list = (cli.launch && Array.isArray(cli.launch[which])) ? cli.launch[which] : [];
-    const missing = (cli.version && cli.version.status === 'missing') || o.noTarget;
-    const attr = o.mode === 'build' ? 'data-add' : 'data-cmd';
-    const pills = list.map(text => `<button type="button" data-flat class="cmd pill${which === 'yolo' ? ' y' : ''}${missing ? ' dis' : ''}" ${attr}="${esc(text)}" data-kind="shell"${hits({ text }, o.q) ? '' : ' hidden'}>${esc(text)}</button>`).join('');
-    const note = which === 'yolo' && !list.length
-      ? `<small class="note"${o.q ? ' hidden' : ''}>${esc((cli.launch && cli.launch.yoloNote) || 'sin flag yolo')}</small>` : '';
-    const empty = o.q && !list.some(text => hits({ text }, o.q));
-    const label = which === 'yolo' ? `${ic('bolt', 's20')} arrancar en modo yolo · sin permisos` : `${ic('fire', 's20')} arrancar normal`;
-    return `<div class="launch ${which}${o.open.has(key) ? ' open' : ' closed'}"${empty ? ' hidden' : ''}>`
-      + `<span class="lab3" data-toggle="${esc(key)}"${toggleAttrs(o.open.has(key))}>${label}</span>`
-      + pills + note + '</div>';
+  // Arranques leídos de `<cli> --help` (cli.start): la fila del binario con el primer
+  // párrafo de su ayuda, las cuentas reales, los flags que el propio CLI describe como
+  // saltarse permisos (ámbar) y cada sección de la ayuda con su título original,
+  // plegada. Ningún texto de aquí es nuestro: título y descripciones son del CLI.
+  function startHTML(cli, o) {
+    const st = cli.start || { rows: [], yolo: [], sections: [] };
+    const dis = (cli.version && cli.version.status === 'missing') || o.noTarget;
+    const row = (c, cls) => rowHTML(c, { mode: o.mode, kind: 'shell', dis, q: o.q, cls });
+    const top = (st.rows || []).map(c => row(c, 'bin')).join('') + (st.yolo || []).map(c => row(c, 'y')).join('');
+    const secs = (st.sections || []).map(sec => {
+      const key = `${cli.id}:help:${sec.title}`, open = o.open.has(key);
+      const items = sec.items || [];
+      const empty = o.q && !items.some(c => hits(c, o.q));
+      return `<div class="hsec${open ? ' open' : ' closed'}"${empty ? ' hidden' : ''}>`
+        + `<div class="hsec-h" data-toggle="${esc(key)}"${toggleAttrs(open)}><span class="t">${esc(sec.title)}</span>`
+        + `<small class="n">${items.length}</small><code class="src">${esc(st.command || '')}</code>`
+        + `<span class="chev">${open ? '▾' : '▸'}</span></div>`
+        + `<div class="srows">${items.map(c => row(c, '')).join('')}</div></div>`;
+    }).join('');
+    return `<div class="start"><div class="srows top">${top}</div>${secs}</div>`;
   }
+  const startTexts = cli => {
+    const st = cli.start || {};
+    return [...(st.rows || []), ...(st.yolo || []), ...(st.sections || []).flatMap(x => x.items || [])];
+  };
 
   // Lista plana (ronda 6 A aprobada): los grupos del catálogo solo ordenan; no
   // se pintan subtítulos ni se pliegan. Solo llegan los comandos detectados en
@@ -109,8 +120,7 @@
     const st = (st0 === 'drift' || st0 === 'unverified') && d && d.found === d.total ? 'ok' : st0;
     const ver = v.installed ? `${v.installed}` : (st === 'missing' ? 'no instalado' : '');
     const groups = Array.isArray(cli.groups) ? cli.groups : [];
-    const launch = cli.launch || {};
-    const empty = o.q && ![...(launch.yolo || []), ...(launch.normal || [])].some(text => hits({ text }, o.q))
+    const empty = o.q && !startTexts(cli).some(c => hits(c, o.q))
       && !groups.some(g => (g.commands || []).some(c => hits(c, o.q)));
     const det = '';   // el conteo detectado va en el title; la fila muestra solo la versión (mockup)
     const cls = ['cs-cli', o.open.has(cli.id) ? 'open' : '', opts.here ? 'here' : '', st !== 'ok' ? st : ''].filter(Boolean).join(' ');
@@ -122,7 +132,7 @@
     return `<div class="${cls}" data-cli="${esc(cli.id)}"${empty ? ' hidden' : ''}>`
       + `<div class="cli-h" data-toggle="${esc(cli.id)}"${toggleAttrs(o.open.has(cli.id))} title="${esc(title)}">${monoHTML(cli.id)}<span class="nm">${esc(cli.label || cli.id)}</span>`
       + `<small class="ver">${esc(ver)}</small>${badge}<span class="chev">${o.open.has(cli.id) ? '▾' : '▸'}</span></div>`
-      + launchHTML(cli, 'yolo', o) + launchHTML(cli, 'normal', o) + commandsHTML(cli, o) + '</div>';
+      + startHTML(cli, o) + commandsHTML(cli, o) + '</div>';
   }
 
   function createCommandSidebar(opts) {
@@ -133,7 +143,6 @@
 
     // móvil (≤900): el bloque «arrancar normal» nace plegado; en escritorio, abierto
     // (la barra del escritorio es angosta pero no es móvil: se decide por el puntero táctil)
-    const narrow = () => { try { return typeof window !== 'undefined' && !!window.matchMedia && window.matchMedia('(pointer:coarse)').matches; } catch (_) { return false; } };
     const read = k => { try { return storage ? storage.getItem(k) : null; } catch (_) { return null; } };
     const write = (k, v) => { try { if (storage) storage.setItem(k, v); } catch (_) {} };
     (function readOpen() {
@@ -274,11 +283,7 @@
 
     function toggle(key, keepFocus) {
       if (state.open.has(key)) state.open.delete(key);
-      else {
-        state.open.add(key);
-        // mockup: al abrir un CLI sus arranques se ven abiertos (normal plegado en móvil)
-        if (clis().some(c => c.id === key)) { state.open.add(`${key}:yolo`); if (!narrow()) state.open.add(`${key}:normal`); }
-      }
+      else state.open.add(key);
       writeOpen();
       render();
       if (keepFocus) {   // el repintado del cuerpo suelta el foco: se devuelve al mismo encabezado

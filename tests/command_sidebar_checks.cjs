@@ -29,8 +29,15 @@ const catalog = JSON.parse(fs.readFileSync(process.cwd() + '/tests/fixtures/comm
   assert.equal(root.querySelector('.cs-cli.here').dataset.cli, 'codex');
   assert.equal(root.querySelectorAll('.cs-cli.open').length, 0);
   assert.deepEqual(JSON.parse(store.get('comandos.commands.open.v2')), ['saved']);
-  assert.equal(root.querySelector('.cs-cli.here .launch').classList.contains('yolo'), true);
-  assert.equal(root.querySelector('.cs-cli.here .launch.yolo .cmd').dataset.cmd, 'codex --dangerously-bypass-approvals-and-sandbox');
+  // arranques de `codex --help`: primero el binario con su resumen, luego lo que el CLI describe como saltarse permisos
+  assert.deepEqual(root.querySelectorAll('.cs-cli.here .srows.top .cmd').map(r => r.dataset.cmd),
+    ['codex', 'codex --dangerously-bypass-approvals-and-sandbox']);
+  assert.equal(root.querySelector('.cs-cli.here .srows .cmd.y small').textContent.startsWith('Skip all confirmation prompts'), true);
+  assert.equal(root.querySelector('.cs-cli.here .srows .cmd.bin small').textContent, 'Codex CLI');
+  assert.deepEqual(root.querySelectorAll('.cs-cli.here .hsec .hsec-h .t').map(t => t.textContent), ['Commands', 'Options']);
+  assert.equal(root.querySelector('.cs-cli.here .hsec-h .src').textContent, 'codex --help');
+  assert.equal(root.querySelectorAll('.cs-cli.here .hsec.open').length, 0);                       // secciones plegadas
+  assert.equal(root.querySelectorAll('.cs-cli.here .srows .cmd').some(r => r.dataset.cmd === 'codex --full-auto'), false);
   root.click('.cs-cli.here .cli-h'); assert.equal(root.querySelector('.cs-cli.here').classList.contains('open'), true);
   root.click('.cs-cli.here .cli-h'); assert.equal(root.querySelector('.cs-cli.here').classList.contains('open'), false);
   root.click('.cs-cli.here .cli-h'); assert.equal(root.querySelector('.cs-cli.here').classList.contains('open'), true);
@@ -44,8 +51,7 @@ const catalog = JSON.parse(fs.readFileSync(process.cwd() + '/tests/fixtures/comm
   assert.equal(root.querySelectorAll('.cs-cli[data-cli="grok"] .cmds').length, 1);
   assert.equal(root.querySelectorAll('.cs-cli[data-cli="grok"] .cmds .cmd').length > 4, true);
   assert.equal(root.querySelector('.cs-cli[data-cli="grok"]').classList.contains('open'), false);
-  assert.equal(root.querySelector('.cs-cli.here .launch.normal').classList.contains('open'), true);   // escritorio: abierto (móvil lo pliega)
-  assert.equal(root.querySelector('.cs-cli[data-cli="opencode"] .launch.yolo').textContent.includes('sin flag'), true);
+  assert.equal(root.querySelector('.cs-cli[data-cli="opencode"] .srows .cmd.y').dataset.cmd, 'opencode --auto');
   // 2) un clic teclea sin Enter en el pane capturado, con requestId
   root.click('.cs-cli.here .cmds .cmd[data-cmd="/model"]');
   await sb.state.typing;
@@ -85,7 +91,7 @@ const catalog = JSON.parse(fs.readFileSync(process.cwd() + '/tests/fixtures/comm
   target = { session: 'term-q1', pane: '%7', kind: 'term', title: 'Terminal 14:32' };
   sb.render(); const before = calls.length; root.click('.cs-cli[data-cli="claude"] .cmds .cmd'); assert.equal(calls.length, before);   // atenuado: no teclea
   assert.equal(root.querySelector('.cs-cli[data-cli="claude"] .cmds .cmd').classList.contains('dis'), true);
-  root.click('.cs-cli[data-cli="claude"] .launch.yolo .cmd'); await sb.state.typing;
+  root.click('.cs-cli[data-cli="claude"] .srows .cmd.y'); await sb.state.typing;
   assert.equal(store.get('comandos.commands.preferred.%7'), 'claude');
   // 7) el CLI sale del pane: la barra deja de marcar "en este pane"
   target = { session: 'demo', pane: '%2', kind: 'pane', title: 'demo %2' };
@@ -109,7 +115,7 @@ const catalog = JSON.parse(fs.readFileSync(process.cwd() + '/tests/fixtures/comm
   sb.applyCatalog({ cliInPane: 'codex', target: { session: 'demo', pane: '%2' }, catalog: det, versionsAt: 5 });
   assert.equal(root.querySelector('.cs-cli[data-cli="codex"]').classList.contains('drift'), true);
   assert.equal(root.querySelector('.cs-cli[data-cli="codex"] .cli-h').getAttribute('title').includes('11 de 12 comandos presentes'), true);
-  assert.equal(root.querySelector('.cs-cli[data-cli="agy"] .launch .cmd').classList.contains('dis'), true);
+  assert.equal(root.querySelector('.cs-cli[data-cli="agy"] .srows .cmd').classList.contains('dis'), true);
 
   // extra) la búsqueda filtra filas sin tocar state.open
   const openBefore = [...sb.state.open].sort().join();
@@ -117,13 +123,13 @@ const catalog = JSON.parse(fs.readFileSync(process.cwd() + '/tests/fixtures/comm
   root.input('.cs-search', 'compact');
   const visible = root.querySelectorAll('.cmd').filter(r => !r.hasAttribute('hidden'));
   assert.ok(visible.length >= 3 && visible.every(r => /compact/i.test(r.textContent)));
-  assert.equal(root.querySelector('.cs-cli[data-cli="codex"] .launch.yolo').hasAttribute('hidden'), true);
+  assert.equal(root.querySelector('.cs-cli[data-cli="codex"] .srows .cmd.y').hasAttribute('hidden'), true);
   assert.equal([...sb.state.open].sort().join(), openBefore);
   // fix 1: la consulta conserva los espacios y filtra por palabras
   root.input('.cs-search', 'claude fable');
   assert.equal(sb.state.q, 'claude fable');
   const hitsCF = root.querySelectorAll('.cmd').filter(r => !r.hasAttribute('hidden')).map(r => r.dataset.cmd);
-  assert.deepEqual(hitsCF, ['claude --dangerously-skip-permissions --model claude-fable-5-1 --effort max', '/claude-api', '/model ']);
+  assert.deepEqual(hitsCF, ['claude --model ', '/claude-api', '/model ']);
   root.input('.cs-search', 'model ');
   assert.equal(sb.state.q, 'model ');
   assert.equal(root.querySelector('.cs-search').value, 'model ');
@@ -199,7 +205,7 @@ const catalog = JSON.parse(fs.readFileSync(process.cwd() + '/tests/fixtures/comm
     const rowsN = rootN.querySelectorAll('.cmd');
     assert.equal(rowsN.length > 0, true);
     assert.equal(rowsN.every(r => r.classList.contains('dis')), true);           // arranques incluidos
-    rootN.click('.launch.yolo .cmd'); rootN.click('.cmds .cmd');
+    rootN.click('.srows .cmd.y'); rootN.click('.cmds .cmd');
     assert.equal(sbN.insert('/model'), null); assert.equal(sbN.insert('codex', 'shell'), null);
     assert.equal(sbN.startChain('yolo'), null);
     assert.equal(callsN.some(c => c[0] === '/pane/type'), false);
@@ -234,11 +240,12 @@ const catalog = JSON.parse(fs.readFileSync(process.cwd() + '/tests/fixtures/comm
     rootK.dispatch('keydown', H('grok'), { key: 'a' }); rootK.dispatch('keydown', H('grok'), { key: 'Enter', isComposing: true });
     rootK.dispatch('keydown', H('grok').querySelector('.nm'), { key: 'Enter' });        // solo el encabezado mismo
     assert.equal(H('grok').getAttribute('aria-expanded'), 'false');
-    rootK.dispatch('keydown', H('codex'), { key: 'Enter' });                    // abrir el CLI abre también sus arranques
-    const lab = rootK.querySelector('.cs-cli[data-cli="codex"] .launch.normal .lab3');
-    assert.equal(lab.getAttribute('aria-expanded'), 'true');
-    rootK.dispatch('keydown', lab, { key: 'Enter' });
-    assert.equal(rootK.querySelector('.cs-cli[data-cli="codex"] .launch.normal .lab3').getAttribute('aria-expanded'), 'false');
+    rootK.dispatch('keydown', H('codex'), { key: 'Enter' });
+    const lab = () => rootK.querySelector('.cs-cli[data-cli="codex"] .hsec .hsec-h');
+    assert.equal(lab().getAttribute('aria-expanded'), 'false');                 // secciones de --help plegadas
+    rootK.dispatch('keydown', lab(), { key: 'Enter' });
+    assert.equal(lab().getAttribute('aria-expanded'), 'true');
+    assert.equal(rootK.querySelector('.cs-cli[data-cli="codex"] .hsec').classList.contains('open'), true);
     assert.equal(rootK.querySelector('.cs-saved .cli-h').getAttribute('role'), 'button');
     // hydrate corre sobre la raíz tras el primer pintado, tras cada repintado del cuerpo y con la búsqueda
     const n0 = hyd.length; assert.ok(n0 >= 1); assert.equal(hyd.every(x => x === rootK), true);

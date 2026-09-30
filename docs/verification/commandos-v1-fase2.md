@@ -88,3 +88,27 @@ inglés tal cual). Lo único añadido son los chips de argumentos ya verificados
 detección en el binario acepta el nombre con o sin barra, porque Codex (Rust) y
 Antigravity (Go) lo guardan sin ella. En la barra, las descripciones largas se cortan
 a dos líneas y la completa queda en el `title`.
+
+## Arranques desde `<cli> --help` (30-sep, noche)
+
+Los bloques «Arrancar en modo yolo · sin permisos» y «Arrancar normal» eran texto
+nuestro y los flags salían de `agent-roles.json` + `launch.extra` del catálogo. Con
+eso la barra ofrecía `codex --full-auto`, que Codex 0.159.2 ya no tiene, y decía que
+OpenCode no tiene flag yolo cuando `opencode --help` trae `--auto`.
+
+Ahora `lib/cli_help.py` ejecuta `<cli> --help` (cacheado por ruta, mtime y tamaño del
+ejecutable; el watcher lo calienta) y lo interpreta (commander, clap, yargs y flag de
+Go). Por CLI la barra muestra, con el texto exacto de la ayuda:
+
+- el binario solo, con el primer párrafo de su ayuda, y las cuentas reales;
+- en ámbar, los flags cuya propia descripción dice que se salta permisos o
+  confirmaciones: `claude --allow-dangerously-skip-permissions` y
+  `--dangerously-skip-permissions`, `codex --dangerously-bypass-approvals-and-sandbox`,
+  `grok --always-approve`, `opencode --auto`, `agy --dangerously-skip-permissions`;
+- cada sección de la ayuda con su título original («Options», «Commands»,
+  «Available subcommands»), plegada, con `codex --help` como fuente y los valores
+  posibles como chips (`--sandbox read-only|workspace-write|danger-full-access`,
+  `--ask-for-approval on-request|never`, `--permission-mode …`).
+
+Todos los CLI arrancan cerrados, y las secciones de la ayuda también. Las ayudas
+reales quedan como fixtures en `tests/fixtures/cli-help/`.

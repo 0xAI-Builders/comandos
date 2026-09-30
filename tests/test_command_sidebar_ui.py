@@ -27,7 +27,9 @@ def test_fixture_matches_the_real_catalog_view():
     sys.path.insert(0, str(ROOT / "lib"))
     import cli_catalog
     cat = cli_catalog.load_catalog()
-    danger = json.loads((ROOT / "config" / "agent-roles.json").read_text())["dangerFlags"]
+    import cli_help
     versions = {c["id"]: c["pinnedVersion"] for c in cat["clis"]}
-    view = cli_catalog.catalog_view(cat, danger_flags=danger, versions=versions, accounts={})
+    helps = {c["id"]: dict(cli_help.parse_help((ROOT / "tests" / "fixtures" / "cli-help" / f"{c['id']}.txt").read_text(),
+                                               c["binary"]), command=f"{c['binary']} --help") for c in cat["clis"]}
+    view = cli_catalog.catalog_view(cat, versions=versions, accounts={}, helps=helps)
     assert json.loads((ROOT / "tests" / "fixtures" / "command-catalog.json").read_text()) == view

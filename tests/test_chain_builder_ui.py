@@ -65,8 +65,8 @@ def test_builder_touch_rules_share_the_sidebar_specificity():
     css = (ROOT / "dash" / "workspace.css").read_text()
     # estilos 1:1 del mockup: tokens compartidos, filas y chips con la misma especificidad en barra y modal
     assert "#command-sidebar,.chain-only{--cs-panel:#171b24;" in css
-    assert ":is(#command-sidebar,.chain-only) .cmds .cmd{padding-block:10px}" in css
-    assert ":is(#command-sidebar,.chain-only) .cmds{border-top:1px solid var(--cs-line2)}" in css
+    assert ":is(#command-sidebar,.chain-only) :is(.cmds,.srows) .cmd{padding-block:10px}" in css
+    assert ":is(#command-sidebar,.chain-only) :is(.cmds,.srows){border-top:1px solid var(--cs-line2)}" in css
     assert ".chain-only .cmd button[data-flat].add{min-height:32px}" in css
 
 

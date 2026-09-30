@@ -6,8 +6,6 @@ ROOT = Path(__file__).resolve().parents[1]
 import sys; sys.path.insert(0, str(ROOT / "lib"))
 import cli_catalog
 
-DANGER = {"claude": "--dangerously-skip-permissions", "codex": "--dangerously-bypass-approvals-and-sandbox",
-          "opencode": "", "grok": "--always-approve", "agy": "--dangerously-skip-permissions"}
 VERSIONS = {"claude": "2.1.268", "codex": "0.154.0", "grok": "1.0.25", "opencode": "1.17.18", "agy": "1.1.25"}
 
 def test_catalog_file_is_each_cli_menu_verbatim():
@@ -36,25 +34,68 @@ def test_catalog_file_is_each_cli_menu_verbatim():
     assert build.build(json.loads(cli_catalog.CATALOG_FILE.read_text())) == cat
 
 
-def test_yolo_launches_come_first_and_use_danger_flag():
-    cat = cli_catalog.load_catalog()
-    view = cli_catalog.catalog_view(cat, danger_flags=DANGER, versions=VERSIONS, accounts={})
-    claude = next(c for c in view["clis"] if c["id"] == "claude")
-    assert claude["launch"]["yolo"][:2] == [
-        "claude --dangerously-skip-permissions",
-        "claude --dangerously-skip-permissions --resume <id>"]
-    assert claude["launch"]["normal"][:2] == ["claude", "claude --resume <id>"]
-    codex = next(c for c in view["clis"] if c["id"] == "codex")
-    assert codex["launch"]["yolo"][1] == "codex --dangerously-bypass-approvals-and-sandbox resume <id>"
-    opencode = next(c for c in view["clis"] if c["id"] == "opencode")
-    assert opencode["launch"]["yolo"] == [] and "sin flag" in opencode["launch"]["yoloNote"]
+import cli_help
 
-def test_account_launches_use_config_dir_env():
-    cat = cli_catalog.load_catalog()
+def _helps():
+    """Las cinco ayudas reales (`<cli> --help`) guardadas en tests/fixtures/cli-help."""
+    return {c: dict(cli_help.parse_help((ROOT / "tests" / "fixtures" / "cli-help" / f"{c}.txt").read_text(), c),
+                    command=f"{c} --help") for c in VERSIONS}
+
+def _start(view, cid):
+    return next(c for c in view["clis"] if c["id"] == cid)["start"]
+
+def test_start_rows_come_verbatim_from_each_cli_help():
+    view = cli_catalog.catalog_view(cli_catalog.load_catalog(), versions=VERSIONS, accounts={}, helps=_helps())
+    codex = _start(view, "codex")
+    assert codex["command"] == "codex --help"
+    assert codex["rows"] == [{"text": "codex", "description": "Codex CLI", "args": []}]
+    # el yolo es lo que el propio CLI describe como saltarse confirmaciones/permisos
+    assert [y["text"] for y in codex["yolo"]] == ["codex --dangerously-bypass-approvals-and-sandbox"]
+    assert codex["yolo"][0]["description"].startswith("Skip all confirmation prompts and execute commands without sandboxing.")
+    opts = next(s for s in codex["sections"] if s["title"] == "Options")["items"]
+    assert "codex --full-auto" not in [i["text"].strip() for i in opts]        # ya no existe en 0.159.2
+    sandbox = next(i for i in opts if i["text"] == "codex --sandbox ")
+    assert sandbox["args"] == ["read-only", "workspace-write", "danger-full-access"]
+    assert next(i for i in opts if i["text"] == "codex --ask-for-approval ")["args"] == ["on-request", "never"]
+    cmds = next(s for s in codex["sections"] if s["title"] == "Commands")["items"]
+    assert any(i["text"] == "codex resume" and i["description"].startswith("Resume a previous interactive session") for i in cmds)
+    assert [y["text"] for y in _start(view, "claude")["yolo"]] == [
+        "claude --allow-dangerously-skip-permissions", "claude --dangerously-skip-permissions"]
+    assert [y["text"] for y in _start(view, "grok")["yolo"]] == ["grok --always-approve"]
+    oc = _start(view, "opencode")
+    assert [y["text"] for y in oc["yolo"]] == ["opencode --auto"]
+    assert oc["rows"][0] == {"text": "opencode", "description": "start opencode tui [default]", "args": []}
+    agy = _start(view, "agy")
+    assert [y["text"] for y in agy["yolo"]] == ["agy --dangerously-skip-permissions"]
+    assert [s["title"] for s in agy["sections"]] == ["Options", "Available subcommands"]
+    assert next(i for i in agy["sections"][0]["items"] if i["text"] == "agy --effort ")["args"] == ["low", "medium", "high", "max"]
+    grok = next(s for s in _start(view, "grok")["sections"] if s["title"] == "Options")["items"]
+    assert next(i for i in grok if i["text"] == "grok --output-format ")["args"] == ["plain", "json", "streaming-json", "streaming-messages-json"]
+
+def test_without_help_only_the_binary_row_is_offered():
+    view = cli_catalog.catalog_view(cli_catalog.load_catalog(), versions=VERSIONS, accounts={})
+    assert _start(view, "codex") == {"command": "codex --help", "rows": [{"text": "codex", "description": "", "args": []}],
+                                     "yolo": [], "sections": []}
+
+def test_account_rows_use_config_dir_env():
     accounts = {"claude": [{"alias": "relotto", "env": {"CLAUDE_CONFIG_DIR": "/home/u/.claude-accounts/relotto"}}]}
-    view = cli_catalog.catalog_view(cat, danger_flags=DANGER, versions=VERSIONS, accounts=accounts)
-    claude = next(c for c in view["clis"] if c["id"] == "claude")
-    assert "CLAUDE_CONFIG_DIR=/home/u/.claude-accounts/relotto claude --dangerously-skip-permissions" in claude["launch"]["normal"]
+    view = cli_catalog.catalog_view(cli_catalog.load_catalog(), versions=VERSIONS, accounts=accounts, helps=_helps())
+    assert [r["text"] for r in _start(view, "claude")["rows"]] == ["claude", "CLAUDE_CONFIG_DIR=/home/u/.claude-accounts/relotto claude"]
+
+def test_help_for_caches_by_binary_and_tolerates_failures(tmp_path):
+    exe = tmp_path / "codex"; exe.write_text("#!/bin/sh\n"); exe.chmod(0o755)
+    calls = []
+    def run(cmd, **kw):
+        calls.append(cmd)
+        return subprocess.CompletedProcess(cmd, 0, stdout=(ROOT / "tests" / "fixtures" / "cli-help" / "codex.txt").read_text(), stderr="")
+    cli_help._HELP_CACHE.clear()
+    h = cli_help.help_for("codex", which=lambda b: str(exe), run=run)
+    assert h["command"] == "codex --help" and h["summary"] == "Codex CLI"
+    assert cli_help.help_for("codex", which=lambda b: str(exe), run=run) is h and calls == [[str(exe), "--help"]]
+    def boom(cmd, **kw): raise subprocess.TimeoutExpired(cmd, 1)
+    assert cli_help.help_for("grok", which=lambda b: None, run=boom) is None
+    cli_help._HELP_CACHE.clear()
+    assert cli_help.help_for("codex", which=lambda b: str(exe), run=boom) is None
 
 @pytest.mark.parametrize("pinned,installed,verified,expected", [
     ("2.1.268", "2.1.268", True, "ok"), ("2.1.268", "2.1.270", True, "drift"),
@@ -76,10 +117,11 @@ def test_installed_versions_runs_resolved_path_and_tolerates_failures():
 
 def test_view_never_contains_enter_or_newlines():
     cat = cli_catalog.load_catalog()
-    view = cli_catalog.catalog_view(cat, danger_flags=DANGER, versions=VERSIONS, accounts={})
+    view = cli_catalog.catalog_view(cat, versions=VERSIONS, accounts={}, helps=_helps())
     for cli in view["clis"]:
-        for text in cli["launch"]["yolo"] + cli["launch"]["normal"]:
-            assert "\n" not in text and "\r" not in text
+        st = cli["start"]
+        for row in st["rows"] + st["yolo"] + [i for sec in st["sections"] for i in sec["items"]]:
+            assert "\n" not in row["text"] and "\r" not in row["text"]
 
 
 def _cmd(view, cli, text):
@@ -90,7 +132,7 @@ def test_argsfrom_models_uses_watcher_models_and_marks_new():
     cat = cli_catalog.load_catalog()
     models = {"claude": ["claude-opus-5-5", "claude-sonnet-5-5"], "grok": ["grok-4.7"], "codex": ["gpt-6.1-sol"]}
     new = {"claude": ["claude-sonnet-5-5", "claude-haiku-4-5"], "grok": []}
-    view = cli_catalog.catalog_view(cat, danger_flags=DANGER, versions=VERSIONS, accounts={},
+    view = cli_catalog.catalog_view(cat, versions=VERSIONS, accounts={},
                                     models=models, new_models=new)
     cm = _cmd(view, "claude", "/model ")
     assert cm["args"] == ["claude-opus-5-5", "claude-sonnet-5-5"]
@@ -105,7 +147,7 @@ def test_argsfrom_models_uses_watcher_models_and_marks_new():
 def test_argsfrom_models_keeps_json_args_without_watcher_data():
     cat = cli_catalog.load_catalog()
     for kw in ({}, {"models": {}}, {"models": {"claude": [], "grok": []}, "new_models": {}}):
-        view = cli_catalog.catalog_view(cat, danger_flags=DANGER, versions=VERSIONS, accounts={}, **kw)
+        view = cli_catalog.catalog_view(cat, versions=VERSIONS, accounts={}, **kw)
         assert _cmd(view, "claude", "/model ")["args"] == ["claude-fable-5-1", "claude-opus-5-5", "claude-sonnet-5-5"]
         assert _cmd(view, "grok", "/model ")["args"] == ["grok-4.6", "grok-4.5"]
         assert "newArgs" not in _cmd(view, "claude", "/model ")
@@ -158,7 +200,7 @@ def test_detected_commands_reads_slash_names_from_each_binary(tmp_path):
 def test_view_only_keeps_detected_commands_and_is_flat_when_asked():
     cat = cli_catalog.load_catalog()
     det = {"claude": {"/model", "/compact"}, "codex": None}
-    view = cli_catalog.catalog_view(cat, danger_flags=DANGER, versions=VERSIONS, accounts={}, detected=det)
+    view = cli_catalog.catalog_view(cat, versions=VERSIONS, accounts={}, detected=det)
     claude = next(c for c in view["clis"] if c["id"] == "claude")
     names = [c["text"].split()[0] for g in claude["groups"] for c in g["commands"]]
     assert names == ["/model", "/compact"] or sorted(names) == ["/compact", "/model"]
@@ -168,5 +210,5 @@ def test_view_only_keeps_detected_commands_and_is_flat_when_asked():
     assert sum(len(g["commands"]) for g in codex["groups"]) == sum(
         len(g.get("commands", [])) for g in next(c for c in cat["clis"] if c["id"] == "codex")["groups"])
     # sin `detected` no cambia nada
-    full = cli_catalog.catalog_view(cat, danger_flags=DANGER, versions=VERSIONS, accounts={})
+    full = cli_catalog.catalog_view(cat, versions=VERSIONS, accounts={})
     assert "detected" not in next(c for c in full["clis"] if c["id"] == "claude")

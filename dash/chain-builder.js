@@ -107,12 +107,8 @@
       renderSlots();
     }
     function toggle(key, keepFocus) {
-      if (open_.has(key)) { open_.delete(key); }
-      else {
-        open_.add(key);
-        const cli = clis().find(c => c.id === key);   // al abrir un CLI se abren su arranque yolo y sus grupos
-        if (cli) open_.add(`${key}:yolo`);
-      }
+      if (open_.has(key)) open_.delete(key);
+      else open_.add(key);
       renderBody();
       if (keepFocus) {   // el repintado suelta el foco: se devuelve al mismo encabezado
         const h = [...backdrop.querySelectorAll('[data-toggle]')].find(x => x.dataset.toggle === key);
@@ -185,7 +181,7 @@
       state.dragging = null; editSlug = chain ? chain.slug : null;
       open_ = new Set(); error = '';
       const here = hereCli();
-      if (here && clis().some(c => c.id === here)) { open_.add(here); open_.add(`${here}:yolo`); }
+      if (here && clis().some(c => c.id === here)) open_.add(here);
 
       backdrop = doc.createElement('div');
       backdrop.className = 'backdrop';

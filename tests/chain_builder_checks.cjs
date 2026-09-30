@@ -51,7 +51,7 @@ const tick = () => new Promise(r => setImmediate(r));
   // el CLI del pane abre solo y se marca (mockup aprobado); los demás plegados, sin subtítulos de grupo
   assert.equal(q('.cs-cli[data-cli="codex"]').classList.contains('here'), true);
   assert.equal(q('.cs-cli[data-cli="codex"]').classList.contains('open'), true);
-  assert.equal(q('.cs-cli[data-cli="codex"] .launch.yolo').classList.contains('open'), true);
+  assert.equal(q('.cs-cli[data-cli="codex"] .srows .cmd.y').dataset.add, 'codex --dangerously-bypass-approvals-and-sandbox');
   assert.equal(q('.cs-cli[data-cli="claude"]').classList.contains('open'), false);
   assert.equal(qa('.grp').length, 0);
   assert.equal(doc.activeElement, q('.m-name'));
@@ -65,8 +65,7 @@ const tick = () => new Promise(r => setImmediate(r));
   assert.equal(q('.cs-cli[data-cli="codex"]').classList.contains('open'), false);
   click('.cs-cli[data-cli="codex"] .cli-h');
   assert.equal(q('.cs-cli[data-cli="codex"]').classList.contains('open'), true);
-  assert.equal(q('.cs-cli[data-cli="codex"] .launch.yolo').classList.contains('open'), true);
-  click('.cs-cli[data-cli="codex"] .launch.yolo .cmd');
+  click('.cs-cli[data-cli="codex"] .srows .cmd.y');
   bd().dispatch('click', q('.cs-cli[data-cli="codex"] .cmds .cmd[data-add="/model"]'));   // /model
   bd().dispatch('click', q('.cs-cli[data-cli="claude"] .cmd[data-add="/model "] .opts button'));  // chip: se abre solo con el arranque claude
   bd().dispatch('click', q('.cs-cli[data-cli="claude"] .cmds .cmd[data-add="/model "] .add')); // «+ cadena» de /model  (con espacio final)
@@ -126,7 +125,7 @@ const tick = () => new Promise(r => setImmediate(r));
   assert.equal(calls.length, 0); assert.match(q('.m-error').textContent, /paso/i);
 
   // 5) Guardar: POST /chains {name, steps} (sin slug), cierra y onSaved(chain, {run:false})
-  bd().dispatch('click', qa('.cs-cli[data-cli="codex"] .launch.yolo .cmd')[0]);
+  bd().dispatch('click', q('.cs-cli[data-cli="codex"] .srows .cmd.y'));
   bd().dispatch('click', q('.cs-cli[data-cli="codex"] .cmds .cmd[data-add="/model"]'));
   click('[data-save]'); await tick(); await tick();
   assert.deepEqual(calls, [['/chains', { name: 'Mi cadena', steps: [{ kind: 'shell', text: YOLO }, { kind: 'pane', text: '/model' }] }]]);
@@ -202,7 +201,7 @@ const tick = () => new Promise(r => setImmediate(r));
     assert.equal(H().getAttribute('role'), 'button'); assert.equal(H().getAttribute('tabindex'), '0'); assert.equal(H().getAttribute('aria-expanded'), 'false');
     bd().dispatch('keydown', H(), { key: 'Enter' });
     assert.equal(H().getAttribute('aria-expanded'), 'true'); assert.equal(doc.activeElement, H());
-    assert.equal(q('.cs-cli[data-cli="grok"] .launch.yolo .lab3').getAttribute('aria-expanded'), 'true');
+    assert.equal(q('.cs-cli[data-cli="grok"] .hsec .hsec-h').getAttribute('aria-expanded'), 'false');
     bd().dispatch('keydown', H(), { key: ' ' }); assert.equal(H().getAttribute('aria-expanded'), 'false');
     bd().dispatch('keydown', H(), { key: 'x' }); assert.equal(H().getAttribute('aria-expanded'), 'false');
     b4.close();
@@ -238,7 +237,7 @@ const tick = () => new Promise(r => setImmediate(r));
   // 13) añadir un paso inválido usa .m-error (un toast quedaría bajo el modal)
   {
     const t7 = [];
-    const b7 = createChainBuilder({ api, root: doc.body, catalog: () => ({ clis: [{ id: 'z', label: 'Z', binary: 'z', version: { status: 'ok' }, launch: { yolo: ['a\nb'], normal: [] }, groups: [] }] }), chains: () => [], toast: (m, e) => t7.push([m, e]) });
+    const b7 = createChainBuilder({ api, root: doc.body, catalog: () => ({ clis: [{ id: 'z', label: 'Z', binary: 'z', version: { status: 'ok' }, start: { command: 'z --help', rows: [{ text: 'a\nb', description: '', args: [] }], yolo: [], sections: [] }, groups: [] }] }), chains: () => [], toast: (m, e) => t7.push([m, e]) });
     b7.open(); bd().dispatch('click', qa('.cmd[data-add]')[0]);
     assert.deepEqual(b7.state.steps, []); assert.match(q('.m-error').textContent, /no se puede añadir/); assert.equal(t7.length, 0);
     b7.close();

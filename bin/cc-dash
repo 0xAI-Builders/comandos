@@ -699,6 +699,8 @@ def _model_watch_cycle_locked(force=False):
                     if _CLI_CATALOG["catalog"] is None:
                         _CLI_CATALOG["catalog"] = cli_catalog.load_catalog()
                     cli_catalog.detected_commands(_CLI_CATALOG["catalog"])
+                    for _cli in _CLI_CATALOG["catalog"]["clis"]:
+                        cli_help.help_for(_cli["binary"])
             except Exception:
                 pass
             result = model_watch_lib.watch_models(
@@ -1191,6 +1193,7 @@ import pomodoro
 import focus_progress
 import tui_state
 import cli_catalog
+import cli_help
 import command_chains
 import pane_typing
 _PANE_TYPING_LOCKS = pane_typing.PaneTypingLocks()
@@ -1377,10 +1380,16 @@ def cli_catalog_payload(refresh=False):
             detected = cli_catalog.detected_commands(catalog)
     except Exception:
         detected = None
-    view = cli_catalog.catalog_view(catalog, danger_flags=load_agent_roles().get("dangerFlags") or {},
-                                    versions=derived["versions"], accounts=accounts,
+    helps = {}
+    for cli in catalog["clis"]:
+        try:
+            with _CLI_CATALOG_LOCK:
+                helps[cli["id"]] = cli_help.help_for(cli["binary"])
+        except Exception:
+            helps[cli["id"]] = None
+    view = cli_catalog.catalog_view(catalog, versions=derived["versions"], accounts=accounts,
                                     models=derived["models"], new_models=derived["new_models"],
-                                    detected=detected)
+                                    detected=detected, helps=helps)
     return view, derived["at"]
 
 

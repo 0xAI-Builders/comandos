@@ -25,7 +25,7 @@ def load_catalog(path=None):
         raise CatalogError("catálogo inválido: se esperaba {version: 1, clis: [...]}")
     seen = set()
     for cli in cat["clis"]:
-        for key in ("id", "label", "binary", "pinnedVersion", "launch", "groups"):
+        for key in ("id", "label", "binary", "pinnedVersion", "groups"):
             if key not in cli:
                 raise CatalogError(f"cli sin '{key}': {cli.get('id')}")
         if cli["id"] in seen:
@@ -145,19 +145,28 @@ def detected_commands(catalog, which=None):
     return out
 
 
-def _launches(cli, danger, accounts):
-    b, resume = cli["binary"], cli["launch"].get("resume", "--resume <id>")
-    yolo, normal = [], [f"{b}", f"{b} {resume}"]
-    if danger:
-        yolo = [f"{b} {danger}", f"{b} {danger} {resume}"]
-    for extra in cli["launch"].get("extra", []):
-        text = extra.replace("{bin}", b).replace("{danger}", danger or "").replace("{resume}", resume)
-        (yolo if danger and "{danger}" in extra else normal).append(re.sub(r"\s{2,}", " ", text).strip())
-    for acc in accounts.get(cli["id"], []):
-        env = " ".join(f"{k}={v}" for k, v in sorted(acc.get("env", {}).items()))
+def _start_view(cli, help_, accounts):
+    """Arranques tal como los describe `<cli> --help`: la fila del binario solo (con
+    el primer párrafo de la ayuda), las cuentas reales, los flags que el CLI describe
+    como saltarse permisos (`yolo`) y el resto por sección con su título original."""
+    b = cli["binary"]
+    acc = []
+    for a in accounts.get(cli["id"], []):
+        env = " ".join(f"{k}={v}" for k, v in sorted(a.get("env", {}).items()))
         if env:
-            normal.append(f"{env} {b} {danger}".strip() if danger else f"{env} {b}")
-    return {"yolo": yolo, "normal": normal, "yoloNote": cli["launch"].get("yoloNote", "")}
+            acc.append({"text": f"{env} {b}", "description": "", "args": []})
+    if not help_:
+        return {"command": f"{b} --help", "rows": [{"text": b, "description": "", "args": []}] + acc,
+                "yolo": [], "sections": []}
+    pick = lambda it: {"text": it["text"], "description": it["description"], "args": list(it.get("args") or [])}
+    bare = next((it for sec in help_["sections"] for it in sec["items"] if it["text"].strip() == b), None)
+    rows = [{"text": b, "description": help_.get("summary") or (bare or {}).get("description", ""), "args": []}] + acc
+    yolo = [pick(it) for sec in help_["sections"] for it in sec["items"] if it.get("yolo")]
+    sections = [{"title": sec["title"],
+                 "items": [pick(it) for it in sec["items"] if not it.get("yolo") and it["text"].strip() != b]}
+                for sec in help_["sections"]]
+    return {"command": help_.get("command") or f"{b} --help", "rows": rows, "yolo": yolo,
+            "sections": [x for x in sections if x["items"]]}
 
 
 def _command_view(cli_id, cmd, models, new_models):
@@ -174,11 +183,12 @@ def _command_view(cli_id, cmd, models, new_models):
     return out
 
 
-def catalog_view(catalog, *, danger_flags, versions, accounts, models=None, new_models=None, detected=None):
+def catalog_view(catalog, *, versions, accounts, models=None, new_models=None, detected=None, helps=None):
     """`models` = {cli: [ids]} (más nuevo por familia, del watcher) y
     `new_models` = {cli: [ids]} (newSince del watcher). `detected` = salida de
     detected_commands(): con un conjunto, solo quedan los `/x` presentes en el
-    binario; con None (o sin `detected`) el catálogo va entero. Todos opcionales."""
+    binario; con None (o sin `detected`) el catálogo va entero. `helps` =
+    {cli: cli_help.help_for()} con los arranques de su `--help`. Todos opcionales."""
     clis = []
     for cli in catalog["clis"]:
         installed = versions.get(cli["id"])
@@ -191,7 +201,7 @@ def catalog_view(catalog, *, danger_flags, versions, accounts, models=None, new_
             "id": cli["id"], "label": cli["label"], "binary": cli["binary"],
             "version": {"pinned": cli["pinnedVersion"], "installed": installed,
                         "status": version_status(cli["pinnedVersion"], installed, cli.get("verified", True))},
-            "launch": _launches(cli, danger_flags.get(cli["id"], ""), accounts),
+            "start": _start_view(cli, (helps or {}).get(cli["id"]), accounts),
             "groups": groups,
         }
         if detected is not None:

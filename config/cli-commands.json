@@ -8,12 +8,6 @@
       "binary": "claude",
       "pinnedVersion": "2.1.286",
       "verified": true,
-      "launch": {
-        "resume": "--resume <id>",
-        "extra": [
-          "{bin} {danger} --model claude-fable-5-1 --effort max"
-        ]
-      },
       "groups": [
         {
           "title": "",
@@ -437,12 +431,6 @@
       "binary": "codex",
       "pinnedVersion": "0.159.2",
       "verified": true,
-      "launch": {
-        "resume": "resume <id>",
-        "extra": [
-          "{bin} --full-auto"
-        ]
-      },
       "groups": [
         {
           "title": "",
@@ -678,10 +666,6 @@
       "binary": "grok",
       "pinnedVersion": "1.0.44",
       "verified": true,
-      "launch": {
-        "resume": "--resume <id>",
-        "extra": []
-      },
       "groups": [
         {
           "title": "",
@@ -1058,11 +1042,6 @@
       "binary": "opencode",
       "pinnedVersion": "1.18.33",
       "verified": true,
-      "launch": {
-        "resume": "--session <id>",
-        "extra": [],
-        "yoloNote": "sin flag de arranque conocido; el modo se cambia dentro con /agents"
-      },
       "groups": [
         {
           "title": "",
@@ -1146,10 +1125,6 @@
       "binary": "agy",
       "pinnedVersion": "1.2.14",
       "verified": true,
-      "launch": {
-        "resume": "--conversation <id>",
-        "extra": []
-      },
       "groups": [
         {
           "title": "",

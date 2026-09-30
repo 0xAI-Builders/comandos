@@ -43,7 +43,7 @@ def build(old):
             cmd.update(extra or {})
             cmds.append(cmd)
         cmds.sort(key=lambda c: c["text"])
-        cli = {k: v for k, v in by_id[cli_id].items() if k != "groups"}
+        cli = {k: v for k, v in by_id[cli_id].items() if k not in ("groups", "launch")}
         cli.update({"pinnedVersion": src["version"], "verified": True,
                     "groups": [{"title": "", "icon": "", "commands": cmds}]})
         clis.append(cli)
