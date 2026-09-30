@@ -1349,9 +1349,9 @@ def _build_hb_css():
     b".pane-pill.pp-shell label{font-size:11px;}"
     b".pill-btn{padding:2px 5px;margin:0;background:rgba(148,148,148,0.12);"
     b" border:1px solid rgba(148,148,148,0.55);border-radius:999px;min-height:0;}"
-    b".pane-card .pill-btn{padding:0 8px;min-height:22px;border-radius:7px;margin:0 0 0 6px;color:" + THEME.get("dim", "#8a98ab").encode() + b";}"
-    b".pane-card .pill-btn label{font-size:10px;font-weight:600;color:" + THEME.get("dim", "#8a98ab").encode() + b";}"
-    b".pane-card .pill-btn:hover label{color:" + THEME["fg"].encode() + b";}"
+    b".pane-card .pill-btn,.pane-card-keys .pill-btn{padding:0 8px;min-height:22px;border-radius:7px;margin:0 0 0 6px;color:" + THEME.get("dim", "#8a98ab").encode() + b";}"
+    b".pane-card .pill-btn label,.pane-card-keys .pill-btn label{font-size:10px;font-weight:600;color:" + THEME.get("dim", "#8a98ab").encode() + b";}"
+    b".pane-card .pill-btn:hover label,.pane-card-keys .pill-btn:hover label{color:" + THEME["fg"].encode() + b";}"
     b".pp-logo{min-width:16px;min-height:16px;}"
     b".pill-btn:hover{border-color:" + THEME["fg"].encode() + b";"
     b" background:rgba(148,148,148,0.28);}"
@@ -4959,7 +4959,7 @@ def _pane_card_ai(sess):
     return image
 
 
-def _pane_pill(sess, p):
+def _pane_pill(sess, p, keys=True):
     """Tarjeta del pane (grill 30-sep, igual que el remoto): semáforo + sesión |
     logo + modelo + ✓ | «IA» y «MCPs · Skills». Sin texto redundante: el logo
     ES la identidad; el tooltip carga el detalle (harness→motor, cuentas, pane)."""
@@ -5014,12 +5014,19 @@ def _pane_pill(sess, p):
                           + {"verified": " · verificado en el proceso vivo",
                              "changing": " · cambio de motor en curso",
                              "detecting": " · detectando, aun sin confirmar"}.get(state, ""))
-    pill.pack_end(_extension_pill(sess, p.get("pane") or "", harness), False, False, 0)
-    pill.pack_end(_card_button("settings", "IA",
-                               "Cambiar motor / modelo / cuenta de ESTE pane" if ES else "Switch this pane's motor/model/account",
-                               lambda *_, s=sess, pn=(p.get("pane") or ""): _dash_js(f"openMotorFor({json.dumps(s)},{json.dumps(pn)})")),
-                  False, False, 0)
+    if keys:
+        for key in reversed(_pane_card_keys(sess, p, harness)):
+            pill.pack_end(key, False, False, 0)
     return pill
+
+
+def _pane_card_keys(sess, p, harness):
+    """«⚙ IA» y «✨ MCPs · Skills» de la Tarjeta."""
+    pane = p.get("pane") or ""
+    return [_card_button("settings", "IA",
+                         "Cambiar motor / modelo / cuenta de ESTE pane" if ES else "Switch this pane's motor/model/account",
+                         lambda *_, s=sess, pn=pane: _dash_js(f"openMotorFor({json.dumps(s)},{json.dumps(pn)})")),
+            _extension_pill(sess, pane, harness)]
 
 
 def _extension_pill(sess, pane, harness=""):
@@ -5244,10 +5251,14 @@ def _place_pills(box, panes, geo=None):
             continue
         placed.add(p.get("pane"))
         left, top, width = g[:3]
-        pill = _pane_pill(getattr(box, "_pill_sess", ""), p)
-        # Tarjeta (prototipo aprobado): ocupa todo el ancho del pane, menos un
-        # carácter de aire a cada lado; los botones quedan al canto derecho.
-        pill.set_size_request(max(120, int(width * cw) - 26), -1)
+        sess_now = getattr(box, "_pill_sess", "")
+        pill = _pane_pill(sess_now, p, keys=False)
+        # Tarjeta (prototipo aprobado): ocupa todo el ancho del pane. Va sobre el
+        # renglón de borde de tmux, así que es TRANSPARENTE al ratón: arrastrar ese
+        # borde sigue redimensionando los panes. Solo sus dos botones reciben clic
+        # (van en su propia capa, encima, al canto derecho).
+        card_w = max(120, int(width * cw) - 26)
+        pill.set_size_request(card_w, -1)
         # anclada al INICIO de cada pane, SOBRE el renglon de titulo tmux
         # que va vacio (riel reservado): no tapa contenido y la posicion es
         # determinista sin medir anchos de widget
@@ -5255,11 +5266,26 @@ def _place_pills(box, panes, geo=None):
         pill.set_valign(Gtk.Align.START)
         # Sobre el renglón de borde tmux (vacío). Sin -3: ese offset metía la
         # pildora en la statusline del TUI (Grok/Claude) y el titulo se veía detrás.
-        pill.set_margin_top(_pill_row_y(m_t, top, chh) + 8)
-        pill.set_margin_start(max(0, int(m_l + left * cw) + 13))
+        card_y = _pill_row_y(m_t, top, chh) + 8
+        card_x = max(0, int(m_l + left * cw) + 13)
+        pill.set_margin_top(card_y)
+        pill.set_margin_start(card_x)
         ov.add_overlay(pill)
+        ov.set_overlay_pass_through(pill, True)
         pill.show_all()
         box._pills.append(pill)
+        keys = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=0)
+        keys.get_style_context().add_class("pane-card-keys")
+        for key in _pane_card_keys(sess_now, p, p.get("harness") or ""):
+            keys.pack_start(key, False, False, 0)
+        keys.set_halign(Gtk.Align.START)
+        keys.set_valign(Gtk.Align.START)
+        keys.show_all()
+        kw = keys.get_preferred_width()[1] if hasattr(keys, "get_preferred_width") else 0
+        keys.set_margin_start(max(card_x, card_x + card_w - int(kw or 0) - 10))
+        keys.set_margin_top(card_y + 3)
+        ov.add_overlay(keys)
+        box._pills.append(keys)
     # Panes SIN agente (shell vivo): boton visible para arrancar una IA ahi.
     with_agent = placed
     sess = getattr(box, "_pill_sess", "")

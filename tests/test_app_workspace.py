@@ -200,9 +200,12 @@ def test_desktop_pane_card_has_no_yes_no_and_shows_semaforo_session_model_and_bu
     """Fix 1 (30-sep): Sí/No leave the desktop card (they live in the remote touch bar);
     the card is semáforo + session | logo + model + ✓ | «IA» and «MCPs · Skills»."""
     assert 'def pane_answer' not in SOURCE and '_answer_button' not in SOURCE and 'pill-yes' not in SOURCE
-    src = SOURCE.split('def _pane_pill(sess, p):')[1].split('\ndef ')[0]
+    src = SOURCE.split('def _pane_pill(sess, p, keys=True):')[1].split('\ndef ')[0]
     assert '_pane_card_ai(sess)' in src and 'getattr(box, "_label", None) or sess' in src, 'semáforo + tab name (not the tmux key) first'
-    assert '_card_button("settings", "IA"' in src and '_extension_pill(sess' in src
+    keys = SOURCE.split('def _pane_card_keys(sess, p, harness):')[1].split('\ndef ')[0]
+    assert '_card_button("settings", "IA"' in keys and '_extension_pill(sess' in keys
+    place = SOURCE.split('def _place_pills(box, panes, geo=None):')[1].split('\ndef ')[0]
+    assert 'ov.set_overlay_pass_through(pill, True)' in place, 'the card never blocks dragging the tmux border'
     assert 'add_class("pane-card")' in src
     ext = SOURCE.split('def _extension_pill(sess, pane, harness=""):')[1].split('\ndef ')[0]
     assert '_card_button("sparkles", "MCPs · Skills"' in ext

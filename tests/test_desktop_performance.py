@@ -105,7 +105,7 @@ def model_ui():
           '_PV_ICON': {'codex': 'openai'}, '_PV_HEX': {'codex': '#aaa'},
           '_STATE_UI': {'verified': ('green', 'v'), 'detecting': ('gray', '?'),
                         'changing': ('yellow', '>')}, '_esc': str, 'ES': False}
-    load({'_refresh_tab_models', '_place_pills', '_pane_pill', '_card_button', '_pane_card_ai', '_motor_badge', '_shell_pill',
+    load({'_refresh_tab_models', '_place_pills', '_pane_pill', '_pane_card_keys', '_card_button', '_pane_card_ai', '_motor_badge', '_shell_pill',
           '_pill_row_y', '_attach_model_bar', '_extension_pill'}, ns)
     for key, box in tabs.items():
         box._term = Widget()
@@ -127,7 +127,7 @@ def test_unchanged_models_and_identical_allocations_do_not_redraw():
             callback(ui.current._term, NS(width=1200, height=800))
         ui.refresh()
     assert ui.counts['svg'] == 3
-    assert ui.current._pill_overlay.calls['add_overlay'] == 1  # one card; frames are painted on the VTE
+    assert ui.current._pill_overlay.calls['add_overlay'] == 2  # the mouse-transparent card + its two keys
     assert sum(label._model.calls['set_text'] for label in ui.labels.values()
                if hasattr(label, '_model')) == 19
     assert ui.counts['geometry'] == 10  # Keep querying real geometry, once per tick.
