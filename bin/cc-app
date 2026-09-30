@@ -194,7 +194,7 @@ notebook > header { background: @BAR@; border: none; box-shadow: none; }
 .tabstrip-tabs { background: @BAR@; }
 .strip-tab {
   background-color: @BAR@; color: @DIM@; padding: 0 12px; min-height: 44px;
-  font-family: system-ui, 'Ubuntu Sans', 'Inter', sans-serif; font-size: 13px;
+  font-family: 'Ubuntu Sans', 'Inter', sans-serif; font-size: 13px;
   border-right: 1px solid @LINE@;
   transition: color 150ms ease, background-color 150ms ease, box-shadow 150ms ease;
 }
@@ -202,7 +202,7 @@ notebook > header { background: @BAR@; border: none; box-shadow: none; }
 .strip-tab.cur { color: @TEXT@; background-color: mix(@BAR@, @LINE2@, 0.35); box-shadow: inset 0 -2px 0 0 @BRAND@; }
 .strip-tab label { color: inherit; }
 .strip-tab label.tab-name { font-weight: 600; }
-.strip-tab label.tab-model, .tab-model { color: @FAINT@; font-family: ui-monospace, 'Ubuntu Sans Mono', 'JetBrains Mono', monospace; font-size: 10px; font-weight: 600; }
+.strip-tab label.tab-model, .tab-model { color: @FAINT@; font-family: 'Ubuntu Sans Mono', 'JetBrains Mono', monospace; font-size: 10px; font-weight: 600; }
 .strip-tab button {
   color: @FAINT@; padding: 0; margin: 0; min-height: 14px; min-width: 14px;
   border: none; background: none; background-image: none; box-shadow: none; opacity: 0;
@@ -2868,6 +2868,7 @@ def tab_label(text, key=None, closable=True, on_close=None):
             return True   # the tab itself is selected by its name, not by the indicator
         dot_box.connect("button-press-event", _open_state_menu)
     lbl = Gtk.Label(label=text)
+    lbl.set_xalign(0.0)
     lbl.get_style_context().add_class("tab-name")
     # EventBox permite recibir clicks (Label no los captura por default).
     # Doble-click = renombrar inline; sin bloquear el single-click que
@@ -2879,6 +2880,7 @@ def tab_label(text, key=None, closable=True, on_close=None):
     micon = Gtk.Image()
     hb.pack_start(micon, False, False, 0)
     model_lbl = Gtk.Label(label="")
+    model_lbl.set_xalign(0.0)              # el texto arranca a 8 px del nombre, sin centrarse en su caja
     model_lbl.get_style_context().add_class("tab-model")
     hb.pack_start(model_lbl, False, False, 0)
     hb._dot = dot
@@ -3897,10 +3899,11 @@ def _apply_tmux_theme():
         ("window-status-style",          f"bg={bg},fg={fg}"),
         ("window-status-current-style",  f"bg={bg},fg={text},bold"),
         ("window-status-activity-style", f"bg={bg},fg={THEME['cursor']},bold"),
-        # Conserva el condicional default de tmux: copy-mode se señala en
-        # AMARILLO (senal que el usuario usa); fuera de copy-mode, color de marca.
-        ("pane-active-border-style",     f"#{{?pane_in_mode,fg=yellow,fg={brand}}}"),
-        ("pane-border-style",            f"fg={line}"),
+        # Prototipo aprobado (30-sep): el marco de cada pane lo pinta la app
+        # (_draw_pane_frames, verde el activo). Las líneas de tmux van del color
+        # del fondo para no duplicarlo; copy-mode se sigue señalando en AMARILLO.
+        ("pane-active-border-style",     f"#{{?pane_in_mode,fg=yellow,fg={THEME['bg']}}}"),
+        ("pane-border-style",            f"fg={THEME['bg']}"),
         ("message-style",                f"bg={brand},fg={bg}"),
         # Riel reservado VACIO: el texto @ccmodel detras de la pildora GTK
         # (titulos $$$ / modelo) no se pinta. La pildora es el unico chrome.
