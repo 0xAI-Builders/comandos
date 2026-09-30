@@ -8708,38 +8708,16 @@ class Handler(http.server.SimpleHTTPRequestHandler):
         if self.path.startswith("/usage/changes"):
             return self._json(200, {"changes": cc_usage.change_ledger(USAGE_DB)})
         if self.path.startswith("/notifs/count"):
-            # cuenta lo IMPORTANTE con las mismas llaves del panel v2, y
-            # respeta la limpieza compartida (prefs.nfDismiss/nfSnooze).
-            prefs = read_prefs()
-            dis = set((prefs.get("nfDismiss") or {}).keys())
-            snz = prefs.get("nfSnooze") or {}
-            nowt = time.time()
-            keys = []
+            # La campana cuenta lo mismo que el cajón de avisos: sin leer o
+            # pendiente de respuesta (permisos/entradas se resuelven en su terminal).
             try:
-                g = token_guard_with_forecast()
-                for f in g.get("forecasts") or []:
-                    if f.get("level") != "normal":
-                        keys.append(f"fc|{f.get('scope')}|{round(float(f.get('percent') or 0)/5)}")
-                for p in g.get("projects") or []:
-                    if p.get("level") == "critical":
-                        keys.append(f"gp|{p.get('project')}|{round(float(p.get('tokensHour') or 0)/2e7)}")
+                import notification_delivery
+                page = notification_delivery.list_notices(notices_conn(), 0, 500, notices_now())
+                pending = set(page.get("pending") or [])
+                count = sum(1 for n in page.get("notices") or [] if not n.get("read") or n.get("eventId") in pending)
             except Exception:
-                pass
-            try:
-                for it in read_states_cached():
-                    s2 = it.get("suggestion")
-                    if s2 and it.get("alive"):
-                        keys.append(f"sg|{it.get('session')}|{it.get('pane') or ''}|{s2.get('kind')}|{s2.get('model') or s2.get('key') or s2.get('command') or ''}")
-            except Exception:
-                pass
-            mw = _read_json_quiet(MODEL_WATCH_FILE) or {}
-            for prov, info in (mw.get("newSince") or {}).items():
-                keys.append(f"mn|{prov}|{','.join(info.get('models') or [])}")
-            nw = _read_json_quiet(os.path.join(HOOKS, "news-watch.json")) or {}
-            for n in (nw.get("recent") or [])[:8]:
-                keys.append(f"nw|{n.get('url')}")
-            live = [k for k in keys if k not in dis and float(snz.get(k) or 0) <= nowt]
-            return self._json(200, {"count": len(live)})
+                count = 0
+            return self._json(200, {"count": count})
 
         if self.path.startswith("/news/latest"):
             return self._json(200, _read_json_quiet(os.path.join(HOOKS, "news-watch.json")) or {})

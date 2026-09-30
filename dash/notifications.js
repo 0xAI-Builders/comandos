@@ -600,15 +600,25 @@
       onChange: () => schedule(),
     });
 
+    // The strip is a drawer: closed until the bell opens it (Jesús, 2026-09-29).
+    // Arrivals only float and count on the bell badge; nothing opens by itself.
+    let hidden = true;
+    function badge() {
+      if (typeof o.onBadge !== 'function') return;
+      const { notices, pending } = controller.state;
+      o.onBadge(notices.filter(n => !n.read || pending.has(n.eventId)).length);
+    }
     function render() {
       queued = false;
       const v = controller.view();
       const active = doc.activeElement;
       const keep = active && rootEl.contains(active) ? focusKeyOf(active) : null;
-      stripEl.innerHTML = renderStrip(v);
+      stripEl.innerHTML = hidden ? '' : renderStrip({ ...v, collapsed: false });
       floatEl.innerHTML = renderFloat(v);
-      rootEl.classList.toggle('nt-collapsed', !!v.collapsed);
+      rootEl.classList.toggle('nt-hidden', hidden);
+      rootEl.classList.toggle('nt-collapsed', false);
       rootEl.classList.toggle('nt-has-float', !!v.float);
+      badge();
       if (keep && rootEl.querySelector) {
         const again = rootEl.querySelector(`[data-nt-focus="${String(keep).replace(/["\\]/g, '\\$&')}"]`);
         if (again && again.focus) again.focus({ preventScroll: true });
@@ -648,7 +658,7 @@
       const f = t.getAttribute('data-nt-filter');
       if (f) { controller.setFilter(f); return; }
       const act = t.getAttribute('data-nt-act'), id = t.getAttribute('data-nt-id');
-      if (act === 'toggle') write('comandos.notices.collapsed', controller.toggle() ? '1' : '0');
+      if (act === 'toggle') { hidden = true; controller.state.opened = false; render(); }
       else if (act === 'open') controller.open(id);
       else if (act === 'read') controller.markRead([id]);
       else if (act === 'read-all') controller.markAllRead(null);
@@ -702,7 +712,15 @@
     controller.poll();
 
     return {
-      controller, presence, root: rootEl, floatEl, stripEl, render,
+      controller, presence, root: rootEl, rootEl, floatEl, stripEl, render,
+      toggleStrip(open) {
+        hidden = open === undefined ? !hidden : !open;
+        if (!hidden) { controller.state.opened = true; controller.setCollapsed(false); }
+        else { controller.state.opened = false; }
+        render();
+        return !hidden;
+      },
+      get hidden() { return hidden; },
       destroy() { if (pollTimer != null) stopEvery(pollTimer); stopEvery(clock); if (presence) presence.stop(); if (rootEl.parent || rootEl.parentNode) (rootEl.parentNode || rootEl.parent).removeChild && (rootEl.parentNode || rootEl.parent).removeChild(rootEl); },
     };
   }

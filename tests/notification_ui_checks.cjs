@@ -303,6 +303,7 @@ function fakeDom() {
       openSource: n => opened.push(n.eventId), openNews: () => shown.push('news'), storage: null, presence: false,
     });
     await inst.controller.poll();
+    inst.toggleStrip(true);                       // the drawer is open while the user works
     server.notices.push(notice({ category: 'attention', kind: 'permission_requested', needsHuman: true, float: { show: true, ms: null } }));
     for (let i = 0; i < 5; i++) server.notices.push(notice({ group: 'burst' }));
     await inst.controller.poll();
@@ -497,6 +498,33 @@ function fakeDom() {
     assert.equal(news.c.view().collapsed, false, 'an unread error opens it');
     busy.c.setCollapsed(true);
     assert.equal(busy.c.view().collapsed, true, 'an explicit collapse wins');
+  });
+
+  await check('the strip is hidden until the bell opens it; floats and the bell badge still work', async () => {
+    const dom = fakeDom();
+    const host = dom.el('div'); dom.doc.body.appendChild(host);
+    const server = fakeServer(); const timers = fakeTimers(); const badges = [];
+    const inst = N.mount({
+      doc: dom.doc, host, transport: server.transport, deviceId: 'web-dom', sync: true,
+      setTimer: timers.set, clearTimer: timers.clear, setInterval: () => 0, clearInterval() {},
+      sounds: fakeSounds(), isVisible: () => true, isSessionLive: () => true,
+      openSource() {}, openNews() {}, storage: null, presence: false, onBadge: n => badges.push(n),
+    });
+    await inst.controller.poll();
+    assert.equal(inst.rootEl.classList.contains('nt-hidden'), true, 'closed by default');
+    assert.equal(inst.stripEl.innerHTML, '', 'nothing rendered while hidden');
+    const ask = notice({ category: 'attention', kind: 'permission_requested', needsHuman: true, float: { show: true, ms: 6000 } });
+    server.notices.push(ask); server.pending.push(ask.eventId);
+    await inst.controller.poll();
+    assert.equal(inst.rootEl.classList.contains('nt-hidden'), true, 'an arrival never opens the strip by itself');
+    assert.match(inst.floatEl.innerHTML, /nt-float/, 'the float still shows');
+    assert.deepEqual(badges.slice(-1), [1], 'the bell badge counts what is new');
+    inst.toggleStrip();
+    assert.equal(inst.rootEl.classList.contains('nt-hidden'), false);
+    assert.match(inst.stripEl.innerHTML, /nt-row/, 'open by hand: full strip with rows');
+    assert.equal(inst.controller.view().collapsed, false);
+    inst.toggleStrip();
+    assert.equal(inst.rootEl.classList.contains('nt-hidden'), true);
   });
 
   console.log(JSON.stringify(results.filter(r => !r.ok), null, 2));

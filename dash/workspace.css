@@ -282,7 +282,7 @@ body.only-panel #pomo-panel.pm-v1{width:100%!important}
 .pm-asset-clock.pm-variable{--pixel-scale:2;width:84px;height:84px}
 .pm-art-samples .pm-asset{--pixel-scale:1;width:40px;height:40px}
 .pm-motion-chest>.pm-pixel{animation-name:pm-chest-frames;animation-timing-function:steps(1,end)}
-#btn-pomo .pm-asset-clock.pm-header-clock{--pixel-scale:1;width:24px;height:24px;margin:-9px -2px;animation:none}
+#btn-pomo .pm-asset-clock.pm-header-clock{--pixel-scale:.5;width:21px;height:21px;margin:0;animation:none}
 @keyframes pm-pixel-frames{from{background-position-x:0}to{background-position-x:var(--strip-end)}}
 @keyframes pm-asset-breathe{50%{transform:translateY(-2px);filter:brightness(1.12)}}
 @keyframes pm-chest-frames{0%,12%{background-position-x:0}18%{background-position-x:-40px}27%{background-position-x:-80px}36%{background-position-x:-120px}45%,72%{background-position-x:-160px}81%{background-position-x:-120px}87%{background-position-x:-80px}93%{background-position-x:-40px}99%,100%{background-position-x:0}}
@@ -423,6 +423,9 @@ html.nr-open,html.nr-open body{overflow:hidden}
    apoya sobre ella, dentro del área de trabajo, y se ve aunque esté colapsada.
    Monocromo + un acento por estado: atención, error, uso. */
 #notices{position:relative;z-index:6;min-width:0;flex:none;background:var(--panel);border-top:1px solid var(--line2);font-family:var(--sans);color:var(--text)}
+/* Cajón cerrado: no ocupa alto; los flotantes siguen anclados al mismo sitio. */
+#notices.nt-hidden{border-top:0;background:transparent}
+#notices.nt-hidden .nt-strip{display:none}
 body.app #panes{grid-template-rows:44px minmax(0,1fr) auto}
 body.app #notices{grid-column:1;grid-row:3}
 @media (min-width:748px){

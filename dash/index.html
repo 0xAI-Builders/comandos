@@ -1935,7 +1935,7 @@
 	    #content{padding-bottom:env(safe-area-inset-bottom)}
 	  }
 	</style>
-<link rel="stylesheet" href="/workspace.css?v=v1n2notices">
+<link rel="stylesheet" href="/workspace.css?v=v1n2drawer">
 <link rel="stylesheet" href="/reparto.css">
 <script src="/session-config.js?v=7f3232b0a624"></script>
 <script src="/workspace-layout.js"></script>
@@ -5655,6 +5655,7 @@ ulog("click", `harness-switch:${to}`, "centro");
 	    const pinKeys = new Set(nfPins().map(p => p.key));
 	    n = nfPriorityItems().filter(it => !nfDismissed(it.key) && !nfSnoozed(it.key) && !pinKeys.has(it.key)).length;
 	  }catch(e){}
+	  if(window.ComandosNotices?.instance) return;   // el cajón de avisos manda el badge
 	  const b = $("#notif-badge"); if(!b) return;
 	  b.textContent = String(n); b.classList.toggle("hidden", !n);
 	}
@@ -5662,6 +5663,10 @@ ulog("click", `harness-switch:${to}`, "centro");
 	for(const id of ["notif-panel", "pomo-panel"]){ const el = document.getElementById(id); if(el && el.parentNode !== document.body) document.body.appendChild(el); }
 	$("#btn-notif")?.addEventListener("click", e => {
 	  e.stopPropagation();
+	  // La campana abre/cierra el cajón de avisos (franja por proyecto). El
+	  // panel antiguo de desbordes/sugerencias sigue disponible desde el cajón.
+	  const inst = window.ComandosNotices?.instance;
+	  if(inst && !ONLY_PANEL){ inst.toggleStrip(); return; }
 	  const m = $("#notif-panel"); const b = $("#btn-notif");
 	  const open = m.classList.toggle("hidden") === false;
 	  if(open){ const r = b.getBoundingClientRect(); m.style.top = (r.height ? r.bottom + 8 : 8) + "px"; m.style.right = "12px"; m.style.left = "auto"; notifRender(); }
@@ -8995,7 +9000,7 @@ function selectPaneInFrame(sess, pane){
   N.install({
     api, deviceId: WS_DEVICE || "",
     host: document.getElementById("panes"),
-    defaultCollapsed: !!(window.matchMedia && matchMedia("(max-width:560px)").matches),
+    onBadge: n => { const b = $("#notif-badge"); if(!b) return; b.textContent = String(n); b.classList.toggle("hidden", !n); },
     isSessionLive: liveSession,
     describe: n => {
       if(N.isNews(n)) return "Noticias";

@@ -156,3 +156,15 @@ def test_focus_end_sound_is_a_daemon_bound_to_the_emitting_database(server, monk
     assert timers and timers[0].daemon is True
     timers[0].fn()
     assert claimed == [("pomodoro:z:completed", db_file)]
+
+
+def test_bell_count_is_the_strip_count(server):
+    """The desktop bell badge and the web badge count the same thing: unread or pending notices."""
+    srv, dash = server
+    record(dash, "turn_started", "s1")
+    assert call(srv, "GET", "/notifs/count")[1] == {"count": 0}
+    record(dash, "permission_requested", "p1")
+    record(dash, "turn_completed", "d1", pane="%2")
+    assert call(srv, "GET", "/notifs/count")[1] == {"count": 2}
+    call(srv, "POST", "/notices/read", {"all": True})
+    assert call(srv, "GET", "/notifs/count")[1] == {"count": 1}, "a read request stays pending until answered"

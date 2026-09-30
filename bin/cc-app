@@ -4892,7 +4892,9 @@ def _hourglass_button(tooltip):
 _pomo_btn = _hourglass_button("Pomodoro" if ES else "Pomodoro")
 _pomo_btn.connect("clicked", _panel_popover(_pomo_btn, "pomo", 520, 640))   # Regla de tiempo
 _notif_btn = _icon_btn("bell", "Notificaciones" if ES else "Notifications", lambda *_: None)
-_notif_btn.connect("clicked", _panel_popover(_notif_btn, "notif", 400, 600))
+# La campana abre/cierra el cajón de avisos del tablero (misma campana que en
+# remoto): nada se abre solo; el badge cuenta lo nuevo.
+_notif_btn.connect("clicked", _dash_click("btn-notif"))
 _notif_badge = Gtk.Label(label="")
 _notif_badge.get_style_context().add_class("cc-badge")
 _notif_badge.set_no_show_all(True)
