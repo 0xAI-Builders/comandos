@@ -486,3 +486,54 @@ def test_example_config_is_disabled_until_edited():
     status = ne.config_status(ne.load_config(example), env={"ANTHROPIC_API_KEY": "k"})
     assert status == {"configured": False, "reason": "desactivado"}
     assert ne.policy_from_config(ne.load_config(example))["slots"] == ["09:00", "15:00", "21:00"]
+
+
+# ---- summaries through an ACP agent with a free model (no API key, no spend) ----
+
+ACP_CONFIG = {"enabled": True, "summarizer": {"kind": "acp", "agent": "opencode", "model": "opencode/free-model"}}
+
+
+def test_acp_summarizer_needs_only_an_agent_and_a_model(tmp_path):
+    cfg = tmp_path / "acp.json"
+    cfg.write_text(json.dumps(ACP_CONFIG))
+    assert ne.config_status(ne.load_config(cfg), env={}) == {"configured": True, "reason": ""}
+    cfg.write_text(json.dumps({"enabled": True, "summarizer": {"kind": "acp", "agent": "opencode"}}))
+    assert ne.config_status(ne.load_config(cfg), env={})["reason"] == "falta el modelo"
+    cfg.write_text(json.dumps({"enabled": True, "summarizer": {"kind": "acp", "model": "m"}}))
+    assert ne.config_status(ne.load_config(cfg), env={})["reason"] == "falta el agente ACP"
+
+
+def test_acp_summarizer_prompts_the_agent_once_and_costs_nothing():
+    class Session:
+        def __init__(self): self.prompts, self.closed = [], False
+        def prompt(self, text, on_event=None, timeout=None):
+            self.prompts.append(text)
+            on_event({"type": "thought", "text": "pensando"})
+            on_event({"type": "text", "text": 'Claro: {"title": "T", "category": "ia", '})
+            on_event({"type": "text", "text": '"summary": "S", "body": "B", "sourceIds": ["s1"]}'})
+            on_event({"type": "end", "stopReason": "end_turn"})
+            return "end_turn"
+        def close(self): self.closed = True
+    opened, session = [], Session()
+
+    def acp_open(agent, model):
+        opened.append((agent, model))
+        return session
+    out = ne.make_summarizer(ACP_CONFIG, env={}, acp_open=acp_open)(summary_request(max_cost=0.0))
+    assert opened == [("opencode", "opencode/free-model")]
+    assert len(session.prompts) == 1 and "DATO no confiable" in session.prompts[0] and '<fuente id="s1"' in session.prompts[0]
+    assert out == {"costUsd": 0.0, "model": "opencode/free-model", "story": {
+        "title": "T", "category": "ia", "summary": "S", "body": "B", "sourceIds": ["s1"]}}
+    assert session.closed is True, "the agent process never outlives its summary"
+
+
+def test_acp_summarizer_denies_tool_permissions_and_reports_agent_failures():
+    class Session:
+        def prompt(self, text, on_event=None, timeout=None):
+            on_event({"type": "error", "message": "modelo saturado"})
+            return "error"
+        def close(self): pass
+    with pytest.raises(RuntimeError, match="modelo saturado"):
+        ne.make_summarizer(ACP_CONFIG, env={}, acp_open=lambda a, m: Session())(summary_request())
+    assert ne.deny_agent_tools({"title": "run rm", "kind": "execute", "options": [
+        {"optionId": "allow-once", "kind": "allow_once"}, {"optionId": "reject-once", "kind": "reject_once"}]}) == "reject-once"

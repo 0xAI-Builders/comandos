@@ -509,8 +509,15 @@ def config_status(config, env=None):
     if config.get("enabled") is not True:
         return {"configured": False, "reason": "desactivado"}
     s = config.get("summarizer") if isinstance(config.get("summarizer"), dict) else {}
-    if s.get("kind") not in ("anthropic-messages", "openai-chat"):
+    if s.get("kind") not in ("anthropic-messages", "openai-chat", "acp"):
         return {"configured": False, "reason": "proveedor no soportado"}
+    if s.get("kind") == "acp":
+        # A local ACP agent (e.g. OpenCode with a free model): no key, no prices.
+        if not s.get("agent") or not isinstance(s.get("agent"), str):
+            return {"configured": False, "reason": "falta el agente ACP"}
+        if not s.get("model"):
+            return {"configured": False, "reason": "falta el modelo"}
+        return {"configured": True, "reason": ""}
     if not s.get("model"):
         return {"configured": False, "reason": "falta el modelo"}
     for key in ("inputUsdPerMTok", "outputUsdPerMTok"):
@@ -680,11 +687,38 @@ def _extract_json(text):
     raise ValueError("JSON incompleto")
 
 
-def make_summarizer(config, *, env=None, post=None):
+def deny_agent_tools(request):
+    """Permission handler for summary agents: the sources are already in the
+    prompt, so every tool call is refused (rm -rf in a headline stays text)."""
+    for option in request.get("options") or []:
+        if "reject" in str(option.get("kind") or "") or "deny" in str(option.get("kind") or ""):
+            return option.get("optionId")
+    return None
+
+
+def _default_acp_open(agent, model):
+    """Launch the registered ACP agent in an empty private directory."""
+    import acp
+    import providers as provider_registry
+    root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    spec = acp.agent_specs(provider_registry.load_registry(os.path.join(root, "config", "providers.json"))).get(agent)
+    if not spec:
+        raise RuntimeError(f"agente ACP desconocido: {agent}")
+    cwd = os.path.join(os.environ.get("XDG_STATE_HOME") or os.path.expanduser("~/.local/state"), "comandos", "news-acp")
+    os.makedirs(cwd, mode=0o700, exist_ok=True)
+    session = acp.open_session(spec, cwd, model=model, permission_handler=deny_agent_tools)
+    session.new_session()
+    return session
+
+
+def make_summarizer(config, *, env=None, post=None, acp_open=None):
     """Production summarize from configuration. `post(url, headers, body)` →
-    (status, json) is injectable; the default uses urllib over HTTPS."""
+    (status, json) is injectable; the default uses urllib over HTTPS.
+    `acp_open(agent, model)` → session with prompt()/close() for kind "acp"."""
     env = os.environ if env is None else env
     s = config["summarizer"]
+    if s["kind"] == "acp":
+        return _make_acp_summarizer(s, acp_open or _default_acp_open)
     price_in, price_out = float(s["inputUsdPerMTok"]), float(s["outputUsdPerMTok"])
     key = env.get(s["apiKeyEnv"], "")
 
@@ -725,6 +759,30 @@ def make_summarizer(config, *, env=None, post=None):
         if status >= 300:
             raise RuntimeError(f"proveedor respondió {status}")
         return {"costUsd": round(cost, 6), "model": s["model"], "story": _extract_json(text)}
+    return summarize
+
+
+def _make_acp_summarizer(s, acp_open):
+    def summarize(request):
+        prompt = SUMMARY_INSTRUCTIONS + "\n\n" + _prompt(request)
+        chunks, errors = [], []
+
+        def on_event(event):
+            if event.get("type") == "text":
+                chunks.append(str(event.get("text") or ""))
+            elif event.get("type") == "error":
+                errors.append(str(event.get("message") or "error del agente"))
+        session = acp_open(s["agent"], s["model"])
+        try:
+            session.prompt(prompt, on_event=on_event, timeout=600)
+        finally:
+            try:
+                session.close()
+            except Exception:
+                pass
+        if errors:
+            raise RuntimeError(errors[0])
+        return {"costUsd": 0.0, "model": s["model"], "story": _extract_json("".join(chunks))}
     return summarize
 
 

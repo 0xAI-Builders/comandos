@@ -1,15 +1,17 @@
 {
-  "_nota": "Copiar a ~/.claude/hooks/news-editions.json para activar las tres ediciones diarias (D4). La clave NO va aquí: se lee de la variable de entorno nombrada en apiKeyEnv. Sin precios no se genera nada (el tope de gasto depende de ellos). Cambiar enabled a true solo con el modelo real configurado.",
+  "_nota": "Copiar a ~/.claude/hooks/news-editions.json para activar las tres ediciones diarias (D4). Con kind \"acp\" el resumen lo hace un agente local por ACP (p. ej. OpenCode con un modelo gratuito): sin clave ni precios. Con kind \"anthropic-messages\"/\"openai-chat\" la clave se lee de la variable de entorno nombrada en apiKeyEnv y hacen falta precios para el tope de gasto.",
   "enabled": false,
   "summarizer": {
-    "kind": "anthropic-messages",
-    "model": "REEMPLAZAR-por-el-id-del-modelo-economico",
-    "apiKeyEnv": "ANTHROPIC_API_KEY",
-    "inputUsdPerMTok": 1,
-    "outputUsdPerMTok": 5
+    "kind": "acp",
+    "agent": "opencode",
+    "model": "opencode/longcat-2.5-preview-free"
   },
   "policy": {
-    "slots": ["09:00", "15:00", "21:00"],
+    "slots": [
+      "09:00",
+      "15:00",
+      "21:00"
+    ],
     "budgetUsd": 0.25,
     "maxSources": 25
   }
