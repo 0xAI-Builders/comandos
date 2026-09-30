@@ -338,3 +338,21 @@ def test_move_tab_group_reorders_the_shared_document():
     assert [g["id"] for g in doc["groups"]] == ["group-local", "group-a", "group-b"], "input untouched"
     assert [g["id"] for g in wl.move_tab_group(doc, "a", 99)["groups"]][-1] == "group-a"
     assert wl.move_tab_group(doc, "zzz", 0) is None
+
+
+def test_sort_groups_once_keeps_local_first_and_is_stable():
+    import workspace_layout as wl
+    import workspace_state as ws
+    tab = lambda t: {"type": "tab", "tabId": t}
+    doc = {"schema": ws.SCHEMA, "tabs": {}, "bindings": {}, "groups": [
+        {"id": "g-local", "tree": tab("local")}, {"id": "g-b", "tree": tab("b")},
+        {"id": "g-a", "tree": tab("a")}, {"id": "g-c", "tree": tab("c")}]}
+    info = {"a": {"label": "Alpha", "fav": False, "activeAt": 100, "need": False},
+            "b": {"label": "Beta", "fav": True, "activeAt": 50, "need": False},
+            "c": {"label": "Gamma", "fav": False, "activeAt": 300, "need": True}}
+    order = lambda d: [g["id"] for g in d["groups"]]
+    assert order(wl.sort_groups(doc, "fav", info)) == ["g-local", "g-b", "g-a", "g-c"]
+    assert order(wl.sort_groups(doc, "recent", info)) == ["g-local", "g-c", "g-a", "g-b"]
+    assert order(wl.sort_groups(doc, "need", info)) == ["g-local", "g-c", "g-b", "g-a"]
+    assert order(wl.sort_groups(doc, "alpha", info)) == ["g-local", "g-a", "g-b", "g-c"]
+    assert order(wl.restore_order(wl.sort_groups(doc, "alpha", info), order(doc))) == order(doc)

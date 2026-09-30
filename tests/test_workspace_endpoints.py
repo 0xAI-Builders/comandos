@@ -190,3 +190,22 @@ def test_operator_split_close_uses_the_guarded_pane_route(dash, monkeypatch):
         raise ValueError("El último panel permanece abierto")
     fake.execute = refuse
     assert dash.operator_close_split("alpha") == "El último panel permanece abierto"
+
+
+def test_sort_once_reorders_the_shared_arrangement_and_can_be_undone(dash, server, monkeypatch):
+    """Grill 30-sep: «Ordenar una vez» vive en el servidor para que escritorio y
+    remoto vean el mismo orden; devuelve el orden anterior para Deshacer."""
+    monkeypatch.setattr(dash, "read_prefs", lambda: {"favorites": ["term-1"]})
+    monkeypatch.setattr(dash, "read_states_cached", lambda ttl=1.2: [])
+    code, body = call(server, "GET", "/workspace")
+    before = [g["id"] for g in body["groups"]]
+    code, body = call(server, "POST", "/workspace/sort", {"by": "fav"})
+    assert code == 200
+    after = [g["id"] for g in body["groups"]]
+    fav_group = next(g["id"] for g in body["groups"] if g["tree"].get("tabId") == "term-1")
+    assert after[0] == fav_group or after[1] == fav_group, "the favourite goes first (after local)"
+    assert body["previous"] == before
+    code, body = call(server, "POST", "/workspace/sort", {"restore": before})
+    assert code == 200 and [g["id"] for g in body["groups"]] == before
+    code, body = call(server, "POST", "/workspace/sort", {"by": "nope"})
+    assert code == 400

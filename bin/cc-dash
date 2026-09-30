@@ -6883,6 +6883,42 @@ def workspace_panes(inventory):
     return {tab: workspace_state.pane_bindings(sessions.get(tab)) for tab, _ in inventory}
 
 
+def workspace_sort(data):
+    """«Ordenar una vez» (grill 30-sep): un orden compartido, aplicado una vez,
+    con el orden anterior en la respuesta para Deshacer."""
+    import workspace_layout
+    store = workspace_store()
+    for _ in range(3):
+        current = workspace_sync()
+        doc = current["document"]
+        previous = [g["id"] for g in doc.get("groups", [])]
+        try:
+            if isinstance(data.get("restore"), list):
+                wanted = workspace_layout.restore_order(doc, [str(x) for x in data["restore"]])
+            else:
+                labels = _tab_registry()
+                favorites = set((read_prefs() or {}).get("favorites") or [])
+                info = {}
+                for row in read_states_cached() or []:
+                    sess = row.get("session")
+                    if not sess:
+                        continue
+                    cur = info.setdefault(sess, {"activeAt": 0, "need": False})
+                    cur["activeAt"] = max(cur["activeAt"], float(row.get("ts") or 0))
+                    cur["need"] = cur["need"] or row.get("status") == "waiting"
+                for tab in doc.get("tabs", {}):
+                    info.setdefault(tab, {"activeAt": 0, "need": False})
+                    info[tab].update(label=labels.get(tab, tab), fav=tab in favorites)
+                wanted = workspace_layout.sort_groups(doc, data.get("by"), info)
+            saved = store.commit(current["revision"], wanted, secrets.token_hex(12), reason="user")
+        except workspace_state.Conflict:
+            continue
+        except (ValueError, TypeError, KeyError, _RegistryUnreadable) as exc:
+            return 400, {"error": str(exc) or "Orden inválido"}
+        return 200, {**workspace_payload(saved), "previous": previous}
+    return 409, {"error": "El acomodo cambió mientras ordenaba; intenta de nuevo"}
+
+
 def workspace_sync(reason="auto"):
     """Fit the stored arrangement to the tab registry; returns the current state."""
     store = workspace_store()
@@ -9019,6 +9055,9 @@ class Handler(http.server.SimpleHTTPRequestHandler):
 
         if self.path in ("/pane-extensions","/pane-extensions/apply","/pane-extensions/template","/pane-extensions/cancel","/pane-extensions/recover"):
             return self._json(*pane_extensions_write(self.path[len("/pane-extensions"):],data))
+
+        if self.path == "/workspace/sort":
+            return self._json(*workspace_sort(data))
 
         if self.path == "/workspace":
             document = data.get("document")

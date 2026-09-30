@@ -1936,12 +1936,12 @@
 	    #content{padding-bottom:env(safe-area-inset-bottom)}
 	  }
 	</style>
-<link rel="stylesheet" href="/workspace.css?v=v1semaforo">
+<link rel="stylesheet" href="/workspace.css?v=v1ordenar">
 <link rel="stylesheet" href="/buttons.css?v=2">
 <link rel="stylesheet" href="/reparto.css">
 <script src="/session-config.js?v=7f3232b0a624"></script>
 <script src="/workspace-layout.js"></script>
-<script src="/workspace-dock.js?v=bandejas1"></script>
+<script src="/workspace-dock.js?v=bandejas2"></script>
 <script src="/quick-terminal.js"></script>
 
 <div id="panes">
@@ -1952,6 +1952,7 @@
   <button type="button" id="tab-next" class="tab-nav-btn tab-step" aria-label="Desplazar pestañas a la derecha">›</button>
   <button type="button" id="tab-terminal" class="tab-nav-btn" aria-label="Terminal" title="Terminal"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m5 8 4 4-4 4"/><path d="M12 17h7"/></svg></button>
   <button type="button" id="tab-new" class="tab-nav-btn" aria-label="Nueva sesión" title="Nueva sesión">+</button>
+  <button type="button" id="tab-sort" class="tab-nav-btn" aria-label="Ordenar pestañas una vez" title="Ordenar pestañas una vez" aria-haspopup="menu"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 4v16M3 8l4-4 4 4M17 20V4M13 16l4 4 4-4"/></svg></button>
   <button type="button" id="tab-open" class="tab-nav-btn" aria-label="Ver todas las sesiones" title="Ver todas las sesiones"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="m12 3 9 5-9 5-9-5 9-5Zm-9 9 9 5 9-5M3 16l9 5 9-5"/></svg></button>
 </nav>
 <div id="view-panel" class="on">
@@ -6722,6 +6723,38 @@ function initTabNavigation(){
   newBtn.onclick = () => {  // el formulario vive en el panel: mostrarlo primero
     if(activeView !== "panel") showView("panel");
     document.getElementById("btn-newsess").click();
+  };
+  // «Ordenar una vez» (grill 30-sep): el servidor ordena el acomodo compartido
+  // UNA vez; escritorio y remoto ven el mismo orden. Deshacer vuelve al anterior.
+  const sortBtn = document.getElementById("tab-sort");
+  let sortPrev = null, sortMenu = null;
+  const SORTS = [["fav", "★ Favoritas primero"], ["recent", "⏱ Actividad reciente"], ["need", "▶ Te necesita primero"], ["alpha", "A→Z"]];
+  async function sortTabs(body){
+    try{
+      const r = await api("/workspace/sort", body);
+      sortPrev = body.restore ? null : r.previous;
+      if(window.WorkspaceDock?.adopt(r)) renderTabbar();
+      loadDesktopTabs();
+      toast(body.restore ? tf("Orden anterior restaurado", "Previous order restored") : tf("Pestañas ordenadas · Deshacer en ⇅", "Tabs sorted · Undo in ⇅"));
+    }catch(e){ toast(e.message, true); }
+  }
+  sortBtn.onclick = e => {
+    e.stopPropagation();
+    if(sortMenu){ sortMenu.remove(); sortMenu = null; return; }
+    sortMenu = document.createElement("div");
+    sortMenu.className = "tab-sort-menu";
+    sortMenu.setAttribute("role", "menu");
+    sortMenu.innerHTML = SORTS.map(([k, l]) => `<button type="button" role="menuitem" data-sort="${k}">${l}</button>`).join("") +
+      (sortPrev ? `<button type="button" role="menuitem" data-sort="undo">↶ ${tf("Deshacer", "Undo")}</button>` : "");
+    const r = sortBtn.getBoundingClientRect();
+    Object.assign(sortMenu.style, {top: r.bottom + 4 + "px", left: Math.max(8, Math.min(r.left, innerWidth - 230)) + "px"});
+    sortMenu.addEventListener("click", ev => {
+      const b = ev.target.closest("[data-sort]"); if(!b) return;
+      sortMenu.remove(); sortMenu = null;
+      sortTabs(b.dataset.sort === "undo" ? {restore: sortPrev} : {by: b.dataset.sort});
+    });
+    document.body.appendChild(sortMenu);
+    setTimeout(() => document.addEventListener("click", function close(){ sortMenu?.remove(); sortMenu = null; document.removeEventListener("click", close); }), 0);
   };
   const termBtn = document.getElementById("tab-terminal");
   termBtn.title = tf("Terminal en carpeta nueva fechada (se abre también en el escritorio)", "Terminal in a new dated folder (also opens on desktop)");

@@ -155,3 +155,34 @@ def move_tab_group(document, tab_id, index):
     group = groups.pop(at)
     groups.insert(max(0, min(int(index), len(groups))), group)
     return {**copy.deepcopy(document), "groups": copy.deepcopy(groups)}
+
+
+SORTS = ("fav", "recent", "need", "alpha")
+
+
+def sort_groups(document, by, info):
+    """«Ordenar una vez» (grill 30-sep): reordena los grupos UNA vez según
+    ``by``; ``local`` siempre primero. ``info[tabId]`` = label, fav, activeAt,
+    need. Estable: los empates conservan el orden actual."""
+    if by not in SORTS:
+        raise ValueError("Orden desconocido")
+    groups = list(document.get("groups", []))
+
+    def facts(group):
+        ids = tab_ids(group.get("tree") or {})
+        rows = [info.get(t) or {} for t in ids]
+        return {"local": "local" in ids, "fav": any(r.get("fav") for r in rows),
+                "need": any(r.get("need") for r in rows),
+                "activeAt": max([r.get("activeAt") or 0 for r in rows] or [0]),
+                "label": min([(r.get("label") or t).lower() for r, t in zip(rows, ids)] or [""])}
+    key = {"fav": lambda f: (not f["fav"],), "recent": lambda f: (-f["activeAt"],),
+           "need": lambda f: (not f["need"], not f["fav"]), "alpha": lambda f: (f["label"],)}[by]
+    ordered = sorted(groups, key=lambda g: (not facts(g)["local"],) + key(facts(g)))
+    return {**copy.deepcopy(document), "groups": copy.deepcopy(ordered)}
+
+
+def restore_order(document, group_ids):
+    """Deshacer: vuelve al orden de ``group_ids`` (grupos nuevos al final)."""
+    pos = {g: i for i, g in enumerate(group_ids)}
+    ordered = sorted(document.get("groups", []), key=lambda g: pos.get(g["id"], len(pos)))
+    return {**copy.deepcopy(document), "groups": copy.deepcopy(ordered)}

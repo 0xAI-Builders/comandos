@@ -5575,11 +5575,48 @@ _mosaic_btn = _icon_btn("grid",
                         else "Mosaic: ALL sessions on one screen (Ctrl+G)",
                         _mosaic_toggle, size=17)
 # El boton Mosaico visible se retiro (veredicto v1); Ctrl+G y SIGUSR2 siguen.
-for _key, _cls in ((_plus, "plus"), (_quick_term_btn, "term")):
+# «Ordenar una vez» (grill 30-sep): mismo orden compartido que el remoto.
+_SORT = {"prev": None}
+
+
+def _sort_tabs(body):
+    def work():
+        return _dash_call("/workspace/sort", body, timeout=8)
+
+    def done(res):
+        status, payload = res
+        if status == 200:
+            _SORT["prev"] = None if "restore" in body else payload.get("previous")
+            _WS["revision"] = -1                    # aplica el acomodo nuevo en el siguiente poll
+        else:
+            notify_popup("Ordenar" if ES else "Sort", payload.get("error") or "No se pudo ordenar")
+    _in_background(work, done)
+
+
+def _sort_menu(button):
+    menu = Gtk.Menu()
+    items = [("fav", "★ Favoritas primero"), ("recent", "⏱ Actividad reciente"),
+             ("need", "▶ Te necesita primero"), ("alpha", "A→Z")]
+    for by, text in items:
+        item = Gtk.MenuItem(label=text)
+        item.connect("activate", lambda _w, b=by: _sort_tabs({"by": b}))
+        menu.append(item)
+    if _SORT["prev"]:
+        menu.append(Gtk.SeparatorMenuItem())
+        undo = Gtk.MenuItem(label="↶ Deshacer" if ES else "↶ Undo")
+        undo.connect("activate", lambda _w: _sort_tabs({"restore": _SORT["prev"]}))
+        menu.append(undo)
+    menu.show_all()
+    menu.popup_at_widget(button, Gdk.Gravity.SOUTH_WEST, Gdk.Gravity.NORTH_WEST, None)
+
+
+_sort_btn = _icon_btn("arrow-up-down", "Ordenar pestañas una vez" if ES else "Sort tabs once", lambda b: _sort_menu(b))
+for _key, _cls in ((_plus, "plus"), (_quick_term_btn, "term"), (_sort_btn, "sort")):
     _key.get_style_context().add_class("cc-key")
     _key.get_style_context().add_class("cc-key-" + _cls)
 _headerbar.pack_end(_plus)
 _headerbar.pack_end(_quick_term_btn)
+_headerbar.pack_end(_sort_btn)
 
 
 def _cycle_page(delta):
