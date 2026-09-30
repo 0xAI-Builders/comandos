@@ -4608,7 +4608,37 @@ def _ws_draw_ghost(cr):
     """Fantasma (grill 30-sep, variante C): copia de la pestaña arrastrada, un
     poco girada y con sombra, siguiendo al puntero."""
     label, pointer = _WS.get("source_label"), _WS.get("pointer")
-    if label is None or not pointer:
+    if not pointer:
+        return
+    if label is None:
+        # Pestaña acoplada (sin etiqueta en la barra): fantasma con su nombre.
+        source = _WS["drag"] or ""
+        box = tabs.get(source) if isinstance(tabs, dict) else None
+        text = getattr(box, "_label", None) or source.replace("group:", "") or "…"
+        cr.save()
+        cr.select_font_face("Sans", 0, 1)
+        cr.set_font_size(12)
+        ext = cr.text_extents(text)
+        w, h = ext.width + 4, 18
+        px, py = pointer
+        cr.translate(px, py)
+        cr.rotate(-0.045)
+        cr.translate(-w / 2, -h / 2)
+        bar = Gdk.RGBA(); bar.parse(THEME.get("bar") or "#161B22")
+        brand = Gdk.RGBA(); brand.parse(THEME.get("brand") or "#8B7CF6")
+        cr.set_source_rgba(0, 0, 0, 0.35)
+        _ws_rounded(cr, 2, 5, w + 16, h + 8, 9)
+        cr.fill()
+        cr.set_source_rgba(bar.red, bar.green, bar.blue, 0.97)
+        _ws_rounded(cr, 0, 0, w + 16, h + 8, 9)
+        cr.fill_preserve()
+        cr.set_source_rgba(brand.red, brand.green, brand.blue, 0.9)
+        cr.set_line_width(1.5)
+        cr.stroke()
+        cr.set_source_rgba(0.92, 0.94, 0.98, 1)
+        cr.move_to(8 - ext.x_bearing, 4 + h / 2 + ext.height / 2 - 1)
+        cr.show_text(text)
+        cr.restore()
         return
     alloc = label.get_allocation()
     w, h = max(24, alloc.width), max(16, alloc.height)
