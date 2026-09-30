@@ -196,12 +196,13 @@ def test_desktop_drag_scrolls_the_strip_at_its_edges():
     assert step(10, 1000) == -1 and step(990, 1000) == 1 and step(500, 1000) == 0
 
 
-def test_desktop_pane_pill_answers_yes_and_no_like_the_remote_toolbar():
-    sent = []
-    ns = {'tmuxc': lambda *a: sent.append(a) or SimpleNamespace(returncode=0)}
-    answer = load('pane_answer', ns)
-    answer('%12', True)
-    answer('%12', False)
-    assert sent == [('send-keys', '-t', '%12', 'Enter'), ('send-keys', '-t', '%12', 'Escape')]
+def test_desktop_pane_card_has_no_yes_no_and_shows_semaforo_session_model_and_buttons():
+    """Fix 1 (30-sep): Sí/No leave the desktop card (they live in the remote touch bar);
+    the card is semáforo + session | logo + model + ✓ | «IA» and «MCPs · Skills»."""
+    assert 'def pane_answer' not in SOURCE and '_answer_button' not in SOURCE and 'pill-yes' not in SOURCE
     src = SOURCE.split('def _pane_pill(sess, p):')[1].split('\ndef ')[0]
-    assert '_answer_button("Sí"' in src and '_answer_button("No"' in src and 'pane_answer(pane, yes)' in SOURCE
+    assert '_pane_card_ai(sess)' in src and '_esc(sess)' in src, 'semáforo + session name first'
+    assert '_card_button("settings", "IA"' in src and '_extension_pill(sess' in src
+    assert 'add_class("pane-card")' in src
+    ext = SOURCE.split('def _extension_pill(sess, pane, harness=""):')[1].split('\ndef ')[0]
+    assert '_card_button("sparkles", "MCPs · Skills"' in ext

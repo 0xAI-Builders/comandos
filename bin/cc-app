@@ -1317,9 +1317,10 @@ def _build_hb_css():
     return (
     b".pane-pill{background:" + THEME["bg"].encode() + b";"
     b" background-clip:padding-box;opacity:1;"
-    b" border-radius:999px;padding:3px 12px;"
+    b" border-radius:10px;padding:3px 10px;"
     b" border:1.5px solid " + THEME["line"].encode() + b";"
     b" box-shadow:0 1px 4px rgba(0,0,0,0.55);}"
+    b".pane-card separator{background:" + THEME["line"].encode() + b";min-width:1px;margin:3px 0;}"
     b".pane-pill label{color:" + THEME["fg"].encode() + b"; font-size:11.5px;"
     b" background:transparent;}"
     b".pane-pill.pp-claude,.pane-pill.pp-codex,.pane-pill.pp-grok{"
@@ -1330,8 +1331,8 @@ def _build_hb_css():
     b".pane-pill.pp-shell label{font-size:11px;}"
     b".pill-btn{padding:2px 5px;margin:0;background:rgba(148,148,148,0.12);"
     b" border:1px solid rgba(148,148,148,0.55);border-radius:999px;min-height:0;}"
-    b".pill-btn.pill-yes{color:#4ade80;border-color:#1f7a44;font-weight:800;}"
-    b".pill-btn.pill-no{color:#f87171;border-color:#8a2a35;font-weight:800;}"
+    b".pane-card .pill-btn{padding:2px 8px;border-radius:8px;}"
+    b".pane-card .pill-btn label{font-size:11px;font-weight:700;}"
     b".pill-btn:hover{border-color:" + THEME["fg"].encode() + b";"
     b" background:rgba(148,148,148,0.28);}"
     b"window,window.background,window.solid-csd,window.csd{"
@@ -2047,6 +2048,15 @@ def _indicator_tick():
             if getattr(image, "_frame", 0) != frame:
                 image._frame = frame
                 _set_indicator_frame(image, icon, image._ind[1], frame)
+        for pill in getattr(box, "_pills", []) or []:
+            card_ai = getattr(pill, "_ai", None)
+            card_icon = getattr(card_ai, "_ai_icon", "") if card_ai is not None else ""
+            if card_icon.startswith("ai:") and work_mark_state.ai_sprite(card_icon[3:], AI_SPRITES)["cycle"]:
+                looping = True
+                frame = work_mark_state.ai_frame_index(card_icon[3:], t, AI_SPRITES)
+                if getattr(card_ai, "_frame", 0) != frame:
+                    card_ai._frame = frame
+                    _set_indicator_frame(card_ai, card_icon, None, frame)
         star = getattr(hb, "_favorite_image", None)
         if star is not None and key in TAB_FAVORITES:
             looping = True
@@ -4651,30 +4661,38 @@ def _shell_pill(sess, pane_id):
     return pill
 
 
-def pane_answer(pane, yes):
-    """Sí = Enter (confirma la opción resaltada, «Yes» por defecto en Claude Code
-    y Codex); No = Esc (la rechaza). Igual que la barra de la terminal remota."""
-    if pane:
-        tmuxc("send-keys", "-t", pane, "Enter" if yes else "Escape")
-
-
-def _answer_button(text, pane, yes):
-    button = Gtk.Button(label=text)
+def _card_button(icon, text, tooltip, on_click):
+    """Botón de la tarjeta: icono + texto corto; toma el estilo 3D de Ajustes."""
+    button = Gtk.Button()
+    hb = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=5)
+    hb.pack_start(_svg_image(icon, 12, THEME.get("fg", "#ECECEC")), False, False, 0)
+    hb.pack_start(Gtk.Label(label=text), False, False, 0)
+    button.add(hb)
     button.set_relief(Gtk.ReliefStyle.NONE)
     button.get_style_context().add_class("pill-btn")
-    button.get_style_context().add_class("pill-yes" if yes else "pill-no")
-    button.set_tooltip_text(("Sí: confirma la opción resaltada del agente (Enter)" if yes
-                             else "No: rechaza la pregunta del agente (Esc)") if ES else
-                            ("Yes: confirm the agent's highlighted option (Enter)" if yes
-                             else "No: reject the agent's question (Esc)"))
-    button.connect("clicked", lambda *_: pane_answer(pane, yes))
+    button.set_tooltip_text(tooltip)
+    button.connect("clicked", on_click)
     return button
 
 
+def _pane_card_ai(sess):
+    """Semáforo de la IA de esta sesión dentro de la tarjeta (mismo sprite que la pestaña)."""
+    icon, _, animated = tab_indicator_display(work_mark_row("session", sess)["mark"], STATE_CACHE.get(sess, ""))
+    image = Gtk.Image()
+    image._ind, image._frame = (icon, None), 0
+    try:
+        _set_indicator_frame(image, icon, None, 0)
+    except Exception:
+        return None
+    image.set_tooltip_text("IA: " + work_mark_state.AI_LABELS[icon[3:]][0 if ES else 1])
+    image._ai_icon = icon
+    return image
+
+
 def _pane_pill(sess, p):
-    """Pildora MINIMALISTA: logo(s) de marca + modelo + glifo de certeza +
-    engrane. Sin texto redundante: el logo ES la identidad; el tooltip
-    carga todo el detalle (harness→motor, cuentas, pane, estado)."""
+    """Tarjeta del pane (grill 30-sep, igual que el remoto): semáforo + sesión |
+    logo + modelo + ✓ | «IA» y «MCPs · Skills». Sin texto redundante: el logo
+    ES la identidad; el tooltip carga el detalle (harness→motor, cuentas, pane)."""
     harness, motor = p.get("harness") or "?", p.get("motor") or "?"
     state = p.get("state") or "detecting"
     scol, sglyph = _STATE_UI.get(state, _STATE_UI["detecting"])
@@ -4682,8 +4700,19 @@ def _pane_pill(sess, p):
     dim = "#8A8F98"
     pill = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
     pill.get_style_context().add_class("pane-pill")
+    pill.get_style_context().add_class("pane-card")
     pill.get_style_context().add_class(f"pp-{motor if motor in _PV_HEX else 'x'}")
     pill.set_valign(Gtk.Align.START)
+    ai = _pane_card_ai(sess) if sess and sess != "local" else None
+    if ai is not None:
+        pill.pack_start(ai, False, False, 0)
+        pill._ai = ai
+    name = Gtk.Label()
+    name.set_markup(f'<span foreground="{fg}" weight="bold">{_esc(sess)}</span>')
+    name.set_ellipsize(Pango.EllipsizeMode.END)
+    name.set_max_width_chars(18)
+    pill.pack_start(name, False, False, 0)
+    pill.pack_start(Gtk.Separator(orientation=Gtk.Orientation.VERTICAL), False, False, 2)
     if motor != harness and harness in _PV_ICON:
         pill.pack_start(_svg_image(_PV_ICON[harness], 12, dim), False, False, 0)
     pill.pack_start(_svg_image(_PV_ICON.get(motor, "layers"), 15, fg), False, False, 0)
@@ -4696,8 +4725,8 @@ def _pane_pill(sess, p):
     else:
         lab.set_markup(f'<span foreground="{dim}">…</span>')
     pill.pack_start(lab, False, False, 0)
-    # UNICO acento de color en toda la pildora: el estado. Verde=confia,
-    # ambar=espera, gris=aun no se sabe. Cero carga cognitiva extra.
+    # UNICO acento de color en la tarjeta además del semáforo: el estado del
+    # motor. Verde=confia, ambar=espera, gris=aun no se sabe.
     st = Gtk.Label()
     st.set_markup(f'<span foreground="{scol}" weight="bold">{sglyph}</span>')
     pill.pack_start(st, False, False, 0)
@@ -4713,26 +4742,18 @@ def _pane_pill(sess, p):
                           + {"verified": " · verificado en el proceso vivo",
                              "changing": " · cambio de motor en curso",
                              "detecting": " · detectando, aun sin confirmar"}.get(state, ""))
-    b = Gtk.Button()
-    b.add(_svg_image("settings", 12, dim))
-    b.set_relief(Gtk.ReliefStyle.NONE)
-    b.get_style_context().add_class("pill-btn")
-    b.set_tooltip_text("Cambiar motor / modelo / cuenta de ESTE pane" if ES else "Switch this pane's motor/model/account")
-    b.connect("clicked", lambda *_, s=sess, pn=(p.get("pane") or ""): _dash_js(f"openMotorFor({json.dumps(s)},{json.dumps(pn)})"))
-    pill.pack_start(b, False, False, 0)
-    pill.pack_start(_answer_button("Sí", p.get("pane") or "", True), False, False, 0)
-    pill.pack_start(_answer_button("No", p.get("pane") or "", False), False, False, 0)
+    pill.pack_start(Gtk.Separator(orientation=Gtk.Orientation.VERTICAL), False, False, 2)
+    pill.pack_start(_card_button("settings", "IA",
+                                 "Cambiar motor / modelo / cuenta de ESTE pane" if ES else "Switch this pane's motor/model/account",
+                                 lambda *_, s=sess, pn=(p.get("pane") or ""): _dash_js(f"openMotorFor({json.dumps(s)},{json.dumps(pn)})")),
+                    False, False, 0)
     pill.pack_start(_extension_pill(sess, p.get("pane") or "", harness), False, False, 0)
     return pill
 
 
 def _extension_pill(sess, pane, harness=""):
-    button = Gtk.Button(label="MCPs · Skills")
-    button.set_relief(Gtk.ReliefStyle.NONE)
-    button.get_style_context().add_class("pill-btn")
-    button.set_tooltip_text("Extensiones de este panel" if ES else "This pane's extensions")
-    button.connect("clicked", lambda *_: _open_extension_shelf(sess, pane, harness))
-    return button
+    return _card_button("sparkles", "MCPs · Skills", "Extensiones de este panel" if ES else "This pane's extensions",
+                        lambda *_: _open_extension_shelf(sess, pane, harness))
 
 
 _EXTENSION_SHELF = {"view": None, "target": None, "save": 0}
@@ -4963,7 +4984,9 @@ def _refresh_tab_models():
         geo_now = _pane_geometry(session)   # tambien refresca _PANE_CMD
         sig = (json.dumps(panes or [], sort_keys=True) + "|" + json.dumps(sorted(geo_now.items()))
                + "|" + json.dumps(sorted((k, _PANE_CMD.get(k, "")) for k in geo_now))
-               + "|" + json.dumps(metrics) + "|" + json.dumps([THEME.get("fg"), THEME.get("brand")]))
+               + "|" + json.dumps(metrics) + "|" + json.dumps([THEME.get("fg"), THEME.get("brand")])
+               + "|" + work_mark_state.ai_status(STATE_CACHE.get(session, "")) + "|" + AI_SPRITES
+               + "|" + work_mark_row("session", session)["mark"])
         if sig != getattr(box, "_pill_sig", ""):
             box._pill_sig = sig
             _place_pills(box, panes or [], geo_now)
