@@ -224,8 +224,8 @@
               "description": "Alias /m. Cambia el modelo.",
               "argsFrom": "models",
               "args": [
-                "grok-5",
-                "grok-5-mini"
+                "grok-4.6",
+                "grok-4.5"
               ]
             },
             {

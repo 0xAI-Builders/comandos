@@ -1186,6 +1186,7 @@ import command_chains
 import pane_typing
 _PANE_TYPING_LOCKS = pane_typing.PaneTypingLocks()
 _PANE_TYPING_RESULTS = collections.OrderedDict()   # requestId -> (status, body); 256 entradas
+_PANE_TYPING_RESULTS_LOCK = threading.Lock()
 _TUI_TRANSCRIPTS = tui_state.TranscriptCache()
 _TUI_STATES = tui_state.StateTracker()
 _GROK_METADATA = tui_state.GrokMetadataCache()
@@ -9442,8 +9443,11 @@ class Handler(http.server.SimpleHTTPRequestHandler):
 
         if self.path == "/pane/type":
             rid = str(data.get("requestId") or "")[:64]
-            if rid and rid in _PANE_TYPING_RESULTS:
-                return self._json(*_PANE_TYPING_RESULTS[rid])
+            if rid:
+                with _PANE_TYPING_RESULTS_LOCK:
+                    prev = _PANE_TYPING_RESULTS.get(rid)
+                if prev is not None:
+                    return self._json(*prev)
             if tmux("has-session", "-t", target).returncode != 0:
                 return self._json(404, {"error": f"No hay sesion tmux '{sess}'. Levantala primero."})
             want = str(data.get("pane") or "")
@@ -9466,9 +9470,10 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             finally:
                 _PANE_TYPING_LOCKS.release(pane)
             if rid:
-                _PANE_TYPING_RESULTS[rid] = res
-                while len(_PANE_TYPING_RESULTS) > 256:
-                    _PANE_TYPING_RESULTS.popitem(last=False)
+                with _PANE_TYPING_RESULTS_LOCK:
+                    _PANE_TYPING_RESULTS[rid] = res
+                    while len(_PANE_TYPING_RESULTS) > 256:
+                        _PANE_TYPING_RESULTS.popitem(last=False)
             return self._json(*res)
 
         if self.path == "/send":

@@ -6308,15 +6308,16 @@ function activePaneTarget(){
   const it = pickSel(S.list || []);
   if(!it || !it.session) return null;
   const label = openTerms.get(it.session)?.label || it.project || it.session;
-  return {session: it.session, pane: it.pane || "", kind: isQuickTermSession(it.session) ? "term" : "pane",
-          title: `${label} · ${it.pane || "panel"}`};
+  const quick = isQuickTermSession(it.session);
+  return {session: it.session, pane: it.pane || "", kind: quick ? "term" : "pane",
+          paneKey: quick ? it.session : "", title: `${label} · ${it.pane || "panel"}`};
 }
 function quickTermEntries(){
   const seen = new Set(), out = [];
   for(const it of S.list || []){
     if(!it.alive || !isQuickTermSession(it.session) || seen.has(it.session)) continue;
     seen.add(it.session);
-    out.push({tabId: it.session, session: it.session, pane: it.pane || "",
+    out.push({tabId: it.session, session: it.session, pane: it.pane || "", paneKey: it.session,
               label: openTerms.get(it.session)?.label || it.project || it.session});
   }
   return out;

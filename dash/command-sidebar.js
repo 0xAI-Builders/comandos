@@ -212,17 +212,30 @@
       return typeInto({ ...tgt }, text, kind === 'shell' ? 'shell' : 'pane');
     }
 
-    function startChain(slug) {
-      const chain = state.chains.find(c => c.slug === slug);
-      if (!chain || chain.error || !Array.isArray(chain.steps) || !chain.steps.length) {
-        toast('Esa cadena no se puede correr', true); return null;
-      }
-      const tgt = target();
-      if (!tgt || !tgt.session || !tgt.pane) { toast('Selecciona un pane primero', true); return null; }
+    // Los archivos .md se editan a mano: antes de correr se releen del disco
+    // (si falla la lectura se usa la copia en memoria).
+    async function reloadChains() {
+      try {
+        const ch = await api('/chains');
+        if (ch && Array.isArray(ch.chains)) state.chains = ch.chains;
+      } catch (_) {}
+      return state.chains;
+    }
+    function beginRun(chain, tgt) {
       state.run = { slug: chain.slug, name: chain.name || chain.slug, steps: chain.steps.map(s => ({ ...s })),
         step: 0, target: { ...tgt }, error: '' };
       render();
       return state.run;
+    }
+    function startChain(slug) {
+      const tgt = target();
+      if (!tgt || !tgt.session || !tgt.pane) { toast('Selecciona un pane primero', true); return null; }
+      const runnable = c => c && !c.error && Array.isArray(c.steps) && c.steps.length;
+      return reloadChains().then(chains => {
+        const chain = chains.find(c => c.slug === slug);
+        if (!runnable(chain)) { toast('Esa cadena no se puede correr', true); render(); return null; }
+        return beginRun(chain, tgt);
+      });
     }
 
     function next() {

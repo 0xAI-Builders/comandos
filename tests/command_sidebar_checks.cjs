@@ -10,14 +10,15 @@ const { createCommandSidebar } = mod;
 const { mkRoot, doc } = require('./dom_stub.cjs');
 
 // ---------- checks ----------
+const tick = () => new Promise(r => setImmediate(r));
 const catalog = JSON.parse(fs.readFileSync(process.cwd() + '/tests/fixtures/command-catalog.json'));
 (async () => {
   const calls = [], toasts = [];
   const store = new Map(), storage = { getItem: k => store.get(k) ?? null, setItem: (k, v) => store.set(k, v), removeItem: k => store.delete(k) };
-  let target = { session: 'demo', pane: '%2', kind: 'pane', title: 'demo %2' }, ids = 0, typeStatus = 200;
+  let target = { session: 'demo', pane: '%2', kind: 'pane', title: 'demo %2' }, ids = 0, typeStatus = 200, yoloStep2 = '/model';
   const api = async (path, body) => { calls.push([path, body]);
     if (path.startsWith('/commands/catalog')) return { cliInPane: 'codex', target: { session: 'demo', pane: '%2' }, catalog, versionsAt: 1 };
-    if (path === '/chains') return { chains: [{ slug: 'yolo', name: 'Codex yolo', steps: [{ kind: 'shell', text: 'codex --dangerously-bypass-approvals-and-sandbox' }, { kind: 'pane', text: '/model' }] }, { slug: 'rota', name: 'rota', error: 'Paso inválido: - foo: bar' }] };
+    if (path === '/chains') return { chains: [{ slug: 'yolo', name: 'Codex yolo', steps: [{ kind: 'shell', text: 'codex --dangerously-bypass-approvals-and-sandbox' }, { kind: 'pane', text: yoloStep2 }] }, { slug: 'rota', name: 'rota', error: 'Paso inválido: - foo: bar' }] };
     if (path === '/pane/type') { if (typeStatus !== 200) { const e = new Error('El pane %2 ya no existe'); e.code = 'pane_gone'; throw e; } return { ok: true, typed: body.text.length, requestId: body.requestId }; }
     throw new Error('ruta inesperada ' + path); };
   const root = mkRoot();
@@ -53,8 +54,10 @@ const catalog = JSON.parse(fs.readFileSync(process.cwd() + '/tests/fixtures/comm
   await sb.state.typing; assert.equal(calls.at(-1)[1].text, '/model claude-fable-5-1');
   assert.equal(root.querySelector('.cs-cli[data-cli="claude"] .grp .cmd code').textContent, '/model …');
   // 4) cadena guardada: correr fija el destino; Siguiente avanza solo con 200; pane cerrado no salta de paso
-  root.click('.cs-saved-item[data-run="yolo"] button');
+  yoloStep2 = '/model gpt-6.1';                                                  // editado a mano en disco
+  root.click('.cs-saved-item[data-run="yolo"] button'); await tick(); await tick();
   assert.equal(root.querySelector('.cs-runner .r-h').textContent.includes('paso 1 de 2'), true);
+  assert.equal(sb.state.run.steps[1].text, '/model gpt-6.1');                     // M1: corre lo que hay en disco
   target = { session: 'demo', pane: '%9', kind: 'pane', title: 'otro' };            // el usuario cambió de pane
   root.click('.cs-next'); await sb.state.typing;
   assert.equal(calls.at(-1)[1].pane, '%2');                                       // destino fijado al arrancar

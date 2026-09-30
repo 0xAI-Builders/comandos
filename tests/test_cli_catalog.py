@@ -95,7 +95,7 @@ def test_argsfrom_models_keeps_json_args_without_watcher_data():
     for kw in ({}, {"models": {}}, {"models": {"claude": [], "grok": []}, "new_models": {}}):
         view = cli_catalog.catalog_view(cat, danger_flags=DANGER, versions=VERSIONS, accounts={}, **kw)
         assert _cmd(view, "claude", "/model ")["args"] == ["claude-fable-5-1", "claude-opus-5-5", "claude-sonnet-5-5"]
-        assert _cmd(view, "grok", "/model ")["args"] == ["grok-5", "grok-5-mini"]
+        assert _cmd(view, "grok", "/model ")["args"] == ["grok-4.6", "grok-4.5"]
         assert "newArgs" not in _cmd(view, "claude", "/model ")
 
 def test_model_commands_are_marked_argsfrom_models_in_the_json():

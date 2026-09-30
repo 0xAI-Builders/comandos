@@ -57,7 +57,7 @@ const tick = () => new Promise(r => setImmediate(r));
   assert.equal(refreshes, 1);                             // catálogo sin destino (todo .dis en la barra)
   release(); await tick();
   sel = 'demo'; S.sel = 'demo|%2';
-  assert.deepEqual(activePaneTarget(), {session: 'demo', pane: '%2', kind: 'pane', title: 'demo · %2'});
+  assert.deepEqual(activePaneTarget(), {session: 'demo', pane: '%2', kind: 'pane', paneKey: '', title: 'demo · %2'});
   syncCommandSidebar(); await tick();
   assert.equal(refreshes, 2);
   syncCommandSidebar(); await tick();                     // mismo destino y agente: sin refetch
@@ -68,7 +68,8 @@ const tick = () => new Promise(r => setImmediate(r));
   assert.equal(refreshes, 3);
   assert.equal(activePaneTarget().kind, 'term');
   assert.equal(activePaneTarget().title, 'Terminal 10:00 · %9');
-  assert.deepEqual(quickTermEntries(), [{tabId: 'term-qabc', session: 'term-qabc', pane: '%9', label: 'Terminal 10:00'}]);
+  assert.equal(activePaneTarget().paneKey, 'term-qabc');          // L4: clave estable, no el %N reciclable
+  assert.deepEqual(quickTermEntries(), [{tabId: 'term-qabc', session: 'term-qabc', pane: '%9', paneKey: 'term-qabc', label: 'Terminal 10:00'}]);
   release(); await tick();
   S.list[2].agent = 'codex'; syncCommandSidebar(); await tick();   // el pane arrancó codex
   assert.equal(refreshes, 4);
