@@ -5110,7 +5110,7 @@ def _panel_popover(btn, panel, width, height):
 # La arena ES el tiempo del bloque (cuadros 0-20), con un goteo de +1 cuadro
 # mientras corre; en pausa se congela atenuado y al terminar gira (21-26).
 # Mismo cálculo que P.hourglassFrame en dash/pomodoro.js.
-HOURGLASS_SHEET = os.path.join(CC_REPO, "assets", "pomodoro", "davitheoles", "hourglass.png")
+HOURGLASS_SHEET = os.path.join(CC_REPO, "assets", "pomodoro", "comandos", "hourglass.png")
 HOURGLASS_FRAME_PX, HOURGLASS_FPS = 32, 9
 
 

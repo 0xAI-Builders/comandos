@@ -148,7 +148,7 @@
   }
 
   /* ---- Art: six styles, original artist frames (assets/pomodoro, see CREDITS.md).
-   * The hourglass (Davitheoles, grill 29-sep) is shared by every style and its
+   * The hourglass (own ComandOS asset, grill 30-sep) is shared by every style and its
    * sand IS the time: fill frames 0-20 follow the block, a one-frame drip shows
    * it is running, and frames 21-26 flip it when a block ends. */
   const ASSET_ROOT = '/assets/pomodoro/';
@@ -156,7 +156,7 @@
   const soul = name => ({ file: '7soul/' + name + '.png', x: 1, y: 1 });
   const strip = (name, frames) => ({ file: 'lared/' + name + '.png', native: 16, frames });
   const anim = (file, width, height, frames, fps, motion) => ({ file, width, height, frames, fps, motion });
-  const HOURGLASS = anim('davitheoles/hourglass.png', 32, 32, 27, 10, 'progress');
+  const HOURGLASS = anim('comandos/hourglass.png', 32, 32, 27, 10, 'progress');
   const FILL_LAST = 20, FLIP_FIRST = 21, FLIP_FRAMES = 6, FLIP_STEP_MS = 110, DRIP_MS = 450;
 
   /** Frame of the hourglass: the sand follows the block; flipStartMs plays the end flip. */
@@ -171,7 +171,7 @@
   const CHEST = anim('karsiori-chests/golden.png', 40, 25, 5, 5 / 3, 'chest');
   const CAMPFIRE = anim('arlantr/campfire.png', 32, 32, 4, 8);
   const ART_SOURCES = {
-    davitheoles: { author: 'Davitheoles', url: 'https://davitheoles.itch.io/inverted-hourglass', license: 'Uso libre con crédito (permiso del autor)', licenseUrl: 'https://davitheoles.itch.io/inverted-hourglass' },
+    comandos: { author: 'ComandOS', url: 'https://github.com/0xJesus/ComandOS', license: 'Asset propio del proyecto', licenseUrl: 'https://github.com/0xJesus/ComandOS/blob/main/assets/pomodoro/CREDITS.md' },
     karsioriChests: { author: 'karsiori', url: 'https://karsiori.itch.io/pixel-art-chest-pack-animated', license: 'CC0', licenseUrl: 'https://creativecommons.org/publicdomain/zero/1.0/' },
     arlantr: { author: 'ArlanTR', url: 'https://opengameart.org/content/campfire-pixel-art-animated', license: 'CC0', licenseUrl: 'https://creativecommons.org/publicdomain/zero/1.0/' },
     karsioriGems: { author: 'karsiori', url: 'https://karsiori.itch.io/free-pixel-art-gem-pack', license: 'CC0', licenseUrl: 'https://creativecommons.org/publicdomain/zero/1.0/' },
@@ -181,12 +181,12 @@
     soul: { author: 'Henrique Lazarini (7Soul1)', url: 'https://opengameart.org/content/496-pixel-art-icons-for-medievalfantasy-rpg', license: 'Dominio público / atribución conservada', licenseUrl: 'https://www.deviantart.com/7soul1/art/420-Pixel-Art-Icons-for-RPG-129892453' },
   };
   const STYLES = {
-    alchemy: { title: 'Alquimia', sources: ['karsiori', 'davitheoles'], assets: { clock: HOURGLASS, crystal: anim('karsiori/crystal.png', 15, 30, 7, 10), first: anim('karsiori/first.png', 14, 24, 9, 10), hundred: anim('karsiori/hundred.png', 18, 34, 24, 10), streak: anim('karsiori/streak.png', 14, 25, 8, 10), level: anim('karsiori/level.png', 24, 39, 12, 10) } },
-    arcade: { title: 'Arcade', sources: ['lared', 'davitheoles', 'karsioriChests'], assets: { clock: HOURGLASS, crystal: strip('spr_coin_strip4', 4), first: strip('MonedaP', 5), hundred: CHEST, streak: strip('spr_coin_roj', 4), level: strip('MonedaD', 5) } },
-    shikashi: { title: 'Fantasía', sources: ['shikashi', 'davitheoles', 'karsioriChests', 'arlantr'], assets: { clock: HOURGLASS, crystal: cell(15, 12), first: cell(8, 13), hundred: CHEST, streak: CAMPFIRE, level: cell(7, 12) } },
-    soul: { title: 'RPG clásico', sources: ['soul', 'davitheoles', 'karsioriChests', 'arlantr'], assets: { clock: HOURGLASS, crystal: soul('I_Crystal01'), first: soul('Ac_Medal04'), hundred: CHEST, streak: CAMPFIRE, level: soul('Ac_Medal01') } },
-    garden: { title: 'Jardín', sources: ['shikashi', 'davitheoles'], assets: { clock: HOURGLASS, crystal: cell(14, 12), first: cell(3, 12), hundred: cell(4, 12), streak: cell(5, 12), level: cell(8, 21) } },
-    crystals: { title: 'Cristales', sources: ['karsioriGems', 'davitheoles'], assets: { clock: HOURGLASS, crystal: anim('karsiori-gems/crystal.png', 23, 27, 10, 10), first: anim('karsiori-gems/first.png', 28, 28, 11, 10), hundred: anim('karsiori-gems/hundred.png', 20, 30, 11, 10), streak: anim('karsiori-gems/streak.png', 19, 22, 11, 10), level: anim('karsiori-gems/level.png', 27, 26, 10, 10) } },
+    alchemy: { title: 'Alquimia', sources: ['karsiori', 'comandos'], assets: { clock: HOURGLASS, crystal: anim('karsiori/crystal.png', 15, 30, 7, 10), first: anim('karsiori/first.png', 14, 24, 9, 10), hundred: anim('karsiori/hundred.png', 18, 34, 24, 10), streak: anim('karsiori/streak.png', 14, 25, 8, 10), level: anim('karsiori/level.png', 24, 39, 12, 10) } },
+    arcade: { title: 'Arcade', sources: ['lared', 'comandos', 'karsioriChests'], assets: { clock: HOURGLASS, crystal: strip('spr_coin_strip4', 4), first: strip('MonedaP', 5), hundred: CHEST, streak: strip('spr_coin_roj', 4), level: strip('MonedaD', 5) } },
+    shikashi: { title: 'Fantasía', sources: ['shikashi', 'comandos', 'karsioriChests', 'arlantr'], assets: { clock: HOURGLASS, crystal: cell(15, 12), first: cell(8, 13), hundred: CHEST, streak: CAMPFIRE, level: cell(7, 12) } },
+    soul: { title: 'RPG clásico', sources: ['soul', 'comandos', 'karsioriChests', 'arlantr'], assets: { clock: HOURGLASS, crystal: soul('I_Crystal01'), first: soul('Ac_Medal04'), hundred: CHEST, streak: CAMPFIRE, level: soul('Ac_Medal01') } },
+    garden: { title: 'Jardín', sources: ['shikashi', 'comandos'], assets: { clock: HOURGLASS, crystal: cell(14, 12), first: cell(3, 12), hundred: cell(4, 12), streak: cell(5, 12), level: cell(8, 21) } },
+    crystals: { title: 'Cristales', sources: ['karsioriGems', 'comandos'], assets: { clock: HOURGLASS, crystal: anim('karsiori-gems/crystal.png', 23, 27, 10, 10), first: anim('karsiori-gems/first.png', 28, 28, 11, 10), hundred: anim('karsiori-gems/hundred.png', 20, 30, 11, 10), streak: anim('karsiori-gems/streak.png', 19, 22, 11, 10), level: anim('karsiori-gems/level.png', 27, 26, 10, 10) } },
   };
   const STYLE_ORDER = ['alchemy', 'arcade', 'shikashi', 'soul', 'garden', 'crystals'];
   const DEFAULT_STYLE = 'alchemy';

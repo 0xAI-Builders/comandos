@@ -171,8 +171,8 @@ def test_context_menu_offers_tab_and_identified_pane_only():
     assert none.children == []
 
 
-def test_header_hourglass_is_davitheoles_and_follows_the_block():
-    """Grill 29-sep: Davitheoles' 27 original 32 px frames; the sand is the real time (C)."""
+def test_header_hourglass_is_the_own_strip_and_follows_the_block():
+    """Grill 30-sep: our own 27-frame 32 px strip; the sand is the real time (C)."""
     ns = {"CC_REPO": str(ROOT), "os": __import__("os"), "GdkPixbuf": None, "HOURGLASS_FRAME_PX": 32}
     tree = ast.parse(SOURCE)
     nodes = [n for n in tree.body if isinstance(n, ast.FunctionDef) and n.name in ("hourglass_sheet_frames", "hourglass_frame")]
@@ -186,7 +186,7 @@ def test_header_hourglass_is_davitheoles_and_follows_the_block():
     assert f(block("paused", 12.5 * 60000), 0, None) == 10
     assert sorted(f(block("running", 5 * 60000), t, None) for t in (0, 450, 900)) == [4, 4, 5]
     assert [f(None, 1000 + d, 1000) for d in (0, 110, 550)] == [21, 22, 26]
-    assert (ROOT / "assets" / "pomodoro" / "davitheoles" / "hourglass.png").is_file()
+    assert (ROOT / "assets" / "pomodoro" / "comandos" / "hourglass.png").is_file()
 
 
 def test_clicking_the_tab_indicator_opens_the_state_menu_with_icons_and_text():

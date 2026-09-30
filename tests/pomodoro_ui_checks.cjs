@@ -135,10 +135,10 @@ async function readySounds(storage = memoryStorage(), log = []) {
     for (const id of P.STYLE_ORDER) {
       const roles = Object.keys(P.STYLES[id].assets).sort();
       assert.deepEqual(roles, ['clock', 'crystal', 'first', 'hundred', 'level', 'streak'], id);
-      assert.equal(P.STYLES[id].assets.clock.file, 'davitheoles/hourglass.png');
+      assert.equal(P.STYLES[id].assets.clock.file, 'comandos/hourglass.png');
       assert.equal(P.STYLES[id].assets.clock.frames, 27);
     }
-    assert.ok(fs.readFileSync(path.join(ROOT, 'assets/pomodoro/CREDITS.md'), 'utf8').includes('Davitheoles'));
+    assert.ok(fs.readFileSync(path.join(ROOT, 'assets/pomodoro/CREDITS.md'), 'utf8').includes('ComandOS'));
   });
 
   await check('animated sheets play their real frame count (PNG width = frames x frame width)', async () => {
@@ -249,7 +249,7 @@ async function readySounds(storage = memoryStorage(), log = []) {
     await settle();
     v.ui.render();
     assert.equal(v.ui.state.style, 'crystals');
-    assert.ok(v.button.innerHTML.includes('davitheoles/hourglass.png'));
+    assert.ok(v.button.innerHTML.includes('comandos/hourglass.png'));
     assert.equal(v.button.querySelector('.pomo-mini').textContent, '20:00', 'header shows the server-based remaining time');
     const built = v.button.innerHTML;
     v.setNow(T0 + 6 * MIN); v.ui.render();
