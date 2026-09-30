@@ -107,10 +107,11 @@ const render = NR.createRenderer(markdownit, purify);
   });
 
   await check('status labels are honest', () => {
-    assert.equal(NR.statusLabel('not_published'), 'No publicada');
+    assert.equal(NR.statusLabel('not_published'), 'No se generó');
     assert.equal(NR.statusLabel('partial'), 'Parcial');
     assert.equal(NR.statusLabel('empty'), 'Sin novedades');
     assert.equal(NR.statusLabel('failed'), 'Falló');
+    assert.equal(NR.statusLabel('scheduled'), 'Programado');
   });
 
   await check('source links are limited to http/https', () => {
@@ -139,6 +140,43 @@ const render = NR.createRenderer(markdownit, purify);
     assert.equal(NR.clampShare(10), 40);
     assert.equal(NR.clampShare(90), 70);
     assert.equal(NR.clampShare(55), 55);
+  });
+
+  const ED = { id: '2026-09-29@20:42', slot: '20:42', localDate: '2026-09-29', status: 'partial', storyCount: 23,
+    sourceCount: 25, failedSourceCount: 2, costUsd: 0,
+    models: { 'opencode:opencode/longcat-2.5-preview-free': 20, 'claude:claude-opus-5-5': 3 },
+    job: { startedAt: Date.UTC(2026, 8, 30, 2, 42), finishedAt: Date.UTC(2026, 8, 30, 2, 56), attempts: 1 },
+    notes: ['3 fuente(s) no respondieron: dorahacks, reddit, searxng.'] };
+
+  await check('provenance says which AI wrote the summary, what it cost and how long it took', () => {
+    const p = NR.provenance(ED);
+    assert.equal(p.models, 'longcat-2.5-preview-free (20) · claude-opus-5-5 (3)');
+    assert.equal(p.cost, '$0.00');
+    assert.equal(p.duration, '14 min');
+    assert.equal(p.sources, '23 de 25 fuentes');
+    assert.equal(p.problems, 1);
+  });
+
+  await check('the day line shows every summary of the day plus the next one', () => {
+    const list = { editions: [ED, { id: '2026-09-29@21:00', slot: '21:00', localDate: '2026-09-29', status: 'not_published', notes: ['x'] },
+      { id: '2026-09-28@21:00', slot: '21:00', localDate: '2026-09-28', status: 'published', storyCount: 9 }],
+      next: { id: '2026-09-30@09:00', slot: '09:00', localDate: '2026-09-30', status: 'scheduled' } };
+    const cards = NR.dayLine(list, '2026-09-29');
+    assert.deepEqual(cards.map(c => c.id), ['2026-09-29@20:42', '2026-09-29@21:00', '2026-09-30@09:00']);
+    assert.equal(cards[2].day, 'Mañana');
+    assert.equal(cards[0].day, 'Hoy');
+  });
+
+  await check('the index lists topics with counts, not every story', () => {
+    const stories = [{ id: 1, category: 'bounty' }, { id: 2, category: 'mcp' }, { id: 3, category: 'hackathon' }, { id: 4, category: 'mcp' }];
+    assert.deepEqual(NR.topicIndex(stories), [
+      { label: 'MCPs', count: 2, first: 2 }, { label: 'Bounties', count: 2, first: 1 }]);
+  });
+
+  await check('Siguiendo shows only followed topics; empty filters are marked', () => {
+    const stories = [{ id: 1, category: 'bounty' }, { id: 2, category: 'mcp' }];
+    assert.deepEqual(NR.filterStories(stories, 'Siguiendo', new Set(), 'e', new Set(['MCPs'])).map(s => s.id), [2]);
+    assert.ok(NR.FILTERS.includes('Siguiendo'));
   });
 
   console.log(`${passed} news reader checks passed`);

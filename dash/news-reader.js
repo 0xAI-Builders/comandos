@@ -1,6 +1,8 @@
-// Lector de novedades (N5): edición continua B con terminal opcional a la
-// izquierda. Solo LEE ediciones ya publicadas (/news/editions, /news/edition);
-// abrir, filtrar o releer nunca llama al modelo ni al buscador.
+// Lector de Resúmenes (N5): resumen continuo B con terminal opcional a la
+// izquierda y línea del día arriba. Solo LEE resúmenes ya generados
+// (/news/editions, /news/edition); abrir, filtrar o releer nunca llama al
+// modelo ni al buscador. Remoto: vive en el área de terminales (la barra
+// izquierda sigue visible). Escritorio: la app GTK lo abre junto a su VTE.
 //
 // Markdown: markdown-it (vendor, HTML crudo desactivado, enlaces solo
 // http/https, imágenes remotas desactivadas) + DOMPurify como segunda capa.
@@ -11,13 +13,14 @@
 })(typeof self !== "undefined" ? self : this, function () {
   "use strict";
 
-  const FILTERS = ["Todo", "Modelos", "MCPs", "Skills", "Bounties", "IA", "Guardados"];
+  const FILTERS = ["Todo", "Modelos", "MCPs", "Skills", "Bounties", "IA", "Guardados", "Siguiendo"];
+  const TOPICS = ["Modelos", "MCPs", "Skills", "Bounties", "IA"];
   const FILTER_CATEGORIES = { Modelos: ["modelo"], MCPs: ["mcp"], Skills: ["skill"],
     Bounties: ["bounty", "hackathon"], IA: ["ia"] };
   const CATEGORY_LABEL = { modelo: "Modelos", mcp: "MCP", skill: "Skill", bounty: "Bounty",
     hackathon: "Hackathon", ia: "IA" };
-  const STATUS_LABEL = { published: "Publicada", partial: "Parcial", empty: "Sin novedades",
-    failed: "Falló", not_published: "No publicada", running: "Generando…", scheduled: "Programada" };
+  const STATUS_LABEL = { published: "Listo", partial: "Parcial", empty: "Sin novedades",
+    failed: "Falló", not_published: "No se generó", running: "Generando…", scheduled: "Programado" };
   const TERMINAL_STATUS = new Set(["published", "partial", "empty", "failed", "not_published"]);
   const HTTP_URL = /^https?:\/\//i;
   const PURIFY_CONFIG = {
@@ -88,9 +91,14 @@
 
   function storyKey(editionId, story) { return `${editionId}#${story.id}`; }
 
-  function filterStories(stories, filter, saved, editionId) {
+  function topicOf(story) {
+    return TOPICS.find(t => (FILTER_CATEGORIES[t] || []).includes(story && story.category)) || "IA";
+  }
+
+  function filterStories(stories, filter, saved, editionId, following) {
     const list = Array.isArray(stories) ? stories : [];
     if (filter === "Guardados") return list.filter(s => saved.has(storyKey(editionId, s)));
+    if (filter === "Siguiendo") return list.filter(s => following && following.has(topicOf(s)));
     const cats = FILTER_CATEGORIES[filter];
     return cats ? list.filter(s => cats.includes(s.category)) : list.slice();
   }
@@ -109,6 +117,41 @@
   }
 
   function statusLabel(status) { return STATUS_LABEL[status] || String(status || ""); }
+
+  // "claude:claude-opus-5-5" / "opencode:opencode/longcat-2.5-preview-free" → nombre corto.
+  function modelName(label) { return String(label || "").split(":").slice(1).join(":").split("/").pop() || String(label || ""); }
+
+  /** Procedencia: qué IA escribió el resumen, cuánto costó y cuánto tardó. */
+  function provenance(edition) {
+    const e = edition || {};
+    const models = Object.entries(e.models || {}).map(([m, n]) => `${modelName(m)} (${n})`).join(" · ")
+      || (e.model ? String(e.model).split("/").pop() : "");
+    const job = e.job || {};
+    const mins = job.startedAt && job.finishedAt ? Math.max(1, Math.round((job.finishedAt - job.startedAt) / 60000)) : null;
+    const total = Number(e.sourceCount) || 0, failed = Number(e.failedSourceCount) || 0;
+    return { models, cost: "$" + (Number(e.costUsd) || 0).toFixed(2), duration: mins ? `${mins} min` : "",
+      sources: total ? `${total - failed} de ${total} fuentes` : "", problems: (e.notes || []).length };
+  }
+
+  /** Línea del día: los resúmenes de ese día (en orden) y el siguiente programado. */
+  function dayLine(list, today) {
+    const eds = ((list && list.editions) || []).filter(e => e.localDate === today)
+      .sort((a, b) => String(a.slot).localeCompare(String(b.slot)));
+    const next = list && list.next;
+    const cards = eds.map(e => ({ ...e, day: "Hoy" }));
+    if (next && !cards.some(c => c.id === next.id)) cards.push({ ...next, day: next.localDate === today ? "Hoy" : "Mañana" });
+    return cards;
+  }
+
+  /** Índice por temas: pocas chips con su conteo, en vez de una por historia. */
+  function topicIndex(stories) {
+    const out = [];
+    for (const t of TOPICS) {
+      const of = (stories || []).filter(s => topicOf(s) === t);
+      if (of.length) out.push({ label: t, count: of.length, first: of[0].id });
+    }
+    return out;
+  }
 
   function clampShare(value) {
     const n = Number(value);
@@ -172,12 +215,11 @@
 
   const TEMPLATE = `
   <header class="nr-header">
-    <button type="button" class="nr-close" aria-label="Cerrar novedades">←<span class="nr-close-label"> Volver</span></button>
-    <strong class="nr-title">Novedades</strong>
-    <select class="nr-edition-pick" aria-label="Elegir edición"></select>
+    <button type="button" class="nr-close" aria-label="Cerrar resúmenes">←<span class="nr-close-label"> Volver</span></button>
+    <strong class="nr-title">Resúmenes</strong>
     <div class="nr-mobile-switch" role="group" aria-label="Vista">
       <button type="button" data-pane="terminal">Terminal</button>
-      <button type="button" data-pane="reader">Novedades</button>
+      <button type="button" data-pane="reader">Resúmenes</button>
     </div>
     <button type="button" class="nr-terminal-toggle" aria-pressed="false">Ver terminal</button>
     <div class="nr-font" role="group" aria-label="Tamaño del texto">
@@ -189,9 +231,9 @@
     <section class="nr-terminal" aria-label="Terminal" hidden><div class="nr-terminal-host"></div></section>
     <div class="nr-edition-divider" role="separator" aria-orientation="vertical" aria-label="Ajustar ancho"
       aria-valuemin="40" aria-valuemax="70" tabindex="0" hidden></div>
-    <section class="nr-reader" aria-label="Edición">
-      <nav class="nr-filters" aria-label="Filtrar novedades"></nav>
-      <div class="nr-reader-body" tabindex="-1"><div class="nr-edition"></div></div>
+    <section class="nr-reader" aria-label="Resumen">
+      <nav class="nr-filters" aria-label="Filtrar noticias"></nav>
+      <div class="nr-reader-body" tabindex="-1"><nav class="nr-day" aria-label="Resúmenes del día"></nav><div class="nr-edition"></div></div>
     </section>
   </div>`;
 
@@ -204,10 +246,11 @@
     const mountTerminal = opts.mountTerminal || defaultMountTerminal;
     const el = doc.createElement("div");
     el.id = "news-reader";
-    el.className = "nr-app nr-B";
-    el.setAttribute("role", "dialog");
-    el.setAttribute("aria-modal", "true");
-    el.setAttribute("aria-label", "Novedades");
+    // embedded: dentro del área de terminales (remoto); desktop: vista propia de la app GTK.
+    el.className = "nr-app nr-B" + (opts.embedded ? " nr-embedded" : "") + (opts.desktop ? " nr-desktop" : "");
+    if (!opts.embedded && !opts.desktop) { el.setAttribute("role", "dialog"); el.setAttribute("aria-modal", "true"); }
+    else el.setAttribute("role", "region");
+    el.setAttribute("aria-label", "Resúmenes");
     el.hidden = true;
     el.innerHTML = TEMPLATE;
     (opts.parent || doc.body).appendChild(el);
@@ -218,28 +261,41 @@
       size: Math.min(22, Math.max(14, Number(readStore("comandos.news.size", 16)) || 16)),
       share: clampShare(readStore("comandos.news.share", 58)),
       saved: new Set(readStore("comandos.news.saved", [])),
+      following: new Set(readStore("comandos.news.following", [])),
+      details: false,
     };
+    const docEl = doc.documentElement, body = doc.body;
 
     function applyPrefs() {
       el.style.setProperty("--read-size", state.size + "px");
       el.style.setProperty("--nr-share", state.share + "%");
+      if (opts.embedded) docEl.style.setProperty("--nr-share", state.share + "%");
       $(".nr-edition-divider").setAttribute("aria-valuenow", String(Math.round(state.share)));
     }
 
     function renderFilters() {
       const saved = state.saved;
       $(".nr-filters").innerHTML = FILTERS.map(f => {
-        const count = state.current ? filterStories(state.current.stories, f, saved, state.current.edition.id).length : 0;
-        return `<button type="button" data-filter="${esc(f)}" class="${state.filter === f ? "on" : ""}" aria-pressed="${state.filter === f}">${esc(f)}<i>${count}</i></button>`;
+        const count = state.current ? filterStories(state.current.stories, f, saved, state.current.edition.id, state.following).length : 0;
+        const cls = [state.filter === f ? "on" : "", count ? "" : "zero"].join(" ").trim();
+        return `<button type="button" data-filter="${esc(f)}" class="${cls}" aria-pressed="${state.filter === f}">${esc(f)}<i>${count}</i></button>`;
       }).join("");
     }
 
+    // Línea del día: una tarjeta por resumen de hoy (y el siguiente programado).
     function renderPicker() {
-      const list = (state.list && state.list.editions) || [];
-      const pick = $(".nr-edition-pick");
-      pick.innerHTML = list.map(e => `<option value="${esc(e.id)}">${esc(e.localDate)} ${esc(e.slot)} · ${esc(statusLabel(e.status))}</option>`).join("");
-      if (state.current) pick.value = state.current.edition.id;
-      pick.hidden = !list.length;
+      const today = state.current ? state.current.edition.localDate
+        : (((state.list && state.list.editions) || [])[0] || {}).localDate;
+      const cards = dayLine(state.list, today);
+      const cur = state.current && state.current.edition.id;
+      $(".nr-day").innerHTML = cards.map(c => {
+        const readable = c.status === "published" || c.status === "partial";
+        const sub = readable ? `${esc(c.storyCount)} noticias${Object.keys(c.models || {}).length ? " · " + esc(Object.keys(c.models).map(modelName)[0]) : ""}`
+          : c.status === "scheduled" ? "Se generará a su hora" : esc(((c.notes || [])[0] || "").slice(0, 70));
+        return `<button type="button" class="nr-slot${c.id === cur ? " on" : ""}" data-edition="${esc(c.id)}" ${c.status === "scheduled" ? "disabled" : ""} aria-pressed="${c.id === cur}">`
+          + `<small>${esc(c.day)}</small><b>${esc(c.slot)}</b><span class="nr-st st-${esc(c.status)}">${esc(statusLabel(c.status))}</span><em>${sub}</em></button>`;
+      }).join("");
+      $(".nr-day").hidden = !cards.length;
     }
 
     function message(html) { $(".nr-edition").innerHTML = `<div class="nr-state">${html}</div>`; }
@@ -259,8 +315,12 @@
         const link = href ? `<a href="${esc(href)}" target="_blank" rel="noopener noreferrer nofollow">${esc(s.title)}</a>` : esc(s.title);
         return `<li>${link}<small>${esc(s.origin)} · ${esc(hostOf(s.url))} · ${esc(sourceDateLabel(s, tz))}</small></li>`;
       }).join("");
-      return `<section class="nr-edition-story" id="nr-story-${esc(story.id)}" data-story="${esc(story.id)}">
-        <small class="nr-kicker">${esc(CATEGORY_LABEL[story.category] || story.category)}</small>
+      const topic = topicOf(story);
+      const follows = state.following.has(topic);
+      return `<section class="nr-edition-story" id="nr-story-${esc(story.id)}" data-story="${esc(story.id)}" data-topic="${esc(topic)}">
+        <small class="nr-kicker">${esc(CATEGORY_LABEL[story.category] || story.category)}
+          <span class="nr-ai" title="Texto escrito por IA a partir de las fuentes">Resumen IA${story.model ? " · " + esc(modelName(story.model)) : ""}</span>
+          <button type="button" class="nr-follow" data-follow="${esc(topic)}" aria-pressed="${follows}">${follows ? "Siguiendo " + esc(topic) : "Seguir " + esc(topic)}</button></small>
         <h2>${esc(story.title)}</h2>
         <div class="nr-markdown nr-summary">${render(story.summary)}</div>
         ${opportunityHtml(story.opportunity)}
@@ -270,24 +330,48 @@
       </section>`;
     }
 
+    function detailsHtml(edition, tz) {
+      const job = edition.job || {};
+      const p = provenance(edition);
+      const chain = ((state.list && state.list.chain) || []).map(modelName).join(" → ");
+      const rows = [
+        ["Modelos que escribieron", p.models || "—"],
+        ["Cadena de respaldo", chain || "—"],
+        ["Costo", p.cost],
+        ["Programado", `${edition.localDate} ${edition.slot}`],
+        ["Inicio · fin", job.startedAt ? `${formatDate(job.startedAt, tz)} · ${job.finishedAt ? formatDate(job.finishedAt, tz) : "en curso"}` : "—"],
+        ["Duración", p.duration || "—"],
+        ["Intentos", job.attempts || "—"],
+        ["Fuentes", p.sources || "—"],
+      ];
+      const notes = (edition.notes || []).map(n => `<li>${esc(n)}</li>`).join("");
+      return `<div class="nr-details"><dl>${rows.map(([k, v]) => `<div><dt>${esc(k)}</dt><dd>${esc(v)}</dd></div>`).join("")}</dl>`
+        + (notes ? `<h3>Qué falló o quedó incompleto</h3><ul>${notes}</ul>` : "") + "</div>";
+    }
+
     function renderEdition() {
       const data = state.current;
       if (!data) return;
       const edition = data.edition;
       const tz = edition.timezone || "America/Mexico_City";
-      const stories = filterStories(data.stories, state.filter, state.saved, edition.id);
-      const notes = (edition.notes || []).map(n => `<li>${esc(n)}</li>`).join("");
+      const stories = filterStories(data.stories, state.filter, state.saved, edition.id, state.following);
       const readable = edition.status === "published" || edition.status === "partial";
+      const p = provenance(edition);
+      const line = readable
+        ? `<p class="nr-prov"><span>Resumido con <b>${esc(p.models || "IA")}</b></span><span class="nr-ok">${esc(p.cost)}</span>`
+          + `<span>${esc(edition.storyCount)} noticias</span>${p.sources ? `<span>${esc(p.sources)}</span>` : ""}${p.duration ? `<span>${esc(p.duration)}</span>` : ""}`
+          + `<button type="button" class="nr-details-toggle" aria-expanded="${state.details}">${p.problems ? `${p.problems} aviso${p.problems === 1 ? "" : "s"} · ` : ""}${state.details ? "Ocultar detalles" : "Detalles del resumen"}</button></p>`
+        : `<p class="nr-prov nr-bad">${esc(statusLabel(edition.status))}: ${esc((edition.notes || [])[0] || "sin noticias publicadas")}</p>`;
       const head = `<header class="nr-edition-head">
-        <small>Edición ${esc(edition.slot)} · ${esc(edition.localDate)} · ${esc(statusLabel(edition.status))}</small>
-        <h1>${esc(edition.title || "Tu edición de IA")}</h1>
-        <p>${esc(edition.storyCount)} historias · ${esc(edition.sourceCount)} fuentes${edition.failedSourceCount ? ` · ${esc(edition.failedSourceCount)} sin leer` : ""}${edition.publishedAt ? ` · publicada ${esc(formatDate(edition.publishedAt, tz))}` : ""}</p>
-        ${notes ? `<details class="nr-notes" ${readable ? "" : "open"}><summary>Notas de la edición</summary><ul>${notes}</ul></details>` : ""}
+        <small>${esc(edition.localDate)} · ${esc(statusLabel(edition.status))}</small>
+        <h1>Resumen de las ${esc(edition.slot)}</h1>
+        ${line}${state.details || !readable ? detailsHtml(edition, tz) : ""}
       </header>`;
-      const index = stories.length > 1 ? `<nav class="nr-edition-index" aria-label="Índice de la edición">${stories.map(s =>
-        `<button type="button" data-jump="${esc(s.id)}">${esc(s.title)}</button>`).join("")}</nav>` : "";
+      const topics = topicIndex(stories);
+      const index = topics.length > 1 ? `<nav class="nr-edition-index" aria-label="Temas del resumen">${topics.map((t, i) =>
+        `<button type="button" data-jump="${esc(t.first)}">${i + 1}. ${esc(t.label)} <i>${t.count}</i></button>`).join("")}</nav>` : "";
       const body = stories.length ? stories.map(s => storyHtml(edition, s, tz)).join("")
-        : `<p class="nr-empty">${readable ? "No hay historias en este filtro." : "Esta edición no tiene historias publicadas."}</p>`;
+        : `<p class="nr-empty">${readable ? (state.filter === "Siguiendo" ? "Aún no sigues ningún tema: toca «Seguir» en una noticia." : "No hay noticias en este filtro.") : "Este resumen no tiene noticias."}</p>`;
       $(".nr-edition").innerHTML = head + index + body;
       renderFilters();
     }
@@ -317,6 +401,11 @@
 
     function showPane(pane) {
       state.mobilePane = pane;
+      if (opts.embedded) {                         // móvil: páginas completas Terminal / Resúmenes
+        body.classList.toggle("nr-peek", pane === "terminal" && narrow());
+        el.querySelectorAll(".nr-mobile-switch button").forEach(b => b.setAttribute("aria-pressed", String(b.dataset.pane === pane)));
+        return;
+      }
       const stage = $(".nr-stage");
       if (state.terminal && narrow()) stage.scrollTo({ left: pane === "reader" ? stage.scrollWidth : 0, behavior: "smooth" });
       el.querySelectorAll(".nr-mobile-switch button").forEach(b => b.setAttribute("aria-pressed", String(b.dataset.pane === pane)));
@@ -325,14 +414,22 @@
     async function setTerminal(on) {
       relayout(() => {
         state.terminal = on;
-        el.classList.toggle("nr-with-terminal", on);
-        $(".nr-terminal").hidden = !on;          // hidden, never removed: the session is not restarted
+        el.classList.toggle("nr-with-terminal", on && !opts.embedded && !opts.desktop);
+        el.classList.toggle("nr-docked", on);
+        if (opts.embedded) body.classList.toggle("nr-docked", on);
+        $(".nr-terminal").hidden = !on || !!opts.embedded || !!opts.desktop;   // hidden, never removed
         $(".nr-edition-divider").hidden = !on;
         const t = $(".nr-terminal-toggle");
         t.setAttribute("aria-pressed", String(on));
         t.textContent = on ? "Ocultar terminal" : "Ver terminal";
         t.classList.toggle("on", on);
       });
+      if (opts.desktop) { if (opts.externalTerminal) opts.externalTerminal(on); return; }
+      if (opts.embedded) {                          // la terminal real queda a la izquierda
+        if (on) { writeStore("comandos.news.terminal", true); showPane(narrow() ? "terminal" : "reader"); }
+        else { writeStore("comandos.news.terminal", false); showPane("reader"); }
+        return;
+      }
       if (on) {
         showPane("terminal");
         if (!state.terminalMounted) {
@@ -354,38 +451,46 @@
         renderEdition();
         $(".nr-reader-body").scrollTop = 0;
       } catch (err) {
-        message(`No se pudo abrir la edición: ${esc(err.message || err)}`);
+        message(`No se pudo abrir el resumen: ${esc(err.message || err)}`);
       }
     }
 
     async function open(editionId) {
       state.opener = doc.activeElement;
       el.hidden = false;
-      doc.documentElement.classList.add("nr-open");
+      if (opts.embedded) {
+        body.classList.add("nr-reading");
+        if (readStore("comandos.news.terminal", false) && !state.terminal) setTerminal(true);
+        else if (state.terminal) body.classList.add("nr-docked");
+      } else doc.documentElement.classList.add("nr-open");
+      if (opts.onOpenChange) opts.onOpenChange(true);
       applyPrefs();
       $(".nr-reader-body").focus({ preventScroll: true });
       if (state.current && !editionId) return;          // reopen: keep position, no fetch
-      if (!state.current) message("Cargando novedades…");
+      if (!state.current) message("Cargando resúmenes…");
       try {
         state.list = await store.list();
       } catch (err) {
-        message(`No se pudo leer la lista de ediciones: ${esc(err.message || err)}. Revisa la conexión con CommandOS.`);
+        message(`No se pudo leer la lista de resúmenes: ${esc(err.message || err)}. Revisa la conexión con ComandOS.`);
         return;
       }
       renderPicker();
       const target = editionId || state.list.latest;
       if (!target) {
         message(state.list.configured
-          ? "Aún no hay ediciones publicadas. La próxima llega a su hora programada."
-          : `Novedades ${esc(state.list.reason || "sin configurar")}. No se muestran noticias inventadas; configura <code>news-editions.json</code> para activar las tres ediciones diarias.`);
+          ? "Aún no hay resúmenes. El próximo llega a su hora programada."
+          : `Resúmenes ${esc(state.list.reason || "sin configurar")}. No se muestran noticias inventadas; configura <code>news-editions.json</code> para activar los tres resúmenes diarios.`);
         return;
       }
       await loadEdition(target);
     }
 
     function close() {
+      if (opts.desktop && opts.onClose) { opts.onClose(); return; }
       el.hidden = true;
       doc.documentElement.classList.remove("nr-open");
+      body.classList.remove("nr-reading", "nr-docked", "nr-peek");
+      if (opts.onOpenChange) opts.onOpenChange(false);
       if (state.opener && state.opener.focus) state.opener.focus({ preventScroll: true });
     }
 
@@ -393,7 +498,10 @@
     $(".nr-close").addEventListener("click", close);
     el.addEventListener("keydown", e => { if (e.key === "Escape" && !e.target.closest(".nr-terminal")) close(); });
     $(".nr-terminal-toggle").addEventListener("click", () => setTerminal(!state.terminal));
-    $(".nr-edition-pick").addEventListener("change", e => loadEdition(e.target.value));
+    $(".nr-day").addEventListener("click", e => {
+      const b = e.target.closest("[data-edition]");
+      if (b && !b.disabled) loadEdition(b.dataset.edition);
+    });
     el.querySelectorAll(".nr-mobile-switch button").forEach(b => b.addEventListener("click", () => {
       if (b.dataset.pane === "terminal" && !state.terminal) setTerminal(true); else showPane(b.dataset.pane);
     }));
@@ -413,6 +521,15 @@
       if (jump) {
         const target = el.querySelector(`#nr-story-${CSS.escape(jump.dataset.jump)}`);
         if (target) target.scrollIntoView({ block: "start", behavior: "smooth" });
+        return;
+      }
+      if (e.target.closest(".nr-details-toggle")) { state.details = !state.details; renderEdition(); return; }
+      const follow = e.target.closest("[data-follow]");
+      if (follow) {
+        const t = follow.dataset.follow;
+        if (state.following.has(t)) state.following.delete(t); else state.following.add(t);
+        writeStore("comandos.news.following", [...state.following]);
+        renderEdition();
         return;
       }
       const save = e.target.closest("[data-save]");
@@ -443,8 +560,12 @@
     });
     divider.addEventListener("pointermove", e => {
       if (!drag && !divider.classList.contains("dragging")) return;
-      const box = $(".nr-stage").getBoundingClientRect();
-      state.share = clampShare((box.right - e.clientX) / box.width * 100);
+      const box = opts.embedded && el.parentElement
+        ? (doc.getElementById("term-area") || el.parentElement).getBoundingClientRect()
+        : $(".nr-stage").getBoundingClientRect();
+      const right = opts.embedded ? el.getBoundingClientRect().right : box.right;
+      const left = opts.embedded ? Math.min(box.left, right - 10) : box.left;
+      state.share = clampShare((right - e.clientX) / Math.max(1, right - left) * 100);
       applyPrefs();
     });
     const endDrag = () => {
@@ -470,17 +591,39 @@
 
   // Wires the header button and ?news=<id> in the dashboard.
   function install(options) {
+    const params = new URLSearchParams(location.search);
+    const bridge = typeof window !== "undefined" && window.webkit && window.webkit.messageHandlers
+      && window.webkit.messageHandlers.centro;
+    const post = msg => { try { bridge.postMessage(JSON.stringify(msg)); } catch (e) { /* sin app */ } };
+    const desktop = params.get("panel") === "news" && !!bridge;
+    // El modo se decide al abrir: la vista "app" (remoto) se activa después de cargar.
+    const optsNow = () => {
+      const panes = document.getElementById("panes");
+      const embedded = !desktop && !!panes && document.body.classList.contains("app");
+      return { ...(options || {}), desktop, embedded, parent: embedded ? panes : undefined,
+        externalTerminal: on => post({ type: "reader", action: "terminal", on }),
+        onClose: () => post({ type: "reader", action: "close" }) };
+    };
+    // Dentro de la app de escritorio el lector vive junto a la terminal GTK, no en el panel.
+    if (bridge && !desktop) {
+      const openInApp = i => post({ type: "reader", action: "open", id: i || "" });
+      const button = document.getElementById("btn-news");
+      if (button) button.addEventListener("click", () => openInApp());
+      return { open: openInApp, close: () => post({ type: "reader", action: "close" }), toggle: () => openInApp() };
+    }
     let reader = null;
-    const get = () => (reader = reader || mount(options));
+    const get = () => (reader = reader || mount(optsNow()));
     const button = document.getElementById("btn-news");
-    if (button) button.addEventListener("click", () => get().open());
-    const wanted = new URLSearchParams(location.search).get("news");
-    if (wanted !== null) get().open(/^\d{4}-\d{2}-\d{2}@\d{2}:\d{2}$/.test(wanted) ? wanted : undefined);
-    return { open: id => get().open(id) };
+    const toggle = () => { const r = get(); if (r.element.hidden) r.open(); else r.close(); };
+    if (button) button.addEventListener("click", toggle);
+    const wanted = params.get("news");
+    const id = wanted && /^\d{4}-\d{2}-\d{2}@\d{2}:\d{2}$/.test(wanted) ? wanted : undefined;
+    if (desktop || wanted !== null) setTimeout(() => get().open(id), desktop ? 0 : 400);
+    return { open: i => get().open(i), close: () => reader && reader.close(), toggle, get reader() { return reader; } };
   }
 
   const api = { createRenderer, filterStories, storyKey, sourceDateLabel, statusLabel, safeHref,
-    clampShare, createStore, mount, install, FILTERS };
+    clampShare, createStore, mount, install, FILTERS, provenance, dayLine, topicIndex, topicOf, modelName };
   // <script src="/news-reader.js" data-autoinstall> wires the dashboard button.
   if (typeof document !== "undefined" && document.currentScript &&
       document.currentScript.hasAttribute("data-autoinstall")) {

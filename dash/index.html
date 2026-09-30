@@ -328,7 +328,8 @@
   #btn-pomo .pomo-mini{font:800 10px var(--mono);margin-left:4px;font-variant-numeric:tabular-nums}
   #btn-notif{position:relative}
   /* Popover de la app: solo el panel, ocupando toda la vista, sin sombra ni borde */
-  body.only-panel > *:not(#notif-panel):not(#pomo-panel):not(#settings){display:none !important}
+  body.only-panel > *:not(#notif-panel):not(#pomo-panel):not(#settings):not(#news-reader){display:none !important}
+  html:not([data-only-panel="news"]) body.only-panel #news-reader{display:none !important}
   body.only-panel{background:var(--panel)}
   body.only-panel #notif-panel,body.only-panel #pomo-panel{position:static !important;width:100% !important;max-width:none;max-height:none;
     border:none;box-shadow:none;border-radius:0;left:auto !important;right:auto !important;top:auto !important}
@@ -1935,7 +1936,7 @@
 	    #content{padding-bottom:env(safe-area-inset-bottom)}
 	  }
 	</style>
-<link rel="stylesheet" href="/workspace.css?v=v1n2drawer">
+<link rel="stylesheet" href="/workspace.css?v=v1resumenes">
 <link rel="stylesheet" href="/reparto.css">
 <script src="/session-config.js?v=7f3232b0a624"></script>
 <script src="/workspace-layout.js"></script>
@@ -1984,7 +1985,7 @@
 	    <div id="pomo-panel" class="hidden" role="dialog" aria-label="Pomodoro"></div>
 	    <button class="hdr-btn" id="btn-notif" aria-label="Notificaciones" title="Notificaciones — todo local: avisos, pomodoros y cola de foco"><span data-icon="bell" data-size="16"></span><b class="nbadge hidden" id="notif-badge">0</b></button>
 	    <div id="notif-panel" class="hidden" role="dialog" aria-label="Notificaciones"></div>
-	    <button class="hdr-btn" id="btn-news" aria-label="Novedades" title="Novedades — tres ediciones diarias con fuentes"><span data-icon="sparkles" data-size="16"></span></button>
+	    <button class="hdr-btn" id="btn-news" aria-label="Resúmenes" title="Resúmenes — tres al día, con fuentes y la IA que los escribió"><span data-icon="sparkles" data-size="16"></span></button>
 	    <button class="hdr-btn" id="btn-settings">Ajustes</button>
   </div>
 </header>
@@ -2592,6 +2593,7 @@ const ONLY_PANEL = (new URLSearchParams(location.search).get("panel") || "").rep
 if(ONLY_PANEL){ document.documentElement.classList.add("only-panel");document.documentElement.dataset.onlyPanel=ONLY_PANEL; document.addEventListener("DOMContentLoaded", ()=>{ document.body.classList.add("only-panel"); setTimeout(()=>{
   if(ONLY_PANEL==="appearance"){$("#settings").classList.add("open");activateMtab($("#settings .modal-panel"),"appearance");renderThemeGallery();return;}
   if(ONLY_PANEL==="usage"){$("#usage").classList.add("open");const t=(new URLSearchParams(location.search).get("tab")||"resumen").replace(/[^a-z]/g,"");activateMtab($("#usage .modal-panel"),t||"resumen");tickUsage(true);return;}
+  if(ONLY_PANEL==="news") return;   // el lector se abre solo (news-reader.js, modo escritorio)
   const b=document.getElementById(ONLY_PANEL === "pomo" ? "btn-pomo" : "btn-notif");if(b)b.click();
 },300); }); }
 // marca el webview de la app de escritorio: ahi las pestanas son la navegacion
