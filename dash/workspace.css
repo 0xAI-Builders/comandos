@@ -825,8 +825,8 @@ body.ws-dragging #command-sidebar .sb-term{pointer-events:none}
 .chain-only .m-head{display:flex;align-items:center;gap:12px;flex:none;padding:8px 14px;border-bottom:1px solid var(--cs-line);min-width:0}
 .chain-only .m-head h2{margin:0;font-size:14px;font-weight:700;white-space:nowrap}
 .chain-only .m-head .search{position:relative;flex:1;max-width:340px;margin-left:12px;min-width:0}
-.chain-only .m-head .search .ic{position:absolute;left:8px;top:11px;pointer-events:none;color:var(--cs-dim)}
-.chain-only .m-head .m-q{width:100%;box-sizing:border-box;min-height:36px;padding:6px 10px 6px 30px;border:1px solid var(--cs-line);border-radius:10px;background:var(--cs-panel2);color:var(--cs-text);font:inherit}
+.chain-only .m-head .search .ic{position:absolute;left:10px;top:11px;width:14px;height:14px;background:none;pointer-events:none;color:var(--cs-dim)}   /* solo la lupa: sin el sprite pixel de 32 px encima */
+.chain-only .m-head .m-q{width:100%;box-sizing:border-box;min-height:36px;padding:6px 10px 6px 32px;border:1px solid var(--cs-line);border-radius:10px;background:var(--cs-panel2);color:var(--cs-text);font:inherit}
 .chain-only .m-head .m-q::placeholder{color:var(--cs-dim)}
 .chain-only .m-head .m-q:focus,.chain-only .m-name:focus{outline:none;border-color:var(--cs-brand)}
 .chain-only .m-head .target{display:flex;gap:6px;margin-left:auto;align-items:center;min-width:0;flex:none}
@@ -838,7 +838,7 @@ body.ws-dragging #command-sidebar .sb-term{pointer-events:none}
 .chain-only .cb-body > .cs-cli{flex:none}
 .chain-only .cs-cli .cli-h{padding:9px 12px}
 .chain-only :is(.cmds,.srows){columns:3;column-gap:8px;padding:6px 8px 8px;border-top:0}
-.chain-only :is(.cmds,.srows) .cmd{break-inside:avoid;border:1px solid var(--cs-line2);border-radius:10px;margin-bottom:6px;background:var(--cs-panel2);padding:7px 64px 7px 10px;display:block}
+.chain-only :is(.cmds,.srows) .cmd{break-inside:avoid;border:1px solid var(--cs-line2);border-radius:10px;margin-bottom:6px;background:var(--cs-panel2);padding:7px 116px 7px 10px;display:block}   /* reserva «+ cadena» (≈76 px) + ⠿ + aire: el botón no tapa el texto */
 .chain-only :is(.cmds,.srows) .cmd:first-child{border-top:1px solid var(--cs-line2)}
 .chain-only :is(.cmds,.srows) .cmd:hover{background:#1d2333}
 .chain-only .cmd code{display:block}
