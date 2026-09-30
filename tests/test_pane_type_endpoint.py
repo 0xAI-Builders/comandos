@@ -94,3 +94,15 @@ def test_second_type_on_the_same_pane_while_typing_gets_409_and_does_not_interle
     assert first["ok"] and first["typed"] == 63
     screen = private_tmux.capture()
     assert long_text in screen.replace("\n", "") and "ZZZ" not in screen
+
+
+def test_type_route_types_a_semicolon_literally(dash, private_tmux):
+    r = dash.post("/pane/type", {"session": "demo", "pane": private_tmux.pane, "text": "a;b", "requestId": "semi"})
+    assert r["ok"] and r["typed"] == 3
+    assert private_tmux.capture().rstrip().endswith("a;b")
+
+
+def test_type_route_requires_a_valid_pane(dash, private_tmux):
+    assert dash.post_status("/pane/type", {"session": "demo", "text": "abc"}) == 400
+    assert dash.post_status("/pane/type", {"session": "demo", "pane": "demo", "text": "abc"}) == 400
+    assert "abc" not in private_tmux.capture()

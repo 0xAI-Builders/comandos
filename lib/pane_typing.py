@@ -16,7 +16,7 @@ def validate(text):
         raise TypingError("Texto vacío")
     if len(text) > MAX_CHARS:
         raise TypingError(f"Texto demasiado largo (máx. {MAX_CHARS})")
-    if any(ch in "\r\n" or (ord(ch) < 32 and ch != "\t") or ord(ch) == 127 for ch in text):
+    if any(ch in "\r\n" or ord(ch) < 32 or ord(ch) == 127 for ch in text):
         raise TypingError("El texto no puede contener saltos de línea ni caracteres de control")
     return text
 
@@ -26,7 +26,9 @@ def type_literal(tmux_fn, pane, text, *, sleep=time.sleep, delay=0.022, budget=1
     step = min(delay, budget / max(len(text) - 1, 1))
     typed = 0
     for i, ch in enumerate(text):
-        r = tmux_fn("send-keys", "-t", pane, "-l", "--", ch)
+        # tmux 3.2a lee un argumento terminado en ';' como separador de comandos
+        # (no teclea nada y devuelve rc=0): "\\;" teclea el punto y coma literal.
+        r = tmux_fn("send-keys", "-t", pane, "-l", "--", "\\;" if ch == ";" else ch)
         if getattr(r, "returncode", 1) != 0:
             raise TypingError((getattr(r, "stderr", "") or "tmux send-keys falló").strip(), typed=typed, code="tmux")
         typed += 1

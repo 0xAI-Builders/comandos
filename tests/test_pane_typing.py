@@ -29,7 +29,7 @@ def test_long_text_speeds_up_to_fit_the_budget():
     pane_typing.type_literal(t, "%3", "x" * 200, sleep=slept.append, delay=0.022, budget=1.2)
     assert sum(slept) <= 1.2 + 1e-6 and len(t.calls) == 200
 
-@pytest.mark.parametrize("bad", ["", "  ", "ls\n", "a\rb", "\x1b[A", "x" * 2001])
+@pytest.mark.parametrize("bad", ["", "  ", "ls\n", "a\rb", "\x1b[A", "a\tb", "x" * 2001])
 def test_rejects_newlines_control_chars_empty_and_too_long(bad):
     with pytest.raises(pane_typing.TypingError):
         pane_typing.type_literal(FakeTmux(), "%3", bad, sleep=lambda s: None)
@@ -45,3 +45,10 @@ def test_lock_refuses_a_second_typing_on_the_same_pane_only():
     assert locks.acquire("%3") and not locks.acquire("%3") and locks.acquire("%4")
     locks.release("%3")
     assert locks.acquire("%3")
+
+
+def test_semicolon_is_escaped_so_tmux_does_not_read_it_as_a_command_separator():
+    t = FakeTmux()
+    out = pane_typing.type_literal(t, "%3", "a;b", sleep=lambda s: None)
+    assert [c[-1] for c in t.calls] == ["a", "\\;", "b"]   # backslash + semicolon
+    assert out == {"typed": 3}
