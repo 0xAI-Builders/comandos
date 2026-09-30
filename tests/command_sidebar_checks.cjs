@@ -273,5 +273,27 @@ const catalog = JSON.parse(fs.readFileSync(process.cwd() + '/tests/fixtures/comm
   assert.equal(build.includes('data-add="/model claude-fable-5-1"'), true);
   assert.equal(build.includes('data-cmd='), false);
   assert.equal(mod.rowHTML({ text: '<x> "y"', description: 'd&d' }, {}).includes('&lt;x&gt; &quot;y&quot;'), true);
+  // 9) sin destino: catálogo sin pane, título «Sin destino», toda fila .dis y nada teclea
+  {
+    const callsN = [], toastsN = [];
+    const apiN = async (path, body) => { callsN.push([path, body]);
+      if (path.startsWith('/commands/catalog')) return { cliInPane: '', target: { session: '', pane: '' }, catalog, versionsAt: 1 };
+      if (path === '/chains') return { chains: [{ slug: 'yolo', name: 'Codex yolo', steps: [{ kind: 'pane', text: '/model' }] }] };
+      throw new Error('ruta inesperada ' + path); };
+    const rootN = mkRoot();
+    const sbN = createCommandSidebar({ api: apiN, root: rootN, storage: null, makeId: () => 'n', getTarget: () => null, toast: (m, e) => toastsN.push([m, e]) });
+    await sbN.refresh();
+    assert.equal(callsN[0][0], '/commands/catalog');                            // nunca ?pane= vacío
+    assert.equal(rootN.querySelector('.cs-target').textContent, 'Sin destino');
+    const rowsN = rootN.querySelectorAll('.cmd');
+    assert.equal(rowsN.length > 0, true);
+    assert.equal(rowsN.every(r => r.classList.contains('dis')), true);           // arranques incluidos
+    rootN.click('.launch.yolo .cmd'); rootN.click('.grp .cmd');
+    assert.equal(sbN.insert('/model'), null); assert.equal(sbN.insert('codex', 'shell'), null);
+    assert.equal(sbN.startChain('yolo'), null);
+    assert.equal(callsN.some(c => c[0] === '/pane/type'), false);
+    assert.equal(toastsN.length, 5);
+    assert.equal(toastsN.every(([m, e]) => m === 'Selecciona un pane primero' && e === true), true);
+  }
   console.log('command-sidebar checks ok');
 })().catch(e => { console.error(e); process.exit(1); });

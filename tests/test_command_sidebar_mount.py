@@ -34,11 +34,13 @@ def test_sidebar_refreshes_on_target_or_agent_change_and_toasts_errors():
         HTML[HTML.index("const CS_CLIS = "):].split("\n", 1)[0]
     script = r"""
 const assert = require('node:assert/strict');
-const S = {list: []}, openTerms = new Map([['term-qabc', {label: 'Terminal 10:00'}]]);
-let sel = null, refreshes = 0, toasts = [], fail = false, release = null;
-const pickSel = list => list.find(it => it.alive && it.session === sel) || null;
+const S = {list: [], sel: ''}, openTerms = new Map([['term-qabc', {label: 'Terminal 10:00'}]]);
+let sel = null, active = {session: ''}, refreshes = 0, renders = 0, toasts = [], fail = false, release = null;
+// Igual que el real: sin selección cae en la primera sesión viva ("local").
+const pickSel = list => list.find(it => it.alive && it.session === sel) || list.find(it => it.alive) || null;
+const sidebarActiveTab = () => active;
 const toast = (m, err) => toasts.push([m, !!err]);
-window = {commandSidebar: {state: {cliInPane: ''}, refresh() {
+window = {commandSidebar: {state: {cliInPane: ''}, render() { renders++; }, refresh() {
   refreshes++;
   if (fail) return Promise.reject(new Error('catálogo caído'));
   return new Promise(r => { release = r; });
@@ -46,28 +48,43 @@ window = {commandSidebar: {state: {cliInPane: ''}, refresh() {
 """ + init + "\n" + glue + r"""
 const tick = () => new Promise(r => setImmediate(r));
 (async () => {
-  S.list = [{session: 'demo', pane: '%2', alive: true, agent: 'claude', project: 'demo'},
+  S.list = [{session: 'local', pane: '%0', alive: true, agent: 'claude', project: 'local'},
+            {session: 'demo', pane: '%2', alive: true, agent: 'claude', project: 'demo'},
             {session: 'term-qabc', pane: '%9', alive: true, agent: 'shell', project: 'term-qabc'}];
-  sel = 'demo';
+  // Sin pestaña activa ni selección no hay destino: nunca el "local" de reserva.
+  assert.equal(activePaneTarget(), null);
+  syncCommandSidebar(); await tick();
+  assert.equal(refreshes, 1);                             // catálogo sin destino (todo .dis en la barra)
+  release(); await tick();
+  sel = 'demo'; S.sel = 'demo|%2';
   assert.deepEqual(activePaneTarget(), {session: 'demo', pane: '%2', kind: 'pane', title: 'demo · %2'});
   syncCommandSidebar(); await tick();
-  assert.equal(refreshes, 1);
-  syncCommandSidebar(); await tick();                     // mismo destino y agente: sin refetch
-  assert.equal(refreshes, 1);
-  sel = 'term-qabc'; syncCommandSidebar(); await tick();  // en vuelo: se encola uno
-  assert.equal(refreshes, 1);
-  release(); await tick(); await tick();
   assert.equal(refreshes, 2);
+  syncCommandSidebar(); await tick();                     // mismo destino y agente: sin refetch
+  assert.equal(refreshes, 2);
+  sel = 'term-qabc'; syncCommandSidebar(); await tick();  // en vuelo: se encola uno
+  assert.equal(refreshes, 2);
+  release(); await tick(); await tick();
+  assert.equal(refreshes, 3);
   assert.equal(activePaneTarget().kind, 'term');
   assert.equal(activePaneTarget().title, 'Terminal 10:00 · %9');
   assert.deepEqual(quickTermEntries(), [{tabId: 'term-qabc', session: 'term-qabc', pane: '%9', label: 'Terminal 10:00'}]);
   release(); await tick();
-  S.list[1].agent = 'codex'; syncCommandSidebar(); await tick();   // el pane arrancó codex
-  assert.equal(refreshes, 3);
+  S.list[2].agent = 'codex'; syncCommandSidebar(); await tick();   // el pane arrancó codex
+  assert.equal(refreshes, 4);
   release(); await tick();
   window.commandSidebar.state.cliInPane = 'codex';
-  S.list[1].agent = 'grok'; S.list[1].agent = 'codex'; syncCommandSidebar(); await tick();
-  assert.equal(refreshes, 3);                             // ya coincide con cliInPane
+  S.list[2].agent = 'grok'; S.list[2].agent = 'codex'; syncCommandSidebar(); await tick();
+  assert.equal(refreshes, 4);                             // ya coincide con cliInPane
+  // Otra terminal rápida aparece y luego se cierra en otro lado: solo repinta.
+  const r0 = renders;
+  S.list.push({session: 'term-qdef', pane: '%11', alive: true, agent: 'shell', project: 'Terminal 11:00'});
+  syncCommandSidebar(); await tick();
+  assert.equal(renders, r0 + 1); assert.equal(refreshes, 4);
+  syncCommandSidebar(); await tick();
+  assert.equal(renders, r0 + 1);                          // sin cambios: nada
+  S.list.pop(); syncCommandSidebar(); await tick();
+  assert.equal(renders, r0 + 2); assert.equal(refreshes, 4);
   fail = true; sel = 'demo'; syncCommandSidebar(); await tick(); await tick();
   assert.deepEqual(toasts, [['catálogo caído', true]]);
   console.log('ok');
@@ -80,6 +97,7 @@ const tick = () => new Promise(r => setImmediate(r));
 
 def test_sidebar_is_wired_with_quick_terminal_and_builder_hooks():
     mount = _js_function("mountCommandSidebar")
+    assert mount.index("if(ONLY_PANEL) return;") < mount.index("createCommandSidebar(")   # webviews ?panel= de GTK
     assert "ComandosCommandSidebar.createCommandSidebar(" in mount
     assert "openBuilder: () => window.chainBuilder && window.chainBuilder.open()" in mount
     assert "newTerm:" in mount and "quickTerminalInstance()" in mount

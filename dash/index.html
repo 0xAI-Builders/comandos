@@ -1830,7 +1830,7 @@
 <script src="/workspace-layout.js"></script>
 <script src="/workspace-dock.js?v=bandejas2"></script>
 <script src="/quick-terminal.js"></script>
-<script src="/command-sidebar.js?v=1"></script>
+<script src="/command-sidebar.js?v=2"></script>
 
 <div id="panes">
 <nav id="app-navigation" aria-label="Pestañas de sesiones">
@@ -6303,6 +6303,10 @@ function rowKey(it){ return it.session + (it.pane ? "|" + it.pane : ""); }
 // "Destino: …"). Las terminales rápidas son sesiones tmux "term-q…".
 function isQuickTermSession(sess){ return String(sess || "").startsWith("term-q"); }
 function activePaneTarget(){
+  // Solo un destino elegido: la pestaña activa (GTK o este navegador) o un pane
+  // seleccionado. Sin eso pickSel cae en "local"/la primera sesión y un clic en
+  // el celular teclearía en un pane ajeno.
+  if(!sidebarActiveTab().session && !S.sel) return null;
   const it = pickSel(S.list || []);
   if(!it || !it.session) return null;
   const label = openTerms.get(it.session)?.label || it.project || it.session;
@@ -6333,7 +6337,7 @@ function quickTerminalInstance(){
       onOpened: () => { tabsPollTs = 0; }});
   return window.quickTerminal || null;
 }
-const CS = {targetKey: null, agentSeen: null, busy: null, again: false};
+const CS = {targetKey: null, agentSeen: null, termsSig: null, busy: null, again: false};
 // cliInPane solo vale para el destino con el que se pidió el catálogo: se
 // refresca en cada cambio de destino y cuando /state cambia el agente del pane.
 function refreshCommandSidebar(){
@@ -6349,12 +6353,19 @@ function syncCommandSidebar(){
   const key = t ? t.session + "|" + t.pane : "";
   const it = t && (S.list || []).find(x => x.alive && x.session === t.session && (x.pane || "") === t.pane);
   const agent = it && CS_CLIS.has(it.agent) ? it.agent : "";
+  // Una terminal rápida cerrada en otro lado sale de .cs-terms sin pedir nada.
+  const terms = JSON.stringify(quickTermEntries().map(e => [e.tabId, e.pane, e.label]));
+  const termsChanged = terms !== CS.termsSig;
+  CS.termsSig = terms;
   if(key !== CS.targetKey){ CS.targetKey = key; CS.agentSeen = agent; refreshCommandSidebar(); return; }
-  if(agent === CS.agentSeen) return;
-  CS.agentSeen = agent;
-  if(agent !== (cs.state.cliInPane || "")) refreshCommandSidebar();
+  if(agent !== CS.agentSeen){
+    CS.agentSeen = agent;
+    if(agent !== (cs.state.cliInPane || "")){ refreshCommandSidebar(); return; }
+  }
+  if(termsChanged) cs.render();
 }
 function mountCommandSidebar(){
+  if(ONLY_PANEL) return;   // webviews auxiliares de GTK (?panel=…): sin barra ni peticiones
   const root = $("#command-sidebar");
   if(!root || window.commandSidebar || !window.ComandosCommandSidebar) return;
   window.commandSidebar = ComandosCommandSidebar.createCommandSidebar({

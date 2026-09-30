@@ -47,7 +47,7 @@
   function launchHTML(cli, which, o) {
     const key = `${cli.id}:${which}`;
     const list = (cli.launch && Array.isArray(cli.launch[which])) ? cli.launch[which] : [];
-    const missing = cli.version && cli.version.status === 'missing';
+    const missing = (cli.version && cli.version.status === 'missing') || o.noTarget;
     const rows = list.map(text => rowHTML({ text, description: '' }, { mode: o.mode, kind: 'shell', dis: missing, q: o.q })).join('');
     const note = which === 'yolo' && !list.length
       ? `<div class="note"${o.q ? ' hidden' : ''}>${esc((cli.launch && cli.launch.yoloNote) || 'sin flag yolo')}</div>` : '';
@@ -66,11 +66,11 @@
       + cmds.map(c => rowHTML(c, { mode: o.mode, kind: 'pane', dis: o.noCli, q: o.q })).join('') + '</div>';
   }
 
-  // o: {mode, open: Set, here, noCli, q}. Todo CLI, arranque y grupo se pinta
+  // o: {mode, open: Set, here, noCli, noTarget, q}. Todo CLI, arranque y grupo se pinta
   // siempre; la clase .open solo decide la visibilidad por CSS.
   function cliHTML(cli, opts = {}) {
     const o = { mode: opts.mode === 'build' ? 'build' : 'run', open: opts.open || new Set(), q: String(opts.q || '').trim(),
-      noCli: opts.mode === 'build' ? false : !!opts.noCli };
+      noCli: opts.mode === 'build' ? false : !!opts.noCli, noTarget: opts.mode === 'build' ? false : !!opts.noTarget };
     const v = cli.version || {};
     const st = STATUS_TEXT[v.status] !== undefined ? v.status : 'ok';
     const ver = [v.installed ? `v${v.installed}` : '', STATUS_TEXT[st]].filter(Boolean).join(' · ');
@@ -154,9 +154,12 @@
     }
 
     async function refresh() {
-      const t = target() || { session: '', pane: '' };
+      // Sin destino se pide el catálogo sin pane: se ve, pero todo queda .dis.
+      const t = target();
       const [cat, ch] = await Promise.all([
-        api(`/commands/catalog?session=${encodeURIComponent(t.session || '')}&pane=${encodeURIComponent(t.pane || '')}`),
+        api(t && t.session && t.pane
+          ? `/commands/catalog?session=${encodeURIComponent(t.session)}&pane=${encodeURIComponent(t.pane)}`
+          : '/commands/catalog'),
         api('/chains'),
       ]);
       state.chains = Array.isArray(ch && ch.chains) ? ch.chains : [];
@@ -279,9 +282,9 @@
     }
 
     function bodyHTML() {
-      const here = hereCli();
+      const here = hereCli(), t = target(), noTarget = !t || !t.session || !t.pane;
       return savedHTML() + runnerHTML()
-        + clis().map(c => cliHTML(c, { mode: 'run', open: state.open, here: !!here && c.id === here, noCli: !here, q: state.q })).join('')
+        + clis().map(c => cliHTML(c, { mode: 'run', open: state.open, here: !!here && c.id === here, noCli: !here, noTarget, q: state.q })).join('')
         + termsHTML();
     }
 
@@ -315,7 +318,11 @@
       }
       if ((n = t.closest('[data-cmd]'))) {
         const row = n.closest('.cmd');
-        if (row && row.classList.contains('dis')) return;
+        if (row && row.classList.contains('dis')) {
+          const t = target();
+          if (!t || !t.session || !t.pane) toast('Selecciona un pane primero', true);
+          return;
+        }
         return void insert(n.dataset.cmd, n.dataset.kind === 'shell' ? 'shell' : 'pane');
       }
       if (t.closest('button') && (n = t.closest('.cs-saved-item[data-run]'))) return void startChain(n.dataset.run);
