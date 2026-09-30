@@ -321,7 +321,7 @@ def test_shell_panes_get_a_visible_start_ai_pill_and_ctrl_shift_a():
     # el menu contextual resuelve la sesion aunque el tty no este registrado.
     src = SRC
     assert "def _shell_pill(sess, pane_id)" in src
-    assert '"#{pane_id} #{pane_left} #{pane_top} #{pane_width} #{pane_current_command}"' in src
+    assert '"#{pane_id} #{pane_left} #{pane_top} #{pane_width} #{pane_current_command} #{pane_height} #{pane_active}"' in src
     assert "_PANE_CMD.get(pane_id, \"\") not in _SHELLS" in src
     assert 'open_ai_session_here(cur_sess or str(key or "").partition(":")[0], pane_id)' in src
     assert "if ctrl and shift and e.keyval in (Gdk.KEY_A, Gdk.KEY_a):" in src

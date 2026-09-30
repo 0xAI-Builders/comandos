@@ -80,7 +80,7 @@ def load(responses):
         "WORK_MARKS": {"rows": {}, "panes": [], "fetching": False}, "work_mark_state": work_marks,
         "Gtk": fake_gtk(), "tabs": {"sess": "box"}, "nb": SimpleNamespace(get_tab_label=lambda box: label), "tab_hb": lambda box: label,
         "_work_mark_pixbuf": lambda name: "pix:" + name,
-        "_indicator_pixbuf": lambda icon, color, frame=0, scale=1: f"pix:{icon}:{color}:{frame}",
+        "_indicator_pixbuf": lambda icon, color, frame=0, scale=1, px_out=None: f"pix:{icon}:{color}:{frame}",
         "AI_SPRITES": "comandos",
         "_indicator_animate": lambda hb: hb._dot.animated.append(hb._ind_icon),
         "STATE_CACHE": {}, "DOT_COLORS": {"waiting": "#D08770", "working": "#81A1C1"}, "DOT_IDLE": "#4B5568",

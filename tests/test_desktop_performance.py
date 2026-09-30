@@ -32,7 +32,7 @@ class Widget:
         self.margin_start, self.margin_top = 8, 8
 
     def __getattr__(self, name):
-        if name.startswith(('set_', 'show', 'hide', 'add_class', 'remove_class')):
+        if name.startswith(('set_', 'show', 'hide', 'add_class', 'remove_class', 'queue_draw')):
             def call(*args):
                 self.calls[name] += 1
             return call
@@ -92,11 +92,11 @@ def model_ui():
                    get_tab_label=lambda b: labels[id(b)]),
           '_svg_image': svg, '_pane_geometry': get_geometry,
           '_PANE_CMD': {'%0': 'codex'}, '_SHELLS': {'zsh'},
-          'Gtk': NS(Box=Widget, Overlay=Widget, Label=Widget, Button=Widget, Image=Widget, Separator=Widget, EventBox=Widget,
+          'Gtk': NS(Box=Widget, Overlay=Widget, Label=Widget, Button=Widget, Image=Widget, Separator=Widget, EventBox=Widget, DrawingArea=Widget,
                     CssProvider=lambda: NS(load_from_data=lambda d: None), StyleContext=NS(add_provider_for_screen=lambda *a: None), STYLE_PROVIDER_PRIORITY_APPLICATION=600,
                     Orientation=NS(HORIZONTAL=1, VERTICAL=2), Align=NS(START=1, CENTER=2), ReliefStyle=NS(NONE=1)),
           'Pango': NS(EllipsizeMode=NS(END=3)), 'STATE_CACHE': {}, 'AI_SPRITES': 'comandos', '_BADGE_CSS': {},
-          'Gdk': NS(Screen=NS(get_default=lambda: None)), 'Align': NS(CENTER=2),
+          'Gdk': NS(Screen=NS(get_default=lambda: None)), 'Align': NS(CENTER=2), '_PANE_BOX': {}, '_draw_pane_frames': lambda b, cr: False,
           'work_mark_state': __import__('work_marks'), 'work_mark_row': lambda scope, key: {'mark': 'none'},
           'tab_indicator_display': lambda mark, state: ('ai:idle', None, False),
           '_set_indicator_frame': lambda image, icon, color, frame: None,
@@ -126,7 +126,7 @@ def test_unchanged_models_and_identical_allocations_do_not_redraw():
             callback(ui.current._term, NS(width=1200, height=800))
         ui.refresh()
     assert ui.counts['svg'] == 3
-    assert ui.current._pill_overlay.calls['add_overlay'] == 1
+    assert ui.current._pill_overlay.calls['add_overlay'] == 2  # the frames layer + one card
     assert sum(label._model.calls['set_text'] for label in ui.labels.values()
                if hasattr(label, '_model')) == 19
     assert ui.counts['geometry'] == 10  # Keep querying real geometry, once per tick.

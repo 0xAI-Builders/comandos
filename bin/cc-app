@@ -225,8 +225,8 @@ notebook > header > tabs > arrow {
 }
 .strip-actions { padding: 0 6px 0 8px; border-left: 1px solid @LINE@; }
 .strip-actions button.cc-key { min-width: 32px; min-height: 32px; margin: 5px 3px 7px; }
-.tabnav { color: @TEXT@; padding: 4px 10px; margin: 2px 3px; border: 1px solid @LINE@;
-  background: none; border-radius: 10px; min-width: 38px; min-height: 34px; -gtk-icon-effect: none; }
+.tabnav { color: @DIM@; padding: 0; margin: 0; border: 0; background: none; box-shadow: none; border-radius: 0;
+  min-width: 36px; min-height: 40px; -gtk-icon-effect: none; }
 .tabnav:hover { color: @TEXT@; background: @LINE@; }
 .tabnav:active { color: @BRAND@; }
 .tabnav:disabled { opacity: .35; }
@@ -1330,13 +1330,13 @@ def _build_hb_css():
     return (
     b".pane-pill{background:" + THEME["bg"].encode() + b";"
     b" background-clip:padding-box;opacity:1;"
-    b" border-radius:10px;padding:0 10px;min-height:34px;"
+    b" border-radius:10px;padding:0 10px;min-height:28px;"
     b" border:1px solid " + THEME.get("line2", THEME["line"]).encode() + b";"
     b" box-shadow:0 2px 0 " + THEME["line"].encode() + b";}"
     b".pane-card{background:" + THEME.get("bar", THEME["bg"]).encode() + b";}"
     b".pane-card separator{background:" + THEME["line"].encode() + b";min-width:1px;margin:8px 0;}"
     b".pp-logo{min-width:18px;min-height:18px;border-radius:5px;padding:0;}"
-    b".pane-pill label{color:" + THEME["fg"].encode() + b"; font-size:11.5px;"
+    b".pane-pill label{color:" + THEME["fg"].encode() + b"; font-size:11px;"
     b" background:transparent;}"
     b".pane-pill.pp-claude,.pane-pill.pp-codex,.pane-pill.pp-grok{"
     b" border-color:rgba(148,148,148,0.5);}"
@@ -1346,8 +1346,10 @@ def _build_hb_css():
     b".pane-pill.pp-shell label{font-size:11px;}"
     b".pill-btn{padding:2px 5px;margin:0;background:rgba(148,148,148,0.12);"
     b" border:1px solid rgba(148,148,148,0.55);border-radius:999px;min-height:0;}"
-    b".pane-card .pill-btn{padding:0 9px;min-height:26px;border-radius:8px;margin:0 0 0 6px;}"
-    b".pane-card .pill-btn label{font-size:11px;font-weight:600;}"
+    b".pane-card .pill-btn{padding:0 8px;min-height:22px;border-radius:7px;margin:0 0 0 6px;color:" + THEME.get("dim", "#8a98ab").encode() + b";}"
+    b".pane-card .pill-btn label{font-size:10px;font-weight:600;color:" + THEME.get("dim", "#8a98ab").encode() + b";}"
+    b".pane-card .pill-btn:hover label{color:" + THEME["fg"].encode() + b";}"
+    b".pp-logo{min-width:16px;min-height:16px;}"
     b".pill-btn:hover{border-color:" + THEME["fg"].encode() + b";"
     b" background:rgba(148,148,148,0.28);}"
     b"window,window.background,window.solid-csd,window.csd{"
@@ -1929,15 +1931,15 @@ def _ai_strip(state):
     return _AI_STRIPS[key]
 
 
-def ai_frame_pixbuf(state, frame, scale=1):
+def ai_frame_pixbuf(state, frame, scale=1, px_out=None):
     """Cuadro ``frame`` del semáforo, recortado de la tira y escalado a píxel
-    duro (NEAREST) al tamaño de pestaña × factor HiDPI."""
+    duro (NEAREST) al tamaño de pestaña (o ``px_out``) × factor HiDPI."""
     sp = work_mark_state.ai_sprite(state, AI_SPRITES)
     strip = _ai_strip(state)
     px = sp["px"]
     frame = frame % max(1, sp["frames"])
     cell = strip.new_subpixbuf(frame * px, 0, px, px)
-    size = sp["tab"] * scale
+    size = (px_out or sp["tab"]) * scale
     return cell if size == px else cell.scale_simple(size, size, GdkPixbuf.InterpType.NEAREST)
 
 
@@ -1954,13 +1956,13 @@ def apply_ai_sprites(set_name=None):
             paint_tab_mark(hb, key)
 
 
-def _indicator_pixbuf(icon, color, frame=0, scale=1):
+def _indicator_pixbuf(icon, color, frame=0, scale=1, px_out=None):
     """Frame ``frame`` of the icon's loop, rendered once and cached. ``ai:<n>``
     is the AI sprite semáforo (grill 30-sep); the rest are the E1 line icons."""
-    key = (icon, color, frame, scale)
+    key = (icon, color, frame, scale, px_out)
     if key not in _INDICATOR_PIXBUFS:
         if icon.startswith("ai:"):
-            _INDICATOR_PIXBUFS[key] = ai_frame_pixbuf(icon[3:], frame, scale)
+            _INDICATOR_PIXBUFS[key] = ai_frame_pixbuf(icon[3:], frame, scale, px_out)
             return _INDICATOR_PIXBUFS[key]
         loader = GdkPixbuf.PixbufLoader.new_with_type("svg")
         n = work_mark_state.frame_count(icon)
@@ -1976,7 +1978,7 @@ def _set_indicator_frame(image, icon, color, frame):
     factor de escala de la pantalla para que no se vean borrosos en HiDPI."""
     if icon.startswith("ai:"):
         scale = max(1, image.get_scale_factor())
-        pb = _indicator_pixbuf(icon, color, frame, scale)
+        pb = _indicator_pixbuf(icon, color, frame, scale, getattr(image, "_px", None))
         image.set_from_surface(Gdk.cairo_surface_create_from_pixbuf(pb, scale, image.get_window()))
     else:
         image.set_from_pixbuf(_indicator_pixbuf(icon, color, frame))
@@ -4840,6 +4842,14 @@ def _attach_model_bar(box, sess):
     box.pack_start(ov, True, True, 0)
     box.reorder_child(ov, pos)
     box._pill_overlay = ov
+    # Marco redondeado por pane (prototipo aprobado: borde 1 px, verde el activo).
+    frames = Gtk.DrawingArea()
+    frames.connect("draw", lambda w, cr, b=box: _draw_pane_frames(b, cr))
+    ov.add_overlay(frames)
+    ov.set_overlay_pass_through(frames, True)
+    frames.show()
+    box._frame_layer = frames
+    box._frames = []
     box._pill_sess = sess
     box._pill_sig = ""
     box._pills = []
@@ -4850,7 +4860,7 @@ def _pane_geometry(sess):
     try:
         out = subprocess.run(
             ["tmux", "list-panes", "-t", f"={sess}", "-F",
-             "#{pane_id} #{pane_left} #{pane_top} #{pane_width} #{pane_current_command}"],
+             "#{pane_id} #{pane_left} #{pane_top} #{pane_width} #{pane_current_command} #{pane_height} #{pane_active}"],
             capture_output=True, text=True, timeout=2).stdout
     except Exception:
         return {}
@@ -4860,10 +4870,13 @@ def _pane_geometry(sess):
         if len(parts) >= 4 and parts[0].startswith("%"):
             geo[parts[0]] = (int(parts[1]), int(parts[2]), int(parts[3]))
             _PANE_CMD[parts[0]] = parts[4] if len(parts) > 4 else ""
+            if len(parts) >= 7:
+                _PANE_BOX[parts[0]] = (int(parts[5]), parts[6] == "1")
     return geo
 
 
 _PANE_CMD = {}          # pane_id -> comando vivo (zsh/bash/claude/…) del ultimo _pane_geometry
+_PANE_BOX = {}          # pane_id -> (alto en filas, activo) para el marco del pane (prototipo)
 _SHELLS = {"zsh", "bash", "sh", "fish", "dash", "ksh", "tcsh", "csh", "nu"}
 
 
@@ -4930,7 +4943,7 @@ def _pane_card_ai(sess):
     """Semáforo de la IA de esta sesión dentro de la tarjeta (mismo sprite que la pestaña)."""
     icon, _, animated = tab_indicator_display(work_mark_row("session", sess)["mark"], STATE_CACHE.get(sess, ""))
     image = Gtk.Image()
-    image._ind, image._frame = (icon, None), 0
+    image._ind, image._frame, image._px = (icon, None), 0, 16    # robot chico, como el prototipo
     try:
         _set_indicator_frame(image, icon, None, 0)
     except Exception:
@@ -5153,6 +5166,22 @@ def _open_extension_shelf(sess, pane, harness=""):
     return False
 
 
+def _draw_pane_frames(box, cr):
+    """Borde redondeado de 1 px alrededor de cada pane tmux; el activo en verde."""
+    frames = getattr(box, "_frames", None) or []
+    if not frames:
+        return False
+    line = Gdk.RGBA(); line.parse(THEME.get("line") or "#223044")
+    green = Gdk.RGBA(); green.parse("#4ade80")
+    for x, y, w, h, active in frames:
+        c = green if active else line
+        cr.set_source_rgba(c.red, c.green, c.blue, 0.9 if active else 1.0)
+        cr.set_line_width(1)
+        _ws_rounded(cr, x + 0.5, y + 0.5, max(0, w - 1), max(0, h - 1), 10)
+        cr.stroke()
+    return False
+
+
 def _pill_row_y(m_t, top, chh):
     """Y de la pildora: SOBRE el renglon de borde tmux (pane-border-status top,
     formato vacio = riel reservado), que es la fila pane_top-1. Antes se usaba
@@ -5183,6 +5212,22 @@ def _place_pills(box, panes, geo=None):
         box._pill_sig = ""      # fuente aun no lista: reintenta al siguiente tick
         return
     m_l = term.get_margin_start(); m_t = term.get_margin_top()
+    # Marcos de los panes (todos, con o sin IA): alrededor del área tmux del pane,
+    # incluyendo el renglón de riel donde va la Tarjeta.
+    box._frames = []
+    for pane_id, g3 in geo.items():
+        left, top, width = g3[:3]
+        height, active = _PANE_BOX.get(pane_id, (0, False))
+        if height <= 0 or width < 8:
+            continue
+        row = top - 1 if top >= 1 else 0
+        x = m_l + left * cw + 2
+        y = m_t + row * chh + 2
+        w = width * cw - 4
+        h = (height + (1 if top >= 1 else 0)) * chh - 4
+        box._frames.append((x, y, w, h, active))
+    if getattr(box, "_frame_layer", None) is not None:
+        box._frame_layer.queue_draw()
     placed = set()
     for p in panes[:6]:
         g = geo.get(p.get("pane") or "")
@@ -5193,11 +5238,11 @@ def _place_pills(box, panes, geo=None):
             # (sesion detenida): NO pintar el modelo viejo; abajo va 'Iniciar IA'.
             continue
         placed.add(p.get("pane"))
-        left, top, width = g
+        left, top, width = g[:3]
         pill = _pane_pill(getattr(box, "_pill_sess", ""), p)
         # Tarjeta (prototipo aprobado): ocupa todo el ancho del pane, menos un
         # carácter de aire a cada lado; los botones quedan al canto derecho.
-        pill.set_size_request(max(120, int((width - 2) * cw)), -1)
+        pill.set_size_request(max(120, int(width * cw) - 24), -1)
         # anclada al INICIO de cada pane, SOBRE el renglon de titulo tmux
         # que va vacio (riel reservado): no tapa contenido y la posicion es
         # determinista sin medir anchos de widget
@@ -5206,14 +5251,15 @@ def _place_pills(box, panes, geo=None):
         # Sobre el renglón de borde tmux (vacío). Sin -3: ese offset metía la
         # pildora en la statusline del TUI (Grok/Claude) y el titulo se veía detrás.
         pill.set_margin_top(_pill_row_y(m_t, top, chh))
-        pill.set_margin_start(max(0, int(m_l + left * cw + cw)))
+        pill.set_margin_start(max(0, int(m_l + left * cw) + 12))
         ov.add_overlay(pill)
         pill.show_all()
         box._pills.append(pill)
     # Panes SIN agente (shell vivo): boton visible para arrancar una IA ahi.
     with_agent = placed
     sess = getattr(box, "_pill_sess", "")
-    for pane_id, (left, top, width) in geo.items():
+    for pane_id, g3 in geo.items():
+        left, top, width = g3[:3]
         if pane_id in with_agent or _PANE_CMD.get(pane_id, "") not in _SHELLS or width < 24:
             continue
         pill = _shell_pill(sess, pane_id)
