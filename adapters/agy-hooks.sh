@@ -6,6 +6,7 @@
 # El payload de agy es camelCase, NO trae el nombre del evento (va como $1)
 # y el directorio real es workspacePaths[0]. Salida: JSON vacio = no intervenir.
 in=$(cat)
+if [ "${COMANDOS_SILENT_AGENT:-}" = 1 ]; then echo '{}'; exit 0; fi
 e="${1:-done}"
 # Bind hook observations to an actual agy ancestor, never a latest-by-folder session.
 printf '%s' "$in" | python3 -c '

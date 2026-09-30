@@ -14,6 +14,8 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "lib"))
 import app_state  # noqa: E402
 
+LATEST = max(v for v, _, _ in app_state.MIGRATIONS)
+
 V1_TABLES = {
     "workspace_current", "workspace_previous", "workspace_requests", "workspace_clients", "workspace_meta",
     "events", "event_receipts", "deliveries", "work_marks", "work_mark_applied",
@@ -35,13 +37,13 @@ def backups(path):
 
 def test_versions_are_unique_and_the_latest_is_nine():
     versions = [m[0] for m in app_state.MIGRATIONS]
-    assert len(versions) == len(set(versions)) and max(versions) == 9 and sorted(versions) == versions
+    assert len(versions) == len(set(versions)) and max(versions) == LATEST and sorted(versions) == versions
 
 
 def test_fresh_database_gets_every_table_without_a_backup(tmp_path):
     db = tmp_path / "state.sqlite3"
     conn = app_state.connect(db)
-    assert app_state.migrate(conn) == 9
+    assert app_state.migrate(conn) == LATEST
     assert V1_TABLES <= tables(conn)
     assert backups(db) == []
 
@@ -54,14 +56,14 @@ def test_existing_data_is_backed_up_privately_and_kept(tmp_path, monkeypatch):
     app_state.migrate(conn)
     conn.execute("INSERT INTO workspace_current VALUES (1, 7, ?, 0)", (json.dumps({"schema": 1, "groups": [], "tabs": {}}),))
     monkeypatch.setattr(app_state, "MIGRATIONS", full)
-    assert app_state.migrate(conn) == 9
+    assert app_state.migrate(conn) == LATEST
     made = backups(db)
     assert len(made) == 1 and stat.S_IMODE(made[0].stat().st_mode) == 0o600
     assert conn.execute("SELECT revision FROM workspace_current").fetchone()[0] == 7
     old = sqlite3.connect(made[0])
     assert old.execute("SELECT MAX(version) FROM schema_migrations").fetchone()[0] == 1
     # Rerun: nothing pending, no second backup.
-    assert app_state.migrate(conn) == 9 and len(backups(db)) == 1
+    assert app_state.migrate(conn) == LATEST and len(backups(db)) == 1
 
 
 def test_an_interrupted_migration_rolls_back_every_pending_step(tmp_path, monkeypatch):
@@ -79,7 +81,7 @@ def test_an_interrupted_migration_rolls_back_every_pending_step(tmp_path, monkey
     assert "pomodoro_state" not in tables(conn), "steps before the failure are rolled back too"
     assert conn.execute("SELECT value FROM workspace_meta WHERE key='keep'").fetchone()[0] == "me"
     monkeypatch.setattr(app_state, "MIGRATIONS", full)
-    assert app_state.migrate(conn) == 9
+    assert app_state.migrate(conn) == LATEST
 
 
 def test_an_older_app_leaves_newer_data_untouched(tmp_path, monkeypatch):
@@ -89,7 +91,7 @@ def test_an_older_app_leaves_newer_data_untouched(tmp_path, monkeypatch):
     conn.execute("INSERT INTO notice_prefs VALUES (1, '{\"muted\": true}')")
     monkeypatch.setattr(app_state, "MIGRATIONS", list(app_state.MIGRATIONS)[:1])   # rollback to the W1 app
     old = app_state.connect(db)
-    assert app_state.migrate(old) == 9          # it never downgrades or rewrites
+    assert app_state.migrate(old) == LATEST         # it never downgrades or rewrites
     assert old.execute("SELECT value FROM notice_prefs").fetchone()[0] == '{"muted": true}'
     assert backups(db) == []
 
@@ -137,4 +139,4 @@ def test_parallel_first_runs_all_succeed(tmp_path):
         t.start()
     for t in threads:
         t.join()
-    assert errors == [] and versions == [9] * 6
+    assert errors == [] and versions == [LATEST] * 6

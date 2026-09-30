@@ -277,6 +277,9 @@ MIGRATIONS = [
             id INTEGER PRIMARY KEY CHECK (id = 1),
             value TEXT NOT NULL);
     """),
+    (10, "news_story_model", """
+        ALTER TABLE news_stories ADD COLUMN model TEXT;
+    """),
 ]
 
 

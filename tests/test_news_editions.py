@@ -664,3 +664,73 @@ def test_the_summary_agent_runs_with_silent_hooks(monkeypatch):
     ne._default_acp_open("opencode", "m")
     assert seen["extra_env"] == {"COMANDOS_SILENT_AGENT": "1"}
     assert seen["permission_handler"] is ne.deny_agent_tools
+
+
+CHAIN_CONFIG = {"enabled": True, "summarizer": {"kind": "chain", "steps": [
+    {"agent": "opencode", "model": "opencode/free"}, {"agent": "agy"},
+    {"agent": "claude", "model": "claude-opus-5-5"}]}}
+GOOD = '{"title": "T", "category": "ia", "summary": "S", "body": "B", "sourceIds": ["s1"]}'
+
+
+def chain_open(behaviour, opened):
+    class Session:
+        def __init__(self, agent): self.agent = agent
+        def prompt(self, text, on_event=None, timeout=None):
+            kind = behaviour[self.agent]
+            if kind == "error":
+                on_event({"type": "error", "message": f"{self.agent} caído"})
+            elif kind == "junk":
+                on_event({"type": "text", "text": "no sé"})
+            else:
+                on_event({"type": "text", "text": GOOD})
+        def close(self): pass
+
+    def acp_open(agent, model):
+        opened.append(agent)
+        return Session(agent)
+    return acp_open
+
+
+def test_chain_config_needs_agents_but_not_models():
+    assert ne.config_status(CHAIN_CONFIG, env={}) == {"configured": True, "reason": ""}
+    bad = {"enabled": True, "summarizer": {"kind": "chain", "steps": [{"model": "m"}]}}
+    assert ne.config_status(bad, env={})["reason"] == "falta el agente ACP"
+    assert ne.config_status({"enabled": True, "summarizer": {"kind": "chain", "steps": []}}, env={})["configured"] is False
+
+
+def test_chain_falls_back_and_keeps_a_failed_agent_demoted_for_the_summary():
+    opened = []
+    summarize = ne.make_summarizer(CHAIN_CONFIG, env={}, acp_open=chain_open(
+        {"opencode": "error", "agy": "junk", "claude": "ok"}, opened))
+    first = summarize(summary_request(max_cost=0.0))
+    assert first["model"] == "claude:claude-opus-5-5"
+    assert first["story"]["title"] == "T"
+    assert any("opencode" in n for n in first["notes"]) and any("agy" in n for n in first["notes"])
+    second = summarize(summary_request(max_cost=0.0))
+    assert second["model"] == "claude:claude-opus-5-5"
+    assert opened == ["opencode", "agy", "claude", "claude"]
+
+
+def test_chain_raises_when_every_agent_fails():
+    summarize = ne.make_summarizer(CHAIN_CONFIG, env={}, acp_open=chain_open(
+        {"opencode": "error", "agy": "error", "claude": "error"}, []))
+    with pytest.raises(RuntimeError, match="ningún agente"):
+        summarize(summary_request(max_cost=0.0))
+
+
+def test_each_story_keeps_the_model_that_summarized_it(conn):
+    policy = ne.default_policy()
+    ne.schedule_editions(conn, date(2026, 9, 29), policy)
+    models = iter(["opencode:free", "claude:opus"])
+
+    def summarize(request):
+        story = {"title": "T " + request["group"]["key"], "category": "ia", "summary": "S", "body": "B",
+                 "sourceIds": ["s1"]}
+        return {"costUsd": 0.0, "model": next(models), "story": story, "notes": ["opencode falló: caído"]}
+    ne.run_due(conn, ms(2026, 9, 29, 9, 1), policy, summarize=summarize,
+               fetch=FakeFetch([item("https://example.com/a", "A"), item("https://example.com/b", "B")]))
+    got = ne.get_edition(conn, "2026-09-29@09:00")
+    assert [s["model"] for s in got["stories"]] == ["opencode:free", "claude:opus"]
+    assert got["edition"]["models"] == {"opencode:free": 1, "claude:opus": 1}
+    assert got["edition"]["notes"].count("opencode falló: caído") == 1
+    assert got["edition"]["job"]["startedAt"] and got["edition"]["job"]["finishedAt"]

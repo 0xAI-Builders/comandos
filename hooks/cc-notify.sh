@@ -12,6 +12,9 @@
 # Config editable:      ~/.claude/hooks/cc-notify.conf  (sonidos, canales on/off)
 # Eventos N1:           estado SQLite de ComandOS via lib/event_intake.py
 
+# Agentes auxiliares de ComandOS (p. ej. el resumidor de noticias) no son
+# sesiones del usuario: ni avisos, ni estado, ni sesiones fantasma.
+[ "${COMANDOS_SILENT_AGENT:-}" = 1 ] && exit 0
 HOOKS_DIR="$HOME/.claude/hooks"
 STATE_DIR="$HOOKS_DIR/state"
 EVENTS="$HOOKS_DIR/events.jsonl"

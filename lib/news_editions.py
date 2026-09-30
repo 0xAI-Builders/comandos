@@ -405,6 +405,9 @@ def _build(conn, eid, fetch, summarize, policy, clock):
             break
         cost += spent
         model = result.get("model") or model
+        for note in result.get("notes") or []:
+            if isinstance(note, str) and note not in notes:
+                notes.append(_clip(note, 240))
         story = result.get("story") if isinstance(result.get("story"), dict) else {}
         cited = [ids[i] for i in story.get("sourceIds") or [] if i in ids]
         if not cited or not story.get("title"):
@@ -416,6 +419,7 @@ def _build(conn, eid, fetch, summarize, policy, clock):
                         "title": _clip(story.get("title"), 200),
                         "summary": _clip(story.get("summary"), 1200),
                         "body": _clip(story.get("body"), 12000), "sources": cited,
+                        "model": _clip(result.get("model"), 120) or None,
                         "opportunity": _opportunity(story, group) if category in OPPORTUNITY else None})
     if not sources:
         status = "failed" if failures else "empty"
@@ -450,9 +454,10 @@ def _store(conn, eid, status, stories, sources, failed_sources, cost, model, not
         for position, story in enumerate(stories):
             cur = conn.execute(
                 "INSERT INTO news_stories (edition_id, position, story_key, category, title, summary_md, "
-                "body_md, opportunity) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                "body_md, opportunity, model) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 (eid, position, story["key"], story["category"], story["title"], story["summary"],
-                 story["body"], json.dumps(story["opportunity"], ensure_ascii=False) if story["opportunity"] else None))
+                 story["body"], json.dumps(story["opportunity"], ensure_ascii=False) if story["opportunity"] else None,
+                 story.get("model")))
             for src in story["sources"]:
                 conn.execute("INSERT OR IGNORE INTO news_story_sources VALUES (?, ?)", (cur.lastrowid, ids[src["url"]]))
         published = now if status in READABLE else None
@@ -466,9 +471,22 @@ def _store(conn, eid, status, stories, sources, failed_sources, cost, model, not
 
 # ---------------------------------------------------------------- reading
 
+def _enrich(conn, edition):
+    """Provenance for the reader: which models wrote the stories and when it ran."""
+    eid = edition["id"]
+    edition["models"] = {m: n for m, n in conn.execute(
+        "SELECT model, COUNT(*) FROM news_stories WHERE edition_id = ? AND model IS NOT NULL "
+        "GROUP BY model ORDER BY MIN(position)", (eid,)).fetchall()}
+    job = conn.execute("SELECT state, attempts, started_at_ms, finished_at_ms, error FROM news_jobs "
+                       "WHERE edition_id = ?", (eid,)).fetchone()
+    edition["job"] = ({"state": job[0], "attempts": job[1], "startedAt": job[2], "finishedAt": job[3],
+                       "error": job[4]} if job else None)
+    return edition
+
+
 def _edition(conn, eid):
     row = conn.execute(f"SELECT {_EDITION_COLS} FROM news_editions WHERE id = ?", (eid,)).fetchone()
-    return _edition_row(row) if row else None
+    return _enrich(conn, _edition_row(row)) if row else None
 
 
 def list_editions(conn, limit=30, until_ms=None):
@@ -480,13 +498,13 @@ def list_editions(conn, limit=30, until_ms=None):
         args.append(until_ms)
     query += " ORDER BY scheduled_at_ms DESC LIMIT ?"
     args.append(max(1, min(int(limit), 200)))
-    return [_edition_row(r) for r in conn.execute(query, args).fetchall()]
+    return [_enrich(conn, _edition_row(r)) for r in conn.execute(query, args).fetchall()]
 
 
 def latest_readable(conn):
     row = conn.execute(f"SELECT {_EDITION_COLS} FROM news_editions WHERE status IN ('published','partial') "
                        "ORDER BY scheduled_at_ms DESC LIMIT 1").fetchone()
-    return _edition_row(row) if row else None
+    return _enrich(conn, _edition_row(row)) if row else None
 
 
 def get_edition(conn, eid):
@@ -494,8 +512,8 @@ def get_edition(conn, eid):
     if not edition:
         return None
     stories = []
-    for sid, position, category, title, summary, body, opportunity in conn.execute(
-            "SELECT id, position, category, title, summary_md, body_md, opportunity FROM news_stories "
+    for sid, position, category, title, summary, body, opportunity, model in conn.execute(
+            "SELECT id, position, category, title, summary_md, body_md, opportunity, model FROM news_stories "
             "WHERE edition_id = ? ORDER BY position", (eid,)).fetchall():
         sources = [{"id": r[0], "url": r[1], "title": r[2], "origin": r[3], "publishedAt": r[4],
                     "discoveredAt": r[5], "verifiedAt": r[6], "fetchStatus": r[7]}
@@ -506,7 +524,7 @@ def get_edition(conn, eid):
         stories.append({"id": sid, "position": position, "category": category, "title": title,
                         "summary": summary, "body": body,
                         "opportunity": json.loads(opportunity) if opportunity else None,
-                        "sources": sources})
+                        "sources": sources, "model": model})
     return {"edition": edition, "stories": stories}
 
 
@@ -528,8 +546,17 @@ def config_status(config, env=None):
     if config.get("enabled") is not True:
         return {"configured": False, "reason": "desactivado"}
     s = config.get("summarizer") if isinstance(config.get("summarizer"), dict) else {}
-    if s.get("kind") not in ("anthropic-messages", "openai-chat", "acp"):
+    if s.get("kind") not in ("anthropic-messages", "openai-chat", "acp", "chain"):
         return {"configured": False, "reason": "proveedor no soportado"}
+    if s.get("kind") == "chain":
+        # Ordered fallback of local ACP agents; a step without model uses the CLI default.
+        steps = s.get("steps")
+        if not isinstance(steps, list) or not steps:
+            return {"configured": False, "reason": "la cadena no tiene agentes"}
+        for step in steps:
+            if not isinstance(step, dict) or not isinstance(step.get("agent"), str) or not step["agent"]:
+                return {"configured": False, "reason": "falta el agente ACP"}
+        return {"configured": True, "reason": ""}
     if s.get("kind") == "acp":
         # A local ACP agent (e.g. OpenCode with a free model): no key, no prices.
         if not s.get("agent") or not isinstance(s.get("agent"), str):
@@ -773,6 +800,8 @@ def make_summarizer(config, *, env=None, post=None, acp_open=None):
     s = config["summarizer"]
     if s["kind"] == "acp":
         return _make_acp_summarizer(s, acp_open or _default_acp_open)
+    if s["kind"] == "chain":
+        return _make_chain_summarizer(s["steps"], acp_open or _default_acp_open)
     price_in, price_out = float(s["inputUsdPerMTok"]), float(s["outputUsdPerMTok"])
     key = env.get(s["apiKeyEnv"], "")
 
@@ -828,7 +857,7 @@ def _make_acp_summarizer(s, acp_open):
                 errors.append(str(event.get("message") or "error del agente"))
         session = acp_open(s["agent"], s["model"])
         try:
-            session.prompt(prompt, on_event=on_event, timeout=600)
+            session.prompt(prompt, on_event=on_event, timeout=s.get("timeout", 600))
         finally:
             try:
                 session.close()
@@ -837,6 +866,33 @@ def _make_acp_summarizer(s, acp_open):
         if errors:
             raise RuntimeError(errors[0])
         return {"costUsd": 0.0, "model": s["model"], "story": _extract_json("".join(chunks))}
+    return summarize
+
+
+def _make_chain_summarizer(steps, acp_open):
+    """Try each agent in order. A failing agent (error, timeout or an answer
+    without a valid story) stays demoted for the rest of this summary run."""
+    runners = [(f"{st['agent']}:{st.get('model') or 'predeterminado'}",
+                _make_acp_summarizer({"agent": st["agent"], "model": st.get("model") or "",
+                                      "timeout": st.get("timeoutSeconds", 180)}, acp_open))
+               for st in steps]
+    state = {"start": 0}
+
+    def summarize(request):
+        notes = []
+        for index in range(state["start"], len(runners)):
+            label, run = runners[index]
+            try:
+                result = run(request)
+                story = result.get("story") if isinstance(result.get("story"), dict) else {}
+                if not story.get("title") or not story.get("sourceIds"):
+                    raise RuntimeError("respuesta sin resumen válido")
+            except Exception as exc:
+                notes.append(f"{label} falló ({_clip(str(exc), 100)}); se usó el siguiente de la cadena.")
+                state["start"] = index + 1
+                continue
+            return {**result, "model": label, "notes": notes}
+        raise RuntimeError("ningún agente de la cadena pudo resumir: " + " ".join(notes))
     return summarize
 
 
