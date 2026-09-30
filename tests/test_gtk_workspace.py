@@ -226,6 +226,32 @@ def test_user_resize_reports_the_split_path(bench):
     assert seen and seen[-1][0] == "g1" and seen[-1][1] == ["second"] and abs(seen[-1][2] - 0.25) < 0.05
 
 
+def test_clicking_into_a_member_terminal_moves_the_group_focus(bench):
+    """Clic directo en la terminal de otro miembro (no en la tira de pestañas):
+    el foco del grupo, el marco y el destino de la barra deben seguirlo."""
+    Gtk, nb, view, widgets, pids, win = bench
+    from gi.repository import Gdk
+    seen = []
+    view.on_focus = lambda page, key: seen.append((page.group_id, key))
+    view.apply(doc({"id": "g1", "tree": split(leaf("a"), leaf("b"))}))
+    pump(Gtk)
+    page = nb.get_nth_page(nb.get_current_page())
+    assert isinstance(page, gw.GroupPage) and page._key == "a"
+    widgets["b"]._term.emit("focus-in-event", Gdk.Event.new(Gdk.EventType.FOCUS_CHANGE))
+    pump(Gtk, 0.1)
+    assert page._key == "b" and page._term is widgets["b"]._term
+    assert page.leaves["b"].get_style_context().has_class("focused")
+    assert not page.leaves["a"].get_style_context().has_class("focused")
+    assert seen == [("g1", "b")]
+    # re-enfocar el mismo miembro no vuelve a avisar; un rebuild no duplica el enganche
+    widgets["b"]._term.emit("focus-in-event", Gdk.Event.new(Gdk.EventType.FOCUS_CHANGE))
+    view.apply(doc({"id": "g1", "tree": split(leaf("b"), leaf("a"))}))
+    pump(Gtk)
+    widgets["a"]._term.emit("focus-in-event", Gdk.Event.new(Gdk.EventType.FOCUS_CHANGE))
+    pump(Gtk, 0.1)
+    assert seen == [("g1", "b"), ("g1", "a")]
+
+
 def test_select_reveals_the_group_and_focus_member(bench):
     Gtk, nb, view, widgets, pids, _ = bench
     view.apply(doc({"id": "g2", "tree": leaf("d")}, {"id": "g1", "tree": split(leaf("a"), leaf("b"))}, {"id": "g3", "tree": leaf("c")}))

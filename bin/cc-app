@@ -4244,6 +4244,17 @@ def ws_resized(group_id, path, ratio):
 WS_VIEW.on_resize = ws_resized
 
 
+def _ws_member_focused(_page, _key):
+    """Clic dentro de otra terminal del grupo: la barra de comandos y el marco
+    verde siguen a esa terminal ya, no al miembro elegido antes en la tira."""
+    GLib.idle_add(_report_active_tab)
+    GLib.timeout_add(800, _ws_save_focus)
+    GLib.idle_add(lambda: (_refresh_tab_models(), False)[1])
+
+
+WS_VIEW.on_focus = _ws_member_focused
+
+
 # -- arrastre -------------------------------------------------------------
 def _ws_source_of(widget, key):
     if key:

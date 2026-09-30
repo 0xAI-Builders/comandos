@@ -176,6 +176,7 @@ if Gtk is not None:
                 leaf._tab = key
                 self.members[key] = box
                 self.leaves[key] = leaf
+                view._hook_member_focus(key, box)
                 return leaf
             paned = Gtk.Paned(orientation=Gtk.Orientation.HORIZONTAL if node["axis"] == "x"
                               else Gtk.Orientation.VERTICAL)
@@ -224,6 +225,7 @@ if Gtk is not None:
             self.groups = {}            # group id -> GroupPage
             self.doc = None
             self.on_resize = None       # (group_id, path, ratio) -> None
+            self.on_focus = None        # (GroupPage, tab id) -> None, al enfocar otro miembro
             self._pending_resize = {}
             self._resize_timer = 0
 
@@ -258,6 +260,25 @@ if Gtk is not None:
                 return [k for k in ordered if k in page.members] or list(page.members)
             key = getattr(page, "_key", None)
             return [key] if isinstance(key, str) else []
+
+        def _hook_member_focus(self, key, box):
+            """Un clic dentro de la terminal de un miembro (no en la tira de pestañas)
+            también mueve el foco del grupo. Se engancha una vez por terminal: el
+            miembro puede pasar de un grupo a otro y el grupo se resuelve al vuelo."""
+            term = getattr(box, "_term", None)
+            if term is None or getattr(box, "_ws_focus_hooked", False):
+                return
+            box._ws_focus_hooked = True
+            term.connect("focus-in-event", lambda _t, _e: self._member_focused(key, box) or False)
+
+        def _member_focused(self, key, box):
+            page = self.page_of(box)
+            if not isinstance(page, GroupPage) or page.members.get(key) is not box or page.focus == key:
+                return
+            page.focus = key
+            self._mark_focus(page)
+            if self.on_focus is not None:
+                self.on_focus(page, key)
 
         def _mark_focus(self, page):
             for key, leaf in page.leaves.items():

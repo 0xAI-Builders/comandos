@@ -305,3 +305,12 @@ def test_group_members_get_their_own_card_and_frame_and_only_the_focused_one_is_
     assert load('_visible_boxes', ns)() == [a, b]
     focused = load('_box_focused', ns)
     assert focused(b) and not focused(a)
+
+
+def test_focusing_a_group_member_republishes_the_command_bar_target():
+    # Un clic dentro de otra terminal del grupo mueve GroupPage.focus; la app debe
+    # volver a publicar la pestaña activa (destino de la barra), guardar el foco y
+    # repintar los marcos, igual que al cambiar de pestaña.
+    body = SOURCE[SOURCE.index("def _ws_member_focused("):SOURCE.index("WS_VIEW.on_focus = _ws_member_focused")]
+    assert "_report_active_tab" in body and "_ws_save_focus" in body and "_refresh_tab_models" in body
+    assert "WS_VIEW.on_focus = _ws_member_focused" in SOURCE
