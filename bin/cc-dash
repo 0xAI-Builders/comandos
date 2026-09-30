@@ -1282,32 +1282,36 @@ def grok_metadata_for_pid(pid):
     return _GROK_METADATA.read(int(pid), home) if pid else {}
 
 
-_CLI_CATALOG = {"catalog": None, "versions": {}, "at": 0.0}
+_CLI_CATALOG = {"catalog": None, "snapshot": ({}, 0.0)}   # snapshot = (versions, at), swapped as one
 _CLI_CATALOG_TTL = 1800.0
+_CLI_CATALOG_LOCK = threading.Lock()
 
 
 def cli_catalog_payload(refresh=False):
     """Catalogo por CLI + versiones instaladas en cache (`--version` de cinco
-    binarios tarda segundos: solo se re-ejecuta al vencer el TTL o con refresh)."""
-    now = time.time()
-    if _CLI_CATALOG["catalog"] is None:
-        _CLI_CATALOG["catalog"] = cli_catalog.load_catalog()
-    if refresh or now - _CLI_CATALOG["at"] > _CLI_CATALOG_TTL:
-        _CLI_CATALOG["versions"] = cli_catalog.installed_versions(_CLI_CATALOG["catalog"])
-        _CLI_CATALOG["at"] = now
+    binarios tarda segundos: solo se re-ejecuta al vencer el TTL o con refresh).
+    El servidor es multihilo: el chequeo del TTL y el refresco van bajo un lock
+    y (versions, at) se publican juntos para que un lector nunca vea mezcla."""
+    with _CLI_CATALOG_LOCK:
+        if _CLI_CATALOG["catalog"] is None:
+            _CLI_CATALOG["catalog"] = cli_catalog.load_catalog()
+        versions, at = _CLI_CATALOG["snapshot"]
+        if refresh or time.time() - at > _CLI_CATALOG_TTL:
+            _CLI_CATALOG["snapshot"] = (cli_catalog.installed_versions(_CLI_CATALOG["catalog"]), time.time())
+            versions, at = _CLI_CATALOG["snapshot"]
+        catalog = _CLI_CATALOG["catalog"]
     registry = load_provider_registry()
     accounts = {}
-    for cli in _CLI_CATALOG["catalog"]["clis"]:
+    for cli in catalog["clis"]:
         try:
             accounts[cli["id"]] = [
                 {"alias": a["alias"], "env": account_registry.account_environment(registry, cli["id"], a["alias"])}
                 for a in account_registry.list_accounts(registry, cli["id"]) if a.get("alias") != "main"]
         except Exception:
             accounts[cli["id"]] = []
-    view = cli_catalog.catalog_view(_CLI_CATALOG["catalog"],
-                                    danger_flags=load_agent_roles().get("dangerFlags") or {},
-                                    versions=_CLI_CATALOG["versions"], accounts=accounts)
-    return view, _CLI_CATALOG["at"]
+    view = cli_catalog.catalog_view(catalog, danger_flags=load_agent_roles().get("dangerFlags") or {},
+                                    versions=versions, accounts=accounts)
+    return view, at
 
 
 def agent_info_for_pane(pane):

@@ -14,6 +14,9 @@ optional `dash_env` fixture that the test module itself defines::
     def dash_env(tmp_path):
         return {"TMUX_TMPDIR": str(tmp_path / "tmux")}
 
+The child gets a private TMUX_TMPDIR under tmp_path (and no $TMUX) unless
+`dash_env` overrides it, so it can never see the developer's live tmux panes.
+
 Every request is sent as if it came through a remote proxy (X-Forwarded-For),
 so the token gate is really exercised: `token=False` must yield 401, while the
 default sends the token read from $HOME/.claude/hooks/dash-token.
@@ -92,6 +95,10 @@ def dash(tmp_path, request):
     env = os.environ.copy()
     env.pop("TMUX", None)  # a set $TMUX overrides TMUX_TMPDIR
     env["HOME"] = str(tmp_path)
+    # Never the developer's live tmux: private socket dir unless the test overrides it.
+    tmux_dir = tmp_path / "tmux-tmp"
+    tmux_dir.mkdir(exist_ok=True)
+    env["TMUX_TMPDIR"] = str(tmux_dir)
     env.update({k: str(v) for k, v in dash_env.items()})
     hooks = tmp_path / ".claude" / "hooks"
     hooks.mkdir(parents=True, exist_ok=True)
