@@ -134,4 +134,5 @@ def test_desktop_bell_opens_the_notices_shelf_under_the_terminals():
     assert 'view.load_uri(f"{BASE_URL}/?panel=notices&app=1&v={_DASH_V}")' in app
     assert "_shelf_paned.pack2(_shelf_box, False, False)" in app
     assert 'toApp("notices")' in INDEX and 'if(ONLY_PANEL==="notices") return;' in INDEX
-    assert 'html[data-only-panel="notices"] body.only-panel #notices{display:block!important' in INDEX
+    assert 'html[data-only-panel="notices"] body.only-panel #notices{display:flex!important' in INDEX
+    assert 'html[data-only-panel="notices"] body.only-panel #notices .nt-body{flex:1 1 auto;height:auto!important' in INDEX, 'fills the shelf'

@@ -1332,7 +1332,7 @@ def _build_hb_css():
     return (
     b".pane-pill{background:" + THEME["bg"].encode() + b";"
     b" background-clip:padding-box;opacity:1;"
-    b" border-radius:8px;padding:0 8px;min-height:19px;"
+    b" border-radius:8px;padding:0 10px;min-height:21px;"
     b" border:1px solid " + THEME.get("line2", THEME["line"]).encode() + b";"
     b" box-shadow:0 2px 0 " + THEME["line"].encode() + b";}"
     b".pane-card{background-color:mix(" + THEME.get("bar", THEME["bg"]).encode() + b"," + THEME.get("line2", THEME["line"]).encode() + b",0.35);}"
@@ -5246,7 +5246,7 @@ def _pane_frames(term, geo, m_l, m_t, cw, chh):
 def _card_rect(rows, pane_id, chh):
     fx, rail_y, fw = rows[pane_id]
     card_w = max(120, int(fw) - 12)
-    return max(0, int(fx) + 6), int(rail_y + max(1, (chh - 19) // 2)), card_w
+    return max(0, int(fx) + 6), int(rail_y + 1), card_w
 
 
 def _reposition_pills(box, geo):
@@ -5285,7 +5285,7 @@ def _reposition_pills(box, geo):
             w.set_margin_start(cx); w.set_margin_top(cy)
         elif kind == "keys":
             w.set_margin_start(max(cx, cx + cwid - int(getattr(w, "_kw", 0) or 0) - 8))
-            w.set_margin_top(cy + 1)
+            w.set_margin_top(cy + 2)
     ov.queue_draw()
     return True
 
@@ -5377,7 +5377,7 @@ def _place_pills(box, panes, geo=None):
             keys.pack_start(key, False, False, 0)
         keys.set_halign(Gtk.Align.START)
         keys.set_valign(Gtk.Align.START)
-        keys.set_margin_top(card_y + 1)
+        keys.set_margin_top(card_y + 2)
         ov.add_overlay(keys)                 # primero en la jerarquía: así el ancho ya trae el CSS aplicado
         keys.show_all()
         kw = keys.get_preferred_width()[1] if hasattr(keys, "get_preferred_width") else 0

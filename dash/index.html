@@ -328,7 +328,12 @@
   #btn-notif{position:relative}
   /* Popover de la app: solo el panel, ocupando toda la vista, sin sombra ni borde */
   body.only-panel > *:not(#notif-panel):not(#pomo-panel):not(#settings):not(#news-reader):not(#notices):not(.backdrop){display:none !important}
-  html[data-only-panel="notices"] body.only-panel #notices{display:block!important;position:fixed;inset:0;border-top:0;--nt-h:calc(100vh - 44px)}
+  /* Estante del escritorio: el cajón ocupa TODO el alto del estante. La altura de
+     franja (--nt-h en línea, pensada para el remoto) no aplica aquí. */
+  html[data-only-panel="notices"] body.only-panel #notices{display:flex!important;flex-direction:column;position:fixed;inset:0;border-top:0}
+  html[data-only-panel="notices"] body.only-panel #notices .nt-strip-slot{flex:1 1 auto;min-height:0;display:flex;flex-direction:column}
+  html[data-only-panel="notices"] body.only-panel #notices .nt-strip{flex:1 1 auto;min-height:0;display:flex;flex-direction:column}
+  html[data-only-panel="notices"] body.only-panel #notices .nt-body{flex:1 1 auto;height:auto!important;min-height:0}
   html[data-only-panel="notices"] body.only-panel #notices .nt-grip,html[data-only-panel="notices"] body.only-panel #notices [data-nt-act="max"]{display:none}
   html:not([data-only-panel="notices"]) body.only-panel #notices{display:none!important}
   html:not([data-only-panel="news"]) body.only-panel #news-reader{display:none !important}
