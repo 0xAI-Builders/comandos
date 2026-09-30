@@ -468,6 +468,32 @@ function fakeDom() {
     assert.match(N.renderStrip({ notices: [use], pending: new Set(), filter: 'all', collapsed: false, now: 1 }), /data-nt-filter="usage"/);
   });
 
+  await check('nothing to attend: the strip stays one quiet line until opened by hand', async () => {
+    const h = harness();
+    await h.c.poll();
+    assert.equal(h.c.view().collapsed, true, 'empty history takes one line');
+    assert.ok(!/nt-empty|nt-foot|nt-filters/.test(N.renderStrip(h.c.view())));
+    h.server.notices.push(notice({ read: true }));
+    await h.c.poll();
+    assert.equal(h.c.view().collapsed, true, 'only read notices: still one line');
+    h.c.toggle();
+    assert.equal(h.c.view().collapsed, false, 'a hand-opened strip shows its history');
+    h.c.toggle();
+    assert.equal(h.c.view().collapsed, true);
+    const busy = harness();
+    const ask = notice({ category: 'attention', kind: 'permission_requested', needsHuman: true });
+    busy.server.notices.push(ask); busy.server.pending.push(ask.eventId);
+    await busy.c.poll();
+    assert.equal(busy.c.view().collapsed, false, 'something to attend opens it');
+    assert.match(N.renderStrip(busy.c.view()), /nt-foot/, 'the permission hint only when a request is pending');
+    const news = harness();
+    news.server.notices.push(notice({ kind: 'announcement', category: 'news' }));
+    await news.c.poll();
+    assert.ok(!/nt-foot/.test(N.renderStrip(news.c.view())), 'no permission hint without a pending request');
+    busy.c.setCollapsed(true);
+    assert.equal(busy.c.view().collapsed, true, 'an explicit collapse wins');
+  });
+
   console.log(JSON.stringify(results.filter(r => !r.ok), null, 2));
   const failed = results.filter(r => !r.ok).length;
   console.log(`${results.length - failed}/${results.length} notification UI checks passed`);

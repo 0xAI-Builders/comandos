@@ -205,7 +205,7 @@
           + `<div class="nt-group-list">${g.notices.map(n => renderRow(n, v)).join('')}</div></section>`).join('')}</div>`
         : (v.loaded ? `<div class="nt-empty">${icon('bell')}<p>${emptyText(v.filter)}</p></div>` : '');
       body = `<div class="nt-body" id="nt-body">${status}${v.unavailable ? renderGone(v) : ''}${list}`
-        + '<footer class="nt-foot"><span>Leer no resuelve permisos: se responden en su terminal.</span></footer></div>';
+        + (pendingN ? '<footer class="nt-foot"><span>Leer no resuelve permisos: se responden en su terminal.</span></footer>' : '') + '</div>';
     }
     return `<section class="nt-strip${collapsed ? ' collapsed' : ''}" aria-label="Avisos por proyecto">`
       + '<header class="nt-head">'
@@ -280,15 +280,22 @@
     const state = {
       notices: [], pending: new Set(), prefs: normalizePrefs(null), focusActive: false,
       loaded: false, error: null, float: null, unavailable: null,
-      filter: 'all', collapsed: !!o.collapsed,
+      filter: 'all', collapsed: !!o.collapsed, opened: false,
     };
     const byId = new Map();
     let after = 0, inflight = null, floatTimer = null, floatToken = 0, soundBusy = false, pendingOpen = null;
 
     const emit = () => { try { onChange(state); } catch (e) { /* rendering never breaks the poll */ } };
 
+    // Nothing to attend: one quiet line, so an empty strip never takes the
+    // height of the chat. Opening it by hand shows the history.
+    function quiet() {
+      return state.loaded && !state.error && !state.unavailable && !state.opened && state.filter === 'all'
+        && !state.notices.some(n => !n.read || state.pending.has(n.eventId));
+    }
+
     function view() {
-      return { notices: state.notices, pending: state.pending, filter: state.filter, collapsed: state.collapsed,
+      return { notices: state.notices, pending: state.pending, filter: state.filter, collapsed: state.collapsed || quiet(),
         float: state.float, unavailable: state.unavailable, prefs: state.prefs, loaded: state.loaded,
         error: state.error, now: now(), describe };
     }
@@ -489,7 +496,12 @@
     return {
       state, view, poll, open, openFloat, requestOpen, dismissFloat, markRead, markAllRead, markGroupRead, setPrefs,
       setFilter(f) { state.filter = FILTERS.some(([id]) => id === f) ? f : 'all'; emit(); },
-      setCollapsed(c) { state.collapsed = !!c; emit(); },
+      setCollapsed(c) { state.collapsed = !!c; if (c) state.opened = false; emit(); },
+      toggle() {
+        const open = state.collapsed || quiet();
+        state.collapsed = !open; state.opened = open; emit();
+        return state.collapsed;
+      },
       closeUnavailable() { state.unavailable = null; emit(); },
       unreadCount: () => state.notices.filter(n => !n.read).length,
       pendingCount: () => state.pending.size,
@@ -633,7 +645,7 @@
       const f = t.getAttribute('data-nt-filter');
       if (f) { controller.setFilter(f); return; }
       const act = t.getAttribute('data-nt-act'), id = t.getAttribute('data-nt-id');
-      if (act === 'toggle') { controller.setCollapsed(!controller.state.collapsed); write('comandos.notices.collapsed', controller.state.collapsed ? '1' : '0'); }
+      if (act === 'toggle') write('comandos.notices.collapsed', controller.toggle() ? '1' : '0');
       else if (act === 'open') controller.open(id);
       else if (act === 'read') controller.markRead([id]);
       else if (act === 'read-all') controller.markAllRead(null);

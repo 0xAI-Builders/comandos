@@ -445,7 +445,7 @@ body.app #notices{grid-column:1;grid-row:3}
 .nt-strip.collapsed .nt-meta{flex:1}
 .nt-read-all{flex:none;margin-left:auto;min-height:30px;padding:3px 10px;border:1px solid var(--line2);border-radius:8px;background:none;font-size:11px}
 .nt-read-all:disabled{opacity:.45;cursor:default}
-.nt-body{max-height:min(250px,40vh);display:flex;flex-direction:column;border-top:1px solid var(--line);min-height:0}
+.nt-body{max-height:min(168px,28vh);display:flex;flex-direction:column;border-top:1px solid var(--line);min-height:0}
 .nt-status{padding:6px 12px;font-size:11px;color:var(--dim)}
 .nt-groups{flex:1;min-height:0;overflow:auto;display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:0 14px;padding:0 12px 6px;overscroll-behavior:contain}
 .nt-group{min-width:0}
