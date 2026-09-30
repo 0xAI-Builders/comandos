@@ -1637,6 +1637,64 @@ _HB_CSS.load_from_data(_build_hb_css())
 Gtk.StyleContext.add_provider_for_screen(
     Gdk.Screen.get_default(), _HB_CSS, Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION)
 
+
+def button_style_css(style, theme):
+    """Botones de la cabecera (grill 29-sep): mismo tamaño y un estilo 3D elegible
+    en Ajustes → Apariencia (sutil | arcade | tecla | pixel | consola). GTK no
+    tiene transform: el «hundirse» se hace moviendo el margen y la sombra."""
+    face, line, text, dim, bar = (theme.get(k, "#222A3A") for k in ("line", "line", "text", "dim", "bar"))
+    face = theme.get("line2", face)
+    edge = theme.get("bg", "#0A0D13")
+    sel = "headerbar.cc-headerbar button.cc-key"
+    base = (f"{sel}{{min-width:34px;min-height:34px;padding:0;margin:4px 3px 6px;"
+            f"background-image:none;background-color:{face};color:{text};border:0;}}")
+    styles = {
+        "sutil": (f"{sel}{{border-radius:10px;background-color:{bar};border:1px solid {line};color:{dim};"
+                  f"box-shadow:0 3px 0 {line};}}"
+                  f"{sel}:hover{{color:{text};}}"
+                  f"{sel}:active{{margin-top:6px;margin-bottom:4px;box-shadow:none;}}"),
+        "arcade": (f"{sel}{{border-radius:999px;background-image:radial-gradient(circle at 50% 30%,shade({face},1.45),{face} 65%);"
+                   f"box-shadow:0 0 0 3px {edge},0 5px 0 3px {edge},inset 0 -3px 0 rgba(0,0,0,0.25);}}"
+                   f"{sel}:hover{{background-image:radial-gradient(circle at 50% 30%,shade({face},1.6),shade({face},1.1) 65%);}}"
+                   f"{sel}:active{{margin-top:8px;margin-bottom:2px;box-shadow:0 0 0 3px {edge},0 1px 0 3px {edge};}}"),
+        "tecla": (f"{sel}{{border-radius:10px;background-image:linear-gradient(to bottom,shade({face},1.25),{face});"
+                  f"box-shadow:inset 0 1px 0 rgba(255,255,255,0.14),0 5px 0 {edge};}}"
+                  f"{sel}:active{{margin-top:9px;margin-bottom:1px;box-shadow:inset 0 1px 0 rgba(255,255,255,0.1);}}"),
+        "pixel": (f"{sel}{{border-radius:0;border:3px solid #000;"
+                  f"box-shadow:inset 3px 3px 0 rgba(255,255,255,0.16),inset -3px -3px 0 rgba(0,0,0,0.3),4px 4px 0 rgba(0,0,0,0.55);}}"
+                  f"{sel}:active{{margin-top:8px;margin-bottom:2px;box-shadow:inset 3px 3px 0 rgba(0,0,0,0.3);}}"),
+        "consola": (f"{sel}{{border-radius:12px;color:#ffffff;background-image:linear-gradient(to bottom,shade({face},1.35),{face});"
+                    f"box-shadow:0 5px 0 {edge},inset 0 2px 0 rgba(255,255,255,0.3);}}"
+                    f"{sel}:active{{margin-top:9px;margin-bottom:1px;box-shadow:inset 0 2px 0 rgba(255,255,255,0.2);}}"
+                    + "".join(f"{sel}.{cls}{{background-color:{c};background-image:linear-gradient(to bottom,shade({c},1.3),{c});"
+                              f"box-shadow:0 5px 0 shade({c},0.5),inset 0 2px 0 rgba(255,255,255,0.3);}}"
+                              f"{sel}.{cls}:active{{box-shadow:inset 0 2px 0 rgba(255,255,255,0.2);}}"
+                              for cls, c in (("cc-key-pomo", "#e8a21a"), ("cc-key-notif", "#e2485a"),
+                                             ("cc-key-news", "#7c4dff"), ("cc-key-term", "#56627a"),
+                                             ("cc-key-plus", "#2f7de0"), ("cc-key-settings", "#56627a")))),
+    }
+    return (base + styles.get(style, styles["sutil"])).encode()
+
+
+_KEY_CSS = Gtk.CssProvider()
+BUTTON_STYLE = (PREFS.get("button_style") if isinstance(PREFS, dict) else None) or "sutil"
+
+
+def apply_button_style(style=None):
+    global BUTTON_STYLE
+    if style:
+        BUTTON_STYLE = style
+    try:
+        _KEY_CSS.load_from_data(button_style_css(BUTTON_STYLE, THEME))
+    except Exception as exc:
+        print(f"button style: {exc}", file=sys.stderr)
+    return False
+
+
+apply_button_style()
+Gtk.StyleContext.add_provider_for_screen(
+    Gdk.Screen.get_default(), _KEY_CSS, Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION + 1)
+
 # Visual RGBA — habilita transparencia del fondo de VTE. Si el compositor no
 # soporta, VTE cae elegantemente a fondo opaco (nada rompe).
 if TERM_OPACITY < 1.0:
@@ -3670,6 +3728,8 @@ def apply_theme(name):
     # Tmux status bar — respetá el tema también. Sin esto la barra inferior
     # se veía oscura en modo día.
     _apply_tmux_theme()
+    if "apply_button_style" in globals():
+        apply_button_style()   # los botones de la cabecera usan los colores del tema nuevo
 
 
 def _apply_tmux_theme():
@@ -4997,6 +5057,9 @@ _headerbar.pack_end(_minimize)
 _hb_sep = Gtk.Box(); _hb_sep.set_size_request(8, 1)
 _headerbar.pack_end(_hb_sep)
 # Ajustes · Notificaciones · Pomodoro — pegados a los controles de ventana.
+for _key, _cls in ((_settings_btn, "settings"), (_notif_btn, "notif"), (_news_btn, "news"), (_pomo_btn, "pomo")):
+    _key.get_style_context().add_class("cc-key")
+    _key.get_style_context().add_class("cc-key-" + _cls)
 _headerbar.pack_end(_settings_btn)
 _headerbar.pack_end(_notif_wrap)
 _headerbar.pack_end(_news_btn)
@@ -5359,6 +5422,9 @@ _mosaic_btn = _icon_btn("grid",
                         else "Mosaic: ALL sessions on one screen (Ctrl+G)",
                         _mosaic_toggle, size=17)
 # El boton Mosaico visible se retiro (veredicto v1); Ctrl+G y SIGUSR2 siguen.
+for _key, _cls in ((_plus, "plus"), (_quick_term_btn, "term")):
+    _key.get_style_context().add_class("cc-key")
+    _key.get_style_context().add_class("cc-key-" + _cls)
 _headerbar.pack_end(_plus)
 _headerbar.pack_end(_quick_term_btn)
 
@@ -5467,6 +5533,9 @@ def on_msg(mgr, res):
                 GLib.idle_add(reader_close)
             elif action == "terminal":
                 GLib.idle_add(reader_terminal, bool(d.get("on")))
+            return
+        if d.get("buttonStyle") in ("sutil", "arcade", "tecla", "pixel", "consola"):
+            GLib.idle_add(apply_button_style, d["buttonStyle"])
             return
         if d.get("theme"):
             apply_theme(d["theme"])

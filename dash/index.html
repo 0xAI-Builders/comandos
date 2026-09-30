@@ -1936,7 +1936,7 @@
 	    #content{padding-bottom:env(safe-area-inset-bottom)}
 	  }
 	</style>
-<link rel="stylesheet" href="/workspace.css?v=v1reloj">
+<link rel="stylesheet" href="/workspace.css?v=v1botones">
 <link rel="stylesheet" href="/reparto.css">
 <script src="/session-config.js?v=7f3232b0a624"></script>
 <script src="/workspace-layout.js"></script>
@@ -1975,8 +1975,8 @@
 	    <button class="hdr-btn" id="btn-snippets" aria-label="snippets" title="Snippets (Ctrl+Shift+K)"><span data-icon="snippet" data-size="16"></span></button>
 	    <button class="hdr-btn" id="btn-theme" aria-label="Apariencia" title="Elegir apariencia"></button>
 	    <button class="hdr-btn" id="btn-sov" aria-label="Soberanía" title="Soberanía — qué se guarda en tu máquina y qué sale de ella"><span data-icon="lock" data-size="16"></span></button>
-	    <button class="hdr-btn" id="btn-usage" title="Analytics de harnesses, motores y foco"><span data-icon="database" data-size="14"></span> Analytics</button>
-	    <button class="hdr-btn" id="btn-remote" title="Continuar desde celular/tablet">Remoto</button>
+	    <button class="hdr-btn" id="btn-usage" aria-label="Analytics" title="Analytics de harnesses, motores y foco"><span data-icon="database" data-size="17"></span><span class="hdr-lbl">Analytics</span></button>
+	    <button class="hdr-btn" id="btn-remote" aria-label="Remoto" title="Remoto — continuar desde celular/tablet"><span data-icon="smartphone" data-size="17"></span><span class="hdr-lbl">Remoto</span></button>
     <span id="clock">--:--</span>
   </div>
   <div class="hdr-primary">
@@ -1986,7 +1986,7 @@
 	    <button class="hdr-btn" id="btn-notif" aria-label="Notificaciones" title="Notificaciones — todo local: avisos, pomodoros y cola de foco"><span data-icon="bell" data-size="16"></span><b class="nbadge hidden" id="notif-badge">0</b></button>
 	    <div id="notif-panel" class="hidden" role="dialog" aria-label="Notificaciones"></div>
 	    <button class="hdr-btn" id="btn-news" aria-label="Resúmenes" title="Resúmenes — tres al día, con fuentes y la IA que los escribió"><span data-icon="sparkles" data-size="16"></span></button>
-	    <button class="hdr-btn" id="btn-settings">Ajustes</button>
+	    <button class="hdr-btn" id="btn-settings" aria-label="Ajustes" title="Ajustes"><span data-icon="settings" data-size="17"></span><span class="hdr-lbl">Ajustes</span></button>
   </div>
 </header>
 
@@ -2132,6 +2132,8 @@
   <div class="mtab-pane active" data-mpane="appearance">
     <div class="set"><label>Elige una atmósfera</label><div class="desc">Preview inmediato. Dashboard, terminal, chrome y avisos usan la misma identidad.</div></div>
     <div id="theme-gallery" class="theme-gallery" role="radiogroup" aria-label="Temas"></div>
+    <div class="set"><label>Botones de la cabecera</label><div class="desc">Mismo tamaño para todos; elige cómo se ven y cómo se hunden al presionarlos.</div></div>
+    <div id="button-style-gallery" class="btn-style-gallery" role="radiogroup" aria-label="Estilo de botones"></div>
   </div>
 
   <!-- ========= Notificaciones + Idioma ========= -->
@@ -2591,7 +2593,7 @@ function inApp(){
 if(inApp()) document.documentElement.classList.add("inapp"), document.addEventListener("DOMContentLoaded", ()=> document.body.classList.add("inapp"));
 const ONLY_PANEL = (new URLSearchParams(location.search).get("panel") || "").replace(/[^a-z]/g, "");
 if(ONLY_PANEL){ document.documentElement.classList.add("only-panel");document.documentElement.dataset.onlyPanel=ONLY_PANEL; document.addEventListener("DOMContentLoaded", ()=>{ document.body.classList.add("only-panel"); setTimeout(()=>{
-  if(ONLY_PANEL==="appearance"){$("#settings").classList.add("open");activateMtab($("#settings .modal-panel"),"appearance");renderThemeGallery();return;}
+  if(ONLY_PANEL==="appearance"){$("#settings").classList.add("open");activateMtab($("#settings .modal-panel"),"appearance");renderThemeGallery();renderButtonStyleGallery();return;}
   if(ONLY_PANEL==="usage"){$("#usage").classList.add("open");const t=(new URLSearchParams(location.search).get("tab")||"resumen").replace(/[^a-z]/g,"");activateMtab($("#usage .modal-panel"),t||"resumen");tickUsage(true);return;}
   if(ONLY_PANEL==="news") return;   // el lector se abre solo (news-reader.js, modo escritorio)
   const b=document.getElementById(ONLY_PANEL === "pomo" ? "btn-pomo" : "btn-notif");if(b)b.click();
@@ -7598,6 +7600,8 @@ const ICON = {
   timer:     '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="13" r="8"/><path d="M12 9v4l2.5 2M9 2h6M12 5V2"/></svg>',
   coffee:    '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 8h12v7a4 4 0 0 1-4 4H8a4 4 0 0 1-4-4V8zM16 10h2a3 3 0 0 1 0 6h-2M6 2v2M10 2v2M14 2v2"/></svg>',
   skip:      '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m5 4 10 8-10 8V4zM19 5v14"/></svg>',
+  smartphone:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="14" height="20" x="5" y="2" rx="2" ry="2"/><path d="M12 18h.01"/></svg>',
+  settings:  '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12.2 2h-.4a2 2 0 0 0-2 2v.2a2 2 0 0 1-1 1.7l-.4.2a2 2 0 0 1-2 0l-.2-.1a2 2 0 0 0-2.7.7l-.2.4a2 2 0 0 0 .7 2.7l.2.1a2 2 0 0 1 1 1.7v.5a2 2 0 0 1-1 1.7l-.2.1a2 2 0 0 0-.7 2.7l.2.4a2 2 0 0 0 2.7.7l.2-.1a2 2 0 0 1 2 0l.4.2a2 2 0 0 1 1 1.7V20a2 2 0 0 0 2 2h.4a2 2 0 0 0 2-2v-.2a2 2 0 0 1 1-1.7l.4-.2a2 2 0 0 1 2 0l.2.1a2 2 0 0 0 2.7-.7l.2-.4a2 2 0 0 0-.7-2.7l-.2-.1a2 2 0 0 1-1-1.7v-.5a2 2 0 0 1 1-1.7l.2-.1a2 2 0 0 0 .7-2.7l-.2-.4a2 2 0 0 0-2.7-.7l-.2.1a2 2 0 0 1-2 0l-.4-.2a2 2 0 0 1-1-1.7V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg>',
   x:         '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18M6 6l12 12"/></svg>',
 };
 const svg = (name, sz=14) =>
@@ -7664,6 +7668,34 @@ function applyTheme(name, tellApp){
   broadcastTermTheme(name);
   if(tellApp && inApp()) window.webkit.messageHandlers.centro.postMessage(JSON.stringify({theme: name}));
 }
+// Botones de la cabecera (grill 29-sep): mismo tamaño, cinco estilos 3D.
+const BUTTON_STYLES = [
+  ["sutil", "Elevación sutil", "Neutral, con un canto que se hunde"],
+  ["arcade", "Arcade", "Domo redondo de maquinita"],
+  ["tecla", "Tecla mecánica", "Cara clara y faldón grueso"],
+  ["pixel", "Pixel 3D", "Esquinas escalonadas, sombra dura"],
+  ["consola", "Consola", "Un color por función, como un control"],
+];
+let curButtonStyle = "sutil";
+function applyButtonStyle(style, tellApp){
+  if(!BUTTON_STYLES.some(([id]) => id === style)) style = "sutil";
+  curButtonStyle = style;
+  document.documentElement.dataset.btnStyle = style;
+  renderButtonStyleGallery();
+  if(tellApp && inApp()) window.webkit.messageHandlers.centro.postMessage(JSON.stringify({buttonStyle: style}));
+}
+function renderButtonStyleGallery(){
+  const g = $("#button-style-gallery"); if(!g) return;
+  g.innerHTML = BUTTON_STYLES.map(([id, label, desc]) => `<button type="button" class="btn-style-card" role="radio" aria-checked="${id===curButtonStyle}" data-btn-style-id="${id}">
+    <span class="btn-style-demo" data-btn-style="${id}"><span class="hdr-btn demo-key">${svg("bell", 17)}</span><span class="hdr-btn demo-key on">${svg("smartphone", 17)}</span></span>
+    <span><b>${mdEsc(label)}</b><small>${mdEsc(desc)}</small></span></button>`).join("");
+  g.querySelectorAll("[data-btn-style-id]").forEach(b => b.addEventListener("click", () => selectButtonStyle(b.dataset.btnStyleId)));
+}
+async function selectButtonStyle(style){
+  const previous = curButtonStyle; applyButtonStyle(style, true);
+  try{ await api("/prefs-set", {button_style: style}); }
+  catch(e){ applyButtonStyle(previous, true); toast(e.message, true); }
+}
 function renderThemeGallery(){
   const gallery=$("#theme-gallery");if(!gallery)return;
   gallery.innerHTML=THEME_SEQ.map((id,index)=>{const m=THEME_META[id];return `<button type="button" class="theme-card" role="radio" aria-checked="${id===curTheme}" data-theme-id="${id}" data-index="${index}">
@@ -7680,7 +7712,7 @@ async function selectTheme(name){
   catch(e){applyTheme(previous,true);toast(e.message,true);}
 }
 $("#btn-theme").addEventListener("click",()=>{
-  $("#settings").classList.add("open");activateMtab($("#settings .modal-panel"),"appearance");renderThemeGallery();
+  $("#settings").classList.add("open");activateMtab($("#settings .modal-panel"),"appearance");renderThemeGallery();renderButtonStyleGallery();
   setTimeout(()=>$("#theme-gallery [aria-checked=\"true\"]")?.focus(),0);
 });
 
@@ -7711,6 +7743,7 @@ async function loadPrefs(){
     favoriteReadAt = Date.now();
     if(version === favoriteVersion) applyFavorites(p.favorites);
     applyTheme(p.theme || "noche", true);   // sincroniza tambien la app al abrir
+    applyButtonStyle(p.button_style || "sutil", true);
     hydrateTerminalPrefs(p);
   }catch(e){}
 }

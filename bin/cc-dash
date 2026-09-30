@@ -7964,6 +7964,7 @@ PREFS_DEFAULTS = {
     "terminal_padding": 8,         # px
     "terminal_opacity": 100,       # 0..100 — 100 = opaco
     "ligatures": True,
+    "button_style": "sutil",       # botones de la cabecera: sutil | arcade | tecla | pixel | consola
 }
 _CURSOR_SHAPES = ("block", "ibeam", "underline")
 
@@ -8065,6 +8066,8 @@ def update_prefs(data):
                                                        if isinstance(x, str) and x and x != "local"))[:200]
         if data.get("theme") in ("noche", "dia", "calido", "termius", "bruno", "superglass", "neon", "contraste", "ubuntu"):
             prefs["theme"] = data["theme"]
+        if data.get("button_style") in ("sutil", "arcade", "tecla", "pixel", "consola"):
+            prefs["button_style"] = data["button_style"]
         # Tipografía y estilo de terminal — cada campo se valida por su tipo.
         if isinstance(data.get("font_family"), str):
             prefs["font_family"] = data["font_family"][:120].strip() or PREFS_DEFAULTS["font_family"]
