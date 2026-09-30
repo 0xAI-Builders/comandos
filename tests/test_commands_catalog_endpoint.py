@@ -126,28 +126,69 @@ def test_catalog_falls_back_to_one_version_probe_only_without_a_snapshot(monkeyp
     assert len(probes) == 1
 
 
-def test_refresh_forces_one_watcher_cycle_under_concurrency(monkeypatch, tmp_path):
+def _slow_cycle_env(mod, monkeypatch, tmp_path, delay=0.4):
+    """Ciclo REAL de cc-dash con watch_models falso y lento que, como en
+    produccion, estampa checkedAt al INICIO; last_full lo fija el ciclo al final."""
+    import threading
+    import time
+    state = {"active": 0, "max": 0, "runs": 0}
+    guard = threading.Lock()
+
+    def slow_watch(hooks, registry, grok_home=None, now=None):
+        with guard:
+            state["active"] += 1
+            state["runs"] += 1
+            state["max"] = max(state["max"], state["active"])
+        _write_snapshot(mod, tmp_path, checkedAt=int(time.time()), versions={"claude": "7.7.7"})
+        time.sleep(delay)
+        with guard:
+            state["active"] -= 1
+        return {"news": {}, "snapshot": {}}
+
+    monkeypatch.setattr(mod.model_watch_lib, "watch_models", slow_watch)
+    monkeypatch.setattr(mod.model_watch_lib, "installed_versions", lambda *a, **k: {"claude": "7.7.7"})
+    monkeypatch.setattr(mod.news_watch_lib, "watch_news", lambda *a, **k: {})
+    return state
+
+
+def test_refresh_coalesces_by_completion_with_production_timing(monkeypatch, tmp_path):
     import threading
     import time
     mod = _load_cc_dash(monkeypatch, tmp_path)
     _fresh(mod)
     _write_snapshot(mod, tmp_path, checkedAt=1)
-    cycles = []
-
-    def slow_cycle(force=False):
-        cycles.append(force)
-        time.sleep(0.3)   # every other thread queues behind the first
-        _write_snapshot(mod, tmp_path, checkedAt=int(time.time()), versions={"claude": "7.7.7"})
-
-    monkeypatch.setattr(mod, "_model_watch_cycle", slow_cycle)
+    state = _slow_cycle_env(mod, monkeypatch, tmp_path, delay=2.2)   # cruza un segundo de reloj
     results = []
-    threads = [threading.Thread(target=lambda: results.append(mod.cli_catalog_payload(refresh=True))) for _ in range(6)]
+
+    def go(delay):
+        time.sleep(delay)
+        results.append(mod.cli_catalog_payload(refresh=True))
+
+    # llegadas escalonadas mientras el primer ciclo sigue corriendo
+    threads = [threading.Thread(target=go, args=(0.5 * i,)) for i in range(5)]
     for t in threads:
         t.start()
     for t in threads:
-        t.join(timeout=20)
-    assert len(results) == 6
-    assert cycles == [True]                       # una sola vuelta forzada, sin pisarse
+        t.join(timeout=30)
+    assert len(results) == 5
+    assert state["runs"] == 1                       # un solo ciclo forzado
     assert len({at for _v, at in results}) == 1
     for view, _at in results:
         assert next(c for c in view["clis"] if c["id"] == "claude")["version"]["installed"] == "7.7.7"
+
+
+def test_forced_and_loop_style_cycles_never_overlap(monkeypatch, tmp_path):
+    import threading
+    mod = _load_cc_dash(monkeypatch, tmp_path)
+    _fresh(mod)
+    _write_snapshot(mod, tmp_path, checkedAt=1)
+    state = _slow_cycle_env(mod, monkeypatch, tmp_path, delay=0.3)
+    threads = [threading.Thread(target=mod._model_watch_cycle, kwargs={"force": True}),   # POST /models/refresh / loop
+               threading.Thread(target=mod._model_watch_cycle, kwargs={"force": True}),
+               threading.Thread(target=mod._force_model_watch_cycle)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join(timeout=30)
+    assert state["runs"] >= 2                       # los dos ciclos directos (force=True) siempre corren
+    assert state["max"] == 1                        # nunca dos ciclos a la vez

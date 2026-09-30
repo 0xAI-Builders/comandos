@@ -654,6 +654,9 @@ def fs_mkdir(path):
 # ---- Watcher de modelos: siempre saber lo MAS RECIENTE de cada CLI ----
 MODEL_WATCH_FILE = os.path.join(HOOKS, "model-watch.json")
 _model_watch_state = {"versions": {}, "last_full": 0.0, "catalog": None}
+# Un solo ciclo a la vez: el loop, POST /models/refresh y ?refresh=1 comparten
+# este lock (snapshot .tmp, noticias, latido y _model_watch_state no se pisan).
+_MODEL_WATCH_LOCK = threading.Lock()
 
 
 def _model_watch_notify(news, versions):
@@ -675,6 +678,11 @@ def _model_watch_notify(news, versions):
 
 
 def _model_watch_cycle(force=False):
+    with _MODEL_WATCH_LOCK:
+        return _model_watch_cycle_locked(force)
+
+
+def _model_watch_cycle_locked(force=False):
     """Chequeo barato de versiones cada vuelta; escaneo COMPLETO de binarios
     al cambiar versión/catálogo local o cada 6 h. Novedades -> popup."""
     try:
@@ -1292,7 +1300,6 @@ def grok_metadata_for_pid(pid):
 # versiones mientras el watcher aun no escribio su primer snapshot.
 _CLI_CATALOG = {"catalog": None, "derived": None, "fallback": None}
 _CLI_CATALOG_LOCK = threading.Lock()      # cache + swap atomico
-_CLI_REFRESH_LOCK = threading.Lock()      # un ciclo forzado del watcher a la vez
 _CLI_FALLBACK_TTL = 600.0
 
 
@@ -1309,12 +1316,13 @@ def _registry_model_ids():
 
 
 def _force_model_watch_cycle():
-    started = int(time.time())
-    with _CLI_REFRESH_LOCK:
-        snap = _read_json_quiet(MODEL_WATCH_FILE) or {}
-        if int(snap.get("checkedAt") or 0) >= started:
-            return       # otro refresh acaba de correr el ciclo mientras esperabamos
-        _model_watch_cycle(force=True)
+    """Fuerza un ciclo completo salvo que otro termine mientras esperamos el
+    lock: se coalesce por FINALIZACION (`last_full` se fija al acabar)."""
+    started = time.time()
+    with _MODEL_WATCH_LOCK:
+        if _model_watch_state["last_full"] >= started:
+            return       # un ciclo completo acabo despues de llegar esta peticion
+        _model_watch_cycle_locked(force=True)
 
 
 def cli_catalog_payload(refresh=False):

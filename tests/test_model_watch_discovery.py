@@ -142,7 +142,7 @@ def test_watcher_rescans_when_catalog_changes_without_cli_upgrade(tmp_path):
     import os
     from types import SimpleNamespace
     source = (ROOT / 'bin' / 'cc-dash').read_text()
-    fn = next(n for n in ast.parse(source).body if isinstance(n, ast.FunctionDef) and n.name == '_model_watch_cycle')
+    fn = next(n for n in ast.parse(source).body if isinstance(n, ast.FunctionDef) and n.name == '_model_watch_cycle_locked')
     calls = []
     clock = [1000]
     stamp = [1]
@@ -155,12 +155,12 @@ def test_watcher_rescans_when_catalog_changes_without_cli_upgrade(tmp_path):
           'news_watch_lib': SimpleNamespace(watch_news=lambda *a: {'news': []}),
           '_read_json_quiet': lambda path: {}, 'write_json_file': lambda *a, **kw: None}
     exec(compile(ast.Module(body=[fn], type_ignores=[]), '<watch-cycle>', 'exec'), ns)
-    ns['_model_watch_cycle']()
+    ns['_model_watch_cycle_locked']()
     assert len(calls) == 1
-    ns['_model_watch_cycle']()
+    ns['_model_watch_cycle_locked']()
     assert len(calls) == 1
     stamp[0] = 2
-    ns['_model_watch_cycle']()
+    ns['_model_watch_cycle_locked']()
     assert len(calls) == 2
 
 
