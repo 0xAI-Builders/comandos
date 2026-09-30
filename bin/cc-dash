@@ -732,7 +732,7 @@ def _model_watch_loop():
     time.sleep(90)          # no competir con el arranque
     while True:
         _model_watch_cycle()
-        time.sleep(1800)    # versiones cada 30 min; binarios al cambiar o 6h
+        time.sleep(600)     # versiones cada 10 min; binarios al cambiar o 6h
 
 
 # ---- N5: ediciones de novedades (tres al día, con fuentes) ----
@@ -1286,24 +1286,68 @@ def grok_metadata_for_pid(pid):
     return _GROK_METADATA.read(int(pid), home) if pid else {}
 
 
-_CLI_CATALOG = {"catalog": None, "snapshot": ({}, 0.0)}   # snapshot = (versions, at), swapped as one
-_CLI_CATALOG_TTL = 1800.0
-_CLI_CATALOG_LOCK = threading.Lock()
+# La barra de comandos NO ejecuta `--version` ni sondea modelos: lee el snapshot
+# del watcher de modelos (_model_watch_loop). `derived` se recalcula solo si
+# cambia checkedAt del snapshot o el registro; `fallback` es un unico sondeo de
+# versiones mientras el watcher aun no escribio su primer snapshot.
+_CLI_CATALOG = {"catalog": None, "derived": None, "fallback": None}
+_CLI_CATALOG_LOCK = threading.Lock()      # cache + swap atomico
+_CLI_REFRESH_LOCK = threading.Lock()      # un ciclo forzado del watcher a la vez
+_CLI_FALLBACK_TTL = 600.0
+
+
+def _registry_model_ids():
+    """Ids del registro por CLI, sin los marcados `soon` (aun no disponibles)."""
+    out = {}
+    try:
+        motors = (load_provider_registry().get("motors") or {})
+    except Exception:
+        return out
+    for motor, spec in motors.items():
+        out[motor] = {m.get("id", "") for m in (spec.get("models") or []) if not m.get("soon")}
+    return out
+
+
+def _force_model_watch_cycle():
+    started = int(time.time())
+    with _CLI_REFRESH_LOCK:
+        snap = _read_json_quiet(MODEL_WATCH_FILE) or {}
+        if int(snap.get("checkedAt") or 0) >= started:
+            return       # otro refresh acaba de correr el ciclo mientras esperabamos
+        _model_watch_cycle(force=True)
 
 
 def cli_catalog_payload(refresh=False):
-    """Catalogo por CLI + versiones instaladas en cache (`--version` de cinco
-    binarios tarda segundos: solo se re-ejecuta al vencer el TTL o con refresh).
-    El servidor es multihilo: el chequeo del TTL y el refresco van bajo un lock
-    y (versions, at) se publican juntos para que un lector nunca vea mezcla."""
+    """Catalogo por CLI con versiones y chips de modelo del snapshot del watcher.
+    `refresh` fuerza un ciclo del watcher (uno a la vez) y relee el snapshot."""
+    if refresh:
+        _force_model_watch_cycle()
+    snap = _read_json_quiet(MODEL_WATCH_FILE) or {}
+    try:
+        reg_stamp = os.stat(PROVIDERS_FILE).st_mtime_ns
+    except OSError:
+        reg_stamp = None
     with _CLI_CATALOG_LOCK:
         if _CLI_CATALOG["catalog"] is None:
             _CLI_CATALOG["catalog"] = cli_catalog.load_catalog()
-        versions, at = _CLI_CATALOG["snapshot"]
-        if refresh or time.time() - at > _CLI_CATALOG_TTL:
-            _CLI_CATALOG["snapshot"] = (cli_catalog.installed_versions(_CLI_CATALOG["catalog"]), time.time())
-            versions, at = _CLI_CATALOG["snapshot"]
         catalog = _CLI_CATALOG["catalog"]
+        no_snap = not isinstance(snap.get("versions"), dict)
+        key = (snap.get("checkedAt"), reg_stamp, int(time.time() // _CLI_FALLBACK_TTL) if no_snap else None)
+        derived = _CLI_CATALOG["derived"]
+        if derived is None or derived["key"] != key:
+            versions = snap.get("versions") if isinstance(snap.get("versions"), dict) else None
+            at = float(snap.get("checkedAt") or 0.0)
+            if versions is None:
+                fb = _CLI_CATALOG["fallback"]
+                if fb is None or time.time() - fb[1] > _CLI_FALLBACK_TTL:
+                    fb = (cli_catalog.installed_versions(catalog), time.time())
+                    _CLI_CATALOG["fallback"] = fb
+                versions, at = fb
+            new_models = {cli: list((v or {}).get("models") or [])
+                          for cli, v in (snap.get("newSince") or {}).items() if isinstance(v, dict)}
+            derived = {"key": key, "versions": versions, "at": at, "new_models": new_models,
+                       "models": model_watch_lib.latest_models(snap.get("discovered"), _registry_model_ids())}
+            _CLI_CATALOG["derived"] = derived
     registry = load_provider_registry()
     accounts = {}
     for cli in catalog["clis"]:
@@ -1314,8 +1358,9 @@ def cli_catalog_payload(refresh=False):
         except Exception:
             accounts[cli["id"]] = []
     view = cli_catalog.catalog_view(catalog, danger_flags=load_agent_roles().get("dangerFlags") or {},
-                                    versions=versions, accounts=accounts)
-    return view, at
+                                    versions=derived["versions"], accounts=accounts,
+                                    models=derived["models"], new_models=derived["new_models"])
+    return view, derived["at"]
 
 
 def agent_info_for_pane(pane):

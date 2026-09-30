@@ -295,5 +295,13 @@ const catalog = JSON.parse(fs.readFileSync(process.cwd() + '/tests/fixtures/comm
     assert.equal(toastsN.length, 5);
     assert.equal(toastsN.every(([m, e]) => m === 'Selecciona un pane primero' && e === true), true);
   }
+  // chips «nuevo»: newArgs marca el chip con clase y texto accesible; el resto queda igual
+  {
+    const html = mod.rowHTML({ text: '/model ', description: '', args: ['claude-opus-5-5', 'claude-sonnet-5-5'], newArgs: ['claude-sonnet-5-5'] }, {});
+    assert.match(html, /<button type="button" class="new" aria-label="claude-sonnet-5-5 \(nuevo\)"[^>]*data-cmd="\/model claude-sonnet-5-5"/);
+    assert.match(html, /<button type="button" data-cmd="\/model claude-opus-5-5" data-kind="pane">claude-opus-5-5<\/button>/);
+    assert.equal((html.match(/class="new"/g) || []).length, 1);
+    assert.equal(/class="new"/.test(mod.rowHTML({ text: '/model ', description: '', args: ['a'] }, {})), false);
+  }
   console.log('command-sidebar checks ok');
 })().catch(e => { console.error(e); process.exit(1); });

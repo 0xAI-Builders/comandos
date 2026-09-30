@@ -33,8 +33,11 @@
     const attr = mode === 'build' ? 'data-add' : 'data-cmd';
     const text = String(cmd.text ?? '');
     const withArg = a => (text.endsWith(' ') ? text : text + ' ') + a;
+    const fresh = new Set(Array.isArray(cmd.newArgs) ? cmd.newArgs : []);
     const chips = (Array.isArray(cmd.args) ? cmd.args : [])
-      .map(a => `<button type="button" ${attr}="${esc(withArg(a))}" data-kind="${kind}">${esc(a)}</button>`).join('');
+      .map(a => fresh.has(a)
+        ? `<button type="button" class="new" aria-label="${esc(a)} (nuevo)" title="nuevo" ${attr}="${esc(withArg(a))}" data-kind="${kind}">${esc(a)}</button>`
+        : `<button type="button" ${attr}="${esc(withArg(a))}" data-kind="${kind}">${esc(a)}</button>`).join('');
     const add = mode === 'build' ? `<button type="button" class="add" data-add="${esc(text)}" data-kind="${kind}">+ cadena</button>` : '';
     const dis = opts.dis ? ' dis' : '';
     const hidden = hits(cmd, opts.q) ? '' : ' hidden';

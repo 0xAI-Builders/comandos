@@ -26,7 +26,7 @@ def test_watcher_finds_binaries_outside_systemd_path():
 
 def test_watcher_runs_resolved_paths_not_bare_names():
     # Con PATH pelón, `codex --version` a pelo devolvía nada y la versión era "?".
-    assert "_run([exe] + cmd[1:]" in SRC
+    assert "run([exe, \"--version\"]" in SRC
     assert '_run([grok_exe, "models"]' in SRC
 
 
@@ -176,3 +176,49 @@ def test_catalog_read_rejects_oversize_and_malformed_data(tmp_path, monkeypatch)
     for bad in (b'\xff', b'[]', b'{"models": [null, 42, {"slug": []}]}', b'['*20000+b']'*20000):
         path.write_bytes(bad)
         assert model_catalog.catalog_models()['codex'] == []
+
+
+def test_installed_versions_covers_all_five_clis_with_injected_which_and_run():
+    calls = []
+
+    def which(name):
+        return {"claude": "/x/claude", "opencode": "/x/opencode", "agy": "/x/agy"}.get(name)
+
+    def run(cmd, timeout=20, env=None):
+        calls.append(cmd)
+        return {"/x/claude": "2.1.285 (Claude Code)", "/x/opencode": "1.17.20", "/x/agy": "no version here"}[cmd[0]]
+
+    versions = model_watch.installed_versions(which=which, run=run)
+    assert versions == {"claude": "2.1.285", "opencode": "1.17.20", "agy": "?"}
+    assert ["/x/opencode", "--version"] in calls and ["/x/agy", "--version"] in calls
+
+
+def test_latest_models_picks_newest_per_family_without_dates_or_brackets():
+    discovered = {
+        "claude": ["claude-opus-4-8", "claude-opus-5-5", "claude-opus-5-5[1m]", "claude-opus-5",
+                   "claude-sonnet-4-5-20250929", "claude-sonnet-5-5", "claude-sonnet-5-5[1m]",
+                   "claude-fable-5", "claude-fable-5-1", "claude-haiku-4-5", "claude-haiku-4-5-20251001"],
+        "codex": ["gpt-5.5", "gpt-6-luna", "gpt-6.1-sol"],
+        "grok": ["grok-4.6", "grok-4.7-build-fast", "grok-4.7"],
+    }
+    got = model_watch.latest_models(discovered, {})
+    # familias por version descendente; empate de version: orden alfabetico de familia
+    assert got["claude"] == ["claude-opus-5-5", "claude-sonnet-5-5", "claude-fable-5-1", "claude-haiku-4-5"]
+    assert got["codex"] == ["gpt-6.1-sol"]
+    # dos ids con misma (familia, version): gana el id mas corto
+    assert got["grok"] == ["grok-4.7"]
+
+
+def test_latest_models_unions_registry_ids_with_the_same_criterion():
+    discovered = {"claude": ["claude-opus-5"], "codex": [], "grok": ["grok-4.5"]}
+    registry = {"claude": {"claude-fable-5-1", "claude-fable-5[1m]", "claude-opus-5"},
+                "grok": {"grok-4.6"}, "codex": {"gpt-5.6-terra"}}
+    got = model_watch.latest_models(discovered, registry)
+    assert got["claude"] == ["claude-fable-5-1", "claude-opus-5"]
+    assert got["grok"] == ["grok-4.6"]
+    assert got["codex"] == ["gpt-5.6-terra"]
+
+
+def test_latest_models_empty_when_watcher_has_nothing():
+    assert model_watch.latest_models({}, {}) == {"claude": [], "codex": [], "grok": []}
+    assert model_watch.latest_models(None, None) == {"claude": [], "codex": [], "grok": []}

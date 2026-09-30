@@ -79,7 +79,23 @@ def _launches(cli, danger, accounts):
     return {"yolo": yolo, "normal": normal, "yoloNote": cli["launch"].get("yoloNote", "")}
 
 
-def catalog_view(catalog, *, danger_flags, versions, accounts):
+def _command_view(cli_id, cmd, models, new_models):
+    args = list(cmd.get("args", []))
+    out = {"text": cmd["text"], "description": cmd["description"], "args": args}
+    if cmd.get("argsFrom") == "models":
+        live = list((models or {}).get(cli_id) or [])
+        if live:                       # sin datos del watcher quedan los args curados
+            out["args"] = live
+            fresh = set((new_models or {}).get(cli_id) or [])
+            new = [a for a in live if a in fresh]
+            if new:
+                out["newArgs"] = new
+    return out
+
+
+def catalog_view(catalog, *, danger_flags, versions, accounts, models=None, new_models=None):
+    """`models` = {cli: [ids]} (más nuevo por familia, del watcher) y
+    `new_models` = {cli: [ids]} (newSince del watcher). Ambos opcionales."""
     clis = []
     for cli in catalog["clis"]:
         installed = versions.get(cli["id"])
@@ -89,7 +105,7 @@ def catalog_view(catalog, *, danger_flags, versions, accounts):
                         "status": version_status(cli["pinnedVersion"], installed, cli.get("verified", True))},
             "launch": _launches(cli, danger_flags.get(cli["id"], ""), accounts),
             "groups": [{"title": g["title"], "icon": g.get("icon", ""),
-                        "commands": [{"text": c["text"], "description": c["description"], "args": c.get("args", [])}
+                        "commands": [_command_view(cli["id"], c, models, new_models)
                                      for c in g.get("commands", [])]} for g in cli["groups"]],
         })
     return {"version": 1, "clis": clis}

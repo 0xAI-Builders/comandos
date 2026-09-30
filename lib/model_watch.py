@@ -42,15 +42,20 @@ def _run(cmd, timeout=20, env=None):
         return ""
 
 
-def installed_versions():
+_VERSION_CLIS = ("claude", "codex", "grok", "opencode", "agy")
+
+
+def installed_versions(which=None, run=None):
+    """Versión de cada CLI instalado (los cinco del catálogo). `which`/`run`
+    se inyectan en pruebas; por defecto son los del módulo."""
+    which = which or _which
+    run = run or _run
     out = {}
-    for prov, cmd in (("claude", ["claude", "--version"]),
-                      ("codex", ["codex", "--version"]),
-                      ("grok", ["grok", "--version"])):
-        exe = _which(cmd[0])
+    for prov in _VERSION_CLIS:
+        exe = which(prov)
         if exe:
             # ejecutar la RUTA resuelta: bajo systemd `codex` a pelo no está en PATH
-            m = re.search(r"\d+\.\d+[\w.-]*", _run([exe] + cmd[1:], timeout=15))
+            m = re.search(r"\d+\.\d+[\w.-]*", run([exe, "--version"], timeout=15))
             out[prov] = m.group(0) if m else "?"
     return out
 
@@ -300,3 +305,33 @@ def watch_models(hooks_dir, registry_path, grok_home=None, now=None):
         json.dump(snap, fh, indent=1)
     os.replace(tmp, snap_path)
     return {"news": news, "snapshot": snap}
+
+
+_MODEL_CLIS = ("claude", "codex", "grok")
+_DATED_OR_BRACKET = re.compile(r"-\d{8}$|\[")
+
+
+def latest_models(discovered, registry_ids):
+    """Chips de /model: por CLI, el modelo MÁS NUEVO de cada familia, entre los
+    ids que descubrió el watcher y los del registro. Sin variantes con fecha ni
+    con corchetes; familias por versión descendente (empate: familia alfabética).
+    Dos ids con la misma (familia, versión) -> gana el más corto (grok-4.7 antes
+    que grok-4.7-build-fast). Nunca inventa: solo devuelve ids ya vistos."""
+    out = {}
+    for cli in _MODEL_CLIS:
+        ids = set((discovered or {}).get(cli) or []) | set((registry_ids or {}).get(cli) or [])
+        best = {}
+        for mid in ids:
+            if not isinstance(mid, str) or _DATED_OR_BRACKET.search(mid):
+                continue
+            fam, ver = _family_ver(mid)
+            if not ver:
+                continue
+            rank = (ver, -len(mid))
+            cur = best.get(fam)
+            if cur is None or rank > cur[0] or (rank == cur[0] and mid < cur[1]):
+                best[fam] = (rank, mid)
+        ordered = sorted(best.items())                                   # familia asc
+        ordered.sort(key=lambda kv: kv[1][0][0], reverse=True)           # version desc (estable)
+        out[cli] = [mid for _fam, (_rank, mid) in ordered]
+    return out

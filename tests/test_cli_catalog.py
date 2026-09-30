@@ -68,3 +68,41 @@ def test_view_never_contains_enter_or_newlines():
     for cli in view["clis"]:
         for text in cli["launch"]["yolo"] + cli["launch"]["normal"]:
             assert "\n" not in text and "\r" not in text
+
+
+def _cmd(view, cli, text):
+    c = next(c for c in view["clis"] if c["id"] == cli)
+    return next(cmd for g in c["groups"] for cmd in g["commands"] if cmd["text"] == text)
+
+def test_argsfrom_models_uses_watcher_models_and_marks_new():
+    cat = cli_catalog.load_catalog()
+    models = {"claude": ["claude-opus-5-5", "claude-sonnet-5-5"], "grok": ["grok-4.7"], "codex": ["gpt-6.1-sol"]}
+    new = {"claude": ["claude-sonnet-5-5", "claude-haiku-4-5"], "grok": []}
+    view = cli_catalog.catalog_view(cat, danger_flags=DANGER, versions=VERSIONS, accounts={},
+                                    models=models, new_models=new)
+    cm = _cmd(view, "claude", "/model ")
+    assert cm["args"] == ["claude-opus-5-5", "claude-sonnet-5-5"]
+    assert cm["newArgs"] == ["claude-sonnet-5-5"]          # interseccion con newSince
+    gm = _cmd(view, "grok", "/model ")
+    assert gm["args"] == ["grok-4.7"] and "newArgs" not in gm
+    # codex /model abre un selector sin argumentos: no toma modelos
+    assert "args" in _cmd(view, "codex", "/model") and _cmd(view, "codex", "/model")["args"] == []
+    # otros comandos con args fijos no cambian
+    assert _cmd(view, "claude", "/effort ")["args"] == ["low", "medium", "high", "max"]
+
+def test_argsfrom_models_keeps_json_args_without_watcher_data():
+    cat = cli_catalog.load_catalog()
+    for kw in ({}, {"models": {}}, {"models": {"claude": [], "grok": []}, "new_models": {}}):
+        view = cli_catalog.catalog_view(cat, danger_flags=DANGER, versions=VERSIONS, accounts={}, **kw)
+        assert _cmd(view, "claude", "/model ")["args"] == ["claude-fable-5-1", "claude-opus-5-5", "claude-sonnet-5-5"]
+        assert _cmd(view, "grok", "/model ")["args"] == ["grok-5", "grok-5-mini"]
+        assert "newArgs" not in _cmd(view, "claude", "/model ")
+
+def test_model_commands_are_marked_argsfrom_models_in_the_json():
+    cat = cli_catalog.load_catalog()
+    for cid in ("claude", "grok"):
+        cmd = next(c for g in next(x for x in cat["clis"] if x["id"] == cid)["groups"]
+                   for c in g["commands"] if c["text"] == "/model ")
+        assert cmd["argsFrom"] == "models" and cmd["args"]
+    codex = next(x for x in cat["clis"] if x["id"] == "codex")
+    assert all("argsFrom" not in c for g in codex["groups"] for c in g["commands"])
