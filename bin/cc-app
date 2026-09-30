@@ -240,9 +240,12 @@ notebook > header > tabs > arrow {
 .mosaic-ph { color: @FAINT@; font-size: 18px; }
 .mosaic-cell-title { padding: 1px 4px; }
 .mosaic-zoom { background: @BG@; border: 2px solid @BRAND@; border-radius: 12px; }
-.ws-leaf-head { background: @BAR@; border-bottom: 1px solid @LINE@; padding: 3px 10px; color: @FAINT@; }
-.ws-leaf.focused .ws-leaf-head { color: @TEXT@; box-shadow: inset 0 2px 0 @BRAND@; }
-paned.ws-paned > separator { background: @LINE@; }
+/* Grupo: cada terminal lleva su propia Tarjeta y marco (como una pestaña sola);
+   la cabecera de hoja queda como asa fina para arrastrarla fuera del grupo. */
+.ws-leaf-head { background: @BG@; padding: 0 12px; min-height: 22px; color: @FAINT@;
+  font-family: 'Ubuntu Sans', 'Inter', sans-serif; font-size: 11px; font-weight: 600; }
+.ws-leaf.focused .ws-leaf-head { color: @TEXT@; }
+paned.ws-paned > separator { background: @BG@; min-width: 8px; min-height: 8px; }
 notebook stack { background: @BG@; }
 .termwrap { background: @BG@; }
 .tabplus { color: @DIM@; padding: 4px 8px; margin: 0 1px; border: none; background: none;
@@ -5218,7 +5221,23 @@ def _pill_row_y(m_t, top, chh):
     return max(0, int(m_t + row * chh))
 
 
-def _pane_frames(term, geo, m_l, m_t, cw, chh):
+def _visible_boxes():
+    """Terminales visibles ahora: la pestaña activa o, si es un grupo, todos sus miembros."""
+    page = nb.get_nth_page(nb.get_current_page()) if nb.get_n_pages() else None
+    if isinstance(page, gtk_workspace.GroupPage):
+        return list(page.members.values())
+    return [page] if page is not None else []
+
+
+def _box_focused(box):
+    """¿Esta terminal tiene el foco? En un grupo, solo el miembro enfocado."""
+    page = nb.get_nth_page(nb.get_current_page()) if nb.get_n_pages() else None
+    if isinstance(page, gtk_workspace.GroupPage):
+        return page.members.get(page.focus) is box
+    return page is box
+
+
+def _pane_frames(term, geo, m_l, m_t, cw, chh, focused=True):
     """Marcos de los panes (prototipo: borde 1 px, radio 10, verde el pane con
     foco) y el renglón de cabecera de cada uno. Cada marco encierra la CABECERA
     (el renglón que tmux reserva arriba del pane con pane-border-status top) y el
@@ -5238,7 +5257,7 @@ def _pane_frames(term, geo, m_l, m_t, cw, chh):
         bottom = m_t + (top + height) * chh
         at_bottom = rows_total and top + height >= rows_total
         y1 = bottom + (3 if at_bottom else 0)
-        frames.append((x0, y0, x1 - x0, y1 - y0, active))
+        frames.append((x0, y0, x1 - x0, y1 - y0, active and focused))
         rows[pane_id] = (x0, rail, x1 - x0)
     return frames, rows
 
@@ -5262,7 +5281,7 @@ def _reposition_pills(box, geo):
     if cw < 4 or chh < 6:
         return False
     m_l, m_t = term.get_margin_start(), term.get_margin_top()
-    frames, rows = _pane_frames(term, geo, m_l, m_t, cw, chh)
+    frames, rows = _pane_frames(term, geo, m_l, m_t, cw, chh, _box_focused(box))
     for w in getattr(box, "_pills", []):
         pid = getattr(w, "_pane_id", None)
         if pid is None:
@@ -5300,7 +5319,7 @@ def _pane_geo_soon(box):
         return False
     def run():
         _GEO_PENDING.pop(id(box), None)
-        if box is not nb.get_nth_page(nb.get_current_page()) and box is not hub:
+        if box not in _visible_boxes() and box is not hub:
             return False
         geo = _pane_geometry(getattr(box, "_pill_sess", ""))
         sig = json.dumps(sorted(geo.items())) + json.dumps(sorted((k, _PANE_BOX.get(k)) for k in geo))
@@ -5334,7 +5353,7 @@ def _place_pills(box, panes, geo=None):
         box._pill_sig = ""      # fuente aun no lista: reintenta al siguiente tick
         return
     m_l = term.get_margin_start(); m_t = term.get_margin_top()
-    box._frames, box._card_rows = _pane_frames(term, geo, m_l, m_t, cw, chh)
+    box._frames, box._card_rows = _pane_frames(term, geo, m_l, m_t, cw, chh, _box_focused(box))
     ov.queue_draw()
     placed = set()
     for p in panes[:6]:
@@ -5412,6 +5431,7 @@ def _refresh_tab_models():
     if hub not in tabs.values():
         pages.append(("local", hub))
     current = nb.get_nth_page(nb.get_current_page())
+    visible = _visible_boxes()
     for key, box in pages:
         session = str(key).partition(":")[0]
         info = models.get(session) if isinstance(models, dict) else None
@@ -5446,7 +5466,7 @@ def _refresh_tab_models():
                 hb._model_icon = icon
         elif micon is not None:
             micon.hide()
-        if getattr(box, "_pill_overlay", None) is None or box is not current:
+        if getattr(box, "_pill_overlay", None) is None or box not in visible:
             continue
         panes = (info or {}).get("panes") if isinstance(info, dict) else None
         try:

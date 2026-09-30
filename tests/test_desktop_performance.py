@@ -89,8 +89,9 @@ def model_ui():
           'open': lambda *a, **k: io.StringIO(json.dumps(models)),
           'APP_TAB_MODELS_FILE': 'unused', '_tab_models_mtime': 0,
           'json': json, 'tabs': tabs, 'hub': hub,
-          'nb': NS(get_current_page=lambda: 0, get_nth_page=lambda _: active[0],
+          'nb': NS(get_current_page=lambda: 0, get_nth_page=lambda _: active[0], get_n_pages=lambda: 1,
                    get_tab_label=lambda b: labels[id(b)]),
+          'gtk_workspace': NS(GroupPage=type('GroupPage', (), {})),
           '_svg_image': svg, '_pane_geometry': get_geometry,
           '_PANE_CMD': {'%0': 'codex'}, '_SHELLS': {'zsh'},
           'Gtk': NS(Box=Widget, Overlay=Widget, Label=Widget, Button=Widget, Image=Widget, Separator=Widget, EventBox=Widget,
@@ -105,7 +106,7 @@ def model_ui():
           '_PV_ICON': {'codex': 'openai'}, '_PV_HEX': {'codex': '#aaa'},
           '_STATE_UI': {'verified': ('green', 'v'), 'detecting': ('gray', '?'),
                         'changing': ('yellow', '>')}, '_esc': str, 'ES': False}
-    load({'_refresh_tab_models', '_place_pills', '_pane_frames', '_card_rect', '_reposition_pills', '_pane_pill', '_pane_card_keys', '_card_button', '_pane_card_ai', '_motor_badge', '_shell_pill',
+    load({'_refresh_tab_models', '_place_pills', '_visible_boxes', '_box_focused', '_pane_frames', '_card_rect', '_reposition_pills', '_pane_pill', '_pane_card_keys', '_card_button', '_pane_card_ai', '_motor_badge', '_shell_pill',
           '_pill_row_y', '_attach_model_bar', '_extension_pill'}, ns)
     for key, box in tabs.items():
         box._term = Widget()

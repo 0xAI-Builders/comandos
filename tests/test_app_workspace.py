@@ -290,3 +290,18 @@ def test_a_lost_release_ends_the_drag_instead_of_leaving_it_stuck():
     assert finished == [{'kind': 'bar'}] and ns['_WS']['drag'] is None
     src = SOURCE
     assert 'win.connect("button-release-event", _ws_window_release)' in src and 'seat.grab(win.get_window()' in src
+
+
+def test_group_members_get_their_own_card_and_frame_and_only_the_focused_one_is_green():
+    """30-sep: in a docked group every terminal carries the card and frame like a single
+    tab, and only the focused member's active pane is drawn green."""
+    refresh = SOURCE.split('def _refresh_tab_models():')[1].split('\ndef ')[0]
+    assert 'visible = _visible_boxes()' in refresh and 'box not in visible' in refresh
+    group = type('GroupPage', (), {})
+    a, b = object(), object()
+    page = group(); page.members = {'A': a, 'B': b}; page.focus = 'B'
+    ns = {'nb': SimpleNamespace(get_n_pages=lambda: 1, get_current_page=lambda: 0, get_nth_page=lambda _: page),
+          'gtk_workspace': SimpleNamespace(GroupPage=group)}
+    assert load('_visible_boxes', ns)() == [a, b]
+    focused = load('_box_focused', ns)
+    assert focused(b) and not focused(a)
