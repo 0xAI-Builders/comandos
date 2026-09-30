@@ -128,12 +128,14 @@ const catalog = JSON.parse(fs.readFileSync(process.cwd() + '/tests/fixtures/comm
   const sb3 = createCommandSidebar({ api, root: root3, storage: storage3, makeId: () => 'z', getTarget: () => target3, toast: () => {} });
   sb3.applyCatalog({ cliInPane: 'codex', target: { session: 'demo', pane: '%2' }, catalog, versionsAt: 1 });
   assert.equal(root3.querySelector('.cs-cli[data-cli="grok"]').classList.contains('open'), false);
+  // V1: con estado persistido, el CLI detectado en el pane se abre solo (con su arranque yolo)
+  assert.equal(root3.querySelector('.cs-cli[data-cli="codex"] .launch.yolo').classList.contains('open'), true);
   target3 = { session: 'term-q2', pane: '%8', paneKey: 'term-q2:%8', kind: 'term', title: 'Terminal' };
   sb3.applyCatalog({ cliInPane: '', target: { session: 'term-q2', pane: '%8' }, catalog, versionsAt: 1 });
   assert.equal(root3.querySelector('.cs-cli[data-cli="grok"]').classList.contains('open'), true);
   assert.equal(root3.querySelector('.cs-cli[data-cli="grok"] .launch.yolo').classList.contains('open'), true);
   assert.equal(root3.querySelector('.cs-cli[data-cli="codex"]').classList.contains('open'), true);
-  assert.deepEqual(JSON.parse(store3.get('comandos.commands.open')).sort(), ['codex', 'grok', 'grok:yolo', 'saved']);
+  assert.deepEqual(JSON.parse(store3.get('comandos.commands.open')).sort(), ['codex', 'codex:yolo', 'grok', 'grok:yolo', 'saved']);
   // el usuario lo pliega: repetir el catálogo del mismo destino no lo reabre
   root3.click('.cs-cli[data-cli="grok"] .cli-h');
   sb3.applyCatalog({ cliInPane: '', target: { session: 'term-q2', pane: '%8' }, catalog, versionsAt: 2 });

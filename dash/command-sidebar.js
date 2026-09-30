@@ -144,13 +144,15 @@
         state.firstRender = false;
         changed = true;
       }
-      // Terminal rápida que vuelve: si el destino cambió y no se detecta CLI,
-      // abre el último CLI arrancado ahí (solo añade; nunca pliega nada).
+      // Destino nuevo (también con estado abierto persistido): el CLI detectado
+      // en el pane se abre solo; sin CLI, el último arrancado ahí. Solo añade;
+      // nunca pliega nada.
       const t = target();
       const applied = state.catalogTarget || (t ? { session: t.session, pane: t.pane } : null);
-      if (applied && !sameTarget(applied, state.appliedTarget) && !state.cliInPane && state.catalog) {
+      if (applied && !sameTarget(applied, state.appliedTarget) && state.catalog) {
         const key = t && sameTarget(t, applied) ? (t.paneKey || t.pane) : applied.pane;
-        const cli = key ? clis().find(c => c.id === read(KEY_PREF + key)) : null;
+        const id = state.cliInPane || (key ? read(KEY_PREF + key) || '' : '');
+        const cli = id ? clis().find(c => c.id === id) : null;
         if (cli && !(state.open.has(cli.id) && state.open.has(`${cli.id}:yolo`))) {
           state.open.add(cli.id); state.open.add(`${cli.id}:yolo`); changed = true;
         }
