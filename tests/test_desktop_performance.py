@@ -118,14 +118,14 @@ def model_ui():
 def test_unchanged_models_and_identical_allocations_do_not_redraw():
     ui = model_ui()
     ui.refresh()
-    assert ui.counts['svg'] == 22  # 19 tab icons and three in the active card (motor, «IA», «MCPs · Skills»).
+    assert ui.counts['svg'] == 3  # three icons in the active card (motor badge, «IA», «MCPs · Skills»); tabs carry no logo.
     for _ in range(9):
         ui.stamp[0] += 1  # cc-dash replaces the file even when its payload is unchanged.
         callback = ui.current._term.signals.get('size-allocate')
         if callback:
             callback(ui.current._term, NS(width=1200, height=800))
         ui.refresh()
-    assert ui.counts['svg'] == 22
+    assert ui.counts['svg'] == 3
     assert ui.current._pill_overlay.calls['add_overlay'] == 1
     assert sum(label._model.calls['set_text'] for label in ui.labels.values()
                if hasattr(label, '_model')) == 19
@@ -160,10 +160,10 @@ def test_dim_theme_change_updates_tab_icons_without_rebuilding_fixed_color_pills
     pill = ui.current._pills[0]
     ui.ns['THEME']['dim'] = '#777'
     ui.refresh()
-    assert ui.counts['svg'] == 41  # 22 initially, then the 19 dim-colored tab icons.
+    assert ui.counts['svg'] == 3  # the tabs have no dim-colored logo to repaint (prototype: semáforo + name + model).
     assert ui.current._pills[0] is pill  # _pane_pill uses a fixed #8A8F98 for dim.
     ui.refresh()
-    assert ui.counts['svg'] == 41
+    assert ui.counts['svg'] == 3
 
 
 def poll_ui(iterations=20, fail_notifications=False):

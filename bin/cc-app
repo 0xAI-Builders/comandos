@@ -209,7 +209,7 @@ notebook > header > tabs > tab:hover button, notebook > header > tabs > tab butt
 notebook > header > tabs > tab button.tab-suggest { opacity: 1; }
 notebook > header > tabs > tab button:hover { color: @TEXT@; }
 notebook > header > tabs > tab button.tabclose:hover { color: #ffffff; background-color: #FF6B6B; border-radius: 5px; }
-notebook > header > tabs > tab button.tabfav { font-size: 15px; min-width: 20px; }
+notebook > header > tabs > tab button.tabfav { font-size: 13px; min-width: 16px; }
 notebook > header > tabs > tab label.tab-sticker { font-size: 8px; font-weight: 800; padding: 1px 5px; border-radius: 5px; margin: 0 2px; }
 notebook > header > tabs > tab label.tab-sticker.st-frozen { background: #1e3a5f; color: #9cd0ff; }
 notebook > header > tabs > tab label.tab-sticker.st-resolved { background: #1f5134; color: #b9ffd4; }
@@ -5251,7 +5251,8 @@ def _refresh_tab_models():
             if first:
                 extra = len([p for p in panes if p.get("model")]) - 1
                 text = f"{first['model']}{f' +{extra}' if extra > 0 else ''}"
-                icon = (_PV_ICON.get(first.get("motor"), "layers"), THEME.get("dim", "#9AA6BF"))
+                # Prototipo aprobado (30-sep): la pestaña lleva semáforo + nombre +
+                # modelo; el logo del motor vive en la Tarjeta del pane, no aquí.
             if getattr(label, "_model_text", None) != text:
                 label.set_text(text)
                 label._model_text = text
