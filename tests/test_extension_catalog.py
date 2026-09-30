@@ -13,6 +13,25 @@ def module():
     return importlib.import_module('extension_catalog')
 
 
+@pytest.mark.parametrize('relative,key', [('.gemini/settings.json','mcpServers'),('.config/Code/User/mcp.json','servers'),('.config/github-copilot/intellij/mcp.json','servers')])
+def test_existing_gemini_and_ide_configs_receive_mail_without_touching_other_servers(tmp_path,relative,key):
+    m=module();p=tmp_path/relative;p.parent.mkdir(parents=True)
+    original={'tools':{'keep':True},key:{'unrelated':{'url':'https://example.com/keep'}}}
+    p.write_text(json.dumps(original))
+    catalog={'version':1,'servers':{'gmail':{'command':'python3','args':['mail']},'proton-mail':{'command':'python3','args':['mail']},'demo':{'command':'echo'}}}
+    m.sync_configs(tmp_path,catalog,'/launcher')
+    result=m.read_config(p)
+    assert result['tools']==original['tools']
+    assert result[key]['unrelated']==original[key]['unrelated']
+    assert 'gmail' in result[key] and 'proton-mail' in result[key]
+    assert 'demo' not in result[key]
+    m.save_snapshot(tmp_path,catalog,'/launcher')
+    result[key]['unrelated']={'url':'https://example.com/changed'};p.write_text(json.dumps(result))
+    assert m.reconcile(tmp_path,catalog,'/launcher')==catalog
+    m.sync_configs(tmp_path,catalog,'/launcher');m.save_snapshot(tmp_path,catalog,'/launcher')
+    assert not m.sync_configs(tmp_path,catalog,'/launcher')
+
+
 def test_sync_keeps_settings_permissions_and_is_idempotent(tmp_path):
     m = module()
     p = tmp_path / '.codex/config.toml'
@@ -49,6 +68,15 @@ def test_project_specific_endpoint_is_preserved(tmp_path):
     c = {'version': 1, 'servers': {'demo': {'url': 'https://example.com/mcp'}}}
     m.sync_configs(tmp_path, c, '/launcher')
     assert json.loads(p.read_text())['projects'] == d['projects']
+
+
+def test_old_project_mail_endpoint_uses_the_shared_account_transport(tmp_path):
+    m=module();p=tmp_path/'.claude.json'
+    p.write_text(json.dumps({'projects':{'/work':{'mcpServers':{'gmail':{'url':'http://127.0.0.1:7288/mcp'}}}}}))
+    c={'version':1,'servers':{'gmail':{'command':'python3','args':['shared-mail'],'enabled':True}}}
+    m.sync_configs(tmp_path,c,'/launcher')
+    spec=m.read_config(p)['projects']['/work']['mcpServers']['gmail']
+    assert spec['command']=='/launcher' and spec['args']==['serve','gmail']
 
 
 def test_skill_sync_backs_up_conflicts_and_propagates_new_skill(tmp_path):

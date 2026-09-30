@@ -23,6 +23,7 @@ ALIASES = {'x_suite': 'x-suite', 'linear-server': 'linear', 'chrome-devtools': '
 # recoverable, but do not start them implicitly through the shared catalog.
 REMOTE_UNVERIFIED = {'playwright', 'x-playwright', 'lightpanda', 'obscura', 'screenwright'}
 NATIVE_ONLY = {'node_repl'}
+MAIL_SERVERS = {'gmail','gmail-signara','qcdr-mail','proton-mail'}
 SAFE_NAME = re.compile(r'^[A-Za-z0-9_-]+$')
 CLIENT_FIELDS = ('tools','default_tools_approval_mode','enabled_tools','disabled_tools',
                  'required','startup_timeout_sec','tool_timeout_sec')
@@ -116,7 +117,15 @@ def targets(home):
         for root in sorted(h.glob('.' + kind + '-accounts/*')):
             if root.is_dir() and not root.is_symlink():
                 specs.append((kind, root / file, key))
-    return [{'kind': k, 'path': p, 'key': key} for k, p, key in specs]
+    result = [{'kind': k, 'path': p, 'key': key} for k, p, key in specs]
+    # Existing secondary clients receive mail without adopting or replacing
+    # their independent MCP integrations.
+    for kind,relative,key in [('gemini','.gemini/settings.json','mcpServers'),
+                              ('vscode','.config/Code/User/mcp.json','servers'),
+                              ('copilot','.config/github-copilot/intellij/mcp.json','servers')]:
+        path=h/relative
+        if path.exists():result.append({'kind':kind,'path':path,'key':key,'server_names':MAIL_SERVERS})
+    return result
 
 
 def normalize(spec, disabled=()):
@@ -156,9 +165,10 @@ def import_catalog(home):
     servers, candidates = {}, []
     for target in targets(home):
         data = read_config(target['path'])
+        scope=target.get('server_names')
         for project in data.get('projects', {}).values():
-            candidates += [(n, c, ()) for n, c in project.get('mcpServers', {}).items()]
-        candidates += [(n, c, data.get('disabled_mcp_servers', [])) for n, c in data.get(target['key'], {}).items()]
+            candidates += [(n, c, ()) for n, c in project.get('mcpServers', {}).items() if scope is None or n in scope]
+        candidates += [(n, c, data.get('disabled_mcp_servers', [])) for n, c in data.get(target['key'], {}).items() if scope is None or n in scope]
     # First import establishes precedence. Later explicit edits are reconciled
     # against snapshots, not this discovery ordering.
     for name, spec, disabled in candidates:
@@ -217,6 +227,8 @@ def reconcile(home,catalog,launcher,observed_inputs=None):
         previous=previous or {}
         for raw_name in set(previous)|set(current):
             name=ALIASES.get(raw_name,raw_name)
+            if 'server_names' in target and name not in target['server_names']:
+                continue
             if name in NATIVE_ONLY or not SAFE_NAME.fullmatch(name):
                 continue
             item=current.get(raw_name)
@@ -277,7 +289,7 @@ def native_entry(kind, name, launcher, old):
     if kind == 'opencode':
         return {'type': 'local', 'command': [launcher, 'serve', name], 'enabled': True}
     entry = {'command': launcher, 'args': ['serve', name]}
-    if kind == 'claude':
+    if kind in ('claude','vscode'):
         entry['type'] = 'stdio'
     if kind == 'agy':
         entry['disabled'] = False
@@ -309,6 +321,10 @@ def sync_configs(home, catalog, launcher,observed=None,expected_inputs=None):
         if read_config(policy_path)!=policies:
             save_json(policy_path,policies)
         desired = {n: native_entry(kind,n,launcher,saved.get(n,{})) for n in sorted(enabled)}
+        if 'server_names' in target:
+            scope=target['server_names']
+            desired={**{n:s for n,s in old.items() if n not in scope},
+                     **{n:s for n,s in desired.items() if n in scope}}
         for n in NATIVE_ONLY & old.keys():
             desired[n] = old[n]
         if dict(old) != desired:
@@ -318,7 +334,7 @@ def sync_configs(home, catalog, launcher,observed=None,expected_inputs=None):
         for project in data.get('projects', {}).values():
             for name, spec in list(project.get('mcpServers', {}).items()):
                 canonical = ALIASES.get(name,name)
-                if canonical in enabled and normalize(spec) == enabled[canonical]:
+                if canonical in enabled and (canonical in MAIL_SERVERS or normalize(spec) == enabled[canonical]):
                     project['mcpServers'][name] = native_entry(kind,canonical,launcher,{})
         if kind == 'grok':
             data['disabled_mcp_servers'] = [n for n in data.get('disabled_mcp_servers',[]) if n not in enabled]

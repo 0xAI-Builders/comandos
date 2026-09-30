@@ -5,9 +5,33 @@ from pathlib import Path
 import sys
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import threading
+from contextlib import asynccontextmanager
+from unittest.mock import AsyncMock,patch
+from types import SimpleNamespace
 
 ROOT=Path(__file__).resolve().parents[1]
 sys.path.insert(0,str(ROOT/'lib'))
+
+
+def test_mail_check_authenticates_instead_of_trusting_the_tool_list(tmp_path):
+    proxy=importlib.import_module('extension_proxy')
+    session=SimpleNamespace(list_tools=AsyncMock(return_value=SimpleNamespace(tools=[SimpleNamespace(name='get_profile')],nextCursor=None)),
+                            call_tool=AsyncMock(return_value=SimpleNamespace(isError=True)))
+    @asynccontextmanager
+    async def fake(*args):yield session,SimpleNamespace(capabilities=SimpleNamespace(tools=True))
+    with patch.object(proxy,'upstream',fake):result=asyncio.run(proxy.check(tmp_path,'gmail',{'command':'fixture'}))
+    assert result['status']=='failed' and result['phase']=='read_access'
+    session.call_tool.assert_awaited_once_with('get_profile',{})
+
+
+def test_mail_check_rejects_the_wrong_mailbox(tmp_path):
+    proxy=importlib.import_module('extension_proxy')
+    session=SimpleNamespace(list_tools=AsyncMock(return_value=SimpleNamespace(tools=[],nextCursor=None)),
+                            call_tool=AsyncMock(return_value=SimpleNamespace(isError=False,content=[SimpleNamespace(type='text',text=json.dumps({'email':'wrong@example.com'}))])))
+    @asynccontextmanager
+    async def fake(*args):yield session,SimpleNamespace(capabilities=SimpleNamespace(tools=True))
+    with patch.object(proxy,'upstream',fake):result=asyncio.run(proxy.check(tmp_path,'qcdr-mail',{'command':'fixture'}))
+    assert result['status']=='failed' and result['phase']=='mailbox_identity'
 
 
 def test_http_proxy_preserves_tools_and_structured_results(tmp_path):

@@ -4,6 +4,7 @@ from __future__ import annotations
 import contextlib
 from datetime import timedelta
 import logging
+import json
 import os
 from pathlib import Path
 import sys
@@ -149,11 +150,18 @@ async def check(home,name,spec):
                         if not cursor:break
                 # These Google MCPs publish tools without authentication but
                 # reject actual access. A minimal read distinguishes the two.
-                probes={'google-drive':'list_recent_files','google-calendar':'list_calendars'}
+                mail_accounts={'gmail':'jesusbatallar@gmail.com','gmail-signara':'jesus@signara.ai',
+                               'qcdr-mail':'jesus@qcdr.io','proton-mail':'pdlgmcn@protonmail.com'}
+                probes={'google-drive':'list_recent_files','google-calendar':'list_calendars',
+                        **{n:'get_profile' for n in mail_accounts}}
                 if name in probes:
-                    result=await session.call_tool(probes[name],{'pageSize':1})
+                    result=await session.call_tool(probes[name],{} if name in mail_accounts else {'pageSize':1})
                     if result.isError:
                         return {'name':name,'status':'failed','phase':'read_access','tools':count}
+                    if name in mail_accounts:
+                        profile=json.loads(next(x.text for x in result.content if x.type=='text'))
+                        if (profile.get('emailAddress') or profile.get('email'))!=mail_accounts[name]:
+                            return {'name':name,'status':'failed','phase':'mailbox_identity','tools':count}
                 return {'name':name,'status':'connected','tools':count}
     except BaseException as exc:
         if isinstance(exc,(KeyboardInterrupt,SystemExit)):raise
