@@ -39,3 +39,26 @@ da 404: infraestructura del reenvío, no de esta fase.
 - Reenviar ttyd cuando se verifique desde la Mac (o probar desde el GTK).
 - La cadena `prueba-v1-codex` y las carpetas `T-2026-09-30-13-0{1-34,4-12,6-14}`
   son restos de esta prueba; se borran salvo que Jesús quiera conservarlas.
+
+## Corrección de estilos (30-sep, tarde)
+
+Jesús exigió respetar 100 % los estilos de los prototipos aprobados. Comparación
+visual lado a lado en la Mac mini (mockup `prototype-v2-barra.html` sin parámetros
+y `?round=cli` para el modal, contra `http://127.0.0.1:4777`):
+
+| Mockup aprobado | Implementación (9e20e0b) |
+|---|---|
+| `shots/fase2-mockup-barra.jpg` | `shots/fase2-estilos-barra.jpg` |
+| `shots/fase2-mockup-modal.jpg` | `shots/fase2-estilos-modal.jpg` |
+
+Portado valor por valor (paleta, radios, tamaños, píldoras): cabecera con libro,
+destino y píldora de catálogo; botón Cadenas violeta; búsqueda con lupa; tarjeta de
+cadenas guardadas con Correr; fila de CLI con monograma, versión y badge; arranques
+como píldoras (yolo ámbar sobre violeta oscuro); filas de dos líneas con chips en
+línea; tarjeta de cadena corriendo; pestañas de terminales rápidas. Modal: cabecera
+con búsqueda y «escribe en», tablero de CLI a lo ancho con comandos en tres columnas
+como tarjetas con «+ cadena» y asa, barra de ranuras con seis huecos, Nombre,
+Guardar y Correr, nota al pie. Lista plana por CLI (ronda 6 A) y solo comandos
+presentes en el binario. En el escritorio el modal es una ventana GTK centrada.
+Fuera de alcance de esta pasada: la cabecera superior (botones 3D aprobados en el
+grill de fase 1, que trabaja la otra sesión).
