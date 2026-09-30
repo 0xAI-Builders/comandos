@@ -112,3 +112,16 @@ Go). Por CLI la barra muestra, con el texto exacto de la ayuda:
 
 Todos los CLI arrancan cerrados, y las secciones de la ayuda también. Las ayudas
 reales quedan como fixtures en `tests/fixtures/cli-help/`.
+
+### Modo yolo verificado arrancando cada CLI (30-sep)
+
+Cada arranque se lanzó en un tmux privado (`-L cs-yolo`, carpetas ya confiadas, sin
+escribir nada al modelo) y se leyó el modo en la propia interfaz del CLI:
+
+| CLI | Arranque | Evidencia |
+|---|---|---|
+| Claude 2.1.286 | `claude --dangerously-skip-permissions` | pie: «bypass permissions on». `--allow-dangerously-skip-permissions` arranca en «auto mode on»: no es yolo |
+| Codex 0.159.2 | `codex --dangerously-bypass-approvals-and-sandbox` (alias oculto `--yolo`) | `/status`: «Permissions: Full Access»; sin flag, «Workspace (Ask for approval)». `codex -a never -s danger-full-access` también da «Full Access» (preset «Full access» de la doc de OpenAI) |
+| Grok 1.0.44 | `grok --always-approve` | doc embebida en el binario: «alias `--yolo`, same as `--permission-mode bypassPermissions`»; deny rules, hooks y admin locks siguen aplicando |
+| OpenCode 1.18.33 | `opencode --auto` | pie: «Build auto»; sin flag, «Build». Solo aprueba lo que no está denegado explícitamente |
+| Antigravity 1.2.14 | `agy --dangerously-skip-permissions` | la interfaz no lo muestra (sigue «accept-edits»); el binario: «always deny … (overridden by dangerously-skip-permissions)» |

@@ -21,11 +21,6 @@
     ],
     "yolo": [
      {
-      "text": "claude --allow-dangerously-skip-permissions",
-      "description": "Enable bypassing all permission checks as an option, without it being enabled by default. Recommended only for sandboxes with no internet access.",
-      "args": []
-     },
-     {
       "text": "claude --dangerously-skip-permissions",
       "description": "Bypass all permission checks. Recommended only for sandboxes with no internet access.",
       "args": []
@@ -48,6 +43,11 @@
        {
         "text": "claude --agents ",
         "description": "JSON object defining custom agents, or with --print the path to a file that holds one (e.g. '{\"reviewer\": {\"description\": \"Reviews code\", \"prompt\": \"You are a code reviewer\"}}')",
+        "args": []
+       },
+       {
+        "text": "claude --allow-dangerously-skip-permissions",
+        "description": "Enable bypassing all permission checks as an option, without it being enabled by default. Recommended only for sandboxes with no internet access.",
         "args": []
        },
        {

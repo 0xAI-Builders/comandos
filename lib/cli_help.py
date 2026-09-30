@@ -16,6 +16,10 @@ _SKIP_SECTIONS = {"arguments", "positionals"}         # no se teclean
 # checks», «Skip all confirmation prompts», «Auto-approve all tool executions»…).
 # Solo decide el color ámbar y que la fila salga arriba; el texto es el del CLI.
 _YOLO = re.compile(r"\b(?:bypass\w*|skip) all (?:permission|confirmation)|\bauto-approve (?:all|permissions)", re.I)
+# «Enable bypassing all permission checks as an option, without it being enabled by
+# default» (claude --allow-dangerously-skip-permissions) solo lo permite: arranca en
+# el modo normal (verificado en un tmux privado: «auto mode on»).
+_ONLY_ALLOWS = re.compile(r"\bas an option\b|without it being enabled", re.I)
 _VALUES = [
     re.compile(r"\[possible values: ([^\]]+)\]"),
     re.compile(r"[\[(]choices: ([^\])]+)[\])]"),
@@ -59,7 +63,8 @@ def _item(head, desc_lines, binary, section):
     desc_shown = _YARGS_TAIL.sub("", desc).strip() if re.search(r"\[(?:boolean|string|number|array)\]", desc) else desc
     vals = _values(desc, bullets)
     return {"text": text + (" " if takes_arg or vals else ""), "head": head, "description": desc_shown,
-            "args": vals, "yolo": bool(_YOLO.search(desc_shown)), "section": section}
+            "args": vals, "yolo": bool(_YOLO.search(desc_shown)) and not _ONLY_ALLOWS.search(desc_shown),
+            "section": section}
 
 
 def parse_help(text, binary):

@@ -59,8 +59,8 @@ def test_start_rows_come_verbatim_from_each_cli_help():
     assert next(i for i in opts if i["text"] == "codex --ask-for-approval ")["args"] == ["on-request", "never"]
     cmds = next(s for s in codex["sections"] if s["title"] == "Commands")["items"]
     assert any(i["text"] == "codex resume" and i["description"].startswith("Resume a previous interactive session") for i in cmds)
-    assert [y["text"] for y in _start(view, "claude")["yolo"]] == [
-        "claude --allow-dangerously-skip-permissions", "claude --dangerously-skip-permissions"]
+    # --allow-dangerously-skip-permissions solo lo habilita como opción: no es yolo
+    assert [y["text"] for y in _start(view, "claude")["yolo"]] == ["claude --dangerously-skip-permissions"]
     assert [y["text"] for y in _start(view, "grok")["yolo"]] == ["grok --always-approve"]
     oc = _start(view, "opencode")
     assert [y["text"] for y in oc["yolo"]] == ["opencode --auto"]
