@@ -4837,12 +4837,12 @@ def _panel_popover(btn, panel, width, height):
     return go
 
 
-# P2: the common time symbol is Zoedoz's CC0 hourglass, 15 original 42×42
-# frames (falling sand and a flip in 1.5 s), the same sheet the web header
-# animates. Shown at 0.5× with nearest-neighbour scaling so the pixels stay
-# whole; the sand is decorative and never encodes remaining time.
-HOURGLASS_SHEET = os.path.join(CC_REPO, "assets", "pomodoro", "zoedoz", "hourglass.png")
-HOURGLASS_FRAME_PX, HOURGLASS_FPS = 42, 10
+# Reloj de arena de Davitheoles (grill 29-sep): 27 cuadros originales de 32 px.
+# La arena ES el tiempo del bloque (cuadros 0-20), con un goteo de +1 cuadro
+# mientras corre; en pausa se congela atenuado y al terminar gira (21-26).
+# Mismo cálculo que P.hourglassFrame en dash/pomodoro.js.
+HOURGLASS_SHEET = os.path.join(CC_REPO, "assets", "pomodoro", "davitheoles", "hourglass.png")
+HOURGLASS_FRAME_PX, HOURGLASS_FPS = 32, 9
 
 
 def hourglass_sheet_frames(sheet_width, sheet_height, scale=1.0):
@@ -4851,26 +4851,81 @@ def hourglass_sheet_frames(sheet_width, sheet_height, scale=1.0):
     return [(i * HOURGLASS_FRAME_PX, 0, HOURGLASS_FRAME_PX, min(HOURGLASS_FRAME_PX, sheet_height)) for i in range(n)]
 
 
-_HOURGLASS = {"frames": [], "index": 0, "image": None, "source": None}
+def hourglass_frame(block, now_ms, flip_start_ms):
+    """Cuadro del reloj: 0-20 según lo transcurrido del bloque, goteo si corre, 21-26 al terminar."""
+    if flip_start_ms is not None and 0 <= now_ms - flip_start_ms < 6 * 110:
+        return 21 + int((now_ms - flip_start_ms) // 110)
+    if not block or block.get("status") not in ("running", "paused") or not block.get("targetMs"):
+        return 0
+    delta = max(0, now_ms - (block.get("resumedAtMs") or 0)) if block["status"] == "running" else 0
+    elapsed = min(block["targetMs"], (block.get("activeMs") or 0) + delta)
+    base = min(20, int(elapsed / block["targetMs"] * 20))
+    if block["status"] != "running":
+        return base
+    return min(20, base + 1) if int(now_ms // 450) % 3 == 0 else base
 
 
-def _hourglass_frames(scale=0.5):
+_HOURGLASS = {"frames": [], "dim": [], "index": -1, "image": None, "source": None,
+              "block": None, "offset": 0, "flip": None, "seen": None, "fetching": False, "polled": 0.0}
+
+
+def _hourglass_frames(scale=0.75):
     if not _HOURGLASS["frames"]:
         try:
             sheet = GdkPixbuf.Pixbuf.new_from_file(HOURGLASS_SHEET)
             px = int(HOURGLASS_FRAME_PX * scale)
             for (x, y, w, h) in hourglass_sheet_frames(sheet.get_width(), sheet.get_height()):
-                _HOURGLASS["frames"].append(sheet.new_subpixbuf(x, y, w, h).scale_simple(px, px, GdkPixbuf.InterpType.NEAREST))
+                pb = sheet.new_subpixbuf(x, y, w, h).scale_simple(px, px, GdkPixbuf.InterpType.NEAREST)
+                dim = pb.copy()
+                pb.saturate_and_pixelate(dim, 0.45, False)
+                _HOURGLASS["frames"].append(pb)
+                _HOURGLASS["dim"].append(dim)
         except Exception as exc:
             print(f"hourglass: {exc}", file=sys.stderr)
     return _HOURGLASS["frames"]
 
 
+def _hourglass_poll():
+    """El bloque vive en el backend: se lee /pomodoro cada 2 s en otro hilo."""
+    if _HOURGLASS["fetching"] or time.time() - _HOURGLASS["polled"] < 2:
+        return
+    _HOURGLASS["fetching"], _HOURGLASS["polled"] = True, time.time()
+
+    def run():
+        try:
+            with urllib.request.urlopen(BASE_URL + "/pomodoro", timeout=3) as r:
+                data = json.loads(r.read().decode())
+            GLib.idle_add(_hourglass_adopt, data)
+        except Exception:
+            pass
+        finally:
+            _HOURGLASS["fetching"] = False
+    threading.Thread(target=run, daemon=True).start()
+
+
+def _hourglass_adopt(data):
+    block = data.get("block") if isinstance(data, dict) else None
+    _HOURGLASS["offset"] = int(data.get("serverNowMs") or time.time() * 1000) - int(time.time() * 1000)
+    if block and block.get("status") == "completed" and _HOURGLASS["seen"] not in (None, block.get("blockId")):
+        _HOURGLASS["flip"] = int(time.time() * 1000) + _HOURGLASS["offset"]   # gira una vez al terminar
+    if block:
+        _HOURGLASS["seen"] = block.get("blockId") if block.get("status") == "completed" else _HOURGLASS["seen"] or ""
+    _HOURGLASS["block"] = block
+    return False
+
+
 def _hourglass_tick():
     frames = _HOURGLASS["frames"]
-    if frames and _PRESENCE.get("visible", True) and _animations_enabled():
-        _HOURGLASS["index"] = (_HOURGLASS["index"] + 1) % len(frames)
-        _HOURGLASS["image"].set_from_pixbuf(frames[_HOURGLASS["index"]])
+    if frames and _PRESENCE.get("visible", True):
+        _hourglass_poll()
+        now = int(time.time() * 1000) + _HOURGLASS["offset"]
+        block = _HOURGLASS["block"]
+        i = hourglass_frame(block, now if _animations_enabled() else 0, _HOURGLASS["flip"])
+        paused = bool(block) and block.get("status") == "paused"
+        key = (i, paused)
+        if key != _HOURGLASS["index"]:
+            _HOURGLASS["index"] = key
+            _HOURGLASS["image"].set_from_pixbuf((_HOURGLASS["dim"] if paused else frames)[min(i, len(frames) - 1)])
     return True
 
 

@@ -3,10 +3,10 @@
   "copiedFrom": "dash/prototypes/assets/pixel-packs (design worktree comandos-v1-grill)",
   "files": [
     {
-      "file": "zoedoz/hourglass.png",
-      "sourceFile": "https://opengameart.org/sites/default/files/hourglass_2.png",
-      "sha256": "eb7385877b3a7e39fc56fd17ba53fbb7f5d0ea4cbbae13b074986f23671a444d",
-      "bytes": 3307
+      "file": "davitheoles/hourglass.png",
+      "sourceFile": "https://davitheoles.itch.io/inverted-hourglass (Inverted Hourglass.zip → original(32x32)/Inverted hourglass1-27.png, appended left to right)",
+      "sha256": "ff68c4878e5ebc0375263cc86821dab0bc884757856c9b08b764e6cc689be163",
+      "bytes": 1852
     },
     {
       "file": "karsiori-chests/golden.png",

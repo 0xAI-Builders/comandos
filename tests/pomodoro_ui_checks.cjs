@@ -135,10 +135,10 @@ async function readySounds(storage = memoryStorage(), log = []) {
     for (const id of P.STYLE_ORDER) {
       const roles = Object.keys(P.STYLES[id].assets).sort();
       assert.deepEqual(roles, ['clock', 'crystal', 'first', 'hundred', 'level', 'streak'], id);
-      assert.equal(P.STYLES[id].assets.clock.file, 'zoedoz/hourglass.png');
-      assert.equal(P.STYLES[id].assets.clock.frames, 15);
+      assert.equal(P.STYLES[id].assets.clock.file, 'davitheoles/hourglass.png');
+      assert.equal(P.STYLES[id].assets.clock.frames, 27);
     }
-    assert.ok(fs.readFileSync(path.join(ROOT, 'assets/pomodoro/CREDITS.md'), 'utf8').includes('Zoedoz'));
+    assert.ok(fs.readFileSync(path.join(ROOT, 'assets/pomodoro/CREDITS.md'), 'utf8').includes('Davitheoles'));
   });
 
   await check('animated sheets play their real frame count (PNG width = frames x frame width)', async () => {
@@ -230,12 +230,25 @@ async function readySounds(storage = memoryStorage(), log = []) {
     assert.equal(v.ui.client.snapshot().settings.style, 'crystals', 'a command answer keeps settings/progress from the last GET');
   });
 
+  await check('the sand is the real time: fill frames 0-20, drip, freeze on pause, flip 21-26 at the end', () => {
+    const b = (status, activeMs) => ({ status, targetMs: 25 * MIN, activeMs, resumedAtMs: 0 });
+    assert.equal(P.hourglassFrame(null, 0, null), 0, 'idle rests on the first frame');
+    assert.equal(P.hourglassFrame(b('paused', 0), 0, null), 0);
+    assert.equal(P.hourglassFrame(b('paused', 12.5 * MIN), 0, null), 10, 'half the block, half the fill');
+    assert.equal(P.hourglassFrame(b('paused', 25 * MIN), 0, null), 20);
+    const drip = [0, 450, 900].map(t => P.hourglassFrame(b('running', 5 * MIN), t, null));
+    assert.deepEqual(drip.sort(), [4, 4, 5], 'a running clock drips one frame ahead now and then');
+    assert.equal(P.hourglassFrame(b('paused', 5 * MIN), 450 * 7, null), 4, 'paused never drips');
+    assert.deepEqual([0, 110, 220, 330, 440, 550].map(d => P.hourglassFrame(null, 1000 + d, 1000)), [21, 22, 23, 24, 25, 26]);
+    assert.equal(P.hourglassFrame(null, 1000 + 700, 1000), 0, 'after the flip it rests');
+  });
+
   await check('style comes from the global setting and renders the shared hourglass', async () => {
     const v = loadView(JSON.parse(JSON.stringify(running)), []);
     await settle();
     v.ui.render();
     assert.equal(v.ui.state.style, 'crystals');
-    assert.ok(v.button.innerHTML.includes('zoedoz/hourglass.png'));
+    assert.ok(v.button.innerHTML.includes('davitheoles/hourglass.png'));
     assert.equal(v.button.querySelector('.pomo-mini').textContent, '20:00', 'header shows the server-based remaining time');
     const built = v.button.innerHTML;
     v.setNow(T0 + 6 * MIN); v.ui.render();

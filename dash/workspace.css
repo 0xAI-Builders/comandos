@@ -279,10 +279,13 @@ body.only-panel #pomo-panel.pm-v1{width:100%!important}
 .pm-framed>.pm-pixel{animation:pm-pixel-frames 1.2s steps(var(--frames),end) infinite}
 .pm-asset.pm-variable{width:40px;height:40px;animation:none}
 .pm-variable>.pm-pixel{position:absolute;left:50%;top:50%;width:calc(var(--frame-width)*1px);height:calc(var(--frame-height)*1px);transform-origin:center;transform:translate(-50%,-50%) scale(var(--pixel-scale));animation-duration:var(--strip-duration)!important}
-.pm-asset-clock.pm-variable{--pixel-scale:2;width:84px;height:84px}
+.pm-asset-clock.pm-variable{--pixel-scale:2.5;width:84px;height:84px}
 .pm-art-samples .pm-asset{--pixel-scale:1;width:40px;height:40px}
 .pm-motion-chest>.pm-pixel{animation-name:pm-chest-frames;animation-timing-function:steps(1,end)}
-#btn-pomo .pm-asset-clock.pm-header-clock{--pixel-scale:.5;width:21px;height:21px;margin:0;animation:none}
+#btn-pomo .pm-asset-clock.pm-header-clock{--pixel-scale:.75;width:24px;height:24px;margin:0;animation:none}
+/* Reloj de Davitheoles: el cuadro lo pinta pomodoro.js según el bloque (arena = tiempo real). */
+.pm-framed.pm-motion-progress>.pm-pixel{animation:none!important}
+#btn-pomo.paused .pm-motion-progress>.pm-pixel,.pm-paused .pm-motion-progress>.pm-pixel{filter:saturate(.45) brightness(.8)}
 @keyframes pm-pixel-frames{from{background-position-x:0}to{background-position-x:var(--strip-end)}}
 @keyframes pm-asset-breathe{50%{transform:translateY(-2px);filter:brightness(1.12)}}
 @keyframes pm-chest-frames{0%,12%{background-position-x:0}18%{background-position-x:-40px}27%{background-position-x:-80px}36%{background-position-x:-120px}45%,72%{background-position-x:-160px}81%{background-position-x:-120px}87%{background-position-x:-80px}93%{background-position-x:-40px}99%,100%{background-position-x:0}}

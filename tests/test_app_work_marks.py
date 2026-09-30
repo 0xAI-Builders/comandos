@@ -163,18 +163,22 @@ def test_context_menu_offers_tab_and_identified_pane_only():
     assert none.children == []
 
 
-def test_header_hourglass_uses_the_fifteen_original_frames():
-    """P2: the desktop header shows Zoedoz's animated hourglass (15 × 42 px), not a flat icon."""
-    ns = {"CC_REPO": str(ROOT), "os": __import__("os"), "GdkPixbuf": None, "HOURGLASS_FRAME_PX": 42}
+def test_header_hourglass_is_davitheoles_and_follows_the_block():
+    """Grill 29-sep: Davitheoles' 27 original 32 px frames; the sand is the real time (C)."""
+    ns = {"CC_REPO": str(ROOT), "os": __import__("os"), "GdkPixbuf": None, "HOURGLASS_FRAME_PX": 32}
     tree = ast.parse(SOURCE)
-    nodes = [n for n in tree.body if isinstance(n, ast.FunctionDef) and n.name in ("hourglass_sheet_frames",)]
-    assert nodes, "cc-app defines hourglass_sheet_frames"
+    nodes = [n for n in tree.body if isinstance(n, ast.FunctionDef) and n.name in ("hourglass_sheet_frames", "hourglass_frame")]
+    assert len(nodes) == 2, "cc-app defines hourglass_sheet_frames and hourglass_frame"
     exec(compile(ast.Module(body=nodes, type_ignores=[]), "<app>", "exec"), ns)
-    frames = ns["hourglass_sheet_frames"](630, 42)
-    assert len(frames) == 15 and frames[0] == (0, 0, 42, 42) and frames[-1] == (588, 0, 42, 42)
-    assert ns["hourglass_sheet_frames"](630, 42, scale=0.5)[1] == (42, 0, 42, 42), "source rects are native pixels"
-    path = ROOT / "assets" / "pomodoro" / "zoedoz" / "hourglass.png"
-    assert path.is_file(), "the production asset ships with the app"
+    frames = ns["hourglass_sheet_frames"](864, 32)
+    assert len(frames) == 27 and frames[-1] == (832, 0, 32, 32)
+    f = ns["hourglass_frame"]
+    block = lambda status, active: {"status": status, "targetMs": 25 * 60000, "activeMs": active, "resumedAtMs": 0}
+    assert f(None, 0, None) == 0
+    assert f(block("paused", 12.5 * 60000), 0, None) == 10
+    assert sorted(f(block("running", 5 * 60000), t, None) for t in (0, 450, 900)) == [4, 4, 5]
+    assert [f(None, 1000 + d, 1000) for d in (0, 110, 550)] == [21, 22, 26]
+    assert (ROOT / "assets" / "pomodoro" / "davitheoles" / "hourglass.png").is_file()
 
 
 def test_clicking_the_tab_indicator_opens_the_state_menu_with_icons_and_text():
