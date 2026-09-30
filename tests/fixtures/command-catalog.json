@@ -1,0 +1,617 @@
+{
+ "version": 1,
+ "clis": [
+  {
+   "id": "claude",
+   "label": "Claude Code",
+   "binary": "claude",
+   "version": {
+    "pinned": "2.1.268",
+    "installed": "2.1.268",
+    "status": "ok"
+   },
+   "launch": {
+    "yolo": [
+     "claude --dangerously-skip-permissions",
+     "claude --dangerously-skip-permissions --resume <id>",
+     "claude --dangerously-skip-permissions --model claude-fable-5-1 --effort max"
+    ],
+    "normal": [
+     "claude",
+     "claude --resume <id>"
+    ],
+    "yoloNote": ""
+   },
+   "groups": [
+    {
+     "title": "Modelo y esfuerzo",
+     "icon": "brain",
+     "commands": [
+      {
+       "text": "/model ",
+       "description": "Cambia el modelo de esta conversación; sin argumento abre el selector.",
+       "args": [
+        "claude-fable-5-1",
+        "claude-opus-5-5",
+        "claude-sonnet-5-5"
+       ]
+      },
+      {
+       "text": "/effort ",
+       "description": "Nivel de razonamiento.",
+       "args": [
+        "low",
+        "medium",
+        "high",
+        "max"
+       ]
+      },
+      {
+       "text": "/fast",
+       "description": "Salida rápida con Opus.",
+       "args": []
+      },
+      {
+       "text": "/plan",
+       "description": "Modo plan: propone antes de tocar código.",
+       "args": []
+      }
+     ]
+    },
+    {
+     "title": "Conversación",
+     "icon": "cycle",
+     "commands": [
+      {
+       "text": "/resume",
+       "description": "Elige una conversación anterior y la reanuda.",
+       "args": []
+      },
+      {
+       "text": "/fork",
+       "description": "Bifurca esta conversación en otra.",
+       "args": []
+      },
+      {
+       "text": "/compact",
+       "description": "Resume el contexto para liberar ventana.",
+       "args": []
+      },
+      {
+       "text": "/clear",
+       "description": "Limpia el historial de la sesión.",
+       "args": []
+      },
+      {
+       "text": "/exit",
+       "description": "Sale del CLI; el pane vuelve a la shell.",
+       "args": []
+      }
+     ]
+    },
+    {
+     "title": "Cuenta",
+     "icon": "key",
+     "commands": [
+      {
+       "text": "/login",
+       "description": "Inicia sesión solo en esta terminal.",
+       "args": []
+      },
+      {
+       "text": "/logout",
+       "description": "Cierra la sesión de esta terminal.",
+       "args": []
+      },
+      {
+       "text": "/cost",
+       "description": "Consumo de esta conversación.",
+       "args": []
+      }
+     ]
+    },
+    {
+     "title": "Contexto y herramientas",
+     "icon": "map",
+     "commands": [
+      {
+       "text": "/context",
+       "description": "Qué ocupa la ventana ahora.",
+       "args": []
+      },
+      {
+       "text": "/add-dir ",
+       "description": "Añade una carpeta al contexto.",
+       "args": []
+      },
+      {
+       "text": "/mcp",
+       "description": "Servidores MCP conectados.",
+       "args": []
+      },
+      {
+       "text": "/agents",
+       "description": "Subagentes disponibles.",
+       "args": []
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "codex",
+   "label": "Codex",
+   "binary": "codex",
+   "version": {
+    "pinned": "0.154.0",
+    "installed": "0.154.0",
+    "status": "ok"
+   },
+   "launch": {
+    "yolo": [
+     "codex --dangerously-bypass-approvals-and-sandbox",
+     "codex --dangerously-bypass-approvals-and-sandbox resume <id>"
+    ],
+    "normal": [
+     "codex",
+     "codex resume <id>",
+     "codex --full-auto"
+    ],
+    "yoloNote": ""
+   },
+   "groups": [
+    {
+     "title": "Modelo y esfuerzo",
+     "icon": "brain",
+     "commands": [
+      {
+       "text": "/model",
+       "description": "Selector numerado: modelo y luego esfuerzo.",
+       "args": []
+      },
+      {
+       "text": "/plan",
+       "description": "Modo plan.",
+       "args": []
+      }
+     ]
+    },
+    {
+     "title": "Conversación",
+     "icon": "cycle",
+     "commands": [
+      {
+       "text": "/resume",
+       "description": "Reanuda una conversación.",
+       "args": []
+      },
+      {
+       "text": "/fork",
+       "description": "Bifurca.",
+       "args": []
+      },
+      {
+       "text": "/compact",
+       "description": "Compacta el contexto.",
+       "args": []
+      },
+      {
+       "text": "/new",
+       "description": "Conversación nueva.",
+       "args": []
+      },
+      {
+       "text": "/exit",
+       "description": "Sale del CLI.",
+       "args": []
+      }
+     ]
+    },
+    {
+     "title": "Cuenta",
+     "icon": "key",
+     "commands": [
+      {
+       "text": "/logout",
+       "description": "Cierra sesión.",
+       "args": []
+      }
+     ]
+    },
+    {
+     "title": "Contexto y herramientas",
+     "icon": "map",
+     "commands": [
+      {
+       "text": "/review",
+       "description": "Revisión de cambios.",
+       "args": []
+      },
+      {
+       "text": "/skills",
+       "description": "Skills disponibles.",
+       "args": []
+      },
+      {
+       "text": "/hooks",
+       "description": "Hooks configurados.",
+       "args": []
+      },
+      {
+       "text": "/cd ",
+       "description": "Cambia de carpeta.",
+       "args": []
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "grok",
+   "label": "Grok Build",
+   "binary": "grok",
+   "version": {
+    "pinned": "1.0.25",
+    "installed": "1.0.25",
+    "status": "ok"
+   },
+   "launch": {
+    "yolo": [
+     "grok --always-approve",
+     "grok --always-approve --resume <id>"
+    ],
+    "normal": [
+     "grok",
+     "grok --resume <id>"
+    ],
+    "yoloNote": ""
+   },
+   "groups": [
+    {
+     "title": "Modelo y esfuerzo",
+     "icon": "brain",
+     "commands": [
+      {
+       "text": "/model ",
+       "description": "Alias /m. Cambia el modelo.",
+       "args": [
+        "grok-5",
+        "grok-5-mini"
+       ]
+      },
+      {
+       "text": "/effort ",
+       "description": "Esfuerzo.",
+       "args": [
+        "low",
+        "high"
+       ]
+      },
+      {
+       "text": "/plan",
+       "description": "Modo plan.",
+       "args": []
+      },
+      {
+       "text": "/auto",
+       "description": "Modo automático.",
+       "args": []
+      }
+     ]
+    },
+    {
+     "title": "Conversación",
+     "icon": "cycle",
+     "commands": [
+      {
+       "text": "/resume",
+       "description": "Reanuda.",
+       "args": []
+      },
+      {
+       "text": "/fork",
+       "description": "Bifurca.",
+       "args": []
+      },
+      {
+       "text": "/rewind",
+       "description": "Alias /undo.",
+       "args": []
+      },
+      {
+       "text": "/new",
+       "description": "Nueva.",
+       "args": []
+      },
+      {
+       "text": "/exit",
+       "description": "Sale.",
+       "args": []
+      }
+     ]
+    },
+    {
+     "title": "Cuenta",
+     "icon": "key",
+     "commands": [
+      {
+       "text": "/login",
+       "description": "Inicia sesión.",
+       "args": []
+      },
+      {
+       "text": "/logout",
+       "description": "Cierra sesión.",
+       "args": []
+      },
+      {
+       "text": "/usage",
+       "description": "Cuota semanal.",
+       "args": []
+      }
+     ]
+    },
+    {
+     "title": "Contexto y herramientas",
+     "icon": "map",
+     "commands": [
+      {
+       "text": "/context",
+       "description": "Ventana actual.",
+       "args": []
+      },
+      {
+       "text": "/compact",
+       "description": "Compacta.",
+       "args": []
+      },
+      {
+       "text": "/skills",
+       "description": "Skills.",
+       "args": []
+      },
+      {
+       "text": "/mcps",
+       "description": "MCPs.",
+       "args": []
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "opencode",
+   "label": "OpenCode",
+   "binary": "opencode",
+   "version": {
+    "pinned": "1.17.18",
+    "installed": "1.17.18",
+    "status": "ok"
+   },
+   "launch": {
+    "yolo": [],
+    "normal": [
+     "opencode",
+     "opencode --session <id>"
+    ],
+    "yoloNote": "sin flag de arranque conocido; el modo se cambia dentro con /agents"
+   },
+   "groups": [
+    {
+     "title": "Modelo",
+     "icon": "brain",
+     "commands": [
+      {
+       "text": "/models",
+       "description": "Alias /mo. Elige modelo.",
+       "args": []
+      },
+      {
+       "text": "/variants",
+       "description": "Variantes del modelo.",
+       "args": []
+      },
+      {
+       "text": "/agents",
+       "description": "Agente activo.",
+       "args": []
+      }
+     ]
+    },
+    {
+     "title": "Conversación",
+     "icon": "cycle",
+     "commands": [
+      {
+       "text": "/new",
+       "description": "Alias /clear. Nueva.",
+       "args": []
+      },
+      {
+       "text": "/sessions",
+       "description": "Alias /resume. Reanuda.",
+       "args": []
+      },
+      {
+       "text": "/fork",
+       "description": "Bifurca.",
+       "args": []
+      },
+      {
+       "text": "/undo",
+       "description": "Deshace.",
+       "args": []
+      },
+      {
+       "text": "/exit",
+       "description": "Sale.",
+       "args": []
+      }
+     ]
+    },
+    {
+     "title": "Cuenta",
+     "icon": "key",
+     "commands": [
+      {
+       "text": "/connect",
+       "description": "Conecta un proveedor.",
+       "args": []
+      },
+      {
+       "text": "/org",
+       "description": "Cambia de organización.",
+       "args": []
+      }
+     ]
+    },
+    {
+     "title": "Contexto",
+     "icon": "map",
+     "commands": [
+      {
+       "text": "/compact",
+       "description": "Alias /summarize.",
+       "args": []
+      },
+      {
+       "text": "/skills",
+       "description": "Skills.",
+       "args": []
+      },
+      {
+       "text": "/mcps",
+       "description": "MCPs.",
+       "args": []
+      },
+      {
+       "text": "/help",
+       "description": "Ayuda.",
+       "args": []
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "agy",
+   "label": "Antigravity",
+   "binary": "agy",
+   "version": {
+    "pinned": "1.1.25",
+    "installed": "1.1.25",
+    "status": "unverified"
+   },
+   "launch": {
+    "yolo": [
+     "agy --dangerously-skip-permissions",
+     "agy --dangerously-skip-permissions --conversation <id>"
+    ],
+    "normal": [
+     "agy",
+     "agy --conversation <id>"
+    ],
+    "yoloNote": ""
+   },
+   "groups": [
+    {
+     "title": "Modelo",
+     "icon": "brain",
+     "commands": [
+      {
+       "text": "/model",
+       "description": "Modelo.",
+       "args": []
+      },
+      {
+       "text": "/effort ",
+       "description": "Esfuerzo.",
+       "args": [
+        "low",
+        "high"
+       ]
+      },
+      {
+       "text": "/plan",
+       "description": "Plan.",
+       "args": []
+      }
+     ]
+    },
+    {
+     "title": "Conversación",
+     "icon": "cycle",
+     "commands": [
+      {
+       "text": "/clear",
+       "description": "Alias /new.",
+       "args": []
+      },
+      {
+       "text": "/fork",
+       "description": "Alias /branch.",
+       "args": []
+      },
+      {
+       "text": "/resume",
+       "description": "Alias /switch.",
+       "args": []
+      },
+      {
+       "text": "/rewind",
+       "description": "Alias /undo.",
+       "args": []
+      },
+      {
+       "text": "/exit",
+       "description": "Sale.",
+       "args": []
+      }
+     ]
+    },
+    {
+     "title": "Cuenta",
+     "icon": "key",
+     "commands": [
+      {
+       "text": "/logout",
+       "description": "Cierra sesión.",
+       "args": []
+      },
+      {
+       "text": "/usage",
+       "description": "Alias /quota.",
+       "args": []
+      }
+     ]
+    },
+    {
+     "title": "Contexto",
+     "icon": "map",
+     "commands": [
+      {
+       "text": "/add-dir ",
+       "description": "Añade carpeta.",
+       "args": []
+      },
+      {
+       "text": "/mcp",
+       "description": "MCPs.",
+       "args": []
+      },
+      {
+       "text": "/skills",
+       "description": "Skills.",
+       "args": []
+      },
+      {
+       "text": "/context",
+       "description": "Ventana.",
+       "args": []
+      }
+     ]
+    }
+   ]
+  }
+ ]
+}
