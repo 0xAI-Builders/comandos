@@ -100,3 +100,21 @@ def test_ai_sprites_pref_defaults_to_the_comandos_bot_and_only_accepts_shipped_s
     assert 'id="ai-set-gallery"' in INDEX and "applyAiSet(p.ai_sprites" in INDEX
     app = (ROOT / "bin" / "cc-app").read_text()
     assert 'd.get("aiSprites") in work_mark_state.AI_SETS' in app and "def apply_ai_sprites" in app
+
+
+def test_desktop_header_actions_live_in_the_web_header_like_the_remote():
+    """Fix 2 (grill 30-sep): the GTK window bar keeps brand, ‹ › and window controls;
+    Terminal, Nueva sesión, Ordenar, Analytics, Remoto, Resúmenes, campana, Pomodoro
+    and Ajustes are the same web buttons as in the remote, left of the terminals."""
+    app = (ROOT / "bin" / "cc-app").read_text()
+    for widget in ("_settings_btn", "_notif_wrap", "_news_btn", "_pomo_btn", "_plus", "_quick_term_btn", "_sort_btn"):
+        assert f"_headerbar.pack_end({widget})" not in app, widget
+    for widget in ("_close", "_maximize", "_minimize"):
+        assert f"_headerbar.pack_end({widget})" in app, widget
+    assert 'HEADER_ACTIONS = {"quickTerminal": open_quick_terminal, "newSession": _open_wizard,' in app
+    assert 'd.get("headerAction") in HEADER_ACTIONS' in app
+    assert "body.inapp .hdr-primary{display:none}" not in INDEX
+    assert "body.inapp header.hdr-ordered :is(#btn-terminal,#btn-newsess){display:none}" not in CSS
+    assert 'id="btn-sort"' in INDEX and "body:not(.inapp) #btn-sort{display:none}" in CSS
+    for action in ("quickTerminal", "newSession", "sortMenu"):
+        assert f'toApp("{action}")' in INDEX

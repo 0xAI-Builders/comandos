@@ -37,6 +37,8 @@ def test_gtk_quick_terminal_retries_with_the_same_request_id():
 def test_gtk_terminal_button_is_separate_from_new_session():
     assert '_quick_term_btn = _icon_btn(\n    "terminal"' in SOURCE
     assert "open_quick_terminal)" in SOURCE
-    assert "_headerbar.pack_end(_quick_term_btn)" in SOURCE
+    # Fix 2 (30-sep): the action lives in the web header, which asks GTK through the bridge.
+    assert "_headerbar.pack_end(_quick_term_btn)" not in SOURCE
+    assert '"quickTerminal": open_quick_terminal' in SOURCE
     plus = SOURCE.split("_plus = _icon_btn(", 1)[1].split(")", 1)[0]
     assert "_open_wizard" in plus                        # "+" keeps the wizard

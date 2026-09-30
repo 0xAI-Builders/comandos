@@ -575,7 +575,9 @@ header.hdr-ordered .hdr-primary{margin-left:0}
 header.hdr-ordered .counts{display:flex!important;flex:none;align-items:center;gap:6px;flex-wrap:wrap;min-width:0;max-width:100%}
 header.hdr-ordered .cnt-short{display:none}
 header.hdr-ordered :is(#btn-switch,#btn-snippets){display:inline-flex!important}
-body.inapp header.hdr-ordered :is(#btn-terminal,#btn-newsess){display:none}   /* en la app viven en la barra GTK (_quick_term_btn, _plus), como Pomodoro y Resúmenes */
+/* En la app la cabecera es la misma que en remoto (fix 2, grill 30-sep): Terminal, Nueva sesión,
+   Resúmenes, campana, Pomodoro y Ajustes viven aquí; Ordenar solo aparece dentro de la app. */
+body:not(.inapp) #btn-sort{display:none}
 #servers-panel{flex:none;width:100%;max-width:1360px;margin:0 auto;box-sizing:border-box;padding-top:8px;border-bottom:1px solid var(--line)}
 @container sidebar (max-width:760px){#view-panel #servers-panel #ssh-bar{padding-left:12px;padding-right:12px}}
 #menu-panel{position:fixed;z-index:60;min-width:230px;max-width:calc(100vw - 16px);max-height:calc(100dvh - 16px);overflow:auto;box-sizing:border-box;padding:8px;display:flex;flex-direction:column;gap:6px;

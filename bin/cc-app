@@ -5277,7 +5277,8 @@ def _hourglass_button(tooltip):
     b.get_style_context().add_class("tabplus")
     b.set_relief(Gtk.ReliefStyle.NONE)
     b.set_tooltip_text(tooltip)
-    _HOURGLASS["source"] = GLib.timeout_add(1000 // HOURGLASS_FPS, _hourglass_tick)
+    # El reloj visible es el de la cabecera web (mismo asset); este botón solo
+    # queda para el atajo, así que no arranca el ticker de cuadros.
     return b
 
 
@@ -5332,19 +5333,15 @@ for _winctl in (_minimize, _maximize, _close):
 _headerbar.pack_end(_close)
 _headerbar.pack_end(_maximize)
 _headerbar.pack_end(_minimize)
-# Separador sutil entre controles de ventana y actions de app.
-_hb_sep = Gtk.Box(); _hb_sep.set_size_request(8, 1)
-_headerbar.pack_end(_hb_sep)
-# Ajustes · Notificaciones · Pomodoro — pegados a los controles de ventana.
+# Fix 2 (grill 30-sep, escritorio = remoto): Ajustes · campana · Resúmenes ·
+# Pomodoro · Terminal · Nueva sesión · Ordenar ya NO van en la barra de
+# ventana: viven en la cabecera web del tablero, a la izquierda, con el mismo
+# CSS que el remoto (workspace.css, botones 3D de Ajustes). La barra GTK queda
+# con la marca, ‹ › y los controles de ventana. Los botones GTK siguen
+# existiendo para los atajos y el puente (HEADER_ACTIONS), sin empaquetarse.
 for _key, _cls in ((_settings_btn, "settings"), (_notif_btn, "notif"), (_news_btn, "news"), (_pomo_btn, "pomo")):
     _key.get_style_context().add_class("cc-key")
     _key.get_style_context().add_class("cc-key-" + _cls)
-_headerbar.pack_end(_settings_btn)
-_headerbar.pack_end(_notif_wrap)
-_headerbar.pack_end(_news_btn)
-_headerbar.pack_end(_pomo_btn)
-_hb_sep2 = Gtk.Box(); _hb_sep2.set_size_request(8, 1)
-_headerbar.pack_end(_hb_sep2)
 # Solo el "+" (nueva sesión). Copiar/pestañas/buscar/snippets/ayuda siguen
 # disponibles por atajos y menús, pero NO en la barra (el usuario no los usa).
 # ---- Modo MOSAICO (Ctrl+G): TODAS las sesiones en un grid de terminales
@@ -5733,16 +5730,20 @@ def _sort_menu(button):
         undo.connect("activate", lambda _w: _sort_tabs({"restore": _SORT["prev"]}))
         menu.append(undo)
     menu.show_all()
-    menu.popup_at_widget(button, Gdk.Gravity.SOUTH_WEST, Gdk.Gravity.NORTH_WEST, None)
+    if button is None:
+        menu.popup_at_pointer(None)
+    else:
+        menu.popup_at_widget(button, Gdk.Gravity.SOUTH_WEST, Gdk.Gravity.NORTH_WEST, None)
 
 
 _sort_btn = _icon_btn("arrow-up-down", "Ordenar pestañas una vez" if ES else "Sort tabs once", lambda b: _sort_menu(b))
 for _key, _cls in ((_plus, "plus"), (_quick_term_btn, "term"), (_sort_btn, "sort")):
     _key.get_style_context().add_class("cc-key")
     _key.get_style_context().add_class("cc-key-" + _cls)
-_headerbar.pack_end(_plus)
-_headerbar.pack_end(_quick_term_btn)
-_headerbar.pack_end(_sort_btn)
+# Acciones que la cabecera web pide al escritorio por el puente (mismo botón,
+# misma función que el atajo de teclado).
+HEADER_ACTIONS = {"quickTerminal": open_quick_terminal, "newSession": _open_wizard,
+                  "sortMenu": lambda *_: _sort_menu(None)}
 
 
 def _cycle_page(delta):
@@ -5855,6 +5856,9 @@ def on_msg(mgr, res):
             return
         if d.get("aiSprites") in work_mark_state.AI_SETS:
             GLib.idle_add(apply_ai_sprites, d["aiSprites"])
+            return
+        if d.get("headerAction") in HEADER_ACTIONS:
+            GLib.idle_add(HEADER_ACTIONS[d["headerAction"]])
             return
         if d.get("theme"):
             apply_theme(d["theme"])

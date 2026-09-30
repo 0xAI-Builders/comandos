@@ -73,7 +73,8 @@ def test_visual_tabs_overview_button_is_present():
     assert "open_tabs_overview" in src
     # Ya NO se empaqueta en la barra (el usuario solo usa "+"): sigue por atajo.
     assert "_headerbar.pack_end(_tabs" not in src
-    assert "_headerbar.pack_end(_plus)" in src
+    assert "_headerbar.pack_end(_plus)" not in src   # «+» vive en la cabecera web (fix 2, 30-sep)
+    assert '"newSession": _open_wizard' in src
 
 
 def test_visual_tabs_overview_can_focus_and_close_tabs():
