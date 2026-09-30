@@ -1,0 +1,140 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>PROTOTIPO · Botones arcade</title>
+<!-- PROTOTIPO DESECHABLE (grill-design). Mismo tamaño para todos los botones de la cabecera + elevación 3D. -->
+<style>
+:root{--bg:#0b1119;--panel:#101824;--panel2:#141e2c;--line:#223044;--ink:#e6edf5;--mut:#8a98ab;--dim:#5d6b7e;--acc:#8b7cf6;--green:#4ade80;--amber:#f5b83d;--sz:40px}
+.light{--bg:#eef1f5;--panel:#ffffff;--panel2:#f4f6f9;--line:#d3dae4;--ink:#141a22;--mut:#566273;--dim:#8a95a4}
+*{box-sizing:border-box}html,body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.45 system-ui,sans-serif}
+.stage{max-width:1100px;margin:0 auto;padding:22px 16px 240px}
+h2{font-size:12px;color:var(--dim);letter-spacing:.8px;text-transform:uppercase;margin:26px 0 10px}
+.bar{display:flex;align-items:center;gap:12px;flex-wrap:wrap;padding:14px 16px;border:1px solid var(--line);border-radius:14px;background:var(--panel)}
+.bar .clock{font:600 15px ui-monospace,monospace;color:var(--mut);padding:0 4px}
+.bar .sep{width:1px;height:28px;background:var(--line);margin:0 2px}
+.phone{max-width:390px}
+.side{display:grid;grid-template-columns:320px 1fr;gap:14px}
+.sidebox{border:1px solid var(--line);border-radius:14px;background:var(--panel);padding:14px;display:flex;flex-direction:column;gap:12px}
+.sidebox .r{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+/* ---------- botón base: MISMO tamaño en todos ---------- */
+.k{--face:#1e2a3c;--edge:#0d141f;--ink2:var(--ink);--glow:transparent;position:relative;height:var(--sz);min-width:var(--sz);padding:0;border:0;cursor:pointer;font:600 13px system-ui;color:var(--ink2);display:inline-flex;align-items:center;justify-content:center;gap:7px;user-select:none;-webkit-tap-highlight-color:transparent;transition:transform .06s,box-shadow .06s,filter .15s}
+.k.txt{padding:0 14px}
+.k svg{width:18px;height:18px;stroke:currentColor;fill:none;stroke-width:1.9;stroke-linecap:round;stroke-linejoin:round;flex:none}
+.k img{width:24px;height:24px;image-rendering:pixelated;flex:none}
+.k .lbl{white-space:nowrap}
+.icononly .k .lbl{display:none}.icononly .k.txt{padding:0}
+.k .badge{position:absolute;top:-7px;right:-8px;min-width:19px;height:19px;padding:0 5px;border-radius:10px;background:var(--amber);color:#1a1300;font:800 11px/19px system-ui;text-align:center;z-index:2;box-shadow:0 2px 0 #7a5a10}
+.k.on{--face:#1d3a2a;--edge:#0c1f14;--ink2:var(--green)}
+.k:focus-visible{outline:2px solid var(--acc);outline-offset:4px}
+/* A · Arcade: domo redondo sobre aro */
+.vA .k{border-radius:50%;width:var(--sz);background:radial-gradient(circle at 50% 30%,color-mix(in srgb,var(--face) 60%,#fff 18%),var(--face) 62%);box-shadow:0 0 0 3px var(--edge),0 6px 0 3px var(--edge),0 10px 14px rgba(0,0,0,.45),inset 0 -4px 0 rgba(0,0,0,.25),inset 0 2px 0 rgba(255,255,255,.18);transform:translateY(-3px)}
+.vA .k.txt{border-radius:999px;width:auto}
+.vA .k:hover{filter:brightness(1.12)}
+.vA .k:active,.vA .k.press{transform:translateY(2px);box-shadow:0 0 0 3px var(--edge),0 1px 0 3px var(--edge),0 3px 6px rgba(0,0,0,.4),inset 0 -2px 0 rgba(0,0,0,.25),inset 0 2px 0 rgba(255,255,255,.12)}
+.vA .k.on{--face:#1f7a44;--edge:#0d3a20;--ink2:#eafff1}
+.vA .k.hot{--face:#7b3fe4;--edge:#361875;--ink2:#fff}
+/* B · Tecla mecánica */
+.vB .k{border-radius:10px;background:linear-gradient(180deg,color-mix(in srgb,var(--face) 70%,#fff 12%),var(--face));box-shadow:inset 0 1px 0 rgba(255,255,255,.14),inset 0 -2px 0 rgba(0,0,0,.25),0 5px 0 var(--edge),0 7px 10px rgba(0,0,0,.4);transform:translateY(-2px)}
+.vB .k:hover{filter:brightness(1.1)}
+.vB .k:active,.vB .k.press{transform:translateY(3px);box-shadow:inset 0 1px 0 rgba(255,255,255,.1),0 0 0 var(--edge),0 2px 4px rgba(0,0,0,.4)}
+.vB .k.on{--face:#1e5a36;--edge:#0b2a18;--ink2:#c9ffdd}
+/* C · Pixel 3D: bordes escalonados, sombra dura */
+.vC .k{border-radius:0;background:var(--face);box-shadow:
+  0 -3px 0 0 var(--face),0 3px 0 0 var(--face),-3px 0 0 0 var(--face),3px 0 0 0 var(--face),
+  inset 3px 3px 0 rgba(255,255,255,.16),inset -3px -3px 0 rgba(0,0,0,.3),
+  0 -6px 0 -3px #000,0 9px 0 -3px #000,-6px 0 0 -3px #000,6px 0 0 -3px #000,6px 9px 0 -3px #000,-6px 9px 0 -3px #000,
+  0 12px 0 -3px rgba(0,0,0,.45);margin:6px 6px 10px;transform:translateY(-2px)}
+.vC .k:active,.vC .k.press{transform:translateY(3px);filter:brightness(.9)}
+.vC .k.on{--face:#2f8f52;--ink2:#f0fff5}
+.vC .k{font-family:ui-monospace,Menlo,monospace;letter-spacing:.5px}
+/* D · Consola: botones de color por función */
+.vD .k{border-radius:14px;background:linear-gradient(180deg,color-mix(in srgb,var(--face) 80%,#fff 20%),var(--face));box-shadow:0 5px 0 var(--edge),0 8px 12px rgba(0,0,0,.45),inset 0 2px 0 rgba(255,255,255,.3);transform:translateY(-2px) rotate(-4deg);--ink2:#fff}
+.vD .k.txt{border-radius:999px;transform:translateY(-2px)}
+.vD .k:active,.vD .k.press{transform:translateY(3px) rotate(-4deg);box-shadow:0 1px 0 var(--edge),0 2px 4px rgba(0,0,0,.4),inset 0 2px 0 rgba(255,255,255,.2)}
+.vD .k.txt:active,.vD .k.txt.press{transform:translateY(3px)}
+.vD .k[data-c=purple]{--face:#7c4dff;--edge:#3a1f8c}.vD .k[data-c=green]{--face:#22a35a;--edge:#0f5a2f}
+.vD .k[data-c=amber]{--face:#e8a21a;--edge:#7d560a;--ink2:#1c1300}.vD .k[data-c=red]{--face:#e2485a;--edge:#7c1b27}
+.vD .k[data-c=blue]{--face:#2f7de0;--edge:#133f78}.vD .k[data-c=gray]{--face:#56627a;--edge:#262d3b}
+/* E · Sutil: elevación ligera, neutral */
+.vE .k{border-radius:10px;background:var(--panel2);border:1px solid var(--line);box-shadow:0 3px 0 var(--line),0 4px 8px rgba(0,0,0,.18);color:var(--mut);transform:translateY(-1px)}
+.vE .k:hover{color:var(--ink)}
+.vE .k:active,.vE .k.press{transform:translateY(2px);box-shadow:0 0 0 var(--line)}
+.vE .k.on{color:var(--green);border-color:color-mix(in srgb,var(--green) 45%,var(--line));box-shadow:0 3px 0 color-mix(in srgb,var(--green) 40%,var(--line))}
+.light .k{--face:#e3e8f0;--edge:#a7b2c3;--ink2:#1b2330}
+.light .vA .k.on,.light .vB .k.on,.light .vC .k.on{--face:#2bb163;--edge:#157a3d;--ink2:#fff}
+/* picker */
+.picker{position:fixed;right:14px;bottom:14px;z-index:9;width:440px;background:#17122a;color:#ece8ff;border:1px solid #3b3170;border-radius:14px;box-shadow:0 18px 50px #000c;padding:10px;font-size:13px;user-select:none}
+.picker .drag{cursor:move;display:flex;gap:8px;align-items:center;margin-bottom:8px}.picker .drag b{margin-right:auto}
+.picker .nav{display:grid;grid-template-columns:30px 1fr 30px;gap:6px}
+.picker button{font:inherit;color:inherit;background:none;cursor:pointer}
+.picker .nav button,.picker .opts button{border:1px solid #3b3170;border-radius:7px;height:30px}
+.picker .name{border:1px solid #8b7cf6;background:#241c44;border-radius:7px;display:flex;align-items:center;padding:0 10px;font-weight:600}
+.picker .opts{display:grid;grid-template-columns:repeat(5,1fr);gap:4px;margin-top:6px}
+.picker .opts button.on,.picker .st button.on{background:#8b7cf6;color:#12091f}
+.picker .desc{margin-top:8px;color:#c9c1f4;font-size:12px}
+.picker .st{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}.picker .st button{border:1px solid #3b3170;border-radius:7px;padding:4px 8px}
+@media (max-width:760px){.side{grid-template-columns:1fr}.picker{width:calc(100% - 20px);right:10px}}
+</style>
+</head>
+<body>
+<div class="stage" id="stage"></div>
+<div class="picker" id="picker"></div>
+<script>
+const V=[
+ {k:'A',n:'Arcade · domo redondo',d:'Botón de maquinita: domo redondo sobre su aro oscuro; al presionar se hunde y el aro lo recibe. Los que tienen texto son cápsula.'},
+ {k:'B',n:'Tecla mecánica',d:'Como tecla de teclado mecánico: cara clara arriba y un faldón grueso abajo; al presionar baja toda la altura.'},
+ {k:'C',n:'Pixel 3D',d:'Esquinas escalonadas en pixel y sombra dura sin desenfoque, a juego con el reloj pixel art. Tipografía monoespaciada.'},
+ {k:'D',n:'Consola de colores',d:'Cada función con su color (como A/B/X/Y de un control): Pomodoro ámbar, avisos rojo, resúmenes morado, remoto verde. Ligeramente inclinados.'},
+ {k:'E',n:'Elevación sutil',d:'Mantiene el look actual (neutral, borde fino) con un canto de 3 px que se hunde al presionar. El más sobrio.'},
+];
+const P=new URLSearchParams(location.search);
+const S={i:Math.max(0,V.findIndex(v=>v.k===P.get('variant'))),icon:P.get('text')!=='1',light:false,remote:true};
+const I={term:'<path d="m5 8 4 4-4 4M12 17h7"/>',chart:'<path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/>',phone:'<rect x="7" y="2" width="10" height="20" rx="2"/><path d="M11 18h2"/>',
+ bell:'<path d="M6 8a6 6 0 1 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.9 1.9 0 0 0 3.4 0"/>',spark:'<path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8z"/><path d="M19 3v4M17 5h4"/>',
+ gear:'<circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M4.2 4.2l2.1 2.1M17.7 17.7l2.1 2.1M2 12h3M19 12h3M4.2 19.8l2.1-2.1M17.7 6.3l2.1-2.1"/>',plus:'<path d="M12 5v14M5 12h14"/>'};
+const svg=n=>`<svg viewBox="0 0 24 24">${I[n]}</svg>`;
+let hg=10;
+function btns(){return [
+ ['term','Terminal','gray',false],['chart','Analytics','blue',true],['phone','Remoto','green',true,S.remote],
+ ['hg','Pomodoro','amber',false],['bell','Avisos','red',false,false,5],['spark','Resúmenes','purple',false],['gear','Ajustes','gray',true]];}
+function btn([ic,label,color,hasText,on,badge]){
+  const icon=ic==='hg'?`<img id="hgimg" src="assets/hourglass/dav/${String(hg).padStart(2,'0')}.png" alt="">`:svg(ic);
+  return `<button class="k ${hasText?'txt':''} ${on?'on':''}" data-c="${color}" title="${label}" data-btn="${label}">${icon}${hasText?`<span class="lbl">${label}</span>`:''}${badge?`<span class="badge">${badge}</span>`:''}</button>`;}
+function render(){
+  document.body.classList.toggle('light',S.light);
+  const v=V[S.i], all=btns().map(btn).join('');
+  document.getElementById('stage').innerHTML=`
+  <div class="v${v.k} ${S.icon?'icononly':''}">
+  <h2>Cabecera remota (barra izquierda) · como la tienes hoy</h2>
+  <div class="side"><div class="sidebox"><div class="r">${btns().slice(0,3).map(btn).join('')}<span class="clock" style="font:600 15px ui-monospace,monospace;color:var(--mut)">04:42</span></div>
+   <div class="r">${btns().slice(3).map(btn).join('')}</div></div>
+   <div class="sidebox" style="justify-content:center;color:var(--mut)">Todos miden ${getComputedStyle(document.documentElement).getPropertyValue('--sz').trim()} de alto${S.icon?' y de ancho':''}. Presiona cualquiera: se hunde como botón real.</div></div>
+  <h2>Cabecera de escritorio</h2>
+  <div class="bar"><b style="margin-right:auto;letter-spacing:1.5px;font-size:12px">● COMANDOS</b>${all}</div>
+  <h2>Celular 390 px</h2>
+  <div class="bar phone">${btns().filter(b=>b[0]!=='term').map(btn).join('')}</div>
+  </div>`;
+  picker();
+}
+function picker(){const v=V[S.i],pk=document.getElementById('picker');
+ pk.innerHTML=`<div class="drag" data-h><b>Grill · Botones de la cabecera</b><span style="color:#8f86c2;font-size:11px">←/→</span></div>
+ <div class="nav"><button data-s="-1">←</button><div class="name">${v.k} · ${v.n}</div><button data-s="1">→</button></div>
+ <div class="opts">${V.map((x,i)=>`<button class="${i===S.i?'on':''}" data-i="${i}">${x.k}</button>`).join('')}</div>
+ <div class="desc">${v.d}</div>
+ <div class="st"><button class="${S.icon?'on':''}" data-t="icon">Solo icono (todos cuadrados)</button><button class="${!S.icon?'on':''}" data-t="icon">Con texto</button>
+ <button class="${S.remote?'on':''}" data-t="remote">Remoto activo</button><button class="${S.light?'on':''}" data-t="light">Tema claro</button></div>`;}
+document.addEventListener('click',e=>{const t=e.target.closest('[data-s],[data-i],[data-t]');if(!t)return;
+ if(t.dataset.s)S.i=(S.i+ +t.dataset.s+V.length)%V.length;else if(t.dataset.i)S.i=+t.dataset.i;else S[t.dataset.t]=!S[t.dataset.t];
+ history.replaceState(null,'',`?variant=${V[S.i].k}${S.icon?'':'&text=1'}`);render();});
+document.addEventListener('pointerdown',e=>{const b=e.target.closest('.k');if(b)b.classList.add('press');});
+document.addEventListener('pointerup',()=>document.querySelectorAll('.k.press').forEach(b=>b.classList.remove('press')));
+document.addEventListener('keydown',e=>{if(e.key==='ArrowRight'||e.key==='ArrowLeft'){S.i=(S.i+(e.key==='ArrowRight'?1:V.length-1))%V.length;render();}});
+setInterval(()=>{hg=(hg+1)%21;document.querySelectorAll('#hgimg').forEach(i=>i.src=`assets/hourglass/dav/${String(hg).padStart(2,'0')}.png`);},900);
+(function(){const pk=document.getElementById('picker');let sx,sy,ox,oy;pk.addEventListener('pointerdown',e=>{if(!e.target.closest('[data-h]')||e.target.closest('button'))return;const r=pk.getBoundingClientRect();sx=e.clientX;sy=e.clientY;ox=r.left;oy=r.top;
+ const mv=ev=>{pk.style.left=ox+ev.clientX-sx+'px';pk.style.top=oy+ev.clientY-sy+'px';pk.style.right='auto';pk.style.bottom='auto'};const up=()=>{removeEventListener('pointermove',mv);removeEventListener('pointerup',up)};addEventListener('pointermove',mv);addEventListener('pointerup',up)})})();
+render();
+</script>
+</body>
+</html>
