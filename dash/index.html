@@ -327,7 +327,10 @@
   #btn-pomo .pomo-mini{font:800 10px var(--mono);margin-left:4px;font-variant-numeric:tabular-nums}
   #btn-notif{position:relative}
   /* Popover de la app: solo el panel, ocupando toda la vista, sin sombra ni borde */
-  body.only-panel > *:not(#notif-panel):not(#pomo-panel):not(#settings):not(#news-reader):not(.backdrop){display:none !important}
+  body.only-panel > *:not(#notif-panel):not(#pomo-panel):not(#settings):not(#news-reader):not(#notices):not(.backdrop){display:none !important}
+  html[data-only-panel="notices"] body.only-panel #notices{display:block!important;position:fixed;inset:0;border-top:0;--nt-h:calc(100vh - 44px)}
+  html[data-only-panel="notices"] body.only-panel #notices .nt-grip,html[data-only-panel="notices"] body.only-panel #notices [data-nt-act="max"]{display:none}
+  html:not([data-only-panel="notices"]) body.only-panel #notices{display:none!important}
   html:not([data-only-panel="news"]) body.only-panel #news-reader{display:none !important}
   body.only-panel{background:var(--panel)}
   body.only-panel #notif-panel,body.only-panel #pomo-panel{position:static !important;width:100% !important;max-width:none;max-height:none;
@@ -1825,7 +1828,7 @@
 	    #content{padding-bottom:env(safe-area-inset-bottom)}
 	  }
 	</style>
-<link rel="stylesheet" href="/workspace.css?v=cabecera5">
+<link rel="stylesheet" href="/workspace.css?v=rejilla6">
 <link rel="stylesheet" href="/buttons.css?v=2">
 <link rel="stylesheet" href="/reparto.css">
 <script src="/session-config.js?v=7f3232b0a624"></script>
@@ -2446,6 +2449,7 @@ if(ONLY_PANEL){ document.documentElement.classList.add("only-panel");document.do
   if(ONLY_PANEL==="usage"){$("#usage").classList.add("open");const t=(new URLSearchParams(location.search).get("tab")||"resumen").replace(/[^a-z]/g,"");activateMtab($("#usage .modal-panel"),t||"resumen");tickUsage(true);return;}
   if(ONLY_PANEL==="news") return;   // el lector se abre solo (news-reader.js, modo escritorio)
   if(ONLY_PANEL==="chains") return;  // modal Cadenas del escritorio: mountChainPage() al cargar los módulos
+  if(ONLY_PANEL==="notices") return; // cajón de avisos del escritorio (estante bajo las terminales): se monta abierto
   const b=document.getElementById(ONLY_PANEL === "pomo" ? "btn-pomo" : "btn-notif");if(b)b.click();
 },300); }); }
 // marca el webview de la app de escritorio: ahi las pestanas son la navegacion
@@ -7268,6 +7272,7 @@ function initHeaderActions(){
     window.webkit.messageHandlers.centro.postMessage(JSON.stringify({headerAction: action})); };
   $("#btn-terminal").addEventListener("click", toApp("quickTerminal"), true);
   $("#btn-newsess").addEventListener("click", toApp("newSession"), true);
+  $("#btn-notif").addEventListener("click", toApp("notices"), true);   // cajón bajo las terminales, como MCPs · Skills
   const newBtn = $("#btn-newsess");
   newBtn.title = tf("Nueva sesión: carpeta, agente y cuenta", "New session: folder, agent and account");
   newBtn.setAttribute("aria-label", tf("Nueva sesión", "New session"));
@@ -7835,7 +7840,7 @@ if("serviceWorker" in navigator)
 <script src="/workspace.js?v=5ef84088e7bd"></script>
 <script src="/work-marks.js?v=semaforo3"></script>
 <script src="/ui-sounds.js"></script>
-<script src="/pomodoro.js?v=sonido1"></script>
+<script src="/pomodoro.js?v=reloj2"></script>
 <script src="/vendor/markdown-it-15.0.2.umd.min.js"></script>
 <script src="/vendor/purify-3.4.16.min.js"></script>
 <script src="/news-reader.js" data-autoinstall></script>
@@ -7856,12 +7861,13 @@ function selectPaneInFrame(sess, pane){
   if(ready) post(); else frame.addEventListener("load", post, {once: true});
 }
 (function(){
-  if(!window.ComandosNotices || ONLY_PANEL) return;
+  if(!window.ComandosNotices || (ONLY_PANEL && ONLY_PANEL !== "notices")) return;
   const N = window.ComandosNotices;
   const liveSession = s => !!s && (S.liveSess instanceof Set ? S.liveSess.has(s) : openTerms.has(s));
+  const shelf = ONLY_PANEL === "notices";   // escritorio: el cajón vive bajo las terminales (estante GTK)
   N.install({
     api, deviceId: WS_DEVICE || "",
-    host: document.getElementById("panes"),
+    host: shelf ? document.body : document.getElementById("panes"),
     onBadge: n => { const b = $("#notif-badge"); if(!b) return; b.textContent = String(n); b.classList.toggle("hidden", !n); },
     isSessionLive: liveSession,
     describe: n => {
@@ -7901,6 +7907,16 @@ function selectPaneInFrame(sess, pane){
     },
     onError: err => toast((err && err.message) || String(err), true),
   });
+  if(shelf && N.instance){
+    // Estante del escritorio: siempre abierto; «Cerrar» pliega el estante GTK, no la franja.
+    N.instance.toggleStrip(true);
+    document.getElementById("notices")?.addEventListener("click", e => {
+      if(e.target.closest && e.target.closest('[data-nt-act="close"]')){
+        e.stopImmediatePropagation(); e.preventDefault();
+        if(inApp()) window.webkit.messageHandlers.centro.postMessage(JSON.stringify({headerAction: "notices"}));
+      }
+    }, true);
+  }
   // Teclas/toques reales dentro de una terminal embebida (term.html) también son interacción humana.
   window.addEventListener("message", e => {
     const d = e.data;

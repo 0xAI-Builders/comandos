@@ -257,7 +257,7 @@ body.only-panel #pomo-panel.pm-v1{width:100%!important}
 .pm-asset-clock.pm-variable{--pixel-scale:2.5;width:84px;height:84px}
 .pm-art-samples .pm-asset{--pixel-scale:1;width:40px;height:40px}
 .pm-motion-chest>.pm-pixel{animation-name:pm-chest-frames;animation-timing-function:steps(1,end)}
-#btn-pomo .pm-asset-clock.pm-header-clock{--pixel-scale:.75;width:24px;height:24px;margin:0;animation:none}
+#btn-pomo .pm-asset-clock.pm-header-clock{--pixel-scale:1;width:32px;height:32px;margin:0;animation:none}   /* nuestro reloj (comandos/hourglass.png) a 1:1: píxel nítido */
 /* Reloj de Davitheoles: el cuadro lo pinta pomodoro.js según el bloque (arena = tiempo real). */
 .pm-framed.pm-motion-progress>.pm-pixel{animation:none!important}
 #btn-pomo.paused .pm-motion-progress>.pm-pixel,.pm-paused .pm-motion-progress>.pm-pixel{filter:saturate(.45) brightness(.8)}
@@ -580,13 +580,14 @@ header.hdr-ordered :is(#btn-switch,#btn-snippets){display:inline-flex!important}
    Avisos / Resúmenes · Ajustes y el reloj centrado debajo. Sin ☰, contadores, Buscar ni
    Snippets (siguen por atajo: Ctrl+K, Ctrl+Shift+K). Terminal, Nueva sesión y Ordenar viven
    a la DERECHA de la barra de pestañas GTK. Servidores queda como chip bajo la rejilla. */
-body.inapp header.hdr-ordered{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;padding:10px 12px;align-items:stretch}
+body.inapp header.hdr-ordered{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;padding:10px 12px;align-items:stretch}   /* 6 teclas = 3×2, sin huecos */
 body.inapp header.hdr-ordered .hdr-right,body.inapp header.hdr-ordered .hdr-primary{display:contents}
 body.inapp header.hdr-ordered :is(#btn-menu,.counts,#btn-terminal,#btn-newsess,#btn-switch,#btn-snippets){display:none!important}
-body.inapp header.hdr-ordered .hdr-btn{width:100%;min-width:0;padding:0}
+body.inapp header.hdr-ordered .hdr-btn{width:100%;min-width:0;padding:0;height:var(--hdr-key)}
+body.inapp header.hdr-ordered #btn-pomo .pomo-mini{font-size:10px;margin-left:5px}
 body.inapp header.hdr-ordered #btn-servers{grid-column:1/-1;width:auto;justify-self:start;padding:0 10px;height:28px;font:600 10px/1 var(--sans);letter-spacing:.8px;text-transform:uppercase;order:2}
 body.inapp header.hdr-ordered #btn-servers .hdr-lbl{position:static;width:auto;height:auto;clip:auto;overflow:visible}
-body.inapp header.hdr-ordered #clock{grid-column:1/-1;text-align:center;font:600 12px var(--mono);letter-spacing:.5px;order:1}
+body.inapp header.hdr-ordered #clock{grid-column:1/-1;text-align:center;font:600 12px/1 var(--mono);letter-spacing:.5px;order:1;margin:2px 0 0}
 body.inapp header.hdr-ordered #notif-panel,body.inapp header.hdr-ordered #pomo-panel{grid-column:1/-1}
 #servers-panel{flex:none;width:100%;max-width:1360px;margin:0 auto;box-sizing:border-box;padding-top:8px;border-bottom:1px solid var(--line)}
 @container sidebar (max-width:760px){#view-panel #servers-panel #ssh-bar{padding-left:12px;padding-right:12px}}

@@ -119,8 +119,19 @@ def test_desktop_header_actions_live_in_the_web_header_like_the_remote():
     # en la app la cabecera web es la rejilla de 4 columnas sin ☰, contadores ni búsqueda.
     assert "nb.set_action_widget(_strip_actions, Gtk.PackType.END)" in app
     assert "for _b in (_quick_term_btn, _plus, _sort_btn, _tab_next):" in app
-    assert "body.inapp header.hdr-ordered{display:grid;grid-template-columns:repeat(4,1fr)" in CSS
+    assert "body.inapp header.hdr-ordered{display:grid;grid-template-columns:repeat(3,minmax(0,1fr))" in CSS
     assert "body.inapp header.hdr-ordered :is(#btn-menu,.counts,#btn-terminal,#btn-newsess,#btn-switch,#btn-snippets){display:none!important}" in CSS
     assert 'id="btn-sort"' not in INDEX
     for action in ("quickTerminal", "newSession"):
         assert f'toApp("{action}")' in INDEX
+
+
+def test_desktop_bell_opens_the_notices_shelf_under_the_terminals():
+    """30-sep: on the desktop the bell opens the notices drawer in the shelf under the
+    terminals (like MCPs · Skills), through index.html?panel=notices, not in the sidebar."""
+    app = (ROOT / "bin" / "cc-app").read_text()
+    assert '"notices": lambda *_: _toggle_notices_shelf()' in app and "def _toggle_notices_shelf" in app
+    assert 'view.load_uri(f"{BASE_URL}/?panel=notices&app=1&v={_DASH_V}")' in app
+    assert "_shelf_paned.pack2(_shelf_box, False, False)" in app
+    assert 'toApp("notices")' in INDEX and 'if(ONLY_PANEL==="notices") return;' in INDEX
+    assert 'html[data-only-panel="notices"] body.only-panel #notices{display:block!important' in INDEX

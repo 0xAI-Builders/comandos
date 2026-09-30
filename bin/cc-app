@@ -190,7 +190,7 @@ notebook > header { background: @BAR@; border: none; box-shadow: none; }
    pasar el cursor. Transiciones de 150 ms. */
 notebook > header > tabs > tab {
   background: transparent; color: @DIM@; padding: 0 12px; margin: 0; min-height: 40px;
-  font-family: 'Ubuntu Sans', 'Inter', 'Ubuntu', 'Cantarell', sans-serif; font-size: 12px;
+  font-family: 'Ubuntu Sans', 'Inter', 'Ubuntu', 'Cantarell', sans-serif; font-size: 13px;
   border: none; border-right: 1px solid @LINE@; border-radius: 0; box-shadow: none;
   transition: color 150ms ease, background-color 150ms ease, box-shadow 150ms ease;
 }
@@ -199,8 +199,7 @@ notebook > header > tabs > tab:checked {
   color: @TEXT@; background-color: alpha(@LINE2@, 0.45); box-shadow: inset 0 -2px 0 0 @BRAND@;
 }
 notebook > header > tabs > tab label.tab-name { font-weight: 600; }
-.tab-model { color: @DIM@; font-family: 'Ubuntu Sans Mono', 'JetBrains Mono', monospace; font-size: 10px; font-weight: 600;
-  padding: 1px 6px; border: 1px solid @LINE2@; border-radius: 5px; }
+.tab-model { color: @FAINT@; font-family: 'Ubuntu Sans Mono', 'JetBrains Mono', monospace; font-size: 10.5px; font-weight: 600; }
 notebook > header > tabs > tab button {
   color: @FAINT@; padding: 0; margin: 0; min-height: 14px; min-width: 14px;
   border: none; background: none; background-image: none; box-shadow: none; opacity: 0;
@@ -1331,10 +1330,12 @@ def _build_hb_css():
     return (
     b".pane-pill{background:" + THEME["bg"].encode() + b";"
     b" background-clip:padding-box;opacity:1;"
-    b" border-radius:10px;padding:3px 10px;"
-    b" border:1.5px solid " + THEME["line"].encode() + b";"
-    b" box-shadow:0 1px 4px rgba(0,0,0,0.55);}"
-    b".pane-card separator{background:" + THEME["line"].encode() + b";min-width:1px;margin:3px 0;}"
+    b" border-radius:10px;padding:0 10px;min-height:34px;"
+    b" border:1px solid " + THEME.get("line2", THEME["line"]).encode() + b";"
+    b" box-shadow:0 2px 0 " + THEME["line"].encode() + b";}"
+    b".pane-card{background:" + THEME.get("bar", THEME["bg"]).encode() + b";}"
+    b".pane-card separator{background:" + THEME["line"].encode() + b";min-width:1px;margin:8px 0;}"
+    b".pp-logo{min-width:18px;min-height:18px;border-radius:5px;padding:0;}"
     b".pane-pill label{color:" + THEME["fg"].encode() + b"; font-size:11.5px;"
     b" background:transparent;}"
     b".pane-pill.pp-claude,.pane-pill.pp-codex,.pane-pill.pp-grok{"
@@ -1345,8 +1346,8 @@ def _build_hb_css():
     b".pane-pill.pp-shell label{font-size:11px;}"
     b".pill-btn{padding:2px 5px;margin:0;background:rgba(148,148,148,0.12);"
     b" border:1px solid rgba(148,148,148,0.55);border-radius:999px;min-height:0;}"
-    b".pane-card .pill-btn{padding:2px 8px;border-radius:8px;}"
-    b".pane-card .pill-btn label{font-size:11px;font-weight:700;}"
+    b".pane-card .pill-btn{padding:0 9px;min-height:26px;border-radius:8px;margin:0 0 0 6px;}"
+    b".pane-card .pill-btn label{font-size:11px;font-weight:600;}"
     b".pill-btn:hover{border-color:" + THEME["fg"].encode() + b";"
     b" background:rgba(148,148,148,0.28);}"
     b"window,window.background,window.solid-csd,window.csd{"
@@ -4906,6 +4907,25 @@ def _card_button(icon, text, tooltip, on_click):
     return button
 
 
+_BADGE_CSS = {}
+
+
+def _motor_badge(motor):
+    """Cuadrito de color del motor con su glifo en blanco (prototipo: «A» naranja)."""
+    color = _PV_HEX.get(motor, "#56627a")
+    badge = Gtk.EventBox()
+    badge.get_style_context().add_class("pp-logo")
+    if motor not in _BADGE_CSS:
+        prov = Gtk.CssProvider()
+        prov.load_from_data(f".pp-logo.pp-logo-{motor}{{background-color:{color};}}".encode())
+        Gtk.StyleContext.add_provider_for_screen(Gdk.Screen.get_default(), prov, Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION)
+        _BADGE_CSS[motor] = prov
+    badge.get_style_context().add_class(f"pp-logo-{motor}")
+    badge.add(_svg_image(_PV_ICON.get(motor, "layers"), 12, "#ffffff"))
+    badge.set_valign(Gtk.Align.CENTER)
+    return badge
+
+
 def _pane_card_ai(sess):
     """Semáforo de la IA de esta sesión dentro de la tarjeta (mismo sprite que la pestaña)."""
     icon, _, animated = tab_indicator_display(work_mark_row("session", sess)["mark"], STATE_CACHE.get(sess, ""))
@@ -4948,7 +4968,7 @@ def _pane_pill(sess, p):
     pill.pack_start(Gtk.Separator(orientation=Gtk.Orientation.VERTICAL), False, False, 2)
     if motor != harness and harness in _PV_ICON:
         pill.pack_start(_svg_image(_PV_ICON[harness], 12, dim), False, False, 0)
-    pill.pack_start(_svg_image(_PV_ICON.get(motor, "layers"), 15, fg), False, False, 0)
+    pill.pack_start(_motor_badge(motor), False, False, 0)
     lab = Gtk.Label()
     if state == "changing":
         lab.set_markup(f'<span foreground="{fg}" weight="bold">{_esc("→ " + (p.get("target") or "…"))}</span>')
@@ -4975,12 +4995,11 @@ def _pane_pill(sess, p):
                           + {"verified": " · verificado en el proceso vivo",
                              "changing": " · cambio de motor en curso",
                              "detecting": " · detectando, aun sin confirmar"}.get(state, ""))
-    pill.pack_start(Gtk.Separator(orientation=Gtk.Orientation.VERTICAL), False, False, 2)
-    pill.pack_start(_card_button("settings", "IA",
-                                 "Cambiar motor / modelo / cuenta de ESTE pane" if ES else "Switch this pane's motor/model/account",
-                                 lambda *_, s=sess, pn=(p.get("pane") or ""): _dash_js(f"openMotorFor({json.dumps(s)},{json.dumps(pn)})")),
-                    False, False, 0)
-    pill.pack_start(_extension_pill(sess, p.get("pane") or "", harness), False, False, 0)
+    pill.pack_end(_extension_pill(sess, p.get("pane") or "", harness), False, False, 0)
+    pill.pack_end(_card_button("settings", "IA",
+                               "Cambiar motor / modelo / cuenta de ESTE pane" if ES else "Switch this pane's motor/model/account",
+                               lambda *_, s=sess, pn=(p.get("pane") or ""): _dash_js(f"openMotorFor({json.dumps(s)},{json.dumps(pn)})")),
+                  False, False, 0)
     return pill
 
 
@@ -5040,12 +5059,49 @@ def _queue_shelf_height_save(*_):
     _EXTENSION_SHELF["save"] = GLib.timeout_add(350, _save_shelf_height)
 
 
+# Cajón de Avisos del escritorio: la campana lo abre BAJO las terminales, en el
+# mismo estante que MCPs · Skills (pedido 30-sep), con index.html?panel=notices.
+_NOTICES_SHELF = {"view": None}
+
+
+def _toggle_notices_shelf(*_):
+    if _NOTICES_SHELF["view"] is None:
+        view = WebKit2.WebView.new_with_user_content_manager(ucm)   # mismo puente «centro»
+        view.set_no_show_all(True)
+        view.set_size_request(-1, _SHELF_MIN)
+        _shelf_box.pack_start(view, True, True, 0)
+        _NOTICES_SHELF["view"] = view
+        view.load_uri(f"{BASE_URL}/?panel=notices&app=1&v={_DASH_V}")
+    view = _NOTICES_SHELF["view"]
+    if view.get_visible():
+        view.hide()
+        _shelf_box_sync()
+        return False
+    ext = _EXTENSION_SHELF.get("view")
+    if ext is not None and ext.get_visible():
+        _close_extension_shelf()
+    total = _shelf_paned.get_allocated_height()
+    _shelf_paned.set_position(total - _shelf_height(total, _load_shelf_height()) - _SHELF_HANDLE)
+    view.show()
+    _shelf_box_sync()
+    return False
+
+
+def _shelf_box_sync():
+    """El estante se ve solo si alguna de sus vistas está visible."""
+    if any(v is not None and v.get_visible() for v in (_EXTENSION_SHELF.get("view"), _NOTICES_SHELF.get("view"))):
+        _shelf_box.show()
+    else:
+        _shelf_box.hide()
+
+
 def _close_extension_shelf(*_):
     view = _EXTENSION_SHELF.get("view")
     if view is not None:
         view.hide()
         view.load_uri("about:blank")  # Stop inventory polling while collapsed.
     _EXTENSION_SHELF["target"] = None
+    _shelf_box_sync()
     return False
 
 
@@ -5076,9 +5132,12 @@ def _open_extension_shelf(sess, pane, harness=""):
         view = WebKit2.WebView.new_with_user_content_manager(manager)
         view.set_no_show_all(True)
         view.set_size_request(-1, _SHELF_MIN)
-        _shelf_paned.pack2(view, False, False)
+        _shelf_box.pack_start(view, True, True, 0)
         _EXTENSION_SHELF["view"] = view
     view = _EXTENSION_SHELF["view"]
+    notices = _NOTICES_SHELF.get("view")
+    if notices is not None and notices.get_visible():
+        notices.hide()                      # un estante a la vez
     if not view.get_visible():
         # Solo al abrir: si ya está abierto, re-pulsar no mueve lo que el usuario arrastró.
         total = _shelf_paned.get_allocated_height()
@@ -5090,6 +5149,7 @@ def _open_extension_shelf(sess, pane, harness=""):
         view.load_uri(BASE_URL + "/extensions.html?" + query + "&v=" + _DASH_V)
         _EXTENSION_SHELF["target"] = target
     view.show()
+    _shelf_box_sync()
     return False
 
 
@@ -5135,6 +5195,9 @@ def _place_pills(box, panes, geo=None):
         placed.add(p.get("pane"))
         left, top, width = g
         pill = _pane_pill(getattr(box, "_pill_sess", ""), p)
+        # Tarjeta (prototipo aprobado): ocupa todo el ancho del pane, menos un
+        # carácter de aire a cada lado; los botones quedan al canto derecho.
+        pill.set_size_request(max(120, int((width - 2) * cw)), -1)
         # anclada al INICIO de cada pane, SOBRE el renglon de titulo tmux
         # que va vacio (riel reservado): no tapa contenido y la posicion es
         # determinista sin medir anchos de widget
@@ -5976,7 +6039,7 @@ for _key, _cls in ((_plus, "plus"), (_quick_term_btn, "term"), (_sort_btn, "sort
 # Acciones que la cabecera web pide al escritorio por el puente (mismo botón,
 # misma función que el atajo de teclado).
 HEADER_ACTIONS = {"quickTerminal": open_quick_terminal, "newSession": _open_wizard,
-                  "sortMenu": lambda *_: _sort_menu(None)}
+                  "sortMenu": lambda *_: _sort_menu(None), "notices": lambda *_: _toggle_notices_shelf()}
 
 
 def _cycle_page(delta):
@@ -6224,6 +6287,9 @@ _shelf_paned = Gtk.Paned(orientation=Gtk.Orientation.VERTICAL)
 _shelf_paned.get_style_context().add_class("cc-shelf-paned")
 _shelf_paned.set_wide_handle(True)
 _shelf_paned.pack1(_ws_overlay, True, False)
+_shelf_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=0)   # estante: MCPs · Skills o Avisos
+_shelf_box.set_no_show_all(True)
+_shelf_paned.pack2(_shelf_box, False, False)
 _shelf_paned.connect("notify::position", _queue_shelf_height_save)
 # Resúmenes: a la derecha de las terminales; la barra lateral (wv) no se toca.
 _reader_paned = Gtk.Paned(orientation=Gtk.Orientation.HORIZONTAL)

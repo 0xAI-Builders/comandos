@@ -20,8 +20,9 @@ def fixture():
           'urlparse': urlparse, 'BASE_URL': 'http://127.0.0.1:4777', '_DASH_V': 'test',
           '_pane_geometry': lambda sess: {'%4': ()} if sess == 'term-alpha' else {},
           'tabs': {}, '_shelf_paned': paned, '_SHELF_HANDLE': 6,
-          '_load_shelf_height': lambda: 0, '_SHELF_MIN': 180, '_SHELF_TERMINAL_MIN': 160}
-    names={'_open_extension_shelf','_close_extension_shelf','_extension_message','_shelf_height'}
+          '_load_shelf_height': lambda: 0, '_SHELF_MIN': 180, '_SHELF_TERMINAL_MIN': 160,
+          '_NOTICES_SHELF': {'view': None}, '_shelf_box': NS(show=lambda: None, hide=lambda: None, pack_start=lambda *a: None)}
+    names={'_open_extension_shelf','_close_extension_shelf','_extension_message','_shelf_height','_shelf_box_sync'}
     nodes=[n for n in ast.parse(SOURCE).body if isinstance(n,ast.FunctionDef) and n.name in names]
     exec(compile(ast.Module(body=nodes,type_ignores=[]),'<cc-app>','exec'),ns)
     return ns, calls, view
