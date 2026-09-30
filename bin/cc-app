@@ -1349,7 +1349,7 @@ def _build_hb_css():
     b".pane-pill.pp-shell label{font-size:11px;}"
     b".pill-btn{padding:2px 5px;margin:0;background:rgba(148,148,148,0.12);"
     b" border:1px solid rgba(148,148,148,0.55);border-radius:999px;min-height:0;}"
-    b".pane-card .pill-btn,.pane-card-keys .pill-btn{padding:0 7px;min-height:17px;border-radius:6px;margin:0 0 0 5px;color:" + THEME.get("dim", "#8a98ab").encode() + b";}"
+    b".pane-card .pill-btn,.pane-card-keys .pill-btn{padding:0 9px;min-height:17px;border-radius:6px;margin:0;color:" + THEME.get("dim", "#8a98ab").encode() + b";}"
     b".pane-card .pill-btn label,.pane-card-keys .pill-btn label{font-size:10px;font-weight:600;color:" + THEME.get("dim", "#8a98ab").encode() + b";}"
     b".pane-card .pill-btn:hover label,.pane-card-keys .pill-btn:hover label{color:" + THEME["fg"].encode() + b";}"
     b".pp-logo{min-width:14px;min-height:14px;border-radius:4px;}"
@@ -5284,7 +5284,7 @@ def _reposition_pills(box, geo):
             w.set_size_request(cwid, -1)
             w.set_margin_start(cx); w.set_margin_top(cy)
         elif kind == "keys":
-            w.set_margin_start(max(cx, cx + cwid - int(getattr(w, "_kw", 0) or 0) - 10))
+            w.set_margin_start(max(cx, cx + cwid - int(getattr(w, "_kw", 0) or 0) - 8))
             w.set_margin_top(cy + 1)
     ov.queue_draw()
     return True
@@ -5371,18 +5371,18 @@ def _place_pills(box, panes, geo=None):
         ov.set_overlay_pass_through(pill, True)
         pill.show_all()
         box._pills.append(pill)
-        keys = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=0)
+        keys = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)   # 6 px entre «IA» y «MCPs · Skills»
         keys.get_style_context().add_class("pane-card-keys")
         for key in _pane_card_keys(sess_now, p, p.get("harness") or ""):
             keys.pack_start(key, False, False, 0)
         keys.set_halign(Gtk.Align.START)
         keys.set_valign(Gtk.Align.START)
+        keys.set_margin_top(card_y + 1)
+        ov.add_overlay(keys)                 # primero en la jerarquía: así el ancho ya trae el CSS aplicado
         keys.show_all()
         kw = keys.get_preferred_width()[1] if hasattr(keys, "get_preferred_width") else 0
         keys._pane_id, keys._kind, keys._kw = p.get("pane") or "", "keys", kw
-        keys.set_margin_start(max(card_x, card_x + card_w - int(kw or 0) - 10))
-        keys.set_margin_top(card_y + 1)
-        ov.add_overlay(keys)
+        keys.set_margin_start(max(card_x, card_x + card_w - int(kw or 0) - 8))   # 8 px al canto derecho
         box._pills.append(keys)
     # Panes SIN agente (shell vivo): boton visible para arrancar una IA ahi.
     with_agent = placed
