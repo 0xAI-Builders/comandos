@@ -913,3 +913,7 @@ Jesús aprueba la fila A: comando, explicación de una línea debajo y chips de 
 ## Fase 2 · ronda 8: la cadena corriendo y las guardadas · 2026-09-29
 
 Con el acordeón y la fila aprobados falta dónde vive una cadena mientras corre paso a paso y dónde están las guardadas. Cinco lugares en el mismo archivo (`?round=run&u=A..E`): A tarjeta fija bajo la cabecera de la barra, con las guardadas como sección plegable encima de los CLI; B franja flotante sobre el pane destino; C barrita bajo el prompt del pane, donde Enter ejecuta y pre-escribe el siguiente paso sin botón, con las guardadas colgando del botón Cadenas; D tab junto a las terminales rápidas; E aviso persistente en la franja inferior. En todas, cada paso se escribe sin Enter y el usuario confirma; reloj de arena mientras corre y cofre al completar. Smoke sin navegador: 35 variantes pasan. Verificación visual en la Mac mini pendiente por sesiones ajenas. Sin veredicto.
+
+## Aprobado: cadena corriendo como tarjeta · 2026-09-29
+
+Jesús elige A: la cadena corriendo es una tarjeta fija bajo la cabecera de la barra (pasos hechos, actual y pendientes, Siguiente grande, Parar) y las cadenas guardadas son una sección plegable encima de los CLI con Correr por cadena. B a E quedan archivadas. Con esto la barra izquierda queda diseñada: cabecera, cadenas guardadas, tarjeta de cadena corriendo, acordeón por CLI con arranque yolo primero y filas de dos líneas, terminales rápidas abajo con separador.
