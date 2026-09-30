@@ -45,7 +45,7 @@ class BudgetExceeded(Exception):
 def default_policy():
     return {"timezone": "America/Mexico_City", "slots": ["09:00", "15:00", "21:00"],
             "maxSources": 25, "budgetUsd": 0.25, "reserveUsdPerCall": 0.01,
-            "maxSeconds": 600, "graceMinutes": 30,
+            "maxSeconds": 1200, "graceMinutes": 30,
             "sourceScope": ["ia", "modelo", "mcp", "skill", "bounty", "hackathon"]}
 
 
@@ -588,28 +588,47 @@ class _NoRedirect(urllib.request.HTTPRedirectHandler):
         return None
 
 
-def read_article(url, *, timeout=10, max_bytes=400_000, max_chars=6000, resolver=_public_host):
-    """Read a public http(s) page as plain text. Returns (ok, text, error)."""
+class _Redirect(Exception):
+    """Raised by an injected opener to hand back a redirect target (tests)."""
+    def __init__(self, location):
+        super().__init__(location)
+        self.location = location
+
+
+MAX_REDIRECTS = 8   # http→https→www→canonical chains on news links exceed 4
+
+
+def read_article(url, *, timeout=10, max_bytes=400_000, max_chars=6000, resolver=_public_host, open=None):
+    """Read a public http(s) page as plain text. Returns (ok, text, error).
+    `open(request, timeout)` is injectable; the default never follows
+    redirects by itself so every hop is checked against the resolver."""
     url = normalize_url(url)
     if not url:
         return False, "", "URL no válida"
     current = url
     opener = urllib.request.build_opener(_NoRedirect)
-    for _ in range(4):
+    do_open = open or opener.open
+    for _ in range(MAX_REDIRECTS):
         host = urllib.parse.urlsplit(current).hostname or ""
         if not resolver(host):
             return False, "", "host no público"
         req = urllib.request.Request(current, headers={"User-Agent": "ComandOS-news/1.0",
                                                        "Accept": "text/html,text/plain"})
         try:
-            with opener.open(req, timeout=timeout) as resp:
+            with do_open(req, timeout=timeout) as resp:
                 kind = resp.headers.get("Content-Type", "")
                 if not re.match(r"text/(html|plain)|application/xhtml", kind):
                     return False, "", f"tipo no legible: {kind[:40]}"
                 raw = resp.read(max_bytes + 1)[:max_bytes]
-                charset = resp.headers.get_content_charset() or "utf-8"
+                charset = (resp.headers.get_content_charset() if hasattr(resp.headers, "get_content_charset") else None) or "utf-8"
                 text = raw.decode(charset, errors="replace")
                 break
+        except _Redirect as hop:
+            nxt = normalize_url(urllib.parse.urljoin(current, hop.location))
+            if not nxt:
+                return False, "", "redirección no válida"
+            current = nxt
+            continue
         except urllib.error.HTTPError as err:
             if err.code in (301, 302, 303, 307, 308) and err.headers.get("Location"):
                 nxt = normalize_url(urllib.parse.urljoin(current, err.headers["Location"]))
@@ -649,9 +668,18 @@ def make_fetcher(news_watch_module, *, reader=read_article, now=None):
             for source in list(queues):
                 if queues[source] and len(items) < limit:
                     items.append(queues[source].pop(0))
+        # Reads run concurrently (each has its own timeout); output keeps the order.
+        from concurrent.futures import ThreadPoolExecutor
+
+        def read(it):
+            try:
+                return reader(it["url"])
+            except Exception as exc:
+                return False, "", _clip(str(exc), 120) or "error de lectura"
+        with ThreadPoolExecutor(max_workers=8) as pool:
+            results = list(pool.map(read, items))
         out = []
-        for it in items:
-            ok, text, error = reader(it["url"])
+        for it, (ok, text, error) in zip(items, results):
             out.append({"url": it["url"], "title": it.get("title"), "kind": it.get("kind"),
                         "source": it.get("source"), "publishedAt": it.get("publishedAt"),
                         "discoveredAt": ts * 1000, "meta": it.get("meta") or {},

@@ -569,3 +569,42 @@ def test_superteam_listing_urls_use_the_live_path(monkeypatch):
     item = news_watch.fetch_superteam(1_000)[0]
     assert item["url"] == "https://superteam.fun/earn/listing/bounty-x"
     assert item["meta"] == {"prize": "500 USDC", "deadline": "2026-10-01T00:00:00Z"}
+
+
+def test_fetcher_reads_sources_concurrently():
+    import time as _t
+
+    class FakeWatch:
+        @staticmethod
+        def collect(now):
+            return {"items": [{"url": f"https://example.com/{i}", "title": f"N{i}", "kind": "mcp",
+                               "source": f"src{i % 3}", "at": now - i} for i in range(12)], "failures": []}
+
+    def slow_reader(url):
+        _t.sleep(0.3)
+        return True, "texto " + url, None
+    t0 = _t.monotonic()
+    out = ne.make_fetcher(FakeWatch, reader=slow_reader, now=lambda: 1_000_000)(ne.default_policy(), 12)
+    assert len(out["items"]) == 12 and _t.monotonic() - t0 < 1.5, "12 × 0.3 s must not take 3.6 s"
+    assert [it["url"] for it in out["items"]][0] == "https://example.com/0", "order is kept"
+
+
+def test_article_reader_follows_up_to_eight_redirects():
+    hops = {f"https://a.example/{i}": f"https://a.example/{i + 1}" for i in range(7)}
+
+    class Resp:
+        def __init__(self, url):
+            self.url, self.status = url, 200
+            self.headers = {"Content-Type": "text/plain"}
+        def read(self, n=None): return b"final text here"
+        def __enter__(self): return self
+        def __exit__(self, *a): return False
+
+    def opener(request, timeout=None):
+        url = request.full_url
+        if url in hops:
+            raise ne._Redirect(hops[url])
+        return Resp(url)
+    ok, text, err = ne.read_article("https://a.example/0", open=opener, resolver=lambda host: True)
+    assert ok and "final text" in text, err
+    assert ne.default_policy()["maxSeconds"] >= 1200
