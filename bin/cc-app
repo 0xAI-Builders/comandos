@@ -100,6 +100,7 @@ import agent_stop
 from pane_snapshot import PaneInspector
 from session_tabs import ordered_tab_keys
 import gtk_workspace
+import gtk_tabstrip
 import workspace_layout
 import work_marks as work_mark_state
 TERM_HTML = os.path.join(CC_REPO, "dash", "term.html")
@@ -184,38 +185,39 @@ Gtk.Settings.get_default().set_property("gtk-application-prefer-dark-theme", Tru
 
 APP_CSS = """
 notebook > header { background: @BAR@; border: none; box-shadow: none; }
-/* Pestañas = las del prototipo aprobado (prototype-iguales.html, 30-sep):
-   44 px, sans 600, modelo como chip mono chico, separador de 1 px entre
-   pestañas, activa con fondo levantado + línea de acento, ★ y ✕ solo al
-   pasar el cursor. Transiciones de 150 ms. */
-notebook > header > tabs > tab {
-  background: transparent; color: @DIM@; padding: 0 12px; margin: 0; min-height: 40px;
-  font-family: 'Ubuntu Sans', 'Inter', 'Ubuntu', 'Cantarell', sans-serif; font-size: 13px;
-  border: none; border-right: 1px solid @LINE@; border-radius: 0; box-shadow: none;
+/* Barra de pestañas propia (lib/gtk_tabstrip.py) = prototipo aprobado
+   (prototype-iguales.html, 30-sep), medida a medida: 44 px de alto, cada
+   pestaña mide su contenido (0 12 px de aire, 8 px entre piezas), separador
+   de 1 px, texto tenue que se aclara al pasar, activa con fondo levantado +
+   línea de acento abajo, ☆/✕ solo al pasar el cursor, ★ ámbar. */
+.tabstrip { background: @BAR@; border-bottom: 1px solid @LINE@; min-height: 44px; }
+.tabstrip-tabs { background: @BAR@; }
+.strip-tab {
+  background-color: @BAR@; color: @DIM@; padding: 0 12px; min-height: 44px;
+  font-family: system-ui, 'Ubuntu Sans', 'Inter', sans-serif; font-size: 13px;
+  border-right: 1px solid @LINE@;
   transition: color 150ms ease, background-color 150ms ease, box-shadow 150ms ease;
 }
-notebook > header > tabs > tab:hover { color: @TEXT@; background-color: alpha(@BRAND@, 0.06); }
-notebook > header > tabs > tab:checked {
-  color: @TEXT@; background-color: alpha(@LINE2@, 0.45); box-shadow: inset 0 -2px 0 0 @BRAND@;
-}
-notebook > header > tabs > tab label.tab-name { font-weight: 600; }
-.tab-model { color: @FAINT@; font-family: 'Ubuntu Sans Mono', 'JetBrains Mono', monospace; font-size: 10.5px; font-weight: 600; }
-notebook > header > tabs > tab button {
+.strip-tab:hover { color: @TEXT@; }
+.strip-tab.cur { color: @TEXT@; background-color: mix(@BAR@, @LINE2@, 0.35); box-shadow: inset 0 -2px 0 0 @BRAND@; }
+.strip-tab label { color: inherit; }
+.strip-tab label.tab-name { font-weight: 600; }
+.strip-tab label.tab-model, .tab-model { color: @FAINT@; font-family: ui-monospace, 'Ubuntu Sans Mono', 'JetBrains Mono', monospace; font-size: 10px; font-weight: 600; }
+.strip-tab button {
   color: @FAINT@; padding: 0; margin: 0; min-height: 14px; min-width: 14px;
   border: none; background: none; background-image: none; box-shadow: none; opacity: 0;
   transition: opacity 150ms ease, color 120ms ease;
 }
-notebook > header > tabs > tab:hover button, notebook > header > tabs > tab button.favorite,
-notebook > header > tabs > tab button.tab-suggest { opacity: 1; }
-notebook > header > tabs > tab button:hover { color: @TEXT@; }
-notebook > header > tabs > tab button.tabclose:hover { color: #ffffff; background-color: #FF6B6B; border-radius: 5px; }
-notebook > header > tabs > tab button.tabfav { font-size: 13px; min-width: 16px; }
-notebook > header > tabs > tab label.tab-sticker { font-size: 8px; font-weight: 800; padding: 1px 5px; border-radius: 5px; margin: 0 2px; }
-notebook > header > tabs > tab label.tab-sticker.st-frozen { background: #1e3a5f; color: #9cd0ff; }
-notebook > header > tabs > tab label.tab-sticker.st-resolved { background: #1f5134; color: #b9ffd4; }
-notebook > header > tabs > tab label.tab-sticker.st-awaiting_reply { background: #5a4415; color: #ffe2a3; }
-notebook > header > tabs > tab button.tab-suggest { font-size: 9px; padding: 0 6px; min-height: 0; border: 1px dashed #4ade80; border-radius: 999px; color: #4ade80; box-shadow: none; background: none; }
-notebook > header > tabs > tab button.tabfav.favorite { color: @BRAND@; }
+.strip-tab:hover button, .strip-tab button.favorite, .strip-tab button.tab-suggest { opacity: 1; }
+.strip-tab button:hover { color: @TEXT@; }
+.strip-tab button.tabclose:hover { color: #ffffff; background-color: #FF6B6B; border-radius: 5px; }
+.strip-tab button.tabfav { font-size: 13px; min-width: 14px; }
+.strip-tab button.tabfav.favorite { color: #f5b83d; }
+.strip-tab label.tab-sticker { font-size: 8px; font-weight: 800; padding: 2px 5px; border-radius: 5px; margin: 0 2px; }
+.strip-tab label.tab-sticker.st-frozen { background: #1e3a5f; color: #9cd0ff; }
+.strip-tab label.tab-sticker.st-resolved { background: #1f5134; color: #b9ffd4; }
+.strip-tab label.tab-sticker.st-awaiting_reply { background: #5a4415; color: #ffe2a3; }
+.strip-tab button.tab-suggest { font-size: 10px; font-weight: 600; padding: 1px 7px; min-height: 0; border: 1px dashed #4ade80; border-radius: 999px; color: #4ade80; box-shadow: none; background: none; }
 /* Flechas de scroll de tabs: sin esto quedan pegadas a la primera pestana */
 /* Flechas nativas del notebook OCULTAS: navegacion por los botones
    ‹ › propios del headerbar (misma familia que el "+"). */
@@ -1333,7 +1335,8 @@ def _build_hb_css():
     b" border-radius:10px;padding:0 10px;min-height:28px;"
     b" border:1px solid " + THEME.get("line2", THEME["line"]).encode() + b";"
     b" box-shadow:0 2px 0 " + THEME["line"].encode() + b";}"
-    b".pane-card{background:" + THEME.get("bar", THEME["bg"]).encode() + b";}"
+    b".pane-card{background-color:mix(" + THEME.get("bar", THEME["bg"]).encode() + b"," + THEME.get("line2", THEME["line"]).encode() + b",0.35);}"
+    b".pane-card label{font-size:11px;}"
     b".pane-card separator{background:" + THEME["line"].encode() + b";min-width:1px;margin:8px 0;}"
     b".pp-logo{min-width:18px;min-height:18px;border-radius:5px;padding:0;}"
     b".pane-pill label{color:" + THEME["fg"].encode() + b"; font-size:11px;"
@@ -1751,8 +1754,7 @@ if TERM_OPACITY < 1.0:
     if vis is not None:
         win.set_visual(vis)
 
-nb = Gtk.Notebook()
-nb.set_scrollable(True)
+nb = gtk_tabstrip.TabStripNotebook()   # cabecera propia: pestañas del ancho de su contenido
 tabs = {}   # clave ("sess" o "sess:shell") -> box
 TABS_FILE = os.path.expanduser("~/.claude/hooks/app-tabs.json")
 TAB_HISTORY_FILE = os.path.expanduser("~/.claude/hooks/app-tabs-history.json")
@@ -4392,7 +4394,10 @@ def _ws_edge_tick():
     strip_h = layout["strip"][3]
     step = ws_strip_edge_step(x, _ws_layer.get_allocated_width()) if 0 <= y <= strip_h + 12 else 0
     if step:
-        (nb.prev_page if step < 0 else nb.next_page)()
+        if hasattr(nb, "scroll_by"):
+            nb.scroll_by(step * 120)
+        else:
+            (nb.prev_page if step < 0 else nb.next_page)()
         _WS["target"] = _ws_target(x, y)
         _ws_layer.queue_draw()
         return True
@@ -4723,7 +4728,11 @@ def _ws_draw(widget, cr):
 
 
 _ws_overlay = Gtk.Overlay()
-_ws_overlay.add(nb)
+_ws_column = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=0)   # barra de pestañas + páginas
+_ws_column.pack_start(nb.row, False, False, 0)
+_ws_column.pack_start(nb, True, True, 0)
+_ws_column.show()
+_ws_overlay.add(_ws_column)
 _ws_layer = Gtk.DrawingArea()
 _ws_layer.set_no_show_all(True)
 _ws_layer.connect("draw", _ws_draw)
@@ -5218,10 +5227,10 @@ def _place_pills(box, panes, geo=None):
         if height <= 0 or width < 8:
             continue
         row = top - 1 if top >= 1 else 0
-        x = m_l + left * cw + 2
-        y = m_t + row * chh + 2
-        w = width * cw - 4
-        h = (height + (1 if top >= 1 else 0)) * chh - 4
+        x = left * cw + 3                      # coordenadas de la VTE (el draw no incluye márgenes)
+        y = row * chh + 3
+        w = width * cw - 6
+        h = (height + (1 if top >= 1 else 0)) * chh - 6
         box._frames.append((x, y, w, h, active))
     term.queue_draw()
     placed = set()
@@ -5238,7 +5247,7 @@ def _place_pills(box, panes, geo=None):
         pill = _pane_pill(getattr(box, "_pill_sess", ""), p)
         # Tarjeta (prototipo aprobado): ocupa todo el ancho del pane, menos un
         # carácter de aire a cada lado; los botones quedan al canto derecho.
-        pill.set_size_request(max(120, int(width * cw) - 24), -1)
+        pill.set_size_request(max(120, int(width * cw) - 26), -1)
         # anclada al INICIO de cada pane, SOBRE el renglon de titulo tmux
         # que va vacio (riel reservado): no tapa contenido y la posicion es
         # determinista sin medir anchos de widget
@@ -5246,8 +5255,8 @@ def _place_pills(box, panes, geo=None):
         pill.set_valign(Gtk.Align.START)
         # Sobre el renglón de borde tmux (vacío). Sin -3: ese offset metía la
         # pildora en la statusline del TUI (Grok/Claude) y el titulo se veía detrás.
-        pill.set_margin_top(_pill_row_y(m_t, top, chh))
-        pill.set_margin_start(max(0, int(m_l + left * cw) + 12))
+        pill.set_margin_top(_pill_row_y(m_t, top, chh) + 8)
+        pill.set_margin_start(max(0, int(m_l + left * cw) + 13))
         ov.add_overlay(pill)
         pill.show_all()
         box._pills.append(pill)
