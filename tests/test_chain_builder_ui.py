@@ -64,9 +64,11 @@ def test_sidebar_hydrates_icons_after_every_render():
 
 def test_builder_touch_rules_share_the_sidebar_specificity():
     css = (ROOT / "dash" / "workspace.css").read_text()
-    assert ":is(#command-sidebar,.chain-only) .cmd{padding-block:11px}" in css
-    assert ":is(#command-sidebar,.chain-only) :is(.launch,.cmds){border-top" in css
-    assert ".chain-only .cmd .add{min-height:34px}" in css
+    # estilos 1:1 del mockup: tokens compartidos, filas y chips con la misma especificidad en barra y modal
+    assert "#command-sidebar,.chain-only{--cs-panel:#171b24;" in css
+    assert ":is(#command-sidebar,.chain-only) .cmds .cmd{padding-block:10px}" in css
+    assert ":is(#command-sidebar,.chain-only) .cmds{border-top:1px solid var(--cs-line2)}" in css
+    assert ".chain-only .cmd button[data-flat].add{min-height:32px}" in css
 
 
 def test_desktop_opens_the_chain_modal_as_a_centered_gtk_window():

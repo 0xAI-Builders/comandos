@@ -121,7 +121,7 @@ const tick = () => new Promise(r => setImmediate(r));
   assert.equal(b.state.name, '  Mi cadena  ');
   assert.equal(q('.m-error'), null);                                    // escribir limpia el error
   click('.slots .step[data-i="1"] [data-del]'); click('.slots .step[data-i="0"] [data-del]');
-  assert.deepEqual(b.state.steps, []); assert.ok(q('.slots .cb-empty'));
+  assert.deepEqual(b.state.steps, []); assert.equal(qa('.slots .slot.empty').length, 6);
   click('[data-run]');
   assert.equal(calls.length, 0); assert.match(q('.m-error').textContent, /paso/i);
 

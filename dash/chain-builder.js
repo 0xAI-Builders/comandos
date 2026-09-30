@@ -27,7 +27,7 @@
     const Sidebar = sidebarModule();
     const esc = Sidebar.esc;
     const doc = opts.doc || host.ownerDocument || (typeof document !== 'undefined' ? document : null);
-    const state = { name: '', steps: [], dragging: null };
+    const state = { name: '', steps: [], dragging: null, q: '' };
     let backdrop = null, editSlug = null, open_ = new Set(), saving = false, prevFocus = null, error = '';
 
     const $ = sel => (backdrop ? backdrop.querySelector(sel) : null);
@@ -43,7 +43,7 @@
       if (!body) return;
       const list = clis(), here = hereCli();
       body.innerHTML = list.length
-        ? list.map(c => Sidebar.cliHTML(c, { mode: 'build', open: open_, here: c.id === here })).join('')
+        ? list.map(c => Sidebar.cliHTML(c, { mode: 'build', open: open_, here: c.id === here, q: state.q })).join('')
         : '<div class="cb-empty">El catálogo de comandos aún no cargó. Cierra y vuelve a abrir.</div>';
       try { hydrate(body); } catch (_) {}
     }
@@ -58,11 +58,11 @@
         + '<span class="grab" aria-hidden="true">⠿</span>'
         + `<code title="${esc(s.text)}">${esc(s.text)}</code>`
         + '<span class="ctl">'
-        + `<button type="button" data-move="-1" aria-label="Mover el paso ${i + 1} antes" title="Mover antes"${i === 0 ? ' disabled' : ''}>←</button>`
-        + `<button type="button" data-move="1" aria-label="Mover el paso ${i + 1} después" title="Mover después"${i === n - 1 ? ' disabled' : ''}>→</button>`
-        + `<button type="button" data-del aria-label="Quitar el paso ${i + 1}" title="Quitar">✕</button>`
-        + '</span></div>').join('')
-        : '<div class="cb-empty">Toca un comando para añadirlo como paso.</div>';
+        + `<button type="button" data-flat data-move="-1" aria-label="Mover el paso ${i + 1} antes" title="Mover antes"${i === 0 ? ' disabled' : ''}>←</button>`
+        + `<button type="button" data-flat data-move="1" aria-label="Mover el paso ${i + 1} después" title="Mover después"${i === n - 1 ? ' disabled' : ''}>→</button>`
+        + `<button type="button" data-flat data-del aria-label="Quitar el paso ${i + 1}" title="Quitar">✕</button>`
+        + '</span></div>').join('') + Array.from({ length: Math.max(1, 6 - n) }, () => '<div class="slot empty">suelta aquí</div>').join('')
+        : Array.from({ length: 6 }, () => '<div class="slot empty">suelta aquí</div>').join('');
       const count = $('.cb-count');
       if (count) count.textContent = n === 1 ? '1 paso' : `${n} pasos`;
       if (focus) { const b = $(`.slots .step[data-i="${focus.i}"] [data-move="${focus.dir}"]`); if (b && !b.hasAttribute('disabled') && b.focus) b.focus(); }
@@ -190,15 +190,20 @@
       backdrop = doc.createElement('div');
       backdrop.className = 'backdrop';
       backdrop.setAttribute('data-mclose', '');
+      const tgt = typeof opts.target === 'function' ? (opts.target() || '') : '';
       backdrop.innerHTML = '<div class="modal chain-only" role="dialog" aria-modal="true" aria-labelledby="cb-title">'
-        + `<div class="m-head"><h2 id="cb-title">${chain ? 'Editar cadena' : 'Cadena nueva'}</h2>`
-        + `<input class="m-name" type="text" maxlength="80" autocomplete="off" placeholder="Nombre de la cadena" aria-label="Nombre de la cadena" value="${esc(state.name)}">`
-        + '<button type="button" class="x" data-close>Cerrar</button></div>'
-        + '<div class="cb-body"></div><div class="cb-msg"></div>'
-        + '<div class="m-foot"><div class="slots" aria-label="Pasos de la cadena"></div>'
-        + '<div class="cb-actions"><span class="cb-count"></span>'
-        + '<button type="button" class="primary" data-save>Guardar</button>'
-        + '<button type="button" data-run title="Guarda la cadena y la corre en el pane de destino">Correr</button></div></div></div>';
+        + '<div class="m-head"><span class="ic" data-icon="snippet" data-size="18"></span>'
+        + `<h2 id="cb-title">${chain ? 'Editar cadena' : 'Comandos'}</h2>`
+        + '<div class="search"><span class="ic" data-icon="search" data-size="14"></span><input class="m-q" type="search" placeholder="Buscar…" aria-label="Buscar comando"></div>'
+        + '<div class="target">' + (tgt ? `<span>escribe en</span><span class="pill primary">${esc(tgt)}</span>` : '')
+        + '<button type="button" data-flat class="ghost x" data-close aria-label="Cerrar">✕</button></div></div>'
+        + '<div class="cb-body cli-board"></div><div class="cb-msg"></div>'
+        + '<div class="hotbar"><span class="hb-t"><span data-icon="layers" data-size="16"></span>Cadena</span><div class="slots" aria-label="Pasos de la cadena"></div>'
+        + `<input class="m-name" type="text" maxlength="80" autocomplete="off" placeholder="Nombre" aria-label="Nombre de la cadena" value="${esc(state.name)}">`
+        + '<button type="button" data-flat class="primary" data-save>Guardar</button>'
+        + '<button type="button" data-flat data-run title="Guarda la cadena y la corre en el pane de destino"><span data-icon="play" data-size="13"></span>Correr</button></div>'
+        + '<div class="m-foot"><span>Aquí un clic <b>añade a la cadena</b>; los pasos se reordenan arrastrando; Correr los inserta uno a uno con Siguiente.</span>'
+        + '<span class="cb-count"></span><span class="right"><button type="button" data-flat class="ghost" data-close>Cerrar</button></span></div></div>';
       wire(backdrop);
       renderBody(); renderSlots(); renderMsg();
       if (saving) setBusy(true);   // un guardado anterior sigue en vuelo
@@ -237,6 +242,7 @@
       el.addEventListener('input', e => {
         const t = e.target;
         if (t && t.classList && t.classList.contains('m-name')) { state.name = String(t.value ?? ''); clearError(); }
+        if (t && t.classList && t.classList.contains('m-q')) { state.q = String(t.value ?? ''); renderBody(); }
       });
 
       // Reordenar arrastrando (misma lógica que wireDnD del laboratorio). El

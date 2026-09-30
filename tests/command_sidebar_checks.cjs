@@ -39,7 +39,7 @@ const catalog = JSON.parse(fs.readFileSync(process.cwd() + '/tests/fixtures/comm
   assert.equal(root.querySelectorAll('.cs-cli[data-cli="grok"] .cmds').length, 1);
   assert.equal(root.querySelectorAll('.cs-cli[data-cli="grok"] .cmds .cmd').length > 4, true);
   assert.equal(root.querySelector('.cs-cli[data-cli="grok"]').classList.contains('open'), false);
-  assert.equal(root.querySelector('.cs-cli.here .launch.normal').classList.contains('open'), false);
+  assert.equal(root.querySelector('.cs-cli.here .launch.normal').classList.contains('open'), true);   // escritorio: abierto (móvil lo pliega)
   assert.equal(root.querySelector('.cs-cli[data-cli="opencode"] .launch.yolo').textContent.includes('sin flag'), true);
   // 2) un clic teclea sin Enter en el pane capturado, con requestId
   root.click('.cs-cli.here .cmds .cmd');
@@ -91,16 +91,19 @@ const catalog = JSON.parse(fs.readFileSync(process.cwd() + '/tests/fixtures/comm
   const drift = JSON.parse(JSON.stringify(catalog)); drift.clis[1].version.status = 'drift'; drift.clis[4].version.status = 'missing';
   sb.applyCatalog({ cliInPane: 'codex', target: { session: 'demo', pane: '%2' }, catalog: drift, versionsAt: 3 });
   assert.equal(root.querySelector('.cs-cli[data-cli="codex"]').classList.contains('drift'), true);
-  assert.equal(root.querySelector('.cs-cli[data-cli="codex"]').textContent.includes('el CLI confirma'), true);
+  assert.equal(root.querySelector('.cs-cli[data-cli="codex"] .badge').textContent, 'en este pane');  // el badge del pane manda
+  assert.equal(root.querySelector('.cs-cli[data-cli="codex"] .cli-h').getAttribute('title').includes('el CLI confirma'), true);
+  assert.equal(root.querySelector('.cs-cli[data-cli="claude"] .badge').textContent, 'instalado');
+  assert.equal(root.querySelector('.cs-cli[data-cli="agy"] .badge').textContent, 'no instalado');
   // 8b) drift pero con todos los comandos detectados en el binario: verificado, sin ámbar
   const det = JSON.parse(JSON.stringify(drift)); det.clis[1].detected = { found: 12, total: 12 };
   sb.applyCatalog({ cliInPane: 'codex', target: { session: 'demo', pane: '%2' }, catalog: det, versionsAt: 4 });
   assert.equal(root.querySelector('.cs-cli[data-cli="codex"]').classList.contains('drift'), false);
-  assert.equal(root.querySelector('.cs-cli[data-cli="codex"] .ver').textContent.includes('12 de 12 en el binario'), true);
+  assert.equal(root.querySelector('.cs-cli[data-cli="codex"] .cli-h').getAttribute('title').includes('12 de 12 comandos presentes'), true);
   det.clis[1].detected = { found: 11, total: 12 };
   sb.applyCatalog({ cliInPane: 'codex', target: { session: 'demo', pane: '%2' }, catalog: det, versionsAt: 5 });
   assert.equal(root.querySelector('.cs-cli[data-cli="codex"]').classList.contains('drift'), true);
-  assert.equal(root.querySelector('.cs-cli[data-cli="codex"] .ver').textContent.includes('11 de 12 en el binario'), true);
+  assert.equal(root.querySelector('.cs-cli[data-cli="codex"] .cli-h').getAttribute('title').includes('11 de 12 comandos presentes'), true);
   assert.equal(root.querySelector('.cs-cli[data-cli="agy"] .launch .cmd').classList.contains('dis'), true);
 
   // extra) la búsqueda filtra filas sin tocar state.open
@@ -150,7 +153,7 @@ const catalog = JSON.parse(fs.readFileSync(process.cwd() + '/tests/fixtures/comm
   assert.equal(root3.querySelector('.cs-cli[data-cli="grok"]').classList.contains('open'), true);
   assert.equal(root3.querySelector('.cs-cli[data-cli="grok"] .launch.yolo').classList.contains('open'), true);
   assert.equal(root3.querySelector('.cs-cli[data-cli="codex"]').classList.contains('open'), true);
-  assert.deepEqual(JSON.parse(store3.get('comandos.commands.open')).sort(), ['codex', 'codex:yolo', 'grok', 'grok:yolo', 'saved']);
+  assert.deepEqual(JSON.parse(store3.get('comandos.commands.open')).sort(), ['codex', 'codex:normal', 'codex:yolo', 'grok', 'grok:normal', 'grok:yolo', 'saved']);
   // el usuario lo pliega: repetir el catálogo del mismo destino no lo reabre
   root3.click('.cs-cli[data-cli="grok"] .cli-h');
   sb3.applyCatalog({ cliInPane: '', target: { session: 'term-q2', pane: '%8' }, catalog, versionsAt: 2 });
@@ -196,8 +199,8 @@ const catalog = JSON.parse(fs.readFileSync(process.cwd() + '/tests/fixtures/comm
   // chips «nuevo»: newArgs marca el chip con clase y texto accesible; el resto queda igual
   {
     const html = mod.rowHTML({ text: '/model ', description: '', args: ['claude-opus-5-5', 'claude-sonnet-5-5'], newArgs: ['claude-sonnet-5-5'] }, {});
-    assert.match(html, /<button type="button" class="new" aria-label="claude-sonnet-5-5 \(nuevo\)"[^>]*data-cmd="\/model claude-sonnet-5-5"/);
-    assert.match(html, /<button type="button" data-cmd="\/model claude-opus-5-5" data-kind="pane">claude-opus-5-5<\/button>/);
+    assert.match(html, /<button type="button" data-flat class="new" aria-label="claude-sonnet-5-5 \(nuevo\)"[^>]*data-cmd="\/model claude-sonnet-5-5"/);
+    assert.match(html, /<button type="button" data-flat data-cmd="\/model claude-opus-5-5" data-kind="pane">claude-opus-5-5<\/button>/);
     assert.equal((html.match(/class="new"/g) || []).length, 1);
     assert.equal(/class="new"/.test(mod.rowHTML({ text: '/model ', description: '', args: ['a'] }, {})), false);
   }
@@ -222,9 +225,9 @@ const catalog = JSON.parse(fs.readFileSync(process.cwd() + '/tests/fixtures/comm
     rootK.dispatch('keydown', H('grok').querySelector('.nm'), { key: 'Enter' });        // solo el encabezado mismo
     assert.equal(H('grok').getAttribute('aria-expanded'), 'false');
     const lab = rootK.querySelector('.cs-cli[data-cli="codex"] .launch.normal .lab3');
-    assert.equal(lab.getAttribute('aria-expanded'), 'false');
+    assert.equal(lab.getAttribute('aria-expanded'), 'true');
     rootK.dispatch('keydown', lab, { key: 'Enter' });
-    assert.equal(rootK.querySelector('.cs-cli[data-cli="codex"] .launch.normal .lab3').getAttribute('aria-expanded'), 'true');
+    assert.equal(rootK.querySelector('.cs-cli[data-cli="codex"] .launch.normal .lab3').getAttribute('aria-expanded'), 'false');
     assert.equal(rootK.querySelector('.cs-saved .cli-h').getAttribute('role'), 'button');
     // hydrate corre sobre la raíz tras el primer pintado, tras cada repintado del cuerpo y con la búsqueda
     const n0 = hyd.length; assert.ok(n0 >= 1); assert.equal(hyd.every(x => x === rootK), true);

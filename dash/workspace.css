@@ -674,111 +674,191 @@ button.wm-suggest{font:600 10px system-ui;padding:2px 7px;border-radius:999px;bo
 .tab-sort-menu button{text-align:left;padding:9px 10px;border-radius:8px;font-size:13px;color:var(--text)}
 .tab-sort-menu button:hover{background:var(--panel2)}
 
-/* Barra de comandos (S2): acordeón por CLI, cadenas y terminales rápidas. Los
-   botones heredan el estilo 3D global (buttons.css); aquí solo va la geometría. */
-#command-sidebar{display:flex;flex-direction:column;gap:8px;padding:8px 18px 14px;min-width:0;box-sizing:border-box}
+/* Barra de comandos: estilos portados 1:1 del mockup aprobado
+   (.worktrees/comandos-v1-grill/dash/prototypes/prototype-v2-barra.html, variante
+   .lado + ronda 6 A + ronda 7 A + ronda 8 A). Los valores son los del prototipo:
+   paleta, radios, tamaños y píldoras. Los botones van planos (data-flat) como allí. */
+#command-sidebar,.chain-only{--cs-panel:#171b24;--cs-panel2:#121722;--cs-line:#2a303e;--cs-line2:#1e2330;--cs-text:#eaf0fb;--cs-dim:#949db0;--cs-brand:#ad9cff;--cs-green:#8aceac;--cs-amber:#e6ba75;--cs-red:#e08a8a;--cs-r:12px;--cs-mono:ui-monospace,Menlo,monospace;--cs-ui:system-ui,-apple-system,"Segoe UI",Inter,sans-serif;color:var(--cs-text);font:13px/1.45 var(--cs-ui)}
+#command-sidebar{display:flex;flex-direction:column;min-width:0;box-sizing:border-box;background:var(--cs-panel2);padding:0}
 #command-sidebar [hidden]{display:none!important}
-#command-sidebar .cs-head{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:6px 8px;align-items:center;position:sticky;top:0;z-index:2;background:var(--bg);padding:4px 0 6px}
-#command-sidebar .cs-target{font:12px var(--mono);color:var(--dim);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
-#command-sidebar .cs-chains{min-height:32px;padding:0 10px;font-size:12px;display:inline-flex;align-items:center;gap:5px}
-#command-sidebar .cs-search{grid-column:1/-1;width:100%;box-sizing:border-box;min-height:38px;padding:6px 10px;border:1px solid var(--line);border-radius:8px;background:var(--panel2);color:var(--text);font:inherit}
-#command-sidebar .cs-search:focus{outline:none;border-color:var(--brand)}
-#command-sidebar .cs-body{display:flex;flex-direction:column;gap:8px;min-width:0}
+:is(#command-sidebar,.chain-only) [data-icon]{display:inline-flex;flex:none;vertical-align:middle}
+/* botones planos del mockup (button base + .pill/.ghost/.primary) */
+#command-sidebar button[data-flat],.chain-only button[data-flat]{font:inherit;cursor:pointer;background:#1c2130;color:var(--cs-text);border:1px solid #303748;border-radius:10px;padding:8px 12px;min-height:36px;display:inline-flex;align-items:center;gap:8px;box-shadow:none;transform:none;line-height:1.45}
+#command-sidebar button[data-flat]:hover,.chain-only button[data-flat]:hover{background:#242b3d;border-color:#3d465c}
+#command-sidebar button[data-flat].pill,.chain-only button[data-flat].pill{border-radius:999px;min-height:30px;padding:4px 12px;font-size:12px}
+#command-sidebar button[data-flat].ghost,.chain-only button[data-flat].ghost{background:transparent;border-color:transparent;color:var(--cs-dim)}
+#command-sidebar button[data-flat].ghost:hover,.chain-only button[data-flat].ghost:hover{color:var(--cs-text);background:#1c2130}
+#command-sidebar button[data-flat].primary,.chain-only button[data-flat].primary{background:var(--cs-brand);color:#0a0d13;border-color:var(--cs-brand);font-weight:700;min-height:44px}
+#command-sidebar button[data-flat].primary:hover,.chain-only button[data-flat].primary:hover{background:#bfb2ff}
+/* cabecera: libro, título con destino, píldora de catálogo, botón Cadenas */
+#command-sidebar .cs-head{position:sticky;top:0;z-index:2;background:var(--cs-panel2)}
+#command-sidebar .sb-head{display:flex;align-items:center;gap:8px;padding:8px 12px;border-bottom:1px solid var(--cs-line);min-width:0}
+#command-sidebar .sb-head>.ic{color:var(--cs-text)}
+#command-sidebar .sb-head h2{font-size:13px;font-weight:700;margin:0;flex:1 1 auto;min-width:60px;white-space:nowrap;overflow:hidden}
+#command-sidebar .sb-head small{display:block;color:var(--cs-dim);font-size:11px;font-weight:400;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#command-sidebar .cs-pill{flex:0 1 auto;display:inline-flex;min-width:0}
+#command-sidebar .cs-pill .pill{min-width:0;overflow:hidden;text-overflow:ellipsis;display:inline-block;line-height:16px}
+#command-sidebar .pill{font-size:10.5px;min-height:24px;padding:3px 9px;box-sizing:border-box;border-radius:999px;border:1px solid #2f5a44;color:var(--cs-green);display:inline-flex;gap:5px;align-items:center;white-space:nowrap}
+#command-sidebar .pill.warn{border-color:#6a5530;color:var(--cs-amber)}
+#command-sidebar button[data-flat].chains-btn,.chain-only button[data-flat].chains-btn{min-height:32px;padding:0 12px 0 8px;font-size:12px;border-radius:999px;white-space:nowrap;flex:none;gap:6px;background:#221f3a;border-color:#4a3f7a;color:var(--cs-brand);font-weight:600}
+#command-sidebar button[data-flat].chains-btn:hover,.chain-only button[data-flat].chains-btn:hover{background:#2b2748}
+#command-sidebar .search{padding:8px 10px;position:relative}
+#command-sidebar .search .ic{position:absolute;left:16px;top:19px;pointer-events:none;color:var(--cs-dim)}
+#command-sidebar .cs-search{width:100%;box-sizing:border-box;min-height:36px;padding:10px 12px 10px 36px;border:1px solid var(--cs-line);border-radius:10px;background:var(--cs-panel2);color:var(--cs-text);font:inherit}
+#command-sidebar .cs-search::placeholder{color:var(--cs-dim)}
+#command-sidebar .cs-search:focus{outline:none;border-color:var(--cs-brand)}
+/* cuerpo: tarjetas apiladas */
+#command-sidebar .cs-body{flex:1;min-height:0;display:flex;flex-direction:column;gap:8px;padding:0 10px 10px;min-width:0}
 #command-sidebar.typing .cs-body{cursor:progress}
-#command-sidebar :is(.cs-saved),:is(#command-sidebar,.chain-only) .cs-cli{flex:none;border:1px solid var(--line);border-radius:10px;background:var(--panel);overflow:hidden;min-width:0}
-:is(#command-sidebar,.chain-only) .cli-h{display:flex;align-items:center;gap:8px;min-height:40px;box-sizing:border-box;padding:0 10px;cursor:pointer;font-weight:600;font-size:12.5px;user-select:none}
-:is(#command-sidebar,.chain-only) .cli-h:hover{background:var(--panel2)}
+#command-sidebar .cs-saved,:is(#command-sidebar,.chain-only) .cs-cli{flex:none;border:1px solid var(--cs-line);border-radius:var(--cs-r);background:var(--cs-panel);overflow:hidden;min-width:0}
+:is(#command-sidebar,.chain-only) .cli-h{display:flex;align-items:center;gap:10px;padding:8px 10px;cursor:pointer;font-weight:600;font-size:12.5px;user-select:none;min-width:0}
+:is(#command-sidebar,.chain-only) .cli-h:hover{background:#1d2333}
 :is(#command-sidebar,.chain-only) .cli-h .nm{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-:is(#command-sidebar,.chain-only) .cli-h .ver,#command-sidebar .cli-h .n{font:400 11px var(--mono);color:var(--dim);min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-:is(#command-sidebar,.chain-only) .cli-h .here-tag{font-size:10.5px;font-weight:600;color:var(--brand);border:1px solid color-mix(in srgb,var(--brand) 55%,var(--line));border-radius:999px;padding:1px 7px;white-space:nowrap}
-:is(#command-sidebar,.chain-only) .chev{margin-left:auto;color:var(--dim);flex:none;transition:transform .15s}
+:is(#command-sidebar,.chain-only) .cli-h .ver,:is(#command-sidebar,.chain-only) .cli-h small{color:var(--cs-dim);font-weight:400;font-size:11px;white-space:nowrap;min-width:0;overflow:hidden;text-overflow:ellipsis}
+:is(#command-sidebar,.chain-only) .cli-h .badge{margin-left:auto;font-size:10px;font-weight:600;padding:2px 7px;border-radius:999px;border:1px solid #4a3f7a;color:var(--cs-brand);white-space:nowrap;flex:none}
+:is(#command-sidebar,.chain-only) .cli-h .badge.off{border-color:var(--cs-line);color:var(--cs-dim)}
+:is(#command-sidebar,.chain-only) .cli-h .badge.warn{border-color:#6a5530;color:var(--cs-amber)}
+:is(#command-sidebar,.chain-only) .cli-h .badge.here-tag{border-color:#2f5a44;color:var(--cs-green)}
+:is(#command-sidebar,.chain-only) .chev{color:var(--cs-dim);font-size:10px;margin-left:6px;flex:none;transition:transform .15s}
+:is(#command-sidebar,.chain-only) .cli-h .chev{margin-left:6px}
+:is(#command-sidebar,.chain-only) .cs-saved .cli-h .chev{margin-left:auto}
 :is(#command-sidebar,.chain-only) .open>.cli-h .chev,:is(#command-sidebar,.chain-only) .open>.lab3 .chev{transform:rotate(180deg)}
-:is(#command-sidebar,.chain-only) .cs-cli.here{border-color:color-mix(in srgb,var(--brand) 55%,var(--line))}
-:is(#command-sidebar,.chain-only) .cs-cli:is(.drift,.unverified) .ver{color:var(--waiting)}
-:is(#command-sidebar,.chain-only) .cs-cli.missing .nm{color:var(--dim)}
+:is(#command-sidebar,.chain-only) .mono{width:26px;height:26px;border-radius:8px;display:inline-flex;align-items:center;justify-content:center;font:700 13px var(--cs-ui);flex:none}
+:is(#command-sidebar,.chain-only) .cs-cli.here{border-color:#4a3f7a}
+:is(#command-sidebar,.chain-only) .cs-cli.missing .nm{color:var(--cs-dim)}
 /* Plegado por CSS; mientras se busca (.searching) se muestra todo lo que coincide. */
 :is(#command-sidebar:not(.searching),.chain-only) .cs-cli:not(.open)>:not(.cli-h),#command-sidebar .cs-saved:not(.open)>:not(.cli-h){display:none}
-:is(#command-sidebar,.chain-only) :is(.launch,.cmds){border-top:1px solid var(--line)}
 :is(#command-sidebar:not(.searching),.chain-only) .launch:not(.open)>:not(.lab3){display:none}
-:is(#command-sidebar,.chain-only) .lab3{display:flex;align-items:center;gap:6px;min-height:32px;padding:0 10px;font-size:10.5px;text-transform:uppercase;letter-spacing:.06em;color:var(--dim);cursor:pointer;user-select:none}
-:is(#command-sidebar,.chain-only) .launch.yolo{background:color-mix(in srgb,var(--waiting) 6%,var(--panel))}
-:is(#command-sidebar,.chain-only) .launch.yolo .lab3{color:var(--waiting)}
-:is(#command-sidebar,.chain-only) .note{padding:4px 10px 8px;font-size:11px;color:var(--dim)}
-:is(#command-sidebar,.chain-only) .cmd{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:2px 8px;padding:8px 10px;border-top:1px solid var(--line);cursor:pointer;min-width:0}
-:is(#command-sidebar,.chain-only) .cmd:hover{background:var(--panel2)}
-:is(#command-sidebar,.chain-only) .cmd code{font:12.5px var(--mono);color:var(--text);overflow-wrap:anywhere;min-width:0}
-:is(#command-sidebar,.chain-only) .cmd code em{color:var(--dim);font-style:normal}
-:is(#command-sidebar,.chain-only) .cmd small{grid-column:1;color:var(--dim);font-size:11.5px;line-height:1.35;overflow-wrap:anywhere}
-:is(#command-sidebar,.chain-only) .cmd .opts{grid-column:1/-1;display:flex;flex-wrap:wrap;gap:5px;margin-top:4px;min-width:0}
-:is(#command-sidebar,.chain-only) .cmd .opts button{min-height:26px;padding:2px 9px;font:11.5px var(--mono);border-radius:999px;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-:is(#command-sidebar,.chain-only) .cmd .opts button.new{border-color:var(--warn);box-shadow:inset 0 0 0 1px color-mix(in srgb,var(--warn) 45%,transparent)}
-:is(#command-sidebar,.chain-only) .cmd .opts button.new::after{content:"nuevo";margin-left:6px;font:600 9.5px var(--mono);text-transform:uppercase;color:var(--warn)}
+/* arranques: bloque de píldoras monoespaciadas; yolo en ámbar sobre fondo violeta oscuro */
+:is(#command-sidebar,.chain-only) .launch{display:flex;flex-wrap:wrap;gap:5px;padding:6px 10px 8px;border-top:1px solid var(--cs-line2)}
+:is(#command-sidebar,.chain-only) .launch .lab3{width:100%;min-height:0;padding:0;font:10.5px var(--cs-ui);color:var(--cs-dim);text-transform:uppercase;letter-spacing:.06em;cursor:pointer;display:flex;align-items:center;gap:6px;user-select:none}
+:is(#command-sidebar,.chain-only) .launch .lab3 .chev{margin-left:auto}
+:is(#command-sidebar,.chain-only) .launch button[data-flat].cmd{min-height:26px;padding:2px 9px;font:11px var(--cs-mono);border-radius:999px;display:inline-flex;text-align:left;white-space:normal;overflow-wrap:anywhere;max-width:100%}
+:is(#command-sidebar,.chain-only) .launch.yolo{background:#1a1622;border-top:1px solid #3a2f5a}
+:is(#command-sidebar,.chain-only) .launch.yolo .lab3{color:var(--cs-amber)}
+:is(#command-sidebar,.chain-only) .launch button[data-flat].y{border-color:#6a5530;color:var(--cs-amber);background:#1e1a14}
+:is(#command-sidebar,.chain-only) .launch button[data-flat].y:hover{background:#2b2418}
+:is(#command-sidebar,.chain-only) .launch .note{width:100%;color:var(--cs-dim);font-size:11px}
+:is(#command-sidebar,.chain-only) .cmds{border-top:1px solid var(--cs-line2)}
+:is(#command-sidebar,.chain-only) .cmds .note{display:block;padding:6px 10px 8px;font-size:11px;color:var(--cs-dim)}
+/* fila de dos líneas (ronda 7 A): comando, explicación, chips */
+:is(#command-sidebar,.chain-only) .cmds .cmd{display:grid;grid-template-columns:1fr auto;gap:0 6px;padding:6px 10px;cursor:pointer;border-top:1px solid var(--cs-line2);position:relative;min-width:0}
+:is(#command-sidebar,.chain-only) .cmds .cmd:first-child{border-top:0}
+:is(#command-sidebar,.chain-only) .cmds .cmd:hover{background:#1d2333}
+:is(#command-sidebar,.chain-only) .cmds .cmd:active{background:#232a3d}
+:is(#command-sidebar,.chain-only) .cmd code{font:12.5px var(--cs-mono);color:var(--cs-text);overflow-wrap:anywhere;min-width:0}
+:is(#command-sidebar,.chain-only) .cmd code em{color:var(--cs-dim);font-style:normal}
+:is(#command-sidebar,.chain-only) .cmd small{grid-column:1;color:var(--cs-dim);font-size:11px;line-height:1.3;overflow-wrap:anywhere}
+:is(#command-sidebar,.chain-only) .cmd .opts{grid-column:1/-1;display:flex;flex-direction:row;flex-wrap:wrap;gap:3px;margin-top:3px;min-width:0}
+:is(#command-sidebar,.chain-only) .cmd .opts button[data-flat]{min-height:22px;padding:1px 7px;font:10.5px var(--cs-ui);border-radius:999px;background:#12161f;color:var(--cs-text);border-color:#303748;text-align:left;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+:is(#command-sidebar,.chain-only) .cmd .opts button[data-flat]:hover{background:#242b3d;border-color:#3d465c}
+:is(#command-sidebar,.chain-only) .cmd .opts button[data-flat].new{border-color:#6a5530}
+:is(#command-sidebar,.chain-only) .cmd .opts button[data-flat].new::after{content:"nuevo";margin-left:6px;font:600 9px var(--cs-mono);text-transform:uppercase;color:var(--cs-amber)}
 #command-sidebar .cmd.dis{opacity:.45;pointer-events:none}
-#command-sidebar .cs-saved-item{display:flex;align-items:center;gap:8px;padding:7px 10px;border-top:1px solid var(--line);min-width:0}
-#command-sidebar .cs-saved-item .nm{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12.5px}
-#command-sidebar .cs-saved-item small{color:var(--dim);font-size:11px;min-width:0;overflow-wrap:anywhere}
-#command-sidebar .cs-saved-item button{margin-left:auto;min-height:30px;padding:0 10px;font-size:12px;flex:none}
-#command-sidebar .cs-saved-item.error small{color:var(--waiting)}
-#command-sidebar .cs-empty{padding:8px 10px;border-top:1px solid var(--line);color:var(--dim);font-size:12px}
-#command-sidebar .cs-runner{border:1px solid color-mix(in srgb,var(--brand) 45%,var(--line));border-radius:10px;background:var(--panel);padding:10px 12px;display:flex;flex-direction:column;gap:8px;min-width:0}
-#command-sidebar .cs-runner.done{border-color:color-mix(in srgb,var(--done) 45%,var(--line))}
-#command-sidebar .cs-runner .r-h{display:flex;align-items:center;gap:6px;font-size:12.5px;min-width:0}
-#command-sidebar .cs-runner .r-h button{margin-left:auto;min-height:30px;padding:0 10px;font-size:12px;flex:none}
-#command-sidebar .cs-runner .r-t{font:11px var(--mono);color:var(--dim);overflow-wrap:anywhere}
+/* cadenas guardadas (ronda 8 A) */
+#command-sidebar .cs-saved-item{display:flex;align-items:center;gap:8px;padding:7px 12px;border-top:1px solid var(--cs-line2);font-size:12.5px;min-width:0}
+#command-sidebar .cs-saved-item .nm{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#command-sidebar .cs-saved-item small{color:var(--cs-dim);font-size:11.5px;min-width:0;overflow-wrap:anywhere}
+#command-sidebar .cs-saved-item button[data-flat].run{margin-left:auto;min-height:26px;padding:2px 10px;font-size:11.5px;border-radius:999px;gap:5px;flex:none}
+#command-sidebar .cs-saved-item.error small{color:var(--cs-amber)}
+#command-sidebar .cs-empty{padding:8px 12px;border-top:1px solid var(--cs-line2);color:var(--cs-dim);font-size:12px}
+/* cadena corriendo: tarjeta fija bajo la cabecera (ronda 8 A) */
+#command-sidebar .cs-runner{border:1px solid #4a3f7a;border-radius:var(--cs-r);background:#1a1622;padding:10px 12px;display:flex;flex-direction:column;gap:8px;min-width:0;flex:none}
+#command-sidebar .cs-runner.done{border-color:#2f5a44;background:#16221d}
+#command-sidebar .cs-runner .r-h{display:flex;align-items:center;gap:8px;font-weight:600;min-width:0}
+#command-sidebar .cs-runner .r-h b{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#command-sidebar .cs-runner .r-h small{color:var(--cs-dim);font-weight:400}
+#command-sidebar .cs-runner .r-h .right{margin-left:auto;display:flex;gap:6px;align-items:center;flex:none}
+#command-sidebar .cs-runner .r-h button[data-flat]{min-height:26px;padding:2px 10px;font-size:12px}
+#command-sidebar .cs-runner .r-t{font:11px var(--cs-mono);color:var(--cs-dim);overflow-wrap:anywhere}
 #command-sidebar .cs-runner .steps{display:flex;flex-direction:column;gap:3px}
-#command-sidebar .cs-runner .step code{font:12px var(--mono);color:var(--dim);overflow-wrap:anywhere}
+#command-sidebar .cs-runner .step{display:flex;align-items:baseline;gap:6px;min-width:0}
+#command-sidebar .cs-runner .step .k{font:10px var(--cs-mono);color:var(--cs-dim);text-transform:uppercase;letter-spacing:.04em;flex:none;min-width:36px}
+#command-sidebar .cs-runner .step code{font:12px var(--cs-mono);color:var(--cs-dim);overflow-wrap:anywhere;min-width:0}
 #command-sidebar .cs-runner .step.done code{text-decoration:line-through}
-#command-sidebar .cs-runner .step.cur code{color:var(--text);font-weight:600}
-#command-sidebar .cs-runner .r-err{font-size:12px;color:var(--waiting);overflow-wrap:anywhere}
-#command-sidebar .cs-runner .cs-next{min-height:44px;width:100%;font-weight:650}
-#command-sidebar .cs-terms{display:flex;flex-wrap:wrap;gap:6px;padding-top:10px;border-top:1px solid var(--line);min-width:0}
-#command-sidebar .cs-terms .lab3{flex-basis:100%;padding:0;min-height:22px;cursor:default}
-#command-sidebar .cs-terms .t{display:inline-flex;align-items:center;gap:5px;min-height:34px;padding:0 10px;font:12px var(--mono);max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-#command-sidebar .cs-terms .t.cur{border-color:var(--brand);color:var(--brand)}
-@media(pointer:coarse){:is(#command-sidebar,.chain-only) .cmd{padding-block:11px}:is(#command-sidebar,.chain-only) .cmd .opts button{min-height:34px}}
-/* Constructor de cadenas (S3, dash/chain-builder.js): .backdrop[data-mclose] > .modal.chain-only.
-   .modal global (index.html) es una capa fixed oculta hasta .open: aquí se neutraliza. Las filas y el
-   acordeón comparten reglas con la barra (:is(#command-sidebar,.chain-only)); los botones heredan el
-   estilo 3D global de buttons.css. */
-.backdrop[data-mclose]{position:fixed;inset:0;z-index:12000;display:flex;align-items:center;justify-content:center;padding:18px;box-sizing:border-box;background:rgba(6,8,14,.72)}
-.backdrop[data-mclose] > .modal.chain-only{position:relative;inset:auto;z-index:auto;display:flex;flex-direction:column;align-items:stretch;justify-content:flex-start;overflow:hidden;padding:0;-webkit-user-select:text;user-select:text;width:min(1040px,100%);height:min(700px,100%);box-sizing:border-box;background:var(--panel);color:var(--text);border:1px solid var(--line2);border-radius:14px;box-shadow:0 24px 60px #000b}
+#command-sidebar .cs-runner .step.cur code{color:var(--cs-text);font-weight:600}
+#command-sidebar .cs-runner .r-err{font-size:12px;color:var(--cs-amber);overflow-wrap:anywhere}
+#command-sidebar .cs-runner .acts{display:flex;gap:8px;align-items:center;min-width:0}
+#command-sidebar .cs-runner .acts .cs-next{min-height:40px;flex:1;justify-content:center}
+#command-sidebar .cs-runner .acts small{color:var(--cs-dim);font-size:11px}
+/* terminales rápidas: pestañas (.tt) al pie */
+#command-sidebar .cs-terms{display:flex;align-items:flex-end;gap:4px;padding:6px 8px 0;border-top:1px solid var(--cs-line);border-bottom:1px solid var(--cs-line);overflow-x:auto;overflow-y:hidden;margin-top:auto;flex:none;scrollbar-width:thin}
+#command-sidebar .cs-terms button[data-flat].t{display:inline-flex;align-items:center;gap:6px;min-height:0;padding:5px 10px;border:1px solid var(--cs-line);border-bottom:0;border-radius:10px 10px 0 0;color:var(--cs-dim);font-size:11.5px;white-space:nowrap;background:var(--cs-panel2)}
+#command-sidebar .cs-terms button[data-flat].t.on{color:var(--cs-text);background:#0c0f16}
+#command-sidebar .cs-terms button[data-flat].t.cur{box-shadow:inset 0 -2px 0 var(--cs-brand)}
+#command-sidebar .cs-terms button[data-flat].t.plus{color:var(--cs-brand);font-weight:700}
+@media(pointer:coarse){:is(#command-sidebar,.chain-only) .cmds .cmd{padding-block:10px}:is(#command-sidebar,.chain-only) .cmd .opts button[data-flat],:is(#command-sidebar,.chain-only) .launch button[data-flat].cmd{min-height:32px}}
+/* Constructor de cadenas (dash/chain-builder.js): .backdrop[data-mclose] > .modal.chain-only.
+   Estilos 1:1 del modal aprobado del mockup (?round=cli: cabecera con libro, búsqueda y
+   «escribe en»; tablero de CLI a lo ancho con comandos en tres columnas; barra de ranuras
+   tipo inventario). .modal global (index.html) es una capa fixed oculta: aquí se neutraliza. */
+.backdrop[data-mclose]{position:fixed;inset:0;z-index:12000;display:flex;align-items:center;justify-content:center;padding:18px;box-sizing:border-box;background:rgba(6,8,14,.72);animation:cb-fade .15s}
+@keyframes cb-fade{from{opacity:0}}
+@keyframes cb-pop{from{opacity:0;transform:scale(.985)}}
+.backdrop[data-mclose] > .modal.chain-only{position:relative;inset:auto;z-index:auto;display:flex;flex-direction:column;align-items:stretch;justify-content:flex-start;overflow:hidden;padding:0;-webkit-user-select:text;user-select:text;width:min(1040px,100%);height:min(700px,100%);min-height:0;box-sizing:border-box;background:var(--cs-panel2);color:var(--cs-text);border:1px solid #3a4256;border-radius:16px;box-shadow:0 30px 80px rgba(0,0,0,.7);animation:cb-pop .18s ease-out}
 .chain-only [hidden]{display:none!important}
-.chain-only .m-head{display:flex;align-items:center;gap:10px;flex:none;padding:10px 14px;border-bottom:1px solid var(--line)}
-.chain-only .m-head h2{margin:0;font-size:14px;white-space:nowrap}
-.chain-only .m-name{flex:1;min-width:0;box-sizing:border-box;min-height:38px;padding:6px 10px;border:1px solid var(--line);border-radius:8px;background:var(--panel2);color:var(--text);font:inherit}
-.chain-only .m-name:focus{outline:none;border-color:var(--brand)}
-.chain-only .m-head .x{min-height:38px;padding:0 12px;flex:none}
-/* Mosaico en tres columnas sin huecos (tablero B aprobado): multicolumna, cada
-   CLI es un bloque indivisible; el abierto ocupa su columna y los demás fluyen. */
-.chain-only .cb-body{flex:1 1 auto;min-height:0;overflow:auto;overscroll-behavior:contain;padding:12px 14px;column-gap:10px;columns:1}
-@media (min-width:900px){.chain-only .cb-body{columns:3}}
-.chain-only .cb-body > .cs-cli{display:inline-block;width:100%;box-sizing:border-box;break-inside:avoid;margin:0 0 10px;vertical-align:top}
-.chain-only .cb-body > .cb-empty{column-span:all}
-.chain-only .cb-empty{padding:8px 4px;color:var(--dim);font-size:12px}
+.chain-only .m-head{display:flex;align-items:center;gap:12px;flex:none;padding:8px 14px;border-bottom:1px solid var(--cs-line);min-width:0}
+.chain-only .m-head h2{margin:0;font-size:14px;font-weight:700;white-space:nowrap}
+.chain-only .m-head .search{position:relative;flex:1;max-width:340px;margin-left:12px;min-width:0}
+.chain-only .m-head .search .ic{position:absolute;left:8px;top:11px;pointer-events:none;color:var(--cs-dim)}
+.chain-only .m-head .m-q{width:100%;box-sizing:border-box;min-height:36px;padding:6px 10px 6px 30px;border:1px solid var(--cs-line);border-radius:10px;background:var(--cs-panel2);color:var(--cs-text);font:inherit}
+.chain-only .m-head .m-q::placeholder{color:var(--cs-dim)}
+.chain-only .m-head .m-q:focus,.chain-only .m-name:focus{outline:none;border-color:var(--cs-brand)}
+.chain-only .m-head .target{display:flex;gap:6px;margin-left:auto;align-items:center;min-width:0;flex:none}
+.chain-only .m-head .target>span:first-child{font-size:11px;color:var(--cs-dim);white-space:nowrap}
+.chain-only .m-head .target .pill{font-size:12px;min-height:28px;padding:4px 12px;border-radius:999px;border:1px solid var(--cs-brand);background:var(--cs-brand);color:#0a0d13;font-weight:700;white-space:nowrap;max-width:260px;overflow:hidden;text-overflow:ellipsis}
+.chain-only .m-head button[data-flat].x{min-height:36px;width:36px;justify-content:center;padding:0;border-radius:10px}
+/* tablero: CLIs a lo ancho, comandos en tres columnas como tarjetas */
+.chain-only .cb-body{flex:1 1 auto;min-height:0;overflow:auto;overscroll-behavior:contain;padding:10px 12px;display:flex;flex-direction:column;gap:8px}
+.chain-only .cb-body > .cs-cli{flex:none}
+.chain-only .cs-cli .cli-h{padding:9px 12px}
+.chain-only .cmds{columns:3;column-gap:8px;padding:6px 8px 8px;border-top:0}
+.chain-only .cmds .cmd{break-inside:avoid;border:1px solid var(--cs-line2);border-radius:10px;margin-bottom:6px;background:var(--cs-panel2);padding:7px 64px 7px 10px;display:block}
+.chain-only .cmds .cmd:first-child{border-top:1px solid var(--cs-line2)}
+.chain-only .cmds .cmd:hover{background:#1d2333}
+.chain-only .cmd code{display:block}
+.chain-only .cmd small{display:block}
+.chain-only .cmd .opts{display:flex}
+.chain-only .cmd button[data-flat].add{display:inline-flex;position:absolute;right:30px;top:7px;min-height:24px;padding:0 7px;font-size:11px;border-radius:8px;gap:4px}
+.chain-only .cmd::after{content:"⠿";position:absolute;right:10px;top:8px;color:#4a5166;font-size:14px}
+.chain-only .launch{position:relative}
+.chain-only .launch button[data-flat].cmd::after{content:none}
 .chain-only .cmd.dis{opacity:.6}
-.chain-only .cmd .add{grid-column:2;grid-row:1;align-self:start;min-height:26px;padding:0 9px;font-size:11px;white-space:nowrap}
+.chain-only .cb-empty{padding:8px 4px;color:var(--cs-dim);font-size:12px}
 .chain-only .cb-msg:empty{display:none}
-.chain-only .m-error{margin:0 14px 8px;padding:7px 10px;border:1px solid color-mix(in srgb,var(--err) 60%,var(--line));border-radius:8px;color:var(--err);font-size:12px;overflow-wrap:anywhere}
-.chain-only .m-foot{flex:none;display:flex;flex-direction:column;gap:8px;padding:10px 14px;border-top:1px solid var(--line);background:var(--panel2)}
-.chain-only .slots{display:flex;gap:8px;min-height:88px;overflow-x:auto;overflow-y:hidden;padding:2px 2px 8px;scrollbar-width:thin}
-.chain-only .slots > .cb-empty{align-self:center}
-.chain-only .slots .step{flex:none;width:176px;box-sizing:border-box;display:grid;grid-template-columns:minmax(0,1fr) auto;align-content:start;gap:3px 6px;padding:6px 8px;border:1px solid var(--line);border-radius:8px;background:var(--panel);cursor:grab}
+.chain-only .m-error{margin:0 14px 8px;padding:7px 10px;border:1px solid #6a3a3a;border-radius:8px;color:var(--cs-red);font-size:12px;overflow-wrap:anywhere}
+/* barra de ranuras (hotbar) */
+.chain-only .hotbar{flex:none;border-top:1px solid var(--cs-line);background:var(--cs-panel);padding:6px 12px;display:flex;align-items:center;gap:8px;min-width:0}
+.chain-only .hotbar .hb-t{font-weight:600;display:flex;gap:8px;align-items:center;white-space:nowrap;flex:none}
+.chain-only .slots{display:flex;gap:8px;flex:1;min-width:0;overflow-x:auto;overflow-y:hidden;padding:4px 2px;scrollbar-width:thin}
+.chain-only .slots .slot,.chain-only .slots .step{width:92px;height:48px;flex:none;box-sizing:border-box;border:2px dashed var(--cs-line);border-radius:10px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;font:10.5px var(--cs-mono);color:var(--cs-dim);cursor:grab;background:var(--cs-panel2);position:relative;overflow:hidden}
+.chain-only .slots .step{border-style:solid;border-color:#3d465c;color:var(--cs-text);padding:2px 6px;text-align:center}
 .chain-only .slots .step.dragging{opacity:.45}
-.chain-only .slots .step.over{border-color:var(--brand);box-shadow:0 0 0 1px var(--brand)}
-.chain-only .slots .step[data-kind=shell] .k{color:var(--waiting)}
-.chain-only .slots .step .k{font:10.5px var(--mono);color:var(--dim);text-transform:uppercase;letter-spacing:.04em}
-.chain-only .slots .step .k b{color:var(--brand);font-weight:700}
-.chain-only .slots .step .grab{color:var(--dim);font-size:14px;line-height:1}
-.chain-only .slots .step code{grid-column:1/-1;font:12px var(--mono);color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.chain-only .slots .step .ctl{grid-column:1/-1;display:flex;gap:4px}
-.chain-only .slots .step .ctl button{min-height:26px;min-width:30px;padding:0 6px;font-size:12px}
-.chain-only .slots .step .ctl [data-del]{margin-left:auto}
-.chain-only .cb-actions{display:flex;align-items:center;gap:8px}
-.chain-only .cb-count{margin-right:auto;color:var(--dim);font-size:12px}
-.chain-only .cb-actions button{min-height:38px;padding:0 16px}
+.chain-only .slots .step.over{border-color:var(--cs-green)}
+.chain-only .slots .step .k{font:700 9.5px var(--cs-ui);color:var(--cs-brand);text-transform:none;letter-spacing:0;white-space:nowrap}
+.chain-only .slots .step .k b{font-weight:700}
+.chain-only .slots .step[data-kind=shell] .k{color:var(--cs-amber)}
+.chain-only .slots .step .grab{display:none}
+.chain-only .slots .step code{font:10.5px var(--cs-mono);color:var(--cs-text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%}
+.chain-only .slots .step .ctl{display:none;position:absolute;inset:auto 0 0 0;justify-content:center;gap:2px;background:rgba(18,23,34,.92);padding:1px}
+.chain-only .slots .step:hover .ctl,.chain-only .slots .step:focus-within .ctl{display:flex}
+.chain-only .slots .step .ctl button[data-flat]{min-height:18px;min-width:22px;padding:0 4px;font-size:10px;border-radius:6px}
+.chain-only .hotbar .m-name{width:130px;min-height:32px;padding:4px 8px;box-sizing:border-box;border:1px solid var(--cs-line);border-radius:10px;background:var(--cs-panel2);color:var(--cs-text);font:inherit;flex:none}
+.chain-only .hotbar button[data-flat]{min-height:32px;padding:4px 10px;flex:none}
+.chain-only .hotbar button[data-flat].primary{min-height:32px}
+.chain-only .m-foot{flex:none;display:flex;align-items:center;gap:10px;padding:6px 14px;border-top:1px solid var(--cs-line);font-size:11px;color:var(--cs-dim);min-width:0}
+.chain-only .m-foot b{color:var(--cs-text)}
+.chain-only .m-foot .cb-count{white-space:nowrap}
+.chain-only .m-foot .right{margin-left:auto;display:flex;gap:8px;flex:none}
+.chain-only .m-foot button[data-flat].ghost{min-height:28px;padding:2px 10px}
 @media (max-width:899px){
   .backdrop[data-mclose]{padding:0}
   .backdrop[data-mclose] > .modal.chain-only{width:100%;height:100%;border-radius:0;border-width:0}
-  .chain-only .m-head h2{display:none}
+  .chain-only .m-head{flex-wrap:wrap;gap:8px}
+  .chain-only .m-head .search{max-width:none;width:100%;margin:0}
+  .chain-only .m-head .target{margin-left:0;width:100%}
+  .chain-only .cmds{columns:1}
+  .chain-only .hotbar{flex-wrap:wrap}
+  .chain-only .hotbar .slots{flex-basis:100%}
 }
-@media(pointer:coarse){.chain-only .cmd .add{min-height:34px}.chain-only .slots .step .ctl button{min-height:34px;min-width:36px}}
+@media(pointer:coarse){.chain-only .cmd button[data-flat].add{min-height:32px}.chain-only .slots .step .ctl{display:flex}.chain-only .slots .step .ctl button[data-flat]{min-height:22px}}

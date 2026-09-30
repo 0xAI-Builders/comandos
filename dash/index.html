@@ -1828,15 +1828,15 @@
 	    #content{padding-bottom:env(safe-area-inset-bottom)}
 	  }
 	</style>
-<link rel="stylesheet" href="/workspace.css?v=rejilla6">
+<link rel="stylesheet" href="/workspace.css?v=estilos2">
 <link rel="stylesheet" href="/buttons.css?v=2">
 <link rel="stylesheet" href="/reparto.css">
 <script src="/session-config.js?v=7f3232b0a624"></script>
 <script src="/workspace-layout.js"></script>
 <script src="/workspace-dock.js?v=bandejas2"></script>
 <script src="/quick-terminal.js"></script>
-<script src="/command-sidebar.js?v=3"></script>
-<script src="/chain-builder.js?v=2"></script>
+<script src="/command-sidebar.js?v=4"></script>
+<script src="/chain-builder.js?v=3"></script>
 
 <div id="panes">
 <nav id="app-navigation" aria-label="Pestañas de sesiones">
@@ -6400,17 +6400,19 @@ function mountChainPage(){
   const qs = new URLSearchParams(location.search);
   const sess = (qs.get("session") || "").slice(0, 120), pane = (qs.get("pane") || "").slice(0, 12);
   const tell = msg => { try{ if(inApp()) window.webkit.messageHandlers.centro.postMessage(JSON.stringify(msg)); }catch(e){} };
-  const st = {catalog: null, chains: [], here: ""};
+  const st = {catalog: null, chains: [], here: "", target: ""};
   const load = async () => {
     const q = sess && /^%\d+$/.test(pane) ? `?session=${encodeURIComponent(sess)}&pane=${encodeURIComponent(pane)}` : "";
     const [cat, ch] = await Promise.all([api("/commands/catalog" + q), api("/chains")]);
     st.catalog = (cat && cat.catalog) || null;
     st.here = (cat && cat.cliInPane) || "";
+    st.target = sess ? `${sess}${pane ? " · " + pane : ""}${st.here ? " · " + st.here : ""}` : "";
     st.chains = Array.isArray(ch && ch.chains) ? ch.chains : [];
   };
   window.chainBuilder = ComandosChainBuilder.createChainBuilder({
     api, root: document.body, toast, hydrate: hydrateIcons,
     catalog: () => st.catalog, chains: () => st.chains, here: () => st.here,
+    target: () => st.target,
     onClose: () => tell({chainModal: "close"}),
     onSaved: async (chain, o) => { await load(); tell({chainModal: o && o.run ? "run" : "saved", slug: chain.slug}); }});
   load().catch(err => toast((err && err.message) || tf("No se pudo cargar el catálogo", "Could not load the catalog"), true))
@@ -6426,6 +6428,7 @@ function mountChainBuilder(){
     catalog: () => window.commandSidebar.state.catalog,
     chains: () => window.commandSidebar.state.chains,
     here: () => window.commandSidebar.state.cliInPane,
+    target: () => { const t = activePaneTarget(); const h = window.commandSidebar.state.cliInPane; return t ? `${t.title}${h ? " · " + h : ""}` : ""; },
     onSaved: async (chain, o) => {
       try{ await window.commandSidebar.refresh(); }
       catch(err){ toast((err && err.message) || tf("No se pudo refrescar las cadenas", "Could not refresh the chains"), true); return; }

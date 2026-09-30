@@ -40,9 +40,9 @@
     const fresh = new Set(Array.isArray(cmd.newArgs) ? cmd.newArgs : []);
     const chips = (Array.isArray(cmd.args) ? cmd.args : [])
       .map(a => fresh.has(a)
-        ? `<button type="button" class="new" aria-label="${esc(a)} (nuevo)" title="nuevo" ${attr}="${esc(withArg(a))}" data-kind="${kind}">${esc(a)}</button>`
-        : `<button type="button" ${attr}="${esc(withArg(a))}" data-kind="${kind}">${esc(a)}</button>`).join('');
-    const add = mode === 'build' ? `<button type="button" class="add" data-add="${esc(text)}" data-kind="${kind}">+ cadena</button>` : '';
+        ? `<button type="button" data-flat class="new" aria-label="${esc(a)} (nuevo)" title="nuevo" ${attr}="${esc(withArg(a))}" data-kind="${kind}">${esc(a)}</button>`
+        : `<button type="button" data-flat ${attr}="${esc(withArg(a))}" data-kind="${kind}">${esc(a)}</button>`).join('');
+    const add = mode === 'build' ? `<button type="button" data-flat class="add" data-add="${esc(text)}" data-kind="${kind}">+ cadena</button>` : '';
     const dis = opts.dis ? ' dis' : '';
     const hidden = hits(cmd, opts.q) ? '' : ' hidden';
     return `<div class="cmd${dis}" ${attr}="${esc(text)}" data-kind="${kind}"${hidden}>`
@@ -51,17 +51,32 @@
       + (chips ? `<span class="opts">${chips}</span>` : '') + add + '</div>';
   }
 
+  // Arranques como píldoras monoespaciadas (mockup): yolo en ámbar, normal neutro.
+  // Siguen siendo .cmd[data-cmd|data-add] para que clic/teclado y las pruebas no cambien.
+  // Monograma por CLI: colores del mockup aprobado; el pictograma es el icono de
+  // proveedor del producto (data-icon) y, sin icono, la inicial.
+  const MONO = { claude: ['#d97757', '#1a0f0a', 'anthropic', 'C'], codex: ['#e8e8e8', '#111', 'openai', 'X'],
+    grok: ['#111', '#fff', 'grok', 'G'], opencode: ['#f2f2f2', '#111', '', 'O'], agy: ['#4285f4', '#fff', 'gemini', 'A'] };
+  function monoHTML(id) {
+    const m = MONO[id] || ['#1c2130', '#eaf0fb', '', String(id || '?').slice(0, 1).toUpperCase()];
+    const inner = m[2] ? `<span data-icon="${m[2]}" data-size="15"></span>` : esc(m[3]);
+    return `<span class="mono" style="background:${m[0]};color:${m[1]}">${inner}</span>`;
+  }
   function launchHTML(cli, which, o) {
     const key = `${cli.id}:${which}`;
     const list = (cli.launch && Array.isArray(cli.launch[which])) ? cli.launch[which] : [];
     const missing = (cli.version && cli.version.status === 'missing') || o.noTarget;
-    const rows = list.map(text => rowHTML({ text, description: '' }, { mode: o.mode, kind: 'shell', dis: missing, q: o.q })).join('');
+    const attr = o.mode === 'build' ? 'data-add' : 'data-cmd';
+    const pills = list.map(text => `<button type="button" data-flat class="cmd pill${which === 'yolo' ? ' y' : ''}${missing ? ' dis' : ''}" ${attr}="${esc(text)}" data-kind="shell"${hits({ text }, o.q) ? '' : ' hidden'}>${esc(text)}</button>`).join('');
     const note = which === 'yolo' && !list.length
-      ? `<div class="note"${o.q ? ' hidden' : ''}>${esc((cli.launch && cli.launch.yoloNote) || 'sin flag yolo')}</div>` : '';
+      ? `<small class="note"${o.q ? ' hidden' : ''}>${esc((cli.launch && cli.launch.yoloNote) || 'sin flag yolo')}</small>` : '';
     const empty = o.q && !list.some(text => hits({ text }, o.q));
+    const label = which === 'yolo'
+      ? '<span data-icon="zap" data-size="12"></span> arrancar en modo yolo · sin permisos'
+      : '<span data-icon="flame" data-size="12"></span> arrancar normal';
     return `<div class="launch ${which}${o.open.has(key) ? ' open' : ''}"${empty ? ' hidden' : ''}>`
-      + `<div class="lab3" data-toggle="${esc(key)}"${toggleAttrs(o.open.has(key))}>${which === 'yolo' ? 'Arranque yolo' : 'Arranque normal'}${chev}</div>`
-      + rows + note + '</div>';
+      + `<div class="lab3" data-toggle="${esc(key)}"${toggleAttrs(o.open.has(key))}>${label}<span class="chev">▾</span></div>`
+      + pills + note + '</div>';
   }
 
   // Lista plana (ronda 6 A aprobada): los grupos del catálogo solo ordenan; no
@@ -87,17 +102,21 @@
     const d = cli.detected && cli.detected.total ? cli.detected : null;
     const st0 = STATUS_TEXT[v.status] !== undefined ? v.status : 'ok';
     const st = (st0 === 'drift' || st0 === 'unverified') && d && d.found === d.total ? 'ok' : st0;
-    const ver = [v.installed ? `v${v.installed}` : '', STATUS_TEXT[st]].filter(Boolean).join(' · ');
+    const ver = v.installed ? `${v.installed}` : (st === 'missing' ? 'no instalado' : '');
     const groups = Array.isArray(cli.groups) ? cli.groups : [];
     const launch = cli.launch || {};
     const empty = o.q && ![...(launch.yolo || []), ...(launch.normal || [])].some(text => hits({ text }, o.q))
       && !groups.some(g => (g.commands || []).some(c => hits(c, o.q)));
-    const det = d ? ` · ${d.found} de ${d.total} en el binario` : '';
+    const det = '';   // el conteo detectado va en el title; la fila muestra solo la versión (mockup)
     const cls = ['cs-cli', o.open.has(cli.id) ? 'open' : '', opts.here ? 'here' : '', st !== 'ok' ? st : ''].filter(Boolean).join(' ');
+    const badge = opts.here ? '<span class="badge here-tag">en este pane</span>'
+      : st === 'missing' ? '<span class="badge off">no instalado</span>'
+      : st === 'ok' ? '<span class="badge off">instalado</span>'
+      : '<span class="badge warn">sin verificar</span>';
+    const title = [`catálogo v${v.pinned}`, STATUS_TEXT[st0], d ? `${d.found} de ${d.total} comandos presentes en el binario` : ''].filter(Boolean).join(' · ');
     return `<div class="${cls}" data-cli="${esc(cli.id)}"${empty ? ' hidden' : ''}>`
-      + `<div class="cli-h" data-toggle="${esc(cli.id)}"${toggleAttrs(o.open.has(cli.id))}><span class="nm">${esc(cli.label || cli.id)}</span>`
-      + `<span class="ver" title="catálogo v${esc(v.pinned)}${det ? ' · comandos detectados en el binario' : ''}">${esc(ver + det)}</span>`
-      + (opts.here ? '<span class="here-tag">en este pane</span>' : '') + chev + '</div>'
+      + `<div class="cli-h" data-toggle="${esc(cli.id)}"${toggleAttrs(o.open.has(cli.id))} title="${esc(title)}">${monoHTML(cli.id)}<span class="nm">${esc(cli.label || cli.id)}</span>`
+      + `<span class="ver">${esc(ver + det)}</span>${badge}<span class="chev">▾</span></div>`
       + launchHTML(cli, 'yolo', o) + launchHTML(cli, 'normal', o) + commandsHTML(cli, o) + '</div>';
   }
 
@@ -107,6 +126,8 @@
     const state = { catalog: null, cliInPane: '', catalogTarget: null, chains: [], open: new Set(), run: null,
       typing: null, q: '', firstRender: true, appliedTarget: null };
 
+    // móvil (≤900): el bloque «arrancar normal» nace plegado; en escritorio, abierto
+    const narrow = () => { try { return typeof window !== 'undefined' && window.innerWidth > 0 && window.innerWidth <= 900; } catch (_) { return false; } };
     const read = k => { try { return storage ? storage.getItem(k) : null; } catch (_) { return null; } };
     const write = (k, v) => { try { if (storage) storage.setItem(k, v); } catch (_) {} };
     (function readOpen() {
@@ -146,6 +167,7 @@
         const cli = clis().find(c => c.id === id);
         if (cli) {
           state.open.add(cli.id); state.open.add(`${cli.id}:yolo`);
+          if (!narrow()) state.open.add(`${cli.id}:normal`);
         }
         state.firstRender = false;
         changed = true;
@@ -161,6 +183,7 @@
         const cli = id ? clis().find(c => c.id === id) : null;
         if (cli && !(state.open.has(cli.id) && state.open.has(`${cli.id}:yolo`))) {
           state.open.add(cli.id); state.open.add(`${cli.id}:yolo`); changed = true;
+          if (!narrow()) state.open.add(`${cli.id}:normal`);
         }
       }
       state.appliedTarget = applied ? { session: applied.session, pane: applied.pane } : null;
@@ -273,19 +296,27 @@
       const t = target();
       return t ? (t.title || `${t.session} ${t.pane}`) : 'Sin destino';
     }
+    function catalogPill() {
+      const bad = clis().some(c => { const v = c.version || {}; const d = c.detected;
+        return v.status === 'missing' ? false : v.status !== 'ok' && !(d && d.total && d.found === d.total); });
+      return bad ? '<span class="pill warn"><span data-icon="zap" data-size="11"></span>cambio de versión</span>'
+                 : '<span class="pill ok"><span data-icon="sparkles" data-size="11"></span>catálogo ok</span>';
+    }
     function headHTML() {
-      return `<div class="cs-head"><div class="cs-target">${esc(targetTitle())}</div>`
-        + '<button type="button" class="cs-chains" data-open-builder><span data-icon="layers" data-size="12"></span> Cadenas</button>'
-        + `<input class="cs-search" type="search" placeholder="Buscar comando" value="${esc(state.q)}"></div>`;
+      return '<div class="cs-head"><div class="sb-head"><span class="ic" data-icon="snippet" data-size="18"></span>'
+        + `<h2>Comandos<small>destino: <span class="cs-target">${esc(targetTitle())}</span></small></h2>`
+        + `<span class="cs-pill">${catalogPill()}</span>`
+        + '<button type="button" data-flat class="cs-chains chains-btn" data-open-builder><span data-icon="layers" data-size="13"></span>Cadenas</button></div>'
+        + `<div class="search"><span class="ic" data-icon="search" data-size="14"></span><input class="cs-search" type="search" placeholder="Buscar en todos los CLI…" value="${esc(state.q)}"></div></div>`;
     }
 
     function savedHTML() {
       const items = state.chains.map(c => c.error
-        ? `<div class="cs-saved-item error"><span class="nm">${esc(c.name || c.slug)}</span><small>${esc(c.error)}</small></div>`
-        : `<div class="cs-saved-item" data-run="${esc(c.slug)}"><span class="nm">${esc(c.name || c.slug)}</span>`
-          + `<small>${(c.steps || []).length} pasos</small><button type="button">Correr</button></div>`).join('');
-      return `<div class="cs-saved${state.open.has('saved') ? ' open' : ''}">`
-        + `<div class="cli-h" data-toggle="saved"${toggleAttrs(state.open.has('saved'))}><span class="nm">Cadenas guardadas</span><span class="n">${state.chains.length}</span>${chev}</div>`
+        ? `<div class="cs-saved-item it error"><span class="nm">${esc(c.name || c.slug)}</span><small>${esc(c.error)}</small></div>`
+        : `<div class="cs-saved-item it" data-run="${esc(c.slug)}"><span class="nm">${esc(c.name || c.slug)}</span>`
+          + `<small>${(c.steps || []).length} pasos</small><button type="button" data-flat class="run pill"><span data-icon="play" data-size="11"></span>Correr</button></div>`).join('');
+      return `<div class="cs-saved saved${state.open.has('saved') ? ' open' : ''}">`
+        + `<div class="cli-h" data-toggle="saved"${toggleAttrs(state.open.has('saved'))}><span data-icon="layers" data-size="16"></span><span class="nm">Cadenas guardadas</span><small class="n">${state.chains.length}</small><span class="chev">▾</span></div>`
         + (items || '<div class="cs-empty">Sin cadenas guardadas</div>') + '</div>';
     }
 
@@ -293,24 +324,24 @@
       const run = state.run;
       if (!run) return '';
       const n = run.steps.length, done = run.step >= n;
-      return `<div class="cs-runner${done ? ' done' : ''}">`
-        + `<div class="r-h"><b>${esc(run.name)}</b> · ${done ? 'completa' : `paso ${run.step + 1} de ${n}`}`
-        + `<button type="button" data-run-stop>${done ? 'Cerrar' : 'Parar'}</button></div>`
+      return `<div class="cs-runner runner${done ? ' done' : ''}">`
+        + `<div class="r-h"><span data-icon="${done ? 'check' : 'timer'}" data-size="16"></span><b>${esc(run.name)}</b><small>${done ? 'completa' : `paso ${run.step + 1} de ${n}`}</small>`
+        + `<span class="right"><button type="button" data-flat class="ghost" data-run-stop>${done ? 'Cerrar' : 'Parar'}</button></span></div>`
         + `<div class="r-t">en ${esc(run.target.title || `${run.target.session} ${run.target.pane}`)}</div>`
         + '<div class="steps">' + run.steps.map((s, i) =>
-          `<div class="step${i < run.step ? ' done' : ''}${i === run.step ? ' cur' : ''}" data-kind="${esc(s.kind)}"><code>${esc(s.text)}</code></div>`).join('') + '</div>'
+          `<div class="step${i < run.step ? ' done' : ''}${i === run.step ? ' cur' : ''}" data-kind="${esc(s.kind)}"><span class="k">${esc(s.kind)}</span><code>${esc(s.text)}</code></div>`).join('') + '</div>'
         + (run.error ? `<div class="r-err">${esc(run.error)}</div>` : '')
-        + (done ? '' : '<button type="button" class="cs-next" data-run-next>Siguiente</button>') + '</div>';
+        + (done ? '' : '<div class="acts"><button type="button" data-flat class="cs-next primary" data-run-next><span data-icon="play" data-size="13"></span>Siguiente</button><small>Se escribe sin Enter; tú das Enter.</small></div>') + '</div>';
     }
 
     function termList() { try { return terminals() || []; } catch (_) { return []; } }
     function termsHTML() {
       const t = target();
       const cur = x => !!t && (t.paneKey && x.paneKey ? t.paneKey === x.paneKey : sameTarget(t, x));
-      return '<div class="cs-terms"><div class="lab3">Terminales rápidas</div>'
-        + termList().map(x => `<button type="button" class="t${cur(x) ? ' cur' : ''}" data-focus-term="${esc(x.tabId)}">`
-          + `<span data-icon="terminal" data-size="12"></span> ${esc(x.label || x.tabId)}</button>`).join('')
-        + '<button type="button" class="t plus" data-new-term><span data-icon="plus" data-size="12"></span> Terminal</button></div>';
+      return '<div class="cs-terms tt">'
+        + termList().map(x => `<button type="button" data-flat class="t${cur(x) ? ' on cur' : ''}" data-focus-term="${esc(x.tabId)}">`
+          + `<span data-icon="zap" data-size="12"></span>${esc(x.label || x.tabId)}${cur(x) ? ' · destino' : ''}</button>`).join('')
+        + '<button type="button" data-flat class="t plus" data-new-term>+ Terminal</button></div>';
     }
 
     function bodyHTML() {
@@ -328,6 +359,8 @@
       if (head && body) {
         const tgt = head.querySelector('.cs-target');
         if (tgt) tgt.textContent = targetTitle();
+        const pill = head.querySelector('.cs-pill');
+        if (pill) pill.innerHTML = catalogPill();   // hydrate(el) al final del render pinta su icono
         body.innerHTML = bodyHTML();
       } else {
         el.innerHTML = headHTML() + `<div class="cs-body">${bodyHTML()}</div>`;
