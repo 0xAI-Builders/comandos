@@ -537,3 +537,35 @@ def test_acp_summarizer_denies_tool_permissions_and_reports_agent_failures():
         ne.make_summarizer(ACP_CONFIG, env={}, acp_open=lambda a, m: Session())(summary_request())
     assert ne.deny_agent_tools({"title": "run rm", "kind": "execute", "options": [
         {"optionId": "allow-once", "kind": "allow_once"}, {"optionId": "reject-once", "kind": "reject_once"}]}) == "reject-once"
+
+
+def test_fetcher_shares_the_limit_between_sources_newest_first():
+    """A burst of one source (13 bounties discovered at once) must not crowd
+    the model news out of the edition: the limit rotates across sources."""
+    class FakeWatch:
+        @staticmethod
+        def collect(now):
+            bounties = [{"url": f"https://b.example/{i}", "title": f"B{i}", "kind": "bounty",
+                         "source": "superteam", "at": now} for i in range(13)]
+            news = [{"url": f"https://hn.example/{i}", "title": f"H{i}", "kind": "noticia",
+                     "source": "hackernews", "at": now - 100 - i} for i in range(6)]
+            repos = [{"url": f"https://gh.example/{i}", "title": f"G{i}", "kind": "skill",
+                      "source": "github/anthropics", "at": now - 1000 - i} for i in range(2)]
+            return {"items": bounties + news + repos, "failures": []}
+    fetch = ne.make_fetcher(FakeWatch, reader=lambda url: (True, "texto", None), now=lambda: 1_000_000)
+    items = fetch(ne.default_policy(), 12)["items"]
+    by = {}
+    for it in items:
+        by.setdefault(it["source"], []).append(it["url"])
+    assert len(items) == 12
+    assert len(by["hackernews"]) == 5 and len(by["github/anthropics"]) == 2 and len(by["superteam"]) == 5
+    assert by["hackernews"][0] == "https://hn.example/0", "within a source, newest first"
+
+
+def test_superteam_listing_urls_use_the_live_path(monkeypatch):
+    import news_watch
+    monkeypatch.setattr(news_watch, "_get_json", lambda url, **kw: [
+        {"title": "Bounty X", "slug": "bounty-x", "token": "USDC", "rewardAmount": 500, "deadline": "2026-10-01T00:00:00Z"}])
+    item = news_watch.fetch_superteam(1_000)[0]
+    assert item["url"] == "https://superteam.fun/earn/listing/bounty-x"
+    assert item["meta"] == {"prize": "500 USDC", "deadline": "2026-10-01T00:00:00Z"}

@@ -635,15 +635,20 @@ def make_fetcher(news_watch_module, *, reader=read_article, now=None):
     def fetch(policy, limit):
         ts = int((now or time.time)())
         collected = news_watch_module.collect(ts)
-        seen, items = set(), []
+        # Newest first within each source, then round-robin across sources:
+        # one source discovered in a burst never crowds the others out.
+        seen, queues = set(), {}
         for it in sorted(collected["items"], key=lambda x: -(x.get("at") or 0)):
             url = normalize_url(it.get("url"))
             if not url or url in seen:
                 continue
             seen.add(url)
-            items.append(it)
-            if len(items) >= limit:
-                break
+            queues.setdefault(it.get("source") or "", []).append(it)
+        items = []
+        while len(items) < limit and any(queues.values()):
+            for source in list(queues):
+                if queues[source] and len(items) < limit:
+                    items.append(queues[source].pop(0))
         out = []
         for it in items:
             ok, text, error = reader(it["url"])

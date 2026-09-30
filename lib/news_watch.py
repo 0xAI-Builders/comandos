@@ -206,8 +206,10 @@ def fetch_superteam(now, errors=None):
             else:
                 prize = f"{it0.get('rewardAmount') or '?'} {token}"
             slug = it0.get("slug") or ""
+            # Listings live at superteam.fun/earn/listing/<slug> (the old
+            # earn.superteam.fun/listings/ path answers 404 since 2026-09).
             it = _mk("superteam", it0.get("title"),
-                     f"https://earn.superteam.fun/listings/{slug}" if slug else "", now)
+                     f"https://superteam.fun/earn/listing/{slug}" if slug else "", now)
             if it:
                 it["kind"] = "bounty"
                 it["meta"] = {"prize": prize, "deadline": it0.get("deadline")}
