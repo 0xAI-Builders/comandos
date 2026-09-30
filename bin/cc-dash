@@ -8543,6 +8543,9 @@ class Handler(http.server.SimpleHTTPRequestHandler):
         if not getattr(self, "_sent_cache_control", False):
             self._no_store()
         super().end_headers()
+        # One handler serves every request of a kept-alive connection (Tailscale
+        # Serve reuses it): reset the flag or later responses go out cacheable.
+        self._sent_cache_control = False
 
     def _json(self, code, obj, *, close=False):
         body = json.dumps(obj).encode()

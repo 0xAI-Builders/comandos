@@ -1,6 +1,6 @@
 // Service worker minimo: habilita instalar como app (PWA) y una pantalla
 // offline decente. NO cachea /state ni las APIs (siempre en vivo).
-const SHELL = "comandos-shell-v12";
+const SHELL = "comandos-shell-v13";
 self.addEventListener("install", (e) => {
   self.skipWaiting();
   e.waitUntil(caches.open(SHELL).then((c) => c.addAll(["/", "/manifest.webmanifest"])));
@@ -27,12 +27,13 @@ self.addEventListener("fetch", (e) => {
   if (url.pathname !== "/" && !/\.(?:html|css|js|png|svg|ico|woff2?|ttf|webmanifest)$/.test(url.pathname)) return;
   // La URL remota usa token en querystring: red primero sin guardar esa variante.
   if (url.pathname === "/" && url.searchParams.has("token")) {
-    e.respondWith(fetch(e.request).catch(() => caches.match("/")));
+    e.respondWith(fetch(e.request, {cache: "no-cache"}).catch(() => caches.match("/")));
     return;
   }
-  // El shell: red primero, cache como respaldo offline.
+  // El shell: red primero y SIEMPRE revalidado (el caché HTTP del teléfono
+  // servía un index.html viejo); el caché propio queda solo para offline.
   e.respondWith(
-    fetch(e.request)
+    fetch(e.request, {cache: "no-cache"})
       .then((r) => { const cp = r.clone(); caches.open(SHELL).then((c) => c.put(e.request, cp)); return r; })
       .catch(() => caches.match(e.request).then((m) => m || caches.match("/")))
   );

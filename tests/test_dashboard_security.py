@@ -369,3 +369,26 @@ def test_remote_assets_load_from_the_installed_symlink_layout(dash, monkeypatch,
         server.shutdown()
         server.server_close()
         thread.join(timeout=2)
+
+
+def test_every_response_on_a_kept_alive_connection_forbids_caching(dash, monkeypatch, tmp_path):
+    """«Sigo viendo remoto igual viejo»: Tailscale Serve reuses one upstream
+    connection; the no-store flag stuck on the handler after the first
+    response, so later pages and assets were cached by the phone."""
+    monkeypatch.setattr(dash, "DASH", str(tmp_path))
+    (tmp_path / "index.html").write_text("<p>nuevo</p>")
+    (tmp_path / "app.css").write_text("p{}")
+    server, thread = _serve(dash)
+    client = http.client.HTTPConnection(*server.server_address, timeout=2)
+    try:
+        for path in ("/", "/app.css", "/", "/app.css"):
+            client.request("GET", path)
+            response = client.getresponse()
+            response.read()
+            assert response.status == 200
+            assert "no-store" in (response.getheader("Cache-Control") or ""), path
+    finally:
+        client.close()
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=2)
