@@ -2007,6 +2007,47 @@ def append_work_mark_menu(menu, session, pane_id):
     menu.append(root)
 
 
+def _mark_menu_item(mark, label, active, on_activate):
+    """Radio row with the state's icon and its name (the grill's icon + text menu)."""
+    item = Gtk.CheckMenuItem()
+    item.set_draw_as_radio(True)
+    row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
+    row.pack_start(Gtk.Image.new_from_pixbuf(_indicator_pixbuf(mark, None, 0)), False, False, 0)
+    row.pack_start(Gtk.Label(label=label), False, False, 0)
+    item.add(row)
+    item.set_active(active)
+    item.connect("activate", on_activate)
+    return item
+
+
+def tab_indicator_menu(session, pane_id=None):
+    """Menu opened by tapping a tab's indicator: this tab's state and, when the
+    pane is identified, that pane's state and favourite. Same scopes as the web."""
+    menu = Gtk.Menu()
+    sections = []
+    if session and session != "local":
+        sections.append(("session", session, "Esta pestaña" if ES else "This tab"))
+    pane_key = work_mark_state.pane_key_for(WORK_MARKS["panes"], session, pane_id) if pane_id else None
+    if pane_key:
+        sections.append(("pane", pane_key, "Este pane" if ES else "This pane"))
+    for i, (scope, key, title) in enumerate(sections):
+        if i:
+            menu.append(Gtk.SeparatorMenuItem())
+        if len(sections) > 1:
+            header = Gtk.MenuItem(label=title)
+            header.set_sensitive(False)
+            menu.append(header)
+        row = work_mark_row(scope, key)
+        for mark in work_mark_state.MARKS:
+            menu.append(_mark_menu_item(mark, work_mark_state.LABELS[mark][0 if ES else 1], row["mark"] == mark,
+                                        lambda _w, s=scope, k=key, m=mark: set_work_mark(s, k, m)))
+        if scope == "pane":
+            menu.append(_mark_menu_item("favorite", work_mark_state.LABELS["favorite"][0 if ES else 1], bool(row["favorite"]),
+                                        lambda _w, k=key, v=not row["favorite"]: set_work_mark("pane", k, {"favorite": v})))
+    menu.show_all()
+    return menu
+
+
 def ordered_tab_labels(page_keys, labels):
     out = {}
     for key in page_keys:
@@ -2625,8 +2666,20 @@ def tab_label(text, key=None, closable=True, on_close=None):
     # E1: one 14 px indicator per tab (mark / working ring / neutral ring); it
     # replaces the coloured dot and keeps fixed bounds while it animates.
     dot = Gtk.Image.new_from_pixbuf(_indicator_pixbuf("none", DOT_IDLE, 0))
-    hb.pack_start(dot, False, False, 0)
+    dot_box = Gtk.EventBox()
+    dot_box.set_visible_window(False)
+    dot_box.add(dot)
+    dot_box.set_tooltip_text("Estado de la pestaña: clic para cambiarlo" if ES else "Tab state: click to change it")
+    hb.pack_start(dot_box, False, False, 0)
     hb._work_mark = dot
+    if key and key != "local":
+        def _open_state_menu(widget, event):
+            if event.button != 1:
+                return False
+            menu = tab_indicator_menu(key, None)
+            menu.popup_at_widget(widget, Gdk.Gravity.SOUTH_WEST, Gdk.Gravity.NORTH_WEST, event)
+            return True   # the tab itself is selected by its name, not by the indicator
+        dot_box.connect("button-press-event", _open_state_menu)
     lbl = Gtk.Label(label=text)
     # EventBox permite recibir clicks (Label no los captura por default).
     # Doble-click = renombrar inline; sin bloquear el single-click que

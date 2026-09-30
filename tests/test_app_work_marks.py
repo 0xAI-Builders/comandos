@@ -14,7 +14,7 @@ sys.path.insert(0, str(ROOT / "lib"))
 import work_marks  # noqa: E402
 
 NAMES = ["work_mark_row", "paint_tab_mark", "_paint_all_tab_marks", "apply_work_marks", "adopt_work_mark",
-         "set_work_mark", "append_work_mark_menu", "tab_indicator_display"]
+         "set_work_mark", "append_work_mark_menu", "tab_indicator_display", "tab_indicator_menu", "_mark_menu_item"]
 
 
 class Widget:
@@ -33,11 +33,20 @@ class Widget:
     def show(self): self.shown = True
     def set_from_pixbuf(self, p): self.pixbuf = p; self.writes += 1
     def set_tooltip_text(self, t): self.tooltip = t
+    def add(self, child): self.children.append(child)
+    def show_all(self): self.shown = True
+    def popup_at_widget(self, *a): self.popped = True
 
 
 def fake_gtk():
+    class Box(Widget):
+        def __init__(self, *a, **k): super().__init__()
+        def pack_start(self, child, *a): self.children.append(child)
     return SimpleNamespace(Menu=Widget, MenuItem=lambda label=None: Widget(label),
-                           CheckMenuItem=lambda label=None: Widget(label), SeparatorMenuItem=lambda: Widget("-"))
+                           CheckMenuItem=lambda label=None: Widget(label), SeparatorMenuItem=lambda: Widget("-"),
+                           Box=Box, Label=lambda label=None: Widget(label),
+                           Image=SimpleNamespace(new_from_pixbuf=lambda p: SimpleNamespace(pixbuf=p)),
+                           Orientation=SimpleNamespace(HORIZONTAL=0))
 
 
 def load(responses):
@@ -166,3 +175,18 @@ def test_header_hourglass_uses_the_fifteen_original_frames():
     assert ns["hourglass_sheet_frames"](630, 42, scale=0.5)[1] == (42, 0, 42, 42), "source rects are native pixels"
     path = ROOT / "assets" / "pomodoro" / "zoedoz" / "hourglass.png"
     assert path.is_file(), "the production asset ships with the app"
+
+
+def test_clicking_the_tab_indicator_opens_the_state_menu_with_icons_and_text():
+    """Grill: the indicator is the control; tapping it opens the state menu (icons + labels, no emoji)."""
+    ns, posted, _, _ = load([(200, {"mark": {"scope": "session", "key": "sess", "mark": "frozen", "favorite": False, "revision": 1}})])
+    menu = ns["tab_indicator_menu"]("sess", None)
+    rows = [c for c in menu.children if c.children]          # icon + text rows
+    texts = [c.children[0].children[1].label for c in rows]
+    assert texts[:4] == ["Sin marca", "Resuelto", "Congelado", "Esperando respuesta"]
+    icons = [c.children[0].children[0].pixbuf for c in rows]
+    assert icons[:4] == ["pix:none:None:0", "pix:resolved:None:0", "pix:frozen:None:0", "pix:awaiting_reply:None:0"]
+    assert rows[0].active is True, "the current state is the checked one"
+    rows[2].handlers["activate"](rows[2])
+    assert posted == [{"scope": "session", "key": "sess", "value": "frozen", "expectedRevision": 0}]
+    assert menu.shown is True
