@@ -2125,6 +2125,9 @@ def tab_indicator_menu(session, pane_id=None):
         if scope == "pane":
             menu.append(_mark_menu_item("favorite", work_mark_state.LABELS["favorite"][0 if ES else 1], bool(row["favorite"]),
                                         lambda _w, k=key, v=not row["favorite"]: set_work_mark("pane", k, {"favorite": v})))
+        else:   # la favorita de la pestaña (la misma estrella ☆ de la tab)
+            menu.append(_mark_menu_item("favorite", "Favorita" if ES else "Favorite", key in TAB_FAVORITES,
+                                        lambda _w, k=key: toggle_tab_favorite(k)))
     menu.show_all()
     return menu
 
@@ -2848,6 +2851,10 @@ def tab_label(text, key=None, closable=True, on_close=None):
     def on_click(_w, ev):
         if ev.type == Gdk.EventType._2BUTTON_PRESS and ev.button == 1:
             begin_rename()
+            return True
+        if ev.button == 3 and key and key != "local":   # clic derecho: estado y favorita
+            menu = tab_indicator_menu(key, None)
+            menu.popup_at_pointer(ev)
             return True
         return False
 
@@ -3945,6 +3952,22 @@ def ws_poll_loop():
         except Exception:
             pass
         time.sleep(2)
+
+
+def tab_reorder(session, index):
+    """Mueve la tab (su grupo completo) en la distribución COMPARTIDA; mover
+    solo el notebook local se deshacía en el siguiente poll y no llegaba al remoto."""
+    doc = _WS.get("doc")
+    moved = workspace_layout.move_tab_group(doc, session, int(index)) if doc and session else None
+    if moved:
+        ws_commit(moved, focus=session)
+        return True
+    i, page = _page_for(session)
+    if page:
+        nb.reorder_child(page, int(index))
+        save_tabs()
+        return True
+    return False
 
 
 def ws_commit(doc, focus=None):
@@ -6669,7 +6692,7 @@ APP_COMMANDS = {
     "prev_tab": lambda a: _cycle_tab(-1),
     "mru_toggle": lambda a: _mru_toggle(),
     "focus_page": lambda a: (lambda i: nb.set_current_page(i) if i >= 0 else None)(_page_for(a.get("session"))[0]),
-    "tab_reorder": lambda a: (lambda i, p: (nb.reorder_child(p, int(a.get("index", 0))), save_tabs()) if p else None)(*_page_for(a.get("session"))),
+    "tab_reorder": lambda a: tab_reorder(a.get("session"), a.get("index", 0)),
     "mosaic": lambda a: {"on": _mosaic_open, "off": _mosaic_close, "toggle": _mosaic_toggle}[a.get("state", "toggle")](),
     "mosaic_zoom": lambda a: _mosaic_zoom(a.get("session"), a.get("session")),
     "side_panel": lambda a: _side_toggle() if bool(a.get("on")) != (paned.get_position() > 0) else None,

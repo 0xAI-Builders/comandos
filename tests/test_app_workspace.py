@@ -161,3 +161,16 @@ def test_hook_and_desktop_share_one_device_id():
                           capture_output=True, text=True).stdout.rstrip('\n')
     assert 'desktop-' + bash == 'desktop-' + re.sub(r"[^A-Za-z0-9_.-]", "-", node)[:60]
     assert "tr -c 'A-Za-z0-9_.-' '-' | cut -c1-60" in Path('hooks/cc-notify.sh').read_text()
+
+
+def test_operator_tab_reorder_commits_the_shared_arrangement():
+    commits = []
+    doc = {"groups": [{"id": "g-local", "tree": {"type": "tab", "tabId": "local"}},
+                      {"id": "g-a", "tree": {"type": "tab", "tabId": "a"}},
+                      {"id": "g-b", "tree": {"type": "tab", "tabId": "b"}}]}
+    import sys; sys.path.insert(0, "lib"); import workspace_layout
+    ns = {'_WS': {'doc': doc}, 'workspace_layout': workspace_layout,
+          'ws_commit': lambda d, focus=None: commits.append(([g["id"] for g in d["groups"]], focus)),
+          '_page_for': lambda s: (-1, None), 'nb': None, 'save_tabs': lambda: None}
+    assert load('tab_reorder', ns)("b", 1) is True
+    assert commits == [(["g-local", "g-b", "g-a"], "b")]

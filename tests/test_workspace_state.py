@@ -320,3 +320,21 @@ def test_reconcile_publishes_pane_keys_and_process_identity():
     assert out["bindings"]["k2"]["conversation"] is None
     # A missing capture keeps the last known panes rather than emptying the tab.
     assert ws.reconcile(out, [("a", None)], {"a": []})["tabs"]["a"]["paneKeys"] == ["k1", "k2"]
+
+
+def test_move_tab_group_reorders_the_shared_document():
+    """Reordering from the chat/operator must change the SHARED arrangement,
+    otherwise the next poll undoes it (grill 30-sep)."""
+    import workspace_layout as wl
+    import workspace_state as ws
+    doc = {"schema": ws.SCHEMA, "tabs": {}, "bindings": {}, "groups": [
+        {"id": "group-local", "tree": {"type": "tab", "tabId": "local"}},
+        {"id": "group-a", "tree": {"type": "tab", "tabId": "a"}},
+        {"id": "group-b", "tree": {"type": "split", "axis": "x", "ratio": 0.5,
+                                   "first": {"type": "tab", "tabId": "b"}, "second": {"type": "tab", "tabId": "c"}}},
+    ]}
+    moved = wl.move_tab_group(doc, "c", 1)
+    assert [g["id"] for g in moved["groups"]] == ["group-local", "group-b", "group-a"]
+    assert [g["id"] for g in doc["groups"]] == ["group-local", "group-a", "group-b"], "input untouched"
+    assert [g["id"] for g in wl.move_tab_group(doc, "a", 99)["groups"]][-1] == "group-a"
+    assert wl.move_tab_group(doc, "zzz", 0) is None

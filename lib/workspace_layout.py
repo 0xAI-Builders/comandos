@@ -143,3 +143,15 @@ def resize_split(document, group_id, path, ratio):
         raise ValueError("La ruta no es una división")
     node["ratio"] = min(MAX_RATIO, max(MIN_RATIO, float(ratio)))
     return validate_document(document)
+
+
+def move_tab_group(document, tab_id, index):
+    """New document with the group holding tab_id moved to position index
+    (clamped). None when the tab is not in the arrangement."""
+    groups = list(document.get("groups", []))
+    at = next((i for i, g in enumerate(groups) if tab_id in tab_ids(g.get("tree") or {})), None)
+    if at is None:
+        return None
+    group = groups.pop(at)
+    groups.insert(max(0, min(int(index), len(groups))), group)
+    return {**copy.deepcopy(document), "groups": copy.deepcopy(groups)}

@@ -78,6 +78,7 @@ def load(responses):
         "_indicator_pixbuf": lambda icon, color, frame=0: f"pix:{icon}:{color}:{frame}",
         "_indicator_animate": lambda hb: hb._dot.animated.append(hb._ind_icon),
         "STATE_CACHE": {}, "DOT_COLORS": {"waiting": "#D08770", "working": "#81A1C1"}, "DOT_IDLE": "#4B5568",
+        "TAB_FAVORITES": set(), "toggle_tab_favorite": lambda key: None,
     }
     label._work_mark = Widget()
     label._dot = label._work_mark
@@ -194,3 +195,19 @@ def test_clicking_the_tab_indicator_opens_the_state_menu_with_icons_and_text():
     rows[2].handlers["activate"](rows[2])
     assert posted == [{"scope": "session", "key": "sess", "value": "frozen", "expectedRevision": 0}]
     assert menu.shown is True
+
+
+def test_tab_menu_offers_the_tab_favorite_and_opens_with_right_click_on_the_tab():
+    """Grill 30-sep: el estado se cambia fácil (clic derecho en toda la pestaña)
+    y el menú de la pestaña también marca la favorita (antes solo la del pane)."""
+    ns, posted, _, _ = load([])
+    toggled = []
+    ns["TAB_FAVORITES"] = {"sess"}
+    ns["toggle_tab_favorite"] = toggled.append
+    menu = ns["tab_indicator_menu"]("sess", None)
+    rows = [c for c in menu.children if c.children]
+    fav = [r for r in rows if r.children[0].children[1].label == "Favorita"]
+    assert fav and fav[0].active is True, "the tab favourite is in the tab menu and shows its state"
+    fav[0].handlers["activate"](fav[0])
+    assert toggled == ["sess"] and posted == []
+    assert 'if ev.button == 3 and key and key != "local":' in SOURCE, "right click anywhere on the tab name opens it"
