@@ -11,11 +11,12 @@
       : `qt-${Date.now()}-${Math.random().toString(16).slice(2)}`;
   }
 
-  function createQuickTerminal({ api, openTerm, toast = () => {}, onOpened = () => {}, storage = null, makeId = newId }) {
+  // place 'sidebar': la terminal vive en la barra de comandos (no se registra como pestaña del workspace).
+  function createQuickTerminal({ api, openTerm, toast = () => {}, onOpened = () => {}, storage = null, makeId = newId, place = '', storageKey = KEY }) {
     let inflight = null;
-    const read = () => { try { return storage && storage.getItem(KEY); } catch (_) { return null; } };
+    const read = () => { try { return storage && storage.getItem(storageKey); } catch (_) { return null; } };
     const write = (value) => {
-      try { if (!storage) return; value ? storage.setItem(KEY, value) : storage.removeItem(KEY); } catch (_) {}
+      try { if (!storage) return; value ? storage.setItem(storageKey, value) : storage.removeItem(storageKey); } catch (_) {}
     };
     let requestId = read();
 
@@ -25,7 +26,7 @@
       const id = requestId;
       inflight = (async () => {
         try {
-          const r = await api('/terminal/quick', { requestId: id });
+          const r = await api('/terminal/quick', place ? { requestId: id, place } : { requestId: id });
           if (requestId === id) { requestId = null; write(null); }
           openTerm(r.tabId, r.label || r.tabId);
           onOpened(r);

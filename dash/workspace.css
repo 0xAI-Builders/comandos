@@ -682,6 +682,17 @@ button.wm-suggest{font:600 10px system-ui;padding:2px 7px;border-radius:999px;bo
 #command-sidebar{display:flex;flex-direction:column;min-width:0;box-sizing:border-box;background:var(--cs-panel2);padding:0}
 #command-sidebar [hidden]{display:none!important}
 :is(#command-sidebar,.chain-only) [data-icon]{display:inline-flex;flex:none;vertical-align:middle}
+/* sprites pixel del mockup (verbatim: .px, .ic s20/s24, reloj propio y cofre) */
+:is(#command-sidebar,.chain-only) .px{image-rendering:pixelated;image-rendering:crisp-edges;display:inline-block;flex:none}
+:is(#command-sidebar,.chain-only) .ic{width:32px;height:32px;background:url(/assets/pixel-packs/shikashi/icons.png) no-repeat;background-size:512px 867px}
+:is(#command-sidebar,.chain-only) .ic.s24{width:24px;height:24px;transform:scale(.75);transform-origin:top left;margin-right:-8px;margin-bottom:-8px}
+:is(#command-sidebar,.chain-only) .ic.s20{transform:scale(.625);transform-origin:center;width:20px;height:20px}
+#command-sidebar .hour{width:32px;height:32px;background:url(/assets/pomodoro/comandos/hourglass.png) 0 0 no-repeat;animation:cs-hour 2.4s steps(27) infinite}
+@keyframes cs-hour{to{background-position-x:-864px}}
+#command-sidebar .hour.sm{transform:scale(.6);transform-origin:center}
+#command-sidebar .chest{width:40px;height:25px;background:url(/assets/pixel-packs/karsiori-chests/golden.png) 0 0 no-repeat;animation:cs-chest 2.4s steps(1,end) infinite}
+@keyframes cs-chest{0%,12%{background-position-x:0}18%{background-position-x:-40px}27%{background-position-x:-80px}36%{background-position-x:-120px}45%,80%{background-position-x:-160px}87%{background-position-x:-80px}100%{background-position-x:0}}
+@media (prefers-reduced-motion:reduce){#command-sidebar :is(.hour,.chest){animation:none}}
 /* botones planos del mockup (button base + .pill/.ghost/.primary) */
 #command-sidebar button[data-flat],.chain-only button[data-flat]{font:inherit;cursor:pointer;background:#1c2130;color:var(--cs-text);border:1px solid #303748;border-radius:10px;padding:8px 12px;min-height:36px;display:inline-flex;align-items:center;gap:8px;box-shadow:none;transform:none;line-height:1.45}
 #command-sidebar button[data-flat]:hover,.chain-only button[data-flat]:hover{background:#242b3d;border-color:#3d465c}
@@ -691,48 +702,61 @@ button.wm-suggest{font:600 10px system-ui;padding:2px 7px;border-radius:999px;bo
 #command-sidebar button[data-flat].primary,.chain-only button[data-flat].primary{background:var(--cs-brand);color:#0a0d13;border-color:var(--cs-brand);font-weight:700;min-height:44px}
 #command-sidebar button[data-flat].primary:hover,.chain-only button[data-flat].primary:hover{background:#bfb2ff}
 /* cabecera: libro, título con destino, píldora de catálogo, botón Cadenas */
-#command-sidebar .cs-head{position:sticky;top:0;z-index:2;background:var(--cs-panel2)}
+#command-sidebar .cs-head{flex:none;background:var(--cs-panel2)}
 #command-sidebar .sb-head{display:flex;align-items:center;gap:8px;padding:8px 12px;border-bottom:1px solid var(--cs-line);min-width:0}
-#command-sidebar .sb-head>.ic{color:var(--cs-text)}
-#command-sidebar .sb-head h2{font-size:13px;font-weight:700;margin:0;flex:1 1 auto;min-width:60px;white-space:nowrap;overflow:hidden}
+#command-sidebar .sb-head{position:relative}
+#command-sidebar .sb-head h2{font-size:13px;font-weight:700;margin:0;flex:1;min-width:0;white-space:nowrap;overflow:hidden}
 #command-sidebar .sb-head small{display:block;color:var(--cs-dim);font-size:11px;font-weight:400;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-#command-sidebar .cs-pill{flex:0 1 auto;display:inline-flex;min-width:0}
-#command-sidebar .cs-pill .pill{min-width:0;overflow:hidden;text-overflow:ellipsis;display:inline-block;line-height:16px}
-#command-sidebar .pill{font-size:10.5px;min-height:24px;padding:3px 9px;box-sizing:border-box;border-radius:999px;border:1px solid #2f5a44;color:var(--cs-green);display:inline-flex;gap:5px;align-items:center;white-space:nowrap}
+#command-sidebar .cs-pill{flex:none;display:inline-flex}
+#command-sidebar .cs-pill .pill{min-width:0;overflow:hidden}
+#command-sidebar .pill{background:transparent;font-size:10.5px;min-height:24px;padding:3px 9px;box-sizing:border-box;border-radius:999px;border:1px solid #2f5a44;color:var(--cs-green);display:inline-flex;gap:5px;align-items:center;white-space:nowrap}
 #command-sidebar .pill.warn{border-color:#6a5530;color:var(--cs-amber)}
 #command-sidebar button[data-flat].chains-btn,.chain-only button[data-flat].chains-btn{min-height:32px;padding:0 12px 0 8px;font-size:12px;border-radius:999px;white-space:nowrap;flex:none;gap:6px;background:#221f3a;border-color:#4a3f7a;color:var(--cs-brand);font-weight:600}
 #command-sidebar button[data-flat].chains-btn:hover,.chain-only button[data-flat].chains-btn:hover{background:#2b2748}
 #command-sidebar .search{padding:8px 10px;position:relative}
-#command-sidebar .search .ic{position:absolute;left:16px;top:19px;pointer-events:none;color:var(--cs-dim)}
+#command-sidebar .search .ic{position:absolute;left:16px;top:12px;pointer-events:none}
 #command-sidebar .cs-search{width:100%;box-sizing:border-box;min-height:36px;padding:10px 12px 10px 36px;border:1px solid var(--cs-line);border-radius:10px;background:var(--cs-panel2);color:var(--cs-text);font:inherit}
 #command-sidebar .cs-search::placeholder{color:var(--cs-dim)}
 #command-sidebar .cs-search:focus{outline:none;border-color:var(--cs-brand)}
+/* Pila (ronda 5 A, .lado): comandos arriba con scroll propio, separador de altura,
+   terminales rápidas abajo (pestañas .tt + terminal .mini). Valores del mockup. */
+#side-top:has(> #command-sidebar){display:flex;flex-direction:column}
+#side-top > #command-sidebar{flex:1 1 auto;min-height:0}
+#view-panel #command-sidebar{padding:0}
+#command-sidebar{height:100%;overflow:hidden}
+#command-sidebar .sec-cmds{display:flex;flex-direction:column;flex:1 1 60%;min-height:0}
+#command-sidebar .sec-terms{display:flex;flex-direction:column;flex:1 1 0%;min-height:0}
+#command-sidebar .divider{flex:none;height:8px;cursor:row-resize;border-top:1px solid var(--cs-line);background:linear-gradient(#3a4256,#3a4256) center/44px 3px no-repeat;border-radius:3px;touch-action:none}
+#command-sidebar .mini{flex:1;min-height:0;overflow:hidden;background:#0c0f16;position:relative}
+#command-sidebar .mini .sb-term{position:absolute;inset:0;width:100%;height:100%;border:0;display:block;background:#0c0f16}
+#command-sidebar.no-terms .sec-cmds{flex:1 1 auto}
+#command-sidebar.no-terms .sec-terms{flex:none}
+#command-sidebar.no-terms .divider,#command-sidebar.no-terms .mini{display:none}
+body.ws-dragging #command-sidebar .sb-term{pointer-events:none}
 /* cuerpo: tarjetas apiladas */
-#command-sidebar .cs-body{flex:1;min-height:0;display:flex;flex-direction:column;gap:8px;padding:0 10px 10px;min-width:0}
+#command-sidebar .cs-body{flex:1;min-height:0;overflow:auto;overscroll-behavior:contain;display:flex;flex-direction:column;gap:8px;padding:0 10px 10px;min-width:0}
 #command-sidebar.typing .cs-body{cursor:progress}
 #command-sidebar .cs-saved,:is(#command-sidebar,.chain-only) .cs-cli{flex:none;border:1px solid var(--cs-line);border-radius:var(--cs-r);background:var(--cs-panel);overflow:hidden;min-width:0}
 :is(#command-sidebar,.chain-only) .cli-h{display:flex;align-items:center;gap:10px;padding:8px 10px;cursor:pointer;font-weight:600;font-size:12.5px;user-select:none;min-width:0}
 :is(#command-sidebar,.chain-only) .cli-h:hover{background:#1d2333}
 :is(#command-sidebar,.chain-only) .cli-h .nm{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-:is(#command-sidebar,.chain-only) .cli-h .ver,:is(#command-sidebar,.chain-only) .cli-h small{color:var(--cs-dim);font-weight:400;font-size:11px;white-space:nowrap;min-width:0;overflow:hidden;text-overflow:ellipsis}
+:is(#command-sidebar,.chain-only) .cli-h small{color:var(--cs-dim);font-weight:400;font-size:11px;white-space:nowrap;min-width:0;overflow:hidden;text-overflow:ellipsis}
 :is(#command-sidebar,.chain-only) .cli-h .badge{margin-left:auto;font-size:10px;font-weight:600;padding:2px 7px;border-radius:999px;border:1px solid #4a3f7a;color:var(--cs-brand);white-space:nowrap;flex:none}
 :is(#command-sidebar,.chain-only) .cli-h .badge.off{border-color:var(--cs-line);color:var(--cs-dim)}
 :is(#command-sidebar,.chain-only) .cli-h .badge.warn{border-color:#6a5530;color:var(--cs-amber)}
-:is(#command-sidebar,.chain-only) .cli-h .badge.here-tag{border-color:#2f5a44;color:var(--cs-green)}
-:is(#command-sidebar,.chain-only) .chev{color:var(--cs-dim);font-size:10px;margin-left:6px;flex:none;transition:transform .15s}
+:is(#command-sidebar,.chain-only) .chev{color:var(--cs-dim);font-size:10px;margin-left:6px;flex:none}
 :is(#command-sidebar,.chain-only) .cli-h .chev{margin-left:6px}
-:is(#command-sidebar,.chain-only) .cs-saved .cli-h .chev{margin-left:auto}
-:is(#command-sidebar,.chain-only) .open>.cli-h .chev,:is(#command-sidebar,.chain-only) .open>.lab3 .chev{transform:rotate(180deg)}
 :is(#command-sidebar,.chain-only) .mono{width:26px;height:26px;border-radius:8px;display:inline-flex;align-items:center;justify-content:center;font:700 13px var(--cs-ui);flex:none}
 :is(#command-sidebar,.chain-only) .cs-cli.here{border-color:#4a3f7a}
 :is(#command-sidebar,.chain-only) .cs-cli.missing .nm{color:var(--cs-dim)}
 /* Plegado por CSS; mientras se busca (.searching) se muestra todo lo que coincide. */
 :is(#command-sidebar:not(.searching),.chain-only) .cs-cli:not(.open)>:not(.cli-h),#command-sidebar .cs-saved:not(.open)>:not(.cli-h){display:none}
-:is(#command-sidebar:not(.searching),.chain-only) .launch:not(.open)>:not(.lab3){display:none}
+:is(#command-sidebar:not(.searching),.chain-only) .launch.closed>:not(.lab3){display:none}
 /* arranques: bloque de píldoras monoespaciadas; yolo en ámbar sobre fondo violeta oscuro */
 :is(#command-sidebar,.chain-only) .launch{display:flex;flex-wrap:wrap;gap:5px;padding:6px 10px 8px;border-top:1px solid var(--cs-line2)}
 :is(#command-sidebar,.chain-only) .launch .lab3{width:100%;min-height:0;padding:0;font:10.5px var(--cs-ui);color:var(--cs-dim);text-transform:uppercase;letter-spacing:.06em;cursor:pointer;display:flex;align-items:center;gap:6px;user-select:none}
-:is(#command-sidebar,.chain-only) .launch .lab3 .chev{margin-left:auto}
+:is(#command-sidebar,.chain-only) .launch .lab3::after{content:'▾';margin-left:auto;font-size:9px}
+:is(#command-sidebar,.chain-only) .launch.closed .lab3::after{content:'▸'}
 :is(#command-sidebar,.chain-only) .launch button[data-flat].cmd{min-height:26px;padding:2px 9px;font:11px var(--cs-mono);border-radius:999px;display:inline-flex;text-align:left;white-space:normal;overflow-wrap:anywhere;max-width:100%}
 :is(#command-sidebar,.chain-only) .launch.yolo{background:#1a1622;border-top:1px solid #3a2f5a}
 :is(#command-sidebar,.chain-only) .launch.yolo .lab3{color:var(--cs-amber)}
@@ -759,7 +783,7 @@ button.wm-suggest{font:600 10px system-ui;padding:2px 7px;border-radius:999px;bo
 #command-sidebar .cs-saved-item{display:flex;align-items:center;gap:8px;padding:7px 12px;border-top:1px solid var(--cs-line2);font-size:12.5px;min-width:0}
 #command-sidebar .cs-saved-item .nm{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 #command-sidebar .cs-saved-item small{color:var(--cs-dim);font-size:11.5px;min-width:0;overflow-wrap:anywhere}
-#command-sidebar .cs-saved-item button[data-flat].run{margin-left:auto;min-height:26px;padding:2px 10px;font-size:11.5px;border-radius:999px;gap:5px;flex:none}
+#command-sidebar .cs-saved-item button[data-flat].run{margin-left:auto;min-height:26px;padding:2px 10px;font-size:11.5px;border-radius:999px;flex:none}
 #command-sidebar .cs-saved-item.error small{color:var(--cs-amber)}
 #command-sidebar .cs-empty{padding:8px 12px;border-top:1px solid var(--cs-line2);color:var(--cs-dim);font-size:12px}
 /* cadena corriendo: tarjeta fija bajo la cabecera (ronda 8 A) */
@@ -772,21 +796,21 @@ button.wm-suggest{font:600 10px system-ui;padding:2px 7px;border-radius:999px;bo
 #command-sidebar .cs-runner .r-h button[data-flat]{min-height:26px;padding:2px 10px;font-size:12px}
 #command-sidebar .cs-runner .r-t{font:11px var(--cs-mono);color:var(--cs-dim);overflow-wrap:anywhere}
 #command-sidebar .cs-runner .steps{display:flex;flex-direction:column;gap:3px}
-#command-sidebar .cs-runner .step{display:flex;align-items:baseline;gap:6px;min-width:0}
+#command-sidebar .cs-runner .step{display:flex;align-items:baseline;gap:6px;min-width:0;font:12px var(--cs-mono);color:var(--cs-dim);overflow-wrap:anywhere}
+#command-sidebar .cs-runner .step.cur{color:var(--cs-text);font-weight:600}
+#command-sidebar .cs-runner .step.done{text-decoration:line-through}
 #command-sidebar .cs-runner .step .k{font:10px var(--cs-mono);color:var(--cs-dim);text-transform:uppercase;letter-spacing:.04em;flex:none;min-width:36px}
-#command-sidebar .cs-runner .step code{font:12px var(--cs-mono);color:var(--cs-dim);overflow-wrap:anywhere;min-width:0}
-#command-sidebar .cs-runner .step.done code{text-decoration:line-through}
-#command-sidebar .cs-runner .step.cur code{color:var(--cs-text);font-weight:600}
 #command-sidebar .cs-runner .r-err{font-size:12px;color:var(--cs-amber);overflow-wrap:anywhere}
 #command-sidebar .cs-runner .acts{display:flex;gap:8px;align-items:center;min-width:0}
 #command-sidebar .cs-runner .acts .cs-next{min-height:40px;flex:1;justify-content:center}
 #command-sidebar .cs-runner .acts small{color:var(--cs-dim);font-size:11px}
-/* terminales rápidas: pestañas (.tt) al pie */
-#command-sidebar .cs-terms{display:flex;align-items:flex-end;gap:4px;padding:6px 8px 0;border-top:1px solid var(--cs-line);border-bottom:1px solid var(--cs-line);overflow-x:auto;overflow-y:hidden;margin-top:auto;flex:none;scrollbar-width:thin}
-#command-sidebar .cs-terms button[data-flat].t{display:inline-flex;align-items:center;gap:6px;min-height:0;padding:5px 10px;border:1px solid var(--cs-line);border-bottom:0;border-radius:10px 10px 0 0;color:var(--cs-dim);font-size:11.5px;white-space:nowrap;background:var(--cs-panel2)}
-#command-sidebar .cs-terms button[data-flat].t.on{color:var(--cs-text);background:#0c0f16}
-#command-sidebar .cs-terms button[data-flat].t.cur{box-shadow:inset 0 -2px 0 var(--cs-brand)}
-#command-sidebar .cs-terms button[data-flat].t.plus{color:var(--cs-brand);font-weight:700}
+/* terminales rápidas: pestañas (.tt) sobre la terminal (.lado .sec-terms .tt) */
+#command-sidebar .cs-terms{display:flex;align-items:flex-end;gap:4px;padding:6px 8px 0;border-bottom:1px solid var(--cs-line);overflow-x:auto;overflow-y:hidden;flex:none;scrollbar-width:none}
+#command-sidebar button[data-flat].t{display:flex;align-items:center;gap:6px;min-height:0;padding:5px 10px;border:1px solid var(--cs-line);border-bottom:0;border-radius:10px 10px 0 0;color:var(--cs-dim);font-size:11.5px;line-height:1.45;white-space:nowrap;background:var(--cs-panel2)}
+#command-sidebar button[data-flat].t:hover{background:var(--cs-panel2);border-color:var(--cs-line);color:var(--cs-text)}
+#command-sidebar button[data-flat].t.on{color:var(--cs-text);background:#0c0f16}
+#command-sidebar button[data-flat].t.sel{box-shadow:inset 0 -2px 0 var(--cs-brand);color:var(--cs-text)}
+#command-sidebar button[data-flat].t.plus{color:var(--cs-brand);font-weight:700}
 @media(pointer:coarse){:is(#command-sidebar,.chain-only) .cmds .cmd{padding-block:10px}:is(#command-sidebar,.chain-only) .cmd .opts button[data-flat],:is(#command-sidebar,.chain-only) .launch button[data-flat].cmd{min-height:32px}}
 /* Constructor de cadenas (dash/chain-builder.js): .backdrop[data-mclose] > .modal.chain-only.
    Estilos 1:1 del modal aprobado del mockup (?round=cli: cabecera con libro, búsqueda y

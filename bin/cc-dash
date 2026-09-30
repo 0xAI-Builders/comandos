@@ -5454,12 +5454,15 @@ def quick_terminal_register(sess, label, cwd):
 
 def quick_terminal_request(data):
     """POST /terminal/quick {requestId} -> (status, {tabId, paneKey, cwd, label})."""
+    # place=sidebar: la terminal se ve dentro de la barra de comandos (mockup, pila
+    # ronda 5 A); no se registra como pestaña del workspace ni del escritorio.
+    register = (lambda *_a, **_k: None) if data.get("place") == "sidebar" else quick_terminal_register
     try:
         out = quick_terminal_lib.open_quick_terminal(
             quick_terminal_conn(), data.get("requestId"),
             base=quick_terminal_lib.default_base(),
             launch=quick_terminal_launch, exists=quick_terminal_exists,
-            register=quick_terminal_register)
+            register=register)
     except quick_terminal_lib.QuickTerminalError as exc:
         status = {"request": 400, "busy": 409, "folder": 500, "launch": 502}[exc.code]
         body = {"error": str(exc), "code": exc.code, "retryable": exc.retryable}

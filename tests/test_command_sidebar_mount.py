@@ -29,11 +29,12 @@ def _js_function(name):
 def test_sidebar_refreshes_on_target_or_agent_change_and_toasts_errors():
     import subprocess
     glue = "\n".join(_js_function(n) for n in (
-        "isQuickTermSession", "activePaneTarget", "quickTermEntries", "refreshCommandSidebar", "syncCommandSidebar"))
+        "isQuickTermSession", "sidebarTermTarget", "activePaneTarget", "quickTermEntries", "refreshCommandSidebar", "syncCommandSidebar"))
     init = HTML[HTML.index("const CS = {"):].split("\n", 1)[0] + "\n" + \
         HTML[HTML.index("const CS_CLIS = "):].split("\n", 1)[0]
     script = r"""
 const assert = require('node:assert/strict');
+const SBT = {term: "", activeSeen: ""};
 const S = {list: [], sel: ''}, openTerms = new Map([['term-qabc', {label: 'Terminal 10:00'}]]);
 let sel = null, active = {session: ''}, refreshes = 0, renders = 0, toasts = [], fail = false, release = null;
 // Igual que el real: sin selección cae en la primera sesión viva ("local").
@@ -103,7 +104,12 @@ def test_sidebar_is_wired_with_quick_terminal_and_builder_hooks():
     # escritorio: el modal centrado lo abre GTK (?panel=chains); remoto: overlay in-page
     assert 'postMessage(JSON.stringify({headerAction: "chains"}))' in mount
     assert "if(window.chainBuilder) window.chainBuilder.open();" in mount
-    assert "newTerm:" in mount and "quickTerminalInstance()" in mount
+    # «+ Terminal» de la barra abre la terminal AHÍ MISMO (pila del mockup): instancia propia, place=sidebar
+    assert "newTerm:" in mount and "sidebarQuickTerminal()" in mount
+    assert "mountTerm: (sess, host) => sidebarTermMount(sess, host)" in mount
+    assert "focusTarget: t => selectSidebarTerm(t)" in mount
+    side = _js_function("sidebarQuickTerminal")
+    assert 'place: "sidebar"' in side and "selectSidebarTerm(" in side
     # una sola instancia: el remoto (initTabNavigation) la crea solo si no existe (H1)
     assert "if(!window.quickTerminal && window.ComandosQuickTerminal)" in _js_function("initTabNavigation")
     assert "mountCommandSidebar();" in HTML

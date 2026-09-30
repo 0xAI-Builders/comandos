@@ -2,6 +2,8 @@
 import subprocess
 from pathlib import Path
 
+ROOT = Path(__file__).resolve().parents[1]
+
 SCRIPT = r'''
 const assert = require('node:assert/strict');
 const { createQuickTerminal } = require(process.cwd() + '/dash/quick-terminal.js');
@@ -57,4 +59,15 @@ def test_web_header_separates_terminal_from_new_session():
     actions = html.split("function initHeaderActions(){", 1)[1].split("\n}\n", 1)[0]
     assert '"/tab-new"' not in actions               # "+" no longer opens a scratch shell in ~
     assert "nsOpen()" in actions and "quickTerminalInstance()" in actions
-    assert '<script src="/quick-terminal.js"></script>' in html
+    assert '<script src="/quick-terminal.js?v=' in html
+
+
+def test_sidebar_quick_terminal_opens_in_the_bar_not_as_a_workspace_tab():
+    """Mockup (pila, ronda 5 A): «+ Terminal» de la barra abre la terminal ahí
+    mismo. El cliente manda place=sidebar y el servidor no la registra como pestaña."""
+    js = (ROOT / "dash" / "quick-terminal.js").read_text(encoding="utf-8")
+    assert "place ? { requestId: id, place } : { requestId: id }" in js
+    dash = (ROOT / "bin" / "cc-dash").read_text(encoding="utf-8")
+    body = dash[dash.index("def quick_terminal_request("):dash.index("return 200, out", dash.index("def quick_terminal_request("))]
+    assert 'register = (lambda *_a, **_k: None) if data.get("place") == "sidebar" else quick_terminal_register' in body
+    assert "register=register)" in body

@@ -55,12 +55,19 @@
   // Siguen siendo .cmd[data-cmd|data-add] para que clic/teclado y las pruebas no cambien.
   // Monograma por CLI: colores del mockup aprobado; el pictograma es el icono de
   // proveedor del producto (data-icon) y, sin icono, la inicial.
-  const MONO = { claude: ['#d97757', '#1a0f0a', 'anthropic', 'C'], codex: ['#e8e8e8', '#111', 'openai', 'X'],
-    grok: ['#111', '#fff', 'grok', 'G'], opencode: ['#f2f2f2', '#111', '', 'O'], agy: ['#4285f4', '#fff', 'gemini', 'A'] };
+  // Iconos pixel del mockup aprobado (pack shikashi, tabla I del prototipo), mismo
+  // marcado <i class="px ic s20|s24"> y mismas posiciones de sprite.
+  const IC = { book: [7, 4], lens: [8, 10], chain: [2, 11], bolt: [8, 0], fire: [2, 4], cast: [0, 21], spark: [5, 0], bomb: [12, 10] };
+  function ic(k, s = '') {
+    const p = IC[k];
+    return p ? `<i class="px ic ${s}" style="background-position:${-p[0] * 32}px ${-p[1] * 32}px"></i>` : '';
+  }
+  // Monograma por CLI: letra y colores exactos del mockup aprobado (CLIS del prototipo).
+  const MONO = { claude: ['#d97757', '#1a0f0a', 'C'], codex: ['#e8e8e8', '#111', 'X'],
+    grok: ['#111', '#fff', 'G'], opencode: ['#f2f2f2', '#111', 'O'], agy: ['#4285f4', '#fff', 'A'] };
   function monoHTML(id) {
-    const m = MONO[id] || ['#1c2130', '#eaf0fb', '', String(id || '?').slice(0, 1).toUpperCase()];
-    const inner = m[2] ? `<span data-icon="${m[2]}" data-size="15"></span>` : esc(m[3]);
-    return `<span class="mono" style="background:${m[0]};color:${m[1]}">${inner}</span>`;
+    const m = MONO[id] || ['#1c2130', '#eaf0fb', String(id || '?').slice(0, 1).toUpperCase()];
+    return `<span class="mono" style="background:${m[0]};color:${m[1]}">${esc(m[2])}</span>`;
   }
   function launchHTML(cli, which, o) {
     const key = `${cli.id}:${which}`;
@@ -71,11 +78,9 @@
     const note = which === 'yolo' && !list.length
       ? `<small class="note"${o.q ? ' hidden' : ''}>${esc((cli.launch && cli.launch.yoloNote) || 'sin flag yolo')}</small>` : '';
     const empty = o.q && !list.some(text => hits({ text }, o.q));
-    const label = which === 'yolo'
-      ? '<span data-icon="zap" data-size="12"></span> arrancar en modo yolo · sin permisos'
-      : '<span data-icon="flame" data-size="12"></span> arrancar normal';
-    return `<div class="launch ${which}${o.open.has(key) ? ' open' : ''}"${empty ? ' hidden' : ''}>`
-      + `<div class="lab3" data-toggle="${esc(key)}"${toggleAttrs(o.open.has(key))}>${label}<span class="chev">▾</span></div>`
+    const label = which === 'yolo' ? `${ic('bolt', 's20')} arrancar en modo yolo · sin permisos` : `${ic('fire', 's20')} arrancar normal`;
+    return `<div class="launch ${which}${o.open.has(key) ? ' open' : ' closed'}"${empty ? ' hidden' : ''}>`
+      + `<span class="lab3" data-toggle="${esc(key)}"${toggleAttrs(o.open.has(key))}>${label}</span>`
       + pills + note + '</div>';
   }
 
@@ -109,25 +114,26 @@
       && !groups.some(g => (g.commands || []).some(c => hits(c, o.q)));
     const det = '';   // el conteo detectado va en el title; la fila muestra solo la versión (mockup)
     const cls = ['cs-cli', o.open.has(cli.id) ? 'open' : '', opts.here ? 'here' : '', st !== 'ok' ? st : ''].filter(Boolean).join(' ');
-    const badge = opts.here ? '<span class="badge here-tag">en este pane</span>'
+    const badge = opts.here ? '<span class="badge">en este pane</span>'
       : st === 'missing' ? '<span class="badge off">no instalado</span>'
       : st === 'ok' ? '<span class="badge off">instalado</span>'
       : '<span class="badge warn">sin verificar</span>';
     const title = [`catálogo v${v.pinned}`, STATUS_TEXT[st0], d ? `${d.found} de ${d.total} comandos presentes en el binario` : ''].filter(Boolean).join(' · ');
     return `<div class="${cls}" data-cli="${esc(cli.id)}"${empty ? ' hidden' : ''}>`
       + `<div class="cli-h" data-toggle="${esc(cli.id)}"${toggleAttrs(o.open.has(cli.id))} title="${esc(title)}">${monoHTML(cli.id)}<span class="nm">${esc(cli.label || cli.id)}</span>`
-      + `<span class="ver">${esc(ver + det)}</span>${badge}<span class="chev">▾</span></div>`
+      + `<small class="ver">${esc(ver)}</small>${badge}<span class="chev">${o.open.has(cli.id) ? '▾' : '▸'}</span></div>`
       + launchHTML(cli, 'yolo', o) + launchHTML(cli, 'normal', o) + commandsHTML(cli, o) + '</div>';
   }
 
   function createCommandSidebar(opts) {
-    const { api, root: el, storage, makeId, getTarget, focusTarget = () => {}, openBuilder = () => {},
+    const { api, root: el, storage, makeId, getTarget, focusTarget = () => {}, openBuilder = () => {}, mountTerm = null,
       toast = () => {}, terminals = () => [], newTerm = () => {}, hydrate = () => {} } = opts;
-    const state = { catalog: null, cliInPane: '', catalogTarget: null, chains: [], open: new Set(), run: null,
+    const state = { catalog: null, cliInPane: '', catalogTarget: null, chains: [], open: new Set(), run: null, curTerm: '',
       typing: null, q: '', firstRender: true, appliedTarget: null };
 
     // móvil (≤900): el bloque «arrancar normal» nace plegado; en escritorio, abierto
-    const narrow = () => { try { return typeof window !== 'undefined' && window.innerWidth > 0 && window.innerWidth <= 900; } catch (_) { return false; } };
+    // (la barra del escritorio es angosta pero no es móvil: se decide por el puntero táctil)
+    const narrow = () => { try { return typeof window !== 'undefined' && !!window.matchMedia && window.matchMedia('(pointer:coarse)').matches; } catch (_) { return false; } };
     const read = k => { try { return storage ? storage.getItem(k) : null; } catch (_) { return null; } };
     const write = (k, v) => { try { if (storage) storage.setItem(k, v); } catch (_) {} };
     (function readOpen() {
@@ -283,7 +289,12 @@
     function stop() { state.run = null; render(); }
 
     function toggle(key, keepFocus) {
-      state.open.has(key) ? state.open.delete(key) : state.open.add(key);
+      if (state.open.has(key)) state.open.delete(key);
+      else {
+        state.open.add(key);
+        // mockup: al abrir un CLI sus arranques se ven abiertos (normal plegado en móvil)
+        if (clis().some(c => c.id === key)) { state.open.add(`${key}:yolo`); if (!narrow()) state.open.add(`${key}:normal`); }
+      }
       writeOpen();
       render();
       if (keepFocus) {   // el repintado del cuerpo suelta el foco: se devuelve al mismo encabezado
@@ -296,27 +307,31 @@
       const t = target();
       return t ? (t.title || `${t.session} ${t.pane}`) : 'Sin destino';
     }
+    // Píldora del mockup: estado del catálogo del CLI del destino (ámbar si su
+    // binario cambió y no están todos sus comandos; «catálogo ok» si no).
     function catalogPill() {
-      const bad = clis().some(c => { const v = c.version || {}; const d = c.detected;
-        return v.status === 'missing' ? false : v.status !== 'ok' && !(d && d.total && d.found === d.total); });
-      return bad ? '<span class="pill warn"><span data-icon="zap" data-size="11"></span>cambio de versión</span>'
-                 : '<span class="pill ok"><span data-icon="sparkles" data-size="11"></span>catálogo ok</span>';
+      const here = hereCli();
+      const c = clis().find(x => x.id === here);
+      const v = (c && c.version) || {}, d = c && c.detected;
+      const bad = !!c && v.status !== 'ok' && v.status !== 'missing' && !(d && d.total && d.found === d.total);
+      return bad ? `<span class="pill warn">${ic('bomb', 's20')}cambio de versión</span>`
+                 : `<span class="pill">${ic('spark', 's20')}catálogo ok</span>`;
     }
     function headHTML() {
-      return '<div class="cs-head"><div class="sb-head"><span class="ic" data-icon="snippet" data-size="18"></span>'
+      return `<div class="cs-head"><div class="sb-head">${ic('book', 's24')}`
         + `<h2>Comandos<small>destino: <span class="cs-target">${esc(targetTitle())}</span></small></h2>`
         + `<span class="cs-pill">${catalogPill()}</span>`
-        + '<button type="button" data-flat class="cs-chains chains-btn" data-open-builder><span data-icon="layers" data-size="13"></span>Cadenas</button></div>'
-        + `<div class="search"><span class="ic" data-icon="search" data-size="14"></span><input class="cs-search" type="search" placeholder="Buscar en todos los CLI…" value="${esc(state.q)}"></div></div>`;
+        + `<button type="button" data-flat class="cs-chains chains-btn" data-open-builder>${ic('chain', 's20')}Cadenas</button></div>`
+        + `<div class="search">${ic('lens')}<input class="cs-search" type="search" placeholder="Buscar en todos los CLI…" value="${esc(state.q)}"></div></div>`;
     }
 
     function savedHTML() {
       const items = state.chains.map(c => c.error
         ? `<div class="cs-saved-item it error"><span class="nm">${esc(c.name || c.slug)}</span><small>${esc(c.error)}</small></div>`
         : `<div class="cs-saved-item it" data-run="${esc(c.slug)}"><span class="nm">${esc(c.name || c.slug)}</span>`
-          + `<small>${(c.steps || []).length} pasos</small><button type="button" data-flat class="run pill"><span data-icon="play" data-size="11"></span>Correr</button></div>`).join('');
+          + `<small>${(c.steps || []).length} pasos</small><button type="button" data-flat class="run">${ic('cast', 's20')}Correr</button></div>`).join('');
       return `<div class="cs-saved saved${state.open.has('saved') ? ' open' : ''}">`
-        + `<div class="cli-h" data-toggle="saved"${toggleAttrs(state.open.has('saved'))}><span data-icon="layers" data-size="16"></span><span class="nm">Cadenas guardadas</span><small class="n">${state.chains.length}</small><span class="chev">▾</span></div>`
+        + `<div class="cli-h" data-toggle="saved"${toggleAttrs(state.open.has('saved'))}>${ic('chain', 's24')}Cadenas guardadas<small class="n">${state.chains.length}</small><span class="chev" style="margin-left:auto">${state.open.has('saved') ? '▾' : '▸'}</span></div>`
         + (items || '<div class="cs-empty">Sin cadenas guardadas</div>') + '</div>';
     }
 
@@ -325,30 +340,37 @@
       if (!run) return '';
       const n = run.steps.length, done = run.step >= n;
       return `<div class="cs-runner runner${done ? ' done' : ''}">`
-        + `<div class="r-h"><span data-icon="${done ? 'check' : 'timer'}" data-size="16"></span><b>${esc(run.name)}</b><small>${done ? 'completa' : `paso ${run.step + 1} de ${n}`}</small>`
+        + `<div class="r-h">${done ? '<i class="px chest"></i>' : '<i class="px hour sm"></i>'}${esc(run.name)}<small>${done ? 'completa' : `paso ${run.step + 1} de ${n}`}</small>`
         + `<span class="right"><button type="button" data-flat class="ghost" data-run-stop>${done ? 'Cerrar' : 'Parar'}</button></span></div>`
         + `<div class="r-t">en ${esc(run.target.title || `${run.target.session} ${run.target.pane}`)}</div>`
         + '<div class="steps">' + run.steps.map((s, i) =>
           `<div class="step${i < run.step ? ' done' : ''}${i === run.step ? ' cur' : ''}" data-kind="${esc(s.kind)}"><span class="k">${esc(s.kind)}</span><code>${esc(s.text)}</code></div>`).join('') + '</div>'
         + (run.error ? `<div class="r-err">${esc(run.error)}</div>` : '')
-        + (done ? '' : '<div class="acts"><button type="button" data-flat class="cs-next primary" data-run-next><span data-icon="play" data-size="13"></span>Siguiente</button><small>Se escribe sin Enter; tú das Enter.</small></div>') + '</div>';
+        + (done ? '' : `<div class="acts"><button type="button" data-flat class="cs-next primary" data-run-next>${ic('cast', 's20')}${run.step === 0 ? 'Escribir paso 1' : 'Siguiente'}</button><small>Se escribe sin Enter; tú das Enter.</small></div>`) + '</div>';
     }
 
     function termList() { try { return terminals() || []; } catch (_) { return []; } }
+    // Pila aprobada (ronda 5 A): comandos arriba, terminales rápidas abajo con
+    // separador. La tira de pestañas se repinta; .mini es estable y aloja el iframe
+    // de la terminal elegida (mountTerm), así el repintado no la reinicia.
+    // Mockup: la pestaña de una terminal rápida se llama por su hora («14:32»);
+    // la carpeta T-AAAA-MM-DD-HH-MM-SS queda en el title.
+    const shortTerm = l => { const m = /^T-\d{4}-\d{2}-\d{2}-(\d{2})-(\d{2})-\d{2}$/.exec(String(l)); return m ? `${m[1]}:${m[2]}` : String(l); };
     function termsHTML() {
       const t = target();
       const cur = x => !!t && (t.paneKey && x.paneKey ? t.paneKey === x.paneKey : sameTarget(t, x));
-      return '<div class="cs-terms tt">'
-        + termList().map(x => `<button type="button" data-flat class="t${cur(x) ? ' on cur' : ''}" data-focus-term="${esc(x.tabId)}">`
-          + `<span data-icon="zap" data-size="12"></span>${esc(x.label || x.tabId)}${cur(x) ? ' · destino' : ''}</button>`).join('')
-        + '<button type="button" data-flat class="t plus" data-new-term>+ Terminal</button></div>';
+      const list = termList();
+      const shown = state.curTerm && list.some(x => x.tabId === state.curTerm) ? state.curTerm : (list[0] ? list[0].tabId : '');
+      if (shown !== state.curTerm) state.curTerm = shown;
+      return list.map(x => `<button type="button" data-flat class="t${x.tabId === shown ? ' on' : ''}${cur(x) ? ' sel' : ''}" data-focus-term="${esc(x.tabId)}" title="${esc(x.label || x.tabId)}">`
+          + `${ic('bolt', 's20')}${esc(shortTerm(x.label || x.tabId))}${cur(x) ? ' · destino' : ''}</button>`).join('')
+        + '<button type="button" data-flat class="t plus" data-new-term>+ Terminal</button>';
     }
 
     function bodyHTML() {
       const here = hereCli(), t = target(), noTarget = !t || !t.session || !t.pane;
       return savedHTML() + runnerHTML()
-        + clis().map(c => cliHTML(c, { mode: 'run', open: state.open, here: !!here && c.id === here, noCli: !here, noTarget, q: state.q })).join('')
-        + termsHTML();
+        + clis().map(c => cliHTML(c, { mode: 'run', open: state.open, here: !!here && c.id === here, noCli: !here, noTarget, q: state.q })).join('');
     }
 
     // La cabecera (con el input de búsqueda) se pinta una sola vez; después solo
@@ -363,10 +385,35 @@
         if (pill) pill.innerHTML = catalogPill();   // hydrate(el) al final del render pinta su icono
         body.innerHTML = bodyHTML();
       } else {
-        el.innerHTML = headHTML() + `<div class="cs-body">${bodyHTML()}</div>`;
+        el.innerHTML = `<div class="sec-cmds">${headHTML()}<div class="cs-body">${bodyHTML()}</div></div>`
+          + '<div class="divider" role="separator" aria-orientation="horizontal" aria-label="Altura de las terminales"></div>'
+          + '<div class="sec-terms"><div class="cs-terms tt"></div><div class="mini"></div></div>';
+        wireDivider();
       }
+      const tt = el.querySelector('.cs-terms');
+      if (tt) tt.innerHTML = termsHTML();
+      const n = termList().length;
+      try { el.classList && el.classList.toggle('no-terms', !n); } catch (_) {}
+      const mini = el.querySelector('.mini');
+      if (mini && typeof mountTerm === 'function') { try { mountTerm(state.curTerm || '', mini); } catch (_) {} }
       try { el.classList && el.classList.toggle('searching', !!state.q.trim()); } catch (_) {}
       try { hydrate(el); } catch (_) {}   // pinta los data-icon del marcado recién puesto
+    }
+
+    // Separador de altura del mockup: arrastrar fija el alto de la sección de comandos.
+    const KEY_H = 'comandos.commands.cmdsHeight';
+    function wireDivider() {
+      const dv = el.querySelector('.divider'), cmds = el.querySelector('.sec-cmds'), terms = el.querySelector('.sec-terms');
+      if (!dv || !cmds || !terms || !dv.addEventListener) return;
+      const saved = Number(read(KEY_H) || 0);
+      if (saved >= 120) { cmds.style.flex = '0 0 ' + saved + 'px'; terms.style.flex = '1 1 auto'; }
+      dv.addEventListener('pointerdown', e => {
+        const h0 = cmds.getBoundingClientRect().height, y0 = e.clientY;
+        try { dv.setPointerCapture(e.pointerId); } catch (_) {}
+        const move = ev => { const h = Math.max(120, h0 + ev.clientY - y0); cmds.style.flex = '0 0 ' + h + 'px'; terms.style.flex = '1 1 auto'; };
+        const up = () => { dv.removeEventListener('pointermove', move); dv.removeEventListener('pointerup', up); write(KEY_H, String(Math.round(cmds.getBoundingClientRect().height))); };
+        dv.addEventListener('pointermove', move); dv.addEventListener('pointerup', up);
+      });
     }
 
     el.addEventListener('click', e => {
@@ -378,8 +425,10 @@
       if (t.closest('[data-open-builder]')) return void openBuilder();
       if (t.closest('[data-new-term]')) return void newTerm();
       if ((n = t.closest('[data-focus-term]'))) {
+        state.curTerm = n.dataset.focusTerm;
         const x = termList().find(q => String(q.tabId) === n.dataset.focusTerm);
         if (x) focusTarget({ kind: 'term', tabId: x.tabId, paneKey: x.paneKey, session: x.session, pane: x.pane, title: x.label || x.tabId });
+        render();
         return;
       }
       if ((n = t.closest('[data-cmd]'))) {

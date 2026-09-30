@@ -159,13 +159,19 @@ const catalog = JSON.parse(fs.readFileSync(process.cwd() + '/tests/fixtures/comm
   sb3.applyCatalog({ cliInPane: '', target: { session: 'term-q2', pane: '%8' }, catalog, versionsAt: 2 });
   assert.equal(root3.querySelector('.cs-cli[data-cli="grok"]').classList.contains('open'), false);
   // extra) terminales rápidas: foco y nueva
-  const focused = [], root2 = mkRoot();
+  const focused = [], mounted = [], root2 = mkRoot();
   const sb2 = createCommandSidebar({ api, root: root2, storage, makeId: () => 'x', getTarget: () => ({ session: 'term-q1', pane: '%7', paneKey: 'term-q1:%7', kind: 'term', title: 'T' }),
     focusTarget: t => focused.push(t), openBuilder: () => focused.push('builder'), toast: () => {}, newTerm: () => focused.push('new'),
+    mountTerm: (sess, host) => mounted.push([sess, host && host.className]),
     terminals: () => [{ tabId: 'q1', paneKey: 'term-q1:%7', session: 'term-q1', pane: '%7', label: 'Terminal <14:32>', cwd: '/tmp' }] });
   sb2.render();
+  // pila del mockup: comandos arriba, separador, pestañas + terminal (.mini) abajo, en la barra
+  assert.ok(root2.querySelector('.sec-cmds .cs-head')); assert.ok(root2.querySelector('.divider'));
+  assert.ok(root2.querySelector('.sec-terms .cs-terms.tt')); assert.ok(root2.querySelector('.sec-terms .mini'));
+  assert.deepEqual(mounted.at(-1), ['q1', 'mini']);                                    // la terminal se monta en la barra
   assert.equal(root2.querySelector('.cs-terms .t[data-focus-term="q1"]').textContent.includes('Terminal <14:32>'), true);
-  assert.equal(root2.querySelector('.cs-terms .t[data-focus-term="q1"]').classList.contains('cur'), true);
+  assert.equal(root2.querySelector('.cs-terms .t[data-focus-term="q1"]').classList.contains('on'), true);
+  assert.equal(root2.querySelector('.cs-terms .t[data-focus-term="q1"]').classList.contains('sel'), true);   // es el destino
   root2.click('.t[data-focus-term="q1"]'); root2.click('.t.plus[data-new-term]'); root2.click('.cs-chains[data-open-builder]');
   assert.equal(focused[0].kind, 'term'); assert.equal(focused[0].pane, '%7'); assert.deepEqual(focused.slice(1), ['new', 'builder']);
   // helpers puros para el constructor de cadenas (S3)
