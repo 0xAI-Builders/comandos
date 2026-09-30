@@ -75,7 +75,7 @@ def parse(text):
 
 
 def _path(directory, slug):
-    if not _SLUG_RE.match(str(slug or "")):
+    if not _SLUG_RE.fullmatch(str(slug or "")):
         raise ChainError(f"Slug inválido: {slug!r}")
     return Path(directory) / f"{slug}.md"
 
@@ -87,8 +87,12 @@ def list_chains(directory):
         return out
     for p in sorted(directory.glob("*.md"), key=lambda q: q.stem):
         slug = p.stem
+        if not _SLUG_RE.fullmatch(slug):
+            out.append({"slug": slug, "name": p.name,
+                        "error": "Nombre de archivo no válido: usa minúsculas, números y guiones (máx. 60)"})
+            continue
         try:
-            chain = parse(p.read_text(encoding="utf-8"))
+            chain = parse(p.read_text(encoding="utf-8-sig"))
             out.append({"slug": slug, "name": chain["name"] or slug, "steps": chain["steps"]})
         except (ChainError, OSError, UnicodeDecodeError) as exc:
             out.append({"slug": slug, "name": p.name, "error": str(exc)})

@@ -43,3 +43,22 @@ def test_delete_only_touches_that_slug(tmp_path):
     assert [c["slug"] for c in cc.list_chains(tmp_path)] == ["b"]
     with pytest.raises(cc.ChainError):
         cc.delete_chain(tmp_path, "../b")
+
+def test_bom_file_parses(tmp_path):
+    (tmp_path / "bom.md").write_bytes("﻿# Con BOM\n\n1. shell: claude\n".encode("utf-8"))
+    (chain,) = cc.list_chains(tmp_path)
+    assert chain == {"slug": "bom", "name": "Con BOM", "steps": [{"kind": "shell", "text": "claude"}]}
+
+@pytest.mark.parametrize("stem", ["Mi Cadena", "MAYUS", "a" * 61, "-x"])
+def test_file_with_invalid_slug_is_listed_as_error(tmp_path, stem):
+    (tmp_path / f"{stem}.md").write_text("# X\n\n1. shell: claude\n", encoding="utf-8")
+    (entry,) = cc.list_chains(tmp_path)
+    assert "steps" not in entry and entry["name"] == f"{stem}.md"
+    assert entry["error"].startswith("Nombre de archivo no válido")
+
+def test_slug_with_trailing_newline_is_rejected(tmp_path):
+    cc.save_chain(tmp_path, "A", STEPS)
+    with pytest.raises(cc.ChainError):
+        cc.delete_chain(tmp_path, "a\n")
+    with pytest.raises(cc.ChainError):
+        cc.save_chain(tmp_path, "A", STEPS, slug="a\n")
