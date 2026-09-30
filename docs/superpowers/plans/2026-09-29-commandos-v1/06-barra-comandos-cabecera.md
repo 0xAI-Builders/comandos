@@ -1130,6 +1130,29 @@ git commit -m "feat: replace the sessions sidebar and chat with the per-CLI comm
 
 ---
 
+### Tarea M1: los chips de modelo y las versiones salen del watcher vivo (pedido de Jesús 2026-09-30)
+
+Jesús: "deja un proceso back sync que siempre esté pulleando los modelos más nuevos". Ya existe el watcher de modelos en `bin/cc-dash` (`_model_watch_cycle`, `_model_watch_loop`, snapshot `MODEL_WATCH_FILE = ~/.claude/hooks/model-watch.json`, lib `lib/model_watch.py`: `installed_versions`, `discover_models`, `watch_models`, `_family_ver`, `_norm`; rutas `GET /models/latest`, `POST /models/refresh`). Esta tarea lo conecta con el catálogo de la barra y lo hace más frecuente. No se crea un segundo poller.
+
+**Archivos:**
+- Modificar: `lib/model_watch.py` (`installed_versions` también para `opencode` y `agy`, mismo patrón de ruta resuelta y regex).
+- Modificar: `bin/cc-dash` (`_model_watch_loop`: versiones cada 600 s en lugar de 1800; escaneo completo de binarios sigue siendo al cambiar versión o cada 6 h; `cli_catalog_payload`: deja de ejecutar `--version` por su cuenta y usa `versions` y `discovered`/`newSince` del snapshot del watcher; la caché del catálogo se invalida cuando cambia `checkedAt` del snapshot; `?refresh=1` fuerza un ciclo del watcher (`_model_watch_cycle(force=True)`) y luego relee).
+- Modificar: `lib/cli_catalog.py` (`catalog_view(..., models=None, new_models=None)`), `config/cli-commands.json` (los comandos `/model ` de claude y grok llevan `"argsFrom": "models"`; sus `args` fijos quedan como respaldo si el watcher no tiene datos).
+- Modificar/crear pruebas: `tests/test_cli_catalog.py`, `tests/test_commands_catalog_endpoint.py`, `tests/test_model_watch*.py` si existen (grep).
+- Modificar: `dash/command-sidebar.js` solo para marcar un chip con clase `new` y texto accesible "nuevo" cuando el catálogo lo indique (`cmd.newArgs: [...]`), y `tests/command_sidebar_checks.cjs` + fixture si el contrato cambia.
+
+**Contrato:**
+- `models` = `{cli: [ids]}`: para cada familia (`_family_ver`) de los ids descubiertos por el watcher para ese CLI (`claude`→`claude`, `codex`→`codex`, `grok`→`grok`), solo el MÁS NUEVO por familia, sin variantes con fecha (`-YYYYMMDD`) ni con corchetes (`[1m]`); orden: familias por versión descendente del modelo. Unir con los ids del registro (`config/providers.json` motors) con el mismo criterio.
+- En `catalog_view`, un comando con `argsFrom: "models"` usa `models[cli]` si no está vacío; si está vacío conserva sus `args` del JSON. `newArgs` = intersección con `newSince[cli].models` del snapshot.
+- `version.installed` de cada CLI sale del snapshot; si el snapshot no tiene ese CLI, `None` (→ `missing` sólo si tampoco hay binario: el watcher ya lo resuelve).
+- Nunca se inventa un modelo: todo chip viene del binario instalado, del registro o del JSON curado. Nunca Enter.
+
+**Pruebas (TDD):** vista con `models` y `newSince` inyectados produce los chips más nuevos por familia sin `[1m]` ni fechas, en orden; sin datos del watcher conserva los `args` del JSON; el endpoint no ejecuta `--version` (inyectar un snapshot en `HOME/.claude/hooks/model-watch.json` del harness y comprobar que `version.installed` sale de él); cambiar `checkedAt` invalida la caché; `installed_versions` incluye `opencode` y `agy` con `which`/`run` falsos (refactor mínimo para inyectarlos si hace falta).
+
+**Commit:** `feat: sidebar model chips and CLI versions follow the live model watcher`
+
+---
+
 ### Tarea S3: modal Cadenas (constructor con el mismo acordeón)
 
 **Archivos:**
