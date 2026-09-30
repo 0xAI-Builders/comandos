@@ -196,7 +196,9 @@ def test_mobile_theme_cycle_uses_visible_panel_control_and_returns_to_terminal()
     cycle = source.split("async function clickThemeUntil", 1)[1].split(
         "async function themeColors", 1
     )[0]
-    assert "button.isVisible()" in visible_click
+    # H1: Apariencia vive en el menú ☰; el harness solo pulsa controles visibles.
+    assert "menu.isVisible()" in visible_click
+    assert 'button.waitFor({state: "visible"' in visible_click
     assert "⌂ Panel" in visible_click
     assert "opened.session" in visible_click
     assert "force:" not in visible_click
