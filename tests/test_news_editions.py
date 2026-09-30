@@ -298,6 +298,49 @@ def test_crash_mid_generation_leaves_not_published_after_lease(conn):
     assert ne.get_edition(conn, "2026-09-29@09:00")["edition"]["status"] == "not_published"
 
 
+def test_restart_mid_generation_requeues_within_grace(conn):
+    policy = ne.default_policy()
+    ne.schedule_editions(conn, date(2026, 9, 29), policy)
+    assert ne.claim_due_job(conn, ms(2026, 9, 29, 21, 0), policy)["editionId"] == "2026-09-29@21:00"
+    # The service restarts at 21:04: the lease is still held by a dead process.
+    ne.requeue_orphans(conn, ms(2026, 9, 29, 21, 4), policy)
+    fetch = FakeFetch([item("https://example.com/a", "Nota A")])
+    result = ne.run_due(conn, ms(2026, 9, 29, 21, 4), policy, fetch=fetch, summarize=FakeSummarize())
+    assert result["built"] == "2026-09-29@21:00"
+    job = conn.execute("SELECT attempts FROM news_jobs WHERE edition_id = ?", ("2026-09-29@21:00",)).fetchone()
+    assert job[0] == 2
+
+
+def test_restart_after_grace_marks_the_orphan_interrupted(conn):
+    policy = ne.default_policy()
+    ne.schedule_editions(conn, date(2026, 9, 29), policy)
+    ne.claim_due_job(conn, ms(2026, 9, 29, 21, 0), policy)
+    ne.requeue_orphans(conn, ms(2026, 9, 29, 21, 31), policy)
+    edition = ne.get_edition(conn, "2026-09-29@21:00")["edition"]
+    assert edition["status"] == "not_published"
+    assert "reinició" in " ".join(edition["notes"])
+    assert ne.claim_due_job(conn, ms(2026, 9, 29, 21, 31), policy) is None
+
+
+def test_scheduler_requeues_orphans_once_at_start(tmp_path):
+    db = tmp_path / "s.sqlite3"
+    cfg = tmp_path / "news.json"
+    cfg.write_text(json.dumps({"enabled": True, "summarizer": {"kind": "acp", "agent": "opencode", "model": "m"}}))
+
+    def connect():
+        c = app_state.connect(db)
+        app_state.migrate(c)
+        return c
+    c = connect()
+    ne.schedule_editions(c, date(2026, 9, 29), ne.default_policy())
+    ne.claim_due_job(c, ms(2026, 9, 29, 21, 0), ne.default_policy())
+    c.close()
+    sched = ne.EditionScheduler(connect, cfg, None, now=lambda: ms(2026, 9, 29, 21, 4),
+                                fetch=FakeFetch([item("https://example.com/a", "Nota A")]),
+                                summarize=FakeSummarize())
+    assert sched.tick()["built"] == "2026-09-29@21:00"
+
+
 def test_midnight_schedules_the_next_local_day(conn):
     policy = ne.default_policy()
     ne.run_due(conn, ms(2026, 9, 29, 23, 59), policy, fetch=FakeFetch([]), summarize=FakeSummarize())

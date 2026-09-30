@@ -179,6 +179,25 @@ def reconcile(conn, now_ms, policy):
                          (json.dumps(["No se generó a su hora (servicio detenido); no se recupera."]), eid))
 
 
+def requeue_orphans(conn, now_ms, policy):
+    """At service start every running job is an orphan of the previous process.
+    Within the grace window it runs again; later it is honestly not published."""
+    grace = int(policy.get("graceMinutes", 30)) * 60_000
+    with _tx(conn):
+        rows = conn.execute("SELECT j.edition_id, e.scheduled_at_ms FROM news_jobs j JOIN news_editions e "
+                            "ON e.id = j.edition_id WHERE j.state = 'running'").fetchall()
+        for eid, scheduled in rows:
+            if scheduled + grace > now_ms:
+                conn.execute("UPDATE news_jobs SET state = 'queued', lease_until_ms = NULL WHERE edition_id = ?", (eid,))
+                conn.execute("UPDATE news_editions SET status = 'scheduled' WHERE id = ?", (eid,))
+            else:
+                conn.execute("UPDATE news_jobs SET state = 'failed', finished_at_ms = ?, "
+                             "error = 'interrumpida' WHERE edition_id = ?", (now_ms, eid))
+                conn.execute("UPDATE news_editions SET status = 'not_published', notes = ? WHERE id = ?",
+                             (json.dumps(["El servicio se reinició a mitad de la generación y ya pasó su hora; "
+                                          "este resumen no se recupera."]), eid))
+
+
 def claim_due_job(conn, now_ms, policy):
     """Claim at most one due job; None while another generation holds a lease."""
     grace = int(policy.get("graceMinutes", 30)) * 60_000
@@ -830,6 +849,7 @@ class EditionScheduler:
         self.env, self.now = env, now or (lambda: int(time.time() * 1000))
         self.fetch, self.summarize, self.notify = fetch, summarize, notify
         self.lock, self.state = threading.Lock(), {"configured": False, "reason": "sin configurar"}
+        self.booted = False
 
     def tick(self):
         if not self.lock.acquire(blocking=False):
@@ -842,6 +862,9 @@ class EditionScheduler:
             policy = policy_from_config(config)
             conn = self.connect()
             try:
+                if not self.booted:
+                    requeue_orphans(conn, self.now(), policy)
+                    self.booted = True
                 return run_due(conn, self.now(), policy,
                                fetch=self.fetch or make_fetcher(self.news_watch),
                                summarize=self.summarize or make_summarizer(config, env=self.env),
