@@ -953,6 +953,15 @@ def pane_at(term, event):
     sess = term_session(term)
     if not sess:
         return None, 0
+    # Primero la geometría de los marcos ya dibujados: un clic no espera a tmux.
+    geo = _PANE_GEO.get(id(term)) if "_PANE_GEO" in globals() else None
+    cw, chh = term.get_char_width(), term.get_char_height()
+    if geo and cw >= 4 and chh >= 6:
+        col, row = int(event.x // cw), int(event.y // chh)
+        for pid, g in geo.items():
+            height = _PANE_BOX.get(pid, (0, False))[0]
+            if g[0] <= col < g[0] + g[2] and g[1] - 1 <= row < g[1] + height:
+                return pid, len(geo)
     col = int((event.x - 10) // max(1, term.get_char_width()))
     row = int((event.y - 8) // max(1, term.get_char_height()))
     r = tmuxc("list-panes", "-t", "=" + sess + ":",
@@ -4994,6 +5003,14 @@ def _attach_model_bar(box, sess):
     # se pinta en la propia VTE (draw después del contenido), que no toca la entrada.
     box._frames = []
     ov.connect_after("draw", lambda w, cr, b=box: _draw_pane_frames(b, cr))
+    box._drag = None
+    term.connect("button-press-event", lambda w, e, b=box: _gutter_press(b, w, e))
+    term.connect("motion-notify-event", lambda w, e, b=box: _gutter_motion(b, w, e))
+    term.connect("button-release-event", lambda w, e, b=box: _gutter_release(b, w, e))
+    term.connect("key-press-event", lambda w, e, b=box: _prefix_watch(b, e))
+    # La VTE repone su cursor de texto en algunos movimientos: la manita va después.
+    term.connect_after("motion-notify-event", lambda w, e, b=box: (
+        _gutter_cursor(b, b._hot_gutter) if getattr(b, "_hot_gutter", None) is not None else None, False)[1])
     term.connect("motion-notify-event",
                  lambda w, e, b=box: (_pane_geo_soon(b) if e.get_state() & Gdk.ModifierType.BUTTON1_MASK else None, False)[1])
     term.connect("button-release-event", lambda w, e, b=box: (_pane_geo_soon(b), _gutter_track(b, -99, -99, False), False)[2])
@@ -5328,14 +5345,15 @@ def _open_extension_shelf(sess, pane, harness=""):
 
 
 def _draw_pane_frames(box, cr):
-    """Borde redondeado de 1 px alrededor de cada pane tmux; el activo en verde."""
+    """Borde redondeado de 1 px alrededor de cada pane tmux; el activo con la marca
+    del tema (grill 1-oct: el color sale del tema, nunca fijo)."""
     frames = getattr(box, "_frames", None) or []
     if not frames:
         return False
     line = Gdk.RGBA(); line.parse(THEME.get("line") or "#223044")
-    green = Gdk.RGBA(); green.parse("#4ade80")
+    accent = Gdk.RGBA(); accent.parse(THEME.get("brand") or "#8B7CF6")
     for x, y, w, h, active in frames:
-        c = green if active else line
+        c = accent if active else line
         cr.set_source_rgba(c.red, c.green, c.blue, 0.9 if active else 1.0)
         cr.set_line_width(1)
         _ws_rounded(cr, x + 0.5, y + 0.5, max(0, w - 1), max(0, h - 1), 10)
@@ -5343,7 +5361,7 @@ def _draw_pane_frames(box, cr):
     hot = getattr(box, "_hot_gutter", None)
     gutters = _PANE_GUTTERS.get(id(getattr(box, "_term", None)), [])
     if hot is not None and hot < len(gutters):
-        orient, gx, gy, gw, gh = gutters[hot]
+        orient, gx, gy, gw, gh = gutters[hot][:5]
         brand = Gdk.RGBA(); brand.parse(THEME.get("brand") or "#8B7CF6")
         dragging = bool(getattr(box, "_hot_state", (None, False))[1])
         vertical = orient == "v"
@@ -5369,6 +5387,26 @@ def _draw_pane_frames(box, cr):
         for k in (-7, 0, 7):
             cr.arc(cx if vertical else cx + k, cy + k if vertical else cy, 1.3, 0, 6.2832)
             cr.fill()
+        # 4) al arrastrar, la medida en celdas de los dos lados: «100 | 80 col»
+        label = _gutter_measure(box, gutters[hot]) if dragging else ""
+        if label:
+            cr.select_font_face("Ubuntu Sans Mono", 0, 1)
+            cr.set_font_size(11)
+            ext = cr.text_extents(label)
+            bw, bh = ext.width + 16, 20
+            bx = cx - bw / 2
+            by = (cy - long_ / 2 - bh - 6) if vertical else (cy - bh - 10)
+            bx = max(gx - 200, bx)
+            cr.set_source_rgba(0, 0, 0, 0.35)
+            _ws_rounded(cr, bx, by + 1, bw, bh, 5)
+            cr.fill()
+            cr.set_source_rgba(brand.red, brand.green, brand.blue, 1.0)
+            _ws_rounded(cr, bx, by, bw, bh, 5)
+            cr.fill()
+            ink = Gdk.RGBA(); ink.parse(THEME.get("bg") or "#0A0D13")
+            cr.set_source_rgba(ink.red, ink.green, ink.blue, 1.0)
+            cr.move_to(bx + 8 - ext.x_bearing, by + bh / 2 - ext.height / 2 - ext.y_bearing)
+            cr.show_text(label)
     return False
 
 
@@ -5412,32 +5450,283 @@ def _box_focused(box):
     return page is box
 
 
-_PANE_GUTTERS = {}     # id(VTE) -> [(orient, x, y, w, h)] canales entre panes (para la agarradera)
+_PANE_GUTTERS = {}     # id(VTE) -> [(orient, x, y, w, h, pane)] canales entre panes (para la agarradera)
+_PANE_GEO = {}         # id(VTE) -> {pane: (left, top, width)} de los últimos marcos dibujados
 
 
-def _gutter_at(box, x, y, slack=4):
+def _gutter_at(box, x, y, slack=6):
+    """Índice del canal bajo (x, y). La zona es ancha (canal ± 6 px): el arrastre
+    lo hace ComandOS, ya no hay que atinarle a la columna de 1 celda de tmux."""
     term = getattr(box, "_term", None)
-    for i, (orient, gx, gy, gw, gh) in enumerate(_PANE_GUTTERS.get(id(term), [])):
+    for i, g in enumerate(_PANE_GUTTERS.get(id(term), [])):
+        _orient, gx, gy, gw, gh = g[:5]
         if gx - slack <= x <= gx + gw + slack and gy - slack <= y <= gy + gh + slack:
             return i
     return None
 
 
-def _gutter_cursor(box, hot):
-    """Cursor ↔/↕ sobre el canal entre panes; el de texto en el resto."""
+def _gutter_neighbor(geo, heights, pane, orient):
+    """Pane al otro lado del canal (a la derecha si es vertical, abajo si es
+    horizontal) que más se traslapa con `pane`; None si no hay."""
+    left, top, width = geo[pane][:3]
+    height = heights.get(pane, 0)
+    best, overlap = None, 0
+    for other, g in geo.items():
+        if other == pane:
+            continue
+        o_left, o_top, o_width = g[:3]
+        o_height = heights.get(other, 0)
+        if orient == "v" and o_left == left + width + 1:
+            ov = min(top + height, o_top + o_height) - max(top, o_top)
+        elif orient == "h" and o_top == top + height + 1:
+            ov = min(left + width, o_left + o_width) - max(left, o_left)
+        else:
+            continue
+        if ov > overlap:
+            best, overlap = other, ov
+    return best
+
+
+def _gutter_target(geo, heights, pane, orient, cell, nb=None):
+    """Tamaño nuevo (celdas) de `pane` si el canal se suelta en la celda `cell`
+    (columna si es vertical, fila si es horizontal). Cada lado conserva 2 celdas."""
+    left, top, width = geo[pane][:3]
+    start, size = (left, width) if orient == "v" else (top, heights.get(pane, 0))
+    if nb is not None and nb in geo:
+        room = size + (geo[nb][2] if orient == "v" else heights.get(nb, 0))
+        return max(2, min(room - 2, cell - start))
+    return max(2, cell - start)
+
+
+def _gutter_half(geo, heights, pane, orient, nb):
+    """Doble clic en el canal (grill 1-oct): los dos lados quedan a la mitad."""
+    size = geo[pane][2] if orient == "v" else heights.get(pane, 0)
+    other = geo[nb][2] if orient == "v" else heights.get(nb, 0)
+    return max(2, (size + other) // 2)
+
+
+def _gutter_measure(box, g):
+    """«100 | 80 col» o «29 / 21 filas» del canal que se arrastra."""
     term = getattr(box, "_term", None)
+    geo = _PANE_GEO.get(id(term), {})
+    orient, pane = g[0], g[5] if len(g) > 5 else None
+    if pane not in geo:
+        return ""
+    heights = {k: v[0] for k, v in _PANE_BOX.items()}
+    nb = _gutter_neighbor(geo, heights, pane, orient)
+    if orient == "v":
+        right = geo[nb][2] if nb else 0
+        return f"{geo[pane][2]} | {right} col" if nb else f"{geo[pane][2]} col"
+    below = heights.get(nb, 0) if nb else 0
+    return f"{heights.get(pane, 0)} / {below} filas" if nb else f"{heights.get(pane, 0)} filas"
+
+
+_CURSOR_CACHE = {}
+
+
+def _vte_event_windows(term):
+    """Ventanas de entrada propias de la VTE: su cursor de texto tapa el de la
+    ventana del widget, así que la manita va en ellas (laboratorio 1-oct)."""
     win_ = term.get_window() if term is not None and hasattr(term, "get_window") else None
     if win_ is None:
+        return []
+    a = term.get_allocation()
+    want = (a.x, a.y, a.width, a.height)
+    try:
+        return [c for c in win_.get_children() if tuple(c.get_geometry()) == want]
+    except Exception:
+        return []
+
+
+def _gutter_cursor(box, hot):
+    """Manita sobre el canal entre panes (pedido 1-oct): «grab» al pasar,
+    «grabbing» al arrastrar; fuera del canal, el cursor que la VTE tenía."""
+    term = getattr(box, "_term", None)
+    wins = _vte_event_windows(term)
+    if not wins:
         return
     gutters = _PANE_GUTTERS.get(id(term), [])
     name = None
     if hot is not None and hot < len(gutters):
-        # Manita (pedido 1-oct): «grab» al pasar, «grabbing» mientras se arrastra.
         name = "grabbing" if getattr(box, "_hot_state", (None, False))[1] else "grab"
     try:
-        win_.set_cursor(Gdk.Cursor.new_from_name(win_.get_display(), name) if name else None)
+        if name:
+            if getattr(box, "_vte_cursor", None) is None:
+                box._vte_cursor = [(w, w.get_cursor()) for w in wins]
+            key = (id(term.get_display()), name)
+            if key not in _CURSOR_CACHE:
+                _CURSOR_CACHE[key] = Gdk.Cursor.new_from_name(term.get_display(), name)
+            for w in wins:
+                w.set_cursor(_CURSOR_CACHE[key])
+        else:
+            for w, cursor in getattr(box, "_vte_cursor", None) or []:
+                w.set_cursor(cursor)
+            box._vte_cursor = None
     except Exception:
         pass
+
+
+def _box_cell(box, ex, ey):
+    """(columna, fila) de tmux bajo un punto de la VTE (coordenadas del evento)."""
+    term = box._term
+    cw, chh = term.get_char_width(), term.get_char_height()
+    if cw < 4 or chh < 6:
+        return None
+    return int(ex // cw), int(ey // chh)
+
+
+def _focus_frame_now(box, ex, ey):
+    """Clic en un pane: el marco salta a él al instante, sin esperar a tmux
+    (tmux selecciona ese mismo pane con MouseDown1Pane)."""
+    term = getattr(box, "_term", None)
+    geo = _PANE_GEO.get(id(term), {})
+    cell = _box_cell(box, ex, ey) if geo else None
+    if not cell:
+        return
+    col, row = cell
+    for pane, g in geo.items():
+        left, top, width = g[:3]
+        height = _PANE_BOX.get(pane, (0, False))[0]
+        if left <= col < left + width and top - 1 <= row < top + height:
+            if _PANE_BOX.get(pane, (0, False))[1]:
+                return
+            for other in geo:
+                h = _PANE_BOX.get(other, (0, False))[0]
+                _PANE_BOX[other] = (h, other == pane)
+            _reposition_pills(box, geo)
+            # En un grupo el foco GTK cambia después del clic: repintar entonces también.
+            GLib.idle_add(lambda: (_reposition_pills(box, geo), False)[1])
+            return
+
+
+_TMUX_PREFIX = [None]
+
+
+def _tmux_prefix():
+    """(keyval, máscara) del prefijo de tmux (C-b por defecto)."""
+    if _TMUX_PREFIX[0] is None:
+        key = "C-b"
+        try:
+            key = subprocess.run(["tmux", "show", "-gv", "prefix"], capture_output=True,
+                                 text=True, timeout=2).stdout.strip() or key
+        except Exception:
+            pass
+        mask, name = 0, key
+        while len(name) > 2 and name[1] == "-" and name[0] in "CMS":
+            mask |= {"C": Gdk.ModifierType.CONTROL_MASK, "M": Gdk.ModifierType.MOD1_MASK,
+                     "S": Gdk.ModifierType.SHIFT_MASK}[name[0]]
+            name = name[2:]
+        _TMUX_PREFIX[0] = (Gdk.keyval_to_lower(Gdk.keyval_from_name(name)), mask)
+    return _TMUX_PREFIX[0]
+
+
+def _prefix_watch(box, event):
+    """Cambiar de pane con el teclado (prefijo + o, flechas, q…): tras la tecla que
+    sigue al prefijo, el marco se actualiza en ~0.1 s en vez de esperar el sondeo."""
+    keyval, mask = _tmux_prefix()
+    mods = event.state & (Gdk.ModifierType.CONTROL_MASK | Gdk.ModifierType.MOD1_MASK)
+    now = time.monotonic()
+    if Gdk.keyval_to_lower(event.keyval) == keyval and mods == mask:
+        box._prefix_until = now + 1.5
+        return False
+    if now < getattr(box, "_prefix_until", 0):
+        box._prefix_until = now + 0.6          # tmux repite flechas sin prefijo ~500 ms
+        GLib.timeout_add(60, lambda: _pane_geo_soon(box))
+    return False
+
+
+def _gutter_send(box, d):
+    """Manda a tmux el último tamaño pedido; uno a la vez, sin bloquear la UI."""
+    if d.get("proc") is not None and d["proc"].poll() is None:
+        return
+    d["proc"] = None
+    want = d.get("want")
+    if want is None or want == d.get("sent"):
+        return
+    pane, axis, n = want
+    try:
+        d["proc"] = subprocess.Popen(["tmux", "resize-pane", "-t", pane, axis, str(n)],
+                                     stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    except Exception:
+        return
+    d["sent"] = want
+
+    def done():
+        if d["proc"] is not None and d["proc"].poll() is None:
+            return True
+        d["proc"] = None
+        _pane_geo_soon(box)
+        _gutter_send(box, d)
+        return False
+    GLib.timeout_add(15, done)
+
+
+def _gutter_press(box, w, e):
+    """Presionar en el canal entre panes: el arrastre lo hace ComandOS (no tmux).
+    Doble clic deja los dos lados a la mitad. Fuera del canal, el marco salta."""
+    if e.button != 1:
+        return False
+    x, y = e.x + w.get_margin_start(), e.y + w.get_margin_top()
+    term = box._term
+    gutters = _PANE_GUTTERS.get(id(term), [])
+    hot = _gutter_at(box, x, y)
+    if hot is None or hot >= len(gutters) or len(gutters[hot]) < 6:
+        if e.type == Gdk.EventType.BUTTON_PRESS:
+            _focus_frame_now(box, e.x, e.y)
+        return False
+    term._primary_press = None              # no es un clic de texto ni de URL
+    g = gutters[hot]
+    orient, pane = g[0], g[5]
+    geo = _PANE_GEO.get(id(term), {})
+    heights = {k: v[0] for k, v in _PANE_BOX.items()}
+    if pane not in geo:
+        return True
+    nb = _gutter_neighbor(geo, heights, pane, orient)
+    axis = "-x" if orient == "v" else "-y"
+    if e.type == Gdk.EventType._2BUTTON_PRESS:
+        box._drag = None
+        if nb is not None:
+            d = {"want": (pane, axis, _gutter_half(geo, heights, pane, orient, nb))}
+            _gutter_send(box, d)
+        return True
+    if e.type != Gdk.EventType.BUTTON_PRESS:
+        return True
+    box._drag = {"pane": pane, "orient": orient, "axis": axis, "nb": nb, "want": None, "sent": None, "proc": None}
+    box._hot_gutter, box._hot_state = hot, (hot, True)
+    _gutter_cursor(box, hot)
+    ov = getattr(box, "_pill_overlay", None)
+    if ov is not None:
+        ov.queue_draw()
+    return True
+
+
+def _gutter_motion(box, w, e):
+    d = getattr(box, "_drag", None)
+    if not d:
+        return False
+    cell = _box_cell(box, e.x, e.y)
+    geo = _PANE_GEO.get(id(box._term), {})
+    if cell and d["pane"] in geo:
+        heights = {k: v[0] for k, v in _PANE_BOX.items()}
+        at = cell[0] if d["orient"] == "v" else cell[1]
+        d["want"] = (d["pane"], d["axis"], _gutter_target(geo, heights, d["pane"], d["orient"], at, d["nb"]))
+        _gutter_send(box, d)
+    return True                              # la VTE no ve este arrastre: no selecciona texto
+
+
+def _gutter_release(box, w, e):
+    d = getattr(box, "_drag", None)
+    if not d or e.button != 1:
+        return False
+    box._drag = None
+    _gutter_send(box, d)
+    box._hot_state = (box._hot_gutter, False)
+    _gutter_track(box, e.x + w.get_margin_start(), e.y + w.get_margin_top(), False)
+    _gutter_cursor(box, box._hot_gutter)
+    ov = getattr(box, "_pill_overlay", None)
+    if ov is not None:
+        ov.queue_draw()
+    return True
 
 
 def _gutter_track(box, x, y, dragging):
@@ -5482,10 +5771,11 @@ def _pane_frames(term, geo, m_l, m_t, cw, chh, focused=True):
         # Canales donde tmux redimensiona: la columna a la derecha del pane y el
         # renglón debajo (que es la cabecera del de abajo). Ahí va la agarradera.
         if cols_total and left + width < cols_total:
-            gutters.append(("v", m_l + (left + width) * cw, y0 + 6, cw, max(0, y1 - y0 - 12)))
+            gutters.append(("v", m_l + (left + width) * cw, y0 + 6, cw, max(0, y1 - y0 - 12), pane_id))
         if rows_total and top + height < rows_total:
-            gutters.append(("h", x0 + 10, bottom - 2, max(0, x1 - x0 - 20), 5))
+            gutters.append(("h", x0 + 10, bottom - 2, max(0, x1 - x0 - 20), 5, pane_id))
     _PANE_GUTTERS[id(term)] = gutters
+    _PANE_GEO[id(term)] = dict(geo)
     return frames, rows
 
 

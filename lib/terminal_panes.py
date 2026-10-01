@@ -67,6 +67,20 @@ def ensure_focus_keys(tmux):
         raise ValueError('No se pudo preparar el foco del dispositivo')
 
 
+def _remote_focus(tmux, session):
+    """Pane propio del cliente remoto (`-f active-pane`) si hay uno solo
+    conectado a la sesión; con varios dispositivos no se adivina."""
+    result = tmux('list-clients', '-t', '=' + session, '-F', '#{client_flags}\t#{pane_id}')
+    if result.returncode:
+        return None
+    seen = set()
+    for line in result.stdout.splitlines():
+        flags, _, pane = line.partition('\t')
+        if 'active-pane' in flags.split(',') and re.fullmatch(r'%\d+', pane):
+            seen.add(pane)
+    return seen.pop() if len(seen) == 1 else None
+
+
 def _public(panes):
     return [{key: value for key, value in pane.items() if not key.startswith('_')}
             for pane in panes]
@@ -79,8 +93,13 @@ def execute(tmux, identify, save_snapshot, data):
     if not isinstance(session, str) or not re.fullmatch(r'[A-Za-z0-9_-]{1,120}', session):
         raise ValueError('Sesión inválida')
     action = data.get('action', 'list')
-    if action not in ('list', 'select', 'close', 'split'):
+    if action not in ('list', 'select', 'close', 'split', 'resize'):
         raise ValueError('Acción de panel inválida')
+    if action == 'resize':
+        axis = {'x': '-x', 'y': '-y'}.get(data.get('axis'))
+        size = data.get('size')
+        if not axis or not isinstance(size, int) or isinstance(size, bool) or not 2 <= size <= 1000:
+            raise ValueError('Tamaño de panel inválido')
     client_scope = action == 'select' and data.get('scope') == 'client'
     split_flag = None
     if action == 'split':
@@ -90,7 +109,17 @@ def execute(tmux, identify, save_snapshot, data):
     with _LOCK:
         panes = _inventory(tmux, identify, session)
         if action == 'list':
-            return {'ok': True, 'panes': _public(panes)}
+            return {'ok': True, 'panes': _public(panes), 'remoteFocus': _remote_focus(tmux, session)}
+        if action == 'resize':
+            # Arrastrar el borde entre panes (grill 1-oct): solo el tamaño del pane
+            # existente; el id viene del inventario, nunca del texto recibido.
+            pane = next((p for p in panes if p['id'] == data.get('pane')), None)
+            if not pane:
+                raise ValueError('Ese panel ya no existe')
+            result = tmux('resize-pane', '-t', pane['id'], axis, str(size))
+            if result.returncode:
+                raise ValueError('tmux no pudo cambiar el tamaño del panel')
+            return {'ok': True, 'panes': _public(_inventory(tmux, identify, session))}
         pane = next((p for p in panes if p['id'] == data.get('pane')), None)
         if not pane or pane['identity'] != data.get('identity'):
             raise ValueError('El panel cambió. Abre Paneles y vuelve a elegirlo')

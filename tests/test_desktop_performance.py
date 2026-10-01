@@ -98,7 +98,7 @@ def model_ui():
                     CssProvider=lambda: NS(load_from_data=lambda d: None), StyleContext=NS(add_provider_for_screen=lambda *a: None), STYLE_PROVIDER_PRIORITY_APPLICATION=600,
                     Orientation=NS(HORIZONTAL=1, VERTICAL=2), Align=NS(START=1, CENTER=2), ReliefStyle=NS(NONE=1)),
           'Pango': NS(EllipsizeMode=NS(END=3)), 'STATE_CACHE': {}, '_BADGE_CSS': {},
-          'Gdk': NS(Screen=NS(get_default=lambda: None), EventMask=NS(POINTER_MOTION_MASK=1, LEAVE_NOTIFY_MASK=2), ModifierType=NS(BUTTON1_MASK=256)), 'Align': NS(CENTER=2), '_PANE_BOX': {'%0': (30, True)}, 'KEY_H': 22, 'HEADER_EXTRA': 14, '_PANE_GUTTERS': {}, '_draw_pane_frames': lambda b, cr: False, '_pane_geo_soon': lambda b: None,
+          'Gdk': NS(Screen=NS(get_default=lambda: None), EventMask=NS(POINTER_MOTION_MASK=1, LEAVE_NOTIFY_MASK=2), ModifierType=NS(BUTTON1_MASK=256)), 'Align': NS(CENTER=2), '_PANE_BOX': {'%0': (30, True)}, 'KEY_H': 22, 'HEADER_EXTRA': 14, '_PANE_GUTTERS': {}, '_PANE_GEO': {}, '_draw_pane_frames': lambda b, cr: False, '_pane_geo_soon': lambda b: None,
           'work_mark_state': __import__('work_marks'), 'work_mark_row': lambda scope, key: {'mark': 'none'},
           'tab_indicator_display': lambda mark, state: ('ai:idle', None, False),
           '_set_indicator_frame': lambda image, icon, color, frame: None,

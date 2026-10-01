@@ -171,3 +171,22 @@ def test_client_scoped_select_rejects_stale_identity(panes):
     target = run({'session': 'fixture'})['panes'][0]
     with pytest.raises(ValueError):
         run({'session': 'fixture', 'action': 'select', 'scope': 'client', 'pane': target['id'], 'identity': 'x'})
+
+
+def test_resize_moves_only_the_border_of_an_existing_pane(panes):
+    execute, tmux, _ = panes
+    left, right = execute({'session': 'fixture'})['panes']
+    result = execute({'session': 'fixture', 'action': 'resize', 'pane': left['id'], 'axis': 'x', 'size': 40})
+    sizes = {p['id']: p['width'] for p in result['panes']}
+    assert sizes[left['id']] == 40 and sizes[right['id']] == 120 - 40 - 1
+    for bad in [{'axis': 'z', 'size': 30}, {'axis': 'x', 'size': 1}, {'axis': 'x', 'size': '40'},
+                {'axis': 'x', 'size': True}, {'axis': 'y', 'size': 5000}]:
+        with pytest.raises(ValueError):
+            execute({'session': 'fixture', 'action': 'resize', 'pane': left['id'], **bad})
+    with pytest.raises(ValueError):
+        execute({'session': 'fixture', 'action': 'resize', 'pane': '%999', 'axis': 'x', 'size': 30})
+
+
+def test_list_reports_no_remote_focus_without_a_remote_client(panes):
+    execute, _, _ = panes
+    assert execute({'session': 'fixture'})['remoteFocus'] is None

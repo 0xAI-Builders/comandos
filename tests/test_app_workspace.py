@@ -331,3 +331,59 @@ def test_stacked_panes_breathe_and_the_resize_handle_lights_up_on_the_gutter():
     draw = SOURCE.split('def _draw_pane_frames(box, cr):')[1].split('\ndef ')[0]
     assert '_hot_gutter' in draw and '1.0 if dragging else 0.55' in draw and '(44, 8) if dragging else (34, 6)' in draw
     assert 'name = "grabbing" if getattr(box, "_hot_state", (None, False))[1] else "grab"' in SOURCE
+
+
+def test_dragging_the_gutter_is_done_by_comandos_with_half_on_double_click():
+    """Grill 1-oct: the handle is ComandOS's own (wide zone, not tmux's 1-cell border);
+    the size follows the pointer by cells, each side keeps 2, double click halves."""
+    ns = {}
+    for name in ('_gutter_neighbor', '_gutter_target', '_gutter_half'):
+        load(name, ns)
+    # izquierda %1 (0..59) | derecha arriba %2 (61..119, 0..19) / derecha abajo %3 (61.., 21..39)
+    geo = {'%1': (0, 0, 60), '%2': (61, 0, 59), '%3': (61, 21, 59)}
+    heights = {'%1': 40, '%2': 20, '%3': 19}
+    assert ns['_gutter_neighbor'](geo, heights, '%1', 'v') == '%2'      # el que más se traslapa
+    assert ns['_gutter_neighbor'](geo, heights, '%2', 'h') == '%3'
+    assert ns['_gutter_neighbor'](geo, heights, '%3', 'h') is None
+    assert ns['_gutter_target'](geo, heights, '%1', 'v', 80, '%2') == 80
+    assert ns['_gutter_target'](geo, heights, '%1', 'v', 500, '%2') == 117   # el otro lado conserva 2
+    assert ns['_gutter_target'](geo, heights, '%1', 'v', -4, '%2') == 2
+    assert ns['_gutter_target'](geo, heights, '%2', 'h', 10, '%3') == 10
+    assert ns['_gutter_half'](geo, heights, '%1', 'v', '%2') == 59
+    assert ns['_gutter_half'](geo, heights, '%2', 'h', '%3') == 19
+
+
+def test_the_drag_measure_reads_cells_on_both_sides():
+    term = object()
+    ns = {'_PANE_GEO': {id(term): {'%1': (0, 0, 100), '%2': (101, 0, 80)}}, '_PANE_BOX': {'%1': (30, True), '%2': (30, False)}}
+    load('_gutter_neighbor', ns)
+    measure = load('_gutter_measure', ns)
+    box = SimpleNamespace(_term=term)
+    assert measure(box, ("v", 0, 0, 8, 100, '%1')) == "100 | 80 col"
+    assert measure(box, ("v", 0, 0, 8, 100, '%9')) == ""
+
+
+def test_a_click_moves_the_frame_at_once_without_asking_tmux():
+    term = SimpleNamespace(get_char_width=lambda: 10, get_char_height=lambda: 20)
+    redrawn = []
+    ns = {'_PANE_GEO': {id(term): {'%1': (0, 1, 60), '%2': (61, 1, 59)}},
+          '_PANE_BOX': {'%1': (39, True), '%2': (39, False)},
+          '_reposition_pills': lambda box, geo: redrawn.append(dict(ns['_PANE_BOX'])),
+          'GLib': SimpleNamespace(idle_add=lambda fn: None)}
+    load('_box_cell', ns)
+    focus = load('_focus_frame_now', ns)
+    box = SimpleNamespace(_term=term)
+    focus(box, 700, 100)          # columna 70, fila 5: el pane de la derecha
+    assert ns['_PANE_BOX'] == {'%1': (39, False), '%2': (39, True)} and len(redrawn) == 1
+    focus(box, 700, 100)          # ya activo: no repinta
+    assert len(redrawn) == 1
+
+
+def test_the_active_frame_and_handle_take_the_theme_brand_and_win_over_vte():
+    draw = SOURCE.split('def _draw_pane_frames(box, cr):')[1].split('\ndef ')[0]
+    assert '#4ade80' not in draw and 'THEME.get("brand")' in draw
+    attach = SOURCE.split('def _attach_model_bar(')[1].split('\ndef ')[0]
+    # El arrastre propio va antes que los handlers que devuelven False.
+    assert attach.index('_gutter_press(b, w, e)') < attach.index('_gutter_track(\n')
+    cursor = SOURCE.split('def _gutter_cursor(box, hot):')[1].split('\ndef ')[0]
+    assert '_vte_event_windows(term)' in cursor

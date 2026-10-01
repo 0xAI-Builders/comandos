@@ -145,7 +145,7 @@
   /* Marcos y cabecera B por pane (grill 30-sep), mismas medidas que el escritorio. */
   #pane-chrome { position:absolute; inset:0; pointer-events:none; z-index:3; }
   #pane-chrome .pc-frame { position:absolute; box-sizing:border-box; border:1px solid var(--term-line2); border-radius:10px; }
-  #pane-chrome .pc-frame.on { border-color:#4ade80; }
+  #pane-chrome .pc-frame.on { border-color:var(--term-brand, #8b7cf6); }
   /* Agarradera de resize entre panes: línea fina a todo lo largo + pastilla central con puntos. */
   #pane-chrome .pc-grip { position:absolute; }
   #pane-chrome .pc-grip .ln { position:absolute; background:var(--term-brand, #8b7cf6); opacity:.55; }
@@ -159,6 +159,10 @@
   #pane-chrome .pc-grip.v.drag .pill { width:8px; height:44px; }
   #pane-chrome .pc-grip.h.drag .pill { width:44px; height:8px; }
   #pane-chrome .pc-grip .pill::after { content:""; position:absolute; inset:0; margin:auto; opacity:.9; }
+  #pane-chrome .pc-grip .tip { position:absolute; left:50%; transform:translateX(-50%); white-space:nowrap; font:700 11px var(--mono);
+    background:var(--term-brand, #8b7cf6); color:var(--term-bg); padding:2px 8px; border-radius:5px; box-shadow:0 1px 3px rgba(0,0,0,.35); }
+  #pane-chrome .pc-grip.v .tip { top:calc(50% - 44px); }
+  #pane-chrome .pc-grip.h .tip { top:-26px; }
   #pane-chrome .pc-grip.v .pill::after { width:3px; height:17px; background:radial-gradient(circle, #fff 1.3px, transparent 1.5px) 0 0/3px 7px repeat-y; }
   #pane-chrome .pc-grip.h .pill::after { width:17px; height:3px; background:radial-gradient(circle, #fff 1.3px, transparent 1.5px) 0 0/7px 3px repeat-x; }
   /* Manita (1-oct): agarrar al pasar por el canal, agarrando mientras se arrastra. */
@@ -1999,11 +2003,22 @@
                  spark: '<svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8z"/></svg>' };
   const esc = v => String(v == null ? '' : v).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   let panes = [], models = [], busy = false, gutters = [], hot = -1, dragging = false;
+  // Pane activo de ESTE dispositivo (se adjunta con -f active-pane): el clic manda
+  // al instante; tmux lo confirma con remoteFocus cuando hay un solo remoto.
+  let localActive = null, localAt = 0, remoteFocus = null, drag = null, prefixUntil = 0;
+  const frames = document.createElement('div'), grip = document.createElement('div');
+  layer.replaceChildren(frames, grip);
 
   function cell() {
     try { const d = term._core._renderService.dimensions.css.cell; if (d.width > 0 && d.height > 0) return [d.width, d.height]; } catch (_) {}
     const sc = document.querySelector('#term .xterm-screen');
     return sc && term.cols && term.rows ? [sc.clientWidth / term.cols, sc.clientHeight / term.rows] : [0, 0];
+  }
+  function activeId() {
+    if (localActive && panes.some(p => p.id === localActive)) return localActive;
+    if (remoteFocus && panes.some(p => p.id === remoteFocus)) return remoteFocus;
+    const a = panes.find(p => p.active);
+    return a ? a.id : null;
   }
   function aiFor(pane) {
     try {
@@ -2018,9 +2033,9 @@
   function draw() {
     const screen = document.querySelector('#term .xterm-screen');
     const [cw, ch] = cell();
-    if (!screen || !cw || !ch) { layer.replaceChildren(); return; }
+    if (!screen || !cw || !ch) { frames.replaceChildren(); gutters = []; drawGrip(); return; }
     const lr = layer.getBoundingClientRect(), sr = screen.getBoundingClientRect();
-    const ox = sr.left - lr.left, oy = sr.top - lr.top, rows = term.rows;
+    const ox = sr.left - lr.left, oy = sr.top - lr.top, rows = term.rows, on = activeId();
     let html = '';
     gutters = [];
     for (const p of panes) {
@@ -2034,9 +2049,9 @@
       const bottom = oy + (p.top + p.height) * ch, atBottom = p.top + p.height >= rows;
       // Nunca más allá de lo que xterm muestra (si tmux aún no ajustó la ventana al tamaño del remoto).
       const y1 = Math.min(oy + rows * ch + 3, atBottom ? bottom + 3 : bottom - 2);
-      if (p.left + p.width < term.cols) gutters.push({ o: 'v', x: ox + (p.left + p.width) * cw, y: y0 + 6, w: cw, h: Math.max(0, y1 - y0 - 12) });
-      if (!atBottom) gutters.push({ o: 'h', x: x0 + 10, y: bottom - 2, w: Math.max(0, x1 - x0 - 20), h: 5 });
-      html += `<div class="pc-frame${p.active ? ' on' : ''}" style="left:${x0}px;top:${y0}px;width:${x1 - x0}px;height:${y1 - y0}px"></div>`;
+      if (p.left + p.width < term.cols) gutters.push({ o: 'v', pane: p.id, x: ox + (p.left + p.width) * cw, y: y0 + 6, w: cw, h: Math.max(0, y1 - y0 - 12) });
+      if (!atBottom) gutters.push({ o: 'h', pane: p.id, x: x0 + 10, y: bottom - 2, w: Math.max(0, x1 - x0 - 20), h: 5 });
+      html += `<div class="pc-frame${p.id === on ? ' on' : ''}" style="left:${x0}px;top:${y0}px;width:${x1 - x0}px;height:${y1 - y0}px"></div>`;
       const m = models.find(x => x.pane === p.id);
       if (!m) continue;
       const hy = y0 + 1, hh = Math.max(18, rail + ch - hy);
@@ -2049,28 +2064,115 @@
         + `<span class="pc-keys"><button type="button" data-act="ia" data-pane="${esc(p.id)}" title="Cambiar motor / modelo / cuenta de este pane">${ICON.gear}<span>IA</span></button>`
         + `<button type="button" data-act="ext" data-pane="${esc(p.id)}" data-harness="${esc(m.harness)}" title="Extensiones de este pane">${ICON.spark}<span>MCPs · Skills</span></button></span></div>`;
     }
+    // Solo se reconstruye el DOM si algo cambió (antes, en cada movimiento del mouse).
+    if (html !== frames._html) { frames._html = html; frames.innerHTML = html; }
+    if (hot >= gutters.length) hot = -1;
+    drawGrip();
+  }
+  // Pane del otro lado de un canal: a la derecha (vertical) o abajo (horizontal).
+  function neighbor(g) {
+    const p = panes.find(x => x.id === g.pane);
+    if (!p) return null;
+    let best = null, most = 0;
+    for (const o of panes) {
+      if (o.id === p.id) continue;
+      const lap = g.o === 'v'
+        ? (o.left === p.left + p.width + 1 ? Math.min(p.top + p.height, o.top + o.height) - Math.max(p.top, o.top) : 0)
+        : (o.top === p.top + p.height + 1 ? Math.min(p.left + p.width, o.left + o.width) - Math.max(p.left, o.left) : 0);
+      if (lap > most) { best = o; most = lap; }
+    }
+    return best;
+  }
+  function measure(g) {
+    const p = panes.find(x => x.id === g.pane), nb = neighbor(g);
+    if (!p) return '';
+    return g.o === 'v' ? `${p.width}${nb ? ' | ' + nb.width : ''} col` : `${p.height}${nb ? ' / ' + nb.height : ''} filas`;
+  }
+  function drawGrip() {
     const g = gutters[hot];
-    if (g) html += `<div class="pc-grip ${g.o}${dragging ? ' drag' : ''}" style="left:${g.x}px;top:${g.y}px;width:${g.w}px;height:${g.h}px"><span class="ln"></span><span class="pill"></span></div>`;
+    const html = g ? `<div class="pc-grip ${g.o}${dragging ? ' drag' : ''}" style="left:${g.x}px;top:${g.y}px;width:${g.w}px;height:${g.h}px">`
+      + `<span class="ln"></span><span class="pill"></span>${dragging ? `<span class="tip">${esc(measure(g))}</span>` : ''}</div>` : '';
+    if (html !== grip._html) { grip._html = html; grip.innerHTML = html; }
     const tEl = document.getElementById('term');
     tEl.classList.toggle('resize-col', !!g && g.o === 'v');
     tEl.classList.toggle('resize-row', !!g && g.o === 'h');
     tEl.classList.toggle('grabbing', !!g && dragging);
-    layer.innerHTML = html;
   }
-  // Agarradera: al pasar o arrastrar sobre el canal entre panes (tmux redimensiona ahí).
+  // Agarradera: al pasar o arrastrar sobre el canal entre panes. La zona es ancha
+  // (± 6 px): el arrastre lo hace ComandOS, ya no hay que atinarle a tmux.
   function gutterAt(x, y) {
-    return gutters.findIndex(g => x >= g.x - 4 && x <= g.x + g.w + 4 && y >= g.y - 4 && y <= g.y + g.h + 4);
+    return gutters.findIndex(g => x >= g.x - 6 && x <= g.x + g.w + 6 && y >= g.y - 6 && y <= g.y + g.h + 6);
+  }
+  function pointCell(e) {
+    const sc = document.querySelector('#term .xterm-screen'), [cw, ch] = cell();
+    if (!sc || !cw || !ch) return null;
+    const r = sc.getBoundingClientRect();
+    return [Math.floor((e.clientX - r.left) / cw), Math.floor((e.clientY - r.top) / ch)];
+  }
+  function layerPoint(e) { const lr = layer.getBoundingClientRect(); return [e.clientX - lr.left, e.clientY - lr.top]; }
+  // Redimensionar: uno a la vez, siempre el último tamaño pedido.
+  let want = null, sent = null, inflight = false;
+  async function sendResize() {
+    if (inflight || !want || (sent && want.pane === sent.pane && want.axis === sent.axis && want.size === sent.size)) return;
+    inflight = true; sent = want;
+    try {
+      const r = await fetch('/terminal-panes', { method: 'POST', cache: 'no-store',
+        headers: { 'Content-Type': 'application/json', 'X-Comandos-Token': token },
+        body: JSON.stringify({ session, action: 'resize', pane: sent.pane, axis: sent.axis, size: sent.size }) }).then(x => x.json());
+      if (r && Array.isArray(r.panes)) { panes = r.panes; draw(); }
+    } catch (_) { /* el próximo movimiento reintenta */ } finally { inflight = false; }
+    sendResize();
   }
   const termEl = document.getElementById('term');
+  // Captura: el canal es de ComandOS; xterm (y tmux) no ven ese clic.
+  termEl.addEventListener('mousedown', e => {
+    if (e.button !== 0) return;
+    const [x, y] = layerPoint(e), i = gutterAt(x, y);
+    if (i < 0) {
+      // Clic en un pane: el marco salta al instante; tmux elige ese mismo pane.
+      const c = pointCell(e), p = c && panes.find(q => c[0] >= q.left && c[0] < q.left + q.width && c[1] >= q.top - 1 && c[1] < q.top + q.height);
+      if (p && p.id !== activeId()) { localActive = p.id; localAt = Date.now(); draw(); }
+      setTimeout(refresh, 150);
+      return;
+    }
+    e.preventDefault(); e.stopPropagation();
+    const g = gutters[i];
+    if (e.detail >= 2) {                       // doble clic: los dos lados a la mitad
+      const p = panes.find(q => q.id === g.pane), nb = neighbor(g);
+      if (p && nb) { want = { pane: p.id, axis: g.o === 'v' ? 'x' : 'y', size: Math.max(2, Math.floor((g.o === 'v' ? p.width + nb.width : p.height + nb.height) / 2)) }; sendResize(); }
+      return;
+    }
+    drag = { g, nb: neighbor(g) }; hot = i; dragging = true; drawGrip();
+  }, true);
+  window.addEventListener('mousemove', e => {
+    if (!drag) return;
+    e.preventDefault(); e.stopPropagation();
+    const c = pointCell(e), p = panes.find(q => q.id === drag.g.pane);
+    if (!c || !p) return;
+    const v = drag.g.o === 'v', start = v ? p.left : p.top, size = v ? p.width : p.height;
+    const room = drag.nb ? size + (v ? drag.nb.width : drag.nb.height) : Infinity;
+    const n = Math.max(2, Math.min(room - 2, (v ? c[0] : c[1]) - start));
+    want = { pane: p.id, axis: v ? 'x' : 'y', size: n };
+    sendResize();
+  }, true);
+  window.addEventListener('mouseup', e => {
+    if (!drag) return;
+    e.preventDefault(); e.stopPropagation();
+    drag = null; dragging = false; drawGrip(); later();
+  }, true);
+  termEl.addEventListener('dblclick', e => { const [x, y] = layerPoint(e); if (gutterAt(x, y) >= 0) { e.preventDefault(); e.stopPropagation(); } }, true);
   termEl.addEventListener('mousemove', e => {
-    const lr = layer.getBoundingClientRect(), x = e.clientX - lr.left, y = e.clientY - lr.top;
-    const drag = (e.buttons & 1) === 1;
-    const next = drag && hot >= 0 ? hot : gutterAt(x, y);
-    if (next !== hot || drag !== dragging) { hot = next; dragging = drag; draw(); }
+    if (drag) return;
+    const [x, y] = layerPoint(e), next = gutterAt(x, y);
+    if (next !== hot) { hot = next; drawGrip(); }
   }, { passive: true });
-  const off = () => { if (hot >= 0 || dragging) { hot = -1; dragging = false; draw(); } };
-  termEl.addEventListener('mouseleave', e => { if (!(e.buttons & 1)) off(); });
-  window.addEventListener('mouseup', () => { if (dragging) { dragging = false; draw(); later(); } });
+  termEl.addEventListener('mouseleave', () => { if (!drag && hot >= 0) { hot = -1; drawGrip(); } });
+  // Cambiar de pane con el teclado (prefijo de tmux + tecla): el marco se pone al día al momento.
+  if (typeof term.onData === 'function') term.onData(d => {
+    const now = Date.now();
+    if (d === '\x02') { prefixUntil = now + 1500; return; }
+    if (now < prefixUntil) { prefixUntil = now + 600; localActive = null; setTimeout(refresh, 80); }
+  });
   layer.addEventListener('click', e => {
     const b = e.target.closest && e.target.closest('button[data-act]');
     if (!b) return;
@@ -2082,13 +2184,20 @@
   async function refresh() {
     if (busy || document.hidden) return;
     busy = true;
+    const t0 = Date.now();
     try {
       const h = { 'Content-Type': 'application/json', 'X-Comandos-Token': token };
       const [list, tm] = await Promise.all([
         fetch('/terminal-panes', { method: 'POST', cache: 'no-store', headers: h, body: JSON.stringify({ session, action: 'list' }) }).then(r => r.json()),
         fetch('/tab-models?session=' + encodeURIComponent(session), { cache: 'no-store', headers: h }).then(r => r.json()),
       ]);
-      if (list && Array.isArray(list.panes)) panes = list.panes;
+      if (list && Array.isArray(list.panes)) {
+        panes = list.panes;
+        // tmux confirma el pane de este dispositivo: manda sobre el clic local, salvo
+        // que la respuesta salió antes de ese clic.
+        if (list.remoteFocus && t0 >= localAt) { remoteFocus = list.remoteFocus; localActive = null; }
+        else if (!list.remoteFocus) remoteFocus = null;
+      }
       if (tm && Array.isArray(tm.panes)) models = tm.panes;
       draw();
     } catch (_) { /* la próxima vuelta reintenta */ } finally { busy = false; }
