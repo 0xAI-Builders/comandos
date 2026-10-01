@@ -41,9 +41,12 @@
     grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 1fr) auto auto; position:relative;
     overflow: hidden; background:var(--term-bg); }
   #term {
-    width: 100%; max-width: 100%;
+    /* content-box: FitAddon mide la altura del contenedor y solo descuenta el padding del
+       elemento de xterm; con border-box contaba nuestro padding como renglones y las
+       últimas líneas (el prompt) quedaban tapadas por la barra táctil. */
+    width: auto; max-width: none;
     padding: 22px 6px 6px 10px;   /* 8 + 14 px: la cabecera de los panes de arriba crece hacia aquí (igual que el escritorio) */
-    box-sizing: border-box;
+    box-sizing: content-box;
     min-width: 0; min-height: 0;
     overflow: hidden;
   }
