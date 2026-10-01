@@ -263,11 +263,11 @@ notebook stack { background: @BG@; }
 .side-grip { color: @FAINT@; font-size: 13px; padding: 0 7px 0 8px; }
 .side-head:hover .side-grip, .side-head.dragging .side-grip { color: @TEXT@; }
 .side-head.dragging { border-top-color: @BRAND@; }
-.side-tab { background-color: @BAR@; background-image: none; color: @DIM@; padding: 0 10px; min-height: 32px;
-  border: 0; border-right: 1px solid @LINE@; border-radius: 0; box-shadow: none; outline: none;
+.side-tab { background-color: @BAR@; background-image: none; color: @DIM@; padding: 0 10px; min-height: 30px;
+  border: 0; border-right: 1px solid @LINE@; border-bottom: 2px solid transparent; border-radius: 0; box-shadow: none; outline: none;
   font-family: 'Inter', sans-serif; font-size: 12px; transition: color 150ms ease, background-color 150ms ease; }
 .side-tab:hover { color: @TEXT@; }
-.side-tab.cur { color: @TEXT@; background-color: mix(@BAR@, @LINE2@, 0.35); box-shadow: inset 0 -2px 0 0 @BRAND@; }
+.side-tab.cur, .side-tab.cur:hover { color: @TEXT@; background-color: mix(@BAR@, @LINE2@, 0.35); border-bottom-color: @BRAND@; }
 .side-tab.sel label { font-weight: 600; }
 .side-tab.side-plus { color: @BRAND@; font-weight: 700; border-right: 0; }
 .side-tab.side-tog { border-right: 0; border-left: 1px solid @LINE@; min-width: 30px; padding: 0 8px; }
@@ -6719,7 +6719,7 @@ _side_tog.set_no_show_all(True)
 _side_head.pack_start(_side_grip, False, False, 0)
 _side_head.pack_start(_side_tabs_sw, True, True, 0)
 _side_head.pack_end(_side_tog, False, False, 0)
-_side_tabs.pack_end(_side_plus, False, False, 0)
+_side_tabs.pack_start(_side_plus, False, False, 0)
 _side_head_ev.connect("realize", lambda w: w.get_window().set_cursor(
     Gdk.Cursor.new_from_name(w.get_display(), "row-resize")))
 _side_term_host.pack_start(_side_head_ev, False, False, 0)
@@ -6831,7 +6831,7 @@ def _side_head_render():
         cls += ("sel",) if t["sel"] else ()
         b = _side_head_button(t["label"], cls, t["title"], lambda *_a, k=t["id"]: _side_term_action("focus", k))
         _side_tabs.pack_start(b, False, False, 0)
-        _side_tabs.reorder_child(b, i)
+        _side_tabs.reorder_child(b, i)        # «+ Terminal» siempre justo después de las pestañas
     _side_tog.set_label("▴" if hidden else "▾")
     _side_tog.set_tooltip_text("Mostrar las terminales" if hidden else "Esconder las terminales")
     _side_tog.set_visible(bool(_SIDE.get("tabs")))
