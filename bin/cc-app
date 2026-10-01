@@ -5366,7 +5366,8 @@ def _gutter_cursor(box, hot):
     gutters = _PANE_GUTTERS.get(id(term), [])
     name = None
     if hot is not None and hot < len(gutters):
-        name = "col-resize" if gutters[hot][0] == "v" else "row-resize"
+        # Manita (pedido 1-oct): «grab» al pasar, «grabbing» mientras se arrastra.
+        name = "grabbing" if getattr(box, "_hot_state", (None, False))[1] else "grab"
     try:
         win_.set_cursor(Gdk.Cursor.new_from_name(win_.get_display(), name) if name else None)
     except Exception:
