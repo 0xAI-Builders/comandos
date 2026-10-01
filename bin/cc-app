@@ -336,7 +336,7 @@ FONT_FAMILY = f"{_PF_FAMILY},JetBrainsMono Nerd Font,JetBrains Mono,DejaVu Sans 
 FONT_SIZE = _PF_SIZE
 FONT = f"{FONT_FAMILY} {FONT_SIZE}"
 TERM_PADDING = max(0, min(40, int(PREFS.get("terminal_padding", 8))))
-HEADER_EXTRA = 10   # px extra sobre la VTE: la cabecera de los panes de arriba crece hacia ese margen
+HEADER_EXTRA = 14   # px extra sobre la VTE: la cabecera de los panes de arriba crece hacia ese margen
 TERM_OPACITY = max(30, min(100, int(PREFS.get("terminal_opacity", 100)))) / 100.0
 _CURSOR_SHAPE = (PREFS.get("cursor_shape") or "block")
 _CURSOR_BLINK = bool(PREFS.get("cursor_blink", True))
@@ -5346,7 +5346,7 @@ def _reposition_pills(box, geo):
             w.set_margin_start(cx); w.set_margin_top(cy)
         elif kind == "keys":
             w.set_margin_start(max(cx, cx + cwid - int(getattr(w, "_kw", 0) or 0) - 8))
-            w.set_margin_top(cy + max(0, (chgt - KEY_H) // 2))
+            w.set_margin_top(cy + max(0, (chgt - KEY_H) // 2) - 1)
     ov.queue_draw()
     return True
 
@@ -5438,7 +5438,7 @@ def _place_pills(box, panes, geo=None):
             keys.pack_start(key, False, False, 0)
         keys.set_halign(Gtk.Align.START)
         keys.set_valign(Gtk.Align.START)
-        keys.set_margin_top(card_y + max(0, (card_h - KEY_H) // 2))
+        keys.set_margin_top(card_y + max(0, (card_h - KEY_H) // 2) - 1)
         ov.add_overlay(keys)                 # primero en la jerarquía: así el ancho ya trae el CSS aplicado
         keys.show_all()
         kw = keys.get_preferred_width()[1] if hasattr(keys, "get_preferred_width") else 0
