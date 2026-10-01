@@ -731,7 +731,8 @@ def _bg_rgba():
 
 def _tmux_window_size(sess):
     """(cols, rows) que la sesión ya tiene en tmux, o None."""
-    r = tmuxc("display-message", "-p", "-t", "=" + sess, "#{window_width} #{window_height}")
+    # «=sesión:» — sin los dos puntos display-message no resuelve la sesión y responde vacío.
+    r = tmuxc("display-message", "-p", "-t", "=" + sess + ":", "#{window_width} #{window_height}")
     try:
         cols, rows = (int(x) for x in r.stdout.split())
     except (ValueError, AttributeError):

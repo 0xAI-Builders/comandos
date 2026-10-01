@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 import ast
+import os
 from pathlib import Path
 
 
@@ -382,13 +383,25 @@ def test_tmux_clients_attach_at_the_size_the_session_already_has():
     ns = {"tmuxc": tmuxc}
     exec(compile(ast.Module(body=[node], type_ignores=[]), "<app>", "exec"), ns)
     assert ns["_tmux_window_size"]("term-r1") == (163, 29)
-    assert calls[0] == ("display-message", "-p", "-t", "=term-r1", "#{window_width} #{window_height}")
+    assert calls[0] == ("display-message", "-p", "-t", "=term-r1:", "#{window_width} #{window_height}")
     for bad in ("", "can't find session\n", "10 3\n"):
         out[0] = bad
         assert ns["_tmux_window_size"]("term-r1") is None
     make_term = SRC.split("def make_term(argv_sh, before_spawn=None, session=None):", 1)[1].split("\ndef ", 1)[0]
     assert make_term.index("term.set_size(*size)") < make_term.index("term.spawn_sync("), "size before the pty exists"
     assert "if session and not term.get_realized():" in make_term
+    # Contra un tmux de verdad (servidor privado): el destino tiene que resolver.
+    import shutil, subprocess, uuid
+    if shutil.which("tmux"):
+        sock = "cc-test-size-" + uuid.uuid4().hex[:8]
+        env = {k: v for k, v in os.environ.items() if k not in ("TMUX", "TMUX_PANE")}
+        real = lambda *a: subprocess.run(["tmux", "-L", sock, *a], capture_output=True, text=True, env=env)
+        try:
+            real("new-session", "-d", "-s", "term-r1", "-x", "150", "-y", "40")
+            ns["tmuxc"] = real
+            assert ns["_tmux_window_size"]("term-r1") == (150, 40)
+        finally:
+            real("kill-server")
     for site in ("box = make_term(cmd, session=sess)",
                  "prepare_local_terminal, session=\"local\")",
                  "tbox = make_term(f\"tmux attach -t '={sess}'\", session=sess)",
