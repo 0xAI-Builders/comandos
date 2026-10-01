@@ -146,11 +146,23 @@
   #pane-chrome { position:absolute; inset:0; pointer-events:none; z-index:3; }
   #pane-chrome .pc-frame { position:absolute; box-sizing:border-box; border:1px solid var(--term-line2); border-radius:10px; }
   #pane-chrome .pc-frame.on { border-color:#4ade80; }
-  #pane-chrome .pc-grip { position:absolute; border-radius:2px; background:color-mix(in srgb, var(--term-brand, #8b7cf6) 60%, transparent); }
-  #pane-chrome .pc-grip.drag { background:var(--term-brand, #8b7cf6); }
-  #pane-chrome .pc-grip::after { content:""; position:absolute; left:50%; top:50%; transform:translate(-50%,-50%); width:2px; height:14px;
-    background:radial-gradient(circle, #fff 1.2px, transparent 1.4px) 0 0/2px 6px repeat-y; opacity:.85; }
-  #pane-chrome .pc-grip.h::after { width:14px; height:2px; background:radial-gradient(circle, #fff 1.2px, transparent 1.4px) 0 0/6px 2px repeat-x; }
+  /* Agarradera de resize entre panes: línea fina a todo lo largo + pastilla central con puntos. */
+  #pane-chrome .pc-grip { position:absolute; }
+  #pane-chrome .pc-grip .ln { position:absolute; background:var(--term-brand, #8b7cf6); opacity:.55; }
+  #pane-chrome .pc-grip.drag .ln { opacity:1; }
+  #pane-chrome .pc-grip.v .ln { left:50%; top:0; bottom:0; width:2px; margin-left:-1px; }
+  #pane-chrome .pc-grip.h .ln { top:50%; left:0; right:0; height:2px; margin-top:-1px; }
+  #pane-chrome .pc-grip .pill { position:absolute; left:50%; top:50%; transform:translate(-50%,-50%); border-radius:4px;
+    background:var(--term-brand, #8b7cf6); box-shadow:0 1px 3px #0008; transition:width .12s, height .12s; }
+  #pane-chrome .pc-grip.v .pill { width:6px; height:34px; }
+  #pane-chrome .pc-grip.h .pill { width:34px; height:6px; }
+  #pane-chrome .pc-grip.v.drag .pill { width:8px; height:44px; }
+  #pane-chrome .pc-grip.h.drag .pill { width:44px; height:8px; }
+  #pane-chrome .pc-grip .pill::after { content:""; position:absolute; inset:0; margin:auto; opacity:.9; }
+  #pane-chrome .pc-grip.v .pill::after { width:3px; height:17px; background:radial-gradient(circle, #fff 1.3px, transparent 1.5px) 0 0/3px 7px repeat-y; }
+  #pane-chrome .pc-grip.h .pill::after { width:17px; height:3px; background:radial-gradient(circle, #fff 1.3px, transparent 1.5px) 0 0/7px 3px repeat-x; }
+  #term.resize-col .xterm-screen, #term.resize-col .xterm-screen * { cursor:col-resize !important; }
+  #term.resize-row .xterm-screen, #term.resize-row .xterm-screen * { cursor:row-resize !important; }
   #pane-chrome .pc-head { position:absolute; box-sizing:border-box; display:flex; align-items:center; gap:8px; padding:0 10px;
     border-radius:9px 9px 0 0; background:color-mix(in srgb, var(--term-panel) 65%, var(--term-line2)); font:11px var(--sans); color:var(--term-text); }
   #pane-chrome .pc-head b { font-weight:700; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:30%; }
@@ -2036,8 +2048,10 @@
         + `<button type="button" data-act="ext" data-pane="${esc(p.id)}" data-harness="${esc(m.harness)}" title="Extensiones de este pane">${ICON.spark}<span>MCPs · Skills</span></button></span></div>`;
     }
     const g = gutters[hot];
-    if (g) html += `<div class="pc-grip ${g.o}${dragging ? ' drag' : ''}" style="left:${g.o === 'v' ? g.x + g.w / 2 - 2 : g.x}px;top:${g.o === 'v' ? g.y : g.y + g.h / 2 - 2}px;`
-      + `width:${g.o === 'v' ? 4 : g.w}px;height:${g.o === 'v' ? g.h : 4}px"></div>`;
+    if (g) html += `<div class="pc-grip ${g.o}${dragging ? ' drag' : ''}" style="left:${g.x}px;top:${g.y}px;width:${g.w}px;height:${g.h}px"><span class="ln"></span><span class="pill"></span></div>`;
+    const tEl = document.getElementById('term');
+    tEl.classList.toggle('resize-col', !!g && g.o === 'v');
+    tEl.classList.toggle('resize-row', !!g && g.o === 'h');
     layer.innerHTML = html;
   }
   // Agarradera: al pasar o arrastrar sobre el canal entre panes (tmux redimensiona ahí).

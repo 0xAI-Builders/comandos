@@ -329,4 +329,5 @@ def test_stacked_panes_breathe_and_the_resize_handle_lights_up_on_the_gutter():
     ns['_PANE_GUTTERS'][id(term)] = [("v", 100, 10, 8, 200), ("h", 0, 300, 400, 5)]
     assert at(box, 104, 50) == 0 and at(box, 50, 302) == 1 and at(box, 50, 50) is None
     draw = SOURCE.split('def _draw_pane_frames(box, cr):')[1].split('\ndef ')[0]
-    assert '_hot_gutter' in draw and '0.95 if dragging else 0.6' in draw
+    assert '_hot_gutter' in draw and '1.0 if dragging else 0.55' in draw and '(44, 8) if dragging else (34, 6)' in draw
+    assert '"col-resize" if gutters[hot][0] == "v" else "row-resize"' in SOURCE

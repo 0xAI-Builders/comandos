@@ -5265,23 +5265,29 @@ def _draw_pane_frames(box, cr):
         orient, gx, gy, gw, gh = gutters[hot]
         brand = Gdk.RGBA(); brand.parse(THEME.get("brand") or "#8B7CF6")
         dragging = bool(getattr(box, "_hot_state", (None, False))[1])
-        cr.set_source_rgba(brand.red, brand.green, brand.blue, 0.95 if dragging else 0.6)
-        if orient == "v":
-            bx = gx + gw / 2 - 2
-            _ws_rounded(cr, bx, gy, 4, gh, 2)
-            cr.fill()
-            cr.set_source_rgba(1, 1, 1, 0.85)                # muesca central: «esto se arrastra»
-            for k in (-6, 0, 6):
-                cr.arc(gx + gw / 2, gy + gh / 2 + k, 1.2, 0, 6.2832)
-                cr.fill()
+        vertical = orient == "v"
+        cx, cy = gx + gw / 2, gy + gh / 2
+        # 1) línea fina a todo lo largo del canal: qué borde tomas
+        cr.set_source_rgba(brand.red, brand.green, brand.blue, 1.0 if dragging else 0.55)
+        if vertical:
+            cr.rectangle(cx - 1, gy, 2, gh)
         else:
-            by = gy + gh / 2 - 2
-            _ws_rounded(cr, gx, by, gw, 4, 2)
+            cr.rectangle(gx, cy - 1, gw, 2)
+        cr.fill()
+        # 2) pastilla central con sombra; crece al arrastrar
+        long_, thick = (44, 8) if dragging else (34, 6)
+        pw, ph = (thick, long_) if vertical else (long_, thick)
+        cr.set_source_rgba(0, 0, 0, 0.35)
+        _ws_rounded(cr, cx - pw / 2, cy - ph / 2 + 1, pw, ph, thick / 2)
+        cr.fill()
+        cr.set_source_rgba(brand.red, brand.green, brand.blue, 1.0)
+        _ws_rounded(cr, cx - pw / 2, cy - ph / 2, pw, ph, thick / 2)
+        cr.fill()
+        # 3) tres puntos: «esto se arrastra»
+        cr.set_source_rgba(1, 1, 1, 0.9)
+        for k in (-7, 0, 7):
+            cr.arc(cx if vertical else cx + k, cy + k if vertical else cy, 1.3, 0, 6.2832)
             cr.fill()
-            cr.set_source_rgba(1, 1, 1, 0.85)
-            for k in (-6, 0, 6):
-                cr.arc(gx + gw / 2 + k, gy + gh / 2, 1.2, 0, 6.2832)
-                cr.fill()
     return False
 
 
@@ -5336,6 +5342,22 @@ def _gutter_at(box, x, y, slack=4):
     return None
 
 
+def _gutter_cursor(box, hot):
+    """Cursor ↔/↕ sobre el canal entre panes; el de texto en el resto."""
+    term = getattr(box, "_term", None)
+    win_ = term.get_window() if term is not None and hasattr(term, "get_window") else None
+    if win_ is None:
+        return
+    gutters = _PANE_GUTTERS.get(id(term), [])
+    name = None
+    if hot is not None and hot < len(gutters):
+        name = "col-resize" if gutters[hot][0] == "v" else "row-resize"
+    try:
+        win_.set_cursor(Gdk.Cursor.new_from_name(win_.get_display(), name) if name else None)
+    except Exception:
+        pass
+
+
 def _gutter_track(box, x, y, dragging):
     """El puntero sobre el canal entre panes enciende la agarradera; arrastrando, se
     queda encendida aunque el puntero se adelante al borde (tmux lo sigue)."""
@@ -5343,6 +5365,7 @@ def _gutter_track(box, x, y, dragging):
     state = (hot, bool(dragging))
     if getattr(box, "_hot_state", None) != state:
         box._hot_gutter, box._hot_state = hot, state
+        _gutter_cursor(box, hot)
         ov = getattr(box, "_pill_overlay", None)
         if ov is not None:
             ov.queue_draw()
