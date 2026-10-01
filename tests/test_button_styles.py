@@ -119,8 +119,11 @@ def test_desktop_header_actions_live_in_the_web_header_like_the_remote():
     # en la app la cabecera web es la rejilla de 4 columnas sin ☰, contadores ni búsqueda.
     assert "nb.set_action_widget(_strip_actions, Gtk.PackType.END)" in app
     assert "for _b in (_quick_term_btn, _plus, _sort_btn, _tab_next):" in app
-    assert "body.inapp header.hdr-ordered{display:grid;grid-template-columns:repeat(3,minmax(0,1fr))" in CSS
-    assert "body.inapp header.hdr-ordered :is(#btn-menu,.counts,#btn-terminal,#btn-newsess,#btn-switch,#btn-snippets){display:none!important}" in CSS
+    # Remoto ancho (body.app.split) usa la MISMA rejilla que el escritorio.
+    assert ":is(body.inapp,body.app.split) header.hdr-ordered{display:grid;grid-template-columns:repeat(3,minmax(0,1fr))" in CSS
+    assert 'id="tab-term"' in INDEX and 'id="tab-new"' in INDEX
+    assert "body.app.split:not(.inapp) :is(#tab-term,#tab-new,#tab-sort){display:grid" in CSS
+    assert ":is(body.inapp,body.app.split) header.hdr-ordered :is(#btn-menu,.counts,#btn-terminal,#btn-newsess,#btn-switch,#btn-snippets){display:none!important}" in CSS
     assert 'id="btn-sort"' not in INDEX
     for action in ("quickTerminal", "newSession"):
         assert f'toApp("{action}")' in INDEX

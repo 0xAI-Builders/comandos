@@ -580,22 +580,22 @@ header.hdr-ordered :is(#btn-switch,#btn-snippets){display:inline-flex!important}
    Avisos / Resúmenes · Ajustes y el reloj centrado debajo. Sin ☰, contadores, Buscar ni
    Snippets (siguen por atajo: Ctrl+K, Ctrl+Shift+K). Terminal, Nueva sesión y Ordenar viven
    a la DERECHA de la barra de pestañas GTK. Servidores queda como chip bajo la rejilla. */
-body.inapp header.hdr-ordered{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;padding:10px 12px;align-items:stretch}   /* 6 teclas = 3×2, sin huecos */
-body.inapp header.hdr-ordered .hdr-right,body.inapp header.hdr-ordered .hdr-primary{display:contents}
-body.inapp header.hdr-ordered :is(#btn-menu,.counts,#btn-terminal,#btn-newsess,#btn-switch,#btn-snippets){display:none!important}
-body.inapp header.hdr-ordered .hdr-btn{width:100%;min-width:0;padding:0;height:var(--hdr-key)}
-body.inapp header.hdr-ordered #btn-pomo .pomo-mini{font-size:10px;margin-left:5px}
-body.inapp header.hdr-ordered #btn-servers{grid-column:1/-1;width:auto;justify-self:start;padding:0 10px;height:28px;font:600 10px/1 var(--sans);letter-spacing:.8px;text-transform:uppercase;order:2}
-body.inapp header.hdr-ordered #btn-servers .hdr-lbl{position:static;width:auto;height:auto;clip:auto;overflow:visible}
-body.inapp header.hdr-ordered #clock{grid-column:1/-1;text-align:center;font:600 13px/1 var(--mono);letter-spacing:.5px;order:1;margin:2px 0 0}
-body.inapp header.hdr-ordered #notif-panel,body.inapp header.hdr-ordered #pomo-panel{grid-column:1/-1}
+:is(body.inapp,body.app.split) header.hdr-ordered{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;padding:10px 12px;align-items:stretch}   /* 6 teclas = 3×2, sin huecos */
+:is(body.inapp,body.app.split) header.hdr-ordered .hdr-right,:is(body.inapp,body.app.split) header.hdr-ordered .hdr-primary{display:contents}
+:is(body.inapp,body.app.split) header.hdr-ordered :is(#btn-menu,.counts,#btn-terminal,#btn-newsess,#btn-switch,#btn-snippets){display:none!important}
+:is(body.inapp,body.app.split) header.hdr-ordered .hdr-btn{width:100%;min-width:0;padding:0;height:var(--hdr-key)}
+:is(body.inapp,body.app.split) header.hdr-ordered #btn-pomo .pomo-mini{font-size:10px;margin-left:5px}
+:is(body.inapp,body.app.split) header.hdr-ordered #btn-servers{grid-column:1/-1;width:auto;justify-self:start;padding:0 10px;height:28px;font:600 10px/1 var(--sans);letter-spacing:.8px;text-transform:uppercase;order:2}
+:is(body.inapp,body.app.split) header.hdr-ordered #btn-servers .hdr-lbl{position:static;width:auto;height:auto;clip:auto;overflow:visible}
+:is(body.inapp,body.app.split) header.hdr-ordered #clock{grid-column:1/-1;text-align:center;font:600 13px/1 var(--mono);letter-spacing:.5px;order:1;margin:2px 0 0}
+:is(body.inapp,body.app.split) header.hdr-ordered #notif-panel,:is(body.inapp,body.app.split) header.hdr-ordered #pomo-panel{grid-column:1/-1}
 /* Columna angosta (divisor movido a la izquierda): 2 columnas y el Pomodoro solo con su reloj, sin encimarse. */
 @container sidebar (max-width:300px){
-  body.inapp header.hdr-ordered{grid-template-columns:repeat(2,minmax(0,1fr))}
-  body.inapp header.hdr-ordered #btn-pomo .pomo-mini{display:none}
+  :is(body.inapp,body.app.split) header.hdr-ordered{grid-template-columns:repeat(2,minmax(0,1fr))}
+  :is(body.inapp,body.app.split) header.hdr-ordered #btn-pomo .pomo-mini{display:none}
 }
 @container sidebar (max-width:190px){
-  body.inapp header.hdr-ordered{grid-template-columns:minmax(0,1fr)}
+  :is(body.inapp,body.app.split) header.hdr-ordered{grid-template-columns:minmax(0,1fr)}
 }
 #servers-panel{flex:none;width:100%;max-width:1360px;margin:0 auto;box-sizing:border-box;padding-top:8px;border-bottom:1px solid var(--line)}
 @container sidebar (max-width:760px){#view-panel #servers-panel #ssh-bar{padding-left:12px;padding-right:12px}}
@@ -912,3 +912,13 @@ body.ws-dragging #command-sidebar .sb-term{pointer-events:none}
   .chain-only .hotbar .slots{flex-basis:100%}
 }
 @media(pointer:coarse){.chain-only .cmd button[data-flat].add{min-height:32px}.chain-only .slots .step .ctl{display:flex}.chain-only .slots .step .ctl button[data-flat]{min-height:22px}}
+
+/* Remoto ancho = escritorio (30-sep): Terminal · Nueva sesión · Ordenar a la derecha de las
+   pestañas, como teclas de 32 px con el mismo canto que la cabecera; sin «ver todas». */
+#tab-term,#tab-new{display:none}
+body.app.split:not(.inapp) :is(#tab-term,#tab-new,#tab-sort){display:grid;place-items:center;flex:0 0 32px;width:32px;min-width:32px;height:32px;
+  margin:6px 3px;padding:0;border:1px solid var(--line);border-radius:9px;background:var(--panel2);color:var(--dim);box-shadow:0 2px 0 var(--line2);align-self:center}
+body.app.split:not(.inapp) :is(#tab-term,#tab-new,#tab-sort):hover{color:var(--text)}
+body.app.split:not(.inapp) :is(#tab-term,#tab-new,#tab-sort):active{transform:translateY(2px);box-shadow:none}
+body.app.split:not(.inapp) #tab-term{margin-left:8px}
+body.app.split:not(.inapp) #tab-open{display:none}

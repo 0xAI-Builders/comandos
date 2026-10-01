@@ -249,7 +249,8 @@
     if (typeof document === 'undefined') return;
     document.querySelectorAll('#tabbar .apptab').forEach(tab => {
       const session = tab._session;
-      if (!session || session === 'local' || !String(tab.dataset.tabKey || '').startsWith('term:')) return;
+      // Con el workspace compartido las pestañas son «group:…» (una por grupo): también llevan su semáforo.
+      if (!session || session === 'local' || !/^(term|group):/.test(String(tab.dataset.tabKey || ''))) return;
       indicator(tab, {scope: 'session', key: session, session}, tab.querySelector('.lbl'));
       tab.dataset.wmInd = '1';
       if (!tab._wmContext) {                 // paridad con escritorio: clic derecho = menú de estado
