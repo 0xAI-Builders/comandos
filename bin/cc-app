@@ -3968,6 +3968,8 @@ def apply_theme(name):
             pass
     if "apply_tabs_layout" in globals():
         apply_tabs_layout(TABS_LAYOUT["mode"], False)     # el ⊞ activo vuelve al color de acento del tema nuevo
+    if "_left_btn_paint" in globals():
+        _left_btn_paint()
     for box in list(tabs.values()) + [hub]:
         t = getattr(box, "_term", None)
         if t:
@@ -4913,7 +4915,9 @@ _STATE_UI = {
 def _dash_js(code):
     try:
         try:
-            if paned.get_position() < 420:
+            if _SIDE.get("leftHidden"):
+                _left_panel_set(False)
+            elif paned.get_position() < 420:
                 paned.set_position(700)
         except Exception:
             pass
@@ -5862,7 +5866,9 @@ def _dash_click(elem_id):
         try:
             # el tablero es el panel izquierdo del paned: si está plegado, se abre
             try:
-                if paned.get_position() < 420:
+                if _SIDE.get("leftHidden"):
+                    _left_panel_set(False)
+                elif paned.get_position() < 420:
                     paned.set_position(700)
             except Exception:
                 pass
@@ -6159,10 +6165,7 @@ def _mosaic_open():
     head.pack_end(x, False, False, 4)
 
     def _side_toggle(*_):
-        if paned.get_position() < 60:
-            paned.set_position(int(_MOSAIC.get("paned_pos") or 620))
-        else:
-            paned.set_position(0)
+        _left_panel_toggle()
     sb = _icon_btn("layers", "Mostrar/ocultar el tablero lateral" if ES else "Show/hide the side dashboard",
                    _side_toggle, size=14)
     head.pack_end(sb, False, False, 0)
@@ -6698,7 +6701,7 @@ def on_msg(mgr, res):
             GLib.idle_add(_side_term_show, str(st.get("session") or ""))
             return
         if d.get("leftPanel") in ("toggle", "hide", "show"):
-            GLib.idle_add(_left_panel_set, {"toggle": paned.get_position() >= 60, "hide": True, "show": False}[d["leftPanel"]])
+            GLib.idle_add(_left_panel_set, {"toggle": not _SIDE.get("leftHidden"), "hide": True, "show": False}[d["leftPanel"]])
             return
         if d.get("chainModal") in ("close", "saved", "run"):
             GLib.idle_add(_chain_modal_msg, d)
@@ -7127,20 +7130,34 @@ def _side_term_focused(term):
 
 
 def _left_panel_set(hidden):
+    """Panel izquierdo (tablero + terminal de la barra) oculto DEL TODO, como el
+    remoto (grill 1-oct: «oculto del todo»). Antes se plegaba con set_position(0),
+    pero el panel va con shrink=False y GTK lo dejaba en su ancho mínimo (~98 px):
+    una tira con media rejilla. ``leftHidden`` es la verdad, no la posición."""
+    hidden = bool(hidden)
     if hidden:
         pos = paned.get_position()
-        if pos >= 60:
+        if _side_paned.get_visible() and pos >= 200:
             _SIDE["leftPos"] = pos
-        paned.set_position(0)
+        _side_paned.hide()
     else:
-        paned.set_position(int(_SIDE.get("leftPos") or 620))
-    _SIDE["leftHidden"] = bool(hidden)
+        _side_paned.show()
+        paned.set_position(max(280, int(_SIDE.get("leftPos") or 620)))
+    _SIDE["leftHidden"] = hidden
+    _left_btn_paint()
     _layout_save()
     _dash_js_quiet(f"window.appLeftPanel&&appLeftPanel({'true' if hidden else 'false'})")
 
 
 def _left_panel_toggle(*_):
-    _left_panel_set(paned.get_position() >= 60)
+    _left_panel_set(not _SIDE.get("leftHidden"))
+
+
+def _left_btn_paint():
+    # Oculto = icono en el acento, como #tab-left[aria-pressed=true] en el remoto.
+    _left_btn.set_image(_themed_icon_image("panel-left", 18, THEME.get("brand") if _SIDE.get("leftHidden") else None))
+    _left_btn.set_tooltip_text(("Mostrar el panel izquierdo" if _SIDE.get("leftHidden") else "Ocultar el panel izquierdo")
+                               if ES else ("Show the left panel" if _SIDE.get("leftHidden") else "Hide the left panel"))
 
 
 _READER = {"wv": None, "open": False, "terminal": False, "share": 0.58}
@@ -8147,11 +8164,7 @@ def _split_cmd(side, ssh=False):
 
 
 def _side_toggle():
-    if paned.get_position() > 0:
-        _MOSAIC["paned_pos"] = paned.get_position()
-        paned.set_position(0)
-    else:
-        paned.set_position(int(_MOSAIC.get("paned_pos") or 700) or 700)
+    _left_panel_toggle()
 
 
 def set_font_scale(scale):
@@ -8174,7 +8187,7 @@ APP_COMMANDS = {
     "tab_reorder": lambda a: tab_reorder(a.get("session"), a.get("index", 0)),
     "mosaic": lambda a: {"on": _mosaic_open, "off": _mosaic_close, "toggle": _mosaic_toggle}[a.get("state", "toggle")](),
     "mosaic_zoom": lambda a: _mosaic_zoom(a.get("session"), a.get("session")),
-    "side_panel": lambda a: _side_toggle() if bool(a.get("on")) != (paned.get_position() > 0) else None,
+    "side_panel": lambda a: _left_panel_set(not bool(a.get("on"))),
     "terminals_visible": lambda a: nb.set_visible(bool(a.get("on", True))),
     "reload_dashboard": lambda a: wv.load_uri(URL),
     "font_scale": lambda a: set_font_scale(1.0) if not a.get("delta") else set_font_scale(_cur_term().get_font_scale() + float(a["delta"])),
@@ -8235,8 +8248,10 @@ win.connect("window-state-event", _presence_window_state)
 GLib.timeout_add_seconds(30, lambda: (report_presence(), True)[1])
 win.connect("destroy", Gtk.main_quit)
 win.show_all()
+_side_paned.set_no_show_all(True)  # un show_all de más arriba no lo reabre
 if _SIDE.get("leftHidden"):        # el panel izquierdo se queda como lo dejaste
-    GLib.idle_add(lambda: (paned.set_position(0), False)[1])
+    _side_paned.hide()
+_left_btn_paint()
 hub._term.grab_focus()
 GLib.timeout_add(600, finish_startup_restore)
 GLib.timeout_add_seconds(5, lambda: (threading.Thread(target=snapshot_layouts, daemon=True).start(), True)[1])

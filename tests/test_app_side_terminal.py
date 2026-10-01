@@ -101,3 +101,54 @@ def test_side_tabs_close_with_confirmation_and_the_toggle_is_a_persiana():
     kill = HTML[HTML.index("async function sidebarKillTerm("):HTML.index("function activePaneTarget(")]
     assert "isQuickTermSession(sess)" in kill and 'api("/kill", {session: sess})' in kill
     assert "killTerm: sidebarKillTerm" in HTML
+
+
+def test_left_panel_hides_completely_not_down_to_its_minimum_width():
+    """Grill 1-oct: contraído = «oculto del todo», como el remoto. El panel va con
+    shrink=False; set_position(0) lo dejaba en su ancho mínimo (~98 px)."""
+    import ast
+    import os
+    import time
+    import pytest
+    if not os.environ.get("DISPLAY"):
+        pytest.skip("needs a display for GTK")
+    import gi
+    gi.require_version("Gtk", "3.0")
+    from gi.repository import Gtk
+
+    def pump(seconds=0.3):
+        end = time.monotonic() + seconds
+        while time.monotonic() < end:
+            while Gtk.events_pending():
+                Gtk.main_iteration()
+            time.sleep(0.01)
+
+    paned = Gtk.Paned(orientation=Gtk.Orientation.HORIZONTAL)
+    side, terms = Gtk.Box(), Gtk.Box()
+    side.set_size_request(98, -1)
+    paned.pack1(side, True, False)
+    paned.pack2(terms, True, False)
+    win = Gtk.OffscreenWindow(); win.add(paned); paned.set_size_request(1200, 300); win.show_all()
+    paned.set_position(500); pump()
+    paned.set_position(0); pump()
+    assert side.get_allocated_width() >= 98, "the old way: clamped to the minimum, never hidden"
+    paned.set_position(500); pump()
+
+    calls = []
+    ns = {"paned": paned, "_side_paned": side, "_SIDE": {"leftPos": 98}, "_left_btn_paint": lambda: calls.append("paint"),
+          "_layout_save": lambda: calls.append("save"), "_dash_js_quiet": lambda js: calls.append(js)}
+    for name in ("_left_panel_set", "_left_panel_toggle"):
+        node = next(n for n in ast.parse(APP).body if isinstance(n, ast.FunctionDef) and n.name == name)
+        exec(compile(ast.Module(body=[node], type_ignores=[]), "<app>", "exec"), ns)
+    ns["_left_panel_toggle"](); pump()
+    assert not side.get_visible() and ns["_SIDE"]["leftHidden"] is True
+    assert terms.get_allocated_width() == paned.get_allocated_width(), "terminals take the whole width"
+    assert ns["_SIDE"]["leftPos"] == 500 and "window.appLeftPanel&&appLeftPanel(true)" in calls
+    ns["_left_panel_toggle"](); pump()
+    assert side.get_visible() and ns["_SIDE"]["leftHidden"] is False and abs(paned.get_position() - 500) <= 1
+    ns["_SIDE"]["leftPos"] = 98                       # una posición «plegada» vieja no reabre una tira
+    ns["_left_panel_set"](True); ns["_left_panel_set"](False); pump()
+    assert paned.get_position() >= 280
+    assert 'GLib.idle_add(_left_panel_set, {"toggle": not _SIDE.get("leftHidden")' in APP
+    assert "paned.get_position() >= 60" not in APP
+    assert '_side_paned.set_no_show_all(True)' in APP
