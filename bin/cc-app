@@ -6743,7 +6743,9 @@ def _side_scroll_by(step):
 def _side_sync_arrows(*_):
     """‹ › solo si las píldoras no caben; cada una se apaga en su extremo."""
     adj = _side_tabs_sw.get_hadjustment()
-    over = adj.get_upper() - adj.get_page_size() > 2
+    # barra muy angosta: sin flechas, la pista se queda con el espacio (la rueda sigue)
+    narrow = 1 < _side_head.get_allocated_width() < 250
+    over = not narrow and adj.get_upper() - adj.get_page_size() > 2
     for b in (_side_prev, _side_next):
         b.set_visible(over)
     _side_prev.set_sensitive(adj.get_value() > adj.get_lower() + 2)
@@ -6769,6 +6771,7 @@ _side_tabs_sw.get_hadjustment().connect("changed", _side_sync_arrows)
 _side_tabs_sw.get_hadjustment().connect("value-changed", _side_sync_arrows)
 _side_tabs_sw.add_events(Gdk.EventMask.SCROLL_MASK | Gdk.EventMask.SMOOTH_SCROLL_MASK)
 _side_tabs_sw.connect("scroll-event", _side_tabs_wheel)
+_side_head.connect("size-allocate", lambda *_: GLib.idle_add(lambda: (_side_sync_arrows(), False)[1]))
 _side_tog = _side_head_button("", ("side-tog",), "", lambda *_: _side_term_action("toggle"))
 _side_tog.set_always_show_image(True)
 _side_tog.set_no_show_all(True)

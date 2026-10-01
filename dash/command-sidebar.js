@@ -477,7 +477,9 @@
     function syncArrows() {
       const tr = el.querySelector('.cs-terms .tabs');
       if (!tr || tr.scrollWidth == null) return;
-      const over = tr.scrollWidth > tr.clientWidth + 2;
+      // barra muy angosta: sin flechas, la pista se queda con el espacio (rueda y toque siguen)
+      const head = tr.parentNode, narrow = !!head && head.clientWidth > 0 && head.clientWidth < 250;
+      const over = !narrow && tr.scrollWidth > tr.clientWidth + 2;
       const atS = tr.scrollLeft <= 2, atE = tr.scrollLeft + tr.clientWidth >= tr.scrollWidth - 2;
       try { tr.classList.toggle('at-start', atS); tr.classList.toggle('at-end', atE); } catch (_) {}
       for (const b of el.querySelectorAll('.cs-terms [data-tscroll]')) {
