@@ -369,6 +369,14 @@
         + '<button type="button" data-flat class="t plus" data-new-term>+ Terminal</button>'
         + (list.length ? `<button type="button" data-flat class="t tog" data-terms-toggle aria-pressed="${state.termsHidden ? 'false' : 'true'}" title="${state.termsHidden ? 'Mostrar las terminales' : 'Esconder las terminales'}">${state.termsHidden ? '▴' : '▾'}</button>` : '');
     }
+    // Las mismas pestañas como datos: el escritorio pinta esta cabecera en GTK, encima
+    // de su terminal nativa (mountTerm recibe esto en su tercer argumento).
+    function termTabs() {
+      const t = target();
+      const cur = x => !!t && (t.paneKey && x.paneKey ? t.paneKey === x.paneKey : sameTarget(t, x));
+      return termList().map(x => ({ id: String(x.tabId), label: shortTerm(x.label || x.tabId) + (cur(x) ? ' · destino' : ''),
+        title: String(x.label || x.tabId), on: x.tabId === state.curTerm, sel: cur(x) }));
+    }
 
     function bodyHTML() {
       const here = hereCli(), t = target(), noTarget = !t || !t.session || !t.pane;
@@ -388,36 +396,70 @@
         if (pill) pill.innerHTML = catalogPill();   // hydrate(el) al final del render pinta su icono
         body.innerHTML = bodyHTML();
       } else {
+        // Una sola cabecera para las terminales: agarre + pestañas + «+ Terminal» + ▾.
+        // Arrastrarla (fuera de los botones) cambia la altura; ya no hay separador aparte.
         el.innerHTML = `<div class="sec-cmds">${headHTML()}<div class="cs-body">${bodyHTML()}</div></div>`
-          + '<div class="divider" role="separator" aria-orientation="horizontal" aria-label="Altura de las terminales"></div>'
-          + '<div class="sec-terms"><div class="cs-terms tt"></div><div class="mini"></div></div>';
+          + '<div class="sec-terms"><div class="cs-terms tt" role="separator" aria-orientation="horizontal" aria-label="Terminales · arrastra para cambiar la altura">'
+          + '<span class="grip" aria-hidden="true"></span><div class="tabs"></div></div><div class="mini"></div></div>';
         wireDivider();
       }
-      const tt = el.querySelector('.cs-terms');
+      const tt = el.querySelector('.cs-terms .tabs') || el.querySelector('.cs-terms');
       if (tt) tt.innerHTML = termsHTML();
       const n = termList().length;
       try { el.classList && el.classList.toggle('no-terms', !n); } catch (_) {}
       try { el.classList && el.classList.toggle('terms-hidden', !!state.termsHidden); } catch (_) {}
       const mini = el.querySelector('.mini');
-      if (mini && typeof mountTerm === 'function') { try { mountTerm(state.termsHidden ? '' : (state.curTerm || ''), mini); } catch (_) {} }
+      if (mini && typeof mountTerm === 'function') {
+        try { mountTerm(state.termsHidden ? '' : (state.curTerm || ''), mini, { session: state.curTerm || '', hidden: !!state.termsHidden, tabs: termTabs() }); } catch (_) {}
+      }
       try { el.classList && el.classList.toggle('searching', !!state.q.trim()); } catch (_) {}
       try { hydrate(el); } catch (_) {}   // pinta los data-icon del marcado recién puesto
     }
 
-    // Separador de altura del mockup: arrastrar fija el alto de la sección de comandos.
+    // La cabecera de las terminales es el asa de altura: arrastrar fija el alto de la
+    // sección de comandos. Mientras dura, body.ws-dragging quita los eventos a los
+    // iframes de terminal (si no, al bajar el puntero entra al iframe y se los come)
+    // y se escucha en window, así el arrastre sigue aunque el puntero salga del asa.
     const KEY_H = 'comandos.commands.cmdsHeight';
     function wireDivider() {
-      const dv = el.querySelector('.divider'), cmds = el.querySelector('.sec-cmds'), terms = el.querySelector('.sec-terms');
+      const dv = el.querySelector('.cs-terms'), cmds = el.querySelector('.sec-cmds'), terms = el.querySelector('.sec-terms');
       if (!dv || !cmds || !terms || !dv.addEventListener) return;
       const saved = Number(read(KEY_H) || 0);
       if (saved >= 120) { cmds.style.flex = '0 0 ' + saved + 'px'; terms.style.flex = '1 1 auto'; }
       dv.addEventListener('pointerdown', e => {
+        if (e.button > 0 || state.termsHidden || (e.target && e.target.closest && e.target.closest('button'))) return;
+        e.preventDefault();
         const h0 = cmds.getBoundingClientRect().height, y0 = e.clientY;
+        const win = (el.ownerDocument && el.ownerDocument.defaultView) || null;
+        const body = el.ownerDocument && el.ownerDocument.body;
         try { dv.setPointerCapture(e.pointerId); } catch (_) {}
+        try { body && body.classList.add('ws-dragging'); } catch (_) {}
+        try { el.classList.add('terms-dragging'); } catch (_) {}
         const move = ev => { const h = Math.max(120, h0 + ev.clientY - y0); cmds.style.flex = '0 0 ' + h + 'px'; terms.style.flex = '1 1 auto'; };
-        const up = () => { dv.removeEventListener('pointermove', move); dv.removeEventListener('pointerup', up); write(KEY_H, String(Math.round(cmds.getBoundingClientRect().height))); };
-        dv.addEventListener('pointermove', move); dv.addEventListener('pointerup', up);
+        const up = () => {
+          for (const t of [dv, win]) if (t) { t.removeEventListener('pointermove', move); t.removeEventListener('pointerup', up); t.removeEventListener('pointercancel', up); }
+          try { body && body.classList.remove('ws-dragging'); } catch (_) {}
+          try { el.classList.remove('terms-dragging'); } catch (_) {}
+          write(KEY_H, String(Math.round(cmds.getBoundingClientRect().height)));
+        };
+        for (const t of [dv, win]) if (t) { t.addEventListener('pointermove', move); t.addEventListener('pointerup', up); t.addEventListener('pointercancel', up); }
       });
+    }
+
+    // Acciones de las pestañas, compartidas por los clics de aquí y por la cabecera
+    // nativa del escritorio (termAction).
+    function setHidden(v) { state.termsHidden = !!v; write(KEY_TERMS_HIDDEN, state.termsHidden ? '1' : '0'); }
+    function focusTerm(id) {
+      state.curTerm = String(id);
+      if (state.termsHidden) setHidden(false);
+      const x = termList().find(q => String(q.tabId) === String(id));
+      if (x) focusTarget({ kind: 'term', tabId: x.tabId, paneKey: x.paneKey, session: x.session, pane: x.pane, title: x.label || x.tabId });
+      render();
+    }
+    function termAction(kind, id) {
+      if (kind === 'new') { if (state.termsHidden) setHidden(false); return void newTerm(); }
+      if (kind === 'toggle') { setHidden(!state.termsHidden); return void render(); }
+      if (kind === 'focus' && id) return void focusTerm(id);
     }
 
     el.addEventListener('click', e => {
@@ -427,20 +469,9 @@
       if (t.closest('[data-run-next]')) return void next();
       if (t.closest('[data-run-stop]')) return void stop();
       if (t.closest('[data-open-builder]')) return void openBuilder();
-      if (t.closest('[data-new-term]')) { if (state.termsHidden) { state.termsHidden = false; write(KEY_TERMS_HIDDEN, '0'); } return void newTerm(); }
-      if (t.closest('[data-terms-toggle]')) {
-        state.termsHidden = !state.termsHidden;
-        write(KEY_TERMS_HIDDEN, state.termsHidden ? '1' : '0');
-        return void render();
-      }
-      if ((n = t.closest('[data-focus-term]'))) {
-        state.curTerm = n.dataset.focusTerm;
-        if (state.termsHidden) { state.termsHidden = false; write(KEY_TERMS_HIDDEN, '0'); }
-        const x = termList().find(q => String(q.tabId) === n.dataset.focusTerm);
-        if (x) focusTarget({ kind: 'term', tabId: x.tabId, paneKey: x.paneKey, session: x.session, pane: x.pane, title: x.label || x.tabId });
-        render();
-        return;
-      }
+      if (t.closest('[data-new-term]')) return void termAction('new');
+      if (t.closest('[data-terms-toggle]')) return void termAction('toggle');
+      if ((n = t.closest('[data-focus-term]'))) return void focusTerm(n.dataset.focusTerm);
       if ((n = t.closest('[data-cmd]'))) {
         const row = n.closest('.cmd');
         if (row && row.classList.contains('dis')) {
@@ -464,7 +495,7 @@
     el.addEventListener('input', e => { if (isSearch(e.target) && !e.isComposing) search(e.target); });
     el.addEventListener('compositionend', e => { if (isSearch(e.target)) search(e.target); });
 
-    return { refresh, render, insert, startChain, next, stop, applyCatalog, get state() { return state; } };
+    return { refresh, render, insert, startChain, next, stop, applyCatalog, termAction, get state() { return state; } };
   }
 
   root.ComandosCommandSidebar = { createCommandSidebar, rowHTML, cliHTML, esc, isToggleKey };

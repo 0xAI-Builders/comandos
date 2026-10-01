@@ -175,13 +175,18 @@ const catalog = JSON.parse(fs.readFileSync(process.cwd() + '/tests/fixtures/comm
   const focused = [], mounted = [], root2 = mkRoot();
   const sb2 = createCommandSidebar({ api, root: root2, storage, makeId: () => 'x', getTarget: () => ({ session: 'term-q1', pane: '%7', paneKey: 'term-q1:%7', kind: 'term', title: 'T' }),
     focusTarget: t => focused.push(t), openBuilder: () => focused.push('builder'), toast: () => {}, newTerm: () => focused.push('new'),
-    mountTerm: (sess, host) => mounted.push([sess, host && host.className]),
+    mountTerm: (sess, host, info) => mounted.push([sess, host && host.className, info]),
     terminals: () => [{ tabId: 'q1', paneKey: 'term-q1:%7', session: 'term-q1', pane: '%7', label: 'Terminal <14:32>', cwd: '/tmp' }] });
   sb2.render();
-  // pila del mockup: comandos arriba, separador, pestañas + terminal (.mini) abajo, en la barra
-  assert.ok(root2.querySelector('.sec-cmds .cs-head')); assert.ok(root2.querySelector('.divider'));
-  assert.ok(root2.querySelector('.sec-terms .cs-terms.tt')); assert.ok(root2.querySelector('.sec-terms .mini'));
-  assert.deepEqual(mounted.at(-1), ['q1', 'mini']);                                    // la terminal se monta en la barra
+  // pila: comandos arriba y, abajo, UNA cabecera (agarre + pestañas, también asa de
+  // altura; ya no hay separador aparte) sobre la terminal (.mini)
+  assert.ok(root2.querySelector('.sec-cmds .cs-head')); assert.equal(root2.querySelector('.divider'), null);
+  assert.ok(root2.querySelector('.sec-terms .cs-terms.tt .grip')); assert.ok(root2.querySelector('.sec-terms .cs-terms .tabs .t.plus'));
+  assert.ok(root2.querySelector('.sec-terms .mini'));
+  assert.deepEqual(mounted.at(-1).slice(0, 2), ['q1', 'mini']);                        // la terminal se monta en la barra
+  // el escritorio recibe las mismas pestañas para pintar su cabecera nativa
+  assert.deepEqual(mounted.at(-1)[2], { session: 'q1', hidden: false,
+    tabs: [{ id: 'q1', label: 'Terminal <14:32> · destino', title: 'Terminal <14:32>', on: true, sel: true }] });
   assert.equal(root2.querySelector('.cs-terms .t[data-focus-term="q1"]').textContent.includes('Terminal <14:32>'), true);
   assert.equal(root2.querySelector('.cs-terms .t[data-focus-term="q1"]').classList.contains('on'), true);
   assert.equal(root2.querySelector('.cs-terms .t[data-focus-term="q1"]').classList.contains('sel'), true);   // es el destino
@@ -190,12 +195,16 @@ const catalog = JSON.parse(fs.readFileSync(process.cwd() + '/tests/fixtures/comm
   // «▾» esconde las terminales (se desmontan; quedan las pestañas) y «▴» las vuelve a mostrar
   root2.click('.t.tog[data-terms-toggle]');
   assert.equal(root2.classList.contains('terms-hidden'), true);
-  assert.deepEqual(mounted.at(-1), ['', 'mini']);
+  assert.deepEqual(mounted.at(-1).slice(0, 2), ['', 'mini']);
+  assert.equal(mounted.at(-1)[2].hidden, true); assert.equal(mounted.at(-1)[2].session, 'q1');
+  // la cabecera nativa usa las mismas acciones
+  sb2.termAction('toggle'); assert.equal(root2.classList.contains('terms-hidden'), false);
+  sb2.termAction('toggle'); assert.equal(root2.classList.contains('terms-hidden'), true);
   assert.equal(store.get('comandos.commands.termsHidden'), '1');
   assert.ok(root2.querySelector('.cs-terms .t[data-focus-term="q1"]'));
   root2.click('.t.tog[data-terms-toggle]');
   assert.equal(root2.classList.contains('terms-hidden'), false);
-  assert.deepEqual(mounted.at(-1), ['q1', 'mini']);
+  assert.deepEqual(mounted.at(-1).slice(0, 2), ['q1', 'mini']);
   root2.click('.t.tog[data-terms-toggle]'); root2.click('.t[data-focus-term="q1"]');        // tocar una pestaña también las muestra
   assert.equal(root2.classList.contains('terms-hidden'), false);
   // helpers puros para el constructor de cadenas (S3)

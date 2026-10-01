@@ -106,7 +106,7 @@ def test_sidebar_is_wired_with_quick_terminal_and_builder_hooks():
     assert "if(window.chainBuilder) window.chainBuilder.open();" in mount
     # «+ Terminal» de la barra abre la terminal AHÍ MISMO (pila del mockup): instancia propia, place=sidebar
     assert "newTerm:" in mount and "sidebarQuickTerminal()" in mount
-    assert "mountTerm: (sess, host) => sidebarTermMount(sess, host)" in mount
+    assert "mountTerm: (sess, host, info) => sidebarTermMount(sess, host, info)" in mount
     assert "focusTarget: t => selectSidebarTerm(t)" in mount
     side = _js_function("sidebarQuickTerminal")
     assert 'place: "sidebar"' in side and "selectSidebarTerm(" in side

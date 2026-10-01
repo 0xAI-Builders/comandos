@@ -746,16 +746,15 @@ button.wm-suggest{font:600 10px var(--sans);padding:2px 7px;border-radius:999px;
 #command-sidebar{height:100%;overflow:hidden}
 #command-sidebar .sec-cmds{display:flex;flex-direction:column;flex:1 1 60%;min-height:0}
 #command-sidebar .sec-terms{display:flex;flex-direction:column;flex:1 1 0%;min-height:0}
-#command-sidebar .divider{flex:none;height:8px;cursor:row-resize;border-top:1px solid var(--cs-line);background:linear-gradient(var(--cs-btnline2),var(--cs-btnline2)) center/44px 3px no-repeat;border-radius:3px;touch-action:none}
 #command-sidebar .mini{flex:1;min-height:0;overflow:hidden;background:var(--cs-deep);position:relative}
 #command-sidebar .mini .sb-term{position:absolute;inset:0;width:100%;height:100%;border:0;display:block;background:var(--cs-deep)}
 #command-sidebar.no-terms .sec-cmds{flex:1 1 auto}
 #command-sidebar.no-terms .sec-terms{flex:none}
-#command-sidebar.no-terms .divider,#command-sidebar.no-terms .mini{display:none}
+#command-sidebar.no-terms .mini{display:none}
 /* «▾» en la fila de pestañas esconde las terminales; quedan sus pestañas para volver */
 #command-sidebar.terms-hidden .sec-cmds{flex:1 1 auto}
 #command-sidebar.terms-hidden .sec-terms{flex:none}
-#command-sidebar.terms-hidden .divider,#command-sidebar.terms-hidden .mini{display:none}
+#command-sidebar.terms-hidden .mini{display:none}
 #command-sidebar button[data-flat].t.tog{margin-left:auto;min-width:28px;padding:0 8px;justify-content:center}
 body.ws-dragging #command-sidebar .sb-term{pointer-events:none}
 /* cuerpo: tarjetas apiladas */
@@ -833,7 +832,17 @@ body.ws-dragging #command-sidebar .sb-term{pointer-events:none}
 #command-sidebar .cs-runner .acts .cs-next{min-height:40px;flex:1;justify-content:center}
 #command-sidebar .cs-runner .acts small{color:var(--cs-dim);font-size:11px}
 /* terminales rápidas: pestañas (.tt) sobre la terminal (.lado .sec-terms .tt) */
-#command-sidebar .cs-terms{display:flex;align-items:flex-end;gap:4px;padding:6px 8px 0;border-bottom:1px solid var(--cs-line);overflow-x:auto;overflow-y:hidden;flex:none;scrollbar-width:none}
+/* Una sola cabecera (agarre + pestañas + «+ Terminal» + ▾) que también es el asa de
+   altura: se arrastra desde cualquier punto que no sea un botón. */
+#command-sidebar .cs-terms{display:flex;align-items:flex-end;gap:6px;padding:6px 8px 0 4px;border-top:1px solid var(--cs-line);border-bottom:1px solid var(--cs-line);background:var(--cs-panel);flex:none;cursor:row-resize;touch-action:pan-x;user-select:none;-webkit-user-select:none}
+#command-sidebar .cs-terms .tabs{display:flex;align-items:flex-end;gap:4px;flex:1 1 auto;min-width:0;overflow-x:auto;overflow-y:hidden;scrollbar-width:none}
+#command-sidebar .cs-terms .tabs::-webkit-scrollbar{display:none}
+#command-sidebar .cs-terms button{cursor:pointer}
+#command-sidebar .cs-terms .grip{align-self:center;flex:none;width:14px;height:20px;margin-bottom:3px;border-radius:5px;touch-action:none;background:radial-gradient(circle,var(--cs-dim) 1.2px,transparent 1.6px) 0 0/7px 6px;background-position:1px 2px;opacity:.55;transition:opacity .15s,background-color .15s}
+#command-sidebar .cs-terms:hover .grip,#command-sidebar.terms-dragging .grip{opacity:1;background-color:var(--cs-hover)}
+#command-sidebar.terms-dragging .cs-terms{border-top-color:var(--cs-brand)}
+#command-sidebar.terms-hidden .cs-terms{cursor:default}
+#command-sidebar.terms-hidden .cs-terms .grip{visibility:hidden}
 #command-sidebar button[data-flat].t{display:flex;align-items:center;gap:6px;min-height:0;padding:5px 10px;border:1px solid var(--cs-line);border-bottom:0;border-radius:10px 10px 0 0;color:var(--cs-dim);font-size:11px;line-height:1.45;white-space:nowrap;background:var(--cs-panel2)}
 #command-sidebar button[data-flat].t:hover{background:var(--cs-panel2);border-color:var(--cs-line);color:var(--cs-text)}
 #command-sidebar button[data-flat].t.on{color:var(--cs-text);background:var(--cs-deep)}

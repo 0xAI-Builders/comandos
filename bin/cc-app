@@ -256,6 +256,21 @@ notebook > header > tabs > arrow {
 paned.ws-paned > separator { background: @BG@; min-width: 8px; min-height: 8px; }
 notebook stack { background: @BG@; }
 .termwrap { background: @BG@; }
+/* Terminales de la barra (columna izquierda): UNA cabecera = agarre + pestañas +
+   «+ Terminal» + ▾, la misma que pinta la web en el remoto; arrastrarla fuera de
+   los botones cambia la altura (el separador del Paned queda invisible). */
+.side-head { background-color: @BAR@; border-top: 1px solid @LINE@; border-bottom: 1px solid @LINE@; }
+.side-grip { color: @FAINT@; font-size: 13px; padding: 0 7px 0 8px; }
+.side-head:hover .side-grip, .side-head.dragging .side-grip { color: @TEXT@; }
+.side-head.dragging { border-top-color: @BRAND@; }
+.side-tab { background-color: @BAR@; background-image: none; color: @DIM@; padding: 0 10px; min-height: 32px;
+  border: 0; border-right: 1px solid @LINE@; border-radius: 0; box-shadow: none; outline: none;
+  font-family: 'Inter', sans-serif; font-size: 12px; transition: color 150ms ease, background-color 150ms ease; }
+.side-tab:hover { color: @TEXT@; }
+.side-tab.cur { color: @TEXT@; background-color: mix(@BAR@, @LINE2@, 0.35); box-shadow: inset 0 -2px 0 0 @BRAND@; }
+.side-tab.sel label { font-weight: 600; }
+.side-tab.side-plus { color: @BRAND@; font-weight: 700; border-right: 0; }
+.side-tab.side-tog { border-right: 0; border-left: 1px solid @LINE@; min-width: 30px; padding: 0 8px; }
 .tabplus { color: @DIM@; padding: 4px 8px; margin: 0 1px; border: none; background: none;
   border-radius: 8px; min-width: 28px; min-height: 28px; font-family: 'Ubuntu Sans Mono', monospace; font-size: 14px;
   -gtk-icon-effect: none; }
@@ -6584,6 +6599,8 @@ def on_msg(mgr, res):
             st = d["sidebarTerm"]
             if "hidden" in st:
                 _SIDE["hidden"] = bool(st.get("hidden"))
+            if "tabs" in st:
+                _SIDE["tabs"] = _side_tabs_from_web(st.get("tabs"))
             GLib.idle_add(_side_term_show, str(st.get("session") or ""))
             return
         if d.get("leftPanel") in ("toggle", "hide", "show"):
@@ -6654,13 +6671,58 @@ paned.set_wide_handle(False)
 # una terminal NATIVA de sesión (misma VTE, cabecera de pane y marco que las
 # pestañas). La web elige cuál se ve con sus pestañas ({sidebarTerm: ...}).
 _side_paned = Gtk.Paned(orientation=Gtk.Orientation.VERTICAL)
-_side_paned.get_style_context().add_class("cc-shelf-paned")
-_side_paned.set_wide_handle(True)
+_side_paned.set_wide_handle(False)      # separador invisible: el asa es la cabecera
 _side_paned.pack1(wv, True, False)
 _side_term_host = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=0)
 _side_term_host.get_style_context().add_class("cc-side-term")
 _side_term_host.set_no_show_all(True)
 _side_paned.pack2(_side_term_host, True, False)
+# Cabecera única de las terminales de la barra (= .cs-terms del remoto).
+_side_head_ev = Gtk.EventBox()
+_side_head_ev.get_style_context().add_class("side-head")
+_side_head_ev.add_events(Gdk.EventMask.BUTTON_PRESS_MASK | Gdk.EventMask.BUTTON_RELEASE_MASK
+                         | Gdk.EventMask.POINTER_MOTION_MASK)
+_side_head = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=0)
+_side_head_ev.add(_side_head)
+_side_grip = Gtk.Label(label="⠿")
+_side_grip.get_style_context().add_class("side-grip")
+_side_grip.set_tooltip_text("Arrastra para cambiar la altura")
+_side_tabs = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=0)
+_side_tabs_sw = Gtk.ScrolledWindow()
+_side_tabs_sw.set_policy(Gtk.PolicyType.EXTERNAL, Gtk.PolicyType.NEVER)
+_side_tabs_sw.set_propagate_natural_height(True)
+_side_tabs_sw.add(_side_tabs)
+
+
+def _side_head_button(label, cls, tip, cb):
+    b = Gtk.Button(label=label)
+    b.set_relief(Gtk.ReliefStyle.NONE)
+    b.set_can_focus(False)
+    for c in ("side-tab",) + tuple(cls):
+        b.get_style_context().add_class(c)
+    if tip:
+        b.set_tooltip_text(tip)
+    b.connect("clicked", cb)
+    # la cabecera muestra el cursor de arrastre; sobre los botones, el de clic
+    b.connect("realize", lambda w: w.get_event_window() and w.get_event_window().set_cursor(
+        Gdk.Cursor.new_from_name(w.get_display(), "pointer")))
+    return b
+
+
+def _side_term_action(kind, tab=""):
+    _dash_js_quiet(f"window.sidebarTermAction&&sidebarTermAction({json.dumps(kind)},{json.dumps(tab)})")
+
+
+_side_plus = _side_head_button("+ Terminal", ("side-plus",), "Nueva terminal aquí", lambda *_: _side_term_action("new"))
+_side_tog = _side_head_button("▾", ("side-tog",), "", lambda *_: _side_term_action("toggle"))
+_side_tog.set_no_show_all(True)
+_side_head.pack_start(_side_grip, False, False, 0)
+_side_head.pack_start(_side_tabs_sw, True, True, 0)
+_side_head.pack_end(_side_tog, False, False, 0)
+_side_tabs.pack_end(_side_plus, False, False, 0)
+_side_head_ev.connect("realize", lambda w: w.get_window().set_cursor(
+    Gdk.Cursor.new_from_name(w.get_display(), "row-resize")))
+_side_term_host.pack_start(_side_head_ev, False, False, 0)
 paned.pack1(_side_paned, True, False)
 _terminal_column = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=0)
 _shelf_paned = Gtk.Paned(orientation=Gtk.Orientation.VERTICAL)
@@ -6736,36 +6798,78 @@ def _side_term_box(sess):
 
 def _side_term_apply_share():
     total = _side_paned.get_allocated_height()
-    if total > 120 and _side_term_host.get_visible():
+    if total > 120 and _side_term_host.get_visible() and not _SIDE.get("collapsed"):
         share = float(_SIDE.get("termShare") or 0.42)
         _side_paned.set_position(int(total * (1 - min(0.85, max(0.15, share)))))
     return False
 
 
+def _side_term_collapse(*_):
+    """Sin terminal visible (escondidas con ▾ o ninguna): queda solo la cabecera."""
+    if _SIDE.get("collapsed") and _side_term_host.get_visible():
+        top = _side_paned.get_property("max-position")
+        if _side_paned.get_position() != top:
+            _side_paned.set_position(top)
+    _SIDE["collapse_queued"] = False
+    return False
+
+
+def _side_term_keep_collapsed(*_):
+    if _SIDE.get("collapsed") and not _SIDE.get("collapse_queued"):
+        _SIDE["collapse_queued"] = True
+        GLib.idle_add(_side_term_collapse)
+
+
+def _side_head_render():
+    for c in _side_tabs.get_children():
+        if c is not _side_plus:
+            _side_tabs.remove(c)
+            c.destroy()
+    hidden = bool(_SIDE["hidden"])
+    for i, t in enumerate(_SIDE.get("tabs") or []):
+        cls = ("cur",) if t["on"] and not hidden else ()
+        cls += ("sel",) if t["sel"] else ()
+        b = _side_head_button(t["label"], cls, t["title"], lambda *_a, k=t["id"]: _side_term_action("focus", k))
+        _side_tabs.pack_start(b, False, False, 0)
+        _side_tabs.reorder_child(b, i)
+    _side_tog.set_label("▴" if hidden else "▾")
+    _side_tog.set_tooltip_text("Mostrar las terminales" if hidden else "Esconder las terminales")
+    _side_tog.set_visible(bool(_SIDE.get("tabs")))
+    _side_head_ev.show_all()
+
+
+def _side_tabs_from_web(tabs):
+    """Pestañas que manda la barra web (las mismas de .cs-terms en el remoto)."""
+    out = []
+    for t in (tabs if isinstance(tabs, list) else [])[:40]:
+        if not isinstance(t, dict) or not SESSION_RE.match(str(t.get("id") or "")):
+            continue
+        out.append({"id": str(t["id"]), "label": str(t.get("label") or t["id"])[:40],
+                    "title": str(t.get("title") or t["id"])[:120], "on": bool(t.get("on")), "sel": bool(t.get("sel"))})
+    return out
+
+
 def _side_term_show(sess):
-    """Muestra (o esconde, con sess vacío) la terminal de la barra."""
+    """Cabecera siempre visible; debajo, la terminal elegida (o nada, plegada)."""
     if sess and not SESSION_RE.match(sess):
-        return
+        sess = ""
     cur = _SIDE["box"]
-    if not sess or _SIDE["hidden"]:
-        if cur is not None and cur.get_parent() is _side_term_host:
-            _side_term_host.remove(cur)
-        _side_term_host.hide()
-        _SIDE["box"], _SIDE["sess"] = None, sess or ""
-        return
-    if tmuxc("has-session", "-t", "=" + sess).returncode != 0:
-        return
-    box = _side_term_box(sess)
-    if cur is not box:
-        if cur is not None and cur.get_parent() is _side_term_host:
-            _side_term_host.remove(cur)
+    want = sess if sess and not _SIDE["hidden"] and tmuxc("has-session", "-t", "=" + sess).returncode == 0 else ""
+    box = _side_term_box(want) if want else None
+    if cur is not None and cur is not box and cur.get_parent() is _side_term_host:
+        _side_term_host.remove(cur)
+    if box is not None and box.get_parent() is not _side_term_host:
         _side_term_host.pack_start(box, True, True, 0)
-    _SIDE["box"], _SIDE["sess"] = box, sess
-    was = _side_term_host.get_visible()
+    was_open = _side_term_host.get_visible() and not _SIDE.get("collapsed")
+    _SIDE["box"], _SIDE["sess"], _SIDE["collapsed"] = box, sess, box is None
+    _side_head_render()
     _side_term_host.show()
-    box.show_all()
-    if not was:
-        GLib.idle_add(_side_term_apply_share)
+    if box is not None:
+        box.show_all()
+        if not was_open:
+            GLib.idle_add(_side_term_apply_share)
+    else:
+        _side_term_keep_collapsed()
     # pestañas de la barra cerradas: soltar las terminales que ya no existen
     for k, b in list(_SIDE["boxes"].items()):
         if k != sess and tmuxc("has-session", "-t", "=" + k).returncode != 0:
@@ -6778,12 +6882,50 @@ def _side_term_show(sess):
 
 def _side_term_save_share(*_):
     total = _side_paned.get_allocated_height()
-    if total > 120 and _side_term_host.get_visible():
+    if total > 120 and _side_term_host.get_visible() and not _SIDE.get("collapsed"):
         _SIDE["termShare"] = round(1 - _side_paned.get_position() / total, 3)
         _layout_save()
 
 
-_side_paned.connect("notify::position", lambda *_: GLib.timeout_add(600, lambda: (_side_term_save_share(), False)[1]))
+def _side_paned_moved(*_):
+    if _SIDE.get("collapsed"):
+        _side_term_keep_collapsed()
+    else:
+        GLib.timeout_add(600, lambda: (_side_term_save_share(), False)[1])
+
+
+_side_paned.connect("notify::position", _side_paned_moved)
+_side_paned.connect("size-allocate", lambda *_: _side_term_keep_collapsed())
+
+
+def _side_head_press(_w, ev):
+    if ev.button != 1 or ev.type != Gdk.EventType.BUTTON_PRESS or _SIDE.get("collapsed"):
+        return False
+    _SIDE["drag"] = (ev.y_root, _side_paned.get_position())
+    _side_head_ev.get_style_context().add_class("dragging")
+    return True
+
+
+def _side_head_motion(_w, ev):
+    d = _SIDE.get("drag")
+    if not d:
+        return False
+    lo, hi = _side_paned.get_property("min-position"), _side_paned.get_property("max-position")
+    _side_paned.set_position(max(lo, min(hi, int(d[1] + ev.y_root - d[0]))))
+    return True
+
+
+def _side_head_release(_w, ev):
+    if not _SIDE.pop("drag", None):
+        return False
+    _side_head_ev.get_style_context().remove_class("dragging")
+    _side_term_save_share()
+    return True
+
+
+_side_head_ev.connect("button-press-event", _side_head_press)
+_side_head_ev.connect("motion-notify-event", _side_head_motion)
+_side_head_ev.connect("button-release-event", _side_head_release)
 
 
 def _side_term_focused(term):

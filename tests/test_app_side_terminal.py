@@ -1,6 +1,7 @@
 """La terminal de la barra es una terminal nativa de sesión en el escritorio, y el
 panel izquierdo y la parte de terminales se pueden esconder."""
 from pathlib import Path
+import re
 
 ROOT = Path(__file__).resolve().parents[1]
 APP = (ROOT / "bin" / "cc-app").read_text()
@@ -19,7 +20,8 @@ def test_left_column_stacks_the_dashboard_over_a_native_session_terminal():
 
 def test_web_tells_the_app_which_terminal_and_the_app_reports_focus_back():
     mount = HTML[HTML.index("function sidebarTermMount("):HTML.index("function activePaneTarget(")]
-    assert "if(inApp()){" in mount and "sidebarTerm: {session: sess" in mount
+    assert "if(inApp()){" in mount and "sidebarTerm: {session: o.session" in mount and "tabs: o.tabs" in mount
+    assert "window.sidebarTermAction = function(kind, id)" in HTML and "commandSidebar.termAction(kind, id)" in HTML
     assert 'if isinstance(d.get("sidebarTerm"), dict):' in APP and "_side_term_show" in APP
     assert 'term.connect("focus-in-event", lambda t, _e: (globals().get("_side_term_focused")' in APP
     focus = APP[APP.index("def _side_term_focused("):APP.index("def _left_panel_set(")]
@@ -40,3 +42,32 @@ def test_left_panel_toggle_lives_outside_the_panel_and_is_remembered():
     assert (ROOT / "dash" / "icons" / "panel-left.svg").exists()
     assert 'if _SIDE.get("leftHidden"):' in APP and "app-layout.json" in APP
     assert 'd.get("leftPanel") in ("toggle", "hide", "show")' in APP
+
+
+def test_side_terminals_have_one_native_header_that_is_also_the_drag_handle():
+    # la cabecera GTK = la .cs-terms del remoto: agarre, pestañas, «+ Terminal», ▾
+    assert '_side_term_host.pack_start(_side_head_ev, False, False, 0)' in APP
+    assert '_side_paned.set_wide_handle(False)' in APP and 'add_class("cc-shelf-paned")\n_side_paned' not in APP
+    for piece in ('_side_grip', '_side_plus', '_side_tog', '"row-resize"'):
+        assert piece in APP
+    msg = APP[APP.index('if isinstance(d.get("sidebarTerm"), dict):'):]
+    msg = msg[:msg.index("return")]
+    assert '_SIDE["tabs"] = _side_tabs_from_web(st.get("tabs"))' in msg
+    act = APP[APP.index("def _side_term_action("):APP.index("_side_plus = ")]
+    assert "sidebarTermAction" in act and "_dash_js_quiet" in act
+    drag = APP[APP.index("def _side_head_press("):APP.index('_side_head_ev.connect("button-press-event"')]
+    assert '_SIDE.get("collapsed")' in drag and "set_position" in drag and "_side_term_save_share()" in drag
+    show = APP[APP.index("def _side_term_show("):APP.index("def _side_term_save_share(")]
+    assert '_SIDE["collapsed"] = box, sess, box is None' in show and "_side_term_keep_collapsed()" in show
+    # la web, en modo nativo, no pinta su propia cabecera
+    assert "html[data-native-side-term] #command-sidebar .sec-terms{display:none}" in HTML
+
+
+def test_side_tabs_from_web_are_sanitized():
+    import types
+    ns = {"SESSION_RE": re.compile(r"^[A-Za-z0-9_.:-]{1,120}$")}
+    src = APP[APP.index("def _side_tabs_from_web("):APP.index("def _side_term_show(")]
+    exec(src, ns)
+    out = ns["_side_tabs_from_web"]([{"id": "T-1", "label": "14:56", "on": 1}, {"id": "bad id!"}, "x"])
+    assert out == [{"id": "T-1", "label": "14:56", "title": "T-1", "on": True, "sel": False}]
+    assert ns["_side_tabs_from_web"](None) == []
