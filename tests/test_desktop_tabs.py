@@ -337,7 +337,8 @@ def test_pills_sit_on_the_reserved_tmux_border_row_not_on_content():
     # La pildora va AHI, no en la primera fila de contenido (tapaba el prompt).
     assert "def _pill_row_y(m_t, top, chh)" in SRC
     assert "row = top - 1 if top >= 1 else 0" in SRC
-    assert SRC.count("pill.set_margin_top(_pill_row_y(m_t, top, chh))") == 1  # shell pill
+    # «Iniciar IA aquí» va centrado en el renglón de cabecera, dentro del marco.
+    assert "def _shell_pill_xy(rows, pane_id, m_l, m_t, left, top, cw, chh):" in SRC
     # La Tarjeta de IA (cabecera B) ocupa ese mismo renglón de cabecera, pegada al marco.
     assert "rail = m_t + (top - 1) * chh if top >= 1 else m_t" in SRC
     assert "return int(fx) + 1, top, max(120, int(fw) - 2), max(18, int(rail_y + chh) - top)" in SRC

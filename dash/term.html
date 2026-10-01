@@ -146,6 +146,11 @@
   #pane-chrome { position:absolute; inset:0; pointer-events:none; z-index:3; }
   #pane-chrome .pc-frame { position:absolute; box-sizing:border-box; border:1px solid var(--term-line2); border-radius:10px; }
   #pane-chrome .pc-frame.on { border-color:#4ade80; }
+  #pane-chrome .pc-grip { position:absolute; border-radius:2px; background:color-mix(in srgb, var(--term-brand, #8b7cf6) 60%, transparent); }
+  #pane-chrome .pc-grip.drag { background:var(--term-brand, #8b7cf6); }
+  #pane-chrome .pc-grip::after { content:""; position:absolute; left:50%; top:50%; transform:translate(-50%,-50%); width:2px; height:14px;
+    background:radial-gradient(circle, #fff 1.2px, transparent 1.4px) 0 0/2px 6px repeat-y; opacity:.85; }
+  #pane-chrome .pc-grip.h::after { width:14px; height:2px; background:radial-gradient(circle, #fff 1.2px, transparent 1.4px) 0 0/6px 2px repeat-x; }
   #pane-chrome .pc-head { position:absolute; box-sizing:border-box; display:flex; align-items:center; gap:8px; padding:0 10px;
     border-radius:9px 9px 0 0; background:color-mix(in srgb, var(--term-panel) 65%, var(--term-line2)); font:11px var(--sans); color:var(--term-text); }
   #pane-chrome .pc-head b { font-weight:700; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:30%; }
@@ -1979,7 +1984,7 @@
   const ICON = { gear: '<svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M4.2 4.2l2.1 2.1M17.7 17.7l2.1 2.1M2 12h3M19 12h3M4.2 19.8l2.1-2.1M17.7 6.3l2.1-2.1"/></svg>',
                  spark: '<svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8z"/></svg>' };
   const esc = v => String(v == null ? '' : v).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
-  let panes = [], models = [], busy = false;
+  let panes = [], models = [], busy = false, gutters = [], hot = -1, dragging = false;
 
   function cell() {
     try { const d = term._core._renderService.dimensions.css.cell; if (d.width > 0 && d.height > 0) return [d.width, d.height]; } catch (_) {}
@@ -2003,15 +2008,20 @@
     const lr = layer.getBoundingClientRect(), sr = screen.getBoundingClientRect();
     const ox = sr.left - lr.left, oy = sr.top - lr.top, rows = term.rows;
     let html = '';
+    gutters = [];
     for (const p of panes) {
       if (!(p.width >= 8) || !(p.height > 0)) continue;
       const rail = oy + (p.top >= 1 ? (p.top - 1) * ch : 0);
       const pad = Math.max(1, Math.min(3, cw / 2 - 2));   // hueco visible entre marcos aunque la celda sea angosta
       const x0 = ox + p.left * cw - (p.left === 0 ? 5 : pad), x1 = Math.min(ox + term.cols * cw + 3, ox + (p.left + p.width) * cw + pad);
       if (p.top >= rows || p.left >= term.cols) continue;
-      const y0 = p.top <= 1 ? rail - (HEADER_EXTRA + 3) : rail + 1;
+      // Apilados: 5 px de aire entre el marco de arriba y la cabecera de abajo (igual que el escritorio).
+      const y0 = p.top <= 1 ? rail - (HEADER_EXTRA + 3) : rail + 3;
+      const bottom = oy + (p.top + p.height) * ch, atBottom = p.top + p.height >= rows;
       // Nunca más allá de lo que xterm muestra (si tmux aún no ajustó la ventana al tamaño del remoto).
-      const y1 = Math.min(oy + rows * ch + 3, oy + (p.top + p.height) * ch + (p.top + p.height >= rows ? 3 : 0));
+      const y1 = Math.min(oy + rows * ch + 3, atBottom ? bottom + 3 : bottom - 2);
+      if (p.left + p.width < term.cols) gutters.push({ o: 'v', x: ox + (p.left + p.width) * cw, y: y0 + 6, w: cw, h: Math.max(0, y1 - y0 - 12) });
+      if (!atBottom) gutters.push({ o: 'h', x: x0 + 10, y: bottom - 2, w: Math.max(0, x1 - x0 - 20), h: 5 });
       html += `<div class="pc-frame${p.active ? ' on' : ''}" style="left:${x0}px;top:${y0}px;width:${x1 - x0}px;height:${y1 - y0}px"></div>`;
       const m = models.find(x => x.pane === p.id);
       if (!m) continue;
@@ -2025,8 +2035,25 @@
         + `<span class="pc-keys"><button type="button" data-act="ia" data-pane="${esc(p.id)}" title="Cambiar motor / modelo / cuenta de este pane">${ICON.gear}<span>IA</span></button>`
         + `<button type="button" data-act="ext" data-pane="${esc(p.id)}" data-harness="${esc(m.harness)}" title="Extensiones de este pane">${ICON.spark}<span>MCPs · Skills</span></button></span></div>`;
     }
+    const g = gutters[hot];
+    if (g) html += `<div class="pc-grip ${g.o}${dragging ? ' drag' : ''}" style="left:${g.o === 'v' ? g.x + g.w / 2 - 2 : g.x}px;top:${g.o === 'v' ? g.y : g.y + g.h / 2 - 2}px;`
+      + `width:${g.o === 'v' ? 4 : g.w}px;height:${g.o === 'v' ? g.h : 4}px"></div>`;
     layer.innerHTML = html;
   }
+  // Agarradera: al pasar o arrastrar sobre el canal entre panes (tmux redimensiona ahí).
+  function gutterAt(x, y) {
+    return gutters.findIndex(g => x >= g.x - 4 && x <= g.x + g.w + 4 && y >= g.y - 4 && y <= g.y + g.h + 4);
+  }
+  const termEl = document.getElementById('term');
+  termEl.addEventListener('mousemove', e => {
+    const lr = layer.getBoundingClientRect(), x = e.clientX - lr.left, y = e.clientY - lr.top;
+    const drag = (e.buttons & 1) === 1;
+    const next = drag && hot >= 0 ? hot : gutterAt(x, y);
+    if (next !== hot || drag !== dragging) { hot = next; dragging = drag; draw(); }
+  }, { passive: true });
+  const off = () => { if (hot >= 0 || dragging) { hot = -1; dragging = false; draw(); } };
+  termEl.addEventListener('mouseleave', e => { if (!(e.buttons & 1)) off(); });
+  window.addEventListener('mouseup', () => { if (dragging) { dragging = false; draw(); later(); } });
   layer.addEventListener('click', e => {
     const b = e.target.closest && e.target.closest('button[data-act]');
     if (!b) return;

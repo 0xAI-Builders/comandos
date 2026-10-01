@@ -922,3 +922,12 @@ body.app.split:not(.inapp) :is(#tab-term,#tab-new,#tab-sort):hover{color:var(--t
 body.app.split:not(.inapp) :is(#tab-term,#tab-new,#tab-sort):active{transform:translateY(2px);box-shadow:none}
 body.app.split:not(.inapp) #tab-term{margin-left:8px}
 body.app.split:not(.inapp) #tab-open{display:none}
+#tab-left{display:none}
+body.app.split:not(.inapp) #tab-left{display:grid;place-items:center;flex:0 0 36px;min-width:36px;background:none;border:0;color:var(--dim)}
+body.app.split:not(.inapp) #tab-left:hover{color:var(--text)}
+body.app.split:not(.inapp) #tab-left[aria-pressed="true"]{color:var(--brand)}
+/* Panel izquierdo oculto: las terminales ocupan todo el ancho (igual que el escritorio). */
+@media (min-width:748px){
+  body.app.split.panel-hidden #panes{grid-template-columns:0 0 minmax(0,1fr)}
+  body.app.split.panel-hidden :is(#view-panel,#splitter){display:none!important}
+}

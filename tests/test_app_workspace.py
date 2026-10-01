@@ -314,3 +314,19 @@ def test_focusing_a_group_member_republishes_the_command_bar_target():
     body = SOURCE[SOURCE.index("def _ws_member_focused("):SOURCE.index("WS_VIEW.on_focus = _ws_member_focused")]
     assert "_report_active_tab" in body and "_ws_save_focus" in body and "_refresh_tab_models" in body
     assert "WS_VIEW.on_focus = _ws_member_focused" in SOURCE
+
+
+def test_stacked_panes_breathe_and_the_resize_handle_lights_up_on_the_gutter():
+    """1-oct: 5 px between a pane's frame and the header below it; hovering or dragging
+    the gutter between panes paints a handle (tmux's own border line is hidden)."""
+    frames_src = SOURCE.split('def _pane_frames(')[1].split('\ndef ')[0]
+    assert "rail + 3" in frames_src and "bottom - 2" in frames_src
+    assert 'gutters.append(("v"' in frames_src and 'gutters.append(("h"' in frames_src
+    ns = {'_PANE_GUTTERS': {}}
+    at = load('_gutter_at', ns)
+    term = object()
+    box = SimpleNamespace(_term=term)
+    ns['_PANE_GUTTERS'][id(term)] = [("v", 100, 10, 8, 200), ("h", 0, 300, 400, 5)]
+    assert at(box, 104, 50) == 0 and at(box, 50, 302) == 1 and at(box, 50, 50) is None
+    draw = SOURCE.split('def _draw_pane_frames(box, cr):')[1].split('\ndef ')[0]
+    assert '_hot_gutter' in draw and '0.95 if dragging else 0.6' in draw

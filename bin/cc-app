@@ -4915,7 +4915,13 @@ def _attach_model_bar(box, sess):
     ov.connect_after("draw", lambda w, cr, b=box: _draw_pane_frames(b, cr))
     term.connect("motion-notify-event",
                  lambda w, e, b=box: (_pane_geo_soon(b) if e.get_state() & Gdk.ModifierType.BUTTON1_MASK else None, False)[1])
-    term.connect("button-release-event", lambda w, e, b=box: (_pane_geo_soon(b), False)[1])
+    term.connect("button-release-event", lambda w, e, b=box: (_pane_geo_soon(b), _gutter_track(b, -99, -99, False), False)[2])
+    term.add_events(Gdk.EventMask.POINTER_MOTION_MASK | Gdk.EventMask.LEAVE_NOTIFY_MASK)
+    term.connect("motion-notify-event", lambda w, e, b=box: (_gutter_track(
+        b, e.x + w.get_margin_start(), e.y + w.get_margin_top(),
+        bool(e.get_state() & Gdk.ModifierType.BUTTON1_MASK)), False)[1])
+    term.connect("leave-notify-event", lambda w, e, b=box: (
+        None if e.get_state() & Gdk.ModifierType.BUTTON1_MASK else _gutter_track(b, -99, -99, False), False)[1])
     term.connect("size-allocate", lambda w, a, b=box: _pane_geo_soon(b))
     box._pill_sess = sess
     box._pill_sig = ""
@@ -5253,7 +5259,39 @@ def _draw_pane_frames(box, cr):
         cr.set_line_width(1)
         _ws_rounded(cr, x + 0.5, y + 0.5, max(0, w - 1), max(0, h - 1), 10)
         cr.stroke()
+    hot = getattr(box, "_hot_gutter", None)
+    gutters = _PANE_GUTTERS.get(id(getattr(box, "_term", None)), [])
+    if hot is not None and hot < len(gutters):
+        orient, gx, gy, gw, gh = gutters[hot]
+        brand = Gdk.RGBA(); brand.parse(THEME.get("brand") or "#8B7CF6")
+        dragging = bool(getattr(box, "_hot_state", (None, False))[1])
+        cr.set_source_rgba(brand.red, brand.green, brand.blue, 0.95 if dragging else 0.6)
+        if orient == "v":
+            bx = gx + gw / 2 - 2
+            _ws_rounded(cr, bx, gy, 4, gh, 2)
+            cr.fill()
+            cr.set_source_rgba(1, 1, 1, 0.85)                # muesca central: «esto se arrastra»
+            for k in (-6, 0, 6):
+                cr.arc(gx + gw / 2, gy + gh / 2 + k, 1.2, 0, 6.2832)
+                cr.fill()
+        else:
+            by = gy + gh / 2 - 2
+            _ws_rounded(cr, gx, by, gw, 4, 2)
+            cr.fill()
+            cr.set_source_rgba(1, 1, 1, 0.85)
+            for k in (-6, 0, 6):
+                cr.arc(gx + gw / 2 + k, gy + gh / 2, 1.2, 0, 6.2832)
+                cr.fill()
     return False
+
+
+def _shell_pill_xy(rows, pane_id, m_l, m_t, left, top, cw, chh):
+    """«Iniciar IA aquí» centrado en el renglón de cabecera, dentro del marco."""
+    if pane_id in rows:
+        fx, rail_y, _fw, fy = rows[pane_id]
+        top_y = int(fy) + 1
+        return int(fx) + 8, top_y + max(0, (int(rail_y + chh) - top_y - 22) // 2)
+    return max(0, int(m_l + left * cw + cw)), _pill_row_y(m_t, top, chh)
 
 
 def _pill_row_y(m_t, top, chh):
@@ -5287,14 +5325,38 @@ def _box_focused(box):
     return page is box
 
 
+_PANE_GUTTERS = {}     # id(VTE) -> [(orient, x, y, w, h)] canales entre panes (para la agarradera)
+
+
+def _gutter_at(box, x, y, slack=4):
+    term = getattr(box, "_term", None)
+    for i, (orient, gx, gy, gw, gh) in enumerate(_PANE_GUTTERS.get(id(term), [])):
+        if gx - slack <= x <= gx + gw + slack and gy - slack <= y <= gy + gh + slack:
+            return i
+    return None
+
+
+def _gutter_track(box, x, y, dragging):
+    """El puntero sobre el canal entre panes enciende la agarradera; arrastrando, se
+    queda encendida aunque el puntero se adelante al borde (tmux lo sigue)."""
+    hot = box._hot_gutter if dragging and getattr(box, "_hot_gutter", None) is not None else _gutter_at(box, x, y)
+    state = (hot, bool(dragging))
+    if getattr(box, "_hot_state", None) != state:
+        box._hot_gutter, box._hot_state = hot, state
+        ov = getattr(box, "_pill_overlay", None)
+        if ov is not None:
+            ov.queue_draw()
+
+
 def _pane_frames(term, geo, m_l, m_t, cw, chh, focused=True):
     """Marcos de los panes (prototipo: borde 1 px, radio 10, verde el pane con
     foco) y el renglón de cabecera de cada uno. Cada marco encierra la CABECERA
     (el renglón que tmux reserva arriba del pane con pane-border-status top) y el
     contenido debajo: nada del pane queda fuera. Van en la capa Overlay, en los
     márgenes de la VTE y en el hueco entre panes, sin cruzar texto."""
-    frames, rows = [], {}
+    frames, rows, gutters = [], {}, []
     rows_total = term.get_row_count() if hasattr(term, "get_row_count") else 0
+    cols_total = term.get_column_count() if hasattr(term, "get_column_count") else 0
     for pane_id, g3 in geo.items():
         left, top, width = g3[:3]
         height, active = _PANE_BOX.get(pane_id, (0, False))
@@ -5305,12 +5367,20 @@ def _pane_frames(term, geo, m_l, m_t, cw, chh, focused=True):
         x1 = m_l + (left + width) * cw + 3
         # Panes de arriba: el marco (y su cabecera) sube al margen extra sobre la VTE,
         # así la cabecera mide ~35 px sin tapar texto. Panes apilados: el renglón tmux.
-        y0 = rail - (HEADER_EXTRA + 3) if top <= 1 else rail + 1
+        # Apilados: 5 px de aire entre el marco de arriba y la cabecera de abajo.
+        y0 = rail - (HEADER_EXTRA + 3) if top <= 1 else rail + 3
         bottom = m_t + (top + height) * chh
         at_bottom = rows_total and top + height >= rows_total
-        y1 = bottom + (3 if at_bottom else 0)
+        y1 = bottom + 3 if at_bottom else bottom - 2
         frames.append((x0, y0, x1 - x0, y1 - y0, active and focused))
         rows[pane_id] = (x0, rail, x1 - x0, y0)
+        # Canales donde tmux redimensiona: la columna a la derecha del pane y el
+        # renglón debajo (que es la cabecera del de abajo). Ahí va la agarradera.
+        if cols_total and left + width < cols_total:
+            gutters.append(("v", m_l + (left + width) * cw, y0 + 6, cw, max(0, y1 - y0 - 12)))
+        if rows_total and top + height < rows_total:
+            gutters.append(("h", x0 + 10, bottom - 2, max(0, x1 - x0 - 20), 5))
+    _PANE_GUTTERS[id(term)] = gutters
     return frames, rows
 
 
@@ -5352,8 +5422,9 @@ def _reposition_pills(box, geo):
             continue
         if kind == "shell":
             left, top = geo[pid][0], geo[pid][1]
-            w.set_margin_top(_pill_row_y(m_t, top, chh))
-            w.set_margin_start(max(0, int(m_l + left * cw + cw)))
+            sx, sy = _shell_pill_xy(rows, pid, m_l, m_t, left, top, cw, chh)
+            w.set_margin_top(sy)
+            w.set_margin_start(sx)
             continue
         cx, cy, cwid, chgt = _card_rect(rows, pid, chh)
         if kind == "card":
@@ -5471,8 +5542,9 @@ def _place_pills(box, panes, geo=None):
         pill._pane_id, pill._kind = pane_id, "shell"
         pill.set_halign(Gtk.Align.START)
         pill.set_valign(Gtk.Align.START)
-        pill.set_margin_top(_pill_row_y(m_t, top, chh))
-        pill.set_margin_start(max(0, int(m_l + left * cw + cw)))
+        sx, sy = _shell_pill_xy(box._card_rows, pane_id, m_l, m_t, left, top, cw, chh)
+        pill.set_margin_top(sy)
+        pill.set_margin_start(sx)
         ov.add_overlay(pill)
         pill.show_all()
         box._pills.append(pill)
