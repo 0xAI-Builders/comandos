@@ -729,7 +729,17 @@ def _bg_rgba():
     return c
 
 
-def make_term(argv_sh, before_spawn=None):
+def _tmux_window_size(sess):
+    """(cols, rows) que la sesión ya tiene en tmux, o None."""
+    r = tmuxc("display-message", "-p", "-t", "=" + sess, "#{window_width} #{window_height}")
+    try:
+        cols, rows = (int(x) for x in r.stdout.split())
+    except (ValueError, AttributeError):
+        return None
+    return (cols, rows) if cols >= 20 and rows >= 5 else None
+
+
+def make_term(argv_sh, before_spawn=None, session=None):
     term = Vte.Terminal()
     term.set_font(Pango.FontDescription(FONT)); _term_line_scale(term)
     term.set_colors(rgba(THEME["fg"]), _bg_rgba(), [rgba(p) for p in THEME["pal"]])
@@ -797,6 +807,15 @@ def make_term(argv_sh, before_spawn=None):
                 print(f"terminal recovery failed; retaining snapshot: {e}")
                 GLib.timeout_add(800, spawn)
                 return False
+        # Hasta que GTK le da tamaño (y con la pantalla bloqueada no lo hace) la
+        # VTE mide 80×24: el `tmux attach` encogía la sesión para TODOS sus
+        # clientes —el celular incluido— y Claude Code redibujaba su pantalla
+        # entera («escribe sola», 1-oct). Arranca con el tamaño que la sesión ya
+        # tiene; cuando GTK la dimensiona, pone el real.
+        if session and not term.get_realized():
+            size = _tmux_window_size(session)
+            if size:
+                term.set_size(*size)
         try:
             res = term.spawn_sync(Vte.PtyFlags.DEFAULT, os.path.expanduser("~"),
                                   ["/bin/sh", "-c", argv_sh], [],
@@ -3498,7 +3517,7 @@ def open_tab(sess, winname, label=None):
     select_win(sess, winname)
     target = shlex.quote("=" + sess)
     cmd = (f"tmux attach -t {target} || {{ echo '[sesion terminada — cierra esta pestana con la x]'; exec cat; }}")
-    box = make_term(cmd)
+    box = make_term(cmd, session=sess)
     box._key = key
     box._term._session_hint = sess
     _attach_model_bar(box, sess)
@@ -3962,7 +3981,7 @@ try:
     restore_saved_layout("local")
 except Exception as exc:
     print(f"no pude restaurar local: {exc}", file=sys.stderr)
-hub = make_term("tmux new-session -A -s local -c ~", before_spawn=prepare_local_terminal)
+hub = make_term("tmux new-session -A -s local -c ~", before_spawn=prepare_local_terminal, session="local")
 # Aplica el tema al tmux status ya en el arranque (idempotente).
 GLib.timeout_add(500, lambda: (_apply_tmux_theme(), False)[1])
 hub._key = "local"   # la pestana ⌂ opera la sesion tmux "local": sin esto, al pararte
@@ -6300,7 +6319,7 @@ def _mosaic_zoom(sess, label):
                    lambda *_: _zoom_out(), size=14)
     head.pack_end(xb, False, False, 4)
     box.pack_start(head, False, False, 0)
-    tbox = make_term(f"tmux attach -t '={sess}'")
+    tbox = make_term(f"tmux attach -t '={sess}'", session=sess)
     tbox._term._session_hint = sess
     box.pack_start(tbox, True, True, 0)
     dlg.add(box)
@@ -6871,7 +6890,7 @@ def _side_term_box(sess):
     if box is not None:
         return box
     target = shlex.quote("=" + sess)
-    box = make_term(f"tmux attach -t {target} || {{ echo '[sesion terminada]'; exec cat; }}")
+    box = make_term(f"tmux attach -t {target} || {{ echo '[sesion terminada]'; exec cat; }}", session=sess)
     box._key = sess
     box._side = True
     box._term._session_hint = sess
