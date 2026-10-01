@@ -7278,7 +7278,8 @@ def _init_pane_position(_widget, allocation):
 
 
 def _save_pane_position(*_):
-    if not _pane_position_initialized:
+    # Con el panel oculto la posición no es un ancho tuyo: no se guarda.
+    if not _pane_position_initialized or _SIDE.get("leftHidden") or not _side_paned.get_visible():
         return
     try:
         os.makedirs(os.path.dirname(PANE_POSITION_FILE), exist_ok=True)
