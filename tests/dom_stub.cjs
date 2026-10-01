@@ -54,6 +54,7 @@ function makeEl(tag, attrs, parent) {
   node.focus = () => { doc.activeElement = node; };
   node.contains = other => { for (let n = other; n; n = n.parentNode) if (n === node) return true; return false; };
   Object.defineProperty(node, 'className', { get() { return node.attrs.class || ''; }, set(v) { node.attrs.class = String(v); } });
+  node.style = {};
   node.ownerDocument = doc;
   return node;
 }

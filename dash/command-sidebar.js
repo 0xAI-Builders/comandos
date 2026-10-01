@@ -420,6 +420,7 @@
       const n = termList().length;
       try { el.classList && el.classList.toggle('no-terms', !n); } catch (_) {}
       try { el.classList && el.classList.toggle('terms-hidden', !!state.termsHidden); } catch (_) {}
+      applyHeights(!!state.termsHidden || !n);
       const mini = el.querySelector('.mini');
       if (mini && typeof mountTerm === 'function') {
         try { mountTerm(state.termsHidden ? '' : (state.curTerm || ''), mini, { session: state.curTerm || '', hidden: !!state.termsHidden, tabs: termTabs() }); } catch (_) {}
@@ -436,8 +437,6 @@
     function wireDivider() {
       const dv = el.querySelector('.cs-terms'), cmds = el.querySelector('.sec-cmds'), terms = el.querySelector('.sec-terms');
       if (!dv || !cmds || !terms || !dv.addEventListener) return;
-      const saved = Number(read(KEY_H) || 0);
-      if (saved >= 120) { cmds.style.flex = '0 0 ' + saved + 'px'; terms.style.flex = '1 1 auto'; }
       dv.addEventListener('pointerdown', e => {
         if (e.button > 0 || state.termsHidden || (e.target && e.target.closest && e.target.closest('button'))) return;
         e.preventDefault();
@@ -456,6 +455,17 @@
         };
         for (const t of [dv, win]) if (t) { t.addEventListener('pointermove', move); t.addEventListener('pointerup', up); t.addEventListener('pointercancel', up); }
       });
+    }
+
+    // La altura arrastrada va en línea y le ganaría a las reglas .terms-hidden/.no-terms:
+    // escondidas (o sin terminales) se quita y los comandos toman todo; al mostrar vuelve.
+    function applyHeights(collapsed) {
+      const cmds = el.querySelector('.sec-cmds'), terms = el.querySelector('.sec-terms');
+      if (!cmds || !terms || !cmds.style) return;
+      const saved = Number(read(KEY_H) || 0);
+      const fixed = !collapsed && saved >= 120;
+      cmds.style.flex = fixed ? '0 0 ' + saved + 'px' : '';
+      terms.style.flex = fixed ? '1 1 auto' : '';
     }
 
     // Acciones de las pestañas, compartidas por los clics de aquí y por la cabecera

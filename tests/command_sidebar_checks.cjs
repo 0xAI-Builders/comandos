@@ -209,6 +209,15 @@ const catalog = JSON.parse(fs.readFileSync(process.cwd() + '/tests/fixtures/comm
   assert.deepEqual(mounted.at(-1).slice(0, 2), ['q1', 'mini']);
   root2.click('.tog[data-terms-toggle]'); root2.click('.t[data-focus-term="q1"]');        // tocar una pestaña también las muestra
   assert.equal(root2.classList.contains('terms-hidden'), false);
+  // altura arrastrada: escondidas se quita (los comandos toman todo) y al mostrar vuelve
+  store.set('comandos.commands.cmdsHeight', '300');
+  sb2.render();
+  assert.equal(root2.querySelector('.sec-cmds').style.flex, '0 0 300px');
+  sb2.termAction('toggle');
+  assert.equal(root2.classList.contains('terms-hidden'), true);
+  assert.equal(root2.querySelector('.sec-cmds').style.flex, ''); assert.equal(root2.querySelector('.sec-terms').style.flex, '');
+  sb2.termAction('toggle');
+  assert.equal(root2.querySelector('.sec-cmds').style.flex, '0 0 300px');
   // ✕ de una pestaña: primer clic pide «¿Cerrar?», el segundo termina esa terminal
   const killed = [], rootX = mkRoot();
   const sbX = createCommandSidebar({ api, root: rootX, storage, makeId: () => 'x', getTarget: () => null,
