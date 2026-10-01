@@ -618,7 +618,6 @@ header.hdr-ordered :is(#btn-switch,#btn-snippets){display:inline-flex!important}
 .btn-style-card{display:flex;align-items:center;gap:12px;text-align:left;padding:12px;border:1px solid var(--line);border-radius:12px;background:var(--panel);color:var(--text);cursor:pointer}
 .btn-style-card[aria-checked=true]{border-color:var(--brand);box-shadow:inset 0 0 0 1px var(--brand)}
 .btn-style-card small{display:block;color:var(--dim);font-size:11px;margin-top:2px}
-.ai-set-demo{display:inline-flex;align-items:flex-end;gap:6px;flex:none;padding:4px 6px;border-radius:8px;background:var(--panel2)}
 .btn-style-demo{display:flex;gap:10px;padding:6px 4px 10px;flex:none}
 .demo-key{color:var(--dim);cursor:pointer}
 
@@ -655,13 +654,14 @@ html[data-btn-style="consola"] header #btn-pomo{color:#1c1300}
 .pm-where{display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin:10px 0 4px;padding:8px 10px;border:1px solid var(--line);border-radius:9px;background:var(--panel2);font-size:13px;color:var(--dim)}
 .pm-where b{color:var(--text)}
 .pm-where .pm-link{background:none;border:0;color:var(--brand);text-decoration:underline;cursor:pointer;padding:0;font:inherit}
-/* ===== Semáforo de la IA por sprites + sticker tuyo (grill 30-sep) ===== */
-.ai-icon{display:block;flex:none;image-rendering:pixelated}
-.ai-sprite{background-repeat:no-repeat;background-position:0 0;animation:ai-strip var(--ai-cycle,0s) steps(var(--ai-frames,1)) infinite}
-.ai-sprite[style*="--ai-cycle:0s"]{animation:none}
-@keyframes ai-strip{to{background-position-x:calc(-1 * var(--ai-w))}}
-.wm-offscreen .ai-sprite,html.pm-page-hidden .ai-sprite{animation-play-state:paused!important}
-@media (prefers-reduced-motion:reduce){.ai-sprite{animation:none!important}}
+/* ===== Estado de la IA: punto de color + sticker tuyo (1-oct, sin monitos) ===== */
+.ai-icon{display:block;flex:none;position:relative}
+.ai-dot{border-radius:50%}
+.ai-dot::before{content:"";position:absolute;inset:calc(50% - 4px);width:8px;height:8px;border-radius:50%;background:var(--ai-c)}
+.ai-dot.ai-need::before{animation:ai-pulse 1.4s ease-in-out infinite}
+@keyframes ai-pulse{50%{box-shadow:0 0 0 4px color-mix(in srgb,var(--ai-c) 30%,transparent)}}
+.wm-offscreen .ai-dot::before,html.pm-page-hidden .ai-dot::before{animation-play-state:paused!important}
+@media (prefers-reduced-motion:reduce){.ai-dot::before{animation:none!important}}
 .wm-extra{display:inline-flex;align-items:center;gap:5px;flex:none}
 .wm-extra:empty{display:none}
 .wm-sticker{font:800 10px/1 var(--sans);letter-spacing:.4px;padding:3px 5px;border-radius:5px;transform:rotate(-6deg);text-transform:uppercase;white-space:nowrap}
@@ -951,11 +951,12 @@ body.ws-dragging #command-sidebar .sb-term{pointer-events:none}
 
 /* Remoto ancho = escritorio (30-sep): Terminal · Nueva sesión · Ordenar a la derecha de las
    pestañas, como teclas de 32 px con el mismo canto que la cabecera; sin «ver todas». */
-#tab-term,#tab-new{display:none}
-body.app.split:not(.inapp) :is(#tab-term,#tab-new,#tab-sort){display:grid;place-items:center;flex:0 0 32px;width:32px;min-width:32px;height:32px;
+#tab-term,#tab-new,#tab-rows{display:none}
+body.app.split:not(.inapp) :is(#tab-term,#tab-new,#tab-sort,#tab-rows){display:grid;place-items:center;flex:0 0 32px;width:32px;min-width:32px;height:32px;
   margin:6px 3px;padding:0;border:1px solid var(--line);border-radius:9px;background:var(--panel2);color:var(--dim);box-shadow:0 2px 0 var(--line2);align-self:center}
-body.app.split:not(.inapp) :is(#tab-term,#tab-new,#tab-sort):hover{color:var(--text)}
-body.app.split:not(.inapp) :is(#tab-term,#tab-new,#tab-sort):active{transform:translateY(2px);box-shadow:none}
+body.app.split:not(.inapp) :is(#tab-term,#tab-new,#tab-sort,#tab-rows):hover{color:var(--text)}
+body.app.split:not(.inapp) #tab-rows[aria-pressed="true"]{color:var(--brand);border-color:color-mix(in srgb,var(--brand) 45%,var(--line))}
+body.app.split:not(.inapp) :is(#tab-term,#tab-new,#tab-sort,#tab-rows):active{transform:translateY(2px);box-shadow:none}
 body.app.split:not(.inapp) #tab-term{margin-left:8px}
 body.app.split:not(.inapp) #tab-open{display:none}
 #tab-left{display:none}

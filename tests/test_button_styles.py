@@ -89,17 +89,21 @@ def test_desktop_styles_every_button_but_window_controls():
     assert 'add_class("cc-winctl")' in APP
 
 
-def test_ai_sprites_pref_defaults_to_the_comandos_bot_and_only_accepts_shipped_sets(dash, tmp_path, monkeypatch):
-    """Grill 30-sep: the tab semáforo character is chosen in Ajustes → Apariencia."""
+def test_tabs_layout_pref_and_no_sprite_setting(dash, tmp_path, monkeypatch):
+    """1-oct: el semáforo de monitos y su ajuste se fueron; en su lugar la pref
+    tabs_layout (row | rows) que comparten la tira del escritorio y la del remoto."""
     monkeypatch.setattr(dash, "PREFS_PATH", str(tmp_path / "prefs.json"))
-    assert dash.read_prefs()["ai_sprites"] == "comandos"
-    dash.update_prefs({"ai_sprites": "kit"})
-    assert dash.read_prefs()["ai_sprites"] == "kit"
-    dash.update_prefs({"ai_sprites": "../etc"})
-    assert dash.read_prefs()["ai_sprites"] == "kit"
-    assert 'id="ai-set-gallery"' in INDEX and "applyAiSet(p.ai_sprites" in INDEX
+    assert "ai_sprites" not in dash.read_prefs()
+    assert dash.read_prefs()["tabs_layout"] == "row"
+    dash.update_prefs({"tabs_layout": "rows"})
+    assert dash.read_prefs()["tabs_layout"] == "rows"
+    dash.update_prefs({"tabs_layout": "grid"})
+    assert dash.read_prefs()["tabs_layout"] == "rows"
+    assert 'id="ai-set-gallery"' not in INDEX and "applyAiSet" not in INDEX
+    assert 'id="tab-rows"' in INDEX and 'applyTabsLayout(p.tabs_layout || "row")' in INDEX
     app = (ROOT / "bin" / "cc-app").read_text()
-    assert 'd.get("aiSprites") in work_mark_state.AI_SETS' in app and "def apply_ai_sprites" in app
+    assert "aiSprites" not in app and "AI_SPRITES" not in app
+    assert "def apply_tabs_layout" in app and '"tabs_layout")' in app.split("_LIVE_PREF_KEYS = ")[1].split("\n\n")[0]
 
 
 def test_desktop_header_actions_live_in_the_web_header_like_the_remote():
@@ -118,11 +122,11 @@ def test_desktop_header_actions_live_in_the_web_header_like_the_remote():
     # Prototipo aprobado: Terminal · Nueva sesión · Ordenar a la derecha de la barra de pestañas GTK;
     # en la app la cabecera web es la rejilla de 4 columnas sin ☰, contadores ni búsqueda.
     assert "nb.set_action_widget(_strip_actions, Gtk.PackType.END)" in app
-    assert "for _b in (_quick_term_btn, _plus, _sort_btn, _tab_next):" in app
+    assert "for _b in (_quick_term_btn, _plus, _sort_btn, _rows_btn, _tab_next):" in app
     # Remoto ancho (body.app.split) usa la MISMA rejilla que el escritorio.
     assert ":is(body.inapp,body.app.split) header.hdr-ordered{display:grid;grid-template-columns:repeat(3,minmax(0,1fr))" in CSS
     assert 'id="tab-term"' in INDEX and 'id="tab-new"' in INDEX
-    assert "body.app.split:not(.inapp) :is(#tab-term,#tab-new,#tab-sort){display:grid" in CSS
+    assert "body.app.split:not(.inapp) :is(#tab-term,#tab-new,#tab-sort,#tab-rows){display:grid" in CSS
     assert ":is(body.inapp,body.app.split) header.hdr-ordered :is(#btn-menu,.counts,#btn-terminal,#btn-newsess,#btn-switch,#btn-snippets){display:none!important}" in CSS
     assert 'id="btn-sort"' not in INDEX
     for action in ("quickTerminal", "newSession"):

@@ -46,3 +46,57 @@ def test_strip_tracks_pages_and_measures_content():
     while Gtk.events_pending():
         Gtk.main_iteration()
     assert [i.get_child() for i in nb.strip.get_children() if i.get_style_context().has_class("cur")] == [labels[9]]
+
+
+@pytest.mark.skipif(not os.environ.get("DISPLAY"), reason="needs a display for GTK")
+def test_rows_mode_wraps_every_tab_and_back_keeps_order():
+    """1-oct: ⊞ «varias filas» envuelve las mismas pestañas (todas a la vista) y
+    al volver a una fila quedan en el mismo orden, con altas y bajas por medio."""
+    gi = pytest.importorskip("gi")
+    gi.require_version("Gtk", "3.0")
+    from gi.repository import Gtk
+    import gtk_tabstrip
+    nb = gtk_tabstrip.TabStripNotebook()
+    col = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
+    col.pack_start(nb.row, False, False, 0)
+    col.pack_start(nb, True, True, 0)
+    win = Gtk.OffscreenWindow(); win.add(col); win.set_default_size(500, 300); win.show_all()
+
+    import time
+
+    def pump(seconds=0.3):            # el FlowBox se asigna en el ciclo de layout, no en el primer pending
+        end = time.monotonic() + seconds
+        while time.monotonic() < end:
+            while Gtk.events_pending():
+                Gtk.main_iteration()
+            time.sleep(0.01)
+
+    pages = [Gtk.Label(label=str(i)) for i in range(12)]
+    labels = [Gtk.Label(label=f"Sesión larga {i}") for i in range(12)]
+    for p, l in zip(pages, labels):
+        nb.append_page(p, l); p.show()
+    pump()
+    one_row_h = nb.row.get_allocated_height()
+    nb.set_rows(True)
+    pump()
+    cells = nb.flow.get_children()
+    assert [c.get_child().get_child() for c in cells] == labels, "same tabs, same order"
+    assert not nb.strip.get_children() and nb.flow.get_visible() and not nb.scroller.get_visible()
+    assert nb.row.get_allocated_height() > one_row_h, "wraps into several rows"
+    tops = {c.get_allocation().y for c in cells}
+    assert len(tops) > 1
+    extra, extra_lbl = Gtk.Label(label="x"), Gtk.Label(label="Nueva")
+    nb.insert_page(extra, extra_lbl, 0); extra.show()
+    nb.reorder_child(pages[5], 1)
+    nb.remove_page(nb.page_num(pages[11]))
+    pump()
+    order = [nb.get_tab_label(nb.get_nth_page(i)) for i in range(nb.get_n_pages())]
+    assert [c.get_child().get_child() for c in nb.flow.get_children()] == order
+    nb.set_rows(False)
+    pump()
+    assert [i.get_child() for i in nb.strip.get_children()] == order and not nb.flow.get_children()
+    assert nb.scroller.get_visible() and not nb.flow.get_visible()
+    nb.set_current_page(3)
+    pump()
+    cur = [i for i in nb.strip.get_children() if i.get_style_context().has_class("cur")]
+    assert [i.get_child() for i in cur] == [order[3]]

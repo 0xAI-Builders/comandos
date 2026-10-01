@@ -178,10 +178,11 @@
     font:600 11px var(--sans); cursor:pointer; box-shadow:0 2px 0 var(--term-line2); }
   #pane-chrome .pc-keys button:hover { color:var(--term-text); }
   #pane-chrome .pc-keys button:active { transform:translateY(2px); box-shadow:none; }
-  #pane-chrome .ai-sprite { display:block; flex:none; image-rendering:pixelated; background-repeat:no-repeat;
-    animation:pc-strip var(--ai-cycle,0s) steps(var(--ai-frames,1)) infinite; }
-  @keyframes pc-strip { to { background-position-x:calc(-1 * var(--ai-w)); } }
-  @media (prefers-reduced-motion:reduce) { #pane-chrome .ai-sprite { animation:none; } }
+  #pane-chrome .ai-dot { display:block; flex:none; position:relative; }
+  #pane-chrome .ai-dot::before { content:""; position:absolute; inset:calc(50% - 4px); width:8px; height:8px; border-radius:50%; background:var(--ai-c); }
+  #pane-chrome .ai-dot.ai-need::before { animation:pc-pulse 1.4s ease-in-out infinite; }
+  @keyframes pc-pulse { 50% { box-shadow:0 0 0 4px color-mix(in srgb, var(--ai-c) 30%, transparent); } }
+  @media (prefers-reduced-motion:reduce) { #pane-chrome .ai-dot::before { animation:none; } }
   @media (max-width:420px) { #pane-chrome .pc-eff, #pane-chrome .pc-keys button span { display:none; } #pane-chrome .pc-keys button { padding:0 9px; } }
 </style>
 </head>

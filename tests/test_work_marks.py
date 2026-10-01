@@ -187,45 +187,38 @@ def test_frame_index_quantizes_a_clock_into_the_icon_cycle():
     assert wm.frame_count("none") == 1
 
 
-def test_ai_status_uses_sprite_sets_of_one_character_per_state():
-    """Grill 30-sep: lo que pone la IA va en su propio canal como sprites pixel
-    del mismo personaje (ComandOS bot por default, burbujas elegibles); quieta no se anima."""
+def test_ai_status_is_a_colour_dot_without_sprites():
+    """1-oct: los monitos se fueron (distraían y robaban espacio). Lo que pone la
+    IA es un punto de color por estado; solo «te necesita» late; terminó es azul."""
     import work_marks as wm
     assert wm.ai_status("working") == "work"
     assert wm.ai_status("awaiting_permission") == wm.ai_status("awaiting_input") == wm.ai_status("waiting") == "need"
     assert wm.ai_status("completed") == wm.ai_status("done") == "done"
     assert wm.ai_status("failed") == wm.ai_status("error") == "error"
     assert wm.ai_status(None) == wm.ai_status("ended") == wm.ai_status("cancelled") == "idle"
-    assert wm.DEFAULT_AI_SET == "comandos" and set(wm.AI_SETS) == {"comandos", "kit"}
-    assert wm.ai_set("nope") == "comandos" and wm.ai_set("kit") == "kit"
-    for set_name, meta in wm.AI_SETS.items():
-        for state in wm.AI_STATES:
-            sp = wm.ai_sprite(state, set_name)
-            png = ROOT / "dash" / sp["file"].lstrip("/")
-            assert png.is_file(), f"{set_name}/{state}: strip shipped in dash/icons"
-            assert sp["px"] == meta["px"] and sp["frames"] == meta["frames"][state]
-            assert sp["tab"] % sp["px"] == 0 or sp["tab"] == sp["px"] or sp["px"] % sp["tab"] == 0, "hard pixels: integer scale"
-        assert wm.ai_sprite("idle", set_name)["cycle"] == 0, "idle is still"
-        assert wm.ai_sprite("work", set_name)["cycle"] > 0, "working moves"
+    assert not hasattr(wm, "AI_SETS") and not hasattr(wm, "ai_sprite"), "no sprite sets any more"
+    assert wm.AI_COLORS["done"] != wm.AI_COLORS["work"], "finished (blue) is not working (green)"
+    assert wm.ai_cycle("need") == wm.AI_PULSE_S > 0 and all(wm.ai_cycle(st) == 0 for st in ("work", "done", "error", "idle"))
     html = wm.ai_icon_html("need")
-    assert 'class="ai-icon ai-sprite ai-need"' in html and "/icons/semaforos/comandos/need.png" in html and "--ai-frames:2" in html
-    assert sorted({wm.ai_frame_index("work", t) for t in (0, 0.1, 0.2, 0.3)}) == [0, 1], "the strip steps through its frames"
-    assert wm.ai_frame_index("idle", 0.3) == 0
+    assert 'class="ai-icon ai-dot ai-need"' in html and f"--ai-c:{wm.AI_COLORS['need']}" in html and ".png" not in html
+    assert "width:16px;height:16px" in wm.ai_icon_html("work", 16)
+    svg = wm.ai_dot_svg("need", 12, 0.5)
+    assert svg.count("<circle") == 2 and 'fill="#f5b83d"' in svg, "needs-you: dot + pulse halo"
+    assert wm.ai_dot_svg("work", 12, None).count("<circle") == 1 and "#4ade80" in wm.ai_dot_svg("work")
+    assert len({wm.ai_frame_index("need", t) for t in (0, 0.2, 0.5, 0.9)}) > 1, "the pulse steps through frames"
+    assert wm.ai_frame_index("idle", 0.3) == wm.ai_frame_index("work", 0.3) == 0
     assert wm.STICKERS == {"frozen": "Aparcado", "awaiting_reply": "Esperando", "resolved": "Hecho"}
+    for name in ("comandos", "kit"):
+        assert not (ROOT / "dash" / "icons" / "semaforos" / name).exists(), "sprite strips removed from dash/icons"
 
 
-def test_ai_sprite_sets_are_identical_on_web_and_desktop():
-    import re
+def test_ai_dot_colours_are_identical_on_web_and_desktop():
     import work_marks as wm
     js = (ROOT / "dash" / "work-marks.js").read_text()
-    for set_name, meta in wm.AI_SETS.items():
-        block = re.search(set_name + r": \{(.*?)credit", js, re.S)
-        assert block, f"{set_name}: dash/work-marks.js must carry the same set"
-        assert f"px: {meta['px']}, tab: {meta['tab']}" in block.group(1)
-        for state, n in meta["frames"].items():
-            assert f"{state}: {n}" in block.group(1), f"{set_name}.{state} frames"
-        for state, fps in meta["fps"].items():
-            assert f"{state}: {fps}" in block.group(1), f"{set_name}.{state} fps"
-    assert "const DEFAULT_AI_SET = 'comandos'" in js
+    for state, color in wm.AI_COLORS.items():
+        assert f"{state}: '{color}'" in js, f"dash/work-marks.js AI_COLORS.{state}"
+    assert f"const AI_PULSE_S = {wm.AI_PULSE_S}" in js and "AI_SETS" not in js and "semaforos" not in js
+    css = (ROOT / "dash" / "workspace.css").read_text()
+    assert ".ai-dot.ai-need::before{animation:ai-pulse 1.4s" in css and "ai-sprite" not in css
 
 

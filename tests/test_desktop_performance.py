@@ -97,7 +97,7 @@ def model_ui():
           'Gtk': NS(Box=Widget, Overlay=Widget, Label=Widget, Button=Widget, Image=Widget, Separator=Widget, EventBox=Widget,
                     CssProvider=lambda: NS(load_from_data=lambda d: None), StyleContext=NS(add_provider_for_screen=lambda *a: None), STYLE_PROVIDER_PRIORITY_APPLICATION=600,
                     Orientation=NS(HORIZONTAL=1, VERTICAL=2), Align=NS(START=1, CENTER=2), ReliefStyle=NS(NONE=1)),
-          'Pango': NS(EllipsizeMode=NS(END=3)), 'STATE_CACHE': {}, 'AI_SPRITES': 'comandos', '_BADGE_CSS': {},
+          'Pango': NS(EllipsizeMode=NS(END=3)), 'STATE_CACHE': {}, '_BADGE_CSS': {},
           'Gdk': NS(Screen=NS(get_default=lambda: None), EventMask=NS(POINTER_MOTION_MASK=1, LEAVE_NOTIFY_MASK=2), ModifierType=NS(BUTTON1_MASK=256)), 'Align': NS(CENTER=2), '_PANE_BOX': {'%0': (30, True)}, 'KEY_H': 22, 'HEADER_EXTRA': 14, '_PANE_GUTTERS': {}, '_draw_pane_frames': lambda b, cr: False, '_pane_geo_soon': lambda b: None,
           'work_mark_state': __import__('work_marks'), 'work_mark_row': lambda scope, key: {'mark': 'none'},
           'tab_indicator_display': lambda mark, state: ('ai:idle', None, False),
@@ -248,7 +248,7 @@ def test_ui_updates_keep_fresh_state_without_network_or_unchanged_widget_writes(
           'work_mark_row': lambda scope, key: {'mark': 'none'},
           '_indicator_pixbuf': lambda icon, color, frame=0: (icon, color, frame),
           '_set_indicator_frame': lambda image, icon, color, frame: image.set_from_pixbuf((icon, color, frame)),
-          'AI_SPRITES': 'comandos', '_indicator_animate': lambda hb: None}
+          '_indicator_animate': lambda hb: None}
     load({'update_dots', 'set_notif_badge', '_paint_all_tab_marks', 'paint_tab_mark', '_paint_tab_sticker', 'tab_indicator_display'}, ns)
     ns['update_dots']({'s': 'working'}, [{'session': 's', 'ts': 1}])
     ns['update_dots']({'s': 'working'}, [{'session': 's', 'ts': 2}])

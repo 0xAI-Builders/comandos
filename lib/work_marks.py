@@ -95,71 +95,64 @@ def icon_svg(name, color=None, size=16, phase=None):
             f'stroke-linecap="round" stroke-linejoin="round">{body}</svg>')
 
 
-# ---- Canal de la IA (grill 30-sep): hechos verificables, sprites pixel ----
-# Separado de la marca humana (que va como sticker). Cada estado es una tira
-# horizontal de cuadros del MISMO personaje (dash/icons/semaforos/<set>/<estado>.png);
-# la animación va a saltos, como el reloj de arena pixel.
+# ---- Canal de la IA: un punto de color por estado (1-oct-2026) --------------
+# Separado de la marca humana (que va como sticker). Antes era un sprite animado
+# («monito»); Jesús lo quitó por distraer y robar espacio: ahora el estado es el
+# color, igual en la pestaña y en la cabecera del pane, y solo «te necesita» late.
 AI_STATES = ("work", "need", "done", "error", "idle")
 AI_LABELS = {"work": ("Trabajando", "Working"), "need": ("Te necesita", "Needs you"),
              "done": ("Terminó", "Finished"), "error": ("Error", "Error"), "idle": ("Quieta", "Idle")}
-AI_COLORS = {"work": "#4ade80", "need": "#f5b83d", "done": "#4ade80", "error": "#f87171", "idle": "#5d6b7e"}
-# Sets elegibles (Ajustes → Apariencia). ``px``: cuadro nativo; ``tab``: tamaño en la
-# pestaña (múltiplo entero del nativo o el nativo, para píxel duro); ``frames``/``fps``
-# por estado. Quieta no se anima: una pestaña dormida no gasta cuadros.
-AI_SETS = {
-    "comandos": {"title": ("ComandOS bot", "ComandOS bot"), "px": 48, "tab": 24,
-                 "frames": {"work": 2, "need": 2, "done": 2, "error": 2, "idle": 2},
-                 "fps": {"work": 5, "need": 4, "done": 3, "error": 3},
-                 "credit": "Asset propio del proyecto"},
-    "kit": {"title": ("Burbujas (Kicked-in-Teeth)", "Bubbles (Kicked-in-Teeth)"), "px": 16, "tab": 16,
-            "frames": {"work": 3, "need": 3, "done": 3, "error": 3, "idle": 3},
-            "fps": {"work": 5, "need": 5, "done": 5, "error": 5},
-            "credit": "Kicked-in-Teeth · CC-BY-SA"},
-}
-DEFAULT_AI_SET = "comandos"
-AI_SPRITE_DIR = "/icons/semaforos"
+AI_COLORS = {"work": "#4ade80", "need": "#f5b83d", "done": "#60a5fa", "error": "#f87171", "idle": "#5d6b7e"}
+AI_DOT_PX = 12                       # caja del punto (el círculo mide 8 px; el halo del latido usa el resto)
+AI_PULSE_S = 1.4                     # «te necesita» late con este ciclo; los demás estados quedan quietos
+AI_PULSE_FRAMES = 14
 _AI_OF = {"working": "work", "awaiting_permission": "need", "awaiting_input": "need", "waiting": "need",
           "completed": "done", "done": "done", "failed": "error", "error": "error"}
 # Marca humana como sticker (nombres de las bandejas aprobadas).
 STICKERS = {"frozen": "Aparcado", "awaiting_reply": "Esperando", "resolved": "Hecho"}
 
 
-def ai_set(name):
-    """Set de sprites válido (cae al default)."""
-    return name if name in AI_SETS else DEFAULT_AI_SET
-
-
-def ai_sprite(state, set_name=None):
-    """Tira del estado: ruta web, tamaño nativo, cuadros y ciclo en segundos
-    (0 = quieto). Escritorio y remoto pintan lo mismo a partir de esto."""
-    s = AI_SETS[ai_set(set_name)]
-    state = state if state in AI_STATES else "idle"
-    frames, fps = s["frames"].get(state, 1), s["fps"].get(state)
-    return {"file": f"{AI_SPRITE_DIR}/{ai_set(set_name)}/{state}.png", "px": s["px"], "tab": s["tab"],
-            "frames": frames, "cycle": (frames / fps) if fps and frames > 1 else 0}
+def ai_state(name):
+    return name if name in AI_STATES else "idle"
 
 
 def ai_status(state):
-    """Estado de turno (N1 o /state del escritorio) → semáforo de la IA."""
+    """Estado de turno (N1 o /state del escritorio) → estado de la IA."""
     return _AI_OF.get(state or "", "idle")
 
 
-def ai_frame_index(name, seconds, set_name=None):
-    sp = ai_sprite(name, set_name)
-    return 0 if not sp["cycle"] else int((seconds % sp["cycle"]) / sp["cycle"] * sp["frames"]) % sp["frames"]
+def ai_cycle(name):
+    """Segundos del ciclo de animación (0 = quieto): solo «need» late."""
+    return AI_PULSE_S if ai_state(name) == "need" else 0
 
 
-def ai_icon_html(name, size=None, set_name=None):
-    """<span> con la tira como fondo; el CSS lo anima a saltos (steps)."""
-    sp = ai_sprite(name, set_name)
-    size = size or sp["tab"]
-    k = size / sp["px"]
-    cls = "ai-icon ai-sprite ai-" + (name if name in AI_STATES else "idle")
-    style = (f"width:{size}px;height:{size}px;background-image:url({sp['file']});"
-             f"background-size:{sp['frames'] * sp['px'] * k:g}px {size}px;--ai-w:{sp['frames'] * sp['px'] * k:g}px;"
-             f"--ai-frames:{sp['frames']};--ai-cycle:{sp['cycle']:g}s")
-    label = AI_LABELS.get(name, AI_LABELS["idle"])[0]
-    return f'<span class="{cls}" style="{style}" role="img" aria-label="{label}"></span>'
+def ai_frame_index(name, seconds):
+    cycle = ai_cycle(name)
+    return 0 if not cycle else int((seconds % cycle) / cycle * AI_PULSE_FRAMES) % AI_PULSE_FRAMES
+
+
+def ai_dot_svg(name, size=AI_DOT_PX, phase=None):
+    """SVG del punto para el escritorio (GdkPixbuf). ``phase`` 0..1 dibuja el halo
+    del latido de «need» en ese instante (el remoto lo anima por CSS)."""
+    name = ai_state(name)
+    color = AI_COLORS[name]
+    c, r = size / 2, size / 3
+    halo = ""
+    if name == "need" and phase is not None:
+        t = (phase % 1.0) * 2
+        t = t if t <= 1 else 2 - t              # ida y vuelta, como el box-shadow del remoto
+        halo = f'<circle cx="{c}" cy="{c}" r="{r + (size / 2 - r) * t:.2f}" fill="{color}" fill-opacity="{0.3 * (1 - t):.2f}"/>'
+    return (f'<svg xmlns="http://www.w3.org/2000/svg" width="{size}" height="{size}" viewBox="0 0 {size} {size}">'
+            f'{halo}<circle cx="{c}" cy="{c}" r="{r}" fill="{color}"/></svg>')
+
+
+def ai_icon_html(name, size=None):
+    """<span> del punto; workspace.css pinta el color y anima el latido de «need»."""
+    name = ai_state(name)
+    size = size or AI_DOT_PX
+    label = AI_LABELS[name][0]
+    return (f'<span class="ai-icon ai-dot ai-{name}" style="--ai-c:{AI_COLORS[name]};width:{size}px;height:{size}px" '
+            f'role="img" aria-label="{label}"></span>')
 
 
 def pane_key_for(panes, session, pane_id):

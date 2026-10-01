@@ -35,17 +35,12 @@
     favorite: '<path class="wm-twinkle" d="m12 3.6 2.6 5.3 5.8.8-4.2 4.1 1 5.8L12 16.9l-5.2 2.7 1-5.8-4.2-4.1 5.8-.8z"/>',
   };
 
-  // Canal de la IA (grill 30-sep): sprites pixel del MISMO personaje por estado,
-  // los mismos datos que lib/work_marks.py AI_SETS (paridad probada). La marca humana va aparte, como sticker.
+  // Canal de la IA (1-oct): un punto de color por estado, los mismos datos que
+  // lib/work_marks.py (paridad probada). Solo «te necesita» late. La marca humana va aparte, como sticker.
   const AI_STATES = ['work', 'need', 'done', 'error', 'idle'];
-  const AI_SETS = {
-    comandos: {title: ['ComandOS bot', 'ComandOS bot'], px: 48, tab: 24,
-      frames: {work: 2, need: 2, done: 2, error: 2, idle: 2}, fps: {work: 5, need: 4, done: 3, error: 3}, credit: 'Asset propio del proyecto'},
-    kit: {title: ['Burbujas (Kicked-in-Teeth)', 'Bubbles (Kicked-in-Teeth)'], px: 16, tab: 16,
-      frames: {work: 3, need: 3, done: 3, error: 3, idle: 3}, fps: {work: 5, need: 5, done: 5, error: 5}, credit: 'Kicked-in-Teeth · CC-BY-SA'},
-  };
-  const DEFAULT_AI_SET = 'comandos';
-  const AI_SPRITE_DIR = '/icons/semaforos';
+  const AI_COLORS = {work: '#4ade80', need: '#f5b83d', done: '#60a5fa', error: '#f87171', idle: '#5d6b7e'};
+  const AI_DOT_PX = 12;
+  const AI_PULSE_S = 1.4;
   const AI_LABELS = {work: ['Trabajando', 'Working'], need: ['Te necesita', 'Needs you'], done: ['Terminó', 'Finished'],
     error: ['Error', 'Error'], idle: ['Quieta', 'Idle']};
   const AI_OF = {working: 'work', awaiting_permission: 'need', awaiting_input: 'need', waiting: 'need',
@@ -62,27 +57,14 @@
       `stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" ` +
       `aria-hidden="true" focusable="false">${body}</svg>`;
   }
-  const aiSet = name => (Object.prototype.hasOwnProperty.call(AI_SETS, name) ? name : DEFAULT_AI_SET);
-  /** Set activo: html[data-ai-set] (pref ai_sprites) o el default. */
-  function currentAiSet() {
-    const d = typeof document !== 'undefined' && document.documentElement && document.documentElement.dataset;
-    return aiSet(d && d.aiSet);
-  }
-  /** Tira del estado: archivo, tamaño nativo, cuadros y ciclo (0 = quieto). Igual que ai_sprite() en Python. */
-  function aiSprite(state, setName) {
-    const id = aiSet(setName), s = AI_SETS[id];
-    state = AI_STATES.includes(state) ? state : 'idle';
-    const frames = s.frames[state] || 1, fps = s.fps[state];
-    return {file: `${AI_SPRITE_DIR}/${id}/${state}.png`, px: s.px, tab: s.tab, frames, cycle: fps && frames > 1 ? frames / fps : 0};
-  }
-  /** <span> con la tira como fondo; workspace.css lo anima a saltos (steps). */
-  function aiIconSvg(name, size, setName) {
-    const sp = aiSprite(name, setName || currentAiSet());
-    size = size || sp.tab;
-    const k = size / sp.px, w = +(sp.frames * sp.px * k).toFixed(2);
-    const state = AI_STATES.includes(name) ? name : 'idle';
-    return `<span class="ai-icon ai-sprite ai-${state}" style="width:${size}px;height:${size}px;background-image:url(${sp.file});` +
-      `background-size:${w}px ${size}px;--ai-w:${w}px;--ai-frames:${sp.frames};--ai-cycle:${sp.cycle}s" role="img" aria-label="${AI_LABELS[state][lang()]}"></span>`;
+  const aiState = name => (AI_STATES.includes(name) ? name : 'idle');
+  const aiCycle = name => (aiState(name) === 'need' ? AI_PULSE_S : 0);
+  /** <span> del punto; workspace.css pinta el color y anima el latido de «need». Igual que ai_icon_html() en Python. */
+  function aiIconSvg(name, size) {
+    const state = aiState(name);
+    size = size || AI_DOT_PX;
+    return `<span class="ai-icon ai-dot ai-${state}" style="--ai-c:${AI_COLORS[state]};width:${size}px;height:${size}px" ` +
+      `role="img" aria-label="${AI_LABELS[state][lang()]}"></span>`;
   }
   /** Dos canales: lo que pone la IA (semáforo) y lo que pones tú (sticker); la IA sugiere «Hecho». */
   function channels(mark, activityState) {
@@ -193,7 +175,7 @@
     const row = rowOf(target.scope, target.key);
     const c = channels(row.mark, activityFor(target, W.activity));
     const fav = target.scope === 'pane' && row.favorite;
-    const signature = [c.ai, c.sticker, c.suggest, fav, currentAiSet()].join('|');
+    const signature = [c.ai, c.sticker, c.suggest, fav].join('|');
     button._wmTarget = target;
     if (button._wmSignature === signature) return;
     button._wmSignature = signature;
@@ -359,6 +341,6 @@
     if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init); else init();
   }
 
-  return {MARKS, ICONS, iconSvg, display, channels, aiIconSvg, aiSprite, AI_SETS, AI_STATES, DEFAULT_AI_SET, aiSet, currentAiSet, STICKERS, targetForRow, activityFor, menuItems, nextIndex, indexMarks, label,
+  return {MARKS, ICONS, iconSvg, display, channels, aiIconSvg, aiCycle, AI_STATES, AI_COLORS, AI_LABELS, STICKERS, targetForRow, activityFor, menuItems, nextIndex, indexMarks, label,
           load, setMark, decorate, adopt, paint};
 });

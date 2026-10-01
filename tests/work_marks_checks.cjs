@@ -88,15 +88,18 @@ assert.equal(wm.channels('resolved', 'completed').suggest, false, 'already marke
 assert.equal(wm.channels('none', 'awaiting_permission').ai, 'need');
 assert.equal(wm.channels('none', 'failed').ai, 'error');
 assert.equal(wm.channels('none', null).ai, 'idle');
+// 1-oct: sin monitos. El estado es un punto de color (mismos hex que lib/work_marks.py); solo «need» late.
 for (const name of ['work', 'need', 'done', 'error', 'idle']) {
   const html = wm.aiIconSvg(name);
-  assert.match(html, new RegExp(`class="ai-icon ai-sprite ai-${name}"`));
-  assert.ok(html.includes(`/icons/semaforos/comandos/${name}.png`), `${name}: default set is the ComandOS bot`);
-  assert.ok(html.includes('width:24px;height:24px'), `${name}: 48 px strip shown at 24 px (integer scale)`);
-  assert.ok(!emoji.test(html), `${name} sprite icon must not use emoji`);
+  assert.match(html, new RegExp(`class="ai-icon ai-dot ai-${name}"`));
+  assert.ok(html.includes(`--ai-c:${wm.AI_COLORS[name]}`), `${name}: colour comes from AI_COLORS`);
+  assert.ok(html.includes('width:12px;height:12px'), `${name}: 12 px box by default`);
+  assert.ok(!html.includes('.png') && !emoji.test(html), `${name}: no sprite, no emoji`);
 }
-assert.ok(wm.aiIconSvg('need', 16, 'kit').includes('/icons/semaforos/kit/need.png'), 'Kicked-in-Teeth bubbles selectable');
-assert.equal(wm.aiSprite('idle').cycle, 0, 'idle is still'); assert.equal(wm.aiSprite('work').cycle, 0.4, '2 frames at 5 fps');
+assert.ok(wm.aiIconSvg('need', 16).includes('width:16px;height:16px'), 'size is configurable (pane header uses 16)');
+assert.equal(wm.aiCycle('idle'), 0, 'idle is still'); assert.equal(wm.aiCycle('work'), 0, 'working is still');
+assert.equal(wm.aiCycle('need'), 1.4, 'needs-you pulses');
+assert.equal(wm.AI_COLORS.done, '#60a5fa', 'finished is blue, distinct from working green');
 // A session shows its most urgent pane: need > error > work > done > idle.
 assert.equal(wm.activityFor({scope: 'session', key: 's'}, {a: {session: 's', state: 'completed'}, b: {session: 's', state: 'awaiting_input'}}), 'awaiting_input');
 console.log('two-channel checks ok');

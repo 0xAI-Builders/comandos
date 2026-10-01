@@ -39,8 +39,8 @@ def test_tabs_row_keeps_sort_and_drops_terminal_buttons():
     # pestañas como teclas, pero SOLO en el remoto ancho (en la app los pinta GTK).
     assert 'id="tab-term"' in nav and 'id="tab-new"' in nav
     css = (ROOT / "dash" / "workspace.css").read_text()
-    assert "#tab-term,#tab-new{display:none}" in css
-    assert "body.app.split:not(.inapp) :is(#tab-term,#tab-new,#tab-sort){display:grid" in css
+    assert "#tab-term,#tab-new,#tab-rows{display:none}" in css
+    assert "body.app.split:not(.inapp) :is(#tab-term,#tab-new,#tab-sort,#tab-rows){display:grid" in css
 
 
 def test_relocated_controls_keep_their_ids_inside_the_menu():

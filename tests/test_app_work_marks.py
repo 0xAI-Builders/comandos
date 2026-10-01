@@ -81,7 +81,6 @@ def load(responses):
         "Gtk": fake_gtk(), "tabs": {"sess": "box"}, "nb": SimpleNamespace(get_tab_label=lambda box: label), "tab_hb": lambda box: label,
         "_work_mark_pixbuf": lambda name: "pix:" + name,
         "_indicator_pixbuf": lambda icon, color, frame=0, scale=1, px_out=None: f"pix:{icon}:{color}:{frame}",
-        "AI_SPRITES": "comandos",
         "_indicator_animate": lambda hb: hb._dot.animated.append(hb._ind_icon),
         "STATE_CACHE": {}, "DOT_COLORS": {"waiting": "#D08770", "working": "#81A1C1"}, "DOT_IDLE": "#4B5568",
         "TAB_FAVORITES": set(), "toggle_tab_favorite": lambda key: None,
@@ -100,14 +99,18 @@ def load(responses):
 
 
 def test_marks_from_the_endpoint_paint_the_tab_indicator():
-    """Two channels (grill 30-sep): the indicator is the AI pixel semáforo; the
+    """Two channels: the indicator is the AI colour dot (1-oct, no sprites); the
     human mark is a sticker after the name; finished-and-unmarked suggests Hecho."""
     ns, _, _, image = load([])
     ns["STATE_CACHE"]["sess"] = "working"
     ns["apply_work_marks"]({"marks": [{"scope": "session", "key": "sess", "mark": "frozen", "favorite": False,
                                        "revision": 2}], "panes": []})
     assert image.pixbuf == "pix:ai:work:None:0" and "Trabajando" in image.tooltip
-    assert image.animated == ["ai:work"], "working loops continuously"
+    assert image.animated == [], "working is a still green dot"
+    ns["STATE_CACHE"]["sess"] = "waiting"
+    ns["apply_work_marks"]({"marks": [{"scope": "session", "key": "sess", "mark": "frozen", "favorite": False,
+                                       "revision": 2}], "panes": []})
+    assert image.pixbuf == "pix:ai:need:None:0" and image.animated == ["ai:need"], "only needs-you pulses"
     hb = ns["tab_hb"](None)
     assert hb._sticker.label == "Aparcado" and hb._sticker.shown is True
     assert hb._suggest.shown is False
@@ -119,9 +122,9 @@ def test_marks_from_the_endpoint_paint_the_tab_indicator():
 
 def test_indicator_shows_what_the_ai_knows():
     display = load([])[0]["tab_indicator_display"]
-    assert display("frozen", "working") == ("ai:work", None, True), "the human mark no longer hides the AI state"
-    assert display("none", "waiting") == ("ai:need", None, True)
-    assert display("none", "done") == ("ai:done", None, True)
+    assert display("frozen", "working") == ("ai:work", None, False), "the human mark no longer hides the AI state"
+    assert display("none", "waiting") == ("ai:need", None, True), "needs-you is the only animated dot"
+    assert display("none", "done") == ("ai:done", None, False)
     assert display("none", "") == ("ai:idle", None, False)
 
 

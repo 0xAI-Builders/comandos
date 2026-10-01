@@ -197,7 +197,8 @@ notebook > header { background: @BAR@; border: none; box-shadow: none; }
    (prototype-iguales.html, 30-sep), medida a medida: 44 px de alto, cada
    pestaña mide su contenido (0 12 px de aire, 8 px entre piezas), separador
    de 1 px, texto tenue que se aclara al pasar, activa con fondo levantado +
-   línea de acento abajo, ☆/✕ solo al pasar el cursor, ★ ámbar. */
+   línea de acento abajo, ☆/✕ solo al pasar el cursor, ★ ámbar. El punto de
+   estado va donde iba el monito (1-oct). */
 .tabstrip { background: @BAR@; border-bottom: 1px solid @LINE@; min-height: 44px; }
 .tabstrip-tabs { background: @BAR@; }
 .strip-tab {
@@ -208,6 +209,12 @@ notebook > header { background: @BAR@; border: none; box-shadow: none; }
 }
 .strip-tab:hover { color: @TEXT@; }
 .strip-tab.cur { color: @TEXT@; background-color: mix(@BAR@, @LINE2@, 0.35); box-shadow: inset 0 -2px 0 0 @BRAND@; }
+/* ⊞ «varias filas» (grill 1-oct): las MISMAS pestañas como chips de 28 px con
+   esquinas de 8 px, fondo del panel y 4 px entre ellas, envueltas en filas. */
+.tabstrip-rows, .tabstrip-rows flowboxchild, .strip-cell { background: @BAR@; padding: 0; margin: 0; border: none; outline: none; }
+.tabstrip-rows .strip-tab { background-color: mix(@BAR@, @LINE2@, 0.18); min-height: 28px; border-radius: 8px; border-right: none; }
+.tabstrip-rows .strip-tab:hover { background-color: mix(@BAR@, @LINE2@, 0.35); }
+.tabstrip-rows .strip-tab.cur { background-color: mix(@BAR@, @LINE2@, 0.35); }
 .strip-tab label { color: inherit; }
 .strip-tab label.tab-name { font-weight: 600; }
 .strip-tab label.tab-model, .tab-model { color: @FAINT@; font-family: 'Ubuntu Sans Mono', monospace; font-size: 10px; font-weight: 600; }
@@ -1966,47 +1973,21 @@ _INDICATOR_PIXBUFS = {}
 _INDICATOR = {"source": None, "t0": None}
 
 
-AI_SPRITES = (PREFS.get("ai_sprites") if isinstance(PREFS, dict) else None) or work_mark_state.DEFAULT_AI_SET
-_AI_STRIPS = {}
-
-
-def _ai_strip(state):
-    """Tira PNG del estado para el set activo (dash/icons/semaforos/<set>/), cacheada."""
-    key = (AI_SPRITES, state)
-    if key not in _AI_STRIPS:
-        rel = work_mark_state.ai_sprite(state, AI_SPRITES)["file"].lstrip("/")
-        _AI_STRIPS[key] = GdkPixbuf.Pixbuf.new_from_file(os.path.join(CC_REPO, "dash", rel))
-    return _AI_STRIPS[key]
-
-
 def ai_frame_pixbuf(state, frame, scale=1, px_out=None):
-    """Cuadro ``frame`` del semáforo, recortado de la tira y escalado a píxel
-    duro (NEAREST) al tamaño de pestaña (o ``px_out``) × factor HiDPI."""
-    sp = work_mark_state.ai_sprite(state, AI_SPRITES)
-    strip = _ai_strip(state)
-    px = sp["px"]
-    frame = frame % max(1, sp["frames"])
-    cell = strip.new_subpixbuf(frame * px, 0, px, px)
-    size = (px_out or sp["tab"]) * scale
-    return cell if size == px else cell.scale_simple(size, size, GdkPixbuf.InterpType.NEAREST)
-
-
-def apply_ai_sprites(set_name=None):
-    """Cambia el set de semáforos (Ajustes) y repinta todas las pestañas."""
-    global AI_SPRITES
-    AI_SPRITES = work_mark_state.ai_set(set_name or AI_SPRITES)
-    _INDICATOR_PIXBUFS.clear()
-    for key, box in tabs.items():
-        hb = tab_hb(box)
-        image = getattr(hb, "_dot", None) if hb is not None else None
-        if image is not None:
-            image._ind = None
-            paint_tab_mark(hb, key)
+    """Cuadro ``frame`` del punto de estado (lib/work_marks.ai_dot_svg, el mismo
+    color que el remoto) rasterizado al tamaño de pestaña × factor HiDPI; solo
+    «te necesita» tiene más de un cuadro (el halo del latido)."""
+    size = int((px_out or work_mark_state.AI_DOT_PX) * scale)
+    phase = (frame / work_mark_state.AI_PULSE_FRAMES) if work_mark_state.ai_cycle(state) else None
+    loader = GdkPixbuf.PixbufLoader.new_with_type("svg")
+    loader.write(work_mark_state.ai_dot_svg(state, size, phase).encode())
+    loader.close()
+    return loader.get_pixbuf()
 
 
 def _indicator_pixbuf(icon, color, frame=0, scale=1, px_out=None):
     """Frame ``frame`` of the icon's loop, rendered once and cached. ``ai:<n>``
-    is the AI sprite semáforo (grill 30-sep); the rest are the E1 line icons."""
+    is the AI state dot (1-oct, no more sprites); the rest are the E1 line icons."""
     key = (icon, color, frame, scale, px_out)
     if key not in _INDICATOR_PIXBUFS:
         if icon.startswith("ai:"):
@@ -2022,8 +2003,8 @@ def _indicator_pixbuf(icon, color, frame=0, scale=1, px_out=None):
 
 
 def _set_indicator_frame(image, icon, color, frame):
-    """Pone el cuadro en la imagen; los sprites van como superficie con el
-    factor de escala de la pantalla para que no se vean borrosos en HiDPI."""
+    """Pone el cuadro en la imagen; el punto va como superficie con el factor
+    de escala de la pantalla para que no se vea borroso en HiDPI."""
     if icon.startswith("ai:"):
         scale = max(1, image.get_scale_factor())
         pb = _indicator_pixbuf(icon, color, frame, scale, getattr(image, "_px", None))
@@ -2033,10 +2014,10 @@ def _set_indicator_frame(image, icon, color, frame):
 
 
 def tab_indicator_display(mark, state):
-    """(icon, colour, animated): el semáforo pixel de lo que sabe la IA. La
+    """(icon, colour, animated): el punto de color de lo que sabe la IA. La
     marca humana ya no lo tapa: va aparte como sticker (dos canales, grill 30-sep)."""
     ai = work_mark_state.ai_status(state)
-    return "ai:" + ai, None, bool(work_mark_state.ai_sprite(ai, AI_SPRITES)["cycle"])
+    return "ai:" + ai, None, bool(work_mark_state.ai_cycle(ai))
 
 
 def paint_tab_mark(hb, key):
@@ -2107,18 +2088,18 @@ def _indicator_tick():
         image = getattr(hb, "_dot", None)
         icon = getattr(hb, "_ind_icon", None)
         ai = icon[3:] if isinstance(icon, str) and icon.startswith("ai:") else None
-        if image is not None and (icon in work_mark_state.CYCLE_S or (ai and work_mark_state.ai_sprite(ai, AI_SPRITES)["cycle"])):
+        if image is not None and (icon in work_mark_state.CYCLE_S or (ai and work_mark_state.ai_cycle(ai))):
             looping = True
-            frame = work_mark_state.ai_frame_index(ai, t, AI_SPRITES) if ai else work_mark_state.frame_index(icon, t)
+            frame = work_mark_state.ai_frame_index(ai, t) if ai else work_mark_state.frame_index(icon, t)
             if getattr(image, "_frame", 0) != frame:
                 image._frame = frame
                 _set_indicator_frame(image, icon, image._ind[1], frame)
         for pill in getattr(box, "_pills", []) or []:
             card_ai = getattr(pill, "_ai", None)
             card_icon = getattr(card_ai, "_ai_icon", "") if card_ai is not None else ""
-            if card_icon.startswith("ai:") and work_mark_state.ai_sprite(card_icon[3:], AI_SPRITES)["cycle"]:
+            if card_icon.startswith("ai:") and work_mark_state.ai_cycle(card_icon[3:]):
                 looping = True
-                frame = work_mark_state.ai_frame_index(card_icon[3:], t, AI_SPRITES)
+                frame = work_mark_state.ai_frame_index(card_icon[3:], t)
                 if getattr(card_ai, "_frame", 0) != frame:
                     card_ai._frame = frame
                     _set_indicator_frame(card_ai, card_icon, None, frame)
@@ -3101,7 +3082,7 @@ def apply_terminal_prefs(p=None):
 # Prefs que, al cambiar en Ajustes (desde la app, Chrome O el celular),
 # deben reflejarse EN TIEMPO REAL en las terminales abiertas.
 _LIVE_PREF_KEYS = ("font_family", "font_size", "cursor_shape", "cursor_blink",
-                   "terminal_padding", "terminal_opacity", "theme")
+                   "terminal_padding", "terminal_opacity", "theme", "tabs_layout")
 
 
 _POLL_UI_LOCK = threading.Lock()
@@ -3170,6 +3151,8 @@ def poll_state_loop():
                 last_prefs = snap
                 if theme_changed and snap.get("theme"):
                     _queue_poll_update(apply_theme, snap["theme"])
+                if snap.get("tabs_layout") in ("row", "rows"):
+                    _queue_poll_update(apply_tabs_layout, snap["tabs_layout"], False)
                 # tras el tema tambien: recolorea con la OPACIDAD correcta
                 _queue_poll_update(apply_terminal_prefs, p)
         except Exception:
@@ -3921,6 +3904,8 @@ def apply_theme(name):
             button.set_image(_themed_icon_image(icon_name, icon_size))
         except Exception:
             pass
+    if "apply_tabs_layout" in globals():
+        apply_tabs_layout(TABS_LAYOUT["mode"], False)     # el ⊞ activo vuelve al color de acento del tema nuevo
     for box in list(tabs.values()) + [hub]:
         t = getattr(box, "_term", None)
         if t:
@@ -5044,10 +5029,10 @@ def _motor_badge(motor):
 
 
 def _pane_card_ai(sess):
-    """Semáforo de la IA de esta sesión dentro de la tarjeta (mismo sprite que la pestaña)."""
+    """Punto de estado de la IA de esta sesión dentro de la tarjeta (el mismo que la pestaña)."""
     icon, _, animated = tab_indicator_display(work_mark_row("session", sess)["mark"], STATE_CACHE.get(sess, ""))
     image = Gtk.Image()
-    image._ind, image._frame, image._px = (icon, None), 0, 16    # robot chico, cabe en el renglón de cabecera
+    image._ind, image._frame, image._px = (icon, None), 0, work_mark_state.AI_DOT_PX
     try:
         _set_indicator_frame(image, icon, None, 0)
     except Exception:
@@ -5666,7 +5651,7 @@ def _refresh_tab_models():
         sig = (json.dumps(panes or [], sort_keys=True) + "|" + json.dumps(sorted(geo_now))
                + "|" + json.dumps(sorted((k, _PANE_CMD.get(k, "")) for k in geo_now))
                + "|" + json.dumps([THEME.get("fg"), THEME.get("brand")])
-               + "|" + work_mark_state.ai_status(STATE_CACHE.get(session, "")) + "|" + AI_SPRITES
+               + "|" + work_mark_state.ai_status(STATE_CACHE.get(session, ""))
                + "|" + work_mark_row("session", session)["mark"])
         if sig != getattr(box, "_pill_sig", ""):
             box._pill_sig = sig
@@ -5715,12 +5700,12 @@ def _cycle_tab(step):
         nb.set_current_page((nb.get_current_page() + step) % n)
 
 # Barra de pestanas: boton "+" (nueva terminal) y "?" (atajos)
-def _themed_icon_image(name, size=16):
+def _themed_icon_image(name, size=16, color=None):
     svg_path = os.path.join(_ICONS_DIR, f"{name}.svg")
     if os.path.isfile(svg_path):
         try:
             with open(svg_path, "rb") as f:
-                data = f.read().replace(b"currentColor", THEME.get("dim", "#9AA6BF").encode())
+                data = f.read().replace(b"currentColor", (color or THEME.get("dim", "#9AA6BF")).encode())
             loader = GdkPixbuf.PixbufLoader.new_with_type("svg")
             loader.set_size(size, size)
             loader.write(data); loader.close()
@@ -6455,12 +6440,45 @@ _strip_start.pack_start(_left_btn, False, False, 0)
 _strip_start.pack_start(_tab_prev, False, False, 0)
 _strip_start.show_all()
 nb.set_action_widget(_strip_start, Gtk.PackType.START)
+# ⊞ «varias filas» (1-oct): la misma tira envuelta para ver todas las pestañas;
+# pref compartida tabs_layout (row | rows), igual en el remoto (#tab-rows).
+TABS_LAYOUT = {"mode": "row"}
+
+
+def apply_tabs_layout(mode, persist=True):
+    mode = "rows" if mode == "rows" else "row"
+    if mode != TABS_LAYOUT["mode"]:
+        TABS_LAYOUT["mode"] = mode
+        nb.set_rows(mode == "rows")
+        for b in (_tab_prev, _tab_next):
+            b.set_visible(mode == "row")
+    rows = mode == "rows"
+    _rows_btn.set_image(_themed_icon_image("rows", 18, THEME.get("brand") if rows else None))
+    _rows_btn.set_tooltip_text(("Una fila" if rows else "Varias filas") if ES else ("One row" if rows else "Several rows"))
+    if persist:
+        def _save():
+            try:
+                request = urllib.request.Request(BASE_URL + "/prefs-set", data=json.dumps({"tabs_layout": mode}).encode(),
+                                                 headers={"Content-Type": "application/json"}, method="POST")
+                urllib.request.urlopen(request, timeout=5).read()
+            except Exception:
+                pass
+        threading.Thread(target=_save, daemon=True).start()
+    return False
+
+
+_rows_btn = _icon_btn("rows", "Varias filas" if ES else "Several rows",
+                      lambda *_: apply_tabs_layout("row" if TABS_LAYOUT["mode"] == "rows" else "rows"), size=18)
+_rows_btn.get_style_context().add_class("cc-key")
+_rows_btn.get_style_context().add_class("cc-key-rows")
 _strip_actions = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=0)
 _strip_actions.get_style_context().add_class("strip-actions")
-for _b in (_quick_term_btn, _plus, _sort_btn, _tab_next):
+for _b in (_quick_term_btn, _plus, _sort_btn, _rows_btn, _tab_next):
     _strip_actions.pack_start(_b, False, False, 0)
 _strip_actions.show_all()
 nb.set_action_widget(_strip_actions, Gtk.PackType.END)
+if (PREFS.get("tabs_layout") if isinstance(PREFS, dict) else None) == "rows":
+    apply_tabs_layout("rows", False)
 _headerbar.show_all()
 
 # Puente tablero -> app: las tarjetas piden abrir pestanas aqui
@@ -6605,9 +6623,6 @@ def on_msg(mgr, res):
             return
         if d.get("buttonStyle") in ("sutil", "arcade", "tecla", "pixel", "consola"):
             GLib.idle_add(apply_button_style, d["buttonStyle"])
-            return
-        if d.get("aiSprites") in work_mark_state.AI_SETS:
-            GLib.idle_add(apply_ai_sprites, d["aiSprites"])
             return
         if d.get("headerAction") in HEADER_ACTIONS:
             GLib.idle_add(HEADER_ACTIONS[d["headerAction"]])

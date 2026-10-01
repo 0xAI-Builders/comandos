@@ -10,6 +10,10 @@ La API del resto de la app no cambia: ``append_page``/``insert_page`` reciben la
 etiqueta, ``get_tab_label``/``set_tab_label`` la devuelven y la sustituyen, y las
 señales de GtkNotebook (switch-page, page-added/removed/reordered) mantienen la
 barra al día aunque las páginas se muevan desde gtk_workspace.
+
+Dos acomodos (1-oct-2026, pref ``tabs_layout``): «una fila» (``set_rows(False)``,
+la de siempre, con desplazamiento) y «varias filas» (``set_rows(True)``): las
+mismas pestañas en un FlowBox que envuelve y muestra todas, sin desplazar.
 """
 import gi
 
@@ -27,6 +31,26 @@ class TabStripNotebook(Gtk.Notebook):
         self._pending = {}       # página -> etiqueta mientras GTK la añade
         self.strip = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=0)
         self.strip.get_style_context().add_class("tabstrip-tabs")
+        # Varias filas: el mismo juego de pestañas envuelto; se intercambia con el
+        # scroller en la fila según el acomodo elegido.
+        self.flow = Gtk.FlowBox()
+        self.flow.get_style_context().add_class("tabstrip-tabs")
+        self.flow.get_style_context().add_class("tabstrip-rows")
+        self.flow.set_selection_mode(Gtk.SelectionMode.NONE)
+        self.flow.set_homogeneous(False)
+        self.flow.set_row_spacing(4)
+        self.flow.set_column_spacing(4)
+        self.flow.set_min_children_per_line(1)
+        self.flow.set_max_children_per_line(200)
+        self.flow.set_halign(Gtk.Align.FILL)
+        self.flow.set_valign(Gtk.Align.START)
+        self.flow.set_margin_start(6)
+        self.flow.set_margin_end(6)
+        self.flow.set_margin_top(6)
+        self.flow.set_margin_bottom(6)
+        self.flow.set_hexpand(True)
+        self.flow.set_no_show_all(True)
+        self.rows = False
         self.scroller = Gtk.ScrolledWindow()
         self.scroller.set_policy(Gtk.PolicyType.EXTERNAL, Gtk.PolicyType.NEVER)
         self.scroller.set_overlay_scrolling(True)
@@ -40,8 +64,10 @@ class TabStripNotebook(Gtk.Notebook):
         self._end = Gtk.Box()
         self.row.pack_start(self._start, False, False, 0)
         self.row.pack_start(self.scroller, True, True, 0)
+        self.row.pack_start(self.flow, True, True, 0)
         self.row.pack_start(self._end, False, False, 0)
         self.row.show_all()
+        self.flow.hide()
         self.connect("page-added", self._on_added)
         self.connect("page-removed", self._on_removed)
         self.connect("page-reordered", self._on_reordered)
@@ -76,6 +102,55 @@ class TabStripNotebook(Gtk.Notebook):
             box.remove(old)
         box.pack_start(widget, False, False, 0)
         widget.show()
+
+    # ---- acomodo: una fila ⇄ varias filas ------------------------------------
+    def set_rows(self, rows):
+        """``True``: todas las pestañas a la vista en filas; ``False``: una fila con desplazamiento."""
+        rows = bool(rows)
+        if rows == self.rows:
+            return
+        self.rows = rows
+        order = [self._items[p] for p in self._pages_in_order() if p in self._items]
+        for item in order:
+            self._detach_item(item)
+        for i, item in enumerate(order):
+            self._attach_item(item, i)
+        ctx = self.row.get_style_context()
+        (ctx.add_class if rows else ctx.remove_class)("rows")
+        if rows:
+            self.scroller.hide()
+            self.flow.show()
+        else:
+            self.flow.hide()
+            self.scroller.show()
+        self._paint_current()
+
+    def _pages_in_order(self):
+        return [self.get_nth_page(i) for i in range(self.get_n_pages())]
+
+    def _attach_item(self, item, position):
+        if self.rows:
+            self.flow.insert(item, position)
+            child = item.get_parent()
+            if child is not None:
+                child.set_can_focus(False)
+                child.get_style_context().add_class("strip-cell")
+                child.show()
+        else:
+            self.strip.pack_start(item, False, False, 0)
+            self.strip.reorder_child(item, position)
+        item.show()
+
+    def _detach_item(self, item):
+        parent = item.get_parent()
+        if parent is None:
+            return
+        if isinstance(parent, Gtk.FlowBoxChild):
+            parent.remove(item)
+            self.flow.remove(parent)
+            parent.destroy()
+        else:
+            parent.remove(item)
 
     # ---- sincronía con las páginas ----------------------------------------
     @staticmethod
@@ -120,9 +195,7 @@ class TabStripNotebook(Gtk.Notebook):
         item.add(label)
         self._labels[page] = label
         self._items[page] = item
-        self.strip.pack_start(item, False, False, 0)
-        self.strip.reorder_child(item, num)
-        item.show()
+        self._attach_item(item, num)
         label.show()
         self._paint_current()
 
@@ -132,13 +205,18 @@ class TabStripNotebook(Gtk.Notebook):
         if item is not None:
             if label is not None and label.get_parent() is item:
                 item.remove(label)
-            self.strip.remove(item)
+            self._detach_item(item)
             item.destroy()
         # la etiqueta se conserva: gtk_workspace la reutiliza al volver la página
 
     def _on_reordered(self, _nb, page, num):
         item = self._items.get(page)
-        if item is not None:
+        if item is None:
+            return
+        if self.rows:
+            self._detach_item(item)
+            self._attach_item(item, num)
+        else:
             self.strip.reorder_child(item, num)
 
     def _on_switch(self, _nb, page, _num):
@@ -152,7 +230,7 @@ class TabStripNotebook(Gtk.Notebook):
             ctx = item.get_style_context()
             (ctx.add_class if p is page else ctx.remove_class)("cur")
         item = self._items.get(page)
-        if item is not None:
+        if item is not None and not self.rows:
             self._scroll_to(item)
         return False
 
@@ -169,6 +247,8 @@ class TabStripNotebook(Gtk.Notebook):
             adj.set_value(alloc.x + alloc.width - adj.get_page_size())
 
     def scroll_by(self, dx):
+        if self.rows:
+            return
         adj = self.scroller.get_hadjustment()
         adj.set_value(max(adj.get_lower(), min(adj.get_upper() - adj.get_page_size(), adj.get_value() + dx)))
 
