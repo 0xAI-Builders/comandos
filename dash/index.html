@@ -465,7 +465,7 @@
   .nf-empty{font-size:13px;color:var(--dim);padding:6px 2px}
   #pomo-panel{position:fixed;z-index:60;background:var(--panel);border:1px solid var(--line2);
     border-radius:16px;padding:18px;display:flex;flex-direction:column;gap:14px;
-    box-shadow:0 16px 44px #000A;width:280px;max-width:92vw}
+    box-shadow:0 16px 44px #000A;width:280px;max-width:92vw;max-height:calc(100vh - 16px);overflow-y:auto;overscroll-behavior:contain}
   .pp-ring{position:relative;width:150px;height:150px;margin:0 auto}
   .pp-ring svg{transform:rotate(-90deg)}
   .pp-ring .bgc{stroke:var(--line);fill:none}
@@ -7910,7 +7910,7 @@ if("serviceWorker" in navigator)
 <script src="/workspace.js?v=5ef84088e7bd"></script>
 <script src="/work-marks.js?v=semaforo3"></script>
 <script src="/ui-sounds.js"></script>
-<script src="/pomodoro.js?v=turquesa1"></script>
+<script src="/pomodoro.js?v=scroll1"></script>
 <script src="/vendor/markdown-it-15.0.2.umd.min.js"></script>
 <script src="/vendor/purify-3.4.16.min.js"></script>
 <script src="/news-reader.js" data-autoinstall></script>

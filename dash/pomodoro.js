@@ -623,7 +623,10 @@
     if (!panel) return;
     if (!panel.classList.contains('hidden')) { panel.classList.add('hidden'); return; }
     const r = e && e.currentTarget ? e.currentTarget.getBoundingClientRect() : { height: 0 };
-    panel.style.top = (r.height ? r.bottom + 8 : 8) + 'px';
+    const top = r.height ? r.bottom + 8 : 8;
+    panel.style.top = top + 'px';
+    // La tarjeta nunca pasa del borde de la ventana: lo que no cabe se desplaza dentro.
+    panel.style.maxHeight = Math.max(160, window.innerHeight - top - 8) + 'px';
     const width = Math.min(560, window.innerWidth - 16);
     if (r.height) { panel.style.left = Math.max(8, Math.min(r.left, window.innerWidth - width - 8)) + 'px'; panel.style.right = 'auto'; }
     else { panel.style.left = 'auto'; panel.style.right = '12px'; }
