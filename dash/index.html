@@ -6038,7 +6038,21 @@ function renderTabbar(){
   });
   updateTabNavigation();
 }
+// Varias filas: la altura de la tira solo crece mientras no cambie el número de pestañas.
+// Si un cambio de etiqueta reacomodara las filas, la terminal cambiaría de alto, tmux
+// redimensionaría los panes y cada TUI se redibujaría entera (1-oct).
+let tabRowsHold = {n: -1, h: 0};
+function holdTabRowsHeight(){
+  const bar = document.getElementById("tabbar");
+  if(!bar) return;
+  if(!document.body.classList.contains("tabs-rows")){ if(tabRowsHold.h){ bar.style.minHeight = ""; tabRowsHold = {n: -1, h: 0}; } return; }
+  const n = bar.children.length;
+  if(n !== tabRowsHold.n){ bar.style.minHeight = ""; tabRowsHold = {n, h: 0}; }
+  const h = bar.offsetHeight;
+  if(h > tabRowsHold.h){ tabRowsHold.h = h; bar.style.minHeight = h + "px"; }
+}
 function updateTabNavigation(){
+  holdTabRowsHeight();
   const bar = document.getElementById("tabbar");
   const prev = document.getElementById("tab-prev"), next = document.getElementById("tab-next");
   if(prev) prev.disabled = bar.scrollLeft <= 1;
@@ -6999,6 +7013,8 @@ async function loadPrefs(){
 // ⊞ una fila ⇄ varias filas (pref compartida tabs_layout; el escritorio hace lo mismo con su tira nativa).
 function applyTabsLayout(mode){
   const rows = mode === "rows";
+  tabRowsHold = {n: -1, h: 0};
+  const bar = document.getElementById("tabbar"); if(bar) bar.style.minHeight = "";
   document.body.classList.toggle("tabs-rows", rows);
   const b = $("#tab-rows");
   if(b){ b.setAttribute("aria-pressed", String(rows)); b.title = rows ? tf("Una fila", "One row") : tf("Varias filas", "Several rows"); b.setAttribute("aria-label", b.title); }

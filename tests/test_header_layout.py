@@ -173,3 +173,12 @@ def test_menu_and_servers_popovers_behave():
                          capture_output=True, text=True, timeout=20)
     assert out.returncode == 0, out.stderr
     assert out.stdout.strip() == "ok"
+
+
+def test_remote_rows_height_only_grows_while_the_tab_count_is_the_same():
+    """1-oct: en «varias filas» un cambio de etiqueta no debe cambiar el alto de la
+    terminal (tmux redimensionaría los panes y Claude Code se redibujaría entera)."""
+    index = (ROOT / "dash" / "index.html").read_text()
+    hold = index.split("function holdTabRowsHeight(){", 1)[1].split("\n}\n", 1)[0]
+    assert "bar.children.length" in hold and "bar.style.minHeight = h + \"px\"" in hold and "h > tabRowsHold.h" in hold
+    assert "function updateTabNavigation(){\n  holdTabRowsHeight();" in index

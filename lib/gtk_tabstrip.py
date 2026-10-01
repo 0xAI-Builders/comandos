@@ -50,6 +50,12 @@ class TabStripNotebook(Gtk.Notebook):
         self.flow.set_margin_bottom(6)
         self.flow.set_hexpand(True)
         self.flow.set_no_show_all(True)
+        # La altura de las filas solo crece (1-oct): si un cambio de etiqueta
+        # (modelo, «+1», sticker) reacomodara las filas, la zona de terminales
+        # cambiaría de alto, tmux redimensionaría todos los panes y cada TUI se
+        # redibujaría entera. Se recalcula solo al alternar o al abrir/cerrar pestañas.
+        self._rows_h = 0
+        self.flow.connect("size-allocate", self._hold_rows_height)
         self.rows = False
         self.scroller = Gtk.ScrolledWindow()
         self.scroller.set_policy(Gtk.PolicyType.EXTERNAL, Gtk.PolicyType.NEVER)
@@ -110,6 +116,7 @@ class TabStripNotebook(Gtk.Notebook):
         if rows == self.rows:
             return
         self.rows = rows
+        self._release_rows_height()
         order = [self._items[p] for p in self._pages_in_order() if p in self._items]
         for item in order:
             self._detach_item(item)
@@ -124,6 +131,15 @@ class TabStripNotebook(Gtk.Notebook):
             self.flow.hide()
             self.scroller.show()
         self._paint_current()
+
+    def _hold_rows_height(self, _flow, alloc):
+        if self.rows and alloc.height > self._rows_h:
+            self._rows_h = alloc.height
+            self.flow.set_size_request(-1, alloc.height)
+
+    def _release_rows_height(self):
+        self._rows_h = 0
+        self.flow.set_size_request(-1, -1)
 
     def _pages_in_order(self):
         return [self.get_nth_page(i) for i in range(self.get_n_pages())]
@@ -195,6 +211,8 @@ class TabStripNotebook(Gtk.Notebook):
         item.add(label)
         self._labels[page] = label
         self._items[page] = item
+        if self.rows:
+            self._release_rows_height()
         self._attach_item(item, num)
         label.show()
         self._paint_current()
@@ -207,6 +225,8 @@ class TabStripNotebook(Gtk.Notebook):
                 item.remove(label)
             self._detach_item(item)
             item.destroy()
+            if self.rows:
+                self._release_rows_height()
         # la etiqueta se conserva: gtk_workspace la reutiliza al volver la página
 
     def _on_reordered(self, _nb, page, num):

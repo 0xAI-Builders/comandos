@@ -85,11 +85,22 @@ def test_rows_mode_wraps_every_tab_and_back_keeps_order():
     assert nb.row.get_allocated_height() > one_row_h, "wraps into several rows"
     tops = {c.get_allocation().y for c in cells}
     assert len(tops) > 1
+    # Una etiqueta que cambia (modelo, «+1») no debe mover la altura: si bajara,
+    # tmux redimensionaría todos los panes y cada TUI se redibujaría entera.
+    held = nb.row.get_allocated_height()
+    for l in labels:
+        l.set_text("x")
+    pump()
+    assert nb.row.get_allocated_height() == held, "rows height only grows while the tab count is the same"
+    for i, l in enumerate(labels):
+        l.set_text(f"Sesión larga {i}")
+    pump()
     extra, extra_lbl = Gtk.Label(label="x"), Gtk.Label(label="Nueva")
     nb.insert_page(extra, extra_lbl, 0); extra.show()
     nb.reorder_child(pages[5], 1)
     nb.remove_page(nb.page_num(pages[11]))
     pump()
+    assert nb._rows_h <= held + 30, "opening/closing tabs recomputes the height"
     order = [nb.get_tab_label(nb.get_nth_page(i)) for i in range(nb.get_n_pages())]
     assert [c.get_child().get_child() for c in nb.flow.get_children()] == order
     nb.set_rows(False)
