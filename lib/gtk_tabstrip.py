@@ -13,7 +13,8 @@ barra al día aunque las páginas se muevan desde gtk_workspace.
 
 Dos acomodos (1-oct-2026, pref ``tabs_layout``): «una fila» (``set_rows(False)``,
 la de siempre, con desplazamiento) y «varias filas» (``set_rows(True)``): las
-mismas pestañas en un FlowBox que envuelve y muestra todas, sin desplazar.
+mismas pestañas repartidas en renglones según su ancho natural (como el
+``flex-wrap`` del remoto; GtkFlowBox no sirve: alinea en columnas de igual ancho).
 """
 import gi
 
@@ -31,31 +32,32 @@ class TabStripNotebook(Gtk.Notebook):
         self._pending = {}       # página -> etiqueta mientras GTK la añade
         self.strip = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=0)
         self.strip.get_style_context().add_class("tabstrip-tabs")
-        # Varias filas: el mismo juego de pestañas envuelto; se intercambia con el
-        # scroller en la fila según el acomodo elegido.
-        self.flow = Gtk.FlowBox()
+        # Varias filas: renglones (Box horizontales) dentro de una columna; se
+        # intercambia con el scroller en la fila según el acomodo elegido. Va en
+        # su propio ScrolledWindow (sin barras) para que un renglón ancho nunca
+        # empuje el ancho mínimo de la ventana.
+        self.flow = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=4)
         self.flow.get_style_context().add_class("tabstrip-tabs")
         self.flow.get_style_context().add_class("tabstrip-rows")
-        self.flow.set_selection_mode(Gtk.SelectionMode.NONE)
-        self.flow.set_homogeneous(False)
-        self.flow.set_row_spacing(4)
-        self.flow.set_column_spacing(4)
-        self.flow.set_min_children_per_line(1)
-        self.flow.set_max_children_per_line(200)
-        self.flow.set_halign(Gtk.Align.FILL)
-        self.flow.set_valign(Gtk.Align.START)
-        self.flow.set_margin_start(6)
-        self.flow.set_margin_end(6)
-        self.flow.set_margin_top(6)
-        self.flow.set_margin_bottom(6)
-        self.flow.set_hexpand(True)
-        self.flow.set_no_show_all(True)
+        for side in ("start", "end", "top", "bottom"):
+            getattr(self.flow, "set_margin_" + side)(6)
+        self.rows_view = Gtk.ScrolledWindow()
+        self.rows_view.set_policy(Gtk.PolicyType.EXTERNAL, Gtk.PolicyType.NEVER)
+        self.rows_view.set_propagate_natural_height(True)
+        self.rows_view.add(self.flow)
+        self.rows_view.set_hexpand(True)
+        self.rows_view.set_valign(Gtk.Align.START)
+        self.rows_view.set_no_show_all(True)
+        self.rows_view.get_style_context().add_class("tabstrip-rows")
+        self._wrap = []          # pestañas en orden mientras está en varias filas
+        self._wrap_sig = None    # (ancho, anchos naturales) del último reparto
+        self._wrap_idle = None
         # La altura de las filas solo crece (1-oct): si un cambio de etiqueta
         # (modelo, «+1», sticker) reacomodara las filas, la zona de terminales
         # cambiaría de alto, tmux redimensionaría todos los panes y cada TUI se
         # redibujaría entera. Se recalcula solo al alternar o al abrir/cerrar pestañas.
         self._rows_h = 0
-        self.flow.connect("size-allocate", self._hold_rows_height)
+        self.rows_view.connect("size-allocate", self._on_rows_allocate)
         self.rows = False
         self.scroller = Gtk.ScrolledWindow()
         self.scroller.set_policy(Gtk.PolicyType.EXTERNAL, Gtk.PolicyType.NEVER)
@@ -70,10 +72,10 @@ class TabStripNotebook(Gtk.Notebook):
         self._end = Gtk.Box()
         self.row.pack_start(self._start, False, False, 0)
         self.row.pack_start(self.scroller, True, True, 0)
-        self.row.pack_start(self.flow, True, True, 0)
+        self.row.pack_start(self.rows_view, True, True, 0)
         self.row.pack_start(self._end, False, False, 0)
         self.row.show_all()
-        self.flow.hide()
+        self.rows_view.hide()
         self.connect("page-added", self._on_added)
         self.connect("page-removed", self._on_removed)
         self.connect("page-reordered", self._on_reordered)
@@ -126,46 +128,90 @@ class TabStripNotebook(Gtk.Notebook):
         (ctx.add_class if rows else ctx.remove_class)("rows")
         if rows:
             self.scroller.hide()
+            self.rows_view.show()
             self.flow.show()
         else:
-            self.flow.hide()
+            self.rows_view.hide()
             self.scroller.show()
         self._paint_current()
 
-    def _hold_rows_height(self, _flow, alloc):
-        if self.rows and alloc.height > self._rows_h:
+    def _on_rows_allocate(self, _view, alloc):
+        if not self.rows:
+            return
+        if alloc.height > self._rows_h:
             self._rows_h = alloc.height
-            self.flow.set_size_request(-1, alloc.height)
+            self.rows_view.set_size_request(-1, alloc.height)
+        if self._wrap_signature(alloc.width) != self._wrap_sig and self._wrap_idle is None:
+            self._wrap_idle = GLib.idle_add(self._reflow)
 
     def _release_rows_height(self):
         self._rows_h = 0
-        self.flow.set_size_request(-1, -1)
+        self.rows_view.set_size_request(-1, -1)
+
+    def _wrap_signature(self, width):
+        return (width, tuple(i.get_preferred_width()[1] for i in self._wrap))
+
+    def _reflow(self):
+        """Reparte las pestañas en renglones por su ancho natural (flex-wrap)."""
+        self._wrap_idle = None
+        width = self.rows_view.get_allocated_width() - 12
+        if self.rows and width <= 1:
+            return False
+        for line in self.flow.get_children():
+            for item in line.get_children():
+                line.remove(item)
+            self.flow.remove(line)
+            line.destroy()
+        if not self.rows:
+            return False
+        self._wrap_sig = self._wrap_signature(width + 12)
+        line, used = None, 0
+        for item in self._wrap:
+            w = item.get_preferred_width()[1]
+            if line is None or (used and used + 4 + w > width):
+                line = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=4)
+                self.flow.pack_start(line, False, False, 0)
+                line.show()
+                used = 0
+            line.pack_start(item, False, False, 0)
+            item.show()
+            used += (4 if used else 0) + w
+        return False
+
+    def _reflow_soon(self):
+        self._wrap_sig = None
+        if self._wrap_idle is None:
+            self._wrap_idle = GLib.idle_add(self._reflow)
+
+    def rows_items(self):
+        """Pestañas en el orden en que se ven en varias filas (renglón a renglón)."""
+        return [i for line in self.flow.get_children() for i in line.get_children()]
 
     def _pages_in_order(self):
         return [self.get_nth_page(i) for i in range(self.get_n_pages())]
 
     def _attach_item(self, item, position):
+        # Chip de varias filas = remoto: 28 px de alto y 10 px de aire. GTK3: el
+        # EventBox ignora min-height/padding de CSS, así que va por código.
+        item.set_size_request(-1, 28 if self.rows else -1)
+        label = item.get_child()
+        if label is not None:
+            label.set_margin_start(10 if self.rows else 12)
+            label.set_margin_end(10 if self.rows else 12)
         if self.rows:
-            self.flow.insert(item, position)
-            child = item.get_parent()
-            if child is not None:
-                child.set_can_focus(False)
-                child.get_style_context().add_class("strip-cell")
-                child.show()
+            self._wrap.insert(max(0, min(position, len(self._wrap))) if position >= 0 else len(self._wrap), item)
+            self._reflow_soon()
         else:
             self.strip.pack_start(item, False, False, 0)
             self.strip.reorder_child(item, position)
         item.show()
 
     def _detach_item(self, item):
+        if item in self._wrap:
+            self._wrap.remove(item)
+            self._reflow_soon()
         parent = item.get_parent()
-        if parent is None:
-            return
-        if isinstance(parent, Gtk.FlowBoxChild):
-            parent.remove(item)
-            self.flow.remove(parent)
-            parent.destroy()
-        else:
+        if parent is not None:
             parent.remove(item)
 
     # ---- sincronía con las páginas ----------------------------------------

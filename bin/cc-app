@@ -211,7 +211,7 @@ notebook > header { background: @BAR@; border: none; box-shadow: none; }
 .strip-tab.cur { color: @TEXT@; background-color: mix(@BAR@, @LINE2@, 0.35); box-shadow: inset 0 -2px 0 0 @BRAND@; }
 /* ⊞ «varias filas» (grill 1-oct): las MISMAS pestañas como chips de 28 px con
    esquinas de 8 px, fondo del panel y 4 px entre ellas, envueltas en filas. */
-.tabstrip-rows, .tabstrip-rows flowboxchild, .strip-cell { background: @BAR@; padding: 0; margin: 0; border: none; outline: none; }
+.tabstrip-rows, .tabstrip-rows viewport { background: @BAR@; border: none; }
 .tabstrip-rows .strip-tab { background-color: mix(@BAR@, @LINE2@, 0.18); min-height: 28px; border-radius: 8px; border-right: none; }
 .tabstrip-rows .strip-tab:hover { background-color: mix(@BAR@, @LINE2@, 0.35); }
 .tabstrip-rows .strip-tab.cur { background-color: mix(@BAR@, @LINE2@, 0.35); }

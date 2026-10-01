@@ -79,12 +79,20 @@ def test_rows_mode_wraps_every_tab_and_back_keeps_order():
     one_row_h = nb.row.get_allocated_height()
     nb.set_rows(True)
     pump()
-    cells = nb.flow.get_children()
-    assert [c.get_child().get_child() for c in cells] == labels, "same tabs, same order"
-    assert not nb.strip.get_children() and nb.flow.get_visible() and not nb.scroller.get_visible()
+    cells = nb.rows_items()
+    assert [c.get_child() for c in cells] == labels, "same tabs, same order"
+    assert not nb.strip.get_children() and nb.rows_view.get_visible() and not nb.scroller.get_visible()
     assert nb.row.get_allocated_height() > one_row_h, "wraps into several rows"
-    tops = {c.get_allocation().y for c in cells}
-    assert len(tops) > 1
+    lines = nb.flow.get_children()
+    assert len(lines) > 1
+    # flex-wrap, no columnas: cada pestaña mide su contenido y van pegadas (4 px).
+    first = lines[0].get_children()
+    assert all(i.get_allocated_width() == i.get_preferred_width()[1] for i in cells), "natural width, never stretched"
+    assert all(i.get_allocated_height() == 28 for i in cells), "28 px chips, like the remote"
+    assert all(b.get_allocation().x - (a.get_allocation().x + a.get_allocated_width()) == 4 for a, b in zip(first, first[1:]))
+    view_w = nb.rows_view.get_allocated_width()
+    assert all(sum(i.get_allocated_width() for i in ln.get_children()) + 4 * (len(ln.get_children()) - 1) <= view_w - 12
+               for ln in lines), "every row fits the strip"
     # Una etiqueta que cambia (modelo, «+1») no debe mover la altura: si bajara,
     # tmux redimensionaría todos los panes y cada TUI se redibujaría entera.
     held = nb.row.get_allocated_height()
@@ -102,11 +110,11 @@ def test_rows_mode_wraps_every_tab_and_back_keeps_order():
     pump()
     assert nb._rows_h <= held + 30, "opening/closing tabs recomputes the height"
     order = [nb.get_tab_label(nb.get_nth_page(i)) for i in range(nb.get_n_pages())]
-    assert [c.get_child().get_child() for c in nb.flow.get_children()] == order
+    assert [c.get_child() for c in nb.rows_items()] == order
     nb.set_rows(False)
     pump()
-    assert [i.get_child() for i in nb.strip.get_children()] == order and not nb.flow.get_children()
-    assert nb.scroller.get_visible() and not nb.flow.get_visible()
+    assert [i.get_child() for i in nb.strip.get_children()] == order and not nb.rows_items()
+    assert nb.scroller.get_visible() and not nb.rows_view.get_visible()
     nb.set_current_page(3)
     pump()
     cur = [i for i in nb.strip.get_children() if i.get_style_context().has_class("cur")]
