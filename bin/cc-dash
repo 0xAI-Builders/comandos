@@ -812,6 +812,7 @@ def news_editions_payload():
 
 def news_edition_payload(edition_id):
     import news_editions
+    import news_reading
     conn = news_conn()
     if edition_id == "latest":
         latest = news_editions.latest_readable(conn)
@@ -821,7 +822,133 @@ def news_edition_payload(edition_id):
     if not _NEWS_EDITION_ID_RE.match(edition_id or ""):
         return 400, {"error": "Edición inválida"}
     found = news_editions.get_edition(conn, edition_id)
-    return (200, found) if found else (404, {"error": "Edición no encontrada"})
+    if not found:
+        return 404, {"error": "Edición no encontrada"}
+    counts = news_reading.story_counts(conn, [st["id"] for st in found["stories"]])
+    for st in found["stories"]:
+        st["counts"] = counts.get(st["id"], {"notes": 0, "chat": 0, "saved": False})
+    return 200, found
+
+
+# Lectura de una noticia: fuente capturada, traducción, chat, notas y guardadas.
+# Chat y traducción corren en hilos (el agente tarda); el lector consulta.
+_NEWS_MEDIA_RE = re.compile(r"^[0-9a-f]{32}\.(png|jpg|webp|gif|avif)$")
+_NEWS_MEDIA_TYPES = {"png": "image/png", "jpg": "image/jpeg", "webp": "image/webp", "gif": "image/gif",
+                     "avif": "image/avif"}
+_NEWS_AGENTS = threading.Semaphore(2)
+
+
+def _news_int(value):
+    try:
+        number = int(str(value))
+    except (TypeError, ValueError):
+        return None
+    return number if 0 < number < 2**53 else None
+
+
+def _news_asker():
+    import news_editions
+    return news_editions.make_asker(news_editions.load_config(news_editions_config_path()))
+
+
+def _news_agent_job(work):
+    """Corre work(conn, ask) en un hilo con su propia conexión."""
+    ask = _news_asker()                       # falla aquí (sin cadena) antes de prometer nada
+
+    def run():
+        with _NEWS_AGENTS:
+            conn = app_state.connect()
+            try:
+                app_state.migrate(conn)
+                work(conn, ask)
+            except Exception as exc:
+                sys.stderr.write(f"cc-dash news agent: {exc!r}\n")
+            finally:
+                conn.close()
+    threading.Thread(target=run, daemon=True).start()
+
+
+def news_get(path, query):
+    import news_editions
+    import news_reading
+    conn = news_conn()
+    if path == "/news/source":
+        sid = _news_int((query.get("id") or [""])[0])
+        src = news_editions.get_source(conn, sid) if sid else None
+        if not src:
+            return 404, {"error": "Fuente no encontrada"}
+        src["translation"] = news_reading.translation(conn, sid, "es")
+        return 200, src
+    if path == "/news/chat":
+        story = _news_int((query.get("story") or [""])[0])
+        if not story or not news_reading.story_row(conn, story):
+            return 404, {"error": "Noticia no encontrada"}
+        return 200, {"messages": news_reading.chat_history(conn, story)}
+    if path == "/news/notes":
+        story = _news_int((query.get("story") or [""])[0])
+        return 200, news_reading.list_notes(conn, story_id=story, query=(query.get("q") or [""])[0][:200])
+    if path == "/news/saved":
+        return 200, {"stories": news_reading.saved_stories(conn)}
+    return 404, {"error": "Ruta desconocida"}
+
+
+def news_media(name):
+    import news_editions
+    if not _NEWS_MEDIA_RE.match(name or ""):
+        return None, None
+    path = os.path.join(news_editions.media_dir(), name)
+    try:
+        with open(path, "rb") as fh:
+            return _NEWS_MEDIA_TYPES[name.rsplit(".", 1)[1]], fh.read()
+    except OSError:
+        return None, None
+
+
+def news_post(path, data):
+    import news_reading
+    conn = news_conn()
+    try:
+        if path == "/news/saved":
+            story = _news_int(data.get("storyId"))
+            got = news_reading.set_saved(conn, story, bool(data.get("saved"))) if story else None
+            return (200, {"saved": got}) if got is not None else (404, {"error": "Noticia no encontrada"})
+        if path == "/news/notes":
+            action = data.get("action")
+            if action == "add":
+                return 200, {"note": news_reading.add_note(conn, _news_int(data.get("storyId")), data.get("text"))}
+            if action == "update":
+                return 200, {"note": news_reading.update_note(conn, _news_int(data.get("noteId")), data.get("text"))}
+            if action == "delete":
+                return 200, {"deleted": news_reading.delete_note(conn, _news_int(data.get("noteId")))}
+            return 400, {"error": "Acción de nota desconocida"}
+        if path == "/news/chat/note":
+            return 200, news_reading.toggle_chat_note(conn, _news_int(data.get("chatId")))
+        if path == "/news/chat":
+            story = _news_int(data.get("storyId"))
+            try:
+                _news_asker()
+            except RuntimeError as exc:
+                return 503, {"error": str(exc)}
+            pending = news_reading.start_chat(conn, story, data.get("message"))
+            _news_agent_job(lambda c, ask: news_reading.run_chat(c, story, pending, ask))
+            return 200, {"messages": news_reading.chat_history(conn, story)}
+        if path == "/news/translate":
+            sid = _news_int(data.get("sourceId"))
+            try:
+                _news_asker()
+            except RuntimeError as exc:
+                return 503, {"error": str(exc)}
+            start, state = news_reading.start_translation(conn, sid)
+            if start:
+                _news_agent_job(lambda c, ask: news_reading.run_translation(c, sid, ask))
+            return 200, {"translation": state}
+    except LookupError as exc:
+        return 404, {"error": str(exc).strip("'")}
+    except ValueError as exc:
+        return 400, {"error": str(exc)}
+    except RuntimeError as exc:
+        return 409, {"error": str(exc)}
+    return 404, {"error": "Ruta desconocida"}
 
 
 # ---- N4: Web Push al Android (suscripción y prueba son acciones explícitas) ----
@@ -1005,8 +1132,23 @@ def _news_editions_loop():
         conn = app_state.connect()
         app_state.migrate(conn)
         return conn
-    _news_scheduler = news_editions.EditionScheduler(connect, news_editions_config_path(), news_watch_lib,
-                                                     notify=_news_edition_notice)
+    import news_radar
+    import news_reading
+
+    def recent_urls():
+        conn = connect()
+        try:
+            return news_editions.recent_story_urls(conn, int(time.time() * 1000) - 48 * 3600 * 1000)
+        finally:
+            conn.close()
+    boot = connect()
+    try:
+        news_reading.recover(boot)
+    finally:
+        boot.close()
+    _news_scheduler = news_editions.EditionScheduler(
+        connect, news_editions_config_path(), news_watch_lib, notify=_news_edition_notice,
+        fetch=news_editions.make_radar_fetcher(news_radar, recent_urls=recent_urls))
     time.sleep(120)
     while True:
         try:
@@ -8146,7 +8288,8 @@ class Handler(http.server.SimpleHTTPRequestHandler):
     # asi la PWA instala y carga sin depender de cookies en el webview movil.
     API_GET = ("/session-config-history", "/pane-extensions", "/pomodoro", "/providers", "/optimization/plans", "/proxy", "/model/status", "/sovereignty", "/ui-log/summary", "/state", "/usage/state", "/usage/guard", "/usage/changes", "/usage/provider-compare", "/fs/dirs", "/models/latest", "/news/latest", "/news/edition", "/push/", "/notifs/count", "/usage/analytics", "/usage/interactions", "/usage/experiments", "/opencode/models", "/model-tiers", "/dedication", "/active-tab", "/tab-models", "/session-profiles", "/extension-usage", "/session-brain", "/project-profiles", "/events", "/conf", "/prefs", "/ssh", "/tabs", "/workspace", "/notices",
                "/tab-history", "/remote-state", "/remote-qr.png", "/snippets", "/tmux-mouse", "/commands/catalog", "/chains",
-               "/webterm-token", "/allocation/status")
+               "/webterm-token", "/allocation/status", "/news/source", "/news/chat", "/news/notes",
+               "/news/saved", "/news/media")
     API_GET += ("/work-marks",)  # E1; /events/v2 queda cubierto por /events
 
     PUBLIC_ASSET_RE = re.compile(r"^/[A-Za-z0-9_-]+(?:/[A-Za-z0-9_-]+)*\.(?:css|js)$")
@@ -8310,6 +8453,12 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             return self._json(*push_key_payload())
         if urllib.parse.urlsplit(self.path).path == "/news/editions":
             return self._json(200, news_editions_payload())
+        if urllib.parse.urlsplit(self.path).path.startswith("/news/media/"):
+            kind, body = news_media(urllib.parse.urlsplit(self.path).path[len("/news/media/"):])
+            return self._bytes(200, kind, body) if body else self._json(404, {"error": "Imagen no encontrada"})
+        if urllib.parse.urlsplit(self.path).path in ("/news/source", "/news/chat", "/news/notes", "/news/saved"):
+            parts = urllib.parse.urlsplit(self.path)
+            return self._json(*news_get(parts.path, urllib.parse.parse_qs(parts.query)))
         if urllib.parse.urlsplit(self.path).path == "/news/edition":
             query = urllib.parse.parse_qs(urllib.parse.urlsplit(self.path).query)
             ids = query.get("id") or []
@@ -8988,6 +9137,9 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             return self._json(*push_subscription_write("POST", data))
         if self.path == "/push/test":
             return self._json(*push_test(data))
+
+        if self.path in ("/news/saved", "/news/notes", "/news/chat", "/news/chat/note", "/news/translate"):
+            return self._json(*news_post(self.path, data))
 
         if self.path == "/news/refresh":
             try:

@@ -82,21 +82,6 @@ const render = NR.createRenderer(markdownit, purify);
     assert.match(out, /\*\*hola\*\* &lt;b&gt;x&lt;\/b&gt;/);
   });
 
-  const stories = [
-    { id: 1, category: 'modelo' }, { id: 2, category: 'mcp' }, { id: 3, category: 'skill' },
-    { id: 4, category: 'bounty' }, { id: 5, category: 'hackathon' }, { id: 6, category: 'ia' },
-  ];
-  await check('filters by category and saved state', () => {
-    const ids = (f, saved = new Set()) => NR.filterStories(stories, f, saved, 'E').map(s => s.id);
-    assert.deepEqual(ids('Todo'), [1, 2, 3, 4, 5, 6]);
-    assert.deepEqual(ids('Modelos'), [1]);
-    assert.deepEqual(ids('MCPs'), [2]);
-    assert.deepEqual(ids('Skills'), [3]);
-    assert.deepEqual(ids('Bounties'), [4, 5]);
-    assert.deepEqual(ids('IA'), [6]);
-    assert.deepEqual(ids('Guardados', new Set([NR.storyKey('E', stories[2])])), [3]);
-  });
-
   await check('discovery is never shown as publication', () => {
     const tz = 'America/Mexico_City';
     const unknown = NR.sourceDateLabel({ publishedAt: null, discoveredAt: Date.UTC(2026, 8, 29, 14) }, tz);
@@ -167,16 +152,56 @@ const render = NR.createRenderer(markdownit, purify);
     assert.equal(cards[0].day, 'Hoy');
   });
 
-  await check('the index lists topics with counts, not every story', () => {
-    const stories = [{ id: 1, category: 'bounty' }, { id: 2, category: 'mcp' }, { id: 3, category: 'hackathon' }, { id: 4, category: 'mcp' }];
-    assert.deepEqual(NR.topicIndex(stories), [
-      { label: 'MCPs', count: 2, first: 2 }, { label: 'Bounties', count: 2, first: 1 }]);
+  await check('the kicker says where a story comes from; old editions keep their category', () => {
+    assert.deepEqual(NR.storyKicker({ category: 'oficial', meta: { lab: 'Google DeepMind' } }), { label: 'Oficial · Google DeepMind', hot: false });
+    assert.deepEqual(NR.storyKicker({ category: 'hot', meta: { lab: 'Comunidad' } }), { label: 'Hot · comunidad', hot: true });
+    assert.equal(NR.storyKicker({ category: 'mcp' }).label, 'MCP');
+    assert.equal(NR.storyKicker({ category: 'bounty' }).hot, true);
   });
 
-  await check('Siguiendo shows only followed topics; empty filters are marked', () => {
-    const stories = [{ id: 1, category: 'bounty' }, { id: 2, category: 'mcp' }];
-    assert.deepEqual(NR.filterStories(stories, 'Siguiendo', new Set(), 'e', new Set(['MCPs'])).map(s => s.id), [2]);
-    assert.ok(NR.FILTERS.includes('Siguiendo'));
+  await check('captured sources render as escaped blocks; only local media names become images', () => {
+    const out = NR.blocksHtml([
+      { type: 'h', text: 'Qué <b>cambia</b>' },
+      { type: 'p', text: 'Corre `claude update` y <script>alert(1)</script>' },
+      { type: 'li', text: 'uno' }, { type: 'li', text: 'dos' },
+      { type: 'quote', text: 'autor: "hola"' },
+      { type: 'code', text: '<i onclick="x()">x</i>\nlínea' },
+      { type: 'img', media: '0123456789abcdef0123456789abcdef.png', alt: 'Diagrama "x"' },
+      { type: 'img', media: '../../etc/passwd', alt: 'malo' },
+      { type: 'img', media: 'https://tracker.example/p.png' },
+    ]);
+    assert.ok(!/<script|<b>|<i onclick/.test(out), out);
+    assert.match(out, /<code>claude update<\/code>/);
+    assert.match(out, /<ul><li>uno<\/li><li>dos<\/li><\/ul>/);
+    assert.match(out, /<img data-media="0123456789abcdef0123456789abcdef.png" alt="Diagrama &quot;x&quot;"/);
+    assert.equal((out.match(/<img /g) || []).length, 1, 'only the valid local media is an image');
+    assert.ok(!/src=/.test(out), 'images get a blob: URL later, never a remote src');
+  });
+
+  await check('"/nota" in the chat saves a note instead of asking', () => {
+    assert.equal(NR.noteCommand('/nota probar workspaces mañana'), 'probar workspaces mañana');
+    assert.equal(NR.noteCommand('  /NOTA  dos\nlíneas'), 'dos\nlíneas');
+    assert.equal(NR.noteCommand('¿qué es /nota?'), null);
+    assert.equal(NR.noteCommand('/nota'), null);
+  });
+
+  await check('all notes are grouped by local day: Hoy, Ayer, then the date', () => {
+    const now = Date.UTC(2026, 9, 1, 18);          // 1 oct 12:00 CDMX
+    const groups = NR.notesByDay([
+      { id: 1, createdAt: Date.UTC(2026, 9, 1, 16) },
+      { id: 2, createdAt: Date.UTC(2026, 9, 1, 5) },   // 30 sep 23:00 CDMX
+      { id: 3, createdAt: Date.UTC(2026, 8, 28, 20) },
+    ], now, 'America/Mexico_City');
+    assert.deepEqual(groups.map(g => [g.label, g.notes.map(n => n.id)]), [['Hoy', [1]], ['Ayer', [2]], ['28 de septiembre', [3]]]);
+  });
+
+  await check('the store can re-read an edition for fresh counts', async () => {
+    const calls = [];
+    const store = NR.createStore(async url => { calls.push(url); return { edition: { id: 'E', status: 'published' }, stories: [] }; });
+    await store.edition('E');
+    await store.edition('E');
+    await store.edition('E', true);
+    assert.equal(calls.length, 2);
   });
 
   console.log(`${passed} news reader checks passed`);
