@@ -853,10 +853,13 @@ def notices_focus_active():
 
 def notices_is_live():
     """(sesión, pane) -> ¿esa terminal sigue viva? Para no contar pedidos de terminales cerradas."""
-    try:
-        live = {(i.get("session"), i.get("pane") or "") for i in read_states_cached() if i.get("alive")}
+    try:   # una consulta directa a tmux (ms); read_states tarda ~1 s y frenaba /notices/watch
+        r = tmux("list-panes", "-a", "-F", "#{session_name}\t#{pane_id}")
+        if r.returncode != 0:
+            return None                  # sin tmux legible: no se filtra nada
+        live = {tuple(line.split("\t", 1)) for line in r.stdout.splitlines() if "\t" in line}
     except Exception:
-        return None                      # sin tmux legible: no se filtra nada
+        return None
     sessions = {s for s, _ in live}
     return lambda s, p: (s, p or "") in live if p else s in sessions
 
