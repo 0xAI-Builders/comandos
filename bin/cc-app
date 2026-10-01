@@ -274,11 +274,9 @@ notebook stack { background: @BG@; }
 .side-x:hover { color: @TEXT@; background-color: @LINE@; }
 .side-x.armed { color: #ff9e9e; background-color: mix(@BAR@, #ef6b6b, 0.24); font-size: 11px; font-weight: 600; padding: 0 8px; }
 .side-btn.side-plus { color: @BRAND@; font-weight: 700; }
-/* Persiana (grill 1-oct): chevron en su propio hueco; escondidas, cabecera rayada */
+/* Persiana (grill 1-oct): chevron en su propio hueco que se voltea al esconder (sin rayas) */
 .side-btn.side-tog { border-left: 1px solid @LINE@; min-width: 38px; padding: 0; }
 .side-btn.side-tog:hover { background-color: mix(@BAR@, @LINE2@, 0.5); }
-.side-head.closed { background-image: repeating-linear-gradient(0deg, @BAR@ 0px, @BAR@ 4px, @LINE@ 4px, @LINE@ 5px); }
-.side-head.closed .side-tab { background-color: transparent; }
 .tabplus { color: @DIM@; padding: 4px 8px; margin: 0 1px; border: none; background: none;
   border-radius: 8px; min-width: 28px; min-height: 28px; font-family: 'Ubuntu Sans Mono', monospace; font-size: 14px;
   -gtk-icon-effect: none; }

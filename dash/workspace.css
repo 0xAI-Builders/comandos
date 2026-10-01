@@ -858,14 +858,13 @@ body.ws-dragging #command-sidebar .sb-term{pointer-events:none}
 #command-sidebar .cs-terms .tw button[data-flat].tx.armed{opacity:1;padding:0 8px;font-size:11px;font-weight:600;color:var(--cs-red);background:color-mix(in srgb,var(--cs-red) 18%,transparent)}
 @media(pointer:coarse){#command-sidebar .cs-terms .tw button[data-flat].tx{opacity:1;min-width:30px}}
 /* Persiana (grill 1-oct): el chevron vive en su propio hueco a la derecha y gira al
-   esconder; escondidas, la cabecera se ve como una persiana bajada. */
+   esconder. Sin rayas: Jesús las descartó. */
 #command-sidebar .cs-terms .tog-slot{align-self:stretch;flex:none;display:flex;margin-top:-6px;border-left:1px solid var(--cs-line)}
 #command-sidebar .cs-terms .tog-slot:empty{display:none}
 #command-sidebar .cs-terms button[data-flat].tog{width:40px;min-height:0;padding:0;border:0;border-radius:0;display:grid;place-items:center;color:var(--cs-dim);background:transparent}
 #command-sidebar .cs-terms button[data-flat].tog:hover{color:var(--cs-text);background:var(--cs-hover)}
 #command-sidebar .cs-terms button[data-flat].tog svg{transition:transform .35s cubic-bezier(.5,1.6,.4,1)}
 #command-sidebar.terms-hidden .cs-terms button[data-flat].tog svg{transform:rotate(180deg)}
-#command-sidebar.terms-hidden .cs-terms{background:repeating-linear-gradient(0deg,var(--cs-panel) 0 4px,var(--cs-line) 4px 5px)}
 #command-sidebar.terms-hidden .cs-terms .tw,#command-sidebar.terms-hidden .cs-terms .t.plus{opacity:.75}
 @media (prefers-reduced-motion:reduce){#command-sidebar .cs-terms button[data-flat].tog svg{transition:none}}
 @media(pointer:coarse){:is(#command-sidebar,.chain-only) :is(.cmds,.srows) .cmd{padding-block:10px}:is(#command-sidebar,.chain-only) .cmd .opts button[data-flat]}

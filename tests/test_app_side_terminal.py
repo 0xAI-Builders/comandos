@@ -85,7 +85,7 @@ def test_side_tabs_close_with_confirmation_and_the_toggle_is_a_persiana():
     assert '_side_term_action("close", k)' in tab and '"¿Cerrar?" if closing else "✕"' in tab
     render = APP[APP.index("def _side_head_render("):APP.index("def _side_tabs_from_web(")]
     assert '"chevron-up" if hidden else "chevron-down"' in render and '("closed")' in render
-    assert ".side-head.closed { background-image: repeating-linear-gradient(" in APP
+    assert "repeating-linear-gradient" not in APP[APP.index(".side-head {"):APP.index(".tabplus {")]   # sin rayas
     kill = HTML[HTML.index("async function sidebarKillTerm("):HTML.index("function activePaneTarget(")]
     assert "isQuickTermSession(sess)" in kill and 'api("/kill", {session: sess})' in kill
     assert "killTerm: sidebarKillTerm" in HTML
