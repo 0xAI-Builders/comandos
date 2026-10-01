@@ -8114,7 +8114,7 @@ class Handler(http.server.SimpleHTTPRequestHandler):
     # Endpoints con DATOS o ACCIONES: exigen token. El shell estatico (HTML,
     # sw.js, manifest, iconos) NO — no revela nada (es codigo open-source) y
     # asi la PWA instala y carga sin depender de cookies en el webview movil.
-    API_GET = ("/session-config-history", "/pane-extensions", "/pomodoro", "/providers", "/optimization/plans", "/proxy", "/model/status", "/sovereignty", "/ui-log/summary", "/state", "/usage/state", "/usage/guard", "/usage/changes", "/usage/provider-compare", "/fs/dirs", "/models/latest", "/news/latest", "/news/edition", "/push/", "/notifs/count", "/usage/analytics", "/usage/interactions", "/usage/experiments", "/opencode/models", "/model-tiers", "/dedication", "/active-tab", "/session-profiles", "/extension-usage", "/session-brain", "/project-profiles", "/events", "/conf", "/prefs", "/ssh", "/tabs", "/workspace", "/notices",
+    API_GET = ("/session-config-history", "/pane-extensions", "/pomodoro", "/providers", "/optimization/plans", "/proxy", "/model/status", "/sovereignty", "/ui-log/summary", "/state", "/usage/state", "/usage/guard", "/usage/changes", "/usage/provider-compare", "/fs/dirs", "/models/latest", "/news/latest", "/news/edition", "/push/", "/notifs/count", "/usage/analytics", "/usage/interactions", "/usage/experiments", "/opencode/models", "/model-tiers", "/dedication", "/active-tab", "/tab-models", "/session-profiles", "/extension-usage", "/session-brain", "/project-profiles", "/events", "/conf", "/prefs", "/ssh", "/tabs", "/workspace", "/notices",
                "/tab-history", "/remote-state", "/remote-qr.png", "/snippets", "/tmux-mouse", "/commands/catalog", "/chains",
                "/webterm-token", "/allocation/status")
     API_GET += ("/work-marks",)  # E1; /events/v2 queda cubierto por /events
@@ -8175,6 +8175,18 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             return self._json(200, {"providers": opencode_models()})
         if self.path.startswith("/model-tiers"):
             return self._json(200, load_model_tiers())
+        if self.path.startswith("/tab-models"):
+            # Modelo/motor/estado por pane de una sesión: la cabecera de pane del
+            # remoto (term.html) pinta lo mismo que la Tarjeta del escritorio.
+            q = urllib.parse.parse_qs(urllib.parse.urlparse(self.path).query)
+            sess_q = (q.get("session") or [""])[0]
+            try:
+                with open(APP_TAB_MODELS_FILE) as f:
+                    models = json.load(f)
+            except Exception:
+                models = {}
+            entry = models.get(sess_q) if isinstance(models, dict) else None
+            return self._json(200, {"session": sess_q, "panes": (entry or {}).get("panes") or []})
         if self.path.startswith("/active-tab"):
             try:
                 with open(os.path.join(HOOKS, "app-tab-active.json")) as f:

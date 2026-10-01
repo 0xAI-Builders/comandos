@@ -42,7 +42,7 @@
     overflow: hidden; background:var(--term-bg); }
   #term {
     width: 100%; max-width: 100%;
-    padding: 8px 6px 6px 10px;
+    padding: 22px 6px 6px 10px;   /* 8 + 14 px: la cabecera de los panes de arriba crece hacia aquí (igual que el escritorio) */
     box-sizing: border-box;
     min-width: 0; min-height: 0;
     overflow: hidden;
@@ -138,11 +138,36 @@
   *::-webkit-scrollbar-track{background:var(--term-bg)}
   *::-webkit-scrollbar-thumb{background:var(--term-line2);border-radius:10px;border:3px solid var(--term-bg);background-clip:padding-box}
   *::-webkit-scrollbar-thumb:hover{background:var(--term-brand);background-clip:padding-box}
+
+  /* Marcos y cabecera B por pane (grill 30-sep), mismas medidas que el escritorio. */
+  #pane-chrome { position:absolute; inset:0; pointer-events:none; z-index:3; }
+  #pane-chrome .pc-frame { position:absolute; box-sizing:border-box; border:1px solid var(--term-line2); border-radius:10px; }
+  #pane-chrome .pc-frame.on { border-color:#4ade80; }
+  #pane-chrome .pc-head { position:absolute; box-sizing:border-box; display:flex; align-items:center; gap:8px; padding:0 10px;
+    border-radius:9px 9px 0 0; background:color-mix(in srgb, var(--term-panel) 65%, var(--term-line2)); font:11px var(--sans); color:var(--term-text); }
+  #pane-chrome .pc-head b { font-weight:700; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:30%; }
+  #pane-chrome .pc-sep { width:1px; height:14px; background:var(--term-line2); flex:none; }
+  #pane-chrome .pc-logo { width:14px; height:14px; border-radius:4px; color:#fff; font:800 9px/14px var(--sans); text-align:center; flex:none; }
+  #pane-chrome .pc-model { font:600 11px var(--mono); white-space:nowrap; }
+  #pane-chrome .pc-eff { color:var(--term-dim, #8a98ab); }
+  #pane-chrome .pc-ok { color:#4ade80; font-weight:800; }
+  #pane-chrome .pc-keys { margin-left:auto; display:flex; gap:10px; flex:none; }
+  #pane-chrome .pc-keys button { pointer-events:auto; height:22px; min-width:0; padding:0 14px; display:inline-flex; align-items:center; gap:6px;
+    border:1px solid var(--term-line2); border-radius:8px; background:var(--term-panel2); color:var(--term-dim, #8a98ab);
+    font:600 11px var(--sans); cursor:pointer; box-shadow:0 2px 0 var(--term-line2); }
+  #pane-chrome .pc-keys button:hover { color:var(--term-text); }
+  #pane-chrome .pc-keys button:active { transform:translateY(2px); box-shadow:none; }
+  #pane-chrome .ai-sprite { display:block; flex:none; image-rendering:pixelated; background-repeat:no-repeat;
+    animation:pc-strip var(--ai-cycle,0s) steps(var(--ai-frames,1)) infinite; }
+  @keyframes pc-strip { to { background-position-x:calc(-1 * var(--ai-w)); } }
+  @media (prefers-reduced-motion:reduce) { #pane-chrome .ai-sprite { animation:none; } }
+  @media (max-width:420px) { #pane-chrome .pc-eff, #pane-chrome .pc-keys button span { display:none; } #pane-chrome .pc-keys button { padding:0 9px; } }
 </style>
 </head>
 <body>
 <div id="term-shell">
   <div id="term"></div>
+  <div id="pane-chrome"></div>
   <div id="term-toolbar" role="toolbar" aria-label="Controles de terminal" hidden>
     <button type="button" data-key="escape" class="key-hot">Esc</button>
     <button type="button" data-key="ctrlc" class="key-hot" title="Interrumpir (Ctrl+C)" aria-label="Enviar Ctrl+C">Ctrl+C</button>
@@ -308,6 +333,7 @@
   term.loadAddon(fit);
   term.loadAddon(links);
   term.open(document.getElementById('term'));
+  window.__comandosTerm = term;
   // URLs ENVUELTAS por el wrap duro de tmux: WebLinksAddon solo ve una fila;
   // este provider re-une el bloque de filas llenas y liga el span completo.
   // Un link jamas debe romperse por saltos de linea.
@@ -1925,6 +1951,106 @@
     historyLayoutObserver?.disconnect();
   });
   if (IS_TOUCH) setMobileDraftMode(true);
+})();
+</script>
+
+<script>
+/* Marcos + cabecera B por pane en el remoto (grill 30-sep): misma geometría que
+   _pane_frames/_card_rect del escritorio, sobre las celdas de xterm. */
+(function () {
+  const params = new URLSearchParams(location.search);
+  const session = params.get('arg') || '', token = params.get('auth') || '';
+  const layer = document.getElementById('pane-chrome');
+  if (!layer || !session || !token) return;
+  if (!window.__comandosTerm) {           // la terminal se crea al cargar sus fuentes: esperar
+    let tries = 0;
+    const wait = setInterval(() => { if (window.__comandosTerm || ++tries > 100) { clearInterval(wait); if (window.__comandosTerm) start(); } }, 100);
+    return;
+  }
+  start();
+  function start() {
+  const term = window.__comandosTerm;
+  const HEADER_EXTRA = 14, KEY_H = 22;
+  const LOGO = { claude: ['A', '#d97757'], codex: ['O', '#10a37f'], grok: ['G', '#fb923c'], opencode: ['OC', '#f0abfc'],
+                 gemini: ['G', '#4285f4'], agy: ['AG', '#93c5fd'], acp: ['AC', '#67e8f9'] };
+  const ICON = { gear: '<svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M4.2 4.2l2.1 2.1M17.7 17.7l2.1 2.1M2 12h3M19 12h3M4.2 19.8l2.1-2.1M17.7 6.3l2.1-2.1"/></svg>',
+                 spark: '<svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8z"/></svg>' };
+  const esc = v => String(v == null ? '' : v).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  let panes = [], models = [], busy = false;
+
+  function cell() {
+    try { const d = term._core._renderService.dimensions.css.cell; if (d.width > 0 && d.height > 0) return [d.width, d.height]; } catch (_) {}
+    const sc = document.querySelector('#term .xterm-screen');
+    return sc && term.cols && term.rows ? [sc.clientWidth / term.cols, sc.clientHeight / term.rows] : [0, 0];
+  }
+  function aiFor(pane) {
+    try {
+      const P = parent, wm = P.ComandosWorkMarks, list = (P.S && P.S.list) || [];
+      const it = list.find(x => x.session === session && x.pane === pane);
+      return wm ? wm.aiIconSvg(wm.channels('none', it && (it.status || it.state)).ai, 16) : '';
+    } catch (_) { return ''; }
+  }
+  function label() {
+    try { const t = parent.openTerms && parent.openTerms.get(session); return (t && t.label) || session; } catch (_) { return session; }
+  }
+  function draw() {
+    const screen = document.querySelector('#term .xterm-screen');
+    const [cw, ch] = cell();
+    if (!screen || !cw || !ch) { layer.replaceChildren(); return; }
+    const lr = layer.getBoundingClientRect(), sr = screen.getBoundingClientRect();
+    const ox = sr.left - lr.left, oy = sr.top - lr.top, rows = term.rows;
+    let html = '';
+    for (const p of panes) {
+      if (!(p.width >= 8) || !(p.height > 0)) continue;
+      const rail = oy + (p.top >= 1 ? (p.top - 1) * ch : 0);
+      const x0 = ox + p.left * cw - (p.left === 0 ? 5 : 3), x1 = ox + (p.left + p.width) * cw + 3;
+      const y0 = p.top <= 1 ? rail - (HEADER_EXTRA + 3) : rail + 1;
+      const y1 = oy + (p.top + p.height) * ch + (p.top + p.height >= rows ? 3 : 0);
+      html += `<div class="pc-frame${p.active ? ' on' : ''}" style="left:${x0}px;top:${y0}px;width:${x1 - x0}px;height:${y1 - y0}px"></div>`;
+      const m = models.find(x => x.pane === p.id);
+      if (!m) continue;
+      const hy = y0 + 1, hh = Math.max(18, rail + ch - hy);
+      const [letter, color] = LOGO[m.motor] || LOGO[m.harness] || ['·', '#56627a'];
+      const model = m.state === 'changing' ? '→ ' + (m.target || '…') : (m.state === 'verified' ? m.model : '…');
+      html += `<div class="pc-head" style="left:${x0 + 1}px;top:${hy}px;width:${x1 - x0 - 2}px;height:${hh}px">`
+        + aiFor(p.id) + `<b>${esc(label())}</b><span class="pc-sep"></span>`
+        + `<span class="pc-logo" style="background:${color}">${esc(letter)}</span><span class="pc-model">${esc(model)}</span>`
+        + (m.effort ? `<span class="pc-eff">${esc(m.effort)}</span>` : '') + (m.state === 'verified' ? '<span class="pc-ok">✓</span>' : '')
+        + `<span class="pc-keys"><button type="button" data-act="ia" data-pane="${esc(p.id)}" title="Cambiar motor / modelo / cuenta de este pane">${ICON.gear}<span>IA</span></button>`
+        + `<button type="button" data-act="ext" data-pane="${esc(p.id)}" data-harness="${esc(m.harness)}" title="Extensiones de este pane">${ICON.spark}<span>MCPs · Skills</span></button></span></div>`;
+    }
+    layer.innerHTML = html;
+  }
+  layer.addEventListener('click', e => {
+    const b = e.target.closest && e.target.closest('button[data-act]');
+    if (!b) return;
+    try {
+      if (b.dataset.act === 'ia') parent.openMotorFor(session, b.dataset.pane);
+      else parent.openPaneExtensions(session, b.dataset.pane, b.dataset.harness || '');
+    } catch (_) {}
+  });
+  async function refresh() {
+    if (busy || document.hidden) return;
+    busy = true;
+    try {
+      const h = { 'Content-Type': 'application/json', 'X-Comandos-Token': token };
+      const [list, tm] = await Promise.all([
+        fetch('/terminal-panes', { method: 'POST', cache: 'no-store', headers: h, body: JSON.stringify({ session, action: 'list' }) }).then(r => r.json()),
+        fetch('/tab-models?session=' + encodeURIComponent(session), { cache: 'no-store', headers: h }).then(r => r.json()),
+      ]);
+      if (list && Array.isArray(list.panes)) panes = list.panes;
+      if (tm && Array.isArray(tm.panes)) models = tm.panes;
+      draw();
+    } catch (_) { /* la próxima vuelta reintenta */ } finally { busy = false; }
+  }
+  let soon = 0;
+  const later = () => { clearTimeout(soon); soon = setTimeout(() => { draw(); refresh(); }, 60); };
+  term.onResize(later);
+  if (typeof ResizeObserver === 'function') new ResizeObserver(later).observe(document.getElementById('term'));
+  setInterval(refresh, 2000);
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) refresh(); });
+  refresh();
+  }
 })();
 </script>
 </body>

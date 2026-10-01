@@ -18,18 +18,27 @@ def _version(identity):
 
 def _inventory(tmux, identify, session):
     result = tmux('list-panes', '-t', '=' + session + ':', '-F',
-                  '#{pane_id}\t#{pane_active}\t#{pane_current_command}\t#{pane_index}\t#{pane_current_path}')
+                  '#{pane_id}\t#{pane_active}\t#{pane_current_command}\t#{pane_index}\t#{pane_current_path}'
+                  '\t#{pane_left}\t#{pane_top}\t#{pane_width}\t#{pane_height}')
     if result.returncode:
         raise ValueError('No se encuentra la sesión')
     panes = []
     for line in result.stdout.splitlines():
-        fields = line.split('\t', 4)
-        if len(fields) != 5 or not re.fullmatch(r'%\d+', fields[0]):
+        # La ruta puede traer tabuladores: la geometría va al final, se lee desde la derecha.
+        head = line.split('\t', 4)
+        if len(head) != 5 or not re.fullmatch(r'%\d+', head[0]):
             raise ValueError('No se pudo leer la lista de paneles')
-        pane, active, command, index, path = fields
+        pane, active, command, index, rest = head
+        geometry = {}
+        parts = rest.rsplit('\t', 4)
+        if len(parts) == 5 and all(re.fullmatch(r'\d+', x) for x in parts[1:]):
+            path = parts[0]
+            geometry = dict(zip(('left', 'top', 'width', 'height'), map(int, parts[1:])))
+        else:
+            path = rest
         identity = identify(session, pane)
         panes.append({'id': pane, 'active': active == '1', 'title': command[:100],
-                      'path': friendly_path(path)[:300],
+                      'path': friendly_path(path)[:300], **geometry,
                       'index': int(index), 'identity': _version(identity), '_identity': identity})
     if not panes:
         raise ValueError('No hay paneles disponibles')
