@@ -407,3 +407,47 @@ def test_tmux_clients_attach_at_the_size_the_session_already_has():
                  "tbox = make_term(f\"tmux attach -t '={sess}'\", session=sess)",
                  "exec cat; }}\", session=sess)"):
         assert site in SRC, site
+
+
+def test_session_terminals_attach_once_the_size_settles():
+    """1-oct: al arrancar, la ventana se acomoda en varios pasos; engancharse antes
+    hacía que tmux redimensionara cada sesión 3 veces (3 redibujos de Claude Code).
+    Se engancha tras 250 ms sin cambios de tamaño, con tope de 1.5 s."""
+    import time
+    import pytest
+    if not os.environ.get("DISPLAY"):
+        pytest.skip("needs a display for GTK")
+    import gi
+    gi.require_version("Gtk", "3.0")
+    from gi.repository import GLib, Gtk
+    node = next(n for n in ast.parse(SRC).body if isinstance(n, ast.FunctionDef) and n.name == "_spawn_when_settled")
+    ns = {"GLib": GLib}
+    exec(compile(ast.Module(body=[node], type_ignores=[]), "<app>", "exec"), ns)
+
+    def pump(seconds):
+        end = time.monotonic() + seconds
+        while time.monotonic() < end:
+            while Gtk.events_pending():
+                Gtk.main_iteration()
+            time.sleep(0.01)
+
+    box = Gtk.Box(); widget = Gtk.Label(label="x"); box.pack_start(widget, True, True, 0)
+    win = Gtk.OffscreenWindow(); win.add(box); win.show_all()
+    spawned = []
+    ns["_spawn_when_settled"](widget, lambda: spawned.append(time.monotonic()), quiet_ms=120, cap_ms=2000)
+    t0 = time.monotonic()
+    for w in (300, 340, 380):             # la ventana se sigue acomodando
+        box.set_size_request(w, 40)
+        pump(0.06)
+    assert not spawned, "still settling: not attached yet"
+    pump(0.4)
+    assert len(spawned) == 1 and spawned[0] - t0 < 1.0, "attached once, right after the size settled"
+    box.set_size_request(420, 40); pump(0.3)
+    assert len(spawned) == 1, "later resizes never re-spawn"
+    # Sin tamaño nunca (pantalla bloqueada): el tope engancha igual.
+    lone, late = Gtk.Label(label="y"), []
+    ns["_spawn_when_settled"](lone, lambda: late.append(1), quiet_ms=120, cap_ms=300)
+    pump(0.5)
+    assert late == [1]
+    make_term = SRC.split("def make_term(argv_sh, before_spawn=None, session=None):", 1)[1].split("\ndef ", 1)[0]
+    assert "if session:\n        _spawn_when_settled(term, spawn)\n    else:\n        spawn()" in make_term

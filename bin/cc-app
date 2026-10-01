@@ -740,6 +740,35 @@ def _tmux_window_size(sess):
     return (cols, rows) if cols >= 20 and rows >= 5 else None
 
 
+def _spawn_when_settled(term, spawn, quiet_ms=250, cap_ms=1500):
+    """Engancha la sesión cuando la VTE deja de cambiar de tamaño (``quiet_ms`` sin
+    size-allocate) o, como tope, a los ``cap_ms``. Al arrancar la ventana se
+    acomoda en varios pasos (174→168→163 columnas): engancharse antes hacía que
+    tmux redimensionara cada sesión tres veces y Claude Code se redibujara otras
+    tantas. Así hay, como mucho, un cambio: al tamaño final."""
+    st = {"timer": None, "done": False, "sid": None}
+
+    def go():
+        st["timer"] = None
+        if st["done"]:
+            return False
+        st["done"] = True
+        if st["sid"] is not None:
+            term.disconnect(st["sid"])
+            st["sid"] = None
+        spawn()
+        return False
+
+    def on_alloc(*_):
+        if st["timer"] is not None:
+            GLib.source_remove(st["timer"])
+        st["timer"] = GLib.timeout_add(quiet_ms, go)
+
+    st["sid"] = term.connect("size-allocate", on_alloc)
+    GLib.timeout_add(cap_ms, go)
+    return st
+
+
 def make_term(argv_sh, before_spawn=None, session=None):
     term = Vte.Terminal()
     term.set_font(Pango.FontDescription(FONT)); _term_line_scale(term)
@@ -834,7 +863,10 @@ def make_term(argv_sh, before_spawn=None, session=None):
 
     term._respawn = True
     term.connect("child-exited", lambda *_: term._respawn and GLib.timeout_add(800, spawn))
-    spawn()
+    if session:
+        _spawn_when_settled(term, spawn)
+    else:
+        spawn()
     box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL)
     box.get_style_context().add_class("termwrap")
     sb = Gtk.Scrollbar(orientation=Gtk.Orientation.VERTICAL,
