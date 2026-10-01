@@ -195,7 +195,7 @@ notebook > header { background: @BAR@; border: none; box-shadow: none; }
 .tabstrip-tabs { background: @BAR@; }
 .strip-tab {
   background-color: @BAR@; color: @DIM@; padding: 0 12px; min-height: 44px;
-  font-family: 'Ubuntu', sans-serif; font-size: 13px;
+  font-family: 'Inter', sans-serif; font-size: 13px;
   border-right: 1px solid @LINE@;
   transition: color 150ms ease, background-color 150ms ease, box-shadow 150ms ease;
 }
@@ -203,7 +203,7 @@ notebook > header { background: @BAR@; border: none; box-shadow: none; }
 .strip-tab.cur { color: @TEXT@; background-color: mix(@BAR@, @LINE2@, 0.35); box-shadow: inset 0 -2px 0 0 @BRAND@; }
 .strip-tab label { color: inherit; }
 .strip-tab label.tab-name { font-weight: 600; }
-.strip-tab label.tab-model, .tab-model { color: @FAINT@; font-family: 'DejaVu Sans Mono', monospace; font-size: 10px; font-weight: 600; }
+.strip-tab label.tab-model, .tab-model { color: @FAINT@; font-family: 'Ubuntu Sans Mono', monospace; font-size: 10px; font-weight: 600; }
 .strip-tab button {
   color: @FAINT@; padding: 0; margin: 0; min-height: 14px; min-width: 14px;
   border: none; background: none; background-image: none; box-shadow: none; opacity: 0;
@@ -214,7 +214,7 @@ notebook > header { background: @BAR@; border: none; box-shadow: none; }
 .strip-tab button.tabclose:hover { color: #ffffff; background-color: #FF6B6B; border-radius: 5px; }
 .strip-tab button.tabfav { font-size: 13px; min-width: 14px; }
 .strip-tab button.tabfav.favorite { color: #f5b83d; }
-.strip-tab label.tab-sticker { font-size: 8px; font-weight: 800; padding: 2px 5px; border-radius: 5px; margin: 0 2px; }
+.strip-tab label.tab-sticker { font-size: 10px; font-weight: 800; padding: 2px 5px; border-radius: 5px; margin: 0 2px; }
 .strip-tab label.tab-sticker.st-frozen { background: #1e3a5f; color: #9cd0ff; }
 .strip-tab label.tab-sticker.st-resolved { background: #1f5134; color: #b9ffd4; }
 .strip-tab label.tab-sticker.st-awaiting_reply { background: #5a4415; color: #ffe2a3; }
@@ -244,13 +244,13 @@ notebook > header > tabs > arrow {
 /* Grupo: cada terminal lleva su propia Tarjeta y marco (como una pestaña sola);
    la cabecera de hoja queda como asa fina para arrastrarla fuera del grupo. */
 .ws-leaf-head { background: @BG@; padding: 0 12px; min-height: 22px; color: @FAINT@;
-  font-family: 'Ubuntu', sans-serif; font-size: 11px; font-weight: 600; }
+  font-family: 'Inter', sans-serif; font-size: 11px; font-weight: 600; }
 .ws-leaf.focused .ws-leaf-head { color: @TEXT@; }
 paned.ws-paned > separator { background: @BG@; min-width: 8px; min-height: 8px; }
 notebook stack { background: @BG@; }
 .termwrap { background: @BG@; }
 .tabplus { color: @DIM@; padding: 4px 8px; margin: 0 1px; border: none; background: none;
-  border-radius: 8px; min-width: 28px; min-height: 28px; font-family: monospace; font-size: 14px;
+  border-radius: 8px; min-width: 28px; min-height: 28px; font-family: 'Ubuntu Sans Mono', monospace; font-size: 14px;
   -gtk-icon-effect: none; }
 .tabplus:hover { color: @TEXT@; background: @LINE@; }
 .tabplus:active { color: @BRAND@; }
@@ -266,16 +266,16 @@ paned separator { background: @LINE@; min-width: 2px; }
 .switcher { background: @BAR@; border: 1px solid @LINE2@; border-radius: 10px; }
 .switcher entry { background: @BG@; color: @TEXT@; border: 1px solid @LINE2@;
   border-radius: 8px; padding: 8px 12px; caret-color: #FFAE1A;
-  font-family: 'JetBrainsMono Nerd Font Mono', 'JetBrainsMono Nerd Font', 'JetBrainsMono NF', 'JetBrains Mono', 'Cascadia Code', 'Fira Code', 'DejaVu Sans Mono', monospace; font-size: 13px; }
+  font-family: 'Ubuntu Sans Mono', monospace; font-size: 13px; }
 .switcher list { background: transparent; }
 .switcher row { border-radius: 7px; color: @DIM@; }
 .switcher row:selected { background: @LINE@; color: @TEXT@; }
-.sw-meta { color: @FAINT@; font-size: 10.5px;
-  font-family: 'JetBrainsMono Nerd Font Mono', 'JetBrainsMono Nerd Font', 'JetBrainsMono NF', 'JetBrains Mono', 'Cascadia Code', 'Fira Code', 'DejaVu Sans Mono', monospace; }
+.sw-meta { color: @FAINT@; font-size: 11px;
+  font-family: 'Ubuntu Sans Mono', monospace; }
 .help-h { color: @TEXT@; }
-.help-sec { color: @BRAND@; font-family: 'JetBrainsMono Nerd Font Mono', 'JetBrainsMono Nerd Font', 'JetBrainsMono NF', 'JetBrains Mono', 'Cascadia Code', 'Fira Code', 'DejaVu Sans Mono', monospace; font-size: 11px; }
-.help-key { color: #FFAE1A; font-family: 'JetBrainsMono Nerd Font Mono', 'JetBrainsMono Nerd Font', 'JetBrainsMono NF', 'JetBrains Mono', 'Cascadia Code', 'Fira Code', 'DejaVu Sans Mono', monospace; font-size: 12px; }
-.help-desc { color: @DIM@; font-size: 12.5px; }
+.help-sec { color: @BRAND@; font-family: 'Ubuntu Sans Mono', monospace; font-size: 11px; }
+.help-key { color: #FFAE1A; font-family: 'Ubuntu Sans Mono', monospace; font-size: 13px; }
+.help-desc { color: @DIM@; font-size: 13px; }
 .help-hint { color: @FAINT@; }
 """
 
@@ -1341,7 +1341,7 @@ def _build_hb_css():
     b" box-shadow:0 2px 0 " + THEME["line"].encode() + b";}"
     b".pane-card{border:0;border-radius:9px 9px 0 0;box-shadow:none;padding:0 12px;min-height:0;}"
     b".pane-card{background-color:mix(" + THEME.get("bar", THEME["bg"]).encode() + b"," + THEME.get("line2", THEME["line"]).encode() + b",0.35);}"
-    b".pane-card label,.pane-card-keys label{font-family:'Ubuntu',sans-serif;font-size:11px;}"
+    b".pane-card label,.pane-card-keys label{font-family:'Inter',sans-serif;font-size:11px;}"
     b".pane-card separator{background:" + THEME["line"].encode() + b";min-width:1px;margin:8px 0;}"
     b".pp-logo{min-width:18px;min-height:18px;border-radius:5px;padding:0;}"
     b".pane-pill label{color:" + THEME["fg"].encode() + b"; font-size:11px;"
@@ -1383,7 +1383,7 @@ def _build_hb_css():
     b"paned{background:" + THEME["bg"].encode() + b";}"
     b".cc-popover{background:" + THEME.get("panel", THEME["bg"]).encode() + b";border:1px solid " + THEME["line2"].encode() + b";border-radius:14px;padding:0;}"
     b".cc-badge{background:" + THEME.get("waiting", "#FFAE1A").encode() + b";color:" + THEME["bg"].encode() + b";"
-    b" font-family:monospace;font-size:8px;font-weight:800;border-radius:8px;padding:0 3px;min-width:12px;min-height:12px;margin:2px 2px 0 0;}"
+    b" font-family:monospace;font-size:10px;font-weight:800;border-radius:8px;padding:0 3px;min-width:12px;min-height:12px;margin:2px 2px 0 0;}"
     # Separator del Paned: mismo color de línea del theme y bien delgado.
     # Reglas específicas para vertical/horizontal + backdrop porque el default
     # de Adwaita lo dibuja en gris claro con margen (por eso se veía blanco).
@@ -1403,7 +1403,7 @@ def _build_hb_css():
     b"}"
     b"headerbar.cc-headerbar label.cc-brand{"
     b" font-family:'JetBrainsMono Nerd Font Mono',monospace;"
-    b" font-weight:800;font-size:11.5px;letter-spacing:.18em;"
+    b" font-weight:800;font-size:11px;letter-spacing:.18em;"
     b" color:" + THEME["text"].encode() + b";"
     b"}"
     # Botón base — SIN border, SIN box-shadow (Adwaita mete un halo en focus
@@ -1449,7 +1449,7 @@ def _build_hb_css():
     b" box-shadow:0 8px 24px rgba(0,0,0,.35);"
     b" color:" + THEME["text"].encode() + b";"
     b" font-family:'JetBrainsMono Nerd Font Mono',monospace;"
-    b" font-size:12px;"
+    b" font-size:13px;"
     b"}"
     b"menu menuitem,.menu menuitem,.context-menu menuitem{"
     b" background:transparent;background-image:none;"
@@ -1503,7 +1503,7 @@ def _build_hb_css():
     b" color:" + THEME["text"].encode() + b";"
     b" border:1px solid " + THEME["line"].encode() + b";"
     b" border-radius:6px;padding:7px 18px;box-shadow:none;text-shadow:none;"
-    b" font-family:'JetBrainsMono Nerd Font Mono',monospace;font-size:12px;"
+    b" font-family:'JetBrainsMono Nerd Font Mono',monospace;font-size:13px;"
     b" margin:0 4px;"
     b"}"
     b".cc-modal-panel button:hover{"
@@ -1591,7 +1591,7 @@ def _build_hb_css():
     b".cc-snip-dialog .cc-snip-hdr{border-bottom:1px solid " + THEME["line"].encode() + b";}"
     b".cc-snip-dialog .cc-snip-title{"
     b" font-family:'JetBrainsMono Nerd Font Mono',monospace;"
-    b" font-weight:800;font-size:11.5px;letter-spacing:.18em;"
+    b" font-weight:800;font-size:11px;letter-spacing:.18em;"
     b" color:" + THEME["dim"].encode() + b";"
     b"}"
     b".cc-snip-dialog .cc-snip-close{"
@@ -1636,7 +1636,7 @@ def _build_hb_css():
     b" color:" + THEME["text"].encode() + b";"
     b" border:1px solid " + THEME["line"].encode() + b";"
     b" border-radius:6px;padding:7px 18px;box-shadow:none;text-shadow:none;"
-    b" font-family:'JetBrainsMono Nerd Font Mono',monospace;font-size:12px;"
+    b" font-family:'JetBrainsMono Nerd Font Mono',monospace;font-size:13px;"
     b" margin:0 8px;"
     b"}"
     b".cc-dialog button:hover{border-color:" + THEME["brand"].encode() + b";}"
@@ -5043,7 +5043,7 @@ def _pane_pill(sess, p, keys=True):
     if state == "changing":
         lab.set_markup(f'<span foreground="{fg}" weight="bold">{_esc("→ " + (p.get("target") or "…"))}</span>')
     elif state == "verified":
-        lab.set_markup(f'<span foreground="{fg}" weight="bold" font_family="DejaVu Sans Mono">{_esc(p.get("model"))}</span>'
+        lab.set_markup(f'<span foreground="{fg}" weight="bold" font_family="Ubuntu Sans Mono">{_esc(p.get("model"))}</span>'
                        + (f'<span foreground="{dim}"> {_esc(p.get("effort"))}</span>' if p.get("effort") else ""))
     else:
         lab.set_markup(f'<span foreground="{dim}">…</span>')

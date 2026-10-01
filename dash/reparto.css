@@ -17,7 +17,7 @@
 /* --- tanques: capa sólida = gastado, capa clara = lo que añaden las sesiones --- */
 /* El criterio de la propuesta, plegado: se consulta cuando hace falta y no
    compite con los cilindros el resto del tiempo. */
-.rp-how { margin: 0 0 10px; font-size: 10.5px; color: var(--faint); line-height: 1.5; }
+.rp-how { margin: 0 0 10px; font-size: 11px; color: var(--faint); line-height: 1.5; }
 .rp-how > summary { cursor: pointer; color: var(--dim); font-size: 11px;
   list-style: none; display: inline-flex; align-items: center; gap: 5px;
   padding: 2px 7px; border: 1px solid var(--line2); border-radius: 999px; }
@@ -55,7 +55,7 @@
 .rp-tank .rp-top b { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .rp-tank .rp-cap small { display: block; color: var(--dim); font-size: 10px;
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.rp-tank .rp-tight { flex: none; font-style: normal; font-size: 9px; padding: 0 3px;
+.rp-tank .rp-tight { flex: none; font-style: normal; font-size: 10px; padding: 0 3px;
   border-radius: 4px; border: 1px solid var(--line2); color: var(--faint);
   background: var(--panel2); line-height: 1.5; white-space: nowrap; }
 .rp-tank .rp-tight:first-of-type { margin-left: auto; }
@@ -65,13 +65,13 @@
 .rp-tank .rp-lvl { position: absolute; right: 8px; bottom: 6px; z-index: 4;
   display: flex; align-items: baseline; gap: 4px; line-height: 1.1; }
 .rp-tank .rp-lvl b { font-size: 15px; font-weight: 600; }
-.rp-tank .rp-lvl-lbl { font-size: 8.5px; letter-spacing: .08em; text-transform: uppercase;
+.rp-tank .rp-lvl-lbl { font-size: 10px; letter-spacing: .08em; text-transform: uppercase;
   color: var(--dim); }
 /* La proyeccion al reset: se distingue del hecho y es lo unico que cambia al
    previsualizar un arrastre. Vacia cuando no hay diferencia apreciable. */
 .rp-tank .rp-proj { font-size: 10px; font-weight: 600; color: var(--dim); }
 .rp-tank .rp-proj:empty { display: none; }
-.rp-tank .rp-reset { position: absolute; left: 8px; bottom: 6px; font-size: 9.5px;
+.rp-tank .rp-reset { position: absolute; left: 8px; bottom: 6px; font-size: 10px;
   color: var(--faint); z-index: 4; line-height: 1.35; max-width: 62%; }
 /* La fecha exacta del reset, debajo de cuanto falta. */
 .rp-tank .rp-reset em { display: block; font-style: normal; color: var(--dim);
@@ -90,7 +90,7 @@
 
 /* --- ficha: antes tachado → después con selectores --- */
 .rp-tk { display: flex; align-items: flex-start; gap: 6px; min-width: 0; padding: 5px 7px; border-radius: 8px;
-  border: 1px solid var(--line2); background: var(--panel); font-size: 11.5px;
+  border: 1px solid var(--line2); background: var(--panel); font-size: 11px;
   cursor: grab; user-select: none; touch-action: pan-y;
   transition: transform .12s, box-shadow .12s, opacity .12s; }
 .rp-tk:hover { transform: translateY(-1px); box-shadow: 0 4px 10px -4px var(--shadow); }
@@ -109,14 +109,14 @@
 /* Estado en palabras: el punto de color solo no distingue "terminó hace 17 h"
    de "trabajando ahora", y eso hacía que dos fichas del mismo proyecto se
    leyeran como un duplicado muerto. */
-.rp-tk .rp-state { font-size: 9.5px; color: var(--faint); line-height: 1.3; }
+.rp-tk .rp-state { font-size: 10px; color: var(--faint); line-height: 1.3; }
 .rp-tk .rp-state.working { color: var(--working); }
 .rp-tk .rp-state.waiting { color: var(--warn); }
 .rp-tk .rp-state.done { color: var(--done, var(--ok)); }
 .rp-tk .rp-state.stale { color: var(--faint); }
 .rp-tk.rp-quiet { opacity: .72; }
 .rp-tk.rp-quiet:hover, .rp-tk.rp-quiet.rp-armed, .rp-tk.rp-quiet.rp-moved { opacity: 1; }
-.rp-tk .rp-diff { display: flex; align-items: center; gap: 5px; flex-wrap: wrap; font-size: 10.5px; }
+.rp-tk .rp-diff { display: flex; align-items: center; gap: 5px; flex-wrap: wrap; font-size: 11px; }
 .rp-tk .rp-old { color: var(--faint); text-decoration: line-through; white-space: nowrap; }
 .rp-tk .rp-arrow { color: var(--faint); }
 .rp-tk .rp-lk { width: 20px; height: 20px; border-radius: 5px; display: grid; place-items: center;
@@ -128,23 +128,23 @@
 
 /* --- perfil del proyecto dentro de la ficha --- */
 .rp-tk .rp-prof { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 6px; margin-top: 2px; }
-.rp-tk .rp-prof-btn { font: inherit; font-size: 9.5px; color: var(--dim); background: var(--panel2);
+.rp-tk .rp-prof-btn { font: inherit; font-size: 10px; color: var(--dim); background: var(--panel2);
   border: 1px dashed var(--line2); border-radius: 999px; padding: 0 7px; cursor: pointer; line-height: 1.7; }
 .rp-tk .rp-prof-btn:hover, .rp-tk .rp-prof.open .rp-prof-btn { color: var(--text); border-style: solid;
   border-color: var(--brand); }
-.rp-tk .rp-prof em { font-style: normal; font-size: 9.5px; color: var(--faint); }
+.rp-tk .rp-prof em { font-style: normal; font-size: 10px; color: var(--faint); }
 .rp-tk .rp-prof em.hot { color: var(--warn); font-weight: 600; }
 .rp-tk .rp-prof-ed { flex-basis: 100%; display: flex; flex-direction: column; gap: 3px; padding: 5px 0 2px;
   border-top: 1px dashed var(--line2); margin-top: 2px; }
 .rp-tk .rp-prof-row { display: flex; align-items: center; gap: 6px; }
-.rp-tk .rp-prof-row i { font-style: normal; font-size: 9px; letter-spacing: .08em; text-transform: uppercase;
+.rp-tk .rp-prof-row i { font-style: normal; font-size: 10px; letter-spacing: .08em; text-transform: uppercase;
   color: var(--faint); width: 74px; flex: none; }
-.rp-tk .rp-prof-hint { font-size: 9px; color: var(--faint); }
+.rp-tk .rp-prof-hint { font-size: 10px; color: var(--faint); }
 
 .rp-seg { display: inline-flex; flex-wrap: wrap; border: 1px solid var(--line2);
   border-radius: 5px; overflow: hidden; background: var(--panel); max-width: 100%; }
 .rp-seg.rp-chg { border-color: var(--brand); }
-.rp-seg button { padding: 1px 5px; font-size: 9.5px; color: var(--faint); background: none;
+.rp-seg button { padding: 1px 5px; font-size: 10px; color: var(--faint); background: none;
   border: 0; cursor: pointer; font-family: inherit; }
 .rp-seg button.on { background: var(--dim); color: var(--panel); font-weight: 600; }
 .rp-seg.rp-chg button.on { background: var(--brand); color: var(--on-brand); }
@@ -155,13 +155,13 @@
 .rp-foot .rp-sp { flex: 1; }
 .rp-go { position: relative; display: inline-flex; align-items: center; gap: 8px; padding: 8px 14px;
   border-radius: 8px; background: var(--brand); color: var(--on-brand); font-weight: 600;
-  font-size: 12.5px; border: 0; cursor: pointer; font-family: inherit;
+  font-size: 13px; border: 0; cursor: pointer; font-family: inherit;
   transition: transform .1s, box-shadow .15s; box-shadow: 0 1px 0 rgba(0,0,0,.2); }
 .rp-go:hover:not(:disabled) { transform: translateY(-1px); }
 .rp-go:active:not(:disabled) { transform: translateY(1px) scale(.98); box-shadow: none; }
 .rp-go:disabled { opacity: .45; cursor: default; }
 .rp-ghost { display: inline-flex; align-items: center; gap: 6px; padding: 7px 11px; border-radius: 8px;
-  border: 1px solid var(--line2); font-size: 12px; color: var(--dim); background: none;
+  border: 1px solid var(--line2); font-size: 13px; color: var(--dim); background: none;
   cursor: pointer; font-family: inherit; }
 .rp-ghost:hover { color: var(--text); border-color: var(--text); }
 
@@ -180,7 +180,7 @@
 .rp-steps button { background: none; border: 0; color: inherit; text-decoration: underline dotted;
   cursor: pointer; font-family: inherit; font-size: 10px; padding: 0; }
 .rp-done { margin-top: 10px; display: flex; align-items: center; gap: 8px; padding: 8px 10px;
-  border-radius: 8px; background: var(--ok); color: var(--on-brand); font-size: 11.5px; font-weight: 600; }
+  border-radius: 8px; background: var(--ok); color: var(--on-brand); font-size: 11px; font-weight: 600; }
 
 .rp-dropbar { display: none; }
 .rp-tk .rp-st { font-size: 10px; white-space: nowrap; }
@@ -200,10 +200,10 @@
   .rp-tanks { grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; }
   .rp-tank { height: 92px; }
   .rp-tank .rp-cap small { display: none; }
-  .rp-tank .rp-reset { font-size: 9px; }
+  .rp-tank .rp-reset { font-size: 10px; }
   .rp-tank .rp-reset em { display: none; }
   .rp-tank .rp-tight { margin-left: auto; }
-  .rp-tank .rp-lvl b { font-size: 12px; }
+  .rp-tank .rp-lvl b { font-size: 13px; }
   .rp-tank .rp-lvl-lbl { display: none; }
   .rp-bins { grid-template-columns: 1fr; gap: 0; }
   .rp-bin { border-top: 1px solid var(--line); border-radius: 0; padding: 6px 0; }
@@ -212,7 +212,7 @@
     gap: 6px; padding: 8px 0 0; margin-top: 8px; background: var(--panel);
     border-top: 1px solid var(--line2); flex-wrap: wrap; }
   .rp-dropbar .rp-dz { flex: 1 1 45%; display: flex; flex-direction: column; gap: 2px; padding: 6px;
-    border: 1px dashed var(--line2); border-radius: 8px; font-size: 10.5px; min-width: 0; }
+    border: 1px dashed var(--line2); border-radius: 8px; font-size: 11px; min-width: 0; }
   .rp-dropbar .rp-dz.rp-over { background: var(--glow); box-shadow: inset 0 0 0 2px var(--brand); }
   .rp-dropbar .rp-dz b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 }

@@ -10,23 +10,24 @@
 <!-- Cargamos la fuente bundleada por @font-face para que WebKit la use aun si
      fontconfig del sistema no la conoce. -->
 <style>
+:root{--sans:'Inter',system-ui,sans-serif;--mono:'Ubuntu Sans Mono','JetBrains Mono',monospace}
   @font-face {
-    font-family: 'JetBrainsMono Nerd Font Mono';
+    font-family: var(--mono);
     font-weight: 400; font-style: normal;
     src: url('../assets/fonts/JetBrainsMono/JetBrainsMonoNerdFontMono-Regular.ttf') format('truetype');
   }
   @font-face {
-    font-family: 'JetBrainsMono Nerd Font Mono';
+    font-family: var(--mono);
     font-weight: 400; font-style: italic;
     src: url('../assets/fonts/JetBrainsMono/JetBrainsMonoNerdFontMono-Italic.ttf') format('truetype');
   }
   @font-face {
-    font-family: 'JetBrainsMono Nerd Font Mono';
+    font-family: var(--mono);
     font-weight: 700; font-style: normal;
     src: url('../assets/fonts/JetBrainsMono/JetBrainsMonoNerdFontMono-Bold.ttf') format('truetype');
   }
   @font-face {
-    font-family: 'JetBrainsMono Nerd Font Mono';
+    font-family: var(--mono);
     font-weight: 700; font-style: italic;
     src: url('../assets/fonts/JetBrainsMono/JetBrainsMonoNerdFontMono-BoldItalic.ttf') format('truetype');
   }
@@ -52,7 +53,7 @@
     overscroll-behavior-x: contain; -webkit-overflow-scrolling: touch; touch-action: pan-x; }
   #term-toolbar button { box-sizing: border-box; flex: 0 0 auto; min-width: 44px; height: 44px; padding: 0 10px;
     border: 1px solid var(--term-line2); border-radius: 4px; background:var(--term-panel2); color:var(--term-text);
-    font: 700 12px 'JetBrainsMono Nerd Font Mono', monospace; }
+    font: 700 13px var(--mono); }
   #term-toolbar button.key-hot { min-width: 64px; font-weight: 700; border-color:var(--term-brand); }
   /* Respuesta rápida a los agentes: Sí (Enter) verde, No (Esc) rojo. */
   #term-toolbar button.key-yes, #term-toolbar button.key-no { min-width: 56px; font-weight: 800; }
@@ -66,23 +67,23 @@
   @media (max-width:600px) { .selection-row { grid-template-columns:repeat(3,minmax(0,1fr)); } }
   #selection-toolbar button.primary { background:var(--term-brand); border-color:var(--term-brand); color:var(--term-bg); }
   #selection-toolbar button { min-width:0; min-height:44px; border:1px solid var(--term-line2);
-    border-radius:4px; background:var(--term-panel2); color:var(--term-text); font:600 14px sans-serif; touch-action:manipulation; }
+    border-radius:4px; background:var(--term-panel2); color:var(--term-text); font:600 14px var(--sans); touch-action:manipulation; }
   #selection-toolbar button:disabled { opacity:.5; }
   #pane-dialog { box-sizing:border-box; width:min(460px,calc(100vw - 20px)); max-height:80dvh; overflow:auto;
     border:1px solid var(--term-line2); border-radius:10px; padding:14px; color:var(--term-text); background:var(--term-panel); }
   #pane-dialog::backdrop { background:#0009; }
-  #pane-dialog h2 { margin:0 0 10px; font:600 18px sans-serif; }
+  #pane-dialog h2 { margin:0 0 10px; font:600 18px var(--sans); }
   #pane-dialog button { min-height:44px; border:1px solid var(--term-line2); border-radius:4px;
-    padding:8px 12px; background:var(--term-panel2); color:var(--term-text); font:14px sans-serif; touch-action:manipulation; }
+    padding:8px 12px; background:var(--term-panel2); color:var(--term-text); font:14px var(--sans); touch-action:manipulation; }
   #pane-dialog button:disabled { opacity:.5; }
   #pane-list { display:grid; gap:8px; margin:10px 0; }
   .pane-option { display:flex; flex-wrap:wrap; gap:8px; min-width:0; padding-bottom:8px; border-bottom:1px solid var(--term-line2); }
   .pane-option > button:first-child { flex:1 1 100%; min-width:0; overflow-wrap:anywhere; text-align:left; }
   .pane-option > button:not(:first-child) { flex:1 1 0; min-width:0; }
-  .pane-option .pane-path { display:block; margin-top:2px; font:12px/1.3 monospace; color:var(--term-dim); overflow-wrap:anywhere; }
+  .pane-option .pane-path { display:block; margin-top:2px; font:13px/1.3 var(--mono); color:var(--term-dim); overflow-wrap:anywhere; }
   .pane-option [aria-pressed="true"] { border-color:var(--term-brand)!important; }
   #pane-dialog .danger { color:#ff9b9b; border-color:#a64c55; }
-  #pane-dialog p { font:14px/1.4 sans-serif; }
+  #pane-dialog p { font:14px/1.4 var(--sans); }
   #pane-dialog footer { display:flex; gap:8px; justify-content:flex-end; }
   #term-toolbar svg { width: 20px; height: 20px; fill: none; stroke: currentColor;
     stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; vertical-align: middle; }
@@ -91,7 +92,7 @@
   #paste-dialog::backdrop { background: rgba(0, 0, 0, .55); }
   #paste-dialog form { display: grid; gap: 10px; }
   #paste-text { min-height: 132px; box-sizing: border-box; resize: vertical; color: inherit;
-    background:var(--term-bg); border: 1px solid var(--term-line2); font: 13px 'JetBrainsMono Nerd Font Mono', monospace; }
+    background:var(--term-bg); border: 1px solid var(--term-line2); font: 13px var(--mono); }
   #paste-dialog form > div { display: flex; justify-content: flex-end; gap: 8px; }
   #paste-dialog button { background:var(--term-panel2); border:1px solid var(--term-line2); color:var(--term-text);
     border-radius:4px; padding:6px 10px; font:inherit; }
@@ -99,19 +100,19 @@
   #mobile-compose { display:flex; gap:6px; padding:6px; border-top:1px solid var(--term-line2); background:var(--term-panel); min-width:0; }
   #mobile-draft { flex:1; min-width:0; resize:none; max-height:25dvh; box-sizing:border-box; padding:8px;
     border:1px solid var(--term-line2); border-radius:4px; background:var(--term-bg); color:var(--term-text);
-    font:16px/1.35 monospace; touch-action:pan-y; }
+    font:16px/1.35 var(--mono); touch-action:pan-y; }
   #mobile-compose button, #terminal-history button, #history-pane { min-height:44px; border:1px solid var(--term-line2);
     border-radius:4px; color:var(--term-text); background:var(--term-panel2); font:inherit; padding:6px 10px; }
   #mobile-compose button:disabled { opacity:.5; }
-  #mobile-compose button { min-width:44px; font:600 12px/1.2 sans-serif; }
+  #mobile-compose button { min-width:44px; font:600 13px/1.2 var(--sans); }
   #terminal-history { position:absolute; inset:0 0 112px; z-index:5; display:flex; flex-direction:column;
     min-height:0; background:var(--term-bg); padding:8px; box-sizing:border-box; }
-  #history-controls { display:flex; flex-wrap:wrap; gap:6px; align-items:center; flex:none; font:13px sans-serif; }
+  #history-controls { display:flex; flex-wrap:wrap; gap:6px; align-items:center; flex:none; font:13px var(--sans); }
   #history-pane { flex:1; min-width:90px; max-width:100%; }
-  #history-status { font:12px/1.3 sans-serif; color:var(--term-dim); margin:6px 0; flex:none; }
+  #history-status { font:13px/1.3 var(--sans); color:var(--term-dim); margin:6px 0; flex:none; }
   #history-text { margin:0; padding:10px; flex:1; min-height:0; overflow:auto; white-space:pre-wrap;
     overflow-wrap:anywhere; width:100%; box-sizing:border-box; resize:none; border:1px solid var(--term-line2);
-    border-radius:4px; color:var(--term-text); background:var(--term-bg); font:16px/1.45 monospace; user-select:text; -webkit-user-select:text;
+    border-radius:4px; color:var(--term-text); background:var(--term-bg); font:16px/1.45 var(--mono); user-select:text; -webkit-user-select:text;
     touch-action:manipulation; -webkit-touch-callout:default; overscroll-behavior:contain; -webkit-overflow-scrolling:touch; }
   #history-text::selection { background:var(--term-brand); color:var(--term-bg); }
   #term-toolbar button,#history-controls button { touch-action:manipulation; }
@@ -122,12 +123,12 @@
   }
   #err {
     position: absolute; inset: 0; display: none;
-    color:var(--term-brand); font-family: 'JetBrainsMono Nerd Font Mono', monospace;
+    color:var(--term-brand); font-family: var(--mono);
     padding: 16px; white-space: pre-wrap; pointer-events:none;
   }
   #dbg {
     position: fixed; right: 8px; top: 8px; z-index: 9; display: none;
-    color:var(--term-brand); font-family: 'JetBrainsMono Nerd Font Mono', monospace;
+    color:var(--term-brand); font-family: var(--mono);
     font-size: 11px; background:var(--term-panel); padding: 4px 8px;
     border-radius: 4px; max-width: 60vw; white-space: pre-wrap;
   }
