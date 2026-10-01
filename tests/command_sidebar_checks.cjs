@@ -46,6 +46,9 @@ const catalog = JSON.parse(fs.readFileSync(process.cwd() + '/tests/fixtures/comm
   assert.equal(JSON.parse(store.get('comandos.commands.open.v2')).includes('codex'), true);
   // R4: todo CLI, bloque de arranque y grupo está en el DOM aunque esté plegado
   assert.equal(root.querySelectorAll('.cs-cli').length, 5);
+  // logo oficial de cada CLI (diseño «Oficial a color»): ninguna inicial suelta
+  assert.deepEqual(root.querySelectorAll('.cs-cli .cli-h .logo-tile').map(t => t.dataset.cli), ['claude', 'codex', 'grok', 'opencode', 'agy']);
+  assert.equal(root.querySelectorAll('.cs-cli .cli-h .logo-tile svg.logo').length, 5);
   // ronda 6 A aprobada: lista plana, sin subtítulos de grupo
   assert.equal(root.querySelectorAll('.cs-cli[data-cli="grok"] .grp').length, 0);
   assert.equal(root.querySelectorAll('.cs-cli[data-cli="grok"] .cmds').length, 1);

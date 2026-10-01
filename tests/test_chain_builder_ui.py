@@ -64,7 +64,14 @@ def test_sidebar_hydrates_icons_after_every_render():
 def test_builder_touch_rules_share_the_sidebar_specificity():
     css = (ROOT / "dash" / "workspace.css").read_text()
     # estilos 1:1 del mockup: tokens compartidos, filas y chips con la misma especificidad en barra y modal
-    assert "#command-sidebar,.chain-only{--cs-panel:#171b24;" in css
+    # la barra y el modal siguen el tema; Noche (sin data-theme) conserva el mockup exacto
+    assert "#command-sidebar,.chain-only{--cs-panel:var(--panel2);" in css
+    assert ":root:not([data-theme]) :is(#command-sidebar,.chain-only){--cs-panel:#171b24;" in css
+    block = css[css.index("#command-sidebar,.chain-only{--cs-panel:"):css.index(".chain-only .cb-msg:empty")]
+    import re
+    tokens_end = block.index(":root:not([data-theme])")
+    rules = block[block.index("}", block.index("--cs-greenline:#2f5a44")) + 1:]
+    assert not re.findall(r"#[0-9a-fA-F]{6}\b", rules), "colores fijos fuera de los tokens"
     assert ":is(#command-sidebar,.chain-only) :is(.cmds,.srows) .cmd{padding-block:10px}" in css
     assert ":is(#command-sidebar,.chain-only) :is(.cmds,.srows){border-top:1px solid var(--cs-line2)}" in css
     assert ".chain-only .cmd button[data-flat].add{min-height:32px}" in css
