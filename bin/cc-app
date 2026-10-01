@@ -4915,10 +4915,8 @@ _STATE_UI = {
 def _dash_js(code):
     try:
         try:
-            if _SIDE.get("leftHidden"):
+            if _SIDE.get("leftHidden"):         # oculto: se muestra a TU ancho, sin ensancharlo
                 _left_panel_set(False)
-            elif paned.get_position() < 420:
-                paned.set_position(700)
         except Exception:
             pass
         wv.run_javascript(
@@ -5866,10 +5864,8 @@ def _dash_click(elem_id):
         try:
             # el tablero es el panel izquierdo del paned: si está plegado, se abre
             try:
-                if _SIDE.get("leftHidden"):
+                if _SIDE.get("leftHidden"):     # oculto: se muestra a TU ancho, sin ensancharlo
                     _left_panel_set(False)
-                elif paned.get_position() < 420:
-                    paned.set_position(700)
             except Exception:
                 pass
             wv.run_javascript(f"try{{document.getElementById('{elem_id}').click()}}catch(e){{}}", None, None, None)

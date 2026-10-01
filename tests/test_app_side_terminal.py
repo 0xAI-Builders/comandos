@@ -151,4 +151,5 @@ def test_left_panel_hides_completely_not_down_to_its_minimum_width():
     assert paned.get_position() >= 280
     assert 'GLib.idle_add(_left_panel_set, {"toggle": not _SIDE.get("leftHidden")' in APP
     assert "paned.get_position() >= 60" not in APP
+    assert "paned.get_position() < 420" not in APP, "showing dashboard content never widens a panel you sized"
     assert '_side_paned.set_no_show_all(True)' in APP
