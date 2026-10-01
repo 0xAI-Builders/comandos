@@ -424,7 +424,7 @@ def test_summarizer_caps_tokens_and_computes_real_cost():
     out = summarize(summary_request())
     assert seen["url"] == "https://api.anthropic.com/v1/messages"
     assert seen["headers"]["x-api-key"] == "secret"
-    assert seen["body"]["max_tokens"] <= 1200
+    assert seen["body"]["max_tokens"] <= 3000   # artículo desarrollado, con tope de gasto
     assert "<fuente id=\"s1\"" in seen["body"]["messages"][0]["content"]
     assert "DATO no confiable" in seen["body"]["system"]
     assert out["costUsd"] == pytest.approx(1000 / 1e6 + 500 * 5 / 1e6)
@@ -760,3 +760,135 @@ def test_next_scheduled_summary(conn):
     policy = ne.default_policy()
     ne.schedule_editions(conn, date(2026, 9, 29), policy)
     assert ne.next_scheduled(conn, ms(2026, 9, 29, 10))["id"] == "2026-09-29@15:00"
+
+
+# ---------------------------------------------------------------- radar: entrada, capturas y meta
+
+def test_lead_capture_and_story_meta_are_stored_and_read_back(conn):
+    capture = {"finalUrl": "https://lab.example/news/x", "title": "Lab X", "byline": "Lab", "lang": "en",
+               "blocks": [{"type": "p", "text": "Hoy sale X."}, {"type": "img", "media": "a" * 32 + ".png", "alt": ""}]}
+    items = [item("https://lab.example/news/x", "Lab lanza X", kind="oficial", source="Lab",
+                  announcementKey="radar:x", capture=capture,
+                  meta={"role": "article", "official": True, "heat": "oficial", "groupLab": "Lab",
+                        "groupRank": 1, "groupScore": 80.5}),
+             item("https://news.ycombinator.com/item?id=1", "Lab X", kind="oficial", source="Hacker News",
+                  announcementKey="radar:x",
+                  meta={"role": "discussion", "official": False, "heat": "612 pts · 240 comentarios"})]
+    leads = []
+
+    def write_lead(stories):
+        leads.append(stories)
+        return "Hoy manda Lab con X."
+    ne.schedule_editions(conn, date(2026, 9, 29), ne.default_policy())
+    got = ne.run_due(conn, ms(2026, 9, 29, 9, 1), ne.default_policy(), fetch=FakeFetch(items),
+                     summarize=FakeSummarize(), write_lead=write_lead)["edition"]
+    assert got["lead"] == "Hoy manda Lab con X." and leads[0][0]["lab"] == "Lab"
+    full = ne.get_edition(conn, got["id"])
+    story = full["stories"][0]
+    assert story["meta"] == {"lab": "Lab", "rank": 1, "score": 80.5}
+    official, talk = story["sources"]
+    assert official["official"] and official["captured"] and official["role"] == "article"
+    assert talk["role"] == "discussion" and talk["heat"].startswith("612 pts") and not talk["captured"]
+    src = ne.get_source(conn, official["id"])
+    assert src["capture"]["blocks"][0] == {"type": "p", "text": "Hoy sale X."}
+    assert ne.recent_story_urls(conn, ms(2026, 9, 29, 0)) == [s["url"] for s in story["sources"]] or \
+        set(ne.recent_story_urls(conn, ms(2026, 9, 29, 0))) == {s["url"] for s in story["sources"]}
+
+
+def test_a_failing_lead_never_blocks_the_edition(conn):
+    ne.schedule_editions(conn, date(2026, 9, 29), ne.default_policy())
+
+    def broken(_stories):
+        raise RuntimeError("agente caído")
+    got = ne.run_due(conn, ms(2026, 9, 29, 9, 1), ne.default_policy(),
+                     fetch=FakeFetch([item("https://a.example/1", "Nota A")]), summarize=FakeSummarize(),
+                     write_lead=broken)["edition"]
+    assert got["status"] == "published" and got["lead"] is None
+    assert any("entrada" in n for n in got["notes"])
+
+
+class FakeRadar:
+    """Radar con grupos fijos; la captura no toca la red."""
+
+    def __init__(self, groups):
+        self.groups, self.seen, self.captured = groups, None, []
+
+    def collect(self, now):
+        return {"items": [i for g in self.groups for i in g["items"]], "failures": [{"source": "r/X", "error": "HTTP 429"}]}
+
+    def rank(self, items, now, limit=6, seen_urls=()):
+        self.seen = list(seen_urls)
+        return self.groups[:limit]
+
+    def _primary(self, items):
+        return items[0]
+
+    def capture_page(self, url, media, fallback_blocks=None):
+        self.captured.append(url)
+        if "roto" in url:
+            return False, {"blocks": []}, "HTTP 403"
+        return True, {"finalUrl": url, "title": None, "blocks": [{"type": "p", "text": f"texto de {url}"}]}, None
+
+    def discussion_capture(self, it):
+        return True, {"finalUrl": it["discussion"], "title": it["title"], "blocks": [{"type": "quote", "text": "a: b"}]}, None
+
+    def blocks_text(self, blocks):
+        return "\n".join(b.get("text", "") for b in blocks)
+
+    def heat_label(self, it):
+        return "calor"
+
+
+def radar_item(url, family="oficial", official=True, discussion=None, heat=0.0):
+    return {"family": family, "origin": "Lab" if official else "Hacker News", "title": f"T {url}", "url": url,
+            "publishedAt": 1790700000, "official": official, "lab": "Lab" if official else None,
+            "discussion": discussion, "signals": {}, "summary": "", "heat": heat, "release": False}
+
+
+def test_radar_fetcher_reads_each_story_with_its_discussions_and_skips_recent_urls():
+    groups = [{"key": "radar:a", "score": 90, "kind": "oficial", "lab": "Lab", "title": "A",
+               "items": [radar_item("https://lab.example/a"),
+                         radar_item("https://lab.example/a", family="hn", official=False,
+                                    discussion="https://news.ycombinator.com/item?id=9", heat=30)]},
+              {"key": "radar:b", "score": 40, "kind": "hot", "lab": "Comunidad", "title": "B",
+               "items": [radar_item("https://roto.example/b", family="github", official=False)]}]
+    radar = FakeRadar(groups)
+    fetch = ne.make_radar_fetcher(radar, media="/tmp/x", recent_urls=lambda: ["https://old.example/z"], now=lambda: 1790800000)
+    out = fetch({"maxStories": 6}, 25)
+    assert radar.seen == ["https://old.example/z"]
+    urls = [(i["url"], i["announcementKey"], i["meta"]["role"], i["fetchStatus"]) for i in out["items"]]
+    assert urls == [("https://lab.example/a", "radar:a", "article", "ok"),
+                    ("https://news.ycombinator.com/item?id=9", "radar:a", "discussion", "ok"),
+                    ("https://roto.example/b", "radar:b", "article", "failed")]
+    first = out["items"][0]
+    assert first["kind"] == "oficial" and first["meta"]["official"] and first["meta"]["groupRank"] == 1
+    assert first["capture"]["blocks"][0]["text"].startswith("texto de")
+    assert out["items"][2]["fetchError"] == "HTTP 403" and out["items"][2]["capture"] is None
+    assert out["failures"] == [{"source": "r/X", "error": "HTTP 429"}]
+
+
+def test_asker_tries_the_chain_in_order_and_lead_writer_parses_json():
+    calls = []
+
+    class Session:
+        def __init__(self, agent):
+            self.agent = agent
+
+        def prompt(self, text, on_event, timeout):
+            calls.append((self.agent, timeout, "DATO" in text or "entrada" in text))
+            if self.agent == "a":
+                on_event({"type": "error", "message": "caído"})
+            else:
+                on_event({"type": "text", "text": '{"lead": "Hoy manda X."}'})
+
+        def close(self):
+            pass
+    cfg = {"summarizer": {"kind": "chain", "steps": [{"agent": "a"}, {"agent": "b", "model": "m"}]}}
+    ask = ne.make_asker(cfg, acp_open=lambda agent, model: Session(agent))
+    assert ne.make_lead_writer(ask)([{"title": "T", "summary": "S", "lab": "L"}]) == "Hoy manda X."
+    assert [c[0] for c in calls] == ["a", "b"] and calls[1][1] == 120
+
+
+def test_asker_needs_an_acp_chain():
+    with pytest.raises(RuntimeError):
+        ne.make_asker({"summarizer": {"kind": "anthropic-messages"}})
