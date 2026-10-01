@@ -34,7 +34,13 @@ def test_row_one_order_and_servers_button():
 def test_tabs_row_keeps_sort_and_drops_terminal_buttons():
     nav = HTML[HTML.index('<nav id="app-navigation"'):HTML.index('</nav>')]
     assert 'id="tab-sort"' in nav and 'id="tab-panel"' in nav
-    assert 'id="tab-terminal"' not in nav and 'id="tab-new"' not in nav
+    assert 'id="tab-terminal"' not in nav
+    # Remoto = escritorio (1-oct): Terminal y Nueva sesión vuelven a la derecha de las
+    # pestañas como teclas, pero SOLO en el remoto ancho (en la app los pinta GTK).
+    assert 'id="tab-term"' in nav and 'id="tab-new"' in nav
+    css = (ROOT / "dash" / "workspace.css").read_text()
+    assert "#tab-term,#tab-new{display:none}" in css
+    assert "body.app.split:not(.inapp) :is(#tab-term,#tab-new,#tab-sort){display:grid" in css
 
 
 def test_relocated_controls_keep_their_ids_inside_the_menu():
