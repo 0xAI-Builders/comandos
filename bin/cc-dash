@@ -458,6 +458,23 @@ def usage_alert_send(message, title=None, kind="info", project=None):
             pass
 
 
+def desktop_popup(title, body, project, kind="waiting"):
+    """Popup propio de ComandOS (cc-notifyd) si «Popups de escritorio» está encendido.
+    La web no puede hablarle directo a :4778 (CORS); pasa por aquí (POST /notify-popup)."""
+    if read_conf().get("DESKTOP_NOTIFY", "1") != "1":
+        return False
+    payload = json.dumps({"title": str(title)[:200], "body": str(body)[:400], "session": "",
+                          "kind": "waiting" if kind == "waiting" else "done",
+                          "project": str(project)[:80], "options": "", "full": str(body)[:400]}).encode()
+    try:
+        urllib.request.urlopen(urllib.request.Request(
+            "http://127.0.0.1:4778/notify", data=payload,
+            headers={"Content-Type": "application/json"}), timeout=2)
+        return True
+    except Exception:
+        return False
+
+
 def alert_thresholds():
     return cc_usage.parse_alert_thresholds(
         usage_runtime_env().get("COMANDOS_ALERT_THRESHOLDS"))
@@ -8563,6 +8580,13 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             except (ValueError, TypeError, KeyError) as exc:
                 return self._json(400, {"error": str(exc) or "Workspace inválido"})
             return self._json(200, workspace_payload(saved))
+
+        if self.path == "/notify-popup":
+            title, body = data.get("title"), data.get("body")
+            if not isinstance(title, str) or not title.strip() or not isinstance(body, str):
+                return self._json(400, {"error": "title y body son obligatorios"})
+            shown = desktop_popup(title, body, str(data.get("project") or "ComandOS"), str(data.get("kind") or "waiting"))
+            return self._json(200, {"ok": True, "popup": shown})
 
         if self.path in ("/presence", "/notices/read", "/notices/sound", "/notices/prefs"):
             import notification_delivery

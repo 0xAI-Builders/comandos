@@ -199,3 +199,18 @@ def test_a_request_from_a_terminal_that_no_longer_exists_stops_counting(server, 
     assert page["pending"] == ["p-live"] and page["badge"] == 1
     live.clear()
     assert call(srv, "GET", "/notifs/count")[1] == {"count": 0}
+
+
+def test_web_reminders_reach_the_system_popup_through_cc_dash(server, monkeypatch):
+    """The page cannot POST to cc-notifyd (:4778, CORS); /notify-popup forwards it."""
+    srv, dash = server
+    sent = []
+    monkeypatch.setattr(dash, "read_conf", lambda: {"DESKTOP_NOTIFY": "1"})
+    monkeypatch.setattr(dash.urllib.request, "urlopen", lambda req, timeout=0: sent.append(json.loads(req.data)) or None)
+    st, body = call(srv, "POST", "/notify-popup", {"title": "Recordatorio (pediste 1h)", "body": "Ver el link", "project": "recordatorio"})
+    assert st == 200 and body["popup"] is True and sent[0]["project"] == "recordatorio" and sent[0]["kind"] == "waiting"
+    monkeypatch.setattr(dash, "read_conf", lambda: {"DESKTOP_NOTIFY": "0"})
+    assert call(srv, "POST", "/notify-popup", {"title": "x", "body": "y"})[1]["popup"] is False
+    assert call(srv, "POST", "/notify-popup", {"body": "y"})[0] == 400
+    html = (ROOT / "dash" / "index.html").read_text()
+    assert "127.0.0.1:4778" not in html, "the page never calls cc-notifyd directly"

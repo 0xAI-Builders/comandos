@@ -3209,10 +3209,8 @@ function mdStrip(s){ return (s||"").replace(/\*\*|`|^#{1,6} /g, ""); }
 	    for(const p of ps){
 	      if(p.savedAt && !p.reminded && (Date.now()/1000 - p.savedAt) > 3*3600){
 	        p.reminded = true; changed = true;
-	        fetch("http://127.0.0.1:4778/notify", {method: "POST",
-	          headers: {"Content-Type": "application/json"},
-	          body: JSON.stringify({title: tf("Guardaste un link — ¡velo!","You saved a link — check it!"),
-	            kind: "waiting", project: "guardados", body: (p.title || "").slice(0, 120)})}).catch(()=>{});
+	        api("/notify-popup", {title: tf("Guardaste un link — ¡velo!","You saved a link — check it!"),
+	          kind: "waiting", project: "guardados", body: (p.title || "").slice(0, 120)}).catch(()=>{});
 	      }
 	    }
 	    if(changed) nfSave("cc-nf-pins", ps);
@@ -3222,10 +3220,8 @@ function mdStrip(s){ return (s||"").replace(/\*\*|`|^#{1,6} /g, ""); }
 	    for(const [k, until] of Object.entries(sn)){
 	      if(until <= Date.now()/1000 && sm[k] && !sm[k].notified){
 	        sm[k].notified = true; smChanged = true;
-	        fetch("http://127.0.0.1:4778/notify", {method: "POST",
-	          headers: {"Content-Type": "application/json"},
-	          body: JSON.stringify({title: tf("Recordatorio (pediste 1h)","Reminder (you asked for 1h)"),
-	            kind: "waiting", project: "recordatorio", body: (sm[k].title || "").slice(0, 120)})}).catch(()=>{});
+	        api("/notify-popup", {title: tf("Recordatorio (pediste 1h)","Reminder (you asked for 1h)"),
+	          kind: "waiting", project: "recordatorio", body: (sm[k].title || "").slice(0, 120)}).catch(()=>{});
 	      }
 	    }
 	    if(smChanged) nfSave("cc-nf-snooze-meta", sm);
@@ -3449,7 +3445,7 @@ function mdStrip(s){ return (s||"").replace(/\*\*|`|^#{1,6} /g, ""); }
 
 	let GUARD_CACHE=null;
 	async function guardPoll(){
-	  try{const d=await api("/usage/guard");GUARD_CACHE=d;const risk=(d.forecasts||[]).find(x=>x.level==="critical")||(d.projects||[]).find(x=>x.level==="critical");const button=$("#btn-usage");button?.classList.toggle("hot",!!risk);if(button&&risk)button.title=tf("Guardia IA: riesgo crítico de cuota","AI Guard: critical quota risk");if(!risk)return;const key=`${risk.scope||risk.project}|${Math.floor(Number(risk.percent||risk.calls10m||0)/5)}`;if(localStorage.getItem("cc-guard-alert-key")===key)return;localStorage.setItem("cc-guard-alert-key",key);const body=risk.message||`${risk.project}: ${risk.calls10m} llamadas/10 min · ${fmtTokens(risk.tokensHour)}/h`;fetch("http://127.0.0.1:4778/notify",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({title:tf("Guardia IA · riesgo de desborde","AI Guard · overflow risk"),kind:"waiting",project:"Guardia IA",body})}).catch(()=>{});}catch(e){}
+	  try{const d=await api("/usage/guard");GUARD_CACHE=d;const risk=(d.forecasts||[]).find(x=>x.level==="critical")||(d.projects||[]).find(x=>x.level==="critical");const button=$("#btn-usage");button?.classList.toggle("hot",!!risk);if(button&&risk)button.title=tf("Guardia IA: riesgo crítico de cuota","AI Guard: critical quota risk");if(!risk)return;const key=`${risk.scope||risk.project}|${Math.floor(Number(risk.percent||risk.calls10m||0)/5)}`;if(localStorage.getItem("cc-guard-alert-key")===key)return;localStorage.setItem("cc-guard-alert-key",key);const body=risk.message||`${risk.project}: ${risk.calls10m} llamadas/10 min · ${fmtTokens(risk.tokensHour)}/h`;api("/notify-popup",{title:tf("Guardia IA · riesgo de desborde","AI Guard · overflow risk"),kind:"waiting",project:"Guardia IA",body}).catch(()=>{});}catch(e){}
 	}
 	async function loadGuard(){
 	  try{const d=await api("/usage/guard");renderGuard(d);}catch(e){$("#guard-projects").innerHTML=`<div class="desc">${mdEsc(e.message)}</div>`;}
