@@ -2967,6 +2967,7 @@ def tab_label(text, key=None, closable=True, on_close=None):
     lbl_box.add(lbl)
     hb.pack_start(lbl_box, False, False, 0)
     micon = Gtk.Image()
+    micon.set_no_show_all(True)            # vacía no ocupa: un show_all (ws_tab_label) la revivía y dejaba un hueco
     hb.pack_start(micon, False, False, 0)
     model_lbl = Gtk.Label(label="")
     model_lbl.set_xalign(0.0)              # el texto arranca a 8 px del nombre, sin centrarse en su caja

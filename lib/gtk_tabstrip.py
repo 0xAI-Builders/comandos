@@ -126,6 +126,11 @@ class TabStripNotebook(Gtk.Notebook):
             self._attach_item(item, i)
         ctx = self.row.get_style_context()
         (ctx.add_class if rows else ctx.remove_class)("rows")
+        # ☐ y >_ + ⇅ ⊞ se quedan en la banda de 44 px de arriba (como el remoto,
+        # align-self:flex-start); si llenaran el alto de las filas se verían gigantes.
+        for box in (self._start, self._end):
+            box.set_valign(Gtk.Align.START if rows else Gtk.Align.FILL)
+            box.set_size_request(-1, 44 if rows else -1)
         if rows:
             self.scroller.hide()
             self.rows_view.show()

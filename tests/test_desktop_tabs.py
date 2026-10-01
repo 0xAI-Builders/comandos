@@ -451,3 +451,11 @@ def test_session_terminals_attach_once_the_size_settles():
     assert late == [1]
     make_term = SRC.split("def make_term(argv_sh, before_spawn=None, session=None):", 1)[1].split("\ndef ", 1)[0]
     assert "if session:\n        _spawn_when_settled(term, spawn)\n    else:\n        spawn()" in make_term
+
+
+def test_empty_motor_icon_never_takes_space_after_a_show_all():
+    """2026-10-01_14-27: ws_tab_label hace show_all() y la imagen vacía del motor
+    volvía a ocupar 16 px + 2×8 de separación entre el nombre y el modelo."""
+    body = SRC.split("def tab_label(", 1)[1].split("\ndef ", 1)[0]
+    assert "micon = Gtk.Image()\n    micon.set_no_show_all(True)" in body
+    assert "def ws_tab_label(" in SRC and "hb.show_all()" in SRC.split("def ws_tab_label(", 1)[1].split("\ndef ", 1)[0]

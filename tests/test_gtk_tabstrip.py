@@ -60,6 +60,11 @@ def test_rows_mode_wraps_every_tab_and_back_keeps_order():
     col = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
     col.pack_start(nb.row, False, False, 0)
     col.pack_start(nb, True, True, 0)
+    start_key, end_keys = Gtk.Button(label="☐"), Gtk.Box()
+    for k in (">_", "+", "⇅", "⊞"):
+        end_keys.pack_start(Gtk.Button(label=k), False, False, 0)
+    nb.set_action_widget(start_key, Gtk.PackType.START)
+    nb.set_action_widget(end_keys, Gtk.PackType.END)
     win = Gtk.OffscreenWindow(); win.add(col); win.set_default_size(500, 300); win.show_all()
 
     import time
@@ -83,6 +88,10 @@ def test_rows_mode_wraps_every_tab_and_back_keeps_order():
     assert [c.get_child() for c in cells] == labels, "same tabs, same order"
     assert not nb.strip.get_children() and nb.rows_view.get_visible() and not nb.scroller.get_visible()
     assert nb.row.get_allocated_height() > one_row_h, "wraps into several rows"
+    # 2026-10-01_14-27: con varias filas ☐ y >_ + ⇅ ⊞ se estiraban a todo el alto.
+    assert nb.row.get_allocated_height() > 60
+    assert start_key.get_allocated_height() <= 44 and end_keys.get_allocated_height() <= 44, "keys stay in the 44 px band"
+    assert start_key.get_allocation().y == end_keys.get_allocation().y == nb.row.get_allocation().y, "pinned to the top"
     lines = nb.flow.get_children()
     assert len(lines) > 1
     # flex-wrap, no columnas: cada pestaña mide su contenido y van pegadas (4 px).
@@ -113,6 +122,7 @@ def test_rows_mode_wraps_every_tab_and_back_keeps_order():
     assert [c.get_child() for c in nb.rows_items()] == order
     nb.set_rows(False)
     pump()
+    assert end_keys.get_allocated_height() == nb.row.get_allocated_height(), "one row: keys fill the strip as before"
     assert [i.get_child() for i in nb.strip.get_children()] == order and not nb.rows_items()
     assert nb.scroller.get_visible() and not nb.rows_view.get_visible()
     nb.set_current_page(3)
