@@ -2004,9 +2004,11 @@
       if (!(p.width >= 8) || !(p.height > 0)) continue;
       const rail = oy + (p.top >= 1 ? (p.top - 1) * ch : 0);
       const pad = Math.max(1, Math.min(3, cw / 2 - 2));   // hueco visible entre marcos aunque la celda sea angosta
-      const x0 = ox + p.left * cw - (p.left === 0 ? 5 : pad), x1 = ox + (p.left + p.width) * cw + pad;
+      const x0 = ox + p.left * cw - (p.left === 0 ? 5 : pad), x1 = Math.min(ox + term.cols * cw + 3, ox + (p.left + p.width) * cw + pad);
+      if (p.top >= rows || p.left >= term.cols) continue;
       const y0 = p.top <= 1 ? rail - (HEADER_EXTRA + 3) : rail + 1;
-      const y1 = oy + (p.top + p.height) * ch + (p.top + p.height >= rows ? 3 : 0);
+      // Nunca más allá de lo que xterm muestra (si tmux aún no ajustó la ventana al tamaño del remoto).
+      const y1 = Math.min(oy + rows * ch + 3, oy + (p.top + p.height) * ch + (p.top + p.height >= rows ? 3 : 0));
       html += `<div class="pc-frame${p.active ? ' on' : ''}" style="left:${x0}px;top:${y0}px;width:${x1 - x0}px;height:${y1 - y0}px"></div>`;
       const m = models.find(x => x.pane === p.id);
       if (!m) continue;
