@@ -1833,15 +1833,19 @@
 	    .send button,.opts button,.keys button,.ops button,.ops .mdl-btn{min-height:40px}
 	    #content{padding-bottom:env(safe-area-inset-bottom)}
 	  }
-	</style>
-<link rel="stylesheet" href="/workspace.css?v=temas1">
+	/* escritorio: la terminal de la barra es nativa (debajo del webview); aquí solo quedan sus pestañas */
+html[data-native-side-term] #command-sidebar .divider,html[data-native-side-term] #command-sidebar .mini{display:none}
+html[data-native-side-term] #command-sidebar .sec-terms{flex:none}
+html[data-native-side-term] #command-sidebar .sec-cmds{flex:1 1 auto}
+</style>
+<link rel="stylesheet" href="/workspace.css?v=temas2">
 <link rel="stylesheet" href="/buttons.css?v=2">
 <link rel="stylesheet" href="/reparto.css?v=fuentesD">
 <script src="/session-config.js?v=7f3232b0a624"></script>
 <script src="/workspace-layout.js"></script>
 <script src="/workspace-dock.js?v=bandejas2"></script>
 <script src="/quick-terminal.js?v=2"></script>
-<script src="/command-sidebar.js?v=15"></script>
+<script src="/command-sidebar.js?v=16"></script>
 <script src="/chain-builder.js?v=5"></script>
 
 <div id="panes">
@@ -6325,6 +6329,13 @@ function selectSidebarTerm(t){
   S.sel = sess + (t.pane ? "|" + t.pane : ""); S.selTs = Date.now();
   syncCommandSidebar();
 }
+// cc-app avisa del clic dentro de la terminal nativa de la barra (sess) o dentro de
+// una pestaña ("" = el destino vuelve a la pestaña activa).
+window.sidebarTermFocused = function(sess){
+  if(!sess){ if(SBT.term){ SBT.term = ""; syncCommandSidebar(); } return; }
+  const t = quickTermEntries().find(x => x.session === sess);
+  if(t) selectSidebarTerm({kind: "term", tabId: t.tabId, paneKey: t.paneKey, session: t.session, pane: t.pane, title: t.label});
+};
 function sidebarTermTarget(){
   if(!SBT.term) return null;
   if((sidebarActiveTab().session || "") !== SBT.activeSeen){ SBT.term = ""; return null; }   // cambió de pestaña: manda la pestaña
@@ -6336,7 +6347,19 @@ function sidebarTermTarget(){
 // repintar. En el escritorio (webview loopback) va directo a ttyd; en el remoto
 // por el mismo /term del workspace.
 const sbTermFrames = new Map();
+// En el escritorio la terminal de la barra es NATIVA (cc-app la pone debajo de este
+// webview con la misma cabecera de pane que las pestañas): aquí solo se le dice cuál.
+let sbNativeSess = null;
 function sidebarTermMount(sess, host){
+  if(inApp()){
+    document.documentElement.dataset.nativeSideTerm = "1";
+    for(const f of sbTermFrames.values()) f.style.display = "none";
+    if(sess !== sbNativeSess){
+      sbNativeSess = sess;
+      try{ window.webkit.messageHandlers.centro.postMessage(JSON.stringify({sidebarTerm: {session: sess || ""}})); }catch(e){}
+    }
+    return;
+  }
   if(!host) return;
   for(const [k, f] of sbTermFrames){ f.style.display = k === sess ? "" : "none"; }
   if(!sess) return;

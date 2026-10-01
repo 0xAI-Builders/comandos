@@ -187,6 +187,17 @@ const catalog = JSON.parse(fs.readFileSync(process.cwd() + '/tests/fixtures/comm
   assert.equal(root2.querySelector('.cs-terms .t[data-focus-term="q1"]').classList.contains('sel'), true);   // es el destino
   root2.click('.t[data-focus-term="q1"]'); root2.click('.t.plus[data-new-term]'); root2.click('.cs-chains[data-open-builder]');
   assert.equal(focused[0].kind, 'term'); assert.equal(focused[0].pane, '%7'); assert.deepEqual(focused.slice(1), ['new', 'builder']);
+  // «▾» esconde las terminales (se desmontan; quedan las pestañas) y «▴» las vuelve a mostrar
+  root2.click('.t.tog[data-terms-toggle]');
+  assert.equal(root2.classList.contains('terms-hidden'), true);
+  assert.deepEqual(mounted.at(-1), ['', 'mini']);
+  assert.equal(store.get('comandos.commands.termsHidden'), '1');
+  assert.ok(root2.querySelector('.cs-terms .t[data-focus-term="q1"]'));
+  root2.click('.t.tog[data-terms-toggle]');
+  assert.equal(root2.classList.contains('terms-hidden'), false);
+  assert.deepEqual(mounted.at(-1), ['q1', 'mini']);
+  root2.click('.t.tog[data-terms-toggle]'); root2.click('.t[data-focus-term="q1"]');        // tocar una pestaña también las muestra
+  assert.equal(root2.classList.contains('terms-hidden'), false);
   // helpers puros para el constructor de cadenas (S3)
   const claude = catalog.clis[0];
   const build = mod.cliHTML(claude, { mode: 'build', open: new Set() });

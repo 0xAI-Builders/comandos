@@ -9,6 +9,7 @@
 // data-add y un botón «+ cadena».
 (function (root) {
   'use strict';
+  const KEY_TERMS_HIDDEN = 'comandos.commands.termsHidden';
   const KEY_OPEN = 'comandos.commands.open.v2', KEY_PREF = 'comandos.commands.preferred.';
   const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   const STATUS_TEXT = { ok: '', drift: 'sin verificar · el CLI confirma', missing: 'no instalado', unverified: 'sin verificar' };
@@ -163,6 +164,7 @@
       } catch (_) {}
     })();
     const writeOpen = () => write(KEY_OPEN, JSON.stringify([...state.open]));
+    state.termsHidden = read(KEY_TERMS_HIDDEN) === '1';
 
     function target() { try { return getTarget() || null; } catch (_) { return null; } }
     const prefKey = t => KEY_PREF + (t.paneKey || t.pane);
@@ -364,7 +366,8 @@
       if (shown !== state.curTerm) state.curTerm = shown;
       return list.map(x => `<button type="button" data-flat class="t${x.tabId === shown ? ' on' : ''}${cur(x) ? ' sel' : ''}" data-focus-term="${esc(x.tabId)}" title="${esc(x.label || x.tabId)}">`
           + `${ic('bolt', 's20')}${esc(shortTerm(x.label || x.tabId))}${cur(x) ? ' · destino' : ''}</button>`).join('')
-        + '<button type="button" data-flat class="t plus" data-new-term>+ Terminal</button>';
+        + '<button type="button" data-flat class="t plus" data-new-term>+ Terminal</button>'
+        + (list.length ? `<button type="button" data-flat class="t tog" data-terms-toggle aria-pressed="${state.termsHidden ? 'false' : 'true'}" title="${state.termsHidden ? 'Mostrar las terminales' : 'Esconder las terminales'}">${state.termsHidden ? '▴' : '▾'}</button>` : '');
     }
 
     function bodyHTML() {
@@ -394,8 +397,9 @@
       if (tt) tt.innerHTML = termsHTML();
       const n = termList().length;
       try { el.classList && el.classList.toggle('no-terms', !n); } catch (_) {}
+      try { el.classList && el.classList.toggle('terms-hidden', !!state.termsHidden); } catch (_) {}
       const mini = el.querySelector('.mini');
-      if (mini && typeof mountTerm === 'function') { try { mountTerm(state.curTerm || '', mini); } catch (_) {} }
+      if (mini && typeof mountTerm === 'function') { try { mountTerm(state.termsHidden ? '' : (state.curTerm || ''), mini); } catch (_) {} }
       try { el.classList && el.classList.toggle('searching', !!state.q.trim()); } catch (_) {}
       try { hydrate(el); } catch (_) {}   // pinta los data-icon del marcado recién puesto
     }
@@ -423,9 +427,15 @@
       if (t.closest('[data-run-next]')) return void next();
       if (t.closest('[data-run-stop]')) return void stop();
       if (t.closest('[data-open-builder]')) return void openBuilder();
-      if (t.closest('[data-new-term]')) return void newTerm();
+      if (t.closest('[data-new-term]')) { if (state.termsHidden) { state.termsHidden = false; write(KEY_TERMS_HIDDEN, '0'); } return void newTerm(); }
+      if (t.closest('[data-terms-toggle]')) {
+        state.termsHidden = !state.termsHidden;
+        write(KEY_TERMS_HIDDEN, state.termsHidden ? '1' : '0');
+        return void render();
+      }
       if ((n = t.closest('[data-focus-term]'))) {
         state.curTerm = n.dataset.focusTerm;
+        if (state.termsHidden) { state.termsHidden = false; write(KEY_TERMS_HIDDEN, '0'); }
         const x = termList().find(q => String(q.tabId) === n.dataset.focusTerm);
         if (x) focusTarget({ kind: 'term', tabId: x.tabId, paneKey: x.paneKey, session: x.session, pane: x.pane, title: x.label || x.tabId });
         render();

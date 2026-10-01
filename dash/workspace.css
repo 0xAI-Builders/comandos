@@ -752,6 +752,11 @@ button.wm-suggest{font:600 10px var(--sans);padding:2px 7px;border-radius:999px;
 #command-sidebar.no-terms .sec-cmds{flex:1 1 auto}
 #command-sidebar.no-terms .sec-terms{flex:none}
 #command-sidebar.no-terms .divider,#command-sidebar.no-terms .mini{display:none}
+/* «▾» en la fila de pestañas esconde las terminales; quedan sus pestañas para volver */
+#command-sidebar.terms-hidden .sec-cmds{flex:1 1 auto}
+#command-sidebar.terms-hidden .sec-terms{flex:none}
+#command-sidebar.terms-hidden .divider,#command-sidebar.terms-hidden .mini{display:none}
+#command-sidebar button[data-flat].t.tog{margin-left:auto;min-width:28px;padding:0 8px;justify-content:center}
 body.ws-dragging #command-sidebar .sb-term{pointer-events:none}
 /* cuerpo: tarjetas apiladas */
 #command-sidebar .cs-body{flex:1;min-height:0;overflow:auto;overscroll-behavior:contain;display:flex;flex-direction:column;gap:8px;padding:0 10px 10px;min-width:0}
