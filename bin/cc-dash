@@ -8269,9 +8269,7 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             # pendiente de respuesta (permisos/entradas se resuelven en su terminal).
             try:
                 import notification_delivery
-                page = notification_delivery.list_notices(notices_conn(), 0, 500, notices_now())
-                pending = set(page.get("pending") or [])
-                count = sum(1 for n in page.get("notices") or [] if not n.get("read") or n.get("eventId") in pending)
+                count = notification_delivery.badge_count(notices_conn())
             except Exception:
                 count = 0
             return self._json(200, {"count": count})
@@ -8398,6 +8396,8 @@ class Handler(http.server.SimpleHTTPRequestHandler):
                                                           notices_focus_active())
             except ValueError as exc:
                 return self._json(400, {"error": str(exc)})
+            # el mismo número de la campana en todas las superficies (todo el historial)
+            page["badge"] = notification_delivery.badge_count(conn)
             return self._json(200, page)
         if urllib.parse.urlsplit(self.path).path == "/workspace/close-group":
             query = urllib.parse.parse_qs(urllib.parse.urlsplit(self.path).query)
@@ -8565,11 +8565,8 @@ class Handler(http.server.SimpleHTTPRequestHandler):
                 if self.path == "/notices/read":
                     ids = data.get("eventIds")
                     if data.get("all") is True:
-                        project = data.get("project")
-                        recent = max(0, event_store.latest_sequence(conn) - 500)
-                        ids = [n["eventId"] for n in notification_delivery.list_notices(
-                            conn, recent, 500, notices_now())["notices"]
-                            if not project or n.get("project") == project]
+                        # todo el historial, no solo los últimos 500 eventos
+                        ids = notification_delivery.unread_notice_ids(conn, data.get("project"))
                     if not isinstance(ids, list):
                         return self._json(400, {"error": "eventIds inválido"})
                     return self._json(200, {"ok": True, "read": notification_delivery.mark_read(conn, ids, notices_now())})

@@ -254,6 +254,38 @@ def _recent(conn):
     return event_store.list_events(conn, max(0, latest - HISTORY_WINDOW), HISTORY_WINDOW)
 
 
+def _notice_events(conn):
+    """Todos los eventos que son avisos, de la página más vieja a la más nueva."""
+    after = 0
+    while True:
+        page = event_store.list_events(conn, after, event_store.MAX_PAGE)
+        if not page:
+            return
+        for e in page:
+            if classify(e)["notice"]:
+                yield e
+        after = page[-1]["sequence"]
+
+
+def _read_ids(conn):
+    return {r[0] for r in conn.execute("SELECT event_id FROM notice_reads")}
+
+
+def badge_count(conn):
+    """El número de la campana en todas las superficies: avisos sin leer más pedidos
+    sin responder, sobre TODO el historial (antes solo los 500 eventos más viejos, y
+    «Marcar leídos» tocaba los 500 más nuevos: el número nunca bajaba)."""
+    read, pending = _read_ids(conn), set(pending_requests(_recent(conn)))
+    return sum(1 for e in _notice_events(conn) if e["eventId"] not in read or e["eventId"] in pending)
+
+
+def unread_notice_ids(conn, project=None):
+    """Ids de todos los avisos sin leer (opcionalmente de un proyecto), para «Marcar leídos»."""
+    read = _read_ids(conn)
+    return [e["eventId"] for e in _notice_events(conn) if e["eventId"] not in read
+            and (not project or (classify(e)["category"] != "news" and e.get("projectKey") == project))]
+
+
 def list_notices(conn, after, limit, now_ms, device_id=None, focus_active=False):
     prefs = load_prefs(conn)
     present = clients(conn, now_ms)

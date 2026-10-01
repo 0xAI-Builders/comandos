@@ -60,7 +60,7 @@ def test_notifications_v2_prioritize_and_carry_action_buttons():
     # N2: los turnos rutinarios ya no se duplican en la campana; viven en la
     # franja de avisos por proyecto (dash/notifications.js) y la campana enlaza a ella.
     assert 'class="nf2-rest"' not in HTML and 'id="nf-to-strip"' in HTML
-    assert '<script src="/notifications.js"></script>' in HTML
+    assert '<script src="/notifications.js?v=badge1"></script>' in HTML
     # badge solo prioridades
     assert "el badge cuenta SOLO lo importante" in HTML
 

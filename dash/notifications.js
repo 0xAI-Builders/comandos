@@ -193,7 +193,10 @@
   function counts(v) {
     const unread = v.notices.filter(n => !n.read).length;
     const pendingN = v.notices.filter(n => v.pending.has(n.eventId)).length;
-    const attend = v.notices.filter(n => !n.read || v.pending.has(n.eventId)).length;
+    // El número es el del servidor (todo el historial, igual en todas las superficies);
+    // la copia local solo sirve de respaldo si el servidor no lo manda.
+    const local = v.notices.filter(n => !n.read || v.pending.has(n.eventId)).length;
+    const attend = Number.isFinite(v.badge) ? v.badge : local;
     return { unread, pendingN, attend };
   }
 
@@ -224,7 +227,7 @@
       + `<button type="button" class="nt-toggle" data-nt-act="toggle" data-nt-focus="toggle" aria-expanded="${!collapsed}" aria-controls="nt-body">${icon('bell')}<span>Avisos</span>${attend ? `<span class="nt-count">${attend}</span>` : ''}${icon('chevron')}</button>`
       + `<small class="nt-meta">${unread} nuevo${unread === 1 ? '' : 's'} · ${pendingN} pendiente${pendingN === 1 ? '' : 's'}</small>`
       + (collapsed ? '' : `<div class="nt-filters" role="group" aria-label="Filtrar avisos por tipo">${filters}</div>`)
-      + `<button type="button" class="nt-read-all" data-nt-act="read-all" data-nt-focus="read-all" ${unread ? '' : 'disabled'}>Marcar leídos</button>`
+      + `<button type="button" class="nt-read-all" data-nt-act="read-all" data-nt-focus="read-all" ${unread || attend > pendingN ? '' : 'disabled'}>Marcar leídos</button>`
       + (collapsed ? '' : `<button type="button" class="nt-icon-btn" data-nt-act="max" data-nt-focus="max" aria-label="${v.maximized ? 'Restaurar altura' : 'Maximizar'}" title="${v.maximized ? 'Restaurar altura' : 'Maximizar'}">${icon(v.maximized ? 'shrink' : 'grow')}</button>`
         + `<button type="button" class="nt-icon-btn" data-nt-act="close" data-nt-focus="close" aria-label="Cerrar avisos" title="Cerrar">${icon('close')}</button>`)
       + '</header>' + body + '</section>';
@@ -312,7 +315,7 @@
     }
 
     function view() {
-      return { notices: state.notices, pending: state.pending, filter: state.filter, collapsed: state.collapsed || quiet(),
+      return { notices: state.notices, pending: state.pending, badge: state.badge, filter: state.filter, collapsed: state.collapsed || quiet(),
         float: state.float, unavailable: state.unavailable, prefs: state.prefs, loaded: state.loaded,
         error: state.error, now: now(), describe };
     }
@@ -393,6 +396,7 @@
       if (r.prefs) state.prefs = normalizePrefs(r.prefs);
       state.focusActive = !!r.focusActive;
       if (Array.isArray(r.pending)) state.pending = new Set(r.pending);
+      if (Number.isFinite(Number(r.badge)) && r.badge != null) state.badge = Number(r.badge);
       const next = Number(r.nextAfter);
       if (Number.isFinite(next)) after = Math.max(after, next);
     }
@@ -442,6 +446,7 @@
       const wanted = (ids || []).filter(id => byId.has(id) && !byId.get(id).read);
       if (!wanted.length || !transport) return;
       for (const id of wanted) byId.get(id).read = true;
+      if (Number.isFinite(state.badge)) state.badge = Math.max(0, state.badge - wanted.filter(id => !state.pending.has(id)).length);
       emit();
       try {
         const r = await transport('POST', '/notices/read', { eventIds: wanted });
@@ -449,18 +454,31 @@
         for (const id of wanted) if (!done.has(id)) byId.get(id).read = false;
       } catch (e) { for (const id of wanted) byId.get(id).read = false; state.error = (e && e.message) || 'error'; }
       emit();
+      refreshBadge();
+    }
+
+    // Tras marcar, el número se confirma con el servidor (lo leído en otro equipo también cuenta).
+    async function refreshBadge() {
+      if (!transport) return;
+      try {
+        const r = await transport('GET', '/notifs/count');
+        if (r && Number.isFinite(Number(r.count))) { state.badge = Number(r.count); emit(); }
+      } catch (e) { /* el siguiente poll lo trae */ }
     }
 
     async function markAllRead(project = null) {
       const hit = state.notices.filter(n => !n.read && (project == null || n.project === project));
       if (!transport) return;
       for (const n of hit) n.read = true;
+      const before = state.badge;
+      if (project == null && Number.isFinite(state.badge)) state.badge = state.pending.size;   // solo quedan los pedidos sin responder
       emit();
       try {
         const r = await transport('POST', '/notices/read', { all: true, project });
         if (r && Array.isArray(r.read)) for (const id of r.read) if (byId.has(id)) byId.get(id).read = true;
-      } catch (e) { for (const n of hit) n.read = false; state.error = (e && e.message) || 'error'; }
+      } catch (e) { for (const n of hit) n.read = false; state.badge = before; state.error = (e && e.message) || 'error'; }
       emit();
+      refreshBadge();
     }
 
     function markGroupRead(key) {
@@ -638,8 +656,8 @@
     let hidden = true;
     function badge() {
       if (typeof o.onBadge !== 'function') return;
-      const { notices, pending } = controller.state;
-      o.onBadge(notices.filter(n => !n.read || pending.has(n.eventId)).length);
+      const { notices, pending, badge: server } = controller.state;
+      o.onBadge(Number.isFinite(server) ? server : notices.filter(n => !n.read || pending.has(n.eventId)).length);
     }
     function render() {
       queued = false;

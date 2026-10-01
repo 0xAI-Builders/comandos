@@ -168,3 +168,18 @@ def test_bell_count_is_the_strip_count(server):
     assert call(srv, "GET", "/notifs/count")[1] == {"count": 2}
     call(srv, "POST", "/notices/read", {"all": True})
     assert call(srv, "GET", "/notifs/count")[1] == {"count": 1}, "a read request stays pending until answered"
+
+
+def test_marking_all_read_clears_the_bell_count_beyond_500_events(server):
+    """Bug 1-oct: with more than 500 events the bell counted the OLDEST 500 notices
+    while «Marcar leídos» marked the NEWEST 500, so the number (451) never moved."""
+    srv, dash = server
+    for i in range(620):
+        record(dash, "turn_completed", f"d{i}", pane=f"%{i}")
+    record(dash, "permission_requested", "p-last", pane="%9999")
+    assert call(srv, "GET", "/notifs/count")[1] == {"count": 621}
+    call(srv, "POST", "/notices/read", {"all": True})
+    assert call(srv, "GET", "/notifs/count")[1] == {"count": 1}, "only the unanswered permission remains"
+    call(srv, "POST", "/notices/read", {"all": True, "project": "ComandOS"})
+    assert call(srv, "GET", "/notifs/count")[1] == {"count": 1}
+    assert call(srv, "GET", "/notices?after=0&limit=10")[1]["badge"] == 1, "every page gets the same bell number"

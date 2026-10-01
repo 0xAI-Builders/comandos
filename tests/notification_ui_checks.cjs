@@ -45,13 +45,16 @@ function fakeServer() {
         const after = Number(params.get('after') || 0);
         const list = s.notices.filter(n => n.sequence > after).map(n => ({ ...n }));
         const nextAfter = list.reduce((m, n) => Math.max(m, n.sequence), after);
-        return { notices: list, nextAfter, pending: [...s.pending], prefs: s.prefs, focusActive: s.focusActive };
+        return { notices: list, nextAfter, pending: [...s.pending], prefs: s.prefs, focusActive: s.focusActive,
+          ...(s.badge == null ? {} : { badge: s.badge }) };
       }
       if (method === 'POST' && p === '/notices/read') {
         const ids = body.all ? s.notices.filter(n => !body.project || n.project === body.project).map(n => n.eventId) : body.eventIds;
         for (const n of s.notices) if (ids.includes(n.eventId)) n.read = true;
+        if (s.badge != null && body.all && !body.project) s.badge = s.pending.length;
         return { ok: true, read: ids };
       }
+      if (method === 'GET' && p === '/notifs/count') return { count: s.badge == null ? 0 : s.badge };
       if (method === 'POST' && p === '/notices/sound') return { ...s.sound };
       if (method === 'POST' && p === '/presence') return { ok: true };
       if (method === 'POST' && p === '/notices/prefs') { Object.assign(s.prefs, body); return s.prefs; }
@@ -498,6 +501,29 @@ function fakeDom() {
     assert.equal(news.c.view().collapsed, false, 'an unread error opens it');
     busy.c.setCollapsed(true);
     assert.equal(busy.c.view().collapsed, true, 'an explicit collapse wins');
+  });
+
+  await check('the bell number is the server count and drops right after «Marcar leídos»', async () => {
+    // Bug 1-oct: each page counted its own stale copy (451) and never learned of reads made elsewhere.
+    const dom = fakeDom();
+    const host = dom.el('div'); dom.doc.body.appendChild(host);
+    const server = fakeServer(); const timers = fakeTimers(); const badges = [];
+    server.notices.push(notice({ category: 'done', kind: 'turn_completed' }));
+    server.badge = 451;
+    const inst = N.mount({
+      doc: dom.doc, host, transport: server.transport, deviceId: 'web-dom', sync: true,
+      setTimer: timers.set, clearTimer: timers.clear, setInterval: () => 0, clearInterval() {},
+      sounds: fakeSounds(), isVisible: () => true, isSessionLive: () => true,
+      openSource() {}, openNews() {}, storage: null, presence: false, onBadge: n => badges.push(n),
+    });
+    await inst.controller.poll();
+    assert.deepEqual(badges.slice(-1), [451], 'the bell shows the same number as every other surface');
+    inst.toggleStrip();
+    assert.match(inst.stripEl.innerHTML, /nt-count">451</);
+    assert.doesNotMatch(inst.stripEl.innerHTML, /nt-read-all"[^>]*disabled/, '«Marcar leídos» stays usable while the server has unread notices');
+    await inst.controller.markAllRead(null);
+    assert.deepEqual(badges.slice(-1), [0], 'marking all read drops the number at once');
+    assert.doesNotMatch(inst.stripEl.innerHTML, /nt-count">/);
   });
 
   await check('the strip is hidden until the bell opens it; floats and the bell badge still work', async () => {
