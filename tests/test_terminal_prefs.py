@@ -123,5 +123,10 @@ def test_default_terminal_font_is_ubuntu_sans_mono_everywhere():
     assert 'p.font_family || "Ubuntu Sans Mono"' in INDEX
     assert "fontFamily=Ubuntu Sans Mono, " in (REPO / "bin" / "cc-webterm").read_text()
     assert "'Ubuntu Sans Mono', 'JetBrainsMono Nerd Font Mono'" in (REPO / "dash" / "term.html").read_text()
-    # el tema ubuntu también cambia la sans del chrome a Ubuntu Sans
-    assert "--sans:'Ubuntu Sans'" in INDEX.split(':root[data-theme="ubuntu"]')[1].split("}")[0]
+    # Fuentes D (30-sep): un solo juego en todos los temas — Inter para el texto y
+    # la mono de la terminal para lo técnico; ningún tema cambia la fuente.
+    assert "--mono:'Ubuntu Sans Mono','JetBrains Mono',monospace;" in INDEX
+    assert "--sans:'Inter',system-ui,sans-serif;" in INDEX
+    assert "--sans:" not in INDEX.split(':root[data-theme="ubuntu"]')[1].split("}")[0]
+    # Interlineado igual en escritorio (VTE) y remoto (xterm).
+    assert "TERM_LINE_SCALE = 1.2" in CC_APP and "lineHeight: 1.2," in (REPO / "dash" / "term.html").read_text()

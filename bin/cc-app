@@ -166,6 +166,13 @@ FONT_SIZE = 13
 FONT = f"{FONT_FAMILY} {FONT_SIZE}"
 
 
+def _term_line_scale(term):
+    try:
+        term.set_cell_height_scale(TERM_LINE_SCALE)
+    except Exception:
+        pass
+
+
 def _ui_lang():
     """Idioma resuelto por cc-dash (CC_LANG en cc-notify.conf, o auto por $LANG)."""
     try:
@@ -336,6 +343,7 @@ FONT_FAMILY = f"{_PF_FAMILY},JetBrainsMono Nerd Font,JetBrains Mono,DejaVu Sans 
 FONT_SIZE = _PF_SIZE
 FONT = f"{FONT_FAMILY} {FONT_SIZE}"
 TERM_PADDING = max(0, min(40, int(PREFS.get("terminal_padding", 8))))
+TERM_LINE_SCALE = 1.2   # interlineado de la terminal (el mockup respira; 1.0 se veía apretado). Igual en remoto (term.html).
 HEADER_EXTRA = 14   # px extra sobre la VTE: la cabecera de los panes de arriba crece hacia ese margen
 TERM_OPACITY = max(30, min(100, int(PREFS.get("terminal_opacity", 100)))) / 100.0
 _CURSOR_SHAPE = (PREFS.get("cursor_shape") or "block")
@@ -685,7 +693,7 @@ def _bg_rgba():
 
 def make_term(argv_sh, before_spawn=None):
     term = Vte.Terminal()
-    term.set_font(Pango.FontDescription(FONT))
+    term.set_font(Pango.FontDescription(FONT)); _term_line_scale(term)
     term.set_colors(rgba(THEME["fg"]), _bg_rgba(), [rgba(p) for p in THEME["pal"]])
     term.set_color_cursor(rgba(THEME["cursor"]))
     term.set_cursor_shape(_CURSOR_SHAPE_MAP.get(_CURSOR_SHAPE, Vte.CursorShape.BLOCK))
@@ -3043,7 +3051,7 @@ def apply_terminal_prefs(p=None):
         if term is None:
             continue
         try:
-            term.set_font(Pango.FontDescription(FONT))
+            term.set_font(Pango.FontDescription(FONT)); _term_line_scale(term)
             term.set_colors(rgba(THEME["fg"]), _bg_rgba(), [rgba(c) for c in THEME["pal"]])
             term.set_color_cursor(rgba(THEME["cursor"]))
             term.set_cursor_shape(_CURSOR_SHAPE_MAP.get(_CURSOR_SHAPE, Vte.CursorShape.BLOCK))
@@ -6093,7 +6101,7 @@ def _mosaic_term(cmd):
     regexes de links, scrollback corto, sin scrollbar. El peso completo
     vive en las pestañas y en el modal de enfoque, no aqui."""
     term = Vte.Terminal()
-    term.set_font(Pango.FontDescription(FONT))
+    term.set_font(Pango.FontDescription(FONT)); _term_line_scale(term)
     term.set_colors(rgba(THEME["fg"]), _bg_rgba(), [rgba(p) for p in THEME["pal"]])
     term.set_scrollback_lines(400)
     term.set_audible_bell(False)
