@@ -271,11 +271,21 @@ def _read_ids(conn):
     return {r[0] for r in conn.execute("SELECT event_id FROM notice_reads")}
 
 
-def badge_count(conn):
+def live_pending(history, is_live=None):
+    """Pedidos sin responder cuya terminal (sesión + pane) todavía existe. Si la cerraron,
+    nadie va a responder ese permiso: deja de contar y de salir como pendiente."""
+    ids = pending_requests(history)
+    if is_live is None:
+        return ids
+    by = {e["eventId"]: e for e in history}
+    return [i for i in ids if i in by and is_live(by[i].get("sessionKey"), by[i].get("paneId"))]
+
+
+def badge_count(conn, is_live=None):
     """El número de la campana en todas las superficies: avisos sin leer más pedidos
     sin responder, sobre TODO el historial (antes solo los 500 eventos más viejos, y
     «Marcar leídos» tocaba los 500 más nuevos: el número nunca bajaba)."""
-    read, pending = _read_ids(conn), set(pending_requests(_recent(conn)))
+    read, pending = _read_ids(conn), set(live_pending(_recent(conn), is_live))
     return sum(1 for e in _notice_events(conn) if e["eventId"] not in read or e["eventId"] in pending)
 
 
@@ -286,7 +296,7 @@ def unread_notice_ids(conn, project=None):
             and (not project or (classify(e)["category"] != "news" and e.get("projectKey") == project))]
 
 
-def list_notices(conn, after, limit, now_ms, device_id=None, focus_active=False):
+def list_notices(conn, after, limit, now_ms, device_id=None, focus_active=False, is_live=None):
     prefs = load_prefs(conn)
     present = clients(conn, now_ms)
     history = _recent(conn)
@@ -296,7 +306,7 @@ def list_notices(conn, after, limit, now_ms, device_id=None, focus_active=False)
     notices = [notice(e, present, prefs, now_ms, read, groups.get(e["eventId"], e["eventId"]), focus_active)
                for e in page if classify(e)["notice"]]
     return {"notices": notices, "nextAfter": page[-1]["sequence"] if page else after,
-            "pending": pending_requests(history), "prefs": prefs, "focusActive": focus_active}
+            "pending": live_pending(history, is_live), "prefs": prefs, "focusActive": focus_active}
 
 
 def focus_block_active(conn):

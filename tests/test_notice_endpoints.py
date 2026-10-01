@@ -27,6 +27,7 @@ def server(tmp_path, monkeypatch):
     loader.exec_module(dash)
     dash._NOTICES_LOCAL.__dict__.clear()
     monkeypatch.setattr(dash, "notices_focus_active", lambda: False)
+    monkeypatch.setattr(dash, "notices_is_live", lambda: None)   # sin tmux real: no se filtran pedidos
     srv = http.server.ThreadingHTTPServer(("127.0.0.1", 0), dash.Handler)
     thread = threading.Thread(target=srv.serve_forever, daemon=True)
     thread.start()
@@ -183,3 +184,18 @@ def test_marking_all_read_clears_the_bell_count_beyond_500_events(server):
     call(srv, "POST", "/notices/read", {"all": True, "project": "ComandOS"})
     assert call(srv, "GET", "/notifs/count")[1] == {"count": 1}
     assert call(srv, "GET", "/notices?after=0&limit=10")[1]["badge"] == 1, "every page gets the same bell number"
+
+
+def test_a_request_from_a_terminal_that_no_longer_exists_stops_counting(server, monkeypatch):
+    """1-oct: a Codex permission from a closed terminal kept the bell at 1 forever."""
+    srv, dash = server
+    live = {("alpha", "%1")}
+    monkeypatch.setattr(dash, "notices_is_live", lambda: (lambda s, p: (s, p or "") in live))
+    record(dash, "permission_requested", "p-live", pane="%1")
+    record(dash, "permission_requested", "p-gone", pane="%2")
+    call(srv, "POST", "/notices/read", {"all": True})
+    assert call(srv, "GET", "/notifs/count")[1] == {"count": 1}, "only the request whose pane still exists"
+    page = call(srv, "GET", "/notices?after=0&limit=50")[1]
+    assert page["pending"] == ["p-live"] and page["badge"] == 1
+    live.clear()
+    assert call(srv, "GET", "/notifs/count")[1] == {"count": 0}

@@ -834,6 +834,16 @@ def notices_focus_active():
     return notification_delivery.focus_block_active(notices_conn())
 
 
+def notices_is_live():
+    """(sesión, pane) -> ¿esa terminal sigue viva? Para no contar pedidos de terminales cerradas."""
+    try:
+        live = {(i.get("session"), i.get("pane") or "") for i in read_states_cached() if i.get("alive")}
+    except Exception:
+        return None                      # sin tmux legible: no se filtra nada
+    sessions = {s for s, _ in live}
+    return lambda s, p: (s, p or "") in live if p else s in sessions
+
+
 def notices_now():
     return int(time.time() * 1000)
 
@@ -8269,7 +8279,7 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             # pendiente de respuesta (permisos/entradas se resuelven en su terminal).
             try:
                 import notification_delivery
-                count = notification_delivery.badge_count(notices_conn())
+                count = notification_delivery.badge_count(notices_conn(), notices_is_live())
             except Exception:
                 count = 0
             return self._json(200, {"count": count})
@@ -8391,13 +8401,14 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             try:
                 after = int((query.get("after") or ["0"])[0])
                 limit = int((query.get("limit") or ["100"])[0])
+                is_live = notices_is_live()
                 page = notification_delivery.list_notices(conn, after, limit, notices_now(),
                                                           (query.get("deviceId") or [None])[0],
-                                                          notices_focus_active())
+                                                          notices_focus_active(), is_live)
             except ValueError as exc:
                 return self._json(400, {"error": str(exc)})
             # el mismo número de la campana en todas las superficies (todo el historial)
-            page["badge"] = notification_delivery.badge_count(conn)
+            page["badge"] = notification_delivery.badge_count(conn, is_live)
             return self._json(200, page)
         if urllib.parse.urlsplit(self.path).path == "/workspace/close-group":
             query = urllib.parse.parse_qs(urllib.parse.urlsplit(self.path).query)
