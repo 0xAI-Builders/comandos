@@ -508,6 +508,25 @@ def collect_x(now, fetch, errors, env=None):
     return out
 
 
+# Dominios de anuncios oficiales: una nota de HN o Reddit que enlaza aquí
+# apunta al anuncio mismo, aunque el feed del laboratorio haya fallado.
+OFFICIAL_DOMAINS = [
+    (r"(^|\.)anthropic\.com$|^claude\.(ai|com)$", "Anthropic"), (r"(^|\.)openai\.com$", "OpenAI"),
+    (r"^deepmind\.google$", "Google DeepMind"), (r"^blog\.google$", "Google"), (r"^developers\.googleblog\.com$", "Google"),
+    (r"(^|\.)x\.ai$", "xAI"), (r"^mistral\.ai$", "Mistral"), (r"^ai\.meta\.com$", "Meta"),
+    (r"^qwenlm\.github\.io$|^qwen\.ai$", "Qwen"), (r"(^|\.)deepseek\.com$", "DeepSeek"),
+    (r"^blogs\.nvidia\.com$", "NVIDIA"), (r"^huggingface\.co$", "Hugging Face"),
+]
+
+
+def official_lab(url):
+    host = (urllib.parse.urlsplit(str(url or "")).hostname or "").lower().removeprefix("www.")
+    path = urllib.parse.urlsplit(str(url or "")).path
+    if host == "huggingface.co" and not path.startswith("/blog"):
+        return None                                   # un repo de modelo cualquiera no es anuncio
+    return next((lab for pattern, lab in OFFICIAL_DOMAINS if re.search(pattern, host)), None)
+
+
 COLLECTORS = (collect_official, collect_hn, collect_reddit, collect_github_trending, collect_hf,
               collect_lobsters, collect_press, collect_x)
 
@@ -527,6 +546,10 @@ def collect(now=None, *, fetch=fetch_public, collectors=COLLECTORS):
         for got, errs in pool.map(run, collectors):
             items += [i for i in got if i.get("title") and canonical(i.get("url"))]
             errors += errs
+    for i in items:
+        lab = None if i["official"] else official_lab(i["url"])
+        if lab:
+            i.update(official=True, lab=lab, officialUrl=True)
     return {"items": items, "failures": errors}
 
 
@@ -559,38 +582,33 @@ def _similar(a, b):
 
 
 def cluster(items):
-    """Une lo que habla de lo mismo: misma URL destino o títulos que comparten
-    la versión/modelo y otra palabra (p. ej. «GPT-5.5» + «precio»)."""
-    parent = list(range(len(items)))
+    """Une lo que habla de lo mismo sin encadenar: cada grupo crece alrededor
+    de su semilla (lo oficial y más caliente primero). Una nota entra si
+    comparte URL destino con el grupo o si se parece a la semilla; así un
+    título «puente» no junta dos lanzamientos distintos."""
+    order = sorted(range(len(items)), key=lambda k: (not items[k]["official"], -items[k]["heat"]))
+    groups, seeds, by_url = [], [], {}
 
-    def find(i):
-        while parent[i] != i:
-            parent[i] = parent[parent[i]]
-            i = parent[i]
-        return i
-
-    def union(i, j):
-        a, b = find(i), find(j)
-        if a != b:
-            parent[b] = a
-    by_url = {}
-    toks = [tokens(i["title"]) for i in items]
-    for idx, it in enumerate(items):
+    def urls(it):
+        out = set()
         for u in (it["url"], it.get("discussion")):
             key = canonical(u)
             if key and "news.ycombinator.com" not in key and "reddit.com" not in key:
-                if key in by_url:
-                    union(by_url[key], idx)
-                else:
-                    by_url[key] = idx
-    for i in range(len(items)):
-        for j in range(i + 1, len(items)):
-            if find(i) != find(j) and _similar(toks[i], toks[j]):
-                union(i, j)
-    groups = {}
-    for idx in range(len(items)):
-        groups.setdefault(find(idx), []).append(items[idx])
-    return list(groups.values())
+                out.add(key)
+        return out
+    for k in order:
+        it, toks = items[k], tokens(items[k]["title"])
+        home = next((by_url[u] for u in urls(it) if u in by_url), None)
+        if home is None:
+            home = next((g for g, seed in enumerate(seeds) if _similar(toks, seed)), None)
+        if home is None:
+            home = len(groups)
+            groups.append([])
+            seeds.append(toks)
+        groups[home].append(it)
+        for u in urls(it):
+            by_url.setdefault(u, home)
+    return groups
 
 
 def _age_factor(hours):
@@ -608,7 +626,7 @@ def score(group, now):
     heat = sum(i["heat"] for i in group)
     base = 0.0
     launch = any(i["release"] or RELEASE_RE.search(i["title"]) for i in group)
-    if any(i["family"] in ("oficial", "x") for i in official):
+    if any(i["family"] in ("oficial", "x") or i.get("officialUrl") for i in official):
         base += 22 + (18 if launch else 0)
         if not launch and all(NOISE_RE.search(i["title"]) for i in official):
             base -= 16                                    # caso de cliente, política, evento: no es lanzamiento
@@ -621,14 +639,15 @@ def score(group, now):
     if launch:
         base += 6
     breadth = 8 * (len(families) - 1)
-    stamps = [i["publishedAt"] for i in group if i.get("publishedAt")]
-    age = (now - min(stamps)) / HOUR if stamps else None
+    # La frescura es la del anuncio principal; si no trae fecha, la más reciente.
+    lead = _primary(group).get("publishedAt") or max((i["publishedAt"] for i in group if i.get("publishedAt")), default=None)
+    age = (now - lead) / HOUR if lead else None
     return round((base + heat + breadth) * _age_factor(age), 2)
 
 
 def _primary(group):
     order = {"oficial": 0, "x": 1, "hf-org": 2, "release": 3, "prensa": 5}
-    return sorted(group, key=lambda i: (order.get(i["family"], 4), -i["heat"]))[0]
+    return sorted(group, key=lambda i: (0 if i.get("officialUrl") else order.get(i["family"], 4), -i["heat"]))[0]
 
 
 def rank(items, now, *, limit=6, seen_urls=(), min_score=10.0):

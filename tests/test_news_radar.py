@@ -185,3 +185,31 @@ def test_heat_labels_say_why_something_is_hot():
     assert r.heat_label(it("x", "https://a", signals={"points": 612, "comments": 240})) == "612 pts · 240 comentarios"
     assert r.heat_label(it("x", "https://a", family="github", signals={"starsToday": 4100, "trendingRank": 1})) == "4,100 ★ hoy · #1 en trending"
     assert r.heat_label(it("x", "https://a", family="oficial", official=True)) == "oficial"
+
+
+def test_a_bridge_title_does_not_chain_two_launches_together():
+    items = [it("Gemini 4 Argon: our next era", "https://g.example/4", family="oficial", official=True, heat=0),
+             it("Introducing GPT-6.1 Sol", "https://o.example/61", family="oficial", official=True, heat=0),
+             it("Gemini 4 Argon vs GPT-6.1 Sol: price and intelligence", "https://blog.example/vs", heat=5)]
+    groups = r.cluster(items)
+    seeds = sorted(g[0]["title"] for g in groups if g[0]["official"])
+    assert seeds == ["Gemini 4 Argon: our next era", "Introducing GPT-6.1 Sol"]
+    assert not any(len({i["url"] for i in g if i["official"]}) > 1 for g in groups)
+
+
+def test_an_old_related_post_does_not_bury_todays_launch():
+    fresh = it("Introducing GPT-6.1 Sol", "https://o.example/61", family="oficial", official=True, heat=0, published=NOW - 2 * H)
+    old = it("Basis completes a tax workbook with GPT-6 Astra", "https://o.example/basis", family="oficial", official=True,
+             heat=0, published=NOW - 80 * H)
+    assert r.score([fresh, old], NOW) >= r.score([fresh], NOW)
+
+
+def test_a_community_link_to_a_lab_domain_counts_as_official():
+    def hn(now, fetch, errors):
+        return [it("Gemini 4 Argon", "https://blog.google/models/gemini-4", heat=60),
+                it("Some model on HF", "https://huggingface.co/someone/model", heat=10)]
+    got = r.collect(NOW, fetch=lambda *a, **k: None, collectors=(hn,))["items"]
+    assert (got[0]["official"], got[0]["lab"]) == (True, "Google")
+    assert got[1]["official"] is False
+    (group,) = r.rank(got[:1], NOW)
+    assert (group["kind"], group["lab"]) == ("oficial", "Google")

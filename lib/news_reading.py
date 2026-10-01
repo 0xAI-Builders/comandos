@@ -301,7 +301,10 @@ def run_translation(conn, source_id, ask, lang="es", chunk=40):
         src = ne.get_source(conn, source_id)
         cap = src["capture"]
         blocks = cap["blocks"]
-        texts = [cap.get("title") or src["title"]] + [b["text"] for b in blocks if b.get("type") != "img"]
+        def translatable(b):
+            return b.get("type") != "img" or bool(b.get("alt"))
+        texts = [cap.get("title") or src["title"]] + [b.get("alt") if b.get("type") == "img" else b["text"]
+                                                     for b in blocks if translatable(b)]
         out, model = [], None
         for start in range(0, len(texts), chunk):
             part = texts[start:start + chunk]
@@ -314,7 +317,8 @@ def run_translation(conn, source_id, ask, lang="es", chunk=40):
             got, model = ask(ne.TRANSLATE_INSTRUCTIONS, json.dumps(part, ensure_ascii=False), parse, timeout=300)
             out += got
         title, rest = out[0], iter(out[1:])
-        translated = [dict(b, text=next(rest)) if b.get("type") != "img" else b for b in blocks]
+        translated = [b if not translatable(b) else dict(b, alt=next(rest)) if b.get("type") == "img"
+                      else dict(b, text=next(rest)) for b in blocks]
         conn.execute("UPDATE news_translations SET state = 'done', title = ?, blocks = ?, model = ?, error = NULL, "
                      "updated_at_ms = ? WHERE source_id = ? AND lang = ?",
                      (_clip(title, 300), json.dumps(translated, ensure_ascii=False), model, _now(), source_id, lang))

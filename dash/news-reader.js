@@ -26,6 +26,9 @@
   const TABS = [["resumen", "Resumen IA"], ["fuentes", "Fuentes"], ["chat", "Chat"], ["notas", "Notas"]];
   const HTTP_URL = /^https?:\/\//i;
   const MEDIA_NAME = /^[0-9a-f]{32}\.(png|jpg|webp|gif|avif)$/;
+  const COPY_ICON = '<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" '
+    + 'stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2"/>'
+    + '<path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>';
   const PURIFY_CONFIG = {
     ALLOWED_TAGS: ["p", "br", "strong", "em", "del", "s", "a", "ul", "ol", "li", "blockquote", "code",
       "pre", "h1", "h2", "h3", "h4", "h5", "h6", "hr", "table", "thead", "tbody", "tr", "th", "td",
@@ -381,7 +384,7 @@
       return `<section class="nr-edition-story${isOpen ? " on" : ""}" id="nr-story-${esc(story.id)}" data-story="${esc(story.id)}">
         <small class="nr-kicker"><span class="${k.hot ? "nr-hot" : ""}">${esc(k.label)}</span><span class="nr-n">#${rank} del día</span>`
         + `<span class="nr-n">${n} fuente${n === 1 ? "" : "s"}</span>${counts.notes ? `<span class="nr-nn">${counts.notes} nota${counts.notes === 1 ? "" : "s"}</span>` : ""}</small>
-        <h2><button type="button" class="nr-open-story" data-open="${esc(story.id)}">${esc(story.title)}</button></h2>
+        <h2><button type="button" data-flat class="nr-open-story" data-open="${esc(story.id)}">${esc(story.title)}</button></h2>
         <div class="nr-markdown nr-summary">${render(story.summary)}</div>
         <div class="nr-acts"><button type="button" class="nr-open-btn${isOpen ? " on" : ""}" data-open="${esc(story.id)}">${isOpen ? "Abierta →" : "Abrir"}</button>`
         + `<button type="button" class="nr-save" data-save="${esc(story.id)}" aria-pressed="${!!counts.saved}">${counts.saved ? "Guardada" : "Guardar"}</button></div>
@@ -455,7 +458,7 @@
           const k = storyKicker({ category: "", ...s });
           return `<section class="nr-edition-story"><small class="nr-kicker"><span>${esc(s.meta && s.meta.lab ? s.meta.lab : k.label)}</span>`
             + `<span class="nr-n">${esc(s.editionId.replace("@", " · "))}</span></small>
-            <h2><button type="button" class="nr-open-story" data-goto="${esc(s.editionId)}" data-goto-story="${esc(s.id)}">${esc(s.title)}</button></h2>
+            <h2><button type="button" data-flat class="nr-open-story" data-goto="${esc(s.editionId)}" data-goto-story="${esc(s.id)}">${esc(s.title)}</button></h2>
             <div class="nr-markdown nr-summary">${render(s.summary)}</div>
             <div class="nr-acts"><button type="button" data-goto="${esc(s.editionId)}" data-goto-story="${esc(s.id)}">Abrir</button>`
             + `<button type="button" class="nr-save" data-save="${esc(s.id)}" aria-pressed="true">Guardada</button></div></section>`;
@@ -470,7 +473,7 @@
       const counts = story.counts || {};
       const n = { fuentes: sourcesOf(story).length, chat: counts.chat || 0, notas: counts.notes || 0 };
       return `<div class="nr-tabs" role="tablist">${TABS.map(([key, label]) =>
-        `<button type="button" role="tab" data-tab="${key}" aria-selected="${state.tab === key}" class="${state.tab === key ? "on" : ""}">${label}${n[key] ? `<i>${n[key]}</i>` : ""}</button>`).join("")}</div>`;
+        `<button type="button" data-flat role="tab" data-tab="${key}" aria-selected="${state.tab === key}" class="${state.tab === key ? "on" : ""}">${label}${n[key] ? `<i>${n[key]}</i>` : ""}</button>`).join("")}</div>`;
     }
 
     function renderPanel() {
@@ -521,6 +524,7 @@
         const name = img.dataset.media;
         if (!MEDIA_NAME.test(name) || img.dataset.loaded) continue;
         img.dataset.loaded = "1";
+        img.addEventListener("error", () => img.closest("figure")?.classList.add("nr-fig-missing"), { once: true });
         try {
           if (!media.has(name)) {
             const r = await fetch("/news/media/" + name, { headers: tokenHeaders() });
@@ -541,7 +545,7 @@
       state.sourceId = current.id;
       const tabs = `<div class="nr-src-list">${sources.map(s =>
         `<button type="button" class="nr-src-pick${s.id === current.id ? " on" : ""}" data-source="${esc(s.id)}">`
-        + `<b>${esc(s.official ? "Oficial · " + s.origin : s.origin)}</b><small>${esc(s.heat || hostOf(s.url))}</small></button>`).join("")}</div>`;
+        + `<b>${esc(s.official ? "Oficial · " + s.origin : s.origin)}</b><small>${esc(s.heat && s.heat !== "oficial" ? s.heat : hostOf(s.url))}</small></button>`).join("")}</div>`;
       const loaded = state.sources.get(current.id);
       let article;
       if (!loaded) article = `<p class="nr-empty">Cargando la fuente…</p>`;
@@ -557,10 +561,10 @@
       const tr = src.translation;
       const showOriginal = state.original.has(src.id) || !tr || tr.state !== "done";
       const trButton = !cap ? "" : !tr || tr.state === "failed"
-        ? `<button type="button" class="nr-xs" data-translate="${esc(src.id)}">${tr && tr.state === "failed" ? "Reintentar traducción" : "Traducir con IA"}</button>`
+        ? `<button type="button" data-flat class="nr-xs" data-translate="${esc(src.id)}">${tr && tr.state === "failed" ? "Reintentar traducción" : "Traducir con IA"}</button>`
         : tr.state === "running" ? `<span class="nr-xs nr-busy">Traduciendo…</span>`
-        : `<button type="button" class="nr-xs${showOriginal ? "" : " nr-saved"}" data-lang="es" data-source-lang="${esc(src.id)}">★ Traducción guardada</button>`
-          + `<button type="button" class="nr-xs${showOriginal ? " nr-saved" : ""}" data-lang="orig" data-source-lang="${esc(src.id)}">Original</button>`;
+        : `<button type="button" data-flat class="nr-xs${showOriginal ? "" : " nr-saved"}" data-lang="es" data-source-lang="${esc(src.id)}">★ Traducción guardada</button>`
+          + `<button type="button" data-flat class="nr-xs${showOriginal ? " nr-saved" : ""}" data-lang="orig" data-source-lang="${esc(src.id)}">Original</button>`;
       const head = `<div class="nr-src-head">${src.official ? `<span class="nr-of">Fuente oficial</span>` : ""}<span class="nr-src-host">${esc(hostOf(src.url))}${src.heat ? " · " + esc(src.heat) : ""}</span>`
         + `<span class="nr-sp"></span>${trButton}${href ? `<a class="nr-xs" href="${esc(href)}" target="_blank" rel="noopener noreferrer nofollow">Abrir ↗</a>` : ""}</div>`;
       if (!cap) {
@@ -593,7 +597,8 @@
     function chatView(story) {
       const msgs = state.chat.get(story.id);
       if (!msgs) { loadChat(story.id); return `<p class="nr-empty">Cargando la conversación…</p>`; }
-      const ctx = `<div class="nr-ctx">Chat con esta noticia · ${sourcesOf(story).length} fuentes capturadas · se guarda con la noticia</div>`;
+      const n = sourcesOf(story).length;
+      const ctx = `<div class="nr-ctx">Chat con esta noticia · ${n} fuente${n === 1 ? "" : "s"} capturada${n === 1 ? "" : "s"} · se guarda con la noticia</div>`;
       if (!msgs.length) {
         return ctx + `<p class="nr-empty">Pregunta lo que quieras de esta noticia. La IA responde con las fuentes capturadas y cita el párrafo.</p>
           <div class="nr-chips">${["¿Qué cambia para mí?", "¿Qué dice la comunidad?", "¿Qué no dice la fuente?"].map(q =>
@@ -603,8 +608,8 @@
         const mine = m.role === "user";
         const text = m.state === "pending" ? `<span class="nr-thinking">Pensando<i>.</i><i>.</i><i>.</i></span>`
           : mine ? `<p>${esc(m.text).replace(/\n/g, "<br>")}</p>` : `<div class="nr-markdown">${render(m.text)}</div>`;
-        const tools = m.state === "done" ? `<div class="nr-tip"><button type="button" class="nr-xs${m.noted ? " nr-saved" : ""}" data-note-chat="${esc(m.id)}" title="${m.noted ? "Quitar de mis notas" : "Guardar como nota"}" aria-pressed="${!!m.noted}">${m.noted ? "★" : "☆"}</button>`
-          + `<button type="button" class="nr-xs" data-copy-chat="${esc(m.id)}" title="Copiar">⎘</button></div>` : "";
+        const tools = m.state === "done" ? `<div class="nr-tip"><button type="button" data-flat class="nr-xs${m.noted ? " nr-saved" : ""}" data-note-chat="${esc(m.id)}" title="${m.noted ? "Quitar de mis notas" : "Guardar como nota"}" aria-pressed="${!!m.noted}">${m.noted ? "★" : "☆"}</button>`
+          + `<button type="button" data-flat class="nr-xs" data-copy-chat="${esc(m.id)}" title="Copiar" aria-label="Copiar">${COPY_ICON}</button></div>` : "";
         return `<div class="nr-msg${mine ? " me" : ""}${m.noted ? " noted" : ""}${m.state === "failed" ? " failed" : ""}">${tools}<small class="nr-who">${mine ? "Tú" : esc(m.model ? modelName(m.model) : "IA") + " · con las fuentes"}</small>${text}${m.cite ? `<cite>${esc(m.cite)}</cite>` : ""}</div>`;
       }).join("") + `<p class="nr-foot">☆ en una burbuja la guarda como nota con su cita.</p>`;
     }
@@ -701,12 +706,12 @@
           : n.text ? `<p>${esc(n.text).replace(/\n/g, "<br>")}</p>` : "")
         + (n.cite ? `<cite>${esc(n.cite)}</cite>` : "")
         + `<div class="nr-note-acts">`
-        + (editing ? `<button type="button" class="nr-xs nr-saved" data-note-save="${esc(n.id)}">Guardar</button><button type="button" class="nr-xs" data-note-cancel="1">Cancelar</button>`
-          : `<button type="button" class="nr-xs" data-note-edit="${esc(n.id)}">Editar</button>`
-            + (withStory ? `<button type="button" class="nr-xs" data-goto="${esc(n.editionId)}" data-goto-story="${esc(n.storyId)}" data-goto-tab="notas">Ir a la noticia</button>` : "")
-            + `<button type="button" class="nr-xs" data-note-copy="${esc(n.id)}">Copiar</button>`
-            + (confirm ? `<button type="button" class="nr-xs nr-danger" data-note-delete="${esc(n.id)}">¿Borrar? Sí</button><button type="button" class="nr-xs" data-note-cancel="1">No</button>`
-              : `<button type="button" class="nr-xs" data-note-ask-delete="${esc(n.id)}">Borrar</button>`))
+        + (editing ? `<button type="button" data-flat class="nr-xs nr-saved" data-note-save="${esc(n.id)}">Guardar</button><button type="button" data-flat class="nr-xs" data-note-cancel="1">Cancelar</button>`
+          : `<button type="button" data-flat class="nr-xs" data-note-edit="${esc(n.id)}">Editar</button>`
+            + (withStory ? `<button type="button" data-flat class="nr-xs" data-goto="${esc(n.editionId)}" data-goto-story="${esc(n.storyId)}" data-goto-tab="notas">Ir a la noticia</button>` : "")
+            + `<button type="button" data-flat class="nr-xs" data-note-copy="${esc(n.id)}">Copiar</button>`
+            + (confirm ? `<button type="button" data-flat class="nr-xs nr-danger" data-note-delete="${esc(n.id)}">¿Borrar? Sí</button><button type="button" data-flat class="nr-xs" data-note-cancel="1">No</button>`
+              : `<button type="button" data-flat class="nr-xs" data-note-ask-delete="${esc(n.id)}">Borrar</button>`))
         + `</div></div>`;
     }
 
@@ -733,7 +738,7 @@
       const notes = state.allNotes.notes || [];
       const groups = notesByDay(notes, Date.now());
       return scope + `<div class="nr-search"><input class="nr-notes-q" type="search" placeholder="Buscar en todas mis notas…" value="${esc(state.query)}" aria-label="Buscar en mis notas">`
-        + `<button type="button" class="nr-xs" data-notes-export="1">Copiar como .md</button></div>`
+        + `<button type="button" data-flat class="nr-xs" data-notes-export="1">Copiar como .md</button></div>`
         + (groups.length ? groups.map(g => `<div class="nr-day-label">${esc(g.label)}</div>` + g.notes.map(n => noteItem(n, true)).join("")).join("")
           : `<p class="nr-empty">${state.query ? "Ninguna nota coincide." : "Aún no tienes notas."}</p>`);
     }
