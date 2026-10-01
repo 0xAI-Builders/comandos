@@ -336,6 +336,7 @@ FONT_FAMILY = f"{_PF_FAMILY},JetBrainsMono Nerd Font,JetBrains Mono,DejaVu Sans 
 FONT_SIZE = _PF_SIZE
 FONT = f"{FONT_FAMILY} {FONT_SIZE}"
 TERM_PADDING = max(0, min(40, int(PREFS.get("terminal_padding", 8))))
+HEADER_EXTRA = 10   # px extra sobre la VTE: la cabecera de los panes de arriba crece hacia ese margen
 TERM_OPACITY = max(30, min(100, int(PREFS.get("terminal_opacity", 100)))) / 100.0
 _CURSOR_SHAPE = (PREFS.get("cursor_shape") or "block")
 _CURSOR_BLINK = bool(PREFS.get("cursor_blink", True))
@@ -710,7 +711,7 @@ def make_term(argv_sh, before_spawn=None):
             pass
     # Padding alrededor del texto (configurable en Ajustes > Terminal).
     term.set_margin_start(TERM_PADDING + 2); term.set_margin_end(max(0, TERM_PADDING - 4))
-    term.set_margin_top(TERM_PADDING); term.set_margin_bottom(max(0, TERM_PADDING - 2))
+    term.set_margin_top(TERM_PADDING + HEADER_EXTRA); term.set_margin_bottom(max(0, TERM_PADDING - 2))
 
     # Drag & drop: soltar archivos/carpetas desde Files o el escritorio pega
     # sus RUTAS (shell-quoted) en el prompt — como GNOME Terminal. Nunca
@@ -1354,7 +1355,7 @@ def _build_hb_css():
     b".pane-pill.pp-shell label{font-size:11px;}"
     b".pill-btn{padding:2px 5px;margin:0;background:rgba(148,148,148,0.12);"
     b" border:1px solid rgba(148,148,148,0.55);border-radius:999px;min-height:0;}"
-    b".pane-card .pill-btn,.pane-card-keys .pill-btn{padding:0 14px;min-height:19px;border-radius:7px;margin:0;color:" + THEME.get("dim", "#8a98ab").encode() + b";}"
+    b".pane-card .pill-btn,.pane-card-keys .pill-btn{padding:0 14px;min-height:22px;border-radius:8px;margin:0;color:" + THEME.get("dim", "#8a98ab").encode() + b";}"
     b".pane-card .pill-btn label,.pane-card-keys .pill-btn label{font-size:11px;font-weight:600;color:" + THEME.get("dim", "#8a98ab").encode() + b";}"
     b".pane-card .pill-btn:hover label,.pane-card-keys .pill-btn:hover label{color:" + THEME["fg"].encode() + b";}"
     b".pp-logo{min-width:14px;min-height:14px;border-radius:4px;}"
@@ -3050,7 +3051,7 @@ def apply_terminal_prefs(p=None):
                 Vte.CursorBlinkMode.ON if _CURSOR_BLINK else Vte.CursorBlinkMode.OFF)
             term.set_margin_start(TERM_PADDING + 2)
             term.set_margin_end(max(0, TERM_PADDING - 4))
-            term.set_margin_top(TERM_PADDING)
+            term.set_margin_top(TERM_PADDING + HEADER_EXTRA)
             term.set_margin_bottom(max(0, TERM_PADDING - 2))
         except Exception:
             pass
@@ -5287,7 +5288,9 @@ def _pane_frames(term, geo, m_l, m_t, cw, chh, focused=True):
         rail = m_t + (top - 1) * chh if top >= 1 else m_t      # renglón de cabecera
         x0 = m_l + left * cw - (5 if left == 0 else 3)
         x1 = m_l + (left + width) * cw + 3
-        y0 = rail - 4 if top <= 1 else rail + 1
+        # Panes de arriba: el marco (y su cabecera) sube al margen extra sobre la VTE,
+        # así la cabecera mide ~35 px sin tapar texto. Panes apilados: el renglón tmux.
+        y0 = rail - (HEADER_EXTRA + 3) if top <= 1 else rail + 1
         bottom = m_t + (top + height) * chh
         at_bottom = rows_total and top + height >= rows_total
         y1 = bottom + (3 if at_bottom else 0)
@@ -5304,7 +5307,7 @@ def _card_rect(rows, pane_id, chh):
     return int(fx) + 1, top, max(120, int(fw) - 2), max(18, int(rail_y + chh) - top)
 
 
-KEY_H = 19     # alto de «IA» / «MCPs · Skills» en la cabecera
+KEY_H = 22     # alto de «IA» / «MCPs · Skills» en la cabecera
 
 
 def _reposition_pills(box, geo):
