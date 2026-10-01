@@ -1735,7 +1735,7 @@ def button_style_css(style, theme):
     # atajos…): misma superficie 3D sin cambiar su tamaño. Hundirse = sombra
     # interior (sin mover márgenes, así las listas no bailan). Fuera quedan
     # los controles de ventana y las flechas de scroll.
-    gen = "button:not(.cc-key):not(.cc-winctl):not(.titlebutton):not(.tabfav):not(.tabclose):not(.tab-suggest):not(.tabnav)"
+    gen = "button:not(.cc-key):not(.cc-winctl):not(.titlebutton):not(.tabfav):not(.tabclose):not(.tab-suggest):not(.tabnav):not(.side-tab)"
     generic = {
         "sutil": (f"{gen}{{border:1px solid {line};box-shadow:0 2px 0 {theme.get('line2', line)};}}"
                   f"{gen}:active,{gen}:checked{{box-shadow:inset 0 2px 0 rgba(0,0,0,0.3);}}"),
