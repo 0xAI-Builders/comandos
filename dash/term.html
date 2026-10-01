@@ -2100,8 +2100,13 @@
   }
   // Agarradera: al pasar o arrastrar sobre el canal entre panes. La zona es ancha
   // (± 6 px): el arrastre lo hace ComandOS, ya no hay que atinarle a tmux.
-  function gutterAt(x, y) {
-    return gutters.findIndex(g => x >= g.x - 6 && x <= g.x + g.w + 6 && y >= g.y - 6 && y <= g.y + g.h + 6);
+  function gutterAt(x, y, slack = 8) {
+    return gutters.findIndex(g => x >= g.x - slack && x <= g.x + g.w + slack && y >= g.y - slack && y <= g.y + g.h + slack);
+  }
+  // Ya encendida, la agarradera se suelta solo a 14 px: en la orilla no titila mano/flecha.
+  function stillOn(i, x, y) {
+    const g = gutters[i];
+    return !!g && x >= g.x - 14 && x <= g.x + g.w + 14 && y >= g.y - 14 && y <= g.y + g.h + 14;
   }
   function pointCell(e) {
     const sc = document.querySelector('#term .xterm-screen'), [cw, ch] = cell();
@@ -2127,7 +2132,7 @@
   // Captura: el canal es de ComandOS; xterm (y tmux) no ven ese clic.
   termEl.addEventListener('mousedown', e => {
     if (e.button !== 0) return;
-    const [x, y] = layerPoint(e), i = gutterAt(x, y);
+    const [x, y] = layerPoint(e), i = hot >= 0 && stillOn(hot, x, y) ? hot : gutterAt(x, y);
     if (i < 0) {
       // Clic en un pane: el marco salta al instante; tmux elige ese mismo pane.
       const c = pointCell(e), p = c && panes.find(q => c[0] >= q.left && c[0] < q.left + q.width && c[1] >= q.top - 1 && c[1] < q.top + q.height);
@@ -2163,7 +2168,9 @@
   termEl.addEventListener('dblclick', e => { const [x, y] = layerPoint(e); if (gutterAt(x, y) >= 0) { e.preventDefault(); e.stopPropagation(); } }, true);
   termEl.addEventListener('mousemove', e => {
     if (drag) return;
-    const [x, y] = layerPoint(e), next = gutterAt(x, y);
+    const [x, y] = layerPoint(e);
+    if (hot >= 0 && stillOn(hot, x, y)) return;
+    const next = gutterAt(x, y);
     if (next !== hot) { hot = next; drawGrip(); }
   }, { passive: true });
   termEl.addEventListener('mouseleave', () => { if (!drag && hot >= 0) { hot = -1; drawGrip(); } });

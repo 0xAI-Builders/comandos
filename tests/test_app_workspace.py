@@ -330,7 +330,7 @@ def test_stacked_panes_breathe_and_the_resize_handle_lights_up_on_the_gutter():
     assert at(box, 104, 50) == 0 and at(box, 50, 302) == 1 and at(box, 50, 50) is None
     draw = SOURCE.split('def _draw_pane_frames(box, cr):')[1].split('\ndef ')[0]
     assert '_hot_gutter' in draw and '1.0 if dragging else 0.55' in draw and '(44, 8) if dragging else (34, 6)' in draw
-    assert 'name = "grabbing" if getattr(box, "_hot_state", (None, False))[1] else "grab"' in SOURCE
+    assert '_grip_cursor(w, "grabbing")' in SOURCE and '_grip_cursor(w, "grab")' in SOURCE
 
 
 def test_dragging_the_gutter_is_done_by_comandos_with_half_on_double_click():
@@ -383,7 +383,18 @@ def test_the_active_frame_and_handle_take_the_theme_brand_and_win_over_vte():
     draw = SOURCE.split('def _draw_pane_frames(box, cr):')[1].split('\ndef ')[0]
     assert '#4ade80' not in draw and 'THEME.get("brand")' in draw
     attach = SOURCE.split('def _attach_model_bar(')[1].split('\ndef ')[0]
-    # El arrastre propio va antes que los handlers que devuelven False.
-    assert attach.index('_gutter_press(b, w, e)') < attach.index('_gutter_track(\n')
-    cursor = SOURCE.split('def _gutter_cursor(box, hot):')[1].split('\ndef ')[0]
-    assert '_vte_event_windows(term)' in cursor
+    # La VTE ya no ve los canales: ni pelea de cursores ni arrastre de tmux (1-oct).
+    assert '_gutter_cursor' not in SOURCE and 'connect_after("motion-notify-event"' not in attach
+    assert '_term_click(b, e)' in attach
+
+
+def test_each_gutter_gets_its_own_input_strip_with_slack():
+    """Parpadeo mano/flecha (1-oct): cada canal tiene su franja con cursor propio,
+    GRIP_SLACK px a cada lado; si no cambió, no se recoloca."""
+    ns = {'GRIP_SLACK': 8}
+    rect = load('_grip_rect', ns)
+    assert rect(("v", 100, 10, 8, 200, '%1')) == (92, 10, 24, 200)
+    assert rect(("h", 0, 300, 400, 5, '%1')) == (0, 292, 400, 21)
+    sync = SOURCE.split('def _sync_grips(box):')[1].split('\ndef ')[0]
+    assert 'set_visible_window(False)' in sync and 'eb._rect != rect' in sync
+    assert SOURCE.count('_sync_grips(box)') >= 2

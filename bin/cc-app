@@ -5005,22 +5005,11 @@ def _attach_model_bar(box, sess):
     box._frames = []
     ov.connect_after("draw", lambda w, cr, b=box: _draw_pane_frames(b, cr))
     box._drag = None
-    term.connect("button-press-event", lambda w, e, b=box: _gutter_press(b, w, e))
-    term.connect("motion-notify-event", lambda w, e, b=box: _gutter_motion(b, w, e))
-    term.connect("button-release-event", lambda w, e, b=box: _gutter_release(b, w, e))
+    # Canales entre panes: franjas de entrada propias (_sync_grips) con su cursor;
+    # la VTE ya no los ve, así no hay pelea de cursores ni arrastres de tmux.
+    term.connect("button-press-event", lambda w, e, b=box: _term_click(b, e))
     term.connect("key-press-event", lambda w, e, b=box: _prefix_watch(b, e))
-    # La VTE repone su cursor de texto en algunos movimientos: la manita va después.
-    term.connect_after("motion-notify-event", lambda w, e, b=box: (
-        _gutter_cursor(b, b._hot_gutter) if getattr(b, "_hot_gutter", None) is not None else None, False)[1])
-    term.connect("motion-notify-event",
-                 lambda w, e, b=box: (_pane_geo_soon(b) if e.get_state() & Gdk.ModifierType.BUTTON1_MASK else None, False)[1])
-    term.connect("button-release-event", lambda w, e, b=box: (_pane_geo_soon(b), _gutter_track(b, -99, -99, False), False)[2])
-    term.add_events(Gdk.EventMask.POINTER_MOTION_MASK | Gdk.EventMask.LEAVE_NOTIFY_MASK)
-    term.connect("motion-notify-event", lambda w, e, b=box: (_gutter_track(
-        b, e.x + w.get_margin_start(), e.y + w.get_margin_top(),
-        bool(e.get_state() & Gdk.ModifierType.BUTTON1_MASK)), False)[1])
-    term.connect("leave-notify-event", lambda w, e, b=box: (
-        None if e.get_state() & Gdk.ModifierType.BUTTON1_MASK else _gutter_track(b, -99, -99, False), False)[1])
+    term.connect("button-release-event", lambda w, e, b=box: (_pane_geo_soon(b), False)[1])
     term.connect("size-allocate", lambda w, a, b=box: _pane_geo_soon(b))
     box._pill_sess = sess
     box._pill_sig = ""
@@ -5523,48 +5512,88 @@ def _gutter_measure(box, g):
 
 
 _CURSOR_CACHE = {}
+GRIP_SLACK = 8         # px de agarre a cada lado del canal entre panes
 
 
-def _vte_event_windows(term):
-    """Ventanas de entrada propias de la VTE: su cursor de texto tapa el de la
-    ventana del widget, así que la manita va en ellas (laboratorio 1-oct)."""
-    win_ = term.get_window() if term is not None and hasattr(term, "get_window") else None
+def _grip_cursor(widget, name):
+    """Cursor propio de una franja de agarre: es SU ventana de entrada, así la VTE
+    no lo pisa (la pelea VTE ↔ manita hacía parpadear flecha/mano, 1-oct)."""
+    win_ = widget.get_window() if hasattr(widget, "get_window") else None
     if win_ is None:
-        return []
-    a = term.get_allocation()
-    want = (a.x, a.y, a.width, a.height)
-    try:
-        return [c for c in win_.get_children() if tuple(c.get_geometry()) == want]
-    except Exception:
-        return []
+        return
+    key = (id(widget.get_display()), name)
+    if key not in _CURSOR_CACHE:
+        _CURSOR_CACHE[key] = Gdk.Cursor.new_from_name(widget.get_display(), name)
+    win_.set_cursor(_CURSOR_CACHE[key])
 
 
-def _gutter_cursor(box, hot):
-    """Manita sobre el canal entre panes (pedido 1-oct): «grab» al pasar,
-    «grabbing» al arrastrar; fuera del canal, el cursor que la VTE tenía."""
-    term = getattr(box, "_term", None)
-    wins = _vte_event_windows(term)
-    if not wins:
+def _grip_rect(g):
+    """Zona de agarre de un canal: el canal más GRIP_SLACK px a cada lado."""
+    orient, gx, gy, gw, gh = g[:5]
+    if orient == "v":
+        return int(gx - GRIP_SLACK), int(gy), int(gw + 2 * GRIP_SLACK), int(gh)
+    return int(gx), int(gy - GRIP_SLACK), int(gw), int(gh + 2 * GRIP_SLACK)
+
+
+def _sync_grips(box):
+    """Una franja de entrada (EventBox sin ventana visible) sobre cada canal entre
+    panes. Solo cubre el canal; el resto de la terminal recibe todo como siempre."""
+    ov, term = getattr(box, "_pill_overlay", None), getattr(box, "_term", None)
+    if ov is None or term is None:
         return
     gutters = _PANE_GUTTERS.get(id(term), [])
-    name = None
-    if hot is not None and hot < len(gutters):
-        name = "grabbing" if getattr(box, "_hot_state", (None, False))[1] else "grab"
-    try:
-        if name:
-            if getattr(box, "_vte_cursor", None) is None:
-                box._vte_cursor = [(w, w.get_cursor()) for w in wins]
-            key = (id(term.get_display()), name)
-            if key not in _CURSOR_CACHE:
-                _CURSOR_CACHE[key] = Gdk.Cursor.new_from_name(term.get_display(), name)
-            for w in wins:
-                w.set_cursor(_CURSOR_CACHE[key])
-        else:
-            for w, cursor in getattr(box, "_vte_cursor", None) or []:
-                w.set_cursor(cursor)
-            box._vte_cursor = None
-    except Exception:
-        pass
+    grips = getattr(box, "_grips", None)
+    if grips is None:
+        grips = box._grips = []
+    while len(grips) < len(gutters):
+        eb = Gtk.EventBox()
+        eb.set_visible_window(False)
+        eb.set_halign(Gtk.Align.START)
+        eb.set_valign(Gtk.Align.START)
+        eb.add_events(Gdk.EventMask.POINTER_MOTION_MASK | Gdk.EventMask.BUTTON_PRESS_MASK
+                      | Gdk.EventMask.BUTTON_RELEASE_MASK | Gdk.EventMask.ENTER_NOTIFY_MASK
+                      | Gdk.EventMask.LEAVE_NOTIFY_MASK)
+        eb.connect("realize", lambda w: _grip_cursor(w, "grab"))
+        eb.connect("enter-notify-event", lambda w, e, b=box: _grip_enter(b, w))
+        eb.connect("leave-notify-event", lambda w, e, b=box: _grip_leave(b, w))
+        eb.connect("button-press-event", lambda w, e, b=box: _gutter_press(b, w, e))
+        eb.connect("motion-notify-event", lambda w, e, b=box: _gutter_motion(b, w, e))
+        eb.connect("button-release-event", lambda w, e, b=box: _gutter_release(b, w, e))
+        eb._rect, eb._i = None, len(grips)
+        ov.add_overlay(eb)
+        grips.append(eb)
+    for i, eb in enumerate(grips):
+        if i >= len(gutters):
+            eb.hide()
+            continue
+        rect = _grip_rect(gutters[i])
+        if eb._rect != rect:                 # sin recolocar si no cambió (evita relayout)
+            eb._rect = rect
+            x, y, w, h = rect
+            eb.set_margin_start(max(0, x)); eb.set_margin_top(max(0, y))
+            eb.set_size_request(max(1, w), max(1, h))
+        eb.show()
+
+
+def _gutter_hot(box, hot, dragging):
+    state = (hot, bool(dragging))
+    if getattr(box, "_hot_state", None) != state:
+        box._hot_gutter, box._hot_state = hot, state
+        ov = getattr(box, "_pill_overlay", None)
+        if ov is not None:
+            ov.queue_draw()
+
+
+def _grip_enter(box, w):
+    if not getattr(box, "_drag", None):
+        _gutter_hot(box, w._i, False)
+    return False
+
+
+def _grip_leave(box, w):
+    if not getattr(box, "_drag", None) and getattr(box, "_hot_gutter", None) == w._i:
+        _gutter_hot(box, None, False)
+    return False
 
 
 def _box_cell(box, ex, ey):
@@ -5662,20 +5691,30 @@ def _gutter_send(box, d):
     GLib.timeout_add(15, done)
 
 
+def _term_click(box, e):
+    """Clic en la terminal (fuera de los canales): el marco salta al pane al instante."""
+    if e.button == 1 and e.type == Gdk.EventType.BUTTON_PRESS:
+        _focus_frame_now(box, e.x, e.y)
+    return False
+
+
+def _grip_to_term(box, w, e):
+    """Coordenadas de un evento de la franja → coordenadas de la VTE."""
+    term = box._term
+    return (w.get_margin_start() + e.x - term.get_margin_start(),
+            w.get_margin_top() + e.y - term.get_margin_top())
+
+
 def _gutter_press(box, w, e):
-    """Presionar en el canal entre panes: el arrastre lo hace ComandOS (no tmux).
-    Doble clic deja los dos lados a la mitad. Fuera del canal, el marco salta."""
+    """Presionar en la franja del canal: el arrastre lo hace ComandOS (no tmux).
+    Doble clic deja los dos lados a la mitad."""
     if e.button != 1:
         return False
-    x, y = e.x + w.get_margin_start(), e.y + w.get_margin_top()
     term = box._term
     gutters = _PANE_GUTTERS.get(id(term), [])
-    hot = _gutter_at(box, x, y)
+    hot = getattr(w, "_i", None)
     if hot is None or hot >= len(gutters) or len(gutters[hot]) < 6:
-        if e.type == Gdk.EventType.BUTTON_PRESS:
-            _focus_frame_now(box, e.x, e.y)
-        return False
-    term._primary_press = None              # no es un clic de texto ni de URL
+        return True
     g = gutters[hot]
     orient, pane = g[0], g[5]
     geo = _PANE_GEO.get(id(term), {})
@@ -5687,60 +5726,42 @@ def _gutter_press(box, w, e):
     if e.type == Gdk.EventType._2BUTTON_PRESS:
         box._drag = None
         if nb is not None:
-            d = {"want": (pane, axis, _gutter_half(geo, heights, pane, orient, nb))}
-            _gutter_send(box, d)
+            _gutter_send(box, {"want": (pane, axis, _gutter_half(geo, heights, pane, orient, nb))})
         return True
     if e.type != Gdk.EventType.BUTTON_PRESS:
         return True
     box._drag = {"pane": pane, "orient": orient, "axis": axis, "nb": nb, "want": None, "sent": None, "proc": None}
-    box._hot_gutter, box._hot_state = hot, (hot, True)
-    _gutter_cursor(box, hot)
-    ov = getattr(box, "_pill_overlay", None)
-    if ov is not None:
-        ov.queue_draw()
+    _grip_cursor(w, "grabbing")
+    _gutter_hot(box, hot, True)
     return True
 
 
 def _gutter_motion(box, w, e):
     d = getattr(box, "_drag", None)
     if not d:
-        return False
-    cell = _box_cell(box, e.x, e.y)
+        return True
+    cell = _box_cell(box, *_grip_to_term(box, w, e))
     geo = _PANE_GEO.get(id(box._term), {})
     if cell and d["pane"] in geo:
         heights = {k: v[0] for k, v in _PANE_BOX.items()}
         at = cell[0] if d["orient"] == "v" else cell[1]
         d["want"] = (d["pane"], d["axis"], _gutter_target(geo, heights, d["pane"], d["orient"], at, d["nb"]))
         _gutter_send(box, d)
-    return True                              # la VTE no ve este arrastre: no selecciona texto
+    return True
 
 
 def _gutter_release(box, w, e):
     d = getattr(box, "_drag", None)
-    if not d or e.button != 1:
+    if e.button != 1:
         return False
     box._drag = None
-    _gutter_send(box, d)
-    box._hot_state = (box._hot_gutter, False)
-    _gutter_track(box, e.x + w.get_margin_start(), e.y + w.get_margin_top(), False)
-    _gutter_cursor(box, box._hot_gutter)
-    ov = getattr(box, "_pill_overlay", None)
-    if ov is not None:
-        ov.queue_draw()
+    if d:
+        _gutter_send(box, d)
+    _grip_cursor(w, "grab")
+    a = w.get_allocation()
+    inside = 0 <= e.x < a.width and 0 <= e.y < a.height
+    _gutter_hot(box, w._i if inside else None, False)
     return True
-
-
-def _gutter_track(box, x, y, dragging):
-    """El puntero sobre el canal entre panes enciende la agarradera; arrastrando, se
-    queda encendida aunque el puntero se adelante al borde (tmux lo sigue)."""
-    hot = box._hot_gutter if dragging and getattr(box, "_hot_gutter", None) is not None else _gutter_at(box, x, y)
-    state = (hot, bool(dragging))
-    if getattr(box, "_hot_state", None) != state:
-        box._hot_gutter, box._hot_state = hot, state
-        _gutter_cursor(box, hot)
-        ov = getattr(box, "_pill_overlay", None)
-        if ov is not None:
-            ov.queue_draw()
 
 
 def _pane_frames(term, geo, m_l, m_t, cw, chh, focused=True):
@@ -5805,6 +5826,7 @@ def _reposition_pills(box, geo):
         return False
     m_l, m_t = term.get_margin_start(), term.get_margin_top()
     frames, rows = _pane_frames(term, geo, m_l, m_t, cw, chh, _box_focused(box))
+    _sync_grips(box)
     for w in getattr(box, "_pills", []):
         pid = getattr(w, "_pane_id", None)
         if pid is None:
@@ -5878,6 +5900,7 @@ def _place_pills(box, panes, geo=None):
         return
     m_l = term.get_margin_start(); m_t = term.get_margin_top()
     box._frames, box._card_rows = _pane_frames(term, geo, m_l, m_t, cw, chh, _box_focused(box))
+    _sync_grips(box)
     ov.queue_draw()
     placed = set()
     for p in panes[:6]:

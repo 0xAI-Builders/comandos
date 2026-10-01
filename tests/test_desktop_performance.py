@@ -98,7 +98,7 @@ def model_ui():
                     CssProvider=lambda: NS(load_from_data=lambda d: None), StyleContext=NS(add_provider_for_screen=lambda *a: None), STYLE_PROVIDER_PRIORITY_APPLICATION=600,
                     Orientation=NS(HORIZONTAL=1, VERTICAL=2), Align=NS(START=1, CENTER=2), ReliefStyle=NS(NONE=1)),
           'Pango': NS(EllipsizeMode=NS(END=3)), 'STATE_CACHE': {}, '_BADGE_CSS': {},
-          'Gdk': NS(Screen=NS(get_default=lambda: None), EventMask=NS(POINTER_MOTION_MASK=1, LEAVE_NOTIFY_MASK=2), ModifierType=NS(BUTTON1_MASK=256)), 'Align': NS(CENTER=2), '_PANE_BOX': {'%0': (30, True)}, 'KEY_H': 22, 'HEADER_EXTRA': 14, '_PANE_GUTTERS': {}, '_PANE_GEO': {}, '_draw_pane_frames': lambda b, cr: False, '_pane_geo_soon': lambda b: None,
+          'Gdk': NS(Screen=NS(get_default=lambda: None), EventMask=NS(POINTER_MOTION_MASK=1, LEAVE_NOTIFY_MASK=2), ModifierType=NS(BUTTON1_MASK=256)), 'Align': NS(CENTER=2), '_PANE_BOX': {'%0': (30, True)}, 'KEY_H': 22, 'HEADER_EXTRA': 14, '_PANE_GUTTERS': {}, '_PANE_GEO': {}, 'GRIP_SLACK': 8, '_draw_pane_frames': lambda b, cr: False, '_pane_geo_soon': lambda b: None,
           'work_mark_state': __import__('work_marks'), 'work_mark_row': lambda scope, key: {'mark': 'none'},
           'tab_indicator_display': lambda mark, state: ('ai:idle', None, False),
           '_set_indicator_frame': lambda image, icon, color, frame: None,
@@ -106,7 +106,7 @@ def model_ui():
           '_PV_ICON': {'codex': 'openai'}, '_PV_HEX': {'codex': '#aaa'},
           '_STATE_UI': {'verified': ('green', 'v'), 'detecting': ('gray', '?'),
                         'changing': ('yellow', '>')}, '_esc': str, 'ES': False}
-    load({'_refresh_tab_models', '_place_pills', '_visible_boxes', '_box_focused', '_pane_frames', '_shell_pill_xy', '_gutter_at', '_gutter_track', '_card_rect', '_reposition_pills', '_pane_pill', '_pane_card_keys', '_card_button', '_pane_card_ai', '_motor_badge', '_shell_pill',
+    load({'_refresh_tab_models', '_place_pills', '_visible_boxes', '_box_focused', '_pane_frames', '_shell_pill_xy', '_gutter_at', '_sync_grips', '_grip_rect', '_card_rect', '_reposition_pills', '_pane_pill', '_pane_card_keys', '_card_button', '_pane_card_ai', '_motor_badge', '_shell_pill',
           '_pill_row_y', '_attach_model_bar', '_extension_pill'}, ns)
     for key, box in tabs.items():
         box._term = Widget()
