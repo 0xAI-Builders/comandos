@@ -516,6 +516,59 @@ def _on_configure(win, ev):
     return False
 
 
+WAITING_GRACE = 4.0   # segundos: /state tarda un poco en reflejar la espera recién avisada
+STACK_MAX = 8
+
+
+def evict_candidate(wins):
+    """Con la pila llena, a quién cerrar para que entre el aviso nuevo: el más viejo de
+    los que NO esperan respuesta; si todos esperan, el más viejo. (Antes se descartaba
+    el aviso nuevo en silencio.)"""
+    calm = [w for w in wins if getattr(w, "_kind", "") != "waiting"]
+    pool = calm or list(wins)
+    return min(pool, key=lambda w: getattr(w, "_born", 0)) if pool else None
+
+
+def stale_waiting(wins, state, now):
+    """Popups «te espera» que ya no tienen razón de estar: esa sesión (y su pane, si lo
+    trae) ya no espera respuesta en /state, o ya no existe. Los recién nacidos tienen
+    WAITING_GRACE segundos de gracia."""
+    waiting = {(i.get("session"), i.get("pane") or "") for i in state or []
+               if i.get("status") == "waiting" and i.get("alive", True) is not False}
+    sessions = {s for s, _ in waiting}
+    out = []
+    for w in wins:
+        if getattr(w, "_kind", "") != "waiting" or now - getattr(w, "_born", now) < WAITING_GRACE:
+            continue
+        sess, pane = getattr(w, "_session", ""), getattr(w, "_pane", "")
+        if not sess:
+            continue
+        still = (sess, pane) in waiting if pane else sess in sessions
+        if not still:
+            out.append(w)
+    return out
+
+
+def _close_stale(state):
+    for w in stale_waiting(list(popups), state, time.time()):
+        close_popup(w)
+    return False
+
+
+def waiting_sweep_loop():
+    """Cada 3 s, fuera del hilo de GTK: lee /state y cierra los «te espera» ya atendidos."""
+    while True:
+        time.sleep(3)
+        if not any(getattr(w, "_kind", "") == "waiting" for w in list(popups)):
+            continue
+        try:
+            state = dash_get("/state", timeout=2)
+        except Exception:
+            continue
+        if isinstance(state, list):
+            GLib.idle_add(_close_stale, state)
+
+
 def close_popup(win):
     if win in popups:
         popups.remove(win)
@@ -543,6 +596,12 @@ def apply_theme_css():
 
 def make_popup(title, body, session, kind, project, options_str="", full="", expanded=False, pane=""):
     apply_theme_css()
+    # tope anti screen-spam: entra el nuevo y sale el más viejo (nunca se pierde el aviso)
+    while len(popups) >= STACK_MAX:
+        old = evict_candidate(popups)
+        if old is None:
+            break
+        close_popup(old)
     labels = [o.strip() for o in (options_str or "").split("\x1f") if o.strip()][:4]
     full = (full or "").strip()
     pane = pane if PANE_RE.fullmatch(pane or "") else ""
@@ -553,6 +612,7 @@ def make_popup(title, body, session, kind, project, options_str="", full="", exp
         close_popup(old)
 
     win = Gtk.Window(type=Gtk.WindowType.TOPLEVEL)
+    win._kind, win._session, win._pane, win._born = kind, session, pane, time.time()
     win.get_style_context().add_class("ccpop")
     win.set_decorated(False)
     win.set_keep_above(True)
@@ -979,9 +1039,6 @@ class Handler(http.server.BaseHTTPRequestHandler):
             self.end_headers()
             self.wfile.write(out)
             return
-        if len(popups) >= 8:   # tope anti screen-spam / DoS de popups
-            self.send_response(200)
-            self.send_header("Content-Length", "0"); self.end_headers(); return
         GLib.idle_add(native_notify,
                       str(d.get("title", "Claude Code"))[:200],
                       str(d.get("body", ""))[:400],
@@ -1009,6 +1066,7 @@ def main():
     socketserver.TCPServer.allow_reuse_address = True
     srv = socketserver.ThreadingTCPServer(("127.0.0.1", PORT), Handler)
     threading.Thread(target=srv.serve_forever, daemon=True).start()
+    threading.Thread(target=waiting_sweep_loop, daemon=True).start()
     print(f"cc-notifyd listo en 127.0.0.1:{PORT} (popups propios v3)")
     Gtk.main()
 

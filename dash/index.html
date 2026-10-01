@@ -7488,9 +7488,15 @@ $("#srv-form").addEventListener("submit", async e=>{
 });
 
 // ---------- notificaciones del sistema ----------
+// Popups del sistema (cc-notifyd, Ajustes → «Popups de escritorio»): en el escritorio
+// reemplazan al aviso flotante de lo que el hook ya avisa (terminó, te espera, uso).
+let DESKTOP_POPUPS = false;
+const SYSTEM_POPUP_CATS = new Set(["done", "attention", "usage"]);
 async function loadConf(){
   try{
     const conf = await api("/conf");
+    DESKTOP_POPUPS = conf.DESKTOP_NOTIFY !== "0";
+    window.ComandosNotices?.instance?.render?.();
     document.querySelectorAll(".cfg[data-key]").forEach(b=>{
       const on = conf[b.dataset.key] !== "0";
       b.classList.toggle("on", on);
@@ -7532,6 +7538,7 @@ document.querySelectorAll(".cfg[data-key]").forEach(b=>{
     const name = b.closest(".switch")?.querySelector("label")?.textContent || b.dataset.key;
     try{
       await api("/conf-set", {key: b.dataset.key, value: on ? "1" : "0"});
+      if(b.dataset.key === "DESKTOP_NOTIFY"){ DESKTOP_POPUPS = on; window.ComandosNotices?.instance?.render?.(); }
       b.classList.toggle("on", on);
       b.setAttribute("aria-checked", String(on));
       toast(`${name}: ${tf(on ? "activado" : "apagado", on ? "on" : "off")}`);
@@ -7983,7 +7990,7 @@ if("serviceWorker" in navigator)
 <script src="/vendor/purify-3.4.16.min.js"></script>
 <script src="/news-reader.js" data-autoinstall></script>
 <script src="/push-settings.js" data-autoinstall></script>
-<script src="/notifications.js?v=badge1"></script>
+<script src="/notifications.js?v=popups1"></script>
 <script>
 // N2: franja de avisos por proyecto + aviso flotante de llegada. La llegada
 // nunca cambia de pestaña, foco, borrador ni selección. Abrir usa el mismo
@@ -8008,6 +8015,7 @@ function selectPaneInFrame(sess, pane){
     host: shelf ? document.body : document.getElementById("panes"),
     onBadge: n => { const b = $("#notif-badge"); if(!b) return; b.textContent = String(n); b.classList.toggle("hidden", !n); },
     isSessionLive: liveSession,
+    showFloat: n => !(inApp() && DESKTOP_POPUPS && SYSTEM_POPUP_CATS.has(n.category)),
     describe: n => {
       if(N.isNews(n)) return "Noticias";
       const parts = [n.project || n.projectKey || "General"];

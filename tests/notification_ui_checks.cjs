@@ -526,6 +526,27 @@ function fakeDom() {
     assert.doesNotMatch(inst.stripEl.innerHTML, /nt-count">/);
   });
 
+  await check('the page can hand the float to the system popup (desktop) without losing the others', async () => {
+    const dom = fakeDom();
+    const host = dom.el('div'); dom.doc.body.appendChild(host);
+    const server = fakeServer(); const timers = fakeTimers();
+    const inst = N.mount({
+      doc: dom.doc, host, transport: server.transport, deviceId: 'web-dom', sync: true,
+      setTimer: timers.set, clearTimer: timers.clear, setInterval: () => 0, clearInterval() {},
+      sounds: fakeSounds(), isVisible: () => true, isSessionLive: () => true,
+      openSource() {}, openNews() {}, storage: null, presence: false,
+      showFloat: n => n.category !== 'done',
+    });
+    await inst.controller.poll();
+    server.notices.push(notice({ category: 'done', kind: 'turn_completed', float: { show: true, ms: 6000 } }));
+    await inst.controller.poll();
+    assert.ok(inst.controller.state.float, 'the arrival is still tracked');
+    assert.equal(inst.floatEl.innerHTML, '', 'a finished turn goes to the system popup, not the in-app float');
+    server.notices.push(notice({ category: 'news', kind: 'news_edition', float: { show: true, ms: 6000 } }));
+    await inst.controller.poll();
+    assert.match(inst.floatEl.innerHTML, /nt-float/, 'news has no system popup: it still floats in the app');
+  });
+
   await check('the strip is hidden until the bell opens it; floats and the bell badge still work', async () => {
     const dom = fakeDom();
     const host = dom.el('div'); dom.doc.body.appendChild(host);

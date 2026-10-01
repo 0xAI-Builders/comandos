@@ -665,10 +665,13 @@
       const active = doc.activeElement;
       const keep = active && rootEl.contains(active) ? focusKeyOf(active) : null;
       stripEl.innerHTML = hidden ? '' : renderStrip({ ...v, collapsed: false, maximized: restoreTo != null });
-      floatEl.innerHTML = renderFloat(v);
+      // showFloat(n): la página puede ceder el aviso flotante a otro canal (en el
+      // escritorio, el popup del sistema de cc-notifyd) para no verlo dos veces.
+      const fv = v.float && typeof o.showFloat === 'function' && !floatMembers(v).some(n => o.showFloat(n)) ? { ...v, float: null } : v;
+      floatEl.innerHTML = renderFloat(fv);
       rootEl.classList.toggle('nt-hidden', hidden);
       rootEl.classList.toggle('nt-collapsed', false);
-      rootEl.classList.toggle('nt-has-float', !!v.float);
+      rootEl.classList.toggle('nt-has-float', !!fv.float);
       badge();
       if (keep && rootEl.querySelector) {
         const again = rootEl.querySelector(`[data-nt-focus="${String(keep).replace(/["\\]/g, '\\$&')}"]`);
