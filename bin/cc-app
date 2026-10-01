@@ -100,6 +100,7 @@ import agent_stop
 from pane_snapshot import PaneInspector
 from session_tabs import ordered_tab_keys
 import gtk_workspace
+import tmux_clipboard
 import gtk_tabstrip
 import workspace_layout
 import work_marks as work_mark_state
@@ -4766,6 +4767,27 @@ _ws_overlay.set_overlay_pass_through(_ws_layer, True)   # solo pinta la vista pr
 hub._label = "⌂ local"
 ws_drag_source(nb.get_tab_label(hub)._text_box, None)
 threading.Thread(target=ws_poll_loop, daemon=True).start()
+
+
+def tmux_clipboard_loop():
+    """Toda copia hecha dentro de tmux (arrastre, doble clic, o una TUI que copia
+    con OSC 52, que VTE ignora) llega al portapapeles del sistema. Ver
+    lib/tmux_clipboard.py: solo buffers automáticos `bufferN`, nunca los internos."""
+    bridge = tmux_clipboard.Bridge()
+    while True:
+        try:
+            r = tmuxc("list-buffers", "-F", tmux_clipboard.LIST_FORMAT)
+            name = bridge.poll(r.stdout if r.returncode == 0 else "")
+            if name:
+                shown = tmuxc("show-buffer", "-b", name)
+                if shown.returncode == 0 and shown.stdout:
+                    GLib.idle_add(lambda t=shown.stdout: (copy_text_to_clipboard(t), False)[1])
+        except Exception:
+            pass
+        time.sleep(0.35)
+
+
+threading.Thread(target=tmux_clipboard_loop, daemon=True).start()
 
 # La pestana ACTIVA de la app: el tablero la usa para que el Centro de Control sea siempre
 # el operador de la sesion en la que estas parado.
