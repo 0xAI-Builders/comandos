@@ -830,43 +830,51 @@ body.ws-dragging #command-sidebar .sb-term{pointer-events:none}
 #command-sidebar .cs-runner .acts{display:flex;gap:8px;align-items:center;min-width:0}
 #command-sidebar .cs-runner .acts .cs-next{min-height:40px;flex:1;justify-content:center}
 #command-sidebar .cs-runner .acts small{color:var(--cs-dim);font-size:11px}
-/* terminales rápidas: pestañas (.tt) sobre la terminal (.lado .sec-terms .tt) */
-/* Una sola cabecera (agarre + pestañas + «+ Terminal» + ▾) que también es el asa de
-   altura: se arrastra desde cualquier punto que no sea un botón. */
-#command-sidebar .cs-terms{display:flex;align-items:flex-end;gap:6px;padding:6px 0 0 4px;border-top:1px solid var(--cs-line);border-bottom:1px solid var(--cs-line);background:var(--cs-panel);flex:none;cursor:row-resize;touch-action:pan-x;user-select:none;-webkit-user-select:none}
-#command-sidebar .cs-terms .tabs{display:flex;align-items:flex-end;gap:4px;flex:1 1 auto;min-width:0;overflow-x:auto;overflow-y:hidden;scrollbar-width:none}
-#command-sidebar .cs-terms .tabs::-webkit-scrollbar{display:none}
+/* Una sola cabecera de terminales = asa de altura (se arrastra fuera de los botones).
+   Píldoras con flechas (grill ronda 2, 1-oct): píldoras redondas en una pista que se
+   desplaza; ‹ › redondas solo si no caben; el borde se desvanece donde hay más. */
+#command-sidebar .cs-terms{display:flex;align-items:center;gap:6px;min-height:42px;padding:0 0 0 2px;border-top:1px solid var(--cs-line);border-bottom:1px solid var(--cs-line);background:var(--cs-panel);flex:none;cursor:row-resize;touch-action:pan-x;user-select:none;-webkit-user-select:none}
 #command-sidebar .cs-terms button{cursor:pointer}
-#command-sidebar .cs-terms .grip{align-self:center;flex:none;width:14px;height:20px;margin-bottom:3px;border-radius:5px;touch-action:none;background:radial-gradient(circle,var(--cs-dim) 1.2px,transparent 1.6px) 0 0/7px 6px;background-position:1px 2px;opacity:.55;transition:opacity .15s,background-color .15s}
-#command-sidebar .cs-terms:hover .grip,#command-sidebar.terms-dragging .grip{opacity:1;background-color:var(--cs-hover)}
+#command-sidebar .cs-terms .grip{align-self:stretch;flex:none;box-sizing:border-box;width:18px;padding:13px 5px;touch-action:none;background:radial-gradient(circle,var(--cs-dim) 1.2px,transparent 1.6px) 0 0/4px 5px;background-origin:content-box;background-clip:content-box;opacity:.6;transition:opacity .15s}
+#command-sidebar .cs-terms:hover .grip,#command-sidebar.terms-dragging .grip{opacity:1}
 #command-sidebar.terms-dragging .cs-terms{border-top-color:var(--cs-brand)}
 #command-sidebar.terms-hidden .cs-terms{cursor:default}
 #command-sidebar.terms-hidden .cs-terms .grip{visibility:hidden}
-#command-sidebar button[data-flat].t{display:flex;align-items:center;gap:6px;min-height:0;padding:5px 10px;border:1px solid var(--cs-line);border-bottom:0;border-radius:10px 10px 0 0;color:var(--cs-dim);font-size:11px;line-height:1.45;white-space:nowrap;background:var(--cs-panel2)}
-#command-sidebar button[data-flat].t:hover{background:var(--cs-panel2);border-color:var(--cs-line);color:var(--cs-text)}
-#command-sidebar button[data-flat].t.on{color:var(--cs-text);background:var(--cs-deep)}
-#command-sidebar button[data-flat].t.sel{box-shadow:inset 0 -2px 0 var(--cs-brand);color:var(--cs-text)}
-#command-sidebar button[data-flat].t.plus{color:var(--cs-brand);font-weight:700}
-/* pestaña = .tw (forma) con su nombre (.t) y su ✕ (.tx); la ✕ pide «¿Cerrar?» antes */
-#command-sidebar .cs-terms .tw{display:flex;align-items:stretch;border:1px solid var(--cs-line);border-bottom:0;border-radius:10px 10px 0 0;background:var(--cs-panel2);flex:none}
-#command-sidebar .cs-terms .tw.on{background:var(--cs-deep)}
-#command-sidebar .cs-terms .tw.sel{box-shadow:inset 0 -2px 0 var(--cs-brand)}
-#command-sidebar .cs-terms .tw button[data-flat].t{border:0;border-radius:10px 0 0 0;background:transparent;box-shadow:none;padding-right:4px}
-#command-sidebar .cs-terms .tw button[data-flat].tx{display:flex;align-items:center;justify-content:center;min-width:22px;min-height:0;margin:3px 4px 3px 0;padding:0 5px;border:0;border-radius:6px;background:transparent;color:var(--cs-dim);font-size:10px;line-height:1;opacity:.55;transition:opacity .15s,background-color .15s,color .15s}
+#command-sidebar .cs-terms .tabs{display:flex;align-items:center;gap:6px;flex:1 1 auto;min-width:0;padding:6px 0;overflow-x:auto;overflow-y:hidden;scroll-behavior:smooth;scrollbar-width:none;-webkit-mask-image:linear-gradient(90deg,transparent 0,#000 18px,#000 calc(100% - 18px),transparent 100%);mask-image:linear-gradient(90deg,transparent 0,#000 18px,#000 calc(100% - 18px),transparent 100%)}
+#command-sidebar .cs-terms .tabs::-webkit-scrollbar{display:none}
+#command-sidebar .cs-terms .tabs.at-start{-webkit-mask-image:linear-gradient(90deg,#000 0,#000 calc(100% - 18px),transparent 100%);mask-image:linear-gradient(90deg,#000 0,#000 calc(100% - 18px),transparent 100%)}
+#command-sidebar .cs-terms .tabs.at-end{-webkit-mask-image:linear-gradient(90deg,transparent 0,#000 18px,#000 100%);mask-image:linear-gradient(90deg,transparent 0,#000 18px,#000 100%)}
+#command-sidebar .cs-terms .tabs.at-start.at-end{-webkit-mask-image:none;mask-image:none}
+/* píldora = .tw con su punto + nombre (.t) y su ✕ (.tx); la ✕ pide «¿Cerrar?» antes */
+#command-sidebar .cs-terms .tw{flex:none;display:flex;align-items:center;gap:4px;height:28px;padding:0 4px 0 0;border-radius:999px;background:var(--cs-btn);border:1px solid var(--cs-line);color:var(--cs-dim);transition:background-color .15s,color .15s,border-color .15s}
+#command-sidebar .cs-terms .tw:hover{color:var(--cs-text);border-color:var(--cs-btnline)}
+#command-sidebar .cs-terms .tw.on{background:color-mix(in srgb,var(--cs-brand) 16%,var(--cs-btn));border-color:color-mix(in srgb,var(--cs-brand) 60%,transparent);color:var(--cs-text)}
+#command-sidebar .cs-terms .tw button[data-flat].t{display:flex;align-items:center;gap:7px;min-height:0;height:100%;padding:0 2px 0 11px;border:0;border-radius:999px 0 0 999px;background:transparent;box-shadow:none;color:inherit;font-size:12px;line-height:1;white-space:nowrap}
+#command-sidebar .cs-terms .tw button[data-flat].t:hover{background:transparent;color:inherit}
+#command-sidebar .cs-terms .tw.sel button[data-flat].t{font-weight:600}
+#command-sidebar .cs-terms .tw .dot{width:6px;height:6px;border-radius:50%;background:var(--cs-dim);opacity:.7;flex:none}
+#command-sidebar .cs-terms .tw.on .dot{background:var(--cs-brand);opacity:1;box-shadow:0 0 0 3px color-mix(in srgb,var(--cs-brand) 25%,transparent)}
+#command-sidebar .cs-terms .tw button[data-flat].tx{display:grid;place-items:center;flex:none;height:20px;min-width:20px;min-height:0;padding:0;border:0;border-radius:999px;background:transparent;color:var(--cs-dim);font-size:10px;line-height:1;opacity:.55;transition:opacity .15s,background-color .15s,color .15s}
 #command-sidebar .cs-terms .tw:hover button[data-flat].tx,#command-sidebar .cs-terms .tw.on button[data-flat].tx{opacity:1}
-#command-sidebar .cs-terms .tw button[data-flat].tx:hover{background:var(--cs-hover);color:var(--cs-text)}
-#command-sidebar .cs-terms .tw button[data-flat].tx.armed{opacity:1;padding:0 8px;font-size:11px;font-weight:600;color:var(--cs-red);background:color-mix(in srgb,var(--cs-red) 18%,transparent)}
-@media(pointer:coarse){#command-sidebar .cs-terms .tw button[data-flat].tx{opacity:1;min-width:30px}}
+#command-sidebar .cs-terms .tw button[data-flat].tx:hover{background:var(--cs-btnline);color:var(--cs-text)}
+#command-sidebar .cs-terms .tw button[data-flat].tx.armed{opacity:1;padding:0 8px;font-size:11px;font-weight:600;color:var(--cs-red);background:color-mix(in srgb,var(--cs-red) 22%,transparent)}
+@media(pointer:coarse){#command-sidebar .cs-terms .tw button[data-flat].tx{opacity:1;min-width:26px}}
+/* flechas y «+»: círculos */
+#command-sidebar .cs-terms button[data-flat].arr{flex:none;display:grid;place-items:center;width:26px;height:26px;min-height:0;padding:0;border-radius:50%;background:var(--cs-btn);border:1px solid var(--cs-btnline);color:var(--cs-text);font-size:14px;line-height:1;transition:opacity .15s,border-color .15s,color .15s}
+#command-sidebar .cs-terms button[data-flat].arr:hover:not([disabled]){border-color:var(--cs-brand);color:var(--cs-brand)}
+#command-sidebar .cs-terms button[data-flat].arr[disabled]{opacity:.25;cursor:default}
+#command-sidebar .cs-terms button[data-flat].arr[hidden]{display:none}
+#command-sidebar .cs-terms button[data-flat].t.plus{flex:none;display:grid;place-items:center;width:28px;height:28px;min-height:0;padding:0;border-radius:50%;border:1px dashed color-mix(in srgb,var(--cs-brand) 45%,transparent);background:transparent;color:var(--cs-brand);font-size:16px;font-weight:700;line-height:1;box-shadow:none}
+#command-sidebar .cs-terms button[data-flat].t.plus:hover{background:color-mix(in srgb,var(--cs-brand) 12%,transparent)}
 /* Persiana (grill 1-oct): el chevron vive en su propio hueco a la derecha y gira al
    esconder. Sin rayas: Jesús las descartó. */
-#command-sidebar .cs-terms .tog-slot{align-self:stretch;flex:none;display:flex;margin-top:-6px;border-left:1px solid var(--cs-line)}
+#command-sidebar .cs-terms .tog-slot{align-self:stretch;flex:none;display:flex;border-left:1px solid var(--cs-line)}
 #command-sidebar .cs-terms .tog-slot:empty{display:none}
 #command-sidebar .cs-terms button[data-flat].tog{width:40px;min-height:0;padding:0;border:0;border-radius:0;display:grid;place-items:center;color:var(--cs-dim);background:transparent}
 #command-sidebar .cs-terms button[data-flat].tog:hover{color:var(--cs-text);background:var(--cs-hover)}
 #command-sidebar .cs-terms button[data-flat].tog svg{transition:transform .35s cubic-bezier(.5,1.6,.4,1)}
 #command-sidebar.terms-hidden .cs-terms button[data-flat].tog svg{transform:rotate(180deg)}
-#command-sidebar.terms-hidden .cs-terms .tw,#command-sidebar.terms-hidden .cs-terms .t.plus{opacity:.75}
-@media (prefers-reduced-motion:reduce){#command-sidebar .cs-terms button[data-flat].tog svg{transition:none}}
+@media (prefers-reduced-motion:reduce){#command-sidebar .cs-terms button[data-flat].tog svg{transition:none}#command-sidebar .cs-terms .tabs{scroll-behavior:auto}}
 @media(pointer:coarse){:is(#command-sidebar,.chain-only) :is(.cmds,.srows) .cmd{padding-block:10px}:is(#command-sidebar,.chain-only) .cmd .opts button[data-flat]}
 /* Constructor de cadenas (dash/chain-builder.js): .backdrop[data-mclose] > .modal.chain-only.
    Estilos 1:1 del modal aprobado del mockup (?round=cli: cabecera con libro, búsqueda y

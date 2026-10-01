@@ -77,7 +77,19 @@ def test_side_tabs_keep_their_own_look_under_every_button_style():
     # el estilo 3D global de botones (prioridad mayor) pisaba el borde de la pestaña activa
     gen = APP[APP.index('    gen = "button:not(.cc-key)'):]
     assert ":not(.side-btn)" in gen[:gen.index("\n")]
-    assert ".side-tab.cur { background-color: mix(@BAR@, @LINE2@, 0.35); border-bottom-color: @BRAND@; }" in APP
+    assert ".side-tab.cur { background-color: mix(mix(@BAR@, @TEXT@, 0.06), @BRAND@, 0.16); border-color: mix(@BAR@, @BRAND@, 0.6); }" in APP
+
+
+def test_side_tabs_are_pills_in_a_track_with_round_arrows():
+    # píldoras con flechas (grill ronda 2): ‹ pista › + «+» redondo, rueda = desplazamiento
+    head = APP[APP.index("_side_head.pack_start(_side_grip"):]
+    head = head[:head.index("_side_head_ev.connect(")]
+    order = ["_side_grip", "_side_prev", "_side_tabs_sw", "_side_next", "_side_plus"]
+    assert [head.index(f"pack_start({n},") for n in order] == sorted(head.index(f"pack_start({n},") for n in order)
+    sync = APP[APP.index("def _side_sync_arrows("):APP.index("def _side_tabs_wheel(")]
+    assert "set_visible(over)" in sync and "set_sensitive" in sync
+    assert '_side_tabs_sw.connect("scroll-event", _side_tabs_wheel)' in APP
+    assert ".side-tab { background-color: mix(@BAR@, @TEXT@, 0.06); border: 1px solid @LINE@; border-radius: 999px; }" in APP
 
 
 def test_side_tabs_close_with_confirmation_and_the_toggle_is_a_persiana():

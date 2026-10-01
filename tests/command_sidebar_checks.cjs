@@ -181,7 +181,10 @@ const catalog = JSON.parse(fs.readFileSync(process.cwd() + '/tests/fixtures/comm
   // pila: comandos arriba y, abajo, UNA cabecera (agarre + pestañas, también asa de
   // altura; ya no hay separador aparte) sobre la terminal (.mini)
   assert.ok(root2.querySelector('.sec-cmds .cs-head')); assert.equal(root2.querySelector('.divider'), null);
-  assert.ok(root2.querySelector('.sec-terms .cs-terms.tt .grip')); assert.ok(root2.querySelector('.sec-terms .cs-terms .tabs .t.plus'));
+  assert.ok(root2.querySelector('.sec-terms .cs-terms.tt .grip')); assert.ok(root2.querySelector('.sec-terms .cs-terms .t.plus[data-new-term]') && !root2.querySelector('.cs-terms .tabs .t.plus'));
+  // píldoras con flechas: ‹ pista › y cada píldora con punto, nombre y ✕
+  assert.equal(root2.querySelectorAll('.cs-terms [data-tscroll]').length, 2);
+  assert.ok(root2.querySelector('.cs-terms .tabs .tw.on .t .dot')); assert.ok(root2.querySelector('.cs-terms .tabs .tw .tx[data-close-term="q1"]'));
   assert.ok(root2.querySelector('.sec-terms .mini'));
   assert.deepEqual(mounted.at(-1).slice(0, 2), ['q1', 'mini']);                        // la terminal se monta en la barra
   // el escritorio recibe las mismas pestañas para pintar su cabecera nativa

@@ -260,22 +260,32 @@ notebook stack { background: @BG@; }
    «+ Terminal» + ▾, la misma que pinta la web en el remoto; arrastrarla fuera de
    los botones cambia la altura (el separador del Paned queda invisible). */
 .side-head { background-color: @BAR@; border-top: 1px solid @LINE@; border-bottom: 1px solid @LINE@; }
-.side-grip { color: @FAINT@; font-size: 13px; padding: 0 7px 0 8px; }
+.side-grip { color: @FAINT@; font-size: 13px; padding: 0 4px 0 6px; }
 .side-head:hover .side-grip, .side-head.dragging .side-grip { color: @TEXT@; }
 .side-head.dragging { border-top-color: @BRAND@; }
-.side-tab { background-color: @BAR@; border-right: 1px solid @LINE@; border-bottom: 2px solid transparent; }
-.side-tab.cur { background-color: mix(@BAR@, @LINE2@, 0.35); border-bottom-color: @BRAND@; }
-.side-btn { background-color: transparent; background-image: none; color: @DIM@; padding: 0 9px; min-height: 30px;
-  border: 0; border-radius: 0; box-shadow: none; outline: none; font-family: 'Inter', sans-serif; font-size: 12px; }
+/* Píldoras con flechas (grill ronda 2, 1-oct): píldoras redondas en una pista que se
+   desplaza con ‹ › redondas (solo si no caben) y con la rueda; «+» redondo punteado. */
+.side-tab { background-color: mix(@BAR@, @TEXT@, 0.06); border: 1px solid @LINE@; border-radius: 999px; }
+.side-tab:hover { border-color: mix(@BAR@, @TEXT@, 0.17); }
+.side-tab.cur { background-color: mix(mix(@BAR@, @TEXT@, 0.06), @BRAND@, 0.16); border-color: mix(@BAR@, @BRAND@, 0.6); }
+.side-btn { background-color: transparent; background-image: none; color: @DIM@; padding: 0 9px; min-height: 26px;
+  border: 0; border-radius: 999px; box-shadow: none; outline: none; font-family: 'Inter', sans-serif; font-size: 12px; }
 .side-btn:hover, .side-tab.cur .side-btn { color: @TEXT@; }
 .side-tab.sel .side-name label { font-weight: 600; }
-.side-name { padding-right: 2px; }
-.side-x { padding: 0 5px; min-width: 14px; min-height: 18px; margin: 6px 4px 6px 0; border-radius: 5px; color: @FAINT@; font-size: 10px; }
-.side-x:hover { color: @TEXT@; background-color: @LINE@; }
+.side-name { padding: 0 2px 0 10px; }
+.side-dot { color: @FAINT@; font-size: 8px; margin-right: 6px; }
+.side-tab.cur .side-dot { color: @BRAND@; }
+.side-x { padding: 0; min-width: 20px; min-height: 20px; margin: 3px 4px 3px 0; color: @FAINT@; font-size: 10px; }
+.side-x:hover { color: @TEXT@; background-color: mix(@BAR@, @TEXT@, 0.17); }
 .side-x.armed { color: #ff9e9e; background-color: mix(@BAR@, #ef6b6b, 0.24); font-size: 11px; font-weight: 600; padding: 0 8px; }
-.side-btn.side-plus { color: @BRAND@; font-weight: 700; }
-/* Persiana (grill 1-oct): chevron en su propio hueco que se voltea al esconder (sin rayas) */
-.side-btn.side-tog { border-left: 1px solid @LINE@; min-width: 38px; padding: 0; }
+.side-btn.side-arr { min-width: 24px; min-height: 24px; padding: 0; margin: 0 3px; color: @TEXT@; font-size: 14px;
+  background-color: mix(@BAR@, @TEXT@, 0.06); border: 1px solid mix(@BAR@, @TEXT@, 0.17); }
+.side-btn.side-arr:hover { color: @BRAND@; border-color: @BRAND@; }
+.side-btn.side-arr:disabled { opacity: 0.25; }
+.side-btn.side-plus { min-width: 26px; min-height: 26px; padding: 0; margin: 0 6px 0 3px; color: @BRAND@; font-size: 15px; font-weight: 700;
+  border: 1px dashed mix(@BAR@, @BRAND@, 0.45); }
+.side-btn.side-plus:hover { background-color: mix(@BAR@, @BRAND@, 0.12); }
+.side-btn.side-tog { border-left: 1px solid @LINE@; border-radius: 0; min-width: 40px; padding: 0; }
 .side-btn.side-tog:hover { background-color: mix(@BAR@, @LINE2@, 0.5); }
 .tabplus { color: @DIM@; padding: 4px 8px; margin: 0 1px; border: none; background: none;
   border-radius: 8px; min-width: 28px; min-height: 28px; font-family: 'Ubuntu Sans Mono', monospace; font-size: 14px;
@@ -6690,6 +6700,7 @@ _side_head_ev.get_style_context().add_class("side-head")
 _side_head_ev.add_events(Gdk.EventMask.BUTTON_PRESS_MASK | Gdk.EventMask.BUTTON_RELEASE_MASK
                          | Gdk.EventMask.POINTER_MOTION_MASK)
 _side_head = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=0)
+_side_head.set_size_request(-1, 40)       # = 42 px con los bordes, como .cs-terms del remoto
 _side_head_ev.add(_side_head)
 _side_grip = Gtk.Label(label="⠿")
 _side_grip.get_style_context().add_class("side-grip")
@@ -6702,7 +6713,7 @@ _side_tabs_sw.add(_side_tabs)
 
 
 def _side_head_button(label, cls, tip, cb):
-    b = Gtk.Button(label=label)
+    b = Gtk.Button(label=label) if label else Gtk.Button()
     b.set_relief(Gtk.ReliefStyle.NONE)
     b.set_can_focus(False)
     for c in ("side-btn",) + tuple(cls):
@@ -6720,14 +6731,53 @@ def _side_term_action(kind, tab=""):
     _dash_js_quiet(f"window.sidebarTermAction&&sidebarTermAction({json.dumps(kind)},{json.dumps(tab)})")
 
 
-_side_plus = _side_head_button("+ Terminal", ("side-plus",), "Nueva terminal aquí", lambda *_: _side_term_action("new"))
+_side_plus = _side_head_button("+", ("side-plus",), "Nueva terminal", lambda *_: _side_term_action("new"))
+_side_plus.set_valign(Gtk.Align.CENTER)
+
+
+def _side_scroll_by(step):
+    adj = _side_tabs_sw.get_hadjustment()
+    adj.set_value(max(adj.get_lower(), min(adj.get_upper() - adj.get_page_size(), adj.get_value() + step)))
+
+
+def _side_sync_arrows(*_):
+    """‹ › solo si las píldoras no caben; cada una se apaga en su extremo."""
+    adj = _side_tabs_sw.get_hadjustment()
+    over = adj.get_upper() - adj.get_page_size() > 2
+    for b in (_side_prev, _side_next):
+        b.set_visible(over)
+    _side_prev.set_sensitive(adj.get_value() > adj.get_lower() + 2)
+    _side_next.set_sensitive(adj.get_value() < adj.get_upper() - adj.get_page_size() - 2)
+
+
+def _side_tabs_wheel(_w, ev):
+    """La rueda vertical desplaza la pista en horizontal."""
+    ok, dx, dy = ev.get_scroll_deltas()
+    if not ok:
+        dy = {Gdk.ScrollDirection.UP: -1, Gdk.ScrollDirection.LEFT: -1,
+              Gdk.ScrollDirection.DOWN: 1, Gdk.ScrollDirection.RIGHT: 1}.get(ev.direction, 0)
+    _side_scroll_by((dy or dx) * 60)
+    return True
+
+
+_side_prev = _side_head_button("‹", ("side-arr",), "Terminales anteriores", lambda *_: _side_scroll_by(-150))
+_side_next = _side_head_button("›", ("side-arr",), "Más terminales", lambda *_: _side_scroll_by(150))
+for _b in (_side_prev, _side_next):
+    _b.set_valign(Gtk.Align.CENTER)
+    _b.set_no_show_all(True)
+_side_tabs_sw.get_hadjustment().connect("changed", _side_sync_arrows)
+_side_tabs_sw.get_hadjustment().connect("value-changed", _side_sync_arrows)
+_side_tabs_sw.add_events(Gdk.EventMask.SCROLL_MASK | Gdk.EventMask.SMOOTH_SCROLL_MASK)
+_side_tabs_sw.connect("scroll-event", _side_tabs_wheel)
 _side_tog = _side_head_button("", ("side-tog",), "", lambda *_: _side_term_action("toggle"))
 _side_tog.set_always_show_image(True)
 _side_tog.set_no_show_all(True)
 _side_head.pack_start(_side_grip, False, False, 0)
+_side_head.pack_start(_side_prev, False, False, 0)
 _side_head.pack_start(_side_tabs_sw, True, True, 0)
+_side_head.pack_start(_side_next, False, False, 0)
+_side_head.pack_start(_side_plus, False, False, 0)
 _side_head.pack_end(_side_tog, False, False, 0)
-_side_tabs.pack_start(_side_plus, False, False, 0)
 _side_head_ev.connect("realize", lambda w: w.get_window().set_cursor(
     Gdk.Cursor.new_from_name(w.get_display(), "row-resize")))
 _side_term_host.pack_start(_side_head_ev, False, False, 0)
@@ -6832,13 +6882,23 @@ def _side_tab_widget(t, hidden):
     """Pestaña = forma (EventBox .side-tab) con su nombre y su ✕; la ✕ pide
     «¿Cerrar?» antes (el estado lo lleva la barra web: t["closing"])."""
     ev = Gtk.EventBox()
+    ev.set_valign(Gtk.Align.CENTER)       # el margen CSS no aplica a un EventBox: va por código
+    ev.set_margin_start(3)
+    ev.set_margin_end(3)
     ctx = ev.get_style_context()
     for c in ("side-tab",) + (("cur",) if t["on"] and not hidden else ()) + (("sel",) if t["sel"] else ()):
         ctx.add_class(c)
     row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=0)
     ev.add(row)
     k = t["id"]
-    row.pack_start(_side_head_button(t["label"], ("side-name",), t["title"], lambda *_a: _side_term_action("focus", k)), False, False, 0)
+    name = _side_head_button("", ("side-name",), t["title"], lambda *_a: _side_term_action("focus", k))
+    inner = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=0)
+    dot = Gtk.Label(label="●")
+    dot.get_style_context().add_class("side-dot")
+    inner.pack_start(dot, False, False, 0)
+    inner.pack_start(Gtk.Label(label=t["label"]), False, False, 0)
+    name.add(inner)
+    row.pack_start(name, False, False, 0)
     closing = bool(t.get("closing"))
     row.pack_start(_side_head_button("¿Cerrar?" if closing else "✕", ("side-x",) + (("armed",) if closing else ()),
                                      "Otro clic la cierra" if closing else "Cerrar esta terminal",
@@ -6846,16 +6906,32 @@ def _side_tab_widget(t, hidden):
     return ev
 
 
+def _side_reveal_tab(w):
+    """La píldora activa entra a la vista de la pista (al cambiar de terminal)."""
+    a, adj = w.get_allocation(), _side_tabs_sw.get_hadjustment()
+    if a.width > 1:
+        if a.x < adj.get_value():
+            adj.set_value(a.x)
+        elif a.x + a.width > adj.get_value() + adj.get_page_size():
+            adj.set_value(a.x + a.width - adj.get_page_size())
+    return False
+
+
 def _side_head_render():
     for c in _side_tabs.get_children():
-        if c is not _side_plus:
-            _side_tabs.remove(c)
-            c.destroy()
+        _side_tabs.remove(c)
+        c.destroy()
     hidden = bool(_SIDE["hidden"])
-    for i, t in enumerate(_SIDE.get("tabs") or []):
+    on_widget = None
+    for t in _SIDE.get("tabs") or []:
         w = _side_tab_widget(t, hidden)
         _side_tabs.pack_start(w, False, False, 0)
-        _side_tabs.reorder_child(w, i)        # «+ Terminal» siempre justo después de las pestañas
+        if t["on"]:
+            on_widget = w
+    on_id = next((t["id"] for t in _SIDE.get("tabs") or [] if t["on"]), "")
+    if on_widget is not None and on_id != _SIDE.get("shown_tab"):
+        GLib.idle_add(_side_reveal_tab, on_widget)
+    _SIDE["shown_tab"] = on_id
     _side_tog.set_image(_themed_icon_image("chevron-up" if hidden else "chevron-down", 18))
     _side_tog.get_image().show()          # el botón es no_show_all: show_all no llega a su imagen
     _side_tog.set_tooltip_text("Mostrar las terminales" if hidden else "Esconder las terminales")
@@ -6863,6 +6939,7 @@ def _side_head_render():
     ctx = _side_head_ev.get_style_context()
     (ctx.add_class if hidden and _SIDE.get("tabs") else ctx.remove_class)("closed")
     _side_head_ev.show_all()
+    GLib.idle_add(lambda: (_side_sync_arrows(), False)[1])
 
 
 def _side_tabs_from_web(tabs):

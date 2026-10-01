@@ -368,11 +368,11 @@
       const shown = state.curTerm && list.some(x => x.tabId === state.curTerm) ? state.curTerm : (list[0] ? list[0].tabId : '');
       if (shown !== state.curTerm) state.curTerm = shown;
       const armed = id => state.closeArm === String(id);
+      // Píldoras con flechas (grill ronda 2, 1-oct): punto de estado + nombre + ✕.
       return list.map(x => `<span class="tw${x.tabId === shown ? ' on' : ''}${cur(x) ? ' sel' : ''}">`
           + `<button type="button" data-flat class="t${x.tabId === shown ? ' on' : ''}${cur(x) ? ' sel' : ''}" data-focus-term="${esc(x.tabId)}" title="${esc(x.label || x.tabId)}">`
-          + `${ic('bolt', 's20')}${esc(shortTerm(x.label || x.tabId))}${cur(x) ? ' · destino' : ''}</button>`
-          + `<button type="button" data-flat class="tx${armed(x.tabId) ? ' armed' : ''}" data-close-term="${esc(x.tabId)}" aria-label="Cerrar ${esc(shortTerm(x.label || x.tabId))}" title="${armed(x.tabId) ? 'Otro clic la cierra' : 'Cerrar esta terminal'}">${armed(x.tabId) ? '¿Cerrar?' : '✕'}</button></span>`).join('')
-        + '<button type="button" data-flat class="t plus" data-new-term>+ Terminal</button>';
+          + `<span class="dot" aria-hidden="true"></span>${esc(shortTerm(x.label || x.tabId))}${cur(x) ? ' · destino' : ''}</button>`
+          + `<button type="button" data-flat class="tx${armed(x.tabId) ? ' armed' : ''}" data-close-term="${esc(x.tabId)}" aria-label="Cerrar ${esc(shortTerm(x.label || x.tabId))}" title="${armed(x.tabId) ? 'Otro clic la cierra' : 'Cerrar esta terminal'}">${armed(x.tabId) ? '¿Cerrar?' : '✕'}</button></span>`).join('');
     }
     function togHTML() {
       if (!termList().length) return '';
@@ -410,11 +410,25 @@
         // Arrastrarla (fuera de los botones) cambia la altura; ya no hay separador aparte.
         el.innerHTML = `<div class="sec-cmds">${headHTML()}<div class="cs-body">${bodyHTML()}</div></div>`
           + '<div class="sec-terms"><div class="cs-terms tt" role="separator" aria-orientation="horizontal" aria-label="Terminales · arrastra para cambiar la altura">'
-          + '<span class="grip" aria-hidden="true"></span><div class="tabs"></div><div class="tog-slot"></div></div><div class="mini"></div></div>';
+          + '<span class="grip" aria-hidden="true"></span>'
+          + '<button type="button" data-flat class="arr" data-tscroll="-1" aria-label="Terminales anteriores" hidden>‹</button>'
+          + '<div class="tabs"></div>'
+          + '<button type="button" data-flat class="arr" data-tscroll="1" aria-label="Más terminales" hidden>›</button>'
+          + '<button type="button" data-flat class="t plus" data-new-term aria-label="Nueva terminal" title="Nueva terminal">+</button>'
+          + '<div class="tog-slot"></div></div><div class="mini"></div></div>';
+        wireTrack();
         wireDivider();
       }
       const tt = el.querySelector('.cs-terms .tabs') || el.querySelector('.cs-terms');
-      if (tt) tt.innerHTML = termsHTML();
+      if (tt) {
+        // repintar no debe devolver la pista al inicio; si cambió la activa, se lleva a la vista
+        const keep = tt.scrollLeft || 0, was = state.shownTerm;
+        tt.innerHTML = termsHTML();
+        tt.scrollLeft = keep;
+        state.shownTerm = state.curTerm;
+        if (was !== state.curTerm) { const on = tt.querySelector && tt.querySelector('.tw.on'); try { on && on.scrollIntoView({ block: 'nearest', inline: 'nearest' }); } catch (_) {} }
+        syncArrows();
+      }
       const slot = el.querySelector('.cs-terms .tog-slot');
       if (slot) slot.innerHTML = togHTML();
       const n = termList().length;
@@ -438,7 +452,7 @@
       const dv = el.querySelector('.cs-terms'), cmds = el.querySelector('.sec-cmds'), terms = el.querySelector('.sec-terms');
       if (!dv || !cmds || !terms || !dv.addEventListener) return;
       dv.addEventListener('pointerdown', e => {
-        if (e.button > 0 || state.termsHidden || (e.target && e.target.closest && e.target.closest('button'))) return;
+        if (e.button > 0 || state.termsHidden || (e.target && e.target.closest && e.target.closest('button,.tw'))) return;
         e.preventDefault();
         const h0 = cmds.getBoundingClientRect().height, y0 = e.clientY;
         const win = (el.ownerDocument && el.ownerDocument.defaultView) || null;
@@ -455,6 +469,31 @@
         };
         for (const t of [dv, win]) if (t) { t.addEventListener('pointermove', move); t.addEventListener('pointerup', up); t.addEventListener('pointercancel', up); }
       });
+    }
+
+    // Flechas ‹ › de la pista: solo se ven si las píldoras no caben y se apagan en
+    // cada extremo; el borde se desvanece donde hay más (.at-start/.at-end). La rueda
+    // vertical también desplaza en horizontal.
+    function syncArrows() {
+      const tr = el.querySelector('.cs-terms .tabs');
+      if (!tr || tr.scrollWidth == null) return;
+      const over = tr.scrollWidth > tr.clientWidth + 2;
+      const atS = tr.scrollLeft <= 2, atE = tr.scrollLeft + tr.clientWidth >= tr.scrollWidth - 2;
+      try { tr.classList.toggle('at-start', atS); tr.classList.toggle('at-end', atE); } catch (_) {}
+      for (const b of el.querySelectorAll('.cs-terms [data-tscroll]')) {
+        b.hidden = !over;
+        b.disabled = b.dataset.tscroll === '-1' ? atS : atE;
+      }
+    }
+    function wireTrack() {
+      const tr = el.querySelector('.cs-terms .tabs');
+      if (!tr || !tr.addEventListener) return;
+      tr.addEventListener('scroll', syncArrows);
+      tr.addEventListener('wheel', e => {
+        if (Math.abs(e.deltaY) > Math.abs(e.deltaX) && tr.scrollWidth > tr.clientWidth) { tr.scrollLeft += e.deltaY; e.preventDefault(); }
+      }, { passive: false });
+      const win = el.ownerDocument && el.ownerDocument.defaultView;
+      try { if (win && win.ResizeObserver) new win.ResizeObserver(syncArrows).observe(tr); } catch (_) {}
     }
 
     // La altura arrastrada va en línea y le ganaría a las reglas .terms-hidden/.no-terms:
@@ -509,6 +548,11 @@
       if (t.closest('[data-run-stop]')) return void stop();
       if (t.closest('[data-open-builder]')) return void openBuilder();
       if ((n = t.closest('[data-close-term]'))) return void closeTerm(n.dataset.closeTerm);
+      if ((n = t.closest('[data-tscroll]'))) {
+        const tr = el.querySelector('.cs-terms .tabs');
+        if (tr) { tr.scrollLeft += Number(n.dataset.tscroll) * 150; syncArrows(); }
+        return;
+      }
       if (t.closest('[data-new-term]')) return void termAction('new');
       if (t.closest('[data-terms-toggle]')) return void termAction('toggle');
       if ((n = t.closest('[data-focus-term]'))) return void focusTerm(n.dataset.focusTerm);
