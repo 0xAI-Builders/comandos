@@ -281,6 +281,14 @@ def live_pending(history, is_live=None):
     return [i for i in ids if i in by and is_live(by[i].get("sessionKey"), by[i].get("paneId"))]
 
 
+def revision(conn):
+    """Cambia cuando llega un evento o se marca algo leído en CUALQUIER equipo: dos
+    consultas baratas, para que /notices/watch pueda vigilarla cada pocos ms."""
+    seq = event_store.latest_sequence(conn)
+    reads, last = conn.execute("SELECT COUNT(*), COALESCE(MAX(read_at_ms), 0) FROM notice_reads").fetchone()
+    return f"{seq}.{reads}.{last}"
+
+
 def badge_count(conn, is_live=None):
     """El número de la campana en todas las superficies: avisos sin leer más pedidos
     sin responder, sobre TODO el historial (antes solo los 500 eventos más viejos, y

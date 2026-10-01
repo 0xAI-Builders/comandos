@@ -457,6 +457,28 @@
       refreshBadge();
     }
 
+    // Sincronía inmediata (1-oct): /notices/watch responde en cuanto llega un aviso o se
+    // lee alguno en CUALQUIER equipo; aquí se aplica: número, filas leídas y pedidos.
+    let watchRev = '';
+    function applyWatch(r) {
+      if (!r || typeof r !== 'object') return;
+      if (typeof r.rev === 'string') watchRev = r.rev;
+      if (Number.isFinite(Number(r.badge)) && r.badge != null) state.badge = Number(r.badge);
+      if (Array.isArray(r.pending)) state.pending = new Set(r.pending);
+      if (Array.isArray(r.unread)) {
+        const unread = new Set(r.unread);
+        for (const n of state.notices) n.read = !unread.has(n.eventId);
+      }
+      emit();
+      if (Number(r.latest) > after) poll();      // llegó algo nuevo: traerlo ya
+    }
+    async function watchOnce(waitS = 25) {
+      if (!transport) return null;
+      const r = await transport('GET', `/notices/watch?rev=${encodeURIComponent(watchRev)}&wait=${waitS}`);
+      applyWatch(r);
+      return r;
+    }
+
     // Tras marcar, el número se confirma con el servidor (lo leído en otro equipo también cuenta).
     async function refreshBadge() {
       if (!transport) return;
@@ -529,7 +551,7 @@
     }
 
     return {
-      state, view, poll, open, openFloat, requestOpen, dismissFloat, markRead, markAllRead, markGroupRead, setPrefs,
+      state, view, poll, open, openFloat, requestOpen, dismissFloat, markRead, markAllRead, markGroupRead, setPrefs, watchOnce, applyWatch,
       setFilter(f) { state.filter = FILTERS.some(([id]) => id === f) ? f : 'all'; emit(); },
       setCollapsed(c) { state.collapsed = !!c; if (c) state.opened = false; emit(); },
       toggle() {
@@ -783,6 +805,15 @@
     const clock = every(() => { if (!(doc.activeElement && rootEl.contains(doc.activeElement))) schedule(); }, 60000);
     render();
     controller.poll();
+    // Espera abierta contra el servidor: el número y las filas cambian en cuanto cambian
+    // en cualquier equipo. Si falla (red, servidor reiniciando) reintenta en 2 s.
+    let watching = o.watch !== false;
+    (async function watchLoop() {
+      while (watching) {
+        try { await controller.watchOnce(25); }
+        catch (e) { await new Promise(res => (o.setTimer || setTimeout)(res, 2000)); }
+      }
+    })();
 
     return {
       controller, presence, root: rootEl, rootEl, floatEl, stripEl, render,
@@ -796,7 +827,7 @@
       get hidden() { return hidden; },
       get height() { return height; },
       setHeight, toggleMax,
-      destroy() { if (pollTimer != null) stopEvery(pollTimer); stopEvery(clock); if (presence) presence.stop(); if (rootEl.parent || rootEl.parentNode) (rootEl.parentNode || rootEl.parent).removeChild && (rootEl.parentNode || rootEl.parent).removeChild(rootEl); },
+      destroy() { watching = false; if (pollTimer != null) stopEvery(pollTimer); stopEvery(clock); if (presence) presence.stop(); if (rootEl.parent || rootEl.parentNode) (rootEl.parentNode || rootEl.parent).removeChild && (rootEl.parentNode || rootEl.parent).removeChild(rootEl); },
     };
   }
 

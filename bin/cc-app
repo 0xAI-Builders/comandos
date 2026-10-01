@@ -3118,6 +3118,21 @@ def _drain_poll_updates():
     return False
 
 
+def notices_watch_loop():
+    """Campana sincronizada al instante (1-oct): espera abierta contra /notices/watch,
+    que responde en cuanto llega un aviso o se lee alguno en cualquier equipo."""
+    rev = ""
+    while True:
+        try:
+            q = urlencode({"rev": rev, "wait": 25})
+            with urllib.request.urlopen(BASE_URL + "/notices/watch?" + q, timeout=35) as r:
+                d = json.loads(r.read().decode())
+            rev = str(d.get("rev") or "")
+            GLib.idle_add(set_notif_badge, int(d.get("badge") or 0))
+        except Exception:
+            time.sleep(2)
+
+
 def poll_state_loop():
     last_prefs = None
     while True:
@@ -3126,13 +3141,8 @@ def poll_state_loop():
                 items = json.loads(r.read().decode())
             states = {it["session"]: it.get("status", "idle")
                       for it in items if it.get("session")}
-            # Fetch the shared notification count off the GTK thread as well.
-            try:
-                with urllib.request.urlopen(BASE_URL + "/notifs/count", timeout=2) as r:
-                    nc = int(json.loads(r.read().decode()).get("count", 0))
-            except Exception:
-                nc = 0
-            _queue_poll_update(update_dots, states, items, nc)
+            # El número de la campana lo pone notices_watch_loop al instante; aquí no.
+            _queue_poll_update(update_dots, states, items, None)
         except Exception:
             pass
         # Watcher de prefs: Ajustes cambiado en CUALQUIER superficie se aplica
@@ -8182,6 +8192,7 @@ GLib.timeout_add_seconds(5, lambda: (start_work_marks_fetch(), True)[1])
 GLib.timeout_add_seconds(30, lambda: (threading.Thread(target=snapshot_tabs, daemon=True).start(), True)[1])
 GLib.timeout_add_seconds(8, lambda: (threading.Thread(target=snapshot_tabs, daemon=True).start(), False)[1])
 threading.Thread(target=poll_state_loop, daemon=True).start()
+threading.Thread(target=notices_watch_loop, daemon=True).start()
 try:
     Gtk.main()
 finally:

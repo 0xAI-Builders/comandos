@@ -36,7 +36,7 @@ function notice(over = {}) {
 function fakeServer() {
   const s = {
     notices: [], pending: [], prefs: JSON.parse(JSON.stringify(DEFAULT_PREFS)), focusActive: false,
-    log: [], sound: { play: true, cue: 'permission' },
+    log: [], sound: { play: true, cue: 'permission' }, watchers: [],
     async transport(method, url, body) {
       s.log.push([method, url, body === undefined ? undefined : JSON.parse(JSON.stringify(body))]);
       const [p, q] = url.split('?');
@@ -55,6 +55,8 @@ function fakeServer() {
         return { ok: true, read: ids };
       }
       if (method === 'GET' && p === '/notifs/count') return { count: s.badge == null ? 0 : s.badge };
+      // /notices/watch: queda abierta (como el servidor sin cambios) salvo que la prueba responda
+      if (method === 'GET' && p === '/notices/watch') return new Promise(res => { s.watchers.push(res); });
       if (method === 'POST' && p === '/notices/sound') return { ...s.sound };
       if (method === 'POST' && p === '/presence') return { ok: true };
       if (method === 'POST' && p === '/notices/prefs') { Object.assign(s.prefs, body); return s.prefs; }
@@ -501,6 +503,30 @@ function fakeDom() {
     assert.equal(news.c.view().collapsed, false, 'an unread error opens it');
     busy.c.setCollapsed(true);
     assert.equal(busy.c.view().collapsed, true, 'an explicit collapse wins');
+  });
+
+  await check('a read on another device changes the number and the rows at once (watch)', async () => {
+    const dom = fakeDom();
+    const host = dom.el('div'); dom.doc.body.appendChild(host);
+    const server = fakeServer(); const timers = fakeTimers(); const badges = [];
+    const a = notice({ category: 'done', kind: 'turn_completed' }), b = notice({ category: 'done', kind: 'turn_completed' });
+    server.notices.push(a, b);
+    const inst = N.mount({
+      doc: dom.doc, host, transport: server.transport, deviceId: 'web-dom', sync: true,
+      setTimer: timers.set, clearTimer: timers.clear, setInterval: () => 0, clearInterval() {},
+      sounds: fakeSounds(), isVisible: () => true, isSessionLive: () => true,
+      openSource() {}, openNews() {}, storage: null, presence: false, onBadge: n => badges.push(n),
+    });
+    await inst.controller.poll();
+    assert.deepEqual(badges.slice(-1), [2]);
+    assert.equal(server.watchers.length, 1, 'the page keeps one request open');
+    // otro equipo marcó leído «a»: el servidor responde la espera abierta
+    server.watchers.shift()({ rev: '9.1.5', badge: 1, unread: [b.eventId], pending: [], latest: Math.max(a.sequence, b.sequence) });
+    await new Promise(r => setImmediate(r));
+    assert.deepEqual(badges.slice(-1), [1], 'the number changes without waiting for a poll');
+    assert.equal(inst.controller.state.notices.find(n => n.eventId === a.eventId).read, true, 'the row turns read too');
+    assert.equal(server.watchers.length, 1, 'and it opens the next wait');
+    assert.match(server.calls('GET', '/notices/watch').slice(-1)[0][1], /rev=9\.1\.5/);
   });
 
   await check('the bell number is the server count and drops right after «Marcar leídos»', async () => {

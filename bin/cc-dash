@@ -8409,6 +8409,29 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             return self._json(200, {"mouse": "on" if enabled else "off"})
         if urllib.parse.urlsplit(self.path).path == "/workspace":
             return self._json(200, workspace_payload(workspace_sync()))
+        if urllib.parse.urlsplit(self.path).path == "/notices/watch":
+            # Sincronía inmediata (1-oct): la petición queda abierta hasta que cambia la
+            # revisión de avisos (llega uno o se lee alguno en cualquier equipo) y entonces
+            # responde con el número de la campana y los ids sin leer.
+            import notification_delivery
+            query = urllib.parse.parse_qs(urllib.parse.urlsplit(self.path).query)
+            seen = (query.get("rev") or [""])[0]
+            try:
+                wait = max(0.0, min(25.0, float((query.get("wait") or ["25"])[0])))
+            except ValueError:
+                wait = 25.0
+            conn = notices_conn()
+            deadline = time.time() + wait
+            rev = notification_delivery.revision(conn)
+            while rev == seen and time.time() < deadline:
+                time.sleep(0.2)
+                rev = notification_delivery.revision(conn)
+            is_live = notices_is_live()
+            history = notification_delivery._recent(conn)
+            return self._json(200, {"rev": rev, "badge": notification_delivery.badge_count(conn, is_live),
+                                    "unread": notification_delivery.unread_notice_ids(conn)[-2000:],
+                                    "pending": notification_delivery.live_pending(history, is_live),
+                                    "latest": notification_delivery.event_store.latest_sequence(conn)})
         if urllib.parse.urlsplit(self.path).path in ("/notices", "/notices/prefs"):
             import notification_delivery
             query = urllib.parse.parse_qs(urllib.parse.urlsplit(self.path).query)

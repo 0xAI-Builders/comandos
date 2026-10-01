@@ -214,3 +214,23 @@ def test_web_reminders_reach_the_system_popup_through_cc_dash(server, monkeypatc
     assert call(srv, "POST", "/notify-popup", {"body": "y"})[0] == 400
     html = (ROOT / "dash" / "index.html").read_text()
     assert "127.0.0.1:4778" not in html, "the page never calls cc-notifyd directly"
+
+
+def test_watch_answers_as_soon_as_something_is_read_anywhere(server):
+    """1-oct: every surface must change at once. /notices/watch holds the request until
+    the notices revision changes (new notice or a read on any device), then answers
+    with the bell number and the unread ids so each page can sync its rows."""
+    import time as _t
+    srv, dash = server
+    record(dash, "turn_completed", "d1", pane="%2")
+    first = call(srv, "GET", "/notices/watch?rev=&wait=5")[1]
+    assert first["badge"] == 1 and first["unread"] == ["d1"] and first["rev"]
+    t0 = _t.time()
+    threading.Timer(0.4, lambda: call(srv, "POST", "/notices/read", {"eventIds": ["d1"]})).start()
+    nxt = call(srv, "GET", f"/notices/watch?rev={first['rev']}&wait=5")[1]
+    took = _t.time() - t0
+    assert nxt["badge"] == 0 and nxt["unread"] == [] and nxt["rev"] != first["rev"]
+    assert 0.3 < took < 1.5, f"answers right after the read, not at the timeout ({took:.2f}s)"
+    t0 = _t.time()
+    same = call(srv, "GET", f"/notices/watch?rev={nxt['rev']}&wait=1")[1]
+    assert same["rev"] == nxt["rev"] and _t.time() - t0 >= 0.9, "nothing changed: it waits the whole window"

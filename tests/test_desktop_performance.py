@@ -221,14 +221,14 @@ def poll_ui(iterations=20, fail_notifications=False):
               favorites=favorites, themes=themes, terminal_prefs=terminal_prefs)
 
 
-def test_poll_fetches_notifications_off_ui_thread_and_coalesces_latest_values():
+def test_poll_runs_off_ui_thread_and_leaves_the_bell_to_the_watch():
     ui = poll_ui()
     assert len(ui.pending) == 1
-    assert any(url.endswith('/notifs/count') for url, _ in ui.network)
+    assert not any(url.endswith('/notifs/count') for url, _ in ui.network), 'the bell number comes from notices_watch_loop'
     assert all(thread != threading.get_ident() for _, thread in ui.network)
     callback, *args = ui.pending.pop()
     assert callback(*args) is False
-    assert ui.states == [({'s': 'working'}, [{'session': 's', 'status': 'working', 'ts': 19}], 19)]
+    assert ui.states == [({'s': 'working'}, [{'session': 's', 'status': 'working', 'ts': 19}], None)]
     assert ui.favorites == [(['19'], 0)]
     assert ui.themes == [('theme-19',)]
     assert ui.terminal_prefs[0][0]['font_size'] == 31
@@ -297,12 +297,40 @@ def test_poll_updates_queued_during_dispatch_run_on_next_idle():
     assert applied == [1, 3]
 
 
+def test_bell_waits_on_the_server_and_updates_at_once():
+    """1-oct: the desktop bell keeps /notices/watch open off the GTK thread and sets the
+    server number as soon as it answers, carrying the revision into the next wait."""
+    calls, idles, ticks = [], [], [0]
+    class Stop(BaseException): pass
+    def urlopen(url, **kwargs):
+        calls.append((url, threading.get_ident()))
+        ticks[0] += 1
+        if ticks[0] == 2:
+            raise TimeoutError('cc-dash restarting')
+        if ticks[0] > 3:
+            raise Stop()
+        return io.BytesIO(json.dumps({'rev': f'r{ticks[0]}', 'badge': 10 - ticks[0]}).encode())
+    ns = {'urllib': NS(request=NS(urlopen=urlopen)), 'json': json, 'BASE_URL': 'http://x',
+          'urlencode': __import__('urllib.parse').parse.urlencode, 'str': str, 'int': int,
+          'GLib': NS(idle_add=lambda *a: idles.append(a)), 'set_notif_badge': 'SET',
+          'time': NS(sleep=lambda s: None)}
+    load({'notices_watch_loop'}, ns)
+    def run():
+        try: ns['notices_watch_loop']()
+        except Stop: pass
+    t = threading.Thread(target=run); t.start(); t.join(timeout=5)
+    assert all(tid != threading.get_ident() for _, tid in calls)
+    assert [u.split('?')[0] for u, _ in calls][:3] == ['http://x/notices/watch'] * 3
+    assert 'rev=r1' in calls[2][0], 'after a failed wait it resumes from the last revision'
+    assert idles == [('SET', 9), ('SET', 7)]
+
+
 def test_notification_failure_preserves_latest_state_and_preferences():
     ui = poll_ui(iterations=2, fail_notifications=True)
     assert len(ui.pending) == 1
     ui.pending.pop()[0]()
     assert ui.states[0][1][0]['ts'] == 1
-    assert ui.states[0][2] == 0
+    assert ui.states[0][2] is None
     assert ui.favorites == [(['1'], 0)]
     assert ui.terminal_prefs[0][0]['font_size'] == 13
 
