@@ -263,14 +263,22 @@ notebook stack { background: @BG@; }
 .side-grip { color: @FAINT@; font-size: 13px; padding: 0 7px 0 8px; }
 .side-head:hover .side-grip, .side-head.dragging .side-grip { color: @TEXT@; }
 .side-head.dragging { border-top-color: @BRAND@; }
-.side-tab { background-color: @BAR@; background-image: none; color: @DIM@; padding: 0 10px; min-height: 30px;
-  border: 0; border-right: 1px solid @LINE@; border-bottom: 2px solid transparent; border-radius: 0; box-shadow: none; outline: none;
-  font-family: 'Inter', sans-serif; font-size: 12px; transition: color 150ms ease, background-color 150ms ease; }
-.side-tab:hover { color: @TEXT@; }
-.side-tab.cur, .side-tab.cur:hover { color: @TEXT@; background-color: mix(@BAR@, @LINE2@, 0.35); border-bottom-color: @BRAND@; }
-.side-tab.sel label { font-weight: 600; }
-.side-tab.side-plus { color: @BRAND@; font-weight: 700; border-right: 0; }
-.side-tab.side-tog { border-right: 0; border-left: 1px solid @LINE@; min-width: 30px; padding: 0 8px; }
+.side-tab { background-color: @BAR@; border-right: 1px solid @LINE@; border-bottom: 2px solid transparent; }
+.side-tab.cur { background-color: mix(@BAR@, @LINE2@, 0.35); border-bottom-color: @BRAND@; }
+.side-btn { background-color: transparent; background-image: none; color: @DIM@; padding: 0 9px; min-height: 30px;
+  border: 0; border-radius: 0; box-shadow: none; outline: none; font-family: 'Inter', sans-serif; font-size: 12px; }
+.side-btn:hover, .side-tab.cur .side-btn { color: @TEXT@; }
+.side-tab.sel .side-name label { font-weight: 600; }
+.side-name { padding-right: 2px; }
+.side-x { padding: 0 5px; min-width: 14px; min-height: 18px; margin: 6px 4px 6px 0; border-radius: 5px; color: @FAINT@; font-size: 10px; }
+.side-x:hover { color: @TEXT@; background-color: @LINE@; }
+.side-x.armed { color: #ff9e9e; background-color: mix(@BAR@, #ef6b6b, 0.24); font-size: 11px; font-weight: 600; padding: 0 8px; }
+.side-btn.side-plus { color: @BRAND@; font-weight: 700; }
+/* Persiana (grill 1-oct): chevron en su propio hueco; escondidas, cabecera rayada */
+.side-btn.side-tog { border-left: 1px solid @LINE@; min-width: 38px; padding: 0; }
+.side-btn.side-tog:hover { background-color: mix(@BAR@, @LINE2@, 0.5); }
+.side-head.closed { background-image: repeating-linear-gradient(0deg, @BAR@ 0px, @BAR@ 4px, @LINE@ 4px, @LINE@ 5px); }
+.side-head.closed .side-tab { background-color: transparent; }
 .tabplus { color: @DIM@; padding: 4px 8px; margin: 0 1px; border: none; background: none;
   border-radius: 8px; min-width: 28px; min-height: 28px; font-family: 'Ubuntu Sans Mono', monospace; font-size: 14px;
   -gtk-icon-effect: none; }
@@ -1735,7 +1743,7 @@ def button_style_css(style, theme):
     # atajos…): misma superficie 3D sin cambiar su tamaño. Hundirse = sombra
     # interior (sin mover márgenes, así las listas no bailan). Fuera quedan
     # los controles de ventana y las flechas de scroll.
-    gen = "button:not(.cc-key):not(.cc-winctl):not(.titlebutton):not(.tabfav):not(.tabclose):not(.tab-suggest):not(.tabnav):not(.side-tab)"
+    gen = "button:not(.cc-key):not(.cc-winctl):not(.titlebutton):not(.tabfav):not(.tabclose):not(.tab-suggest):not(.tabnav):not(.side-btn)"
     generic = {
         "sutil": (f"{gen}{{border:1px solid {line};box-shadow:0 2px 0 {theme.get('line2', line)};}}"
                   f"{gen}:active,{gen}:checked{{box-shadow:inset 0 2px 0 rgba(0,0,0,0.3);}}"),
@@ -6699,7 +6707,7 @@ def _side_head_button(label, cls, tip, cb):
     b = Gtk.Button(label=label)
     b.set_relief(Gtk.ReliefStyle.NONE)
     b.set_can_focus(False)
-    for c in ("side-tab",) + tuple(cls):
+    for c in ("side-btn",) + tuple(cls):
         b.get_style_context().add_class(c)
     if tip:
         b.set_tooltip_text(tip)
@@ -6715,7 +6723,8 @@ def _side_term_action(kind, tab=""):
 
 
 _side_plus = _side_head_button("+ Terminal", ("side-plus",), "Nueva terminal aquí", lambda *_: _side_term_action("new"))
-_side_tog = _side_head_button("▾", ("side-tog",), "", lambda *_: _side_term_action("toggle"))
+_side_tog = _side_head_button("", ("side-tog",), "", lambda *_: _side_term_action("toggle"))
+_side_tog.set_always_show_image(True)
 _side_tog.set_no_show_all(True)
 _side_head.pack_start(_side_grip, False, False, 0)
 _side_head.pack_start(_side_tabs_sw, True, True, 0)
@@ -6821,6 +6830,24 @@ def _side_term_keep_collapsed(*_):
         GLib.idle_add(_side_term_collapse)
 
 
+def _side_tab_widget(t, hidden):
+    """Pestaña = forma (EventBox .side-tab) con su nombre y su ✕; la ✕ pide
+    «¿Cerrar?» antes (el estado lo lleva la barra web: t["closing"])."""
+    ev = Gtk.EventBox()
+    ctx = ev.get_style_context()
+    for c in ("side-tab",) + (("cur",) if t["on"] and not hidden else ()) + (("sel",) if t["sel"] else ()):
+        ctx.add_class(c)
+    row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=0)
+    ev.add(row)
+    k = t["id"]
+    row.pack_start(_side_head_button(t["label"], ("side-name",), t["title"], lambda *_a: _side_term_action("focus", k)), False, False, 0)
+    closing = bool(t.get("closing"))
+    row.pack_start(_side_head_button("¿Cerrar?" if closing else "✕", ("side-x",) + (("armed",) if closing else ()),
+                                     "Otro clic la cierra" if closing else "Cerrar esta terminal",
+                                     lambda *_a: _side_term_action("close", k)), False, False, 0)
+    return ev
+
+
 def _side_head_render():
     for c in _side_tabs.get_children():
         if c is not _side_plus:
@@ -6828,14 +6855,15 @@ def _side_head_render():
             c.destroy()
     hidden = bool(_SIDE["hidden"])
     for i, t in enumerate(_SIDE.get("tabs") or []):
-        cls = ("cur",) if t["on"] and not hidden else ()
-        cls += ("sel",) if t["sel"] else ()
-        b = _side_head_button(t["label"], cls, t["title"], lambda *_a, k=t["id"]: _side_term_action("focus", k))
-        _side_tabs.pack_start(b, False, False, 0)
-        _side_tabs.reorder_child(b, i)        # «+ Terminal» siempre justo después de las pestañas
-    _side_tog.set_label("▴" if hidden else "▾")
+        w = _side_tab_widget(t, hidden)
+        _side_tabs.pack_start(w, False, False, 0)
+        _side_tabs.reorder_child(w, i)        # «+ Terminal» siempre justo después de las pestañas
+    _side_tog.set_image(_themed_icon_image("chevron-up" if hidden else "chevron-down", 18))
+    _side_tog.get_image().show()          # el botón es no_show_all: show_all no llega a su imagen
     _side_tog.set_tooltip_text("Mostrar las terminales" if hidden else "Esconder las terminales")
     _side_tog.set_visible(bool(_SIDE.get("tabs")))
+    ctx = _side_head_ev.get_style_context()
+    (ctx.add_class if hidden and _SIDE.get("tabs") else ctx.remove_class)("closed")
     _side_head_ev.show_all()
 
 
@@ -6846,7 +6874,8 @@ def _side_tabs_from_web(tabs):
         if not isinstance(t, dict) or not SESSION_RE.match(str(t.get("id") or "")):
             continue
         out.append({"id": str(t["id"]), "label": str(t.get("label") or t["id"])[:40],
-                    "title": str(t.get("title") or t["id"])[:120], "on": bool(t.get("on")), "sel": bool(t.get("sel"))})
+                    "title": str(t.get("title") or t["id"])[:120], "on": bool(t.get("on")), "sel": bool(t.get("sel")),
+                    "closing": bool(t.get("closing"))})
     return out
 
 

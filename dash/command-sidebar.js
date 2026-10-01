@@ -149,7 +149,7 @@
 
   function createCommandSidebar(opts) {
     const { api, root: el, storage, makeId, getTarget, focusTarget = () => {}, openBuilder = () => {}, mountTerm = null,
-      toast = () => {}, terminals = () => [], newTerm = () => {}, hydrate = () => {} } = opts;
+      toast = () => {}, terminals = () => [], newTerm = () => {}, killTerm = null, hydrate = () => {} } = opts;
     const state = { catalog: null, cliInPane: '', catalogTarget: null, chains: [], open: new Set(), run: null, curTerm: '',
       typing: null, q: '', firstRender: true, appliedTarget: null };
 
@@ -358,16 +358,26 @@
     // Mockup: la pestaña de una terminal rápida se llama por su hora («14:32»);
     // la carpeta T-AAAA-MM-DD-HH-MM-SS queda en el title.
     const shortTerm = l => { const m = /^T-\d{4}-\d{2}-\d{2}-(\d{2})-(\d{2})-\d{2}$/.exec(String(l)); return m ? `${m[1]}:${m[2]}` : String(l); };
+    // Persiana (elegida en el grill del 1-oct): chevron en su propio hueco a la derecha;
+    // gira al esconder y la cabecera se ve como persiana bajada (CSS .terms-hidden).
+    const CHEVRON = '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg>';
     function termsHTML() {
       const t = target();
       const cur = x => !!t && (t.paneKey && x.paneKey ? t.paneKey === x.paneKey : sameTarget(t, x));
       const list = termList();
       const shown = state.curTerm && list.some(x => x.tabId === state.curTerm) ? state.curTerm : (list[0] ? list[0].tabId : '');
       if (shown !== state.curTerm) state.curTerm = shown;
-      return list.map(x => `<button type="button" data-flat class="t${x.tabId === shown ? ' on' : ''}${cur(x) ? ' sel' : ''}" data-focus-term="${esc(x.tabId)}" title="${esc(x.label || x.tabId)}">`
-          + `${ic('bolt', 's20')}${esc(shortTerm(x.label || x.tabId))}${cur(x) ? ' · destino' : ''}</button>`).join('')
-        + '<button type="button" data-flat class="t plus" data-new-term>+ Terminal</button>'
-        + (list.length ? `<button type="button" data-flat class="t tog" data-terms-toggle aria-pressed="${state.termsHidden ? 'false' : 'true'}" title="${state.termsHidden ? 'Mostrar las terminales' : 'Esconder las terminales'}">${state.termsHidden ? '▴' : '▾'}</button>` : '');
+      const armed = id => state.closeArm === String(id);
+      return list.map(x => `<span class="tw${x.tabId === shown ? ' on' : ''}${cur(x) ? ' sel' : ''}">`
+          + `<button type="button" data-flat class="t${x.tabId === shown ? ' on' : ''}${cur(x) ? ' sel' : ''}" data-focus-term="${esc(x.tabId)}" title="${esc(x.label || x.tabId)}">`
+          + `${ic('bolt', 's20')}${esc(shortTerm(x.label || x.tabId))}${cur(x) ? ' · destino' : ''}</button>`
+          + `<button type="button" data-flat class="tx${armed(x.tabId) ? ' armed' : ''}" data-close-term="${esc(x.tabId)}" aria-label="Cerrar ${esc(shortTerm(x.label || x.tabId))}" title="${armed(x.tabId) ? 'Otro clic la cierra' : 'Cerrar esta terminal'}">${armed(x.tabId) ? '¿Cerrar?' : '✕'}</button></span>`).join('')
+        + '<button type="button" data-flat class="t plus" data-new-term>+ Terminal</button>';
+    }
+    function togHTML() {
+      if (!termList().length) return '';
+      const h = !!state.termsHidden;
+      return `<button type="button" data-flat class="tog" data-terms-toggle aria-pressed="${h ? 'false' : 'true'}" aria-label="${h ? 'Mostrar las terminales' : 'Esconder las terminales'}" title="${h ? 'Mostrar las terminales' : 'Esconder las terminales'}">${CHEVRON}</button>`;
     }
     // Las mismas pestañas como datos: el escritorio pinta esta cabecera en GTK, encima
     // de su terminal nativa (mountTerm recibe esto en su tercer argumento).
@@ -375,7 +385,7 @@
       const t = target();
       const cur = x => !!t && (t.paneKey && x.paneKey ? t.paneKey === x.paneKey : sameTarget(t, x));
       return termList().map(x => ({ id: String(x.tabId), label: shortTerm(x.label || x.tabId) + (cur(x) ? ' · destino' : ''),
-        title: String(x.label || x.tabId), on: x.tabId === state.curTerm, sel: cur(x) }));
+        title: String(x.label || x.tabId), on: x.tabId === state.curTerm, sel: cur(x), closing: state.closeArm === String(x.tabId) }));
     }
 
     function bodyHTML() {
@@ -400,11 +410,13 @@
         // Arrastrarla (fuera de los botones) cambia la altura; ya no hay separador aparte.
         el.innerHTML = `<div class="sec-cmds">${headHTML()}<div class="cs-body">${bodyHTML()}</div></div>`
           + '<div class="sec-terms"><div class="cs-terms tt" role="separator" aria-orientation="horizontal" aria-label="Terminales · arrastra para cambiar la altura">'
-          + '<span class="grip" aria-hidden="true"></span><div class="tabs"></div></div><div class="mini"></div></div>';
+          + '<span class="grip" aria-hidden="true"></span><div class="tabs"></div><div class="tog-slot"></div></div><div class="mini"></div></div>';
         wireDivider();
       }
       const tt = el.querySelector('.cs-terms .tabs') || el.querySelector('.cs-terms');
       if (tt) tt.innerHTML = termsHTML();
+      const slot = el.querySelector('.cs-terms .tog-slot');
+      if (slot) slot.innerHTML = togHTML();
       const n = termList().length;
       try { el.classList && el.classList.toggle('no-terms', !n); } catch (_) {}
       try { el.classList && el.classList.toggle('terms-hidden', !!state.termsHidden); } catch (_) {}
@@ -456,7 +468,24 @@
       if (x) focusTarget({ kind: 'term', tabId: x.tabId, paneKey: x.paneKey, session: x.session, pane: x.pane, title: x.label || x.tabId });
       render();
     }
+    // ✕ de una pestaña: el primer clic pide confirmación («¿Cerrar?» 3 s), el segundo
+    // termina esa terminal (su sesión tmux, por nombre exacto).
+    let armTimer = 0;
+    function closeTerm(id) {
+      id = String(id);
+      clearTimeout(armTimer);
+      if (state.closeArm !== id) {
+        state.closeArm = id;
+        armTimer = setTimeout(() => { if (state.closeArm === id) { state.closeArm = null; render(); } }, 3000);
+        return void render();
+      }
+      state.closeArm = null;
+      if (state.curTerm === id) state.curTerm = '';
+      render();
+      if (typeof killTerm === 'function') { try { Promise.resolve(killTerm(id)).catch(err => toast((err && err.message) || String(err), true)); } catch (err) { toast(err.message, true); } }
+    }
     function termAction(kind, id) {
+      if (kind === 'close' && id) return void closeTerm(id);
       if (kind === 'new') { if (state.termsHidden) setHidden(false); return void newTerm(); }
       if (kind === 'toggle') { setHidden(!state.termsHidden); return void render(); }
       if (kind === 'focus' && id) return void focusTerm(id);
@@ -469,6 +498,7 @@
       if (t.closest('[data-run-next]')) return void next();
       if (t.closest('[data-run-stop]')) return void stop();
       if (t.closest('[data-open-builder]')) return void openBuilder();
+      if ((n = t.closest('[data-close-term]'))) return void closeTerm(n.dataset.closeTerm);
       if (t.closest('[data-new-term]')) return void termAction('new');
       if (t.closest('[data-terms-toggle]')) return void termAction('toggle');
       if ((n = t.closest('[data-focus-term]'))) return void focusTerm(n.dataset.focusTerm);

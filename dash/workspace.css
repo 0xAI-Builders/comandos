@@ -755,7 +755,6 @@ button.wm-suggest{font:600 10px var(--sans);padding:2px 7px;border-radius:999px;
 #command-sidebar.terms-hidden .sec-cmds{flex:1 1 auto}
 #command-sidebar.terms-hidden .sec-terms{flex:none}
 #command-sidebar.terms-hidden .mini{display:none}
-#command-sidebar button[data-flat].t.tog{margin-left:auto;min-width:28px;padding:0 8px;justify-content:center}
 body.ws-dragging #command-sidebar .sb-term{pointer-events:none}
 /* cuerpo: tarjetas apiladas */
 #command-sidebar .cs-body{flex:1;min-height:0;overflow:auto;overscroll-behavior:contain;display:flex;flex-direction:column;gap:8px;padding:0 10px 10px;min-width:0}
@@ -834,7 +833,7 @@ body.ws-dragging #command-sidebar .sb-term{pointer-events:none}
 /* terminales rápidas: pestañas (.tt) sobre la terminal (.lado .sec-terms .tt) */
 /* Una sola cabecera (agarre + pestañas + «+ Terminal» + ▾) que también es el asa de
    altura: se arrastra desde cualquier punto que no sea un botón. */
-#command-sidebar .cs-terms{display:flex;align-items:flex-end;gap:6px;padding:6px 8px 0 4px;border-top:1px solid var(--cs-line);border-bottom:1px solid var(--cs-line);background:var(--cs-panel);flex:none;cursor:row-resize;touch-action:pan-x;user-select:none;-webkit-user-select:none}
+#command-sidebar .cs-terms{display:flex;align-items:flex-end;gap:6px;padding:6px 0 0 4px;border-top:1px solid var(--cs-line);border-bottom:1px solid var(--cs-line);background:var(--cs-panel);flex:none;cursor:row-resize;touch-action:pan-x;user-select:none;-webkit-user-select:none}
 #command-sidebar .cs-terms .tabs{display:flex;align-items:flex-end;gap:4px;flex:1 1 auto;min-width:0;overflow-x:auto;overflow-y:hidden;scrollbar-width:none}
 #command-sidebar .cs-terms .tabs::-webkit-scrollbar{display:none}
 #command-sidebar .cs-terms button{cursor:pointer}
@@ -848,6 +847,27 @@ body.ws-dragging #command-sidebar .sb-term{pointer-events:none}
 #command-sidebar button[data-flat].t.on{color:var(--cs-text);background:var(--cs-deep)}
 #command-sidebar button[data-flat].t.sel{box-shadow:inset 0 -2px 0 var(--cs-brand);color:var(--cs-text)}
 #command-sidebar button[data-flat].t.plus{color:var(--cs-brand);font-weight:700}
+/* pestaña = .tw (forma) con su nombre (.t) y su ✕ (.tx); la ✕ pide «¿Cerrar?» antes */
+#command-sidebar .cs-terms .tw{display:flex;align-items:stretch;border:1px solid var(--cs-line);border-bottom:0;border-radius:10px 10px 0 0;background:var(--cs-panel2);flex:none}
+#command-sidebar .cs-terms .tw.on{background:var(--cs-deep)}
+#command-sidebar .cs-terms .tw.sel{box-shadow:inset 0 -2px 0 var(--cs-brand)}
+#command-sidebar .cs-terms .tw button[data-flat].t{border:0;border-radius:10px 0 0 0;background:transparent;box-shadow:none;padding-right:4px}
+#command-sidebar .cs-terms .tw button[data-flat].tx{display:flex;align-items:center;justify-content:center;min-width:22px;min-height:0;margin:3px 4px 3px 0;padding:0 5px;border:0;border-radius:6px;background:transparent;color:var(--cs-dim);font-size:10px;line-height:1;opacity:.55;transition:opacity .15s,background-color .15s,color .15s}
+#command-sidebar .cs-terms .tw:hover button[data-flat].tx,#command-sidebar .cs-terms .tw.on button[data-flat].tx{opacity:1}
+#command-sidebar .cs-terms .tw button[data-flat].tx:hover{background:var(--cs-hover);color:var(--cs-text)}
+#command-sidebar .cs-terms .tw button[data-flat].tx.armed{opacity:1;padding:0 8px;font-size:11px;font-weight:600;color:var(--cs-red);background:color-mix(in srgb,var(--cs-red) 18%,transparent)}
+@media(pointer:coarse){#command-sidebar .cs-terms .tw button[data-flat].tx{opacity:1;min-width:30px}}
+/* Persiana (grill 1-oct): el chevron vive en su propio hueco a la derecha y gira al
+   esconder; escondidas, la cabecera se ve como una persiana bajada. */
+#command-sidebar .cs-terms .tog-slot{align-self:stretch;flex:none;display:flex;margin-top:-6px;border-left:1px solid var(--cs-line)}
+#command-sidebar .cs-terms .tog-slot:empty{display:none}
+#command-sidebar .cs-terms button[data-flat].tog{width:40px;min-height:0;padding:0;border:0;border-radius:0;display:grid;place-items:center;color:var(--cs-dim);background:transparent}
+#command-sidebar .cs-terms button[data-flat].tog:hover{color:var(--cs-text);background:var(--cs-hover)}
+#command-sidebar .cs-terms button[data-flat].tog svg{transition:transform .35s cubic-bezier(.5,1.6,.4,1)}
+#command-sidebar.terms-hidden .cs-terms button[data-flat].tog svg{transform:rotate(180deg)}
+#command-sidebar.terms-hidden .cs-terms{background:repeating-linear-gradient(0deg,var(--cs-panel) 0 4px,var(--cs-line) 4px 5px)}
+#command-sidebar.terms-hidden .cs-terms .tw,#command-sidebar.terms-hidden .cs-terms .t.plus{opacity:.75}
+@media (prefers-reduced-motion:reduce){#command-sidebar .cs-terms button[data-flat].tog svg{transition:none}}
 @media(pointer:coarse){:is(#command-sidebar,.chain-only) :is(.cmds,.srows) .cmd{padding-block:10px}:is(#command-sidebar,.chain-only) .cmd .opts button[data-flat]}
 /* Constructor de cadenas (dash/chain-builder.js): .backdrop[data-mclose] > .modal.chain-only.
    Estilos 1:1 del modal aprobado del mockup (?round=cli: cabecera con libro, búsqueda y

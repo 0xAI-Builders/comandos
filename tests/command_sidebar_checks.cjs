@@ -186,14 +186,16 @@ const catalog = JSON.parse(fs.readFileSync(process.cwd() + '/tests/fixtures/comm
   assert.deepEqual(mounted.at(-1).slice(0, 2), ['q1', 'mini']);                        // la terminal se monta en la barra
   // el escritorio recibe las mismas pestañas para pintar su cabecera nativa
   assert.deepEqual(mounted.at(-1)[2], { session: 'q1', hidden: false,
-    tabs: [{ id: 'q1', label: 'Terminal <14:32> · destino', title: 'Terminal <14:32>', on: true, sel: true }] });
+    tabs: [{ id: 'q1', label: 'Terminal <14:32> · destino', title: 'Terminal <14:32>', on: true, sel: true, closing: false }] });
+  // persiana: el chevron vive en su propio hueco, fuera de las pestañas
+  assert.ok(root2.querySelector('.cs-terms .tog-slot .tog[data-terms-toggle] svg'));
   assert.equal(root2.querySelector('.cs-terms .t[data-focus-term="q1"]').textContent.includes('Terminal <14:32>'), true);
   assert.equal(root2.querySelector('.cs-terms .t[data-focus-term="q1"]').classList.contains('on'), true);
   assert.equal(root2.querySelector('.cs-terms .t[data-focus-term="q1"]').classList.contains('sel'), true);   // es el destino
   root2.click('.t[data-focus-term="q1"]'); root2.click('.t.plus[data-new-term]'); root2.click('.cs-chains[data-open-builder]');
   assert.equal(focused[0].kind, 'term'); assert.equal(focused[0].pane, '%7'); assert.deepEqual(focused.slice(1), ['new', 'builder']);
   // «▾» esconde las terminales (se desmontan; quedan las pestañas) y «▴» las vuelve a mostrar
-  root2.click('.t.tog[data-terms-toggle]');
+  root2.click('.tog[data-terms-toggle]');
   assert.equal(root2.classList.contains('terms-hidden'), true);
   assert.deepEqual(mounted.at(-1).slice(0, 2), ['', 'mini']);
   assert.equal(mounted.at(-1)[2].hidden, true); assert.equal(mounted.at(-1)[2].session, 'q1');
@@ -202,11 +204,26 @@ const catalog = JSON.parse(fs.readFileSync(process.cwd() + '/tests/fixtures/comm
   sb2.termAction('toggle'); assert.equal(root2.classList.contains('terms-hidden'), true);
   assert.equal(store.get('comandos.commands.termsHidden'), '1');
   assert.ok(root2.querySelector('.cs-terms .t[data-focus-term="q1"]'));
-  root2.click('.t.tog[data-terms-toggle]');
+  root2.click('.tog[data-terms-toggle]');
   assert.equal(root2.classList.contains('terms-hidden'), false);
   assert.deepEqual(mounted.at(-1).slice(0, 2), ['q1', 'mini']);
-  root2.click('.t.tog[data-terms-toggle]'); root2.click('.t[data-focus-term="q1"]');        // tocar una pestaña también las muestra
+  root2.click('.tog[data-terms-toggle]'); root2.click('.t[data-focus-term="q1"]');        // tocar una pestaña también las muestra
   assert.equal(root2.classList.contains('terms-hidden'), false);
+  // ✕ de una pestaña: primer clic pide «¿Cerrar?», el segundo termina esa terminal
+  const killed = [], rootX = mkRoot();
+  const sbX = createCommandSidebar({ api, root: rootX, storage, makeId: () => 'x', getTarget: () => null,
+    toast: () => {}, killTerm: id => { killed.push(id); return Promise.resolve(); }, mountTerm: (s, h, info) => mounted.push(['X', s, info]),
+    terminals: () => [{ tabId: 'term-q9', paneKey: 'term-q9', session: 'term-q9', pane: '%9', label: 'T-2026-10-01-09-15-00' }] });
+  sbX.render();
+  rootX.click('.tx[data-close-term="term-q9"]');
+  assert.equal(killed.length, 0);
+  assert.equal(rootX.querySelector('.tx[data-close-term="term-q9"]').classList.contains('armed'), true);
+  assert.equal(rootX.querySelector('.tx[data-close-term="term-q9"]').textContent, '¿Cerrar?');
+  assert.equal(mounted.at(-1)[2].tabs[0].closing, true);                               // el escritorio también lo pinta
+  rootX.click('.tx[data-close-term="term-q9"]');
+  assert.deepEqual(killed, ['term-q9']);
+  sbX.termAction('close', 'term-q9'); assert.deepEqual(killed, ['term-q9']);           // la cabecera nativa usa la misma acción
+  assert.equal(sbX.state.closeArm, 'term-q9');
   // helpers puros para el constructor de cadenas (S3)
   const claude = catalog.clis[0];
   const build = mod.cliHTML(claude, { mode: 'build', open: new Set() });

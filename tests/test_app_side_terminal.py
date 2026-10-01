@@ -69,12 +69,23 @@ def test_side_tabs_from_web_are_sanitized():
     src = APP[APP.index("def _side_tabs_from_web("):APP.index("def _side_term_show(")]
     exec(src, ns)
     out = ns["_side_tabs_from_web"]([{"id": "T-1", "label": "14:56", "on": 1}, {"id": "bad id!"}, "x"])
-    assert out == [{"id": "T-1", "label": "14:56", "title": "T-1", "on": True, "sel": False}]
+    assert out == [{"id": "T-1", "label": "14:56", "title": "T-1", "on": True, "sel": False, "closing": False}]
     assert ns["_side_tabs_from_web"](None) == []
 
 
 def test_side_tabs_keep_their_own_look_under_every_button_style():
     # el estilo 3D global de botones (prioridad mayor) pisaba el borde de la pestaña activa
     gen = APP[APP.index('    gen = "button:not(.cc-key)'):]
-    assert ":not(.side-tab)" in gen[:gen.index("\n")]
-    assert ".side-tab.cur, .side-tab.cur:hover { color: @TEXT@; background-color: mix(@BAR@, @LINE2@, 0.35); border-bottom-color: @BRAND@; }" in APP
+    assert ":not(.side-btn)" in gen[:gen.index("\n")]
+    assert ".side-tab.cur { background-color: mix(@BAR@, @LINE2@, 0.35); border-bottom-color: @BRAND@; }" in APP
+
+
+def test_side_tabs_close_with_confirmation_and_the_toggle_is_a_persiana():
+    tab = APP[APP.index("def _side_tab_widget("):APP.index("def _side_head_render(")]
+    assert '_side_term_action("close", k)' in tab and '"¿Cerrar?" if closing else "✕"' in tab
+    render = APP[APP.index("def _side_head_render("):APP.index("def _side_tabs_from_web(")]
+    assert '"chevron-up" if hidden else "chevron-down"' in render and '("closed")' in render
+    assert ".side-head.closed { background-image: repeating-linear-gradient(" in APP
+    kill = HTML[HTML.index("async function sidebarKillTerm("):HTML.index("function activePaneTarget(")]
+    assert "isQuickTermSession(sess)" in kill and 'api("/kill", {session: sess})' in kill
+    assert "killTerm: sidebarKillTerm" in HTML
