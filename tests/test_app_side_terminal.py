@@ -136,7 +136,9 @@ def test_left_panel_hides_completely_not_down_to_its_minimum_width():
 
     calls = []
     ns = {"paned": paned, "_side_paned": side, "_SIDE": {"leftPos": 98}, "_left_btn_paint": lambda: calls.append("paint"),
-          "_layout_save": lambda: calls.append("save"), "_dash_js_quiet": lambda js: calls.append(js)}
+          "_layout_save": lambda: calls.append("save"), "_dash_js_quiet": lambda js: calls.append(js),
+          "_LEFT_FX": {"snap": None}, "_left_fx_snapshot": lambda: None,
+          "_left_fx_run": lambda hiding, snap, width: calls.append(("fx", hiding, width))}
     for name in ("_left_panel_set", "_left_panel_toggle"):
         node = next(n for n in ast.parse(APP).body if isinstance(n, ast.FunctionDef) and n.name == name)
         exec(compile(ast.Module(body=[node], type_ignores=[]), "<app>", "exec"), ns)
@@ -146,6 +148,7 @@ def test_left_panel_hides_completely_not_down_to_its_minimum_width():
     assert ns["_SIDE"]["leftPos"] == 500 and "window.appLeftPanel&&appLeftPanel(true)" in calls
     ns["_left_panel_toggle"](); pump()
     assert side.get_visible() and ns["_SIDE"]["leftHidden"] is False and abs(paned.get_position() - 500) <= 1
+    assert ("fx", False, 500) in calls, "showing slides the panel in"
     ns["_SIDE"]["leftPos"] = 98                       # una posición «plegada» vieja no reabre una tira
     ns["_left_panel_set"](True); ns["_left_panel_set"](False); pump()
     assert paned.get_position() >= 280
@@ -156,3 +159,52 @@ def test_left_panel_hides_completely_not_down_to_its_minimum_width():
     save = save[:save.index("\n\n\n")]
     assert 'or _SIDE.get("leftHidden") or not _side_paned.get_visible():' in save, "a hidden panel never saves its width"
     assert '_side_paned.set_no_show_all(True)' in APP
+
+
+
+def test_left_panel_slide_is_an_overlay_and_never_resizes_the_terminals_per_frame():
+    """1-oct: «ponle un mejor efecto de transición». Se anima una imagen del panel
+    encima; las terminales cambian de tamaño una sola vez (tmux + Claude Code)."""
+    import ast
+    import os
+    import time
+    import pytest
+    if not os.environ.get("DISPLAY"):
+        pytest.skip("needs a display for GTK")
+    import cairo
+    import gi
+    gi.require_version("Gtk", "3.0")
+    gi.require_version("Gdk", "3.0")
+    from gi.repository import Gdk, GdkPixbuf, Gtk
+
+    def pump(seconds):
+        end = time.monotonic() + seconds
+        while time.monotonic() < end:
+            while Gtk.events_pending():
+                Gtk.main_iteration()
+            time.sleep(0.01)
+
+    overlay, paned = Gtk.Overlay(), Gtk.Paned()
+    paned.pack1(Gtk.Box(), True, False); paned.pack2(Gtk.Box(), True, False)
+    overlay.add(paned)
+    win = Gtk.Window(); win.add(overlay); win.set_default_size(800, 300); win.show_all()
+    pump(0.2)
+    ns = {"Gtk": Gtk, "Gdk": Gdk, "cairo": cairo, "modal_overlay": overlay, "paned": paned,
+          "THEME": {"bar": "#0a121b"}, "_animations_enabled": lambda: True}
+    for name in ("_left_fx_clear", "_left_fx_run", "_tween"):
+        node = next(n for n in ast.parse(APP).body if isinstance(n, ast.FunctionDef) and n.name == name)
+        exec(compile(ast.Module(body=[node], type_ignores=[]), "<app>", "exec"), ns)
+    ns["_LEFT_FX"] = {"snap": None, "da": None}
+    ns["LEFT_FX_MS"] = 150
+    snap = (GdkPixbuf.Pixbuf.new(GdkPixbuf.Colorspace.RGB, False, 8, 300, 200), 0, 30, 300, 200)
+    for hiding in (True, False):
+        ns["_left_fx_run"](hiding, snap if hiding else None, 300)
+        da = ns["_LEFT_FX"]["da"]
+        assert da is not None and da.get_parent() is overlay and overlay.get_overlay_pass_through(da), "clicks pass through"
+        pump(0.5)
+        assert ns["_LEFT_FX"]["da"] is None and da.get_parent() is None, "the overlay goes away when the slide ends"
+    ns["_animations_enabled"] = lambda: False                 # movimiento reducido: sin animación
+    ns["_left_fx_run"](True, snap, 300)
+    assert ns["_LEFT_FX"]["da"] is None
+    body = APP[APP.index("def _left_panel_set("):APP.index("def _left_panel_toggle(")]
+    assert "_tween(" not in body and "set_position(" in body, "the paned moves once; only the overlay animates"

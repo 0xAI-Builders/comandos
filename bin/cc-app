@@ -72,6 +72,7 @@ if hasattr(_LOCK_FH, "fileno"):
         except Exception:
             pass
         sys.exit(0)
+import cairo
 import gi
 gi.require_version("Gtk", "3.0")
 # WebKit2 4.1 en Ubuntu 24.04 (noble), 4.0 en 22.04 (jammy). Intenta 4.1 primero.
@@ -7125,20 +7126,120 @@ def _side_term_focused(term):
     return False
 
 
-def _left_panel_set(hidden):
+_LEFT_FX = {"snap": None, "da": None}
+LEFT_FX_MS = 220
+
+
+def _left_fx_clear():
+    da = _LEFT_FX.get("da")
+    _LEFT_FX["da"] = None
+    if da is not None:
+        try:
+            modal_overlay.remove(da)
+            da.destroy()
+        except Exception:
+            pass
+
+
+def _left_fx_snapshot():
+    """El panel tal como se ve ahora (del framebuffer de la ventana), o None."""
+    try:
+        a = _side_paned.get_allocation()
+        if not _side_paned.get_mapped() or a.width < 40 or a.height < 40:
+            return None
+        pb = Gdk.pixbuf_get_from_window(_side_paned.get_window(), a.x, a.y, a.width, a.height)
+        xy = _side_paned.translate_coordinates(modal_overlay, 0, 0)   # (x, y) o None; PyGObject no da «ok»
+        return (pb, xy[-2], xy[-1], a.width, a.height) if pb is not None and xy else None
+    except Exception:
+        return None
+
+
+def _left_fx_run(hiding, snap, width):
+    """Desliza el panel (1-oct): las terminales cambian de tamaño UNA vez y lo que
+    se anima es la imagen del panel encima. Animar la posición del paned las
+    redimensionaría en cada cuadro y tmux haría redibujar a Claude Code cada vez."""
+    _left_fx_clear()
+    if not _animations_enabled():
+        return
+    if snap:
+        x0, y0, h = snap[1], snap[2], snap[4]
+    else:                                              # sin imagen: el hueco del panel dentro del paned
+        xy = paned.translate_coordinates(modal_overlay, 0, 0)
+        if not xy:
+            return
+        x0, y0 = xy[-2], xy[-1]
+        h = paned.get_allocated_height()
+    bar = Gdk.RGBA()
+    bar.parse(THEME.get("bar", "#0a121b"))
+    state = {"e": 0.0}
+    da = Gtk.DrawingArea()
+    da.set_halign(Gtk.Align.FILL)
+    da.set_valign(Gtk.Align.FILL)
+
+    def draw(_w, cr):
+        e = state["e"]
+        k = e if hiding else 1 - e                     # 0 = en su sitio, 1 = fuera por la izquierda
+        off = -width * k
+        if not hiding:                                 # lo que aún no entra se tapa: nada de doble panel
+            start = max(x0, x0 + width + off)
+            cr.set_source_rgba(bar.red, bar.green, bar.blue, 1)
+            cr.rectangle(start, y0, x0 + width - start, h)
+            cr.fill()
+        if snap:
+            cr.save()
+            cr.rectangle(x0, y0, width, h)
+            cr.clip()
+            Gdk.cairo_set_source_pixbuf(cr, snap[0], x0 + off, y0)
+            cr.paint_with_alpha(1 - 0.45 * k)
+            cr.restore()
+        edge = x0 + width + off                        # sombra suave en el borde que se mueve
+        if 0 < k < 1 and edge > x0:
+            g = cairo.LinearGradient(edge, 0, edge + 18, 0)
+            g.add_color_stop_rgba(0, 0, 0, 0, 0.28 * (1 - k))
+            g.add_color_stop_rgba(1, 0, 0, 0, 0)
+            cr.rectangle(edge, y0, 18, h)
+            cr.set_source(g)
+            cr.fill()
+        return False
+
+    da.connect("draw", draw)
+    modal_overlay.add_overlay(da)
+    modal_overlay.set_overlay_pass_through(da, True)
+    da.show()
+    _LEFT_FX["da"] = da
+
+    def step(v):
+        state["e"] = v
+        da.queue_draw()
+
+    _tween(da, step, 0.0, 1.0, ms=LEFT_FX_MS, done=lambda: (da is _LEFT_FX.get("da")) and _left_fx_clear())
+
+
+def _left_panel_set(hidden, animate=True):
     """Panel izquierdo (tablero + terminal de la barra) oculto DEL TODO, como el
     remoto (grill 1-oct: «oculto del todo»). Antes se plegaba con set_position(0),
     pero el panel va con shrink=False y GTK lo dejaba en su ancho mínimo (~98 px):
     una tira con media rejilla. ``leftHidden`` es la verdad, no la posición."""
     hidden = bool(hidden)
+    was_hidden = not _side_paned.get_visible()
     if hidden:
         pos = paned.get_position()
         if _side_paned.get_visible() and pos >= 200:
             _SIDE["leftPos"] = pos
+        snap = _left_fx_snapshot() if animate and not was_hidden else None
+        if snap:
+            _LEFT_FX["snap"] = snap
+            _left_fx_run(True, snap, snap[3])          # la imagen tapa el hueco antes del primer cuadro
         _side_paned.hide()
     else:
+        target = max(280, int(_SIDE.get("leftPos") or 620))
+        if animate and was_hidden:
+            snap = _LEFT_FX.get("snap")
+            if snap and abs(snap[3] - target) > 2:
+                snap = None                            # otra anchura: barrido sin imagen
+            _left_fx_run(False, snap, target)
         _side_paned.show()
-        paned.set_position(max(280, int(_SIDE.get("leftPos") or 620)))
+        paned.set_position(target)
     _SIDE["leftHidden"] = hidden
     _left_btn_paint()
     _layout_save()

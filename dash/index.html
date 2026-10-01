@@ -7406,13 +7406,39 @@ function initHeaderActions(){
   $("#btn-notif").addEventListener("click", toApp("notices"), true);   // cajón bajo las terminales, como MCPs · Skills
   $("#tab-term")?.addEventListener("click", () => $("#btn-terminal").click());
   const panelBtn = $("#tab-left");
-  const setPanelHidden = hidden => {
+  const applyPanelHidden = hidden => {
     document.body.classList.toggle("panel-hidden", hidden);
     panelBtn?.setAttribute("aria-pressed", String(hidden));
     try{ localStorage.setItem("cc-panel-hidden", hidden ? "1" : "0"); }catch(_){}
     window.dispatchEvent(new Event("resize"));      // las terminales se reajustan al nuevo ancho
   };
-  try{ if(localStorage.getItem("cc-panel-hidden") === "1" && !inApp()) setPanelHidden(true); }catch(_){}
+  // Deslizar el panel (1-oct) = escritorio: el acomodo cambia UNA vez y lo que se anima es el
+  // panel (transform). Animar el ancho de la columna redimensionaría las terminales en cada
+  // cuadro y tmux haría redibujar a Claude Code cada vez.
+  const setPanelHidden = (hidden, animate = true) => {
+    const vp = document.getElementById("view-panel"), sp = document.getElementById("splitter");
+    if(vp && vp._fx){ try{ vp._fx.finish(); }catch(_){} }
+    const still = !animate || !vp || typeof vp.animate !== "function" ||
+      (window.matchMedia && matchMedia("(prefers-reduced-motion: reduce)").matches);
+    if(still) return applyPanelHidden(hidden);
+    const away = {transform: "translateX(-100%)", opacity: .55, boxShadow: "0 0 0 transparent"};
+    const here = {transform: "translateX(0)", opacity: 1, boxShadow: "8px 0 18px rgba(0,0,0,.28)"};
+    if(hidden){
+      if(!vp.offsetWidth) return applyPanelHidden(true);
+      const a = vp._fx = vp.animate([here, away], {duration: 220, easing: "cubic-bezier(.4,0,.2,1)"});
+      sp?.animate([{opacity: 1}, {opacity: 0}], {duration: 220});
+      let done = false;
+      const end = () => { if(done) return; done = true; vp._fx = null; applyPanelHidden(true); };
+      a.onfinish = end; a.oncancel = end;
+    }else{
+      applyPanelHidden(false);
+      const a = vp._fx = vp.animate([away, Object.assign({}, here, {boxShadow: "0 0 0 transparent"})],
+        {duration: 240, easing: "cubic-bezier(.2,0,0,1)"});
+      sp?.animate([{opacity: 0}, {opacity: 1}], {duration: 240});
+      a.onfinish = a.oncancel = () => { vp._fx = null; };
+    }
+  };
+  try{ if(localStorage.getItem("cc-panel-hidden") === "1" && !inApp()) setPanelHidden(true, false); }catch(_){}
   panelBtn?.addEventListener("click", () => {
     if(inApp()){ window.webkit.messageHandlers.centro.postMessage(JSON.stringify({leftPanel: "toggle"})); return; }
     setPanelHidden(!document.body.classList.contains("panel-hidden"));

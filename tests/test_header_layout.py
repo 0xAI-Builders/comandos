@@ -182,3 +182,13 @@ def test_remote_rows_height_only_grows_while_the_tab_count_is_the_same():
     hold = index.split("function holdTabRowsHeight(){", 1)[1].split("\n}\n", 1)[0]
     assert "bar.children.length" in hold and "bar.style.minHeight = h + \"px\"" in hold and "h > tabRowsHold.h" in hold
     assert "function updateTabNavigation(){\n  holdTabRowsHeight();" in index
+
+
+def test_remote_left_panel_slides_with_a_transform_and_relayouts_once():
+    """1-oct: mismo deslizamiento que el escritorio; el ancho de las terminales cambia una vez."""
+    index = (ROOT / "dash" / "index.html").read_text()
+    fx = index.split("const setPanelHidden = (hidden, animate = true) => {", 1)[1].split("\n  };\n", 1)[0]
+    assert 'transform: "translateX(-100%)"' in fx and "vp.animate(" in fx and "prefers-reduced-motion" in fx
+    assert "a.onfinish = end" in fx and "applyPanelHidden(false);" in fx
+    assert "grid-template-columns" not in fx, "never animate the column width"
+    assert 'setPanelHidden(true, false); }catch(_){}' in index, "restoring the saved state does not animate"
