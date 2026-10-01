@@ -208,3 +208,41 @@ def test_left_panel_slide_is_an_overlay_and_never_resizes_the_terminals_per_fram
     assert ns["_LEFT_FX"]["da"] is None
     body = APP[APP.index("def _left_panel_set("):APP.index("def _left_panel_toggle(")]
     assert "_tween(" not in body and "set_position(" in body, "the paned moves once; only the overlay animates"
+
+
+def test_folded_commands_blind_fits_the_webview_to_its_header():
+    """Persiana de Comandos plegada (grill 1-oct): el WebView mide hasta la cabecera de
+    Comandos (alto que manda la web, por el zoom) y la terminal nativa toma el resto."""
+    msg = APP[APP.index('if isinstance(d.get("sidebarTerm"), dict):'):]
+    msg = msg[:msg.index("return")]
+    assert '_SIDE["cmds_closed"] = not bool(c.get("open"))' in msg and '_SIDE["cmds_h"]' in msg
+    mount = HTML[HTML.index("function sidebarTermMount("):HTML.index("function activePaneTarget(")]
+    assert "cmds: o.cmds || null" in mount
+    assert "html[data-native-side-term] #command-sidebar.cmds-closed .sec-cmds{flex:0 0 auto!important}" in HTML
+    src = APP[APP.index("def _side_pin_pos("):APP.index("def _side_apply_pin(")]
+
+    class Host:
+        visible = True
+        def get_visible(self): return self.visible
+
+    class Paned:
+        def get_property(self, k): return {"min-position": 0, "max-position": 900}[k]
+
+    class View:
+        def get_zoom_level(self): return 1.25
+
+    ns = {"_SIDE": {"cmds_closed": True, "cmds_h": 200, "collapsed": False},
+          "_side_term_host": Host(), "_side_paned": Paned(), "wv": View()}
+    exec(src, ns)
+    pin = ns["_side_pin_pos"]
+    assert pin() == 250                                   # 200 px CSS × zoom 1.25
+    ns["_SIDE"]["cmds_h"] = 5000; assert pin() == 900     # nunca pasa del máximo del paned
+    ns["_SIDE"]["cmds_h"] = 10; assert pin() is None      # sin alto real no fija nada
+    ns["_SIDE"].update(cmds_h=200, cmds_closed=False); assert pin() is None   # desplegada: reparto del usuario
+    ns["_SIDE"].update(cmds_closed=True, collapsed=True); assert pin() is None  # sin terminal: plegada manda
+    # mientras está fijada no se arrastra ni se guarda el reparto como si fuera del usuario
+    drag = APP[APP.index("def _side_head_press("):APP.index("def _side_head_motion(")]
+    assert "_side_pin_pos() is not None" in drag
+    save = APP[APP.index("def _side_term_save_share("):APP.index("def _side_paned_moved(")]
+    assert "_side_pin_pos() is not None" in save
+    assert '_side_paned.connect("size-allocate", lambda *_: _side_keep_layout())' in APP

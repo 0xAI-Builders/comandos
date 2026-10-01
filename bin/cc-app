@@ -6695,6 +6695,13 @@ def on_msg(mgr, res):
                 _SIDE["hidden"] = bool(st.get("hidden"))
             if "tabs" in st:
                 _SIDE["tabs"] = _side_tabs_from_web(st.get("tabs"))
+            if isinstance(st.get("cmds"), dict):       # persiana de Comandos (barra web)
+                c = st["cmds"]
+                _SIDE["cmds_closed"] = not bool(c.get("open"))
+                try:
+                    _SIDE["cmds_h"] = max(0, min(4000, int(c.get("h") or 0)))
+                except (TypeError, ValueError):
+                    _SIDE["cmds_h"] = 0
             GLib.idle_add(_side_term_show, str(st.get("session") or ""))
             return
         if d.get("leftPanel") in ("toggle", "hide", "show"):
@@ -6934,8 +6941,42 @@ def _side_term_box(sess):
     return box
 
 
+def _side_pin_pos():
+    """Persiana de Comandos plegada: el WebView mide justo hasta su cabecera y la
+    terminal nativa toma el resto. None si no aplica (abierta, sin terminal o sin alto)."""
+    if not _SIDE.get("cmds_closed") or _SIDE.get("collapsed") or not _side_term_host.get_visible():
+        return None
+    h = int(_SIDE.get("cmds_h") or 0)
+    if h < 40:
+        return None
+    try:
+        h = int(round(h * (wv.get_zoom_level() or 1.0)))
+    except Exception:
+        pass
+    lo, hi = _side_paned.get_property("min-position"), _side_paned.get_property("max-position")
+    return max(lo, min(hi, h))
+
+
+def _side_apply_pin():
+    pos = _side_pin_pos()
+    if pos is not None and _side_paned.get_position() != pos:
+        _side_paned.set_position(pos)
+    _SIDE["pin_queued"] = False
+    return False
+
+
+def _side_keep_layout():
+    """Tras cada cambio de tamaño: plegada (sin terminal) o persiana fijada."""
+    _side_term_keep_collapsed()
+    if _side_pin_pos() is not None and not _SIDE.get("pin_queued"):
+        _SIDE["pin_queued"] = True
+        GLib.idle_add(_side_apply_pin)
+
+
 def _side_term_apply_share():
     total = _side_paned.get_allocated_height()
+    if _side_pin_pos() is not None:
+        return _side_apply_pin()
     if total > 120 and _side_term_host.get_visible() and not _SIDE.get("collapsed"):
         share = float(_SIDE.get("termShare") or 0.42)
         _side_paned.set_position(int(total * (1 - min(0.85, max(0.15, share)))))
@@ -7046,14 +7087,19 @@ def _side_term_show(sess):
     if box is not None and box.get_parent() is not _side_term_host:
         _side_term_host.pack_start(box, True, True, 0)
     was_open = _side_term_host.get_visible() and not _SIDE.get("collapsed")
+    pinned_before = _SIDE.get("pinned", False)
     _SIDE["box"], _SIDE["sess"], _SIDE["collapsed"] = box, sess, box is None
     _side_head_render()
     _side_term_host.show()
     if box is not None:
         box.show_all()
-        if not was_open:
+        _SIDE["pinned"] = bool(_SIDE.get("cmds_closed"))
+        # al abrir la terminal o al desplegar la persiana vuelve el reparto guardado;
+        # plegada, el WebView se ajusta a la cabecera de Comandos
+        if not was_open or pinned_before != _SIDE["pinned"] or _SIDE["pinned"]:
             GLib.idle_add(_side_term_apply_share)
     else:
+        _SIDE["pinned"] = False
         _side_term_keep_collapsed()
     # pestañas de la barra cerradas: soltar las terminales que ya no existen
     for k, b in list(_SIDE["boxes"].items()):
@@ -7067,6 +7113,8 @@ def _side_term_show(sess):
 
 def _side_term_save_share(*_):
     total = _side_paned.get_allocated_height()
+    if _side_pin_pos() is not None:      # con la persiana plegada el reparto no es del usuario
+        return
     if total > 120 and _side_term_host.get_visible() and not _SIDE.get("collapsed"):
         _SIDE["termShare"] = round(1 - _side_paned.get_position() / total, 3)
         _layout_save()
@@ -7075,16 +7123,18 @@ def _side_term_save_share(*_):
 def _side_paned_moved(*_):
     if _SIDE.get("collapsed"):
         _side_term_keep_collapsed()
+    elif _side_pin_pos() is not None:
+        _side_keep_layout()
     else:
         GLib.timeout_add(600, lambda: (_side_term_save_share(), False)[1])
 
 
 _side_paned.connect("notify::position", _side_paned_moved)
-_side_paned.connect("size-allocate", lambda *_: _side_term_keep_collapsed())
+_side_paned.connect("size-allocate", lambda *_: _side_keep_layout())
 
 
 def _side_head_press(_w, ev):
-    if ev.button != 1 or ev.type != Gdk.EventType.BUTTON_PRESS or _SIDE.get("collapsed"):
+    if ev.button != 1 or ev.type != Gdk.EventType.BUTTON_PRESS or _SIDE.get("collapsed") or _side_pin_pos() is not None:
         return False
     _SIDE["drag"] = (ev.y_root, _side_paned.get_position())
     _side_head_ev.get_style_context().add_class("dragging")

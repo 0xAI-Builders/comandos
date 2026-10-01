@@ -498,7 +498,7 @@ def _claude_account_creds():
     try:
         for name in sorted(os.listdir(base)):
             path = os.path.join(base, name, ".credentials.json")
-            if os.path.isfile(path):
+            if not name.endswith(".lock") and os.path.isfile(path):
                 out.append((name, path))
     except OSError:
         pass
@@ -513,7 +513,7 @@ def claude_accounts():
     try:
         for name in sorted(os.listdir(base)):
             d = os.path.join(base, name)
-            if name.startswith(("-", ".")) or not os.path.isdir(d):
+            if name.startswith(("-", ".")) or name.endswith(".lock") or not os.path.isdir(d):
                 continue
             out.append({"alias": name, "dir": d})
     except OSError:

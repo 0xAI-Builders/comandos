@@ -108,6 +108,8 @@ def _auth(provider: str, home: Path, auth_file: str) -> tuple[bool, str, str]:
     return False, "", "login_required"
 
 
+# «<alias>.lock» es el candado que un proceso deja junto a la carpeta de la cuenta
+# (p. ej. proper-lockfile de Claude Code); nunca es una cuenta.
 def list_accounts(registry: dict[str, Any], provider: str) -> list[dict[str, Any]]:
     spec = _spec(registry, provider)
     aliases = ["main"]
@@ -116,7 +118,7 @@ def list_accounts(registry: dict[str, Any], provider: str) -> list[dict[str, Any
         aliases.extend(sorted(
             item.name for item in root.iterdir()
             if item.is_dir() and not item.is_symlink() and _ALIAS_RE.fullmatch(item.name)
-            and not item.name.startswith((".", "-"))
+            and not item.name.startswith((".", "-")) and not item.name.endswith(".lock")
         ))
     except OSError:
         pass

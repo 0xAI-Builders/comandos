@@ -871,6 +871,18 @@ button.wm-suggest{font:600 10px var(--sans);padding:2px 7px;border-radius:999px;
 #command-sidebar.terms-hidden .sec-terms{flex:none}
 #command-sidebar.terms-hidden .mini{display:none}
 body.ws-dragging #command-sidebar .sb-term{pointer-events:none}
+/* Persiana de Comandos (grill 1-oct, diseño 4): plegada queda solo su cabecera y la
+   terminal toma el resto; la cabecera entera es el asa y el chevron gira al abrir. */
+#command-sidebar .sec-cmds .sb-head{cursor:pointer}
+#command-sidebar .sb-head button[data-flat].cs-blind{flex:none;align-self:stretch;width:34px;min-height:0;padding:0;margin:-8px -12px -8px 0;border:0;border-left:1px solid var(--cs-line);border-radius:0;display:grid;place-items:center;color:var(--cs-dim);background:transparent}
+#command-sidebar .sb-head button[data-flat].cs-blind:hover{color:var(--cs-text);background:var(--cs-hover)}
+#command-sidebar .sb-head button[data-flat].cs-blind svg{transition:transform .35s cubic-bezier(.5,1.6,.4,1);transform:rotate(-90deg)}
+#command-sidebar:not(.cmds-closed) .sb-head button[data-flat].cs-blind svg{transform:none}
+#command-sidebar.cmds-closed .sec-cmds{flex:0 0 auto!important}
+#command-sidebar.cmds-closed .sec-cmds .search,#command-sidebar.cmds-closed .sec-cmds .cs-body{display:none}
+#command-sidebar.cmds-closed .sec-cmds .sb-head{border-bottom:0}
+#command-sidebar.cmds-closed .sec-terms{flex:1 1 auto!important}
+@media (prefers-reduced-motion:reduce){#command-sidebar .sb-head button[data-flat].cs-blind svg{transition:none}}
 /* cuerpo: tarjetas apiladas */
 #command-sidebar .cs-body{flex:1;min-height:0;overflow:auto;overscroll-behavior:contain;display:flex;flex-direction:column;gap:8px;padding:0 10px 10px;min-width:0}
 #command-sidebar.typing .cs-body{cursor:progress}

@@ -10,6 +10,8 @@
 (function (root) {
   'use strict';
   const KEY_TERMS_HIDDEN = 'comandos.commands.termsHidden';
+  // Persiana de Comandos (grill 1-oct, diseño 4): plegada por defecto; su cabecera es el asa.
+  const KEY_CMDS_OPEN = 'comandos.commands.cmdsOpen';
   const KEY_OPEN = 'comandos.commands.open.v2', KEY_PREF = 'comandos.commands.preferred.';
   const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   const STATUS_TEXT = { ok: '', drift: 'sin verificar · el CLI confirma', missing: 'no instalado', unverified: 'sin verificar' };
@@ -165,6 +167,7 @@
     })();
     const writeOpen = () => write(KEY_OPEN, JSON.stringify([...state.open]));
     state.termsHidden = read(KEY_TERMS_HIDDEN) === '1';
+    state.cmdsOpen = read(KEY_CMDS_OPEN) === '1';
 
     function target() { try { return getTarget() || null; } catch (_) { return null; } }
     const prefKey = t => KEY_PREF + (t.paneKey || t.pane);
@@ -265,6 +268,8 @@
     function beginRun(chain, tgt) {
       state.run = { slug: chain.slug, name: chain.name || chain.slug, steps: chain.steps.map(s => ({ ...s })),
         step: 0, target: { ...tgt }, error: '' };
+      // el avance de la cadena vive en el cuerpo: se abre la persiana para verlo
+      if (!state.cmdsOpen) { state.cmdsOpen = true; write(KEY_CMDS_OPEN, '1'); }
       render();
       return state.run;
     }
@@ -323,7 +328,8 @@
       return `<div class="cs-head"><div class="sb-head">${ic('book', 's24')}`
         + `<h2>Comandos<small>destino: <span class="cs-target">${esc(targetTitle())}</span></small></h2>`
         + `<span class="cs-pill">${catalogPill()}</span>`
-        + `<button type="button" data-flat class="cs-chains chains-btn" data-open-builder>${ic('chain', 's20')}Cadenas</button></div>`
+        + `<button type="button" data-flat class="cs-chains chains-btn" data-open-builder>${ic('chain', 's20')}Cadenas</button>`
+        + `<button type="button" data-flat class="tog cs-blind" data-cmds-toggle>${CHEVRON}</button></div>`
         + `<div class="search">${ic('lens')}<input class="cs-search" type="search" placeholder="Buscar en todos los CLI…" value="${esc(state.q)}"></div></div>`;
     }
 
@@ -432,12 +438,19 @@
       const slot = el.querySelector('.cs-terms .tog-slot');
       if (slot) slot.innerHTML = togHTML();
       const n = termList().length;
+      try { el.classList && el.classList.toggle('cmds-closed', !state.cmdsOpen); } catch (_) {}
+      const bt = el.querySelector('[data-cmds-toggle]');
+      if (bt && bt.setAttribute) {
+        const lbl = state.cmdsOpen ? 'Plegar Comandos' : 'Abrir Comandos y Cadenas';
+        bt.setAttribute('aria-expanded', state.cmdsOpen ? 'true' : 'false');
+        bt.setAttribute('aria-label', lbl); bt.setAttribute('title', lbl);
+      }
       try { el.classList && el.classList.toggle('no-terms', !n); } catch (_) {}
       try { el.classList && el.classList.toggle('terms-hidden', !!state.termsHidden); } catch (_) {}
       applyHeights(!!state.termsHidden || !n);
       const mini = el.querySelector('.mini');
       if (mini && typeof mountTerm === 'function') {
-        try { mountTerm(state.termsHidden ? '' : (state.curTerm || ''), mini, { session: state.curTerm || '', hidden: !!state.termsHidden, tabs: termTabs() }); } catch (_) {}
+        try { mountTerm(state.termsHidden ? '' : (state.curTerm || ''), mini, { session: state.curTerm || '', hidden: !!state.termsHidden, tabs: termTabs(), cmds: cmdsInfo() }); } catch (_) {}
       }
       try { el.classList && el.classList.toggle('searching', !!state.q.trim()); } catch (_) {}
       try { hydrate(el); } catch (_) {}   // pinta los data-icon del marcado recién puesto
@@ -452,7 +465,7 @@
       const dv = el.querySelector('.cs-terms'), cmds = el.querySelector('.sec-cmds'), terms = el.querySelector('.sec-terms');
       if (!dv || !cmds || !terms || !dv.addEventListener) return;
       dv.addEventListener('pointerdown', e => {
-        if (e.button > 0 || state.termsHidden || (e.target && e.target.closest && e.target.closest('button,.tw'))) return;
+        if (e.button > 0 || state.termsHidden || !state.cmdsOpen || (e.target && e.target.closest && e.target.closest('button,.tw'))) return;
         e.preventDefault();
         const h0 = cmds.getBoundingClientRect().height, y0 = e.clientY;
         const win = (el.ownerDocument && el.ownerDocument.defaultView) || null;
@@ -503,6 +516,7 @@
     function applyHeights(collapsed) {
       const cmds = el.querySelector('.sec-cmds'), terms = el.querySelector('.sec-terms');
       if (!cmds || !terms || !cmds.style) return;
+      if (!state.cmdsOpen) { cmds.style.flex = '0 0 auto'; terms.style.flex = '1 1 auto'; return; }
       const saved = Number(read(KEY_H) || 0);
       const fixed = !collapsed && saved >= 120;
       cmds.style.flex = fixed ? '0 0 ' + saved + 'px' : '';
@@ -535,6 +549,19 @@
       render();
       if (typeof killTerm === 'function') { try { Promise.resolve(killTerm(id)).catch(err => toast((err && err.message) || String(err), true)); } catch (err) { toast(err.message, true); } }
     }
+    // Alto que necesita el WebView del escritorio con la persiana plegada: hasta el
+    // borde inferior de la cabecera de Comandos (la terminal nativa ocupa el resto).
+    function cmdsInfo() {
+      let h = 0;
+      try {
+        const head = el.querySelector('.sec-cmds .sb-head');
+        const r = head && head.getBoundingClientRect ? head.getBoundingClientRect() : null;
+        const win = el.ownerDocument && el.ownerDocument.defaultView;
+        if (r && r.height) h = Math.ceil(r.bottom + ((win && win.scrollY) || 0));
+      } catch (_) {}
+      return { open: !!state.cmdsOpen, h };
+    }
+    function setCmdsOpen(v) { state.cmdsOpen = !!v; write(KEY_CMDS_OPEN, state.cmdsOpen ? '1' : '0'); render(); }
     function termAction(kind, id) {
       if (kind === 'close' && id) return void closeTerm(id);
       if (kind === 'new') { if (state.termsHidden) setHidden(false); return void newTerm(); }
@@ -549,6 +576,9 @@
       if (t.closest('[data-run-next]')) return void next();
       if (t.closest('[data-run-stop]')) return void stop();
       if (t.closest('[data-open-builder]')) return void openBuilder();
+      if (t.closest('[data-cmds-toggle]')) return void setCmdsOpen(!state.cmdsOpen);
+      // la cabecera entera es el asa de la persiana (salvo sus botones)
+      if (!t.closest('button,input,a') && t.closest('.sec-cmds .sb-head')) return void setCmdsOpen(!state.cmdsOpen);
       if ((n = t.closest('[data-close-term]'))) return void closeTerm(n.dataset.closeTerm);
       if ((n = t.closest('[data-tscroll]'))) {
         const tr = el.querySelector('.cs-terms .tabs');
@@ -581,7 +611,7 @@
     el.addEventListener('input', e => { if (isSearch(e.target) && !e.isComposing) search(e.target); });
     el.addEventListener('compositionend', e => { if (isSearch(e.target)) search(e.target); });
 
-    return { refresh, render, insert, startChain, next, stop, applyCatalog, termAction, get state() { return state; } };
+    return { refresh, render, insert, startChain, next, stop, applyCatalog, termAction, setCmdsOpen, get state() { return state; } };
   }
 
   root.ComandosCommandSidebar = { createCommandSidebar, rowHTML, cliHTML, esc, isToggleKey };

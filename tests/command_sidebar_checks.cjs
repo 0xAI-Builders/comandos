@@ -172,6 +172,7 @@ const catalog = JSON.parse(fs.readFileSync(process.cwd() + '/tests/fixtures/comm
   sb3.applyCatalog({ cliInPane: '', target: { session: 'term-q2', pane: '%8' }, catalog, versionsAt: 2 });
   assert.equal(root3.querySelector('.cs-cli[data-cli="grok"]').classList.contains('open'), false);
   // extra) terminales rápidas: foco y nueva
+  store.set('comandos.commands.cmdsOpen', '1');      // persiana desplegada para estas comprobaciones
   const focused = [], mounted = [], root2 = mkRoot();
   const sb2 = createCommandSidebar({ api, root: root2, storage, makeId: () => 'x', getTarget: () => ({ session: 'term-q1', pane: '%7', paneKey: 'term-q1:%7', kind: 'term', title: 'T' }),
     focusTarget: t => focused.push(t), openBuilder: () => focused.push('builder'), toast: () => {}, newTerm: () => focused.push('new'),
@@ -189,7 +190,8 @@ const catalog = JSON.parse(fs.readFileSync(process.cwd() + '/tests/fixtures/comm
   assert.deepEqual(mounted.at(-1).slice(0, 2), ['q1', 'mini']);                        // la terminal se monta en la barra
   // el escritorio recibe las mismas pestañas para pintar su cabecera nativa
   assert.deepEqual(mounted.at(-1)[2], { session: 'q1', hidden: false,
-    tabs: [{ id: 'q1', label: 'Terminal <14:32> · destino', title: 'Terminal <14:32>', on: true, sel: true, closing: false }] });
+    tabs: [{ id: 'q1', label: 'Terminal <14:32> · destino', title: 'Terminal <14:32>', on: true, sel: true, closing: false }],
+    cmds: { open: true, h: 0 } });
   // persiana: el chevron vive en su propio hueco, fuera de las pestañas
   assert.ok(root2.querySelector('.cs-terms .tog-slot .tog[data-terms-toggle] svg'));
   assert.equal(root2.querySelector('.cs-terms .t[data-focus-term="q1"]').textContent.includes('Terminal <14:32>'), true);
@@ -221,6 +223,35 @@ const catalog = JSON.parse(fs.readFileSync(process.cwd() + '/tests/fixtures/comm
   assert.equal(root2.querySelector('.sec-cmds').style.flex, ''); assert.equal(root2.querySelector('.sec-terms').style.flex, '');
   sb2.termAction('toggle');
   assert.equal(root2.querySelector('.sec-cmds').style.flex, '0 0 300px');
+  // Persiana de Comandos: nace plegada (solo su cabecera; la terminal toma el resto),
+  // la cabecera o su chevron la abren y la cierran, y el escritorio recibe el estado.
+  {
+    const stP = new Map(), storageP = { getItem: k => stP.get(k) ?? null, setItem: (k, v) => stP.set(k, v) };
+    const mP = [], hits = [], rootP = mkRoot();
+    const sbP = createCommandSidebar({ api, root: rootP, storage: storageP, makeId: () => 'x', getTarget: () => null, toast: () => {},
+      openBuilder: () => hits.push('builder'), mountTerm: (s, h, info) => mP.push(info),
+      terminals: () => [{ tabId: 'q1', paneKey: 'term-q1:%7', session: 'term-q1', pane: '%7', label: 'T' }] });
+    sbP.render();
+    assert.equal(rootP.classList.contains('cmds-closed'), true);
+    assert.equal(rootP.querySelector('.sec-cmds').style.flex, '0 0 auto');
+    assert.equal(rootP.querySelector('.sec-terms').style.flex, '1 1 auto');
+    const tog = rootP.querySelector('.sec-cmds .sb-head .cs-blind[data-cmds-toggle] svg');
+    assert.ok(tog);
+    assert.equal(rootP.querySelector('[data-cmds-toggle]').getAttribute('aria-expanded'), 'false');
+    assert.deepEqual(mP.at(-1).cmds, { open: false, h: 0 });
+    // los logos y botones de la cabecera siguen ahí: Cadenas abre el editor sin plegar/desplegar
+    rootP.click('.cs-chains[data-open-builder]');
+    assert.deepEqual(hits, ['builder']); assert.equal(rootP.classList.contains('cmds-closed'), true);
+    rootP.click('[data-cmds-toggle]');
+    assert.equal(rootP.classList.contains('cmds-closed'), false);
+    assert.equal(stP.get('comandos.commands.cmdsOpen'), '1');
+    assert.equal(rootP.querySelector('[data-cmds-toggle]').getAttribute('aria-expanded'), 'true');
+    assert.equal(mP.at(-1).cmds.open, true);
+    assert.equal(rootP.querySelector('.sec-cmds').style.flex, '');
+    rootP.click('.sec-cmds .sb-head h2');                 // la cabecera entera es el asa
+    assert.equal(rootP.classList.contains('cmds-closed'), true);
+    assert.equal(stP.get('comandos.commands.cmdsOpen'), '0');
+  }
   // ✕ de una pestaña: primer clic pide «¿Cerrar?», el segundo termina esa terminal
   const killed = [], rootX = mkRoot();
   const sbX = createCommandSidebar({ api, root: rootX, storage, makeId: () => 'x', getTarget: () => null,

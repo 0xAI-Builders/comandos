@@ -172,3 +172,11 @@ def test_model_watch_reports_only_true_news_and_never_edits_registry(tmp_path, m
     assert r3["snapshot"]["newSince"] == {}
     # el registry JAMAS se toca solo
     assert "gpt-5.7-nova" in reg.read_text()
+
+
+def test_lock_directory_next_to_an_account_is_not_an_account(tmp_path):
+    reg = registry(tmp_path)
+    (tmp_path / "codex-accounts" / "work").mkdir(parents=True)
+    (tmp_path / "codex-accounts" / "work.lock").mkdir()       # candado de proper-lockfile
+    found = [a["alias"] for a in accounts.list_accounts(reg, "codex")]
+    assert "work" in found and "work.lock" not in found
