@@ -222,7 +222,7 @@ def test_split_remote_opens_column_popovers_inside_the_column_like_the_desktop()
     pomo = (ROOT / "dash" / "pomodoro.js").read_text()
     assert 'document.documentElement?.style?.setProperty("--split-left", `${v}px`);' in index
     assert "window.panelViewport = function(){" in index
-    assert ".modal:not(#tabclose):not(#groupclose){right:auto;width:var(--split-left,380px)}" in css
+    assert ".modal:not(#tabclose):not(#groupclose):not(.chain-only){right:auto;width:var(--split-left,380px)}" in css, "Cadenas is a window over the whole app on the desktop"
     assert "#pomo-panel.pm-v1{width:min(560px,calc(var(--split-left,380px) - 16px))}" in css
     assert "window.panelViewport()" in pomo and "vp.left + vp.width - width - 8" in pomo
 
