@@ -6,7 +6,7 @@ from pathlib import Path
 import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
-CHECKS = ["analytics_parity_checks.cjs"]
+CHECKS = ["analytics_parity_checks.cjs", "analytics_ui_checks.cjs"]
 
 
 @pytest.mark.parametrize("name", CHECKS)
