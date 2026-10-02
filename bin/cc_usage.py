@@ -190,7 +190,7 @@ def init_db(db_path):
         _migrate_db(con)
 
 
-USAGE_SCHEMA_VERSION = 10
+USAGE_SCHEMA_VERSION = 11
 
 
 def _table_columns(con, table):
@@ -238,7 +238,7 @@ def _migrate_db(con):
         try:
             current = int(con.execute("pragma user_version").fetchone()[0])
             if current < USAGE_SCHEMA_VERSION:
-                _migrate_schema(con)
+                _migrate_schema(con, current)
             con.execute("commit")
         except BaseException:
             con.execute("rollback")
@@ -247,7 +247,7 @@ def _migrate_db(con):
         con.isolation_level = saved_isolation
 
 
-def _migrate_schema(con):
+def _migrate_schema(con, current=0):
     _ensure_columns(con, "usage_turns", {
         "harness": "text not null default ''",
         "motor": "text not null default ''",
@@ -400,6 +400,35 @@ def _migrate_schema(con):
     _ensure_columns(con, "usage_tool_calls", {"skill_name": "text not null default ''"})
     con.execute("create index if not exists idx_usage_tools_interaction on usage_tool_calls(interaction_id)")
     con.execute("create index if not exists idx_usage_tools_time on usage_tool_calls(coalesce(finished_at_ms,started_at_ms))")
+    _execute_statements(con, """
+    create table if not exists usage_spans (
+      id text primary key,
+      provider text not null,
+      account text not null default 'main',
+      session_id text not null default '',
+      git_root text not null default '',
+      started_at real not null,
+      finished_at real not null,
+      source text not null default ''
+    );
+    create index if not exists idx_usage_spans_finished on usage_spans(finished_at);
+    create table if not exists usage_quota_snapshots (
+      limit_id text not null,
+      provider text not null,
+      account text not null,
+      win text not null default '',
+      scope text not null default '',
+      resets_at integer not null,
+      percent real not null,
+      captured_at integer not null,
+      primary key (limit_id, resets_at)
+    );
+    """)
+    if current and current < 11:
+        # v11 cuenta cada respuesta de Claude una vez (antes, una por bloque: ~2x) y lee
+        # Codex por respuesta desde sus rollouts: se borran las filas viejas y el próximo
+        # import las rehace desde los transcripts.
+        con.execute("delete from usage_turns where source in ('claude_jsonl', 'codex_state_db')")
     con.execute(f"pragma user_version={USAGE_SCHEMA_VERSION}")
 
 
@@ -1653,6 +1682,7 @@ def prune_old_turns(db_path, max_age_days=14, now=None):
     cutoff = ts - int(max_age_days) * 24 * 3600
     with connect(db_path) as con:
         cur = con.execute("delete from usage_turns where turn_finished_at < ?", (cutoff,))
+        con.execute("delete from usage_spans where finished_at < ?", (cutoff,))
         return cur.rowcount
 
 
@@ -2043,7 +2073,49 @@ def groq_measured_usage(db_path, now=None):
     return _measured_usage(db_path, "groq", now)
 
 
-def record_local_claude_jsonl(db_path, projects_root=None, now=None, max_age_days=14, max_files=400):
+def account_homes(default_home, accounts_root):
+    """[(alias, carpeta)]: 'main' es la carpeta por defecto; cada subcarpeta de
+    accounts_root es otra cuenta (mismo criterio que lib/accounts.list_accounts)."""
+    out = [("main", os.path.expanduser(default_home))]
+    root = os.path.expanduser(accounts_root)
+    try:
+        names = sorted(os.listdir(root))
+    except OSError:
+        names = []
+    for name in names:
+        path = os.path.join(root, name)
+        if name.startswith((".", "-")) or name.endswith(".lock") or not os.path.isdir(path):
+            continue
+        out.append((name, path))
+    return out
+
+
+def record_spans(db_path, spans):
+    """Tramos de trabajo medidos (inicio y fin de cada turno) por cuenta y carpeta."""
+    rows = [(s["id"], s["provider"], s.get("account") or "main", s.get("session_id") or "",
+             s.get("git_root") or "", float(s["started_at"]), float(s["finished_at"]), s.get("source") or "")
+            for s in spans]
+    if not rows:
+        return 0
+    init_db(db_path)
+    with connect(db_path) as con:
+        con.executemany(
+            "insert or replace into usage_spans (id, provider, account, session_id, git_root, started_at, finished_at, source) "
+            "values (?,?,?,?,?,?,?,?)", rows)
+    return len(rows)
+
+
+def _changed_files(files, seen):
+    """Solo los archivos que cambiaron desde el último import (seen: {ruta: mtime})."""
+    if seen is None:
+        return files
+    out = [(m, p) for m, p in files if seen.get(p) != m]
+    for m, p in out:
+        seen[p] = m
+    return out
+
+
+def record_local_claude_jsonl(db_path, projects_root=None, now=None, max_age_days=14, max_files=400, account="main", seen=None):
     projects_root = os.fspath(projects_root or os.path.expanduser("~/.claude/projects"))
     if not os.path.isdir(projects_root):
         return 0
@@ -2064,8 +2136,9 @@ def record_local_claude_jsonl(db_path, projects_root=None, now=None, max_age_day
                 files.append((mtime, path))
     files.sort(reverse=True)
     events = []
+    spans = []
     roots = {}
-    for _mtime, path in files[:max_files]:
+    for _mtime, path in _changed_files(files[:max_files], seen):
         try:
             with open(path, errors="replace") as fh:
                 for line_no, line in enumerate(fh, 1):
@@ -2073,7 +2146,21 @@ def record_local_claude_jsonl(db_path, projects_root=None, now=None, max_age_day
                         data = json.loads(line)
                     except Exception:
                         continue
-                    msg = data.get("message") if isinstance(data, dict) else None
+                    if not isinstance(data, dict):
+                        continue
+                    if data.get("type") == "system" and data.get("subtype") == "turn_duration":
+                        end = _as_epoch(data.get("timestamp"))
+                        ms = _as_int(data.get("durationMs"))
+                        if end >= cutoff and ms > 0:
+                            cwd = _text(data.get("cwd"))
+                            if cwd not in roots:
+                                roots[cwd] = git_root_for_path(cwd)
+                            spans.append({"id": "claude-turn-" + _text(data.get("uuid") or f"{path}:{line_no}"),
+                                          "provider": "claude", "account": account,
+                                          "session_id": _text(data.get("sessionId")), "git_root": roots[cwd] or cwd,
+                                          "started_at": end - ms / 1000, "finished_at": end, "source": "claude_jsonl"})
+                        continue
+                    msg = data.get("message")
                     usage = msg.get("usage") if isinstance(msg, dict) else None
                     if data.get("type") != "assistant" or not isinstance(usage, dict):
                         continue
@@ -2090,7 +2177,11 @@ def record_local_claude_jsonl(db_path, projects_root=None, now=None, max_age_day
                     cwd = _text(data.get("cwd"))
                     if cwd not in roots:
                         roots[cwd] = git_root_for_path(cwd)
-                    stable = _text(data.get("uuid") or data.get("requestId") or f"{path}:{line_no}")
+                    # Claude Code escribe una línea por bloque de contenido y todas repiten el
+                    # mismo usage: la respuesta es (message.id, requestId), no la línea.
+                    msg_id = _text(msg.get("id"))
+                    stable = (f"{msg_id}:{_text(data.get('requestId'))}" if msg_id
+                              else _text(data.get("uuid") or data.get("requestId") or f"{path}:{line_no}"))
                     event = {
                         "id": "claude-jsonl-" + stable,
                         "provider": "claude",
@@ -2107,6 +2198,8 @@ def record_local_claude_jsonl(db_path, projects_root=None, now=None, max_age_day
                         "cache_read_tokens": cache_read,
                         "cache_write_tokens": cache_write,
                         "total_tokens": total,
+                        "harness_account": account,
+                        "motor_account": account,
                         "source": "claude_jsonl",
                         "confidence": "local",
                         "raw": json.dumps({
@@ -2119,6 +2212,7 @@ def record_local_claude_jsonl(db_path, projects_root=None, now=None, max_age_day
                     events.append(event)
         except OSError:
             continue
+    record_spans(db_path, spans)
     return record_turns(db_path, events)
 
 

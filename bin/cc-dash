@@ -172,6 +172,8 @@ CONF_PATH = os.path.join(HOOKS, "cc-notify.conf")
 USAGE_DB = cc_usage.usage_db_path(HOOKS)
 USAGE_ENV_FILE = os.path.join(HOOKS, "usage.env")
 LOCAL_USAGE_REFRESH_AT = 0
+# {fuente: {ruta: mtime}}: el import local solo vuelve a leer los archivos que cambiaron.
+_IMPORT_SEEN = {}
 
 
 def usage_runtime_env():
@@ -353,15 +355,16 @@ def _do_refresh_local_usage():
         cc_usage.reconcile_orphan_interactions(USAGE_DB, now=now)
     except Exception:
         pass
-    # Poda: turnos fuera de la ventana de retencion (14d) — sin esto la tabla
-    # crece sin fin (import es insert-or-replace, nunca borra) y ademas los
-    # totales "en 14 dias" quedaban inflados con datos viejos.
-    max_age = int(env.get("COMANDOS_USAGE_LOCAL_DAYS") or 14)
+    # Poda: turnos fuera de la ventana de retencion (21 d: la semana anterior de
+    # Analytics necesita 16) — sin esto la tabla crece sin fin (import es
+    # insert-or-replace, nunca borra) y ademas los totales quedaban inflados con
+    # datos viejos.
+    max_age = int(env.get("COMANDOS_USAGE_LOCAL_DAYS") or 21)
     try:
         cc_usage.prune_old_turns(USAGE_DB, max_age_days=max_age, now=now)
     except Exception:
         pass
-    max_claude_files = int(env.get("COMANDOS_USAGE_CLAUDE_MAX_FILES") or 120)
+    max_claude_files = int(env.get("COMANDOS_USAGE_CLAUDE_MAX_FILES") or 600)
     counts = {
         "codex_local": cc_usage.record_local_codex_threads(
             USAGE_DB,
@@ -375,12 +378,17 @@ def _do_refresh_local_usage():
             now=now,
             max_age_days=max_age,
         ),
-        "claude_local": cc_usage.record_local_claude_jsonl(
-            USAGE_DB,
-            env.get("COMANDOS_CLAUDE_PROJECTS_DIR") or os.path.expanduser("~/.claude/projects"),
-            now=now,
-            max_age_days=max_age,
-            max_files=max_claude_files,
+        "claude_local": sum(
+            cc_usage.record_local_claude_jsonl(
+                USAGE_DB,
+                (env.get("COMANDOS_CLAUDE_PROJECTS_DIR") if alias == "main" else None) or os.path.join(home, "projects"),
+                now=now,
+                max_age_days=max_age,
+                max_files=max_claude_files,
+                account=alias,
+                seen=_IMPORT_SEEN.setdefault(f"claude:{alias}", {}),
+            )
+            for alias, home in cc_usage.account_homes("~/.claude", "~/.claude-accounts")
         ),
         "opencode_local": cc_usage.record_local_opencode_db(
             USAGE_DB,
