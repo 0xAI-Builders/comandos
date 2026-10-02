@@ -27,6 +27,8 @@ class Widget:
     def set_sensitive(self, v): self.sensitive = v
     def set_active(self, v): self.active = v
     def set_draw_as_radio(self, v): pass
+    def set_xalign(self, v): pass
+    def set_hexpand(self, v): pass
     def connect(self, signal, cb): self.handlers[signal] = cb
     def set_submenu(self, m): self.submenu = m
     def hide(self): self.shown = False
@@ -47,6 +49,7 @@ def fake_gtk():
     class Box(Widget):
         def __init__(self, *a, **k): super().__init__()
         def pack_start(self, child, *a): self.children.append(child)
+        def pack_end(self, child, *a): self.children.append(child)
     return SimpleNamespace(Menu=Widget, MenuItem=lambda label=None: Widget(label),
                            CheckMenuItem=lambda label=None: Widget(label), SeparatorMenuItem=lambda: Widget("-"),
                            Box=Box, Label=lambda label=None: Widget(label),
@@ -208,7 +211,8 @@ def test_clicking_the_tab_indicator_opens_the_state_menu_with_icons_and_text():
     assert texts[:4] == ["Sin marca", "Resuelto", "Congelado", "Esperando respuesta"]
     icons = [c.children[0].children[0].pixbuf for c in rows]
     assert icons[:4] == ["pix:none:None:0", "pix:resolved:None:0", "pix:frozen:None:0", "pix:awaiting_reply:None:0"]
-    assert rows[0].active is True, "the current state is the checked one"
+    assert rows[0]._active is True and rows[0].children[0].children[-1].label == "●", "the current state: bold + accent dot, like the web"
+    assert not getattr(rows[1], "_active", False) and len(rows[1].children[0].children) == 2
     rows[2].handlers["activate"](rows[2])
     assert posted == [{"scope": "session", "key": "sess", "value": "frozen", "expectedRevision": 0}]
     assert menu.shown is True
@@ -224,7 +228,8 @@ def test_tab_menu_offers_the_tab_favorite_and_opens_with_right_click_on_the_tab(
     menu = ns["tab_indicator_menu"]("sess", None)
     rows = [c for c in menu.children if c.children]
     fav = [r for r in rows if r.children[0].children[1].label == "Favorita"]
-    assert fav and fav[0].active is True, "the tab favourite is in the tab menu and shows its state"
+    assert fav and fav[0]._active is True, "the tab favourite is in the tab menu and shows its state"
+    assert any(c.label == "-" for c in menu.children), "a separator before Favorita, like .wm-sep"
     fav[0].handlers["activate"](fav[0])
     assert toggled == ["sess"] and posted == []
     assert 'if ev.button == 3 and key and key != "local":' in SOURCE, "right click anywhere on the tab name opens it"
