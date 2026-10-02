@@ -359,3 +359,36 @@ const catalog = JSON.parse(fs.readFileSync(process.cwd() + '/tests/fixtures/comm
   }
   console.log('command-sidebar checks ok');
 })().catch(e => { console.error(e); process.exit(1); });
+
+// Límites de uso (grill 2-oct, «Lo que se acaba primero»): número grande = límite más bajo,
+// un chip por límite con qué mide y su nombre, «este pane» en la cuenta del destino.
+{
+  const { limitsHTML } = require(process.cwd() + '/dash/command-sidebar.js');
+  const { mkRoot } = require('./dom_stub.cjs');
+  const acc = [
+    { id: 'claude:main', cli: 'Claude', alias: 'main', provider: 'claude', color: '#8B7CFF', week: 92, h5: 28, h5Left: '2h 33m', left: '15h 23m', model: { n: 'Fable', v: 85, left: '15h 23m' } },
+    { id: 'claude:relotto', cli: 'Claude', alias: '<b>relotto</b>', provider: 'claude', color: 'red;x', week: 99, h5: 6, h5Left: '4h 3m', left: '6h 23m', model: { n: 'Fable', v: 100 } },
+    { id: 'codex:main', cli: 'Codex', alias: 'main', provider: 'codex', color: '#4CC2FF', week: 53, left: '1d 5h', h5: null, model: null },
+    { id: 'grok:main', cli: 'Grok', alias: 'main', provider: 'grok', color: '#C5E35A', week: null, h5: null, model: null },
+  ];
+  const r = mkRoot(); r.innerHTML = limitsHTML(acc, 'claude:relotto');
+  const cards = r.querySelectorAll('.la');
+  assert.equal(cards.length, 3);                                              // Grok sin límites no sale
+  assert.equal(cards[0].querySelector('.la-big').textContent, '8%');           // lo que más se acaba: la semana
+  assert.equal(cards[0].querySelector('.la-why b').textContent, 'semana');
+  assert.deepEqual(cards[0].querySelectorAll('.lm .lm-n').map(n => n.textContent), ['todosSemana', 'modeloFable', 'sesión5 horas']);
+  assert.deepEqual(cards[0].querySelectorAll('.lm .lm-v b').map(n => n.textContent), ['8%', '15%', '72%']);
+  assert.equal(cards[0].querySelector('.lm.first .lm-n').textContent, 'todosSemana');
+  assert.equal(cards[0].querySelector('.lm.first').classList.contains('bad'), true);
+  assert.equal(cards[1].classList.contains('out'), true);                      // Fable de relotto al 0 %
+  assert.equal(cards[1].querySelector('.la-why b').textContent, 'Agotada');
+  assert.equal(cards[1].querySelector('.la-why').textContent, 'Agotada: Fable (semana) · vuelve en 6h 23m');
+  assert.equal(cards[1].querySelector('.la-pane').textContent, 'este pane');
+  assert.equal(cards[0].querySelector('.la-pane'), null);
+  assert.equal(cards[1].querySelector('.la-h small').textContent, '<b>relotto</b>');  // escapado
+  assert.ok(!/red;x/.test(cards[1].getAttribute('style')));                        // color inválido no entra
+  assert.deepEqual(cards[2].querySelectorAll('.lm').length, 1);               // Codex: solo la semana
+  assert.equal(cards[2].querySelector('.la-why').textContent, 'Se acaba primero: semana · vuelve en 1d 5h');
+  assert.equal(limitsHTML([], ''), '<div class="wait">Sin límites que mostrar</div>');
+  console.log('limits checks ok');
+}

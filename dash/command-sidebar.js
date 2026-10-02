@@ -81,6 +81,39 @@
       : `<span class="mono logo-tile">${esc(String(id || '?').slice(0, 1).toUpperCase())}</span>`;
   }
 
+  // Límites de uso de la columna (grill 2-oct, «Lo que se acaba primero»): una tarjeta por
+  // cuenta con su límite más bajo en grande y, debajo, un chip por límite (Semana, el
+  // modelo y la sesión de 5 h) con barra, porcentaje que queda y cuándo vuelve. Mismos
+  // datos que Analytics (accounts de /analytics/week); curId marca la cuenta del pane.
+  function accLimits(a) {
+    const L = [];
+    // k = qué mide (todos los modelos, uno en concreto o la ventana corta); n = su nombre
+    if (a.week != null) L.push({ k: 'todos', n: 'Semana', q: 100 - a.week, left: a.left });
+    if (a.model) L.push({ k: 'modelo', n: a.model.n, q: 100 - a.model.v, left: a.model.left ?? a.left });
+    if (a.h5 != null) L.push({ k: 'sesión', n: '5 horas', q: 100 - a.h5, left: a.h5Left });
+    return L.map(l => ({ ...l, q: Math.max(0, Math.min(100, Math.round(l.q))) }));
+  }
+  const limTone = q => q <= 10 ? 'bad' : q <= 30 ? 'warn' : '';
+  function limitsHTML(accounts, curId) {
+    const rows = (Array.isArray(accounts) ? accounts : []).map(a => ({ a, L: accLimits(a) })).filter(x => x.L.length);
+    if (!rows.length) return '<div class="wait">Sin límites que mostrar</div>';
+    return '<div class="cs-lim">' + rows.map(({ a, L }) => {
+      const first = L.reduce((m, l) => (l.q < m.q ? l : m));
+      const color = /^#[0-9a-f]{3,8}$/i.test(String(a.color || '')) ? a.color : 'var(--cs-brand)';
+      const tone = limTone(first.q), cur = !!curId && a.id === curId;
+      const back = first.left ? ` · vuelve en ${esc(first.left)}` : '';
+      const label = l => l.k === 'modelo' ? `${l.n} (semana)` : l.k === 'sesión' ? 'sesión de 5 h' : 'semana';
+      return `<div class="la${cur ? ' cur' : ''}${first.q <= 0 ? ' out' : ''}" style="--ac:${color};--w:${Math.max(first.q, 2)}%">`
+        + `<div class="la-h">${monoHTML(a.provider)}<b>${esc(a.cli)}</b><small>${esc(a.alias)}</small>`
+        + (cur ? '<span class="la-pane">este pane</span>' : '') + `<b class="la-big ${tone}">${first.q}%</b></div>`
+        + `<div class="la-why">${first.q <= 0 ? `<b>Agotada</b>: ${L.filter(l => l.q <= 0).map(l => esc(label(l))).join(' y ')}` : `Se acaba primero: <b>${esc(label(first))}</b>`}${back}</div>`
+        + '<div class="la-lims">' + L.map(l => `<div class="lm${l === first ? ' first' : ''} ${limTone(l.q)}" title="${esc(label(l))}: queda ${l.q}%${l.left ? ' · vuelve en ' + esc(l.left) : ''}">`
+          + `<span class="lm-n"><i class="lm-k">${l.k}</i>${esc(l.n)}</span>`
+          + `<span class="lm-t"><i style="width:${Math.max(l.q, 2)}%"></i></span>`
+          + `<span class="lm-v"><b>${l.q}%</b>${l.left ? `<small>${esc(l.left)}</small>` : ''}</span></div>`).join('') + '</div></div>';
+    }).join('') + '</div>';
+  }
+
   // Arranques leídos de `<cli> --help` (cli.start): la fila del binario con el primer
   // párrafo de su ayuda, las cuentas reales, los flags que el propio CLI describe como
   // saltarse permisos (ámbar) y cada sección de la ayuda con su título original,
@@ -635,6 +668,6 @@
     return { refresh, render, insert, startChain, next, stop, applyCatalog, termAction, setCmdsOpen, setSheet, get state() { return state; } };
   }
 
-  root.ComandosCommandSidebar = { createCommandSidebar, rowHTML, cliHTML, esc, isToggleKey };
-  if (typeof module !== 'undefined' && module.exports) module.exports = { createCommandSidebar, rowHTML, cliHTML, esc, isToggleKey };
+  root.ComandosCommandSidebar = { createCommandSidebar, rowHTML, cliHTML, esc, isToggleKey, limitsHTML };
+  if (typeof module !== 'undefined' && module.exports) module.exports = { createCommandSidebar, rowHTML, cliHTML, esc, isToggleKey, limitsHTML };
 })(typeof window !== 'undefined' ? window : globalThis);

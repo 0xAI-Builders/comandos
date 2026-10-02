@@ -184,9 +184,7 @@ function pomodoroPhone(){const fs=focusAll();return pnums(fs)+`<div class="pcard
   <div class="wnav"><button data-w="-1" ${off <= (view.minOffset ?? -1) ? 'disabled' : ''} aria-label="Semana anterior">←</button><span>${off ? 'Semana' : 'Esta semana'} · <b>${weekLabel()}</b></span><button data-w="1" ${off >= 0 ? 'disabled' : ''} aria-label="Semana siguiente">→</button></div></div>${body(tab)}`;
     return out.replaceAll('🍅', `<span class="tin">${tomato(true, 16)}</span>`);
   }
-  // La repisa de botellas sola (límites de cada cuenta), para la columna izquierda de ComandOS.
-  const shelf = () => barShelf(accs().filter(a => limits(a).length));
-  return { html, shelf, phoneDays: () => CHRONO.length };
+  return { html, phoneDays: () => CHRONO.length };
 
   }
   if (typeof module !== 'undefined' && module.exports) module.exports = { create };
