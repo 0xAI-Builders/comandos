@@ -1375,6 +1375,7 @@ import session_operations
 import app_state
 import workspace_state
 import pomodoro
+import analytics_week
 import focus_progress
 import tui_state
 import cli_catalog
@@ -6717,6 +6718,54 @@ def start_pomodoro_scheduler():
     return _POMODORO_SCHEDULER["thread"]
 
 
+ANALYTICS_DEMO_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.realpath(__file__))),
+                                  "tests", "fixtures", "analytics")
+ANALYTICS_LOOKBACK_S = 17 * 86400   # 8 días de la semana anterior + 8 de esta + margen
+
+
+def analytics_week_payload(offset, now=None):
+    """El modelo de Analytics (lib/analytics_week.py) con los datos locales."""
+    now = time.time() if now is None else now
+    since = now - ANALYTICS_LOOKBACK_S
+    cc_usage.init_db(USAGE_DB)
+    with cc_usage.connect(USAGE_DB) as con:
+        turns = [{"provider": r[0], "account": r[1], "git_root": r[2], "pane_pwd": r[3],
+                  "started": r[4], "finished": r[5], "tokens": r[6]}
+                 for r in con.execute(
+                     "select provider, harness_account, git_root, pane_pwd, turn_started_at, turn_finished_at, total_tokens "
+                     "from usage_turns where turn_finished_at >= ?", (since,))]
+        spans = [{"provider": r[0], "account": r[1], "git_root": r[2], "started": r[3], "finished": r[4]}
+                 for r in con.execute(
+                     "select provider, account, git_root, started_at, finished_at from usage_spans where finished_at >= ?",
+                     (since,))]
+    records = pomodoro.records(pomodoro_store().conn, int(since * 1000), None)
+    return analytics_week.build_week(
+        now=now, offset=offset, limits=usage_provider_limits()["limits"], turns=turns, spans=spans,
+        snapshots=cc_usage.quota_snapshots(USAGE_DB, since=now - 40 * 86400), records=records)
+
+
+def analytics_week_query(path):
+    """GET /analytics/week?offset=0|-1[&demo=nombre]: lo que pinta Analytics.
+    demo= sirve los datos de ejemplo del mockup (tests/fixtures/analytics) para comparar
+    el tablero con el mockup pixel por pixel."""
+    query = urllib.parse.parse_qs(urllib.parse.urlsplit(path).query)
+    try:
+        offset = int((query.get("offset") or ["0"])[0])
+    except ValueError:
+        return 400, {"error": "offset inválido"}
+    if offset not in (0, -1):
+        return 400, {"error": "solo esta semana (0) o la anterior (-1)"}
+    demo = re.sub(r"[^a-z]", "", (query.get("demo") or [""])[0])
+    if demo:
+        name = f"week-{demo}{'-prev' if offset else ''}.json"
+        try:
+            with open(os.path.join(ANALYTICS_DEMO_DIR, name), encoding="utf-8") as fh:
+                return 200, json.load(fh)
+        except OSError:
+            return 404, {"error": "no hay datos de ejemplo con ese nombre"}
+    return 200, analytics_week_payload(offset)
+
+
 def pomodoro_report_query(path):
     """GET /pomodoro/report?from=<ms>&to=<ms>&project=<name> (default: 7 local days)."""
     query = urllib.parse.parse_qs(urllib.parse.urlsplit(path).query)
@@ -8300,6 +8349,7 @@ class Handler(http.server.SimpleHTTPRequestHandler):
     # sw.js, manifest, iconos) NO — no revela nada (es codigo open-source) y
     # asi la PWA instala y carga sin depender de cookies en el webview movil.
     API_GET = ("/accounts", "/session-config-history", "/pane-extensions", "/pomodoro", "/providers", "/optimization/plans", "/proxy", "/model/status", "/sovereignty", "/ui-log/summary", "/state", "/usage/state", "/usage/guard", "/usage/changes", "/usage/provider-compare", "/fs/dirs", "/models/latest", "/news/latest", "/news/edition", "/push/", "/notifs/count", "/usage/analytics", "/usage/interactions", "/usage/experiments", "/opencode/models", "/model-tiers", "/dedication", "/active-tab", "/tab-models", "/session-profiles", "/extension-usage", "/session-brain", "/project-profiles", "/events", "/conf", "/prefs", "/ssh", "/tabs", "/workspace", "/notices",
+    "/analytics/week",
                "/tab-history", "/remote-state", "/remote-qr.png", "/snippets", "/tmux-mouse", "/commands/catalog", "/chains",
                "/webterm-token", "/allocation/status", "/news/source", "/news/chat", "/news/notes",
                "/news/saved", "/news/media")
@@ -8401,6 +8451,8 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             return self._json(200, active)
         if self.path.startswith("/dedication"):
             return self._json(200, dedication_stats())
+        if self.path.startswith("/analytics/week"):
+            return self._json(*analytics_week_query(self.path))
         if self.path.startswith("/pomodoro/report"):
             return self._json(*pomodoro_report_query(self.path))
         if self.path == "/pomodoro":
