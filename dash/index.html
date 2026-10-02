@@ -3184,6 +3184,11 @@ function mdStrip(s){ return (s||"").replace(/\*\*|`|^#{1,6} /g, ""); }
 	  $("#ns-note").textContent=profileError|| (shell?"":NS.routeId?`${nsHarness(NS.harness).label} → ${nsMotor(NS.motor).label} · ${NS.model}${NS.effort?" · "+NS.effort:""}`:tf("combinación no disponible","combination unavailable"));
 	}
 	async function nsOpen(){
+	  // Celular / tablet vertical: el asistente vive en la vista del panel. Abierto desde la «+» de
+	  // la tira (vista de terminales) quedaba invisible; se pasa al panel como hace ☐.
+	  const b=document.body;
+	  if(b.classList.contains("app") && !b.classList.contains("split") && !b.classList.contains("inapp") &&
+	     typeof activeView!=="undefined" && activeView!=="panel" && typeof showView==="function") showView("panel");
 	  const m=$("#newsess");m.classList.remove("hidden");
 	  if(!PROVIDERS) try{PROVIDERS=await api("/providers");}catch(e){}
 	  const dirs=[...new Set((S.list||[]).map(i=>i.cwd).filter(Boolean))].sort();
@@ -7497,7 +7502,12 @@ function initHeaderActions(){
   $("#btn-terminal").addEventListener("click", toApp("quickTerminal"), true);
   $("#btn-newsess").addEventListener("click", toApp("newSession"), true);
   $("#btn-notif").addEventListener("click", toApp("notices"), true);   // cajón bajo las terminales, como MCPs · Skills
-  $("#tab-term")?.addEventListener("click", () => $("#btn-terminal").click());
+  // Celular / tablet vertical: la terminal rápida vive en la barra de comandos (vista del panel).
+  $("#tab-term")?.addEventListener("click", () => {
+    const b = document.body;
+    if(b.classList.contains("app") && !b.classList.contains("split") && !b.classList.contains("inapp") && activeView !== "panel") showView("panel");
+    $("#btn-terminal").click();
+  });
   const panelBtn = $("#tab-left");
   const applyPanelHidden = hidden => {
     document.body.classList.toggle("panel-hidden", hidden);

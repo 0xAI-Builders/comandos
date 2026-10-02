@@ -253,3 +253,13 @@ def test_new_session_profiles_and_motor_picker_stay_in_the_column_on_split_remot
     place = index.split('pop.classList.remove("inline");', 1)[1].split("pop.classList.add(\"open\");", 1)[0]
     assert "window.panelViewport()" in place and 'pop.classList.toggle("mp-column", column);' in place
     assert "vp.left + vp.width - w - 8" in place
+
+
+def test_phone_strip_plus_and_terminal_switch_to_the_panel_view_first():
+    """1-oct: en celular la «+» y «>_» de la tira abrían el asistente / la terminal rápida
+    dentro de la vista del panel, invisibles si estabas viendo terminales."""
+    index = (ROOT / "dash" / "index.html").read_text()
+    ns = index.split("async function nsOpen(){", 1)[1].split('const m=$("#newsess")', 1)[0]
+    assert 'activeView!=="panel"' in ns and 'showView("panel")' in ns and '!b.classList.contains("split")' in ns
+    term = index.split('$("#tab-term")?.addEventListener("click", () => {', 1)[1].split("});", 1)[0]
+    assert 'showView("panel")' in term and '$("#btn-terminal").click();' in term
