@@ -1,4 +1,5 @@
 """Cableado de Analytics en cc-dash: fotos de cuota, sin avisos, sin Reparto con Aplicar."""
+import re
 from pathlib import Path
 
 from test_usage_dash import load_dash_module
@@ -113,3 +114,16 @@ def test_analytics_opens_wide_on_desktop_and_split_remote():
     assert 'postMessage(JSON.stringify({headerAction: "analytics"}))' in HTML
     css = Path("dash/workspace.css").read_text()
     assert ".modal:not(#tabclose):not(#groupclose):not(.chain-only):not(#usage)" in css
+
+
+def test_the_desktop_window_panel_shows_analytics():
+    # ?panel=usage (la ventana propia del escritorio) oculta todo lo que no esté en la lista; #usage debe estar.
+    hide_rest = next(line for line in HTML.splitlines() if "body.only-panel > *:not(" in line)
+    assert ":not(#usage)" in hide_rest
+
+
+def test_button_themes_leave_analytics_as_the_mockup():
+    # buttons.css pone borde y sombra (!important) a todo botón; las pestañas y flechas de Analytics son las del mockup.
+    css = Path("dash/buttons.css").read_text()
+    exclusions = re.findall(r":not\(:is\(([^)]*)\)\)", css)
+    assert exclusions and all(".an *" in e for e in exclusions)

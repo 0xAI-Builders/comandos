@@ -602,3 +602,5 @@
 @media (max-width:460px){.an .bx,.an .v1,.an .v2,.an .v4,.an .v5{grid-template-columns:1fr;justify-items:start}
 .an{padding:16px}
 }
+.an.phone{max-width:390px;padding:14px 12px 20px}
+.an svg text[font-family^="Ubuntu Sans Mono"]{font-family:var(--mono)}

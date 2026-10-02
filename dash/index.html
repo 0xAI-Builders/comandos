@@ -328,7 +328,7 @@
   #btn-pomo .pomo-mini{font:800 10px var(--mono);margin-left:4px;font-variant-numeric:tabular-nums}
   #btn-notif{position:relative}
   /* Popover de la app: solo el panel, ocupando toda la vista, sin sombra ni borde */
-  body.only-panel > *:not(#notif-panel):not(#pomo-panel):not(#settings):not(#news-reader):not(#notices):not(.backdrop){display:none !important}
+  body.only-panel > *:not(#notif-panel):not(#pomo-panel):not(#settings):not(#news-reader):not(#notices):not(#usage):not(.backdrop){display:none !important}
   /* Estante del escritorio: el cajón ocupa TODO el alto del estante. La altura de
      franja (--nt-h en línea, pensada para el remoto) no aplica aquí. */
   html[data-only-panel="notices"] body.only-panel #notices{display:flex!important;flex-direction:column;position:fixed;inset:0;border-top:0}
@@ -954,6 +954,7 @@
   .modal.open{display:flex}
   #usage > .an{width:100%}
   #usage{-webkit-user-select:text;user-select:text}
+  @media (max-width:600px){#usage,html[data-only-panel="usage"] body.only-panel #usage{padding:0!important}}
   /* El contenido de cada modal se acomoda por el ancho del MODAL, no de la ventana (1-oct): en el
      escritorio el modal ya mide la columna izquierda (el tablero solo ocupa esa columna) y en el
      remoto partido ahora también; con @media el remoto lo acomodaba como si tuviera toda la pantalla. */

@@ -75,6 +75,10 @@ def main(path):
     sys.stdout.write("/* GENERADO por tools/analytics_scope_css.py desde el mockup aprobado (rama prototype/analytics-grill). No editar a mano. */\n")
     sys.stdout.write(FONT_FACES)
     sys.stdout.write(scope(css))
+    # «Vista celular» del mockup: el marco de teléfono (.app.phone-frame .modal) es el celular de verdad.
+    sys.stdout.write(".an.phone{max-width:390px;padding:14px 12px 20px}\n")
+    # El SVG trae la fuente como atributo (font-family="Ubuntu Sans Mono,…"); en CSS manda la del tablero.
+    sys.stdout.write('.an svg text[font-family^="Ubuntu Sans Mono"]{font-family:var(--mono)}\n')
 
 
 if __name__ == "__main__":
