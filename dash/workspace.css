@@ -695,14 +695,16 @@ header.hdr-ordered :is(#btn-switch,#btn-snippets){display:inline-flex!important}
    la derecha Pomodoro, reloj y Ajustes. Sin contadores. Servidores pasa a la fila de la
    barra de comandos (pestaña de su panel). Escritorio y remoto partido no llevan ☰, Buscar,
    Snippets, Terminal ni Nueva sesión (atajos Ctrl+K, Ctrl+Shift+K; Terminal y Nueva sesión
-   a la derecha de la barra de pestañas). En celular y tablet vertical, sin teclado ni esa
-   barra, esas cinco quedan como teclas al inicio de la fila (control de entrada). */
+   a la derecha de la barra de pestañas, también en celular y tablet). En celular y tablet
+   vertical, sin teclado, ☰, Buscar y Snippets quedan como teclas al inicio de la fila. */
 :root{--hdr-tool:34px}
 :is(body.inapp,body.app) header.hdr-ordered{display:flex;flex-wrap:nowrap;align-items:center;gap:4px;padding:6px 8px;border-bottom:1px solid var(--line);min-width:0}
 :is(body.inapp,body.app) header.hdr-ordered .hdr-right,:is(body.inapp,body.app) header.hdr-ordered .hdr-primary{display:contents}
-:is(body.inapp,body.app) header.hdr-ordered :is(.counts,#btn-servers){display:none!important}
+:is(body.inapp,body.app) header.hdr-ordered :is(.counts,#btn-servers,#btn-terminal,#btn-newsess){display:none!important}
 :is(body.inapp,body.app.split) header.hdr-ordered :is(#btn-menu,.counts,#btn-terminal,#btn-newsess,#btn-switch,#btn-snippets,#btn-servers){display:none!important}
-body.app:not(.split):not(.inapp) header.hdr-ordered{flex-wrap:wrap}
+/* celular y tablet vertical: el Pomodoro también solo con su icono, para que la fila quepa */
+body.app:not(.split):not(.inapp) header.hdr-ordered #btn-pomo{flex:0 1 var(--hdr-tool);width:var(--hdr-tool);min-width:28px;padding:0}
+body.app:not(.split):not(.inapp) header.hdr-ordered #btn-pomo .pomo-mini{display:none}
 :is(body.inapp,body.app) header.hdr-ordered .hdr-btn{flex:0 1 var(--hdr-tool);width:var(--hdr-tool);min-width:28px;height:var(--hdr-tool);padding:0}
 :is(body.inapp,body.app) header.hdr-ordered #btn-pomo{margin-left:auto;flex:0 0 auto;width:auto;padding:0 8px;order:1}
 :is(body.inapp,body.app) header.hdr-ordered #btn-pomo .pomo-mini{font-size:10px;margin-left:5px}
@@ -884,6 +886,10 @@ body.ws-dragging #command-sidebar .sb-term{pointer-events:none}
 #command-sidebar .cs-tools .tb .n{font:400 10px/1 var(--mono);color:var(--cs-dim)}
 #command-sidebar .cs-tools .tb .n:empty{display:none}
 #command-sidebar .cs-tools .tb .sic{display:inline-flex;flex:none}
+@container sidebar (max-width:340px){
+  #command-sidebar .cs-tools{gap:2px;padding:6px}
+  #command-sidebar .cs-tools button[data-flat].tb{padding:0 4px;gap:4px;font-size:11px}
+}
 @container sidebar (max-width:230px){#command-sidebar .cs-tools .tb .lb{display:none}}
 #command-sidebar .cs-sheet{position:absolute;left:0;right:0;top:var(--cs-tools-h,43px);bottom:0;z-index:6;flex:none!important;background:var(--cs-panel2);box-shadow:0 18px 40px #0009;border-top:1px solid var(--cs-line)}
 #command-sidebar .cs-head .sh-h{display:flex;align-items:center;gap:8px;padding:10px 10px 8px;min-width:0}
