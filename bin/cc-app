@@ -91,7 +91,7 @@ try:
     _DASH_V = str(int(os.path.getmtime(_DASH_FILE)))
 except OSError:
     _DASH_V = str(int(time.time()))
-URL = f"{BASE_URL}/?app=1&v={_DASH_V}"
+URL = f"{BASE_URL}/?app=1&anwin=1&v={_DASH_V}"
 # Raíz del repo desde este binario. Cuando cc-app se instala como symlink en
 # ~/.local/bin, os.path.realpath resuelve al archivo real dentro del repo.
 CC_REPO = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))

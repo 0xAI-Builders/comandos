@@ -127,3 +127,11 @@ def test_button_themes_leave_analytics_as_the_mockup():
     css = Path("dash/buttons.css").read_text()
     exclusions = re.findall(r":not\(:is\(([^)]*)\)\)", css)
     assert exclusions and all(".an *" in e for e in exclusions)
+
+
+def test_an_old_desktop_app_still_opens_analytics():
+    # Hasta reiniciar ComandOS corre el cc-app viejo, que no conoce headerAction "analytics":
+    # solo se le pide la ventana si la app nueva lo anunció en la URL (&anwin=1).
+    app = Path("bin/cc-app").read_text()
+    assert 'URL = f"{BASE_URL}/?app=1&anwin=1&v={_DASH_V}"' in app
+    assert 'if(inApp() && new URLSearchParams(location.search).has("anwin")){' in HTML
