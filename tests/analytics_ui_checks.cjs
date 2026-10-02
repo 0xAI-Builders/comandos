@@ -48,12 +48,25 @@ globalThis.innerWidth = 1300; globalThis.innerHeight = 900;
   el.click('[data-pd="-1"]');
   assert.ok(el.innerHTML.includes('lun 28 · mar 29 · mié 30'), 'la flecha del calendario muestra días anteriores');
 
-  // Un error de red no borra lo que ya se ve.
-  const before = el.innerHTML;
-  const bad = create(mkRoot(), { render, width: () => 1100, fetchWeek: async () => { throw new Error('sin red'); } });
-  await bad.open();
-  assert.ok(bad.state.error.includes('sin red'));
-  assert.strictEqual(el.innerHTML, before);
+  // Un error de red al cambiar de semana no borra lo que ya se ve, y la semana sigue siendo la que se ve.
+  {
+    let fail = false;
+    const net = mkRoot();
+    const view = create(net, { render, width: () => 1100,
+      fetchWeek: async off => { if (fail) throw new Error('sin red'); return fx(off ? 'week-normal-prev' : 'week-normal'); } });
+    await view.open('cuentas');
+    const shown = net.innerHTML, model = view.state.model;
+    fail = true;
+    net.click('[data-w="-1"]');
+    await view.state.loading;
+    assert.strictEqual(net.innerHTML, shown, 'la vista se queda');
+    assert.strictEqual(view.state.model, model, 'el modelo se queda');
+    assert.strictEqual(view.state.offset, 0, 'la semana vuelve a la que se ve');
+    // Sin nada en pantalla todavía, el error sí se dice.
+    const empty = create(mkRoot(), { render, width: () => 1100, fetchWeek: async () => { throw new Error('sin red'); } });
+    await empty.open();
+    assert.ok(empty.state.error.includes('sin red'));
+  }
 
   // ---------- Nombres del modelo y sesiones instantáneas ----------
   // Estas comprobaciones no abortan en la primera falla: una corrida en rojo lista todas las que fallan.

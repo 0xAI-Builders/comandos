@@ -58,6 +58,8 @@
       }, err => {
         if (offset !== S.offset) return;
         if (!S.model) S.error = `No pude leer el uso: ${err && err.message ? err.message : err}`;
+        // Falló otra semana: se queda la que se ve, y las flechas siguen hablando de ella.
+        else S.offset = S.model.week.offset;
       });
       S.loading = job;
       await job;

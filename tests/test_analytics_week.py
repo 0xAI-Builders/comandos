@@ -129,3 +129,31 @@ def test_model_has_the_fixture_shape_and_renders_every_tab():
     for offset in (0, -1):
         model = aw.build_week(now=NOW, offset=offset, limits=LIMITS, turns=[], spans=[], snapshots=[], records=[])
         subprocess.run(["node", "-e", script], input=json.dumps(model), text=True, check=True, cwd=ROOT)
+
+
+def test_a_limit_without_a_real_reset_shows_no_reset():
+    # Grok con cuota declarada y sin lectura oficial: trae porcentaje pero resets_at 0.
+    limits = [{"provider": "grok", "account": "main", "window": "7d", "scope": "", "percent": 40.0, "resets_at": 0}]
+    week = aw.build_week(now=NOW, offset=0, limits=limits, turns=[], spans=[], snapshots=[], records=[])
+    grok = next(a for a in week["accounts"] if a["id"] == "grok:main")
+    assert grok["week"] == 40 and grok["reset"] is None and grok["left"] is None
+
+
+def test_past_week_ignores_a_cycle_far_after_the_window():
+    # Falta la foto del ciclo que cerraba la ventana: no se usa la de dos semanas después.
+    snaps = [{"provider": "claude", "account": "main", "window": "7d", "scope": "", "percent": 88.0,
+              "resets_at": int(NOW - 3600)}]
+    limits = [{"provider": "claude", "account": "main", "window": "7d", "scope": "", "percent": 50.0,
+               "resets_at": int(NOW + 86400)}]
+    week = aw.build_week(now=NOW, offset=-1, limits=limits, turns=[], spans=[], snapshots=snaps, records=[])
+    [acc] = week["accounts"]
+    assert acc["weekUsed"] is None
+
+
+def test_a_pomodoro_crossing_midnight_ends_at_midnight():
+    tz = aw.ZoneInfo(aw.TZ)
+    start = aw.datetime(2026, 9, 30, 23, 50, tzinfo=tz).timestamp() * 1000
+    rec = {"mode": "focus", "status": "completed", "startedAtMs": start, "endedAtMs": start + 25 * 60000,
+           "activeMs": 25 * 60000, "targetMs": 25 * 60000, "project": "Relotto"}
+    [f] = aw.pomodoros([rec], ["2026-09-30"], tz)
+    assert f["en"] == 24

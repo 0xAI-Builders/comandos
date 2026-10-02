@@ -162,10 +162,23 @@ def waste(snapshots, accounts, now):
     return out
 
 
+def _reset(row, tz):
+    """Fecha del reset; None si la fila no trae uno real (Grok con cuota declarada trae 0)."""
+    return fmt_reset(row["resets_at"], tz) if row and (row.get("resets_at") or 0) > 0 else None
+
+
+def _left(row, now):
+    return fmt_left(row["resets_at"] - now) if row and (row.get("resets_at") or 0) > 0 else None
+
+
 def _used_at(snapshots, acc, window_end, now):
-    """Uso final del ciclo semanal vigente al cerrar la ventana; None si aún no se sabe."""
+    """Uso final del ciclo semanal vigente al cerrar la ventana; None si aún no se sabe.
+    Solo cuenta un ciclo que reinicia a lo más una semana (más el redondeo a la hora) después
+    del cierre: si falta su foto, la de un ciclo posterior no es la de esta semana."""
     for s in reversed(_cycles(snapshots, acc)):
         if s["resets_at"] > window_end:
+            if s["resets_at"] - window_end > 7 * 86400 + 3600:
+                return None
             return round(s["percent"]) if s["resets_at"] <= now else None
     return None
 
@@ -188,13 +201,13 @@ def build_accounts(limits, sess, today, window_end, snapshots, now, tz, past):
             "id": acc, "provider": provider, "cli": CLI[provider], "alias": alias, "color": color,
             "week": round(week["percent"]) if week else None,
             "model": ({"n": model["scope"], "v": round(model["percent"]),
-                       "reset": fmt_reset(model["resets_at"], tz), "left": fmt_left(model["resets_at"] - now)}
+                       "reset": _reset(model, tz), "left": _left(model, now)}
                       if model else None),
             "h5": round(h5["percent"]) if h5 else None,
-            "reset": fmt_reset(week["resets_at"], tz) if week else None,
-            "left": fmt_left(week["resets_at"] - now) if week else None,
-            "h5Reset": fmt_reset(h5["resets_at"], tz) if h5 else None,
-            "h5Left": fmt_left(h5["resets_at"] - now) if h5 else None,
+            "reset": _reset(week, tz),
+            "left": _left(week, now),
+            "h5Reset": _reset(h5, tz),
+            "h5Left": _left(h5, now),
             "hoy": {"h": sum(s["en"] - s["st"] for s in today_s), "tok": round(sum(s["tok"] for s in today_s)),
                     "ses": len(today_s)},
             "sem": {"h": sum(s["en"] - s["st"] for s in mine), "tok": round(sum(s["tok"] for s in mine) / 1000, 1),
@@ -216,7 +229,8 @@ def pomodoros(records, days, tz):
             continue
         st = start.hour + start.minute / 60 + start.second / 3600
         ended = r.get("endedAtMs") or r["startedAtMs"] + (r.get("activeMs") or 0)
-        out.append({"d": start.date().isoformat(), "st": st, "en": st + (ended - r["startedAtMs"]) / 3_600_000,
+        # Un bloque que cruza medianoche se dibuja hasta las 24:00 de su día.
+        out.append({"d": start.date().isoformat(), "st": st, "en": min(24, st + (ended - r["startedAtMs"]) / 3_600_000),
                     "plan": round((r.get("targetMs") or r.get("plannedMs") or 0) / 60000),
                     "act": round((r.get("activeMs") or 0) / 60000), "pause": 0,
                     "status": "completed" if r["status"] == "completed" else "cancelled",
