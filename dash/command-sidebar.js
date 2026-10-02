@@ -150,7 +150,7 @@
   function createCommandSidebar(opts) {
     const { api, root: el, storage, makeId, getTarget, focusTarget = () => {}, openBuilder = () => {}, mountTerm = null,
       toast = () => {}, terminals = () => [], newTerm = () => {}, killTerm = null, hydrate = () => {},
-      mountServers = () => {} } = opts;
+      mountServers = () => {}, renderLimits = () => {} } = opts;
     const state = { catalog: null, cliInPane: '', catalogTarget: null, chains: [], open: new Set(), run: null, curTerm: '',
       typing: null, q: '', firstRender: true, appliedTarget: null };
 
@@ -426,8 +426,10 @@
         el.innerHTML = toolsHTML()
           + `<div class="sec-cmds cs-sheet" role="dialog" aria-label="Comandos, cadenas y servidores">${headHTML()}<div class="cs-body">${bodyHTML()}</div>`
           + `<div class="cs-chains-body">${runnerHTML() + savedHTML()}</div><div class="cs-srv"><div class="cs-srv-slot"></div></div></div>`
-          + '<div class="cs-empty-terms"><div><b class="et-t"></b><span class="et-d"></span>'
-          + '<button type="button" data-flat class="et-go"></button></div></div>'
+          // Sin terminal a la vista, la columna muestra los límites de uso (botellas de Analytics)
+          + '<div class="cs-empty-terms"><div class="et-lim"><div class="et-h"><b>Límites de uso</b><small>lo que queda de cada cuenta</small></div>'
+          + '<div class="cs-limits"></div></div>'
+          + '<div class="et-foot"><span class="et-t"></span><button type="button" data-flat class="et-go"></button></div></div>'
           + '<div class="sec-terms"><div class="cs-terms tt" role="group" aria-label="Terminales de la barra">'
           + '<span class="grip" aria-hidden="true"></span>'
           + '<button type="button" data-flat class="arr" data-tscroll="-1" aria-label="Terminales anteriores" hidden>‹</button>'
@@ -539,8 +541,8 @@
     }
     // Sin terminal que mostrar (escondidas o ninguna): la columna no se queda vacía.
     function emptyTerms() {
-      if (!termList().length) return { t: 'No hay terminales en la barra', d: 'Abre una para tener una shell a mano junto a tus sesiones.', go: '+ Nueva terminal', act: 'new' };
-      if (state.termsHidden) return { t: 'Terminales escondidas', d: 'Siguen abiertas; vuelve a mostrarlas cuando las necesites.', go: 'Mostrar terminal', act: 'toggle' };
+      if (!termList().length) return { t: 'Sin terminales en la barra', go: '+ Nueva terminal', act: 'new' };
+      if (state.termsHidden) return { t: 'Terminales escondidas', go: 'Mostrar terminal', act: 'toggle' };
       return null;
     }
     function paintSheet(n) {
@@ -560,8 +562,9 @@
       if (box) {
         box.hidden = !e || !!cur;
         if (e) {
-          box.querySelector('.et-t').textContent = e.t; box.querySelector('.et-d').textContent = e.d;
+          box.querySelector('.et-t').textContent = e.t;
           const go = box.querySelector('.et-go'); go.textContent = e.go; go.setAttribute('data-term-act', e.act);
+          try { renderLimits(box.querySelector('.cs-limits')); } catch (_) {}
         }
       }
       if (cur === 'srv') { state.srvMounted = true; try { mountServers(el.querySelector('.cs-srv-slot')); } catch (_) {} }

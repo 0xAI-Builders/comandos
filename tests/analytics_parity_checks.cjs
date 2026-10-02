@@ -18,4 +18,11 @@ for (const [key, want] of Object.entries(ref)) {
   n++;
 }
 assert.ok(n >= 21, `solo ${n} casos`);
+// shelf(): la misma repisa de botellas que abre la pestaña Cuentas, sola (columna izquierda de ComandOS)
+for (const [key, want] of Object.entries(ref)) {
+  const [week, tab, mode] = key.split('|');
+  if (tab !== 'cuentas' || mode === 'phone') continue;
+  const shelf = create(JSON.parse(fs.readFileSync(path.join(dir, week + '.json'), 'utf8'))).shelf();
+  assert.ok(shelf.startsWith('<div class="bar">') && want.includes(shelf), `${key}: shelf() no es la repisa de Cuentas`);
+}
 console.log(`analytics parity: ${n} casos idénticos al mockup`);

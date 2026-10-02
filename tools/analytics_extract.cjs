@@ -65,7 +65,9 @@ const SHELL = `
   <div class="wnav"><button data-w="-1" \${off <= (view.minOffset ?? -1) ? 'disabled' : ''} aria-label="Semana anterior">←</button><span>\${off ? 'Semana' : 'Esta semana'} · <b>\${weekLabel()}</b></span><button data-w="1" \${off >= 0 ? 'disabled' : ''} aria-label="Semana siguiente">→</button></div></div>\${body(tab)}\`;
     return out.replaceAll('🍅', \`<span class="tin">\${tomato(true, 16)}</span>\`);
   }
-  return { html, phoneDays: () => CHRONO.length };
+  // La repisa de botellas sola (límites de cada cuenta), para la columna izquierda de ComandOS.
+  const shelf = () => barShelf(accs().filter(a => limits(a).length));
+  return { html, shelf, phoneDays: () => CHRONO.length };
 `;
 const header = '/* GENERADO por tools/analytics_extract.cjs desde el mockup aprobado (rama prototype/analytics-grill).\n   No editar a mano: cambia el mockup, regenera y actualiza tests/fixtures/analytics. */\n';
 const code = `${header}(function (root) {

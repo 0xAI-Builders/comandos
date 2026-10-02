@@ -890,10 +890,29 @@ body.ws-dragging #command-sidebar .sb-term{pointer-events:none}
 #command-sidebar .cs-srv #servers-panel{border-bottom:0;padding-top:0}
 /* columna sin terminal que mostrar: la tarjeta llena el hueco (la cabecera de pestañas queda arriba) */
 #command-sidebar .sec-terms{order:2}
-#command-sidebar .cs-empty-terms{order:3;flex:1 1 auto;min-height:0;display:grid;place-items:center;padding:20px;text-align:center;font-size:12px;line-height:1.5;color:var(--cs-dim)}
-#command-sidebar .cs-empty-terms b{display:block;color:var(--cs-text);font-size:13px;margin-bottom:4px}
-#command-sidebar .cs-empty-terms span{display:block}
-#command-sidebar .cs-empty-terms button[data-flat].et-go{margin-top:12px;min-height:0;height:30px;padding:0 14px;border-radius:8px;border:1px solid var(--cs-brand);background:color-mix(in srgb,var(--cs-brand) 11%,transparent);color:var(--cs-brand);font-weight:600;font-size:12px}
+#command-sidebar .cs-empty-terms{order:3;flex:1 1 auto;min-height:0;display:flex;flex-direction:column}
+#command-sidebar .cs-empty-terms .et-lim{flex:1 1 auto;min-height:0;overflow:auto;overscroll-behavior:contain;padding:10px 10px 8px}
+#command-sidebar .cs-empty-terms .et-h{display:flex;align-items:baseline;gap:8px;margin:0 2px 8px;min-width:0}
+#command-sidebar .cs-empty-terms .et-h b{font:700 10px/1 var(--mono);letter-spacing:.12em;text-transform:uppercase;color:var(--cs-dim)}
+#command-sidebar .cs-empty-terms .et-h small{font-size:11px;color:var(--cs-dim);opacity:.75;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#command-sidebar .cs-limits .wait{font-size:12px;color:var(--cs-dim);padding:12px 2px}
+#command-sidebar .cs-empty-terms .et-foot{flex:none;display:flex;align-items:center;gap:8px;padding:7px 10px;border-top:1px solid var(--cs-line);font-size:11px;color:var(--cs-dim)}
+#command-sidebar .cs-empty-terms button[data-flat].et-go{margin-left:auto;min-height:0;height:26px;padding:0 12px;border-radius:8px;border:1px solid var(--cs-brand);background:color-mix(in srgb,var(--cs-brand) 11%,transparent);color:var(--cs-brand);font-weight:600;font-size:11px}
+/* repisa de botellas de Analytics (analytics-render.js shelf()) a la escala de la columna */
+#command-sidebar .cs-an.an{max-width:none;margin:0;padding:0;background:none;border:0;border-radius:0;box-shadow:none}
+#command-sidebar .cs-an .bar{padding:14px 6px 0;border-radius:12px}
+#command-sidebar .cs-an .bar-row{gap:16px 8px}
+#command-sidebar .cs-an .bgrp{gap:8px}
+#command-sidebar .cs-an .bgrp-b{gap:0}
+#command-sidebar .cs-an .bcol{gap:4px}
+#command-sidebar .cs-an .bcol svg{width:58px;height:auto}
+#command-sidebar .cs-an .bcap span,#command-sidebar .cs-an .bcap em{font-size:9.5px}
+#command-sidebar .cs-an .bcap b{font-size:15px}
+#command-sidebar .cs-an .plaque{font-size:11.5px;padding:4px 10px 4px 5px}
+#command-sidebar .cs-an .bar-wood{margin:0 -6px}
+#command-sidebar .cs-an .bar-stats{grid-template-columns:1fr;gap:6px;margin-top:10px}
+#command-sidebar .cs-an .bar-stats b{font-size:12px}
+#command-sidebar .cs-an .bar-stats span:not(.dot){font-size:11px}
 #command-sidebar .sec-terms .cs-terms{cursor:default}
 /* cuerpo: tarjetas apiladas */
 #command-sidebar .cs-body{flex:1;min-height:0;overflow:auto;overscroll-behavior:contain;display:flex;flex-direction:column;gap:8px;padding:0 10px 10px;min-width:0}

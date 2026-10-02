@@ -222,7 +222,7 @@ const catalog = JSON.parse(fs.readFileSync(process.cwd() + '/tests/fixtures/comm
   // un comando lo aparta. El escritorio recibe el estado para repartir la columna.
   {
     const stP = new Map(), storageP = { getItem: k => stP.get(k) ?? null, setItem: (k, v) => stP.set(k, v) };
-    const mP = [], hits = [], srv = [], typed = [], rootP = mkRoot();
+    const mP = [], hits = [], srv = [], typed = [], lim = [], rootP = mkRoot();
     const apiP = async (path, body) => {
       if (path === '/pane/type') { typed.push(body.text); return { ok: true }; }
       return api(path, body);
@@ -230,6 +230,7 @@ const catalog = JSON.parse(fs.readFileSync(process.cwd() + '/tests/fixtures/comm
     const sbP = createCommandSidebar({ api: apiP, root: rootP, storage: storageP, makeId: () => 'x', toast: () => {},
       getTarget: () => ({ session: 'term-q1', pane: '%7', paneKey: 'term-q1:%7', title: 'T' }),
       openBuilder: () => hits.push('builder'), mountTerm: (s, h, info) => mP.push(info), mountServers: slot => srv.push(slot ? 'in' : 'out'),
+      renderLimits: slot => lim.push(slot),
       terminals: () => [{ tabId: 'q1', paneKey: 'term-q1:%7', session: 'term-q1', pane: '%7', label: 'T' }] });
     await sbP.refresh();
     assert.equal(rootP.querySelectorAll('.cs-tools [data-sheet]').length, 3);
@@ -262,6 +263,9 @@ const catalog = JSON.parse(fs.readFileSync(process.cwd() + '/tests/fixtures/comm
     sbP.termAction('toggle');
     assert.equal(rootP.querySelector('.cs-empty-terms').hidden, false);
     assert.equal(rootP.querySelector('.cs-empty-terms .et-go').textContent, 'Mostrar terminal');
+    // el hueco muestra los límites de uso (botellas de Analytics) en su ranura
+    assert.equal(rootP.querySelector('.cs-empty-terms .et-h b').textContent, 'Límites de uso');
+    assert.ok(lim.length && lim.at(-1) === rootP.querySelector('.cs-empty-terms .cs-limits'));
     assert.equal(mP.at(-1).cmds.empty, true);
     rootP.click('.cs-empty-terms .et-go');
     assert.equal(rootP.querySelector('.cs-empty-terms').hidden, true);
