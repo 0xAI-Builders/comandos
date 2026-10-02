@@ -5903,6 +5903,7 @@ document.querySelectorAll(".cfg[data-key]").forEach(b=>{
 	  $("#usage").classList.remove("open");
 	});
 	$("#btn-usage").addEventListener("click", ()=>{
+	  if(inApp()){ window.webkit.messageHandlers.centro.postMessage(JSON.stringify({headerAction: "analytics"})); return; }
 	  if($("#usage").classList.contains("open")){ $("#usage").classList.remove("open"); return; }
 	  openAnalytics();
 	});

@@ -105,3 +105,11 @@ def test_nothing_proposes_or_applies_account_changes():
     assert '("cuentas", "comparar", "pomodoro")' in catalog
     assert "setLimitStyle" not in catalog and "compareSetDays" not in catalog
 
+
+def test_analytics_opens_wide_on_desktop_and_split_remote():
+    app = Path("bin/cc-app").read_text()
+    assert 'HEADER_ACTIONS["analytics"] = open_analytics_modal' in app
+    assert '"panel": "usage"' in app
+    assert 'postMessage(JSON.stringify({headerAction: "analytics"}))' in HTML
+    css = Path("dash/workspace.css").read_text()
+    assert ".modal:not(#tabclose):not(#groupclose):not(.chain-only):not(#usage)" in css

@@ -1117,10 +1117,10 @@ body.app.split:not(.inapp) #tab-left[aria-pressed="true"]{color:var(--brand)}
 
 /* Remoto partido = escritorio (1-oct): en el escritorio el tablero web solo ocupa la columna
    izquierda, así que el Pomodoro y los .modal (Ajustes, Remoto, Uso…) se abren dentro de ella.
-   Con el panel oculto vuelven a usar toda la ventana. Cerrar pestaña / grupo y Cadenas no: en el
+   Con el panel oculto vuelven a usar toda la ventana. Cerrar pestaña / grupo, Cadenas y Analytics no: en el
    escritorio son ventanas nativas centradas sobre toda la app. */
 body.app.split:not(.inapp):not(.panel-hidden) #pomo-panel.pm-v1{width:min(560px,calc(var(--split-left,380px) - 16px))}
-body.app.split:not(.inapp):not(.panel-hidden) .modal:not(#tabclose):not(#groupclose):not(.chain-only){right:auto;width:var(--split-left,380px)}
+body.app.split:not(.inapp):not(.panel-hidden) .modal:not(#tabclose):not(#groupclose):not(.chain-only):not(#usage){right:auto;width:var(--split-left,380px)}
 /* Igual el asistente de sesión nueva (+), Uso de skills y MCPs / Perfiles (.sc-modal) y el
    selector de motor (IA en la cabecera del pane): en el escritorio llenan la columna. */
 body.app.split:not(.inapp):not(.panel-hidden) :is(#newsess,.sc-modal){right:auto;width:var(--split-left,380px)}

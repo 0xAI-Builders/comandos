@@ -7126,6 +7126,36 @@ def _chain_modal_msg(d):
 HEADER_ACTIONS["chains"] = open_chain_modal
 
 
+# Analytics (grill 2-oct): el mockup aprobado mide 1120 px y el tablero es solo la columna
+# izquierda, así que se abre como Cadenas: una ventana centrada sobre toda la app.
+_ANMODAL = {"win": None, "wv": None}
+
+
+def open_analytics_modal(*_):
+    if _ANMODAL["win"] is None:
+        dlg = Gtk.Window(type=Gtk.WindowType.TOPLEVEL)
+        dlg.set_transient_for(win)
+        dlg.set_modal(True)
+        dlg.set_decorated(False)
+        dlg.get_style_context().add_class("mosaic-zoom")
+        wv2 = WebKit2.WebView.new_with_user_content_manager(ucm)   # mismo puente «centro»
+        dlg.add(wv2)
+        dlg.connect("key-press-event",
+                    lambda _w, ev: (dlg.hide(), True)[1] if ev.keyval == Gdk.KEY_Escape else False)
+        dlg.connect("delete-event", lambda *_: (dlg.hide(), True)[1])
+        _ANMODAL.update(win=dlg, wv=wv2)
+    w, h = win.get_size()
+    _ANMODAL["win"].set_default_size(min(1180, max(640, w - 120)), min(940, max(480, h - 90)))
+    _ANMODAL["win"].set_position(Gtk.WindowPosition.CENTER_ON_PARENT)
+    q = urlencode({"panel": "usage", "v": _DASH_V})
+    _ANMODAL["wv"].load_uri(f"{BASE_URL}/?{q}")
+    _ANMODAL["win"].show_all()
+    return False
+
+
+HEADER_ACTIONS["analytics"] = open_analytics_modal
+
+
 def open_web_tab(url, label=""):
     """Navegador DENTRO de ComandOS: una pestaña WebKit para leer noticias
     sin salir de la app. Cerrable como cualquier pestaña."""
