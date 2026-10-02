@@ -23,6 +23,10 @@ for (const phone of [false, true]) {
   assert.ok(cuentas.includes('<b>Antigravity</b><small>main</small>'), 'agy tiene su placa en Cuentas');
   for (const cap of ['<span>Semana</span><b class="">74%</b>', '<span>Claude·GPT</span><b class="">80%</b>', '<span>Sesión 5 h</span><b class="">90%</b>'])
     assert.ok(cuentas.includes(cap), cap);
-  assert.ok(R.shelf().includes('<b>Antigravity</b>'), 'y en la repisa de la columna izquierda');
 }
+// Y en la columna izquierda («Lo que se acaba primero», mismas cuentas de /analytics/week).
+const { limitsHTML } = require('../dash/command-sidebar.js');
+const col = limitsHTML(week.accounts, 'agy:main');
+assert.ok(col.includes('<b>Antigravity</b><small>main</small>') && col.includes('este pane'), 'agy en la columna');
+assert.ok(!/NaN|undefined/.test(col));
 console.log('agy en Analytics: ok');

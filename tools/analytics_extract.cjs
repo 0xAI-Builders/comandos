@@ -68,10 +68,13 @@ const SHELL = `
   return { html, phoneDays: () => CHRONO.length };
 `;
 const header = '/* GENERADO por tools/analytics_extract.cjs desde el mockup aprobado (rama prototype/analytics-grill).\n   No editar a mano: cambia el mockup, regenera y actualiza tests/fixtures/analytics. */\n';
-// agy (Antigravity) no estaba en el mockup: un arco con los colores de Google, mismo formato que los demás
-// logos (viewBox 24, degradado con id propio). Sin él LOGO[provider] es indefinido y el dibujo truena.
+// agy (Antigravity) no estaba en el mockup: se toma el logo de la columna (dash/command-sidebar.js), con ids
+// propios para no chocar con los de la columna en la misma página. Sin él LOGO[provider] es indefinido y el dibujo truena.
+const sidebar = fs.readFileSync(require('path').join(__dirname, '..', 'dash', 'command-sidebar.js'), 'utf8');
+const agyLogo = JSON.parse(sidebar.match(/"agy": ("(?:[^"\\]|\\.)*")/)[1])
+  .replace(/ class="logo" aria-hidden="true" focusable="false"/, '').replaceAll('cs-logo-antigravity', 'an-logo-antigravity');
 const EXTRA_LOGOS = `
-  LOGO.agy = '<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M3 21V12a9 9 0 0118 0v9h-4.5v-9a4.5 4.5 0 00-9 0v9z" fill="url(#lg-agy)"></path><defs><linearGradient gradientUnits="userSpaceOnUse" id="lg-agy" x1="3" x2="21" y1="12" y2="12"><stop stop-color="#4285F4"></stop><stop offset=".4" stop-color="#34A853"></stop><stop offset=".7" stop-color="#FBBC04"></stop><stop offset="1" stop-color="#EA4335"></stop></linearGradient></defs></svg>';
+  LOGO.agy = ${JSON.stringify(agyLogo)};
 `;
 const code = `${header}(function (root) {
   function create(AN, view = {}) {
