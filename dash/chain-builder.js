@@ -188,9 +188,9 @@
       backdrop.setAttribute('data-mclose', '');
       const tgt = typeof opts.target === 'function' ? (opts.target() || '') : '';
       backdrop.innerHTML = '<div class="modal chain-only" role="dialog" aria-modal="true" aria-labelledby="cb-title">'
-        + '<div class="m-head"><span class="ic" data-icon="snippet" data-size="18"></span>'
+        + '<div class="m-head"><span class="hic" data-icon="snippet" data-size="18"></span>'
         + `<h2 id="cb-title">${chain ? 'Editar cadena' : 'Comandos'}</h2>`
-        + '<div class="search"><span class="ic" data-icon="search" data-size="14"></span><input class="m-q" type="search" placeholder="Buscar…" aria-label="Buscar comando"></div>'
+        + '<div class="search"><span class="hic" data-icon="search" data-size="14"></span><input class="m-q" type="search" placeholder="Buscar…" aria-label="Buscar comando"></div>'
         + '<div class="target">' + (tgt ? `<span>escribe en</span><span class="pill primary">${esc(tgt)}</span>` : '')
         + '<button type="button" data-flat class="ghost x" data-close aria-label="Cerrar">✕</button></div></div>'
         + '<div class="cb-body cli-board"></div><div class="cb-msg"></div>'

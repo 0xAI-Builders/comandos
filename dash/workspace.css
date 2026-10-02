@@ -1050,7 +1050,7 @@ body.ws-dragging #command-sidebar .sb-term{pointer-events:none}
 .chain-only .m-head{display:flex;align-items:center;gap:12px;flex:none;padding:8px 14px;border-bottom:1px solid var(--cs-line);min-width:0}
 .chain-only .m-head h2{margin:0;font-size:14px;font-weight:700;white-space:nowrap}
 .chain-only .m-head .search{position:relative;flex:1;max-width:340px;margin-left:12px;min-width:0}
-.chain-only .m-head .search .ic{position:absolute;left:10px;top:11px;width:14px;height:14px;background:none;pointer-events:none;color:var(--cs-dim)}   /* solo la lupa: sin el sprite pixel de 32 px encima */
+.chain-only .m-head .search .hic{position:absolute;left:10px;top:11px;width:14px;height:14px;pointer-events:none;color:var(--cs-dim)}   /* lupa propia (.hic): la clase .ic es la del sprite pixel de 32 px */
 .chain-only .m-head .m-q{width:100%;box-sizing:border-box;min-height:36px;padding:6px 10px 6px 32px;border:1px solid var(--cs-line);border-radius:10px;background:var(--cs-panel2);color:var(--cs-text);font:inherit}
 .chain-only .m-head .m-q::placeholder{color:var(--cs-dim)}
 .chain-only .m-head .m-q:focus,.chain-only .m-name:focus{outline:none;border-color:var(--cs-brand)}
