@@ -135,3 +135,14 @@ def test_an_old_desktop_app_still_opens_analytics():
     app = Path("bin/cc-app").read_text()
     assert 'URL = f"{BASE_URL}/?app=1&anwin=1&v={_DASH_V}"' in app
     assert 'if(inApp() && new URLSearchParams(location.search).has("anwin")){' in HTML
+
+
+def test_analytics_always_has_a_way_out():
+    app = Path("bin/cc-app").read_text()
+    body = app[app.index("def open_analytics_modal"):app.index('HEADER_ACTIONS["analytics"]')]
+    # Clic fuera (la ventana pierde el foco) o Esc la cierran; no bloquea la app.
+    assert 'dlg.connect("focus-out-event"' in body and "dlg.set_modal(False)" in body
+    # En el tablero (celular incluido) queda margen para tocar fuera; sin margen solo en la ventana propia.
+    assert '@media (max-width:600px){html[data-only-panel="usage"] body.only-panel #usage{padding:0!important}}' in HTML
+    # Oculta, la ventana no relee los datos cada minuto.
+    assert 'if(!document.hidden && $("#usage")?.classList.contains("open")) analytics()?.load();' in HTML

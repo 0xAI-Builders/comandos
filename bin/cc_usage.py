@@ -604,8 +604,8 @@ on conflict(id) do update set
   harness=excluded.harness,
   motor=excluded.motor,
   route_id=excluded.route_id,
-  harness_account=excluded.harness_account,
-  motor_account=excluded.motor_account,
+  harness_account=case when coalesce(usage_turns.harness_account,'') in ('','unknown') then excluded.harness_account else usage_turns.harness_account end,
+  motor_account=case when coalesce(usage_turns.motor_account,'') in ('','unknown') then excluded.motor_account else usage_turns.motor_account end,
   interaction_id=excluded.interaction_id,
   experiment_run_id=excluded.experiment_run_id,
   tool_profile=excluded.tool_profile,
@@ -1524,9 +1524,15 @@ def prune_old_turns(db_path, max_age_days=14, now=None):
     y build_usage_state paga por procesar filas viejas que ni se muestran."""
     ts = int(now if now is not None else time.time())
     cutoff = ts - int(max_age_days) * 24 * 3600
+    init_db(db_path)
     with connect(db_path) as con:
         cur = con.execute("delete from usage_turns where turn_finished_at < ?", (cutoff,))
         con.execute("delete from usage_spans where finished_at < ?", (cutoff,))
+        # Filas del import viejo (Claude sin cuenta, Codex por hilo acumulado): la migración a v11 las
+        # borra, pero una base que ya estaba en v11 mientras corría el cc-dash viejo las conserva.
+        # El import nuevo nunca las escribe, así que esto es idempotente.
+        con.execute("delete from usage_turns where source='codex_state_db' "
+                    "or (source='claude_jsonl' and coalesce(harness_account,'') in ('','unknown'))")
         return cur.rowcount
 
 
@@ -1944,8 +1950,11 @@ def record_spans(db_path, spans):
     init_db(db_path)
     with connect(db_path) as con:
         con.executemany(
-            "insert or replace into usage_spans (id, provider, account, session_id, git_root, started_at, finished_at, source) "
-            "values (?,?,?,?,?,?,?,?)", rows)
+            # Una conversación copiada a otra cuenta («Cuenta») repite sus tramos: la cuenta se queda la primera.
+            "insert into usage_spans (id, provider, account, session_id, git_root, started_at, finished_at, source) "
+            "values (?,?,?,?,?,?,?,?) on conflict(id) do update set session_id=excluded.session_id, "
+            "git_root=excluded.git_root, started_at=excluded.started_at, finished_at=excluded.finished_at, "
+            "source=excluded.source", rows)
     return len(rows)
 
 

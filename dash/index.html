@@ -954,7 +954,7 @@
   .modal.open{display:flex}
   #usage > .an{width:100%}
   #usage{-webkit-user-select:text;user-select:text}
-  @media (max-width:600px){#usage,html[data-only-panel="usage"] body.only-panel #usage{padding:0!important}}
+  @media (max-width:600px){html[data-only-panel="usage"] body.only-panel #usage{padding:0!important}}
   /* El contenido de cada modal se acomoda por el ancho del MODAL, no de la ventana (1-oct): en el
      escritorio el modal ya mide la columna izquierda (el tablero solo ocupa esa columna) y en el
      remoto partido ahora también; con @media el remoto lo acomodaba como si tuviera toda la pantalla. */
@@ -6321,7 +6321,7 @@ function openAnalytics(tab){
 }
 window.openAnalyticsTab = tab => openAnalytics(tab);
 // Mientras está abierto, los datos se releen cada minuto; el ancho decide escritorio o celular.
-setInterval(()=>{ if($("#usage")?.classList.contains("open")) analytics()?.load(); }, 60000);
+setInterval(()=>{ if(!document.hidden && $("#usage")?.classList.contains("open")) analytics()?.load(); }, 60000);
 new ResizeObserver(()=>{
   if(!analyticsView || !$("#usage").classList.contains("open")) return;
   const phone = $("#an-root").getBoundingClientRect().width < 600;

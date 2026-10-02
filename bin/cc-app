@@ -7135,7 +7135,8 @@ def open_analytics_modal(*_):
     if _ANMODAL["win"] is None:
         dlg = Gtk.Window(type=Gtk.WindowType.TOPLEVEL)
         dlg.set_transient_for(win)
-        dlg.set_modal(True)
+        # No modal: un clic en la app (la ventana pierde el foco) la cierra, igual que Esc.
+        dlg.set_modal(False)
         dlg.set_decorated(False)
         dlg.get_style_context().add_class("mosaic-zoom")
         wv2 = WebKit2.WebView.new_with_user_content_manager(ucm)   # mismo puente «centro»
@@ -7143,6 +7144,7 @@ def open_analytics_modal(*_):
         dlg.connect("key-press-event",
                     lambda _w, ev: (dlg.hide(), True)[1] if ev.keyval == Gdk.KEY_Escape else False)
         dlg.connect("delete-event", lambda *_: (dlg.hide(), True)[1])
+        dlg.connect("focus-out-event", lambda *_: (dlg.hide(), False)[1])
         _ANMODAL.update(win=dlg, wv=wv2)
     w, h = win.get_size()
     _ANMODAL["win"].set_default_size(min(1180, max(640, w - 120)), min(940, max(480, h - 90)))

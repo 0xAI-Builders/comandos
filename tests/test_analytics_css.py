@@ -33,4 +33,4 @@ def test_phone_keeps_the_mockup_phone_frame():
     css = Path("dash/analytics.css").read_text()
     assert ".an.phone{max-width:390px;padding:14px 12px 20px}" in css
     html = Path("dash/index.html").read_text()
-    assert "@media (max-width:600px){#usage,html[data-only-panel=\"usage\"] body.only-panel #usage{padding:0!important}}" in html
+    assert "@media (max-width:600px){html[data-only-panel=\"usage\"] body.only-panel #usage{padding:0!important}}" in html

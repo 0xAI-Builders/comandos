@@ -2,6 +2,7 @@
 import importlib.util
 import json
 import sqlite3
+import time
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -174,3 +175,36 @@ def test_quota_snapshots_keep_the_last_reading_of_each_cycle(tmp_path):
     cc_usage.record_quota_snapshots(db, [{**row, "id": "x", "window": "", "percent": 5.0, "resets_at": 1}, {**row, "percent": None, "resets_at": 9}])
     assert cc_usage.quota_snapshots(db) == [
         {"provider": "claude", "account": "relotto", "window": "7d", "scope": "", "resets_at": 1791014400, "percent": 91.0}]
+
+
+def _turn(id_, account, source="claude_jsonl", provider="claude"):
+    return {"id": id_, "provider": provider, "agent": provider, "tmux_session": "", "tmux_pane": "", "pane_pwd": "/x/P",
+            "git_root": "/x/P", "turn_started_at": int(time.time()) - 60, "turn_finished_at": int(time.time()),
+            "total_tokens": 10, "harness_account": account, "motor_account": account, "source": source, "confidence": "local"}
+
+
+def test_legacy_rows_of_a_db_already_at_v11_are_dropped(tmp_path):
+    # La base real ya estaba en v11 cuando el cc-dash viejo seguía importando: la migración no corre otra vez.
+    db = tmp_path / "u.sqlite"
+    cc_usage.record_turns(db, [_turn("uuid-old", "unknown"), _turn("codex-thread-1", "unknown", "codex_state_db", "codex"),
+                               _turn("claude-jsonl-m:r", "main"), _turn("codex-resp-1", "main", "codex_rollout", "codex")])
+    cc_usage.prune_old_turns(db, max_age_days=21)
+    with cc_usage.connect(db) as con:
+        assert {r[0] for r in con.execute("select id from usage_turns")} == {"claude-jsonl-m:r", "codex-resp-1"}
+
+
+def test_a_conversation_copied_to_another_account_keeps_its_past_where_it_was(tmp_path):
+    # «Cuenta» copia el transcript a la otra cuenta: las respuestas viejas aparecen en las dos carpetas.
+    db = tmp_path / "u.sqlite"
+    cc_usage.record_turns(db, [_turn("claude-jsonl-a:1", "main")])
+    cc_usage.record_turns(db, [_turn("claude-jsonl-a:1", "relotto")])
+    cc_usage.record_turns(db, [_turn("hook-1", "unknown", "hook")])
+    cc_usage.record_turns(db, [_turn("hook-1", "relotto", "hook")])
+    span = {"id": "claude-turn-u", "provider": "claude", "account": "main", "session_id": "s", "git_root": "/x/P",
+            "started_at": 1.0, "finished_at": 2.0, "source": "claude_jsonl"}
+    cc_usage.record_spans(db, [span])
+    cc_usage.record_spans(db, [{**span, "account": "relotto", "finished_at": 3.0}])
+    with cc_usage.connect(db) as con:
+        acc = dict(con.execute("select id, harness_account from usage_turns"))
+        assert acc == {"claude-jsonl-a:1": "main", "hook-1": "relotto"}
+        assert [tuple(r) for r in con.execute("select account, finished_at from usage_spans")] == [("main", 3.0)]
