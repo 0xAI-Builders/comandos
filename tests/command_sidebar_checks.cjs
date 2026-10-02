@@ -240,12 +240,13 @@ const catalog = JSON.parse(fs.readFileSync(process.cwd() + '/tests/fixtures/comm
     assert.equal(rootP.querySelector('.cs-sheet').hidden, false);
     assert.equal(rootP.getAttribute('data-panel'), 'cmds'); assert.equal(rootP.classList.contains('sheet-open'), true);
     assert.equal(rootP.querySelector('.cs-tools [data-sheet="cmds"]').getAttribute('aria-pressed'), 'true');
-    assert.equal(rootP.querySelector('[data-sheet-tab="cmds"]').classList.contains('on'), true);
+    assert.equal(rootP.querySelector('.cs-head .sh-t').textContent, 'Comandos del pane');
+    assert.equal(rootP.querySelector('[data-sheet-tab]'), null);   // la fila de la barra hace de pestañas
     assert.equal(mP.at(-1).cmds.open, true); assert.equal(mP.at(-1).cmds.sheet, 'cmds');
-    rootP.click('[data-sheet-tab="chains"]');                       // pestañas dentro del panel
+    rootP.click('.cs-tools [data-sheet="chains"]');                 // otra pestaña: cambia sin cerrar
     assert.equal(rootP.getAttribute('data-panel'), 'chains');
     rootP.click('.cs-chains[data-open-builder]'); assert.deepEqual(hits, ['builder']);
-    rootP.click('[data-sheet-tab="srv"]'); assert.deepEqual(srv, ['in']);   // la fila SSH se muda al panel
+    rootP.click('.cs-tools [data-sheet="srv"]'); assert.deepEqual(srv, ['in']);   // la fila SSH se muda al panel
     rootP.click('.cs-tools [data-sheet="srv"]');                     // otro clic en su botón lo cierra
     assert.equal(rootP.querySelector('.cs-sheet').hidden, true); assert.deepEqual(srv, ['in', 'out']);
     rootP.click('.cs-tools [data-sheet="chains"]'); rootP.click('[data-sheet-close]');

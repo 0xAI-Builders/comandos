@@ -334,9 +334,8 @@
         + (k === 'chains' ? '<small class="n"></small>' : '') + '</button>').join('') + '</div>';
     }
     function headHTML() {
-      return `<div class="cs-head"><div class="sh-h"><div class="seg" role="tablist">`
-        + SHEETS.map(([k, l]) => `<button type="button" data-flat role="tab" data-sheet-tab="${k}">${sheetIcon(k)}${l}</button>`).join('')
-        + `</div><button type="button" data-flat class="cls" data-sheet-close title="Cerrar (Esc)">Cerrar <kbd>Esc</kbd></button></div>`
+      return `<div class="cs-head"><div class="sh-h"><span class="sh-t"></span>`
+        + `<button type="button" data-flat class="cls" data-sheet-close title="Cerrar (Esc)">Cerrar <kbd>Esc</kbd></button></div>`
         + `<div class="cs-dest">destino: <span class="cs-target">${esc(targetTitle())}</span><span class="cs-pill">${catalogPill()}</span></div>`
         + `<div class="search">${ic('lens')}<input class="cs-search" type="search" placeholder="Buscar en todos los CLI…" value="${esc(state.q)}"></div></div>`;
     }
@@ -551,10 +550,8 @@
         const on = b.dataset.sheet === cur;
         try { b.classList.toggle('on', on); b.setAttribute('aria-pressed', on ? 'true' : 'false'); } catch (_) {}
       }
-      for (const b of el.querySelectorAll('[data-sheet-tab]')) {
-        const on = b.dataset.sheetTab === cur;
-        try { b.classList.toggle('on', on); b.setAttribute('aria-selected', on ? 'true' : 'false'); } catch (_) {}
-      }
+      const ttl = el.querySelector('.cs-head .sh-t');
+      if (ttl) ttl.textContent = ({ cmds: 'Comandos del pane', chains: 'Cadenas guardadas', srv: 'Servidores SSH' })[cur] || '';
       const cnt = el.querySelector('.cs-tools .n');
       if (cnt) cnt.textContent = state.chains.length ? String(state.chains.length) : '';
       const sheet = el.querySelector('.cs-sheet');
@@ -595,7 +592,6 @@
       if (t.closest('[data-run-stop]')) return void stop();
       if (t.closest('[data-open-builder]')) return void openBuilder();
       if ((n = t.closest('[data-sheet]'))) return void setSheet(state.sheet === n.dataset.sheet ? '' : n.dataset.sheet);
-      if ((n = t.closest('[data-sheet-tab]'))) return void setSheet(n.dataset.sheetTab);
       if (t.closest('[data-sheet-close]')) return void setSheet('');
       if ((n = t.closest('[data-term-act]'))) return void termAction(n.dataset.termAct);
       if ((n = t.closest('[data-close-term]'))) return void closeTerm(n.dataset.closeTerm);

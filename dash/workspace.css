@@ -690,25 +690,29 @@ header.hdr-ordered .hdr-primary{margin-left:0}
 header.hdr-ordered .counts{display:flex!important;flex:none;align-items:center;gap:6px;flex-wrap:wrap;min-width:0;max-width:100%}
 header.hdr-ordered .cnt-short{display:none}
 header.hdr-ordered :is(#btn-switch,#btn-snippets){display:inline-flex!important}
-/* Columna izquierda (escritorio y remoto partido) = «Barra de herramientas» (grill 1-oct,
-   diseño 1): una sola fila de teclas — Analytics · Remoto · Resúmenes · Avisos, y a la
-   derecha Pomodoro, reloj y Ajustes. Sin ☰, contadores, Buscar ni Snippets (siguen por
-   atajo: Ctrl+K, Ctrl+Shift+K); Terminal, Nueva sesión y Ordenar viven a la DERECHA de la
-   barra de pestañas. Servidores pasa a la fila de la barra de comandos (pestaña del panel). */
+/* Columna izquierda = «Barra de herramientas» (grill 1-oct, diseño 1), igual en escritorio,
+   tablet y celular: una sola fila de teclas — Analytics · Remoto · Resúmenes · Avisos, y a
+   la derecha Pomodoro, reloj y Ajustes. Sin contadores. Servidores pasa a la fila de la
+   barra de comandos (pestaña de su panel). Escritorio y remoto partido no llevan ☰, Buscar,
+   Snippets, Terminal ni Nueva sesión (atajos Ctrl+K, Ctrl+Shift+K; Terminal y Nueva sesión
+   a la derecha de la barra de pestañas). En celular y tablet vertical, sin teclado ni esa
+   barra, esas cinco quedan como teclas al inicio de la fila (control de entrada). */
 :root{--hdr-tool:34px}
-:is(body.inapp,body.app.split) header.hdr-ordered{display:flex;flex-wrap:wrap;align-items:center;gap:4px;padding:6px 8px;border-bottom:1px solid var(--line)}
-:is(body.inapp,body.app.split) header.hdr-ordered .hdr-right,:is(body.inapp,body.app.split) header.hdr-ordered .hdr-primary{display:contents}
+:is(body.inapp,body.app) header.hdr-ordered{display:flex;flex-wrap:nowrap;align-items:center;gap:4px;padding:6px 8px;border-bottom:1px solid var(--line);min-width:0}
+:is(body.inapp,body.app) header.hdr-ordered .hdr-right,:is(body.inapp,body.app) header.hdr-ordered .hdr-primary{display:contents}
+:is(body.inapp,body.app) header.hdr-ordered :is(.counts,#btn-servers){display:none!important}
 :is(body.inapp,body.app.split) header.hdr-ordered :is(#btn-menu,.counts,#btn-terminal,#btn-newsess,#btn-switch,#btn-snippets,#btn-servers){display:none!important}
-:is(body.inapp,body.app.split) header.hdr-ordered .hdr-btn{width:var(--hdr-tool);min-width:var(--hdr-tool);height:var(--hdr-tool);padding:0;flex:none}
-:is(body.inapp,body.app.split) header.hdr-ordered #btn-pomo{margin-left:auto;width:auto;padding:0 8px;order:1}
-:is(body.inapp,body.app.split) header.hdr-ordered #btn-pomo .pomo-mini{font-size:10px;margin-left:5px}
-:is(body.inapp,body.app.split) header.hdr-ordered #clock{order:2;font:600 12px/1 var(--mono);letter-spacing:.3px;color:var(--dim);padding:0 4px;font-variant-numeric:tabular-nums}
-:is(body.inapp,body.app.split) header.hdr-ordered #btn-settings{order:3}
-:is(body.inapp,body.app.split) header.hdr-ordered :is(#notif-panel,#pomo-panel){order:4;flex:1 0 100%}
-/* Columna angosta: el Pomodoro solo con su icono y, si aún no cabe, la fila se parte en dos. */
-@container sidebar (max-width:330px){
-  :is(body.inapp,body.app.split) header.hdr-ordered #btn-pomo .pomo-mini{display:none}
-  :is(body.inapp,body.app.split) header.hdr-ordered #btn-pomo{width:var(--hdr-tool);padding:0}
+body.app:not(.split):not(.inapp) header.hdr-ordered{flex-wrap:wrap}
+:is(body.inapp,body.app) header.hdr-ordered .hdr-btn{flex:0 1 var(--hdr-tool);width:var(--hdr-tool);min-width:28px;height:var(--hdr-tool);padding:0}
+:is(body.inapp,body.app) header.hdr-ordered #btn-pomo{margin-left:auto;flex:0 0 auto;width:auto;padding:0 8px;order:1}
+:is(body.inapp,body.app) header.hdr-ordered #btn-pomo .pomo-mini{font-size:10px;margin-left:5px}
+:is(body.inapp,body.app) header.hdr-ordered #clock{order:2;flex:none;font:600 12px/1 var(--mono);letter-spacing:.3px;color:var(--dim);padding:0 2px;font-variant-numeric:tabular-nums}
+:is(body.inapp,body.app) header.hdr-ordered #btn-settings{order:3}
+/* Columna angosta: el Pomodoro solo con su icono; las teclas se encogen antes de partir la fila. */
+@container sidebar (max-width:340px){
+  :is(body.inapp,body.app) header.hdr-ordered{gap:3px;padding:6px}
+  :is(body.inapp,body.app) header.hdr-ordered #btn-pomo .pomo-mini{display:none}
+  :is(body.inapp,body.app) header.hdr-ordered #btn-pomo{flex:0 1 var(--hdr-tool);width:var(--hdr-tool);padding:0}
 }
 #servers-panel{flex:none;width:100%;max-width:1360px;margin:0 auto;box-sizing:border-box;padding-top:8px;border-bottom:1px solid var(--line)}
 @container sidebar (max-width:760px){#view-panel #servers-panel #ssh-bar{padding-left:12px;padding-right:12px}}
@@ -873,20 +877,19 @@ body.ws-dragging #command-sidebar .sb-term{pointer-events:none}
    panel flota encima de la terminal, que siempre se queda con la columna. */
 #command-sidebar{position:relative}
 #command-sidebar .cs-tools{order:0;flex:none;display:flex;gap:4px;padding:6px 8px;border-bottom:1px solid var(--cs-line);background:var(--cs-panel2);min-width:0}
-#command-sidebar .cs-tools button[data-flat].tb{flex:1 1 0;min-width:0;min-height:0;height:30px;padding:0 8px;display:flex;align-items:center;justify-content:center;gap:6px;border-radius:8px;border:1px solid transparent;background:transparent;color:var(--cs-dim);font-size:12px;font-weight:600}
+#command-sidebar .cs-tools button[data-flat].tb{flex:1 1 auto;min-width:0;min-height:0;height:30px;padding:0 6px;display:flex;align-items:center;justify-content:center;gap:6px;border-radius:8px;border:1px solid transparent;background:transparent;color:var(--cs-dim);font-size:12px;font-weight:600}
 #command-sidebar .cs-tools button[data-flat].tb:hover{color:var(--cs-text);background:var(--cs-hover)}
 #command-sidebar .cs-tools button[data-flat].tb.on{color:var(--cs-brand);border-color:color-mix(in srgb,var(--cs-brand) 45%,var(--cs-line));background:color-mix(in srgb,var(--cs-brand) 11%,var(--cs-panel))}
 #command-sidebar .cs-tools .tb .lb{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 #command-sidebar .cs-tools .tb .n{font:400 10px/1 var(--mono);color:var(--cs-dim)}
 #command-sidebar .cs-tools .tb .n:empty{display:none}
-#command-sidebar .cs-tools .tb .sic,#command-sidebar .cs-head .seg .sic{display:inline-flex;flex:none}
-@container sidebar (max-width:250px){#command-sidebar .cs-tools .tb .lb{display:none}}
+#command-sidebar .cs-tools .tb .sic{display:inline-flex;flex:none}
+@container sidebar (max-width:230px){#command-sidebar .cs-tools .tb .lb{display:none}}
 #command-sidebar .cs-sheet{position:absolute;left:0;right:0;top:var(--cs-tools-h,43px);bottom:0;z-index:6;flex:none!important;background:var(--cs-panel2);box-shadow:0 18px 40px #0009;border-top:1px solid var(--cs-line)}
 #command-sidebar .cs-head .sh-h{display:flex;align-items:center;gap:8px;padding:10px 10px 8px;min-width:0}
-#command-sidebar .cs-head .seg{display:flex;min-width:0;background:var(--cs-deep);border:1px solid var(--cs-line);border-radius:999px;padding:2px}
-#command-sidebar .cs-head .seg button[data-flat]{min-height:0;height:26px;padding:0 10px;display:flex;align-items:center;gap:5px;border:0;border-radius:999px;background:transparent;color:var(--cs-dim);font-size:12px;font-weight:600;white-space:nowrap}
-#command-sidebar .cs-head .seg button[data-flat].on{background:var(--cs-panel);color:var(--cs-text);box-shadow:inset 0 0 0 1px var(--cs-line)}
-#command-sidebar .cs-head button[data-flat].cls{margin-left:auto;min-height:0;height:26px;padding:0 6px;display:flex;align-items:center;gap:6px;border:0;background:transparent;color:var(--cs-dim);font-size:11px;white-space:nowrap}
+#command-sidebar .cs-head .sh-t{flex:1;min-width:0;font:700 10px/1 var(--mono);letter-spacing:.12em;text-transform:uppercase;color:var(--cs-dim);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#command-sidebar .cs-head button[data-flat].cls{flex:none;min-height:0;height:26px;padding:0 6px;display:flex;align-items:center;gap:6px;border:0;background:transparent;color:var(--cs-dim);font-size:11px;white-space:nowrap}
+#command-sidebar .cs-head button[data-flat].cls:hover{color:var(--cs-text)}
 #command-sidebar .cs-head .cls kbd{font:10px/1.4 var(--mono);border:1px solid var(--cs-line);border-radius:4px;padding:0 4px}
 #command-sidebar .cs-dest{display:flex;align-items:center;gap:8px;padding:0 12px 8px;font-size:11px;color:var(--cs-dim);min-width:0}
 #command-sidebar .cs-dest .cs-target{color:var(--cs-text);font-weight:600;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
