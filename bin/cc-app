@@ -133,34 +133,34 @@ PAL_UBUNTU = [  # Ptyxis "Ubuntu" (Tango): la terminal por defecto de Ubuntu 25.
 THEMES = {
     "noche": dict(fg="#EAF0FB", bg="#0A0D13", cursor="#FFAE1A", pal=PALETTE,
                   bar="#0D1119", dim="#9AA6BF", text="#EAF0FB", brand="#8B7CFF",
-                  line="#222A3A", line2="#2E3852", faint="#5E6980"),
+                  line="#222A3A", line2="#2E3852", faint="#5E6980", panel="#121722", panel2="#161C29"),
     "dia": dict(fg="#17202B", bg="#BCC7D4", cursor="#1D55C7", pal=PAL_DIA,
                 bar="#AEBAC8", dim="#3E4D61", text="#17202B", brand="#1D55C7",
-                line="#98A6B6", line2="#687A90", faint="#5E7087"),
+                line="#98A6B6", line2="#687A90", faint="#5E7087", panel="#F1F4F7", panel2="#DDE4EB"),
     "calido": dict(fg="#F2E5D0", bg="#161009", cursor="#FFB454", pal=PAL_CALIDO,
                    bar="#1D150D", dim="#BCA98C", text="#F2E5D0", brand="#E0A458",
-                   line="#36291A", line2="#4A3823", faint="#8A7A5F"),
+                   line="#36291A", line2="#4A3823", faint="#8A7A5F", panel="#1F1811", panel2="#261D14"),
     # Termius: dark blue con acento verde. Chrome ligeramente más oscuro que
     # el bg del terminal para dar profundidad al layout de paneles.
     "termius": dict(fg="#D6E0EA", bg="#0E1620", cursor="#FFAE1A", pal=PALETTE,
                     bar="#0A121B", dim="#8FA0B4", text="#D6E0EA", brand="#4CE07A",
-                    line="#1C2733", line2="#25384F", faint="#5C6B80"),
+                    line="#1C2733", line2="#25384F", faint="#5C6B80", panel="#141E2A", panel2="#182432"),
     "bruno": dict(fg="#CCCCCC", bg="#1A1A1A", cursor="#E4AE49", pal=PAL_BRUNO,
                   bar="#222224", dim="#AAAAAA", text="#CCCCCC", brand="#E4AE49",
-                  line="#333333", line2="#444444", faint="#999999"),
+                  line="#333333", line2="#444444", faint="#999999", panel="#222224", panel2="#26292B"),
     "superglass": dict(fg="#F2F5FF", bg="#080B19", cursor="#72E6FF", pal=PALETTE,
                        bar="#11152C", dim="#B7C3E8", text="#F2F5FF", brand="#72E6FF",
-                       line="#34416C", line2="#53679A", faint="#8291BD"),
+                       line="#34416C", line2="#53679A", faint="#8291BD", panel="#171B36", panel2="#202749"),
     "neon": dict(fg="#F7F7FC", bg="#07080D", cursor="#28E7F2", pal=PALETTE,
                  bar="#0D0F16", dim="#B7B8CA", text="#F7F7FC", brand="#28E7F2",
-                 line="#33384B", line2="#596079", faint="#85879F"),
+                 line="#33384B", line2="#596079", faint="#85879F", panel="#11131B", panel2="#181B27"),
     "contraste": dict(fg="#FFFFFF", bg="#000000", cursor="#59B0FF", pal=PALETTE,
                       bar="#000000", dim="#E0E0E0", text="#FFFFFF", brand="#59B0FF",
-                      line="#8A8A8A", line2="#FFFFFF", faint="#B8B8B8"),
+                      line="#8A8A8A", line2="#FFFFFF", faint="#B8B8B8", panel="#0B0B0B", panel2="#171717"),
     # Ubuntu Terminal: berenjena de Ptyxis + Tango + naranja Ubuntu como marca.
     "ubuntu": dict(fg="#FFFFFF", bg="#300A24", cursor="#FFFFFF", pal=PAL_UBUNTU,
                    bar="#2C0A22", dim="#E8DCE4", text="#FFFFFF", brand="#E95420",
-                   line="#5C2A4F", line2="#7A4069", faint="#BBA5B5"),
+                   line="#5C2A4F", line2="#7A4069", faint="#BBA5B5", panel="#3C1531", panel2="#48193C"),
 }
 FONT_FAMILY = "Ubuntu Sans Mono,JetBrainsMono Nerd Font Mono,JetBrainsMono Nerd Font,JetBrainsMono NF,JetBrains Mono,Cascadia Code,Fira Code,DejaVu Sans Mono,Monospace"
 FONT_SIZE = 13
@@ -1452,7 +1452,7 @@ def _build_hb_css():
     b".pane-card{border:0;border-radius:9px 9px 0 0;box-shadow:none;padding:0 12px;min-height:0;}"
     b".pane-card{background-color:mix(" + THEME.get("bar", THEME["bg"]).encode() + b"," + THEME.get("line2", THEME["line"]).encode() + b",0.35);}"
     b".pane-card label,.pane-card-keys label{font-family:'Inter',sans-serif;font-size:11px;}"
-    b".pane-card separator{background:" + THEME["line"].encode() + b";min-width:1px;margin:8px 0;}"
+    b".pane-card separator{background:" + THEME.get("line2", THEME["line"]).encode() + b";min-width:1px;min-height:14px;margin:0;}"
     b".pp-logo{min-width:18px;min-height:18px;border-radius:5px;padding:0;}"
     b".pane-pill label{color:" + THEME["fg"].encode() + b"; font-size:11px;"
     b" background:transparent;}"
@@ -1468,6 +1468,7 @@ def _build_hb_css():
     b".pane-card .pill-btn label,.pane-card-keys .pill-btn label{font-size:11px;font-weight:600;color:" + THEME.get("dim", "#8a98ab").encode() + b";}"
     b".pane-card .pill-btn:hover label,.pane-card-keys .pill-btn:hover label{color:" + THEME["fg"].encode() + b";}"
     b".pp-logo{min-width:14px;min-height:14px;border-radius:4px;}"
+    b".pane-card .pp-logo-glyph,.pp-logo-glyph{color:#ffffff;font-family:'Inter',sans-serif;font-size:9px;font-weight:800;padding:0 2px;}"
     b".pill-btn:hover{border-color:" + THEME["fg"].encode() + b";"
     b" background:rgba(148,148,148,0.28);}"
     b"window,window.background,window.solid-csd,window.csd{"
@@ -1548,33 +1549,35 @@ def _build_hb_css():
     b"headerbar.cc-headerbar button.cc-close-btn:active{"
     b" background:#C42030;"
     b"}"
-    # ---- Popups (Gtk.Menu) ----
-    # Por default Adwaita los pinta blanco; los llevamos al look del tema.
+    # ---- Popups (Gtk.Menu) = el menú web (.tab-sort-menu / .wm-menu), 1-oct ----
+    # Un solo menú en escritorio y remoto: fondo --panel, borde --line2, 12 px de
+    # esquina, Inter 13 px (Fuentes D; antes la mono de terminal), opciones en --text y
+    # --panel2 al pasar. Los colores salen de los mismos tokens que la web.
     b"menu,menu.background,.menu,.context-menu{"
-    b" background:" + THEME["bar"].encode() + b";"
+    b" background:" + THEME.get("panel", THEME["bar"]).encode() + b";"
     b" background-image:none;"
-    b" border:1px solid " + THEME["line"].encode() + b";"
-    b" border-radius:8px;"
-    b" padding:5px;"
-    b" box-shadow:0 8px 24px rgba(0,0,0,.35);"
+    b" border:1px solid " + THEME.get("line2", THEME["line"]).encode() + b";"
+    b" border-radius:12px;"
+    b" padding:6px;"
+    b" box-shadow:0 18px 40px rgba(0,0,0,.7);"
     b" color:" + THEME["text"].encode() + b";"
-    b" font-family:'JetBrainsMono Nerd Font Mono',monospace;"
+    b" font-family:'Inter',sans-serif;"
     b" font-size:13px;"
     b"}"
     b"menu menuitem,.menu menuitem,.context-menu menuitem{"
     b" background:transparent;background-image:none;"
-    b" color:" + THEME["dim"].encode() + b";"
-    b" padding:6px 12px;border-radius:5px;"
+    b" color:" + THEME["text"].encode() + b";"
+    b" padding:8px 10px;min-height:18px;border-radius:8px;"
     b" text-shadow:none;-gtk-icon-shadow:none;"
     b"}"
     b"menu menuitem:hover,menu menuitem:selected,"
     b".menu menuitem:hover,.context-menu menuitem:hover{"
-    b" background:" + THEME["line"].encode() + b";"
+    b" background:" + THEME.get("panel2", THEME["line"]).encode() + b";"
     b" color:" + THEME["text"].encode() + b";"
     b"}"
     b"menu separator,.menu separator{"
     b" background:" + THEME["line"].encode() + b";"
-    b" min-height:1px;margin:4px 2px;"
+    b" min-height:1px;margin:4px 6px;"
     b"}"
     # ---- Modales embebidos en Gtk.Overlay (snippets, switcher, help, etc) ----
     # Backdrop transparente que oscurece la app detras del panel.
@@ -5084,9 +5087,17 @@ def _card_button(icon, text, tooltip, on_click):
 _BADGE_CSS = {}
 
 
+# Logo del motor = prototipo de la cabecera B y dash/term.html (LOGO): letra blanca
+# sobre el color de la marca. Antes el escritorio usaba _PV_HEX (Claude lila) con un
+# icono SVG y no coincidía con el remoto ni con el prototipo («A» naranja).
+MOTOR_LOGO = {"claude": ("A", "#d97757"), "codex": ("O", "#10a37f"), "grok": ("G", "#fb923c"),
+              "opencode": ("OC", "#f0abfc"), "gemini": ("G", "#4285f4"), "agy": ("AG", "#93c5fd"),
+              "acp": ("AC", "#67e8f9")}
+
+
 def _motor_badge(motor):
-    """Cuadrito de color del motor con su glifo en blanco (prototipo: «A» naranja)."""
-    color = _PV_HEX.get(motor, "#56627a")
+    """Cuadrito de color del motor con su letra en blanco (prototipo: «A» naranja)."""
+    letter, color = MOTOR_LOGO.get(motor, ((motor or "?")[:2].upper(), "#56627a"))
     badge = Gtk.EventBox()
     badge.get_style_context().add_class("pp-logo")
     if motor not in _BADGE_CSS:
@@ -5095,7 +5106,11 @@ def _motor_badge(motor):
         Gtk.StyleContext.add_provider_for_screen(Gdk.Screen.get_default(), prov, Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION)
         _BADGE_CSS[motor] = prov
     badge.get_style_context().add_class(f"pp-logo-{motor}")
-    badge.add(_svg_image(_PV_ICON.get(motor, "layers"), 12, "#ffffff"))
+    glyph = Gtk.Label(label=letter)
+    glyph.get_style_context().add_class("pp-logo-glyph")
+    glyph.set_halign(Gtk.Align.CENTER)
+    glyph.set_valign(Gtk.Align.CENTER)
+    badge.add(glyph)
     badge.set_valign(Gtk.Align.CENTER)
     return badge
 
@@ -5139,7 +5154,9 @@ def _pane_pill(sess, p, keys=True):
     name.set_ellipsize(Pango.EllipsizeMode.END)
     name.set_max_width_chars(18)
     pill.pack_start(name, False, False, 0)
-    pill.pack_start(Gtk.Separator(orientation=Gtk.Orientation.VERTICAL), False, False, 2)
+    sep = Gtk.Separator(orientation=Gtk.Orientation.VERTICAL)
+    sep.set_valign(Gtk.Align.CENTER)            # 1×14 px como .pc-sep del remoto y el prototipo B
+    pill.pack_start(sep, False, False, 0)
     if motor != harness and harness in _PV_ICON:
         pill.pack_start(_svg_image(_PV_ICON[harness], 12, dim), False, False, 0)
     pill.pack_start(_motor_badge(motor), False, False, 0)
@@ -5178,14 +5195,14 @@ def _pane_pill(sess, p, keys=True):
 def _pane_card_keys(sess, p, harness):
     """«⚙ IA» y «✨ MCPs · Skills» de la Tarjeta."""
     pane = p.get("pane") or ""
-    return [_card_button("settings", "IA",
+    return [_card_button("ia-gear", "IA",
                          "Cambiar motor / modelo / cuenta de ESTE pane" if ES else "Switch this pane's motor/model/account",
                          lambda *_, s=sess, pn=pane: _dash_js(f"openMotorFor({json.dumps(s)},{json.dumps(pn)})")),
             _extension_pill(sess, pane, harness)]
 
 
 def _extension_pill(sess, pane, harness=""):
-    return _card_button("sparkles", "MCPs · Skills", "Extensiones de este panel" if ES else "This pane's extensions",
+    return _card_button("ia-spark", "MCPs · Skills", "Extensiones de este panel" if ES else "This pane's extensions",
                         lambda *_: _open_extension_shelf(sess, pane, harness))
 
 

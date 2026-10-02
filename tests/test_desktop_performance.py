@@ -103,7 +103,7 @@ def model_ui():
           'tab_indicator_display': lambda mark, state: ('ai:idle', None, False),
           '_set_indicator_frame': lambda image, icon, color, frame: None,
           'THEME': {'fg': '#eee', 'dim': '#aaa', 'brand': '#abc'},
-          '_PV_ICON': {'codex': 'openai'}, '_PV_HEX': {'codex': '#aaa'},
+          '_PV_ICON': {'codex': 'openai'}, '_PV_HEX': {'codex': '#aaa'}, 'MOTOR_LOGO': {'codex': ('O', '#10a37f')},
           '_STATE_UI': {'verified': ('green', 'v'), 'detecting': ('gray', '?'),
                         'changing': ('yellow', '>')}, '_esc': str, 'ES': False}
     load({'_refresh_tab_models', '_place_pills', '_visible_boxes', '_box_focused', '_pane_frames', '_shell_pill_xy', '_gutter_at', '_sync_grips', '_grip_rect', '_card_rect', '_reposition_pills', '_pane_pill', '_pane_card_keys', '_card_button', '_pane_card_ai', '_motor_badge', '_shell_pill',
@@ -120,14 +120,14 @@ def model_ui():
 def test_unchanged_models_and_identical_allocations_do_not_redraw():
     ui = model_ui()
     ui.refresh()
-    assert ui.counts['svg'] == 3  # three icons in the active card (motor badge, «IA», «MCPs · Skills»); tabs carry no logo.
+    assert ui.counts['svg'] == 2  # two icons in the active card («IA», «MCPs · Skills»); the motor badge is a letter (prototype B), tabs carry no logo.
     for _ in range(9):
         ui.stamp[0] += 1  # cc-dash replaces the file even when its payload is unchanged.
         callback = ui.current._term.signals.get('size-allocate')
         if callback:
             callback(ui.current._term, NS(width=1200, height=800))
         ui.refresh()
-    assert ui.counts['svg'] == 3
+    assert ui.counts['svg'] == 2
     assert ui.current._pill_overlay.calls['add_overlay'] == 2  # the mouse-transparent card + its two keys
     assert sum(label._model.calls['set_text'] for label in ui.labels.values()
                if hasattr(label, '_model')) == 19
@@ -170,10 +170,10 @@ def test_dim_theme_change_updates_tab_icons_without_rebuilding_fixed_color_pills
     pill = ui.current._pills[0]
     ui.ns['THEME']['dim'] = '#777'
     ui.refresh()
-    assert ui.counts['svg'] == 3  # the tabs have no dim-colored logo to repaint (prototype: semáforo + name + model).
+    assert ui.counts['svg'] == 2  # the tabs have no dim-colored logo to repaint (prototype: semáforo + name + model).
     assert ui.current._pills[0] is pill  # _pane_pill uses a fixed #8A8F98 for dim.
     ui.refresh()
-    assert ui.counts['svg'] == 3
+    assert ui.counts['svg'] == 2
 
 
 def poll_ui(iterations=20, fail_notifications=False):

@@ -203,12 +203,12 @@ def test_desktop_pane_card_has_no_yes_no_and_shows_semaforo_session_model_and_bu
     src = SOURCE.split('def _pane_pill(sess, p, keys=True):')[1].split('\ndef ')[0]
     assert '_pane_card_ai(sess)' in src and 'getattr(box, "_label", None) or sess' in src, 'semáforo + tab name (not the tmux key) first'
     keys = SOURCE.split('def _pane_card_keys(sess, p, harness):')[1].split('\ndef ')[0]
-    assert '_card_button("settings", "IA"' in keys and '_extension_pill(sess' in keys
+    assert '_card_button("ia-gear", "IA"' in keys and '_extension_pill(sess' in keys
     place = SOURCE.split('def _place_pills(box, panes, geo=None):')[1].split('\ndef ')[0]
     assert 'ov.set_overlay_pass_through(pill, True)' in place, 'the card never blocks dragging the tmux border'
     assert 'add_class("pane-card")' in src
     ext = SOURCE.split('def _extension_pill(sess, pane, harness=""):')[1].split('\ndef ')[0]
-    assert '_card_button("sparkles", "MCPs · Skills"' in ext
+    assert '_card_button("ia-spark", "MCPs · Skills"' in ext
 
 
 class _Notebook:
@@ -398,3 +398,21 @@ def test_each_gutter_gets_its_own_input_strip_with_slack():
     sync = SOURCE.split('def _sync_grips(box):')[1].split('\ndef ')[0]
     assert 'set_visible_window(False)' in sync and 'eb._rect != rect' in sync
     assert SOURCE.count('_sync_grips(box)') >= 2
+
+
+def test_pane_header_matches_the_remote_and_prototype_b():
+    """1-oct (celular/tablet = escritorio): la cabecera de pane del escritorio usaba el
+    lila de _PV_HEX con un icono, un separador invisible (7 px en el color de línea) y
+    los iconos «settings/sparkles». Ahora es la del prototipo B y la de term.html."""
+    import re
+    src = SOURCE
+    term = Path("dash/term.html").read_text()
+    logo_js = {k: (l, c) for k, l, c in re.findall(r"(\w+): \['([A-Z]+)', '(#[0-9a-f]{6})'\]", term)}
+    ns = {}
+    exec(src[src.index("MOTOR_LOGO = {"):src.index("\n\n\ndef _motor_badge")], ns)
+    assert ns["MOTOR_LOGO"] == logo_js, "same letters and colours on desktop and remote"
+    assert ns["MOTOR_LOGO"]["claude"] == ("A", "#d97757")
+    for name, js in (("ia-gear", "gear"), ("ia-spark", "spark")):
+        path = re.search(r'<path d="([^"]+)"', Path(f"dash/icons/{name}.svg").read_text()).group(1)
+        assert path in term.split(f"{js}: '", 1)[1].split("'", 1)[0], f"{name}.svg = term.html ICON.{js}"
+    assert "min-width:1px;min-height:14px;margin:0;" in src and "sep.set_valign(Gtk.Align.CENTER)" in src

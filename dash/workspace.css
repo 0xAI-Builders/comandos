@@ -191,11 +191,12 @@ body.ws-dragging .termpane{pointer-events:none}
 .wm-paused .wm-ind *,.wm-ind.wm-offscreen *{animation-play-state:paused!important}
 @media (prefers-reduced-motion:reduce){.wm-ind *,.wm-item *{animation:none!important}
   .wm-draw{stroke-dasharray:none}}
-.wm-menu{position:fixed;z-index:1000;min-width:210px;padding:4px;border:1px solid var(--line);border-radius:10px;
-  background:var(--panel);color:var(--text);box-shadow:0 8px 24px rgba(0,0,0,.28)}
-.wm-item{display:flex;align-items:center;gap:10px;width:100%;min-height:44px;padding:0 12px;border:0;border-radius:7px;
+/* Un solo menú (1-oct): .wm-menu, .tab-sort-menu y el Gtk.Menu del escritorio comparten medidas y tokens. */
+.wm-menu{position:fixed;z-index:1000;min-width:210px;padding:6px;border:1px solid var(--line2);border-radius:12px;
+  background:var(--panel);color:var(--text);box-shadow:0 18px 40px #000b;font:13px var(--sans)}
+.wm-item{display:flex;align-items:center;gap:10px;width:100%;min-height:44px;padding:0 10px;border:0;border-radius:8px;
   background:transparent;color:inherit;font:inherit;text-align:left;cursor:pointer}
-.wm-item:hover,.wm-item:focus{background:color-mix(in srgb,var(--text) 9%,transparent)}
+.wm-item:hover,.wm-item:focus{background:var(--panel2)}
 .wm-item.on{font-weight:600}
 .wm-item.on::after{content:"";margin-left:auto;width:6px;height:6px;border-radius:50%;background:var(--brand)}
 .wm-sep{height:1px;margin:4px 6px;background:var(--line)}
@@ -797,8 +798,9 @@ button.wm-suggest{font:600 10px var(--sans);padding:2px 7px;border-radius:999px;
 .ws-tray.hl{transform:scale(1.1);border-style:solid;color:var(--text)}
 .ws-tray-frozen.hl{border-color:#60a5fa}.ws-tray-awaiting_reply.hl{border-color:#f5b83d}.ws-tray-resolved.hl{border-color:#4ade80}.ws-tray-none.hl{border-color:#f87171}
 @media (max-width:560px){.ws-tray{width:76px;height:62px;font-size:11px}.ws-trays{gap:6px;bottom:96px}}
-.tab-sort-menu{position:fixed;z-index:12050;min-width:220px;background:var(--panel);border:1px solid var(--line2);border-radius:12px;box-shadow:0 18px 40px #000b;padding:6px;display:flex;flex-direction:column}
-.tab-sort-menu button{text-align:left;padding:9px 10px;border-radius:8px;font-size:13px;color:var(--text)}
+.tab-sort-menu{position:fixed;z-index:12050;min-width:220px;background:var(--panel);border:1px solid var(--line2);border-radius:12px;box-shadow:0 18px 40px #000b;padding:6px;display:flex;flex-direction:column;font:13px var(--sans)}
+.tab-sort-menu button{display:flex;align-items:center;min-height:34px;text-align:left;padding:0 10px;border:0;border-radius:8px;background:transparent;font:inherit;color:var(--text);cursor:pointer}
+@media (pointer:coarse){.tab-sort-menu button{min-height:44px}}
 .tab-sort-menu button:hover{background:var(--panel2)}
 
 /* Barra de comandos: estilos portados 1:1 del mockup aprobado

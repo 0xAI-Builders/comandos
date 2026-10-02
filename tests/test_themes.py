@@ -225,7 +225,7 @@ def test_bruno_xterm_ansi_associations_and_native_palette_are_exact():
         "fg": "#CCCCCC", "bg": "#1A1A1A", "cursor": "#E4AE49", "pal": ANSI,
         "bar": "#222224", "dim": "#AAAAAA", "text": "#CCCCCC",
         "brand": "#E4AE49", "line": "#333333", "line2": "#444444",
-        "faint": "#999999",
+        "faint": "#999999", "panel": "#222224", "panel2": "#26292B",   # = --panel/--panel2 web (menús, 1-oct)
     }
 
 
@@ -581,3 +581,29 @@ def test_paste_dialog_action_buttons_use_terminal_theme_roles():
     assert "background:var(--term-panel2)" in rule.group(1)
     assert "border:1px solid var(--term-line2)" in rule.group(1)
     assert "color:var(--term-text)" in rule.group(1)
+
+
+def test_one_menu_on_desktop_and_remote():
+    """1-oct (celular/tablet = escritorio): el Gtk.Menu del escritorio (⇅, estado de
+    pestaña) y los menús web (.tab-sort-menu, .wm-menu) tienen las mismas medidas y
+    colores; los temas GTK llevan el mismo --panel/--panel2 que la web."""
+    import re
+    root = Path(__file__).resolve().parents[1]
+    app = (root / "bin" / "cc-app").read_text()
+    css = (root / "dash" / "workspace.css").read_text()
+    html = (root / "dash" / "index.html").read_text()
+    gtk = app[app.index("# ---- Popups (Gtk.Menu)"):app.index("# ---- Modales embebidos")]
+    for piece in ('THEME.get("panel", THEME["bar"])', 'border-radius:12px;', 'padding:6px;', "font-family:'Inter',sans-serif;",
+                  'THEME.get("line2", THEME["line"])', 'THEME.get("panel2", THEME["line"])', 'border-radius:8px;'):
+        assert piece in gtk, piece
+    assert "JetBrains" not in gtk
+    for sel in (".wm-menu{", ".tab-sort-menu{"):
+        rule = css.split(sel, 1)[1].split("}", 1)[0]
+        for piece in ("padding:6px", "border:1px solid var(--line2)", "border-radius:12px", "background:var(--panel)", "font:13px var(--sans)"):
+            assert piece in rule, (sel, piece)
+    a = app.index("THEMES = {")
+    for name, body in re.findall(r'"(\w+)": dict\(([^)]*)\)', app[a:app.index("\n}\n", a)]):
+        block = html.split(f':root[data-theme="{name}"]{{', 1)[1].split("}", 1)[0] if name != "noche" else html.split(":root{", 1)[1].split("}", 1)[0]
+        web = dict(re.findall(r"--(panel2?):\s*(#[0-9A-Fa-f]{6})", block))
+        assert re.search(r'panel="(#\w+)"', body).group(1) == web["panel"], name
+        assert re.search(r'panel2="(#\w+)"', body).group(1) == web["panel2"], name
