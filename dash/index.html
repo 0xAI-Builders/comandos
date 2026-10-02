@@ -1506,7 +1506,7 @@
 html[data-native-side-term] #command-sidebar .sec-terms{display:none}
 html[data-native-side-term] #command-sidebar .sec-cmds{flex:1 1 auto!important}
 </style>
-<link rel="stylesheet" href="/workspace.css?v=limites1">
+<link rel="stylesheet" href="/workspace.css?v=limites2">
 <link rel="stylesheet" href="/buttons.css?v=2">
 <link rel="stylesheet" href="analytics.css?v=an2">
 <script src="/session-config.js?v=7f3232b0a624"></script>
@@ -4813,14 +4813,22 @@ const CS_CLIS = new Set(["claude", "codex", "grok", "opencode", "agy"]);
 // Analytics (AnalyticsRender.shelf) con los mismos datos de /analytics/week. Se relee
 // cada minuto mientras se ve; el HTML solo se reemplaza cuando llega uno nuevo.
 const SB_LIMITS = {html: "", v: "", at: 0, job: null};
+// /analytics/week tarda segundos en frío: la última repisa (≤ 30 min) se pinta mientras llega la nueva
+try{
+  const c = JSON.parse(localStorage.getItem("cc-sb-limits") || "null");
+  if(c && c.html && Date.now() - c.at < 30 * 60000){ SB_LIMITS.html = c.html; SB_LIMITS.v = "cache"; }
+}catch(e){}
 function sidebarLimits(slot){
   if(!slot) return;
   if(SB_LIMITS.html){ if(slot.dataset.v !== SB_LIMITS.v){ slot.innerHTML = SB_LIMITS.html; slot.dataset.v = SB_LIMITS.v; } }
   else if(!slot.firstChild) slot.innerHTML = `<div class="wait">${tf("Leyendo el uso…", "Reading usage…")}</div>`;
-  if(SB_LIMITS.job || Date.now() - SB_LIMITS.at < 60000 || !window.AnalyticsRender) return;
+  if(SB_LIMITS.job || Date.now() - SB_LIMITS.at < 60000) return;
+  // la columna se pinta antes de que cargue analytics-render.js: se reintenta enseguida
+  if(!window.AnalyticsRender){ if(!SB_LIMITS.retry) SB_LIMITS.retry = setTimeout(() => { SB_LIMITS.retry = 0; sidebarLimits($("#command-sidebar .cs-limits")); }, 400); return; }
   SB_LIMITS.job = api("/analytics/week?offset=0").then(m => {
     SB_LIMITS.html = `<div class="an cs-an">${window.AnalyticsRender.create(m).shelf()}</div>`;
     SB_LIMITS.v = String(Date.now()); SB_LIMITS.at = Date.now();
+    try{ localStorage.setItem("cc-sb-limits", JSON.stringify({html: SB_LIMITS.html, at: SB_LIMITS.at})); }catch(e){}
     const s = $("#command-sidebar .cs-limits");
     if(s){ s.innerHTML = SB_LIMITS.html; s.dataset.v = SB_LIMITS.v; }
   }).catch(() => { SB_LIMITS.at = Date.now() - 45000; }).finally(() => { SB_LIMITS.job = null; });

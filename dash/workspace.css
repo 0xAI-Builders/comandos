@@ -907,12 +907,11 @@ body.ws-dragging #command-sidebar .sb-term{pointer-events:none}
 #command-sidebar .cs-an .bcol{gap:4px}
 #command-sidebar .cs-an .bcol svg{width:58px;height:auto}
 #command-sidebar .cs-an .bcap span,#command-sidebar .cs-an .bcap em{font-size:9.5px}
+#command-sidebar .cs-an .bcap em{white-space:normal;max-width:62px;line-height:1.25}   /* «reset en 15h 24m» en dos líneas: no se pega al de al lado */
 #command-sidebar .cs-an .bcap b{font-size:15px}
 #command-sidebar .cs-an .plaque{font-size:11.5px;padding:4px 10px 4px 5px}
 #command-sidebar .cs-an .bar-wood{margin:0 -6px}
-#command-sidebar .cs-an .bar-stats{grid-template-columns:1fr;gap:6px;margin-top:10px}
-#command-sidebar .cs-an .bar-stats b{font-size:12px}
-#command-sidebar .cs-an .bar-stats span:not(.dot){font-size:11px}
+#command-sidebar .cs-an .bar-stats{display:none}   /* horas de hoy/semana: siguen en Analytics; aquí solo los límites, sin scroll */
 #command-sidebar .sec-terms .cs-terms{cursor:default}
 /* cuerpo: tarjetas apiladas */
 #command-sidebar .cs-body{flex:1;min-height:0;overflow:auto;overscroll-behavior:contain;display:flex;flex-direction:column;gap:8px;padding:0 10px 10px;min-width:0}
