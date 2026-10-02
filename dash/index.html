@@ -1855,7 +1855,7 @@
 html[data-native-side-term] #command-sidebar .sec-terms{display:none}
 html[data-native-side-term] #command-sidebar .sec-cmds{flex:1 1 auto!important}
 </style>
-<link rel="stylesheet" href="/workspace.css?v=menus2">
+<link rel="stylesheet" href="/workspace.css?v=columna1">
 <link rel="stylesheet" href="/buttons.css?v=2">
 <link rel="stylesheet" href="/reparto.css?v=fuentesD">
 <script src="/session-config.js?v=7f3232b0a624"></script>
@@ -5462,9 +5462,20 @@ function setSplitLeft(px, save, bounds){
   const {min, max} = bounds || splitBounds();
   const v = Math.max(min, Math.min(max, Math.round(px)));
   panes.style.setProperty("--split-left", `${v}px`);
+  document.documentElement.style.setProperty("--split-left", `${v}px`);   // los .modal viven en <body>
   if(save) localStorage.setItem(SPLIT_KEY, String(v));
   return v;
 }
+// Lo que se abre DESDE la columna izquierda (Pomodoro, Ajustes y demás .modal) se queda en la
+// columna, como en el escritorio, donde el tablero web solo ocupa esa columna (1-oct).
+window.panelViewport = function(){
+  const b = document.body;
+  if(b.classList.contains("split") && !b.classList.contains("inapp") && !b.classList.contains("panel-hidden")){
+    const r = document.getElementById("view-panel")?.getBoundingClientRect();
+    if(r && r.width) return {left: r.left, width: r.width};
+  }
+  return {left: 0, width: window.innerWidth};
+};
 function restoreSplitLeft(){
   const raw = parseInt(localStorage.getItem(SPLIT_KEY) || "", 10);
   setSplitLeft(Number.isFinite(raw) ? raw : 380, false);
@@ -8059,7 +8070,7 @@ if("serviceWorker" in navigator)
 <script src="/workspace.js?v=5ef84088e7bd"></script>
 <script src="/work-marks.js?v=puntos1"></script>
 <script src="/ui-sounds.js"></script>
-<script src="/pomodoro.js?v=scroll1"></script>
+<script src="/pomodoro.js?v=columna1"></script>
 <script src="/vendor/markdown-it-15.0.2.umd.min.js"></script>
 <script src="/vendor/purify-3.4.16.min.js"></script>
 <script src="/news-reader.js?v=radar1" data-autoinstall></script>

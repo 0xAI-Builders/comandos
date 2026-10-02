@@ -627,8 +627,10 @@
     panel.style.top = top + 'px';
     // La tarjeta nunca pasa del borde de la ventana: lo que no cabe se desplaza dentro.
     panel.style.maxHeight = Math.max(160, window.innerHeight - top - 8) + 'px';
-    const width = Math.min(560, window.innerWidth - 16);
-    if (r.height) { panel.style.left = Math.max(8, Math.min(r.left, window.innerWidth - width - 8)) + 'px'; panel.style.right = 'auto'; }
+    // Dentro de la columna izquierda si el remoto está partido (= escritorio); si no, la ventana.
+    const vp = (typeof window.panelViewport === 'function' && window.panelViewport()) || { left: 0, width: window.innerWidth };
+    const width = Math.min(560, vp.width - 16);
+    if (r.height) { panel.style.left = Math.max(vp.left + 8, Math.min(r.left, vp.left + vp.width - width - 8)) + 'px'; panel.style.right = 'auto'; }
     else { panel.style.left = 'auto'; panel.style.right = '12px'; }
     panel.classList.remove('hidden');
     render();

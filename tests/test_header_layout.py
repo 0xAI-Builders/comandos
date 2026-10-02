@@ -211,3 +211,17 @@ def test_phone_strip_has_the_desktop_keys_and_the_desktop_model_and_star():
     assert "tabModelShort(withModel[0].model)" in index
     fav = index.split("function updateFavoriteButton(", 1)[1].split("\n}\n", 1)[0]
     assert 'wm.iconSvg("favorite", 14)' in fav and '"★"' not in fav
+
+
+def test_split_remote_opens_column_popovers_inside_the_column_like_the_desktop():
+    """1-oct: en el escritorio el tablero web solo ocupa la columna izquierda, así que el
+    Pomodoro y Ajustes se abren dentro de ella. En el remoto partido salían sobre las
+    terminales (tarjeta flotante a la derecha, Ajustes centrado en toda la ventana)."""
+    index = (ROOT / "dash" / "index.html").read_text()
+    css = (ROOT / "dash" / "workspace.css").read_text()
+    pomo = (ROOT / "dash" / "pomodoro.js").read_text()
+    assert 'document.documentElement.style.setProperty("--split-left", `${v}px`);' in index
+    assert "window.panelViewport = function(){" in index
+    assert ".modal:not(#tabclose):not(#groupclose){right:auto;width:var(--split-left,380px)}" in css
+    assert "#pomo-panel.pm-v1{width:min(560px,calc(var(--split-left,380px) - 16px))}" in css
+    assert "window.panelViewport()" in pomo and "vp.left + vp.width - width - 8" in pomo

@@ -1136,3 +1136,10 @@ body.app.split:not(.inapp) #tab-left[aria-pressed="true"]{color:var(--brand)}
   body.app.split.panel-hidden #panes{grid-template-columns:0 0 minmax(0,1fr)}
   body.app.split.panel-hidden :is(#view-panel,#splitter){display:none!important}
 }
+
+/* Remoto partido = escritorio (1-oct): en el escritorio el tablero web solo ocupa la columna
+   izquierda, así que el Pomodoro y los .modal (Ajustes, Remoto, Uso…) se abren dentro de ella.
+   Con el panel oculto vuelven a usar toda la ventana. Cerrar pestaña / grupo no: en el
+   escritorio esa confirmación es nativa y va centrada en toda la ventana. */
+body.app.split:not(.inapp):not(.panel-hidden) #pomo-panel.pm-v1{width:min(560px,calc(var(--split-left,380px) - 16px))}
+body.app.split:not(.inapp):not(.panel-hidden) .modal:not(#tabclose):not(#groupclose){right:auto;width:var(--split-left,380px)}
