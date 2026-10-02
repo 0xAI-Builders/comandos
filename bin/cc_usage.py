@@ -192,6 +192,10 @@ def init_db(db_path):
 
 USAGE_SCHEMA_VERSION = 11
 
+# Ventana que resume /usage/state (la UI la rotula "14d"). La DB conserva mas
+# (21 d, para Analytics); el resumen no debe inflarse con esos dias extra.
+USAGE_STATE_DAYS = 14
+
 
 def _table_columns(con, table):
     return {row[1] for row in con.execute(f"pragma table_info({table})")}
@@ -891,7 +895,8 @@ def build_usage_state(db_path, live_panes=None, now=None, settings=None, limits=
         turns = _rows(con.execute(
             "select tmux_session, tmux_pane, pane_pwd, git_root, agent, provider,"
             " model, confidence, cost_usd, total_tokens, turn_finished_at"
-            " from usage_turns order by turn_finished_at desc"))
+            " from usage_turns where turn_finished_at >= ? order by turn_finished_at desc",
+            (ts - USAGE_STATE_DAYS * 86400,)))
         provider_usage = _rows(con.execute("select * from provider_usage_buckets order by end_time desc"))
         provider_costs = _rows(con.execute("select * from provider_cost_buckets order by end_time desc"))
     _attach_pane_turn_usage(turns, panes, ts)
@@ -2116,6 +2121,7 @@ def _changed_files(files, seen):
 
 
 def record_local_claude_jsonl(db_path, projects_root=None, now=None, max_age_days=14, max_files=400, account="main", seen=None):
+    """max_files=None: sin tope (el corte por mtime de max_age_days ya acota el conjunto)."""
     projects_root = os.fspath(projects_root or os.path.expanduser("~/.claude/projects"))
     if not os.path.isdir(projects_root):
         return 0

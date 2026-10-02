@@ -99,3 +99,28 @@ def test_refresh_imports_every_claude_account_for_21_days(tmp_path, monkeypatch)
     assert calls == [("prune", 21),
                      ("main", str(tmp_path / ".claude" / "projects"), 21),
                      ("relotto", str(tmp_path / ".claude-accounts" / "relotto" / "projects"), 21)]
+
+
+def test_usage_state_stays_on_its_14_day_window(tmp_path):
+    db = tmp_path / "u.sqlite"
+    day = 86400
+    cc_usage.record_turns(db, [
+        {"id": "old", "provider": "claude", "agent": "claude", "source": "claude_jsonl", "confidence": "local",
+         "turn_started_at": NOW - 20 * day, "turn_finished_at": NOW - 20 * day, "total_tokens": 1000, "git_root": "/repo"},
+        {"id": "recent", "provider": "claude", "agent": "claude", "source": "claude_jsonl", "confidence": "local",
+         "turn_started_at": NOW - day, "turn_finished_at": NOW - day, "total_tokens": 40, "git_root": "/repo"},
+    ])
+    state = cc_usage.build_usage_state(db, [], now=NOW)
+    assert cc_usage.USAGE_STATE_DAYS == 14
+    assert state["totals"]["total_tokens"] == 40
+    con = sqlite3.connect(db)
+    assert con.execute("select count(*) from usage_turns").fetchone()[0] == 2  # la DB conserva los 21 d
+
+
+def test_claude_import_accepts_no_file_cap(tmp_path, monkeypatch):
+    monkeypatch.setattr(cc_usage, "git_root_for_path", lambda p: p)
+    db = tmp_path / "u.sqlite"
+    for i in range(3):
+        _write(tmp_path / "projects" / f"f{i}.jsonl", [_assistant(f"u{i}", f"msg_{i}", f"req_{i}")])
+    assert cc_usage.record_local_claude_jsonl(db, tmp_path / "projects", now=NOW, max_age_days=30, max_files=None) == 3
+    assert cc_usage.record_local_claude_jsonl(db, tmp_path / "projects", now=NOW, max_age_days=30, max_files=1) == 1

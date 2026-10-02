@@ -364,7 +364,10 @@ def _do_refresh_local_usage():
         cc_usage.prune_old_turns(USAGE_DB, max_age_days=max_age, now=now)
     except Exception:
         pass
-    max_claude_files = int(env.get("COMANDOS_USAGE_CLAUDE_MAX_FILES") or 600)
+    # Sin tope por defecto: un tope descartaria los archivos de la semana anterior
+    # (los mas viejos por mtime). El corte de 21 dias por mtime ya acota el conjunto
+    # y `seen` evita volver a leer lo que no cambio. El env sigue pudiendo fijarlo.
+    max_claude_files = int(env.get("COMANDOS_USAGE_CLAUDE_MAX_FILES") or 0) or None
     counts = {
         "codex_local": cc_usage.record_local_codex_threads(
             USAGE_DB,
