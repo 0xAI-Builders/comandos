@@ -1,0 +1,17 @@
+[package]
+name = "comandos-runtime"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+
+[dependencies]
+comandos-core = { path = "../comandos-core" }
+comandos-store = { path = "../comandos-store" }
+serde_json.workspace = true
+rusqlite.workspace = true
+getrandom.workspace = true
+sha2.workspace = true
+
+[lints]
+workspace = true

@@ -24,3 +24,5 @@ docs/superpowers/
 # Isolated Rust migration builds
 /target/
 /.migration-build/
+
+/.superpowers/

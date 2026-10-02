@@ -7,9 +7,12 @@ task_runner="$task_root/scripts/rust-sandbox"
 "$task_runner" cargo test --workspace --locked
 "$task_runner" cargo clippy --workspace --all-targets --locked -- -D warnings
 "$task_runner" cargo build --workspace --all-targets --locked
-"$task_runner" python3 -m pytest tests/test_turn_state.py tests/test_event_store.py tests/test_work_marks.py -q
+"$task_runner" python3 -m pytest tests/test_turn_state.py tests/test_event_store.py tests/test_work_marks.py tests/test_notification_delivery.py tests/test_v1_migrations.py -k 'not installer' -q
 "$task_runner" python3 tests/rust_contract_parity.py
 "$task_runner" python3 tests/rust_storage_oracle.py
 "$task_runner" python3 tests/rust_database_interop.py
+"$task_runner" python3 crates/comandos-core/tests/notification_oracle.py
+"$task_runner" python3 crates/comandos-store/tests/notification_oracle.py
+"$task_runner" python3 tests/rust_native_interop.py
 "$task_runner" cargo build --target wasm32-unknown-unknown -p comandos-core --lib --locked
 "$task_runner" cargo build --workspace --release --locked

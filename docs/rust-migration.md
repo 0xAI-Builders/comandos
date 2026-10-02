@@ -43,7 +43,7 @@ El resto del alcance permanece en el mapa /home/someguy/codebase/0xJesus/ComandO
 - /home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/crates/comandos-store/src/intake.rs: normalizar, resolver el panel y guardar el evento con sus efectos sobre marcas en una transacción. Los duplicados conservan su recepción sin volver a aplicar efectos.
 - /home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/crates/comandos-store/examples/replay.rs: ejecutable de desarrollo que exige una base explícita ya migrada; no tiene ruta predeterminada ni instala hooks.
 
-Se usa rusqlite 0.40.2 sin funcionalidades opcionales y la biblioteca SQLite del sistema. Referencia primaria: https://docs.rs/rusqlite/0.40.2/rusqlite/struct.Connection.html. Los métodos Rust reciben conexión, fecha e identificadores; el adaptador nativo final deberá suministrarlos. Las marcas gráficas y animaciones del módulo original siguen pendientes de migración.
+Se usa rusqlite 0.40.2 con la funcionalidad de backup y la biblioteca SQLite del sistema. Referencia primaria: https://docs.rs/rusqlite/0.40.2/rusqlite/struct.Connection.html. Los métodos Rust reciben conexión, fecha e identificadores; el adaptador nativo final deberá suministrarlos. Las marcas gráficas y animaciones del módulo original siguen pendientes de migración.
 
 ## Reproducción local
 
@@ -99,3 +99,18 @@ Estas cifras describen el núcleo puro y su adaptador JSONL. No demuestran rendi
 Los timestamps de entrada de esta frontera JSON se representan como enteros de 64 bits o flotantes finitos; SQLite exige enteros con signo de 64 bits para persistirlos. Python puede construir enteros mayores en memoria, que tampoco puede guardar en esas columnas. El adaptador HTTP final debe mantener una respuesta de validación consistente para entradas fuera de rango. El resto del contrato observado, incluidos identificadores Unicode, valores nulos, orden por secuencia y metadatos desconocidos en el estado, está cubierto por las pruebas descritas.
 
 El proyecto completo aún no está migrado. Este bloque no sustituye el servidor HTTP, los administradores de sesión/tmux, los clientes GTK/macOS, la web/WASM, las notificaciones, el broker remoto ni los instaladores. No se eliminó código original ni se introdujo un puente Python/Rust en producción.
+
+
+## Segundo bloque: estado, hooks nativos y notificaciones
+
+Implementaciones añadidas en /home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/crates/comandos-runtime, /home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/crates/comandos-store/src/state_db, /home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/crates/comandos-core/src/notifications.rs y /home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/crates/comandos-store/src/notifications.rs.
+
+El ejecutable comandos-events implementa record, claim-local, migrate e import-legacy sin invocar Python. Conserva identidad del proceso, deduplicación, reserva única de sonido, importación histórica sin enlazarla a paneles y las once migraciones existentes. Los backups son privados y no se sobrescriben si dos migraciones ocurren en el mismo segundo. Una migración no puede iniciarse dentro de una transacción ajena; rechazarla evita un bloqueo y conserva esa transacción. La revisión independiente del bloque se registra por separado antes de declararlo terminado.
+
+Verificación completa posterior a la recuperación: 51 pruebas Rust; 90 pruebas originales Python (se excluye el instalador porque no corresponde a esta frontera); 7,928 casos del núcleo; 54 operaciones del oráculo SQLite; 6,600 rutas de notificación, 16 preferencias y 9 avisos; 571 operaciones de notificaciones persistidas; igualdad exacta del esquema SQL Python/Rust; upgrade y backup leídos por Python; hooks y recepción concurrente. Formato, Clippy, debug, release y biblioteca WASM pasan. Evidencia: /home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/.migration-build/validation-block2.txt.
+
+El runner usa ahora además un scope systemd independiente: MemoryHigh=2G, MemoryMax=3G y MemorySwapMax=512M para todo el árbol de compilación/pruebas. El límite por proceso y Bubblewrap permanecen. No debe confundirse este límite con la memoria total de los agentes o del sistema.
+
+El incidente de memoria fue atendido con autorización posterior de Jesús. Las únicas correcciones desplegadas son preservación de parámetros de reanudación, arranque atómico de tmux, caché de medición MCP compartida y tokenizador en proceso transitorio. El reinicio de la GUI conservó los 28 PID de panel. Los proxies ya abiertos conservan el código/tokenizador cargado hasta que reconecten; no se cortaron masivamente sus conexiones. La GUI recuperada tiene límite de 2 GiB; no limita el resto de agentes y MCP. La causa demostrada del consumo es la multiplicación de conectores y tokenizadores; no se ha demostrado todavía una fuga creciente dentro de cada conector externo.
+
+Inventario de código/estilo propio y oráculos: /home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/docs/rust-component-inventory.json y /home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/docs/rust-component-inventory.md. No está completa la migración ni se ha hecho el corte al producto Rust.

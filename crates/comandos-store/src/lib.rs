@@ -1,6 +1,8 @@
 //! Native persistence adapters. Callers own connections and transactions.
 pub mod intake;
 pub mod marks;
+#[path = "state_db/mod.rs"]
+pub mod state;
 use comandos_core::event;
 use rusqlite::{
     Connection, OptionalExtension, Row, params, params_from_iter,
@@ -12,6 +14,7 @@ use serde_json::{Map, Value};
 pub enum Error {
     Validation(String),
     MissingEvent,
+    Io(std::io::Error),
     Conflict(Value),
     Sql(rusqlite::Error),
 }
@@ -19,6 +22,7 @@ impl std::fmt::Display for Error {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::Validation(s) => f.write_str(s),
+            Self::Io(e) => e.fmt(f),
             Self::MissingEvent => f.write_str("evento inexistente"),
             Self::Conflict(_) => f.write_str("Revisión desactualizada"),
             Self::Sql(e) => e.fmt(f),
@@ -222,4 +226,12 @@ pub fn claim_delivery(
     }
     Ok(conn.execute("INSERT OR IGNORE INTO deliveries (event_id, channel, device_id, state, created_at_ms, updated_at_ms) VALUES (?, ?, ?, 'claimed', ?, ?)",
         params![event_id,channel,device_id,now_ms,now_ms])?==1)
+}
+
+pub mod notifications;
+
+impl From<std::io::Error> for Error {
+    fn from(error: std::io::Error) -> Self {
+        Self::Io(error)
+    }
 }
