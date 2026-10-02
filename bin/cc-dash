@@ -1364,7 +1364,6 @@ if LIB_DIR not in sys.path:
 import providers as provider_registry
 import claude_trust
 import allocation
-import allocation_batch
 import grok_state
 import pane_snapshot
 import pane_extensions as pane_extension_state
@@ -2533,16 +2532,6 @@ def verify_attempts(cwd, config_dir=None):
 
 
 # ---------------------------------------------------------------- Reparto de cuota
-ALLOCATION_PLANS = {}
-_ALLOCATION_BATCHES = None
-_EFFORT_ORDER = ["low", "medium", "high", "xhigh", "max"]
-
-
-def _batches():
-    global _ALLOCATION_BATCHES
-    if _ALLOCATION_BATCHES is None:
-        _ALLOCATION_BATCHES = allocation_batch.BatchStore(os.path.join(HOOKS, "allocation-batches.json"))
-    return _ALLOCATION_BATCHES
 
 
 def selectable_accounts_by_motor(registry):
@@ -2558,17 +2547,6 @@ def selectable_accounts_by_motor(registry):
 
 def enriched_limits(limits):
     return allocation.enrich_limits(limits or [], time.time(), ui_lang())
-
-
-def _motor_options(registry):
-    """Modelos y efforts válidos por motor, para que la ficha solo ofrezca lo real."""
-    out = {}
-    for motor, spec in (registry.get("motors") or {}).items():
-        models = [m["id"] for m in (spec.get("models") or [])]
-        efforts = sorted({e for m in (spec.get("models") or []) for e in (m.get("efforts") or [])},
-                         key=lambda e: _EFFORT_ORDER.index(e) if e in _EFFORT_ORDER else 99)
-        out[motor] = {"models": models, "efforts": efforts}
-    return out
 
 
 def allocation_inputs():
@@ -2605,52 +2583,6 @@ def _git_root_cached(cwd):
     return root
 
 
-def _build_plan(overrides):
-    inp = allocation_inputs()
-    plan = allocation.propose(inp["sessions"], inp["limits"], inp["registry"], inp["support"],
-                              inp["accounts"], inp["tiers"], now=inp["now"], overrides=overrides,
-                              lang=ui_lang(), profiles=inp["profiles"], signals=inp["signals"])
-    plan["options"] = _motor_options(inp["registry"])
-    estado = {allocation.session_key(s): (s.get("status") or "") for s in inp["sessions"]}
-    # Cuando se vio por ultima vez: una sesion terminada hace 17 h se lee como
-    # muerta en la ficha si no se dice cuanto lleva quieta.
-    visto = {}
-    for s in inp["sessions"]:
-        try:
-            visto[allocation.session_key(s)] = float(s.get("ts") or 0)
-        except (TypeError, ValueError):
-            visto[allocation.session_key(s)] = 0.0
-    for item in plan["items"]:
-        item["status"] = estado.get(item["key"], "")
-        item["seenAt"] = visto.get(item["key"], 0.0) or None
-    return plan, inp
-
-
-def _valid_overrides(raw):
-    """El cuerpo HTTP no puede reventar el motor: se acepta solo lo que entiende."""
-    out = {}
-    if raw is not None and not isinstance(raw, dict):
-        return {}          # un cuerpo raro se ignora, no revienta ni miente con 400
-    for key, value in (raw or {}).items():
-        if not isinstance(key, str) or not isinstance(value, dict):
-            continue
-        clean = {}
-        if "layer" in value:
-            try:
-                clean["layer"] = max(1, min(3, int(value["layer"])))
-            except (TypeError, ValueError):
-                return None
-        if value.get("locked"):
-            clean["locked"] = True
-        if "to" in value:
-            if not isinstance(value["to"], dict):
-                return None
-            clean["to"] = {k: str(v) for k, v in value["to"].items() if isinstance(k, str)}
-        if clean:
-            out[key] = clean
-    return out
-
-
 def project_profiles_view():
     """Perfil declarado + señales medidas de cada proyecto con sesiones vivas."""
     inp = allocation_inputs()
@@ -2678,174 +2610,6 @@ def project_profile_set(data):
     except ValueError as e:
         return 400, {"ok": False, "error": str(e)}
     return 200, {"ok": True, "profile": prof}
-
-
-def allocation_propose(data):
-    overrides = _valid_overrides(data.get("overrides"))
-    if overrides is None:
-        return 400, {"ok": False, "error": "overrides invalidos"}
-    plan, _ = _build_plan(overrides)
-    plan["overrides"] = overrides
-    ALLOCATION_PLANS[plan["planId"]] = plan
-    while len(ALLOCATION_PLANS) > 20:
-        ALLOCATION_PLANS.pop(next(iter(ALLOCATION_PLANS)))
-    return 200, {"ok": True, "plan": plan}
-
-
-def allocation_preview(data):
-    plan = ALLOCATION_PLANS.get(str(data.get("planId") or ""))
-    if not plan:
-        return 404, {"ok": False, "error": "plan desconocido; vuelve a analizar"}
-    extra = _valid_overrides({str(data.get("key") or ""): data.get("target") or {}})
-    if extra is None:
-        return 400, {"ok": False, "error": "destino invalido"}
-    overrides = dict(plan.get("overrides") or {})
-    overrides.update(extra)
-    tmp, _ = _build_plan(overrides)
-    return 200, {"ok": True, "impact": tmp["impact"], "items": tmp["items"]}
-
-
-def _status_of(opkey, opid):
-    try:
-        return session_operation_status(opkey, opid)
-    except TypeError:
-        return session_operation_status(opkey)
-
-
-def _run_batch_bg(batch_id, wait=False):
-    def go():
-        try:
-            allocation_batch.run_batch(batch_id, _batches(), lambda d: session_configure(d), _status_of,
-                                       concurrency=3)
-        except Exception:
-            pass   # el estado por pane ya queda en el lote; nunca tumbar el hilo
-    if wait:
-        go()
-    else:
-        threading.Thread(target=go, daemon=True).start()
-
-
-_ALLOCATION_APPLY_LOCK = threading.Lock()
-
-
-def _batch_for_plan(plan_id):
-    """El lote más reciente de un plan (doble clic, reintento del navegador)."""
-    for b in _batches().list():
-        if b.get("planId") == plan_id:
-            return b
-    return None
-
-
-def _reuse_or_refuse(plan_id):
-    """Un plan en curso devuelve su lote; uno ya aplicado no se relanza."""
-    prev = _batch_for_plan(plan_id)
-    if not prev:
-        return None
-    view = allocation_batch.batch_view(prev)
-    if view["state"] != "terminado":
-        return 202, {"ok": True, "batchId": prev["batchId"], "total": view["total"], "reused": True}
-    if any(i["state"] == "lista" for i in prev["items"]):
-        return 409, {"ok": False, "error": "este plan ya se aplicó; vuelve a analizar", "batchId": prev["batchId"]}
-    return None
-
-
-def allocation_apply(data, wait=False):
-    plan = ALLOCATION_PLANS.get(str(data.get("planId") or ""))
-    if not plan:
-        return 404, {"ok": False, "error": "plan desconocido; vuelve a analizar"}
-    with _ALLOCATION_APPLY_LOCK:
-        hit = _reuse_or_refuse(plan["planId"])
-        if hit:
-            return hit
-        inp = allocation_inputs()
-        if allocation.plan_hash(inp["sessions"]) != plan["stateHash"]:
-            antes = {i["key"]: i["from"] for i in plan["items"]}
-            vivas = {allocation.session_key(s) for s in inp["sessions"]}
-            cambiadas = [allocation.session_key(s) for s in inp["sessions"]
-                         if allocation.session_key(s) in antes
-                         and any(str(s.get(f) or "") != str(antes[allocation.session_key(s)].get(g) or "")
-                                 for f, g in (("model", "model"), ("effort", "effort"),
-                                              ("harnessAccount", "account")))]
-            nuevas = sorted(vivas - set(antes))
-            idas = sorted(set(antes) - vivas)
-            return 409, {"ok": False, "error": "plan_stale",
-                         "changed": sorted(cambiadas) + nuevas + idas}
-        panes = data.get("panes")
-        batch = _batches().create(plan, panes=panes if isinstance(panes, list) else None)
-    _run_batch_bg(batch["batchId"], wait)
-    return 202, {"ok": True, "batchId": batch["batchId"], "total": len(batch["items"])}
-
-
-def allocation_status(batch_id):
-    b = _batches().get(str(batch_id or ""))
-    if not b:
-        return 404, {"ok": False, "error": "lote desconocido"}
-    return 200, dict(ok=True, **allocation_batch.batch_view(b))
-
-
-def allocation_retry(data, wait=False):
-    bid, key = str(data.get("batchId") or ""), str(data.get("key") or "")
-    if not _batches().get(bid):
-        return 404, {"ok": False, "error": "lote desconocido"}
-    def go():
-        try:
-            allocation_batch.retry_item(bid, key, _batches(), lambda d: session_configure(d), _status_of)
-        except Exception:
-            pass
-    if wait:
-        go()
-    else:
-        threading.Thread(target=go, daemon=True).start()
-    return 202, {"ok": True, "batchId": bid, "key": key}
-
-
-def _still_applied(live, to):
-    """El pane sigue en el `to` que puso el lote? Un campo vivo vacío no cuenta
-    como cambio (no todos los agentes reportan effort o cuenta)."""
-    pares = ((live.get("motor") or live.get("agent"), to.get("motor")), (live.get("model"), to.get("model")),
-             (live.get("effort"), to.get("effort")),
-             (live.get("harnessAccount") or live.get("account"), to.get("harnessAccount")))
-    return all(not v or str(v) == str(w or "") for v, w in pares)
-
-
-def allocation_revert(data, wait=False):
-    bid = str(data.get("batchId") or "")
-    b = _batches().get(bid)
-    if not b:
-        return 404, {"ok": False, "error": "lote desconocido"}
-    # Con items aún aplicando, lo que se confirme después quedaría sin revertir
-    # (y dos interrupciones en el mismo pane).
-    if allocation_batch.batch_view(b)["state"] != "terminado":
-        return 409, {"ok": False, "error": "el lote sigue aplicando; espera a que termine para revertir"}
-    with _ALLOCATION_APPLY_LOCK:
-        hit = _reuse_or_refuse("rev-" + bid)
-        if hit:
-            return hit
-        hechas = [i for i in b["items"] if i["state"] == "lista"]
-        if not hechas:
-            return 409, {"ok": False, "error": "no hay cambios confirmados que revertir"}
-        # Se revierte desde el lote persistido (from/to), no desde el plan en RAM,
-        # y solo los panes que siguen como los dejó el lote: un cambio manual
-        # posterior no se pisa.
-        inp = allocation_inputs()
-        vivas = {allocation.session_key(s): s for s in inp["sessions"]}
-        items, skipped = [], []
-        for it in hechas:
-            live = vivas.get(it["key"])
-            if not live:
-                skipped.append({"key": it["key"], "reason": "el pane ya no existe"})
-            elif not _still_applied(live, it["to"]):
-                skipped.append({"key": it["key"], "reason": "cambió después del reparto; no se pisa"})
-            else:
-                items.append(it)
-        if not items:
-            return 409, {"ok": False, "error": "nada que revertir: los panes cambiaron después del reparto",
-                         "skipped": skipped}
-        inv = allocation.invert({"planId": bid, "stateHash": allocation.plan_hash(inp["sessions"]), "items": items})
-        inv["items"] = [dict(i, same=False, locked=False) for i in inv["items"]]
-        batch = _batches().create(inv, panes=None)
-    _run_batch_bg(batch["batchId"], wait)
-    return 202, {"ok": True, "batchId": batch["batchId"], "total": len(batch["items"]), "skipped": skipped}
 
 
 def session_change_support(registry=None, observed=None):
@@ -8351,7 +8115,7 @@ class Handler(http.server.SimpleHTTPRequestHandler):
     API_GET = ("/accounts", "/session-config-history", "/pane-extensions", "/pomodoro", "/providers", "/optimization/plans", "/proxy", "/model/status", "/sovereignty", "/ui-log/summary", "/state", "/usage/state", "/usage/guard", "/usage/changes", "/usage/provider-compare", "/fs/dirs", "/models/latest", "/news/latest", "/news/edition", "/push/", "/notifs/count", "/usage/analytics", "/usage/interactions", "/usage/experiments", "/opencode/models", "/model-tiers", "/dedication", "/active-tab", "/tab-models", "/session-profiles", "/extension-usage", "/session-brain", "/project-profiles", "/events", "/conf", "/prefs", "/ssh", "/tabs", "/workspace", "/notices",
     "/analytics/week",
                "/tab-history", "/remote-state", "/remote-qr.png", "/snippets", "/tmux-mouse", "/commands/catalog", "/chains",
-               "/webterm-token", "/allocation/status", "/news/source", "/news/chat", "/news/notes",
+               "/webterm-token", "/news/source", "/news/chat", "/news/notes",
                "/news/saved", "/news/media")
     API_GET += ("/work-marks",)  # E1; /events/v2 queda cubierto por /events
 
@@ -8599,9 +8363,6 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             return self._json(200, state)
         if self.path.startswith("/project-profiles"):
             return self._json(*project_profiles_view())
-        if self.path.startswith("/allocation/status"):
-            q = urllib.parse.parse_qs(urllib.parse.urlsplit(self.path).query)
-            return self._json(*allocation_status(q.get("batchId", [""])[0]))
 
         if self.path.startswith("/ssh"):
             return self._json(200, parse_ssh_config())
@@ -8932,16 +8693,6 @@ class Handler(http.server.SimpleHTTPRequestHandler):
 
         if self.path == "/project-profile":
             return self._json(*project_profile_set(data))
-        if self.path == "/allocation/propose":
-            return self._json(*allocation_propose(data))
-        if self.path == "/allocation/preview":
-            return self._json(*allocation_preview(data))
-        if self.path == "/allocation/apply":
-            return self._json(*allocation_apply(data))
-        if self.path == "/allocation/retry":
-            return self._json(*allocation_retry(data))
-        if self.path == "/allocation/revert":
-            return self._json(*allocation_revert(data))
 
         if self.path == "/optimization/default":
             try:

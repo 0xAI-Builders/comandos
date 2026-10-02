@@ -261,8 +261,8 @@ def test_security_gate_non_ascii_token_is_unauthorized_not_crash(
     assert handler._security_gate()[0] == 401
 
 
-def test_allocation_status_requires_token_remotely(dash):
-    assert any("/allocation/status".startswith(p) for p in dash.Handler.API_GET)
+def test_analytics_week_requires_token_remotely(dash):
+    assert any("/analytics/week".startswith(p) for p in dash.Handler.API_GET)
 
 
 def _serve(dash):

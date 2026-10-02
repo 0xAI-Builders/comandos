@@ -94,3 +94,14 @@ def test_install_links_the_new_files():
     for name in ("analytics.js", "analytics-render.js", "analytics.css"):
         assert f" {name}" in install
     assert "reparto.js" not in install and "reparto.css" not in install
+
+
+def test_nothing_proposes_or_applies_account_changes():
+    for gone in ('"/allocation/propose"', '"/allocation/preview"', '"/allocation/apply"', '"/allocation/status"',
+                 '"/allocation/retry"', '"/allocation/revert"', "import allocation_batch", "ALLOCATION_PLANS"):
+        assert gone not in SRC, gone
+    assert not Path("lib/allocation_batch.py").exists()
+    catalog = Path("lib/operator_catalog.py").read_text()
+    assert '("cuentas", "comparar", "pomodoro")' in catalog
+    assert "setLimitStyle" not in catalog and "compareSetDays" not in catalog
+
