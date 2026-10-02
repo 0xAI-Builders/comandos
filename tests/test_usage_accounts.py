@@ -89,9 +89,11 @@ def test_refresh_imports_every_claude_account_for_21_days(tmp_path, monkeypatch)
     monkeypatch.setattr(dash, "ensure_observed_configs", lambda: None)
     monkeypatch.setattr(dash.cc_usage, "reconcile_orphan_interactions", lambda *a, **k: 0)
     monkeypatch.setattr(dash.cc_usage, "prune_old_turns", lambda *a, **k: calls.append(("prune", k["max_age_days"])) or 0)
-    for name in ("record_local_grok_updates", "record_local_opencode_db", "record_local_codex_threads", "record_local_codex_rollouts"):
+    for name in ("record_local_grok_updates", "record_local_opencode_db"):
         if hasattr(dash.cc_usage, name):
             monkeypatch.setattr(dash.cc_usage, name, lambda *a, **k: 0)
+    codex_kwargs = {}
+    monkeypatch.setattr(dash.cc_usage, "record_local_codex_rollouts", lambda *a, **k: codex_kwargs.update(k) or 0)
     monkeypatch.setattr(dash.cc_usage, "record_local_claude_jsonl",
                         lambda db, root, **k: calls.append((k["account"], str(root), k["max_age_days"])) or 0)
     monkeypatch.setattr(dash.grok_state, "account_homes", lambda: [])
@@ -99,6 +101,10 @@ def test_refresh_imports_every_claude_account_for_21_days(tmp_path, monkeypatch)
     assert calls == [("prune", 21),
                      ("main", str(tmp_path / ".claude" / "projects"), 21),
                      ("relotto", str(tmp_path / ".claude-accounts" / "relotto" / "projects"), 21)]
+    # Codex: misma ventana de 21 d, sin tope de archivos y con su propio `seen`.
+    assert codex_kwargs["max_age_days"] == 21
+    assert isinstance(codex_kwargs["seen"], dict)
+    assert codex_kwargs["max_files"] is None
 
 
 def test_usage_state_stays_on_its_14_day_window(tmp_path):

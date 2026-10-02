@@ -366,13 +366,16 @@ def _do_refresh_local_usage():
         pass
     # Sin tope por defecto: un tope descartaria los archivos de la semana anterior
     # (los mas viejos por mtime). El corte de 21 dias por mtime ya acota el conjunto
-    # y `seen` evita volver a leer lo que no cambio. El env sigue pudiendo fijarlo.
+    # y `seen` evita volver a leer lo que no cambio. El env sigue pudiendo fijarlo
+    # (COMANDOS_USAGE_CLAUDE_MAX_FILES / COMANDOS_USAGE_CODEX_MAX_FILES).
     max_claude_files = int(env.get("COMANDOS_USAGE_CLAUDE_MAX_FILES") or 0) or None
+    max_codex_files = int(env.get("COMANDOS_USAGE_CODEX_MAX_FILES") or 0) or None
     counts = {
         "codex_local": cc_usage.record_local_codex_rollouts(
             USAGE_DB,
             now=now,
             max_age_days=max_age,
+            max_files=max_codex_files,
             seen=_IMPORT_SEEN.setdefault("codex", {}),
         ),
         "grok_local": cc_usage.record_local_grok_updates(
