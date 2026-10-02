@@ -139,6 +139,10 @@ window.ccpop {{ background-color: rgba(0,0,0,0); }}
 .close {{ background: none; border: none; color: {t['dim']}; padding: 2px 8px; font-size: 15px;
   min-width: 26px; min-height: 26px; border-radius: 8px; }}
 .close:hover, .close.hover {{ color: {t['text']}; background-color: alpha({t['dim']}, 0.18); }}
+.clearall {{ background-color: {t['panel']}; color: {t['text']}; border: 1px solid {t['line2']};
+  border-radius: 999px; padding: 4px 16px; font-family: 'Inter', sans-serif; font-size: 12px; font-weight: 700;
+  min-height: 30px; box-shadow: 0 6px 18px rgba(0,0,0,0.4); }}
+.clearall:hover {{ border-color: {t['brand']}; color: {t['brand']}; }}
 .entry {{ background-color: {t['bg']}; color: {t['text']}; border: 1px solid {t['line2']};
   border-radius: 8px; padding: 6px 10px; font-family: 'JetBrainsMono Nerd Font', monospace; font-size: 12px; }}
 .entry:focus {{ border-color: {t['brand']}; }}
@@ -153,6 +157,9 @@ TR = {  # (es, en)
     "reply_wait": ("Responde aqui y Enter...", "Reply here and press Enter..."),
     "reply_next": ("Siguiente instruccion...", "Next instruction..."),
     "open": ("Abrir", "Open"),
+    "close_all": ("Cerrar todas · {n}", "Close all · {n}"),
+    "close_all_tip": ("Cierra todos los avisos de la pila (igual que la ✕ de cada uno)",
+                      "Closes every notice in the stack (same as each one's ✕)"),
     "mute_tip": ("Silenciar / activar el sonido de las notificaciones",
                  "Mute / unmute notification sounds"),
 }
@@ -482,7 +489,64 @@ def reposition():
         w._want = (x, y)
         w.move(x, y)
         y = (y - 10) if up else (y + h + 10)
+    _sync_clear_all(x, y, up)
     return False
+
+
+# «Cerrar todas» (Jesús, 2-oct): con 2+ avisos en la pila, una pastilla al final de la pila
+# los cierra todos de un golpe — lo mismo que la ✕ de cada uno (no marca nada como leído).
+CLEAR_ALL = {"win": None, "btn": None}
+CLEAR_ALL_MIN = 2
+
+
+def close_all_popups(*_):
+    for w in list(popups):
+        close_popup(w)
+    return False
+
+
+def _clear_all_window():
+    if CLEAR_ALL["win"] is not None:
+        return CLEAR_ALL["win"]
+    win = Gtk.Window(type=Gtk.WindowType.TOPLEVEL)
+    win.get_style_context().add_class("ccpop")
+    win.set_decorated(False)
+    win.set_keep_above(True)
+    win.set_focus_on_map(False)
+    win.set_skip_taskbar_hint(True)
+    win.set_skip_pager_hint(True)
+    win.set_type_hint(Gdk.WindowTypeHint.NOTIFICATION)
+    visual = win.get_screen().get_rgba_visual()
+    if visual:
+        win.set_visual(visual)
+    win.set_app_paintable(True)
+    box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL)
+    box.set_size_request(WIDTH, -1)
+    btn = Gtk.Button(label="")
+    btn.get_style_context().add_class("clearall")
+    btn.set_relief(Gtk.ReliefStyle.NONE)
+    btn.set_tooltip_text(tr("close_all_tip"))
+    btn.set_halign(Gtk.Align.CENTER)
+    btn.connect("clicked", close_all_popups)
+    box.pack_start(btn, True, False, 0)
+    win.add(box)
+    CLEAR_ALL.update(win=win, btn=btn)
+    return win
+
+
+def _sync_clear_all(x, y, up):
+    """Muestra/oculta la pastilla y la deja pegada al final de la pila (arriba si la pila crece
+    hacia arriba, abajo si crece hacia abajo)."""
+    n = len(popups)
+    if n < CLEAR_ALL_MIN:
+        if CLEAR_ALL["win"] is not None:
+            CLEAR_ALL["win"].hide()
+        return
+    win = _clear_all_window()
+    CLEAR_ALL["btn"].set_label(tr("close_all").format(n=n))
+    win.show_all()
+    h = max(win.get_allocated_height(), 38)
+    win.move(x, (y - h) if up else y)
 
 
 def _on_configure(win, ev):
