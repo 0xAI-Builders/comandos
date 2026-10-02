@@ -202,6 +202,8 @@
         + '<span class="cb-count"></span><span class="right"><button type="button" data-flat class="ghost" data-close>Cerrar</button></span></div></div>';
       wire(backdrop);
       renderBody(); renderSlots(); renderMsg();
+      // cabecera, barra de la cadena y pie también llevan data-icon (lupa, snippet, capas, play)
+      try { hydrate(backdrop); } catch (_) {}
       if (saving) setBusy(true);   // un guardado anterior sigue en vuelo
       host.appendChild(backdrop);
       doc.addEventListener('keydown', onKey);

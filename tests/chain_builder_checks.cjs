@@ -29,7 +29,8 @@ const tick = () => new Promise(r => setImmediate(r));
     return { ok: true, chain: { slug: body.slug || 'mi-cadena', name: body.name, steps: body.steps } };
   };
   let here = 'codex';
-  const b = createChainBuilder({ api, root: doc.body, catalog: () => catalog, chains: () => chainsList, here: () => here,
+  const hydrated = [];
+  const b = createChainBuilder({ hydrate: el => hydrated.push(el), api, root: doc.body, catalog: () => catalog, chains: () => chainsList, here: () => here,
     onSaved: (chain, o) => { saved.push([chain, o]); }, toast: (m, e) => toasts.push([m, e]) });
   const bd = () => doc.body.querySelector('.backdrop[data-mclose]');
   const q = sel => bd().querySelector(sel);
@@ -43,6 +44,10 @@ const tick = () => new Promise(r => setImmediate(r));
   b.open();
   assert.ok(q(MODAL), 'fondo > modal.chain-only');
   assert.ok(q(MODAL + ' .m-head'));
+  // los iconos de la cabecera (lupa, snippet) son SVG hidratados, no el sprite pixel .ic
+  assert.ok(q(MODAL + ' .m-head .hic[data-icon="snippet"]') && q(MODAL + ' .m-head .search .hic[data-icon="search"]'));
+  assert.equal(q(MODAL + ' .m-head .ic'), null);
+  assert.ok(hydrated.some(el => el.querySelector && el.querySelector('.m-head .hic[data-icon="search"]')), 'el modal entero se hidrata');
   assert.equal(qa('.cs-cli').length, 5);
   assert.equal(qa('.cmd[data-cmd]').length, 0);                       // nada de data-cmd: no teclea
   assert.ok(qa('.cmd[data-add]').length > 20);
