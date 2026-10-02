@@ -264,7 +264,7 @@ const catalog = JSON.parse(fs.readFileSync(process.cwd() + '/tests/fixtures/comm
     assert.equal(rootP.querySelector('.cs-empty-terms').hidden, false);
     assert.equal(rootP.querySelector('.cs-empty-terms .et-go').textContent, 'Mostrar terminal');
     // el hueco muestra los límites de uso (botellas de Analytics) en su ranura
-    assert.equal(rootP.querySelector('.cs-empty-terms .et-h b').textContent, 'Límites de uso');
+    assert.equal(rootP.querySelector('.cs-empty-terms .et-h b').textContent, 'Uso de tus cuentas');
     assert.ok(lim.length && lim.at(-1) === rootP.querySelector('.cs-empty-terms .cs-limits'));
     assert.equal(mP.at(-1).cmds.empty, true);
     rootP.click('.cs-empty-terms .et-go');
@@ -360,35 +360,85 @@ const catalog = JSON.parse(fs.readFileSync(process.cwd() + '/tests/fixtures/comm
   console.log('command-sidebar checks ok');
 })().catch(e => { console.error(e); process.exit(1); });
 
-// Límites de uso (grill 2-oct): % USADO 0→100 como /usage de Claude Code; número grande =
-// lo más usado, un chip por límite con qué mide y su nombre, «este pane» en la cuenta del destino.
+// Medidor LED: uso 0→100, 20 segmentos y detalle por cuenta con datos reales.
 {
-  const { limitsHTML } = require(process.cwd() + '/dash/command-sidebar.js');
-  const { mkRoot } = require('./dom_stub.cjs');
+  const { limitsHTML } = mod;
+  const r = mkRoot();
   const acc = [
-    { id: 'claude:main', cli: 'Claude', alias: 'main', provider: 'claude', color: '#8B7CFF', week: 92, h5: 28, h5Left: '2h 33m', left: '15h 23m', model: { n: 'Fable', v: 85, left: '15h 23m' } },
-    { id: 'claude:relotto', cli: 'Claude', alias: '<b>relotto</b>', provider: 'claude', color: 'red;x', week: 99, h5: 6, h5Left: '4h 3m', left: '6h 23m', model: { n: 'Fable', v: 100 } },
-    { id: 'codex:main', cli: 'Codex', alias: 'main', provider: 'codex', color: '#4CC2FF', week: 53, left: '1d 5h', h5: null, model: null },
-    { id: 'opencode:main', cli: 'OpenCode', alias: 'main', provider: 'opencode', color: '#2fd3c0', week: null, h5: null, model: null },
+    { id:'claude:main', cli:'Claude', alias:'main', provider:'claude', color:'#8B7CFF', week:92, h5:28, h5Left:'2h 33m', left:'15h 23m', model:{n:'Fable',v:85,left:'15h 23m'} },
+    { id:'claude:relotto', cli:'Claude', alias:'<b>relotto</b>', provider:'claude', color:'red;x', week:99, h5:6, h5Left:'4h 3m', left:'6h 23m', model:{n:'Fable',v:100} },
+    { id:'codex:main', cli:'Codex', alias:'main', provider:'codex', color:'#4CC2FF', week:53, left:'1d 5h' },
+    { id:'opencode:main', cli:'OpenCode', alias:'main', provider:'opencode', color:'#2fd3c0', measured:{sessions:147,tokens:21600000,costUsd:0,models:['opencode/model-free']} },
   ];
-  const r = mkRoot(); r.innerHTML = limitsHTML(acc, 'claude:relotto');
-  const cards = r.querySelectorAll('.la');
-  assert.equal(cards.length, 3);                                              // sin límites no sale
-  assert.equal(cards[0].querySelector('.la-big').textContent, '92%');          // lo más usado: la semana
-  assert.equal(cards[0].querySelector('.la-why').textContent, 'Lo más usado: semana · se reinicia en 15h 23m');
-  assert.deepEqual(cards[0].querySelectorAll('.lm .lm-n').map(n => n.textContent), ['todosSemana', 'modeloFable', 'sesión5 horas']);
-  assert.deepEqual(cards[0].querySelectorAll('.lm .lm-v b').map(n => n.textContent), ['92%', '85%', '28%']);
-  assert.equal(cards[0].querySelector('.lm.first .lm-n').textContent, 'todosSemana');
-  assert.equal(cards[0].querySelector('.lm.first').classList.contains('bad'), true);
-  assert.equal(cards[0].querySelectorAll('.lm')[1].classList.contains('warn'), true);
-  assert.equal(cards[1].classList.contains('out'), true);                      // Fable de relotto al 100 %
-  assert.equal(cards[1].querySelector('.la-why').textContent, 'Agotada: Fable (semana) · se reinicia en 6h 23m');
-  assert.equal(cards[1].querySelector('.la-pane').textContent, 'este pane');
-  assert.equal(cards[0].querySelector('.la-pane'), null);
-  assert.equal(cards[1].querySelector('.la-h small').textContent, '<b>relotto</b>');  // escapado
-  assert.ok(!/red;x/.test(cards[1].getAttribute('style')));                        // color inválido no entra
-  assert.equal(cards[2].querySelectorAll('.lm').length, 1);                    // Codex: solo la semana
-  assert.equal(cards[2].querySelector('.la-big').textContent, '53%');
-  assert.equal(limitsHTML([], ''), '<div class="wait">Sin límites que mostrar</div>');
-  console.log('limits checks ok');
+  r.innerHTML = limitsHTML(acc,'claude:relotto');
+  const cards=r.querySelectorAll('.card');
+  assert.equal(cards.length,4);
+  assert.equal(cards[0].querySelector('.row1 .big').textContent,'92%');
+  assert.deepEqual(cards[0].querySelectorAll('.meter .meter-name').map(n=>n.textContent),['Semana','Fable','5 horas']);
+  assert.deepEqual(cards[0].querySelectorAll('.meter .meter-value').map(n=>n.textContent),['92%','85%','28%']);
+  assert.deepEqual(cards[0].querySelectorAll('.seg').map(n=>n.querySelectorAll('i').length),[20,20,20]);
+  assert.deepEqual(cards[0].querySelectorAll('.seg').map(n=>n.querySelectorAll('i.on').length),[18,17,6]);
+  assert.equal(cards[0].querySelector('.meter .r').textContent,'se reinicia en 15h 23m');
+  assert.equal(cards[1].querySelector('.pane').textContent,'este pane');
+  assert.equal(cards[1].querySelector('.nm small').textContent,'<b>relotto</b>');
+  assert.ok(!/red;x/.test(cards[1].getAttribute('style')));
+  assert.equal(cards[2].querySelectorAll('.meter').length,1);
+  assert.deepEqual(cards[3].querySelectorAll('.fr b').map(n=>n.textContent),['147','21.6M','$0.00']);
+  assert.equal(cards[3].querySelector('.big'),null);
+  assert.equal(cards[3].querySelector('.seg'),null);
+  assert.equal(cards[3].querySelector('.tag').textContent,'sin cuota');
+  assert.equal(limitsHTML([],''),'<div class="wait">Sin límites que mostrar</div>');
+  for(const [used,on,tone] of [[0,0,''],[70,14,'warn'],[90,18,'bad'],[100,20,'bad'],[1000,20,'bad'],[-5,0,'']]){
+    r.innerHTML=limitsHTML([{id:'claude:main',provider:'claude',cli:'Claude',alias:'main',week:used}],'');
+    assert.equal(r.querySelectorAll('.seg i.on').length,on);
+    assert.equal(r.querySelector('.big').textContent,Math.max(0,Math.min(100,used))+'%');
+    if(tone) assert.equal(r.querySelector('.big').classList.contains(tone),true);
+  }
+  r.innerHTML=limitsHTML([{id:'claude:main',provider:'claude',cli:'Claude',alias:'main',week:NaN}],'');
+  assert.equal(r.querySelector('.seg'),null);
+  assert.ok(!r.textContent.includes('NaN'));
+  console.log('LED limits checks ok');
 }
+{
+  const vm = require('node:vm');
+  const html = fs.readFileSync(process.cwd() + '/dash/index.html', 'utf8');
+  const paint = html.slice(html.indexOf('function sidebarLimitsPaint(slot)'), html.indexOf('function sidebarLimits(slot)'));
+  for (const [native, anwin, expected] of [[false,false,'cuentas'],[true,false,'cuentas'],[true,true,'analytics']]) {
+    const actions = [], slot = {dataset:{}}, context = {
+      slot, SB_LIMITS:{accounts:[],at:1}, sidebarLimitsCur:()=>'',
+      inApp:()=>native, location:{search:anwin?'?anwin=1':''}, URLSearchParams,
+      window:{webkit:{messageHandlers:{centro:{postMessage:s=>actions.push(JSON.parse(s).headerAction)}}}},
+      openAnalytics:tab=>actions.push(tab), hydrateIcons:()=>{},
+      ComandosCommandSidebar:{createLimitsView:(_,opts)=>{ context.handlers=opts; return {update:()=>{}}; }},
+    };
+    vm.runInNewContext(paint + ';sidebarLimitsPaint(slot);', context);
+    context.handlers.onAnalytics();
+    assert.deepEqual(actions,[expected]);
+  }
+  console.log('LED Analytics wiring checks ok');
+}
+(async()=>{
+  const root=mkRoot(), events=[];
+  const accounts=[{id:'claude:main',provider:'claude',cli:'Claude',alias:'main',week:20},
+    {id:'claude:relotto',provider:'claude',cli:'Claude',alias:'relotto',week:100},
+    {id:'codex:main',provider:'codex',cli:'Codex',alias:'main',week:10}];
+  const view=mod.createLimitsView(root,{onAnalytics:a=>events.push(['analytics',a.id]),onSwitch:a=>events.push(['switch',a.id])});
+  view.update(accounts,'claude:relotto');
+  root.click('.card[data-account="claude:main"] .usage-toggle');
+  assert.equal(root.querySelector('.card.open').dataset.account,'claude:main');
+  assert.equal(root.querySelector('.card.open .usage-toggle').getAttribute('aria-expanded'),'true');
+  view.update(accounts,'claude:relotto');
+  assert.equal(root.querySelector('.card.open').dataset.account,'claude:main');
+  assert.equal(doc.activeElement === root.querySelector('.card.open .usage-toggle'),true);
+  root.click('.card.open [data-limit-action="analytics"]');await tick();
+  assert.deepEqual(events,[['analytics','claude:main']]);
+  root.click('.card.open [data-limit-action="switch"]');await tick();
+  assert.deepEqual(events.at(-1),['switch','claude:main']);
+  root.click('.card[data-account="codex:main"] .usage-toggle');
+  assert.equal(root.querySelector('.card.open [data-limit-action="switch"]'),null);
+  root.click('.card[data-account="claude:relotto"] .usage-toggle');
+  assert.equal(root.querySelector('.card.open [data-limit-action="switch"]'),null);
+  view.update(accounts,'codex:main');
+  assert.equal(root.querySelector('[data-limit-action="switch"]'),null);
+  console.log('LED interaction checks ok');
+})().catch(e=>{console.error(e);process.exit(1)});

@@ -5228,7 +5228,7 @@ def _pane_pill(sess, p, keys=True):
 
 
 def _pane_card_keys(sess, p, harness):
-    """«Cuenta: alias», «⚙ IA» y «✨ MCPs · Skills» de la Tarjeta."""
+    """«Cuenta: alias» y «✨ MCPs · Skills» de la Tarjeta."""
     pane = p.get("pane") or ""
     keys = []
     if harness in ("claude", "codex", "grok"):       # CLIs con cuentas propias
@@ -5238,10 +5238,7 @@ def _pane_card_keys(sess, p, harness):
                                  "Pasar este pane a otra cuenta sin perder la conversación" if ES
                                  else "Move this pane to another account, same conversation",
                                  lambda b, s=sess, pn=pane, h=harness, a=alias: _account_popover(b, s, pn, h, a)))
-    return keys + [_card_button("ia-gear", "IA",
-                         "Cambiar motor / modelo / cuenta de ESTE pane" if ES else "Switch this pane's motor/model/account",
-                         lambda *_, s=sess, pn=pane: _dash_js(f"openMotorFor({json.dumps(s)},{json.dumps(pn)})")),
-            _extension_pill(sess, pane, harness)]
+    return keys + [_extension_pill(sess, pane, harness)]
 
 
 def _account_bar_class(percent):
@@ -5299,6 +5296,8 @@ def _account_popover(button, sess, pane, harness, current):
     outer.pack_start(title, False, False, 0)
     rows = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=4)
     outer.pack_start(rows, False, False, 0)
+    add = Gtk.Button(label="+ Añadir cuenta" if ES else "+ Add account")
+    outer.pack_start(add, False, False, 0)
     note = Gtk.Label(label="Consultando cuentas…" if ES else "Loading accounts…", xalign=0)
     note.set_line_wrap(True); note.set_max_width_chars(38)
     note.get_style_context().add_class("acct-note")
@@ -5306,6 +5305,27 @@ def _account_popover(button, sess, pane, harness, current):
     pop.add(outer)
     outer.set_size_request(300, -1)
     pop.show_all()
+
+    def login(alias=""):
+        add.set_sensitive(False)
+        for child in rows.get_children():
+            child.set_sensitive(False)
+        note.set_text("Abriendo login…" if ES else "Opening login…")
+        def work():
+            res, err = http_post("/account/add", {"provider": harness, "alias": alias}, timeout=20)
+            def done():
+                if err or not res or not res.get("ok"):
+                    note.set_text(err or (res or {}).get("error") or "No se pudo abrir el login")
+                    add.set_sensitive(True)
+                    for child in rows.get_children():
+                        child.set_sensitive(getattr(child, "_can", False))
+                else:
+                    pop.popdown()
+                    open_tab(res["session"], "claude", label=f"Login {harness} · {res['alias']}")
+                return False
+            GLib.idle_add(done)
+        threading.Thread(target=work, daemon=True).start()
+    add.connect("clicked", lambda *_: login())
 
     def switch(alias):
         for child in rows.get_children():
@@ -5349,7 +5369,7 @@ def _account_popover(button, sess, pane, harness, current):
             return False
         for a in data.get("accounts") or []:
             alias = a.get("alias") or ""
-            on, can = alias == current, bool(a.get("selectable")) and alias != current
+            on, can = alias == current and bool(a.get("selectable")), alias != current or not a.get("selectable")
             btn = Gtk.Button()
             btn.set_relief(Gtk.ReliefStyle.NONE)
             btn.get_style_context().add_class("acct-row")
@@ -5359,11 +5379,15 @@ def _account_popover(button, sess, pane, harness, current):
             name = Gtk.Label(xalign=0)
             name.set_markup(f"<b>{GLib.markup_escape_text(alias)}</b>")
             name.set_hexpand(True)
-            tag = Gtk.Label(label=("en uso" if on else "cambiar →" if can else "sin login") if ES
-                            else ("in use" if on else "switch →" if can else "no login"), xalign=1)
+            tag = Gtk.Label(label=("en uso" if on else "cambiar →" if a.get("selectable") else "iniciar sesión →") if ES
+                            else ("in use" if on else "switch →" if a.get("selectable") else "sign in →"), xalign=1)
             tag.get_style_context().add_class("acct-tag")
             grid.attach(name, 0, 0, 2, 1); grid.attach(tag, 2, 0, 1, 1)
-            for i, lim in enumerate(a.get("limits") or [], start=1):
+            if a.get("identity"):
+                identity = Gtk.Label(label=a["identity"], xalign=0)
+                identity.get_style_context().add_class("acct-dim")
+                grid.attach(identity, 0, 1, 3, 1)
+            for i, lim in enumerate(a.get("limits") or [], start=2 if a.get("identity") else 1):
                 pct = int(lim.get("percent") or 0)
                 lab = Gtk.Label(label=str(lim.get("label") or ""), xalign=0)
                 lab.get_style_context().add_class("acct-dim")
@@ -5386,7 +5410,7 @@ def _account_popover(button, sess, pane, harness, current):
             btn._can = can
             btn.set_sensitive(can)
             if can:
-                btn.connect("clicked", lambda *_, al=alias: switch(al))
+                btn.connect("clicked", lambda *_, al=alias, ready=bool(a.get("selectable")): switch(al) if ready else login(al))
             rows.pack_start(btn, False, False, 0)
         note.set_text("Sigue la misma conversación. Si está respondiendo, se interrumpe y cambia al instante." if ES
                       else "Same conversation. If it is replying, it is interrupted and switches right away.")

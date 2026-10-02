@@ -152,10 +152,10 @@ async def check(home,name,spec):
                 # reject actual access. A minimal read distinguishes the two.
                 mail_accounts={'gmail':'jesusbatallar@gmail.com','gmail-signara':'jesus@signara.ai',
                                'qcdr-mail':'jesus@qcdr.io','proton-mail':'pdlgmcn@protonmail.com'}
-                probes={'google-drive':'list_recent_files','google-calendar':'list_calendars',
+                probes={'google-drive':'list_recent_files','google-calendar':'list-calendars',
                         **{n:'get_profile' for n in mail_accounts}}
                 if name in probes:
-                    result=await session.call_tool(probes[name],{} if name in mail_accounts else {'pageSize':1})
+                    result=await session.call_tool(probes[name],{} if name in mail_accounts or name=='google-calendar' else {'pageSize':1})
                     if result.isError:
                         return {'name':name,'status':'failed','phase':'read_access','tools':count}
                     if name in mail_accounts:

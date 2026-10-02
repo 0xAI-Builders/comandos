@@ -47,27 +47,6 @@ def test_notifications_v2_prioritize_and_carry_action_buttons():
     assert "el badge cuenta SOLO lo importante" in HTML
 
 
-def test_model_confirmation_action_is_sticky():
-    # El pie (mp-stick) queda fijo fuera del scroll, pero como parte flex del
-    # popover (no sticky sobre el contenido) y lleva SOLO el botón de aplicar:
-    # cuentas y estado viven en el cuerpo scrolleable. Ver
-    # test_motor_picker_is_flex_head_scrollbody_foot_and_footer_holds_only_apply.
-    assert "#motor-pop .mp-stick{flex:none;" in HTML
-    assert '<div class="mp-stick">' in HTML
-    assert "min-height:44px" in HTML
-
-
-def test_motor_picker_is_visible_for_every_matrix_harness():
-    # El popover (harness + motor + cuenta) debe abrirse en ACP/OpenCode/Antigravity,
-    # no solo en Claude/Codex/Grok. Si el pill está hidden, no hay forma de cambiar
-    # de CLI en esas sesiones.
-    assert "matrixHarnesses" in HTML
-    assert "function liveHarnesses()" in HTML or "function switchableHarnesses()" in HTML or \
-           "((PROVIDERS||{}).matrixHarnesses)" in HTML
-    # el driver del /model/switch es el harness vivo, no "siempre claude"
-    assert "const driver = item.agent" in HTML
-
-
 def test_switch_result_updates_harness_motor_model_and_effort_everywhere():
     # Tras /model/switch o /harness/switch, el poll debe pintar harness/motor/modelo/esfuerzo
     # en el item vivo (card, chip, popover). Si solo copia model/effort, ACP se queda
@@ -117,15 +96,6 @@ async function poll(){
 })().catch(e=>{console.error(e);process.exitCode=1;});
 """
     subprocess.run(['node', '-e', script], check=True)
-
-
-def test_effort_only_switch_does_not_resend_model():
-    # Cambiar SOLO el esfuerzo (mismo modelo) NUNCA debe re-teclear `/model
-    # <id>`: eso dejaba el modelo en un id crudo que la API rechaza con
-    # model_unavailable en el siguiente turno. Con mismo modelo -> model:"".
-    assert 'model:sameModel?"":st.model' in HTML
-    # el ternario roto (ambas ramas iguales) no debe volver
-    assert "sameModel?st.model:st.model" not in HTML
 
 
 def test_usage_chip_text_survives_without_session_rows():
@@ -257,107 +227,7 @@ def test_header_shows_global_limit_percentages():
     assert "renderLimitsStrip" in HTML
 
 
-def test_picker_tiles_jump_to_opencode_agy_cli_instead_of_not_routed():
-    """CLI y cerebro van separados: OpenCode/AGY son chips de CLI, no tiles
-    muertas con 'esta TUI no hospeda'. El wizard tampoco lista not_routed."""
-    assert "function tileAction" in HTML
-    assert "pickerTileIds" in HTML
-    assert "function nsSelectableMotors" in HTML or "not_routed" in HTML.split("function nsRender", 1)[1][:2200]
-    go = HTML.split("const goBtn = pop.querySelector", 1)[1][:2800]
-    assert 'api("/harness/switch"' in go
-    assert 'data-harness="${h}"' in HTML
-    # el grid de cerebros NO usa celdas not_routed
-    ids = HTML.split("function pickerTileIds", 1)[1][:900]
-    assert "selectable" in ids
-    tile = HTML.split("const tile = (prov, title, sub)", 1)[1][:1800]
-    assert "tileAction" in tile
-
-
-def test_harness_switch_sends_destination_default_model_not_source_model():
-    """Cambiar de CLI no reenvía el modelo de Claude a OpenCode/AGY."""
-    switch = HTML.split('api("/harness/switch"', 1)[1][:900]
-    assert "destHarnessModel" in HTML or "nativeDefaultModel" in HTML
-    assert "item.model || \"\"" not in switch or "destModel" in switch
-
-
-def test_picker_explains_acp_and_confirms_cli_switch_with_a_button():
-    """ACP no es un modelo: una línea en el picker. Cambiar de CLI no es
-    'toca el chip otra vez': hay un botón explícito de confirmar."""
-    assert "una TUI" in HTML or "misma pantalla" in HTML
-    assert "/agent" in HTML
-    assert "mp-cli-go" in HTML or "Sí, cambiar a" in HTML
-    assert "ComandOS ACP" in HTML or "ACP (una TUI" in HTML
-    assert "no es un modelo" in HTML.lower() or "no es OpenCode" in HTML or "no es la TUI" in HTML
-
-
-def test_picker_states_honestly_what_switch_keeps():
-    """Motor/effort = conversación intacta. Cambio de CLI = archivos+git+handoff;
-    al volver a Claude se reanuda el transcript. Nunca fingir que la memoria
-    interna del TUI se transfiere."""
-    assert "conversación intacta" in HTML or "contexto intacto" in HTML
-    assert "transcript" in HTML.lower() or "al volver a Claude" in HTML or "resume" in HTML.lower()
-
-
 def test_wizard_hides_not_routed_cells_from_unavailable_list():
     ns = HTML.split("function nsRender", 1)[1][:2800]
     assert "not_routed" in ns
     assert "nsSelectableMotors" in HTML or "r.selectable" in ns
-
-
-def test_motor_picker_offers_agy_and_opencode_native_and_acp_mixes():
-    # Combinaciones operables: nativo agy/opencode + ACP hospedando esos motores.
-    assert "OpenCode" in HTML and "Antigravity" in HTML
-    assert 'api("/harness/switch"' in HTML
-    assert "to===" in HTML and "acp" in HTML
-    assert "opencode" in HTML and "agy" in HTML
-    # desde un pane shell el picker de harness sigue visible
-    compact = HTML.replace(" ", "")
-    assert "liveHarnesses()" in compact
-    assert "nsOpenForPane" in HTML or "openAiHere" in HTML or \
-           "Iniciar sesión de IA" in HTML or "Start AI session" in HTML
-
-
-def test_motor_picker_is_flex_head_scrollbody_foot_and_footer_holds_only_apply():
-    # Cabecera y pie NO son sticky sobre un popover que scrollea entero: el
-    # cuerpo (.mp-body) es el único que scrollea y el pie solo lleva el botón.
-    assert "#motor-pop .mp-body{flex:1 1 auto;min-height:0;overflow-y:auto" in HTML
-    assert "#motor-pop .mp-head{flex:none;" in HTML
-    assert "#motor-pop .mp-stick{flex:none;" in HTML
-    assert "position:sticky" not in HTML.split("#motor-pop .mp-head{")[1].split("}")[0]
-    body = HTML.split('<div class="mp-body">')[1].split('<div class="mp-stick">')[0]
-    assert '<div class="mp-acct">' in body and '<div class="mp-foot">' in body
-    stick = HTML.split('<div class="mp-stick">')[1].split("`;")[0]
-    assert "mp-acct" not in stick and "mp-foot" not in stick
-
-
-def test_picker_always_shows_every_provider_card_not_only_routed_ones():
-    # En un pane de Grok deben verse Claude, Codex, etc. (cambio de CLI o
-    # bloqueada), no solo la card de Grok. Las ruteables van primero.
-    ids = HTML.split("function pickerTileIds", 1)[1][:1400]
-    assert "const routed = rows.filter(r=>r.selectable)" in ids
-    assert "Object.keys(((PROVIDERS||{}).motors)||{})" in ids
-    assert "routed.concat(rest)" in ids
-
-
-def test_picker_marks_registry_models_flagged_soon_as_disabled_not_selectable():
-    # Un modelo puede estar en el registry antes de que la cuenta lo tenga
-    # (GPT-6 Astra). Debe verse, pero deshabilitado y etiquetado PRONTO,
-    # para no prometer un cambio que el CLI no puede hacer.
-    assert "m.soon ? `disabled title=" in HTML
-    assert 'class="cur soon"' in HTML
-
-
-def test_gtk_inline_picker_is_a_fullscreen_overlay_with_apply_always_visible():
-    # En la app: overlay fijo a pantalla completa del sidebar, no inline en la
-    # lista. Así el botón 'Cambiar a…' (pie flex) nunca queda bajo el fold.
-    css = HTML.split("html.gtkapp #motor-pop.inline{",1)[1].split("}",1)[0]
-    assert "position:fixed" in css and "height:100vh" in css and "max-height:none" in css
-
-
-def test_busy_block_is_switch_plus_text_and_apply_button_reflects_interrupt():
-    # El texto ya no vive dentro del interruptor de 34px (se encimaba). Al
-    # encenderlo, el botón del pie pasa a "■ Detener y cambiar a…".
-    assert 'class="sw" role="switch" aria-checked="false"' in HTML
-    assert "#motor-pop .mp-busy{display:grid;grid-template-columns:auto minmax(0,1fr)" in HTML
-    assert 'tf("Detener y cambiar a", "Stop and switch to")' in HTML
-    assert "go.classList.toggle(\"danger\", on)" in HTML

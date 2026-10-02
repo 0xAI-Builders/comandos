@@ -34,6 +34,27 @@ def test_week_rejects_other_offsets():
     assert dash.analytics_week_query("/analytics/week?offset=x")[0] == 400
 
 
+def test_sidebar_reads_measured_opencode_and_preserves_regular_analytics(tmp_path, monkeypatch):
+    dash = load_dash_module()
+    db = str(tmp_path / "usage.sqlite")
+    monkeypatch.setattr(dash, "USAGE_DB", db)
+    now = time.time()
+    dash.cc_usage.record_turns(db, [{
+        "id": "opencode-db-test", "provider": "opencode", "agent": "opencode",
+        "tmux_session": "source-session", "turn_started_at": int(now - 30),
+        "turn_finished_at": int(now - 10), "total_tokens": 123456,
+        "cost_usd": .75, "model": "opencode/model-free", "source": "opencode_db"}])
+    monkeypatch.setattr(dash, "usage_provider_limits", lambda force=False: {"limits": [], "health": {}})
+    assert dash.analytics_week_payload(0, now=now)["accounts"] == []
+    sidebar = dash.analytics_week_payload(0, now=now, sidebar=True)
+    assert sidebar["accounts"][0]["id"] == "opencode:main"
+    assert sidebar["accounts"][0]["measured"]["tokens"] == 123456
+    assert sidebar["accounts"][0]["measured"]["costUsd"] == .75
+    assert sidebar["accounts"][0]["measured"]["sessions"] == 1
+    code, result = dash.analytics_week_query("/analytics/week?offset=0&sidebar=1")
+    assert code == 200 and result["accounts"][0]["id"] == "opencode:main"
+
+
 def test_demo_serves_the_mockup_data_only_by_plain_name():
     dash = load_dash_module()
     code, week = dash.analytics_week_query("/analytics/week?demo=normal")

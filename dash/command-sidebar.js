@@ -81,37 +81,119 @@
       : `<span class="mono logo-tile">${esc(String(id || '?').slice(0, 1).toUpperCase())}</span>`;
   }
 
-  // Límites de uso de la columna (grill 2-oct): una tarjeta por cuenta con lo que MÁS lleva
-  // usado en grande (0→100 %, como /usage de Claude Code) y, debajo, un chip por límite
-  // (Semana, el modelo y la sesión de 5 h) con barra, % usado y cuándo se reinicia. Mismos
-  // datos que Analytics (accounts de /analytics/week); curId marca la cuenta del pane.
+  // Tarjetas de cuota con segmentos de 5 puntos y consumo medido cuando no hay cuota.
   function accLimits(a) {
     const L = [];
-    // k = qué mide (todos los modelos, uno en concreto o la ventana corta); n = su nombre
-    if (a.week != null) L.push({ k: 'todos', n: 'Semana', u: a.week, left: a.left });
-    if (a.model) L.push({ k: 'modelo', n: a.model.n, u: a.model.v, left: a.model.left ?? a.left });
-    if (a.h5 != null) L.push({ k: 'sesión', n: '5 horas', u: a.h5, left: a.h5Left });
-    return L.map(l => ({ ...l, u: Math.max(0, Math.min(100, Math.round(l.u))) }));
+    if (a.week != null) L.push({ n: 'Semana', u: a.week, left: a.left, reset: a.reset });
+    if (a.model) L.push({ n: a.model.n, u: a.model.v, left: a.model.left ?? a.left, reset: a.model.reset ?? a.reset });
+    if (a.h5 != null) L.push({ n: '5 horas', u: a.h5, left: a.h5Left, reset: a.h5Reset });
+    return L.filter(l => Number.isFinite(l.u)).map(l => ({ ...l, u: Math.max(0, Math.min(100, Math.round(l.u))) }));
   }
   const limTone = u => u >= 90 ? 'bad' : u >= 70 ? 'warn' : '';
-  function limitsHTML(accounts, curId) {
-    const rows = (Array.isArray(accounts) ? accounts : []).map(a => ({ a, L: accLimits(a) })).filter(x => x.L.length);
+  const limitColor = (color, u) => u >= 90 ? 'var(--bad)' : u >= 70 ? 'var(--warn)' : color;
+  const quotaColor = a => /^#(?:[0-9a-f]{3}|[0-9a-f]{4}|[0-9a-f]{6}|[0-9a-f]{8})$/i.test(String(a.color || '')) ? a.color : 'var(--brand)';
+  const measuredNumber = n => Number.isFinite(n) && n >= 0 ? n : null;
+  function tokenText(n) {
+    n = measuredNumber(n);
+    if (n == null) return '—';
+    return n >= 1e9 ? (n / 1e9).toFixed(1) + 'B' : n >= 1e6 ? (n / 1e6).toFixed(1) + 'M'
+      : n >= 1000 ? (n / 1000).toFixed(1) + 'K' : String(n);
+  }
+  function hoursText(d) {
+    return d && Number.isFinite(d.h) ? `${d.h.toFixed(1)} h · ${d.ses ?? 0} ses` : '—';
+  }
+  function canSwitchLimitAccount(a, curId) {
+    return !!curId && a.id !== curId && curId.split(':')[0] === a.provider
+      && ['claude', 'codex', 'grok'].includes(a.provider)
+      && accLimits(a).length > 0 && accLimits(a).every(l => l.u < 100);
+  }
+  function limitDetail(a, L, curId, pending) {
+    const pair = (k, v) => `<span>${esc(k)}</span><b>${esc(v)}</b>`;
+    let rows = L.map(l => pair(l.n, `${l.u}% · ${l.reset ? 'reinicia ' + l.reset : l.left ? 'se reinicia en ' + l.left : 'sin reinicio reportado'}`)).join('');
+    if (!L.length) {
+      rows += pair('Modelo', (a.measured?.models || []).join(' · ') || '—');
+      rows += pair('Costo semana', measuredNumber(a.measured?.costUsd) == null ? '—' : '$' + a.measured.costUsd.toFixed(2));
+    } else rows += pair('Hoy', hoursText(a.hoy)) + pair('Semana', hoursText(a.sem));
+    if (a.plan) rows += pair('Plan', a.plan);
+    const action = (key, label, cls = '') => `<button type="button" data-flat data-limit-action="${key}" class="${cls}"${pending && key === 'switch' ? ' disabled' : ''}>${esc(label)}</button>`;
+    return `<div class="det"><div class="kv">${rows}</div><div class="acts">`
+      + (canSwitchLimitAccount(a, curId) ? action('switch', `Seguir este pane en ${a.alias} →`, 'pri') : '')
+      + action('analytics', 'Ver en Analytics') + '</div></div>';
+  }
+  function limitsHTML(accounts, curId, opts = {}) {
+    const rows = (Array.isArray(accounts) ? accounts : []).filter(a => a && typeof a.id === 'string');
     if (!rows.length) return '<div class="wait">Sin límites que mostrar</div>';
-    return '<div class="cs-lim">' + rows.map(({ a, L }) => {
-      const top = L.reduce((m, l) => (l.u > m.u ? l : m));
-      const color = /^#[0-9a-f]{3,8}$/i.test(String(a.color || '')) ? a.color : 'var(--cs-brand)';
-      const cur = !!curId && a.id === curId;
-      const label = l => l.k === 'modelo' ? `${l.n} (semana)` : l.k === 'sesión' ? 'sesión de 5 h' : 'semana';
-      const back = top.left ? ` · se reinicia en ${esc(top.left)}` : '';
-      return `<div class="la${cur ? ' cur' : ''}${top.u >= 100 ? ' out' : ''}" style="--ac:${color};--w:${Math.max(top.u, 2)}%">`
-        + `<div class="la-h">${monoHTML(a.provider)}<b>${esc(a.cli)}</b><small>${esc(a.alias)}</small>`
-        + (cur ? '<span class="la-pane">este pane</span>' : '') + `<b class="la-big ${limTone(top.u)}">${top.u}%</b></div>`
-        + `<div class="la-why">${top.u >= 100 ? `<b>Agotada</b>: ${L.filter(l => l.u >= 100).map(l => esc(label(l))).join(' y ')}` : `Lo más usado: <b>${esc(label(top))}</b>`}${back}</div>`
-        + '<div class="la-lims">' + L.map(l => `<div class="lm${l === top ? ' first' : ''} ${limTone(l.u)}" title="${esc(label(l))}: ${l.u}% usado${l.left ? ' · se reinicia en ' + esc(l.left) : ''}">`
-          + `<span class="lm-n"><i class="lm-k">${l.k}</i>${esc(l.n)}</span>`
-          + `<span class="lm-t"><i style="width:${Math.max(l.u, 2)}%"></i></span>`
-          + `<span class="lm-v"><b>${l.u}%</b>${l.left ? `<small>${esc(l.left)}</small>` : ''}</span></div>`).join('') + '</div></div>';
+    return '<div class="cs-lim">' + rows.map(a => {
+      const L = accLimits(a), peak = L.length ? L.reduce((m, l) => l.u > m.u ? l : m) : null;
+      const color = quotaColor(a), cur = !!curId && a.id === curId, open = opts.openId === a.id;
+      const logo = `<span class="logo">${LOGO[a.provider] || esc(String(a.cli || '?').slice(0, 1))}</span>`;
+      const name = `<span class="nm"><b>${esc(a.cli)}</b><small>${esc(a.alias)}</small></span>`;
+      const pane = cur ? '<span class="pane">este pane</span>' : '';
+      let content;
+      if (peak) {
+        content = `<div class="row1">${logo}${name}${pane}<b class="big ${limTone(peak.u)}">${peak.u}%</b></div>`
+          + L.map(l => `<div class="meter" style="--lc:${limitColor(color, l.u)}">`
+            + `<span class="meter-name">${esc(l.n)}</span><span class="seg" aria-hidden="true">`
+            + Array.from({ length: 20 }, (_, i) => `<i class="${i < Math.round(l.u / 5) ? 'on' : ''}"></i>`).join('')
+            + `</span><b class="meter-value ${limTone(l.u)}">${l.u}%</b>`
+            + `<span class="r">${l.left ? 'se reinicia en ' + esc(l.left) : 'sin reinicio reportado'}</span></div>`).join('');
+      } else {
+        const m = a.measured || {}, ses = measuredNumber(m.sessions), cost = measuredNumber(m.costUsd);
+        content = `<div class="free-head">${logo}${name}${pane}<span class="tag">sin cuota</span></div>`
+          + `<div class="fr"><span><b>${ses == null ? '—' : ses}</b>sesiones · semana</span>`
+          + `<span><b>${tokenText(m.tokens)}</b>tokens · semana</span>`
+          + `<span><b>${cost == null ? '—' : '$' + cost.toFixed(2)}</b>costo · semana</span></div>`;
+      }
+      return `<div class="card${peak ? '' : ' free'}${cur ? ' cur' : ''}${open ? ' open' : ''}" data-account="${esc(a.id)}" style="--ac:${color}">`
+        + `<button type="button" data-flat class="usage-toggle" aria-expanded="${open}" aria-label="${esc(a.cli + ' ' + a.alias)}: ${peak ? peak.u + '% usado' : 'consumo medido'}">${content}</button>`
+        + limitDetail(a, L, curId, opts.pending) + '</div>';
     }).join('') + '</div>';
+  }
+
+  function createLimitsView(slot, opts = {}) {
+    const state = { accounts: [], curId: '', openId: '', pending: false };
+    const paint = () => {
+      const active = slot.ownerDocument?.activeElement;
+      const focusedCard = active?.closest?.('.card[data-account]');
+      const accountId = focusedCard && slot.contains(focusedCard) ? focusedCard.dataset.account : '';
+      const action = active?.dataset?.limitAction;
+      slot.innerHTML = limitsHTML(state.accounts, state.curId, state);
+      if (accountId) {
+        const card = [...slot.querySelectorAll('.card')].find(x => x.dataset.account === accountId);
+        const button = action ? [...(card?.querySelectorAll('[data-limit-action]') || [])].find(x => x.dataset.limitAction === action) : card?.querySelector('.usage-toggle');
+        const target = button && !button.disabled && button.getAttribute('disabled') == null ? button : card?.querySelector('.usage-toggle');
+        try { target?.focus(); } catch (_) {}
+      }
+    };
+    slot.addEventListener('click', async e => {
+      const card = e.target.closest?.('.card[data-account]');
+      if (!card) return;
+      const a = state.accounts.find(x => x.id === card.dataset.account);
+      if (!a) return;
+      const button = e.target.closest('button');
+      if (!button) return;
+      if (button.classList.contains('usage-toggle')) {
+        state.openId = state.openId === a.id ? '' : a.id;
+        paint();
+        const toggle = [...slot.querySelectorAll('.card')].find(x => x.dataset.account === a.id)?.querySelector('.usage-toggle');
+        try { toggle?.focus(); } catch (_) {}
+        return;
+      }
+      const action = button.dataset.limitAction;
+      try {
+        if (action === 'analytics') await opts.onAnalytics?.(a);
+        else if (action === 'switch' && !state.pending && canSwitchLimitAccount(a, state.curId)) {
+          state.pending = true; paint();
+          try { await opts.onSwitch?.(a, state.curId); }
+          finally { state.pending = false; paint(); }
+        }
+      } catch (err) { opts.onError?.(err); }
+    });
+    return { update(accounts, curId) {
+      state.accounts = Array.isArray(accounts) ? accounts : []; state.curId = curId || '';
+      if (!state.accounts.some(a => a.id === state.openId)) state.openId = '';
+      paint();
+    } };
   }
 
   // Arranques leídos de `<cli> --help` (cli.start): la fila del binario con el primer
@@ -459,8 +541,8 @@
         el.innerHTML = toolsHTML()
           + `<div class="sec-cmds cs-sheet" role="dialog" aria-label="Comandos, cadenas y servidores">${headHTML()}<div class="cs-body">${bodyHTML()}</div>`
           + `<div class="cs-chains-body">${runnerHTML() + savedHTML()}</div><div class="cs-srv"><div class="cs-srv-slot"></div></div></div>`
-          // Sin terminal a la vista, la columna muestra los límites de uso (botellas de Analytics)
-          + '<div class="cs-empty-terms"><div class="et-lim"><div class="et-h"><b>Límites de uso</b><small>lo que queda de cada cuenta</small></div>'
+          // Sin terminal a la vista, la columna muestra las cuotas y el consumo medido.
+          + '<div class="cs-empty-terms"><div class="et-lim"><div class="et-h"><b>Uso de tus cuentas</b><small>% usado</small></div>'
           + '<div class="cs-limits"></div></div>'
           + '<div class="et-foot"><span class="et-t"></span><button type="button" data-flat class="et-go"></button></div></div>'
           + '<div class="sec-terms"><div class="cs-terms tt" role="group" aria-label="Terminales de la barra">'
@@ -668,6 +750,6 @@
     return { refresh, render, insert, startChain, next, stop, applyCatalog, termAction, setCmdsOpen, setSheet, get state() { return state; } };
   }
 
-  root.ComandosCommandSidebar = { createCommandSidebar, rowHTML, cliHTML, esc, isToggleKey, limitsHTML };
-  if (typeof module !== 'undefined' && module.exports) module.exports = { createCommandSidebar, rowHTML, cliHTML, esc, isToggleKey, limitsHTML };
+  root.ComandosCommandSidebar = { createCommandSidebar, rowHTML, cliHTML, esc, isToggleKey, limitsHTML, createLimitsView };
+  if (typeof module !== 'undefined' && module.exports) module.exports = { createCommandSidebar, rowHTML, cliHTML, esc, isToggleKey, limitsHTML, createLimitsView };
 })(typeof window !== 'undefined' ? window : globalThis);

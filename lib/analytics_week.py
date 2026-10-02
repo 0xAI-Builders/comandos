@@ -218,6 +218,42 @@ def build_accounts(limits, sess, today, window_end, snapshots, now, tz, past):
     return out
 
 
+def sidebar_accounts(accounts, limits, turns, now):
+    """Cuotas y consumo medido de la columna; mantiene el modelo de Analytics intacto."""
+    out = [dict(a) for a in accounts]
+    by_id = {a["id"]: a for a in out}
+    groups = {}
+    for row in limits:
+        item = by_id.get(account_id(row.get("provider"), row.get("account")))
+        plan = row.get("plan_type") or row.get("plan")
+        if item is not None and plan:
+            item["plan"] = plan
+    for turn in turns:
+        if not now - 7 * 86400 <= float(turn.get("finished") or 0) <= now:
+            continue
+        provider = "opencode" if turn.get("agent") == "opencode" else turn.get("provider")
+        acc = account_id(provider, turn.get("account"))
+        if acc not in by_id:
+            if provider != "opencode":
+                continue
+            item = {"id": acc, "provider": provider, "cli": "OpenCode",
+                    "alias": account_of(turn.get("account")), "color": "#2fd3c0",
+                    "week": None, "model": None, "h5": None}
+            by_id[acc] = item
+            out.append(item)
+        group = groups.setdefault(acc, {"sessions": set(), "tokens": 0, "cost": 0.0, "models": set()})
+        if turn.get("session"):
+            group["sessions"].add(turn["session"])
+        group["tokens"] += max(0, int(turn.get("tokens") or 0))
+        group["cost"] += max(0.0, float(turn.get("cost") or 0))
+        if turn.get("model"):
+            group["models"].add(turn["model"])
+    for acc, group in groups.items():
+        by_id[acc]["measured"] = {"sessions": len(group["sessions"]), "tokens": group["tokens"],
+                                  "costUsd": round(group["cost"], 6), "models": sorted(group["models"])}
+    return out
+
+
 def pomodoros(records, days, tz):
     keep = set(days)
     out = []
