@@ -63,3 +63,18 @@ Servidores se conserva exactamente como hoy: el botón de la primera fila muestr
 ## Cierre de la fase 2
 
 El grilling de la segunda fase terminó el 2026-09-29 con la orden de implementar lo aprobado. El plan de implementación es /home/someguy/codebase/0xJesus/ComandOS/.worktrees/comandos-v1-grill/docs/superpowers/plans/2026-09-29-commandos-v1/06-barra-comandos-cabecera.md. Analytics/Reparto, entrada remota, ajustes y contexto de retorno no se grillaron y no tienen diseño aprobado.
+
+## Analytics (grill del 2026-10-01 y 2026-10-02)
+
+Mockup maestro aprobado: `dash/prototypes/prototype-analytics.html`, publicado en https://claude.ai/artifact/TUhpGkx65o7ytP3hRMkggz (versión 12). Es la referencia pixel perfect: la implementación se compara captura contra captura con los mismos datos de ejemplo.
+
+Analytics tiene tres pestañas: **Cuentas · Comparar · Pomodoro**. Arriba a la derecha, flechas ← → para ver la semana anterior (solo lectura). Todo es **por cuenta** (claude·main, claude·relotto, codex·main, grok·main); nunca se suman las cuentas de Claude ni los porcentajes de cuota entre cuentas.
+
+- **Cuentas**: "barra iluminada". Una botella de vidrio por límite (Semana, Fable, Sesión 5 h en Claude; Semana en Codex y Grok), todas en una repisa con luz de fondo, placa con el logo oficial por cuenta. El % es lo que **queda**; cada límite muestra su propio reset; ámbar ≤30 %, rojo ≤10 %. Debajo, hoy/semana por cuenta y el calendario "compacto inteligente": columnas = días, une sesiones seguidas del mismo proyecto (×N), encoge horas sin actividad, máximo 2 en paralelo por grupo de cruce y un botón +N con la lista.
+- **Comparar**: "¿qué proyecto cuesta más?". Repisa de botellas por capas (lo gastado de cada cuenta, en capas por proyecto, con lo que queda) y debajo tarjetas de hallazgos: lo más caro, cuota que sobra al reset, vs la semana pasada, cuentas mezcladas y horario por franja. El ranking es por tokens.
+- **Pomodoro**: solo stats de pomodoros. Cuatro números (hoy, semana, cancelados, promedio por día), tabla día por día (tomates, cuántos, hora de inicio de cada uno con los cancelados tachados, proyectos con su número, foco) y debajo "¿a qué horas?" y "¿en qué proyectos?".
+- **Celular**: la repisa se desliza de lado con una cuenta por pantalla y puntos indicadores; el calendario muestra 3 días con ← →; la tabla de Pomodoro pasa a tarjetas por día.
+
+Se eliminan: Guardia anti-desborde, Cambios recientes, Alertas (y sus avisos al cruzar 70/85/95 %), la propuesta de Reparto con Analizar/Aplicar y arrastrar sesiones entre tanques, comparar configuraciones/modelos, calificaciones, experimentos y costo por proveedor. La aplicación no propone ni aplica cambios por su cuenta.
+
+Datos que el diseño necesita y hoy faltan: cuenta en cada turno de Claude (se recupera por la carpeta del transcript), Codex por turno desde los rollouts, duración de los turnos de Claude y una foto de cuánto quedaba de cada cuota al reset (empieza vacía).
