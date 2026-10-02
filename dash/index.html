@@ -328,7 +328,7 @@
   #btn-pomo .pomo-mini{font:800 10px var(--mono);margin-left:4px;font-variant-numeric:tabular-nums}
   #btn-notif{position:relative}
   /* Popover de la app: solo el panel, ocupando toda la vista, sin sombra ni borde */
-  body.only-panel > *:not(#notif-panel):not(#pomo-panel):not(#settings):not(#news-reader):not(#notices):not(#usage):not(.backdrop){display:none !important}
+  body.only-panel > *:not(#notif-panel):not(#pomo-panel):not(#settings):not(#news-reader):not(#notices):not(#usage):not(#remote):not(#servers):not(#sovereignty):not(.backdrop){display:none !important}
   /* Estante del escritorio: el cajón ocupa TODO el alto del estante. La altura de
      franja (--nt-h en línea, pensada para el remoto) no aplica aquí. */
   html[data-only-panel="notices"] body.only-panel #notices{display:flex!important;flex-direction:column;position:fixed;inset:0;border-top:0}
@@ -341,7 +341,12 @@
   body.only-panel{background:var(--panel)}
   body.only-panel #notif-panel,body.only-panel #pomo-panel{position:static !important;width:100% !important;max-width:none;max-height:none;
     border:none;box-shadow:none;border-radius:0;left:auto !important;right:auto !important;top:auto !important}
-  html:not([data-only-panel="appearance"]) body.only-panel #settings{display:none!important}
+  html:not([data-only-panel="appearance"]):not([data-only-panel="settings"]) body.only-panel #settings{display:none!important}
+  html:not([data-only-panel="remote"]) body.only-panel #remote,html:not([data-only-panel="servers"]) body.only-panel #servers,
+  html:not([data-only-panel="sovereignty"]) body.only-panel #sovereignty{display:none!important}
+  /* Modales en medio (2-oct): en la ventana centrada de la app el modal pedido llena la ventana */
+  html:is([data-only-panel="settings"],[data-only-panel="remote"],[data-only-panel="servers"],[data-only-panel="sovereignty"]) body.only-panel :is(#settings,#remote,#servers,#sovereignty).open{position:static!important;display:flex!important;background:var(--bg)!important;padding:0!important;min-height:100vh}
+  html:is([data-only-panel="settings"],[data-only-panel="remote"],[data-only-panel="servers"],[data-only-panel="sovereignty"]) body.only-panel :is(#settings,#remote,#servers,#sovereignty) .modal-panel{width:100%!important;max-width:none!important;max-height:none!important;border:0!important;border-radius:0!important;box-shadow:none!important}
   html[data-only-panel="appearance"] body.only-panel #settings{position:static!important;display:flex!important;background:var(--bg)!important;padding:0!important}
   /* Modal Cadenas del escritorio (?panel=chains): el constructor llena la ventana GTK centrada */
   html[data-only-panel="chains"] body.only-panel > .backdrop[data-mclose]{display:flex!important;padding:0!important;background:var(--panel)!important}
@@ -2023,9 +2028,22 @@ function inApp(){
   return !!(window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.centro);
 }
 if(inApp()) document.documentElement.classList.add("inapp"), document.addEventListener("DOMContentLoaded", ()=> document.body.classList.add("inapp"));
-const ONLY_PANEL = (new URLSearchParams(location.search).get("panel") || "").replace(/[^a-z]/g, "");
+// Modales en medio (2-oct): en la app el tablero es la columna izquierda y un modal ahí queda apretado.
+// El tablero pide el modal en la ventana centrada de la app (la de Cadenas, que cualquier cc-app ya abre
+// con {headerAction:"chains"}) y deja en localStorage cuál mostrar; esa ventana lo lee al cargar.
+const CENTER_PANELS = {settings: "#settings", remote: "#remote", servers: "#servers", sovereignty: "#sovereignty", usage: "#usage", pomo: "#pomo-panel"};
+const CENTER_REQ = (()=>{
+  if((new URLSearchParams(location.search).get("panel") || "") !== "chains") return null;
+  try{
+    const r = JSON.parse(localStorage.getItem("cc-center-panel") || "null");
+    localStorage.removeItem("cc-center-panel");
+    return r && Date.now() - r.at < 10000 && CENTER_PANELS[r.panel] ? r : null;
+  }catch(e){ return null; }
+})();
+const ONLY_PANEL = CENTER_REQ ? CENTER_REQ.panel : (new URLSearchParams(location.search).get("panel") || "").replace(/[^a-z]/g, "");
 if(ONLY_PANEL){ document.documentElement.classList.add("only-panel");document.documentElement.dataset.onlyPanel=ONLY_PANEL; document.addEventListener("DOMContentLoaded", ()=>{ document.body.classList.add("only-panel"); setTimeout(()=>{
   if(ONLY_PANEL==="appearance"){$("#settings").classList.add("open");activateMtab($("#settings .modal-panel"),"appearance");renderThemeGallery();renderButtonStyleGallery();return;}
+  if(CENTER_REQ){ openCenterPanel(CENTER_REQ); return; }
   if(ONLY_PANEL==="usage"){ openAnalytics(new URLSearchParams(location.search).get("tab") || ""); return; }
   if(ONLY_PANEL==="news") return;   // el lector se abre solo (news-reader.js, modo escritorio)
   if(ONLY_PANEL==="chains") return;  // modal Cadenas del escritorio: mountChainPage() al cargar los módulos
@@ -5895,6 +5913,45 @@ document.querySelectorAll(".cfg[data-key]").forEach(b=>{
     }catch(err){ toast(err.message, true); }
   });
 });
+
+// ---------- Modales en medio (2-oct) ----------
+// En la app de escritorio el tablero es solo la columna izquierda: Ajustes, Remoto, Servidores, Soberanía,
+// Analytics y Pomodoro se piden a la ventana centrada de la app (CENTER_PANELS / CENTER_REQ, arriba).
+function openCenterPanel(req){
+  const el = $(CENTER_PANELS[req.panel]);
+  if(!el) return;
+  if(req.panel === "usage") openAnalytics(req.tab || "");
+  else if(req.panel === "pomo") $("#btn-pomo")?.click();
+  else if(req.panel === "servers") toggleSshManager();
+  else if(req.panel === "sovereignty") $("#btn-sov")?.click();
+  else if(req.panel === "remote") $("#btn-remote")?.click();
+  else{ $("#btn-settings")?.click(); if(req.tab) activateMtab($("#settings .modal-panel"), req.tab); }
+  // Cerrarlo (✕, Esc, fondo) cierra la ventana.
+  const shown = () => req.panel === "pomo" ? !el.classList.contains("hidden") : el.classList.contains("open");
+  new MutationObserver(()=>{
+    if(!shown()){ try{ window.webkit.messageHandlers.centro.postMessage(JSON.stringify({chainModal: "close"})); }catch(e){} }
+  }).observe(el, {attributes: true, attributeFilter: ["class"]});
+}
+if(inApp() && !ONLY_PANEL){
+  const anwin = new URLSearchParams(location.search).has("anwin");
+  const askCenter = (panel, tab) => {
+    try{ localStorage.setItem("cc-center-panel", JSON.stringify({panel, tab: tab || "", at: Date.now()})); }catch(e){ return false; }
+    window.webkit.messageHandlers.centro.postMessage(JSON.stringify({headerAction: "chains"}));
+    return true;
+  };
+  for(const [panel, sel] of Object.entries(CENTER_PANELS)){
+    const el = $(sel);
+    if(!el) continue;
+    const isOpen = () => panel === "pomo" ? !el.classList.contains("hidden") : el.classList.contains("open");
+    const shut = () => panel === "pomo" ? el.classList.add("hidden") : el.classList.remove("open");
+    new MutationObserver(()=>{
+      if(!isOpen()) return;
+      if(panel === "usage" && anwin){ shut(); window.webkit.messageHandlers.centro.postMessage(JSON.stringify({headerAction: "analytics"})); return; }
+      const tab = panel === "settings" ? (el.querySelector(".mtab.active")?.dataset.mtab || "") : "";
+      if(askCenter(panel, tab)) shut();
+    }).observe(el, {attributes: true, attributeFilter: ["class"]});
+  }
+}
 
 // ---------- UI general ----------
 	$("#btn-settings").addEventListener("click", ()=>{

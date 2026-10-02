@@ -213,18 +213,17 @@ def test_phone_strip_has_the_desktop_keys_and_the_desktop_model_and_star():
     assert 'wm.iconSvg("favorite", 14)' in fav and '"★"' not in fav
 
 
-def test_split_remote_opens_column_popovers_inside_the_column_like_the_desktop():
-    """1-oct: en el escritorio el tablero web solo ocupa la columna izquierda, así que el
-    Pomodoro y Ajustes se abren dentro de ella. En el remoto partido salían sobre las
-    terminales (tarjeta flotante a la derecha, Ajustes centrado en toda la ventana)."""
+def test_split_remote_opens_modals_and_pomodoro_in_the_middle():
+    """2-oct (Jesús): todos los modales salen en medio de toda la ventana, como cualquier modal,
+    nunca dentro de la columna izquierda (antes, 1-oct, se abrían dentro de ella)."""
     index = (ROOT / "dash" / "index.html").read_text()
     css = (ROOT / "dash" / "workspace.css").read_text()
     pomo = (ROOT / "dash" / "pomodoro.js").read_text()
     assert 'document.documentElement?.style?.setProperty("--split-left", `${v}px`);' in index
     assert "window.panelViewport = function(){" in index
-    assert ".modal:not(#tabclose):not(#groupclose):not(.chain-only):not(#usage){right:auto;width:var(--split-left,380px)}" in css, "Cadenas and Analytics are windows over the whole app on the desktop"
-    assert "#pomo-panel.pm-v1{width:min(560px,calc(var(--split-left,380px) - 16px))}" in css
-    assert "window.panelViewport()" in pomo and "vp.left + vp.width - width - 8" in pomo
+    assert "right:auto;width:var(--split-left,380px)}" not in css
+    assert "#pomo-panel.pm-v1{width:min(560px,calc(var(--split-left,380px) - 16px))}" not in css
+    assert "document.body.matches('.app.split:not(.inapp)')" in pomo and "Math.round((vp.width - width) / 2)" in pomo
 
 
 def test_modal_content_follows_the_modal_width_not_the_window():
@@ -245,7 +244,8 @@ def test_new_session_profiles_and_motor_picker_stay_in_the_column_on_split_remot
     llenan la columna izquierda en el escritorio; en el remoto partido iban sobre toda la pantalla."""
     index = (ROOT / "dash" / "index.html").read_text()
     css = (ROOT / "dash" / "workspace.css").read_text()
-    assert "body.app.split:not(.inapp):not(.panel-hidden) :is(#newsess,.sc-modal){right:auto;width:var(--split-left,380px)}" in css
+    # 2-oct: «+» y .sc-modal ya no se encierran en la columna (modales en medio).
+    assert ":is(#newsess,.sc-modal){right:auto;width:var(--split-left,380px)}" not in css
     assert "#motor-pop.open.mp-column:not(.inline){" in css
     place = index.split('pop.classList.remove("inline");', 1)[1].split("pop.classList.add(\"open\");", 1)[0]
     assert "window.panelViewport()" in place and 'pop.classList.toggle("mp-column", column);' in place

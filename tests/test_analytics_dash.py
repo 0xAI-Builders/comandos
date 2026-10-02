@@ -113,7 +113,22 @@ def test_analytics_opens_wide_on_desktop_and_split_remote():
     assert '"panel": "usage"' in app
     assert 'postMessage(JSON.stringify({headerAction: "analytics"}))' in HTML
     css = Path("dash/workspace.css").read_text()
-    assert ".modal:not(#tabclose):not(#groupclose):not(.chain-only):not(#usage)" in css
+    assert "right:auto;width:var(--split-left,380px)}" not in css
+
+
+def test_every_modal_opens_in_the_middle_of_the_app():
+    # 2-oct (Jesús): en la app el tablero es la columna izquierda; los modales van a la ventana centrada
+    # que cualquier cc-app ya abre ({headerAction:"chains"}), que lee en localStorage qué panel mostrar.
+    assert 'const CENTER_PANELS = {settings: "#settings", remote: "#remote", servers: "#servers", sovereignty: "#sovereignty", usage: "#usage", pomo: "#pomo-panel"};' in HTML
+    assert 'localStorage.setItem("cc-center-panel", JSON.stringify({panel, tab: tab || "", at: Date.now()}));' in HTML
+    assert 'window.webkit.messageHandlers.centro.postMessage(JSON.stringify({headerAction: "chains"}));' in HTML
+    assert 'if(CENTER_REQ){ openCenterPanel(CENTER_REQ); return; }' in HTML
+    # Cerrar el modal cierra la ventana (el cc-app atiende {chainModal:"close"}).
+    assert 'postMessage(JSON.stringify({chainModal: "close"}))' in HTML
+    assert 'what = d.get("chainModal")' in Path("bin/cc-app").read_text()
+    hide_rest = next(line for line in HTML.splitlines() if "body.only-panel > *:not(" in line)
+    for panel in ("#settings", "#remote", "#servers", "#sovereignty", "#usage", "#pomo-panel"):
+        assert f":not({panel})" in hide_rest, panel
 
 
 def test_the_desktop_window_panel_shows_analytics():
