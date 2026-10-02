@@ -421,3 +421,15 @@ def test_pane_header_matches_the_remote_and_prototype_b():
     # transparente y de 0 px cualquier separador de la app, también el de la cabecera.
     assert 'b"paned.cc-paned > separator,paned.cc-paned separator{"' not in src
     assert src.count('b"paned.cc-paned > separator,paned.cc-paned paned > separator{"') == 2
+
+
+def test_the_account_button_sits_beside_ia_on_desktop_and_remote():
+    """Grill 2-oct: «Cuenta: alias» al lado de IA y MCPs · Skills; su menú lista las
+    cuentas con 5 h / semana / modelo y cambia con /account/switch (misma conversación)."""
+    keys = SOURCE.split('def _pane_card_keys(')[1].split('\ndef ')[0]
+    assert '"user", f"Cuenta: {alias}"' in keys and keys.index('"user"') < keys.index('"ia-gear"')
+    pop = SOURCE.split('def _account_popover(')[1].split('\ndef ')[0]
+    assert '"/accounts?harness="' in pop and '"/account/switch"' in pop and 'Gtk.LevelBar' in pop
+    term = Path('dash/term.html').read_text()
+    assert 'data-act="acct"' in term and "fetch('/account/switch'" in term and "'/accounts?harness='" in term
+    assert Path('dash/icons/user.svg').exists()

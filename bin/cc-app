@@ -209,6 +209,22 @@ notebook > header { background: @BAR@; border: none; box-shadow: none; }
   transition: color 150ms ease, background-color 150ms ease, box-shadow 150ms ease;
 }
 .strip-tab:hover { color: @TEXT@; }
+/* Menú «Cuenta» del pane (grill 2-oct) */
+popover.acct-pop { background-color: @BAR@; border: 1px solid @LINE2@; border-radius: 12px; }
+popover.acct-pop .acct-title { color: @DIM@; font-family: 'Ubuntu Sans Mono', monospace; font-size: 10px; font-weight: 700; letter-spacing: 1px; margin: 2px 6px 4px; }
+popover.acct-pop .acct-row { padding: 8px 10px; border-radius: 9px; border: 1px solid transparent; background: none; color: @TEXT@; }
+popover.acct-pop .acct-row:hover { background-color: mix(@BAR@, @LINE2@, 0.4); }
+popover.acct-pop .acct-row.on { border-color: mix(@BRAND@, @BAR@, 0.5); }
+popover.acct-pop .acct-tag { color: @BRAND@; font-family: 'Ubuntu Sans Mono', monospace; font-size: 10px; font-weight: 600; }
+popover.acct-pop .acct-dim { color: @DIM@; font-family: 'Ubuntu Sans Mono', monospace; font-size: 11px; }
+popover.acct-pop .acct-note { color: @DIM@; font-size: 12px; margin: 4px 6px 2px; }
+popover.acct-pop .acct-note.acct-err { color: #f87171; }
+popover.acct-pop levelbar.acct-bar trough { min-height: 5px; padding: 0; border: none; border-radius: 3px; background-color: @LINE@; }
+popover.acct-pop levelbar.acct-bar block { min-height: 5px; border: none; border-radius: 3px; }
+popover.acct-pop levelbar.acct-bar block.filled { background-color: @BRAND@; }
+popover.acct-pop levelbar.acct-bar.warn block.filled { background-color: #fbbf24; }
+popover.acct-pop levelbar.acct-bar.full block.filled { background-color: #f87171; }
+popover.acct-pop levelbar.acct-bar block.empty { background-color: transparent; }
 .strip-tab.cur { color: @TEXT@; background-color: mix(@BAR@, @LINE2@, 0.35); box-shadow: inset 0 -2px 0 0 @BRAND@; }
 /* ⊞ «varias filas» (grill 1-oct): las MISMAS pestañas como chips de 28 px con
    esquinas de 8 px, fondo del panel y 4 px entre ellas, envueltas en filas. */
@@ -5212,12 +5228,128 @@ def _pane_pill(sess, p, keys=True):
 
 
 def _pane_card_keys(sess, p, harness):
-    """«⚙ IA» y «✨ MCPs · Skills» de la Tarjeta."""
+    """«Cuenta: alias», «⚙ IA» y «✨ MCPs · Skills» de la Tarjeta."""
     pane = p.get("pane") or ""
-    return [_card_button("ia-gear", "IA",
+    keys = []
+    if harness in ("claude", "codex", "grok"):       # CLIs con cuentas propias
+        alias = p.get("hAcct") or ""
+        alias = alias if alias and alias != "unknown" else "…"
+        keys.append(_card_button("user", f"Cuenta: {alias}" if ES else f"Account: {alias}",
+                                 "Pasar este pane a otra cuenta sin perder la conversación" if ES
+                                 else "Move this pane to another account, same conversation",
+                                 lambda b, s=sess, pn=pane, h=harness, a=alias: _account_popover(b, s, pn, h, a)))
+    return keys + [_card_button("ia-gear", "IA",
                          "Cambiar motor / modelo / cuenta de ESTE pane" if ES else "Switch this pane's motor/model/account",
                          lambda *_, s=sess, pn=pane: _dash_js(f"openMotorFor({json.dumps(s)},{json.dumps(pn)})")),
             _extension_pill(sess, pane, harness)]
+
+
+def _account_bar_class(percent):
+    return "full" if percent >= 95 else "warn" if percent >= 85 else ""
+
+
+def _account_popover(button, sess, pane, harness, current):
+    """Menú «Cuenta» (grill 2-oct): cada cuenta con 5 h, semana y semana por modelo;
+    elegir otra pasa ESTE pane a esa cuenta con la misma conversación (/account/switch)."""
+    pop = Gtk.Popover.new(button)
+    pop.set_position(Gtk.PositionType.BOTTOM)
+    pop.get_style_context().add_class("acct-pop")
+    outer = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6)
+    outer.set_margin_start(8); outer.set_margin_end(8); outer.set_margin_top(8); outer.set_margin_bottom(8)
+    title = Gtk.Label(label="CUENTA DE ESTE PANE" if ES else "THIS PANE'S ACCOUNT", xalign=0)
+    title.get_style_context().add_class("acct-title")
+    outer.pack_start(title, False, False, 0)
+    rows = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=4)
+    outer.pack_start(rows, False, False, 0)
+    note = Gtk.Label(label="Consultando cuentas…" if ES else "Loading accounts…", xalign=0)
+    note.set_line_wrap(True); note.set_max_width_chars(38)
+    note.get_style_context().add_class("acct-note")
+    outer.pack_start(note, False, False, 0)
+    pop.add(outer)
+    outer.set_size_request(300, -1)
+    pop.show_all()
+
+    def switch(alias):
+        for child in rows.get_children():
+            child.set_sensitive(False)
+        note.set_text((f"Pasando a {alias}…" if ES else f"Moving to {alias}…"))
+
+        def work():
+            res, err = http_post("/account/switch", {"session": sess, "pane": pane, "alias": alias}, timeout=20)
+            def done():
+                if err or not res or res.get("ok") is False:
+                    note.set_text(err or (res or {}).get("error") or "No se pudo cambiar de cuenta")
+                    note.get_style_context().add_class("acct-err")
+                    for child in rows.get_children():
+                        child.set_sensitive(getattr(child, "_can", False))
+                    return False
+                note.set_text(f"En cola: al terminar el turno sigue la misma conversación en {alias}." if ES
+                              else f"Queued: when the turn ends the same conversation continues on {alias}.")
+                GLib.timeout_add(2600, lambda: (pop.popdown(), False)[1])
+                return False
+            GLib.idle_add(done)
+        threading.Thread(target=work, daemon=True).start()
+
+    def fill(data, err):
+        if err or not data:
+            note.set_text(err or "No se pudieron leer las cuentas")
+            note.get_style_context().add_class("acct-err")
+            return False
+        for a in data.get("accounts") or []:
+            alias = a.get("alias") or ""
+            on, can = alias == current, bool(a.get("selectable")) and alias != current
+            btn = Gtk.Button()
+            btn.set_relief(Gtk.ReliefStyle.NONE)
+            btn.get_style_context().add_class("acct-row")
+            if on:
+                btn.get_style_context().add_class("on")
+            grid = Gtk.Grid(column_spacing=8, row_spacing=3)
+            name = Gtk.Label(xalign=0)
+            name.set_markup(f"<b>{GLib.markup_escape_text(alias)}</b>")
+            name.set_hexpand(True)
+            tag = Gtk.Label(label=("en uso" if on else "cambiar →" if can else "sin login") if ES
+                            else ("in use" if on else "switch →" if can else "no login"), xalign=1)
+            tag.get_style_context().add_class("acct-tag")
+            grid.attach(name, 0, 0, 2, 1); grid.attach(tag, 2, 0, 1, 1)
+            for i, lim in enumerate(a.get("limits") or [], start=1):
+                pct = int(lim.get("percent") or 0)
+                lab = Gtk.Label(label=str(lim.get("label") or ""), xalign=0)
+                lab.get_style_context().add_class("acct-dim")
+                bar = Gtk.LevelBar.new_for_interval(0, 100)
+                bar.set_mode(Gtk.LevelBarMode.CONTINUOUS)
+                for off in ("low", "high", "full"):
+                    try:
+                        bar.remove_offset_value(off)
+                    except Exception:
+                        pass
+                bar.set_value(pct); bar.set_hexpand(True); bar.set_valign(Gtk.Align.CENTER)
+                bar.get_style_context().add_class("acct-bar")
+                if _account_bar_class(pct):
+                    bar.get_style_context().add_class(_account_bar_class(pct))
+                val = Gtk.Label(label=f"{pct}%", xalign=1)
+                val.get_style_context().add_class("acct-dim")
+                grid.attach(lab, 0, i, 1, 1); grid.attach(bar, 1, i, 1, 1); grid.attach(val, 2, i, 1, 1)
+            btn.add(grid)
+            btn.set_tooltip_text(a.get("identity") or alias)
+            btn._can = can
+            btn.set_sensitive(can)
+            if can:
+                btn.connect("clicked", lambda *_, al=alias: switch(al))
+            rows.pack_start(btn, False, False, 0)
+        note.set_text("Sigue la misma conversación. Si está respondiendo, espera a que termine." if ES
+                      else "Same conversation. If it is replying, it waits for the turn to end.")
+        rows.show_all()
+        return False
+
+    def load():
+        try:
+            with urllib.request.urlopen(BASE_URL + "/accounts?harness=" + quote(harness), timeout=8) as r:
+                data, err = json.loads(r.read().decode()), None
+        except Exception as e:
+            data, err = None, str(e)
+        GLib.idle_add(lambda: fill(data, err))
+    threading.Thread(target=load, daemon=True).start()
+    return pop
 
 
 def _extension_pill(sess, pane, harness=""):

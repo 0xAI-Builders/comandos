@@ -180,3 +180,20 @@ def test_lock_directory_next_to_an_account_is_not_an_account(tmp_path):
     (tmp_path / "codex-accounts" / "work.lock").mkdir()       # candado de proper-lockfile
     found = [a["alias"] for a in accounts.list_accounts(reg, "codex")]
     assert "work" in found and "work.lock" not in found
+
+
+def test_account_menu_pairs_each_account_with_its_own_limits():
+    """Botón «Cuenta» (grill 2-oct): 5 h, semana y semana por modelo, por cuenta."""
+    import accounts as acc
+    accounts = [{'alias': 'main', 'identity': 'a@x', 'selectable': True},
+                {'alias': 'relotto', 'identity': 'b@x', 'selectable': True},
+                {'alias': '../bad', 'selectable': True}]
+    limits = [{'account': 'relotto', 'provider': 'claude', 'kind': 'weekly_scoped', 'label': 'Semana Fable', 'percent': 100.0},
+              {'account': 'relotto', 'provider': 'claude', 'kind': 'session', 'label': 'Sesion 5h', 'percent': 10.4},
+              {'account': 'relotto', 'provider': 'claude', 'kind': 'weekly_all', 'label': 'Semana', 'percent': 85.0},
+              {'account': 'main', 'provider': 'codex', 'kind': 'weekly_all', 'label': 'Semana', 'percent': 53.0},
+              {'account': 'main', 'provider': 'claude', 'kind': 'weekly_all', 'label': 'Semana', 'percent': 'x'}]
+    menu = acc.account_menu(accounts, limits, 'claude')
+    assert [m['alias'] for m in menu] == ['main', 'relotto']
+    assert menu[0]['limits'] == []                     # el % ilegible no se inventa
+    assert [(l['label'], l['percent']) for l in menu[1]['limits']] == [('5 h', 10), ('semana', 85), ('Fable', 100)]

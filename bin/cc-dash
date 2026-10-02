@@ -8286,7 +8286,7 @@ class Handler(http.server.SimpleHTTPRequestHandler):
     # Endpoints con DATOS o ACCIONES: exigen token. El shell estatico (HTML,
     # sw.js, manifest, iconos) NO — no revela nada (es codigo open-source) y
     # asi la PWA instala y carga sin depender de cookies en el webview movil.
-    API_GET = ("/session-config-history", "/pane-extensions", "/pomodoro", "/providers", "/optimization/plans", "/proxy", "/model/status", "/sovereignty", "/ui-log/summary", "/state", "/usage/state", "/usage/guard", "/usage/changes", "/usage/provider-compare", "/fs/dirs", "/models/latest", "/news/latest", "/news/edition", "/push/", "/notifs/count", "/usage/analytics", "/usage/interactions", "/usage/experiments", "/opencode/models", "/model-tiers", "/dedication", "/active-tab", "/tab-models", "/session-profiles", "/extension-usage", "/session-brain", "/project-profiles", "/events", "/conf", "/prefs", "/ssh", "/tabs", "/workspace", "/notices",
+    API_GET = ("/accounts", "/session-config-history", "/pane-extensions", "/pomodoro", "/providers", "/optimization/plans", "/proxy", "/model/status", "/sovereignty", "/ui-log/summary", "/state", "/usage/state", "/usage/guard", "/usage/changes", "/usage/provider-compare", "/fs/dirs", "/models/latest", "/news/latest", "/news/edition", "/push/", "/notifs/count", "/usage/analytics", "/usage/interactions", "/usage/experiments", "/opencode/models", "/model-tiers", "/dedication", "/active-tab", "/tab-models", "/session-profiles", "/extension-usage", "/session-brain", "/project-profiles", "/events", "/conf", "/prefs", "/ssh", "/tabs", "/workspace", "/notices",
                "/tab-history", "/remote-state", "/remote-qr.png", "/snippets", "/tmux-mouse", "/commands/catalog", "/chains",
                "/webterm-token", "/allocation/status", "/news/source", "/news/chat", "/news/notes",
                "/news/saved", "/news/media")
@@ -8337,6 +8337,17 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             return self._json(200, {"token": access_token()})
         if self.path.startswith("/state"):
             return self._json(200, read_states_cached())
+        if self.path.startswith("/accounts"):
+            # Botón «Cuenta» del pane (grill 2-oct): cuentas con login + su uso.
+            harness = (urllib.parse.parse_qs(urllib.parse.urlparse(self.path).query).get("harness") or ["claude"])[0]
+            try:
+                spec = (provider_public_state().get("harnesses") or {}).get(harness) or {}
+            except Exception as e:
+                return self._json(500, {"error": f"providers.json invalido: {e}"})
+            if not (spec.get("capabilities") or {}).get("accounts"):
+                return self._json(404, {"error": "Ese CLI no maneja cuentas"})
+            return self._json(200, {"harness": harness, "accounts": account_registry.account_menu(
+                spec.get("accounts") or [], usage_provider_limits()["limits"], harness)})
         if self.path.startswith("/providers"):
             try:
                 return self._json(200, provider_public_state())

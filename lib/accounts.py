@@ -149,3 +149,30 @@ def public_accounts(registry: dict[str, Any]) -> dict[str, list[dict[str, Any]]]
             except AccountError:
                 output[provider] = []
     return output
+
+
+_LIMIT_ORDER = ("session", "weekly_all", "weekly_scoped", "window")
+_LIMIT_SHORT = {"session": "5 h", "weekly_all": "semana", "window": "semana"}
+
+
+def account_menu(accounts: list[dict[str, Any]], limits: list[dict[str, Any]], provider: str) -> list[dict[str, Any]]:
+    """Cuentas de un CLI con su uso, para el botón «Cuenta» del pane (grill 2-oct):
+    alias, identidad, si se puede elegir y sus límites (5 h, semana, semana por modelo)."""
+    out = []
+    for account in accounts or []:
+        alias = str(account.get("alias") or "")
+        if not _ALIAS_RE.fullmatch(alias):
+            continue
+        mine = [l for l in limits or [] if l.get("provider") == provider and l.get("account") == alias]
+        mine.sort(key=lambda l: _LIMIT_ORDER.index(l.get("kind")) if l.get("kind") in _LIMIT_ORDER else len(_LIMIT_ORDER))
+        rows = []
+        for limit in mine:
+            label = _LIMIT_SHORT.get(limit.get("kind")) or str(limit.get("label") or "").replace("Semana ", "").strip() or "límite"
+            try:
+                percent = max(0, min(100, round(float(limit.get("percent") or 0))))
+            except (TypeError, ValueError):
+                continue
+            rows.append({"label": label, "percent": percent, "resetsAt": limit.get("resets_at")})
+        out.append({"alias": alias, "identity": str(account.get("identity") or ""),
+                    "selectable": bool(account.get("selectable")), "limits": rows})
+    return out
