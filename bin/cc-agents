@@ -161,14 +161,31 @@ setup_agy() {
   local hj="$HOME/.gemini/config/hooks.json"
   mkdir -p "$(dirname "$hj")"; [ -f "$hj" ] || echo '{}' > "$hj"
   if grep -q "agy-hooks.sh" "$hj" 2>/dev/null && ! grep -q '"hooks"' "$hj"; then
-    ok "antigravity (agy): hooks ya configurados"; return
+    ok "antigravity (agy): hooks ya configurados"
+  else
+    jq --arg c "$AD/agy-hooks.sh" '
+      .comandos = {
+        "PreInvocation": [{"type": "command", "command": ($c + " working"), "timeout": 10}],
+        "Stop":          [{"type": "command", "command": ($c + " done"),    "timeout": 10}]
+      }' "$hj" > "$hj.tmp" && mv "$hj.tmp" "$hj"
+    ok "antigravity (agy): hooks globales en $hj (working/done)"
   fi
-  jq --arg c "$AD/agy-hooks.sh" '
-    .comandos = {
-      "PreInvocation": [{"type": "command", "command": ($c + " working"), "timeout": 10}],
-      "Stop":          [{"type": "command", "command": ($c + " done"),    "timeout": 10}]
-    }' "$hj" > "$hj.tmp" && mv "$hj.tmp" "$hj"
-  ok "antigravity (agy): hooks globales en $hj (working/done)"
+  # Cuota para Analytics: agy le pasa su cuota (Gemini 5 h / semana, Claude·GPT) a su comando
+  # statusLine; agy-statusline.py la guarda y no imprime nada (stack_with_default deja la barra
+  # de agy como siempre). Nunca reemplaza una statusLine que el usuario ya tenga.
+  local st="$HOME/.gemini/antigravity-cli/settings.json"
+  mkdir -p "$(dirname "$st")"; [ -f "$st" ] || echo '{}' > "$st"
+  if grep -q "agy-statusline.py" "$st" 2>/dev/null; then
+    ok "antigravity (agy): cuota para Analytics ya conectada"
+  elif jq -e 'has("statusLine")' "$st" >/dev/null 2>&1; then
+    warn "antigravity (agy): ya tienes otra statusLine en $st — Analytics no verá la cuota de agy"
+  elif jq --arg c "$AD/agy-statusline.py" \
+      '.statusLine = {"type": "command", "command": $c, "stack_with_default": true}' "$st" > "$st.tmp"; then
+    cat "$st.tmp" > "$st" && rm -f "$st.tmp"   # cat conserva los permisos (0600) del archivo
+    ok "antigravity (agy): cuota para Analytics conectada (statusLine en $st)"
+  else
+    rm -f "$st.tmp"; warn "antigravity (agy): no pude leer $st — cuota sin conectar"
+  fi
 }
 
 status_one() { # $1=nombre $2=binario $3=indicador $4=archivo

@@ -1201,7 +1201,11 @@ def _refresh_provider_limits():
         except Exception:
             official = None
         if official and official.get("stale_period"):
-            official = None
+            # La semana de grok ya venció y grok no ha vuelto a correr: la semana nueva va en 0 %.
+            # Sus periodos son semanas seguidas, así que el reset es el fin viejo + N semanas.
+            now = int(time.time())
+            weeks = -(-(now - official["resets_at"]) // (7 * 86400)) or 1
+            official = {**official, "percent": 0.0, "resets_at": official["resets_at"] + weeks * 7 * 86400}
         if gm or official:
             gm = gm or {"tokens_today": 0, "turns_today": 0, "tokens_7d": 0,
                         "turns_7d": 0, "daily": []}
@@ -1232,13 +1236,18 @@ def _refresh_provider_limits():
                 "note": note,
             })
         groq_rows = _groq_limit_rows()
+        # agy: cuota que su barra de estado le pasa a adapters/agy-statusline.py (cc-agents setup).
         try:
-            cc_usage.record_quota_snapshots(USAGE_DB, claude_rows + codex_rows + grok_rows)
+            agy_rows = cc_usage.read_agy_quota(AGY_QUOTA_FILE, now=time.time())
+        except Exception:
+            agy_rows = []
+        try:
+            cc_usage.record_quota_snapshots(USAGE_DB, claude_rows + codex_rows + grok_rows + agy_rows)
         except Exception:
             pass
         with _limits_lock:
             _limits_cache["at"] = int(time.time())
-            _limits_cache["limits"] = claude_rows + codex_rows + grok_rows + groq_rows
+            _limits_cache["limits"] = claude_rows + codex_rows + grok_rows + agy_rows + groq_rows
             _limits_cache["health"] = healths
     finally:
         with _limits_lock:
@@ -1246,6 +1255,7 @@ def _refresh_provider_limits():
 
 
 GROQ_RATELIMIT_FILE = os.path.join(HOOKS, "groq-ratelimit.json")
+AGY_QUOTA_FILE = os.path.join(HOOKS, "agy-quota.json")
 
 
 def read_groq_rate_limits():

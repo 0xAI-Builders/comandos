@@ -13,10 +13,10 @@ TZ = "America/Mexico_City"
 WINDOW_DAYS = 8
 GAP_S = 15 * 60
 WASTE_CYCLES = 4
-PROVIDERS = ("claude", "codex", "grok")
-CLI = {"claude": "Claude", "codex": "Codex", "grok": "Grok"}
+PROVIDERS = ("claude", "codex", "grok", "agy")
+CLI = {"claude": "Claude", "codex": "Codex", "grok": "Grok", "agy": "Antigravity"}
 COLORS = {("claude", "main"): "#8B7CFF", ("claude", "relotto"): "#FF9A5C",
-          ("codex", "main"): "#4CC2FF", ("grok", "main"): "#C5E35A"}
+          ("codex", "main"): "#4CC2FF", ("grok", "main"): "#C5E35A", ("agy", "main"): "#5BD6A0"}
 EXTRA_COLORS = ("#2fd3c0", "#FF6B5B", "#FFAE1A", "#FF9AD5", "#9AA6BF")
 WD = ("lun", "mar", "mié", "jue", "vie", "sáb", "dom")
 MON = ("ene", "feb", "mar", "abr", "may", "jun", "jul", "ago", "sep", "oct", "nov", "dic")

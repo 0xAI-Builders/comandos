@@ -168,6 +168,9 @@ function calendarCuentas(){if(!isPhone())return K1();const days=CHRONO.slice(pho
 function pomodoroPhone(){const fs=focusAll();return pnums(fs)+`<div class="pcards1">${DAYS.map(([d,wd,dd])=>{const m=fs.filter(f=>f.d===d),ok=m.filter(f=>f.status==='completado');const pr={};ok.forEach(f=>pr[f.proj]=(pr[f.proj]||0)+1);
  return `<div class="pc1 ${d===TODAYD?'today':''}"><div class="pc1h"><span><b>${wd}</b> ${dd}</span><span class="ptoms">${m.map(f=>tomato(f.status==='completado',18,f.proj)).join('')}</span><b class="pc1n">${ok.length}</b></div>${m.length?`<div>${m.map(f=>`<span class="hchip ${f.status==='completado'?'':'x'}">${fmtH(f.st)}</span>`).join('')}</div><div class="pc1p">${Object.entries(pr).map(([p,n])=>`<span class="pc" style="--ac:${projColor(p)}">${p} <b>${n}</b></span>`).join(' ')}</div><div class="pc1f mono">${fmin(m.reduce((x,f)=>x+f.act,0))} de foco</div>`:'<div class="dim">sin pomodoros</div>'}</div>`}).join('')}</div>`+pPerHour(fs)+`<div style="margin-top:14px">${pPerProj(fs)}</div>`}
 
+  LOGO.agy = '<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M3 21V12a9 9 0 0118 0v9h-4.5v-9a4.5 4.5 0 00-9 0v9z" fill="url(#lg-agy)"></path><defs><linearGradient gradientUnits="userSpaceOnUse" id="lg-agy" x1="3" x2="21" y1="12" y2="12"><stop stop-color="#4285F4"></stop><stop offset=".4" stop-color="#34A853"></stop><stop offset=".7" stop-color="#FBBC04"></stop><stop offset="1" stop-color="#EA4335"></stop></linearGradient></defs></svg>';
+
+
   const TABS = [['cuentas', 'Cuentas'], ['comparar', 'Comparar'], ['pomodoro', 'Pomodoro']];
   function body(tab) {
     const as = accs();

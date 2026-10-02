@@ -1822,7 +1822,24 @@ def provider_comparison(db_path, prices_path=None, now=None, days=14):
     return out
 
 
-def read_grok_credit_limits(homes=None, now=None, tail_bytes=524288):
+def _grok_billing_lines(path, tail_bytes, max_bytes):
+    """Líneas de cobro del log de grok. Empieza por la cola y retrocede (x8 cada vez, hasta
+    max_bytes) mientras no aparezca ninguna: el log mide MB y entre una corrida de grok y
+    otra se llena de otras líneas (2-oct: la última de cobro quedó a 778 KB del final)."""
+    with open(path, "rb") as fh:
+        fh.seek(0, 2)
+        size = fh.tell()
+        span = tail_bytes
+        while True:
+            fh.seek(max(0, size - span))
+            chunk = fh.read(span).decode(errors="replace")
+            lines = [ln for ln in chunk.splitlines() if "fetched credits config" in ln]
+            if lines or span >= size or span >= max_bytes:
+                return lines
+            span *= 8
+
+
+def read_grok_credit_limits(homes=None, now=None, tail_bytes=524288, max_bytes=64 << 20):
     """Limite semanal OFICIAL de Grok, leido del log local del CLI.
 
     grok escribe "billing: fetched credits config" (creditUsagePercent,
@@ -1835,16 +1852,10 @@ def read_grok_credit_limits(homes=None, now=None, tail_bytes=524288):
     for home in homes:
         path = os.path.join(os.fspath(home), "logs", "unified.jsonl")
         try:
-            with open(path, "rb") as fh:
-                fh.seek(0, 2)
-                size = fh.tell()
-                fh.seek(max(0, size - tail_bytes))
-                chunk = fh.read().decode(errors="replace")
+            billing = _grok_billing_lines(path, tail_bytes, max_bytes)
         except OSError:
             continue
-        for line in chunk.splitlines():
-            if '"billing: fetched credits config"' not in line and "fetched credits config" not in line:
-                continue
+        for line in billing:
             try:
                 row = json.loads(line)
             except ValueError:
@@ -1872,6 +1883,46 @@ def read_grok_credit_limits(homes=None, now=None, tail_bytes=524288):
     if best["resets_at"] <= ts:
         best["stale_period"] = True
     return best
+
+
+# Cubetas de agy -> (ventana, scope). Gemini manda en Semana/5 h; los modelos de terceros
+# (Claude y GPT dentro de agy) van como la botella "de modelo". 3p-5h no tiene botella propia.
+AGY_BUCKETS = {"gemini-weekly": ("7d", ""), "gemini-5h": ("5h", ""), "3p-weekly": ("7d", "Claude·GPT")}
+
+
+def read_agy_quota(path=None, now=None):
+    """Cuota de agy (Antigravity CLI) guardada por adapters/agy-statusline.py.
+
+    Una cubeta cuyo reset ya pasó cuenta como sin usar (0 %, sin reset): agy no ha vuelto a
+    correr desde entonces y su ventana empieza de nuevo con el siguiente uso."""
+    ts = int(now if now is not None else time.time())
+    path = os.fspath(path or os.path.expanduser("~/.claude/hooks/agy-quota.json"))
+    try:
+        with open(path) as fh:
+            data = json.load(fh)
+        quota = data["quota"]
+        captured = int(data.get("captured_at") or 0)
+        plan = str(data.get("plan_tier") or "") or None
+    except (OSError, ValueError, KeyError, TypeError, AttributeError):
+        return []
+    rows = []
+    for name, (window, scope) in AGY_BUCKETS.items():
+        b = quota.get(name) if isinstance(quota, dict) else None
+        if not isinstance(b, dict) or not isinstance(b.get("remaining_fraction"), (int, float)):
+            continue
+        resets = _iso_epoch(str(b.get("reset_time") or "").replace("Z", "+00:00"))
+        used = round((1 - float(b["remaining_fraction"])) * 100, 1)
+        if resets <= ts:
+            used, resets = 0.0, 0
+        rows.append({
+            "id": f"agy_{name}", "provider": "agy", "account": "main",
+            "kind": "window", "label": "Sesión 5 h" if window == "5h" else "Semana",
+            "scope": scope, "percent": max(0.0, min(100.0, used)), "resets_at": resets,
+            "severity": "info", "is_active": True, "window": window,
+            "source": "agy_statusline", "confidence": "exact", "captured_at": captured,
+            "plan_type": plan,
+        })
+    return rows
 
 
 def _iso_epoch(value):
