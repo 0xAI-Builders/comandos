@@ -416,3 +416,4 @@ def test_pane_header_matches_the_remote_and_prototype_b():
         path = re.search(r'<path d="([^"]+)"', Path(f"dash/icons/{name}.svg").read_text()).group(1)
         assert path in term.split(f"{js}: '", 1)[1].split("'", 1)[0], f"{name}.svg = term.html ICON.{js}"
     assert "min-width:1px;min-height:14px;margin:0;" in src and "sep.set_valign(Gtk.Align.CENTER)" in src
+    assert 'b"box.pane-card > separator,box.pane-card > separator:backdrop{' in src, "beats paned separator:backdrop"

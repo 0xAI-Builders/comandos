@@ -1452,7 +1452,10 @@ def _build_hb_css():
     b".pane-card{border:0;border-radius:9px 9px 0 0;box-shadow:none;padding:0 12px;min-height:0;}"
     b".pane-card{background-color:mix(" + THEME.get("bar", THEME["bg"]).encode() + b"," + THEME.get("line2", THEME["line"]).encode() + b",0.35);}"
     b".pane-card label,.pane-card-keys label{font-family:'Inter',sans-serif;font-size:11px;}"
-    b".pane-card separator{background:" + THEME.get("line2", THEME["line"]).encode() + b";min-width:1px;min-height:14px;margin:0;}"
+    # Más específica que «paned separator:backdrop» (0,1,2): sin foco en la ventana, esa regla
+    # lo dejaba de 1 px de alto y en el color de línea, o sea invisible.
+    b"box.pane-card > separator,box.pane-card > separator:backdrop{background-color:" + THEME.get("line2", THEME["line"]).encode()
+    + b";background-image:none;min-width:1px;min-height:14px;margin:0;}"
     b".pp-logo{min-width:18px;min-height:18px;border-radius:5px;padding:0;}"
     b".pane-pill label{color:" + THEME["fg"].encode() + b"; font-size:11px;"
     b" background:transparent;}"
