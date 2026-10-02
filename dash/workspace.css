@@ -690,27 +690,25 @@ header.hdr-ordered .hdr-primary{margin-left:0}
 header.hdr-ordered .counts{display:flex!important;flex:none;align-items:center;gap:6px;flex-wrap:wrap;min-width:0;max-width:100%}
 header.hdr-ordered .cnt-short{display:none}
 header.hdr-ordered :is(#btn-switch,#btn-snippets){display:inline-flex!important}
-/* Escritorio = prototipo aprobado (prototype-iguales.html, 30-sep): dentro de la app la
-   cabecera del tablero es una REJILLA de 4 columnas con Analytics · Remoto · Pomodoro ·
-   Avisos / Resúmenes · Ajustes y el reloj centrado debajo. Sin ☰, contadores, Buscar ni
-   Snippets (siguen por atajo: Ctrl+K, Ctrl+Shift+K). Terminal, Nueva sesión y Ordenar viven
-   a la DERECHA de la barra de pestañas GTK. Servidores queda como chip bajo la rejilla. */
-:is(body.inapp,body.app.split) header.hdr-ordered{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;padding:10px 12px;align-items:stretch}   /* 6 teclas = 3×2, sin huecos */
+/* Columna izquierda (escritorio y remoto partido) = «Barra de herramientas» (grill 1-oct,
+   diseño 1): una sola fila de teclas — Analytics · Remoto · Resúmenes · Avisos, y a la
+   derecha Pomodoro, reloj y Ajustes. Sin ☰, contadores, Buscar ni Snippets (siguen por
+   atajo: Ctrl+K, Ctrl+Shift+K); Terminal, Nueva sesión y Ordenar viven a la DERECHA de la
+   barra de pestañas. Servidores pasa a la fila de la barra de comandos (pestaña del panel). */
+:root{--hdr-tool:34px}
+:is(body.inapp,body.app.split) header.hdr-ordered{display:flex;flex-wrap:wrap;align-items:center;gap:4px;padding:6px 8px;border-bottom:1px solid var(--line)}
 :is(body.inapp,body.app.split) header.hdr-ordered .hdr-right,:is(body.inapp,body.app.split) header.hdr-ordered .hdr-primary{display:contents}
-:is(body.inapp,body.app.split) header.hdr-ordered :is(#btn-menu,.counts,#btn-terminal,#btn-newsess,#btn-switch,#btn-snippets){display:none!important}
-:is(body.inapp,body.app.split) header.hdr-ordered .hdr-btn{width:100%;min-width:0;padding:0;height:var(--hdr-key)}
+:is(body.inapp,body.app.split) header.hdr-ordered :is(#btn-menu,.counts,#btn-terminal,#btn-newsess,#btn-switch,#btn-snippets,#btn-servers){display:none!important}
+:is(body.inapp,body.app.split) header.hdr-ordered .hdr-btn{width:var(--hdr-tool);min-width:var(--hdr-tool);height:var(--hdr-tool);padding:0;flex:none}
+:is(body.inapp,body.app.split) header.hdr-ordered #btn-pomo{margin-left:auto;width:auto;padding:0 8px;order:1}
 :is(body.inapp,body.app.split) header.hdr-ordered #btn-pomo .pomo-mini{font-size:10px;margin-left:5px}
-:is(body.inapp,body.app.split) header.hdr-ordered #btn-servers{grid-column:1/-1;width:auto;justify-self:start;padding:0 10px;height:28px;font:600 10px/1 var(--sans);letter-spacing:.8px;text-transform:uppercase;order:2}
-:is(body.inapp,body.app.split) header.hdr-ordered #btn-servers .hdr-lbl{position:static;width:auto;height:auto;clip:auto;overflow:visible}
-:is(body.inapp,body.app.split) header.hdr-ordered #clock{grid-column:1/-1;text-align:center;font:600 13px/1 var(--mono);letter-spacing:.5px;order:1;margin:2px 0 0}
-:is(body.inapp,body.app.split) header.hdr-ordered #notif-panel,:is(body.inapp,body.app.split) header.hdr-ordered #pomo-panel{grid-column:1/-1}
-/* Columna angosta (divisor movido a la izquierda): 2 columnas y el Pomodoro solo con su reloj, sin encimarse. */
-@container sidebar (max-width:300px){
-  :is(body.inapp,body.app.split) header.hdr-ordered{grid-template-columns:repeat(2,minmax(0,1fr))}
+:is(body.inapp,body.app.split) header.hdr-ordered #clock{order:2;font:600 12px/1 var(--mono);letter-spacing:.3px;color:var(--dim);padding:0 4px;font-variant-numeric:tabular-nums}
+:is(body.inapp,body.app.split) header.hdr-ordered #btn-settings{order:3}
+:is(body.inapp,body.app.split) header.hdr-ordered :is(#notif-panel,#pomo-panel){order:4;flex:1 0 100%}
+/* Columna angosta: el Pomodoro solo con su icono y, si aún no cabe, la fila se parte en dos. */
+@container sidebar (max-width:330px){
   :is(body.inapp,body.app.split) header.hdr-ordered #btn-pomo .pomo-mini{display:none}
-}
-@container sidebar (max-width:190px){
-  :is(body.inapp,body.app.split) header.hdr-ordered{grid-template-columns:minmax(0,1fr)}
+  :is(body.inapp,body.app.split) header.hdr-ordered #btn-pomo{width:var(--hdr-tool);padding:0}
 }
 #servers-panel{flex:none;width:100%;max-width:1360px;margin:0 auto;box-sizing:border-box;padding-top:8px;border-bottom:1px solid var(--line)}
 @container sidebar (max-width:760px){#view-panel #servers-panel #ssh-bar{padding-left:12px;padding-right:12px}}
@@ -871,18 +869,43 @@ button.wm-suggest{font:600 10px var(--sans);padding:2px 7px;border-radius:999px;
 #command-sidebar.terms-hidden .sec-terms{flex:none}
 #command-sidebar.terms-hidden .mini{display:none}
 body.ws-dragging #command-sidebar .sb-term{pointer-events:none}
-/* Persiana de Comandos (grill 1-oct, diseño 4): plegada queda solo su cabecera y la
-   terminal toma el resto; la cabecera entera es el asa y el chevron gira al abrir. */
-#command-sidebar .sec-cmds .sb-head{cursor:pointer}
-#command-sidebar .sb-head button[data-flat].cs-blind{flex:none;align-self:stretch;width:34px;min-height:0;padding:0;margin:-8px -12px -8px 0;border:0;border-left:1px solid var(--cs-line);border-radius:0;display:grid;place-items:center;color:var(--cs-dim);background:transparent}
-#command-sidebar .sb-head button[data-flat].cs-blind:hover{color:var(--cs-text);background:var(--cs-hover)}
-#command-sidebar .sb-head button[data-flat].cs-blind svg{transition:transform .35s cubic-bezier(.5,1.6,.4,1);transform:rotate(-90deg)}
-#command-sidebar:not(.cmds-closed) .sb-head button[data-flat].cs-blind svg{transform:none}
-#command-sidebar.cmds-closed .sec-cmds{flex:0 0 auto!important}
-#command-sidebar.cmds-closed .sec-cmds .search,#command-sidebar.cmds-closed .sec-cmds .cs-body{display:none}
-#command-sidebar.cmds-closed .sec-cmds .sb-head{border-bottom:0}
-#command-sidebar.cmds-closed .sec-terms{flex:1 1 auto!important}
-@media (prefers-reduced-motion:reduce){#command-sidebar .sb-head button[data-flat].cs-blind svg{transition:none}}
+/* Barra de herramientas (grill 1-oct, diseño 1): fila Comandos · Cadenas · Servidores; su
+   panel flota encima de la terminal, que siempre se queda con la columna. */
+#command-sidebar{position:relative}
+#command-sidebar .cs-tools{order:0;flex:none;display:flex;gap:4px;padding:6px 8px;border-bottom:1px solid var(--cs-line);background:var(--cs-panel2);min-width:0}
+#command-sidebar .cs-tools button[data-flat].tb{flex:1 1 0;min-width:0;min-height:0;height:30px;padding:0 8px;display:flex;align-items:center;justify-content:center;gap:6px;border-radius:8px;border:1px solid transparent;background:transparent;color:var(--cs-dim);font-size:12px;font-weight:600}
+#command-sidebar .cs-tools button[data-flat].tb:hover{color:var(--cs-text);background:var(--cs-hover)}
+#command-sidebar .cs-tools button[data-flat].tb.on{color:var(--cs-brand);border-color:color-mix(in srgb,var(--cs-brand) 45%,var(--cs-line));background:color-mix(in srgb,var(--cs-brand) 11%,var(--cs-panel))}
+#command-sidebar .cs-tools .tb .lb{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#command-sidebar .cs-tools .tb .n{font:400 10px/1 var(--mono);color:var(--cs-dim)}
+#command-sidebar .cs-tools .tb .n:empty{display:none}
+#command-sidebar .cs-tools .tb .sic,#command-sidebar .cs-head .seg .sic{display:inline-flex;flex:none}
+@container sidebar (max-width:250px){#command-sidebar .cs-tools .tb .lb{display:none}}
+#command-sidebar .cs-sheet{position:absolute;left:0;right:0;top:var(--cs-tools-h,43px);bottom:0;z-index:6;flex:none!important;background:var(--cs-panel2);box-shadow:0 18px 40px #0009;border-top:1px solid var(--cs-line)}
+#command-sidebar .cs-head .sh-h{display:flex;align-items:center;gap:8px;padding:10px 10px 8px;min-width:0}
+#command-sidebar .cs-head .seg{display:flex;min-width:0;background:var(--cs-deep);border:1px solid var(--cs-line);border-radius:999px;padding:2px}
+#command-sidebar .cs-head .seg button[data-flat]{min-height:0;height:26px;padding:0 10px;display:flex;align-items:center;gap:5px;border:0;border-radius:999px;background:transparent;color:var(--cs-dim);font-size:12px;font-weight:600;white-space:nowrap}
+#command-sidebar .cs-head .seg button[data-flat].on{background:var(--cs-panel);color:var(--cs-text);box-shadow:inset 0 0 0 1px var(--cs-line)}
+#command-sidebar .cs-head button[data-flat].cls{margin-left:auto;min-height:0;height:26px;padding:0 6px;display:flex;align-items:center;gap:6px;border:0;background:transparent;color:var(--cs-dim);font-size:11px;white-space:nowrap}
+#command-sidebar .cs-head .cls kbd{font:10px/1.4 var(--mono);border:1px solid var(--cs-line);border-radius:4px;padding:0 4px}
+#command-sidebar .cs-dest{display:flex;align-items:center;gap:8px;padding:0 12px 8px;font-size:11px;color:var(--cs-dim);min-width:0}
+#command-sidebar .cs-dest .cs-target{color:var(--cs-text);font-weight:600;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#command-sidebar .cs-dest .cs-pill{margin-left:auto;flex:none}
+#command-sidebar:not([data-panel="cmds"]) .cs-head :is(.cs-dest,.search),#command-sidebar:not([data-panel="cmds"]) .cs-body{display:none}
+#command-sidebar:not([data-panel="chains"]) .cs-chains-body,#command-sidebar:not([data-panel="srv"]) .cs-srv{display:none}
+#command-sidebar .cs-chains-body,#command-sidebar .cs-srv{flex:1;min-height:0;overflow:auto;display:flex;flex-direction:column;gap:8px;padding:0 10px 10px}
+#command-sidebar .cs-chain-add{display:flex;justify-content:flex-end}
+#command-sidebar .cs-empty-chains{margin-top:4px;padding:18px 14px;border:1px dashed var(--cs-line);border-radius:var(--cs-r);text-align:center;font-size:12px;line-height:1.5;color:var(--cs-dim);display:flex;flex-direction:column;align-items:center;gap:4px}
+#command-sidebar .cs-empty-chains b{color:var(--cs-text);font-size:13px}
+#command-sidebar .cs-empty-chains .chains-btn{margin-top:8px}
+#command-sidebar .cs-srv #servers-panel{border-bottom:0;padding-top:0}
+/* columna sin terminal que mostrar: la tarjeta llena el hueco (la cabecera de pestañas queda arriba) */
+#command-sidebar .sec-terms{order:2}
+#command-sidebar .cs-empty-terms{order:3;flex:1 1 auto;min-height:0;display:grid;place-items:center;padding:20px;text-align:center;font-size:12px;line-height:1.5;color:var(--cs-dim)}
+#command-sidebar .cs-empty-terms b{display:block;color:var(--cs-text);font-size:13px;margin-bottom:4px}
+#command-sidebar .cs-empty-terms span{display:block}
+#command-sidebar .cs-empty-terms button[data-flat].et-go{margin-top:12px;min-height:0;height:30px;padding:0 14px;border-radius:8px;border:1px solid var(--cs-brand);background:color-mix(in srgb,var(--cs-brand) 11%,transparent);color:var(--cs-brand);font-weight:600;font-size:12px}
+#command-sidebar .sec-terms .cs-terms{cursor:default}
 /* cuerpo: tarjetas apiladas */
 #command-sidebar .cs-body{flex:1;min-height:0;overflow:auto;overscroll-behavior:contain;display:flex;flex-direction:column;gap:8px;padding:0 10px 10px;min-width:0}
 #command-sidebar.typing .cs-body{cursor:progress}

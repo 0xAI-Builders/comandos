@@ -124,10 +124,12 @@ def test_desktop_header_actions_live_in_the_web_header_like_the_remote():
     assert "nb.set_action_widget(_strip_actions, Gtk.PackType.END)" in app
     assert "for _b in (_quick_term_btn, _plus, _sort_btn, _rows_btn, _tab_next):" in app
     # Remoto ancho (body.app.split) usa la MISMA rejilla que el escritorio.
-    assert ":is(body.inapp,body.app.split) header.hdr-ordered{display:grid;grid-template-columns:repeat(3,minmax(0,1fr))" in CSS
+    # barra de herramientas (grill 1-oct, diseño 1): una sola fila de teclas en la columna
+    assert ":is(body.inapp,body.app.split) header.hdr-ordered{display:flex;flex-wrap:wrap" in CSS
     assert 'id="tab-term"' in INDEX and 'id="tab-new"' in INDEX
     assert "body.app.split:not(.inapp) :is(#tab-term,#tab-new,#tab-sort,#tab-rows){display:grid" in CSS
-    assert ":is(body.inapp,body.app.split) header.hdr-ordered :is(#btn-menu,.counts,#btn-terminal,#btn-newsess,#btn-switch,#btn-snippets){display:none!important}" in CSS
+    # Servidores pasó a la fila de la barra de comandos (pestaña de su panel)
+    assert ":is(body.inapp,body.app.split) header.hdr-ordered :is(#btn-menu,.counts,#btn-terminal,#btn-newsess,#btn-switch,#btn-snippets,#btn-servers){display:none!important}" in CSS
     assert 'id="btn-sort"' not in INDEX
     for action in ("quickTerminal", "newSession"):
         assert f'toApp("{action}")' in INDEX

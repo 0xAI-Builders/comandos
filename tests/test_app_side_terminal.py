@@ -210,15 +210,18 @@ def test_left_panel_slide_is_an_overlay_and_never_resizes_the_terminals_per_fram
     assert "_tween(" not in body and "set_position(" in body, "the paned moves once; only the overlay animates"
 
 
-def test_folded_commands_blind_fits_the_webview_to_its_header():
-    """Persiana de Comandos plegada (grill 1-oct): el WebView mide hasta la cabecera de
-    Comandos (alto que manda la web, por el zoom) y la terminal nativa toma el resto."""
+def test_toolbar_panel_closed_fits_the_webview_and_open_hides_the_native_terminal():
+    """Barra de herramientas (grill 1-oct, diseño 1): con su panel cerrado el WebView mide
+    hasta la fila Comandos · Cadenas · Servidores (alto que manda la web, por el zoom) y la
+    terminal nativa toma el resto; abierto, el panel ocupa la columna y la terminal se aparta."""
     msg = APP[APP.index('if isinstance(d.get("sidebarTerm"), dict):'):]
     msg = msg[:msg.index("return")]
     assert '_SIDE["cmds_closed"] = not bool(c.get("open"))' in msg and '_SIDE["cmds_h"]' in msg
     mount = HTML[HTML.index("function sidebarTermMount("):HTML.index("function activePaneTarget(")]
     assert "cmds: o.cmds || null" in mount
-    assert "html[data-native-side-term] #command-sidebar.cmds-closed .sec-cmds{flex:0 0 auto!important}" in HTML
+    assert '_SIDE["sheet_open"] = bool(c.get("open"))' in msg
+    show = APP[APP.index("def _side_term_show("):APP.index("def _side_term_save_share(")]
+    assert 'if _SIDE.get("sheet_open"):' in show and "_side_term_host.hide()" in show
     src = APP[APP.index("def _side_pin_pos("):APP.index("def _side_apply_pin(")]
 
     class Host:

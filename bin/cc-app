@@ -7009,9 +7009,10 @@ def on_msg(mgr, res):
                 _SIDE["hidden"] = bool(st.get("hidden"))
             if "tabs" in st:
                 _SIDE["tabs"] = _side_tabs_from_web(st.get("tabs"))
-            if isinstance(st.get("cmds"), dict):       # persiana de Comandos (barra web)
+            if isinstance(st.get("cmds"), dict):       # panel de la barra de comandos (web)
                 c = st["cmds"]
                 _SIDE["cmds_closed"] = not bool(c.get("open"))
+                _SIDE["sheet_open"] = bool(c.get("open"))
                 try:
                     _SIDE["cmds_h"] = max(0, min(4000, int(c.get("h") or 0)))
                 except (TypeError, ValueError):
@@ -7256,8 +7257,9 @@ def _side_term_box(sess):
 
 
 def _side_pin_pos():
-    """Persiana de Comandos plegada: el WebView mide justo hasta su cabecera y la
-    terminal nativa toma el resto. None si no aplica (abierta, sin terminal o sin alto)."""
+    """Panel de la barra cerrado: el WebView mide justo hasta la fila de la barra
+    (Comandos · Cadenas · Servidores) y la terminal nativa toma el resto. None si no
+    aplica (panel abierto, sin terminal o sin alto)."""
     if not _SIDE.get("cmds_closed") or _SIDE.get("collapsed") or not _side_term_host.get_visible():
         return None
     h = int(_SIDE.get("cmds_h") or 0)
@@ -7405,11 +7407,15 @@ def _side_term_show(sess):
     _SIDE["box"], _SIDE["sess"], _SIDE["collapsed"] = box, sess, box is None
     _side_head_render()
     _side_term_host.show()
-    if box is not None:
+    if _SIDE.get("sheet_open"):
+        # el panel de la barra flota encima de la terminal: en el escritorio el WebView
+        # ocupa la columna y la terminal nativa se aparta hasta que se cierre
+        _side_term_host.hide()
+        _SIDE["pinned"] = False
+    elif box is not None:
         box.show_all()
         _SIDE["pinned"] = bool(_SIDE.get("cmds_closed"))
-        # al abrir la terminal o al desplegar la persiana vuelve el reparto guardado;
-        # plegada, el WebView se ajusta a la cabecera de Comandos
+        # con el panel de la barra cerrado, el WebView se ajusta a la fila de la barra
         if not was_open or pinned_before != _SIDE["pinned"] or _SIDE["pinned"]:
             GLib.idle_add(_side_term_apply_share)
     else:

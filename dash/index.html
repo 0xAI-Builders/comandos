@@ -1852,16 +1852,15 @@
 	/* escritorio: la terminal de la barra y su cabecera son nativas (debajo del webview) */
 html[data-native-side-term] #command-sidebar .sec-terms{display:none}
 html[data-native-side-term] #command-sidebar .sec-cmds{flex:1 1 auto!important}
-html[data-native-side-term] #command-sidebar.cmds-closed .sec-cmds{flex:0 0 auto!important}
 </style>
-<link rel="stylesheet" href="/workspace.css?v=persiana1">
+<link rel="stylesheet" href="/workspace.css?v=barra1">
 <link rel="stylesheet" href="/buttons.css?v=2">
 <link rel="stylesheet" href="/reparto.css?v=fuentesD">
 <script src="/session-config.js?v=7f3232b0a624"></script>
 <script src="/workspace-layout.js"></script>
 <script src="/workspace-dock.js?v=bandejas2"></script>
 <script src="/quick-terminal.js?v=2"></script>
-<script src="/command-sidebar.js?v=22"></script>
+<script src="/command-sidebar.js?v=23"></script>
 <script src="/chain-builder.js?v=5"></script>
 
 <div id="panes">
@@ -6395,7 +6394,8 @@ function sidebarTermMount(sess, host, info){
     document.documentElement.dataset.nativeSideTerm = "1";
     for(const f of sbTermFrames.values()) f.style.display = "none";
     const o = info || {session: sess || "", hidden: !sess, tabs: []};
-    // cmds: persiana de Comandos; plegada, cc-app ajusta el WebView a su cabecera (h px)
+    // cmds: panel de la barra; cerrado, cc-app ajusta el WebView a la fila de la barra (h
+    // px) y la terminal nativa toma el resto; abierto, el WebView ocupa toda la columna
     const msg = JSON.stringify({sidebarTerm: {session: o.session || "", hidden: !!o.hidden, tabs: o.tabs || [], cmds: o.cmds || null}});
     if(msg !== sbNativeMsg){
       sbNativeMsg = msg;
@@ -6531,7 +6531,25 @@ function mountCommandSidebar(){
     },
     toast, terminals: quickTermEntries,
     newTerm: () => { const q = sidebarQuickTerminal(); return q ? q.open() : toast(tf("Terminal rápida no disponible", "Quick terminal unavailable"), true); },
-    killTerm: sidebarKillTerm});
+    killTerm: sidebarKillTerm,
+    // Pestaña Servidores: la fila SSH de siempre (#servers-panel, mismo marcado) se muda al
+    // panel mientras está abierta y vuelve a su sitio, escondida, al cerrarla.
+    mountServers: slot => {
+      const sp = $("#servers-panel"), btn = $("#btn-servers");
+      if(!sp) return;
+      if(!sp._home) sp._home = {parent: sp.parentNode, next: sp.nextSibling};
+      if(slot){
+        if(sp.parentNode !== slot) slot.appendChild(sp);
+        sp.classList.remove("hidden");
+        $("#ssh-bar").classList.add("open"); $("#ssh-toggle").setAttribute("aria-expanded", "true");
+        if(btn) btn.setAttribute("aria-expanded", "true");
+        loadSsh();
+      }else{
+        if(sp.parentNode !== sp._home.parent) sp._home.parent.insertBefore(sp, sp._home.next);
+        sp.classList.add("hidden");
+        if(btn) btn.setAttribute("aria-expanded", "false");
+      }
+    }});
   mountChainBuilder();
   syncCommandSidebar();
 }

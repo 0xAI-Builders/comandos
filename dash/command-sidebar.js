@@ -10,8 +10,6 @@
 (function (root) {
   'use strict';
   const KEY_TERMS_HIDDEN = 'comandos.commands.termsHidden';
-  // Persiana de Comandos (grill 1-oct, diseño 4): plegada por defecto; su cabecera es el asa.
-  const KEY_CMDS_OPEN = 'comandos.commands.cmdsOpen';
   const KEY_OPEN = 'comandos.commands.open.v2', KEY_PREF = 'comandos.commands.preferred.';
   const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   const STATUS_TEXT = { ok: '', drift: 'sin verificar · el CLI confirma', missing: 'no instalado', unverified: 'sin verificar' };
@@ -151,7 +149,8 @@
 
   function createCommandSidebar(opts) {
     const { api, root: el, storage, makeId, getTarget, focusTarget = () => {}, openBuilder = () => {}, mountTerm = null,
-      toast = () => {}, terminals = () => [], newTerm = () => {}, killTerm = null, hydrate = () => {} } = opts;
+      toast = () => {}, terminals = () => [], newTerm = () => {}, killTerm = null, hydrate = () => {},
+      mountServers = () => {} } = opts;
     const state = { catalog: null, cliInPane: '', catalogTarget: null, chains: [], open: new Set(), run: null, curTerm: '',
       typing: null, q: '', firstRender: true, appliedTarget: null };
 
@@ -167,7 +166,9 @@
     })();
     const writeOpen = () => write(KEY_OPEN, JSON.stringify([...state.open]));
     state.termsHidden = read(KEY_TERMS_HIDDEN) === '1';
-    state.cmdsOpen = read(KEY_CMDS_OPEN) === '1';
+    // Barra de herramientas (grill 1-oct, diseño 1): Comandos, Cadenas y Servidores son un
+    // panel con pestañas que se abre a demanda encima de la terminal ('' = cerrado).
+    state.sheet = '';
 
     function target() { try { return getTarget() || null; } catch (_) { return null; } }
     const prefKey = t => KEY_PREF + (t.paneKey || t.pane);
@@ -268,8 +269,8 @@
     function beginRun(chain, tgt) {
       state.run = { slug: chain.slug, name: chain.name || chain.slug, steps: chain.steps.map(s => ({ ...s })),
         step: 0, target: { ...tgt }, error: '' };
-      // el avance de la cadena vive en el cuerpo: se abre la persiana para verlo
-      if (!state.cmdsOpen) { state.cmdsOpen = true; write(KEY_CMDS_OPEN, '1'); }
+      // el avance de la cadena vive en la pestaña Cadenas: se abre para verlo
+      state.sheet = 'chains';
       render();
       return state.run;
     }
@@ -324,12 +325,19 @@
       return bad ? `<span class="pill warn">${ic('bomb', 's20')}cambio de versión</span>`
                  : `<span class="pill">${ic('spark', 's20')}catálogo ok</span>`;
     }
+    const SHEETS = [['cmds', 'Comandos'], ['chains', 'Cadenas'], ['srv', 'Servidores']];
+    const sheetIcon = k => k === 'srv' ? '<span class="sic" data-icon="server" data-size="15" aria-hidden="true"></span>' : ic(k === 'cmds' ? 'book' : 'chain', 's20');
+    // Fila de la barra: abre/cierra cada pestaña del panel; el número de Cadenas es el de guardadas.
+    function toolsHTML() {
+      return '<div class="cs-tools" role="toolbar" aria-label="Comandos, cadenas y servidores">' + SHEETS.map(([k, l]) =>
+        `<button type="button" data-flat class="tb" data-sheet="${k}" aria-pressed="false">${sheetIcon(k)}<span class="lb">${l}</span>`
+        + (k === 'chains' ? '<small class="n"></small>' : '') + '</button>').join('') + '</div>';
+    }
     function headHTML() {
-      return `<div class="cs-head"><div class="sb-head">${ic('book', 's24')}`
-        + `<h2>Comandos<small>destino: <span class="cs-target">${esc(targetTitle())}</span></small></h2>`
-        + `<span class="cs-pill">${catalogPill()}</span>`
-        + `<button type="button" data-flat class="cs-chains chains-btn" data-open-builder>${ic('chain', 's20')}Cadenas</button>`
-        + `<button type="button" data-flat class="tog cs-blind" data-cmds-toggle>${CHEVRON}</button></div>`
+      return `<div class="cs-head"><div class="sh-h"><div class="seg" role="tablist">`
+        + SHEETS.map(([k, l]) => `<button type="button" data-flat role="tab" data-sheet-tab="${k}">${sheetIcon(k)}${l}</button>`).join('')
+        + `</div><button type="button" data-flat class="cls" data-sheet-close title="Cerrar (Esc)">Cerrar <kbd>Esc</kbd></button></div>`
+        + `<div class="cs-dest">destino: <span class="cs-target">${esc(targetTitle())}</span><span class="cs-pill">${catalogPill()}</span></div>`
         + `<div class="search">${ic('lens')}<input class="cs-search" type="search" placeholder="Buscar en todos los CLI…" value="${esc(state.q)}"></div></div>`;
     }
 
@@ -338,9 +346,10 @@
         ? `<div class="cs-saved-item it error"><span class="nm">${esc(c.name || c.slug)}</span><small>${esc(c.error)}</small></div>`
         : `<div class="cs-saved-item it" data-run="${esc(c.slug)}"><span class="nm">${esc(c.name || c.slug)}</span>`
           + `<small>${(c.steps || []).length} pasos</small><button type="button" data-flat class="run">${ic('cast', 's20')}Correr</button></div>`).join('');
-      return `<div class="cs-saved saved${state.open.has('saved') ? ' open' : ''}">`
-        + `<div class="cli-h" data-toggle="saved"${toggleAttrs(state.open.has('saved'))}>${ic('chain', 's24')}Cadenas guardadas<small class="n">${state.chains.length}</small><span class="chev" style="margin-left:auto">${state.open.has('saved') ? '▾' : '▸'}</span></div>`
-        + (items || '<div class="cs-empty">Sin cadenas guardadas</div>') + '</div>';
+      const add = `<button type="button" data-flat class="cs-chains chains-btn" data-open-builder>${ic('chain', 's20')}Nueva cadena</button>`;
+      return items
+        ? `<div class="cs-saved saved open">${items}</div><div class="cs-chain-add">${add}</div>`
+        : `<div class="cs-empty-chains"><b>Aún no hay cadenas guardadas</b>Una cadena escribe varios pasos seguidos en un pane, por ejemplo «/compact» y luego «continúa».${add}</div>`;
     }
 
     function runnerHTML() {
@@ -396,8 +405,7 @@
 
     function bodyHTML() {
       const here = hereCli(), t = target(), noTarget = !t || !t.session || !t.pane;
-      return savedHTML() + runnerHTML()
-        + clis().map(c => cliHTML(c, { mode: 'run', open: state.open, here: !!here && c.id === here, noCli: !here, noTarget, q: state.q })).join('');
+      return clis().map(c => cliHTML(c, { mode: 'run', open: state.open, here: !!here && c.id === here, noCli: !here, noTarget, q: state.q })).join('');
     }
 
     // La cabecera (con el input de búsqueda) se pinta una sola vez; después solo
@@ -411,11 +419,17 @@
         const pill = head.querySelector('.cs-pill');
         if (pill) pill.innerHTML = catalogPill();   // hydrate(el) al final del render pinta su icono
         body.innerHTML = bodyHTML();
+        const cb = el.querySelector('.cs-chains-body');
+        if (cb) cb.innerHTML = runnerHTML() + savedHTML();
       } else {
         // Una sola cabecera para las terminales: agarre + pestañas + «+ Terminal» + ▾.
         // Arrastrarla (fuera de los botones) cambia la altura; ya no hay separador aparte.
-        el.innerHTML = `<div class="sec-cmds">${headHTML()}<div class="cs-body">${bodyHTML()}</div></div>`
-          + '<div class="sec-terms"><div class="cs-terms tt" role="separator" aria-orientation="horizontal" aria-label="Terminales · arrastra para cambiar la altura">'
+        el.innerHTML = toolsHTML()
+          + `<div class="sec-cmds cs-sheet" role="dialog" aria-label="Comandos, cadenas y servidores">${headHTML()}<div class="cs-body">${bodyHTML()}</div>`
+          + `<div class="cs-chains-body">${runnerHTML() + savedHTML()}</div><div class="cs-srv"><div class="cs-srv-slot"></div></div></div>`
+          + '<div class="cs-empty-terms"><div><b class="et-t"></b><span class="et-d"></span>'
+          + '<button type="button" data-flat class="et-go"></button></div></div>'
+          + '<div class="sec-terms"><div class="cs-terms tt" role="group" aria-label="Terminales de la barra">'
           + '<span class="grip" aria-hidden="true"></span>'
           + '<button type="button" data-flat class="arr" data-tscroll="-1" aria-label="Terminales anteriores" hidden>‹</button>'
           + '<div class="tabs"></div>'
@@ -423,7 +437,6 @@
           + '<button type="button" data-flat class="t plus" data-new-term aria-label="Nueva terminal" title="Nueva terminal">+</button>'
           + '<div class="tog-slot"></div></div><div class="mini"></div></div>';
         wireTrack();
-        wireDivider();
       }
       const tt = el.querySelector('.cs-terms .tabs') || el.querySelector('.cs-terms');
       if (tt) {
@@ -438,50 +451,16 @@
       const slot = el.querySelector('.cs-terms .tog-slot');
       if (slot) slot.innerHTML = togHTML();
       const n = termList().length;
-      try { el.classList && el.classList.toggle('cmds-closed', !state.cmdsOpen); } catch (_) {}
-      const bt = el.querySelector('[data-cmds-toggle]');
-      if (bt && bt.setAttribute) {
-        const lbl = state.cmdsOpen ? 'Plegar Comandos' : 'Abrir Comandos y Cadenas';
-        bt.setAttribute('aria-expanded', state.cmdsOpen ? 'true' : 'false');
-        bt.setAttribute('aria-label', lbl); bt.setAttribute('title', lbl);
-      }
+      paintSheet(n);
       try { el.classList && el.classList.toggle('no-terms', !n); } catch (_) {}
       try { el.classList && el.classList.toggle('terms-hidden', !!state.termsHidden); } catch (_) {}
-      applyHeights(!!state.termsHidden || !n);
+      applyHeights();
       const mini = el.querySelector('.mini');
       if (mini && typeof mountTerm === 'function') {
         try { mountTerm(state.termsHidden ? '' : (state.curTerm || ''), mini, { session: state.curTerm || '', hidden: !!state.termsHidden, tabs: termTabs(), cmds: cmdsInfo() }); } catch (_) {}
       }
       try { el.classList && el.classList.toggle('searching', !!state.q.trim()); } catch (_) {}
       try { hydrate(el); } catch (_) {}   // pinta los data-icon del marcado recién puesto
-    }
-
-    // La cabecera de las terminales es el asa de altura: arrastrar fija el alto de la
-    // sección de comandos. Mientras dura, body.ws-dragging quita los eventos a los
-    // iframes de terminal (si no, al bajar el puntero entra al iframe y se los come)
-    // y se escucha en window, así el arrastre sigue aunque el puntero salga del asa.
-    const KEY_H = 'comandos.commands.cmdsHeight';
-    function wireDivider() {
-      const dv = el.querySelector('.cs-terms'), cmds = el.querySelector('.sec-cmds'), terms = el.querySelector('.sec-terms');
-      if (!dv || !cmds || !terms || !dv.addEventListener) return;
-      dv.addEventListener('pointerdown', e => {
-        if (e.button > 0 || state.termsHidden || !state.cmdsOpen || (e.target && e.target.closest && e.target.closest('button,.tw'))) return;
-        e.preventDefault();
-        const h0 = cmds.getBoundingClientRect().height, y0 = e.clientY;
-        const win = (el.ownerDocument && el.ownerDocument.defaultView) || null;
-        const body = el.ownerDocument && el.ownerDocument.body;
-        try { dv.setPointerCapture(e.pointerId); } catch (_) {}
-        try { body && body.classList.add('ws-dragging'); } catch (_) {}
-        try { el.classList.add('terms-dragging'); } catch (_) {}
-        const move = ev => { const h = Math.max(120, h0 + ev.clientY - y0); cmds.style.flex = '0 0 ' + h + 'px'; terms.style.flex = '1 1 auto'; };
-        const up = () => {
-          for (const t of [dv, win]) if (t) { t.removeEventListener('pointermove', move); t.removeEventListener('pointerup', up); t.removeEventListener('pointercancel', up); }
-          try { body && body.classList.remove('ws-dragging'); } catch (_) {}
-          try { el.classList.remove('terms-dragging'); } catch (_) {}
-          write(KEY_H, String(Math.round(cmds.getBoundingClientRect().height)));
-        };
-        for (const t of [dv, win]) if (t) { t.addEventListener('pointermove', move); t.addEventListener('pointerup', up); t.addEventListener('pointercancel', up); }
-      });
     }
 
     // Flechas ‹ › de la pista: solo se ven si las píldoras no caben y se apagan en
@@ -513,14 +492,11 @@
 
     // La altura arrastrada va en línea y le ganaría a las reglas .terms-hidden/.no-terms:
     // escondidas (o sin terminales) se quita y los comandos toman todo; al mostrar vuelve.
-    function applyHeights(collapsed) {
+    // Restos de la altura arrastrada (antes del panel flotante): fuera.
+    function applyHeights() {
       const cmds = el.querySelector('.sec-cmds'), terms = el.querySelector('.sec-terms');
       if (!cmds || !terms || !cmds.style) return;
-      if (!state.cmdsOpen) { cmds.style.flex = '0 0 auto'; terms.style.flex = '1 1 auto'; return; }
-      const saved = Number(read(KEY_H) || 0);
-      const fixed = !collapsed && saved >= 120;
-      cmds.style.flex = fixed ? '0 0 ' + saved + 'px' : '';
-      terms.style.flex = fixed ? '1 1 auto' : '';
+      cmds.style.flex = ''; terms.style.flex = '';
     }
 
     // Acciones de las pestañas, compartidas por los clics de aquí y por la cabecera
@@ -549,19 +525,61 @@
       render();
       if (typeof killTerm === 'function') { try { Promise.resolve(killTerm(id)).catch(err => toast((err && err.message) || String(err), true)); } catch (err) { toast(err.message, true); } }
     }
-    // Alto que necesita el WebView del escritorio con la persiana plegada: hasta el
-    // borde inferior de la cabecera de Comandos (la terminal nativa ocupa el resto).
+    // Estado del panel para la web y para el escritorio. Cerrado, el WebView del escritorio
+    // mide hasta el borde inferior de la fila de la barra (h) y la terminal nativa toma el
+    // resto; abierto, el WebView ocupa la columna y la terminal nativa se oculta.
     function cmdsInfo() {
       let h = 0;
       try {
-        const head = el.querySelector('.sec-cmds .sb-head');
-        const r = head && head.getBoundingClientRect ? head.getBoundingClientRect() : null;
+        const row = el.querySelector('.cs-tools');
+        const r = row && row.getBoundingClientRect ? row.getBoundingClientRect() : null;
         const win = el.ownerDocument && el.ownerDocument.defaultView;
         if (r && r.height) h = Math.ceil(r.bottom + ((win && win.scrollY) || 0));
       } catch (_) {}
-      return { open: !!state.cmdsOpen, h };
+      return { open: !!state.sheet, sheet: state.sheet, h, empty: !!emptyTerms() };
     }
-    function setCmdsOpen(v) { state.cmdsOpen = !!v; write(KEY_CMDS_OPEN, state.cmdsOpen ? '1' : '0'); render(); }
+    // Sin terminal que mostrar (escondidas o ninguna): la columna no se queda vacía.
+    function emptyTerms() {
+      if (!termList().length) return { t: 'No hay terminales en la barra', d: 'Abre una para tener una shell a mano junto a tus sesiones.', go: '+ Nueva terminal', act: 'new' };
+      if (state.termsHidden) return { t: 'Terminales escondidas', d: 'Siguen abiertas; vuelve a mostrarlas cuando las necesites.', go: 'Mostrar terminal', act: 'toggle' };
+      return null;
+    }
+    function paintSheet(n) {
+      const cur = state.sheet;
+      try { el.classList.toggle('sheet-open', !!cur); el.setAttribute('data-panel', cur); } catch (_) {}
+      for (const b of el.querySelectorAll('[data-sheet]')) {
+        const on = b.dataset.sheet === cur;
+        try { b.classList.toggle('on', on); b.setAttribute('aria-pressed', on ? 'true' : 'false'); } catch (_) {}
+      }
+      for (const b of el.querySelectorAll('[data-sheet-tab]')) {
+        const on = b.dataset.sheetTab === cur;
+        try { b.classList.toggle('on', on); b.setAttribute('aria-selected', on ? 'true' : 'false'); } catch (_) {}
+      }
+      const cnt = el.querySelector('.cs-tools .n');
+      if (cnt) cnt.textContent = state.chains.length ? String(state.chains.length) : '';
+      const sheet = el.querySelector('.cs-sheet');
+      if (sheet) sheet.hidden = !cur;
+      const e = emptyTerms(), box = el.querySelector('.cs-empty-terms');
+      if (box) {
+        box.hidden = !e || !!cur;
+        if (e) {
+          box.querySelector('.et-t').textContent = e.t; box.querySelector('.et-d').textContent = e.d;
+          const go = box.querySelector('.et-go'); go.textContent = e.go; go.setAttribute('data-term-act', e.act);
+        }
+      }
+      if (cur === 'srv') { state.srvMounted = true; try { mountServers(el.querySelector('.cs-srv-slot')); } catch (_) {} }
+      else if (state.srvMounted) { state.srvMounted = false; try { mountServers(null); } catch (_) {} }
+      const tools = el.querySelector('.cs-tools');
+      if (tools && tools.offsetHeight && el.style && el.style.setProperty) el.style.setProperty('--cs-tools-h', tools.offsetHeight + 'px');
+    }
+    function setSheet(k) {
+      const next = SHEETS.some(x => x[0] === k) ? k : '';
+      if (next === state.sheet) return;
+      state.sheet = next;
+      render();
+      if (next === 'cmds') { const q = el.querySelector('.cs-search'); try { q && q.focus && q.focus(); } catch (_) {} }
+    }
+    const setCmdsOpen = v => setSheet(v ? (state.sheet || 'cmds') : '');
     function termAction(kind, id) {
       if (kind === 'close' && id) return void closeTerm(id);
       if (kind === 'new') { if (state.termsHidden) setHidden(false); return void newTerm(); }
@@ -576,9 +594,10 @@
       if (t.closest('[data-run-next]')) return void next();
       if (t.closest('[data-run-stop]')) return void stop();
       if (t.closest('[data-open-builder]')) return void openBuilder();
-      if (t.closest('[data-cmds-toggle]')) return void setCmdsOpen(!state.cmdsOpen);
-      // la cabecera entera es el asa de la persiana (salvo sus botones)
-      if (!t.closest('button,input,a') && t.closest('.sec-cmds .sb-head')) return void setCmdsOpen(!state.cmdsOpen);
+      if ((n = t.closest('[data-sheet]'))) return void setSheet(state.sheet === n.dataset.sheet ? '' : n.dataset.sheet);
+      if ((n = t.closest('[data-sheet-tab]'))) return void setSheet(n.dataset.sheetTab);
+      if (t.closest('[data-sheet-close]')) return void setSheet('');
+      if ((n = t.closest('[data-term-act]'))) return void termAction(n.dataset.termAct);
       if ((n = t.closest('[data-close-term]'))) return void closeTerm(n.dataset.closeTerm);
       if ((n = t.closest('[data-tscroll]'))) {
         const tr = el.querySelector('.cs-terms .tabs');
@@ -595,12 +614,15 @@
           if (!t || !t.session || !t.pane) toast('Selecciona un pane primero', true);
           return;
         }
-        return void insert(n.dataset.cmd, n.dataset.kind === 'shell' ? 'shell' : 'pane');
+        const r = insert(n.dataset.cmd, n.dataset.kind === 'shell' ? 'shell' : 'pane');
+        if (r) setSheet('');   // escrito en el pane (sin Enter): el panel se aparta
+        return;
       }
       if (t.closest('button') && (n = t.closest('.cs-saved-item[data-run]'))) return void startChain(n.dataset.run);
       if ((n = t.closest('[data-toggle]'))) return void toggle(n.dataset.toggle);
     });
     el.addEventListener('keydown', e => {
+      if (e.key === 'Escape' && state.sheet) { if (e.preventDefault) e.preventDefault(); return void setSheet(''); }
       const t = e.target, n = t && typeof t.closest === 'function' ? t.closest('[data-toggle]') : null;
       if (!n || n !== t || !isToggleKey(e)) return;
       if (e.preventDefault) e.preventDefault();   // Espacio no debe desplazar la lista
@@ -611,7 +633,7 @@
     el.addEventListener('input', e => { if (isSearch(e.target) && !e.isComposing) search(e.target); });
     el.addEventListener('compositionend', e => { if (isSearch(e.target)) search(e.target); });
 
-    return { refresh, render, insert, startChain, next, stop, applyCatalog, termAction, setCmdsOpen, get state() { return state; } };
+    return { refresh, render, insert, startChain, next, stop, applyCatalog, termAction, setCmdsOpen, setSheet, get state() { return state; } };
   }
 
   root.ComandosCommandSidebar = { createCommandSidebar, rowHTML, cliHTML, esc, isToggleKey };

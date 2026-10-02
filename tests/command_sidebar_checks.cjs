@@ -172,7 +172,6 @@ const catalog = JSON.parse(fs.readFileSync(process.cwd() + '/tests/fixtures/comm
   sb3.applyCatalog({ cliInPane: '', target: { session: 'term-q2', pane: '%8' }, catalog, versionsAt: 2 });
   assert.equal(root3.querySelector('.cs-cli[data-cli="grok"]').classList.contains('open'), false);
   // extra) terminales rápidas: foco y nueva
-  store.set('comandos.commands.cmdsOpen', '1');      // persiana desplegada para estas comprobaciones
   const focused = [], mounted = [], root2 = mkRoot();
   const sb2 = createCommandSidebar({ api, root: root2, storage, makeId: () => 'x', getTarget: () => ({ session: 'term-q1', pane: '%7', paneKey: 'term-q1:%7', kind: 'term', title: 'T' }),
     focusTarget: t => focused.push(t), openBuilder: () => focused.push('builder'), toast: () => {}, newTerm: () => focused.push('new'),
@@ -191,7 +190,7 @@ const catalog = JSON.parse(fs.readFileSync(process.cwd() + '/tests/fixtures/comm
   // el escritorio recibe las mismas pestañas para pintar su cabecera nativa
   assert.deepEqual(mounted.at(-1)[2], { session: 'q1', hidden: false,
     tabs: [{ id: 'q1', label: 'Terminal <14:32> · destino', title: 'Terminal <14:32>', on: true, sel: true, closing: false }],
-    cmds: { open: true, h: 0 } });
+    cmds: { open: false, sheet: '', h: 0, empty: false } });
   // persiana: el chevron vive en su propio hueco, fuera de las pestañas
   assert.ok(root2.querySelector('.cs-terms .tog-slot .tog[data-terms-toggle] svg'));
   assert.equal(root2.querySelector('.cs-terms .t[data-focus-term="q1"]').textContent.includes('Terminal <14:32>'), true);
@@ -214,43 +213,57 @@ const catalog = JSON.parse(fs.readFileSync(process.cwd() + '/tests/fixtures/comm
   assert.deepEqual(mounted.at(-1).slice(0, 2), ['q1', 'mini']);
   root2.click('.tog[data-terms-toggle]'); root2.click('.t[data-focus-term="q1"]');        // tocar una pestaña también las muestra
   assert.equal(root2.classList.contains('terms-hidden'), false);
-  // altura arrastrada: escondidas se quita (los comandos toman todo) y al mostrar vuelve
+  // el panel flota encima de la terminal: ya no hay altura arrastrada que fijar
   store.set('comandos.commands.cmdsHeight', '300');
   sb2.render();
-  assert.equal(root2.querySelector('.sec-cmds').style.flex, '0 0 300px');
-  sb2.termAction('toggle');
-  assert.equal(root2.classList.contains('terms-hidden'), true);
   assert.equal(root2.querySelector('.sec-cmds').style.flex, ''); assert.equal(root2.querySelector('.sec-terms').style.flex, '');
-  sb2.termAction('toggle');
-  assert.equal(root2.querySelector('.sec-cmds').style.flex, '0 0 300px');
-  // Persiana de Comandos: nace plegada (solo su cabecera; la terminal toma el resto),
-  // la cabecera o su chevron la abren y la cierran, y el escritorio recibe el estado.
+  // Barra de herramientas: fila Comandos · Cadenas · Servidores; el panel nace cerrado,
+  // cada botón abre su pestaña (otro clic la cierra), Esc y «Cerrar» lo cierran, y elegir
+  // un comando lo aparta. El escritorio recibe el estado para repartir la columna.
   {
     const stP = new Map(), storageP = { getItem: k => stP.get(k) ?? null, setItem: (k, v) => stP.set(k, v) };
-    const mP = [], hits = [], rootP = mkRoot();
-    const sbP = createCommandSidebar({ api, root: rootP, storage: storageP, makeId: () => 'x', getTarget: () => null, toast: () => {},
-      openBuilder: () => hits.push('builder'), mountTerm: (s, h, info) => mP.push(info),
+    const mP = [], hits = [], srv = [], typed = [], rootP = mkRoot();
+    const apiP = async (path, body) => {
+      if (path === '/pane/type') { typed.push(body.text); return { ok: true }; }
+      return api(path, body);
+    };
+    const sbP = createCommandSidebar({ api: apiP, root: rootP, storage: storageP, makeId: () => 'x', toast: () => {},
+      getTarget: () => ({ session: 'term-q1', pane: '%7', paneKey: 'term-q1:%7', title: 'T' }),
+      openBuilder: () => hits.push('builder'), mountTerm: (s, h, info) => mP.push(info), mountServers: slot => srv.push(slot ? 'in' : 'out'),
       terminals: () => [{ tabId: 'q1', paneKey: 'term-q1:%7', session: 'term-q1', pane: '%7', label: 'T' }] });
-    sbP.render();
-    assert.equal(rootP.classList.contains('cmds-closed'), true);
-    assert.equal(rootP.querySelector('.sec-cmds').style.flex, '0 0 auto');
-    assert.equal(rootP.querySelector('.sec-terms').style.flex, '1 1 auto');
-    const tog = rootP.querySelector('.sec-cmds .sb-head .cs-blind[data-cmds-toggle] svg');
-    assert.ok(tog);
-    assert.equal(rootP.querySelector('[data-cmds-toggle]').getAttribute('aria-expanded'), 'false');
-    assert.deepEqual(mP.at(-1).cmds, { open: false, h: 0 });
-    // los logos y botones de la cabecera siguen ahí: Cadenas abre el editor sin plegar/desplegar
-    rootP.click('.cs-chains[data-open-builder]');
-    assert.deepEqual(hits, ['builder']); assert.equal(rootP.classList.contains('cmds-closed'), true);
-    rootP.click('[data-cmds-toggle]');
-    assert.equal(rootP.classList.contains('cmds-closed'), false);
-    assert.equal(stP.get('comandos.commands.cmdsOpen'), '1');
-    assert.equal(rootP.querySelector('[data-cmds-toggle]').getAttribute('aria-expanded'), 'true');
-    assert.equal(mP.at(-1).cmds.open, true);
-    assert.equal(rootP.querySelector('.sec-cmds').style.flex, '');
-    rootP.click('.sec-cmds .sb-head h2');                 // la cabecera entera es el asa
-    assert.equal(rootP.classList.contains('cmds-closed'), true);
-    assert.equal(stP.get('comandos.commands.cmdsOpen'), '0');
+    await sbP.refresh();
+    assert.equal(rootP.querySelectorAll('.cs-tools [data-sheet]').length, 3);
+    assert.equal(rootP.querySelector('.cs-sheet').hidden, true);
+    assert.equal(rootP.querySelector('.sb-head'), null);               // la cabecera recuadrada ya no existe
+    assert.deepEqual(mP.at(-1).cmds, { open: false, sheet: '', h: 0, empty: false });
+    rootP.click('.cs-tools [data-sheet="cmds"]');
+    assert.equal(rootP.querySelector('.cs-sheet').hidden, false);
+    assert.equal(rootP.getAttribute('data-panel'), 'cmds'); assert.equal(rootP.classList.contains('sheet-open'), true);
+    assert.equal(rootP.querySelector('.cs-tools [data-sheet="cmds"]').getAttribute('aria-pressed'), 'true');
+    assert.equal(rootP.querySelector('[data-sheet-tab="cmds"]').classList.contains('on'), true);
+    assert.equal(mP.at(-1).cmds.open, true); assert.equal(mP.at(-1).cmds.sheet, 'cmds');
+    rootP.click('[data-sheet-tab="chains"]');                       // pestañas dentro del panel
+    assert.equal(rootP.getAttribute('data-panel'), 'chains');
+    rootP.click('.cs-chains[data-open-builder]'); assert.deepEqual(hits, ['builder']);
+    rootP.click('[data-sheet-tab="srv"]'); assert.deepEqual(srv, ['in']);   // la fila SSH se muda al panel
+    rootP.click('.cs-tools [data-sheet="srv"]');                     // otro clic en su botón lo cierra
+    assert.equal(rootP.querySelector('.cs-sheet').hidden, true); assert.deepEqual(srv, ['in', 'out']);
+    rootP.click('.cs-tools [data-sheet="chains"]'); rootP.click('[data-sheet-close]');
+    assert.equal(rootP.getAttribute('data-panel'), '');
+    rootP.click('.cs-tools [data-sheet="cmds"]');
+    rootP.dispatch('keydown', rootP.querySelector('.cs-search'), { key: 'Escape' });
+    assert.equal(rootP.getAttribute('data-panel'), '');
+    // elegir un comando lo escribe en el pane (sin Enter) y el panel se aparta
+    rootP.click('.cs-tools [data-sheet="cmds"]');
+    rootP.click('.cs-cli[data-cli="claude"] .srows .cmd.y'); await sbP.state.typing;
+    assert.equal(rootP.getAttribute('data-panel'), ''); assert.equal(typed.length, 1);
+    // sin terminal que mostrar, una tarjeta llena la columna en vez de un hueco
+    sbP.termAction('toggle');
+    assert.equal(rootP.querySelector('.cs-empty-terms').hidden, false);
+    assert.equal(rootP.querySelector('.cs-empty-terms .et-go').textContent, 'Mostrar terminal');
+    assert.equal(mP.at(-1).cmds.empty, true);
+    rootP.click('.cs-empty-terms .et-go');
+    assert.equal(rootP.querySelector('.cs-empty-terms').hidden, true);
   }
   // ✕ de una pestaña: primer clic pide «¿Cerrar?», el segundo termina esa terminal
   const killed = [], rootX = mkRoot();
@@ -329,7 +342,8 @@ const catalog = JSON.parse(fs.readFileSync(process.cwd() + '/tests/fixtures/comm
     rootK.dispatch('keydown', lab(), { key: 'Enter' });
     assert.equal(lab().getAttribute('aria-expanded'), 'true');
     assert.equal(rootK.querySelector('.cs-cli[data-cli="codex"] .hsec').classList.contains('open'), true);
-    assert.equal(rootK.querySelector('.cs-saved .cli-h').getAttribute('role'), 'button');
+    // las cadenas guardadas viven en su pestaña: lista directa, sin encabezado plegable
+    assert.equal(rootK.querySelector('.cs-chains-body .cs-saved .cli-h'), null);
     // hydrate corre sobre la raíz tras el primer pintado, tras cada repintado del cuerpo y con la búsqueda
     const n0 = hyd.length; assert.ok(n0 >= 1); assert.equal(hyd.every(x => x === rootK), true);
     rootK.click('.cs-cli[data-cli="claude"] .cli-h'); assert.equal(hyd.length, n0 + 1);
