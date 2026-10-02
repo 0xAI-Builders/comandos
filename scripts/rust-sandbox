@@ -17,7 +17,9 @@ if [ ! -e /usr/lib/x86_64-linux-gnu/libsqlite3.so ] && [ -e /usr/lib/x86_64-linu
 fi
 test -d "$task_cache/cargo/registry"
 ulimit -v 3145728
-exec nice -n 10 bwrap --die-with-parent --new-session --unshare-all --clearenv \
+exec systemd-run --user --scope --quiet --collect --unit="comandos-rust-check-$$" \
+  --property=MemoryHigh=2G --property=MemoryMax=3G --property=MemorySwapMax=512M \
+  nice -n 10 bwrap --die-with-parent --new-session --unshare-all --clearenv \
   --ro-bind /usr /usr --ro-bind /bin /bin \
   --ro-bind /lib /lib --ro-bind /lib64 /lib64 \
   --proc /proc --dev /dev --tmpfs /tmp --tmpfs /run --tmpfs /home \

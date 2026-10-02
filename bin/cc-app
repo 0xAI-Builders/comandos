@@ -2496,10 +2496,19 @@ def _which_cli(name):
     return None
 
 
-def _sane_flags(raw):
+def _sane_flags(raw, agent="claude"):
     """Normaliza una lista de args a flags relanzables: conserva flag+valor de
     los _VALUE_FLAGS, descarta value-flags huerfanos (snapshots viejos rotos) y
     omite los flags de reanudacion junto con su id."""
+    # Codex usa -c para configuracion, no para continuar como Claude.
+    # Conservar solo los permisos originales, sin inventar valores ni defaults.
+    skip_flags, value_flags = _RESUME_SKIP_FLAGS, _VALUE_FLAGS
+    if agent == "codex":
+        skip_flags = _RESUME_SKIP_FLAGS - {"-c"}
+        value_flags = {"--model", "-m", "--config", "-c", "--sandbox", "-s",
+                       "--ask-for-approval", "-a", "--profile", "-p",
+                       "--cd", "-C", "--add-dir", "--image", "-i",
+                       "--enable", "--disable", "--local-provider"}
     out, i = [], 0
     raw = [a for a in raw if isinstance(a, str)]
     while i < len(raw):
@@ -2507,12 +2516,12 @@ def _sane_flags(raw):
         if not arg.startswith("-"):
             i += 1
             continue
-        if arg in _RESUME_SKIP_FLAGS:
+        if arg in skip_flags:
             i += 1
             if arg in ("--resume", "-r") and i < len(raw) and not raw[i].startswith("-"):
                 i += 1  # saltar el session-id del resume viejo
             continue
-        if arg in _VALUE_FLAGS:
+        if arg in value_flags:
             if i + 1 < len(raw) and not raw[i + 1].startswith("-"):
                 out.extend((arg, raw[i + 1]))
                 i += 2
@@ -2532,7 +2541,7 @@ def _pid_alive(pid):
         return False
 
 
-def _proc_flags(pid):
+def _proc_flags(pid, agent="claude"):
     """Flags (con su valor cuando lo llevan) con que corre el agente, para
     relanzarlo igual (p.ej. --model X --effort high --dangerously-skip-permissions)."""
     try:
@@ -2540,7 +2549,7 @@ def _proc_flags(pid):
             argv = [a.decode("utf-8", "replace") for a in f.read().split(b"\0") if a]
     except Exception:
         return []
-    return _sane_flags(argv[1:])
+    return _sane_flags(argv[1:], agent=agent)
 
 
 def _claude_by_tmux_session():
@@ -2618,7 +2627,7 @@ def _codex_info_for_session(sess, kids):
                 continue
             m = _ROLLOUT_RE.search(t)
             if m:
-                return {"id": m.group(1), "flags": _proc_flags(p)}
+                return {"id": m.group(1), "flags": _proc_flags(p, agent="codex")}
     return None
 
 
@@ -2790,7 +2799,7 @@ def resume_command(snap):
     # _sane_flags conserva pares --flag valor y tira value-flags huerfanos:
     # un snapshot viejo con ["--model","--effort"] jamas debe volver a generar
     # `claude --resume id --model --effort` (modelo invalido, sesion rota).
-    flags = _sane_flags(snap.get("flags") if isinstance(snap.get("flags"), list) else [])
+    flags = _sane_flags(snap.get("flags") if isinstance(snap.get("flags"), list) else [], agent=agent)
     fl = ("" if not flags else " " + " ".join(shlex.quote(f) for f in flags))
     sid = snap.get("resume_id") or ""
     sid = sid if isinstance(sid, str) and re.fullmatch(r"[0-9a-f-]{36}", sid) else ""

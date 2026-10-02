@@ -7,9 +7,10 @@ Type=oneshot
 RemainAfterExit=yes
 # If the server is born as a child of cc-app, restarting the GTK app
 # kills every session (incident 2026-09-04 14:41).
-ExecStart=/usr/bin/tmux start-server
-ExecStart=/usr/bin/tmux set-option -s exit-empty off
-ExecStart=/usr/bin/tmux set-option -s exit-unattached off
+# Set options in the same command queue before an empty server can exit.
+# An existing server is preserved. Stop/restart of this unit must not reap it.
+ExecStart=/usr/bin/tmux start-server \; set-option -s exit-empty off \; set-option -s exit-unattached off
+KillMode=process
 ManagedOOMPreference=avoid
 
 [Install]

@@ -80,3 +80,37 @@ def test_malformed_provenance_and_measurement_cache_remain_unknown(tmp_path):
     for bad in [{'measuredAt':'yesterday'}, {'measuredAt':1}, {'measuredAt':None}]:
         cache.write_text(json.dumps({'configuration':metadata._digest(spec),'tokenizer':'cl100k_base','tokens':123,**bad}))
         assert metadata.mcp_size(tmp_path,'test',spec)['tokens'] is None
+
+
+def test_identical_schema_measurement_reuses_disk_count_across_clients(tmp_path, monkeypatch):
+    calls = []
+    def count(texts):
+        calls.append(texts)
+        return [17]
+    monkeypatch.setattr(metadata, 'token_counts', count)
+    tools = [{'name': 'docs', 'inputSchema': {}}]
+    spec = {'url': 'https://example.test/mcp'}
+    metadata.record_mcp_size(tmp_path, 'docs', spec, tools)
+    metadata.record_mcp_size(tmp_path, 'docs', spec, tools)
+    assert len(calls) == 1
+    metadata.record_mcp_size(tmp_path, 'docs', spec, [{'name': 'changed'}])
+    assert len(calls) == 2
+
+
+def test_isolated_counter_does_not_load_tokenizer_into_proxy(monkeypatch):
+    from types import SimpleNamespace
+    calls = []
+    def run(argv, **kw):
+        calls.append((argv, kw))
+        return SimpleNamespace(returncode=0, stdout='[4]')
+    monkeypatch.setattr(metadata.subprocess, 'run', run)
+    monkeypatch.setattr(metadata, '_offline_counts', lambda texts: (_ for _ in ()).throw(AssertionError('retained tokenizer')))
+    assert metadata.isolated_token_counts(['test']) == [4]
+    assert calls[0][0][-1] == '--count'
+    assert calls[0][1]['timeout'] == 8
+
+
+def test_failed_isolated_counter_keeps_size_unknown(monkeypatch):
+    from types import SimpleNamespace
+    monkeypatch.setattr(metadata.subprocess, 'run', lambda *a, **kw: SimpleNamespace(returncode=1, stdout='[4]'))
+    assert metadata.isolated_token_counts(['test']) == [None]

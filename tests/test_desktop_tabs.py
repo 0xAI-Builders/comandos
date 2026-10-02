@@ -309,7 +309,7 @@ def test_sane_flags_keeps_values_and_drops_orphan_value_flags():
 
 
 def test_resume_command_and_proc_flags_use_the_sane_helpers():
-    assert "_sane_flags(argv[1:])" in function_source("_proc_flags")
+    assert "_sane_flags(argv[1:], agent=agent)" in function_source("_proc_flags")
     resume = function_source("resume_command")
     assert "_sane_flags(" in resume
     for cli in ("claude", "codex", "grok"):

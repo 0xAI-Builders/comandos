@@ -84,6 +84,27 @@ def token_counts(texts):
     return [None]*len(texts)
 
 
+def isolated_token_counts(texts):
+    """Release tokenizer tables when the short-lived measurement process exits."""
+    if not texts:
+        return []
+    python = sys.executable
+    if not importlib.util.find_spec('tiktoken'):
+        candidate = Path(os.path.expanduser('~/.local/share/comandos/extensions-venv/bin/python'))
+        if candidate.exists():
+            python = str(candidate)
+    try:
+        result = subprocess.run([python, '-I', str(Path(__file__).resolve()), '--count'],
+                                input=json.dumps(texts), text=True, capture_output=True, timeout=8)
+        counts = json.loads(result.stdout)
+        if (result.returncode == 0 and isinstance(counts, list) and len(counts) == len(texts)
+                and all(n is None or type(n) is int and n >= 0 for n in counts)):
+            return counts
+    except (OSError, ValueError, subprocess.SubprocessError):
+        pass
+    return [None]*len(texts)
+
+
 @lru_cache(maxsize=1024)
 def _skill_text(path, mtime, size, inode):
     if size > MAX_BYTES:
@@ -136,18 +157,32 @@ def _size_path(home, name):
     return Path(home)/'.local/state/comandos/extensions/sizes'/(_digest(name)+'.json')
 
 
-def record_mcp_size(home, name, spec, tools):
+def record_mcp_size(home, name, spec, tools, *, counter=None):
     """Persist only a count and hashes from an already-requested complete tool list."""
     definitions = sorted(({k:t[k] for k in ('name','description','inputSchema','outputSchema') if k in t} for t in tools), key=lambda t:t['name'])
     text = json.dumps(definitions,sort_keys=True,separators=(',',':'),ensure_ascii=False)
     if len(text.encode()) > MAX_BYTES:
         return
-    count = token_counts([text])[0]
-    if count is None:
-        return
-    data = {**unknown_size('tool-definitions'), 'tokens':count, 'configuration':_digest(spec), 'content':_digest(definitions), 'measuredAt':int(time.time())}
     path = _size_path(home,name)
     path.parent.mkdir(parents=True,exist_ok=True,mode=0o700)
+    # Concurrent clients share one measurement; only hashes/counts are persisted.
+    import fcntl
+    lockfd = os.open(str(path)+'.lock', os.O_CREAT | os.O_RDWR, 0o600)
+    with os.fdopen(lockfd, 'w') as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX)
+        configuration, content = _digest(spec), _digest(definitions)
+        old = _json(path)
+        if (mcp_size(home, name, spec)['tokens'] is not None and old.get('content') == content):
+            return
+        count = (counter or token_counts)([text])[0]
+        if count is None:
+            return
+        data = {**unknown_size('tool-definitions'), 'tokens':count, 'configuration':configuration,
+                'content':content, 'measuredAt':int(time.time())}
+        _write_mcp_size(path, data)
+
+
+def _write_mcp_size(path, data):
     fd,tmp = tempfile.mkstemp(dir=path.parent,prefix='.size-')
     try:
         with os.fdopen(fd,'w') as f:

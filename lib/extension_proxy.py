@@ -70,7 +70,8 @@ def make_server(name,spec,session,initialized,home=None):
     def measure(tools):
         if home is None or not measuring.acquire(blocking=False):return
         def work():
-            try:extension_metadata.record_mcp_size(home,name,spec,tools)
+            try:extension_metadata.record_mcp_size(home,name,spec,tools,
+                                                  counter=extension_metadata.isolated_token_counts)
             except Exception:pass  # Measurement must not break a live MCP connection.
             finally:measuring.release()
         threading.Thread(target=work,daemon=True).start()
