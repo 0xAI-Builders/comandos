@@ -39,7 +39,8 @@ const ADAPTER = `
   const sessions = () => SESS;
   const LAST = Object.fromEntries(Object.entries(AN.lastWeek).map(([p, h]) => [esc(p), h]));
   const WASTE = AN.waste;
-  const H5 = Object.fromEntries(ACC.filter(a => a.h5Reset).map(a => [a.id, { left: a.h5Left, reset: a.h5Reset }]));
+  // Toda cuenta con 5 h tiene entrada: sin ventana abierta (0 % y sin reset) se dibuja sin hora de reset.
+  const H5 = Object.fromEntries(ACC.filter(a => a.h5 != null).map(a => [a.id, { left: a.h5Left ?? null, reset: a.h5Reset ?? null }]));
   const FOCUS = AN.pomodoros.map(f => ({ ...f, proj: esc(f.proj), status: f.status === 'completed' ? 'completado' : 'cancelado', ag: {} }));
   const focusAll = () => FOCUS;
   const TODAYD = AN.week.today, NOWH = AN.week.now;

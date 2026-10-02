@@ -204,6 +204,14 @@ globalThis.innerWidth = 1300; globalThis.innerHeight = 900;
   });
   await check('instantáneas: todas las cuentas', () => clean(instant(fx('week-normal')), 'todas'));
 
+  // Límites sin reset (relotto sin ventana de 5 h abierta trae 0 % y reset 0; Grok sin lectura oficial): se dibuja igual.
+  await check('límites sin reset: la cuenta se dibuja sin hora de reset', () => {
+    const m = fx('week-normal');
+    m.accounts.forEach(a => { a.h5 = a.h5 ?? 0; a.h5Reset = null; a.h5Left = null; a.reset = null; a.left = null;
+      if (a.model) { a.model.reset = null; a.model.left = null; } });
+    clean(m, 'sin reset');
+  });
+
   if (failures.length) { console.error(`analytics ui: fallaron ${failures.length} comprobaciones`); process.exit(1); }
   console.log('analytics ui: ok');
 })().catch(e => { console.error(e); process.exit(1); });
