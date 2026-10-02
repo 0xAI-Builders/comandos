@@ -733,6 +733,7 @@ body.app:not(.split):not(.inapp) header.hdr-ordered #btn-pomo .pomo-mini{display
 #menu-panel .mp-tools button{min-height:40px;padding:8px 12px;border:1px solid var(--line);border-radius:8px;background:var(--panel2);color:var(--text);font:inherit;text-align:left;cursor:pointer}
 #menu-panel .mp-tools button[aria-pressed=true]{border-color:var(--brand);color:var(--brand)}
 @media (max-width:640px){header.hdr-ordered .cnt-long{display:none}header.hdr-ordered .cnt-short{display:inline}header.hdr-ordered .counts .pill{padding:2px 7px}}
+@container sidebar (max-width:640px){header.hdr-ordered .cnt-long{display:none}header.hdr-ordered .cnt-short{display:inline}header.hdr-ordered .counts .pill{padding:2px 7px}}
 @container sidebar (max-width:460px){header.hdr-ordered .cnt-long{display:none}header.hdr-ordered .cnt-short{display:inline}header.hdr-ordered .counts .pill{padding:2px 7px}}
 .btn-style-gallery{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:10px;margin-top:8px}
 .btn-style-card{display:flex;align-items:center;gap:12px;text-align:left;padding:12px;border:1px solid var(--line);border-radius:12px;background:var(--panel);color:var(--text);cursor:pointer}
