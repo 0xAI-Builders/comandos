@@ -127,7 +127,7 @@ def test_desktop_header_actions_live_in_the_web_header_like_the_remote():
     # barra de herramientas (grill 1-oct, diseño 1): una sola fila de teclas en la columna
     assert ":is(body.inapp,body.app) header.hdr-ordered{display:flex;flex-wrap:nowrap" in CSS
     assert 'id="tab-term"' in INDEX and 'id="tab-new"' in INDEX
-    assert "body.app.split:not(.inapp) :is(#tab-term,#tab-new,#tab-sort,#tab-rows){display:grid" in CSS
+    assert "body.app:not(.inapp) :is(#tab-term,#tab-new,#tab-sort,#tab-rows){display:grid" in CSS
     # Servidores pasó a la fila de la barra de comandos (pestaña de su panel)
     assert ":is(body.inapp,body.app.split) header.hdr-ordered :is(#btn-menu,.counts,#btn-terminal,#btn-newsess,#btn-switch,#btn-snippets,#btn-servers){display:none!important}" in CSS
     assert 'id="btn-sort"' not in INDEX

@@ -1221,15 +1221,15 @@
     cursor:pointer;flex:none;max-width:280px;border-right:1px solid var(--line);
     box-shadow:none;transition:color .15s,background .15s,box-shadow .15s}
   /* ⊞ varias filas (pref tabs_layout=rows): las MISMAS pestañas como chips de 28 px, envueltas; sin ‹ ›. */
-  body.app.split.tabs-rows #app-navigation{height:auto;min-height:44px;align-items:flex-start}
-  body.app.split.tabs-rows #tabbar{flex-wrap:wrap;gap:4px;height:auto;overflow:visible;padding:6px;align-items:center;align-content:flex-start}
-  body.app.split.tabs-rows .apptab{height:28px;min-height:28px;padding:0 10px;gap:6px;border-right:0;border-radius:8px;
+  body.app.tabs-rows #app-navigation{height:auto;min-height:44px;align-items:flex-start}
+  body.app.tabs-rows #tabbar{flex-wrap:wrap;gap:4px;height:auto;overflow:visible;padding:6px;align-items:center;align-content:flex-start}
+  body.app.tabs-rows .apptab{height:28px;min-height:28px;padding:0 10px;gap:6px;border-right:0;border-radius:8px;
     background:color-mix(in srgb,var(--panel) 82%,var(--line2))}
-  body.app.split.tabs-rows .apptab:hover{background:color-mix(in srgb,var(--panel) 65%,var(--line2))}
-  body.app.split.tabs-rows .apptab .tab-fav{height:26px}
-  body.app.split.tabs-rows .tab-step{display:none}
-  body.app.split.tabs-rows :is(#tab-left,#tab-term,#tab-new,#tab-sort,#tab-rows){align-self:flex-start}
-  body.app.split.tabs-rows #tab-left{height:44px}
+  body.app.tabs-rows .apptab:hover{background:color-mix(in srgb,var(--panel) 65%,var(--line2))}
+  body.app.tabs-rows .apptab .tab-fav{height:26px}
+  body.app.tabs-rows .tab-step{display:none}
+  body.app.tabs-rows :is(#tab-left,#tab-panel,#tab-term,#tab-new,#tab-sort,#tab-rows,#tab-open){align-self:flex-start}
+  body.app.tabs-rows :is(#tab-left,#tab-panel){height:44px}
   .apptab:hover{color:var(--text)}
   .apptab .lbl{overflow:hidden;text-overflow:ellipsis;font-weight:600}
   .apptab .mdl{font:600 10px var(--mono);color:var(--faint);flex:none}
@@ -1243,7 +1243,9 @@
   .apptab .x.arm{color:#fff;background:var(--done);font-weight:800}
   .apptab .tab-fav{flex:none;width:26px;height:40px;padding:0;border:0;background:transparent;
     color:var(--faint);font:18px var(--sans);cursor:pointer;touch-action:pan-x}
-  .apptab .tab-fav.on{color:#f5b83d}
+  .apptab .tab-fav.on{color:#FFAE1A}
+  .apptab .tab-fav .wm-icon{display:block;margin:auto}
+  .apptab .tab-fav .wm-favorite path{fill:none}
   .apptab .tab-fav:hover{color:var(--text)}
   .apptab .tab-fav:focus-visible{outline:2px solid var(--brand);outline-offset:-3px;border-radius:4px}
   .apptab .tab-fav:disabled{opacity:.5;cursor:wait}
@@ -1853,7 +1855,7 @@
 html[data-native-side-term] #command-sidebar .sec-terms{display:none}
 html[data-native-side-term] #command-sidebar .sec-cmds{flex:1 1 auto!important}
 </style>
-<link rel="stylesheet" href="/workspace.css?v=barra2">
+<link rel="stylesheet" href="/workspace.css?v=teclas2">
 <link rel="stylesheet" href="/buttons.css?v=2">
 <link rel="stylesheet" href="/reparto.css?v=fuentesD">
 <script src="/session-config.js?v=7f3232b0a624"></script>
@@ -5286,8 +5288,16 @@ let favoriteReadAt = 0, favoriteReadPending = false;
 function updateFavoriteButton(button, session, label=session){
   const on = S.favs.has(session);
   button.classList.toggle("on", on);
-  const glyph = on ? "★" : "☆";
-  if(button.textContent !== glyph) button.textContent = glyph;
+  // = escritorio: favorita = la estrella de contorno ámbar que «respira» (icono favorite
+  // de work-marks, 14 px); sin favorito, ☆ al pasar el cursor.
+  const wm = window.ComandosWorkMarks;
+  const want = on && wm ? "svg" : "☆";
+  if(button.dataset.glyph !== want){
+    button.dataset.glyph = want;
+    if(want === "svg") button.innerHTML = wm.iconSvg("favorite", 14);
+    else button.textContent = "☆";
+  }
+  button.classList.toggle("wm-animated", on && !!wm);
   button.disabled = session === "local" || favoritePending.has(session);
   button.title = session === "local" ? tf("LOCAL siempre va primero", "LOCAL always comes first") :
     on ? tf("Quitar de favoritos", "Remove from favorites") : tf("Marcar como favorita", "Add to favorites");
@@ -6002,7 +6012,7 @@ function renderTabbar(){
     const mdl = t.querySelector(".mdl");
     if(mdl){
       const withModel = (S.list || []).filter(i => i.session === t._session && i.alive !== false && i.model);
-      const short = withModel.length ? String(withModel[0].model).replace(/^claude-/, "") + (withModel.length > 1 ? " +" + (withModel.length - 1) : "") : "";
+      const short = withModel.length ? tabModelShort(withModel[0].model) + (withModel.length > 1 ? " +" + (withModel.length - 1) : "") : "";
       if(mdl.textContent !== short) mdl.textContent = short;
       mdl.hidden = !short;
     }
@@ -6050,6 +6060,11 @@ function holdTabRowsHeight(){
   if(n !== tabRowsHold.n){ bar.style.minHeight = ""; tabRowsHold = {n, h: 0}; }
   const h = bar.offsetHeight;
   if(h > tabRowsHold.h){ tabRowsHold.h = h; bar.style.minHeight = h + "px"; }
+}
+// Modelo corto de la pestaña = la del escritorio (cc-dash write_app_tab_models):
+// sin «claude-», sin «[1m]» y sin el sufijo de versión/fecha. Remoto decía «opus-5-5».
+function tabModelShort(model){
+  return String(model || "").replace(/\[.*$/, "").replace("claude-", "").replace(/-(?:202[0-9]{5}|5)$/, "");
 }
 function updateTabNavigation(){
   holdTabRowsHeight();

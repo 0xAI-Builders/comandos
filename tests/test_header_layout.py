@@ -40,7 +40,7 @@ def test_tabs_row_keeps_sort_and_drops_terminal_buttons():
     assert 'id="tab-term"' in nav and 'id="tab-new"' in nav
     css = (ROOT / "dash" / "workspace.css").read_text()
     assert "#tab-term,#tab-new,#tab-rows{display:none}" in css
-    assert "body.app.split:not(.inapp) :is(#tab-term,#tab-new,#tab-sort,#tab-rows){display:grid" in css
+    assert "body.app:not(.inapp) :is(#tab-term,#tab-new,#tab-sort,#tab-rows){display:grid" in css
 
 
 def test_relocated_controls_keep_their_ids_inside_the_menu():
@@ -192,3 +192,22 @@ def test_remote_left_panel_slides_with_a_transform_and_relayouts_once():
     assert "a.onfinish = end" in fx and "applyPanelHidden(false);" in fx
     assert "grid-template-columns" not in fx, "never animate the column width"
     assert 'setPanelHidden(true, false); }catch(_){}' in index, "restoring the saved state does not animate"
+
+
+def test_phone_strip_has_the_desktop_keys_and_the_desktop_model_and_star():
+    """1-oct: celular y tablet = escritorio, botón a botón. Las teclas >_ + ⇅ ⊞ salen en
+    todo el remoto (no solo partido); el modelo se acorta igual que cc-dash y la
+    favorita es la misma estrella de contorno que respira."""
+    css = (ROOT / "dash" / "workspace.css").read_text()
+    index = (ROOT / "dash" / "index.html").read_text()
+    assert "body.app:not(.inapp) :is(#tab-term,#tab-new,#tab-sort,#tab-rows){display:grid" in css
+    assert "body.app.split:not(.inapp) :is(#tab-term" not in css
+    assert "body.app:not(.split):not(.inapp) #tab-open{display:grid" in css, "≋ = el Ctrl+K táctil, con forma de tecla"
+    assert "body.app.tabs-rows #tabbar{flex-wrap:wrap" in index and "body.app.split.tabs-rows" not in index
+    short = index.split("function tabModelShort(model){", 1)[1].split("\n}", 1)[0]
+    assert 'replace("claude-", "").replace(/-(?:202[0-9]{5}|5)$/, "")' in short
+    dash = (ROOT / "bin" / "cc-dash").read_text()
+    assert 'short = re.sub(r"-(?:202[0-9]{5}|5)$", "", short)' in dash, "same rule as the desktop tab"
+    assert "tabModelShort(withModel[0].model)" in index
+    fav = index.split("function updateFavoriteButton(", 1)[1].split("\n}\n", 1)[0]
+    assert 'wm.iconSvg("favorite", 14)' in fav and '"★"' not in fav
