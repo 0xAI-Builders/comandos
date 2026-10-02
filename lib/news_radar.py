@@ -77,6 +77,9 @@ AI_RE = re.compile(
 NOISE_RE = re.compile(r"\b(customers?|case study|partners?(hip)?|scales?|helping|helps|how .{0,30} uses|ebook|webinar|"
                       r"policy|economic|education|students|teachers|grants?|hiring|careers|events?|summit|"
                       r"podcast|newsletter|recap|community spotlight|year in review)\b", re.I)
+# Páginas personales (portafolio, CV, «sobre mí»): no son noticia aunque suban en Reddit.
+PERSONAL_RE = re.compile(r"\b(portfolio|portafolio|resume|résumé|curriculum|cv|about me|sobre m[ií]|my (personal )?(site|website|homepage|blog)|"
+                         r"software (developer|engineer)|full[- ]?stack developer)\b", re.I)
 PRERELEASE_RE = re.compile(r"(alpha|beta|rc\d*|nightly|preview|canary|dev)\b", re.I)
 RELEASE_RE = re.compile(r"\b(meet|new|our next|next[- ]gen\w*|launch\w*|releas\w*|introduc\w*|announc\w*|now available|open[- ]?sourc\w*|"
                         r"weights|lanza\w*|presenta\w*|v\d+(\.\d+)*|\d+\.\d+)\b", re.I)
@@ -639,10 +642,20 @@ def score(group, now):
     if launch:
         base += 6
     breadth = 8 * (len(families) - 1)
+    if not official and not launch and all(_personal(i) for i in group):
+        base -= 0.6 * (heat + breadth)                    # portafolio o portada personal: casi fuera
     # La frescura es la del anuncio principal; si no trae fecha, la más reciente.
     lead = _primary(group).get("publishedAt") or max((i["publishedAt"] for i in group if i.get("publishedAt")), default=None)
     age = (now - lead) / HOUR if lead else None
     return round((base + heat + breadth) * _age_factor(age), 2)
+
+
+def _personal(item):
+    """Enlace de comunidad a una página personal: título de portafolio o la portada de un sitio."""
+    if PERSONAL_RE.search(item.get("title") or ""):
+        return True
+    path = urllib.parse.urlsplit(item.get("url") or "").path
+    return item["family"] in ("reddit", "hn", "lobsters") and path in ("", "/")
 
 
 def _primary(group):

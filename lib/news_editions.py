@@ -416,11 +416,15 @@ def _build(conn, eid, fetch, summarize, policy, clock, write_lead=None):
             notes.append(f"Resumen descartado por no citar la fuente leída: «{_clip(group['sources'][0]['title'], 80)}» (sin fuente).")
             incomplete = True
             continue
-        category = CATEGORY_OF_KIND.get(str(story.get("kind") or story.get("category") or group["category"]).lower(),
-                                        group["category"])
         lead_meta = group["sources"][0]["meta"] or {}
+        # El radar decide si es oficial o hot; el redactor no puede subir lo de la comunidad
+        # a «oficial» ni ponerle de lab el nombre de una persona (1-oct: «Hot · Shivam Kumar»).
+        radar_kind = lead_meta.get("groupKind")
+        category = CATEGORY_OF_KIND.get(str(radar_kind or story.get("kind") or story.get("category") or group["category"]).lower(),
+                                        group["category"])
+        lab = lead_meta.get("groupLab") if radar_kind == "hot" else (lead_meta.get("groupLab") or story.get("lab"))
         stories.append({"key": group["key"], "category": category,
-                        "meta": {"lab": _clip(story.get("lab") or lead_meta.get("groupLab"), 60) or None,
+                        "meta": {"lab": _clip(lab or story.get("lab"), 60) or None,
                                  "rank": lead_meta.get("groupRank"), "score": lead_meta.get("groupScore")},
                         "title": _clip(story.get("title"), 200),
                         "summary": _clip(story.get("summary"), 1200),

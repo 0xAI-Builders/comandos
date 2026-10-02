@@ -892,3 +892,20 @@ def test_asker_tries_the_chain_in_order_and_lead_writer_parses_json():
 def test_asker_needs_an_acp_chain():
     with pytest.raises(RuntimeError):
         ne.make_asker({"summarizer": {"kind": "anthropic-messages"}})
+
+
+def test_the_radar_decides_hot_versus_official_and_hot_stays_community(conn):
+    """1-oct: el redactor puso «Shivam Kumar» de lab y podía subir lo hot a oficial."""
+    class Writer(FakeSummarize):
+        def __call__(self, request):
+            out = super().__call__(request)
+            out["story"].update(kind="oficial", lab="Shivam Kumar")
+            return out
+    items = [item("https://someone.example/post", "Mi agente", kind="hot", source="r/ClaudeAI",
+                  announcementKey="radar:p",
+                  meta={"role": "article", "official": False, "groupKind": "hot", "groupLab": "Comunidad",
+                        "groupRank": 1, "groupScore": 20.0})]
+    ne.schedule_editions(conn, date(2026, 9, 29), ne.default_policy())
+    got = ne.run_due(conn, ms(2026, 9, 29, 9, 1), ne.default_policy(), fetch=FakeFetch(items), summarize=Writer())["edition"]
+    story = ne.get_edition(conn, got["id"])["stories"][0]
+    assert story["category"] == "hot" and story["meta"]["lab"] == "Comunidad"

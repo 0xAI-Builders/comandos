@@ -213,3 +213,14 @@ def test_a_community_link_to_a_lab_domain_counts_as_official():
     assert got[1]["official"] is False
     (group,) = r.rank(got[:1], NOW)
     assert (group["kind"], group["lab"]) == ("oficial", "Google")
+
+
+def test_personal_pages_from_the_community_fall_below_real_news():
+    """1-oct: un portafolio enlazado en r/ClaudeAI salió #2 del día."""
+    portfolio = [it("Shivam Kumar · Software Developer", "http://shivamk.dev/", family="reddit", heat=8)]
+    homepage = [it("Look what I made with Claude", "https://someone.example/", family="reddit", heat=8)]
+    article = [it("Claude Code agents ran my migration overnight", "https://someone.example/posts/agents", family="reddit", heat=8)]
+    assert r.score(portfolio, NOW) < r.score(article, NOW) / 2
+    assert r.score(homepage, NOW) < r.score(article, NOW) / 2
+    launch = [it("Introducing v2.0 of my agent runtime", "https://gh.example/", family="hn", heat=8)]
+    assert r.score(launch, NOW) > r.score(homepage, NOW)          # un lanzamiento no se castiga
