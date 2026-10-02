@@ -9,7 +9,7 @@ HTML = Path("dash/index.html").read_text()
 
 
 def test_every_limits_read_saves_a_quota_snapshot():
-    assert "cc_usage.record_quota_snapshots(USAGE_DB, claude_rows + codex_rows + grok_rows)" in SRC
+    assert "cc_usage.record_quota_snapshots(USAGE_DB, claude_rows + codex_rows + grok_rows + agy_rows)" in SRC
     assert "threading.Thread(target=_limits_snapshot_loop, daemon=True).start()" in SRC
 
 
@@ -35,6 +35,7 @@ def _limits_read_without_network(dash, monkeypatch, tmp_path, claude=(), codex=(
     monkeypatch.setattr(dash.cc_usage, "read_grok_credit_limits", lambda *a, **k: grok)
     monkeypatch.setattr(dash.grok_state, "account_homes", lambda: [])
     monkeypatch.setattr(dash, "_groq_limit_rows", lambda: [dict(r) for r in groq])
+    monkeypatch.setattr(dash, "AGY_QUOTA_FILE", str(tmp_path / "sin-agy.json"))
     dash._limits_refreshing = True
     return dash.USAGE_DB
 
