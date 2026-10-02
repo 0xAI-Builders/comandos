@@ -2117,7 +2117,7 @@
   function layerPoint(e) { const lr = layer.getBoundingClientRect(); return [e.clientX - lr.left, e.clientY - lr.top]; }
   // Redimensionar: uno a la vez, siempre el último tamaño pedido.
   let want = null, sent = null, inflight = false;
-  async function sendResize() {
+  async function sendPaneResize() {
     if (inflight || !want || (sent && want.pane === sent.pane && want.axis === sent.axis && want.size === sent.size)) return;
     inflight = true; sent = want;
     try {
@@ -2126,7 +2126,7 @@
         body: JSON.stringify({ session, action: 'resize', pane: sent.pane, axis: sent.axis, size: sent.size }) }).then(x => x.json());
       if (r && Array.isArray(r.panes)) { panes = r.panes; draw(); }
     } catch (_) { /* el próximo movimiento reintenta */ } finally { inflight = false; }
-    sendResize();
+    sendPaneResize();
   }
   const termEl = document.getElementById('term');
   // Captura: el canal es de ComandOS; xterm (y tmux) no ven ese clic.
@@ -2144,7 +2144,7 @@
     const g = gutters[i];
     if (e.detail >= 2) {                       // doble clic: los dos lados a la mitad
       const p = panes.find(q => q.id === g.pane), nb = neighbor(g);
-      if (p && nb) { want = { pane: p.id, axis: g.o === 'v' ? 'x' : 'y', size: Math.max(2, Math.floor((g.o === 'v' ? p.width + nb.width : p.height + nb.height) / 2)) }; sendResize(); }
+      if (p && nb) { want = { pane: p.id, axis: g.o === 'v' ? 'x' : 'y', size: Math.max(2, Math.floor((g.o === 'v' ? p.width + nb.width : p.height + nb.height) / 2)) }; sendPaneResize(); }
       return;
     }
     drag = { g, nb: neighbor(g) }; hot = i; dragging = true; drawGrip();
@@ -2158,7 +2158,7 @@
     const room = drag.nb ? size + (v ? drag.nb.width : drag.nb.height) : Infinity;
     const n = Math.max(2, Math.min(room - 2, (v ? c[0] : c[1]) - start));
     want = { pane: p.id, axis: v ? 'x' : 'y', size: n };
-    sendResize();
+    sendPaneResize();
   }, true);
   window.addEventListener('mouseup', e => {
     if (!drag) return;
