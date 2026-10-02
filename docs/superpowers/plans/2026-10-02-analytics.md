@@ -34,9 +34,9 @@
 4. **Falla la red al cambiar de semana:** se queda la vista que ya estaba y no se borra nada. Test en Task 8.
 5. **Sesión que cruza medianoche:** son dos bloques, con horas y tokens en el día correcto. Test en Task 5.
 
-## Decisión pendiente (bloquea solo la Task 11)
+## Decisión D1 (Jesús, 2-oct): dónde se abre Analytics
 
-**D1. ¿Dónde se abre Analytics?** En la app de escritorio el tablero web es solo la columna izquierda, así que hoy Analytics se abre en ese espacio angosto. El mockup aprobado mide 1120 px. Recomendación: en la app, una ventana propia centrada sobre toda la app, como Cadenas (`HEADER_ACTIONS`, `bin/cc-app` ~6940); en el remoto partido, a pantalla completa. Sin D1 = sí, Analytics funciona igual pero en la columna se ve la vista de celular. Las Tasks 1–10 y 12 no dependen de D1.
+«En el mismo botón y que se abra en un modal en medio.» El botón Analytics de la cabecera abre un modal centrado. En la app de escritorio es una ventana sin bordes centrada sobre toda la app, como Cadenas (`HEADER_ACTIONS`, `bin/cc-app` ~6940), porque el tablero web solo ocupa la columna izquierda. En el remoto partido, el modal cubre toda la ventana en vez de quedarse en la columna. Lo implementa la Task 11.
 
 ---
 
@@ -2206,7 +2206,7 @@ git commit -m "refactor: fuera Reparto con propuesta y Aplicar; la app no cambia
 
 ---
 
-### Task 11 (requiere D1 = sí): Analytics en su propia ventana en el escritorio y a pantalla completa en el remoto partido
+### Task 11: Analytics en un modal en medio (ventana propia en el escritorio, pantalla completa en el remoto partido)
 
 **Files:**
 - Modify: `bin/cc-app` (nueva `open_analytics_modal`, `HEADER_ACTIONS["analytics"]`), `dash/index.html` (`#btn-usage` en la app), `dash/workspace.css:1146`
@@ -2362,4 +2362,4 @@ git add tools/png_diff.py && git commit -m "test(analytics): comparador de captu
 git fetch && git rebase origin/main   # otra sesión edita index.html: resolver conflictos conservando lo de ambos
 pytest -q && bash tests/test_js_parses.sh
 ```
-Pedir a Jesús la revisión con las capturas (rutas absolutas en esta máquina). Solo con su visto bueno: mergear a `main`, `bash install.sh` (crea los enlaces nuevos en `~/.claude/hooks/dash` y borra los de Reparto) y `systemctl --user restart cc-dash.service`. Si se hizo la Task 11, Jesús reinicia `cc-app` a mano. La migración v11 borra y reimporta el uso de Claude y Codex en el primer minuto; durante ese minuto los totales bajan.
+Pedir a Jesús la revisión con las capturas (rutas absolutas en esta máquina). Solo con su visto bueno: mergear a `main`, `bash install.sh` (crea los enlaces nuevos en `~/.claude/hooks/dash` y borra los de Reparto) y `systemctl --user restart cc-dash.service`. Jesús reinicia `cc-app` a mano para que el botón abra el modal nuevo (Task 11). La migración v11 borra y reimporta el uso de Claude y Codex en el primer minuto; durante ese minuto los totales bajan.
