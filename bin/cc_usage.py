@@ -24,23 +24,7 @@ USAGE_LIMIT_KEYS = {
     "COMANDOS_CLAUDE_DAILY_TOKEN_LIMIT",
     "COMANDOS_CLAUDE_WEEKLY_TOKEN_LIMIT",
     "COMANDOS_DAILY_BUDGET_USD",
-    "COMANDOS_ALERT_THRESHOLDS",
 }
-
-
-def parse_alert_thresholds(text, default=(70, 85, 95)):
-    """Umbrales de alerta configurables: '70,85,95'. 'off' = apagadas
-    (write_usage_settings borra claves vacias, asi que off necesita valor)."""
-    if text is None or str(text).strip() == "":
-        return tuple(default)
-    if str(text).strip().lower() in ("off", "0", "none"):
-        return ()
-    vals = set()
-    for part in str(text).replace(";", ",").split(","):
-        v = _as_int(part.strip().rstrip("%"))
-        if 1 <= v <= 100:
-            vals.add(v)
-    return tuple(sorted(vals))
 
 
 def usage_db_path(hooks_dir=None):
@@ -1005,199 +989,11 @@ def attach_token_counts(limits, windows):
     return limits
 
 
-RULE_SCOPES = ("session", "project", "provider", "limit")
-
-
-def set_alert_rule(db_path, scope, target, label, threshold):
-    """Regla de alerta por objetivo: sesion tmux, proyecto (git_root) o
-    proveedor, con presupuesto de tokens por dia (24h moviles)."""
-    if scope not in RULE_SCOPES or not target or _as_int(threshold) <= 0:
-        return None
-    init_db(db_path)
-    rule_id = f"{scope}:{target}"
-    with connect(db_path) as con:
-        con.execute(
-            "insert or replace into usage_alert_rules values (?,?,?,?,?,?)",
-            (rule_id, scope, _clean_str(target, 300), _clean_str(label, 120),
-             _as_int(threshold), int(time.time())))
-    return rule_id
-
-
-def delete_alert_rule(db_path, rule_id):
-    init_db(db_path)
-    with connect(db_path) as con:
-        con.execute("delete from usage_alert_rules where id=?", (rule_id,))
-
-
-def list_alert_rules(db_path):
-    init_db(db_path)
-    with connect(db_path) as con:
-        return _rows(con.execute(
-            "select * from usage_alert_rules order by created_at desc"))
-
-
-def rule_current_values(db_path, rules, panes, limits=None, now=None):
-    """Consumo actual por regla. Proyecto y proveedor van directo a los
-    turnos (tokens 24h); sesion suma los grupos unicos (provider+carpeta)
-    de sus panes vivos; limit compara contra el % exacto de esa ventana
-    del plan (ej. codex sesion 5h)."""
-    ts = int(now if now is not None else time.time())
-    day_start = ts - 24 * 3600
-    out = []
-    with connect(db_path) as con:
-        for rule in rules or []:
-            scope, target = rule.get("scope"), rule.get("target")
-            value = 0
-            if scope == "limit":
-                item = next((l for l in limits or [] if l.get("id") == target), None)
-                value = _as_float(item.get("percent")) if item else 0.0
-                out.append(dict(rule, value=value, unit="percent",
-                                window_resets_at=_as_int(item.get("resets_at")) if item else 0,
-                                percent=round(value / rule["threshold"] * 100, 1)
-                                if _as_int(rule.get("threshold")) else 0))
-                continue
-            if scope == "project":
-                value = _as_int(con.execute(
-                    "select sum(total_tokens) from usage_turns "
-                    "where git_root=? and turn_finished_at>=?",
-                    (target, day_start)).fetchone()[0])
-            elif scope == "provider":
-                value = _as_int(con.execute(
-                    "select sum(total_tokens) from usage_turns "
-                    "where provider=? and turn_finished_at>=?",
-                    (target, day_start)).fetchone()[0])
-            elif scope == "session":
-                seen = set()
-                for p in panes or []:
-                    if p.get("tmux_session") != target:
-                        continue
-                    key = (p.get("provider") or p.get("agent"), p.get("pane_pwd"))
-                    if key in seen:
-                        continue
-                    seen.add(key)
-                    value += _as_int(p.get("total_tokens"))
-            out.append(dict(rule, value=value, unit="tokens",
-                            percent=round(value / rule["threshold"] * 100, 1)
-                            if _as_int(rule.get("threshold")) else 0))
-    return out
-
-
-def _fmt_tok(n):
-    n = _as_int(n)
-    if n >= 1_000_000_000:
-        return f"{n / 1_000_000_000:.2f}B"
-    if n >= 1_000_000:
-        return f"{n / 1_000_000:.1f}M"
-    if n >= 1000:
-        return f"{n // 1000}k"
-    return str(n)
-
-
-def rule_alerts(rules_with_values, now=None):
-    """Una alerta por regla: por dia calendario (presupuestos de tokens) o
-    por ventana de reset (reglas de % sobre limites del plan)."""
-    ts = int(now if now is not None else time.time())
-    day = time.strftime("%Y-%m-%d", time.localtime(ts))
-    alerts = []
-    for rule in rules_with_values or []:
-        if _as_float(rule.get("value")) < _as_float(rule.get("threshold")):
-            continue
-        label = rule.get("label") or rule.get("target")
-        if rule.get("scope") == "limit":
-            window = rule.get("window_resets_at") or day
-            message = (f"{label}: {_as_float(rule.get('value')):.0f}% "
-                       f"(umbral {_as_int(rule.get('threshold'))}%)")
-            suffix = window
-        else:
-            message = (f"{label}: {_fmt_tok(rule.get('value'))} tok hoy "
-                       f"(presupuesto {_fmt_tok(rule.get('threshold'))})")
-            suffix = day
-        alerts.append({
-            "id": f"rule-{rule.get('id')}-{suffix}",
-            "kind": "limit" if rule.get("scope") == "limit" else "budget",
-            "level": "warning",
-            "provider": rule.get("target") if rule.get("scope") == "provider" else "",
-            "message": message,
-            "created_at": ts,
-        })
-    return alerts
-
-
-def record_alert_once(db_path, alert):
-    """Inserta la alerta solo si su id no existe (cooldown natural: el id
-    lleva el resets_at de la ventana). Devuelve True si es nueva."""
-    init_db(db_path)
-    with connect(db_path) as con:
-        ts = int(alert.get("created_at") or time.time())
-        try:
-            con.execute(
-                """insert into usage_alerts
-                   (id, kind, level, message, provider, tmux_session, tmux_pane,
-                    created_at, last_seen_at, raw)
-                   values (?,?,?,?,?,?,?,?,?,?)""",
-                (alert["id"], alert.get("kind", "limit"), alert.get("level", "warning"),
-                 alert.get("message", ""), alert.get("provider", ""), "", "",
-                 ts, ts, json.dumps(alert, sort_keys=True)))
-            return True
-        except sqlite3.IntegrityError:
-            con.execute("update usage_alerts set last_seen_at=? where id=?",
-                        (ts, alert["id"]))
-            return False
-
-
 def list_alerts(db_path, limit=12):
     init_db(db_path)
     with connect(db_path) as con:
         return _rows(con.execute(
             "select * from usage_alerts order by created_at desc limit ?", (limit,)))
-
-
-def limit_threshold_alerts(limits, thresholds=(70, 85, 95), now=None):
-    """Alertas por porcentaje de limite (la config que importa con suscripcion:
-    no hay costos por request, hay ventanas con %). Una por ventana de reset."""
-    ts = int(now if now is not None else time.time())
-    alerts = []
-    for item in limits or []:
-        pct = _as_float(item.get("percent"))
-        crossed = max((t for t in thresholds if pct >= t), default=None)
-        if crossed is None:
-            continue
-        alerts.append({
-            "id": f"{item.get('id')}-{crossed}-{item.get('resets_at')}",
-            "kind": "limit",
-            "level": "danger" if crossed >= 95 else "warning",
-            "provider": _text(item.get("provider")),
-            "message": f"{item.get('provider')} {item.get('label')}: "
-                       f"{pct:.0f}% usado (umbral {crossed}%)",
-            "percent": pct,
-            "threshold": crossed,
-            "resets_at": _as_int(item.get("resets_at")),
-            "created_at": ts,
-        })
-    return alerts
-
-
-_WINDOW_WORDS = {"sesion 5h": "sesión de 5 h", "sesión 5h": "sesión de 5 h", "semana": "semana",
-                 "semanal": "semana", "weekly": "semana"}
-
-
-def limit_alert_text(alert, now=None):
-    """(título, cuerpo) en lenguaje llano para una alerta de cuota."""
-    now = time.time() if now is None else now
-    provider = str(alert.get("provider") or "").strip()
-    who = provider[:1].upper() + provider[1:] if provider else "Tu plan"
-    raw = str(alert.get("label") or "").strip()
-    window = _WINDOW_WORDS.get(raw.lower(), raw.lower() or "cuota")
-    pct = _as_float(alert.get("percent"))
-    title = f"{who}: llevas {pct:.0f}% de tu {window}"
-    body = f"Te aviso al pasar el {alert.get('threshold')}%."
-    resets = _as_int(alert.get("resets_at"))
-    if resets and resets > now:
-        left = int(resets - now) // 60
-        at = time.strftime("%H:%M", time.localtime(resets))
-        span = f"{left // 60} h {left % 60:02d} min" if left >= 60 else f"{left} min"
-        body += f" Se reinicia a las {at} (en {span})."
-    return title, body
 
 
 def calculate_alerts(state, settings=None):
@@ -2151,6 +1947,39 @@ def record_spans(db_path, spans):
             "insert or replace into usage_spans (id, provider, account, session_id, git_root, started_at, finished_at, source) "
             "values (?,?,?,?,?,?,?,?)", rows)
     return len(rows)
+
+
+def record_quota_snapshots(db_path, rows, now=None):
+    """Última foto de cada límite (5 h / 7 d) por ciclo. El ciclo se identifica por su reset
+    redondeado a la hora: el proveedor lo mueve unos segundos entre lecturas. Al cerrar el
+    ciclo, la última foto dice cuánto se gastó; 100 - % es la cuota que sobró."""
+    ts = int(now if now is not None else time.time())
+    keep = []
+    for r in rows or []:
+        if r.get("percent") is None or not r.get("resets_at") or r.get("window") not in ("5h", "7d"):
+            continue
+        keep.append((_text(r.get("id")), _text(r.get("provider")), _text(r.get("account") or "main"),
+                     _text(r.get("window")), _text(r.get("scope")), int(round(_as_int(r["resets_at"]) / 3600) * 3600),
+                     float(r["percent"]), _as_int(r.get("captured_at")) or ts))
+    if not keep:
+        return 0
+    init_db(db_path)
+    with connect(db_path) as con:
+        con.executemany(
+            "insert into usage_quota_snapshots (limit_id, provider, account, win, scope, resets_at, percent, captured_at) "
+            "values (?,?,?,?,?,?,?,?) on conflict(limit_id, resets_at) do update set "
+            "percent=excluded.percent, captured_at=excluded.captured_at "
+            "where excluded.captured_at >= usage_quota_snapshots.captured_at", keep)
+    return len(keep)
+
+
+def quota_snapshots(db_path, since=0):
+    init_db(db_path)
+    with connect(db_path) as con:
+        rows = con.execute("select provider, account, win, scope, resets_at, percent from usage_quota_snapshots "
+                           "where resets_at >= ? order by resets_at", (int(since),)).fetchall()
+    return [{"provider": r[0], "account": r[1], "window": r[2], "scope": r[3], "resets_at": r[4], "percent": r[5]}
+            for r in rows]
 
 
 def _changed_files(files, seen):

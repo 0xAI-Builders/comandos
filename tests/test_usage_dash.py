@@ -319,23 +319,12 @@ def test_pane_border_shows_deterministic_switching_and_detecting_states():
     assert "%10 grok · detectando…" in plain
 
 
-def test_alert_rules_endpoint_and_evaluation():
-    assert '"/usage/alert-rule"' in SRC
-    assert "cc_usage.set_alert_rule" in SRC
-    assert "cc_usage.delete_alert_rule" in SRC
-    assert "cc_usage.rule_current_values" in SRC
-    assert "cc_usage.rule_alerts" in SRC
-    assert 'state["alert_rules"]' in SRC
-
-
 def test_limit_alerts_notify_by_desktop_only():
     assert "def usage_alert_send" in SRC
     # Popups PROPIOS de ComandOS (cc-notifyd), jamas notify-send
     assert "127.0.0.1:4778/notify" in SRC
     assert "notify-send" not in SRC
     assert "TELEGRAM_ENABLED" not in SRC and "api.telegram.org" not in SRC
-    assert "cc_usage.limit_threshold_alerts" in SRC
-    assert "cc_usage.record_alert_once" in SRC
     assert 'state["alerts"] = cc_usage.list_alerts(USAGE_DB)' in SRC
 
 
@@ -444,7 +433,6 @@ if __name__ == "__main__":
     test_pane_border_uses_tmux_option_not_per_pane_subprocess()
     test_usage_state_is_cached_and_refresh_is_backgrounded()
     test_tab_close_endpoint_delegates_with_explicit_ephemeral_flag()
-    test_alert_rules_endpoint_and_evaluation()
     test_codex_dropdown_drives_numbered_picker()
     test_limit_alerts_notify_by_desktop_only()
     test_cc_dash_imports_usage_module()

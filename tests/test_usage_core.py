@@ -453,6 +453,7 @@ def test_usage_settings_round_trip_filters_to_limit_keys():
         db = os.path.join(d, "usage.sqlite")
         cc_usage.write_usage_settings(db, {
             "COMANDOS_CODEX_DAILY_TOKEN_LIMIT": "100",
+            "COMANDOS_ALERT_THRESHOLDS": "70,85,95",  # ya no hay avisos de cuota: no es un ajuste
             "OPENAI_ADMIN_KEY": "secret",
             "bad": "ignored",
         })
@@ -811,110 +812,6 @@ def test_opencode_picker_query_uses_display_name_tokens():
     assert q == "nemotron 3 ultra free openrouter"
 
 
-def test_parse_alert_thresholds_defaults_custom_and_off():
-    assert cc_usage.parse_alert_thresholds(None) == (70, 85, 95)
-    assert cc_usage.parse_alert_thresholds("") == (70, 85, 95)
-    assert cc_usage.parse_alert_thresholds("85, 95%") == (85, 95)
-    assert cc_usage.parse_alert_thresholds("off") == ()
-    assert cc_usage.parse_alert_thresholds("999,abc,50") == (50,)
-    assert "COMANDOS_ALERT_THRESHOLDS" in cc_usage.USAGE_LIMIT_KEYS
-
-
-def test_alert_rules_crud_and_evaluation_by_scope():
-    with tempfile.TemporaryDirectory() as d:
-        db = os.path.join(d, "usage.sqlite")
-        cc_usage.init_db(db)
-        now = 200000
-        cc_usage.record_turn(db, {
-            "id": "t1", "provider": "codex", "agent": "codex",
-            "tmux_session": "thread-1", "tmux_pane": "",
-            "pane_pwd": "/repo", "git_root": "/repo", "model": "gpt-5.5",
-            "turn_started_at": now - 50, "turn_finished_at": now - 50,
-            "total_tokens": 120, "source": "codex_state_db", "confidence": "local",
-        })
-        assert cc_usage.set_alert_rule(db, "project", "/repo", "Repo", 100) == "project:/repo"
-        assert cc_usage.set_alert_rule(db, "provider", "codex", "Codex", 500) == "provider:codex"
-        assert cc_usage.set_alert_rule(db, "malo", "/x", "X", 10) is None
-        panes = [_live_pane("term-1", "%1", "/repo", agent="codex")]
-        # el pane hereda los 120 tok del folder para la regla de sesion
-        cc_usage.set_alert_rule(db, "session", "term-1", "Tab Repo", 100)
-        state = cc_usage.build_usage_state(db, panes, now=now)
-        rules = cc_usage.rule_current_values(
-            db, cc_usage.list_alert_rules(db), state["panes"], now=now)
-        by = {r["id"]: r for r in rules}
-
-        assert by["project:/repo"]["value"] == 120
-        assert by["provider:codex"]["value"] == 120
-        assert by["session:term-1"]["value"] == 120
-
-        alerts = cc_usage.rule_alerts(rules, now=now)
-        # project (120>=100) y session (120>=100) cruzan; provider (500) no
-        assert len(alerts) == 2
-        assert all(a["kind"] == "budget" for a in alerts)
-        # una vez por dia: el id repite y record_alert_once lo bloquea
-        assert cc_usage.record_alert_once(db, alerts[0]) is True
-        assert cc_usage.record_alert_once(db, alerts[0]) is False
-
-        cc_usage.delete_alert_rule(db, "project:/repo")
-        assert len(cc_usage.list_alert_rules(db)) == 2
-
-
-def test_limit_scope_rules_watch_provider_window_percent():
-    with tempfile.TemporaryDirectory() as d:
-        db = os.path.join(d, "usage.sqlite")
-        cc_usage.init_db(db)
-        cc_usage.set_alert_rule(db, "limit", "codex_session", "codex Sesion 5h", 50)
-        limits = [{"id": "codex_session", "provider": "codex",
-                   "label": "Sesion 5h", "percent": 62.0, "resets_at": 9000}]
-        rules = cc_usage.rule_current_values(
-            db, cc_usage.list_alert_rules(db), [], limits=limits, now=100)
-
-    assert rules[0]["value"] == 62.0
-    assert rules[0]["unit"] == "percent"
-    assert rules[0]["window_resets_at"] == 9000
-
-    alerts = cc_usage.rule_alerts(rules, now=100)
-    assert len(alerts) == 1
-    assert "62%" in alerts[0]["message"] and "umbral 50%" in alerts[0]["message"]
-    # cooldown por ventana de reset, no por dia
-    assert alerts[0]["id"].endswith("-9000")
-
-    # bajo el umbral: silencio
-    limits[0]["percent"] = 30.0
-    with tempfile.TemporaryDirectory() as d2:
-        db2 = os.path.join(d2, "u.sqlite")
-        cc_usage.init_db(db2)
-        cc_usage.set_alert_rule(db2, "limit", "codex_session", "x", 50)
-        quiet = cc_usage.rule_alerts(cc_usage.rule_current_values(
-            db2, cc_usage.list_alert_rules(db2), [], limits=limits, now=100), now=100)
-    assert quiet == []
-
-
-def test_limit_threshold_alerts_fire_once_per_reset_window():
-    limits = [
-        {"id": "claude_session", "provider": "claude", "label": "Sesion 5h",
-         "percent": 88.0, "resets_at": 5000},
-        {"id": "codex_weekly", "provider": "codex", "label": "Semana",
-         "percent": 12.0, "resets_at": 6000},
-    ]
-    alerts = cc_usage.limit_threshold_alerts(limits, now=100)
-
-    assert len(alerts) == 1
-    assert alerts[0]["threshold"] == 85
-    assert alerts[0]["level"] == "warning"
-    assert "88%" in alerts[0]["message"]
-
-    with tempfile.TemporaryDirectory() as d:
-        db = os.path.join(d, "usage.sqlite")
-        cc_usage.init_db(db)
-        assert cc_usage.record_alert_once(db, alerts[0]) is True
-        # Misma ventana: NO se repite (cooldown por resets_at en el id)
-        assert cc_usage.record_alert_once(db, alerts[0]) is False
-        rows = cc_usage.list_alerts(db)
-    assert len(rows) == 1
-    assert rows[0]["provider"] == "claude"
-
-
 def test_model_switch_text_accepts_direct_model():
     assert cc_usage.model_switch_text("claude", "", model="opus") == "/model opus"
     assert cc_usage.model_switch_text("claude", "", model="fable") == "/model fable"
@@ -925,10 +822,6 @@ def test_model_switch_text_accepts_direct_model():
 
 if __name__ == "__main__":
     test_parse_opencode_models_excludes_non_coding_models()
-    test_limit_scope_rules_watch_provider_window_percent()
-    test_alert_rules_crud_and_evaluation_by_scope()
-    test_parse_alert_thresholds_defaults_custom_and_off()
-    test_limit_threshold_alerts_fire_once_per_reset_window()
     test_usage_db_path_lives_under_hooks_dir()
     test_init_db_creates_required_tables()
     test_git_root_for_path_uses_git_when_available_and_falls_back()
@@ -1157,15 +1050,3 @@ def test_focus_legacy_rows_export_planned_history_for_the_pomodoro_mapping(tmp_p
     assert [(r["id"], r["mode"], r["status"], r["planned_minutes"]) for r in rows] == [
         (block["id"], "focus", "completed", 25), (rows[1]["id"], "break", "running", 5)]
     assert rows[0]["project"] == "Lola" and rows[0]["ended_at_ms"] == 1_501_000
-
-
-def test_limit_alert_reads_as_plain_language():
-    from datetime import datetime
-    now = datetime(2026, 9, 29, 21, 34).timestamp()
-    alert = {"provider": "claude", "label": "Sesion 5h", "percent": 70.4, "threshold": 70,
-             "resets_at": int(datetime(2026, 9, 29, 23, 40).timestamp())}
-    title, body = cc_usage.limit_alert_text(alert, now=now)
-    assert title == "Claude: llevas 70% de tu sesión de 5 h"
-    assert body == "Te aviso al pasar el 70%. Se reinicia a las 23:40 (en 2 h 06 min)."
-    alert["resets_at"] = None
-    assert cc_usage.limit_alert_text(alert, now=now)[1] == "Te aviso al pasar el 70%."

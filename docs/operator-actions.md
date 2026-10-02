@@ -77,7 +77,7 @@ Generado desde `lib/operator_catalog.py`. Un control de la UX sin fila aquí es 
 | `open_motor_picker` | Abre el selector de motor/modelo/cuenta de un pane en el tablero. | session, pane | ui:call openMotorFor |
 | `open_global_motor_picker` | Abre el selector de motor GLOBAL. | — | ui:click #motor-global |
 
-## usage (18)
+## usage (15)
 
 | Tool | Qué hace | Parámetros | Cómo se ejecuta |
 |---|---|---|---|
@@ -95,9 +95,6 @@ Generado desde `lib/operator_catalog.py`. Un control de la UX sin fila aquí es 
 | `usage_refresh` | Vuelve a bajar uso y costos de todos los proveedores. | — | POST /usage/refresh |
 | `usage_set_quota` | Declara la cuota de 7 días de un proveedor (0 la borra). | provider, tokens7d | POST /usage/quota |
 | `usage_set_subscription` | Declara el costo mensual/moneda de un proveedor para el ROI. | provider, monthly, currency, display | POST /usage/subscription |
-| `usage_alert_rule_set` | Crea/actualiza una alerta de presupuesto (proyecto, pane o proveedor). | id, scope, target, label, threshold | POST /usage/alert-rule |
-| `usage_alert_rule_delete` | Borra una alerta de presupuesto. | id | POST /usage/alert-rule |
-| `usage_set_thresholds` | Umbrales globales de alerta (p. ej. 70,85,95). | thresholds | POST /usage/settings |
 | `usage_settings_set` | Escribe ajustes de uso arbitrarios. | settings | POST /usage/settings |
 | `ui_log_summary` 👁 | Resumen de telemetría de la UI. | — | GET /ui-log/summary |
 

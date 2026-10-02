@@ -162,3 +162,15 @@ def test_codex_reads_each_response_once_per_account_even_across_forks(tmp_path, 
                      ("codex-resp-resp_3", "work", "", "", 200, 800, 1050, 10)]
     assert con.execute("select id, account, git_root, finished_at - started_at from usage_spans").fetchall() == [
         ("codex-turn-tu1", "main", "/repo/app", 120.0)]
+
+
+def test_quota_snapshots_keep_the_last_reading_of_each_cycle(tmp_path):
+    db = tmp_path / "u.sqlite"
+    row = {"id": "relotto:claude_weekly", "provider": "claude", "account": "relotto", "window": "7d", "scope": ""}
+    cc_usage.record_quota_snapshots(db, [{**row, "percent": 40.0, "resets_at": 1791014400, "captured_at": 100}])
+    # Mismo ciclo: el proveedor movió el reset 12 s; la lectura más nueva gana.
+    cc_usage.record_quota_snapshots(db, [{**row, "percent": 91.0, "resets_at": 1791014412, "captured_at": 200}])
+    cc_usage.record_quota_snapshots(db, [{**row, "percent": 50.0, "resets_at": 1791014400, "captured_at": 150}])
+    cc_usage.record_quota_snapshots(db, [{**row, "id": "x", "window": "", "percent": 5.0, "resets_at": 1}, {**row, "percent": None, "resets_at": 9}])
+    assert cc_usage.quota_snapshots(db) == [
+        {"provider": "claude", "account": "relotto", "window": "7d", "scope": "", "resets_at": 1791014400, "percent": 91.0}]

@@ -489,21 +489,6 @@ def desktop_popup(title, body, project, kind="waiting"):
         return False
 
 
-def alert_thresholds():
-    return cc_usage.parse_alert_thresholds(
-        usage_runtime_env().get("COMANDOS_ALERT_THRESHOLDS"))
-
-
-def _check_limit_alerts(limits):
-    for alert in cc_usage.limit_threshold_alerts(limits, thresholds=alert_thresholds()):
-        try:
-            if cc_usage.record_alert_once(USAGE_DB, alert):
-                title, body = cc_usage.limit_alert_text(alert)
-                usage_alert_send(body, title=title, project="Cuota")
-        except Exception:
-            pass
-
-
 def _claude_account_creds():
     """[(alias, creds_path)]: main (~/.claude) + cada ~/.claude-accounts/<alias>.
     Descubrimiento por convencion de directorios — nada hardcodeado."""
@@ -1247,7 +1232,10 @@ def _refresh_provider_limits():
                 "note": note,
             })
         groq_rows = _groq_limit_rows()
-        _check_limit_alerts(claude_rows + codex_rows + [r for r in groq_rows if r.get("percent") is not None])
+        try:
+            cc_usage.record_quota_snapshots(USAGE_DB, claude_rows + codex_rows + grok_rows)
+        except Exception:
+            pass
         with _limits_lock:
             _limits_cache["at"] = int(time.time())
             _limits_cache["limits"] = claude_rows + codex_rows + grok_rows + groq_rows
@@ -1327,6 +1315,17 @@ def usage_provider_limits(force=False):
     with _limits_lock:
         return {"limits": list(_limits_cache["limits"]),
                 "health": dict(_limits_cache["health"])}
+
+
+def _limits_snapshot_loop():
+    """Lee los límites cada 5 min aunque nadie abra el tablero: así la última foto de cada
+    ciclo semanal queda a ≤5 min de su reset (Comparar → «cuota que sobra»)."""
+    while True:
+        try:
+            usage_provider_limits()
+        except Exception:
+            pass
+        time.sleep(300)
 
 
 # Posiciones del picker /model de codex (dos pasos numerados). Si codex
@@ -8532,17 +8531,6 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             state = cached_usage_state(panes, env, prov["limits"])
             state["credential_health"] = usage_credential_health(env)
             state["credential_health"].update(prov["health"])
-            state["alert_thresholds"] = list(alert_thresholds())
-            rules = cc_usage.rule_current_values(
-                USAGE_DB, cc_usage.list_alert_rules(USAGE_DB),
-                state.get("panes") or [], limits=prov["limits"])
-            state["alert_rules"] = rules
-            for alert in cc_usage.rule_alerts(rules):
-                try:
-                    if cc_usage.record_alert_once(USAGE_DB, alert):
-                        usage_alert_send(alert["message"])
-                except Exception:
-                    pass
             state["alerts"] = cc_usage.list_alerts(USAGE_DB)
             # Los tokens medidos localmente viven en state["windows"] y las filas de
             # limite vienen del proveedor: aqui es donde coinciden las dos piezas.
@@ -9216,26 +9204,6 @@ class Handler(http.server.SimpleHTTPRequestHandler):
                 return self._json(400, {"error": str(err)})
             return self._json(200, {"ok": True, "subs": saved})
 
-        if self.path == "/usage/alert-rule":
-            # Reglas por objetivo: sesion / proyecto / proveedor, presupuesto
-            # de tokens en 24h. action: set | delete
-            action = str(data.get("action") or "set")[:16]
-            if action == "delete":
-                cc_usage.delete_alert_rule(USAGE_DB, str(data.get("id") or "")[:340])
-            else:
-                rid = cc_usage.set_alert_rule(
-                    USAGE_DB,
-                    str(data.get("scope") or "")[:16],
-                    str(data.get("target") or "")[:300],
-                    str(data.get("label") or "")[:120],
-                    data.get("threshold"))
-                if not rid:
-                    return self._json(400, {"error": "Regla invalida"})
-            rules = cc_usage.rule_current_values(
-                USAGE_DB, cc_usage.list_alert_rules(USAGE_DB), usage_live_panes(),
-                limits=usage_provider_limits()["limits"])
-            return self._json(200, {"ok": True, "alert_rules": rules})
-
         if self.path == "/usage/settings":
             settings = cc_usage.write_usage_settings(USAGE_DB, data.get("settings") or data)
             panes = usage_live_panes()
@@ -9246,7 +9214,6 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             state["credential_health"] = usage_credential_health(env)
             state["credential_health"].update(prov["health"])
             state["alerts"] = cc_usage.list_alerts(USAGE_DB)
-            state["alert_thresholds"] = list(alert_thresholds())
             return self._json(200, {"ok": True, "settings": settings, "state": state})
 
         if self.path == "/ssh-connect":
@@ -9930,6 +9897,7 @@ def main():
     threading.Thread(target=_model_watch_loop, daemon=True).start()
     threading.Thread(target=_news_editions_loop, daemon=True).start()
     threading.Thread(target=_notices_push_loop, daemon=True).start()
+    threading.Thread(target=_limits_snapshot_loop, daemon=True).start()
     with socketserver.ThreadingTCPServer(("127.0.0.1", port), Handler) as srv:
         start_pomodoro_scheduler()
         url = f"http://127.0.0.1:{port}"
