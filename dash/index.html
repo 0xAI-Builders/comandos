@@ -1895,7 +1895,7 @@
 html[data-native-side-term] #command-sidebar .sec-terms{display:none}
 html[data-native-side-term] #command-sidebar .sec-cmds{flex:1 1 auto!important}
 </style>
-<link rel="stylesheet" href="/workspace.css?v=barra4">
+<link rel="stylesheet" href="/workspace.css?v=columna4">
 <link rel="stylesheet" href="/buttons.css?v=2">
 <link rel="stylesheet" href="/reparto.css?v=fuentesD">
 <script src="/session-config.js?v=7f3232b0a624"></script>
@@ -4563,8 +4563,15 @@ function mdStrip(s){ return (s||"").replace(/\*\*|`|^#{1,6} /g, ""); }
 	  }else{
 	    pop.classList.remove("inline");
 	    document.body.appendChild(pop);
-	    const r = anchor.getBoundingClientRect(), w = pop.offsetWidth;
-	    let left = Math.min(r.left, window.innerWidth - w - 8); if(left < 8) left = 8;
+	    // = escritorio: el selector vive en la columna izquierda. Si la columna (o la ventana, en el
+	    // celular) mide ≤560 px, llena esa columna; si no, flota junto a su ancla sin salirse de ella.
+	    const vp = (typeof window.panelViewport === "function" && window.panelViewport()) || {left: 0, width: window.innerWidth};
+	    const column = vp.width <= 560;
+	    pop.classList.toggle("mp-column", column);
+	    pop.style.setProperty("--mp-left", vp.left + "px"); pop.style.setProperty("--mp-w", vp.width + "px");
+	    pop.style.width = column ? "" : `min(900px, ${vp.width - 16}px)`;
+	    const r = anchor.getBoundingClientRect(), w = Math.min(900, vp.width - 16);
+	    let left = Math.min(r.left, vp.left + vp.width - w - 8); if(left < vp.left + 8) left = vp.left + 8;
 	    pop.style.left = left + "px"; pop.style.top = (r.bottom + 8) + "px";
 	  }
 	  pop.classList.add("open");

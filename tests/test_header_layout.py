@@ -241,3 +241,15 @@ def test_modal_content_follows_the_modal_width_not_the_window():
     for gone in ("@media (max-width:760px){.sov-flow", "@media(max-width:520px){.theme-gallery", "@media(max-width:520px){.compare-stats"):
         assert gone not in index, gone
     assert "@container modal (max-width:520px){#pomodoro-analytics" in css
+
+
+def test_new_session_profiles_and_motor_picker_stay_in_the_column_on_split_remote():
+    """1-oct: «+» (asistente), Uso de skills/Perfiles (.sc-modal) y el selector de motor (IA)
+    llenan la columna izquierda en el escritorio; en el remoto partido iban sobre toda la pantalla."""
+    index = (ROOT / "dash" / "index.html").read_text()
+    css = (ROOT / "dash" / "workspace.css").read_text()
+    assert "body.app.split:not(.inapp):not(.panel-hidden) :is(#newsess,.sc-modal){right:auto;width:var(--split-left,380px)}" in css
+    assert "#motor-pop.open.mp-column:not(.inline){" in css
+    place = index.split('pop.classList.remove("inline");', 1)[1].split("pop.classList.add(\"open\");", 1)[0]
+    assert "window.panelViewport()" in place and 'pop.classList.toggle("mp-column", column);' in place
+    assert "vp.left + vp.width - w - 8" in place
