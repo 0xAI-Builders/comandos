@@ -220,7 +220,7 @@ def test_split_remote_opens_column_popovers_inside_the_column_like_the_desktop()
     index = (ROOT / "dash" / "index.html").read_text()
     css = (ROOT / "dash" / "workspace.css").read_text()
     pomo = (ROOT / "dash" / "pomodoro.js").read_text()
-    assert 'document.documentElement.style.setProperty("--split-left", `${v}px`);' in index
+    assert 'document.documentElement?.style?.setProperty("--split-left", `${v}px`);' in index
     assert "window.panelViewport = function(){" in index
     assert ".modal:not(#tabclose):not(#groupclose){right:auto;width:var(--split-left,380px)}" in css
     assert "#pomo-panel.pm-v1{width:min(560px,calc(var(--split-left,380px) - 16px))}" in css

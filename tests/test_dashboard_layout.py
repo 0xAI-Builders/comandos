@@ -68,10 +68,13 @@ def test_phone_dashboard_keeps_servers_compact_and_session_actions_visible():
     # (display:block bajo el nombre, con wrap — decisión del rediseño de rows)
     assert ".row.rpath{display:block" in compact
     assert ".row.name{flex-basis:140px}" in compact
-    assert "#servers.modal-panel{padding:24px18px}" in compact
-    assert ".srv-row{flex-wrap:wrap}" in compact
-    assert ".srv-info{flex-basis:100%}" in compact
-    assert ".srv-rowbutton{flex:110;min-height:36px}" in compact
+    # El modal de Servidores se acomoda por SU ancho (1-oct): en el remoto partido el modal mide
+    # la columna, como en el escritorio, y @media veía toda la ventana.
+    servers = re.sub(r"\s+", "", block("@container modal (max-width:640px)"))
+    assert "#servers.modal-panel{padding:24px18px}" in servers
+    assert ".srv-row{flex-wrap:wrap}" in servers
+    assert ".srv-info{flex-basis:100%}" in servers
+    assert ".srv-rowbutton{flex:110;min-height:36px}" in servers
 
 
 def test_tablet_dashboard_wraps_session_rows_before_they_overflow():

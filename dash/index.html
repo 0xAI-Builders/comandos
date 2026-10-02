@@ -5509,7 +5509,7 @@ function setSplitLeft(px, save, bounds){
   const {min, max} = bounds || splitBounds();
   const v = Math.max(min, Math.min(max, Math.round(px)));
   panes.style.setProperty("--split-left", `${v}px`);
-  document.documentElement.style.setProperty("--split-left", `${v}px`);   // los .modal viven en <body>
+  document.documentElement?.style?.setProperty("--split-left", `${v}px`);   // los .modal viven en <body>
   if(save) localStorage.setItem(SPLIT_KEY, String(v));
   return v;
 }
