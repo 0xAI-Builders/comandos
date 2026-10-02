@@ -433,3 +433,10 @@ def test_the_account_button_sits_beside_ia_on_desktop_and_remote():
     term = Path('dash/term.html').read_text()
     assert 'data-act="acct"' in term and "fetch('/account/switch'" in term and "'/accounts?harness='" in term
     assert Path('dash/icons/user.svg').exists()
+    # 2-oct: el cambio NO espera el fin del turno — interrumpe y cambia al instante — y
+    # las dos versiones siguen la operación hasta su resultado real (/model/status).
+    waiter = SOURCE.split('def _wait_account_switch(')[1].split('\ndef ')[0]
+    assert '_wait_account_switch(' in pop
+    for text in (pop + waiter, term):
+        assert 'espera a que termine' not in text and 'En cola' not in text
+        assert '/model/status' in text and 'se interrumpe' in text

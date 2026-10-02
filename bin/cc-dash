@@ -2697,6 +2697,51 @@ def _preserve_extension_plan(adapter,plan):
     plan['command']=extension_launch.wrap_command(plan['command'],launch)
 
 
+def account_switch_configuration(data, sess, pane):
+    """POST /account/switch (botón «Cuenta»): SOLO cambia la cuenta del pane, con la
+    misma conversación. Interrumpe lo que esté haciendo el agente — Jesús (2-oct):
+    «en el momento en que se elige se para cualquier proceso y se cambia la cuenta» —
+    salvo que el cliente mande interrupt=false explícito."""
+    alias = str(data.get('alias') or 'main')
+    configuration = {k: v for k, v in dict(data).items() if k not in ('model', 'effort', 'routeId', 'motor', 'toHarness')}
+    configuration.update(session=sess, pane=pane, harnessAccount=alias, motorAccount=alias, accountOnly=True,
+                         interrupt=data.get('interrupt') is not False)
+    return configuration
+
+
+def _launch_model_id(motor, model):
+    """Id para el flag --model del CLI a partir del modelo observado: el canónico del
+    registro cuando lo conoce; si no (CLI más nuevo que providers.json), el id tal
+    cual lo reporta el CLI, con prefijo claude- si venía abreviado (opus-5-5)."""
+    model = str(model or '')
+    if not model:
+        return ''
+    spec = provider_registry.model_spec(load_provider_registry(), motor, model, section='motors')
+    if spec:
+        return spec['id']
+    if motor == 'claude' and re.match(r'(?i)^(opus|sonnet|haiku|fable)\b', model):
+        return 'claude-' + model
+    return model
+
+
+def _same_model(motor, expected, observed):
+    """Mismo modelo según el registro cuando conoce a ambos; si no, por la clave
+    normalizada que reporta el CLI (claude-opus-5-5 == opus-5-5 == *-20260901)."""
+    expected, observed = str(expected or ''), str(observed or '')
+    if not expected:
+        return True
+    if not observed:
+        return False
+    if observed == expected:
+        return True
+    registry = load_provider_registry()
+    wanted = provider_registry.model_spec(registry, motor, expected, section='motors')
+    actual = provider_registry.model_spec(registry, motor, observed, section='motors')
+    if wanted and actual:
+        return wanted['id'] == actual['id']
+    return provider_registry.model_key(expected) == provider_registry.model_key(observed)
+
+
 class SessionConfiguration:
     def __init__(self, data, identity):
         self.data, self.identity = data, identity
@@ -2734,6 +2779,8 @@ class SessionConfiguration:
             raise ValueError('cambió la identidad del panel desde que se abrió la configuración')
         if data.get('expectedConversationId') and data['expectedConversationId'] != current.get('conversationId'):
             raise ValueError('cambió la conversación desde que se abrió la configuración')
+        if data.get('accountOnly'):
+            return self._prepare_account_only(current)
         if self.frm == 'acp' and not ((load_provider_registry().get('acpAgents') or {}).get(current.get('motor')) or {}).get('resume'):
             raise ValueError('este motor ACP no admite reanudación exacta; el agente sigue abierto')
         requested_route = provider_registry.route_for(load_provider_registry(), str(data.get('routeId') or '')) or {}
@@ -2796,6 +2843,39 @@ class SessionConfiguration:
         _preserve_extension_plan(self,self.plan)
         return self.plan
 
+    def _prepare_account_only(self, current):
+        """Botón «Cuenta» (2-oct): misma conversación, modelo y esfuerzo tal cual los
+        corre el pane; solo cambia la cuenta. NO valida el modelo contra el registro:
+        un CLI más nuevo que providers.json (opus-5-5 el 2-oct) jamás debe impedir
+        cambiar de cuenta — eso mató tres intentos con model_unavailable."""
+        if self.frm == 'shell':
+            raise ValueError('no hay un agente en el panel; abre uno antes de cambiar de cuenta')
+        if self.frm == 'acp':
+            raise ValueError('cambiar cuenta ACP requiere exportación de conversación; se conserva el origen')
+        registry = load_provider_registry()
+        alias = str(self.data.get('harnessAccount') or 'main')
+        chosen = next((a for a in account_registry.list_accounts(registry, self.frm) if a.get('alias') == alias), None)
+        if not chosen or not chosen.get('selectable'):
+            raise ValueError(f'la cuenta {alias} no tiene login en {self.frm}')
+        sid = current.get('conversationId') or ''
+        if not sid:
+            raise ValueError('no se encontró la conversación exacta; el agente sigue abierto')
+        motor = current.get('motor') or self.frm
+        model = _launch_model_id(motor, current.get('model')) if current.get('confirmed') else ''
+        effort = (current.get('effort') or '') if model else ''
+        command = _configuration_command(self.frm, motor, model, effort, alias, resume=sid,
+                                         preserve_model_flags=not bool(model))
+        if not os.path.isdir(self.identity['pane_current_path']):
+            raise ValueError('la carpeta del panel ya no existe')
+        motor_account = alias if motor == self.frm else (current.get('motorAccount') or 'main')
+        self.plan = dict(to=self.frm, motor=motor, model=model, effort=effort, harnessAccount=alias,
+                         motorAccount=motor_account, command=command, previous=current, routeId=f'{self.frm}:{motor}',
+                         returnOrigin=None, expectedSid=sid, sameConversation=True, accountOnly=True,
+                         unchanged=current.get('harnessAccount') == alias,
+                         continuity={'continuity': 'resumed', 'handoffRequired': False})
+        _preserve_extension_plan(self, self.plan)
+        return self.plan
+
     def wait_idle(self):
         if self.data.get('interrupt') or self.frm == 'shell':
             return
@@ -2811,16 +2891,24 @@ class SessionConfiguration:
         layout = tmux_snapshot.capture_session(tmux, self.sess, inspector)
         origin = next(p for window in layout['windows'] for p in window['panes'] if p['id'] == self.pane)
         observed = observe_pane(self.sess, self.pane, self.original, inspector) if self.original else {}
+        account_only = bool(plan.get('accountOnly'))
         if self.frm != 'shell':
-            fields = ('harness', 'motor', 'model', 'effort', 'harnessAccount', 'motorAccount', 'conversationId')
+            fields = (('harness', 'harnessAccount', 'conversationId') if account_only else
+                      ('harness', 'motor', 'model', 'effort', 'harnessAccount', 'motorAccount', 'conversationId'))
             if any(observed.get(key) != plan['previous'].get(key) for key in fields):
                 raise ValueError('cambió la conversación o configuración durante la espera; vuelve a revisar el cambio')
-            if not observed.get('confirmed') or not observed.get('model'):
-                raise ValueError('no se observó la configuración original; el agente sigue abierto')
-            original_model = provider_registry.model_spec(load_provider_registry(), observed.get('motor'),
-                                                         observed['model'], section='motors') or {}
-            if original_model.get('efforts') and not observed.get('effort'):
-                raise ValueError('no se observó el esfuerzo original; no se puede asegurar su recuperación')
+            if account_only:
+                # Solo cambia la cuenta: modelo y esfuerzo van tal cual se observan AHORA
+                # (si no se confirmaron, el relanzamiento conserva los flags originales).
+                plan['model'] = _launch_model_id(observed.get('motor') or self.frm, observed.get('model')) if observed.get('confirmed') else ''
+                plan['effort'] = (observed.get('effort') or '') if plan['model'] else ''
+            else:
+                if not observed.get('confirmed') or not observed.get('model'):
+                    raise ValueError('no se observó la configuración original; el agente sigue abierto')
+                original_model = provider_registry.model_spec(load_provider_registry(), observed.get('motor'),
+                                                             observed['model'], section='motors') or {}
+                if original_model.get('efforts') and not observed.get('effort'):
+                    raise ValueError('no se observó el esfuerzo original; no se puede asegurar su recuperación')
             if any(not observed.get(key) or observed[key] == 'unknown' for key in ('harnessAccount', 'motorAccount')):
                 raise ValueError('no se identificaron las cuentas originales; el agente sigue abierto')
             if origin.get('agent') != self.frm:
@@ -2847,14 +2935,16 @@ class SessionConfiguration:
             account = observed.get('motorAccount') if self.frm == 'acp' else observed.get('harnessAccount')
             if not account or account == 'unknown':
                 raise ValueError('no se pudo identificar la cuenta original')
+            origin_model, origin_effort = (plan['model'], plan['effort']) if account_only else (observed.get('model') or '', observed.get('effort') or '')
             origin['resume_command'] = _configuration_command(self.frm, observed.get('motor') or self.frm,
-                observed.get('model') or '', observed.get('effort') or '', account, sid, origin.get('flags') or [])
+                origin_model, origin_effort, account, sid, origin.get('flags') or [],
+                preserve_model_flags=account_only and not origin_model)
             if plan.get('sameConversation'):
                 target_account = plan['motorAccount'] if self.frm == 'acp' else plan['harnessAccount']
                 if target_account != account:
                     self._copy_conversation(origin, target_account)
                 plan['command'] = _configuration_command(plan['to'], plan['motor'], plan['model'], plan['effort'],
-                    target_account, sid, origin.get('flags') or [])
+                    target_account, sid, origin.get('flags') or [], preserve_model_flags=account_only and not plan['model'])
                 plan['expectedSid'] = sid
             if origin.get('extensionLaunch'):
                 origin['resume_command']=extension_launch.wrap_command(origin['resume_command'],origin['extensionLaunch'])
@@ -3015,12 +3105,8 @@ class SessionConfiguration:
                 continue
             if expected['to'] in ('claude', 'codex', 'grok', 'acp') and not observed.get('conversationId'):
                 continue
-            if expected.get('model') and observed.get('model') != expected['model']:
-                registry = load_provider_registry()
-                wanted = provider_registry.model_spec(registry, expected.get('motor'), expected['model'], section='motors')
-                actual = provider_registry.model_spec(registry, expected.get('motor'), observed.get('model'), section='motors')
-                if not wanted or not actual or wanted['id'] != actual['id']:
-                    continue
+            if not _same_model(expected.get('motor'), expected.get('model'), observed.get('model')):
+                continue
             if expected.get('effort') and observed.get('effort') != expected['effort']:
                 continue
             if expected.get('harnessAccount') and observed.get('harnessAccount') != expected['harnessAccount']:
@@ -9477,7 +9563,7 @@ class Handler(http.server.SimpleHTTPRequestHandler):
         if self.path in ("/session/configure", "/account/switch", "/harness/switch"):
             configuration = dict(data, session=sess, pane=str(data.get("pane") or pane))
             if self.path == "/account/switch":
-                configuration["harnessAccount"] = configuration["motorAccount"] = str(data.get("alias") or "main")
+                configuration = account_switch_configuration(data, sess, configuration["pane"])
             if self.path == "/harness/switch":
                 configuration["toHarness"] = data.get("toHarness") or data.get("to")
                 if data.get("account"):

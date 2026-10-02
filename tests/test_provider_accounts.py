@@ -197,3 +197,17 @@ def test_account_menu_pairs_each_account_with_its_own_limits():
     assert [m['alias'] for m in menu] == ['main', 'relotto']
     assert menu[0]['limits'] == []                     # el % ilegible no se inventa
     assert [(l['label'], l['percent']) for l in menu[1]['limits']] == [('5 h', 10), ('semana', 85), ('Fable', 100)]
+
+
+def test_registry_knows_opus_5_5_and_sonnet_5_5():
+    """2-oct: Claude Code ya corre Opus 5.5 / Sonnet 5.5. El registro los conoce para el
+    picker, los tiers y la verificación; el cambio de cuenta NO depende de ello."""
+    import json
+    import providers
+    registry = json.load(open("config/providers.json"))
+    for variant, want in (("opus-5-5", "claude-opus-5-5"), ("claude-opus-5-5-20261001", "claude-opus-5-5"),
+                          ("sonnet-5-5", "claude-sonnet-5-5"), ("opus", "claude-opus-5-5"), ("sonnet", "claude-sonnet-5-5"),
+                          ("opus-5", "claude-opus-5")):
+        spec = providers.model_spec(registry, "claude", variant, section="motors")
+        assert spec and spec["id"] == want, variant
+        assert "high" in spec["efforts"]

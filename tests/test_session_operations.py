@@ -346,3 +346,106 @@ def test_operation_poll_and_saved_origin_use_indexes(tmp_path):
             'AND snapshot IS NOT NULL ORDER BY updated DESC', ('server|%1',)).fetchall()
     assert any('session_operations_target_updated' in row['detail'] for row in target_plan)
     assert any('session_operations_pane_updated' in row['detail'] for row in origin_plan)
+
+
+# ---- Botón «Cuenta» (2-oct): el cambio de cuenta para lo que esté haciendo el
+# agente y cambia AL INSTANTE, con la misma conversación y el modelo tal cual.
+
+def _registry_without_opus_5_5():
+    registry = json.load(open('config/providers.json'))
+    claude = registry['motors']['claude']
+    claude['models'] = [m for m in claude['models'] if '5-5' not in m['id']]
+    return registry
+
+
+OBSERVED = {'harness': 'claude', 'motor': 'claude', 'model': 'claude-opus-5-5', 'effort': 'xhigh', 'confirmed': True,
+            'conversationId': 'ceaad7a3-sid', 'harnessAccount': 'relotto', 'motorAccount': 'relotto', 'source': 'conversation'}
+
+
+def _account_only_adapter(dash, monkeypatch, tmp_path, observed):
+    adapter = object.__new__(dash.SessionConfiguration)
+    adapter.frm, adapter.sess, adapter.pane = 'claude', 'term-r1', '%17'
+    adapter.original = {'pid': 42, 'agent': 'claude'}
+    adapter.identity = {'pane_current_path': str(tmp_path)}
+    adapter.data = {'session': 'term-r1', 'pane': '%17', 'alias': 'main', 'harnessAccount': 'main', 'motorAccount': 'main',
+                    'accountOnly': True, 'interrupt': True, 'requestId': 'req-1234abcd'}
+    adapter.store = None
+    monkeypatch.setattr(dash, 'observe_pane', lambda *args, **kwargs: dict(observed))
+    monkeypatch.setattr(dash, 'load_provider_registry', _registry_without_opus_5_5)
+    monkeypatch.setattr(dash.account_registry, 'list_accounts',
+                        lambda registry, provider: [{'alias': 'main', 'selectable': True}, {'alias': 'relotto', 'selectable': True}])
+    monkeypatch.setattr(dash, 'resolve_route_selection',
+                        lambda *args, **kwargs: pytest.fail('an account switch must not validate the model against the registry'))
+    monkeypatch.setattr(dash, '_preserve_extension_plan', lambda adapter, plan: None)
+    calls = []
+
+    def command(harness, motor, model, effort, account, resume='', flags=(), *, preserve_model_flags=False):
+        calls.append(dict(harness=harness, motor=motor, model=model, effort=effort, account=account,
+                          resume=resume, preserve=preserve_model_flags))
+        return 'LAUNCH'
+    monkeypatch.setattr(dash, '_configuration_command', command)
+    return adapter, calls
+
+
+def test_account_switch_request_interrupts_and_changes_only_the_account():
+    """Jesús (2-oct): «en el momento en que se elige se para cualquier proceso y se cambia la cuenta»."""
+    dash = load_dash_module()
+    cfg = dash.account_switch_configuration({'alias': 'main', 'model': 'x', 'effort': 'y', 'routeId': 'r', 'motor': 'm'}, 'term-r1', '%17')
+    assert cfg['interrupt'] is True and cfg['accountOnly'] is True
+    assert cfg['harnessAccount'] == cfg['motorAccount'] == 'main'
+    assert not any(key in cfg for key in ('model', 'effort', 'routeId', 'motor', 'toHarness'))
+    assert cfg['session'] == 'term-r1' and cfg['pane'] == '%17'
+    assert dash.account_switch_configuration({'alias': 'relotto', 'interrupt': False}, 'term-r1', '%17')['interrupt'] is False
+
+
+def test_account_only_switch_keeps_a_model_the_registry_does_not_know(monkeypatch, tmp_path):
+    """2-oct: tres intentos relotto→main murieron en model_unavailable porque el pane
+    corría opus-5-5 y providers.json solo conocía opus-5. La cuenta cambia igual."""
+    dash = load_dash_module()
+    adapter, calls = _account_only_adapter(dash, monkeypatch, tmp_path, OBSERVED)
+    plan = adapter.prepare()
+    assert calls == [dict(harness='claude', motor='claude', model='claude-opus-5-5', effort='xhigh',
+                          account='main', resume='ceaad7a3-sid', preserve=False)]
+    assert plan['sameConversation'] and plan['expectedSid'] == 'ceaad7a3-sid' and plan['accountOnly']
+    assert plan['harnessAccount'] == plan['motorAccount'] == 'main' and plan['model'] == 'claude-opus-5-5'
+    assert plan['continuity'] == {'continuity': 'resumed', 'handoffRequired': False}
+    assert plan['command'] == 'LAUNCH' and not plan['unchanged']
+
+
+def test_account_only_switch_normalizes_the_cli_model_id_for_the_launch_flag(monkeypatch, tmp_path):
+    dash = load_dash_module()
+    adapter, calls = _account_only_adapter(dash, monkeypatch, tmp_path, dict(OBSERVED, model='opus-5-5'))
+    adapter.prepare()
+    assert calls[0]['model'] == 'claude-opus-5-5'          # el CLI lo abrevia; --model quiere el id completo
+    adapter, calls = _account_only_adapter(dash, monkeypatch, tmp_path, dict(OBSERVED, model='fable-5[1m]'))
+    adapter.prepare()
+    assert calls[0]['model'] == 'claude-fable-5[1m]'       # el registro lo conoce: su id canónico
+
+
+def test_account_only_switch_without_a_confirmed_model_keeps_the_launch_flags(monkeypatch, tmp_path):
+    dash = load_dash_module()
+    adapter, calls = _account_only_adapter(dash, monkeypatch, tmp_path,
+                                           dict(OBSERVED, model='claude-fable-5-1', confirmed=False, source='process'))
+    plan = adapter.prepare()
+    assert calls[0]['model'] == '' and calls[0]['effort'] == '' and calls[0]['preserve'] is True
+    assert plan['model'] == '' and plan['sameConversation']
+
+
+def test_account_only_switch_refuses_an_account_without_login(monkeypatch, tmp_path):
+    dash = load_dash_module()
+    adapter, calls = _account_only_adapter(dash, monkeypatch, tmp_path, OBSERVED)
+    monkeypatch.setattr(dash.account_registry, 'list_accounts', lambda registry, provider: [{'alias': 'main', 'selectable': False}])
+    with pytest.raises(ValueError, match='main'):
+        adapter.prepare()
+    assert calls == []
+
+
+def test_same_model_accepts_cli_ids_the_registry_does_not_know(monkeypatch):
+    dash = load_dash_module()
+    monkeypatch.setattr(dash, 'load_provider_registry', _registry_without_opus_5_5)
+    assert dash._same_model('claude', 'claude-opus-5-5', 'opus-5-5')
+    assert dash._same_model('claude', 'claude-opus-5-5', 'claude-opus-5-5-20260901')
+    assert dash._same_model('claude', 'claude-fable-5[1m]', 'claude-fable-5')      # variantes que sí conoce el registro
+    assert not dash._same_model('claude', 'claude-opus-5', 'claude-opus-5-5')
+    assert not dash._same_model('claude', 'claude-opus-5-5', '')                   # aún sin observar: sigue esperando
+    assert dash._same_model('claude', '', 'claude-opus-5-5')                       # sin expectativa no bloquea

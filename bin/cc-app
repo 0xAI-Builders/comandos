@@ -5248,9 +5248,33 @@ def _account_bar_class(percent):
     return "full" if percent >= 95 else "warn" if percent >= 85 else ""
 
 
+_ACCT_STAGES = {"validating": "Validando…", "waiting": "Interrumpiendo lo que está haciendo…",
+                "snapshot": "Guardando la conversación…", "applying": "Abriendo la conversación en la otra cuenta…",
+                "verifying": "Confirmando que siguió igual…", "recovering": "Recuperando la conversación original…"}
+_ACCT_FINAL = ("confirmed", "failed", "rolled_back", "recovery_required")
+
+
+def _wait_account_switch(key, operation_id, on_stage, attempts=120):
+    """Sigue /model/status hasta el resultado real del cambio de cuenta (2-oct: la UI
+    no puede decir «en cola» y cerrarse; dice qué pasó)."""
+    params = urlencode({"operationKey": key or "", "operationId": operation_id or ""})
+    for _ in range(attempts):
+        time.sleep(1.5)
+        try:
+            with urllib.request.urlopen(BASE_URL + "/model/status?" + params, timeout=8) as r:
+                status = json.loads(r.read().decode())
+        except Exception:
+            continue                      # un fallo de red no decide el resultado
+        if status.get("state") in _ACCT_FINAL:
+            return status
+        on_stage(_ACCT_STAGES.get(status.get("stageCode") or status.get("state")) or status.get("stage") or "")
+    return {"ok": False, "detail": "Sin confirmación en 3 minutos; revisa la terminal del pane."}
+
+
 def _account_popover(button, sess, pane, harness, current):
     """Menú «Cuenta» (grill 2-oct): cada cuenta con 5 h, semana y semana por modelo;
-    elegir otra pasa ESTE pane a esa cuenta con la misma conversación (/account/switch)."""
+    elegir otra pasa ESTE pane a esa cuenta con la misma conversación (/account/switch),
+    interrumpiendo lo que esté haciendo, y muestra el resultado real de la operación."""
     pop = Gtk.Popover.new(button)
     pop.set_position(Gtk.PositionType.BOTTOM)
     pop.get_style_context().add_class("acct-pop")
@@ -5274,18 +5298,29 @@ def _account_popover(button, sess, pane, harness, current):
             child.set_sensitive(False)
         note.set_text((f"Pasando a {alias}…" if ES else f"Moving to {alias}…"))
 
+        def fail(text):
+            note.set_text(text)
+            note.get_style_context().add_class("acct-err")
+            for child in rows.get_children():
+                child.set_sensitive(getattr(child, "_can", False))
+            return False
+
         def work():
             res, err = http_post("/account/switch", {"session": sess, "pane": pane, "alias": alias}, timeout=20)
+            if err or not res or res.get("ok") is False:
+                GLib.idle_add(fail, err or (res or {}).get("error") or "No se pudo cambiar de cuenta")
+                return
+            GLib.idle_add(note.set_text, (f"Interrumpiendo lo que está haciendo y pasando a {alias} con la misma conversación…" if ES
+                                          else f"Interrupting its current work and moving to {alias}, same conversation…"))
+            final = _wait_account_switch(res.get("operationKey"), res.get("operationId"),
+                                         lambda stage: stage and GLib.idle_add(note.set_text, f"{stage} (→ {alias})"))
+
             def done():
-                if err or not res or res.get("ok") is False:
-                    note.set_text(err or (res or {}).get("error") or "No se pudo cambiar de cuenta")
-                    note.get_style_context().add_class("acct-err")
-                    for child in rows.get_children():
-                        child.set_sensitive(getattr(child, "_can", False))
-                    return False
-                note.set_text(f"En cola: al terminar el turno sigue la misma conversación en {alias}." if ES
-                              else f"Queued: when the turn ends the same conversation continues on {alias}.")
-                GLib.timeout_add(2600, lambda: (pop.popdown(), False)[1])
+                if not final.get("ok"):
+                    return fail(final.get("detail") or final.get("error") or "El cambio no se confirmó")
+                note.set_text(f"Listo: este pane ya sigue la misma conversación en {alias}." if ES
+                              else f"Done: this pane now continues the same conversation on {alias}.")
+                GLib.timeout_add(2200, lambda: (pop.popdown(), False)[1])
                 return False
             GLib.idle_add(done)
         threading.Thread(target=work, daemon=True).start()
@@ -5336,8 +5371,8 @@ def _account_popover(button, sess, pane, harness, current):
             if can:
                 btn.connect("clicked", lambda *_, al=alias: switch(al))
             rows.pack_start(btn, False, False, 0)
-        note.set_text("Sigue la misma conversación. Si está respondiendo, espera a que termine." if ES
-                      else "Same conversation. If it is replying, it waits for the turn to end.")
+        note.set_text("Sigue la misma conversación. Si está respondiendo, se interrumpe y cambia al instante." if ES
+                      else "Same conversation. If it is replying, it is interrupted and switches right away.")
         rows.show_all()
         return False
 

@@ -172,6 +172,11 @@ def _model_key(model_id: str) -> str:
     return key.rstrip("-")
 
 
+def model_key(model_id: str) -> str:
+    """Clave normalizada pública (cc-dash compara ids que el registro no conoce)."""
+    return _model_key(model_id)
+
+
 def model_spec(registry: dict[str, Any], owner: str, model_id: str, *, section: str = "harnesses") -> dict[str, Any] | None:
     item = (registry.get(section) or {}).get(owner) or {}
     for model in item.get("models") or []:

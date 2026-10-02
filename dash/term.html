@@ -2239,15 +2239,31 @@
         return `<button type="button" class="acc${on ? ' on' : ''}" data-alias="${esc(a.alias)}" ${can ? '' : 'disabled'} title="${esc(a.identity)}">`
           + `<b>${esc(a.alias)}</b><span class="tag">${on ? 'en uso' : a.selectable ? 'cambiar →' : 'sin login'}</span>`
           + (bars ? `<span class="bars">${bars}</span>` : '') + '</button>';
-      }).join('') + '<p class="foot">Sigue la misma conversación. Si está respondiendo, espera a que termine.</p>';
+      }).join('') + '<p class="foot">Sigue la misma conversación. Si está respondiendo, se interrumpe y cambia al instante.</p>';
       box.querySelectorAll('.acc[data-alias]:not(:disabled)').forEach(b => b.addEventListener('click', () => switchAccount(box, pane, b.dataset.alias)));
     } catch (error) {
       if (acctFor === pane) box.innerHTML = `<h4>CUENTA DE ESTE PANE</h4><p class="msg err">${esc(error.message)}</p>`;
     }
   }
+  // Etapas de /model/status mientras el pane cambia de cuenta (2-oct: interrumpe y cambia ya).
+  const ACCT_STAGES = { validating: 'Validando…', waiting: 'Interrumpiendo lo que está haciendo…', snapshot: 'Guardando la conversación…',
+    applying: 'Abriendo la conversación en la otra cuenta…', verifying: 'Confirmando que siguió igual…', recovering: 'Recuperando la conversación original…' };
+  async function waitAccountSwitch(key, id, onStage) {
+    const params = new URLSearchParams({ operationKey: key || '', operationId: id || '' });
+    for (let i = 0; i < 120; i++) {
+      await new Promise(r => setTimeout(r, 1500));
+      try {
+        const r = await fetch('/model/status?' + params, { cache: 'no-store', headers: { 'X-Comandos-Token': token } });
+        const s = await r.json();
+        if (['confirmed', 'failed', 'rolled_back', 'recovery_required'].includes(s.state)) return s;
+        onStage(ACCT_STAGES[s.stageCode || s.state] || s.stage || '');
+      } catch (e) { /* un fallo de red no decide el resultado */ }
+    }
+    return { ok: false, detail: 'Sin confirmación en 3 minutos; revisa la terminal del pane.' };
+  }
   async function switchAccount(box, pane, alias) {
     box.querySelectorAll('.acc').forEach(b => { b.disabled = true; });
-    const say = (text, err) => { box.querySelector('.foot, .msg')?.remove(); box.insertAdjacentHTML('beforeend', `<p class="msg${err ? ' err' : ''}">${esc(text)}</p>`); };
+    const say = (text, err) => { if (acctFor !== pane) return; box.querySelector('.foot, .msg')?.remove(); box.insertAdjacentHTML('beforeend', `<p class="msg${err ? ' err' : ''}">${esc(text)}</p>`); };
     say(`Pasando a ${alias}…`);
     try {
       const r = await fetch('/account/switch', { method: 'POST', cache: 'no-store',
@@ -2255,8 +2271,12 @@
         body: JSON.stringify({ session, pane, alias }) });
       const data = await r.json();
       if (!r.ok || data.ok === false) throw new Error(data.error || 'No se pudo cambiar de cuenta');
-      say(`En cola: al terminar el turno sigue la misma conversación en ${alias}.`);
-      setTimeout(() => { if (acctFor === pane) closeAccounts(); refresh(); }, 2600);
+      say(`Interrumpiendo lo que está haciendo y pasando a ${alias} con la misma conversación…`);
+      const done = await waitAccountSwitch(data.operationKey, data.operationId, stage => { if (stage) say(stage + ` (→ ${alias})`); });
+      refresh();
+      if (!done.ok) throw new Error(done.detail || done.error || 'El cambio no se confirmó');
+      say(`Listo: este pane ya sigue la misma conversación en ${alias}.`);
+      setTimeout(() => { if (acctFor === pane) closeAccounts(); }, 2200);
     } catch (error) { say(error.message, true); box.querySelectorAll('.acc[data-alias]').forEach(b => { b.disabled = b.classList.contains('on'); }); }
   }
   document.addEventListener('mousedown', e => { if (acctFor && !acctMenu.contains(e.target) && !(e.target.closest && e.target.closest('button[data-act="acct"]'))) closeAccounts(); }, true);
