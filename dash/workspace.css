@@ -290,7 +290,7 @@ html.pm-page-hidden .pm-asset,html.pm-page-hidden .pm-pixel{animation-play-state
 #pomodoro-analytics .pma-row.cancelled span:nth-child(3){color:#ff9b9b}
 #pomodoro-analytics h4{margin:4px 0 0;font-size:13px;display:flex;gap:8px;align-items:center}
 #pomodoro-analytics h4 button{font:11px var(--mono);border:1px solid var(--line2);border-radius:8px;background:none;color:var(--dim);min-height:28px}
-@media (max-width:520px){#pomodoro-analytics .pma-row{grid-template-columns:1fr auto}#pomodoro-analytics .pma-row span:nth-child(2){grid-column:1/-1;order:-1}}
+@container modal (max-width:520px){#pomodoro-analytics .pma-row{grid-template-columns:1fr auto}#pomodoro-analytics .pma-row span:nth-child(2){grid-column:1/-1;order:-1}}
 /* Progreso personal (política v1): nivel, XP, meta diaria y logros */
 .pm-milestone{display:grid;grid-template-columns:auto minmax(0,1fr);gap:8px 14px;align-items:center;border:1px solid var(--line);border-radius:10px;padding:8px 12px}
 .pm-mini-level{display:flex;align-items:center;gap:8px}
