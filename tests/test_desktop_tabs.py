@@ -389,7 +389,7 @@ def test_tmux_clients_attach_at_the_size_the_session_already_has():
         assert ns["_tmux_window_size"]("term-r1") is None
     make_term = SRC.split("def make_term(argv_sh, before_spawn=None, session=None):", 1)[1].split("\ndef ", 1)[0]
     assert make_term.index("term.set_size(*size)") < make_term.index("term.spawn_sync("), "size before the pty exists"
-    assert "if session and not term.get_realized():" in make_term
+    assert "if session and term.get_allocated_width() <= 1:" in make_term, "realized but never sized (locked screen) still gets the hint"
     # Contra un tmux de verdad (servidor privado): el destino tiene que resolver.
     import shutil, subprocess, uuid
     if shutil.which("tmux"):
