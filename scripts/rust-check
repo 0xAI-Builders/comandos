@@ -1,0 +1,15 @@
+#!/bin/sh
+set -eu
+task_root=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
+task_runner="$task_root/scripts/rust-sandbox"
+"$task_runner" rustc --version
+"$task_runner" cargo fmt --all -- --check
+"$task_runner" cargo test --workspace --locked
+"$task_runner" cargo clippy --workspace --all-targets --locked -- -D warnings
+"$task_runner" cargo build --workspace --all-targets --locked
+"$task_runner" python3 -m pytest tests/test_turn_state.py tests/test_event_store.py tests/test_work_marks.py -q
+"$task_runner" python3 tests/rust_contract_parity.py
+"$task_runner" python3 tests/rust_storage_oracle.py
+"$task_runner" python3 tests/rust_database_interop.py
+"$task_runner" cargo build --target wasm32-unknown-unknown -p comandos-core --lib --locked
+"$task_runner" cargo build --workspace --release --locked
