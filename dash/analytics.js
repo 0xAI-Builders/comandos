@@ -9,6 +9,13 @@
   const MIN_OFFSET = -1;
   const PHONE_PX = 600;
 
+  // Los nombres (carpetas, cuentas) llegan decodificados desde data-*: se escapan antes de volver a innerHTML.
+  const esc = v => String(v == null ? '' : v).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+
+  // Inverso exacto de esc (y del escape del dibujo): así un nombre se escapa una sola vez, venga como venga.
+  const UNESC = { '&amp;': '&', '&lt;': '<', '&gt;': '>', '&quot;': '"', '&#39;': "'", '&#127813;': '🍅' };
+  const unesc = v => String(v == null ? '' : v).replace(/&(?:amp|lt|gt|quot|#39|#127813);/g, m => UNESC[m]);
+
   function tabName(name) { return ALIASES[String(name || '').toLowerCase()] || 'cuentas'; }
 
   function create(el, opts) {
@@ -20,7 +27,7 @@
     function paint() {
       el.classList.toggle('phone', phone());
       if (!S.model) {
-        el.innerHTML = `<div class="mhead"><h2>Analytics</h2></div><p class="dim">${S.error || 'Leyendo el uso…'}</p>`;
+        el.innerHTML = `<div class="mhead"><h2>Analytics</h2></div><p class="dim">${esc(S.error || 'Leyendo el uso…')}</p>`;
         return;
       }
       const view = render.create(S.model, { phone: phone(), phoneDay: S.phoneDay, minOffset: MIN_OFFSET });
@@ -65,8 +72,9 @@
 
     function showPop(btn) {
       const pop = el.querySelector('.pop');
+      // data-pop va en URI (el navegador no lo decodifica): sus nombres pueden venir ya escapados del dibujo.
       const rows = JSON.parse(decodeURIComponent(btn.dataset.pop));
-      pop.innerHTML = `<h6>${btn.dataset.title}</h6>` + rows.map(r => `<div><span class="dot" style="background:${r[3]}"></span><b>${r[1]}</b><span>${r[0]}</span><em>${r[2]}</em></div>`).join('');
+      pop.innerHTML = `<h6>${esc(btn.dataset.title)}</h6>` + rows.map(r => `<div><span class="dot" style="background:${esc(r[3])}"></span><b>${esc(unesc(r[1]))}</b><span>${esc(unesc(r[0]))}</span><em>${esc(unesc(r[2]))}</em></div>`).join('');
       pop.hidden = false;
       const rc = btn.getBoundingClientRect();
       pop.style.left = Math.max(8, Math.min(innerWidth - pop.offsetWidth - 10, rc.right + 8)) + 'px';
@@ -104,7 +112,7 @@
       const src = e.target.closest('[data-tip]');
       if (!src) { tip.hidden = true; return; }
       const [a, b, c] = src.dataset.tip.split('|');
-      tip.innerHTML = `<b>${b}</b><span>${a}</span><em>${c}</em>`;
+      tip.innerHTML = `<b>${esc(b)}</b><span>${esc(a)}</span><em>${esc(c)}</em>`;
       tip.hidden = false;
     });
     el.addEventListener('pointermove', e => {

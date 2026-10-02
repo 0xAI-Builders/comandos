@@ -3,16 +3,22 @@
 (function (root) {
   function create(AN, view = {}) {
 
+  // Frontera con el modelo. El mockup dibujaba datos fijos y de confianza; aquí cada nombre que llega del modelo
+  // (carpetas, alias de cuenta, nombre del modelo, proyectos de Pomodoro) se escapa antes de que lo vea el código copiado.
+  // 🍅 va como entidad: el shell cambia el carácter por un icono y no debe tocar atributos.
+  const esc = s => String(s).replace(/[&<>"']|🍅/gu, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;','🍅':'&#127813;'}[c]));
   let uid = 0, phoneDay = 0;
-  const ACC = AN.accounts.map(a => ({ ...a, c: a.color }));
+  const ACC = AN.accounts.map(a => ({ ...a, c: a.color, cli: esc(a.cli), alias: esc(a.alias), model: a.model && { ...a.model, n: esc(a.model.n) } }));
   const accs = () => ACC.map(a => ({ ...a, hoy: { ...a.hoy }, sem: { ...a.sem }, model: a.model && { ...a.model } }));
   const DAYS = AN.days;
   const CHRONO = DAYS.slice().reverse();
-  const sessions = () => AN.sessions;
-  const LAST = AN.lastWeek;
+  // Ninguna sesión mide cero: el mockup divide entre las horas de la cuenta y 0/0 daba NaN.
+  const SESS = AN.sessions.map(s => ({ ...s, proj: esc(s.proj), en: Math.min(24, Math.max(s.en, s.st + 1 / 60)) }));
+  const sessions = () => SESS;
+  const LAST = Object.fromEntries(Object.entries(AN.lastWeek).map(([p, h]) => [esc(p), h]));
   const WASTE = AN.waste;
   const H5 = Object.fromEntries(ACC.filter(a => a.h5Reset).map(a => [a.id, { left: a.h5Left, reset: a.h5Reset }]));
-  const FOCUS = AN.pomodoros.map(f => ({ ...f, status: f.status === 'completed' ? 'completado' : 'cancelado', ag: {} }));
+  const FOCUS = AN.pomodoros.map(f => ({ ...f, proj: esc(f.proj), status: f.status === 'completed' ? 'completado' : 'cancelado', ag: {} }));
   const focusAll = () => FOCUS;
   const TODAYD = AN.week.today, NOWH = AN.week.now;
   const isPast = () => AN.week.offset < 0;
