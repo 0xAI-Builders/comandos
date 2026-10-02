@@ -276,3 +276,15 @@ def test_only_real_tui_frame_counts_as_decoration():
     for marcador in ("*", "|", "-", "·", "•"):
         assert marcador not in clase, f"{marcador} sigue contando como marco: {clase}"
     assert "│" in clase and ">" in clase, "falta marco real de TUI"
+
+
+def test_the_effort_cost_dialog_is_a_dialog_and_prose_is_not():
+    """2-oct: al reanudar con --effort xhigh Claude Code pregunta «Keep xhigh / Switch … to high
+    effort»; su «❯ Keep xhigh» parecía el prompt y la verificación daba por confirmado un pane
+    que aún pedía una respuesta."""
+    dash = load_dash_module()
+    assert dash.screen_dialog("   estimated cost of high …\n   ❯ Keep xhigh\n     Switch Fable 5.1 to high\n     effort") == "effort"
+    assert dash.screen_dialog("❯ Keep xhigh") == "effort"
+    assert dash.screen_dialog("we keep high standards and the keep max tool") == ""
+    assert dash.screen_dialog("❯ ") == ""
+    assert "effort" in dash.dialog_patterns()

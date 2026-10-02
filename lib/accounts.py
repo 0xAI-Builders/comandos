@@ -57,7 +57,13 @@ def account_home(registry: dict[str, Any], provider: str, alias: str = "main") -
 
 
 def account_environment(registry: dict[str, Any], provider: str, alias: str) -> dict[str, str]:
+    """Entorno para lanzar el CLI con una cuenta. «main» es la casa por defecto: SIN
+    variable, igual que los procesos que el usuario abre a mano. Fijarla al mismo
+    directorio no es inocuo: Claude Code mueve su ~/.claude.json (MCPs de usuario,
+    confianza de carpetas) a $CLAUDE_CONFIG_DIR/.claude.json, otro archivo."""
     spec = _spec(registry, provider)
+    if validate_alias(alias) == "main":
+        return {}
     return {str(spec["accountEnv"]): str(account_home(registry, provider, alias))}
 
 

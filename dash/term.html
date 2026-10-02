@@ -2248,18 +2248,22 @@
   // Etapas de /model/status mientras el pane cambia de cuenta (2-oct: interrumpe y cambia ya).
   const ACCT_STAGES = { validating: 'Validando…', waiting: 'Interrumpiendo lo que está haciendo…', snapshot: 'Guardando la conversación…',
     applying: 'Abriendo la conversación en la otra cuenta…', verifying: 'Confirmando que siguió igual…', recovering: 'Recuperando la conversación original…' };
-  async function waitAccountSwitch(key, id, onStage) {
+  const acctAwaiting = alias => `La conversación ya corre en ${alias}, pero el pane pide algo (confianza de carpeta, login o esfuerzo): respóndelo en su terminal y el cambio se confirma solo.`;
+  async function waitAccountSwitch(key, id, alias, onStage) {
     const params = new URLSearchParams({ operationKey: key || '', operationId: id || '' });
+    let awaiting = false;
     for (let i = 0; i < 120; i++) {
       await new Promise(r => setTimeout(r, 1500));
       try {
         const r = await fetch('/model/status?' + params, { cache: 'no-store', headers: { 'X-Comandos-Token': token } });
         const s = await r.json();
         if (['confirmed', 'failed', 'rolled_back', 'recovery_required'].includes(s.state)) return s;
-        onStage(ACCT_STAGES[s.stageCode || s.state] || s.stage || '');
+        awaiting = s.state === 'awaiting_confirmation';
+        onStage(awaiting ? acctAwaiting(alias) : (ACCT_STAGES[s.stageCode || s.state] || s.stage || ''));
       } catch (e) { /* un fallo de red no decide el resultado */ }
     }
-    return { ok: false, detail: 'Sin confirmación en 3 minutos; revisa la terminal del pane.' };
+    return awaiting ? { ok: false, awaiting: true, detail: acctAwaiting(alias) }
+                    : { ok: false, detail: 'Sin confirmación en 3 minutos; revisa la terminal del pane.' };
   }
   async function switchAccount(box, pane, alias) {
     box.querySelectorAll('.acc').forEach(b => { b.disabled = true; });
@@ -2272,8 +2276,9 @@
       const data = await r.json();
       if (!r.ok || data.ok === false) throw new Error(data.error || 'No se pudo cambiar de cuenta');
       say(`Interrumpiendo lo que está haciendo y pasando a ${alias} con la misma conversación…`);
-      const done = await waitAccountSwitch(data.operationKey, data.operationId, stage => { if (stage) say(stage + ` (→ ${alias})`); });
+      const done = await waitAccountSwitch(data.operationKey, data.operationId, alias, stage => { if (stage) say(stage); });
       refresh();
+      if (done.awaiting) { say(done.detail); return; }
       if (!done.ok) throw new Error(done.detail || done.error || 'El cambio no se confirmó');
       say(`Listo: este pane ya sigue la misma conversación en ${alias}.`);
       setTimeout(() => { if (acctFor === pane) closeAccounts(); }, 2200);

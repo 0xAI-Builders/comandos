@@ -211,3 +211,13 @@ def test_registry_knows_opus_5_5_and_sonnet_5_5():
         spec = providers.model_spec(registry, "claude", variant, section="motors")
         assert spec and spec["id"] == want, variant
         assert "high" in spec["efforts"]
+
+
+def test_main_account_uses_the_default_home_without_a_config_dir_env(tmp_path):
+    """2-oct: «main» lanzado con CLAUDE_CONFIG_DIR=~/.claude leía OTRO ~/.claude/.claude.json
+    (5 MCPs, sin la confianza de las carpetas) que los Claude normales de Jesús, que corren
+    sin la variable (~/.claude.json, 31 MCPs). main = sin variable, como los suyos."""
+    reg = registry(tmp_path)
+    assert accounts.account_environment(reg, "claude", "main") == {}
+    assert accounts.account_environment(reg, "codex", "main") == {}
+    assert accounts.account_environment(reg, "claude", "work") == {"CLAUDE_CONFIG_DIR": str(tmp_path / "claude-accounts" / "work")}

@@ -440,3 +440,4 @@ def test_the_account_button_sits_beside_ia_on_desktop_and_remote():
     for text in (pop + waiter, term):
         assert 'espera a que termine' not in text and 'En cola' not in text
         assert '/model/status' in text and 'se interrumpe' in text
+        assert 'awaiting_confirmation' in text    # un diálogo en el destino se explica, no se da por hecho

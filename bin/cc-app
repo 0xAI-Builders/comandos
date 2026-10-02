@@ -5254,10 +5254,19 @@ _ACCT_STAGES = {"validating": "Validando…", "waiting": "Interrumpiendo lo que 
 _ACCT_FINAL = ("confirmed", "failed", "rolled_back", "recovery_required")
 
 
-def _wait_account_switch(key, operation_id, on_stage, attempts=120):
+def _acct_awaiting(alias):
+    return (f"La conversación ya corre en {alias}, pero el pane pide algo (confianza de carpeta, login o esfuerzo): "
+            "respóndelo en su terminal y el cambio se confirma solo." if ES else
+            f"The conversation already runs on {alias}, but the pane asks something (folder trust, login or effort): "
+            "answer it in its terminal and the switch confirms itself.")
+
+
+def _wait_account_switch(key, operation_id, alias, on_stage, attempts=120):
     """Sigue /model/status hasta el resultado real del cambio de cuenta (2-oct: la UI
-    no puede decir «en cola» y cerrarse; dice qué pasó)."""
+    no puede decir «en cola» y cerrarse; dice qué pasó). awaiting_confirmation = el
+    destino ya corre pero muestra un diálogo: se explica, no se da por hecho."""
     params = urlencode({"operationKey": key or "", "operationId": operation_id or ""})
+    awaiting = False
     for _ in range(attempts):
         time.sleep(1.5)
         try:
@@ -5267,8 +5276,13 @@ def _wait_account_switch(key, operation_id, on_stage, attempts=120):
             continue                      # un fallo de red no decide el resultado
         if status.get("state") in _ACCT_FINAL:
             return status
-        on_stage(_ACCT_STAGES.get(status.get("stageCode") or status.get("state")) or status.get("stage") or "")
-    return {"ok": False, "detail": "Sin confirmación en 3 minutos; revisa la terminal del pane."}
+        awaiting = status.get("state") == "awaiting_confirmation"
+        on_stage(_acct_awaiting(alias) if awaiting else
+                 (_ACCT_STAGES.get(status.get("stageCode") or status.get("state")) or status.get("stage") or ""))
+    if awaiting:
+        return {"ok": False, "awaiting": True, "detail": _acct_awaiting(alias)}
+    return {"ok": False, "detail": "Sin confirmación en 3 minutos; revisa la terminal del pane." if ES
+            else "No confirmation in 3 minutes; check the pane's terminal."}
 
 
 def _account_popover(button, sess, pane, harness, current):
@@ -5312,10 +5326,13 @@ def _account_popover(button, sess, pane, harness, current):
                 return
             GLib.idle_add(note.set_text, (f"Interrumpiendo lo que está haciendo y pasando a {alias} con la misma conversación…" if ES
                                           else f"Interrupting its current work and moving to {alias}, same conversation…"))
-            final = _wait_account_switch(res.get("operationKey"), res.get("operationId"),
-                                         lambda stage: stage and GLib.idle_add(note.set_text, f"{stage} (→ {alias})"))
+            final = _wait_account_switch(res.get("operationKey"), res.get("operationId"), alias,
+                                         lambda stage: stage and GLib.idle_add(note.set_text, stage))
 
             def done():
+                if final.get("awaiting"):
+                    note.set_text(final["detail"])
+                    return False
                 if not final.get("ok"):
                     return fail(final.get("detail") or final.get("error") or "El cambio no se confirmó")
                 note.set_text(f"Listo: este pane ya sigue la misma conversación en {alias}." if ES

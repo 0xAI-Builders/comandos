@@ -2453,6 +2453,9 @@ _DEFAULT_DIALOGS = {"trust": [r"trust this folder", r"Do you trust", r"Accessing
                               r"(^|\n)\s*/login\b"],
                     "onboarding": [r"Choose the text style", r"Elige el estilo de texto",
                                    r"Choose your theme", r"Elige tu tema"],
+                    # Aviso de costo al reanudar con --effort alto: «❯ Keep xhigh» no es el prompt.
+                    "effort": [r"(^|\n)\s*❯\s*(Keep|Mantener) (low|medium|high|xhigh|max)\s*$",
+                               r"estimated cost of (low|medium|high|xhigh|max)\b"],
                     "error": [r"(^|\n)\s*error:", r"(^|\n)\s*fatal:"]}
 
 def _detectors_cfg():
@@ -2519,9 +2522,9 @@ def dialog_patterns():
         return clean
 
 def screen_dialog(screen):
-    """Devuelve 'trust' | 'login' | 'onboarding' | 'error' | '' según la pantalla."""
+    """Devuelve 'trust' | 'login' | 'onboarding' | 'effort' | 'error' | '' según la pantalla."""
     pats = dialog_patterns()
-    for kind in ("trust", "login", "onboarding", "error"):
+    for kind in ("trust", "login", "onboarding", "effort", "error"):
         for p in pats.get(kind) or []:
             if re.search(p, screen or "", re.I | re.M):
                 return kind

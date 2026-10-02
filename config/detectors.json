@@ -32,6 +32,10 @@
       "Choose your theme",
       "Elige tu tema"
     ],
+    "effort": [
+      "(^|\\n)\\s*❯\\s*(Keep|Mantener) (low|medium|high|xhigh|max)\\s*$",
+      "estimated cost of (low|medium|high|xhigh|max)\\b"
+    ],
     "error": [
       "(^|\\n)\\s*error:",
       "(^|\\n)\\s*fatal:"
