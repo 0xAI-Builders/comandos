@@ -124,3 +124,35 @@ def test_claude_import_accepts_no_file_cap(tmp_path, monkeypatch):
         _write(tmp_path / "projects" / f"f{i}.jsonl", [_assistant(f"u{i}", f"msg_{i}", f"req_{i}")])
     assert cc_usage.record_local_claude_jsonl(db, tmp_path / "projects", now=NOW, max_age_days=30, max_files=None) == 3
     assert cc_usage.record_local_claude_jsonl(db, tmp_path / "projects", now=NOW, max_age_days=30, max_files=1) == 1
+
+
+def _rollout(path, rows):
+    _write(path, [{"timestamp": ts, "type": kind, "payload": payload} for ts, kind, payload in rows])
+
+
+def test_codex_reads_each_response_once_per_account_even_across_forks(tmp_path, monkeypatch):
+    monkeypatch.setattr(cc_usage, "git_root_for_path", lambda p: p)
+    db = tmp_path / "u.sqlite"
+    usage = {"input_tokens": 1000, "cached_input_tokens": 800, "cache_write_input_tokens": 0,
+             "output_tokens": 50, "reasoning_output_tokens": 10, "total_tokens": 1050}
+    parent = [
+        ("2026-10-01T05:00:00Z", "session_meta", {"id": "th1", "cwd": "/repo"}),
+        ("2026-10-01T05:00:00Z", "turn_context", {"turn_id": "tu1", "cwd": "/repo/app", "model": "gpt-5.5", "effort": "high"}),
+        ("2026-10-01T05:01:00Z", "token_usage_record", {"thread_id": "th1", "turn_id": "tu1", "response_id": "resp_1", "usage": usage}),
+        ("2026-10-01T05:02:00Z", "event_msg", {"type": "task_complete", "turn_id": "tu1", "started_at": 1790830800, "completed_at": 1790830920}),
+    ]
+    home = tmp_path / "codex-main"
+    _rollout(home / "sessions" / "2026" / "10" / "01" / "rollout-a.jsonl", parent)
+    # Un rollout bifurcado repite el historial del padre con los mismos ids.
+    _rollout(home / "sessions" / "2026" / "10" / "01" / "rollout-b.jsonl", [("2026-10-01T05:10:00Z", "session_meta", {"id": "th2", "cwd": "/repo"})] + parent[1:])
+    _rollout(tmp_path / "codex-work" / "sessions" / "rollout-c.jsonl", [
+        ("2026-10-01T05:20:00Z", "token_usage_record", {"thread_id": "th3", "turn_id": "tu3", "response_id": "resp_3", "usage": usage}),
+    ])
+    cc_usage.record_local_codex_rollouts(db, [("main", str(home)), ("work", str(tmp_path / "codex-work"))], now=NOW, max_age_days=30)
+    con = sqlite3.connect(db)
+    turns = con.execute("select id, harness_account, git_root, model, input_tokens, cache_read_tokens, total_tokens, reasoning_tokens "
+                        "from usage_turns order by id").fetchall()
+    assert turns == [("codex-resp-resp_1", "main", "/repo/app", "gpt-5.5", 200, 800, 1050, 10),
+                     ("codex-resp-resp_3", "work", "", "", 200, 800, 1050, 10)]
+    assert con.execute("select id, account, git_root, finished_at - started_at from usage_spans").fetchall() == [
+        ("codex-turn-tu1", "main", "/repo/app", 120.0)]

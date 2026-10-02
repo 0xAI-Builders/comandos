@@ -111,7 +111,7 @@ def test_usage_cache_refreshes_after_import_finishes(monkeypatch):
     monkeypatch.setattr(dash.cc_usage, 'reconcile_orphan_interactions', lambda *a, **k: 0)
     monkeypatch.setattr(dash.cc_usage, 'build_usage_state', build)
     monkeypatch.setattr(dash.cc_usage, 'prune_old_turns', lambda *a, **k: 0)
-    monkeypatch.setattr(dash.cc_usage, 'record_local_codex_threads', import_codex)
+    monkeypatch.setattr(dash.cc_usage, 'record_local_codex_rollouts', import_codex)
     for name in ('record_local_grok_updates', 'record_local_claude_jsonl', 'record_local_opencode_db'):
         monkeypatch.setattr(dash.cc_usage, name, lambda *a, **k: 0)
     monkeypatch.setattr(dash.grok_state, 'account_homes', lambda: [])

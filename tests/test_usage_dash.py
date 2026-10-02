@@ -74,7 +74,7 @@ def test_usage_capture_and_refresh_endpoints_exist():
     assert 'self.path == "/usage/settings"' in SRC
     assert "write_usage_settings" in SRC
     assert "usage_runtime_env" in SRC
-    assert "record_local_codex_threads" in SRC
+    assert "record_local_codex_rollouts" in SRC
     assert "record_local_claude_jsonl" in SRC
     assert "usage_credential_health" in SRC
     assert 'state["credential_health"] = usage_credential_health(env)' in SRC

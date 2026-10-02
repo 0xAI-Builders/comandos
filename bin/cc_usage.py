@@ -1619,63 +1619,106 @@ def model_switch_text(provider, preset, model=None):
     return item["claude"]["command"]
 
 
-def record_local_codex_threads(db_path, state_db=None, now=None, max_age_days=14):
-    state_db = state_db or os.path.expanduser("~/.codex/state_5.sqlite")
-    if not os.path.exists(state_db):
-        return 0
+def record_local_codex_rollouts(db_path, homes=None, now=None, max_age_days=14, max_files=300, seen=None):
+    """Codex por respuesta y por cuenta, desde los rollouts de cada CODEX_HOME.
+
+    token_usage_record trae el uso exacto de cada respuesta (response_id); task_complete
+    trae inicio y fin de cada turno. Un rollout bifurcado repite los eventos de su padre
+    con los mismos ids, así que el upsert no los cuenta dos veces."""
+    homes = homes if homes is not None else account_homes("~/.codex", "~/.codex-accounts")
     ts = int(now if now is not None else time.time())
     cutoff = ts - int(max_age_days) * 24 * 3600
-    try:
-        con = sqlite3.connect(state_db)
-        con.row_factory = sqlite3.Row
-        rows = con.execute(
-            """
-            select id, created_at, updated_at, source, model_provider, cwd,
-                   tokens_used, model, reasoning_effort
-            from threads
-            where tokens_used > 0 and updated_at >= ?
-            """,
-            (cutoff,),
-        ).fetchall()
-    except Exception:
-        return 0
-    finally:
-        try:
-            con.close()
-        except Exception:
-            pass
-    events = []
-    roots = {}
-    for row in rows:
-        cwd = row["cwd"] or ""
+    events, spans, roots = [], [], {}
+
+    def root_of(cwd):
         if cwd not in roots:
-            roots[cwd] = git_root_for_path(cwd)
-        event = {
-            "id": "codex-state-" + _text(row["id"]),
-            "provider": "codex",
-            "agent": "codex",
-            "tmux_session": _text(row["id"]),
-            "tmux_pane": "",
-            "pane_pwd": cwd,
-            "git_root": roots[cwd],
-            "model": _text(row["model"]),
-            "reasoning_effort": _text(row["reasoning_effort"]),
-            # state_5 stores thread lifetime, not individual-turn latency. Keep
-            # the cumulative token snapshot, but never mislabel lifetime as a turn.
-            "turn_started_at": _as_int(row["updated_at"]),
-            "turn_finished_at": _as_int(row["updated_at"]),
-            "duration_ms": None,
-            "total_tokens": _as_int(row["tokens_used"]),
-            "source": "codex_state_db",
-            "confidence": "shared",
-            "raw": json.dumps({
-                "thread_id": _text(row["id"]),
-                "model_provider": _text(row["model_provider"]),
-                "tokens_used": _as_int(row["tokens_used"]),
-                "snapshot_at": _as_int(row["updated_at"]),
-            }, sort_keys=True),
-        }
-        events.append(event)
+            roots[cwd] = git_root_for_path(cwd) if cwd else ""
+        return roots[cwd] or cwd
+
+    for account, home in homes:
+        files = []
+        for root, _dirs, names in os.walk(os.path.join(home, "sessions")):
+            for name in names:
+                if not (name.startswith("rollout-") and name.endswith(".jsonl")):
+                    continue
+                path = os.path.join(root, name)
+                try:
+                    mtime = os.path.getmtime(path)
+                except OSError:
+                    continue
+                if mtime >= cutoff:
+                    files.append((mtime, path))
+        files.sort(reverse=True)
+        for _mtime, path in _changed_files(files[:max_files], seen):
+            cwd, thread, turns = "", "", {}
+            try:
+                with open(path, errors="replace") as fh:
+                    for line in fh:
+                        try:
+                            data = json.loads(line)
+                        except Exception:
+                            continue
+                        if not isinstance(data, dict):
+                            continue
+                        kind = data.get("type")
+                        payload = data.get("payload") if isinstance(data.get("payload"), dict) else {}
+                        if kind == "session_meta":
+                            cwd = _text(payload.get("cwd")) or cwd
+                            thread = _text(payload.get("id")) or thread
+                        elif kind == "turn_context":
+                            turns[_text(payload.get("turn_id"))] = payload
+                        elif kind == "token_usage_record":
+                            rid = _text(payload.get("response_id"))
+                            usage = payload.get("usage") if isinstance(payload.get("usage"), dict) else {}
+                            finished = _as_epoch(data.get("timestamp"))
+                            if not rid or finished < cutoff:
+                                continue
+                            ctx = turns.get(_text(payload.get("turn_id")), {})
+                            here = _text(ctx.get("cwd")) or cwd
+                            inp = _as_int(usage.get("input_tokens"))
+                            cached = _as_int(usage.get("cached_input_tokens"))
+                            out = _as_int(usage.get("output_tokens"))
+                            total = _as_int(usage.get("total_tokens")) or inp + out
+                            if total <= 0:
+                                continue
+                            events.append({
+                                "id": "codex-resp-" + rid,
+                                "provider": "codex",
+                                "agent": "codex",
+                                "tmux_session": _text(payload.get("thread_id")) or thread,
+                                "tmux_pane": "",
+                                "pane_pwd": here,
+                                "git_root": root_of(here),
+                                "model": _real_model(ctx.get("model")),
+                                "reasoning_effort": _text(ctx.get("effort")),
+                                "turn_started_at": finished,
+                                "turn_finished_at": finished,
+                                "input_tokens": max(0, inp - cached),
+                                "output_tokens": out,
+                                "cache_read_tokens": cached,
+                                "cache_write_tokens": _as_int(usage.get("cache_write_input_tokens")),
+                                "total_tokens": total,
+                                "reasoning_tokens": _as_int(usage.get("reasoning_output_tokens")),
+                                "harness_account": account,
+                                "motor_account": account,
+                                "source": "codex_rollout",
+                                "confidence": "local",
+                                "raw": json.dumps({"path": path, "turn_id": _text(payload.get("turn_id")),
+                                                   "response_id": rid}, sort_keys=True),
+                            })
+                        elif kind == "event_msg" and payload.get("type") == "task_complete":
+                            turn_id = _text(payload.get("turn_id"))
+                            started = _as_int(payload.get("started_at"))
+                            finished = _as_int(payload.get("completed_at"))
+                            if not turn_id or not started or finished < max(started, cutoff):
+                                continue
+                            here = _text(turns.get(turn_id, {}).get("cwd")) or cwd
+                            spans.append({"id": "codex-turn-" + turn_id, "provider": "codex", "account": account,
+                                          "session_id": thread, "git_root": root_of(here),
+                                          "started_at": started, "finished_at": finished, "source": "codex_rollout"})
+            except OSError:
+                continue
+    record_spans(db_path, spans)
     return record_turns(db_path, events)
 
 

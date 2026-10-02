@@ -333,35 +333,6 @@ def test_build_usage_state_includes_token_windows_from_settings():
     assert windows["claude_daily_tokens"]["status"] == "missing_limit" or windows["claude_daily_tokens"]["used"] == 0
 
 
-def test_record_local_codex_threads_imports_sqlite_tokens():
-    with tempfile.TemporaryDirectory() as d:
-        db = os.path.join(d, "usage.sqlite")
-        state_db = os.path.join(d, "state.sqlite")
-        con = sqlite3.connect(state_db)
-        con.execute("""
-            create table threads (
-              id text primary key, created_at integer, updated_at integer,
-              source text, model_provider text, cwd text, title text,
-              tokens_used integer, model text, reasoning_effort text
-            )
-        """)
-        con.execute(
-            "insert into threads values (?,?,?,?,?,?,?,?,?,?)",
-            ("thread-1", 100, 200, "cli", "openai", "/repo", "Work", 1234, "gpt-test", "medium"),
-        )
-        con.commit()
-        con.close()
-
-        count = cc_usage.record_local_codex_threads(db, state_db, now=300)
-        state = cc_usage.build_usage_state(db, [], now=300)
-
-    assert count == 1
-    assert state["totals"]["total_tokens"] == 1234
-    assert state["projects"][0]["git_root"] == "/repo"
-    assert state["projects"][0]["panes"][0]["provider"] == "codex"
-    assert state["projects"][0]["panes"][0]["confidence"] == "shared"
-
-
 def test_parse_groq_ratelimit_headers_reads_remaining_limit_and_reset():
     # Groq no tiene OAuth de uso: el % sale de x-ratelimit-* de la última
     # respuesta HTTP. remaining/limit → percent usado; reset-requests es epoch.
@@ -971,7 +942,6 @@ if __name__ == "__main__":
     test_record_turn_rolls_up_by_project_session_and_pane()
     test_aggregate_provider_bucket_is_unattributed_without_matching_pane()
     test_build_usage_state_includes_token_windows_from_settings()
-    test_record_local_codex_threads_imports_sqlite_tokens()
     test_record_local_opencode_db_imports_assistant_tokens()
     test_record_local_claude_jsonl_imports_message_usage()
     test_usage_settings_round_trip_filters_to_limit_keys()
