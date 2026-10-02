@@ -3974,7 +3974,7 @@ def apply_theme(name):
     try:
         _HB_CSS.load_from_data(_build_hb_css())
         _PANED_CSS.load_from_data((
-            b"paned.cc-paned > separator,paned.cc-paned separator{"
+            b"paned.cc-paned > separator,paned.cc-paned paned > separator{"   # solo los de los paned: el de la cabecera de pane (box) se ve
             b" background:transparent;background-image:none;"
             b" background-color:transparent;"
             b" border:0;box-shadow:none;"
@@ -7720,7 +7720,7 @@ nb.get_style_context().add_class("cc-notebook")
 # del Notebook, que sí acepta CSS custom.
 _PANED_CSS = Gtk.CssProvider()
 _PANED_CSS.load_from_data((
-    b"paned.cc-paned > separator,paned.cc-paned separator{"
+    b"paned.cc-paned > separator,paned.cc-paned paned > separator{"   # solo los de los paned: el de la cabecera de pane (box) se ve
     b" background:transparent;"
     b" background-image:none;"
     b" background-color:transparent;"
