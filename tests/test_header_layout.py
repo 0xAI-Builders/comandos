@@ -232,15 +232,12 @@ def test_modal_content_follows_the_modal_width_not_the_window():
     por el ancho del modal. En el escritorio el modal ya mide la columna; en el remoto
     partido también, y con @media se acomodaba como si tuviera toda la pantalla."""
     index = (ROOT / "dash" / "index.html").read_text()
-    css = (ROOT / "dash" / "workspace.css").read_text()
     assert ".modal:not(.chain-only){container-type:inline-size;container-name:modal}" in index
     for rule in ("@container modal (max-width:760px){.sov-flow", "@container modal (max-width:520px){.theme-gallery",
-                 "@container modal (max-width:520px){.compare-stats", "@container modal (max-width:760px){.qh-row",
                  "@container modal (max-width:640px){\n\t    #servers .modal-panel"):
         assert rule in index, rule
-    for gone in ("@media (max-width:760px){.sov-flow", "@media(max-width:520px){.theme-gallery", "@media(max-width:520px){.compare-stats"):
+    for gone in ("@media (max-width:760px){.sov-flow", "@media(max-width:520px){.theme-gallery"):
         assert gone not in index, gone
-    assert "@container modal (max-width:520px){#pomodoro-analytics" in css
 
 
 def test_new_session_profiles_and_motor_picker_stay_in_the_column_on_split_remote():

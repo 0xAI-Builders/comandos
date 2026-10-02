@@ -90,7 +90,7 @@ def test_minimum_coverage_per_group():
         counts[t.group] = counts.get(t.group, 0) + 1
     floor = {"sessions": 20, "panes": 10, "models": 18, "usage": 16, "pomodoro": 7,
              "prefs": 18, "notifs": 6, "remote": 12, "snippets": 5, "fs": 4,
-             "news": 4, "nav": 13, "term": 5, "app": 26, "chat": 5}   # nav 14→13: S2 quitó las filas de sesión y la actividad reciente; chat 6→5: S4 retiró /operator
+             "news": 4, "nav": 12, "term": 5, "app": 26, "chat": 5}   # nav 14→13: S2 quitó las filas de sesión y la actividad reciente; 13→12: Analytics quitó compare_set_window; chat 6→5: S4 retiró /operator
     for g, n in floor.items():
         assert counts.get(g, 0) >= n, (g, counts.get(g, 0))
 

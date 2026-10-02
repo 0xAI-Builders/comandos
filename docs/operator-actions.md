@@ -132,7 +132,6 @@ Generado desde `lib/operator_catalog.py`. Un control de la UX sin fila aquí es 
 | `set_browser_notifications` | Notificaciones del navegador on/off. | on | ui:call setBrowserNotifications |
 | `test_notification` | Prueba un aviso: voz, chime o terminado. | kind | POST /test |
 | `open_settings` | Abre Ajustes en una tab: Apariencia, Notificaciones, Terminal o Tablero. | tab | local:ui_settings |
-| `set_limit_style` | Estilo de la barra de límites en Analytics. | style | ui:call setLimitStyle |
 | `notif_dismiss_ids` | Marca como leídas notificaciones por id (persistente). | ids | POST /prefs-set |
 | `notif_snooze_ids` | Pospone notificaciones por id hasta una marca de tiempo. | snooze | POST /prefs-set |
 
@@ -210,7 +209,6 @@ Generado desde `lib/operator_catalog.py`. Un control de la UX sin fila aquí es 
 | `expand_reply` | Expande/colapsa la respuesta de una sesión en el panel. | session, on | ui:call expandReply |
 | `toggle_ssh_chips` | Expande/colapsa la fila de servidores. | — | ui:click #ssh-toggle |
 | `open_analytics_tab` | Abre Analytics en una tab concreta. | tab | ui:call openAnalyticsTab |
-| `compare_set_window` | Ventana de días del comparador. | days | ui:call compareSetDays |
 | `set_split_left` | Ancho del panel izquierdo en layout ancho (px). | px | ui:call setSplitLeft |
 | `set_chat_height` | Alto del chat del operador (px). | px | ui:call setOpChatHeight |
 | `copy_text` | Copia un texto al portapapeles del navegador. | text | ui:call copyText |

@@ -193,7 +193,6 @@ CATALOG: list[ToolSpec] = [
     T("set_browser_notifications", "prefs", "Notificaciones del navegador on/off.", P(on=("boolean", "true=on")), ("on",), ui_call("setBrowserNotifications", "$on")),
     T("test_notification", "prefs", "Prueba un aviso: voz, chime o terminado.", P(kind=("string", "Tipo", ("voice", "chime", "done"))), ("kind",), api("POST", "/test", {"kind": "$kind"})),
     T("open_settings", "prefs", "Abre Ajustes en una tab: Apariencia, Notificaciones, Terminal o Tablero.", P(tab=("string", "Tab", ("appearance", "notif", "term", "dash"))), (), local("ui_settings")),
-    T("set_limit_style", "prefs", "Estilo de la barra de límites en Analytics.", P(style="Estilo"), ("style",), ui_call("setLimitStyle", "$style")),
     T("notif_dismiss_ids", "prefs", "Marca como leídas notificaciones por id (persistente).", P(ids=ARR("Ids")), ("ids",), api("POST", "/prefs-set", {"nfDismiss": "$ids"})),
     T("notif_snooze_ids", "prefs", "Pospone notificaciones por id hasta una marca de tiempo.", P(snooze={"type": "object", "description": "{id: epoch_ms}"}), ("snooze",), api("POST", "/prefs-set", {"nfSnooze": "$snooze"})),
     # ───────────── notifications ─────────────
@@ -243,8 +242,7 @@ CATALOG: list[ToolSpec] = [
     T("switcher_search", "nav", "Abre el conmutador con un texto de búsqueda.", P(query="Texto"), (), ui_call("swOpenWith", "$query")),
     T("wizard_prefill", "nav", "Abre el wizard de nueva sesión precargado.", P(cwd="Carpeta", harness="Harness", motor="Motor", model="Modelo", effort="Esfuerzo", danger=("boolean", "Sin aprobaciones")), (), ui_call("nsOpenPrefilled", "$cwd", "$harness", "$motor", "$model", "$effort", "$danger")),
     T("toggle_ssh_chips", "nav", "Expande/colapsa la fila de servidores.", target=ui_click("#ssh-toggle")),
-    T("open_analytics_tab", "nav", "Abre Analytics en una tab concreta.", P(tab=("string", "Tab", ("resumen", "comparar", "reparto", "proveedores", "alertas", "guardia"))), ("tab",), ui_call("openAnalyticsTab", "$tab")),
-    T("compare_set_window", "nav", "Ventana de días del comparador.", P(days=("integer", "Días")), ("days",), ui_call("compareSetDays", "$days")),
+    T("open_analytics_tab", "nav", "Abre Analytics en una tab concreta.", P(tab=("string", "Tab", ("cuentas", "comparar", "pomodoro"))), ("tab",), ui_call("openAnalyticsTab", "$tab")),
     T("set_split_left", "nav", "Ancho del panel izquierdo en layout ancho (px).", P(px=("integer", "Píxeles")), ("px",), ui_call("setSplitLeft", "$px")),
     T("copy_text", "nav", "Copia un texto al portapapeles del navegador.", P(text="Texto"), ("text",), ui_call("copyText", "$text")),
     T("reload_dashboard", "nav", "Recarga el tablero.", target=ui_call("reloadDashboard")),

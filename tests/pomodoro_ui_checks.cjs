@@ -322,25 +322,6 @@ async function readySounds(storage = memoryStorage(), log = []) {
     assert.ok(v.panel.innerHTML.includes('100 / 100 min'), 'daily goal from the server progress');
   });
 
-  await check('analytics filters query the report and totals come from its records', async () => {
-    const v = loadView(JSON.parse(JSON.stringify(running)), []);
-    await settle();
-    v.state.report = { range: {}, projects: ['ComandOS', 'Lola'], byProject: [], history: [], byDay: [{ date: '2033-05-18', activeMs: 37 * MIN, completed: 1, cancelled: 1, legacyPlannedMs: 0 }],
-      measured: { completed: { blocks: 1, activeMs: 25 * MIN, plannedMs: 25 * MIN }, cancelled: { blocks: 1, activeMs: 12 * MIN, plannedMs: 50 * MIN }, activeMs: 37 * MIN, plannedMs: 75 * MIN, completionRate: 0.5 },
-      legacy: { blocks: 0, completedBlocks: 0, plannedMs: 0, note: '' }, breaks: { blocks: 0, activeMs: 0 } };
-    v.P.analytics.project = 'Lola';
-    v.P.analytics.period = '1';
-    await v.P.loadAnalytics();
-    const url = v.gets.filter(u => u.startsWith('/pomodoro/report')).pop();
-    const q = new URLSearchParams(url.split('?')[1]);
-    assert.equal(q.get('project'), 'Lola');
-    assert.equal(q.get('fromDate'), q.get('toDate'), 'Hoy = one Mexico City day');
-    assert.match(q.get('fromDate'), /^\d{4}-\d{2}-\d{2}$/);
-    assert.ok(v.analytics.innerHTML.includes('37′'), 'measured minutes from the report');
-    assert.ok(v.analytics.innerHTML.includes('75′'), 'planned minutes shown separately');
-    assert.ok(!v.analytics.innerHTML.includes('20:00'), 'not the visual clock');
-  });
-
   console.log(JSON.stringify(results, null, 2));
   const failed = results.filter(r => !r.ok).length;
   console.log(`${results.length - failed}/${results.length} pomodoro UI checks passed`);

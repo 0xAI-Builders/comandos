@@ -108,19 +108,9 @@ def test_motor_switch_auto_picks_a_logged_in_account():
     assert callable(mod._pick_motor_account)
 
 
-def test_reparto_applies_through_the_real_allocation_endpoints():
-    """Reparto sustituye a Optimizar: en vez de perfiles de modelos congelados,
-    un plan calculado contra la cuota y aplicado como lote con estado por sesión."""
+def test_suggestion_apply_action_lives_in_the_notification_drawer():
     html = Path("dash/index.html").read_text()
-    js = Path("dash/reparto.js").read_text()
-    assert 'data-mtab="reparto"' in html and 'data-mtab="optimizar"' not in html
-    for endpoint in ("/allocation/propose", "/allocation/preview", "/allocation/apply",
-                     "/allocation/status", "/allocation/retry", "/allocation/revert"):
-        assert endpoint in js, endpoint
-        assert endpoint in SRC, endpoint
-    # aplicar exige confirmar contra un plan congelado, no un contador de clics
-    assert "plan_stale" in SRC and "plan_stale" in js
-    assert "def allocation_propose" in SRC and "def allocation_apply" in SRC
+    assert 'id: "aplicar"' in html and 'act === "aplicar"' in html   # se aplica desde el cajón (Centro retirado en S2)
 
 
 def test_external_motor_switch_locks_all_subagent_slots_and_is_recoverable():
@@ -293,17 +283,10 @@ def test_defensive_wizard_never_creates_shell_from_unavailable_route():
     assert 'class="sw" id="ns-danger" role="switch" aria-checked="false"' in html
 
 
-def test_change_ledger_records_switches_and_offers_undo():
+def test_change_ledger_records_switches():
     assert '"/usage/changes"' in SRC.split("API_GET =", 1)[1].split("def do_GET", 1)[0]
     assert "cc_usage.record_change" in SRC
     assert "cc_usage.change_ledger" in SRC
-    html = Path("dash/index.html").read_text()
-    assert 'id="guard-ledger"' in html
-    assert "data-undo=" in html
-    # Reparto no preselecciona nada destructivo: el botón de aplicar nace inhabilitado
-    # y solo se enciende cuando el plan trae cambios de verdad.
-    js = Path("dash/reparto.js").read_text()
-    assert 'data-apply ' in js and '(n && !S.busy ? "" : "disabled")' in js
 
 
 def test_pane_border_shows_deterministic_switching_and_detecting_states():

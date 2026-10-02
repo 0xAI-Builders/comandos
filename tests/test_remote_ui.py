@@ -3375,10 +3375,10 @@ def test_operator_chat_stream_is_retired():
 
 
 def test_operator_generic_ui_actions_and_globals_exist():
-    for fn in ("opFavorite", "setPollSeconds", "setBrowserNotifications", "setLimitStyle", "nfDismiss",
+    for fn in ("opFavorite", "setPollSeconds", "setBrowserNotifications", "nfDismiss",
                "nfPin", "nfUnpin", "nfSnooze", "closeAllPanels", "swOpenWith",
                "nsOpenPrefilled", "openAnalyticsTab",
-               "compareSetDays", "setSplitLeft", "reloadDashboard", "focusVisibleTerm"):
+               "setSplitLeft", "reloadDashboard", "focusVisibleTerm"):
         assert f"window.{fn} = " in HTML, fn
     for gone in ("setTimeline", "selectSessionCard", "expandReply", "setOpChatHeight"):
         assert f"window.{gone} = " not in HTML, gone

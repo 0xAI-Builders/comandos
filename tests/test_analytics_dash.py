@@ -4,6 +4,7 @@ from pathlib import Path
 from test_usage_dash import load_dash_module
 
 SRC = Path("bin/cc-dash").read_text()
+HTML = Path("dash/index.html").read_text()
 
 
 def test_every_limits_read_saves_a_quota_snapshot():
@@ -63,3 +64,33 @@ def test_a_failing_snapshot_write_does_not_stop_the_limits_read(tmp_path, monkey
     dash._refresh_provider_limits()
     assert [r["id"] for r in dash._limits_cache["limits"]] == ["claude_weekly"]
     assert dash._limits_refreshing is False
+
+
+def test_usage_modal_is_the_approved_analytics():
+    start = HTML.index('<div id="usage"')
+    block = HTML[start:start + 300]
+    assert '<div class="an" id="an-root"></div>' in block
+    assert 'href="analytics.css' in HTML
+    assert HTML.index('src="analytics-render.js') < HTML.index('src="analytics.js')
+    assert "window.openAnalyticsTab = tab => openAnalytics(tab);" in HTML
+    assert "/analytics/week?offset=" in HTML
+
+
+def test_old_analytics_is_gone():
+    for gone in ("data-mpane=\"resumen\"", "data-mpane=\"guardia\"", "data-mpane=\"alertas\"", "data-mpane=\"reparto\"",
+                 "renderQuotaHero", "renderUsageLimits", "limitCardKit", "wireQuotaEditors", "loadGuard", "guardPoll",
+                 "renderLedger", "loadCompare", "renderCompare", "loadProvCompare", "renderProvCompare", "pcWire",
+                 "renderAlertConfig", "openRuleMenu", "renderAlertRules", "renderDedication", "compareSetDays",
+                 "setLimitStyle", "usage-refresh", "cc-guard-alert-key", "reparto.js", "reparto.css",
+                 "/usage/guard", "/usage/provider-compare", "/usage/analytics", "/usage/alert-rule", "/allocation/"):
+        assert gone not in HTML, gone
+    pomo = Path("dash/pomodoro.js").read_text()
+    assert "loadAnalytics" not in pomo and "/pomodoro/report" not in pomo
+    assert not Path("dash/reparto.js").exists() and not Path("dash/reparto.css").exists()
+
+
+def test_install_links_the_new_files():
+    install = Path("install.sh").read_text()
+    for name in ("analytics.js", "analytics-render.js", "analytics.css"):
+        assert f" {name}" in install
+    assert "reparto.js" not in install and "reparto.css" not in install

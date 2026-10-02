@@ -348,8 +348,7 @@
   html[data-only-panel="chains"] body.only-panel > .backdrop[data-mclose] > .modal.chain-only{width:100%!important;height:100%!important;border:0!important;border-radius:0!important;box-shadow:none!important}
   html[data-only-panel="appearance"] body.only-panel #settings .modal-panel{width:100%!important;max-width:none!important;max-height:none!important;border:0!important;border-radius:0!important;box-shadow:none!important}
   html:not([data-only-panel="usage"]) body.only-panel #usage{display:none!important}
-  html[data-only-panel="usage"] body.only-panel #usage{position:static!important;display:flex!important;background:var(--bg)!important;padding:0!important}
-  html[data-only-panel="usage"] body.only-panel #usage .modal-panel{width:100%!important;max-width:none!important;max-height:none!important;border:0!important;border-radius:0!important;box-shadow:none!important}
+  html[data-only-panel="usage"] body.only-panel #usage{position:static!important;display:flex!important;background:var(--bg)!important;padding:14px 16px!important}
   .sov-panel{max-width:760px}
   .sov-h{font-family:var(--mono);font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:var(--dim);margin:14px 0 8px;display:flex;align-items:center;gap:8px}
   .sov-h::after{content:"";flex:1;height:1px;background:var(--line)}
@@ -521,21 +520,6 @@
   .pp-bar small{font-family:var(--mono);font-size:10px;color:var(--faint)}
   button:focus-visible,[tabindex]:focus-visible,input:focus-visible{
     outline:2px solid var(--brand);outline-offset:2px;border-radius:6px}
-  #dedication{display:flex;flex-direction:column;gap:6px;margin-top:6px}
-  .ded-row{display:flex;align-items:center;gap:10px;font-family:var(--mono);font-size:11px}
-  .ded-row .dn{width:150px;flex:none;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
-    color:var(--text);cursor:default}
-  .ded-row .db{flex:1;height:14px;border-radius:7px;background:var(--panel2);overflow:hidden}
-  .ded-row .db span{display:block;height:100%;border-radius:7px;
-    background:linear-gradient(90deg,color-mix(in srgb,var(--brand) 55%,transparent),var(--brand))}
-  .ded-row .dm{width:88px;flex:none;text-align:right;color:var(--dim)}
-  .ded-week{margin-top:4px;font-family:var(--mono);font-size:10px;color:var(--faint)}
-  .uv-accts{display:flex;gap:6px;flex-wrap:wrap;grid-column:1/-1;margin-bottom:4px}
-  .uv-acct{font-family:var(--mono);font-size:10px;font-weight:700;padding:3px 10px;
-    border-radius:99px;border:1px solid var(--line2);background:none;color:var(--dim);cursor:pointer}
-  .uv-acct.on{color:var(--brand);border-color:var(--brand)}
-  .uv-acct-tag{font-size:10px;font-weight:700;border:1px solid var(--line2);
-    border-radius:99px;padding:1px 6px;color:var(--dim)}
   .tier-sym{font-family:var(--mono);font-size:10px;font-weight:700;margin-left:3px}
   .abadge[data-a="opencode"]{color:#FAB283;border-color:#FAB28355}
   .abadge[data-a="gemini"]{color:#7AA5FF;border-color:#7AA5FF55}
@@ -957,7 +941,6 @@
     font-family:var(--mono);font-size:13px;line-height:2}
   .empty code{color:var(--done)}
 
-
   /* ---------- drawers ---------- */
   .drawer{position:fixed;top:0;right:0;bottom:0;width:380px;max-width:94vw;z-index:20;
     background:var(--panel2);border-left:1px solid var(--line);padding:22px;
@@ -969,6 +952,8 @@
     display:none;align-items:flex-start;justify-content:center;
     padding:6vh 16px;overflow-y:auto;-webkit-user-select:none;user-select:none}
   .modal.open{display:flex}
+  #usage > .an{width:100%}
+  #usage{-webkit-user-select:text;user-select:text}
   /* El contenido de cada modal se acomoda por el ancho del MODAL, no de la ventana (1-oct): en el
      escritorio el modal ya mide la columna izquierda (el tablero solo ocupa esa columna) y en el
      remoto partido ahora también; con @media el remoto lo acomodaba como si tuviera toda la pantalla. */
@@ -1357,91 +1342,23 @@
 	  .theme-swatches{display:flex;gap:3px}.theme-swatches i{width:10px;height:28px;border-radius:4px;border:1px solid rgba(127,127,127,.35)}
 	  .theme-card .theme-check{color:var(--brand);opacity:0}.theme-card[aria-checked="true"] .theme-check{opacity:1}
 	  @container modal (max-width:520px){.theme-gallery{grid-template-columns:1fr}.mtabs{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));margin-inline:0}.mtab{justify-content:flex-start;min-width:0}}
-	  .usage-grid{display:grid;grid-template-columns:1fr;gap:8px}
-	  .usage-card{border:1px solid var(--line);border-radius:8px;background:var(--panel);
-	    padding:10px;min-width:0}
-	  .usage-window{border-left:3px solid var(--brand)}
-	  .usage-title{display:flex;align-items:center;gap:8px;font-family:var(--mono);
-	    font-size:13px;font-weight:800;text-transform:uppercase}
-	  .usage-title small{margin-left:auto;color:var(--faint);font-size:10px;font-weight:700}
-	  .usage-metric{font-family:var(--mono);font-size:20px;font-weight:800;margin-top:7px}
-	  .usage-sub{font-family:var(--mono);font-size:11px;color:var(--faint);margin-top:3px;
-	    overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-	  .usage-bar{height:6px;border-radius:6px;background:var(--line);overflow:hidden;margin-top:8px}
-	  .usage-bar span{display:block;height:100%;background:var(--brand);width:0}
-	  .usage-row{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px;
-	    align-items:start;padding:8px 0;border-bottom:1px solid var(--line);font-family:var(--mono)}
-	  .usage-row:last-child{border-bottom:0}
-	  .usage-row b{font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-	  .usage-row span{font-size:11px;color:var(--faint);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-	  .usage-row code{font-size:10px;color:var(--code)}
-	  .compare-controls{display:flex;align-items:end;gap:8px;flex-wrap:wrap;margin-bottom:10px}
-	  .compare-controls label{display:grid;gap:4px;min-width:130px;font:700 10px/1.2 var(--mono);letter-spacing:.1em;text-transform:uppercase;color:var(--faint)}
-	  .compare-controls select{min-width:0;background:var(--panel);color:var(--text);border:1px solid var(--line);border-radius:7px;padding:7px;font:11px var(--mono)}
-	  .compare-note{border-left:2px solid var(--brand);padding:7px 9px;background:var(--panel);color:var(--dim);font:11px/1.45 var(--mono)}
-	  .compare-stats{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:7px;margin:10px 0}
-	  .compare-stat{border:1px solid var(--line);border-radius:7px;padding:8px;background:var(--panel)}
-	  .compare-stat b{display:block;font:800 18px/1 var(--mono);font-variant-numeric:tabular-nums}
-	  .compare-stat span{display:block;margin-top:4px;color:var(--faint);font:10px var(--mono);text-transform:uppercase;letter-spacing:.08em}
-	  .sec-title{display:flex;align-items:center;gap:8px;margin:0 0 10px;font:800 13px var(--mono);letter-spacing:.04em;color:var(--text)}
 	  .mtab-pane.active ~ .mtab-pane.active{margin-top:22px;padding-top:18px;border-top:1px solid var(--line)}
-	  .guard-chart,.compare-latency{border:1px solid var(--line);border-radius:11px;background:var(--panel);padding:13px;margin:0 0 10px}
-	  .guard-chart svg{width:100%;height:auto;display:block}
 	  .gc-title{display:flex;align-items:center;gap:6px;font:700 10px var(--mono);color:var(--dim);text-transform:uppercase;letter-spacing:.08em;margin-bottom:8px}
 	  .gc-legend{margin-left:auto;display:flex;gap:12px;text-transform:none;letter-spacing:0}
 	  .gc-leg{display:inline-flex;align-items:center;gap:5px;font:600 10px var(--mono);color:var(--dim)}
 	  .gc-leg i{width:12px;height:3px;border-radius:2px}
-	  .guard-bar{display:block;height:4px;border-radius:3px;background:color-mix(in srgb,var(--line) 55%,transparent);margin-top:6px;overflow:hidden;max-width:340px}
-	  .guard-bar i{display:block;height:100%;border-radius:3px;background:var(--brand)}
-	  .lat-row{display:grid;grid-template-columns:minmax(120px,210px) minmax(0,1fr) auto;gap:11px;align-items:center;padding:6px 0;font:10px var(--mono)}
-	  .lat-lbl{color:var(--dim);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-	  .lat-track{position:relative;height:14px;border-radius:7px;background:color-mix(in srgb,var(--line) 45%,transparent)}
-	  .lat-range{position:absolute;top:5px;height:4px;border-radius:2px;background:color-mix(in srgb,var(--brand) 45%,transparent)}
-	  .lat-dot{position:absolute;top:3px;width:8px;height:8px;border-radius:50%;background:var(--brand);transform:translateX(-4px);box-shadow:0 0 0 2px var(--panel)}
-	  .lat-val{color:var(--text);font-weight:700;font-variant-numeric:tabular-nums}.lat-val small{color:var(--faint);font-weight:400}
 	  .pathlink{color:var(--code);text-decoration:none;border-bottom:1px dashed color-mix(in srgb,var(--code) 45%,transparent);cursor:pointer}
   .pathlink:hover{color:var(--brand);border-bottom-color:var(--brand)}
   .side-keys{display:flex;flex-wrap:wrap;gap:5px 10px;margin-top:14px;padding-top:10px;border-top:1px solid var(--line);font:600 10px var(--mono);color:var(--faint)}
   .side-keys kbd{font:700 10px var(--mono);color:var(--dim);background:var(--panel2);border:1px solid var(--line2);border-bottom-width:2px;border-radius:4px;padding:1px 5px}
   .sg-conf{flex:none;font:700 10px var(--mono);text-transform:uppercase;letter-spacing:.07em;border:1px solid var(--line2);border-radius:99px;padding:2px 7px;color:var(--faint)}
 	  .sg-conf.ok{color:var(--ok);border-color:color-mix(in srgb,var(--ok) 45%,var(--line))}
-	  .guard-row{display:grid;grid-template-columns:32px minmax(0,1fr) auto;gap:9px;align-items:center;padding:11px;border:1px solid var(--line);border-radius:9px;background:var(--panel);margin-top:8px}.guard-row.critical{border-color:var(--err)}.guard-row.warning{border-color:var(--warn)}.guard-ico{width:32px;height:32px;display:grid;place-items:center;border-radius:8px;background:var(--panel2)}.guard-row.critical .guard-ico{color:var(--err)}.guard-row.warning .guard-ico{color:var(--warn)}.guard-main b{display:block;font:800 11px var(--mono)}.guard-main span{display:block;color:var(--dim);font:10px/1.4 var(--sans)}.guard-rate{text-align:right;font:800 10px var(--mono);color:var(--code)}
-	  .compare-insights{display:grid;gap:7px;margin:0 0 10px}.insight-card{display:grid;grid-template-columns:28px minmax(0,1fr);gap:8px;align-items:start;padding:9px;border:1px solid var(--line);border-radius:8px;background:var(--panel)}
-	  .insight-card .ins-ico{width:28px;height:28px;display:grid;place-items:center;border-radius:7px;color:var(--brand);background:color-mix(in srgb,var(--brand) 12%,transparent)}.insight-card b{display:block;font:800 11px var(--mono)}.insight-card span{display:block;color:var(--dim);font:10px/1.4 var(--sans);margin-top:2px}
 	  .outcome-stack{display:flex;height:8px;border-radius:99px;overflow:hidden;background:var(--line);margin-top:7px}.outcome-stack i{min-width:2px}.outcome-stack .solved{background:var(--ok)}.outcome-stack .partial{background:var(--warn)}.outcome-stack .failed{background:var(--err)}
-	  .opt-plans{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin:10px 0}.opt-plan{padding:10px;text-align:left;border:1px solid var(--line);border-radius:9px;background:var(--panel);color:var(--text);cursor:pointer}.opt-plan.on{border-color:var(--brand);box-shadow:0 0 0 2px color-mix(in srgb,var(--brand) 18%,transparent)}.opt-plan b{display:flex;align-items:center;gap:6px;font:800 11px var(--mono)}.opt-plan small{display:block;margin-top:5px;color:var(--dim);font:10px/1.35 var(--sans)}
-	  .opt-session{display:grid;grid-template-columns:auto auto minmax(0,1fr) auto;gap:11px;align-items:center;padding:11px 13px;margin-top:8px;border:1px solid var(--line);border-radius:11px;background:var(--panel);cursor:pointer;transition:border-color .12s,background .12s;font:11px var(--mono)}
-	  .opt-session:hover{border-color:var(--line2)}
-	  .opt-session.on{border-color:var(--brand);background:color-mix(in srgb,var(--brand) 7%,var(--panel));box-shadow:0 0 0 2px color-mix(in srgb,var(--brand) 18%,transparent)}
-	  .opt-session.disabled{opacity:.45;cursor:not-allowed}
-	  .opt-session input{position:absolute;opacity:0;pointer-events:none}
-	  .opt-check{width:19px;height:19px;flex:none;border:2px solid var(--line2);border-radius:6px;display:grid;place-items:center;color:transparent;transition:background .12s}
-	  .opt-session.on .opt-check{background:var(--brand);border-color:var(--brand);color:var(--on-brand)}
-	  .opt-main{min-width:0}.opt-main b{display:block;font-weight:800;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.opt-main span{display:block;color:var(--dim);font-size:10px;margin-top:2px}
-	  .opt-diff{display:flex;align-items:center;gap:6px;flex:none;font:700 10px var(--mono)}
-	  .opt-diff .from{color:var(--faint);text-decoration:line-through}
-	  .opt-diff .arrow{display:inline-flex;transform:rotate(-90deg);color:var(--dim)}
-	  .opt-diff .to{color:var(--ok);background:color-mix(in srgb,var(--ok) 10%,transparent);border:1px solid color-mix(in srgb,var(--ok) 40%,var(--line));border-radius:99px;padding:3px 9px}
-	  .opt-actions{position:sticky;bottom:0;display:flex;gap:8px;align-items:center;justify-content:flex-end;padding:12px 0;background:var(--panel)}
 	  #opt-all{border-style:dashed;color:var(--dim)}
 	  #opt-apply{background:var(--brand);color:var(--on-brand);border-color:var(--brand);font-weight:800;min-height:38px;padding:8px 16px}
 	  #opt-apply:disabled{opacity:.45;cursor:not-allowed}
-	  @media(max-width:560px){.opt-plans{grid-template-columns:1fr}.opt-actions{flex-direction:column}.opt-actions button{width:100%}}
-	  .compare-table-wrap{max-width:100%;overflow-x:auto;border:1px solid var(--line);border-radius:8px}
-	  .compare-table{width:100%;min-width:630px;border-collapse:collapse;font:11px var(--mono);font-variant-numeric:tabular-nums}
-	  .compare-table th,.compare-table td{padding:8px;text-align:left;border-bottom:1px solid var(--line);white-space:nowrap}
-	  .compare-table th{color:var(--faint);font-size:10px;letter-spacing:.08em;text-transform:uppercase;background:var(--panel)}
-	  .compare-table tr:last-child td{border-bottom:0}.compare-table .cfg-main{font-weight:800;color:var(--text)}
-	  .compare-table .cfg-sub{display:block;color:var(--faint);font-size:10px;margin-top:2px}
 	  .evidence{display:inline-flex;border:1px solid var(--line);border-radius:999px;padding:2px 6px;color:var(--faint);font-size:10px}
 	  .evidence.ok{color:var(--done);border-color:color-mix(in srgb,var(--done) 45%,var(--line))}
-	  .compare-rating-title{margin-top:16px!important}.rating-row{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px;align-items:center;padding:8px 0;border-bottom:1px solid var(--line)}
-	  .rating-main{min-width:0;font:10px var(--mono)}.rating-main b{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.rating-main span{color:var(--faint)}
-	  .rating-task{display:block;margin-top:5px;max-width:170px;background:var(--panel2);color:var(--dim);border:1px solid var(--line);border-radius:6px;padding:4px 6px;font:10px var(--mono)}
-	  .rating-actions{display:flex;gap:4px}.rating-actions button{padding:5px 7px;font-size:10px}.rating-actions button.on{border-color:var(--brand);color:var(--brand)}
-	  @container modal (max-width:520px){.compare-stats{grid-template-columns:1fr}.rating-row{grid-template-columns:1fr}.rating-actions{justify-content:flex-start}}
-	  .usage-pane-main{min-width:0}
-	  .pane-model-controls{display:flex;align-items:center}
 	  /* Menu de modelo propio: el <select> nativo no abre en el WebKitGTK viejo
 	     de la app. Un boton con el modelo ACTUAL + menu con nombre e intencion. */
 	  .mdl-wrap{position:relative;display:inline-flex}
@@ -1474,223 +1391,6 @@
 	  #mdl-menu .mdl-opt b{font-family:var(--mono);font-size:11px;color:var(--text)}
 	  #mdl-menu .mdl-opt span{font-size:10px;color:var(--faint);white-space:nowrap;
 	    overflow:hidden;text-overflow:ellipsis}
-	  .usage-window.ok .usage-bar span{background:var(--done)}
-	  .usage-window.warn{border-left-color:var(--waiting)}
-	  .usage-window.warn .usage-bar span{background:var(--waiting)}
-	  .usage-window.danger{border-left-color:#FF5C68}
-	  .usage-window.danger .usage-bar span{background:#FF5C68}
-	  .usage-window .usage-title small{font-size:10px}
-	  /* Switcher de estilo de cards de limites (barras / anillos / compacta) */
-	  .uv-styles{display:inline-flex;gap:2px;padding:2px;margin:0 0 7px;
-	    border:1px solid var(--line);border-radius:8px;background:var(--panel)}
-	  .uv-style{display:inline-flex;align-items:center;justify-content:center;
-	    width:26px;height:22px;border:none;border-radius:6px;background:none;
-	    color:var(--faint);cursor:pointer;transition:background .12s,color .12s,transform .08s}
-	  .uv-style:hover{color:var(--text);background:var(--line)}
-	  .uv-style:active{transform:scale(.92)}
-	  .uv-style.on{color:var(--on-brand,#fff);background:var(--brand)}
-	  .usage-window{transition:box-shadow .15s,transform .08s}
-	  .usage-window:hover{box-shadow:0 3px 14px rgba(0,0,0,.22)}
-	  .usage-window:active{transform:scale(.99)}
-	  .usage-window.measured{border-left-style:dashed;border-left-color:var(--faint)}
-	  .usage-metric small{font-size:10px;color:var(--faint);font-weight:400}
-	  /* Cards de limites, rediseño real: grid 2-col, acento de MARCA por
-	     proveedor (identidad), color SEMANTICO solo en el fill (estado),
-	     watermark del logo, barra segmentada, countdown relativo. */
-	  #usage-limits.usage-grid{grid-template-columns:repeat(auto-fit,minmax(290px,1fr));gap:9px}
-	  #usage-limits .uv-styles,#usage-limits .uv-accts,#usage-limits > .desc{grid-column:1/-1}
-	  .uw{position:relative;overflow:hidden;display:flex;flex-direction:column;gap:8px;
-	    padding:13px 14px 12px;border-radius:12px;border-left:1px solid var(--line);
-	    box-shadow:0 1px 2px rgba(0,0,0,.18)}
-	  .uw::before{content:"";position:absolute;inset:0 0 auto 0;height:3px;
-	    background:linear-gradient(90deg,var(--pv,var(--brand)),transparent 70%)}
-	  .uw.measured::before{background:repeating-linear-gradient(90deg,var(--pv,var(--faint)) 0 6px,transparent 6px 12px)}
-	  .uw:hover{box-shadow:0 6px 22px rgba(0,0,0,.3);transform:translateY(-1px)}
-	  .uw:active{transform:scale(.985)}
-	  .pv-claude{--pv:#A78BFA}.pv-codex{--pv:#2DD4BF}.pv-grok{--pv:#FB923C}
-	  .uw .uw-mark{position:absolute;right:-6px;bottom:-10px;opacity:.07;color:var(--pv,var(--text));
-	    pointer-events:none}
-	  .uw .uw-mark svg{width:74px;height:74px}
-	  .uw-head{display:flex;align-items:center;justify-content:space-between;gap:8px}
-	  .uw-id{display:inline-flex;align-items:center;gap:6px;min-width:0;font-size:11px;
-	    letter-spacing:.4px;color:var(--text)}
-	  .uw-id .pmark{color:var(--pv,var(--text))}
-	  .uw-id b{font-weight:700}
-	  .uw-win{color:var(--faint);font-size:11px;letter-spacing:0;white-space:nowrap;
-	    overflow:hidden;text-overflow:ellipsis}
-	  .uw-conf{font-size:10px;text-transform:uppercase;letter-spacing:.6px;color:var(--faint);
-	    border:1px solid var(--line);border-radius:5px;padding:2px 6px;white-space:nowrap}
-	  .uw-body{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap}
-	  .uw-big{font-family:var(--mono);font-size:26px;font-weight:700;color:var(--text);line-height:1;
-	    letter-spacing:-.5px}
-	  .uw-big small{font-size:11px;color:var(--faint);font-weight:400;letter-spacing:0}
-	  .uw-remain{font-size:11px;color:var(--faint)}
-	  .uw-remain b{font-family:var(--mono);font-size:13px;color:var(--done)}
-	  .uw-remain.warn b{color:var(--waiting)}
-	  .uw-remain.danger b{color:#FF5C68}
-	  .uw-reset{display:inline-flex;align-items:center;gap:4px;font-size:11px;color:var(--faint);
-	    border:1px solid var(--line);border-radius:999px;padding:2px 8px}
-	  .uw-spacer{flex:1}
-	  .uw-track{position:relative;height:9px;border-radius:5px;background:var(--line);overflow:hidden}
-	  .uw-track span{display:block;height:100%;border-radius:5px;background:var(--done);
-	    transition:width .4s ease}
-	  .uw-track::after{content:"";position:absolute;inset:0;pointer-events:none;
-	    background:repeating-linear-gradient(90deg,transparent 0 calc(10% - 2px),var(--bg) calc(10% - 2px) 10%);opacity:.5}
-	  .uw.warn .uw-track span{background:var(--waiting)}
-	  .uw.danger .uw-track span{background:linear-gradient(90deg,#FF5C68,#FF8A5C)}
-	  .uw.danger .uw-big{color:#FF5C68}
-	  .uw-track i{position:absolute;top:0;bottom:0;width:2px;background:var(--bg);opacity:.9}
-	  .uw-daily{display:flex;align-items:flex-end;gap:8px}
-	  .uw-daily svg{display:block}
-	  .uw-daily span{font-size:10px;color:var(--faint);text-transform:uppercase;letter-spacing:.5px}
-	  .uw-quota{display:inline-flex;align-items:center;gap:4px;font-size:10px;
-	    border:1px dashed var(--line);border-radius:6px;background:none;color:var(--faint);
-	    padding:3px 7px;cursor:pointer;transition:color .12s,border-color .12s,transform .08s}
-	  .uw-quota:hover{color:var(--text);border-color:var(--faint)}
-	  .uw-quota:active{transform:scale(.95)}
-	  .uw-quota.set{border-style:solid;color:var(--text)}
-	  .uw-quota-edit{display:inline-flex;align-items:center;gap:4px}
-	  .uw-quota-edit input{width:150px;font-family:var(--mono);font-size:11px;color:var(--text);
-	    background:var(--bg);border:1px solid var(--brand);border-radius:6px;padding:3px 7px}
-	  .uw-quota-edit button{display:inline-flex;align-items:center;justify-content:center;
-	    width:22px;height:22px;border:1px solid var(--line);border-radius:6px;background:none;
-	    color:var(--faint);cursor:pointer}
-	  .uw-quota-edit button:hover{color:var(--text);border-color:var(--faint)}
-	  /* Comparativa por proveedor: bloques de gráfico */
-	  .pc-block{border:1px solid var(--line);border-radius:10px;background:var(--panel);
-	    padding:11px 12px;margin-bottom:9px}
-	  .pc-title{display:flex;align-items:center;gap:6px;font-size:11px;font-weight:700;
-	    letter-spacing:.4px;text-transform:uppercase;color:var(--text);margin-bottom:8px;flex-wrap:wrap}
-	  .pc-title .pc-est-total{margin-left:auto;font-family:var(--mono);font-size:15px;color:var(--done)}
-	  .pc-note{font-size:10px;color:var(--faint);margin-top:6px}
-	  .pc-title .pc-note{margin:0;text-transform:none;font-weight:400}
-	  .pc-legend{margin-left:auto;display:inline-flex;gap:10px;font-weight:400;text-transform:none}
-	  .pc-key{display:inline-flex;align-items:center;gap:4px;font-size:10px;color:var(--faint)}
-	  .pc-key i{width:8px;height:8px;border-radius:2px}
-	  .pc-svg{width:100%;height:auto;display:block}
-	  .pc-tick{fill:var(--faint);font-size:10px;font-family:var(--mono)}
-	  .pc-lbl{font-size:10px;font-weight:700}
-	  .pc-comp-row,.pc-est-row{display:flex;align-items:center;gap:8px;margin-bottom:6px}
-	  .pc-comp-name{display:inline-flex;align-items:center;gap:4px;font-size:11px;font-weight:700;
-	    width:74px;flex:none}
-	  .pc-comp-bar{flex:1;display:flex;gap:2px;height:16px;border-radius:4px;overflow:hidden}
-	  .pc-seg{height:100%;display:flex;align-items:center;justify-content:center;
-	    font-size:10px;font-family:var(--mono);color:var(--bg);min-width:0;border-radius:2px}
-	  .pc-comp-tot{font-size:10px;color:var(--faint);font-family:var(--mono);flex:none;width:118px;text-align:right}
-	  .pc-model-row{display:flex;align-items:center;gap:8px;margin-bottom:4px}
-	  .pc-model-name{display:inline-flex;align-items:center;gap:4px;font-size:10px;
-	    font-family:var(--mono);color:var(--text);width:150px;flex:none;white-space:nowrap;
-	    overflow:hidden;text-overflow:ellipsis}
-	  .pc-model-bar{flex:1;height:9px;border-radius:3px;background:var(--line);overflow:hidden}
-	  .pc-model-bar i{display:block;height:100%;border-radius:3px}
-	  .pc-model-val{font-size:10px;font-family:var(--mono);color:var(--text);width:64px;
-	    text-align:right;flex:none}
-	  .pc-model-p50{font-size:10px;color:var(--faint);font-family:var(--mono);width:56px;flex:none}
-	  .pc-est-val{font-size:13px;font-weight:700;font-family:var(--mono);color:var(--text);
-	    width:78px;text-align:right;flex:none}
-	  .pc-est-cov{font-size:10px;color:var(--faint);border:1px solid var(--line);border-radius:999px;
-	    padding:1px 6px;flex:none}
-	  .pc-est-cov.low{color:var(--waiting);border-color:var(--waiting)}
-	  /* ---- HERO del Resumen: ¿cuanto me queda? ---- */
-	  #quota-hero{margin-bottom:14px}
-	  .qh-title{display:flex;align-items:center;gap:6px;font-size:13px;font-weight:800;
-	    letter-spacing:.4px;text-transform:uppercase;color:var(--text);margin-bottom:8px}
-	  .qh-row{display:grid;grid-template-columns:150px 128px 1fr 52px auto;gap:12px;
-	    align-items:center;padding:9px 12px;border:1px solid var(--line);border-radius:10px;
-	    background:var(--panel);margin-bottom:6px}
-	  .qh-row.danger{border-color:color-mix(in srgb,var(--err) 45%,var(--line))}
-	  .qh-id{display:inline-flex;align-items:center;gap:6px;font-size:11px;color:var(--text);min-width:0}
-	  .qh-acct{font-size:10px;color:var(--faint);border:1px solid var(--line);border-radius:5px;padding:0 5px}
-	  .qh-tag{font-size:10px;color:var(--brand);border:1px solid color-mix(in srgb,var(--brand) 50%,transparent);border-radius:5px;padding:0 5px;text-transform:uppercase}
-	  .qh-left{display:flex;flex-direction:column;line-height:1.15}
-	  .qh-left b{font-family:var(--mono);font-size:17px;color:var(--text)}
-	  .qh-left small{font-size:10px;color:var(--faint)}
-	  .qh-line{position:relative;height:8px;border-radius:4px;background:var(--line);overflow:hidden}
-	  .qh-past{position:absolute;left:0;top:0;bottom:0;background:color-mix(in srgb,var(--text) 28%,transparent)}
-	  .qh-dry{position:absolute;top:0;bottom:0;background:color-mix(in srgb,var(--err) 55%,transparent)}
-	  .qh-now{position:absolute;top:-2px;bottom:-2px;width:2.5px;background:var(--text);border-radius:2px}
-	  .qh-pct{font-family:var(--mono);font-size:13px;font-weight:700;color:var(--text);text-align:right}
-	  .qh-risk{display:inline-flex;align-items:center;gap:4px;font-size:11px;font-weight:700;
-	    color:var(--err);white-space:nowrap}
-	  .qh-okchip{display:inline-flex;align-items:center;gap:4px;font-size:11px;color:var(--ok);white-space:nowrap}
-	  .qh-guard{display:flex;align-items:center;gap:7px;width:100%;margin-top:4px;padding:8px 12px;
-	    border:1px dashed var(--line);border-radius:10px;background:none;color:var(--dim);
-	    font-size:11px;cursor:pointer;text-align:left}
-	  .qh-guard:hover{border-color:var(--faint);color:var(--text)}
-	  .qh-guard b{color:var(--text)}
-	  .qh-gdot{width:8px;height:8px;border-radius:50%;flex:none}
-	  .qh-gdot.ok{background:var(--ok)}.qh-gdot.warn{background:var(--warn)}.qh-gdot.danger{background:var(--err)}
-	  .qh-go{margin-left:auto;color:var(--faint)}
-  .qh-hint{margin-left:auto;font-size:10px;font-weight:400;text-transform:none;color:var(--faint)}
-  .qh-group{border:1px solid var(--line);border-radius:10px;background:var(--panel);
-    padding:8px 12px 6px;margin-bottom:7px}
-  .qh-ghead{display:flex;align-items:center;gap:6px;font-size:13px;color:var(--text);
-    margin-bottom:6px}
-  .qh-acct.qh-main{opacity:.65}
-  .qh-sub{display:grid;grid-template-columns:168px 1fr 82px 96px 20px;gap:10px;
-    align-items:center;padding:4px 0}
-  .qh-win{font-size:11px;color:var(--dim);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-  /* UNA barra, UN color: lo que queda. Verde=bien, ambar=poco, rojo=riesgo */
-  .qh-bar{position:relative;height:9px;border-radius:5px;background:var(--line);overflow:hidden}
-  .qh-bar i{display:block;height:100%;border-radius:5px;background:var(--ok)}
-  .qh-sub.warn .qh-bar i{background:var(--warn)}
-  .qh-sub.danger .qh-bar i{background:var(--err)}
-  .qh-bar.nodata{background:repeating-linear-gradient(90deg,var(--line) 0 6px,transparent 6px 12px)}
-  .qh-queda{font-size:11px;color:var(--dim);white-space:nowrap}
-  .qh-queda b{font-family:var(--mono);font-size:13px;color:var(--text)}
-  .qh-reset{font-size:11px;color:var(--faint);white-space:nowrap;line-height:1.3}
-  .qh-reset em{display:block;font-style:normal;color:var(--dim);font-weight:600;font-size:10px}
-  .qh-reset em::before{content:none}
-  .qh-gsum{margin-left:auto;font-size:11px;color:var(--dim);white-space:nowrap}
-  .qh-gsum b{font-family:var(--mono);font-size:13px;color:var(--text);margin:0 3px}
-  .qh-gsum i{font-style:normal;color:var(--faint);font-size:10px}
-  .qh-gwhen{display:inline-flex;align-items:center;gap:4px;font-size:10px;color:var(--faint);white-space:nowrap}
-  /* La fecha exacta del reset, dentro de la misma pildora que el "en 11 h". */
-  .uw-reset em{font-style:normal;font-weight:600;color:var(--dim);font-size:10px}
-  .uw-reset em::before{content:"·";margin-right:4px;color:var(--line2);font-weight:400}
-  /* Estrecho: el panel del tablero mide ~600 px porque comparte ventana con las
-     terminales, asi que esta regla es la NORMAL, no la excepcion. Antes ocultaba
-     .qh-reset y .qh-gwhen, que son justo donde vive la fecha de renovacion: se
-     veia "se agotaria" y nunca "se renueva". Se bajan de linea en vez de
-     esconderse; lo unico prescindible es el tic de "todo ok". */
-  @container modal (max-width:760px){
-    .qh-sub{grid-template-columns:110px 1fr 70px}
-    .qh-okchip{display:none}
-    .qh-reset{grid-column:1 / -1;white-space:normal;text-align:right}
-    .qh-reset em{display:inline}
-    .qh-reset em::before{content:"·";margin:0 4px;color:var(--line2)}
-    .qh-ghead{flex-wrap:wrap}
-    .qh-gwhen{width:100%;margin-top:2px}}
-  .qh-item{margin-bottom:6px}
-  .qh-item .qh-row{width:100%;cursor:pointer;text-align:left;font:inherit;color:inherit;margin-bottom:0}
-  .qh-chev{color:var(--faint);transition:transform .15s;display:inline-flex}
-  .qh-item.open .qh-chev{transform:rotate(180deg)}
-  .qh-detail{border:1px solid var(--line);border-top:none;border-radius:0 0 10px 10px;
-    padding:4px;background:color-mix(in srgb,var(--panel) 60%,transparent)}
-  .qh-detail .usage-card{border:none;box-shadow:none;background:none}
-  .qh-item.open .qh-row{border-radius:10px 10px 0 0}
-  .cmp-verdicts{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:8px;margin-bottom:12px}
-  .cmp-verdict{display:flex;gap:9px;align-items:flex-start;padding:10px 12px;
-    border:1px solid var(--line);border-radius:10px;background:var(--panel)}
-  .cmp-verdict.accent{border-color:color-mix(in srgb,var(--brand) 45%,var(--line))}
-  .cmp-verdict svg{color:var(--brand);flex:none;margin-top:2px}
-  .cmp-verdict b{display:block;font-size:11px;text-transform:uppercase;letter-spacing:.4px;color:var(--faint)}
-  .cmp-verdict span{display:block;font-size:13px;color:var(--text);font-weight:600;margin:2px 0}
-  .cmp-verdict small{font-size:11px;color:var(--faint)}
-  .lat-range.accent{background:color-mix(in srgb,var(--brand) 45%,transparent)}
-  .lat-dot.accent{background:var(--brand)}
-  .cmp-tablewrap{margin-top:10px}
-  .cmp-tablewrap summary{cursor:pointer;font-size:11px;color:var(--dim);padding:8px 10px;
-    border:1px dashed var(--line);border-radius:9px;user-select:none}
-  .cmp-tablewrap summary:hover{color:var(--text);border-color:var(--faint)}
-  .cmp-tablewrap[open] summary{margin-bottom:8px}
-	  @container modal (max-width:760px){.qh-row{grid-template-columns:1fr auto;grid-auto-rows:auto}.qh-line{grid-column:1/-1}}
-	  /* ---- guardia humana ---- */
-	  #guard-summary{display:block}
-  .guard-phrase{display:flex;align-items:center;gap:7px;flex-wrap:wrap;font-size:13px;color:var(--dim);
-	    padding:9px 12px;border:1px solid var(--line);border-radius:10px;background:var(--panel);margin-bottom:8px}
-	  .guard-phrase b{color:var(--text)}
-	  .guard-detail{font-size:10px;color:var(--faint)}
 	  .gc-sub{margin-left:auto;font-size:10px;font-weight:400;text-transform:none;color:var(--faint)}
 	  .gc-svg{width:100%;height:auto;display:block}
 	  .gc-note{display:flex;align-items:center;gap:6px;font-size:11px;color:var(--text);
@@ -1698,63 +1398,13 @@
 	  .gc-note.danger{border-left-color:var(--err)}
 	  .gc-note.danger b{color:var(--err)}
 	  .gc-note.ok{border-left-color:var(--ok);color:var(--dim)}
-	  /* ---- cards de limites mas chicas ---- */
-	  #usage-limits[hidden]{display:none!important}
-  #usage-limits.usage-grid{grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:7px}
-	  .uw{padding:9px 11px 8px;gap:6px}
-	  .uw-big{font-size:19px}
-	  .uw .uw-mark svg{width:52px;height:52px}
-	  /* Insight: interpretacion + recomendacion junto a cada metrica */
-	  .uw-insight,.pc-insight{display:flex;align-items:flex-start;gap:6px;font-size:11px;
-	    line-height:1.45;color:var(--text);border-left:2px solid var(--line);
-	    padding:5px 8px;border-radius:0 6px 6px 0;background:color-mix(in srgb,var(--line) 26%,transparent)}
-	  .uw-insight svg,.pc-insight svg{flex:none;margin-top:1.5px}
-	  .uw-insight.ok,.pc-insight.ok{border-left-color:var(--done)}
-	  .uw-insight.ok svg,.pc-insight.ok svg{color:var(--done)}
-	  .uw-insight.warn,.pc-insight.warn{border-left-color:var(--waiting)}
-	  .uw-insight.warn svg,.pc-insight.warn svg{color:var(--waiting)}
-	  .uw-insight.danger,.pc-insight.danger{border-left-color:#FF5C68}
-	  .uw-insight.danger svg,.pc-insight.danger svg{color:#FF5C68}
-	  .pc-insight{margin-top:8px}
-	  .pc-insight b{font-family:var(--mono)}
-	  .pc-act{display:inline-flex;align-items:center;gap:4px;margin-left:auto;flex:none;
-	    font-size:10px;font-weight:600;border:1px solid var(--line);border-radius:6px;
-	    background:var(--panel);color:var(--text);padding:3px 8px;cursor:pointer;
-	    transition:border-color .12s,transform .08s;white-space:nowrap;align-self:center}
-	  .pc-act:hover{border-color:var(--brand)}
-	  .pc-act:active{transform:scale(.94)}
-	  .pc-tblwrap{overflow-x:auto}
-	  .pc-tbl{width:100%;border-collapse:collapse;font-size:11px;font-family:var(--mono)}
-	  .pc-tbl th{text-align:right;padding:4px 8px;color:var(--faint);font-size:10px;
-	    text-transform:uppercase;letter-spacing:.4px;cursor:pointer;white-space:nowrap;
-	    border-bottom:1px solid var(--line);user-select:none}
-	  .pc-tbl th:first-child{text-align:left}
-	  .pc-tbl th:hover,.pc-tbl th.on{color:var(--text)}
-	  .pc-tbl td{text-align:right;padding:4px 8px;color:var(--text);white-space:nowrap;
-	    border-bottom:1px solid color-mix(in srgb,var(--line) 45%,transparent)}
-	  .pc-tbl td.pcm-model{text-align:left;font-weight:600}
-	  .pc-tbl tbody tr:hover{background:color-mix(in srgb,var(--line) 30%,transparent)}
-	  .pc-roi-sub,.pc-roi-val{font-size:11px;color:var(--faint);flex:none}
-	  .pc-roi-val{color:var(--text)}
-	  .pc-roi-x{font-family:var(--mono);font-size:11px;font-weight:700;color:var(--text);
-	    border:1px solid var(--line);border-radius:999px;padding:2px 8px;flex:none}
-	  .pc-roi-x.ok{color:var(--done);border-color:var(--done)}
-	  .pc-roi-x.low{color:#FF5C68;border-color:#FF5C68}
-	  .pc-est-row [data-sub-provider],.pc-est-row .uw-quota-edit{margin-left:auto}
-	  .pc-rate{width:64px;font-family:var(--mono);font-size:10px;background:var(--bg);
-	    color:var(--text);border:1px solid var(--line);border-radius:5px;padding:2px 5px}
-	  .uw-quota-edit select{font-size:10px;background:var(--bg);color:var(--text);
-	    border:1px solid var(--line);border-radius:5px;padding:2px 4px}
-	  /* Estilo anillos: gauge SVG + cuerpo a la derecha */
-	  .usage-window.lst-rings{flex-direction:row;align-items:center;gap:12px}
+	  
 	  .uring{flex:none}
 	  .uring-txt{fill:var(--text);font-family:var(--mono);font-size:13px;font-weight:600}
 	  .uring-body{min-width:0;display:flex;flex-direction:column;gap:2px}
 	  .uring-label{font-size:11px;color:var(--text);font-weight:600}
 	  .uring-acts{display:flex;gap:6px;margin-top:2px}
-	  /* Estilo compacto: una fila por ventana */
-	  .usage-window.lst-compact{grid-column:1/-1;display:flex;align-items:center;gap:8px;border-left:3px solid var(--pv,var(--line));
-	    padding:6px 10px;margin-bottom:5px}
+	  
 	  .lst-compact .uc-mark{flex:none;display:inline-flex}
 	  .lst-compact .uc-name{font-size:11px;color:var(--text);white-space:nowrap;
 	    overflow:hidden;text-overflow:ellipsis;min-width:0}
@@ -1765,51 +1415,6 @@
 	  .lst-compact.danger .uc-bar i{background:#FF5C68}
 	  .lst-compact .uc-val{font-family:var(--mono);font-size:13px;font-weight:600;
 	    color:var(--text);flex:none}
-	  /* Barras proporcionales de proveedores/proyectos + panes operables */
-	  .usage-viz{padding:9px 10px;border:1px solid var(--line);border-radius:8px;
-	    background:var(--panel);margin-bottom:7px}
-	  .uv-top{display:flex;align-items:baseline;gap:8px;margin-bottom:5px}
-	  .uv-top b{font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-	  .uv-top span{margin-left:auto;flex:none;font-family:var(--mono);font-size:10px;color:var(--faint)}
-	  .uv-pane{display:flex;align-items:center;gap:8px;margin-top:6px;padding:6px 7px;
-	    border-radius:7px;cursor:pointer;border:1px solid transparent}
-	  .uv-pane:hover{background:var(--panel2);border-color:var(--line)}
-	  .uv-dot{flex:none;width:8px;height:8px;border-radius:50%;background:var(--brand)}
-	  .uv-dot[data-a="codex"]{background:#19C39C}
-	  .uv-dot[data-a="grok"]{background:#F2C94C}
-	  .uv-dot[data-a="opencode"]{background:#FAB283}
-	  .uv-dot[data-a="gemini"]{background:#7AA5FF}
-	  .uv-dot[data-a="agy"]{background:#B49CFF}
-	  .uv-main{flex:1;min-width:0;display:flex;flex-direction:column;gap:1px}
-	  .uv-main b{font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-	  .uv-info{font-family:var(--mono);font-size:10px;color:var(--faint);
-	    overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-	  #alert-config{display:flex;gap:6px;align-items:center;flex-wrap:wrap}
-	  /* Boton de alerta EXPLICITO: "🔔 alerta" configura, "🔔 100M"/"🔔 80%"
-	     muestra la regla activa */
-	  .uv-bell{flex:none;display:inline-flex;align-items:center;gap:3px;cursor:pointer;
-	    font-family:var(--mono);font-size:10px;font-weight:700;color:var(--faint);
-	    border:1px solid var(--line);border-radius:12px;padding:2px 8px;background:none;
-	    white-space:nowrap}
-	  .uv-bell:hover{color:var(--text);border-color:var(--brand)}
-	  .uv-bell.on{color:var(--waiting);border-color:color-mix(in srgb,var(--waiting) 45%,var(--line))}
-	  .usage-metric .uv-bell{float:right;margin-top:4px}
-	  .rule-row{display:grid;grid-template-columns:auto 1fr auto;gap:4px 10px;align-items:center;
-	    padding:7px 10px;border:1px solid var(--line);border-radius:8px;background:var(--panel);
-	    margin-bottom:6px}
-	  .rule-row b{font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-	  .rule-row > span{font-family:var(--mono);font-size:10px;color:var(--faint);text-align:right}
-	  .rule-row .usage-bar{grid-column:1 / 3;margin-top:0}
-	  .rule-row.over{border-left:3px solid var(--waiting)}
-	  .rule-row.over .usage-bar span{background:var(--waiting)}
-	  .rule-del{border:0;background:none;color:var(--faint);font-size:14px;cursor:pointer;
-	    grid-row:1 / 3;align-self:center}
-	  .rule-del:hover{color:#FF5C68}
-	  .alert-th.on{color:var(--done);border-color:color-mix(in srgb,var(--done) 45%,var(--line))}
-	  .usage-alert small{margin-left:8px;color:var(--faint);font-family:var(--mono);font-size:10px}
-	  .usage-alert.danger{border-left-color:#FF5C68}
-	  .usage-alert{border-left:3px solid var(--waiting);padding:7px 9px;background:var(--panel);
-	    border-radius:6px;font-size:11px;color:var(--dim);margin-bottom:7px}
 	  .usage-chip{flex:none;font-family:var(--mono);font-size:10px;color:var(--code);
 	    border:1px solid color-mix(in srgb,var(--code) 35%,var(--line));border-radius:5px;
 	    padding:2px 6px;max-width:240px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
@@ -1897,7 +1502,7 @@ html[data-native-side-term] #command-sidebar .sec-cmds{flex:1 1 auto!important}
 </style>
 <link rel="stylesheet" href="/workspace.css?v=barra5">
 <link rel="stylesheet" href="/buttons.css?v=2">
-<link rel="stylesheet" href="/reparto.css?v=fuentesD">
+<link rel="stylesheet" href="analytics.css?v=an1">
 <script src="/session-config.js?v=7f3232b0a624"></script>
 <script src="/workspace-layout.js"></script>
 <script src="/workspace-dock.js?v=bandejas2"></script>
@@ -2202,102 +1807,8 @@ html[data-native-side-term] #command-sidebar .sec-cmds{flex:1 1 auto!important}
  </div>
 </div>
 
-<div id="usage" class="modal" aria-label="Uso" role="dialog" aria-modal="true">
- <div class="modal-panel" style="max-width:760px">
-  <div class="modal-hdr">
-    <button type="button" id="usage-refresh" aria-label="actualizar" title="Actualizar uso">
-      <span data-icon="refresh"></span>
-    </button>
-    <button type="button" class="modal-close" data-close="usage" aria-label="cerrar">
-      <span data-icon="close"></span>
-    </button>
-  </div>
-  <h3><span data-icon="database" data-size="16"></span> Analytics</h3>
-  <nav class="mtabs" role="tablist" aria-label="Secciones de analytics">
-    <button class="mtab active" data-mtab="resumen" role="tab" title="Cuota, riesgo de desborde y alertas en una sola vista"><span data-icon="lock" data-size="13"></span> Resumen</button>
-    <button class="mtab" data-mtab="comparar" role="tab" title="Qué configuración funciona mejor, por proyecto y proveedor"><span data-icon="database" data-size="13"></span> Comparar</button>
-    <button class="mtab" data-mtab="reparto" role="tab" title="Reparte tus sesiones entre cuentas y modelos según la cuota que te queda"><span data-icon="sprout" data-size="13"></span> Reparto</button>
-    <button class="mtab" data-mtab="pomodoro" role="tab" title="Tiempo de foco medido por bloque, con filtros de fechas y proyecto"><span data-icon="timer" data-size="13"></span> Pomodoro</button>
-  </nav>
-
-  <div class="mtab-pane active" data-mpane="resumen">
-    <div id="quota-hero"></div>
-    <div class="set"><div class="desc" id="usage-summary">Sin datos todavia.</div></div>
-    <h3>Limites del plan</h3>
-    <div id="usage-limits" class="usage-grid"></div>
-    <div class="sec-label" style="margin-top:14px"><span data-icon="timer" data-size="13"></span>
-      <span class="chip">Hoy: en qué trabajaste</span>
-      <small id="ded-sub" title="Medido de tus turnos locales — nada sale de tu máquina"></small></div>
-    <div id="dedication"></div>
-  </div>
-
-  <div class="mtab-pane" data-mpane="guardia">
-    <h3 class="sec-title"><span data-icon="lock" data-size="15"></span> Guardia anti-desborde</h3>
-    <div class="compare-note">Mide llamadas, volumen y fan-out cada minuto, y proyecta si la cuota alcanza hasta el reset. Nunca congela ni mata sesiones automáticamente.</div>
-    <div id="guard-chart"></div>
-    <div id="guard-summary" class="compare-stats"></div>
-    <div id="guard-projects"></div>
-    <h3 class="sec-title" style="margin-top:20px"><span data-icon="refresh" data-size="15"></span> Cambios recientes</h3>
-    <div id="guard-ledger"><div class="desc">Sin cambios de configuración registrados.</div></div>
-  </div>
-
-  <div class="mtab-pane" data-mpane="proyectos">
-    <h3 class="sec-title"><span data-icon="terminal" data-size="15"></span> Consumo por proyecto</h3>
-    <div id="usage-projects"></div>
-  </div>
-
-  <div class="mtab-pane" data-mpane="proveedores">
-    <h3 class="sec-title"><span data-icon="sparkles" data-size="15"></span> Costo y tokens por proveedor</h3>
-    <div class="compare-controls" role="group" aria-label="Ventana de comparación">
-      <label>Ventana<select id="pc-days"><option value="7">7 días</option><option value="14" selected>14 días</option><option value="30">30 días</option></select></label>
-    </div>
-    <div id="prov-compare"><div class="desc">Cargando comparativa…</div></div>
-    <h3 class="sec-title" style="margin-top:16px"><span data-icon="layers" data-size="14"></span> Totales y panes activos</h3>
-    <div id="usage-providers" class="usage-grid"></div>
-  </div>
-
-  <div class="mtab-pane" data-mpane="comparar">
-    <h3 class="sec-title"><span data-icon="database" data-size="15"></span> Comparar configuraciones</h3>
-    <div class="compare-controls" role="group" aria-label="Filtros de comparación">
-      <label>Ventana<select id="compare-days"><option value="7">7 días</option><option value="14" selected>14 días</option><option value="30">30 días</option></select></label>
-      <label>Tarea<select id="compare-task"><option value="">Todas</option><option value="implementation">Implementación</option><option value="debugging">Debug</option><option value="testing">Tests</option><option value="review">Review</option><option value="architecture">Arquitectura</option><option value="research">Investigación</option><option value="documentation">Docs</option><option value="operations">Operaciones</option></select></label>
-      <button type="button" class="test" id="compare-refresh">Actualizar</button>
-    </div>
-    <div class="compare-note" id="compare-note">Qué es esto: cada fila es una configuración (harness → motor · modelo · esfuerzo) con SUS números medidos en esta máquina — cuántos intentos, cuánto tardó (mediana), cuántas herramientas fallaron. Sirve para elegir configuración con datos, no de oído. La certeza es "direccional" hasta que corras un experimento pareado (dos variantes, misma tarea).</div>
-    <div id="compare-summary" class="compare-stats"></div>
-    <div id="compare-insights" class="compare-insights"></div>
-    <div id="compare-latency" class="compare-latency" hidden></div>
-    <details class="cmp-tablewrap"><summary>Ver tabla completa (todas las configuraciones y su evidencia)</summary>
-    <div class="compare-table-wrap"><table class="compare-table">
-      <thead><tr><th>Harness → motor</th><th>n</th><th>Éxito</th><th>Calidad</th><th>Mediana</th><th>Evidencia</th></tr></thead>
-      <tbody id="compare-body"><tr><td colspan="6">Cargando…</td></tr></tbody>
-    </table>
-    </div></details>
-    <div id="compare-paired"></div>
-    <h3 class="compare-rating-title">Calificar resultados recientes</h3>
-    <div id="compare-recent"></div>
-  </div>
-
-  <div class="mtab-pane" data-mpane="reparto">
-    <div id="reparto"></div>
-  </div>
-  <div class="mtab-pane" data-mpane="pomodoro">
-    <div id="pomodoro-analytics" aria-live="polite"></div>
-  </div>
-
-  <div class="mtab-pane" data-mpane="alertas">
-    <h3 class="sec-title"><span data-icon="bell" data-size="15"></span> Alertas</h3>
-    <div class="set" id="alert-config">
-      <span class="desc">Límites del plan: avisar al cruzar</span>
-      <button type="button" class="test alert-th" data-th="70">70%</button>
-      <button type="button" class="test alert-th" data-th="85">85%</button>
-      <button type="button" class="test alert-th" data-th="95">95%</button>
-    </div>
-    <div class="desc" style="margin:-4px 0 8px">Llegan por popup propio, según Ajustes. La <span data-icon="bell" style="display:inline-flex;vertical-align:-2px"></span> de cada proyecto/pane agrega presupuestos de tokens por día.</div>
-    <div id="alert-rules"></div>
-    <div id="usage-alerts"></div>
-  </div>
- </div>
+<div id="usage" class="modal" aria-label="Analytics" role="dialog" aria-modal="true">
+ <div class="an" id="an-root"></div>
 </div>
 
 <div id="tabclose" class="modal" role="dialog" aria-modal="true" aria-label="Cerrar pestaña">
@@ -2491,7 +2002,6 @@ function applyI18n(){
     "#settings label, #settings h3, #settings .desc, #settings .test, " +
     "#servers label, #servers h3, #servers .desc, #servers .test, #srv-cancel, " +
 	    "#remote label, #remote h3, #remote .desc, #remote .test, #remote-no-qr, " +
-	    "#usage label, #usage h3, #usage .desc, #usage .test, " +
 	    ".sec-label, #ssh-bar .lbl, #ssh-manage, #btn-usage, #btn-remote, #btn-settings, .pill span")
     .forEach(e => { const k = e.textContent.trim(); if(T_EN[k]) e.textContent = T_EN[k]; });
   const ph = (sel, v) => { const e = $(sel); if(e) e.placeholder = v; };
@@ -2515,7 +2025,7 @@ if(inApp()) document.documentElement.classList.add("inapp"), document.addEventLi
 const ONLY_PANEL = (new URLSearchParams(location.search).get("panel") || "").replace(/[^a-z]/g, "");
 if(ONLY_PANEL){ document.documentElement.classList.add("only-panel");document.documentElement.dataset.onlyPanel=ONLY_PANEL; document.addEventListener("DOMContentLoaded", ()=>{ document.body.classList.add("only-panel"); setTimeout(()=>{
   if(ONLY_PANEL==="appearance"){$("#settings").classList.add("open");activateMtab($("#settings .modal-panel"),"appearance");renderThemeGallery();renderButtonStyleGallery();return;}
-  if(ONLY_PANEL==="usage"){$("#usage").classList.add("open");const t=(new URLSearchParams(location.search).get("tab")||"resumen").replace(/[^a-z]/g,"");activateMtab($("#usage .modal-panel"),t||"resumen");tickUsage(true);return;}
+  if(ONLY_PANEL==="usage"){ openAnalytics(new URLSearchParams(location.search).get("tab") || ""); return; }
   if(ONLY_PANEL==="news") return;   // el lector se abre solo (news-reader.js, modo escritorio)
   if(ONLY_PANEL==="chains") return;  // modal Cadenas del escritorio: mountChainPage() al cargar los módulos
   if(ONLY_PANEL==="notices") return; // cajón de avisos del escritorio (estante bajo las terminales): se monta abierto
@@ -2738,12 +2248,6 @@ function mdStrip(s){ return (s||"").replace(/\*\*|`|^#{1,6} /g, ""); }
 	function fmtPercent(n){
 	  return n === null || n === undefined ? "--" : `${Number(n).toFixed(Number(n) % 1 ? 1 : 0)}%`;
 	}
-	function limitSeverity(l){
-	  const p = Number(l?.percent || 0);
-	  if(p >= 90 || l?.severity === "danger" || l?.severity === "error") return "danger";
-	  if(p >= 70 || l?.severity === "warning") return "warn";
-	  return "ok";
-	}
 	function fmtReset(ts){
 	  if(!ts) return "";
 	  const d = new Date(ts * 1000), now = new Date();
@@ -2752,282 +2256,6 @@ function mdStrip(s){ return (s||"").replace(/\*\*|`|^#{1,6} /g, ""); }
 	  const days = (d - now) / 86400000;
 	  if(days < 6) return `${d.toLocaleDateString([], {weekday: "short"})} ${hm}`;
 	  return `${d.toLocaleDateString([], {day: "numeric", month: "short"})} ${hm}`;
-	}
-	function limitAge(l){
-	  if(!l?.captured_at) return "";
-	  const min = Math.round((Date.now()/1000 - Number(l.captured_at)) / 60);
-	  if(min < 3) return "";
-	  if(min < 60) return tf(`hace ${min} min`, `${min} min ago`);
-	  const h = Math.floor(min/60), m = min % 60;
-	  return tf(`hace ${h} h${m ? ` ${m} min` : ""}`, `${h}h${m ? ` ${m}m` : ""} ago`);
-	}
-	// Porcentajes EXACTOS del plan: OAuth de Claude Code y rollouts de Codex.
-	// Grok no expone limites por API: su card muestra consumo MEDIDO local.
-	// Cada ventana lleva su boton de alerta (ej. "codex sesion 5h al 60%").
-	// Tres estilos de card (barras / anillos / compacta), persistidos.
-	function limitStyle(){
-	  // default COMPACTO: el hero ya da el panorama; las cards son detalle
-	  try{ return localStorage.getItem("cc-limit-style") || "compact"; }catch(e){ return "compact"; }
-	}
-	function setLimitStyle(v){
-	  try{ localStorage.setItem("cc-limit-style", v); }catch(e){}
-	}
-	function limitRingSvg(l, size=64){
-	  const sev = limitSeverity(l);
-	  const col = sev === "danger" ? "#FF5C68" : sev === "warn" ? "var(--waiting)" : "var(--done)";
-	  const r = (size - 10) / 2, c = 2 * Math.PI * r, cx = size / 2;
-	  if(l.percent === null || l.percent === undefined)
-	    return `<svg class="uring" width="${size}" height="${size}" viewBox="0 0 ${size} ${size}" aria-hidden="true">
-	      <circle cx="${cx}" cy="${cx}" r="${r}" fill="none" stroke="var(--line)" stroke-width="5" stroke-dasharray="3 5"/>
-	      <text x="${cx}" y="${cx+4}" text-anchor="middle" class="uring-txt">${mdEsc(fmtTokens(l.tokens_today || l.tokens_7d || 0).replace(" tok",""))}</text></svg>`;
-	  const pct = Math.max(0, Math.min(100, Number(l.percent || 0)));
-	  return `<svg class="uring" width="${size}" height="${size}" viewBox="0 0 ${size} ${size}" aria-hidden="true">
-	    <circle cx="${cx}" cy="${cx}" r="${r}" fill="none" stroke="var(--line)" stroke-width="5"/>
-	    <circle cx="${cx}" cy="${cx}" r="${r}" fill="none" stroke="${col}" stroke-width="5" stroke-linecap="round"
-	      stroke-dasharray="${(pct/100*c).toFixed(1)} ${c.toFixed(1)}" transform="rotate(-90 ${cx} ${cx})"/>
-	    <text x="${cx}" y="${cx+4}" text-anchor="middle" class="uring-txt">${fmtPercent(l.percent)}</text></svg>`;
-	}
-	function limitMetricHtml(l){
-	  if(l.percent === null || l.percent === undefined){
-	    // Sin actividad HOY, el numero grande util es el de 7 dias — un "0"
-	    // enorme se lee como "no hay datos" y eso es mentira.
-	    if(Number(l.tokens_today || 0) > 0)
-	      return `${fmtTokens(l.tokens_today)} <small>${tf("hoy", "today")}</small>`;
-	    return `${fmtTokens(l.tokens_7d || 0)} <small>7d</small>`;
-	  }
-	  return fmtPercent(l.percent);
-	}
-	function fmtResetRel(ts){
-	  if(!ts) return "";
-	  const s = Math.max(0, ts - Date.now()/1000);
-	  if(s < 3600) return tf(`en ${Math.max(1, Math.round(s/60))} min`, `in ${Math.max(1, Math.round(s/60))} min`);
-	  if(s < 86400) return tf(`en ${Math.round(s/3600)} h`, `in ${Math.round(s/3600)} h`);
-	  return tf(`en ${Math.floor(s/86400)}d ${Math.round(s%86400/3600)}h`, `in ${Math.floor(s/86400)}d ${Math.round(s%86400/3600)}h`);
-	}
-	// Insight por ventana de limite: compara tu % usado contra cuanto reloj
-	// de la ventana ya corrio, y proyecta si llegas al reset. Deterministico.
-	const LIMIT_WINDOW_SEC = {"5h": 5*3600, "7d": 7*86400};
-	function limitInsight(l, now = Date.now()/1000){
-	  const winSec = LIMIT_WINDOW_SEC[l.window];
-	  if(l.percent === null || l.percent === undefined){
-	    if(l.tokens_7d && !l.tokens_today)
-	      return {icon: "check", cls: "ok", text: tf("Sin uso hoy; tu semana lleva solo lo medido. Nada que optimizar aquí.",
-	                                                 "No use today; the week only holds what's measured. Nothing to optimize here.")};
-	    return null;
-	  }
-	  const pct = Number(l.percent || 0);
-	  if(!winSec || !l.resets_at || l.resets_at <= now){
-	    return pct >= 90 ? {icon: "zap", cls: "danger", text: tf("Al borde del límite y sin ventana clara de reset: cambia YA lo pesado a un modelo barato.",
-	                                                            "At the edge with no clear reset window: move heavy work to a cheap model NOW.")} : null;
-	  }
-	  const elapsed = Math.min(1, Math.max(0.02, 1 - (l.resets_at - now) / winSec));
-	  const pace = pct / (elapsed * 100);   // 1.0 = exactamente al ritmo del reloj
-	  const projected = Math.min(999, Math.round(pct / elapsed));
-	  const hoursLeft = (l.resets_at - now) / 3600;
-	  const fmtH = h => h < 1 ? `${Math.max(1, Math.round(h*60))} min` : h < 48 ? `${Math.round(h)} h` : `${Math.floor(h/24)}d ${Math.round(h%24)}h`;
-	  if(pace > 1.05 && projected > 100){
-	    const dryH = ((100 - pct) / pct) * elapsed * winSec / 3600;
-	    return {icon: "zap", cls: pct >= 70 ? "danger" : "warn",
-      text: tf(`Vas ${Math.round((pace-1)*100)}% más rápido que el reloj: proyección ${projected}% al reset. Se agotaría el ${fmtStamp(now + dryH*3600)} y se renueva el ${fmtStamp(l.resets_at)}: ${fmtH(Math.max(0, hoursLeft - dryH))} sin él. Mueve lo repetitivo a Luna/Haiku low.`,
-	               `Burning ${Math.round((pace-1)*100)}% faster than the clock: projected ${projected}% at reset. Would run dry on ${fmtStamp(now + dryH*3600)} and renews on ${fmtStamp(l.resets_at)}: ${fmtH(Math.max(0, hoursLeft - dryH))} without it. Move repetitive work to Luna/Haiku low.`)};
-	  }
-	  if(pace < 0.7)
-	    return {icon: "sprout", cls: "ok",
-	      text: tf(`Vas holgado: proyección ${projected}% al reset, que es el ${fmtStamp(l.resets_at)} (${fmtH(hoursLeft)}). Hay margen para subir calidad (high/xhigh) sin riesgo.`,
-	               `Comfortable pace: projected ${projected}% at reset, which is ${fmtStamp(l.resets_at)} (${fmtH(hoursLeft)}). Room to raise quality (high/xhigh) safely.`)};
-	  return {icon: "check", cls: "ok",
-	    text: tf(`Ritmo sano: proyección ${projected}% al reset, que es el ${fmtStamp(l.resets_at)}. Sigue igual.`,
-	             `Healthy pace: projected ${projected}% at reset, which is ${fmtStamp(l.resets_at)}. Keep going.`)};
-	}
-	function limitSubText(l){
-	  // Codex mide tokens pero no turnos: "0 turnos en 7d" seria ruido, no un dato.
-	  const measured = (l.tokens_7d || l.turns_7d)
-	    ? [l.tokens_7d ? `${fmtTokens(l.tokens_7d)} ${tf("en 7d", "in 7d")}` : "",
-	       l.turns_7d ? `${l.turns_7d} ${tf("turnos", "turns")}` : ""].filter(Boolean).join(" · ")
-	    : "";
-	  if(l.kind === "measured")
-	    return [measured || tf("sin turnos aún", "no turns yet"),
-	            tf("medido local — abre grok para el % oficial", "measured locally — open grok for the official %")]
-	      .join(" · ");
-	  return [
-	    l.plan_type ? `${l.plan_type}` : "",
-	    measured,
-	    limitAge(l),
-	  ].filter(Boolean).join(" · ");
-	}
-	function limitCardKit(rules){
-	  const bell = l => {
-	    if(l.kind === "measured" && (l.percent === null || l.percent === undefined)) return "";
-	    const rule = rules.find(r => r.id === `limit:${l.id}`);
-	    return `<button type="button" class="uv-bell ${rule ? "on" : ""}" data-scope="limit"
-	      data-target="${attrEsc(l.id)}" data-label="${attrEsc(`${l.provider} ${l.label}`)}"
-	      title="${tf("Configurar alerta para esta ventana", "Configure an alert for this window")}">
-	      ${svg("bell",12)} ${rule ? `${Number(rule.threshold)}%` : tf("alerta", "alert")}</button>`;
-	  };
-	  const acctTag = l => (l.account && l.account !== "main")
-	    ? ` <span class="uv-acct-tag" title="${attrEsc(l.accountEmail || l.account)}">${mdEsc(l.account)}</span>` : "";
-	  // Cuanto QUEDA: el dato que de verdad importa, siempre visible
-	  const remainHtml = l => {
-	    if(l.percent === null || l.percent === undefined) return "";
-	    const left = Math.max(0, 100 - Number(l.percent || 0));
-	    const sev = limitSeverity(l);
-	    return `<span class="uw-remain ${sev}">${tf("queda", "left")} <b>${left.toFixed(left % 1 ? 1 : 0)}%</b></span>`;
-	  };
-	  // La fecha exacta iba solo en el globo de ayuda: "en 11 h" dice cuanto falta,
-	  // no cuando. Para planear el dia hace falta el dia y la hora, a la vista.
-	  const resetHtml = l => l.resets_at
-	    ? `<span class="uw-reset" title="${attrEsc(`${tf("resetea", "resets")} ${fmtStamp(l.resets_at)}`)}">${svg("timer",11)} ${mdEsc(fmtResetRel(l.resets_at))} <em>${mdEsc(fmtStamp(l.resets_at))}</em></span>` : "";
-	  // Track con marcas en 70% y 90% (umbrales de alerta visibles)
-	  const trackHtml = l => {
-	    if(l.percent === null || l.percent === undefined) return "";
-	    const pct = Math.max(0, Math.min(100, Number(l.percent || 0)));
-	    return `<div class="uw-track"><span style="width:${pct}%"></span><i style="left:70%"></i><i style="left:90%"></i></div>`;
-	  };
-	  // Curva de consumo diario (14d) — barras SVG proporcionales
-	  const dailyBars = l => {
-	    const days = l.daily || [];
-	    if(!days.length || !days.some(d => d.tokens > 0)) return "";
-	    const max = Math.max(...days.map(d => d.tokens), 1);
-	    const W = 14 * 9, H = 26;
-	    const bars = days.map((d, i) => {
-	      const h = Math.max(d.tokens > 0 ? 2 : 0.6, Math.round(d.tokens / max * (H - 2)));
-	      const today = i === days.length - 1;
-	      return `<rect x="${i * 9 + 1}" y="${H - h}" width="7" height="${h}" rx="1.5"
-	        fill="${d.tokens > 0 ? (today ? "var(--brand)" : "var(--done)") : "var(--line)"}"><title>${
-	        new Date(d.day * 1000).toLocaleDateString([], {day: "numeric", month: "short"})}: ${fmtTokens(d.tokens)}</title></rect>`;
-	    }).join("");
-	    return `<div class="uw-daily" title="${attrEsc(tf("Tokens por día, últimos 14 días", "Tokens per day, last 14 days"))}">
-	      <svg width="${W}" height="${H}" viewBox="0 0 ${W} ${H}">${bars}</svg>
-	      <span>${tf("14 días", "14 days")}</span></div>`;
-	  };
-	  // Cuota declarada por el usuario (Grok no tiene API de limites):
-	  // boton "definir limite" -> input inline -> POST /usage/quota
-	  const quotaHtml = l => {
-	    if(l.kind !== "measured") return "";
-	    if(l.quota_7d)
-	      return `<button type="button" class="uw-quota set" data-quota-provider="${attrEsc(l.provider)}"
-	        data-current="${Number(l.quota_7d)}" title="${attrEsc(tf("Cambiar o borrar tu límite semanal declarado", "Change or clear your declared weekly limit"))}">
-	        ${svg("pencil",11)} ${tf("límite", "limit")}: ${fmtTokens(l.quota_7d)}/7d</button>`;
-	    return `<button type="button" class="uw-quota" data-quota-provider="${attrEsc(l.provider)}" data-current=""
-	      title="${attrEsc(tf("xAI no expone tu cuota; declárala tú (según tu plan) y te muestro % usado y cuánto queda", "xAI doesn't expose your quota; declare it (per your plan) and I'll show % used and what's left"))}">
-	      ${svg("plus",11)} ${tf("definir límite", "set limit")}</button>`;
-	  };
-	  const pvCls = l => ["claude","codex","grok"].includes(l.provider) ? ` pv-${l.provider}` : "";
-	  const watermark = l => `<span class="uw-mark" aria-hidden="true">${providerMark(l.provider, "", 74)}</span>`;
-	  const cardBars = l => {
-	    const noPct = l.percent === null || l.percent === undefined;
-	    return `<div class="usage-card usage-window uw lst-bars ${limitSeverity(l)}${l.kind==="measured"?" measured":""}${pvCls(l)}">
-	      ${watermark(l)}
-	      <div class="uw-head">
-	        <span class="uw-id">${providerMark(l.provider, "", 14)} <b>${mdEsc((l.provider || "").toUpperCase())}</b>${acctTag(l)}
-	          <span class="uw-win">${mdEsc(l.label || "")}</span></span>
-	        <span class="uw-conf" title="${attrEsc(l.note || "")}">${mdEsc(confidenceLabel(l.confidence))}</span>
-	      </div>
-	      <div class="uw-body">
-	        <span class="uw-big">${limitMetricHtml(l)}</span>
-	        ${remainHtml(l)}
-	        ${resetHtml(l)}
-	        <span class="uw-spacer"></span>
-	        ${quotaHtml(l)}
-	        ${bell(l)}
-	      </div>
-	      ${trackHtml(l)}
-	      ${dailyBars(l)}
-	      ${limitSubText(l) ? `<div class="usage-sub">${mdEsc(limitSubText(l))}</div>` : ""}
-	      ${(i => i ? `<div class="uw-insight ${i.cls}">${svg(i.icon,11)} <span>${mdEsc(i.text)}</span></div>` : "")(limitInsight(l))}
-	    </div>`;
-	  };
-	  const cardRings = l => `<div class="usage-card usage-window uw lst-rings ${limitSeverity(l)}${l.kind==="measured"?" measured":""}${pvCls(l)}">${watermark(l)}
-	      ${limitRingSvg(l)}
-	      <div class="uring-body">
-	        <div class="usage-title">${providerMark(l.provider, "", 14)} ${mdEsc(l.provider || "")}${acctTag(l)}<small>${mdEsc(confidenceLabel(l.confidence))}</small></div>
-	        <div class="uring-label">${mdEsc(l.label || "")} ${remainHtml(l)}</div>
-	        <div class="usage-sub">${mdEsc(limitSubText(l))}</div>
-	        <div class="uring-acts">${quotaHtml(l)} ${bell(l)}</div>
-	      </div>
-	    </div>`;
-	  const cardCompact = l => `<div class="usage-window lst-compact ${limitSeverity(l)}${l.kind==="measured"?" measured":""}${pvCls(l)}">
-	      <span class="uc-mark">${providerMark(l.provider, "", 13)}</span>
-	      <span class="uc-name">${mdEsc(l.provider || "")}${acctTag(l)} · ${mdEsc(l.label || "")}</span>
-	      <span class="uc-bar">${l.percent === null || l.percent === undefined ? "" :
-	        `<i style="width:${Math.max(0, Math.min(100, Number(l.percent || 0)))}%"></i>`}</span>
-	      <span class="uc-val">${limitMetricHtml(l)}</span>
-	      ${remainHtml(l)}
-	      ${quotaHtml(l)}
-	      ${bell(l)}
-	    </div>`;
-	  return {cardBars, cardRings, cardCompact};
-	}
-	function renderUsageLimits(state){
-	  const all = state?.limits || [];
-	  const rules = state?.alert_rules || [];
-	  // Selector de cuenta: aparece SOLO si hay mas de una (main + alias de
-	  // ~/.claude-accounts). El filtro vive en S.usageAcct ("all" = todas).
-	  const accts = [...new Set(all.filter(l => l.provider === "claude")
-	                               .map(l => l.account || "main"))];
-	  let selHtml = "";
-	  if(accts.length > 1){
-	    const cur = S.usageAcct || "all";
-	    const chip = (id, label, email) =>
-	      `<button type="button" class="uv-acct ${cur === id ? "on" : ""}"
-	         data-acct="${attrEsc(id)}" title="${attrEsc(email || label)}">${mdEsc(label)}</button>`;
-	    selHtml = `<div class="uv-accts">` + chip("all", tf("todas", "all"), "") +
-	      accts.map(a => chip(a, a,
-	        (all.find(l => (l.account || "main") === a && l.accountEmail) || {}).accountEmail))
-	        .join("") + `</div>`;
-	  }
-	  const cur = S.usageAcct || "all";
-	  const items = all.filter(l => l.provider !== "claude" ||
-	    cur === "all" || (l.account || "main") === cur);
-	  const style = limitStyle();
-	  const styleBtn = (id, icon, es, en) =>
-	    `<button type="button" class="uv-style ${style === id ? "on" : ""}" data-style="${id}"
-	       aria-pressed="${style === id}" title="${attrEsc(tf(es, en))}">${svg(icon,13)}</button>`;
-	  const switcher = `<div class="uv-styles" role="group" aria-label="${attrEsc(tf("Estilo de cards", "Card style"))}">` +
-	    styleBtn("bars", "bars", "Cards con barra de progreso", "Progress-bar cards") +
-	    styleBtn("rings", "ring", "Cards con anillo (gauge)", "Ring gauge cards") +
-	    styleBtn("compact", "rows", "Filas compactas", "Compact rows") + `</div>`;
-	  const K = limitCardKit(rules);
-	  const renderCard = style === "rings" ? K.cardRings : style === "compact" ? K.cardCompact : K.cardBars;
-	  $("#usage-limits").dataset.style = style;
-	  $("#usage-limits").innerHTML = switcher + selHtml + (items.length ? items.map(renderCard).join("")
-	    : `<div class="desc">${tf("Sin datos todavia — se actualizan solos en unos segundos", "No data yet — auto-refreshes in a few seconds")}</div>`);
-	  $("#usage-limits").querySelectorAll(".uv-acct").forEach(b =>
-	    b.addEventListener("click", ()=>{ S.usageAcct = b.dataset.acct; renderUsageLimits(state); }));
-	  $("#usage-limits").querySelectorAll(".uv-style").forEach(b =>
-	    b.addEventListener("click", ()=>{ setLimitStyle(b.dataset.style); renderUsageLimits(state); }));
-	  wireQuotaEditors($("#usage-limits"), ()=>renderUsageLimits(state));
-	}
-	// Editor inline de cuota declarada (Grok): input + Guardar/Borrar, sin modales
-	function wireQuotaEditors(root, rerender){
-	  root.querySelectorAll("[data-quota-provider]").forEach(b =>
-	    b.addEventListener("click", ()=>{
-	      if(b.parentElement.querySelector(".uw-quota-edit")) return;
-	      const prov = b.dataset.quotaProvider, cur = b.dataset.current || "";
-	      const wrap = document.createElement("span");
-	      wrap.className = "uw-quota-edit";
-	      wrap.innerHTML = `<input type="number" min="0" step="1000000" inputmode="numeric"
-	          placeholder="${attrEsc(tf("tokens por semana, ej. 50000000", "tokens per week, e.g. 50000000"))}"
-	          value="${attrEsc(cur)}" aria-label="${attrEsc(tf("Cuota semanal en tokens", "Weekly quota in tokens"))}">
-	        <button type="button" class="uwq-save" title="${attrEsc(tf("Guardar límite", "Save limit"))}">${svg("check",12)}</button>
-	        ${cur ? `<button type="button" class="uwq-clear" title="${attrEsc(tf("Borrar límite declarado", "Clear declared limit"))}">${svg("close",12)}</button>` : ""}`;
-	      b.replaceWith(wrap);
-	      const input = wrap.querySelector("input"); input.focus();
-	      const save = async v => {
-	        try{
-	          await api("/usage/quota", {provider: prov, tokens7d: v});
-	          toast(v ? tf(`Límite de ${prov} guardado: ${fmtTokens(v)}/7d`, `${prov} limit saved: ${fmtTokens(v)}/7d`)
-	                  : tf(`Límite de ${prov} borrado`, `${prov} limit cleared`));
-	          tickUsage(true);
-	        }catch(err){ toast(err.message, true); rerender(); }
-	      };
-	      wrap.querySelector(".uwq-save").addEventListener("click", ()=> save(Math.max(0, Number(input.value || 0))));
-	      wrap.querySelector(".uwq-clear")?.addEventListener("click", ()=> save(0));
-	      input.addEventListener("keydown", e=>{
-	        if(e.key === "Enter") save(Math.max(0, Number(input.value || 0)));
-	        if(e.key === "Escape") rerender();
-	      });
-	    }));
 	}
 	// Porcentajes globales del plan, siempre visibles junto a los contadores.
 	function renderLimitsStrip(state){
@@ -3469,944 +2697,10 @@ function mdStrip(s){ return (s||"").replace(/\*\*|`|^#{1,6} /g, ""); }
 	document.addEventListener("click", closeModelMenus);
 	document.addEventListener("keydown", e=>{ if(e.key === "Escape") closeModelMenus(); });
 	document.addEventListener("scroll", closeModelMenus, true);
-	function panePresetButtons(p){
-	  if(!String(p.tmux_pane || "").startsWith("%")) return "";
-	  const raw = p.provider || p.agent || "claude";
-	  const provider = ["codex", "opencode"].includes(raw) ? raw : "claude";
-	  return `<div class="pane-model-controls">
-	    ${modelMenuEl(p.tmux_session || "", p.tmux_pane || "", provider, p.model)}
-	  </div>`;
-	}
-	function usageStatusLabel(h){
-	  if(!h) return "sin datos";
-	  if(h.status === "ok") return "ok";
-	  if(h.status === "missing") return "sin llave";
-	  return h.status || "error";
-	}
-	function usageSummaryText(state){
-	  const limits = state?.limits || [];
-	  const parts = [];
-	  for(const prov of ["claude", "codex"]){
-	    const ses = limits.find(l => l.provider === prov && l.window === "5h");
-	    const wk = limits.find(l => l.provider === prov && l.window === "7d" && !l.scope);
-	    if(!ses && !wk) continue;
-	    parts.push(`${prov}: ${fmtPercent(ses?.percent)} ${tf("sesion", "session")} · ${fmtPercent(wk?.percent)} ${tf("semana", "week")}`);
-	  }
-	  const gk = limits.find(l => l.provider === "grok");
-	  if(gk && gk.percent !== null && gk.percent !== undefined)
-	    parts.push(`grok: ${fmtPercent(gk.percent)} ${tf("semana", "week")}`);
-	  else if(gk && (gk.tokens_today || gk.tokens_7d))
-	    parts.push(`grok: ${fmtTokens(gk.tokens_today || gk.tokens_7d)} ${gk.tokens_today ? tf("hoy", "today") : "7d"} (${tf("medido", "measured")})`);
-	  return parts.join("  —  ");
-	}
-
-	let GUARD_CACHE=null;
-	async function guardPoll(){
-	  try{const d=await api("/usage/guard");GUARD_CACHE=d;const risk=(d.forecasts||[]).find(x=>x.level==="critical")||(d.projects||[]).find(x=>x.level==="critical");const button=$("#btn-usage");button?.classList.toggle("hot",!!risk);if(button&&risk)button.title=tf("Guardia IA: riesgo crítico de cuota","AI Guard: critical quota risk");if(!risk)return;const key=`${risk.scope||risk.project}|${Math.floor(Number(risk.percent||risk.calls10m||0)/5)}`;if(localStorage.getItem("cc-guard-alert-key")===key)return;localStorage.setItem("cc-guard-alert-key",key);const body=risk.message||`${risk.project}: ${risk.calls10m} llamadas/10 min · ${fmtTokens(risk.tokensHour)}/h`;api("/notify-popup",{title:tf("Guardia IA · riesgo de desborde","AI Guard · overflow risk"),kind:"waiting",project:"Guardia IA",body}).catch(()=>{});}catch(e){}
-	}
-	async function loadGuard(){
-	  try{const d=await api("/usage/guard");renderGuard(d);}catch(e){$("#guard-projects").innerHTML=`<div class="desc">${mdEsc(e.message)}</div>`;}
-	  try{renderLedger((await api("/usage/changes")).changes||[]);}catch(e){}
-	}
-	function tierRank(m){m=String(m||"").toLowerCase();return /fable|opus|sol/.test(m)?3:/terra|sonnet|4\.6/.test(m)?2:/luna|haiku|4\.5|5\.5/.test(m)?1:2;}
-	function renderLedger(changes){
-	  const box=$("#guard-ledger");if(!box)return;
-	  if(!changes.length){box.innerHTML=`<div class="desc">${tf("Sin cambios de configuración registrados esta semana.","No configuration changes recorded this week.")}</div>`;return;}
-	  const savings=changes.filter(c=>tierRank(c.after_model)<tierRank(c.before_model)).length;
-	  box.innerHTML=`<div class="desc" style="margin-bottom:8px">${changes.length} ${tf("cambios en 7 días","changes in 7 days")} · ${savings} ${tf("hacia modelos más baratos","toward cheaper models")}</div>`+
-	    changes.slice(0,10).map(c=>{const cheaper=tierRank(c.after_model)<tierRank(c.before_model);const live=(S.list||[]).some(x=>x.session===c.tmux_session&&x.alive);
-	    return `<div class="guard-row ${cheaper?"":"warning"}" style="border-color:var(--line)"><span class="guard-ico" style="color:${cheaper?"var(--ok)":"var(--dim)"}">${svg(cheaper?"sprout":"refresh",14)}</span>
-	      <div class="guard-main"><b>${mdEsc(c.project||c.tmux_session||"?")}</b>
-	      <span>${mdEsc(c.before_model||"?")}${c.before_effort?`/${mdEsc(c.before_effort)}`:""} → ${mdEsc(c.after_model||"?")}${c.after_effort?`/${mdEsc(c.after_effort)}`:""} · ${agoTxt(c.created_at)}</span>
-	      <span>${cheaper?tf("ahorro: modelo más barato","saving: cheaper model"):tf("cambio de configuración","configuration change")}</span></div>
-	      ${live&&c.before_model?`<button type="button" class="action" data-undo="${attrEsc(c.id)}" data-sess="${attrEsc(c.tmux_session)}" data-pane="${attrEsc(c.tmux_pane)}" data-model="${attrEsc(c.before_model)}" data-effort="${attrEsc(c.before_effort)}" data-route="${attrEsc(c.before_route)}" title="Vuelve a ${attrEsc(c.before_model)} en esa sesión, esperando a que termine su turno">${tf("Deshacer","Undo")}</button>`:""}</div>`;}).join("");
-	  box.querySelectorAll("[data-undo]").forEach(b=>b.addEventListener("click",async()=>{
-	    try{const r=await api("/model/switch",{session:b.dataset.sess,pane:b.dataset.pane||"",routeId:b.dataset.route||undefined,model:b.dataset.model,effort:b.dataset.effort||undefined});
-	      MOTOR_PENDING.set((r&&r.operationKey)||`${b.dataset.sess}|${b.dataset.pane}`,{model:b.dataset.model,stageTxt:tf("deshaciendo…","undoing…")});
-	      toast(tf(`Deshacer encolado: vuelve a ${b.dataset.model}`,`Undo queued: back to ${b.dataset.model}`));b.disabled=true;}
-	    catch(e){toast(e.message,true);}
-	  }));
-	}
-	function burnChartSvg(fcs){
-	  fcs=(fcs||[]).slice(0,2); if(!fcs.length) return "";
-	  const W=680,H=250,PL=46,PR=16,PT=40,PB=34,now=Date.now()/1000;
-	  const reset=Math.max(...fcs.map(f=>f.resetAt||now)),start=reset-7*86400;
-	  const x=t=>PL+Math.max(0,Math.min(1,(t-start)/(reset-start)))*(W-PL-PR);
-	  const yMax=120,y=p=>PT+(1-Math.min(p,yMax)/yMax)*(H-PT-PB);
-	  // MINIMO color: gris para la serie secundaria, marca para la principal,
-	  // rojo SOLO en el limite y el punto de agotamiento
-	  const colors=["var(--brand)","var(--dim)"];
-	  const grid=[0,50,100].map(p=>`<line x1="${PL}" y1="${y(p)}" x2="${W-PR}" y2="${y(p)}" stroke="${p===100?"var(--err)":"var(--line)"}" stroke-width="${p===100?1.5:1}"${p===100?' stroke-dasharray="4 4"':''}/><text x="${PL-8}" y="${y(p)+4}" text-anchor="end" fill="var(--dim)" font-size="11" font-family="monospace">${p}%</text>`).join("");
-	  let series="",notes="";
-	  fcs.forEach((f,i)=>{
-	    const pct=Number(f.percent||0),rate=pct/Math.max(now-start,1),endP=pct+rate*Math.max(reset-now,0),c=colors[i];
-	    series+=`<path d="M${x(start)} ${y(0)} L${x(now)} ${y(pct)}" stroke="${c}" stroke-width="3" fill="none" stroke-linecap="round"/>`
-	      +`<path d="M${x(now)} ${y(pct)} L${x(reset)} ${y(Math.min(endP,yMax))}" stroke="${c}" stroke-width="2.5" stroke-dasharray="6 5" fill="none" opacity=".8"/>`
-	      +`<circle cx="${x(now)}" cy="${y(pct)}" r="5.5" fill="${c}" stroke="var(--panel)" stroke-width="2"><title>${mdEsc(f.scope)}: ${Math.round(pct)}% hoy</title></circle>`
-	      +`<text x="${x(now)+9}" y="${y(pct)-8-(i?0:14)}" fill="${c}" font-size="12" font-weight="700" font-family="monospace">${mdEsc(f.scope)} ${Math.round(pct)}%</text>`;
-	    if(f.projectedExhaustionAt&&f.projectedExhaustionAt<reset){
-	      const xe=x(f.projectedExhaustionAt);
-	      series+=`<line x1="${xe}" y1="${y(100)}" x2="${xe}" y2="${H-PB}" stroke="var(--err)" stroke-width="1" stroke-dasharray="2 3" opacity=".7"/>`
-	        +`<circle cx="${xe}" cy="${y(100)}" r="5" fill="var(--err)" stroke="var(--panel)" stroke-width="2"><title>${mdEsc(f.scope)} toca 100% aquí</title></circle>`;
-	      notes+=`<div class="gc-note danger">${svg("zap",11)} <b>${mdEsc(f.scope)}</b> ${tf("tocaría el 100%","would hit 100%")} ${mdEsc(fmtStamp(f.projectedExhaustionAt))} — ${tf("te deja","leaving you")} <b>${Math.round(f.downtimeHours)} h</b> ${tf("sin ese modelo antes del reset","without that model before reset")}</div>`;
-	    } else {
-	      notes+=`<div class="gc-note ok">${svg("check",11)} <b>${mdEsc(f.scope)}</b> ${tf("llega al reset con margen","reaches reset with room")} (~${Math.round(endP)}%)</div>`;
-	    }
-	  });
-	  // eje x con FECHAS reales
-	  const days=[0,2,4,6].map(dd=>{const t=start+dd*86400;return `<text x="${x(t)}" y="${H-10}" text-anchor="middle" fill="var(--dim)" font-size="11" font-family="monospace">${new Date(t*1000).toLocaleDateString([],{weekday:"short"})}</text>`;}).join("");
-	  const nowMark=`<line x1="${x(now)}" y1="${PT-6}" x2="${x(now)}" y2="${H-PB}" stroke="var(--line2)" stroke-width="1.5"/><text x="${x(now)}" y="${PT-12}" text-anchor="middle" fill="var(--text)" font-size="11" font-weight="700" font-family="monospace">${tf("HOY","NOW")}</text>`
-	    +`<text x="${W-PR}" y="${H-10}" text-anchor="end" fill="var(--text)" font-size="11" font-weight="700" font-family="monospace">${tf("reset","reset")} ${new Date(reset*1000).toLocaleDateString([],{weekday:"short"})}</text>`
-	    +`<text x="${W-PR}" y="${y(100)-6}" text-anchor="end" fill="var(--err)" font-size="11" font-family="monospace">${tf("límite","limit")}</text>`;
-	  return `<div class="guard-chart"><div class="gc-title">${svg("timer",13)} ${tf("¿Me alcanza la cuota hasta el reset?","Will quota last until reset?")}
-	      <span class="gc-sub">${tf("sólida = lo que llevas · punteada = si sigues a este ritmo","solid = so far · dashed = at current pace")}</span></div>
-	    <svg viewBox="0 0 ${W} ${H}" class="gc-svg" role="img" aria-label="${tf("Proyección de consumo semanal","Weekly quota projection")}">${grid}${nowMark}${days}${series}</svg>${notes}</div>`;
-	}
-	function renderGuard(d){
-	  $("#guard-chart").innerHTML=burnChartSvg(d.forecasts||[]);
-	  const rows=d.projects||[];
-	  const nCrit=d.critical||0, nWarn=d.warning||0, nOk=Math.max(0,rows.length-nCrit-nWarn);
-	  // Una FRASE, no jerga: que esta pasando y que significa
-	  $("#guard-summary").innerHTML = `<div class="guard-phrase">${
-	    nCrit ? `${svg("zap",14)} <b>${nCrit === 1 ? tf("1 proyecto va demasiado rápido","1 project is burning too fast") : tf(`${nCrit} proyectos van demasiado rápido`,`${nCrit} projects are burning too fast`)}</b> — ${tf("a este ritmo comprometen tu cuota semanal","at this pace they compromise your weekly quota")}`
-	    : nWarn ? `${svg("bell",14)} <b>${tf(`${nWarn} para vigilar`,`${nWarn} to watch`)}</b> — ${tf("ritmo alto pero sin riesgo inmediato","high pace but no immediate risk")}`
-	    : `${svg("check",14)} <b>${tf("Todo tranquilo","All calm")}</b> — ${tf("ningún proyecto consume de más","no project is over-consuming")}`
-	  }${nOk ? ` · ${nOk} ${tf("tranquilos","calm")}` : ""}</div>`;
-	  const scopeName=sc=>sc==="General"?tf("Cuota semanal Claude","Claude weekly quota"):sc==="Fable"?tf("Cuota semanal de Fable","Fable weekly quota"):sc;
-	  const forecasts=(d.forecasts||[]).map(f=>`<div class="guard-row ${f.level}"><span class="guard-ico">${svg(f.level==="critical"?"zap":"timer",15)}</span><div class="guard-main"><b>${mdEsc(scopeName(f.scope))} — ${tf("vas al","you're at")} ${Math.round(f.percent)}%</b><span>${mdEsc(f.message)}</span><span class="guard-detail">${tf("se renueva","renews")} ${mdEsc(fmtStamp(f.resetAt))}</span>${f.level!=="normal"?`<button type="button" class="test" data-guard-opt>${svg("sprout",11)} ${tf("Ver sesiones y proponer Luna/low","Review sessions and propose Luna/low")}</button>`:""}</div><div class="guard-rate" title="${attrEsc(tf("Horas que te quedarías SIN este modelo antes del reset, al ritmo actual","Hours you'd be WITHOUT this model before reset, at current pace"))}">${f.downtimeHours>0?`${Math.round(f.downtimeHours)} h ${tf("sin modelo","dry")}`:tf("CON MARGEN","ON TRACK")}</div></div>`).join("");
-	  const maxTok=Math.max(1,...rows.map(r=>Number(r.tokensHour||0)));
-	  const human=r=>{
-	    const t=fmtTokens(r.tokensHour);
-	    if(r.level==="critical") return tf(`quemando ${t} por hora — muy por encima de lo sano`,`burning ${t}/hour — way above healthy`);
-	    if(r.level==="warning")  return tf(`ritmo alto: ${t} por hora`,`high pace: ${t}/hour`);
-	    return tf(`ritmo normal: ${t} por hora`,`normal pace: ${t}/hour`);
-	  };
-	  $("#guard-projects").innerHTML=forecasts+(rows.length?rows.map(r=>`<div class="guard-row ${r.level}">
-	      <span class="guard-ico">${svg(r.level==="critical"?"zap":r.level==="warning"?"bell":"check",15)}</span>
-	      <div class="guard-main"><b title="${attrEsc(r.path||"")}">${mdEsc(shortPath(r.path) || r.project)}</b>
-	        <span>${mdEsc(human(r))}</span>
-	        <span class="guard-bar"><i style="width:${Math.max(2,Math.round(Number(r.tokensHour||0)/maxTok*100))}%"></i></span>
-	        <span class="guard-detail">${r.calls10m} ${tf("llamadas/10 min","calls/10 min")} · ${r.subagentFiles} ${tf("subagentes","subagents")} · ${mdEsc(shortModel(r.topModel||""))}${r.action?` — ${mdEsc(r.action)}`:""}</span>
-	      </div></div>`).join(""):`<div class="nf-empty">${tf("Sin actividad Claude en la última hora.","No Claude activity in the last hour.")}</div>`);
-	  $("#guard-projects").querySelectorAll("[data-guard-opt]").forEach(button=>button.addEventListener("click",()=>{activateMtab($("#usage .modal-panel"),"reparto");window.Reparto?.load();}));
-	}
-	guardPoll();setInterval(guardPoll,60000);
-	// el hero del Resumen depende del forecast: repintarlo cuando llegue
-	(function(){ const _lg = loadGuard; loadGuard = async function(){ await _lg.apply(this, arguments); try{ renderQuotaHero(S.usage); }catch(e){} }; })();
-
-	function fmtDuration(ms){
-	  if(ms == null) return "—";
-	  if(ms < 60000) return `${Math.max(1,Math.round(ms/1000))}s`;
-	  return `${Math.round(ms/6000)/10}m`;
-	}
-	let compareLoading = false;
-	async function loadCompare(){
-	  if(compareLoading) return;
-	  compareLoading = true;
-	  const days = Number($("#compare-days")?.value || 14);
-	  const task = $("#compare-task")?.value || "";
-	  try{
-	    const [analytics, recent] = await Promise.all([
-	      api(`/usage/analytics?days=${days}&taskType=${encodeURIComponent(task)}`),
-	      api("/usage/interactions?limit=12"),
-	    ]);
-	    renderCompare(analytics, recent?.interactions || []);
-	  }catch(err){
-	    $("#compare-body").innerHTML = `<tr><td colspan="6">${mdEsc(err.message)}</td></tr>`;
-	  }finally{ compareLoading = false; }
-	}
-	function renderCompare(data, recent){
-	  const rows = data?.configurations || [];
-	  const labeled = rows.reduce((n,r)=>n+Number(r.labeled||0),0);
-	  const eligible = rows.filter(r=>r.eligible).length;
-	  $("#compare-note").textContent = data?.disclaimer || "Direccional; sólo experimentos pareados pueden declarar ganador.";
-	  $("#compare-summary").innerHTML = `
-	    <div class="compare-stat"><b>${svg("layers",15)} ${rows.length}</b><span>configuraciones</span></div>
-	    <div class="compare-stat"><b>${svg("check",15)} ${labeled}</b><span>resultados calificados</span></div>
-	    <div class="compare-stat"><b>${svg("sparkles",15)} ${eligible}</b><span>con evidencia suficiente</span></div>`;
-	  const solved=rows.reduce((n,r)=>n+Number(r.solved||0),0),partial=rows.reduce((n,r)=>n+Number(r.partial||0),0),failed=rows.reduce((n,r)=>n+Number(r.failed||0),0),judged=Math.max(1,solved+partial+failed);
-	  const pairedWinner=(data?.pairedExperiments||[]).find(x=>x.winnerVariant!=null);
-	  const directional=rows.find(r=>r.eligible);
-	  $("#compare-insights").innerHTML=`<div class="insight-card"><span class="ins-ico">${svg("database",15)}</span><div><b>${tf("Resultados medidos","Measured outcomes")}</b><span>${solved} ${tf("resueltos","solved")} · ${partial} ${tf("parciales","partial")} · ${failed} ${tf("fallidos","failed")}</span><div class="outcome-stack"><i class="solved" style="width:${solved/judged*100}%"></i><i class="partial" style="width:${partial/judged*100}%"></i><i class="failed" style="width:${failed/judged*100}%"></i></div></div></div>`+
-	    (pairedWinner?`<div class="insight-card"><span class="ins-ico">${svg("check",15)}</span><div><b>${tf("Ganador pareado","Paired winner")}</b><span>${mdEsc(pairedWinner.label)} · ${pairedWinner.completePairs} ${tf("pares completos","complete pairs")}</span></div></div>`:
-	     directional?`<div class="insight-card"><span class="ins-ico">${svg("sparkles",15)}</span><div><b>${tf("Vale la pena probar","Worth testing")}</b><span>${mdEsc(directional.harness)} → ${mdEsc(directional.motor)} · ${mdEsc(directional.model)}. ${tf("La señal es direccional, no un ganador.","Directional signal, not a winner.")}</span></div></div>`:
-	     `<div class="insight-card"><span class="ins-ico">${svg("help",15)}</span><div><b>${tf("Evidencia insuficiente","Insufficient evidence")}</b><span>${tf("Califica más resultados y categorías para generar insights reales.","Rate more outcomes and categories to generate real insights.")}</span></div></div>`)
-	   +(()=>{const fast=rows.filter(r=>r.durationP50Ms!=null&&(r.attempts||0)>=5).sort((a,b)=>a.durationP50Ms-b.durationP50Ms)[0];
-	     return fast?`<div class="insight-card"><span class="ins-ico">${svg("timer",15)}</span><div><b>${tf("Más rápido medido","Fastest measured")}</b><span>${mdEsc(fast.motor)} · ${mdEsc(fast.model)} — p50 ${fmtDuration(fast.durationP50Ms)}${fast.durationP90Ms?` · p90 ${fmtDuration(fast.durationP90Ms)}`:""} (n=${fast.attempts}). ${tf("Para turnos ligeros: Luna, Haiku o Grok 4.5 en low.","For light turns: Luna, Haiku or Grok 4.5 on low.")}</span></div></div>`
-	     :`<div class="insight-card"><span class="ins-ico">${svg("timer",15)}</span><div><b>${tf("Velocidad","Speed")}</b><span>${tf("Aún sin latencias medidas (faltan turnos con duración). Regla general: Luna, Haiku y Grok 4.5 responden más rápido que Fable/Opus/Sol; esfuerzo low recorta el razonamiento.","No measured latencies yet. Rule of thumb: Luna, Haiku and Grok 4.5 respond faster than Fable/Opus/Sol; low effort trims reasoning.")}</span></div></div>`;})();
-	  const latBox=$("#compare-latency");
-	  if(latBox){
-	    const lat=rows.filter(r=>r.durationP50Ms!=null&&(r.attempts||0)>=3).sort((a,b)=>a.durationP50Ms-b.durationP50Ms).slice(0,8);
-	    latBox.hidden=!lat.length;
-	    if(lat.length){
-	      const max=Math.max(...lat.map(r=>r.durationP90Ms||r.durationP50Ms));
-	      // Veredictos MACRO primero, en cristiano; el mas rapido lleva el acento
-	      const fastest=lat[0];
-	      const most=[...rows].sort((a,b)=>(b.attempts||0)-(a.attempts||0))[0];
-	      const verdicts=`<div class="cmp-verdicts">
-	        <div class="cmp-verdict accent">${svg("zap",12)}<div><b>${tf("Más rápida medida","Fastest measured")}</b>
-	          <span>${mdEsc(fastest.motor)} · ${mdEsc(shortModel(fastest.model))} · ${mdEsc(fastest.effort||"?")} — p50 ${fmtDuration(fastest.durationP50Ms)} (${fastest.attempts} ${tf("turnos","turns")})</span>
-	          <small>${tf("úsala para lo repetitivo: tests, lint, commits","use it for repetitive work: tests, lint, commits")}</small></div></div>
-	        ${most&&most!==fastest?`<div class="cmp-verdict">${svg("database",12)}<div><b>${tf("Más usada","Most used")}</b>
-	          <span>${mdEsc(most.motor||"?")} · ${mdEsc(shortModel(most.model||""))} · ${mdEsc(most.effort||"?")} — ${most.attempts||0} ${tf("turnos, mediana","turns, median")} ${fmtDuration(most.medianDurationMs)}</span>
-	          <small>${tf("tu caballo de batalla actual","your current workhorse")}</small></div></div>`:""}
-	      </div>`;
-	      latBox.innerHTML=verdicts
-	        +`<div class="gc-title">${svg("timer",12)} ${tf("Velocidad por configuración","Speed per configuration")}
-	          <span class="gc-sub">${tf("punto = mediana · barra = hasta p90 (lo peor típico)","dot = median · bar = to p90 (typical worst)")}</span></div>`
-	        +lat.map((r,i)=>{const p50=r.durationP50Ms,p90=r.durationP90Ms||p50,l=p50/max*100,w=Math.max(1,(p90-p50)/max*100);
-	        return `<div class="lat-row" title="p50 ${fmtDuration(p50)} · p90 ${fmtDuration(p90)} · n=${r.attempts}"><span class="lat-lbl">${mdEsc(r.motor)} · ${mdEsc(shortModel(String(r.model)))} · ${mdEsc(r.effort||"?")}</span><span class="lat-track"><i class="lat-range${i===0?" accent":""}" style="left:${l}%;width:${w}%"></i><i class="lat-dot${i===0?" accent":""}" style="left:${l}%"></i></span><span class="lat-val">${fmtDuration(p50)}<small> n=${r.attempts}</small></span></div>`;}).join("");}
-	  }
-	  $("#compare-body").innerHTML = rows.length ? rows.map(r=>{
-	    const success = r.successRate == null ? "—" : `${Math.round(r.successRate*100)}%`;
-	    const ci = r.successRate == null ? "" : `IC ${Math.round(r.successCI[0]*100)}–${Math.round(r.successCI[1]*100)}%`;
-	    const quality = r.ratingMean == null ? "—" : `${r.ratingMean.toFixed(1)}/5`;
-	    const evidence = r.eligible ? "suficiente" : `${r.labeled||0}/12 · ${r.distinctTasks||0}/6 tareas · ${r.activeDays||0}/3 días`;
-	    return `<tr><td><span class="cfg-main">${mdEsc(r.harness)} → ${mdEsc(r.motor)}</span>
-	      <span class="cfg-sub">${mdEsc(r.model||"modelo desconocido")}${r.effort?` · ${mdEsc(r.effort)}`:""} · ${mdEsc(r.harnessAccount||"unknown")}→${mdEsc(r.motorAccount||"unknown")}${r.medianTokens!=null?` · ${fmtTokens(r.medianTokens)}/turno`:""}${r.toolErrorRate!=null?` · ${Math.round(r.toolErrorRate*100)}% error tools`:""}</span></td>
-	      <td>${r.attempts||0}<span class="cfg-sub">${r.labeled||0} calif.</span></td>
-	      <td>${success}<span class="cfg-sub">${ci}</span></td><td>${quality}</td>
-	      <td>${fmtDuration(r.medianDurationMs)}</td><td><span class="evidence ${r.eligible?"ok":""}">${evidence}</span></td></tr>`;
-	  }).join("") : `<tr><td colspan="6">Aún no hay interacciones completas en esta ventana.</td></tr>`;
-	  const paired = data?.pairedExperiments || [];
-	  $("#compare-paired").innerHTML = paired.length ? `<h3 class="compare-rating-title">Experimentos pareados</h3>` + paired.map(exp=>{
-	    const winner = exp.winnerVariant == null ? "sin diferencia clara" : `ganó variante ${Number(exp.winnerVariant)+1}`;
-	    return `<div class="usage-card"><div class="usage-title">${mdEsc(exp.label)}<small>${exp.completePairs}/10 pares</small></div>
-	      <div class="usage-sub">${exp.eligible?winner:"evidencia insuficiente"} · ${mdEsc(exp.taskType||"sin categoría")}</div></div>`;
-	  }).join("") : "";
-	  $("#compare-recent").innerHTML = recent.length ? recent.map(i=>{
-	    const cfg = `${i.harness||"?"} → ${i.motor||"?"} · ${i.model||"modelo desconocido"}${i.effort?` · ${i.effort}`:""} · ${i.harness_account||"unknown"}→${i.motor_account||"unknown"}`;
-	    const actions = [{o:"failed",r:1,t:"Mal"},{o:"partial",r:3,t:"Parcial"},{o:"solved",r:5,t:"Resuelto"}];
-	    const taskTypes=["implementation","debugging","testing","review","architecture","research","documentation","operations","other"];
-	    return `<div class="rating-row" data-interaction="${attrEsc(i.id)}"><div class="rating-main"><b>${mdEsc(cfg)}</b>
-	      <span>${fmtDuration(i.duration_ms)} · ${i.tool_calls||0} tools${i.tool_errors?` · ${i.tool_errors} errores`:""}</span><select class="rating-task" aria-label="Tipo de tarea"><option value="">${tf("categoría…","category…")}</option>${taskTypes.map(t=>`<option value="${t}" ${i.task_type===t?"selected":""}>${t}</option>`).join("")}</select></div>
-	      <div class="rating-actions">${actions.map(a=>`<button type="button" class="test ${i.outcome===a.o?"on":""}" data-outcome="${a.o}" data-rating="${a.r}">${a.t}</button>`).join("")}</div></div>`;
-	  }).join("") : `<div class="desc">Completa un turno para poder calificarlo.</div>`;
-	  document.querySelectorAll("#compare-recent [data-rating]").forEach(btn=>btn.addEventListener("click", async()=>{
-	    const row = btn.closest("[data-interaction]");
-	    const payload = {interactionId:row.dataset.interaction,outcome:btn.dataset.outcome,rating:Number(btn.dataset.rating)};
-	    const task=row.querySelector(".rating-task")?.value||"";
-	    if(task) payload.taskType=task;
-	    try{ await api("/usage/rating",payload); await loadCompare(); toast("Resultado guardado localmente"); }
-	    catch(err){ toast(err.message,true); }
-	  }));
-	}
-	// ---- Comparativa costo/tokens por proveedor (pestaña Proveedores) ----
-	// Colores MINIMOS para datos: gris por defecto; el acento (marca) se
-	// reserva para el lider/el punto que importa. La IDENTIDAD la dan los
-	// logos y las etiquetas directas, no el arcoiris.
-	const PV_COLOR = {claude: "var(--text)", codex: "var(--dim)", grok: "var(--faint)"};
-	const pvColor = p => PV_COLOR[p] || "var(--faint)";
-	let PC_DATA = null, PC_SORT = {key: "tokens", dir: -1};
-	const pcInsight = (cls, icon, html, act) => `<div class="pc-insight ${cls}">${svg(icon,12)} <span>${html}</span>${act ? `<button type="button" class="pc-act" data-act="${attrEsc(act.act)}" title="${attrEsc(act.tip || act.label)}">${svg(act.icon || "chevron", 11)} ${mdEsc(act.label)}</button>` : ""}</div>`;
-	const pcFx = () => {
-	  const d = (PC_DATA?.subs || {}).display || {};
-	  return d.currency && d.currency !== "USD" && d.usdRate > 0 ? d : {currency: "USD", usdRate: 1};
-	};
-	function fmtCur(usd){
-	  const fx = pcFx();
-	  const v = usd * (fx.usdRate || 1);
-	  const s = v >= 1000 ? v.toLocaleString([], {maximumFractionDigits: 0}) : v.toFixed(2);
-	  return fx.currency === "USD" ? `$${s}` : `$${s} ${fx.currency}`;
-	}
-	function pcLogY(v, min, max, H){
-	  // Escala log10: claude puede ir 5 órdenes de magnitud arriba de grok;
-	  // en lineal los chicos serían una línea plana pegada al piso.
-	  if(v <= 0) return H;
-	  const lo = Math.log10(Math.max(1, min)), hi = Math.log10(Math.max(10, max));
-	  return H - (Math.log10(v) - lo) / Math.max(0.001, hi - lo) * H;
-	}
-	function pcDailyInsight(data){
-	  const days = data.daily || [];
-	  if(days.length < 7) return "";
-	  const tot = d => Object.values(d.providers || {}).reduce((a, v) => a + v, 0);
-	  const lastN = days.slice(-4, -1).map(tot);
-	  const prevN = days.slice(-7, -4).map(tot);
-	  const avg = a => a.reduce((x, y) => x + y, 0) / Math.max(1, a.length);
-	  const la = avg(lastN), pa = avg(prevN);
-	  if(!pa && !la) return "";
-	  const delta = pa ? Math.round((la - pa) / pa * 100) : 100;
-	  const provTot = {};
-	  for(const d of days) for(const [p, v] of Object.entries(d.providers || {})) provTot[p] = (provTot[p] || 0) + v;
-	  const top = Object.entries(provTot).sort((a, b) => b[1] - a[1])[0];
-	  const share = top ? Math.round(top[1] / Object.values(provTot).reduce((a, v) => a + v, 0) * 100) : 0;
-	  const goGuard = {act: "guardia", icon: "lock", label: tf("Abrir Guardia", "Open Guard"), tip: tf("Ver qué proyecto empuja el gasto y su proyección", "See which project pushes spend and its forecast")};
-	  if(delta > 30)
-	    return pcInsight("warn", "zap", tf(
-	      `Tu ritmo subió <b>${delta}%</b> estos 3 días (${fmtTokens(la)}/día). ${mdEsc(top[0])} concentra el ${share}% del volumen.`,
-	      `Your pace rose <b>${delta}%</b> these 3 days (${fmtTokens(la)}/day). ${mdEsc(top[0])} holds ${share}% of volume.`), goGuard);
-	  if(delta < -30)
-	    return pcInsight("ok", "sprout", tf(
-	      `Tu ritmo bajó <b>${Math.abs(delta)}%</b> estos 3 días (${fmtTokens(la)}/día). Con la cuota holgada puedes permitirte más high/xhigh donde importa.`,
-	      `Your pace dropped <b>${Math.abs(delta)}%</b> these 3 days (${fmtTokens(la)}/day). With slack quota you can afford more high/xhigh where it matters.`));
-	  return pcInsight("ok", "check", tf(
-	    `Ritmo estable (~${fmtTokens(la)}/día, ${delta >= 0 ? "+" : ""}${delta}% vs los 3 previos). ${mdEsc(top[0])} lleva el ${share}% del volumen.`,
-	    `Stable pace (~${fmtTokens(la)}/day, ${delta >= 0 ? "+" : ""}${delta}% vs previous 3). ${mdEsc(top[0])} carries ${share}% of volume.`), goGuard);
-	}
-	function pcDailyChart(data){
-	  const days = data.daily || [];
-	  const provs = [...new Set(days.flatMap(d => Object.keys(d.providers || {})))]
-	    .sort((a, b) => ["claude","codex","grok"].indexOf(a) - ["claude","codex","grok"].indexOf(b));
-	  if(!provs.length) return "";
-	  const W = 660, H = 170, PAD = 46, PB = 22;
-	  const vals = days.flatMap(d => Object.values(d.providers || {})).filter(v => v > 0);
-	  if(!vals.length) return "";
-	  const min = Math.min(...vals), max = Math.max(...vals);
-	  const x = i => PAD + i / Math.max(1, days.length - 1) * (W - PAD - 14);
-	  const y = v => 12 + pcLogY(v, min, max, H - PB - 12);
-	  let grid = "";
-	  for(let e = Math.ceil(Math.log10(Math.max(1, min))); e <= Math.floor(Math.log10(max)); e++){
-	    const v = Math.pow(10, e), gy = y(v);
-	    grid += `<line x1="${PAD}" y1="${gy}" x2="${W-10}" y2="${gy}" stroke="var(--line)" stroke-dasharray="2 4"/>
-	      <text x="${PAD-6}" y="${gy+3}" text-anchor="end" class="pc-tick">${fmtTokens(v).replace(" tok","")}</text>`;
-	  }
-	  const provTotals = Object.fromEntries(provs.map(p => [p, days.reduce((a, d) => a + ((d.providers||{})[p]||0), 0)]));
-	  const lead = provs.slice().sort((a, b) => provTotals[b] - provTotals[a])[0];
-	  const lineColor = p => p === lead ? "var(--brand)" : pvColor(p);
-	  const series = provs.map(p => {
-	    const pts = days.map((d, i) => ({i, v: (d.providers || {})[p] || 0, day: d.day}));
-	    const line = pts.filter(pt => pt.v > 0);
-	    if(!line.length) return "";
-	    const path = line.map((pt, k) => `${k ? "L" : "M"}${x(pt.i).toFixed(1)},${y(pt.v).toFixed(1)}`).join(" ");
-	    const dots = line.map(pt =>
-	      `<circle cx="${x(pt.i).toFixed(1)}" cy="${y(pt.v).toFixed(1)}" r="3" fill="${lineColor(p)}" stroke="var(--panel)" stroke-width="1.5">
-	        <title>${new Date(pt.day*1000).toLocaleDateString([], {day:"numeric",month:"short"})} · ${p} · ${fmtTokens(pt.v)}</title></circle>`).join("");
-	    const last = line[line.length - 1];
-	    return `<path d="${path}" fill="none" stroke="${lineColor(p)}" stroke-width="2" stroke-linejoin="round"/>${dots}
-	      <text x="${Math.min(W-30, x(last.i)+6)}" y="${y(last.v)+3}" class="pc-lbl" fill="LINECOLOR3">${p}</text>`;
-	  }).join("");
-	  const xticks = [0, Math.floor(days.length/2), days.length-1].map(i =>
-	    `<text x="${x(i)}" y="${H-4}" text-anchor="middle" class="pc-tick">${new Date(days[i].day*1000).toLocaleDateString([], {day:"numeric",month:"short"})}</text>`).join("");
-	  const legend = provs.map(p => `<span class="pc-key"><i style="background:${lineColor(p)}"></i>${mdEsc(p)}</span>`).join("");
-	  return `<div class="pc-block"><div class="pc-title">${svg("bars",13)} ${tf("Tokens por día","Tokens per day")}
-	      <span class="pc-note">${tf("escala logarítmica","log scale")}</span><span class="pc-legend">${legend}</span></div>
-	    <svg viewBox="0 0 ${W} ${H}" class="pc-svg" role="img" aria-label="${attrEsc(tf("Tokens por día por proveedor","Tokens per day by provider"))}">${grid}${series}${xticks}</svg>${pcDailyInsight(data)}</div>`;
-	}
-	function pcEstDailyChart(data){
-	  // Barras apiladas: VALOR API estimado por día (solo turnos con precio)
-	  const days = data.est_daily || [];
-	  const provs = [...new Set(days.flatMap(d => Object.keys(d.providers || {})))]
-	    .sort((a, b) => ["claude","codex","grok"].indexOf(a) - ["claude","codex","grok"].indexOf(b));
-	  const totals = days.map(d => Object.values(d.providers || {}).reduce((a, v) => a + v, 0));
-	  const max = Math.max(...totals, 0);
-	  if(!max) return "";
-	  const W = 660, H = 150, PAD = 52, PB = 20, bw = (W - PAD - 12) / days.length;
-	  let grid = "";
-	  for(const frac of [0.5, 1]){
-	    const gy = 10 + (1 - frac) * (H - PB - 10);
-	    grid += `<line x1="${PAD}" y1="${gy}" x2="${W-8}" y2="${gy}" stroke="var(--line)" stroke-dasharray="2 4"/>
-	      <text x="${PAD-6}" y="${gy+3}" text-anchor="end" class="pc-tick">${fmtCur(max*frac)}</text>`;
-	  }
-	  const bars = days.map((d, i) => {
-	    let yTop = H - PB;
-	    return provs.map(p => {
-	      const v = (d.providers || {})[p] || 0;
-	      if(!v) return "";
-	      const h = Math.max(1.5, v / max * (H - PB - 10));
-	      yTop -= h;
-	      return `<rect x="${(PAD + i*bw + 1).toFixed(1)}" y="${yTop.toFixed(1)}" width="${(bw-2).toFixed(1)}" height="${(h-0.5).toFixed(1)}" rx="1.5" fill="${pvColor(p)}">
-	        <title>${new Date(d.day*1000).toLocaleDateString([], {day:"numeric",month:"short"})} · ${p} · ${fmtCur(v)}</title></rect>`;
-	    }).join("");
-	  }).join("");
-	  const xt = [0, Math.floor(days.length/2), days.length-1].map(i =>
-	    `<text x="${PAD + i*bw + bw/2}" y="${H-4}" text-anchor="middle" class="pc-tick">${new Date(days[i].day*1000).toLocaleDateString([], {day:"numeric",month:"short"})}</text>`).join("");
-	  const legend = provs.map(p => `<span class="pc-key"><i style="background:${pvColor(p)}"></i>${mdEsc(p)}</span>`).join("");
-	  const avg = totals.reduce((a, v) => a + v, 0) / Math.max(1, totals.filter(Boolean).length);
-	  const peakI = totals.indexOf(Math.max(...totals));
-	  const insight = pcInsight(totals[totals.length-1] > avg * 1.5 ? "warn" : "ok",
-	    totals[totals.length-1] > avg * 1.5 ? "flame" : "check", tf(
-	    `Promedio ${fmtCur(avg)}/día de valor API; pico ${fmtCur(totals[peakI])} el ${new Date(days[peakI].day*1000).toLocaleDateString([], {day:"numeric",month:"short"})}.${totals[totals.length-1] > avg*1.5 ? " Hoy vas ARRIBA del promedio: vigílalo en Guardia." : " Hoy dentro de lo normal."}`,
-	    `Average ${fmtCur(avg)}/day of API value; peak ${fmtCur(totals[peakI])} on ${new Date(days[peakI].day*1000).toLocaleDateString([], {day:"numeric",month:"short"})}.${totals[totals.length-1] > avg*1.5 ? " Today is ABOVE average: watch it in Guard." : " Today within normal."}`),
-	    totals[totals.length-1] > avg * 1.5 ? {act: "guardia", icon: "lock", label: tf("Abrir Guardia","Open Guard")} : null);
-	  return `<div class="pc-block"><div class="pc-title">${svg("flame",13)} ${tf("Valor API por día","API value per day")}
-	      <span class="pc-legend">${legend}</span></div>
-	    <svg viewBox="0 0 ${W} ${H}" class="pc-svg">${grid}${bars}${xt}</svg>${insight}</div>`;
-	}
-	function pcHeatmap(data){
-	  const heat = data.heat || [];
-	  if(!heat.length) return "";
-	  const max = Math.max(...heat.flat(), 0);
-	  if(!max) return "";
-	  const DW = [tf("lun","Mon"),tf("mar","Tue"),tf("mié","Wed"),tf("jue","Thu"),tf("vie","Fri"),tf("sáb","Sat"),tf("dom","Sun")];
-	  const CW = 24, CH = 15, PADL = 34, PADT = 16;
-	  const W = PADL + 24*CW + 6, H = PADT + 7*CH + 6;
-	  let cells = "";
-	  for(let d = 0; d < 7; d++) for(let h = 0; h < 24; h++){
-	    const v = heat[d][h];
-	    const a = v ? 0.12 + 0.88 * Math.sqrt(v / max) : 0;
-	    cells += `<rect x="${PADL + h*CW}" y="${PADT + d*CH}" width="${CW-2}" height="${CH-2}" rx="2"
-	      fill="${v ? `rgba(167,139,250,${a.toFixed(2)})` : "var(--line)"}" ${v ? "" : 'opacity="0.35"'}>
-	      <title>${DW[d]} ${String(h).padStart(2,"0")}:00 — ${fmtTokens(v)}</title></rect>`;
-	  }
-	  const dl = DW.map((n, d) => `<text x="${PADL-5}" y="${PADT + d*CH + CH/2 + 3}" text-anchor="end" class="pc-tick">${n}</text>`).join("");
-	  const hl = [0, 6, 12, 18, 23].map(h => `<text x="${PADL + h*CW + CW/2 - 1}" y="${PADT-5}" text-anchor="middle" class="pc-tick">${h}h</text>`).join("");
-	  let best = {v: -1, d: 0, h: 0};
-	  heat.forEach((row, d) => row.forEach((v, h) => { if(v > best.v) best = {v, d, h}; }));
-	  const night = heat.reduce((a, row) => a + row.slice(0, 7).reduce((x, y) => x + y, 0), 0);
-	  const total = heat.flat().reduce((a, v) => a + v, 0);
-	  const nightPct = Math.round(night / Math.max(1, total) * 100);
-	  const insight = pcInsight(nightPct > 35 ? "warn" : "ok", nightPct > 35 ? "moon" : "sun", tf(
-	    `Tu pico es <b>${DW[best.d]} ${best.h}:00</b> (${fmtTokens(best.v)}). ${nightPct > 35 ? `El ${nightPct}% corre de madrugada (0-7h): son tus agentes solos — ideal para colas baratas (Luna/low) mientras duermes.` : `Solo ${nightPct}% de madrugada: tu gasto sigue tu jornada. Programa lo pesado desatendido en horas valle si quieres holgura.`}`,
-	    `Your peak is <b>${DW[best.d]} ${best.h}:00</b> (${fmtTokens(best.v)}). ${nightPct > 35 ? `${nightPct}% runs overnight (0-7h): unattended agents — ideal for cheap queues (Luna/low) while you sleep.` : `Only ${nightPct}% overnight: spend follows your workday. Schedule heavy unattended work off-peak for slack.`}`));
-	  return `<div class="pc-block"><div class="pc-title">${svg("timer",13)} ${tf("Mapa de calor · día × hora","Heatmap · day × hour")}
-	      <span class="pc-note">${tf("intensidad = tokens (14d)","intensity = tokens (14d)")}</span></div>
-	    <svg viewBox="0 0 ${W} ${H}" class="pc-svg">${cells}${dl}${hl}</svg>${insight}</div>`;
-	}
-	function pcCompositionChart(data){
-	  const rows = data.composition || [];
-	  if(!rows.length) return "";
-	  // Un solo tono en grises + acento UNICAMENTE en cache leida (el dinero)
-	  const CATS = [["input", tf("entrada","input"), "color-mix(in srgb,var(--text) 55%,transparent)"],
-	                ["output", tf("salida","output"), "color-mix(in srgb,var(--text) 80%,transparent)"],
-	                ["cache_read", tf("caché leída","cache read"), "var(--brand)"],
-	                ["cache_write", tf("caché escrita","cache write"), "color-mix(in srgb,var(--text) 30%,transparent)"]];
-	  const bars = rows.map(r => {
-	    const compSum = CATS.reduce((a, [k]) => a + (r[k] || 0), 0);
-	    if(!compSum && r.total)
-	      return `<div class="pc-comp-row"><span class="pc-comp-name" style="color:${pvColor(r.provider)}">${providerMark(r.provider,"",12)} ${mdEsc(r.provider)}</span>
-	        <div class="pc-comp-bar"><div class="pc-seg" style="width:100%;background:var(--line);color:var(--faint)" title="${attrEsc(`${r.provider}: ${fmtTokens(r.total)} ${tf("sin desglose i/o/caché — su CLI solo reporta totales","no i/o/cache breakdown — its CLI only reports totals")}`)}">${tf("sin desglose","no breakdown")}</div></div>
-	        <span class="pc-comp-tot">${fmtTokens(r.total)} · ${r.turns} ${tf("turnos","turns")}</span></div>`;
-	    const total = Math.max(1, compSum);
-	    const segs = CATS.map(([k, label, color]) => {
-	      const v = r[k] || 0, w = v / total * 100;
-	      return v ? `<div class="pc-seg" style="width:calc(${w}% - 2px);background:${color}" title="${attrEsc(`${r.provider} · ${label}: ${fmtTokens(v)} (${w.toFixed(1)}%)`)}">${w >= 12 ? `${w.toFixed(0)}%` : ""}</div>` : "";
-	    }).join("");
-	    return `<div class="pc-comp-row"><span class="pc-comp-name" style="color:${pvColor(r.provider)}">${providerMark(r.provider,"",12)} ${mdEsc(r.provider)}</span>
-	      <div class="pc-comp-bar">${segs}</div>
-	      <span class="pc-comp-tot">${fmtTokens(r.total)} · ${r.turns} ${tf("turnos","turns")}</span></div>`;
-	  }).join("");
-	  const legend = CATS.map(([k, label, color]) => `<span class="pc-key"><i style="background:${color}"></i>${label}</span>`).join("");
-	  let insight = "";
-	  const withBreak = rows.filter(r => (r.input + r.output + r.cache_read + r.cache_write) > 0);
-	  if(withBreak.length){
-	    const worst = withBreak.map(r => ({p: r.provider,
-	        cache: (r.cache_read || 0) / Math.max(1, r.input + r.output + r.cache_read + r.cache_write)}))
-	      .sort((a, b) => a.cache - b.cache)[0];
-	    insight = worst.cache >= 0.8
-	      ? pcInsight("ok", "check", tf(
-	          `Caché sana en todos: hasta el peor (${mdEsc(worst.p)}) reutiliza ${Math.round(worst.cache*100)}% del contexto. Las sesiones largas te están saliendo baratas — no hagas /clear sin necesidad.`,
-	          `Healthy cache everywhere: even the worst (${mdEsc(worst.p)}) reuses ${Math.round(worst.cache*100)}% of context. Long sessions are cheap — don't /clear needlessly.`))
-	      : pcInsight("warn", "zap", tf(
-	          `${mdEsc(worst.p)} solo reutiliza <b>${Math.round(worst.cache*100)}%</b> de caché: sesiones cortas o contexto que se rehace. Reutiliza sesiones vivas (resume) en vez de abrir nuevas y evita /clear entre tareas relacionadas.`,
-	          `${mdEsc(worst.p)} only reuses <b>${Math.round(worst.cache*100)}%</b> cache: short sessions or rebuilt context. Resume live sessions instead of opening new ones; avoid /clear between related tasks.`),
-	        {act: "optimizar", icon: "sprout", label: tf("Ver Optimizar","Open Optimize"), tip: tf("Aplicar un perfil de ahorro a sesiones reales","Apply a saving profile to live sessions")});
-	  }
-	  return `<div class="pc-block"><div class="pc-title">${svg("layers",13)} ${tf("Composición de tokens","Token composition")}<span class="pc-legend">${legend}</span></div>${bars}
-	    <div class="pc-note">${tf("La caché leída es la que te ahorra dinero: contexto reutilizado en vez de re-cobrado.","Cache reads save money: reused context instead of re-billed.")}</div>${insight}</div>`;
-	}
-	function pcScatterChart(data){
-	  // Dispersión: velocidad (p50) vs peso del turno (tokens/turno).
-	  // Abajo-izquierda = rápido y ligero (barato); arriba-derecha = lento y pesado.
-	  const models = (data.models || []).filter(m => m.p50_ms && m.tokens_per_turn > 0 && m.turns >= 3);
-	  if(models.length < 3) return "";
-	  const W = 660, H = 200, PADL = 56, PADB = 26, PADT = 12, PADR = 14;
-	  const xs = models.map(m => m.p50_ms), ys = models.map(m => m.tokens_per_turn);
-	  const xmin = Math.min(...xs), xmax = Math.max(...xs), ymin = Math.min(...ys), ymax = Math.max(...ys);
-	  const X = v => PADL + (Math.log10(v) - Math.log10(xmin)) / Math.max(0.01, Math.log10(xmax) - Math.log10(xmin)) * (W - PADL - PADR);
-	  const Y = v => PADT + (1 - (Math.log10(v) - Math.log10(ymin)) / Math.max(0.01, Math.log10(ymax) - Math.log10(ymin))) * (H - PADT - PADB);
-	  const maxTurns = Math.max(...models.map(m => m.turns));
-	  const dots = models.map(m => {
-	    const r = 4 + Math.sqrt(m.turns / maxTurns) * 9;
-	    return `<circle cx="${X(m.p50_ms).toFixed(1)}" cy="${Y(m.tokens_per_turn).toFixed(1)}" r="${r.toFixed(1)}"
-	      fill="${pvColor(m.provider)}" fill-opacity="0.55" stroke="${pvColor(m.provider)}" stroke-width="1.5">
-	      <title>${shortModel(m.model)} (${m.provider}) — p50 ${(m.p50_ms/1000).toFixed(1)}s · ${fmtTokens(m.tokens_per_turn)}/turno · ${m.turns} turnos${m.usd ? ` · ${fmtCur(m.usd)}` : ""}</title></circle>`;
-	  }).join("");
-	  const labels = [...models].sort((a, b) => b.turns - a.turns).slice(0, 5).map(m =>
-	    `<text x="${Math.min(W-46, X(m.p50_ms)+8)}" y="${Y(m.tokens_per_turn)-6}" class="pc-lbl" fill="${pvColor(m.provider)}">${mdEsc(shortModel(m.model).slice(0, 14))}</text>`).join("");
-	  const xt = [xmin, Math.sqrt(xmin*xmax), xmax].map(v =>
-	    `<text x="${X(v)}" y="${H-6}" text-anchor="middle" class="pc-tick">${(v/1000).toFixed(v<10000?1:0)}s</text>`).join("");
-	  const yt = [ymin, Math.sqrt(ymin*ymax), ymax].map(v =>
-	    `<text x="${PADL-6}" y="${Y(v)+3}" text-anchor="end" class="pc-tick">${fmtTokens(v).replace(" tok","")}</text>`).join("");
-	  const best = models.filter(m => m.usd_per_turn !== null).sort((a, b) => a.usd_per_turn - b.usd_per_turn)[0];
-	  const heavy = [...models].sort((a, b) => (b.p50_ms * b.tokens_per_turn) - (a.p50_ms * a.tokens_per_turn))[0];
-	  const insight = pcInsight("ok", "search", tf(
-	    `Abajo-izquierda = rápido y ligero. ${best ? `Mejor costo por turno medido: <b>${mdEsc(shortModel(best.model))}</b> (${fmtCur(best.usd_per_turn)}/turno, p50 ${(best.p50_ms/1000).toFixed(0)}s).` : ""} El más pesado-lento es ${mdEsc(shortModel(heavy.model))}: resérvalo para lo que de verdad lo necesita.`,
-	    `Bottom-left = fast & light. ${best ? `Best measured cost per turn: <b>${mdEsc(shortModel(best.model))}</b> (${fmtCur(best.usd_per_turn)}/turn, p50 ${(best.p50_ms/1000).toFixed(0)}s).` : ""} Heaviest-slowest is ${mdEsc(shortModel(heavy.model))}: reserve it for what truly needs it.`),
-	    {act: "optimizar", icon: "sprout", label: tf("Proponer cambios","Propose changes")});
-	  const legend = [...new Set(models.map(m => m.provider))].map(p => `<span class="pc-key"><i style="background:${pvColor(p)}"></i>${mdEsc(p)}</span>`).join("");
-	  return `<div class="pc-block"><div class="pc-title">${svg("search",13)} ${tf("Velocidad vs peso por modelo","Speed vs weight per model")}
-	      <span class="pc-note">${tf("x=p50 · y=tokens/turno · tamaño=turnos · log-log","x=p50 · y=tokens/turn · size=turns · log-log")}</span><span class="pc-legend">${legend}</span></div>
-	    <svg viewBox="0 0 ${W} ${H}" class="pc-svg">${dots}${labels}${xt}${yt}</svg>${insight}</div>`;
-	}
-	function pcModelTable(data){
-	  const models = data.models || [];
-	  if(!models.length) return "";
-	  const cols = [["model", tf("modelo","model")], ["tokens", "tokens"], ["turns", tf("turnos","turns")],
-	                ["tokens_per_turn", tf("tok/turno","tok/turn")], ["p50_ms", "p50"], ["p90_ms", "p90"],
-	                ["usd", tf("valor","value")], ["usd_per_turn", tf("valor/turno","value/turn")]];
-	  const sorted = [...models].sort((a, b) => {
-	    const k = PC_SORT.key, av = a[k] ?? -1, bv = b[k] ?? -1;
-	    return (av < bv ? -1 : av > bv ? 1 : 0) * PC_SORT.dir * (k === "model" ? -1 : 1);
-	  });
-	  const fmtMs = v => v == null ? "—" : v < 60000 ? `${(v/1000).toFixed(1)}s` : `${(v/60000).toFixed(1)}m`;
-	  const rows = sorted.map(m => `<tr>
-	      <td class="pcm-model" style="color:${pvColor(m.provider)}">${providerMark(m.provider, m.model, 11)} ${mdEsc(shortModel(m.model))}</td>
-	      <td>${fmtTokens(m.tokens)}</td><td>${m.turns}</td><td>${fmtTokens(m.tokens_per_turn)}</td>
-	      <td>${fmtMs(m.p50_ms)}</td><td>${fmtMs(m.p90_ms)}</td>
-	      <td>${m.usd ? fmtCur(m.usd) : "—"}</td><td>${m.usd_per_turn != null ? fmtCur(m.usd_per_turn) : "—"}</td>
-	    </tr>`).join("");
-	  const head = cols.map(([k, label]) =>
-	    `<th data-sort="${k}" class="${PC_SORT.key === k ? "on" : ""}" title="${attrEsc(tf("Ordenar por esta columna","Sort by this column"))}">${label}${PC_SORT.key === k ? (PC_SORT.dir < 0 ? " ↓" : " ↑") : ""}</th>`).join("");
-	  const priced = models.filter(m => m.usd_per_turn != null && m.p50_ms);
-	  let insight = "";
-	  if(priced.length >= 2){
-	    const cheap = [...priced].sort((a, b) => a.usd_per_turn - b.usd_per_turn)[0];
-	    const dear = [...priced].sort((a, b) => b.usd_per_turn - a.usd_per_turn)[0];
-	    const ratio = cheap.usd_per_turn > 0 ? Math.round(dear.usd_per_turn / cheap.usd_per_turn) : 0;
-	    insight = pcInsight(ratio >= 20 ? "warn" : "ok", "flame", tf(
-	      `Cada turno de <b>${mdEsc(shortModel(dear.model))}</b> vale ${ratio ? `~${ratio}×` : "mucho más que"} uno de ${mdEsc(shortModel(cheap.model))} (${fmtCur(dear.usd_per_turn)} vs ${fmtCur(cheap.usd_per_turn)}). La pregunta por tarea es: ¿este turno necesita el caro?`,
-	      `Each <b>${mdEsc(shortModel(dear.model))}</b> turn is worth ${ratio ? `~${ratio}×` : "much more than"} a ${mdEsc(shortModel(cheap.model))} one (${fmtCur(dear.usd_per_turn)} vs ${fmtCur(cheap.usd_per_turn)}). Per task ask: does this turn need the expensive one?`),
-	      {act: "csv", icon: "copy", label: tf("Copiar CSV","Copy CSV"), tip: tf("Copia la tabla completa como CSV al portapapeles","Copy the full table as CSV to clipboard")});
-	  }
-	  return `<div class="pc-block"><div class="pc-title">${svg("database",13)} ${tf("Modelos: volumen, velocidad y costo","Models: volume, speed & cost")}</div>
-	    <div class="pc-tblwrap"><table class="pc-tbl" id="pc-tbl"><thead><tr>${head}</tr></thead><tbody>${rows}</tbody></table></div>${insight}</div>`;
-	}
-	function pcRoiBlock(data){
-	  const est = (data.est || []).filter(e => e.usd > 0);
-	  const subs = (data.subs || {}).subs || {};
-	  const fx = pcFx();
-	  const totalUsd = est.reduce((a, e) => a + e.usd, 0);
-	  const monthlyValue = totalUsd / Math.max(1, data.days) * 30;
-	  const provRows = ["claude", "codex", "grok"].map(p => {
-	    const sub = subs[p];
-	    const e = est.find(x => x.provider === p);
-	    const val = e ? e.usd / Math.max(1, data.days) * 30 : 0;
-	    const subUsd = sub ? (sub.currency === "USD" ? sub.monthly : (fx.usdRate > 0 && fx.currency === sub.currency ? sub.monthly / fx.usdRate : null)) : null;
-	    const roi = sub && subUsd > 0 && val > 0 ? val / subUsd : null;
-	    return `<div class="pc-est-row">
-	      <span class="pc-comp-name" style="color:${pvColor(p)}">${providerMark(p,"",12)} ${mdEsc(p)}</span>
-	      <span class="pc-roi-sub">${sub ? `${tf("pagas","you pay")} $${sub.monthly} ${sub.currency}/mes` : tf("sin costo declarado","no declared cost")}</span>
-	      <span class="pc-roi-val">${val > 0 ? `${tf("consumes","you use")} ~${fmtCur(val / (fx.usdRate || 1) * (fx.usdRate || 1))} ${tf("de valor/mes","value/mo")}` : "—"}</span>
-	      ${roi ? `<span class="pc-roi-x ${roi >= 3 ? "ok" : roi >= 1 ? "" : "low"}" title="${attrEsc(tf("Valor API mensual ÷ lo que pagas","Monthly API value ÷ what you pay"))}">ROI ${roi >= 10 ? Math.round(roi) : roi.toFixed(1)}×</span>` : ""}
-	      <button type="button" class="uw-quota ${sub ? "set" : ""}" data-sub-provider="${p}"
-	        data-monthly="${sub ? sub.monthly : ""}" data-currency="${sub ? sub.currency : "USD"}"
-	        title="${attrEsc(tf("Declara lo que pagas al mes por este proveedor (0 lo borra)","Declare your monthly cost for this provider (0 clears it)"))}">
-	        ${svg(sub ? "pencil" : "plus", 11)} ${sub ? tf("editar","edit") : tf("declarar costo","declare cost")}</button>
-	    </div>`;
-	  }).join("");
-	  const declared = Object.keys(subs).length;
-	  const subTotalUsd = Object.values(subs).reduce((a, s) =>
-	    a + (s.currency === "USD" ? s.monthly : (fx.usdRate > 0 && fx.currency === s.currency ? s.monthly / fx.usdRate : 0)), 0);
-	  let insight = "";
-	  if(declared && subTotalUsd > 0 && monthlyValue > 0){
-	    const roi = monthlyValue / subTotalUsd;
-	    const payback = roi > 0 ? Math.max(1, Math.round(30 / roi)) : 30;
-	    insight = pcInsight(roi >= 3 ? "ok" : "warn", roi >= 3 ? "sprout" : "help", tf(
-	      `Pagas ~${fmtCur(subTotalUsd)}/mes de suscripciones y consumes ~${fmtCur(monthlyValue)}/mes de valor API: <b>ROI ${roi >= 10 ? Math.round(roi) : roi.toFixed(1)}×</b> — tus planes se pagan solos en ~${payback} día${payback > 1 ? "s" : ""} de uso.${roi < 1 ? " Estás pagando más de lo que consumes: revisa si sobra algún plan." : ""}`,
-	      `You pay ~${fmtCur(subTotalUsd)}/mo in subscriptions and use ~${fmtCur(monthlyValue)}/mo of API value: <b>ROI ${roi >= 10 ? Math.round(roi) : roi.toFixed(1)}×</b> — plans pay for themselves in ~${payback} day${payback > 1 ? "s" : ""}.${roi < 1 ? " You pay more than you use: check for a spare plan." : ""}`));
-	  } else {
-	    insight = pcInsight("warn", "pencil", tf(
-	      `Declara lo que pagas al mes (botones de la derecha) y te calculo el ROI real de cada plan contra tu consumo medido.`,
-	      `Declare your monthly costs (buttons on the right) and I'll compute each plan's real ROI against measured usage.`));
-	  }
-	  const curBtns = SUBS_CURRENCIES.map(c =>
-	    `<button type="button" class="uv-style pc-cur ${fx.currency === c ? "on" : ""}" data-cur="${c}" title="${attrEsc(tf(`Mostrar montos en ${c}`,`Show amounts in ${c}`))}">${c}</button>`).join("");
-	  const rateCtl = fx.currency !== "USD"
-	    ? `<span class="pc-note">1 USD = <input type="number" step="0.01" min="0.01" id="pc-rate" value="${fx.usdRate || ""}" class="pc-rate" aria-label="tipo de cambio"> ${fx.currency}</span>` : "";
-	  return `<div class="pc-block"><div class="pc-title">${svg("sprout",13)} ${tf("ROI de tus suscripciones","Subscription ROI")}
-	      <span class="pc-legend"><span class="uv-styles" style="margin:0">${curBtns}</span>${rateCtl}</span></div>
-	    ${provRows}${insight}</div>`;
-	}
-	const SUBS_CURRENCIES = ["USD", "MXN", "EUR"];
-	function pcEstimateChart(data){
-	  const est = (data.est || []).filter(e => e.usd > 0 || e.coverage > 0);
-	  if(!est.length) return "";
-	  const max = Math.max(...est.map(e => e.usd), 1);
-	  const total = est.reduce((a, e) => a + e.usd, 0);
-	  const rows = est.map((e, i) => `<div class="pc-est-row">
-	      <span class="pc-comp-name">${providerMark(e.provider,"",12)} ${mdEsc(e.provider)}</span>
-	      <div class="pc-model-bar"><i style="width:${Math.max(1.5, e.usd/max*100)}%;background:${i===0?"var(--brand)":"color-mix(in srgb,var(--text) 40%,transparent)"}"></i></div>
-	      <span class="pc-est-val">${fmtCur(e.usd)}</span>
-	      <span class="pc-est-cov ${e.coverage < 60 ? "low" : ""}" title="${attrEsc(tf(`${e.coverage}% de los tokens tienen precio configurado; el resto queda fuera del estimado`, `${e.coverage}% of tokens have a configured price; the rest is excluded`))}">${e.coverage}% ${tf("cubierto","covered")}</span>
-	    </div>`).join("");
-	  const lowCov = est.filter(e => e.coverage < 60 && e.coverage >= 0);
-	  const daily = total / Math.max(1, data.days || 14);
-	  let insight = total > 0 ? pcInsight("ok", "sprout", tf(
-	      `Tus suscripciones absorbieron ~<b>${fmtCur(total)}</b> de valor API en ${data.days} días (~${fmtCur(daily)}/día). Cada desborde evitado protege exactamente esto.`,
-	      `Your subscriptions absorbed ~<b>${fmtCur(total)}</b> of API value in ${data.days} days (~${fmtCur(daily)}/day). Every prevented overflow protects exactly this.`)) : "";
-	  if(lowCov.length)
-	    insight += pcInsight("warn", "pencil", tf(
-	      `Cobertura baja en ${lowCov.map(e => mdEsc(e.provider)).join(", ")}: agrega precios en api-prices.json (o su CLI no desglosa tokens) para que el valor real no quede subestimado.`,
-	      `Low coverage on ${lowCov.map(e => mdEsc(e.provider)).join(", ")}: add prices in api-prices.json (or its CLI lacks breakdown) so real value isn't underestimated.`));
-	  return `<div class="pc-block"><div class="pc-title">${svg("flame",13)} ${tf("Valor API equivalente","Equivalent API value")}
-	      <b class="pc-est-total">${fmtCur(total)}</b></div>${rows}
-	    <div class="pc-note">${tf("Lo que este uso habría costado a precios API públicos — lo cubre tu suscripción. Estimación editable en","What this usage would cost at public API prices — covered by your subscription. Editable estimate at")} <span class="rpath">~/codebase/0xJesus/ComandOS/config/api-prices.json</span></div>${insight}</div>`;
-	}
-	function pcModelsCsv(){
-	  const models = PC_DATA?.models || [];
-	  const head = "modelo,proveedor,tokens,turnos,tok_por_turno,p50_ms,p90_ms,valor_usd,valor_usd_por_turno";
-	  const lines = models.map(m => [m.model, m.provider, m.tokens, m.turns, m.tokens_per_turn,
-	    m.p50_ms ?? "", m.p90_ms ?? "", m.usd ?? "", m.usd_per_turn ?? ""].join(","));
-	  return [head, ...lines].join("\n");
-	}
-	function pcWire(el, data){
-	  el.querySelectorAll(".pc-act").forEach(b => b.addEventListener("click", async ()=>{
-	    const act = b.dataset.act;
-	    if(act === "guardia"){ activateMtab($("#usage .modal-panel"), "resumen"); loadGuard(); setTimeout(()=>$("#guard-projects")?.scrollIntoView({behavior:"smooth"}), 150); }
-	    if(act === "optimizar"){ activateMtab($("#usage .modal-panel"), "optimizar"); }
-	    if(act === "csv"){
-	      try{ await navigator.clipboard.writeText(pcModelsCsv()); toast(tf("Tabla copiada como CSV", "Table copied as CSV")); }
-	      catch(e){ const t = document.createElement("textarea"); t.value = pcModelsCsv(); document.body.appendChild(t); t.select();
-	        document.execCommand("copy"); t.remove(); toast(tf("Tabla copiada como CSV", "Table copied as CSV")); }
-	    }
-	  }));
-	  el.querySelectorAll("#pc-tbl th[data-sort]").forEach(th => th.addEventListener("click", ()=>{
-	    const k = th.dataset.sort;
-	    PC_SORT = {key: k, dir: PC_SORT.key === k ? -PC_SORT.dir : -1};
-	    renderProvCompare();
-	  }));
-	  el.querySelectorAll(".pc-cur").forEach(b => b.addEventListener("click", async ()=>{
-	    const cur = b.dataset.cur;
-	    const rate = cur === "USD" ? null : Number($("#pc-rate")?.value || (PC_DATA?.subs?.display?.usdRate) || 0) || null;
-	    try{
-	      await api("/usage/subscription", {display: {currency: cur, usdRate: rate || (cur === "USD" ? 1 : 0)}});
-	      if(cur !== "USD" && !rate){ toast(tf(`Pon el tipo de cambio 1 USD → ${cur}`, `Set the 1 USD → ${cur} rate`)); }
-	      await loadProvCompare();
-	    }catch(err){ toast(err.message, true); }
-	  }));
-	  $("#pc-rate")?.addEventListener("change", async e=>{
-	    const fx = pcFx();
-	    try{ await api("/usage/subscription", {display: {currency: fx.currency, usdRate: Number(e.target.value || 0)}}); await loadProvCompare(); }
-	    catch(err){ toast(err.message, true); }
-	  });
-	  el.querySelectorAll("[data-sub-provider]").forEach(b => b.addEventListener("click", ()=>{
-	    if(b.parentElement.querySelector(".uw-quota-edit")) return;
-	    const prov = b.dataset.subProvider;
-	    const wrap = document.createElement("span");
-	    wrap.className = "uw-quota-edit";
-	    wrap.innerHTML = `<input type="number" min="0" step="1" style="width:76px" value="${attrEsc(b.dataset.monthly || "")}"
-	        placeholder="${attrEsc(tf("$/mes","$/mo"))}" aria-label="${attrEsc(tf("Costo mensual","Monthly cost"))}">
-	      <select aria-label="moneda">${SUBS_CURRENCIES.map(c => `<option ${c === (b.dataset.currency || "USD") ? "selected" : ""}>${c}</option>`).join("")}</select>
-	      <button type="button" class="uwq-save" title="${attrEsc(tf("Guardar","Save"))}">${svg("check",12)}</button>`;
-	    b.replaceWith(wrap);
-	    const input = wrap.querySelector("input"); input.focus();
-	    const save = async ()=>{
-	      try{
-	        await api("/usage/subscription", {provider: prov, monthly: Number(input.value || 0), currency: wrap.querySelector("select").value});
-	        toast(tf(`Costo de ${prov} guardado`, `${prov} cost saved`)); await loadProvCompare();
-	      }catch(err){ toast(err.message, true); renderProvCompare(); }
-	    };
-	    wrap.querySelector(".uwq-save").addEventListener("click", save);
-	    input.addEventListener("keydown", e=>{ if(e.key === "Enter") save(); if(e.key === "Escape") renderProvCompare(); });
-	  }));
-	}
-	function renderProvCompare(){
-	  const el = $("#prov-compare");
-	  if(!el || !PC_DATA) return;
-	  const html = pcDailyChart(PC_DATA) + pcEstDailyChart(PC_DATA) + pcHeatmap(PC_DATA) +
-	               pcCompositionChart(PC_DATA) + pcScatterChart(PC_DATA) +
-	               pcModelTable(PC_DATA) + pcRoiBlock(PC_DATA) + pcEstimateChart(PC_DATA);
-	  el.innerHTML = linkifyPaths(html) ||
-	    `<div class="desc">${tf("Sin turnos registrados en la ventana.","No turns recorded in this window.")}</div>`;
-	  pcWire(el, PC_DATA);
-	}
-	async function loadProvCompare(){
-	  const el = $("#prov-compare");
-	  if(!el) return;
-	  try{
-	    const days = Number($("#pc-days")?.value || 14);
-	    PC_DATA = await api(`/usage/provider-compare?days=${days}`);
-	    renderProvCompare();
-	  }catch(err){ el.innerHTML = `<div class="desc">${mdEsc(err.message)}</div>`; }
-	}
-	function fmtLeft(sec){
-	  if(sec <= 0) return tf("ya", "now");
-	  const d = Math.floor(sec/86400), h = Math.floor(sec%86400/3600), m = Math.floor(sec%3600/60);
-	  if(d) return `${d}d ${h}h`;
-	  if(h) return `${h}h ${m}m`;
-	  return `${m} min`;
-	}
-	function fmtWhen(ts){
-	  const dt = new Date(ts*1000);
-	  const loc = L === "en" ? "en" : "es";
-	  return dt.toLocaleDateString(loc, {weekday:"short"}) + " "
-	    + dt.toLocaleTimeString(loc, {hour:"2-digit",minute:"2-digit",hour12:false});
-	}
-	// Fecha completa para los resets: "sab 19 sept, 02:00". fmtWhen se queda en
-	// el dia de la semana y dentro de los proximos 7 dias eso no basta para saber
-	// de que dia habla.
-	function fmtStamp(ts){
-	  if(!ts) return "";
-	  const dt = new Date(ts*1000);
-	  // El idioma del tablero manda sobre el del sistema: con la UI en espanol la
-	  // fecha no puede salir en ingles ni con reloj de 12 h.
-	  const loc = L === "en" ? "en" : "es";
-	  return dt.toLocaleDateString(loc, {weekday:"short", day:"numeric", month:"short"})
-	    + ", " + dt.toLocaleTimeString(loc, {hour:"2-digit", minute:"2-digit", hour12:false});
-	}
-	// HERO del Resumen: por cuenta/ventana — cuanto TIEMPO queda, si la
-	// guardia predice agotamiento antes del reset, y linea de tiempo visual.
-	function renderQuotaHero(state){
-	  const el = $("#quota-hero");
-	  if(!el || !state) return;
-	  const now = Date.now()/1000;
-	  const fcs = (GUARD_CACHE && GUARD_CACHE.forecasts) || [];
-	  const fcFor = l => fcs.find(f =>
-	    (f.scope === "General" && l.provider === "claude" && (l.account||"main") === "main" && l.window === "7d" && !/fable/i.test(l.label||"")) ||
-	    (f.scope === "Fable" && l.provider === "claude" && (l.account||"main") === "main" && /fable/i.test(l.label||"")));
-	  const items = (state.limits || []).filter(l =>
-	    (l.percent !== null && l.percent !== undefined) || l.kind === "measured");
-	  // agrupar por PROVEEDOR → CUENTA
-	  const groups = new Map();
-	  for(const l of items){
-	    const k = `${l.provider}|${l.account || "main"}`;
-	    if(!groups.has(k)) groups.set(k, []);
-	    groups.get(k).push(l);
-	  }
-	  const winName = l => l.kind === "measured" ? tf("Consumo medido","Measured use")
-	    : /fable/i.test(l.label||"") ? tf("Fable · semana","Fable · week")
-	    : l.window === "5h" ? tf("Sesión 5h","5h session")
-	    : tf("Todos los modelos · semana","All models · week");
-	  const order = ["claude","codex","grok"];
-	  const keys = [...groups.keys()].sort((a,b) => {
-	    const [pa,aa]=a.split("|"),[pb,ab]=b.split("|");
-	    return (order.indexOf(pa)-order.indexOf(pb)) || aa.localeCompare(ab);
-	  });
-	  const html = keys.map(k => {
-	    const [prov, acct] = k.split("|");
-	    const rows = groups.get(k).sort((a,b) => Number(b.percent||0) - Number(a.percent||0)).map(l => {
-	      const fc = fcFor(l);
-	      const risky = fc && fc.projectedExhaustionAt && l.resets_at && fc.projectedExhaustionAt < l.resets_at;
-	      const pct = l.percent;
-	      const left = pct !== null && pct !== undefined ? Math.max(0, 100 - Number(pct)) : null;
-	      const sev = risky ? "danger" : Number(pct) >= 70 ? "warn" : "ok";
-	      // UNA barra, UN color: la barra pinta lo CONSUMIDO (se llena
-	      // conforme gastas); el texto dice lo que queda. Sin doble lectura.
-	      const bar = left !== null
-	        ? `<div class="qh-bar ${sev}" title="${attrEsc(tf(`Llevas ${Number(pct).toFixed(0)}% usado · te queda ${left.toFixed(0)}%`,`${Number(pct).toFixed(0)}% used · ${left.toFixed(0)}% left`))}"><i style="width:${Number(pct)}%"></i></div>`
-	        : `<div class="qh-bar nodata" title="${attrEsc(l.note||"")}"></div>`;
-	      const quedaTxt = left !== null ? `${tf("queda","left")} <b>${left.toFixed(0)}%</b>`
-	        : `<b>${fmtTokens(l.tokens_today || l.tokens_7d || 0)}</b> ${l.tokens_today ? tf("hoy","today") : "7d"}`;
-	      return `<div class="qh-sub ${sev}">
-	        <span class="qh-win">${mdEsc(winName(l))}</span>
-	        ${bar}
-	        <span class="qh-queda">${quedaTxt}</span>
-	        <span class="qh-reset">${l.resets_at ? `${fmtLeft(l.resets_at - now)} ${tf("al reset","to reset")}<em>${mdEsc(fmtStamp(l.resets_at))}</em>` : ""}</span>
-	        ${risky ? `<span class="qh-risk" title="${attrEsc(`${fc.message||""} ${tf("Se renueva","Renews")} ${fmtStamp(l.resets_at)}.`)}">${svg("zap",11)} ${tf("se agotaría","would run dry")} ${mdEsc(fmtStamp(fc.projectedExhaustionAt))}</span>`
-	                : `<span class="qh-okchip">${svg("check",11)}</span>`}
-	      </div>`;
-	    }).join("");
-	    const withPct = groups.get(k).filter(l => l.percent !== null && l.percent !== undefined);
-	    const tightest = withPct.length
-	      ? withPct.reduce((a, b) => Number(a.percent) >= Number(b.percent) ? a : b) : null;
-	    const weekly = groups.get(k).find(l => l.window === "7d" && l.resets_at) || tightest;
-	    const email = groups.get(k).map(l => l.accountEmail).find(Boolean) || "";
-	    const sum = tightest ? `<span class="qh-gsum">${tf("queda","left")}
-	        <b>${Math.max(0, 100 - Number(tightest.percent)).toFixed(0)}%</b>
-	        <i>${mdEsc(winName(tightest))}</i></span>` : "";
-	    const when = weekly && weekly.resets_at
-	      ? `<span class="qh-gwhen">${svg("timer",10)} ${tf("se renueva","renews")} ${mdEsc(fmtStamp(weekly.resets_at))}</span>` : "";
-	    return `<div class="qh-group">
-	      <div class="qh-ghead">${providerMark(prov, "", 14)} <b>${mdEsc(prov)}</b>${acct !== "main" ? ` <span class="qh-acct"${email ? ` title="${attrEsc(email)}"` : ""}>${mdEsc(acct)}</span>` : ` <span class="qh-acct qh-main"${email ? ` title="${attrEsc(email)}"` : ""}>main</span>`}${sum}${when}</div>
-	      ${rows}</div>`;
-	  }).join("");
-	  const g = GUARD_CACHE || {};
-	  const ago = g.generatedAt ? Math.max(0, Math.round(now - g.generatedAt)) : null;
-	  const guardLine = `<button type="button" class="qh-guard" id="qh-guard"
-	      title="${attrEsc(tf("La guardia mide llamadas y tokens por minuto y proyecta si tu cuota llega al reset. Click: ver detalle.","The guard measures calls/tokens per minute and projects whether quota reaches reset. Click for detail."))}">
-	    <span class="qh-gdot ${((g.critical||0) ? "danger" : (g.warning||0) ? "warn" : "ok")}"></span>
-	    ${tf("Guardia activa","Guard active")}${ago !== null ? ` · ${tf("midió hace","checked")} ${ago < 90 ? ago + " s" : Math.round(ago/60) + " min"}` : ""}
-	    · <b>${g.critical||0}</b> ${tf("críticos","critical")} · <b>${g.warning||0}</b> ${tf("vigilar","watch")} · <b>${Math.max(0,(g.projects||[]).length-(g.critical||0)-(g.warning||0))}</b> ok
-	    <span class="qh-go">${tf("ver detalle →","details →")}</span></button>`;
-	  el.innerHTML = html ? `<div class="qh-title">${svg("timer",13)} ${tf("¿Cuánto me queda?","How much is left?")}</div>` + html + guardLine : "";
-	  $("#qh-guard")?.addEventListener("click", ()=>{ $("#guard-projects")?.scrollIntoView({behavior:"smooth", block:"start"}); });
-	}
 	function renderUsage(state){
 	  indexUsage(state);
-	  renderQuotaHero(state);
-	  const total = state?.totals || {};
-	  const summary = usageSummaryText(state);
-	  $("#usage-summary").textContent = summary ||
-	    `${fmtMoney(total.cost_usd)} · ${fmtTokens(total.total_tokens)} · ${state?.panes?.length || 0} panes`;
 	  renderLimitsStrip(state);
-	  renderUsageLimits(state);
-	  // PROVEEDORES: barras proporcionales de tokens (nada de $0.00 muertos:
-	  // el costo solo aparece si existe; sin datos = no hay tarjeta)
-	  const hp = state?.credential_health || {};
-	  const provRows = (state?.providers || [])
-	    .filter(p => Number(p.total_tokens || 0) > 0 || Number(p.active_panes || 0) > 0)
-	    .sort((a, b) => Number(b.total_tokens || 0) - Number(a.total_tokens || 0));
-	  const provMax = Math.max(...provRows.map(p => Number(p.total_tokens || 0)), 1);
-	  const adminMissing = ["openai", "anthropic"].filter(id => (hp[id] || {}).status !== "ok");
-	  $("#usage-providers").innerHTML = provRows.map(p => {
-	    const tok = Number(p.total_tokens || 0);
-	    const active = Number(p.active_panes || 0);
-	    const cost = Number(p.cost_usd || 0);
-	    return `<div class="usage-viz">
-	      <div class="uv-top"><b>${mdEsc(p.provider)}</b>
-	        <span>${active ? `${active} ${tf("panes", "panes")} · ` : ""}${fmtTokens(tok)}${cost > 0 ? ` · ${fmtMoney(cost)}` : ""}</span></div>
-	      <div class="usage-bar"><span style="width:${Math.max(2, Math.round(tok / provMax * 100))}%"></span></div>
-	    </div>`;
-	  }).join("") + (adminMissing.length ? `<div class="desc" style="margin-top:6px">${
-	    tf("Costos exactos en $ (opcional): faltan llaves admin de ", "Exact $ costs (optional): missing admin keys for ")}${adminMissing.join(", ")}</div>` : "");
-	  // PROYECTOS: barra proporcional por proyecto (14 dias), panes vivos dentro
-	  const projects = [...(state?.projects || [])]
-	    .sort((a, b) => Number(b.total_tokens || 0) - Number(a.total_tokens || 0));
-	  const projMax = Math.max(...projects.map(p => Number(p.total_tokens || 0)), 1);
-	  const top = projects.slice(0, 8);
-	  const rest = projects.slice(8);
-	  const restTok = rest.reduce((a, p) => a + Number(p.total_tokens || 0), 0);
-	  const allRules = state?.alert_rules || [];
-	  const bell = (scope, target, label) => {
-	    const rule = allRules.find(r => r.id === `${scope}:${target}`);
-	    return `<button type="button"
-	    class="uv-bell ${rule ? "on" : ""}" data-scope="${attrEsc(scope)}"
-	    data-target="${attrEsc(target)}" data-label="${attrEsc(label)}"
-	    title="${tf("Configurar alerta de presupuesto de tokens por día", "Configure a daily token budget alert")}">
-	    ${svg("bell",12)} ${rule ? fmtTokens(rule.threshold).replace(" tok", "") : tf("alerta", "alert")}</button>`;
-	  };
-	  $("#usage-projects").innerHTML = top.length ? top.map(pr => {
-	    const live = (pr.panes || []).filter(p => String(p.tmux_pane || "").startsWith("%"));
-	    const hist = (pr.panes || []).filter(p => !String(p.tmux_pane || "").startsWith("%"));
-	    const tok = Number(pr.total_tokens || 0);
-	    const name = (pr.git_root || "").split("/").pop() || shortPath(pr.git_root || "");
-	    return `<div class="usage-viz">
-	      <div class="uv-top"><b title="${attrEsc(pr.git_root||"")}">${mdEsc(shortPath(pr.git_root) || name)}</b>${bell("project", pr.git_root || "", name)}
-	        <span>${fmtTokens(tok)}${Number(pr.cost_usd || 0) > 0 ? ` · ${fmtMoney(pr.cost_usd)}` : ""}${hist.length ? ` · ${hist.length} ${tf("ses.", "past")}` : ""}</span></div>
-	      <div class="usage-bar"><span style="width:${Math.max(2, Math.round(tok / projMax * 100))}%"></span></div>
-	      ${live.map(p => `<div class="uv-pane" data-session="${attrEsc(p.tmux_session || "")}"
-	        data-pane="${attrEsc(p.tmux_pane || "")}" title="${tf("Click: abrir esta sesion", "Click: open this session")}">
-	        <span class="uv-dot" data-a="${attrEsc(p.agent || "claude")}"></span>
-	        <div class="uv-main">
-	          <b>${mdEsc(p.tab_label || p.tmux_session || "")}</b>
-	          <span class="uv-info">${mdEsc(usageChipText(p) || tf("sin uso hoy", "no usage today"))}</span>
-	        </div>
-	        ${bell("session", p.tmux_session || "", p.tab_label || p.tmux_session || "")}
-	        ${panePresetButtons(p)}
-	      </div>`).join("")}
-	    </div>`;
-	  }).join("") + (rest.length ? `<div class="desc" style="margin-top:2px">+${rest.length} ${tf("proyectos más", "more projects")} · ${fmtTokens(restTok)}</div>` : "")
-	    + (top.length ? (()=>{
-	        const all = projects.reduce((a, p) => a + Number(p.total_tokens || 0), 0);
-	        const share = Math.round(Number(top[0].total_tokens || 0) / Math.max(1, all) * 100);
-	        const name = shortPath(top[0].git_root) || (top[0].git_root || "").split("/").pop() || "?";
-	        const ins = share >= 50
-	          ? {cls: "warn", icon: "flame", text: tf(
-	              `${name} se come el ${share}% de tus tokens (14d). Si su cuota semanal duele, ESTE es el proyecto donde bajar de modelo rinde más — ponle alerta con su campana.`,
-	              `${name} eats ${share}% of your tokens (14d). If the weekly quota hurts, THIS is where a cheaper model pays off most — set its bell alert.`)}
-	          : {cls: "ok", icon: "check", text: tf(
-	              `Consumo repartido: el mayor (${name}) lleva ${share}%. Ningún proyecto domina tu cuota.`,
-	              `Spread consumption: the top one (${name}) holds ${share}%. No project dominates your quota.`)};
-	        return `<div class="pc-insight ${ins.cls}">${svg(ins.icon,12)} <span>${ins.text}</span></div>`;
-	      })() : "")
-	    : `<div class="empty">${tf("Sin uso todavia", "No usage yet")}</div>`;
-	  document.querySelectorAll("#usage .mdl-wrap").forEach(wireModelMenu);
-	  renderAlertConfig(state);
-	  renderAlertRules(state);
-	  document.querySelectorAll("#usage .uv-bell").forEach(b=>{
-	    b.addEventListener("click", e=>{ e.stopPropagation(); closeModelMenus(); openRuleMenu(b); });
-	  });
-	  const alerts = state?.alerts || [];
-	  $("#usage-alerts").innerHTML = alerts.length ? alerts.map(a =>
-	    `<div class="usage-alert ${a.level === "danger" ? "danger" : ""}">${mdEsc(a.message || a.kind || "alerta")}
-	       <small>${agoTxt(a.created_at)}</small></div>`).join("")
-	    : `<div class="desc">${tf("Sin alertas", "No alerts")}</div>`;
-	  document.querySelectorAll("#usage .uv-pane[data-session]").forEach(el=>{
-	    el.addEventListener("click", ()=> openPane(el.dataset.session));
-	  });
 	  render(S.list || []);
-	}
-	// Config de alertas: umbrales toggleables, persistidos en el backend
-	function renderAlertConfig(state){
-	  const ths = state?.alert_thresholds;
-	  if(!Array.isArray(ths)) return;
-	  document.querySelectorAll("#alert-config .alert-th").forEach(b=>{
-	    b.classList.toggle("on", ths.includes(Number(b.dataset.th)));
-	  });
-	}
-	document.querySelectorAll("#alert-config .alert-th").forEach(b=>{
-	  b.addEventListener("click", async ()=>{
-	    const active = new Set([...document.querySelectorAll("#alert-config .alert-th.on")].map(x => x.dataset.th));
-	    active.has(b.dataset.th) ? active.delete(b.dataset.th) : active.add(b.dataset.th);
-	    const value = [...active].sort((a, b2) => a - b2).join(",") || "off";
-	    try{
-	      const r = await api("/usage/settings", {settings: {COMANDOS_ALERT_THRESHOLDS: value}});
-	      renderUsage(r.state || {});
-	      toast(value === "off" ? tf("Alertas de límite apagadas", "Limit alerts off")
-	                            : tf(`Alertas al cruzar ${value}%`, `Alerts at ${value}%`));
-	    }catch(err){ toast(err.message, true); }
-	  });
-	});
-	// Reglas de alerta por objetivo (sesion/proyecto/proveedor): 🔔 abre un
-	// menu de presupuestos de tokens por dia; se evaluan en cada poll.
-	const RULE_BUDGETS = [
-	  {v: 50000000, t: "50M"}, {v: 100000000, t: "100M"}, {v: 250000000, t: "250M"},
-	  {v: 500000000, t: "500M"}, {v: 1000000000, t: "1B"},
-	];
-	const RULE_PERCENTS = [50, 60, 70, 80, 90, 95];
-	function openRuleMenu(btn){
-	  const menu = $("#mdl-menu");
-	  const rid = `${btn.dataset.scope}:${btn.dataset.target}`;
-	  const isLimit = btn.dataset.scope === "limit";
-	  const existing = (S.usage?.alert_rules || []).find(r => r.id === rid);
-	  const head = isLimit
-	    ? `${tf("Avisar si", "Alert if")} ${mdEsc(btn.dataset.label)} ${tf("pasa de", "exceeds")}`
-	    : `${tf("Avisar si HOY pasa de", "Alert if TODAY exceeds")} — ${mdEsc(btn.dataset.label)}`;
-	  const opts = isLimit
-	    ? RULE_PERCENTS.map(p => `<button type="button" class="mdl-opt" role="option" data-thr="${p}">
-	        <i style="background:${existing && Number(existing.threshold) === p ? "var(--done)" : "var(--line2)"}"></i>
-	        <b>${p}%</b><span>${tf("de la ventana", "of the window")}</span></button>`).join("")
-	    : RULE_BUDGETS.map(b => `<button type="button" class="mdl-opt" role="option" data-thr="${b.v}">
-	        <i style="background:${existing && Number(existing.threshold) === b.v ? "var(--done)" : "var(--line2)"}"></i>
-	        <b>${b.t} tok</b><span>${tf("en 24 horas", "in 24 hours")}</span></button>`).join("");
-	  menu.innerHTML = `<div class="mdl-head">${head}</div>` + opts +
-	    (existing ? `<button type="button" class="mdl-opt" role="option" data-del="1">
-	      <i style="background:#FF5C68"></i><b>${tf("Quitar alerta", "Remove alert")}</b>
-	      <span>${tf("actual", "current")}: ${isLimit ? `${Number(existing.threshold)}%` : fmtTokens(existing.threshold)}</span></button>` : "");
-	  menu.classList.remove("hidden");
-	  positionModelMenu(btn);
-	  mdlMenuBtn = btn;
-	  menu.querySelectorAll(".mdl-opt").forEach(o=>{
-	    o.addEventListener("click", async e=>{
-	      e.stopPropagation();
-	      closeModelMenus();
-	      try{
-	        const payload = o.dataset.del
-	          ? {action: "delete", id: rid}
-	          : {action: "set", scope: btn.dataset.scope, target: btn.dataset.target,
-	             label: btn.dataset.label, threshold: Number(o.dataset.thr)};
-	        await api("/usage/alert-rule", payload);
-	        const thrTxt = isLimit ? `${o.dataset.thr}%` : `${fmtTokens(o.dataset.thr)}/${tf("día", "day")}`;
-	        toast(o.dataset.del ? tf(`Alerta de ${btn.dataset.label} quitada`, `${btn.dataset.label} alert removed`)
-	                            : tf(`Alerta: ${btn.dataset.label} > ${thrTxt}`, `Alert: ${btn.dataset.label} > ${thrTxt}`));
-	        tickUsage(true);
-	      }catch(err){ toast(err.message, true); }
-	    });
-	  });
-	}
-	function renderAlertRules(state){
-	  const host = $("#alert-rules");
-	  if(!host) return;
-	  const rules = state?.alert_rules || [];
-	  host.innerHTML = rules.map(r => {
-	    const pct = Math.max(0, Math.min(100, Number(r.percent || 0)));
-	    const scopeTxt = {session: tf("sesión", "session"), project: tf("proyecto", "project"),
-	                      provider: tf("proveedor", "provider"), limit: tf("límite del plan", "plan limit")}[r.scope] || r.scope;
-	    const valTxt = r.unit === "percent"
-	      ? `${Number(r.value).toFixed(0)}% / ${Number(r.threshold)}%`
-	      : `${fmtTokens(r.value)} / ${fmtTokens(r.threshold)} ${tf("hoy", "today")}`;
-	    return `<div class="rule-row ${pct >= 100 ? "over" : ""}">
-	      <b>${svg("bell",12)} ${mdEsc(r.label || r.target)}</b>
-	      <span>${mdEsc(scopeTxt)} · ${valTxt}</span>
-	      <div class="usage-bar"><span style="width:${pct}%"></span></div>
-	      <button type="button" class="rule-del" data-id="${attrEsc(r.id)}" title="${tf("Quitar", "Remove")}">×</button>
-	    </div>`;
-	  }).join("");
-	  host.querySelectorAll(".rule-del").forEach(b=>{
-	    b.addEventListener("click", async ()=>{
-	      try{ await api("/usage/alert-rule", {action: "delete", id: b.dataset.id}); tickUsage(true); }
-	      catch(err){ toast(err.message, true); }
-	    });
-	  });
-	}
-	// Abrir/enfocar una sesion desde su fila en Proyectos y panes
-	async function openPane(session){
-	  if(!session) return;
-	  try{
-	    if(inApp()){ openInApp(session, "claude"); }
-	    else{ await api("/focus", {session}); }
-	    toast(tf(`Abriendo ${session}`, `Opening ${session}`));
-	  }catch(err){ toast(err.message, true); }
 	}
 	let usagePollTs = 0;
 	// ---------- MOTOR: Claude Code con Claude o con Codex (proxy local). Global = sesiones nuevas; Centro = ESTA sesión, contexto intacto ----------
@@ -4981,27 +3275,6 @@ ulog("click", `harness-switch:${to}`, "centro");
 	function nfPins(){ try{ return JSON.parse(localStorage.getItem("cc-nf-pins") || "[]"); }catch(e){ return []; } }
 	function nfPriorityItems(){
 	  const out = [];
-	  const g = GUARD_CACHE || {};
-	  for(const f of (g.forecasts || [])){
-	    if(f.level === "normal") continue;
-	    out.push({cls: "desborde", key: `fc|${f.scope}|${Math.round(f.percent/5)}`,
-	      icon: "zap", sev: f.level === "critical" ? "err" : "warn",
-	      title: tf(`Posible desborde: ${f.scope === "General" ? "cuota semanal Claude" : f.scope} al ${Math.round(f.percent)}%`,
-	                `Possible overflow: ${f.scope} at ${Math.round(f.percent)}%`),
-	      body: f.message || "", ts: g.generatedAt,
-	      actions: [{id: "guardia", label: tf("Ver guardia", "View guard"), icon: "lock"},
-	                {id: "ahorro", label: tf("Proponer ahorro", "Propose savings"), icon: "sprout"}]});
-	  }
-	  for(const p of (g.projects || [])){
-	    if(p.level !== "critical") continue;
-	    out.push({cls: "desborde", key: `gp|${p.project}|${Math.round((p.tokensHour||0)/2e7)}`,
-	      icon: "flame", sev: "err",
-	      title: tf(`${shortPath(p.path) || p.project} quemando ${fmtTokens(p.tokensHour)}/h`,
-	                `${shortPath(p.path) || p.project} burning ${fmtTokens(p.tokensHour)}/h`),
-	      tip: p.path || "",
-	      body: p.action || "", ts: g.generatedAt,
-	      actions: [{id: "guardia", label: tf("Ver guardia", "View guard"), icon: "lock"}]});
-	  }
 	  for(const it of (S.list || [])){
 	    const s2 = it.suggestion;
 	    if(!s2 || !it.alive) continue;
@@ -5196,8 +3469,6 @@ ulog("click", `harness-switch:${to}`, "centro");
 	    if(act === "dismiss"){ const st = nfStore("cc-nf-dismiss"); st[key] = 1; nfSave("cc-nf-dismiss", st); notifPaint(); notifBadge(); return; }
 	    if(act === "pin"){ const it = nfPriorityItems().find(x => x.key === key); if(it){ const ps = nfPins(); ps.unshift({...it, actions: it.actions, savedAt: Date.now()/1000, reminded: false}); nfSave("cc-nf-pins", ps.slice(0, 20)); toast(tf("Guardada — te recuerdo en unas horas si no la ves","Saved — I'll remind you in a few hours")); } notifPaint(); notifBadge(); return; }
 	    if(act === "unpin"){ nfSave("cc-nf-pins", nfPins().filter(p => p.key !== key)); notifPaint(); notifBadge(); return; }
-	    if(act === "guardia"){ m.classList.add("hidden"); $("#btn-usage").click(); setTimeout(()=>$("#guard-projects")?.scrollIntoView({behavior:"smooth"}), 400); return; }
-	    if(act === "ahorro"){ m.classList.add("hidden"); $("#btn-usage").click(); setTimeout(()=>{ activateMtab($("#usage .modal-panel"), "reparto"); window.Reparto?.load(); }, 400); return; }
 	    if(act === "copiar"){
 	      const it = nfPriorityItems().find(x => x.key === key) || nfPins().find(x => x.key === key);
 	      const u = it && it.url; if(!u) return;
@@ -5273,62 +3544,7 @@ ulog("click", `harness-switch:${to}`, "centro");
 	  m.classList.add("hidden");
 	});
 	// Pomodoro: dash/pomodoro.js (autoridad en el backend: GET/POST /pomodoro).
-	function fmtMin(m){
-	  return m >= 90 ? `${(m/60).toFixed(1)} h` : `${Math.round(m)} min`;
-	}
-	let dedTs = 0;
-	async function renderDedication(){
-	  if(Date.now() - dedTs < 60000) return;
-	  dedTs = Date.now();
-	  try{
-	    const d = await api("/dedication");
-	    const box = $("#dedication");
-	    if(!box) return;
-	    const today = (d.days && d.days[0]) || {projects: []};
-	    const totMin0 = (today.projects || []).reduce((a, x) => a + x.minutes, 0);
-	    $("#ded-sub").textContent = totMin0
-	      ? tf(`${fmtMin(totMin0)} de trabajo con agentes, en ${(today.projects||[]).length} proyectos`,
-	           `${fmtMin(totMin0)} working with agents, across ${(today.projects||[]).length} projects`)
-	      : tf("sin actividad todavía", "no activity yet");
-	    const top = (today.projects || []).slice(0, 8);
-	    const max = Math.max(1, ...top.map(x => x.minutes));
-	    box.innerHTML = top.map(x => `
-	      <div class="ded-row" title="${attrEsc(x.path)} · ${x.turns} ${tf("turnos","turns")}${x.cost ? ` · $${x.cost.toFixed(2)}` : ""}">
-	        <span class="dn">${mdEsc(x.name)}</span>
-	        <span class="db"><span style="width:${Math.round(100*x.minutes/max)}%"></span></span>
-	        <span class="dm">${fmtMin(x.minutes)}</span>
-	      </div>`).join("") || `<div class="desc">${tf("Sin actividad hoy todavia", "No activity yet today")}</div>`;
-	    const pomos = pomoToday();
-	    if(pomos.length){
-	      const byP = {};
-	      pomos.forEach(x => byP[x.project || "?"] = (byP[x.project || "?"] || 0) + 1);
-	      box.innerHTML += `<div class="ded-week">🍅 ${tf("hoy", "today")}: ${pomos.length} — ` +
-	        mdEsc(Object.entries(byP).map(([k, v]) => `${k} ×${v}`).join(" · ")) + `</div>`;
-	    }
-	    const wk = (d.week || []).slice(0, 5)
-	      .map(x => `${x.name} ${(x.minutes/60).toFixed(1)}h`).join(" · ");
-	    if(wk) box.innerHTML += `<div class="ded-week">7d: ${mdEsc(wk)}</div>`;
-	    if(top.length){
-	      const totMin = (today.projects || []).reduce((a, x) => a + x.minutes, 0);
-	      const share = Math.round(top[0].minutes / Math.max(1, totMin) * 100);
-	      const nProj = (today.projects || []).length;
-	      const ins = share >= 60
-	        ? {cls: "ok", icon: "check", text: tf(
-	            `Día enfocado: ${top[0].name} concentra el ${share}% de tus ${fmtMin(totMin)}. La concentración rinde más que saltar entre proyectos.`,
-	            `Focused day: ${top[0].name} holds ${share}% of your ${fmtMin(totMin)}. Concentration beats project-hopping.`)}
-	        : nProj >= 5
-	        ? {cls: "warn", icon: "zap", text: tf(
-	            `Día fragmentado: ${nProj} proyectos y el mayor solo lleva ${share}%. Cada salto rehace contexto (y caché). Agrupa por proyecto con bloques de foco.`,
-	            `Fragmented day: ${nProj} projects and the top one only holds ${share}%. Every hop rebuilds context (and cache). Batch by project with focus blocks.`)}
-	        : {cls: "ok", icon: "check", text: tf(
-	            `${fmtMin(totMin)} repartidos en ${nProj} proyectos, ${top[0].name} al frente (${share}%). Balance razonable.`,
-	            `${fmtMin(totMin)} across ${nProj} projects, ${top[0].name} leading (${share}%). Reasonable balance.`)};
-	      box.innerHTML += `<div class="pc-insight ${ins.cls}">${svg(ins.icon,12)} <span>${ins.text}</span></div>`;
-	    }
-	  }catch(e){}
-	}
 	async function tickUsage(force=false){
-	  renderDedication();
 	  const now = Date.now();
 	  if(!force && now - usagePollTs < 10000) return;
 	  usagePollTs = now;
@@ -7158,17 +5374,11 @@ async function setPref(patch, ok){
   catch(e){ toast(e.message, true); }
 }
 // ---------- tabs internos de modales ----------
-// Analytics: 3 tabs visibles, cada uno agrupa varios panes (minimalismo sin
-// perder contenido). Otros modales (Ajustes) siguen 1 tab = 1 pane.
-const MTAB_GROUPS = {resumen:["resumen","guardia","alertas"], comparar:["comparar","proyectos","proveedores"], reparto:["reparto"]};
+// Ajustes: 1 tab = 1 pane. Analytics ya no usa esto (dash/analytics.js).
 function activateMtab(scope, name){
-  const group = MTAB_GROUPS[name] || [name];
+  const group = [name];
   scope.querySelectorAll(".mtab").forEach(b=>b.classList.toggle("active", b.dataset.mtab === name));
   scope.querySelectorAll(".mtab-pane").forEach(p=>p.classList.toggle("active", group.includes(p.dataset.mpane)));
-  if(name === "resumen") loadGuard();
-  if(name === "comparar"){ loadCompare(); loadProvCompare(); }
-  if(name === "reparto") window.Reparto?.load();
-  if(name === "pomodoro") window.ComandosPomodoro?.loadAnalytics?.();
 }
 function wireMtabs(root=document){
   root.querySelectorAll(".mtab").forEach(b=>{
@@ -7183,9 +5393,6 @@ function wireMtabs(root=document){
 }
 document.addEventListener("DOMContentLoaded", ()=>{
   wireMtabs();
-  $("#compare-refresh")?.addEventListener("click", loadCompare);
-  $("#compare-days")?.addEventListener("change", loadCompare);
-  $("#compare-task")?.addEventListener("change", loadCompare);
 });
 // Por si el DOM ya se cargó (script embebido tarde), engancha inmediato.
 if(document.readyState !== "loading") wireMtabs();
@@ -7696,23 +5903,10 @@ document.querySelectorAll(".cfg[data-key]").forEach(b=>{
 	  $("#usage").classList.remove("open");
 	});
 	$("#btn-usage").addEventListener("click", ()=>{
-	  $("#usage").classList.toggle("open");
-	  $("#settings").classList.remove("open");
-	  $("#servers").classList.remove("open");
-	  $("#remote").classList.remove("open");
-	  if($("#usage").classList.contains("open"))
-	    activateMtab($("#usage .modal-panel"), document.querySelector("#usage .mtab.active")?.dataset.mtab || "resumen");
-	  tickUsage(true);
+	  if($("#usage").classList.contains("open")){ $("#usage").classList.remove("open"); return; }
+	  openAnalytics();
 	});
 	// (usage-close removido: el modal ya trae su X)
-	$("#pc-days")?.addEventListener("change", loadProvCompare);
-	$("#usage-refresh").addEventListener("click", async ()=>{
-	  try{
-	    const r = await api("/usage/refresh", {});
-	    renderUsage(r.state || {});
-	    toast(tf("Uso actualizado", "Usage refreshed"));
-	  }catch(err){ toast(err.message, true); }
-	});
 	document.addEventListener("click", e=>{
 	  for(const [id, trg] of [["#settings","btn-settings"],["#servers","ssh-manage"],["#remote","btn-remote"],["#usage","btn-usage"]]){
 	    const s = $(id);
@@ -8086,7 +6280,6 @@ window.opFavorite = async (session, on) => {
 };
 window.setPollSeconds = (n) => { const el = $("#poll"); if(el){ el.value = n; el.dispatchEvent(new Event("input", {bubbles:true})); } };
 window.setBrowserNotifications = (on) => { const el = $("#sw-notif"); if(el && el.classList.contains("on") !== !!on) el.click(); };
-window.setLimitStyle = setLimitStyle;
 window.nfDismiss = (id) => document.querySelector(`.nf2-x[data-id="${CSS.escape(id)}"]`)?.click();
 window.nfPin = (id) => document.querySelector(`[data-act="pin"][data-id="${CSS.escape(id)}"]`)?.click();
 window.nfUnpin = (id) => document.querySelector(`[data-act="unpin"][data-id="${CSS.escape(id)}"]`)?.click();
@@ -8101,8 +6294,36 @@ window.nsOpenPrefilled = (cwd, harness, motor, model, effort, danger) => {
     if(typeof danger === "boolean"){ const d = $("#ns-danger"); if(d && d.classList.contains("on") !== danger) d.click(); }
   });
 };
-window.openAnalyticsTab = (tab) => { $("#btn-usage")?.click(); const root = $("#usage .modal-panel"); if(root) activateMtab(root, tab || "resumen"); };
-window.compareSetDays = (n) => { const s = $("#compare-days"); if(s){ s.value = String(n); s.dispatchEvent(new Event("change", {bubbles:true})); } };
+// ---------- Analytics (grill 1–2 oct): Cuentas · Comparar · Pomodoro ----------
+// El marcado es el del mockup aprobado (dash/analytics-render.js, generado); aquí solo se abre.
+const ANALYTICS_DEMO = (new URLSearchParams(location.search).get("demo") || "").replace(/[^a-z]/g, "");
+let analyticsView = null, analyticsPhone = null;
+function analytics(){
+  if(!analyticsView && window.Analytics){
+    let saved = "cuentas";
+    try{ saved = localStorage.getItem("cc-analytics-tab") || saved; }catch(e){}
+    analyticsView = window.Analytics.create($("#an-root"), {
+      tab: saved,
+      fetchWeek: off => api(`/analytics/week?offset=${off}${ANALYTICS_DEMO ? `&demo=${ANALYTICS_DEMO}` : ""}`),
+      onTab: t => { try{ localStorage.setItem("cc-analytics-tab", t); }catch(e){} },
+    });
+  }
+  return analyticsView;
+}
+function openAnalytics(tab){
+  const m = $("#usage");
+  document.querySelectorAll(".modal.open").forEach(x => { if(x !== m) x.classList.remove("open"); });
+  m.classList.add("open");
+  analytics()?.open(tab);
+}
+window.openAnalyticsTab = tab => openAnalytics(tab);
+// Mientras está abierto, los datos se releen cada minuto; el ancho decide escritorio o celular.
+setInterval(()=>{ if($("#usage")?.classList.contains("open")) analytics()?.load(); }, 60000);
+new ResizeObserver(()=>{
+  if(!analyticsView || !$("#usage").classList.contains("open")) return;
+  const phone = $("#an-root").getBoundingClientRect().width < 600;
+  if(phone !== analyticsPhone){ analyticsPhone = phone; analyticsView.paint(); }
+}).observe($("#usage"));
 window.setSplitLeft = ((orig) => function(px, save, bounds){
   if(arguments.length >= 2) return orig(px, save, bounds);
   localStorage.setItem("cc-split-left", String(px)); restoreSplitLeft(); applyAppLayout();
@@ -8121,7 +6342,8 @@ if("serviceWorker" in navigator)
   navigator.serviceWorker.register("/sw.js").catch(()=>{});
 </script>
 
-<script src="/reparto.js"></script>
+<script src="analytics-render.js?v=an1"></script>
+<script src="analytics.js?v=an1"></script>
 <script src="/extensions.js"></script>
 <script src="/session-controls.js?v=d1adf7533f88"></script>
 <script src="/workspace.js?v=5ef84088e7bd"></script>

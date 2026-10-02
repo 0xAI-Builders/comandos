@@ -10,10 +10,6 @@ HTML = Path("dash/index.html").read_text()
 def test_usage_drawer_markup_exists():
     assert 'id="btn-usage"' in HTML
     assert 'id="usage"' in HTML
-    assert 'id="usage-limits"' in HTML
-    assert 'id="usage-providers"' in HTML
-    assert 'id="usage-projects"' in HTML
-    assert 'id="usage-alerts"' in HTML
 
 
 def test_usage_state_is_fetched_without_secret_rendering():
@@ -24,32 +20,18 @@ def test_usage_state_is_fetched_without_secret_rendering():
         assert text not in HTML
 
 
-def test_compare_tab_exposes_evidence_and_local_rating_controls():
-    assert 'data-mtab="comparar"' in HTML
-    assert 'id="compare-days"' in HTML
-    assert 'id="compare-task"' in HTML
-    assert 'id="compare-body"' in HTML
-    assert 'api(`/usage/analytics?' in HTML
-    assert 'api("/usage/interactions?limit=12")' in HTML
-    assert 'api("/usage/rating",payload)' in HTML
-    assert "sólo experimentos pareados pueden declarar ganador" in HTML
-    assert "r.eligible" in HTML
-    assert "r.successCI" in HTML
-    assert "r.toolErrorRate" in HTML
-
-
 def test_notifications_v2_prioritize_and_carry_action_buttons():
-    # v2: el panel muestra SOLO lo importante (desbordes, sugerencias,
+    # v2: el panel muestra SOLO lo importante (sugerencias,
     # modelos, skills/MCPs) con botones de accion; los turnos van agrupados
     # y el badge cuenta unicamente las clases prioritarias.
     assert "nfPriorityItems" in HTML
-    for cls in ('"desborde"', '"sugerencia"', '"modelo"', '"skill"', '"mcp"'):
+    for cls in ('"sugerencia"', '"modelo"', '"skill"', '"mcp"'):
         assert cls in HTML, cls
-    # acciones: aplicar / guardia / ahorro + abrir(Brave)/copiar + snooze/pin/dismiss.
+    # acciones: aplicar + abrir(Brave)/copiar + snooze/pin/dismiss.
     # Las cards de NOTICIA traen sus botones DIRECTOS en la propia card ("leer"
     # abre en el navegador del sistema via /open-url, "copiar" copia el link);
     # la de MODELO expande su detalle in-place ("detalle"). Un solo click.
-    for act in ('"aplicar"', '"guardia"', '"ahorro"', '"detalle"',
+    for act in ('"aplicar"', '"detalle"',
                 '"leer"', '"copiar"', '"snooze"', '"pin"', '"dismiss"'):
         assert act in HTML, act
     # la card de modelo abre su detalle in-place, NUNCA el wizard de sesion nueva
@@ -147,10 +129,9 @@ def test_effort_only_switch_does_not_resend_model():
 
 
 def test_usage_chip_text_survives_without_session_rows():
-    # Las filas de sesión del panel se retiraron (S2); la vista de uso sigue
-    # pintando el modelo observado con usageChipText.
+    # Las filas de sesión del panel se retiraron (S2); el helper del chip se queda.
     assert 'id="rows"' not in HTML and 'class="usage-chip hidden"' not in HTML
-    assert "usageChipText(p)" in HTML
+    assert "function usageChipText" in HTML
 
 
 def test_usage_ui_exposes_model_selector_with_preset_names():
@@ -246,36 +227,6 @@ def test_remote_tab_mirror_prunes_closed_desktop_tabs():
     assert "addTermTab(t.session, t.label, true)" in HTML
 
 
-def test_per_target_alert_rules_with_bells():
-    assert "uv-bell" in HTML
-    assert "openRuleMenu" in HTML
-    assert "renderAlertRules" in HTML
-    assert 'api("/usage/alert-rule"' in HTML
-    assert 'id="alert-rules"' in HTML
-    assert "RULE_BUDGETS" in HTML
-
-
-def test_alert_button_is_explicit_and_limit_windows_configurable():
-    # El boton dice "🔔 alerta" (no un icono mudo) y muestra la regla activa
-    assert 'tf("alerta", "alert")' in HTML
-    # Reglas por proveedor+lapso: cada ventana del plan tiene su boton con %
-    assert "RULE_PERCENTS" in HTML
-    assert 'data-scope="limit"' in HTML
-
-
-def test_alert_thresholds_are_configurable_from_drawer():
-    assert 'id="alert-config"' in HTML
-    assert 'data-th="85"' in HTML
-    assert "COMANDOS_ALERT_THRESHOLDS" in HTML
-    assert "renderAlertConfig" in HTML
-
-
-def test_project_panes_are_clickable_to_open_session():
-    assert "function openPane" in HTML
-    assert 'uv-pane[data-session]' in HTML
-    assert ".uv-pane:hover" in HTML
-
-
 def test_codex_dropdown_offers_models_with_reasoning():
     # Modelos vigentes de codex-cli 0.144.x (gpt-5.6 sol/terra/luna)
     assert "gpt-5.6-sol" in HTML
@@ -299,43 +250,11 @@ def test_card_usage_chip_is_full_width_line():
     assert 'white-space:normal' in HTML
 
 
-def test_usage_drawer_collapses_historic_sessions():
-    # Las sesiones historicas (transcripts) no se listan una por una:
-    # se ven los panes vivos + una linea de historial (adios duplicados)
-    assert "historial" in HTML
-    assert 'startsWith("%")' in HTML
-
-
-def test_usage_ui_renders_exact_limit_bars():
-    # Porcentajes exactos del proveedor (OAuth Claude / rollouts Codex),
-    # sin inputs manuales de limites de tokens.
-    assert 'id="usage-limits"' in HTML
-    assert "renderUsageLimits" in HTML
-    assert "resetea" in HTML
-    assert 'id="limit-codex-daily"' not in HTML
-    assert 'id="usage-limits-save"' not in HTML
-
-
 def test_header_shows_global_limit_percentages():
     # Los porcentajes globales viven SIEMPRE visibles en el header,
     # no solo dentro del drawer
     assert 'id="limits-strip"' in HTML
     assert "renderLimitsStrip" in HTML
-
-
-def test_refactored_limit_cards_show_remaining_reset_and_daily_curve():
-    # La card responde las tres preguntas: cuanto llevo, CUANTO ME QUEDA,
-    # y cuando resetea; Grok ademas dibuja su curva diaria real (14d)
-    assert "uw-remain" in HTML and '"queda", "left"' in HTML
-    assert "uw-reset" in HTML and "uw-track" in HTML
-    assert "uw-daily" in HTML and "l.daily" in HTML
-    # Umbrales de alerta visibles en el track (70% y 90%)
-    assert 'left:70%' in HTML and 'left:90%' in HTML
-    # Cuota declarada por el usuario para providers sin API de limites
-    assert "/usage/quota" in HTML and "data-quota-provider" in HTML
-    assert "definir límite" in HTML
-    # El editor es inline (input + guardar), no un prompt del navegador
-    assert "uw-quota-edit" in HTML and "window.prompt" not in HTML
 
 
 def test_picker_tiles_jump_to_opencode_agy_cli_instead_of_not_routed():
@@ -396,70 +315,6 @@ def test_motor_picker_offers_agy_and_opencode_native_and_acp_mixes():
     assert "liveHarnesses()" in compact
     assert "nsOpenForPane" in HTML or "openAiHere" in HTML or \
            "Iniciar sesión de IA" in HTML or "Start AI session" in HTML
-
-
-def test_limit_cards_have_style_switcher_and_grok_measured_support():
-    # Switcher persistido (barras / anillos / compacta) con logos por card
-    assert "cc-limit-style" in HTML
-    for style in ("bars", "rings", "compact"):
-        assert f'data-style="{style}"' in HTML or f'"{style}"' in HTML
-    assert "limitRingSvg" in HTML and "uv-style" in HTML
-    # Grok sin API de limites: card medida-local honesta, sin barra falsa
-    assert "medido local" in HTML
-    assert "limitMetricHtml" in HTML and "tokens_today" in HTML
-    # La campana de alertas no se ofrece en cards medidas (no hay % que alertar)
-    assert 'l.kind === "measured"' in HTML
-
-
-if __name__ == "__main__":
-    test_terminal_tab_close_asks_with_modal_and_syncs_desktop()
-    test_remote_tab_mirror_prunes_closed_desktop_tabs()
-    test_alert_button_is_explicit_and_limit_windows_configurable()
-    test_per_target_alert_rules_with_bells()
-    test_project_panes_are_clickable_to_open_session()
-    test_alert_thresholds_are_configurable_from_drawer()
-    test_codex_dropdown_offers_models_with_reasoning()
-    test_usage_drawer_markup_exists()
-    test_usage_state_is_fetched_without_secret_rendering()
-    test_session_cards_have_usage_chip_container()
-    test_usage_ui_exposes_model_selector_with_preset_names()
-    test_usage_ui_labels_detected_panes_without_unattributed_noise()
-    test_usage_ui_switches_models_inline_per_pane()
-    test_session_cards_have_model_selector()
-    test_usage_ui_renders_exact_limit_bars()
-    test_header_shows_global_limit_percentages()
-    test_no_agent_badges_in_header()
-    test_header_has_no_search_nor_open_project()
-    test_recent_closed_sessions_are_recoverable()
-    test_switcher_closes_on_outside_click()
-    test_opencode_menu_offers_providers_and_models()
-    test_card_usage_chip_is_full_width_line()
-    test_usage_drawer_collapses_historic_sessions()
-
-
-def test_every_metric_surface_carries_an_insight_with_recommendation():
-    # Regla de producto: ninguna métrica "pelona" — cada bloque interpreta
-    # su número y recomienda algo concreto, calculado determinístico.
-    assert "limitInsight" in HTML          # cards de límites (ritmo vs reloj)
-    assert "pcDailyInsight" in HTML        # serie diaria (tendencia 3d)
-    assert "pc-insight" in HTML and "uw-insight" in HTML
-    # composición (salud de caché), tabla de modelos ($/turno), estimado, ROI
-    for marker in ("reutiliza", "necesita el caro", "absorbieron", "ROI"):
-        assert marker in HTML, marker
-    # dedicación y proyectos también interpretan
-    assert "Día enfocado" in HTML and "se come el" in HTML
-    # proyección honesta: usa la ventana real del límite, no números mágicos
-    assert "LIMIT_WINDOW_SEC" in HTML
-    # los insights traen BOTONES de acción reales (Guardia/Optimizar/CSV)
-    assert "pc-act" in HTML and 'act: "guardia"' in HTML
-    assert 'act: "optimizar"' in HTML and 'act: "csv"' in HTML
-    # gráficos nuevos: heatmap día×hora, dispersión, tabla ordenable, $ por día
-    assert "pcHeatmap" in HTML and "pcScatterChart" in HTML
-    assert "pcModelTable" in HTML and "pcEstDailyChart" in HTML
-    assert 'data-sort=' in HTML and "pcModelsCsv" in HTML
-    # ROI: costo de suscripción declarado por el usuario + moneda
-    assert "pcRoiBlock" in HTML and "data-sub-provider" in HTML
-    assert "/usage/subscription" in HTML and "SUBS_CURRENCIES" in HTML
 
 
 def test_motor_picker_is_flex_head_scrollbody_foot_and_footer_holds_only_apply():
