@@ -208,9 +208,16 @@ fn probe_checked_pattern(
         .get("pattern")
         .and_then(serde_json::Value::as_str)
         .ok_or(PatternProbeFailure::SchemaScope)?;
+    // Registered declarations select the same class under distinct fallbacks.
+    // Unknown declarations inherit those different fallbacks. This preserves
+    // the existing selector's URI normalization without copying its registry.
     if object.contains_key("$schema")
-        && !matches!(select_with_default(schema,draft),
-        Ok(SelectedDialect::Supported(selected)) if selected==draft)
+        && [jsonschema::Draft::Draft4, jsonschema::Draft::Draft202012]
+            .into_iter()
+            .any(|fallback| {
+                !matches!(select_with_default(schema, fallback),
+                Ok(SelectedDialect::Supported(selected)) if selected == draft)
+            })
     {
         return Err(PatternProbeFailure::SchemaScope);
     }

@@ -84,6 +84,12 @@ def definitions():
         primitive('budget/'+label,pattern,text,budget=budget,protective=True)
     primitive('transport/above-max','a','a',transport=True)
     rows[-1]['pattern']=[0x110000]
+    rows.append(dict(name='schema/unknown-declaration',op='schema',draft='draft202012',
+        schema_json='{"$schema":"urn:unregistered","pattern":"a"}',content_json='"a"',
+        disposition='SchemaScope'))
+    rows.append(dict(name='schema/registered-alias',op='schema',draft='draft7',
+        schema_json='{"$schema":"HTTP://json-schema.org/draft-07/schema#","pattern":"^a$"}',
+        content_json='"a\\n"',disposition='implemented'))
     assert len(rows)==len({r['name'] for r in rows})
     return rows
 

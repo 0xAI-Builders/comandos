@@ -116,7 +116,7 @@
     "sre::search": "RustPython 0.6.0 engine.rs State::search general initial match and candidate loop through end; initial BEGINNING optimization retained.",
     "sre::matches_at": "RustPython 0.6.0 engine.rs _match SUCCESS, ANY, general_op_literal and AT dispatch; at BEGINNING/BEGINNING_STRING/END/END_STRING.",
     "RegexText/scalar_points": "RustPython string.rs StringCursor/StrDrive conceptual position/advance operation port with checked u32 slice indices replacing unsafe pointers.",
-    "probe_checked_pattern": "Test-only root pattern assertion applicability from installed jsonschema _keywords.pattern; exact selected-class check_schema proof external.",
+    "probe_checked_pattern": "Test-only root pattern assertion applicability from installed jsonschema _keywords.pattern; exact selected-class check_schema proof external. An optional declaration must select the supplied draft under both Draft4 and Draft202012 fallbacks. Registered roots are stable across these distinct fallbacks; unknown roots inherit them and fail SchemaScope. Existing selector URI normalization is reused without copying its registry.",
     "check_regex_format_value": "Installed jsonschema _format.is_regex non-string bypass and compile assertion."
   },
   "changes": [

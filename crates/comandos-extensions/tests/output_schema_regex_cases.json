@@ -307419,5 +307419,45 @@
     "oracle": {
       "result": "not-run:code-point-precondition"
     }
+  },
+  {
+    "name": "schema/unknown-declaration",
+    "op": "schema",
+    "draft": "draft202012",
+    "schema_json": "{\"$schema\":\"urn:unregistered\",\"pattern\":\"a\"}",
+    "content_json": "\"a\"",
+    "disposition": "SchemaScope",
+    "oracle": {
+      "schema": {
+        "result": "valid"
+      },
+      "proof": {
+        "selected_class": "Draft202012Validator",
+        "schema_sha256": "2acb4de22bc044586f50efd04c72aa38c030bee4b5922606f62b10b4169ff152"
+      },
+      "instance": {
+        "result": "Valid"
+      }
+    }
+  },
+  {
+    "name": "schema/registered-alias",
+    "op": "schema",
+    "draft": "draft7",
+    "schema_json": "{\"$schema\":\"HTTP://json-schema.org/draft-07/schema#\",\"pattern\":\"^a$\"}",
+    "content_json": "\"a\\n\"",
+    "disposition": "implemented",
+    "oracle": {
+      "schema": {
+        "result": "valid"
+      },
+      "proof": {
+        "selected_class": "Draft7Validator",
+        "schema_sha256": "f52acfd3e1ec137fa636de1209ccfe735cc51e347773a547dd81a473805e35a6"
+      },
+      "instance": {
+        "result": "Valid"
+      }
+    }
   }
 ]
