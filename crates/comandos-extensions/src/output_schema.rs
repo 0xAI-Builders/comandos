@@ -3,6 +3,9 @@
 use serde_json::Value;
 
 mod dialect;
+// Private literal/anchor compatibility probe; no worker integration.
+#[allow(dead_code)]
+mod python_regex;
 // Separately tested internal stage; worker integration awaits acceptance parity.
 #[allow(dead_code)]
 mod preflight;
