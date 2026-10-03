@@ -33,7 +33,7 @@ Los assets, servicios e instaladores declarativos se deben contrastar en el empa
 | /home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/bin/cc-dash | Pendiente | — |
 | /home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/bin/cc-doctor | Pendiente | — |
 | /home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/bin/cc-extension-session | Pendiente | — |
-| /home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/bin/cc-extensions | Parcial: serve nativo; otros comandos pendientes | /home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/crates/comandos-extensions/src/main.rs |
+| /home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/bin/cc-extensions | Parcial: serve/count/import/sync/status revisados; check e instalación pendientes | /home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/crates/comandos-extensions/src/main.rs |
 | /home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/bin/cc-keys | Pendiente | — |
 | /home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/bin/cc-mobile | Pendiente | — |
 | /home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/bin/cc-next | Pendiente | — |
@@ -117,8 +117,8 @@ Los assets, servicios e instaladores declarativos se deben contrastar en el empa
 | /home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/lib/command_chains.py | Pendiente | — |
 | /home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/lib/event_intake.py | Rust — revisado; sin despliegue | /home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/crates/comandos-runtime/src/bin/comandos-events.rs |
 | /home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/lib/event_store.py | Rust | /home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/crates/comandos-store/src/lib.rs |
-| /home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/lib/extension_auth.py | Parcial: serve OAuth nativo; importación pendiente | /home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/crates/comandos-extensions/src/auth.rs |
-| /home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/lib/extension_catalog.py | Pendiente | — |
+| /home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/lib/extension_auth.py | Rust — revisado; sin despliegue | /home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/crates/comandos-extensions/src/auth.rs |
+| /home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/lib/extension_catalog.py | Rust — revisado; sin despliegue | /home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/crates/comandos-extensions/src/catalog.rs |
 | /home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/lib/extension_launch.py | Pendiente | — |
 | /home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/lib/extension_metadata.py | Parcial: metadatos y conteo Rust revisados; instalación por migrar | /home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/crates/comandos-extensions/src/metadata.rs |
 | /home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/lib/extension_observations.py | Pendiente | — |

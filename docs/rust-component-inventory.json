@@ -224,7 +224,7 @@
       "language": "script",
       "category": "producto",
       "lines": 98,
-      "status": "Parcial: serve nativo; otros comandos pendientes",
+      "status": "Parcial: serve/count/import/sync/status revisados; check e instalación pendientes",
       "rust": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/crates/comandos-extensions/src/main.rs"
     },
     {
@@ -896,7 +896,7 @@
       "language": ".py",
       "category": "producto",
       "lines": 251,
-      "status": "Parcial: serve OAuth nativo; importación pendiente",
+      "status": "Rust — revisado; sin despliegue",
       "rust": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/crates/comandos-extensions/src/auth.rs"
     },
     {
@@ -904,8 +904,8 @@
       "language": ".py",
       "category": "producto",
       "lines": 462,
-      "status": "Pendiente",
-      "rust": null
+      "status": "Rust — revisado; sin despliegue",
+      "rust": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/crates/comandos-extensions/src/catalog.rs"
     },
     {
       "source": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/lib/extension_launch.py",
