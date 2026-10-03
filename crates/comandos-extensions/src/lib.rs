@@ -102,6 +102,9 @@ pub fn python_string(value: &Value) -> String {
         Value::Null => "None".into(),
         Value::Bool(true) => "True".into(),
         Value::Bool(false) => "False".into(),
+        Value::Number(n) if n.as_str() == "NaN" => "nan".into(),
+        Value::Number(n) if n.as_str() == "Infinity" => "inf".into(),
+        Value::Number(n) if n.as_str() == "-Infinity" => "-inf".into(),
         _ => value.to_string(),
     }
 }
@@ -111,3 +114,7 @@ pub mod transport;
 
 pub mod metadata;
 pub mod tokenizer;
+
+pub mod catalog;
+pub mod config;
+pub mod skills;

@@ -9,7 +9,7 @@ rust-version = "1.96"
 publish = false
 
 [workspace.dependencies]
-serde_json = { version = "=1.0.150", features = ["arbitrary_precision", "float_roundtrip", "raw_value"] }
+serde_json = { version = "=1.0.150", features = ["arbitrary_precision", "float_roundtrip", "raw_value", "preserve_order"] }
 rusqlite = { version = "=0.40.2", default-features = false, features = ["backup"] }
 getrandom = { version = "=0.3.4", features = ["std"] }
 sha2 = "=0.10.9"

@@ -9,6 +9,10 @@ use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use url::Url;
 
+mod import;
+mod timestamp;
+pub use import::import_credentials;
+
 const MAX_CONFIG: u64 = 16 * 1024 * 1024;
 static NEXT_TEMP: AtomicU64 = AtomicU64::new(0);
 
@@ -229,6 +233,30 @@ fn json_bytes(value: &Value) -> Result<Vec<u8>, String> {
     Ok(b)
 }
 
+fn credential_lock(home: &Path) -> Result<File, String> {
+    let state = home.join(".local/state/comandos/extensions");
+    private_dir(&state)?;
+    let lock = OpenOptions::new()
+        .read(true)
+        .write(true)
+        .create(true)
+        .truncate(false)
+        .mode(0o600)
+        .open(state.join("credentials.lock"))
+        .map_err(|_| failure())?;
+    // The same open-description lock guards both imports and live token rotation.
+    let waiting = Instant::now();
+    loop {
+        match lock.try_lock() {
+            Ok(()) => return Ok(lock),
+            Err(fs::TryLockError::WouldBlock) if waiting.elapsed() < Duration::from_secs(20) => {
+                std::thread::sleep(Duration::from_millis(25));
+            }
+            Err(_) => return Err("Credential lock unavailable".into()),
+        }
+    }
+}
+
 #[derive(Clone)]
 pub struct Auth {
     home: PathBuf,
@@ -306,29 +334,7 @@ impl Auth {
         F: FnOnce(&Value) -> Result<Value, String>,
         C: FnMut() -> f64,
     {
-        private_dir(&self.state())?;
-        let lock = OpenOptions::new()
-            .read(true)
-            .write(true)
-            .create(true)
-            .truncate(false)
-            .mode(0o600)
-            .open(self.state().join("credentials.lock"))
-            .map_err(|_| failure())?;
-        // Separate open descriptions serialize callers, including other client
-        // processes. A stuck external holder cannot prevent shutdown forever.
-        let waiting = Instant::now();
-        loop {
-            match lock.try_lock() {
-                Ok(()) => break,
-                Err(fs::TryLockError::WouldBlock)
-                    if waiting.elapsed() < Duration::from_secs(20) =>
-                {
-                    std::thread::sleep(Duration::from_millis(25));
-                }
-                Err(_) => return Err("Credential lock unavailable".into()),
-            }
-        }
+        let _lock = credential_lock(&self.home)?;
         let mut data = read_config(&self.credentials())?;
         let mut item = match data.get(&self.name) {
             None | Some(Value::Null) => return Ok(None),
@@ -390,13 +396,19 @@ impl Auth {
 
 fn received_timestamp(v: &Value) -> f64 {
     if let Some(s) = v.as_str() {
-        chrono::DateTime::parse_from_rfc3339(s)
-            .map(|d| d.timestamp_millis() as f64 / 1000.0)
-            .unwrap_or(0.0)
+        timestamp::parse(s).unwrap_or(0.0)
     } else if v.is_object() {
-        number(v, "secs_since_epoch")
+        let seconds = &v["secs_since_epoch"];
+        seconds
+            .as_bool()
+            .map(|v| f64::from(u8::from(v)))
+            .or_else(|| seconds.as_f64())
+            .unwrap_or(0.0)
     } else {
-        v.as_f64().unwrap_or(0.0)
+        v.as_bool()
+            .map(|v| f64::from(u8::from(v)))
+            .or_else(|| v.as_f64())
+            .unwrap_or(0.0)
     }
 }
 fn with_native(item: &Value, token: &Value, expiry: f64, camel: bool) -> Value {

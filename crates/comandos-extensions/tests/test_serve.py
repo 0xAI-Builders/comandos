@@ -307,7 +307,7 @@ def test_invalid_catalog_error_is_sanitized(tmp_path,raw):
 
 
 def test_unsupported_commands_fail_explicitly(tmp_path):
-    for name in ['import','sync','status','check']:
+    for name in ['check','unknown']:
         p=subprocess.run([str(BIN),'--home',str(tmp_path),name],capture_output=True,timeout=5)
         assert p.returncode!=0 and not p.stdout
 
@@ -399,3 +399,18 @@ def test_stream_sse_accepts_cr_line_endings_and_multiline_data(tmp_path,custom_s
     p=launch(tmp_path,{'url':custom_server(Carriage)+'/mcp'})
     try:initialize(p)
     finally:close(p)
+
+
+def test_serve_accepts_unrelated_nonfinite_catalog_value(tmp_path):
+    path=tmp_path/'.config/comandos/extensions/catalog.json';path.parent.mkdir(parents=True)
+    path.write_text(json.dumps({'version':1,'servers':{'demo':{'command':sys.executable,'args':['-c','print("ready")']},'unrelated':{'enabled':False,'env':{'value':float('nan')}}}}))
+    result=subprocess.run([str(BIN),'--home',str(tmp_path),'serve','demo'],capture_output=True,text=True,timeout=5)
+    assert result.returncode==0 and result.stdout=='ready\n' and result.stderr==''
+
+
+def test_direct_exec_nonfinite_environment_matches_python(tmp_path):
+    script=tmp_path/'nonfinite.py'
+    script.write_text('import json,os\nprint(json.dumps([os.environ[k] for k in ("NAN","POS","NEG")]),flush=True)\n')
+    p=launch(tmp_path,{'command':sys.executable,'args':[str(script)],'env':{'NAN':float('nan'),'POS':float('inf'),'NEG':float('-inf')}})
+    assert receive(p)==['nan','inf','-inf']
+    close(p)

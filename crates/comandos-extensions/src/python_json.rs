@@ -40,6 +40,10 @@ fn encode(
         Value::String(value) => quoted(value, ascii, out),
         Value::Number(number) => {
             let raw = number.as_str();
+            if matches!(raw, "NaN" | "Infinity" | "-Infinity") {
+                out.push_str(raw);
+                return Ok(());
+            }
             if raw.contains(['.', 'e', 'E']) {
                 let value = raw.parse::<f64>().map_err(|_| "Invalid JSON number")?;
                 out.push_str(&python_float(value)?);
