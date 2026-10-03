@@ -10,11 +10,18 @@ import subprocess
 ROOT=pathlib.Path('/work')
 BIN=ROOT/'.migration-build/target/debug/examples/python_json_contract'
 values=[None,True,False,0,-1,2**256+7,-(2**512+11),0.0,-0.0,1e-7,1e-6,1e-5,1e-4,1e15,1e16,1e20,
+        2.0**-25,-(2.0**-25),
         float.fromhex('0x0.0000000000001p-1022'),float.fromhex('0x1.fffffffffffffp+1023'),
         '', 'á/中文/😀/e\u0301/\u2028/\u007f', ''.join(map(chr,range(128))),
         {'$serde_json::private::Number':'literal','$serde_json::private::RawValue':'[1]'},
         {'z':0,'a':{'b':1.0,'a':2**200},'𐀀':['ñ',True,None]},
         {'é':1,'e\u0301':2,'\uffff':3,'😀':4}]
+# Exact binary powers expose shortest-decimal midpoint ties, unlike random bits.
+# Cover every finite binary power and both adjacent IEEE values, in both signs.
+for exponent in range(-1074,1024):
+    power=math.ldexp(1.0,exponent)
+    for value in [math.nextafter(power,0.0),power,math.nextafter(power,math.inf)]:
+        if math.isfinite(value):values.extend([value,-value])
 rng=random.Random(0xC0A4D05)
 for _ in range(6000):
     value=struct.unpack('>d',rng.getrandbits(64).to_bytes(8,'big'))[0]

@@ -34,6 +34,63 @@ fn complete_ordered_capture_rejects_cursor_cycles_and_recovers() {
     );
 }
 #[test]
+fn capture_rejects_oversized_expected_cursor_and_resets() {
+    let mut capture = ToolListCapture::default();
+    let cursor = "x".repeat(65_537);
+    assert!(capture.add(None, Some(&cursor), &[]).is_none());
+    assert!(capture.add(Some(&cursor), None, &[]).is_none());
+    assert_eq!(capture.add(None, None, &[]), Some(vec![]));
+}
+#[test]
+fn capture_bounds_consumed_and_expected_cursor_bytes_without_partial_rows() {
+    let mut capture = ToolListCapture::default();
+    let cursors: Vec<_> = (0..4)
+        .map(|i| format!("{i}{}", "x".repeat(20_000)))
+        .collect();
+    let partial = json!({"name":"partial"});
+    assert!(capture.add(None, Some(&cursors[0]), &[partial]).is_none());
+    for pair in cursors.windows(2) {
+        assert!(capture.add(Some(&pair[0]), Some(&pair[1]), &[]).is_none());
+    }
+    assert!(capture.add(Some(&cursors[3]), None, &[]).is_none());
+    assert!(capture.add(None, Some("small"), &[]).is_none());
+    let fresh = json!({"name":"fresh"});
+    assert_eq!(
+        capture.add(Some("small"), None, std::slice::from_ref(&fresh)),
+        Some(vec![fresh])
+    );
+}
+#[test]
+fn capture_bounds_cursor_entry_count_for_empty_pages() {
+    let mut capture = ToolListCapture::default();
+    assert!(capture.add(None, Some("0"), &[]).is_none());
+    for i in 0..1024 {
+        assert!(
+            capture
+                .add(Some(&i.to_string()), Some(&(i + 1).to_string()), &[])
+                .is_none()
+        );
+    }
+    assert!(capture.add(Some("1024"), None, &[]).is_none());
+    assert_eq!(capture.add(None, None, &[]), Some(vec![]));
+}
+#[test]
+fn capture_accepts_cursor_byte_and_entry_limit_boundaries() {
+    let mut capture = ToolListCapture::default();
+    let cursor = "x".repeat(65_536);
+    assert!(capture.add(None, Some(&cursor), &[]).is_none());
+    assert_eq!(capture.add(Some(&cursor), None, &[]), Some(vec![]));
+    assert!(capture.add(None, Some("0"), &[]).is_none());
+    for i in 0..1023 {
+        assert!(
+            capture
+                .add(Some(&i.to_string()), Some(&(i + 1).to_string()), &[])
+                .is_none()
+        );
+    }
+    assert_eq!(capture.add(Some("1023"), None, &[]), Some(vec![]));
+}
+#[test]
 fn provenance_is_bound_to_install_path_and_plugin_wins() {
     let h = home();
     let root = h.join(".agents/skills/demo");

@@ -37,6 +37,49 @@ def test_only_complete_filtered_tool_list_records_size(tmp_path,upstream):
         send(p,'tools/list');receive(p);send(p,'tools/list',{'cursor':'page2'});receive(p);time.sleep(.25);assert size_path(tmp_path).stat().st_mtime_ns==before
     finally:close(p)
 
+def test_cursor_budget_exhaustion_preserves_frames_and_only_records_fresh_list(tmp_path):
+    import sys
+    script=tmp_path/'large_cursor_fixture.py'
+    script.write_text('''import json, sys
+sys.path.insert(0, '/work/crates/comandos-extensions/tests')
+from test_serve import result_for
+for line in sys.stdin:
+    request=json.loads(line)
+    if 'id' not in request:continue
+    response=result_for(request)
+    if request['method']=='tools/list':
+        params=request.get('params',{})
+        if params.get('fresh'):
+            result={'tools':[{'name':'fresh','inputSchema':{}}],'futureResult':42}
+        else:
+            cursor=params.get('cursor')
+            page=0 if cursor is None else int(cursor[0])+1
+            result={'tools':[{'name':'partial','inputSchema':{}}] if page==0 else [],'futureResult':42}
+            if page<4:result['nextCursor']=str(page)+'x'*20000
+        response['result']=result
+    print(json.dumps(response),flush=True)
+''')
+    warm(tmp_path)
+    p=launch(tmp_path,{'command':sys.executable,'args':[str(script)],'disabled_tools':['blocked']})
+    try:
+        initialize(p)
+        cursor=None
+        for page in range(5):
+            send(p,'tools/list',{} if cursor is None else {'cursor':cursor})
+            expected={'tools':[{'name':'partial','inputSchema':{}}] if page==0 else [],'futureResult':42}
+            if page<4:expected['nextCursor']=str(page)+'x'*20000
+            assert receive(p)=={'jsonrpc':'2.0','id':1,'result':expected}
+            cursor=expected.get('nextCursor')
+        time.sleep(.15)
+        assert not size_path(tmp_path).exists(), 'over-budget partial list was recorded'
+        send(p,'tools/list',{'fresh':True})
+        fresh={'tools':[{'name':'fresh','inputSchema':{}}],'futureResult':42}
+        assert receive(p)=={'jsonrpc':'2.0','id':1,'result':fresh}
+        stored=wait_size(tmp_path)
+        content=json.dumps(fresh['tools'],sort_keys=True,separators=(',',':'))
+        assert stored['content']==hashlib.sha256(content.encode()).hexdigest()
+    finally:close(p)
+
 def test_shared_slots_block_before_allocating_tables_and_release_on_kill(tmp_path):
     warm(tmp_path);directory=tmp_path/'.local/state/comandos/extensions/tokenizer-slots';directory.mkdir(parents=True)
     locks=[open(directory/f'{i}.lock','w') for i in range(2)]

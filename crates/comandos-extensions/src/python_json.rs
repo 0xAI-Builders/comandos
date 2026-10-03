@@ -99,7 +99,8 @@ fn quoted(value: &str, ascii: bool, out: &mut String) {
     out.push('"');
 }
 
-// Rust's shortest-roundtrip significand supplies the IEEE value's digits.
+// serde_json's maintained shortest-roundtrip formatter supplies nearest/even
+// digits, including exact decimal ties where Rust Debug differs from CPython.
 // CPython's repr uses scientific notation outside [-4,16), with signed,
 // minimum-two-digit exponents. Preserve float identity in fixed integral forms.
 fn python_float(value: f64) -> Result<String, String> {
@@ -114,7 +115,7 @@ fn python_float(value: f64) -> Result<String, String> {
         }
         .into());
     }
-    let raw = format!("{value:?}");
+    let raw = serde_json::to_string(&value).map_err(|_| "Invalid JSON float")?;
     let negative = raw.starts_with('-');
     let raw = raw.trim_start_matches('-');
     let (mantissa, exponent) = match raw.split_once('e') {

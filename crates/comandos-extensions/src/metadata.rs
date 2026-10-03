@@ -275,19 +275,26 @@ pub async fn record_mcp_size_with_clock<F, Fut, C>(
     let data = json!({"tokens":count,"tokenizer":TOKENIZER,"basis":"tool-definitions","configuration":configuration,"content":content,"measuredAt":clock().floor() as i64});
     let _ = write_atomic(&path, &data);
 }
+/// Best-effort complete lists retain at most 64 KiB of cursor contents and
+/// 1024 cursor entries, including the expected continuation and cycle history.
+/// Exceeding either limit discards the measurement, without affecting MCP frames.
 #[derive(Default)]
 pub struct ToolListCapture {
     expected: Option<String>,
     rows: Option<Vec<Value>>,
     bytes: usize,
+    cursor_bytes: usize,
     seen: HashSet<String>,
 }
+const MAX_CURSOR_BYTES: usize = 65_536;
+const MAX_CURSOR_ENTRIES: usize = 1024;
 impl ToolListCapture {
     pub fn invalidate(&mut self) {
         self.rows = None;
         self.expected = None;
         self.seen.clear();
         self.bytes = 0;
+        self.cursor_bytes = 0;
     }
     pub fn add(
         &mut self,
@@ -300,13 +307,22 @@ impl ToolListCapture {
             self.rows = Some(Vec::new());
         } else if self.rows.is_none()
             || cursor != self.expected.as_deref()
-            || !self.seen.insert(cursor?.to_owned())
+            || self.seen.contains(cursor?)
         {
             self.invalidate();
             return None;
         }
         let next = next.filter(|s| !s.is_empty());
-        if next.is_some_and(|s| self.seen.contains(s)) {
+        if next.is_some_and(|s| self.seen.contains(s) || Some(s) == cursor) {
+            self.invalidate();
+            return None;
+        }
+        // A consumed cursor moves from expected to seen, so it is counted once.
+        // Check the next allocation and collection overhead before retaining it.
+        let cursor_bytes = self.cursor_bytes.saturating_add(next.map_or(0, str::len));
+        let cursor_entries =
+            self.seen.len() + usize::from(cursor.is_some()) + usize::from(next.is_some());
+        if cursor_bytes > MAX_CURSOR_BYTES || cursor_entries > MAX_CURSOR_ENTRIES {
             self.invalidate();
             return None;
         }
@@ -320,11 +336,17 @@ impl ToolListCapture {
             return None;
         }
         self.rows.as_mut()?.extend_from_slice(tools);
+        if let Some(consumed) = self.expected.take() {
+            self.seen.insert(consumed);
+        }
+        self.cursor_bytes = cursor_bytes;
         self.expected = next.map(str::to_owned);
         if next.is_some() {
             None
         } else {
-            self.rows.take()
+            let rows = self.rows.take();
+            self.invalidate();
+            rows
         }
     }
 }
