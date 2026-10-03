@@ -82,6 +82,12 @@ fn native_edits_disable_and_reenable_policy() {
     h.put(".config/comandos/extensions/catalog.json", &c.to_string());
     ok(&h, "sync");
     assert!(h.read(".codex/config.toml").contains("approve"));
+    let codex = config::read_config(&h.0.join(".codex/config.toml")).unwrap();
+    assert_eq!(codex["model"], "keep");
+    assert_eq!(
+        codex["mcp_servers"]["demo"]["tools"]["write"]["approval_mode"],
+        "approve"
+    );
 }
 #[test]
 fn skills_complete_tree_reinstall_and_conflict() {
@@ -95,6 +101,7 @@ fn skills_complete_tree_reinstall_and_conflict() {
     h.put(".grok/skills/demo/SKILL.md", "new");
     ok(&h, "sync");
     assert_eq!(h.read(".agents/skills/demo/SKILL.md"), "new");
+    assert_eq!(h.read(".claude/skills/demo/SKILL.md"), "new");
     for (root, content) in [(".grok", "one"), (".claude", "two")] {
         fs::remove_file(h.0.join(format!("{root}/skills/demo"))).unwrap();
         h.put(&format!("{root}/skills/demo/SKILL.md"), content);
@@ -138,6 +145,7 @@ fn mail_only_secondary_clients_and_projects() {
         assert_eq!(d["tools"]["keep"], true);
         assert_eq!(d[key]["unrelated"]["url"], "https://example.com/keep");
         assert!(d[key].get("gmail").is_some());
+        assert!(d[key].get("proton-mail").is_some());
         assert!(d[key].get("demo").is_none());
     }
     let d = config::read_config(&h.0.join(".claude.json")).unwrap();
@@ -149,6 +157,49 @@ fn mail_only_secondary_clients_and_projects() {
         d["projects"]["/work"]["mcpServers"]["gmail"]["command"],
         "/launcher"
     );
+    cat::save_snapshot(&h.0, &c, None).unwrap();
+    let mut edited = Vec::new();
+    for (p, key) in [
+        (".gemini/settings.json", "mcpServers"),
+        (".config/Code/User/mcp.json", "servers"),
+        (".config/github-copilot/intellij/mcp.json", "servers"),
+    ] {
+        let path = h.0.join(p);
+        let mut data = config::read_config(&path).unwrap();
+        data[key]["unrelated"]["url"] = json!("https://example.com/changed");
+        fs::write(&path, data.to_string()).unwrap();
+        edited.push(path);
+    }
+    assert_eq!(
+        cat::reconcile(&h.0, &c, "/launcher", &mut json!({})).unwrap(),
+        c
+    );
+    sync(&h, &c);
+    for path in &edited {
+        assert_eq!(config::read_config(path).unwrap()["tools"]["keep"], true);
+        let key = if path.ends_with("settings.json") {
+            "mcpServers"
+        } else {
+            "servers"
+        };
+        assert_eq!(
+            config::read_config(path).unwrap()[key]["unrelated"]["url"],
+            "https://example.com/changed"
+        );
+    }
+    cat::save_snapshot(&h.0, &c, None).unwrap();
+    let before = edited
+        .iter()
+        .map(|p| fs::read(p).unwrap())
+        .collect::<Vec<_>>();
+    assert!(
+        cat::sync_configs(&h.0, &c, "/launcher", &mut json!({}), None)
+            .unwrap()
+            .is_empty()
+    );
+    for (path, bytes) in edited.iter().zip(before) {
+        assert_eq!(fs::read(path).unwrap(), bytes);
+    }
 }
 #[test]
 fn import_alias_precedence_remote_rules_local_service_and_future_accounts() {
@@ -492,6 +543,33 @@ fn malformed_empty_json_and_nonfinite_keys_are_rejected() {
     assert_eq!(quoted.data["Infinity"].to_string(), "Infinity");
 }
 #[test]
+fn jsonc_comments_with_unmatched_quotes_preserve_nonfinite_atoms_and_literal_strings() {
+    let h = Home::new();
+    let p = h.0.join("data.jsonc");
+    for comment in ["/* \" */", "// \"\n", "/* \"balanced\" */"] {
+        let raw = format!(
+            r#"{comment}{{"nan":NaN,"positive":Infinity,"negative":-Infinity,"literal":"NaN \"Infinity\" -Infinity","marker":"__comandos_nonfinite_0__","mcpServers":{{"demo":{{"command":"echo"}}}}}}"#
+        );
+        let d = config::Document::parse(&p, Some(raw.as_bytes())).unwrap();
+        assert_eq!(d.data["nan"].to_string(), "NaN");
+        assert_eq!(d.data["positive"].to_string(), "Infinity");
+        assert_eq!(d.data["negative"].to_string(), "-Infinity");
+        assert_eq!(d.data["literal"], "NaN \"Infinity\" -Infinity");
+        assert_eq!(d.data["marker"], "__comandos_nonfinite_0__");
+    }
+}
+#[test]
+fn import_accepts_jsonc_comments_with_unmatched_quotes_and_nonfinite_atoms() {
+    for comment in ["/* \" */", "// \"\n"] {
+        let h = Home::new();
+        h.put(
+            ".claude.json",
+            &format!(r#"{comment}{{"unknown":NaN,"mcpServers":{{"demo":{{"command":"echo"}}}}}}"#),
+        );
+        assert_eq!(ok(&h, "import")["servers"], 1);
+    }
+}
+#[test]
 fn numeric_equality_distinguishes_adjacent_big_integers() {
     let n = |s: &str| Value::Number(serde_json::Number::from_string_unchecked(s.into()));
     assert!(!config::toml::python_equal(
@@ -566,7 +644,9 @@ fn initial_skill_conflict_preserves_canonical_and_private_backup() {
     h.put(".claude/skills/a/SKILL.md", "other");
     h.put(".grok/skills/b/SKILL.md", "unique");
     skills::sync_skills(&h.0).unwrap();
+    assert!(h.0.join(".claude/skills/a").is_symlink());
     assert_eq!(h.read(".claude/skills/a/SKILL.md"), "canonical");
+    assert_eq!(h.read(".agents/skills/b/SKILL.md"), "unique");
     assert_eq!(h.read(".gemini/config/skills/b/SKILL.md"), "unique");
     let backups = fs::read_dir(config::state_dir(&h.0).join("backups"))
         .unwrap()

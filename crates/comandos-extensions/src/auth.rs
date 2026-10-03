@@ -85,6 +85,11 @@ fn now() -> f64 {
 
 /// JSONC configuration parser shared by credentials and the serve catalog.
 pub fn parse_config_bytes(raw: &[u8]) -> Result<Value, String> {
+    let clean = clean_config_bytes(raw)?;
+    parse_clean_config_bytes(&clean)
+}
+
+pub(crate) fn clean_config_bytes(raw: &[u8]) -> Result<Vec<u8>, String> {
     if raw.len() as u64 > MAX_CONFIG {
         return Err(invalid());
     }
@@ -163,7 +168,11 @@ pub fn parse_config_bytes(raw: &[u8]) -> Result<Value, String> {
             }
         }
     }
-    let text = std::str::from_utf8(&clean).map_err(|_| invalid())?;
+    Ok(clean)
+}
+
+pub(crate) fn parse_clean_config_bytes(clean: &[u8]) -> Result<Value, String> {
+    let text = std::str::from_utf8(clean).map_err(|_| invalid())?;
     let value = comandos_core::json::parse_unique_value(text).map_err(|_| invalid())?;
     if !value.is_object() {
         return Err(invalid());

@@ -109,6 +109,15 @@ for idx,scalar in enumerate(scalars):
   outcomes.append((result,state(home)))
  assert outcomes[0]==outcomes[1],f'TOML scalar fingerprint mismatch case {idx}'
 print(f'TOML differential oracle: {len(scalars)} matching scalar/array/opaque-map snapshots.')
+for comment in ['/* " */', '// "\n', '/* "balanced" */']:
+ outcomes=[]
+ for kind in ['python','rust']:
+  shutil.rmtree(ROOT,ignore_errors=True);home=ROOT/'home';home.mkdir(parents=True)
+  put(home,'.claude.json',comment+'{"unknown":[NaN,Infinity,-Infinity],"literal":"NaN \\"Infinity\\" -Infinity","marker":"__comandos_nonfinite_0__","mcpServers":{"demo":{"command":"echo"}}}')
+  result=action(home,kind,'import');assert 'ok' in result,(repr(comment),kind,result)
+  outcomes.append((result,state(home)))
+ assert outcomes[0]==outcomes[1],f'JSONC comment differential mismatch {repr(comment)}'
+print('JSONC differential oracle: 3 comment styles with nonfinite atoms and quoted literals match.')
 # The sync lock is the same flock domain as the original Python manager.
 import time
 shutil.rmtree(ROOT,ignore_errors=True);home=ROOT/'home';home.mkdir(parents=True)

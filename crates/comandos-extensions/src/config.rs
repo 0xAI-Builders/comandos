@@ -286,7 +286,8 @@ pub fn parse_json(raw: &[u8]) -> Result<Value> {
     if let Ok(value) = crate::auth::parse_config_bytes(raw) {
         return Ok(value);
     }
-    let text = std::str::from_utf8(raw).map_err(|_| "Invalid JSON")?;
+    let clean = crate::auth::clean_config_bytes(raw)?;
+    let text = std::str::from_utf8(&clean).map_err(|_| "Invalid JSON")?;
     let tokens =
         regex::Regex::new(r#""(?:\\.|[^"\\])*"|-?Infinity|NaN"#).map_err(|_| "Invalid JSON")?;
     let strings = tokens
@@ -306,7 +307,7 @@ pub fn parse_json(raw: &[u8]) -> Result<Value> {
         markers.insert(marker.clone(), token.to_owned());
         format!("\"{marker}\"")
     });
-    let mut value = crate::auth::parse_config_bytes(replaced.as_bytes())?;
+    let mut value = crate::auth::parse_clean_config_bytes(replaced.as_bytes())?;
     fn restore(
         value: &mut Value,
         markers: &std::collections::BTreeMap<String, String>,
