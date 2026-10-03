@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Explicit installed-oracle regression checks; outside ordinary test discovery."""
 import argparse
+import hashlib
 import json
 import pathlib
 import subprocess
@@ -8,12 +9,13 @@ import sys
 import tempfile
 import unittest
 
-from output_schema_traversal_audit import assert_oracle_environment, oracle, probe
+from output_schema_traversal_audit import assert_oracle_environment, directed_cases, oracle, probe
 
 STAGE_TEST = 'output_schema::preflight::tests::audit_probe'
 TRAVERSAL_TEST = 'output_schema::traversal::tests::audit_probe'
 AUDIT = pathlib.Path(__file__).with_name('output_schema_traversal_audit.py')
 EVIDENCE = []
+FROZEN_CASES = AUDIT.with_name('output_schema_traversal_cases.json')
 
 
 def cases(count):
@@ -24,6 +26,37 @@ def cases(count):
 
 
 class AuditOracleRegression(unittest.TestCase):
+    def test_generator_preserves_all_frozen_inputs_and_order(self):
+        frozen = json.loads(FROZEN_CASES.read_text())
+        expected = [{key: value for key, value in row.items() if key != 'oracle'} for row in frozen]
+        generated = directed_cases()
+        EVIDENCE.append({'test': 'generator-inputs', 'expected_count': len(expected), 'generated': generated})
+        self.assertEqual(len(generated), 282)
+        self.assertEqual(generated, expected)
+        self.assertEqual(directed_cases(), generated)
+
+    def test_real_generate_preserves_every_frozen_oracle(self):
+        before = FROZEN_CASES.read_bytes()
+        frozen = json.loads(before)
+        with tempfile.TemporaryDirectory() as directory:
+            directory = pathlib.Path(directory)
+            generated_path, capture_path = directory / 'generated.json', directory / 'oracle.json'
+            command = [sys.executable, str(AUDIT), '--stage-binary', STAGE_BINARY,
+                       '--binary', RELEASE_BINARY, '--cases', str(generated_path),
+                       '--full-cases', str(FROZEN_CASES), '--out', str(capture_path),
+                       '--generate', '--capture-only']
+            result = subprocess.run(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=60)
+            self.assertEqual(result.returncode, 0, result.stderr.decode())
+            generated = json.loads(generated_path.read_text())
+            capture = json.loads(capture_path.read_text())
+            EVIDENCE.append({'test': 'real-generate', 'command': command,
+                             'returncode': result.returncode, 'stdout': result.stdout.decode(),
+                             'stderr': result.stderr.decode(), 'generated': generated, 'capture': capture,
+                             'frozen_sha256': hashlib.sha256(before).hexdigest()})
+            self.assertEqual(generated, frozen)
+            self.assertEqual(capture['results'], [{'name': row['name'], **row['oracle']} for row in frozen])
+        self.assertEqual(FROZEN_CASES.read_bytes(), before)
+
     def test_actual_probe_protocols_preserve_singleton_and_final_singleton(self):
         for count in (1, 8, 9):
             rows = cases(count)

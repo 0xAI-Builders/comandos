@@ -65,12 +65,13 @@ def oracle(row):
 
 def directed_cases():
     rows = []
-    def add(name, schema, content=None, mode='ExhaustErrors', draft=None, gap=None):
+    omitted_content = object()
+    def add(name, schema, content=omitted_content, mode='ExhaustErrors', draft=None, gap=None):
         if draft:
             schema = {'$schema': DRAFTS[draft], **schema}
             name = draft + '/' + name
         row = {'name': name, 'schema_json': json.dumps(schema, separators=(',', ':'), ensure_ascii=False),
-               'content_json': json.dumps({} if content is None else content, separators=(',', ':'), ensure_ascii=False),
+               'content_json': json.dumps({} if content is omitted_content else content, separators=(',', ':'), ensure_ascii=False),
                'mode': mode, 'expected_gap': gap}
         rows.append(row)
     missing = {'$ref': '#/definitions/missing'}
@@ -154,14 +155,18 @@ def directed_cases():
         add('cross-not', {'definitions': {'ok': {}}, 'not': sub}, {}, draft=parent)
         subnested = {**sub, 'properties': {'p': {'required': ['y'], '$ref': '#/definitions/ok'}}}
         add('cross-nested', {'definitions': {'ok': {}}, 'properties': {'p': subnested}}, {'p': {'p': {}}}, draft=parent)
-    for depth in (1, 8, 24, 48, 63, 64, 96, 160):
+    def add_productive_depth(depth):
         content = {}
         for _ in range(depth):
             content = {'child': content}
         add('productive-depth-' + str(depth), {'properties': {'child': {'$ref': '#'}}}, content, gap='BudgetBoundary' if depth >= 64 else None)
         if depth >= 64: rows[-1]['gap_phase'] = 'input' if depth == 160 else 'evaluation'
+    for depth in (1, 8, 24, 48, 96, 160):
+        add_productive_depth(depth)
     add('empty-id-registry-snapshot', {'$defs': {'a': {'$id': '', '$anchor': 'a', 'properties': {'x': {'$ref': '#'}}}}, '$ref': '#a', 'required': ['root']}, {'root': True, 'x': {}})
     add('modern-to-draft4-empty-required', {'properties': {'x': {'$schema': DRAFTS['draft4'], 'required': []}}}, {'x': {}}, gap='FragmentShape')
+    for depth in (63, 64):
+        add_productive_depth(depth)
     add('same-container-empty-id-order', {'$defs': {'a': {'$id': '', 'required': ['a']}, 'b': {'$id': '', 'required': ['b']}, 'go': {'$anchor': 'go', 'properties': {'x': {'$ref': '#'}}}}, '$ref': '#go', 'required': ['root']}, {'root': True, 'x': {'a': True}})
     add('different-container-empty-id-gap', {'$defs': {'a': {'$id': ''}, 'go': {'$anchor': 'go'}}, 'properties': {'b': {'$id': ''}}, '$ref': '#go'}, {}, gap='ResourceId')
     for draft in DRAFTS:
@@ -180,6 +185,23 @@ def directed_cases():
     add('pointer-scalar', {'definitions': {'a': True}, '$ref': '#/definitions/a/x'}, gap='PointerSemantics')
     for name, schema in [('root-null', None), ('root-number', 1), ('root-list', []), ('root-string', 'schema'), ('root-list-with-key', ['$schema']), ('root-string-with-key', 'text $schema text'), ('root-true', True), ('root-false', False)]:
         add(name, schema)
+    for draft in DRAFTS:
+        for keyword, contents in [
+            ('type', [('valid', ''), ('invalid', {}), ('unvisited', {})]),
+            ('required', [('valid', {'x': True}), ('invalid', {}), ('string', ''),
+                          ('array', []), ('null', None), ('boolean', False)])]:
+            literal = {keyword: ['string', 'string'] if keyword == 'type' else ['x', 'x']}
+            for variant, content in contents:
+                skipped = variant == 'unvisited'
+                schema = {'default': literal, **({'properties': {'unused': {'$ref': '#/default'}}}
+                                               if skipped else {'$ref': '#/default'})}
+                shape_gap = not skipped and (keyword == 'type' or isinstance(content, dict))
+                add(f'literal-duplicate-{keyword}-{variant}', schema, content,
+                    draft=draft, gap='FragmentShape' if shape_gap else None)
+        add('literal-numeric-type', {'default': {'type': ['number', 'number']}, '$ref': '#/default'},
+            1, draft=draft, gap='Numeric')
+        add('literal-empty-required', {'default': {'required': []}, '$ref': '#/default'},
+            {}, draft=draft, gap='FragmentShape' if draft == 'draft4' else None)
     assert len({row['name'] for row in rows}) == len(rows)
     return rows
 
