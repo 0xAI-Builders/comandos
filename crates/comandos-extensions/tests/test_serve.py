@@ -307,7 +307,7 @@ def test_invalid_catalog_error_is_sanitized(tmp_path,raw):
 
 
 def test_unsupported_commands_fail_explicitly(tmp_path):
-    for name in ['check','unknown']:
+    for name in ['unknown']:
         p=subprocess.run([str(BIN),'--home',str(tmp_path),name],capture_output=True,timeout=5)
         assert p.returncode!=0 and not p.stdout
 

@@ -243,6 +243,9 @@ fn json_bytes(value: &Value) -> Result<Vec<u8>, String> {
 }
 
 fn credential_lock(home: &Path) -> Result<File, String> {
+    credential_lock_until(home, None)
+}
+fn credential_lock_until(home: &Path, deadline: Option<Instant>) -> Result<File, String> {
     let state = home.join(".local/state/comandos/extensions");
     private_dir(&state)?;
     let lock = OpenOptions::new()
@@ -256,6 +259,9 @@ fn credential_lock(home: &Path) -> Result<File, String> {
     // The same open-description lock guards both imports and live token rotation.
     let waiting = Instant::now();
     loop {
+        if deadline.is_some_and(|deadline| Instant::now() >= deadline) {
+            return Err("Credential operation timed out".into());
+        }
         match lock.try_lock() {
             Ok(()) => return Ok(lock),
             Err(fs::TryLockError::WouldBlock) if waiting.elapsed() < Duration::from_secs(20) => {
@@ -313,12 +319,26 @@ impl Auth {
             _ => false,
         }
     }
-    pub async fn access_token(&self, rejected: Option<String>) -> Result<Option<String>, String> {
+    /// Checks share one deadline across lock wait, discovery and refresh. Once a
+    /// replacement token is returned, the transaction must still persist it.
+    pub async fn access_token_until(
+        &self,
+        rejected: Option<String>,
+        deadline: Option<Instant>,
+    ) -> Result<Option<String>, String> {
         let auth = self.clone();
         blocking_transaction(move || {
-            auth.access_token_with_clock(rejected.as_deref(), now, refresh_oauth)
+            auth.access_token_with_clock_until(
+                rejected.as_deref(),
+                now,
+                |item| refresh_oauth_until(item, deadline),
+                deadline,
+            )
         })
         .await
+    }
+    pub async fn access_token(&self, rejected: Option<String>) -> Result<Option<String>, String> {
+        self.access_token_until(rejected, None).await
     }
     /// Fixed clock convenience for deterministic rotation tests.
     pub fn access_token_with<F>(
@@ -336,14 +356,27 @@ impl Auth {
     pub fn access_token_with_clock<F, C>(
         &self,
         rejected: Option<&str>,
-        mut clock: C,
+        clock: C,
         refresh: F,
     ) -> Result<Option<String>, String>
     where
         F: FnOnce(&Value) -> Result<Value, String>,
         C: FnMut() -> f64,
     {
-        let _lock = credential_lock(&self.home)?;
+        self.access_token_with_clock_until(rejected, clock, refresh, None)
+    }
+    fn access_token_with_clock_until<F, C>(
+        &self,
+        rejected: Option<&str>,
+        mut clock: C,
+        refresh: F,
+        deadline: Option<Instant>,
+    ) -> Result<Option<String>, String>
+    where
+        F: FnOnce(&Value) -> Result<Value, String>,
+        C: FnMut() -> f64,
+    {
+        let _lock = credential_lock_until(&self.home, deadline)?;
         let mut data = read_config(&self.credentials())?;
         let mut item = match data.get(&self.name) {
             None | Some(Value::Null) => return Ok(None),
@@ -595,7 +628,14 @@ fn response_json(response: reqwest::blocking::Response) -> Result<Value, String>
         .map_err(|_| failure())?;
     parse_config_bytes(&bytes)
 }
-fn refresh_oauth(item: &Value) -> Result<Value, String> {
+fn remaining(deadline: Instant) -> Result<Duration, String> {
+    deadline
+        .checked_duration_since(Instant::now())
+        .filter(|d| !d.is_zero())
+        .map(|d| d.min(Duration::from_secs(20)))
+        .ok_or_else(|| "Credential operation timed out".into())
+}
+fn refresh_oauth_until(item: &Value, deadline: Option<Instant>) -> Result<Value, String> {
     let issuer = string(item, "issuer").ok_or_else(failure)?;
     let url = https(issuer)?;
     let client = reqwest::blocking::Client::builder()
@@ -621,7 +661,11 @@ fn refresh_oauth(item: &Value) -> Result<Value, String> {
             if candidates[..i].contains(address) {
                 continue;
             }
-            let response = client.get(address).send().map_err(|_| failure())?;
+            let mut request = client.get(address);
+            if let Some(deadline) = deadline {
+                request = request.timeout(remaining(deadline)?);
+            }
+            let response = request.send().map_err(|_| failure())?;
             if response.status() == reqwest::StatusCode::OK {
                 let data = response_json(response)?;
                 if let Some(e) = string(&data, "token_endpoint") {
@@ -644,6 +688,9 @@ fn refresh_oauth(item: &Value) -> Result<Value, String> {
         form.push(("client_id", id));
     }
     let mut request = client.post(&endpoint);
+    if let Some(deadline) = deadline {
+        request = request.timeout(remaining(deadline)?);
+    }
     if let Some(secret) = string(item, "client_secret") {
         if string(item, "token_endpoint_auth_method") == Some("client_secret_basic") {
             request =
@@ -663,6 +710,34 @@ fn refresh_oauth(item: &Value) -> Result<Value, String> {
 #[cfg(test)]
 mod cancellation_tests {
     use super::*;
+    #[tokio::test(flavor = "current_thread")]
+    async fn scoped_deadline_bounds_lock_wait_and_preserves_existing_rotation() {
+        let home = std::env::temp_dir().join(format!(
+            "auth-deadline-{}-{}",
+            std::process::id(),
+            NEXT_TEMP.fetch_add(1, Ordering::Relaxed)
+        ));
+        private_write(
+            &home.join(".config/comandos/extensions/credentials.json"),
+            br#"{"demo":{"url":"https://example.test","access_token":"saved"}}"#,
+        )
+        .unwrap();
+        let auth = Auth::new(home.clone(), "demo".into(), "https://example.test".into())
+            .unwrap()
+            .unwrap();
+        let held = credential_lock(&home).unwrap();
+        let task = tokio::spawn(async move {
+            auth.access_token_until(None, Some(Instant::now() + Duration::from_millis(60)))
+                .await
+        });
+        tokio::time::sleep(Duration::from_millis(200)).await;
+        let ended = task.is_finished();
+        drop(held);
+        let result = task.await.unwrap();
+        std::fs::remove_dir_all(home).unwrap();
+        assert!(ended, "check auth worker outlived its scoped lock deadline");
+        assert!(result.is_err());
+    }
     #[test]
     fn cancelled_queued_refresh_never_starts_and_drain_finishes() {
         let runtime = tokio::runtime::Builder::new_current_thread()

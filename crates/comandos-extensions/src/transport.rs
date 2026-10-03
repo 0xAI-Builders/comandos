@@ -1,5 +1,5 @@
 //! Bounded raw JSON transport preserves extension fields through the facade.
-use crate::{Result, auth::Auth, command, expand_vars, python_string};
+use crate::{auth::Auth, command, expand_vars, python_string};
 use futures_util::StreamExt;
 use reqwest::{
     Client, Method, Response,
@@ -13,7 +13,7 @@ use std::{
         Arc, Mutex,
         atomic::{AtomicU64, Ordering},
     },
-    time::Duration,
+    time::{Duration, Instant},
 };
 use tokio::{
     io::{AsyncBufRead, AsyncBufReadExt, AsyncWriteExt, BufReader},
@@ -21,12 +21,91 @@ use tokio::{
     task::JoinHandle,
 };
 
+/// Safe diagnostics for checks; Display never carries bodies, URLs or secrets.
+#[derive(Debug)]
+pub struct Error {
+    message: String,
+    pub category: &'static str,
+    pub http_status: Option<u16>,
+}
+impl Error {
+    pub fn category(category: &'static str) -> Self {
+        Self {
+            message: "Upstream request failed".into(),
+            category,
+            http_status: None,
+        }
+    }
+    fn http(status: u16, message: &'static str) -> Self {
+        Self {
+            message: message.into(),
+            category: "HTTPStatusError",
+            http_status: Some(status),
+        }
+    }
+    fn auth(message: String) -> Self {
+        let category = if message == "Credential operation timed out" {
+            "TimeoutError"
+        } else {
+            "AuthError"
+        };
+        Self {
+            message,
+            category,
+            http_status: None,
+        }
+    }
+    fn request(error: reqwest::Error) -> Self {
+        Self::category(if error.is_timeout() {
+            "TimeoutError"
+        } else if error.is_connect() {
+            "ConnectError"
+        } else {
+            "ReadError"
+        })
+    }
+}
+impl std::fmt::Display for Error {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        self.message.fmt(f)
+    }
+}
+impl From<&str> for Error {
+    fn from(message: &str) -> Self {
+        let category = match message {
+            "Upstream request timed out"
+            | "Notification timed out"
+            | "SSE connection timed out" => "TimeoutError",
+            "Invalid upstream response" => "JSONDecodeError",
+            "Upstream closed" | "Transport closed" | "Missing upstream response" => "McpError",
+            "Extension command failed" => "FileNotFoundError",
+            _ => "RuntimeError",
+        };
+        Self {
+            message: message.into(),
+            category,
+            http_status: None,
+        }
+    }
+}
+impl From<String> for Error {
+    fn from(message: String) -> Self {
+        Self::from(message.as_str())
+    }
+}
+impl From<Error> for String {
+    fn from(error: Error) -> Self {
+        error.message
+    }
+}
+type Result<T> = std::result::Result<T, Error>;
+
 pub const MAX_MESSAGE: usize = 8 * 1024 * 1024;
 pub const MAX_INFLIGHT: usize = 64;
 pub const REQUEST_TIMEOUT: Duration = Duration::from_secs(60);
 type Pending = Arc<Mutex<HashMap<u64, oneshot::Sender<Value>>>>;
 
-pub async fn line<R: AsyncBufRead + Unpin>(reader: &mut R) -> Result<Option<Vec<u8>>> {
+pub async fn line<R: AsyncBufRead + Unpin>(reader: &mut R) -> crate::Result<Option<Vec<u8>>> {
     let mut out = Vec::new();
     loop {
         let bytes = reader.fill_buf().await.map_err(|_| "Stream read failed")?;
@@ -102,6 +181,8 @@ struct Http {
     auth: Option<Auth>,
     session: Arc<Mutex<Option<String>>>,
     protocol: Arc<Mutex<Option<String>>>,
+    deadline: Option<Instant>,
+    last_token: Arc<Mutex<Option<String>>>,
 }
 impl Http {
     async fn send(&self, method: Method, url: &str, body: Option<&Value>) -> Result<Response> {
@@ -111,7 +192,10 @@ impl Http {
             return Err("Credential origin mismatch".into());
         }
         let mut token = match &self.auth {
-            Some(a) => a.access_token(None).await?,
+            Some(a) => a
+                .access_token_until(None, self.deadline)
+                .await
+                .map_err(Error::auth)?,
             None => None,
         };
         for attempt in 0..2 {
@@ -136,25 +220,35 @@ impl Http {
                 );
             }
             let mut req = self.client.request(method.clone(), url).headers(headers);
+            *self.last_token.lock().unwrap() = token.clone();
             if let Some(body) = body {
                 req = req.json(body);
             }
-            let response = req.send().await.map_err(|_| "HTTP request failed")?;
+            let response = req.send().await.map_err(Error::request)?;
             if response.status() == 401
                 && attempt == 0
                 && let (Some(auth), Some(rejected)) = (&self.auth, &token)
             {
-                let new = auth.access_token(Some(rejected.clone())).await?;
+                let new = auth
+                    .access_token_until(Some(rejected.clone()), self.deadline)
+                    .await
+                    .map_err(Error::auth)?;
                 if new.is_some() && new != token {
                     token = new;
                     continue;
                 }
             }
             if response.status().is_redirection() {
-                return Err("HTTP redirect rejected".into());
+                return Err(Error::http(
+                    response.status().as_u16(),
+                    "HTTP redirect rejected",
+                ));
             }
             if !response.status().is_success() {
-                return Err("HTTP request rejected".into());
+                return Err(Error::http(
+                    response.status().as_u16(),
+                    "HTTP request rejected",
+                ));
             }
             if let Some(session) = response.headers().get("mcp-session-id") {
                 *self.session.lock().unwrap() =
@@ -250,6 +344,14 @@ impl Drop for Transport {
 }
 impl Transport {
     pub async fn connect(home: &Path, name: &str, spec: &Value) -> Result<Self> {
+        Self::connect_until(home, name, spec, None).await
+    }
+    pub async fn connect_until(
+        home: &Path,
+        name: &str,
+        spec: &Value,
+        deadline: Option<Instant>,
+    ) -> Result<Self> {
         let pending: Pending = Arc::new(Mutex::new(HashMap::new()));
         let (dead, closed) = watch::channel(false);
         let (cancellations, mut cancelled) = mpsc::channel::<u64>(MAX_INFLIGHT);
@@ -346,7 +448,13 @@ impl Transport {
             let auth = if headers.contains_key("authorization") {
                 None
             } else {
-                Auth::new(home.into(), name.into(), endpoint.clone())?
+                let home = home.to_path_buf();
+                let name = name.to_owned();
+                let endpoint = endpoint.clone();
+                tokio::task::spawn_blocking(move || Auth::new(home, name, endpoint))
+                    .await
+                    .map_err(|_| Error::auth("Credential storage unavailable".into()))?
+                    .map_err(Error::auth)?
             };
             let builder = Client::builder()
                 .redirect(reqwest::redirect::Policy::none())
@@ -363,6 +471,8 @@ impl Transport {
                 auth,
                 session: Arc::new(Mutex::new(None)),
                 protocol: Arc::new(Mutex::new(None)),
+                deadline,
+                last_token: Arc::new(Mutex::new(None)),
             };
             if spec["transport"] == "sse" {
                 let response = http.send(Method::GET, &endpoint, None).await?;
@@ -471,7 +581,7 @@ impl Transport {
                     let mut data = Vec::new();
                     let mut parser = Sse::default();
                     while let Some(chunk) = stream.next().await {
-                        let chunk = chunk.map_err(|_| "HTTP body failed")?;
+                        let chunk = chunk.map_err(Error::request)?;
                         if sse {
                             for (_, data) in parser.feed(&chunk)? {
                                 let result: Value = comandos_core::json::parse_value(&data)
@@ -551,8 +661,9 @@ impl Transport {
         }
     }
     pub async fn shutdown(&mut self) {
-        for task in &self.tasks {
+        for task in self.tasks.drain(..) {
             task.abort();
+            let _ = task.await;
         }
         self.group.take();
         if let Some(child) = &mut self.child {
@@ -563,9 +674,18 @@ impl Transport {
             && self.post_url.is_none()
             && http.session.lock().unwrap().is_some()
         {
+            // Session cleanup must not start another refresh or depend on an
+            // expired operation deadline. Reuse the last credential we sent.
+            let mut cleanup = http.clone();
+            cleanup.auth = None;
+            if let Some(token) = http.last_token.lock().unwrap().as_ref()
+                && let Ok(value) = HeaderValue::from_str(&format!("Bearer {token}"))
+            {
+                cleanup.headers.insert("authorization", value);
+            }
             let _ = tokio::time::timeout(
                 Duration::from_secs(2),
-                http.send(Method::DELETE, &http.endpoint, None),
+                cleanup.send(Method::DELETE, &http.endpoint, None),
             )
             .await;
         }

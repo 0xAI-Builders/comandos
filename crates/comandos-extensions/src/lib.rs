@@ -118,3 +118,5 @@ pub mod tokenizer;
 pub mod catalog;
 pub mod config;
 pub mod skills;
+
+pub mod check;

@@ -18,6 +18,31 @@ fn run() -> Result<()> {
                 let home = home.map(Ok).unwrap_or_else(home_dir)?;
                 return catalog_command(&home, catalog.as_deref(), action);
             }
+            Some("check") => {
+                let home = home.map(Ok).unwrap_or_else(home_dir)?;
+                let path =
+                    catalog.unwrap_or_else(|| comandos_extensions::config::catalog_path(&home));
+                let catalog = comandos_extensions::config::read_config(&path)?;
+                if catalog["version"] != 1 {
+                    return Err("Shared catalog missing or unsupported".into());
+                }
+                let names = args.collect();
+                let runtime = tokio::runtime::Builder::new_current_thread()
+                    .max_blocking_threads(8)
+                    .enable_all()
+                    .build()
+                    .map_err(|_| "Runtime unavailable")?;
+                let result = runtime.block_on(async {
+                    let result = comandos_extensions::check::run(&home, &catalog, names).await;
+                    comandos_extensions::auth::drain_workers().await;
+                    result
+                });
+                runtime.shutdown_timeout(std::time::Duration::from_millis(100));
+                if result? {
+                    std::process::exit(1);
+                }
+                return Ok(());
+            }
             Some("serve") => break,
             Some("count") if args.next().is_none() => {
                 let home = home.map(Ok).unwrap_or_else(home_dir)?;
@@ -25,7 +50,7 @@ fn run() -> Result<()> {
             }
             _ => {
                 return Err(
-                    "Usage: comandos-extensions [--home PATH] [--catalog PATH] {import|sync|status|count|serve NAME}".into(),
+                    "Usage: comandos-extensions [--home PATH] [--catalog PATH] {import|sync|status|count|check [NAME...]|serve NAME}".into(),
                 );
             }
         }
