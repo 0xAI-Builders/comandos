@@ -199,12 +199,13 @@
   // Arranques leídos de `<cli> --help` (cli.start): la fila del binario con el primer
   // párrafo de su ayuda, las cuentas reales, los flags que el propio CLI describe como
   // saltarse permisos (ámbar) y cada sección de la ayuda con su título original,
-  // plegada. Ningún texto de aquí es nuestro: título y descripciones son del CLI.
+  // plegada. Los atajos de permisos combinan flags comprobados y se describen en español.
   function startHTML(cli, o) {
     const st = cli.start || { rows: [], yolo: [], sections: [] };
     const dis = (cli.version && cli.version.status === 'missing') || o.noTarget;
     const row = (c, cls) => rowHTML(c, { mode: o.mode, kind: 'shell', dis, q: o.q, cls });
-    const top = (st.rows || []).map(c => row(c, 'bin')).join('') + (st.yolo || []).map(c => row(c, 'y')).join('');
+    const top = (st.rows || []).map(c => row(c, 'bin')).join('') + (st.yolo || []).map(c => row(c, 'y')).join('')
+      + (st.shortcuts || []).map(c => row(c, 'y')).join('');
     const secs = (st.sections || []).map(sec => {
       const key = `${cli.id}:help:${sec.title}`, open = o.open.has(key);
       const items = sec.items || [];
@@ -219,7 +220,7 @@
   }
   const startTexts = cli => {
     const st = cli.start || {};
-    return [...(st.rows || []), ...(st.yolo || []), ...(st.sections || []).flatMap(x => x.items || [])];
+    return [...(st.rows || []), ...(st.yolo || []), ...(st.shortcuts || []), ...(st.sections || []).flatMap(x => x.items || [])];
   };
 
   // Lista plana (ronda 6 A aprobada): los grupos del catálogo solo ordenan; no

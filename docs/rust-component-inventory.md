@@ -1,6 +1,8 @@
 # Inventario de la migración
 
-Base 214e55a. 165 archivos de producto y 202 de verificación con código o estilo. Inventario exhaustivo de esas extensiones y scripts con shebang; los terceros de vendor se conservan aparte. La presencia de una implementación Rust no autoriza su despliegue ni demuestra paridad de toda la aplicación.
+Base 214e55a. 170 archivos de producto y 205 de verificación con código o estilo. Inventario exhaustivo de esas extensiones y scripts con shebang; los terceros de vendor se conservan aparte. La presencia de una implementación Rust no autoriza su despliegue ni demuestra paridad de toda la aplicación.
+
+Referencia adicional capturada el 2026-10-03T05:39:58.314312+00:00 desde /home/someguy/codebase/0xJesus/ComandOS, sobre la base de trabajo 263492fb996b5e782b2dc5ccd8c2dc36901c100f. Manifiesto /home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/.superpowers/sdd/incoming-source-20261003T0540/manifest.json, SHA-256 faa170bb61ac883583058e83d6f1f4f850a3a6935fad5fe033a40e8259172801. Conserva 7 referencias actualizadas y añade 5 componentes de producto pendientes de migrar a Rust y 3 oráculos de transición. La base inicial 214e55a y los estados anteriores se conservan. Las pruebas sintéticas no demuestran detección del hilo seleccionado ni reanudación completa.
 
 Los assets, servicios e instaladores declarativos se deben contrastar en el empaquetado final. La lógica propia embebida en HTML/JS también se migra; CSS, fuentes e imágenes conservan su diseño.
 
@@ -30,6 +32,7 @@ Los assets, servicios e instaladores declarativos se deben contrastar en el empa
 | /home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/bin/cc-browser-npx-guard | Pendiente | — |
 | /home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/bin/cc-browser-remote | Pendiente | — |
 | /home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/bin/cc-centro | Pendiente | — |
+| /home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/bin/cc-codex-full-access | Pendiente | — |
 | /home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/bin/cc-dash | Pendiente | — |
 | /home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/bin/cc-doctor | Pendiente | — |
 | /home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/bin/cc-extension-session | Pendiente | — |
@@ -114,6 +117,10 @@ Los assets, servicios e instaladores declarativos se deben contrastar en el empa
 | /home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/lib/claude_trust.py | Pendiente | — |
 | /home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/lib/cli_catalog.py | Pendiente | — |
 | /home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/lib/cli_help.py | Pendiente | — |
+| /home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/lib/codex_full_access.py | Pendiente | — |
+| /home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/lib/codex_thread_release.py | Pendiente | — |
+| /home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/lib/codex_yolo_install.py | Pendiente | — |
+| /home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/lib/codex_yolo_policy.py | Pendiente | — |
 | /home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/lib/command_chains.py | Pendiente | — |
 | /home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/lib/event_intake.py | Rust — revisado; sin despliegue | /home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/crates/comandos-runtime/src/bin/comandos-events.rs |
 | /home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/lib/event_store.py | Rust | /home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/crates/comandos-store/src/lib.rs |
@@ -171,3 +178,11 @@ Los assets, servicios e instaladores declarativos se deben contrastar en el empa
 | /home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/tools/cli-commands/verify_names.py | Pendiente | — |
 | /home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/tools/css_orphans.py | Pendiente | — |
 | /home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/tools/png_diff.py | Pendiente | — |
+
+Oráculos añadidos en esta captura, incluidos en el total de verificación.
+
+| Fuente absoluta | Estado | Implementación Rust |
+|---|---|---|
+| /home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/tests/test_codex_full_access.py | Oráculo de transición; conservar hasta reemplazo verificado | — |
+| /home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/tests/test_codex_thread_release.py | Oráculo de transición; conservar hasta reemplazo verificado | — |
+| /home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/tests/test_codex_yolo_policy.py | Oráculo de transición; conservar hasta reemplazo verificado | — |

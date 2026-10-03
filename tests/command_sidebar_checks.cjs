@@ -31,7 +31,10 @@ const catalog = JSON.parse(fs.readFileSync(process.cwd() + '/tests/fixtures/comm
   assert.deepEqual(JSON.parse(store.get('comandos.commands.open.v2')), ['saved']);
   // arranques de `codex --help`: primero el binario con su resumen, luego lo que el CLI describe como saltarse permisos
   assert.deepEqual(root.querySelectorAll('.cs-cli.here .srows.top .cmd').map(r => r.dataset.cmd),
-    ['codex', 'codex --dangerously-bypass-approvals-and-sandbox']);
+    ['codex', 'codex --dangerously-bypass-approvals-and-sandbox',
+      'codex --sandbox danger-full-access --ask-for-approval on-request',
+      'codex resume --sandbox danger-full-access --ask-for-approval on-request',
+      'codex resume --dangerously-bypass-approvals-and-sandbox']);
   assert.equal(root.querySelector('.cs-cli.here .srows .cmd.y small').textContent.startsWith('Skip all confirmation prompts'), true);
   assert.equal(root.querySelector('.cs-cli.here .srows .cmd.bin small').textContent, 'Codex CLI');
   assert.deepEqual(root.querySelectorAll('.cs-cli.here .hsec .hsec-h .t').map(t => t.textContent), ['Commands', 'Options']);

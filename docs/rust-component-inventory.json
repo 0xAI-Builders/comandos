@@ -196,6 +196,14 @@
       "rust": null
     },
     {
+      "source": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/bin/cc-codex-full-access",
+      "language": "script",
+      "category": "producto",
+      "lines": 10,
+      "status": "Pendiente",
+      "rust": null
+    },
+    {
       "source": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/bin/cc-dash",
       "language": "script",
       "category": "producto",
@@ -864,6 +872,38 @@
       "language": ".py",
       "category": "producto",
       "lines": 157,
+      "status": "Pendiente",
+      "rust": null
+    },
+    {
+      "source": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/lib/codex_full_access.py",
+      "language": ".py",
+      "category": "producto",
+      "lines": 494,
+      "status": "Pendiente",
+      "rust": null
+    },
+    {
+      "source": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/lib/codex_thread_release.py",
+      "language": ".py",
+      "category": "producto",
+      "lines": 229,
+      "status": "Pendiente",
+      "rust": null
+    },
+    {
+      "source": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/lib/codex_yolo_install.py",
+      "language": ".py",
+      "category": "producto",
+      "lines": 99,
+      "status": "Pendiente",
+      "rust": null
+    },
+    {
+      "source": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/lib/codex_yolo_policy.py",
+      "language": ".py",
+      "category": "producto",
+      "lines": 62,
       "status": "Pendiente",
       "rust": null
     },
@@ -1760,6 +1800,30 @@
       "language": ".sh",
       "category": "verificación",
       "lines": 127,
+      "status": "Oráculo de transición; conservar hasta reemplazo verificado",
+      "rust": null
+    },
+    {
+      "source": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/tests/test_codex_full_access.py",
+      "language": ".py",
+      "category": "verificación",
+      "lines": 575,
+      "status": "Oráculo de transición; conservar hasta reemplazo verificado",
+      "rust": null
+    },
+    {
+      "source": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/tests/test_codex_thread_release.py",
+      "language": ".py",
+      "category": "verificación",
+      "lines": 193,
+      "status": "Oráculo de transición; conservar hasta reemplazo verificado",
+      "rust": null
+    },
+    {
+      "source": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/tests/test_codex_yolo_policy.py",
+      "language": ".py",
+      "category": "verificación",
+      "lines": 109,
       "status": "Oráculo de transición; conservar hasta reemplazo verificado",
       "rust": null
     },
@@ -2938,6 +3002,35 @@
       "lines": 18,
       "status": "Pendiente",
       "rust": null
+    }
+  ],
+  "reference_additions": [
+    {
+      "captured_at": "2026-10-03T05:39:58.314312+00:00",
+      "source_root": "/home/someguy/codebase/0xJesus/ComandOS",
+      "migration_base": "263492fb996b5e782b2dc5ccd8c2dc36901c100f",
+      "manifest": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/.superpowers/sdd/incoming-source-20261003T0540/manifest.json",
+      "manifest_sha256": "faa170bb61ac883583058e83d6f1f4f850a3a6935fad5fe033a40e8259172801",
+      "purpose": "Preservar referencias actuales de lanzamiento y recuperación; no acredita migración Rust ni corte a producción.",
+      "added_files": [
+        "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/bin/cc-codex-full-access",
+        "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/lib/codex_full_access.py",
+        "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/lib/codex_thread_release.py",
+        "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/lib/codex_yolo_install.py",
+        "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/lib/codex_yolo_policy.py",
+        "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/tests/test_codex_full_access.py",
+        "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/tests/test_codex_thread_release.py",
+        "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/tests/test_codex_yolo_policy.py"
+      ],
+      "updated_files": [
+        "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/dash/command-sidebar.js",
+        "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/lib/cli_catalog.py",
+        "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/lib/pane_snapshot.py",
+        "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/tests/command_sidebar_checks.cjs",
+        "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/tests/fixtures/command-catalog.json",
+        "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/tests/test_cli_catalog.py",
+        "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/tests/test_pane_snapshot.py"
+      ]
     }
   ]
 }
