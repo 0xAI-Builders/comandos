@@ -524,3 +524,5 @@ mod tests {
         }
     }
 }
+#[path = "python_regex/unicode14.rs"]
+mod unicode14;

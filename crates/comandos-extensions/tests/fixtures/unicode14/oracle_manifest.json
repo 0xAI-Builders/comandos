@@ -1,0 +1,376 @@
+{
+  "format": 1,
+  "domain": [
+    0,
+    1114112
+  ],
+  "width": 1024,
+  "rows_per_child": 8,
+  "primitive": {
+    "record_bytes": 16,
+    "layout": "LE u32 cp/lower/upper; LE u16 flags; u8 decimal (255 absent); u8 zero",
+    "flags": [
+      "decimal",
+      "alnum",
+      "word",
+      "space",
+      "linebreak",
+      "regex_iscased",
+      "xid_start",
+      "xid_continue",
+      "identifier_start",
+      "identifier_continue"
+    ]
+  },
+  "canonical": {
+    "layout": "LE u32 cp; LE u16 ASCII byte length (65535 missing); ASCII bytes",
+    "coverage": "every codepoint in ascending order"
+  },
+  "lookup": {
+    "layout": "JSONL id/cohort/input (scalar string or surrogate u32 vector)/lookup class and value/ordinary and class re.compile classes",
+    "planned_records": 501282,
+    "complete": true,
+    "records": 501282,
+    "cohorts": {
+      "alias/0": 470,
+      "alias/1": 470,
+      "alias/2": 470,
+      "canonical/0": 138552,
+      "canonical/1": 138552,
+      "canonical/2": 138552,
+      "directed": 81,
+      "leading-zero/0": 27584,
+      "leading-zero/1": 27584,
+      "leading-zero/2": 27584,
+      "sequence/0": 461,
+      "sequence/1": 461,
+      "sequence/2": 461
+    },
+    "sha256": "39ec8985796477644413631a66483e9b90245fc060441fd9f15c89db382dc130",
+    "batches": 490,
+    "directed_sha256": "b7cef1da6a26f0de8f14636b41b07f6896940cf1b23469bd5dd86b59f24bd3bc"
+  },
+  "sources": [
+    {
+      "file": "cpython/Objects/unicodectype.c",
+      "url": "https://raw.githubusercontent.com/python/cpython/2340a037f7450e70fccfe411e6531afb4d57a312/Objects/unicodectype.c",
+      "sha256": "4b2f396d99072fc3d19fc2e812067b188c377433138416d5a74cd1a14a413353",
+      "bytes": 7618,
+      "max_bytes": 4194304
+    },
+    {
+      "file": "cpython/Objects/unicodetype_db.h",
+      "url": "https://raw.githubusercontent.com/python/cpython/2340a037f7450e70fccfe411e6531afb4d57a312/Objects/unicodetype_db.h",
+      "sha256": "a908fb7364d321984cd1cbdd8737f115b61e34499899f7597df3ee606109de1e",
+      "bytes": 258522,
+      "max_bytes": 4194304
+    },
+    {
+      "file": "cpython/Include/cpython/unicodeobject.h",
+      "url": "https://raw.githubusercontent.com/python/cpython/2340a037f7450e70fccfe411e6531afb4d57a312/Include/cpython/unicodeobject.h",
+      "sha256": "9183d40b4aec778c4f59d2091b4374722f635116a33ae6fc66c16e0b5fa700b5",
+      "bytes": 42739,
+      "max_bytes": 4194304
+    },
+    {
+      "file": "cpython/Objects/unicodeobject.c",
+      "url": "https://raw.githubusercontent.com/python/cpython/2340a037f7450e70fccfe411e6531afb4d57a312/Objects/unicodeobject.c",
+      "sha256": "5dde8eb1b99878b4ea113cd6b5f88bca3667b0e23dc8c5262a07f5ea14d0d82e",
+      "bytes": 481759,
+      "max_bytes": 4194304
+    },
+    {
+      "file": "cpython/Modules/_sre/sre.c",
+      "url": "https://raw.githubusercontent.com/python/cpython/2340a037f7450e70fccfe411e6531afb4d57a312/Modules/_sre/sre.c",
+      "sha256": "db0b655aad48299782cfa460d6bac5d0093015b675ab193c0526fbc8ef5d2b78",
+      "bytes": 82984,
+      "max_bytes": 4194304
+    },
+    {
+      "file": "cpython/Lib/re/_casefix.py",
+      "url": "https://raw.githubusercontent.com/python/cpython/2340a037f7450e70fccfe411e6531afb4d57a312/Lib/re/_casefix.py",
+      "sha256": "41572ac50cf96b04496e676d8a6708898bb8e752e06dad34ed4c50c5d8f1fe40",
+      "bytes": 5446,
+      "max_bytes": 4194304
+    },
+    {
+      "file": "cpython/Lib/re/_compiler.py",
+      "url": "https://raw.githubusercontent.com/python/cpython/2340a037f7450e70fccfe411e6531afb4d57a312/Lib/re/_compiler.py",
+      "sha256": "c05067f8bfa4c13cbbf1eedc4d5cafc9b621bcb6ebc5771ba0518a18095af15a",
+      "bytes": 26089,
+      "max_bytes": 4194304
+    },
+    {
+      "file": "cpython/Modules/unicodedata.c",
+      "url": "https://raw.githubusercontent.com/python/cpython/2340a037f7450e70fccfe411e6531afb4d57a312/Modules/unicodedata.c",
+      "sha256": "45cdebdddfd074ea4a3ec1f99d59012953a35adb3b1235e9cfd38e346d511837",
+      "bytes": 45814,
+      "max_bytes": 4194304
+    },
+    {
+      "file": "cpython/Modules/unicodename_db.h",
+      "url": "https://raw.githubusercontent.com/python/cpython/2340a037f7450e70fccfe411e6531afb4d57a312/Modules/unicodename_db.h",
+      "sha256": "fc3a439c81f2aa3eed4fbfc1cdb0f7f821bf4aed3fea1120460d9e05bed6a771",
+      "bytes": 2287553,
+      "max_bytes": 4194304
+    },
+    {
+      "file": "cpython/Modules/clinic/unicodedata.c.h",
+      "url": "https://raw.githubusercontent.com/python/cpython/2340a037f7450e70fccfe411e6531afb4d57a312/Modules/clinic/unicodedata.c.h",
+      "sha256": "9de06dcfdf2128586bf94a549f94d3495a42c7047f56cb03241d6db985abf0ae",
+      "bytes": 16435,
+      "max_bytes": 4194304
+    },
+    {
+      "file": "cpython/Python/getargs.c",
+      "url": "https://raw.githubusercontent.com/python/cpython/2340a037f7450e70fccfe411e6531afb4d57a312/Python/getargs.c",
+      "sha256": "9bf9d7ef93e2f2aea0b5b863503b06ca11cbd8d647c1052cf77f8114f30f5956",
+      "bytes": 90374,
+      "max_bytes": 4194304
+    },
+    {
+      "file": "cpython/Lib/re/_parser.py",
+      "url": "https://raw.githubusercontent.com/python/cpython/2340a037f7450e70fccfe411e6531afb4d57a312/Lib/re/_parser.py",
+      "sha256": "4748e39c77d6dc14f81af80e68a62ad99031a8182d5e0b219a6666d0cfb1626f",
+      "bytes": 42420,
+      "max_bytes": 4194304
+    },
+    {
+      "file": "cpython/Modules/unicodedata_db.h",
+      "url": "https://raw.githubusercontent.com/python/cpython/2340a037f7450e70fccfe411e6531afb4d57a312/Modules/unicodedata_db.h",
+      "sha256": "93e7515143be306af19275a087a68da230561e0d61472fe64dbf363ca9939066",
+      "bytes": 551169,
+      "max_bytes": 4194304
+    },
+    {
+      "file": "cpython/Tools/unicode/makeunicodedata.py",
+      "url": "https://raw.githubusercontent.com/python/cpython/2340a037f7450e70fccfe411e6531afb4d57a312/Tools/unicode/makeunicodedata.py",
+      "sha256": "4167934e4a2fd3d8208005bd590a679bd7309f6915df77ef0c9631d3c1b9187d",
+      "bytes": 48657,
+      "max_bytes": 4194304
+    },
+    {
+      "file": "cpython/LICENSE",
+      "url": "https://raw.githubusercontent.com/python/cpython/2340a037f7450e70fccfe411e6531afb4d57a312/LICENSE",
+      "sha256": "3b2f81fe21d181c499c59a256c8e1968455d6689d269aa85373bfb6af41da3bf",
+      "bytes": 13936,
+      "max_bytes": 4194304
+    },
+    {
+      "file": "unicode/ReadMe.txt",
+      "url": "https://www.unicode.org/Public/14.0.0/ucd/ReadMe.txt",
+      "sha256": "7316825946e47cdfb77f6c9037c611d74d58b2e55761ea0d6dfa162fa07a926a",
+      "bytes": 654,
+      "max_bytes": 4194304
+    },
+    {
+      "file": "unicode/license.txt",
+      "url": "https://www.unicode.org/license.txt",
+      "sha256": "e7a93b009565cfce55919a381437ac4db883e9da2126fa28b91d12732bc53d96",
+      "bytes": 1995,
+      "max_bytes": 4194304
+    },
+    {
+      "file": "cpython/Tools/scripts/generate_re_casefix.py",
+      "url": "https://raw.githubusercontent.com/python/cpython/2340a037f7450e70fccfe411e6531afb4d57a312/Tools/scripts/generate_re_casefix.py",
+      "sha256": "21f3f9365223887913c2d924f74bce7a2c2a3e08ae4a49efde994532e7c78a9f",
+      "bytes": 2703,
+      "max_bytes": 4194304
+    }
+  ],
+  "complete": true,
+  "identity": {
+    "v": 1,
+    "python": "3.11.15 (main, Mar  3 2026, 09:26:23) [GCC 11.4.0]",
+    "unicode": "14.0.0",
+    "unicodedata_origin": "built-in",
+    "executable": "/venv/bin/python",
+    "files": {
+      "/venv/bin/python": "c4b3f4386c93758043a4e772574bfbd6b0e5e4ce8d50af17f6ffeeb4b1a6be5b",
+      "/usr/bin/python3.11": "c4b3f4386c93758043a4e772574bfbd6b0e5e4ce8d50af17f6ffeeb4b1a6be5b",
+      "/usr/lib/python3.11/re/_casefix.py": "41572ac50cf96b04496e676d8a6708898bb8e752e06dad34ed4c50c5d8f1fe40",
+      "/usr/lib/python3.11/re/_parser.py": "4748e39c77d6dc14f81af80e68a62ad99031a8182d5e0b219a6666d0cfb1626f",
+      "/usr/lib/python3.11/re/_compiler.py": "c05067f8bfa4c13cbbf1eedc4d5cafc9b621bcb6ebc5771ba0518a18095af15a",
+      "/usr/lib/x86_64-linux-gnu/libpython3.11.so": "f82c6e90dda06eb49c8db403460a7473966717dec085f48d650451994ab50870"
+    },
+    "extra": {
+      "105": [
+        305
+      ],
+      "115": [
+        383
+      ],
+      "181": [
+        956
+      ],
+      "305": [
+        105
+      ],
+      "383": [
+        115
+      ],
+      "837": [
+        953,
+        8126
+      ],
+      "912": [
+        8147
+      ],
+      "944": [
+        8163
+      ],
+      "946": [
+        976
+      ],
+      "949": [
+        1013
+      ],
+      "952": [
+        977
+      ],
+      "953": [
+        837,
+        8126
+      ],
+      "954": [
+        1008
+      ],
+      "956": [
+        181
+      ],
+      "960": [
+        982
+      ],
+      "961": [
+        1009
+      ],
+      "962": [
+        963
+      ],
+      "963": [
+        962
+      ],
+      "966": [
+        981
+      ],
+      "976": [
+        946
+      ],
+      "977": [
+        952
+      ],
+      "981": [
+        966
+      ],
+      "982": [
+        960
+      ],
+      "1008": [
+        954
+      ],
+      "1009": [
+        961
+      ],
+      "1013": [
+        949
+      ],
+      "1074": [
+        7296
+      ],
+      "1076": [
+        7297
+      ],
+      "1086": [
+        7298
+      ],
+      "1089": [
+        7299
+      ],
+      "1090": [
+        7300,
+        7301
+      ],
+      "1098": [
+        7302
+      ],
+      "1123": [
+        7303
+      ],
+      "7296": [
+        1074
+      ],
+      "7297": [
+        1076
+      ],
+      "7298": [
+        1086
+      ],
+      "7299": [
+        1089
+      ],
+      "7300": [
+        1090,
+        7301
+      ],
+      "7301": [
+        1090,
+        7300
+      ],
+      "7302": [
+        1098
+      ],
+      "7303": [
+        1123
+      ],
+      "7304": [
+        42571
+      ],
+      "7777": [
+        7835
+      ],
+      "7835": [
+        7777
+      ],
+      "8126": [
+        837,
+        953
+      ],
+      "8147": [
+        912
+      ],
+      "8163": [
+        944
+      ],
+      "42571": [
+        7304
+      ],
+      "64261": [
+        64262
+      ],
+      "64262": [
+        64261
+      ]
+    }
+  },
+  "inventories": {
+    "primitive_records.bin": {
+      "sha256": "3622c269e3411971a9f7877d83e8b6f59f4599fc37471ca2c2d1970539638a74",
+      "records": 1114112,
+      "rows": 1088,
+      "batches": 136,
+      "bytes": 17825792
+    },
+    "canonical_names.bin": {
+      "sha256": "6723529cb854dc7cd3e02e320ba4bec8fe0c34fe7bc37bdcd1d70255235673d4",
+      "records": 1114112,
+      "rows": 1088,
+      "batches": 136,
+      "bytes": 10287367
+    }
+  },
+  "remaining_first_party_python": {
+    "file": "examples/unicode14/oracle_queries.rs",
+    "constant": "QUERY",
+    "purpose": "temporary external installed measurement only"
+  }
+}
