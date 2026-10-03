@@ -3,6 +3,14 @@ use serde_json::Value;
 use std::{os::unix::process::CommandExt, path::PathBuf};
 fn run() -> Result<()> {
     let mut args = std::env::args().skip(1);
+    if std::env::args().nth(1).as_deref() == Some("__schema_worker") {
+        if args.count() == 1 {
+            comandos_extensions::output_schema::worker_command();
+        } else {
+            println!("execution-failure");
+        }
+        return Ok(());
+    }
     let mut home = None;
     let mut catalog = None;
     loop {
