@@ -2406,7 +2406,7 @@
     "schema_json": "{\"$schema\":\"https://json-schema.org/draft/2019-09/schema\",\"contains\":{},\"minContains\":1.0}",
     "content_json": "[{}]",
     "mode": "ExhaustErrors",
-    "expected_gap": "Numeric",
+    "expected_gap": null,
     "oracle": {
       "root": "Draft201909Validator",
       "schema": {
@@ -2592,7 +2592,7 @@
     "schema_json": "{\"$schema\":\"https://json-schema.org/draft/2020-12/schema\",\"contains\":{},\"minContains\":1.0}",
     "content_json": "[{}]",
     "mode": "ExhaustErrors",
-    "expected_gap": "Numeric",
+    "expected_gap": null,
     "oracle": {
       "root": "Draft202012Validator",
       "schema": {
@@ -3018,7 +3018,7 @@
     "schema_json": "{\"const\":{\"$schema\":\"literal\",\"$ref\":\"#/missing\",\"n\":1.0}}",
     "content_json": "{}",
     "mode": "ExhaustErrors",
-    "expected_gap": "Keyword",
+    "expected_gap": null,
     "oracle": {
       "root": "Draft202012Validator",
       "schema": {
@@ -3037,7 +3037,7 @@
     "schema_json": "{\"enum\":[{\"$id\":\"urn:literal\"}]}",
     "content_json": "{}",
     "mode": "ExhaustErrors",
-    "expected_gap": "Keyword",
+    "expected_gap": null,
     "oracle": {
       "root": "Draft202012Validator",
       "schema": {
@@ -3109,7 +3109,7 @@
     "schema_json": "{\"type\":\"number\"}",
     "content_json": "{}",
     "mode": "ExhaustErrors",
-    "expected_gap": "Numeric",
+    "expected_gap": null,
     "oracle": {
       "root": "Draft202012Validator",
       "schema": {

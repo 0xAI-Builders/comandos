@@ -1,0 +1,125 @@
+{
+  "oracle": "CPython 3.11.15 distribution binary, installed outcomes authoritative",
+  "published_tag": "v3.11.15",
+  "tag_object": "2323bfc729b041c43b1e5e4c5f18c548fc345323",
+  "published_commit": "2340a037f7450e70fccfe411e6531afb4d57a312",
+  "distribution_build_identity": "Published source does not prove byte-identical installed distribution build.",
+  "sources": [
+    {
+      "source": "/usr/lib/python3.11/fractions.py",
+      "sha256": "d52a647a86a32e1905d38fe7a19cf200291f598dc4ed51273ac27f38723fb559"
+    },
+    {
+      "source": "/usr/lib/python3.11/json/decoder.py",
+      "sha256": "9f02654649816145bc76f8c210a5fe3ba1de142d4d97a1c93105732e747c285b"
+    },
+    {
+      "source": "/usr/lib/python3.11/json/scanner.py",
+      "sha256": "8604d9d03786d0d509abb49e9f069337278ea988c244069ae8ca2c89acc2cb08"
+    },
+    {
+      "source": "/home/someguy/.local/share/comandos/extensions-venv/lib/python3.11/site-packages/jsonschema/_keywords.py",
+      "sha256": "afcfc3aea01f9fa40bc109e65c4820bde89253e51a20bda9da7b8f20d7a57c57"
+    },
+    {
+      "source": "/home/someguy/.local/share/comandos/extensions-venv/lib/python3.11/site-packages/jsonschema/_legacy_keywords.py",
+      "sha256": "dad5aec113d66d84bb10097cc01202feb69b1aebf527875f60ba8d10fa528610"
+    },
+    {
+      "source": "/home/someguy/.local/share/comandos/extensions-venv/lib/python3.11/site-packages/jsonschema/_types.py",
+      "sha256": "7ff9e44c36eb8dadc4ddfb083530bbdf2fe03174d4db5d08fc7eea2b434ddf47"
+    },
+    {
+      "source": "/home/someguy/.local/share/comandos/extensions-venv/lib/python3.11/site-packages/jsonschema/_utils.py",
+      "sha256": "5efebfc0a2ac941265c328fdfa3d9cf090c5c3ee33e1a5859d57b6a57f21ed4e"
+    },
+    {
+      "source": "/home/someguy/.local/share/comandos/extensions-venv/lib/python3.11/site-packages/jsonschema/validators.py",
+      "sha256": "97f171b995b4b0ca05530a9366a1252fb1753f99f3cb7b1068b6d9aab1096fa5"
+    }
+  ],
+  "published_sources": [
+    {
+      "url": "https://raw.githubusercontent.com/python/cpython/v3.11.15/Objects/floatobject.c",
+      "sha256": "b9d6fd25553419d1cedc13ac14a95e5fcd5e0d8cf3010fd023bf51df488fb38f"
+    },
+    {
+      "url": "https://raw.githubusercontent.com/python/cpython/v3.11.15/Objects/longobject.c",
+      "sha256": "244d780338a45a72b6dbb72ff77174e76cf75c50bed9160de299ab36db19e4ec"
+    },
+    {
+      "url": "https://raw.githubusercontent.com/python/cpython/v3.11.15/Python/pystrtod.c",
+      "sha256": "44f25d7cad020289d271cb3ad920536d6fc168ae7d73a085989489ca362d3113"
+    },
+    {
+      "url": "https://raw.githubusercontent.com/python/cpython/v3.11.15/Modules/_json.c",
+      "sha256": "4de78eb637b6682a954b1651d5b8b7275a6862ca1bdab54d5e45598052f2c9b4"
+    },
+    {
+      "url": "https://raw.githubusercontent.com/python/cpython/v3.11.15/LICENSE",
+      "sha256": "3b2f81fe21d181c499c59a256c8e1968455d6689d269aa85373bfb6af41da3bf"
+    }
+  ],
+  "notices": [
+    {
+      "source": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/crates/comandos-extensions/src/output_schema/traversal/JSONSCHEMA-COPYING",
+      "sha256": "4f92a015a13c4d1a040bef018aa13430b4f1bc73b41b16bb846c346766de7439"
+    },
+    {
+      "source": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/crates/comandos-extensions/src/output_schema/traversal/numbers/CPYTHON-LICENSE",
+      "sha256": "3b2f81fe21d181c499c59a256c8e1968455d6689d269aa85373bfb6af41da3bf"
+    }
+  ],
+  "mapping": {
+    "PythonNumber::parse": "_json.c number kind; pystrtod.c float parsing; longobject.c integer digit policy",
+    "PythonNumber::compare,ratio": "floatobject.c float_richcompare/as_integer_ratio; exact binary decomposition in BigInt",
+    "PythonNumber::to_float": "longobject.c PyLong_AsDouble; cached num-bigint ToPrimitive through nonfinite overflow wrapper",
+    "PythonNumber::multiple_of": "_keywords.py multipleOf; floatobject.c float_div/float_rem; fractions.py Fraction construction/division",
+    "Numbers::equal,unique": "_utils.py equal/uniq; bounded recursive/pairwise port",
+    "Numbers::handler": "_keywords.py type/bounds/equality/size and _legacy_keywords.py Draft4 bounds",
+    "contains hook": "_keywords.py contains; traversal preserves probe/order"
+  },
+  "changes": "Private Rust semantic port using existing BigInt; no complete CPython numeric source copied. Standard Rust float parsing is certified by installed oracle bits. Pairwise uniqueness replaces Python sorting within strict JSON with explicit protective work/depth gaps. Integer primitive guard uses captured 4300; full document decoder proof remains external. Original Value objects and schema order are retained.",
+  "dependencies": {
+    "num-bigint": "0.4.8",
+    "num-traits": "0.2.19",
+    "serde_json": "1.0.150"
+  },
+  "remaining_prerequisites": [
+    "full default Python JSON transport proof including duplicate overwritten values",
+    "native exact check_schema proof",
+    "nonstandard constants and lone surrogates",
+    "production wiring",
+    "general recursion and equality budget parity"
+  ],
+  "cached_conversion_sources": [
+    {
+      "source": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/.migration-build/cargo/registry/src/index.crates.io-1949cf8c6b5b557f/num-bigint-0.4.8/src/biguint/convert.rs",
+      "sha256": "f4daf2e5e48fc5f9cd91d70f35574aca00ed27ced8e63f56dcc216dc6fb97dbc",
+      "use": "ordinary dependency through existing ToPrimitive trait, no source copied"
+    },
+    {
+      "source": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/.migration-build/cargo/registry/src/index.crates.io-1949cf8c6b5b557f/num-bigint-0.4.8/src/bigint/convert.rs",
+      "sha256": "da5ff804ae7be9b88b1f59837d4acad6fda6f39eb97c9fb63c1a7bd35ea2729f",
+      "use": "ordinary dependency through existing ToPrimitive trait, no source copied"
+    }
+  ],
+  "dependencies_archives": [
+    {
+      "source": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/.migration-build/cargo/registry/cache/index.crates.io-1949cf8c6b5b557f/num-bigint-0.4.8.crate",
+      "sha256": "c89e69e7e0f03bea5ef08013795c25018e101932225a656383bd384495ecc367"
+    },
+    {
+      "source": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/.migration-build/cargo/registry/cache/index.crates.io-1949cf8c6b5b557f/num-traits-0.2.19.crate",
+      "sha256": "071dfc062690e90b734c0b2273ce72ad0ffa95f0c74596bc250dcfd960262841"
+    },
+    {
+      "source": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/.migration-build/cargo/registry/cache/index.crates.io-1949cf8c6b5b557f/num-rational-0.4.2.crate",
+      "sha256": "f83d14da390562dca69fc84082e73e548e1ad308d24accdedd2720017cb37824"
+    },
+    {
+      "source": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/.migration-build/cargo/registry/cache/index.crates.io-1949cf8c6b5b557f/fraction-0.17.0.crate",
+      "sha256": "e246562084dde8ebbcc943b261c406ce4f68e5032ec28029a251a47d6a295500"
+    }
+  ]
+}

@@ -117,7 +117,7 @@ def directed_cases():
                 ('empty-default', {}, [], None),
                 ('min-two', {'minContains': 2}, [{}], None),
                 ('max-one', {'maxContains': 1}, [{}, {}], None),
-                ('float-bound', {'minContains': 1.0}, [{}], 'Numeric')]:
+                ('float-bound', {'minContains': 1.0}, [{}], None)]:
                 add('contains-' + label, {'contains': {}, **limits}, arr, draft=draft, gap=gap)
     for reference in ('#/definitions/a%2Fb', '#/definitions/a~1b', '#/definitions/til~0de', '#/definitions/a+b', '#/definitions/percent%XX', '#/definitions/%FF'):
         add('pointer-' + reference, {'definitions': {'a/b': {}, 'til~de': {}, 'a+b': {}, 'percent%XX': {}}, '$ref': reference}, gap='PointerSemantics' if reference.endswith('%FF') else None)
@@ -133,12 +133,12 @@ def directed_cases():
         ('bundled-http', {'$ref': 'http://json-schema.org/draft-04/schema'}, 'ExternalResource'),
         ('unregistered-https', {'$ref': 'https://json-schema.org/draft-04/schema'}, None),
         ('external-fragment', {'$ref': 'urn:missing#x'}, 'UriJoin'),
-        ('const-literal', {'const': {'$schema': 'literal', '$ref': '#/missing', 'n': 1.0}}, 'Keyword'),
-        ('enum-literal', {'enum': [{'$id': 'urn:literal'}]}, 'Keyword'),
+        ('const-literal', {'const': {'$schema': 'literal', '$ref': '#/missing', 'n': 1.0}}, None),
+        ('enum-literal', {'enum': [{'$id': 'urn:literal'}]}, None),
         ('pattern', {'pattern': 'x'}, 'PythonRegex'),
         ('items', {'items': {}}, 'Keyword'),
         ('unevaluated', {'unevaluatedProperties': False}, 'Annotation'),
-        ('number-type', {'type': 'number'}, 'Numeric'),
+        ('number-type', {'type': 'number'}, None),
         ('unknown-root-cycle', {'$schema': 'unknown', '$ref': '#'}, None),
         ('crawl-unknown-dialect', {'definitions': {'a': {'$schema': 'unknown'}}, '$ref': '#missing'}, 'ResourceDialect'),
         ('crawl-noncanonical-dialect', {'definitions': {'a': {'$schema': 'HTTP://json-schema.org/draft-07/schema#'}}, '$ref': '#missing'}, 'ResourceDialect'),
@@ -348,7 +348,9 @@ def main():
         'unexpected_precondition_omissions': sum(r['unexpected_precondition_omission'] for r in rows),
         'infrastructure_failures': sum(r['infrastructure_failure'] for r in rows),
         'stage_infrastructure_failures': sum(r['stage_infrastructure_failure'] for r in rows),
-        'semantic_results': {tag: sum(r['native_traversal'] == tag for r in rows) for tag in ('Valid', 'Invalid', 'Abort:Unresolvable', 'Abort:RecursionError')},
+        'semantic_results': {tag: sum(r['native_traversal'] == tag for r in rows) for tag in (
+            'Valid', 'Invalid', 'Abort:Unresolvable', 'Abort:RecursionError',
+            'Abort:OverflowError', 'Abort:ValueError', 'Abort:ZeroDivisionError')},
         'protective_limits': sum(r['native_traversal'] == 'ScopeGap:BudgetBoundary' for r in rows)})
     artifact = {'versions': versions, 'environment': environment, 'summary': summary,
         'resource_bounds': {'address_space_bytes': 384 * 1024 * 1024, 'cpu_seconds': [2, 3], 'batch_size': 8},

@@ -5,6 +5,7 @@ use jsonschema::Draft;
 use serde_json::{Value, json};
 use std::collections::HashSet;
 mod local_refs;
+mod numbers;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub(super) enum Mode {
@@ -88,6 +89,7 @@ pub(super) fn evaluate_checked(
         active: HashSet::new(),
         fragments: Vec::new(),
         operations: 0,
+        numbers: numbers::Numbers::default(),
     };
     evaluator.eval(
         schema,
@@ -122,6 +124,7 @@ struct Evaluator<'a> {
     active: HashSet<Frame>,
     fragments: Vec<(usize, Draft, String, jsonschema::Validator)>,
     operations: usize,
+    numbers: numbers::Numbers,
 }
 impl<'a> Evaluator<'a> {
     fn eval(
@@ -339,6 +342,12 @@ impl<'a> Evaluator<'a> {
         state: State,
         pointer: &str,
     ) -> Evaluation {
+        if let Some(result) =
+            self.numbers
+                .handler(schema, key, value, instance, state.class, pointer)
+        {
+            return result;
+        }
         match key {
             "required" | "type" => self.fragment(schema, key, value, instance, state, pointer),
             "format" => Ok(Validity::Valid),
@@ -453,29 +462,8 @@ impl<'a> Evaluator<'a> {
                     return Ok(Validity::Valid);
                 };
                 let modern = !old(state.class);
-                let limit = |name, default| -> Result<u32, EvalFailure> {
-                    let Some(number) = schema.get(name) else {
-                        return Ok(default);
-                    };
-                    let raw = number.to_string();
-                    if raw.is_empty() || !raw.bytes().all(|b| b.is_ascii_digit()) {
-                        return Err(gap(GapKind::Numeric, pointer));
-                    }
-                    raw.parse::<u32>()
-                        .map_err(|_| gap(GapKind::Numeric, pointer))
-                };
-                let (min, max) = if modern {
-                    (
-                        limit("minContains", 1)?,
-                        limit(
-                            "maxContains",
-                            u32::try_from(items.len())
-                                .map_err(|_| gap(GapKind::BudgetBoundary, pointer))?,
-                        )?,
-                    )
-                } else {
-                    (1, u32::MAX)
-                };
+                let min = schema.get("minContains");
+                let max = schema.get("maxContains");
                 let mut count = 0;
                 for item in items {
                     if self.probe(value, item, state, pointer)? == Validity::Valid {
@@ -483,16 +471,30 @@ impl<'a> Evaluator<'a> {
                         if !modern {
                             return Ok(Validity::Valid);
                         }
-                        if count > max {
+                        if let Some(max) = max
+                            && self.numbers.count_compare(count, max, pointer)?
+                                == Some(std::cmp::Ordering::Greater)
+                        {
                             return Ok(Validity::Invalid);
                         }
                     }
                 }
-                Ok(if count >= min {
-                    Validity::Valid
-                } else {
-                    Validity::Invalid
-                })
+                Ok(
+                    if if modern {
+                        if let Some(min) = min {
+                            self.numbers.count_compare(count, min, pointer)?
+                                == Some(std::cmp::Ordering::Less)
+                        } else {
+                            count == 0
+                        }
+                    } else {
+                        count == 0
+                    } {
+                        Validity::Invalid
+                    } else {
+                        Validity::Valid
+                    },
+                )
             }
             "$ref" => {
                 let reference = value
@@ -641,6 +643,46 @@ fn result_tag(result: &Evaluation) -> String {
 }
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn numbers_follow_frozen_installed_python_outcomes() {
+        let rows: Vec<serde_json::Value> =
+            serde_json::from_str(include_str!("../../tests/output_schema_numbers_cases.json"))
+                .unwrap();
+        for row in rows {
+            if row.get("op").is_some()
+                || row.get("transport_gap").is_some()
+                || row["oracle"]["schema"]["result"] != "valid"
+            {
+                continue;
+            }
+            let schema: serde_json::Value =
+                serde_json::from_str(row["schema_json"].as_str().unwrap()).unwrap();
+            let content: serde_json::Value =
+                serde_json::from_str(row["content_json"].as_str().unwrap()).unwrap();
+            let super::super::dialect::SelectedDialect::Supported(draft) =
+                super::super::dialect::select_with_default(&schema, jsonschema::Draft::Draft202012)
+                    .unwrap()
+            else {
+                panic!("unsupported fixture draft")
+            };
+            let result = super::evaluate_checked(
+                &schema,
+                &content,
+                draft,
+                if row["mode"] == "FirstError" {
+                    super::Mode::FirstError
+                } else {
+                    super::Mode::ExhaustErrors
+                },
+            );
+            assert_eq!(
+                result_tag(&result),
+                row["oracle"]["instance"]["result"].as_str().unwrap(),
+                "{}",
+                row["name"]
+            );
+        }
+    }
     use super::*;
     use crate::output_schema::dialect::{SelectedDialect, select_with_default};
     use jsonschema::Draft;
@@ -899,6 +941,13 @@ mod tests {
         assert!(rows.len() <= 8);
         for row in rows {
             assert!(row["name"].as_str().unwrap().len() <= 512);
+            if row.get("op").is_some() {
+                let mut result = numbers::primitive_probe(&row);
+                result["name"] = row["name"].clone();
+                result["root"] = "primitive".into();
+                println!("SCHEMA_TRAVERSAL={result}");
+                continue;
+            }
             let schema: Value = match serde_json::from_str(row["schema_json"].as_str().unwrap()) {
                 Ok(schema) => schema,
                 Err(error) => {
