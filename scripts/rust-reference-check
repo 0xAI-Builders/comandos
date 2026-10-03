@@ -8,6 +8,7 @@ if [ "$#" -ne 2 ]; then
 fi
 task_root=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 task_runner="$task_root/scripts/rust-python-oracle"
+"$task_runner" "$1" "$2" /venv/bin/python /work/crates/comandos-extensions/tests/output_schema_audit_environment_oracle.py -v
 "$task_runner" "$1" "$2" /venv/bin/python /work/crates/comandos-extensions/tests/catalog_oracle.py
 "$task_runner" "$1" "$2" /venv/bin/python /work/crates/comandos-extensions/tests/check_oracle.py
 for task_zone in UTC America/New_York Australia/Lord_Howe Pacific/Apia; do
