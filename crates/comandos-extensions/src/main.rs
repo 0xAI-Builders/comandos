@@ -12,6 +12,10 @@ fn run() -> Result<()> {
                 catalog = Some(PathBuf::from(args.next().ok_or("Missing catalog")?))
             }
             Some("serve") => break,
+            Some("count") if args.next().is_none() => {
+                let home = home.map(Ok).unwrap_or_else(home_dir)?;
+                return comandos_extensions::tokenizer::count_command(&home);
+            }
             _ => {
                 return Err(
                     "Usage: comandos-extensions [--home PATH] [--catalog PATH] serve NAME".into(),

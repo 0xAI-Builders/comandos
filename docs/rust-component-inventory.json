@@ -824,7 +824,7 @@
       "language": ".py",
       "category": "producto",
       "lines": 427,
-      "status": "Rust — revisión pendiente",
+      "status": "Rust — revisado; sin despliegue",
       "rust": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/crates/comandos-store/src/state_db/mod.rs"
     },
     {
@@ -880,7 +880,7 @@
       "language": ".py",
       "category": "producto",
       "lines": 262,
-      "status": "Rust — revisión pendiente",
+      "status": "Rust — revisado; sin despliegue",
       "rust": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/crates/comandos-runtime/src/bin/comandos-events.rs"
     },
     {
@@ -920,8 +920,8 @@
       "language": ".py",
       "category": "producto",
       "lines": 241,
-      "status": "Pendiente",
-      "rust": null
+      "status": "Parcial: metadatos y conteo Rust; revisión pendiente; instalación por migrar",
+      "rust": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/crates/comandos-extensions/src/metadata.rs"
     },
     {
       "source": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/lib/extension_observations.py",
@@ -936,7 +936,7 @@
       "language": ".py",
       "category": "producto",
       "lines": 176,
-      "status": "Parcial: serve nativo; metadatos/check pendientes",
+      "status": "Parcial: serve y metadatos nativos; check pendiente",
       "rust": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/crates/comandos-extensions/src/serve.rs"
     },
     {
@@ -1032,7 +1032,7 @@
       "language": ".py",
       "category": "producto",
       "lines": 381,
-      "status": "Rust — revisión pendiente",
+      "status": "Rust — revisado; sin despliegue",
       "rust": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/crates/comandos-store/src/notifications.rs"
     },
     {

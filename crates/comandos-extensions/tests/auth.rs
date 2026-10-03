@@ -446,3 +446,17 @@ async fn oauth_refresh_rejects_insecure_issuer_without_network_or_secret_output(
     let error = home.auth().access_token(None).await.unwrap_err();
     assert_eq!(error, "Refresh failed");
 }
+
+#[test]
+fn jsonc_retains_opaque_number_fields_and_arbitrary_integer_values() {
+    use comandos_extensions::auth::parse_config_bytes;
+    let raw=br#"{/* config */ "large":340282366920938463463374607431768211456,"opaque":{"$serde_json::private::Number":"opaque-key","$serde_json::private::RawValue":"[1]"},"float":1.0,}"#;
+    let data = parse_config_bytes(raw).unwrap();
+    assert_eq!(
+        data["large"].to_string(),
+        "340282366920938463463374607431768211456"
+    );
+    assert_eq!(data["opaque"]["$serde_json::private::Number"], "opaque-key");
+    assert_eq!(data["opaque"]["$serde_json::private::RawValue"], "[1]");
+    assert_eq!(data["float"].to_string(), "1.0");
+}

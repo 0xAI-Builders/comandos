@@ -39,7 +39,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         if line.len() > 1024 * 1024 {
             return Err("input exceeds 1 MiB".into());
         }
-        let result = serde_json::from_str(&line)
+        let result = comandos_core::json::parse_value(&line)
             .map_err(|e| e.to_string())
             .and_then(|request| replay(&conn, &request));
         serde_json::to_writer(

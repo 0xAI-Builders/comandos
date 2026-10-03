@@ -1,5 +1,8 @@
 use serde_json::Value;
 
+mod parser;
+pub use parser::{parse_slice, parse_unique_value, parse_value};
+
 // Legacy JSON semantics at the compatibility boundary (null, false, 0 and ""
 // all select defaults). Domain identifiers are validated before persistence.
 pub fn truthy(value: &Value) -> bool {

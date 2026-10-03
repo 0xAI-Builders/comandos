@@ -1,6 +1,6 @@
 use comandos_store::{Error, Result, append_event};
 use rusqlite::{Connection, OptionalExtension, Transaction, TransactionBehavior, params};
-use serde_json::{Value, json};
+use serde_json::json;
 use sha2::{Digest, Sha256};
 use std::collections::HashMap;
 use std::path::Path;
@@ -45,7 +45,7 @@ pub fn import_legacy(conn: &Connection, path: &Path) -> Result<u64> {
             '\n', '\r', '\u{b}', '\u{c}', '\u{1c}', '\u{1d}', '\u{1e}', '\u{85}', '\u{2028}',
             '\u{2029}',
         ]) {
-            let Ok(row) = serde_json::from_str::<Value>(line) else {
+            let Ok(row) = comandos_core::json::parse_value(line) else {
                 continue;
             };
             let kind = match row["status"].as_str() {

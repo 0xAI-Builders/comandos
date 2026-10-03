@@ -59,7 +59,7 @@ fn main() -> io::Result<()> {
                 "entrada JSONL mayor a 1 MiB",
             ));
         }
-        let result = serde_json::from_str(&line)
+        let result = comandos_core::json::parse_value(&line)
             .map_err(|e| e.to_string())
             .and_then(|request| dispatch(&request));
         let result = result.unwrap_or_else(|error| json!({"error":error}));

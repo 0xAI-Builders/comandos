@@ -283,7 +283,7 @@ impl Transport {
             let died = dead.clone();
             this.tasks.push(tokio::spawn(async move {
                 while let Ok(Some(bytes)) = line(&mut output).await {
-                    let Ok(value) = serde_json::from_slice::<Value>(&bytes) else {
+                    let Ok(value) = comandos_core::json::parse_slice(&bytes) else {
                         break;
                     };
                     if value.get("method").is_some() && value.get("id").is_some() {
@@ -389,7 +389,7 @@ impl Transport {
                                     }
                                     let _ = sender.send(data);
                                 }
-                            } else if let Ok(value) = serde_json::from_str(&data) {
+                            } else if let Ok(value) = comandos_core::json::parse_value(&data) {
                                 if let (Some(reply), Some(url)) =
                                     (upstream_reply(&value), &message_url)
                                 {
@@ -474,7 +474,7 @@ impl Transport {
                         let chunk = chunk.map_err(|_| "HTTP body failed")?;
                         if sse {
                             for (_, data) in parser.feed(&chunk)? {
-                                let result: Value = serde_json::from_str(&data)
+                                let result: Value = comandos_core::json::parse_value(&data)
                                     .map_err(|_| "Invalid upstream response")?;
                                 if let Some(reply) = upstream_reply(&result) {
                                     http.send(Method::POST, url, Some(&reply)).await?;
@@ -495,7 +495,7 @@ impl Transport {
                         }
                     }
                     if !sse {
-                        let result: Value = serde_json::from_slice(&data)
+                        let result: Value = comandos_core::json::parse_slice(&data)
                             .map_err(|_| "Invalid upstream response")?;
                         if result["id"] == id
                             && (result.get("result").is_some() || result.get("error").is_some())

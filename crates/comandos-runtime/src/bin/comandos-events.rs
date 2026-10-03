@@ -38,8 +38,9 @@ fn run(args: &[String]) -> Result<i32> {
     let payload = if args[0] == "record" {
         let mut input = String::new();
         io::stdin().read_to_string(&mut input)?;
-        let payload: Value = serde_json::from_str(if input.is_empty() { "{}" } else { &input })
-            .map_err(|e| Error::Validation(e.to_string()))?;
+        let payload: Value =
+            comandos_core::json::parse_value(if input.is_empty() { "{}" } else { &input })
+                .map_err(|e| Error::Validation(e.to_string()))?;
         if !payload.is_object() {
             return Ok(1);
         }

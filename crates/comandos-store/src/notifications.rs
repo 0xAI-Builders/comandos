@@ -92,7 +92,7 @@ pub fn load_prefs(conn: &Connection) -> Result<Value> {
         .optional()?;
     let default = policy::default_prefs();
     Ok(row
-        .and_then(|text| serde_json::from_str::<Value>(&text).ok())
+        .and_then(|text| comandos_core::json::parse_value(&text).ok())
         .and_then(|update| policy::merge_prefs(&default, &update).ok())
         .unwrap_or(default))
 }

@@ -1,6 +1,5 @@
 //! Shared MCP OAuth credentials. Model credentials are never imported or logged.
-use serde::de::{self, Deserialize, Deserializer, MapAccess, SeqAccess, Visitor};
-use serde_json::{Map, Value, json};
+use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 use std::fs::{self, File, OpenOptions};
 use std::io::{Read, Write};
@@ -78,59 +77,6 @@ fn now() -> f64 {
         .duration_since(UNIX_EPOCH)
         .unwrap_or_default()
         .as_secs_f64()
-}
-
-// Deserialize recursively rather than through Value's default map visitor, which
-// accepts duplicate keys. Errors returned to callers never include input bytes.
-struct Unique(Value);
-impl<'de> Deserialize<'de> for Unique {
-    fn deserialize<D: Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
-        struct UniqueVisitor;
-        impl<'de> Visitor<'de> for UniqueVisitor {
-            type Value = Unique;
-            fn expecting(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-                f.write_str("JSON value")
-            }
-            fn visit_bool<E: de::Error>(self, v: bool) -> Result<Unique, E> {
-                Ok(Unique(json!(v)))
-            }
-            fn visit_i64<E: de::Error>(self, v: i64) -> Result<Unique, E> {
-                Ok(Unique(json!(v)))
-            }
-            fn visit_u64<E: de::Error>(self, v: u64) -> Result<Unique, E> {
-                Ok(Unique(json!(v)))
-            }
-            fn visit_f64<E: de::Error>(self, v: f64) -> Result<Unique, E> {
-                Ok(Unique(json!(v)))
-            }
-            fn visit_str<E: de::Error>(self, v: &str) -> Result<Unique, E> {
-                Ok(Unique(json!(v)))
-            }
-            fn visit_string<E: de::Error>(self, v: String) -> Result<Unique, E> {
-                Ok(Unique(Value::String(v)))
-            }
-            fn visit_unit<E: de::Error>(self) -> Result<Unique, E> {
-                Ok(Unique(Value::Null))
-            }
-            fn visit_seq<A: SeqAccess<'de>>(self, mut a: A) -> Result<Unique, A::Error> {
-                let mut out = Vec::new();
-                while let Some(Unique(v)) = a.next_element()? {
-                    out.push(v);
-                }
-                Ok(Unique(Value::Array(out)))
-            }
-            fn visit_map<A: MapAccess<'de>>(self, mut a: A) -> Result<Unique, A::Error> {
-                let mut out = Map::new();
-                while let Some((k, Unique(v))) = a.next_entry::<String, Unique>()? {
-                    if out.insert(k, v).is_some() {
-                        return Err(de::Error::custom("duplicate key"));
-                    }
-                }
-                Ok(Unique(Value::Object(out)))
-            }
-        }
-        d.deserialize_any(UniqueVisitor)
-    }
 }
 
 /// JSONC configuration parser shared by credentials and the serve catalog.
@@ -213,9 +159,8 @@ pub fn parse_config_bytes(raw: &[u8]) -> Result<Value, String> {
             }
         }
     }
-    let mut d = serde_json::Deserializer::from_slice(&clean);
-    let Unique(value) = Unique::deserialize(&mut d).map_err(|_| invalid())?;
-    d.end().map_err(|_| invalid())?;
+    let text = std::str::from_utf8(&clean).map_err(|_| invalid())?;
+    let value = comandos_core::json::parse_unique_value(text).map_err(|_| invalid())?;
     if !value.is_object() {
         return Err(invalid());
     }

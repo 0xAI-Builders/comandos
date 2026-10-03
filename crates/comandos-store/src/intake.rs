@@ -38,7 +38,7 @@ pub fn record(
                     )
                     .optional()?;
                 document
-                    .and_then(|s| serde_json::from_str(&s).ok())
+                    .and_then(|s| comandos_core::json::parse_value(&s).ok())
                     .and_then(|document| hook::resolve_pane_key(&document, &event))
             } else {
                 None
