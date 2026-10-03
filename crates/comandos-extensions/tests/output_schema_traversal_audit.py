@@ -211,11 +211,29 @@ def probe(binary, rows, test, prefix):
                 input=json.dumps(batch).encode(), stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=10)
             assert result.returncode == 0 and not result.stderr, (result.returncode, result.stderr.decode(), result.stdout.decode())
             lines = [line[len(prefix):] for line in result.stdout.decode().splitlines() if line.startswith(prefix)]
-            values = json.loads(lines[0]) if len(lines) == 1 else [json.loads(line) for line in lines]
-            assert len(values) == len(batch)
+            if prefix == 'SCHEMA_PREFLIGHT=':
+                if len(lines) != 1:
+                    raise ValueError('expected one schema-stage array')
+                values = json.loads(lines[0])
+                field = 'native'
+            elif prefix == 'SCHEMA_TRAVERSAL=':
+                values = [json.loads(line) for line in lines]
+                field = 'result'
+            else:
+                raise ValueError('unknown probe protocol')
+            if not isinstance(values, list) or len(values) != len(batch):
+                raise ValueError('missing or extra probe rows')
+            for row, value in zip(batch, values):
+                if (not isinstance(value, dict) or value.get('name') != row['name']
+                        or not isinstance(value.get(field), str) or not value[field]
+                        or ('root' in value and not isinstance(value['root'], str))):
+                    raise ValueError('malformed or mismatched probe row')
+                if (field == 'result' and 'root' not in value
+                        and not (value['result'] == 'ScopeGap:BudgetBoundary' and value.get('phase') == 'input')):
+                    raise ValueError('missing traversal selector measurement')
             actual.extend(values)
             infrastructure = None
-        except (subprocess.TimeoutExpired, AssertionError, ValueError) as error:
+        except (subprocess.TimeoutExpired, AssertionError, ValueError, OSError) as error:
             infrastructure = type(error).__name__
             actual.extend({'name': row['name'], 'native': 'infrastructure:' + infrastructure} for row in batch)
         after = resource.getrusage(resource.RUSAGE_CHILDREN)
@@ -286,6 +304,9 @@ def main():
             'category_mismatch': category_mismatch, 'unexpected_gap': unexpected_gap, 'missing_expected_gap': gap_missing,
             'preflight_mismatch': (stage['native'] == 'valid') != (ref['schema']['result'] == 'valid'),
             'selector_mismatch': result.get('root') not in (ref['root'], 'ScopeGap:Draft3', 'ScopeGap:DialectFailure') if 'root' in result else False,
+            'unexpected_precondition_omission': ref['schema']['result'] == 'valid' and evaluation.startswith('not-run:'),
+            'infrastructure_failure': evaluation.startswith('infrastructure:'),
+            'stage_infrastructure_failure': stage['native'].startswith('infrastructure:'),
             'lost_coverage': sdk == stock and (gap or composition.startswith('unresolved:')),
             'new_false_reject_vs_stock': sdk == stock == 'valid' and composition in ('invalid-schema', 'invalid-content'),
             'new_false_accept_vs_stock': sdk != 'valid' and stock != 'valid' and composition == 'valid',
@@ -297,10 +318,14 @@ def main():
     summary = {key: sum(bool(row[key]) for row in rows) for key in (
         'scope_gap', 'category_mismatch', 'unexpected_gap', 'missing_expected_gap', 'preflight_mismatch',
         'selector_mismatch', 'lost_coverage', 'false_accept', 'false_reject', 'stock_acceptance_mismatch', 'stock_classification_difference', 'new_false_reject_vs_stock', 'new_false_accept_vs_stock')}
-    summary.update({'cases': len(rows), 'supported_cohort_pass': not any(r['category_mismatch'] or r['unexpected_gap'] or r['missing_expected_gap'] or r['selector_mismatch'] for r in rows),
+    summary.update({'cases': len(rows), 'supported_cohort_pass': not any(
+        r['category_mismatch'] or r['unexpected_gap'] or r['missing_expected_gap'] or r['selector_mismatch']
+        or r['unexpected_precondition_omission'] or r['infrastructure_failure'] or r['stage_infrastructure_failure']
+        for r in rows),
         'precondition_omissions': sum(r['native_traversal'] == 'not-run:precondition' for r in rows),
-        'infrastructure_failures': sum(r['native_traversal'].startswith('infrastructure:') for r in rows),
-        'stage_infrastructure_failures': sum(r['native_preflight'].startswith('infrastructure:') for r in rows),
+        'unexpected_precondition_omissions': sum(r['unexpected_precondition_omission'] for r in rows),
+        'infrastructure_failures': sum(r['infrastructure_failure'] for r in rows),
+        'stage_infrastructure_failures': sum(r['stage_infrastructure_failure'] for r in rows),
         'semantic_results': {tag: sum(r['native_traversal'] == tag for r in rows) for tag in ('Valid', 'Invalid', 'Abort:Unresolvable', 'Abort:RecursionError')},
         'protective_limits': sum(r['native_traversal'] == 'ScopeGap:BudgetBoundary' for r in rows)})
     artifact = {'versions': versions, 'environment': environment, 'summary': summary,
@@ -308,7 +333,10 @@ def main():
         'traversal_measurements': measurements, 'stage_measurements': stage_measurements, 'results': rows}
     pathlib.Path(args.out).write_text(json.dumps(artifact, indent=2) + '\n')
     print(json.dumps(summary))
-    return int(bool(summary['scope_gap'] or summary['category_mismatch'] or summary['false_accept'] or summary['false_reject'] or summary['infrastructure_failures'] or summary['preflight_mismatch'] or summary['missing_expected_gap']))
+    return int(bool(summary['scope_gap'] or summary['category_mismatch'] or summary['false_accept']
+        or summary['false_reject'] or summary['infrastructure_failures'] or summary['stage_infrastructure_failures']
+        or summary['preflight_mismatch'] or summary['selector_mismatch'] or summary['unexpected_gap']
+        or summary['missing_expected_gap'] or summary['unexpected_precondition_omissions']))
 
 
 if __name__ == '__main__':

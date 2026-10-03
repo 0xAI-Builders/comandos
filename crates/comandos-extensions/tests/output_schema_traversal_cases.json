@@ -4106,5 +4106,960 @@
         "sdk_mapping": "RuntimeError"
       }
     }
+  },
+  {
+    "name": "draft4/literal-duplicate-type-valid",
+    "schema_json": "{\"$schema\":\"http://json-schema.org/draft-04/schema#\",\"default\":{\"type\":[\"string\",\"string\"]},\"$ref\":\"#/default\"}",
+    "content_json": "\"\"",
+    "mode": "ExhaustErrors",
+    "expected_gap": "FragmentShape",
+    "oracle": {
+      "root": "Draft4Validator",
+      "schema": {
+        "result": "valid"
+      },
+      "instance": {
+        "result": "Valid",
+        "sdk_mapping": "success"
+      }
+    }
+  },
+  {
+    "name": "draft4/literal-duplicate-type-invalid",
+    "schema_json": "{\"$schema\":\"http://json-schema.org/draft-04/schema#\",\"default\":{\"type\":[\"string\",\"string\"]},\"$ref\":\"#/default\"}",
+    "content_json": "{}",
+    "mode": "ExhaustErrors",
+    "expected_gap": "FragmentShape",
+    "oracle": {
+      "root": "Draft4Validator",
+      "schema": {
+        "result": "valid"
+      },
+      "instance": {
+        "result": "Invalid",
+        "exception": "ValidationError",
+        "unresolvable": false,
+        "sdk_mapping": "RuntimeError"
+      }
+    }
+  },
+  {
+    "name": "draft4/literal-duplicate-type-unvisited",
+    "schema_json": "{\"$schema\":\"http://json-schema.org/draft-04/schema#\",\"default\":{\"type\":[\"string\",\"string\"]},\"properties\":{\"unused\":{\"$ref\":\"#/default\"}}}",
+    "content_json": "{}",
+    "mode": "ExhaustErrors",
+    "expected_gap": null,
+    "oracle": {
+      "root": "Draft4Validator",
+      "schema": {
+        "result": "valid"
+      },
+      "instance": {
+        "result": "Valid",
+        "sdk_mapping": "success"
+      }
+    }
+  },
+  {
+    "name": "draft4/literal-duplicate-required-valid",
+    "schema_json": "{\"$schema\":\"http://json-schema.org/draft-04/schema#\",\"default\":{\"required\":[\"x\",\"x\"]},\"$ref\":\"#/default\"}",
+    "content_json": "{\"x\":true}",
+    "mode": "ExhaustErrors",
+    "expected_gap": "FragmentShape",
+    "oracle": {
+      "root": "Draft4Validator",
+      "schema": {
+        "result": "valid"
+      },
+      "instance": {
+        "result": "Valid",
+        "sdk_mapping": "success"
+      }
+    }
+  },
+  {
+    "name": "draft4/literal-duplicate-required-invalid",
+    "schema_json": "{\"$schema\":\"http://json-schema.org/draft-04/schema#\",\"default\":{\"required\":[\"x\",\"x\"]},\"$ref\":\"#/default\"}",
+    "content_json": "{}",
+    "mode": "ExhaustErrors",
+    "expected_gap": "FragmentShape",
+    "oracle": {
+      "root": "Draft4Validator",
+      "schema": {
+        "result": "valid"
+      },
+      "instance": {
+        "result": "Invalid",
+        "exception": "ValidationError",
+        "unresolvable": false,
+        "sdk_mapping": "RuntimeError"
+      }
+    }
+  },
+  {
+    "name": "draft4/literal-duplicate-required-string",
+    "schema_json": "{\"$schema\":\"http://json-schema.org/draft-04/schema#\",\"default\":{\"required\":[\"x\",\"x\"]},\"$ref\":\"#/default\"}",
+    "content_json": "\"\"",
+    "mode": "ExhaustErrors",
+    "expected_gap": null,
+    "oracle": {
+      "root": "Draft4Validator",
+      "schema": {
+        "result": "valid"
+      },
+      "instance": {
+        "result": "Valid",
+        "sdk_mapping": "success"
+      }
+    }
+  },
+  {
+    "name": "draft4/literal-duplicate-required-array",
+    "schema_json": "{\"$schema\":\"http://json-schema.org/draft-04/schema#\",\"default\":{\"required\":[\"x\",\"x\"]},\"$ref\":\"#/default\"}",
+    "content_json": "[]",
+    "mode": "ExhaustErrors",
+    "expected_gap": null,
+    "oracle": {
+      "root": "Draft4Validator",
+      "schema": {
+        "result": "valid"
+      },
+      "instance": {
+        "result": "Valid",
+        "sdk_mapping": "success"
+      }
+    }
+  },
+  {
+    "name": "draft4/literal-duplicate-required-null",
+    "schema_json": "{\"$schema\":\"http://json-schema.org/draft-04/schema#\",\"default\":{\"required\":[\"x\",\"x\"]},\"$ref\":\"#/default\"}",
+    "content_json": "null",
+    "mode": "ExhaustErrors",
+    "expected_gap": null,
+    "oracle": {
+      "root": "Draft4Validator",
+      "schema": {
+        "result": "valid"
+      },
+      "instance": {
+        "result": "Valid",
+        "sdk_mapping": "success"
+      }
+    }
+  },
+  {
+    "name": "draft4/literal-duplicate-required-boolean",
+    "schema_json": "{\"$schema\":\"http://json-schema.org/draft-04/schema#\",\"default\":{\"required\":[\"x\",\"x\"]},\"$ref\":\"#/default\"}",
+    "content_json": "false",
+    "mode": "ExhaustErrors",
+    "expected_gap": null,
+    "oracle": {
+      "root": "Draft4Validator",
+      "schema": {
+        "result": "valid"
+      },
+      "instance": {
+        "result": "Valid",
+        "sdk_mapping": "success"
+      }
+    }
+  },
+  {
+    "name": "draft4/literal-numeric-type",
+    "schema_json": "{\"$schema\":\"http://json-schema.org/draft-04/schema#\",\"default\":{\"type\":[\"number\",\"number\"]},\"$ref\":\"#/default\"}",
+    "content_json": "1",
+    "mode": "ExhaustErrors",
+    "expected_gap": "Numeric",
+    "oracle": {
+      "root": "Draft4Validator",
+      "schema": {
+        "result": "valid"
+      },
+      "instance": {
+        "result": "Valid",
+        "sdk_mapping": "success"
+      }
+    }
+  },
+  {
+    "name": "draft4/literal-empty-required",
+    "schema_json": "{\"$schema\":\"http://json-schema.org/draft-04/schema#\",\"default\":{\"required\":[]},\"$ref\":\"#/default\"}",
+    "content_json": "{}",
+    "mode": "ExhaustErrors",
+    "expected_gap": "FragmentShape",
+    "oracle": {
+      "root": "Draft4Validator",
+      "schema": {
+        "result": "valid"
+      },
+      "instance": {
+        "result": "Valid",
+        "sdk_mapping": "success"
+      }
+    }
+  },
+  {
+    "name": "draft6/literal-duplicate-type-valid",
+    "schema_json": "{\"$schema\":\"http://json-schema.org/draft-06/schema#\",\"default\":{\"type\":[\"string\",\"string\"]},\"$ref\":\"#/default\"}",
+    "content_json": "\"\"",
+    "mode": "ExhaustErrors",
+    "expected_gap": "FragmentShape",
+    "oracle": {
+      "root": "Draft6Validator",
+      "schema": {
+        "result": "valid"
+      },
+      "instance": {
+        "result": "Valid",
+        "sdk_mapping": "success"
+      }
+    }
+  },
+  {
+    "name": "draft6/literal-duplicate-type-invalid",
+    "schema_json": "{\"$schema\":\"http://json-schema.org/draft-06/schema#\",\"default\":{\"type\":[\"string\",\"string\"]},\"$ref\":\"#/default\"}",
+    "content_json": "{}",
+    "mode": "ExhaustErrors",
+    "expected_gap": "FragmentShape",
+    "oracle": {
+      "root": "Draft6Validator",
+      "schema": {
+        "result": "valid"
+      },
+      "instance": {
+        "result": "Invalid",
+        "exception": "ValidationError",
+        "unresolvable": false,
+        "sdk_mapping": "RuntimeError"
+      }
+    }
+  },
+  {
+    "name": "draft6/literal-duplicate-type-unvisited",
+    "schema_json": "{\"$schema\":\"http://json-schema.org/draft-06/schema#\",\"default\":{\"type\":[\"string\",\"string\"]},\"properties\":{\"unused\":{\"$ref\":\"#/default\"}}}",
+    "content_json": "{}",
+    "mode": "ExhaustErrors",
+    "expected_gap": null,
+    "oracle": {
+      "root": "Draft6Validator",
+      "schema": {
+        "result": "valid"
+      },
+      "instance": {
+        "result": "Valid",
+        "sdk_mapping": "success"
+      }
+    }
+  },
+  {
+    "name": "draft6/literal-duplicate-required-valid",
+    "schema_json": "{\"$schema\":\"http://json-schema.org/draft-06/schema#\",\"default\":{\"required\":[\"x\",\"x\"]},\"$ref\":\"#/default\"}",
+    "content_json": "{\"x\":true}",
+    "mode": "ExhaustErrors",
+    "expected_gap": "FragmentShape",
+    "oracle": {
+      "root": "Draft6Validator",
+      "schema": {
+        "result": "valid"
+      },
+      "instance": {
+        "result": "Valid",
+        "sdk_mapping": "success"
+      }
+    }
+  },
+  {
+    "name": "draft6/literal-duplicate-required-invalid",
+    "schema_json": "{\"$schema\":\"http://json-schema.org/draft-06/schema#\",\"default\":{\"required\":[\"x\",\"x\"]},\"$ref\":\"#/default\"}",
+    "content_json": "{}",
+    "mode": "ExhaustErrors",
+    "expected_gap": "FragmentShape",
+    "oracle": {
+      "root": "Draft6Validator",
+      "schema": {
+        "result": "valid"
+      },
+      "instance": {
+        "result": "Invalid",
+        "exception": "ValidationError",
+        "unresolvable": false,
+        "sdk_mapping": "RuntimeError"
+      }
+    }
+  },
+  {
+    "name": "draft6/literal-duplicate-required-string",
+    "schema_json": "{\"$schema\":\"http://json-schema.org/draft-06/schema#\",\"default\":{\"required\":[\"x\",\"x\"]},\"$ref\":\"#/default\"}",
+    "content_json": "\"\"",
+    "mode": "ExhaustErrors",
+    "expected_gap": null,
+    "oracle": {
+      "root": "Draft6Validator",
+      "schema": {
+        "result": "valid"
+      },
+      "instance": {
+        "result": "Valid",
+        "sdk_mapping": "success"
+      }
+    }
+  },
+  {
+    "name": "draft6/literal-duplicate-required-array",
+    "schema_json": "{\"$schema\":\"http://json-schema.org/draft-06/schema#\",\"default\":{\"required\":[\"x\",\"x\"]},\"$ref\":\"#/default\"}",
+    "content_json": "[]",
+    "mode": "ExhaustErrors",
+    "expected_gap": null,
+    "oracle": {
+      "root": "Draft6Validator",
+      "schema": {
+        "result": "valid"
+      },
+      "instance": {
+        "result": "Valid",
+        "sdk_mapping": "success"
+      }
+    }
+  },
+  {
+    "name": "draft6/literal-duplicate-required-null",
+    "schema_json": "{\"$schema\":\"http://json-schema.org/draft-06/schema#\",\"default\":{\"required\":[\"x\",\"x\"]},\"$ref\":\"#/default\"}",
+    "content_json": "null",
+    "mode": "ExhaustErrors",
+    "expected_gap": null,
+    "oracle": {
+      "root": "Draft6Validator",
+      "schema": {
+        "result": "valid"
+      },
+      "instance": {
+        "result": "Valid",
+        "sdk_mapping": "success"
+      }
+    }
+  },
+  {
+    "name": "draft6/literal-duplicate-required-boolean",
+    "schema_json": "{\"$schema\":\"http://json-schema.org/draft-06/schema#\",\"default\":{\"required\":[\"x\",\"x\"]},\"$ref\":\"#/default\"}",
+    "content_json": "false",
+    "mode": "ExhaustErrors",
+    "expected_gap": null,
+    "oracle": {
+      "root": "Draft6Validator",
+      "schema": {
+        "result": "valid"
+      },
+      "instance": {
+        "result": "Valid",
+        "sdk_mapping": "success"
+      }
+    }
+  },
+  {
+    "name": "draft6/literal-numeric-type",
+    "schema_json": "{\"$schema\":\"http://json-schema.org/draft-06/schema#\",\"default\":{\"type\":[\"number\",\"number\"]},\"$ref\":\"#/default\"}",
+    "content_json": "1",
+    "mode": "ExhaustErrors",
+    "expected_gap": "Numeric",
+    "oracle": {
+      "root": "Draft6Validator",
+      "schema": {
+        "result": "valid"
+      },
+      "instance": {
+        "result": "Valid",
+        "sdk_mapping": "success"
+      }
+    }
+  },
+  {
+    "name": "draft6/literal-empty-required",
+    "schema_json": "{\"$schema\":\"http://json-schema.org/draft-06/schema#\",\"default\":{\"required\":[]},\"$ref\":\"#/default\"}",
+    "content_json": "{}",
+    "mode": "ExhaustErrors",
+    "expected_gap": null,
+    "oracle": {
+      "root": "Draft6Validator",
+      "schema": {
+        "result": "valid"
+      },
+      "instance": {
+        "result": "Valid",
+        "sdk_mapping": "success"
+      }
+    }
+  },
+  {
+    "name": "draft7/literal-duplicate-type-valid",
+    "schema_json": "{\"$schema\":\"http://json-schema.org/draft-07/schema#\",\"default\":{\"type\":[\"string\",\"string\"]},\"$ref\":\"#/default\"}",
+    "content_json": "\"\"",
+    "mode": "ExhaustErrors",
+    "expected_gap": "FragmentShape",
+    "oracle": {
+      "root": "Draft7Validator",
+      "schema": {
+        "result": "valid"
+      },
+      "instance": {
+        "result": "Valid",
+        "sdk_mapping": "success"
+      }
+    }
+  },
+  {
+    "name": "draft7/literal-duplicate-type-invalid",
+    "schema_json": "{\"$schema\":\"http://json-schema.org/draft-07/schema#\",\"default\":{\"type\":[\"string\",\"string\"]},\"$ref\":\"#/default\"}",
+    "content_json": "{}",
+    "mode": "ExhaustErrors",
+    "expected_gap": "FragmentShape",
+    "oracle": {
+      "root": "Draft7Validator",
+      "schema": {
+        "result": "valid"
+      },
+      "instance": {
+        "result": "Invalid",
+        "exception": "ValidationError",
+        "unresolvable": false,
+        "sdk_mapping": "RuntimeError"
+      }
+    }
+  },
+  {
+    "name": "draft7/literal-duplicate-type-unvisited",
+    "schema_json": "{\"$schema\":\"http://json-schema.org/draft-07/schema#\",\"default\":{\"type\":[\"string\",\"string\"]},\"properties\":{\"unused\":{\"$ref\":\"#/default\"}}}",
+    "content_json": "{}",
+    "mode": "ExhaustErrors",
+    "expected_gap": null,
+    "oracle": {
+      "root": "Draft7Validator",
+      "schema": {
+        "result": "valid"
+      },
+      "instance": {
+        "result": "Valid",
+        "sdk_mapping": "success"
+      }
+    }
+  },
+  {
+    "name": "draft7/literal-duplicate-required-valid",
+    "schema_json": "{\"$schema\":\"http://json-schema.org/draft-07/schema#\",\"default\":{\"required\":[\"x\",\"x\"]},\"$ref\":\"#/default\"}",
+    "content_json": "{\"x\":true}",
+    "mode": "ExhaustErrors",
+    "expected_gap": "FragmentShape",
+    "oracle": {
+      "root": "Draft7Validator",
+      "schema": {
+        "result": "valid"
+      },
+      "instance": {
+        "result": "Valid",
+        "sdk_mapping": "success"
+      }
+    }
+  },
+  {
+    "name": "draft7/literal-duplicate-required-invalid",
+    "schema_json": "{\"$schema\":\"http://json-schema.org/draft-07/schema#\",\"default\":{\"required\":[\"x\",\"x\"]},\"$ref\":\"#/default\"}",
+    "content_json": "{}",
+    "mode": "ExhaustErrors",
+    "expected_gap": "FragmentShape",
+    "oracle": {
+      "root": "Draft7Validator",
+      "schema": {
+        "result": "valid"
+      },
+      "instance": {
+        "result": "Invalid",
+        "exception": "ValidationError",
+        "unresolvable": false,
+        "sdk_mapping": "RuntimeError"
+      }
+    }
+  },
+  {
+    "name": "draft7/literal-duplicate-required-string",
+    "schema_json": "{\"$schema\":\"http://json-schema.org/draft-07/schema#\",\"default\":{\"required\":[\"x\",\"x\"]},\"$ref\":\"#/default\"}",
+    "content_json": "\"\"",
+    "mode": "ExhaustErrors",
+    "expected_gap": null,
+    "oracle": {
+      "root": "Draft7Validator",
+      "schema": {
+        "result": "valid"
+      },
+      "instance": {
+        "result": "Valid",
+        "sdk_mapping": "success"
+      }
+    }
+  },
+  {
+    "name": "draft7/literal-duplicate-required-array",
+    "schema_json": "{\"$schema\":\"http://json-schema.org/draft-07/schema#\",\"default\":{\"required\":[\"x\",\"x\"]},\"$ref\":\"#/default\"}",
+    "content_json": "[]",
+    "mode": "ExhaustErrors",
+    "expected_gap": null,
+    "oracle": {
+      "root": "Draft7Validator",
+      "schema": {
+        "result": "valid"
+      },
+      "instance": {
+        "result": "Valid",
+        "sdk_mapping": "success"
+      }
+    }
+  },
+  {
+    "name": "draft7/literal-duplicate-required-null",
+    "schema_json": "{\"$schema\":\"http://json-schema.org/draft-07/schema#\",\"default\":{\"required\":[\"x\",\"x\"]},\"$ref\":\"#/default\"}",
+    "content_json": "null",
+    "mode": "ExhaustErrors",
+    "expected_gap": null,
+    "oracle": {
+      "root": "Draft7Validator",
+      "schema": {
+        "result": "valid"
+      },
+      "instance": {
+        "result": "Valid",
+        "sdk_mapping": "success"
+      }
+    }
+  },
+  {
+    "name": "draft7/literal-duplicate-required-boolean",
+    "schema_json": "{\"$schema\":\"http://json-schema.org/draft-07/schema#\",\"default\":{\"required\":[\"x\",\"x\"]},\"$ref\":\"#/default\"}",
+    "content_json": "false",
+    "mode": "ExhaustErrors",
+    "expected_gap": null,
+    "oracle": {
+      "root": "Draft7Validator",
+      "schema": {
+        "result": "valid"
+      },
+      "instance": {
+        "result": "Valid",
+        "sdk_mapping": "success"
+      }
+    }
+  },
+  {
+    "name": "draft7/literal-numeric-type",
+    "schema_json": "{\"$schema\":\"http://json-schema.org/draft-07/schema#\",\"default\":{\"type\":[\"number\",\"number\"]},\"$ref\":\"#/default\"}",
+    "content_json": "1",
+    "mode": "ExhaustErrors",
+    "expected_gap": "Numeric",
+    "oracle": {
+      "root": "Draft7Validator",
+      "schema": {
+        "result": "valid"
+      },
+      "instance": {
+        "result": "Valid",
+        "sdk_mapping": "success"
+      }
+    }
+  },
+  {
+    "name": "draft7/literal-empty-required",
+    "schema_json": "{\"$schema\":\"http://json-schema.org/draft-07/schema#\",\"default\":{\"required\":[]},\"$ref\":\"#/default\"}",
+    "content_json": "{}",
+    "mode": "ExhaustErrors",
+    "expected_gap": null,
+    "oracle": {
+      "root": "Draft7Validator",
+      "schema": {
+        "result": "valid"
+      },
+      "instance": {
+        "result": "Valid",
+        "sdk_mapping": "success"
+      }
+    }
+  },
+  {
+    "name": "draft201909/literal-duplicate-type-valid",
+    "schema_json": "{\"$schema\":\"https://json-schema.org/draft/2019-09/schema\",\"default\":{\"type\":[\"string\",\"string\"]},\"$ref\":\"#/default\"}",
+    "content_json": "\"\"",
+    "mode": "ExhaustErrors",
+    "expected_gap": "FragmentShape",
+    "oracle": {
+      "root": "Draft201909Validator",
+      "schema": {
+        "result": "valid"
+      },
+      "instance": {
+        "result": "Valid",
+        "sdk_mapping": "success"
+      }
+    }
+  },
+  {
+    "name": "draft201909/literal-duplicate-type-invalid",
+    "schema_json": "{\"$schema\":\"https://json-schema.org/draft/2019-09/schema\",\"default\":{\"type\":[\"string\",\"string\"]},\"$ref\":\"#/default\"}",
+    "content_json": "{}",
+    "mode": "ExhaustErrors",
+    "expected_gap": "FragmentShape",
+    "oracle": {
+      "root": "Draft201909Validator",
+      "schema": {
+        "result": "valid"
+      },
+      "instance": {
+        "result": "Invalid",
+        "exception": "ValidationError",
+        "unresolvable": false,
+        "sdk_mapping": "RuntimeError"
+      }
+    }
+  },
+  {
+    "name": "draft201909/literal-duplicate-type-unvisited",
+    "schema_json": "{\"$schema\":\"https://json-schema.org/draft/2019-09/schema\",\"default\":{\"type\":[\"string\",\"string\"]},\"properties\":{\"unused\":{\"$ref\":\"#/default\"}}}",
+    "content_json": "{}",
+    "mode": "ExhaustErrors",
+    "expected_gap": null,
+    "oracle": {
+      "root": "Draft201909Validator",
+      "schema": {
+        "result": "valid"
+      },
+      "instance": {
+        "result": "Valid",
+        "sdk_mapping": "success"
+      }
+    }
+  },
+  {
+    "name": "draft201909/literal-duplicate-required-valid",
+    "schema_json": "{\"$schema\":\"https://json-schema.org/draft/2019-09/schema\",\"default\":{\"required\":[\"x\",\"x\"]},\"$ref\":\"#/default\"}",
+    "content_json": "{\"x\":true}",
+    "mode": "ExhaustErrors",
+    "expected_gap": "FragmentShape",
+    "oracle": {
+      "root": "Draft201909Validator",
+      "schema": {
+        "result": "valid"
+      },
+      "instance": {
+        "result": "Valid",
+        "sdk_mapping": "success"
+      }
+    }
+  },
+  {
+    "name": "draft201909/literal-duplicate-required-invalid",
+    "schema_json": "{\"$schema\":\"https://json-schema.org/draft/2019-09/schema\",\"default\":{\"required\":[\"x\",\"x\"]},\"$ref\":\"#/default\"}",
+    "content_json": "{}",
+    "mode": "ExhaustErrors",
+    "expected_gap": "FragmentShape",
+    "oracle": {
+      "root": "Draft201909Validator",
+      "schema": {
+        "result": "valid"
+      },
+      "instance": {
+        "result": "Invalid",
+        "exception": "ValidationError",
+        "unresolvable": false,
+        "sdk_mapping": "RuntimeError"
+      }
+    }
+  },
+  {
+    "name": "draft201909/literal-duplicate-required-string",
+    "schema_json": "{\"$schema\":\"https://json-schema.org/draft/2019-09/schema\",\"default\":{\"required\":[\"x\",\"x\"]},\"$ref\":\"#/default\"}",
+    "content_json": "\"\"",
+    "mode": "ExhaustErrors",
+    "expected_gap": null,
+    "oracle": {
+      "root": "Draft201909Validator",
+      "schema": {
+        "result": "valid"
+      },
+      "instance": {
+        "result": "Valid",
+        "sdk_mapping": "success"
+      }
+    }
+  },
+  {
+    "name": "draft201909/literal-duplicate-required-array",
+    "schema_json": "{\"$schema\":\"https://json-schema.org/draft/2019-09/schema\",\"default\":{\"required\":[\"x\",\"x\"]},\"$ref\":\"#/default\"}",
+    "content_json": "[]",
+    "mode": "ExhaustErrors",
+    "expected_gap": null,
+    "oracle": {
+      "root": "Draft201909Validator",
+      "schema": {
+        "result": "valid"
+      },
+      "instance": {
+        "result": "Valid",
+        "sdk_mapping": "success"
+      }
+    }
+  },
+  {
+    "name": "draft201909/literal-duplicate-required-null",
+    "schema_json": "{\"$schema\":\"https://json-schema.org/draft/2019-09/schema\",\"default\":{\"required\":[\"x\",\"x\"]},\"$ref\":\"#/default\"}",
+    "content_json": "null",
+    "mode": "ExhaustErrors",
+    "expected_gap": null,
+    "oracle": {
+      "root": "Draft201909Validator",
+      "schema": {
+        "result": "valid"
+      },
+      "instance": {
+        "result": "Valid",
+        "sdk_mapping": "success"
+      }
+    }
+  },
+  {
+    "name": "draft201909/literal-duplicate-required-boolean",
+    "schema_json": "{\"$schema\":\"https://json-schema.org/draft/2019-09/schema\",\"default\":{\"required\":[\"x\",\"x\"]},\"$ref\":\"#/default\"}",
+    "content_json": "false",
+    "mode": "ExhaustErrors",
+    "expected_gap": null,
+    "oracle": {
+      "root": "Draft201909Validator",
+      "schema": {
+        "result": "valid"
+      },
+      "instance": {
+        "result": "Valid",
+        "sdk_mapping": "success"
+      }
+    }
+  },
+  {
+    "name": "draft201909/literal-numeric-type",
+    "schema_json": "{\"$schema\":\"https://json-schema.org/draft/2019-09/schema\",\"default\":{\"type\":[\"number\",\"number\"]},\"$ref\":\"#/default\"}",
+    "content_json": "1",
+    "mode": "ExhaustErrors",
+    "expected_gap": "Numeric",
+    "oracle": {
+      "root": "Draft201909Validator",
+      "schema": {
+        "result": "valid"
+      },
+      "instance": {
+        "result": "Valid",
+        "sdk_mapping": "success"
+      }
+    }
+  },
+  {
+    "name": "draft201909/literal-empty-required",
+    "schema_json": "{\"$schema\":\"https://json-schema.org/draft/2019-09/schema\",\"default\":{\"required\":[]},\"$ref\":\"#/default\"}",
+    "content_json": "{}",
+    "mode": "ExhaustErrors",
+    "expected_gap": null,
+    "oracle": {
+      "root": "Draft201909Validator",
+      "schema": {
+        "result": "valid"
+      },
+      "instance": {
+        "result": "Valid",
+        "sdk_mapping": "success"
+      }
+    }
+  },
+  {
+    "name": "draft202012/literal-duplicate-type-valid",
+    "schema_json": "{\"$schema\":\"https://json-schema.org/draft/2020-12/schema\",\"default\":{\"type\":[\"string\",\"string\"]},\"$ref\":\"#/default\"}",
+    "content_json": "\"\"",
+    "mode": "ExhaustErrors",
+    "expected_gap": "FragmentShape",
+    "oracle": {
+      "root": "Draft202012Validator",
+      "schema": {
+        "result": "valid"
+      },
+      "instance": {
+        "result": "Valid",
+        "sdk_mapping": "success"
+      }
+    }
+  },
+  {
+    "name": "draft202012/literal-duplicate-type-invalid",
+    "schema_json": "{\"$schema\":\"https://json-schema.org/draft/2020-12/schema\",\"default\":{\"type\":[\"string\",\"string\"]},\"$ref\":\"#/default\"}",
+    "content_json": "{}",
+    "mode": "ExhaustErrors",
+    "expected_gap": "FragmentShape",
+    "oracle": {
+      "root": "Draft202012Validator",
+      "schema": {
+        "result": "valid"
+      },
+      "instance": {
+        "result": "Invalid",
+        "exception": "ValidationError",
+        "unresolvable": false,
+        "sdk_mapping": "RuntimeError"
+      }
+    }
+  },
+  {
+    "name": "draft202012/literal-duplicate-type-unvisited",
+    "schema_json": "{\"$schema\":\"https://json-schema.org/draft/2020-12/schema\",\"default\":{\"type\":[\"string\",\"string\"]},\"properties\":{\"unused\":{\"$ref\":\"#/default\"}}}",
+    "content_json": "{}",
+    "mode": "ExhaustErrors",
+    "expected_gap": null,
+    "oracle": {
+      "root": "Draft202012Validator",
+      "schema": {
+        "result": "valid"
+      },
+      "instance": {
+        "result": "Valid",
+        "sdk_mapping": "success"
+      }
+    }
+  },
+  {
+    "name": "draft202012/literal-duplicate-required-valid",
+    "schema_json": "{\"$schema\":\"https://json-schema.org/draft/2020-12/schema\",\"default\":{\"required\":[\"x\",\"x\"]},\"$ref\":\"#/default\"}",
+    "content_json": "{\"x\":true}",
+    "mode": "ExhaustErrors",
+    "expected_gap": "FragmentShape",
+    "oracle": {
+      "root": "Draft202012Validator",
+      "schema": {
+        "result": "valid"
+      },
+      "instance": {
+        "result": "Valid",
+        "sdk_mapping": "success"
+      }
+    }
+  },
+  {
+    "name": "draft202012/literal-duplicate-required-invalid",
+    "schema_json": "{\"$schema\":\"https://json-schema.org/draft/2020-12/schema\",\"default\":{\"required\":[\"x\",\"x\"]},\"$ref\":\"#/default\"}",
+    "content_json": "{}",
+    "mode": "ExhaustErrors",
+    "expected_gap": "FragmentShape",
+    "oracle": {
+      "root": "Draft202012Validator",
+      "schema": {
+        "result": "valid"
+      },
+      "instance": {
+        "result": "Invalid",
+        "exception": "ValidationError",
+        "unresolvable": false,
+        "sdk_mapping": "RuntimeError"
+      }
+    }
+  },
+  {
+    "name": "draft202012/literal-duplicate-required-string",
+    "schema_json": "{\"$schema\":\"https://json-schema.org/draft/2020-12/schema\",\"default\":{\"required\":[\"x\",\"x\"]},\"$ref\":\"#/default\"}",
+    "content_json": "\"\"",
+    "mode": "ExhaustErrors",
+    "expected_gap": null,
+    "oracle": {
+      "root": "Draft202012Validator",
+      "schema": {
+        "result": "valid"
+      },
+      "instance": {
+        "result": "Valid",
+        "sdk_mapping": "success"
+      }
+    }
+  },
+  {
+    "name": "draft202012/literal-duplicate-required-array",
+    "schema_json": "{\"$schema\":\"https://json-schema.org/draft/2020-12/schema\",\"default\":{\"required\":[\"x\",\"x\"]},\"$ref\":\"#/default\"}",
+    "content_json": "[]",
+    "mode": "ExhaustErrors",
+    "expected_gap": null,
+    "oracle": {
+      "root": "Draft202012Validator",
+      "schema": {
+        "result": "valid"
+      },
+      "instance": {
+        "result": "Valid",
+        "sdk_mapping": "success"
+      }
+    }
+  },
+  {
+    "name": "draft202012/literal-duplicate-required-null",
+    "schema_json": "{\"$schema\":\"https://json-schema.org/draft/2020-12/schema\",\"default\":{\"required\":[\"x\",\"x\"]},\"$ref\":\"#/default\"}",
+    "content_json": "null",
+    "mode": "ExhaustErrors",
+    "expected_gap": null,
+    "oracle": {
+      "root": "Draft202012Validator",
+      "schema": {
+        "result": "valid"
+      },
+      "instance": {
+        "result": "Valid",
+        "sdk_mapping": "success"
+      }
+    }
+  },
+  {
+    "name": "draft202012/literal-duplicate-required-boolean",
+    "schema_json": "{\"$schema\":\"https://json-schema.org/draft/2020-12/schema\",\"default\":{\"required\":[\"x\",\"x\"]},\"$ref\":\"#/default\"}",
+    "content_json": "false",
+    "mode": "ExhaustErrors",
+    "expected_gap": null,
+    "oracle": {
+      "root": "Draft202012Validator",
+      "schema": {
+        "result": "valid"
+      },
+      "instance": {
+        "result": "Valid",
+        "sdk_mapping": "success"
+      }
+    }
+  },
+  {
+    "name": "draft202012/literal-numeric-type",
+    "schema_json": "{\"$schema\":\"https://json-schema.org/draft/2020-12/schema\",\"default\":{\"type\":[\"number\",\"number\"]},\"$ref\":\"#/default\"}",
+    "content_json": "1",
+    "mode": "ExhaustErrors",
+    "expected_gap": "Numeric",
+    "oracle": {
+      "root": "Draft202012Validator",
+      "schema": {
+        "result": "valid"
+      },
+      "instance": {
+        "result": "Valid",
+        "sdk_mapping": "success"
+      }
+    }
+  },
+  {
+    "name": "draft202012/literal-empty-required",
+    "schema_json": "{\"$schema\":\"https://json-schema.org/draft/2020-12/schema\",\"default\":{\"required\":[]},\"$ref\":\"#/default\"}",
+    "content_json": "{}",
+    "mode": "ExhaustErrors",
+    "expected_gap": null,
+    "oracle": {
+      "root": "Draft202012Validator",
+      "schema": {
+        "result": "valid"
+      },
+      "instance": {
+        "result": "Valid",
+        "sdk_mapping": "success"
+      }
+    }
   }
 ]

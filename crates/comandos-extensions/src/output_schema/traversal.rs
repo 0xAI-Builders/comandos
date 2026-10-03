@@ -220,6 +220,9 @@ impl<'a> Evaluator<'a> {
         state: State,
         pointer: &str,
     ) -> Evaluation {
+        if key == "required" && !instance.is_object() {
+            return Ok(Validity::Valid);
+        }
         if key == "type" {
             let types: Vec<&str> = if let Some(single) = value.as_str() {
                 vec![single]
@@ -236,18 +239,29 @@ impl<'a> Evaluator<'a> {
                 return Err(gap(GapKind::Numeric, pointer));
             }
             if types.is_empty()
+                || types.iter().copied().collect::<HashSet<_>>().len() != types.len()
                 || types
                     .iter()
                     .any(|t| !matches!(*t, "object" | "array" | "string" | "boolean" | "null"))
             {
                 return Err(gap(GapKind::FragmentShape, pointer));
             }
-        } else if !value
-            .as_array()
-            .is_some_and(|a| !a.is_empty() && a.iter().all(Value::is_string))
-        {
-            // Draft4 requires nonempty required. Later drafts also permit [].
-            if !(state.class != Draft::Draft4 && value.as_array().is_some_and(Vec::is_empty)) {
+        } else {
+            // Every supported metaschema requires unique strings. Draft4 also
+            // requires a nonempty array; later drafts permit []. Literal-pointer
+            // targets are not certified by the root schema-check precondition.
+            let Some(required) = value.as_array() else {
+                return Err(gap(GapKind::FragmentShape, pointer));
+            };
+            if (state.class == Draft::Draft4 && required.is_empty())
+                || !required.iter().all(Value::is_string)
+                || required
+                    .iter()
+                    .filter_map(Value::as_str)
+                    .collect::<HashSet<_>>()
+                    .len()
+                    != required.len()
+            {
                 return Err(gap(GapKind::FragmentShape, pointer));
             }
         }
