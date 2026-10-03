@@ -3454,5 +3454,117 @@
     "selected": "Draft3Validator",
     "normalized": "http://json-schema.org/draft-03/schema",
     "python": "valid"
+  },
+  {
+    "name": "draft4-valid-suffix-''-accept",
+    "schema_json": "{\"$schema\": \"http://json-schema.org/draft-04/schema\", \"type\": \"object\", \"required\": [\"n\"], \"properties\": {\"n\": {\"type\": \"integer\", \"maximum\": 2, \"exclusiveMaximum\": true}}}",
+    "content_json": "{\"n\": 1}",
+    "selected": "Draft4Validator",
+    "normalized": "http://json-schema.org/draft-04/schema",
+    "python": "valid"
+  },
+  {
+    "name": "draft4-valid-suffix-''-reject",
+    "schema_json": "{\"$schema\": \"http://json-schema.org/draft-04/schema\", \"type\": \"object\", \"required\": [\"n\"], \"properties\": {\"n\": {\"type\": \"integer\", \"maximum\": 2, \"exclusiveMaximum\": true}}}",
+    "content_json": "{\"n\": 2}",
+    "selected": "Draft4Validator",
+    "normalized": "http://json-schema.org/draft-04/schema",
+    "python": "invalid-content"
+  },
+  {
+    "name": "draft4-valid-suffix-'#'-accept",
+    "schema_json": "{\"$schema\": \"http://json-schema.org/draft-04/schema#\", \"type\": \"object\", \"required\": [\"n\"], \"properties\": {\"n\": {\"type\": \"integer\", \"maximum\": 2, \"exclusiveMaximum\": true}}}",
+    "content_json": "{\"n\": 1}",
+    "selected": "Draft4Validator",
+    "normalized": "http://json-schema.org/draft-04/schema",
+    "python": "valid"
+  },
+  {
+    "name": "draft4-valid-suffix-'#'-reject",
+    "schema_json": "{\"$schema\": \"http://json-schema.org/draft-04/schema#\", \"type\": \"object\", \"required\": [\"n\"], \"properties\": {\"n\": {\"type\": \"integer\", \"maximum\": 2, \"exclusiveMaximum\": true}}}",
+    "content_json": "{\"n\": 2}",
+    "selected": "Draft4Validator",
+    "normalized": "http://json-schema.org/draft-04/schema",
+    "python": "invalid-content"
+  },
+  {
+    "name": "draft4-valid-suffix-'?'-accept",
+    "schema_json": "{\"$schema\": \"http://json-schema.org/draft-04/schema?\", \"type\": \"object\", \"required\": [\"n\"], \"properties\": {\"n\": {\"type\": \"integer\", \"maximum\": 2, \"exclusiveMaximum\": true}}}",
+    "content_json": "{\"n\": 1}",
+    "selected": "Draft4Validator",
+    "normalized": "http://json-schema.org/draft-04/schema",
+    "python": "valid"
+  },
+  {
+    "name": "draft4-valid-suffix-'?'-reject",
+    "schema_json": "{\"$schema\": \"http://json-schema.org/draft-04/schema?\", \"type\": \"object\", \"required\": [\"n\"], \"properties\": {\"n\": {\"type\": \"integer\", \"maximum\": 2, \"exclusiveMaximum\": true}}}",
+    "content_json": "{\"n\": 2}",
+    "selected": "Draft4Validator",
+    "normalized": "http://json-schema.org/draft-04/schema",
+    "python": "invalid-content"
+  },
+  {
+    "name": "draft4-valid-suffix-'?#'-accept",
+    "schema_json": "{\"$schema\": \"http://json-schema.org/draft-04/schema?#\", \"type\": \"object\", \"required\": [\"n\"], \"properties\": {\"n\": {\"type\": \"integer\", \"maximum\": 2, \"exclusiveMaximum\": true}}}",
+    "content_json": "{\"n\": 1}",
+    "selected": "Draft4Validator",
+    "normalized": "http://json-schema.org/draft-04/schema",
+    "python": "valid"
+  },
+  {
+    "name": "draft4-valid-suffix-'?#'-reject",
+    "schema_json": "{\"$schema\": \"http://json-schema.org/draft-04/schema?#\", \"type\": \"object\", \"required\": [\"n\"], \"properties\": {\"n\": {\"type\": \"integer\", \"maximum\": 2, \"exclusiveMaximum\": true}}}",
+    "content_json": "{\"n\": 2}",
+    "selected": "Draft4Validator",
+    "normalized": "http://json-schema.org/draft-04/schema",
+    "python": "invalid-content"
+  },
+  {
+    "name": "draft4-valid-scheme-case-accept",
+    "schema_json": "{\"$schema\": \"HTTP://json-schema.org/draft-04/schema\", \"type\": \"object\", \"required\": [\"n\"], \"properties\": {\"n\": {\"type\": \"integer\", \"maximum\": 2, \"exclusiveMaximum\": true}}}",
+    "content_json": "{\"n\": 1}",
+    "selected": "Draft4Validator",
+    "normalized": "http://json-schema.org/draft-04/schema",
+    "python": "valid"
+  },
+  {
+    "name": "draft4-valid-scheme-case-reject",
+    "schema_json": "{\"$schema\": \"HTTP://json-schema.org/draft-04/schema\", \"type\": \"object\", \"required\": [\"n\"], \"properties\": {\"n\": {\"type\": \"integer\", \"maximum\": 2, \"exclusiveMaximum\": true}}}",
+    "content_json": "{\"n\": 2}",
+    "selected": "Draft4Validator",
+    "normalized": "http://json-schema.org/draft-04/schema",
+    "python": "invalid-content"
+  },
+  {
+    "name": "draft4-valid-leading-c0-accept",
+    "schema_json": "{\"$schema\": \"\\u0000\\u001f http://json-schema.org/draft-04/schema#\", \"type\": \"object\", \"required\": [\"n\"], \"properties\": {\"n\": {\"type\": \"integer\", \"maximum\": 2, \"exclusiveMaximum\": true}}}",
+    "content_json": "{\"n\": 1}",
+    "selected": "Draft4Validator",
+    "normalized": "http://json-schema.org/draft-04/schema",
+    "python": "valid"
+  },
+  {
+    "name": "draft4-valid-leading-c0-reject",
+    "schema_json": "{\"$schema\": \"\\u0000\\u001f http://json-schema.org/draft-04/schema#\", \"type\": \"object\", \"required\": [\"n\"], \"properties\": {\"n\": {\"type\": \"integer\", \"maximum\": 2, \"exclusiveMaximum\": true}}}",
+    "content_json": "{\"n\": 2}",
+    "selected": "Draft4Validator",
+    "normalized": "http://json-schema.org/draft-04/schema",
+    "python": "invalid-content"
+  },
+  {
+    "name": "draft4-valid-tabs-cr-lf-accept",
+    "schema_json": "{\"$schema\": \"http://json-sch\\te\\rma\\n.org/draft-04/sch\\te\\rma\\n#\", \"type\": \"object\", \"required\": [\"n\"], \"properties\": {\"n\": {\"type\": \"integer\", \"maximum\": 2, \"exclusiveMaximum\": true}}}",
+    "content_json": "{\"n\": 1}",
+    "selected": "Draft4Validator",
+    "normalized": "http://json-schema.org/draft-04/schema",
+    "python": "valid"
+  },
+  {
+    "name": "draft4-valid-tabs-cr-lf-reject",
+    "schema_json": "{\"$schema\": \"http://json-sch\\te\\rma\\n.org/draft-04/sch\\te\\rma\\n#\", \"type\": \"object\", \"required\": [\"n\"], \"properties\": {\"n\": {\"type\": \"integer\", \"maximum\": 2, \"exclusiveMaximum\": true}}}",
+    "content_json": "{\"n\": 2}",
+    "selected": "Draft4Validator",
+    "normalized": "http://json-schema.org/draft-04/schema",
+    "python": "invalid-content"
   }
 ]

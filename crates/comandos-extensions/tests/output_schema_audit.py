@@ -49,12 +49,8 @@ def native(binary, schema_json, content_json):
     return statuses[process.stdout]
 
 
-def main():
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--binary", required=True)
-    parser.add_argument("--cases", default=str(pathlib.Path(__file__).with_name("output_schema_cases.json")))
-    parser.add_argument("--out", required=True)
-    args = parser.parse_args()
+def assert_oracle_environment():
+    """Pin the dependency and format environment recorded by the original audit."""
     versions = {name: importlib.metadata.version(name) for name in ["jsonschema", "referencing", "mcp"]}
     assert versions == {"jsonschema": "4.26.0", "referencing": "0.37.0", "mcp": "1.30.0"}, versions
     optional = {}
@@ -66,6 +62,24 @@ def main():
     environment = {"optional_packages": optional,
                    "schema_format_checkers": sorted(jsonschema.Draft202012Validator.FORMAT_CHECKER.checkers),
                    "jsonschema_specifications": importlib.metadata.version("jsonschema-specifications")}
+    assert environment == {
+        "optional_packages": {"rfc3987": None, "rfc3986-validator": None,
+                              "rfc3987-syntax": None, "fqdn": None, "idna": "3.20",
+                              "isoduration": None, "webcolors": None},
+        "schema_format_checkers": ["date", "email", "idn-email", "idn-hostname",
+                                   "ipv4", "ipv6", "regex", "uuid"],
+        "jsonschema_specifications": "2025.9.1",
+    }, environment
+    return versions, environment
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--binary", required=True)
+    parser.add_argument("--cases", default=str(pathlib.Path(__file__).with_name("output_schema_cases.json")))
+    parser.add_argument("--out", required=True)
+    args = parser.parse_args()
+    versions, environment = assert_oracle_environment()
     rows = []
     for case in json.loads(pathlib.Path(args.cases).read_text()):
         expected = reference(case["schema_json"], case["content_json"])

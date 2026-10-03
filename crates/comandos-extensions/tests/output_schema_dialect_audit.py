@@ -9,7 +9,7 @@ import warnings
 from urllib.parse import urlsplit
 
 from jsonschema.validators import validator_for
-from output_schema_audit import native, reference
+from output_schema_audit import assert_oracle_environment, native, reference
 
 
 def cases():
@@ -64,6 +64,23 @@ def cases():
     for content in [{}, {"n": 1}]:
         yield "pending-draft3-" + repr(content), {"$schema": ids[0], "properties": {
             "n": {"type": "integer", "required": True}}}, content
+    # Retain the original rows, including their Draft4-invalid items: false.
+    # These pairs exercise successful Draft4 validation for every registered
+    # root variant. Draft4's boolean exclusiveMaximum distinguishes it from
+    # the numeric form required by supported modern drafts.
+    draft4_uri = ids[1]
+    draft4_roots = [("suffix-" + repr(suffix), draft4_uri + suffix)
+                    for suffix in ["", "#", "?", "?#"]]
+    draft4_roots.extend([
+        ("scheme-case", draft4_uri.replace("http", "HTTP")),
+        ("leading-c0", "\x00\x1f " + draft4_uri + "#"),
+        ("tabs-cr-lf", draft4_uri.replace("schema", "sch\te\rma\n") + "#"),
+    ])
+    for name, root in draft4_roots:
+        schema = {"$schema": root, "type": "object", "required": ["n"],
+                  "properties": {"n": {"type": "integer", "maximum": 2, "exclusiveMaximum": True}}}
+        for variant, content in [("accept", {"n": 1}), ("reject", {"n": 2})]:
+            yield "draft4-valid-" + name + "-" + variant, schema, content
 
 
 def main():
@@ -74,6 +91,7 @@ def main():
     args = parser.parse_args()
     assert sys.version_info[:3] == (3, 11, 15), sys.version
     assert unicodedata.unidata_version == "14.0.0", unicodedata.unidata_version
+    versions, environment = assert_oracle_environment()
     rows = []
     with warnings.catch_warnings():
         warnings.simplefilter("ignore", DeprecationWarning)
@@ -89,7 +107,9 @@ def main():
                              selected=selected, normalized=normalized, python=expected, native=actual,
                              acceptance_mismatch=(expected == "valid") != (actual == "valid"),
                              classification_difference=expected != actual))
-    result = dict(python=sys.version, unicode=unicodedata.unidata_version, cases=len(rows),
+    result = dict(python=sys.version, unicode=unicodedata.unidata_version,
+                  versions=versions, environment=environment,
+                  native="jsonschema 0.58.4, offline, instance formats disabled", cases=len(rows),
                   acceptance_mismatches=sum(r["acceptance_mismatch"] for r in rows),
                   classification_differences=sum(r["classification_difference"] for r in rows), results=rows)
     pathlib.Path(args.out).write_text(json.dumps(result, indent=2) + "\n")
