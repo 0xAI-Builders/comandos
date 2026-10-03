@@ -120,7 +120,7 @@ Los assets, servicios e instaladores declarativos se deben contrastar en el empa
 | /home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/lib/extension_auth.py | Parcial: serve OAuth nativo; importación pendiente | /home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/crates/comandos-extensions/src/auth.rs |
 | /home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/lib/extension_catalog.py | Pendiente | — |
 | /home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/lib/extension_launch.py | Pendiente | — |
-| /home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/lib/extension_metadata.py | Parcial: metadatos y conteo Rust; revisión pendiente; instalación por migrar | /home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/crates/comandos-extensions/src/metadata.rs |
+| /home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/lib/extension_metadata.py | Parcial: metadatos y conteo Rust revisados; instalación por migrar | /home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/crates/comandos-extensions/src/metadata.rs |
 | /home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/lib/extension_observations.py | Pendiente | — |
 | /home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/lib/extension_proxy.py | Parcial: serve y metadatos nativos; check pendiente | /home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/crates/comandos-extensions/src/serve.rs |
 | /home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/lib/focus_progress.py | Pendiente | — |
