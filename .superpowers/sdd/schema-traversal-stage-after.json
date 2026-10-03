@@ -1,0 +1,1383 @@
+{
+  "versions": {
+    "jsonschema": "4.26.0",
+    "referencing": "0.37.0",
+    "mcp": "1.30.0"
+  },
+  "environment": {
+    "optional_packages": {
+      "rfc3987": null,
+      "rfc3986-validator": null,
+      "rfc3987-syntax": null,
+      "fqdn": null,
+      "idna": "3.20",
+      "isoduration": null,
+      "webcolors": null
+    },
+    "schema_format_checkers": [
+      "date",
+      "email",
+      "idn-email",
+      "idn-hostname",
+      "ipv4",
+      "ipv6",
+      "regex",
+      "uuid"
+    ],
+    "jsonschema_specifications": "2025.9.1"
+  },
+  "format_inventories": {
+    "Draft3Validator": [
+      "date",
+      "email",
+      "idn-email",
+      "ip-address",
+      "ipv6",
+      "regex",
+      "time"
+    ],
+    "Draft4Validator": [
+      "email",
+      "idn-email",
+      "ipv4",
+      "ipv6",
+      "regex"
+    ],
+    "Draft6Validator": [
+      "email",
+      "idn-email",
+      "ipv4",
+      "ipv6",
+      "regex"
+    ],
+    "Draft7Validator": [
+      "date",
+      "email",
+      "idn-email",
+      "idn-hostname",
+      "ipv4",
+      "ipv6",
+      "regex"
+    ],
+    "Draft201909Validator": [
+      "date",
+      "email",
+      "idn-email",
+      "idn-hostname",
+      "ipv4",
+      "ipv6",
+      "regex",
+      "uuid"
+    ],
+    "Draft202012Validator": [
+      "date",
+      "email",
+      "idn-email",
+      "idn-hostname",
+      "ipv4",
+      "ipv6",
+      "regex",
+      "uuid"
+    ]
+  },
+  "native": "jsonschema 0.58.4 schema stage, isolated test probe",
+  "worker_cpu_seconds": 0.12958,
+  "worker_peak_rss_kib": 29120,
+  "worker_address_space_bytes": 402653184,
+  "worker_cpu_limits_seconds": [
+    2,
+    3
+  ],
+  "cases": 184,
+  "acceptance_mismatches": 31,
+  "results": [
+    {
+      "name": "draft4-empty",
+      "schema_json": "{\"$schema\":\"http://json-schema.org/draft-04/schema#\"}",
+      "python": "valid",
+      "native": "valid",
+      "acceptance_mismatch": false
+    },
+    {
+      "name": "draft4-invalid-type",
+      "schema_json": "{\"$schema\":\"http://json-schema.org/draft-04/schema#\",\"type\":\"unknown\"}",
+      "python": "rejected:SchemaError",
+      "native": "rejected",
+      "acceptance_mismatch": false
+    },
+    {
+      "name": "draft4-negative-bound",
+      "schema_json": "{\"$schema\":\"http://json-schema.org/draft-04/schema#\",\"maxLength\":-1}",
+      "python": "rejected:SchemaError",
+      "native": "rejected",
+      "acceptance_mismatch": false
+    },
+    {
+      "name": "draft4-duplicate-required",
+      "schema_json": "{\"$schema\":\"http://json-schema.org/draft-04/schema#\",\"required\":[\"x\",\"x\"]}",
+      "python": "rejected:SchemaError",
+      "native": "rejected",
+      "acceptance_mismatch": false
+    },
+    {
+      "name": "draft4-unused-invalid",
+      "schema_json": "{\"$schema\":\"http://json-schema.org/draft-04/schema#\",\"properties\":{\"unused\":{\"type\":123}}}",
+      "python": "rejected:SchemaError",
+      "native": "rejected",
+      "acceptance_mismatch": false
+    },
+    {
+      "name": "draft4-unused-missing-local",
+      "schema_json": "{\"$schema\":\"http://json-schema.org/draft-04/schema#\",\"properties\":{\"unused\":{\"$ref\":\"#/$defs/missing\"}}}",
+      "python": "valid",
+      "native": "valid",
+      "acceptance_mismatch": false
+    },
+    {
+      "name": "draft4-unused-missing-remote",
+      "schema_json": "{\"$schema\":\"http://json-schema.org/draft-04/schema#\",\"properties\":{\"unused\":{\"$ref\":\"https://example.invalid/missing\"}}}",
+      "python": "valid",
+      "native": "valid",
+      "acceptance_mismatch": false
+    },
+    {
+      "name": "draft4-unused-missing-file",
+      "schema_json": "{\"$schema\":\"http://json-schema.org/draft-04/schema#\",\"properties\":{\"unused\":{\"$ref\":\"file:///private/unread-schema.json\"}}}",
+      "python": "valid",
+      "native": "valid",
+      "acceptance_mismatch": false
+    },
+    {
+      "name": "draft4-permissive-uri",
+      "schema_json": "{\"$schema\":\"http://json-schema.org/draft-04/schema#\",\"$id\":\"bad uri with spaces\",\"id\":\"bad uri with spaces\",\"$ref\":\"bad uri with spaces\"}",
+      "python": "valid",
+      "native": "valid",
+      "acceptance_mismatch": false
+    },
+    {
+      "name": "draft4-literal-data",
+      "schema_json": "{\"$schema\":\"http://json-schema.org/draft-04/schema#\",\"const\":{\"type\":123,\"$ref\":0},\"enum\":[{\"type\":123,\"$schema\":0}],\"default\":{\"type\":123},\"examples\":[{\"type\":123}]}",
+      "python": "valid",
+      "native": "valid",
+      "acceptance_mismatch": false
+    },
+    {
+      "name": "draft4-write-only",
+      "schema_json": "{\"$schema\":\"http://json-schema.org/draft-04/schema#\",\"writeOnly\":123}",
+      "python": "valid",
+      "native": "valid",
+      "acceptance_mismatch": false
+    },
+    {
+      "name": "draft4-empty-enum",
+      "schema_json": "{\"$schema\":\"http://json-schema.org/draft-04/schema#\",\"enum\":[]}",
+      "python": "rejected:SchemaError",
+      "native": "rejected",
+      "acceptance_mismatch": false
+    },
+    {
+      "name": "draft4-duplicate-enum",
+      "schema_json": "{\"$schema\":\"http://json-schema.org/draft-04/schema#\",\"enum\":[{},{}]}",
+      "python": "rejected:SchemaError",
+      "native": "rejected",
+      "acceptance_mismatch": false
+    },
+    {
+      "name": "draft4-nested-cross-draft",
+      "schema_json": "{\"$schema\":\"http://json-schema.org/draft-04/schema#\",\"properties\":{\"unused\":{\"$schema\":\"http://json-schema.org/draft-04/schema#\",\"exclusiveMinimum\":3}}}",
+      "python": "rejected:SchemaError",
+      "native": "rejected",
+      "acceptance_mismatch": false
+    },
+    {
+      "name": "draft4-nested-unknown-draft",
+      "schema_json": "{\"$schema\":\"http://json-schema.org/draft-04/schema#\",\"properties\":{\"unused\":{\"$schema\":\"https://example.invalid/draft\",\"type\":\"integer\"}}}",
+      "python": "valid",
+      "native": "valid",
+      "acceptance_mismatch": false
+    },
+    {
+      "name": "draft4-nested-nonstring-draft",
+      "schema_json": "{\"$schema\":\"http://json-schema.org/draft-04/schema#\",\"properties\":{\"unused\":{\"$schema\":123}}}",
+      "python": "rejected:SchemaError",
+      "native": "rejected",
+      "acceptance_mismatch": false
+    },
+    {
+      "name": "draft4-format-on-instance",
+      "schema_json": "{\"$schema\":\"http://json-schema.org/draft-04/schema#\",\"properties\":{\"n\":{\"format\":\"email\"}}}",
+      "python": "valid",
+      "native": "valid",
+      "acceptance_mismatch": false
+    },
+    {
+      "name": "draft4-pattern-basic",
+      "schema_json": "{\"$schema\":\"http://json-schema.org/draft-04/schema#\",\"pattern\":\"^[a-z]+$\"}",
+      "python": "valid",
+      "native": "valid",
+      "acceptance_mismatch": false
+    },
+    {
+      "name": "draft4-pattern-invalid",
+      "schema_json": "{\"$schema\":\"http://json-schema.org/draft-04/schema#\",\"pattern\":\"[\"}",
+      "python": "rejected:SchemaError",
+      "native": "rejected",
+      "acceptance_mismatch": false
+    },
+    {
+      "name": "draft4-pattern-python-named",
+      "schema_json": "{\"$schema\":\"http://json-schema.org/draft-04/schema#\",\"pattern\":\"(?P<name>a)(?P=name)\"}",
+      "python": "valid",
+      "native": "rejected",
+      "acceptance_mismatch": true
+    },
+    {
+      "name": "draft4-pattern-python-inline",
+      "schema_json": "{\"$schema\":\"http://json-schema.org/draft-04/schema#\",\"pattern\":\"(?i)a\"}",
+      "python": "valid",
+      "native": "rejected",
+      "acceptance_mismatch": true
+    },
+    {
+      "name": "draft4-pattern-ecma-named",
+      "schema_json": "{\"$schema\":\"http://json-schema.org/draft-04/schema#\",\"pattern\":\"(?<name>a)\\\\k<name>\"}",
+      "python": "rejected:SchemaError",
+      "native": "valid",
+      "acceptance_mismatch": true
+    },
+    {
+      "name": "draft4-pattern-ecma-unicode",
+      "schema_json": "{\"$schema\":\"http://json-schema.org/draft-04/schema#\",\"pattern\":\"\\\\p{L}\"}",
+      "python": "rejected:SchemaError",
+      "native": "valid",
+      "acceptance_mismatch": true
+    },
+    {
+      "name": "draft4-pattern-invalid-unused",
+      "schema_json": "{\"$schema\":\"http://json-schema.org/draft-04/schema#\",\"properties\":{\"unused\":{\"pattern\":\"[\"}}}",
+      "python": "rejected:SchemaError",
+      "native": "rejected",
+      "acceptance_mismatch": false
+    },
+    {
+      "name": "draft4-pattern-properties-invalid",
+      "schema_json": "{\"$schema\":\"http://json-schema.org/draft-04/schema#\",\"patternProperties\":{\"[\":{}}}",
+      "python": "valid",
+      "native": "valid",
+      "acceptance_mismatch": false
+    },
+    {
+      "name": "draft4-integer-kind",
+      "schema_json": "{\"$schema\":\"http://json-schema.org/draft-04/schema#\",\"minLength\":1}",
+      "python": "valid",
+      "native": "valid",
+      "acceptance_mismatch": false
+    },
+    {
+      "name": "draft4-float-kind",
+      "schema_json": "{\"$schema\":\"http://json-schema.org/draft-04/schema#\",\"minLength\":1.0}",
+      "python": "rejected:SchemaError",
+      "native": "rejected",
+      "acceptance_mismatch": false
+    },
+    {
+      "name": "draft4-float-exponent-kind",
+      "schema_json": "{\"$schema\":\"http://json-schema.org/draft-04/schema#\",\"minLength\":1e0}",
+      "python": "rejected:SchemaError",
+      "native": "rejected",
+      "acceptance_mismatch": false
+    },
+    {
+      "name": "draft4-huge-int",
+      "schema_json": "{\"$schema\":\"http://json-schema.org/draft-04/schema#\",\"minLength\":18446744073709551616}",
+      "python": "valid",
+      "native": "valid",
+      "acceptance_mismatch": false
+    },
+    {
+      "name": "draft4-huge-exponent",
+      "schema_json": "{\"$schema\":\"http://json-schema.org/draft-04/schema#\",\"minLength\":1e400}",
+      "python": "rejected:SchemaError",
+      "native": "rejected",
+      "acceptance_mismatch": false
+    },
+    {
+      "name": "draft4-negative-zero",
+      "schema_json": "{\"$schema\":\"http://json-schema.org/draft-04/schema#\",\"minLength\":-0.0}",
+      "python": "rejected:SchemaError",
+      "native": "rejected",
+      "acceptance_mismatch": false
+    },
+    {
+      "name": "draft4-fraction-bound",
+      "schema_json": "{\"$schema\":\"http://json-schema.org/draft-04/schema#\",\"minLength\":1.5}",
+      "python": "rejected:SchemaError",
+      "native": "rejected",
+      "acceptance_mismatch": false
+    },
+    {
+      "name": "draft4-huge-number",
+      "schema_json": "{\"$schema\":\"http://json-schema.org/draft-04/schema#\",\"minimum\":1e400}",
+      "python": "valid",
+      "native": "valid",
+      "acceptance_mismatch": false
+    },
+    {
+      "name": "draft4-tiny-positive",
+      "schema_json": "{\"$schema\":\"http://json-schema.org/draft-04/schema#\",\"multipleOf\":1e-400}",
+      "python": "rejected:SchemaError",
+      "native": "valid",
+      "acceptance_mismatch": true
+    },
+    {
+      "name": "draft4-duplicate-numeric-enum",
+      "schema_json": "{\"$schema\":\"http://json-schema.org/draft-04/schema#\",\"enum\":[1,1.0]}",
+      "python": "rejected:SchemaError",
+      "native": "rejected",
+      "acceptance_mismatch": false
+    },
+    {
+      "name": "draft4-distinct-huge-enum",
+      "schema_json": "{\"$schema\":\"http://json-schema.org/draft-04/schema#\",\"enum\":[1e400,2e400]}",
+      "python": "rejected:SchemaError",
+      "native": "valid",
+      "acceptance_mismatch": true
+    },
+    {
+      "name": "draft6-empty",
+      "schema_json": "{\"$schema\":\"http://json-schema.org/draft-06/schema#\"}",
+      "python": "valid",
+      "native": "valid",
+      "acceptance_mismatch": false
+    },
+    {
+      "name": "draft6-invalid-type",
+      "schema_json": "{\"$schema\":\"http://json-schema.org/draft-06/schema#\",\"type\":\"unknown\"}",
+      "python": "rejected:SchemaError",
+      "native": "rejected",
+      "acceptance_mismatch": false
+    },
+    {
+      "name": "draft6-negative-bound",
+      "schema_json": "{\"$schema\":\"http://json-schema.org/draft-06/schema#\",\"maxLength\":-1}",
+      "python": "rejected:SchemaError",
+      "native": "rejected",
+      "acceptance_mismatch": false
+    },
+    {
+      "name": "draft6-duplicate-required",
+      "schema_json": "{\"$schema\":\"http://json-schema.org/draft-06/schema#\",\"required\":[\"x\",\"x\"]}",
+      "python": "rejected:SchemaError",
+      "native": "rejected",
+      "acceptance_mismatch": false
+    },
+    {
+      "name": "draft6-unused-invalid",
+      "schema_json": "{\"$schema\":\"http://json-schema.org/draft-06/schema#\",\"properties\":{\"unused\":{\"type\":123}}}",
+      "python": "rejected:SchemaError",
+      "native": "rejected",
+      "acceptance_mismatch": false
+    },
+    {
+      "name": "draft6-unused-missing-local",
+      "schema_json": "{\"$schema\":\"http://json-schema.org/draft-06/schema#\",\"properties\":{\"unused\":{\"$ref\":\"#/$defs/missing\"}}}",
+      "python": "valid",
+      "native": "valid",
+      "acceptance_mismatch": false
+    },
+    {
+      "name": "draft6-unused-missing-remote",
+      "schema_json": "{\"$schema\":\"http://json-schema.org/draft-06/schema#\",\"properties\":{\"unused\":{\"$ref\":\"https://example.invalid/missing\"}}}",
+      "python": "valid",
+      "native": "valid",
+      "acceptance_mismatch": false
+    },
+    {
+      "name": "draft6-unused-missing-file",
+      "schema_json": "{\"$schema\":\"http://json-schema.org/draft-06/schema#\",\"properties\":{\"unused\":{\"$ref\":\"file:///private/unread-schema.json\"}}}",
+      "python": "valid",
+      "native": "valid",
+      "acceptance_mismatch": false
+    },
+    {
+      "name": "draft6-permissive-uri",
+      "schema_json": "{\"$schema\":\"http://json-schema.org/draft-06/schema#\",\"$id\":\"bad uri with spaces\",\"id\":\"bad uri with spaces\",\"$ref\":\"bad uri with spaces\"}",
+      "python": "valid",
+      "native": "valid",
+      "acceptance_mismatch": false
+    },
+    {
+      "name": "draft6-literal-data",
+      "schema_json": "{\"$schema\":\"http://json-schema.org/draft-06/schema#\",\"const\":{\"type\":123,\"$ref\":0},\"enum\":[{\"type\":123,\"$schema\":0}],\"default\":{\"type\":123},\"examples\":[{\"type\":123}]}",
+      "python": "valid",
+      "native": "valid",
+      "acceptance_mismatch": false
+    },
+    {
+      "name": "draft6-write-only",
+      "schema_json": "{\"$schema\":\"http://json-schema.org/draft-06/schema#\",\"writeOnly\":123}",
+      "python": "valid",
+      "native": "valid",
+      "acceptance_mismatch": false
+    },
+    {
+      "name": "draft6-empty-enum",
+      "schema_json": "{\"$schema\":\"http://json-schema.org/draft-06/schema#\",\"enum\":[]}",
+      "python": "valid",
+      "native": "valid",
+      "acceptance_mismatch": false
+    },
+    {
+      "name": "draft6-duplicate-enum",
+      "schema_json": "{\"$schema\":\"http://json-schema.org/draft-06/schema#\",\"enum\":[{},{}]}",
+      "python": "valid",
+      "native": "valid",
+      "acceptance_mismatch": false
+    },
+    {
+      "name": "draft6-nested-cross-draft",
+      "schema_json": "{\"$schema\":\"http://json-schema.org/draft-06/schema#\",\"properties\":{\"unused\":{\"$schema\":\"http://json-schema.org/draft-04/schema#\",\"exclusiveMinimum\":3}}}",
+      "python": "valid",
+      "native": "valid",
+      "acceptance_mismatch": false
+    },
+    {
+      "name": "draft6-nested-unknown-draft",
+      "schema_json": "{\"$schema\":\"http://json-schema.org/draft-06/schema#\",\"properties\":{\"unused\":{\"$schema\":\"https://example.invalid/draft\",\"type\":\"integer\"}}}",
+      "python": "valid",
+      "native": "valid",
+      "acceptance_mismatch": false
+    },
+    {
+      "name": "draft6-nested-nonstring-draft",
+      "schema_json": "{\"$schema\":\"http://json-schema.org/draft-06/schema#\",\"properties\":{\"unused\":{\"$schema\":123}}}",
+      "python": "rejected:SchemaError",
+      "native": "rejected",
+      "acceptance_mismatch": false
+    },
+    {
+      "name": "draft6-format-on-instance",
+      "schema_json": "{\"$schema\":\"http://json-schema.org/draft-06/schema#\",\"properties\":{\"n\":{\"format\":\"email\"}}}",
+      "python": "valid",
+      "native": "valid",
+      "acceptance_mismatch": false
+    },
+    {
+      "name": "draft6-pattern-basic",
+      "schema_json": "{\"$schema\":\"http://json-schema.org/draft-06/schema#\",\"pattern\":\"^[a-z]+$\"}",
+      "python": "valid",
+      "native": "valid",
+      "acceptance_mismatch": false
+    },
+    {
+      "name": "draft6-pattern-invalid",
+      "schema_json": "{\"$schema\":\"http://json-schema.org/draft-06/schema#\",\"pattern\":\"[\"}",
+      "python": "rejected:SchemaError",
+      "native": "rejected",
+      "acceptance_mismatch": false
+    },
+    {
+      "name": "draft6-pattern-python-named",
+      "schema_json": "{\"$schema\":\"http://json-schema.org/draft-06/schema#\",\"pattern\":\"(?P<name>a)(?P=name)\"}",
+      "python": "valid",
+      "native": "rejected",
+      "acceptance_mismatch": true
+    },
+    {
+      "name": "draft6-pattern-python-inline",
+      "schema_json": "{\"$schema\":\"http://json-schema.org/draft-06/schema#\",\"pattern\":\"(?i)a\"}",
+      "python": "valid",
+      "native": "rejected",
+      "acceptance_mismatch": true
+    },
+    {
+      "name": "draft6-pattern-ecma-named",
+      "schema_json": "{\"$schema\":\"http://json-schema.org/draft-06/schema#\",\"pattern\":\"(?<name>a)\\\\k<name>\"}",
+      "python": "rejected:SchemaError",
+      "native": "valid",
+      "acceptance_mismatch": true
+    },
+    {
+      "name": "draft6-pattern-ecma-unicode",
+      "schema_json": "{\"$schema\":\"http://json-schema.org/draft-06/schema#\",\"pattern\":\"\\\\p{L}\"}",
+      "python": "rejected:SchemaError",
+      "native": "valid",
+      "acceptance_mismatch": true
+    },
+    {
+      "name": "draft6-pattern-invalid-unused",
+      "schema_json": "{\"$schema\":\"http://json-schema.org/draft-06/schema#\",\"properties\":{\"unused\":{\"pattern\":\"[\"}}}",
+      "python": "rejected:SchemaError",
+      "native": "rejected",
+      "acceptance_mismatch": false
+    },
+    {
+      "name": "draft6-pattern-properties-invalid",
+      "schema_json": "{\"$schema\":\"http://json-schema.org/draft-06/schema#\",\"patternProperties\":{\"[\":{}}}",
+      "python": "rejected:SchemaError",
+      "native": "rejected",
+      "acceptance_mismatch": false
+    },
+    {
+      "name": "draft6-integer-kind",
+      "schema_json": "{\"$schema\":\"http://json-schema.org/draft-06/schema#\",\"minLength\":1}",
+      "python": "valid",
+      "native": "valid",
+      "acceptance_mismatch": false
+    },
+    {
+      "name": "draft6-float-kind",
+      "schema_json": "{\"$schema\":\"http://json-schema.org/draft-06/schema#\",\"minLength\":1.0}",
+      "python": "valid",
+      "native": "valid",
+      "acceptance_mismatch": false
+    },
+    {
+      "name": "draft6-float-exponent-kind",
+      "schema_json": "{\"$schema\":\"http://json-schema.org/draft-06/schema#\",\"minLength\":1e0}",
+      "python": "valid",
+      "native": "valid",
+      "acceptance_mismatch": false
+    },
+    {
+      "name": "draft6-huge-int",
+      "schema_json": "{\"$schema\":\"http://json-schema.org/draft-06/schema#\",\"minLength\":18446744073709551616}",
+      "python": "valid",
+      "native": "valid",
+      "acceptance_mismatch": false
+    },
+    {
+      "name": "draft6-huge-exponent",
+      "schema_json": "{\"$schema\":\"http://json-schema.org/draft-06/schema#\",\"minLength\":1e400}",
+      "python": "rejected:SchemaError",
+      "native": "valid",
+      "acceptance_mismatch": true
+    },
+    {
+      "name": "draft6-negative-zero",
+      "schema_json": "{\"$schema\":\"http://json-schema.org/draft-06/schema#\",\"minLength\":-0.0}",
+      "python": "valid",
+      "native": "valid",
+      "acceptance_mismatch": false
+    },
+    {
+      "name": "draft6-fraction-bound",
+      "schema_json": "{\"$schema\":\"http://json-schema.org/draft-06/schema#\",\"minLength\":1.5}",
+      "python": "rejected:SchemaError",
+      "native": "rejected",
+      "acceptance_mismatch": false
+    },
+    {
+      "name": "draft6-huge-number",
+      "schema_json": "{\"$schema\":\"http://json-schema.org/draft-06/schema#\",\"minimum\":1e400}",
+      "python": "valid",
+      "native": "valid",
+      "acceptance_mismatch": false
+    },
+    {
+      "name": "draft6-tiny-positive",
+      "schema_json": "{\"$schema\":\"http://json-schema.org/draft-06/schema#\",\"multipleOf\":1e-400}",
+      "python": "rejected:SchemaError",
+      "native": "valid",
+      "acceptance_mismatch": true
+    },
+    {
+      "name": "draft6-duplicate-numeric-enum",
+      "schema_json": "{\"$schema\":\"http://json-schema.org/draft-06/schema#\",\"enum\":[1,1.0]}",
+      "python": "valid",
+      "native": "valid",
+      "acceptance_mismatch": false
+    },
+    {
+      "name": "draft6-distinct-huge-enum",
+      "schema_json": "{\"$schema\":\"http://json-schema.org/draft-06/schema#\",\"enum\":[1e400,2e400]}",
+      "python": "valid",
+      "native": "valid",
+      "acceptance_mismatch": false
+    },
+    {
+      "name": "draft7-empty",
+      "schema_json": "{\"$schema\":\"http://json-schema.org/draft-07/schema#\"}",
+      "python": "valid",
+      "native": "valid",
+      "acceptance_mismatch": false
+    },
+    {
+      "name": "draft7-invalid-type",
+      "schema_json": "{\"$schema\":\"http://json-schema.org/draft-07/schema#\",\"type\":\"unknown\"}",
+      "python": "rejected:SchemaError",
+      "native": "rejected",
+      "acceptance_mismatch": false
+    },
+    {
+      "name": "draft7-negative-bound",
+      "schema_json": "{\"$schema\":\"http://json-schema.org/draft-07/schema#\",\"maxLength\":-1}",
+      "python": "rejected:SchemaError",
+      "native": "rejected",
+      "acceptance_mismatch": false
+    },
+    {
+      "name": "draft7-duplicate-required",
+      "schema_json": "{\"$schema\":\"http://json-schema.org/draft-07/schema#\",\"required\":[\"x\",\"x\"]}",
+      "python": "rejected:SchemaError",
+      "native": "rejected",
+      "acceptance_mismatch": false
+    },
+    {
+      "name": "draft7-unused-invalid",
+      "schema_json": "{\"$schema\":\"http://json-schema.org/draft-07/schema#\",\"properties\":{\"unused\":{\"type\":123}}}",
+      "python": "rejected:SchemaError",
+      "native": "rejected",
+      "acceptance_mismatch": false
+    },
+    {
+      "name": "draft7-unused-missing-local",
+      "schema_json": "{\"$schema\":\"http://json-schema.org/draft-07/schema#\",\"properties\":{\"unused\":{\"$ref\":\"#/$defs/missing\"}}}",
+      "python": "valid",
+      "native": "valid",
+      "acceptance_mismatch": false
+    },
+    {
+      "name": "draft7-unused-missing-remote",
+      "schema_json": "{\"$schema\":\"http://json-schema.org/draft-07/schema#\",\"properties\":{\"unused\":{\"$ref\":\"https://example.invalid/missing\"}}}",
+      "python": "valid",
+      "native": "valid",
+      "acceptance_mismatch": false
+    },
+    {
+      "name": "draft7-unused-missing-file",
+      "schema_json": "{\"$schema\":\"http://json-schema.org/draft-07/schema#\",\"properties\":{\"unused\":{\"$ref\":\"file:///private/unread-schema.json\"}}}",
+      "python": "valid",
+      "native": "valid",
+      "acceptance_mismatch": false
+    },
+    {
+      "name": "draft7-permissive-uri",
+      "schema_json": "{\"$schema\":\"http://json-schema.org/draft-07/schema#\",\"$id\":\"bad uri with spaces\",\"id\":\"bad uri with spaces\",\"$ref\":\"bad uri with spaces\"}",
+      "python": "valid",
+      "native": "valid",
+      "acceptance_mismatch": false
+    },
+    {
+      "name": "draft7-literal-data",
+      "schema_json": "{\"$schema\":\"http://json-schema.org/draft-07/schema#\",\"const\":{\"type\":123,\"$ref\":0},\"enum\":[{\"type\":123,\"$schema\":0}],\"default\":{\"type\":123},\"examples\":[{\"type\":123}]}",
+      "python": "valid",
+      "native": "valid",
+      "acceptance_mismatch": false
+    },
+    {
+      "name": "draft7-write-only",
+      "schema_json": "{\"$schema\":\"http://json-schema.org/draft-07/schema#\",\"writeOnly\":123}",
+      "python": "valid",
+      "native": "valid",
+      "acceptance_mismatch": false
+    },
+    {
+      "name": "draft7-empty-enum",
+      "schema_json": "{\"$schema\":\"http://json-schema.org/draft-07/schema#\",\"enum\":[]}",
+      "python": "valid",
+      "native": "valid",
+      "acceptance_mismatch": false
+    },
+    {
+      "name": "draft7-duplicate-enum",
+      "schema_json": "{\"$schema\":\"http://json-schema.org/draft-07/schema#\",\"enum\":[{},{}]}",
+      "python": "valid",
+      "native": "valid",
+      "acceptance_mismatch": false
+    },
+    {
+      "name": "draft7-nested-cross-draft",
+      "schema_json": "{\"$schema\":\"http://json-schema.org/draft-07/schema#\",\"properties\":{\"unused\":{\"$schema\":\"http://json-schema.org/draft-04/schema#\",\"exclusiveMinimum\":3}}}",
+      "python": "valid",
+      "native": "valid",
+      "acceptance_mismatch": false
+    },
+    {
+      "name": "draft7-nested-unknown-draft",
+      "schema_json": "{\"$schema\":\"http://json-schema.org/draft-07/schema#\",\"properties\":{\"unused\":{\"$schema\":\"https://example.invalid/draft\",\"type\":\"integer\"}}}",
+      "python": "valid",
+      "native": "valid",
+      "acceptance_mismatch": false
+    },
+    {
+      "name": "draft7-nested-nonstring-draft",
+      "schema_json": "{\"$schema\":\"http://json-schema.org/draft-07/schema#\",\"properties\":{\"unused\":{\"$schema\":123}}}",
+      "python": "rejected:SchemaError",
+      "native": "rejected",
+      "acceptance_mismatch": false
+    },
+    {
+      "name": "draft7-format-on-instance",
+      "schema_json": "{\"$schema\":\"http://json-schema.org/draft-07/schema#\",\"properties\":{\"n\":{\"format\":\"email\"}}}",
+      "python": "valid",
+      "native": "valid",
+      "acceptance_mismatch": false
+    },
+    {
+      "name": "draft7-pattern-basic",
+      "schema_json": "{\"$schema\":\"http://json-schema.org/draft-07/schema#\",\"pattern\":\"^[a-z]+$\"}",
+      "python": "valid",
+      "native": "valid",
+      "acceptance_mismatch": false
+    },
+    {
+      "name": "draft7-pattern-invalid",
+      "schema_json": "{\"$schema\":\"http://json-schema.org/draft-07/schema#\",\"pattern\":\"[\"}",
+      "python": "rejected:SchemaError",
+      "native": "rejected",
+      "acceptance_mismatch": false
+    },
+    {
+      "name": "draft7-pattern-python-named",
+      "schema_json": "{\"$schema\":\"http://json-schema.org/draft-07/schema#\",\"pattern\":\"(?P<name>a)(?P=name)\"}",
+      "python": "valid",
+      "native": "rejected",
+      "acceptance_mismatch": true
+    },
+    {
+      "name": "draft7-pattern-python-inline",
+      "schema_json": "{\"$schema\":\"http://json-schema.org/draft-07/schema#\",\"pattern\":\"(?i)a\"}",
+      "python": "valid",
+      "native": "rejected",
+      "acceptance_mismatch": true
+    },
+    {
+      "name": "draft7-pattern-ecma-named",
+      "schema_json": "{\"$schema\":\"http://json-schema.org/draft-07/schema#\",\"pattern\":\"(?<name>a)\\\\k<name>\"}",
+      "python": "rejected:SchemaError",
+      "native": "valid",
+      "acceptance_mismatch": true
+    },
+    {
+      "name": "draft7-pattern-ecma-unicode",
+      "schema_json": "{\"$schema\":\"http://json-schema.org/draft-07/schema#\",\"pattern\":\"\\\\p{L}\"}",
+      "python": "rejected:SchemaError",
+      "native": "valid",
+      "acceptance_mismatch": true
+    },
+    {
+      "name": "draft7-pattern-invalid-unused",
+      "schema_json": "{\"$schema\":\"http://json-schema.org/draft-07/schema#\",\"properties\":{\"unused\":{\"pattern\":\"[\"}}}",
+      "python": "rejected:SchemaError",
+      "native": "rejected",
+      "acceptance_mismatch": false
+    },
+    {
+      "name": "draft7-pattern-properties-invalid",
+      "schema_json": "{\"$schema\":\"http://json-schema.org/draft-07/schema#\",\"patternProperties\":{\"[\":{}}}",
+      "python": "rejected:SchemaError",
+      "native": "rejected",
+      "acceptance_mismatch": false
+    },
+    {
+      "name": "draft7-integer-kind",
+      "schema_json": "{\"$schema\":\"http://json-schema.org/draft-07/schema#\",\"minLength\":1}",
+      "python": "valid",
+      "native": "valid",
+      "acceptance_mismatch": false
+    },
+    {
+      "name": "draft7-float-kind",
+      "schema_json": "{\"$schema\":\"http://json-schema.org/draft-07/schema#\",\"minLength\":1.0}",
+      "python": "valid",
+      "native": "valid",
+      "acceptance_mismatch": false
+    },
+    {
+      "name": "draft7-float-exponent-kind",
+      "schema_json": "{\"$schema\":\"http://json-schema.org/draft-07/schema#\",\"minLength\":1e0}",
+      "python": "valid",
+      "native": "valid",
+      "acceptance_mismatch": false
+    },
+    {
+      "name": "draft7-huge-int",
+      "schema_json": "{\"$schema\":\"http://json-schema.org/draft-07/schema#\",\"minLength\":18446744073709551616}",
+      "python": "valid",
+      "native": "valid",
+      "acceptance_mismatch": false
+    },
+    {
+      "name": "draft7-huge-exponent",
+      "schema_json": "{\"$schema\":\"http://json-schema.org/draft-07/schema#\",\"minLength\":1e400}",
+      "python": "rejected:SchemaError",
+      "native": "valid",
+      "acceptance_mismatch": true
+    },
+    {
+      "name": "draft7-negative-zero",
+      "schema_json": "{\"$schema\":\"http://json-schema.org/draft-07/schema#\",\"minLength\":-0.0}",
+      "python": "valid",
+      "native": "valid",
+      "acceptance_mismatch": false
+    },
+    {
+      "name": "draft7-fraction-bound",
+      "schema_json": "{\"$schema\":\"http://json-schema.org/draft-07/schema#\",\"minLength\":1.5}",
+      "python": "rejected:SchemaError",
+      "native": "rejected",
+      "acceptance_mismatch": false
+    },
+    {
+      "name": "draft7-huge-number",
+      "schema_json": "{\"$schema\":\"http://json-schema.org/draft-07/schema#\",\"minimum\":1e400}",
+      "python": "valid",
+      "native": "valid",
+      "acceptance_mismatch": false
+    },
+    {
+      "name": "draft7-tiny-positive",
+      "schema_json": "{\"$schema\":\"http://json-schema.org/draft-07/schema#\",\"multipleOf\":1e-400}",
+      "python": "rejected:SchemaError",
+      "native": "valid",
+      "acceptance_mismatch": true
+    },
+    {
+      "name": "draft7-duplicate-numeric-enum",
+      "schema_json": "{\"$schema\":\"http://json-schema.org/draft-07/schema#\",\"enum\":[1,1.0]}",
+      "python": "valid",
+      "native": "valid",
+      "acceptance_mismatch": false
+    },
+    {
+      "name": "draft7-distinct-huge-enum",
+      "schema_json": "{\"$schema\":\"http://json-schema.org/draft-07/schema#\",\"enum\":[1e400,2e400]}",
+      "python": "valid",
+      "native": "valid",
+      "acceptance_mismatch": false
+    },
+    {
+      "name": "draft201909-empty",
+      "schema_json": "{\"$schema\":\"https://json-schema.org/draft/2019-09/schema\"}",
+      "python": "valid",
+      "native": "valid",
+      "acceptance_mismatch": false
+    },
+    {
+      "name": "draft201909-invalid-type",
+      "schema_json": "{\"$schema\":\"https://json-schema.org/draft/2019-09/schema\",\"type\":\"unknown\"}",
+      "python": "rejected:SchemaError",
+      "native": "rejected",
+      "acceptance_mismatch": false
+    },
+    {
+      "name": "draft201909-negative-bound",
+      "schema_json": "{\"$schema\":\"https://json-schema.org/draft/2019-09/schema\",\"maxLength\":-1}",
+      "python": "rejected:SchemaError",
+      "native": "rejected",
+      "acceptance_mismatch": false
+    },
+    {
+      "name": "draft201909-duplicate-required",
+      "schema_json": "{\"$schema\":\"https://json-schema.org/draft/2019-09/schema\",\"required\":[\"x\",\"x\"]}",
+      "python": "rejected:SchemaError",
+      "native": "rejected",
+      "acceptance_mismatch": false
+    },
+    {
+      "name": "draft201909-unused-invalid",
+      "schema_json": "{\"$schema\":\"https://json-schema.org/draft/2019-09/schema\",\"properties\":{\"unused\":{\"type\":123}}}",
+      "python": "rejected:SchemaError",
+      "native": "rejected",
+      "acceptance_mismatch": false
+    },
+    {
+      "name": "draft201909-unused-missing-local",
+      "schema_json": "{\"$schema\":\"https://json-schema.org/draft/2019-09/schema\",\"properties\":{\"unused\":{\"$ref\":\"#/$defs/missing\"}}}",
+      "python": "valid",
+      "native": "valid",
+      "acceptance_mismatch": false
+    },
+    {
+      "name": "draft201909-unused-missing-remote",
+      "schema_json": "{\"$schema\":\"https://json-schema.org/draft/2019-09/schema\",\"properties\":{\"unused\":{\"$ref\":\"https://example.invalid/missing\"}}}",
+      "python": "valid",
+      "native": "valid",
+      "acceptance_mismatch": false
+    },
+    {
+      "name": "draft201909-unused-missing-file",
+      "schema_json": "{\"$schema\":\"https://json-schema.org/draft/2019-09/schema\",\"properties\":{\"unused\":{\"$ref\":\"file:///private/unread-schema.json\"}}}",
+      "python": "valid",
+      "native": "valid",
+      "acceptance_mismatch": false
+    },
+    {
+      "name": "draft201909-permissive-uri",
+      "schema_json": "{\"$schema\":\"https://json-schema.org/draft/2019-09/schema\",\"$id\":\"bad uri with spaces\",\"id\":\"bad uri with spaces\",\"$ref\":\"bad uri with spaces\"}",
+      "python": "valid",
+      "native": "valid",
+      "acceptance_mismatch": false
+    },
+    {
+      "name": "draft201909-literal-data",
+      "schema_json": "{\"$schema\":\"https://json-schema.org/draft/2019-09/schema\",\"const\":{\"type\":123,\"$ref\":0},\"enum\":[{\"type\":123,\"$schema\":0}],\"default\":{\"type\":123},\"examples\":[{\"type\":123}]}",
+      "python": "valid",
+      "native": "valid",
+      "acceptance_mismatch": false
+    },
+    {
+      "name": "draft201909-write-only",
+      "schema_json": "{\"$schema\":\"https://json-schema.org/draft/2019-09/schema\",\"writeOnly\":123}",
+      "python": "rejected:SchemaError",
+      "native": "rejected",
+      "acceptance_mismatch": false
+    },
+    {
+      "name": "draft201909-empty-enum",
+      "schema_json": "{\"$schema\":\"https://json-schema.org/draft/2019-09/schema\",\"enum\":[]}",
+      "python": "valid",
+      "native": "valid",
+      "acceptance_mismatch": false
+    },
+    {
+      "name": "draft201909-duplicate-enum",
+      "schema_json": "{\"$schema\":\"https://json-schema.org/draft/2019-09/schema\",\"enum\":[{},{}]}",
+      "python": "valid",
+      "native": "valid",
+      "acceptance_mismatch": false
+    },
+    {
+      "name": "draft201909-nested-cross-draft",
+      "schema_json": "{\"$schema\":\"https://json-schema.org/draft/2019-09/schema\",\"properties\":{\"unused\":{\"$schema\":\"http://json-schema.org/draft-04/schema#\",\"exclusiveMinimum\":3}}}",
+      "python": "valid",
+      "native": "valid",
+      "acceptance_mismatch": false
+    },
+    {
+      "name": "draft201909-nested-unknown-draft",
+      "schema_json": "{\"$schema\":\"https://json-schema.org/draft/2019-09/schema\",\"properties\":{\"unused\":{\"$schema\":\"https://example.invalid/draft\",\"type\":\"integer\"}}}",
+      "python": "valid",
+      "native": "valid",
+      "acceptance_mismatch": false
+    },
+    {
+      "name": "draft201909-nested-nonstring-draft",
+      "schema_json": "{\"$schema\":\"https://json-schema.org/draft/2019-09/schema\",\"properties\":{\"unused\":{\"$schema\":123}}}",
+      "python": "rejected:SchemaError",
+      "native": "rejected",
+      "acceptance_mismatch": false
+    },
+    {
+      "name": "draft201909-format-on-instance",
+      "schema_json": "{\"$schema\":\"https://json-schema.org/draft/2019-09/schema\",\"properties\":{\"n\":{\"format\":\"email\"}}}",
+      "python": "valid",
+      "native": "valid",
+      "acceptance_mismatch": false
+    },
+    {
+      "name": "draft201909-pattern-basic",
+      "schema_json": "{\"$schema\":\"https://json-schema.org/draft/2019-09/schema\",\"pattern\":\"^[a-z]+$\"}",
+      "python": "valid",
+      "native": "valid",
+      "acceptance_mismatch": false
+    },
+    {
+      "name": "draft201909-pattern-invalid",
+      "schema_json": "{\"$schema\":\"https://json-schema.org/draft/2019-09/schema\",\"pattern\":\"[\"}",
+      "python": "rejected:SchemaError",
+      "native": "rejected",
+      "acceptance_mismatch": false
+    },
+    {
+      "name": "draft201909-pattern-python-named",
+      "schema_json": "{\"$schema\":\"https://json-schema.org/draft/2019-09/schema\",\"pattern\":\"(?P<name>a)(?P=name)\"}",
+      "python": "valid",
+      "native": "rejected",
+      "acceptance_mismatch": true
+    },
+    {
+      "name": "draft201909-pattern-python-inline",
+      "schema_json": "{\"$schema\":\"https://json-schema.org/draft/2019-09/schema\",\"pattern\":\"(?i)a\"}",
+      "python": "valid",
+      "native": "rejected",
+      "acceptance_mismatch": true
+    },
+    {
+      "name": "draft201909-pattern-ecma-named",
+      "schema_json": "{\"$schema\":\"https://json-schema.org/draft/2019-09/schema\",\"pattern\":\"(?<name>a)\\\\k<name>\"}",
+      "python": "rejected:SchemaError",
+      "native": "valid",
+      "acceptance_mismatch": true
+    },
+    {
+      "name": "draft201909-pattern-ecma-unicode",
+      "schema_json": "{\"$schema\":\"https://json-schema.org/draft/2019-09/schema\",\"pattern\":\"\\\\p{L}\"}",
+      "python": "rejected:SchemaError",
+      "native": "valid",
+      "acceptance_mismatch": true
+    },
+    {
+      "name": "draft201909-pattern-invalid-unused",
+      "schema_json": "{\"$schema\":\"https://json-schema.org/draft/2019-09/schema\",\"properties\":{\"unused\":{\"pattern\":\"[\"}}}",
+      "python": "rejected:SchemaError",
+      "native": "rejected",
+      "acceptance_mismatch": false
+    },
+    {
+      "name": "draft201909-pattern-properties-invalid",
+      "schema_json": "{\"$schema\":\"https://json-schema.org/draft/2019-09/schema\",\"patternProperties\":{\"[\":{}}}",
+      "python": "rejected:SchemaError",
+      "native": "rejected",
+      "acceptance_mismatch": false
+    },
+    {
+      "name": "draft201909-integer-kind",
+      "schema_json": "{\"$schema\":\"https://json-schema.org/draft/2019-09/schema\",\"minLength\":1}",
+      "python": "valid",
+      "native": "valid",
+      "acceptance_mismatch": false
+    },
+    {
+      "name": "draft201909-float-kind",
+      "schema_json": "{\"$schema\":\"https://json-schema.org/draft/2019-09/schema\",\"minLength\":1.0}",
+      "python": "valid",
+      "native": "valid",
+      "acceptance_mismatch": false
+    },
+    {
+      "name": "draft201909-float-exponent-kind",
+      "schema_json": "{\"$schema\":\"https://json-schema.org/draft/2019-09/schema\",\"minLength\":1e0}",
+      "python": "valid",
+      "native": "valid",
+      "acceptance_mismatch": false
+    },
+    {
+      "name": "draft201909-huge-int",
+      "schema_json": "{\"$schema\":\"https://json-schema.org/draft/2019-09/schema\",\"minLength\":18446744073709551616}",
+      "python": "valid",
+      "native": "valid",
+      "acceptance_mismatch": false
+    },
+    {
+      "name": "draft201909-huge-exponent",
+      "schema_json": "{\"$schema\":\"https://json-schema.org/draft/2019-09/schema\",\"minLength\":1e400}",
+      "python": "rejected:SchemaError",
+      "native": "valid",
+      "acceptance_mismatch": true
+    },
+    {
+      "name": "draft201909-negative-zero",
+      "schema_json": "{\"$schema\":\"https://json-schema.org/draft/2019-09/schema\",\"minLength\":-0.0}",
+      "python": "valid",
+      "native": "valid",
+      "acceptance_mismatch": false
+    },
+    {
+      "name": "draft201909-fraction-bound",
+      "schema_json": "{\"$schema\":\"https://json-schema.org/draft/2019-09/schema\",\"minLength\":1.5}",
+      "python": "rejected:SchemaError",
+      "native": "rejected",
+      "acceptance_mismatch": false
+    },
+    {
+      "name": "draft201909-huge-number",
+      "schema_json": "{\"$schema\":\"https://json-schema.org/draft/2019-09/schema\",\"minimum\":1e400}",
+      "python": "valid",
+      "native": "valid",
+      "acceptance_mismatch": false
+    },
+    {
+      "name": "draft201909-tiny-positive",
+      "schema_json": "{\"$schema\":\"https://json-schema.org/draft/2019-09/schema\",\"multipleOf\":1e-400}",
+      "python": "rejected:SchemaError",
+      "native": "valid",
+      "acceptance_mismatch": true
+    },
+    {
+      "name": "draft201909-duplicate-numeric-enum",
+      "schema_json": "{\"$schema\":\"https://json-schema.org/draft/2019-09/schema\",\"enum\":[1,1.0]}",
+      "python": "valid",
+      "native": "valid",
+      "acceptance_mismatch": false
+    },
+    {
+      "name": "draft201909-distinct-huge-enum",
+      "schema_json": "{\"$schema\":\"https://json-schema.org/draft/2019-09/schema\",\"enum\":[1e400,2e400]}",
+      "python": "valid",
+      "native": "valid",
+      "acceptance_mismatch": false
+    },
+    {
+      "name": "draft202012-empty",
+      "schema_json": "{\"$schema\":\"https://json-schema.org/draft/2020-12/schema\"}",
+      "python": "valid",
+      "native": "valid",
+      "acceptance_mismatch": false
+    },
+    {
+      "name": "draft202012-invalid-type",
+      "schema_json": "{\"$schema\":\"https://json-schema.org/draft/2020-12/schema\",\"type\":\"unknown\"}",
+      "python": "rejected:SchemaError",
+      "native": "rejected",
+      "acceptance_mismatch": false
+    },
+    {
+      "name": "draft202012-negative-bound",
+      "schema_json": "{\"$schema\":\"https://json-schema.org/draft/2020-12/schema\",\"maxLength\":-1}",
+      "python": "rejected:SchemaError",
+      "native": "rejected",
+      "acceptance_mismatch": false
+    },
+    {
+      "name": "draft202012-duplicate-required",
+      "schema_json": "{\"$schema\":\"https://json-schema.org/draft/2020-12/schema\",\"required\":[\"x\",\"x\"]}",
+      "python": "rejected:SchemaError",
+      "native": "rejected",
+      "acceptance_mismatch": false
+    },
+    {
+      "name": "draft202012-unused-invalid",
+      "schema_json": "{\"$schema\":\"https://json-schema.org/draft/2020-12/schema\",\"properties\":{\"unused\":{\"type\":123}}}",
+      "python": "rejected:SchemaError",
+      "native": "rejected",
+      "acceptance_mismatch": false
+    },
+    {
+      "name": "draft202012-unused-missing-local",
+      "schema_json": "{\"$schema\":\"https://json-schema.org/draft/2020-12/schema\",\"properties\":{\"unused\":{\"$ref\":\"#/$defs/missing\"}}}",
+      "python": "valid",
+      "native": "valid",
+      "acceptance_mismatch": false
+    },
+    {
+      "name": "draft202012-unused-missing-remote",
+      "schema_json": "{\"$schema\":\"https://json-schema.org/draft/2020-12/schema\",\"properties\":{\"unused\":{\"$ref\":\"https://example.invalid/missing\"}}}",
+      "python": "valid",
+      "native": "valid",
+      "acceptance_mismatch": false
+    },
+    {
+      "name": "draft202012-unused-missing-file",
+      "schema_json": "{\"$schema\":\"https://json-schema.org/draft/2020-12/schema\",\"properties\":{\"unused\":{\"$ref\":\"file:///private/unread-schema.json\"}}}",
+      "python": "valid",
+      "native": "valid",
+      "acceptance_mismatch": false
+    },
+    {
+      "name": "draft202012-permissive-uri",
+      "schema_json": "{\"$schema\":\"https://json-schema.org/draft/2020-12/schema\",\"$id\":\"bad uri with spaces\",\"id\":\"bad uri with spaces\",\"$ref\":\"bad uri with spaces\"}",
+      "python": "valid",
+      "native": "valid",
+      "acceptance_mismatch": false
+    },
+    {
+      "name": "draft202012-literal-data",
+      "schema_json": "{\"$schema\":\"https://json-schema.org/draft/2020-12/schema\",\"const\":{\"type\":123,\"$ref\":0},\"enum\":[{\"type\":123,\"$schema\":0}],\"default\":{\"type\":123},\"examples\":[{\"type\":123}]}",
+      "python": "valid",
+      "native": "valid",
+      "acceptance_mismatch": false
+    },
+    {
+      "name": "draft202012-write-only",
+      "schema_json": "{\"$schema\":\"https://json-schema.org/draft/2020-12/schema\",\"writeOnly\":123}",
+      "python": "rejected:SchemaError",
+      "native": "rejected",
+      "acceptance_mismatch": false
+    },
+    {
+      "name": "draft202012-empty-enum",
+      "schema_json": "{\"$schema\":\"https://json-schema.org/draft/2020-12/schema\",\"enum\":[]}",
+      "python": "valid",
+      "native": "valid",
+      "acceptance_mismatch": false
+    },
+    {
+      "name": "draft202012-duplicate-enum",
+      "schema_json": "{\"$schema\":\"https://json-schema.org/draft/2020-12/schema\",\"enum\":[{},{}]}",
+      "python": "valid",
+      "native": "valid",
+      "acceptance_mismatch": false
+    },
+    {
+      "name": "draft202012-nested-cross-draft",
+      "schema_json": "{\"$schema\":\"https://json-schema.org/draft/2020-12/schema\",\"properties\":{\"unused\":{\"$schema\":\"http://json-schema.org/draft-04/schema#\",\"exclusiveMinimum\":3}}}",
+      "python": "valid",
+      "native": "valid",
+      "acceptance_mismatch": false
+    },
+    {
+      "name": "draft202012-nested-unknown-draft",
+      "schema_json": "{\"$schema\":\"https://json-schema.org/draft/2020-12/schema\",\"properties\":{\"unused\":{\"$schema\":\"https://example.invalid/draft\",\"type\":\"integer\"}}}",
+      "python": "valid",
+      "native": "valid",
+      "acceptance_mismatch": false
+    },
+    {
+      "name": "draft202012-nested-nonstring-draft",
+      "schema_json": "{\"$schema\":\"https://json-schema.org/draft/2020-12/schema\",\"properties\":{\"unused\":{\"$schema\":123}}}",
+      "python": "rejected:SchemaError",
+      "native": "rejected",
+      "acceptance_mismatch": false
+    },
+    {
+      "name": "draft202012-format-on-instance",
+      "schema_json": "{\"$schema\":\"https://json-schema.org/draft/2020-12/schema\",\"properties\":{\"n\":{\"format\":\"email\"}}}",
+      "python": "valid",
+      "native": "valid",
+      "acceptance_mismatch": false
+    },
+    {
+      "name": "draft202012-pattern-basic",
+      "schema_json": "{\"$schema\":\"https://json-schema.org/draft/2020-12/schema\",\"pattern\":\"^[a-z]+$\"}",
+      "python": "valid",
+      "native": "valid",
+      "acceptance_mismatch": false
+    },
+    {
+      "name": "draft202012-pattern-invalid",
+      "schema_json": "{\"$schema\":\"https://json-schema.org/draft/2020-12/schema\",\"pattern\":\"[\"}",
+      "python": "rejected:SchemaError",
+      "native": "rejected",
+      "acceptance_mismatch": false
+    },
+    {
+      "name": "draft202012-pattern-python-named",
+      "schema_json": "{\"$schema\":\"https://json-schema.org/draft/2020-12/schema\",\"pattern\":\"(?P<name>a)(?P=name)\"}",
+      "python": "valid",
+      "native": "rejected",
+      "acceptance_mismatch": true
+    },
+    {
+      "name": "draft202012-pattern-python-inline",
+      "schema_json": "{\"$schema\":\"https://json-schema.org/draft/2020-12/schema\",\"pattern\":\"(?i)a\"}",
+      "python": "valid",
+      "native": "rejected",
+      "acceptance_mismatch": true
+    },
+    {
+      "name": "draft202012-pattern-ecma-named",
+      "schema_json": "{\"$schema\":\"https://json-schema.org/draft/2020-12/schema\",\"pattern\":\"(?<name>a)\\\\k<name>\"}",
+      "python": "rejected:SchemaError",
+      "native": "valid",
+      "acceptance_mismatch": true
+    },
+    {
+      "name": "draft202012-pattern-ecma-unicode",
+      "schema_json": "{\"$schema\":\"https://json-schema.org/draft/2020-12/schema\",\"pattern\":\"\\\\p{L}\"}",
+      "python": "rejected:SchemaError",
+      "native": "valid",
+      "acceptance_mismatch": true
+    },
+    {
+      "name": "draft202012-pattern-invalid-unused",
+      "schema_json": "{\"$schema\":\"https://json-schema.org/draft/2020-12/schema\",\"properties\":{\"unused\":{\"pattern\":\"[\"}}}",
+      "python": "rejected:SchemaError",
+      "native": "rejected",
+      "acceptance_mismatch": false
+    },
+    {
+      "name": "draft202012-pattern-properties-invalid",
+      "schema_json": "{\"$schema\":\"https://json-schema.org/draft/2020-12/schema\",\"patternProperties\":{\"[\":{}}}",
+      "python": "rejected:SchemaError",
+      "native": "rejected",
+      "acceptance_mismatch": false
+    },
+    {
+      "name": "draft202012-integer-kind",
+      "schema_json": "{\"$schema\":\"https://json-schema.org/draft/2020-12/schema\",\"minLength\":1}",
+      "python": "valid",
+      "native": "valid",
+      "acceptance_mismatch": false
+    },
+    {
+      "name": "draft202012-float-kind",
+      "schema_json": "{\"$schema\":\"https://json-schema.org/draft/2020-12/schema\",\"minLength\":1.0}",
+      "python": "valid",
+      "native": "valid",
+      "acceptance_mismatch": false
+    },
+    {
+      "name": "draft202012-float-exponent-kind",
+      "schema_json": "{\"$schema\":\"https://json-schema.org/draft/2020-12/schema\",\"minLength\":1e0}",
+      "python": "valid",
+      "native": "valid",
+      "acceptance_mismatch": false
+    },
+    {
+      "name": "draft202012-huge-int",
+      "schema_json": "{\"$schema\":\"https://json-schema.org/draft/2020-12/schema\",\"minLength\":18446744073709551616}",
+      "python": "valid",
+      "native": "valid",
+      "acceptance_mismatch": false
+    },
+    {
+      "name": "draft202012-huge-exponent",
+      "schema_json": "{\"$schema\":\"https://json-schema.org/draft/2020-12/schema\",\"minLength\":1e400}",
+      "python": "rejected:SchemaError",
+      "native": "valid",
+      "acceptance_mismatch": true
+    },
+    {
+      "name": "draft202012-negative-zero",
+      "schema_json": "{\"$schema\":\"https://json-schema.org/draft/2020-12/schema\",\"minLength\":-0.0}",
+      "python": "valid",
+      "native": "valid",
+      "acceptance_mismatch": false
+    },
+    {
+      "name": "draft202012-fraction-bound",
+      "schema_json": "{\"$schema\":\"https://json-schema.org/draft/2020-12/schema\",\"minLength\":1.5}",
+      "python": "rejected:SchemaError",
+      "native": "rejected",
+      "acceptance_mismatch": false
+    },
+    {
+      "name": "draft202012-huge-number",
+      "schema_json": "{\"$schema\":\"https://json-schema.org/draft/2020-12/schema\",\"minimum\":1e400}",
+      "python": "valid",
+      "native": "valid",
+      "acceptance_mismatch": false
+    },
+    {
+      "name": "draft202012-tiny-positive",
+      "schema_json": "{\"$schema\":\"https://json-schema.org/draft/2020-12/schema\",\"multipleOf\":1e-400}",
+      "python": "rejected:SchemaError",
+      "native": "valid",
+      "acceptance_mismatch": true
+    },
+    {
+      "name": "draft202012-duplicate-numeric-enum",
+      "schema_json": "{\"$schema\":\"https://json-schema.org/draft/2020-12/schema\",\"enum\":[1,1.0]}",
+      "python": "valid",
+      "native": "valid",
+      "acceptance_mismatch": false
+    },
+    {
+      "name": "draft202012-distinct-huge-enum",
+      "schema_json": "{\"$schema\":\"https://json-schema.org/draft/2020-12/schema\",\"enum\":[1e400,2e400]}",
+      "python": "valid",
+      "native": "valid",
+      "acceptance_mismatch": false
+    },
+    {
+      "name": "unknown",
+      "schema_json": "{\"$schema\":\"not a uri with spaces\"}",
+      "python": "valid",
+      "native": "valid",
+      "acceptance_mismatch": false
+    },
+    {
+      "name": "uri-cleanup",
+      "schema_json": "{\"$schema\":\" HTTP://json-schema.org/draft-07/schema?#\"}",
+      "python": "valid",
+      "native": "valid",
+      "acceptance_mismatch": false
+    },
+    {
+      "name": "draft3",
+      "schema_json": "{\"$schema\":\"http://json-schema.org/draft-03/schema#\"}",
+      "python": "valid",
+      "native": "rejected",
+      "acceptance_mismatch": true
+    },
+    {
+      "name": "latest-no-declaration",
+      "schema_json": "{}",
+      "python": "valid",
+      "native": "valid",
+      "acceptance_mismatch": false
+    }
+  ]
+}

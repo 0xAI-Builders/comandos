@@ -1,0 +1,152 @@
+[
+  {
+    "name": "root-null",
+    "schema_json": "null",
+    "content_json": "{}",
+    "mode": "ExhaustErrors",
+    "expected_gap": null,
+    "oracle": {
+      "root": "error:TypeError",
+      "schema": {
+        "result": "Abort:TypeError",
+        "exception": "TypeError",
+        "unresolvable": false,
+        "sdk_mapping": "TypeError"
+      },
+      "instance": {
+        "result": "not-run:precondition"
+      }
+    }
+  },
+  {
+    "name": "root-number",
+    "schema_json": "1",
+    "content_json": "{}",
+    "mode": "ExhaustErrors",
+    "expected_gap": null,
+    "oracle": {
+      "root": "error:TypeError",
+      "schema": {
+        "result": "Abort:TypeError",
+        "exception": "TypeError",
+        "unresolvable": false,
+        "sdk_mapping": "TypeError"
+      },
+      "instance": {
+        "result": "not-run:precondition"
+      }
+    }
+  },
+  {
+    "name": "root-list",
+    "schema_json": "[]",
+    "content_json": "{}",
+    "mode": "ExhaustErrors",
+    "expected_gap": null,
+    "oracle": {
+      "root": "Draft202012Validator",
+      "schema": {
+        "result": "Abort:SchemaError",
+        "exception": "SchemaError",
+        "unresolvable": false,
+        "sdk_mapping": "RuntimeError"
+      },
+      "instance": {
+        "result": "not-run:precondition"
+      }
+    }
+  },
+  {
+    "name": "root-string",
+    "schema_json": "\"schema\"",
+    "content_json": "{}",
+    "mode": "ExhaustErrors",
+    "expected_gap": null,
+    "oracle": {
+      "root": "Draft202012Validator",
+      "schema": {
+        "result": "Abort:SchemaError",
+        "exception": "SchemaError",
+        "unresolvable": false,
+        "sdk_mapping": "RuntimeError"
+      },
+      "instance": {
+        "result": "not-run:precondition"
+      }
+    }
+  },
+  {
+    "name": "root-list-with-key",
+    "schema_json": "[\"$schema\"]",
+    "content_json": "{}",
+    "mode": "ExhaustErrors",
+    "expected_gap": null,
+    "oracle": {
+      "root": "error:TypeError",
+      "schema": {
+        "result": "Abort:TypeError",
+        "exception": "TypeError",
+        "unresolvable": false,
+        "sdk_mapping": "TypeError"
+      },
+      "instance": {
+        "result": "not-run:precondition"
+      }
+    }
+  },
+  {
+    "name": "root-string-with-key",
+    "schema_json": "\"text $schema text\"",
+    "content_json": "{}",
+    "mode": "ExhaustErrors",
+    "expected_gap": null,
+    "oracle": {
+      "root": "error:TypeError",
+      "schema": {
+        "result": "Abort:TypeError",
+        "exception": "TypeError",
+        "unresolvable": false,
+        "sdk_mapping": "TypeError"
+      },
+      "instance": {
+        "result": "not-run:precondition"
+      }
+    }
+  },
+  {
+    "name": "root-true",
+    "schema_json": "true",
+    "content_json": "{}",
+    "mode": "ExhaustErrors",
+    "expected_gap": null,
+    "oracle": {
+      "root": "Draft202012Validator",
+      "schema": {
+        "result": "valid"
+      },
+      "instance": {
+        "result": "Valid",
+        "sdk_mapping": "success"
+      }
+    }
+  },
+  {
+    "name": "root-false",
+    "schema_json": "false",
+    "content_json": "{}",
+    "mode": "ExhaustErrors",
+    "expected_gap": null,
+    "oracle": {
+      "root": "Draft202012Validator",
+      "schema": {
+        "result": "valid"
+      },
+      "instance": {
+        "result": "Invalid",
+        "exception": "ValidationError",
+        "unresolvable": false,
+        "sdk_mapping": "RuntimeError"
+      }
+    }
+  }
+]

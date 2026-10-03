@@ -1,0 +1,21 @@
+   Compiling comandos-extensions v0.1.0 (/work/crates/comandos-extensions)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 4.73s
+     Running unittests src/lib.rs (.migration-build/target/debug/deps/comandos_extensions-e067645736155fb7)
+
+running 1 test
+
+thread 'output_schema::traversal::tests::directed_results_match_the_frozen_installed_oracle' (271) panicked at crates/comandos-extensions/src/output_schema/traversal.rs:259:13:
+assertion `left == right` failed: "empty-id-registry-snapshot"
+  left: "Invalid"
+ right: "Valid"
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+test output_schema::traversal::tests::directed_results_match_the_frozen_installed_oracle ... FAILED
+
+failures:
+
+failures:
+    output_schema::traversal::tests::directed_results_match_the_frozen_installed_oracle
+
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 26 filtered out; finished in 0.07s
+
+error: test failed, to rerun pass `-p comandos-extensions --lib`

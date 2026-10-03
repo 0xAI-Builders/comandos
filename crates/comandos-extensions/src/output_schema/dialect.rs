@@ -170,6 +170,44 @@ fn select_python_root_dialect(schema: &Value) -> Result<RootDialect, ()> {
     })
 }
 
+#[derive(Debug, PartialEq, Eq)]
+pub(super) enum SelectedDialect {
+    Supported(jsonschema::Draft),
+    Draft3,
+}
+
+/// Python validator evolution uses the current class for unknown declarations.
+pub(super) fn select_with_default(
+    schema: &Value,
+    fallback: jsonschema::Draft,
+) -> Result<SelectedDialect, ()> {
+    // Python checks membership before indexing: ordinary strings/lists without
+    // the declaration select the fallback even though check_schema rejects them.
+    match schema {
+        Value::Null | Value::Number(_) => return Err(()),
+        Value::String(value) => {
+            return if value.contains("$schema") {
+                Err(())
+            } else {
+                Ok(SelectedDialect::Supported(fallback))
+            };
+        }
+        Value::Array(values) => {
+            return if values.iter().any(|value| value.as_str() == Some("$schema")) {
+                Err(())
+            } else {
+                Ok(SelectedDialect::Supported(fallback))
+            };
+        }
+        _ => {}
+    }
+    Ok(match select_python_root_dialect(schema)? {
+        RootDialect::Registered(draft, _) => SelectedDialect::Supported(draft),
+        RootDialect::Draft3 => SelectedDialect::Draft3,
+        RootDialect::Latest => SelectedDialect::Supported(fallback),
+    })
+}
+
 pub(super) fn validation_schema(schema: &Value) -> Result<(Cow<'_, Value>, jsonschema::Draft), ()> {
     let selected = select_python_root_dialect(schema)?;
     let (draft, canonical) = match selected {

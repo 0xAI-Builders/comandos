@@ -6,6 +6,9 @@ mod dialect;
 // Separately tested internal stage; worker integration awaits acceptance parity.
 #[allow(dead_code)]
 mod preflight;
+// Private ordered traversal audit; exact schema proof and parity still block wiring.
+#[allow(dead_code)]
+mod traversal;
 use std::{
     io::{Read, Write},
     path::Path,

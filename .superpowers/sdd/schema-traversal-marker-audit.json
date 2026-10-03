@@ -1,0 +1,166 @@
+{
+  "versions": {
+    "jsonschema": "4.26.0",
+    "referencing": "0.37.0",
+    "mcp": "1.30.0"
+  },
+  "environment": {
+    "optional_packages": {
+      "rfc3987": null,
+      "rfc3986-validator": null,
+      "rfc3987-syntax": null,
+      "fqdn": null,
+      "idna": "3.20",
+      "isoduration": null,
+      "webcolors": null
+    },
+    "schema_format_checkers": [
+      "date",
+      "email",
+      "idn-email",
+      "idn-hostname",
+      "ipv4",
+      "ipv6",
+      "regex",
+      "uuid"
+    ],
+    "jsonschema_specifications": "2025.9.1"
+  },
+  "summary": {
+    "scope_gap": 0,
+    "category_mismatch": 0,
+    "unexpected_gap": 0,
+    "missing_expected_gap": 0,
+    "preflight_mismatch": 0,
+    "selector_mismatch": 0,
+    "lost_coverage": 0,
+    "false_accept": 0,
+    "false_reject": 0,
+    "stock_acceptance_mismatch": 0,
+    "stock_classification_difference": 2,
+    "new_false_reject_vs_stock": 0,
+    "new_false_accept_vs_stock": 0,
+    "cases": 2,
+    "supported_cohort_pass": true,
+    "precondition_omissions": 0,
+    "infrastructure_failures": 0,
+    "stage_infrastructure_failures": 0,
+    "semantic_results": {
+      "Valid": 0,
+      "Invalid": 0,
+      "Abort:Unresolvable": 2,
+      "Abort:RecursionError": 0
+    },
+    "protective_limits": 0
+  },
+  "resource_bounds": {
+    "address_space_bytes": 402653184,
+    "cpu_seconds": [
+      2,
+      3
+    ],
+    "batch_size": 8
+  },
+  "traversal_measurements": [
+    {
+      "start": 0,
+      "count": 2,
+      "seconds": 0.004320678999647498,
+      "cpu_seconds": 0.003773000000000001,
+      "child_peak_rss_kib_cumulative": 28684,
+      "infrastructure": null
+    }
+  ],
+  "stage_measurements": [
+    {
+      "start": 0,
+      "count": 2,
+      "seconds": 0.02665018499828875,
+      "cpu_seconds": 0.026261999999999997,
+      "child_peak_rss_kib_cumulative": 28684,
+      "infrastructure": null
+    }
+  ],
+  "results": [
+    {
+      "name": "file-marker",
+      "schema_json": "{\"$ref\": \"file:///tmp/schema-traversal-private-marker.json\"}",
+      "content_json": "{}",
+      "mode": "ExhaustErrors",
+      "python": {
+        "root": "Draft202012Validator",
+        "schema": {
+          "result": "valid"
+        },
+        "instance": {
+          "result": "Abort:Unresolvable",
+          "exception": "_WrappedReferencingError",
+          "unresolvable": true,
+          "sdk_mapping": "RuntimeError"
+        }
+      },
+      "native_root": "Draft202012Validator",
+      "native_preflight": "valid",
+      "native_traversal": "Abort:Unresolvable",
+      "native_pointer": "",
+      "native_sdk_mapping": "RuntimeError",
+      "stock": "invalid-schema",
+      "python_sdk": "execution-failure:_WrappedReferencingError",
+      "composition": "Abort:Unresolvable",
+      "scope_gap": false,
+      "traversal_phase": "evaluation",
+      "category_mismatch": false,
+      "unexpected_gap": false,
+      "missing_expected_gap": false,
+      "preflight_mismatch": false,
+      "selector_mismatch": false,
+      "lost_coverage": false,
+      "new_false_reject_vs_stock": false,
+      "new_false_accept_vs_stock": false,
+      "false_accept": false,
+      "false_reject": false,
+      "stock_acceptance_mismatch": false,
+      "stock_classification_difference": true
+    },
+    {
+      "name": "network-marker",
+      "schema_json": "{\"$ref\": \"http://127.0.0.1:45255/schema\"}",
+      "content_json": "{}",
+      "mode": "ExhaustErrors",
+      "python": {
+        "root": "Draft202012Validator",
+        "schema": {
+          "result": "valid"
+        },
+        "instance": {
+          "result": "Abort:Unresolvable",
+          "exception": "_WrappedReferencingError",
+          "unresolvable": true,
+          "sdk_mapping": "RuntimeError"
+        }
+      },
+      "native_root": "Draft202012Validator",
+      "native_preflight": "valid",
+      "native_traversal": "Abort:Unresolvable",
+      "native_pointer": "",
+      "native_sdk_mapping": "RuntimeError",
+      "stock": "invalid-schema",
+      "python_sdk": "execution-failure:_WrappedReferencingError",
+      "composition": "Abort:Unresolvable",
+      "scope_gap": false,
+      "traversal_phase": "evaluation",
+      "category_mismatch": false,
+      "unexpected_gap": false,
+      "missing_expected_gap": false,
+      "preflight_mismatch": false,
+      "selector_mismatch": false,
+      "lost_coverage": false,
+      "new_false_reject_vs_stock": false,
+      "new_false_accept_vs_stock": false,
+      "false_accept": false,
+      "false_reject": false,
+      "stock_acceptance_mismatch": false,
+      "stock_classification_difference": true
+    }
+  ]
+}

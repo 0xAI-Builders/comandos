@@ -1,0 +1,169 @@
+   Compiling comandos-extensions v0.1.0 (/work/crates/comandos-extensions)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 34.56s
+     Running unittests src/lib.rs (.migration-build/target/debug/deps/comandos_extensions-e067645736155fb7)
+
+running 28 tests
+test output_schema::preflight::tests::audit_probe ... ignored, explicit exact Python differential audit, never ordinary discovery
+test metadata::tests::atomic_collision_does_not_delete_existing_temporary_file ... ok
+test output_schema::dialect::dialect_tests::removing_unknown_root_keeps_other_keyword_insertion_order ... ok
+test output_schema::dialect::dialect_tests::compilation_clone_changes_only_the_root_declaration ... ok
+test output_schema::traversal::tests::audit_probe ... ignored, explicit installed Python precondition proof and differential audit only
+test output_schema::traversal::tests::selector_membership_and_child_fallback_match_installed_python ... ok
+test output_schema::traversal::tests::inventories_and_notices_are_exact ... ok
+test output_schema::traversal::tests::evaluator_never_reads_external_file_or_connects_to_network ... ok
+test output_schema::preflight::tests::bundled_schema_and_notice_hashes_match_the_provenance ... ok
+test output_schema::preflight::tests::draft4_duplicate_enum_is_rejected ... ok
+test output_schema::preflight::tests::draft4_empty_enum_is_rejected ... ok
+test output_schema::preflight::tests::draft7_write_only_is_unconstrained ... ok
+test check::tests::cancellation_reaps_child ... ok
+test output_schema::dialect::dialect_tests::root_lookup_and_uri_keys_match_installed_python_capture ... ok
+test output_schema::preflight::tests::raw_numeric_schema_values_are_preserved ... ok
+test output_schema::preflight::tests::schema_references_never_read_private_files_or_contact_network ... ok
+test output_schema::preflight::tests::unused_unresolved_references_are_schema_data ... ok
+test output_schema::traversal::tests::productive_value_depth_and_protective_limits_are_distinct_from_cycles ... ok
+test auth::cancellation_tests::cancelled_queued_refresh_never_starts_and_drain_finishes ... ok
+test auth::cancellation_tests::cancelled_request_drains_rotated_token_before_shutdown ... ok
+test output_schema::traversal::tests::directed_results_match_the_frozen_installed_oracle ... ok
+test output_schema::preflight::tests::regex_property_names_follow_original_metaschema_constraints ... ok
+test output_schema::preflight::tests::selected_metaschema_keeps_cross_draft_declarations_as_data ... ok
+test auth::cancellation_tests::scoped_deadline_bounds_lock_wait_and_preserves_existing_rotation ... ok
+test metadata::tests::all_unicode_scalars_match_python_311_provenance_words ... ok
+test check::tests::authenticated_deadline_still_closes_session_without_refresh ... ok
+test check::tests::deadline_reaps_hung_and_saturated_children ... ok
+test output_schema::preflight::tests::supported_drafts_check_original_schema_without_mutation ... ok
+
+test result: ok. 26 passed; 0 failed; 2 ignored; 0 measured; 0 filtered out; finished in 0.61s
+
+     Running unittests src/main.rs (.migration-build/target/debug/deps/comandos_extensions-8a6110b38a79b8dc)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/auth.rs (.migration-build/target/debug/deps/auth-88de05a22477151a)
+
+running 16 tests
+test missing_store_is_absent_and_endpoint_mismatch_never_leaks ... ok
+test jsonc_retains_opaque_number_fields_and_arbitrary_integer_values ... ok
+test jsonc_preserves_quoted_urls_and_rejects_duplicate_keys_at_any_depth ... ok
+test native_source_symlink_is_rejected_before_write_and_original_is_preserved ... ok
+test refresh_failure_preserves_original_and_suppresses_upstream_secrets ... ok
+test legacy_native_token_cache_updates_only_matching_previous_token ... ok
+test refresh_does_not_overwrite_a_native_token_changed_during_network_request ... ok
+test malformed_native_store_is_not_overwritten_or_exposed ... ok
+test rejected_token_refreshes_once_and_old_401_reuses_rotated_token ... ok
+test live_clock_stamps_expiry_and_native_source_after_delayed_refresh ... ok
+test native_refresh_is_reused_then_rotation_updates_only_exact_mcp_record ... ok
+test stale_expiry_without_refresh_is_tried_but_rejected_token_is_not_replayed ... ok
+test oauth_refresh_rejects_insecure_issuer_without_network_or_secret_output ... ok
+test grok_native_timestamp_formats_are_read_without_refresh ... ok
+test live_clock_checks_margin_after_waiting_for_credential_lock ... ok
+test rotation_is_once_across_concurrent_connections_and_preserves_unknown_fields ... ok
+
+test result: ok. 16 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.18s
+
+     Running tests/auth_import.rs (.migration-build/target/debug/deps/auth_import-52718342848de218)
+
+running 7 tests
+test malformed_source_does_not_overwrite_existing_credentials_or_print_contents ... ok
+test changed_endpoint_imports_a_new_match_without_crossing_endpoints ... ok
+test matching_existing_endpoint_is_unchanged_even_if_source_is_fresher ... ok
+test equal_expiry_preserves_original_record_discovery_order ... ok
+test imports_freshest_matching_mcp_only_and_preserves_existing_entries ... ok
+test grok_timestamp_shapes_and_mcp_remote_cache_fields_are_imported ... ok
+test import_waits_for_the_shared_credentials_lock_and_reloads_after_acquiring_it ... ok
+
+test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.08s
+
+     Running tests/catalog.rs (.migration-build/target/debug/deps/catalog-ab3cdc1cd17cb9ac)
+
+running 27 tests
+test malformed_native_server_is_not_overwritten ... ok
+test numeric_equality_distinguishes_adjacent_big_integers ... ok
+test nonfinite_numbers_are_not_equal_to_integers ... ok
+test backup_failure_preserves_source_and_stale_skill_cleanup_is_scoped ... ok
+test invalid_toml_and_unserializable_native_policies_fail_safely ... ok
+test failed_skill_copy_keeps_original_and_existing_destination ... ok
+test private_backups_symlink_and_concurrent_write_rejection ... ok
+test initial_skill_conflict_preserves_canonical_and_private_backup ... ok
+test toml_fingerprint_types_bigints_and_unknown_retention ... ok
+test skill_provider_alias_relative_resources_materialization_and_external_links ... ok
+test simultaneous_catalog_native_and_multiple_native_conflicts_preserve_inputs ... ok
+test snapshots_and_export_reject_intervening_edits ... ok
+test jsonc_and_reserved_names_and_invalid_errors ... ok
+test import_rejects_unserializable_normalized_values ... ok
+test dotted_and_inline_toml_preserves_unknown_types_and_no_final_newline_noop ... ok
+test grok_disable_list_and_client_owned_permission_edits ... ok
+test jsonc_comments_with_unmatched_quotes_preserve_nonfinite_atoms_and_literal_strings ... ok
+test import_alias_precedence_remote_rules_local_service_and_future_accounts ... ok
+test native_reconcile_rejects_unserializable_normalized_values ... ok
+test malformed_empty_json_and_nonfinite_keys_are_rejected ... ok
+test skills_complete_tree_reinstall_and_conflict ... ok
+test import_accepts_jsonc_comments_with_unmatched_quotes_and_nonfinite_atoms ... ok
+test toml_new_bigint_policy_and_nonfinite_survive_sync ... ok
+test import_sync_status_and_noop ... ok
+test native_edits_disable_and_reenable_policy ... ok
+test mail_only_secondary_clients_and_projects ... ok
+test simultaneous_imports_obey_cross_process_sync_lock ... ok
+
+test result: ok. 27 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.09s
+
+     Running tests/http_client.rs (.migration-build/target/debug/deps/http_client-429c3dd5e8f50f85)
+
+running 1 test
+test system_trust_client_can_be_constructed_in_sandbox ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.03s
+
+     Running tests/metadata.rs (.migration-build/target/debug/deps/metadata-69a5602df90ca41a)
+
+running 20 tests
+test complete_ordered_capture_rejects_cursor_cycles_and_recovers ... ok
+test capture_rejects_oversized_expected_cursor_and_resets ... ok
+test capture_bounds_consumed_and_expected_cursor_bytes_without_partial_rows ... ok
+test provenance_symlink_errors_and_dangling_external_targets_stay_unknown ... ok
+test skill_read_preserves_python_universal_newlines ... ok
+test skill_cache_handles_failures_and_file_replacement ... ok
+test measurement_timestamp_is_read_after_count ... ok
+test oracle_schema_bytes_hashes_and_count_match_python ... ok
+test measurement_reuses_cache_and_invalidates_schema_configuration_and_age ... ok
+test capture_accepts_cursor_byte_and_entry_limit_boundaries ... ok
+test capture_bounds_cursor_entry_count_for_empty_pages ... ok
+test provenance_is_bound_to_install_path_and_plugin_wins ... ok
+test provenance_unicode_category_regression ... ok
+test capture_serialization_failure_regression ... ok
+test capture_limits_default_ascii_size_and_rows ... ok
+test failed_skill_counts_retry_after_thirty_seconds_and_caches_are_bounded ... ok
+test dropping_runtime_reaps_active_counter ... ok
+test simultaneous_measurements_count_once_and_rotate_once ... ok
+test timeout_cancellation_and_bad_output_reap_children ... ok
+test transient_counter_matches_python_and_corrupt_cache_is_unknown ... ok
+
+test result: ok. 20 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.27s
+
+     Running tests/output_schema.rs (.migration-build/target/debug/deps/output_schema-e60edb3c5854641e)
+
+running 15 tests
+test invalid_schema_uri_format_has_no_installed_python_checker ... ok
+test native_worker_sets_only_its_own_memory_cpu_and_core_budget ... ok
+test cancellation_reaps_owned_child ... ok
+test runtime_shutdown_reaps_child_with_blocked_stdout ... ok
+test unknown_top_dialect_uses_python_latest_fallback ... ok
+test native_worker_emits_only_constant_status_and_requires_objects ... ok
+test required_integer_property_is_validated ... ok
+test external_references_never_touch_network_or_private_file ... ok
+test enums_arrays_and_local_references ... ok
+test schema_checking_and_big_integer_fidelity ... ok
+test known_drafts_and_disabled_instance_formats ... ok
+test four_workers_allow_healthy_async_progress ... ok
+test expired_deadline_input_limits_and_unknown_status_are_safe ... ok
+test deadline_reaps_child_blocked_on_input_and_output ... ok
+test supported_root_dialect_matrix_matches_captured_python_acceptance ... ok
+
+test result: ok. 15 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 4.92s
+
+   Doc-tests comandos_extensions
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s

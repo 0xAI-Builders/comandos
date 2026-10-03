@@ -1,0 +1,1 @@
+Kind: descriptive dependency audit | Audience: controller and independent Rust reviewer | Purpose: assess the exact private traversal boundary and retained gaps | Non-goals: production wiring, full MCP diagnostic parity, numeric/regex engines, general resources, all-input resource parity

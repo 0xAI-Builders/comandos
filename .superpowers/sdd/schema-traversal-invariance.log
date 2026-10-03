@@ -1,0 +1,76 @@
+{
+  "stock_rows_identical_to_approved": 735,
+  "stage_rows_identical_to_approved": 184,
+  "full_preflight_rows_identical": 735,
+  "historical_regex_regressions_unchanged": [
+    "original105/regex-python-named-group",
+    "original105/regex-inline-flags",
+    "schema184/draft201909-pattern-python-inline",
+    "schema184/draft202012-pattern-python-inline"
+  ],
+  "protected_inputs_unchanged": true,
+  "worker_except_declaration_byte_identical": true,
+  "fixture_generator_matches_original_bytes": true,
+  "directed_metrics": {
+    "stage_measurements": {
+      "batches": 29,
+      "max_rows": 8,
+      "max_wall_seconds": 0.10604069498367608,
+      "max_cpu_seconds": 0.10554700000000009,
+      "sum_cpu_seconds": 1.1099379999999999,
+      "cumulative_child_max_rss_kib": 30524
+    },
+    "traversal_measurements": {
+      "batches": 29,
+      "max_rows": 8,
+      "max_wall_seconds": 0.06421670177951455,
+      "max_cpu_seconds": 0.06343199999999999,
+      "sum_cpu_seconds": 0.4364410000000003,
+      "cumulative_child_max_rss_kib": 30524
+    }
+  },
+  "full_metrics": {
+    "stage_measurements": {
+      "batches": 92,
+      "max_rows": 8,
+      "max_wall_seconds": 0.1180563501548022,
+      "max_cpu_seconds": 0.11775100000000016,
+      "sum_cpu_seconds": 2.765251000000001,
+      "cumulative_child_max_rss_kib": 31040
+    },
+    "traversal_measurements": {
+      "batches": 92,
+      "max_rows": 8,
+      "max_wall_seconds": 0.05972395185381174,
+      "max_cpu_seconds": 0.05927099999999974,
+      "sum_cpu_seconds": 0.8983819999999992,
+      "cumulative_child_max_rss_kib": 31264
+    }
+  },
+  "directed_gap_inventory": {
+    "ScopeGap:Numeric": 3,
+    "ScopeGap:PointerSemantics": 6,
+    "ScopeGap:DuplicateAnchor": 1,
+    "ScopeGap:DynamicScope": 1,
+    "ScopeGap:ResourceId": 7,
+    "ScopeGap:ExternalResource": 1,
+    "ScopeGap:UriJoin": 1,
+    "ScopeGap:Keyword": 4,
+    "ScopeGap:PythonRegex": 1,
+    "ScopeGap:Annotation": 1,
+    "ScopeGap:ResourceDialect": 2,
+    "ScopeGap:Draft3": 1,
+    "ScopeGap:BudgetBoundary": 3,
+    "ScopeGap:FragmentShape": 1
+  },
+  "full_gap_inventory": {
+    "ScopeGap:Numeric": 56,
+    "ScopeGap:Keyword": 122,
+    "ScopeGap:Annotation": 1,
+    "ScopeGap:ResourceId": 12,
+    "ScopeGap:Draft3": 5,
+    "ScopeGap:ExternalResource": 1,
+    "ScopeGap:UriJoin": 2,
+    "ScopeGap:PythonRegex": 9
+  }
+}
