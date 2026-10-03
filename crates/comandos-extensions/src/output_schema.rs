@@ -3,6 +3,9 @@
 use serde_json::Value;
 
 mod dialect;
+// Separately tested internal stage; worker integration awaits acceptance parity.
+#[allow(dead_code)]
+mod preflight;
 use std::{
     io::{Read, Write},
     path::Path,
