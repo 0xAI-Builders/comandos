@@ -27,9 +27,9 @@
     "jsonschema_specifications": "2025.9.1"
   },
   "native": "jsonschema 0.58.4, offline, instance formats disabled",
-  "cases": 100,
-  "acceptance_mismatches": 20,
-  "classification_differences": 34,
+  "cases": 105,
+  "acceptance_mismatches": 22,
+  "classification_differences": 37,
   "results": [
     {
       "name": "empty",
@@ -342,9 +342,9 @@
     {
       "name": "invalid-schema-uri-format",
       "python": "valid",
-      "native": "invalid-schema",
-      "acceptance_mismatch": true,
-      "classification_difference": true
+      "native": "valid",
+      "acceptance_mismatch": false,
+      "classification_difference": false
     },
     {
       "name": "unknown-schema-nonstring",
@@ -447,9 +447,9 @@
     {
       "name": "unknown-top-dialect",
       "python": "valid",
-      "native": "invalid-schema",
-      "acceptance_mismatch": true,
-      "classification_difference": true
+      "native": "valid",
+      "acceptance_mismatch": false,
+      "classification_difference": false
     },
     {
       "name": "unknown-nested-unused",
@@ -730,6 +730,41 @@
       "native": "invalid-content",
       "acceptance_mismatch": false,
       "classification_difference": false
+    },
+    {
+      "name": "draft4-metaschema-empty-enum",
+      "python": "invalid-schema",
+      "native": "invalid-content",
+      "acceptance_mismatch": false,
+      "classification_difference": true
+    },
+    {
+      "name": "draft4-metaschema-duplicate-enum",
+      "python": "invalid-schema",
+      "native": "valid",
+      "acceptance_mismatch": true,
+      "classification_difference": true
+    },
+    {
+      "name": "draft7-metaschema-writeOnly-number",
+      "python": "valid",
+      "native": "invalid-schema",
+      "acceptance_mismatch": true,
+      "classification_difference": true
+    },
+    {
+      "name": "no-progress-ref-cycle-default-root",
+      "python": "execution-failure:RecursionError",
+      "native": "valid",
+      "acceptance_mismatch": true,
+      "classification_difference": true
+    },
+    {
+      "name": "no-progress-ref-cycle-unknown-root",
+      "python": "execution-failure:RecursionError",
+      "native": "valid",
+      "acceptance_mismatch": true,
+      "classification_difference": true
     }
   ]
 }

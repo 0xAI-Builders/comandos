@@ -44,6 +44,43 @@ async fn validate(
 }
 
 #[tokio::test(flavor = "current_thread")]
+async fn unknown_top_dialect_uses_python_latest_fallback() {
+    assert_eq!(
+        validate(json!({"$schema":"https://example.invalid/unknown","properties":{"n":{"type":"integer"}}}), json!({"n":1.0})).await,
+        Ok(Validation::Valid)
+    );
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn invalid_schema_uri_format_has_no_installed_python_checker() {
+    assert_eq!(
+        validate(json!({"$schema":"not a uri with spaces"}), json!({})).await,
+        Ok(Validation::Valid)
+    );
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn supported_root_dialect_matrix_matches_captured_python_acceptance() {
+    let rows: serde_json::Value =
+        serde_json::from_str(include_str!("output_schema_dialect_cases.json")).unwrap();
+    // Draft3 and nested resource gaps remain in the unfiltered differential
+    // audit; this regression gate exercises supported root selection only.
+    for row in rows.as_array().unwrap().iter().filter(|r| {
+        r["selected"] != "Draft3Validator" && !r["name"].as_str().unwrap().starts_with("nested-")
+    }) {
+        let schema = serde_json::from_str(row["schema_json"].as_str().unwrap()).unwrap();
+        let content = serde_json::from_str(row["content_json"].as_str().unwrap()).unwrap();
+        let result = validate(schema, content).await;
+        assert_eq!(
+            result == Ok(Validation::Valid),
+            row["python"] == "valid",
+            "{}: {result:?}",
+            row["name"]
+        );
+    }
+}
+
+#[tokio::test(flavor = "current_thread")]
 async fn enums_arrays_and_local_references() {
     let schema = json!({"$defs":{"item":{"enum":[1,2]}},"properties":{"items":{"type":"array","items":{"$ref":"#/$defs/item"},"minItems":1}}});
     assert_eq!(

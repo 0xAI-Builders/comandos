@@ -498,5 +498,30 @@
     "name": "nested-draft4-float-resource",
     "schema_json": "{\"properties\": {\"n\": {\"$schema\": \"http://json-schema.org/draft-04/schema#\", \"type\": \"integer\", \"id\": \"urn:nested-draft4\"}}}",
     "content_json": "{\"n\":1.0}"
+  },
+  {
+    "name": "draft4-metaschema-empty-enum",
+    "schema_json": "{\"$schema\":\"http://json-schema.org/draft-04/schema#\",\"enum\":[]}",
+    "content_json": "{}"
+  },
+  {
+    "name": "draft4-metaschema-duplicate-enum",
+    "schema_json": "{\"$schema\":\"http://json-schema.org/draft-04/schema#\",\"enum\":[{},{}]}",
+    "content_json": "{}"
+  },
+  {
+    "name": "draft7-metaschema-writeOnly-number",
+    "schema_json": "{\"$schema\":\"http://json-schema.org/draft-07/schema#\",\"writeOnly\":123}",
+    "content_json": "{}"
+  },
+  {
+    "name": "no-progress-ref-cycle-default-root",
+    "schema_json": "{\"$ref\":\"#\"}",
+    "content_json": "{}"
+  },
+  {
+    "name": "no-progress-ref-cycle-unknown-root",
+    "schema_json": "{\"$schema\":\"https://example.invalid/cycle\",\"$ref\":\"#\"}",
+    "content_json": "{}"
   }
 ]

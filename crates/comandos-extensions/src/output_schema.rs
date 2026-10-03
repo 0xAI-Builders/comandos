@@ -1,6 +1,8 @@
 //! Synchronous JSON Schema work stays inside a short-lived native child.
 //! This helper is deliberately not connected to `check` until parity is settled.
 use serde_json::Value;
+
+mod dialect;
 use std::{
     io::{Read, Write},
     path::Path,
@@ -174,6 +176,7 @@ fn resource_budget() -> Result<(), ()> {
     setrlimit(Resource::RLIMIT_CORE, 0, 0).map_err(|_| ())?;
     Ok(())
 }
+
 fn worker_status() -> &'static str {
     if resource_budget().is_err() {
         return "execution-failure\n";
@@ -206,10 +209,14 @@ fn worker_status() -> &'static str {
     }
     // Schema checking remains enabled. Instance format assertions are disabled
     // for every draft, matching the SDK's default instance validator.
+    let Ok((validation_schema, draft)) = dialect::validation_schema(schema) else {
+        return "invalid-schema\n";
+    };
     let Ok(validator) = jsonschema::options()
         .offline()
+        .with_draft(draft)
         .should_validate_formats(false)
-        .build(schema)
+        .build(&validation_schema)
     else {
         return "invalid-schema\n";
     };
