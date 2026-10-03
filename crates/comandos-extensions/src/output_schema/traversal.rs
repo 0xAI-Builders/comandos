@@ -122,7 +122,7 @@ struct Frame {
 struct Evaluator<'a> {
     refs: local_refs::LocalRefs<'a>,
     active: HashSet<Frame>,
-    fragments: Vec<(usize, Draft, String, jsonschema::Validator)>,
+    fragments: Vec<(usize, Draft, jsonschema::Validator)>,
     operations: usize,
     numbers: numbers::Numbers,
 }
@@ -214,79 +214,53 @@ impl<'a> Evaluator<'a> {
             pointer,
         )
     }
-    fn fragment(
+    fn required(
         &mut self,
         schema: &'a Value,
-        key: &str,
         value: &Value,
         instance: &Value,
         state: State,
         pointer: &str,
     ) -> Evaluation {
-        if key == "required" && !instance.is_object() {
+        if !instance.is_object() {
             return Ok(Validity::Valid);
         }
-        if key == "type" {
-            let types: Vec<&str> = if let Some(single) = value.as_str() {
-                vec![single]
-            } else if let Some(array) = value.as_array() {
-                array
-                    .iter()
-                    .map(Value::as_str)
-                    .collect::<Option<Vec<_>>>()
-                    .ok_or_else(|| gap(GapKind::FragmentShape, pointer))?
-            } else {
-                return Err(gap(GapKind::FragmentShape, pointer));
-            };
-            if types.iter().any(|t| matches!(*t, "number" | "integer")) {
-                return Err(gap(GapKind::Numeric, pointer));
-            }
-            if types.is_empty()
-                || types.iter().copied().collect::<HashSet<_>>().len() != types.len()
-                || types
-                    .iter()
-                    .any(|t| !matches!(*t, "object" | "array" | "string" | "boolean" | "null"))
-            {
-                return Err(gap(GapKind::FragmentShape, pointer));
-            }
-        } else {
-            // Every supported metaschema requires unique strings. Draft4 also
-            // requires a nonempty array; later drafts permit []. Literal-pointer
-            // targets are not certified by the root schema-check precondition.
-            let Some(required) = value.as_array() else {
-                return Err(gap(GapKind::FragmentShape, pointer));
-            };
-            if (state.class == Draft::Draft4 && required.is_empty())
-                || !required.iter().all(Value::is_string)
-                || required
-                    .iter()
-                    .filter_map(Value::as_str)
-                    .collect::<HashSet<_>>()
-                    .len()
-                    != required.len()
-            {
-                return Err(gap(GapKind::FragmentShape, pointer));
-            }
+        // Every supported metaschema requires unique strings. Draft4 also
+        // requires a nonempty array; later drafts permit []. Literal-pointer
+        // targets are not certified by the root schema-check precondition.
+        let Some(required) = value.as_array() else {
+            return Err(gap(GapKind::FragmentShape, pointer));
+        };
+        if (state.class == Draft::Draft4 && required.is_empty())
+            || !required.iter().all(Value::is_string)
+            || required
+                .iter()
+                .filter_map(Value::as_str)
+                .collect::<HashSet<_>>()
+                .len()
+                != required.len()
+        {
+            return Err(gap(GapKind::FragmentShape, pointer));
         }
         let identity = schema as *const Value as usize;
-        let index = if let Some(index) =
-            self.fragments.iter().position(|(node, class, keyword, _)| {
-                *node == identity && *class == state.class && keyword == key
-            }) {
+        let index = if let Some(index) = self
+            .fragments
+            .iter()
+            .position(|(node, class, _)| *node == identity && *class == state.class)
+        {
             index
         } else {
-            let fragment = json!({key: value});
+            let fragment = json!({"required": value});
             let validator = jsonschema::options()
                 .offline()
                 .with_draft(state.class)
                 .should_validate_formats(false)
                 .build(&fragment)
                 .map_err(|_| EvalFailure::InternalFragmentCompilation)?;
-            self.fragments
-                .push((identity, state.class, key.into(), validator));
+            self.fragments.push((identity, state.class, validator));
             self.fragments.len() - 1
         };
-        Ok(if self.fragments[index].3.is_valid(instance) {
+        Ok(if self.fragments[index].2.is_valid(instance) {
             Validity::Valid
         } else {
             Validity::Invalid
@@ -349,7 +323,7 @@ impl<'a> Evaluator<'a> {
             return result;
         }
         match key {
-            "required" | "type" => self.fragment(schema, key, value, instance, state, pointer),
+            "required" => self.required(schema, value, instance, state, pointer),
             "format" => Ok(Validity::Valid),
             "properties" => {
                 let Some(properties) = instance.as_object() else {

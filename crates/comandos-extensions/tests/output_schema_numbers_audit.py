@@ -193,6 +193,22 @@ def directed_cases():
         add('contains-order','max-zero/'+dump(arr),{'properties':{'x':{**sub,'maxContains':Raw('0.0')}}},{'x':arr},list(DRAFTS)[3:])
     for parent,child in [('draft7','draft202012'),('draft202012','draft7')]:
         add('transition',child,{'definitions':{'ok':{}},'properties':{'x':{'$schema':DRAFTS[child],'$ref':'#/definitions/ok',**A}}},{'x':Raw('1e309')},[parent])
+    # Reviewed malformed limits live under a root-schema-valid literal target.
+    # Keep comparison reachability, original JSON spelling and probe order exact.
+    for label, key, token, content, mode in [
+        ('fractional-min', 'minContains', '1.5', '[{}]', 'ExhaustErrors'),
+        ('fractional-max', 'maxContains', '1.5', '[{},{}]', 'ExhaustErrors'),
+        ('negative-min', 'minContains', '-1', '[]', 'ExhaustErrors'),
+        ('negative-max', 'maxContains', '-1', '[{}]', 'ExhaustErrors'),
+        ('infinite-min', 'minContains', '1e309', '[{}]', 'ExhaustErrors'),
+        ('infinite-max', 'maxContains', '1e309', '[{}]', 'ExhaustErrors'),
+        ('unreached-max-shape', 'maxContains', '"bad"', '[]', 'ExhaustErrors'),
+        ('fractional-min-first', 'minContains', '1.5', '[{}]', 'FirstError'),
+    ]:
+        raw = '{"$schema":"https://json-schema.org/draft/2020-12/schema","default":{"contains":{},"' + key + '":' + token + '},"$ref":"#/default"}'
+        rows.append({'name': 'review/' + label, 'group': 'contains-review',
+                     'draft': 'draft202012', 'schema_json': raw,
+                     'content_json': content, 'mode': mode})
     assert len(rows)==len({r['name'] for r in rows})
     return rows
 

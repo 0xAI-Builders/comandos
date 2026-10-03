@@ -93327,5 +93327,183 @@
         "sdk_mapping": "OverflowError"
       }
     }
+  },
+  {
+    "name": "review/fractional-min",
+    "group": "contains-review",
+    "draft": "draft202012",
+    "schema_json": "{\"$schema\":\"https://json-schema.org/draft/2020-12/schema\",\"default\":{\"contains\":{},\"minContains\":1.5},\"$ref\":\"#/default\"}",
+    "content_json": "[{}]",
+    "mode": "ExhaustErrors",
+    "oracle": {
+      "parse": {
+        "result": "valid"
+      },
+      "root": "Draft202012Validator",
+      "schema": {
+        "result": "valid"
+      },
+      "instance": {
+        "result": "Invalid",
+        "exception": "ValidationError",
+        "unresolvable": false,
+        "sdk_mapping": "RuntimeError"
+      }
+    }
+  },
+  {
+    "name": "review/fractional-max",
+    "group": "contains-review",
+    "draft": "draft202012",
+    "schema_json": "{\"$schema\":\"https://json-schema.org/draft/2020-12/schema\",\"default\":{\"contains\":{},\"maxContains\":1.5},\"$ref\":\"#/default\"}",
+    "content_json": "[{},{}]",
+    "mode": "ExhaustErrors",
+    "oracle": {
+      "parse": {
+        "result": "valid"
+      },
+      "root": "Draft202012Validator",
+      "schema": {
+        "result": "valid"
+      },
+      "instance": {
+        "result": "Invalid",
+        "exception": "ValidationError",
+        "unresolvable": false,
+        "sdk_mapping": "RuntimeError"
+      }
+    }
+  },
+  {
+    "name": "review/negative-min",
+    "group": "contains-review",
+    "draft": "draft202012",
+    "schema_json": "{\"$schema\":\"https://json-schema.org/draft/2020-12/schema\",\"default\":{\"contains\":{},\"minContains\":-1},\"$ref\":\"#/default\"}",
+    "content_json": "[]",
+    "mode": "ExhaustErrors",
+    "oracle": {
+      "parse": {
+        "result": "valid"
+      },
+      "root": "Draft202012Validator",
+      "schema": {
+        "result": "valid"
+      },
+      "instance": {
+        "result": "Valid",
+        "sdk_mapping": "success"
+      }
+    }
+  },
+  {
+    "name": "review/negative-max",
+    "group": "contains-review",
+    "draft": "draft202012",
+    "schema_json": "{\"$schema\":\"https://json-schema.org/draft/2020-12/schema\",\"default\":{\"contains\":{},\"maxContains\":-1},\"$ref\":\"#/default\"}",
+    "content_json": "[{}]",
+    "mode": "ExhaustErrors",
+    "oracle": {
+      "parse": {
+        "result": "valid"
+      },
+      "root": "Draft202012Validator",
+      "schema": {
+        "result": "valid"
+      },
+      "instance": {
+        "result": "Invalid",
+        "exception": "ValidationError",
+        "unresolvable": false,
+        "sdk_mapping": "RuntimeError"
+      }
+    }
+  },
+  {
+    "name": "review/infinite-min",
+    "group": "contains-review",
+    "draft": "draft202012",
+    "schema_json": "{\"$schema\":\"https://json-schema.org/draft/2020-12/schema\",\"default\":{\"contains\":{},\"minContains\":1e309},\"$ref\":\"#/default\"}",
+    "content_json": "[{}]",
+    "mode": "ExhaustErrors",
+    "oracle": {
+      "parse": {
+        "result": "valid"
+      },
+      "root": "Draft202012Validator",
+      "schema": {
+        "result": "valid"
+      },
+      "instance": {
+        "result": "Invalid",
+        "exception": "ValidationError",
+        "unresolvable": false,
+        "sdk_mapping": "RuntimeError"
+      }
+    }
+  },
+  {
+    "name": "review/infinite-max",
+    "group": "contains-review",
+    "draft": "draft202012",
+    "schema_json": "{\"$schema\":\"https://json-schema.org/draft/2020-12/schema\",\"default\":{\"contains\":{},\"maxContains\":1e309},\"$ref\":\"#/default\"}",
+    "content_json": "[{}]",
+    "mode": "ExhaustErrors",
+    "oracle": {
+      "parse": {
+        "result": "valid"
+      },
+      "root": "Draft202012Validator",
+      "schema": {
+        "result": "valid"
+      },
+      "instance": {
+        "result": "Valid",
+        "sdk_mapping": "success"
+      }
+    }
+  },
+  {
+    "name": "review/unreached-max-shape",
+    "group": "contains-review",
+    "draft": "draft202012",
+    "schema_json": "{\"$schema\":\"https://json-schema.org/draft/2020-12/schema\",\"default\":{\"contains\":{},\"maxContains\":\"bad\"},\"$ref\":\"#/default\"}",
+    "content_json": "[]",
+    "mode": "ExhaustErrors",
+    "oracle": {
+      "parse": {
+        "result": "valid"
+      },
+      "root": "Draft202012Validator",
+      "schema": {
+        "result": "valid"
+      },
+      "instance": {
+        "result": "Invalid",
+        "exception": "ValidationError",
+        "unresolvable": false,
+        "sdk_mapping": "RuntimeError"
+      }
+    }
+  },
+  {
+    "name": "review/fractional-min-first",
+    "group": "contains-review",
+    "draft": "draft202012",
+    "schema_json": "{\"$schema\":\"https://json-schema.org/draft/2020-12/schema\",\"default\":{\"contains\":{},\"minContains\":1.5},\"$ref\":\"#/default\"}",
+    "content_json": "[{}]",
+    "mode": "FirstError",
+    "oracle": {
+      "parse": {
+        "result": "valid"
+      },
+      "root": "Draft202012Validator",
+      "schema": {
+        "result": "valid"
+      },
+      "instance": {
+        "result": "Invalid",
+        "sdk_mapping": "RuntimeError"
+      }
+    }
   }
 ]
