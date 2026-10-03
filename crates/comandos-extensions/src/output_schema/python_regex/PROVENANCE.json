@@ -1,5 +1,5 @@
 {
-  "compatibility": "Py311SreV1, private CPython 3.11 string-pattern flags-zero literal/dot/anchor subset",
+  "compatibility": "Py311SreV1 private complete CPython3.11 flags-zero string syntax and compiler semantic checks; conservative literal/dot/anchor real matcher emission",
   "oracle": {
     "python": "3.11.15",
     "jsonschema": "4.26.0",
@@ -109,24 +109,29 @@
   },
   "offset_table": "Flat subset has no jumps, group marks, repeat operands or charsets. Validator accepts only complete instruction boundaries and a single final SUCCESS. Those layouts remain unsupported, not partially validated.",
   "mapping": {
-    "parser::eligible": "Owned conservative whole-pattern subset gate; unsupported syntax dominates errors.",
-    "parser::token": "Installed _parser._parse/_escape: literal, ANY, AT; trailing backslash and unknown ASCII letters with code-point positions.",
-    "compiler::emit": "Installed _compiler._compile literal/ANY/AT and final SUCCESS; omits all INFO/prefix/charset optimization.",
+    "compiler::emit": "Validated-node-only actual flat literal/ANY/four AT emission; unsupported matching returns MatcherFeature",
     "compiler::validate": "Owned checked Py311SreV1 flat instruction/operand/code-point/terminal validation.",
     "sre::search": "RustPython 0.6.0 engine.rs State::search general initial match and candidate loop through end; initial BEGINNING optimization retained.",
     "sre::matches_at": "RustPython 0.6.0 engine.rs _match SUCCESS, ANY, general_op_literal and AT dispatch; at BEGINNING/BEGINNING_STRING/END/END_STRING.",
     "RegexText/scalar_points": "RustPython string.rs StringCursor/StrDrive conceptual position/advance operation port with checked u32 slice indices replacing unsafe pointers.",
     "probe_checked_pattern": "Test-only root pattern assertion applicability from installed jsonschema _keywords.pattern; exact selected-class check_schema proof external. An optional declaration must select the supplied draft under both Draft4 and Draft202012 fallbacks. Registered roots are stable across these distinct fallbacks; unknown roots inherit them and fail SchemaScope. Existing selector URI normalization is reused without copying its registry.",
-    "check_regex_format_value": "Installed jsonschema _format.is_regex non-string bypass and compile assertion."
+    "check_regex_format_value": "Installed jsonschema _format.is_regex non-string bypass and compile assertion.",
+    "parser::parse_validate": "CPython3.11.15 _parser State/Tokenizer/_parse/_parse_sub/_escape/_class_escape/_parse_flags/fix_flags, explicit charged frames and flat arenas",
+    "syntax": "Flat span/node/edge/class/group/width/warning arenas, u128 MAXWIDTH=2^64",
+    "semantic::decimal": "Bounded CPython decimal conversion with Unicode decimal/space transform, digit limit4300 and conditional lexical rules",
+    "semantic::validate": "Compiler pre-order TEMPLATE repeat rejection and ordered lookbehind MAXCODE/fixed-width checks"
   },
   "changes": [
     "No new dependencies or manifests.",
-    "No unsafe pointer driver, generic text variants, captures or backtracking storage.",
     "Explicit checked dispatch instead of num_enum; unknown opcode is InternalProgram.",
     "u32 includes surrogates; raw serde JSON lone-surrogate transport remains separate.",
     "Aggregate work, point, word and allocation protective budgets; no persistent cache.",
-    "Only flags-zero literal/dot/anchor grammar. No partial unsupported opcode stubs or fake Unicode predicates.",
-    "Regex failure/compile abort categories preserved; compile abort variants have no invented reachable paths."
+    "Full string grammar and compiler-semantic acceptance separate from executable emission.",
+    "Unicode14 approved crate-private primitives/name API consumed with callback budget propagation.",
+    "Warnings preserve category/source-position/order including before errors; native exact diagnostic messages excluded.",
+    "Source translation retains Secret Labs AB1997-2001/1998-2001 and CPython notices.",
+    "Captures are represented for syntax metadata; matching capture/backtracking storage remains unsupported.",
+    "Reachable OverflowError and ValueError abort paths captured separately from re.error."
   ],
   "budgets": {
     "pattern_points": 16384,
@@ -134,14 +139,17 @@
     "code_words": 65536,
     "work": 2000000,
     "owned_bytes": 8388608,
-    "allocation_accounting": "Zero-initialized exact-capacity u32 vectors charged before allocation. Compiler retains charged capacity after truncation. Cumulative charge is conservative and never refunded. JSON protocol envelope is separately bounded by process/input limits.",
-    "depth": "Flat grammar has no recursion. Later nesting requires a separately reviewed cap."
+    "allocation_accounting": "Cumulative checked capacity*size_of bytes before bounded reservation; growth copies/pushes/scans/traversal charged under aggregate work. Old four-byte word helper unchanged.",
+    "depth": 128,
+    "nodes": 65536,
+    "edges": 65536,
+    "class_entries": 16384,
+    "group_slots": 16384
   },
   "remaining": [
-    "All unimplemented grammar including flags/classes/categories/groups/alternation/repeats/backreferences/hex/octal/Unicode/name escapes.",
-    "Unicode14 tables, identifiers/named lookup and case behavior.",
-    "Remaining matcher/bytecode layouts including possessive/atomic/backtracking resource accounting.",
-    "Complete native check_schema proof, schema handlers and original JSON surrogate decoder.",
-    "Production integration, optimization and evaluation-scoped cache."
+    "Full SRE opcode emission and matching for validated unsupported operations.",
+    "Production schema integration, patternProperties/local-reference traversal and surrogate-preserving JSON transport.",
+    "Removal of temporary first-party Python measurement query after independent oracle fixture acceptance.",
+    "Production caches and full migration release validation."
   ]
 }

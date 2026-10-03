@@ -1,5 +1,6 @@
 //! Owned Py311SreV1 contract, independent of RustPython's different MAGIC.
-use super::{RegexBudget, RegexFailure, RegexPhase, RegexText, parser};
+use super::syntax::*;
+use super::{RegexBudget, RegexFailure, RegexGap, RegexPhase};
 // CPython 3.11.15 _constants.py opcode/anchor discriminants.
 pub(super) const SUCCESS: u32 = 1;
 pub(super) const ANY: u32 = 2;
@@ -15,35 +16,57 @@ const _CPYTHON_MAXREPEAT: u32 = u32::MAX;
 const _CPYTHON_MAXGROUPS: u32 = (i32::MAX as u32) / 2;
 
 pub(super) fn emit(
-    pattern: RegexText<'_>,
+    syntax: &ValidatedSyntax<'_>,
     budget: &mut RegexBudget,
 ) -> Result<Vec<u32>, RegexFailure> {
-    let cap = pattern
-        .0
-        .len()
-        .checked_mul(2)
-        .and_then(|n| n.checked_add(1))
-        .filter(|&n| n <= budget.words)
-        .ok_or(RegexFailure::BudgetBoundary {
-            phase: RegexPhase::Compile,
-        })?;
-    budget.allocation(cap, RegexPhase::Compile)?;
-    budget.charge(cap, RegexPhase::Compile)?;
-    let mut words = vec![0; cap];
-    let mut used = 0;
-    let mut position = 0;
-    while position < pattern.0.len() {
-        let (opcode, operand) = parser::token(pattern.0, &mut position, budget)?;
-        words[used] = opcode;
-        used += 1;
-        if let Some(value) = operand {
-            words[used] = value;
-            used += 1;
+    let p = &syntax.syntax;
+    let mut stack = Vec::new();
+    push(&mut stack, p.root, 65_536, budget)?;
+    let mut words = Vec::new();
+    while let Some(id) = stack.pop() {
+        budget.charge(1, RegexPhase::Compile)?;
+        let node = p.nodes.get(id).ok_or(RegexFailure::InternalProgram)?;
+        match node.kind {
+            Kind::Empty => {}
+            Kind::Concat { start, len } => {
+                for &child in p
+                    .edges
+                    .get(start..start + len)
+                    .ok_or(RegexFailure::InternalProgram)?
+                    .iter()
+                    .rev()
+                {
+                    push(&mut stack, child, 65_536, budget)?;
+                }
+            }
+            Kind::Group {
+                child,
+                capture: None,
+                ..
+            } => push(&mut stack, child, 65_536, budget)?,
+            Kind::Literal(_) | Kind::Any | Kind::At(0 | 2 | 5 | 7)
+                if node.flags & (IGNORECASE | MULTILINE | DOTALL) == 0 =>
+            {
+                let (opcode, operand) = match node.kind {
+                    Kind::Literal(c) => (LITERAL, Some(c)),
+                    Kind::Any => (ANY, None),
+                    Kind::At(a) => (AT, Some(a)),
+                    _ => unreachable!(),
+                };
+                push(&mut words, opcode, budget.words, budget)?;
+                if let Some(operand) = operand {
+                    push(&mut words, operand, budget.words, budget)?;
+                }
+            }
+            _ => {
+                return Err(RegexFailure::ScopeGap {
+                    kind: RegexGap::MatcherFeature,
+                    position: Some(node.span.start),
+                });
+            }
         }
     }
-    words[used] = SUCCESS;
-    used += 1;
-    words.truncate(used);
+    push(&mut words, SUCCESS, budget.words, budget)?;
     Ok(words)
 }
 

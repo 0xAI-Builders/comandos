@@ -1,0 +1,104 @@
+{
+  "version": 1,
+  "rows": 727,
+  "families": [
+    [
+      "token",
+      48
+    ],
+    [
+      "ascii-escape",
+      256
+    ],
+    [
+      "unicode-escape",
+      48
+    ],
+    [
+      "octal-reference",
+      48
+    ],
+    [
+      "class",
+      64
+    ],
+    [
+      "group",
+      48
+    ],
+    [
+      "conditional",
+      64
+    ],
+    [
+      "conditional-int",
+      64
+    ],
+    [
+      "repeat",
+      64
+    ],
+    [
+      "repeat-int",
+      48
+    ],
+    [
+      "flags",
+      80
+    ],
+    [
+      "verbose",
+      48
+    ],
+    [
+      "width",
+      64
+    ],
+    [
+      "compiler-order",
+      32
+    ],
+    [
+      "admission",
+      32
+    ],
+    [
+      "format-schema",
+      40
+    ],
+    [
+      "budget-depth",
+      64
+    ]
+  ],
+  "identity": {
+    "executable": "/venv/bin/python",
+    "binary_sha256": "c4b3f4386c93758043a4e772574bfbd6b0e5e4ce8d50af17f6ffeeb4b1a6be5b",
+    "version": "3.11.15 (main, Mar  3 2026, 09:26:23) [GCC 11.4.0]",
+    "unicode": "14.0.0",
+    "recursion": 1000,
+    "digits": 4300,
+    "magic": 20220615,
+    "codesize": 4,
+    "maxrepeat": 4294967295,
+    "maxgroups": 1073741823,
+    "files": {
+      "/usr/lib/python3.11/re/_parser.py": "4748e39c77d6dc14f81af80e68a62ad99031a8182d5e0b219a6666d0cfb1626f",
+      "/usr/lib/python3.11/re/_compiler.py": "c05067f8bfa4c13cbbf1eedc4d5cafc9b621bcb6ebc5771ba0518a18095af15a",
+      "/usr/lib/python3.11/re/_constants.py": "3e4463dc8ba87c4a3563be46d2d593e82ca9a0fb91768cfe5a07554ed3de82c5"
+    }
+  },
+  "cases_sha256": "027360642b39a77062d44120284f72f748460e445c2b2b5b385b5dc653d0cb4e",
+  "oracle_sha256": "0d4c6669ffe1d9b2b8f8eeb733459bdeb78e0a13af5c6ab03b15e4719954176d",
+  "protocol": {
+    "input": 8388608,
+    "output_combined": 1048576,
+    "rows": 8,
+    "address_space": 402653184,
+    "cpu_soft": 2,
+    "cpu_hard": 3,
+    "wall_ms": 10000
+  },
+  "first_party_python_debt": "regex_frontend/oracle_queries.rs QUERY",
+  "complete_capture": true
+}
