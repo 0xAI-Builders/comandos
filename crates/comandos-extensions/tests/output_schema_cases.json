@@ -1,0 +1,502 @@
+[
+  {
+    "name": "empty",
+    "schema_json": "{}",
+    "content_json": "{}"
+  },
+  {
+    "name": "required-valid",
+    "schema_json": "{\"type\":\"object\",\"properties\":{\"n\":{\"type\":\"integer\"}},\"required\":[\"n\"]}",
+    "content_json": "{\"n\":1}"
+  },
+  {
+    "name": "required-missing",
+    "schema_json": "{\"required\":[\"n\"]}",
+    "content_json": "{}"
+  },
+  {
+    "name": "property-type",
+    "schema_json": "{\"properties\":{\"n\":{\"type\":\"integer\"}}}",
+    "content_json": "{\"n\":\"x\"}"
+  },
+  {
+    "name": "enum-valid",
+    "schema_json": "{\"properties\":{\"x\":{\"enum\":[\"a\",\"b\"]}}}",
+    "content_json": "{\"x\":\"a\"}"
+  },
+  {
+    "name": "enum-invalid",
+    "schema_json": "{\"properties\":{\"x\":{\"enum\":[\"a\",\"b\"]}}}",
+    "content_json": "{\"x\":\"c\"}"
+  },
+  {
+    "name": "array-local-ref",
+    "schema_json": "{\"$defs\":{\"x\":{\"type\":\"integer\"}},\"properties\":{\"a\":{\"type\":\"array\",\"items\":{\"$ref\":\"#/$defs/x\"}}}}",
+    "content_json": "{\"a\":[1,2]}"
+  },
+  {
+    "name": "array-local-ref-invalid",
+    "schema_json": "{\"$defs\":{\"x\":{\"type\":\"integer\"}},\"properties\":{\"a\":{\"items\":{\"$ref\":\"#/$defs/x\"}}}}",
+    "content_json": "{\"a\":[1,\"x\"]}"
+  },
+  {
+    "name": "draft4-integer-1",
+    "schema_json": "{\"$schema\":\"http://json-schema.org/draft-04/schema#\",\"properties\":{\"n\":{\"type\":\"integer\"}}}",
+    "content_json": "{\"n\":1}"
+  },
+  {
+    "name": "draft4-integer-1.0",
+    "schema_json": "{\"$schema\":\"http://json-schema.org/draft-04/schema#\",\"properties\":{\"n\":{\"type\":\"integer\"}}}",
+    "content_json": "{\"n\":1.0}"
+  },
+  {
+    "name": "draft4-integer-1e0",
+    "schema_json": "{\"$schema\":\"http://json-schema.org/draft-04/schema#\",\"properties\":{\"n\":{\"type\":\"integer\"}}}",
+    "content_json": "{\"n\":1e0}"
+  },
+  {
+    "name": "draft4-integer-true",
+    "schema_json": "{\"$schema\":\"http://json-schema.org/draft-04/schema#\",\"properties\":{\"n\":{\"type\":\"integer\"}}}",
+    "content_json": "{\"n\":true}"
+  },
+  {
+    "name": "draft4-instance-format-disabled",
+    "schema_json": "{\"$schema\":\"http://json-schema.org/draft-04/schema#\",\"properties\":{\"email\":{\"format\":\"email\"}}}",
+    "content_json": "{\"email\":\"not an email\"}"
+  },
+  {
+    "name": "draft6-integer-1",
+    "schema_json": "{\"$schema\":\"http://json-schema.org/draft-06/schema#\",\"properties\":{\"n\":{\"type\":\"integer\"}}}",
+    "content_json": "{\"n\":1}"
+  },
+  {
+    "name": "draft6-integer-1.0",
+    "schema_json": "{\"$schema\":\"http://json-schema.org/draft-06/schema#\",\"properties\":{\"n\":{\"type\":\"integer\"}}}",
+    "content_json": "{\"n\":1.0}"
+  },
+  {
+    "name": "draft6-integer-1e0",
+    "schema_json": "{\"$schema\":\"http://json-schema.org/draft-06/schema#\",\"properties\":{\"n\":{\"type\":\"integer\"}}}",
+    "content_json": "{\"n\":1e0}"
+  },
+  {
+    "name": "draft6-integer-true",
+    "schema_json": "{\"$schema\":\"http://json-schema.org/draft-06/schema#\",\"properties\":{\"n\":{\"type\":\"integer\"}}}",
+    "content_json": "{\"n\":true}"
+  },
+  {
+    "name": "draft6-instance-format-disabled",
+    "schema_json": "{\"$schema\":\"http://json-schema.org/draft-06/schema#\",\"properties\":{\"email\":{\"format\":\"email\"}}}",
+    "content_json": "{\"email\":\"not an email\"}"
+  },
+  {
+    "name": "draft7-integer-1",
+    "schema_json": "{\"$schema\":\"http://json-schema.org/draft-07/schema#\",\"properties\":{\"n\":{\"type\":\"integer\"}}}",
+    "content_json": "{\"n\":1}"
+  },
+  {
+    "name": "draft7-integer-1.0",
+    "schema_json": "{\"$schema\":\"http://json-schema.org/draft-07/schema#\",\"properties\":{\"n\":{\"type\":\"integer\"}}}",
+    "content_json": "{\"n\":1.0}"
+  },
+  {
+    "name": "draft7-integer-1e0",
+    "schema_json": "{\"$schema\":\"http://json-schema.org/draft-07/schema#\",\"properties\":{\"n\":{\"type\":\"integer\"}}}",
+    "content_json": "{\"n\":1e0}"
+  },
+  {
+    "name": "draft7-integer-true",
+    "schema_json": "{\"$schema\":\"http://json-schema.org/draft-07/schema#\",\"properties\":{\"n\":{\"type\":\"integer\"}}}",
+    "content_json": "{\"n\":true}"
+  },
+  {
+    "name": "draft7-instance-format-disabled",
+    "schema_json": "{\"$schema\":\"http://json-schema.org/draft-07/schema#\",\"properties\":{\"email\":{\"format\":\"email\"}}}",
+    "content_json": "{\"email\":\"not an email\"}"
+  },
+  {
+    "name": "draft2019-integer-1",
+    "schema_json": "{\"$schema\":\"https://json-schema.org/draft/2019-09/schema\",\"properties\":{\"n\":{\"type\":\"integer\"}}}",
+    "content_json": "{\"n\":1}"
+  },
+  {
+    "name": "draft2019-integer-1.0",
+    "schema_json": "{\"$schema\":\"https://json-schema.org/draft/2019-09/schema\",\"properties\":{\"n\":{\"type\":\"integer\"}}}",
+    "content_json": "{\"n\":1.0}"
+  },
+  {
+    "name": "draft2019-integer-1e0",
+    "schema_json": "{\"$schema\":\"https://json-schema.org/draft/2019-09/schema\",\"properties\":{\"n\":{\"type\":\"integer\"}}}",
+    "content_json": "{\"n\":1e0}"
+  },
+  {
+    "name": "draft2019-integer-true",
+    "schema_json": "{\"$schema\":\"https://json-schema.org/draft/2019-09/schema\",\"properties\":{\"n\":{\"type\":\"integer\"}}}",
+    "content_json": "{\"n\":true}"
+  },
+  {
+    "name": "draft2019-instance-format-disabled",
+    "schema_json": "{\"$schema\":\"https://json-schema.org/draft/2019-09/schema\",\"properties\":{\"email\":{\"format\":\"email\"}}}",
+    "content_json": "{\"email\":\"not an email\"}"
+  },
+  {
+    "name": "draft2020-integer-1",
+    "schema_json": "{\"$schema\":\"https://json-schema.org/draft/2020-12/schema\",\"properties\":{\"n\":{\"type\":\"integer\"}}}",
+    "content_json": "{\"n\":1}"
+  },
+  {
+    "name": "draft2020-integer-1.0",
+    "schema_json": "{\"$schema\":\"https://json-schema.org/draft/2020-12/schema\",\"properties\":{\"n\":{\"type\":\"integer\"}}}",
+    "content_json": "{\"n\":1.0}"
+  },
+  {
+    "name": "draft2020-integer-1e0",
+    "schema_json": "{\"$schema\":\"https://json-schema.org/draft/2020-12/schema\",\"properties\":{\"n\":{\"type\":\"integer\"}}}",
+    "content_json": "{\"n\":1e0}"
+  },
+  {
+    "name": "draft2020-integer-true",
+    "schema_json": "{\"$schema\":\"https://json-schema.org/draft/2020-12/schema\",\"properties\":{\"n\":{\"type\":\"integer\"}}}",
+    "content_json": "{\"n\":true}"
+  },
+  {
+    "name": "draft2020-instance-format-disabled",
+    "schema_json": "{\"$schema\":\"https://json-schema.org/draft/2020-12/schema\",\"properties\":{\"email\":{\"format\":\"email\"}}}",
+    "content_json": "{\"email\":\"not an email\"}"
+  },
+  {
+    "name": "draft4-exclusive",
+    "schema_json": "{\"$schema\":\"http://json-schema.org/draft-04/schema#\",\"properties\":{\"n\":{\"minimum\":1,\"exclusiveMinimum\":true}}}",
+    "content_json": "{\"n\":1}"
+  },
+  {
+    "name": "draft6-exclusive",
+    "schema_json": "{\"$schema\":\"http://json-schema.org/draft-06/schema#\",\"properties\":{\"n\":{\"exclusiveMinimum\":1}}}",
+    "content_json": "{\"n\":1}"
+  },
+  {
+    "name": "draft7-if",
+    "schema_json": "{\"$schema\":\"http://json-schema.org/draft-07/schema#\",\"if\":{\"required\":[\"x\"]},\"then\":{\"required\":[\"y\"]}}",
+    "content_json": "{\"x\":1}"
+  },
+  {
+    "name": "draft2019-unevaluated",
+    "schema_json": "{\"$schema\":\"https://json-schema.org/draft/2019-09/schema\",\"unevaluatedProperties\":false}",
+    "content_json": "{\"x\":1}"
+  },
+  {
+    "name": "draft2020-prefix",
+    "schema_json": "{\"$schema\":\"https://json-schema.org/draft/2020-12/schema\",\"properties\":{\"a\":{\"prefixItems\":[{\"type\":\"integer\"}],\"items\":false}}}",
+    "content_json": "{\"a\":[1]}"
+  },
+  {
+    "name": "invalid-type",
+    "schema_json": "{\"type\":\"bad\"}",
+    "content_json": "{}"
+  },
+  {
+    "name": "invalid-length",
+    "schema_json": "{\"maxLength\":-1}",
+    "content_json": "{}"
+  },
+  {
+    "name": "duplicate-required",
+    "schema_json": "{\"required\":[\"x\",\"x\"]}",
+    "content_json": "{}"
+  },
+  {
+    "name": "invalid-pattern",
+    "schema_json": "{\"pattern\":\"[\"}",
+    "content_json": "{}"
+  },
+  {
+    "name": "invalid-id-format",
+    "schema_json": "{\"$id\":\"not a uri with spaces\"}",
+    "content_json": "{}"
+  },
+  {
+    "name": "invalid-ref-format-unused",
+    "schema_json": "{\"properties\":{\"unused\":{\"$ref\":\"a uri with spaces\"}}}",
+    "content_json": "{}"
+  },
+  {
+    "name": "invalid-schema-uri-format",
+    "schema_json": "{\"$schema\":\"not a uri with spaces\"}",
+    "content_json": "{}"
+  },
+  {
+    "name": "unknown-schema-nonstring",
+    "schema_json": "{\"$schema\":1}",
+    "content_json": "{}"
+  },
+  {
+    "name": "external-property-unused",
+    "schema_json": "{\"properties\":{\"x\":{\"$ref\":\"https://example.invalid/schema\"}}}",
+    "content_json": "{}"
+  },
+  {
+    "name": "external-property-visited",
+    "schema_json": "{\"properties\":{\"x\":{\"$ref\":\"https://example.invalid/schema\"}}}",
+    "content_json": "{\"x\":1}"
+  },
+  {
+    "name": "external-anyOf-good-first",
+    "schema_json": "{\"anyOf\":[{},{\"$ref\":\"https://example.invalid/schema\"}]}",
+    "content_json": "{}"
+  },
+  {
+    "name": "external-anyOf-ref-first",
+    "schema_json": "{\"anyOf\":[{\"$ref\":\"https://example.invalid/schema\"},{}]}",
+    "content_json": "{}"
+  },
+  {
+    "name": "local-property-unused",
+    "schema_json": "{\"properties\":{\"x\":{\"$ref\":\"#/$defs/missing\"}}}",
+    "content_json": "{}"
+  },
+  {
+    "name": "local-property-visited",
+    "schema_json": "{\"properties\":{\"x\":{\"$ref\":\"#/$defs/missing\"}}}",
+    "content_json": "{\"x\":1}"
+  },
+  {
+    "name": "local-anyOf-good-first",
+    "schema_json": "{\"anyOf\":[{},{\"$ref\":\"#/$defs/missing\"}]}",
+    "content_json": "{}"
+  },
+  {
+    "name": "local-anyOf-ref-first",
+    "schema_json": "{\"anyOf\":[{\"$ref\":\"#/$defs/missing\"},{}]}",
+    "content_json": "{}"
+  },
+  {
+    "name": "draft7-contains-reachability",
+    "schema_json": "{\"$schema\":\"http://json-schema.org/draft-07/schema#\",\"properties\":{\"a\":{\"contains\":{\"anyOf\":[{\"type\":\"integer\"},{\"$ref\":\"https://example.invalid/s\"}]}}}}",
+    "content_json": "{\"a\":[1,{}]}"
+  },
+  {
+    "name": "draft2019-contains-reachability",
+    "schema_json": "{\"$schema\":\"https://json-schema.org/draft/2019-09/schema\",\"properties\":{\"a\":{\"contains\":{\"anyOf\":[{\"type\":\"integer\"},{\"$ref\":\"https://example.invalid/s\"}]}}}}",
+    "content_json": "{\"a\":[1,{}]}"
+  },
+  {
+    "name": "draft2020-contains-reachability",
+    "schema_json": "{\"$schema\":\"https://json-schema.org/draft/2020-12/schema\",\"properties\":{\"a\":{\"contains\":{\"anyOf\":[{\"type\":\"integer\"},{\"$ref\":\"https://example.invalid/s\"}]}}}}",
+    "content_json": "{\"a\":[1,{}]}"
+  },
+  {
+    "name": "required-before-ref",
+    "schema_json": "{\"required\":[\"missing\"],\"properties\":{\"x\":{\"$ref\":\"https://example.invalid/s\"}}}",
+    "content_json": "{\"x\":1}"
+  },
+  {
+    "name": "ref-before-required",
+    "schema_json": "{\"properties\":{\"x\":{\"$ref\":\"https://example.invalid/s\"}},\"required\":[\"missing\"]}",
+    "content_json": "{\"x\":1}"
+  },
+  {
+    "name": "unknown-top-dialect",
+    "schema_json": "{\"$schema\":\"https://example.invalid/unknown\",\"properties\":{\"n\":{\"type\":\"integer\"}}}",
+    "content_json": "{\"n\":1}"
+  },
+  {
+    "name": "unknown-nested-unused",
+    "schema_json": "{\"properties\":{\"unused\":{\"$schema\":\"https://example.invalid/unknown\",\"type\":\"integer\"}}}",
+    "content_json": "{}"
+  },
+  {
+    "name": "unknown-nested-visited",
+    "schema_json": "{\"properties\":{\"n\":{\"$schema\":\"https://example.invalid/unknown\",\"type\":\"integer\"}}}",
+    "content_json": "{\"n\":1}"
+  },
+  {
+    "name": "draft3-required-property",
+    "schema_json": "{\"$schema\":\"http://json-schema.org/draft-03/schema#\",\"properties\":{\"x\":{\"type\":\"integer\",\"required\":true}}}",
+    "content_json": "{}"
+  },
+  {
+    "name": "draft3-valid",
+    "schema_json": "{\"$schema\":\"http://json-schema.org/draft-03/schema#\",\"properties\":{\"x\":{\"type\":\"integer\",\"required\":true}}}",
+    "content_json": "{\"x\":1}"
+  },
+  {
+    "name": "literal-schema-key",
+    "schema_json": "{\"properties\":{\"literal\":{\"const\":{\"$schema\":\"https://example.invalid/literal\"}}}}",
+    "content_json": "{\"literal\":{\"$schema\":\"https://example.invalid/literal\"}}"
+  },
+  {
+    "name": "escaped-local-ref",
+    "schema_json": "{\"$defs\":{\"a/b\":{\"type\":\"integer\"}},\"properties\":{\"n\":{\"$ref\":\"#/$defs/a~1b\"}}}",
+    "content_json": "{\"n\":1}"
+  },
+  {
+    "name": "anchor",
+    "schema_json": "{\"$defs\":{\"item\":{\"$anchor\":\"int\",\"type\":\"integer\"}},\"properties\":{\"n\":{\"$ref\":\"#int\"}}}",
+    "content_json": "{\"n\":1}"
+  },
+  {
+    "name": "recursive-local",
+    "schema_json": "{\"properties\":{\"child\":{\"$ref\":\"#\"}}}",
+    "content_json": "{\"child\":{\"child\":{}}}"
+  },
+  {
+    "name": "bundled-same-draft",
+    "schema_json": "{\"$ref\":\"https://json-schema.org/draft/2020-12/schema\"}",
+    "content_json": "{}"
+  },
+  {
+    "name": "bundled-cross-draft",
+    "schema_json": "{\"$ref\":\"http://json-schema.org/draft-04/schema#\"}",
+    "content_json": "{}"
+  },
+  {
+    "name": "bundled-https-alias",
+    "schema_json": "{\"$ref\":\"https://json-schema.org/draft-07/schema#\"}",
+    "content_json": "{}"
+  },
+  {
+    "name": "http-visited",
+    "schema_json": "{\"$ref\":\"http://127.0.0.1:1/unavailable\"}",
+    "content_json": "{}"
+  },
+  {
+    "name": "file-visited",
+    "schema_json": "{\"$ref\":\"file:///tmp/private-schema-missing\"}",
+    "content_json": "{}"
+  },
+  {
+    "name": "custom-visited",
+    "schema_json": "{\"$ref\":\"custom:unavailable\"}",
+    "content_json": "{}"
+  },
+  {
+    "name": "bigint-equal-9007199254740993",
+    "schema_json": "{\"properties\":{\"n\":{\"type\":\"integer\",\"minimum\":9007199254740993,\"maximum\":9007199254740993}}}",
+    "content_json": "{\"n\":9007199254740993}"
+  },
+  {
+    "name": "bigint-enum-9007199254740993",
+    "schema_json": "{\"properties\":{\"n\":{\"enum\":[9007199254740993]}}}",
+    "content_json": "{\"n\":9007199254740993}"
+  },
+  {
+    "name": "bigint-unique-9007199254740993",
+    "schema_json": "{\"properties\":{\"a\":{\"uniqueItems\":true}}}",
+    "content_json": "{\"a\":[9007199254740993,9007199254740994]}"
+  },
+  {
+    "name": "bigint-equal-18446744073709551616",
+    "schema_json": "{\"properties\":{\"n\":{\"type\":\"integer\",\"minimum\":18446744073709551616,\"maximum\":18446744073709551616}}}",
+    "content_json": "{\"n\":18446744073709551616}"
+  },
+  {
+    "name": "bigint-enum-18446744073709551616",
+    "schema_json": "{\"properties\":{\"n\":{\"enum\":[18446744073709551616]}}}",
+    "content_json": "{\"n\":18446744073709551616}"
+  },
+  {
+    "name": "bigint-unique-18446744073709551616",
+    "schema_json": "{\"properties\":{\"a\":{\"uniqueItems\":true}}}",
+    "content_json": "{\"a\":[18446744073709551616,18446744073709551617]}"
+  },
+  {
+    "name": "decimal-multipleOf",
+    "schema_json": "{\"properties\":{\"n\":{\"multipleOf\":0.1}}}",
+    "content_json": "{\"n\":0.3}"
+  },
+  {
+    "name": "decimal-minimum",
+    "schema_json": "{\"properties\":{\"n\":{\"minimum\":0.30000000000000004}}}",
+    "content_json": "{\"n\":0.3}"
+  },
+  {
+    "name": "overflow-maximum",
+    "schema_json": "{\"properties\":{\"n\":{\"maximum\":1e308}}}",
+    "content_json": "{\"n\":1e309}"
+  },
+  {
+    "name": "overflow-integer",
+    "schema_json": "{\"properties\":{\"n\":{\"type\":\"integer\"}}}",
+    "content_json": "{\"n\":1e309}"
+  },
+  {
+    "name": "overflow-equal-enum",
+    "schema_json": "{\"properties\":{\"n\":{\"enum\":[1e309]}}}",
+    "content_json": "{\"n\":1e310}"
+  },
+  {
+    "name": "subnormal-positive",
+    "schema_json": "{\"properties\":{\"n\":{\"exclusiveMinimum\":0}}}",
+    "content_json": "{\"n\":1e-400}"
+  },
+  {
+    "name": "subnormal-integer",
+    "schema_json": "{\"properties\":{\"n\":{\"type\":\"integer\"}}}",
+    "content_json": "{\"n\":1e-400}"
+  },
+  {
+    "name": "huge-exponent-divisor",
+    "schema_json": "{\"properties\":{\"n\":{\"multipleOf\":1e999999}}}",
+    "content_json": "{\"n\":1}"
+  },
+  {
+    "name": "regex-backreference",
+    "schema_json": "{\"properties\":{\"s\":{\"pattern\":\"^(a)\\\\1$\"}}}",
+    "content_json": "{\"s\":\"aa\"}"
+  },
+  {
+    "name": "regex-lookahead",
+    "schema_json": "{\"properties\":{\"s\":{\"pattern\":\"^(?=a)a$\"}}}",
+    "content_json": "{\"s\":\"a\"}"
+  },
+  {
+    "name": "regex-lookbehind",
+    "schema_json": "{\"properties\":{\"s\":{\"pattern\":\"(?<=a)b\"}}}",
+    "content_json": "{\"s\":\"ab\"}"
+  },
+  {
+    "name": "regex-python-named-group",
+    "schema_json": "{\"properties\":{\"s\":{\"pattern\":\"(?P<word>a)\"}}}",
+    "content_json": "{\"s\":\"a\"}"
+  },
+  {
+    "name": "regex-python-named-backreference",
+    "schema_json": "{\"properties\":{\"s\":{\"pattern\":\"(?P<word>a)(?P=word)\"}}}",
+    "content_json": "{\"s\":\"aa\"}"
+  },
+  {
+    "name": "regex-unicode-digit",
+    "schema_json": "{\"properties\":{\"s\":{\"pattern\":\"^\\\\d+$\"}}}",
+    "content_json": "{\"s\":\"\\u0661\"}"
+  },
+  {
+    "name": "regex-end-newline",
+    "schema_json": "{\"properties\":{\"s\":{\"pattern\":\"^a$\"}}}",
+    "content_json": "{\"s\":\"a\\n\"}"
+  },
+  {
+    "name": "regex-inline-flags",
+    "schema_json": "{\"properties\":{\"s\":{\"pattern\":\"(?i)^a$\"}}}",
+    "content_json": "{\"s\":\"A\"}"
+  },
+  {
+    "name": "unknown-embedded-unused",
+    "schema_json": "{\"properties\": {\"x\": {\"$id\": \"urn:nested\", \"$schema\": \"https://example.invalid/nested-dialect\", \"type\": \"integer\"}}}",
+    "content_json": "{}"
+  },
+  {
+    "name": "unknown-embedded-visited",
+    "schema_json": "{\"properties\": {\"x\": {\"$id\": \"urn:nested\", \"$schema\": \"https://example.invalid/nested-dialect\", \"type\": \"integer\"}}}",
+    "content_json": "{\"x\": 1}"
+  },
+  {
+    "name": "nested-draft4-float",
+    "schema_json": "{\"properties\": {\"n\": {\"$schema\": \"http://json-schema.org/draft-04/schema#\", \"type\": \"integer\"}}}",
+    "content_json": "{\"n\":1.0}"
+  },
+  {
+    "name": "nested-draft4-float-resource",
+    "schema_json": "{\"properties\": {\"n\": {\"$schema\": \"http://json-schema.org/draft-04/schema#\", \"type\": \"integer\", \"id\": \"urn:nested-draft4\"}}}",
+    "content_json": "{\"n\":1.0}"
+  }
+]
