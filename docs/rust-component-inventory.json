@@ -224,8 +224,8 @@
       "language": "script",
       "category": "producto",
       "lines": 98,
-      "status": "Pendiente",
-      "rust": null
+      "status": "Parcial: serve nativo; otros comandos pendientes",
+      "rust": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/crates/comandos-extensions/src/main.rs"
     },
     {
       "source": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/bin/cc-keys",
@@ -896,8 +896,8 @@
       "language": ".py",
       "category": "producto",
       "lines": 251,
-      "status": "Pendiente",
-      "rust": null
+      "status": "Parcial: serve OAuth nativo; importación pendiente",
+      "rust": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/crates/comandos-extensions/src/auth.rs"
     },
     {
       "source": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/lib/extension_catalog.py",
@@ -936,8 +936,8 @@
       "language": ".py",
       "category": "producto",
       "lines": 176,
-      "status": "Pendiente",
-      "rust": null
+      "status": "Parcial: serve nativo; metadatos/check pendientes",
+      "rust": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/crates/comandos-extensions/src/serve.rs"
     },
     {
       "source": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/lib/focus_progress.py",

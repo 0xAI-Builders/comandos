@@ -1,5 +1,5 @@
 [workspace]
-members = ["crates/comandos-core", "crates/comandos-store", "crates/comandos-runtime"]
+members = ["crates/comandos-core", "crates/comandos-store", "crates/comandos-runtime", "crates/comandos-extensions"]
 resolver = "3"
 
 [workspace.package]
