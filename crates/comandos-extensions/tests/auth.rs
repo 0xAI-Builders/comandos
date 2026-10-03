@@ -60,6 +60,104 @@ fn never(_: &Value) -> Result<Value, String> {
 }
 
 #[test]
+fn live_clock_checks_margin_after_waiting_for_credential_lock() {
+    let home = Home::new();
+    let mut item = old();
+    item["expires_at"] = json!(1070.);
+    home.credentials(item);
+    let auth = home.auth();
+    let path = home
+        .0
+        .join(".local/state/comandos/extensions/credentials.lock");
+    fs::create_dir_all(path.parent().unwrap()).unwrap();
+    let lock = fs::File::create(&path).unwrap();
+    lock.lock().unwrap();
+    let clock = AtomicUsize::new(1000);
+    std::thread::scope(|scope| {
+        let worker = scope.spawn(|| {
+            auth.access_token_with_clock(
+                None,
+                || clock.load(Ordering::SeqCst) as f64,
+                |_| Ok(json!({"access_token":"new","expires_in":3600})),
+            )
+        });
+        // Observe the worker's separate open description while our lock is held.
+        // Advancing fixture time here deterministically models a 15-second wait,
+        // without sleeping for expiry or racing the worker's initial clock read.
+        let started = std::time::Instant::now();
+        let waiting = loop {
+            let opened = fs::read_dir("/proc/self/fd")
+                .unwrap()
+                .filter_map(Result::ok)
+                .filter(|entry| fs::read_link(entry.path()).ok().as_ref() == Some(&path))
+                .count();
+            if opened >= 2 {
+                break true;
+            }
+            if started.elapsed() > std::time::Duration::from_secs(2) {
+                break false;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(1));
+        };
+        clock.store(1015, Ordering::SeqCst);
+        lock.unlock().unwrap();
+        let token = worker.join().unwrap().unwrap();
+        assert!(
+            waiting,
+            "auth worker did not reach the held credential lock"
+        );
+        assert_eq!(token.as_deref(), Some("new"));
+    });
+    assert_eq!(home.read()["demo"]["expires_at"], 4615.);
+}
+
+#[test]
+fn live_clock_stamps_expiry_and_native_source_after_delayed_refresh() {
+    let home = Home::new();
+    let source = home.write(
+        ".grok/mcp_credentials.json",
+        &json!({
+            "demo:https://example.test/mcp": {"token_received_at":0,
+                "token_response":{"access_token":"old","refresh_token":"refresh","expires_in":1}}
+        }),
+    );
+    let mut item = old();
+    item["source"] = json!(source);
+    home.credentials(item);
+    let auth = home.auth();
+    let clock = AtomicUsize::new(1000);
+    assert_eq!(
+        auth.access_token_with_clock(
+            None,
+            || clock.load(Ordering::SeqCst) as f64,
+            |_| {
+                clock.store(1010, Ordering::SeqCst);
+                Ok(json!({"access_token":"new","expires_in":65}))
+            }
+        )
+        .unwrap()
+        .as_deref(),
+        Some("new")
+    );
+    assert_eq!(home.read()["demo"]["expires_at"], 1075.);
+    let native: Value = serde_json::from_slice(&fs::read(&source).unwrap()).unwrap();
+    assert_eq!(
+        native["demo:https://example.test/mcp"]["token_received_at"],
+        1010
+    );
+    assert_eq!(
+        native["demo:https://example.test/mcp"]["token_response"]["expires_in"],
+        65
+    );
+    assert_eq!(
+        auth.access_token_with_clock(None, || clock.load(Ordering::SeqCst) as f64, never)
+            .unwrap()
+            .as_deref(),
+        Some("new")
+    );
+}
+
+#[test]
 fn missing_store_is_absent_and_endpoint_mismatch_never_leaks() {
     let home = Home::new();
     assert!(

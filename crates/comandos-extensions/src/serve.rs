@@ -142,7 +142,9 @@ pub async fn serve(home: &Path, name: &str, spec: &Value) -> Result<()> {
                 let handle=jobs.spawn(async move {
                     let mut response=match upstream.request(request).await {Ok(v)=>v,Err(_)=>error(id.clone(),-32603,"Upstream request failed")};
                     response["id"]=id;
-                    if method=="tools/list" && let Some(tools)=response["result"]["tools"].as_array_mut(){tools.retain(|t|t["name"].as_str().is_some_and(|n|permitted(&spec,n)));}
+                    if method=="tools/list" && response.get("error").is_none()
+                        && let Some(tools)=response.get_mut("result").and_then(|result|result.get_mut("tools")).and_then(Value::as_array_mut)
+                    {tools.retain(|t|t["name"].as_str().is_some_and(|n|permitted(&spec,n)));}
                     if response.to_string().len()>MAX_MESSAGE {response=error(response["id"].clone(),-32603,"Upstream response too large");}
                     (task_key,response)
                 });

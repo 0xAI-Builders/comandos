@@ -334,11 +334,11 @@ impl Auth {
     pub async fn access_token(&self, rejected: Option<String>) -> Result<Option<String>, String> {
         let auth = self.clone();
         blocking_transaction(move || {
-            auth.access_token_with(rejected.as_deref(), now(), refresh_oauth)
+            auth.access_token_with_clock(rejected.as_deref(), now, refresh_oauth)
         })
         .await
     }
-    /// Injected refresh and clock keep rotation/concurrency tests offline.
+    /// Fixed clock convenience for deterministic rotation tests.
     pub fn access_token_with<F>(
         &self,
         rejected: Option<&str>,
@@ -348,9 +348,19 @@ impl Auth {
     where
         F: FnOnce(&Value) -> Result<Value, String>,
     {
-        if !at.is_finite() {
-            return Err(failure());
-        }
+        self.access_token_with_clock(rejected, || at, refresh)
+    }
+    /// Injected refresh and clock keep rotation/concurrency tests offline.
+    pub fn access_token_with_clock<F, C>(
+        &self,
+        rejected: Option<&str>,
+        mut clock: C,
+        refresh: F,
+    ) -> Result<Option<String>, String>
+    where
+        F: FnOnce(&Value) -> Result<Value, String>,
+        C: FnMut() -> f64,
+    {
         private_dir(&self.state())?;
         let lock = OpenOptions::new()
             .read(true)
@@ -387,6 +397,11 @@ impl Auth {
         }
         let token = string(&item, "access_token").map(str::to_owned);
         let expiry = number(&item, "expires_at");
+        // Lock contention and source reads can consume the expiry margin.
+        let at = clock();
+        if !at.is_finite() {
+            return Err(failure());
+        }
         let was_rejected = rejected.is_some_and(|r| !r.is_empty() && token.as_deref() == Some(r));
         if !was_rejected && (expiry == 0.0 || expiry > at + 60.0) {
             return Ok(token);
@@ -407,6 +422,8 @@ impl Auth {
             None => 3600.0,
             Some(v) => v.as_f64().ok_or_else(refresh_error)?,
         };
+        // expires_in starts when refresh completes, including native timestamps.
+        let at = clock();
         let expiry = at + seconds;
         if !expiry.is_finite() {
             return Err(refresh_error());

@@ -58,6 +58,8 @@ def result_for(d):
     if method=='initialize':
         result={'protocolVersion':'2025-03-26','instructions':'Keep original instructions','capabilities':{'tools':{'listChanged':True},'resources':{'subscribe':True},'prompts':{},'completions':{},'logging':{}},'serverInfo':{'name':'fixture','version':'1'}}
     elif method=='tools/list':
+        if params.get('cursor')=='error-page':
+            return {'jsonrpc':'2.0','id':d['id'],'error':{'code':-32099,'message':'Original list error','data':{'cursor':'error-page','extra':[1,2]}},'futureEnvelope':{'keep':True}}
         result={'tools':[{'name':'echo','description':'Original description','inputSchema':{'type':'object'},'futureField':3},{'name':'blocked','inputSchema':{'type':'object'}}], 'futureResult':42}
         if not params.get('cursor'): result['nextCursor']='page2'
     elif method=='tools/call':
@@ -140,6 +142,15 @@ def test_empty_enabled_tools_denies_everything(tmp_path,upstream):
         initialize(p); send(p,'tools/list');assert receive(p)['result']['tools']==[]
         send(p,'tools/call',{'name':'echo'});assert receive(p)['error']['code']==-32601
     finally: close(p)
+
+
+def test_tools_list_preserves_entire_error_envelope(tmp_path,upstream):
+    p=launch(tmp_path,{**upstream,'disabled_tools':['blocked']})
+    try:
+        initialize(p)
+        send(p,'tools/list',{'cursor':'error-page'},ident='list-error')
+        assert receive(p)=={'jsonrpc':'2.0','id':'list-error','error':{'code':-32099,'message':'Original list error','data':{'cursor':'error-page','extra':[1,2]}},'futureEnvelope':{'keep':True}}
+    finally:close(p)
 
 
 def test_concurrent_requests_keep_original_ids(tmp_path,upstream):
@@ -301,31 +312,38 @@ def test_unsupported_commands_fail_explicitly(tmp_path):
         assert p.returncode!=0 and not p.stdout
 
 
-def test_request_limit_is_explicit_and_cancellation_frees_slot(tmp_path,custom_server):
-    gate=threading.Event();count=0;lock=threading.Lock()
-    class Slow(Handler):
-        def do_POST(self):
-            nonlocal count
-            # Hold only tools/call; initialize remains normal.
-            data=self.rfile.read(int(self.headers['Content-Length']))
-            d=json.loads(data)
-            if d.get('method')=='tools/call':
-                with lock:count+=1
-                gate.wait(4)
-            if 'id' not in d:
-                self.send_response(202);self.send_header('Content-Length','0');self.end_headers();return
-            body=json.dumps(result_for(d)).encode()
-            self.send_response(200);self.send_header('Content-Type','application/json');self.send_header('Content-Length',str(len(body)));self.end_headers()
-            try:self.wfile.write(body)
-            except (BrokenPipeError,ConnectionResetError):pass
-    url=custom_server(Slow)+'/mcp';p=launch(tmp_path,{'url':url})
+def test_request_limit_is_explicit_and_cancellation_frees_slot(tmp_path):
+    marker=tmp_path/'saturated'
+    script=tmp_path/'hold_calls.py'
+    script.write_text("""import json, pathlib, runpy, sys
+result_for=runpy.run_path(sys.argv[1])['result_for']
+count=0
+for line in sys.stdin:
+    d=json.loads(line)
+    if 'id' not in d: continue
+    if d.get('method')=='tools/call':
+        count+=1
+        pathlib.Path(sys.argv[2]).write_text(str(count))
+        if not d.get('params',{}).get('arguments',{}).get('replacement'): continue
+    print(json.dumps(result_for(d)),flush=True)
+""")
+    p=launch(tmp_path,{'command':sys.executable,'args':[str(script),__file__,str(marker)],'disabled_tools':['blocked']})
     try:
         initialize(p)
         for i in range(65):send(p,'tools/call',{'name':'echo'},ident=i+10)
         value=receive(p)
         assert value['error']['code']==-32000 and value['id']==74
-        assert count<=64
-    finally:gate.set();close(p)
+        deadline=time.monotonic()+5
+        while time.monotonic()<deadline:
+            if marker.exists() and marker.read_text()=='64':break
+            time.sleep(.01)
+        assert marker.read_text()=='64', 'all 64 calls must reach the upstream and remain unanswered'
+        p.stdin.write('{"jsonrpc":"2.0","method":"notifications/cancelled","params":{"requestId":10}}\n');p.stdin.flush()
+        send(p,'tools/call',{'name':'echo','arguments':{'replacement':True}},ident=75)
+        replacement=receive(p)
+        assert replacement['id']==75 and replacement.get('result',{}).get('structuredContent')=={'replacement':True}
+        assert marker.read_text()=='65', 'replacement must reach upstream while other calls stay unanswered'
+    finally:close(p)
 
 
 def test_oversized_upstream_body_returns_sanitized_error(tmp_path,custom_server):
@@ -341,7 +359,7 @@ def test_oversized_upstream_body_returns_sanitized_error(tmp_path,custom_server)
     p=launch(tmp_path,{'url':custom_server(Large)+'/mcp'})
     try:
         initialize(p);send(p,'tools/list');value=receive(p)
-        assert value['error']['code']==-32603 and 'secret-body' not in json.dumps(value)
+        assert value=={'jsonrpc':'2.0','id':1,'error':{'code':-32603,'message':'Upstream request failed'}}
     finally:close(p)
 
 
