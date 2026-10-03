@@ -78,55 +78,17 @@ fn profile_json(text: &str) -> std::result::Result<Value, Error> {
     });
     comandos_core::json::parse_value(&normalized).map_err(|_| Error::category("JSONDecodeError"))
 }
-fn valid_content(content: &Value) -> bool {
-    match content["type"].as_str() {
-        Some("text") => content["text"].is_string(),
-        Some("image" | "audio") => content["data"].is_string() && content["mimeType"].is_string(),
-        Some("resource_link") => content["uri"].is_string() && content["name"].is_string(),
-        Some("resource") => {
-            content["resource"]["uri"].is_string()
-                && (content["resource"]["text"].is_string()
-                    || content["resource"]["blob"].is_string())
-        }
-        _ => false,
-    }
-}
 async fn connected(transport: &Transport, name: &str) -> std::result::Result<Value, Error> {
     let initial = request(transport, "initialize", json!({"protocolVersion":"2025-03-26","capabilities":{},"clientInfo":{"name":"comandos","version":"1"}})).await?;
-    let version = initial["protocolVersion"]
-        .as_str()
-        .ok_or_else(|| Error::category("ValidationError"))?;
+    if !crate::check_protocol::initialize(&initial) {
+        return Err(Error::category("ValidationError"));
+    }
+    let version = initial["protocolVersion"].as_str().unwrap_or("");
     if !matches!(
         version,
         "2024-11-05" | "2025-03-26" | "2025-06-18" | "2025-11-25"
     ) {
         return Err(Error::category("RuntimeError"));
-    }
-    if !initial["capabilities"].is_object()
-        || !initial["serverInfo"]["name"].is_string()
-        || !initial["serverInfo"]["version"].is_string()
-    {
-        return Err(Error::category("ValidationError"));
-    }
-    for (key, capability) in initial["capabilities"].as_object().unwrap() {
-        if matches!(
-            key.as_str(),
-            "tools" | "resources" | "prompts" | "logging" | "completions" | "experimental"
-        ) && !capability.is_null()
-            && !capability.is_object()
-        {
-            return Err(Error::category("ValidationError"));
-        }
-        if let Some(capability) = capability.as_object() {
-            for flag in ["listChanged", "subscribe"] {
-                if capability
-                    .get(flag)
-                    .is_some_and(|v| !v.is_null() && !v.is_boolean())
-                {
-                    return Err(Error::category("ValidationError"));
-                }
-            }
-        }
     }
     transport.set_protocol(version);
     transport
@@ -144,15 +106,10 @@ async fn connected(transport: &Transport, name: &str) -> std::result::Result<Val
                 .map(|v| json!({"cursor":v}))
                 .unwrap_or(json!({}));
             let page = request(transport, "tools/list", params).await?;
-            let tools = page["tools"]
-                .as_array()
-                .ok_or_else(|| Error::category("ValidationError"))?;
-            if tools
-                .iter()
-                .any(|t| !t["name"].is_string() || !t["inputSchema"].is_object())
-            {
+            if !crate::check_protocol::tools(&page) {
                 return Err(Error::category("ValidationError"));
             }
+            let tools = page["tools"].as_array().unwrap();
             count += tools.len();
             cursor = match page.get("nextCursor") {
                 None | Some(Value::Null) => None,
@@ -184,16 +141,10 @@ async fn connected(transport: &Transport, name: &str) -> std::result::Result<Val
             json!({"name":tool,"arguments":arguments}),
         )
         .await?;
-        let content = result["content"]
-            .as_array()
+        let is_error = crate::check_protocol::call(&result)
             .ok_or_else(|| Error::category("ValidationError"))?;
-        if content.iter().any(|c| !valid_content(c)) {
-            return Err(Error::category("ValidationError"));
-        }
-        if result.get("isError").is_some_and(|v| !v.is_boolean()) {
-            return Err(Error::category("ValidationError"));
-        }
-        if result["isError"] == true {
+        let content = result["content"].as_array().unwrap();
+        if is_error {
             return Ok(json!({"name":name,"status":"failed","phase":"read_access","tools":count}));
         }
         if let Some(expected) = expected {

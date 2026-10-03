@@ -10,10 +10,15 @@ cases += [('google-drive',spec(mode)) for mode in ['normal','denied','invalid-co
 cases += [(name,spec(env={'EMAIL':email,'EMAIL_FIELD':field})) for name,expected in MAIL.items() for email in [expected,'other@example.test'] for field in ['email','emailAddress']]
 cases += [('gmail',spec(mode,env={'EMAIL':MAIL['gmail']})) for mode in ['bad-json','no-text']]
 cases += [('gmail',spec(env={'PROFILE_JSON':profile})) for profile in ['{"emailAddress":"other","emailAddress":"jesusbatallar@gmail.com"}','{"email":"jesusbatallar@gmail.com","extra":NaN}','{"emailAddress":NaN,"email":"jesusbatallar@gmail.com"}']]
+from check_protocol_cases import CASES,entry as protocol_entry
+cases += [('google-drive',protocol_entry(replies,'/work/crates/comandos-extensions/tests/test_check.py',sys.executable)) for _,replies,_ in CASES]
+mismatches=[]
 for name,entry in cases:
     with tempfile.TemporaryDirectory() as temp:
         home=pathlib.Path(temp)
         expected=asyncio.run(extension_proxy.check(home,name,entry))
         _,actual,_=run(home,{name:entry})
-        assert actual==[expected],json.dumps({'entry':entry,'python':expected,'rust':actual})
+        if actual!=[expected]:mismatches.append({'entry':entry,'python':expected,'rust':actual})
+for mismatch in mismatches:print(json.dumps(mismatch))
+assert not mismatches,f'{len(mismatches)} of {len(cases)} SDK check scenarios mismatched'
 print(f'{len(cases)} SDK check scenarios matched')

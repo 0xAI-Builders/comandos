@@ -127,6 +127,7 @@ def fixture(mode):
             result={'content':[] if mode=='no-text' else [{'type':'text','text':text}],'isError':mode=='denied'}
             if mode=='invalid-content':result['content']=[{'type':'text','text':[]} ]
         else:result={}
+        if mode=='protocol':result=json.loads(os.environ['PROTOCOL_REPLIES']).get(method,{})
         print(json.dumps({'jsonrpc':'2.0','id':d['id'],'result':result}),flush=True)
 
 if __name__=='__main__':fixture(sys.argv[2])
@@ -250,3 +251,11 @@ def test_cleanup_uses_latest_rotated_shared_credential(tmp_path):
         assert seen[:2]==['Bearer old','Bearer new'] and seen.count('Bearer old')==1
         assert deleted==['Bearer new']
     finally:server.shutdown();server.server_close()
+
+from check_protocol_cases import CASES as PROTOCOL_CASES, entry as protocol_entry
+
+@pytest.mark.parametrize('label,replies,expected',PROTOCOL_CASES,ids=[c[0] for c in PROTOCOL_CASES])
+def test_sdk_protocol_model_boundaries(tmp_path,label,replies,expected):
+    p,rows,saved=run(tmp_path,{'google-drive':protocol_entry(replies,__file__,sys.executable)})
+    assert rows==saved==[expected],label
+    assert p.returncode==int(expected['status']=='failed')
