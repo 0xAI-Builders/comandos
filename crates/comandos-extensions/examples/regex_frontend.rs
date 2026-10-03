@@ -21,6 +21,58 @@ fn fixture() -> PathBuf {
 fn write(p: &Path, v: &Value) {
     fs::write(p, serde_json::to_vec_pretty(v).unwrap()).unwrap();
 }
+fn validate_identity(identity: &Value) -> Result<(), String> {
+    for (key, expected) in [
+        ("executable", json!("/venv/bin/python")),
+        ("implementation", json!("CPython")),
+        (
+            "version",
+            json!("3.11.15 (main, Mar  3 2026, 09:26:23) [GCC 11.4.0]"),
+        ),
+        (
+            "binary_sha256",
+            json!("c4b3f4386c93758043a4e772574bfbd6b0e5e4ce8d50af17f6ffeeb4b1a6be5b"),
+        ),
+        ("unicode", json!("14.0.0")),
+        ("recursion", json!(1000)),
+        ("digits", json!(4300)),
+        ("magic", json!(20220615)),
+        ("codesize", json!(4)),
+        ("maxrepeat", json!(4294967295u64)),
+        ("maxgroups", json!(1073741823)),
+    ] {
+        if identity.get(key) != Some(&expected) {
+            return Err(format!(
+                "identity drift {key}: actual={} expected={expected}",
+                identity[key]
+            ));
+        }
+    }
+    let expected_files = json!({
+        "/usr/lib/python3.11/re/_parser.py":"4748e39c77d6dc14f81af80e68a62ad99031a8182d5e0b219a6666d0cfb1626f",
+        "/usr/lib/python3.11/re/_compiler.py":"c05067f8bfa4c13cbbf1eedc4d5cafc9b621bcb6ebc5771ba0518a18095af15a",
+        "/usr/lib/python3.11/re/_constants.py":"3e4463dc8ba87c4a3563be46d2d593e82ca9a0fb91768cfe5a07554ed3de82c5"
+    });
+    if identity.get("files") != Some(&expected_files) {
+        return Err(format!(
+            "identity source drift: actual={} expected={expected_files}",
+            identity["files"]
+        ));
+    }
+    Ok(())
+}
+fn capture_identity(dir: &Path, label: &str) -> Result<Value, String> {
+    let bytes = protocol::run(
+        "/venv/bin/python",
+        &["-c".into(), oracle_queries::QUERY.into()],
+        b"{\"identity\":true}",
+        Duration::from_secs(10),
+        &dir.join(label),
+    )?;
+    let identity: Value = serde_json::from_slice(&bytes).map_err(|e| e.to_string())?;
+    validate_identity(&identity)?;
+    Ok(identity)
+}
 fn main() {
     if let Err(e) = run() {
         eprintln!("{e}");
@@ -39,80 +91,25 @@ fn run() -> Result<(), String> {
             println!("{} cases", rows.len());
         }
         "capture" => {
-            if fixture().join("oracle.jsonl").exists() {
-                return Err("oracle already frozen; refusing overwrite".into());
+            if dir.join("oracle.jsonl").exists() || dir.join("identity-before.stdout").exists() {
+                return Err("fresh evidence directory required; refusing overwrite".into());
             }
-            let rows: Vec<Value> = serde_json::from_slice(
-                &fs::read(fixture().join("cases.json")).map_err(|e| e.to_string())?,
-            )
-            .map_err(|e| e.to_string())?;
-            let identity = protocol::run(
-                "/venv/bin/python",
-                &["-c".into(), oracle_queries::QUERY.into()],
-                b"{\"identity\":true}",
-                Duration::from_secs(10),
-                &dir.join("identity"),
-            )?;
-            let identity: Value = serde_json::from_slice(&identity).map_err(|e| e.to_string())?;
-            if !identity["version"]
-                .as_str()
-                .is_some_and(|s| s.starts_with("3.11.15"))
-                || identity["unicode"] != "14.0.0"
-                || identity["digits"] != 4300
-                || identity["magic"] != 20220615
-                || identity["codesize"] != 4
-                || identity["maxrepeat"] != 4294967295u64
-                || identity["maxgroups"] != 1073741823
-            {
-                return Err("identity drift".into());
+            let input = fs::read(fixture().join("cases.json")).map_err(|e| e.to_string())?;
+            let rows: Vec<Value> = serde_json::from_slice(&input).map_err(|e| e.to_string())?;
+            let frozen_bytes =
+                fs::read(fixture().join("oracle.jsonl")).map_err(|e| e.to_string())?;
+            let frozen: Vec<Value> = std::str::from_utf8(&frozen_bytes)
+                .map_err(|e| e.to_string())?
+                .lines()
+                .map(|l| serde_json::from_str(l).map_err(|e| e.to_string()))
+                .collect::<Result<_, _>>()?;
+            if rows.len() != 727 || frozen.len() != rows.len() {
+                return Err("frozen complete cohort required".into());
             }
-            for (name, expected) in [
-                (
-                    "_parser.py",
-                    "4748e39c77d6dc14f81af80e68a62ad99031a8182d5e0b219a6666d0cfb1626f",
-                ),
-                (
-                    "_compiler.py",
-                    "c05067f8bfa4c13cbbf1eedc4d5cafc9b621bcb6ebc5771ba0518a18095af15a",
-                ),
-                (
-                    "_constants.py",
-                    "3e4463dc8ba87c4a3563be46d2d593e82ca9a0fb91768cfe5a07554ed3de82c5",
-                ),
-            ] {
-                if !identity["files"]
-                    .as_object()
-                    .ok_or("files")?
-                    .iter()
-                    .any(|(p, h)| p.ends_with(name) && h == expected)
-                {
-                    return Err(format!("source drift {name}"));
-                }
-            }
-            let old_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-                .join("../../.superpowers/sdd/schema-regex-frontend-capture-v1");
-            let old_rows: Vec<Value> =
-                serde_json::from_slice(&fs::read(old_dir.join("cases.json")).unwrap()).unwrap();
-            if rows.len() < old_rows.len()
-                || rows.iter().zip(&old_rows).any(|(a, b)| {
-                    [
-                        "id",
-                        "pattern",
-                        "op",
-                        "search",
-                        "value",
-                        "schema_json",
-                        "content_json",
-                        "draft",
-                    ]
-                    .iter()
-                    .any(|k| a[*k] != b[*k])
-                })
-            {
-                return Err("frozen prefix drift".into());
-            }
-            let mut out = fs::read(old_dir.join("oracle.jsonl")).unwrap();
-            for (i, batch) in rows[old_rows.len()..].chunks(8).enumerate() {
+            let before = capture_identity(&dir, "identity-before")?;
+            let mut out = Vec::new();
+            let mut measured = Vec::new();
+            for (i, batch) in rows.chunks(8).enumerate() {
                 let bytes = protocol::run(
                     "/venv/bin/python",
                     &["-c".into(), oracle_queries::QUERY.into()],
@@ -123,15 +120,32 @@ fn run() -> Result<(), String> {
                 for row in protocol::records(&bytes, batch)? {
                     out.extend(serde_json::to_vec(&row).unwrap());
                     out.push(b'\n');
+                    measured.push(row);
                 }
             }
-            let path = fixture().join("oracle.jsonl");
-            fs::write(&path, &out).map_err(|e| e.to_string())?;
-            write(
-                &fixture().join("manifest.json"),
-                &json!({"version":1,"rows":rows.len(),"families":cases::FAMILIES,"identity":identity,"cases_sha256":hash(&fs::read(fixture().join("cases.json")).unwrap()),"oracle_sha256":hash(&out),"protocol":{"input":8388608,"output_combined":1048576,"rows":8,"address_space":402653184,"cpu_soft":2,"cpu_hard":3,"wall_ms":10000},"first_party_python_debt":"regex_frontend/oracle_queries.rs QUERY","complete_capture":true}),
-            );
-            println!("captured {} rows", rows.len());
+            fs::write(dir.join("oracle.jsonl"), &out).map_err(|e| e.to_string())?;
+            let after = capture_identity(&dir, "identity-after")?;
+            if before != after {
+                return Err(format!(
+                    "identity changed during capture: before={before} after={after}"
+                ));
+            }
+            for (old, new) in frozen.iter().zip(&measured) {
+                if old != new {
+                    return Err(format!(
+                        "frozen reference drift {}: old={old} fresh={new}",
+                        old["id"]
+                    ));
+                }
+            }
+            let historical: Value = serde_json::from_slice(
+                &fs::read(fixture().join("manifest.json")).map_err(|e| e.to_string())?,
+            )
+            .map_err(|e| e.to_string())?;
+            let manifest = json!({"version":2,"rows":rows.len(),"families":cases::FAMILIES,"identity_before":before,"identity_after":after,"identity":before,"cases_sha256":hash(&input),"oracle_sha256":hash(&out),"frozen_oracle_sha256":hash(&frozen_bytes),"complete_capture":true,"comparison":"all 727 records equal frozen reference including diagnostics, messages, warnings and semantic fields","fresh_capture_directory":dir,"fresh_reference_file":dir.join("oracle.jsonl"),"historical_lineage":{"manifest":historical,"v1_binary_binding":"not contemporaneously recorded; not inferred from v2 or current binary"},"protocol":{"input":8388608,"output_combined":1048576,"rows":8,"address_space":402653184,"cpu_soft":2,"cpu_hard":3,"wall_ms":10000},"first_party_python_debt":"regex_frontend/oracle_queries.rs QUERY"});
+            write(&dir.join("manifest.json"), &manifest);
+            write(&fixture().join("manifest.json"), &manifest);
+            println!("captured and compared {} fresh rows", rows.len());
         }
         "native" => {
             let binary = args.get(3).ok_or("private test binary required")?;
@@ -501,5 +515,68 @@ mod literal_selector_regression {
                 .iter()
                 .any(|r| r["name"] == "schema/draft4/invalid")
         );
+    }
+}
+
+#[cfg(test)]
+mod strict_identity_regression {
+    use super::*;
+    fn approved() -> Value {
+        let mut value: Value =
+            serde_json::from_slice(&fs::read(fixture().join("manifest.json")).unwrap()).unwrap();
+        value["identity"]["implementation"] = json!("CPython");
+        value["identity"].clone()
+    }
+    #[test]
+    fn changed_and_missing_binary_identity_are_rejected() {
+        let identity = approved();
+        assert!(validate_identity(&identity).is_ok());
+        for (key, changed) in [
+            ("recursion", json!(1001)),
+            ("digits", json!(4301)),
+            ("version", json!("3.11.15 other build")),
+            ("implementation", json!("PyPy")),
+            (
+                "binary_sha256",
+                json!("0000000000000000000000000000000000000000000000000000000000000000"),
+            ),
+        ] {
+            let mut value = identity.clone();
+            value[key] = changed;
+            assert!(validate_identity(&value).is_err(), "{key}");
+        }
+        for file in [
+            "/usr/lib/python3.11/re/_parser.py",
+            "/usr/lib/python3.11/re/_compiler.py",
+            "/usr/lib/python3.11/re/_constants.py",
+        ] {
+            let mut value = identity.clone();
+            value["files"][file] = json!("changed");
+            assert!(validate_identity(&value).is_err());
+            let mut value = identity.clone();
+            value["files"].as_object_mut().unwrap().remove(file);
+            assert!(validate_identity(&value).is_err());
+        }
+        for key in [
+            "binary_sha256",
+            "recursion",
+            "implementation",
+            "version",
+            "unicode",
+            "digits",
+            "magic",
+            "codesize",
+            "maxrepeat",
+            "maxgroups",
+            "executable",
+            "files",
+        ] {
+            let mut changed = identity.clone();
+            changed[key] = json!("changed");
+            assert!(validate_identity(&changed).is_err(), "changed {key}");
+            let mut missing = identity.clone();
+            missing.as_object_mut().unwrap().remove(key);
+            assert!(validate_identity(&missing).is_err(), "missing {key}");
+        }
     }
 }

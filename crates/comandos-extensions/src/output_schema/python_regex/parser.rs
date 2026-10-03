@@ -176,6 +176,21 @@ fn literal_escape(c: u32) -> Option<u32> {
         _ => None,
     }
 }
+// CPython State.opengroup appends before the semantic MAXGROUPS check.
+// The independent arena ceiling remains protective and is checked by push.
+pub(super) fn append_group(
+    groups: &mut Vec<Group>,
+    group: Group,
+    budget: &mut RegexBudget,
+    semantic_maxgroups: usize,
+) -> Result<u32, RegexFailure> {
+    let id = groups.len() as u32;
+    push(groups, group, 16_384, budget)?;
+    if groups.len() > semantic_maxgroups {
+        return Err(RegexFailure::InternalProgram);
+    }
+    Ok(id)
+}
 impl<'p, 'b, 'w> Parser<'p, 'b, 'w> {
     fn identifier(&mut self, span: Span) -> Result<bool, RegexFailure> {
         let points = &self.source.p[span.start..span.end];
@@ -197,10 +212,10 @@ impl<'p, 'b, 'w> Parser<'p, 'b, 'w> {
     }
     fn name_group(&mut self, name: Span) -> Result<Option<u32>, RegexFailure> {
         for (id, g) in self.arena.groups.iter().enumerate().skip(1) {
+            self.budget.charge(1, RegexPhase::Compile)?;
             if let Some(old) = g.name {
                 let a = &self.source.p[name.start..name.end];
                 let z = &self.source.p[old.start..old.end];
-                self.budget.charge(1, RegexPhase::Compile)?;
                 if a.len() != z.len() {
                     continue;
                 }
@@ -812,16 +827,12 @@ impl<'p, 'b, 'w> Parser<'p, 'b, 'w> {
             }
         }
         if capture {
-            let id = self.arena.groups.len() as u32;
-            push(
+            let id = append_group(
                 &mut self.arena.groups,
                 Group { name, width: None },
-                16_384,
                 self.budget,
+                MAXGROUPS as usize,
             )?;
-            if self.arena.groups.len() > MAXGROUPS as usize {
-                return Err(RegexFailure::InternalProgram);
-            }
             if let Some(n) = name
                 && self.name_group(n)?.is_some_and(|g| g != id)
             {

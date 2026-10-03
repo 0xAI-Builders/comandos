@@ -184,6 +184,7 @@ pub fn native_records(
                 | "RecursionError"
                 | "ReError"
                 | "FormatValid"
+                | "FormatError"
                 | "Match"
                 | "Valid"
                 | "Invalid"
@@ -343,7 +344,7 @@ mod faults {
     #[test]
     fn actual_payload_faults_and_recovery() {
         let rows = vec![json!({"id":"a","search":[97]})];
-        for payload in [b"invalid JSON".to_vec(),b"noise\n[]".to_vec(),serde_json::to_vec(&json!([{"id":"a","result":"Compiled","flags":32,"groups":0,"names":[],"search":"false","warnings":[]}])).unwrap(),serde_json::to_vec(&json!([{"id":"a","result":"error","warnings":[]}])).unwrap()]{let bytes=process::run("/bin/cat",&[],&payload,Duration::from_secs(10),&path("payload-fault")).unwrap();assert!(records(&bytes,&rows).is_err());benign("post-payload-fault");}
+        for (index, payload) in [b"invalid JSON".to_vec(),b"noise\n[]".to_vec(),serde_json::to_vec(&json!([{"id":"a","result":"Compiled","flags":32,"groups":0,"names":[],"search":"false","warnings":[]}])).unwrap(),serde_json::to_vec(&json!([{"id":"a","result":"error","warnings":[]}])).unwrap()].into_iter().enumerate(){let bytes=process::run("/bin/cat",&[],&payload,Duration::from_secs(10),&path(&format!("payload-fault-{index:02}"))).unwrap();assert!(records(&bytes,&rows).is_err());benign(&format!("post-payload-fault-{index:02}"));}
     }
     #[test]
     fn framing_rejects_extra_duplicate_reordered_and_contaminated_rows() {
@@ -412,10 +413,138 @@ pub fn run(
     }
     Ok(bytes)
 }
+fn default_budget() -> Value {
+    serde_json::json!({"work":2000000,"memory":8388608,"words":65536,"pattern_points":16384,"subject_points":262144})
+}
+fn policy_budget(row: &Value) -> Result<(Value, &'static str), String> {
+    let mut budget = default_budget();
+    let Some(policy) = row.get("native_policy") else {
+        return Ok((budget, "default"));
+    };
+    let object = policy.as_object().ok_or("policy object")?;
+    if object.is_empty() {
+        return Err("empty policy".into());
+    }
+    if let Some(label) = object.get("calibrate") {
+        if object.len() != 1
+            || !matches!(
+                label.as_str(),
+                Some(
+                    "lookup budget propagation"
+                        | "node/edge capacity"
+                        | "word exact below/at/above"
+                        | "allocation exact below/at/above"
+                        | "work exact below/at/above"
+                        | "format zero words"
+                        | "synthetic reduced MAXGROUPS"
+                )
+            )
+        {
+            return Err("calibration label".into());
+        }
+        return Ok((budget, "diagnostic-only-calibration"));
+    }
+    for (key, value) in object {
+        let max = budget
+            .get(key)
+            .and_then(Value::as_u64)
+            .ok_or("unknown policy key")?;
+        if value.as_u64().is_none_or(|v| v > max) {
+            return Err("invalid policy limit".into());
+        }
+        budget[key] = value.clone();
+    }
+    Ok((budget, "configured-numeric"))
+}
+fn verify_accounting(actual: &Value, initial: &Value, execution: &str) -> Result<(), String> {
+    if &actual["budget_initial"] != initial || actual["policy_execution"] != execution {
+        return Err("ignored or misreported policy".into());
+    }
+    let remaining = actual["budget_remaining"]
+        .as_object()
+        .ok_or("remaining budget")?;
+    if remaining.len() != 5 {
+        return Err("remaining budget shape".into());
+    }
+    for key in [
+        "work",
+        "memory",
+        "words",
+        "pattern_points",
+        "subject_points",
+    ] {
+        let start = initial[key].as_u64().ok_or("initial budget")?;
+        let left = remaining
+            .get(key)
+            .and_then(Value::as_u64)
+            .ok_or("remaining budget type")?;
+        if left > start {
+            return Err("budget increase".into());
+        }
+        if matches!(key, "words" | "pattern_points" | "subject_points") && left != start {
+            return Err("capacity policy changed".into());
+        }
+        if key == "work" && actual["work_used"].as_u64() != Some(start - left) {
+            return Err("work counter mismatch".into());
+        }
+        if key == "memory" && actual["accounted_bytes"].as_u64() != Some(start - left) {
+            return Err("memory counter mismatch".into());
+        }
+    }
+    Ok(())
+}
 pub fn compare(actual: &Value, expected: &Value, row: &Value) -> Result<&'static str, String> {
     if actual["id"] != expected["id"] || actual["id"] != row["id"] {
         return Err("compare identity".into());
     }
+    let (initial, execution) = policy_budget(row)?;
+    verify_accounting(actual, &initial, execution)?;
+    if execution == "diagnostic-only-calibration"
+        && (actual["calibration_label"] != row["native_policy"]["calibrate"]
+            || actual["lowered_policy_executed"] != false)
+    {
+        return Err("calibration counted as configured policy".into());
+    }
+    // The frozen low-policy fixtures use syntax-only compile of one literal.
+    // These exact counters are native resource policy, not Python constants.
+    if execution == "configured-numeric"
+        && row["op"] == "compile"
+        && row["pattern"] == serde_json::json!([97])
+    {
+        let boundary = if initial["work"] == 0 {
+            Some(("BudgetBoundary:Decode", 0))
+        } else if initial["work"] == 1 {
+            Some(("BudgetBoundary:Compile", 1))
+        } else if initial["memory"].as_u64().unwrap() <= 1 {
+            Some(("BudgetBoundary:Compile", 3))
+        } else {
+            None
+        };
+        if let Some((phase, work)) = boundary {
+            if actual["result"] != phase
+                || actual["work_used"] != work
+                || actual["accounted_bytes"] != 0
+                || actual["warnings"] != serde_json::json!([])
+            {
+                return Err("protective policy outcome/counters mismatch".into());
+            }
+            return Ok("protective-native-policy");
+        }
+    }
+    let primary = actual;
+    let actual = if matches!(row["op"].as_str(), Some("format" | "schema")) {
+        let diagnostic = actual
+            .get("compile_diagnostic")
+            .ok_or("separate compile diagnostic required")?;
+        verify_accounting(
+            diagnostic,
+            &default_budget(),
+            "supplemental-default-compile",
+        )?;
+        diagnostic
+    } else {
+        actual
+    };
     if actual["result"] == "BudgetBoundary:Compile"
         && row["family"] == "budget-depth"
         && row["recipe"].as_str().is_some_and(|r| r.contains("129"))
@@ -447,20 +576,26 @@ pub fn compare(actual: &Value, expected: &Value, row: &Value) -> Result<&'static
     {
         return Err(format!("{} warning mismatch", row["id"]));
     }
-    if row["op"] == "format" && actual["format_result"] != expected["format_result"] {
+    if row["op"] == "format"
+        && (primary["format_result"] != expected["format_result"]
+            || primary["result"] != primary["format_result"])
+    {
         return Err("format mismatch".into());
     }
     if row["op"] == "schema" {
-        if actual["schema_identity_sha256"] != expected["proof"]["schema_sha256"] {
+        if primary["result"] != primary["schema_result"]["result"] {
+            return Err("primary schema result mismatch".into());
+        }
+        if primary["schema_identity_sha256"] != expected["proof"]["schema_sha256"] {
             return Err("schema identity mismatch".into());
         }
-        if actual["schema_result"]["result"]
+        if primary["schema_result"]["result"]
             .as_str()
             .is_some_and(|s| s.starts_with("ScopeGap:"))
         {
             return Ok("schema-unresolved");
         }
-        if actual["schema_result"]["result"] != expected["instance"]["result"] {
+        if primary["schema_result"]["result"] != expected["instance"]["result"] {
             return Err("schema assertion mismatch".into());
         }
     }
@@ -473,7 +608,11 @@ pub fn compare(actual: &Value, expected: &Value, row: &Value) -> Result<&'static
         }
         return Ok("search-agreement");
     }
-    Ok("semantic-agreement")
+    Ok(if execution == "configured-numeric" {
+        "native-policy-syntax-agreement"
+    } else {
+        "semantic-agreement"
+    })
 }
 #[cfg(test)]
 mod comparison_tests {
@@ -484,6 +623,11 @@ mod comparison_tests {
         let row = json!({"id":"a","op":"compile","search":[97]});
         let expected = json!({"id":"a","result":"Compiled","flags":32,"groups":0,"names":[],"width_diagnostic":[1,1],"warnings":[],"search":true});
         let mut actual = expected.clone();
+        actual["budget_initial"] = default_budget();
+        actual["budget_remaining"] = default_budget();
+        actual["work_used"] = json!(0);
+        actual["accounted_bytes"] = json!(0);
+        actual["policy_execution"] = json!("default");
         assert_eq!(
             compare(&actual, &expected, &row).unwrap(),
             "search-agreement"
@@ -492,6 +636,15 @@ mod comparison_tests {
         assert!(compare(&actual, &expected, &row).is_err());
         let expected = json!({"id":"a","result":"error","position":null,"warnings":[]});
         let mut actual = expected.clone();
+        actual["budget_initial"] = default_budget();
+        actual["budget_remaining"] = default_budget();
+        actual["work_used"] = json!(0);
+        actual["accounted_bytes"] = json!(0);
+        actual["policy_execution"] = json!("default");
+        assert_eq!(
+            compare(&actual, &expected, &row).unwrap(),
+            "semantic-agreement"
+        );
         actual["position"] = json!(0);
         assert!(compare(&actual, &expected, &row).is_err());
     }
@@ -541,6 +694,17 @@ mod native_framing_regression {
     use super::*;
     use serde_json::json;
     #[test]
+    fn primary_format_error_is_a_distinct_native_category() {
+        let rows = vec![json!({"id":"format"})];
+        let bytes=b"\nrunning 1 test\ntest output_schema::python_regex::frontend_audit::audit_probe ... REGEX_FRONTEND={\"id\":\"format\",\"result\":\"FormatError\"}\nok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s\n\n";
+        assert_eq!(
+            native_records(bytes, &rows, "REGEX_FRONTEND=", "id")
+                .unwrap()
+                .len(),
+            1
+        );
+    }
+    #[test]
     fn actual_rust_harness_prefix_and_terminal_ok_are_preserved() {
         let rows = vec![json!({"id":"a"})];
         let bytes=b"\nrunning 1 test\ntest output_schema::python_regex::frontend_audit::audit_probe ... REGEX_FRONTEND={\"id\":\"a\",\"result\":\"Compiled\"}\nok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s\n\n";
@@ -582,5 +746,41 @@ mod warning_family_regression {
         let rows = vec![json!({"id":"a"})];
         let value = json!([{"id":"a","result":"error","position":0,"warnings":[{"category":"FutureWarning","position":1,"classified":true,"message":"Possible set hypothetical at position 1"}]}]);
         assert!(records(&serde_json::to_vec(&value).unwrap(), &rows).is_err());
+    }
+}
+
+#[cfg(test)]
+mod policy_comparison_regression {
+    use super::*;
+    use serde_json::json;
+    #[test]
+    fn ignored_declared_policy_is_rejected() {
+        let row = json!({"id":"a","op":"compile","pattern":[97],"native_policy":{"memory":0}});
+        let expected = json!({"id":"a","result":"Compiled","flags":32,"groups":0,"names":[],"width_diagnostic":[1,1],"warnings":[]});
+        let mut actual = expected.clone();
+        actual["work_used"] = json!(10);
+        actual["accounted_bytes"] = json!(592);
+        assert!(compare(&actual, &expected, &row).is_err());
+    }
+    #[test]
+    fn configured_boundary_requires_correct_phase_and_counters() {
+        let row = json!({"id":"a","op":"compile","pattern":[97],"native_policy":{"memory":0}});
+        let expected = json!({"id":"a","result":"Compiled","flags":32,"groups":0,"names":[],"width_diagnostic":[1,1],"warnings":[]});
+        let mut actual = json!({"id":"a","result":"BudgetBoundary:Compile","warnings":[],"work_used":3,"accounted_bytes":0,"policy_execution":"configured-numeric","budget_initial":{"work":2000000,"memory":0,"words":65536,"pattern_points":16384,"subject_points":262144},"budget_remaining":{"work":1999997,"memory":0,"words":65536,"pattern_points":16384,"subject_points":262144}});
+        assert_eq!(
+            compare(&actual, &expected, &row).unwrap(),
+            "protective-native-policy"
+        );
+        actual["result"] = json!("BudgetBoundary:Decode");
+        assert!(compare(&actual, &expected, &row).is_err());
+        actual["result"] = json!("BudgetBoundary:Compile");
+        actual["work_used"] = json!(2);
+        assert!(compare(&actual, &expected, &row).is_err());
+        actual["budget_remaining"]["work"] = json!(1999998);
+        assert!(compare(&actual, &expected, &row).is_err());
+        actual["budget_remaining"]["work"] = json!(1999997);
+        actual["work_used"] = json!(3);
+        actual["budget_initial"]["memory"] = json!(8388608);
+        assert!(compare(&actual, &expected, &row).is_err());
     }
 }

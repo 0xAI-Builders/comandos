@@ -1,10 +1,10 @@
 //! Temporary first-party Python measurement query. Removal remains migration debt.
 pub const QUERY: &str = r#"
-import sys,json,re,warnings,unicodedata,hashlib,_sre
+import sys,json,re,warnings,unicodedata,hashlib,_sre,platform
 from re import _parser,_compiler,_constants
 req=json.load(sys.stdin)
 if req.get('identity'):
- print(json.dumps(dict(executable=sys.executable,binary_sha256=hashlib.sha256(open(sys.executable,'rb').read()).hexdigest(),version=sys.version,unicode=unicodedata.unidata_version,recursion=sys.getrecursionlimit(),digits=sys.get_int_max_str_digits(),magic=_constants.MAGIC,codesize=_sre.CODESIZE,maxrepeat=int(_constants.MAXREPEAT),maxgroups=_constants.MAXGROUPS,files={m.__file__:hashlib.sha256(open(m.__file__,'rb').read()).hexdigest() for m in [_parser,_compiler,_constants]})))
+ print(json.dumps(dict(implementation=platform.python_implementation(),executable=sys.executable,binary_sha256=hashlib.sha256(open(sys.executable,'rb').read()).hexdigest(),version=sys.version,unicode=unicodedata.unidata_version,recursion=sys.getrecursionlimit(),digits=sys.get_int_max_str_digits(),magic=_constants.MAGIC,codesize=_sre.CODESIZE,maxrepeat=int(_constants.MAXREPEAT),maxgroups=_constants.MAXGROUPS,files={m.__file__:hashlib.sha256(open(m.__file__,'rb').read()).hexdigest() for m in [_parser,_compiler,_constants]})))
 else:
  rows=req['rows']; assert len(rows)<=8
  out=[]

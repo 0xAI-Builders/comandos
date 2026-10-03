@@ -614,12 +614,11 @@ mod frontend_audit {
     fn width_number(width: u128) -> Value {
         serde_json::from_str(&width.to_string()).unwrap()
     }
-    fn evaluate(row: &Value) -> Value {
-        let mut b = RegexBudget::default();
+    fn compile_observation(row: &Value, b: &mut RegexBudget) -> Value {
         let mut warnings = syntax::WarningSink::default();
         let points: Vec<u32> = serde_json::from_value(row["pattern"].clone()).unwrap();
-        let syntax = RegexText::new(&points, true, &mut b)
-            .and_then(|t| parser::parse_validate(t, &mut b, &mut warnings));
+        let syntax = RegexText::new(&points, true, b)
+            .and_then(|t| parser::parse_validate(t, b, &mut warnings));
         let mut result = match syntax {
             Err(e) => failure(e),
             Ok(s) => {
@@ -632,16 +631,16 @@ mod frontend_audit {
                     .collect();
                 let mut r = json!({"result":"Compiled","flags":p.flags,"groups":p.groups.len()-1,"names":names,"width_diagnostic":[width_number(p.nodes[p.root].width.lo),width_number(p.nodes[p.root].width.hi)],"peaks":{"frames":p.peak_frames,"frame_capacity_bytes":p.frame_capacity_bytes,"node_size":size_of::<syntax::Node>(),"group_size":size_of::<syntax::Group>(),"class_entry_size":size_of::<syntax::ClassEntry>(),"nodes":p.nodes.len(),"edges":p.edges.len(),"class_entries":p.classes.len(),"group_slots":p.groups.len(),"node_capacity_bytes":p.nodes.capacity()*size_of::<syntax::Node>(),"edge_capacity_bytes":p.edges.capacity()*size_of::<usize>(),"class_capacity_bytes":p.classes.capacity()*size_of::<syntax::ClassEntry>(),"group_capacity_bytes":p.groups.capacity()*size_of::<syntax::Group>()}});
                 if let Some(text) = row.get("search") {
-                    let emitted = compiler::emit(&s, &mut b).and_then(|words| {
-                        compiler::validate(&words, &mut b)?;
+                    let emitted = compiler::emit(&s, b).and_then(|words| {
+                        compiler::validate(&words, b)?;
                         Ok(PythonRegex { words })
                     });
                     match emitted {
                         Ok(regex) => {
                             r["emitted_words"] = json!(regex.words.len());
                             let text: Vec<u32> = serde_json::from_value(text.clone()).unwrap();
-                            r["search"] = match RegexText::new(&text, false, &mut b)
-                                .and_then(|t| regex.search(t, &mut b))
+                            r["search"] = match RegexText::new(&text, false, b)
+                                .and_then(|t| regex.search(t, b))
                             {
                                 Ok(found) => json!(found),
                                 Err(e) => failure(e),
@@ -654,6 +653,89 @@ mod frontend_audit {
                 }
                 r
             }
+        };
+        result["warnings"] = json!(
+            warnings
+                .observations
+                .iter()
+                .map(|w| json!({"category":format!("{:?}",w.category),"position":w.position}))
+                .collect::<Vec<_>>()
+        );
+        result
+    }
+    fn budget_value(b: &RegexBudget) -> Value {
+        json!({"work":b.work,"memory":b.memory,"words":b.words,"pattern_points":b.pattern_points,"subject_points":b.subject_points})
+    }
+    fn configured_budget(row: &Value) -> Result<(RegexBudget, &'static str), String> {
+        let mut b = RegexBudget::default();
+        let Some(policy) = row.get("native_policy") else {
+            return Ok((b, "default"));
+        };
+        let object = policy
+            .as_object()
+            .ok_or("native_policy must be an object")?;
+        if object.is_empty() {
+            return Err("empty native_policy".into());
+        }
+        if let Some(label) = object.get("calibrate") {
+            if object.len() != 1
+                || !matches!(
+                    label.as_str(),
+                    Some(
+                        "lookup budget propagation"
+                            | "node/edge capacity"
+                            | "word exact below/at/above"
+                            | "allocation exact below/at/above"
+                            | "work exact below/at/above"
+                            | "format zero words"
+                            | "synthetic reduced MAXGROUPS"
+                    )
+                )
+            {
+                return Err("unknown or mixed calibration label".into());
+            }
+            return Ok((b, "diagnostic-only-calibration"));
+        }
+        for (key, value) in object {
+            let value = value
+                .as_u64()
+                .and_then(|v| usize::try_from(v).ok())
+                .ok_or("policy requires nonnegative integer")?;
+            let slot = match key.as_str() {
+                "work" => &mut b.work,
+                "memory" => &mut b.memory,
+                "words" => &mut b.words,
+                "pattern_points" => &mut b.pattern_points,
+                "subject_points" => &mut b.subject_points,
+                _ => return Err(format!("unknown native_policy {key}")),
+            };
+            if value > *slot {
+                return Err(format!("native_policy {key} exceeds protective maximum"));
+            }
+            *slot = value;
+        }
+        Ok((b, "configured-numeric"))
+    }
+    fn attach_budget(result: &mut Value, initial: Value, b: &RegexBudget, kind: &str) {
+        result["budget_initial"] = initial.clone();
+        result["budget_remaining"] = budget_value(b);
+        result["work_used"] = json!(initial["work"].as_u64().unwrap() - b.work as u64);
+        result["accounted_bytes"] = json!(initial["memory"].as_u64().unwrap() - b.memory as u64);
+        result["policy_execution"] = json!(kind);
+    }
+    fn evaluate(row: &Value) -> Value {
+        let (mut b, kind) = match configured_budget(row) {
+            Ok(b) => b,
+            Err(error) => {
+                return json!({"id":row["id"],"result":"InvalidNativePolicy","policy_error":error});
+            }
+        };
+        let initial = budget_value(&b);
+        let separate_diagnostic = matches!(row["op"].as_str(), Some("format" | "schema"));
+        let mut result = if separate_diagnostic {
+            json!({})
+        } else {
+            compile_observation(row, &mut b)
         };
         if row["op"] == "format" {
             result["format_result"] = match check_regex_format_value(&row["value"], &mut b) {
@@ -696,17 +778,160 @@ mod frontend_audit {
                 }),
             };
         }
-        result["warnings"] = json!(
-            warnings
-                .observations
-                .iter()
-                .map(|w| json!({"category":format!("{:?}",w.category),"position":w.position}))
-                .collect::<Vec<_>>()
-        );
+        if separate_diagnostic {
+            let mut diagnostic_budget = RegexBudget::default();
+            let diagnostic_initial = budget_value(&diagnostic_budget);
+            let mut diagnostic = compile_observation(row, &mut diagnostic_budget);
+            attach_budget(
+                &mut diagnostic,
+                diagnostic_initial,
+                &diagnostic_budget,
+                "supplemental-default-compile",
+            );
+            result["compile_diagnostic"] = diagnostic;
+            result["result"] = if row["op"] == "format" {
+                result["format_result"].clone()
+            } else {
+                result["schema_result"]["result"].clone()
+            };
+        }
         result["id"] = row["id"].clone();
-        result["work_used"] = json!(2_000_000 - b.work);
-        result["accounted_bytes"] = json!(8 * 1024 * 1024 - b.memory);
+        attach_budget(&mut result, initial, &b, kind);
+        if kind == "diagnostic-only-calibration" {
+            result["calibration_label"] = row["native_policy"]["calibrate"].clone();
+            result["lowered_policy_executed"] = json!(false);
+        }
         result
+    }
+    fn assert_low_policy(policy: Value, boundary: &str) {
+        let actual =
+            evaluate(&json!({"id":"low","op":"compile","pattern":[97],"native_policy":policy}));
+        assert_eq!(actual["result"], boundary, "{policy}: {actual}");
+    }
+    #[test]
+    fn policy_work_zero() {
+        assert_low_policy(json!({"work":0}), "BudgetBoundary:Decode");
+    }
+    #[test]
+    fn policy_work_one() {
+        assert_low_policy(json!({"work":1}), "BudgetBoundary:Compile");
+    }
+    #[test]
+    fn policy_memory_zero() {
+        assert_low_policy(json!({"memory":0}), "BudgetBoundary:Compile");
+    }
+    #[test]
+    fn policy_memory_one() {
+        assert_low_policy(json!({"memory":1}), "BudgetBoundary:Compile");
+    }
+    fn assert_primary_operation_budget(op: &str) {
+        let mut b = RegexBudget::default();
+        let value = json!("a");
+        if op == "format" {
+            check_regex_format_value(&value, &mut b).unwrap();
+        } else {
+            probe_checked_pattern(
+                &json!({"pattern":"a"}),
+                &value,
+                jsonschema::Draft::Draft7,
+                &mut b,
+            )
+            .unwrap();
+        }
+        let work = 2_000_000 - b.work;
+        let memory = 8 * 1024 * 1024 - b.memory;
+        let actual = evaluate(
+            &json!({"id":op,"op":op,"pattern":[97],"value":"a","draft":"draft7","schema_json":"{\"pattern\":\"a\"}","content_json":"\"a\"","native_policy":{"work":work,"memory":memory}}),
+        );
+        assert_eq!(actual["work_used"], work, "{actual}");
+        assert_eq!(actual["accounted_bytes"], memory, "{actual}");
+        assert_eq!(
+            actual["compile_diagnostic"]["policy_execution"],
+            "supplemental-default-compile"
+        );
+        assert_eq!(actual["compile_diagnostic"]["work_used"], 10);
+        for key in ["work", "memory"] {
+            for delta in [-1isize, 0, 1] {
+                let mut row = json!({"id":op,"op":op,"pattern":[97],"value":"a","draft":"draft7","schema_json":"{\"pattern\":\"a\"}","content_json":"\"a\"","native_policy":{}});
+                let sufficient = if key == "work" { work } else { memory };
+                row["native_policy"][key] = json!(sufficient.checked_add_signed(delta).unwrap());
+                let actual = evaluate(&row);
+                if delta < 0 {
+                    assert!(
+                        actual["result"]
+                            .as_str()
+                            .unwrap()
+                            .starts_with("BudgetBoundary:"),
+                        "{actual}"
+                    );
+                } else {
+                    assert_eq!(
+                        actual["result"],
+                        if op == "format" {
+                            "FormatValid"
+                        } else {
+                            "Valid"
+                        }
+                    );
+                }
+            }
+        }
+        if op == "format" {
+            assert_eq!(actual["format_result"], "FormatValid");
+        } else {
+            assert_eq!(actual["schema_result"]["result"], "Valid");
+        }
+    }
+    #[test]
+    fn format_primary_operation_budget() {
+        assert_primary_operation_budget("format");
+    }
+    #[test]
+    fn schema_primary_operation_budget() {
+        assert_primary_operation_budget("schema");
+    }
+    #[test]
+    fn zero_words_apply_to_emission_but_not_syntax() {
+        let format = evaluate(
+            &json!({"id":"format","op":"format","pattern":[97,124,98],"value":"a|b","native_policy":{"words":0}}),
+        );
+        assert_eq!(format["result"], "FormatValid");
+        let syntax = evaluate(
+            &json!({"id":"syntax","op":"compile","pattern":[97],"native_policy":{"words":0}}),
+        );
+        assert_eq!(syntax["result"], "Compiled");
+        let search = evaluate(
+            &json!({"id":"search","op":"compile","pattern":[97],"search":[97],"native_policy":{"words":0}}),
+        );
+        assert_eq!(search["search"]["result"], "BudgetBoundary:Compile");
+        let schema = evaluate(
+            &json!({"id":"schema","op":"schema","pattern":[97],"draft":"draft7","schema_json":"{\"pattern\":\"a\"}","content_json":"\"a\"","native_policy":{"words":0}}),
+        );
+        assert_eq!(schema["result"], "BudgetBoundary:Compile");
+    }
+    #[test]
+    fn invalid_or_unknown_native_policies_are_rejected() {
+        for policy in [
+            json!(null),
+            json!("work"),
+            json!({}),
+            json!({"unknown":0}),
+            json!({"work":-1}),
+            json!({"work":true}),
+            json!({"work":1.5}),
+            json!({"work":2000001}),
+            json!({"memory":8388609}),
+            json!({"words":65537}),
+            json!({"calibrate":"unknown"}),
+            json!({"calibrate":"format zero words","work":0}),
+        ] {
+            assert_eq!(
+                evaluate(&json!({"id":"bad","op":"compile","pattern":[97],"native_policy":policy}))
+                    ["result"],
+                "InvalidNativePolicy",
+                "{policy}"
+            );
+        }
     }
     fn fixtures() -> (Vec<Value>, Vec<Value>) {
         let rows = serde_json::from_str(include_str!(
@@ -725,7 +950,28 @@ mod frontend_audit {
         assert_eq!(rows.len(), oracle.len());
         let mut errors = Vec::new();
         for (row, expected) in rows.iter().zip(&oracle) {
-            let actual = evaluate(row);
+            let primary = evaluate(row);
+            if row["native_policy"]["work"] == 0
+                || row["native_policy"]["work"] == 1
+                || row["native_policy"]["memory"] == 0
+                || row["native_policy"]["memory"] == 1
+            {
+                let (budget, kind) = configured_budget(row).unwrap();
+                assert_eq!(kind, "configured-numeric");
+                assert_eq!(primary["budget_initial"], budget_value(&budget));
+                let (boundary, work) = if budget.work == 0 {
+                    ("BudgetBoundary:Decode", 0)
+                } else if budget.work == 1 {
+                    ("BudgetBoundary:Compile", 1)
+                } else {
+                    ("BudgetBoundary:Compile", 3)
+                };
+                assert_eq!(primary["result"], boundary);
+                assert_eq!(primary["work_used"], work);
+                assert_eq!(primary["accounted_bytes"], 0);
+                continue;
+            }
+            let actual = primary.get("compile_diagnostic").unwrap_or(&primary);
             if row["family"] == "budget-depth" && row["recipe"].as_str().unwrap().contains("129") {
                 assert_eq!(actual["result"], "BudgetBoundary:Compile");
                 continue;
@@ -758,21 +1004,21 @@ mod frontend_audit {
             }
             if row["op"] == "format" {
                 assert_eq!(
-                    actual["format_result"], expected["format_result"],
+                    primary["format_result"], expected["format_result"],
                     "{}",
                     row["id"]
                 );
             }
             if row["op"] == "schema" {
                 assert_eq!(
-                    actual["schema_identity_sha256"], expected["proof"]["schema_sha256"],
+                    primary["schema_identity_sha256"], expected["proof"]["schema_sha256"],
                     "{}",
                     row["id"]
                 );
-                let s = actual["schema_result"]["result"].as_str().unwrap();
+                let s = primary["schema_result"]["result"].as_str().unwrap();
                 if !s.starts_with("ScopeGap:") {
                     assert_eq!(
-                        actual["schema_result"]["result"], expected["instance"]["result"],
+                        primary["schema_result"]["result"], expected["instance"]["result"],
                         "{}",
                         row["id"]
                     );
@@ -817,6 +1063,18 @@ mod frontend_audit {
 mod frontend_boundaries {
     use super::*;
     #[test]
+    fn unnamed_group_lookup_charges_every_visited_slot() {
+        let pattern = "()".repeat(3000) + "(?P<n>)" + &"(?P=n)".repeat(1500);
+        let points: Vec<u32> = pattern.chars().map(u32::from).collect();
+        assert_eq!(points.len(), 15007);
+        assert_eq!(
+            check_syntax(RegexText(&points), &mut RegexBudget::default()),
+            Err(RegexFailure::BudgetBoundary {
+                phase: RegexPhase::Compile
+            })
+        );
+    }
+    #[test]
     fn synthetic_arena_word_and_allocation_limits() {
         for limit in [0, 1, 2] {
             let mut b = RegexBudget::default();
@@ -847,21 +1105,71 @@ mod frontend_boundaries {
         let limit = 3;
         let mut groups = Vec::new();
         let mut b = RegexBudget::default();
-        for number in 0..4 {
-            syntax::push(
+        // Group zero uses the same initialization as the real parser.
+        syntax::push(
+            &mut groups,
+            syntax::Group {
+                name: None,
+                width: None,
+            },
+            16_384,
+            &mut b,
+        )
+        .unwrap();
+        assert_eq!(groups.len(), 1);
+        for id in 1..3 {
+            assert_eq!(
+                parser::append_group(
+                    &mut groups,
+                    syntax::Group {
+                        name: None,
+                        width: None
+                    },
+                    &mut b,
+                    limit
+                ),
+                Ok(id)
+            );
+            assert_eq!(groups.len(), id as usize + 1);
+        }
+        assert_eq!(
+            parser::append_group(
                 &mut groups,
                 syntax::Group {
                     name: None,
-                    width: None,
+                    width: None
                 },
-                16_384,
                 &mut b,
-            )
-            .unwrap();
-            assert_eq!(groups.len(), number + 1);
-            assert_eq!(groups.len() > limit, number == 3);
-        }
+                limit
+            ),
+            Err(RegexFailure::InternalProgram)
+        );
+        assert_eq!(groups.len(), 4, "the rejected group was appended");
         assert_eq!(syntax::MAXGROUPS, 1_073_741_823);
+    }
+    #[test]
+    fn unnamed_lookup_exact_work_boundary_through_parser() {
+        let points: Vec<u32> = ("()()()(?P<n>)(?P=n)(?P=n)(?P=n)")
+            .chars()
+            .map(u32::from)
+            .collect();
+        let mut b = RegexBudget::default();
+        check_syntax(RegexText(&points), &mut b).unwrap();
+        let work = 2_000_000 - b.work;
+        assert!(work > 0);
+        println!("native unnamed lookup sufficient work={work}");
+        for delta in [-1isize, 0, 1] {
+            let mut b = RegexBudget {
+                work: work.checked_add_signed(delta).unwrap(),
+                ..RegexBudget::default()
+            };
+            let actual = check_syntax(RegexText(&points), &mut b);
+            if delta < 0 {
+                assert_eq!(actual, Err(syntax::boundary()));
+            } else {
+                assert_eq!(actual, Ok(()));
+            }
+        }
     }
     #[test]
     fn exact_syntax_work_and_bytes_and_unicode_lookup_budget_propagation() {
