@@ -1,0 +1,5532 @@
+[
+  {
+    "kind": "duration",
+    "input": -100,
+    "expected": "0 min"
+  },
+  {
+    "kind": "duration",
+    "input": 0,
+    "expected": "0 min"
+  },
+  {
+    "kind": "duration",
+    "input": 30,
+    "expected": "0 min"
+  },
+  {
+    "kind": "duration",
+    "input": 90,
+    "expected": "2 min"
+  },
+  {
+    "kind": "duration",
+    "input": 150,
+    "expected": "2 min"
+  },
+  {
+    "kind": "duration",
+    "input": 3599.9,
+    "expected": "60 min"
+  },
+  {
+    "kind": "duration",
+    "input": 3600,
+    "expected": "1 h"
+  },
+  {
+    "kind": "duration",
+    "input": 5400,
+    "expected": "2 h"
+  },
+  {
+    "kind": "duration",
+    "input": 9000,
+    "expected": "2 h"
+  },
+  {
+    "kind": "duration",
+    "input": 86399,
+    "expected": "24 h"
+  },
+  {
+    "kind": "duration",
+    "input": 86400,
+    "expected": "1d 0h"
+  },
+  {
+    "kind": "duration",
+    "input": 90000,
+    "expected": "1d 1h"
+  },
+  {
+    "kind": "duration",
+    "input": 1e+100,
+    "expected": "115740740740740751452227980133464733559661620259394965579206027517792352616313609266383695118336d 0h"
+  },
+  {
+    "kind": "duration",
+    "input": true,
+    "expected": "0 min"
+  },
+  {
+    "kind": "duration",
+    "input": " \u0661_\u0665\u0660 ",
+    "expected": "2 min"
+  },
+  {
+    "kind": "duration",
+    "input": null,
+    "error": "TypeError"
+  },
+  {
+    "kind": "duration",
+    "input": "bad",
+    "error": "ValueError"
+  },
+  {
+    "kind": "duration",
+    "input": NaN,
+    "expected": "0 min"
+  },
+  {
+    "kind": "duration",
+    "input": Infinity,
+    "error": "OverflowError"
+  },
+  {
+    "kind": "duration",
+    "input": -Infinity,
+    "expected": "0 min"
+  },
+  {
+    "kind": "enrich",
+    "input": null,
+    "limits": [
+      {
+        "provider": "claude",
+        "account": "main",
+        "window": "5h",
+        "percent": null,
+        "resets_at": 1800001000.0,
+        "custom": {
+          "keep": true
+        }
+      }
+    ],
+    "now": 1800000000.0,
+    "lang": "es",
+    "expected": [
+      {
+        "provider": "claude",
+        "account": "main",
+        "window": "5h",
+        "percent": null,
+        "resets_at": 1800001000.0,
+        "custom": {
+          "keep": true
+        },
+        "windowSeconds": 18000,
+        "pace": null,
+        "burn": null,
+        "runsOutIn": null,
+        "reachesReset": null,
+        "verdict": ""
+      }
+    ]
+  },
+  {
+    "kind": "enrich",
+    "input": null,
+    "limits": [
+      {
+        "provider": "claude",
+        "account": "main",
+        "window": "5h",
+        "percent": null,
+        "resets_at": 1800001000.0,
+        "custom": {
+          "keep": true
+        }
+      }
+    ],
+    "now": 1800000000.0,
+    "lang": "en",
+    "expected": [
+      {
+        "provider": "claude",
+        "account": "main",
+        "window": "5h",
+        "percent": null,
+        "resets_at": 1800001000.0,
+        "custom": {
+          "keep": true
+        },
+        "windowSeconds": 18000,
+        "pace": null,
+        "burn": null,
+        "runsOutIn": null,
+        "reachesReset": null,
+        "verdict": ""
+      }
+    ]
+  },
+  {
+    "kind": "enrich",
+    "input": null,
+    "limits": [
+      {
+        "provider": "claude",
+        "account": "main",
+        "window": "5h",
+        "percent": 0,
+        "resets_at": 1800001000.0,
+        "custom": {
+          "keep": true
+        }
+      }
+    ],
+    "now": 1800000000.0,
+    "lang": "es",
+    "expected": [
+      {
+        "provider": "claude",
+        "account": "main",
+        "window": "5h",
+        "percent": 0,
+        "resets_at": 1800001000.0,
+        "custom": {
+          "keep": true
+        },
+        "windowSeconds": 18000,
+        "pace": 94.44444444444444,
+        "burn": 0.0,
+        "runsOutIn": null,
+        "reachesReset": true,
+        "verdict": "llega al reset"
+      }
+    ]
+  },
+  {
+    "kind": "enrich",
+    "input": null,
+    "limits": [
+      {
+        "provider": "claude",
+        "account": "main",
+        "window": "5h",
+        "percent": 0,
+        "resets_at": 1800001000.0,
+        "custom": {
+          "keep": true
+        }
+      }
+    ],
+    "now": 1800000000.0,
+    "lang": "en",
+    "expected": [
+      {
+        "provider": "claude",
+        "account": "main",
+        "window": "5h",
+        "percent": 0,
+        "resets_at": 1800001000.0,
+        "custom": {
+          "keep": true
+        },
+        "windowSeconds": 18000,
+        "pace": 94.44444444444444,
+        "burn": 0.0,
+        "runsOutIn": null,
+        "reachesReset": true,
+        "verdict": "lasts to reset"
+      }
+    ]
+  },
+  {
+    "kind": "enrich",
+    "input": null,
+    "limits": [
+      {
+        "provider": "claude",
+        "account": "main",
+        "window": "5h",
+        "percent": -10,
+        "resets_at": 1800001000.0,
+        "custom": {
+          "keep": true
+        }
+      }
+    ],
+    "now": 1800000000.0,
+    "lang": "es",
+    "expected": [
+      {
+        "provider": "claude",
+        "account": "main",
+        "window": "5h",
+        "percent": -10,
+        "resets_at": 1800001000.0,
+        "custom": {
+          "keep": true
+        },
+        "windowSeconds": 18000,
+        "pace": 94.44444444444444,
+        "burn": -0.10588235294117647,
+        "runsOutIn": null,
+        "reachesReset": true,
+        "verdict": "llega al reset"
+      }
+    ]
+  },
+  {
+    "kind": "enrich",
+    "input": null,
+    "limits": [
+      {
+        "provider": "claude",
+        "account": "main",
+        "window": "5h",
+        "percent": -10,
+        "resets_at": 1800001000.0,
+        "custom": {
+          "keep": true
+        }
+      }
+    ],
+    "now": 1800000000.0,
+    "lang": "en",
+    "expected": [
+      {
+        "provider": "claude",
+        "account": "main",
+        "window": "5h",
+        "percent": -10,
+        "resets_at": 1800001000.0,
+        "custom": {
+          "keep": true
+        },
+        "windowSeconds": 18000,
+        "pace": 94.44444444444444,
+        "burn": -0.10588235294117647,
+        "runsOutIn": null,
+        "reachesReset": true,
+        "verdict": "lasts to reset"
+      }
+    ]
+  },
+  {
+    "kind": "enrich",
+    "input": null,
+    "limits": [
+      {
+        "provider": "claude",
+        "account": "main",
+        "window": "5h",
+        "percent": 2.5,
+        "resets_at": 1800001000.0,
+        "custom": {
+          "keep": true
+        }
+      }
+    ],
+    "now": 1800000000.0,
+    "lang": "es",
+    "expected": [
+      {
+        "provider": "claude",
+        "account": "main",
+        "window": "5h",
+        "percent": 2.5,
+        "resets_at": 1800001000.0,
+        "custom": {
+          "keep": true
+        },
+        "windowSeconds": 18000,
+        "pace": 94.44444444444444,
+        "burn": 0.026470588235294117,
+        "runsOutIn": null,
+        "reachesReset": true,
+        "verdict": "llega al reset"
+      }
+    ]
+  },
+  {
+    "kind": "enrich",
+    "input": null,
+    "limits": [
+      {
+        "provider": "claude",
+        "account": "main",
+        "window": "5h",
+        "percent": 2.5,
+        "resets_at": 1800001000.0,
+        "custom": {
+          "keep": true
+        }
+      }
+    ],
+    "now": 1800000000.0,
+    "lang": "en",
+    "expected": [
+      {
+        "provider": "claude",
+        "account": "main",
+        "window": "5h",
+        "percent": 2.5,
+        "resets_at": 1800001000.0,
+        "custom": {
+          "keep": true
+        },
+        "windowSeconds": 18000,
+        "pace": 94.44444444444444,
+        "burn": 0.026470588235294117,
+        "runsOutIn": null,
+        "reachesReset": true,
+        "verdict": "lasts to reset"
+      }
+    ]
+  },
+  {
+    "kind": "enrich",
+    "input": null,
+    "limits": [
+      {
+        "provider": "claude",
+        "account": "main",
+        "window": "5h",
+        "percent": 50,
+        "resets_at": 1800001000.0,
+        "custom": {
+          "keep": true
+        }
+      }
+    ],
+    "now": 1800000000.0,
+    "lang": "es",
+    "expected": [
+      {
+        "provider": "claude",
+        "account": "main",
+        "window": "5h",
+        "percent": 50,
+        "resets_at": 1800001000.0,
+        "custom": {
+          "keep": true
+        },
+        "windowSeconds": 18000,
+        "pace": 94.44444444444444,
+        "burn": 0.5294117647058824,
+        "runsOutIn": null,
+        "reachesReset": true,
+        "verdict": "llega al reset"
+      }
+    ]
+  },
+  {
+    "kind": "enrich",
+    "input": null,
+    "limits": [
+      {
+        "provider": "claude",
+        "account": "main",
+        "window": "5h",
+        "percent": 50,
+        "resets_at": 1800001000.0,
+        "custom": {
+          "keep": true
+        }
+      }
+    ],
+    "now": 1800000000.0,
+    "lang": "en",
+    "expected": [
+      {
+        "provider": "claude",
+        "account": "main",
+        "window": "5h",
+        "percent": 50,
+        "resets_at": 1800001000.0,
+        "custom": {
+          "keep": true
+        },
+        "windowSeconds": 18000,
+        "pace": 94.44444444444444,
+        "burn": 0.5294117647058824,
+        "runsOutIn": null,
+        "reachesReset": true,
+        "verdict": "lasts to reset"
+      }
+    ]
+  },
+  {
+    "kind": "enrich",
+    "input": null,
+    "limits": [
+      {
+        "provider": "claude",
+        "account": "main",
+        "window": "5h",
+        "percent": 100,
+        "resets_at": 1800001000.0,
+        "custom": {
+          "keep": true
+        }
+      }
+    ],
+    "now": 1800000000.0,
+    "lang": "es",
+    "expected": [
+      {
+        "provider": "claude",
+        "account": "main",
+        "window": "5h",
+        "percent": 100,
+        "resets_at": 1800001000.0,
+        "custom": {
+          "keep": true
+        },
+        "windowSeconds": 18000,
+        "pace": 94.44444444444444,
+        "burn": 1.0588235294117647,
+        "runsOutIn": 0.0,
+        "reachesReset": false,
+        "verdict": "se acaba en 0 min"
+      }
+    ]
+  },
+  {
+    "kind": "enrich",
+    "input": null,
+    "limits": [
+      {
+        "provider": "claude",
+        "account": "main",
+        "window": "5h",
+        "percent": 100,
+        "resets_at": 1800001000.0,
+        "custom": {
+          "keep": true
+        }
+      }
+    ],
+    "now": 1800000000.0,
+    "lang": "en",
+    "expected": [
+      {
+        "provider": "claude",
+        "account": "main",
+        "window": "5h",
+        "percent": 100,
+        "resets_at": 1800001000.0,
+        "custom": {
+          "keep": true
+        },
+        "windowSeconds": 18000,
+        "pace": 94.44444444444444,
+        "burn": 1.0588235294117647,
+        "runsOutIn": 0.0,
+        "reachesReset": false,
+        "verdict": "runs out in 0 min"
+      }
+    ]
+  },
+  {
+    "kind": "enrich",
+    "input": null,
+    "limits": [
+      {
+        "provider": "claude",
+        "account": "main",
+        "window": "5h",
+        "percent": 150,
+        "resets_at": 1800001000.0,
+        "custom": {
+          "keep": true
+        }
+      }
+    ],
+    "now": 1800000000.0,
+    "lang": "es",
+    "expected": [
+      {
+        "provider": "claude",
+        "account": "main",
+        "window": "5h",
+        "percent": 150,
+        "resets_at": 1800001000.0,
+        "custom": {
+          "keep": true
+        },
+        "windowSeconds": 18000,
+        "pace": 94.44444444444444,
+        "burn": 1.5882352941176472,
+        "runsOutIn": -5666.666666666667,
+        "reachesReset": false,
+        "verdict": "se acaba en 0 min"
+      }
+    ]
+  },
+  {
+    "kind": "enrich",
+    "input": null,
+    "limits": [
+      {
+        "provider": "claude",
+        "account": "main",
+        "window": "5h",
+        "percent": 150,
+        "resets_at": 1800001000.0,
+        "custom": {
+          "keep": true
+        }
+      }
+    ],
+    "now": 1800000000.0,
+    "lang": "en",
+    "expected": [
+      {
+        "provider": "claude",
+        "account": "main",
+        "window": "5h",
+        "percent": 150,
+        "resets_at": 1800001000.0,
+        "custom": {
+          "keep": true
+        },
+        "windowSeconds": 18000,
+        "pace": 94.44444444444444,
+        "burn": 1.5882352941176472,
+        "runsOutIn": -5666.666666666667,
+        "reachesReset": false,
+        "verdict": "runs out in 0 min"
+      }
+    ]
+  },
+  {
+    "kind": "enrich",
+    "input": null,
+    "limits": [
+      {
+        "provider": "claude",
+        "account": "main",
+        "window": "5h",
+        "percent": "10.5",
+        "resets_at": 1800001000.0,
+        "custom": {
+          "keep": true
+        }
+      }
+    ],
+    "now": 1800000000.0,
+    "lang": "es",
+    "expected": [
+      {
+        "provider": "claude",
+        "account": "main",
+        "window": "5h",
+        "percent": "10.5",
+        "resets_at": 1800001000.0,
+        "custom": {
+          "keep": true
+        },
+        "windowSeconds": 18000,
+        "pace": 94.44444444444444,
+        "burn": 0.1111764705882353,
+        "runsOutIn": null,
+        "reachesReset": true,
+        "verdict": "llega al reset"
+      }
+    ]
+  },
+  {
+    "kind": "enrich",
+    "input": null,
+    "limits": [
+      {
+        "provider": "claude",
+        "account": "main",
+        "window": "5h",
+        "percent": "10.5",
+        "resets_at": 1800001000.0,
+        "custom": {
+          "keep": true
+        }
+      }
+    ],
+    "now": 1800000000.0,
+    "lang": "en",
+    "expected": [
+      {
+        "provider": "claude",
+        "account": "main",
+        "window": "5h",
+        "percent": "10.5",
+        "resets_at": 1800001000.0,
+        "custom": {
+          "keep": true
+        },
+        "windowSeconds": 18000,
+        "pace": 94.44444444444444,
+        "burn": 0.1111764705882353,
+        "runsOutIn": null,
+        "reachesReset": true,
+        "verdict": "lasts to reset"
+      }
+    ]
+  },
+  {
+    "kind": "enrich",
+    "input": null,
+    "limits": [
+      {
+        "provider": "claude",
+        "account": "main",
+        "window": "5h",
+        "percent": "bad",
+        "resets_at": 1800001000.0,
+        "custom": {
+          "keep": true
+        }
+      }
+    ],
+    "now": 1800000000.0,
+    "lang": "es",
+    "error": "ValueError"
+  },
+  {
+    "kind": "enrich",
+    "input": null,
+    "limits": [
+      {
+        "provider": "claude",
+        "account": "main",
+        "window": "5h",
+        "percent": "bad",
+        "resets_at": 1800001000.0,
+        "custom": {
+          "keep": true
+        }
+      }
+    ],
+    "now": 1800000000.0,
+    "lang": "en",
+    "error": "ValueError"
+  },
+  {
+    "kind": "enrich",
+    "input": null,
+    "limits": [
+      {
+        "provider": "claude",
+        "account": "main",
+        "window": "5h",
+        "percent": NaN,
+        "resets_at": 1800001000.0,
+        "custom": {
+          "keep": true
+        }
+      }
+    ],
+    "now": 1800000000.0,
+    "lang": "es",
+    "expected": [
+      {
+        "provider": "claude",
+        "account": "main",
+        "window": "5h",
+        "percent": NaN,
+        "resets_at": 1800001000.0,
+        "custom": {
+          "keep": true
+        },
+        "windowSeconds": 18000,
+        "pace": 94.44444444444444,
+        "burn": NaN,
+        "runsOutIn": null,
+        "reachesReset": true,
+        "verdict": "llega al reset"
+      }
+    ]
+  },
+  {
+    "kind": "enrich",
+    "input": null,
+    "limits": [
+      {
+        "provider": "claude",
+        "account": "main",
+        "window": "5h",
+        "percent": NaN,
+        "resets_at": 1800001000.0,
+        "custom": {
+          "keep": true
+        }
+      }
+    ],
+    "now": 1800000000.0,
+    "lang": "en",
+    "expected": [
+      {
+        "provider": "claude",
+        "account": "main",
+        "window": "5h",
+        "percent": NaN,
+        "resets_at": 1800001000.0,
+        "custom": {
+          "keep": true
+        },
+        "windowSeconds": 18000,
+        "pace": 94.44444444444444,
+        "burn": NaN,
+        "runsOutIn": null,
+        "reachesReset": true,
+        "verdict": "lasts to reset"
+      }
+    ]
+  },
+  {
+    "kind": "enrich",
+    "input": null,
+    "limits": [
+      {
+        "provider": "claude",
+        "account": "main",
+        "window": "5h",
+        "percent": Infinity,
+        "resets_at": 1800001000.0,
+        "custom": {
+          "keep": true
+        }
+      }
+    ],
+    "now": 1800000000.0,
+    "lang": "es",
+    "expected": [
+      {
+        "provider": "claude",
+        "account": "main",
+        "window": "5h",
+        "percent": Infinity,
+        "resets_at": 1800001000.0,
+        "custom": {
+          "keep": true
+        },
+        "windowSeconds": 18000,
+        "pace": 94.44444444444444,
+        "burn": Infinity,
+        "runsOutIn": NaN,
+        "reachesReset": false,
+        "verdict": "se acaba en 0 min"
+      }
+    ]
+  },
+  {
+    "kind": "enrich",
+    "input": null,
+    "limits": [
+      {
+        "provider": "claude",
+        "account": "main",
+        "window": "5h",
+        "percent": Infinity,
+        "resets_at": 1800001000.0,
+        "custom": {
+          "keep": true
+        }
+      }
+    ],
+    "now": 1800000000.0,
+    "lang": "en",
+    "expected": [
+      {
+        "provider": "claude",
+        "account": "main",
+        "window": "5h",
+        "percent": Infinity,
+        "resets_at": 1800001000.0,
+        "custom": {
+          "keep": true
+        },
+        "windowSeconds": 18000,
+        "pace": 94.44444444444444,
+        "burn": Infinity,
+        "runsOutIn": NaN,
+        "reachesReset": false,
+        "verdict": "runs out in 0 min"
+      }
+    ]
+  },
+  {
+    "kind": "enrich",
+    "input": null,
+    "limits": [
+      {
+        "provider": "claude",
+        "account": "main",
+        "window": "5h",
+        "percent": -Infinity,
+        "resets_at": 1800001000.0,
+        "custom": {
+          "keep": true
+        }
+      }
+    ],
+    "now": 1800000000.0,
+    "lang": "es",
+    "expected": [
+      {
+        "provider": "claude",
+        "account": "main",
+        "window": "5h",
+        "percent": -Infinity,
+        "resets_at": 1800001000.0,
+        "custom": {
+          "keep": true
+        },
+        "windowSeconds": 18000,
+        "pace": 94.44444444444444,
+        "burn": -Infinity,
+        "runsOutIn": null,
+        "reachesReset": true,
+        "verdict": "llega al reset"
+      }
+    ]
+  },
+  {
+    "kind": "enrich",
+    "input": null,
+    "limits": [
+      {
+        "provider": "claude",
+        "account": "main",
+        "window": "5h",
+        "percent": -Infinity,
+        "resets_at": 1800001000.0,
+        "custom": {
+          "keep": true
+        }
+      }
+    ],
+    "now": 1800000000.0,
+    "lang": "en",
+    "expected": [
+      {
+        "provider": "claude",
+        "account": "main",
+        "window": "5h",
+        "percent": -Infinity,
+        "resets_at": 1800001000.0,
+        "custom": {
+          "keep": true
+        },
+        "windowSeconds": 18000,
+        "pace": 94.44444444444444,
+        "burn": -Infinity,
+        "runsOutIn": null,
+        "reachesReset": true,
+        "verdict": "lasts to reset"
+      }
+    ]
+  },
+  {
+    "kind": "enrich",
+    "input": null,
+    "limits": [
+      {
+        "provider": "claude",
+        "account": "main",
+        "window": "7d",
+        "percent": null,
+        "resets_at": 1800001000.0,
+        "custom": {
+          "keep": true
+        }
+      }
+    ],
+    "now": 1800000000.0,
+    "lang": "es",
+    "expected": [
+      {
+        "provider": "claude",
+        "account": "main",
+        "window": "7d",
+        "percent": null,
+        "resets_at": 1800001000.0,
+        "custom": {
+          "keep": true
+        },
+        "windowSeconds": 604800,
+        "pace": null,
+        "burn": null,
+        "runsOutIn": null,
+        "reachesReset": null,
+        "verdict": ""
+      }
+    ]
+  },
+  {
+    "kind": "enrich",
+    "input": null,
+    "limits": [
+      {
+        "provider": "claude",
+        "account": "main",
+        "window": "7d",
+        "percent": null,
+        "resets_at": 1800001000.0,
+        "custom": {
+          "keep": true
+        }
+      }
+    ],
+    "now": 1800000000.0,
+    "lang": "en",
+    "expected": [
+      {
+        "provider": "claude",
+        "account": "main",
+        "window": "7d",
+        "percent": null,
+        "resets_at": 1800001000.0,
+        "custom": {
+          "keep": true
+        },
+        "windowSeconds": 604800,
+        "pace": null,
+        "burn": null,
+        "runsOutIn": null,
+        "reachesReset": null,
+        "verdict": ""
+      }
+    ]
+  },
+  {
+    "kind": "enrich",
+    "input": null,
+    "limits": [
+      {
+        "provider": "claude",
+        "account": "main",
+        "window": "7d",
+        "percent": 0,
+        "resets_at": 1800001000.0,
+        "custom": {
+          "keep": true
+        }
+      }
+    ],
+    "now": 1800000000.0,
+    "lang": "es",
+    "expected": [
+      {
+        "provider": "claude",
+        "account": "main",
+        "window": "7d",
+        "percent": 0,
+        "resets_at": 1800001000.0,
+        "custom": {
+          "keep": true
+        },
+        "windowSeconds": 604800,
+        "pace": 99.83465608465607,
+        "burn": 0.0,
+        "runsOutIn": null,
+        "reachesReset": true,
+        "verdict": "llega al reset"
+      }
+    ]
+  },
+  {
+    "kind": "enrich",
+    "input": null,
+    "limits": [
+      {
+        "provider": "claude",
+        "account": "main",
+        "window": "7d",
+        "percent": 0,
+        "resets_at": 1800001000.0,
+        "custom": {
+          "keep": true
+        }
+      }
+    ],
+    "now": 1800000000.0,
+    "lang": "en",
+    "expected": [
+      {
+        "provider": "claude",
+        "account": "main",
+        "window": "7d",
+        "percent": 0,
+        "resets_at": 1800001000.0,
+        "custom": {
+          "keep": true
+        },
+        "windowSeconds": 604800,
+        "pace": 99.83465608465607,
+        "burn": 0.0,
+        "runsOutIn": null,
+        "reachesReset": true,
+        "verdict": "lasts to reset"
+      }
+    ]
+  },
+  {
+    "kind": "enrich",
+    "input": null,
+    "limits": [
+      {
+        "provider": "claude",
+        "account": "main",
+        "window": "7d",
+        "percent": -10,
+        "resets_at": 1800001000.0,
+        "custom": {
+          "keep": true
+        }
+      }
+    ],
+    "now": 1800000000.0,
+    "lang": "es",
+    "expected": [
+      {
+        "provider": "claude",
+        "account": "main",
+        "window": "7d",
+        "percent": -10,
+        "resets_at": 1800001000.0,
+        "custom": {
+          "keep": true
+        },
+        "windowSeconds": 604800,
+        "pace": 99.83465608465607,
+        "burn": -0.10016561775422327,
+        "runsOutIn": null,
+        "reachesReset": true,
+        "verdict": "llega al reset"
+      }
+    ]
+  },
+  {
+    "kind": "enrich",
+    "input": null,
+    "limits": [
+      {
+        "provider": "claude",
+        "account": "main",
+        "window": "7d",
+        "percent": -10,
+        "resets_at": 1800001000.0,
+        "custom": {
+          "keep": true
+        }
+      }
+    ],
+    "now": 1800000000.0,
+    "lang": "en",
+    "expected": [
+      {
+        "provider": "claude",
+        "account": "main",
+        "window": "7d",
+        "percent": -10,
+        "resets_at": 1800001000.0,
+        "custom": {
+          "keep": true
+        },
+        "windowSeconds": 604800,
+        "pace": 99.83465608465607,
+        "burn": -0.10016561775422327,
+        "runsOutIn": null,
+        "reachesReset": true,
+        "verdict": "lasts to reset"
+      }
+    ]
+  },
+  {
+    "kind": "enrich",
+    "input": null,
+    "limits": [
+      {
+        "provider": "claude",
+        "account": "main",
+        "window": "7d",
+        "percent": 2.5,
+        "resets_at": 1800001000.0,
+        "custom": {
+          "keep": true
+        }
+      }
+    ],
+    "now": 1800000000.0,
+    "lang": "es",
+    "expected": [
+      {
+        "provider": "claude",
+        "account": "main",
+        "window": "7d",
+        "percent": 2.5,
+        "resets_at": 1800001000.0,
+        "custom": {
+          "keep": true
+        },
+        "windowSeconds": 604800,
+        "pace": 99.83465608465607,
+        "burn": 0.025041404438555816,
+        "runsOutIn": null,
+        "reachesReset": true,
+        "verdict": "llega al reset"
+      }
+    ]
+  },
+  {
+    "kind": "enrich",
+    "input": null,
+    "limits": [
+      {
+        "provider": "claude",
+        "account": "main",
+        "window": "7d",
+        "percent": 2.5,
+        "resets_at": 1800001000.0,
+        "custom": {
+          "keep": true
+        }
+      }
+    ],
+    "now": 1800000000.0,
+    "lang": "en",
+    "expected": [
+      {
+        "provider": "claude",
+        "account": "main",
+        "window": "7d",
+        "percent": 2.5,
+        "resets_at": 1800001000.0,
+        "custom": {
+          "keep": true
+        },
+        "windowSeconds": 604800,
+        "pace": 99.83465608465607,
+        "burn": 0.025041404438555816,
+        "runsOutIn": null,
+        "reachesReset": true,
+        "verdict": "lasts to reset"
+      }
+    ]
+  },
+  {
+    "kind": "enrich",
+    "input": null,
+    "limits": [
+      {
+        "provider": "claude",
+        "account": "main",
+        "window": "7d",
+        "percent": 50,
+        "resets_at": 1800001000.0,
+        "custom": {
+          "keep": true
+        }
+      }
+    ],
+    "now": 1800000000.0,
+    "lang": "es",
+    "expected": [
+      {
+        "provider": "claude",
+        "account": "main",
+        "window": "7d",
+        "percent": 50,
+        "resets_at": 1800001000.0,
+        "custom": {
+          "keep": true
+        },
+        "windowSeconds": 604800,
+        "pace": 99.83465608465607,
+        "burn": 0.5008280887711163,
+        "runsOutIn": null,
+        "reachesReset": true,
+        "verdict": "llega al reset"
+      }
+    ]
+  },
+  {
+    "kind": "enrich",
+    "input": null,
+    "limits": [
+      {
+        "provider": "claude",
+        "account": "main",
+        "window": "7d",
+        "percent": 50,
+        "resets_at": 1800001000.0,
+        "custom": {
+          "keep": true
+        }
+      }
+    ],
+    "now": 1800000000.0,
+    "lang": "en",
+    "expected": [
+      {
+        "provider": "claude",
+        "account": "main",
+        "window": "7d",
+        "percent": 50,
+        "resets_at": 1800001000.0,
+        "custom": {
+          "keep": true
+        },
+        "windowSeconds": 604800,
+        "pace": 99.83465608465607,
+        "burn": 0.5008280887711163,
+        "runsOutIn": null,
+        "reachesReset": true,
+        "verdict": "lasts to reset"
+      }
+    ]
+  },
+  {
+    "kind": "enrich",
+    "input": null,
+    "limits": [
+      {
+        "provider": "claude",
+        "account": "main",
+        "window": "7d",
+        "percent": 100,
+        "resets_at": 1800001000.0,
+        "custom": {
+          "keep": true
+        }
+      }
+    ],
+    "now": 1800000000.0,
+    "lang": "es",
+    "expected": [
+      {
+        "provider": "claude",
+        "account": "main",
+        "window": "7d",
+        "percent": 100,
+        "resets_at": 1800001000.0,
+        "custom": {
+          "keep": true
+        },
+        "windowSeconds": 604800,
+        "pace": 99.83465608465607,
+        "burn": 1.0016561775422326,
+        "runsOutIn": 0.0,
+        "reachesReset": false,
+        "verdict": "se acaba en 0 min"
+      }
+    ]
+  },
+  {
+    "kind": "enrich",
+    "input": null,
+    "limits": [
+      {
+        "provider": "claude",
+        "account": "main",
+        "window": "7d",
+        "percent": 100,
+        "resets_at": 1800001000.0,
+        "custom": {
+          "keep": true
+        }
+      }
+    ],
+    "now": 1800000000.0,
+    "lang": "en",
+    "expected": [
+      {
+        "provider": "claude",
+        "account": "main",
+        "window": "7d",
+        "percent": 100,
+        "resets_at": 1800001000.0,
+        "custom": {
+          "keep": true
+        },
+        "windowSeconds": 604800,
+        "pace": 99.83465608465607,
+        "burn": 1.0016561775422326,
+        "runsOutIn": 0.0,
+        "reachesReset": false,
+        "verdict": "runs out in 0 min"
+      }
+    ]
+  },
+  {
+    "kind": "enrich",
+    "input": null,
+    "limits": [
+      {
+        "provider": "claude",
+        "account": "main",
+        "window": "7d",
+        "percent": 150,
+        "resets_at": 1800001000.0,
+        "custom": {
+          "keep": true
+        }
+      }
+    ],
+    "now": 1800000000.0,
+    "lang": "es",
+    "expected": [
+      {
+        "provider": "claude",
+        "account": "main",
+        "window": "7d",
+        "percent": 150,
+        "resets_at": 1800001000.0,
+        "custom": {
+          "keep": true
+        },
+        "windowSeconds": 604800,
+        "pace": 99.83465608465607,
+        "burn": 1.5024842663133489,
+        "runsOutIn": -201266.66666666666,
+        "reachesReset": false,
+        "verdict": "se acaba en 0 min"
+      }
+    ]
+  },
+  {
+    "kind": "enrich",
+    "input": null,
+    "limits": [
+      {
+        "provider": "claude",
+        "account": "main",
+        "window": "7d",
+        "percent": 150,
+        "resets_at": 1800001000.0,
+        "custom": {
+          "keep": true
+        }
+      }
+    ],
+    "now": 1800000000.0,
+    "lang": "en",
+    "expected": [
+      {
+        "provider": "claude",
+        "account": "main",
+        "window": "7d",
+        "percent": 150,
+        "resets_at": 1800001000.0,
+        "custom": {
+          "keep": true
+        },
+        "windowSeconds": 604800,
+        "pace": 99.83465608465607,
+        "burn": 1.5024842663133489,
+        "runsOutIn": -201266.66666666666,
+        "reachesReset": false,
+        "verdict": "runs out in 0 min"
+      }
+    ]
+  },
+  {
+    "kind": "enrich",
+    "input": null,
+    "limits": [
+      {
+        "provider": "claude",
+        "account": "main",
+        "window": "7d",
+        "percent": "10.5",
+        "resets_at": 1800001000.0,
+        "custom": {
+          "keep": true
+        }
+      }
+    ],
+    "now": 1800000000.0,
+    "lang": "es",
+    "expected": [
+      {
+        "provider": "claude",
+        "account": "main",
+        "window": "7d",
+        "percent": "10.5",
+        "resets_at": 1800001000.0,
+        "custom": {
+          "keep": true
+        },
+        "windowSeconds": 604800,
+        "pace": 99.83465608465607,
+        "burn": 0.10517389864193442,
+        "runsOutIn": null,
+        "reachesReset": true,
+        "verdict": "llega al reset"
+      }
+    ]
+  },
+  {
+    "kind": "enrich",
+    "input": null,
+    "limits": [
+      {
+        "provider": "claude",
+        "account": "main",
+        "window": "7d",
+        "percent": "10.5",
+        "resets_at": 1800001000.0,
+        "custom": {
+          "keep": true
+        }
+      }
+    ],
+    "now": 1800000000.0,
+    "lang": "en",
+    "expected": [
+      {
+        "provider": "claude",
+        "account": "main",
+        "window": "7d",
+        "percent": "10.5",
+        "resets_at": 1800001000.0,
+        "custom": {
+          "keep": true
+        },
+        "windowSeconds": 604800,
+        "pace": 99.83465608465607,
+        "burn": 0.10517389864193442,
+        "runsOutIn": null,
+        "reachesReset": true,
+        "verdict": "lasts to reset"
+      }
+    ]
+  },
+  {
+    "kind": "enrich",
+    "input": null,
+    "limits": [
+      {
+        "provider": "claude",
+        "account": "main",
+        "window": "7d",
+        "percent": "bad",
+        "resets_at": 1800001000.0,
+        "custom": {
+          "keep": true
+        }
+      }
+    ],
+    "now": 1800000000.0,
+    "lang": "es",
+    "error": "ValueError"
+  },
+  {
+    "kind": "enrich",
+    "input": null,
+    "limits": [
+      {
+        "provider": "claude",
+        "account": "main",
+        "window": "7d",
+        "percent": "bad",
+        "resets_at": 1800001000.0,
+        "custom": {
+          "keep": true
+        }
+      }
+    ],
+    "now": 1800000000.0,
+    "lang": "en",
+    "error": "ValueError"
+  },
+  {
+    "kind": "enrich",
+    "input": null,
+    "limits": [
+      {
+        "provider": "claude",
+        "account": "main",
+        "window": "7d",
+        "percent": NaN,
+        "resets_at": 1800001000.0,
+        "custom": {
+          "keep": true
+        }
+      }
+    ],
+    "now": 1800000000.0,
+    "lang": "es",
+    "expected": [
+      {
+        "provider": "claude",
+        "account": "main",
+        "window": "7d",
+        "percent": NaN,
+        "resets_at": 1800001000.0,
+        "custom": {
+          "keep": true
+        },
+        "windowSeconds": 604800,
+        "pace": 99.83465608465607,
+        "burn": NaN,
+        "runsOutIn": null,
+        "reachesReset": true,
+        "verdict": "llega al reset"
+      }
+    ]
+  },
+  {
+    "kind": "enrich",
+    "input": null,
+    "limits": [
+      {
+        "provider": "claude",
+        "account": "main",
+        "window": "7d",
+        "percent": NaN,
+        "resets_at": 1800001000.0,
+        "custom": {
+          "keep": true
+        }
+      }
+    ],
+    "now": 1800000000.0,
+    "lang": "en",
+    "expected": [
+      {
+        "provider": "claude",
+        "account": "main",
+        "window": "7d",
+        "percent": NaN,
+        "resets_at": 1800001000.0,
+        "custom": {
+          "keep": true
+        },
+        "windowSeconds": 604800,
+        "pace": 99.83465608465607,
+        "burn": NaN,
+        "runsOutIn": null,
+        "reachesReset": true,
+        "verdict": "lasts to reset"
+      }
+    ]
+  },
+  {
+    "kind": "enrich",
+    "input": null,
+    "limits": [
+      {
+        "provider": "claude",
+        "account": "main",
+        "window": "7d",
+        "percent": Infinity,
+        "resets_at": 1800001000.0,
+        "custom": {
+          "keep": true
+        }
+      }
+    ],
+    "now": 1800000000.0,
+    "lang": "es",
+    "expected": [
+      {
+        "provider": "claude",
+        "account": "main",
+        "window": "7d",
+        "percent": Infinity,
+        "resets_at": 1800001000.0,
+        "custom": {
+          "keep": true
+        },
+        "windowSeconds": 604800,
+        "pace": 99.83465608465607,
+        "burn": Infinity,
+        "runsOutIn": NaN,
+        "reachesReset": false,
+        "verdict": "se acaba en 0 min"
+      }
+    ]
+  },
+  {
+    "kind": "enrich",
+    "input": null,
+    "limits": [
+      {
+        "provider": "claude",
+        "account": "main",
+        "window": "7d",
+        "percent": Infinity,
+        "resets_at": 1800001000.0,
+        "custom": {
+          "keep": true
+        }
+      }
+    ],
+    "now": 1800000000.0,
+    "lang": "en",
+    "expected": [
+      {
+        "provider": "claude",
+        "account": "main",
+        "window": "7d",
+        "percent": Infinity,
+        "resets_at": 1800001000.0,
+        "custom": {
+          "keep": true
+        },
+        "windowSeconds": 604800,
+        "pace": 99.83465608465607,
+        "burn": Infinity,
+        "runsOutIn": NaN,
+        "reachesReset": false,
+        "verdict": "runs out in 0 min"
+      }
+    ]
+  },
+  {
+    "kind": "enrich",
+    "input": null,
+    "limits": [
+      {
+        "provider": "claude",
+        "account": "main",
+        "window": "7d",
+        "percent": -Infinity,
+        "resets_at": 1800001000.0,
+        "custom": {
+          "keep": true
+        }
+      }
+    ],
+    "now": 1800000000.0,
+    "lang": "es",
+    "expected": [
+      {
+        "provider": "claude",
+        "account": "main",
+        "window": "7d",
+        "percent": -Infinity,
+        "resets_at": 1800001000.0,
+        "custom": {
+          "keep": true
+        },
+        "windowSeconds": 604800,
+        "pace": 99.83465608465607,
+        "burn": -Infinity,
+        "runsOutIn": null,
+        "reachesReset": true,
+        "verdict": "llega al reset"
+      }
+    ]
+  },
+  {
+    "kind": "enrich",
+    "input": null,
+    "limits": [
+      {
+        "provider": "claude",
+        "account": "main",
+        "window": "7d",
+        "percent": -Infinity,
+        "resets_at": 1800001000.0,
+        "custom": {
+          "keep": true
+        }
+      }
+    ],
+    "now": 1800000000.0,
+    "lang": "en",
+    "expected": [
+      {
+        "provider": "claude",
+        "account": "main",
+        "window": "7d",
+        "percent": -Infinity,
+        "resets_at": 1800001000.0,
+        "custom": {
+          "keep": true
+        },
+        "windowSeconds": 604800,
+        "pace": 99.83465608465607,
+        "burn": -Infinity,
+        "runsOutIn": null,
+        "reachesReset": true,
+        "verdict": "lasts to reset"
+      }
+    ]
+  },
+  {
+    "kind": "enrich",
+    "input": null,
+    "limits": [
+      {
+        "provider": "claude",
+        "account": "main",
+        "window": "bad",
+        "percent": null,
+        "resets_at": 1800001000.0,
+        "custom": {
+          "keep": true
+        }
+      }
+    ],
+    "now": 1800000000.0,
+    "lang": "es",
+    "expected": [
+      {
+        "provider": "claude",
+        "account": "main",
+        "window": "bad",
+        "percent": null,
+        "resets_at": 1800001000.0,
+        "custom": {
+          "keep": true
+        },
+        "windowSeconds": null,
+        "pace": null,
+        "burn": null,
+        "runsOutIn": null,
+        "reachesReset": null,
+        "verdict": ""
+      }
+    ]
+  },
+  {
+    "kind": "enrich",
+    "input": null,
+    "limits": [
+      {
+        "provider": "claude",
+        "account": "main",
+        "window": "bad",
+        "percent": null,
+        "resets_at": 1800001000.0,
+        "custom": {
+          "keep": true
+        }
+      }
+    ],
+    "now": 1800000000.0,
+    "lang": "en",
+    "expected": [
+      {
+        "provider": "claude",
+        "account": "main",
+        "window": "bad",
+        "percent": null,
+        "resets_at": 1800001000.0,
+        "custom": {
+          "keep": true
+        },
+        "windowSeconds": null,
+        "pace": null,
+        "burn": null,
+        "runsOutIn": null,
+        "reachesReset": null,
+        "verdict": ""
+      }
+    ]
+  },
+  {
+    "kind": "enrich",
+    "input": null,
+    "limits": [
+      {
+        "provider": "claude",
+        "account": "main",
+        "window": "bad",
+        "percent": 0,
+        "resets_at": 1800001000.0,
+        "custom": {
+          "keep": true
+        }
+      }
+    ],
+    "now": 1800000000.0,
+    "lang": "es",
+    "expected": [
+      {
+        "provider": "claude",
+        "account": "main",
+        "window": "bad",
+        "percent": 0,
+        "resets_at": 1800001000.0,
+        "custom": {
+          "keep": true
+        },
+        "windowSeconds": null,
+        "pace": null,
+        "burn": null,
+        "runsOutIn": null,
+        "reachesReset": null,
+        "verdict": ""
+      }
+    ]
+  },
+  {
+    "kind": "enrich",
+    "input": null,
+    "limits": [
+      {
+        "provider": "claude",
+        "account": "main",
+        "window": "bad",
+        "percent": 0,
+        "resets_at": 1800001000.0,
+        "custom": {
+          "keep": true
+        }
+      }
+    ],
+    "now": 1800000000.0,
+    "lang": "en",
+    "expected": [
+      {
+        "provider": "claude",
+        "account": "main",
+        "window": "bad",
+        "percent": 0,
+        "resets_at": 1800001000.0,
+        "custom": {
+          "keep": true
+        },
+        "windowSeconds": null,
+        "pace": null,
+        "burn": null,
+        "runsOutIn": null,
+        "reachesReset": null,
+        "verdict": ""
+      }
+    ]
+  },
+  {
+    "kind": "enrich",
+    "input": null,
+    "limits": [
+      {
+        "provider": "claude",
+        "account": "main",
+        "window": "bad",
+        "percent": -10,
+        "resets_at": 1800001000.0,
+        "custom": {
+          "keep": true
+        }
+      }
+    ],
+    "now": 1800000000.0,
+    "lang": "es",
+    "expected": [
+      {
+        "provider": "claude",
+        "account": "main",
+        "window": "bad",
+        "percent": -10,
+        "resets_at": 1800001000.0,
+        "custom": {
+          "keep": true
+        },
+        "windowSeconds": null,
+        "pace": null,
+        "burn": null,
+        "runsOutIn": null,
+        "reachesReset": null,
+        "verdict": ""
+      }
+    ]
+  },
+  {
+    "kind": "enrich",
+    "input": null,
+    "limits": [
+      {
+        "provider": "claude",
+        "account": "main",
+        "window": "bad",
+        "percent": -10,
+        "resets_at": 1800001000.0,
+        "custom": {
+          "keep": true
+        }
+      }
+    ],
+    "now": 1800000000.0,
+    "lang": "en",
+    "expected": [
+      {
+        "provider": "claude",
+        "account": "main",
+        "window": "bad",
+        "percent": -10,
+        "resets_at": 1800001000.0,
+        "custom": {
+          "keep": true
+        },
+        "windowSeconds": null,
+        "pace": null,
+        "burn": null,
+        "runsOutIn": null,
+        "reachesReset": null,
+        "verdict": ""
+      }
+    ]
+  },
+  {
+    "kind": "enrich",
+    "input": null,
+    "limits": [
+      {
+        "provider": "claude",
+        "account": "main",
+        "window": "bad",
+        "percent": 2.5,
+        "resets_at": 1800001000.0,
+        "custom": {
+          "keep": true
+        }
+      }
+    ],
+    "now": 1800000000.0,
+    "lang": "es",
+    "expected": [
+      {
+        "provider": "claude",
+        "account": "main",
+        "window": "bad",
+        "percent": 2.5,
+        "resets_at": 1800001000.0,
+        "custom": {
+          "keep": true
+        },
+        "windowSeconds": null,
+        "pace": null,
+        "burn": null,
+        "runsOutIn": null,
+        "reachesReset": null,
+        "verdict": ""
+      }
+    ]
+  },
+  {
+    "kind": "enrich",
+    "input": null,
+    "limits": [
+      {
+        "provider": "claude",
+        "account": "main",
+        "window": "bad",
+        "percent": 2.5,
+        "resets_at": 1800001000.0,
+        "custom": {
+          "keep": true
+        }
+      }
+    ],
+    "now": 1800000000.0,
+    "lang": "en",
+    "expected": [
+      {
+        "provider": "claude",
+        "account": "main",
+        "window": "bad",
+        "percent": 2.5,
+        "resets_at": 1800001000.0,
+        "custom": {
+          "keep": true
+        },
+        "windowSeconds": null,
+        "pace": null,
+        "burn": null,
+        "runsOutIn": null,
+        "reachesReset": null,
+        "verdict": ""
+      }
+    ]
+  },
+  {
+    "kind": "enrich",
+    "input": null,
+    "limits": [
+      {
+        "provider": "claude",
+        "account": "main",
+        "window": "bad",
+        "percent": 50,
+        "resets_at": 1800001000.0,
+        "custom": {
+          "keep": true
+        }
+      }
+    ],
+    "now": 1800000000.0,
+    "lang": "es",
+    "expected": [
+      {
+        "provider": "claude",
+        "account": "main",
+        "window": "bad",
+        "percent": 50,
+        "resets_at": 1800001000.0,
+        "custom": {
+          "keep": true
+        },
+        "windowSeconds": null,
+        "pace": null,
+        "burn": null,
+        "runsOutIn": null,
+        "reachesReset": null,
+        "verdict": ""
+      }
+    ]
+  },
+  {
+    "kind": "enrich",
+    "input": null,
+    "limits": [
+      {
+        "provider": "claude",
+        "account": "main",
+        "window": "bad",
+        "percent": 50,
+        "resets_at": 1800001000.0,
+        "custom": {
+          "keep": true
+        }
+      }
+    ],
+    "now": 1800000000.0,
+    "lang": "en",
+    "expected": [
+      {
+        "provider": "claude",
+        "account": "main",
+        "window": "bad",
+        "percent": 50,
+        "resets_at": 1800001000.0,
+        "custom": {
+          "keep": true
+        },
+        "windowSeconds": null,
+        "pace": null,
+        "burn": null,
+        "runsOutIn": null,
+        "reachesReset": null,
+        "verdict": ""
+      }
+    ]
+  },
+  {
+    "kind": "enrich",
+    "input": null,
+    "limits": [
+      {
+        "provider": "claude",
+        "account": "main",
+        "window": "bad",
+        "percent": 100,
+        "resets_at": 1800001000.0,
+        "custom": {
+          "keep": true
+        }
+      }
+    ],
+    "now": 1800000000.0,
+    "lang": "es",
+    "expected": [
+      {
+        "provider": "claude",
+        "account": "main",
+        "window": "bad",
+        "percent": 100,
+        "resets_at": 1800001000.0,
+        "custom": {
+          "keep": true
+        },
+        "windowSeconds": null,
+        "pace": null,
+        "burn": null,
+        "runsOutIn": null,
+        "reachesReset": null,
+        "verdict": ""
+      }
+    ]
+  },
+  {
+    "kind": "enrich",
+    "input": null,
+    "limits": [
+      {
+        "provider": "claude",
+        "account": "main",
+        "window": "bad",
+        "percent": 100,
+        "resets_at": 1800001000.0,
+        "custom": {
+          "keep": true
+        }
+      }
+    ],
+    "now": 1800000000.0,
+    "lang": "en",
+    "expected": [
+      {
+        "provider": "claude",
+        "account": "main",
+        "window": "bad",
+        "percent": 100,
+        "resets_at": 1800001000.0,
+        "custom": {
+          "keep": true
+        },
+        "windowSeconds": null,
+        "pace": null,
+        "burn": null,
+        "runsOutIn": null,
+        "reachesReset": null,
+        "verdict": ""
+      }
+    ]
+  },
+  {
+    "kind": "enrich",
+    "input": null,
+    "limits": [
+      {
+        "provider": "claude",
+        "account": "main",
+        "window": "bad",
+        "percent": 150,
+        "resets_at": 1800001000.0,
+        "custom": {
+          "keep": true
+        }
+      }
+    ],
+    "now": 1800000000.0,
+    "lang": "es",
+    "expected": [
+      {
+        "provider": "claude",
+        "account": "main",
+        "window": "bad",
+        "percent": 150,
+        "resets_at": 1800001000.0,
+        "custom": {
+          "keep": true
+        },
+        "windowSeconds": null,
+        "pace": null,
+        "burn": null,
+        "runsOutIn": null,
+        "reachesReset": null,
+        "verdict": ""
+      }
+    ]
+  },
+  {
+    "kind": "enrich",
+    "input": null,
+    "limits": [
+      {
+        "provider": "claude",
+        "account": "main",
+        "window": "bad",
+        "percent": 150,
+        "resets_at": 1800001000.0,
+        "custom": {
+          "keep": true
+        }
+      }
+    ],
+    "now": 1800000000.0,
+    "lang": "en",
+    "expected": [
+      {
+        "provider": "claude",
+        "account": "main",
+        "window": "bad",
+        "percent": 150,
+        "resets_at": 1800001000.0,
+        "custom": {
+          "keep": true
+        },
+        "windowSeconds": null,
+        "pace": null,
+        "burn": null,
+        "runsOutIn": null,
+        "reachesReset": null,
+        "verdict": ""
+      }
+    ]
+  },
+  {
+    "kind": "enrich",
+    "input": null,
+    "limits": [
+      {
+        "provider": "claude",
+        "account": "main",
+        "window": "bad",
+        "percent": "10.5",
+        "resets_at": 1800001000.0,
+        "custom": {
+          "keep": true
+        }
+      }
+    ],
+    "now": 1800000000.0,
+    "lang": "es",
+    "expected": [
+      {
+        "provider": "claude",
+        "account": "main",
+        "window": "bad",
+        "percent": "10.5",
+        "resets_at": 1800001000.0,
+        "custom": {
+          "keep": true
+        },
+        "windowSeconds": null,
+        "pace": null,
+        "burn": null,
+        "runsOutIn": null,
+        "reachesReset": null,
+        "verdict": ""
+      }
+    ]
+  },
+  {
+    "kind": "enrich",
+    "input": null,
+    "limits": [
+      {
+        "provider": "claude",
+        "account": "main",
+        "window": "bad",
+        "percent": "10.5",
+        "resets_at": 1800001000.0,
+        "custom": {
+          "keep": true
+        }
+      }
+    ],
+    "now": 1800000000.0,
+    "lang": "en",
+    "expected": [
+      {
+        "provider": "claude",
+        "account": "main",
+        "window": "bad",
+        "percent": "10.5",
+        "resets_at": 1800001000.0,
+        "custom": {
+          "keep": true
+        },
+        "windowSeconds": null,
+        "pace": null,
+        "burn": null,
+        "runsOutIn": null,
+        "reachesReset": null,
+        "verdict": ""
+      }
+    ]
+  },
+  {
+    "kind": "enrich",
+    "input": null,
+    "limits": [
+      {
+        "provider": "claude",
+        "account": "main",
+        "window": "bad",
+        "percent": "bad",
+        "resets_at": 1800001000.0,
+        "custom": {
+          "keep": true
+        }
+      }
+    ],
+    "now": 1800000000.0,
+    "lang": "es",
+    "expected": [
+      {
+        "provider": "claude",
+        "account": "main",
+        "window": "bad",
+        "percent": "bad",
+        "resets_at": 1800001000.0,
+        "custom": {
+          "keep": true
+        },
+        "windowSeconds": null,
+        "pace": null,
+        "burn": null,
+        "runsOutIn": null,
+        "reachesReset": null,
+        "verdict": ""
+      }
+    ]
+  },
+  {
+    "kind": "enrich",
+    "input": null,
+    "limits": [
+      {
+        "provider": "claude",
+        "account": "main",
+        "window": "bad",
+        "percent": "bad",
+        "resets_at": 1800001000.0,
+        "custom": {
+          "keep": true
+        }
+      }
+    ],
+    "now": 1800000000.0,
+    "lang": "en",
+    "expected": [
+      {
+        "provider": "claude",
+        "account": "main",
+        "window": "bad",
+        "percent": "bad",
+        "resets_at": 1800001000.0,
+        "custom": {
+          "keep": true
+        },
+        "windowSeconds": null,
+        "pace": null,
+        "burn": null,
+        "runsOutIn": null,
+        "reachesReset": null,
+        "verdict": ""
+      }
+    ]
+  },
+  {
+    "kind": "enrich",
+    "input": null,
+    "limits": [
+      {
+        "provider": "claude",
+        "account": "main",
+        "window": "bad",
+        "percent": NaN,
+        "resets_at": 1800001000.0,
+        "custom": {
+          "keep": true
+        }
+      }
+    ],
+    "now": 1800000000.0,
+    "lang": "es",
+    "expected": [
+      {
+        "provider": "claude",
+        "account": "main",
+        "window": "bad",
+        "percent": NaN,
+        "resets_at": 1800001000.0,
+        "custom": {
+          "keep": true
+        },
+        "windowSeconds": null,
+        "pace": null,
+        "burn": null,
+        "runsOutIn": null,
+        "reachesReset": null,
+        "verdict": ""
+      }
+    ]
+  },
+  {
+    "kind": "enrich",
+    "input": null,
+    "limits": [
+      {
+        "provider": "claude",
+        "account": "main",
+        "window": "bad",
+        "percent": NaN,
+        "resets_at": 1800001000.0,
+        "custom": {
+          "keep": true
+        }
+      }
+    ],
+    "now": 1800000000.0,
+    "lang": "en",
+    "expected": [
+      {
+        "provider": "claude",
+        "account": "main",
+        "window": "bad",
+        "percent": NaN,
+        "resets_at": 1800001000.0,
+        "custom": {
+          "keep": true
+        },
+        "windowSeconds": null,
+        "pace": null,
+        "burn": null,
+        "runsOutIn": null,
+        "reachesReset": null,
+        "verdict": ""
+      }
+    ]
+  },
+  {
+    "kind": "enrich",
+    "input": null,
+    "limits": [
+      {
+        "provider": "claude",
+        "account": "main",
+        "window": "bad",
+        "percent": Infinity,
+        "resets_at": 1800001000.0,
+        "custom": {
+          "keep": true
+        }
+      }
+    ],
+    "now": 1800000000.0,
+    "lang": "es",
+    "expected": [
+      {
+        "provider": "claude",
+        "account": "main",
+        "window": "bad",
+        "percent": Infinity,
+        "resets_at": 1800001000.0,
+        "custom": {
+          "keep": true
+        },
+        "windowSeconds": null,
+        "pace": null,
+        "burn": null,
+        "runsOutIn": null,
+        "reachesReset": null,
+        "verdict": ""
+      }
+    ]
+  },
+  {
+    "kind": "enrich",
+    "input": null,
+    "limits": [
+      {
+        "provider": "claude",
+        "account": "main",
+        "window": "bad",
+        "percent": Infinity,
+        "resets_at": 1800001000.0,
+        "custom": {
+          "keep": true
+        }
+      }
+    ],
+    "now": 1800000000.0,
+    "lang": "en",
+    "expected": [
+      {
+        "provider": "claude",
+        "account": "main",
+        "window": "bad",
+        "percent": Infinity,
+        "resets_at": 1800001000.0,
+        "custom": {
+          "keep": true
+        },
+        "windowSeconds": null,
+        "pace": null,
+        "burn": null,
+        "runsOutIn": null,
+        "reachesReset": null,
+        "verdict": ""
+      }
+    ]
+  },
+  {
+    "kind": "enrich",
+    "input": null,
+    "limits": [
+      {
+        "provider": "claude",
+        "account": "main",
+        "window": "bad",
+        "percent": -Infinity,
+        "resets_at": 1800001000.0,
+        "custom": {
+          "keep": true
+        }
+      }
+    ],
+    "now": 1800000000.0,
+    "lang": "es",
+    "expected": [
+      {
+        "provider": "claude",
+        "account": "main",
+        "window": "bad",
+        "percent": -Infinity,
+        "resets_at": 1800001000.0,
+        "custom": {
+          "keep": true
+        },
+        "windowSeconds": null,
+        "pace": null,
+        "burn": null,
+        "runsOutIn": null,
+        "reachesReset": null,
+        "verdict": ""
+      }
+    ]
+  },
+  {
+    "kind": "enrich",
+    "input": null,
+    "limits": [
+      {
+        "provider": "claude",
+        "account": "main",
+        "window": "bad",
+        "percent": -Infinity,
+        "resets_at": 1800001000.0,
+        "custom": {
+          "keep": true
+        }
+      }
+    ],
+    "now": 1800000000.0,
+    "lang": "en",
+    "expected": [
+      {
+        "provider": "claude",
+        "account": "main",
+        "window": "bad",
+        "percent": -Infinity,
+        "resets_at": 1800001000.0,
+        "custom": {
+          "keep": true
+        },
+        "windowSeconds": null,
+        "pace": null,
+        "burn": null,
+        "runsOutIn": null,
+        "reachesReset": null,
+        "verdict": ""
+      }
+    ]
+  },
+  {
+    "kind": "enrich",
+    "input": null,
+    "limits": [
+      {
+        "provider": "claude",
+        "account": "main",
+        "window": null,
+        "percent": null,
+        "resets_at": 1800001000.0,
+        "custom": {
+          "keep": true
+        }
+      }
+    ],
+    "now": 1800000000.0,
+    "lang": "es",
+    "expected": [
+      {
+        "provider": "claude",
+        "account": "main",
+        "window": null,
+        "percent": null,
+        "resets_at": 1800001000.0,
+        "custom": {
+          "keep": true
+        },
+        "windowSeconds": null,
+        "pace": null,
+        "burn": null,
+        "runsOutIn": null,
+        "reachesReset": null,
+        "verdict": ""
+      }
+    ]
+  },
+  {
+    "kind": "enrich",
+    "input": null,
+    "limits": [
+      {
+        "provider": "claude",
+        "account": "main",
+        "window": null,
+        "percent": null,
+        "resets_at": 1800001000.0,
+        "custom": {
+          "keep": true
+        }
+      }
+    ],
+    "now": 1800000000.0,
+    "lang": "en",
+    "expected": [
+      {
+        "provider": "claude",
+        "account": "main",
+        "window": null,
+        "percent": null,
+        "resets_at": 1800001000.0,
+        "custom": {
+          "keep": true
+        },
+        "windowSeconds": null,
+        "pace": null,
+        "burn": null,
+        "runsOutIn": null,
+        "reachesReset": null,
+        "verdict": ""
+      }
+    ]
+  },
+  {
+    "kind": "enrich",
+    "input": null,
+    "limits": [
+      {
+        "provider": "claude",
+        "account": "main",
+        "window": null,
+        "percent": 0,
+        "resets_at": 1800001000.0,
+        "custom": {
+          "keep": true
+        }
+      }
+    ],
+    "now": 1800000000.0,
+    "lang": "es",
+    "expected": [
+      {
+        "provider": "claude",
+        "account": "main",
+        "window": null,
+        "percent": 0,
+        "resets_at": 1800001000.0,
+        "custom": {
+          "keep": true
+        },
+        "windowSeconds": null,
+        "pace": null,
+        "burn": null,
+        "runsOutIn": null,
+        "reachesReset": null,
+        "verdict": ""
+      }
+    ]
+  },
+  {
+    "kind": "enrich",
+    "input": null,
+    "limits": [
+      {
+        "provider": "claude",
+        "account": "main",
+        "window": null,
+        "percent": 0,
+        "resets_at": 1800001000.0,
+        "custom": {
+          "keep": true
+        }
+      }
+    ],
+    "now": 1800000000.0,
+    "lang": "en",
+    "expected": [
+      {
+        "provider": "claude",
+        "account": "main",
+        "window": null,
+        "percent": 0,
+        "resets_at": 1800001000.0,
+        "custom": {
+          "keep": true
+        },
+        "windowSeconds": null,
+        "pace": null,
+        "burn": null,
+        "runsOutIn": null,
+        "reachesReset": null,
+        "verdict": ""
+      }
+    ]
+  },
+  {
+    "kind": "enrich",
+    "input": null,
+    "limits": [
+      {
+        "provider": "claude",
+        "account": "main",
+        "window": null,
+        "percent": -10,
+        "resets_at": 1800001000.0,
+        "custom": {
+          "keep": true
+        }
+      }
+    ],
+    "now": 1800000000.0,
+    "lang": "es",
+    "expected": [
+      {
+        "provider": "claude",
+        "account": "main",
+        "window": null,
+        "percent": -10,
+        "resets_at": 1800001000.0,
+        "custom": {
+          "keep": true
+        },
+        "windowSeconds": null,
+        "pace": null,
+        "burn": null,
+        "runsOutIn": null,
+        "reachesReset": null,
+        "verdict": ""
+      }
+    ]
+  },
+  {
+    "kind": "enrich",
+    "input": null,
+    "limits": [
+      {
+        "provider": "claude",
+        "account": "main",
+        "window": null,
+        "percent": -10,
+        "resets_at": 1800001000.0,
+        "custom": {
+          "keep": true
+        }
+      }
+    ],
+    "now": 1800000000.0,
+    "lang": "en",
+    "expected": [
+      {
+        "provider": "claude",
+        "account": "main",
+        "window": null,
+        "percent": -10,
+        "resets_at": 1800001000.0,
+        "custom": {
+          "keep": true
+        },
+        "windowSeconds": null,
+        "pace": null,
+        "burn": null,
+        "runsOutIn": null,
+        "reachesReset": null,
+        "verdict": ""
+      }
+    ]
+  },
+  {
+    "kind": "enrich",
+    "input": null,
+    "limits": [
+      {
+        "provider": "claude",
+        "account": "main",
+        "window": null,
+        "percent": 2.5,
+        "resets_at": 1800001000.0,
+        "custom": {
+          "keep": true
+        }
+      }
+    ],
+    "now": 1800000000.0,
+    "lang": "es",
+    "expected": [
+      {
+        "provider": "claude",
+        "account": "main",
+        "window": null,
+        "percent": 2.5,
+        "resets_at": 1800001000.0,
+        "custom": {
+          "keep": true
+        },
+        "windowSeconds": null,
+        "pace": null,
+        "burn": null,
+        "runsOutIn": null,
+        "reachesReset": null,
+        "verdict": ""
+      }
+    ]
+  },
+  {
+    "kind": "enrich",
+    "input": null,
+    "limits": [
+      {
+        "provider": "claude",
+        "account": "main",
+        "window": null,
+        "percent": 2.5,
+        "resets_at": 1800001000.0,
+        "custom": {
+          "keep": true
+        }
+      }
+    ],
+    "now": 1800000000.0,
+    "lang": "en",
+    "expected": [
+      {
+        "provider": "claude",
+        "account": "main",
+        "window": null,
+        "percent": 2.5,
+        "resets_at": 1800001000.0,
+        "custom": {
+          "keep": true
+        },
+        "windowSeconds": null,
+        "pace": null,
+        "burn": null,
+        "runsOutIn": null,
+        "reachesReset": null,
+        "verdict": ""
+      }
+    ]
+  },
+  {
+    "kind": "enrich",
+    "input": null,
+    "limits": [
+      {
+        "provider": "claude",
+        "account": "main",
+        "window": null,
+        "percent": 50,
+        "resets_at": 1800001000.0,
+        "custom": {
+          "keep": true
+        }
+      }
+    ],
+    "now": 1800000000.0,
+    "lang": "es",
+    "expected": [
+      {
+        "provider": "claude",
+        "account": "main",
+        "window": null,
+        "percent": 50,
+        "resets_at": 1800001000.0,
+        "custom": {
+          "keep": true
+        },
+        "windowSeconds": null,
+        "pace": null,
+        "burn": null,
+        "runsOutIn": null,
+        "reachesReset": null,
+        "verdict": ""
+      }
+    ]
+  },
+  {
+    "kind": "enrich",
+    "input": null,
+    "limits": [
+      {
+        "provider": "claude",
+        "account": "main",
+        "window": null,
+        "percent": 50,
+        "resets_at": 1800001000.0,
+        "custom": {
+          "keep": true
+        }
+      }
+    ],
+    "now": 1800000000.0,
+    "lang": "en",
+    "expected": [
+      {
+        "provider": "claude",
+        "account": "main",
+        "window": null,
+        "percent": 50,
+        "resets_at": 1800001000.0,
+        "custom": {
+          "keep": true
+        },
+        "windowSeconds": null,
+        "pace": null,
+        "burn": null,
+        "runsOutIn": null,
+        "reachesReset": null,
+        "verdict": ""
+      }
+    ]
+  },
+  {
+    "kind": "enrich",
+    "input": null,
+    "limits": [
+      {
+        "provider": "claude",
+        "account": "main",
+        "window": null,
+        "percent": 100,
+        "resets_at": 1800001000.0,
+        "custom": {
+          "keep": true
+        }
+      }
+    ],
+    "now": 1800000000.0,
+    "lang": "es",
+    "expected": [
+      {
+        "provider": "claude",
+        "account": "main",
+        "window": null,
+        "percent": 100,
+        "resets_at": 1800001000.0,
+        "custom": {
+          "keep": true
+        },
+        "windowSeconds": null,
+        "pace": null,
+        "burn": null,
+        "runsOutIn": null,
+        "reachesReset": null,
+        "verdict": ""
+      }
+    ]
+  },
+  {
+    "kind": "enrich",
+    "input": null,
+    "limits": [
+      {
+        "provider": "claude",
+        "account": "main",
+        "window": null,
+        "percent": 100,
+        "resets_at": 1800001000.0,
+        "custom": {
+          "keep": true
+        }
+      }
+    ],
+    "now": 1800000000.0,
+    "lang": "en",
+    "expected": [
+      {
+        "provider": "claude",
+        "account": "main",
+        "window": null,
+        "percent": 100,
+        "resets_at": 1800001000.0,
+        "custom": {
+          "keep": true
+        },
+        "windowSeconds": null,
+        "pace": null,
+        "burn": null,
+        "runsOutIn": null,
+        "reachesReset": null,
+        "verdict": ""
+      }
+    ]
+  },
+  {
+    "kind": "enrich",
+    "input": null,
+    "limits": [
+      {
+        "provider": "claude",
+        "account": "main",
+        "window": null,
+        "percent": 150,
+        "resets_at": 1800001000.0,
+        "custom": {
+          "keep": true
+        }
+      }
+    ],
+    "now": 1800000000.0,
+    "lang": "es",
+    "expected": [
+      {
+        "provider": "claude",
+        "account": "main",
+        "window": null,
+        "percent": 150,
+        "resets_at": 1800001000.0,
+        "custom": {
+          "keep": true
+        },
+        "windowSeconds": null,
+        "pace": null,
+        "burn": null,
+        "runsOutIn": null,
+        "reachesReset": null,
+        "verdict": ""
+      }
+    ]
+  },
+  {
+    "kind": "enrich",
+    "input": null,
+    "limits": [
+      {
+        "provider": "claude",
+        "account": "main",
+        "window": null,
+        "percent": 150,
+        "resets_at": 1800001000.0,
+        "custom": {
+          "keep": true
+        }
+      }
+    ],
+    "now": 1800000000.0,
+    "lang": "en",
+    "expected": [
+      {
+        "provider": "claude",
+        "account": "main",
+        "window": null,
+        "percent": 150,
+        "resets_at": 1800001000.0,
+        "custom": {
+          "keep": true
+        },
+        "windowSeconds": null,
+        "pace": null,
+        "burn": null,
+        "runsOutIn": null,
+        "reachesReset": null,
+        "verdict": ""
+      }
+    ]
+  },
+  {
+    "kind": "enrich",
+    "input": null,
+    "limits": [
+      {
+        "provider": "claude",
+        "account": "main",
+        "window": null,
+        "percent": "10.5",
+        "resets_at": 1800001000.0,
+        "custom": {
+          "keep": true
+        }
+      }
+    ],
+    "now": 1800000000.0,
+    "lang": "es",
+    "expected": [
+      {
+        "provider": "claude",
+        "account": "main",
+        "window": null,
+        "percent": "10.5",
+        "resets_at": 1800001000.0,
+        "custom": {
+          "keep": true
+        },
+        "windowSeconds": null,
+        "pace": null,
+        "burn": null,
+        "runsOutIn": null,
+        "reachesReset": null,
+        "verdict": ""
+      }
+    ]
+  },
+  {
+    "kind": "enrich",
+    "input": null,
+    "limits": [
+      {
+        "provider": "claude",
+        "account": "main",
+        "window": null,
+        "percent": "10.5",
+        "resets_at": 1800001000.0,
+        "custom": {
+          "keep": true
+        }
+      }
+    ],
+    "now": 1800000000.0,
+    "lang": "en",
+    "expected": [
+      {
+        "provider": "claude",
+        "account": "main",
+        "window": null,
+        "percent": "10.5",
+        "resets_at": 1800001000.0,
+        "custom": {
+          "keep": true
+        },
+        "windowSeconds": null,
+        "pace": null,
+        "burn": null,
+        "runsOutIn": null,
+        "reachesReset": null,
+        "verdict": ""
+      }
+    ]
+  },
+  {
+    "kind": "enrich",
+    "input": null,
+    "limits": [
+      {
+        "provider": "claude",
+        "account": "main",
+        "window": null,
+        "percent": "bad",
+        "resets_at": 1800001000.0,
+        "custom": {
+          "keep": true
+        }
+      }
+    ],
+    "now": 1800000000.0,
+    "lang": "es",
+    "expected": [
+      {
+        "provider": "claude",
+        "account": "main",
+        "window": null,
+        "percent": "bad",
+        "resets_at": 1800001000.0,
+        "custom": {
+          "keep": true
+        },
+        "windowSeconds": null,
+        "pace": null,
+        "burn": null,
+        "runsOutIn": null,
+        "reachesReset": null,
+        "verdict": ""
+      }
+    ]
+  },
+  {
+    "kind": "enrich",
+    "input": null,
+    "limits": [
+      {
+        "provider": "claude",
+        "account": "main",
+        "window": null,
+        "percent": "bad",
+        "resets_at": 1800001000.0,
+        "custom": {
+          "keep": true
+        }
+      }
+    ],
+    "now": 1800000000.0,
+    "lang": "en",
+    "expected": [
+      {
+        "provider": "claude",
+        "account": "main",
+        "window": null,
+        "percent": "bad",
+        "resets_at": 1800001000.0,
+        "custom": {
+          "keep": true
+        },
+        "windowSeconds": null,
+        "pace": null,
+        "burn": null,
+        "runsOutIn": null,
+        "reachesReset": null,
+        "verdict": ""
+      }
+    ]
+  },
+  {
+    "kind": "enrich",
+    "input": null,
+    "limits": [
+      {
+        "provider": "claude",
+        "account": "main",
+        "window": null,
+        "percent": NaN,
+        "resets_at": 1800001000.0,
+        "custom": {
+          "keep": true
+        }
+      }
+    ],
+    "now": 1800000000.0,
+    "lang": "es",
+    "expected": [
+      {
+        "provider": "claude",
+        "account": "main",
+        "window": null,
+        "percent": NaN,
+        "resets_at": 1800001000.0,
+        "custom": {
+          "keep": true
+        },
+        "windowSeconds": null,
+        "pace": null,
+        "burn": null,
+        "runsOutIn": null,
+        "reachesReset": null,
+        "verdict": ""
+      }
+    ]
+  },
+  {
+    "kind": "enrich",
+    "input": null,
+    "limits": [
+      {
+        "provider": "claude",
+        "account": "main",
+        "window": null,
+        "percent": NaN,
+        "resets_at": 1800001000.0,
+        "custom": {
+          "keep": true
+        }
+      }
+    ],
+    "now": 1800000000.0,
+    "lang": "en",
+    "expected": [
+      {
+        "provider": "claude",
+        "account": "main",
+        "window": null,
+        "percent": NaN,
+        "resets_at": 1800001000.0,
+        "custom": {
+          "keep": true
+        },
+        "windowSeconds": null,
+        "pace": null,
+        "burn": null,
+        "runsOutIn": null,
+        "reachesReset": null,
+        "verdict": ""
+      }
+    ]
+  },
+  {
+    "kind": "enrich",
+    "input": null,
+    "limits": [
+      {
+        "provider": "claude",
+        "account": "main",
+        "window": null,
+        "percent": Infinity,
+        "resets_at": 1800001000.0,
+        "custom": {
+          "keep": true
+        }
+      }
+    ],
+    "now": 1800000000.0,
+    "lang": "es",
+    "expected": [
+      {
+        "provider": "claude",
+        "account": "main",
+        "window": null,
+        "percent": Infinity,
+        "resets_at": 1800001000.0,
+        "custom": {
+          "keep": true
+        },
+        "windowSeconds": null,
+        "pace": null,
+        "burn": null,
+        "runsOutIn": null,
+        "reachesReset": null,
+        "verdict": ""
+      }
+    ]
+  },
+  {
+    "kind": "enrich",
+    "input": null,
+    "limits": [
+      {
+        "provider": "claude",
+        "account": "main",
+        "window": null,
+        "percent": Infinity,
+        "resets_at": 1800001000.0,
+        "custom": {
+          "keep": true
+        }
+      }
+    ],
+    "now": 1800000000.0,
+    "lang": "en",
+    "expected": [
+      {
+        "provider": "claude",
+        "account": "main",
+        "window": null,
+        "percent": Infinity,
+        "resets_at": 1800001000.0,
+        "custom": {
+          "keep": true
+        },
+        "windowSeconds": null,
+        "pace": null,
+        "burn": null,
+        "runsOutIn": null,
+        "reachesReset": null,
+        "verdict": ""
+      }
+    ]
+  },
+  {
+    "kind": "enrich",
+    "input": null,
+    "limits": [
+      {
+        "provider": "claude",
+        "account": "main",
+        "window": null,
+        "percent": -Infinity,
+        "resets_at": 1800001000.0,
+        "custom": {
+          "keep": true
+        }
+      }
+    ],
+    "now": 1800000000.0,
+    "lang": "es",
+    "expected": [
+      {
+        "provider": "claude",
+        "account": "main",
+        "window": null,
+        "percent": -Infinity,
+        "resets_at": 1800001000.0,
+        "custom": {
+          "keep": true
+        },
+        "windowSeconds": null,
+        "pace": null,
+        "burn": null,
+        "runsOutIn": null,
+        "reachesReset": null,
+        "verdict": ""
+      }
+    ]
+  },
+  {
+    "kind": "enrich",
+    "input": null,
+    "limits": [
+      {
+        "provider": "claude",
+        "account": "main",
+        "window": null,
+        "percent": -Infinity,
+        "resets_at": 1800001000.0,
+        "custom": {
+          "keep": true
+        }
+      }
+    ],
+    "now": 1800000000.0,
+    "lang": "en",
+    "expected": [
+      {
+        "provider": "claude",
+        "account": "main",
+        "window": null,
+        "percent": -Infinity,
+        "resets_at": 1800001000.0,
+        "custom": {
+          "keep": true
+        },
+        "windowSeconds": null,
+        "pace": null,
+        "burn": null,
+        "runsOutIn": null,
+        "reachesReset": null,
+        "verdict": ""
+      }
+    ]
+  },
+  {
+    "kind": "enrich",
+    "input": null,
+    "limits": [
+      {
+        "provider": "claude",
+        "account": "main",
+        "window": true,
+        "percent": null,
+        "resets_at": 1800001000.0,
+        "custom": {
+          "keep": true
+        }
+      }
+    ],
+    "now": 1800000000.0,
+    "lang": "es",
+    "expected": [
+      {
+        "provider": "claude",
+        "account": "main",
+        "window": true,
+        "percent": null,
+        "resets_at": 1800001000.0,
+        "custom": {
+          "keep": true
+        },
+        "windowSeconds": null,
+        "pace": null,
+        "burn": null,
+        "runsOutIn": null,
+        "reachesReset": null,
+        "verdict": ""
+      }
+    ]
+  },
+  {
+    "kind": "enrich",
+    "input": null,
+    "limits": [
+      {
+        "provider": "claude",
+        "account": "main",
+        "window": true,
+        "percent": null,
+        "resets_at": 1800001000.0,
+        "custom": {
+          "keep": true
+        }
+      }
+    ],
+    "now": 1800000000.0,
+    "lang": "en",
+    "expected": [
+      {
+        "provider": "claude",
+        "account": "main",
+        "window": true,
+        "percent": null,
+        "resets_at": 1800001000.0,
+        "custom": {
+          "keep": true
+        },
+        "windowSeconds": null,
+        "pace": null,
+        "burn": null,
+        "runsOutIn": null,
+        "reachesReset": null,
+        "verdict": ""
+      }
+    ]
+  },
+  {
+    "kind": "enrich",
+    "input": null,
+    "limits": [
+      {
+        "provider": "claude",
+        "account": "main",
+        "window": true,
+        "percent": 0,
+        "resets_at": 1800001000.0,
+        "custom": {
+          "keep": true
+        }
+      }
+    ],
+    "now": 1800000000.0,
+    "lang": "es",
+    "expected": [
+      {
+        "provider": "claude",
+        "account": "main",
+        "window": true,
+        "percent": 0,
+        "resets_at": 1800001000.0,
+        "custom": {
+          "keep": true
+        },
+        "windowSeconds": null,
+        "pace": null,
+        "burn": null,
+        "runsOutIn": null,
+        "reachesReset": null,
+        "verdict": ""
+      }
+    ]
+  },
+  {
+    "kind": "enrich",
+    "input": null,
+    "limits": [
+      {
+        "provider": "claude",
+        "account": "main",
+        "window": true,
+        "percent": 0,
+        "resets_at": 1800001000.0,
+        "custom": {
+          "keep": true
+        }
+      }
+    ],
+    "now": 1800000000.0,
+    "lang": "en",
+    "expected": [
+      {
+        "provider": "claude",
+        "account": "main",
+        "window": true,
+        "percent": 0,
+        "resets_at": 1800001000.0,
+        "custom": {
+          "keep": true
+        },
+        "windowSeconds": null,
+        "pace": null,
+        "burn": null,
+        "runsOutIn": null,
+        "reachesReset": null,
+        "verdict": ""
+      }
+    ]
+  },
+  {
+    "kind": "enrich",
+    "input": null,
+    "limits": [
+      {
+        "provider": "claude",
+        "account": "main",
+        "window": true,
+        "percent": -10,
+        "resets_at": 1800001000.0,
+        "custom": {
+          "keep": true
+        }
+      }
+    ],
+    "now": 1800000000.0,
+    "lang": "es",
+    "expected": [
+      {
+        "provider": "claude",
+        "account": "main",
+        "window": true,
+        "percent": -10,
+        "resets_at": 1800001000.0,
+        "custom": {
+          "keep": true
+        },
+        "windowSeconds": null,
+        "pace": null,
+        "burn": null,
+        "runsOutIn": null,
+        "reachesReset": null,
+        "verdict": ""
+      }
+    ]
+  },
+  {
+    "kind": "enrich",
+    "input": null,
+    "limits": [
+      {
+        "provider": "claude",
+        "account": "main",
+        "window": true,
+        "percent": -10,
+        "resets_at": 1800001000.0,
+        "custom": {
+          "keep": true
+        }
+      }
+    ],
+    "now": 1800000000.0,
+    "lang": "en",
+    "expected": [
+      {
+        "provider": "claude",
+        "account": "main",
+        "window": true,
+        "percent": -10,
+        "resets_at": 1800001000.0,
+        "custom": {
+          "keep": true
+        },
+        "windowSeconds": null,
+        "pace": null,
+        "burn": null,
+        "runsOutIn": null,
+        "reachesReset": null,
+        "verdict": ""
+      }
+    ]
+  },
+  {
+    "kind": "enrich",
+    "input": null,
+    "limits": [
+      {
+        "provider": "claude",
+        "account": "main",
+        "window": true,
+        "percent": 2.5,
+        "resets_at": 1800001000.0,
+        "custom": {
+          "keep": true
+        }
+      }
+    ],
+    "now": 1800000000.0,
+    "lang": "es",
+    "expected": [
+      {
+        "provider": "claude",
+        "account": "main",
+        "window": true,
+        "percent": 2.5,
+        "resets_at": 1800001000.0,
+        "custom": {
+          "keep": true
+        },
+        "windowSeconds": null,
+        "pace": null,
+        "burn": null,
+        "runsOutIn": null,
+        "reachesReset": null,
+        "verdict": ""
+      }
+    ]
+  },
+  {
+    "kind": "enrich",
+    "input": null,
+    "limits": [
+      {
+        "provider": "claude",
+        "account": "main",
+        "window": true,
+        "percent": 2.5,
+        "resets_at": 1800001000.0,
+        "custom": {
+          "keep": true
+        }
+      }
+    ],
+    "now": 1800000000.0,
+    "lang": "en",
+    "expected": [
+      {
+        "provider": "claude",
+        "account": "main",
+        "window": true,
+        "percent": 2.5,
+        "resets_at": 1800001000.0,
+        "custom": {
+          "keep": true
+        },
+        "windowSeconds": null,
+        "pace": null,
+        "burn": null,
+        "runsOutIn": null,
+        "reachesReset": null,
+        "verdict": ""
+      }
+    ]
+  },
+  {
+    "kind": "enrich",
+    "input": null,
+    "limits": [
+      {
+        "provider": "claude",
+        "account": "main",
+        "window": true,
+        "percent": 50,
+        "resets_at": 1800001000.0,
+        "custom": {
+          "keep": true
+        }
+      }
+    ],
+    "now": 1800000000.0,
+    "lang": "es",
+    "expected": [
+      {
+        "provider": "claude",
+        "account": "main",
+        "window": true,
+        "percent": 50,
+        "resets_at": 1800001000.0,
+        "custom": {
+          "keep": true
+        },
+        "windowSeconds": null,
+        "pace": null,
+        "burn": null,
+        "runsOutIn": null,
+        "reachesReset": null,
+        "verdict": ""
+      }
+    ]
+  },
+  {
+    "kind": "enrich",
+    "input": null,
+    "limits": [
+      {
+        "provider": "claude",
+        "account": "main",
+        "window": true,
+        "percent": 50,
+        "resets_at": 1800001000.0,
+        "custom": {
+          "keep": true
+        }
+      }
+    ],
+    "now": 1800000000.0,
+    "lang": "en",
+    "expected": [
+      {
+        "provider": "claude",
+        "account": "main",
+        "window": true,
+        "percent": 50,
+        "resets_at": 1800001000.0,
+        "custom": {
+          "keep": true
+        },
+        "windowSeconds": null,
+        "pace": null,
+        "burn": null,
+        "runsOutIn": null,
+        "reachesReset": null,
+        "verdict": ""
+      }
+    ]
+  },
+  {
+    "kind": "enrich",
+    "input": null,
+    "limits": [
+      {
+        "provider": "claude",
+        "account": "main",
+        "window": true,
+        "percent": 100,
+        "resets_at": 1800001000.0,
+        "custom": {
+          "keep": true
+        }
+      }
+    ],
+    "now": 1800000000.0,
+    "lang": "es",
+    "expected": [
+      {
+        "provider": "claude",
+        "account": "main",
+        "window": true,
+        "percent": 100,
+        "resets_at": 1800001000.0,
+        "custom": {
+          "keep": true
+        },
+        "windowSeconds": null,
+        "pace": null,
+        "burn": null,
+        "runsOutIn": null,
+        "reachesReset": null,
+        "verdict": ""
+      }
+    ]
+  },
+  {
+    "kind": "enrich",
+    "input": null,
+    "limits": [
+      {
+        "provider": "claude",
+        "account": "main",
+        "window": true,
+        "percent": 100,
+        "resets_at": 1800001000.0,
+        "custom": {
+          "keep": true
+        }
+      }
+    ],
+    "now": 1800000000.0,
+    "lang": "en",
+    "expected": [
+      {
+        "provider": "claude",
+        "account": "main",
+        "window": true,
+        "percent": 100,
+        "resets_at": 1800001000.0,
+        "custom": {
+          "keep": true
+        },
+        "windowSeconds": null,
+        "pace": null,
+        "burn": null,
+        "runsOutIn": null,
+        "reachesReset": null,
+        "verdict": ""
+      }
+    ]
+  },
+  {
+    "kind": "enrich",
+    "input": null,
+    "limits": [
+      {
+        "provider": "claude",
+        "account": "main",
+        "window": true,
+        "percent": 150,
+        "resets_at": 1800001000.0,
+        "custom": {
+          "keep": true
+        }
+      }
+    ],
+    "now": 1800000000.0,
+    "lang": "es",
+    "expected": [
+      {
+        "provider": "claude",
+        "account": "main",
+        "window": true,
+        "percent": 150,
+        "resets_at": 1800001000.0,
+        "custom": {
+          "keep": true
+        },
+        "windowSeconds": null,
+        "pace": null,
+        "burn": null,
+        "runsOutIn": null,
+        "reachesReset": null,
+        "verdict": ""
+      }
+    ]
+  },
+  {
+    "kind": "enrich",
+    "input": null,
+    "limits": [
+      {
+        "provider": "claude",
+        "account": "main",
+        "window": true,
+        "percent": 150,
+        "resets_at": 1800001000.0,
+        "custom": {
+          "keep": true
+        }
+      }
+    ],
+    "now": 1800000000.0,
+    "lang": "en",
+    "expected": [
+      {
+        "provider": "claude",
+        "account": "main",
+        "window": true,
+        "percent": 150,
+        "resets_at": 1800001000.0,
+        "custom": {
+          "keep": true
+        },
+        "windowSeconds": null,
+        "pace": null,
+        "burn": null,
+        "runsOutIn": null,
+        "reachesReset": null,
+        "verdict": ""
+      }
+    ]
+  },
+  {
+    "kind": "enrich",
+    "input": null,
+    "limits": [
+      {
+        "provider": "claude",
+        "account": "main",
+        "window": true,
+        "percent": "10.5",
+        "resets_at": 1800001000.0,
+        "custom": {
+          "keep": true
+        }
+      }
+    ],
+    "now": 1800000000.0,
+    "lang": "es",
+    "expected": [
+      {
+        "provider": "claude",
+        "account": "main",
+        "window": true,
+        "percent": "10.5",
+        "resets_at": 1800001000.0,
+        "custom": {
+          "keep": true
+        },
+        "windowSeconds": null,
+        "pace": null,
+        "burn": null,
+        "runsOutIn": null,
+        "reachesReset": null,
+        "verdict": ""
+      }
+    ]
+  },
+  {
+    "kind": "enrich",
+    "input": null,
+    "limits": [
+      {
+        "provider": "claude",
+        "account": "main",
+        "window": true,
+        "percent": "10.5",
+        "resets_at": 1800001000.0,
+        "custom": {
+          "keep": true
+        }
+      }
+    ],
+    "now": 1800000000.0,
+    "lang": "en",
+    "expected": [
+      {
+        "provider": "claude",
+        "account": "main",
+        "window": true,
+        "percent": "10.5",
+        "resets_at": 1800001000.0,
+        "custom": {
+          "keep": true
+        },
+        "windowSeconds": null,
+        "pace": null,
+        "burn": null,
+        "runsOutIn": null,
+        "reachesReset": null,
+        "verdict": ""
+      }
+    ]
+  },
+  {
+    "kind": "enrich",
+    "input": null,
+    "limits": [
+      {
+        "provider": "claude",
+        "account": "main",
+        "window": true,
+        "percent": "bad",
+        "resets_at": 1800001000.0,
+        "custom": {
+          "keep": true
+        }
+      }
+    ],
+    "now": 1800000000.0,
+    "lang": "es",
+    "expected": [
+      {
+        "provider": "claude",
+        "account": "main",
+        "window": true,
+        "percent": "bad",
+        "resets_at": 1800001000.0,
+        "custom": {
+          "keep": true
+        },
+        "windowSeconds": null,
+        "pace": null,
+        "burn": null,
+        "runsOutIn": null,
+        "reachesReset": null,
+        "verdict": ""
+      }
+    ]
+  },
+  {
+    "kind": "enrich",
+    "input": null,
+    "limits": [
+      {
+        "provider": "claude",
+        "account": "main",
+        "window": true,
+        "percent": "bad",
+        "resets_at": 1800001000.0,
+        "custom": {
+          "keep": true
+        }
+      }
+    ],
+    "now": 1800000000.0,
+    "lang": "en",
+    "expected": [
+      {
+        "provider": "claude",
+        "account": "main",
+        "window": true,
+        "percent": "bad",
+        "resets_at": 1800001000.0,
+        "custom": {
+          "keep": true
+        },
+        "windowSeconds": null,
+        "pace": null,
+        "burn": null,
+        "runsOutIn": null,
+        "reachesReset": null,
+        "verdict": ""
+      }
+    ]
+  },
+  {
+    "kind": "enrich",
+    "input": null,
+    "limits": [
+      {
+        "provider": "claude",
+        "account": "main",
+        "window": true,
+        "percent": NaN,
+        "resets_at": 1800001000.0,
+        "custom": {
+          "keep": true
+        }
+      }
+    ],
+    "now": 1800000000.0,
+    "lang": "es",
+    "expected": [
+      {
+        "provider": "claude",
+        "account": "main",
+        "window": true,
+        "percent": NaN,
+        "resets_at": 1800001000.0,
+        "custom": {
+          "keep": true
+        },
+        "windowSeconds": null,
+        "pace": null,
+        "burn": null,
+        "runsOutIn": null,
+        "reachesReset": null,
+        "verdict": ""
+      }
+    ]
+  },
+  {
+    "kind": "enrich",
+    "input": null,
+    "limits": [
+      {
+        "provider": "claude",
+        "account": "main",
+        "window": true,
+        "percent": NaN,
+        "resets_at": 1800001000.0,
+        "custom": {
+          "keep": true
+        }
+      }
+    ],
+    "now": 1800000000.0,
+    "lang": "en",
+    "expected": [
+      {
+        "provider": "claude",
+        "account": "main",
+        "window": true,
+        "percent": NaN,
+        "resets_at": 1800001000.0,
+        "custom": {
+          "keep": true
+        },
+        "windowSeconds": null,
+        "pace": null,
+        "burn": null,
+        "runsOutIn": null,
+        "reachesReset": null,
+        "verdict": ""
+      }
+    ]
+  },
+  {
+    "kind": "enrich",
+    "input": null,
+    "limits": [
+      {
+        "provider": "claude",
+        "account": "main",
+        "window": true,
+        "percent": Infinity,
+        "resets_at": 1800001000.0,
+        "custom": {
+          "keep": true
+        }
+      }
+    ],
+    "now": 1800000000.0,
+    "lang": "es",
+    "expected": [
+      {
+        "provider": "claude",
+        "account": "main",
+        "window": true,
+        "percent": Infinity,
+        "resets_at": 1800001000.0,
+        "custom": {
+          "keep": true
+        },
+        "windowSeconds": null,
+        "pace": null,
+        "burn": null,
+        "runsOutIn": null,
+        "reachesReset": null,
+        "verdict": ""
+      }
+    ]
+  },
+  {
+    "kind": "enrich",
+    "input": null,
+    "limits": [
+      {
+        "provider": "claude",
+        "account": "main",
+        "window": true,
+        "percent": Infinity,
+        "resets_at": 1800001000.0,
+        "custom": {
+          "keep": true
+        }
+      }
+    ],
+    "now": 1800000000.0,
+    "lang": "en",
+    "expected": [
+      {
+        "provider": "claude",
+        "account": "main",
+        "window": true,
+        "percent": Infinity,
+        "resets_at": 1800001000.0,
+        "custom": {
+          "keep": true
+        },
+        "windowSeconds": null,
+        "pace": null,
+        "burn": null,
+        "runsOutIn": null,
+        "reachesReset": null,
+        "verdict": ""
+      }
+    ]
+  },
+  {
+    "kind": "enrich",
+    "input": null,
+    "limits": [
+      {
+        "provider": "claude",
+        "account": "main",
+        "window": true,
+        "percent": -Infinity,
+        "resets_at": 1800001000.0,
+        "custom": {
+          "keep": true
+        }
+      }
+    ],
+    "now": 1800000000.0,
+    "lang": "es",
+    "expected": [
+      {
+        "provider": "claude",
+        "account": "main",
+        "window": true,
+        "percent": -Infinity,
+        "resets_at": 1800001000.0,
+        "custom": {
+          "keep": true
+        },
+        "windowSeconds": null,
+        "pace": null,
+        "burn": null,
+        "runsOutIn": null,
+        "reachesReset": null,
+        "verdict": ""
+      }
+    ]
+  },
+  {
+    "kind": "enrich",
+    "input": null,
+    "limits": [
+      {
+        "provider": "claude",
+        "account": "main",
+        "window": true,
+        "percent": -Infinity,
+        "resets_at": 1800001000.0,
+        "custom": {
+          "keep": true
+        }
+      }
+    ],
+    "now": 1800000000.0,
+    "lang": "en",
+    "expected": [
+      {
+        "provider": "claude",
+        "account": "main",
+        "window": true,
+        "percent": -Infinity,
+        "resets_at": 1800001000.0,
+        "custom": {
+          "keep": true
+        },
+        "windowSeconds": null,
+        "pace": null,
+        "burn": null,
+        "runsOutIn": null,
+        "reachesReset": null,
+        "verdict": ""
+      }
+    ]
+  },
+  {
+    "kind": "enrich",
+    "input": null,
+    "limits": [
+      {
+        "provider": "claude",
+        "account": "main",
+        "window": 7,
+        "percent": null,
+        "resets_at": 1800001000.0,
+        "custom": {
+          "keep": true
+        }
+      }
+    ],
+    "now": 1800000000.0,
+    "lang": "es",
+    "expected": [
+      {
+        "provider": "claude",
+        "account": "main",
+        "window": 7,
+        "percent": null,
+        "resets_at": 1800001000.0,
+        "custom": {
+          "keep": true
+        },
+        "windowSeconds": null,
+        "pace": null,
+        "burn": null,
+        "runsOutIn": null,
+        "reachesReset": null,
+        "verdict": ""
+      }
+    ]
+  },
+  {
+    "kind": "enrich",
+    "input": null,
+    "limits": [
+      {
+        "provider": "claude",
+        "account": "main",
+        "window": 7,
+        "percent": null,
+        "resets_at": 1800001000.0,
+        "custom": {
+          "keep": true
+        }
+      }
+    ],
+    "now": 1800000000.0,
+    "lang": "en",
+    "expected": [
+      {
+        "provider": "claude",
+        "account": "main",
+        "window": 7,
+        "percent": null,
+        "resets_at": 1800001000.0,
+        "custom": {
+          "keep": true
+        },
+        "windowSeconds": null,
+        "pace": null,
+        "burn": null,
+        "runsOutIn": null,
+        "reachesReset": null,
+        "verdict": ""
+      }
+    ]
+  },
+  {
+    "kind": "enrich",
+    "input": null,
+    "limits": [
+      {
+        "provider": "claude",
+        "account": "main",
+        "window": 7,
+        "percent": 0,
+        "resets_at": 1800001000.0,
+        "custom": {
+          "keep": true
+        }
+      }
+    ],
+    "now": 1800000000.0,
+    "lang": "es",
+    "expected": [
+      {
+        "provider": "claude",
+        "account": "main",
+        "window": 7,
+        "percent": 0,
+        "resets_at": 1800001000.0,
+        "custom": {
+          "keep": true
+        },
+        "windowSeconds": null,
+        "pace": null,
+        "burn": null,
+        "runsOutIn": null,
+        "reachesReset": null,
+        "verdict": ""
+      }
+    ]
+  },
+  {
+    "kind": "enrich",
+    "input": null,
+    "limits": [
+      {
+        "provider": "claude",
+        "account": "main",
+        "window": 7,
+        "percent": 0,
+        "resets_at": 1800001000.0,
+        "custom": {
+          "keep": true
+        }
+      }
+    ],
+    "now": 1800000000.0,
+    "lang": "en",
+    "expected": [
+      {
+        "provider": "claude",
+        "account": "main",
+        "window": 7,
+        "percent": 0,
+        "resets_at": 1800001000.0,
+        "custom": {
+          "keep": true
+        },
+        "windowSeconds": null,
+        "pace": null,
+        "burn": null,
+        "runsOutIn": null,
+        "reachesReset": null,
+        "verdict": ""
+      }
+    ]
+  },
+  {
+    "kind": "enrich",
+    "input": null,
+    "limits": [
+      {
+        "provider": "claude",
+        "account": "main",
+        "window": 7,
+        "percent": -10,
+        "resets_at": 1800001000.0,
+        "custom": {
+          "keep": true
+        }
+      }
+    ],
+    "now": 1800000000.0,
+    "lang": "es",
+    "expected": [
+      {
+        "provider": "claude",
+        "account": "main",
+        "window": 7,
+        "percent": -10,
+        "resets_at": 1800001000.0,
+        "custom": {
+          "keep": true
+        },
+        "windowSeconds": null,
+        "pace": null,
+        "burn": null,
+        "runsOutIn": null,
+        "reachesReset": null,
+        "verdict": ""
+      }
+    ]
+  },
+  {
+    "kind": "enrich",
+    "input": null,
+    "limits": [
+      {
+        "provider": "claude",
+        "account": "main",
+        "window": 7,
+        "percent": -10,
+        "resets_at": 1800001000.0,
+        "custom": {
+          "keep": true
+        }
+      }
+    ],
+    "now": 1800000000.0,
+    "lang": "en",
+    "expected": [
+      {
+        "provider": "claude",
+        "account": "main",
+        "window": 7,
+        "percent": -10,
+        "resets_at": 1800001000.0,
+        "custom": {
+          "keep": true
+        },
+        "windowSeconds": null,
+        "pace": null,
+        "burn": null,
+        "runsOutIn": null,
+        "reachesReset": null,
+        "verdict": ""
+      }
+    ]
+  },
+  {
+    "kind": "enrich",
+    "input": null,
+    "limits": [
+      {
+        "provider": "claude",
+        "account": "main",
+        "window": 7,
+        "percent": 2.5,
+        "resets_at": 1800001000.0,
+        "custom": {
+          "keep": true
+        }
+      }
+    ],
+    "now": 1800000000.0,
+    "lang": "es",
+    "expected": [
+      {
+        "provider": "claude",
+        "account": "main",
+        "window": 7,
+        "percent": 2.5,
+        "resets_at": 1800001000.0,
+        "custom": {
+          "keep": true
+        },
+        "windowSeconds": null,
+        "pace": null,
+        "burn": null,
+        "runsOutIn": null,
+        "reachesReset": null,
+        "verdict": ""
+      }
+    ]
+  },
+  {
+    "kind": "enrich",
+    "input": null,
+    "limits": [
+      {
+        "provider": "claude",
+        "account": "main",
+        "window": 7,
+        "percent": 2.5,
+        "resets_at": 1800001000.0,
+        "custom": {
+          "keep": true
+        }
+      }
+    ],
+    "now": 1800000000.0,
+    "lang": "en",
+    "expected": [
+      {
+        "provider": "claude",
+        "account": "main",
+        "window": 7,
+        "percent": 2.5,
+        "resets_at": 1800001000.0,
+        "custom": {
+          "keep": true
+        },
+        "windowSeconds": null,
+        "pace": null,
+        "burn": null,
+        "runsOutIn": null,
+        "reachesReset": null,
+        "verdict": ""
+      }
+    ]
+  },
+  {
+    "kind": "enrich",
+    "input": null,
+    "limits": [
+      {
+        "provider": "claude",
+        "account": "main",
+        "window": 7,
+        "percent": 50,
+        "resets_at": 1800001000.0,
+        "custom": {
+          "keep": true
+        }
+      }
+    ],
+    "now": 1800000000.0,
+    "lang": "es",
+    "expected": [
+      {
+        "provider": "claude",
+        "account": "main",
+        "window": 7,
+        "percent": 50,
+        "resets_at": 1800001000.0,
+        "custom": {
+          "keep": true
+        },
+        "windowSeconds": null,
+        "pace": null,
+        "burn": null,
+        "runsOutIn": null,
+        "reachesReset": null,
+        "verdict": ""
+      }
+    ]
+  },
+  {
+    "kind": "enrich",
+    "input": null,
+    "limits": [
+      {
+        "provider": "claude",
+        "account": "main",
+        "window": 7,
+        "percent": 50,
+        "resets_at": 1800001000.0,
+        "custom": {
+          "keep": true
+        }
+      }
+    ],
+    "now": 1800000000.0,
+    "lang": "en",
+    "expected": [
+      {
+        "provider": "claude",
+        "account": "main",
+        "window": 7,
+        "percent": 50,
+        "resets_at": 1800001000.0,
+        "custom": {
+          "keep": true
+        },
+        "windowSeconds": null,
+        "pace": null,
+        "burn": null,
+        "runsOutIn": null,
+        "reachesReset": null,
+        "verdict": ""
+      }
+    ]
+  },
+  {
+    "kind": "enrich",
+    "input": null,
+    "limits": [
+      {
+        "provider": "claude",
+        "account": "main",
+        "window": 7,
+        "percent": 100,
+        "resets_at": 1800001000.0,
+        "custom": {
+          "keep": true
+        }
+      }
+    ],
+    "now": 1800000000.0,
+    "lang": "es",
+    "expected": [
+      {
+        "provider": "claude",
+        "account": "main",
+        "window": 7,
+        "percent": 100,
+        "resets_at": 1800001000.0,
+        "custom": {
+          "keep": true
+        },
+        "windowSeconds": null,
+        "pace": null,
+        "burn": null,
+        "runsOutIn": null,
+        "reachesReset": null,
+        "verdict": ""
+      }
+    ]
+  },
+  {
+    "kind": "enrich",
+    "input": null,
+    "limits": [
+      {
+        "provider": "claude",
+        "account": "main",
+        "window": 7,
+        "percent": 100,
+        "resets_at": 1800001000.0,
+        "custom": {
+          "keep": true
+        }
+      }
+    ],
+    "now": 1800000000.0,
+    "lang": "en",
+    "expected": [
+      {
+        "provider": "claude",
+        "account": "main",
+        "window": 7,
+        "percent": 100,
+        "resets_at": 1800001000.0,
+        "custom": {
+          "keep": true
+        },
+        "windowSeconds": null,
+        "pace": null,
+        "burn": null,
+        "runsOutIn": null,
+        "reachesReset": null,
+        "verdict": ""
+      }
+    ]
+  },
+  {
+    "kind": "enrich",
+    "input": null,
+    "limits": [
+      {
+        "provider": "claude",
+        "account": "main",
+        "window": 7,
+        "percent": 150,
+        "resets_at": 1800001000.0,
+        "custom": {
+          "keep": true
+        }
+      }
+    ],
+    "now": 1800000000.0,
+    "lang": "es",
+    "expected": [
+      {
+        "provider": "claude",
+        "account": "main",
+        "window": 7,
+        "percent": 150,
+        "resets_at": 1800001000.0,
+        "custom": {
+          "keep": true
+        },
+        "windowSeconds": null,
+        "pace": null,
+        "burn": null,
+        "runsOutIn": null,
+        "reachesReset": null,
+        "verdict": ""
+      }
+    ]
+  },
+  {
+    "kind": "enrich",
+    "input": null,
+    "limits": [
+      {
+        "provider": "claude",
+        "account": "main",
+        "window": 7,
+        "percent": 150,
+        "resets_at": 1800001000.0,
+        "custom": {
+          "keep": true
+        }
+      }
+    ],
+    "now": 1800000000.0,
+    "lang": "en",
+    "expected": [
+      {
+        "provider": "claude",
+        "account": "main",
+        "window": 7,
+        "percent": 150,
+        "resets_at": 1800001000.0,
+        "custom": {
+          "keep": true
+        },
+        "windowSeconds": null,
+        "pace": null,
+        "burn": null,
+        "runsOutIn": null,
+        "reachesReset": null,
+        "verdict": ""
+      }
+    ]
+  },
+  {
+    "kind": "enrich",
+    "input": null,
+    "limits": [
+      {
+        "provider": "claude",
+        "account": "main",
+        "window": 7,
+        "percent": "10.5",
+        "resets_at": 1800001000.0,
+        "custom": {
+          "keep": true
+        }
+      }
+    ],
+    "now": 1800000000.0,
+    "lang": "es",
+    "expected": [
+      {
+        "provider": "claude",
+        "account": "main",
+        "window": 7,
+        "percent": "10.5",
+        "resets_at": 1800001000.0,
+        "custom": {
+          "keep": true
+        },
+        "windowSeconds": null,
+        "pace": null,
+        "burn": null,
+        "runsOutIn": null,
+        "reachesReset": null,
+        "verdict": ""
+      }
+    ]
+  },
+  {
+    "kind": "enrich",
+    "input": null,
+    "limits": [
+      {
+        "provider": "claude",
+        "account": "main",
+        "window": 7,
+        "percent": "10.5",
+        "resets_at": 1800001000.0,
+        "custom": {
+          "keep": true
+        }
+      }
+    ],
+    "now": 1800000000.0,
+    "lang": "en",
+    "expected": [
+      {
+        "provider": "claude",
+        "account": "main",
+        "window": 7,
+        "percent": "10.5",
+        "resets_at": 1800001000.0,
+        "custom": {
+          "keep": true
+        },
+        "windowSeconds": null,
+        "pace": null,
+        "burn": null,
+        "runsOutIn": null,
+        "reachesReset": null,
+        "verdict": ""
+      }
+    ]
+  },
+  {
+    "kind": "enrich",
+    "input": null,
+    "limits": [
+      {
+        "provider": "claude",
+        "account": "main",
+        "window": 7,
+        "percent": "bad",
+        "resets_at": 1800001000.0,
+        "custom": {
+          "keep": true
+        }
+      }
+    ],
+    "now": 1800000000.0,
+    "lang": "es",
+    "expected": [
+      {
+        "provider": "claude",
+        "account": "main",
+        "window": 7,
+        "percent": "bad",
+        "resets_at": 1800001000.0,
+        "custom": {
+          "keep": true
+        },
+        "windowSeconds": null,
+        "pace": null,
+        "burn": null,
+        "runsOutIn": null,
+        "reachesReset": null,
+        "verdict": ""
+      }
+    ]
+  },
+  {
+    "kind": "enrich",
+    "input": null,
+    "limits": [
+      {
+        "provider": "claude",
+        "account": "main",
+        "window": 7,
+        "percent": "bad",
+        "resets_at": 1800001000.0,
+        "custom": {
+          "keep": true
+        }
+      }
+    ],
+    "now": 1800000000.0,
+    "lang": "en",
+    "expected": [
+      {
+        "provider": "claude",
+        "account": "main",
+        "window": 7,
+        "percent": "bad",
+        "resets_at": 1800001000.0,
+        "custom": {
+          "keep": true
+        },
+        "windowSeconds": null,
+        "pace": null,
+        "burn": null,
+        "runsOutIn": null,
+        "reachesReset": null,
+        "verdict": ""
+      }
+    ]
+  },
+  {
+    "kind": "enrich",
+    "input": null,
+    "limits": [
+      {
+        "provider": "claude",
+        "account": "main",
+        "window": 7,
+        "percent": NaN,
+        "resets_at": 1800001000.0,
+        "custom": {
+          "keep": true
+        }
+      }
+    ],
+    "now": 1800000000.0,
+    "lang": "es",
+    "expected": [
+      {
+        "provider": "claude",
+        "account": "main",
+        "window": 7,
+        "percent": NaN,
+        "resets_at": 1800001000.0,
+        "custom": {
+          "keep": true
+        },
+        "windowSeconds": null,
+        "pace": null,
+        "burn": null,
+        "runsOutIn": null,
+        "reachesReset": null,
+        "verdict": ""
+      }
+    ]
+  },
+  {
+    "kind": "enrich",
+    "input": null,
+    "limits": [
+      {
+        "provider": "claude",
+        "account": "main",
+        "window": 7,
+        "percent": NaN,
+        "resets_at": 1800001000.0,
+        "custom": {
+          "keep": true
+        }
+      }
+    ],
+    "now": 1800000000.0,
+    "lang": "en",
+    "expected": [
+      {
+        "provider": "claude",
+        "account": "main",
+        "window": 7,
+        "percent": NaN,
+        "resets_at": 1800001000.0,
+        "custom": {
+          "keep": true
+        },
+        "windowSeconds": null,
+        "pace": null,
+        "burn": null,
+        "runsOutIn": null,
+        "reachesReset": null,
+        "verdict": ""
+      }
+    ]
+  },
+  {
+    "kind": "enrich",
+    "input": null,
+    "limits": [
+      {
+        "provider": "claude",
+        "account": "main",
+        "window": 7,
+        "percent": Infinity,
+        "resets_at": 1800001000.0,
+        "custom": {
+          "keep": true
+        }
+      }
+    ],
+    "now": 1800000000.0,
+    "lang": "es",
+    "expected": [
+      {
+        "provider": "claude",
+        "account": "main",
+        "window": 7,
+        "percent": Infinity,
+        "resets_at": 1800001000.0,
+        "custom": {
+          "keep": true
+        },
+        "windowSeconds": null,
+        "pace": null,
+        "burn": null,
+        "runsOutIn": null,
+        "reachesReset": null,
+        "verdict": ""
+      }
+    ]
+  },
+  {
+    "kind": "enrich",
+    "input": null,
+    "limits": [
+      {
+        "provider": "claude",
+        "account": "main",
+        "window": 7,
+        "percent": Infinity,
+        "resets_at": 1800001000.0,
+        "custom": {
+          "keep": true
+        }
+      }
+    ],
+    "now": 1800000000.0,
+    "lang": "en",
+    "expected": [
+      {
+        "provider": "claude",
+        "account": "main",
+        "window": 7,
+        "percent": Infinity,
+        "resets_at": 1800001000.0,
+        "custom": {
+          "keep": true
+        },
+        "windowSeconds": null,
+        "pace": null,
+        "burn": null,
+        "runsOutIn": null,
+        "reachesReset": null,
+        "verdict": ""
+      }
+    ]
+  },
+  {
+    "kind": "enrich",
+    "input": null,
+    "limits": [
+      {
+        "provider": "claude",
+        "account": "main",
+        "window": 7,
+        "percent": -Infinity,
+        "resets_at": 1800001000.0,
+        "custom": {
+          "keep": true
+        }
+      }
+    ],
+    "now": 1800000000.0,
+    "lang": "es",
+    "expected": [
+      {
+        "provider": "claude",
+        "account": "main",
+        "window": 7,
+        "percent": -Infinity,
+        "resets_at": 1800001000.0,
+        "custom": {
+          "keep": true
+        },
+        "windowSeconds": null,
+        "pace": null,
+        "burn": null,
+        "runsOutIn": null,
+        "reachesReset": null,
+        "verdict": ""
+      }
+    ]
+  },
+  {
+    "kind": "enrich",
+    "input": null,
+    "limits": [
+      {
+        "provider": "claude",
+        "account": "main",
+        "window": 7,
+        "percent": -Infinity,
+        "resets_at": 1800001000.0,
+        "custom": {
+          "keep": true
+        }
+      }
+    ],
+    "now": 1800000000.0,
+    "lang": "en",
+    "expected": [
+      {
+        "provider": "claude",
+        "account": "main",
+        "window": 7,
+        "percent": -Infinity,
+        "resets_at": 1800001000.0,
+        "custom": {
+          "keep": true
+        },
+        "windowSeconds": null,
+        "pace": null,
+        "burn": null,
+        "runsOutIn": null,
+        "reachesReset": null,
+        "verdict": ""
+      }
+    ]
+  },
+  {
+    "kind": "enrich",
+    "input": null,
+    "limits": [
+      {
+        "window": "5h",
+        "percent": 50,
+        "resets_at": 1800000000.0
+      }
+    ],
+    "now": 1800000000.0,
+    "lang": "es",
+    "expected": [
+      {
+        "window": "5h",
+        "percent": 50,
+        "resets_at": 1800000000.0,
+        "windowSeconds": 18000,
+        "pace": null,
+        "burn": null,
+        "runsOutIn": null,
+        "reachesReset": null,
+        "verdict": ""
+      }
+    ]
+  },
+  {
+    "kind": "enrich",
+    "input": null,
+    "limits": [
+      {
+        "window": "5h",
+        "percent": 50,
+        "resets_at": 1799999999.0
+      }
+    ],
+    "now": 1800000000.0,
+    "lang": "es",
+    "expected": [
+      {
+        "window": "5h",
+        "percent": 50,
+        "resets_at": 1799999999.0,
+        "windowSeconds": 18000,
+        "pace": null,
+        "burn": null,
+        "runsOutIn": null,
+        "reachesReset": null,
+        "verdict": ""
+      }
+    ]
+  },
+  {
+    "kind": "enrich",
+    "input": null,
+    "limits": [
+      {
+        "window": "5h",
+        "percent": 50,
+        "resets_at": 1800018000.0
+      }
+    ],
+    "now": 1800000000.0,
+    "lang": "es",
+    "expected": [
+      {
+        "window": "5h",
+        "percent": 50,
+        "resets_at": 1800018000.0,
+        "windowSeconds": 18000,
+        "pace": 0.005555555555555556,
+        "burn": 50.0,
+        "runsOutIn": 1.0,
+        "reachesReset": false,
+        "verdict": "se acaba en 0 min"
+      }
+    ]
+  },
+  {
+    "kind": "enrich",
+    "input": null,
+    "limits": [
+      {
+        "window": "5h",
+        "percent": 50,
+        "resets_at": 1800018001.0
+      }
+    ],
+    "now": 1800000000.0,
+    "lang": "es",
+    "expected": [
+      {
+        "window": "5h",
+        "percent": 50,
+        "resets_at": 1800018001.0,
+        "windowSeconds": 18000,
+        "pace": 0.005555555555555556,
+        "burn": 50.0,
+        "runsOutIn": 1.0,
+        "reachesReset": false,
+        "verdict": "se acaba en 0 min"
+      }
+    ]
+  },
+  {
+    "kind": "enrich",
+    "input": null,
+    "limits": [
+      {
+        "window": "5h",
+        "percent": 50,
+        "resets_at": 11800000000.0
+      }
+    ],
+    "now": 1800000000.0,
+    "lang": "es",
+    "expected": [
+      {
+        "window": "5h",
+        "percent": 50,
+        "resets_at": 11800000000.0,
+        "windowSeconds": 18000,
+        "pace": 0.005555555555555556,
+        "burn": 50.0,
+        "runsOutIn": 1.0,
+        "reachesReset": false,
+        "verdict": "se acaba en 0 min"
+      }
+    ]
+  },
+  {
+    "kind": "enrich",
+    "input": null,
+    "limits": [
+      {
+        "window": "5h",
+        "percent": 50,
+        "resets_at": "bad"
+      }
+    ],
+    "now": 1800000000.0,
+    "lang": "es",
+    "error": "ValueError"
+  },
+  {
+    "kind": "enrich",
+    "input": null,
+    "limits": [
+      {
+        "window": "5h",
+        "percent": 50,
+        "resets_at": "\u0661_\u0668\u0660\u0660_\u0660\u0660\u0660_\u0669\u0660\u0660"
+      }
+    ],
+    "now": 1800000000.0,
+    "lang": "es",
+    "expected": [
+      {
+        "window": "5h",
+        "percent": 50,
+        "resets_at": "\u0661_\u0668\u0660\u0660_\u0660\u0660\u0660_\u0669\u0660\u0660",
+        "windowSeconds": 18000,
+        "pace": 95.0,
+        "burn": 0.5263157894736842,
+        "runsOutIn": null,
+        "reachesReset": true,
+        "verdict": "llega al reset"
+      }
+    ]
+  },
+  {
+    "kind": "enrich",
+    "input": null,
+    "limits": [
+      {
+        "window": "5h",
+        "percent": 50,
+        "resets_at": NaN
+      }
+    ],
+    "now": 1800000000.0,
+    "lang": "es",
+    "expected": [
+      {
+        "window": "5h",
+        "percent": 50,
+        "resets_at": NaN,
+        "windowSeconds": 18000,
+        "pace": 0.005555555555555556,
+        "burn": 50.0,
+        "runsOutIn": 1.0,
+        "reachesReset": false,
+        "verdict": "se acaba en 0 min"
+      }
+    ]
+  },
+  {
+    "kind": "enrich",
+    "input": null,
+    "limits": [
+      {
+        "window": "5h",
+        "percent": 50,
+        "resets_at": Infinity
+      }
+    ],
+    "now": 1800000000.0,
+    "lang": "es",
+    "expected": [
+      {
+        "window": "5h",
+        "percent": 50,
+        "resets_at": Infinity,
+        "windowSeconds": 18000,
+        "pace": 0.005555555555555556,
+        "burn": 50.0,
+        "runsOutIn": 1.0,
+        "reachesReset": false,
+        "verdict": "se acaba en 0 min"
+      }
+    ]
+  },
+  {
+    "kind": "enrich",
+    "input": null,
+    "limits": [
+      {
+        "window": "5h",
+        "percent": 50,
+        "resets_at": null
+      }
+    ],
+    "now": 1800000000.0,
+    "lang": "es",
+    "expected": [
+      {
+        "window": "5h",
+        "percent": 50,
+        "resets_at": null,
+        "windowSeconds": 18000,
+        "pace": null,
+        "burn": null,
+        "runsOutIn": null,
+        "reachesReset": null,
+        "verdict": ""
+      }
+    ]
+  },
+  {
+    "kind": "enrich",
+    "input": null,
+    "limits": [
+      {
+        "window": "7d",
+        "percent": 10000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000,
+        "resets_at": 1800003600.0
+      }
+    ],
+    "now": 1800000000.0,
+    "lang": "es",
+    "error": "OverflowError"
+  },
+  {
+    "kind": "enrich",
+    "input": null,
+    "limits": [
+      {
+        "window": "7d",
+        "percent": 10000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000,
+        "resets_at": 1800003600.0
+      }
+    ],
+    "now": 1800000000.0,
+    "lang": "es",
+    "expected": [
+      {
+        "window": "7d",
+        "percent": 10000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000,
+        "resets_at": 1800003600.0,
+        "windowSeconds": 604800,
+        "pace": 99.40476190476191,
+        "burn": 1.0059880239520957e+98,
+        "runsOutIn": -601200.0,
+        "reachesReset": false,
+        "verdict": "se acaba en 0 min"
+      }
+    ]
+  },
+  {
+    "kind": "enrich",
+    "input": null,
+    "limits": [
+      {
+        "window": "7d",
+        "percent": -10000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000,
+        "resets_at": 1800003600.0
+      }
+    ],
+    "now": 1800000000.0,
+    "lang": "es",
+    "expected": [
+      {
+        "window": "7d",
+        "percent": -10000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000,
+        "resets_at": 1800003600.0,
+        "windowSeconds": 604800,
+        "pace": 99.40476190476191,
+        "burn": -1.0059880239520957e+98,
+        "runsOutIn": null,
+        "reachesReset": true,
+        "verdict": "llega al reset"
+      }
+    ]
+  }
+]

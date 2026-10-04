@@ -15,3 +15,6 @@ pub mod pomodoro;
 pub mod focus;
 
 pub mod mcp_descriptions;
+
+pub mod allocation;
+pub mod analytics_week;

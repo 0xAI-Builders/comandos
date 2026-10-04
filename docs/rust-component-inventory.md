@@ -111,8 +111,8 @@ Los assets, servicios e instaladores declarativos se deben contrastar en el empa
 | /home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/lib/accounts.py | Pendiente | — |
 | /home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/lib/acp.py | Pendiente | — |
 | /home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/lib/agent_stop.py | Pendiente | — |
-| /home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/lib/allocation.py | Pendiente | — |
-| /home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/lib/analytics_week.py | Pendiente | — |
+| /home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/lib/allocation.py | Rust — revisado; integración pendiente | /home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/crates/comandos-core/src/allocation.rs |
+| /home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/lib/analytics_week.py | Rust — revisado; integración pendiente | /home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/crates/comandos-core/src/analytics_week.rs |
 | /home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/lib/app_state.py | Rust — revisado; sin despliegue | /home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/crates/comandos-store/src/state_db/mod.rs |
 | /home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/lib/browser_config_migration.py | Pendiente | — |
 | /home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/lib/capabilities.py | Pendiente | — |

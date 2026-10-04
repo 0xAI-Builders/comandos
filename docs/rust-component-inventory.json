@@ -893,16 +893,18 @@
       "language": ".py",
       "category": "producto",
       "lines": 54,
-      "status": "Pendiente",
-      "rust": null
+      "status": "Rust — revisado; integración pendiente",
+      "rust": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/crates/comandos-core/src/allocation.rs",
+      "review": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/.superpowers/sdd/usage-analytics-20261004-review.md"
     },
     {
       "source": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/lib/analytics_week.py",
       "language": ".py",
       "category": "producto",
       "lines": 305,
-      "status": "Pendiente",
-      "rust": null
+      "status": "Rust — revisado; integración pendiente",
+      "rust": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/crates/comandos-core/src/analytics_week.rs",
+      "review": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/.superpowers/sdd/usage-analytics-20261004-review.md"
     },
     {
       "source": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/lib/app_state.py",
