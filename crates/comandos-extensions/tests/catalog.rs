@@ -709,14 +709,15 @@ fn replaced_skill_backup_is_named_skill_uuid_and_private() {
         assert!(matches!(hex.as_bytes()[16], b'8' | b'9' | b'a' | b'b'));
         assert_eq!(fs::metadata(d).unwrap().permissions().mode() & 0o777, 0o700);
     }
-    let old = dirs
+    // Dos respaldos, como el Python: la copia canónica desplazada por la reinstalación ("old")
+    // y el directorio real de `.grok/skills` sustituido por el enlace ("new"). El orden de
+    // `read_dir` no está definido, así que se comparan como conjunto.
+    let mut contents = dirs
         .iter()
-        .find(|d| d.join("demo/SKILL.md").is_file())
-        .unwrap();
-    assert_eq!(
-        fs::read_to_string(old.join("demo/SKILL.md")).unwrap(),
-        "old"
-    );
+        .filter_map(|d| fs::read_to_string(d.join("demo/SKILL.md")).ok())
+        .collect::<Vec<_>>();
+    contents.sort();
+    assert_eq!(contents, ["new", "old"]);
 }
 #[test]
 fn sync_and_import_stdout_use_python_json_dumps_bytes() {
