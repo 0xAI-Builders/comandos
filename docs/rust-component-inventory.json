@@ -869,8 +869,9 @@
       "language": ".py",
       "category": "producto",
       "lines": 184,
-      "status": "Pendiente",
-      "rust": null
+      "status": "Rust — revisado; integración pendiente",
+      "rust": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/crates/comandos-runtime/src/accounts.rs",
+      "review": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/.superpowers/sdd/accounts-catalog-20261004-review.md"
     },
     {
       "source": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/lib/acp.py",
@@ -1108,8 +1109,9 @@
       "language": ".py",
       "category": "producto",
       "lines": 112,
-      "status": "Pendiente",
-      "rust": null
+      "status": "Rust — revisado; integración pendiente",
+      "rust": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/crates/comandos-runtime/src/model_catalog.rs",
+      "review": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/.superpowers/sdd/accounts-catalog-20261004-review.md"
     },
     {
       "source": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/lib/model_watch.py",

@@ -1,0 +1,577 @@
+{
+  "jwt": [
+    {
+      "token": "x.eyJlbWFpbCI6ImZpeHR1cmVAZXhhbXBsZS50ZXN0In0.y",
+      "identity": "fixture@example.test"
+    },
+    {
+      "token": "x.eyJlbWFpbCI6ImZpeHR1cmVAZXhhbXBsZS50ZXN0In0=.y",
+      "identity": "fixture@example.test"
+    },
+    {
+      "token": "x.eyJlbWFpbCI6ImZpeHR1cmVAZXhhbXBsZS50ZXN0In0==.y",
+      "identity": "fixture@example.test"
+    },
+    {
+      "token": "x.eyJlbWFpbCI6ImZpeHR1cmVAZXhhbXBsZS50ZXN0In0=====.y",
+      "identity": "fixture@example.test"
+    },
+    {
+      "token": "x.=eyJlbWFpbCI6ImZpeHR1cmVAZXhhbXBsZS50ZXN0In0.y",
+      "identity": ""
+    },
+    {
+      "token": "x.==eyJlbWFpbCI6ImZpeHR1cmVAZXhhbXBsZS50ZXN0In0.y",
+      "identity": "fixture@example.test"
+    },
+    {
+      "token": "x.eyJl!bWFpbCI6ImZpeHR1cmVAZXhhbXBsZS50ZXN0In0.y",
+      "identity": ""
+    },
+    {
+      "token": "x.eyJl\nbWFpbCI6ImZpeHR1cmVAZXhhbXBsZS50ZXN0In0.y",
+      "identity": ""
+    },
+    {
+      "token": "x.eyJl=bWFpbCI6ImZpeHR1cmVAZXhhbXBsZS50ZXN0In0.y",
+      "identity": ""
+    },
+    {
+      "token": "x.eyJlbWFpbCI6ImZpeHR1cmVAZXhhbXBsZS50ZXN0In0=junk.y",
+      "identity": "fixture@example.test"
+    },
+    {
+      "token": "x.eyJlbWFpbCI6ImZpeHR1cmVAZXhhbXBsZS50ZXN0In0==junk.y",
+      "identity": "fixture@example.test"
+    },
+    {
+      "token": "x.eyJlbWFpbCI6ImZpeHR1cmVAZXhhbXBsZS50ZXN0In0!?!.y",
+      "identity": "fixture@example.test"
+    },
+    {
+      "token": "x.eyJlbWFpbCI6dHJ1ZX0.y",
+      "identity": "True"
+    },
+    {
+      "token": "x.e30.y",
+      "identity": ""
+    },
+    {
+      "token": "x.W10.y",
+      "identity": ""
+    },
+    {
+      "token": "x..y",
+      "identity": ""
+    },
+    {
+      "token": "x.!!!.y",
+      "identity": ""
+    },
+    {
+      "token": "x.\u00e9.y",
+      "identity": ""
+    }
+  ],
+  "menus": [
+    {
+      "accounts": [
+        {
+          "alias": "main",
+          "identity": null,
+          "selectable": null
+        }
+      ],
+      "limits": [
+        {
+          "provider": "claude",
+          "account": "main",
+          "kind": "other",
+          "label": null,
+          "percent": "3_0.5"
+        }
+      ],
+      "output": [
+        {
+          "alias": "main",
+          "identity": "",
+          "selectable": false,
+          "limits": [
+            {
+              "label": "l\u00edmite",
+              "percent": 30,
+              "resetsAt": null
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "accounts": [
+        {
+          "alias": "main",
+          "identity": true,
+          "selectable": true
+        }
+      ],
+      "limits": [
+        {
+          "provider": "claude",
+          "account": "main",
+          "kind": "other",
+          "label": true,
+          "percent": "3_0.5"
+        }
+      ],
+      "output": [
+        {
+          "alias": "main",
+          "identity": "True",
+          "selectable": true,
+          "limits": [
+            {
+              "label": "True",
+              "percent": 30,
+              "resetsAt": null
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "accounts": [
+        {
+          "alias": "main",
+          "identity": false,
+          "selectable": false
+        }
+      ],
+      "limits": [
+        {
+          "provider": "claude",
+          "account": "main",
+          "kind": "other",
+          "label": false,
+          "percent": "3_0.5"
+        }
+      ],
+      "output": [
+        {
+          "alias": "main",
+          "identity": "",
+          "selectable": false,
+          "limits": [
+            {
+              "label": "l\u00edmite",
+              "percent": 30,
+              "resetsAt": null
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "accounts": [
+        {
+          "alias": "main",
+          "identity": 12,
+          "selectable": 12
+        }
+      ],
+      "limits": [
+        {
+          "provider": "claude",
+          "account": "main",
+          "kind": "other",
+          "label": 12,
+          "percent": "3_0.5"
+        }
+      ],
+      "output": [
+        {
+          "alias": "main",
+          "identity": "12",
+          "selectable": true,
+          "limits": [
+            {
+              "label": "12",
+              "percent": 30,
+              "resetsAt": null
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "accounts": [
+        {
+          "alias": "main",
+          "identity": 1.0,
+          "selectable": 1.0
+        }
+      ],
+      "limits": [
+        {
+          "provider": "claude",
+          "account": "main",
+          "kind": "other",
+          "label": 1.0,
+          "percent": "3_0.5"
+        }
+      ],
+      "output": [
+        {
+          "alias": "main",
+          "identity": "1.0",
+          "selectable": true,
+          "limits": [
+            {
+              "label": "1.0",
+              "percent": 30,
+              "resetsAt": null
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "accounts": [
+        {
+          "alias": "main",
+          "identity": [
+            " a ",
+            "\u2028",
+            "\u00a0",
+            "single'quote",
+            "both'\"quotes"
+          ],
+          "selectable": [
+            " a ",
+            "\u2028",
+            "\u00a0",
+            "single'quote",
+            "both'\"quotes"
+          ]
+        }
+      ],
+      "limits": [
+        {
+          "provider": "claude",
+          "account": "main",
+          "kind": "other",
+          "label": [
+            " a ",
+            "\u2028",
+            "\u00a0",
+            "single'quote",
+            "both'\"quotes"
+          ],
+          "percent": "3_0.5"
+        }
+      ],
+      "output": [
+        {
+          "alias": "main",
+          "identity": "[' a ', '\\u2028', '\\xa0', \"single'quote\", 'both\\'\"quotes']",
+          "selectable": true,
+          "limits": [
+            {
+              "label": "[' a ', '\\u2028', '\\xa0', \"single'quote\", 'both\\'\"quotes']",
+              "percent": 30,
+              "resetsAt": null
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "accounts": [
+        {
+          "alias": "main",
+          "identity": {
+            "z": false,
+            "a": [
+              null,
+              1.0
+            ]
+          },
+          "selectable": {
+            "z": false,
+            "a": [
+              null,
+              1.0
+            ]
+          }
+        }
+      ],
+      "limits": [
+        {
+          "provider": "claude",
+          "account": "main",
+          "kind": "other",
+          "label": {
+            "z": false,
+            "a": [
+              null,
+              1.0
+            ]
+          },
+          "percent": "3_0.5"
+        }
+      ],
+      "output": [
+        {
+          "alias": "main",
+          "identity": "{'z': False, 'a': [None, 1.0]}",
+          "selectable": true,
+          "limits": [
+            {
+              "label": "{'z': False, 'a': [None, 1.0]}",
+              "percent": 30,
+              "resetsAt": null
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "accounts": [
+        {
+          "alias": "main",
+          "identity": " \ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80 ",
+          "selectable": " \ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80 "
+        }
+      ],
+      "limits": [
+        {
+          "provider": "claude",
+          "account": "main",
+          "kind": "other",
+          "label": " \ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80 ",
+          "percent": "3_0.5"
+        }
+      ],
+      "output": [
+        {
+          "alias": "main",
+          "identity": " \ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80 ",
+          "selectable": true,
+          "limits": [
+            {
+              "label": "\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80",
+              "percent": 30,
+              "resetsAt": null
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "hydration": [
+    {
+      "registry": {},
+      "cache": {
+        "models": [
+          {
+            "slug": "gpt-6",
+            "visibility": "list",
+            "supported_reasoning_levels": [],
+            "default_reasoning_level": "",
+            "context_window": 999999999999999999999999999999999999999
+          }
+        ]
+      },
+      "output": {}
+    },
+    {
+      "registry": {
+        "motors": {}
+      },
+      "cache": {
+        "models": [
+          {
+            "slug": "gpt-6",
+            "visibility": "list",
+            "supported_reasoning_levels": [],
+            "default_reasoning_level": "",
+            "context_window": 999999999999999999999999999999999999999
+          }
+        ]
+      },
+      "output": {
+        "motors": {}
+      }
+    },
+    {
+      "registry": {
+        "motors": {
+          "codex": {}
+        }
+      },
+      "cache": {
+        "models": [
+          {
+            "slug": "gpt-6",
+            "visibility": "list",
+            "supported_reasoning_levels": [],
+            "default_reasoning_level": "",
+            "context_window": 999999999999999999999999999999999999999
+          }
+        ]
+      },
+      "output": {
+        "motors": {
+          "codex": {}
+        }
+      }
+    },
+    {
+      "registry": {
+        "motors": {
+          "codex": {
+            "label": "models"
+          }
+        }
+      },
+      "cache": {
+        "models": [
+          {
+            "slug": "gpt-6",
+            "visibility": "list",
+            "supported_reasoning_levels": [],
+            "default_reasoning_level": "",
+            "context_window": 999999999999999999999999999999999999999
+          }
+        ]
+      },
+      "output": {
+        "motors": {
+          "codex": {
+            "label": "models",
+            "models": [
+              {
+                "id": "gpt-6",
+                "name": "gpt-6",
+                "efforts": [],
+                "defaultEffort": "",
+                "catalogSource": {
+                  "provider": "codex",
+                  "kind": "cli-cache",
+                  "fetchedAt": null
+                },
+                "contextWindow": 999999999999999999999999999999999999999
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "registry": {
+        "motors": {
+          "codex": {
+            "models": [
+              {
+                "id": "gpt-6[x]\n",
+                "soon": true,
+                "tag": "keep"
+              }
+            ]
+          }
+        }
+      },
+      "cache": {
+        "models": [
+          {
+            "slug": "gpt-6",
+            "visibility": "list",
+            "supported_reasoning_levels": [],
+            "default_reasoning_level": "",
+            "context_window": 999999999999999999999999999999999999999
+          }
+        ]
+      },
+      "output": {
+        "motors": {
+          "codex": {
+            "models": [
+              {
+                "id": "gpt-6[x]\n",
+                "soon": true,
+                "tag": "keep"
+              },
+              {
+                "id": "gpt-6",
+                "name": "gpt-6",
+                "efforts": [],
+                "defaultEffort": "",
+                "catalogSource": {
+                  "provider": "codex",
+                  "kind": "cli-cache",
+                  "fetchedAt": null
+                },
+                "contextWindow": 999999999999999999999999999999999999999
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "registry": {
+        "motors": {
+          "codex": {
+            "models": [
+              {
+                "id": "gpt-6[x]",
+                "soon": false,
+                "tag": "keep"
+              }
+            ]
+          }
+        },
+        "harnesses": {
+          "codex": {
+            "label": "keep"
+          }
+        }
+      },
+      "cache": {
+        "models": [
+          {
+            "slug": "gpt-6",
+            "visibility": "list",
+            "supported_reasoning_levels": [],
+            "default_reasoning_level": "",
+            "context_window": 999999999999999999999999999999999999999
+          }
+        ]
+      },
+      "output": {
+        "motors": {
+          "codex": {
+            "models": [
+              {
+                "id": "gpt-6[x]",
+                "tag": "keep",
+                "efforts": [],
+                "defaultEffort": "",
+                "contextWindow": 999999999999999999999999999999999999999,
+                "catalogSource": {
+                  "provider": "codex",
+                  "kind": "cli-cache",
+                  "fetchedAt": null
+                }
+              }
+            ]
+          }
+        },
+        "harnesses": {
+          "codex": {
+            "label": "keep"
+          }
+        }
+      }
+    }
+  ]
+}

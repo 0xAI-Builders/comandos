@@ -1,0 +1,347 @@
+//! Read cached CLI catalogs without probing a provider or mutating its registry.
+use comandos_core::json::{truthy, workspace_loads};
+use serde_json::{Value, json};
+use std::{
+    fs,
+    io::Read,
+    path::{Path, PathBuf},
+};
+pub const MAX_CACHE_BYTES: usize = 4 * 1024 * 1024;
+pub struct Paths {
+    pub codex: PathBuf,
+    pub grok: PathBuf,
+    pub cwd: PathBuf,
+}
+pub fn catalog_paths(
+    home: &Path,
+    cwd: &Path,
+    codex_home: Option<&Path>,
+    grok_home: Option<&Path>,
+) -> Paths {
+    let path = |provider: &str, over: Option<&Path>| {
+        over.filter(|p| !p.as_os_str().is_empty())
+            .map(Path::to_path_buf)
+            .unwrap_or_else(|| home.join(format!(".{provider}")))
+            .join("models_cache.json")
+    };
+    Paths {
+        codex: path("codex", codex_home),
+        grok: path("grok", grok_home),
+        cwd: cwd.into(),
+    }
+}
+impl Paths {
+    fn entries(&self) -> [(&'static str, &Path); 2] {
+        [("codex", &self.codex), ("grok", &self.grok)]
+    }
+    fn supplied(&self, path: &Path) -> PathBuf {
+        if path.is_absolute() {
+            path.into()
+        } else {
+            self.cwd.join(path)
+        }
+    }
+}
+pub fn catalog_signature(paths: &Paths) -> Value {
+    use std::os::unix::fs::MetadataExt;
+    Value::Array(
+        paths
+            .entries()
+            .iter()
+            .map(|(p, path)| {
+                let stamp = fs::metadata(paths.supplied(path)).ok().map(|m| {
+                    json!([
+                        m.mtime() as i128 * 1_000_000_000 + m.mtime_nsec() as i128,
+                        m.size(),
+                        m.ino()
+                    ])
+                });
+                json!([p, path, stamp])
+            })
+            .collect(),
+    )
+}
+/// Python json.loads(bytes) detects UTF-8 BOM and BOM-less UTF-16/32 via null
+/// positions. String-based credentials use their separate strict UTF-8 reader.
+pub(crate) fn byte_json(raw: &[u8]) -> Option<Value> {
+    fn wide(bytes: &[u8], width: usize, little: bool) -> Option<String> {
+        if !bytes.len().is_multiple_of(width) {
+            return None;
+        }
+        if width == 2 {
+            let units = bytes.chunks_exact(2).map(|b| {
+                if little {
+                    u16::from_le_bytes([b[0], b[1]])
+                } else {
+                    u16::from_be_bytes([b[0], b[1]])
+                }
+            });
+            char::decode_utf16(units)
+                .collect::<std::result::Result<String, _>>()
+                .ok()
+        } else {
+            bytes
+                .chunks_exact(4)
+                .map(|b| {
+                    char::from_u32(if little {
+                        u32::from_le_bytes([b[0], b[1], b[2], b[3]])
+                    } else {
+                        u32::from_be_bytes([b[0], b[1], b[2], b[3]])
+                    })
+                })
+                .collect()
+        }
+    }
+    let text = if let Some(b) = raw.strip_prefix(&[0xff, 0xfe, 0, 0]) {
+        wide(b, 4, true)?
+    } else if let Some(b) = raw.strip_prefix(&[0, 0, 0xfe, 0xff]) {
+        wide(b, 4, false)?
+    } else if let Some(b) = raw.strip_prefix(&[0xff, 0xfe]) {
+        wide(b, 2, true)?
+    } else if let Some(b) = raw.strip_prefix(&[0xfe, 0xff]) {
+        wide(b, 2, false)?
+    } else if let Some(b) = raw.strip_prefix(&[0xef, 0xbb, 0xbf]) {
+        std::str::from_utf8(b).ok()?.into()
+    } else if raw.len() >= 4 && raw[..3] == [0, 0, 0] {
+        wide(raw, 4, false)?
+    } else if raw.len() >= 4 && raw[1..4] == [0, 0, 0] {
+        wide(raw, 4, true)?
+    } else if raw.len() >= 2 && raw[0] == 0 {
+        wide(raw, 2, false)?
+    } else if raw.len() >= 2 && raw[1] == 0 {
+        wide(raw, 2, true)?
+    } else {
+        std::str::from_utf8(raw).ok()?.into()
+    };
+    workspace_loads(&text).ok()
+}
+fn read(path: &Path) -> Value {
+    let mut raw = Vec::new();
+    let value = fs::File::open(path)
+        .ok()
+        .and_then(|f| {
+            f.take(MAX_CACHE_BYTES as u64 + 1)
+                .read_to_end(&mut raw)
+                .ok()
+        })
+        .filter(|_| raw.len() <= MAX_CACHE_BYTES)
+        .and_then(|_| byte_json(&raw));
+    value.filter(Value::is_object).unwrap_or_else(|| json!({}))
+}
+fn decimal(c: char) -> bool {
+    c.is_ascii_digit()
+        || (!c.is_ascii()
+            && comandos_core::focus::float(&json!(c.to_string()))
+                .is_ok_and(|n| (0.0..=9.0).contains(&n) && n.fract() == 0.0))
+}
+fn model_id(id: &str, provider: &str) -> bool {
+    let Some(rest) = id.strip_prefix(if provider == "codex" { "gpt-" } else { "grok-" }) else {
+        return false;
+    };
+    let mut chars = rest.chars().peekable();
+    let mut digits = 0;
+    while chars.peek().is_some_and(|c| decimal(*c)) {
+        chars.next();
+        digits += 1;
+    }
+    if digits == 0 {
+        return false;
+    }
+    if chars.peek() == Some(&'.') {
+        chars.next();
+        let mut digits = 0;
+        while chars.peek().is_some_and(|c| decimal(*c)) {
+            chars.next();
+            digits += 1;
+        }
+        if digits == 0 {
+            return false;
+        }
+    }
+    while let Some(c) = chars.next() {
+        if c != '-' {
+            return false;
+        }
+        let mut n = 0;
+        while chars
+            .peek()
+            .is_some_and(|c| c.is_ascii_lowercase() || c.is_ascii_digit())
+        {
+            chars.next();
+            n += 1;
+        }
+        if n == 0 {
+            return false;
+        }
+    }
+    true
+}
+fn effort(id: &str) -> bool {
+    let b = id.as_bytes();
+    !b.is_empty()
+        && b.len() <= 32
+        && b[0].is_ascii_lowercase()
+        && b.iter()
+            .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || b"_-".contains(c))
+}
+pub fn catalog_models(paths: &Paths) -> Value {
+    let mut result = serde_json::Map::new();
+    for (provider, path) in paths.entries() {
+        let data = read(&paths.supplied(path));
+        let rows = &data["models"];
+        let rows: Vec<&Value> = if provider == "codex" {
+            rows.as_array()
+                .map(|a| a.iter().collect())
+                .unwrap_or_default()
+        } else {
+            rows.as_object()
+                .map(|o| {
+                    o.values()
+                        .filter(|r| r.is_object())
+                        .map(|r| &r["info"])
+                        .collect()
+                })
+                .unwrap_or_default()
+        };
+        let mut models = Vec::new();
+        for row in rows {
+            if !row.is_object()
+                || (provider == "codex" && row["visibility"] != "list")
+                || (provider == "grok" && row["hidden"] != Value::Bool(false))
+            {
+                continue;
+            }
+            let Some(id) = row[if provider == "codex" { "slug" } else { "id" }]
+                .as_str()
+                .filter(|id| model_id(id, provider))
+            else {
+                continue;
+            };
+            let Some(levels) = row[if provider == "codex" {
+                "supported_reasoning_levels"
+            } else {
+                "reasoning_efforts"
+            }]
+            .as_array() else {
+                continue;
+            };
+            let field = if provider == "codex" { "effort" } else { "id" };
+            let mut efforts = Vec::new();
+            for level in levels {
+                if !level.is_object() {
+                    continue;
+                }
+                if let Some(id) = level[field].as_str().filter(|id| effort(id))
+                    && !efforts.contains(&id)
+                {
+                    efforts.push(id);
+                }
+            }
+            let default = row[if provider == "codex" {
+                "default_reasoning_level"
+            } else {
+                "reasoning_effort"
+            }]
+            .as_str()
+            .filter(|d| efforts.contains(d))
+            .unwrap_or("");
+            let name = row[if provider == "codex" {
+                "display_name"
+            } else {
+                "name"
+            }]
+            .as_str()
+            .map(|s| s.chars().take(160).collect::<String>())
+            .unwrap_or_else(|| id.into());
+            let mut model = json!({"id":id,"name":name,"efforts":efforts,"defaultEffort":default,"catalogSource":{"provider":provider,"kind":"cli-cache","fetchedAt":data["fetched_at"].as_str().map(|s|s.chars().take(64).collect::<String>())}});
+            if row["context_window"].as_number().is_some_and(|n| {
+                !n.as_str().starts_with('-')
+                    && !n.as_str().contains(['.', 'e', 'E'])
+                    && n.as_str().bytes().any(|b| b != b'0')
+            }) {
+                model["contextWindow"] = row["context_window"].clone();
+            }
+            models.push(model);
+        }
+        result.insert(provider.into(), Value::Array(models));
+    }
+    Value::Object(result)
+}
+fn normalized(id: &str) -> String {
+    // Python dot does not cross LF and `$` can match before its final LF.
+    let trailing = id.ends_with('\n');
+    let body = if trailing { &id[..id.len() - 1] } else { id };
+    let start = body.rfind('\n').map_or(0, |n| n + 1);
+    let Some(pos) = body[start..].find('[').map(|n| start + n) else {
+        return id.into();
+    };
+    format!("{}{}", &body[..pos], if trailing { "\n" } else { "" })
+}
+pub fn hydrate_registry(registry: &Value, paths: &Paths) -> std::result::Result<Value, String> {
+    if !registry.is_object() {
+        return Err("registry debe ser un objeto".into());
+    }
+    let mut result = registry.clone();
+    for (provider, models) in catalog_models(paths).as_object().expect("catalog object") {
+        for section in ["motors", "harnesses"] {
+            let Some(owners) = result.get_mut(section) else {
+                continue;
+            };
+            if !truthy(owners) {
+                continue;
+            }
+            let owners = owners
+                .as_object_mut()
+                .ok_or("registry section debe ser un objeto")?;
+            let Some(owner) = owners.get_mut(provider).filter(|o| truthy(o)) else {
+                continue;
+            };
+            let owner = owner
+                .as_object_mut()
+                .ok_or("registry owner debe ser un objeto")?;
+            if section == "harnesses" && !owner.contains_key("models") {
+                continue;
+            }
+            let target = owner
+                .entry("models")
+                .or_insert_with(|| json!([]))
+                .as_array_mut()
+                .ok_or("models debe ser una lista")?;
+            for observed in models.as_array().expect("catalog array") {
+                let key = normalized(observed["id"].as_str().expect("validated id"));
+                let mut position = None;
+                for (index, item) in target.iter().enumerate() {
+                    if !item.is_object() {
+                        return Err("model debe ser un objeto".into());
+                    }
+                    let id = item.get("id").unwrap_or(&Value::Null);
+                    let id = if id.is_null() && item.get("id").is_none() {
+                        ""
+                    } else {
+                        id.as_str().ok_or("model id debe ser texto")?
+                    };
+                    if normalized(id) == key {
+                        position = Some(index);
+                        break;
+                    }
+                }
+                if let Some(position) = position {
+                    let existing = target[position]
+                        .as_object_mut()
+                        .ok_or("model debe ser un objeto")?;
+                    if existing.remove("soon").is_some_and(|v| truthy(&v)) {
+                        existing.remove("tag");
+                    }
+                    for field in ["efforts", "defaultEffort", "contextWindow", "catalogSource"] {
+                        if let Some(value) = observed.get(field) {
+                            existing.insert(field.into(), value.clone());
+                        }
+                    }
+                } else {
+                    target.push(observed.clone());
+                }
+            }
+        }
+    }
+    Ok(result)
+}

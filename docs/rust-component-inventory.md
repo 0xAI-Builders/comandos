@@ -108,7 +108,7 @@ Los assets, servicios e instaladores declarativos se deben contrastar en el empa
 | /home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/hooks/cc-status.sh | Pendiente | — |
 | /home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/hooks/cc-usage-tool.sh | Pendiente | — |
 | /home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/install.sh | Pendiente | — |
-| /home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/lib/accounts.py | Pendiente | — |
+| /home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/lib/accounts.py | Rust — revisado; integración pendiente | /home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/crates/comandos-runtime/src/accounts.rs |
 | /home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/lib/acp.py | Pendiente | — |
 | /home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/lib/agent_stop.py | Pendiente | — |
 | /home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/lib/allocation.py | Rust — revisado; integración pendiente | /home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/crates/comandos-core/src/allocation.rs |
@@ -137,7 +137,7 @@ Los assets, servicios e instaladores declarativos se deben contrastar en el empa
 | /home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/lib/gtk_tabstrip.py | Pendiente | — |
 | /home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/lib/gtk_workspace.py | Pendiente | — |
 | /home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/lib/mcp_descriptions.py | Rust — revisado; integración pendiente | /home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/crates/comandos-core/src/mcp_descriptions.rs |
-| /home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/lib/model_catalog.py | Pendiente | — |
+| /home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/lib/model_catalog.py | Rust — revisado; integración pendiente | /home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/crates/comandos-runtime/src/model_catalog.rs |
 | /home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/lib/model_watch.py | Pendiente | — |
 | /home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/lib/news_editions.py | Pendiente | — |
 | /home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/lib/news_radar.py | Pendiente | — |
