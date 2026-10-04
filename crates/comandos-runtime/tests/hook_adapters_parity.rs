@@ -339,3 +339,46 @@ fn adapters_match_their_scripts() {
     }
     let _ = fs::remove_dir_all(&dir);
 }
+
+/// El Rust entrega en proceso: sin `~/.claude/hooks/cc-notify.sh` (la puerta
+/// `[ -x ]` del bash) codex-hooks igual deja el estado.
+#[test]
+fn codex_hooks_does_not_need_cc_notify_sh() {
+    let dir = std::env::temp_dir().join(format!("comandos-codex-gate-{}", std::process::id()));
+    let _ = fs::remove_dir_all(&dir);
+    let home = dir.join("home");
+    fs::create_dir_all(home.join(".claude/hooks/state")).unwrap();
+    let fx: serde_json::Value = serde_json::from_str(
+        &fs::read_to_string(
+            PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+                .join("tests/fixtures/hooks/adapters/codex_hooks.json"),
+        )
+        .unwrap(),
+    )
+    .unwrap();
+    let mut child = Command::new(env!("CARGO_BIN_EXE_comandos-hook"))
+        .arg("codex-hooks")
+        .env_clear()
+        .current_dir(&home)
+        .env("HOME", &home)
+        .env("PATH", "/usr/bin:/bin")
+        .env("LANG", "C.UTF-8")
+        .env("COMANDOS_NOTIFYD_URL", "http://127.0.0.1:9")
+        .stdin(Stdio::piped())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .spawn()
+        .unwrap();
+    child
+        .stdin
+        .take()
+        .unwrap()
+        .write_all(fx["prompt"].to_string().as_bytes())
+        .unwrap();
+    assert_eq!(child.wait().unwrap().code(), Some(0));
+    let state = fs::read_to_string(home.join(".claude/hooks/state/proyecto-codex.json")).unwrap();
+    let state: serde_json::Value = serde_json::from_str(&state).unwrap();
+    assert_eq!(state["status"], "working");
+    assert_eq!(state["agent"], "codex");
+    let _ = fs::remove_dir_all(&dir);
+}

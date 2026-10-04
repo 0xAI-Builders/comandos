@@ -5,14 +5,10 @@
 use super::adapter::{
     Jq, arg, codex_state_file, first_of, jq_get, jq_values, notify, pwd, recent_codex_done, strings,
 };
-use super::input::{clock, env_bytes};
+use super::input::clock;
 use super::text::strip_nl;
 use serde_json::Value;
-use std::ffi::OsStr;
 use std::io::Read;
-use std::os::unix::ffi::OsStrExt;
-use std::os::unix::fs::PermissionsExt;
-use std::path::PathBuf;
 
 /// `.a?.b?...`: `None` cuando jq no produce nada (un `?` calló el error).
 fn opt_path<'a>(value: &'a Value, keys: &[&str]) -> Option<&'a Value> {
@@ -56,12 +52,9 @@ pub fn run(_args: &[String]) -> i32 {
     if payload.is_empty() {
         return 0;
     }
-    let home = PathBuf::from(OsStr::from_bytes(&env_bytes("HOME")));
-    let executable = std::fs::metadata(home.join(".claude/hooks/cc-notify.sh"))
-        .is_ok_and(|m| m.permissions().mode() & 0o111 != 0);
-    if !executable {
-        return 0;
-    }
+    // Sin la puerta `[ -x ~/.claude/hooks/cc-notify.sh ]` del bash: la entrega es
+    // `claude::run` en proceso y no depende de ese archivo (como codex-notify,
+    // gemini y agy).
     let values = jq_values(payload);
     let event = jq_get(&values, |v| {
         first_of(v, &["hook_event_name", "event"], Some(""))

@@ -292,8 +292,8 @@ pub fn install_oracle_notify(home: &Path, root: &Path) {
     .unwrap();
 }
 
-/// `HOME` del lado Rust: un `cc-notify.sh` ejecutable (la puerta `[ -x ]` de
-/// codex-hooks) que, si alguien lo llamara, quedaría en el registro de falsos.
+/// `HOME` del lado Rust: un `cc-notify.sh` que, si alguien lo llamara, quedaría en
+/// el registro de falsos (el Rust entrega en proceso y nunca lo ejecuta).
 #[allow(dead_code)]
 pub fn install_rust_notify_stub(home: &Path) {
     let hooks = home.join(".claude/hooks");
