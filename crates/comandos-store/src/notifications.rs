@@ -123,19 +123,37 @@ fn read_ids(conn: &Connection) -> Result<BTreeSet<String>> {
         .collect::<rusqlite::Result<_>>()?)
 }
 
-fn each_notice(conn: &Connection, mut visit: impl FnMut(&Value)) -> Result<()> {
+/// A stored row without its integer `sequence` or string `eventId`: the
+/// column contract is broken, reported like any other SQLite read failure.
+fn broken_row(column: &str) -> Error {
+    Error::Sql(rusqlite::Error::InvalidColumnType(
+        0,
+        column.into(),
+        rusqlite::types::Type::Null,
+    ))
+}
+
+fn event_id(event: &Value) -> Result<&str> {
+    event["eventId"]
+        .as_str()
+        .ok_or_else(|| broken_row("event_id"))
+}
+
+fn each_notice(conn: &Connection, mut visit: impl FnMut(&Value, &str)) -> Result<()> {
     let mut after = 0;
     loop {
         let page = list_events(conn, after, 500)?;
-        if page.is_empty() {
+        let Some(last) = page.last() else {
             break;
-        }
+        };
         for event in &page {
             if policy::classify(event)["notice"] == true {
-                visit(event);
+                visit(event, event_id(event)?);
             }
         }
-        after = page.last().unwrap()["sequence"].as_i64().unwrap();
+        after = last["sequence"]
+            .as_i64()
+            .ok_or_else(|| broken_row("sequence"))?;
     }
     Ok(())
 }
@@ -157,8 +175,7 @@ pub fn badge_count(conn: &Connection, is_live: LiveCheck<'_>) -> Result<i64> {
         .into_iter()
         .collect();
     let mut count = 0;
-    each_notice(conn, |event| {
-        let id = event["eventId"].as_str().unwrap();
+    each_notice(conn, |_, id| {
         if !read.contains(id) || pending.contains(id) {
             count += 1;
         }
@@ -170,8 +187,7 @@ pub fn unread_notice_ids(conn: &Connection, project: Option<&str>) -> Result<Vec
     let read = read_ids(conn)?;
     let project = project.filter(|s| !s.is_empty());
     let mut ids = vec![];
-    each_notice(conn, |e| {
-        let id = e["eventId"].as_str().unwrap();
+    each_notice(conn, |e, id| {
         if !read.contains(id)
             && project
                 .is_none_or(|p| policy::classify(e)["category"] != "news" && e["projectKey"] == p)
@@ -201,8 +217,8 @@ pub fn list_notices(
         .iter()
         .filter(|e| policy::classify(e)["notice"] == true)
         .map(|e| {
-            let id = e["eventId"].as_str().unwrap();
-            policy::notice(
+            let id = event_id(e)?;
+            Ok(policy::notice(
                 e,
                 &present,
                 &prefs,
@@ -210,9 +226,9 @@ pub fn list_notices(
                 &read,
                 groups.get(id).map(String::as_str).unwrap_or(id),
                 focus_active,
-            )
+            ))
         })
-        .collect();
+        .collect::<Result<_>>()?;
     Ok(
         json!({"notices":notices,"nextAfter":page.last().map(|e|e["sequence"].clone()).unwrap_or(json!(after)),"pending":policy::live_pending(&history,is_live),"prefs":prefs,"focusActive":focus_active}),
     )

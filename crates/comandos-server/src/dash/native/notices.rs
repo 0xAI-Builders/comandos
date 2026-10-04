@@ -21,6 +21,7 @@ use std::{
     collections::HashSet,
     time::{Duration, Instant},
 };
+use tokio::sync::watch;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum NoticesRoute {
@@ -176,6 +177,74 @@ const CATEGORIES: [&str; 7] = [
     "info",
 ];
 
+/// Una sola lectura de `revision()` por vuelta de 200 ms para todas las
+/// esperas abiertas de `/notices/watch`. Sin tarea de fondo: el primer
+/// waiter que toma `leader` duerme 200 ms, lee la revisión y la publica;
+/// los demás esperan la publicación. Si el líder se va (vence o el cliente
+/// cierra), suelta el candado y otro waiter toma el relevo; sin waiters no
+/// hay ninguna lectura.
+pub struct RevisionFeed {
+    leader: tokio::sync::Mutex<()>,
+    latest: watch::Sender<Option<String>>,
+}
+
+impl Default for RevisionFeed {
+    fn default() -> Self {
+        Self {
+            leader: tokio::sync::Mutex::new(()),
+            latest: watch::Sender::new(None),
+        }
+    }
+}
+
+/// El bucle del Python (`while rev == seen and time.time() < deadline:
+/// sleep(0.2); rev = revision(conn)`) con la lectura compartida: se vuelve
+/// en cuanto la revisión publicada difiere de `seen` o vence `deadline`.
+async fn wait_for_change(native: &Native, seen: &str, deadline: Instant) -> Result<String, Fault> {
+    let feed = &native.notice_feed;
+    // Suscrito antes de la lectura propia: no se pierde una publicación.
+    let mut published = feed.latest.subscribe();
+    let mut rev = revision(native).await?;
+    while rev == seen && Instant::now() < deadline {
+        tokio::select! {
+            guard = feed.leader.lock() => {
+                if published.has_changed().unwrap_or(false) {
+                    // Llegó una publicación a la vez que el candado: se usa
+                    // esa en vez de esperar otra vuelta.
+                    drop(guard);
+                    if let Some(fresh) = published.borrow_and_update().clone() {
+                        rev = fresh;
+                    }
+                } else {
+                    // Líder de esta vuelta: duerme y lee como el Python.
+                    tokio::time::sleep(Duration::from_millis(200)).await;
+                    let fresh = revision(native).await;
+                    if let Ok(fresh) = &fresh {
+                        feed.latest.send_replace(Some(fresh.clone()));
+                        published.borrow_and_update();
+                    }
+                    drop(guard);
+                    rev = fresh?;
+                }
+            }
+            changed = published.changed() => {
+                if changed.is_err() {
+                    return Err(Fault::Decline);
+                }
+                if let Some(fresh) = published.borrow_and_update().clone() {
+                    rev = fresh;
+                }
+            }
+            () = tokio::time::sleep_until(deadline.into()) => {
+                // El Python lee una vez más tras la última espera.
+                rev = revision(native).await?;
+                break;
+            }
+        }
+    }
+    Ok(rev)
+}
+
 /// `notification_delivery.revision(conn)`, un trabajo corto del worker.
 async fn revision(native: &Native) -> Result<String, Fault> {
     native
@@ -186,7 +255,7 @@ async fn revision(native: &Native) -> Result<String, Fault> {
 
 pub async fn answer(native: &Native, route: NoticesRoute, request: &Request) -> Answer {
     let tmux = &native.options().tmux;
-    let now = (native.options().clock)();
+    let clock = &native.options().clock;
     match route {
         NoticesRoute::List => {
             let query = Query::parse(&request.target)?;
@@ -200,6 +269,8 @@ pub async fn answer(native: &Native, route: NoticesRoute, request: &Request) -> 
             };
             let device = query.first("deviceId").map(str::to_owned);
             let live = is_live(tmux).await;
+            // `notices_now()` se evalúa después de `notices_is_live()`.
+            let now = clock();
             read_reply(
                 native
                     .with_state(move |b| {
@@ -236,13 +307,9 @@ pub async fn answer(native: &Native, route: NoticesRoute, request: &Request) -> 
             };
             let deadline =
                 Instant::now() + Duration::try_from_secs_f64(wait).unwrap_or(Duration::ZERO);
-            let mut rev = revision(native).await?;
-            // Ruling 3: la espera es async; cada vuelta es un trabajo corto del
-            // worker, así cincuenta esperas abiertas no retienen la base.
-            while rev == seen && Instant::now() < deadline {
-                tokio::time::sleep(Duration::from_millis(200)).await;
-                rev = revision(native).await?;
-            }
+            // Ruling 3: la espera es async y la lectura de cada vuelta es una
+            // sola para todas las esperas abiertas: no retienen la base.
+            let rev = wait_for_change(native, &seen, deadline).await?;
             let live = is_live(tmux).await;
             read_reply(
                 native
@@ -250,8 +317,8 @@ pub async fn answer(native: &Native, route: NoticesRoute, request: &Request) -> 
                         with_live(&live, |check| {
                             let history = nd::recent(&b.conn)?;
                             let badge = nd::badge_count(&b.conn, check)?;
-                            let unread = nd::unread_notice_ids(&b.conn, None)?;
-                            let tail = unread[unread.len().saturating_sub(2000)..].to_vec();
+                            let mut unread = nd::unread_notice_ids(&b.conn, None)?;
+                            let tail = unread.split_off(unread.len().saturating_sub(2000));
                             let pending = live_pending(&history, check);
                             let latest = latest_sequence(&b.conn)?;
                             Ok(json!({"rev": rev, "badge": badge, "unread": tail,
@@ -277,6 +344,7 @@ pub async fn answer(native: &Native, route: NoticesRoute, request: &Request) -> 
         }
         NoticesRoute::Presence => {
             let data = data(request)?;
+            let now = clock();
             // `str(data.get("kind") or "web")` se evalúa antes de la llamada,
             // pero no puede fallar en el Python; la validación de deviceId sí.
             let device = match data.get("deviceId") {
@@ -312,6 +380,7 @@ pub async fn answer(native: &Native, route: NoticesRoute, request: &Request) -> 
         }
         NoticesRoute::Read => {
             let data = data(request)?;
+            let now = clock();
             let all = data.get("all") == Some(&Value::Bool(true));
             let ids = data.get("eventIds").cloned();
             let project = match data.get("project") {
@@ -348,6 +417,7 @@ pub async fn answer(native: &Native, route: NoticesRoute, request: &Request) -> 
         }
         NoticesRoute::Sound => {
             let data = data(request)?;
+            let now = clock();
             let event = text_or_empty(data.get("eventId"))?;
             let device = text_or_empty(data.get("deviceId"))?;
             write_reply(

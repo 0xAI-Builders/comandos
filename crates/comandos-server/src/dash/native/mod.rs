@@ -163,6 +163,8 @@ pub struct Native {
     pub(crate) prefs_lock: tokio::sync::Mutex<()>,
     /// `_FONT_CACHE`: familias de `fc-list` y cuándo se leyeron.
     pub(crate) fonts: Mutex<Option<(std::time::Instant, std::collections::HashSet<String>)>>,
+    /// La revisión de avisos que comparten las esperas de `/notices/watch`.
+    pub(crate) notice_feed: notices::RevisionFeed,
 }
 
 impl Native {
@@ -175,6 +177,7 @@ impl Native {
             worker: Mutex::new(None),
             prefs_lock: tokio::sync::Mutex::new(()),
             fonts: Mutex::new(None),
+            notice_feed: notices::RevisionFeed::default(),
         }
     }
 

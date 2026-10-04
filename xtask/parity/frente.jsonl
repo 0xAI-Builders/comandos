@@ -47,7 +47,7 @@
 {"name":"a-notices-prefs","method":"GET","path":"/notices/prefs","headers":{"Host":"127.0.0.1"},"body":null,"volatile":[],"expect":"same"}
 {"name":"a-notifs-count","method":"GET","path":"/notifs/count","headers":{"Host":"127.0.0.1"},"body":null,"volatile":[],"expect":"same"}
 {"name":"a-watch-ya","method":"GET","path":"/notices/watch?wait=0","headers":{"Host":"127.0.0.1"},"body":null,"volatile":[],"expect":"same"}
-{"name":"a-watch-espera","method":"GET","path":"/notices/watch?rev=distinta&wait=1","headers":{"Host":"127.0.0.1"},"body":null,"volatile":[],"expect":"same"}
+{"name":"a-watch-rev-distinta","method":"GET","path":"/notices/watch?rev=distinta&wait=1","headers":{"Host":"127.0.0.1"},"body":null,"volatile":[],"expect":"same"}
 {"name":"a-presence-malo","method":"POST","path":"/presence","headers":{"Host":"127.0.0.1","Content-Type":"application/json"},"body":{"deviceId":""},"volatile":[],"expect":"same"}
 {"name":"a-presence","method":"POST","path":"/presence","headers":{"Host":"127.0.0.1","Content-Type":"application/json"},"body":{"deviceId":"parity-a","visible":true,"canPlayAudio":false,"kind":"web"},"volatile":[],"expect":"same"}
 {"name":"a-read-malo","method":"POST","path":"/notices/read","headers":{"Host":"127.0.0.1","Content-Type":"application/json"},"body":{"eventIds":"x"},"volatile":[],"expect":"same"}

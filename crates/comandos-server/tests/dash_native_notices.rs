@@ -654,3 +654,58 @@ async fn every_route_and_error_matches_python_oracle() {
     }
     front.stop().await;
 }
+
+/// Presencia escrita por un lado, sonido reclamado por el otro, sobre la misma
+/// base: los dos eligen el mismo dispositivo y el evento suena una sola vez.
+#[tokio::test]
+async fn sound_device_matches_across_rust_and_python() {
+    let home = TestHome::new("notices-oracle-sound");
+    seed_permission(&home, "e1");
+    seed_permission(&home, "e2");
+    let mut opts = home.options();
+    opts.clock = Arc::new(wall_clock_ms);
+    let front = front(&home, dead_port(), opts).await;
+    let Some(py) = oracle(&home).await else {
+        front.stop().await;
+        return;
+    };
+    let presence = |audio: bool, device: &str| {
+        format!(
+            r#"{{"deviceId": "{device}", "visible": true, "canPlayAudio": {audio}, "interaction": true}}"#
+        )
+    };
+    let sound =
+        |event: &str, device: &str| format!(r#"{{"eventId": "{event}", "deviceId": "{device}"}}"#);
+    let elsewhere = r#"{"play": false, "reason": "Suena en otro dispositivo"}"#;
+    let already = r#"{"play": false, "reason": "Ya son\u00f3"}"#;
+    let plays = r#"{"play": true, "cue": "permission"}"#;
+    // Rust registra la presencia; el Python reclama el sonido.
+    for body in [presence(true, "d-audio"), presence(false, "d-mudo")] {
+        let wire = request_body(front.port, "POST", "/presence", "", &body).await;
+        assert_eq!(wire.text(), r#"{"ok": true}"#);
+    }
+    for (port, device, expected) in [
+        (front.port, "d-mudo", elsewhere),
+        (py.port, "d-mudo", elsewhere),
+        (py.port, "d-audio", plays),
+        (front.port, "d-audio", already),
+    ] {
+        let wire = request_body(port, "POST", "/notices/sound", "", &sound("e1", device)).await;
+        assert_eq!(wire.text(), expected, "e1 {device} en {port}");
+    }
+    // Al revés: el Python registra la presencia; el frente reclama.
+    for body in [presence(false, "d-audio"), presence(true, "d-mudo")] {
+        let wire = request_body(py.port, "POST", "/presence", "", &body).await;
+        assert_eq!(wire.text(), r#"{"ok": true}"#);
+    }
+    for (port, device, expected) in [
+        (py.port, "d-audio", elsewhere),
+        (front.port, "d-audio", elsewhere),
+        (front.port, "d-mudo", plays),
+        (py.port, "d-mudo", already),
+    ] {
+        let wire = request_body(port, "POST", "/notices/sound", "", &sound("e2", device)).await;
+        assert_eq!(wire.text(), expected, "e2 {device} en {port}");
+    }
+    front.stop().await;
+}
