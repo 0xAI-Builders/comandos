@@ -149,7 +149,7 @@ readlink ~/.local/bin/cc-dash
 Fallo del enrutado o de la puerta (vuelve el Python a 4777):
 
 ```sh
-comandos install --rollback cc-dash
+~/.local/share/comandos/bin/comandos install --rollback cc-dash
 systemctl --user restart cc-dash.service
 ```
 
@@ -163,8 +163,8 @@ rm ~/.config/systemd/user/cc-dash-legacy.service && systemctl --user daemon-relo
 Si el fallo es del binario (no del enlace), volver a la release anterior:
 
 ```sh
-comandos install --releases                     # '*' marca la actual
-comandos install --rollback-release
+~/.local/share/comandos/bin/comandos install --releases   # '*' marca la actual
+~/.local/share/comandos/bin/comandos install --rollback-release
 systemctl --user restart cc-dash.service
 ```
 
