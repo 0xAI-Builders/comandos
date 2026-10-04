@@ -30,6 +30,18 @@ proceso; x-suite igual que en directo.
 Hallazgo del arnés: un socket Unix con ruta > 108 bytes falla con mensaje claro y los clientes caen al
 proxy directo; en producción la ruta es `/run/user/1000/comandos/broker.sock`.
 
+## Ronda final (06:17) y reinicio en caliente
+
+Tras la revisión final de la rama se reinició el servicio con `df35d68`+`0c5eed3`: stderr de los upstreams
+a `/dev/null` (antes iba al journal: tokens y URLs de auth fuera), tope de línea 256 MiB con error solo a
+la petición dueña, clave de compartición sobre el spec efectivo, `LimitNOFILE=65536`, entorno completo de la
+sesión para el upstream, x-suite dedicado y **reconexión transparente** del cliente fino.
+
+Prueba en vivo con una sesión real (`claude -p` con `list_tables` de supabase permitido): se reinició el
+daemon mientras la primera llamada estaba en vuelo → esa llamada recibió `-32603 broker reiniciado`, el
+cliente fino reconectó solo (el daemon nuevo registró `spawn supabase` y `attach`), la sesión repitió la
+llamada y completó en 3 s. La sesión no se cayó ni perdió el MCP.
+
 ## Pendiente de observar en uso real
 
 - Servidores que pidan `roots/list`, `sampling` o `elicitation` a través del broker (el `initialize`
