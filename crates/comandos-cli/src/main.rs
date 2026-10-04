@@ -11,6 +11,10 @@ fn main() {
             eprintln!("event_intake: {e}");
             1
         }),
+        Command::Install(a) => comandos_cli::install::run(&a).unwrap_or_else(|e| {
+            eprintln!("{e}");
+            1
+        }),
         Command::Hook(_) => {
             eprintln!("comandos hook: pendiente (Tarea 10)");
             2

@@ -29,3 +29,10 @@ fn dispatch_by_argv0_and_explicit() {
         matches!(resolve("comandos", &v(&["frobnicate"])), Command::Unknown(s) if s == "frobnicate")
     );
 }
+
+#[test]
+fn dispatch_install() {
+    assert!(
+        matches!(resolve("comandos", &v(&["install", "--stage"])), Command::Install(a) if a == v(&["--stage"]))
+    );
+}
