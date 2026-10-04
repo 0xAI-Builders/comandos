@@ -80,7 +80,11 @@ fn cases() -> Vec<Case> {
         args: vec![fixture("codex_notify", None)],
         tmux,
         seed,
-        ..case(name, "adapters/codex-notify.sh", "codex")
+        ..case(
+            name,
+            "crates/comandos-runtime/tests/fixtures/hooks/oracle/adapters/codex-notify.sh",
+            "codex",
+        )
     };
     out.push(notify("codex_notify", true, None));
     out.push(notify(
@@ -100,18 +104,26 @@ fn cases() -> Vec<Case> {
     ));
     out.push(Case {
         args: vec![r#"{"type":"other","cwd":"/x"}"#.into()],
-        ..case("codex_notify_other", "adapters/codex-notify.sh", "codex")
+        ..case(
+            "codex_notify_other",
+            "crates/comandos-runtime/tests/fixtures/hooks/oracle/adapters/codex-notify.sh",
+            "codex",
+        )
     });
     out.push(Case {
         args: vec![
             r#"{"type":"agent-turn-complete","workspace-path":"/w/ws.x","turn-id":3} trailing"#
                 .into(),
         ],
-        ..case("codex_notify_ws", "adapters/codex-notify.sh", "codex")
+        ..case(
+            "codex_notify_ws",
+            "crates/comandos-runtime/tests/fixtures/hooks/oracle/adapters/codex-notify.sh",
+            "codex",
+        )
     });
     out.push(case(
         "codex_notify_empty",
-        "adapters/codex-notify.sh",
+        "crates/comandos-runtime/tests/fixtures/hooks/oracle/adapters/codex-notify.sh",
         "codex",
     ));
     for (key, tmux, seed) in [
@@ -134,7 +146,11 @@ fn cases() -> Vec<Case> {
             stdin: format!("{}\n", fixture("codex_hooks", Some(key))),
             tmux,
             seed,
-            ..case(name, "adapters/codex-hooks.sh", "codex-hooks")
+            ..case(
+                name,
+                "crates/comandos-runtime/tests/fixtures/hooks/oracle/adapters/codex-hooks.sh",
+                "codex-hooks",
+            )
         });
     }
     for (key, env) in [
@@ -149,7 +165,11 @@ fn cases() -> Vec<Case> {
             stdin: fixture("gemini_hooks", Some(key)),
             env,
             tmux: key == "after",
-            ..case(name, "adapters/gemini-hooks.sh", "gemini")
+            ..case(
+                name,
+                "crates/comandos-runtime/tests/fixtures/hooks/oracle/adapters/gemini-hooks.sh",
+                "gemini",
+            )
         });
     }
     for (key, event, agy_parent) in [
@@ -171,14 +191,22 @@ fn cases() -> Vec<Case> {
             },
             agy_parent,
             tmux: key == "stop",
-            ..case(name, "adapters/agy-hooks.sh", "agy")
+            ..case(
+                name,
+                "crates/comandos-runtime/tests/fixtures/hooks/oracle/adapters/agy-hooks.sh",
+                "agy",
+            )
         });
     }
     out.push(Case {
         stdin: fixture("agy_hooks", Some("stop")),
         args: vec!["done".into()],
         env: vec![("COMANDOS_SILENT_AGENT", "1")],
-        ..case("agy_silent", "adapters/agy-hooks.sh", "agy")
+        ..case(
+            "agy_silent",
+            "crates/comandos-runtime/tests/fixtures/hooks/oracle/adapters/agy-hooks.sh",
+            "agy",
+        )
     });
     out
 }

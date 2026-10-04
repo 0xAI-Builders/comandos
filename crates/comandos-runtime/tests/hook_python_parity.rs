@@ -1,6 +1,6 @@
 //! Paridad de los dos adaptadores que eran Python: `comandos hook grok` contra
-//! `adapters/grok-hooks.py` (normalización y `--accept`) y `comandos hook agy-status`
-//! contra `adapters/agy-statusline.py`. `python3` solo corre como oráculo, con un
+//! `tests/fixtures/hooks/oracle/adapters/grok-hooks.py` (copia del original) (normalización y `--accept`) y `comandos hook agy-status`
+//! contra `…/oracle/adapters/agy-statusline.py`. `python3` solo corre como oráculo, con un
 //! entorno controlado y `HOME` temporales.
 #[allow(dead_code)]
 #[path = "support/parity.rs"]
@@ -70,7 +70,14 @@ fn run(
 }
 
 fn grok(oracle: bool, args: &[&str], home: &Path, stdin: &[u8]) -> (Option<i32>, String) {
-    run(oracle, "adapters/grok-hooks.py", "grok", args, home, stdin)
+    run(
+        oracle,
+        "crates/comandos-runtime/tests/fixtures/hooks/oracle/adapters/grok-hooks.py",
+        "grok",
+        args,
+        home,
+        stdin,
+    )
 }
 
 #[test]
@@ -236,7 +243,7 @@ fn agy_status_matches_python() {
         let agy = |oracle, home| {
             run(
                 oracle,
-                "adapters/agy-statusline.py",
+                "crates/comandos-runtime/tests/fixtures/hooks/oracle/adapters/agy-statusline.py",
                 "agy-status",
                 &[],
                 home,

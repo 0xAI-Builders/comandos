@@ -281,9 +281,15 @@ pub fn install_oracle_notify(home: &Path, root: &Path) {
     )
     .unwrap();
     fs::set_permissions(&wrapper, fs::Permissions::from_mode(0o755)).unwrap();
-    for name in ["lib", "adapters"] {
-        std::os::unix::fs::symlink(root.join(name), home.join(".claude").join(name)).unwrap();
-    }
+    std::os::unix::fs::symlink(root.join("lib"), home.join(".claude/lib")).unwrap();
+    // Los adaptadores bash/Python originales ya no viven en `adapters/` (son envoltorios
+    // del binario Rust desde el cutover del 4-oct-2026): el oráculo usa las copias de
+    // `tests/fixtures/hooks/oracle/adapters`.
+    std::os::unix::fs::symlink(
+        root.join("crates/comandos-runtime/tests/fixtures/hooks/oracle/adapters"),
+        home.join(".claude/adapters"),
+    )
+    .unwrap();
     fs::create_dir_all(home.join(".local/bin")).unwrap();
     std::os::unix::fs::symlink(
         root.join("bin/cc_usage.py"),
