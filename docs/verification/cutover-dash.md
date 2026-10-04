@@ -51,6 +51,10 @@ Respecto a `SimpleHTTPRequestHandler` y el despachador Python:
 - `Expect: 100-continue` se reenvía tal cual; sin probar.
 - Se rechaza `--legacy-port` igual al puerto propio y un argumento malo ya no se ignora (salida 2).
 
+- Una petición malformada con una cabecera plegada (línea que empieza por espacio, `obs-fold`) recibe
+  400 del frente; el Python la pegaba a la cabecera anterior y seguía (p. ej. 401 por token ausente).
+  Ningún navegador ni cliente de ComandOS pliega cabeceras.
+
 ## Rutas sin llamador vivo (39)
 
 Siguen reenviadas al Python en esta fase. En la Fase 2b responderán `410 {"error":"Ruta retirada"}`
@@ -171,3 +175,29 @@ systemctl --user restart cc-dash.service
 `--rollback-release` solo afecta a procesos nuevos; el reinicio es lo que aplica la release anterior.
 Tras revertir con `--rollback cc-dash`, el Python vuelve a 4777 y el de 4781 queda sobrante: apagarlo
 con `disable --now` para no duplicar los bucles de fondo.
+
+## Ejecutado — 4 de octubre de 2026, 12:04 (release `17aa1bea2309`, main `8917c9d`)
+
+Sombra previa (frente de main en 4782 → Python vivo 4777): 19 rutas idénticas en estado, cabeceras y
+cuerpo (solo cambian `serverNowMs` y `burn`/`pace`, dependientes del instante); long-poll real de
+`/notices/watch?rev=…` por el frente: 25,1 s y 200; `xtask parity` 16/16 en namespace. Ráfaga de 20
+`/prefs` en paralelo: por el frente todas < 0,11 s; directas al Python, 5 de 20 esperaron 1,03 s
+(backlog 5 del `socketserver`) — la dosificación del frente elimina esa espera. `chrome-bg` estaba
+caído, así que la navegación manual no se hizo; la cobertura HTTP de arriba la sustituye.
+
+Cutover (pasos 2+3 encadenados, 12:04:48–12:04:52): `cc-dash-legacy.service` enlazado desde el
+checkout principal y activo en 4781; `install --stage` migró el archivo plano de la Fase 1 a
+`releases/1421852285eb` (`previous`) e instaló `17aa1bea2309`; `comandos hook claude-status` OK con la
+release nueva; `install --link cc-dash`; `systemctl --user restart cc-dash.service`. Tablero sin
+respuesta ≈ 2 s. tmux, cc-app y el broker no se tocaron (el broker sigue con la release anterior
+hasta su siguiente arranque; el protocolo cliente↔daemon no cambió entre ambas).
+
+Verificación: journal del frente con la pancarta y `NRestarts=0`; heredado sin errores; `tailscale
+serve status` idéntico al anotado; `ss` muestra `cc-dash` (Rust) en 4777 y `python3` en 4781;
+cc-app (4 conexiones WebKit) y notifyd (python3) siguen conectados a 4777; remoto simulado
+(`Host: nodo-01.tail63a117.ts.net` + `X-Forwarded-For`): `/state` sin token 401, con token 200,
+índice y estáticos como en el Python; `POST /pane/type` con cuerpo no objeto 400 (del Python);
+`/webterm-token` 200. Pss del frente 4,8 MiB al minuto 2 (el Python nuevo en 4781: 389 MiB).
+
+Reversión disponible: `~/.local/share/comandos/bin/comandos install --rollback cc-dash` (vuelve el
+Python a 4777) o `--rollback-release` (vuelve a `1421852285eb`), ambos con reinicio de la unidad.
