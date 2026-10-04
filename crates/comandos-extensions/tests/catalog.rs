@@ -705,22 +705,16 @@ fn replaced_skill_backup_is_named_skill_uuid_and_private() {
         let n = d.file_name().unwrap().to_string_lossy().into_owned();
         let hex = n.strip_prefix("skill-").unwrap();
         assert!(hex.len() == 32 && hex.bytes().all(|b| matches!(b, b'0'..=b'9' | b'a'..=b'f')));
+        assert_eq!(hex.as_bytes()[12], b'4');
+        assert!(matches!(hex.as_bytes()[16], b'8' | b'9' | b'a' | b'b'));
         assert_eq!(fs::metadata(d).unwrap().permissions().mode() & 0o777, 0o700);
     }
     let old = dirs
         .iter()
         .find(|d| d.join("demo/SKILL.md").is_file())
         .unwrap();
-    let dirs = [old.clone()];
-    let name = dirs[0].file_name().unwrap().to_string_lossy().into_owned();
-    let hex = name.strip_prefix("skill-").unwrap();
-    assert!(hex.len() == 32 && hex.bytes().all(|b| matches!(b, b'0'..=b'9' | b'a'..=b'f')));
     assert_eq!(
-        fs::metadata(&dirs[0]).unwrap().permissions().mode() & 0o777,
-        0o700
-    );
-    assert_eq!(
-        fs::read_to_string(dirs[0].join("demo/SKILL.md")).unwrap(),
+        fs::read_to_string(old.join("demo/SKILL.md")).unwrap(),
         "old"
     );
 }
@@ -740,5 +734,23 @@ fn sync_and_import_stdout_use_python_json_dumps_bytes() {
     assert_eq!(
         String::from_utf8(out.stdout).unwrap(),
         "{\"configurations_changed\": 5, \"skill_links_changed\": 0}\n"
+    );
+}
+#[test]
+fn import_stdout_escapes_non_ascii_credential_names_like_python() {
+    let h = Home::new();
+    h.put(
+        ".claude.json",
+        r#"{"mcpServers":{"a":{"command":"echo","args":[]},"b":{"command":"echo","args":[]}}}"#,
+    );
+    h.put(
+        ".config/comandos/extensions/credentials.json",
+        r#"{"gmail":{"url":"x"},"señal":{"url":"y"}}"#,
+    );
+    let out = cli(&h.0, "import");
+    assert!(out.status.success());
+    assert_eq!(
+        String::from_utf8(out.stdout).unwrap(),
+        "{\"servers\": 2, \"credentials_imported\": [\"gmail\", \"se\\u00f1al\"]}\n"
     );
 }
