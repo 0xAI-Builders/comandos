@@ -217,9 +217,13 @@ name = "comandos-extensions"
 version = "0.1.0"
 dependencies = [
  "base64 0.22.1",
+ "bytes",
  "chrono",
  "comandos-core",
  "futures-util",
+ "http-body-util",
+ "hyper",
+ "hyper-util",
  "md5",
  "nix",
  "num-bigint",

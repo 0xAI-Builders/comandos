@@ -28,6 +28,29 @@ fn permitted(spec: &Value, name: &str) -> bool {
             })
 }
 
+/// Reescribe un `CallToolResult` como lo serializa el proxy Python (pydantic con
+/// `exclude_none`): campos declarados en su orden (`_meta`, `content`,
+/// `structuredContent`, `isError`), `isError` con su valor por omisión `false`, y
+/// después los campos extra en su orden original; los `null` de primer nivel se omiten.
+fn normalize_call_tool_result(result: &mut Value) {
+    let Some(map) = result.as_object_mut() else {
+        return;
+    };
+    let mut fields = std::mem::take(map);
+    for key in ["_meta", "content", "structuredContent", "isError"] {
+        match fields.shift_remove(key) {
+            Some(value) if !value.is_null() => {
+                map.insert(key.into(), value);
+            }
+            _ if key == "isError" => {
+                map.insert(key.into(), Value::Bool(false));
+            }
+            _ => {}
+        }
+    }
+    map.extend(fields.into_iter().filter(|(_, v)| !v.is_null()));
+}
+
 pub async fn serve(home: &Path, name: &str, spec: &Value) -> Result<()> {
     let (input_tx, mut input_rx) = mpsc::channel(8);
     let (end_tx, mut end_rx) = watch::channel(false);
@@ -76,7 +99,8 @@ pub async fn serve(home: &Path, name: &str, spec: &Value) -> Result<()> {
         _=tokio::signal::ctrl_c()=>{upstream.shutdown().await;input.abort();return Ok(());},
     }
     let mut capabilities = serde_json::Map::new();
-    for key in ["tools", "prompts", "resources", "completions"] {
+    // Orden de `ServerCapabilities` en el SDK de Python, que es como lo serializa el proxy viejo.
+    for key in ["prompts", "resources", "tools", "completions"] {
         if let Some(cap) = result["capabilities"].get(key).filter(|v| !v.is_null()) {
             capabilities.insert(
                 key.into(),
@@ -182,6 +206,9 @@ pub async fn serve(home: &Path, name: &str, spec: &Value) -> Result<()> {
                     if method=="tools/list" && response.get("error").is_none()
                         && let Some(tools)=response.get_mut("result").and_then(|result|result.get_mut("tools")).and_then(Value::as_array_mut)
                     {tools.retain(|t|t["name"].as_str().is_some_and(|n|permitted(&spec,n)));}
+                    if method=="tools/call" && response.get("error").is_none()
+                        && let Some(result)=response.get_mut("result")
+                    {normalize_call_tool_result(result);}
                     if response.to_string().len()>MAX_MESSAGE {response=error(response["id"].clone(),-32603,"Upstream response too large");}
                     (task_key,response,page)
                 });
@@ -199,4 +226,37 @@ pub async fn serve(home: &Path, name: &str, spec: &Value) -> Result<()> {
         transport.shutdown().await;
     }
     outcome
+}
+
+#[cfg(test)]
+mod tests {
+    use super::normalize_call_tool_result;
+    use serde_json::{Value, json};
+
+    fn normalized(raw: &str) -> String {
+        let mut value: Value = serde_json::from_str(raw).unwrap();
+        normalize_call_tool_result(&mut value);
+        value.to_string()
+    }
+
+    // Salidas esperadas obtenidas de `CallToolResult.model_validate(..).model_dump_json(
+    // by_alias=True, exclude_none=True)` del SDK `mcp` 1.30 que usa el proxy Python.
+    #[test]
+    fn call_tool_result_matches_pydantic_serialization() {
+        assert_eq!(
+            normalized(
+                r#"{"zz":1,"content":[{"type":"text","text":"x"}],"structuredContent":null,"_meta":null,"aa":null}"#
+            ),
+            r#"{"content":[{"type":"text","text":"x"}],"isError":false,"zz":1}"#
+        );
+        assert_eq!(
+            normalized(
+                r#"{"isError":true,"zz":1,"content":[],"_meta":{"k":1},"structuredContent":{"b":1}}"#
+            ),
+            r#"{"_meta":{"k":1},"content":[],"structuredContent":{"b":1},"isError":true,"zz":1}"#
+        );
+        let mut scalar = json!("no es objeto");
+        normalize_call_tool_result(&mut scalar);
+        assert_eq!(scalar, json!("no es objeto"));
+    }
 }

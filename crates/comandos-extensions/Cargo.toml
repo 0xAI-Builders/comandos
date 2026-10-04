@@ -26,6 +26,14 @@ url = "2"
 chrono = "0.4"
 nix = { version = "0.31", features = ["signal", "process", "user", "fs", "resource"] }
 
+[dev-dependencies]
+# Upstream MCP falso de las pruebas de paridad; ya entran por reqwest, aquí solo
+# se habilita la parte servidor.
+hyper = { version = "1", features = ["server", "http1"] }
+hyper-util = { version = "0.1", features = ["tokio"] }
+http-body-util = "0.1"
+bytes = "1"
+tokio = { version = "1", features = ["net", "rt"] }
 
 [lints]
 workspace = true
