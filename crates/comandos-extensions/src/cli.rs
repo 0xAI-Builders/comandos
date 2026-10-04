@@ -215,9 +215,27 @@ fn catalog_command(
         }
         _ => return Err("Unknown command".into()),
     };
-    println!(
-        "{}",
-        serde_json::to_string_pretty(&result).map_err(|_| "Invalid command result")?
-    );
+    if action == "status" {
+        println!(
+            "{}",
+            serde_json::to_string_pretty(&result).map_err(|_| "Invalid command result")?
+        );
+    } else {
+        // json.dumps del Python: separadores ", " y ": ", orden de inserción.
+        let body = result
+            .as_object()
+            .ok_or("Invalid command result")?
+            .iter()
+            .map(|(k, v)| {
+                Ok(format!(
+                    "{}: {}",
+                    crate::python_json::dumps(&json!(k), true, false)?,
+                    crate::python_json::dumps(v, true, false)?
+                ))
+            })
+            .collect::<std::result::Result<Vec<_>, String>>()?
+            .join(", ");
+        println!("{{{body}}}");
+    }
     Ok(())
 }

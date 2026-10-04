@@ -680,3 +680,65 @@ fn dotted_and_inline_toml_preserves_unknown_types_and_no_final_newline_noop() {
     );
     assert!(h.read(".codex/config.toml").contains("# retained"));
 }
+#[test]
+fn replaced_skill_backup_is_named_skill_uuid_and_private() {
+    use std::os::unix::fs::PermissionsExt;
+    let h = Home::new();
+    h.put(".agents/skills/demo/SKILL.md", "old");
+    skills::sync_skills(&h.0).unwrap();
+    fs::remove_file(h.0.join(".grok/skills/demo")).unwrap();
+    h.put(".grok/skills/demo/SKILL.md", "new");
+    skills::sync_skills(&h.0).unwrap();
+    let backups = config::state_dir(&h.0).join("backups");
+    let dirs = fs::read_dir(&backups)
+        .unwrap()
+        .map(|e| e.unwrap().path())
+        .filter(|p| {
+            p.file_name()
+                .unwrap()
+                .to_string_lossy()
+                .starts_with("skill-")
+        })
+        .collect::<Vec<_>>();
+    assert!(!dirs.is_empty(), "{dirs:?}");
+    for d in &dirs {
+        let n = d.file_name().unwrap().to_string_lossy().into_owned();
+        let hex = n.strip_prefix("skill-").unwrap();
+        assert!(hex.len() == 32 && hex.bytes().all(|b| matches!(b, b'0'..=b'9' | b'a'..=b'f')));
+        assert_eq!(fs::metadata(d).unwrap().permissions().mode() & 0o777, 0o700);
+    }
+    let old = dirs
+        .iter()
+        .find(|d| d.join("demo/SKILL.md").is_file())
+        .unwrap();
+    let dirs = [old.clone()];
+    let name = dirs[0].file_name().unwrap().to_string_lossy().into_owned();
+    let hex = name.strip_prefix("skill-").unwrap();
+    assert!(hex.len() == 32 && hex.bytes().all(|b| matches!(b, b'0'..=b'9' | b'a'..=b'f')));
+    assert_eq!(
+        fs::metadata(&dirs[0]).unwrap().permissions().mode() & 0o777,
+        0o700
+    );
+    assert_eq!(
+        fs::read_to_string(dirs[0].join("demo/SKILL.md")).unwrap(),
+        "old"
+    );
+}
+#[test]
+fn sync_and_import_stdout_use_python_json_dumps_bytes() {
+    let h = Home::new();
+    h.put(
+        ".claude.json",
+        r#"{"mcpServers":{"demo":{"command":"echo","args":[]}}}"#,
+    );
+    let out = cli(&h.0, "import");
+    assert_eq!(
+        String::from_utf8(out.stdout).unwrap(),
+        "{\"servers\": 1, \"credentials_imported\": []}\n"
+    );
+    let out = cli(&h.0, "sync");
+    assert_eq!(
+        String::from_utf8(out.stdout).unwrap(),
+        "{\"configurations_changed\": 5, \"skill_links_changed\": 0}\n"
+    );
+}

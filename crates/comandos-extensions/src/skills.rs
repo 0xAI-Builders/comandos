@@ -138,8 +138,31 @@ fn prepared(source: &Path, canonical: &Path, prefix: &str) -> Result<PathBuf> {
     }
     Ok(tmp)
 }
+// Nombre `skill-<uuid4 hex>` como el Python: aleatorio, visible, modo 0700.
+fn backup_dir(parent: &Path) -> Result<PathBuf> {
+    config::private_dir(parent)?;
+    loop {
+        let mut bytes = [0u8; 16];
+        fs::File::open("/dev/urandom")
+            .and_then(|mut f| f.read_exact(&mut bytes))
+            .map_err(|_| config::err(parent))?;
+        bytes[6] = bytes[6] & 0x0f | 0x40;
+        bytes[8] = bytes[8] & 0x3f | 0x80;
+        let hex = bytes.iter().map(|b| format!("{b:02x}")).collect::<String>();
+        let p = parent.join(format!("skill-{hex}"));
+        match fs::create_dir(&p) {
+            Ok(()) => {
+                fs::set_permissions(&p, fs::Permissions::from_mode(0o700))
+                    .map_err(|_| config::err(&p))?;
+                return Ok(p);
+            }
+            Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => continue,
+            Err(_) => return Err(config::err(&p)),
+        }
+    }
+}
 fn backup(home: &Path, path: &Path) -> Result<PathBuf> {
-    let root = unique_dir(&config::state_dir(home).join("backups"), "skill")?;
+    let root = backup_dir(&config::state_dir(home).join("backups"))?;
     let backup = root.join(path.file_name().ok_or_else(|| config::err(path))?);
     fs::rename(path, &backup).map_err(|_| config::err(path))?;
     Ok(backup)
