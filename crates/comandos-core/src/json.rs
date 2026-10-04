@@ -1,7 +1,13 @@
 use serde_json::Value;
 
+mod comparison;
+pub(crate) use comparison::number_cmp;
+pub use comparison::python_eq;
+
 mod parser;
 pub use parser::{parse_slice, parse_unique_value, parse_value};
+mod python;
+pub use python::{dumps, workspace_dumps};
 
 // Legacy JSON semantics at the compatibility boundary (null, false, 0 and ""
 // all select defaults). Domain identifiers are validated before persistence.
@@ -25,3 +31,7 @@ pub(crate) fn legacy_id(value: &Value) -> String {
         other => other.to_string(),
     }
 }
+
+mod workspace;
+pub(crate) use workspace::validate_workspace_depth;
+pub use workspace::{MAX_WORKSPACE_JSON_DEPTH, workspace_loads};

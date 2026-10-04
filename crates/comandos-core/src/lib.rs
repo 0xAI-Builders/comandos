@@ -8,3 +8,5 @@ pub mod json;
 pub use json::truthy as legacy_truthy;
 
 pub mod notifications;
+
+pub mod workspace;

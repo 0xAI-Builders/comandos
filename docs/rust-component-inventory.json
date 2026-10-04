@@ -1333,16 +1333,21 @@
       "language": ".py",
       "category": "producto",
       "lines": 188,
-      "status": "Pendiente",
-      "rust": null
+      "status": "Rust — revisado; integración pendiente",
+      "rust": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/crates/comandos-core/src/workspace/layout.rs",
+      "review": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/.superpowers/sdd/workspace-final-20261004-review.md"
     },
     {
       "source": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/lib/workspace_state.py",
       "language": ".py",
       "category": "producto",
       "lines": 489,
-      "status": "Pendiente",
-      "rust": null
+      "status": "Rust — dominio y persistencia revisados; integración pendiente",
+      "rust": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/crates/comandos-core/src/workspace.rs",
+      "rust_adapters": [
+        "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/crates/comandos-store/src/workspace.rs"
+      ],
+      "review": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/.superpowers/sdd/workspace-final-20261004-review.md"
     },
     {
       "source": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/scripts/install-extensions.py",

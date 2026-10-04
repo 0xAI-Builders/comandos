@@ -166,8 +166,8 @@ Los assets, servicios e instaladores declarativos se deben contrastar en el empa
 | /home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/lib/turn_state.py | Rust | /home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/crates/comandos-core/src/turn.rs |
 | /home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/lib/web_push.py | Pendiente | — |
 | /home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/lib/work_marks.py | Parcial: almacenamiento; dibujo pendiente | /home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/crates/comandos-store/src/marks.rs |
-| /home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/lib/workspace_layout.py | Pendiente | — |
-| /home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/lib/workspace_state.py | Pendiente | — |
+| /home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/lib/workspace_layout.py | Rust — revisado; integración pendiente | /home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/crates/comandos-core/src/workspace/layout.rs |
+| /home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/lib/workspace_state.py | Rust — dominio y persistencia revisados; integración pendiente | /home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/crates/comandos-core/src/workspace.rs ; /home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/crates/comandos-store/src/workspace.rs |
 | /home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/scripts/install-extensions.py | Pendiente | — |
 | /home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/services/browser/apparmor/install-chrome-apparmor.sh | Pendiente | — |
 | /home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/services/browser/broker.py | Pendiente | — |

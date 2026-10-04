@@ -235,3 +235,5 @@ impl From<std::io::Error> for Error {
         Self::Io(error)
     }
 }
+
+pub mod workspace;
