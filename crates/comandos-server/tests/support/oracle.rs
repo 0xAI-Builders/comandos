@@ -41,6 +41,37 @@ pub async fn oracle(home: &TestHome) -> Option<Oracle> {
     );
     let port = super::dead_port();
     let repo = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+    // Igual que `xtask parity`: los ejecutables con efectos fuera del HOME temporal
+    // (terminal web, tailscale, systemd, sonido, ventanas) son enlaces a `true`, y el
+    // oráculo no ve el systemd ni el DBus de la sesión real.
+    let fakebin = home.root.join("fakebin");
+    let runtime = home.root.join("xdg-runtime");
+    std::fs::create_dir_all(&fakebin).unwrap();
+    std::fs::create_dir_all(&runtime).unwrap();
+    for name in [
+        "systemctl",
+        "wmctrl",
+        "cc-webterm",
+        "cc-webterm-attach",
+        "systemd-run",
+        "tailscale",
+        "notify-send",
+        "pw-play",
+        "paplay",
+        "spd-say",
+        "piper",
+        "xdg-open",
+    ] {
+        let link = fakebin.join(name);
+        if !link.exists() {
+            std::os::unix::fs::symlink("/bin/true", &link).unwrap();
+        }
+    }
+    let path = format!(
+        "{}:{}",
+        fakebin.display(),
+        std::env::var("PATH").unwrap_or_default()
+    );
     let err = std::fs::File::create(home.root.join("oracle.err")).unwrap();
     let mut child = Command::new("python3")
         .arg(repo.join("bin/cc-dash"))
@@ -56,6 +87,8 @@ pub async fn oracle(home: &TestHome) -> Option<Oracle> {
         .env_remove("DISPLAY")
         .env_remove("WAYLAND_DISPLAY")
         .env("HOME", &home.root)
+        .env("PATH", &path)
+        .env("XDG_RUNTIME_DIR", &runtime)
         .env("XDG_STATE_HOME", home.root.join(".local/state"))
         .env("TMUX_TMPDIR", home.tmux_dir())
         .env("COMANDOS_DASH_DIR", repo.join("dash"))
