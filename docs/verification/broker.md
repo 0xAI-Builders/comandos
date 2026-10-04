@@ -62,7 +62,11 @@ cliente que pide una anterior, y por el broker ese cliente recibe la anterior.
 ## Clave de compartición
 
 Un upstream se comparte solo si el proceso sería idéntico: clave
-`(nombre, cwd, sha256 del JSON canónico del env)`. El daemon lo lanza con `current_dir(cwd)` y
+`(nombre, cwd resuelto, sha256 del JSON canónico del spec efectivo)`. El spec efectivo es el del
+catálogo del daemon en el momento del `attach` (`command`, `args`, `cwd` y demás campos), con su
+`env` sustituido por el `env` expandido que manda la sesión y sin la clave `shared` (no cambia el
+proceso); «canónico» es con las claves ordenadas a todos los niveles. Si el catálogo cambia los
+`args` de un servidor, la siguiente sesión arranca un upstream nuevo en vez de heredar el viejo. El daemon lo lanza con `current_dir(cwd)` y
 con el `env` de la sesión superpuesto a su propio entorno, como haría el proxy directo.
 `crate::command_env` es la única función que arma el comando (la usan `serve` y el broker).
 
@@ -114,6 +118,7 @@ deben acabar en el journal del daemon.
 
 - Dos sesiones `serve eco` comparten un pid; un servidor `"shared": false` no.
 - Distinto `cwd` ⇒ distinto upstream; mismo `cwd` y `env` ⇒ el mismo.
+- Mismo nombre con otros `args` en el catálogo ⇒ distinto upstream; añadir `"shared": true` no.
 - Sin daemon, proxy directo con stderr vacío.
 - Socket presente con el daemon muerto: una línea en stderr y proxy directo.
 - Upstream que muere al arrancar: error, proxy directo, y el segundo `attach` dentro de los

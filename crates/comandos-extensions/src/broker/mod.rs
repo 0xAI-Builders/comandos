@@ -25,32 +25,59 @@ use tokio::io::{AsyncBufRead, AsyncBufReadExt};
 const MAX_LINE: usize = crate::transport::MAX_RESPONSE;
 
 /// Un upstream solo se comparte si el proceso sería idéntico: mismo servidor, mismo
-/// directorio de trabajo y mismo `env` del catálogo ya expandido.
+/// directorio de trabajo y mismo spec efectivo (`command`, `args`, `cwd`, `env` ya expandido…).
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 struct Key {
     name: String,
     cwd: PathBuf,
-    /// sha256 del JSON canónico (claves ordenadas) del `env` expandido.
-    env_hash: String,
+    /// sha256 del JSON canónico (claves ordenadas a todos los niveles) del spec con su `env`
+    /// sustituido por el expandido de la sesión y sin `shared` (no cambia el proceso).
+    spec_hash: String,
 }
 
 impl Key {
-    fn new(name: &str, cwd: &Path, env: &[(String, String)]) -> Self {
-        let sorted: BTreeMap<&str, &str> = env.iter().map(|(k, v)| (&**k, &**v)).collect();
-        let canonical = serde_json::to_vec(&sorted).unwrap_or_default();
-        let env_hash = format!("{:x}", Sha256::digest(canonical));
+    fn new(name: &str, cwd: &Path, spec: &Value, env: &[(String, String)]) -> Self {
+        let mut effective = spec.clone();
+        if let Some(o) = effective.as_object_mut() {
+            o.remove("shared");
+            let env: Map<String, Value> = (env.iter())
+                .map(|(k, v)| (k.clone(), Value::String(v.clone())))
+                .collect();
+            o.insert("env".into(), Value::Object(env));
+        }
+        let canonical = serde_json::to_vec(&canonical(&effective)).unwrap_or_default();
+        let spec_hash = format!("{:x}", Sha256::digest(canonical));
         Self {
             name: name.into(),
             cwd: cwd.into(),
-            env_hash,
+            spec_hash,
         }
+    }
+}
+
+/// Copia de `v` con las claves de cada objeto en orden (`serde_json` aquí conserva el orden
+/// de inserción, así que dos specs iguales escritos en otro orden darían otro hash).
+fn canonical(v: &Value) -> Value {
+    match v {
+        Value::Object(m) => {
+            let sorted: BTreeMap<&String, Value> =
+                m.iter().map(|(k, v)| (k, canonical(v))).collect();
+            Value::Object(sorted.into_iter().map(|(k, v)| (k.clone(), v)).collect())
+        }
+        Value::Array(a) => Value::Array(a.iter().map(canonical).collect()),
+        other => other.clone(),
     }
 }
 
 impl std::fmt::Display for Key {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let short = &self.env_hash[..self.env_hash.len().min(8)];
-        write!(f, "{} (cwd {}, env {short})", self.name, self.cwd.display())
+        let short = &self.spec_hash[..self.spec_hash.len().min(8)];
+        write!(
+            f,
+            "{} (cwd {}, spec {short})",
+            self.name,
+            self.cwd.display()
+        )
     }
 }
 
@@ -147,4 +174,54 @@ async fn read_line<R: AsyncBufRead + Unpin>(r: &mut R, buf: &mut Vec<u8>) -> io:
 /// Línea vacía o solo espacios: se ignora en ambos sentidos.
 fn blank(line: &[u8]) -> bool {
     line.iter().all(u8::is_ascii_whitespace)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::Key;
+    use serde_json::json;
+    use std::path::Path;
+
+    fn key(spec: serde_json::Value, env: &[(&str, &str)]) -> Key {
+        let env: Vec<_> = env
+            .iter()
+            .map(|(k, v)| (k.to_string(), v.to_string()))
+            .collect();
+        Key::new("eco", Path::new("/w"), &spec, &env)
+    }
+
+    #[test]
+    fn key_covers_the_effective_spec_but_not_key_order_or_shared() {
+        let base = key(
+            json!({"command":"a","args":["1"],"env":{"X":"$H"}}),
+            &[("X", "/h")],
+        );
+        let same = key(
+            json!({"env":{"X":"otro"},"args":["1"],"command":"a","shared":true}),
+            &[("X", "/h")],
+        );
+        assert_eq!(
+            base, same,
+            "orden de claves, `shared` y el env sin expandir no cuentan"
+        );
+        assert_ne!(
+            base,
+            key(json!({"command":"a","args":["2"]}), &[("X", "/h")])
+        );
+        assert_ne!(
+            base,
+            key(json!({"command":"b","args":["1"]}), &[("X", "/h")])
+        );
+        assert_ne!(
+            base,
+            key(
+                json!({"command":"a","args":["1"],"cwd":"sub"}),
+                &[("X", "/h")]
+            )
+        );
+        assert_ne!(
+            base,
+            key(json!({"command":"a","args":["1"]}), &[("X", "/g")])
+        );
+    }
 }

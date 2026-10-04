@@ -651,3 +651,32 @@ fn an_oversized_response_errors_only_its_client_and_the_upstream_survives() {
     assert!(daemon.stop().success());
     assert!(log.contains("demasiado"), "{log}");
 }
+
+#[test]
+fn sharing_key_includes_command_and_args() {
+    let home = fake_home("args");
+    let mut daemon = Daemon::start(&home, "600");
+    let mut a = Session::open(&home, "eco");
+    let pa = a.pid(1, "initialize");
+    // Mismo nombre, otros argumentos: el proceso ya no sería idéntico.
+    let catalog = home.join(".config/comandos/extensions/catalog.json");
+    let text = fs::read_to_string(&catalog).unwrap();
+    let spec = format!(r#"{{"enabled":true,"command":"{FAKE}"}}"#);
+    let with_args = format!(r#"{{"enabled":true,"command":"{FAKE}","args":["otro"]}}"#);
+    fs::write(&catalog, text.replace(&spec, &with_args)).unwrap();
+    let mut b = Session::open(&home, "eco");
+    let pb = b.pid(1, "initialize");
+    assert_ne!(pa, pb, "distintos args ⇒ distinto upstream");
+    // `shared` no cambia el proceso: no entra en la clave.
+    let text = fs::read_to_string(&catalog).unwrap();
+    let marked = with_args.replace(r#""enabled":true"#, r#""enabled":true,"shared":true"#);
+    fs::write(&catalog, text.replace(&with_args, &marked)).unwrap();
+    let mut c = Session::open(&home, "eco");
+    assert_eq!(
+        c.pid(1, "initialize"),
+        pb,
+        "`shared` no forma parte de la clave"
+    );
+    assert_eq!(pids(&home).len(), 2);
+    assert!(daemon.stop().success());
+}

@@ -62,7 +62,7 @@ pub(super) async fn attach(ctx: &Ctx, line: &[u8]) -> Result<Attached> {
     if !brokerable(&spec, &req.name) {
         return Err(format!("Servidor no compartible: {}", req.name));
     }
-    let key = Key::new(&req.name, &req.cwd, &req.env);
+    let key = Key::new(&req.name, &req.cwd, &spec, &req.env);
     for _ in 0..3 {
         let (ctl, lines) = actor_for(ctx, &key, &spec, &req)?;
         let (reply, joined) = oneshot::channel::<Joined>();
