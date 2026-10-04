@@ -680,3 +680,32 @@ fn sharing_key_includes_command_and_args() {
     assert_eq!(pids(&home).len(), 2);
     assert!(daemon.stop().success());
 }
+
+/// Límite de descriptores (blando, duro) de un proceso, leído de `/proc/<pid>/limits`.
+fn nofile(pid: u32) -> (String, String) {
+    let limits = fs::read_to_string(format!("/proc/{pid}/limits")).unwrap();
+    let line = limits.lines().find(|l| l.starts_with("Max open files")).unwrap();
+    let mut cols = line["Max open files".len()..].split_whitespace();
+    (cols.next().unwrap().into(), cols.next().unwrap().into())
+}
+
+#[test]
+fn daemon_raises_its_soft_fd_limit_to_the_hard_one() {
+    let home = fake_home("nofile");
+    let log = fs::File::create(home.join("daemon.log")).unwrap();
+    // Lanzado con el límite blando de 1024 (o menos) que da systemd por omisión.
+    let mut cmd = Command::new("sh");
+    cmd.args(["-c", r#"ulimit -Sn 256 && exec "$0" broker"#, BIN])
+        .env("HOME", &home)
+        .env("XDG_RUNTIME_DIR", home.join("run"))
+        .stdout(Stdio::null())
+        .stderr(log);
+    support::assert_isolated(&cmd);
+    let d = Daemon {
+        child: cmd.spawn().unwrap(),
+        home: home.clone(),
+    };
+    assert!(until(|| d.socket().exists()), "{}", d.log());
+    let (soft, hard) = nofile(d.child.id());
+    assert_eq!(soft, hard, "el daemon sube el límite blando al duro: {}", d.log());
+}

@@ -31,6 +31,7 @@ const SHUTDOWN_TIMEOUT: Duration = Duration::from_secs(8);
 pub async fn run(home: &Path, catalog: &Path) -> Result<()> {
     let mut term = signal(SignalKind::terminate()).map_err(|_| "Señales no disponibles")?;
     let mut int = signal(SignalKind::interrupt()).map_err(|_| "Señales no disponibles")?;
+    raise_fd_limit();
     let path = socket_path();
     let (_lock, listener) = bind(&path)?;
     let idle = std::env::var("COMANDOS_BROKER_IDLE_SECS")
@@ -76,6 +77,27 @@ pub async fn run(home: &Path, catalog: &Path) -> Result<()> {
     }
     eprintln!("broker: parado");
     Ok(())
+}
+
+/// Por debajo de esto el daemon avisa: cada sesión ocupa un socket y cada upstream tres
+/// tuberías, así que 1024 (el blando por omisión) se agota con unas 300 sesiones.
+const FD_WARN: u64 = 4096;
+
+/// Sube el límite blando de descriptores al duro (la unidad pone `LimitNOFILE=65536`). Si
+/// no se puede y queda bajo [`FD_WARN`], lo deja escrito en el registro.
+fn raise_fd_limit() {
+    use nix::sys::resource::{Resource, getrlimit, setrlimit};
+    let Ok((soft, hard)) = getrlimit(Resource::RLIMIT_NOFILE) else {
+        return;
+    };
+    let soft = if soft < hard && setrlimit(Resource::RLIMIT_NOFILE, hard, hard).is_ok() {
+        hard
+    } else {
+        soft
+    };
+    if soft < FD_WARN {
+        eprintln!("broker: aviso: solo {soft} descriptores abiertos permitidos (duro {hard})");
+    }
 }
 
 /// Candado de instancia única + socket. Con el candado tomado, un socket existente es de

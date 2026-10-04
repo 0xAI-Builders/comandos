@@ -111,6 +111,9 @@ deben acabar en el journal del daemon.
 - Un cliente con 1024 líneas sin leer se desconecta.
 - El actor procesa como mucho 64 líneas del upstream seguidas antes de atender altas, bajas y
   líneas de clientes.
+- Descriptores: la unidad fija `LimitNOFILE=65536` y el daemon, al arrancar, sube su límite
+  blando al duro (`setrlimit` vía `nix`, sin `unsafe`). Si aun así queda por debajo de 4096,
+  escribe un aviso en el registro.
 - Cierre de un upstream: SIGTERM al grupo de procesos, 5 s, SIGKILL; después, SIGKILL al grupo
   otra vez para los nietos. `kill_on_drop` solo cubre al líder.
 
@@ -134,6 +137,7 @@ deben acabar en el journal del daemon.
 - SIGTERM al daemon cierra los upstreams, borra el socket y sale con 0.
 - Respuesta de 20 MiB: llega íntegra. Respuesta de 300 MiB a un cliente: ese cliente recibe
   -32603 con su id, el otro cliente sigue con el mismo upstream y nada le llega.
+- Daemon lanzado con `ulimit -Sn 256`: su límite blando acaba igual al duro.
 - El marcador que el upstream escribe en stderr no aparece en el registro del daemon.
 - Inactividad de 1 s cierra el upstream sin clientes.
 - Un segundo daemon con el primero vivo sale con error y el primero sigue sirviendo.
