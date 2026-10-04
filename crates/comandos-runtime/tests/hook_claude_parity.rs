@@ -18,6 +18,7 @@ const BASE_CONF: &str =
     "VOLUME=12\nCC_LANG=es\nTELEGRAM_ENABLED=0\nSPEAK_ATTENTION=0\nSPEAK_DONE=0\n";
 const NO_INTAKE: &[(&str, &str)] = &[("COMANDOS_STATE_DB", "/dev/null/sin-registro.sqlite3")];
 const PANE_KEY: &str = "proyecto-prueba--fake-sess--7";
+const GROK_P2: &str = r#"{"event":"UserPromptSubmit","sessionId":"g-s1","promptId":"p-2"}"#;
 
 fn root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..")
@@ -54,6 +55,8 @@ struct Scenario {
     seed: Option<(i64, &'static str, &'static str)>,
     piper_model: bool,
     curl_fails: bool,
+    /// Contenido previo de `.<clave>.grok` (el evento Grok vigente del pane).
+    grok_current: Option<&'static str>,
 }
 
 fn scenarios() -> Vec<Scenario> {
@@ -195,6 +198,84 @@ fn scenarios() -> Vec<Scenario> {
             conf: "NOTIFY_ON_DONE=0\n",
             ..Default::default()
         },
+        // Grok: `cc-notify.sh` es el camino vivo (normaliza con `grok-hooks.py`,
+        // registra el evento vigente con `--accept` y tiene ramas propias).
+        Scenario {
+            name: "grok_prompt",
+            payload: Some("grok_prompt"),
+            tmux: true,
+            seed: Some((30, "done", "respuesta **anterior**")),
+            ..Default::default()
+        },
+        Scenario {
+            name: "grok_stop",
+            payload: Some("grok_stop"),
+            tmux: true,
+            env: usage,
+            seed: Some((5, "working", "")),
+            grok_current: Some(GROK_P2),
+            ..Default::default()
+        },
+        // Un `Stop` tardío del prompt anterior no pisa el `working` vigente.
+        Scenario {
+            name: "grok_stop_late",
+            payload: Some("grok_stop_late"),
+            tmux: true,
+            seed: Some((5, "working", "")),
+            grok_current: Some(GROK_P2),
+            ..Default::default()
+        },
+        Scenario {
+            name: "grok_idle",
+            payload: Some("grok_idle"),
+            seed: Some((30, "done", "detalle previo")),
+            grok_current: Some(GROK_P2),
+            ..Default::default()
+        },
+        Scenario {
+            name: "grok_cancelled",
+            payload: Some("grok_cancelled"),
+            tmux: true,
+            seed: Some((5, "working", "")),
+            grok_current: Some(GROK_P2),
+            ..Default::default()
+        },
+        Scenario {
+            name: "grok_error",
+            payload: Some("grok_error"),
+            env: NO_INTAKE,
+            seed: Some((5, "working", "")),
+            ..Default::default()
+        },
+        Scenario {
+            name: "grok_error_empty",
+            payload: Some("grok_error_empty"),
+            conf: "CC_LANG=en\nSPEAK_DONE=1\n",
+            env: &[
+                ("COMANDOS_STATE_DB", "/dev/null/sin-registro.sqlite3"),
+                ("LAST", "ultima del entorno"),
+            ],
+            ..Default::default()
+        },
+        Scenario {
+            name: "grok_permission",
+            payload: Some("grok_permission"),
+            tmux: true,
+            ..Default::default()
+        },
+        Scenario {
+            name: "grok_session_end",
+            payload: Some("grok_session_end"),
+            tmux: true,
+            seed: Some((9, "done", "fin")),
+            grok_current: Some(GROK_P2),
+            ..Default::default()
+        },
+        Scenario {
+            name: "grok_subagent",
+            payload: Some("grok_subagent"),
+            ..Default::default()
+        },
         Scenario {
             name: "silent_agent",
             payload: Some("stop"),
@@ -225,7 +306,7 @@ fn prepare_home(dir: &Path, s: &Scenario, side: &str, seed_now: i64) -> PathBuf 
         .unwrap();
         fs::write(
             home.join(format!(".claude/hooks/state/.{key}.grok")),
-            "{}\n",
+            s.grok_current.unwrap_or("{}\n"),
         )
         .unwrap();
     }

@@ -130,6 +130,20 @@ pub fn previous_answer(path: &Path) -> Vec<u8> {
     read(path).and_then(|s| run(&s).ok()).unwrap_or_default()
 }
 
+/// `jq -r '.detail // .last // ""'` (lo que conserva un `GrokIdle`). `//` de jq
+/// se traga el error de un estado que no es objeto: entonces sale vacío.
+pub fn detail_or_last(path: &Path) -> Vec<u8> {
+    let empty = Value::String(String::new());
+    match read(path) {
+        Some(state @ Value::Object(_)) => {
+            let detail = field(&state, "detail").unwrap_or(&Value::Null);
+            let last = field(&state, "last").unwrap_or(&Value::Null);
+            jq_r(alt(alt(detail, last), &empty))
+        }
+        _ => Vec::new(),
+    }
+}
+
 /// `jq -r '[.status,(.ts|tostring)]|join(" ")'` partido como `${prev%% *}` y
 /// `${prev##* }`.
 pub fn previous_status(path: &Path) -> (String, String) {

@@ -8,6 +8,7 @@ use super::py;
 use serde_json::{Map, Value};
 use std::io::{Read, Seek, SeekFrom, Write};
 use std::os::unix::fs::OpenOptionsExt;
+use std::path::Path;
 
 pub const REJECTED_EXIT: i32 = 3;
 
@@ -188,7 +189,7 @@ pub fn should_accept(current: Option<&Value>, candidate: &Value) -> Result<bool,
 }
 
 /// `accept_and_record`: los fallos de E/S dejan pasar el evento.
-pub fn accept_and_record(path: &str, candidate: &Value) -> Result<bool, Unhashable> {
+pub fn accept_and_record(path: &Path, candidate: &Value) -> Result<bool, Unhashable> {
     let Ok(mut file) = std::fs::OpenOptions::new()
         .read(true)
         .write(true)
@@ -212,7 +213,7 @@ pub fn accept_and_record(path: &str, candidate: &Value) -> Result<bool, Unhashab
     let current = if raw.trim().is_empty() {
         None
     } else {
-        serde_json::from_str::<Value>(&raw).ok()
+        py::json_load(raw.as_bytes())
     };
     if !should_accept(current.as_ref(), candidate)? {
         return Ok(false);
@@ -245,7 +246,7 @@ pub fn run(args: &[String]) -> i32 {
         let Some(candidate) = payload.filter(Value::is_object) else {
             return 0;
         };
-        return match accept_and_record(&args[1], &candidate) {
+        return match accept_and_record(Path::new(&args[1]), &candidate) {
             Ok(true) => 0,
             Ok(false) => REJECTED_EXIT,
             Err(Unhashable) => crash(),

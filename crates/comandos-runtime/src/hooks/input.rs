@@ -38,6 +38,13 @@ pub struct Input {
     pub request_id: Vec<u8>,
     pub notification_type: Vec<u8>,
     pub hook_event_arg: Vec<u8>,
+    /// Evento de Grok ya normalizado (`grok-hooks.py`): lo que se registra con
+    /// `--accept` en `.<clave>.grok`.
+    pub grok: Option<Value>,
+    /// `export COMANDOS_USAGE_MODEL`/`…_REASONING_EFFORT` del camino de Grok: pisan
+    /// las del entorno en la contabilidad de uso.
+    pub usage_model: Option<String>,
+    pub usage_effort: Option<String>,
 }
 
 pub fn adapter_input(args: &[String]) -> Input {
@@ -82,7 +89,54 @@ pub fn adapter_input(args: &[String]) -> Input {
     input
 }
 
-/// `None`: no hay nada que hacer (JSON inválido, no objeto o evento de Grok).
+/// El camino de Grok (`has("hookEventName")`): `grok-hooks.py` normaliza el
+/// payload y su `status` elige el evento; lo demás sale `exit 0` (`None`).
+fn grok_input(payload: &Value) -> Option<Input> {
+    // `python3 grok-hooks.py 2>/dev/null || true`: un `TypeError` deja la salida vacía.
+    let normalized = super::grok::normalize(payload).ok().flatten()?;
+    let text = |key: &str| {
+        normalized
+            .get(key)
+            .and_then(Value::as_str)
+            .unwrap_or_default()
+            .to_string()
+    };
+    let event: &[u8] = match text("status").as_str() {
+        "working" => b"UserPromptSubmit",
+        "done" => b"Stop",
+        "waiting" => b"Notification",
+        "error" => b"GrokError",
+        "idle" => b"GrokIdle",
+        "end" => b"SessionEnd",
+        _ => return None,
+    };
+    let cwd = jq_r(alt(
+        field(payload, "cwd").unwrap_or(&Value::Null),
+        &Value::String(String::new()),
+    ));
+    let bytes = |key: &str| strip_nl(text(key).as_bytes()).to_vec();
+    Some(Input {
+        agent: b"grok".to_vec(),
+        event: event.to_vec(),
+        cwd,
+        msg: bytes("detail"),
+        prompt_id: bytes("promptId"),
+        agent_session_id: bytes("sessionId"),
+        // Grok normaliza la cancelación a `idle`: el evento N1 la conserva.
+        hook_event_arg: if text("event") == "StopCancelled" {
+            b"GrokCancelled".to_vec()
+        } else {
+            Vec::new()
+        },
+        usage_model: Some(String::from_utf8_lossy(&bytes("model")).into_owned()),
+        usage_effort: Some(String::from_utf8_lossy(&bytes("effort")).into_owned()),
+        grok: Some(Value::Object(normalized)),
+        ..Input::default()
+    })
+}
+
+/// `None`: no hay nada que hacer (JSON inválido, no objeto o evento de Grok que no
+/// se reenvía).
 pub fn stdin_input() -> Option<Input> {
     let mut raw = Vec::new();
     std::io::stdin().read_to_end(&mut raw).ok()?;
@@ -93,8 +147,7 @@ pub fn stdin_input() -> Option<Input> {
         return None;
     }
     if payload.get("hookEventName").is_some() {
-        eprintln!("hook claude: los eventos de Grok aún no están migrados (Tarea 11)");
-        return None;
+        return grok_input(&payload);
     }
     let empty = Value::String(String::new());
     let get = |keys: &[&str], default: &Value| -> Vec<u8> {

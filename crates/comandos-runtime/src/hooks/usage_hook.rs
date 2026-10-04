@@ -15,6 +15,9 @@ pub struct Identity {
     pub agent_session_id: String,
     pub now: i64,
     pub now_ms: i64,
+    /// Modelo y esfuerzo que el hook exporta (Grok); `None` = los del entorno.
+    pub model: Option<String>,
+    pub effort: Option<String>,
 }
 
 /// `usage_num`: el valor de la variable si solo tiene dígitos y puntos; si no, `0`.
@@ -87,10 +90,21 @@ pub fn capture_payload(id: &Identity, status: &str) -> Option<Value> {
         ("tmux_pane", json!(id.pane)),
         ("pane_pwd", json!(id.cwd)),
         ("git_root", json!(id.cwd)),
-        ("model", json!(env("COMANDOS_USAGE_MODEL"))),
+        (
+            "model",
+            json!(
+                id.model
+                    .clone()
+                    .unwrap_or_else(|| env("COMANDOS_USAGE_MODEL"))
+            ),
+        ),
         (
             "reasoning_effort",
-            json!(env("COMANDOS_USAGE_REASONING_EFFORT")),
+            json!(
+                id.effort
+                    .clone()
+                    .unwrap_or_else(|| env("COMANDOS_USAGE_REASONING_EFFORT"))
+            ),
         ),
         ("input_tokens", parsed[0].clone()),
         ("output_tokens", parsed[1].clone()),

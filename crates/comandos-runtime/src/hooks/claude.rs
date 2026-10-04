@@ -52,6 +52,8 @@ impl Hook {
             agent_session_id: s(&self.input.agent_session_id),
             now: self.now,
             now_ms: self.now_ms,
+            model: self.input.usage_model.clone(),
+            effort: self.input.usage_effort.clone(),
         }
     }
 
@@ -163,6 +165,20 @@ pub fn run(args: &[String]) -> i32 {
         pane_pid,
         state_key,
     } = place;
+    // Evento Grok vigente del pane (solo IDs de correlación): un `Stop` tardío del
+    // prompt A no puede pisar el `working` del prompt B.
+    let mut grok_name = b".".to_vec();
+    grok_name.extend_from_slice(&state_key);
+    grok_name.extend_from_slice(b".grok");
+    let grok_current = state_dir.join(OsStr::from_bytes(&grok_name));
+    if let Some(normalized) = &input.grok
+        && matches!(
+            super::grok::accept_and_record(&grok_current, normalized),
+            Ok(false)
+        )
+    {
+        return 0;
+    }
     let mut file_name = state_key.clone();
     file_name.extend_from_slice(b".json");
     let mut hook = Hook {
@@ -209,6 +225,15 @@ fn dispatch(h: &mut Hook) {
             let last = state_file::previous_answer(&h.state_file);
             h.write_state("working", b"", b"", &last);
             h.event_v2(&name, b"");
+            return;
+        }
+        b"GrokIdle" => {
+            let last = state_file::detail_or_last(&h.state_file);
+            let msg = h.input.msg.clone();
+            h.write_state("idle", &msg, b"", &last);
+            if h.input.hook_event_arg == b"GrokCancelled" {
+                h.event_v2(&name, &msg);
+            }
             return;
         }
         b"SessionEnd" => {
@@ -281,6 +306,25 @@ fn dispatch(h: &mut Hook) {
             }
             (body, full, options, sound, kind) =
                 (b, f, opts, h.conf.sound_attention.clone(), "waiting");
+        }
+        b"GrokError" => {
+            title = joined(&["🔴 [".as_bytes(), &h.proj, b"] ", &name, b" error"]);
+            let b = if h.input.msg.is_empty() {
+                b"Error del motor".to_vec()
+            } else {
+                h.input.msg.clone()
+            };
+            h.write_state("error", &cut(&b, 60000), b"", &last);
+            h.event_v2(&joined(&[&name, b" error"]), &b);
+            // `urgency=critical` del bash no viaja en ningún payload; el `kind`
+            // sigue siendo `done` (solo `Notification` es `waiting`).
+            (body, full, options, sound, kind) = (
+                b.clone(),
+                b,
+                Vec::new(),
+                h.conf.sound_attention.clone(),
+                "done",
+            );
         }
         _ => {
             title = joined(&[
