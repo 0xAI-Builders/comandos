@@ -16,6 +16,8 @@ use std::{
 const BIN: &str = env!("CARGO_BIN_EXE_comandos-extensions");
 const FAKE: &str = env!("CARGO_BIN_EXE_fake_mcp_stdio");
 const WAIT: Duration = Duration::from_secs(5);
+/// Aviso del respaldo al proxy directo; solo con `COMANDOS_DEBUG=1` (por omisión, silencio
+/// como el Python).
 const FALLBACK: &str = "broker no disponible, proxy directo\n";
 const INIT: &str = r#"{"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}"#;
 
@@ -366,11 +368,7 @@ fn upstream_dying_at_start_falls_back_and_cools_down() {
     let mut daemon = Daemon::start(&home, "600");
     for round in 1..=2 {
         let out = serve_once(&home, "muere", "");
-        assert_eq!(
-            String::from_utf8_lossy(&out.stderr),
-            FALLBACK,
-            "ronda {round}"
-        );
+        assert_eq!(String::from_utf8_lossy(&out.stderr), "", "ronda {round}");
         assert_eq!(
             out.status.code(),
             Some(3),
@@ -389,15 +387,27 @@ fn upstream_dying_at_start_falls_back_and_cools_down() {
 }
 
 #[test]
-fn socket_of_dead_daemon_falls_back_with_one_line() {
+fn socket_of_dead_daemon_falls_back_silently() {
     let home = fake_home("dead");
     let mut daemon = Daemon::start(&home, "600");
     daemon.child.kill().unwrap();
     daemon.child.wait().unwrap();
     let out = serve_once(&home, "eco", INIT);
-    assert_eq!(String::from_utf8_lossy(&out.stderr), FALLBACK);
+    assert_eq!(
+        String::from_utf8_lossy(&out.stderr),
+        "",
+        "silencio por omisión"
+    );
     let reply: Value = serde_json::from_slice(&out.stdout).unwrap();
     assert_eq!(reply["id"], 1, "respondió el proxy directo");
+    let mut c = command(&home, &["serve", "eco"]);
+    c.env("COMANDOS_DEBUG", "1").stdin(Stdio::null());
+    let out = c.output().unwrap();
+    assert_eq!(
+        String::from_utf8_lossy(&out.stderr),
+        FALLBACK,
+        "con COMANDOS_DEBUG=1"
+    );
 }
 
 #[test]
@@ -415,7 +425,7 @@ fn hung_upstream_times_out_without_blocking_other_servers() {
         "otro servidor no espera"
     );
     let out = hung.join().unwrap();
-    assert_eq!(String::from_utf8_lossy(&out.stderr), FALLBACK);
+    assert_eq!(String::from_utf8_lossy(&out.stderr), "");
     a.close();
     assert!(daemon.stop().success());
 }

@@ -124,8 +124,8 @@ pub(crate) fn server_spec(path: &std::path::Path, name: &str) -> Result<Value> {
         .map(Value::take)
         .ok_or_else(|| format!("Server unavailable: {name}"))
 }
-/// Sesión como cliente fino del broker. `None` ⇒ proxy directo. Sin socket (broker no
-/// instalado) se calla, para no ensuciar el stderr de la sesión.
+/// Sesión como cliente fino del broker. `None` ⇒ proxy directo, en silencio como el Python
+/// (que no tiene broker): el aviso solo sale con `COMANDOS_DEBUG=1`.
 fn broker_session(name: &str, spec: &Value, catalog: &std::path::Path) -> Option<i32> {
     use crate::broker::{attach_request, client, socket_path};
     let socket = socket_path();
@@ -147,7 +147,9 @@ fn broker_session(name: &str, spec: &Value, catalog: &std::path::Path) -> Option
     match relayed {
         Ok(code) => Some(code),
         Err(_) => {
-            eprintln!("broker no disponible, proxy directo");
+            if std::env::var_os("COMANDOS_DEBUG").is_some_and(|v| v == "1") {
+                eprintln!("broker no disponible, proxy directo");
+            }
             None
         }
     }

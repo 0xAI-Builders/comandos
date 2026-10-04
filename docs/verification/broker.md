@@ -7,8 +7,8 @@ Fecha: 2026-10-04 (ronda de correcciones 1). Prueba:
 
 Un daemon por usuario escucha en `$XDG_RUNTIME_DIR/comandos/broker.sock` (sin esa variable,
 `/tmp/comandos-<uid>/broker.sock`). Cada sesión que corre `comandos ext serve <nombre>` para
-un servidor stdio compartible se conecta y envía una línea `attach`. Tras `{"ok":true}`, copia
-bytes entre su stdin/stdout y el socket. El daemon reparte las líneas JSON-RPC con el `Mux`
+un servidor stdio compartible se conecta y envía una línea `attach`. Tras `{"ok":true}`, reenvía
+líneas entre su stdin/stdout y el socket. El daemon reparte las líneas JSON-RPC con el `Mux`
 (ids traducidos, `initialize` cacheado, cancelaciones al desconectar).
 
 ## Protocolo de `attach`
@@ -101,8 +101,8 @@ deben acabar en el journal del daemon.
 
 - Sin socket: proxy directo y stderr vacío (broker no instalado).
 - Con socket y cualquier error de `attach` (conexión rechazada, daemon muerto, error del
-  daemon, plazo vencido): una línea `broker no disponible, proxy directo` en stderr y proxy
-  directo.
+  daemon, plazo vencido): proxy directo, en silencio como el Python. Con `COMANDOS_DEBUG=1`, una
+  línea `broker no disponible, proxy directo` en stderr.
 - Si el broker cierra antes de que la sesión haya leído un byte de stdin (y sin haber escrito
   nada en stdout), también se vuelve al proxy directo.
 - Al cerrar stdin, la sesión cierra su mitad de escritura y sale cuando el broker cierra o a
@@ -158,7 +158,8 @@ broker).
 - Distinto `cwd` ⇒ distinto upstream; mismo `cwd` y `env` ⇒ el mismo.
 - Mismo nombre con otros `args` en el catálogo ⇒ distinto upstream; añadir `"shared": true` no.
 - Sin daemon, proxy directo con stderr vacío.
-- Socket presente con el daemon muerto: una línea en stderr y proxy directo.
+- Socket presente con el daemon muerto: proxy directo con stderr vacío; con `COMANDOS_DEBUG=1`,
+  una línea en stderr.
 - Upstream que muere al arrancar: error, proxy directo, y el segundo `attach` dentro de los
   30 s recibe el error sin relanzar (un solo `spawn` en el registro).
 - Upstream colgado: el `attach` vence a los 5 s y cae al proxy directo; otro servidor responde
