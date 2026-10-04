@@ -63,6 +63,7 @@ se sustituyeron por envoltorios `exec` de dos líneas (los originales siguen en 
 Activado a las 05:13 y desactivado a las 05:20 por el controlador: el broker contestaba a todos los
 clientes la versión de protocolo de su `initialize` interno (`2025-06-18`) y Claude Code 2.1.289 sondea
 con `2025-11-25`, lo que lo hacía reconectar «pinned legacy». Los `serve` vuelven solos al proxy directo
-cuando no hay broker. Se reactiva cuando la Task 12b (negociación por cliente) esté verificada.
+cuando no hay broker. Reactivado a las 05:31, tras verificar la Task 12b (negociación por cliente);
+ver `cutover-broker.md`.
 En los 7 minutos activos: 14 upstreams compartidos arrancaron con el PATH del cliente (npx, uvx, ssh),
 cgroup 622 MiB, daemon 3 MiB.
