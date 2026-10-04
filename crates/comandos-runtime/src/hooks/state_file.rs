@@ -1,0 +1,145 @@
+//! `~/.claude/hooks/state/<clave>.json`: escritura atómica (temporal en el mismo
+//! directorio + `rename`, como `mktemp` + `mv` del bash) y las dos lecturas jq que
+//! el hook hace del estado anterior.
+use super::jq::{J, jq_join, jq_pretty, jq_r, jq_tostring};
+use super::text::jq_lossy;
+use super::transcript::{alt, field};
+use serde_json::Value;
+use std::fs::{self, OpenOptions};
+use std::io::Write;
+use std::os::unix::ffi::OsStrExt;
+use std::os::unix::fs::{OpenOptionsExt, PermissionsExt};
+use std::path::{Path, PathBuf};
+
+/// Los campos que `write_state` pasa a jq.
+pub struct State<'a> {
+    pub project: &'a [u8],
+    pub status: &'a str,
+    pub detail: &'a [u8],
+    pub cwd: &'a [u8],
+    pub ts: i64,
+    pub options: &'a [u8],
+    pub last: &'a [u8],
+    pub agent: &'a [u8],
+    pub session: &'a [u8],
+    pub pane: &'a str,
+}
+
+/// El JSON exacto que deja `jq -n` (indentado, `\n` final).
+pub fn render(state: &State) -> String {
+    let texts = [
+        state.project,
+        state.detail,
+        state.cwd,
+        state.options,
+        state.last,
+        state.agent,
+        state.session,
+    ]
+    .map(jq_lossy);
+    let mut fields = vec![
+        ("project", J::S(&texts[0])),
+        ("status", J::S(state.status)),
+        ("detail", J::S(&texts[1])),
+        ("cwd", J::S(&texts[2])),
+        ("ts", J::I(state.ts)),
+        ("options", J::S(&texts[3])),
+        ("last", J::S(&texts[4])),
+        ("agent", J::S(&texts[5])),
+        ("session", J::S(&texts[6])),
+    ];
+    if !state.pane.is_empty() {
+        fields.push(("pane", J::S(state.pane)));
+    }
+    jq_pretty(&fields)
+}
+
+/// `mktemp DIR/PREFIJO` + `width` caracteres aleatorios + sufijo: archivo nuevo con modo 0600.
+pub fn mktemp(
+    dir: &Path,
+    prefix: &[u8],
+    width: usize,
+    suffix: &str,
+) -> Option<(PathBuf, fs::File)> {
+    const ALPHABET: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
+    for _ in 0..100 {
+        let mut random = [0u8; 10];
+        getrandom::fill(&mut random).ok()?;
+        let mut name = prefix.to_vec();
+        name.extend(
+            random[..width]
+                .iter()
+                .map(|b| ALPHABET[usize::from(*b) % ALPHABET.len()]),
+        );
+        name.extend_from_slice(suffix.as_bytes());
+        let path = dir.join(std::ffi::OsStr::from_bytes(&name));
+        match OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .mode(0o600)
+            .open(&path)
+        {
+            Ok(file) => return Some((path, file)),
+            Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => continue,
+            Err(_) => return None,
+        }
+    }
+    None
+}
+
+/// Escribe el estado; `false` si no se pudo crear el temporal (el bash entonces
+/// abandona `write_state` entero: ni timeline ni contabilidad de uso).
+pub fn write(dir: &Path, key: &[u8], target: &Path, state: &State) -> bool {
+    let mut prefix = b".".to_vec();
+    prefix.extend_from_slice(key);
+    prefix.push(b'.');
+    let Some((tmp, mut file)) = mktemp(dir, &prefix, 6, "") else {
+        return false;
+    };
+    let written = file.write_all(render(state).as_bytes()).is_ok();
+    drop(file);
+    if written {
+        let _ = fs::set_permissions(&tmp, fs::Permissions::from_mode(0o644));
+        if fs::rename(&tmp, target).is_err() {
+            let _ = fs::remove_file(&tmp);
+        }
+    } else {
+        let _ = fs::remove_file(&tmp);
+    }
+    true
+}
+
+fn read(path: &Path) -> Option<Value> {
+    serde_json::from_str(&jq_lossy(&fs::read(path).ok()?)).ok()
+}
+
+/// `jq -r 'if ((.status=="done" or .status=="waiting") and ((.detail//"")!=""))
+/// then .detail else (.last//"") end'`.
+pub fn previous_answer(path: &Path) -> Vec<u8> {
+    let run = |state: &Value| -> Result<Vec<u8>, ()> {
+        let status = field(state, "status")?.as_str();
+        let detail = field(state, "detail")?;
+        let empty = Value::String(String::new());
+        let finished = matches!(status, Some("done" | "waiting"));
+        if finished && alt(detail, &empty) != &empty {
+            Ok(jq_r(detail))
+        } else {
+            Ok(jq_r(alt(field(state, "last")?, &empty)))
+        }
+    };
+    read(path).and_then(|s| run(&s).ok()).unwrap_or_default()
+}
+
+/// `jq -r '[.status,(.ts|tostring)]|join(" ")'` partido como `${prev%% *}` y
+/// `${prev##* }`.
+pub fn previous_status(path: &Path) -> (String, String) {
+    let run = |state: &Value| -> Result<String, ()> {
+        let ts = Value::String(jq_tostring(field(state, "ts")?));
+        Ok(jq_join([field(state, "status")?, &ts], " "))
+    };
+    let prev = read(path).and_then(|s| run(&s).ok()).unwrap_or_default();
+    let prev = String::from_utf8_lossy(super::text::strip_nl(prev.as_bytes())).into_owned();
+    let first = prev.split(' ').next().unwrap_or("").to_owned();
+    let last = prev.rsplit(' ').next().unwrap_or("").to_owned();
+    (first, last)
+}

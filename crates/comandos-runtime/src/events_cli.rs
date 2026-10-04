@@ -59,15 +59,7 @@ fn run_inner(args: &[String]) -> Result<i32> {
     } else {
         Value::Null
     };
-    let override_path = std::env::var_os("COMANDOS_STATE_DB").map(PathBuf::from);
-    let xdg = std::env::var_os("XDG_STATE_HOME").map(PathBuf::from);
-    let home = std::env::var_os("HOME").map(PathBuf::from);
-    let path = state_path(
-        explicit.as_deref(),
-        override_path.as_deref(),
-        xdg.as_deref(),
-        home.as_deref(),
-    )?;
+    let path = resolve_path(explicit.as_deref())?;
     if args[0] == "migrate" {
         let conn = state::connect(&path)?;
         let result = state::migrate(&conn, state::MIGRATIONS, now_ms()? as f64 / 1000.0)?;
@@ -95,13 +87,49 @@ fn run_inner(args: &[String]) -> Result<i32> {
         }
         return Ok(1);
     }
+    if record_on(&conn, &payload, args.get(2).map(String::as_str))? {
+        println!("play");
+    }
+    Ok(0)
+}
+
+fn resolve_path(explicit: Option<&std::path::Path>) -> Result<PathBuf> {
+    let override_path = std::env::var_os("COMANDOS_STATE_DB").map(PathBuf::from);
+    let xdg = std::env::var_os("XDG_STATE_HOME").map(PathBuf::from);
+    let home = std::env::var_os("HOME").map(PathBuf::from);
+    state_path(
+        explicit,
+        override_path.as_deref(),
+        xdg.as_deref(),
+        home.as_deref(),
+    )
+}
+
+/// `record [--claim-sound device]` en proceso, para los hooks: mismo estado que la
+/// CLI y `true` cuando esta máquina gana el sonido (lo que la CLI imprime como
+/// `play`). El payload debe ser un objeto.
+pub fn record_event(payload: &Value, claim_device: Option<&str>) -> Result<bool> {
+    if !payload.is_object() {
+        return Err(Error::Validation(
+            "el evento debe ser un objeto JSON".into(),
+        ));
+    }
+    let conn = open_state(&resolve_path(None)?, 1500)?;
+    record_on(&conn, payload, claim_device)
+}
+
+fn record_on(
+    conn: &rusqlite::Connection,
+    payload: &Value,
+    claim_device: Option<&str>,
+) -> Result<bool> {
     let started = payload["panePid"]
         .as_str()
         .and_then(process_start_time)
         .map(|n| n.to_string());
     let stored = intake::record(
-        &conn,
-        &payload,
+        conn,
+        payload,
         &Reception {
             now_ms: now_ms()?,
             event_id: &fresh_id("event")?,
@@ -109,13 +137,13 @@ fn run_inner(args: &[String]) -> Result<i32> {
             process_start: started.as_deref(),
         },
     )?;
-    if let (Some(event), Some(device)) = (stored, args.get(2).filter(|s| !s.is_empty()))
+    if let (Some(event), Some(device)) = (stored, claim_device.filter(|s| !s.is_empty()))
         && event["duplicate"] != true
     {
         let now = timestamp()?;
-        for device in [device.as_str(), LOCAL_SPEAKER] {
+        for device in [device, LOCAL_SPEAKER] {
             if notifications::claim_sound(
-                &conn,
+                conn,
                 event["eventId"].as_str().expect("stored event id"),
                 device,
                 now,
@@ -123,12 +151,11 @@ fn run_inner(args: &[String]) -> Result<i32> {
             )?["play"]
                 == true
             {
-                println!("play");
-                break;
+                return Ok(true);
             }
         }
     }
-    Ok(0)
+    Ok(false)
 }
 
 fn timestamp() -> Result<i64> {

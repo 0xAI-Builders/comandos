@@ -6,6 +6,7 @@ use std::path::{Path, PathBuf};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 pub mod accounts;
 pub mod events_cli;
+pub mod hooks;
 pub mod legacy;
 pub mod model_catalog;
 pub mod pane_typing;

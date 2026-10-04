@@ -15,10 +15,7 @@ fn main() {
             eprintln!("{e}");
             1
         }),
-        Command::Hook(_) => {
-            eprintln!("comandos hook: pendiente (Tarea 10)");
-            2
-        }
+        Command::Hook(args) => comandos_runtime::hooks::run(&args),
         Command::Version => {
             println!("comandos {}", env!("CARGO_PKG_VERSION"));
             0

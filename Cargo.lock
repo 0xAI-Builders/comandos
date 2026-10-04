@@ -246,14 +246,19 @@ name = "comandos-runtime"
 version = "0.1.0"
 dependencies = [
  "base64 0.22.1",
+ "bytes",
  "chrono",
  "chrono-tz",
  "comandos-core",
  "comandos-store",
  "getrandom 0.3.4",
+ "http-body-util",
+ "hyper",
+ "hyper-util",
  "rusqlite",
  "serde_json",
  "sha2",
+ "tokio",
 ]
 
 [[package]]
