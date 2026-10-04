@@ -282,6 +282,7 @@ dependencies = [
  "hyper-util",
  "rusqlite",
  "serde_json",
+ "socket2",
  "tokio",
 ]
 
