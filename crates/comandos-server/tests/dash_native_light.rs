@@ -1,0 +1,580 @@
+//! Dominio D: preferencias, pestañas y ratón de tmux respondidos por Rust.
+//! El heredado es un puerto muerto: si el frente reenviara, sería 502.
+mod support;
+
+use comandos_server::dash::native::tmux::{Program, Tmux};
+use std::{ffi::OsString, fs, time::Duration};
+use support::{
+    FakeLegacy, TestHome, dead_port, front, get, oracle::oracle, request_body, tmux_available,
+};
+
+const MONO: &str = r#"{"family": "Monospace", "label": "Monospace del sistema", "a11y": false}"#;
+
+fn new_tmux_sessions(home: &TestHome, names: &[&str]) {
+    for name in names {
+        let ok = std::process::Command::new("tmux")
+            .args(["-f", "/dev/null", "new-session", "-d", "-s", name, "cat"])
+            .env_remove("TMUX")
+            .env("TMUX_TMPDIR", home.tmux_dir())
+            .status()
+            .unwrap()
+            .success();
+        assert!(ok, "tmux new-session {name}");
+    }
+}
+
+#[tokio::test]
+async fn prefs_get_fills_defaults_after_file_keys() {
+    let home = TestHome::new("prefs-get");
+    home.write(
+        "prefs.json",
+        r#"{"theme": "dia", "favorites": ["a"], "zzz": 1}"#,
+    );
+    let front = front(&home, dead_port(), home.options()).await;
+    let wire = get(front.port, "/prefs").await;
+    assert_eq!(wire.status, 200);
+    assert_eq!(wire.header("content-type"), Some("application/json"));
+    assert_eq!(wire.header("cache-control"), Some("no-store"));
+    assert_eq!(
+        wire.text(),
+        format!(
+            r#"{{"theme": "dia", "favorites": ["a"], "zzz": 1, "font_family": "Ubuntu Sans Mono", "font_size": 13, "cursor_shape": "block", "cursor_blink": true, "terminal_padding": 8, "terminal_opacity": 100, "ligatures": true, "button_style": "sutil", "tabs_layout": "row", "fonts": [{MONO}]}}"#
+        )
+    );
+    front.stop().await;
+}
+
+#[tokio::test]
+async fn prefs_get_lists_installed_catalog_fonts() {
+    let home = TestHome::new("prefs-fonts");
+    let mut opts = home.options();
+    // printf con dos `%.0s` se traga ": family".
+    opts.fc_list = Program {
+        path: "printf".into(),
+        prefix: vec![OsString::from(
+            "Hack\\nFira Code,Fira Code Retina\\n%.0s%.0s",
+        )],
+        env: vec![],
+        env_remove: vec![],
+    };
+    let front = front(&home, dead_port(), opts).await;
+    let body = get(front.port, "/prefs").await.text();
+    assert!(
+        body.ends_with(&format!(
+            r#""fonts": [{{"family": "Fira Code", "label": "Fira Code", "a11y": false}}, {{"family": "Hack", "label": "Hack", "a11y": false}}, {MONO}]}}"#
+        )),
+        "{body}"
+    );
+    front.stop().await;
+}
+
+#[tokio::test]
+async fn prefs_set_applies_python_rules_and_writes_python_bytes() {
+    let home = TestHome::new("prefs-set");
+    home.write(
+        "prefs.json",
+        r#"{"favorites": ["b", "local", 3, "b"], "theme": "dia"}"#,
+    );
+    let front = front(&home, dead_port(), home.options()).await;
+    let body = r#"{"favorite": {"session": "s1", "enabled": true}, "nfDismiss": {"k": 0}, "nfSnooze": {"x": 5, "y": true, "z": "n"}, "font_size": 99.5, "terminal_padding": -3, "theme": "neon", "notif_pos": "tr", "font_family": "  Hack  "}"#;
+    let wire = request_body(front.port, "POST", "/prefs-set", "", body).await;
+    assert_eq!(wire.status, 200, "{}", wire.text());
+    assert_eq!(wire.text(), r#"{"ok": true, "favorites": ["b", "s1"]}"#);
+    assert_eq!(
+        fs::read_to_string(home.hooks().join("prefs.json")).unwrap(),
+        r#"{"favorites": ["b", "s1"], "theme": "neon", "font_family": "Hack", "font_size": 28, "cursor_shape": "block", "cursor_blink": true, "terminal_padding": 0, "terminal_opacity": 100, "ligatures": true, "button_style": "sutil", "tabs_layout": "row", "nfDismiss": {"k": 1}, "nfSnooze": {"x": 5.0, "y": 1.0}, "notif_pos": "tr"}"#
+    );
+    front.stop().await;
+}
+
+#[tokio::test]
+async fn prefs_set_errors_are_pythons() {
+    let home = TestHome::new("prefs-err");
+    let front = front(&home, dead_port(), home.options()).await;
+    // `ensure_ascii`: los textos con tilde viajan como `\u00e1`.
+    for (body, status, text) in [
+        (
+            r#"{"favorite": {"session": "local", "enabled": true}}"#,
+            400,
+            r#"{"error": "Favorito inv\u00e1lido"}"#,
+        ),
+        (
+            r#"{"favorite": {"session": "x", "enabled": 1}}"#,
+            400,
+            r#"{"error": "Favorito inv\u00e1lido"}"#,
+        ),
+        (
+            r#"{"font_size": NaN}"#,
+            400,
+            r#"{"error": "cannot convert float NaN to integer"}"#,
+        ),
+        (
+            r#"{"font_size": Infinity}"#,
+            500,
+            r#"{"error": "Error interno del tablero"}"#,
+        ),
+    ] {
+        let wire = request_body(front.port, "POST", "/prefs-set", "", body).await;
+        assert_eq!(
+            (wire.status, wire.text().as_str()),
+            (status, text),
+            "{body}"
+        );
+    }
+    assert!(
+        !home.hooks().join("prefs.json").exists(),
+        "ningún error escribe"
+    );
+    let many: Vec<String> = (0..200).map(|i| format!("\"f{i}\"")).collect();
+    home.write(
+        "prefs.json",
+        &format!("{{\"favorites\": [{}]}}", many.join(", ")),
+    );
+    let wire = request_body(
+        front.port,
+        "POST",
+        "/prefs-set",
+        "",
+        r#"{"favorite": {"session": "otra", "enabled": true}}"#,
+    )
+    .await;
+    assert_eq!(
+        wire.text(),
+        r#"{"error": "M\u00e1ximo de 200 favoritos alcanzado"}"#
+    );
+    front.stop().await;
+}
+
+#[tokio::test]
+async fn prefs_set_unwritable_is_503() {
+    use std::os::unix::fs::PermissionsExt;
+    let home = TestHome::new("prefs-503");
+    let front = front(&home, dead_port(), home.options()).await;
+    fs::set_permissions(home.hooks(), fs::Permissions::from_mode(0o500)).unwrap();
+    let wire = request_body(front.port, "POST", "/prefs-set", "", r#"{"theme": "neon"}"#).await;
+    fs::set_permissions(home.hooks(), fs::Permissions::from_mode(0o700)).unwrap();
+    assert_eq!(wire.status, 503);
+    assert_eq!(
+        wire.text(),
+        r#"{"error": "No se pudieron guardar las preferencias"}"#
+    );
+    front.stop().await;
+}
+
+#[tokio::test]
+async fn tabs_and_history_follow_registry_favorites_and_tmux() {
+    if !tmux_available() {
+        eprintln!("tmux no está instalado: se salta");
+        return;
+    }
+    let home = TestHome::new("tabs");
+    new_tmux_sessions(&home, &["local", "s1", "s2", "hub"]);
+    home.write(
+        "app-tabs.json",
+        r#"{"s1": "Uno", "s2": "Dos", "hub": "H", "muerta": "M"}"#,
+    );
+    home.write("prefs.json", r#"{"favorites": ["s2"]}"#);
+    home.write(
+        "app-tabs-history.json",
+        r#"[{"session": "s1"}, {"session": "vieja", "label": 5, "cwd": "rel", "ts": 12.9}, {"session": "s2x", "cwd": "/tmp", "agent": "codex", "reason": "crash", "ts": "7"}, "basura", {"session": "a b"}]"#,
+    );
+    let front = front(&home, dead_port(), home.options()).await;
+    assert_eq!(
+        get(front.port, "/tabs").await.text(),
+        r#"[{"session": "local", "label": "\u2302 local", "closable": false}, {"session": "s2", "label": "Dos"}, {"session": "s1", "label": "Uno"}]"#
+    );
+    assert_eq!(
+        get(front.port, "/tab-history").await.text(),
+        r#"[{"session": "vieja", "label": "5", "cwd": "", "agent": "claude", "ts": 12, "reason": "closed", "alive": false}, {"session": "s2x", "label": "s2x", "cwd": "/tmp", "agent": "codex", "ts": 7, "reason": "crash", "alive": false}]"#
+    );
+    front.stop().await;
+}
+
+#[tokio::test]
+async fn tab_models_and_active_tab() {
+    let home = TestHome::new("models");
+    home.write(
+        "app-tab-models.json",
+        r#"{"s1": {"panes": [{"pane": "%1"}]}, "mala": [1], "vacia": {}}"#,
+    );
+    let front = front(&home, dead_port(), home.options()).await;
+    assert_eq!(
+        get(front.port, "/tab-models?session=s1").await.text(),
+        r#"{"session": "s1", "panes": [{"pane": "%1"}]}"#
+    );
+    assert_eq!(
+        get(front.port, "/tab-models?session=vacia").await.text(),
+        r#"{"session": "vacia", "panes": []}"#
+    );
+    assert_eq!(
+        get(front.port, "/tab-models").await.text(),
+        r#"{"session": "", "panes": []}"#
+    );
+    let bad = get(front.port, "/tab-models?session=mala").await;
+    assert_eq!(
+        (bad.status, bad.text().as_str()),
+        (500, r#"{"error": "Error interno del tablero"}"#)
+    );
+    assert_eq!(get(front.port, "/active-tab").await.text(), "{}");
+    home.write("app-tab-active.json", "[1]");
+    assert_eq!(get(front.port, "/active-tab").await.status, 500);
+    if tmux_available() {
+        new_tmux_sessions(&home, &["s1"]);
+        home.write("app-tab-active.json", r#"{"session": "s1", "x": 1}"#);
+        let text = get(front.port, "/active-tab").await.text();
+        assert!(
+            text.starts_with(r#"{"session": "s1", "x": 1, "pane": "%"#),
+            "{text}"
+        );
+    }
+    front.stop().await;
+}
+
+#[tokio::test]
+async fn tmux_mouse_get_and_set() {
+    if !tmux_available() {
+        eprintln!("tmux no está instalado: se salta");
+        return;
+    }
+    let home = TestHome::new("mouse");
+    new_tmux_sessions(&home, &["s1"]);
+    let front = front(&home, dead_port(), home.options()).await;
+    assert_eq!(
+        get(front.port, "/tmux-mouse?session=s1").await.text(),
+        r#"{"mouse": "off"}"#
+    );
+    let set = request_body(
+        front.port,
+        "POST",
+        "/tmux-mouse",
+        "",
+        r#"{"session": "s1", "enabled": true}"#,
+    )
+    .await;
+    assert_eq!(set.text(), r#"{"ok": true, "mouse": "on"}"#);
+    assert_eq!(
+        get(front.port, "/tmux-mouse?session=s1").await.text(),
+        r#"{"mouse": "on"}"#
+    );
+    let none = get(front.port, "/tmux-mouse?session=nope").await;
+    assert_eq!(
+        (none.status, none.text().as_str()),
+        (404, r#"{"error": "No hay sesion tmux 'nope'"}"#)
+    );
+    let bad = get(front.port, "/tmux-mouse?session=a%20b").await;
+    assert_eq!(
+        (bad.status, bad.text().as_str()),
+        (400, r#"{"error": "Nombre de sesion invalido"}"#)
+    );
+    let typed = request_body(front.port, "POST", "/tmux-mouse", "", r#"{"session": 5}"#).await;
+    assert_eq!(typed.status, 500, "SESSION_RE.match(int) es TypeError");
+    front.stop().await;
+}
+
+#[tokio::test]
+async fn tmux_missing_messages() {
+    let home = TestHome::new("tmux-missing");
+    let mut opts = home.options();
+    opts.tmux = Tmux {
+        program: Program::named("/no-existe/tmux"),
+        timeout: Duration::from_secs(5),
+    };
+    let front = front(&home, dead_port(), opts).await;
+    let caught = get(front.port, "/tmux-mouse?session=s1").await;
+    assert_eq!(
+        (caught.status, caught.text().as_str()),
+        (
+            500,
+            r#"{"error": "[Errno 2] No such file or directory: 'tmux'"}"#
+        )
+    );
+    let uncaught = get(front.port, "/tabs").await;
+    assert_eq!(
+        (uncaught.status, uncaught.text().as_str()),
+        (500, r#"{"error": "Error interno del tablero"}"#)
+    );
+    front.stop().await;
+}
+
+#[tokio::test]
+async fn tmux_hung_times_out() {
+    let home = TestHome::new("tmux-hung");
+    let mut opts = home.options();
+    opts.tmux = Tmux {
+        program: Program {
+            path: "tail".into(),
+            prefix: vec!["-f".into(), "/dev/null".into(), "--".into()],
+            env: vec![],
+            env_remove: vec![],
+        },
+        timeout: Duration::from_millis(300),
+    };
+    let front = front(&home, dead_port(), opts).await;
+    let uncaught = get(front.port, "/tabs").await;
+    assert_eq!(uncaught.status, 504);
+    let caught = get(front.port, "/tmux-mouse?session=s1").await;
+    assert_eq!(
+        caught.text(),
+        r#"{"error": "Command '['tmux', 'has-session', '-t', '=s1']' timed out after 0.3 seconds"}"#
+    );
+    front.stop().await;
+}
+
+#[tokio::test]
+async fn exotic_inputs_decline_to_legacy() {
+    let home = TestHome::new("light-exotic");
+    let legacy = FakeLegacy::start().await;
+    home.write(
+        "app-tabs-history.json",
+        r#"[{"session": "s", "label": 1.5}]"#,
+    );
+    home.write("prefs.json", r#"{"favorites": "abc"}"#);
+    home.write("app-tab-active.json", r#"{"session": 2.5}"#);
+    let front = front(&home, legacy.port, home.options()).await;
+    for target in ["/tab-history", "/tab-models?session=%FF", "/active-tab"] {
+        assert_eq!(
+            get(front.port, target).await.text(),
+            r#"{"legacy": true}"#,
+            "{target}"
+        );
+    }
+    let wire = request_body(
+        front.port,
+        "POST",
+        "/prefs-set",
+        "",
+        r#"{"favorite": {"session": "s", "enabled": true}}"#,
+    )
+    .await;
+    assert_eq!(wire.text(), r#"{"legacy": true}"#);
+    assert_eq!(
+        fs::read_to_string(home.hooks().join("prefs.json")).unwrap(),
+        r#"{"favorites": "abc"}"#,
+        "declinar nunca escribe"
+    );
+    assert_eq!(legacy.requests().len(), 4);
+    front.stop().await;
+}
+
+#[tokio::test]
+async fn light_routes_match_python_oracle() {
+    let home = TestHome::new("light-oracle");
+    if tmux_available() {
+        new_tmux_sessions(&home, &["local", "s1"]);
+    }
+    home.write("app-tabs.json", r#"{"s1": "Uno ñ"}"#);
+    home.write("prefs.json", r#"{"favorites": ["s1"], "theme": "neon"}"#);
+    home.write(
+        "app-tab-models.json",
+        r#"{"s1": {"panes": [{"pane": "%0", "model": "ñ"}]}}"#,
+    );
+    home.write("app-tab-active.json", r#"{"session": "s1"}"#);
+    home.write(
+        "app-tabs-history.json",
+        r#"[{"session": "vieja", "ts": 3}]"#,
+    );
+    let Some(py) = oracle(&home).await else {
+        return;
+    };
+    let front = front(&home, dead_port(), oracle_options(&home)).await;
+    for target in [
+        "/prefs",
+        "/tabs",
+        "/tab-history",
+        "/tab-models?session=s1",
+        "/active-tab",
+        "/tmux-mouse?session=s1",
+        "/tmux-mouse?session=nope",
+    ] {
+        let (a, b) = (get(py.port, target).await, get(front.port, target).await);
+        assert_eq!(
+            (a.status, a.header("content-type"), a.text()),
+            (b.status, b.header("content-type"), b.text()),
+            "{target}"
+        );
+    }
+    front.stop().await;
+}
+
+/// Opciones del frente frente al oráculo: `fc-list` real con el mismo HOME
+/// que el Python (las fuentes del usuario, `~/.local/share/fonts`, dependen de él).
+fn oracle_options(home: &TestHome) -> comandos_server::dash::native::NativeOptions {
+    let mut opts = home.options();
+    opts.fc_list = Program::named("fc-list");
+    opts.fc_list
+        .env
+        .push(("HOME".into(), home.root.clone().into()));
+    opts
+}
+
+/// Status, tipo y cuerpo de una respuesta, para comparar con el oráculo.
+fn seen(wire: &support::Wire) -> (u16, Option<String>, String) {
+    (
+        wire.status,
+        wire.header("content-type").map(str::to_owned),
+        wire.text(),
+    )
+}
+
+#[tokio::test]
+async fn light_errors_and_writes_match_python_oracle() {
+    let home = TestHome::new("light-oracle-err");
+    let tmux = tmux_available();
+    if tmux {
+        new_tmux_sessions(&home, &["s1"]);
+    }
+    let Some(py) = oracle(&home).await else {
+        return;
+    };
+    let front = front(&home, dead_port(), oracle_options(&home)).await;
+    let both = |target: &'static str| async move {
+        (
+            seen(&get(py.port, target).await),
+            seen(&get(front.port, target).await),
+        )
+    };
+    // Lecturas: cada archivo en sus formas raras que el Rust sí reproduce.
+    home.write(
+        "app-tab-models.json",
+        r#"{"mala": [1], "vacia": {}, "texto": "x", "cero": 0, "nulo": null, "sin": {"panes": 0}, "ok": {"panes": [1, "ñ"]}}"#,
+    );
+    for target in [
+        "/tab-models?session=mala",
+        "/tab-models?session=vacia",
+        "/tab-models?session=texto",
+        "/tab-models?session=cero",
+        "/tab-models?session=nulo",
+        "/tab-models?session=sin",
+        "/tab-models?session=ok&session=mala",
+        "/tab-models?session=",
+        "/tab-models",
+    ] {
+        let (a, b) = both(target).await;
+        assert_eq!(a, b, "{target}");
+    }
+    for (active, target) in [
+        ("[1]", "/active-tab"),
+        ("null", "/active-tab"),
+        ("roto", "/active-tab"),
+        (r#"{"session": "a b", "z": "ñ"}"#, "/active-tab"),
+        (r#"{"session": null}"#, "/active-tab"),
+        (r#"{"session": "nope", "pane": "%9"}"#, "/active-tab"),
+        (r#"{"pane": "x", "session": "s1"}"#, "/active-tab"),
+    ] {
+        home.write("app-tab-active.json", active);
+        let (a, b) = both(target).await;
+        assert_eq!(a, b, "{active}");
+    }
+    for history in [
+        r#"[{"session": "x", "ts": "abc"}]"#,
+        r#"[{"session": "x", "ts": [1]}]"#,
+        r#"[{"session": "x", "ts": "1_000", "label": "", "agent": 0, "reason": "r"}]"#,
+        r#"[{"session": null}, {"session": true}, {"session": 7, "cwd": 5}]"#,
+        r#"{"no": "lista"}"#,
+    ] {
+        home.write("app-tabs-history.json", history);
+        let (a, b) = both("/tab-history").await;
+        assert_eq!(a, b, "{history}");
+    }
+    for prefs in [
+        r#"{"favorites": null}"#,
+        r#"{"favorites": [[1]]}"#,
+        r#"{"favorites": [1, "s1", null]}"#,
+        r#"[1]"#,
+        "roto",
+        "",
+        "\u{feff}{\"favorites\": [\"s1\"], \"theme\": \"dia\"}",
+    ] {
+        home.write("prefs.json", prefs);
+        for target in ["/tabs", "/prefs"] {
+            let (a, b) = both(target).await;
+            assert_eq!(a, b, "{prefs} {target}");
+        }
+    }
+    for target in [
+        "/tmux-mouse",
+        "/tmux-mouse?session=a%20b",
+        "/tmux-mouse?session=nope",
+        "/tmux-mouse?session=s1",
+    ] {
+        let (a, b) = both(target).await;
+        assert_eq!(a, b, "{target}");
+    }
+    // Escrituras: el mismo estado inicial para cada lado; se comparan la
+    // respuesta y los bytes que quedan en disco.
+    let prefs_path = home.hooks().join("prefs.json");
+    let initial = r#"{"favorites": ["b", "local", 3, "b"], "theme": "dia", "nfSnooze": {"q": 1}}"#;
+    for body in [
+        r#"{"favorite": {"session": "s1", "enabled": true}}"#,
+        r#"{"favorite": {"session": "b", "enabled": false}}"#,
+        r#"{"favorite": {"session": "b", "enabled": true}}"#,
+        r#"{"favorite": {"session": "", "enabled": true}}"#,
+        r#"{"favorite": {"session": "a\u0001", "enabled": true}}"#,
+        r#"{"favorite": "s1"}"#,
+        r#"{"favorite": {"session": "s1", "enabled": true}, "favorites": ["z"]}"#,
+        r#"{"favorites": ["z", "", "local", 5, "z", "y"]}"#,
+        r#"{"nfDismiss": {"a": 0, "b": null}, "nfSnooze": {"n": -0, "f": 1.5, "e": 1e400, "big": 12345678901234567890, "t": false, "s": "1"}}"#,
+        r#"{"nfSnooze": {"x": 1e999}}"#,
+        r#"{"nfSnooze": {"x": NaN}}"#,
+        r#"{"font_size": NaN}"#,
+        r#"{"font_size": Infinity}"#,
+        r#"{"font_size": true, "terminal_padding": 1e30, "terminal_opacity": -1e30}"#,
+        r#"{"font_size": 99999999999999999999999, "terminal_padding": 7.9, "terminal_opacity": "50"}"#,
+        r#"{"font_family": "   ", "theme": "x", "button_style": "pixel", "tabs_layout": "rows", "cursor_shape": "ibeam", "cursor_blink": 0, "ligatures": false, "notif_pos": "free"}"#,
+        r#"{"theme": ["neon"]}"#,
+        "{}",
+    ] {
+        let mut sides = Vec::new();
+        for port in [py.port, front.port] {
+            home.write("prefs.json", initial);
+            let wire = request_body(port, "POST", "/prefs-set", "", body).await;
+            sides.push((seen(&wire), fs::read_to_string(&prefs_path).unwrap()));
+        }
+        assert_eq!(sides[0], sides[1], "{body}");
+    }
+    let fresh = request_body(py.port, "POST", "/prefs-set", "", r#"{"theme": "neon"}"#).await;
+    assert_eq!(fresh.status, 200);
+    for body in [
+        r#"{"session": 5}"#,
+        r#"{"session": null}"#,
+        r#"{}"#,
+        r#"{"session": "a b"}"#,
+        r#"{"session": "nope"}"#,
+        r#"{"session": "s1", "enabled": false}"#,
+        r#"{"session": "s1", "enabled": null}"#,
+        r#"{"session": "s1"}"#,
+        r#"{"session": "s1", "enabled": 0}"#,
+    ] {
+        let a = seen(&request_body(py.port, "POST", "/tmux-mouse", "", body).await);
+        let b = seen(&request_body(front.port, "POST", "/tmux-mouse", "", body).await);
+        assert_eq!(a, b, "{body}");
+    }
+    front.stop().await;
+}
+
+#[tokio::test]
+async fn unsure_files_decline_to_legacy() {
+    let home = TestHome::new("light-unsure");
+    let legacy = FakeLegacy::start().await;
+    let front = front(&home, legacy.port, home.options()).await;
+    // Sustituto suelto: `json` del Python lo lee, el parser portado no.
+    home.write("app-tab-active.json", r#"{"session": "\ud800"}"#);
+    // Bytes que no son UTF-8: depende de la codificación del Python.
+    fs::write(home.hooks().join("prefs.json"), b"{\"theme\": \"\xff\"}").unwrap();
+    for target in ["/active-tab", "/prefs"] {
+        assert_eq!(
+            get(front.port, target).await.text(),
+            r#"{"legacy": true}"#,
+            "{target}"
+        );
+    }
+    let wire = request_body(front.port, "POST", "/prefs-set", "", r#"{"theme": "neon"}"#).await;
+    assert_eq!(wire.text(), r#"{"legacy": true}"#);
+    assert_eq!(
+        fs::read(home.hooks().join("prefs.json")).unwrap(),
+        b"{\"theme\": \"\xff\"}",
+        "declinar nunca escribe"
+    );
+    assert_eq!(legacy.requests().len(), 3);
+    front.stop().await;
+}

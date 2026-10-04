@@ -14,3 +14,18 @@
 {"name":"post-cuerpo-gigante-413","method":"POST","path":"/x","headers":{"Host":"127.0.0.1","Content-Type":"application/json","Content-Length":"20000001"},"body":null,"volatile":[],"expect":"same"}
 {"name":"get-origen-ajeno","method":"GET","path":"/prefs","headers":{"Host":"127.0.0.1","Origin":"http://evil.com"},"body":null,"volatile":[],"expect":"same"}
 {"name":"get-host-evil","method":"GET","path":"/state","headers":{"Host":"evil.com"},"body":null,"volatile":[],"expect":"same"}
+# --- 2b · D: lecturas ligeras y preferencias (nativas; el orden importa: los POST escriben)
+{"name":"d-prefs","method":"GET","path":"/prefs","headers":{"Host":"127.0.0.1"},"body":null,"volatile":[],"expect":"same"}
+{"name":"d-tabs","method":"GET","path":"/tabs","headers":{"Host":"127.0.0.1"},"body":null,"volatile":[],"expect":"same"}
+{"name":"d-tab-history","method":"GET","path":"/tab-history","headers":{"Host":"127.0.0.1"},"body":null,"volatile":[],"expect":"same"}
+{"name":"d-tab-models","method":"GET","path":"/tab-models?session=local","headers":{"Host":"127.0.0.1"},"body":null,"volatile":[],"expect":"same"}
+{"name":"d-tab-models-vacia","method":"GET","path":"/tab-models","headers":{"Host":"127.0.0.1"},"body":null,"volatile":[],"expect":"same"}
+{"name":"d-active-tab","method":"GET","path":"/active-tab","headers":{"Host":"127.0.0.1"},"body":null,"volatile":[],"expect":"same"}
+{"name":"d-tmux-mouse","method":"GET","path":"/tmux-mouse?session=local","headers":{"Host":"127.0.0.1"},"body":null,"volatile":[],"expect":"same"}
+{"name":"d-tmux-mouse-nadie","method":"GET","path":"/tmux-mouse?session=no-existe","headers":{"Host":"127.0.0.1"},"body":null,"volatile":[],"expect":"same"}
+{"name":"d-tmux-mouse-mala","method":"GET","path":"/tmux-mouse?session=a%20b","headers":{"Host":"127.0.0.1"},"body":null,"volatile":[],"expect":"same"}
+{"name":"d-tmux-mouse-post","method":"POST","path":"/tmux-mouse","headers":{"Host":"127.0.0.1","Content-Type":"application/json"},"body":{"session":"local","enabled":true},"volatile":[],"expect":"same"}
+{"name":"d-prefs-set-malo","method":"POST","path":"/prefs-set","headers":{"Host":"127.0.0.1","Content-Type":"application/json"},"body":{"favorite":{"session":"local","enabled":true}},"volatile":[],"expect":"same"}
+{"name":"d-prefs-set","method":"POST","path":"/prefs-set","headers":{"Host":"127.0.0.1","Content-Type":"application/json"},"body":{"theme":"neon","font_size":14.7,"nfSnooze":{"x":3}},"volatile":[],"expect":"same"}
+{"name":"d-prefs-tras-set","method":"GET","path":"/prefs","headers":{"Host":"127.0.0.1"},"body":null,"volatile":[],"expect":"same"}
+{"name":"d-prefs-remoto-sin-token","method":"GET","path":"/prefs","headers":{"Host":"x.ts.net","X-Forwarded-For":"100.64.0.9"},"body":null,"volatile":[],"expect":"same"}

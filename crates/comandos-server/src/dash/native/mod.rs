@@ -6,6 +6,7 @@
 //! certeza, el manejador devuelve `Fault::Decline` ANTES de cualquier efecto
 //! y el frente reenvía la petición original al heredado.
 pub mod files;
+pub mod light;
 pub mod py;
 pub mod query;
 pub mod state;
@@ -32,7 +33,9 @@ pub const WORKER_CAPACITY: usize = 64;
 
 /// Cada dominio añade su variante en su tarea.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum NativeRoute {}
+pub enum NativeRoute {
+    Light(light::LightRoute),
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Verb {
@@ -74,7 +77,7 @@ pub struct Entry {
 }
 
 /// Una tabla por dominio; las tareas 3–7 añaden la suya.
-const TABLES: &[&[Entry]] = &[];
+const TABLES: &[&[Entry]] = &[light::ROUTES];
 
 pub fn route(method: &Method, target: &str) -> Option<NativeRoute> {
     let verb = if *method == Method::GET {
@@ -109,6 +112,11 @@ impl From<HandlerError> for Fault {
 }
 
 pub type Answer = Result<Reply, Fault>;
+
+/// `self._json(status, value)`: cuerpo con `json.dumps` del Python.
+pub fn reply(status: http::StatusCode, value: &serde_json::Value) -> Answer {
+    Reply::json(status, value).map_err(Fault::from)
+}
 
 /// Milisegundos Unix; las pruebas lo sustituyen.
 pub type Clock = Arc<dyn Fn() -> i64 + Send + Sync>;
@@ -147,6 +155,10 @@ pub struct Native {
     refusals: AtomicUsize,
     state: OnceCell<Option<BackendCaller<StateBackend>>>,
     worker: Mutex<Option<BackendWorker<StateBackend>>>,
+    /// `_PREFS_LOCK` del Python.
+    pub(crate) prefs_lock: tokio::sync::Mutex<()>,
+    /// `_FONT_CACHE`: familias de `fc-list` y cuándo se leyeron.
+    pub(crate) fonts: Mutex<Option<(std::time::Instant, std::collections::HashSet<String>)>>,
 }
 
 impl Native {
@@ -157,6 +169,8 @@ impl Native {
             refusals: AtomicUsize::new(0),
             state: OnceCell::new(),
             worker: Mutex::new(None),
+            prefs_lock: tokio::sync::Mutex::new(()),
+            fonts: Mutex::new(None),
         }
     }
 
@@ -284,8 +298,10 @@ impl Native {
         }
     }
 
-    async fn answer(&self, route: NativeRoute, _request: &Request) -> Answer {
-        match route {}
+    async fn answer(&self, route: NativeRoute, request: &Request) -> Answer {
+        match route {
+            NativeRoute::Light(route) => light::answer(self, route, request).await,
+        }
     }
 
     /// Para el worker (si arrancó) y espera a que termine su trabajo en curso.
