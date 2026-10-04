@@ -174,10 +174,18 @@ fn malformed_input_never_panics_and_init_survives_initiator_leaving() {
     let mut m = Mux::new();
     let a = m.add_client();
     let b = m.add_client();
-    for bad in [&b"not json"[..], b"[1,2]", b"42", b"{}", b"{\"id\":1}"] {
+    for bad in [&b"[1,2]"[..], b"42", b"\"s\"", b"{}", b"{\"id\":1}"] {
         assert!(m.from_client(a, bad).is_empty());
         assert!(m.from_upstream(bad).is_empty());
     }
+    assert!(m.from_upstream(b"not json").is_empty());
+    let pe = m.from_client(a, b"not json");
+    assert!(matches!(pe.as_slice(), [Outbound::ToClient(c, _)] if *c == a));
+    let Outbound::ToClient(_, l) = &pe[0] else {
+        panic!()
+    };
+    assert_eq!(parse(l)["error"]["code"], json!(-32700));
+    assert_eq!(parse(l)["id"], Value::Null);
     let oa = m.from_client(a, &init(1));
     let _ = m.from_client(b, &init(2));
     let _ = m.remove_client(a);
@@ -203,4 +211,138 @@ fn cancelled_notification_is_translated_to_upstream_id() {
         &j(json!({"jsonrpc":"2.0","method":"notifications/cancelled","params":{"requestId":"r"}})),
     );
     assert_eq!(up_line(&c[0])["params"]["requestId"], up_id);
+    // I1: la cancelación borra el pendiente; la respuesta tardía no va a nadie
+    let late = m.from_upstream(&j(json!({"jsonrpc":"2.0","id":up_id,"result":{}})));
+    assert!(late.is_empty());
+}
+
+fn ready(m: &mut Mux, caps: Value) -> u32 {
+    let c = m.add_client();
+    let _ = m.from_client(c, &init_with_caps(1, caps));
+    if !m.upstream_initialized() {
+        let _ = m.from_upstream(&init_result(json!(1)));
+    }
+    c
+}
+
+#[test]
+fn progress_is_routed_only_to_the_owner_with_original_token() {
+    let mut m = Mux::new();
+    let a = ready(&mut m, json!({}));
+    let b = ready(&mut m, json!({}));
+    let req = |tok: &str| {
+        j(
+            json!({"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"_meta":{"progressToken":tok}}}),
+        )
+    };
+    let oa = m.from_client(a, &req("same"));
+    let ob = m.from_client(b, &req("same"));
+    let ta = up_line(&oa[0])["params"]["_meta"]["progressToken"].clone();
+    let tb = up_line(&ob[0])["params"]["_meta"]["progressToken"].clone();
+    assert_ne!(ta, tb);
+    let prog = |t: &Value| {
+        j(
+            json!({"jsonrpc":"2.0","method":"notifications/progress","params":{"progressToken":t,"progress":1}}),
+        )
+    };
+    let out = m.from_upstream(&prog(&ta));
+    assert!(
+        matches!(out.as_slice(), [Outbound::ToClient(c, l)] if *c == a && parse(l)["params"]["progressToken"] == json!("same"))
+    );
+    assert!(m.from_upstream(&prog(&json!(9999))).is_empty());
+    // al responder, el token se olvida
+    let ida = up_line(&oa[0])["id"].clone();
+    let _ = m.from_upstream(&j(json!({"jsonrpc":"2.0","id":ida,"result":{}})));
+    assert!(m.from_upstream(&prog(&ta)).is_empty());
+}
+
+#[test]
+fn init_error_reaches_all_waiters_and_retry_is_possible() {
+    let mut m = Mux::new();
+    let a = m.add_client();
+    let b = m.add_client();
+    let oa = m.from_client(a, &init(1));
+    let _ = m.from_client(b, &init(2));
+    let up = up_line(&oa[0])["id"].clone();
+    let out = m.from_upstream(&j(
+        json!({"jsonrpc":"2.0","id":up,"error":{"code":-1,"message":"boom"}}),
+    ));
+    assert_eq!(out.len(), 2);
+    assert!(
+        out.iter().all(
+            |o| matches!(o, Outbound::ToClient(_, l) if parse(l)["error"]["code"] == json!(-1))
+        )
+    );
+    assert!(!m.upstream_initialized());
+    let retry = m.from_client(a, &init(3));
+    assert!(matches!(retry.as_slice(), [Outbound::ToUpstream(_)]));
+    // respuesta sin result ni error -> -32603 sintetizado
+    let up = up_line(&retry[0])["id"].clone();
+    let out = m.from_upstream(&j(json!({"jsonrpc":"2.0","id":up})));
+    assert!(
+        matches!(out.as_slice(), [Outbound::ToClient(_, l)] if parse(l)["error"]["code"] == json!(-32603))
+    );
+}
+
+#[test]
+fn upstream_request_without_capable_client_gets_32601() {
+    let mut m = Mux::new();
+    let _ = ready(&mut m, json!({"sampling":{}}));
+    let out = m.from_upstream(&j(json!({"jsonrpc":"2.0","id":3,"method":"roots/list"})));
+    assert!(matches!(out.as_slice(), [Outbound::ToUpstream(_)]));
+    assert_eq!(up_line(&out[0])["error"]["code"], json!(-32601));
+}
+
+#[test]
+fn unknown_client_is_ignored_and_upstream_duplicate_id_is_rejected() {
+    let mut m = Mux::new();
+    assert!(m.from_client(99, &init(1)).is_empty());
+    assert!(m.remove_client(99).is_empty());
+    let _ = ready(&mut m, json!({"roots":{}}));
+    let req = j(json!({"jsonrpc":"2.0","id":"d","method":"roots/list"}));
+    assert!(matches!(
+        m.from_upstream(&req).as_slice(),
+        [Outbound::ToClient(..)]
+    ));
+    let dup = m.from_upstream(&req);
+    assert_eq!(up_line(&dup[0])["error"]["code"], json!(-32600));
+}
+
+#[test]
+fn remove_client_cancels_inflight_upstream_and_upstream_cancel_targets_owner() {
+    let mut m = Mux::new();
+    let a = ready(&mut m, json!({"roots":{}}));
+    let o = m.from_client(a, &j(json!({"jsonrpc":"2.0","id":4,"method":"tools/call"})));
+    let up = up_line(&o[0])["id"].clone();
+    let down = m.from_upstream(&j(json!({"jsonrpc":"2.0","id":"u","method":"roots/list"})));
+    let given = match &down[0] {
+        Outbound::ToClient(_, l) => parse(l)["id"].clone(),
+        _ => panic!(),
+    };
+    let c = m.from_upstream(&j(
+        json!({"jsonrpc":"2.0","method":"notifications/cancelled","params":{"requestId":"u"}}),
+    ));
+    assert!(
+        matches!(c.as_slice(), [Outbound::ToClient(cl, l)] if *cl == a && parse(l)["params"]["requestId"] == given)
+    );
+    let gone = m.remove_client(a);
+    assert_eq!(gone.len(), 1);
+    let v = up_line(&gone[0]);
+    assert_eq!(v["method"], json!("notifications/cancelled"));
+    assert_eq!(v["params"]["requestId"], up);
+}
+
+#[test]
+fn initialize_without_id_is_rejected_and_duplicate_initialize_is_not_queued_twice() {
+    let mut m = Mux::new();
+    let a = m.add_client();
+    let out = m.from_client(
+        a,
+        &j(json!({"jsonrpc":"2.0","method":"initialize","params":{}})),
+    );
+    assert!(matches!(out.as_slice(), [Outbound::ToClient(..)]));
+    let o = m.from_client(a, &init(1));
+    assert!(m.from_client(a, &init(2)).is_empty());
+    let up = up_line(&o[0])["id"].clone();
+    assert_eq!(m.from_upstream(&init_result(up)).len(), 1);
 }
