@@ -16,6 +16,8 @@ path = "src/main.rs"
 [dependencies]
 comandos-extensions = { path = "../comandos-extensions" }
 comandos-runtime = { path = "../comandos-runtime" }
+comandos-server = { path = "../comandos-server" }
+sha2.workspace = true
 
 [lints]
 workspace = true

@@ -199,6 +199,8 @@ version = "0.1.0"
 dependencies = [
  "comandos-extensions",
  "comandos-runtime",
+ "comandos-server",
+ "sha2",
 ]
 
 [[package]]
