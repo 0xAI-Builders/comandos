@@ -1,4 +1,5 @@
 pub mod auth;
+pub mod cli;
 pub mod python_json;
 use serde_json::Value;
 use std::{env, path::PathBuf, process::Command};
@@ -122,4 +123,3 @@ pub mod skills;
 pub mod check;
 
 mod check_protocol;
-

@@ -194,6 +194,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "comandos-cli"
+version = "0.1.0"
+dependencies = [
+ "comandos-extensions",
+ "comandos-runtime",
+]
+
+[[package]]
 name = "comandos-core"
 version = "0.1.0"
 dependencies = [
