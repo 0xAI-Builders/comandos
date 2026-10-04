@@ -474,6 +474,28 @@ pub fn query_token(path: &str) -> String {
     String::new()
 }
 
+/// Python URL splitting for route matching; path bytes remain percent-encoded.
+pub fn request_target_parts(target: &str) -> Option<(String, String)> {
+    split_url(target)
+        .ok()
+        .map(|parts| (parts.path, parts.query))
+}
+
+/// Python parse_qsl semantics with ordered duplicate decoded keys.
+pub fn query_pairs(query: &str, keep_blank_values: bool) -> Vec<(String, String)> {
+    query
+        .split('&')
+        .filter(|field| !field.is_empty())
+        .filter_map(|field| {
+            let (key, value) = field.split_once('=').unwrap_or((field, ""));
+            if value.is_empty() && !keep_blank_values {
+                return None;
+            }
+            Some((percent_decode(key), percent_decode(value)))
+        })
+        .collect()
+}
+
 pub fn presented_token(headers: Headers<'_>, path: &str) -> String {
     if let Some(bearer) = first_header(headers, "Authorization")
         .unwrap_or("")
