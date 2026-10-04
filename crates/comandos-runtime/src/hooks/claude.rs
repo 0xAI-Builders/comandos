@@ -11,13 +11,12 @@ use super::jq::{J, jq_compact};
 use super::notify_http::{self, Desktop, Voice};
 use super::state_file::{self, State};
 use super::text::{contains_ci, cut, head_c, jq_lossy, mdclean, strip_nl, tr};
-use super::transcript::{last_block, question, turn_text};
+use super::transcript::{TURN_LINES, last_block, question, read_tail, turn_text};
 use super::usage_hook::{self, Identity};
 use serde_json::{Value, json};
 use std::ffi::OsStr;
 use std::os::unix::ffi::OsStrExt;
 use std::path::PathBuf;
-use std::thread::JoinHandle;
 
 struct Hook {
     home: PathBuf,
@@ -35,7 +34,10 @@ struct Hook {
     state_key: Vec<u8>,
     state_file: PathBuf,
     notice_play: &'static str,
-    usage: Vec<JoinHandle<()>>,
+    /// Pasos de contabilidad para el proceso de entrega.
+    usage: Vec<Value>,
+    voice: Option<Voice>,
+    desktop: Option<Desktop>,
 }
 
 impl Hook {
@@ -59,8 +61,7 @@ impl Hook {
             .then(|| usage_hook::capture_payload(&id, status))
             .flatten();
         let life = usage_hook::lifecycle_payload(&id, status);
-        self.usage
-            .push(usage_hook::spawn(self.home.clone(), capture, life));
+        self.usage.push(usage_hook::step(capture, life));
     }
 
     /// `write_state`: estado atómico, línea de timeline y contabilidad de uso.
@@ -120,10 +121,15 @@ impl Hook {
         };
     }
 
+    /// Lanza el proceso de entrega (uso, voz, popup) y sale sin esperarlo.
     fn finish(self) -> i32 {
-        for handle in self.usage {
-            let _ = handle.join();
-        }
+        notify_http::spawn(notify_http::Job {
+            home: self.home,
+            usage: self.usage,
+            volume: self.conf.volume,
+            voice: self.voice,
+            desktop: self.desktop,
+        });
         0
     }
 }
@@ -176,6 +182,8 @@ pub fn run(args: &[String]) -> i32 {
         state_key,
         notice_play: "legacy",
         usage: Vec::new(),
+        voice: None,
+        desktop: None,
     };
     dispatch(&mut hook);
     hook.finish()
@@ -193,6 +201,8 @@ fn dispatch(h: &mut Hook) {
     let last = env_bytes("LAST");
     let transcript = path(&h.input.transcript);
     let has_transcript = !h.input.transcript.is_empty() && transcript.is_file();
+    // Una sola lectura (desde el final) del transcript por invocación.
+    let tail = || read_tail(&transcript, TURN_LINES);
     let (title, body, full, options, sound, kind);
     match event.as_slice() {
         b"UserPromptSubmit" => {
@@ -229,7 +239,8 @@ fn dispatch(h: &mut Hook) {
             let mut opts = h.input.options_arg.clone();
             let mut f = h.input.full_arg.clone();
             if has_transcript {
-                match last_block(&transcript).as_ref().and_then(question) {
+                let tail = tail();
+                match last_block(&tail).as_ref().and_then(question) {
                     Some(q) => {
                         let qtext = cut(&q.full, 260);
                         opts = q.options;
@@ -242,7 +253,7 @@ fn dispatch(h: &mut Hook) {
                         }
                     }
                     None => {
-                        let raw = turn_text(&transcript);
+                        let raw = turn_text(&tail);
                         let preview = head_c(&tr(&raw, b'\n', b' '), 260).to_vec();
                         if !preview.is_empty() {
                             b = joined(&[&b, b"\n", &preview]);
@@ -287,7 +298,7 @@ fn dispatch(h: &mut Hook) {
                 head_c(&tr(&f, b'\n', b' '), 180).to_vec()
             };
             if has_transcript {
-                let raw = turn_text(&transcript);
+                let raw = turn_text(&tail());
                 preview = head_c(&tr(&raw, b'\n', b' '), 180).to_vec();
                 if !raw.is_empty() {
                     f = cut(&raw, 60000);
@@ -311,11 +322,8 @@ fn dispatch(h: &mut Hook) {
     {
         return;
     }
-    notify_http::spawn(
-        h.conf.volume,
-        voice(h, kind, sound),
-        desktop(h, &title, &body, kind, &options, &full),
-    );
+    h.voice = voice(h, kind, sound);
+    h.desktop = desktop(h, &title, &body, kind, &options, &full);
 }
 
 /// `notify_voice` decidido aquí; lo ejecuta el proceso de entrega.

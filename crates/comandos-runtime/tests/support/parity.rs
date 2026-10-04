@@ -237,20 +237,27 @@ pub fn lines(path: &Path) -> Vec<String> {
     read_lossy(path).lines().map(String::from).collect()
 }
 
-/// Espera a que el proceso de entrega del Rust (desacoplado) termine lo que el bash
-/// hizo, y un margen para detectar efectos de más.
-pub fn settle(
-    home: &Path,
-    bodies: &crate::fake_notifyd::Bodies,
-    want_log: usize,
-    want_posts: usize,
-) {
-    let deadline = Instant::now() + Duration::from_secs(5);
-    while Instant::now() < deadline
-        && (lines(&home.join("fake.log")).len() < want_log
-            || bodies.lock().unwrap().len() < want_posts)
-    {
-        std::thread::sleep(Duration::from_millis(20));
+/// Espera, acotado, a que termine el proceso de entrega desacoplado del Rust
+/// (`hook __deliver` con este `HOME`): uso, POST y sonido ya están hechos.
+pub fn wait_for_delivery(home: &Path) {
+    let marker = format!("HOME={}\0", home.display()).into_bytes();
+    let running = || {
+        fs::read_dir("/proc").unwrap().flatten().any(|entry| {
+            let dir = entry.path();
+            let cmdline = fs::read(dir.join("cmdline")).unwrap_or_default();
+            cmdline.windows(9).any(|w| w == b"__deliver")
+                && fs::read(dir.join("environ"))
+                    .unwrap_or_default()
+                    .windows(marker.len())
+                    .any(|w| w == marker.as_slice())
+        })
+    };
+    let deadline = Instant::now() + Duration::from_secs(15);
+    while running() {
+        assert!(
+            Instant::now() < deadline,
+            "el proceso de entrega no terminó"
+        );
+        std::thread::sleep(Duration::from_millis(10));
     }
-    std::thread::sleep(Duration::from_millis(250));
 }

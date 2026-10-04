@@ -28,11 +28,23 @@ const OPEN_INTERACTION_SQL: &str = "select id,config_id from usage_interactions
 /// `connect()` en Python. La anulación por `COMANDOS_USAGE_DB` la resuelve quien
 /// llama (la CLI): esta función no lee el entorno.
 pub fn open_usage_db(home: &Path) -> Result<Connection> {
-    let path = home.join(".claude").join("hooks").join(DB_FILENAME);
-    if let Some(dir) = path.parent() {
-        std::fs::create_dir_all(dir).map_err(Error::Io)?;
+    open_usage_db_at(&home.join(".claude").join("hooks").join(DB_FILENAME))
+}
+
+/// Abre la base de uso en una ruta explícita (la de `COMANDOS_USAGE_DB`, como
+/// `usage_db_path()` de Python) con los mismos PRAGMAs. Como `os.makedirs` de
+/// `connect()`, crea el directorio padre y falla si la ruta no tiene directorio.
+pub fn open_usage_db_at(path: &Path) -> Result<Connection> {
+    match path.parent().filter(|dir| !dir.as_os_str().is_empty()) {
+        Some(dir) => std::fs::create_dir_all(dir).map_err(Error::Io)?,
+        None => {
+            return Err(Error::Io(std::io::Error::new(
+                std::io::ErrorKind::NotFound,
+                "la base de uso necesita un directorio",
+            )));
+        }
     }
-    let conn = Connection::open(&path)?;
+    let conn = Connection::open(path)?;
     conn.busy_timeout(Duration::from_secs(10))?;
     conn.execute_batch("pragma foreign_keys=on")?;
     // Python ignora el fallo de WAL (sistemas de archivos que no lo admiten).

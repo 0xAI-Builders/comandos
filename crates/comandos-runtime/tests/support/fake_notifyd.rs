@@ -33,11 +33,26 @@ pub fn spawn(port: u16) -> (u16, JoinHandle<()>, Bodies) {
                     let service = service_fn(move |request: Request<hyper::body::Incoming>| {
                         let bodies = bodies.clone();
                         async move {
+                            // El cc-notifyd real lee el cuerpo por Content-Length y
+                            // rechaza peticiones de navegador (con Origin).
+                            let headers = request.headers();
+                            let problem = if request.method() != hyper::Method::POST {
+                                Some(format!("método {}", request.method()))
+                            } else if request.uri().path() != "/notify" {
+                                Some(format!("ruta {}", request.uri().path()))
+                            } else if !headers.contains_key(hyper::header::CONTENT_LENGTH) {
+                                Some("sin Content-Length".to_owned())
+                            } else if headers.contains_key(hyper::header::ORIGIN) {
+                                Some("con Origin".to_owned())
+                            } else {
+                                None
+                            };
                             let body = request.into_body().collect().await?.to_bytes();
-                            bodies
-                                .lock()
-                                .unwrap()
-                                .push(String::from_utf8_lossy(&body).into_owned());
+                            let body = String::from_utf8_lossy(&body).into_owned();
+                            bodies.lock().unwrap().push(match problem {
+                                Some(problem) => format!("PETICIÓN INVÁLIDA ({problem}): {body}"),
+                                None => body,
+                            });
                             Ok::<_, hyper::Error>(Response::new(Full::new(Bytes::from_static(
                                 b"{\"ok\":true}",
                             ))))

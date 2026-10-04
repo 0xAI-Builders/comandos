@@ -20,6 +20,7 @@ http-body-util = "=0.1.5"
 hyper = { version = "=1.11.1", default-features = false, features = ["client", "http1"] }
 hyper-util = { version = "=0.1.21", default-features = false, features = ["tokio"] }
 tokio = { version = "=1.53.1", default-features = false, features = ["rt", "net", "time"] }
+nix = { version = "=0.31.3", default-features = false, features = ["feature"] }
 
 [dev-dependencies]
 # cc-notifyd falso de las pruebas de paridad del hook.

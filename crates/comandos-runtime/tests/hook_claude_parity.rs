@@ -7,7 +7,7 @@ mod fake_notifyd;
 #[path = "support/parity.rs"]
 mod parity;
 
-use parity::{Window, collect, fake_bin, lines, settle};
+use parity::{Window, collect, fake_bin, lines, wait_for_delivery};
 use std::fs;
 use std::io::Write;
 use std::path::{Path, PathBuf};
@@ -161,6 +161,28 @@ fn scenarios() -> Vec<Scenario> {
             tmux: true,
             ..Default::default()
         },
+        // El camino vivo de `adapters/codex-notify.sh`.
+        Scenario {
+            name: "adapter_codex_done",
+            args: &[
+                "--agent",
+                "codex",
+                "--event",
+                "done",
+                "--cwd",
+                "/tmp/proyecto-prueba",
+                "--full",
+                "Listo: **cambios** <hechos> & [doc](https://x.invalid)\nsegunda línea",
+                "--hook-event",
+                "Stop",
+                "--session-id",
+                "thread-2",
+                "--turn-id",
+                "turn-2",
+            ],
+            env: NO_INTAKE,
+            ..Default::default()
+        },
         Scenario {
             name: "curl_fails",
             payload: Some("stop"),
@@ -310,12 +332,7 @@ fn claude_hook_matches_bash_for_all_fixtures() {
             if s.curl_fails { closed } else { port }
         );
         let code_rust = run_side(&dir, &s, "rust", &h_rust, &url);
-        settle(
-            &h_rust,
-            &bodies,
-            lines(&h_bash.join("fake.log")).len(),
-            bash_posts.len(),
-        );
+        wait_for_delivery(&h_rust);
         let window = Window {
             start_ms,
             end_ms: now_ms(),

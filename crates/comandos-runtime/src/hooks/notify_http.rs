@@ -1,8 +1,8 @@
 //! Lo lento del bash (`( notify_voice ) &` y `( notify_desktop ) &`) corre en un
 //! proceso hijo desacoplado (`comandos hook __deliver`) con stdio a `/dev/null`,
 //! para que el harness no espere: el hook regresa en milisegundos. El hijo hace,
-//! en paralelo, el POST a cc-notifyd (con `osascript` si falla, como el bash) y
-//! la voz o el chime.
+//! en paralelo, la contabilidad de uso (el `cc_usage.py ... &` del bash), el POST
+//! a cc-notifyd (con `osascript` si falla, como el bash) y la voz o el chime.
 use super::state_file::mktemp;
 use super::which;
 use base64::Engine;
@@ -44,14 +44,33 @@ fn unb64(value: &Value) -> Option<Vec<u8>> {
     STANDARD.decode(value.as_str()?).ok()
 }
 
+/// Todo lo que el hook deja en segundo plano.
+pub struct Job {
+    pub home: PathBuf,
+    /// Pasos de `usage_hook::step`, en orden.
+    pub usage: Vec<Value>,
+    pub volume: u32,
+    pub voice: Option<Voice>,
+    pub desktop: Option<Desktop>,
+}
+
 /// Lanza el proceso de entrega sin esperarlo; si nada que entregar, no lanza nada.
 // El hijo debe sobrevivir al hook (lo adopta init), como los `&` del bash.
 #[allow(clippy::zombie_processes)]
-pub fn spawn(volume: u32, voice: Option<Voice>, desktop: Option<Desktop>) {
-    if voice.is_none() && desktop.is_none() {
+pub fn spawn(job: Job) {
+    let Job {
+        home,
+        usage,
+        volume,
+        voice,
+        desktop,
+    } = job;
+    if usage.is_empty() && voice.is_none() && desktop.is_none() {
         return;
     }
     let job = json!({
+        "home": b64(home.as_os_str().as_bytes()),
+        "usage": usage,
         "volume": volume,
         "voice": voice.map(|v| json!({
             "speak": v.speak.as_deref().map(b64),
@@ -77,7 +96,7 @@ pub fn spawn(volume: u32, voice: Option<Voice>, desktop: Option<Desktop>) {
     }
 }
 
-/// Cuerpo del proceso de entrega: voz y popup en paralelo, como los dos `&`.
+/// Cuerpo del proceso de entrega: uso, voz y popup en paralelo, como los `&`.
 pub fn worker_main() -> i32 {
     let mut input = String::new();
     if std::io::stdin().read_to_string(&mut input).is_err() {
@@ -89,6 +108,9 @@ pub fn worker_main() -> i32 {
     let volume = job["volume"].as_u64().unwrap_or(60).min(100) as u32;
     let voice = job["voice"].clone();
     let desktop = job["desktop"].clone();
+    let home = PathBuf::from(OsString::from_vec(unb64(&job["home"]).unwrap_or_default()));
+    let usage = job["usage"].as_array().cloned().unwrap_or_default();
+    let usage_thread = std::thread::spawn(move || super::usage_hook::apply(&home, &usage));
     let voice_thread = std::thread::spawn(move || {
         if voice.is_object() {
             run_voice(&voice, volume);
@@ -107,6 +129,7 @@ pub fn worker_main() -> i32 {
         }
     }
     let _ = voice_thread.join();
+    let _ = usage_thread.join();
     0
 }
 

@@ -4,13 +4,13 @@ Fecha: 2026-10-04. Prueba: `crates/comandos-runtime/tests/hook_claude_parity.rs`
 
 ## Método
 
-Cada escenario corre el oráculo (`hooks/cc-notify.sh`, sin modificar) y el Rust (`comandos-hook claude`, mismo código que `comandos hook claude` y que el symlink `cc-notify.sh`) con el mismo payload, dos `HOME` temporales independientes y el mismo entorno mínimo (`env_clear`). El `PATH` empieza por binarios falsos que genera la prueba (`tmux`, `pw-play`, `paplay`, `piper`, `spd-say`, `osascript`, `curl`), así que ninguno de los dos lados toca el tmux, el audio ni el cc-notifyd reales. El bash se lanza como `bash -c 'trap wait EXIT; . "$0" "$@"' hooks/cc-notify.sh` para que la prueba espere sus trabajos en segundo plano; el Rust entrega en un proceso desacoplado y la prueba espera a que iguale lo que hizo el bash, más un margen para detectar efectos de más.
+Cada escenario corre el oráculo (`hooks/cc-notify.sh`, sin modificar) y el Rust (`comandos-hook claude`, mismo código que `comandos hook claude` y que el symlink `cc-notify.sh`) con el mismo payload, dos `HOME` temporales independientes y el mismo entorno mínimo (`env_clear`). El `PATH` empieza por binarios falsos que genera la prueba (`tmux`, `pw-play`, `paplay`, `piper`, `spd-say`, `osascript`, `curl`), así que ninguno de los dos lados toca el tmux, el audio ni el cc-notifyd reales. El bash se lanza como `bash -c 'trap wait EXIT; . "$0" "$@"' hooks/cc-notify.sh` para que la prueba espere sus trabajos en segundo plano; el Rust deja la contabilidad de uso, el POST y el sonido a un proceso desacoplado (`hook __deliver`) y la prueba espera, con un límite, a que ese proceso termine (lo busca en `/proc` por su línea de órdenes y su `HOME`).
 
 Se compara byte a byte, normalizando solo las marcas de tiempo del intervalo de la prueba (segundos y milisegundos) y los identificadores aleatorios hexadecimales:
 
 - archivos de `~/.claude/hooks/state/` (nombre, modo y contenido);
 - `~/.claude/hooks/events.jsonl` (contenido y modo);
-- cuerpo del POST a cc-notifyd (el `-d` que recibe el `curl` falso del bash contra el cuerpo que recibe el cc-notifyd falso en hyper del Rust) y la URL del bash;
+- cuerpo del POST a cc-notifyd (el `-d` que recibe el `curl` falso del bash contra el cuerpo que recibe el cc-notifyd falso en hyper del Rust, que además exige `POST /notify` con `Content-Length` y sin `Origin`, como el real) y la URL del bash;
 - registro de los binarios externos (argumentos y, para piper, la frase por stdin);
 - base N1 `~/.local/state/comandos/app-state.sqlite3` y base de uso `~/.claude/hooks/comandos-usage.sqlite`: esquema, `user_version` y todas las filas;
 - código de salida.
@@ -46,22 +46,25 @@ Todos se reproducen salvo lo indicado en “Desviaciones”.
 | `stop_spd` | `spd-say`, `CC_LANG=auto` con `LANG=es_MX.UTF-8`, volumen 7 | igual |
 | `stop_chime` | chime con `VOLUME=250` recortado a 100 | igual |
 | `adapter_codex` | modo adaptador `--agent codex --event waiting …` con todos los IDs | igual |
+| `adapter_codex_done` | camino vivo de `codex-notify.sh`: `--event done --full … --hook-event Stop` | igual |
 | `curl_fails` | POST fallido → `osascript` con el cuerpo truncado a 200 bytes | igual |
 | `precompact_quiet` | evento desconocido (rama `done`) con `NOTIFY_ON_DONE=0` | igual |
 | `silent_agent` | `COMANDOS_SILENT_AGENT=1` | igual |
 
 Además, `truncated_payload_writes_nothing`: un JSON truncado no deja estado, timeline, bases ni llamadas externas.
 
-## Tiempos (evento `Stop` con transcript, sin tmux)
+## Tiempos y memoria (evento `Stop`, transcript de 60 MB)
 
-20 corridas por lado tras una de calentamiento, bucle con `date +%s%N` (no hay `hyperfine`), máquina de 28 núcleos con carga media 4-6, binario `release`:
+El script de medición genera un transcript sintético de 60 MB (no se guarda en el repo) con 3 entradas por turno y el último turno al final. 20 corridas por lado tras una de calentamiento, bucle con `date +%s%N` (no hay `hyperfine`), RSS pico con `/usr/bin/time -f %M`, binario `release`, máquina de 28 núcleos con carga media 4-6:
 
-| | mín. | mediana | media | máx. |
-|---|---|---|---|---|
-| bash (`hooks/cc-notify.sh`) | 308,7 ms | 360,6 ms | 362,8 ms | 425,0 ms |
-| Rust (`comandos hook claude`) | 11,8 ms | 17,0 ms | 36,0 ms | 81,9 ms |
+| | mín. | mediana | media | máx. | RSS pico (mediana / máx.) |
+|---|---|---|---|---|---|
+| bash (`hooks/cc-notify.sh`) | 335,5 ms | 382,9 ms | 393,1 ms | 457,2 ms | 17 472 / 26 880 KiB |
+| Rust (`comandos hook claude`) | 20,0 ms | 27,3 ms | 33,9 ms | 86,2 ms | 9 176 / 9 580 KiB |
 
-El tiempo del bash no incluye `cc_usage.py`, que deja en segundo plano; el del Rust sí incluye la contabilidad de uso (hilo unido antes de salir). En los dos casos el POST y el sonido quedan fuera: corren desacoplados.
+En los dos lados el tiempo es lo que espera el harness: no cuenta lo que queda en segundo plano (`cc_usage.py`, POST y sonido en el bash; el proceso `hook __deliver` en el Rust), ni su memoria. El RSS del bash incluye a los hijos que espera (jq, `event_intake.py`). El Rust lee el transcript hacia atrás en bloques de 64 KiB hasta tener las últimas 800 líneas (una sola lectura por invocación, también en `Notification`), así que el tamaño del archivo no influye.
+
+Base de uso bloqueada (`BEGIN EXCLUSIVE` sostenido 4 s por otro proceso): `UserPromptSubmit` regresa en 28 ms; el proceso de entrega espera el bloqueo (`busy_timeout` de 10 s, como `cc_usage.py`) y escribe la interacción cuando se libera.
 
 ## Desviaciones deliberadas
 

@@ -1,10 +1,9 @@
 //! `usage_capture` y `usage_lifecycle` del bash: mismos payloads que construye con
-//! jq, aplicados en Rust a la base de uso (`comandos_store::usage`) en un hilo que
-//! se une antes de salir. El bash lanza `cc_usage.py` en segundo plano.
+//! jq, aplicados a la base de uso (`comandos_store::usage`) por el proceso de
+//! entrega desacoplado. Como el `cc_usage.py ... &` del bash, el hook nunca espera
+//! a SQLite (la base es compartida y puede estar bloqueada).
 use serde_json::{Map, Number, Value, json};
 use std::path::{Path, PathBuf};
-use std::thread::JoinHandle;
-use std::time::Duration;
 
 /// Identidad común de los dos payloads.
 pub struct Identity {
@@ -127,31 +126,27 @@ pub fn lifecycle_payload(id: &Identity, status: &str) -> Value {
 /// `cc_usage.py`); si no, la ruta por defecto de `open_usage_db`.
 fn open(home: &Path) -> comandos_store::Result<rusqlite::Connection> {
     match std::env::var_os("COMANDOS_USAGE_DB").filter(|p| !p.is_empty()) {
-        // TODO(store): sustituir por `usage::open_usage_db_at` cuando exista; mismos
-        // PRAGMAs que `connect()` de Python.
-        Some(path) => {
-            let path = PathBuf::from(path);
-            if let Some(dir) = path.parent().filter(|d| !d.as_os_str().is_empty()) {
-                std::fs::create_dir_all(dir)?;
-            }
-            let conn = rusqlite::Connection::open(&path)?;
-            conn.busy_timeout(Duration::from_secs(10))?;
-            conn.execute_batch("pragma foreign_keys=on")?;
-            let _ = conn.query_row("pragma journal_mode=wal", [], |_| Ok(()));
-            Ok(conn)
-        }
+        Some(path) => comandos_store::usage::open_usage_db_at(&PathBuf::from(path)),
         None => comandos_store::usage::open_usage_db(home),
     }
 }
 
-/// Aplica captura (si la hay) y ciclo de vida en un hilo; los errores se callan,
-/// como el `>/dev/null 2>&1 &` del bash.
-pub fn spawn(home: PathBuf, capture: Option<Value>, lifecycle: Value) -> JoinHandle<()> {
-    std::thread::spawn(move || {
-        let Ok(conn) = open(&home) else { return };
-        if let Some(capture) = capture {
-            let _ = comandos_store::usage::capture_hook(&conn, &capture);
+/// Un paso de contabilidad tal como viaja al proceso de entrega.
+pub fn step(capture: Option<Value>, lifecycle: Value) -> Value {
+    json!({"capture": capture, "lifecycle": lifecycle})
+}
+
+/// Aplica los pasos en orden (captura, si la hay, y luego ciclo de vida); los
+/// errores se callan, como el `>/dev/null 2>&1 &` del bash.
+pub fn apply(home: &Path, steps: &[Value]) {
+    if steps.is_empty() {
+        return;
+    }
+    let Ok(conn) = open(home) else { return };
+    for step in steps {
+        if step["capture"].is_object() {
+            let _ = comandos_store::usage::capture_hook(&conn, &step["capture"]);
         }
-        let _ = comandos_store::usage::lifecycle(&conn, &lifecycle);
-    })
+        let _ = comandos_store::usage::lifecycle(&conn, &step["lifecycle"]);
+    }
 }

@@ -255,6 +255,7 @@ dependencies = [
  "http-body-util",
  "hyper",
  "hyper-util",
+ "nix",
  "rusqlite",
  "serde_json",
  "sha2",

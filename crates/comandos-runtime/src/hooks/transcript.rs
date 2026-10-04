@@ -5,6 +5,8 @@
 use super::jq::{jq_join, jq_r, jq_tostring};
 use super::text::{jq_lossy, strip_nl, tail_lines};
 use serde_json::Value;
+use std::fs::File;
+use std::io::{Read, Seek, SeekFrom};
 use std::path::Path;
 
 /// Error de jq: aborta el programa entero.
@@ -47,10 +49,53 @@ pub fn alt<'a>(a: &'a Value, b: &'a Value) -> &'a Value {
     }
 }
 
-/// `tail -N archivo | jq -s`: la lista de valores o error.
-fn slurp(path: &Path, lines: usize) -> Jq<Vec<Value>> {
-    let bytes = std::fs::read(path).unwrap_or_default();
-    let text = jq_lossy(tail_lines(&bytes, lines));
+/// Líneas que lee el bash: `tail -800` para el turno; el último bloque usa
+/// `tail -80`, que son las últimas 80 de esas mismas 800.
+pub const TURN_LINES: usize = 800;
+const BLOCK_LINES: usize = 80;
+const CHUNK: u64 = 64 * 1024;
+
+/// `tail -n N archivo` leyendo hacia atrás en bloques de 64 KiB: nunca carga el
+/// transcript entero (los vivos pesan cientos de MB). Vacío si no se puede leer.
+pub fn read_tail(path: &Path, lines: usize) -> Vec<u8> {
+    read_tail_counted(path, lines).0
+}
+
+/// `read_tail` y los bytes leídos del disco.
+fn read_tail_counted(path: &Path, lines: usize) -> (Vec<u8>, u64) {
+    let Ok(mut file) = File::open(path) else {
+        return (Vec::new(), 0);
+    };
+    let Ok(len) = file.metadata().map(|m| m.len()) else {
+        return (Vec::new(), 0);
+    };
+    let (mut chunks, mut pos, mut newlines, mut read) = (Vec::new(), len, 0usize, 0u64);
+    while pos > 0 && lines > 0 {
+        let start = pos.saturating_sub(CHUNK);
+        let mut chunk = vec![0u8; (pos - start) as usize];
+        if file.seek(SeekFrom::Start(start)).is_err() || file.read_exact(&mut chunk).is_err() {
+            return (Vec::new(), read);
+        }
+        read += chunk.len() as u64;
+        newlines += chunk.iter().filter(|&&b| b == b'\n').count();
+        // El `\n` final del archivo cierra la última línea, no separa otra.
+        if pos == len && chunk.last() == Some(&b'\n') {
+            newlines -= 1;
+        }
+        chunks.push(chunk);
+        pos = start;
+        if newlines >= lines {
+            break;
+        }
+    }
+    chunks.reverse();
+    let buffer = chunks.concat();
+    (tail_lines(&buffer, lines).to_vec(), read)
+}
+
+/// `| jq -s` sobre un `tail`: la lista de valores o error.
+fn slurp(tail: &[u8], lines: usize) -> Jq<Vec<Value>> {
+    let text = jq_lossy(tail_lines(tail, lines));
     serde_json::Deserializer::from_str(&text)
         .into_iter::<Value>()
         .collect::<Result<_, _>>()
@@ -89,10 +134,11 @@ fn non_empty(value: &Value) -> Jq<bool> {
     })
 }
 
-/// `turn_text`: todo el texto del asistente desde el último prompt real.
-pub fn turn_text(path: &Path) -> Vec<u8> {
+/// `turn_text` sobre las últimas `TURN_LINES` líneas (`read_tail`): todo el texto
+/// del asistente desde el último prompt real.
+pub fn turn_text(tail: &[u8]) -> Vec<u8> {
     let run = || -> Jq<String> {
-        let entries = slurp(path, 800)?;
+        let entries = slurp(tail, TURN_LINES)?;
         let mut last_prompt = None;
         for (i, entry) in entries.iter().enumerate() {
             if is_prompt(entry)? {
@@ -122,10 +168,10 @@ pub fn turn_text(path: &Path) -> Vec<u8> {
 }
 
 /// `tail -80 | jq -cs '[.[]|select(.type=="assistant")]|last|.message.content|last // empty'`.
-pub fn last_block(path: &Path) -> Option<Value> {
+pub fn last_block(tail: &[u8]) -> Option<Value> {
     let run = || -> Jq<Option<Value>> {
         let mut last = &NULL;
-        let entries = slurp(path, 80)?;
+        let entries = slurp(tail, BLOCK_LINES)?;
         for entry in &entries {
             if is_type(entry, "assistant")? {
                 last = entry;
@@ -225,9 +271,9 @@ mod tests {
             json!({"type":"user","message":{"content":[{"type":"tool_result","content":"x"}]}}),
             json!({"type":"assistant","message":{"content":[{"type":"text","text":""},{"type":"text","text":"dos\n"}]}}),
         ]);
-        assert_eq!(turn_text(&path), b"uno\n\ndos");
+        assert_eq!(turn_text(&read_tail(&path, TURN_LINES)), b"uno\n\ndos");
         std::fs::write(&path, "{\"type\":\"user\"}\nno json\n").unwrap();
-        assert!(turn_text(&path).is_empty());
+        assert!(turn_text(&read_tail(&path, TURN_LINES)).is_empty());
         std::fs::remove_file(path).unwrap();
     }
 
@@ -240,5 +286,53 @@ mod tests {
         assert_eq!(q.list, b"1. A\n   la a\n2. B");
         assert!(question(&json!({"name":"Bash"})).is_none());
         assert!(question(&json!("texto")).is_none());
+    }
+
+    #[test]
+    fn tail_reads_backwards_and_matches_full_read() {
+        let path = std::env::temp_dir().join(format!(
+            "comandos-transcript-tail-{}.jsonl",
+            std::process::id()
+        ));
+        // ~6 MiB sintéticos con líneas de largo variable.
+        let line = |n: usize| {
+            format!(
+                "{{\"type\":\"assistant\",\"n\":{n},\"pad\":\"{}\"}}\n",
+                "x".repeat(n % 700)
+            )
+        };
+        let text: String = (0..17_000).map(line).collect();
+        assert!(text.len() > 5 * 1024 * 1024);
+        for (body, n) in [
+            (text.clone(), TURN_LINES),
+            (text.clone(), BLOCK_LINES),
+            (text.trim_end().to_string(), TURN_LINES),
+        ] {
+            std::fs::write(&path, &body).unwrap();
+            let (tail, read) = read_tail_counted(&path, n);
+            let full = std::fs::read(&path).unwrap();
+            assert_eq!(tail, tail_lines(&full, n), "{n}");
+            assert!(
+                read <= tail.len() as u64 + CHUNK,
+                "leyó {read} para una cola de {}",
+                tail.len()
+            );
+        }
+        for (body, n) in [
+            ("", 800),
+            ("sin salto", 800),
+            ("a\nb\n\n", 2),
+            ("a\nb", 0),
+            ("1\n2\n3\n", 800),
+        ] {
+            std::fs::write(&path, body).unwrap();
+            assert_eq!(
+                read_tail(&path, n),
+                tail_lines(body.as_bytes(), n),
+                "{body:?}"
+            );
+        }
+        std::fs::remove_file(path).unwrap();
+        assert!(read_tail(Path::new("/nonexistent/transcript.jsonl"), 800).is_empty());
     }
 }

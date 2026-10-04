@@ -151,8 +151,11 @@ fn tmux_query(tmux: &Path, pane: &str, format: &str) -> Vec<u8> {
         .unwrap_or_default()
 }
 
+/// `desktop-$(uname -n | tr -c 'A-Za-z0-9_.-' '-' | cut -c1-60)`.
 pub fn hostname_device() -> String {
-    let name = std::fs::read("/proc/sys/kernel/hostname").unwrap_or_default();
+    let name = nix::sys::utsname::uname()
+        .map(|u| u.nodename().as_bytes().to_vec())
+        .unwrap_or_default();
     let clean: Vec<u8> = strip_nl(&name)
         .iter()
         .map(|&b| {
@@ -238,7 +241,8 @@ pub fn locate(input: &Input) -> Place {
         state_key.extend_from_slice(b"--");
         state_key.extend_from_slice(&session);
         state_key.extend_from_slice(b"--");
-        state_key.extend_from_slice(pane.trim_start_matches('%').as_bytes());
+        // `${PANE_HINT#%}`: quita exactamente un `%` inicial.
+        state_key.extend_from_slice(pane.strip_prefix('%').unwrap_or(&pane).as_bytes());
     }
     Place {
         proj,
