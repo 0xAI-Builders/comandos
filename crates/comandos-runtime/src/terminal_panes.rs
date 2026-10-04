@@ -147,47 +147,60 @@ fn inventory(
     let mut panes = Vec::new();
     for line in splitlines(&result.stdout) {
         let head = line.splitn(5, '\t').collect::<Vec<_>>();
-        if head.len() != 5 || !pane_id(head[0]) || !digits(head[3]) {
+        let &[id, active, command, index, rest] = head.as_slice() else {
+            return Err(error("No se pudo leer la lista de paneles"));
+        };
+        if !pane_id(id) || !digits(index) {
             return Err(error("No se pudo leer la lista de paneles"));
         }
-        let index = head[3]
+        let index = index
             .parse::<u64>()
             .map_err(|_| error("No se pudo leer la lista de paneles"))?;
-        let mut public = json!({"id":head[0],"active":head[1]=="1","title":head[2].chars().take(100).collect::<String>(),"index":index});
-        let mut parts = head[4].rsplitn(5, '\t').collect::<Vec<_>>();
-        parts.reverse();
-        let path = if parts.len() == 5 && parts[1..].iter().all(|p| digits(p)) {
-            for (key, raw) in ["left", "top", "width", "height"].iter().zip(&parts[1..]) {
-                public[*key] = json!(
-                    raw.parse::<u64>()
-                        .map_err(|_| error("No se pudo leer la lista de paneles"))?
-                );
-            }
-            parts[0]
-        } else {
-            head[4]
-        };
-        public["path"] = json!(
-            friendly_path(path, home)
-                .chars()
-                .take(300)
-                .collect::<String>()
+        // Orden de claves del Python: id, active, title, path, geometría, index, identity.
+        let mut public = Map::new();
+        public.insert("id".into(), json!(id));
+        public.insert("active".into(), json!(active == "1"));
+        public.insert(
+            "title".into(),
+            json!(command.chars().take(100).collect::<String>()),
         );
-        let raw = identify(session, head[0])?;
-        for key in ["pid", "session_id", "pane_id", "pane_pid"] {
-            if !machine_string(&raw[key]).is_some_and(|s| machine_number(&s)) {
-                return Err(error("No se pudo verificar la identidad del panel"));
+        // La ruta puede traer tabuladores: la geometría va al final, se lee desde la derecha.
+        let mut parts = rest.rsplitn(5, '\t').collect::<Vec<_>>();
+        parts.reverse();
+        let (path, geometry) = match parts.as_slice() {
+            &[path, left, top, width, height]
+                if [left, top, width, height].iter().all(|p| digits(p)) =>
+            {
+                (path, Some([left, top, width, height]))
+            }
+            _ => (rest, None),
+        };
+        public.insert(
+            "path".into(),
+            json!(
+                friendly_path(path, home)
+                    .chars()
+                    .take(300)
+                    .collect::<String>()
+            ),
+        );
+        if let Some(values) = geometry {
+            for (key, raw) in ["left", "top", "width", "height"].iter().zip(values) {
+                let value = raw
+                    .parse::<u64>()
+                    .map_err(|_| error("No se pudo leer la lista de paneles"))?;
+                public.insert((*key).into(), json!(value));
             }
         }
-        if raw["pane_id"] != head[0]
-            || raw
-                .get("session_name")
-                .is_some_and(|value| value != session)
-        {
-            return Err(error("El panel no pertenece a esta sesión"));
-        }
-        public["identity"] = json!(version(&raw)?);
-        panes.push(Pane { public, raw });
+        public.insert("index".into(), json!(index));
+        // `identify` es `_pane_identity` del llamador: él valida pane y sesión.
+        // Los dígitos de la identidad se validan en `execute`, antes del `if-shell`.
+        let raw = identify(session, id)?;
+        public.insert("identity".into(), json!(version(&raw)?));
+        panes.push(Pane {
+            public: Value::Object(public),
+            raw,
+        });
     }
     if panes.is_empty() {
         return Err(error("No hay paneles disponibles"));

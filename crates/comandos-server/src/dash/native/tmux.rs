@@ -132,6 +132,17 @@ impl Tmux {
                 RunError::Decode => TmuxError::Decode,
             })
     }
+
+    /// `run` desde un hilo de bloqueo (librerías síncronas de `comandos-runtime`).
+    /// El reactor, los timers y el reaper los mueve el hilo del runtime, que
+    /// está en `Runtime::block_on`; aquí solo se espera el resultado.
+    pub fn run_blocking(
+        &self,
+        handle: &tokio::runtime::Handle,
+        args: &[&str],
+    ) -> Result<Output, TmuxError> {
+        handle.block_on(self.run(args))
+    }
 }
 
 fn seconds(after: Duration) -> String {

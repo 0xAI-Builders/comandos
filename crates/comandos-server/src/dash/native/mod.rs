@@ -17,6 +17,7 @@ pub mod query;
 pub mod retired;
 pub mod snippets;
 pub mod state;
+pub mod terminal;
 pub mod tmux;
 pub mod ui_log;
 pub mod workspace;
@@ -51,6 +52,7 @@ pub enum NativeRoute {
     UiLog,
     Pomodoro,
     Catalog(catalogs::CatalogRoute),
+    Terminal(terminal::TerminalRoute),
     Retired,
 }
 
@@ -103,6 +105,7 @@ const TABLES: &[&[Entry]] = &[
     ui_log::ROUTES,
     pomodoro::ROUTES,
     catalogs::ROUTES,
+    terminal::ROUTES,
     retired::ROUTES,
 ];
 
@@ -375,6 +378,7 @@ impl Native {
             NativeRoute::UiLog => ui_log::answer(self, request).await,
             NativeRoute::Pomodoro => pomodoro::answer(self).await,
             NativeRoute::Catalog(route) => catalogs::answer(self, route).await,
+            NativeRoute::Terminal(route) => terminal::answer(self, route, request).await,
             NativeRoute::Retired => {
                 let path = request
                     .target

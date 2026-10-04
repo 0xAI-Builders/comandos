@@ -119,3 +119,12 @@
 # --- 2c · F3: catálogos de solo lectura (nativas)
 {"name":"f-model-tiers","method":"GET","path":"/model-tiers","headers":{"Host":"127.0.0.1"},"body":null,"volatile":[],"expect":"same"}
 {"name":"f-sovereignty","method":"GET","path":"/sovereignty","headers":{"Host":"127.0.0.1"},"body":null,"volatile":["/generatedAt","/stores/*/mtime"],"expect":"same"}
+# --- 2c · G1: paneles e historial (nativas; close se reenvía). tmux privado por copia: identidades distintas
+{"name":"g-terminal-panes","method":"POST","path":"/terminal-panes","headers":{"Host":"127.0.0.1","Content-Type":"application/json"},"body":{"session":"local"},"volatile":["/panes/*/identity"],"expect":"same"}
+{"name":"g-terminal-panes-mala","method":"POST","path":"/terminal-panes","headers":{"Host":"127.0.0.1","Content-Type":"application/json"},"body":{"session":"a b"},"volatile":[],"expect":"same"}
+{"name":"g-terminal-panes-nadie","method":"POST","path":"/terminal-panes","headers":{"Host":"127.0.0.1","Content-Type":"application/json"},"body":{"session":"no-existe"},"volatile":[],"expect":"same"}
+{"name":"g-terminal-panes-accion","method":"POST","path":"/terminal-panes","headers":{"Host":"127.0.0.1","Content-Type":"application/json"},"body":{"session":"local","action":"zz"},"volatile":[],"expect":"same"}
+{"name":"g-terminal-panes-close","method":"POST","path":"/terminal-panes","headers":{"Host":"127.0.0.1","Content-Type":"application/json"},"body":{"session":"local","action":"close","pane":"%0","identity":"x"},"volatile":[],"expect":"same","forwarded":true}
+{"name":"g-terminal-history","method":"POST","path":"/terminal-history","headers":{"Host":"127.0.0.1","Content-Type":"application/json"},"body":{"session":"local","lines":5},"volatile":["/text"],"expect":"same"}
+{"name":"g-terminal-history-lineas","method":"POST","path":"/terminal-history","headers":{"Host":"127.0.0.1","Content-Type":"application/json"},"body":{"session":"local","lines":0},"volatile":[],"expect":"same"}
+{"name":"g-terminal-history-nadie","method":"POST","path":"/terminal-history","headers":{"Host":"127.0.0.1","Content-Type":"application/json"},"body":{"session":"no-existe"},"volatile":[],"expect":"same"}

@@ -31,6 +31,9 @@ impl Harness {
     fn identity(&self, pane: &str) -> Value {
         json!({"socket_path":"/tmp/é😊","pid":"12","server_start":"100","session_id":"$1","pane_id":pane,"pane_pid": if self.0.borrow().changed {"999"} else {"123"},"session_name":"fixture","pane_current_command":"zsh"})
     }
+    fn identity_for(&self, _session: &str, pane: &str) -> Value {
+        self.identity(pane)
+    }
     fn tmux(&self, args: &[&str]) -> panes::Result<TmuxResult> {
         let mut s = self.0.borrow_mut();
         s.calls.push(args.iter().map(|a| (*a).into()).collect());
@@ -447,13 +450,15 @@ fn global_serial_guard_allows_same_thread_snapshot_callback_reentry() {
 
 #[test]
 fn malformed_identity_and_foreign_machine_identity_reject_before_every_mutation() {
-    for action in ["resize", "select", "close", "split"] {
+    // Como el Python (lib/terminal_panes.py:138-142): la identidad solo se
+    // valida antes del `if-shell`; `resize` y el foco por dispositivo no la miran.
+    for action in ["select", "close", "split"] {
         for field in ["pid", "session_id", "pane_id", "pane_pid"] {
             let h = Harness::new();
             let mut id = h.identity("%1");
             id[field] = json!("１２");
             let digest = panes::version(&id).unwrap();
-            let req = json!({"session":"fixture","action":action,"scope":"client","pane":"%1","identity":digest,"axis":"x","size":40,"direction":"right"});
+            let req = json!({"session":"fixture","action":action,"pane":"%1","identity":digest,"direction":"right"});
             let result = panes::execute(
                 |args| h.tmux(args),
                 |_, _| Ok(id.clone()),
@@ -465,19 +470,74 @@ fn malformed_identity_and_foreign_machine_identity_reject_before_every_mutation(
             assert_eq!(h.mutations(), 0);
         }
     }
+    // La pertenencia del panel la comprueba `identify` (`_pane_identity`).
     let h = Harness::new();
     let mut id = h.identity("%1");
     id["pane_id"] = json!("%2");
     let digest = panes::version(&id).unwrap();
-    assert!(
-        panes::execute(
-            |a| h.tmux(a),
-            |_, _| Ok(id.clone()),
-            |_, _| Ok(Value::Null),
-            &json!({"session":"fixture","action":"select","pane":"%1","identity":digest}),
-            "/home/fixture"
-        )
-        .is_err()
+    let result = panes::execute(
+        |a| h.tmux(a),
+        |_, _| Err(PaneError("el panel no pertenece a esa sesión".into())),
+        |_, _| Ok(Value::Null),
+        &json!({"session":"fixture","action":"select","pane":"%1","identity":digest}),
+        "/home/fixture",
+    );
+    assert_eq!(
+        result.unwrap_err().to_string(),
+        "el panel no pertenece a esa sesión"
     );
     assert_eq!(h.mutations(), 0);
+}
+
+#[test]
+fn list_keys_follow_python_order() {
+    let h = Harness::new();
+    let out = panes::execute(
+        |a| h.tmux(a),
+        |s, p| Ok(h.identity_for(s, p)),
+        |_, _| Err(PaneError("no".into())),
+        &json!({"session":"fixture"}),
+        "/home/fixture",
+    )
+    .unwrap();
+    let text = comandos_core::json::response_dumps(&out).unwrap();
+    assert!(
+        text.starts_with(r#"{"ok": true, "panes": [{"id": "%1", "active": false, "title": "zsh", "path": "~/p", "left": 0, "top": 0, "width": 59, "height": 40, "index": 0, "identity": ""#),
+        "{text}"
+    );
+}
+
+#[test]
+fn list_does_not_validate_identity_digits() {
+    // El Python solo valida la identidad antes de mutar (lib/terminal_panes.py:138-142).
+    let h = Harness::new();
+    let out = panes::execute(
+        |a| h.tmux(a),
+        |_, p| Ok(json!({"pid":"x","session_id":"$1","pane_id":p,"pane_pid":"1"})),
+        |_, _| Err(PaneError("no".into())),
+        &json!({"session":"fixture"}),
+        "/home/fixture",
+    );
+    assert!(out.is_ok(), "{out:?}");
+}
+
+#[test]
+fn malformed_identity_still_resizes_and_focuses_by_device_like_python() {
+    let h = Harness::new();
+    let mut id = h.identity("%1");
+    id["pid"] = json!("１２");
+    let digest = panes::version(&id).unwrap();
+    for req in [
+        json!({"session":"fixture","action":"resize","pane":"%1","axis":"x","size":40}),
+        json!({"session":"fixture","action":"select","scope":"client","pane":"%1","identity":digest}),
+    ] {
+        let result = panes::execute(
+            |args| h.tmux(args),
+            |_, _| Ok(id.clone()),
+            |_, _| Ok(Value::Null),
+            &req,
+            "/home/fixture",
+        );
+        assert!(result.is_ok(), "{req} {result:?}");
+    }
 }
