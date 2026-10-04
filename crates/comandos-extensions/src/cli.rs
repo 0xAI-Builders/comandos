@@ -48,7 +48,7 @@ pub fn run(args: Vec<String>) -> Result<i32> {
                     .enable_all()
                     .build()
                     .map_err(|_| "Runtime unavailable")?;
-                runtime.block_on(crate::broker::daemon::run(&path))?;
+                runtime.block_on(crate::broker::daemon::run(&home, &path))?;
                 runtime.shutdown_timeout(std::time::Duration::from_millis(100));
                 return Ok(0);
             }
@@ -76,7 +76,7 @@ pub fn run(args: Vec<String>) -> Result<i32> {
     if crate::broker::direct_stdio(spec) {
         if !explicit
             && crate::config::is_shared(spec, &name)
-            && let Some(code) = broker_session(&name)
+            && let Some(code) = broker_session(&name, spec, &path)
         {
             return Ok(code);
         }
@@ -126,24 +126,31 @@ pub(crate) fn server_spec(path: &std::path::Path, name: &str) -> Result<Value> {
 }
 /// Sesión como cliente fino del broker. `None` ⇒ proxy directo. Sin socket (broker no
 /// instalado) se calla, para no ensuciar el stderr de la sesión.
-fn broker_session(name: &str) -> Option<i32> {
-    use crate::broker::{client, socket_path};
+fn broker_session(name: &str, spec: &Value, catalog: &std::path::Path) -> Option<i32> {
+    use crate::broker::{attach_request, client, socket_path};
     let socket = socket_path();
     if !socket.exists() {
         return None;
     }
+    // Sin cwd válido, el proxy directo da el error de siempre.
+    let request = attach_request(name, spec, catalog)?;
     let runtime = tokio::runtime::Builder::new_current_thread()
         .enable_all()
         .build()
         .ok()?;
-    let Ok(stream) = runtime.block_on(client::connect(&socket, name)) else {
-        eprintln!("broker no disponible, proxy directo");
-        return None;
-    };
-    let relayed = runtime.block_on(client::relay(stream));
+    let relayed = runtime.block_on(async {
+        let stream = client::connect(&socket, &request).await?;
+        client::relay(stream).await
+    });
     // El hilo bloqueado en stdin no debe retrasar la salida.
     runtime.shutdown_timeout(std::time::Duration::from_millis(100));
-    Some(if relayed.is_ok() { 0 } else { 1 })
+    match relayed {
+        Ok(code) => Some(code),
+        Err(_) => {
+            eprintln!("broker no disponible, proxy directo");
+            None
+        }
+    }
 }
 fn catalog_command(
     home: &std::path::Path,

@@ -4,19 +4,77 @@ mod actor;
 pub mod client;
 pub mod daemon;
 pub mod mux;
+mod registry;
 mod translate;
 mod upstream;
 
-use serde_json::Value;
+use serde_json::{Map, Value, json};
+use sha2::{Digest, Sha256};
 use std::{
+    collections::BTreeMap,
     io,
     os::unix::fs::{MetadataExt, PermissionsExt},
     path::{Path, PathBuf},
 };
 use tokio::io::{AsyncBufRead, AsyncBufReadExt};
 
-/// Línea JSON más larga (bytes) aceptada de un cliente o de un upstream.
-const MAX_LINE: usize = 64 * 1024 * 1024;
+/// Línea JSON más larga (bytes) aceptada en cada conexión de cliente y en cada upstream.
+/// 16 MiB: cabe una captura de pantalla de Chrome en base64 con holgura; una línea mayor
+/// cierra esa conexión (o ese upstream), no las demás.
+const MAX_LINE: usize = 16 * 1024 * 1024;
+
+/// Un upstream solo se comparte si el proceso sería idéntico: mismo servidor, mismo
+/// directorio de trabajo y mismo `env` del catálogo ya expandido.
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+struct Key {
+    name: String,
+    cwd: PathBuf,
+    /// sha256 del JSON canónico (claves ordenadas) del `env` expandido.
+    env_hash: String,
+}
+
+impl Key {
+    fn new(name: &str, cwd: &Path, env: &[(String, String)]) -> Self {
+        let sorted: BTreeMap<&str, &str> = env.iter().map(|(k, v)| (&**k, &**v)).collect();
+        let canonical = serde_json::to_vec(&sorted).unwrap_or_default();
+        let env_hash = format!("{:x}", Sha256::digest(canonical));
+        Self {
+            name: name.into(),
+            cwd: cwd.into(),
+            env_hash,
+        }
+    }
+}
+
+impl std::fmt::Display for Key {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let short = &self.env_hash[..self.env_hash.len().min(8)];
+        write!(f, "{} (cwd {}, env {short})", self.name, self.cwd.display())
+    }
+}
+
+/// Línea `attach` de la sesión: lo que el proxy directo habría usado para lanzar el proceso.
+/// `None` si el directorio de trabajo no existe: el proxy directo da el error de siempre.
+pub fn attach_request(name: &str, spec: &Value, catalog: &Path) -> Option<Value> {
+    let here = std::env::current_dir().ok()?;
+    let cwd = match spec
+        .get("cwd")
+        .and_then(Value::as_str)
+        .filter(|c| !c.is_empty())
+    {
+        Some(cwd) => here.join(crate::expand_user(cwd)),
+        None => here,
+    };
+    if !cwd.is_dir() {
+        return None;
+    }
+    let env: Map<String, Value> = (crate::spec_env(spec).ok()?.into_iter())
+        .map(|(k, v)| (k, Value::String(v)))
+        .collect();
+    let home = crate::home_dir().ok()?;
+    let catalog = std::path::absolute(catalog).ok()?;
+    Some(json!({"attach": name, "cwd": cwd, "env": env, "catalog": catalog, "home": home}))
+}
 
 /// `$XDG_RUNTIME_DIR/comandos/broker.sock`, o `/tmp/comandos-<uid>/broker.sock` sin él.
 pub fn socket_path() -> PathBuf {

@@ -77,6 +77,29 @@ pub fn expand_user(value: &str) -> String {
 }
 
 pub fn command(spec: &Value, direct: bool) -> Result<Command> {
+    command_env(spec, direct, None)
+}
+
+/// `env` del catálogo con `${VAR}` expandido en el entorno de este proceso, en su orden.
+pub fn spec_env(spec: &Value) -> Result<Vec<(String, String)>> {
+    let Some(vars) = spec.get("env") else {
+        return Ok(Vec::new());
+    };
+    let vars = vars.as_object().ok_or("Invalid environment")?;
+    Ok(vars
+        .iter()
+        .map(|(key, value)| (key.clone(), expand_vars(&python_string(value))))
+        .collect())
+}
+
+/// Como [`command`], pero con el `env` ya resuelto por el llamador si se da (el broker recibe
+/// el de la sesión cliente); `None` lo resuelve aquí. Hereda el entorno de este proceso y le
+/// superpone `env`. Valida en el mismo orden que siempre: comando, argumentos, entorno.
+pub fn command_env(
+    spec: &Value,
+    direct: bool,
+    env: Option<&[(String, String)]>,
+) -> Result<Command> {
     let mut command = Command::new(expand_user(
         spec["command"].as_str().ok_or("Invalid command")?,
     ));
@@ -85,11 +108,15 @@ pub fn command(spec: &Value, direct: bool) -> Result<Command> {
             command.arg(arg.as_str().ok_or("Invalid argument")?);
         }
     }
-    if let Some(vars) = spec.get("env") {
-        for (key, value) in vars.as_object().ok_or("Invalid environment")? {
-            command.env(key, expand_vars(&python_string(value)));
+    let own;
+    let env = match env {
+        Some(env) => env,
+        None => {
+            own = spec_env(spec)?;
+            &own
         }
-    }
+    };
+    command.envs(env.iter().map(|(k, v)| (k, v)));
     // Python solo cambia de directorio si `cwd` es verdadero (una cadena vacía se omite).
     if let Some(cwd) = spec
         .get("cwd")

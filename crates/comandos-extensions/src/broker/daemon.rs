@@ -1,25 +1,25 @@
-//! `comandos ext broker`: escucha en el socket Unix, atiende cada `{"attach":"<nombre>"}`
-//! y conecta al cliente con el actor de ese nombre (lanzándolo si no existe).
+//! `comandos ext broker`: escucha en el socket Unix, atiende cada línea `attach` y conecta
+//! al cliente con el actor de su clave de compartición (lanzándolo si no existe).
 use super::{
-    actor::{self, Handle, Joined, Msg},
-    blank, brokerable, check_private_dir, read_line, socket_path, upstream,
+    actor::{Ctl, Shared},
+    blank, check_private_dir, read_line,
+    registry::{self, Attached, Ctx},
+    socket_path,
 };
 use crate::Result;
-use serde_json::{Value, json};
+use serde_json::json;
 use std::{
-    collections::HashMap,
     fs::{self, File, OpenOptions, TryLockError},
     os::unix::fs::{OpenOptionsExt, PermissionsExt},
-    path::{Path, PathBuf},
-    sync::{Arc, Mutex, PoisonError},
+    path::Path,
+    sync::{Arc, Mutex},
     time::Duration,
 };
 use tokio::{
     io::{AsyncWriteExt, BufReader},
     net::{UnixListener, UnixStream},
     signal::unix::{SignalKind, signal},
-    sync::{mpsc, oneshot, watch},
-    task::JoinHandle,
+    sync::watch,
 };
 
 /// Plazo para que un cliente recién conectado envíe su línea `attach`.
@@ -27,23 +27,8 @@ const ATTACH_TIMEOUT: Duration = Duration::from_secs(5);
 /// Margen para que los actores cierren sus upstreams (5 s de gracia + recogida).
 const SHUTDOWN_TIMEOUT: Duration = Duration::from_secs(8);
 
-#[derive(Default)]
-struct Registry {
-    actors: HashMap<String, Handle>,
-    /// Actores reemplazados mientras se cerraban; se esperan al parar el daemon.
-    retired: Vec<JoinHandle<()>>,
-}
-
-struct Ctx {
-    catalog: PathBuf,
-    idle: Duration,
-    stop: watch::Receiver<bool>,
-    /// Solo se bloquea sin `.await` dentro (lanzar un proceso es síncrono).
-    registry: Mutex<Registry>,
-}
-
 /// Corre el daemon hasta SIGTERM/SIGINT. Error si ya hay otro vivo o el socket no se crea.
-pub async fn run(catalog: &Path) -> Result<()> {
+pub async fn run(home: &Path, catalog: &Path) -> Result<()> {
     let mut term = signal(SignalKind::terminate()).map_err(|_| "Señales no disponibles")?;
     let mut int = signal(SignalKind::interrupt()).map_err(|_| "Señales no disponibles")?;
     let path = socket_path();
@@ -55,8 +40,12 @@ pub async fn run(catalog: &Path) -> Result<()> {
     let (stop_tx, stop) = watch::channel(false);
     let ctx = Arc::new(Ctx {
         catalog: catalog.into(),
-        idle: Duration::from_secs(idle),
-        stop,
+        home: home.into(),
+        shared: Shared {
+            idle: Duration::from_secs(idle),
+            stop,
+            failures: Arc::default(),
+        },
         registry: Mutex::default(),
     });
     eprintln!(
@@ -81,13 +70,7 @@ pub async fn run(catalog: &Path) -> Result<()> {
     drop(listener);
     let _ = fs::remove_file(&path);
     let _ = stop_tx.send(true);
-    let tasks: Vec<JoinHandle<()>> = {
-        let mut reg = ctx.registry.lock().unwrap_or_else(PoisonError::into_inner);
-        let mut tasks: Vec<_> = reg.actors.drain().map(|(_, h)| h.task).collect();
-        tasks.append(&mut reg.retired);
-        tasks
-    };
-    let all = futures_util::future::join_all(tasks);
+    let all = futures_util::future::join_all(registry::drain(&ctx));
     if tokio::time::timeout(SHUTDOWN_TIMEOUT, all).await.is_err() {
         eprintln!("broker: algunos upstreams no cerraron a tiempo");
     }
@@ -138,24 +121,21 @@ async fn connection(stream: UnixStream, ctx: Arc<Ctx>) {
     if !matches!(first, Ok(Ok(true))) {
         return;
     }
-    let name = serde_json::from_slice::<Value>(&buf)
-        .ok()
-        .and_then(|v| v["attach"].as_str().map(str::to_owned));
-    let joined = match name.as_deref() {
-        Some(name) => attach(&ctx, name).await,
-        None => Err("Se esperaba {\"attach\":\"<nombre>\"}".into()),
-    };
-    let (id, mut out, actor) = match joined {
-        Ok(j) => j,
+    let Attached {
+        id,
+        mut out,
+        ctl,
+        lines,
+    } = match registry::attach(&ctx, &buf).await {
+        Ok(attached) => attached,
         Err(e) => {
-            let _ = writer
-                .write_all(format!("{}\n", json!({"error": e})).as_bytes())
-                .await;
+            let reply = format!("{}\n", json!({"error": e}));
+            let _ = writer.write_all(reply.as_bytes()).await;
             return;
         }
     };
     if writer.write_all(b"{\"ok\":true}\n").await.is_err() {
-        let _ = actor.send(Msg::Leave(id)).await;
+        let _ = ctl.send(Ctl::Leave(id)).await;
         return;
     }
     // Termina cuando el actor suelta la cola (desconexión, upstream muerto, cierre).
@@ -174,7 +154,7 @@ async fn connection(stream: UnixStream, ctx: Arc<Ctx>) {
             read = read_line(&mut reader, &mut buf) => match read {
                 Ok(true) if blank(&buf) => {}
                 Ok(true) => {
-                    if actor.send(Msg::Line(id, buf.clone())).await.is_err() {
+                    if lines.send((id, buf.clone())).await.is_err() {
                         break;
                     }
                 }
@@ -186,7 +166,7 @@ async fn connection(stream: UnixStream, ctx: Arc<Ctx>) {
             }
         }
     }
-    let _ = actor.send(Msg::Leave(id)).await;
+    let _ = ctl.send(Ctl::Leave(id)).await;
     if !writer_done
         && tokio::time::timeout(ATTACH_TIMEOUT, &mut write_task)
             .await
@@ -194,45 +174,4 @@ async fn connection(stream: UnixStream, ctx: Arc<Ctx>) {
     {
         write_task.abort();
     }
-}
-
-/// Registra al cliente en el actor de `name`. Si el actor se está cerrando, reintenta con
-/// uno nuevo (como mucho tres veces).
-async fn attach(
-    ctx: &Ctx,
-    name: &str,
-) -> Result<(u32, mpsc::Receiver<Vec<u8>>, mpsc::Sender<Msg>)> {
-    for _ in 0..3 {
-        let spec = crate::cli::server_spec(&ctx.catalog, name)?;
-        if !brokerable(&spec, name) {
-            return Err(format!("Servidor no compartible: {name}"));
-        }
-        let tx = actor_for(ctx, name, &spec)?;
-        let (reply, joined) = oneshot::channel::<Joined>();
-        if tx.send(Msg::Join(reply)).await.is_err() {
-            continue;
-        }
-        if let Ok(Some((id, out))) = joined.await {
-            return Ok((id, out, tx));
-        }
-    }
-    Err(format!("Servidor no disponible: {name}"))
-}
-
-/// Actor vivo de `name`, o uno nuevo con su upstream recién lanzado.
-fn actor_for(ctx: &Ctx, name: &str, spec: &Value) -> Result<mpsc::Sender<Msg>> {
-    let mut reg = ctx.registry.lock().unwrap_or_else(PoisonError::into_inner);
-    if let Some(h) = reg.actors.get(name).filter(|h| !h.tx.is_closed()) {
-        return Ok(h.tx.clone());
-    }
-    let up =
-        upstream::spawn(spec).inspect_err(|e| eprintln!("broker: spawn {name} falló ({e})"))?;
-    eprintln!("broker: spawn {name} pid {}", up.pid);
-    let handle = actor::start(name, up, ctx.idle, ctx.stop.clone());
-    let tx = handle.tx.clone();
-    reg.retired.retain(|t| !t.is_finished());
-    if let Some(old) = reg.actors.insert(name.into(), handle) {
-        reg.retired.push(old.task);
-    }
-    Ok(tx)
 }

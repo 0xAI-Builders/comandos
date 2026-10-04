@@ -5,7 +5,7 @@ use std::{
     fs,
     io::{BufRead, BufReader, Write},
     path::{Path, PathBuf},
-    process::{Child, ChildStdin, Command, ExitStatus, Stdio},
+    process::{Child, ChildStdin, Command, ExitStatus, Output, Stdio},
     sync::mpsc,
     thread,
     time::{Duration, Instant},
@@ -14,6 +14,8 @@ use std::{
 const BIN: &str = env!("CARGO_BIN_EXE_comandos-extensions");
 const FAKE: &str = env!("CARGO_BIN_EXE_fake_mcp_stdio");
 const WAIT: Duration = Duration::from_secs(5);
+const FALLBACK: &str = "broker no disponible, proxy directo\n";
+const INIT: &str = r#"{"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}"#;
 
 fn home_with(name: &str, server: &str) -> PathBuf {
     let home = std::env::temp_dir().join(format!("comandos-broker-{name}-{}", std::process::id()));
@@ -23,7 +25,7 @@ fn home_with(name: &str, server: &str) -> PathBuf {
     fs::write(
         home.join(".config/comandos/extensions/catalog.json"),
         format!(
-            r#"{{"version":1,"servers":{{"eco":{server},"solo":{{"enabled":true,"shared":false,"command":"sh","args":["-c","echo $$"]}}}}}}"#
+            r#"{{"version":1,"servers":{{"eco":{server},"solo":{{"enabled":true,"shared":false,"command":"sh","args":["-c","echo $$"]}},"muere":{{"command":"{FAKE}","env":{{"FAKE_MCP_DIE":"1"}}}},"cuelga":{{"command":"{FAKE}","env":{{"FAKE_MCP_HANG":"1"}}}}}}}}"#
         ),
     )
     .unwrap();
@@ -70,6 +72,19 @@ fn command(home: &Path, args: &[&str]) -> Command {
         .env("XDG_RUNTIME_DIR", home.join("run"));
     c.env("FAKE_MCP_PIDFILE", home.join("pids"));
     c
+}
+
+/// `serve <name>` con `input` en stdin (cerrado después); salida completa.
+fn serve_once(home: &Path, name: &str, input: &str) -> Output {
+    let mut c = command(home, &["serve", name]);
+    let mut child = (c
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped()))
+    .spawn()
+    .unwrap();
+    writeln!(child.stdin.take().unwrap(), "{input}").unwrap();
+    child.wait_with_output().unwrap()
 }
 
 struct Daemon {
@@ -130,7 +145,11 @@ struct Session {
 
 impl Session {
     fn open(home: &Path, name: &str) -> Self {
+        Self::open_in(home, name, Path::new("."))
+    }
+    fn open_in(home: &Path, name: &str, cwd: &Path) -> Self {
         let mut child = command(home, &["serve", name])
+            .current_dir(cwd)
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::null())
@@ -152,11 +171,17 @@ impl Session {
     fn send(&mut self, msg: Value) {
         writeln!(self.stdin.as_mut().unwrap(), "{msg}").unwrap();
     }
+    fn request(&mut self, id: u64, method: &str, params: Value) {
+        self.send(json!({"jsonrpc":"2.0","id":id,"method":method,"params":params}));
+    }
+    fn recv(&mut self) -> Value {
+        let line = self.lines.recv_timeout(WAIT).expect("respuesta del broker");
+        serde_json::from_str(&line).unwrap()
+    }
     fn call(&mut self, id: u64, method: &str) -> Value {
         let params = json!({"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"t","version":"1"}});
-        self.send(json!({"jsonrpc":"2.0","id":id,"method":method,"params":params}));
-        let line = self.lines.recv_timeout(WAIT).expect("respuesta del broker");
-        let reply: Value = serde_json::from_str(&line).unwrap();
+        self.request(id, method, params);
+        let reply = self.recv();
         assert_eq!(reply["id"], id, "cada cliente recibe su propio id");
         reply
     }
@@ -247,6 +272,8 @@ fn sessions_multiplex_survive_detach_and_respawn_after_upstream_death() {
         "la otra sesión sigue viva"
     );
     let old: u32 = pa.parse().unwrap();
+    // Pasados los 500 ms de arranque: la muerte ya no cuenta como fallo de arranque.
+    thread::sleep(Duration::from_millis(600));
     signal::kill(Pid::from_raw(old as i32), signal::Signal::SIGKILL).unwrap();
     assert!(
         b.closed_by_peer(),
@@ -283,6 +310,10 @@ fn idle_upstream_ends_second_daemon_refuses_and_stale_socket_is_replaced() {
         !second.success(),
         "un segundo daemon no arranca si el primero vive"
     );
+    assert!(
+        a.call(2, "tools/list")["result"].is_object(),
+        "y el primero sigue sirviendo"
+    );
     a.close();
     assert!(
         until(|| !alive(pid)),
@@ -298,4 +329,109 @@ fn idle_upstream_ends_second_daemon_refuses_and_stale_socket_is_replaced() {
     assert_ne!(pb, pid);
     b.close();
     assert!(next.stop().success());
+}
+
+#[test]
+fn sharing_key_includes_cwd() {
+    let home = fake_home("cwd");
+    let (w1, w2) = (home.join("w1"), home.join("w2"));
+    fs::create_dir_all(&w1).unwrap();
+    fs::create_dir_all(&w2).unwrap();
+    let mut daemon = Daemon::start(&home, "600");
+    let mut a = Session::open_in(&home, "eco", &w1);
+    let mut b = Session::open_in(&home, "eco", &w2);
+    let mut c = Session::open_in(&home, "eco", &w1);
+    let (pa, pb, pc) = (
+        a.pid(1, "initialize"),
+        b.pid(1, "initialize"),
+        c.pid(1, "initialize"),
+    );
+    assert_ne!(pa, pb, "distinto cwd ⇒ distinto upstream");
+    assert_eq!(pa, pc, "mismo cwd y env ⇒ mismo upstream");
+    assert_eq!(pids(&home).len(), 2);
+    assert!(daemon.stop().success());
+}
+
+#[test]
+fn upstream_dying_at_start_falls_back_and_cools_down() {
+    let home = fake_home("dies");
+    let mut daemon = Daemon::start(&home, "600");
+    for round in 1..=2 {
+        let out = serve_once(&home, "muere", "");
+        assert_eq!(
+            String::from_utf8_lossy(&out.stderr),
+            FALLBACK,
+            "ronda {round}"
+        );
+        assert_eq!(
+            out.status.code(),
+            Some(3),
+            "el proxy directo ejecutó el fake"
+        );
+    }
+    let log = daemon.log();
+    assert_eq!(
+        log.matches("spawn muere").count(),
+        1,
+        "sin relanzar en el enfriamiento: {log}"
+    );
+    assert!(log.contains("murió al arrancar"), "{log}");
+    assert_eq!(pids(&home).len(), 3, "uno del broker y dos directos");
+    assert!(daemon.stop().success());
+}
+
+#[test]
+fn socket_of_dead_daemon_falls_back_with_one_line() {
+    let home = fake_home("dead");
+    let mut daemon = Daemon::start(&home, "600");
+    daemon.child.kill().unwrap();
+    daemon.child.wait().unwrap();
+    let out = serve_once(&home, "eco", INIT);
+    assert_eq!(String::from_utf8_lossy(&out.stderr), FALLBACK);
+    let reply: Value = serde_json::from_slice(&out.stdout).unwrap();
+    assert_eq!(reply["id"], 1, "respondió el proxy directo");
+}
+
+#[test]
+fn hung_upstream_times_out_without_blocking_other_servers() {
+    let home = fake_home("hang");
+    let mut daemon = Daemon::start(&home, "600");
+    let h = home.clone();
+    let hung = thread::spawn(move || serve_once(&h, "cuelga", ""));
+    thread::sleep(Duration::from_millis(200));
+    let start = Instant::now();
+    let mut a = Session::open(&home, "eco");
+    a.pid(1, "initialize");
+    assert!(
+        start.elapsed() < Duration::from_secs(3),
+        "otro servidor no espera"
+    );
+    let out = hung.join().unwrap();
+    assert_eq!(String::from_utf8_lossy(&out.stderr), FALLBACK);
+    a.close();
+    assert!(daemon.stop().success());
+}
+
+#[test]
+fn concurrent_requests_with_the_same_ids_stay_with_their_client() {
+    let home = fake_home("conc");
+    let mut daemon = Daemon::start(&home, "600");
+    let (mut a, mut b) = (Session::open(&home, "eco"), Session::open(&home, "eco"));
+    a.pid(1, "initialize");
+    b.pid(1, "initialize");
+    for id in [5, 6] {
+        a.request(id, "tools/list", json!({"who": "a"}));
+        b.request(id, "tools/list", json!({"who": "b"}));
+    }
+    for (s, who) in [(&mut a, "a"), (&mut b, "b")] {
+        let ids: Vec<Value> = (0..2)
+            .map(|_| {
+                let r = s.recv();
+                assert_eq!(r["result"]["echo"]["who"], who, "respuesta de otro cliente");
+                r["id"].clone()
+            })
+            .collect();
+        assert_eq!(ids, [json!(5), json!(6)]);
+    }
+    assert!(daemon.stop().success());
 }
