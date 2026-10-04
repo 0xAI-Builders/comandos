@@ -128,3 +128,12 @@
 {"name":"g-terminal-history","method":"POST","path":"/terminal-history","headers":{"Host":"127.0.0.1","Content-Type":"application/json"},"body":{"session":"local","lines":5},"volatile":["/text"],"expect":"same"}
 {"name":"g-terminal-history-lineas","method":"POST","path":"/terminal-history","headers":{"Host":"127.0.0.1","Content-Type":"application/json"},"body":{"session":"local","lines":0},"volatile":[],"expect":"same"}
 {"name":"g-terminal-history-nadie","method":"POST","path":"/terminal-history","headers":{"Host":"127.0.0.1","Content-Type":"application/json"},"body":{"session":"no-existe"},"volatile":[],"expect":"same"}
+# --- 2c · G2: tecleo en pane (nativa; las dos últimas teclean en el tmux privado de cada copia, la segunda sale de la caché)
+{"name":"g-pane-type-mala","method":"POST","path":"/pane/type","headers":{"Host":"127.0.0.1","Content-Type":"application/json"},"body":{"session":"a b","text":"x"},"volatile":[],"expect":"same"}
+{"name":"g-pane-type-nadie","method":"POST","path":"/pane/type","headers":{"Host":"127.0.0.1","Content-Type":"application/json"},"body":{"session":"no-existe","pane":"%0","text":"x"},"volatile":[],"expect":"same"}
+{"name":"g-pane-type-sin-pane","method":"POST","path":"/pane/type","headers":{"Host":"127.0.0.1","Content-Type":"application/json"},"body":{"session":"local","text":"x"},"volatile":[],"expect":"same"}
+{"name":"g-pane-type-ido","method":"POST","path":"/pane/type","headers":{"Host":"127.0.0.1","Content-Type":"application/json"},"body":{"session":"local","pane":"%9999","text":"x"},"volatile":[],"expect":"same"}
+{"name":"g-pane-type-vacio","method":"POST","path":"/pane/type","headers":{"Host":"127.0.0.1","Content-Type":"application/json"},"body":{"session":"local","pane":"%0","text":"  "},"volatile":[],"expect":"same"}
+{"name":"g-pane-type-salto","method":"POST","path":"/pane/type","headers":{"Host":"127.0.0.1","Content-Type":"application/json"},"body":{"session":"local","pane":"%0","text":"a\nb"},"volatile":[],"expect":"same"}
+{"name":"g-pane-type","method":"POST","path":"/pane/type","headers":{"Host":"127.0.0.1","Content-Type":"application/json"},"body":{"session":"local","pane":"%0","text":"ab","requestId":"paridad-1"},"volatile":["/durationMs"],"expect":"same"}
+{"name":"g-pane-type-reintento","method":"POST","path":"/pane/type","headers":{"Host":"127.0.0.1","Content-Type":"application/json"},"body":{"session":"local","pane":"%0","text":"ab","requestId":"paridad-1"},"volatile":["/durationMs"],"expect":"same"}

@@ -265,6 +265,11 @@ pub fn handler(state: Arc<DashState>) -> Handler {
 
 async fn handle(state: &DashState, request: Request) -> Result<Reply, HandlerError> {
     let live = state.native.as_ref().filter(|n| n.enabled());
+    if live.is_none()
+        && let Some(reply) = state.native.as_ref().and_then(|n| n.typing_retry(&request))
+    {
+        return Ok(reply);
+    }
     let class = router::classify_with(
         &request.method,
         &request.target,

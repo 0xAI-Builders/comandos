@@ -19,6 +19,7 @@ pub mod snippets;
 pub mod state;
 pub mod terminal;
 pub mod tmux;
+pub mod typing;
 pub mod ui_log;
 pub mod workspace;
 
@@ -53,6 +54,7 @@ pub enum NativeRoute {
     Pomodoro,
     Catalog(catalogs::CatalogRoute),
     Terminal(terminal::TerminalRoute),
+    PaneType,
     Retired,
 }
 
@@ -106,6 +108,7 @@ const TABLES: &[&[Entry]] = &[
     pomodoro::ROUTES,
     catalogs::ROUTES,
     terminal::ROUTES,
+    typing::ROUTES,
     retired::ROUTES,
 ];
 
@@ -227,6 +230,8 @@ pub struct Native {
     pub(crate) notice_feed: notices::RevisionFeed,
     /// Carril de la base de uso (`GET /pomodoro`, `GET /sovereignty`).
     pub(crate) usage: lanes::Lane<lanes::UsageBackend>,
+    /// Caché por `requestId` y candados de `POST /pane/type`.
+    pub(crate) typing: Arc<typing::TypingState>,
 }
 
 impl Native {
@@ -241,6 +246,7 @@ impl Native {
             prefs_lock: tokio::sync::Mutex::new(()),
             fonts: Mutex::new(None),
             notice_feed: notices::RevisionFeed::default(),
+            typing: Arc::default(),
         }
     }
 
@@ -358,12 +364,27 @@ impl Native {
         }
     }
 
+    /// Con el conjunto apagado todo se reenvía, salvo el reintento de un
+    /// `POST /pane/type` que el frente ya tecleó: ese sale de su caché, porque
+    /// el Python no lo conoce y volvería a teclear.
+    pub fn typing_retry(&self, request: &Request) -> Option<Reply> {
+        if route(&request.method, &request.target) != Some(NativeRoute::PaneType) {
+            return None;
+        }
+        typing::retry_reply(&self.typing, request)
+    }
+
     pub async fn dispatch(
         &self,
         route: NativeRoute,
         request: &Request,
     ) -> Result<Outcome, HandlerError> {
         if !self.ready().await {
+            if route == NativeRoute::PaneType
+                && let Some(reply) = typing::retry_reply(&self.typing, request)
+            {
+                return Ok(Outcome::Reply(reply));
+            }
             return Ok(Outcome::Decline);
         }
         match self.answer(route, request).await {
@@ -384,6 +405,7 @@ impl Native {
             NativeRoute::Pomodoro => pomodoro::answer(self).await,
             NativeRoute::Catalog(route) => catalogs::answer(self, route).await,
             NativeRoute::Terminal(route) => terminal::answer(self, route, request).await,
+            NativeRoute::PaneType => typing::answer(self, request).await,
             NativeRoute::Retired => {
                 let path = request
                     .target

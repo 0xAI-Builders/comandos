@@ -1,0 +1,377 @@
+//! G. POST /pane/type (9590): teclea texto literal en un pane exacto, letra a
+//! letra y sin Enter, en los panes vivos del usuario.
+//!
+//! La caché de 256 respuestas por `requestId` y los candados por pane son del
+//! frente. Para que un reintento nunca teclee dos veces:
+//! - la caché se consulta antes que la resolución de sesión (el Python la mira
+//!   después; con la misma petición el resultado es el mismo);
+//! - un `requestId` que el frente declinó queda marcado y se declina siempre
+//!   después, para que el reintento lo responda la caché del Python;
+//! - el tecleo, el candado y la caché viven en el hilo de bloqueo: si la
+//!   petición se suelta a medias, el tecleo termina y su respuesta se guarda;
+//! - un `requestId` que el frente tecleó se responde de su caché aunque el
+//!   conjunto nativo se apague después (`retry_reply`).
+use super::{
+    Answer, Entry, Fault, Key, Native, NativeRoute, Verb,
+    light::{data, error, load, tmux_sessions},
+    py, reply,
+    tmux::Tmux,
+};
+use crate::{HandlerError, Reply, Request};
+use comandos_core::json::truthy;
+use comandos_runtime::pane_typing::{self, PaneTypingLocks, TmuxResult, TypingOptions};
+use http::StatusCode;
+use serde_json::{Map, Value, json};
+use std::{
+    collections::VecDeque,
+    path::{Path, PathBuf},
+    sync::{Arc, Mutex},
+    time::{Duration, Instant},
+};
+use tokio::runtime::Handle;
+
+pub const ROUTES: &[Entry] = &[Entry {
+    verb: Verb::Post,
+    key: Key::Raw("/pane/type"),
+    route: NativeRoute::PaneType,
+}];
+
+/// `_PANE_TYPING_RESULTS` del Python: 256 entradas, FIFO.
+const RESULTS: usize = 256;
+
+/// Marcas de `requestId` declinados. Mucho mayor que la caché del Python a
+/// propósito: esa caché solo crece con lo que el frente le reenvía, así que
+/// una marca nunca debe caducar antes de que el Python olvide su respuesta.
+const DECLINED: usize = 16_384;
+
+const BUSY: &str = "Ya se está escribiendo en ese pane; espera a que termine.";
+
+#[derive(Default)]
+pub struct TypingState {
+    locks: PaneTypingLocks,
+    /// requestId → (status, cuerpo), en orden de llegada.
+    results: Mutex<VecDeque<(String, u16, Value)>>,
+    /// requestId que atendió el Python.
+    declined: Mutex<VecDeque<String>>,
+}
+
+impl TypingState {
+    fn cached(&self, rid: &str) -> Option<(u16, Value)> {
+        let results = self.results.lock().unwrap_or_else(|p| p.into_inner());
+        results
+            .iter()
+            .find(|(key, _, _)| key == rid)
+            .map(|(_, status, body)| (*status, body.clone()))
+    }
+
+    /// `results[rid] = res` + `popitem(last=False)` mientras pase de 256.
+    /// Reasignar una clave de un `OrderedDict` no la mueve al final.
+    fn remember(&self, rid: &str, status: u16, body: &Value) {
+        let mut results = self.results.lock().unwrap_or_else(|p| p.into_inner());
+        if let Some(slot) = results.iter_mut().find(|(key, _, _)| key == rid) {
+            slot.1 = status;
+            slot.2 = body.clone();
+        } else {
+            results.push_back((rid.to_owned(), status, body.clone()));
+        }
+        while results.len() > RESULTS {
+            results.pop_front();
+        }
+    }
+
+    fn was_declined(&self, rid: &str) -> bool {
+        let declined = self.declined.lock().unwrap_or_else(|p| p.into_inner());
+        declined.iter().any(|key| key == rid)
+    }
+
+    /// Declina y, si hay `requestId`, lo marca para siempre.
+    fn decline(&self, rid: &str) -> Fault {
+        if !rid.is_empty() {
+            let mut declined = self.declined.lock().unwrap_or_else(|p| p.into_inner());
+            if !declined.iter().any(|key| key == rid) {
+                declined.push_back(rid.to_owned());
+            }
+            while declined.len() > DECLINED {
+                declined.pop_front();
+            }
+        }
+        Fault::Decline
+    }
+}
+
+/// Suelta el candado del pane pase lo que pase (también si el hilo se pierde).
+struct PaneGuard {
+    state: Arc<TypingState>,
+    pane: String,
+}
+
+impl Drop for PaneGuard {
+    fn drop(&mut self) {
+        self.state.locks.release(&self.pane);
+    }
+}
+
+fn failure() -> Fault {
+    Fault::Error(HandlerError::Failure)
+}
+
+/// `str(x or "")`; lo que no tiene un `str()` seguro se declina.
+fn text_or_empty(value: Option<&Value>) -> Result<String, Fault> {
+    match value {
+        Some(v) if truthy(v) => py::str_scalar(v).ok_or(Fault::Decline),
+        _ => Ok(String::new()),
+    }
+}
+
+/// `sess = data.get("session", "")` + `SESSION_RE.match(sess)`: un no-texto
+/// es un `TypeError` (500); `Ok(None)` es el 400 de nombre inválido.
+fn session_of(data: &Map<String, Value>) -> Result<Option<&str>, Fault> {
+    match data.get("session") {
+        None => Ok(None),
+        Some(Value::String(s)) if py::is_session(s) => Ok(Some(s.as_str())),
+        Some(Value::String(_)) => Ok(None),
+        Some(_) => Err(failure()),
+    }
+}
+
+/// `str(data.get("requestId") or "")[:64]`.
+fn request_id(data: &Map<String, Value>) -> Result<String, Fault> {
+    Ok(py::take_chars(&text_or_empty(data.get("requestId"))?, 64))
+}
+
+fn replay(status: u16, body: &Value) -> Answer {
+    reply(StatusCode::from_u16(status).map_err(|_| failure())?, body)
+}
+
+/// Reintento de un `requestId` que el frente ya respondió, con el conjunto
+/// nativo apagado: se responde de la caché en vez de reenviarlo (el Python
+/// no lo conoce y volvería a teclear). `None`: se reenvía como siempre.
+pub fn retry_reply(state: &TypingState, request: &Request) -> Option<Reply> {
+    let data = data(request).ok()?;
+    session_of(data).ok().flatten()?;
+    let rid = request_id(data).ok()?;
+    if rid.is_empty() || state.was_declined(&rid) {
+        return None;
+    }
+    let (status, body) = state.cached(&rid)?;
+    replay(status, &body).ok()
+}
+
+/// `resolve_project_session` (6183) hasta saber si ALGÚN estado nombra esta
+/// sesión: si sí, el Python sigue con procesos (`agent_procs`) → se declina.
+pub fn project_session_matches(state: &Path, sess: &str) -> Result<bool, Fault> {
+    let entries = match std::fs::read_dir(state) {
+        Ok(entries) => entries,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(false),
+        Err(_) => return Err(Fault::Decline),
+    };
+    for entry in entries {
+        let entry = entry.map_err(|_| Fault::Decline)?;
+        let name = entry.file_name();
+        let name = name.to_string_lossy();
+        // `glob("*.json")`: sin ocultos.
+        if name.starts_with('.') || !name.ends_with(".json") {
+            continue;
+        }
+        let path: PathBuf = entry.path();
+        // `open()` de un directorio: IsADirectoryError → `continue`.
+        if path.is_dir() {
+            continue;
+        }
+        let Some(doc) = load(&path)? else { continue };
+        // `.get` de un no-dict o `re.sub` de un no-str: excepción → 500 en el Python.
+        let Value::Object(doc) = doc else {
+            return Err(Fault::Decline);
+        };
+        let project = match doc.get("project") {
+            None => "",
+            Some(Value::String(p)) => p.as_str(),
+            Some(_) => return Err(Fault::Decline),
+        };
+        // `session_name`: `re.sub(r"[.:]", "-", project)[:80]`.
+        let derived: String = project
+            .chars()
+            .map(|c| if c == '.' || c == ':' { '-' } else { c })
+            .take(80)
+            .collect();
+        if derived == sess {
+            return Ok(true);
+        }
+    }
+    Ok(false)
+}
+
+pub async fn answer(native: &Native, request: &Request) -> Answer {
+    let data = data(request)?;
+    let tmux = &native.options().tmux;
+    let state = &native.typing;
+    let Some(sess) = session_of(data)? else {
+        return error(StatusCode::BAD_REQUEST, "Nombre de sesion invalido");
+    };
+    let rid = request_id(data)?;
+    if !rid.is_empty() {
+        if state.was_declined(&rid) {
+            return Err(Fault::Decline);
+        }
+        if let Some((status, body)) = state.cached(&rid) {
+            return replay(status, &body);
+        }
+    }
+    // `resolve_project_session`: `tmux_sessions()` sin capturar, luego los estados.
+    tmux_sessions(tmux).await?;
+    let dir = native.options().hooks.join("state");
+    let owned = sess.to_owned();
+    let matches = tokio::task::spawn_blocking(move || project_session_matches(&dir, &owned))
+        .await
+        .map_err(|_| failure())?;
+    match matches {
+        Ok(false) => {}
+        Ok(true) | Err(Fault::Decline) => return Err(state.decline(&rid)),
+        Err(fault) => return Err(fault),
+    }
+    let want = match text_or_empty(data.get("pane")) {
+        Ok(want) => want,
+        Err(_) => return Err(state.decline(&rid)),
+    };
+    let mut pane = format!("={sess}:");
+    match py::is_pane(&want) {
+        // `\d` de Python acepta dígitos Unicode.
+        None => return Err(state.decline(&rid)),
+        Some(true) => {
+            let out = tmux
+                .run(&["display-message", "-p", "-t", &want, "#{pane_id}"])
+                .await
+                .map_err(|e| Fault::Error(e.uncaught()))?;
+            if py::strip(&out.stdout) == want {
+                pane = want.clone();
+            }
+        }
+        Some(false) => {}
+    }
+    let has = tmux
+        .run(&["has-session", "-t", &format!("={sess}")])
+        .await
+        .map_err(|e| Fault::Error(e.uncaught()))?;
+    if !has.ok {
+        return error(
+            StatusCode::NOT_FOUND,
+            &format!("No hay sesion tmux '{sess}'. Levantala primero."),
+        );
+    }
+    if py::is_pane(&want) != Some(true) {
+        return reply(
+            StatusCode::BAD_REQUEST,
+            &json!({"error": "Falta un pane exacto (%N)", "code": "invalid"}),
+        );
+    }
+    if pane != want {
+        return reply(
+            StatusCode::NOT_FOUND,
+            &json!({"error": format!("El pane {want} ya no existe"), "code": "pane_gone"}),
+        );
+    }
+    // `validate` del Python: un no-texto es «Texto vacío». La comprobación de
+    // vacío de la librería (`is_whitespace` + U+001C–U+001F) es `py::is_space`.
+    let text = match data.get("text") {
+        Some(Value::String(t)) => t.clone(),
+        _ => {
+            return reply(
+                StatusCode::BAD_REQUEST,
+                &json!({"error": "Texto vacío", "code": "invalid"}),
+            );
+        }
+    };
+    if let Err(e) = pane_typing::validate(&text) {
+        return reply(
+            StatusCode::BAD_REQUEST,
+            &json!({"error": e.message, "code": "invalid"}),
+        );
+    }
+    if !state.locks.acquire(&pane) {
+        return reply(
+            StatusCode::CONFLICT,
+            &json!({"error": BUSY, "code": "typing_in_progress"}),
+        );
+    }
+    let guard = PaneGuard {
+        state: state.clone(),
+        pane,
+    };
+    let job = Job {
+        tmux: tmux.clone(),
+        handle: Handle::current(),
+        text,
+        rid: rid.clone(),
+    };
+    match tokio::task::spawn_blocking(move || job.run(guard)).await {
+        Ok(Ok((status, body))) => replay(status, &body),
+        Ok(Err(error)) => Err(Fault::Error(error)),
+        // No llegó a correr (runtime parándose): nada se tecleó.
+        Err(join) if join.is_cancelled() => Err(state.decline(&rid)),
+        Err(_) => Err(failure()),
+    }
+}
+
+/// El tecleo y lo que le sigue, en el hilo de bloqueo.
+struct Job {
+    tmux: Tmux,
+    handle: Handle,
+    text: String,
+    rid: String,
+}
+
+impl Job {
+    /// `type_literal` + respuesta + caché. `Err`: la excepción que el Python no
+    /// captura (`TimeoutExpired` → 504, el resto → 500), sin guardar nada.
+    fn run(self, guard: PaneGuard) -> Result<(u16, Value), HandlerError> {
+        let started = Instant::now();
+        let mut uncaught = None;
+        let result = pane_typing::type_literal(
+            |args| match self.tmux.run_blocking(&self.handle, args) {
+                Ok(out) => TmuxResult {
+                    returncode: if out.ok { 0 } else { 1 },
+                    stdout: out.stdout,
+                    stderr: out.stderr,
+                },
+                // La excepción corta el bucle: un código ≠ 0 detiene la librería.
+                Err(e) => {
+                    uncaught.get_or_insert(e.uncaught());
+                    TmuxResult {
+                        returncode: 1,
+                        ..TmuxResult::default()
+                    }
+                }
+            },
+            &guard.pane,
+            &self.text,
+            |seconds| std::thread::sleep(Duration::from_secs_f64(seconds)),
+            TypingOptions::default(),
+        );
+        let elapsed = started.elapsed().as_millis();
+        // `finally: _PANE_TYPING_LOCKS.release(pane)` antes de guardar.
+        let state = guard.state.clone();
+        drop(guard);
+        if let Some(error) = uncaught {
+            return Err(error);
+        }
+        let (status, body) = match result {
+            Ok(out) => (
+                200u16,
+                json!({
+                    "ok": true,
+                    "typed": out.typed,
+                    "durationMs": u64::try_from(elapsed).unwrap_or(u64::MAX),
+                    "requestId": self.rid,
+                }),
+            ),
+            Err(e) => (
+                502u16,
+                json!({"error": e.message, "code": e.code, "typed": e.typed, "requestId": self.rid}),
+            ),
+        };
+        if !self.rid.is_empty() {
+            state.remember(&self.rid, status, &body);
+        }
+        Ok((status, body))
+    }
+}
