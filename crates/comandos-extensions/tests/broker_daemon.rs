@@ -435,3 +435,102 @@ fn concurrent_requests_with_the_same_ids_stay_with_their_client() {
     }
     assert!(daemon.stop().success());
 }
+
+/// Daemon con entorno mínimo (`PATH=/usr/bin:/bin`), como bajo `systemd --user`.
+fn start_clean_daemon(home: &Path) -> Daemon {
+    let log = fs::File::create(home.join("daemon.log")).unwrap();
+    let child = (Command::new(BIN).arg("broker").env_clear())
+        .env("HOME", home)
+        .env("XDG_RUNTIME_DIR", home.join("run"))
+        .env("PATH", "/usr/bin:/bin")
+        .env("COMANDOS_BROKER_IDLE_SECS", "600")
+        .stdout(Stdio::null())
+        .stderr(log)
+        .spawn()
+        .unwrap();
+    let d = Daemon {
+        child,
+        home: home.into(),
+    };
+    assert!(
+        until(|| d.socket().exists()),
+        "el daemon debe crear su socket"
+    );
+    d
+}
+
+/// Catálogo con `eco` = `fake_mcp_stdio` sin `/`, cuyo binario vive en `bin_dir`.
+fn bare_command_home(name: &str, env: &str) -> (PathBuf, PathBuf, PathBuf) {
+    let bin_dir = std::env::temp_dir().join(format!("comandos-bin-{name}-{}", std::process::id()));
+    let _ = fs::remove_dir_all(&bin_dir);
+    fs::create_dir_all(&bin_dir).unwrap();
+    std::os::unix::fs::symlink(FAKE, bin_dir.join("fake_mcp_stdio")).unwrap();
+    let home = home_with(name, r#"{"enabled":true,"command":"fake_mcp_stdio"}"#);
+    let dump = home.join("dump-path");
+    let server = format!(
+        r#"{{"enabled":true,"command":"fake_mcp_stdio","env":{{"FAKE_MCP_DUMP_PATH":"{}"{env}}}}}"#,
+        dump.display()
+    );
+    let catalog = home.join(".config/comandos/extensions/catalog.json");
+    let text = format!(r#"{{"version":1,"servers":{{"eco":{server}}}}}"#);
+    fs::write(catalog, text).unwrap();
+    (home, bin_dir, dump)
+}
+
+/// Una línea `attach` cruda (con o sin `path`); devuelve la respuesta del daemon.
+fn raw_attach(home: &Path, path: Option<&str>) -> String {
+    let catalog = home.join(".config/comandos/extensions/catalog.json");
+    let mut attach = json!({"attach":"eco","cwd":home,"env":{},"catalog":catalog,"home":home});
+    attach["env"] = serde_json::from_str(&fs::read_to_string(&catalog).unwrap_or_default())
+        .ok()
+        .and_then(|v: Value| v["servers"]["eco"]["env"].as_object().cloned())
+        .map_or(json!({}), Value::Object);
+    if let Some(p) = path {
+        attach["path"] = json!(p);
+    }
+    let mut stream =
+        std::os::unix::net::UnixStream::connect(home.join("run/comandos/broker.sock")).unwrap();
+    stream.set_read_timeout(Some(WAIT)).unwrap();
+    writeln!(stream, "{attach}").unwrap();
+    let mut reply = String::new();
+    BufReader::new(&stream).read_line(&mut reply).unwrap();
+    reply
+}
+
+#[test]
+fn attach_path_resolves_a_bare_command_and_becomes_upstream_path() {
+    let (home, bin_dir, dump) = bare_command_home("pathok", "");
+    let _daemon = start_clean_daemon(&home);
+    let path = format!("{}:/usr/bin:/bin", bin_dir.display());
+    let reply = raw_attach(&home, Some(&path));
+    assert_eq!(reply.trim(), r#"{"ok":true}"#, "daemon: {}", _daemon.log());
+    assert_eq!(fs::read_to_string(&dump).unwrap(), path);
+    let _ = fs::remove_dir_all(&bin_dir);
+}
+
+#[test]
+fn attach_without_path_cannot_resolve_a_bare_command() {
+    let (home, bin_dir, _dump) = bare_command_home("pathno", "");
+    let _daemon = start_clean_daemon(&home);
+    let reply = raw_attach(&home, None);
+    assert!(reply.contains("error"), "sin path no se resuelve: {reply}");
+    let _ = fs::remove_dir_all(&bin_dir);
+}
+
+#[test]
+fn spec_own_path_wins_over_attach_path() {
+    let (home, bin_dir, dump) = bare_command_home("pathspec", "");
+    let own = format!("{}:/usr/bin:/bin", bin_dir.display());
+    let catalog = home.join(".config/comandos/extensions/catalog.json");
+    let text = fs::read_to_string(&catalog).unwrap();
+    let text = text.replace(
+        r#""FAKE_MCP_DUMP_PATH""#,
+        &format!(r#""PATH":"{own}","FAKE_MCP_DUMP_PATH""#),
+    );
+    fs::write(&catalog, text).unwrap();
+    let _daemon = start_clean_daemon(&home);
+    let reply = raw_attach(&home, Some("/nonexistent"));
+    assert_eq!(reply.trim(), r#"{"ok":true}"#, "daemon: {}", _daemon.log());
+    assert_eq!(fs::read_to_string(&dump).unwrap(), own);
+    let _ = fs::remove_dir_all(&bin_dir);
+}

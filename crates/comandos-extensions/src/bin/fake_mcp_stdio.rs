@@ -1,6 +1,7 @@
 //! Servidor MCP stdio mínimo, solo para las pruebas del broker: responde a cada línea con
 //! `id` con un `InitializeResult` cuyo `serverInfo.version` es su pid y que devuelve los
 //! `params` recibidos en `echo`. Variables: `FAKE_MCP_PIDFILE` (añade su pid al arrancar),
+//! `FAKE_MCP_DUMP_PATH` (escribe su `PATH` en ese archivo al arrancar),
 //! `FAKE_MCP_DIE=1` (sale nada más arrancar), `FAKE_MCP_HANG=1` (lee pero nunca contesta).
 use std::io::{BufRead, Write};
 
@@ -15,6 +16,14 @@ fn main() {
         if let Ok(f) = file.as_mut() {
             let _ = writeln!(f, "{pid}");
         }
+    }
+    if let Some(path) = std::env::var_os("FAKE_MCP_DUMP_PATH") {
+        let _ = std::fs::write(
+            path,
+            std::env::var_os("PATH")
+                .unwrap_or_default()
+                .as_encoded_bytes(),
+        );
     }
     if knob("FAKE_MCP_DIE") {
         std::process::exit(3);

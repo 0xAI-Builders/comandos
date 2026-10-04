@@ -7,7 +7,11 @@ use nix::{
     unistd::Pid,
 };
 use serde_json::Value;
-use std::{path::Path, process::Stdio, time::Duration};
+use std::{
+    path::{Path, PathBuf},
+    process::Stdio,
+    time::Duration,
+};
 use tokio::{
     io::{AsyncWriteExt, BufReader},
     process::Child,
@@ -30,14 +34,48 @@ pub(super) struct Upstream {
     pub pid: u32,
 }
 
+/// Primer archivo regular ejecutable de `name` en los directorios de `path`, como `execvp`.
+fn find_in_path(name: &str, path: &str) -> Option<PathBuf> {
+    use std::os::unix::fs::PermissionsExt;
+    std::env::split_paths(path)
+        .map(|dir| dir.join(name))
+        .find(|c| {
+            std::fs::metadata(c).is_ok_and(|m| m.is_file() && m.permissions().mode() & 0o111 != 0)
+        })
+}
+
 /// Lanza `spec` como lo habría lanzado el proxy directo de la sesión: en `cwd` y con su
-/// `env` expandido superpuesto al entorno del daemon.
-pub(super) fn spawn(spec: &Value, cwd: &Path, env: &[(String, String)]) -> Result<Upstream> {
+/// `env` expandido superpuesto al entorno del daemon. Con `path` (el `PATH` de la sesión)
+/// resuelve ahí un `command` sin `/` y lo da como `PATH` del upstream; el `PATH` propio del
+/// spec, si existe, gana.
+pub(super) fn spawn(
+    spec: &Value,
+    cwd: &Path,
+    env: &[(String, String)],
+    path: Option<&str>,
+) -> Result<Upstream> {
     let mut spec = spec.clone();
     if let Some(o) = spec.as_object_mut() {
         o.remove("cwd");
     }
-    let mut std_command = crate::command_env(&spec, true, Some(env))?;
+    let mut env = env.to_vec();
+    if let Some(path) = path {
+        if !env.iter().any(|(k, _)| k == "PATH") {
+            env.push(("PATH".into(), path.into()));
+        }
+        // PATH efectivo del upstream (el del spec gana): ahí se busca el ejecutable.
+        let effective = env
+            .iter()
+            .find(|(k, _)| k == "PATH")
+            .map_or(path, |(_, v)| v);
+        let command = spec["command"].as_str().map(crate::expand_user);
+        if let Some(name) = command.filter(|c| !c.is_empty() && !c.contains('/'))
+            && let Some(found) = find_in_path(&name, effective)
+        {
+            spec["command"] = Value::String(found.to_string_lossy().into_owned());
+        }
+    }
+    let mut std_command = crate::command_env(&spec, true, Some(&env))?;
     std_command
         .current_dir(cwd)
         .stdin(Stdio::piped())

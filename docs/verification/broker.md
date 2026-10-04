@@ -16,12 +16,13 @@ bytes entre su stdin/stdout y el socket. El daemon reparte las líneas JSON-RPC 
 La sesión envía, en una línea:
 
 ```json
-{"attach":"<nombre>","cwd":"<directorio absoluto>","env":{"CLAVE":"valor"},"catalog":"<ruta absoluta del catálogo>","home":"<HOME de la sesión>"}
+{"attach":"<nombre>","cwd":"<directorio absoluto>","env":{"CLAVE":"valor"},"catalog":"<ruta absoluta del catálogo>","home":"<HOME de la sesión>","path":"<PATH de la sesión>"}
 ```
 
 - `cwd`: el directorio donde el proxy directo habría lanzado el proceso (el `cwd` del
   catálogo resuelto contra el directorio de la sesión, o el directorio de la sesión).
 - `env`: el `env` del catálogo con `${VAR}` expandido en el entorno de la sesión.
+- `path` (opcional): el `PATH` del proceso `serve`; se omite si no tiene PATH.
 - `catalog` y `home`: si no coinciden con los del daemon, la respuesta es
   `{"error":"catálogo distinto"}` o `{"error":"home distinto"}`.
 
@@ -40,6 +41,17 @@ Un upstream se comparte solo si el proceso sería idéntico: clave
 `(nombre, cwd, sha256 del JSON canónico del env)`. El daemon lo lanza con `current_dir(cwd)` y
 con el `env` de la sesión superpuesto a su propio entorno, como haría el proxy directo.
 `crate::command_env` es la única función que arma el comando (la usan `serve` y el broker).
+
+## Entorno del upstream
+
+El daemon corre bajo `systemd --user`, cuyo PATH no incluye nvm ni bun. Por eso el cliente manda
+su `PATH` en el `attach` y el daemon (a) resuelve ahí un `command` sin `/` (primer archivo
+regular ejecutable, como `execvp`) y (b) lo da como `PATH` del upstream, antes de superponer
+el `env` del spec (un `env.PATH` propio del spec gana). Sin `path`, se conserva el
+comportamiento anterior (PATH del daemon). `path` no forma parte de la clave de
+compartición: dos sesiones con distinto PATH y mismo spec comparten upstream, y la primera en
+llegar fija el PATH del proceso. La unidad fija solo un PATH mínimo para el propio binario, sin
+rutas de nvm con versión.
 
 ## Respaldo al proxy directo
 
@@ -79,6 +91,8 @@ con el `env` de la sesión superpuesto a su propio entorno, como haría el proxy
   sesión con su id (el fake devuelve los `params` en `echo`).
 - Al cerrar una sesión la otra sigue; si el upstream muere (pasados los 500 ms) la sesión
   restante recibe EOF y el siguiente `attach` relanza.
+- Daemon con `PATH=/usr/bin:/bin`: un `command` sin `/` arranca solo si el `attach` trae `path`
+  con su directorio; el upstream ve ese `PATH`; el `env.PATH` del spec gana.
 - SIGTERM al daemon cierra los upstreams, borra el socket y sale con 0.
 - Inactividad de 1 s cierra el upstream sin clientes.
 - Un segundo daemon con el primero vivo sale con error y el primero sigue sirviendo.

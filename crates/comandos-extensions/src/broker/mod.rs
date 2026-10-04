@@ -73,7 +73,13 @@ pub fn attach_request(name: &str, spec: &Value, catalog: &Path) -> Option<Value>
         .collect();
     let home = crate::home_dir().ok()?;
     let catalog = std::path::absolute(catalog).ok()?;
-    Some(json!({"attach": name, "cwd": cwd, "env": env, "catalog": catalog, "home": home}))
+    let mut attach =
+        json!({"attach": name, "cwd": cwd, "env": env, "catalog": catalog, "home": home});
+    // El daemon resuelve el ejecutable y arma el PATH del upstream con el de la sesión.
+    if let Some(path) = std::env::var("PATH").ok().filter(|p| !p.is_empty()) {
+        attach["path"] = Value::String(path);
+    }
+    Some(attach)
 }
 
 /// `$XDG_RUNTIME_DIR/comandos/broker.sock`, o `/tmp/comandos-<uid>/broker.sock` sin él.

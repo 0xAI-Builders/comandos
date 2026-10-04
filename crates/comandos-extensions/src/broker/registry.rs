@@ -50,9 +50,11 @@ struct Request {
     name: String,
     cwd: PathBuf,
     env: Vec<(String, String)>,
+    /// `PATH` del proceso `serve` que adjunta (opcional); no entra en la clave.
+    path: Option<String>,
 }
 
-/// Valida `{"attach","cwd","env","catalog","home"}` y da de alta al cliente en el actor de
+/// Valida `{"attach","cwd","env","catalog","home"[,"path"]}` y da de alta al cliente en el actor de
 /// su clave. Si el actor se está cerrando, reintenta con uno nuevo (hasta tres veces).
 pub(super) async fn attach(ctx: &Ctx, line: &[u8]) -> Result<Attached> {
     let req = parse(ctx, line)?;
@@ -107,7 +109,17 @@ fn parse(ctx: &Ctx, line: &[u8]) -> Result<Request> {
     .map(|(k, v)| v.as_str().map(|v| (k.clone(), v.to_owned())))
     .collect::<Option<Vec<_>>>()
     .ok_or("env inválido")?;
-    Ok(Request { name, cwd, env })
+    let path = match v.get("path") {
+        None | Some(Value::Null) => None,
+        Some(Value::String(p)) => Some(p.clone()),
+        Some(_) => return Err("path inválido".into()),
+    };
+    Ok(Request {
+        name,
+        cwd,
+        env,
+        path,
+    })
 }
 
 fn same_path(a: &Path, b: &Path) -> bool {
@@ -136,7 +148,7 @@ fn actor_for(ctx: &Ctx, key: &Key, spec: &Value, req: &Request) -> Result<Inbox>
             None => {}
         }
     }
-    let up = upstream::spawn(spec, &req.cwd, &req.env)
+    let up = upstream::spawn(spec, &req.cwd, &req.env, req.path.as_deref())
         .inspect_err(|e| eprintln!("broker: spawn {key} falló ({e})"))?;
     eprintln!("broker: spawn {key} pid {}", up.pid);
     let handle = actor::start(key.clone(), up, ctx.shared.clone());
