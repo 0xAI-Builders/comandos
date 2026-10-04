@@ -91,3 +91,26 @@ Unas 8 veces menos Pss por proxy. Filas en `docs/verification/rss.jsonl`.
   orden del modelo.
 - `protocolVersion` del `initialize`: Python responde con la versión que pide el cliente si la
   soporta; Rust responde con la del upstream. Coinciden aquí porque ambas son `2025-06-18`.
+
+## Servidores stdio (`serve` hace `exec`)
+
+`crates/comandos-extensions/tests/serve_stdio_parity.rs` compara `serve <stdio>` con
+`python3.11 bin/cc-extensions serve <stdio>` usando un binario de prueba
+(`src/bin/env_dump.rs`) que vuelca cwd, argv y las variables `COMANDOS_*`/`HOME`.
+
+Lo que hace el Python (`lib/extension_proxy.py::serve`): `chdir(expanduser(cwd))`,
+`command=expanduser(command)`, stderr a `/dev/null` (`dup2`) y
+`os.execvpe(command, [command, *args], resolved_env(spec))`, con
+`resolved_env = os.environ + {k: expandvars(str(v))}`. Solo cuenta como stdio un servidor con
+`command` sin `enabled_tools`/`disabled_tools`; con filtros pasa por el proxy MCP.
+
+Resultado: el Rust (`cli.rs` → `command(spec, true).exec()`) ya era idéntico en volcado
+byte a byte (cwd con `~`, argv[0] expandido, `${VAR}`/`$VAR`/variable inexistente, valores
+numéricos y booleanos, herencia del entorno del padre, búsqueda en `PATH`), stderr vacío y
+sin proceso intermedio (el pid que reporta el comando es el del hijo lanzado). Única
+diferencia hallada y corregida: servidor inexistente o deshabilitado imprimía
+`Server unavailable` y el Python `Server unavailable: <nombre>`. Un comando inexistente
+termina con el mismo código y sin salida en ambos.
+
+`status` coincide byte a byte. `count` no existe como en el brief: en el Rust es la orden
+interna del tokenizador (`tokenizer::count_command`), sin equivalente Python, y no se compara.

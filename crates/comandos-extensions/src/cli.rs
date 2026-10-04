@@ -76,7 +76,7 @@ pub fn run(args: Vec<String>) -> Result<i32> {
     let spec = catalog["servers"]
         .get(&name)
         .filter(|s| s.is_object() && s["enabled"] != false)
-        .ok_or("Server unavailable")?;
+        .ok_or_else(|| format!("Server unavailable: {name}"))?;
     if spec["command"].as_str().is_some()
         && spec.get("enabled_tools").is_none()
         && spec

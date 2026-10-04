@@ -72,14 +72,7 @@ fn prepare_home(home: &Path, port: u16) {
         ),
     )
     .unwrap();
-    // Con HOME temporal el oráculo no ve el `mcp` instalado en el site de usuario;
-    // `bin/cc-extensions` cae entonces al venv de extensiones bajo HOME. Se enlaza
-    // (solo lectura) el venv real para que ese fallback funcione sin tocarlo.
-    let real_home = PathBuf::from(std::env::var_os("HOME").expect("HOME"));
-    let venv = real_home.join(".local/share/comandos/extensions-venv");
-    assert!(venv.exists(), "falta el venv del oráculo en {venv:?}");
-    fs::create_dir_all(home.join(".local/share/comandos")).unwrap();
-    std::os::unix::fs::symlink(&venv, home.join(".local/share/comandos/extensions-venv")).unwrap();
+    support::link_oracle_venv(home);
 }
 
 #[test]
