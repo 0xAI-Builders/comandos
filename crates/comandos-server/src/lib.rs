@@ -39,6 +39,9 @@ pub struct Request {
     pub headers: Vec<(String, String)>,
     /// GET has no parsed body; admitted POST/DELETE always has an object.
     pub data: Option<Value>,
+    /// Raw admitted body bytes, exactly as received (empty for GET/HEAD).
+    /// `data` is parsed from these same bytes; relays forward them untouched.
+    pub body: Bytes,
     /// Direct local hook/service authentication, stricter than ordinary access.
     pub internal_producer: bool,
 }
@@ -54,6 +57,13 @@ pub enum ReplyBody {
     /// Producers own their task cancellation and must bound channel capacity
     /// and frame size. Dropping the response drops the receiver.
     Stream(mpsc::Receiver<io::Result<Bytes>>),
+    /// A stream whose total length is known up front (a relayed
+    /// `Content-Length`). The transport frames it with that length instead of
+    /// chunking; yielding more or fewer bytes aborts the connection.
+    SizedStream {
+        length: u64,
+        receiver: mpsc::Receiver<io::Result<Bytes>>,
+    },
 }
 pub struct Reply {
     pub status: StatusCode,
@@ -116,6 +126,12 @@ struct OutputBody {
     source: ReplyBody,
     done: bool,
 }
+fn length_mismatch() -> io::Error {
+    io::Error::new(
+        io::ErrorKind::InvalidData,
+        "stream length differs from its declared length",
+    )
+}
 impl Body for OutputBody {
     type Data = Bytes;
     type Error = io::Error;
@@ -144,6 +160,28 @@ impl Body for OutputBody {
                 }
                 Poll::Pending => Poll::Pending,
             },
+            ReplyBody::SizedStream { length, receiver } => match receiver.poll_recv(cx) {
+                Poll::Ready(Some(Ok(bytes))) => match length.checked_sub(bytes.len() as u64) {
+                    Some(rest) => {
+                        *length = rest;
+                        Poll::Ready(Some(Ok(Frame::data(bytes))))
+                    }
+                    None => {
+                        self.done = true;
+                        Poll::Ready(Some(Err(length_mismatch())))
+                    }
+                },
+                Poll::Ready(Some(Err(error))) => {
+                    self.done = true;
+                    Poll::Ready(Some(Err(error)))
+                }
+                Poll::Ready(None) => {
+                    let short = *length != 0;
+                    self.done = true;
+                    Poll::Ready(short.then(|| Err(length_mismatch())))
+                }
+                Poll::Pending => Poll::Pending,
+            },
         }
     }
     fn is_end_stream(&self) -> bool {
@@ -152,13 +190,20 @@ impl Body for OutputBody {
     fn size_hint(&self) -> SizeHint {
         match &self.source {
             ReplyBody::Bytes(bytes) => SizeHint::with_exact(bytes.len() as u64),
-            ReplyBody::Stream(_) if self.done => SizeHint::with_exact(0),
+            ReplyBody::Stream(_) | ReplyBody::SizedStream { .. } if self.done => {
+                SizeHint::with_exact(0)
+            }
             ReplyBody::Stream(_) => SizeHint::default(),
+            ReplyBody::SizedStream { length, .. } => SizeHint::with_exact(*length),
         }
     }
 }
 
 fn response(reply: Reply, close: bool) -> http::Response<OutputBody> {
+    let declared = match &reply.body {
+        ReplyBody::SizedStream { length, .. } => Some(*length),
+        _ => None,
+    };
     let mut response = http::Response::new(OutputBody {
         source: reply.body,
         done: false,
@@ -168,7 +213,18 @@ fn response(reply: Reply, close: bool) -> http::Response<OutputBody> {
     // The maintained transport derives framing from the actual body. An adapter
     // cannot accidentally send conflicting framing or make another response cacheable.
     let headers = response.headers_mut();
-    headers.remove(http::header::CONTENT_LENGTH);
+    match declared {
+        // `insert` keeps a relayed header in its original position.
+        Some(length) => {
+            headers.insert(
+                http::header::CONTENT_LENGTH,
+                http::HeaderValue::from(length),
+            );
+        }
+        None => {
+            headers.remove(http::header::CONTENT_LENGTH);
+        }
+    }
     headers.remove(http::header::TRANSFER_ENCODING);
     headers.insert(
         http::header::CACHE_CONTROL,
@@ -190,7 +246,7 @@ fn reject(status: u16, message: &'static str, close: bool) -> http::Response<Out
     response(reply, close)
 }
 
-async fn body_bytes(mut body: Incoming, length: usize) -> Result<Vec<u8>, ()> {
+async fn body_bytes(mut body: Incoming, length: usize) -> Result<Bytes, ()> {
     let mut bytes = Vec::with_capacity(length);
     while let Some(frame) = body.frame().await {
         let frame = frame.map_err(|_| ())?;
@@ -204,7 +260,8 @@ async fn body_bytes(mut body: Incoming, length: usize) -> Result<Vec<u8>, ()> {
     if bytes.len() != length {
         return Err(());
     }
-    Ok(bytes)
+    // Zero-copy: the buffer becomes the shared `Request.body`.
+    Ok(Bytes::from(bytes))
 }
 
 async fn dispatch(
@@ -295,6 +352,7 @@ async fn dispatch(
         return reject(400, "JSON invalido", true);
     }
     let mut budget = None;
+    let mut raw_body = Bytes::new();
     let data = if let Some(length) = admission.body_length {
         let permits = u32::try_from(length).expect("core policy body cap");
         let Ok(permit) = state.body_budget.clone().try_acquire_many_owned(permits) else {
@@ -313,6 +371,7 @@ async fn dispatch(
         if let Some(error) = access::parsed_body_admission(parsed.as_ref()) {
             return reject(error.status, error.message, error.close);
         }
+        raw_body = raw;
         parsed
     } else {
         None
@@ -323,6 +382,7 @@ async fn dispatch(
         peer,
         headers,
         data,
+        body: raw_body,
         internal_producer,
     };
     let future =

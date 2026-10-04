@@ -98,6 +98,7 @@ fn request(method: &str, target: &str, data: Option<Value>, internal: bool) -> R
         peer: "127.0.0.1:12345".parse().unwrap(),
         headers: vec![],
         data,
+        body: bytes::Bytes::new(),
         internal_producer: internal,
     }
 }

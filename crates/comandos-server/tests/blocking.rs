@@ -23,6 +23,7 @@ fn request(target: &str) -> Request {
         peer: "127.0.0.1:12345".parse().unwrap(),
         headers: vec![],
         data: None,
+        body: Bytes::new(),
         internal_producer: false,
     }
 }
