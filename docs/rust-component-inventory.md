@@ -188,3 +188,12 @@ Oráculos añadidos en esta captura, incluidos en el total de verificación.
 | /home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/tests/test_codex_full_access.py | Oráculo de transición; conservar hasta reemplazo verificado | — |
 | /home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/tests/test_codex_thread_release.py | Oráculo de transición; conservar hasta reemplazo verificado | — |
 | /home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/tests/test_codex_yolo_policy.py | Oráculo de transición; conservar hasta reemplazo verificado | — |
+
+## Retirado del producto el 2026-10-04
+
+El motor de expresiones regulares CPython, las tablas Unicode 14 y la herramienta de respaldos
+(`examples/checkpoint`) se retiraron: la aplicación Python no valida esquemas de salida de
+herramientas y los respaldos de estado los hará el migrador de estado único. Reducción: ~65 000
+líneas de Rust que no correspondían a ninguna función del inventario. SQLite pasa a compilarse
+embebido (`rusqlite` con `bundled`) para que el binario no dependa de la cabecera de desarrollo
+del sistema y el resultado sea reproducible en cualquier máquina.
