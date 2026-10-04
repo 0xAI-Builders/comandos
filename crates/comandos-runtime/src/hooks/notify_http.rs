@@ -80,7 +80,7 @@ pub fn spawn(job: Job) {
         })),
         "desktop": desktop.map(|d| json!({"payload": d.payload, "osa": b64(&d.osa_script)})),
     });
-    let Ok(exe) = std::env::current_exe() else {
+    let Some(exe) = worker_exe() else {
         return;
     };
     let child = Command::new(exe)
@@ -94,6 +94,16 @@ pub fn spawn(job: Job) {
     {
         let _ = stdin.write_all(job.to_string().as_bytes());
     }
+}
+
+/// Ejecutable del proceso de entrega: este mismo binario. En Linux, `/proc/self/exe`, que
+/// sigue apuntando al inodo en ejecución aunque `install --stage` ya haya sustituido (o
+/// borrado) el archivo; `current_exe()` daría entonces `… (deleted)`, que no se puede lanzar.
+fn worker_exe() -> Option<PathBuf> {
+    if cfg!(target_os = "linux") {
+        return Some(PathBuf::from("/proc/self/exe"));
+    }
+    std::env::current_exe().ok()
 }
 
 /// Cuerpo del proceso de entrega: uso, voz y popup en paralelo, como los `&`.

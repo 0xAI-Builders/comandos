@@ -331,7 +331,24 @@ fn prepare_home(dir: &Path, s: &Scenario, side: &str, seed_now: i64) -> PathBuf 
 }
 
 fn run_side(dir: &Path, s: &Scenario, side: &str, home: &Path, notifyd_url: &str) -> Option<i32> {
+    run_side_with(dir, s, side, home, notifyd_url, false)
+}
+
+/// `replaced`: el Rust corre desde una copia del binario que se borra después de lanzarlo y
+/// antes de darle el payload (como `install --stage` sustituyendo el binario en vivo).
+fn run_side_with(
+    dir: &Path,
+    s: &Scenario,
+    side: &str,
+    home: &Path,
+    notifyd_url: &str,
+    replaced: bool,
+) -> Option<i32> {
     let fake = dir.join("fakebin");
+    let copy = dir.join("comandos-hook-copia");
+    if replaced {
+        fs::copy(env!("CARGO_BIN_EXE_comandos-hook"), &copy).unwrap();
+    }
     let mut command = if side == "bash" {
         // `trap wait EXIT`: el oráculo espera a sus trabajos en segundo plano
         // (voz, popup, `cc_usage.py`) antes de que la prueba compare.
@@ -339,6 +356,10 @@ fn run_side(dir: &Path, s: &Scenario, side: &str, home: &Path, notifyd_url: &str
         c.arg("-c")
             .arg("trap wait EXIT; . \"$0\" \"$@\"")
             .arg(root().join("hooks/cc-notify.sh"));
+        c
+    } else if replaced {
+        let mut c = Command::new(&copy);
+        c.arg("claude");
         c
     } else {
         let mut c = Command::new(env!("CARGO_BIN_EXE_comandos-hook"));
@@ -373,6 +394,9 @@ fn run_side(dir: &Path, s: &Scenario, side: &str, home: &Path, notifyd_url: &str
         .stderr(Stdio::inherit())
         .spawn()
         .unwrap();
+    if replaced {
+        fs::remove_file(&copy).unwrap();
+    }
     let payload = s.payload.map(|p| {
         fs::read_to_string(fixtures().join(format!("{p}.json")))
             .unwrap()
@@ -458,6 +482,28 @@ fn claude_hook_matches_bash_for_all_fixtures() {
         let _ = fs::remove_dir_all(&h_bash);
         let _ = fs::remove_dir_all(&h_rust);
     }
+    let _ = fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn delivery_works_after_the_binary_is_replaced() {
+    let dir = base("replaced");
+    fake_bin(&dir.join("fakebin"));
+    let (port, _server, bodies) = fake_notifyd::spawn(0);
+    let s = scenarios()
+        .into_iter()
+        .find(|s| s.name == "notification_permission")
+        .unwrap();
+    let home = prepare_home(&dir, &s, "rust", now());
+    let url = format!("http://127.0.0.1:{port}");
+    assert_eq!(run_side_with(&dir, &s, "rust", &home, &url, true), Some(0));
+    wait_for_delivery(&home);
+    let posts = std::mem::take(&mut *bodies.lock().unwrap());
+    assert_eq!(
+        posts.len(),
+        1,
+        "el popup se entrega aunque el binario ya no exista: {posts:?}"
+    );
     let _ = fs::remove_dir_all(&dir);
 }
 
