@@ -2,7 +2,9 @@
 //! `id` con un `InitializeResult` cuyo `serverInfo.version` es su pid y que devuelve los
 //! `params` recibidos en `echo`. Variables: `FAKE_MCP_PIDFILE` (añade su pid al arrancar),
 //! `FAKE_MCP_DUMP_PATH` (escribe su `PATH` en ese archivo al arrancar),
-//! `FAKE_MCP_DIE=1` (sale nada más arrancar), `FAKE_MCP_HANG=1` (lee pero nunca contesta).
+//! `FAKE_MCP_DIE=1` (sale nada más arrancar), `FAKE_MCP_HANG=1` (lee pero nunca contesta),
+//! `FAKE_MCP_MAX_PROTOCOL` (versión máxima, por omisión `2025-11-25`: contesta
+//! `min(params.protocolVersion, máxima)` en orden de fecha, o la máxima si no pide ninguna).
 use std::io::{BufRead, Write};
 
 fn main() {
@@ -29,6 +31,7 @@ fn main() {
         std::process::exit(3);
     }
     let hang = knob("FAKE_MCP_HANG");
+    let max = std::env::var("FAKE_MCP_MAX_PROTOCOL").unwrap_or_else(|_| "2025-11-25".into());
     let mut out = std::io::stdout().lock();
     for line in std::io::stdin().lock().lines().map_while(Result::ok) {
         let Ok(msg) = serde_json::from_str::<serde_json::Value>(&line) else {
@@ -37,7 +40,9 @@ fn main() {
         let Some(id) = msg.get("id").filter(|_| !hang) else {
             continue;
         };
-        let result = serde_json::json!({"protocolVersion":"2025-06-18","capabilities":{},"serverInfo":{"name":"eco","version":pid.to_string()},"echo":msg.get("params")});
+        let asked = msg["params"]["protocolVersion"].as_str();
+        let version = asked.map_or(max.as_str(), |a| a.min(max.as_str()));
+        let result = serde_json::json!({"protocolVersion":version,"capabilities":{},"serverInfo":{"name":"eco","version":pid.to_string()},"echo":msg.get("params")});
         let reply = serde_json::json!({"jsonrpc":"2.0","id":id,"result":result});
         if writeln!(out, "{reply}").and_then(|()| out.flush()).is_err() {
             break;

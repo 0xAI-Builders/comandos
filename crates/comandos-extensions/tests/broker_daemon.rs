@@ -479,6 +479,11 @@ fn bare_command_home(name: &str, env: &str) -> (PathBuf, PathBuf, PathBuf) {
 
 /// Una línea `attach` cruda (con o sin `path`); devuelve la respuesta del daemon.
 fn raw_attach(home: &Path, path: Option<&str>) -> String {
+    raw_attach_stream(home, path).1
+}
+
+/// Como [`raw_attach`], pero conserva la conexión para hablar MCP tras `{"ok":true}`.
+fn raw_attach_stream(home: &Path, path: Option<&str>) -> (std::os::unix::net::UnixStream, String) {
     let catalog = home.join(".config/comandos/extensions/catalog.json");
     let mut attach = json!({"attach":"eco","cwd":home,"env":{},"catalog":catalog,"home":home});
     attach["env"] = serde_json::from_str(&fs::read_to_string(&catalog).unwrap_or_default())
@@ -492,9 +497,56 @@ fn raw_attach(home: &Path, path: Option<&str>) -> String {
         std::os::unix::net::UnixStream::connect(home.join("run/comandos/broker.sock")).unwrap();
     stream.set_read_timeout(Some(WAIT)).unwrap();
     writeln!(stream, "{attach}").unwrap();
-    let mut reply = String::new();
-    BufReader::new(&stream).read_line(&mut reply).unwrap();
-    reply
+    let reply = read_one(&stream);
+    (stream, reply)
+}
+
+/// Lee exactamente una línea sin adelantar bytes de la siguiente (lectura de a uno).
+fn read_one(stream: &std::os::unix::net::UnixStream) -> String {
+    let mut line = Vec::new();
+    let mut byte = [0u8; 1];
+    while line.last() != Some(&b'\n') {
+        match std::io::Read::read(&mut &*stream, &mut byte) {
+            Ok(1) => line.push(byte[0]),
+            other => panic!("conexión cerrada o error: {other:?}"),
+        }
+    }
+    String::from_utf8(line).unwrap()
+}
+
+/// `initialize` crudo pidiendo `version`; devuelve la `protocolVersion` contestada.
+fn negotiated(home: &Path, version: &str) -> Value {
+    let (mut stream, ok) = raw_attach_stream(home, None);
+    assert_eq!(ok.trim(), r#"{"ok":true}"#);
+    let init = json!({"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":version,"capabilities":{},"clientInfo":{"name":"t","version":"1"}}});
+    writeln!(stream, "{init}").unwrap();
+    let reply: Value = serde_json::from_str(&read_one(&stream)).unwrap();
+    assert_eq!(reply["id"], 1);
+    reply["result"]["protocolVersion"].clone()
+}
+
+#[test]
+fn each_client_gets_the_protocol_version_a_direct_connection_would_negotiate() {
+    let home = home_with(
+        "proto",
+        &format!(r#"{{"enabled":true,"command":"{FAKE}"}}"#),
+    );
+    let mut daemon = Daemon::start(&home, "600");
+    assert_eq!(negotiated(&home, "2025-11-25"), "2025-11-25");
+    assert_eq!(negotiated(&home, "2025-06-18"), "2025-06-18");
+    assert_eq!(pids(&home).len(), 1, "los dos clientes comparten upstream");
+    assert!(daemon.stop().success());
+    drop(daemon);
+
+    let env = r#""env":{"FAKE_MCP_MAX_PROTOCOL":"2025-06-18"}"#;
+    let old = home_with(
+        "proto-old",
+        &format!(r#"{{"enabled":true,"command":"{FAKE}",{env}}}"#),
+    );
+    let mut daemon = Daemon::start(&old, "600");
+    assert_eq!(negotiated(&old, "2025-11-25"), "2025-06-18");
+    assert_eq!(negotiated(&old, "2024-11-05"), "2024-11-05");
+    assert!(daemon.stop().success());
 }
 
 #[test]

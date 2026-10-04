@@ -346,3 +346,112 @@ fn initialize_without_id_is_rejected_and_duplicate_initialize_is_not_queued_twic
     let up = up_line(&o[0])["id"].clone();
     assert_eq!(m.from_upstream(&init_result(up)).len(), 1);
 }
+
+// --- Versión de protocolo: cada cliente recibe la que obtendría hablando directo con el upstream.
+
+/// `initialize` del cliente con `params.protocolVersion` = `version` (sin la clave si `None`).
+fn init_asking(id: u64, version: Option<Value>) -> Vec<u8> {
+    let mut params = json!({"capabilities":{},"clientInfo":{"name":"c","version":"1"}});
+    if let Some(v) = version {
+        params["protocolVersion"] = v;
+    }
+    j(json!({"jsonrpc":"2.0","id":id,"method":"initialize","params":params}))
+}
+/// Respuesta del upstream con su versión `upstream` y el resto fijo.
+fn init_result_at(id: Value, upstream: &str) -> Vec<u8> {
+    j(
+        json!({"jsonrpc":"2.0","id":id,"result":{"protocolVersion":upstream,"capabilities":{"tools":{"listChanged":true}},"serverInfo":{"name":"up","version":"9"},"instructions":"usa bien"}}),
+    )
+}
+fn client_result(o: &Outbound, who: u32) -> Value {
+    match o {
+        Outbound::ToClient(c, l) if *c == who => parse(l)["result"].clone(),
+        other => panic!("se esperaba ToClient({who}), llegó {other:?}"),
+    }
+}
+/// Mux con el upstream ya inicializado a versión `upstream` (lo pidió un cliente interno).
+fn warmed(upstream: &str) -> Mux {
+    let mut m = Mux::new();
+    let w = m.add_client();
+    let out = m.from_client(w, &init_asking(0, Some(json!("2025-11-25"))));
+    let _ = m.from_upstream(&init_result_at(up_line(&out[0])["id"].clone(), upstream));
+    m
+}
+fn version_for(m: &mut Mux, asked: Option<Value>) -> Value {
+    let c = m.add_client();
+    let out = m.from_client(c, &init_asking(1, asked));
+    assert_eq!(out.len(), 1, "respuesta desde la caché");
+    client_result(&out[0], c)["protocolVersion"].clone()
+}
+
+#[test]
+fn cached_initialize_negotiates_each_client_version_against_upstream_latest() {
+    let mut m = warmed("2025-11-25");
+    for (asked, got) in [
+        (Some(json!("2025-06-18")), "2025-06-18"),
+        (Some(json!("2025-11-25")), "2025-11-25"),
+        (Some(json!("2024-11-05")), "2024-11-05"),
+        (Some(json!("2025-03-26")), "2025-03-26"),
+        (Some(json!("2099-01-01")), "2025-11-25"),
+        (Some(json!("2025-07-01")), "2025-11-25"),
+        (Some(json!(20250618)), "2025-11-25"),
+        (None, "2025-11-25"),
+    ] {
+        assert_eq!(
+            version_for(&mut m, asked.clone()),
+            json!(got),
+            "pidió {asked:?}"
+        );
+    }
+}
+
+#[test]
+fn cached_initialize_never_offers_more_than_the_upstream_answered() {
+    let mut m = warmed("2025-06-18");
+    assert_eq!(
+        version_for(&mut m, Some(json!("2025-11-25"))),
+        json!("2025-06-18")
+    );
+    assert_eq!(
+        version_for(&mut m, Some(json!("2024-11-05"))),
+        json!("2024-11-05")
+    );
+    assert_eq!(version_for(&mut m, None), json!("2025-06-18"));
+    // Versión del upstream fuera de la lista: se entrega tal cual si la pedida no cabe.
+    let mut odd = warmed("2026-01-01");
+    assert_eq!(
+        version_for(&mut odd, Some(json!("2099-01-01"))),
+        json!("2026-01-01")
+    );
+    assert_eq!(
+        version_for(&mut odd, Some(json!("2025-11-25"))),
+        json!("2025-11-25")
+    );
+}
+
+#[test]
+fn waiting_clients_each_get_their_own_version_and_the_same_rest() {
+    let mut m = Mux::new();
+    let a = m.add_client();
+    let b = m.add_client();
+    let out = m.from_client(a, &init_asking(1, Some(json!("2025-11-25"))));
+    assert!(
+        m.from_client(b, &init_asking(2, Some(json!("2025-06-18"))))
+            .is_empty()
+    );
+    let out = m.from_upstream(&init_result_at(
+        up_line(&out[0])["id"].clone(),
+        "2025-11-25",
+    ));
+    assert_eq!(out.len(), 2);
+    let (mut ra, mut rb) = (client_result(&out[0], a), client_result(&out[1], b));
+    assert_eq!(ra["protocolVersion"], "2025-11-25");
+    assert_eq!(rb["protocolVersion"], "2025-06-18");
+    ra.as_object_mut().unwrap().remove("protocolVersion");
+    rb.as_object_mut().unwrap().remove("protocolVersion");
+    assert_eq!(ra, rb, "capabilities, serverInfo e instructions idénticos");
+    assert_eq!(ra["instructions"], "usa bien");
+    assert_eq!(ra["capabilities"]["tools"]["listChanged"], true);
+    // La caché conserva la versión del upstream: un tercero que no pide nada recibe la suya.
+    assert_eq!(version_for(&mut m, None), json!("2025-11-25"));
+}

@@ -35,6 +35,30 @@ lanzarlo, rechaza `initialize` o no contesta en 30 s, la respuesta es un error
 `upstream no respondió a initialize`) y esa clave queda 30 s en enfriamiento: toda alta recibe
 el mismo error y no se relanza. El daemon espera el alta como mucho 5 s; la sesión, 6 s.
 
+## Versión de protocolo
+
+El `initialize` de calentamiento del daemon pide `LATEST_PROTOCOL_VERSION` (`2025-11-25`,
+`serve/normalize.rs`) con capacidades `{}`; el upstream contesta la mayor que soporta (`U`) y
+ese `InitializeResult` queda en caché. A cada cliente se le entrega una copia con
+`protocolVersion` negociada contra `U`:
+
+- Si la `params.protocolVersion` pedida es una cadena de `SUPPORTED_PROTOCOL_VERSIONS` y no es
+  posterior a `U` (las fechas `YYYY-MM-DD` se comparan como cadenas), se devuelve la pedida.
+- En cualquier otro caso (versión desconocida, posterior a `U`, ausente o no cadena), se
+  devuelve `U` tal cual, aunque no esté en la lista.
+
+El resto del resultado (`capabilities`, `serverInfo`, `instructions`) es idéntico para todos.
+Los clientes que esperaban la primera respuesta reciben cada uno su versión. Si `U` no es una
+cadena, el resultado va sin tocar.
+
+Razón: es lo que el cliente obtendría hablando directo con el upstream (un servidor MCP
+devuelve la versión pedida si la soporta y, si no, la suya). Antes el daemon calentaba con
+`2025-06-18` y repetía esa versión a todos; Claude Code 2.1.289 sondea con `2025-11-25`, lo
+tomaba como un servidor antiguo («version negotiation probe closed the stdio server …
+respawning pinned legacy») y reconectaba más lento. Supuesto: el upstream soporta todas las
+versiones de la lista anteriores a `U`; uno que solo hable `U` respondería directo `U` a un
+cliente que pide una anterior, y por el broker ese cliente recibe la anterior.
+
 ## Clave de compartición
 
 Un upstream se comparte solo si el proceso sería idéntico: clave
@@ -98,6 +122,11 @@ rutas de nvm con versión.
 - Un segundo daemon con el primero vivo sale con error y el primero sigue sirviendo.
 - Un socket huérfano de un daemon muerto con SIGKILL se reemplaza.
 - El registro del daemon no contiene cargas JSON-RPC.
+- Versión de protocolo: dos `attach` crudos que piden `2025-11-25` y `2025-06-18` al mismo
+  upstream reciben cada uno la suya; con `FAKE_MCP_MAX_PROTOCOL=2025-06-18` (el fake contesta
+  `min(pedida, máxima)`), el que pide `2025-11-25` recibe `2025-06-18`. Las pruebas del `Mux`
+  (`tests/broker_mux.rs`) cubren versión desconocida, ausente, no cadena, posterior al upstream
+  y dos clientes en espera con peticiones distintas.
 
 `systemd-analyze --user verify systemd/comandos-broker.service` solo señala que el binario
 `%h/.local/share/comandos/bin/comandos` no existe (no se instala en esta tarea); ningún aviso de

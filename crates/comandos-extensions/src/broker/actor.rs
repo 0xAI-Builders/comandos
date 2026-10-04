@@ -6,6 +6,7 @@ use super::{
     mux::{ClientId, Mux, Outbound},
     upstream::{self, Upstream},
 };
+use crate::serve::normalize::LATEST_PROTOCOL_VERSION;
 use std::{
     collections::{HashMap, VecDeque},
     sync::{Arc, Mutex, PoisonError},
@@ -34,7 +35,12 @@ const INIT_TIMEOUT: Duration = Duration::from_secs(30);
 /// Tras un fallo de arranque, toda alta recibe el mismo error durante este tiempo.
 pub(super) const COOLDOWN: Duration = Duration::from_secs(30);
 
-const WARM_INIT: &[u8] = br#"{"jsonrpc":"2.0","id":0,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"comandos-broker","version":"1"}}}"#;
+/// `initialize` de calentamiento: pide la versión más nueva que conocemos para que el
+/// upstream conteste la mayor que soporta; el `Mux` negocia después cada cliente contra ella.
+fn warm_init() -> Vec<u8> {
+    serde_json::to_vec(&serde_json::json!({"jsonrpc":"2.0","id":0,"method":"initialize","params":{"protocolVersion":LATEST_PROTOCOL_VERSION,"capabilities":{},"clientInfo":{"name":"comandos-broker","version":"1"}}}))
+        .unwrap_or_default()
+}
 const WARM_DONE: &[u8] = br#"{"jsonrpc":"2.0","method":"notifications/initialized"}"#;
 
 /// Fallos de arranque recientes: clave → (hasta cuándo, mensaje).
@@ -117,7 +123,7 @@ impl Actor {
         mut sh: Shared,
     ) {
         let spawned = Instant::now();
-        let warm = self.mux.from_client(self.warm, WARM_INIT);
+        let warm = self.mux.from_client(self.warm, &warm_init());
         self.dispatch(warm).await;
         let mut idle_at = Some(spawned + sh.idle);
         let end = loop {

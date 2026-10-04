@@ -1,4 +1,4 @@
-mod normalize;
+pub(crate) mod normalize;
 
 use crate::{
     Result,

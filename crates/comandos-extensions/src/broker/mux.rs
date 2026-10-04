@@ -1,5 +1,6 @@
 //! Multiplexación JSON-RPC de varios clientes MCP sobre un único upstream. Sin E/S.
 use super::translate::{Parsed, bytes, cancelled, error, error_response, parse, response, slot};
+use crate::serve::normalize::SUPPORTED_PROTOCOL_VERSIONS;
 use serde_json::{Map, Value};
 use std::collections::{BTreeMap, HashMap};
 
@@ -39,8 +40,9 @@ pub struct Mux {
     pending: HashMap<u64, Pending>,
     /// token upstream -> (cliente, token original).
     progress: HashMap<u64, (ClientId, Value)>,
-    /// Clientes cuyo `initialize` espera la primera respuesta del upstream.
-    waiting_init: Vec<(ClientId, Value)>,
+    /// Clientes cuyo `initialize` espera la primera respuesta del upstream:
+    /// (cliente, id original, `params.protocolVersion` pedida).
+    waiting_init: Vec<(ClientId, Value, Value)>,
     init_up_id: Option<u64>,
     init_result: Option<Value>,
     /// `notifications/initialized` ya reenviada al upstream (solo se manda una).
@@ -73,7 +75,7 @@ impl Mux {
         if self.clients.remove(&id).is_none() {
             return Vec::new();
         }
-        self.waiting_init.retain(|(c, _)| *c != id);
+        self.waiting_init.retain(|(c, ..)| *c != id);
         let mut out = Vec::new();
         let mut ups: Vec<u64> = (self.pending.iter())
             .filter(|(_, p)| p.client == id)
@@ -171,19 +173,22 @@ impl Mux {
             return vec![Outbound::ToClient(id, error_response(Value::Null, e))];
         };
         let caps = slot(&mut msg, &["params", "capabilities"]).map(|v| v.clone());
+        let asked =
+            slot(&mut msg, &["params", "protocolVersion"]).map_or(Value::Null, |v| v.clone());
         if let Some(c) = self.clients.get_mut(&id) {
             c.caps = caps.unwrap_or(Value::Null);
         }
-        if let Some(result) = self.init_result.clone() {
+        if let Some(result) = &self.init_result {
+            let result = for_client(result, &asked);
             if let Some(c) = self.clients.get_mut(&id) {
                 c.initialized = true;
             }
             return vec![Outbound::ToClient(id, response(orig, result))];
         }
-        if self.waiting_init.iter().any(|(c, _)| *c == id) {
+        if self.waiting_init.iter().any(|(c, ..)| *c == id) {
             return Vec::new(); // initialize duplicado: ya se contestará una vez
         }
-        self.waiting_init.push((id, orig));
+        self.waiting_init.push((id, orig, asked));
         if self.init_up_id.is_some() {
             return Vec::new();
         }
@@ -205,7 +210,7 @@ impl Mux {
             self.init_result = Some(r.clone());
         }
         let mut out = Vec::new();
-        for (c, oid) in waiting {
+        for (c, oid, asked) in waiting {
             let Some(client) = self.clients.get_mut(&c) else {
                 continue;
             };
@@ -213,7 +218,7 @@ impl Mux {
             out.push(Outbound::ToClient(
                 c,
                 match &result {
-                    Some(r) => response(oid, r.clone()),
+                    Some(r) => response(oid, for_client(r, &asked)),
                     None => error_response(oid, err.clone()),
                 },
             ));
@@ -345,4 +350,24 @@ impl Mux {
         }
         Some(p)
     }
+}
+
+/// Versión que el upstream (que contestó `upstream`) negociaría con un cliente que pide
+/// `asked`: la pedida si es conocida y no posterior a la del upstream; si no, la del upstream.
+/// Las versiones `YYYY-MM-DD` se ordenan por fecha comparando cadenas.
+pub fn negotiate<'a>(asked: &'a Value, upstream: &'a str) -> &'a str {
+    asked
+        .as_str()
+        .filter(|a| SUPPORTED_PROTOCOL_VERSIONS.contains(a) && *a <= upstream)
+        .unwrap_or(upstream)
+}
+
+/// Copia del `InitializeResult` cacheado con la `protocolVersion` negociada para este cliente.
+/// Si el upstream no dio una versión en cadena, el resultado va tal cual.
+fn for_client(cached: &Value, asked: &Value) -> Value {
+    let mut result = cached.clone();
+    if let Some(upstream) = cached["protocolVersion"].as_str() {
+        result["protocolVersion"] = Value::from(negotiate(asked, upstream));
+    }
+    result
 }
