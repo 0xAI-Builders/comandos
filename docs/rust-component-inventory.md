@@ -4,6 +4,8 @@ Base 214e55a. 170 archivos de producto y 205 de verificación con código o esti
 
 Referencia adicional capturada el 2026-10-03T05:39:58.314312+00:00 desde /home/someguy/codebase/0xJesus/ComandOS, sobre la base de trabajo 263492fb996b5e782b2dc5ccd8c2dc36901c100f. Manifiesto /home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/.superpowers/sdd/incoming-source-20261003T0540/manifest.json, SHA-256 faa170bb61ac883583058e83d6f1f4f850a3a6935fad5fe033a40e8259172801. Conserva 7 referencias actualizadas y añade 5 componentes de producto pendientes de migrar a Rust y 3 oráculos de transición. La base inicial 214e55a y los estados anteriores se conservan. Las pruebas sintéticas no demuestran detección del hilo seleccionado ni reanudación completa.
 
+Once entradas son copias sin modificaciones de paquetes externos, con sus bytes contrastados de nuevo contra la evidencia registrada. Quedan identificadas como terceros; conservarlas y verificar su integración sigue siendo obligatorio. Las 159 entradas propias incluyen cuatro estilos a conservar. El addon propio de ligaduras permanece pendiente. Esta clasificación no aumenta el código propio migrado. Evidencia: /home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/.superpowers/sdd/static-vendor-comparison-evidence.json.
+
 Los assets, servicios e instaladores declarativos se deben contrastar en el empaquetado final. La lógica propia embebida en HTML/JS también se migra; CSS, fuentes e imágenes conservan su diseño.
 
 | Fuente absoluta | Estado | Implementación Rust |
@@ -15,15 +17,15 @@ Los assets, servicios e instaladores declarativos se deben contrastar en el empa
 | /home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/adapters/gemini-hooks.sh | Pendiente | — |
 | /home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/adapters/grok-hooks.py | Pendiente | — |
 | /home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/adapters/opencode-comandos.js | Pendiente | — |
-| /home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/assets/opentype/opentype.min.js | Pendiente | — |
-| /home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/assets/uisfx/uisfx-0.4.0.js | Pendiente | — |
-| /home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/assets/xterm/addon-attach.js | Pendiente | — |
-| /home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/assets/xterm/addon-canvas.js | Pendiente | — |
-| /home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/assets/xterm/addon-fit.js | Pendiente | — |
+| /home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/assets/opentype/opentype.min.js | Tercero sin modificaciones; conservar y verificar integración | — |
+| /home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/assets/uisfx/uisfx-0.4.0.js | Tercero sin modificaciones; conservar y verificar integración | — |
+| /home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/assets/xterm/addon-attach.js | Tercero sin modificaciones; conservar y verificar integración | — |
+| /home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/assets/xterm/addon-canvas.js | Tercero sin modificaciones; conservar y verificar integración | — |
+| /home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/assets/xterm/addon-fit.js | Tercero sin modificaciones; conservar y verificar integración | — |
 | /home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/assets/xterm/addon-ligatures-web.js | Pendiente | — |
-| /home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/assets/xterm/addon-web-links.js | Pendiente | — |
-| /home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/assets/xterm/xterm.css | Estilo a conservar; verificar renderizado pixel perfect | — |
-| /home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/assets/xterm/xterm.js | Pendiente | — |
+| /home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/assets/xterm/addon-web-links.js | Tercero sin modificaciones; conservar y verificar integración | — |
+| /home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/assets/xterm/xterm.css | Tercero sin modificaciones; conservar y verificar integración | — |
+| /home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/assets/xterm/xterm.js | Tercero sin modificaciones; conservar y verificar integración | — |
 | /home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/bin/cc-acp | Pendiente | — |
 | /home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/bin/cc-agents | Pendiente | — |
 | /home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/bin/cc-app | Pendiente | — |
@@ -85,15 +87,15 @@ Los assets, servicios e instaladores declarativos se deben contrastar en el empa
 | /home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/dash/prototypes/prototype-v2-barra.html | Pendiente | — |
 | /home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/dash/prototypes/prototype-v2-fase2.html | Pendiente | — |
 | /home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/dash/prototypes/prototype-v2-smoke.cjs | Pendiente | — |
-| /home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/dash/prototypes/vendor/uisfx-0.4.0.js | Pendiente | — |
+| /home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/dash/prototypes/vendor/uisfx-0.4.0.js | Tercero sin modificaciones; conservar y verificar integración | — |
 | /home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/dash/push-settings.js | Pendiente | — |
 | /home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/dash/quick-terminal.js | Pendiente | — |
 | /home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/dash/session-config.js | Pendiente | — |
 | /home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/dash/sw.js | Pendiente | — |
 | /home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/dash/term.html | Pendiente | — |
 | /home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/dash/ui-sounds.js | Pendiente | — |
-| /home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/dash/vendor/markdown-it-15.0.2.umd.min.js | Pendiente | — |
-| /home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/dash/vendor/purify-3.4.16.min.js | Pendiente | — |
+| /home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/dash/vendor/markdown-it-15.0.2.umd.min.js | Tercero sin modificaciones; conservar y verificar integración | — |
+| /home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/dash/vendor/purify-3.4.16.min.js | Tercero sin modificaciones; conservar y verificar integración | — |
 | /home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/dash/work-marks.js | Pendiente | — |
 | /home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/dash/workspace-dock.js | Pendiente | — |
 | /home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/dash/workspace-layout.js | Pendiente | — |
