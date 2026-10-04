@@ -6,7 +6,7 @@
 {"name":"vendor-listing","method":"GET","path":"/vendor/","headers":{"Host":"127.0.0.1"},"body":null,"volatile":[],"expect":"same","forwarded":true}
 {"name":"no-existe.css","method":"GET","path":"/no-existe.css","headers":{"Host":"127.0.0.1"},"body":null,"volatile":[],"expect":"same","forwarded":true}
 {"name":"state-local","method":"GET","path":"/state","headers":{"Host":"127.0.0.1"},"body":null,"volatile":["/generated_at","/panes/*/last_seen"],"expect":"same","forwarded":true}
-{"name":"workmarks-local","method":"GET","path":"/work-marks","headers":{"Host":"127.0.0.1"},"body":null,"volatile":[],"expect":"same","forwarded":true}
+{"name":"workmarks-local","method":"GET","path":"/work-marks","headers":{"Host":"127.0.0.1"},"body":null,"volatile":[],"expect":"same"}
 {"name":"state-remoto-con-token","method":"GET","path":"/state","headers":{"Host":"x.ts.net","X-Forwarded-For":"100.64.0.9","X-Comandos-Token":"{{token}}"},"body":null,"volatile":["/generated_at","/panes/*/last_seen"],"expect":"same","forwarded":true}
 {"name":"state-remoto-sin-token","method":"GET","path":"/state","headers":{"Host":"x.ts.net","X-Forwarded-For":"100.64.0.9"},"body":null,"volatile":[],"expect":"same"}
 {"name":"state-remoto-token-malo","method":"GET","path":"/state","headers":{"Host":"x.ts.net","X-Forwarded-For":"100.64.0.9","Authorization":"Bearer nope"},"body":null,"volatile":[],"expect":"same"}
@@ -29,3 +29,14 @@
 {"name":"d-prefs-set","method":"POST","path":"/prefs-set","headers":{"Host":"127.0.0.1","Content-Type":"application/json"},"body":{"theme":"neon","font_size":14.7,"nfSnooze":{"x":3}},"volatile":[],"expect":"same"}
 {"name":"d-prefs-tras-set","method":"GET","path":"/prefs","headers":{"Host":"127.0.0.1"},"body":null,"volatile":[],"expect":"same"}
 {"name":"d-prefs-remoto-sin-token","method":"GET","path":"/prefs","headers":{"Host":"x.ts.net","X-Forwarded-For":"100.64.0.9"},"body":null,"volatile":[],"expect":"same"}
+# --- 2b · B: eventos y marcas (nativas)
+{"name":"b-events-v2","method":"GET","path":"/events/v2?limit=5","headers":{"Host":"127.0.0.1"},"body":null,"volatile":["/events/*/receivedAtMs","/events/*/eventId"],"expect":"same"}
+{"name":"b-events-v2-turns","method":"GET","path":"/events/v2?after=0&limit=3&turns=1","headers":{"Host":"127.0.0.1"},"body":null,"volatile":["/events/*/receivedAtMs","/events/*/eventId"],"expect":"same"}
+{"name":"b-events-v2-malo","method":"GET","path":"/events/v2?after=-1","headers":{"Host":"127.0.0.1"},"body":null,"volatile":[],"expect":"same"}
+{"name":"b-work-marks-post","method":"POST","path":"/work-marks","headers":{"Host":"127.0.0.1","Content-Type":"application/json"},"body":{"scope":"session","key":"parity-b","value":"resolved","expectedRevision":0},"volatile":["/mark/updatedAtMs"],"expect":"same"}
+{"name":"b-work-marks-conflicto","method":"POST","path":"/work-marks","headers":{"Host":"127.0.0.1","Content-Type":"application/json"},"body":{"scope":"session","key":"parity-b","value":"frozen","expectedRevision":0},"volatile":["/current/updatedAtMs"],"expect":"same"}
+{"name":"b-work-marks-malo","method":"POST","path":"/work-marks","headers":{"Host":"127.0.0.1","Content-Type":"application/json"},"body":{"scope":"nope","key":"x","value":"resolved","expectedRevision":0},"volatile":[],"expect":"same"}
+{"name":"b-work-marks-tras","method":"GET","path":"/work-marks","headers":{"Host":"127.0.0.1"},"body":null,"volatile":["/marks/*/updatedAtMs"],"expect":"same"}
+{"name":"b-events-v2-post-ajeno","method":"POST","path":"/events/v2","headers":{"Host":"127.0.0.1","Origin":"http://127.0.0.1","Content-Type":"application/json"},"body":{"hookEvent":"Stop"},"volatile":[],"expect":"same"}
+{"name":"b-events-v2-post-ignorado","method":"POST","path":"/events/v2","headers":{"Host":"127.0.0.1","X-Comandos-Token":"{{token}}","Content-Type":"application/json"},"body":{"hookEvent":"Unknown"},"volatile":[],"expect":"same"}
+{"name":"b-events-v2-post-registrado","method":"POST","path":"/events/v2","headers":{"Host":"127.0.0.1","X-Comandos-Token":"{{token}}","Content-Type":"application/json"},"body":{"hookEvent":"UserPromptSubmit","agent":"codex","session":"parity-b","pane":"%99","turnId":"parity-t1","occurredAtMs":1000},"volatile":["/event/eventId","/event/receivedAtMs"],"expect":"same"}

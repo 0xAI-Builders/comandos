@@ -1,6 +1,10 @@
 //! Una conexión a `app-state.sqlite3` para todas las rutas nativas, con la
 //! puerta de esquema: si el Python migró a una versión que este binario no
 //! conoce, se rechaza (y el frente reenvía todo al heredado).
+use crate::{
+    HandlerError, Reply, Request,
+    events_routes::{EventRoutes, NativeFacts},
+};
 use comandos_store::state::{self, MIGRATIONS};
 use rusqlite::Connection;
 use std::{collections::BTreeSet, path::Path, time::Duration};
@@ -44,6 +48,8 @@ pub fn known_versions() -> BTreeSet<i64> {
 
 pub struct StateBackend {
     pub conn: Connection,
+    /// Se crea al primer uso: su `import_done` es el `_EVENTS_V2_LEGACY` del Python.
+    events: Option<EventRoutes<NativeFacts>>,
 }
 
 impl StateBackend {
@@ -53,7 +59,7 @@ impl StateBackend {
         let mut last = String::new();
         for attempt in 0..3u64 {
             let conn = state::connect(path).map_err(|e| Refusal::Unopened(e.to_string()))?;
-            let backend = Self { conn };
+            let backend = Self { conn, events: None };
             backend.admit()?;
             match state::migrate(&backend.conn, MIGRATIONS, now_seconds) {
                 Ok(_) => return Ok(backend),
@@ -91,5 +97,19 @@ impl StateBackend {
                 known: known.last().copied().unwrap_or(0),
             }),
         }
+    }
+}
+
+impl StateBackend {
+    /// Las cuatro rutas de eventos y marcas, en el hilo del worker.
+    pub fn events(
+        &mut self,
+        legacy: &Path,
+        request: &Request,
+    ) -> Result<Option<Reply>, HandlerError> {
+        let routes = self
+            .events
+            .get_or_insert_with(|| EventRoutes::new(legacy.to_path_buf(), NativeFacts));
+        routes.handle(&self.conn, request)
     }
 }

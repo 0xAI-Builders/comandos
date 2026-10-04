@@ -5,6 +5,7 @@
 //! `fc-list`, por `tokio::process`. Si una entrada no se puede reproducir con
 //! certeza, el manejador devuelve `Fault::Decline` ANTES de cualquier efecto
 //! y el frente reenvía la petición original al heredado.
+pub mod events;
 pub mod files;
 pub mod light;
 pub mod py;
@@ -35,6 +36,7 @@ pub const WORKER_CAPACITY: usize = 64;
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum NativeRoute {
     Light(light::LightRoute),
+    Events,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -77,7 +79,7 @@ pub struct Entry {
 }
 
 /// Una tabla por dominio; las tareas 3–7 añaden la suya.
-const TABLES: &[&[Entry]] = &[light::ROUTES];
+const TABLES: &[&[Entry]] = &[light::ROUTES, events::ROUTES];
 
 pub fn route(method: &Method, target: &str) -> Option<NativeRoute> {
     let verb = if *method == Method::GET {
@@ -301,6 +303,7 @@ impl Native {
     async fn answer(&self, route: NativeRoute, request: &Request) -> Answer {
         match route {
             NativeRoute::Light(route) => light::answer(self, route, request).await,
+            NativeRoute::Events => events::answer(self, request).await,
         }
     }
 
