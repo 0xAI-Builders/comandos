@@ -6,6 +6,8 @@ rust-version.workspace = true
 publish.workspace = true
 
 [dependencies]
+chrono.workspace = true
+chrono-tz.workspace = true
 comandos-core = { path = "../comandos-core" }
 comandos-store = { path = "../comandos-store" }
 serde_json.workspace = true
