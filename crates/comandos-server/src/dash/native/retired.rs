@@ -6,8 +6,12 @@
 //! POST `/model/switch-cancel`, GET `/session-config-history` y POST
 //! `/session/recover`.
 use super::{Answer, Entry, Key, NativeRoute, Verb, reply};
-use http::StatusCode;
+use http::{Method, StatusCode};
 use serde_json::json;
+use std::{
+    collections::BTreeSet,
+    sync::{Mutex, OnceLock},
+};
 
 pub const OPERATOR_RETIRED_ERROR: &str = "El chat de CommandOS se retiró; usa la barra de comandos";
 
@@ -99,9 +103,25 @@ pub const ROUTES: &[Entry] = &[
     post(POST_PATHS[18]),
 ];
 
-pub fn answer() -> Answer {
+pub fn answer(method: &Method, path: &str) -> Answer {
+    note_first_hit(method, path);
     reply(
         StatusCode::GONE,
         &json!({"error": OPERATOR_RETIRED_ERROR, "code": "retired"}),
     )
+}
+
+/// Las rutas retiradas no dejaban rastro: un llamador externo que aún las use (un plugin
+/// antiguo, un script) perdería sus avisos en silencio. Una línea en stderr por ruta, la
+/// primera vez que se pisa, basta para notarlo en el journal.
+fn note_first_hit(method: &Method, path: &str) {
+    static SEEN: OnceLock<Mutex<BTreeSet<String>>> = OnceLock::new();
+    let key = format!("{method} {path}");
+    let seen = SEEN.get_or_init(|| Mutex::new(BTreeSet::new()));
+    let Ok(mut seen) = seen.lock() else {
+        return;
+    };
+    if seen.insert(key.clone()) {
+        eprintln!("comandos dash: ruta retirada pisada por primera vez: {key} → 410");
+    }
 }

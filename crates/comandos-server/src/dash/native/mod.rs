@@ -321,7 +321,13 @@ impl Native {
             NativeRoute::Events => events::answer(self, request).await,
             NativeRoute::Notices(route) => notices::answer(self, route, request).await,
             NativeRoute::Workspace(route) => workspace::answer(self, route, request).await,
-            NativeRoute::Retired => retired::answer(),
+            NativeRoute::Retired => {
+                let path = request
+                    .target
+                    .split_once('?')
+                    .map_or(request.target.as_str(), |(path, _)| path);
+                retired::answer(&request.method, path)
+            }
         }
     }
 

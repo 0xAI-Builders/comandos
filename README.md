@@ -108,8 +108,9 @@ and **Grok as the engine inside Claude Code**. Both reuse the subscription in
 gateway and is labeled Labs because the CLI subscription endpoint is not a
 public stable API. The picker preserves the same session ID/context across
 Claude ↔ Codex ↔ Grok and confirms model/effort before updating the card.
-Any other agent can join with a single HTTP call:
-`POST 127.0.0.1:4777/event {"agent","event","cwd","msg?","full?"}`.
+Any other agent joins through the hook binary: `comandos hook <agent> …` (the
+adapters in `adapters/` show the exact call). The old `POST 127.0.0.1:4777/event`
+endpoint is retired and answers 410.
 
 ## Phone & tablet (secure)
 

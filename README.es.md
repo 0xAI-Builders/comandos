@@ -115,8 +115,9 @@ y **Grok como motor dentro de Claude Code**. Ambos reutilizan la suscripción de
 gateway local y se marca Labs porque el endpoint de suscripción del CLI no es
 una API pública estable. El selector conserva el mismo session ID/contexto al
 cambiar Claude ↔ Codex ↔ Grok y confirma modelo/esfuerzo antes de actualizar la card.
-Cualquier otro agente entra con una llamada HTTP:
-`POST 127.0.0.1:4777/event {"agent","event","cwd","msg?","full?"}`.
+Cualquier otro agente entra por el binario de hooks: `comandos hook <agente> …` (los
+adaptadores de `adapters/` muestran la llamada exacta). El antiguo `POST 127.0.0.1:4777/event`
+está retirado y responde 410.
 
 ## Celular y tablet (seguro)
 

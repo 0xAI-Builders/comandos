@@ -362,6 +362,11 @@ A/B inmediato sin cambiar binario (todo reenviado, comportamiento 2a):
 
 ```sh
 systemctl --user set-environment COMANDOS_DASH_NATIVE=0 && systemctl --user restart cc-dash.service
+# Lo anterior vive solo en la memoria del gestor de usuario (se pierde al reiniciar o reloguear).
+# Para que sobreviva: drop-in persistente y reinicio.
+mkdir -p ~/.config/systemd/user/cc-dash.service.d && printf '[Service]\nEnvironment=COMANDOS_DASH_NATIVE=0\n' > ~/.config/systemd/user/cc-dash.service.d/no-native.conf
+systemctl --user daemon-reload && systemctl --user restart cc-dash.service
+# Deshacer: rm ~/.config/systemd/user/cc-dash.service.d/no-native.conf && systemctl --user daemon-reload && systemctl --user restart cc-dash.service
 # deshacer: systemctl --user unset-environment COMANDOS_DASH_NATIVE && systemctl --user restart cc-dash.service
 ```
 

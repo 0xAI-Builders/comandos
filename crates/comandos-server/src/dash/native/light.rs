@@ -468,7 +468,10 @@ fn update_prefs(
 }
 
 async fn prefs_set(native: &Native, data: &Map<String, Value>) -> Answer {
-    // `_PREFS_LOCK`: un solo leer-modificar-escribir a la vez en este proceso.
+    // `_PREFS_LOCK`: un solo leer-modificar-escribir a la vez en este proceso. Igual que el
+    // candado del Python, no cruza procesos: un `/prefs-set` declinado y atendido por el
+    // heredado puede cruzarse con una escritura de aquí y perder una de las dos (raro: solo
+    // con cuerpos que declinan, y los clientes vuelven a enviar sus preferencias).
     let _guard = native.prefs_lock.lock().await;
     let path = native.options().hooks.join("prefs.json");
     let prefs = match update_prefs(read_prefs(&native.options().hooks)?, data) {
