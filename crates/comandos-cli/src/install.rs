@@ -1,5 +1,6 @@
 //! Instalación en paralelo del binario: `--stage`, `--link` y `--rollback`, sin cutover implícito.
 mod record;
+pub mod release;
 
 use record::Record;
 use std::{
@@ -9,13 +10,14 @@ use std::{
 };
 
 const HOOK_NAMES: &[&str] = &["cc-notify.sh", "cc-status.sh", "cc-usage-tool.sh"];
-const USAGE: &str =
-    "uso: comandos install [--home DIR] (--stage | --link NOMBRE | --rollback NOMBRE)";
+const USAGE: &str = "uso: comandos install [--home DIR] (--stage | --link NOMBRE | --rollback NOMBRE | --rollback-release | --releases)";
 
 enum Action {
     Stage,
     Link(String),
     Rollback(String),
+    RollbackRelease,
+    Releases,
 }
 
 /// Devuelve el código de salida; los errores de uso salen con 2 y los de operación con `Err`.
@@ -26,7 +28,25 @@ pub fn run(args: &[String]) -> Result<i32, String> {
     };
     let staged = home.join(".local/share/comandos/bin/comandos");
     match action {
-        Action::Stage => stage(&staged)?,
+        Action::Stage => {
+            let me = std::env::current_exe()
+                .map_err(|e| format!("no se pudo ubicar el ejecutable: {e}"))?;
+            release::stage_release(&home, &me)?;
+        }
+        Action::RollbackRelease => {
+            let r = release::rollback_release(&home)?;
+            println!("release activa: {}", r.id);
+        }
+        Action::Releases => {
+            for r in release::list_releases(&home)? {
+                println!(
+                    "{} {}  {}",
+                    if r.current { '*' } else { ' ' },
+                    r.id,
+                    r.path.display()
+                );
+            }
+        }
         Action::Link(name) => link(&home, &staged, valid(&name)?)?,
         Action::Rollback(name) => rollback(&home, valid(&name)?)?,
     }
@@ -45,6 +65,8 @@ fn parse(args: &[String]) -> Option<(PathBuf, Action)> {
             }
             "--stage" => Action::Stage,
             "--link" => Action::Link(it.next()?.clone()),
+            "--rollback-release" => Action::RollbackRelease,
+            "--releases" => Action::Releases,
             "--rollback" => Action::Rollback(it.next()?.clone()),
             _ => return None,
         };
@@ -85,23 +107,6 @@ fn swap_symlink(target: &Path, path: &Path) -> Result<(), String> {
         let _ = fs::remove_file(&tmp);
         format!("no se pudo reemplazar {}: {e}", path.display())
     })
-}
-
-fn stage(staged: &Path) -> Result<(), String> {
-    let me =
-        std::env::current_exe().map_err(|e| format!("no se pudo ubicar el ejecutable: {e}"))?;
-    let dir = staged.parent().ok_or("ruta de destino sin directorio")?;
-    fs::create_dir_all(dir).map_err(|e| format!("no se pudo crear {}: {e}", dir.display()))?;
-    let tmp = staged.with_extension("tmp");
-    match fs::remove_file(&tmp) {
-        Err(e) if e.kind() != io::ErrorKind::NotFound => {
-            return Err(format!("no se pudo borrar {}: {e}", tmp.display()));
-        }
-        _ => {}
-    }
-    // `fs::copy` conserva los permisos (bit ejecutable) del origen.
-    fs::copy(&me, &tmp).map_err(|e| format!("no se pudo copiar a {}: {e}", tmp.display()))?;
-    fs::rename(&tmp, staged).map_err(|e| format!("no se pudo instalar {}: {e}", staged.display()))
 }
 
 /// Mueve un archivo real; si cruza dispositivos (EXDEV) copia y borra.

@@ -54,3 +54,22 @@ readlink ~/.local/bin/cc-extensions         # debe volver a …/ComandOS/bin/cc-
 ```
 
 Solo afecta a sesiones nuevas; las abiertas conservan el proxy con el que arrancaron.
+
+## Releases
+
+`comandos install --stage` ya no sobrescribe `bin/comandos`: instala el binario en
+`~/.local/share/comandos/releases/<sha256[..12]>/comandos` y deja `bin/comandos` como symlink
+relativo `../releases/<id>/comandos` (swap atómico: symlink temporal + `rename`). Una instalación
+de la Fase 1 (archivo regular) se mueve primero a su propia release y pasa a ser `previous`.
+`releases/previous` guarda el id de la release anterior. Se conservan las 5 más recientes por
+mtime, más la actual y `previous`.
+
+```sh
+comandos install --stage             # nueva release (idempotente si el binario no cambió)
+comandos install --releases          # «* id  ruta» la actual primero, luego por antigüedad
+comandos install --rollback-release  # intercambia la actual con previous
+```
+
+Los daemons vivos (broker, proxies) conservan el inodo del binario con el que arrancaron, así que
+el swap o el rollback solo afectan a procesos nuevos; para que un daemon use la release activa hay
+que reiniciarlo. Los enlaces `cc-*` apuntan a `bin/comandos` y siguen la release activa.
