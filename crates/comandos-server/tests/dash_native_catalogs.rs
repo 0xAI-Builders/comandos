@@ -330,3 +330,43 @@ async fn sovereignty_query_is_forwarded() {
     );
     front.stop().await;
 }
+
+/// Las declinaciones de `/sovereignty` (conf o `~/.ssh/config` no UTF-8) van
+/// antes del carril de uso: una base vieja no se migra para luego reenviar.
+#[tokio::test]
+async fn sovereignty_declines_before_migrating_older_usage_db() {
+    for (tag, rel, bytes) in [
+        (
+            "sovereignty-old-conf",
+            ".claude/hooks/cc-notify.conf",
+            &b"NATIVE_NOTIFY=1\n\xff\n"[..],
+        ),
+        ("sovereignty-old-ssh", ".ssh/config", &b"Host a\n\xfe\n"[..]),
+    ] {
+        let home = TestHome::new(tag);
+        let path = home.root.join(rel);
+        fs::create_dir_all(path.parent().unwrap()).unwrap();
+        fs::write(&path, bytes).unwrap();
+        let conn = rusqlite::Connection::open(home.usage_db()).unwrap();
+        conn.execute_batch("create table viejo(a); pragma user_version=3")
+            .unwrap();
+        drop(conn);
+        let legacy = FakeLegacy::start().await;
+        let front = front(&home, legacy.port, home.options()).await;
+        assert_eq!(
+            get(front.port, "/sovereignty").await.text(),
+            r#"{"legacy": true}"#,
+            "{tag}"
+        );
+        front.stop().await;
+        let conn = rusqlite::Connection::open(home.usage_db()).unwrap();
+        let version: i64 = conn
+            .query_row("pragma user_version", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(version, 3, "{tag}: la base vieja no se tocó");
+        let tables: i64 = conn
+            .query_row("select count(*) from sqlite_master", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(tables, 1, "{tag}: sin tablas nuevas");
+    }
+}

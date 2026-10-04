@@ -16,7 +16,7 @@ use std::{
         ffi::OsStrExt,
         fs::{MetadataExt, PermissionsExt},
     },
-    path::Path,
+    path::{Path, PathBuf},
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -73,6 +73,12 @@ fn has_magic(text: &str) -> bool {
 async fn sovereignty(native: &Native) -> Answer {
     let hooks = native.options().hooks.clone();
     let db = hooks.join("comandos-usage.sqlite");
+    // Todo lo que puede declinar se lee antes de abrir la base: el carril
+    // migraría una base vieja y luego ya no se podría reenviar sin efectos.
+    let read = hooks.clone();
+    let inputs = tokio::task::spawn_blocking(move || Inputs::read(&read))
+        .await
+        .map_err(|_| failure())??;
     // `finfo(db)` va antes que las tablas: si la base no existe no se abre (el
     // carril la crearía). Un archivo vacío lo leería el Python sin tablas y el
     // carril lo migraría: se reenvía para no escribir desde un GET de lectura.
@@ -82,9 +88,9 @@ async fn sovereignty(native: &Native) -> Answer {
         Err(_) => None,
     };
     let now = (native.options().clock)().div_euclid(1000);
-    let report = tokio::task::spawn_blocking(move || report(&hooks, tables, now))
+    let report = tokio::task::spawn_blocking(move || report(&hooks, inputs, tables, now))
         .await
-        .map_err(|_| failure())??;
+        .map_err(|_| failure())?;
     read_reply(&report)
 }
 
@@ -228,18 +234,46 @@ const FILES: [(&str, &str, &str); 10] = [
     ("cc-notify.conf", "Configuración de avisos", "conf"),
 ];
 
+/// Las entradas de `sovereignty_report` que pueden declinar: el HOME como
+/// texto sin comodines y los dos archivos de texto que el Python decodifica.
+struct Inputs {
+    home: PathBuf,
+    home_text: String,
+    ssh: Option<Vec<String>>,
+    conf: Option<Vec<String>>,
+}
+
+impl Inputs {
+    fn read(hooks: &Path) -> Result<Self, Fault> {
+        // `os.path.expanduser("~")`: el HOME del que cuelga `hooks`.
+        let home = hooks
+            .parent()
+            .and_then(Path::parent)
+            .ok_or(Fault::Decline)?;
+        let home_text = home.to_str().ok_or(Fault::Decline)?;
+        if home_text.is_empty() || has_magic(home_text) || has_magic(hooks.to_str().unwrap_or("*"))
+        {
+            return Err(Fault::Decline);
+        }
+        Ok(Self {
+            home: home.to_path_buf(),
+            home_text: home_text.to_owned(),
+            ssh: text_lines(&home.join(".ssh/config"))?,
+            conf: text_lines(&hooks.join("cc-notify.conf"))?,
+        })
+    }
+}
+
 /// `sovereignty_report`: el inventario, en el orden del Python. Bloquea
 /// (recorre directorios y cuenta líneas): corre en `spawn_blocking`.
-fn report(hooks: &Path, tables: Option<Vec<(String, i64)>>, now: i64) -> Result<Value, Fault> {
-    // `os.path.expanduser("~")`: el HOME del que cuelga `hooks`.
-    let home = hooks
-        .parent()
-        .and_then(Path::parent)
-        .ok_or(Fault::Decline)?;
-    let home_text = home.to_str().ok_or(Fault::Decline)?;
-    if home_text.is_empty() || has_magic(home_text) || has_magic(hooks.to_str().unwrap_or("*")) {
-        return Err(Fault::Decline);
-    }
+fn report(hooks: &Path, inputs: Inputs, tables: Option<Vec<(String, i64)>>, now: i64) -> Value {
+    let Inputs {
+        home,
+        home_text,
+        ssh,
+        conf,
+    } = inputs;
+    let home_text = home_text.as_str();
     let mut stores = Vec::new();
     if let Some(mut fi) = finfo(
         &hooks.join("comandos-usage.sqlite"),
@@ -292,7 +326,7 @@ fn report(hooks: &Path, tables: Option<Vec<(String, i64)>>, now: i64) -> Result<
         }));
     }
     // `ln.strip().lower().startswith("host ") and "*" not in ln`.
-    let ssh = text_lines(&home.join(".ssh/config"))?.map_or(0, |lines| {
+    let ssh = ssh.map_or(0, |lines| {
         lines
             .iter()
             .filter(|l| py::strip(l).to_lowercase().starts_with("host ") && !l.contains('*'))
@@ -306,7 +340,7 @@ fn report(hooks: &Path, tables: Option<Vec<(String, i64)>>, now: i64) -> Result<
     }));
     // `conf[k] = v.strip().strip('"\'')`: gana el último `NATIVE_NOTIFY`.
     let mut native_notify = String::from("0");
-    for line in text_lines(&hooks.join("cc-notify.conf"))?.unwrap_or_default() {
+    for line in conf.unwrap_or_default() {
         let stripped = py::strip(&line);
         if stripped.starts_with('#') {
             continue;
@@ -319,7 +353,7 @@ fn report(hooks: &Path, tables: Option<Vec<(String, i64)>>, now: i64) -> Result<
                 .to_owned();
         }
     }
-    Ok(json!({
+    json!({
         "stores": stores,
         "browser": [
             {"key": "cc-pomos", "label": "Registro de pomodoros"},
@@ -344,5 +378,5 @@ fn report(hooks: &Path, tables: Option<Vec<(String, i64)>>, now: i64) -> Result<
             },
         ],
         "generatedAt": now,
-    }))
+    })
 }
