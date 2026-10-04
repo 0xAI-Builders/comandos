@@ -111,36 +111,42 @@ fn dash_dir_prefers_a_readable_override_and_rejects_a_bad_one() {
 }
 
 #[test]
-fn classify_matches_the_python_get_gate_prefixes() {
+fn classify_serves_existing_files_and_forwards_the_rest() {
     let none = |_: &str| false;
-    let css = |p: &str| p == "/workspace.css";
-    assert_eq!(classify(&Method::GET, "/", &none), RouteClass::Static);
+    let files = |p: &str| ["/index.html", "/app.js", "/workspace.css", "/state"].contains(&p);
+    // Estático solo si el archivo existe (los casos finos están en dash_statics).
+    assert_eq!(classify(&Method::GET, "/", &files), RouteClass::Static);
+    assert_eq!(classify(&Method::GET, "/", &none), RouteClass::Forward);
     assert_eq!(
-        classify(&Method::GET, "/app.js?v=3", &none),
+        classify(&Method::GET, "/app.js?v=3", &files),
         RouteClass::Static
     );
     assert_eq!(
-        classify(&Method::HEAD, "/index.html", &none),
+        classify(&Method::HEAD, "/index.html", &files),
         RouteClass::Static
     );
-    assert_eq!(classify(&Method::GET, "/state", &none), RouteClass::Forward);
+    // Las rutas API de `_do_GET` se reenvían aunque exista un archivo homónimo.
     assert_eq!(
-        classify(&Method::GET, "/usage/state?x=1", &none),
+        classify(&Method::GET, "/state", &files),
+        RouteClass::Forward
+    );
+    assert_eq!(
+        classify(&Method::GET, "/usage/state?x=1", &files),
         RouteClass::Forward
     );
     assert_eq!(classify(&Method::HEAD, "/tabs", &none), RouteClass::Forward);
-    // `/workspace` es prefijo API, pero `/workspace.css` existente es asset público.
+    // `/workspace` es prefijo API, pero `/workspace.css` existente es un archivo.
     assert_eq!(
-        classify(&Method::GET, "/workspace.css", &css),
+        classify(&Method::GET, "/workspace.css", &files),
         RouteClass::Static
     );
     assert_eq!(
         classify(&Method::GET, "/workspace.css", &none),
         RouteClass::Forward
     );
-    assert_eq!(classify(&Method::POST, "/", &none), RouteClass::Forward);
+    assert_eq!(classify(&Method::POST, "/", &files), RouteClass::Forward);
     assert_eq!(
-        classify(&Method::DELETE, "/workspace.css", &css),
+        classify(&Method::DELETE, "/workspace.css", &files),
         RouteClass::Forward
     );
 }
