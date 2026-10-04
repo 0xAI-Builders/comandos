@@ -91,11 +91,6 @@ impl Server {
     }
 }
 
-fn is_not_found_json(wire: &Wire) {
-    assert_eq!(wire.status, 404);
-    assert_eq!(wire.text(), r#"{"error": "No encontrado"}"#);
-}
-
 #[test]
 fn static_path_decodes_and_rejects_lexically() {
     assert_eq!(static_path("/").as_deref(), Some("/index.html"));
@@ -377,11 +372,15 @@ async fn directories_missing_and_invalid_paths_are_forwarded() {
             "{target}"
         );
     }
-    // Mientras no hay reenvío (tarea 4), Forward responde el 404 provisional.
+    // Forward va al heredado (puerto 1, sin servidor): 502, nunca el archivo.
     let server = start(&dash).await;
     for target in ["/vendor/", "/vendor", "/nada.css", "/..%2Fsecret"] {
         let wire = server.get(target).await;
-        is_not_found_json(&wire);
+        assert_eq!(wire.status, 502, "{target}");
+        assert_eq!(
+            wire.text(),
+            r#"{"error": "Servidor heredado no disponible"}"#
+        );
         assert!(!wire.text().contains("no-debe-salir"));
     }
     server.finish().await;

@@ -15,7 +15,7 @@ bytes = "=1.12.1"
 http = "=1.5.0"
 http-body = "=1.1.0"
 http-body-util = "=0.1.5"
-hyper = { version = "=1.11.1", default-features = false, features = ["server", "http1"] }
+hyper = { version = "=1.11.1", default-features = false, features = ["server", "client", "http1"] }
 hyper-util = { version = "=0.1.21", default-features = false, features = ["tokio"] }
 tokio = { version = "=1.53.1", default-features = false, features = ["rt", "macros", "net", "sync", "time", "io-util", "signal"] }
 futures-util = { version = "=0.3.34", default-features = false, features = ["std", "async-await"] }

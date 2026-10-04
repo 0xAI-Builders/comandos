@@ -2,8 +2,9 @@
 //!
 //! Rust aplica la puerta de seguridad portada (transporte + `dashboard_access`)
 //! y sirve los estáticos; lo demás se reenvía al `cc-dash` Python heredado en
-//! `legacy_port`. Fase 2a: los estáticos los sirve `statics` (tarea 3); el
-//! reenvío aún responde `404 {"error":"No encontrado"}` hasta la tarea 4.
+//! `legacy_port`. Fase 2a: los estáticos los sirve `statics` y lo demás lo
+//! reenvía `forward` con cabeceras y cuerpo intactos.
+pub mod forward;
 pub mod router;
 pub mod statics;
 pub mod token;
@@ -220,13 +221,11 @@ async fn handle(state: &DashState, request: Request) -> Result<Reply, HandlerErr
         // HEAD solo existe para estáticos; a una ruta API es 404 (el Python
         // devolvía 404 HTML vía SimpleHTTPRequestHandler.do_HEAD).
         RouteClass::Forward if request.method == Method::HEAD => not_found(),
-        RouteClass::Forward => forward_reply(state, &request),
+        RouteClass::Forward => {
+            let legacy = SocketAddr::from((Ipv4Addr::LOCALHOST, state.config.legacy_port));
+            forward::relay(legacy, request).await
+        }
     }
-}
-
-/// Tarea 4 la sustituye por `forward::relay` hacia `legacy_port`.
-fn forward_reply(_state: &DashState, _request: &Request) -> Result<Reply, HandlerError> {
-    not_found()
 }
 
 pub fn not_found() -> Result<Reply, HandlerError> {

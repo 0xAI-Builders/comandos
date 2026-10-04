@@ -190,17 +190,18 @@ fn split(wire: &str) -> (&str, &str) {
 }
 
 #[tokio::test]
-async fn unrouted_paths_answer_404_json_behind_the_ported_gate() {
+async fn unrouted_paths_are_forwarded_behind_the_ported_gate() {
     let server = start("serve").await;
     let p = server.port;
+    // El heredado (puerto 1) no escucha: lo no estático responde 502.
     let wire = raw(p, get("GET", "/no-existe", p, "")).await;
     let (head, body) = split(&wire);
-    assert!(head.starts_with("HTTP/1.1 404"), "{head}");
+    assert!(head.starts_with("HTTP/1.1 502"), "{head}");
     assert!(
         head.to_ascii_lowercase()
             .contains("cache-control: no-store")
     );
-    assert_eq!(body, r#"{"error": "No encontrado"}"#);
+    assert_eq!(body, r#"{"error": "Servidor heredado no disponible"}"#);
 
     // Ruta API desde un proxy no local sin token: la puerta portada responde 401.
     let wire = raw(
@@ -209,7 +210,7 @@ async fn unrouted_paths_answer_404_json_behind_the_ported_gate() {
     )
     .await;
     assert!(wire.starts_with("HTTP/1.1 401"), "{wire}");
-    // Con el token, la petición pasa la puerta (aún sin reenvío: 404).
+    // Con el token, la petición pasa la puerta y se reenvía (sin heredado: 502).
     let wire = raw(
         p,
         get(
@@ -220,7 +221,7 @@ async fn unrouted_paths_answer_404_json_behind_the_ported_gate() {
         ),
     )
     .await;
-    assert!(wire.starts_with("HTTP/1.1 404"), "{wire}");
+    assert!(wire.starts_with("HTTP/1.1 502"), "{wire}");
     // Host ajeno: 403 antes de cualquier ruta.
     let wire = raw(
         p,
