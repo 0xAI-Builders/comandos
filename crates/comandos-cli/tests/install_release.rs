@@ -118,3 +118,63 @@ fn rollback_without_previous_fails_cleanly() {
     assert_eq!(out.status.code(), Some(1));
     assert!(String::from_utf8_lossy(&out.stderr).contains("no hay release anterior"));
 }
+
+#[test]
+fn legacy_migration_keeps_the_same_inode_and_never_leaves_bin_empty() {
+    use std::os::unix::fs::MetadataExt;
+    let h = home("inode");
+    let bin = h.join(".local/share/comandos/bin/comandos");
+    fs::create_dir_all(bin.parent().unwrap()).unwrap();
+    fs::write(&bin, b"#!/bin/sh\necho viejo\n").unwrap();
+    fs::set_permissions(&bin, fs::Permissions::from_mode(0o755)).unwrap();
+    let ino = bin.metadata().unwrap().ino();
+    let old_id = sha12(&bin);
+    assert!(run(&h, &["--stage"]).status.success());
+    let old = h
+        .join(".local/share/comandos/releases")
+        .join(&old_id)
+        .join("comandos");
+    // Mismo inodo: el daemon que ya corre con el binario viejo no pierde su ejecutable.
+    assert_eq!(old.metadata().unwrap().ino(), ino);
+    assert!(bin.metadata().unwrap().is_file(), "bin/comandos resuelve");
+}
+
+#[test]
+fn failed_copy_leaves_the_legacy_regular_file_untouched() {
+    let h = home("failcopy");
+    let share = h.join(".local/share/comandos");
+    let bin = share.join("bin/comandos");
+    fs::create_dir_all(bin.parent().unwrap()).unwrap();
+    fs::write(&bin, b"#!/bin/sh\necho viejo\n").unwrap();
+    // La release nueva no es escribible: la copia falla después de tocar la migración.
+    let rel = share.join("releases").join(sha12(Path::new(comandos())));
+    fs::create_dir_all(&rel).unwrap();
+    fs::set_permissions(&rel, fs::Permissions::from_mode(0o500)).unwrap();
+    let out = run(&h, &["--stage"]);
+    fs::set_permissions(&rel, fs::Permissions::from_mode(0o700)).unwrap();
+    assert_eq!(out.status.code(), Some(1));
+    assert!(bin.symlink_metadata().unwrap().file_type().is_file());
+    assert_eq!(fs::read(&bin).unwrap(), b"#!/bin/sh\necho viejo\n");
+}
+
+#[test]
+fn restage_keeps_the_on_disk_previous_even_when_it_is_old() {
+    let h = home("keepprev");
+    let rel = h.join(".local/share/comandos/releases");
+    assert!(run(&h, &["--stage"]).status.success());
+    for i in 0..7 {
+        let d = rel.join(format!("{i:012x}"));
+        fs::create_dir_all(&d).unwrap();
+        fs::write(d.join("comandos"), [i as u8]).unwrap();
+        std::thread::sleep(std::time::Duration::from_millis(15));
+    }
+    fs::write(rel.join("previous"), "000000000000\n").unwrap();
+    assert!(run(&h, &["--stage"]).status.success());
+    assert!(rel.join("000000000000").is_dir());
+    let out = run(&h, &["--rollback-release"]);
+    assert!(
+        out.status.success(),
+        "{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+}

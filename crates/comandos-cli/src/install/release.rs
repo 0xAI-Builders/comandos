@@ -37,47 +37,46 @@ pub fn stage_release(home: &Path, exe: &Path) -> Result<Release, String> {
     for dir in [&releases, bin_dir] {
         fs::create_dir_all(dir).map_err(|e| format!("no se pudo crear {}: {e}", dir.display()))?;
     }
-    // Una instalación de la Fase 1 (archivo regular) pasa a ser la release anterior.
-    let previous = match bin.symlink_metadata() {
-        Ok(m) if m.file_type().is_symlink() => current_id(&bin),
-        Ok(_) => {
-            let id = sha12(&bin)?;
-            let dir = releases.join(&id);
-            fs::create_dir_all(&dir)
-                .map_err(|e| format!("no se pudo crear {}: {e}", dir.display()))?;
-            let dest = dir.join("comandos");
-            if dest.exists() {
-                fs::remove_file(&bin)
-                    .map_err(|e| format!("no se pudo borrar {}: {e}", bin.display()))?;
-            } else {
-                super::move_file(&bin, &dest)?;
-            }
-            Some(id)
-        }
-        Err(e) if e.kind() == io::ErrorKind::NotFound => None,
-        Err(e) => return Err(format!("no se pudo leer {}: {e}", bin.display())),
-    };
     let id = sha12(exe)?;
     let dir = releases.join(&id);
     fs::create_dir_all(&dir).map_err(|e| format!("no se pudo crear {}: {e}", dir.display()))?;
     let target = dir.join("comandos");
+    // 1) La release nueva queda completa antes de tocar `bin/comandos`.
     if !target.is_file() {
         // `fs::copy` conserva el bit ejecutable; rename deja la release completa o ausente.
-        let tmp = dir.join("comandos.tmp");
+        let tmp = dir.join(format!("comandos.tmp.{}", std::process::id()));
         fs::copy(exe, &tmp).map_err(|e| format!("no se pudo copiar a {}: {e}", tmp.display()))?;
         fs::rename(&tmp, &target)
             .map_err(|e| format!("no se pudo instalar {}: {e}", target.display()))?;
     }
-    if previous.as_deref() != Some(id.as_str()) {
-        if let Some(p) = &previous {
-            write_previous(&releases, p)?;
+    // 2) Una instalación de la Fase 1 (archivo regular) pasa a ser la release anterior,
+    //    con hard link (mismo inodo) para que `bin/comandos` nunca deje de existir.
+    let previous = match bin.symlink_metadata() {
+        Ok(m) if m.file_type().is_symlink() => current_id(&releases, &bin),
+        Ok(_) => {
+            let old = sha12(&bin)?;
+            let old_dir = releases.join(&old);
+            fs::create_dir_all(&old_dir)
+                .map_err(|e| format!("no se pudo crear {}: {e}", old_dir.display()))?;
+            let dest = old_dir.join("comandos");
+            if !dest.is_file() {
+                keep_legacy(&bin, &dest, &old_dir)?;
+            }
+            Some(old)
         }
-        swap_link(&bin, &id)?;
-    } else if current_id(&bin).as_deref() != Some(id.as_str()) {
-        // Caso del archivo regular idéntico al binario nuevo: solo falta el enlace.
+        Err(e) if e.kind() == io::ErrorKind::NotFound => None,
+        Err(e) => return Err(format!("no se pudo leer {}: {e}", bin.display())),
+    };
+    // 3) El swap del symlink temporal sobre `bin` es atómico.
+    if previous.as_deref() != Some(id.as_str())
+        && let Some(p) = &previous
+    {
+        write_previous(&releases, p)?;
+    }
+    if current_id(&releases, &bin).as_deref() != Some(id.as_str()) {
         swap_link(&bin, &id)?;
     }
-    prune(&releases, &id, previous.as_deref())?;
+    prune(&releases, &id)?;
     Ok(Release {
         id,
         path: target,
@@ -92,7 +91,8 @@ pub fn rollback_release(home: &Path) -> Result<Release, String> {
         .map(|s| s.trim().to_string())
         .filter(|s| valid_id(s) && releases.join(s).join("comandos").is_file())
         .ok_or("no hay release anterior a la que volver")?;
-    let current = current_id(&bin).ok_or("bin/comandos no es un enlace a una release")?;
+    let current =
+        current_id(&releases, &bin).ok_or("bin/comandos no es un enlace a una release")?;
     swap_link(&bin, &prev)?;
     write_previous(&releases, &current)?;
     Ok(Release {
@@ -105,7 +105,7 @@ pub fn rollback_release(home: &Path) -> Result<Release, String> {
 /// Actual primero y luego las demás de más a menos reciente.
 pub fn list_releases(home: &Path) -> Result<Vec<Release>, String> {
     let Layout { releases, bin } = layout(home);
-    let current = current_id(&bin);
+    let current = current_id(&releases, &bin);
     let mut found = release_dirs(&releases)?;
     found.sort_by(|a, b| b.1.cmp(&a.1).then_with(|| a.0.cmp(&b.0)));
     let mut out: Vec<Release> = found
@@ -130,7 +130,7 @@ fn release_dirs(releases: &Path) -> Result<Vec<(String, SystemTime)>, String> {
     for entry in rd {
         let entry = entry.map_err(|e| e.to_string())?;
         let meta = entry.metadata().map_err(|e| e.to_string())?;
-        if !meta.is_dir() {
+        if !meta.is_dir() || !entry.path().join("comandos").is_file() {
             continue;
         }
         let Some(id) = entry.file_name().to_str().map(str::to_string) else {
@@ -148,7 +148,7 @@ fn write_previous(releases: &Path, id: &str) -> Result<(), String> {
 }
 
 fn swap_link(bin: &Path, id: &str) -> Result<(), String> {
-    let tmp = bin.with_extension("tmp-link");
+    let tmp = bin.with_extension(format!("tmp-link.{}", std::process::id()));
     let _ = fs::remove_file(&tmp);
     symlink(Path::new("../releases").join(id).join("comandos"), &tmp)
         .map_err(|e| format!("no se pudo crear {}: {e}", tmp.display()))?;
@@ -158,9 +158,21 @@ fn swap_link(bin: &Path, id: &str) -> Result<(), String> {
     })
 }
 
-fn current_id(bin: &Path) -> Option<String> {
+/// Id al que apunta `bin`, solo si es una release existente.
+fn current_id(releases: &Path, bin: &Path) -> Option<String> {
     let target = fs::read_link(bin).ok()?;
-    target.parent()?.file_name()?.to_str().map(str::to_string)
+    let id = target.parent()?.file_name()?.to_str()?.to_string();
+    (valid_id(&id) && releases.join(&id).join("comandos").is_file()).then_some(id)
+}
+
+/// Hard link al inodo vivo; si el sistema de archivos no lo permite, copia.
+fn keep_legacy(bin: &Path, dest: &Path, dir: &Path) -> Result<(), String> {
+    if fs::hard_link(bin, dest).is_ok() {
+        return Ok(());
+    }
+    let tmp = dir.join(format!("comandos.tmp.{}", std::process::id()));
+    fs::copy(bin, &tmp).map_err(|e| format!("no se pudo copiar a {}: {e}", tmp.display()))?;
+    fs::rename(&tmp, dest).map_err(|e| format!("no se pudo instalar {}: {e}", dest.display()))
 }
 
 fn valid_id(id: &str) -> bool {
@@ -173,7 +185,10 @@ fn sha12(path: &Path) -> Result<String, String> {
 }
 
 /// Conserva las `KEEP` más recientes por mtime más la actual y `previous`.
-fn prune(releases: &Path, current: &str, previous: Option<&str>) -> Result<(), String> {
+fn prune(releases: &Path, current: &str) -> Result<(), String> {
+    // `previous` se lee de disco: es el que `--rollback-release` necesitará.
+    let on_disk = fs::read_to_string(releases.join("previous")).ok();
+    let previous = on_disk.as_deref().map(str::trim);
     let mut found = release_dirs(releases)?;
     found.sort_by(|a, b| b.1.cmp(&a.1).then_with(|| a.0.cmp(&b.0)));
     for (i, (id, _)) in found.iter().enumerate() {
