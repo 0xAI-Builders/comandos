@@ -257,6 +257,11 @@ impl Native {
         self.refusals.load(Ordering::Acquire)
     }
 
+    /// El carril de la base de uso (estado y líneas de apagado, para las pruebas).
+    pub fn usage_lane(&self) -> &lanes::Lane<lanes::UsageBackend> {
+        &self.usage
+    }
+
     fn disable(&self, refusal: &Refusal) {
         if self.enabled.swap(false, Ordering::AcqRel) {
             self.refusals.fetch_add(1, Ordering::AcqRel);

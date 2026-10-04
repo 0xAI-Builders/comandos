@@ -20,7 +20,8 @@ pub trait LaneBackend: Sized + Send + 'static {
     const ROUTES: &'static str;
     /// Abre y migra; la puerta va ANTES de tocar una base más nueva.
     fn open(path: &Path) -> Result<Self, Refusal>;
-    /// Se evalúa antes de cada trabajo.
+    /// Se evalúa antes de cada trabajo. Solo `Refusal::Newer` apaga el
+    /// carril; cualquier otro rechazo declina esa petición.
     fn admit(&self) -> Result<(), Refusal>;
 }
 
@@ -121,10 +122,14 @@ impl<B: LaneBackend> Lane<B> {
             .await;
         match called {
             Ok(Ok(value)) => Ok(value),
-            Ok(Err(refusal)) => {
+            // Solo una base más nueva apaga el carril para siempre.
+            Ok(Err(refusal @ Refusal::Newer { .. })) => {
                 self.disable(&refusal);
                 Err(Fault::Decline)
             }
+            // Un fallo al consultar la versión (p. ej. la base ocupada) no
+            // dice nada del esquema: se reenvía esta petición y el carril sigue.
+            Ok(Err(_)) => Err(Fault::Decline),
             Err(error) if started.load(Ordering::Acquire) => {
                 self.disable(&Refusal::Retired);
                 Err(Fault::Error(error))
@@ -191,4 +196,56 @@ fn gate(conn: &Connection) -> Result<(), Refusal> {
         });
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::sync::atomic::AtomicUsize as Counter;
+
+    /// Doble de base: la puerta responde lo que diga `script`, en orden.
+    struct Scripted {
+        calls: Arc<Counter>,
+        script: Vec<Result<(), Refusal>>,
+    }
+
+    static CALLS: std::sync::OnceLock<Arc<Counter>> = std::sync::OnceLock::new();
+
+    impl LaneBackend for Scripted {
+        const ROUTES: &'static str = "GET /prueba";
+
+        fn open(_: &Path) -> Result<Self, Refusal> {
+            Ok(Self {
+                calls: CALLS.get_or_init(Arc::default).clone(),
+                script: vec![
+                    Err(Refusal::Unopened("database is locked".into())),
+                    Ok(()),
+                    Err(Refusal::Newer {
+                        found: 12,
+                        known: 11,
+                    }),
+                ],
+            })
+        }
+
+        fn admit(&self) -> Result<(), Refusal> {
+            let at = self.calls.fetch_add(1, Ordering::AcqRel);
+            self.script.get(at).cloned().unwrap_or(Ok(()))
+        }
+    }
+
+    #[tokio::test]
+    async fn transient_gate_error_declines_once_and_newer_disables() {
+        let lane = Lane::<Scripted>::new(PathBuf::from("/no-existe/prueba.sqlite"));
+        assert!(matches!(lane.with(|_| 1).await, Err(Fault::Decline)));
+        assert!(lane.enabled(), "un fallo pasajero no apaga el carril");
+        assert_eq!(lane.refusals(), 0);
+        assert!(matches!(lane.with(|_| 2).await, Ok(2)));
+        assert!(matches!(lane.with(|_| 3).await, Err(Fault::Decline)));
+        assert!(!lane.enabled(), "una base más nueva sí lo apaga");
+        assert_eq!(lane.refusals(), 1);
+        assert!(matches!(lane.with(|_| 4).await, Err(Fault::Decline)));
+        assert_eq!(lane.refusals(), 1);
+        lane.shutdown().await;
+    }
 }

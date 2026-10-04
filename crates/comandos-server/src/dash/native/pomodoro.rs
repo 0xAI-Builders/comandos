@@ -34,17 +34,19 @@ pub async fn answer(native: &Native) -> Answer {
         .with_state(move |b| -> Result<StateParts, Fault> {
             let policy = policy_v1();
             // `pomodoro_store()`: la política se activa una vez (idempotente).
+            // Un INSERT que falla no escribe nada, y las lecturas no escriben:
+            // sus fallos se reenvían y el Python responde lo que corresponda.
             if !b.pomodoro_policy {
-                focus::ensure_policy(&b.conn, &policy, clock()).map_err(|_| failure())?;
+                focus::ensure_policy(&b.conn, &policy, clock()).map_err(|_| Fault::Decline)?;
                 b.pomodoro_policy = true;
             }
             let new_id = String::new;
             let state = PomodoroStore::new(&b.conn, &*clock, &new_id)
                 .snapshot()
-                .map_err(|_| failure())?;
+                .map_err(|_| Fault::Decline)?;
             let server_now = state["serverNowMs"].as_i64().ok_or_else(failure)?;
             let progress =
-                focus::ledger_progress(&b.conn, &policy, server_now).map_err(|_| failure())?;
+                focus::ledger_progress(&b.conn, &policy, server_now).map_err(|_| Fault::Decline)?;
             // `pomodoro_sound_route` (6537): `except Exception: False, None`.
             let sound_now = clock();
             let sound = match (nd::load_prefs(&b.conn), nd::clients(&b.conn, sound_now)) {

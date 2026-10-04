@@ -1,9 +1,24 @@
 //! Dominio F2: GET /pomodoro con app-state, la cola de foco y la base de uso.
 mod support;
 
-use comandos_server::dash::native::wall_clock_ms;
+use comandos_server::{
+    Request,
+    dash::native::{Native, NativeRoute, Outcome, wall_clock_ms},
+};
 use std::sync::Arc;
 use support::{FakeLegacy, TestHome, dead_port, front, get, oracle::oracle, request_body};
+
+fn get_request(target: &str) -> Request {
+    Request {
+        method: http::Method::GET,
+        target: target.into(),
+        peer: "127.0.0.1:12345".parse().unwrap(),
+        headers: vec![],
+        data: None,
+        body: bytes::Bytes::new(),
+        internal_producer: false,
+    }
+}
 
 /// `serverNowMs` difiere entre dos procesos: se iguala a 0 antes de comparar bytes.
 fn masked(text: &str) -> String {
@@ -68,12 +83,45 @@ async fn pomodoro_matches_python_oracle() {
     let Some(py) = oracle(&home).await else {
         return;
     };
+    // Un bloque pagado hoy (progreso y `todayMinutes` distintos de cero) y un
+    // bloque en curso que arranca el Python (POST /pomodoro sigue en él).
+    let now = wall_clock_ms();
+    rusqlite::Connection::open(home.state_db())
+        .unwrap()
+        .execute(
+            "insert into focus_rewards (block_id,policy_version,xp,minutes,status,\
+             started_at_ms,ended_at_ms,level_reached,awarded_at_ms) values (?,?,?,?,?,?,?,?,?)",
+            rusqlite::params![
+                "pagado",
+                "v1",
+                250,
+                25,
+                "completed",
+                now - 60_000,
+                now - 1_000,
+                1,
+                now
+            ],
+        )
+        .unwrap();
+    let start =
+        r#"{"requestId": "r-paridad", "action": "start", "mode": "focus", "targetMs": 1500000}"#;
+    let started = request_body(py.port, "POST", "/pomodoro", "", start).await;
+    assert_eq!(started.status, 200, "{}", started.text());
     let mut opts = home.options();
     opts.clock = Arc::new(wall_clock_ms);
     let front = front(&home, dead_port(), opts).await;
     let a = get(py.port, "/pomodoro").await;
     let b = get(front.port, "/pomodoro").await;
     assert_eq!((a.status, masked(&a.text())), (b.status, masked(&b.text())));
+    let body = b.text();
+    assert!(body.contains(r#""block": {"#), "{body}");
+    assert!(body.contains(r#""status": "running""#), "{body}");
+    assert!(body.contains(r#""todayMinutes": 25,"#), "{body}");
+    assert!(
+        body.contains(r#""lastLevelUp": {"blockId": "pagado""#),
+        "{body}"
+    );
     // Con los avisos silenciados, `sound.enabled` cambia en los dos.
     let prefs = r#"{"muted": true}"#;
     assert_eq!(
@@ -97,10 +145,13 @@ async fn pomodoro_matches_python_oracle() {
 #[tokio::test]
 async fn usage_newer_schema_disables_only_usage_lane() {
     let home = TestHome::new("pomo-newer");
-    seed_usage(&home, &[]);
+    // Conexión simple (sin el `journal_mode=wal` de `open_usage_db_at`): la
+    // base más nueva no se toca, ni para cambiarle el modo de diario.
     rusqlite::Connection::open(home.usage_db())
         .unwrap()
-        .execute_batch("pragma user_version=12")
+        .execute_batch(
+            "create table focus_settings(key text primary key, value text); pragma user_version=12",
+        )
         .unwrap();
     home.write("snippets.json", "[]");
     let legacy = FakeLegacy::start().await;
@@ -117,16 +168,37 @@ async fn usage_newer_schema_disables_only_usage_lane() {
         "las demás siguen nativas"
     );
     assert_eq!(get(front.port, "/notices/prefs").await.status, 200);
-    let version: i64 = rusqlite::Connection::open(home.usage_db())
-        .unwrap()
-        .query_row("pragma user_version", [], |r| r.get(0))
-        .unwrap();
-    assert_eq!(version, 12, "nunca se baja la versión");
     assert_eq!(
         legacy.requests(),
         vec!["GET /pomodoro HTTP/1.1".to_owned(); 2]
     );
     front.stop().await;
+    // El mismo caso sobre `Native`: una sola línea de apagado del carril, y
+    // el conjunto nativo sigue activo.
+    let native = Native::new(home.options());
+    for _ in 0..2 {
+        let outcome = native
+            .dispatch(NativeRoute::Pomodoro, &get_request("/pomodoro"))
+            .await
+            .unwrap();
+        assert!(matches!(outcome, Outcome::Decline));
+    }
+    assert_eq!(
+        native.usage_lane().refusals(),
+        1,
+        "una sola línea en stderr"
+    );
+    assert!(native.enabled());
+    native.shutdown().await;
+    let conn = rusqlite::Connection::open(home.usage_db()).unwrap();
+    let version: i64 = conn
+        .query_row("pragma user_version", [], |r| r.get(0))
+        .unwrap();
+    assert_eq!(version, 12, "nunca se baja la versión");
+    let mode: String = conn
+        .query_row("pragma journal_mode", [], |r| r.get(0))
+        .unwrap();
+    assert_eq!(mode, "delete", "nunca pasa a WAL");
 }
 
 #[tokio::test]
