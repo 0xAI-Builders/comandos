@@ -1,0 +1,1 @@
+{"type":"agent-turn-complete","thread-id":"019a2b3c-4d5e-7f60-8a9b-0c1d2e3f4a5b","turn-id":"7","cwd":"/home/usuario/proyecto-codex","input-messages":["revisa el **adaptador** y corre las pruebas"],"last-assistant-message":"Listo: corrí `cargo test` y **todo pasa**.\n\nCambios:\n- `codex.rs`\n- [docs](https://ejemplo.invalid/d)\n"}

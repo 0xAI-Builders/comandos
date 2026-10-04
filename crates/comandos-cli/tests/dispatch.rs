@@ -21,6 +21,19 @@ fn dispatch_by_argv0_and_explicit() {
     assert!(
         matches!(resolve("codex-notify.sh", &v(&["{}"])), Command::Hook(a) if a == v(&["codex", "{}"]))
     );
+    for (alias, harness) in [
+        ("codex-hooks.sh", "codex-hooks"),
+        ("gemini-hooks.sh", "gemini"),
+        ("agy-hooks.sh", "agy"),
+        ("/home/x/ComandOS/adapters/agy-statusline.py", "agy-status"),
+        ("grok-hooks.py", "grok"),
+        ("cc-status.sh", "claude-status"),
+    ] {
+        assert!(
+            matches!(resolve(alias, &v(&["x"])), Command::Hook(a) if a == v(&[harness, "x"])),
+            "{alias}"
+        );
+    }
     assert!(matches!(
         resolve("comandos", &v(&["--version"])),
         Command::Version

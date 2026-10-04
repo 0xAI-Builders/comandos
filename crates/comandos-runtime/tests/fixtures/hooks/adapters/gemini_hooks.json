@@ -1,0 +1,7 @@
+{
+  "before": {"session_id":"7c1e9f0a-anon","transcript_path":"/home/usuario/.gemini/tmp/anon/chats/session.json","cwd":"/home/usuario/proyecto-gemini","hook_event_name":"BeforeAgent","timestamp":"2026-10-04T15:02:11.381Z","prompt":"<redactado>"},
+  "after": {"session_id":"7c1e9f0a-anon","transcript_path":"/home/usuario/.gemini/tmp/anon/chats/session.json","cwd":"/home/usuario/proyecto-gemini","hook_event_name":"AfterAgent","timestamp":"2026-10-04T15:03:40.002Z","prompt":"<redactado>","prompt_response":"## Resumen\nActualicé **tres** archivos y la prueba `npm test` pasa.\n","stop_hook_active":false},
+  "notification": {"session_id":"7c1e9f0a-anon","cwd":"/home/usuario/proyecto-gemini","hook_event_name":"Notification","notification_type":"ToolPermission","message":"Gemini quiere ejecutar: git push","details":{"type":"exec"}},
+  "end": {"session_id":"7c1e9f0a-anon","cwd":"/home/usuario/proyecto-gemini","hook_event_name":"SessionEnd","reason":"exit"},
+  "ignored": {"hook_event_name":"BeforeTool","cwd":"/home/usuario/proyecto-gemini"}
+}

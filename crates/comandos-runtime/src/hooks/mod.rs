@@ -1,12 +1,27 @@
 //! Hooks de los harness (`comandos hook <harness>`), con paridad contra los
-//! scripts que reemplazan. `claude` = `hooks/cc-notify.sh`; los demás llegan en la
-//! Tarea 11.
+//! scripts que reemplazan. `claude` = `hooks/cc-notify.sh`; los adaptadores de la
+//! Tarea 11 (`codex`, `codex-hooks`, `gemini`, `agy`, `agy-status`, `grok`,
+//! `opencode`, `claude-usage`, `claude-status`) transcriben `adapters/*` y los
+//! otros dos scripts de `hooks/`.
+mod adapter;
+mod agy;
+mod agy_status;
+mod bash;
 mod claude;
+mod claude_status;
+mod claude_usage;
+mod codex;
+mod codex_hooks;
 mod conf;
 mod events_jsonl;
+mod gemini;
+mod grok;
+mod grok_redact;
 mod input;
 mod jq;
 mod notify_http;
+mod opencode;
+mod py;
 mod state_file;
 mod text;
 mod transcript;
@@ -19,9 +34,18 @@ use std::path::PathBuf;
 pub fn run(args: &[String]) -> i32 {
     match args.first().map(String::as_str) {
         Some("claude") => claude::run(&args[1..]),
+        Some("codex") => codex::run(&args[1..]),
+        Some("codex-hooks") => codex_hooks::run(&args[1..]),
+        Some("gemini") => gemini::run(&args[1..]),
+        Some("agy") => agy::run(&args[1..]),
+        Some("agy-status") => agy_status::run(&args[1..]),
+        Some("grok") => grok::run(&args[1..]),
+        Some("opencode") => opencode::run(&args[1..]),
+        Some("claude-usage") => claude_usage::run(&args[1..]),
+        Some("claude-status") => claude_status::run(&args[1..]),
         Some(notify_http::WORKER) => notify_http::worker_main(),
         Some(other) => {
-            eprintln!("hook {other}: no migrado todavía");
+            eprintln!("hook {other}: harness desconocido");
             2
         }
         None => {

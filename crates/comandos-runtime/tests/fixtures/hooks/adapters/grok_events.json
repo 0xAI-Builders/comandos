@@ -1,0 +1,56 @@
+{
+  "normalize": [
+    {"hookEventName":"UserPromptSubmit","sessionId":"01a0f41a-c3bf-7412-8e35-19857f9c2b94","promptId":"p-0001","cwd":"/home/usuario/proyecto-grok","prompt":"usa token=abc123 para entrar","model":"grok-4-fast","effort":"high","pane":"%7"},
+    {"hookEventName":"stop","sessionId":"01a0f41a-c3bf-7412-8e35-19857f9c2b94","promptId":"p-0001","lastAssistantMessage":"Hecho. Authorization: Bearer sk-anon.123 y api_key = secreto;fin","cwd":"/x"},
+    {"hookEventName":"StopFailure","errorDetails":{"authToken":"s3cr3t","message":"authorization: Bearer s3cr3t"},"error":"server_error"},
+    {"hookEventName":"StopFailure","errorDetails":{"code":503},"reason":"r"},
+    {"hookEventName":"StopFailure","errorDetails":{"message":"","error":{"message":"anidado"},"code":true}},
+    {"hookEventName":"stop_cancelled","reason":"interrupted","sessionId":12,"promptId":1.5,"model":true,"effort":false,"pane":null},
+    {"hookEventName":"SessionEnd","reason":"shutdown","message":"m"},
+    {"hookEventName":"Notification","notificationType":"permission_prompt","title":"Grok quiere usar Bash","sessionId":"s"},
+    {"hookEventName":"notification","notification_type":"idle_prompt"},
+    {"hookEventName":"Notification","notificationType":"","notification_type":"idle_prompt","message":{"detail":"esperando"}},
+    {"hookEventName":"Notification","notificationType":"auth_success"},
+    {"hookEventName":"Notification","notificationType":["permission_prompt"]},
+    {"hookEventName":"Stop","subagentType":"explore","lastAssistantMessage":"x"},
+    {"hookEventName":"Stop","subagentType":"","lastAssistantMessage":"ñandú \u0007 \u007f 😀 \"comillas\""},
+    {"hookEventName":12},
+    {"hook_event_name":"Stop"},
+    {"hookEventName":"PreToolUse"},
+    {"hookEventName":"Stop","lastAssistantMessage":1e16,"reason":"no"},
+    {"hookEventName":"Stop","lastAssistantMessage":{"x":1},"reason":-0,"message":"m"},
+    {"hookEventName":"Stop","sessionId":{"unexpected":"object"},"promptId":["a"],"pane":"%3"},
+    [1,2],
+    "texto",
+    null
+  ],
+  "raw": [
+    "",
+    "{\"hookEventName\":\"Stop\"} {\"x\":1}",
+    "{\"hookEventName\":\"Stop\",\"lastAssistantMessage\":\"a\"}\n\n",
+    "no es json"
+  ],
+  "accept": [
+    [
+      {"event":"UserPromptSubmit","sessionId":"s1","promptId":"pA"},
+      {"event":"Notification","sessionId":"s1","promptId":"pA"},
+      {"event":"Stop","sessionId":"s1","promptId":"pA"},
+      {"event":"Notification","sessionId":"s1","promptId":"pA"},
+      {"event":"UserPromptSubmit","sessionId":"s1","promptId":"pB"},
+      {"event":"Stop","sessionId":"s1","promptId":"pA"},
+      {"event":"Stop","sessionId":"s2","promptId":"pZ"},
+      {"event":"SessionEnd","sessionId":"s2"},
+      {"event":"Stop","sessionId":"s2"},
+      {"event":"UserPromptSubmit","sessionId":"s2","promptId":"pC"}
+    ],
+    [
+      {"event":"UserPromptSubmit","promptId":"p1"},
+      {"event":"Stop"},
+      {"event":"UserPromptSubmit"},
+      {"event":"Notification"},
+      {"event":"Bogus"},
+      {"event":["x"]},
+      {"event":"Stop","sessionId":"ñ","promptId":0,"extra":"no se guarda"}
+    ]
+  ]
+}

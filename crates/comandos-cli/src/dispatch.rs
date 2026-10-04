@@ -20,6 +20,7 @@ const ALIASES: &[(&str, &[&str])] = &[
     ("codex-hooks.sh", &["hook", "codex-hooks"]),
     ("gemini-hooks.sh", &["hook", "gemini"]),
     ("agy-hooks.sh", &["hook", "agy"]),
+    ("agy-statusline.py", &["hook", "agy-status"]),
     ("grok-hooks.py", &["hook", "grok"]),
     ("comandos-events", &["events"]),
 ];

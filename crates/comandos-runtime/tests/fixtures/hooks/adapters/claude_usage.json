@@ -1,0 +1,13 @@
+{
+  "pre_bash": {"session_id":"00000000-0000-0000-0000-00000000anon","transcript_path":"/home/usuario/.claude/projects/anon/s.jsonl","cwd":"/home/usuario/proyecto","permission_mode":"default","hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"cargo test","description":"Corre las pruebas"},"tool_use_id":"toolu_01AnonBash"},
+  "post_bash": {"session_id":"00000000-0000-0000-0000-00000000anon","cwd":"/home/usuario/proyecto","hook_event_name":"PostToolUse","tool_name":"Bash","tool_input":{"command":"cargo test"},"tool_response":{"stdout":"ok","stderr":"","interrupted":false,"isImage":false},"tool_use_id":"toolu_01AnonBash"},
+  "pre_skill": {"hook_event_name":"PreToolUse","tool_name":"Skill","tool_input":{"skill":"superpowers:test-driven-development"},"tool_use_id":"toolu_02AnonSkill"},
+  "post_skill_error": {"hook_event_name":"PostToolUse","tool_name":"Skill","tool_input":{"skill":"x y"},"tool_response":{"is_error":true},"tool_use_id":"toolu_02AnonSkill"},
+  "pre_noid": {"hook_event_name":"PreToolUse","tool_name":"Read","tool_input":"cadena"},
+  "post_noid_error": {"hook_event_name":"PostToolUse","tool_name":"Read","tool_response":{"error":null}},
+  "pre_numeric": {"hook_event_name":"PreToolUse","tool_name":42,"tool_use_id":{"x":1}},
+  "post_string_response": {"hook_event_name":"PostToolUse","tool_name":"Grep","tool_response":"texto","tool_use_id":"toolu_03"},
+  "stop": {"hook_event_name":"Stop","tool_name":"Bash"},
+  "empty_tool": {"hook_event_name":"PreToolUse","tool_name":""},
+  "skill_bad": {"hook_event_name":"PreToolUse","tool_name":"Skill","tool_input":{"skill":"_ok.name:@v/1-2"}}
+}

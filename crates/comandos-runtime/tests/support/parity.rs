@@ -261,3 +261,82 @@ pub fn wait_for_delivery(home: &Path) {
         std::thread::sleep(Duration::from_millis(10));
     }
 }
+
+// ---- Tarea 11: adaptadores que entregan a `cc-notify.sh` ----
+
+/// `HOME` del oráculo de un adaptador: `~/.claude/hooks/cc-notify.sh` es el bash
+/// real (con `trap wait` para esperar sus trabajos en segundo plano) y sus rutas
+/// relativas (`../lib`, `../adapters`) y `cc_usage.py` apuntan al repositorio.
+#[allow(dead_code)]
+pub fn install_oracle_notify(home: &Path, root: &Path) {
+    let hooks = home.join(".claude/hooks");
+    fs::create_dir_all(&hooks).unwrap();
+    let wrapper = hooks.join("cc-notify.sh");
+    fs::write(
+        &wrapper,
+        format!(
+            "#!/bin/bash\ntrap wait EXIT\n. \"{}\" \"$@\"\n",
+            root.join("hooks/cc-notify.sh").display()
+        ),
+    )
+    .unwrap();
+    fs::set_permissions(&wrapper, fs::Permissions::from_mode(0o755)).unwrap();
+    for name in ["lib", "adapters"] {
+        std::os::unix::fs::symlink(root.join(name), home.join(".claude").join(name)).unwrap();
+    }
+    fs::create_dir_all(home.join(".local/bin")).unwrap();
+    std::os::unix::fs::symlink(
+        root.join("bin/cc_usage.py"),
+        home.join(".local/bin/cc_usage.py"),
+    )
+    .unwrap();
+}
+
+/// `HOME` del lado Rust: un `cc-notify.sh` ejecutable (la puerta `[ -x ]` de
+/// codex-hooks) que, si alguien lo llamara, quedaría en el registro de falsos.
+#[allow(dead_code)]
+pub fn install_rust_notify_stub(home: &Path) {
+    let hooks = home.join(".claude/hooks");
+    fs::create_dir_all(&hooks).unwrap();
+    let stub = hooks.join("cc-notify.sh");
+    fs::write(
+        &stub,
+        "#!/bin/sh\nprintf 'cc-notify.sh NO DEBE LLAMARSE %s\\n' \"$*\" >> \"$FAKE_LOG\"\n",
+    )
+    .unwrap();
+    fs::set_permissions(&stub, fs::Permissions::from_mode(0o755)).unwrap();
+}
+
+/// `native-processes/`: (nombre, modo, contenido) con el pid y el tick de arranque
+/// del proceso ancestro cambiados por `PID`/`START` cuando se indica su pid.
+#[allow(dead_code)]
+pub fn native_records(home: &Path, pid: Option<u32>, window: Window) -> Vec<(String, u32, String)> {
+    let dir = home.join(".claude/hooks/native-processes");
+    let Ok(entries) = fs::read_dir(&dir) else {
+        return Vec::new();
+    };
+    let mut out: Vec<(String, u32, String)> = entries
+        .map(|e| {
+            let path = e.unwrap().path();
+            let mut name = path.file_name().unwrap().to_string_lossy().into_owned();
+            let mut text = read_lossy(&path);
+            if let Some(pid) = pid {
+                name = name.replace(&pid.to_string(), "PID");
+                text = text.replace(&format!("\"pid\": {pid},"), "\"pid\": PID,");
+                if let Some(start) = text.find("\"start\": \"") {
+                    let from = start + 10;
+                    let end = from + text[from..].find('"').unwrap();
+                    assert!(
+                        text[from..end].bytes().all(|b| b.is_ascii_digit()),
+                        "{text}"
+                    );
+                    text.replace_range(from..end, "START");
+                }
+            }
+            (name, mode(&path).unwrap(), normalize(&text, window))
+        })
+        .collect();
+    out.sort();
+    out.push(("<dir>".into(), mode(&dir).unwrap(), String::new()));
+    out
+}
