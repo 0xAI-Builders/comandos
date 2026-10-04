@@ -8,6 +8,7 @@
     {"type":"message.updated","properties":{"info":{"id":"msg_anon01","sessionID":"ses_f0fe680f5ffeAnonimaSesion01","role":"user","time":{"created":1790734601000},"agent":"build","model":{"providerID":"opencode","modelID":"longcat-2.5-preview-free"}}}},
     {"type":"message.part.updated","properties":{"part":{"id":"prt_anon","sessionID":"ses_f0fe680f5ffeAnonimaSesion01","type":"text","text":"Hola"}}},
     {"type":"message.updated","properties":{"info":{"id":"msg_anon02","sessionID":"ses_f0fe680f5ffeAnonimaSesion01","role":"assistant","modelID":"longcat-2.5-preview-free","providerID":"opencode","time":{"created":1790734602000}}}},
+    {"type":"__harness_delete_record"},
     {"type":"permission.updated","properties":{"id":"per_anon","sessionID":"ses_f0fe680f5ffeAnonimaSesion01","type":"bash","title":"git push"}},
     {"type":"message.updated","properties":{"info":{"id":"msg_anon03","sessionID":"ses_f0fe60ed1ffeSubagenteAnon02","role":"assistant","modelID":"m","providerID":"p"}}},
     {"type":"session.idle","properties":{"sessionID":"ses_f0fe60ed1ffeSubagenteAnon02"}},

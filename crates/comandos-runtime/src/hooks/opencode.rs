@@ -1,9 +1,11 @@
 //! `comandos hook opencode`: lo que hacía el plugin `adapters/opencode-comandos.js`,
-//! que ahora solo reenvía `{directory, event, session}` por stdin (la sesión la
-//! consulta con el SDK de OpenCode, que solo existe dentro del plugin). Registra el
-//! proceso de OpenCode (el padre de este proceso) en `native-processes/<pid>.json`
-//! y entrega `working|waiting|done` al pipeline de `hook claude`, lo que antes
-//! hacía el plugin con un POST a `/event` de cc-dash.
+//! que ahora solo reenvía `{directory, event, session, current}` por stdin (la
+//! sesión la consulta con el SDK de OpenCode, que solo existe dentro del plugin;
+//! `current` es el registro del proceso que el plugin guarda en memoria). Registra
+//! el proceso de OpenCode (el padre de este proceso) en `native-processes/<pid>.json`,
+//! imprime el registro nuevo para que el plugin lo guarde y entrega
+//! `working|waiting|done` al pipeline de `hook claude`, lo que antes hacía el plugin
+//! con un POST a `/event` de cc-dash.
 use super::adapter::{arg, notify};
 use super::input::{clock, env_bytes};
 use super::state_file::mktemp;
@@ -109,32 +111,31 @@ struct Hook {
     home: PathBuf,
     directory: Option<Value>,
     session: Option<Value>,
+    /// El registro en memoria del plugin (`current`).
+    current: Option<Map<String, Value>>,
 }
 
 impl Hook {
-    /// `persist`: registro del proceso, solo para la sesión raíz que existe.
-    fn persist(&self, session_id: Option<&Value>, patch: Map<String, Value>) -> Option<()> {
+    /// `persist`: registro del proceso, solo para la sesión raíz que existe. Como el
+    /// plugin, el registro en memoria cambia aunque falle la escritura del archivo.
+    fn persist(&mut self, session_id: Option<&Value>, patch: Map<String, Value>) {
         let pid = std::os::unix::process::parent_id();
         let start = start_tick(pid).unwrap_or_default();
         if start.is_empty() || !session_id_ok(session_id) {
-            return None;
+            return;
         }
-        let id = session_id?;
-        let session = self.session.as_ref().filter(|s| js_truthy(Some(s)))?;
+        let Some(id) = session_id else { return };
+        let Some(session) = self.session.as_ref().filter(|s| js_truthy(Some(s))) else {
+            return;
+        };
         if session.get("id") != Some(id) || js_truthy(session.get("parentID")) {
-            return None;
+            return;
         }
-        let root = self.home.join(".claude/hooks/native-processes");
-        let path = root.join(format!("{pid}.json"));
-        // El plugin guardaba el registro vigente en memoria; aquí se relee el suyo.
-        let mut current = std::fs::read(&path)
-            .ok()
-            .and_then(|b| serde_json::from_slice::<Map<String, Value>>(&b).ok())
-            .filter(|c| {
-                c.get("sessionId") == Some(id)
-                    && c.get("pid") == Some(&json!(pid))
-                    && c.get("start") == Some(&json!(start))
-            })
+        // `{...(current?.sessionId === sessionID ? current : {}), ...}`.
+        let mut current = self
+            .current
+            .take()
+            .filter(|c| c.get("sessionId") == Some(id))
             .unwrap_or_default();
         for (key, value) in [
             ("pid", json!(pid)),
@@ -147,13 +148,9 @@ impl Hook {
             current.insert(key.into(), value);
         }
         current.extend(patch);
-        mkdir_all(&root, 0o700)?;
-        let name = format!("{pid}.json.");
-        let (temp, mut file) = mktemp(&root, name.as_bytes(), 10, ".tmp")?;
-        file.write_all(serde_json::to_string(&current).ok()?.as_bytes())
-            .ok()?;
-        drop(file);
-        std::fs::rename(&temp, &path).ok()
+        let root = self.home.join(".claude/hooks/native-processes");
+        let _ = write_record(&root, pid, &current);
+        self.current = Some(current);
     }
 
     /// El POST a `/event` de cc-dash, que validaba y lanzaba `cc-notify.sh --agent`.
@@ -174,6 +171,17 @@ impl Hook {
             cwd.into_bytes(),
         ]);
     }
+}
+
+/// `mkdir` 0700 + temporal `wx` 0600 + `rename`, como el plugin.
+fn write_record(root: &Path, pid: u32, record: &Map<String, Value>) -> Option<()> {
+    mkdir_all(root, 0o700)?;
+    let name = format!("{pid}.json.");
+    let (temp, mut file) = mktemp(root, name.as_bytes(), 10, ".tmp")?;
+    file.write_all(serde_json::to_string(record).ok()?.as_bytes())
+        .ok()?;
+    drop(file);
+    std::fs::rename(&temp, root.join(format!("{pid}.json"))).ok()
 }
 
 /// El tick de arranque como lo saca el plugin: tras el PRIMER `)` de `stat`.
@@ -202,10 +210,14 @@ pub fn run(_args: &[String]) -> i32 {
         return 0;
     };
     let event = input.remove("event").unwrap_or(Value::Null);
-    let hook = Hook {
+    let mut hook = Hook {
         home: PathBuf::from(OsStr::from_bytes(&env_bytes("HOME"))),
         directory: input.remove("directory"),
         session: input.remove("session"),
+        current: match input.remove("current") {
+            Some(Value::Object(map)) => Some(map),
+            _ => None,
+        },
     };
     let empty = Value::Object(Map::new());
     let properties = event.get("properties");
@@ -220,12 +232,12 @@ pub fn run(_args: &[String]) -> i32 {
     match event.get("type").and_then(Value::as_str) {
         Some("session.idle") => {
             patch.insert("busy".into(), json!(false));
-            let _ = hook.persist(session_id, patch);
+            hook.persist(session_id, patch);
             hook.post("done");
         }
         Some("permission.asked" | "permission.updated" | "session.error") => {
             patch.insert("busy".into(), json!(true));
-            let _ = hook.persist(session_id, patch);
+            hook.persist(session_id, patch);
             hook.post("waiting");
         }
         Some("message.updated") => {
@@ -239,9 +251,15 @@ pub fn run(_args: &[String]) -> i32 {
                 patch.insert("busy".into(), json!(true));
                 hook.post("working");
             }
-            let _ = hook.persist(session_id, patch);
+            hook.persist(session_id, patch);
         }
         _ => {}
+    }
+    // El registro en memoria vuelve al plugin por stdout.
+    if let Some(current) = &hook.current
+        && let Ok(text) = serde_json::to_string(current)
+    {
+        let _ = std::io::stdout().write_all(text.as_bytes());
     }
     0
 }
