@@ -35,11 +35,15 @@ const CONNECT_TIMEOUT: Duration = Duration::from_millis(300);
 const REPLY_TIMEOUT: Duration = Duration::from_secs(6);
 /// Tras cerrar stdin, tiempo máximo esperando a que el broker cierre.
 const DRAIN_TIMEOUT: Duration = Duration::from_secs(2);
-/// Esperas antes de cada intento de reconexión tras un reinicio del daemon.
-const RETRY: [Duration; 3] = [
+/// Esperas antes de cada intento de reconexión tras un reinicio del daemon. Un reinicio
+/// real tarda lo que tarde el daemon viejo en cerrar sus upstreams (hasta 5 s de gracia por
+/// cada uno, ssh incluidos) más el arranque del nuevo: la suma cubre ≈ 20 s.
+const RETRY: [Duration; 5] = [
     Duration::from_millis(200),
     Duration::from_secs(1),
     Duration::from_secs(3),
+    Duration::from_secs(6),
+    Duration::from_secs(10),
 ];
 /// Líneas pendientes en cada sentido entre las tareas lectoras y el bucle.
 const LINE_QUEUE: usize = 64;
@@ -333,7 +337,7 @@ pub async fn relay(conn: Connection, socket: &Path, request: &Value) -> Result<i
     }
 }
 
-/// Hasta tres intentos (tras 200 ms, 1 s y 3 s) de adjuntarse a un daemon nuevo.
+/// Hasta cinco intentos (tras 200 ms, 1 s, 3 s, 6 s y 10 s) de adjuntarse a un daemon nuevo.
 async fn reconnect(session: &Session, socket: &Path, request: &Value) -> Option<Live> {
     for delay in RETRY {
         tokio::time::sleep(delay).await;

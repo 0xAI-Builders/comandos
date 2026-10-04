@@ -71,7 +71,8 @@ catálogo del daemon en el momento del `attach` (`command`, `args`, `cwd` y dem�
 `env` sustituido por el `env` expandido que manda la sesión y sin la clave `shared` (no cambia el
 proceso); «canónico» es con las claves ordenadas a todos los niveles. Si el catálogo cambia los
 `args` de un servidor, la siguiente sesión arranca un upstream nuevo en vez de heredar el viejo. El daemon lo lanza con `current_dir(cwd)` y
-con el `env` de la sesión superpuesto a su propio entorno, como haría el proxy directo.
+con el entorno completo de la sesión (`environ` del `attach`, ver «Entorno del upstream») más el
+`env` del spec, sin heredar nada del daemon.
 `crate::command_env` es la única función que arma el comando (la usan `serve` y el broker).
 
 ## Entorno del upstream
@@ -124,12 +125,13 @@ recibir EOF del daemon decide si fue un reinicio:
   lento, inactividad). La sesión sale como antes, con EOF.
 
 En un reinicio, cada petición en vuelo recibe en seguida
-`{"code":-32603,"message":"broker reiniciado"}` con su id, y el cliente intenta hasta tres
-veces (tras 200 ms, 1 s y 3 s) un `attach` nuevo con la misma línea. Si lo consigue, reenvía el
+`{"code":-32603,"message":"broker reiniciado"}` con su id, y el cliente intenta hasta cinco
+veces (tras 200 ms, 1 s, 3 s, 6 s y 10 s: un reinicio real espera hasta 5 s por cada upstream
+que tarda en morir) un `attach` nuevo con la misma línea. Si lo consigue, reenvía el
 `initialize` original (si ya tenía respuesta), descarta su respuesta, reenvía
 `notifications/initialized` (si se había mandado) y sigue. La sesión solo nota el error de sus
 peticiones en vuelo; el estado del servidor es el de un upstream nuevo. Sin daemon tras los
-tres intentos, la sesión sale como antes (ya no puede volver al proxy directo: habló con el
+cinco intentos, la sesión sale como antes (ya no puede volver al proxy directo: habló con el
 broker).
 
 ## Límites
