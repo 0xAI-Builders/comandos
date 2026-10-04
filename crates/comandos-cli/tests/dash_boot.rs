@@ -25,6 +25,11 @@ fn base(home: &PathBuf) -> Command {
     let mut command = Command::new(env!("CARGO_BIN_EXE_comandos"));
     command
         .env("HOME", home)
+        // El frente abre app-state al arrancar: nunca la base real del usuario.
+        .env_remove("COMANDOS_STATE_DB")
+        .env_remove("COMANDOS_USAGE_DB")
+        .env_remove("COMANDOS_DASH_NATIVE")
+        .env("XDG_STATE_HOME", home.join(".local/state"))
         .env_remove("COMANDOS_DASH_DIR")
         .env("COMANDOS_DASH_LEGACY_PORT", "1")
         .stdin(Stdio::null());

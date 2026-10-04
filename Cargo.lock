@@ -275,6 +275,7 @@ dependencies = [
  "comandos-runtime",
  "comandos-store",
  "futures-util",
+ "getrandom 0.3.4",
  "http",
  "http-body",
  "http-body-util",
@@ -282,6 +283,7 @@ dependencies = [
  "hyper-util",
  "rusqlite",
  "serde_json",
+ "sha2",
  "socket2",
  "tokio",
 ]

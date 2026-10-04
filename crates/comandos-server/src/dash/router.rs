@@ -6,14 +6,31 @@
 //! dinámica de `_do_GET`. Todo lo demás (directorios, ausentes, rutas raras,
 //! `/operator`, API) se reenvía y el Python contesta lo suyo: paridad por
 //! construcción. La puerta de seguridad ya la aplicó el transporte.
+use crate::dash::native::{self, NativeRoute};
 use http::Method;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum RouteClass {
     /// GET/HEAD de un archivo regular existente: lo sirve Rust desde `dash_dir`.
     Static,
+    /// Ruta de un dominio nativo (Fase 2b): la responde Rust salvo `Decline`.
+    Native(NativeRoute),
     /// Todo lo demás: se reenvía al Python heredado.
     Forward,
+}
+
+/// La clase nativa se comprueba antes que todo lo demás; con `native` en
+/// falso (`--no-native`) el resultado es exactamente el de la Fase 2a.
+pub fn classify_with(
+    method: &Method,
+    target: &str,
+    asset_exists: &dyn Fn(&str) -> bool,
+    native: bool,
+) -> RouteClass {
+    if native && let Some(route) = native::route(method, target) {
+        return RouteClass::Native(route);
+    }
+    classify(method, target, asset_exists)
 }
 
 /// `asset_exists` solo recibe rutas ya validadas por `static_path`: absolutas,

@@ -82,6 +82,9 @@ fn launch(port: u16) -> Legacy {
         .arg(port.to_string())
         .arg("--no-open")
         .env_remove("TMUX")
+        .env_remove("COMANDOS_STATE_DB")
+        .env_remove("COMANDOS_USAGE_DB")
+        .env("XDG_STATE_HOME", home.join(".local/state"))
         .env("HOME", &home)
         .env("TMUX_TMPDIR", &tmux)
         .env("COMANDOS_DASH_DIR", repo.join("dash"))
@@ -166,6 +169,8 @@ async fn front_answers_exactly_like_the_python() {
     let mut cfg: DashConfig = parse_args(&[], &home, Some(&py_port.to_string())).unwrap();
     cfg.dash_dir = repo().join("dash");
     cfg.token = TOKEN.as_bytes().to_vec();
+    // Esta prueba compara el reenvío puro de la 2a.
+    cfg.native = false;
     let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
     let front_port = listener.local_addr().unwrap().port();
     let (stop, shutdown) = watch::channel(false);

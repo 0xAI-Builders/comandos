@@ -3,8 +3,10 @@
 //! Rust aplica la puerta de seguridad portada (transporte + `dashboard_access`)
 //! y sirve los estáticos; lo demás se reenvía al `cc-dash` Python heredado en
 //! `legacy_port`. Fase 2a: los estáticos los sirve `statics` y lo demás lo
-//! reenvía `forward` con cabeceras y cuerpo intactos.
+//! reenvía `forward` con cabeceras y cuerpo intactos. Fase 2b: las rutas de
+//! `native` se responden en Rust (salvo `Decline`); `--no-native` vuelve a la 2a.
 pub mod forward;
+pub mod native;
 pub mod router;
 pub mod statics;
 pub mod token;
@@ -27,6 +29,8 @@ pub const DEFAULT_PORT: u16 = 4777;
 pub const DEFAULT_LEGACY_PORT: u16 = 4781;
 pub const LEGACY_PORT_ENV: &str = "COMANDOS_DASH_LEGACY_PORT";
 pub const DASH_DIR_ENV: &str = "COMANDOS_DASH_DIR";
+pub const NATIVE_ENV: &str = "COMANDOS_DASH_NATIVE";
+pub const TRACE_ENV: &str = "COMANDOS_DASH_TRACE_FORWARD";
 
 #[derive(Clone)]
 pub struct DashConfig {
@@ -37,6 +41,12 @@ pub struct DashConfig {
     /// Raíz de estáticos; sus entradas suelen ser symlinks al repositorio.
     pub dash_dir: PathBuf,
     pub token: Vec<u8>,
+    /// Falso con `--no-native` o `COMANDOS_DASH_NATIVE=0`: todo se reenvía (2a).
+    pub native: bool,
+    /// `app-state.sqlite3`, resuelto como `lib/app_state.py`.
+    pub state_db: PathBuf,
+    /// `COMANDOS_DASH_TRACE_FORWARD=1`: una línea en stderr por reenvío.
+    pub trace_forward: bool,
 }
 
 impl fmt::Debug for DashConfig {
@@ -48,14 +58,18 @@ impl fmt::Debug for DashConfig {
             .field("home", &self.home)
             .field("dash_dir", &self.dash_dir)
             .field("token", &"<oculto>")
+            .field("native", &self.native)
+            .field("state_db", &self.state_db)
+            .field("trace_forward", &self.trace_forward)
             .finish()
     }
 }
 
-/// `[puerto] [--no-open] [--legacy-port N]`. Como el Python, el primer
-/// argumento numérico es el puerto y los demás argumentos se ignoran;
+/// `[puerto] [--no-open] [--legacy-port N] [--no-native]`. Como el Python, el
+/// primer argumento numérico es el puerto y los demás argumentos se ignoran;
 /// `--no-open` se acepta y no hace nada (nunca se abre navegador).
-/// Devuelve `dash_dir` por defecto y token vacío: `from_env` los resuelve.
+/// `--no-native` reenvía todo lo no estático, como en la Fase 2a.
+/// Devuelve `dash_dir`, `state_db` por defecto y token vacío: `from_env` los resuelve.
 pub fn parse_args(
     args: &[String],
     home: &Path,
@@ -63,9 +77,12 @@ pub fn parse_args(
 ) -> Result<DashConfig, String> {
     let mut port = None;
     let mut legacy_flag = None;
+    let mut native = true;
     let mut words = args.iter();
     while let Some(word) = words.next() {
-        if word == "--legacy-port" {
+        if word == "--no-native" {
+            native = false;
+        } else if word == "--legacy-port" {
             let value = words
                 .next()
                 .ok_or_else(|| "--legacy-port requiere un puerto".to_string())?;
@@ -93,6 +110,9 @@ pub fn parse_args(
         home: home.to_path_buf(),
         dash_dir: default_dash_dir(home),
         token: Vec::new(),
+        native,
+        state_db: home.join(".local/state/comandos/app-state.sqlite3"),
+        trace_forward: false,
     })
 }
 
@@ -154,7 +174,8 @@ fn normalize(path: &Path) -> PathBuf {
 }
 
 /// Configuración completa desde el proceso: `HOME`, `COMANDOS_DASH_LEGACY_PORT`,
-/// `COMANDOS_DASH_DIR` y el token (creado si falta).
+/// `COMANDOS_DASH_DIR`, `COMANDOS_DASH_NATIVE`, `COMANDOS_DASH_TRACE_FORWARD`,
+/// la ruta de `app-state.sqlite3` y el token (creado si falta).
 pub fn from_env(args: &[String]) -> Result<DashConfig, StartError> {
     let home = std::env::var_os("HOME")
         .filter(|h| !h.is_empty())
@@ -164,6 +185,15 @@ pub fn from_env(args: &[String]) -> Result<DashConfig, StartError> {
     let mut cfg = parse_args(args, &home, legacy.as_deref()).map_err(StartError::Usage)?;
     let override_dir = std::env::var(DASH_DIR_ENV).ok();
     cfg.dash_dir = dash_dir(&home, override_dir.as_deref()).map_err(StartError::Config)?;
+    if std::env::var(NATIVE_ENV).is_ok_and(|v| v == "0") {
+        cfg.native = false;
+    }
+    cfg.trace_forward = std::env::var(TRACE_ENV).is_ok_and(|v| v == "1");
+    let state_override = std::env::var_os("COMANDOS_STATE_DB").map(PathBuf::from);
+    let xdg = std::env::var_os("XDG_STATE_HOME").map(PathBuf::from);
+    cfg.state_db =
+        comandos_runtime::state_path(None, state_override.as_deref(), xdg.as_deref(), Some(&home))
+            .map_err(|e| StartError::Config(format!("app-state: {e}")))?;
     cfg.token = load_token(&home).map_err(|e| {
         StartError::Config(format!("dash-token ({}): {e}", token_path(&home).display()))
     })?;
@@ -205,6 +235,7 @@ pub fn asset_exists(dash_dir: &Path) -> AssetExists {
 pub struct DashState {
     pub config: DashConfig,
     pub asset_exists: AssetExists,
+    pub native: Option<Arc<native::Native>>,
 }
 
 pub fn handler(state: Arc<DashState>) -> Handler {
@@ -215,17 +246,45 @@ pub fn handler(state: Arc<DashState>) -> Handler {
 }
 
 async fn handle(state: &DashState, request: Request) -> Result<Reply, HandlerError> {
-    let class = router::classify(&request.method, &request.target, &*state.asset_exists);
+    let live = state.native.as_ref().filter(|n| n.enabled());
+    let class = router::classify_with(
+        &request.method,
+        &request.target,
+        &*state.asset_exists,
+        live.is_some(),
+    );
     match class {
+        RouteClass::Native(route) => {
+            let Some(native) = live else {
+                return forward_to_legacy(state, request).await;
+            };
+            match native.dispatch(route, &request).await? {
+                native::Outcome::Reply(reply) => Ok(reply),
+                native::Outcome::Decline => forward_to_legacy(state, request).await,
+            }
+        }
         RouteClass::Static => statics::serve(&state.config.dash_dir, &request).await,
         // HEAD solo existe para estáticos; a una ruta API es 404 (el Python
         // devolvía 404 HTML vía SimpleHTTPRequestHandler.do_HEAD).
         RouteClass::Forward if request.method == Method::HEAD => not_found(),
-        RouteClass::Forward => {
-            let legacy = SocketAddr::from((Ipv4Addr::LOCALHOST, state.config.legacy_port));
-            forward::relay(legacy, request).await
-        }
+        RouteClass::Forward => forward_to_legacy(state, request).await,
     }
+}
+
+async fn forward_to_legacy(state: &DashState, request: Request) -> Result<Reply, HandlerError> {
+    if state.config.trace_forward {
+        eprintln!("{}", trace_line(&request.method, &request.target));
+    }
+    let legacy = SocketAddr::from((Ipv4Addr::LOCALHOST, state.config.legacy_port));
+    forward::relay(legacy, request).await
+}
+
+/// Sin consulta: los `deviceId` y tokens nunca llegan a los registros.
+pub fn trace_line(method: &Method, target: &str) -> String {
+    format!(
+        "comandos dash: reenvío {method} {}",
+        router::path_of(target)
+    )
 }
 
 pub fn not_found() -> Result<Reply, HandlerError> {
@@ -235,20 +294,56 @@ pub fn not_found() -> Result<Reply, HandlerError> {
     )
 }
 
-/// Configuración del transporte para un `DashConfig` ya resuelto.
-pub fn transport_config(cfg: DashConfig) -> Config {
+/// Transporte + conjunto nativo. `opts` sustituye a las opciones derivadas
+/// de `cfg` (las pruebas inyectan reloj, tmux y `fc-list`).
+pub fn build(
+    cfg: DashConfig,
+    opts: Option<native::NativeOptions>,
+) -> (Config, Option<Arc<native::Native>>) {
     let asset_exists = asset_exists(&cfg.dash_dir);
     let token = cfg.token.clone();
+    let native = cfg.native.then(|| {
+        Arc::new(native::Native::new(opts.unwrap_or_else(|| {
+            native::NativeOptions::for_home(&cfg.home, cfg.state_db.clone())
+        })))
+    });
     let state = Arc::new(DashState {
         config: cfg,
         asset_exists: asset_exists.clone(),
+        native: native.clone(),
     });
-    Config {
+    let config = Config {
         token,
         asset_exists,
         handler: handler(state),
         limits: limits(),
+    };
+    (config, native)
+}
+
+/// Configuración del transporte para un `DashConfig` ya resuelto (API de la 2a).
+pub fn transport_config(cfg: DashConfig) -> Config {
+    build(cfg, None).0
+}
+
+/// Atiende con opciones nativas explícitas hasta que `shutdown` pase a `true`;
+/// al terminar para el worker de la base.
+pub async fn serve_with(
+    listener: TcpListener,
+    cfg: DashConfig,
+    opts: Option<native::NativeOptions>,
+    shutdown: watch::Receiver<bool>,
+) -> io::Result<()> {
+    let (config, native) = build(cfg, opts);
+    if let Some(native) = &native {
+        // Abre la base antes de atender: la primera petición no paga la migración.
+        native.ready().await;
     }
+    let served = crate::serve(listener, config, shutdown).await;
+    if let Some(native) = native {
+        native.shutdown().await;
+    }
+    served
 }
 
 /// Atiende en un listener ya abierto hasta que `shutdown` pase a `true`.
@@ -257,7 +352,7 @@ pub async fn serve_listener(
     cfg: DashConfig,
     shutdown: watch::Receiver<bool>,
 ) -> io::Result<()> {
-    crate::serve(listener, transport_config(cfg), shutdown).await
+    serve_with(listener, cfg, None, shutdown).await
 }
 
 /// Solo IPv4 de bucle local, como el `ThreadingTCPServer(("127.0.0.1", port))`.

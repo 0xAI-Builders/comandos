@@ -277,3 +277,39 @@ async fn dropping_owner_joins_worker_and_releases_backend_state() {
             .is_err()
     );
 }
+
+use comandos_server::blocking::BackendWorker;
+
+#[tokio::test]
+async fn backend_worker_keeps_state_between_calls() {
+    let worker = BackendWorker::start(4, 0u64).unwrap();
+    let caller = worker.caller();
+    for expected in 1..=3u64 {
+        let got = caller
+            .call(|n: &mut u64| {
+                *n += 1;
+                *n
+            })
+            .await
+            .unwrap();
+        assert_eq!(got, expected);
+    }
+    // Un clon del llamador habla con el mismo backend.
+    let other = caller.clone();
+    assert_eq!(other.call(|n: &mut u64| *n).await.unwrap(), 3);
+    worker.shutdown().await.unwrap();
+    assert!(caller.call(|n: &mut u64| *n).await.is_err());
+}
+
+#[tokio::test]
+async fn backend_worker_retires_after_panic() {
+    let worker = BackendWorker::start(4, Vec::<u8>::new()).unwrap();
+    let caller = worker.caller();
+    let boom = caller
+        .call(|_: &mut Vec<u8>| -> u8 { panic!("estado inconsistente") })
+        .await;
+    assert!(matches!(boom, Err(comandos_server::HandlerError::Failure)));
+    // Tras un pánico el backend no se reutiliza.
+    assert!(caller.call(|v: &mut Vec<u8>| v.len()).await.is_err());
+    worker.shutdown().await.unwrap();
+}

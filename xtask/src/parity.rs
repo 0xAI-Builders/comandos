@@ -19,6 +19,8 @@ use std::{
 
 use serde_json::Value;
 
+/// El arnés decide el modo del frente con `--no-native`, nunca el entorno del usuario.
+const NATIVE_ENV_OF_FRONT: &str = "COMANDOS_DASH_NATIVE";
 const MASK: &str = "<volátil>";
 /// Cabeceras que `same` compara; el resto (Date, Server…) es ruido por construcción.
 const RELEVANT_HEADERS: [&str; 4] = [
@@ -623,6 +625,11 @@ fn spawn(name: &'static str, mut cmd: Command, e: &SpawnEnv, log: &Path) -> Resu
         .env_remove("DBUS_SESSION_BUS_ADDRESS")
         .env_remove("DISPLAY")
         .env_remove("WAYLAND_DISPLAY")
+        // La base de estado nunca es la real: ni override ni XDG del usuario.
+        .env_remove("COMANDOS_STATE_DB")
+        .env_remove("COMANDOS_USAGE_DB")
+        .env_remove(NATIVE_ENV_OF_FRONT)
+        .env("XDG_STATE_HOME", e.home.join(".local/state"))
         .env("XDG_RUNTIME_DIR", e.tmux)
         .env("HOME", e.home)
         .env("TMUX_TMPDIR", e.tmux)

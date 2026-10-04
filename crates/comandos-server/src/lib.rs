@@ -30,6 +30,7 @@ use tokio::{
     time::timeout,
 };
 
+#[derive(Clone)]
 pub struct Request {
     pub method: Method,
     pub target: String,
