@@ -31,6 +31,8 @@ pub const LEGACY_PORT_ENV: &str = "COMANDOS_DASH_LEGACY_PORT";
 pub const DASH_DIR_ENV: &str = "COMANDOS_DASH_DIR";
 pub const NATIVE_ENV: &str = "COMANDOS_DASH_NATIVE";
 pub const TRACE_ENV: &str = "COMANDOS_DASH_TRACE_FORWARD";
+/// Raíz del checkout del Python heredado (`REPO_ROOT`, `bin/cc-dash:1370`).
+pub const REPO_ENV: &str = "COMANDOS_DASH_REPO";
 
 #[derive(Clone)]
 pub struct DashConfig {
@@ -47,6 +49,8 @@ pub struct DashConfig {
     pub state_db: PathBuf,
     /// `COMANDOS_DASH_TRACE_FORWARD=1`: una línea en stderr por reenvío.
     pub trace_forward: bool,
+    /// Checkout del heredado (`config/model-tiers.json`); `None` si no se sabe.
+    pub repo_root: Option<PathBuf>,
 }
 
 impl fmt::Debug for DashConfig {
@@ -61,6 +65,7 @@ impl fmt::Debug for DashConfig {
             .field("native", &self.native)
             .field("state_db", &self.state_db)
             .field("trace_forward", &self.trace_forward)
+            .field("repo_root", &self.repo_root)
             .finish()
     }
 }
@@ -113,6 +118,7 @@ pub fn parse_args(
         native,
         state_db: home.join(".local/state/comandos/app-state.sqlite3"),
         trace_forward: false,
+        repo_root: None,
     })
 }
 
@@ -158,6 +164,17 @@ pub fn dash_dir(home: &Path, override_dir: Option<&str>) -> Result<PathBuf, Stri
     }
 }
 
+/// `COMANDOS_DASH_REPO` si está; si no, el destino canónico de
+/// `<dash_dir>/index.html` dos niveles arriba (`install.sh` y el arnés
+/// enlazan `dash/*` al checkout desde el que corre el Python).
+pub fn repo_root(dash_dir: &Path, override_dir: Option<&str>) -> Option<PathBuf> {
+    if let Some(raw) = override_dir.filter(|v| !v.is_empty()) {
+        return Some(PathBuf::from(raw));
+    }
+    let index = std::fs::canonicalize(dash_dir.join("index.html")).ok()?;
+    index.parent()?.parent().map(Path::to_path_buf)
+}
+
 /// `os.path.normpath` léxico: quita `.` y resuelve `..` sin tocar el disco.
 fn normalize(path: &Path) -> PathBuf {
     let mut out = PathBuf::new();
@@ -185,6 +202,7 @@ pub fn from_env(args: &[String]) -> Result<DashConfig, StartError> {
     let mut cfg = parse_args(args, &home, legacy.as_deref()).map_err(StartError::Usage)?;
     let override_dir = std::env::var(DASH_DIR_ENV).ok();
     cfg.dash_dir = dash_dir(&home, override_dir.as_deref()).map_err(StartError::Config)?;
+    cfg.repo_root = repo_root(&cfg.dash_dir, std::env::var(REPO_ENV).ok().as_deref());
     if std::env::var(NATIVE_ENV).is_ok_and(|v| v == "0") {
         cfg.native = false;
     }
@@ -304,7 +322,9 @@ pub fn build(
     let token = cfg.token.clone();
     let native = cfg.native.then(|| {
         Arc::new(native::Native::new(opts.unwrap_or_else(|| {
-            native::NativeOptions::for_home(&cfg.home, cfg.state_db.clone())
+            let mut o = native::NativeOptions::for_home(&cfg.home, cfg.state_db.clone());
+            o.repo_root = cfg.repo_root.clone();
+            o
         })))
     });
     let state = Arc::new(DashState {

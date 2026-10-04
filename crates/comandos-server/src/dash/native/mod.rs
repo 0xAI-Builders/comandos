@@ -5,6 +5,7 @@
 //! `fc-list`, por `tokio::process`. Si una entrada no se puede reproducir con
 //! certeza, el manejador devuelve `Fault::Decline` ANTES de cualquier efecto
 //! y el frente reenvía la petición original al heredado.
+pub mod catalogs;
 pub mod events;
 pub mod files;
 pub mod lanes;
@@ -49,6 +50,7 @@ pub enum NativeRoute {
     Snippets(snippets::SnippetsRoute),
     UiLog,
     Pomodoro,
+    Catalog(catalogs::CatalogRoute),
     Retired,
 }
 
@@ -100,6 +102,7 @@ const TABLES: &[&[Entry]] = &[
     snippets::ROUTES,
     ui_log::ROUTES,
     pomodoro::ROUTES,
+    catalogs::ROUTES,
     retired::ROUTES,
 ];
 
@@ -188,6 +191,8 @@ pub struct NativeOptions {
     pub usage_db: PathBuf,
     /// `DESKTOP_DEVICE` del Python (999).
     pub desktop_device: String,
+    /// Checkout del heredado (`REPO_ROOT`): de él sale `config/model-tiers.json`.
+    pub repo_root: Option<PathBuf>,
 }
 
 impl NativeOptions {
@@ -200,6 +205,7 @@ impl NativeOptions {
             fc_list: tmux::Program::named("fc-list"),
             usage_db: home.join(".claude/hooks/comandos-usage.sqlite"),
             desktop_device: desktop_device(),
+            repo_root: None,
         }
     }
 }
@@ -216,7 +222,7 @@ pub struct Native {
     pub(crate) fonts: Mutex<Option<(std::time::Instant, std::collections::HashSet<String>)>>,
     /// La revisión de avisos que comparten las esperas de `/notices/watch`.
     pub(crate) notice_feed: notices::RevisionFeed,
-    /// Carril de la base de uso (`GET /pomodoro`).
+    /// Carril de la base de uso (`GET /pomodoro`, `GET /sovereignty`).
     pub(crate) usage: lanes::Lane<lanes::UsageBackend>,
 }
 
@@ -368,6 +374,7 @@ impl Native {
             NativeRoute::Snippets(route) => snippets::answer(self, route, request).await,
             NativeRoute::UiLog => ui_log::answer(self, request).await,
             NativeRoute::Pomodoro => pomodoro::answer(self).await,
+            NativeRoute::Catalog(route) => catalogs::answer(self, route).await,
             NativeRoute::Retired => {
                 let path = request
                     .target

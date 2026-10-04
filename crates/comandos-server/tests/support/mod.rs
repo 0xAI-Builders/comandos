@@ -129,6 +129,11 @@ pub fn dead_port() -> u16 {
         .port()
 }
 
+/// El checkout de las pruebas: el oráculo corre `bin/cc-dash` desde aquí.
+pub fn repo() -> PathBuf {
+    Path::new(env!("CARGO_MANIFEST_DIR")).join("../..")
+}
+
 /// HOME temporal con `~/.claude/hooks/state`, token y `TMUX_TMPDIR` propios.
 pub struct TestHome {
     pub root: PathBuf,
@@ -165,6 +170,7 @@ impl TestHome {
         opts.tmux = Tmux::private(&self.tmux_dir());
         // Sin fc-list en las pruebas salvo que una prueba lo fije.
         opts.fc_list = Program::named("/no-existe/fc-list");
+        opts.repo_root = std::fs::canonicalize(repo()).ok();
         opts
     }
 }

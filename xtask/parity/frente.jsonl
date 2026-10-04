@@ -116,3 +116,6 @@
 # --- 2c · F2: Pomodoro (nativa; lee app-state, focus-queue y la base de uso)
 {"name":"f-pomodoro","method":"GET","path":"/pomodoro","headers":{"Host":"127.0.0.1"},"body":null,"volatile":["/serverNowMs"],"expect":"same"}
 {"name":"f-pomodoro-consulta","method":"GET","path":"/pomodoro?x=1","headers":{"Host":"127.0.0.1"},"body":null,"volatile":[],"expect":"same","forwarded":true}
+# --- 2c · F3: catálogos de solo lectura (nativas)
+{"name":"f-model-tiers","method":"GET","path":"/model-tiers","headers":{"Host":"127.0.0.1"},"body":null,"volatile":[],"expect":"same"}
+{"name":"f-sovereignty","method":"GET","path":"/sovereignty","headers":{"Host":"127.0.0.1"},"body":null,"volatile":["/generatedAt","/stores/*/mtime"],"expect":"same"}
