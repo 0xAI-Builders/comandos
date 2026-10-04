@@ -1,5 +1,6 @@
 //! Native dashboard transport. Construction never discovers live application state.
 pub mod blocking;
+pub mod dash;
 pub mod events_routes;
 mod write_timeout;
 use bytes::Bytes;
@@ -218,7 +219,9 @@ async fn dispatch(
         return reject(400, "JSON invalido", true);
     }
     let method = match parts.method.as_str() {
-        "GET" => access::Method::Get,
+        // HEAD passes the same admission as GET; hyper omits the response body.
+        // Adapters receive Method::HEAD and decide whether the route has one.
+        "GET" | "HEAD" => access::Method::Get,
         "POST" => access::Method::Post,
         "DELETE" => access::Method::Delete,
         _ => return reject(501, "Método no implementado", true),
